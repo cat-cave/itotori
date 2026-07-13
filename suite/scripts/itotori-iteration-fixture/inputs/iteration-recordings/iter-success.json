@@ -1,7 +1,7 @@
 {
   "schemaVersion": "itotori.fixture-iteration.recording.v0",
   "scenario": "success",
-  "expectedVerdict": "accepted",
+  "expectedVerdict": "complete",
   "fixtureId": "hello-game",
   "identity": {
     "projectId": "project-hello-game-alpha",
@@ -30,7 +30,7 @@
       "status": "drafted",
       "detail": {
         "draftJobId": "draft-job-hello-game",
-        "outcome": "accepted",
+        "outcome": "written",
         "draftUnitCount": 11
       }
     },
@@ -43,16 +43,6 @@
         "findings": []
       }
     },
-    "reviewer": {
-      "artifactId": "reviewer:decision-hello-game-approve",
-      "status": "resolved",
-      "detail": {
-        "action": "approve",
-        "priorState": "pending",
-        "nextState": "resolved",
-        "transitionId": "transition-hello-game-01"
-      }
-    },
     "export": {
       "artifactId": "export:patch-export-hello-game",
       "status": "exported",
@@ -63,20 +53,19 @@
       }
     },
     "feedback": {
-      "artifactId": "feedback:feedback-report-hello-game-ctx",
-      "status": "imported",
+      "artifactId": "feedback:none-received-hello-game",
+      "status": "not_received",
       "detail": {
-        "triageLabel": "needs_context",
-        "reportStatus": "intake",
-        "contextStatus": "unknown",
-        "affectedBridgeUnitIds": []
+        "importedCount": 0,
+        "contextCorrectionCount": 0
       }
     },
     "rerun": {
-      "artifactId": "rerun:rerun-hello-game-noop",
-      "status": "noop",
+      "artifactId": "rerun:not-required-hello-game",
+      "status": "not_required",
       "detail": {
-        "stage": "draft-repair",
+        "stage": "patch-iteration",
+        "contextCorrectionCount": 0,
         "affectedUnitIds": [],
         "reasonCodes": [],
         "repairedFindingCodes": []

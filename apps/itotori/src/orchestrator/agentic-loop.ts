@@ -128,10 +128,6 @@ import {
 import type { ProtectedSpanRef, TranslationDraft } from "@itotori/localization-bridge-schema";
 import { FindingTriageRouter } from "../triage/router.js";
 import type { FindingTriageResult } from "../triage/router.js";
-import {
-  bridgeAgenticLoopToReviewerQueue,
-  type AgenticLoopReviewerQueueSink,
-} from "./reviewer-queue-bridge.js";
 import type { ModelProvider, ProviderFamily, ProviderRunRecord } from "../providers/types.js";
 import { addDecimalUsd, assertBilledCostDecimal } from "../providers/cost.js";
 import { assertReportedTokenUsage } from "../providers/token-accounting.js";
@@ -525,7 +521,7 @@ function stringArray(value: unknown): string[] {
 export type AgenticLoopUnitInput = {
   unit: LocalizationUnitV02;
   /**
-   * Run/bundle-level source revision id targeted by the reviewer-queue FK.
+   * Run/bundle-level source revision id recorded with canonical run provenance.
    * This is the revision registered for the run, not the per-unit
    * content-hash revision in `unit.sourceRevision`.
    */
@@ -611,14 +607,6 @@ export type AgenticLoopUnitInput = {
    * supplied by the project executor's physical-provider capture wrapper.
    */
   attemptOutcomeObserver?: AgenticLoopAttemptOutcomeObserver;
-  /**
-   * itotori-loop-to-review-queue-bridge — an optional legacy notification
-   * surface for threshold-crossing QA callouts. It receives the required
-   * selected draft plus annotations; it is never fed a blank or withheld unit.
-   * When absent (the synthetic smoke path, which has no DB) the loop still
-   * returns its written bundle but persists nothing.
-   */
-  reviewerQueue?: AgenticLoopReviewerQueueSink;
   /**
    * p0-core-persistent-context-brain — the CENTRAL context-artifact repository
    * (source + sink + invalidation). Every semantic enrichment and speaker label
@@ -966,18 +954,6 @@ export async function runAgenticLoopForUnit(
         writtenAt: now().toISOString(),
       }),
     });
-    // Deterministic concerns accompany the written draft as annotations. The
-    // reviewer bridge remains optional and never receives a blank outcome.
-    await maybeBridgeLoopOutcomeToReviewerQueue({
-      input,
-      now,
-      bundle: shortCircuitBundle,
-      qaFindings: [],
-      deterministicViolations: deterministicResult.violations,
-      contextArtifactIds: contextPacket.artifacts.map((a) => a.contextArtifactId),
-      citationRefs: primaryDraftCitationRefs,
-      structuredContext: contextResult.structuredContext,
-    });
     return shortCircuitBundle;
   }
 
@@ -1289,57 +1265,7 @@ export async function runAgenticLoopForUnit(
       writtenAt: now().toISOString(),
     }),
   });
-  // The optional reviewer bridge receives the selected, non-blank candidate
-  // plus QA annotations only; it never becomes a sink for withheld drafts.
-  await maybeBridgeLoopOutcomeToReviewerQueue({
-    input,
-    now,
-    bundle: finalBundle,
-    qaFindings,
-    deterministicViolations: deterministicResult.violations,
-    contextArtifactIds: contextPacket.artifacts.map((a) => a.contextArtifactId),
-    citationRefs: selectedCandidateCitationRefs,
-    // wiki-structure-context-feed — pass the structure-informed injection so
-    // the decision record carries the exact texts that fed the draft.
-    structuredContext: contextResult.structuredContext,
-  });
   return finalBundle;
-}
-
-/**
- * itotori-loop-to-review-queue-bridge — thin adapter that hands a finished loop
- * pass to the reviewer-queue bridge WHEN a driven run wired a sink. No sink
- * (the synthetic smoke path) → no-op. The bridge itself decides whether the
- * outcome warrants a human decision and is idempotent per unit+revision.
- */
-async function maybeBridgeLoopOutcomeToReviewerQueue(args: {
-  input: AgenticLoopUnitInput;
-  now: () => Date;
-  bundle: AgenticLoopBundle;
-  qaFindings: ReadonlyArray<QaFinding>;
-  deterministicViolations: ReadonlyArray<DraftProtectedSpanViolation>;
-  contextArtifactIds: ReadonlyArray<string>;
-  citationRefs: ReadonlyArray<string>;
-  structuredContext?: StructuredContextInjection | undefined;
-}): Promise<void> {
-  const sink = args.input.reviewerQueue;
-  if (sink === undefined) {
-    return;
-  }
-  await bridgeAgenticLoopToReviewerQueue({
-    actor: args.input.actor,
-    sink,
-    bundle: args.bundle,
-    unit: args.input.unit,
-    sourceRevisionId: args.input.sourceRevisionId,
-    qaFindings: args.qaFindings,
-    deterministicViolations: args.deterministicViolations,
-    contextArtifactIds: args.contextArtifactIds,
-    citationRefs: args.citationRefs,
-    now: args.now,
-    ...(args.structuredContext !== undefined ? { structuredContext: args.structuredContext } : {}),
-    ...(args.input.sceneId !== undefined ? { sceneId: args.input.sceneId } : {}),
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1765,20 +1691,6 @@ type SemanticContextStageResult = {
    */
   droppedEnrichments: DroppedContextEnrichment[];
 };
-
-/**
- * Reason string for a dropped best-effort semantic enrichment. Uses the
- * error's constructor name + message (e.g. `TerminologyCandidateParseError:
- * ...`) so a downstream reader can tell malformed-pack from uncitable-pack
- * from a transport failure without re-deriving it.
- */
-function describeEnrichmentDrop(error: unknown): string {
-  if (error instanceof Error) {
-    const name = error.name.length > 0 ? error.name : "Error";
-    return error.message.length > 0 ? `${name}: ${error.message}` : name;
-  }
-  return `NonError: ${String(error)}`;
-}
 
 /**
  * Run ONE best-effort semantic enrichment agent. A thrown error / malformed /
@@ -3397,8 +3309,8 @@ async function invokeQaStage(args: {
  * initial pass used (no defaulting) and is recorded onto the repair stage's
  * telemetry (labelled `<agent>-reqa[attempt]`) so the repair stage owns the
  * full cost of the repair-and-verify cycle while the `qa_findings` stage stays
- * the initial-QA pass. Returns the concatenated findings; the caller routes
- * them to decide accept vs. `repaired_then_qa_rejected`.
+ * the initial-QA pass. Returns the concatenated findings for the caller's
+ * complete-patch outcome and canonical follow-up annotations.
  */
 async function runPostRepairReQaPass(args: {
   input: AgenticLoopUnitInput;

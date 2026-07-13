@@ -226,33 +226,7 @@
     "manifestKind": "utsushi.mvmz.review_package_manifest",
     "reviewPackageId": "ec58da93-216e-7a07-b796-beed7cf97f06",
     "screenshotArtifactCount": 3,
-    "source": "UTSUSHI-010",
-    "supportedReviewActions": [
-      {
-        "action": "approve",
-        "label": "Approve"
-      },
-      {
-        "action": "reject",
-        "label": "Reject"
-      },
-      {
-        "action": "defer",
-        "label": "Defer"
-      },
-      {
-        "action": "escalate",
-        "label": "Escalate"
-      },
-      {
-        "action": "request_repair",
-        "label": "Request repair"
-      },
-      {
-        "action": "import_runtime_feedback",
-        "label": "Import runtime feedback"
-      }
-    ]
+    "source": "UTSUSHI-010"
   },
   "schemaVersion": "0.1.0",
   "sourceLocale": "ja-JP",

@@ -1,14 +1,11 @@
 // shell-project-branch-switcher (HI-FI STUDIO EPIC · Shell) — the CLIENT-SIDE
 // project + locale-branch selection the shell switcher drives.
 //
-// The hi-fi studio store (`docs/design/hifi/studio/store.jsx`) models the
-// switcher as CLIENT state: `setProjectId` / `setBranch` select which project +
-// locale branch the shell chrome is scoped to. The real Studio has no
-// server-side "select project/branch" mutation today (the server's
-// `projects.status` returns the workspace's active project + a server-derived
-// `selectedLocaleBranchId`); so — exactly as the mockup does — the SPA holds
-// the viewer's selection here and overlays it on the server selection to drive
-// the chrome (status bar) + the switcher's "current" marker.
+// The real Studio has no server-side "select project/branch" mutation today
+// (`projects.status` returns the workspace's active project + a server-derived
+// `selectedLocaleBranchId`). The SPA therefore holds the viewer's selection
+// here and overlays it on the server selection to drive the chrome (status
+// bar) + the switcher's "current" marker.
 //
 // This is a pure React context: it holds the viewer's OVERRIDE selection and
 // exposes typed mutators. The EFFECTIVE selection (server selection reconciled

@@ -6,8 +6,8 @@
  * end-to-end, manifest-bound iteration that composes three engines:
  *
  *   Itotori loop (ITOTORI-095)          Kaifuu                Utsushi
- *   import -> draft -> qa -> reviewer    patch result          runtime observation
- *   -> export -> feedback -> rerun  ─────────────────────────────────────────────┐
+ *   import -> draft -> qa -> export      patch result          runtime observation
+ *   -> feedback -> rerun  ────────────────────────────────────────────────────────┐
  *                                                                                 │
  *   -> patch-result -> runtime-observation -> SHARED-025 iteration-fixture result │
  *
@@ -16,8 +16,8 @@
  * re-implement any stage.
  *
  * Emitted under artifacts/itotori/iteration-fixture/<scenario>/:
- *   - import.json, draft.json, qa.json, reviewer.json, export.json,
- *     feedback.json, rerun.json            (ITOTORI-095 stage-result artifacts)
+ *   - import.json, draft.json, qa.json, export.json, feedback.json, rerun.json
+ *                                            (ITOTORI-095 stage-result artifacts)
  *   - patch-result.json, runtime-observation.json  (cross-tool stage artifacts)
  *   - iteration-fixture-result.json        (SHARED-025 cross-tool manifest)
  *
@@ -56,7 +56,7 @@ const SCENARIOS_DIR = join(REPO_ROOT, "suite", "scripts", "itotori-iteration-fix
 const DEFAULT_SCENARIO = "success";
 const DEFAULT_OUT_BASE = join(REPO_ROOT, "artifacts", "itotori", "iteration-fixture");
 
-const LOOP_STAGE_ORDER = ["import", "draft", "qa", "reviewer", "export", "feedback", "rerun"];
+const LOOP_STAGE_ORDER = ["import", "draft", "qa", "export", "feedback", "rerun"];
 const ALL_STAGE_ORDER = [...LOOP_STAGE_ORDER, ...CROSS_STAGE_ORDER];
 
 function usage() {
@@ -64,9 +64,9 @@ function usage() {
     "usage: node suite/scripts/itotori-iteration-fixture/run.mjs [options]",
     "",
     "Options:",
-    "  --scenario <NAME|PATH>   recorded scenario: success | qa-rejection |",
+    "  --scenario <NAME|PATH>   recorded scenario: success | qa-finding |",
     "                           runtime-feedback | patch-failure |",
-    "                           provider-fallback | rerun-repair, or a path",
+    "                           provider-fallback | context-correction-rerun, or a path",
     "                           (default: success)",
     "  --out-dir <PATH>         emitted artifact dir",
     "                           (default artifacts/itotori/iteration-fixture/<scenario>)",
@@ -208,7 +208,7 @@ function main() {
 
   mkdirSync(outDir, { recursive: true });
 
-  // Emit the seven Itotori loop stage artifacts (ITOTORI-095 stage schema).
+  // Emit the six Itotori loop stage artifacts (ITOTORI-095 stage schema).
   const emitted = [];
   for (const s of composed.loop.stageResults) {
     assertLoopStageValid("stage-result", s);

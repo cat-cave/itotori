@@ -1,8 +1,7 @@
-// shell-toasts — legible copy for the three workflow handoffs the hi-fi
+// shell-toasts — legible copy for the two workflow handoffs the hi-fi
 // studio store surfaces as toasts:
 //
 //   flag-sent     — playtester flags a unit for context correction
-//   approved      — reviewer approves as-is (unit marked proven)
 //   pass-launched — director launches the next localization pass
 //
 // Pure message + tone derivation lives here so a behavior-first test can
@@ -19,8 +18,6 @@ import { useToast } from "./toast-host.js";
  */
 export type WorkflowHandoff =
   | { kind: "flag-sent"; severity: string; category: string }
-  | { kind: "approved" }
-  | { kind: "correction-queued"; nextPass?: number }
   | { kind: "pass-launched"; journalRunId: string; unitCount?: number };
 
 export type WorkflowHandoffToast = {
@@ -41,21 +38,6 @@ export function describeWorkflowHandoff(handoff: WorkflowHandoff): WorkflowHando
         kind: "flag-sent",
         tone: "neutral",
         message: `Flag sent for correction · ${handoff.severity} · ${handoff.category}`,
-      };
-    case "approved":
-      return {
-        kind: "approved",
-        tone: "ok",
-        message: "Approved as-is — unit marked proven.",
-      };
-    case "correction-queued":
-      return {
-        kind: "correction-queued",
-        tone: "neutral",
-        message:
-          handoff.nextPass === undefined
-            ? "Correction queued for the next pass."
-            : `Correction queued for pass ${handoff.nextPass}.`,
       };
     case "pass-launched": {
       const n = handoff.unitCount;

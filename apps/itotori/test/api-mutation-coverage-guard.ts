@@ -1,9 +1,8 @@
-import type { Node, ObjectExpression, ObjectProperty, Statement } from "@babel/types";
+import type { Node, Statement } from "@babel/types";
 import {
   isCallExpression,
   isMemberExpression,
   memberPropertyName,
-  nameOf,
   parseTypeScript,
   permissionHelperAliases,
   permissionHelperCallName,
@@ -66,32 +65,13 @@ export const READ_ONLY_PROJECT_WORKFLOW_METHODS: ReadonlySet<string> = new Set([
   "getBenchmarkReports",
 ]);
 
-export const READ_ONLY_REVIEWER_QUEUE_METHODS: ReadonlySet<string> = new Set([
-  "loadDashboard",
-  "loadDetailContext",
-]);
-
-export const READ_ONLY_WORKSPACE_CORRECTIONS_METHODS: ReadonlySet<string> = new Set([
-  "loadPreview",
-]);
-
-export const READ_ONLY_ASSET_DECISIONS_METHODS: ReadonlySet<string> = new Set([
-  "loadActiveDecisions",
-  "loadCandidateAssets",
-]);
-
 /**
  * Name of the helper every route MUST call to gate a mutation. A mutation is
  * "covered" iff a call to this helper precedes it in the same handler scope.
  */
 export const API_PERMISSION_GATE_HELPER = "requireApiPermission";
-export const API_REVIEWER_QUEUE_PERMISSION_VIEW_HELPER = "resolveApiReviewerQueuePermissionView";
 
-type GuardedApiServiceSurface =
-  | "projectWorkflow"
-  | "reviewerQueue"
-  | "workspaceCorrections"
-  | "assetDecisions";
+type GuardedApiServiceSurface = "projectWorkflow";
 
 export type UncoveredApiMutation = {
   /** The API service surface reached without a covering permission gate. */
@@ -119,11 +99,6 @@ export function findUncoveredApiPermissionMutations(
     API_PERMISSION_GATE_HELPER,
     COVERAGE_HELPER_OPTIONS,
   );
-  const reviewerQueuePermissionViewAliases = permissionHelperAliases(
-    root,
-    API_REVIEWER_QUEUE_PERMISSION_VIEW_HELPER,
-    COVERAGE_HELPER_OPTIONS,
-  );
   const uncovered: UncoveredApiMutation[] = [];
 
   walk(root, (node) => {
@@ -131,15 +106,7 @@ export function findUncoveredApiPermissionMutations(
     // OptionalCallExpression in Babel — still mutations that need a gate.
     if (isCallExpression(node)) {
       const mutation = mutatingApiServiceMethod(node.callee);
-      if (
-        mutation !== undefined &&
-        !isCoveredByApiPermission(
-          node,
-          mutation.surface,
-          apiPermissionGateAliases,
-          reviewerQueuePermissionViewAliases,
-        )
-      ) {
+      if (mutation !== undefined && !isCoveredByApiPermission(node, apiPermissionGateAliases)) {
         uncovered.push({ ...mutation, location: sourceLocation(fileName, node) });
       }
     }
@@ -188,55 +155,33 @@ function mutatingApiServiceMethod(
   switch (surface) {
     case "projectWorkflow":
       return READ_ONLY_PROJECT_WORKFLOW_METHODS.has(method) ? undefined : { surface, method };
-    case "reviewerQueue":
-      return READ_ONLY_REVIEWER_QUEUE_METHODS.has(method) ? undefined : { surface, method };
-    case "workspaceCorrections":
-      return READ_ONLY_WORKSPACE_CORRECTIONS_METHODS.has(method) ? undefined : { surface, method };
-    case "assetDecisions":
-      return READ_ONLY_ASSET_DECISIONS_METHODS.has(method) ? undefined : { surface, method };
     default:
       return undefined;
   }
 }
 
 /**
- * A mutation is covered iff its enclosing statement list either contains an
- * earlier `requireApiPermission` call or the mutation call receives a
- * `permission` value that was resolved earlier in that same scope by
- * `resolveApiReviewerQueuePermissionView`. Coverage is checked in the
- * INNERMOST handler scope only (the block / case clause / arrow body that
- * directly holds the mutation statement); a gate belonging to a sibling route
- * handler never counts.
+ * A mutation is covered iff its enclosing statement list contains an earlier
+ * `requireApiPermission` call. Coverage is checked in the INNERMOST handler
+ * scope only (the block / case clause / arrow body that directly holds the
+ * mutation statement); a gate belonging to a sibling route handler never
+ * counts.
  */
 function isCoveredByApiPermission(
   mutation: Node,
-  surface: GuardedApiServiceSurface,
   apiPermissionGateAliases: ReadonlySet<string>,
-  reviewerQueuePermissionViewAliases: ReadonlySet<string>,
 ): boolean {
   const enclosing = enclosingStatementList(mutation);
   if (enclosing === undefined) {
     return false;
   }
-  const resolvedPermissionViews = new Set<string>();
   for (let index = 0; index < enclosing.index; index += 1) {
     const statement = enclosing.list[index]!;
     if (containsPermissionHelperCall(statement, apiPermissionGateAliases)) {
       return true;
     }
-    addResolvedPermissionViewDeclarations(
-      statement,
-      reviewerQueuePermissionViewAliases,
-      resolvedPermissionViews,
-    );
   }
-  if (surface !== "reviewerQueue" && surface !== "workspaceCorrections") {
-    return false;
-  }
-  return (
-    isCallExpression(mutation) &&
-    callReceivesResolvedPermissionView(mutation, resolvedPermissionViews)
-  );
+  return false;
 }
 
 /**
@@ -287,92 +232,4 @@ function containsPermissionHelperCall(node: Node, aliases: ReadonlySet<string>):
     }
   });
   return found;
-}
-
-function addResolvedPermissionViewDeclarations(
-  node: Node,
-  reviewerQueuePermissionViewAliases: ReadonlySet<string>,
-  resolvedPermissionViews: Set<string>,
-): void {
-  walk(node, (current) => {
-    if (
-      current.type === "VariableDeclarator" &&
-      current.id.type === "Identifier" &&
-      current.init !== null &&
-      current.init !== undefined &&
-      containsPermissionHelperCall(current.init, reviewerQueuePermissionViewAliases)
-    ) {
-      resolvedPermissionViews.add(current.id.name);
-    }
-  });
-}
-
-function callReceivesResolvedPermissionView(
-  call: Node,
-  resolvedPermissionViews: ReadonlySet<string>,
-): boolean {
-  if (!isCallExpression(call)) {
-    return false;
-  }
-  return call.arguments.some((argument) =>
-    objectLiteralReceivesResolvedPermissionView(argument, resolvedPermissionViews),
-  );
-}
-
-function objectLiteralReceivesResolvedPermissionView(
-  node: Node,
-  resolvedPermissionViews: ReadonlySet<string>,
-): boolean {
-  if (
-    node.type === "ParenthesizedExpression" ||
-    node.type === "TSAsExpression" ||
-    node.type === "TSSatisfiesExpression" ||
-    node.type === "TSTypeAssertion" ||
-    node.type === "TSNonNullExpression"
-  ) {
-    return objectLiteralReceivesResolvedPermissionView(node.expression, resolvedPermissionViews);
-  }
-  if (node.type !== "ObjectExpression") {
-    return false;
-  }
-  return objectExpressionReceivesResolvedPermissionView(node, resolvedPermissionViews);
-}
-
-function objectExpressionReceivesResolvedPermissionView(
-  node: ObjectExpression,
-  resolvedPermissionViews: ReadonlySet<string>,
-): boolean {
-  for (const property of node.properties) {
-    if (
-      property.type === "ObjectProperty" &&
-      property.shorthand &&
-      property.key.type === "Identifier"
-    ) {
-      if (resolvedPermissionViews.has(property.key.name)) {
-        return true;
-      }
-    }
-    if (
-      property.type === "ObjectProperty" &&
-      staticPropertyNameText(property) === "permission" &&
-      property.value.type === "Identifier" &&
-      resolvedPermissionViews.has(property.value.name)
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Static object-property key text only. Computed keys (`{ [permission]: … }`,
- * `{ ["permission"]: … }`) are DYNAMIC — do not read an Identifier key name as
- * a static property when `computed` is true (matches pre-Babel PropertyName
- * handling, where ComputedPropertyName never yielded text).
- */
-function staticPropertyNameText(property: ObjectProperty): string | undefined {
-  if (property.computed) {
-    return undefined;
-  }
-  return nameOf(property.key);
 }

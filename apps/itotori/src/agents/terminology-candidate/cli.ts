@@ -214,14 +214,12 @@ export async function runCheckTerminologyCandidatesCli(
     markedStaleCandidateCount: candidateArtifacts.filter((artifact) =>
       invalidatedSet.has(artifact.contextArtifactId),
     ).length,
-    markedRejectedCandidateCount: 0,
   };
   log(
     `scanned candidates=${result.scannedCandidateCount} ` +
       `drifted=${result.driftedCandidates.length} ` +
       `conflicts=${result.conflictingCandidates.length} ` +
-      `marked-stale=${result.markedStaleCandidateCount} ` +
-      `marked-rejected=${result.markedRejectedCandidateCount}`,
+      `marked-stale=${result.markedStaleCandidateCount}`,
   );
   for (const drift of result.driftedCandidates) {
     log(
@@ -249,7 +247,6 @@ export type CentralTerminologyCheckResult = {
     terminologyTermId: string;
   }>;
   markedStaleCandidateCount: number;
-  markedRejectedCandidateCount: number;
 };
 
 function noopLog(_message: string): void {

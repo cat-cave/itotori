@@ -182,9 +182,6 @@ function minimalServices(workflow: ItotoriProjectWorkflowService): ItotoriApplic
     projectWorkflow: workflow,
     catalogRepository: unusedPort,
     terminologyRepository: unusedPort,
-    reviewerQueue: unusedPort,
-    workspace: unusedPort,
-    workspaceCorrections: unusedPort,
     assetDecisions: unusedPort,
     queueHealth: unusedPort,
     jobs: unusedPort,
@@ -196,7 +193,6 @@ function minimalServices(workflow: ItotoriProjectWorkflowService): ItotoriApplic
     authPermissions: unusedPort,
     authIdentity: unusedPort,
     playRouteMap: unusedPort,
-    sceneCoverage: unusedPort,
   } as unknown as ItotoriApplicationServices;
 }
 

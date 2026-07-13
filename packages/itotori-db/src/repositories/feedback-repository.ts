@@ -41,7 +41,7 @@ export const feedbackTriageLabelValues = {
   glossaryCanonCandidate: "glossary_canon_candidate",
   runtimeIssueCandidate: "runtime_issue_candidate",
   assetIssueCandidate: "asset_issue_candidate",
-  needsContext: "needs_context",
+  contextCorrectionCandidate: "context_correction_candidate",
 } as const;
 
 export type FeedbackTriageLabel =
@@ -49,7 +49,6 @@ export type FeedbackTriageLabel =
 
 export const feedbackContextStatusValues = {
   contextualized: "contextualized",
-  needsContext: "needs_context",
 } as const;
 
 export type FeedbackContextStatus =
@@ -57,7 +56,6 @@ export type FeedbackContextStatus =
 
 export const feedbackReportStatusValues = {
   open: "open",
-  needsContext: "needs_context",
 } as const;
 
 export type FeedbackReportStatus =
@@ -71,7 +69,8 @@ export type FeedbackReporter = {
 };
 
 export type ManualFeedbackLineReference = {
-  bridgeUnitId?: string;
+  /** Every feedback import is scoped to a concrete bridge unit. */
+  bridgeUnitId: string;
   sourceUnitKey?: string;
   sourceHash?: string;
   assetId?: string;
@@ -142,13 +141,14 @@ export type ManualFeedbackImportInput = {
   feedbackSourceId?: string;
   feedbackSource?: ManualFeedbackSourceInput;
   projectId: string;
-  localeBranchId?: string;
+  /** The canonical branch that owns the concrete bridge-unit target. */
+  localeBranchId: string;
   sourceBundleId?: string;
-  targetLocale: string;
   feedbackType: FeedbackType;
   reporter: FeedbackReporter;
   reporterNote: string;
-  lineReference?: ManualFeedbackLineReference;
+  /** A feedback import never creates a deferred, targetless report. */
+  lineReference: ManualFeedbackLineReference;
   attachments?: ManualFeedbackAttachment[];
   privacyClassification?: string;
   redactionState?: string;
@@ -171,8 +171,14 @@ export type ManualFeedbackImportResult = {
 };
 
 /**
+ * Internal write shape after the repository has resolved the locale from the
+ * canonical branch. Import callers never choose the persisted target locale.
+ */
+type ScopedManualFeedbackInput = ManualFeedbackImportInput & { targetLocale: string };
+
+/**
  * Persisted context needed to turn a feedback report into a canonical context
- * correction. This deliberately does not describe a reviewer-queue item:
+ * correction. This deliberately does not describe a separate decision item:
  * feedback intake is allowed to feed the shared correction path directly.
  */
 export type ManualFeedbackCorrectionContext = {
@@ -212,9 +218,27 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
   ): Promise<ManualFeedbackImportResult> {
     await requirePermission(this.db, actor, permissionValues.feedbackImport);
     const parsedInput = parseManualFeedbackImportInput(input);
-    const normalized = normalizeManualFeedback(parsedInput);
 
     return this.db.transaction(async (tx) => {
+      const branchRows = await tx
+        .select({ targetLocale: localeBranches.targetLocale })
+        .from(localeBranches)
+        .where(
+          and(
+            eq(localeBranches.projectId, parsedInput.projectId),
+            eq(localeBranches.localeBranchId, parsedInput.localeBranchId),
+          ),
+        )
+        .limit(1);
+      const targetLocale = branchRows[0]?.targetLocale;
+      if (targetLocale === undefined) {
+        throw new Error(
+          `manual feedback locale branch ${parsedInput.localeBranchId} does not belong to project ${parsedInput.projectId}`,
+        );
+      }
+      const scopedInput: ScopedManualFeedbackInput = { ...parsedInput, targetLocale };
+      const normalized = normalizeManualFeedback(scopedInput);
+
       await tx
         .insert(feedbackSources)
         .values({
@@ -252,14 +276,25 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
       const feedbackReportId = existing?.feedbackReportId ?? normalized.feedbackReportId;
       const duplicate = existing !== undefined;
 
+      if (
+        existing !== undefined &&
+        (labelFromRow(existing.triageLabel) === undefined ||
+          statusFromRow(existing.reportStatus) === undefined ||
+          contextFromRow(existing.contextStatus) === undefined)
+      ) {
+        throw new Error(
+          `manual feedback report ${existing.feedbackReportId} is a legacy targetless report; create a canonical Wiki correction before importing it again`,
+        );
+      }
+
       if (!existing) {
         await tx.insert(feedbackReports).values({
           feedbackReportId,
           projectId: parsedInput.projectId,
-          localeBranchId: parsedInput.localeBranchId ?? null,
+          localeBranchId: parsedInput.localeBranchId,
           sourceBundleId: parsedInput.sourceBundleId ?? null,
-          bridgeUnitId: parsedInput.lineReference?.bridgeUnitId ?? null,
-          targetLocale: parsedInput.targetLocale,
+          bridgeUnitId: parsedInput.lineReference.bridgeUnitId,
+          targetLocale: normalized.targetLocale,
           feedbackSourceId: normalized.feedbackSourceId,
           feedbackType: parsedInput.feedbackType,
           triageLabel: normalized.triageLabel,
@@ -309,9 +344,9 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
           .values({
             artifactId,
             projectId: parsedInput.projectId,
-            localeBranchId: parsedInput.localeBranchId ?? null,
+            localeBranchId: parsedInput.localeBranchId,
             sourceBundleId: parsedInput.sourceBundleId ?? null,
-            bridgeUnitId: parsedInput.lineReference?.bridgeUnitId ?? null,
+            bridgeUnitId: parsedInput.lineReference.bridgeUnitId,
             artifactKind: artifactKindForAttachment(attachment),
             uri: attachment.uri ?? null,
             hash: attachment.hash ?? null,
@@ -324,9 +359,9 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
           .onConflictDoUpdate({
             target: artifacts.artifactId,
             set: {
-              localeBranchId: parsedInput.localeBranchId ?? null,
+              localeBranchId: parsedInput.localeBranchId,
               sourceBundleId: parsedInput.sourceBundleId ?? null,
-              bridgeUnitId: parsedInput.lineReference?.bridgeUnitId ?? null,
+              bridgeUnitId: parsedInput.lineReference.bridgeUnitId,
               artifactKind: artifactKindForAttachment(attachment),
               uri: attachment.uri ?? null,
               hash: attachment.hash ?? null,
@@ -349,7 +384,7 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
         .values({
           eventId: eventIdFor(eventKind, normalized.feedbackEvidenceId),
           projectId: parsedInput.projectId,
-          localeBranchId: parsedInput.localeBranchId ?? null,
+          localeBranchId: parsedInput.localeBranchId,
           eventKind,
           occurredAt: normalized.reportedAt,
           actor: {
@@ -357,7 +392,7 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
             userId: actor.userId,
             displayName: parsedInput.reporter.displayName ?? parsedInput.reporter.role,
           },
-          subjectRefs: subjectRefsFor(feedbackReportId, parsedInput),
+          subjectRefs: subjectRefsFor(feedbackReportId, scopedInput),
           provenance: [
             {
               provenanceKind: "feedback_source",
@@ -424,7 +459,16 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
       )
       .limit(1);
     const row = rows[0];
-    if (row === undefined || row.localeBranchId === null) {
+    const triageLabel = row === undefined ? undefined : labelFromRow(row.triageLabel);
+    const contextStatus = row === undefined ? undefined : contextFromRow(row.contextStatus);
+    if (
+      row === undefined ||
+      row.localeBranchId === null ||
+      row.bridgeUnitId === null ||
+      row.bridgeUnitId.trim().length === 0 ||
+      triageLabel === undefined ||
+      contextStatus === undefined
+    ) {
       return null;
     }
 
@@ -446,15 +490,14 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
       localeBranchId: row.localeBranchId,
       sourceRevisionId,
       feedbackType: row.feedbackType as FeedbackType,
-      triageLabel: labelFromRow(row.triageLabel) ?? feedbackTriageLabelValues.needsContext,
-      contextStatus: contextFromRow(row.contextStatus) ?? feedbackContextStatusValues.needsContext,
+      triageLabel,
+      contextStatus,
       reporterNote: row.reporterNote,
       suggestedEdit:
         stringFromRecord(row.evidenceMetadata, "suggestedEdit") ??
         stringFromRecord(row.reportMetadata, "suggestedEdit") ??
         null,
-      affectedUnitIds:
-        row.bridgeUnitId === null || row.bridgeUnitId.trim().length === 0 ? [] : [row.bridgeUnitId],
+      affectedUnitIds: [row.bridgeUnitId],
     };
   }
 
@@ -479,18 +522,23 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
 
 export function parseManualFeedbackImportInput(value: unknown): ManualFeedbackImportInput {
   const input = requireRecord(value, "manual feedback input");
+  if ("targetLocale" in input) {
+    throw new Error(
+      "manual feedback targetLocale is server-owned by localeBranchId and must not be supplied",
+    );
+  }
   const parsed: ManualFeedbackImportInput = {
     projectId: requiredString(input, "projectId"),
-    targetLocale: requiredString(input, "targetLocale"),
+    localeBranchId: requiredNonBlankString(input, "localeBranchId"),
     feedbackType: requiredEnum(input, "feedbackType", Object.values(feedbackTypeValues)),
     reporter: parseReporter(input.reporter),
     reporterNote: requiredString(input, "reporterNote"),
+    lineReference: parseLineReference(input.lineReference),
   };
 
   assignOptionalString(parsed, input, "feedbackReportId");
   assignOptionalString(parsed, input, "feedbackEvidenceId");
   assignOptionalString(parsed, input, "feedbackSourceId");
-  assignOptionalString(parsed, input, "localeBranchId");
   assignOptionalString(parsed, input, "sourceBundleId");
   assignOptionalString(parsed, input, "privacyClassification");
   assignOptionalString(parsed, input, "redactionState");
@@ -500,9 +548,6 @@ export function parseManualFeedbackImportInput(value: unknown): ManualFeedbackIm
 
   if (input.feedbackSource !== undefined) {
     parsed.feedbackSource = parseFeedbackSourceInput(input.feedbackSource);
-  }
-  if (input.lineReference !== undefined) {
-    parsed.lineReference = parseLineReference(input.lineReference);
   }
   if (input.attachments !== undefined) {
     if (!Array.isArray(input.attachments)) {
@@ -526,8 +571,7 @@ export function deriveFeedbackDedupeKey(input: ManualFeedbackImportInput): strin
   if (input.dedupeKey) {
     return `feedback:manual:${hashJson({
       projectId: input.projectId,
-      localeBranchId: input.localeBranchId ?? null,
-      targetLocale: input.targetLocale,
+      localeBranchId: input.localeBranchId,
       feedbackType: input.feedbackType,
       externalDedupeKey: normalizeText(input.dedupeKey),
       anchor: primaryDedupeAnchor(input),
@@ -536,8 +580,7 @@ export function deriveFeedbackDedupeKey(input: ManualFeedbackImportInput): strin
 
   return `feedback:sha256:${hashJson({
     projectId: input.projectId,
-    localeBranchId: input.localeBranchId ?? null,
-    targetLocale: input.targetLocale,
+    localeBranchId: input.localeBranchId,
     feedbackType: input.feedbackType,
     anchor: primaryDedupeAnchor(input),
     reporterNote: normalizeText(input.reporterNote).slice(0, 512),
@@ -568,11 +611,12 @@ type NormalizedManualFeedback = {
   reportedAt: Date;
   dedupeKey: string;
   metadata: Record<string, unknown>;
+  targetLocale: string;
 };
 
 type FeedbackWriteDatabase = Pick<ItotoriDatabase, "execute" | "update">;
 
-function normalizeManualFeedback(input: ManualFeedbackImportInput): NormalizedManualFeedback {
+function normalizeManualFeedback(input: ScopedManualFeedbackInput): NormalizedManualFeedback {
   const reporterNote = input.reporterNote.trim();
   if (reporterNote.length === 0) {
     throw new Error("manual feedback reporterNote is required");
@@ -592,14 +636,9 @@ function normalizeManualFeedback(input: ManualFeedbackImportInput): NormalizedMa
     }).slice(0, 32)}`;
   const dedupeKey = deriveFeedbackDedupeKey(input);
   const contextSignals = contextSignalsFor(input);
-  const contextStatus = hasContextSignals(contextSignals)
-    ? feedbackContextStatusValues.contextualized
-    : feedbackContextStatusValues.needsContext;
-  const triageLabel = classifyFeedback(input.feedbackType, contextStatus);
-  const reportStatus =
-    contextStatus === feedbackContextStatusValues.needsContext
-      ? feedbackReportStatusValues.needsContext
-      : feedbackReportStatusValues.open;
+  const contextStatus = feedbackContextStatusValues.contextualized;
+  const triageLabel = classifyFeedback(input.feedbackType);
+  const reportStatus = feedbackReportStatusValues.open;
   const metadata = {
     ...input.metadata,
     ...(input.suggestedEdit ? { suggestedEdit: input.suggestedEdit } : {}),
@@ -641,6 +680,7 @@ function normalizeManualFeedback(input: ManualFeedbackImportInput): NormalizedMa
     reportedAt,
     dedupeKey,
     metadata,
+    targetLocale: input.targetLocale,
   };
 }
 
@@ -657,14 +697,7 @@ function normalizeFeedbackSource(
   };
 }
 
-function classifyFeedback(
-  feedbackType: FeedbackType,
-  contextStatus: FeedbackContextStatus,
-): FeedbackTriageLabel {
-  if (contextStatus === feedbackContextStatusValues.needsContext) {
-    return feedbackTriageLabelValues.needsContext;
-  }
-
+function classifyFeedback(feedbackType: FeedbackType): FeedbackTriageLabel {
   switch (feedbackType) {
     case feedbackTypeValues.objectiveDefect:
       return feedbackTriageLabelValues.objectiveDefectCandidate;
@@ -677,7 +710,7 @@ function classifyFeedback(
     case feedbackTypeValues.assetIssue:
       return feedbackTriageLabelValues.assetIssueCandidate;
     case feedbackTypeValues.unclearContext:
-      return feedbackTriageLabelValues.needsContext;
+      return feedbackTriageLabelValues.contextCorrectionCandidate;
   }
 }
 
@@ -789,34 +822,12 @@ function contextSignalForAttachment(
   }
 }
 
-function hasContextSignals(contextSignals: Record<string, unknown>): boolean {
-  if (
-    isRecord(contextSignals.lineReference) &&
-    hasUsableLineReferenceSignal(contextSignals.lineReference)
-  ) {
-    return true;
-  }
-  const attachmentSignals = contextSignals.attachmentSignals;
-  return (
-    Array.isArray(attachmentSignals) &&
-    attachmentSignals.some((signal) => isRecord(signal) && hasUsableAttachmentSignal(signal))
-  );
-}
-
 function primaryDedupeAnchor(input: ManualFeedbackImportInput): Record<string, unknown> {
   const lineReference = contextSignalForLineReference(input.lineReference);
-  if (lineReference) {
-    return { lineReference };
+  if (lineReference === null) {
+    throw new Error("manual feedback requires a bridge-unit line reference for deduplication");
   }
-
-  const attachmentSignals = (input.attachments ?? [])
-    .map((attachment) => contextSignalForAttachment(attachment))
-    .filter((signal): signal is Record<string, unknown> => signal !== null);
-  if (attachmentSignals.length > 0) {
-    return { attachmentSignals };
-  }
-
-  return { missingContext: true };
+  return { lineReference };
 }
 
 function subjectRefsFor(
@@ -938,22 +949,6 @@ function hasUsableLineReferenceSignal(signal: Record<string, unknown>): boolean 
   ]);
 }
 
-function hasUsableAttachmentSignal(signal: Record<string, unknown>): boolean {
-  return hasAnySignalField(signal, [
-    "artifactId",
-    "uri",
-    "hash",
-    "capturePosition",
-    "contextToken",
-    "routeRef",
-    "sceneRef",
-    "contextId",
-    "speakerRef",
-    "visibleText",
-    "runtimeArtifactId",
-  ]);
-}
-
 function hasAnySignalField(signal: Record<string, unknown>, fields: string[]): boolean {
   return fields.some((field) => hasMeaningfulSignalValue(signal[field]));
 }
@@ -1030,8 +1025,9 @@ function parseFeedbackSourceInput(value: unknown): ManualFeedbackSourceInput {
 
 function parseLineReference(value: unknown): ManualFeedbackLineReference {
   const reference = requireRecord(value, "manual feedback lineReference");
-  const parsed: ManualFeedbackLineReference = {};
-  assignOptionalString(parsed, reference, "bridgeUnitId");
+  const parsed: ManualFeedbackLineReference = {
+    bridgeUnitId: requiredNonBlankString(reference, "lineReference.bridgeUnitId"),
+  };
   assignOptionalString(parsed, reference, "sourceUnitKey");
   assignOptionalString(parsed, reference, "sourceHash");
   assignOptionalString(parsed, reference, "assetId");
@@ -1132,6 +1128,14 @@ function requiredString(record: Record<string, unknown>, field: string): string 
   const value = record[fieldName(field)];
   if (typeof value !== "string") {
     throw new Error(`manual feedback ${field} must be a string`);
+  }
+  return value;
+}
+
+function requiredNonBlankString(record: Record<string, unknown>, field: string): string {
+  const value = requiredString(record, field).trim();
+  if (value.length === 0) {
+    throw new Error(`manual feedback ${field} must be a non-empty string`);
   }
   return value;
 }

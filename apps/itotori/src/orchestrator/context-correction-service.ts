@@ -1,6 +1,6 @@
 // Play-tester context correction — the direct shared-brain mutation path.
 //
-// A correction is deliberately not routed through the reviewer queue or a
+// A correction directly reaches the canonical context path rather than a
 // translation-memory writeback. The repository atomically appends a canonical
 // ContextEntryVersion, invalidates dependent context while excluding that new
 // head, and enqueues one registered redraft job. The job payload carries
@@ -110,8 +110,8 @@ export class ContextCorrectionInputError extends Error {
 
 /**
  * Direct API/service seam for the play-tester wiki. It accepts canonical
- * context edits across the generated enrichment categories without assuming
- * a reviewer decision or any result-revision model.
+ * context edits across the generated enrichment categories without requiring
+ * a separate decision record or result-revision model.
  */
 export class ContextCorrectionService {
   constructor(private readonly deps: ContextCorrectionServiceDeps) {}

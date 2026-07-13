@@ -42,16 +42,16 @@ places that need a future live DesignSync audit.
 
 ## Surface consumption
 
-- Review/detail surface consumes `Panel`, `Badge`, `BiText`, `ComparisonPane`,
-  `DataTable`, `Pagination`, `StatReadout`, and `RuntimeEvidencePanel`'s DS
-  primitives.
-- Workspace comparison now consumes `BiText` and `ComparisonPane` instead of
-  hand-rendered comparison cells, while retaining the runtime-evidence
-  `DataTable`.
+- Play flagging consumes `AnnotationComposer` and `Panel` to send a
+  contextual play-test note into the canonical correction flow.
+- Play RouteMap consumes `RouteMap`, `Badge`, and `Panel` for its read-only
+  view of canonical route and choice context.
+- Patch iteration consumes `Badge` and `Panel` for patch-version lineage,
+  persisted feedback, and refinement state.
 - Progress/overview consumes `LocalizationProgress`, `Panel`, and `StatReadout`
   through `ProgressInstrumentPanel`.
-- Wiki consumes `WikiEntry` for profile chrome while preserving the existing
-  `DataTable`, `BiText`, and cross-reference links.
+- Wiki consumes `Badge`, `DataTable`, `NavPills`, `Pagination`, and `Panel`
+  for browsable and editable canonical context.
 
 ## Known deltas pending live DesignSync audit
 

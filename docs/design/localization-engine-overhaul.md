@@ -491,10 +491,14 @@ lineage, feedback events/batches, real play/open/launch, refinement-run creation
 complete-within-scope expansion, informational QA callouts. **North-Star e2e proof:**
 run → playable v1 → play-test → refinement run → playable v2. Deletes queue-keyed fake Play + flag-to-review + hard-coded succeeded rows.
 
-**Phase 4 — purge capstone** 12. `p0-core-purge-reviewer-queue-as-deferral` — final removal of `ReviewerQueueBridge`,
-approve/reject/defer/escalate/request-repair APIs + permissions, queue screens, deferred
-item kinds, dead code; migrate any legitimate correction history; cross-engine
-complete-patch regression suite.
+**Phase 4 — purge capstone (completed).** 12.
+`p0-core-purge-reviewer-queue-as-deferral` removed `ReviewerQueueBridge`, the
+per-unit decision controls and screens, deferred item kinds, the queue database
+tables, queue-driven rerun chain, fake review payloads, and the legacy manual
+verification state. Legitimate human work now changes a result revision or
+canonical context through result editing, context correction/wiki, and patch
+iteration; RouteMap is read-only context freshness. The cross-engine
+complete-patch regression remains the proof.
 
 **Cancelled (subsumed):** `philosophy-always-draft-deferral-carries-best-effort-draft` (a
 best-effort draft is now the _only_ outcome), `persist-asset-review-items-to-db-reviewer-queue`

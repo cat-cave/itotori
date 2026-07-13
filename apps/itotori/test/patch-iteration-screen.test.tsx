@@ -237,11 +237,15 @@ const feedbackResponse: ApiPatchIterationFeedbackResponse = {
     actorUserId: "local-user",
     eventKind: "comment",
     body: "The dashboard attached this route observation.",
-    metadata: {},
+    metadata: {
+      contextCorrection: {
+        rerun: { state: "succeeded", jobStatus: "succeeded", error: null },
+      },
+    },
     resultRevisionId: null,
-    contextArtifactId: null,
-    contextEntryVersionId: null,
-    affectedBridgeUnitIds: [],
+    contextArtifactId: "context-artifact-dashboard",
+    contextEntryVersionId: "context-version-dashboard",
+    affectedBridgeUnitIds: ["bridge-unit-v1-1"],
     createdAt: "2026-07-13T12:13:00.000Z",
   },
 };
@@ -451,6 +455,11 @@ describe("SPA shell — patch iteration dashboard", () => {
     expect(main).toHaveAttribute("data-screen", "patch-iteration");
     expect(main).toHaveAttribute("data-state", "ready");
     expect(main).toHaveAttribute("data-locale-branch-id", LOCALE_BRANCH_ID);
+    expect(screen.getByRole("link", { name: "Play route map" })).toHaveAttribute(
+      "href",
+      "/play/routemap",
+    );
+    expect(screen.queryByRole("link", { name: "Scene picker" })).not.toBeInTheDocument();
 
     const dashboard = screen.getByLabelText("Patch iteration dashboard");
     expect(dashboard).toHaveAttribute("data-qa-gates-actions", "false");
@@ -529,8 +538,11 @@ describe("SPA shell — patch iteration dashboard", () => {
 
     const batchId = screen.getByLabelText(/Feedback batch ID/);
     await waitFor(() => expect(batchId).toHaveValue("feedback-batch-dashboard"));
-    fireEvent.change(screen.getByLabelText(/Note \(optional/), {
+    fireEvent.change(screen.getByLabelText("Comment (required)"), {
       target: { value: "The dashboard attached this route observation." },
+    });
+    fireEvent.change(screen.getByLabelText("Affected bridge-unit IDs (comma-separated)"), {
+      target: { value: "bridge-unit-v1-1" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Attach feedback" }));
     await waitFor(() => {
@@ -539,8 +551,26 @@ describe("SPA shell — patch iteration dashboard", () => {
         playSessionId: "play-session-v1",
         eventKind: "comment",
         body: "The dashboard attached this route observation.",
+        affectedBridgeUnitIds: ["bridge-unit-v1-1"],
       });
     });
+  });
+
+  it("refuses an unscoped comment locally instead of POSTing an event-only feedback item", async () => {
+    render(<App location={ITERATION_ROUTE} navigate={vi.fn()} />);
+    await screen.findByLabelText("Patch iteration dashboard");
+
+    fireEvent.change(screen.getByLabelText("Comment (required)"), {
+      target: { value: "This comment has no target unit." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Attach feedback" }));
+
+    expect(
+      await screen.findByText(
+        "A comment needs a non-blank note and at least one bridge-unit ID so it can become a canonical correction.",
+      ),
+    ).toBeInTheDocument();
+    expect(capturedFeedback).toBeNull();
   });
 
   it("writes added context through the canonical WikiBrain feedback path", async () => {

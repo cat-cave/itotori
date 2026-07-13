@@ -65,9 +65,6 @@ import type {
   ApiPatchIterationRefineResponse,
   ApiPatchIterationSurfaceResponse,
   ApiPatchIterationVersionsResponse,
-  ApiPlaySceneCoverageResponse,
-  ApiPlaySetSceneCoverageRequest,
-  ApiPlaySetSceneCoverageResponse,
   ApiProjectCostDrilldownResponse,
   ApiProjectCostResponse,
   ApiProjectOverviewResponse,
@@ -80,18 +77,8 @@ import type {
   ApiQueueHealthResponse,
   ApiRecordBenchmarkRequest,
   ApiRecordBenchmarkResponse,
-  ApiRecordDecisionRequest,
-  ApiRecordDecisionResponse,
   ApiRecordFindingRequest,
   ApiRecordFindingResponse,
-  ApiReviewerBatchExecuteRequest,
-  ApiReviewerBatchExecuteResponse,
-  ApiReviewerBatchPreviewRequest,
-  ApiReviewerBatchPreviewResponse,
-  ApiReviewerDetailResponse,
-  ApiReviewerQueueDashboardResponse,
-  ApiReviewerSingleActionRequest,
-  ApiReviewerSingleActionResponse,
   ApiRuntimeEvidenceRequest,
   ApiRuntimeEvidenceResponse,
   ApiModelRoutingSettingsResponse,
@@ -129,14 +116,6 @@ import type {
   ApiWikiHistoryResponse,
   ApiWikiListResponse,
   ApiWikiShowResponse,
-  ApiWorkspaceAssetBrowseResponse,
-  ApiWorkspaceComparisonResponse,
-  ApiWorkspaceCorrectionPreviewResponse,
-  ApiWorkspaceCorrectionSubmitRequest,
-  ApiWorkspaceCorrectionSubmitResponse,
-  ApiWorkspaceProjectBrowseResponse,
-  ApiWorkspaceSceneBrowseResponse,
-  ApiWorkspaceSearchResponse,
   ApiDraftBranchRequest,
   ApiDraftBranchResponse,
   ItotoriApiRouteId,
@@ -181,28 +160,6 @@ interface ItotoriApiRouteTypeMap {
     response: ApiCatalogOpportunitiesResponse;
     collectionKey: "rows";
   };
-  "reviewer.queue": {
-    response: ApiReviewerQueueDashboardResponse;
-    collectionKey: "rows";
-  };
-  "reviewer.detail": {
-    response: ApiReviewerDetailResponse;
-    pathParams: { reviewItemId: string };
-  };
-  "reviewer.batchPreview": {
-    response: ApiReviewerBatchPreviewResponse;
-    request: ApiReviewerBatchPreviewRequest;
-    collectionKey: "items";
-  };
-  "reviewer.batchExecute": {
-    response: ApiReviewerBatchExecuteResponse;
-    request: ApiReviewerBatchExecuteRequest;
-  };
-  "reviewer.itemAction": {
-    response: ApiReviewerSingleActionResponse;
-    pathParams: { reviewItemId: string };
-    request: ApiReviewerSingleActionRequest;
-  };
   "terminology.search": {
     response: ApiTerminologySearchResponse;
     collectionKey: "results";
@@ -230,34 +187,6 @@ interface ItotoriApiRouteTypeMap {
     response: ApiWikiEditResponse;
     pathParams: { projectId: string; localeBranchId: string; contextArtifactId: string };
     request: ApiWikiEditRequest;
-  };
-  "workspace.projects": {
-    response: ApiWorkspaceProjectBrowseResponse;
-    collectionKey: "projects";
-  };
-  "workspace.scenes": {
-    response: ApiWorkspaceSceneBrowseResponse;
-    collectionKey: "scenes";
-  };
-  "workspace.assets": {
-    response: ApiWorkspaceAssetBrowseResponse;
-    collectionKey: "assets";
-  };
-  "workspace.comparison": {
-    response: ApiWorkspaceComparisonResponse;
-    collectionKey: "cells";
-  };
-  "workspace.search": {
-    response: ApiWorkspaceSearchResponse;
-    collectionKey: "results";
-  };
-  "workspace.correctionPreview": {
-    response: ApiWorkspaceCorrectionPreviewResponse;
-    collectionKey: "units";
-  };
-  "workspace.correctionSubmit": {
-    response: ApiWorkspaceCorrectionSubmitResponse;
-    request: ApiWorkspaceCorrectionSubmitRequest;
   };
   "projects.list": {
     response: ApiProjectsResponse;
@@ -319,11 +248,6 @@ interface ItotoriApiRouteTypeMap {
     response: ApiRecordFindingResponse;
     pathParams: { projectId: string };
     request: ApiRecordFindingRequest;
-  };
-  "decisions.record": {
-    response: ApiRecordDecisionResponse;
-    pathParams: { projectId: string };
-    request: ApiRecordDecisionRequest;
   };
   "benchmarks.record": {
     response: ApiRecordBenchmarkResponse;
@@ -434,17 +358,6 @@ interface ItotoriApiRouteTypeMap {
     response: ApiPlayRouteMapResponse;
     pathParams: { projectId: string; localeBranchId: string };
     collectionKey: "nodes";
-  };
-  // play-mark-validated — per-scene coverage for the Play RouteMap.
-  "play.sceneCoverage": {
-    response: ApiPlaySceneCoverageResponse;
-    pathParams: { projectId: string; localeBranchId: string };
-    collectionKey: "nodes";
-  };
-  "play.setSceneCoverage": {
-    response: ApiPlaySetSceneCoverageResponse;
-    pathParams: { projectId: string; localeBranchId: string };
-    request: ApiPlaySetSceneCoverageRequest;
   };
   // play-flag-composer — AnnotationComposer note → context correction.
   "play.flagAnnotation": {
@@ -600,17 +513,9 @@ const ITOTORI_API_COLLECTION_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, st
   "catalog.benchmarkSeeds": "rows",
   "catalog.conflicts": "rows",
   "catalog.opportunities": "rows",
-  "reviewer.queue": "rows",
-  "reviewer.batchPreview": "items",
   "terminology.search": "results",
   "wiki.list": "entries",
   "wiki.history": "versions",
-  "workspace.projects": "projects",
-  "workspace.scenes": "scenes",
-  "workspace.assets": "assets",
-  "workspace.comparison": "cells",
-  "workspace.search": "results",
-  "workspace.correctionPreview": "units",
   "projects.list": "projects",
   "projects.decisions": "pendingDecisions",
   "projects.costDrilldown": "rows",
@@ -620,8 +525,6 @@ const ITOTORI_API_COLLECTION_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, st
   "auth.permissionSets.list": "permissionSets",
   "auth.sessions.list": "sessions",
   "play.routeMap": "nodes",
-  // play-mark-validated — empty when no RouteMap nodes (no scenes to cover).
-  "play.sceneCoverage": "nodes",
   "play.delivery": "units",
   "patchIteration.versions": "versions",
 };

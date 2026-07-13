@@ -59,32 +59,12 @@ const EXPECTED_REUSE_EVENT_CHECK_NAMES = [
 
 // --- Drizzle metadata introspection -----------------------------------------
 
-const INLINE_FK_SYMBOL = Symbol.for("drizzle:PgInlineForeignKeys");
 const EXTRA_CONFIG_BUILDER_SYMBOL = Symbol.for("drizzle:ExtraConfigBuilder");
 const EXTRA_CONFIG_COLUMNS_SYMBOL = Symbol.for("drizzle:ExtraConfigColumns");
-
-interface DrizzleForeignKeyLike {
-  reference: () => {
-    name: string | undefined;
-    columns: { name: string }[];
-    foreignTable: Table;
-    foreignColumns: { name: string }[];
-  };
-  onDelete: string;
-  onUpdate: string;
-}
 
 interface DrizzleCheckBuilderLike {
   name: string;
   value: { toQuery: () => { sql: string } };
-}
-
-function isForeignKeyLike(value: unknown): value is DrizzleForeignKeyLike {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { reference?: unknown }).reference === "function"
-  );
 }
 
 function isCheckBuilderLike(value: unknown): value is DrizzleCheckBuilderLike {

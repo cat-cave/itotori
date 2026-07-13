@@ -1,7 +1,6 @@
 import {
   exactSearchToolName,
   exactSearchToolVersion,
-  glossaryReviewItemStateValues,
   semanticGlossarySearchDiagnosticCodeValues,
   semanticGlossarySearchToolName,
   semanticGlossarySearchToolVersion,
@@ -67,7 +66,9 @@ export type GlossaryContextToolService = {
 export const semanticGlossarySearchRegistryToolName = semanticGlossarySearchToolName;
 
 export const glossaryContextRegistryToolName = "tool.glossary-context";
-export const glossaryContextToolVersion = "1.0.0";
+// v2 removes the retired human-review payloads from the canonical context
+// surface. Existing v1 job artifacts are intentionally not reinterpreted.
+export const glossaryContextToolVersion = "2.0.0";
 
 export const semanticGlossarySearchToolInputSchema = {
   schemaId: "itotori.tool.semantic-glossary-search.input",
@@ -295,7 +296,7 @@ export const semanticGlossarySearchToolOutputSchema = {
 
 export const glossaryContextToolInputSchema = {
   schemaId: "itotori.tool.glossary-context.input",
-  schemaVersion: "1.0.0",
+  schemaVersion: "2.0.0",
   description: "Glossary context lookup request scoped to a locale branch and source revision.",
   jsonSchema: {
     type: "object",
@@ -493,7 +494,6 @@ const glossaryContextBranchReferenceSchema = {
     "styleGuideVersionId",
     "glossaryContentHash",
     "glossaryTermRefs",
-    "glossaryReviewItemRefs",
     "updateReason",
     "eventId",
     "supersedesReferenceId",
@@ -510,61 +510,12 @@ const glossaryContextBranchReferenceSchema = {
     styleGuideVersionId: nullableStringSchema,
     glossaryContentHash: { type: "string", minLength: 1 },
     glossaryTermRefs: { type: "array", items: jsonRecordSchema },
-    glossaryReviewItemRefs: { type: "array", items: jsonRecordSchema },
     updateReason: { type: "string", minLength: 1 },
     eventId: nullableStringSchema,
     supersedesReferenceId: nullableStringSchema,
     actorUserId: nullableStringSchema,
     metadata: jsonRecordSchema,
     createdAt: { type: "string", minLength: 1 },
-  },
-};
-
-// GlossaryReviewItemRecord (context.reviewItems).
-const glossaryContextReviewItemSchema = {
-  type: "object",
-  required: [
-    "reviewItemId",
-    "projectId",
-    "localeBranchId",
-    "termId",
-    "sourceRevisionId",
-    "styleGuideVersionId",
-    "glossaryReferenceId",
-    "state",
-    "sourceTerm",
-    "normalizedSourceTerm",
-    "proposedTranslation",
-    "normalizedProposedTranslation",
-    "protectedSpanRefs",
-    "provenance",
-    "semanticDiagnostics",
-    "metadata",
-    "createdByUserId",
-    "createdAt",
-    "updatedAt",
-  ],
-  additionalProperties: false,
-  properties: {
-    reviewItemId: { type: "string", minLength: 1 },
-    projectId: { type: "string", minLength: 1 },
-    localeBranchId: { type: "string", minLength: 1 },
-    termId: nullableStringSchema,
-    sourceRevisionId: { type: "string", minLength: 1 },
-    styleGuideVersionId: nullableStringSchema,
-    glossaryReferenceId: nullableStringSchema,
-    state: { enum: Object.values(glossaryReviewItemStateValues) },
-    sourceTerm: { type: "string", minLength: 1 },
-    normalizedSourceTerm: { type: "string" },
-    proposedTranslation: { type: "string" },
-    normalizedProposedTranslation: { type: "string" },
-    protectedSpanRefs: { type: "array", items: jsonRecordSchema },
-    provenance: jsonRecordSchema,
-    semanticDiagnostics: { type: "array", items: jsonRecordSchema },
-    metadata: jsonRecordSchema,
-    createdByUserId: nullableStringSchema,
-    createdAt: { type: "string", minLength: 1 },
-    updatedAt: { type: "string", minLength: 1 },
   },
 };
 
@@ -613,7 +564,6 @@ const glossaryContextReadModelSchema = {
     "term",
     "termProvenance",
     "protectedSpanReferences",
-    "reviewItems",
   ],
   additionalProperties: false,
   properties: {
@@ -628,7 +578,6 @@ const glossaryContextReadModelSchema = {
       type: "array",
       items: glossaryContextProtectedSpanReferenceSchema,
     },
-    reviewItems: { type: "array", items: glossaryContextReviewItemSchema },
   },
 };
 
@@ -672,7 +621,7 @@ const glossaryContextDiagnosticSchema = {
 
 export const glossaryContextToolOutputSchema = {
   schemaId: "itotori.tool.glossary-context.output",
-  schemaVersion: "1.0.0",
+  schemaVersion: "2.0.0",
   description: "Glossary context lookup result with explicit provenance.",
   jsonSchema: {
     type: "object",

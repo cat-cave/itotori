@@ -14,7 +14,6 @@ import { STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION } from "@itotori/localizati
 import { QaAgent } from "../src/agents/qa/agent.js";
 import {
   FOCUSED_QA_AGENT_NAMES,
-  makeFocusedQaAgentSet,
   QaCategoryLaneError,
   QaFocusedPromptVersionMismatchError,
   SEMANTIC_DRIFT_AGENT_DESCRIPTOR,

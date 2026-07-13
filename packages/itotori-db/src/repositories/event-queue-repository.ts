@@ -174,7 +174,7 @@ export type OutboxEventWithJobsResult = {
 /**
  * ITOTORI-047 — the schema-version literal stamped on every
  * {@link QueueHealthReadModel} so dashboard/CLI consumers can pin the contract
- * (mirrors the `reviewer.queue_dashboard.v0.1` pattern).
+ * (mirrors the durable operational queue-dashboard pattern).
  */
 export const QUEUE_HEALTH_READ_MODEL_SCHEMA_VERSION = "itotori.queue_health.v0.1";
 

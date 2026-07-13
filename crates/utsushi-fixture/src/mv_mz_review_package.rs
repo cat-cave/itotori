@@ -1,15 +1,14 @@
 //! UTSUSHI-010: export an MV/MZ **review-package manifest** — the capstone
 //! that aggregates the just-merged MV/MZ alpha-proof surfaces into a single
-//! reviewer-facing evidence manifest.
+//! play-test evidence manifest.
 //!
 //! The manifest is an *evidence-surface* document: it NAMES the artifacts that
 //! prove an MV/MZ localized run, plus the honest limits of that proof. It does
 //! not embed raw copyrighted bytes or pixels — it references artifacts by id,
 //! uri, and content hash only. It is deliberately standalone: building it needs
 //! NO annotation handling and NO feedback import (see
-//! [`build_mv_mz_review_package_manifest`]); it merely names
-//! `import_runtime_feedback` among the SUPPORTED review actions a reviewer may
-//! later take against the package.
+//! [`build_mv_mz_review_package_manifest`]); it carries no workflow action
+//! vocabulary or feedback-routing instruction.
 //!
 //! ## What it aggregates
 //!
@@ -66,21 +65,6 @@ const REVIEW_PACKAGE_UUID_NAMESPACE: &str = "utsushi-u010:mvmz-review-package";
 /// Fallback creation timestamp used when the runtime evidence report carries
 /// none. Deterministic so the manifest bytes stay stable in goldens.
 const FALLBACK_CREATED_AT: &str = "2026-06-17T00:00:00.000Z";
-
-/// The review actions this manifest advertises as supported against an MV/MZ
-/// runtime-evidence review package. This is a NAMING surface only: the manifest
-/// records that these actions are available to a reviewer, and does not itself
-/// execute any of them (in particular naming `import_runtime_feedback` does not
-/// couple manifest export to feedback import). The values mirror the itotori
-/// reviewer-queue action vocabulary (`reviewerQueueActionValues`).
-const SUPPORTED_REVIEW_ACTIONS: &[(&str, &str)] = &[
-    ("approve", "Approve"),
-    ("reject", "Reject"),
-    ("defer", "Defer"),
-    ("escalate", "Escalate"),
-    ("request_repair", "Request repair"),
-    ("import_runtime_feedback", "Import runtime feedback"),
-];
 
 /// Host capabilities that gate what runtime evidence a real run could produce.
 ///
@@ -158,8 +142,8 @@ impl Diagnostic {
 ///
 /// The manifest names, in order: **patch artifacts**, **runtime trace
 /// evidence** (UTSUSHI-006 observation + UTSUSHI-033 replay pack), **screenshot
-/// artifact refs** (when the host can produce them), **limitations**, and
-/// **supported review actions**. Unsupported host capabilities become semantic
+/// artifact refs** (when the host can produce them), and **limitations**.
+/// Unsupported host capabilities become semantic
 /// diagnostics + recorded limitations, never silent omissions.
 ///
 /// This function takes only evidence surfaces — no annotation handling and no
@@ -217,11 +201,6 @@ pub fn build_mv_mz_review_package_manifest(inputs: &ReviewPackageInputs) -> Utsu
             .to_string(),
     );
 
-    let supported_review_actions: Vec<Value> = SUPPORTED_REVIEW_ACTIONS
-        .iter()
-        .map(|(action, label)| json!({ "action": action, "label": label }))
-        .collect();
-
     let review_package_id = deterministic_uuid7(
         REVIEW_PACKAGE_UUID_NAMESPACE,
         &format!("manifest-{patch_export_id}-{runtime_report_id}"),
@@ -241,7 +220,6 @@ pub fn build_mv_mz_review_package_manifest(inputs: &ReviewPackageInputs) -> Utsu
         "patchArtifacts": [patch_artifact],
         "runtimeTraceEvidence": runtime_trace_evidence,
         "screenshotArtifactRefs": screenshot_section,
-        "supportedReviewActions": supported_review_actions,
         "limitations": limitations,
         "diagnostics": diagnostics_json,
     }))

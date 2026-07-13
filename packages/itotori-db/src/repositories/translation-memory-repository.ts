@@ -187,7 +187,7 @@ export type ListUnitsSharingSourceInput = {
 
 /**
  * The set of locale-branch units that share a source segment with a given
- * bridge unit — i.e. every unit whose next draft a reviewer correction on
+ * bridge unit — i.e. every unit whose next draft a canonical correction on
  * that unit should propagate to via translation-memory reuse. `bridgeUnitIds`
  * always includes the anchor unit itself.
  */

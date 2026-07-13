@@ -565,16 +565,6 @@ class InMemorySinks {
   };
 }
 
-class InMemoryReviewerQueue {
-  readonly items: Array<{ sourceItemRef: string }> = [];
-  async createItem(): Promise<never> {
-    throw new Error("not used");
-  }
-  async loadItemsByBranch(): Promise<Array<{ sourceItemRef: string }>> {
-    return this.items;
-  }
-}
-
 function fsIo(): LocalizeFullProjectIo {
   return {
     readJson: (path) => JSON.parse(require("node:fs").readFileSync(path, "utf8")) as unknown,
@@ -670,7 +660,6 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
     const workDir = mkdtempSync(join(tmpdir(), "itotori-diag-poison-"));
     const { configPath } = materializeProject(workDir);
     const sinks = new InMemorySinks();
-    const queue = new InMemoryReviewerQueue();
     const io = fsIo();
 
     const out = await runLocalizeFullProjectCommand({
@@ -683,7 +672,6 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
           journal: sinks.journal,
           patchExport: sinks.patchExport,
         },
-        reviewerQueue: { repository: queue as never },
       },
     });
 
@@ -704,7 +692,6 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
     const workDir = mkdtempSync(join(tmpdir(), "itotori-diag-render-"));
     const { configPath } = materializeProject(workDir);
     const sinks = new InMemorySinks();
-    const queue = new InMemoryReviewerQueue();
     const io = fsIo();
 
     const out = await runLocalizeFullProjectCommand({
@@ -717,7 +704,6 @@ describe("runLocalizeFullProjectCommand (itotori-agent-facing-pipeline-failure-d
           journal: sinks.journal,
           patchExport: sinks.patchExport,
         },
-        reviewerQueue: { repository: queue as never },
       },
     });
     const blocker = out.result.pausedBlocker;

@@ -387,4 +387,17 @@ describe("patch iteration /api routes over real loopback HTTP", () => {
     assertHttpContractError(malformed, { status: 400, code: "bad_request" });
     expect(fixturePatchIteration.feedback).not.toHaveBeenCalled();
   });
+
+  it("rejects an unscoped comment before it can become an event-only feedback success", async () => {
+    const malformed = await harness.httpRequest("patchIteration.feedback", {
+      params: { patchVersionId: "patch-iteration-v1" },
+      body: {
+        eventKind: "comment",
+        body: "This lacks the unit scope needed for a canonical correction.",
+      },
+    });
+
+    assertHttpContractError(malformed, { status: 400, code: "bad_request" });
+    expect(fixturePatchIteration.feedback).not.toHaveBeenCalled();
+  });
 });

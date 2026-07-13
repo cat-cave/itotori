@@ -111,10 +111,6 @@ const COST_LITERAL_ALLOW = new Map([
     "deterministic experiment-matrix run manifest fixture; synthetic per-cell costs exercise the experiment-report roll-up",
   ],
   [
-    "fixtures/itotori-style-guide/provider-smoke-suggestion.json",
-    "deterministic style-guide provider-smoke fixture; synthetic provider-result cost exercises the smoke-suggestion path",
-  ],
-  [
     "fixtures/provider-proof/recorded-fallback-proof-input.json",
     "deterministic provider-proof replay input (fallback); synthetic per-attempt costs exercise the recorded-fallback proof",
   ],

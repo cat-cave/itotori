@@ -6,16 +6,16 @@
  * Itotori iteration and emits a schema-valid, hash-addressed artifact for
  * every stage:
  *
- *   import -> draft -> QA -> reviewer action -> export -> feedback import ->
- *   targeted rerun -> final result
+ *   import -> draft -> QA -> export -> feedback/context correction ->
+ *   context-correction-driven rerun -> final result
  *
  * It COMPOSES the existing Itotori seams (it threads their recorded public
  * outputs + reads the (model, provider) pair / cost / token usage verbatim
  * from a recorded provider-proof ledger) — it does NOT re-implement any stage.
  *
  * Emitted under artifacts/itotori/fixture-iteration/<scenario>/:
- *   - import.json, draft.json, qa.json, reviewer.json,
- *     export.json, feedback.json, rerun.json   (per-stage FixtureIterationResult)
+ *   - import.json, draft.json, qa.json, export.json, feedback.json,
+ *     rerun.json   (per-stage FixtureIterationResult)
  *   - fixture-iteration-result.json            (the iteration manifest, SHARED-025)
  *
  * Hard contracts:
@@ -55,8 +55,8 @@ function usage() {
     "usage: node suite/scripts/itotori-fixture-iteration/run.mjs [options]",
     "",
     "Options:",
-    "  --scenario <NAME|PATH>   recorded scenario: success | qa-rejection |",
-    "                           runtime-feedback | rerun-repair, or a path",
+    "  --scenario <NAME|PATH>   recorded scenario: success | qa-finding |",
+    "                           runtime-feedback | context-correction-rerun, or a path",
     "                           (default: success)",
     "  --out-dir <PATH>         emitted artifact dir",
     "                           (default artifacts/itotori/fixture-iteration/<scenario>)",

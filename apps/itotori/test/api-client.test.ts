@@ -299,9 +299,12 @@ describe("fnd-api-client: compile-time type-safety", () => {
       .toMatchTypeOf<{ body?: never; pathParams?: never }>();
 
     // GET route with path params: pathParams REQUIRED, body forbidden.
-    expectTypeOf(c.request<"reviewer.detail">)
+    expectTypeOf(c.request<"wiki.show">)
       .parameter(1)
-      .toMatchTypeOf<{ pathParams: { reviewItemId: string }; body?: never }>();
+      .toMatchTypeOf<{
+        pathParams: { projectId: string; localeBranchId: string; contextArtifactId: string };
+        body?: never;
+      }>();
 
     // POST route with path params + body: both REQUIRED.
     expectTypeOf(c.request<"branches.draft">)
@@ -319,7 +322,6 @@ describe("fnd-api-client: compile-time type-safety", () => {
     // OffsetPager is only constructable for an offset-paginated route.
     expectTypeOf<"projects.costDrilldown">().toMatchTypeOf<OffsetPaginatedRouteId>();
     expectTypeOf<"jobs.runTable">().toMatchTypeOf<OffsetPaginatedRouteId>();
-    expectTypeOf<"workspace.search">().toMatchTypeOf<OffsetPaginatedRouteId>();
     expectTypeOf<"projects.benchmarks">().not.toMatchTypeOf<OffsetPaginatedRouteId>();
 
     // The error state carries the typed code enum (or null).

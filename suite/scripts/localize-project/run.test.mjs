@@ -240,15 +240,6 @@ function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function assertNoPrivateOrAbsolutePaths(value, forbiddenRoots) {
-  const serialized = JSON.stringify(value);
-  assert.doesNotMatch(serialized, /\/(?:home|scratch|Users)(?:\/|$)/u);
-  assert.doesNotMatch(serialized, /[A-Za-z]:[\\/]/u);
-  for (const root of forbiddenRoots) {
-    assert.ok(!serialized.includes(root), `JSON leaked private root ${root}`);
-  }
-}
-
 test("--dry-run --project ... exits 0 and prints per-phase commands", () => {
   const result = runDriver(["--dry-run", "--project", "sweetie-hd-alpha-1"]);
   assert.equal(result.status, 0, `stderr: ${result.stderr}`);

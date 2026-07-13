@@ -70,9 +70,9 @@ export type FindingTriageSummary = {
   byClass: Record<RootCauseClass, number>;
   /**
    * Findings that came in with a `critical` severity (QA `critical` /
-   * human `critical`). The orchestrator uses this to gate the merge:
-   * any critical-count > 0 routes to a human-review queue regardless of
-   * the per-finding root cause.
+   * human `critical`). The orchestrator uses this to gate automatic merge:
+   * any critical-count > 0 must be recorded through a canonical context
+   * correction or result revision before a later iteration can proceed.
    */
   criticalCount: number;
 };
@@ -169,8 +169,8 @@ export class FindingTriageRouter {
           rootCauseClass: "glossary_conflict",
           // Terminology drift is *adjacent* to a glossary conflict but
           // may also be a stylistic preference; downrank to medium so
-          // the dashboard surfaces it for human review before editing
-          // the glossary outright.
+          // the dashboard surfaces it for contextual verification before
+          // editing the glossary outright.
           confidence: "medium",
           rationale: `QA finding category 'terminology-drift' on bridge unit ${finding.bridgeUnitId}: ${finding.recommendation}`,
           actionContext,
@@ -314,14 +314,11 @@ export class FindingTriageRouter {
         });
       }
       case "translator":
-      case "reviewer":
       case "playtest": {
-        // The translator / reviewer / playtest attributions do not yet
-        // have a dedicated root-cause rule — that lands with ITOTORI-024
-        // (playtest intake) and ITOTORI-023 (reviewer queue). Today we
-        // emit `unknown` with `low` confidence and an explicit rationale
-        // naming the attribution so the dashboard groups them together
-        // without claiming spurious routing accuracy.
+        // Translator and playtest attributions do not yet have a dedicated
+        // root-cause rule. Today we emit `unknown` with `low` confidence and
+        // an explicit rationale naming the attribution so the dashboard groups
+        // them without claiming spurious routing accuracy.
         return buildRootCause({
           rootCauseClass: "unknown",
           confidence: "low",

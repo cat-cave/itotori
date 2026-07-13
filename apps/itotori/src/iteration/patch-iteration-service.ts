@@ -419,6 +419,14 @@ export class PatchIterationService implements PatchIterationServicePort {
       affectedBridgeUnitIds = receipt.affectedUnitIds;
       metadata.contextCorrection = contextCorrectionReceiptMetadata(receipt);
       metadata.commentRedraft = true;
+    } else if (input.eventKind === "comment") {
+      // A comment is only meaningful when it becomes the canonical note above.
+      // Do not preserve an event-only inbox item as a hidden human backlog or
+      // claim success without a result revision or context correction.
+      throw new PatchIterationServiceError(
+        "scoped_comment_required",
+        "comment feedback requires a non-blank body and at least one observed bridge unit so it can create a canonical context correction",
+      );
     } else if (input.eventKind === "added_context" || input.eventKind === "wiki_edit") {
       // A user can also attach feedback about a correction already performed
       // through the standalone Node 9 surface. This deliberately remains a
@@ -1317,6 +1325,7 @@ export class PatchIterationServiceError extends Error {
       | "result_edit_single_unit"
       | "feedback_unit_not_observed"
       | "scoped_comment_body_required"
+      | "scoped_comment_required"
       | "context_feedback_kind_mismatch"
       | "wiki_not_configured"
       | "context_feedback_receipt_not_allowed"

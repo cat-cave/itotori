@@ -1,8 +1,8 @@
 // fnd-spa-shell — the Workbench dashboard screen.
 //
 // Parity port of the deleted HTML-string `dashboard.ts` workbench for the
-// five panels the acceptance names: Projects, project Status (the summary
-// strip), Model cost, the Reviewer queue, and Pending decisions. Every panel
+// panels: Projects, project Status (the summary strip), Model cost, open QA
+// findings, and iteration telemetry. Every panel
 // consumes `/api/*` THROUGH the typed client (`useApiQuery`) and settles into
 // loading / empty / error / populated independently, so one failed read
 // degrades only its panel — never the whole dashboard, and never shows an
@@ -27,22 +27,19 @@ import type {
   ApiDashboardDecisionsResponse,
   ApiJobsRunTableResponse,
   ApiProjectsResponse,
-  ApiReviewerQueueDashboardResponse,
 } from "../../api-schema.js";
 import { useApiQuery } from "../use-api-resource.js";
-import { useSelectedLocaleBranch } from "../use-selected-locale-branch.js";
 import { useOffsetPager } from "../use-offset-pager.js";
 import { decisionGroupSignal, groupedBranchDecisions } from "../format.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
 import { VirtualList } from "../virtual-list.js";
 import { BenchmarkHeadlineTile } from "./BenchmarkHeadlineTile.js";
 import { CostDrilldownPanel } from "./CostDrilldownPanel.js";
-import { DecisionsBand } from "./DecisionsBand.js";
+import { QaFindingsBand } from "./DecisionsBand.js";
 import { LoopSpinePanel } from "./LoopSpinePanel.js";
 import { PassLedgerPanel } from "./PassLedgerPanel.js";
 import { ProgressInstrumentPanel } from "./ProgressInstrumentPanel.js";
 
-const DASHBOARD_REVIEWER_QUEUE_PAGE_SIZE = 50;
 const DASHBOARD_JOBS_PAGE_SIZE = 100;
 
 export function DashboardScreen(): ReactNode {
@@ -64,14 +61,14 @@ export function DashboardScreen(): ReactNode {
       </ShellHeader>
 
       {/* xs-loop-spine-ui — the iterative-loop spine, visible end-to-end
-          (flag → decide → correct → launch → rescore → confidence) at the
+          (flag → correct → iterate → launch → rescore → confidence) at the
           top of the overview so the whole handoff chain is legible at a
           glance. Read-only legibility; the detailed panels follow. */}
       <LoopSpinePanel />
 
       <FirstRunPanel projects={projects} />
 
-      <DecisionsBand />
+      <QaFindingsBand />
 
       <ProgressInstrumentPanel />
 
@@ -82,7 +79,6 @@ export function DashboardScreen(): ReactNode {
       <section className="itotori-section-grid" aria-label="Dashboard sections">
         <ProjectsPanel projects={projects} />
         <CatalogOpportunitiesPanel opportunities={opportunities} />
-        <ReviewerQueuePanel status={status} />
         <JobsRunTablePanel status={status} />
         <CostDrilldownPanel cost={cost} overview={overview} />
         <QaFindingsPanel decisions={decisions} />
@@ -426,149 +422,6 @@ function formatDemotion(row: CatalogOpportunityRow): string {
   return `demotion: ${demotion.reasonCode}`;
 }
 
-// ---------------------------------------------------------------------------
-// Reviewer queue panel — scoped to the status's selected locale branch
-// ---------------------------------------------------------------------------
-
-function ReviewerQueuePanel({
-  status,
-}: {
-  status: ApiCallState<ProjectDashboardStatus>;
-}): ReactNode {
-  const selected = useSelectedLocaleBranch({
-    status,
-    depsKey: "dashboard:reviewer-queue:selected-branch",
-  });
-  if (selected.state === "loading") {
-    return (
-      <Panel title="Reviewer queue" eyebrow="Human review">
-        <LoadingState label="Loading project context…" />
-      </Panel>
-    );
-  }
-  if (selected.state === "error") {
-    return (
-      <Panel title="Reviewer queue" eyebrow="Human review">
-        <ErrorState title="Reviewer queue" error={selected.error} />
-      </Panel>
-    );
-  }
-  if (selected.state === "empty") {
-    return (
-      <Panel title="Reviewer queue" eyebrow="Human review">
-        <EmptyState
-          title="No locale branch selected"
-          message="Select a locale branch to scope the reviewer queue."
-        />
-      </Panel>
-    );
-  }
-  return <ReviewerQueueBody localeBranchId={selected.data.localeBranchId} />;
-}
-
-function ReviewerQueueBody({ localeBranchId }: { localeBranchId: string }): ReactNode {
-  const queue = useOffsetPager(
-    "reviewer.queue",
-    { query: { localeBranchId }, limit: DASHBOARD_REVIEWER_QUEUE_PAGE_SIZE },
-    `reviewer.queue:${localeBranchId}`,
-  );
-  return (
-    <Panel title="Reviewer queue" eyebrow="Human review">
-      <ReviewerQueuePagerContent pager={queue} />
-    </Panel>
-  );
-}
-
-function ReviewerQueuePagerContent({
-  pager,
-}: {
-  pager: ReturnType<typeof useOffsetPager<"reviewer.queue">>;
-}): ReactNode {
-  const page = pager.page;
-  if (page === null) {
-    if (pager.phase === "error" && pager.error !== null) {
-      return <ErrorState title="Reviewer queue" error={pager.error} />;
-    }
-    return <LoadingState label="Loading reviewer queue…" />;
-  }
-  if (page.data.rows.length === 0 && page.data.pagination.total === 0) {
-    return (
-      <EmptyState
-        title="Reviewer queue"
-        message="No reviewer queue items were returned by the API."
-      />
-    );
-  }
-  return <ReviewerQueueContent queue={page.data} pager={pager} />;
-}
-
-function ReviewerQueueContent({
-  queue,
-  pager,
-}: {
-  queue: ApiReviewerQueueDashboardResponse;
-  pager: ReturnType<typeof useOffsetPager<"reviewer.queue">>;
-}): ReactNode {
-  return (
-    <>
-      <div className="itotori-metric-row" aria-label="Reviewer queue aggregate">
-        <StatReadout label="Pending" value={queue.aggregate.pending} />
-        <StatReadout label="Resolved" value={queue.aggregate.resolved} />
-        <StatReadout label="Deferred" value={queue.aggregate.deferred} />
-        <StatReadout label="Escalated" value={queue.aggregate.escalated} />
-        <StatReadout label="Batch applied" value={queue.aggregate.batch_applied} />
-      </div>
-      <VirtualList
-        ariaLabel="Dashboard reviewer queue virtualized rows"
-        items={queue.rows}
-        getItemKey={(row) => row.reviewItemId}
-        itemHeight={96}
-        viewportHeight={360}
-        renderItem={(row) => (
-          <article className="itotori-virtual-list__row">
-            <span>
-              <span className="itotori-virtual-list__label">Item</span>
-              <span className="itotori-virtual-list__value">
-                <a href={row.detailPath}>{row.summary}</a>
-                <br />
-                <code>{row.reviewItemId}</code>
-              </span>
-            </span>
-            <span>
-              <span className="itotori-virtual-list__label">State / kind</span>
-              <span className="itotori-virtual-list__value">
-                <Badge status={row.dashboardState} /> {row.itemKind}
-              </span>
-            </span>
-            <span>
-              <span className="itotori-virtual-list__label">Last action</span>
-              <span className="itotori-virtual-list__value">{row.lastAction ?? "none"}</span>
-            </span>
-          </article>
-        )}
-      />
-      <Pagination
-        label="Dashboard reviewer queue pagination"
-        page={Math.max(0, queue.pagination.page - 1)}
-        pageCount={Math.max(1, queue.pagination.pageCount)}
-        totalItems={queue.pagination.total}
-        onPrevious={pager.previous}
-        onNext={pager.next}
-      />
-      <p>
-        <a
-          className="itotori-queue-batch-link"
-          href={`/reviewer-queue/batch?action=${encodeURIComponent(
-            queue.defaultBatchRequest.action,
-          )}&actorUserId=${encodeURIComponent(queue.permission.actorUserId)}`}
-        >
-          Preview batch actions
-        </a>
-      </p>
-    </>
-  );
-}
-
 function JobsRunTablePanel({
   status,
 }: {
@@ -691,7 +544,7 @@ function JobsRunTableRowView({ row }: { row: JobsRunTableRow }): ReactNode {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// QA findings panel (the pending-decisions band lives in DecisionsBand.tsx)
+// QA findings panel (the open-findings band lives in DecisionsBand.tsx)
 // ---------------------------------------------------------------------------
 
 function QaFindingsPanel({

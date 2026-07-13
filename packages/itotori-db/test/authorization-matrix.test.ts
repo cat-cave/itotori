@@ -25,7 +25,6 @@ import { ItotoriAssetLocalizationDecisionRepository } from "../src/repositories/
 import { ItotoriAuditFindingRepository } from "../src/repositories/audit-finding-repository.js";
 import { ItotoriBenchmarkRunRepository } from "../src/repositories/benchmark-run-repository.js";
 import { ItotoriAuthSsoSettingsRepository } from "../src/repositories/auth-sso-settings-repository.js";
-import { ItotoriReviewerQueueRepository } from "../src/repositories/reviewer-queue-repository.js";
 import { ItotoriBranchReferenceRepository } from "../src/repositories/branch-reference-repository.js";
 import { ItotoriConformanceRepository } from "../src/repositories/conformance-repository.js";
 import { EngineCapabilityReportRepository } from "../src/repositories/engine-capability-report-repository.js";
@@ -52,14 +51,12 @@ import { ItotoriProjectRepository } from "../src/repositories/project-repository
 import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
 import { ItotoriTerminologyRepository } from "../src/repositories/terminology-repository.js";
 import { ItotoriTranslationBatchRepository } from "../src/repositories/translation-batch-repository.js";
-import { ItotoriSceneCoverageRepository } from "../src/repositories/scene-coverage-repository.js";
 import { ItotoriSemanticContextReadRepository } from "../src/repositories/semantic-context-read-repository.js";
 import { ItotoriSourceUnitRepository } from "../src/repositories/source-unit-repository.js";
 import { ItotoriTranslationMemoryRepository } from "../src/repositories/translation-memory-repository.js";
 import { ItotoriTranslationScopeSettingsRepository } from "../src/repositories/translation-scope-settings-repository.js";
 import { ItotoriLocalizationPassRunConfigRepository } from "../src/repositories/localization-pass-run-config-repository.js";
 import { ItotoriWikiContextRepository } from "../src/repositories/wiki-context-repository.js";
-import { ItotoriWorkspaceCorrectionRepository } from "../src/repositories/workspace-correction-repository.js";
 import type { DatabaseContext, ItotoriDatabase } from "../src/connection.js";
 import { assertDeniedRepositoryMutation } from "./authorization-test-helpers.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
@@ -521,18 +518,6 @@ const repositoryPermissionGateMatrix = [
     "terminology-repository.test.ts glossary context coverage",
     (repo) => repo.getGlossaryContext(deniedActor, undefined as never),
   ),
-  terminologyGate(
-    "upsertGlossaryReviewItem",
-    "draftWrite",
-    "terminology-repository.test.ts glossary review item coverage",
-    (repo) => repo.upsertGlossaryReviewItem(deniedActor, undefined as never),
-  ),
-  terminologyGate(
-    "listGlossaryReviewItems",
-    "catalogRead",
-    "terminology-repository.test.ts glossary review queue coverage",
-    (repo) => repo.listGlossaryReviewItems(deniedActor),
-  ),
   translationMemoryGate(
     "upsertSegment",
     "draftWrite",
@@ -756,18 +741,6 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.loadDraftJobAttempts(deniedActor, "draft-job"),
   ),
   assetLocalizationDecisionGate(
-    "recordDecision",
-    "draftWrite",
-    "asset-localization-decision-repository.test.ts record decision coverage",
-    (repo) => repo.recordDecision(deniedActor, undefined as never),
-  ),
-  assetLocalizationDecisionGate(
-    "recordDecisionsBulk",
-    "draftWrite",
-    "asset-localization-decision-repository.test.ts record decisions bulk coverage",
-    (repo) => repo.recordDecisionsBulk(deniedActor, undefined as never),
-  ),
-  assetLocalizationDecisionGate(
     "loadActiveDecisions",
     "catalogRead",
     "asset-localization-decision-repository.test.ts load active decisions coverage",
@@ -819,24 +792,6 @@ const repositoryPermissionGateMatrix = [
     "benchmark-run-repository.test.ts load runs for project coverage",
     (repo) => repo.loadRunsForProject(deniedActor, "project"),
   ),
-  sceneCoverageGate(
-    "setCoverage",
-    "queueManage",
-    "scene-coverage-repository.test.ts set coverage coverage",
-    (repo) => repo.setCoverage(deniedActor, undefined as never),
-  ),
-  sceneCoverageGate(
-    "loadCoverageForBranch",
-    "queueRead",
-    "scene-coverage-repository.test.ts load coverage for branch coverage",
-    (repo) => repo.loadCoverageForBranch(deniedActor, undefined as never),
-  ),
-  sceneCoverageGate(
-    "loadCoverageForScene",
-    "queueRead",
-    "scene-coverage-repository.test.ts load coverage for scene coverage",
-    (repo) => repo.loadCoverageForScene(deniedActor, undefined as never),
-  ),
   auditFindingGate(
     "recordFinding",
     "auditWrite",
@@ -873,69 +828,6 @@ const repositoryPermissionGateMatrix = [
     "audit-finding-repository.test.ts mark finding superseded coverage",
     (repo) =>
       repo.markFindingSuperseded(deniedActor, "audit-finding-old", "audit-finding-new", new Date()),
-  ),
-  reviewerQueueGate(
-    "createItem",
-    "queueManage",
-    "reviewer-queue-repository.test.ts create item coverage",
-    (repo) => repo.createItem(deniedActor, undefined as never),
-  ),
-  reviewerQueueGate(
-    "applyAction",
-    "queueManage",
-    "reviewer-queue-repository.test.ts apply action coverage",
-    (repo) => repo.applyAction(deniedActor, undefined as never),
-  ),
-  reviewerQueueGate(
-    "applyActionAndEnqueueJobs",
-    "queueManage",
-    "reviewer-queue-repository.test.ts atomic reviewer action plus jobs coverage",
-    (repo) => repo.applyActionAndEnqueueJobs(deniedActor, undefined as never, undefined as never),
-  ),
-  reviewerQueueGate(
-    "applyActionsAndEnqueueJobs",
-    "queueManage",
-    "reviewer-queue-repository.test.ts atomic reviewer actions plus jobs coverage",
-    (repo) => repo.applyActionsAndEnqueueJobs(deniedActor, undefined as never, undefined as never),
-  ),
-  reviewerQueueGate(
-    "getItem",
-    "queueRead",
-    "reviewer-queue-repository.test.ts get item coverage",
-    (repo) => repo.getItem(deniedActor, "reviewer-queue-x"),
-  ),
-  reviewerQueueGate(
-    // Manage-scoped read: importRuntimeFeedback reads the item it is about
-    // to manage under queue.manage, NOT queue.read, so a read-restricted
-    // manage role is not silently blocked from importing runtime evidence.
-    "getItemForManage",
-    "queueManage",
-    "reviewer-queue-repository.test.ts get item for manage coverage",
-    (repo) => repo.getItemForManage(deniedActor, "reviewer-queue-x"),
-  ),
-  reviewerQueueGate(
-    "loadItemsByBranch",
-    "queueRead",
-    "reviewer-queue-repository.test.ts load items by branch coverage",
-    (repo) => repo.loadItemsByBranch(deniedActor, "branch-x"),
-  ),
-  reviewerQueueGate(
-    "loadTransitionsByItem",
-    "queueRead",
-    "reviewer-queue-repository.test.ts load transitions by item coverage",
-    (repo) => repo.loadTransitionsByItem(deniedActor, "reviewer-queue-x"),
-  ),
-  workspaceCorrectionGate(
-    "recordCorrectionEdit",
-    "queueManage",
-    "workspace-correction-repository.test.ts record correction coverage",
-    (repo) => repo.recordCorrectionEdit(deniedActor, undefined as never),
-  ),
-  workspaceCorrectionGate(
-    "loadCorrectionEditsByBranch",
-    "queueRead",
-    "workspace-correction-repository.test.ts load corrections by branch coverage",
-    (repo) => repo.loadCorrectionEditsByBranch(deniedActor, "branch-x"),
   ),
   localizationJournalGate(
     "seedRun",
@@ -1895,18 +1787,6 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriTerminologyRepository.upsertGlossaryReviewItem",
-          "requiredPermission": "draft.write",
-          "successFixture": "terminology-repository.test.ts glossary review item coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriTerminologyRepository.listGlossaryReviewItems",
-          "requiredPermission": "catalog.read",
-          "successFixture": "terminology-repository.test.ts glossary review queue coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriTranslationMemoryRepository.upsertSegment",
           "requiredPermission": "draft.write",
           "successFixture": "translation-memory-repository.test.ts segment persistence coverage",
@@ -2105,18 +1985,6 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriAssetLocalizationDecisionRepository.recordDecision",
-          "requiredPermission": "draft.write",
-          "successFixture": "asset-localization-decision-repository.test.ts record decision coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriAssetLocalizationDecisionRepository.recordDecisionsBulk",
-          "requiredPermission": "draft.write",
-          "successFixture": "asset-localization-decision-repository.test.ts record decisions bulk coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriAssetLocalizationDecisionRepository.loadActiveDecisions",
           "requiredPermission": "catalog.read",
           "successFixture": "asset-localization-decision-repository.test.ts load active decisions coverage",
@@ -2165,24 +2033,6 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriSceneCoverageRepository.setCoverage",
-          "requiredPermission": "queue.manage",
-          "successFixture": "scene-coverage-repository.test.ts set coverage coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriSceneCoverageRepository.loadCoverageForBranch",
-          "requiredPermission": "queue.read",
-          "successFixture": "scene-coverage-repository.test.ts load coverage for branch coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriSceneCoverageRepository.loadCoverageForScene",
-          "requiredPermission": "queue.read",
-          "successFixture": "scene-coverage-repository.test.ts load coverage for scene coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriAuditFindingRepository.recordFinding",
           "requiredPermission": "audit.write",
           "successFixture": "audit-finding-repository.test.ts record finding coverage",
@@ -2216,66 +2066,6 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriAuditFindingRepository.markFindingSuperseded",
           "requiredPermission": "audit.write",
           "successFixture": "audit-finding-repository.test.ts mark finding superseded coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriReviewerQueueRepository.createItem",
-          "requiredPermission": "queue.manage",
-          "successFixture": "reviewer-queue-repository.test.ts create item coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriReviewerQueueRepository.applyAction",
-          "requiredPermission": "queue.manage",
-          "successFixture": "reviewer-queue-repository.test.ts apply action coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriReviewerQueueRepository.applyActionAndEnqueueJobs",
-          "requiredPermission": "queue.manage",
-          "successFixture": "reviewer-queue-repository.test.ts atomic reviewer action plus jobs coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriReviewerQueueRepository.applyActionsAndEnqueueJobs",
-          "requiredPermission": "queue.manage",
-          "successFixture": "reviewer-queue-repository.test.ts atomic reviewer actions plus jobs coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriReviewerQueueRepository.getItem",
-          "requiredPermission": "queue.read",
-          "successFixture": "reviewer-queue-repository.test.ts get item coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriReviewerQueueRepository.getItemForManage",
-          "requiredPermission": "queue.manage",
-          "successFixture": "reviewer-queue-repository.test.ts get item for manage coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriReviewerQueueRepository.loadItemsByBranch",
-          "requiredPermission": "queue.read",
-          "successFixture": "reviewer-queue-repository.test.ts load items by branch coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriReviewerQueueRepository.loadTransitionsByItem",
-          "requiredPermission": "queue.read",
-          "successFixture": "reviewer-queue-repository.test.ts load transitions by item coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriWorkspaceCorrectionRepository.recordCorrectionEdit",
-          "requiredPermission": "queue.manage",
-          "successFixture": "workspace-correction-repository.test.ts record correction coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriWorkspaceCorrectionRepository.loadCorrectionEditsByBranch",
-          "requiredPermission": "queue.read",
-          "successFixture": "workspace-correction-repository.test.ts load corrections by branch coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
@@ -3353,22 +3143,6 @@ function benchmarkRunGate(
   });
 }
 
-function sceneCoverageGate(
-  mutation: string,
-  permissionKey: PermissionKey,
-  successFixture: string,
-  run: (repository: ItotoriSceneCoverageRepository) => Promise<unknown>,
-): RepositoryPermissionGateCase {
-  return repositoryGate({
-    repository: "ItotoriSceneCoverageRepository",
-    sourceFile: "scene-coverage-repository.ts",
-    mutation,
-    permissionKey,
-    successFixture,
-    runDeniedMutation: (db) => run(new ItotoriSceneCoverageRepository(db)),
-  });
-}
-
 function auditFindingGate(
   mutation: string,
   permissionKey: PermissionKey,
@@ -3382,38 +3156,6 @@ function auditFindingGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriAuditFindingRepository(db)),
-  });
-}
-
-function reviewerQueueGate(
-  mutation: string,
-  permissionKey: PermissionKey,
-  successFixture: string,
-  run: (repository: ItotoriReviewerQueueRepository) => Promise<unknown>,
-): RepositoryPermissionGateCase {
-  return repositoryGate({
-    repository: "ItotoriReviewerQueueRepository",
-    sourceFile: "reviewer-queue-repository.ts",
-    mutation,
-    permissionKey,
-    successFixture,
-    runDeniedMutation: (db) => run(new ItotoriReviewerQueueRepository(db)),
-  });
-}
-
-function workspaceCorrectionGate(
-  mutation: string,
-  permissionKey: PermissionKey,
-  successFixture: string,
-  run: (repository: ItotoriWorkspaceCorrectionRepository) => Promise<unknown>,
-): RepositoryPermissionGateCase {
-  return repositoryGate({
-    repository: "ItotoriWorkspaceCorrectionRepository",
-    sourceFile: "workspace-correction-repository.ts",
-    mutation,
-    permissionKey,
-    successFixture,
-    runDeniedMutation: (db) => run(new ItotoriWorkspaceCorrectionRepository(db)),
   });
 }
 

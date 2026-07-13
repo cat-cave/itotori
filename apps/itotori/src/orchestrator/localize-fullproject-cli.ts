@@ -1,8 +1,8 @@
 // itotori-localize-fullproject-cli — LIVE wiring for `itotori localize`.
 //
 // Binds the pure whole-project driver (`runLocalizeFullProjectCommand`) to real
-// production dependencies: a live Postgres context (attempt/outcome journal +
-// reviewer-queue repositories), on-disk patch export, and the LIVE OpenRouter
+// production dependencies: a live Postgres context (attempt/outcome journal),
+// on-disk patch export, and the LIVE OpenRouter
 // provider (ZDR-routed).
 // This is what the `localize` CLI subcommand invokes.
 //
@@ -28,7 +28,6 @@ import {
   ItotoriLocalizationJournalRepository,
   ItotoriLocalizationRunFinalizerRepository,
   ItotoriProjectRepository,
-  ItotoriReviewerQueueRepository,
   ItotoriTranslationScopeSettingsRepository,
   bootstrapLocalUser,
   createDatabaseContext,
@@ -349,7 +348,6 @@ export async function runLocalizeFullProjectLive(
     });
 
     const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
-    const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
     const contextArtifactRepo = new ItotoriContextArtifactRepository(context.db);
     const assetDecisionRepo = new ItotoriAssetLocalizationDecisionRepository(context.db);
     // itotori-translation-scope-configuration-ui — the SAME repository the
@@ -435,7 +433,6 @@ export async function runLocalizeFullProjectLive(
               providerFactory,
               sinks: { journal: dbAdapter, patchExport: patchSink },
               journalHistory: journalRepo,
-              reviewerQueue: { repository: reviewerQueueRepo },
               contextArtifactRepository: contextArtifactRepo,
               translationScopeSettings: {
                 resolveScope: (projectId, localeBranchId) =>
@@ -1141,7 +1138,6 @@ function assertDrivenPatchReport(value: unknown): asserts value is DrivenPatchRe
     "unitsRun",
     "writtenOutcomeCount",
     "failureCount",
-    "reviewerQueueItemCount",
     "totalUsageCostUsd",
   ] as const;
   const booleanFields = ["zdrConfirmed", "budgetStopped", "coverageComplete"] as const;

@@ -6,7 +6,7 @@
   "iterationScenarioUri": "suite/scripts/itotori-iteration-fixture/inputs/iteration-recordings/iter-success.json",
   "patchResult": {
     "uri": "suite/scripts/itotori-iteration-fixture/inputs/patch-result-failed-v0.2.fr-FR.json",
-    "expectedHash": "sha256:acc114fc92acca52affcdc5c212ddeb564e1a39710c68047196aa0b6a6a693b2"
+    "expectedHash": "sha256:7fff0ac5542db7e2eb497f36b80f328bbd9b28f3283929f24cd9e5962302a1ce"
   },
   "runtimeReport": {
     "uri": "fixtures/hello-game/expected/runtime-report-v0.2.fr-FR.json",

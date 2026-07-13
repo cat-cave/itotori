@@ -26,7 +26,7 @@
     "generatedAt": { "type": "string", "minLength": 1 },
     "stageId": {
       "type": "string",
-      "enum": ["import", "draft", "qa", "reviewer", "export", "feedback", "rerun"]
+      "enum": ["import", "draft", "qa", "export", "feedback", "rerun"]
     },
     "artifactId": { "type": "string", "minLength": 1 },
     "localeBranchId": { "type": ["string", "null"] },

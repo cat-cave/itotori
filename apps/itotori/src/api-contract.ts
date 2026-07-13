@@ -26,8 +26,7 @@
 // body's `required` list is GENERATED from `ITOTORI_STRICT_API_BODY_KEYS` — the
 // SAME array the guard passes to `asStrictRecord`. There is no hand-authored
 // second source for a strict body's envelope, so it cannot fork from the guard
-// for ANY strict route (the reviewer / workspace / queue-health / asset-decision
-// routes that previously lacked a parity fixture included). The loose
+// for every strict route. The loose
 // (`additionalProperties:true`) bodies keep their guard<->schema parity proven
 // by real response fixtures. The parity suite adds per-route teeth for all
 // routes (a dropped required key or a leaked strict field fails).
@@ -35,7 +34,6 @@ import { ITOTORI_PRODUCT_VERSION } from "@itotori/localization-bridge-schema";
 import {
   API_ERROR_RESPONSE_CODES,
   ITOTORI_STRICT_API_BODY_KEYS,
-  reviewerSingleActionList,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
 import {
@@ -143,18 +141,6 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       properties: { error: str, code: { enum: [...API_ERROR_RESPONSE_CODES] } },
       additionalProperties: false,
     }),
-  ReviewerQueuePermissionView: () =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ReviewerQueuePermissionView,
-      properties: {
-        actorUserId: str,
-        canReadQueue: bool,
-        canManageQueue: bool,
-        denialReasons: { type: "array", items: str },
-      },
-      additionalProperties: false,
-    }),
-
   // Asset decisions --------------------------------------------------------
   ApiAssetDecisionsResponse: () =>
     object({
@@ -202,52 +188,6 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       properties: { targetLanguage: str, weightsVersion: str, rows: arr },
       additionalProperties: false,
       schemaVersion: "catalog.opportunity_ranking.v0.1",
-    }),
-
-  // Reviewer ---------------------------------------------------------------
-  ReviewerQueueDashboardReadModel: (ref) =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ReviewerQueueDashboardReadModel,
-      properties: {
-        localeBranchId: str,
-        permission: ref("ReviewerQueuePermissionView"),
-        pagination: obj,
-        rows: arr,
-        aggregate: obj,
-        defaultBatchRequest: obj,
-      },
-      additionalProperties: false,
-      schemaVersion: "reviewer.queue_dashboard.v0.1",
-    }),
-  ReviewerDetailContext: (ref) =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ReviewerDetailContext,
-      properties: { reviewItemId: str, permission: ref("ReviewerQueuePermissionView") },
-      additionalProperties: false,
-    }),
-  ReviewerBatchPreview: (ref) =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ReviewerBatchPreview,
-      properties: {
-        permission: ref("ReviewerQueuePermissionView"),
-        items: arr,
-        aggregate: obj,
-        allAllowed: bool,
-        permissionDenied: bool,
-      },
-      additionalProperties: false,
-    }),
-  ReviewerBatchExecuteResult: () =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ReviewerBatchExecuteResult,
-      properties: { applied: arr, refusedAll: bool, appliedAll: bool },
-      additionalProperties: false,
-    }),
-  ReviewerSingleActionResult: () =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ReviewerSingleActionResult,
-      properties: { applied: bool, refused: bool },
-      additionalProperties: false,
     }),
 
   // Terminology ------------------------------------------------------------
@@ -340,115 +280,6 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       schemaVersion: "wiki.context.edit.v0.2",
     }),
 
-  // Workspace --------------------------------------------------------------
-  WorkspaceProjectBrowseReadModel: (ref) =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceProjectBrowseReadModel,
-      properties: {
-        permission: ref("ReviewerQueuePermissionView"),
-        projects: arr,
-        diagnostics: arr,
-      },
-      additionalProperties: false,
-      schemaVersion: "workspace.project_browse.v0.1",
-    }),
-  WorkspaceSceneBrowseReadModel: (ref) =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceSceneBrowseReadModel,
-      properties: {
-        permission: ref("ReviewerQueuePermissionView"),
-        projectId: str,
-        localeBranchId: str,
-        pagination: obj,
-        scenes: arr,
-        diagnostics: arr,
-      },
-      additionalProperties: false,
-      schemaVersion: "workspace.scene_browse.v0.1",
-    }),
-  WorkspaceAssetBrowseReadModel: (ref) =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceAssetBrowseReadModel,
-      properties: {
-        permission: ref("ReviewerQueuePermissionView"),
-        projectId: str,
-        localeBranchId: str,
-        assets: arr,
-        diagnostics: arr,
-      },
-      additionalProperties: false,
-      schemaVersion: "workspace.asset_browse.v0.1",
-    }),
-  WorkspaceComparisonReadModel: (ref) =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceComparisonReadModel,
-      properties: {
-        permission: ref("ReviewerQueuePermissionView"),
-        reviewItemId: str,
-        localeBranchId: str,
-        cells: arr,
-        hasFinal: bool,
-        runtimeEvidenceLinks: arr,
-        diagnostics: arr,
-      },
-      additionalProperties: false,
-      schemaVersion: "workspace.comparison.v0.1",
-    }),
-  WorkspaceSearchReadModel: (ref) =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceSearchReadModel,
-      properties: {
-        permission: ref("ReviewerQueuePermissionView"),
-        projectId: str,
-        localeBranchId: str,
-        query: str,
-        normalizedQuery: str,
-        mode: str,
-        pagination: obj,
-        results: arr,
-        droppedOpaqueCount: num,
-        diagnostics: arr,
-      },
-      additionalProperties: false,
-      schemaVersion: "workspace.search.v0.1",
-    }),
-  WorkspaceCorrectionPreviewReadModel: (ref) =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceCorrectionPreviewReadModel,
-      properties: {
-        permission: ref("ReviewerQueuePermissionView"),
-        projectId: nullableStr,
-        localeBranchId: str,
-        sourceBundleId: nullableStr,
-        targetLocale: nullableStr,
-        units: arr,
-        diagnostics: arr,
-      },
-      additionalProperties: false,
-      schemaVersion: "workspace.correction_preview.v0.1",
-    }),
-  WorkspaceCorrectionSubmitReadModel: (ref) =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceCorrectionSubmitReadModel,
-      properties: {
-        generatedAt: str,
-        permission: ref("ReviewerQueuePermissionView"),
-        localeBranchId: str,
-        batchId: str,
-        batchLabel: nullableStr,
-        submittedCount: num,
-        edits: arr,
-        repairCandidateReportIds: arr,
-        decisionQueueReportIds: arr,
-        needsContextReportIds: arr,
-        affectedBridgeUnitIds: arr,
-        writebacks: arr,
-        scheduledRerunJobIds: arr,
-        diagnostics: arr,
-      },
-      additionalProperties: false,
-      schemaVersion: "workspace.correction_submit.v0.1",
-    }),
   // Projects / dashboards --------------------------------------------------
   ApiProjectsResponse: () =>
     object({ required: ["projects"], properties: { projects: arr }, additionalProperties: true }),
@@ -779,7 +610,6 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
         styleGuideVersionId: nullableStr,
         glossaryContentHash: str,
         glossaryTermCount: num,
-        glossaryReviewItemCount: num,
         updateReason: str,
         createdAt: str,
       },
@@ -1124,11 +954,8 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiStudioCapabilityDenials,
       properties: {
         flag: { oneOf: [str, { type: "null" }] },
-        decide: { oneOf: [str, { type: "null" }] },
         steer: { oneOf: [str, { type: "null" }] },
         reveal: { oneOf: [str, { type: "null" }] },
-        queueRead: { oneOf: [str, { type: "null" }] },
-        queueManage: { oneOf: [str, { type: "null" }] },
       },
       additionalProperties: false,
     }),
@@ -1137,10 +964,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiAuthCapabilitiesResponse,
       properties: {
         actorUserId: str,
-        canReadQueue: bool,
-        canManageQueue: bool,
         canFlag: bool,
-        canDecide: bool,
         canSteer: bool,
         canReveal: bool,
         denials: ref("ApiStudioCapabilityDenials"),
@@ -1182,12 +1006,6 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     object({
       required: ["findingId", "status"],
       properties: { findingId: str, status: { enum: ["open", "resolved", "superseded"] } },
-      additionalProperties: true,
-    }),
-  ApiRecordDecisionResponse: () =>
-    object({
-      required: ["decisionId", "eventKind", "recorded"],
-      properties: { decisionId: str, eventKind: str, recorded: bool },
       additionalProperties: true,
     }),
   ApiRecordBenchmarkResponse: () =>
@@ -1262,12 +1080,6 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       },
       additionalProperties: true,
     }),
-  ApiRecordDecisionRequest: () =>
-    object({
-      required: ["event"],
-      properties: { event: obj, localeBranchId: str },
-      additionalProperties: true,
-    }),
   ApiRecordBenchmarkRequest: () =>
     object({
       required: ["benchmarkReport"],
@@ -1278,37 +1090,6 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     object({
       required: ["project", "runtimeReport"],
       properties: { project: obj, runtimeReport: obj },
-      additionalProperties: true,
-    }),
-  ReviewerBatchActionRequest: () =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ReviewerBatchActionRequest,
-      properties: { action: str, actorUserId: str, selections: arr },
-      additionalProperties: false,
-    }),
-  ApiWorkspaceCorrectionSubmitRequest: () =>
-    object({
-      required: ["projectId", "localeBranchId", "targetLocale", "actorUserId", "corrections"],
-      properties: {
-        projectId: str,
-        localeBranchId: str,
-        sourceBundleId: str,
-        targetLocale: str,
-        actorUserId: str,
-        actorDisplayName: str,
-        batchLabel: str,
-        corrections: arr,
-      },
-      additionalProperties: true,
-    }),
-  ApiReviewerSingleActionRequest: () =>
-    object({
-      required: ["action", "actorUserId", "expectedSourceRevisionId"],
-      properties: {
-        action: { enum: [...reviewerSingleActionList] },
-        actorUserId: str,
-        expectedSourceRevisionId: str,
-      },
       additionalProperties: true,
     }),
   // Launch-pass (ovw-launch-pass-action) ----------------------------------
@@ -1388,82 +1169,14 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       schemaVersion: "itotori.play.route-map.v0",
     }),
 
-  // play-mark-validated — scene coverage read/write envelopes --------------
-  // Nested node/edge/counts shapes are named components so OpenAPI consumers
-  // can enforce coverageState + counts fields (not bare array/object stubs).
-  ApiPlaySceneCoverageNode: () =>
-    object({
-      required: ["sceneId", "label", "coverageState", "routeKey", "routeMapId"],
-      properties: {
-        sceneId: str,
-        label: str,
-        coverageState: { enum: ["needs_check", "flagged", "validated"] },
-        routeKey: { type: ["string", "null"] },
-        routeMapId: { type: ["string", "null"] },
-      },
-      additionalProperties: false,
-    }),
-  ApiPlaySceneCoverageEdge: () =>
-    object({
-      required: ["fromSceneId", "toSceneId", "choiceKey", "label"],
-      properties: {
-        fromSceneId: str,
-        toSceneId: str,
-        choiceKey: str,
-        label: str,
-      },
-      additionalProperties: false,
-    }),
-  ApiPlaySceneCoverageCounts: () =>
-    object({
-      required: ["needsCheck", "flagged", "validated", "total"],
-      properties: {
-        needsCheck: num,
-        flagged: num,
-        validated: num,
-        total: num,
-      },
-      additionalProperties: false,
-    }),
-  ApiPlaySetSceneCoverageRequest: () =>
-    object({
-      required: ["sceneId", "coverageState"],
-      properties: {
-        sceneId: str,
-        coverageState: { enum: ["needs_check", "flagged", "validated"] },
-      },
-      additionalProperties: true,
-    }),
-  ApiPlaySceneCoverageResponse: (ref) =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlaySceneCoverageResponse,
-      properties: {
-        nodes: { type: "array", items: ref("ApiPlaySceneCoverageNode") },
-        edges: { type: "array", items: ref("ApiPlaySceneCoverageEdge") },
-        counts: ref("ApiPlaySceneCoverageCounts"),
-      },
-      additionalProperties: false,
-      schemaVersion: "itotori.play.scene-coverage.v0",
-    }),
-  ApiPlaySetSceneCoverageResponse: () =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlaySetSceneCoverageResponse,
-      properties: {
-        coverageState: { enum: ["needs_check", "flagged", "validated"] },
-      },
-      additionalProperties: false,
-      schemaVersion: "itotori.play.set-scene-coverage.v0",
-    }),
-
   // play-flag-composer — AnnotationComposer submit envelopes
   ApiPlayFlagAnnotationRequest: () =>
     object({
-      required: ["note", "severity", "targetLocale"],
+      required: ["note", "severity", "bridgeUnitId"],
       properties: {
         note: str,
         severity: { enum: ["blocker", "critical", "warning", "note"] },
         category: str,
-        targetLocale: str,
         bridgeUnitId: str,
         sourceUnitKey: str,
         sourceBundleId: str,
@@ -1473,14 +1186,14 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
         actorUserId: str,
         actorDisplayName: str,
       },
-      additionalProperties: true,
+      additionalProperties: false,
     }),
   ApiPlayFlagAnnotationResponse: () =>
     object({
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayFlagAnnotationResponse,
       properties: {
         severity: { enum: ["blocker", "critical", "warning", "note"] },
-        contextCorrectionEnqueued: bool,
+        contextCorrectionId: str,
         duplicate: bool,
       },
       additionalProperties: false,

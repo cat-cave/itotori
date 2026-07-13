@@ -73,8 +73,6 @@ export type CaptureRef = {
   validation: Record<string, boolean>;
 };
 
-export type ReviewAction = { action: string; label: string };
-
 export type ProofLink = {
   source: string;
   proofKind?: string;
@@ -117,7 +115,6 @@ export type DemoBundle = {
     reviewPackageId: string | null;
     manifestKind: string | null;
     screenshotArtifactCount: number;
-    supportedReviewActions: ReviewAction[] | null;
     source: string;
   };
   proofLinks: {
@@ -321,7 +318,6 @@ function renderCaptureRow(capture: CaptureRef): string {
 }
 
 function renderReviewManifest(review: DemoBundle["reviewManifest"]): string {
-  const actions = review.supportedReviewActions ?? [];
   return `
     <section aria-label="Review manifest" style="${panelStyle()}">
       <h2 style="${headingStyle()}">Review manifest (${escapeHtml(review.source)})</h2>
@@ -330,14 +326,6 @@ function renderReviewManifest(review: DemoBundle["reviewManifest"]): string {
         ${field("Manifest kind", review.manifestKind)}
         ${field("Screenshot refs", String(review.screenshotArtifactCount))}
       </dl>
-      <ul data-section="review-actions" style="list-style:none; padding:0; margin:.5rem 0 0; display:flex; flex-wrap:wrap; gap:.5rem">
-        ${actions
-          .map(
-            (action) =>
-              `<li data-review-action="${escapeHtml(action.action)}" style="border:1px solid #d1d5db; border-radius:6px; padding:.25rem .5rem">${escapeHtml(action.label)}</li>`,
-          )
-          .join("")}
-      </ul>
     </section>
   `;
 }

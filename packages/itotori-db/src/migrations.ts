@@ -470,6 +470,34 @@ export const migrations = [
     id: "0091_iterative_patch_versioning_and_playtest_feedback",
     file: "0091_iterative_patch_versioning_and_playtest_feedback.sql",
   },
+  {
+    id: "0092_retire_reviewer_queue",
+    file: "0092_retire_reviewer_queue.sql",
+  },
+  {
+    id: "0093_retire_glossary_review_items",
+    file: "0093_retire_glossary_review_items.sql",
+  },
+  {
+    id: "0094_retire_workspace_correction_history",
+    file: "0094_retire_workspace_correction_history.sql",
+  },
+  {
+    id: "0095_retire_reviewer_permission_seed",
+    file: "0095_retire_reviewer_permission_seed.sql",
+  },
+  {
+    id: "0096_retire_scene_localization_coverage",
+    file: "0096_retire_scene_localization_coverage.sql",
+  },
+  {
+    id: "0097_retire_targetless_feedback_deferrals",
+    file: "0097_retire_targetless_feedback_deferrals.sql",
+  },
+  {
+    id: "0098_require_canonical_play_feedback_outcomes",
+    file: "0098_require_canonical_play_feedback_outcomes.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

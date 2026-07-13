@@ -29,8 +29,6 @@ import type {
   ApiProjectImportResponse,
   ApiRecordBenchmarkRequest,
   ApiRecordBenchmarkResponse,
-  ApiRecordDecisionRequest,
-  ApiRecordDecisionResponse,
   ApiRecordFindingRequest,
   ApiRecordFindingResponse,
   ApiRuntimeEvidenceRequest,
@@ -44,7 +42,6 @@ import type {
   BridgeBundle,
   FindingRecordV02,
   RuntimeVerificationReport,
-  TriageEventV02,
 } from "@itotori/localization-bridge-schema";
 import type { ProjectState, RuntimeIngestResult } from "../src/services/project-workflow.js";
 import type { ProjectOverviewReadModel } from "../src/project-overview-read-model.js";
@@ -348,7 +345,6 @@ export const branchPolicySettingsFixture: ApiBranchPolicySettingsResponse = {
     styleGuideVersionId: "style-guide-version-1",
     glossaryContentHash: "sha256:1111111111111111111111111111111111111111111111111111111111111111",
     glossaryTermCount: 2,
-    glossaryReviewItemCount: 1,
     updateReason: "Fixture branch policy",
     createdAt: "2026-07-08T00:00:00.000Z",
   },
@@ -1330,23 +1326,6 @@ export const runtimeIngestResultFixture: RuntimeIngestResult = {
   dashboard: dashboardStatusFixture,
 };
 
-export const decisionEventFixture: TriageEventV02 = {
-  eventId: "019ed004-0000-7000-8000-000000000201",
-  eventKind: "triage_decision_recorded",
-  occurredAt: "2026-06-17T00:00:00.000Z",
-  actor: { actorKind: "human", displayName: "Fixture reviewer" },
-  subjectRefs: [],
-  provenance: [
-    {
-      provenanceId: "019ed004-0000-7000-8000-000000000202",
-      provenanceKind: "human_review",
-      noteHash: "sha256:decision-fixture-note",
-    },
-  ],
-  causalLinks: [],
-  payload: { optionId: "accept_fixture_decision" },
-};
-
 export const findingRecordFixture = readFixture<{ finding: FindingRecordV02 }>(
   "../../../packages/localization-bridge-schema/test/examples/finding-v0.2.json",
 ).finding;
@@ -1611,17 +1590,6 @@ export const recordFindingResponseFixture: ApiRecordFindingResponse = {
   status: "open",
 };
 
-export const recordDecisionRequestFixture: ApiRecordDecisionRequest = {
-  localeBranchId: "locale-1",
-  event: decisionEventFixture,
-};
-
-export const recordDecisionResponseFixture: ApiRecordDecisionResponse = {
-  decisionId: decisionEventFixture.eventId,
-  eventKind: decisionEventFixture.eventKind,
-  recorded: true,
-};
-
 export const recordBenchmarkRequestFixture: ApiRecordBenchmarkRequest = {
   benchmarkReport: benchmarkReportFixture,
 };
@@ -1681,7 +1649,6 @@ export type ApiMutationContractEntry = {
     | "imports.bridge"
     | "branches.draft"
     | "findings.record"
-    | "decisions.record"
     | "benchmarks.record"
     | "runtimeEvidence.ingest"
   >;
@@ -1726,14 +1693,6 @@ export const apiMutationContract: readonly ApiMutationContractEntry[] = [
     requiredRequestField: "finding",
     requiredResponseField: "findingId",
     parserErrorSubstring: "ApiRecordFindingRequest",
-  },
-  {
-    routeId: "decisions.record",
-    url: "http://itotori.test/api/projects/project-1/decisions",
-    requestTypeName: "ApiRecordDecisionRequest",
-    requiredRequestField: "event",
-    requiredResponseField: "decisionId",
-    parserErrorSubstring: "ApiRecordDecisionRequest",
   },
   {
     routeId: "benchmarks.record",

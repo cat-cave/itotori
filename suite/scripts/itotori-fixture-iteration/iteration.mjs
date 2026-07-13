@@ -5,16 +5,15 @@
  * This module is the PURE, side-effect-light core of the
  * `pnpm exec vp run itotori:fixture-iteration` command. It COMPOSES the
  * existing Itotori seams over PUBLIC RECORDED inputs — it does NOT
- * re-implement any stage. The eight stages of one iteration are:
+ * re-implement any stage. The six stages of one iteration are:
  *
  *   1. import          — bridge bundle import (identity + unit count)
  *   2. draft           — agentic-loop draft (runAgenticLoopForUnit output)
  *   3. qa              — QA-agent evaluation (QaAgent.invokeQa findings)
- *   4. reviewer        — reviewer-queue action (ReviewerQueueActionService)
- *   5. export          — patch export (PatchExporter.export bundle)
- *   6. feedback        — manual/runtime feedback import (ManualFeedbackImport)
- *   7. rerun           — targeted rerun (buildReviewerTriggeredRerunJobInputs)
- *   8. final-result    — the FixtureIterationResult manifest (SHARED-025)
+ *   4. export          — patch export (PatchExporter.export bundle)
+ *   5. feedback        — manual/runtime feedback → canonical context correction
+ *   6. rerun           — context-correction-driven patch iteration
+ *   7. final-result    — the FixtureIterationResult manifest (SHARED-025)
  *
  * Hard constraints (PROJECT LAW):
  *   - PUBLIC RECORDED fixtures ONLY. No private corpora, no live credentials,
@@ -50,7 +49,7 @@ export const ITERATION_RESULT_SCHEMA_VERSION = "itotori.fixture-iteration.result
 
 // The ordered iteration: import -> ... -> rerun. The final-result manifest is
 // emitted separately and is not itself a "stage".
-export const STAGE_ORDER = ["import", "draft", "qa", "reviewer", "export", "feedback", "rerun"];
+export const STAGE_ORDER = ["import", "draft", "qa", "export", "feedback", "rerun"];
 
 // Provider-backed stages read their (model, provider) pair + cost + tokens
 // from a recorded ledger entry keyed by `ledgerRole`. The recorded
@@ -385,8 +384,8 @@ export function composeIteration(inputs, { now = new Date() } = {}) {
 /**
  * Validate one composed iteration. Returns { verdict, findings, stages,
  * billedMicrosUsd }. Every anomaly is a structured finding. Drives the four
- * recorded paths the node names: success, QA rejection, runtime feedback, and
- * targeted-rerun repair.
+ * recorded paths the node names: complete patch, blocked QA finding, runtime
+ * feedback, and a context-correction-driven rerun.
  */
 export function validateIteration(composed) {
   const { identity, stageResults } = composed;
@@ -503,19 +502,12 @@ export function validateIteration(composed) {
     findings.push(...stageOutcomeFindings(s));
   }
 
-  // 6. Resolution paths. A recorded reviewer action / targeted rerun can
-  //    RESOLVE a prior finding so the iteration concludes with a meaningful
-  //    verdict instead of "broken". Every resolved finding stays VISIBLE
-  //    (demoted, never deleted) so a failed stage is never hidden:
-  //
-  //    - targeted rerun: `rerun.detail.repairedFindingCodes` clears matching
-  //      blocking/warn findings (rerun-repair + runtime-feedback paths).
-  //    - reviewer reject: a `qa.defect_found` becomes the rejection rationale
-  //      (qa-rejection path) — the iteration is correctly "rejected", not
-  //      "broken".
+  // 6. Resolution paths. A context-correction-driven rerun can RESOLVE a
+  //    prior finding so the iteration concludes with a meaningful verdict.
+  //    Every resolved finding stays VISIBLE (demoted, never deleted), so a
+  //    failed stage is never hidden. A QA finding without a correction remains
+  //    explicitly blocked; there is no human decision state in this flow.
   const rerun = stageResults.find((s) => s.stageId === "rerun");
-  const reviewer = stageResults.find((s) => s.stageId === "reviewer");
-  const reviewerRejected = reviewer !== undefined && reviewer.detail.action === "reject";
 
   const repairTargets = new Set(
     rerun !== undefined && Array.isArray(rerun.detail.repairedFindingCodes)
@@ -528,9 +520,6 @@ export function validateIteration(composed) {
       repairedCodes.add(f.code);
       return { ...f, severity: INFO, code: `${f.code}.repaired` };
     }
-    if (f.severity === BLOCKING && reviewerRejected && f.code === "qa.defect_found") {
-      return { ...f, severity: WARN, code: "qa.defect_found.rejected" };
-    }
     return f;
   });
   for (const code of repairedCodes) {
@@ -541,28 +530,29 @@ export function validateIteration(composed) {
         "rerun",
         rerun.artifactId,
         "none",
-        `targeted rerun cleared prior finding '${code}'`,
+        `context-correction-driven rerun cleared prior finding '${code}'`,
       ),
     );
   }
 
   const blocking = resolved.filter((f) => f.severity === BLOCKING);
-  const rejected = resolved.some((f) => f.code === "reviewer.rejected");
+  const hasQaFinding = blocking.some((f) => f.code === "qa.defect_found");
+  const hasOperationalFailure = blocking.some((f) => f.code !== "qa.defect_found");
   let verdict;
-  if (blocking.length > 0) {
+  if (hasOperationalFailure) {
     verdict = "broken";
-  } else if (rejected) {
-    verdict = "rejected";
+  } else if (hasQaFinding) {
+    verdict = "blocked";
   } else if (repairedCodes.size > 0) {
     verdict = "repaired";
   } else {
-    verdict = "accepted";
+    verdict = "complete";
   }
 
   return { verdict, findings: resolved, billedMicrosUsd };
 }
 
-/** Per-stage semantic outcome diagnostics (QA defects, reviewer action, etc.). */
+/** Per-stage semantic outcome diagnostics (QA, export, and feedback). */
 function stageOutcomeFindings(s) {
   const out = [];
   switch (s.stageId) {
@@ -576,46 +566,8 @@ function stageOutcomeFindings(s) {
             BLOCKING,
             "qa",
             s.artifactId,
-            "rerun-targeted-draft-repair",
+            "record-context-correction-and-start-iteration",
             `QA found a ${defect.severity} ${defect.category ?? "defect"} on unit '${defect.bridgeUnitId ?? "?"}' (finding '${defect.findingId ?? "?"}')`,
-          ),
-        );
-      }
-      break;
-    }
-    case "reviewer": {
-      const action = s.detail.action;
-      if (action === "reject") {
-        out.push(
-          finding(
-            "reviewer.rejected",
-            WARN,
-            "reviewer",
-            s.artifactId,
-            "address-reviewer-rejection",
-            `reviewer rejected the draft (transition ${s.detail.priorState ?? "?"} -> ${s.detail.nextState ?? "?"})`,
-          ),
-        );
-      } else if (action === "requestRepair") {
-        out.push(
-          finding(
-            "reviewer.repair_requested",
-            INFO,
-            "reviewer",
-            s.artifactId,
-            "none",
-            `reviewer requested a targeted repair rerun (${s.detail.repairHint ?? "no hint"})`,
-          ),
-        );
-      } else if (action === "importRuntimeFeedback") {
-        out.push(
-          finding(
-            "reviewer.runtime_feedback_accepted",
-            INFO,
-            "reviewer",
-            s.artifactId,
-            "none",
-            "reviewer accepted runtime feedback and scheduled a runtime-validation rerun",
           ),
         );
       }
@@ -637,15 +589,15 @@ function stageOutcomeFindings(s) {
       break;
     }
     case "feedback": {
-      if (s.detail.triageLabel === "runtime_issue_candidate") {
+      if (s.detail.contextStatus === "corrected") {
         out.push(
           finding(
-            "feedback.runtime_issue",
+            "feedback.context_correction",
             WARN,
             "feedback",
             s.artifactId,
-            "schedule-runtime-validation-rerun",
-            `imported feedback triaged as a runtime issue (report ${s.artifactId}); a targeted rerun is required`,
+            "start-next-patch-iteration",
+            `imported feedback recorded canonical context correction ${s.detail.contextCorrectionId ?? "<missing>"}; a patch iteration is required`,
           ),
         );
       }

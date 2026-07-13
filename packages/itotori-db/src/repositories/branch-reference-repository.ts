@@ -5,8 +5,6 @@ import { type AuthorizationActor, permissionValues, requirePermission } from "..
 import {
   branchPolicyGlossaryReferences,
   events,
-  glossaryReviewItems,
-  glossaryReviewItemStateValues,
   localeBranches,
   styleGuides,
   styleGuideVersions,
@@ -30,7 +28,6 @@ export type BranchPolicyGlossaryReferenceRecord = {
   styleGuideVersionId: string | null;
   glossaryContentHash: string;
   glossaryTermRefs: BranchReferenceJsonRecord[];
-  glossaryReviewItemRefs: BranchReferenceJsonRecord[];
   updateReason: string;
   eventId: string | null;
   supersedesReferenceId: string | null;
@@ -208,7 +205,6 @@ export async function ensureBranchPolicyGlossaryReferenceInTx(
       styleGuideVersionId,
       glossaryContentHash: glossarySnapshot.glossaryContentHash,
       glossaryTermRefs: glossarySnapshot.glossaryTermRefs,
-      glossaryReviewItemRefs: glossarySnapshot.glossaryReviewItemRefs,
       updateReason: requiredString(input.updateReason, "updateReason"),
       eventId,
       supersedesReferenceId: latest?.referenceId ?? null,
@@ -231,7 +227,6 @@ type BranchReferenceContext = {
 type BranchGlossarySnapshot = {
   glossaryContentHash: string;
   glossaryTermRefs: BranchReferenceJsonRecord[];
-  glossaryReviewItemRefs: BranchReferenceJsonRecord[];
 };
 
 async function getBranchContext(
@@ -314,28 +309,6 @@ async function glossarySnapshotForBranch(
     )
     .orderBy(asc(terminologyTerms.normalizedSourceTerm), asc(terminologyTerms.termId));
 
-  const reviewItems = await db
-    .select({
-      reviewItemId: glossaryReviewItems.reviewItemId,
-      termId: glossaryReviewItems.termId,
-      sourceRevisionId: glossaryReviewItems.sourceRevisionId,
-      styleGuideVersionId: glossaryReviewItems.styleGuideVersionId,
-      sourceTerm: glossaryReviewItems.sourceTerm,
-      normalizedSourceTerm: glossaryReviewItems.normalizedSourceTerm,
-      proposedTranslation: glossaryReviewItems.proposedTranslation,
-      normalizedProposedTranslation: glossaryReviewItems.normalizedProposedTranslation,
-      state: glossaryReviewItems.state,
-      updatedAt: glossaryReviewItems.updatedAt,
-    })
-    .from(glossaryReviewItems)
-    .where(
-      and(
-        eq(glossaryReviewItems.localeBranchId, localeBranchId),
-        ne(glossaryReviewItems.state, glossaryReviewItemStateValues.proposed),
-      ),
-    )
-    .orderBy(asc(glossaryReviewItems.normalizedSourceTerm), asc(glossaryReviewItems.reviewItemId));
-
   const glossaryTermRefs = terms.map((term) => ({
     termId: term.termId,
     sourceTerm: term.sourceTerm,
@@ -346,22 +319,9 @@ async function glossarySnapshotForBranch(
     status: term.status,
     updatedAt: term.updatedAt.toISOString(),
   }));
-  const glossaryReviewItemRefs = reviewItems.map((item) => ({
-    reviewItemId: item.reviewItemId,
-    termId: item.termId,
-    sourceRevisionId: item.sourceRevisionId,
-    styleGuideVersionId: item.styleGuideVersionId,
-    sourceTerm: item.sourceTerm,
-    normalizedSourceTerm: item.normalizedSourceTerm,
-    proposedTranslation: item.proposedTranslation,
-    normalizedProposedTranslation: item.normalizedProposedTranslation,
-    state: item.state,
-    updatedAt: item.updatedAt.toISOString(),
-  }));
   const hashPayload = {
     schemaVersion: branchPolicyGlossaryReferenceSchemaVersion,
     glossaryTermRefs,
-    glossaryReviewItemRefs,
   };
 
   return {
@@ -369,7 +329,6 @@ async function glossarySnapshotForBranch(
       .update(stableStringify(hashPayload))
       .digest("hex")}`,
     glossaryTermRefs,
-    glossaryReviewItemRefs,
   };
 }
 
@@ -384,7 +343,6 @@ function branchReferenceFromRow(
     styleGuideVersionId: row.styleGuideVersionId,
     glossaryContentHash: row.glossaryContentHash,
     glossaryTermRefs: row.glossaryTermRefs,
-    glossaryReviewItemRefs: row.glossaryReviewItemRefs,
     updateReason: row.updateReason,
     eventId: row.eventId,
     supersedesReferenceId: row.supersedesReferenceId,

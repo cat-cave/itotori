@@ -3,7 +3,6 @@ import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import {
-  ensureBranchPolicyGlossaryReferenceInTx,
   resolveBranchPolicyGlossaryReferenceInTx,
   type BranchPolicyGlossaryReferenceRecord,
 } from "./branch-reference-repository.js";
@@ -11,8 +10,6 @@ import {
   assets,
   catalogSourceProvenance,
   findings,
-  glossaryReviewItems,
-  glossaryReviewItemStateValues,
   localeBranchUnits,
   localeBranches,
   projects,
@@ -20,7 +17,6 @@ import {
   sourceRevisions,
   sourceUnits,
   styleGuides,
-  styleGuideVersions,
   terminologyAliasKindValues,
   terminologyAliases,
   terminologyConflictEvidence,
@@ -34,7 +30,6 @@ import {
   terminologyTermKindValues,
   terminologyTerms,
   terminologyTermStatusValues,
-  type GlossaryReviewItemState,
   type TerminologyAliasKind,
   type TerminologyConflictKind,
   type TerminologyConflictStatus,
@@ -246,63 +241,6 @@ export type GlossaryContextReadModel = {
   term: TerminologyTermRecord;
   termProvenance: GlossaryTermProvenance[];
   protectedSpanReferences: GlossaryProtectedSpanReference[];
-  reviewItems: GlossaryReviewItemRecord[];
-};
-
-export type GlossaryReviewItemSourceReferenceInput = {
-  sourceRevisionId?: string;
-  bridgeUnitId?: string;
-  sourceProvenanceId?: string;
-  referenceKind?: TerminologySourceReferenceKind;
-  citation: string;
-  context?: string;
-  metadata?: TerminologyJsonRecord;
-};
-
-export type UpsertGlossaryReviewItemInput = {
-  reviewItemId?: string;
-  projectId: string;
-  localeBranchId: string;
-  termId?: string;
-  sourceRevisionId: string;
-  styleGuideVersionId?: string | null;
-  state?: GlossaryReviewItemState;
-  sourceTerm: string;
-  proposedTranslation: string;
-  sourceReferences?: GlossaryReviewItemSourceReferenceInput[];
-  provenance?: TerminologyJsonRecord;
-  semanticDiagnostics?: TerminologyJsonRecord[];
-  metadata?: TerminologyJsonRecord;
-};
-
-export type GlossaryReviewItemFilter = {
-  projectId?: string;
-  localeBranchId?: string;
-  termId?: string;
-  sourceRevisionId?: string;
-  state?: GlossaryReviewItemState;
-};
-
-export type GlossaryReviewItemRecord = {
-  reviewItemId: string;
-  projectId: string;
-  localeBranchId: string;
-  termId: string | null;
-  sourceRevisionId: string;
-  styleGuideVersionId: string | null;
-  glossaryReferenceId: string | null;
-  state: GlossaryReviewItemState;
-  sourceTerm: string;
-  normalizedSourceTerm: string;
-  proposedTranslation: string;
-  normalizedProposedTranslation: string;
-  protectedSpanRefs: TerminologyJsonRecord[];
-  provenance: TerminologyJsonRecord;
-  semanticDiagnostics: TerminologyJsonRecord[];
-  metadata: TerminologyJsonRecord;
-  createdByUserId: string | null;
-  createdAt: Date;
-  updatedAt: Date;
 };
 
 export type UpsertTerminologyTermResult = {
@@ -340,14 +278,6 @@ export interface ItotoriTerminologyRepositoryPort {
     actor: AuthorizationActor,
     input: GlossaryContextInput,
   ): Promise<GlossaryContextReadModel | null>;
-  upsertGlossaryReviewItem(
-    actor: AuthorizationActor,
-    input: UpsertGlossaryReviewItemInput,
-  ): Promise<GlossaryReviewItemRecord>;
-  listGlossaryReviewItems(
-    actor: AuthorizationActor,
-    filter?: GlossaryReviewItemFilter,
-  ): Promise<GlossaryReviewItemRecord[]>;
 }
 
 export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositoryPort {
@@ -707,11 +637,6 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
       this.db,
       sourceReferences,
     );
-    const reviewItems = await listGlossaryReviewItemsInDb(this.db, {
-      localeBranchId,
-      termId: term.termId,
-      sourceRevisionId,
-    });
 
     return {
       localeBranchId,
@@ -722,201 +647,7 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
       term,
       termProvenance: sourceReferences.map(termProvenanceFromReference),
       protectedSpanReferences,
-      reviewItems,
     };
-  }
-
-  async upsertGlossaryReviewItem(
-    actor: AuthorizationActor,
-    input: UpsertGlossaryReviewItemInput,
-  ): Promise<GlossaryReviewItemRecord> {
-    await requirePermission(this.db, actor, permissionValues.draftWrite);
-
-    return this.db.transaction(async (tx) => {
-      const context = await getLocaleBranchContext(tx, input.projectId, input.localeBranchId);
-      if (context === null) {
-        throw new Error(
-          `locale branch ${input.localeBranchId} does not exist for project ${input.projectId}`,
-        );
-      }
-      await validateSourceRevisionContext(tx, context, input.sourceRevisionId);
-
-      const sourceTerm = requiredString(input.sourceTerm, "sourceTerm");
-      const proposedTranslation = requiredString(input.proposedTranslation, "proposedTranslation");
-      const normalizedSourceTerm = normalizeTerm(sourceTerm, "sourceTerm");
-      const normalizedProposedTranslation = normalizeTerm(
-        proposedTranslation,
-        "proposedTranslation",
-      );
-      const requestedState = enumValue(
-        input.state ?? glossaryReviewItemStateValues.proposed,
-        Object.values(glossaryReviewItemStateValues),
-        "state",
-      );
-      const sourceReferences = normalizeGlossaryReviewSourceReferences(
-        input.sourceReferences ?? [],
-      );
-      for (const reference of sourceReferences) {
-        await validateSourceReferenceContext(tx, context, {
-          sourceRevisionId: reference.sourceRevisionId,
-          bridgeUnitId: reference.bridgeUnitId,
-          sourceProvenanceId: reference.sourceProvenanceId,
-        });
-      }
-      const protectedSpanRefs = await protectedSpanReferencesForReviewReferences(
-        tx,
-        sourceReferences,
-      );
-      const styleGuideVersionId =
-        input.styleGuideVersionId === undefined
-          ? await approvedStyleGuideVersionId(tx, input.localeBranchId)
-          : input.styleGuideVersionId;
-      if (styleGuideVersionId !== null) {
-        await validateStyleGuideVersionContext(tx, context, styleGuideVersionId);
-      }
-      const branchReference = await ensureBranchPolicyGlossaryReferenceInTx(tx, actor, {
-        projectId: input.projectId,
-        localeBranchId: input.localeBranchId,
-        styleGuideVersionId,
-        updateReason: "glossary_review_reference",
-        metadata: { source: "upsertGlossaryReviewItem" },
-      });
-
-      const termId = input.termId === undefined ? null : requiredString(input.termId, "termId");
-      if (termId !== null) {
-        const term = await getTermBaseById(tx, termId);
-        if (term === null || term.localeBranchId !== input.localeBranchId) {
-          throw new Error(
-            `terminology term ${termId} does not exist for locale branch ${input.localeBranchId}`,
-          );
-        }
-      }
-
-      const diagnostics = [
-        ...semanticDiagnosticsArray(input.semanticDiagnostics ?? [], "semanticDiagnostics"),
-      ];
-      let state = requestedState;
-      const sourceRevisionIsCurrent = await sourceRevisionIsCurrentForLocaleBranch(
-        tx,
-        context,
-        input.sourceRevisionId,
-      );
-      if (!sourceRevisionIsCurrent) {
-        state = glossaryReviewItemStateValues.staleSource;
-        diagnostics.push({
-          code: "glossary_review.source_revision.stale",
-          severity: "warning",
-          message: `glossary proposal references source revision ${input.sourceRevisionId} outside the current source bundle for locale branch ${input.localeBranchId}`,
-          provenance: {
-            localeBranchId: input.localeBranchId,
-            sourceRevisionId: input.sourceRevisionId,
-            currentSourceBundleId: context.sourceBundleId,
-            currentSourceBundleRevisionId: context.sourceRevisionId,
-          },
-        });
-      } else if (requestedState === glossaryReviewItemStateValues.proposed) {
-        const conflicts = await activeApprovedTermConflicts(tx, {
-          localeBranchId: input.localeBranchId,
-          normalizedSourceTerm,
-          normalizedProposedTranslation,
-        });
-        if (conflicts.length > 0) {
-          state = glossaryReviewItemStateValues.conflict;
-          diagnostics.push({
-            code: "glossary_review.proposal.preferred_translation_conflict",
-            severity: "error",
-            message: `glossary proposal for "${sourceTerm}" conflicts with approved terminology`,
-            provenance: {
-              localeBranchId: input.localeBranchId,
-              sourceRevisionId: input.sourceRevisionId,
-              conflictingTermIds: conflicts.map((term) => term.termId),
-              approvedTranslations: conflicts.map((term) => term.preferredTranslation),
-            },
-          });
-        }
-      }
-      const conflictUpdateState =
-        input.state === undefined
-          ? sql`
-              case
-                when ${glossaryReviewItems.state} in (
-                  ${glossaryReviewItemStateValues.approved},
-                  ${glossaryReviewItemStateValues.rejected}
-                )
-                then ${glossaryReviewItems.state}
-                else ${state}
-              end
-            `
-          : state;
-
-      const provenance = {
-        ...jsonRecord(input.provenance ?? {}, "provenance"),
-        actorUserId: actor.userId,
-        repository: "ItotoriTerminologyRepository",
-        localeBranchId: input.localeBranchId,
-        sourceRevisionId: input.sourceRevisionId,
-        styleGuideVersionId,
-        glossaryReferenceId: branchReference.referenceId,
-        sourceReferences,
-      };
-
-      const rows = await tx
-        .insert(glossaryReviewItems)
-        .values({
-          reviewItemId: input.reviewItemId ?? createUuid7(),
-          projectId: input.projectId,
-          localeBranchId: input.localeBranchId,
-          termId,
-          sourceRevisionId: input.sourceRevisionId,
-          styleGuideVersionId,
-          glossaryReferenceId: branchReference.referenceId,
-          state,
-          sourceTerm,
-          normalizedSourceTerm,
-          proposedTranslation,
-          normalizedProposedTranslation,
-          protectedSpanRefs,
-          provenance,
-          semanticDiagnostics: diagnostics,
-          metadata: jsonRecord(input.metadata ?? {}, "metadata"),
-          createdByUserId: actor.userId,
-        })
-        .onConflictDoUpdate({
-          target: [
-            glossaryReviewItems.localeBranchId,
-            glossaryReviewItems.sourceRevisionId,
-            glossaryReviewItems.normalizedSourceTerm,
-            glossaryReviewItems.normalizedProposedTranslation,
-          ],
-          set: {
-            termId,
-            styleGuideVersionId,
-            glossaryReferenceId: branchReference.referenceId,
-            state: conflictUpdateState,
-            sourceTerm,
-            proposedTranslation,
-            protectedSpanRefs,
-            provenance,
-            semanticDiagnostics: diagnostics,
-            metadata: jsonRecord(input.metadata ?? {}, "metadata"),
-            updatedAt: sql`now()`,
-          },
-        })
-        .returning();
-      const row = rows[0];
-      if (row === undefined) {
-        throw new Error("glossary review item was not persisted");
-      }
-      return glossaryReviewItemFromRow(row);
-    });
-  }
-
-  async listGlossaryReviewItems(
-    actor: AuthorizationActor,
-    filter: GlossaryReviewItemFilter = {},
-  ): Promise<GlossaryReviewItemRecord[]> {
-    await requirePermission(this.db, actor, permissionValues.catalogRead);
-    return listGlossaryReviewItemsInDb(this.db, filter);
   }
 }
 
@@ -1093,51 +824,6 @@ async function sourceRevisionExistsInProject(
   return rows[0] !== undefined;
 }
 
-async function sourceRevisionIsCurrentForLocaleBranch(
-  db: ItotoriDatabase,
-  context: LocaleBranchTerminologyContext,
-  sourceRevisionId: string,
-): Promise<boolean> {
-  if (sourceRevisionId === context.sourceRevisionId) {
-    return true;
-  }
-  const rows = await db.execute<{ exists: boolean }>(sql`
-    select exists(
-      select 1 from ${assets}
-      where ${assets.sourceBundleId} = ${context.sourceBundleId}
-        and ${assets.sourceRevisionId} = ${sourceRevisionId}
-      union all
-      select 1 from ${sourceUnits}
-      where ${sourceUnits.sourceBundleId} = ${context.sourceBundleId}
-        and ${sourceUnits.sourceRevisionId} = ${sourceRevisionId}
-    ) as exists
-  `);
-  return rows.rows[0]?.exists === true;
-}
-
-async function validateStyleGuideVersionContext(
-  db: ItotoriDatabase,
-  context: LocaleBranchTerminologyContext,
-  styleGuideVersionId: string,
-): Promise<void> {
-  const rows = await db
-    .select({ styleGuideVersionId: styleGuideVersions.styleGuideVersionId })
-    .from(styleGuideVersions)
-    .where(
-      and(
-        eq(styleGuideVersions.styleGuideVersionId, styleGuideVersionId),
-        eq(styleGuideVersions.projectId, context.projectId),
-        eq(styleGuideVersions.localeBranchId, context.localeBranchId),
-      ),
-    )
-    .limit(1);
-  if (rows[0] === undefined) {
-    throw new Error(
-      `style guide version ${styleGuideVersionId} does not exist for locale branch ${context.localeBranchId}`,
-    );
-  }
-}
-
 async function approvedStyleGuideVersionId(
   db: ItotoriDatabase,
   localeBranchId: string,
@@ -1148,87 +834,6 @@ async function approvedStyleGuideVersionId(
     .where(eq(styleGuides.localeBranchId, localeBranchId))
     .limit(1);
   return rows[0]?.approvedVersionId ?? null;
-}
-
-function normalizeGlossaryReviewSourceReferences(
-  references: GlossaryReviewItemSourceReferenceInput[],
-): Array<{
-  sourceRevisionId: string | null;
-  bridgeUnitId: string | null;
-  sourceProvenanceId: string | null;
-  referenceKind: TerminologySourceReferenceKind;
-  citation: string;
-  context: string | null;
-  metadata: TerminologyJsonRecord;
-}> {
-  return references.map((reference) => ({
-    sourceRevisionId: optionalNonEmpty(
-      reference.sourceRevisionId,
-      "sourceReference.sourceRevisionId",
-    ),
-    bridgeUnitId: optionalNonEmpty(reference.bridgeUnitId, "sourceReference.bridgeUnitId"),
-    sourceProvenanceId: optionalNonEmpty(
-      reference.sourceProvenanceId,
-      "sourceReference.sourceProvenanceId",
-    ),
-    referenceKind:
-      reference.referenceKind === undefined
-        ? terminologySourceReferenceKindValues.sourceUnit
-        : enumValue(
-            reference.referenceKind,
-            Object.values(terminologySourceReferenceKindValues),
-            "sourceReference.referenceKind",
-          ),
-    citation: requiredString(reference.citation, "sourceReference.citation"),
-    context: optionalNonEmpty(reference.context, "sourceReference.context"),
-    metadata: jsonRecord(reference.metadata ?? {}, "sourceReference.metadata"),
-  }));
-}
-
-async function activeApprovedTermConflicts(
-  db: ItotoriDatabase,
-  input: {
-    localeBranchId: string;
-    normalizedSourceTerm: string;
-    normalizedProposedTranslation: string;
-  },
-): Promise<Array<typeof terminologyTerms.$inferSelect>> {
-  return db
-    .select()
-    .from(terminologyTerms)
-    .where(
-      and(
-        eq(terminologyTerms.localeBranchId, input.localeBranchId),
-        eq(terminologyTerms.normalizedSourceTerm, input.normalizedSourceTerm),
-        eq(terminologyTerms.status, terminologyTermStatusValues.active),
-        ne(terminologyTerms.normalizedPreferredTranslation, input.normalizedProposedTranslation),
-      ),
-    )
-    .orderBy(asc(terminologyTerms.createdAt));
-}
-
-async function protectedSpanReferencesForReviewReferences(
-  db: ItotoriDatabase,
-  references: ReturnType<typeof normalizeGlossaryReviewSourceReferences>,
-): Promise<TerminologyJsonRecord[]> {
-  const bridgeUnitIds = [
-    ...new Set(references.map((reference) => reference.bridgeUnitId).filter(nonNullable)),
-  ];
-  if (bridgeUnitIds.length === 0) {
-    return [];
-  }
-  const refsByBridgeUnitId = new Map(
-    references
-      .filter((reference) => reference.bridgeUnitId !== null)
-      .map((reference) => [reference.bridgeUnitId as string, reference]),
-  );
-  const rows = await db
-    .select()
-    .from(sourceUnits)
-    .where(inArray(sourceUnits.bridgeUnitId, bridgeUnitIds));
-  return rows.flatMap((row) =>
-    protectedSpanReferencesFromSourceUnit(row, refsByBridgeUnitId.get(row.bridgeUnitId) ?? null),
-  );
 }
 
 async function protectedSpanReferencesForSourceReferences(
@@ -1257,10 +862,7 @@ async function protectedSpanReferencesForSourceReferences(
 
 function protectedSpanReferencesFromSourceUnit(
   row: typeof sourceUnits.$inferSelect,
-  reference:
-    | TerminologySourceReferenceRecord
-    | ReturnType<typeof normalizeGlossaryReviewSourceReferences>[number]
-    | null,
+  reference: TerminologySourceReferenceRecord | null,
 ): GlossaryProtectedSpanReference[] {
   return row.spans.flatMap((span, index) => {
     const record = spanRecord(span);
@@ -1302,40 +904,9 @@ function termProvenanceFromReference(
 }
 
 function sourceRefIdFromReference(
-  reference:
-    | TerminologySourceReferenceRecord
-    | ReturnType<typeof normalizeGlossaryReviewSourceReferences>[number]
-    | null,
+  reference: TerminologySourceReferenceRecord | null,
 ): string | null {
-  return reference !== null && "sourceRefId" in reference ? reference.sourceRefId : null;
-}
-
-async function listGlossaryReviewItemsInDb(
-  db: ItotoriDatabase,
-  filter: GlossaryReviewItemFilter,
-): Promise<GlossaryReviewItemRecord[]> {
-  const conditions = [];
-  if (filter.projectId !== undefined) {
-    conditions.push(eq(glossaryReviewItems.projectId, filter.projectId));
-  }
-  if (filter.localeBranchId !== undefined) {
-    conditions.push(eq(glossaryReviewItems.localeBranchId, filter.localeBranchId));
-  }
-  if (filter.termId !== undefined) {
-    conditions.push(eq(glossaryReviewItems.termId, filter.termId));
-  }
-  if (filter.sourceRevisionId !== undefined) {
-    conditions.push(eq(glossaryReviewItems.sourceRevisionId, filter.sourceRevisionId));
-  }
-  if (filter.state !== undefined) {
-    conditions.push(eq(glossaryReviewItems.state, filter.state));
-  }
-  const rows = await db
-    .select()
-    .from(glossaryReviewItems)
-    .where(conditions.length === 0 ? undefined : and(...conditions))
-    .orderBy(desc(glossaryReviewItems.updatedAt), asc(glossaryReviewItems.reviewItemId));
-  return rows.map(glossaryReviewItemFromRow);
+  return reference?.sourceRefId ?? null;
 }
 
 async function upsertSemanticIndex(
@@ -1592,7 +1163,7 @@ async function recordPreferredTranslationConflict(
     title: "Glossary preferred translation conflict",
     description: summary,
     impact:
-      "Translation and QA batches need a reviewer decision before this glossary term is trusted.",
+      "Translation and QA batches need a canonical terminology correction before this glossary term is trusted.",
     status: "open",
     createdAt: new Date(),
     affectedRefs: terms.map((term) => ({
@@ -1855,32 +1426,6 @@ function conflictFromRow(row: typeof terminologyConflicts.$inferSelect): Termino
   };
 }
 
-function glossaryReviewItemFromRow(
-  row: typeof glossaryReviewItems.$inferSelect,
-): GlossaryReviewItemRecord {
-  return {
-    reviewItemId: row.reviewItemId,
-    projectId: row.projectId,
-    localeBranchId: row.localeBranchId,
-    termId: row.termId,
-    sourceRevisionId: row.sourceRevisionId,
-    styleGuideVersionId: row.styleGuideVersionId,
-    glossaryReferenceId: row.glossaryReferenceId,
-    state: row.state as GlossaryReviewItemState,
-    sourceTerm: row.sourceTerm,
-    normalizedSourceTerm: row.normalizedSourceTerm,
-    proposedTranslation: row.proposedTranslation,
-    normalizedProposedTranslation: row.normalizedProposedTranslation,
-    protectedSpanRefs: row.protectedSpanRefs,
-    provenance: row.provenance,
-    semanticDiagnostics: row.semanticDiagnostics,
-    metadata: row.metadata,
-    createdByUserId: row.createdByUserId,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
-}
-
 function normalizeTerm(value: string, label: string): string {
   return requiredString(value, label).normalize("NFKC").trim().toLocaleLowerCase();
 }
@@ -1951,16 +1496,6 @@ function jsonRecord(value: TerminologyJsonRecord, label: string): TerminologyJso
 function metadataString(metadata: TerminologyJsonRecord, key: string): string | null {
   const value = metadata[key];
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-}
-
-function semanticDiagnosticsArray(
-  values: TerminologyJsonRecord[],
-  label: string,
-): TerminologyJsonRecord[] {
-  if (!Array.isArray(values)) {
-    throw new Error(`${label} must be an array`);
-  }
-  return values.map((value, index) => jsonRecord(value, `${label}[${index}]`));
 }
 
 function spanRecord(value: unknown): Record<string, unknown> | null {

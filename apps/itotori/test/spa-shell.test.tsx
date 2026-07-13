@@ -6,10 +6,7 @@
 // OBSERVABLE rendered behavior — that the shell CONSUMES the typed API and
 // renders the ported parity views:
 //   - the Workbench dashboard's Projects / Status / Model-cost /
-//     Reviewer-queue / Pending-decisions panels,
-//   - the settings privacy + model-routing screens,
-//   - the reviewer-detail screen,
-//   - the localization workspace project-browse screen.
+//     open-QA-findings panels, plus the settings privacy + model-routing screens.
 //
 // Playwright-against-a-live-server would prove the same served behavior, but
 // the repo's browser-driven e2e harness (runtime-web-review) is a separate
@@ -25,8 +22,6 @@ import { setupServer } from "msw/node";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 import { App } from "../src/ui/App.js";
-import { readyContextFixture } from "../src/reviewer/index.js";
-import { workspaceProjectBrowseFixture } from "../src/workspace/index.js";
 import {
   bridgeFixture,
   bridgeImportResponseFixture,
@@ -44,14 +39,7 @@ import {
   runtimeStatusFixture,
   translationScopeSettingsFixture,
 } from "./api-fixtures.js";
-import {
-  apiJson,
-  authCapabilitiesMswHandler,
-  authIdentityMswHandler,
-  reviewerQueueDashboardApiFixture,
-} from "./msw-handlers.js";
-
-const reviewerDetailContext = readyContextFixture();
+import { apiJson, authCapabilitiesMswHandler, authIdentityMswHandler } from "./msw-handlers.js";
 
 // Host-agnostic handlers: the shell's client issues RELATIVE `/api/*` calls,
 // which jsdom resolves against the test origin; `*/…` matches that origin.
@@ -77,15 +65,6 @@ const server = setupServer(
   http.get("*/api/catalog/opportunities", () =>
     apiJson("catalog.opportunities", catalogOpportunitiesFixture),
   ),
-  http.get("*/api/reviewer/queue", () =>
-    apiJson("reviewer.queue", reviewerQueueDashboardApiFixture()),
-  ),
-  http.get("*/api/reviewer/queue/:reviewItemId/detail", () =>
-    apiJson("reviewer.detail", reviewerDetailContext),
-  ),
-  http.get("*/api/workspace/projects", () =>
-    apiJson("workspace.projects", workspaceProjectBrowseFixture()),
-  ),
   http.get("*/api/settings/model-routing", () =>
     apiJson("settings.modelRouting.get", modelRoutingSettingsFixture),
   ),
@@ -107,7 +86,7 @@ afterEach(() => {
 afterAll(() => server.close());
 
 describe("SPA shell — Workbench dashboard", () => {
-  it("consumes /api/* and renders the projects / status / cost / catalog-opportunities / reviewer-queue / decisions panels", async () => {
+  it("consumes /api/* and renders the projects / status / cost / catalog-opportunities / decisions panels", async () => {
     render(<App location={{ pathname: "/", search: "" }} />);
 
     // Status strip (projects.status) — the project shell context.
@@ -117,10 +96,6 @@ describe("SPA shell — Workbench dashboard", () => {
     // Projects panel (projects.list) rendered as a ds DataTable.
     expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
     expect(await screen.findByRole("columnheader", { name: "Findings" })).toBeInTheDocument();
-
-    // Reviewer queue panel (reviewer.queue) — aggregate + a detail link.
-    expect(await screen.findByRole("heading", { name: "Reviewer queue" })).toBeInTheDocument();
-    expect(await screen.findByText("Preview batch actions")).toBeInTheDocument();
 
     // Jobs panel (jobs.runTable) — server-paged + virtualized.
     expect(await screen.findByRole("heading", { name: "Jobs" })).toBeInTheDocument();
@@ -152,8 +127,8 @@ describe("SPA shell — Workbench dashboard", () => {
     ).toBeInTheDocument();
     expect(within(opportunityTable).getByText(/demotion: none/u)).toBeInTheDocument();
 
-    // Pending decisions band (projects.decisions).
-    expect(await screen.findByRole("heading", { name: /pending decision/i })).toBeInTheDocument();
+    // Open QA findings band (projects.decisions).
+    expect(await screen.findByRole("heading", { name: /open qa findings/i })).toBeInTheDocument();
   });
 
   it("renders demoted catalog opportunities and keeps the dashboard alive on catalog schema failure", async () => {
@@ -246,7 +221,7 @@ describe("SPA shell — Workbench dashboard", () => {
 });
 
 describe("SPA shell — guided first run", () => {
-  it("walks setup, in-studio decode/extract, candidate bootstrap, locale branch creation, and workspace handoff through typed APIs", async () => {
+  it("walks setup, in-studio decode/extract, candidate bootstrap, and locale branch creation through typed APIs", async () => {
     const ssoPosts: unknown[] = [];
     const decodePosts: unknown[] = [];
     const projectPosts: unknown[] = [];
@@ -366,14 +341,6 @@ describe("SPA shell — guided first run", () => {
     expect(
       await screen.findByText("Project bootstrapped from Opportunity API Fixture."),
     ).toBeInTheDocument();
-    expect(await screen.findByText("Open workspace scenes")).toHaveAttribute(
-      "href",
-      `/workspace/scenes?projectId=${encodeURIComponent(
-        draftBranchResponseFixture.status.projectId,
-      )}&localeBranchId=${encodeURIComponent(
-        draftBranchResponseFixture.status.selectedLocaleBranchId,
-      )}`,
-    );
   });
 
   it("does not fabricate a bridge when candidate bootstrap has no decoded bridge", async () => {
@@ -415,22 +382,6 @@ describe("SPA shell — guided first run", () => {
     expect(decodePosts).toHaveLength(0);
     expect(projectPosts).toHaveLength(0);
     expect(branchPosts).toHaveLength(0);
-  });
-});
-
-describe("SPA shell — reviewer detail", () => {
-  it("renders the reviewer-detail screen from /api/reviewer/queue/:id/detail", async () => {
-    render(
-      <App
-        location={{ pathname: `/reviewer-queue/${reviewerDetailContext.reviewItemId}`, search: "" }}
-      />,
-    );
-    // Wait for a ready-only panel first (the <main> also exists while loading).
-    expect(await screen.findByRole("heading", { name: "Source unit" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Comparison" })).toBeInTheDocument();
-    const main = screen.getByRole("main");
-    expect(main).toHaveAttribute("data-screen", "reviewer-detail");
-    expect(main).toHaveAttribute("data-state", "ready");
   });
 });
 
@@ -853,130 +804,6 @@ describe("SPA shell — settings", () => {
   });
 });
 
-describe("SPA shell — localization workspace", () => {
-  it("renders the workspace project-browse screen from /api/workspace/projects", async () => {
-    render(<App location={{ pathname: "/workspace", search: "" }} />);
-    // A project name + branch link only render after workspace.projects loads.
-    expect(await screen.findByRole("heading", { name: "Oshioki Sweetie HD" })).toBeInTheDocument();
-    expect(await screen.findByText("English (informal)")).toBeInTheDocument();
-    const main = screen.getByRole("main");
-    expect(main).toHaveAttribute("data-screen", "workspace");
-    expect(main).toHaveAttribute("data-view", "projects");
-  });
-
-  it("submits line/scene correction annotations through the typed workspace correction route", async () => {
-    const posts: unknown[] = [];
-    server.use(
-      http.get("*/api/workspace/corrections", () =>
-        apiJson("workspace.correctionPreview", {
-          schemaVersion: "workspace.correction_preview.v0.1",
-          generatedAt: "2026-07-09T00:00:00.000Z",
-          permission: {
-            actorUserId: "reviewer-1",
-            canReadQueue: true,
-            canManageQueue: true,
-            denialReasons: [],
-          },
-          projectId: "project-1",
-          localeBranchId: "locale-1",
-          sourceBundleId: null,
-          targetLocale: "en-US",
-          units: [
-            {
-              reviewItemId: "review-item-1",
-              localeBranchId: "locale-1",
-              sourceRevisionId: "source-revision-1",
-              bridgeUnitId: "bridge-unit-1",
-              sourceUnitKey: "unit.key.1",
-              sourceLocale: "ja-JP",
-              sourceText: "源文",
-              targetLocale: "en-US",
-              draftText: "Draft text.",
-              finalText: null,
-              styleGuidePolicyVersionId: null,
-              styleGuidePolicyStatus: null,
-              glossary: [],
-              runtimeEvidenceLinks: [],
-              screenshotArtifactHashes: [],
-              diagnostics: [],
-            },
-          ],
-          diagnostics: [],
-        }),
-      ),
-      http.post("*/api/workspace/corrections", async ({ request }) => {
-        const body = await request.json();
-        posts.push(body);
-        return apiJson("workspace.correctionSubmit", {
-          schemaVersion: "workspace.correction_submit.v0.1",
-          generatedAt: "2026-07-09T00:00:01.000Z",
-          permission: {
-            actorUserId: "reviewer-1",
-            canReadQueue: true,
-            canManageQueue: true,
-            denialReasons: [],
-          },
-          localeBranchId: "locale-1",
-          batchId: "workspace-correction-batch-test",
-          batchLabel: null,
-          submittedCount: 1,
-          edits: [],
-          repairCandidateReportIds: [],
-          decisionQueueReportIds: [],
-          needsContextReportIds: [],
-          affectedBridgeUnitIds: ["bridge-unit-1"],
-          writebacks: [],
-          scheduledRerunJobIds: [],
-          diagnostics: [],
-        });
-      }),
-    );
-
-    render(
-      <App
-        location={{
-          pathname: "/workspace/corrections",
-          search: "?localeBranchId=locale-1&reviewItemIds=review-item-1",
-        }}
-      />,
-    );
-
-    expect(await screen.findByRole("heading", { name: "Manual corrections" })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Correction text"), {
-      target: { value: "Corrected text." },
-    });
-    fireEvent.change(screen.getByLabelText("Note"), {
-      target: { value: "Scene-level consistency issue." },
-    });
-    fireEvent.change(screen.getByLabelText("Severity"), { target: { value: "critical" } });
-    fireEvent.change(screen.getByLabelText("Scope"), { target: { value: "scene" } });
-    fireEvent.change(screen.getByLabelText("Scene id"), { target: { value: "scene-alpha" } });
-    fireEvent.click(screen.getByRole("button", { name: /Submit corrections/i }));
-
-    await waitFor(() => {
-      expect(posts).toHaveLength(1);
-    });
-    expect(posts[0]).toMatchObject({
-      projectId: "project-1",
-      localeBranchId: "locale-1",
-      targetLocale: "en-US",
-      actorUserId: "reviewer-1",
-      corrections: [
-        {
-          bridgeUnitId: "bridge-unit-1",
-          sourceRevisionId: "source-revision-1",
-          sourceUnitKey: "unit.key.1",
-          severity: "critical",
-          scope: { kind: "scene", sceneId: "scene-alpha" },
-          reason: "Scene-level consistency issue.",
-          correctedText: "Corrected text.",
-        },
-      ],
-    });
-    expect(await screen.findByText("Submitted 1 correction(s).")).toBeInTheDocument();
-  });
-});
-
 describe("SPA shell — members", () => {
   it("shows seat usage, invites members, and grants a permission set through typed auth APIs", async () => {
     let directorGranted = false;
@@ -996,8 +823,11 @@ describe("SPA shell — members", () => {
               email: "member@example.test",
               displayName: "API Member",
               permissionSetIds: directorGranted
-                ? ["permission-set-account-local-director", "permission-set-account-local-reviewer"]
-                : ["permission-set-account-local-reviewer"],
+                ? [
+                    "permission-set-account-local-director",
+                    "permission-set-account-local-contributor",
+                  ]
+                : ["permission-set-account-local-contributor"],
               createdAt: "2026-07-08T00:00:00.000Z",
             },
           ],
@@ -1025,10 +855,10 @@ describe("SPA shell — members", () => {
           accountId: "account-local",
           permissionSets: [
             {
-              permissionSetId: "permission-set-account-local-reviewer",
+              permissionSetId: "permission-set-account-local-contributor",
               accountId: "account-local",
-              name: "Reviewer",
-              permissions: ["queue.read", "queue.manage"],
+              name: "Contributor",
+              permissions: ["feedback.import", "draft.write"],
             },
             {
               permissionSetId: "permission-set-account-local-director",
@@ -1074,7 +904,7 @@ describe("SPA shell — members", () => {
               displayName: "API Member",
               permissionSetIds: [
                 "permission-set-account-local-director",
-                "permission-set-account-local-reviewer",
+                "permission-set-account-local-contributor",
               ],
               createdAt: "2026-07-08T00:00:00.000Z",
             },
@@ -1092,19 +922,19 @@ describe("SPA shell — members", () => {
     fireEvent.change(screen.getByLabelText("Email"), {
       target: { value: "new.member@example.test" },
     });
-    fireEvent.click(screen.getByLabelText("Include Reviewer"));
+    fireEvent.click(screen.getByLabelText("Include Contributor"));
     fireEvent.click(screen.getByRole("button", { name: "Send invite" }));
     await waitFor(() => expect(inviteRequests).toHaveLength(1));
     expect(inviteRequests[0]).toMatchObject({
       accountId: "account-local",
       email: "new.member@example.test",
-      initialPermissionSetIds: ["permission-set-account-local-reviewer"],
+      initialPermissionSetIds: ["permission-set-account-local-contributor"],
       reason: null,
       requestId: null,
     });
     expect(await screen.findByText("Invite sent to new.member@example.test")).toBeInTheDocument();
-    const reviewer = await screen.findByLabelText("Revoke Reviewer for API Member");
-    expect(reviewer).toBeChecked();
+    const contributor = await screen.findByLabelText("Revoke Contributor for API Member");
+    expect(contributor).toBeChecked();
 
     const director = await screen.findByLabelText("Grant Director for API Member");
     expect(director).not.toBeChecked();

@@ -1,7 +1,7 @@
 {
-  "version": "evidence-first-2026-06-29",
-  "hash": "20b8a9bf3e7b5edc5427286c4418323bb90826cf30c7ca7ff66fd601c43b4fa6",
-  "acknowledged_at": "2026-07-01T14:59:54.484Z",
+  "version": "evidence-first-2026-07-10",
+  "hash": "5776fd693211b60ce995c07760f8dfb8611509fa46efea29a5861a45d765c6ad",
+  "acknowledged_at": "2026-07-13T12:40:33.346Z",
   "agent": "orchestrator",
   "note": null
 }

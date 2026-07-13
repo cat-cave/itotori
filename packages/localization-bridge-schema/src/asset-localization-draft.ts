@@ -1,7 +1,7 @@
-// ITOTORI-041 — Asset-localization drafting / QA / review / export wire schema.
+// ITOTORI-041 — Asset-localization drafting / QA / patch-export wire schema.
 //
 // The dialogue text loop (draft-artifact-bundle.ts + qa-finding.ts +
-// patch-export-bundle.ts) drafts a source UNIT, QA's it, reviews it, and
+// patch-export-bundle.ts) drafts a source UNIT, annotates it with QA, and
 // exports a patch payload. THIS module is the distinct-but-parallel wire
 // contract for IMAGE / UI text and other asset-localization payloads once
 // OCR (KAIFUU-026 `asset-ocr`) and the asset inventory / media surface
@@ -15,8 +15,8 @@
 //      source region instead of silently trusting it.
 //
 //   2. Unsupported engine asset patching stays EXPLICIT (KAIFUU-059
-//      `MediaSurfaceError` / candidate-not-truth). An approved asset decision
-//      that an engine cannot patch becomes a TYPED `AssetPatchRefusal`, never
+//      `MediaSurfaceError` / candidate-not-truth). An asset text draft that an
+//      engine cannot patch becomes a TYPED `AssetPatchRefusal`, never
 //      a silently dropped asset. "Asset localization does not pretend every
 //      asset is editable."
 //
@@ -65,7 +65,7 @@ export const ASSET_QA_FINDING_CATEGORIES = [
 export type AssetQaFindingCategory = (typeof ASSET_QA_FINDING_CATEGORIES)[number];
 
 /**
- * Patch-back modes an engine can honor for an approved asset text decision.
+ * Patch-back modes an engine can honor for a patchable asset text draft.
  * `re_encrypt_same_key` mirrors KAIFUU-059 `PatchBackMode::ReEncryptSameKey`
  * (RPG Maker MV/MZ text-bearing surface); the redraw / replacement / metadata
  * modes mirror the `ImageReplacementMode` / `AssetPolicyPatchMode` families.
@@ -79,8 +79,8 @@ export const ASSET_PATCH_BACK_MODES = [
 export type AssetPatchBackMode = (typeof ASSET_PATCH_BACK_MODES)[number];
 
 /**
- * Typed reasons an approved asset decision is refused rather than patched.
- * Every value is a semantic capability / gating error — never a silent drop.
+ * Typed reasons an automatically drafted asset cannot be patched.
+ * Every value is a capability error — never a silent drop or approval gate.
  *
  *   - `unsupported_engine`          — the engine's `patch` capability is not
  *                                     supported/partial (engine-capability-matrix).
@@ -91,8 +91,6 @@ export type AssetPatchBackMode = (typeof ASSET_PATCH_BACK_MODES)[number];
  *   - `capability_mismatch`         — surface is patchable in principle but the
  *                                     requested patch-back mode is unavailable.
  *   - `not_a_localization_surface`  — the profiled role is not text-bearing.
- *   - `draft_rejected`              — the reviewer rejected the draft.
- *   - `qa_blocked`                  — a blocking (critical) QA finding is open.
  */
 export const ASSET_PATCH_REFUSAL_REASONS = [
   "unsupported_engine",
@@ -100,8 +98,6 @@ export const ASSET_PATCH_REFUSAL_REASONS = [
   "key_absent",
   "capability_mismatch",
   "not_a_localization_surface",
-  "draft_rejected",
-  "qa_blocked",
 ] as const;
 export type AssetPatchRefusalReason = (typeof ASSET_PATCH_REFUSAL_REASONS)[number];
 
@@ -173,7 +169,7 @@ export type AssetQaFinding = {
   evidenceRefs: string[];
 };
 
-/** An approved, engine-patchable asset text decision → a patch directive. */
+/** An automatically generated, engine-patchable asset draft → a patch directive. */
 export type AssetPatchDirective = {
   kind: "patch";
   assetRef: string;
@@ -182,12 +178,15 @@ export type AssetPatchDirective = {
   policy: AssetTextDraftPolicy;
   draftText: string;
   patchBackMode: AssetPatchBackMode;
-  decisionId: string;
+  /** The source draft that produced this patch directive. */
+  draftId: string;
+  /** QA annotations travel with the patch but never gate it. */
+  qaFindings: AssetQaFinding[];
   provenance: AssetTextProvenance;
 };
 
 /**
- * The EXPLICIT typed refusal: an asset decision that cannot become a patch is
+ * The EXPLICIT typed refusal: an asset draft that cannot become a patch is
  * surfaced with a reason and detail, never dropped.
  */
 export type AssetPatchRefusal = {
@@ -197,7 +196,7 @@ export type AssetPatchRefusal = {
   regionId: string;
   reason: AssetPatchRefusalReason;
   detail: string;
-  decisionId: string;
+  draftId: string;
 };
 
 export type AssetExportOutcome = AssetPatchDirective | AssetPatchRefusal;
@@ -324,11 +323,17 @@ export function assertAssetExportOutcome(value: unknown): asserts value is Asset
   assertNonEmptyString(record.assetRef, "assetRef");
   assertNonEmptyString(record.assetKind, "assetKind");
   assertNonEmptyString(record.regionId, "regionId");
-  assertNonEmptyString(record.decisionId, "decisionId");
+  assertNonEmptyString(record.draftId, "draftId");
   if (record.kind === "patch") {
     assertEnum(record.policy, ASSET_TEXT_DRAFT_POLICIES, "policy");
     assertString(record.draftText, "draftText");
     assertEnum(record.patchBackMode, ASSET_PATCH_BACK_MODES, "patchBackMode");
+    if (!Array.isArray(record.qaFindings)) {
+      throw err("qaFindings", "type", "expected array");
+    }
+    for (const finding of record.qaFindings) {
+      assertAssetQaFinding(finding);
+    }
     assertProvenance(record.provenance, "provenance");
     return;
   }

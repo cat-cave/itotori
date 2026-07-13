@@ -150,9 +150,8 @@ export type CatalogArtifactMappingErrorCode = (typeof catalogArtifactMappingErro
 
 /**
  * Structured domain error for catalog artifact-mapping validation failures.
- * Mirrors the established repository-error pattern (e.g.
- * {@link WorkspaceCorrectionRepositoryError}): a stable `code` plus a useful
- * human-readable message.
+ * Mirrors the established repository-error pattern: a stable `code` plus a
+ * useful human-readable message.
  */
 export class CatalogArtifactMappingError extends Error {
   constructor(

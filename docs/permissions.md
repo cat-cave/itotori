@@ -73,7 +73,7 @@ roles present in the tree (`draft`, `qa`, `official_translation`,
 `accepted[role]` domain maps) are therefore NOT flagged.
 
 A genuine **domain** (non-auth) role that must branch on an auth-role-NAME value
-in a domain context carries an explicit per-line marker so a reviewer can judge
+in a domain context carries an explicit per-line marker so a maintainer can judge
 each exemption individually:
 
 ```ts
@@ -118,8 +118,8 @@ after the database has been migrated.
 | `patch.export`            | Persist patch export metadata                                                   |
 | `runtime.ingest`          | Persist runtime verification evidence and status                                |
 | `feedback.import`         | Import manual feedback and playtest notes                                       |
-| `queue.manage`            | Append, claim, retry, complete durable jobs; mutate reviewer-queue items        |
-| `queue.read`              | Read durable queue event / job internals and browse reviewer-queue items        |
+| `queue.manage`            | Append, claim, retry, and complete durable execution jobs                       |
+| `queue.read`              | Read durable execution job and event internals                                  |
 | `catalog.read`            | Read catalog work identity and provenance records                               |
 | `catalog.write`           | Persist catalog work identity and provenance                                    |
 | `audit.write`             | Record and resolve audit findings                                               |
@@ -137,16 +137,12 @@ ownership and redacted-path provenance.
 
 Permissions are **non-hierarchical exact-match grants** (see
 `requirePermission` in `packages/itotori-db/src/authorization.ts`): holding
-`queue.manage` does **not** imply `queue.read`. Because of this, a `queue.manage`
-action that must read the very item it mutates reads it under the **manage
-scope**, not `queue.read`. The reviewer-queue repository exposes
-`getItemForManage` (gated on `queue.manage`) for exactly this: the reviewer
-`importRuntimeFeedback` action fetches the persisted runtime-evidence tier /
-observation refs to assert the supplied evidence matches before recording the
-transition. Routing that read through the public `getItem` (`queue.read`) would
-couple every runtime-evidence import to a separate `queue.read` grant and
-silently block a future read-restricted manage role. Public reviewer-queue
-browsing still goes through `getItem` / `loadItemsByBranch` under `queue.read`.
+`queue.manage` does **not** imply `queue.read`. A worker that must mutate a
+durable execution job reads that job under its manage scope; operational
+monitoring reads it under the read scope. These permissions govern execution
+infrastructure only. Localized result revisions, context corrections, wiki
+changes, and feedback imports use their own mutation gates and do not acquire a
+second, human-facing decision permission.
 
 ## Changing Permissions
 
@@ -234,14 +230,14 @@ removal.
 `seedDefaultPermissionSets(db, { accountId })` materializes the least-privilege
 `defaultPermissionSetSeeds` as editable data rows for an account. These are DATA,
 not code constants that authorization branches on — the names (`Viewer`,
-`Reviewer`, `Director`) are labels and the bundles are ordinary permission sets
-an admin edits via the CRUD above:
+`Contributor`, `Director`) are labels and the bundles are ordinary permission
+sets an admin edits via the CRUD above:
 
-| Seed       | Permissions                                                                                                                           |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `Viewer`   | `queue.read`, `catalog.read`                                                                                                          |
-| `Reviewer` | `draft.write`, `queue.read`, `queue.manage`, `style_guide.approve`                                                                    |
-| `Director` | `project.import`, `draft.write`, `patch.export`, `queue.read`, `queue.manage`, `style_guide.approve`, `catalog.read`, `catalog.write` |
+| Seed          | Permissions                                                                                                                           |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `Viewer`      | `queue.read`, `catalog.read`                                                                                                          |
+| `Contributor` | `draft.write`, `feedback.import`, `style_guide.approve`, `catalog.read`                                                               |
+| `Director`    | `project.import`, `draft.write`, `patch.export`, `queue.read`, `queue.manage`, `style_guide.approve`, `catalog.read`, `catalog.write` |
 
 Seeding is a bootstrap (like `bootstrapLocalUser`), idempotent, and account
 scoped (`permission-set-<accountId>-<key>`). No seed is granted `auth.admin` or

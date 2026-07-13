@@ -6,14 +6,12 @@
 // execute reruns. Execution is the orchestrator's responsibility
 // (ITOTORI-222 already owns the bounded-repair loop inside the
 // agentic-loop); this module is the seam that turns findings +
-// human decisions into the typed jobs the loop consumes.
+// machine-verifiable findings into the typed jobs the loop consumes.
 //
 // Hard rules (ITOTORI-038 audit-focus):
 //   - Pipeline-only reruns. Every `RepairJob` declares one
 //     `pipelineStage` + the exact set of `affectedBridgeUnitIds`. The
-//     service refuses to enqueue a job whose scope is `project`
-//     unless the trigger is a `human_decision` that explicitly opted
-//     in.
+//     service only enqueues the bridge units named by the trigger.
 //   - Lost repair provenance. Every state change appends a
 //     `RepairEvent` to the history; the events are immutable and
 //     surfaced through `repairHistory()`. The (modelId, providerId)
@@ -29,11 +27,7 @@
 // Production wiring layers an executor on top via `claimNext`.
 
 import { createHash, randomUUID } from "node:crypto";
-import {
-  selectAffectedWork,
-  type AffectedWorkSelection,
-  type RepairSceneIndex,
-} from "./affected-work-selector.js";
+import { selectAffectedWork, type AffectedWorkSelection } from "./affected-work-selector.js";
 import {
   type RepairAffectedWork,
   type RepairEvent,
@@ -52,13 +46,6 @@ export type RepairJobServiceOptions = {
    * `() => new Date()`. Defaults to the system clock.
    */
   now?: RepairJobServiceClock;
-  /**
-   * Optional scene index for `human_decision` triggers whose scope is
-   * `scene`. Omitting it is fine when no human decision ever asks for
-   * a scene-wide rerun; the service throws a typed error if a `scene`
-   * trigger arrives without one.
-   */
-  sceneIndex?: RepairSceneIndex;
   /**
    * Minimum severity the service accepts. Defaults to `p1` — the
    * spec's acceptance criterion ("P0/P1 findings can trigger targeted
@@ -83,7 +70,6 @@ export class RepairJobServiceError extends Error {
     public readonly code:
       | "missing_pair"
       | "below_minimum_severity"
-      | "scene_scope_requires_scene_index"
       | "not_in_flight"
       | "unknown_job_id"
       | "unknown_parent_job_id",
@@ -112,7 +98,6 @@ export type EnqueueRepairJobInput = {
 
 export class RepairJobService {
   private readonly now: RepairJobServiceClock;
-  private readonly sceneIndex: RepairSceneIndex | undefined;
   private readonly minimumSeverity: RepairJobSeverity;
   private readonly instanceId: string;
   private readonly queue: RepairJob[] = [];
@@ -130,7 +115,6 @@ export class RepairJobService {
 
   constructor(options: RepairJobServiceOptions = {}) {
     this.now = options.now ?? (() => new Date());
-    this.sceneIndex = options.sceneIndex;
     this.minimumSeverity = options.minimumSeverity ?? "p1";
     this.instanceId = options.instanceId ?? randomUUID();
   }
@@ -147,10 +131,7 @@ export class RepairJobService {
     assertSeverity(input.trigger.severity, this.minimumSeverity);
     this.assertKnownParent(input.parentJobId);
 
-    const selection =
-      input.trigger.trigger === "human_decision" && input.trigger.scope.kind === "scene"
-        ? this.requireSceneIndexAndSelect(input.trigger)
-        : selectAffectedWork(input.trigger, this.sceneIndex);
+    const selection = selectAffectedWork(input.trigger);
 
     const enqueuedAt = this.now();
     this.jobCounter += 1;
@@ -220,8 +201,7 @@ export class RepairJobService {
 
   /**
    * Drop a queued or in-flight job. Used when the orchestrator
-   * decides — out-of-band — that the trigger no longer applies (e.g.
-   * the human decision was rescinded). The drop is recorded with a
+   * decides — out-of-band — that the trigger no longer applies. The drop is recorded with a
    * reason so the audit trail can show why the job never ran.
    *
    * A jobId that is neither queued nor in-flight throws a typed
@@ -294,18 +274,6 @@ export class RepairJobService {
     }
   }
 
-  private requireSceneIndexAndSelect(
-    trigger: RepairTrigger,
-  ): ReturnType<typeof selectAffectedWork> {
-    if (this.sceneIndex === undefined) {
-      throw new RepairJobServiceError(
-        "scene_scope_requires_scene_index",
-        "human decision scope='scene' requires a sceneIndex on RepairJobService construction",
-      );
-    }
-    return selectAffectedWork(trigger, this.sceneIndex);
-  }
-
   private mintJobId(trigger: RepairTrigger, counter: number): string {
     // Id derived from the per-instance entropy seed + trigger + counter.
     // The counter prevents collisions across two QA findings that share the
@@ -322,23 +290,13 @@ export class RepairJobService {
 /**
  * Project the discriminated affected-work descriptor out of a selection
  * so it can be spread onto a `RepairJob`. The exhaustive switch keeps the
- * `project` variant field-for-field distinct: it MUST NOT acquire an
- * `affectedBridgeUnitIds` key, otherwise a downstream executor could read
- * an empty array and skip the project-wide rerun.
+ * unit-scoped selection onto a `RepairJob`.
  */
 function affectedWorkOf(selection: AffectedWorkSelection): RepairAffectedWork {
-  switch (selection.affectedScope) {
-    case "bridge_units":
-    case "scene":
-      return {
-        affectedScope: selection.affectedScope,
-        affectedBridgeUnitIds: selection.affectedBridgeUnitIds,
-      };
-    case "project":
-      return { affectedScope: "project" };
-    default:
-      return assertNever(selection);
-  }
+  return {
+    affectedScope: selection.affectedScope,
+    affectedBridgeUnitIds: selection.affectedBridgeUnitIds,
+  };
 }
 
 function assertPair(pair: RepairProviderPair): void {
@@ -388,8 +346,6 @@ function rationaleFor(trigger: RepairTrigger): string {
       return `QA finding ${trigger.findingId} on bridge unit ${trigger.bridgeUnitId} (severity=${trigger.severity}): ${trigger.rationale}`;
     case "protected_span_violation":
       return `protected-span violation ${trigger.violationId} on bridge unit ${trigger.bridgeUnitId} (severity=${trigger.severity}): ${trigger.rationale}`;
-    case "human_decision":
-      return `human decision ${trigger.decisionId} (severity=${trigger.severity}, scope=${trigger.scope.kind}): ${trigger.rationale}`;
     default:
       return assertNever(trigger);
   }
@@ -401,8 +357,6 @@ function triggerStableKey(trigger: RepairTrigger): string {
       return `${trigger.findingId}|${trigger.bridgeUnitId}|${trigger.targetStage}`;
     case "protected_span_violation":
       return `${trigger.violationId}|${trigger.bridgeUnitId}`;
-    case "human_decision":
-      return `${trigger.decisionId}|${trigger.scope.kind}|${trigger.targetStage}`;
     default:
       return assertNever(trigger);
   }

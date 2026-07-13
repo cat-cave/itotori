@@ -9,7 +9,7 @@
     {
       "entryId": "019ed012-0000-7000-8000-000000000902",
       "bridgeUnitId": "019ed012-0000-7000-8000-000000000402",
-      "failureKind": "patch_apply_rejected",
+      "failureKind": "patch_apply_blocked",
       "detail": "Recorded synthetic failure: the target script offset for hello.scene.001.line.002 could not be rewritten cleanly."
     }
   ],

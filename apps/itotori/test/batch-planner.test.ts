@@ -69,7 +69,7 @@ function tinyBridge(): BridgeBundle {
   };
 }
 
-function styleGuideFixture(): StyleGuideVersionSnapshot {
+function styleGuideSnapshot(): StyleGuideVersionSnapshot {
   return {
     styleGuideVersionId: "019ed018-0000-7000-8000-000000000010",
     rules: [
@@ -93,7 +93,7 @@ function styleGuideFixture(): StyleGuideVersionSnapshot {
   };
 }
 
-function glossaryFixture(): ReadonlyArray<TerminologyTermSnapshot> {
+function terminologySnapshots(): ReadonlyArray<TerminologyTermSnapshot> {
   return [
     {
       termId: "term-yusha",
@@ -269,8 +269,8 @@ describe("scene grouping", () => {
 describe("planBatches tiny game", () => {
   it("produces a single batch with cited glossary, always-on style, and unit citations", async () => {
     const bridge = tinyBridge();
-    const styleGuide = styleGuideFixture();
-    const glossary = glossaryFixture();
+    const styleGuide = styleGuideSnapshot();
+    const glossary = terminologySnapshots();
     const result = await planBatches({
       projectId,
       localeBranchId,
@@ -407,7 +407,7 @@ describe("planBatches glossary citation completeness", () => {
       sourceRevisionId,
       locale: "en-US",
       bridgeBundle: bridge,
-      glossary: glossaryFixture(),
+      glossary: terminologySnapshots(),
       modelProfile: sizingTestProfile,
     });
     const batch = result.batches[0]!;
@@ -418,7 +418,7 @@ describe("planBatches glossary citation completeness", () => {
 
   it("links per-unit citations to per-batch glossaryTerms entries", async () => {
     const bridge = tinyBridge();
-    const glossary = glossaryFixture();
+    const glossary = terminologySnapshots();
     const result = await planBatches({
       projectId,
       localeBranchId,
@@ -447,7 +447,7 @@ describe("planBatches style rule inclusion", () => {
       locale: "en-US",
       bridgeBundle: bridge,
       glossary: [],
-      styleGuide: styleGuideFixture(),
+      styleGuide: styleGuideSnapshot(),
       modelProfile: sizingTestProfile,
     });
     const batch = result.batches[0]!;

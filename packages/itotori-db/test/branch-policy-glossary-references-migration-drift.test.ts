@@ -3,7 +3,7 @@
 // Migration 0022 enforces a set of constraints on
 // `itotori_branch_policy_glossary_references` that the repository layer
 // (branch-reference-repository) depends on: the event relationship
-// (event_id -> itotori_events on delete set null) plus four CHECK
+// (event_id -> itotori_events on delete set null) plus three CHECK
 // constraints (positive version_sequence, jsonb array/object shape guards).
 // Historically the Drizzle table representation omitted these, so a
 // schema-drift introspection comparing Drizzle metadata to the live DB would
@@ -28,7 +28,6 @@ const TABLE_NAME = "itotori_branch_policy_glossary_references";
 const EXPECTED_CHECK_NAMES = [
   "itotori_branch_policy_glossary_refs_sequence_check",
   "itotori_branch_policy_glossary_refs_term_refs_check",
-  "itotori_branch_policy_glossary_refs_review_refs_check",
   "itotori_branch_policy_glossary_refs_metadata_check",
 ] as const;
 
@@ -161,6 +160,39 @@ describe("branch policy/glossary references migration drift", () => {
   it("the Drizzle table targets the migration's table name", () => {
     expect(isTable(branchPolicyGlossaryReferences)).toBe(true);
     expect(drizzleTableName(branchPolicyGlossaryReferences)).toBe(TABLE_NAME);
+  });
+
+  it("retains canonical term snapshots while retiring review-item storage", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const rows = await context.db.execute(sql`
+        select
+          exists (
+            select 1
+            from information_schema.columns
+            where table_schema = current_schema()
+              and table_name = 'itotori_branch_policy_glossary_references'
+              and column_name = 'glossary_term_refs'
+          ) as has_term_refs,
+          exists (
+            select 1
+            from information_schema.columns
+            where table_schema = current_schema()
+              and table_name = 'itotori_branch_policy_glossary_references'
+              and column_name = 'glossary_review_item_refs'
+          ) as has_review_item_refs,
+          to_regclass('itotori_glossary_review_items')::text as review_items_table
+      `);
+      expect(rows.rows).toEqual([
+        {
+          has_term_refs: true,
+          has_review_item_refs: false,
+          review_items_table: null,
+        },
+      ]);
+    } finally {
+      await context.close();
+    }
   });
 
   it("the Drizzle model declares every check constraint the migration enforces", () => {

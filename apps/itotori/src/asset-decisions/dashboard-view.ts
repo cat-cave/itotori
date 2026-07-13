@@ -3,10 +3,7 @@ import type {
   AssetLocalizationDecisionAssetKind,
   AssetLocalizationDecisionPolicy,
 } from "@itotori/db";
-import {
-  assetLocalizationDecisionAssetKindList,
-  assetLocalizationDecisionPolicyList,
-} from "@itotori/db";
+import { assetLocalizationDecisionAssetKindList } from "@itotori/db";
 
 /**
  * The dashboard route handled by this module:
@@ -74,7 +71,7 @@ function renderPolicyView(data: AssetDecisionsViewData): string {
             No asset-localization decisions have been recorded for
             <code>${escapeHtml(params.localeBranchId)}</code>. Use the
             <a href="${escapeHtml(batchPath(params))}">candidate-assets batch view</a>
-            to set policy in bulk.
+            to inspect the assets that do not yet have a recorded decision.
           </p>
         </section>
       `,
@@ -94,11 +91,10 @@ function renderPolicyView(data: AssetDecisionsViewData): string {
                 <th scope="col">Rationale</th>
                 <th scope="col">Decided by</th>
                 <th scope="col">Decided at</th>
-                <th scope="col">Actions</th>
               </tr>
             </thead>
             <tbody>
-              ${group.map((record) => renderDecisionRow(params, record)).join("")}
+              ${group.map(renderDecisionRow).join("")}
             </tbody>
           </table>
         </section>
@@ -108,8 +104,7 @@ function renderPolicyView(data: AssetDecisionsViewData): string {
   return renderShell(params, "policy", sections);
 }
 
-function renderDecisionRow(params: AssetDecisionsRouteParams, record: AssetDecisionRecord): string {
-  const editFormId = `edit-form-${record.decisionId}`;
+function renderDecisionRow(record: AssetDecisionRecord): string {
   return `
     <tr data-decision-id="${escapeHtml(record.decisionId)}">
       <td><code>${escapeHtml(record.assetRef.ref)}</code></td>
@@ -117,33 +112,6 @@ function renderDecisionRow(params: AssetDecisionsRouteParams, record: AssetDecis
       <td>${escapeHtml(record.decisionRationale ?? "—")}</td>
       <td>${escapeHtml(record.decidedByUserId ?? "(unknown)")}</td>
       <td><time datetime="${record.decidedAt.toISOString()}">${escapeHtml(record.decidedAt.toISOString())}</time></td>
-      <td>
-        <button type="button" data-action="open-edit" data-target="${escapeHtml(editFormId)}">
-          Set policy
-        </button>
-      </td>
-    </tr>
-    <tr class="edit-pane" id="${escapeHtml(editFormId)}" hidden>
-      <td colspan="6">
-        <form data-decision-edit="${escapeHtml(record.decisionId)}" method="post"
-          action="${escapeHtml(recordEndpoint(params))}">
-          <input type="hidden" name="projectId" value="${escapeHtml(params.projectId)}" />
-          <input type="hidden" name="localeBranchId" value="${escapeHtml(params.localeBranchId)}" />
-          <input type="hidden" name="assetRef" value='${escapeHtml(JSON.stringify(record.assetRef))}' />
-          <input type="hidden" name="assetKind" value="${escapeHtml(record.assetKind)}" />
-          <label>
-            New policy
-            <select name="decisionPolicy" required>
-              ${policySelectOptions(record.decisionPolicy)}
-            </select>
-          </label>
-          <label>
-            Rationale (optional)
-            <input type="text" name="decisionRationale" />
-          </label>
-          <button type="submit">Submit new decision</button>
-        </form>
-      </td>
     </tr>
   `;
 }
@@ -174,50 +142,26 @@ function renderBatchView(data: AssetDecisionsViewData): string {
       ([assetKind, candidates]) => `
         <section class="candidate-kind-section" aria-label="${escapeHtml(assetKindLabel(assetKind))}">
           <h3>${escapeHtml(assetKindLabel(assetKind))} (${candidates.length})</h3>
-          <form data-batch-form="${escapeHtml(assetKind)}" method="post"
-            action="${escapeHtml(batchRecordEndpoint(params))}">
-            <input type="hidden" name="projectId" value="${escapeHtml(params.projectId)}" />
-            <input type="hidden" name="localeBranchId" value="${escapeHtml(params.localeBranchId)}" />
-            <input type="hidden" name="assetKind" value="${escapeHtml(assetKind)}" />
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col"><input type="checkbox" data-action="select-all" /></th>
-                  <th scope="col">Asset</th>
-                  <th scope="col">Label</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${candidates
-                  .map(
-                    (candidate) => `
-                      <tr>
-                        <td>
-                          <input type="checkbox" name="assetRefs"
-                            value='${escapeHtml(JSON.stringify(candidate.assetRef))}' />
-                        </td>
-                        <td><code>${escapeHtml(candidate.assetRef.ref)}</code></td>
-                        <td>${escapeHtml(candidate.displayLabel ?? "—")}</td>
-                      </tr>
-                    `,
-                  )
-                  .join("")}
-              </tbody>
-            </table>
-            <div class="batch-controls">
-              <label>
-                Apply policy
-                <select name="decisionPolicy" required>
-                  ${policySelectOptions(undefined)}
-                </select>
-              </label>
-              <label>
-                Rationale (optional)
-                <input type="text" name="decisionRationale" />
-              </label>
-              <button type="submit">Apply to selected assets</button>
-            </div>
-          </form>
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Asset</th>
+                <th scope="col">Label</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${candidates
+                .map(
+                  (candidate) => `
+                    <tr>
+                      <td><code>${escapeHtml(candidate.assetRef.ref)}</code></td>
+                      <td>${escapeHtml(candidate.displayLabel ?? "—")}</td>
+                    </tr>
+                  `,
+                )
+                .join("")}
+            </tbody>
+          </table>
         </section>
       `,
     )
@@ -244,25 +188,13 @@ function renderShell(
             Active decisions
           </a>
           <a class="${active === "batch" ? "active" : ""}" href="${escapeHtml(batchPath(params))}">
-            Batch decide candidates
+            Candidate assets
           </a>
         </nav>
       </header>
       ${body}
     </main>
   `;
-}
-
-function policySelectOptions(selected: AssetLocalizationDecisionPolicy | undefined): string {
-  return assetLocalizationDecisionPolicyList
-    .map(
-      (policy) => `
-        <option value="${escapeHtml(policy)}"${selected === policy ? " selected" : ""}>
-          ${escapeHtml(policyLabel(policy))}
-        </option>
-      `,
-    )
-    .join("");
 }
 
 function policyBadge(policy: AssetLocalizationDecisionPolicy): string {
@@ -342,14 +274,6 @@ function batchPath(params: AssetDecisionsRouteParams): string {
   return `${policyPath(params)}/batch`;
 }
 
-function recordEndpoint(params: AssetDecisionsRouteParams): string {
-  return `/api/projects/${encodeURIComponent(params.projectId)}/locale-branches/${encodeURIComponent(params.localeBranchId)}/asset-decisions`;
-}
-
-function batchRecordEndpoint(params: AssetDecisionsRouteParams): string {
-  return `${recordEndpoint(params)}/batch`;
-}
-
 function assetDecisionsStyles(): string {
   return `
     <style>
@@ -391,12 +315,6 @@ function assetDecisionsStyles(): string {
         background: #d6efe6;
         color: #1f5b48;
       }
-      .batch-controls {
-        display: flex;
-        gap: 12px;
-        align-items: end;
-        margin-top: 12px;
-      }
     </style>
   `;
 }
@@ -413,6 +331,4 @@ function escapeHtml(value: string): string {
 export const _internalsForTests = {
   policyPath,
   batchPath,
-  recordEndpoint,
-  batchRecordEndpoint,
 };

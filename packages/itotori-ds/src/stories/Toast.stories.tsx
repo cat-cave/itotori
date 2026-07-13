@@ -18,7 +18,9 @@ type Story = StoryObj<typeof meta>;
 export const Single: Story = {
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("Approved as-is — unit marked proven.")).toBeInTheDocument();
+    await expect(
+      canvas.getByText("Result revision recorded for the current patch."),
+    ).toBeInTheDocument();
     await userEvent.click(canvas.getByRole("button", { name: "Dismiss notification" }));
     await expect(args.onDismiss).toHaveBeenCalledWith("t1");
   },
@@ -30,8 +32,10 @@ export const ViewportQueue: Story = {
   ),
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText("Approved as-is — unit marked proven.")).toBeInTheDocument();
-    await expect(canvas.getByText("Correction queued for pass 5.")).toBeInTheDocument();
+    await expect(
+      canvas.getByText("Result revision recorded for the current patch."),
+    ).toBeInTheDocument();
+    await expect(canvas.getByText("Context correction scheduled for pass 5.")).toBeInTheDocument();
     const dismissButtons = canvas.getAllByRole("button", { name: "Dismiss notification" });
     await userEvent.click(dismissButtons[0]!);
     await expect(args.onDismiss).toHaveBeenCalledWith("t1");

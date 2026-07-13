@@ -27,11 +27,8 @@ import {
   ItotoriTranslationScopeSettingsRepository,
   ItotoriPrincipalRepository,
   ItotoriProjectRepository,
-  ItotoriReviewerQueueRepository,
-  ItotoriSceneCoverageRepository,
   ItotoriSemanticContextReadRepository,
   ItotoriSourceUnitRepository,
-  ItotoriStyleGuideFixtureFlowService,
   ItotoriStyleGuideService,
   ItotoriStyleGuideRepository,
   ItotoriTerminologyRepository,
@@ -39,7 +36,6 @@ import {
   ItotoriTranslationBatchRepository,
   ItotoriTranslationMemoryRepository,
   ItotoriTranslationMemoryService,
-  ItotoriWorkspaceCorrectionRepository,
   bootstrapDefaultAccountPrincipal,
   bootstrapLocalUser,
   createDatabaseContext,
@@ -78,9 +74,6 @@ import {
   type RefreshExactSearchDocumentsResult,
   type SearchExactInput,
   type SearchExactToolResult,
-  type StyleGuideFixtureFlowInput,
-  type StyleGuideFixtureFlowResult,
-  type AssetDecisionRecord,
   type AssetLocalizationDecisionAssetKind,
   type CandidateAssetRecord,
   type ConfigureAuthSsoSettingsInput,
@@ -139,19 +132,6 @@ import {
 import { ManualFeedbackImportService, type ManualFeedbackImportPort } from "../manual-feedback.js";
 import { DraftFeedbackBatchService, type DraftFeedbackBatchPort } from "../draft-feedback/index.js";
 import {
-  ReviewerQueueApiService,
-  type ReviewerQueueApiServicePort,
-} from "../reviewer/api-service.js";
-import { ReviewerQueueActionService } from "../reviewer/action-service.js";
-import {
-  LocalizationWorkspaceApiService,
-  type LocalizationWorkspaceApiServicePort,
-} from "../workspace/api-service.js";
-import {
-  WorkspaceCorrectionService,
-  type WorkspaceCorrectionServicePort,
-} from "../workspace/correction-service.js";
-import {
   ContextCorrectionService,
   type ApplyContextCorrectionInput,
   type ContextCorrectionRerunResult,
@@ -197,10 +177,6 @@ import { readOnlyApiServices, type ItotoriReadOnlyApiServices } from "../api-han
 import type { AuthorizationActor, ItotoriDatabase } from "@itotori/db";
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import {
-  SceneCoverageService,
-  type SceneCoverageServicePort,
-} from "../play/scene-coverage-service.js";
-import {
   RouteMapReadModelService,
   type RouteMapReadModelPort,
 } from "../play/route-map-read-model.js";
@@ -233,10 +209,6 @@ export type ItotoriApplicationServices = {
   };
   /** Shared node-6 browse + node-8 edit surface for dashboard, API, and CLI. */
   wiki: WikiBrainServicePort;
-  reviewerQueue: ReviewerQueueApiServicePort;
-  workspace: LocalizationWorkspaceApiServicePort;
-  /** Read-only before/after context for the workspace correction preview. */
-  workspaceCorrections: WorkspaceCorrectionServicePort;
   /** Direct play-tester shared-brain correction API + installed worker drain. */
   contextCorrections: ContextCorrectionServicePort;
   /** p0-core-result-revision-hitl — play-tester target edit → result + patch revision. */
@@ -253,9 +225,6 @@ export type ItotoriApplicationServices = {
   catalogFuzzyCandidateGenerator: ItotoriCatalogFuzzyCandidateGeneratorPort;
   catalogCrawlerRepository: ItotoriCatalogCrawlerRepositoryPort;
   catalogCrawlerRunner: ItotoriCatalogCrawlerRunner;
-  styleGuideFixtureFlow: {
-    run(input: StyleGuideFixtureFlowInput): Promise<StyleGuideFixtureFlowResult>;
-  };
   batchPlanner: {
     loadContext: PlanBatchesContextLoader;
     persist: PlanBatchesPersister;
@@ -292,12 +261,7 @@ export type ItotoriApplicationServices = {
     }): Promise<void>;
   };
   engineCapabilityReports: EngineCapabilityReportPort;
-  assetDecisions: Omit<AssetDecisionsCliPort, "loadActiveDecisions"> & {
-    loadActiveDecisions(
-      projectId: string,
-      localeBranchId: string,
-      opts?: { kindFilter?: AssetLocalizationDecisionAssetKind },
-    ): Promise<AssetDecisionRecord[]>;
+  assetDecisions: AssetDecisionsCliPort & {
     loadCandidateAssets(
       projectId: string,
       localeBranchId: string,
@@ -403,7 +367,6 @@ export type ItotoriApplicationServices = {
     loadIdentity(): Promise<ActorIdentityRecord>;
   };
   playRouteMap: RouteMapReadModelPort;
-  sceneCoverage: SceneCoverageServicePort;
 };
 
 /** Production correction mutation plus its exact rerun outcome and worker drain seam. */
@@ -687,7 +650,6 @@ function branchPolicyReferenceBody(
     styleGuideVersionId: reference.styleGuideVersionId,
     glossaryContentHash: reference.glossaryContentHash,
     glossaryTermCount: reference.glossaryTermRefs.length,
-    glossaryReviewItemCount: reference.glossaryReviewItemRefs.length,
     updateReason: reference.updateReason,
     createdAt: reference.createdAt.toISOString(),
   };
@@ -767,7 +729,6 @@ export async function withDatabaseItotoriServices<T>(
     const localUserActor = await resolveDatabaseServiceActor(context.db, options);
     const projectRepository = new ItotoriProjectRepository(context.db);
     const feedbackRepository = new ItotoriFeedbackRepository(context.db);
-    const reviewerQueueRepository = new ItotoriReviewerQueueRepository(context.db);
     const modelLedgerRepository = new ItotoriModelLedgerRepository(context.db);
     const modelRoutingSettingsRepository = new ItotoriModelRoutingSettingsRepository(context.db);
     const translationScopeSettingsRepository = new ItotoriTranslationScopeSettingsRepository(
@@ -793,7 +754,6 @@ export async function withDatabaseItotoriServices<T>(
     const contextArtifactRepository = new ItotoriContextArtifactRepository(context.db);
     const sourceUnitRepository = new ItotoriSourceUnitRepository(context.db);
     const semanticContextReadRepository = new ItotoriSemanticContextReadRepository(context.db);
-    const sceneCoverageRepository = new ItotoriSceneCoverageRepository(context.db);
     const engineCapabilityReportRepository = new EngineCapabilityReportRepository(context.db);
     const assetDecisionRepository = new ItotoriAssetLocalizationDecisionRepository(context.db);
     const authSsoSettingsRepository = new ItotoriAuthSsoSettingsRepository(context.db);
@@ -813,48 +773,9 @@ export async function withDatabaseItotoriServices<T>(
     // Physical attempt telemetry and the jobs run table both read the
     // durable journal. There is intentionally no draft-attempt ledger path.
     const telemetryQuery = new LedgerTelemetryQuery(journalRepository);
-    const reviewerQueueApiService = new ReviewerQueueApiService({
-      repository: {
-        loadItemsByBranch: (localeBranchId) =>
-          reviewerQueueRepository.loadItemsByBranch(localUserActor, localeBranchId),
-        loadTransitionsByItem: (reviewItemId) =>
-          reviewerQueueRepository.loadTransitionsByItem(localUserActor, reviewItemId),
-        getItem: (reviewItemId) => reviewerQueueRepository.getItem(localUserActor, reviewItemId),
-      },
-      actionService: new ReviewerQueueActionService(reviewerQueueRepository),
-    });
-    // ITOTORI-118 — workspace mutation layer: durable correction edit history.
-    const workspaceCorrectionRepository = new ItotoriWorkspaceCorrectionRepository(context.db);
-    // ITOTORI-040 — read-oriented workspace composes existing read-model
-    // ports; no direct DB access of its own.
-    const workspaceApiService = new LocalizationWorkspaceApiService({
-      readPort: {
-        getDashboardStatus: () => projectRepository.getDashboardStatus(),
-        listLocaleBranchIdentities: (projectId) =>
-          projectRepository.listLocaleBranchIdentities(projectId),
-        loadSceneSummaries: (query) =>
-          semanticContextReadRepository.loadSceneSummaries(localUserActor, {
-            ...query,
-            includeStale: true,
-          }),
-        loadBridgeUnitsForSummary: (bridgeUnitIds) =>
-          sourceUnitRepository.loadSourceUnits(localUserActor, { bridgeUnitIds }),
-        loadActiveAssetDecisions: (projectId, localeBranchId) =>
-          assetDecisionRepository.loadActiveDecisions(localUserActor, projectId, localeBranchId),
-        loadCandidateAssets: (projectId, localeBranchId) =>
-          assetDecisionRepository.loadCandidateAssets(localUserActor, projectId, localeBranchId),
-        searchExact: (input) => exactSearchRepository.searchExact(localUserActor, input),
-        searchTerminology: (input) => terminologyRepository.searchTerms(localUserActor, input),
-        loadRunTable: (input) => journalRepository.loadJobsRunTable(localUserActor, input),
-        loadReviewerDashboard: (input) => reviewerQueueApiService.loadDashboard(input),
-        loadReviewItemIdsByBridgeUnit: (input) =>
-          reviewerQueueApiService.loadReviewItemIdsByBridgeUnit(input),
-        loadComparisonContext: (input) => reviewerQueueApiService.loadDetailContext(input),
-      },
-    });
-    // Play-tester corrections retain a feedback audit row but intentionally do
-    // not inject that feedback into a reviewer queue. The canonical context
-    // service atomically versions + invalidates + enqueues; this production
+    // Play-tester corrections retain a feedback audit row and directly enter
+    // the canonical context service, which atomically versions + invalidates
+    // + enqueues. This production
     // factory owns the installed worker and drains it through the real
     // registered-pass redrafter before the request context closes.
     const eventQueueRepository = new ItotoriEventQueueRepository(context.db);
@@ -938,21 +859,6 @@ export async function withDatabaseItotoriServices<T>(
       localUserActor,
       contextCorrectionService,
     );
-    const workspaceCorrectionService = new WorkspaceCorrectionService({
-      importPort: new ManualFeedbackImportService(feedbackRepository, localUserActor),
-      // The correction service's edit-history port is write-only; reads of the
-      // edit history bypass the service and hit
-      // `ItotoriWorkspaceCorrectionRepository.loadCorrectionEditsByBranch` directly
-      // (follow-on read-route gap; the DB capability is preserved unchanged).
-      editRepository: {
-        recordCorrectionEdit: (input) =>
-          workspaceCorrectionRepository.recordCorrectionEdit(localUserActor, input),
-      },
-      comparisonPort: {
-        loadComparisonContext: (input) => reviewerQueueApiService.loadDetailContext(input),
-      },
-      contextCorrections: contextCorrectionService,
-    });
     const resultRevisionRepository = new ItotoriLocalizationResultRevisionRepository(
       context.db,
       new ProductionPlayTesterPatchArtifactMaterializer(),
@@ -1050,9 +956,6 @@ export async function withDatabaseItotoriServices<T>(
         searchTerms: (input) => terminologyRepository.searchTerms(localUserActor, input),
       },
       wiki: wikiBrainService,
-      reviewerQueue: reviewerQueueApiService,
-      workspace: workspaceApiService,
-      workspaceCorrections: workspaceCorrectionService,
       contextCorrections: contextCorrectionService,
       playTesterResultRevision: boundPlayTesterResultRevision,
       patchIteration: patchIterationService,
@@ -1070,11 +973,6 @@ export async function withDatabaseItotoriServices<T>(
       ),
       catalogCrawlerRepository,
       catalogCrawlerRunner: new ItotoriCatalogCrawlerRunner(),
-      styleGuideFixtureFlow: new ItotoriStyleGuideFixtureFlowService(
-        projectRepository,
-        styleGuideRepository,
-        localUserActor,
-      ),
       batchPlanner: {
         loadContext: createBatchPlannerContextLoader({
           styleGuideRepository,
@@ -1188,7 +1086,6 @@ export async function withDatabaseItotoriServices<T>(
             localeBranchId,
             opts,
           ),
-        recordDecision: (input) => assetDecisionRepository.recordDecision(localUserActor, input),
       },
       telemetry: {
         query: telemetryQuery,
@@ -1384,10 +1281,6 @@ export async function withDatabaseItotoriServices<T>(
         loadIdentity: () => principalRepository.loadActorIdentity(localUserActor),
       },
       playRouteMap: new RouteMapReadModelService({
-        contextArtifacts: semanticContextReadRepository,
-      }),
-      sceneCoverage: new SceneCoverageService({
-        coverage: sceneCoverageRepository,
         contextArtifacts: semanticContextReadRepository,
       }),
     });

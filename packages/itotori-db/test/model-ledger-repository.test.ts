@@ -17,7 +17,6 @@ import {
   promptPresets,
   providerRuns,
   translationMemoryReuseEvents,
-  translationMemorySegments,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 

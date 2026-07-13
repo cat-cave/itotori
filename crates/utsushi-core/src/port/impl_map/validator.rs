@@ -347,7 +347,7 @@ fn validate_subsystem_status(
             let (ok, raw) = match reason {
                 UnsupportedReason::SemanticCode(code) => (is_semantic_code(code), code.clone()),
                 UnsupportedReason::DeferredTo(node_id) => {
-                    (is_deferred_to_sentinel(node_id), node_id.clone())
+                    (is_forward_sentinel(node_id), node_id.clone())
                 }
             };
             if !ok {
@@ -400,7 +400,7 @@ fn is_semantic_code(code: &str) -> bool {
     })
 }
 
-fn is_deferred_to_sentinel(value: &str) -> bool {
+fn is_forward_sentinel(value: &str) -> bool {
     let Some(rest) = value.strip_prefix("deferred-to-") else {
         return false;
     };

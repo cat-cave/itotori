@@ -25,15 +25,13 @@ import {
   type ManualFeedbackCorrectionContext,
   type ProjectCostReport,
   type ProjectDashboardStatus,
-  StyleGuideFixtureFlowRerunError,
-  styleGuideFixtureFlowSchemaVersion,
-  type StyleGuideFixtureFlowResult,
 } from "@itotori/db";
 import type { BridgeBundle, BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import { describe, expect, it, vi } from "vitest";
 import { runItotoriCliCommand, type ItotoriCliServices } from "../src/cli-handlers.js";
 import {
   ManualFeedbackImportService,
+  ManualFeedbackImportError,
   manualFeedbackContextArtifactId,
   manualFeedbackCorrectionId,
   type ManualFeedbackImportOutcome,
@@ -56,15 +54,23 @@ describe("ManualFeedbackImportService", () => {
       [AuthorizationActor, ManualFeedbackImportInput],
       Promise<ManualFeedbackImportResult>
     >();
-    const service = new ManualFeedbackImportService({ importManualFeedback });
+    const service = new ManualFeedbackImportService(
+      {
+        importManualFeedback,
+        loadManualFeedbackCorrectionContext: vi.fn(async () => null),
+      },
+      { userId: "local-user" },
+      { apply: vi.fn(async () => contextCorrectionResultFixture) },
+    );
 
     await expect(
       service.importManualFeedback({
         projectId: "project-test",
-        targetLocale: "en-US",
+        localeBranchId: "locale-test",
         feedbackType: feedbackTypeValues.stylePreference,
         reporter: { role: "playtester" },
         reporterNote: 123,
+        lineReference: { bridgeUnitId: "unit-test" },
       }),
     ).rejects.toThrow("manual feedback reporterNote must be a string");
 
@@ -143,13 +149,8 @@ describe("ManualFeedbackImportService", () => {
     ]);
   });
 
-  it("returns no correction for feedback without enough persisted context", async () => {
-    const importManualFeedback = vi.fn(async () => ({
-      ...manualFeedbackResultFixture,
-      triageLabel: "needs_context" as const,
-      reportStatus: "needs_context" as const,
-      contextStatus: feedbackContextStatusValues.needsContext,
-    }));
+  it("rejects a persisted report that cannot form its required canonical correction", async () => {
+    const importManualFeedback = vi.fn(async () => manualFeedbackResultFixture);
     const loadManualFeedbackCorrectionContext = vi.fn(async () => null);
     const apply = vi.fn(
       async (_input: ApplyContextCorrectionInput) => contextCorrectionResultFixture,
@@ -160,25 +161,11 @@ describe("ManualFeedbackImportService", () => {
       { apply },
     );
 
-    const outcome = await service.importManualFeedback({
-      ...manualFeedbackInputFixture(),
-      lineReference: undefined,
-      attachments: undefined,
-    });
-
-    expect(outcome.contextCorrection).toBeNull();
-    expect(loadManualFeedbackCorrectionContext).not.toHaveBeenCalled();
+    await expect(service.importManualFeedback(manualFeedbackInputFixture())).rejects.toBeInstanceOf(
+      ManualFeedbackImportError,
+    );
+    expect(loadManualFeedbackCorrectionContext).toHaveBeenCalledTimes(1);
     expect(apply).not.toHaveBeenCalled();
-  });
-
-  it("keeps an audit-only importer compatible when no correction port is wired", async () => {
-    const importManualFeedback = vi.fn(async () => manualFeedbackResultFixture);
-    const service = new ManualFeedbackImportService({ importManualFeedback });
-
-    const outcome = await service.importManualFeedback(manualFeedbackInputFixture());
-
-    expect(outcome).toMatchObject(manualFeedbackResultFixture);
-    expect(outcome.contextCorrection).toBeNull();
   });
 });
 
@@ -218,10 +205,11 @@ describe("Itotori CLI handlers", () => {
     const services = servicesFixture();
     const feedback = {
       projectId: "project-1",
-      targetLocale: "en-US",
+      localeBranchId: "locale-1",
       feedbackType: feedbackTypeValues.stylePreference,
       reporter: { role: "playtester" },
       reporterNote: "Tone is too formal.",
+      lineReference: { bridgeUnitId: "bridge-unit-1" },
     };
     const reads = new Map<string, unknown>([["feedback.json", feedback]]);
     const writes = new Map<string, unknown>();
@@ -272,12 +260,12 @@ describe("Itotori CLI handlers", () => {
         "forms-export.json",
         "--project-id",
         "project-1",
-        "--target-locale",
-        "en-US",
         "--locale-branch-id",
         "locale-1",
         "--source-bundle-id",
         "source-bundle-1",
+        "--bridge-unit-id",
+        "bridge-unit-1",
         "--output",
         "channel-feedback-result.json",
       ],
@@ -292,9 +280,9 @@ describe("Itotori CLI handlers", () => {
     const firstInput = vi.mocked(services.manualFeedback.importManualFeedback).mock.calls[0]![0];
     expect(firstInput).toMatchObject({
       projectId: "project-1",
-      targetLocale: "en-US",
       localeBranchId: "locale-1",
       sourceBundleId: "source-bundle-1",
+      lineReference: { bridgeUnitId: "bridge-unit-1" },
       dedupeKey: "public-feedback-form:resp-001",
       feedbackSource: {
         sourceChannel: "community_forms",
@@ -618,73 +606,6 @@ describe("Itotori CLI handlers", () => {
     expect(result.batches).toHaveLength(1);
   });
 
-  it("runs the recorded style-guide fixture flow and writes the persisted summary", async () => {
-    const services = servicesFixture();
-    const fixture = styleGuideConversationFixture();
-    const seedWork = styleGuideFixtureSeedWork();
-    const reads = new Map<string, unknown>([
-      ["fixtures/itotori-style-guide/conversations/accepted.json", fixture],
-      ["fixtures/itotori-style-guide/seed-work.json", seedWork],
-    ]);
-    const writes = new Map<string, unknown>();
-
-    await runItotoriCliCommand(["style-guide-fixture-flow"], {
-      io: jsonStoreFixture(reads, writes),
-      migrateDatabase: vi.fn(async () => {}),
-      withServices: async (callback) => await callback(services),
-    });
-
-    expect(services.styleGuideFixtureFlow.run).toHaveBeenCalledWith({
-      transcript: fixture,
-      seedWork,
-      fixtureId: undefined,
-    });
-    expect(writes.get("artifacts/itotori/style-guide-fixture-flow.json")).toEqual(
-      styleGuideFixtureFlowResult,
-    );
-  });
-
-  it("emits a typed diagnostic and writes nothing when a fixture-flow rerun is rejected", async () => {
-    const services = servicesFixture();
-    const rerunError = new StyleGuideFixtureFlowRerunError({
-      projectId: "019ed063-0000-7000-8000-000000000001",
-      localeBranchId: "019ed063-0000-7000-8000-000000000010",
-      fixtureId: "style-guide-conversation-accepted",
-      existingLatestVersionId: "019ed063-0000-7000-8000-000000000030",
-    });
-    services.styleGuideFixtureFlow.run = vi.fn(async () => {
-      throw rerunError;
-    });
-    const fixture = styleGuideConversationFixture();
-    const seedWork = styleGuideFixtureSeedWork();
-    const reads = new Map<string, unknown>([
-      ["fixtures/itotori-style-guide/conversations/accepted.json", fixture],
-      ["fixtures/itotori-style-guide/seed-work.json", seedWork],
-    ]);
-    const writes = new Map<string, unknown>();
-
-    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    const priorExitCode = process.exitCode;
-    try {
-      await runItotoriCliCommand(["style-guide-fixture-flow"], {
-        io: jsonStoreFixture(reads, writes),
-        migrateDatabase: vi.fn(async () => {}),
-        withServices: async (callback) => await callback(services),
-      });
-
-      expect(process.exitCode).toBe(1);
-      const emitted = stderr.mock.calls.map((call) => String(call[0])).join("");
-      expect(emitted).toContain("rerun rejected");
-      expect(emitted).toContain(rerunError.code);
-      expect(emitted).toContain("019ed063-0000-7000-8000-000000000030");
-      // No artifact is written when the rerun is rejected.
-      expect(writes.has("artifacts/itotori/style-guide-fixture-flow.json")).toBe(false);
-    } finally {
-      stderr.mockRestore();
-      process.exitCode = priorExitCode;
-    }
-  });
-
   async function loadAgenticLoopSmokeFixtures() {
     const { readFileSync } = await import("node:fs");
     const { fileURLToPath } = await import("node:url");
@@ -860,11 +781,6 @@ function servicesFixture(): ItotoriCliServices {
         },
       })),
       recordFinding: vi.fn(async () => ({ findingId: "finding-1", status: "open" })),
-      recordDecision: vi.fn(async () => ({
-        decisionId: "019ed004-0000-7000-8000-000000000201",
-        eventKind: "triage_decision_recorded",
-        recorded: true,
-      })),
       recordBenchmarkReport: vi.fn(async () => ({
         benchmarkRunId: "019ed006-0000-7000-8000-00000000f001",
         artifactId: "019ed006-0000-7000-8000-00000000f001",
@@ -881,8 +797,8 @@ function servicesFixture(): ItotoriCliServices {
         batchId: "draft-feedback-batch-fixture",
         submittedCount: 0,
         items: [],
-        repairCandidateReportIds: [],
-        decisionQueueReportIds: [],
+        contextCorrectionReportIds: [],
+        contextCorrectionIds: [],
         affectedBridgeUnitIds: [],
       })),
     },
@@ -892,9 +808,6 @@ function servicesFixture(): ItotoriCliServices {
     catalogFuzzyCandidateGenerator: {
       generateFuzzyCandidates: vi.fn(async () => fuzzyCandidateResultFixture),
       listCatalogCandidateMatches: vi.fn(async () => fuzzyCandidateResultFixture.candidates),
-    },
-    styleGuideFixtureFlow: {
-      run: vi.fn(async () => styleGuideFixtureFlowResult),
     },
     batchPlanner: {
       loadContext: vi.fn(async () => ({
@@ -1035,14 +948,14 @@ const manualFeedbackResultFixture: ManualFeedbackImportResult = {
   duplicate: false,
 };
 
-const manualFeedbackOutcomeFixture: ManualFeedbackImportOutcome = {
-  ...manualFeedbackResultFixture,
-  contextCorrection: null,
-};
-
 const contextCorrectionResultFixture = {
   correctionId: "feedback-context-correction-result",
 } as ContextCorrectionResult;
+
+const manualFeedbackOutcomeFixture: ManualFeedbackImportOutcome = {
+  ...manualFeedbackResultFixture,
+  contextCorrection: contextCorrectionResultFixture,
+};
 
 function manualFeedbackCorrectionContextFixture(): ManualFeedbackCorrectionContext {
   return {
@@ -1067,7 +980,6 @@ function manualFeedbackInputFixture(
     projectId: "project-1",
     localeBranchId: "locale-1",
     sourceBundleId: "source-bundle-1",
-    targetLocale: "en-US",
     feedbackType: feedbackTypeValues.stylePreference,
     reporter: {
       role: "playtester",
@@ -1172,57 +1084,3 @@ function catalogResolverFixture(): CatalogResolverFixtureInput {
     ),
   ) as CatalogResolverFixtureInput;
 }
-
-function styleGuideConversationFixture(): unknown {
-  return JSON.parse(
-    readFileSync(
-      new URL("../../../fixtures/itotori-style-guide/conversations/accepted.json", import.meta.url),
-      "utf8",
-    ),
-  );
-}
-
-function styleGuideFixtureSeedWork(): unknown {
-  return JSON.parse(
-    readFileSync(
-      new URL("../../../fixtures/itotori-style-guide/seed-work.json", import.meta.url),
-      "utf8",
-    ),
-  );
-}
-
-const styleGuideFixtureFlowResult: StyleGuideFixtureFlowResult = {
-  schemaVersion: styleGuideFixtureFlowSchemaVersion,
-  fixtureId: "style-guide-conversation-accepted",
-  projectId: "019ed063-0000-7000-8000-000000000001",
-  localeBranchId: "019ed063-0000-7000-8000-000000000010",
-  baseStyleGuideVersionId: "019ed063-0000-7000-8000-000000000020",
-  projectedStyleGuideVersionId: "019ed063-0000-7000-8000-000000000030",
-  suggestionArtifactId: "style-guide-suggestions:style-guide-conversation-accepted",
-  acceptedProposalIds: [
-    "019ed063-0000-7000-8000-000000000201",
-    "019ed063-0000-7000-8000-000000000202",
-    "019ed063-0000-7000-8000-000000000203",
-    "019ed063-0000-7000-8000-000000000204",
-    "019ed063-0000-7000-8000-000000000205",
-  ],
-  policyRuleCounts: {
-    tone: 1,
-    terminology: 1,
-    honorifics: 1,
-    formatting: 1,
-    protectedSpans: 1,
-  },
-  dashboard: {
-    selectedLocaleBranchId: "019ed063-0000-7000-8000-000000000010",
-    currentStyleGuidePolicyVersionId: "019ed063-0000-7000-8000-000000000030",
-    branchCount: 1,
-    artifactCount: 3,
-    localeBranches: [],
-  },
-  outbox: {
-    styleGuideVersionChangedEventIds: ["event-1", "event-2", "event-3", "event-4"],
-    affectedWorkInvalidatedEventIds: ["event-5", "event-6", "event-7", "event-8"],
-    affectedSurfaces: ["drafts", "qa_findings", "exports", "benchmarks"],
-  },
-};

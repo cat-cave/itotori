@@ -296,7 +296,7 @@ function BranchPolicyReferencePanel({
       />
       {settings.branchReference !== null && (
         <p className="branch-policy-settings__reference-note">
-          {`${settings.branchReference.glossaryTermCount} terms, ${settings.branchReference.glossaryReviewItemCount} review items`}
+          {`${settings.branchReference.glossaryTermCount} terms`}
         </p>
       )}
     </Panel>

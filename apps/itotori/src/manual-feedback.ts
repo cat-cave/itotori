@@ -19,7 +19,7 @@ import {
 
 /** The actual correction result, not an inferred routing status. */
 export type ManualFeedbackImportOutcome = ManualFeedbackImportResult & {
-  contextCorrection: ContextCorrectionResult | null;
+  contextCorrection: ContextCorrectionResult;
 };
 
 export interface ManualFeedbackImportPort {
@@ -27,9 +27,8 @@ export interface ManualFeedbackImportPort {
 }
 
 /**
- * Narrow, actor-bound correction seam. Keeping it structural lets bare
- * feedback importers retain their audit-only behavior in callers that do not
- * own canonical-context mutation wiring.
+ * Narrow, actor-bound correction seam. Every import reaches this durable
+ * canonical-context mutation; there is no audit-only or deferred path.
  */
 export interface ManualFeedbackContextCorrectionPort {
   apply(input: ApplyContextCorrectionInput): Promise<ContextCorrectionResult>;
@@ -37,10 +36,12 @@ export interface ManualFeedbackContextCorrectionPort {
 
 export class ManualFeedbackImportService implements ManualFeedbackImportPort {
   constructor(
-    private readonly repository: Pick<ItotoriFeedbackRepositoryPort, "importManualFeedback"> &
-      Partial<Pick<ItotoriFeedbackRepositoryPort, "loadManualFeedbackCorrectionContext">>,
+    private readonly repository: Pick<
+      ItotoriFeedbackRepositoryPort,
+      "importManualFeedback" | "loadManualFeedbackCorrectionContext"
+    >,
     private readonly actor: AuthorizationActor = localUserActor,
-    private readonly contextCorrections?: ManualFeedbackContextCorrectionPort,
+    private readonly contextCorrections: ManualFeedbackContextCorrectionPort,
   ) {}
 
   async importManualFeedback(input: unknown): Promise<ManualFeedbackImportOutcome> {
@@ -52,13 +53,11 @@ export class ManualFeedbackImportService implements ManualFeedbackImportPort {
 
   private async applyContextCorrection(
     result: ManualFeedbackImportResult,
-  ): Promise<ContextCorrectionResult | null> {
-    if (
-      this.contextCorrections === undefined ||
-      this.repository.loadManualFeedbackCorrectionContext === undefined ||
-      result.contextStatus !== feedbackContextStatusValues.contextualized
-    ) {
-      return null;
+  ): Promise<ContextCorrectionResult> {
+    if (result.contextStatus !== feedbackContextStatusValues.contextualized) {
+      throw new ManualFeedbackImportError(
+        `manual feedback report ${result.feedbackReportId} was not contextualized; write canonical context through Wiki instead`,
+      );
     }
 
     // Deliberately do not short-circuit duplicates. The correction service owns
@@ -74,10 +73,19 @@ export class ManualFeedbackImportService implements ManualFeedbackImportPort {
       context.contextStatus !== feedbackContextStatusValues.contextualized ||
       context.affectedUnitIds.length === 0
     ) {
-      return null;
+      throw new ManualFeedbackImportError(
+        `manual feedback report ${result.feedbackReportId} could not form a canonical context correction`,
+      );
     }
 
     return await this.contextCorrections.apply(contextCorrectionInputForFeedback(context));
+  }
+}
+
+export class ManualFeedbackImportError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ManualFeedbackImportError";
   }
 }
 

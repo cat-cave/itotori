@@ -20,17 +20,11 @@ export {
   type RepairPipelineStage,
   type RepairProviderPair,
   type RepairTrigger,
-  type RepairTriggerHumanDecision,
   type RepairTriggerProtectedSpanViolation,
   type RepairTriggerQaFinding,
 } from "./types.js";
 
-export {
-  AffectedWorkSelectorError,
-  selectAffectedWork,
-  type AffectedWorkSelection,
-  type RepairSceneIndex,
-} from "./affected-work-selector.js";
+export { selectAffectedWork, type AffectedWorkSelection } from "./affected-work-selector.js";
 
 export {
   RepairJobService,

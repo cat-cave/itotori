@@ -100,7 +100,6 @@ export {
   engineCapabilityEvidenceKindValues,
   engineCapabilityEvidenceSourceValues,
   engineCapabilityEvidenceStatusValues,
-  glossaryReviewItemStateValues,
   contextArtifactCategoryValues,
   contextArtifactStatusValues,
   exactSearchSourceArtifactTypeValues,
@@ -154,7 +153,6 @@ export type {
   EngineCapabilityEvidenceKind,
   EngineCapabilityEvidenceSource,
   EngineCapabilityEvidenceStatus,
-  GlossaryReviewItemState,
   ContextArtifactCategory,
   ContextArtifactStatus,
   ContextEntryVersionCitation,
@@ -421,9 +419,6 @@ export type {
   GlossaryContextInput,
   GlossaryContextReadModel,
   GlossaryProtectedSpanReference,
-  GlossaryReviewItemFilter,
-  GlossaryReviewItemRecord,
-  GlossaryReviewItemSourceReferenceInput,
   GlossaryTermProvenance,
   TerminologyAliasInput,
   TerminologyAliasRecord,
@@ -441,7 +436,6 @@ export type {
   TerminologyTermRecord,
   UpsertTerminologyTermInput,
   UpsertTerminologyTermResult,
-  UpsertGlossaryReviewItemInput,
 } from "./repositories/terminology-repository.js";
 export {
   ItotoriWikiContextRepository,
@@ -614,22 +608,6 @@ export type {
   StyleGuideVersionCreatedPayload,
   SubmitStyleGuideVersionInput,
 } from "./services/style-guide-service.js";
-export {
-  ItotoriStyleGuideFixtureFlowService,
-  StyleGuideFixtureFlowRerunError,
-  StyleGuideFixtureSeedWorkError,
-  styleGuideFixtureFlowRerunRejectedCode,
-  styleGuideFixtureFlowSchemaVersion,
-  styleGuideFixtureSeedWorkSchemaVersion,
-  styleGuideSuggestionArtifactSchemaVersion,
-} from "./services/style-guide-fixture-flow.js";
-export type {
-  StyleGuideFixtureFlowInput,
-  StyleGuideFixtureFlowResult,
-  StyleGuideFixtureSeedArtifact,
-  StyleGuideFixtureSeedUnit,
-  StyleGuideFixtureSeedWork,
-} from "./services/style-guide-fixture-flow.js";
 export {
   catalogArtifactMappingErrorCodes,
   CatalogArtifactMappingError,
@@ -846,7 +824,6 @@ export {
   ItotoriAssetLocalizationDecisionRepository,
   assetLocalizationDecisionAssetKindList,
   assetLocalizationDecisionAssetKindValues,
-  assetLocalizationDecisionPolicyList,
   assetLocalizationDecisionPolicyValues,
 } from "./repositories/asset-localization-decision-repository.js";
 export type {
@@ -854,7 +831,6 @@ export type {
   CandidateAssetRecord,
   ItotoriAssetLocalizationDecisionRepositoryPort,
   LoadActiveDecisionsOptions,
-  RecordAssetDecisionInput,
 } from "./repositories/asset-localization-decision-repository.js";
 export type {
   AssetLocalizationDecisionAssetKind,
@@ -869,21 +845,6 @@ export {
   auditFindingStatusList,
   auditFindingStatusValues,
 } from "./repositories/audit-finding-repository.js";
-export {
-  ItotoriReviewerQueueRepository,
-  ReviewerQueueRepositoryError,
-  reviewerQueueActionAllowedKinds,
-  reviewerQueueActionList,
-  reviewerQueueActionToNextState,
-  reviewerQueueActionValues,
-  reviewerQueueAllowedTransitions,
-  reviewerQueueItemKindList,
-  reviewerQueueItemKindValues,
-  reviewerQueueItemStateList,
-  reviewerQueueItemStateValues,
-  reviewerQueueRepositoryErrorCodes,
-  validateReviewerQueueTransition,
-} from "./repositories/reviewer-queue-repository.js";
 export {
   ItotoriLocalizationJournalRepository,
   LocalizationJournalRepositoryError,
@@ -1049,20 +1010,6 @@ export type {
   RecordBenchmarkRunInput,
 } from "./repositories/benchmark-run-repository.js";
 export {
-  ItotoriSceneCoverageRepository,
-  SCENE_LOCALIZATION_COVERAGE_STATES,
-  SceneCoverageRepositoryError,
-  sceneLocalizationCoverageStateValues,
-} from "./repositories/scene-coverage-repository.js";
-export type {
-  ItotoriSceneCoverageRepositoryPort,
-  LoadSceneCoverageForBranchQuery,
-  LoadSceneCoverageForSceneQuery,
-  SceneCoverageRecord,
-  SceneLocalizationCoverageState,
-  SetSceneCoverageInput,
-} from "./repositories/scene-coverage-repository.js";
-export {
   authPermissionsManagePermission,
   ItotoriPrincipalRepository,
   ItotoriPrincipalRepositoryError,
@@ -1164,41 +1111,6 @@ export type {
   AuthPermissionSetAuditAction,
   AuthPrincipalKind,
 } from "./schema.js";
-export type {
-  CreateReviewerQueueItemInput,
-  ItotoriReviewerQueueRepositoryPort,
-  LoadReviewerQueueItemsOptions,
-  ReviewerQueueActionAndJobsResult,
-  ReviewerQueueBatchActionAndJobsResult,
-  ReviewerQueueActionInput,
-  ReviewerQueueActionJobPlanner,
-  ReviewerQueueActionResult,
-  ReviewerQueueRepositoryErrorCode,
-  ReviewerQueueTransitionValidation,
-} from "./repositories/reviewer-queue-repository.js";
-export type {
-  ReviewerQueueAction,
-  ReviewerQueueDiagnostic,
-  ReviewerQueueItemKind,
-  ReviewerQueueItemRecord,
-  ReviewerQueueItemState,
-  ReviewerQueueTransitionRecord,
-} from "./schema.js";
-export {
-  ItotoriWorkspaceCorrectionRepository,
-  WorkspaceCorrectionRepositoryError,
-  workspaceCorrectionDispositionList,
-  workspaceCorrectionDispositionValues,
-  workspaceCorrectionEventKind,
-  workspaceCorrectionRepositoryErrorCodes,
-} from "./repositories/workspace-correction-repository.js";
-export type {
-  ItotoriWorkspaceCorrectionRepositoryPort,
-  WorkspaceCorrectionDisposition,
-  WorkspaceCorrectionEditInput,
-  WorkspaceCorrectionEditRecord,
-  WorkspaceCorrectionRepositoryErrorCode,
-} from "./repositories/workspace-correction-repository.js";
 export type {
   ItotoriAuditFindingRepositoryPort,
   LoadFindingsByNodeOptions,

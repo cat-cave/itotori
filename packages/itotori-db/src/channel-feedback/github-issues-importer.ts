@@ -63,10 +63,10 @@ export type GitHubIssuesExport = {
 };
 
 /**
- * Label → feedback type. Community issues rarely carry an Itotori bridge-unit
- * reference, so they land as `needs_context` regardless; the type still routes
- * the eventual triage label. Anything unrecognized defaults to a style
- * preference (the least destructive assumption for public-authored feedback).
+ * Label → feedback type. GitHub issues do not carry an Itotori bridge-unit
+ * reference, so this importer requires an explicit target from the caller.
+ * Anything unrecognized defaults to a style preference (the least destructive
+ * assumption for public-authored feedback).
  */
 const LABEL_FEEDBACK_TYPE: ReadonlyArray<[readonly string[], FeedbackType]> = [
   [["bug", "defect", "typo", "error", "broken"], feedbackTypeValues.objectiveDefect],
@@ -151,11 +151,19 @@ export class GitHubIssuesImporter implements ChannelFeedbackImporter<GitHubIssue
 
   mapExport(sourceExport: unknown, options: ChannelImportOptions): ChannelFeedbackImportItem[] {
     const parsed = parseExport(sourceExport);
+    const bridgeUnitId = requiredFallbackBridgeUnitId(options);
     const feedbackSourceId = `feedback-source:github_issues:${parsed.repository}`;
     const privacyClassification = options.privacyClassification ?? "community";
 
     return parsed.issues.map((issue) =>
-      this.mapIssue(issue, parsed.repository, feedbackSourceId, privacyClassification, options),
+      this.mapIssue(
+        issue,
+        parsed.repository,
+        feedbackSourceId,
+        privacyClassification,
+        options,
+        bridgeUnitId,
+      ),
     );
   }
 
@@ -165,6 +173,7 @@ export class GitHubIssuesImporter implements ChannelFeedbackImporter<GitHubIssue
     feedbackSourceId: string,
     privacyClassification: string,
     options: ChannelImportOptions,
+    bridgeUnitId: string,
   ): ChannelFeedbackImportItem {
     const externalId = `${repository}#${issue.number}`;
     const externalRef: ChannelExternalRef = {
@@ -181,9 +190,9 @@ export class GitHubIssuesImporter implements ChannelFeedbackImporter<GitHubIssue
 
     const input: ManualFeedbackImportInput = {
       projectId: options.projectId,
-      targetLocale: options.targetLocale,
-      ...(options.localeBranchId === undefined ? {} : { localeBranchId: options.localeBranchId }),
+      localeBranchId: requiredLocaleBranchId(options),
       ...(options.sourceBundleId === undefined ? {} : { sourceBundleId: options.sourceBundleId }),
+      lineReference: { bridgeUnitId },
       feedbackType,
       // The GitHub author login is a public handle; the email in the body (if
       // any) has already been redacted out of `reporterNote`. No raw PII here.
@@ -227,4 +236,26 @@ export class GitHubIssuesImporter implements ChannelFeedbackImporter<GitHubIssue
 
     return { input, externalRef, redactions };
   }
+}
+
+function requiredLocaleBranchId(options: ChannelImportOptions): string {
+  const localeBranchId = options.localeBranchId.trim();
+  if (localeBranchId.length === 0) {
+    throw new ChannelImportError(
+      GITHUB_ISSUES_CHANNEL,
+      "localeBranchId must be a non-empty string",
+    );
+  }
+  return localeBranchId;
+}
+
+function requiredFallbackBridgeUnitId(options: ChannelImportOptions): string {
+  const bridgeUnitId = options.bridgeUnitId?.trim();
+  if (bridgeUnitId === undefined || bridgeUnitId.length === 0) {
+    throw new ChannelImportError(
+      GITHUB_ISSUES_CHANNEL,
+      "bridgeUnitId is required for GitHub issues; target the feedback before importing it",
+    );
+  }
+  return bridgeUnitId;
 }

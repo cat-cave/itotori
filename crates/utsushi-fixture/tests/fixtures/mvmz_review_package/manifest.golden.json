@@ -91,31 +91,5 @@
     ]
   },
   "sourceLocale": "ja-JP",
-  "supportedReviewActions": [
-    {
-      "action": "approve",
-      "label": "Approve"
-    },
-    {
-      "action": "reject",
-      "label": "Reject"
-    },
-    {
-      "action": "defer",
-      "label": "Defer"
-    },
-    {
-      "action": "escalate",
-      "label": "Escalate"
-    },
-    {
-      "action": "request_repair",
-      "label": "Request repair"
-    },
-    {
-      "action": "import_runtime_feedback",
-      "label": "Import runtime feedback"
-    }
-  ],
   "targetLocale": "en-US"
 }

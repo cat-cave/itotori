@@ -6,8 +6,8 @@
 // or an explicit view) + CapGatedButton controls and asserts the OBSERVABLE
 // behavior a viewer sees:
 //
-//   1. capabilities resolve from permission grants (canFlag / canDecide /
-//      canSteer / canReveal), NEVER roles;
+//   1. capabilities resolve from permission grants (canFlag / canSteer /
+//      canReveal), NEVER roles;
 //   2. a denied action is DISABLED + EXPLAINED (title / aria-description /
 //      data-cap-denial carry the AuthorizationError message);
 //   3. a granted action is enabled and clickable;
@@ -44,7 +44,6 @@ import {
   dashboardStatusFixture,
   projectOverviewFixture,
 } from "./api-fixtures.js";
-import { reviewerQueueDashboardApiFixture } from "./msw-handlers.js";
 
 // ---------------------------------------------------------------------------
 // Server-side permission-view resolver (unit, no DOM)
@@ -65,25 +64,21 @@ function authorization(
 }
 
 describe("resolveStudioCapabilityPermissionView", () => {
-  it("maps flag/decide/steer/reveal to exact permissions (not roles)", async () => {
+  it("maps flag/steer/reveal to exact permissions (not roles)", async () => {
     const view = await resolveStudioCapabilityPermissionView(
       authorization([
         permissionValues.feedbackImport,
-        permissionValues.queueManage,
         permissionValues.draftWrite,
         permissionValues.catalogRead,
-        permissionValues.queueRead,
       ]),
       "local-user",
     );
     expect(view.canFlag).toBe(true);
-    expect(view.canDecide).toBe(true);
     expect(view.canSteer).toBe(true);
     expect(view.canReveal).toBe(true);
     expect(view.denialReasons).toEqual([]);
     // Mapping is the documented exact Permission for each capability.
     expect(studioCapabilityPermissions.flag).toBe(permissionValues.feedbackImport);
-    expect(studioCapabilityPermissions.decide).toBe(permissionValues.queueManage);
     expect(studioCapabilityPermissions.steer).toBe(permissionValues.draftWrite);
     expect(studioCapabilityPermissions.reveal).toBe(permissionValues.catalogRead);
   });
@@ -91,18 +86,15 @@ describe("resolveStudioCapabilityPermissionView", () => {
   it("returns per-capability denial explanations when grants are missing", async () => {
     const view = await resolveStudioCapabilityPermissionView(authorization([], "anon"), "anon");
     expect(view.canFlag).toBe(false);
-    expect(view.canDecide).toBe(false);
     expect(view.canSteer).toBe(false);
     expect(view.canReveal).toBe(false);
     expect(view.denials.flag).toBe("user anon is missing permission feedback.import");
-    expect(view.denials.decide).toBe("user anon is missing permission queue.manage");
     expect(view.denials.steer).toBe("user anon is missing permission draft.write");
     expect(view.denials.reveal).toBe("user anon is missing permission catalog.read");
     // denialReasons aggregates every missing grant for audit surfaces.
     expect(view.denialReasons).toEqual(
       expect.arrayContaining([
         "user anon is missing permission feedback.import",
-        "user anon is missing permission queue.manage",
         "user anon is missing permission draft.write",
         "user anon is missing permission catalog.read",
       ]),
@@ -110,23 +102,17 @@ describe("resolveStudioCapabilityPermissionView", () => {
   });
 
   it("grants only the capabilities whose exact permissions are held", async () => {
-    // A reviewer-like grant: queue.manage + draft.write, no feedback.import /
-    // catalog.read → can decide + steer, cannot flag or reveal.
+    // A direct editor grant: draft.write, no feedback.import / catalog.read →
+    // can steer, but cannot flag or reveal.
     const view = await resolveStudioCapabilityPermissionView(
-      authorization([
-        permissionValues.queueManage,
-        permissionValues.queueRead,
-        permissionValues.draftWrite,
-      ]),
-      "reviewer-1",
+      authorization([permissionValues.draftWrite]),
+      "editor-1",
     );
     expect(view.canFlag).toBe(false);
-    expect(view.canDecide).toBe(true);
     expect(view.canSteer).toBe(true);
     expect(view.canReveal).toBe(false);
     expect(view.denials.flag).toMatch(/feedback\.import/);
     expect(view.denials.reveal).toMatch(/catalog\.read/);
-    expect(view.denials.decide).toBeNull();
     expect(view.denials.steer).toBeNull();
   });
 });
@@ -141,7 +127,6 @@ function CapsProbe(): JSX.Element {
     <div
       data-caps-probe="true"
       data-can-flag={caps.canFlag ? "true" : "false"}
-      data-can-decide={caps.canDecide ? "true" : "false"}
       data-can-steer={caps.canSteer ? "true" : "false"}
       data-can-reveal={caps.canReveal ? "true" : "false"}
       data-actor={caps.actorUserId}
@@ -156,31 +141,31 @@ describe("CapsProvider + CapGatedButton", () => {
   });
 
   it("a denied action is DISABLED + EXPLAINED with the denial reason", () => {
-    const view = deniedStudioCapabilityView("anon", "user anon is missing permission queue.manage");
-    // Override just decide so the denial message is the exact permission miss.
-    view.canDecide = false;
-    view.denials.decide = "user anon is missing permission queue.manage";
+    const view = deniedStudioCapabilityView("anon", "user anon is missing permission draft.write");
+    // Override just steer so the denial message is the exact permission miss.
+    view.canSteer = false;
+    view.denials.steer = "user anon is missing permission draft.write";
 
     let clicked = false;
     render(
       <CapsProvider value={view}>
         <CapGatedButton
-          capability="decide"
+          capability="steer"
           onClick={() => {
             clicked = true;
           }}
         >
-          Approve
+          Launch iteration
         </CapGatedButton>
       </CapsProvider>,
     );
 
-    const button = screen.getByRole("button", { name: "Approve" });
+    const button = screen.getByRole("button", { name: "Launch iteration" });
     expect(button).toBeDisabled();
-    expect(button).toHaveAttribute("data-cap", "decide");
+    expect(button).toHaveAttribute("data-cap", "steer");
     expect(button).toHaveAttribute("data-cap-allowed", "false");
-    expect(button).toHaveAttribute("data-cap-permission", permissionValues.queueManage);
-    expect(button).toHaveAttribute("title", "user anon is missing permission queue.manage");
+    expect(button).toHaveAttribute("data-cap-permission", permissionValues.draftWrite);
+    expect(button).toHaveAttribute("title", "user anon is missing permission draft.write");
     // Clicking a denied control is a no-op (never fires the handler).
     fireEvent.click(button);
     expect(clicked).toBe(false);
@@ -208,13 +193,11 @@ describe("CapsProvider + CapGatedButton", () => {
     expect(clicked).toBe(true);
   });
 
-  it("exposes canFlag / canDecide / canSteer / canReveal from the view", () => {
+  it("exposes canFlag / canSteer / canReveal from the view", () => {
     const view = grantedStudioCapabilityView("local-user");
     view.canFlag = true;
-    view.canDecide = false;
     view.canSteer = true;
     view.canReveal = false;
-    view.denials.decide = "user local-user is missing permission queue.manage";
     view.denials.reveal = "user local-user is missing permission catalog.read";
 
     render(
@@ -224,7 +207,6 @@ describe("CapsProvider + CapGatedButton", () => {
     );
     const probe = document.querySelector("[data-caps-probe]")!;
     expect(probe).toHaveAttribute("data-can-flag", "true");
-    expect(probe).toHaveAttribute("data-can-decide", "false");
     expect(probe).toHaveAttribute("data-can-steer", "true");
     expect(probe).toHaveAttribute("data-can-reveal", "false");
     expect(probe).toHaveAttribute("data-actor", "local-user");
@@ -244,19 +226,13 @@ const server = setupServer(
     apiJson("auth.capabilities", {
       schemaVersion: "itotori.auth.capabilities.v0",
       actorUserId: "local-user",
-      canReadQueue: true,
-      canManageQueue: true,
       canFlag: true,
-      canDecide: true,
       canSteer: true,
       canReveal: true,
       denials: {
         flag: null,
-        decide: null,
         steer: null,
         reveal: null,
-        queueRead: null,
-        queueManage: null,
       },
       denialReasons: [],
     }),
@@ -274,9 +250,6 @@ const server = setupServer(
     apiJson("projects.costDrilldown", costDrilldownFixture),
   ),
   http.get("*/api/projects/overview", () => apiJson("projects.overview", projectOverviewFixture)),
-  http.get("*/api/reviewer/queue", () =>
-    apiJson("reviewer.queue", reviewerQueueDashboardApiFixture()),
-  ),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -298,7 +271,6 @@ describe("CapsProvider loads /api/auth/capabilities", () => {
     });
     const probe = document.querySelector("[data-caps-probe]")!;
     expect(probe).toHaveAttribute("data-can-flag", "true");
-    expect(probe).toHaveAttribute("data-can-decide", "true");
     expect(probe).toHaveAttribute("data-can-steer", "true");
     expect(probe).toHaveAttribute("data-can-reveal", "true");
     expect(probe).toHaveAttribute("data-actor", "local-user");

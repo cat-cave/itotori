@@ -142,10 +142,10 @@ describe("shell-cmdk-palette — host behavior", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open command palette" }));
     // Narrow to one surface, arrow to confirm focus, enter to choose it.
     const input = screen.getByRole("textbox");
-    typeInto(input, "review");
+    typeInto(input, "patches");
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(navigate).toHaveBeenCalledWith("/reviewer-queue");
+    expect(navigate).toHaveBeenCalledWith("/play/patches");
   });
 
   it("closes on Escape without navigating", () => {

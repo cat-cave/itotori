@@ -28,11 +28,7 @@
 // work from panel-flattering noise; a regression on a prior-strength dimension
 // or a thin QA pass can veto it regardless.
 
-import type {
-  ContestantRanking,
-  MetaValidityCheckName,
-  MetaValidityReport,
-} from "./meta-validity-harness.js";
+import type { ContestantRanking, MetaValidityReport } from "./meta-validity-harness.js";
 import type { BacklogRegressionRef } from "./actionable-backlog.js";
 import type {
   DeanonymizedHumanScore,

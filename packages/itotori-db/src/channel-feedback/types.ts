@@ -10,7 +10,7 @@
 // into `ManualFeedbackImportInput`s. It never touches the database itself — it
 // is a pure, deterministic mapping. The caller feeds each produced `input`
 // through the existing `importManualFeedback` path, which is where dedup,
-// persistence, and reviewer-queue enqueue already happen.
+// persistence and canonical context-correction routing already happen.
 //
 // The importer is responsible for the three acceptance properties BEFORE the
 // input reaches the repository:
@@ -52,8 +52,14 @@ export type ChannelFeedbackImportItem = {
 /** Project-scoping the importer needs to build valid feedback inputs. */
 export type ChannelImportOptions = {
   projectId: string;
-  targetLocale: string;
-  localeBranchId?: string;
+  /** Every imported report must attach to a canonical locale branch. */
+  localeBranchId: string;
+  /**
+   * Optional explicit target used when an external item carries no bridge-unit
+   * reference of its own. The caller must provide it knowingly; importers
+   * never manufacture a targetless feedback report.
+   */
+  bridgeUnitId?: string;
   sourceBundleId?: string;
   /**
    * Privacy classification stamped on every produced report. Community-channel

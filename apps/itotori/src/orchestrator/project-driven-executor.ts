@@ -18,8 +18,7 @@
 //       P0#1) and preserves the loop's canonical written outcome.
 //   (c) PERSISTS, per unit: every physical provider attempt (including exact
 //       cost + validation/retry state), the canonical written outcome with all
-//       candidates/findings/provenance, and — via the loop's own bridge — the
-//       reviewer_queue_items.
+//       candidates/findings/provenance.
 //   (d) produces ONE patch EXPORT only after every configured in-scope unit
 //       has a written body. The translated bridge carries each selected body;
 //       an operational unit failure is recorded as a typed failure and never
@@ -35,13 +34,7 @@
 // into every `runAgenticLoopForUnit` call verbatim.
 
 import { createHash, randomUUID } from "node:crypto";
-import type {
-  AuthorizationActor,
-  CreateReviewerQueueItemInput,
-  ItotoriContextArtifactRepositoryPort,
-  ReviewerQueueItemRecord,
-} from "@itotori/db";
-import { ReviewerQueueRepositoryError, reviewerQueueItemStateValues } from "@itotori/db";
+import type { AuthorizationActor, ItotoriContextArtifactRepositoryPort } from "@itotori/db";
 import {
   isLocaleTaggedSourceEcho,
   type AgenticLoopBundle,
@@ -60,7 +53,6 @@ import type {
   TranslationWorkScopeContext,
 } from "../agents/translation/shapes.js";
 import type { EffectiveScope } from "../agents/work-scope/index.js";
-import type { AgenticLoopReviewerQueueSink } from "./reviewer-queue-bridge.js";
 import {
   AgenticLoopInvariantError,
   readOutcomeJournalProvenance,
@@ -207,7 +199,7 @@ export type DrivenUnitContextResolver = (args: {
  * state / flagged-unit feedback rather than re-running from scratch.
  *
  * Strictly project-agnostic: the feedback carries only the prior routing
- * outcome, the prior draft, the defer reason, and an optional feedback note.
+ * outcome, the prior draft, quality flags, and an optional feedback note.
  * No game / engine / title fields anywhere — the multi-pass loop is generic
  * over any project whose units flow through the agentic loop. A caller may
  * supply this historical context, but the durable journal is its persistence
@@ -366,7 +358,6 @@ export type DrivenPatchReport = {
   unitsRun: number;
   writtenOutcomeCount: number;
   failureCount: number;
-  reviewerQueueItemCount: number;
   /** Exact sum of every physical attempt's decimal `usage.cost`. */
   totalUsageCostExactUsd: string;
   /**
@@ -551,8 +542,6 @@ export type ProjectDrivenExecutorInput = {
   providerFactory: AgenticLoopProviderFactory;
   /** Explicit test/alternate admission; the durable journal provides the production default. */
   costAdmission?: InvocationCostAdmission;
-  /** The reviewer-queue DB sink (per P0#2). When absent, nothing is bridged. */
-  reviewerQueue?: AgenticLoopReviewerQueueSink;
   /**
    * p0-core-persistent-context-brain — central context-artifact store (source /
    * sink / invalidation). Threaded into every unit so semantic enrichment +
@@ -704,7 +693,6 @@ export type ProjectDrivenExecutorResult = {
   writtenOutcomeCount: number;
   journalUnitsPersisted: number;
   attemptsPersisted: number;
-  reviewerQueueItemCount: number;
   patchExportCount: number;
   failures: DrivenUnitFailure[];
   /**
@@ -1009,8 +997,7 @@ export async function runProjectDrivenExecutor(
 
   // (c) Assemble the aggregate in CANONICAL order. The journal has already
   // been persisted incrementally inside each worker; only the returned
-  // in-memory projection, patch body map, and buffered reviewer side-channel
-  // retain canonical ordering here.
+  // in-memory projection and patch body map retain canonical ordering here.
   for (const slot of slots) {
     if (slot === undefined) {
       continue; // never dispatched (budget cap) — no patch may export incomplete coverage.
@@ -1037,15 +1024,6 @@ export async function runProjectDrivenExecutor(
     // Capture this outcome for the returned in-memory projection in canonical order.
     unitOutcomes.push(slot.writtenOutcomeRecord);
 
-    // PERSIST — the reviewer_queue_items the loop's bridge produced for this
-    // unit, replayed onto the REAL sink in canonical order (they were buffered
-    // during the concurrent run so completion interleaving never reorders them).
-    if (input.reviewerQueue !== undefined) {
-      for (const captured of slot.queueCaptures) {
-        await flushCapturedReviewerQueueItem(input.reviewerQueue, captured);
-      }
-    }
-
     writtenOutcomeCount += 1;
     writtenBodies.set(slot.unit.bridgeUnitId, slot.exportBody);
     writtenUnits.push({
@@ -1055,10 +1033,6 @@ export async function runProjectDrivenExecutor(
       qualityFlags: slot.writtenOutcomeRecord.outcome.qualityFlags.slice(),
     });
   }
-
-  // Count reviewer-queue items emitted by the legacy bridge. Written outcomes
-  // do not depend on this informational side channel.
-  const reviewerQueueItemCount = await countReviewerQueueItems(input);
 
   // Coverage is the export gate. Do not turn an operational failure, budget
   // pause, or bounded pilot slice into source text just to manufacture a
@@ -1083,7 +1057,6 @@ export async function runProjectDrivenExecutor(
     unitsRun,
     writtenOutcomeCount,
     failureCount: failures.length,
-    reviewerQueueItemCount,
     totalUsageCostExactUsd,
     totalUsageCostUsd,
     zdrConfirmed,
@@ -1103,7 +1076,7 @@ export async function runProjectDrivenExecutor(
     await input.sinks.patchExport.exportPatch({ translatedBridge, patchReport });
   }
   log(
-    `project-driven-executor: ran ${unitsRun} unit(s); ${writtenOutcomeCount} written, ${failures.length} failed; coverageComplete=${coverageComplete}; ${reviewerQueueItemCount} queue item(s); total usage.cost $${totalUsageCostExactUsd} (zdr=${zdrConfirmed})`,
+    `project-driven-executor: ran ${unitsRun} unit(s); ${writtenOutcomeCount} written, ${failures.length} failed; coverageComplete=${coverageComplete}; total usage.cost $${totalUsageCostExactUsd} (zdr=${zdrConfirmed})`,
   );
 
   return {
@@ -1117,7 +1090,6 @@ export async function runProjectDrivenExecutor(
     writtenOutcomeCount,
     journalUnitsPersisted,
     attemptsPersisted,
-    reviewerQueueItemCount,
     patchExportCount: coverageComplete ? 1 : 0,
     failures,
     unitOutcomes,
@@ -1186,8 +1158,6 @@ type UnitRunSuccess = {
   telemetry: ProviderTelemetrySummary;
   /** The selected body after engine-specific out-of-band markup removal. */
   exportBody: string;
-  /** Reviewer-queue writes the loop's bridge buffered for ordered replay. */
-  queueCaptures: CapturedReviewerQueueCreate[];
 };
 
 type UnitRunPaused = {
@@ -1200,8 +1170,7 @@ type UnitRunPaused = {
 /**
  * Drive ONE unit through `runAgenticLoopForUnit` and capture its complete
  * journal payload. The worker persists that payload immediately after this
- * function returns; reviewer-queue writes stay buffered for canonical replay
- * later. Any unexpected exception is an operational itotori bug: the durable
+ * function returns. Any unexpected exception is an operational itotori bug: the durable
  * run is paused and the unit remains pending. No exception becomes a terminal
  * per-unit outcome. Config-driven scope + the (modelId, providerId) pinning +
  * ZDR posture all thread through the loop unchanged.
@@ -1250,16 +1219,6 @@ async function runSingleDrivenUnit(args: {
   });
   try {
     assertValidDrivenUnitContext(context);
-    // Buffer the loop's reviewer-queue writes so they persist in CANONICAL unit
-    // order after the concurrent phase — completion interleaving must not
-    // reorder them. `loadItemsByBranch` still delegates to the real repository
-    // so the bridge's idempotency pre-check still sees persisted rows.
-    const queueCaptures: CapturedReviewerQueueCreate[] = [];
-    const bufferedQueue =
-      input.reviewerQueue !== undefined
-        ? makeBufferingReviewerQueueSink(input.reviewerQueue, queueCaptures)
-        : undefined;
-
     // Thread THIS unit's optional prior-run feedback (if the
     // run is a pass N+1 driven run with a prior context) so the translation
     // prompt iterates on the prior accepted state / flagged-unit feedback.
@@ -1303,7 +1262,6 @@ async function runSingleDrivenUnit(args: {
       ...(workScopeContext !== undefined ? { workScopeContext } : {}),
       actor: input.actor,
       attemptOutcomeObserver: providerAttempts.attemptOutcomeObserver,
-      ...(bufferedQueue !== undefined ? { reviewerQueue: bufferedQueue } : {}),
       // Persistent context brain — central store as source/sink/invalidation.
       ...(input.contextArtifactRepository !== undefined
         ? { contextArtifactRepository: input.contextArtifactRepository }
@@ -1362,7 +1320,6 @@ async function runSingleDrivenUnit(args: {
       journal,
       telemetry,
       exportBody,
-      queueCaptures,
     };
   } catch (error) {
     // No exception becomes a terminal unit failure. Model-output failures are
@@ -1616,90 +1573,6 @@ function redactUnitInputsForDiagnostic(
 }
 
 // ---------------------------------------------------------------------------
-// Reviewer-queue write buffering — deterministic, canonical-order replay
-// ---------------------------------------------------------------------------
-
-type CapturedReviewerQueueCreate = {
-  actor: AuthorizationActor;
-  input: CreateReviewerQueueItemInput;
-};
-
-/**
- * Wrap the real reviewer-queue sink so the loop's `createItem` writes are
- * CAPTURED (not persisted) during the concurrent phase, then replayed in
- * canonical unit order afterwards. `loadItemsByBranch` passes through to the
- * real repository so the bridge's idempotency pre-check still sees persisted
- * rows. The loop discards the `createItem` return value, but a faithful record
- * is synthesised so the port contract holds.
- */
-function makeBufferingReviewerQueueSink(
-  real: AgenticLoopReviewerQueueSink,
-  buffer: CapturedReviewerQueueCreate[],
-): AgenticLoopReviewerQueueSink {
-  let localSeq = 0;
-  return {
-    repository: {
-      createItem: async (actor, createInput) => {
-        buffer.push({ actor, input: createInput });
-        localSeq += 1;
-        return synthesiseBufferedQueueRecord(createInput, localSeq);
-      },
-      loadItemsByBranch: (actor, localeBranchId) =>
-        real.repository.loadItemsByBranch(actor, localeBranchId),
-    },
-  };
-}
-
-/** Replay one buffered reviewer-queue write onto the real sink (idempotent). */
-async function flushCapturedReviewerQueueItem(
-  sink: AgenticLoopReviewerQueueSink,
-  captured: CapturedReviewerQueueCreate,
-): Promise<void> {
-  try {
-    await sink.repository.createItem(captured.actor, captured.input);
-  } catch (error) {
-    // A duplicate (unique key already present) is a no-op — exactly as the
-    // bridge treats it — so a re-run against shared storage never throws.
-    if (
-      error instanceof ReviewerQueueRepositoryError &&
-      error.code === "reviewer_queue_item_duplicate"
-    ) {
-      return;
-    }
-    throw error;
-  }
-}
-
-function synthesiseBufferedQueueRecord(
-  createInput: CreateReviewerQueueItemInput,
-  seq: number,
-): ReviewerQueueItemRecord {
-  const createdAt = createInput.createdAt ?? new Date();
-  return {
-    reviewItemId: `driven-buffered-${seq}`,
-    projectId: createInput.projectId,
-    localeBranchId: createInput.localeBranchId,
-    sourceRevisionId: createInput.sourceRevisionId,
-    itemKind: createInput.itemKind,
-    sourceItemRef: createInput.sourceItemRef,
-    state: reviewerQueueItemStateValues.pending,
-    priority: createInput.priority ?? 0,
-    summary: createInput.summary,
-    affectedArtifactIds: createInput.affectedArtifactIds ?? [],
-    evidenceTier: createInput.evidenceTier ?? null,
-    observationEventIds: createInput.observationEventIds ?? null,
-    artifactHashes: createInput.artifactHashes ?? null,
-    payload: createInput.payload ?? {},
-    metadata: createInput.metadata ?? {},
-    createdByUserId: createInput.createdByUserId ?? null,
-    assignedToUserId: createInput.assignedToUserId ?? null,
-    createdAt,
-    updatedAt: createdAt,
-    resolvedAt: null,
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Enumeration — consume the batch planner's scene/route grouping
 // ---------------------------------------------------------------------------
 
@@ -1870,23 +1743,6 @@ export function summariseProviderTelemetry(
     // A unit that fired zero invocations cannot assert a ZDR posture.
     zdr: sawInvocation ? zdr : false,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Reviewer-queue item count (real DB read of what the loop bridged)
-// ---------------------------------------------------------------------------
-
-async function countReviewerQueueItems(input: ProjectDrivenExecutorInput): Promise<number> {
-  const sink = input.reviewerQueue;
-  if (sink === undefined) {
-    return 0;
-  }
-  const items = await sink.repository.loadItemsByBranch(input.actor, input.localeBranchId);
-  // Count only the items THIS driven run's loop bridged (source = agentic_loop).
-  return items.filter((item) => {
-    const metadataSource = (item.metadata as { source?: unknown }).source;
-    return metadataSource === "agentic_loop";
-  }).length;
 }
 
 // ---------------------------------------------------------------------------

@@ -24,8 +24,8 @@ import {
   type PatchIterationVersionView,
 } from "./PatchIterationPanel.js";
 
-/** `/play/patches` is intentionally separate from the scene picker at `/play`. */
-export const patchIterationRoutePathRegex = /^\/play\/patches\/?$/u;
+/** The Play surface is the first-class patch iteration and feedback loop. */
+export const patchIterationRoutePathRegex = /^\/play(?:\/patches)?\/?$/u;
 
 export type PatchIterationRouteParams = {
   localeBranchId: string | null;
@@ -455,6 +455,14 @@ function PatchFeedbackComposer({
         return;
       }
     }
+    if (eventKind === "comment") {
+      if (affectedBridgeUnitIds.length === 0 || body.trim().length === 0) {
+        setError(
+          "A comment needs a non-blank note and at least one bridge-unit ID so it can become a canonical correction.",
+        );
+        return;
+      }
+    }
     if (isContextEvent) {
       if (contextMode === "reference") {
         if (contextArtifactId.trim().length === 0 || contextEntryVersionId.trim().length === 0) {
@@ -592,14 +600,16 @@ function PatchFeedbackComposer({
             setEventKind(event.currentTarget.value as ApiPatchIterationFeedbackRequest["eventKind"])
           }
         >
-          <option value="comment">Comment</option>
+          <option value="comment">Scoped comment</option>
           <option value="result_edit">Result edit</option>
           <option value="added_context">Added context</option>
           <option value="wiki_edit">Wiki edit</option>
         </select>
       </label>
       <label>
-        Note (optional for a target-only result edit)
+        {eventKind === "comment"
+          ? "Comment (required)"
+          : "Note (optional for a target-only result edit)"}
         <textarea
           value={body}
           onChange={(event) => setBody(event.currentTarget.value)}
@@ -761,7 +771,7 @@ function PatchIterationShell({
       data-locale-branch-id={localeBranchId}
     >
       <ShellHeader eyebrow="Play" title="Patch iterations">
-        <a href="/play">Scene picker</a>
+        <a href="/play/routemap">Play route map</a>
       </ShellHeader>
       {children}
     </main>

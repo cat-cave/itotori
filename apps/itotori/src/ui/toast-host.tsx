@@ -1,14 +1,14 @@
 // shell-toasts (HI-FI STUDIO EPIC · Shell) — the SPA toast host.
 //
 // A shell-level React context that owns the toast queue + auto-dismiss
-// timers and renders the ds `<ToastViewport>`. Downstream surfaces (review
-// decide, launch-pass, future play flag) enqueue through `useToast()` /
+// timers and renders the ds `<ToastViewport>`. Downstream surfaces (result
+// revision, launch-pass, play flag) enqueue through `useToast()` /
 // `useWorkflowHandoffToasts()` so workflow handoffs surface as legible
 // notifications without each screen owning its own toast stack.
 //
 // The ds `Toast` / `ToastViewport` stay pure prop consumers (no context);
-// the host owns queue identity, auto-dismiss (4200ms, matching the hi-fi
-// studio store), and manual dismiss. Empty queue → empty viewport (no
+// the host owns queue identity, a 4200ms auto-dismiss window, and manual
+// dismiss. Empty queue → empty viewport (no
 // ghost chrome). No game is named; className-based, ds tokens only.
 
 import {
@@ -23,7 +23,7 @@ import {
 } from "react";
 import { ToastViewport, type ToastData, type ToastTone } from "@itotori/ds";
 
-/** Default auto-dismiss window — matches the hi-fi studio store (4200ms). */
+/** Default auto-dismiss window for transient workflow handoff notices. */
 export const DEFAULT_TOAST_DURATION_MS = 4200;
 
 export type ToastPushInput = {

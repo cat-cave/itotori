@@ -110,10 +110,18 @@ describe("Iterative-loop spine panel", () => {
     const spine = screen.getByLabelText("Iterative loop stages");
     expect(within(spine).getAllByRole("listitem")).toHaveLength(6);
     const correct = spine.querySelector('[data-stage="correct"]') as HTMLElement;
+    const iterate = spine.querySelector('[data-stage="iterate"]') as HTMLElement;
     const launch = spine.querySelector('[data-stage="launch"]') as HTMLElement;
     const rescore = spine.querySelector('[data-stage="rescore"]') as HTMLElement;
-    expect(correct).toHaveTextContent("Corrections fold into run 3.");
-    expect(correct).toHaveTextContent("—");
+    expect(within(correct).getByRole("link", { name: /^Correct/u })).toHaveAttribute(
+      "href",
+      "/wiki",
+    );
+    expect(correct).toHaveTextContent(
+      "Wiki corrections update canonical context for the next run.",
+    );
+    expect(correct).toHaveTextContent("3 open");
+    expect(iterate).toHaveTextContent("Patch feedback creates the result revision for run 3.");
     expect(launch).toHaveTextContent("run 3");
     expect(launch).toHaveTextContent("Director drives the next localization run");
     expect(rescore).toHaveTextContent("—");
@@ -141,7 +149,7 @@ describe("Iterative-loop spine panel", () => {
 });
 
 describe("deriveLoopSpine", () => {
-  it("uses journal count for the next run and leaves absent legacy signals honest", () => {
+  it("uses journal count for the next run and leaves absent signals honest", () => {
     const stages = deriveLoopSpine(richOverview(), null);
     const byId = (id: string): LoopSpineStage => {
       const stage = stages.find((entry) => entry.id === id);
@@ -149,8 +157,10 @@ describe("deriveLoopSpine", () => {
       return stage;
     };
     expect(byId("flag").signal).toBe("3 open");
-    expect(byId("decide").signal).toBe("3 pending");
-    expect(byId("correct").signal).toBe("—");
+    expect(byId("flag").href).toBe("/wiki");
+    expect(byId("correct").signal).toBe("3 open");
+    expect(byId("correct").href).toBe("/wiki");
+    expect(byId("iterate").signal).toBe("—");
     expect(byId("launch").signal).toBe("run 3");
     expect(byId("rescore").signal).toBe("—");
   });

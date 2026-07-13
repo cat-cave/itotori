@@ -45,8 +45,8 @@ import {
   type PairPolicy,
 } from "./agentic-loop.js";
 
-// The smoke command has no run registration or reviewer-queue sink. Keep its
-// required loop input explicit without reusing the unit's content-hash id.
+// The smoke command has no run registration. Keep its required loop input
+// explicit without reusing the unit's content-hash id.
 const SMOKE_BUNDLE_SOURCE_REVISION_ID = "agentic-loop-smoke-bundle-revision";
 
 export type AgenticLoopSmokeIo = {

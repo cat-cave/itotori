@@ -17,7 +17,6 @@ import {
   STRUCTURED_TRANSLATION_DRAFT_OUTPUT_TOOL_NAME,
   type ProviderProofBundle,
   type ProviderProofRoleName,
-  type ProviderProofSeededDefect,
 } from "@itotori/localization-bridge-schema";
 import {
   OpenRouterProvider,

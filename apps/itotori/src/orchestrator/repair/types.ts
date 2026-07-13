@@ -9,17 +9,15 @@
 //   - "Pipeline-only reruns": a `RepairJob` declares EXACTLY which
 //     pipeline stage to rerun (`pipelineStage`) and EXACTLY which
 //     bridge units it touches (`affectedBridgeUnitIds`). The orchestrator
-//     never reruns whole projects unless `affectedScope === 'project'`,
-//     and that scope can only be produced by a human decision that
-//     explicitly opts into it.
+//     never widens beyond the bridge units named by a machine-verifiable
+//     finding.
 //   - "Lost repair provenance": every `RepairJob` records its trigger
-//     (QA finding, protected-span violation, human decision) and the
+//     (QA finding or protected-span violation) and the
 //     `(modelId, providerId)` pair planned for the rerun. The service's
 //     `repairHistory()` accessor returns the append-only log so the
 //     audit can re-derive every job's lineage.
 //   - "Over-broad invalidation": the affected-work selector narrows to
-//     a specific set of bridge unit ids when the trigger names one;
-//     scope widens only when a HumanDecision explicitly requests it.
+//     a specific set of bridge unit ids named by the trigger.
 //
 // No `as any`, no `@ts-ignore`. Every union resolution is exhaustive
 // at the type level — adding a new trigger / scope / stage enum value
@@ -51,14 +49,8 @@ export type RepairPipelineStage = (typeof REPAIR_PIPELINE_STAGES)[number];
  *                             — the second-layer deterministic check
  *                               flagged a span violation routed to a
  *                               repairable cause.
- *   - `human_decision`        — a reviewer / playtest report explicitly
- *                               requested a rerun.
  */
-export const REPAIR_JOB_TRIGGERS = [
-  "qa_finding",
-  "protected_span_violation",
-  "human_decision",
-] as const;
+export const REPAIR_JOB_TRIGGERS = ["qa_finding", "protected_span_violation"] as const;
 export type RepairJobTrigger = (typeof REPAIR_JOB_TRIGGERS)[number];
 
 /**
@@ -76,12 +68,8 @@ export type RepairJobSeverity = (typeof REPAIR_JOB_SEVERITIES)[number];
  * selector returns one of these; the orchestrator uses it to pick
  * between unit-level / scene-level / project-level reruns.
  *   - `bridge_units` — a specific set of `Uuid7` bridge units.
- *   - `scene`        — every unit in a scene-summary's coverage set.
- *   - `project`      — every unit in the project. Only reachable from a
- *                      human decision that explicitly opts in (otherwise
- *                      the selector narrows below).
  */
-export const REPAIR_AFFECTED_SCOPES = ["bridge_units", "scene", "project"] as const;
+export const REPAIR_AFFECTED_SCOPES = ["bridge_units"] as const;
 export type RepairAffectedScope = (typeof REPAIR_AFFECTED_SCOPES)[number];
 
 /**
@@ -99,10 +87,10 @@ export type RepairAffectedScope = (typeof REPAIR_AFFECTED_SCOPES)[number];
  * mistaken for "nothing affected". This closes ITOTORI-038 finding
  * d5743e7b.
  */
-export type RepairAffectedWork =
-  | { affectedScope: "bridge_units"; affectedBridgeUnitIds: ReadonlyArray<Uuid7> }
-  | { affectedScope: "scene"; affectedBridgeUnitIds: ReadonlyArray<Uuid7> }
-  | { affectedScope: "project" };
+export type RepairAffectedWork = {
+  affectedScope: "bridge_units";
+  affectedBridgeUnitIds: ReadonlyArray<Uuid7>;
+};
 
 /**
  * The pinned `(modelId, providerId)` pair the rerun will use. Mirrors
@@ -146,33 +134,7 @@ export type RepairTriggerProtectedSpanViolation = {
   rationale: string;
 };
 
-/**
- * Input shape for the human-decision trigger. The reviewer / playtester
- * names the bridge units (or `scope: "project"` to opt into a full
- * rerun). The selector NEVER widens past what the human declared.
- */
-export type RepairTriggerHumanDecision = {
-  trigger: "human_decision";
-  decisionId: string;
-  decisionRecordedAt: Date;
-  /**
-   * Either a specific set of bridge units OR an explicit
-   * `scope: "project"` request. Empty arrays are rejected so a typo'd
-   * decision can't silently widen to the whole project.
-   */
-  scope:
-    | { kind: "bridge_units"; bridgeUnitIds: ReadonlyArray<Uuid7> }
-    | { kind: "scene"; sceneId: string; bridgeUnitIds: ReadonlyArray<Uuid7> }
-    | { kind: "project" };
-  severity: RepairJobSeverity;
-  targetStage: RepairPipelineStage;
-  rationale: string;
-};
-
-export type RepairTrigger =
-  | RepairTriggerQaFinding
-  | RepairTriggerProtectedSpanViolation
-  | RepairTriggerHumanDecision;
+export type RepairTrigger = RepairTriggerQaFinding | RepairTriggerProtectedSpanViolation;
 
 /**
  * One queued repair job. Emitted by `RepairJobService.enqueue` AND
@@ -205,10 +167,9 @@ export type RepairJob = {
    */
   priority: number;
   rationale: string;
-  // The affected-work descriptor is a discriminated union (see
-  // `RepairAffectedWork`): `affectedScope: 'project'` carries NO
-  // `affectedBridgeUnitIds`, so an executor cannot read an empty array
-  // and silently skip a project-wide rerun.
+  // The affected-work descriptor stays unit-scoped. Context corrections and
+  // result revisions own human-initiated iteration; they never become repair
+  // queue triggers.
 } & RepairAffectedWork;
 
 /**

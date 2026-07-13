@@ -93,6 +93,26 @@ describe("PatchIterationService context feedback", () => {
     }
   });
 
+  it("rejects an unscoped comment instead of creating an event-only feedback inbox item", async () => {
+    for (const input of [
+      { body: "A comment without a unit must not report success." },
+      {},
+    ] as const) {
+      const fixture = serviceFixture();
+
+      await expect(
+        fixture.service.feedback({
+          observedPatchVersionId,
+          eventKind: "comment",
+          ...input,
+        }),
+      ).rejects.toMatchObject({ code: "scoped_comment_required" });
+
+      expect(fixture.add).not.toHaveBeenCalled();
+      expect(fixture.recordFeedbackEvent).not.toHaveBeenCalled();
+    }
+  });
+
   it("preflights scoped-comment unit membership before it creates a canonical note", async () => {
     const fixture = serviceFixture();
 

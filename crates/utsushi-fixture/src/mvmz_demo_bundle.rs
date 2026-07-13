@@ -624,7 +624,6 @@ pub fn build_mvmz_demo_bundle(inputs: &DemoBundleInputs) -> UtsushiResult<Value>
             "reviewPackageId": inputs.review_manifest.get("reviewPackageId").cloned().unwrap_or(Value::Null),
             "manifestKind": inputs.review_manifest.get("manifestKind").cloned().unwrap_or(Value::Null),
             "screenshotArtifactCount": review_ids.len(),
-            "supportedReviewActions": inputs.review_manifest.get("supportedReviewActions").cloned().unwrap_or(Value::Null),
             "source": "UTSUSHI-010",
         },
         "proofLinks": {

@@ -4,7 +4,6 @@ import {
   capabilityLevelOrder,
   EngineCapabilityReportService,
   summarizeCapabilityEvidence,
-  type AdapterCapabilitySummary,
   toSummary,
 } from "../src/services/engine-capability-report.js";
 

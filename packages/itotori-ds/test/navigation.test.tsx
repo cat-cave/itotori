@@ -22,14 +22,14 @@ describe("navigation / NavPills", () => {
         onSelect={onSelect}
         items={[
           { id: "overview", label: "Overview" },
-          { id: "review", label: "Review", badge: 12 },
+          { id: "patches", label: "Patches", badge: 12 },
         ]}
       />,
     );
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: /Review/ })).toHaveAttribute("aria-selected", "false");
-    await userEvent.click(screen.getByRole("tab", { name: /Review/ }));
-    expect(onSelect).toHaveBeenCalledWith("review");
+    expect(screen.getByRole("tab", { name: /Patches/ })).toHaveAttribute("aria-selected", "false");
+    await userEvent.click(screen.getByRole("tab", { name: /Patches/ }));
+    expect(onSelect).toHaveBeenCalledWith("patches");
   });
 });
 
@@ -70,7 +70,7 @@ describe("navigation / Pagination", () => {
   it("renders page-of-N status and reachable prev/next buttons on a middle page", () => {
     render(
       <Pagination
-        label="Reviewer queue pagination"
+        label="Patch iteration pagination"
         page={1}
         pageCount={3}
         totalItems={42}
@@ -79,7 +79,7 @@ describe("navigation / Pagination", () => {
       />,
     );
     expect(
-      screen.getByRole("navigation", { name: "Reviewer queue pagination" }),
+      screen.getByRole("navigation", { name: "Patch iteration pagination" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Page 2 of 3 · 42 items")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Previous page" })).toBeEnabled();
@@ -89,7 +89,7 @@ describe("navigation / Pagination", () => {
   it("disables Previous at the start and Next at the end", () => {
     const { rerender } = render(
       <Pagination
-        label="Reviewer queue pagination"
+        label="Patch iteration pagination"
         page={0}
         pageCount={3}
         totalItems={20}
@@ -103,7 +103,7 @@ describe("navigation / Pagination", () => {
 
     rerender(
       <Pagination
-        label="Reviewer queue pagination"
+        label="Patch iteration pagination"
         page={2}
         pageCount={3}
         totalItems={20}
@@ -121,7 +121,7 @@ describe("navigation / Pagination", () => {
     const onNext = vi.fn();
     render(
       <Pagination
-        label="Reviewer queue pagination"
+        label="Patch iteration pagination"
         page={1}
         pageCount={3}
         onPrevious={onPrevious}

@@ -42,13 +42,13 @@ export const commandItems: CommandItem[] = [
   { id: "term-senpai", label: "senpai — glossary entry", group: "terms", hint: "term:senpai" },
   { id: "run-42", label: "Pass 4 benchmark run", group: "runs", hint: "run-042" },
   { id: "act-launch", label: "Launch next pass", group: "actions", keywords: ["redraft"] },
-  { id: "act-review", label: "Open review queue", group: "actions" },
+  { id: "act-iterate", label: "Open patch iteration", group: "actions" },
 ];
 
 export const galleryToasts: ToastData[] = [
-  { id: "t1", message: "Approved as-is — unit marked proven.", tone: "ok" },
-  { id: "t2", message: "Correction queued for pass 5.", tone: "neutral" },
-  { id: "t3", message: "Deciding review items needs a reviewer.", tone: "critical" },
+  { id: "t1", message: "Result revision recorded for the current patch.", tone: "ok" },
+  { id: "t2", message: "Context correction scheduled for pass 5.", tone: "neutral" },
+  { id: "t3", message: "Context correction needs more evidence.", tone: "critical" },
 ];
 
 export const costSeries = [190, 205, 198, 220, 214, 231, 207];

@@ -704,14 +704,14 @@
     },
     "DOC-AMBIGUOUS-3": {
       "question": "Do :nitro / :floor / :online / :free suffixes still work?",
-      "resolution": "deferred_to_docs",
+      "resolution": "documented_pending",
       "evidence": {
         "note": "Not directly tested. OR's currently accessible docs at /docs/guides/routing/model-fallbacks do not document these suffixes, and the canonical paths (presets and provider-routing) treat the same job as configurable via provider.sort. Until a future evidence capture probes a suffixed slug, the audit's stance stands: prefer provider.sort over suffixes."
       }
     },
     "DOC-AMBIGUOUS-4": {
       "question": "What is the Auto Router; usable from chat-completions?",
-      "resolution": "deferred_to_docs",
+      "resolution": "documented_pending",
       "evidence": {
         "note": "Not tested in this capture pass; OR docs only reference the Auto Router obliquely. Pinning concrete (modelId, providerId) pairs is itotori's load-bearing posture; auto-routing would violate the pair-pinning rule regardless."
       }

@@ -27,7 +27,6 @@ describe("play-flag-composer — flag annotation mapping", () => {
     const input = buildPlayFlagFeedbackInput({
       projectId: "project-1",
       localeBranchId: "locale-1",
-      targetLocale: "en-US",
       note: "  Line overflows.  ",
       severity: "blocker",
       category: "layout",
@@ -40,7 +39,6 @@ describe("play-flag-composer — flag annotation mapping", () => {
 
     expect(input.projectId).toBe("project-1");
     expect(input.localeBranchId).toBe("locale-1");
-    expect(input.targetLocale).toBe("en-US");
     expect(input.reporterNote).toBe("Line overflows.");
     expect(input.feedbackType).toBe(feedbackTypeValues.assetIssue);
     expect(input.reporter).toEqual({
@@ -68,11 +66,24 @@ describe("play-flag-composer — flag annotation mapping", () => {
       buildPlayFlagFeedbackInput({
         projectId: "p",
         localeBranchId: "l",
-        targetLocale: "en-US",
+        bridgeUnitId: "bridge-unit-1",
         note: "   ",
         severity: "note",
         actorUserId: "u",
       }),
     ).toThrow(/non-empty/);
+  });
+
+  it("refuses a flag without a persisted target unit", () => {
+    expect(() =>
+      buildPlayFlagFeedbackInput({
+        projectId: "p",
+        localeBranchId: "l",
+        bridgeUnitId: "   ",
+        note: "Context is wrong.",
+        severity: "note",
+        actorUserId: "u",
+      }),
+    ).toThrow(/bridgeUnitId.*non-empty/i);
   });
 });

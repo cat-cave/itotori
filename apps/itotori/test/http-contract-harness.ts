@@ -73,13 +73,6 @@ import {
   wikiContextHistoryFixture,
   wikiEditFixture,
 } from "./api-fixtures.js";
-import {
-  workspaceAssetBrowseFixture,
-  workspaceComparisonFixture,
-  workspaceProjectBrowseFixture,
-  workspaceSceneBrowseFixture,
-  workspaceSearchFixture,
-} from "../src/workspace/fixtures.js";
 
 const LOOPBACK_HOST = "127.0.0.1";
 
@@ -715,7 +708,6 @@ const fixtureServices = {
     ingestPatchResult: vi.fn(unused),
     ingestConformanceReport: vi.fn(unused),
     recordFinding: vi.fn(unused),
-    recordDecision: vi.fn(unused),
     recordBenchmarkReport: vi.fn(unused),
     launchNextLocalizationPass: vi.fn(unused),
   },
@@ -737,46 +729,6 @@ const fixtureServices = {
     history: vi.fn(async () => wikiContextHistoryFixture),
     edit: vi.fn(async () => wikiEditFixture),
     add: vi.fn(async () => wikiEditFixture),
-  },
-  reviewerQueue: {
-    loadDashboard: vi.fn(unused),
-    loadDetailContext: vi.fn(unused),
-  },
-  workspace: {
-    loadProjectBrowse: vi.fn(async ({ permission }) => ({
-      ...workspaceProjectBrowseFixture(),
-      permission,
-    })),
-    loadSceneBrowse: vi.fn(async ({ projectId, localeBranchId, permission }) => ({
-      ...workspaceSceneBrowseFixture(),
-      projectId,
-      localeBranchId,
-      permission,
-    })),
-    loadAssetBrowse: vi.fn(async ({ projectId, localeBranchId, permission }) => ({
-      ...workspaceAssetBrowseFixture(),
-      projectId,
-      localeBranchId,
-      permission,
-    })),
-    loadComparison: vi.fn(async ({ reviewItemId, permission }) => ({
-      ...workspaceComparisonFixture(),
-      reviewItemId,
-      permission,
-    })),
-    loadSearch: vi.fn(async ({ projectId, localeBranchId, query, mode, offset, permission }) => ({
-      ...workspaceSearchFixture(),
-      projectId,
-      localeBranchId,
-      query,
-      mode: mode ?? "all",
-      pagination: { ...workspaceSearchFixture().pagination, offset: offset ?? 0 },
-      permission,
-    })),
-  },
-  workspaceCorrections: {
-    loadPreview: vi.fn(unused),
-    submitCorrections: vi.fn(unused),
   },
   playTesterResultRevision: {
     editTarget: vi.fn(async () => playTargetEditServiceFixture),
@@ -894,7 +846,7 @@ const fixtureServices = {
         principalId: "principal-contract-member",
         email: "member@example.test",
         displayName: "Contract Member",
-        permissionSetIds: ["permission-set-account-local-reviewer"],
+        permissionSetIds: ["permission-set-account-local-contributor"],
         createdAt: new Date("2026-07-08T00:00:00.000Z"),
       },
     ]),
@@ -931,7 +883,7 @@ const fixtureServices = {
         principalId: input.principalId,
         email: input.email,
         displayName: input.displayName,
-        permissionSetIds: ["permission-set-account-local-reviewer"],
+        permissionSetIds: ["permission-set-account-local-contributor"],
         createdAt: new Date("2026-07-08T00:00:00.000Z"),
       }),
     ),
@@ -942,7 +894,7 @@ const fixtureServices = {
       principalId: "principal-contract-member",
       email: "member@example.test",
       displayName: "Contract Member",
-      permissionSetIds: ["permission-set-account-local-reviewer"],
+      permissionSetIds: ["permission-set-account-local-contributor"],
       createdAt: new Date("2026-07-08T00:00:00.000Z"),
     })),
   },

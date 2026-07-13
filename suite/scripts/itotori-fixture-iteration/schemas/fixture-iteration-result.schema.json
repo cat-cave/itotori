@@ -32,7 +32,7 @@
     "scenario": { "type": ["string", "null"] },
     "expectedVerdict": {
       "type": ["string", "null"],
-      "enum": ["accepted", "rejected", "repaired", "broken", null]
+      "enum": ["complete", "blocked", "repaired", "broken", null]
     },
     "fixtureId": { "type": ["string", "null"] },
     "projectId": { "type": ["string", "null"] },
@@ -64,7 +64,7 @@
     "billedMicrosUsd": { "type": "integer", "minimum": 0 },
     "stages": {
       "type": "array",
-      "minItems": 7,
+      "minItems": 6,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -72,7 +72,7 @@
         "properties": {
           "stageId": {
             "type": "string",
-            "enum": ["import", "draft", "qa", "reviewer", "export", "feedback", "rerun"]
+            "enum": ["import", "draft", "qa", "export", "feedback", "rerun"]
           },
           "artifactId": { "type": "string", "minLength": 1 },
           "contentHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
@@ -83,7 +83,7 @@
     },
     "emittedArtifacts": {
       "type": "array",
-      "minItems": 7,
+      "minItems": 6,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -97,7 +97,7 @@
     },
     "verdict": {
       "type": "string",
-      "enum": ["accepted", "rejected", "repaired", "broken", "unvalidated"]
+      "enum": ["complete", "blocked", "repaired", "broken", "unvalidated"]
     },
     "findingCount": { "type": "integer", "minimum": 0 },
     "blockingFindingCount": { "type": "integer", "minimum": 0 },

@@ -1,9 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import {
-  assetLocalizationDecisionAssetKindValues,
-  assetLocalizationDecisionPolicyValues,
-} from "@itotori/db";
+import { assetLocalizationDecisionAssetKindValues } from "@itotori/db";
 import {
   parseAssetDecisionsRoute,
   renderAssetDecisionsView,
@@ -60,7 +57,7 @@ describe("parseAssetDecisionsRoute", () => {
 
   it("returns null for unrelated routes", () => {
     expect(parseAssetDecisionsRoute("/api/projects")).toBeNull();
-    expect(parseAssetDecisionsRoute("/style-guide-builder")).toBeNull();
+    expect(parseAssetDecisionsRoute("/removed-surface")).toBeNull();
   });
 });
 
@@ -78,7 +75,7 @@ describe("renderAssetDecisionsView — policy view", () => {
     expect(candidateLink).not.toBeNull();
   });
 
-  it("groups active decisions by asset kind and renders a Set policy button per row", () => {
+  it("groups active decisions by asset kind in a read-only table", () => {
     const decisions = [
       translateTextFixture({
         decisionId: "asset-decision-1",
@@ -106,19 +103,9 @@ describe("renderAssetDecisionsView — policy view", () => {
 
     const rows = root.querySelectorAll("tr[data-decision-id]");
     expect(rows).toHaveLength(3);
-    for (const row of Array.from(rows)) {
-      expect(row.querySelector('button[data-action="open-edit"]')).not.toBeNull();
-    }
-
-    const editForms = root.querySelectorAll("form[data-decision-edit]");
-    expect(editForms).toHaveLength(3);
-    const firstForm = editForms[0]!;
-    const policySelect = firstForm.querySelector("select[name='decisionPolicy']");
-    expect(policySelect).not.toBeNull();
-    const options = Array.from(policySelect!.querySelectorAll("option")).map((opt) =>
-      opt.getAttribute("value"),
-    );
-    expect(options).toEqual(Object.values(assetLocalizationDecisionPolicyValues));
+    expect(root.querySelectorAll("form")).toHaveLength(0);
+    expect(root.querySelectorAll("button")).toHaveLength(0);
+    expect(root.querySelectorAll("select")).toHaveLength(0);
   });
 
   it("includes decision rationale and the policy badge in each row", () => {
@@ -150,7 +137,7 @@ describe("renderAssetDecisionsView — batch view", () => {
     expect(root.textContent).toContain("No undecided candidate assets");
   });
 
-  it("groups candidates by kind, renders the multi-select form, and lists every policy option", () => {
+  it("groups candidate assets by kind in a read-only inventory", () => {
     const candidates: CandidateAsset[] = [
       {
         assetRef: { kind: "bridgeAssetRef", ref: "asset.json#sign-1" },
@@ -173,16 +160,11 @@ describe("renderAssetDecisionsView — batch view", () => {
     };
     const root = renderInto(renderAssetDecisionsView(data));
 
-    const forms = root.querySelectorAll("form[data-batch-form]");
-    expect(forms).toHaveLength(2);
-    const imageForm = root.querySelector('form[data-batch-form="image_with_text"]');
-    expect(imageForm).not.toBeNull();
-    const imageRefs = imageForm!.querySelectorAll('input[name="assetRefs"]');
-    expect(imageRefs).toHaveLength(2);
-
-    const policyOptions = Array.from(
-      imageForm!.querySelectorAll("select[name='decisionPolicy'] option"),
-    ).map((opt) => opt.getAttribute("value"));
-    expect(policyOptions).toEqual(Object.values(assetLocalizationDecisionPolicyValues));
+    expect(root.textContent).toContain("Sign 1");
+    expect(root.textContent).toContain("asset.json#sign-2");
+    expect(root.querySelectorAll("form")).toHaveLength(0);
+    expect(root.querySelectorAll("button")).toHaveLength(0);
+    expect(root.querySelectorAll("input")).toHaveLength(0);
+    expect(root.querySelectorAll("select")).toHaveLength(0);
   });
 });

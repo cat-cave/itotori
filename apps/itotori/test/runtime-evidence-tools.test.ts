@@ -6,10 +6,9 @@
 //      through MANAGED ARTIFACT REFS.
 //   3. DETERMINISTIC checks produce unambiguous findings (missing-text etc.)
 //      with NO model call.
-//   4. Findings route to the triage / reviewer path preserving those refs.
+//   4. Findings retain their managed evidence refs for downstream annotation.
 
 import { describe, expect, it } from "vitest";
-import { reviewerQueueItemKindValues, type AuthorizationActor } from "@itotori/db";
 import {
   AgentToolRuntime,
   DeterministicToolRegistry,
@@ -17,7 +16,6 @@ import {
   RUNTIME_EVIDENCE_QA_TOOL_MANIFEST,
   RuntimeEvidenceArtifactUnresolvedError,
   buildRuntimeEvidenceQaPrompt,
-  buildRuntimeEvidenceReviewerQueueItem,
   makeRuntimeEvidenceFixtureStore,
   makeRuntimeEvidenceTools,
   missingTextTool,
@@ -219,7 +217,6 @@ describe("agents request evidence through the registry (not raw files)", () => {
 });
 
 describe("triage integration preserves managed-ref provenance", () => {
-  const actor: AuthorizationActor = { userId: "local-user" };
   const result = runRuntimeEvidenceDeterministicChecks({
     store,
     runtimeReportRef: reportRef,
@@ -239,29 +236,6 @@ describe("triage integration preserves managed-ref provenance", () => {
       expect(routing.rootCause.class).toBe("runtime_evidence");
     }
     expect(routed.summary.byClass.runtime_evidence).toBe(result.findings.length);
-  });
-
-  it("builds a runtimeEvidence reviewer-queue item carrying the cited refs", () => {
-    const item = buildRuntimeEvidenceReviewerQueueItem({
-      actor,
-      projectId: "019ed0b0-0000-7000-8000-000000000f01",
-      localeBranchId: "019ed0b0-0000-7000-8000-000000000f02",
-      sourceRevisionId: "019ed0b0-0000-7000-8000-000000000f03",
-      runtimeReportId: result.runtimeReportId,
-      evidenceTier: result.evidenceTier,
-      findings: result.findings,
-      now: () => new Date("2026-07-05T00:00:00.000Z"),
-    });
-
-    expect(item.itemKind).toBe(reviewerQueueItemKindValues.runtimeEvidence);
-    // Runtime-evidence invariant: evidenceTier + observation refs + artifact hashes.
-    expect(item.evidenceTier).toBe("E3");
-    expect(item.observationEventIds?.length).toBeGreaterThan(0);
-    expect(item.artifactHashes?.length).toBeGreaterThan(0);
-    // The managed runtime-report hash + a screenshot hash are both cited.
-    expect(item.artifactHashes).toContain(reportRef.hash);
-    expect(item.affectedArtifactIds).toContain(reportRef.artifactId);
-    expect(item.affectedArtifactIds).toContain(RUNTIME_EVIDENCE_FIXTURE_IDS.captureAArtifact);
   });
 });
 

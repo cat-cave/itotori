@@ -1,11 +1,11 @@
 // itotori-execute-rerun-jobs — Repair-job EXECUTOR tests.
 //
-// Proves the crux acceptance: a correction / feedback that schedules a rerun
+// Proves the crux acceptance: a machine-verifiable finding that schedules a rerun
 // actually EXECUTES. Before the executor landed, `RepairJobService` only
 // QUEUED jobs (`claimNext`/`recordOutcome` seam with no consumer), so nothing
 // re-drafted or re-QA'd anything and no written outcome was persisted. These tests drive
 // the executor end-to-end on a synthetic (fake-provider) project so a
-// play-test correction -> scheduled rerun -> REAL re-draft/re-QA -> persisted
+// QA finding -> scheduled rerun -> REAL re-draft/re-QA -> persisted
 // selected body + real billed cost is proven, deterministically.
 //
 // Generic to any project: the only project knowledge lives behind the
@@ -61,7 +61,7 @@ const UNIT_C = "019ed0aa-0000-7000-8000-0000000000c3";
 // draft for this unit would have read "Good morning." — the correction
 // schedules a rerun and the loop re-drafts to this body instead.
 const CORRECTED_DRAFT_A = "Good morning, Yui.";
-const DEFER_MARKER = "REPAIR_EXECUTOR_DEFER_CRITICAL";
+const CRITICAL_QA_MARKER = "REPAIR_EXECUTOR_CRITICAL_QA";
 
 // SYNTHETIC billed cost — derived from the REAL cost parser
 // (`usageCostToDecimalString` / `usageCostToMicros`), never a fabricated cost
@@ -99,23 +99,17 @@ class InMemorySinks {
 
 class InMemoryUnitResolver implements RepairRerunUnitResolver {
   private readonly byId = new Map<string, AgenticLoopUnitInput>();
-  private order: readonly string[] = [];
 
   constructor(inputs: ReadonlyArray<AgenticLoopUnitInput>) {
     for (const input of inputs) {
       this.byId.set(input.unit.bridgeUnitId, input);
     }
-    this.order = inputs.map((input) => input.unit.bridgeUnitId);
   }
 
   async resolveAffectedUnits(job: RepairJob): Promise<ReadonlyArray<AgenticLoopUnitInput>> {
-    // Bridge-unit / scene scope: resolve exactly the job's declared ids in the
-    // resolver's canonical order. Project scope: resolve every unit.
-    if (job.affectedScope === "project") {
-      return this.order.map((id) => this.byId.get(id)!);
-    }
-    const ids = job.affectedBridgeUnitIds;
-    return ids.map((id) => this.byId.get(id)!).filter((input) => input !== undefined);
+    return job.affectedBridgeUnitIds
+      .map((id) => this.byId.get(id)!)
+      .filter((input) => input !== undefined);
   }
 }
 
@@ -256,7 +250,7 @@ function cleanQaContent(): string {
 
 /**
  * Fake provider factory. Keyed on the CURRENT unit + request markers:
- *   - a unit whose source carries DEFER_MARKER emits a critical QA finding;
+ *   - a unit whose source carries CRITICAL_QA_MARKER emits a critical QA finding;
  *     zero repair budget retains its primary body with quality flags.
  *   - UNIT_A re-drafts to the CORRECTED body (proving the rerun re-drafted).
  *   - every other unit translates cleanly into a written outcome.
@@ -284,7 +278,7 @@ function repairProviderFactory(): AgenticLoopProviderFactory {
           );
         }
         if (request.taskKind === "llm_qa") {
-          if (blob.includes(DEFER_MARKER)) {
+          if (blob.includes(CRITICAL_QA_MARKER)) {
             return criticalQaContent(bridgeUnitIdOf(request));
           }
           return cleanQaContent();
@@ -325,32 +319,30 @@ function makeService(): RepairJobService {
 // ---------------------------------------------------------------------------
 
 describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () => {
-  it("a play-test correction schedules a rerun that persists the selected written body and records real cost", async () => {
+  it("a QA finding schedules a rerun that persists the selected written body and records real cost", async () => {
     const sinks = new InMemorySinks();
     const resolver = new InMemoryUnitResolver([
       loopInputFor(makeUnit(UNIT_A, "おはよう、{player}。", 1)),
     ]);
     const service = makeService();
 
-    // A play-test correction: the prior body was wrong; the user requests a
-    // re-draft of UNIT_A at the translation stage. This is the generic
-    // human-decision trigger that lowers into a repair job.
+    // A machine-verifiable QA finding identifies UNIT_A for a translation
+    // rerun; no broad rerun path is involved.
     const job = service.enqueue({
       trigger: {
-        trigger: "human_decision",
-        decisionId: "correction-unit-a-mistranslation",
-        decisionRecordedAt: new Date("2026-06-24T12:00:00Z"),
-        scope: { kind: "bridge_units", bridgeUnitIds: [UNIT_A] },
+        trigger: "qa_finding",
+        findingId: "019ed0aa-0000-7000-8000-00000000ff03",
+        bridgeUnitId: UNIT_A,
         severity: "p1",
         targetStage: "translation",
-        rationale: "play-test correction: prior body mistranslated the greeting",
+        rationale: "QA finding: prior body mistranslated the greeting",
       },
       pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
     });
 
     const result = await runRepairQueue(service, makeDeps(resolver, sinks));
 
-    // The queue DRAINED: the one scheduled job actually ran.
+    // The repair runner drained the one scheduled job.
     expect(result.jobsRun).toBe(1);
     expect(service.pending()).toEqual([]);
     expect(service.claimNext()).toBeUndefined();
@@ -427,10 +419,10 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
 
   it("a critical zero-budget repair retains a written primary body and informational quality flags", async () => {
     const sinks = new InMemorySinks();
-    // The unit's source carries DEFER_MARKER so the fake provider emits a
+    // The unit's source carries CRITICAL_QA_MARKER so the fake provider emits a
     // critical QA finding; with maxRepairAttempts: 0 it retains the primary.
     const resolver = new InMemoryUnitResolver([
-      loopInputFor(makeUnit(UNIT_C, `これ${DEFER_MARKER}だ。`, 3)),
+      loopInputFor(makeUnit(UNIT_C, `これ${CRITICAL_QA_MARKER}だ。`, 3)),
     ]);
     const service = makeService();
 
@@ -474,13 +466,12 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
     const service = makeService();
     service.enqueue({
       trigger: {
-        trigger: "human_decision",
-        decisionId: "correction-no-units",
-        decisionRecordedAt: new Date("2026-06-24T12:00:00Z"),
-        scope: { kind: "bridge_units", bridgeUnitIds: [UNIT_A] },
+        trigger: "qa_finding",
+        findingId: "019ed0aa-0000-7000-8000-00000000ff04",
+        bridgeUnitId: UNIT_A,
         severity: "p1",
         targetStage: "translation",
-        rationale: "correction whose affected scope is now empty",
+        rationale: "QA finding whose affected unit is no longer in scope",
       },
       pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
     });
@@ -493,39 +484,6 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
     expect(sinks.writtenOutcomes).toEqual([]);
     expect(sinks.providerRuns).toEqual([]);
     expect(service.outcomeOf(service.repairHistory()[0]!.jobId)).toBe("no_change");
-  });
-
-  it("project scope: the resolver enumerates every unit + the rerun persists each", async () => {
-    const sinks = new InMemorySinks();
-    const units = [
-      loopInputFor(makeUnit(UNIT_A, "おはよう。", 1)),
-      loopInputFor(makeUnit(UNIT_B, "こんにちは。", 2)),
-    ];
-    const resolver = new InMemoryUnitResolver(units);
-    const service = makeService();
-
-    service.enqueue({
-      trigger: {
-        trigger: "human_decision",
-        decisionId: "correction-whole-project",
-        decisionRecordedAt: new Date("2026-06-24T12:00:00Z"),
-        scope: { kind: "project" },
-        severity: "p1",
-        targetStage: "translation",
-        rationale: "reviewer requested a whole-project re-draft",
-      },
-      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
-    });
-
-    const result = await runRepairQueue(service, makeDeps(resolver, sinks));
-
-    expect(result.jobsRun).toBe(1);
-    expect(result.succeeded).toBe(1);
-    expect(sinks.writtenOutcomes).toHaveLength(2);
-    expect(sinks.writtenOutcomes.map((outcome) => outcome.bridgeUnitId).sort()).toEqual(
-      [UNIT_A, UNIT_B].sort(),
-    );
-    expect(sinks.providerRuns).toHaveLength(2);
   });
 
   it("drains a multi-job queue in priority order, recording each outcome on the history", async () => {
@@ -585,13 +543,12 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
       const service = makeService();
       service.enqueue({
         trigger: {
-          trigger: "human_decision",
-          decisionId: "correction-determinism",
-          decisionRecordedAt: new Date("2026-06-24T12:00:00Z"),
-          scope: { kind: "bridge_units", bridgeUnitIds: [UNIT_A] },
+          trigger: "qa_finding",
+          findingId: "019ed0aa-0000-7000-8000-00000000ff05",
+          bridgeUnitId: UNIT_A,
           severity: "p1",
           targetStage: "translation",
-          rationale: "determinism check",
+          rationale: "QA rerun determinism check",
         },
         pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
       });
@@ -608,12 +565,11 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
     expect(second.totalCostUsd).toBe(first.totalCostUsd);
   });
 
-  it("per-unit isolation + partial_failure: a mixed write+fail rerun records a non-success outcome with failed-unit details", async () => {
+  it("a failing QA repair job records partial_failure with failed-unit details", async () => {
     const sinks = new InMemorySinks();
-    const goodUnit = loopInputFor(makeUnit(UNIT_A, "おはよう。", 1));
     // A "poison" unit whose translation pack is malformed so the loop throws.
     const poisonUnit = loopInputFor(makeUnit(UNIT_B, "poison", 2));
-    const resolver = new InMemoryUnitResolver([goodUnit, poisonUnit]);
+    const resolver = new InMemoryUnitResolver([poisonUnit]);
     const service = makeService();
 
     const throwingFactory: AgenticLoopProviderFactory = ({ stage, agentLabel }) =>
@@ -643,13 +599,12 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
 
     const job = service.enqueue({
       trigger: {
-        trigger: "human_decision",
-        decisionId: "correction-mixed",
-        decisionRecordedAt: new Date("2026-06-24T12:00:00Z"),
-        scope: { kind: "bridge_units", bridgeUnitIds: [UNIT_A, UNIT_B] },
+        trigger: "qa_finding",
+        findingId: "019ed0aa-0000-7000-8000-00000000ff06",
+        bridgeUnitId: UNIT_B,
         severity: "p1",
         targetStage: "translation",
-        rationale: "correction touching a good + a poison unit",
+        rationale: "QA finding on a unit whose provider pack is malformed",
       },
       pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
     });
@@ -665,12 +620,10 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
       makeDeps(resolver, sinks, { providerFactory: throwingFactory }),
     );
 
-    // CRUX (FIX 1): a rerun where ANY unit failed is terminally NON-successful.
-    // UNIT_A was written but UNIT_B threw, so the outcome is `partial_failure`
-    // — NEVER `succeeded` (the pre-fix bug hid the failure behind a success).
+    // A thrown machine-scoped rerun is terminally non-successful.
     expect(result.outcome).toBe("partial_failure");
     expect(result.outcome).not.toBe("succeeded");
-    expect(result.writtenOutcomeCount).toBe(1);
+    expect(result.writtenOutcomeCount).toBe(0);
     expect(result.failureCount).toBe(1);
 
     // The failed-unit details ride along so the failure is never hidden.
@@ -680,11 +633,8 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
     expect(failure.sourceUnitKey).toBe(poisonUnit.unit.sourceUnitKey);
     expect(failure.message.length).toBeGreaterThan(0);
 
-    // Per-unit isolation held: UNIT_A's written outcome persisted, while the
-    // poison unit did not receive fabricated source text.
-    expect(sinks.writtenOutcomes).toHaveLength(1);
-    expect(sinks.writtenOutcomes[0]!.bridgeUnitId).toBe(UNIT_A);
-    expect(sinks.writtenOutcomes[0]!.selectedBody).toBe(CORRECTED_DRAFT_A);
+    // The failed unit does not receive a fabricated selected body.
+    expect(sinks.writtenOutcomes).toEqual([]);
 
     // The terminal outcome is what the caller records on the service history.
     service.recordOutcome(job.jobId, result.outcome);
@@ -724,13 +674,24 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
 
     service.enqueue({
       trigger: {
-        trigger: "human_decision",
-        decisionId: "correction-mixed-queue",
-        decisionRecordedAt: new Date("2026-06-24T12:00:00Z"),
-        scope: { kind: "bridge_units", bridgeUnitIds: [UNIT_A, UNIT_B] },
+        trigger: "qa_finding",
+        findingId: "019ed0aa-0000-7000-8000-00000000ff07",
+        bridgeUnitId: UNIT_B,
         severity: "p1",
         targetStage: "translation",
-        rationale: "correction touching a good + a poison unit",
+        rationale: "QA finding on the poison unit",
+      },
+      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+    });
+
+    service.enqueue({
+      trigger: {
+        trigger: "qa_finding",
+        findingId: "019ed0aa-0000-7000-8000-00000000ff08",
+        bridgeUnitId: UNIT_A,
+        severity: "p1",
+        targetStage: "translation",
+        rationale: "QA finding on the healthy unit",
       },
       pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
     });
@@ -740,9 +701,9 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
       makeDeps(resolver, sinks, { providerFactory: throwingFactory }),
     );
 
-    // The mixed accept+fail job drained as partial_failure, NOT succeeded.
-    expect(result.jobsRun).toBe(1);
+    // Independent machine-scoped jobs report their outcomes separately.
+    expect(result.jobsRun).toBe(2);
     expect(result.partialFailure).toBe(1);
-    expect(result.succeeded).toBe(0);
+    expect(result.succeeded).toBe(1);
   });
 });

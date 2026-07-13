@@ -3,7 +3,7 @@ import { assertFormatVersion, BRIDGE_FORMAT_STABILITY } from "./format-stability
 
 export * from "./product-version.js";
 export * from "./format-stability.js";
-export * from "./style-guide-conversation.js";
+export * from "./style-guide-policy.js";
 export * from "./conformance.js";
 export * from "./qa-finding.js";
 export * from "./speaker-label.js";
@@ -554,8 +554,6 @@ export const TRIAGE_EVENT_KINDS = [
   "model_output_recorded",
   "qa_finding_reported",
   "patch_result_recorded",
-  "triage_decision_recorded",
-  "repair_requested",
   "finding_superseded",
 ] as const;
 export type TriageEventKindV02 = (typeof TRIAGE_EVENT_KINDS)[number];

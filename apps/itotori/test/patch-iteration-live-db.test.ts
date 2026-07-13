@@ -97,6 +97,38 @@ type LivePatchPlayCliOutput = {
   };
 };
 
+async function canonicalNoopFeedbackHead(
+  context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
+  artifacts: ProductionParentArtifacts,
+  label: string,
+): Promise<{ contextArtifactId: string; contextEntryVersionId: string }> {
+  await seedCurrentSourceUnit(context, artifacts.reusedBridgeUnitId);
+  const entry = await new ItotoriContextArtifactRepository(context.db).upsertArtifact(actor, {
+    projectId: scope.projectId,
+    localeBranchId: scope.localeBranchId,
+    sourceRevisionId: scope.sourceRevisionId,
+    category: "context_note",
+    title: `Canonical cleanup context ${label}`,
+    body: "This canonical context exists only to exercise refinement terminalization cleanup.",
+    producedByAgent: "patch-iteration-live-fixture",
+    producedByTool: "tool.context-artifacts",
+    producerVersion: "1.0.0",
+    sourceUnits: [
+      {
+        bridgeUnitId: artifacts.reusedBridgeUnitId,
+        citation: `patch-iteration-live:${artifacts.reusedBridgeUnitId}`,
+      },
+    ],
+  });
+  if (entry.headVersionId === null) {
+    throw new Error(`canonical cleanup context ${label} did not select a head version`);
+  }
+  return {
+    contextArtifactId: entry.contextArtifactId,
+    contextEntryVersionId: entry.headVersionId,
+  };
+}
+
 describe.skipIf(!process.env.DATABASE_URL)("PatchIterationService live Postgres", () => {
   it("takes a real Kaifuu v1 through CLI play feedback into a lineage-linked v2 with exact reuse", async () => {
     const context = await isolatedMigratedContext();
@@ -356,17 +388,20 @@ describe.skipIf(!process.env.DATABASE_URL)("PatchIterationService live Postgres"
 
       // The v1/v2 pass is intentionally scoped to two units in one fixture
       // route. A later iteration can widen that frozen scope, but must still
-      // produce a complete next patch: inherited v2 members are reused and
-      // only the newly admitted choice unit is written/materialized.
+      // produce a complete next patch. Use a real result revision on v2 rather
+      // than an event-only comment merely to make the next refinement selectable.
       const broaderBatch = await service.createFeedbackBatch({
         observedPatchVersionId: v2.patch.patchVersionId,
-        label: "Broaden this scoped patch",
+        label: "Broaden this scoped patch with a revised companion line",
       });
+      const broaderExistingTarget = "Broader scope companion line reflected";
       await service.feedback({
         observedPatchVersionId: v2.patch.patchVersionId,
         feedbackBatchId: broaderBatch.feedbackBatchId,
-        eventKind: "comment",
-        body: "Include this route choice in the next complete scoped patch.",
+        eventKind: "result_edit",
+        body: "The companion line also needs the play-tested revision.",
+        targetBody: broaderExistingTarget,
+        affectedBridgeUnitIds: [artifacts.reusedBridgeUnitId],
       });
       const broaderTarget = "Broader scope choice reflected";
       const v3 = await service.refine({
@@ -387,7 +422,7 @@ describe.skipIf(!process.env.DATABASE_URL)("PatchIterationService live Postgres"
           }),
           expect.objectContaining({
             bridgeUnitId: artifacts.reusedBridgeUnitId,
-            strategy: "reuse",
+            strategy: "redraft",
           }),
           expect.objectContaining({
             bridgeUnitId: artifacts.broadenedBridgeUnitId,
@@ -410,6 +445,12 @@ describe.skipIf(!process.env.DATABASE_URL)("PatchIterationService live Postgres"
             bridgeUnitId: artifacts.changedBridgeUnitId,
             sourceRunId: v2.refinement.run.runId,
             memberOrigin: "reused_from_base",
+          }),
+          expect.objectContaining({
+            bridgeUnitId: artifacts.reusedBridgeUnitId,
+            sourceRunId: v3.refinement.run.runId,
+            targetBody: broaderExistingTarget,
+            memberOrigin: "run_written_outcome",
           }),
         ]),
       });
@@ -634,17 +675,28 @@ describe.skipIf(!process.env.DATABASE_URL)("PatchIterationService live Postgres"
         observedPatchVersionId: v1.patchVersionId,
         label: "exercise failed-refinement cleanup",
       });
-      await service.feedback({
+      // Use a real canonical context fact, but deliberately freeze no wiki
+      // head into this refinement. That reaches the post-seed cleanup seam
+      // without reintroducing an event-only comment as a fixture shortcut.
+      const canonicalContext = await canonicalNoopFeedbackHead(
+        context,
+        artifacts,
+        "terminalization-cleanup",
+      );
+      await iteration.recordFeedbackEvent(actor, {
         observedPatchVersionId: v1.patchVersionId,
         feedbackBatchId: batch.feedbackBatchId,
-        eventKind: "comment",
-        body: "This intentionally has no target impact, so refinement must fail after seeding.",
+        eventKind: "wiki_edit",
+        body: "This canonical correction is intentionally outside the frozen refinement heads.",
+        contextArtifactId: canonicalContext.contextArtifactId,
+        contextEntryVersionId: canonicalContext.contextEntryVersionId,
       });
 
       await expect(
         service.refine({
           basePatchVersionId: v1.patchVersionId,
           feedbackBatchIds: [batch.feedbackBatchId],
+          wikiHeads: [],
         }),
       ).rejects.toMatchObject({ code: "no_refinement_changes" });
 
@@ -713,17 +765,28 @@ describe.skipIf(!process.env.DATABASE_URL)("PatchIterationService live Postgres"
         observedPatchVersionId: v1.patchVersionId,
         label: "post-commit refinement snapshot cleanup",
       });
-      await service.feedback({
+      // As above, retain a canonical feedback fact and explicitly omit its
+      // wiki head from this no-op refinement snapshot. The test only exercises
+      // post-commit cleanup; it must not seed a legacy event-only comment.
+      const canonicalContext = await canonicalNoopFeedbackHead(
+        context,
+        artifacts,
+        "post-commit-cleanup",
+      );
+      await iteration.recordFeedbackEvent(actor, {
         observedPatchVersionId: v1.patchVersionId,
         feedbackBatchId: batch.feedbackBatchId,
-        eventKind: "comment",
-        body: "The post-commit snapshot fixture must never retain a running lease.",
+        eventKind: "wiki_edit",
+        body: "The post-commit cleanup fixture retains only canonical context feedback.",
+        contextArtifactId: canonicalContext.contextArtifactId,
+        contextEntryVersionId: canonicalContext.contextEntryVersionId,
       });
 
       await expect(
         service.refine({
           basePatchVersionId: v1.patchVersionId,
           feedbackBatchIds: [batch.feedbackBatchId],
+          wikiHeads: [],
         }),
       ).rejects.toThrow("fixture refinement snapshot read failed after seed commit");
 

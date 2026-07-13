@@ -57,7 +57,6 @@ check:
     node --test scripts/db-test-skip-visibility.test.mjs
     node --test scripts/permission-denial-db-gate.test.mjs
     node --test scripts/catalog-replay-db-gate.test.mjs
-    node --test scripts/style-guide-fixture-flow-db-gate.test.mjs
     node --test scripts/qd-full-ci.test.mjs
     node --test scripts/affected.test.mjs
     node --test scripts/native-deps.test.mjs
@@ -523,23 +522,6 @@ permission-denial-db-strict:
 catalog-replay-db-strict:
     node scripts/catalog-replay-db-gate.mjs
 
-# ITOTORI-135: DB-backed local gate PROVING the ITOTORI-007 style-guide
-# fixture-flow persistence suite actually ran against a disposable database. That
-# suite drives the recorded conversational style-guide flow (public fixture)
-# through the real @itotori/db repositories, so it is DB-classified and a
-# fast-local run SKIPS it — and a skipped suite is NOT persistence coverage. This
-# gate makes "the style-guide fixture flow persisted for real" provable: with no
-# DATABASE_URL it writes a machine-readable skipped artifact and FAILS (non-zero)
-# instead of going green-on-skip; with a reachable Postgres it runs ONLY the
-# fixture-flow suite and asserts it executed persistence tests (per-suite
-# count > 0, zero skipped, zero failed), emitting a deterministic proof artifact.
-# Public-fixture-only: no private providers, no real bytes. Bring up a disposable
-# Postgres first (see `just db-up` / `just db-migrate`); this recipe does not
-# itself manage docker. Run `DATABASE_URL= just style-guide-fixture-flow-db-strict`
-# to see the missing-DATABASE_URL failure.
-style-guide-fixture-flow-db-strict:
-    node scripts/style-guide-fixture-flow-db-gate.mjs
-
 # ALPHA-009: the suite alpha proof / public-fixture vertical is the required
 # integration guardrail (replaces the retired literal Hello World gate).
 # Runs the ALPHA-007 public-fixture vertical and then re-proves cross-artifact
@@ -769,7 +751,6 @@ ci-tier0-meta:
     node --test scripts/db-test-skip-visibility.test.mjs
     node --test scripts/permission-denial-db-gate.test.mjs
     node --test scripts/catalog-replay-db-gate.test.mjs
-    node --test scripts/style-guide-fixture-flow-db-gate.test.mjs
     node --test scripts/qd-full-ci.test.mjs
     node --test scripts/affected.test.mjs
     node --test scripts/native-deps.test.mjs
@@ -907,7 +888,6 @@ ci-tier1-db:
     node scripts/assert-db-tests-not-skipped.mjs
     node scripts/permission-denial-db-gate.mjs --results "$DB_RESULTS"
     node scripts/catalog-replay-db-gate.mjs --results "$DB_RESULTS"
-    node scripts/style-guide-fixture-flow-db-gate.mjs --results "$DB_RESULTS"
     pnpm --filter @itotori/app typecheck
     # The DB lane no longer downloads the native artifact (decoupled from the
     # `native` job). The sole real-binary app test — wholegame-render-

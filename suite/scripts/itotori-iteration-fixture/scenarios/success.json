@@ -1,7 +1,7 @@
 {
   "schemaVersion": "itotori.iteration-fixture.recording.v0",
   "scenario": "success",
-  "expectedVerdict": "accepted",
+  "expectedVerdict": "complete",
   "fixtureId": "hello-game",
   "iterationScenarioUri": "suite/scripts/itotori-iteration-fixture/inputs/iteration-recordings/iter-success.json",
   "patchResult": {

@@ -88,10 +88,9 @@ Vite+ is the TypeScript/web workspace command surface (the `vp` CLI; task graph 
 
 ## Studio SPA — design system, typed API client, app shell
 
-The Studio SPA replaced the deleted HTML-string `dashboard.ts` /
-`reviewer/detail-view.ts` / `workspace/view.ts` renderers with a single React
-app served by `apps/itotori/src/server.ts`. It is the surface every downstream
-Studio screen node inherits, so the patterns below are the precedent:
+The Studio SPA is a single React app served by `apps/itotori/src/server.ts`.
+It is the surface every downstream Studio screen node inherits, so the patterns
+below are the precedent:
 
 - **Dusk Observatory design system — `@itotori/ds`** (`packages/itotori-ds/`).
   React components + CSS tokens. The canonical CSS entry
@@ -105,12 +104,11 @@ Studio screen node inherits, so the patterns below are the precedent:
   Consumers read a discriminated `{ loading | ready | empty | error }` state;
   the shared singleton lives at `apps/itotori/src/ui/client.ts`.
 - **React app shell — `fnd-spa-shell`** (`apps/itotori/src/ui/`). `App.tsx`
-  client-routes off `window.location` and renders a parity-ported React
-  screen; `use-api-resource.ts` adapts the stateful `ApiResource` to React via
-  `useSyncExternalStore`. Routes this node does not port (asset-decisions /
-  reviewer-batch / style-guide-builder) are bridged to their existing
-  renderers via `LegacyRoute` (an honest, temporary mount — each is a tracked
-  follow-on screen, not a dual path for a replaced view).
+  client-routes off `window.location` and renders current Studio screens;
+  `use-api-resource.ts` adapts the stateful `ApiResource` to React via
+  `useSyncExternalStore`. The only separately rendered route is the independent
+  asset-localization policy surface. It is not a per-unit approval gate; the
+  retired batch, workspace, and style-builder surfaces have no mounted route.
 
 The full set of patterns (typed-query example, deleted predecessors,
 downstream-screen patterns) lives in [frontend.md](../frontend.md); the

@@ -172,16 +172,6 @@ export default defineConfig({
         dependsOn: ["ts:build"],
         cache: false,
       },
-      "style-guide:provider-smoke": {
-        command: "node apps/itotori/dist/style-guide-provider-smoke.js",
-        dependsOn: ["ts:build"],
-        cache: false,
-      },
-      "style-guide:fixture-flow": {
-        command: "node apps/itotori/dist/cli.js style-guide-fixture-flow",
-        dependsOn: ["db:migrate:test"],
-        cache: false,
-      },
       "itotori:agentic-loop-smoke": {
         // ITOTORI-222: end-to-end agentic-loop smoke command. The
         // default entry point relies on the FakeModelProvider baked
@@ -190,20 +180,6 @@ export default defineConfig({
         // stage to exercise the orchestrator from context through
         // final draft.
         command: "node apps/itotori/dist/cli.js agentic-loop-smoke",
-        dependsOn: ["ts:build"],
-        cache: false,
-      },
-      "itotori:review-queue-fixture": {
-        // Dev-only fixture SEEDER. Invoked via its dedicated dev binary,
-        // NOT the production CLI (`cli.js`): the seeder is compile-time
-        // separated from the shipped command dispatch so no fixture
-        // builder is reachable from the production CLI surface.
-        command: "node apps/itotori/dist/review-queue-fixture-dev.js",
-        dependsOn: ["ts:build"],
-        cache: false,
-      },
-      "style-guide:live-provider-smoke": {
-        command: "node apps/itotori/dist/style-guide-provider-smoke.js --live",
         dependsOn: ["ts:build"],
         cache: false,
       },
@@ -238,8 +214,8 @@ export default defineConfig({
         cache: false,
       },
       // ITOTORI-095: run PUBLIC RECORDED inputs through one full Itotori
-      // iteration (import -> draft -> QA -> reviewer action -> export ->
-      // feedback import -> targeted rerun -> final result) and emit a
+      // iteration (import -> draft -> QA -> export -> feedback import ->
+      // context-correction-driven patch iteration -> final result) and emit a
       // schema-valid, hash-addressed FixtureIterationResult artifact per
       // stage. Composes existing seams; recorded/public only, no creds, no DB.
       "itotori:fixture-iteration": {
@@ -248,18 +224,18 @@ export default defineConfig({
       },
       // ITOTORI-095: deterministic unit + integration tests covering the full
       // iteration + per-stage schema-valid artifacts across all four recorded
-      // paths (success, QA rejection, runtime feedback, rerun repair).
+      // paths (success, QA finding, runtime feedback, context-correction rerun).
       "itotori:fixture-iteration-test": {
         command:
           "node --test suite/scripts/itotori-fixture-iteration/run.test.mjs suite/scripts/itotori-fixture-iteration/iteration.test.mjs",
         cache: false,
       },
       // ITOTORI-028: end-to-end draft iteration fixture command. COMPOSES the
-      // ITOTORI-095 Itotori loop (import -> draft -> qa -> reviewer -> export ->
-      // feedback -> rerun) with the Kaifuu patch result + Utsushi runtime
+      // ITOTORI-095 Itotori loop (import -> draft -> qa -> export -> feedback ->
+      // context-correction-driven rerun) with the Kaifuu patch result + Utsushi runtime
       // observation into ONE manifest-bound run, then emits a schema-valid,
       // hash-addressed FixtureIterationResult artifact per stage and a
-      // SHARED-025 manifest that proves all nine stages belong to the same
+      // SHARED-025 manifest that proves all eight stages belong to the same
       // fixture id + source revision. Composes existing seams; recorded/public
       // only, no creds, no DB.
       "itotori:iteration-fixture": {
@@ -268,8 +244,8 @@ export default defineConfig({
       },
       // ITOTORI-028: deterministic unit + integration tests covering the full
       // cross-tool composition + per-stage schema-valid/hash-addressed
-      // artifacts across all six recorded paths (success, QA rejection, runtime
-      // feedback, patch failure, provider fallback, rerun repair).
+      // artifacts across all six recorded paths (success, QA finding, runtime
+      // feedback, patch failure, provider fallback, context-correction rerun).
       "itotori:iteration-fixture-test": {
         command:
           "node --test suite/scripts/itotori-iteration-fixture/run.test.mjs suite/scripts/itotori-iteration-fixture/iteration-fixture.test.mjs",

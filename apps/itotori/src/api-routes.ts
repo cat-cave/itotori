@@ -237,106 +237,6 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: [],
     responseSchema: "QueueHealthReadModel",
   },
-  "reviewer.queue": {
-    method: "GET",
-    pathTemplate: "/api/reviewer/queue",
-    operationId: "reviewerQueue",
-    summary: "Reviewer queue dashboard read model.",
-    pathParams: [],
-    responseSchema: "ReviewerQueueDashboardReadModel",
-  },
-  "reviewer.detail": {
-    method: "GET",
-    pathTemplate: "/api/reviewer/queue/{reviewItemId}/detail",
-    operationId: "reviewerDetail",
-    summary: "Reviewer queue item detail context.",
-    pathParams: ["reviewItemId"],
-    responseSchema: "ReviewerDetailContext",
-  },
-  "reviewer.batchPreview": {
-    method: "POST",
-    pathTemplate: "/api/reviewer/queue/batch-preview",
-    operationId: "reviewerBatchPreview",
-    summary: "Preview a reviewer batch action.",
-    pathParams: [],
-    requestSchema: "ReviewerBatchActionRequest",
-    responseSchema: "ReviewerBatchPreview",
-  },
-  "reviewer.batchExecute": {
-    method: "POST",
-    pathTemplate: "/api/reviewer/queue/batch-confirm",
-    operationId: "reviewerBatchExecute",
-    summary: "Execute a reviewer batch action.",
-    pathParams: [],
-    requestSchema: "ReviewerBatchActionRequest",
-    responseSchema: "ReviewerBatchExecuteResult",
-  },
-  "reviewer.itemAction": {
-    method: "POST",
-    pathTemplate: "/api/reviewer/queue/{reviewItemId}/action",
-    operationId: "reviewerItemAction",
-    summary: "Apply a single-item reviewer action.",
-    pathParams: ["reviewItemId"],
-    requestSchema: "ApiReviewerSingleActionRequest",
-    responseSchema: "ReviewerSingleActionResult",
-  },
-  "workspace.projects": {
-    method: "GET",
-    pathTemplate: "/api/workspace/projects",
-    operationId: "workspaceProjects",
-    summary: "Workspace project browse read model.",
-    pathParams: [],
-    responseSchema: "WorkspaceProjectBrowseReadModel",
-  },
-  "workspace.scenes": {
-    method: "GET",
-    pathTemplate: "/api/workspace/scenes",
-    operationId: "workspaceScenes",
-    summary: "Workspace scene browse read model.",
-    pathParams: [],
-    responseSchema: "WorkspaceSceneBrowseReadModel",
-  },
-  "workspace.assets": {
-    method: "GET",
-    pathTemplate: "/api/workspace/assets",
-    operationId: "workspaceAssets",
-    summary: "Workspace asset browse read model.",
-    pathParams: [],
-    responseSchema: "WorkspaceAssetBrowseReadModel",
-  },
-  "workspace.comparison": {
-    method: "GET",
-    pathTemplate: "/api/workspace/comparison",
-    operationId: "workspaceComparison",
-    summary: "Workspace comparison read model.",
-    pathParams: [],
-    responseSchema: "WorkspaceComparisonReadModel",
-  },
-  "workspace.search": {
-    method: "GET",
-    pathTemplate: "/api/workspace/search",
-    operationId: "workspaceSearch",
-    summary: "Workspace search read model.",
-    pathParams: [],
-    responseSchema: "WorkspaceSearchReadModel",
-  },
-  "workspace.correctionPreview": {
-    method: "GET",
-    pathTemplate: "/api/workspace/corrections",
-    operationId: "workspaceCorrectionPreview",
-    summary: "Workspace correction preview read model.",
-    pathParams: [],
-    responseSchema: "WorkspaceCorrectionPreviewReadModel",
-  },
-  "workspace.correctionSubmit": {
-    method: "POST",
-    pathTemplate: "/api/workspace/corrections",
-    operationId: "workspaceCorrectionSubmit",
-    summary: "Submit feedback corrections to canonical context.",
-    pathParams: [],
-    requestSchema: "ApiWorkspaceCorrectionSubmitRequest",
-    responseSchema: "WorkspaceCorrectionSubmitReadModel",
-  },
   "assetDecisions.active": {
     method: "GET",
     pathTemplate: "/api/projects/{projectId}/locale-branches/{localeBranchId}/asset-decisions",
@@ -389,15 +289,6 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: ["projectId"],
     requestSchema: "ApiRecordFindingRequest",
     responseSchema: "ApiRecordFindingResponse",
-  },
-  "decisions.record": {
-    method: "POST",
-    pathTemplate: "/api/projects/{projectId}/decisions",
-    operationId: "decisionsRecord",
-    summary: "Record a triage decision event.",
-    pathParams: ["projectId"],
-    requestSchema: "ApiRecordDecisionRequest",
-    responseSchema: "ApiRecordDecisionResponse",
   },
   "benchmarks.record": {
     method: "POST",
@@ -519,7 +410,7 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     responseSchema: "ApiAuthIdentityResponse",
   },
   // fnd-caps-context — the actor's Studio capability permission VIEW
-  // (canFlag / canDecide / canSteer / canReveal) resolved from exact
+  // (canFlag / canSteer / canReveal) resolved from exact
   // permission grants (capabilities, NOT roles).
   "auth.capabilities": {
     method: "GET",
@@ -599,8 +490,8 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     requestSchema: "ApiRevokeAuthSessionRequest",
     responseSchema: "ApiRevokeAuthSessionResponse",
   },
-  // ovw-launch-pass-action — drive the next localization pass (folds queued
-  // corrections -> pass N+1) via the project-driven-executor /
+  // ovw-launch-pass-action — drive the next localization pass via the
+  // project-driven-executor /
   // localize-fullproject driver. The HTTP surface is a thin, `canSteer`-gated
   // adapter; the driver itself is unchanged.
   "projects.launchPass": {
@@ -620,25 +511,6 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     summary: "Play RouteMap route/choice tree with coverage state.",
     pathParams: ["projectId", "localeBranchId"],
     responseSchema: "ApiPlayRouteMapResponse",
-  },
-  // play-mark-validated — per-scene localization coverage (needs_check /
-  // flagged / validated) driving the Play RouteMap.
-  "play.sceneCoverage": {
-    method: "GET",
-    pathTemplate: "/api/projects/{projectId}/locale-branches/{localeBranchId}/scene-coverage",
-    operationId: "playSceneCoverage",
-    summary: "Play RouteMap scene localization coverage read model.",
-    pathParams: ["projectId", "localeBranchId"],
-    responseSchema: "ApiPlaySceneCoverageResponse",
-  },
-  "play.setSceneCoverage": {
-    method: "POST",
-    pathTemplate: "/api/projects/{projectId}/locale-branches/{localeBranchId}/scene-coverage",
-    operationId: "playSetSceneCoverage",
-    summary: "Set a scene's localization coverage state (validated / flagged / needs_check).",
-    pathParams: ["projectId", "localeBranchId"],
-    requestSchema: "ApiPlaySetSceneCoverageRequest",
-    responseSchema: "ApiPlaySetSceneCoverageResponse",
   },
   // play-flag-composer — in-the-moment AnnotationComposer note → canonical
   // context correction via ManualFeedbackImport (feedback.import / canFlag).
@@ -721,7 +593,8 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     method: "POST",
     pathTemplate: "/api/play/patch-versions/{patchVersionId}/feedback",
     operationId: "patchIterationFeedback",
-    summary: "Persist individual or batched result, comment, context, or wiki play-test feedback.",
+    summary:
+      "Persist individual or batched result edits, canonical scoped comments, or canonical context play-test feedback.",
     pathParams: ["patchVersionId"],
     requestSchema: "ApiPatchIterationFeedbackRequest",
     responseSchema: "ApiPatchIterationFeedbackResponse",

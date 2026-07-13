@@ -1,9 +1,8 @@
 // fnd-spa-shell — the single React app shell served by `src/server.ts`.
 //
 // ONE SPA, client-routed off `window.location`, that REPLACES the deleted
-// HTML-string dashboard / reviewer-detail / workspace renderers with React
-// screens consuming `/api/*` through the typed client. Routes this node does
-// not port (asset-decisions / reviewer-batch / style-guide-builder) are
+// HTML-string dashboard renderer with React screens consuming `/api/*` through
+// the typed client. Routes this node does not port (asset-decisions) are
 // bridged to their existing renderers via `LegacyRoute` — a tracked,
 // temporary mount, not a dual path for a replaced view.
 //
@@ -17,7 +16,6 @@
 // `useApiQuery` and paints with `@itotori/ds`.
 
 import { useEffect, useRef, type ReactNode } from "react";
-import { parseWorkspaceRoute } from "../workspace/route.js";
 import { parseAddressableLocation } from "./addressable-routing.js";
 import {
   CapsProvider,
@@ -35,19 +33,12 @@ import {
 import { AddressableFocusScreen } from "./screens/AddressableFocusScreen.js";
 import { DashboardScreen } from "./screens/DashboardScreen.js";
 import { OnboardingScreen, parseOnboardingRoute } from "./screens/OnboardingScreen.js";
-import {
-  PlayScenePickerScreen,
-  parsePlayScenePickerRoute,
-  playRouteFromAddressable,
-} from "./screens/PlayScenePickerScreen.js";
 import { PatchIterationScreen, parsePatchIterationRoute } from "./screens/PatchIterationScreen.js";
 import { PlayRouteMapScreen, parsePlayRouteMapRoute } from "./screens/PlayRouteMapScreen.js";
 import {
   PlayFlagComposerScreen,
   parsePlayFlagComposerRoute,
 } from "./screens/PlayFlagComposerScreen.js";
-import { ReviewerDetailScreen } from "./screens/ReviewerDetailScreen.js";
-import { ReviewerQueueScreen, parseReviewerQueueRoute } from "./screens/ReviewerQueueScreen.js";
 import { MembersScreen, parseMembersRoute } from "./screens/MembersScreen.js";
 import { SettingsScreen, parseSettingsRoute } from "./screens/SettingsScreen.js";
 import {
@@ -67,21 +58,10 @@ import {
   parseWikiRoute,
   wikiRouteFromAddressable,
 } from "./screens/WikiEntryScreen.js";
-import { WorkspaceScreen } from "./screens/WorkspaceScreen.js";
 import { matchLegacyRoute, type LegacyRouteRenderer } from "./legacy-routes.js";
 import { RedactionGovernor } from "./redaction-governor.js";
 import { ShellFrame, defaultNavigate } from "./shell-frame.js";
 import { ToastProvider } from "./toast-host.js";
-
-const reviewerDetailRoutePathRegex = /^\/reviewer-queue\/([^/]+)$/u;
-
-function parseReviewerDetailRoute(pathname: string): { reviewItemId: string } | null {
-  const match = reviewerDetailRoutePathRegex.exec(pathname);
-  const reviewItemId = match?.[1];
-  return reviewItemId === undefined || reviewItemId.length === 0
-    ? null
-    : { reviewItemId: decodeURIComponent(reviewItemId) };
-}
 
 export type AppLocation = { pathname: string; search: string };
 
@@ -97,7 +77,7 @@ function currentLocation(): AppLocation {
 // source->branch, live cost) is consistent across surfaces.
 //
 // fnd-caps-context — the CapsProvider resolves the actor's Studio capability
-// permission VIEW (canFlag / canDecide / canSteer / canReveal) from exact
+// permission VIEW (canFlag / canSteer / canReveal) from exact
 // permission grants via GET `/api/auth/capabilities`. RedactionGovernor
 // reads canReveal from that context (an explicit `revealSensitive` prop
 // still overrides for tests / partial mounts).
@@ -163,9 +143,8 @@ function RoutedScreen({
   location: AppLocation;
   navigate: (path: string) => void;
 }): ReactNode {
-  // Legacy (not-yet-ported) routes are checked FIRST so `/reviewer-queue/batch`
-  // resolves to the batch renderer before the reviewer-detail regex (which
-  // also matches that path) — preserving the original dispatch precedence.
+  // Legacy routes are checked first so their renderer owns the path before a
+  // SPA surface claims it.
   const legacy = matchLegacyRoute(location.pathname, location.search);
   if (legacy !== null) {
     return <LegacyRoute render={legacy} />;
@@ -176,22 +155,6 @@ function RoutedScreen({
   // before surface-root parsers (bare `/play`, `/wiki`) claim the path.
   const addressable = parseAddressableLocation(location.pathname, location.search);
   if (addressable !== null) {
-    if (
-      addressable.surface === "play" &&
-      (addressable.kind === "unit" || addressable.kind === "scene" || addressable.kind === "route")
-    ) {
-      return (
-        <PlayScenePickerScreen
-          route={playRouteFromAddressable({
-            kind: addressable.kind,
-            id: addressable.id,
-            projectId: addressable.projectId,
-            localeBranchId: addressable.localeBranchId,
-            unitId: addressable.unitId,
-          })}
-        />
-      );
-    }
     // wiki-entry-ui — character / term deep-links render the real WikiEntry
     // profile (with CrossRef jumps to scenes) instead of the focus shell.
     if (addressable.surface === "wiki" && addressable.kind === "character") {
@@ -221,17 +184,8 @@ function RoutedScreen({
     return <AddressableFocusScreen location={addressable} />;
   }
 
-  // The bare `/reviewer-queue` (the categorized+severity+paginated queue) is
-  // matched BEFORE the reviewer-detail regex — the queue regex is
-  // trailing-slash-only, so it never captures a `/reviewer-queue/:id` detail
-  // path, but keeping it ahead makes the precedence explicit.
-  const reviewerQueue = parseReviewerQueueRoute(location.pathname, location.search);
-  if (reviewerQueue !== null) {
-    return <ReviewerQueueScreen route={reviewerQueue} />;
-  }
-
-  // `/play/routemap` — Play RouteMap with per-scene coverage (mark validated).
-  // Matched BEFORE bare `/play` so the more specific path wins.
+  // `/play/routemap` — canonical route/choice context visualization. Matched
+  // BEFORE bare `/play` so the more specific path wins.
   const playRouteMap = parsePlayRouteMapRoute(location.pathname, location.search);
   if (playRouteMap !== null) {
     return <PlayRouteMapScreen route={playRouteMap} />;
@@ -248,23 +202,6 @@ function RoutedScreen({
   const patchIteration = parsePatchIterationRoute(location.pathname, location.search);
   if (patchIteration !== null) {
     return <PatchIterationScreen route={patchIteration} navigate={navigate} />;
-  }
-
-  // `/play` — the Play scene picker (translated-summary navigation + source ↔
-  // draft BiText). Rendered inside the shell frame like every other screen.
-  const playScenePicker = parsePlayScenePickerRoute(location.pathname, location.search);
-  if (playScenePicker !== null) {
-    return <PlayScenePickerScreen route={playScenePicker} />;
-  }
-
-  const reviewerDetail = parseReviewerDetailRoute(location.pathname);
-  if (reviewerDetail !== null) {
-    return <ReviewerDetailScreen reviewItemId={reviewerDetail.reviewItemId} />;
-  }
-
-  const workspaceRoute = parseWorkspaceRoute(location.pathname, location.search);
-  if (workspaceRoute !== null) {
-    return <WorkspaceScreen route={workspaceRoute} />;
   }
 
   const onboardingRoute = parseOnboardingRoute(location.pathname);
