@@ -202,7 +202,7 @@ describe("asset-localization loop — unsupported patching stays EXPLICIT", () =
     const [newDraft] = draftAssetTexts(doc, "translate_text", fixtureTranslateFn({ NEW: "  " }));
     const findings = runAssetDraftQa(newDraft);
     const item = buildAssetReviewItem(newDraft, findings);
-    expect(item.recommendedAction).toBe("request_repair");
+    expect(item.recommendedAction).toBe("revise");
     // Reviewer force-approves despite the blocking finding; export still refuses.
     const decision = decideAssetReview(item, "approve", USER, { now: NOW });
     const outcome = buildAssetExportOutcome(

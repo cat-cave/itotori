@@ -132,15 +132,13 @@ function makeStubRepo(): {
         reviewItemId: input.reviewItemId,
         itemKind: itemKindForAction(input),
         state:
-          input.action === reviewerQueueActionValues.requestRepair
-            ? reviewerQueueItemStateValues.repairRequested
-            : input.action === reviewerQueueActionValues.defer
-              ? reviewerQueueItemStateValues.deferred
-              : input.action === reviewerQueueActionValues.escalate
-                ? reviewerQueueItemStateValues.escalated
-                : input.action === reviewerQueueActionValues.reject
-                  ? reviewerQueueItemStateValues.rejected
-                  : reviewerQueueItemStateValues.accepted,
+          input.action === reviewerQueueActionValues.defer
+            ? reviewerQueueItemStateValues.deferred
+            : input.action === reviewerQueueActionValues.escalate
+              ? reviewerQueueItemStateValues.escalated
+              : input.action === reviewerQueueActionValues.reject
+                ? reviewerQueueItemStateValues.rejected
+                : reviewerQueueItemStateValues.accepted,
       }),
       transition: transitionFixture({
         reviewItemId: input.reviewItemId,
@@ -336,74 +334,6 @@ describe("ReviewerQueueActionService", () => {
     expect(applyActionAndEnqueueJobs).not.toHaveBeenCalled();
   });
 
-  it("requestRepair refuses an empty repairHint", async () => {
-    const { repo } = makeStubRepo();
-    const service = new ReviewerQueueActionService(repo);
-
-    await expect(
-      service.requestRepair(actor, {
-        reviewItemId: "reviewer-queue-3",
-        actorUserId: "local-user",
-        expectedSourceRevisionId: "source-revision-fixture",
-        repairHint: "",
-      }),
-    ).rejects.toBeInstanceOf(ReviewerQueueActionServiceInputError);
-  });
-
-  it("requestRepair forwards repairHint onto the transition metadata", async () => {
-    const { repo, applyAction } = makeStubRepo();
-    const service = new ReviewerQueueActionService(repo);
-
-    await service.requestRepair(actor, {
-      reviewItemId: "reviewer-queue-4",
-      actorUserId: "local-user",
-      expectedSourceRevisionId: "source-revision-fixture",
-      contextRefs: decisionContextRefs,
-      repairHint: "re-translate with tighter glossary",
-      metadata: { reviewerNote: "needs glossary" },
-    });
-
-    expect(applyAction.mock.calls[0]![1]!.metadata).toMatchObject({
-      repairHint: "re-translate with tighter glossary",
-      reviewerNote: "needs glossary",
-      contextRefs: decisionContextRefs,
-    });
-  });
-
-  it("records a repair request while passing an empty queue-job planner", async () => {
-    const { repo, applyActionAndEnqueueJobs, plannedJobs } = makeStubRepo();
-    const service = new ReviewerQueueActionService(repo);
-
-    const result = await service.requestRepair(actor, {
-      reviewItemId: "reviewer-queue-rerun",
-      actorUserId: "local-user",
-      expectedSourceRevisionId: "source-revision-fixture",
-      contextRefs: decisionContextRefs,
-      repairHint: "targeted repair",
-    });
-
-    expect(applyActionAndEnqueueJobs).toHaveBeenCalledTimes(1);
-    expect(applyActionAndEnqueueJobs.mock.calls[0]![0]).toBe(actor);
-    expect(result.transition.action).toBe(reviewerQueueActionValues.requestRepair);
-    expect(plannedJobs).toHaveLength(0);
-  });
-
-  it("does not enter the repository composition when input validation fails", async () => {
-    const { repo, applyActionAndEnqueueJobs } = makeStubRepo();
-    const service = new ReviewerQueueActionService(repo);
-
-    await expect(
-      service.requestRepair(actor, {
-        reviewItemId: "reviewer-queue-invalid",
-        actorUserId: "local-user",
-        expectedSourceRevisionId: "source-revision-fixture",
-        repairHint: "",
-      }),
-    ).rejects.toBeInstanceOf(ReviewerQueueActionServiceInputError);
-
-    expect(applyActionAndEnqueueJobs).not.toHaveBeenCalled();
-  });
-
   it("does not create queue jobs when the repository rejects the action", async () => {
     const { repo, applyActionAndEnqueueJobs, plannedJobs } = makeStubRepo();
     applyActionAndEnqueueJobs.mockRejectedValueOnce(
@@ -415,12 +345,13 @@ describe("ReviewerQueueActionService", () => {
     const service = new ReviewerQueueActionService(repo);
 
     await expect(
-      service.requestRepair(actor, {
+      service.escalate(actor, {
         reviewItemId: "reviewer-queue-stale",
         actorUserId: "local-user",
         expectedSourceRevisionId: "source-revision-old",
         contextRefs: decisionContextRefs,
-        repairHint: "targeted repair",
+        escalationReason: "needs owner decision",
+        escalationTarget: "owner-review",
       }),
     ).rejects.toBeInstanceOf(ReviewerQueueRepositoryError);
 

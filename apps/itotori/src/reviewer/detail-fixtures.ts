@@ -647,8 +647,8 @@ export function staleContextFixture(): ReviewerDetailContext {
     structureContextFeed: null,
     transitions: [
       transitionFixture({
-        action: reviewerQueueActionValues.requestRepair,
-        nextState: reviewerQueueItemStateValues.repairRequested,
+        action: reviewerQueueActionValues.escalate,
+        nextState: reviewerQueueItemStateValues.escalated,
       }),
     ],
     diagnostics: [

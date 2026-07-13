@@ -1,26 +1,43 @@
-// p0-core-result-revision-hitl — end-to-end: play tester edits a delivered
-// target line → new delivered patch revision (real Postgres, real patch bytes),
-// atomic, real provenance, export reflects the edit with NO approval gate.
+// p0-core-result-revision-hitl — real HTTP + real Kaifuu delivery proof.
+//
+// This drives the shipping API boundary, not a hand-instantiated service:
+// a play-tester target edit produces a selected child PatchVersion, the real
+// Kaifuu patcher emits the child game bytes, and the delivery route exposes
+// that selected output immediately.
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { asNonBlankTargetText, type WrittenUnitOutcome } from "@itotori/localization-bridge-schema";
 import {
+  bootstrapLocalUser,
   hashLocalizationArtifact,
   ItotoriLocalizationJournalRepository,
-  ItotoriLocalizationResultRevisionRepository,
   ItotoriLocalizationRunFinalizerRepository,
   localUserId,
   type AuthorizationActor,
   type LocalizationJournalRunLeaseIdentity,
 } from "@itotori/db";
-import { asNonBlankTargetText, type WrittenUnitOutcome } from "@itotori/localization-bridge-schema";
-import { describe, expect, it } from "vitest";
-import { PlayTesterResultRevisionService } from "../src/play/result-revision-service.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { runKaifuuRealliveExtract } from "../src/extract/kaifuu-extract-seam.js";
+import { applyKaifuuRealLivePatch } from "../src/orchestrator/patch-apply-seam.js";
+import { bracketWrapForRealLive } from "../src/orchestrator/localize-project-stage-command.js";
+import { createItotoriServer } from "../src/server.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 
 const actor: AuthorizationActor = { userId: localUserId };
-const playTester: AuthorizationActor = { userId: "play-tester-live-db" };
 
 const scope = {
   projectId: "project-play-tester-live",
@@ -34,105 +51,492 @@ const driverLease: LocalizationJournalRunLeaseIdentity = {
   fenceToken: 1,
 };
 
+const fixtureRoot = fileURLToPath(
+  new URL("../../../crates/kaifuu-reallive/tests/fixtures/bridge-inventory-001/", import.meta.url),
+);
+
+const servers: ReturnType<typeof createItotoriServer>[] = [];
+
+type PlayTargetEdit = {
+  patchVersionId: string;
+  resultRevisionId: string;
+  parentPatchVersionId: string;
+  targetBody: string;
+  status: string;
+};
+
+type PlayDelivery = {
+  patchVersionId: string;
+  artifactHashes: Record<string, string>;
+  downloadUrl: string;
+  units: Array<{ bridgeUnitId: string; targetBody: string }>;
+};
+
+type ProductionParentArtifacts = {
+  root: string;
+  sourceRoot: string;
+  sourceSeenPath: string;
+  parentPatchTarget: string;
+  bridgeUnitId: string;
+  parentTargetBody: string;
+  artifactRefs: Record<string, string>;
+  artifactHashes: Record<string, string>;
+  cleanup: () => void;
+};
+
+afterEach(async () => {
+  await Promise.all(servers.splice(0).map(closeServer));
+});
+
 describe.skipIf(!process.env.DATABASE_URL)("play-tester result revision live DB", () => {
-  it("edit → selected export reflects new target with no approval step", async () => {
+  it("POST parent edit → POST child edit → selected real Kaifuu delivery over HTTP", async () => {
     const context = await isolatedMigratedContext();
-    const parentArtifact = createRealArtifact("live-parent");
-    const childRoot = mkdtempSync(join(tmpdir(), "itotori-play-tester-live-child-"));
+    const artifacts = createProductionParentArtifacts();
     try {
-      await seedScope(context);
-      await grantDraftWrite(context, playTester.userId);
-      const journal = new ItotoriLocalizationJournalRepository(context.db);
-      const finalizer = new ItotoriLocalizationRunFinalizerRepository(context.db);
-      const repository = new ItotoriLocalizationResultRevisionRepository(context.db);
-      const service = new PlayTesterResultRevisionService({ repository });
-
       const runId = "play-tester-live-run";
-      const unitId = "live-unit-1";
-      await journal.seedRun(actor, {
-        runId,
-        ...scope,
-        frozenScope: { kind: "explicit_units", unitIds: [unitId] },
-        routingPolicy: { routes: ["model-live/provider-live"] },
-        // itotori-225-audit-allow: deterministic synthetic ceiling for fixture attempts.
-        costPolicy: { kind: "play-tester-live", capUsd: "1.00" },
-        units: [
-          {
-            bridgeUnitId: unitId,
-            sourceUnitKey: `scene.${unitId}`,
-            nextAction: { kind: "drive_unit", stage: "translation" },
-          },
-        ],
-        lease: { ownerId: driverLease.ownerId },
-        createdAt: "2026-07-12T19:00:00.000Z",
-      });
-      await writeUnit(journal, runId, unitId);
+      const parentPatch = await seedPlayableProductionRun(context, artifacts, runId);
+      const sourceHashBefore = hashLocalizationArtifact(artifacts.sourceSeenPath);
+      const origin = await startLiveServer(context.databaseUrl);
+      const parentDelivery = await fetchDelivery(origin, runId);
+      expect(parentDelivery.patchVersionId).toBe(parentPatch.patchVersionId);
+      const parentPatchHash = parentDelivery.artifactHashes.patchTarget;
+      expect(parentPatchHash).toBeTypeOf("string");
 
-      const parentPatch = await finalizer.ensurePatchVersion(actor, {
-        runId,
-        artifactHashes: parentArtifact.artifactHashes,
-        artifactRefs: parentArtifact.artifactRefs,
-      });
-      for (const stage of ["patch_build", "patch_apply", "validation"] as const) {
-        await finalizer.upsertPatchStageEvidence(actor, {
-          runId,
-          stage,
-          status: "succeeded",
-          evidence: { fixture: "play-tester-live" },
-        });
-      }
-      await finalizer.enterFinalizing(actor, { runId, lease: driverLease });
-      await finalizer.completeSucceededRun(actor, {
-        runId,
-        patchVersionId: parentPatch.patchVersionId,
-      });
-
-      const beforeExport = await service.loadSelectedExport(actor, { runId });
-      expect(beforeExport.export?.units[0]?.targetBody).toBe(`Translated ${unitId}.`);
-
-      // Target-only edit — no source field on the request.
-      const edited = "Play-tester delivered rewrite — no source needed.";
-      const response = await service.editTarget(playTester, {
+      const firstEdited = "Playtester Revision";
+      const firstEdit = await postTargetEdit({
+        origin,
         parentPatchVersionId: parentPatch.patchVersionId,
-        bridgeUnitId: unitId,
-        targetBody: edited,
-        artifactRootDir: childRoot,
+        bridgeUnitId: artifacts.bridgeUnitId,
+        targetBody: firstEdited,
+      });
+      expect(firstEdit).toMatchObject({ targetBody: firstEdited, status: "playable" });
+      expect(firstEdit.patchVersionId).not.toBe(parentPatch.patchVersionId);
+      expect(firstEdit.resultRevisionId).toContain("play-tester-result:");
+      expect(firstEdit.parentPatchVersionId).toBe(parentPatch.patchVersionId);
+
+      const firstDelivery = await fetchDelivery(origin, runId);
+      expect(firstDelivery.patchVersionId).toBe(firstEdit.patchVersionId);
+      expect(
+        firstDelivery.units.find((unit) => unit.bridgeUnitId === artifacts.bridgeUnitId)
+          ?.targetBody,
+      ).toBe(firstEdited);
+      expect(firstDelivery.artifactHashes.patchTarget).not.toBe(parentPatchHash);
+      const firstDeliveredSeen = await fetchDeliveredSeen(origin, runId, firstDelivery);
+      expect(
+        reextractDeliveredDialogue({
+          artifacts,
+          seenBytes: firstDeliveredSeen,
+          label: "verify-first-child",
+        }),
+      ).toBe(bracketWrapForRealLive(firstEdited));
+
+      // The second edit deliberately names the first child as its parent. This
+      // proves a play tester can revise a delivered revision repeatedly, rather
+      // than only fork the original terminal patch once.
+      const secondEdited = "Playtester Revision Two";
+      const secondEdit = await postTargetEdit({
+        origin,
+        parentPatchVersionId: firstEdit.patchVersionId,
+        bridgeUnitId: artifacts.bridgeUnitId,
+        targetBody: secondEdited,
+      });
+      expect(secondEdit).toMatchObject({ targetBody: secondEdited, status: "playable" });
+      expect(secondEdit.parentPatchVersionId).toBe(firstEdit.patchVersionId);
+      expect(secondEdit.patchVersionId).not.toBe(firstEdit.patchVersionId);
+      expect(secondEdit.patchVersionId).not.toBe(parentPatch.patchVersionId);
+
+      const secondDelivery = await fetchDelivery(origin, runId);
+      expect(secondDelivery.patchVersionId).toBe(secondEdit.patchVersionId);
+      expect(
+        secondDelivery.units.find((unit) => unit.bridgeUnitId === artifacts.bridgeUnitId)
+          ?.targetBody,
+      ).toBe(secondEdited);
+      expect(secondDelivery.artifactHashes.patchTarget).not.toBe(
+        firstDelivery.artifactHashes.patchTarget,
+      );
+      const secondDeliveredSeen = await fetchDeliveredSeen(origin, runId, secondDelivery);
+      expect(secondDeliveredSeen.equals(firstDeliveredSeen)).toBe(false);
+      expect(
+        reextractDeliveredDialogue({
+          artifacts,
+          seenBytes: secondDeliveredSeen,
+          label: "verify-second-child",
+        }),
+      ).toBe(bracketWrapForRealLive(secondEdited));
+
+      // The source archive is still immutable; each selected artifact is a
+      // separately materialized Kaifuu output delivered through its tar route.
+      expect(hashLocalizationArtifact(artifacts.sourceSeenPath)).toBe(sourceHashBefore);
+    } finally {
+      try {
+        await context.close();
+      } finally {
+        artifacts.cleanup();
+      }
+    }
+  }, 120_000);
+
+  it("cleans production Kaifuu output when a real DB trigger aborts the child transaction", async () => {
+    const context = await isolatedMigratedContext();
+    const artifacts = createProductionParentArtifacts();
+    try {
+      const runId = "play-tester-live-trigger-rollback";
+      const parentPatch = await seedPlayableProductionRun(context, artifacts, runId);
+      const origin = await startLiveServer(context.databaseUrl);
+      const sourceHashBefore = hashLocalizationArtifact(artifacts.sourceSeenPath);
+      const parentTargetHashBefore = hashLocalizationArtifact(artifacts.parentPatchTarget);
+      const parentDelivery = await fetchDelivery(origin, runId);
+
+      // PostgreSQL sequence values are non-transactional. Incrementing it in
+      // the AFTER INSERT trigger gives this test durable evidence that the
+      // child membership insert was reached (after native materialization),
+      // even though the enclosing database transaction is rolled back.
+      await context.pool.query(`
+        create sequence itotori_test_play_tester_trigger_counter start with 1
+      `);
+      await context.pool.query(`
+        create function itotori_test_fail_production_play_tester_child()
+        returns trigger
+        language plpgsql
+        as $$
+        begin
+          perform nextval('itotori_test_play_tester_trigger_counter');
+          raise exception 'test injected production child membership failure';
+        end;
+        $$
+      `);
+      await context.pool.query(`
+        create trigger itotori_test_fail_production_play_tester_child
+        after insert on itotori_localization_patch_version_units
+        for each row
+        execute function itotori_test_fail_production_play_tester_child()
+      `);
+
+      const failedResponse = await fetch(
+        `${origin}/api/play/patch-versions/${parentPatch.patchVersionId}/target-edits`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            bridgeUnitId: artifacts.bridgeUnitId,
+            targetBody: "This native patch must be cleaned after rollback.",
+          }),
+        },
+      );
+      expect(failedResponse.status).toBe(500);
+      expect(await failedResponse.json()).toMatchObject({ code: "internal_error" });
+
+      const triggerCounter = await context.pool.query<{ last_value: string; is_called: boolean }>(
+        `
+          select last_value::text as last_value, is_called
+          from itotori_test_play_tester_trigger_counter
+        `,
+      );
+      expect(triggerCounter.rows[0]).toMatchObject({ last_value: "1", is_called: true });
+
+      const residualRows = await context.pool.query<{
+        result_revisions: string;
+        patch_versions: string;
+        patch_units: string;
+      }>(
+        `
+          select
+            (
+              select count(*)
+              from itotori_localization_result_revisions
+              where run_id = $1 and origin = 'play_tester_edit'
+            )::text as result_revisions,
+            (
+              select count(*)
+              from itotori_localization_patch_versions
+              where run_id = $1 and origin = 'play_tester_edit'
+            )::text as patch_versions,
+            (
+              select count(*)
+              from itotori_localization_patch_version_units units
+              join itotori_localization_patch_versions patches
+                on patches.patch_version_id = units.patch_version_id
+              where patches.run_id = $1 and patches.origin = 'play_tester_edit'
+            )::text as patch_units
+        `,
+        [runId],
+      );
+      expect(residualRows.rows[0]).toMatchObject({
+        result_revisions: "0",
+        patch_versions: "0",
+        patch_units: "0",
       });
 
-      expect(response.result.resultRevision.actorUserId).toBe(playTester.userId);
-      expect(response.result.resultRevision.origin).toBe("play_tester_edit");
-      expect(response.result.patchVersion.status).toBe("playable");
-      expect(response.result.patchVersion.parentPatchVersionId).toBe(parentPatch.patchVersionId);
+      // The materializer creates a collision-safe revision directory beneath
+      // this owned root. The root's presence proves the real materializer ran
+      // before the trigger; cleanup must leave no child directory or files
+      // behind.
+      const revisionArtifactRoot = join(artifacts.root, "play-tester-revisions");
+      expect(existsSync(revisionArtifactRoot)).toBe(true);
+      expect(readdirSync(revisionArtifactRoot)).toEqual([]);
+      expect(hashLocalizationArtifact(artifacts.sourceSeenPath)).toBe(sourceHashBefore);
+      expect(hashLocalizationArtifact(artifacts.parentPatchTarget)).toBe(parentTargetHashBefore);
 
-      // Export immediately reflects the edit — no approve/request_repair step.
-      const afterExport = await service.loadSelectedExport(actor, { runId });
-      expect(afterExport.export?.patchVersionId).toBe(response.result.patchVersion.patchVersionId);
-      expect(afterExport.export?.units[0]?.targetBody).toBe(edited);
-      expect(afterExport.export?.origin).toBe("play_tester_edit");
-
-      const bundlePath = Object.values(response.result.patchVersion.artifactRefs)[0]!;
-      const payload = JSON.parse(
-        readFileSync(join(bundlePath, "delivered-units.json"), "utf8"),
-      ) as { units: Array<{ targetBody: string }> };
-      expect(payload.units[0]?.targetBody).toBe(edited);
-      expect(hashLocalizationArtifact(bundlePath)).toBe(
-        response.result.patchVersion.artifactHashes.delivered_bundle,
+      const selectedAfterFailure = await fetchDelivery(origin, runId);
+      expect(selectedAfterFailure.patchVersionId).toBe(parentPatch.patchVersionId);
+      expect(selectedAfterFailure.artifactHashes.patchTarget).toBe(
+        parentDelivery.artifactHashes.patchTarget,
       );
     } finally {
       try {
         await context.close();
       } finally {
-        parentArtifact.cleanup();
-        rmSync(childRoot, { recursive: true, force: true });
+        artifacts.cleanup();
       }
     }
-  });
+  }, 120_000);
 });
+
+async function seedPlayableProductionRun(
+  context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
+  artifacts: ProductionParentArtifacts,
+  runId: string,
+): Promise<{ patchVersionId: string }> {
+  await bootstrapLocalUser(context.db);
+  await seedScope(context);
+  const journal = new ItotoriLocalizationJournalRepository(context.db);
+  const finalizer = new ItotoriLocalizationRunFinalizerRepository(context.db);
+  await journal.seedRun(actor, {
+    runId,
+    ...scope,
+    frozenScope: { kind: "explicit_units", unitIds: [artifacts.bridgeUnitId] },
+    routingPolicy: { routes: ["model-live/provider-live"] },
+    // itotori-225-audit-allow: deterministic synthetic ceiling for fixture attempts.
+    costPolicy: { kind: "play-tester-live", capUsd: "1.00" },
+    units: [
+      {
+        bridgeUnitId: artifacts.bridgeUnitId,
+        sourceUnitKey: "scene.play-tester-live",
+        nextAction: { kind: "drive_unit", stage: "translation" },
+      },
+    ],
+    lease: { ownerId: driverLease.ownerId },
+    createdAt: "2026-07-12T19:00:00.000Z",
+  });
+  await writeUnit(journal, runId, artifacts.bridgeUnitId, artifacts.parentTargetBody);
+
+  const patch = await finalizer.ensurePatchVersion(actor, {
+    runId,
+    artifactHashes: artifacts.artifactHashes,
+    artifactRefs: artifacts.artifactRefs,
+  });
+  for (const stage of ["patch_build", "patch_apply", "validation"] as const) {
+    await finalizer.upsertPatchStageEvidence(actor, {
+      runId,
+      stage,
+      status: "succeeded",
+      evidence: { fixture: "play-tester-live-real-kaifuu" },
+    });
+  }
+  await finalizer.enterFinalizing(actor, { runId, lease: driverLease });
+  await finalizer.completeSucceededRun(actor, {
+    runId,
+    patchVersionId: patch.patchVersionId,
+  });
+  return { patchVersionId: patch.patchVersionId };
+}
+
+async function startLiveServer(databaseUrl: string): Promise<string> {
+  const server = createItotoriServer({
+    databaseUrl,
+    webRoot: new URL("file:///tmp/itotori-empty-web/"),
+  });
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address() as AddressInfo;
+  return `http://127.0.0.1:${address.port}`;
+}
+
+async function postTargetEdit(input: {
+  origin: string;
+  parentPatchVersionId: string;
+  bridgeUnitId: string;
+  targetBody: string;
+}): Promise<PlayTargetEdit> {
+  const response = await fetch(
+    `${input.origin}/api/play/patch-versions/${encodeURIComponent(input.parentPatchVersionId)}/target-edits`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ bridgeUnitId: input.bridgeUnitId, targetBody: input.targetBody }),
+    },
+  );
+  expect(response.status).toBe(200);
+  return (await response.json()) as PlayTargetEdit;
+}
+
+async function fetchDelivery(origin: string, runId: string): Promise<PlayDelivery> {
+  const response = await fetch(`${origin}/api/play/runs/${encodeURIComponent(runId)}/delivery`);
+  expect(response.status).toBe(200);
+  const delivery = (await response.json()) as PlayDelivery;
+  expect(delivery.downloadUrl).toBe(`/api/play/runs/${encodeURIComponent(runId)}/delivery/archive`);
+  return delivery;
+}
+
+async function fetchDeliveredSeen(
+  origin: string,
+  runId: string,
+  delivery: PlayDelivery,
+): Promise<Buffer> {
+  expect(delivery.downloadUrl).toBe(`/api/play/runs/${encodeURIComponent(runId)}/delivery/archive`);
+  const response = await fetch(new URL(delivery.downloadUrl, origin));
+  expect(response.status).toBe(200);
+  expect(response.headers.get("content-type")).toContain("application/x-tar");
+  const archive = Buffer.from(await response.arrayBuffer());
+  expect(archive.length).toBeGreaterThan(1024);
+  return extractTarFile(archive, "REALLIVEDATA/Seen.txt");
+}
+
+function reextractDeliveredDialogue(input: {
+  artifacts: ProductionParentArtifacts;
+  seenBytes: Buffer;
+  label: string;
+}): string {
+  const verificationRoot = join(input.artifacts.root, input.label);
+  rmSync(verificationRoot, { recursive: true, force: true });
+  cpSync(input.artifacts.sourceRoot, verificationRoot, { recursive: true });
+  writeFileSync(join(verificationRoot, "REALLIVEDATA", "Seen.txt"), input.seenBytes);
+  const verificationBridgePath = join(input.artifacts.root, `${input.label}-bridge.json`);
+  runKaifuuRealliveExtract({
+    gameRoot: verificationRoot,
+    gameId: "fixture",
+    gameVersion: "1",
+    sourceProfileId: "fixture-profile",
+    sourceLocale: "ja-JP",
+    scene: 1,
+    bundleOutputPath: verificationBridgePath,
+  });
+  const verificationBridge = JSON.parse(readFileSync(verificationBridgePath, "utf8")) as {
+    units: Array<{ bridgeUnitId: string; sourceText: string }>;
+  };
+  const unit = verificationBridge.units.find(
+    (candidate) => candidate.bridgeUnitId === input.artifacts.bridgeUnitId,
+  );
+  if (unit === undefined) {
+    throw new Error(`delivered archive did not re-extract ${input.artifacts.bridgeUnitId}`);
+  }
+  return unit.sourceText;
+}
+
+function extractTarFile(archive: Buffer, wantedPath: string): Buffer {
+  let offset = 0;
+  while (offset + 512 <= archive.length) {
+    const header = archive.subarray(offset, offset + 512);
+    if (header.every((byte) => byte === 0)) break;
+    const name = tarString(header, 0, 100);
+    const prefix = tarString(header, 345, 155);
+    const path = prefix.length === 0 ? name : `${prefix}/${name}`;
+    const size = tarOctal(header, 124, 12);
+    const bodyStart = offset + 512;
+    const bodyEnd = bodyStart + size;
+    if (bodyEnd > archive.length) {
+      throw new Error(`tar entry ${path} exceeds archive length`);
+    }
+    if (path === wantedPath) {
+      return Buffer.from(archive.subarray(bodyStart, bodyEnd));
+    }
+    offset = bodyStart + Math.ceil(size / 512) * 512;
+  }
+  throw new Error(`delivery tar did not contain ${wantedPath}`);
+}
+
+function tarString(buffer: Buffer, offset: number, length: number): string {
+  const field = buffer.subarray(offset, offset + length);
+  const terminator = field.indexOf(0);
+  return field.subarray(0, terminator === -1 ? field.length : terminator).toString("utf8");
+}
+
+function tarOctal(buffer: Buffer, offset: number, length: number): number {
+  const encoded = tarString(buffer, offset, length).trim();
+  if (!/^[0-7]+$/u.test(encoded)) {
+    throw new Error(`invalid tar octal size '${encoded}'`);
+  }
+  return Number.parseInt(encoded, 8);
+}
+
+function createProductionParentArtifacts(): ProductionParentArtifacts {
+  const root = mkdtempSync(join(tmpdir(), "itotori-play-tester-live-real-"));
+  const sourceRoot = join(root, "source-game");
+  const sourceData = join(sourceRoot, "REALLIVEDATA");
+  mkdirSync(sourceData, { recursive: true });
+  copyFileSync(join(fixtureRoot, "SEEN.TXT"), join(sourceData, "Seen.txt"));
+  copyFileSync(join(fixtureRoot, "Gameexe.ini"), join(sourceRoot, "Gameexe.ini"));
+  const sourceSeenPath = join(sourceData, "Seen.txt");
+  const extractedBridgePath = join(root, "extracted-bridge.json");
+  runKaifuuRealliveExtract({
+    gameRoot: sourceRoot,
+    gameId: "fixture",
+    gameVersion: "1",
+    sourceProfileId: "fixture-profile",
+    sourceLocale: "ja-JP",
+    scene: 1,
+    bundleOutputPath: extractedBridgePath,
+  });
+
+  const translatedBridge = JSON.parse(readFileSync(extractedBridgePath, "utf8")) as {
+    units: Array<{
+      bridgeUnitId: string;
+      sourceText: string;
+      surfaceKind: string;
+      target?: { locale: string; text: string };
+    }>;
+  };
+  const dialogue = translatedBridge.units.find((unit) => unit.surfaceKind === "dialogue");
+  if (dialogue === undefined) {
+    throw new Error("public RealLive fixture did not expose a dialogue unit");
+  }
+  const parentTargetBody = "Parent delivery";
+  for (const unit of translatedBridge.units) {
+    unit.target = {
+      locale: "en-US",
+      text:
+        unit.bridgeUnitId === dialogue.bridgeUnitId
+          ? bracketWrapForRealLive(parentTargetBody)
+          : unit.sourceText,
+    };
+  }
+  const translatedBridgePath = join(root, "translated-bridge.json");
+  writeFileSync(translatedBridgePath, `${JSON.stringify(translatedBridge, null, 2)}\n`, "utf8");
+  const parentPatchTarget = join(root, "parent-patch-target");
+  const apply = applyKaifuuRealLivePatch({
+    sourceRoot,
+    targetRoot: parentPatchTarget,
+    translatedBundlePath: translatedBridgePath,
+    translationScope: "dialogue-only",
+    force: false,
+  });
+  const patchApplyPath = join(root, "patch-apply.json");
+  writeFileSync(patchApplyPath, `${JSON.stringify(apply, null, 2)}\n`, "utf8");
+  const artifactRefs = {
+    translatedBridge: translatedBridgePath,
+    patchApply: patchApplyPath,
+    patchTarget: parentPatchTarget,
+  };
+  return {
+    root,
+    sourceRoot,
+    sourceSeenPath,
+    parentPatchTarget,
+    bridgeUnitId: dialogue.bridgeUnitId,
+    parentTargetBody,
+    artifactRefs,
+    artifactHashes: Object.fromEntries(
+      Object.entries(artifactRefs).map(([key, path]) => [key, hashLocalizationArtifact(path)]),
+    ),
+    cleanup: () => rmSync(root, { recursive: true, force: true }),
+  };
+}
 
 async function writeUnit(
   journal: ItotoriLocalizationJournalRepository,
   runId: string,
   bridgeUnitId: string,
+  targetBody: string,
 ): Promise<void> {
   const attemptId = `live-attempt:${runId}:${bridgeUnitId}`;
   await journal.beginAttempt(actor, {
@@ -190,7 +594,7 @@ async function writeUnit(
       {
         id: candidateId,
         outcomeId,
-        body: asNonBlankTargetText(`Translated ${bridgeUnitId}.`),
+        body: asNonBlankTargetText(targetBody),
         producedBy: { modelId: "model-live", providerId: "provider-live" },
         attemptId,
         kind: "primary",
@@ -204,7 +608,7 @@ async function writeUnit(
   await journal.persistUnit(actor, {
     runId,
     bridgeUnitId,
-    sourceUnitKey: `scene.${bridgeUnitId}`,
+    sourceUnitKey: "scene.play-tester-live",
     outcome,
     attempts: [],
     contextPacket: { fixture: "play-tester-live" },
@@ -213,21 +617,6 @@ async function writeUnit(
     qaDetails: {},
     lease: driverLease,
   });
-}
-
-function createRealArtifact(label: string): {
-  artifactRefs: Record<string, string>;
-  artifactHashes: Record<string, string>;
-  cleanup: () => void;
-} {
-  const root = mkdtempSync(join(tmpdir(), `itotori-play-tester-live-${label}-`));
-  const path = join(root, "patch.bin");
-  writeFileSync(path, `live parent ${label}\n`, "utf8");
-  return {
-    artifactRefs: { patch: path },
-    artifactHashes: { patch: hashLocalizationArtifact(path) },
-    cleanup: () => rmSync(root, { recursive: true, force: true }),
-  };
 }
 
 async function seedScope(
@@ -280,26 +669,9 @@ async function seedScope(
   );
 }
 
-async function grantDraftWrite(
-  context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
-  userId: string,
-): Promise<void> {
-  await context.pool.query(
-    `
-    insert into itotori_users (user_id, display_name)
-    values ($1, $2)
-    on conflict (user_id) do nothing
-  `,
-    [userId, `Play tester ${userId}`],
-  );
-  await context.pool.query(
-    `
-    insert into itotori_user_permission_grants (user_id, permission)
-    values
-      ($1, 'draft.write'),
-      ($1, 'catalog.read')
-    on conflict do nothing
-  `,
-    [userId],
-  );
+async function closeServer(server: ReturnType<typeof createItotoriServer>): Promise<void> {
+  if (!server.listening) return;
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
 }

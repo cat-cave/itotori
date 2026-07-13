@@ -1292,6 +1292,79 @@
       ],
       "type": "object"
     },
+    "ApiPlayDeliveryResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "artifactHashes": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "downloadUrl": {
+          "type": "string"
+        },
+        "parentPatchVersionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "patchVersionId": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "itotori.play.delivery.v0"
+        },
+        "selectedAt": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "units": {
+          "items": {
+            "$ref": "#/definitions/ApiPlayDeliveryUnit"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "artifactHashes",
+        "downloadUrl",
+        "parentPatchVersionId",
+        "patchVersionId",
+        "runId",
+        "schemaVersion",
+        "selectedAt",
+        "status",
+        "units"
+      ],
+      "type": "object"
+    },
+    "ApiPlayDeliveryUnit": {
+      "additionalProperties": false,
+      "properties": {
+        "bridgeUnitId": {
+          "type": "string"
+        },
+        "targetBody": {
+          "type": "string"
+        },
+        "unitOrdinal": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "bridgeUnitId",
+        "targetBody",
+        "unitOrdinal"
+      ],
+      "type": "object"
+    },
     "ApiPlayFlagAnnotationRequest": {
       "additionalProperties": true,
       "properties": {
@@ -1699,6 +1772,70 @@
       ],
       "type": "object"
     },
+    "ApiPlayTargetEditRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "bridgeUnitId": {
+          "type": "string"
+        },
+        "targetBody": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "bridgeUnitId",
+        "targetBody"
+      ],
+      "type": "object"
+    },
+    "ApiPlayTargetEditResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "bridgeUnitId": {
+          "type": "string"
+        },
+        "idempotentReplay": {
+          "type": "boolean"
+        },
+        "parentPatchVersionId": {
+          "type": "string"
+        },
+        "patchVersionId": {
+          "type": "string"
+        },
+        "resultRevisionId": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "itotori.play.target-edit.v0"
+        },
+        "selectedAt": {
+          "type": "string"
+        },
+        "status": {
+          "const": "playable"
+        },
+        "targetBody": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "bridgeUnitId",
+        "idempotentReplay",
+        "parentPatchVersionId",
+        "patchVersionId",
+        "resultRevisionId",
+        "runId",
+        "schemaVersion",
+        "selectedAt",
+        "status",
+        "targetBody"
+      ],
+      "type": "object"
+    },
     "ApiPrincipalPermissionSetGrantRequest": {
       "additionalProperties": false,
       "properties": {
@@ -2037,8 +2174,7 @@
             "approve",
             "reject",
             "defer",
-            "escalate",
-            "request_repair"
+            "escalate"
           ]
         },
         "actorUserId": {
@@ -3370,7 +3506,12 @@
         "batchId": {
           "type": "string"
         },
-        "batchLabel": {},
+        "batchLabel": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "decisionQueueReportIds": {
           "type": "array"
         },
@@ -3380,7 +3521,9 @@
         "edits": {
           "type": "array"
         },
-        "generatedAt": {},
+        "generatedAt": {
+          "type": "string"
+        },
         "localeBranchId": {
           "type": "string"
         },

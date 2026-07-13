@@ -5,7 +5,7 @@
 // `ItotoriLocalizationResultRevisionRepository`: it creates a
 // LocalizedResultRevision + child delivered PatchVersion atomically with
 // real actor provenance, and immediately selects that child for export.
-// There is no approval/reviewer-queue gate and no request_repair detour.
+// There is no approval/reviewer-queue gate between an edit and delivery.
 
 import type {
   ApplyPlayTesterTargetEditResult,
@@ -13,13 +13,14 @@ import type {
   ItotoriLocalizationResultRevisionRepositoryPort,
   SelectedPatchExport,
 } from "@itotori/db";
+import { DeliveredPatchExporter } from "../patch-export/exporter.js";
+import type { DeliveredPatchArchive } from "../patch-export/delivery-archive.js";
 
 export type PlayTesterTargetEditRequest = {
   parentPatchVersionId: string;
   bridgeUnitId: string;
   /** Non-blank target-language text only — no source text required or accepted. */
   targetBody: string;
-  artifactRootDir: string;
 };
 
 export type PlayTesterTargetEditResponse = {
@@ -36,6 +37,8 @@ export type SelectedPatchExportResponse = {
 
 export type PlayTesterResultRevisionServiceDeps = {
   repository: ItotoriLocalizationResultRevisionRepositoryPort;
+  /** The production selected-patch delivery boundary. */
+  deliveryExporter?: DeliveredPatchExporter;
   now?: () => Date;
 };
 
@@ -48,13 +51,35 @@ export interface PlayTesterResultRevisionServicePort {
     actor: AuthorizationActor,
     input: { runId?: string; patchVersionId?: string },
   ): Promise<SelectedPatchExportResponse>;
+  loadSelectedArchive(
+    actor: AuthorizationActor,
+    input: { runId?: string; patchVersionId?: string },
+  ): Promise<DeliveredPatchArchive | null>;
+}
+
+/**
+ * The HTTP/CLI-facing projection. The factory binds the authenticated actor,
+ * so callers can submit target text but cannot impersonate another tester.
+ */
+export interface BoundPlayTesterResultRevisionServicePort {
+  editTarget(input: PlayTesterTargetEditRequest): Promise<PlayTesterTargetEditResponse>;
+  loadSelectedExport(input: {
+    runId?: string;
+    patchVersionId?: string;
+  }): Promise<SelectedPatchExportResponse>;
+  loadSelectedArchive(input: {
+    runId?: string;
+    patchVersionId?: string;
+  }): Promise<DeliveredPatchArchive | null>;
 }
 
 export class PlayTesterResultRevisionService implements PlayTesterResultRevisionServicePort {
   private readonly now: () => Date;
+  private readonly deliveryExporter: DeliveredPatchExporter;
 
   constructor(private readonly deps: PlayTesterResultRevisionServiceDeps) {
     this.now = deps.now ?? (() => new Date());
+    this.deliveryExporter = deps.deliveryExporter ?? new DeliveredPatchExporter(deps.repository);
   }
 
   async editTarget(
@@ -89,7 +114,6 @@ export class PlayTesterResultRevisionService implements PlayTesterResultRevision
       parentPatchVersionId: input.parentPatchVersionId,
       bridgeUnitId: input.bridgeUnitId,
       targetBody: input.targetBody,
-      artifactRootDir: input.artifactRootDir,
     });
 
     return {
@@ -103,13 +127,31 @@ export class PlayTesterResultRevisionService implements PlayTesterResultRevision
     actor: AuthorizationActor,
     input: { runId?: string; patchVersionId?: string },
   ): Promise<SelectedPatchExportResponse> {
-    const selected = await this.deps.repository.loadSelectedPatchExport(actor, input);
+    const selected = await this.deliveryExporter.export(actor, input);
     return {
       schemaVersion: "play.selected_patch_export.v0.1",
       generatedAt: this.now(),
       export: selected,
     };
   }
+
+  async loadSelectedArchive(
+    actor: AuthorizationActor,
+    input: { runId?: string; patchVersionId?: string },
+  ): Promise<DeliveredPatchArchive | null> {
+    return this.deliveryExporter.archive(actor, input);
+  }
+}
+
+export function bindPlayTesterResultRevisionService(
+  service: PlayTesterResultRevisionServicePort,
+  actor: AuthorizationActor,
+): BoundPlayTesterResultRevisionServicePort {
+  return {
+    editTarget: (input) => service.editTarget(actor, input),
+    loadSelectedExport: (input) => service.loadSelectedExport(actor, input),
+    loadSelectedArchive: (input) => service.loadSelectedArchive(actor, input),
+  };
 }
 
 export class PlayTesterResultRevisionServiceError extends Error {

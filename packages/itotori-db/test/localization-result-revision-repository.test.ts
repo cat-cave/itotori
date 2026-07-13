@@ -1,4 +1,12 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sql } from "drizzle-orm";
@@ -14,6 +22,7 @@ import { ItotoriLocalizationRunFinalizerRepository } from "../src/repositories/l
 import {
   ItotoriLocalizationResultRevisionRepository,
   LocalizationResultRevisionRepositoryError,
+  type PlayTesterPatchArtifactMaterializer,
 } from "../src/repositories/localization-result-revision-repository.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
@@ -43,7 +52,11 @@ describe("ItotoriLocalizationResultRevisionRepository", () => {
       await grantDraftWrite(context, playTesterActor.userId);
       const journal = new ItotoriLocalizationJournalRepository(context.db);
       const finalizer = new ItotoriLocalizationRunFinalizerRepository(context.db);
-      const revisions = new ItotoriLocalizationResultRevisionRepository(context.db);
+      const materializer = createTestPatchArtifactMaterializer(childRoot);
+      const revisions = new ItotoriLocalizationResultRevisionRepository(
+        context.db,
+        materializer.materializer,
+      );
       const runId = "play-tester-edit-atomic";
       const unitIds = ["unit-a", "unit-b"];
 
@@ -60,7 +73,6 @@ describe("ItotoriLocalizationResultRevisionRepository", () => {
         parentPatchVersionId: parentPatch.patchVersionId,
         bridgeUnitId: "unit-a",
         targetBody: editedBody,
-        artifactRootDir: childRoot,
       });
 
       expect(result.idempotentReplay).toBe(false);
@@ -82,16 +94,17 @@ describe("ItotoriLocalizationResultRevisionRepository", () => {
       expect(Object.keys(result.patchVersion.artifactHashes).length).toBeGreaterThan(0);
       expect(Object.keys(result.patchVersion.artifactRefs).length).toBeGreaterThan(0);
 
-      // Real patch bytes on disk match stored hashes.
+      // The injected materializer owns a patch tree; its hash-bound output is
+      // what the repository persists. There is no repository-authored
+      // delivered-units sidecar here.
       for (const [key, ref] of Object.entries(result.patchVersion.artifactRefs)) {
         expect(hashLocalizationArtifact(ref)).toBe(result.patchVersion.artifactHashes[key]);
-        const bundle = JSON.parse(readFileSync(join(ref, "delivered-units.json"), "utf8")) as {
-          units: Array<{ bridgeUnitId: string; targetBody: string }>;
-        };
-        expect(bundle.units.find((unit) => unit.bridgeUnitId === "unit-a")?.targetBody).toBe(
-          editedBody,
-        );
       }
+      const childPatchTarget = result.patchVersion.artifactRefs.patchTarget;
+      expect(childPatchTarget).toBeDefined();
+      expect(readFileSync(join(childPatchTarget!, "patched-game.bin"), "utf8")).toContain(
+        editedBody,
+      );
 
       // Unit-b is inherited from the parent revision membership.
       expect(result.patchVersion.units).toEqual(
@@ -134,7 +147,6 @@ describe("ItotoriLocalizationResultRevisionRepository", () => {
         parentPatchVersionId: parentPatch.patchVersionId,
         bridgeUnitId: "unit-a",
         targetBody: editedBody,
-        artifactRootDir: childRoot,
       });
       expect(replay.idempotentReplay).toBe(true);
       expect(replay.patchVersion.patchVersionId).toBe(result.patchVersion.patchVersionId);
@@ -158,7 +170,11 @@ describe("ItotoriLocalizationResultRevisionRepository", () => {
       await grantDraftWrite(context, playTesterActor.userId);
       const journal = new ItotoriLocalizationJournalRepository(context.db);
       const finalizer = new ItotoriLocalizationRunFinalizerRepository(context.db);
-      const revisions = new ItotoriLocalizationResultRevisionRepository(context.db);
+      const materializer = createTestPatchArtifactMaterializer(childRoot);
+      const revisions = new ItotoriLocalizationResultRevisionRepository(
+        context.db,
+        materializer.materializer,
+      );
       const runId = "play-tester-edit-atomic-fail";
       const unitIds = ["unit-only"];
 
@@ -170,55 +186,172 @@ describe("ItotoriLocalizationResultRevisionRepository", () => {
         artifact,
       });
 
-      // Force a mid-transaction failure by pre-inserting a conflicting child
-      // patch row with a different revision id, so membership insert fails.
-      await context.db.execute(sql`
-        insert into itotori_localization_patch_versions (
-          patch_version_id, run_id, status, artifact_hashes, artifact_refs,
-          playable_at, parent_patch_version_id, origin, actor_user_id, selected_at
-        ) values (
-          ${`patch-version:${parentPatch.patchVersionId}:edit:unit-only:deadbeefdeadbeef`},
-          ${runId},
-          'building',
-          ${JSON.stringify(artifact.artifactHashes)}::jsonb,
-          ${JSON.stringify(artifact.artifactRefs)}::jsonb,
-          null,
-          ${parentPatch.patchVersionId},
-          'play_tester_edit',
-          ${playTesterActor.userId},
-          null
-        )
+      // A real database trigger fires AFTER the child membership row is
+      // inserted. This is deliberately after the materializer has written its
+      // owned tree and after the result-revision + patch-version inserts, so
+      // rollback/cleanup is exercised at the actual transaction boundary.
+      await context.pool.query(`
+        create function itotori_test_fail_play_tester_patch_unit_insert()
+        returns trigger
+        language plpgsql
+        as $$
+        begin
+          raise exception 'test injected child patch unit insert failure';
+        end;
+        $$
+      `);
+      await context.pool.query(`
+        create trigger itotori_test_fail_play_tester_patch_unit_insert
+        after insert on itotori_localization_patch_version_units
+        for each row
+        execute function itotori_test_fail_play_tester_patch_unit_insert()
       `);
 
-      // Use a body whose content-addressed id collides with the planted patch
-      // but whose revision row does not exist → repository detects fault.
-      // Planted id uses digest deadbeefdeadbeef which won't match a real body.
-      // Instead: plant a result revision orphan and make the transaction fail
-      // via blank-target after partial write is impossible (blank is pre-tx).
       await expect(
         revisions.applyPlayTesterTargetEdit(playTesterActor, {
           parentPatchVersionId: parentPatch.patchVersionId,
           bridgeUnitId: "unit-only",
-          targetBody: "   ",
-          artifactRootDir: childRoot,
+          targetBody: "A real mid-transaction failure must roll this back.",
         }),
       ).rejects.toMatchObject({
-        name: "LocalizationResultRevisionRepositoryError",
-        code: "blank_target",
+        cause: { message: "test injected child patch unit insert failure" },
       });
 
-      const revisionCount = await context.pool.query<{ count: string }>(
+      const residualRows = await context.pool.query<{
+        result_revisions: string;
+        patch_versions: string;
+        patch_units: string;
+      }>(
         `
-          select count(*)::text as count
-          from itotori_localization_result_revisions
-          where run_id = $1 and origin = 'play_tester_edit'
+          select
+            (
+              select count(*)
+              from itotori_localization_result_revisions
+              where run_id = $1 and origin = 'play_tester_edit'
+            )::text as result_revisions,
+            (
+              select count(*)
+              from itotori_localization_patch_versions
+              where run_id = $1 and origin = 'play_tester_edit'
+            )::text as patch_versions,
+            (
+              select count(*)
+              from itotori_localization_patch_version_units units
+              join itotori_localization_patch_versions patches
+                on patches.patch_version_id = units.patch_version_id
+              where patches.run_id = $1 and patches.origin = 'play_tester_edit'
+            )::text as patch_units
         `,
         [runId],
       );
-      expect(revisionCount.rows[0]?.count).toBe("0");
+      expect(residualRows.rows[0]).toMatchObject({
+        result_revisions: "0",
+        patch_versions: "0",
+        patch_units: "0",
+      });
+
+      // The materializer really ran, then its owned output was removed when
+      // the database transaction rejected the membership insert.
+      expect(materializer.materializedRoots).toHaveLength(1);
+      expect(materializer.cleanupCallCount()).toBe(1);
+      expect(existsSync(materializer.materializedRoots[0]!)).toBe(false);
+      expect(readdirSync(childRoot)).toEqual([]);
 
       const selected = await revisions.loadSelectedPatchExport(localActor, { runId });
       expect(selected?.patchVersionId).toBe(parentPatch.patchVersionId);
+      const parentRow = await context.pool.query<{ selected_at: Date | null; status: string }>(
+        `
+          select selected_at, status
+          from itotori_localization_patch_versions
+          where patch_version_id = $1
+        `,
+        [parentPatch.patchVersionId],
+      );
+      expect(parentRow.rows[0]).toMatchObject({ status: "playable" });
+      expect(parentRow.rows[0]?.selected_at).toBeInstanceOf(Date);
+    } finally {
+      try {
+        await context.close();
+      } finally {
+        artifact.cleanup();
+        rmSync(childRoot, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("refuses a tampered idempotent child before changing the current selection", async () => {
+    const context = await isolatedMigratedContext();
+    const artifact = createRealArtifact("idempotent-integrity");
+    const childRoot = mkdtempSync(join(tmpdir(), "itotori-play-tester-idempotent-integrity-"));
+    try {
+      await seedScope(context);
+      await grantDraftWrite(context, playTesterActor.userId);
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const finalizer = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const materializer = createTestPatchArtifactMaterializer(childRoot);
+      const revisions = new ItotoriLocalizationResultRevisionRepository(
+        context.db,
+        materializer.materializer,
+      );
+      const runId = "play-tester-idempotent-integrity";
+      const parentPatch = await seedPlayablePatch({
+        journal,
+        finalizer,
+        runId,
+        unitIds: ["unit-only"],
+        artifact,
+      });
+
+      const first = await revisions.applyPlayTesterTargetEdit(playTesterActor, {
+        parentPatchVersionId: parentPatch.patchVersionId,
+        bridgeUnitId: "unit-only",
+        targetBody: "First deliverable edit.",
+      });
+      const current = await revisions.applyPlayTesterTargetEdit(playTesterActor, {
+        parentPatchVersionId: parentPatch.patchVersionId,
+        bridgeUnitId: "unit-only",
+        targetBody: "Second deliverable edit remains selected.",
+      });
+      expect(current.patchVersion.patchVersionId).not.toBe(first.patchVersion.patchVersionId);
+
+      // The first child remains a durable history row, but its actual bytes no
+      // longer match the stored manifest. A retry of that same content-addressed
+      // edit must fail before it can replace the currently selected delivery.
+      writeFileSync(
+        join(first.patchVersion.artifactRefs.patchTarget, "patched-game.bin"),
+        "tampered child bytes\n",
+        "utf8",
+      );
+      await expect(
+        revisions.applyPlayTesterTargetEdit(playTesterActor, {
+          parentPatchVersionId: parentPatch.patchVersionId,
+          bridgeUnitId: "unit-only",
+          targetBody: "First deliverable edit.",
+        }),
+      ).rejects.toMatchObject({ code: "artifact_fault" });
+
+      const selected = await revisions.loadSelectedPatchExport(localActor, { runId });
+      expect(selected?.patchVersionId).toBe(current.patchVersion.patchVersionId);
+      const selection = await context.pool.query<{
+        patch_version_id: string;
+        selected_at: Date | null;
+      }>(
+        `
+          select patch_version_id, selected_at
+          from itotori_localization_patch_versions
+          where patch_version_id = any($1::text[])
+          order by patch_version_id
+        `,
+        [[first.patchVersion.patchVersionId, current.patchVersion.patchVersionId]],
+      );
+      expect(
+        selection.rows.find((row) => row.patch_version_id === first.patchVersion.patchVersionId)
+          ?.selected_at,
+      ).toBeNull();
+      expect(
+        selection.rows.find((row) => row.patch_version_id === current.patchVersion.patchVersionId)
+          ?.selected_at,
+      ).toBeInstanceOf(Date);
     } finally {
       try {
         await context.close();
@@ -238,7 +371,11 @@ describe("ItotoriLocalizationResultRevisionRepository", () => {
       await grantDraftWrite(context, playTesterActor.userId);
       const journal = new ItotoriLocalizationJournalRepository(context.db);
       const finalizer = new ItotoriLocalizationRunFinalizerRepository(context.db);
-      const revisions = new ItotoriLocalizationResultRevisionRepository(context.db);
+      const materializer = createTestPatchArtifactMaterializer(childRoot);
+      const revisions = new ItotoriLocalizationResultRevisionRepository(
+        context.db,
+        materializer.materializer,
+      );
       const runId = "play-tester-target-only";
       const parentPatch = await seedPlayablePatch({
         journal,
@@ -253,23 +390,17 @@ describe("ItotoriLocalizationResultRevisionRepository", () => {
         parentPatchVersionId: parentPatch.patchVersionId,
         bridgeUnitId: "spoken-line",
         targetBody: "Just the target language rewrite.",
-        artifactRootDir: childRoot,
       }).sort();
-      expect(inputKeys).toEqual([
-        "artifactRootDir",
-        "bridgeUnitId",
-        "parentPatchVersionId",
-        "targetBody",
-      ]);
+      expect(inputKeys).toEqual(["bridgeUnitId", "parentPatchVersionId", "targetBody"]);
       expect(inputKeys).not.toContain("sourceText");
       expect(inputKeys).not.toContain("sourceBody");
+      expect(inputKeys).not.toContain("artifactRootDir");
 
       await expect(
         revisions.applyPlayTesterTargetEdit(playTesterActor, {
           parentPatchVersionId: parentPatch.patchVersionId,
           bridgeUnitId: "missing-unit",
           targetBody: "orphan edit",
-          artifactRootDir: childRoot,
         }),
       ).rejects.toBeInstanceOf(LocalizationResultRevisionRepositoryError);
     } finally {
@@ -420,6 +551,59 @@ async function writeUnit(
     qaDetails: {},
     lease: driverLease,
   });
+}
+
+/**
+ * The DB repository must only persist artifacts a production-owned materializer
+ * hands it. This test double owns one child directory per materialization,
+ * writes a stand-in patched-game byte payload, returns a hash-bound target
+ * tree, and exposes cleanup observation for the rollback proof.
+ */
+function createTestPatchArtifactMaterializer(artifactRootDir: string): {
+  materializer: PlayTesterPatchArtifactMaterializer;
+  materializedRoots: string[];
+  cleanupCallCount: () => number;
+} {
+  const materializedRoots: string[] = [];
+  let cleanupCalls = 0;
+  const materializer: PlayTesterPatchArtifactMaterializer = {
+    async materialize(input) {
+      const root = join(artifactRootDir, input.childPatchVersionId);
+      const patchTarget = join(root, "patch-target");
+      rmSync(root, { recursive: true, force: true });
+      mkdirSync(patchTarget, { recursive: true });
+      writeFileSync(
+        join(patchTarget, "patched-game.bin"),
+        JSON.stringify(
+          {
+            childPatchVersionId: input.childPatchVersionId,
+            parentPatchVersionId: input.parentPatchVersionId,
+            bridgeUnitId: input.bridgeUnitId,
+            targetBody: input.targetBody,
+          },
+          null,
+          2,
+        ),
+        "utf8",
+      );
+      materializedRoots.push(root);
+      const artifactRefs = { patchTarget };
+      const artifactHashes = { patchTarget: hashLocalizationArtifact(patchTarget) };
+      return {
+        artifactRefs,
+        artifactHashes,
+        cleanup: () => {
+          cleanupCalls += 1;
+          rmSync(root, { recursive: true, force: true });
+        },
+      };
+    },
+  };
+  return {
+    materializer,
+    materializedRoots,
+    cleanupCallCount: () => cleanupCalls,
+  };
 }
 
 function createRealArtifact(label: string): {

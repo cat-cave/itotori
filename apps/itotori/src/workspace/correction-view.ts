@@ -4,10 +4,9 @@
 // CorrectionPreviewView` renders the batched before/after context a reviewer
 // sees BEFORE submitting (source / draft / final, runtime + screenshot
 // evidence, style-guide policy + glossary), plus a submit form that POSTs
-// natively to `/api/workspace/corrections`. The POST records the corrections
-// server-side; the submit result is the typed `WorkspaceCorrectionSubmit-
-// ReadModel` JSON returned by that endpoint (there is no SPA render path for
-// it — the workspace route loader only fetches+renders GET read-models).
+// natively to `/api/workspace/corrections`. The POST records feedback and
+// applies canonical context corrections; a delivered target edit remains the
+// separate play-tester result-revision boundary.
 //
 // No fetch, no DOM, no globals — every test exercises a renderer directly.
 
@@ -42,7 +41,7 @@ export function renderWorkspaceCorrectionPreviewView(
         <h1>Batched corrections</h1>
         <p class="subhead">Locale branch <code>${escapeHtml(model.localeBranchId)}</code> —
           review the source, draft, final, runtime, and style/glossary context for each unit
-          before submitting.</p>
+          before submitting feedback corrections.</p>
       </header>
       ${renderDiagnosticBanner(model.diagnostics)}
       <section class="correction-units" aria-label="Units to correct">

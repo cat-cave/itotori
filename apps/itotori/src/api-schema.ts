@@ -34,6 +34,7 @@ import type {
   ActorIdentityAccountRecord,
   ActorIdentityRecord,
   AuthBillingPeriod,
+  FeedbackType,
   MemberInvitationRecord,
   MemberRecord,
   ReviewerQueueAction,
@@ -62,7 +63,6 @@ import {
   translationScopeValues,
   wikiEntryKindValues,
 } from "./api-enum-values.js";
-import type { FeedbackType } from "@itotori/db";
 import {
   assertBenchmarkReportV02,
   assertBridgeBundle,
@@ -234,7 +234,12 @@ export type ItotoriApiRouteId =
   | "play.setSceneCoverage"
   // play-flag-composer — in-the-moment AnnotationComposer flag → canonical
   // context correction via ManualFeedbackImport (feedback.import / canFlag).
-  | "play.flagAnnotation";
+  | "play.flagAnnotation"
+  // p0-result-revision — a play tester replaces one delivered target line,
+  // creating and selecting a child delivered patch revision.
+  | "play.targetEdit"
+  // p0-result-revision — inspect the selected delivered patch for a run.
+  | "play.delivery";
 
 export type ApiErrorResponse = {
   error: string;
@@ -748,6 +753,34 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "contextCorrectionEnqueued",
     "duplicate",
   ],
+  // p0-result-revision — the target-only request body intentionally excludes
+  // actor identity, artifact paths, and source text. Those values are bound
+  // at the production service boundary or remain server-side provenance.
+  ApiPlayTargetEditRequest: ["bridgeUnitId", "targetBody"],
+  ApiPlayTargetEditResponse: [
+    "schemaVersion",
+    "resultRevisionId",
+    "patchVersionId",
+    "runId",
+    "parentPatchVersionId",
+    "bridgeUnitId",
+    "targetBody",
+    "status",
+    "selectedAt",
+    "idempotentReplay",
+  ],
+  ApiPlayDeliveryResponse: [
+    "schemaVersion",
+    "patchVersionId",
+    "runId",
+    "parentPatchVersionId",
+    "status",
+    "selectedAt",
+    "artifactHashes",
+    "downloadUrl",
+    "units",
+  ],
+  ApiPlayDeliveryUnit: ["bridgeUnitId", "unitOrdinal", "targetBody"],
 } as const satisfies Readonly<Record<string, readonly string[]>>;
 
 export type ItotoriStrictApiBodyName = keyof typeof ITOTORI_STRICT_API_BODY_KEYS;
@@ -1550,6 +1583,59 @@ export type ApiPlayFlagAnnotationResponse = {
   duplicate: boolean;
 };
 
+/**
+ * p0-result-revision — the play-tester mutation accepts exactly one target
+ * line. The parent delivered patch is the URL resource; actor provenance and
+ * artifact roots are bound server-side and cannot be fabricated in the body.
+ */
+export type ApiPlayTargetEditRequest = {
+  bridgeUnitId: string;
+  targetBody: string;
+};
+
+/**
+ * p0-result-revision — concise mutation confirmation. It identifies the new
+ * result revision and selected child delivered patch without exposing source
+ * text or server-local artifact paths.
+ */
+export type ApiPlayTargetEditResponse = {
+  schemaVersion: "itotori.play.target-edit.v0";
+  resultRevisionId: string;
+  patchVersionId: string;
+  runId: string;
+  parentPatchVersionId: string;
+  bridgeUnitId: string;
+  targetBody: string;
+  status: "playable";
+  selectedAt: string;
+  idempotentReplay: boolean;
+};
+
+/** p0-result-revision — one ordered delivered target unit in the export view. */
+export type ApiPlayDeliveryUnit = {
+  bridgeUnitId: string;
+  unitOrdinal: number;
+  targetBody: string;
+};
+
+/**
+ * p0-result-revision — selected, deliverable patch export for a run. Artifact
+ * references and hashes prove the production delivery artifact selected by the
+ * mutation; units remain in their patch ordinal order.
+ */
+export type ApiPlayDeliveryResponse = {
+  schemaVersion: "itotori.play.delivery.v0";
+  patchVersionId: string;
+  runId: string;
+  parentPatchVersionId: string | null;
+  status: string;
+  selectedAt: string;
+  artifactHashes: Record<string, string>;
+  /** Authenticated binary delivery endpoint; never a server filesystem path. */
+  downloadUrl: string;
+  units: ApiPlayDeliveryUnit[];
+};
+
 export type ItotoriApiResponseBody =
   | ApiAssetDecisionsResponse
   | ApiCandidateAssetsResponse
@@ -1612,6 +1698,8 @@ export type ItotoriApiResponseBody =
   | ApiPlaySceneCoverageResponse
   | ApiPlaySetSceneCoverageResponse
   | ApiPlayFlagAnnotationResponse
+  | ApiPlayTargetEditResponse
+  | ApiPlayDeliveryResponse
   | ApiErrorResponse;
 
 export class ApiValidationError extends Error {
@@ -2157,8 +2245,8 @@ export function parseReviewerBatchExecuteRequest(body: unknown): ApiReviewerBatc
 }
 
 /**
- * ITOTORI-082 — single-item reviewer action. Only the 5 per-item verbs
- * are accepted here (accept/reject/defer/escalate/request_repair); the
+ * ITOTORI-082 — single-item reviewer action. Only the four per-item verbs
+ * are accepted here (accept/reject/defer/escalate); the
  * glossary/style/runtime-feedback verbs stay batch/agentic-loop
  * concerns. `reviewItemId` is threaded in from the URL path, never the
  * body, so the item acted upon always matches the route.
@@ -2168,7 +2256,6 @@ export const reviewerSingleActionList = [
   "reject",
   "defer",
   "escalate",
-  "request_repair",
 ] as const satisfies readonly ReviewerQueueAction[];
 
 export function parseReviewerSingleActionRequest(
@@ -2208,9 +2295,6 @@ export function parseReviewerSingleActionRequest(
           escalationReason: request.escalationReason,
           escalationTarget: request.escalationTarget,
         };
-      case "request_repair":
-        assertString(request.repairHint, "ApiReviewerSingleActionRequest.repairHint");
-        return { ...base, action: "request_repair", repairHint: request.repairHint };
       default: {
         const exhaustive: never = preview.action;
         throw new Error(`unhandled single reviewer action: ${String(exhaustive)}`);
@@ -2231,8 +2315,6 @@ function allowedKeysForSingleAction(
       return [...base, "deferReason"];
     case "escalate":
       return [...base, "escalationReason", "escalationTarget"];
-    case "request_repair":
-      return [...base, "repairHint"];
     default: {
       const exhaustive: never = action;
       throw new Error(`unhandled single reviewer action: ${String(exhaustive)}`);
@@ -2431,6 +2513,12 @@ export function assertItotoriApiResponse(
       return;
     case "play.flagAnnotation":
       assertPlayFlagAnnotationResponse(value);
+      return;
+    case "play.targetEdit":
+      assertPlayTargetEditResponse(value);
+      return;
+    case "play.delivery":
+      assertPlayDeliveryResponse(value);
       return;
   }
 }
@@ -3035,7 +3123,6 @@ function parseWorkspaceCorrectionScope(value: unknown, label: string): Workspace
   }
   return { kind: "line" };
 }
-
 export function assertWorkspaceProjectBrowseReadModel(
   value: unknown,
   label = "WorkspaceProjectBrowseReadModel",
@@ -7302,6 +7389,32 @@ export function parsePlaySetSceneCoverageRequest(body: unknown): ApiPlaySetScene
   });
 }
 
+/**
+ * p0-result-revision — parse the deliberately narrow play-tester input. The
+ * parent patch lives in the path; only the unit identity and replacement
+ * target body may cross the public boundary. Strictness rejects actor ids,
+ * artifact/file paths, source text, and every other accidental escape hatch.
+ */
+export function parsePlayTargetEditRequest(body: unknown): ApiPlayTargetEditRequest {
+  return parseRequest("ApiPlayTargetEditRequest", () => {
+    const request = asStrictRecord(
+      body,
+      "ApiPlayTargetEditRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ApiPlayTargetEditRequest,
+    );
+    assertString(request.bridgeUnitId, "ApiPlayTargetEditRequest.bridgeUnitId");
+    assertString(request.targetBody, "ApiPlayTargetEditRequest.targetBody");
+    const bridgeUnitId = request.bridgeUnitId.trim();
+    if (bridgeUnitId.length === 0) {
+      throw new ApiValidationError("ApiPlayTargetEditRequest.bridgeUnitId must be non-empty");
+    }
+    if (request.targetBody.trim().length === 0) {
+      throw new ApiValidationError("ApiPlayTargetEditRequest.targetBody must be non-blank");
+    }
+    return { bridgeUnitId, targetBody: request.targetBody };
+  });
+}
+
 function assertPlaySceneCoverageResponse(
   value: unknown,
 ): asserts value is ApiPlaySceneCoverageResponse {
@@ -7544,6 +7657,80 @@ function assertPlayFlagAnnotationResponse(
     "ApiPlayFlagAnnotationResponse.contextCorrectionEnqueued",
   );
   assertBoolean(response.duplicate, "ApiPlayFlagAnnotationResponse.duplicate");
+}
+
+function assertPlayTargetEditResponse(value: unknown): asserts value is ApiPlayTargetEditResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPlayTargetEditResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPlayTargetEditResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.play.target-edit.v0",
+    "ApiPlayTargetEditResponse.schemaVersion",
+  );
+  assertString(response.resultRevisionId, "ApiPlayTargetEditResponse.resultRevisionId");
+  assertString(response.patchVersionId, "ApiPlayTargetEditResponse.patchVersionId");
+  assertString(response.runId, "ApiPlayTargetEditResponse.runId");
+  assertString(response.parentPatchVersionId, "ApiPlayTargetEditResponse.parentPatchVersionId");
+  assertString(response.bridgeUnitId, "ApiPlayTargetEditResponse.bridgeUnitId");
+  assertString(response.targetBody, "ApiPlayTargetEditResponse.targetBody");
+  assertLiteral(response.status, "playable", "ApiPlayTargetEditResponse.status");
+  assertDateLike(response.selectedAt, "ApiPlayTargetEditResponse.selectedAt");
+  assertBoolean(response.idempotentReplay, "ApiPlayTargetEditResponse.idempotentReplay");
+}
+
+function assertPlayDeliveryResponse(value: unknown): asserts value is ApiPlayDeliveryResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPlayDeliveryResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPlayDeliveryResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.play.delivery.v0",
+    "ApiPlayDeliveryResponse.schemaVersion",
+  );
+  assertString(response.patchVersionId, "ApiPlayDeliveryResponse.patchVersionId");
+  assertString(response.runId, "ApiPlayDeliveryResponse.runId");
+  assertNullableString(
+    response.parentPatchVersionId,
+    "ApiPlayDeliveryResponse.parentPatchVersionId",
+  );
+  assertString(response.status, "ApiPlayDeliveryResponse.status");
+  assertDateLike(response.selectedAt, "ApiPlayDeliveryResponse.selectedAt");
+  assertStringRecord(response.artifactHashes, "ApiPlayDeliveryResponse.artifactHashes");
+  assertString(response.downloadUrl, "ApiPlayDeliveryResponse.downloadUrl");
+  const units = asArray(response.units, "ApiPlayDeliveryResponse.units");
+  let previousOrdinal = -1;
+  for (const [index, value] of units.entries()) {
+    const unit = asStrictRecord(
+      value,
+      `ApiPlayDeliveryResponse.units[${index}]`,
+      ITOTORI_STRICT_API_BODY_KEYS.ApiPlayDeliveryUnit,
+    );
+    assertString(unit.bridgeUnitId, `ApiPlayDeliveryResponse.units[${index}].bridgeUnitId`);
+    assertNonNegativeInteger(
+      unit.unitOrdinal,
+      `ApiPlayDeliveryResponse.units[${index}].unitOrdinal`,
+    );
+    if (unit.unitOrdinal <= previousOrdinal) {
+      throw new Error("ApiPlayDeliveryResponse.units must be strictly ordered by unitOrdinal");
+    }
+    previousOrdinal = unit.unitOrdinal;
+    assertString(unit.targetBody, `ApiPlayDeliveryResponse.units[${index}].targetBody`);
+  }
+}
+
+function assertStringRecord(
+  value: unknown,
+  label: string,
+): asserts value is Record<string, string> {
+  const record = asRecord(value, label);
+  for (const [key, entry] of Object.entries(record)) {
+    assertString(entry, `${label}.${key}`);
+  }
 }
 
 function parseAuthSsoProviderConfig(value: unknown, label: string): ApiAuthSsoProviderConfig {

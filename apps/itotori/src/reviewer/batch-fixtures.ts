@@ -216,15 +216,16 @@ export function fixtureMixedKindRequest(): ReviewerBatchActionRequest {
 }
 
 export function fixtureConflictingActionRequest(): ReviewerBatchActionRequest {
-  // `requestRepair` is valid for QA but not glossary items. Mixing the
+  // `importRuntimeFeedback` is valid for runtime/feedback items but not QA
+  // or glossary items. Mixing the
   // two keeps the generic action-allowed-kinds refusal covered without
   // pretending a queue action can mutate canonical glossary data.
   return {
-    action: reviewerQueueActionValues.requestRepair,
+    action: reviewerQueueActionValues.importRuntimeFeedback,
     actorUserId: "local-user",
     selections: [
       {
-        reviewItemId: "reviewer-queue-083-qa-1",
+        reviewItemId: "reviewer-queue-083-runtime-1",
         expectedSourceRevisionId: fixtureSourceRevisionId,
       },
       {
@@ -310,13 +311,13 @@ export function fixtureInvalidInputRow(
 ): BatchPreviewItem {
   return makePreviewItem({
     reviewItemId,
-    action: reviewerQueueActionValues.requestRepair,
+    action: reviewerQueueActionValues.importRuntimeFeedback,
     status: reviewerBatchPreviewStatusValues.invalidInput,
     item: fixturePendingGlossaryItem(reviewItemId),
     priorState: reviewerQueueItemStateValues.pending,
     nextState: null,
     diagnostics: [],
-    message: `action 'request_repair' is not valid for item kind 'glossary'`,
+    message: `action 'import_runtime_feedback' is not valid for item kind 'glossary'`,
   });
 }
 

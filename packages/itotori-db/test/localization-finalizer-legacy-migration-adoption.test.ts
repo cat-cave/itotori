@@ -75,6 +75,25 @@ describe("legacy finalizer migration ID adoption", () => {
       expect(applied.has("0085_localization_run_finalizer")).toBe(false);
     }, "0083_localization_run_finalizer");
   });
+
+  it("adopts the pre-collision result revision migration without replaying its DDL", async () => {
+    await withLegacyFinalizerDeployment(async ({ pool, schemaUrl }) => {
+      const canonicalId = "0090_play_tester_result_revision";
+      const legacyId = "0089_play_tester_result_revision";
+      const body = migrationSqlForId(canonicalId);
+
+      await pool.query(body);
+      await recordMigration(pool, legacyId, body);
+
+      await migrate(schemaUrl);
+
+      const applied = await migrationChecksums(pool, [canonicalId, legacyId]);
+      const checksum = checksumForMigration(canonicalId);
+      expect(applied.get(canonicalId)).toBe(checksum);
+      expect(applied.get(legacyId)).toBe(checksum);
+      await expect(migrate(schemaUrl)).resolves.toBeUndefined();
+    });
+  }, 180_000);
 });
 
 async function withLegacyFinalizerDeployment(

@@ -152,36 +152,6 @@ async function routeItotoriApiRequest(request, services) {
 }
 `;
 
-const workspaceCorrectionsUncovered = `
-async function routeItotoriApiRequest(request, services) {
-  if (request.method === "POST" && request.pathname === "/api/workspace/corrections") {
-    const body = parseWorkspaceCorrectionSubmitRequest(request.body);
-    return ok("workspace.correctionSubmit", await services.workspaceCorrections.submitCorrections({
-      ...body,
-      permission: {
-        actorUserId: body.actorUserId,
-        canReadQueue: true,
-        canManageQueue: true,
-        denialReasons: [],
-      },
-    }));
-  }
-}
-`;
-
-const workspaceCorrectionsCovered = `
-async function routeItotoriApiRequest(request, services) {
-  if (request.method === "POST" && request.pathname === "/api/workspace/corrections") {
-    const body = parseWorkspaceCorrectionSubmitRequest(request.body);
-    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
-    return ok("workspace.correctionSubmit", await services.workspaceCorrections.submitCorrections({
-      ...body,
-      permission,
-    }));
-  }
-}
-`;
-
 const assetDecisionsUncovered = `
 async function routeItotoriApiRequest(request, services) {
   const assetRoute = parseAssetDecisionMutationRoute(request.pathname);
@@ -218,11 +188,6 @@ describe("SHARED-026 shape-robust API mutation-permission guard", () => {
       method: "actionSingleItem",
     },
     {
-      form: "workspaceCorrections permission-view route",
-      source: workspaceCorrectionsUncovered,
-      method: "submitCorrections",
-    },
-    {
       form: "assetDecisions write port route",
       source: assetDecisionsUncovered,
       method: "recordDecision",
@@ -239,7 +204,6 @@ describe("SHARED-026 shape-robust API mutation-permission guard", () => {
     { form: "helper-predicate if", source: helperPredicateCovered },
     { form: "aliased requireApiPermission helper", source: aliasedRequireApiPermissionCovered },
     { form: "reviewerQueue resolved permission view", source: reviewerQueueCovered },
-    { form: "workspaceCorrections resolved permission view", source: workspaceCorrectionsCovered },
     { form: "assetDecisions explicit API permission gate", source: assetDecisionsCovered },
   ])(
     "passes the same $form once the matching API permission gate covers the mutation",

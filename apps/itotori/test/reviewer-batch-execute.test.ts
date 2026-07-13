@@ -106,7 +106,6 @@ function makeActionStub(): {
     reject: vi.fn(async (_actor, input) => record("reject", input.reviewItemId)),
     defer: vi.fn(async (_actor, input) => record("defer", input.reviewItemId)),
     escalate: vi.fn(async (_actor, input) => record("escalate", input.reviewItemId)),
-    requestRepair: vi.fn(async (_actor, input) => record("requestRepair", input.reviewItemId)),
     importRuntimeFeedback: vi.fn(async (_actor, input) =>
       record("importRuntimeFeedback", input.reviewItemId),
     ),
@@ -133,8 +132,6 @@ function methodForAction(action: ReviewerQueueActionInput["action"]): string {
       return "defer";
     case reviewerQueueActionValues.escalate:
       return "escalate";
-    case reviewerQueueActionValues.requestRepair:
-      return "requestRepair";
     case reviewerQueueActionValues.importRuntimeFeedback:
       return "importRuntimeFeedback";
     default: {
@@ -187,13 +184,13 @@ describe("ReviewerBatchActionService — happy path", () => {
     const executor = new ReviewerBatchActionService({
       previewService,
       actionService,
-      resolvePayload: () => ({ kind: "requestRepair", repairHint: "refresh affected draft" }),
+      resolvePayload: () => ({ kind: "defer", deferReason: "needs a later review" }),
     });
 
     const result = await executor.execute(
       actor,
       {
-        action: reviewerQueueActionValues.requestRepair,
+        action: reviewerQueueActionValues.defer,
         actorUserId: actor.userId,
         selections: [
           { reviewItemId: qa.reviewItemId, expectedSourceRevisionId: qa.sourceRevisionId },

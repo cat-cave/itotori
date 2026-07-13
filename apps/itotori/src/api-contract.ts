@@ -38,7 +38,11 @@ import {
   reviewerSingleActionList,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
-import { ITOTORI_API_ROUTE_IDS, ITOTORI_API_ROUTES } from "./api-routes.js";
+import {
+  ITOTORI_API_BINARY_ROUTES,
+  ITOTORI_API_ROUTE_IDS,
+  ITOTORI_API_ROUTES,
+} from "./api-routes.js";
 
 // ---------------------------------------------------------------------------
 // JSON value + deterministic sort
@@ -358,9 +362,11 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     object({
       required: ITOTORI_STRICT_API_BODY_KEYS.WorkspaceCorrectionSubmitReadModel,
       properties: {
+        generatedAt: str,
         permission: ref("ReviewerQueuePermissionView"),
         localeBranchId: str,
         batchId: str,
+        batchLabel: nullableStr,
         submittedCount: num,
         edits: arr,
         repairCandidateReportIds: arr,
@@ -374,7 +380,6 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       additionalProperties: false,
       schemaVersion: "workspace.correction_submit.v0.1",
     }),
-
   // Projects / dashboards --------------------------------------------------
   ApiProjectsResponse: () =>
     object({ required: ["projects"], properties: { projects: arr }, additionalProperties: true }),
@@ -1212,6 +1217,21 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       properties: { action: str, actorUserId: str, selections: arr },
       additionalProperties: false,
     }),
+  ApiWorkspaceCorrectionSubmitRequest: () =>
+    object({
+      required: ["projectId", "localeBranchId", "targetLocale", "actorUserId", "corrections"],
+      properties: {
+        projectId: str,
+        localeBranchId: str,
+        sourceBundleId: str,
+        targetLocale: str,
+        actorUserId: str,
+        actorDisplayName: str,
+        batchLabel: str,
+        corrections: arr,
+      },
+      additionalProperties: true,
+    }),
   ApiReviewerSingleActionRequest: () =>
     object({
       required: ["action", "actorUserId", "expectedSourceRevisionId"],
@@ -1222,22 +1242,6 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       },
       additionalProperties: true,
     }),
-  ApiWorkspaceCorrectionSubmitRequest: () =>
-    object({
-      required: ["projectId", "localeBranchId", "targetLocale", "actorUserId", "corrections"],
-      properties: {
-        projectId: str,
-        localeBranchId: str,
-        sourceBundleId: str,
-        targetLocale: str,
-        actorUserId: str,
-        corrections: arr,
-        batchLabel: str,
-        actorDisplayName: str,
-      },
-      additionalProperties: true,
-    }),
-
   // Launch-pass (ovw-launch-pass-action) ----------------------------------
   ApiLaunchPassRequest: () =>
     object({
@@ -1413,6 +1417,55 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       additionalProperties: false,
       schemaVersion: "itotori.play.flag-annotation.v0",
     }),
+
+  // p0-result-revision — target-only play-tester edit and selected delivery
+  // inspection. Actor identity, source text, and artifact-root paths are
+  // deliberately absent from the mutation request contract.
+  ApiPlayTargetEditRequest: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayTargetEditRequest,
+      properties: { bridgeUnitId: str, targetBody: str },
+      additionalProperties: false,
+    }),
+  ApiPlayTargetEditResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayTargetEditResponse,
+      properties: {
+        resultRevisionId: str,
+        patchVersionId: str,
+        runId: str,
+        parentPatchVersionId: str,
+        bridgeUnitId: str,
+        targetBody: str,
+        status: { const: "playable" },
+        selectedAt: str,
+        idempotentReplay: bool,
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.play.target-edit.v0",
+    }),
+  ApiPlayDeliveryUnit: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayDeliveryUnit,
+      properties: { bridgeUnitId: str, unitOrdinal: num, targetBody: str },
+      additionalProperties: false,
+    }),
+  ApiPlayDeliveryResponse: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayDeliveryResponse,
+      properties: {
+        patchVersionId: str,
+        runId: str,
+        parentPatchVersionId: nullableStr,
+        status: str,
+        selectedAt: str,
+        artifactHashes: { type: "object", additionalProperties: str },
+        downloadUrl: str,
+        units: { type: "array", items: ref("ApiPlayDeliveryUnit") },
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.play.delivery.v0",
+    }),
 };
 
 /** Materialize the component table with `$ref`s pointing at `prefix` + name. */
@@ -1430,9 +1483,13 @@ function materializeComponents(prefix: string): Record<string, JsonValue> {
 // ---------------------------------------------------------------------------
 
 export {
+  ITOTORI_API_BINARY_ROUTES,
   ITOTORI_API_ROUTE_IDS,
   ITOTORI_API_ROUTES,
   interpolateRoutePath,
+  playDeliveryArchivePath,
+  type ItotoriApiBinaryRoute,
+  type ItotoriApiBinaryRouteId,
   type ItotoriApiRoute,
 } from "./api-routes.js";
 
@@ -1502,6 +1559,34 @@ export function buildItotoriOpenApiDocument(): JsonValue {
           "application/json": { schema: { $ref: `#/components/schemas/${route.requestSchema}` } },
         },
       };
+    }
+    const pathItem = paths[route.pathTemplate] ?? (paths[route.pathTemplate] = {});
+    pathItem[route.method.toLowerCase()] = operation;
+  }
+  for (const [routeId, route] of Object.entries(ITOTORI_API_BINARY_ROUTES)) {
+    const operation: Record<string, JsonValue> = {
+      operationId: route.operationId,
+      summary: route.summary,
+      "x-itotoriBinaryRouteId": routeId,
+      responses: {
+        "200": {
+          description: "Selected delivered patch archive.",
+          content: {
+            [route.contentType]: {
+              schema: { type: "string", format: "binary" },
+            },
+          },
+        },
+        ...openApiErrorResponses(),
+      },
+    };
+    if (route.pathParams.length > 0) {
+      operation.parameters = route.pathParams.map((name) => ({
+        name,
+        in: "path",
+        required: true,
+        schema: { type: "string" },
+      }));
     }
     const pathItem = paths[route.pathTemplate] ?? (paths[route.pathTemplate] = {});
     pathItem[route.method.toLowerCase()] = operation;

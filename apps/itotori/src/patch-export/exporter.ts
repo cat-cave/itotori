@@ -15,7 +15,11 @@
 //     silently default to keep_original; it returns PreflightFailure.
 
 import { createHash } from "node:crypto";
-import type { AuthorizationActor } from "@itotori/db";
+import {
+  verifyLocalizationArtifactManifest,
+  type AuthorizationActor,
+  type SelectedPatchExport,
+} from "@itotori/db";
 import {
   assertDraftArtifactBundle,
   assertPatchExportBundle,
@@ -33,6 +37,7 @@ import {
   type AssetPolicyResolution,
   type ResolvedAssetPolicy,
 } from "../asset-decisions/policy-resolver.js";
+import { createDeliveredPatchArchive, type DeliveredPatchArchive } from "./delivery-archive.js";
 import { stripOutOfBandControlMarkup } from "../localization/patchback-safety.js";
 import {
   PatchExportPreflight,
@@ -45,6 +50,65 @@ import type {
   SourceBridgeUnit,
   SourceBridgeView,
 } from "./source-bridge-view.js";
+
+// ---------------------------------------------------------------------------
+// Delivered patch export — selected, already-applied game bytes
+// ---------------------------------------------------------------------------
+
+/**
+ * Loader for the delivery side of patch export. Unlike the draft bundle
+ * exporter below, this consumes a selected PatchVersion whose Kaifuu-produced
+ * bytes already exist. This is the production route used after a play-tester
+ * result revision selects its child patch.
+ */
+export interface SelectedPatchDeliveryLoaderPort {
+  loadSelectedPatchExport(
+    actor: AuthorizationActor,
+    input: { runId?: string; patchVersionId?: string },
+  ): Promise<SelectedPatchExport | null>;
+}
+
+export type DeliveredPatchExportInput = {
+  runId?: string;
+  patchVersionId?: string;
+};
+
+/**
+ * The real delivery exporter. It deliberately does not rebuild a
+ * DraftArtifactBundle: a selected child revision is already a validated game
+ * patch, so delivery is the selected hash-bound artifact manifest itself.
+ */
+export class DeliveredPatchExporter {
+  constructor(private readonly loader: SelectedPatchDeliveryLoaderPort) {}
+
+  async export(
+    actor: AuthorizationActor,
+    input: DeliveredPatchExportInput,
+  ): Promise<SelectedPatchExport | null> {
+    const selected = await this.loader.loadSelectedPatchExport(actor, input);
+    if (selected === null) return null;
+    if (selected.status !== "playable" || selected.playableAt === null) {
+      throw new Error(
+        `delivered patch export refused: selected patch ${selected.patchVersionId} is not playable`,
+      );
+    }
+    verifyLocalizationArtifactManifest(selected.artifactRefs, selected.artifactHashes);
+    return selected;
+  }
+
+  /**
+   * Produce the bytes a player downloads for the selected patch. Calling
+   * {@link export} first preserves the same actor authorization, playable
+   * state, and manifest verification used by metadata delivery.
+   */
+  async archive(
+    actor: AuthorizationActor,
+    input: DeliveredPatchExportInput,
+  ): Promise<DeliveredPatchArchive | null> {
+    const selected = await this.export(actor, input);
+    return selected === null ? null : createDeliveredPatchArchive(selected);
+  }
+}
 
 /**
  * Repository-style port: loads a draft artifact bundle by id along

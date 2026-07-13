@@ -6,7 +6,7 @@
 //   1. creates a play_tester_edit LocalizedResultRevision (parent-linked)
 //   2. creates a child delivered PatchVersion whose membership is the parent
 //      membership with that unit swapped to the new revision
-//   3. writes real patch artifact bytes + hashes
+//   3. receives real patch artifact bytes + hashes from the production patcher
 //   4. marks the child playable and CURRENT SELECTED for export
 // all in ONE transaction. A failure leaves no partial revision or selection.
 //
@@ -14,15 +14,10 @@
 // state gate — selection moves with the edit.
 
 import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import type { ItotoriDatabase } from "../connection.js";
-import {
-  hashLocalizationArtifact,
-  verifyLocalizationArtifactManifest,
-} from "../localization-artifact-integrity.js";
+import { verifyLocalizationArtifactManifest } from "../localization-artifact-integrity.js";
 import {
   localizationPatchVersionUnits,
   localizationPatchVersions,
@@ -71,13 +66,43 @@ export type ApplyPlayTesterTargetEditInput = {
   bridgeUnitId: string;
   /** Non-blank target-language text only — no source text required. */
   targetBody: string;
-  /**
-   * Directory that will own the delivered patch artifact tree for this child.
-   * The repository writes real bytes here and stores their hashes on the
-   * patch version row.
-   */
-  artifactRootDir: string;
 };
+
+/**
+ * Input supplied to the production patch materializer after the parent lineage
+ * has been locked. The DB repository owns revision membership and selection;
+ * the application-owned materializer owns engine-specific bytes.
+ */
+export type PlayTesterPatchArtifactMaterializationInput = {
+  childPatchVersionId: string;
+  parentPatchVersionId: string;
+  runId: string;
+  bridgeUnitId: string;
+  targetBody: string;
+  parentArtifactRefs: Record<string, string>;
+  parentArtifactHashes: Record<string, string>;
+};
+
+/**
+ * A materialized, hash-bound patch artifact tree. `cleanup` must remove every
+ * owned output if the surrounding DB transaction does not commit.
+ */
+export type MaterializedPlayTesterPatchArtifact = {
+  artifactRefs: Record<string, string>;
+  artifactHashes: Record<string, string>;
+  cleanup(): Promise<void> | void;
+};
+
+/**
+ * Application boundary for producing a genuine child game patch. This is
+ * intentionally injected: @itotori/db must not imitate an engine patcher or
+ * write a pretend delivery bundle itself.
+ */
+export interface PlayTesterPatchArtifactMaterializer {
+  materialize(
+    input: PlayTesterPatchArtifactMaterializationInput,
+  ): Promise<MaterializedPlayTesterPatchArtifact>;
+}
 
 export type ApplyPlayTesterTargetEditResult = {
   resultRevision: PlayTesterResultRevisionRecord;
@@ -144,7 +169,10 @@ type Tx = Parameters<Parameters<ItotoriDatabase["transaction"]>[0]>[0];
  * Writes require draft.write; export reads require catalog.read.
  */
 export class ItotoriLocalizationResultRevisionRepository implements ItotoriLocalizationResultRevisionRepositoryPort {
-  constructor(private readonly db: ItotoriDatabase) {}
+  constructor(
+    private readonly db: ItotoriDatabase,
+    private readonly patchArtifactMaterializer: PlayTesterPatchArtifactMaterializer,
+  ) {}
 
   async applyPlayTesterTargetEdit(
     actor: AuthorizationActor,
@@ -152,7 +180,6 @@ export class ItotoriLocalizationResultRevisionRepository implements ItotoriLocal
   ): Promise<ApplyPlayTesterTargetEditResult> {
     await requirePermission(this.db, actor, permissionValues.draftWrite);
     assertNonBlank(input.bridgeUnitId, "bridgeUnitId");
-    assertNonBlank(input.artifactRootDir, "artifactRootDir");
     const targetBody = input.targetBody;
     if (targetBody.trim().length === 0) {
       throw new LocalizationResultRevisionRepositoryError(
@@ -163,185 +190,229 @@ export class ItotoriLocalizationResultRevisionRepository implements ItotoriLocal
     const actorUserId = actor.userId;
     assertNonBlank(actorUserId, "actor.userId");
 
-    // Resolve parent + materialize delivered bytes OUTSIDE the transaction so
-    // a failed DB write never leaves a partial revision, and so the transaction
-    // only commits after real patch bytes + hashes exist.
     assertNonBlank(input.parentPatchVersionId, "parentPatchVersionId");
-    const parent = await this.resolveParentPatch(input.parentPatchVersionId);
-    const parentUnit = parent.units.find((unit) => unit.bridgeUnitId === input.bridgeUnitId);
-    if (parentUnit === undefined) {
-      throw new LocalizationResultRevisionRepositoryError(
-        "unit_not_in_patch",
-        `bridge unit ${input.bridgeUnitId} is not a member of patch ${parent.patchVersionId}`,
-      );
-    }
+    let materialized: MaterializedPlayTesterPatchArtifact | undefined;
+    let committed = false;
+    try {
+      const result = await this.db.transaction(async (tx) => {
+        // Serialize against concurrent edits on the same parent lineage.
+        await tx.execute(sql`
+          select patch_version_id
+          from itotori_localization_patch_versions
+          where patch_version_id = ${input.parentPatchVersionId}
+          for update
+        `);
 
-    const bodyDigest = sha256Hex(targetBody).slice(0, 16);
-    const childPatchVersionId = playTesterChildPatchVersionId(
-      parent.patchVersionId,
-      input.bridgeUnitId,
-      bodyDigest,
-    );
-    const resultRevisionId = playTesterResultRevisionId(parentUnit.resultRevisionId, bodyDigest);
-
-    const childUnits = parent.units.map((unit) =>
-      unit.bridgeUnitId === input.bridgeUnitId
-        ? {
-            ...unit,
-            resultRevisionId,
-            targetBody,
-          }
-        : unit,
-    );
-    const artifact = writeDeliveredPatchArtifact({
-      artifactRootDir: input.artifactRootDir,
-      patchVersionId: childPatchVersionId,
-      parentPatchVersionId: parent.patchVersionId,
-      runId: parent.runId,
-      actorUserId,
-      units: childUnits.map((unit) => ({
-        bridgeUnitId: unit.bridgeUnitId,
-        resultRevisionId: unit.resultRevisionId,
-        unitOrdinal: unit.unitOrdinal,
-        targetBody: unit.targetBody,
-      })),
-    });
-
-    return this.db.transaction(async (tx) => {
-      // Serialize against concurrent edits on the same parent lineage.
-      await tx.execute(sql`
-        select patch_version_id
-        from itotori_localization_patch_versions
-        where patch_version_id = ${parent.patchVersionId}
-        for update
-      `);
-
-      const existingChild = await loadPatchWithUnitsInTx(tx, childPatchVersionId);
-      if (existingChild !== null) {
-        const existingRevision = await loadRevisionInTx(tx, resultRevisionId);
-        if (existingRevision === null) {
+        const parent = await loadPatchWithUnitsInTx(tx, input.parentPatchVersionId);
+        if (parent === null) {
           throw new LocalizationResultRevisionRepositoryError(
-            "artifact_fault",
-            `child patch ${childPatchVersionId} exists without its result revision ${resultRevisionId}`,
+            "patch_not_found",
+            `parent patch ${input.parentPatchVersionId} does not exist`,
           );
         }
-        // Re-select the existing child so export always reflects this edit.
-        await selectPatchInTx(tx, parent.runId, childPatchVersionId);
-        const reloaded = await loadPatchWithUnitsInTx(tx, childPatchVersionId);
-        if (reloaded === null || reloaded.status !== "playable" || reloaded.selectedAt === null) {
+        if (parent.status !== "playable") {
           throw new LocalizationResultRevisionRepositoryError(
-            "artifact_fault",
-            `failed to re-select existing child patch ${childPatchVersionId}`,
+            "patch_not_playable",
+            `parent patch ${parent.patchVersionId} is not playable`,
           );
         }
-        return {
-          resultRevision: revisionRecordFromRow(existingRevision),
-          patchVersion: childPatchRecordFromLoaded(reloaded, actorUserId),
-          idempotentReplay: true,
-        };
-      }
+        const parentUnit = parent.units.find((unit) => unit.bridgeUnitId === input.bridgeUnitId);
+        if (parentUnit === undefined) {
+          throw new LocalizationResultRevisionRepositoryError(
+            "unit_not_in_patch",
+            `bridge unit ${input.bridgeUnitId} is not a member of patch ${parent.patchVersionId}`,
+          );
+        }
 
-      const parentFresh = await loadPatchWithUnitsInTx(tx, parent.patchVersionId);
-      if (parentFresh === null || parentFresh.status !== "playable") {
-        throw new LocalizationResultRevisionRepositoryError(
-          "patch_not_playable",
-          `parent patch ${parent.patchVersionId} is not playable`,
+        const bodyDigest = sha256Hex(targetBody).slice(0, 16);
+        const childPatchVersionId = playTesterChildPatchVersionId(
+          parent.patchVersionId,
+          input.bridgeUnitId,
+          bodyDigest,
         );
-      }
+        const resultRevisionId = playTesterResultRevisionId(
+          parentUnit.resultRevisionId,
+          bodyDigest,
+        );
 
-      const now = new Date();
-      await tx.insert(localizationResultRevisions).values({
-        resultRevisionId,
-        journalOutcomeId: parentUnit.journalOutcomeId,
-        runId: parent.runId,
-        bridgeUnitId: input.bridgeUnitId,
-        selectedCandidateId: parentUnit.selectedCandidateId,
-        targetBody,
-        origin: "play_tester_edit",
-        parentRevisionId: parentUnit.resultRevisionId,
-        actorUserId,
-        createdForPatchVersionId: childPatchVersionId,
-        createdAt: now,
-      });
+        const existingChild = await loadPatchWithUnitsInTx(tx, childPatchVersionId);
+        if (existingChild !== null) {
+          const existingRevision = await loadRevisionInTx(tx, resultRevisionId);
+          if (existingRevision === null) {
+            throw new LocalizationResultRevisionRepositoryError(
+              "artifact_fault",
+              `child patch ${childPatchVersionId} exists without its result revision ${resultRevisionId}`,
+            );
+          }
+          try {
+            // A content-addressed replay must not make a damaged historical
+            // delivery selected again. Verify before changing selection so a
+            // missing/tampered artifact leaves the previously selected patch
+            // exactly as it was.
+            verifyLocalizationArtifactManifest(
+              existingChild.artifactRefs,
+              existingChild.artifactHashes,
+            );
+          } catch (error) {
+            throw new LocalizationResultRevisionRepositoryError(
+              "artifact_fault",
+              `existing child patch ${childPatchVersionId} artifact verification failed: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+          // Re-select the existing child so export always reflects this edit.
+          await selectPatchInTx(tx, parent.runId, childPatchVersionId);
+          const reloaded = await loadPatchWithUnitsInTx(tx, childPatchVersionId);
+          if (reloaded === null || reloaded.status !== "playable" || reloaded.selectedAt === null) {
+            throw new LocalizationResultRevisionRepositoryError(
+              "artifact_fault",
+              `failed to re-select existing child patch ${childPatchVersionId}`,
+            );
+          }
+          return {
+            resultRevision: revisionRecordFromRow(existingRevision),
+            patchVersion: childPatchRecordFromLoaded(reloaded, actorUserId),
+            idempotentReplay: true,
+          };
+        }
 
-      await tx.insert(localizationPatchVersions).values({
-        patchVersionId: childPatchVersionId,
-        runId: parent.runId,
-        status: "building",
-        artifactHashes: artifact.artifactHashes,
-        artifactRefs: artifact.artifactRefs,
-        playableAt: null,
-        parentPatchVersionId: parent.patchVersionId,
-        origin: "play_tester_edit",
-        actorUserId,
-        selectedAt: null,
-        createdAt: now,
-        updatedAt: now,
-      });
+        const childUnits = parent.units.map((unit) =>
+          unit.bridgeUnitId === input.bridgeUnitId
+            ? {
+                ...unit,
+                resultRevisionId,
+                targetBody,
+              }
+            : unit,
+        );
 
-      await tx.insert(localizationPatchVersionUnits).values(
-        childUnits.map((unit) => ({
+        // The native patcher is run while this parent lineage lock is held.
+        // The transaction is the commit point: any error after the materializer
+        // returns is caught below and removes its owned output tree.
+        materialized = await this.patchArtifactMaterializer.materialize({
+          childPatchVersionId,
+          parentPatchVersionId: parent.patchVersionId,
+          runId: parent.runId,
+          bridgeUnitId: input.bridgeUnitId,
+          targetBody,
+          parentArtifactRefs: { ...parent.artifactRefs },
+          parentArtifactHashes: { ...parent.artifactHashes },
+        });
+
+        const now = new Date();
+        await tx.insert(localizationResultRevisions).values({
+          resultRevisionId,
+          journalOutcomeId: parentUnit.journalOutcomeId,
+          runId: parent.runId,
+          bridgeUnitId: input.bridgeUnitId,
+          selectedCandidateId: parentUnit.selectedCandidateId,
+          targetBody,
+          origin: "play_tester_edit",
+          parentRevisionId: parentUnit.resultRevisionId,
+          actorUserId,
+          createdForPatchVersionId: childPatchVersionId,
+          createdAt: now,
+        });
+
+        await tx.insert(localizationPatchVersions).values({
           patchVersionId: childPatchVersionId,
           runId: parent.runId,
-          bridgeUnitId: unit.bridgeUnitId,
-          journalOutcomeId: unit.journalOutcomeId,
-          resultRevisionId: unit.resultRevisionId,
-          unitOrdinal: unit.unitOrdinal,
+          status: "building",
+          artifactHashes: materialized.artifactHashes,
+          artifactRefs: materialized.artifactRefs,
+          playableAt: null,
+          parentPatchVersionId: parent.patchVersionId,
+          origin: "play_tester_edit",
+          actorUserId,
+          selectedAt: null,
           createdAt: now,
-        })),
-      );
-
-      try {
-        verifyLocalizationArtifactManifest(artifact.artifactRefs, artifact.artifactHashes);
-      } catch (error) {
-        throw new LocalizationResultRevisionRepositoryError(
-          "artifact_fault",
-          `child patch ${childPatchVersionId} artifact verification failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-
-      await tx
-        .update(localizationPatchVersions)
-        .set({ selectedAt: null, updatedAt: now })
-        .where(
-          and(
-            eq(localizationPatchVersions.runId, parent.runId),
-            isNotNull(localizationPatchVersions.selectedAt),
-          ),
-        );
-
-      await tx
-        .update(localizationPatchVersions)
-        .set({
-          status: "playable",
-          playableAt: now,
-          selectedAt: now,
           updatedAt: now,
-        })
-        .where(eq(localizationPatchVersions.patchVersionId, childPatchVersionId));
+        });
 
-      const committedRevision = await loadRevisionInTx(tx, resultRevisionId);
-      const committedPatch = await loadPatchWithUnitsInTx(tx, childPatchVersionId);
-      if (
-        committedRevision === null ||
-        committedPatch === null ||
-        committedPatch.status !== "playable" ||
-        committedPatch.selectedAt === null
-      ) {
-        throw new LocalizationResultRevisionRepositoryError(
-          "artifact_fault",
-          `atomic play-tester edit for ${childPatchVersionId} did not leave a playable selected child`,
+        await tx.insert(localizationPatchVersionUnits).values(
+          childUnits.map((unit) => ({
+            patchVersionId: childPatchVersionId,
+            runId: parent.runId,
+            bridgeUnitId: unit.bridgeUnitId,
+            journalOutcomeId: unit.journalOutcomeId,
+            resultRevisionId: unit.resultRevisionId,
+            unitOrdinal: unit.unitOrdinal,
+            createdAt: now,
+          })),
         );
-      }
 
-      return {
-        resultRevision: revisionRecordFromRow(committedRevision),
-        patchVersion: childPatchRecordFromLoaded(committedPatch, actorUserId),
-        idempotentReplay: false,
-      };
-    });
+        try {
+          verifyLocalizationArtifactManifest(
+            materialized.artifactRefs,
+            materialized.artifactHashes,
+          );
+        } catch (error) {
+          throw new LocalizationResultRevisionRepositoryError(
+            "artifact_fault",
+            `child patch ${childPatchVersionId} artifact verification failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+
+        await tx
+          .update(localizationPatchVersions)
+          .set({ selectedAt: null, updatedAt: now })
+          .where(
+            and(
+              eq(localizationPatchVersions.runId, parent.runId),
+              isNotNull(localizationPatchVersions.selectedAt),
+            ),
+          );
+
+        await tx
+          .update(localizationPatchVersions)
+          .set({
+            status: "playable",
+            playableAt: now,
+            selectedAt: now,
+            updatedAt: now,
+          })
+          .where(eq(localizationPatchVersions.patchVersionId, childPatchVersionId));
+
+        const committedRevision = await loadRevisionInTx(tx, resultRevisionId);
+        const committedPatch = await loadPatchWithUnitsInTx(tx, childPatchVersionId);
+        if (
+          committedRevision === null ||
+          committedPatch === null ||
+          committedPatch.status !== "playable" ||
+          committedPatch.selectedAt === null
+        ) {
+          throw new LocalizationResultRevisionRepositoryError(
+            "artifact_fault",
+            `atomic play-tester edit for ${childPatchVersionId} did not leave a playable selected child`,
+          );
+        }
+
+        return {
+          resultRevision: revisionRecordFromRow(committedRevision),
+          patchVersion: childPatchRecordFromLoaded(committedPatch, actorUserId),
+          idempotentReplay: false,
+        };
+      });
+      committed = true;
+      return result;
+    } catch (error) {
+      if (!committed && materialized !== undefined) {
+        try {
+          await materialized.cleanup();
+        } catch (cleanupError) {
+          throw new LocalizationResultRevisionRepositoryError(
+            "artifact_fault",
+            `play-tester edit rolled back but its patch artifact cleanup failed: ${
+              cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+            }`,
+          );
+        }
+      }
+      throw error;
+    }
   }
 
   async loadSelectedPatchExport(
@@ -375,23 +446,6 @@ export class ItotoriLocalizationResultRevisionRepository implements ItotoriLocal
     if (row === undefined) return null;
     const loaded = await loadPatchWithUnitsInTx(this.db, row.patchVersionId);
     return loaded === null ? null : exportFromLoaded(loaded);
-  }
-
-  private async resolveParentPatch(parentPatchVersionId: string): Promise<LoadedPatch> {
-    const loaded = await loadPatchWithUnitsInTx(this.db, parentPatchVersionId);
-    if (loaded === null) {
-      throw new LocalizationResultRevisionRepositoryError(
-        "patch_not_found",
-        `parent patch ${parentPatchVersionId} does not exist`,
-      );
-    }
-    if (loaded.status !== "playable") {
-      throw new LocalizationResultRevisionRepositoryError(
-        "patch_not_playable",
-        `parent patch ${parentPatchVersionId} is not playable`,
-      );
-    }
-    return loaded;
   }
 }
 
@@ -618,55 +672,6 @@ function exportFromLoaded(loaded: LoadedPatch): SelectedPatchExport {
   };
 }
 
-function writeDeliveredPatchArtifact(input: {
-  artifactRootDir: string;
-  patchVersionId: string;
-  parentPatchVersionId: string;
-  runId: string;
-  actorUserId: string;
-  units: Array<{
-    bridgeUnitId: string;
-    resultRevisionId: string;
-    unitOrdinal: number;
-    targetBody: string;
-  }>;
-}): { artifactRefs: Record<string, string>; artifactHashes: Record<string, string> } {
-  const root = join(input.artifactRootDir, sanitizePathSegment(input.patchVersionId));
-  mkdirSync(root, { recursive: true });
-  const payloadPath = join(root, "delivered-units.json");
-  const payload = {
-    schemaVersion: "itotori.play-tester-delivered-patch.v0.1",
-    patchVersionId: input.patchVersionId,
-    parentPatchVersionId: input.parentPatchVersionId,
-    runId: input.runId,
-    actorUserId: input.actorUserId,
-    units: input.units
-      .slice()
-      .sort((a, b) => a.unitOrdinal - b.unitOrdinal)
-      .map((unit) => ({
-        bridgeUnitId: unit.bridgeUnitId,
-        resultRevisionId: unit.resultRevisionId,
-        unitOrdinal: unit.unitOrdinal,
-        targetBody: unit.targetBody,
-      })),
-  };
-  writeFileSync(payloadPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
-  const unitsDir = join(root, "units");
-  mkdirSync(unitsDir, { recursive: true });
-  for (const unit of input.units) {
-    const unitPath = join(unitsDir, `${sanitizePathSegment(unit.bridgeUnitId)}.txt`);
-    mkdirSync(dirname(unitPath), { recursive: true });
-    writeFileSync(unitPath, unit.targetBody, "utf8");
-  }
-  const artifactRefs = {
-    delivered_bundle: root,
-  };
-  const artifactHashes = {
-    delivered_bundle: hashLocalizationArtifact(root),
-  };
-  return { artifactRefs, artifactHashes };
-}
-
 export function playTesterChildPatchVersionId(
   parentPatchVersionId: string,
   bridgeUnitId: string,
@@ -681,10 +686,6 @@ export function playTesterResultRevisionId(parentRevisionId: string, bodyDigest:
 
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
-}
-
-function sanitizePathSegment(value: string): string {
-  return value.replace(/[^A-Za-z0-9._:-]+/g, "_");
 }
 
 function assertNonBlank(value: string, label: string): void {

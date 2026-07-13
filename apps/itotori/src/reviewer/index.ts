@@ -14,7 +14,6 @@ export type {
   EscalateActionInput,
   ImportRuntimeFeedbackActionInput,
   RejectActionInput,
-  RequestRepairActionInput,
   ReviewerQueueActionCommonInput,
   ReviewerQueueDecisionContextRefs,
   ReviewerQueueActionServiceDeps,

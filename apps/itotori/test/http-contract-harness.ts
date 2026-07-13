@@ -398,6 +398,70 @@ const unused = () => {
   throw new Error("not used by the contract harness");
 };
 
+const playTargetEditServiceFixture = {
+  schemaVersion: "play.tester_result_revision.v0.1" as const,
+  generatedAt: new Date("2026-07-12T00:00:00.000Z"),
+  result: {
+    resultRevision: {
+      resultRevisionId: "result-revision-contract-edit",
+      journalOutcomeId: "journal-outcome-contract-1",
+      runId: "run-contract-delivery-1",
+      bridgeUnitId: "bridge-unit-contract-1",
+      selectedCandidateId: "candidate-contract-1",
+      targetBody: "Edited contract target.",
+      origin: "play_tester_edit" as const,
+      parentRevisionId: "result-revision-contract-parent",
+      actorUserId: "local-user",
+      createdForPatchVersionId: "patch-version-contract-child",
+      createdAt: new Date("2026-07-12T00:00:00.000Z"),
+    },
+    patchVersion: {
+      patchVersionId: "patch-version-contract-child",
+      runId: "run-contract-delivery-1",
+      parentPatchVersionId: "patch-version-contract-parent",
+      status: "playable" as const,
+      origin: "play_tester_edit" as const,
+      actorUserId: "local-user",
+      artifactHashes: { delivered_bundle: "sha256:contract-child" },
+      artifactRefs: { delivered_bundle: "artifact://contract-child" },
+      playableAt: new Date("2026-07-12T00:00:00.000Z"),
+      selectedAt: new Date("2026-07-12T00:00:00.000Z"),
+      createdAt: new Date("2026-07-12T00:00:00.000Z"),
+      updatedAt: new Date("2026-07-12T00:00:00.000Z"),
+      units: [],
+    },
+    idempotentReplay: false,
+  },
+};
+
+const selectedPlayDeliveryServiceFixture = {
+  schemaVersion: "play.selected_patch_export.v0.1" as const,
+  generatedAt: new Date("2026-07-12T00:00:00.000Z"),
+  export: {
+    patchVersionId: "patch-version-contract-child",
+    runId: "run-contract-delivery-1",
+    parentPatchVersionId: "patch-version-contract-parent",
+    origin: "play_tester_edit",
+    actorUserId: "local-user",
+    status: "playable",
+    selectedAt: new Date("2026-07-12T00:00:00.000Z"),
+    playableAt: new Date("2026-07-12T00:00:00.000Z"),
+    artifactHashes: { delivered_bundle: "sha256:contract-child" },
+    artifactRefs: { delivered_bundle: "artifact://contract-child" },
+    units: [
+      {
+        bridgeUnitId: "bridge-unit-contract-1",
+        journalOutcomeId: "journal-outcome-contract-1",
+        resultRevisionId: "result-revision-contract-edit",
+        unitOrdinal: 0,
+        targetBody: "Edited contract target.",
+        origin: "play_tester_edit",
+        actorUserId: "local-user",
+      },
+    ],
+  },
+};
+
 /**
  * The stable, module-level fixture service surface. Built ONCE so every
  * request the harness drives flows through the SAME mock instances — tests can
@@ -503,8 +567,13 @@ const fixtureServices = {
     submitCorrections: vi.fn(unused),
   },
   playTesterResultRevision: {
-    editTarget: vi.fn(unused),
-    loadSelectedExport: vi.fn(unused),
+    editTarget: vi.fn(async () => playTargetEditServiceFixture),
+    loadSelectedExport: vi.fn(async () => selectedPlayDeliveryServiceFixture),
+    loadSelectedArchive: vi.fn(async () => ({
+      contentType: "application/x-tar" as const,
+      fileName: "patch-version-contract-child.tar",
+      bytes: Buffer.from("fixture-delivered-patch-tar", "utf8"),
+    })),
   },
   assetDecisions: {
     loadActiveDecisions: vi.fn(unused),
@@ -686,5 +755,6 @@ export const fixtureRequirePermission = grantAllPermissions;
  * service method (e.g. `importBridge` was called with the posted bridge).
  */
 export const fixtureProjectWorkflow = fixtureServices.projectWorkflow;
+export const fixturePlayTesterResultRevision = fixtureServices.playTesterResultRevision;
 
 export type { ItotoriReadOnlyServiceFactory };

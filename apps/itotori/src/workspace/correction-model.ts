@@ -9,12 +9,11 @@
 //     must see BEFORE submitting (acceptance #3). It is gated on `queue.read`,
 //     so it composes the same read seam as browsing.
 //
-//   - SUBMIT (`workspace.correction_submit`): REMOVED as a target-edit path
-//     (p0-core-result-revision-hitl). A target-line edit is a first-class
+//   - SUBMIT (`workspace.correction_submit`): records feedback and applies
+//     the canonical context-correction flow without reviewer-queue routing.
+//     A delivered target-line replacement is instead a first-class
 //     play-tester result revision + child delivered patch revision
-//     (`PlayTesterResultRevisionService`), not a reviewer-queue action and not
-//     a request_repair detour. The POST still exists as a structured refusal
-//     so callers get a typed diagnostic instead of a silent no-op.
+//     (`PlayTesterResultRevisionService`).
 //
 // Locale-branch identity (ITOTORI-059) is load-bearing: a single submit is
 // scoped to one `localeBranchId`, and preview units whose own branch disagrees
@@ -34,12 +33,6 @@ export const workspaceCorrectionDiagnosticCodeValues = {
   invalidCorrection: "workspace_correction_invalid_correction",
   needsContext: "workspace_correction_needs_context",
   duplicate: "workspace_correction_duplicate",
-  /**
-   * p0-core-result-revision-hitl — target edits no longer route through the
-   * reviewer queue / request_repair correction path. Use the play-tester
-   * result-revision service instead.
-   */
-  legacyQueueCorrectionRemoved: "workspace_correction_legacy_queue_path_removed",
 } as const;
 
 export type WorkspaceCorrectionDiagnosticCode =

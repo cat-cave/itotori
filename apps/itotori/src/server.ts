@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { readFile, realpath } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { extname, join, relative, resolve, sep } from "node:path";
+import { AuthorizationError } from "@itotori/db";
 import {
   handleItotoriApiRequest,
   handleReadOnlyItotoriApiRequest,
@@ -56,6 +57,16 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
   return createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
     if (isItotoriApiPath(url.pathname)) {
+      const deliveryArchiveRoute = parsePlayDeliveryArchiveRoute(url.pathname);
+      if (deliveryArchiveRoute !== null) {
+        await servePlayDeliveryArchiveRequest({
+          request,
+          response,
+          runId: deliveryArchiveRoute.runId,
+          readOnlyServiceFactory,
+        });
+        return;
+      }
       try {
         const body = await readJsonRequestBody(request);
         const method = request.method ?? "GET";
@@ -145,6 +156,89 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
     response.writeHead(404, { "content-type": "text/plain" });
     response.end("not found");
   });
+}
+
+async function servePlayDeliveryArchiveRequest(input: {
+  request: IncomingMessage;
+  response: ServerResponse;
+  runId: string;
+  readOnlyServiceFactory: ItotoriReadOnlyServiceFactory;
+}): Promise<void> {
+  if (input.request.method !== "GET") {
+    writeApiError(input.response, 405, "method_not_allowed", "method must be GET");
+    return;
+  }
+  try {
+    const sessionId = parseItotoriSessionCookie(input.request.headers.cookie);
+    const serviceOptions = sessionId === undefined ? undefined : { sessionId };
+    // `loadSelectedArchive` is a bound production service method: its exporter
+    // resolves the selected revision through the authenticated repository
+    // actor and refuses callers without catalog.read before any bytes are read.
+    const archive = await input.readOnlyServiceFactory(
+      (services) => services.playTesterResultRevision.loadSelectedArchive({ runId: input.runId }),
+      serviceOptions,
+    );
+    if (archive === null) {
+      writeApiError(
+        input.response,
+        404,
+        "not_found",
+        `selected delivered patch for run ${input.runId} was not found`,
+      );
+      return;
+    }
+    input.response.writeHead(200, {
+      "content-type": archive.contentType,
+      "content-length": String(archive.bytes.byteLength),
+      "content-disposition": `attachment; filename="${archive.fileName}"`,
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+    });
+    input.response.end(archive.bytes);
+  } catch (error) {
+    if (error instanceof AuthorizationError || error instanceof ItotoriInvalidAuthSessionError) {
+      writeApiError(input.response, 403, "forbidden", error.message);
+      return;
+    }
+    writeApiError(
+      input.response,
+      500,
+      "internal_error",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
+function parsePlayDeliveryArchiveRoute(pathname: string): { runId: string } | null {
+  const match = /^\/api\/play\/runs\/([^/]+)\/delivery\/archive\/?$/u.exec(pathname);
+  if (match === null || match[1] === undefined) {
+    return null;
+  }
+  try {
+    const runId = decodeURIComponent(match[1]);
+    if (
+      runId.trim().length === 0 ||
+      runId.includes("/") ||
+      runId.includes("\\") ||
+      runId === "." ||
+      runId === ".."
+    ) {
+      return null;
+    }
+    return { runId };
+  } catch {
+    return null;
+  }
+}
+
+function writeApiError(
+  response: ServerResponse,
+  statusCode: number,
+  code: "bad_request" | "forbidden" | "not_found" | "method_not_allowed" | "internal_error",
+  error: string,
+): void {
+  response.writeHead(statusCode, { "content-type": "application/json" });
+  response.end(JSON.stringify({ error, code }));
 }
 
 async function readJsonRequestBody(request: IncomingMessage): Promise<unknown> {

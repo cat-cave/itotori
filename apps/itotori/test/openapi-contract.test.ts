@@ -17,8 +17,10 @@ import { fileURLToPath } from "node:url";
 import Ajv from "ajv";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
+  ITOTORI_API_BINARY_ROUTES,
   ITOTORI_API_ROUTES,
   ITOTORI_API_ROUTE_IDS,
+  buildItotoriOpenApiDocument,
   buildItotoriJsonSchemaBundle,
   jsonSchemaForApiError,
   jsonSchemaForRoute,
@@ -139,6 +141,57 @@ const RESPONSE_FIXTURES: Partial<Record<ItotoriApiRouteId, unknown>> = {
     units: [],
     diagnostics: [],
   },
+  "workspace.correctionSubmit": {
+    schemaVersion: "workspace.correction_submit.v0.1",
+    generatedAt: "2026-07-08T00:00:00.000Z",
+    permission: {
+      actorUserId: "local-user",
+      canReadQueue: true,
+      canManageQueue: true,
+      denialReasons: [],
+    },
+    localeBranchId: "locale-branch-itotori-040",
+    batchId: "workspace-correction-openapi-batch",
+    batchLabel: null,
+    submittedCount: 0,
+    edits: [],
+    repairCandidateReportIds: [],
+    decisionQueueReportIds: [],
+    needsContextReportIds: [],
+    affectedBridgeUnitIds: [],
+    writebacks: [],
+    scheduledRerunJobIds: [],
+    diagnostics: [],
+  },
+  "play.targetEdit": {
+    schemaVersion: "itotori.play.target-edit.v0",
+    resultRevisionId: "result-revision-openapi-edit",
+    patchVersionId: "patch-version-openapi-child",
+    runId: "run-openapi-delivery",
+    parentPatchVersionId: "patch-version-openapi-parent",
+    bridgeUnitId: "bridge-unit-openapi-1",
+    targetBody: "Edited OpenAPI target.",
+    status: "playable",
+    selectedAt: "2026-07-12T00:00:00.000Z",
+    idempotentReplay: false,
+  },
+  "play.delivery": {
+    schemaVersion: "itotori.play.delivery.v0",
+    patchVersionId: "patch-version-openapi-child",
+    runId: "run-openapi-delivery",
+    parentPatchVersionId: "patch-version-openapi-parent",
+    status: "playable",
+    selectedAt: "2026-07-12T00:00:00.000Z",
+    artifactHashes: { delivered_bundle: "sha256:openapi-child" },
+    downloadUrl: "/api/play/runs/run-openapi-delivery/delivery/archive",
+    units: [
+      {
+        bridgeUnitId: "bridge-unit-openapi-1",
+        unitOrdinal: 0,
+        targetBody: "Edited OpenAPI target.",
+      },
+    ],
+  },
   "settings.localizationRunConfig.save": localizationRunConfigFixture,
   "imports.bridge": bridgeImportResponseFixture,
   "branches.draft": draftBranchResponseFixture,
@@ -207,6 +260,26 @@ describe("fe-api-openapi-emit: authority coverage", () => {
         expect(() => ajv.compile(request as object), `${routeId} request compiles`).not.toThrow();
       }
     }
+  });
+
+  it("publishes the authenticated selected-delivery archive as a binary OpenAPI route", () => {
+    const document = buildItotoriOpenApiDocument() as {
+      paths: Record<string, Record<string, Record<string, unknown>>>;
+    };
+    const route = ITOTORI_API_BINARY_ROUTES["play.deliveryArchive"];
+    const operation = document.paths[route.pathTemplate]?.get;
+
+    expect(operation).toMatchObject({
+      operationId: route.operationId,
+      "x-itotoriBinaryRouteId": "play.deliveryArchive",
+      responses: {
+        "200": {
+          content: {
+            "application/x-tar": { schema: { type: "string", format: "binary" } },
+          },
+        },
+      },
+    });
   });
 });
 
@@ -385,20 +458,21 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all routes, request + r
     }
   }
 
-  it("covers a body for every one of the 65 routes (no route left un-teethed)", () => {
+  it("covers a body for every one of the 67 routes (no route left un-teethed)", () => {
     // Every route has a response body; the mutation + reviewer/workspace
     // POST routes (incl. ovw-launch-pass-action's `projects.launchPass` and
     // play-mark-validated's `play.setSceneCoverage`) add a request body.
     // bmk-cockpit contributes two GET read models; play-mark-validated adds
     // the scene coverage GET + POST pair; play-routemap-ui adds routeMap;
-    // play-flag-composer adds flagAnnotation; model-routing and branch-policy
+    // play-flag-composer adds flagAnnotation; p0-result-revision adds the
+    // target-edit mutation plus selected delivery GET; model-routing and branch-policy
     // settings each add a GET + POST settings pair; translation-scope-
     // configuration-ui adds a third GET + POST settings pair; localization
     // run-config adds the scoped registration mutation.
     const routesWithRequest = ITOTORI_API_ROUTE_IDS.filter(
       (id) => ITOTORI_API_ROUTES[id].requestSchema !== undefined,
     ).length;
-    expect(ITOTORI_API_ROUTE_IDS.length).toBe(65);
+    expect(ITOTORI_API_ROUTE_IDS.length).toBe(67);
     expect(bodyCount).toBe(ITOTORI_API_ROUTE_IDS.length + routesWithRequest);
   });
 });

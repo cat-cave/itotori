@@ -234,9 +234,9 @@ describe("ReviewerBatchPreviewService — refusal paths (shared validator)", () 
 
   it("flags conflicting action / kind pairs as reviewer_queue_item_invalid_input", async () => {
     const glossary = fixturePendingGlossaryItem();
-    const qa = fixturePendingQaItem();
+    const runtime = fixturePendingRuntimeEvidenceItem();
     const stub = stubResolver({
-      items: { [glossary.reviewItemId]: glossary, [qa.reviewItemId]: qa },
+      items: { [glossary.reviewItemId]: glossary, [runtime.reviewItemId]: runtime },
     });
     const service = new ReviewerBatchPreviewService(stub.resolver);
     const preview = await service.preview(
@@ -247,7 +247,7 @@ describe("ReviewerBatchPreviewService — refusal paths (shared validator)", () 
     expect(preview.items[0]?.status).toBe(reviewerBatchPreviewStatusValues.allowed);
     expect(preview.items[1]?.status).toBe(reviewerBatchPreviewStatusValues.invalidInput);
     expect(preview.items[1]?.message).toContain(
-      "action 'request_repair' is not valid for item kind 'glossary'",
+      "action 'import_runtime_feedback' is not valid for item kind 'glossary'",
     );
     expect(preview.allAllowed).toBe(false);
     expect(preview.aggregate.invalidInput).toBe(1);

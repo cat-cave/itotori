@@ -90,6 +90,7 @@ import {
   parsePlaySetSceneCoverageRequest,
   parsePlayFlagAnnotationRequest,
   parseWorkspaceCorrectionSubmitRequest,
+  parsePlayTargetEditRequest,
   type ApiAuthCapabilitiesResponse,
   type ApiAuthBillingSeatUsageResponse,
   type ApiAuthIdentityResponse,
@@ -100,6 +101,8 @@ import {
   type ApiSaveLocalizationRunConfigRequest,
   type ApiPlayRouteMapResponse,
   type ApiPlayFlagAnnotationResponse,
+  type ApiPlayTargetEditResponse,
+  type ApiPlayDeliveryResponse,
   type ApiPlaySceneCoverageResponse,
   type ApiPlaySetSceneCoverageResponse,
   type ApiConfigureAuthSsoSettingsRequest,
@@ -148,6 +151,12 @@ import {
   type SceneCoverageServicePort,
 } from "./play/scene-coverage-service.js";
 import type { RouteMapReadModelPort } from "./play/route-map-read-model.js";
+import type {
+  PlayTesterTargetEditResponse,
+  SelectedPatchExportResponse,
+} from "./play/result-revision-service.js";
+import type { DeliveredPatchArchive } from "./patch-export/delivery-archive.js";
+import { playDeliveryArchivePath } from "./api-routes.js";
 import { buildPlayFlagFeedbackInput, type PlayFlagSeverity } from "./play/flag-annotation.js";
 import type { ManualFeedbackImportPort } from "./manual-feedback.js";
 import {
@@ -233,6 +242,10 @@ export const apiMutationPermissionGates = {
   sessionsList: apiMutationGate("sessions list", "authSessionsManage"),
   sessionsRevoke: apiMutationGate("sessions revoke", "authSessionsManage"),
   setSceneCoverage: apiMutationGate("set scene coverage", "queueManage"),
+  // p0-result-revision — replacing a delivered target line creates and
+  // selects a new patch revision, so it carries the same `draft.write`
+  // authority as other draft-affecting production mutations.
+  playTargetEdit: apiMutationGate("play target edit", "draftWrite"),
   // play-flag-composer — canFlag is feedback.import (playtester flags into
   // the canonical context-correction path via ManualFeedbackImport).
   flagAnnotation: apiMutationGate("play flag annotation", "feedbackImport"),
@@ -251,12 +264,28 @@ export type ItotoriApiRequest = {
 };
 
 /**
+ * p0-result-revision — production-bound play-tester port. Authentication and
+ * server-managed artifact placement are intentionally captured by the service
+ * factory; neither becomes a public HTTP field. The route only supplies the
+ * parent patch, unit identity, and target-language replacement.
+ */
+export type PlayTesterResultRevisionApiPort = {
+  editTarget(input: {
+    parentPatchVersionId: string;
+    bridgeUnitId: string;
+    targetBody: string;
+  }): Promise<PlayTesterTargetEditResponse>;
+  loadSelectedExport(input: { runId: string }): Promise<SelectedPatchExportResponse>;
+  loadSelectedArchive(input: { runId: string }): Promise<DeliveredPatchArchive | null>;
+};
+
+/**
  * ITOTORI-043 — the read/query dependencies exposed to the READ-ONLY (query)
  * API handlers. This is a least-privilege surface: it deliberately picks ONLY
  * the read methods of each shared service, so a query handler that receives an
  * {@link ItotoriReadOnlyApiServices} is *structurally* (type-level) unable to
  * reach a mutation — `reviewerQueue.executeBatch`,
- * `workspaceCorrections.submitCorrections`, `projectWorkflow.draftProject`,
+ * `projectWorkflow.draftProject`,
  * etc. are not on the type. The default read-only factory
  * (`readOnlyApiServices` / `withDatabaseReadOnlyApiServices` in
  * `services/database-services.ts`) additionally narrows at RUNTIME (the
@@ -372,15 +401,19 @@ export type ItotoriReadOnlyApiServices = {
    */
   playRouteMap: RouteMapReadModelPort;
   sceneCoverage: Pick<SceneCoverageServicePort, "loadRouteMapCoverage">;
+  /** p0-result-revision — read only the selected production delivery export. */
+  playTesterResultRevision: Pick<
+    PlayTesterResultRevisionApiPort,
+    "loadSelectedExport" | "loadSelectedArchive"
+  >;
 };
 
 /**
  * The full dependency surface for the API handler entrypoint. It is the
  * read-only surface {@link ItotoriReadOnlyApiServices} INTERSECTED with the
  * mutation methods the write (POST) handlers need. The intersection keeps the
- * read picks and adds the mutation picks, so `reviewerQueue` /
- * `workspaceCorrections` resolve to their full ports and `projectWorkflow`
- * gains the record/draft/ingest writes.
+ * read picks and adds the mutation picks, so `reviewerQueue` resolves to its
+ * full port and `projectWorkflow` gains the record/draft/ingest writes.
  */
 export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
   reviewerQueue: ReviewerQueueApiServicePort;
@@ -475,6 +508,8 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
   sceneCoverage: SceneCoverageServicePort;
   /** play-flag-composer — ManualFeedbackImport creates a context correction. */
   manualFeedback: ManualFeedbackImportPort;
+  /** p0-result-revision — actor/artifact-root-bound target edit + delivery read. */
+  playTesterResultRevision: PlayTesterResultRevisionApiPort;
 };
 
 /**
@@ -570,6 +605,10 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     sceneCoverage: {
       loadRouteMapCoverage: (input) => services.sceneCoverage.loadRouteMapCoverage(input),
     },
+    playTesterResultRevision: {
+      loadSelectedExport: (input) => services.playTesterResultRevision.loadSelectedExport(input),
+      loadSelectedArchive: (input) => services.playTesterResultRevision.loadSelectedArchive(input),
+    },
   };
 }
 
@@ -606,7 +645,7 @@ export async function handleItotoriApiRequest(
  * transport-level READ-ONLY entrypoint for GET requests. It receives ONLY
  * the {@link ItotoriReadOnlyApiServices} surface, so a GET served through
  * this entrypoint is STRUCTURALLY unable to reach a mutation service
- * (`draftProject`, `executeBatch`, `submitCorrections`, …): the dependency
+ * (`draftProject`, `executeBatch`, …): the dependency
  * object literally has no mutation methods. The server transport
  * (`server.ts`) constructs GET requests through the read-only DB factory
  * (`withDatabaseReadOnlyApiServices`) and dispatches them here, so the
@@ -683,6 +722,9 @@ function readOnlyMutationPathResponse(request: ItotoriApiRequest): ApiJsonRespon
     return methodNotAllowed(["GET", "POST"]);
   }
   if (parsePlayFlagApiRoute(request.pathname) !== null) {
+    return methodNotAllowed(["POST"]);
+  }
+  if (parsePlayTargetEditApiRoute(request.pathname) !== null) {
     return methodNotAllowed(["POST"]);
   }
   if (parseCatalogContextPanelApiRoute(request.pathname) !== null) {
@@ -786,6 +828,18 @@ async function routeItotoriApiRequest(
     return ok("play.setSceneCoverage", result);
   }
 
+  const targetEditRoute = parsePlayTargetEditApiRoute(request.pathname);
+  if (request.method === "POST" && targetEditRoute !== null) {
+    const body = parsePlayTargetEditRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.playTargetEdit);
+    const result = await services.playTesterResultRevision.editTarget({
+      parentPatchVersionId: targetEditRoute.parentPatchVersionId,
+      bridgeUnitId: body.bridgeUnitId,
+      targetBody: body.targetBody,
+    });
+    return ok("play.targetEdit", playTargetEditResponseBody(result));
+  }
+
   const flagRoute = parsePlayFlagApiRoute(request.pathname);
   if (request.method === "POST" && flagRoute !== null) {
     const body = parsePlayFlagAnnotationRequest(request.body);
@@ -835,6 +889,10 @@ async function routeItotoriApiRequest(
     request.method !== "POST"
   ) {
     return methodNotAllowed(["GET", "POST"]);
+  }
+
+  if (targetEditRoute !== null) {
+    return methodNotAllowed(["POST"]);
   }
 
   if (
@@ -1249,6 +1307,48 @@ function launchPassResponseBody(outcome: LaunchLocalizationPassResult): ApiLaunc
     journalRunId: null,
     startedAt: null,
     refusalMessage: outcome.refusalMessage,
+  };
+}
+
+/** p0-result-revision — map the bound service result to the public mutation envelope. */
+function playTargetEditResponseBody(
+  input: PlayTesterTargetEditResponse,
+): ApiPlayTargetEditResponse {
+  const result = input.result;
+  return {
+    schemaVersion: "itotori.play.target-edit.v0",
+    resultRevisionId: result.resultRevision.resultRevisionId,
+    patchVersionId: result.patchVersion.patchVersionId,
+    runId: result.patchVersion.runId,
+    parentPatchVersionId: result.patchVersion.parentPatchVersionId,
+    bridgeUnitId: result.resultRevision.bridgeUnitId,
+    targetBody: result.resultRevision.targetBody,
+    status: result.patchVersion.status,
+    selectedAt: result.patchVersion.selectedAt.toISOString(),
+    idempotentReplay: result.idempotentReplay,
+  };
+}
+
+/** p0-result-revision — map the selected real delivery export to the API view. */
+function playDeliveryResponseBody(input: SelectedPatchExportResponse): ApiPlayDeliveryResponse {
+  if (input.export === null) {
+    throw new Error("cannot build a play delivery response without a selected export");
+  }
+  const selected = input.export;
+  return {
+    schemaVersion: "itotori.play.delivery.v0",
+    patchVersionId: selected.patchVersionId,
+    runId: selected.runId,
+    parentPatchVersionId: selected.parentPatchVersionId,
+    status: selected.status,
+    selectedAt: selected.selectedAt.toISOString(),
+    artifactHashes: { ...selected.artifactHashes },
+    downloadUrl: playDeliveryArchivePath(selected.runId),
+    units: selected.units.map((unit) => ({
+      bridgeUnitId: unit.bridgeUnitId,
+      unitOrdinal: unit.unitOrdinal,
+      targetBody: unit.targetBody,
+    })),
   };
 }
 
@@ -1765,6 +1865,21 @@ async function routeReadOnlyItotoriApiRequest(
     return methodNotAllowed(["GET"]);
   }
 
+  const playDeliveryRoute = parsePlayDeliveryApiRoute(request.pathname);
+  if (request.method === "GET" && playDeliveryRoute !== null) {
+    const delivery = await services.playTesterResultRevision.loadSelectedExport({
+      runId: playDeliveryRoute.runId,
+    });
+    if (delivery.export === null) {
+      return errorBody(
+        404,
+        "not_found",
+        `selected delivered patch for run ${playDeliveryRoute.runId} was not found`,
+      );
+    }
+    return ok("play.delivery", playDeliveryResponseBody(delivery));
+  }
+
   const playRouteMapRoute = parsePlayRouteMapApiRoute(request.pathname);
   if (request.method === "GET" && playRouteMapRoute !== null) {
     const scope = await requireOwnedBranchScope(services.projectWorkflow, {
@@ -1937,6 +2052,7 @@ async function routeReadOnlyItotoriApiRequest(
     request.pathname === "/api/terminology/search" ||
     request.pathname === "/api/wiki/entries" ||
     request.pathname === "/api/queue/health" ||
+    playDeliveryRoute !== null ||
     playRouteMapRoute !== null ||
     catalogContextRoute !== null ||
     assetDecisionRoute !== null ||
@@ -2850,6 +2966,26 @@ function parsePlayFlagApiRoute(pathname: string): {
   };
 }
 
+function parsePlayTargetEditApiRoute(pathname: string): {
+  parentPatchVersionId: string;
+} | null {
+  const match = /^\/api\/play\/patch-versions\/([^/]+)\/target-edits\/?$/u.exec(pathname);
+  if (match === null || match[1] === undefined) {
+    return null;
+  }
+  return {
+    parentPatchVersionId: decodeApiPathSegment(match[1], "parentPatchVersionId"),
+  };
+}
+
+function parsePlayDeliveryApiRoute(pathname: string): { runId: string } | null {
+  const match = /^\/api\/play\/runs\/([^/]+)\/delivery\/?$/u.exec(pathname);
+  if (match === null || match[1] === undefined) {
+    return null;
+  }
+  return { runId: decodeApiPathSegment(match[1], "runId") };
+}
+
 function parseBranchPolicySettingsApiRoute(pathname: string): {
   projectId: string;
   localeBranchId: string;
@@ -3452,6 +3588,8 @@ function ok(
   body: ApiPlaySetSceneCoverageResponse,
 ): ApiJsonResponse;
 function ok(routeId: "play.flagAnnotation", body: ApiPlayFlagAnnotationResponse): ApiJsonResponse;
+function ok(routeId: "play.targetEdit", body: ApiPlayTargetEditResponse): ApiJsonResponse;
+function ok(routeId: "play.delivery", body: ApiPlayDeliveryResponse): ApiJsonResponse;
 function ok(routeId: ItotoriApiRouteId, body: ItotoriApiResponseBody): ApiJsonResponse {
   assertItotoriApiResponse(routeId, body);
   return { statusCode: 200, body };

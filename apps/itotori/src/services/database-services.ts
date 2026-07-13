@@ -152,9 +152,11 @@ import {
 } from "../workspace/correction-service.js";
 import { ContextCorrectionService } from "../orchestrator/context-correction-service.js";
 import {
+  bindPlayTesterResultRevisionService,
   PlayTesterResultRevisionService,
-  type PlayTesterResultRevisionServicePort,
+  type BoundPlayTesterResultRevisionServicePort,
 } from "../play/result-revision-service.js";
+import { ProductionPlayTesterPatchArtifactMaterializer } from "../play/production-patch-revision-materializer.js";
 import {
   ItotoriProjectWorkflowService,
   type ItotoriProjectWorkflowPort,
@@ -222,11 +224,12 @@ export type ItotoriApplicationServices = {
   };
   reviewerQueue: ReviewerQueueApiServicePort;
   workspace: LocalizationWorkspaceApiServicePort;
+  /** Read-only before/after context for the workspace correction preview. */
   workspaceCorrections: WorkspaceCorrectionServicePort;
   /** Direct play-tester shared-brain correction API + installed worker drain. */
   contextCorrections: ContextCorrectionServicePort;
-  /** Play-tester target edit → immutable result and delivered patch revision. */
-  playTesterResultRevision: PlayTesterResultRevisionServicePort;
+  /** p0-core-result-revision-hitl — play-tester target edit → result + patch revision. */
+  playTesterResultRevision: BoundPlayTesterResultRevisionServicePort;
   exactSearch: {
     refreshDocuments(
       input: RefreshExactSearchDocumentsInput,
@@ -410,7 +413,7 @@ export type ItotoriServiceFactoryOptions = {
  * handlers. A callback wired through this factory receives ONLY the read/query
  * dependency surface ({@link ItotoriReadOnlyApiServices}); it is structurally
  * unable to reach a mutation service (`draftProject`, `recordFinding`,
- * `executeBatch`, `submitCorrections`, …). The narrowed services are PROJECTED
+ * `executeBatch`, …). The narrowed services are PROJECTED
  * from the same shared {@link ItotoriApplicationServices} the full factory
  * builds (`readOnlyApiServices` copies only the read methods, delegating to the
  * shared instances), so no repository is re-wired and no shared service is
@@ -907,7 +910,10 @@ export async function withDatabaseItotoriServices<T>(
       },
       contextCorrections: contextCorrectionService,
     });
-    const resultRevisionRepository = new ItotoriLocalizationResultRevisionRepository(context.db);
+    const resultRevisionRepository = new ItotoriLocalizationResultRevisionRepository(
+      context.db,
+      new ProductionPlayTesterPatchArtifactMaterializer(),
+    );
     const playTesterResultRevisionService = new PlayTesterResultRevisionService({
       repository: resultRevisionRepository,
     });
@@ -981,7 +987,10 @@ export async function withDatabaseItotoriServices<T>(
       workspace: workspaceApiService,
       workspaceCorrections: workspaceCorrectionService,
       contextCorrections: contextCorrectionService,
-      playTesterResultRevision: playTesterResultRevisionService,
+      playTesterResultRevision: bindPlayTesterResultRevisionService(
+        playTesterResultRevisionService,
+        localUserActor,
+      ),
       exactSearch: {
         refreshDocuments: (input) => exactSearchRepository.refreshDocuments(localUserActor, input),
         searchExact: (input) => exactSearchRepository.searchExact(localUserActor, input),

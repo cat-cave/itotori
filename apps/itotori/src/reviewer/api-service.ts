@@ -113,18 +113,15 @@ export type ReviewerQueueApiServiceDeps = {
  * names a single review item + the reviewer's action inputs, and
  * `actionSingleItem` runs it through the SAME batch preview + execute
  * path (batch-of-one), so the state machine, actor-gating, and
- * consequence disclosure are identical to the batch route. Only the 5
- * per-item reviewer verbs are exposed here (accept/reject/defer/
- * escalate/request_repair). Target-line *edits* are NOT request_repair —
- * they are play-tester result revisions (p0-core-result-revision-hitl).
- * The glossary/style/runtime-feedback verbs stay batch/agentic-loop concerns.
+ * consequence disclosure are identical to the batch route. The per-item
+ * reviewer verbs are approve, reject, defer, and escalate. Target-line edits
+ * are play-tester result revisions, not reviewer-queue actions.
  */
 export type ReviewerSingleActionInput =
   | { action: "approve" }
   | { action: "reject" }
   | { action: "defer"; deferReason: string }
-  | { action: "escalate"; escalationReason: string; escalationTarget: string }
-  | { action: "request_repair"; repairHint: string };
+  | { action: "escalate"; escalationReason: string; escalationTarget: string };
 
 export type ReviewerSingleAction = ReviewerSingleActionInput["action"];
 
@@ -537,8 +534,6 @@ function singleActionPayload(
         escalationTarget: request.escalationTarget,
         metadata,
       };
-    case reviewerQueueActionValues.requestRepair:
-      return { kind: "requestRepair", repairHint: request.repairHint, metadata };
     default: {
       const exhaustive: never = request;
       throw new Error(`unhandled single reviewer action: ${JSON.stringify(exhaustive)}`);
@@ -566,8 +561,6 @@ function defaultBatchPayload(
         escalationTarget: "senior-reviewer",
         metadata,
       };
-    case reviewerQueueActionValues.requestRepair:
-      return { kind: "requestRepair", repairHint: "batch repair requested", metadata };
     case reviewerQueueActionValues.importRuntimeFeedback:
       return {
         kind: "importRuntimeFeedback",
@@ -577,8 +570,7 @@ function defaultBatchPayload(
         metadata,
       };
     default: {
-      const exhaustive: never = action;
-      throw new Error(`unhandled reviewer batch action: ${exhaustive as string}`);
+      throw new Error(`unsupported reviewer batch action: ${action}`);
     }
   }
 }

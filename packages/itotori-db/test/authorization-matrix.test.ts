@@ -3306,7 +3306,17 @@ function localizationResultRevisionGate(
     mutation,
     permissionKey,
     successFixture,
-    runDeniedMutation: (db) => run(new ItotoriLocalizationResultRevisionRepository(db)),
+    // Authorization is checked before patch materialization. This impossible
+    // materializer makes that ordering explicit without giving the matrix a
+    // filesystem-producing test implementation.
+    runDeniedMutation: (db) =>
+      run(
+        new ItotoriLocalizationResultRevisionRepository(db, {
+          materialize: async () => {
+            throw new Error("authorization denial must precede patch materialization");
+          },
+        }),
+      ),
   });
 }
 
