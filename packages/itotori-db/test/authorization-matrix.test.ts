@@ -58,6 +58,7 @@ import { ItotoriTranslationMemoryRepository } from "../src/repositories/translat
 import { ItotoriTranslationScopeSettingsRepository } from "../src/repositories/translation-scope-settings-repository.js";
 import { ItotoriLocalizationPassRunConfigRepository } from "../src/repositories/localization-pass-run-config-repository.js";
 import { ItotoriWikiReadmodelRepository } from "../src/repositories/wiki-readmodel-repository.js";
+import { ItotoriWikiContextRepository } from "../src/repositories/wiki-context-repository.js";
 import { ItotoriWorkspaceCorrectionRepository } from "../src/repositories/workspace-correction-repository.js";
 import type { DatabaseContext, ItotoriDatabase } from "../src/connection.js";
 import { assertDeniedRepositoryMutation } from "./authorization-test-helpers.js";
@@ -682,6 +683,38 @@ const repositoryPermissionGateMatrix = [
       repo.loadEntries(deniedActor, {
         projectId: "project-denied",
         localeBranchId: "locale-denied",
+      }),
+  ),
+  wikiContextGate(
+    "listEntries",
+    "catalogRead",
+    "wiki-context-repository.test.ts generic context browse coverage",
+    (repo) =>
+      repo.listEntries(deniedActor, {
+        projectId: "project-denied",
+        localeBranchId: "locale-denied",
+      }),
+  ),
+  wikiContextGate(
+    "showEntry",
+    "catalogRead",
+    "wiki-context-repository.test.ts generic context detail coverage",
+    (repo) =>
+      repo.showEntry(deniedActor, {
+        projectId: "project-denied",
+        localeBranchId: "locale-denied",
+        contextArtifactId: "context-denied",
+      }),
+  ),
+  wikiContextGate(
+    "listEntryHistory",
+    "catalogRead",
+    "wiki-context-repository.test.ts generic context history coverage",
+    (repo) =>
+      repo.listEntryHistory(deniedActor, {
+        projectId: "project-denied",
+        localeBranchId: "locale-denied",
+        contextArtifactId: "context-denied",
       }),
   ),
   draftJobGate(
@@ -1962,6 +1995,24 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriWikiContextRepository.listEntries",
+          "requiredPermission": "catalog.read",
+          "successFixture": "wiki-context-repository.test.ts generic context browse coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriWikiContextRepository.showEntry",
+          "requiredPermission": "catalog.read",
+          "successFixture": "wiki-context-repository.test.ts generic context detail coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriWikiContextRepository.listEntryHistory",
+          "requiredPermission": "catalog.read",
+          "successFixture": "wiki-context-repository.test.ts generic context history coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriDraftJobRepository.createDraftJob",
           "requiredPermission": "draft.write",
           "successFixture": "draft-job-repository.test.ts create draft job coverage",
@@ -3147,6 +3198,22 @@ function wikiReadmodelGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriWikiReadmodelRepository(db)),
+  });
+}
+
+function wikiContextGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriWikiContextRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriWikiContextRepository",
+    sourceFile: "wiki-context-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriWikiContextRepository(db)),
   });
 }
 

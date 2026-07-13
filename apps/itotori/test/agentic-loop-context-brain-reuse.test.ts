@@ -18,6 +18,9 @@ import {
   bootstrapLocalUser,
   localUserId,
   type AuthorizationActor,
+  type WikiContextEntriesReadModel,
+  type WikiContextEntryHistoryReadModel,
+  type WikiContextEntryReadModel,
 } from "@itotori/db";
 import type { BridgeBundleV02, LocalizationUnitV02 } from "@itotori/localization-bridge-schema";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
@@ -45,6 +48,13 @@ import {
   parseNarrativeStructure,
   type NarrativeStructure,
 } from "../src/agents/structure-informed-context/index.js";
+import {
+  runItotoriCliCommand,
+  type ItotoriCliDependencies,
+  type ItotoriCliServices,
+} from "../src/cli-handlers.js";
+import type { WikiBrainEditResult } from "../src/wiki/service.js";
+import { assertHttpContractOk, startPostgresHttpContractHarness } from "./http-contract-harness.js";
 
 const ACTOR: AuthorizationActor = { userId: localUserId };
 const PROJECT_ID = "019ed0cb-1000-7000-8000-00000000cb11";
@@ -68,9 +78,9 @@ const CONTEXT_AWARE_DRAFT = "Captain Wato's context-aware greeting.";
 const PRIMARY_REPAIR_DRAFT = "Captain Wato's draft before repair.";
 const REPAIRED_DRAFT = "Captain Wato's repaired context-aware greeting.";
 const DELIVERED_DRAFT = "Captain Wato's delivered greeting before the context correction.";
-const CONTEXT_CORRECTED_DRAFT = "Captain Wato's glossary-corrected greeting.";
-const PLAY_TESTER_GLOSSARY_BODY =
-  "PLAY-TESTER GLOSSARY: Captain Wato must be rendered as Captain Wato in this scene.";
+const CONTEXT_CORRECTED_DRAFT = "Captain Wato's formally delivered wiki-corrected greeting.";
+const PLAY_TESTER_SPEAKER_BODY =
+  "PLAY-TESTER WIKI CORRECTION: Captain Wato uses a formal naval honorific in this scene.";
 const QA_FINDING_ID = "019ed0cb-1000-7000-8000-00000000cb31";
 
 const providerDescriptor: ProviderDescriptor = {
@@ -828,7 +838,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       }
     }, 30_000);
 
-    it("persists a play-tester glossary version and reruns it through production database services", async () => {
+    it("browses generated speaker enrichment then edits its canonical wiki content through the production rerun worker", async () => {
       const context = await isolatedMigratedContext();
       try {
         await bootstrapLocalUser(context.db);
@@ -895,7 +905,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
                 bridgeUnitId === UNIT_A_ID ? DELIVERED_DRAFT : "Delivered unaffected greeting.",
               );
             }
-            const reloadedCorrection = prompt.includes(PLAY_TESTER_GLOSSARY_BODY);
+            const reloadedCorrection = prompt.includes(PLAY_TESTER_SPEAKER_BODY);
             return translationContent(
               bridgeUnitId,
               reloadedCorrection ? CONTEXT_CORRECTED_DRAFT : "Context packet was not reloaded.",
@@ -1002,36 +1012,331 @@ describe.skipIf(!process.env.DATABASE_URL)(
               };
             },
           },
-          async (services) =>
-            await services.contextCorrections.apply({
+          async (services) => {
+            const speakerArtifactId = speakerLabelArtifactId(PROJECT_ID, UNIT_A_ID);
+
+            // The Studio Dashboard reads these exact routes. Drive its real
+            // loopback HTTP server against this same migrated Postgres schema
+            // so the populated run-generated brain is not merely a UI fixture.
+            const dashboard = await startPostgresHttpContractHarness({
+              databaseUrl: context.databaseUrl,
+            });
+            try {
+              const dashboardList = await dashboard.httpRequest("wiki.list", {
+                params: { projectId: PROJECT_ID, localeBranchId: LOCALE_BRANCH_ID },
+                query: {
+                  sourceRevisionId: SOURCE_REVISION_ID,
+                  kind: "speaker",
+                  includeStale: true,
+                },
+              });
+              assertHttpContractOk("wiki.list", dashboardList);
+              const dashboardEntries = dashboardList.body as WikiContextEntriesReadModel;
+              const dashboardSpeaker = dashboardEntries.entries.find(
+                (entry) => entry.contextArtifactId === speakerArtifactId,
+              );
+              expect(dashboardSpeaker).toMatchObject({
+                contextArtifactId: speakerArtifactId,
+                category: "speaker_label",
+                kind: "speaker",
+                body: PERSISTED_SPEAKER_BODY,
+                provenance: expect.objectContaining({
+                  producedByAgent: "speaker-label",
+                  producedByTool: "tool.context-brain",
+                }),
+                citations: [
+                  expect.objectContaining({
+                    bridgeUnitId: UNIT_A_ID,
+                    citation: `speaker-label:${UNIT_A_ID}`,
+                  }),
+                ],
+              });
+
+              const dashboardShow = await dashboard.httpRequest("wiki.show", {
+                params: {
+                  projectId: PROJECT_ID,
+                  localeBranchId: LOCALE_BRANCH_ID,
+                  contextArtifactId: speakerArtifactId,
+                },
+              });
+              assertHttpContractOk("wiki.show", dashboardShow);
+              expect(dashboardShow.body).toMatchObject({
+                entry: expect.objectContaining({
+                  contextArtifactId: speakerArtifactId,
+                  body: PERSISTED_SPEAKER_BODY,
+                  history: [
+                    expect.objectContaining({ body: PERSISTED_SPEAKER_BODY, isHead: true }),
+                  ],
+                }),
+              });
+
+              const dashboardHistory = await dashboard.httpRequest("wiki.history", {
+                params: {
+                  projectId: PROJECT_ID,
+                  localeBranchId: LOCALE_BRANCH_ID,
+                  contextArtifactId: speakerArtifactId,
+                },
+              });
+              assertHttpContractOk("wiki.history", dashboardHistory);
+              expect(dashboardHistory.body).toMatchObject({
+                contextArtifactId: speakerArtifactId,
+                versions: [
+                  expect.objectContaining({
+                    parentVersionId: null,
+                    body: PERSISTED_SPEAKER_BODY,
+                    isHead: true,
+                  }),
+                ],
+              });
+            } finally {
+              await dashboard.close();
+            }
+
+            const cliOutputs = new Map<string, unknown>();
+            const cliDependencies: ItotoriCliDependencies = {
+              io: {
+                readJson: () => {
+                  throw new Error("wiki CLI proof does not read fixture files");
+                },
+                writeJson: (path, value) => {
+                  cliOutputs.set(path, value);
+                },
+                writeText: () => {
+                  throw new Error("wiki CLI proof does not write text files");
+                },
+              },
+              migrateDatabase: async () => {},
+              withServices: async <T>(callback: (cliServices: ItotoriCliServices) => Promise<T>) =>
+                await callback(services as unknown as ItotoriCliServices),
+            };
+
+            // This invokes the actual production CLI handler over the
+            // database-wired WikiBrainService. The preceding full-project run
+            // generated this speaker label and its first immutable version.
+            await runItotoriCliCommand(
+              [
+                "wiki",
+                "list",
+                "--project",
+                PROJECT_ID,
+                "--locale-branch",
+                LOCALE_BRANCH_ID,
+                "--source-revision",
+                SOURCE_REVISION_ID,
+                "--kind",
+                "speaker",
+                "--output",
+                "wiki-list.json",
+              ],
+              cliDependencies,
+            );
+            const listed = requiredCliOutput<WikiContextEntriesReadModel>(
+              cliOutputs,
+              "wiki-list.json",
+            );
+            const listedSpeaker = listed.entries.find(
+              (entry) => entry.contextArtifactId === speakerArtifactId,
+            );
+            if (listedSpeaker === undefined || listedSpeaker.headVersionId === null) {
+              throw new Error(
+                "generated speaker enrichment was not visible in the production wiki list",
+              );
+            }
+            const generatedSpeakerVersionId = listedSpeaker.headVersionId;
+            expect(listed.filter).toMatchObject({
               projectId: PROJECT_ID,
               localeBranchId: LOCALE_BRANCH_ID,
               sourceRevisionId: SOURCE_REVISION_ID,
-              contextArtifactId: "play-tester-glossary-captain-wato",
-              kind: "glossary",
-              title: "Captain Wato",
-              body: PLAY_TESTER_GLOSSARY_BODY,
-              reason: "The play test established the canonical captain title.",
+              kind: "speaker",
+            });
+            expect(listedSpeaker).toMatchObject({
+              contextArtifactId: speakerArtifactId,
+              category: "speaker_label",
+              kind: "speaker",
+              body: PERSISTED_SPEAKER_BODY,
+              headVersionId: generatedSpeakerVersionId,
+              versionCount: 1,
+              provenance: expect.objectContaining({
+                producedByAgent: "speaker-label",
+                producedByTool: "tool.context-brain",
+                origin: "speaker_label",
+                provenance: expect.objectContaining({
+                  agentLabel: "speaker-label",
+                  kind: "speaker_label",
+                }),
+              }),
+              citations: [
+                expect.objectContaining({
+                  bridgeUnitId: UNIT_A_ID,
+                  sourceRevisionId: SOURCE_REVISION_ID,
+                  citation: `speaker-label:${UNIT_A_ID}`,
+                }),
+              ],
+              impact: { affectedUnitIds: [UNIT_A_ID] },
+            });
+
+            await runItotoriCliCommand(
+              [
+                "wiki",
+                "show",
+                "--project",
+                PROJECT_ID,
+                "--locale-branch",
+                LOCALE_BRANCH_ID,
+                "--entry-id",
+                speakerArtifactId,
+                "--output",
+                "wiki-show.json",
+              ],
+              cliDependencies,
+            );
+            const shown = requiredCliOutput<WikiContextEntryReadModel>(
+              cliOutputs,
+              "wiki-show.json",
+            );
+            expect(shown.entry).toMatchObject({
+              contextArtifactId: speakerArtifactId,
+              body: PERSISTED_SPEAKER_BODY,
+              headVersionId: generatedSpeakerVersionId,
+              history: [
+                expect.objectContaining({
+                  contextEntryVersionId: generatedSpeakerVersionId,
+                  body: PERSISTED_SPEAKER_BODY,
+                  isHead: true,
+                }),
+              ],
+            });
+
+            await runItotoriCliCommand(
+              [
+                "wiki",
+                "history",
+                "--project",
+                PROJECT_ID,
+                "--locale-branch",
+                LOCALE_BRANCH_ID,
+                "--entry-id",
+                speakerArtifactId,
+                "--output",
+                "wiki-history-before.json",
+              ],
+              cliDependencies,
+            );
+            const initialHistory = requiredCliOutput<WikiContextEntryHistoryReadModel>(
+              cliOutputs,
+              "wiki-history-before.json",
+            );
+            expect(initialHistory).toMatchObject({
+              contextArtifactId: speakerArtifactId,
+              headVersionId: generatedSpeakerVersionId,
+              versions: [
+                expect.objectContaining({
+                  contextEntryVersionId: generatedSpeakerVersionId,
+                  parentVersionId: null,
+                  body: PERSISTED_SPEAKER_BODY,
+                  isHead: true,
+                  provenance: expect.objectContaining({
+                    producedByAgent: "speaker-label",
+                    origin: "speaker_label",
+                  }),
+                }),
+              ],
+            });
+
+            // CLI edit server-loads the generated entry and routes only the
+            // human correction through node 8. It cannot supply a category,
+            // source revision, semantic data, or direct correction call.
+            await runItotoriCliCommand(
+              [
+                "wiki",
+                "edit",
+                "--project",
+                PROJECT_ID,
+                "--locale-branch",
+                LOCALE_BRANCH_ID,
+                "--entry-id",
+                listedSpeaker.contextArtifactId,
+                "--body",
+                PLAY_TESTER_SPEAKER_BODY,
+                "--reason",
+                "The play test corrected the captain's delivery guidance for this scene.",
+                "--output",
+                "wiki-edit.json",
+              ],
+              cliDependencies,
+            );
+            const edited = requiredCliOutput<WikiBrainEditResult>(cliOutputs, "wiki-edit.json");
+            expect(edited).toMatchObject({
+              schemaVersion: "wiki.context.edit.v0.1",
+              contextArtifactId: speakerArtifactId,
+              contextEntryVersionId: expect.any(String),
               affectedUnitIds: [UNIT_A_ID],
-            }),
+              entry: expect.objectContaining({
+                contextArtifactId: speakerArtifactId,
+                category: "speaker_label",
+                kind: "speaker",
+                body: PLAY_TESTER_SPEAKER_BODY,
+              }),
+            });
+            expect(edited.contextEntryVersionId).not.toBe(generatedSpeakerVersionId);
+            expect(edited.entry.headVersionId).toBe(edited.contextEntryVersionId);
+            expect(edited.invalidatedArtifactIds.length).toBeGreaterThan(0);
+
+            await runItotoriCliCommand(
+              [
+                "wiki",
+                "history",
+                "--project",
+                PROJECT_ID,
+                "--locale-branch",
+                LOCALE_BRANCH_ID,
+                "--entry-id",
+                speakerArtifactId,
+                "--output",
+                "wiki-history-after.json",
+              ],
+              cliDependencies,
+            );
+            const editedHistory = requiredCliOutput<WikiContextEntryHistoryReadModel>(
+              cliOutputs,
+              "wiki-history-after.json",
+            );
+            expect(editedHistory.contextArtifactId).toBe(speakerArtifactId);
+            expect(editedHistory.headVersionId).toBe(edited.contextEntryVersionId);
+            expect(editedHistory.versions).toHaveLength(2);
+            const [generatedVersion, canonicalEditVersion] = editedHistory.versions;
+            if (generatedVersion === undefined || canonicalEditVersion === undefined) {
+              throw new Error(
+                "wiki edit history did not retain both generated and canonical versions",
+              );
+            }
+            expect(generatedVersion).toMatchObject({
+              contextEntryVersionId: generatedSpeakerVersionId,
+              body: PERSISTED_SPEAKER_BODY,
+              isHead: false,
+            });
+            expect(canonicalEditVersion).toMatchObject({
+              contextEntryVersionId: edited.contextEntryVersionId,
+              parentVersionId: generatedSpeakerVersionId,
+              body: PLAY_TESTER_SPEAKER_BODY,
+              isHead: true,
+              impact: { affectedUnitIds: [UNIT_A_ID] },
+              provenance: expect.objectContaining({
+                producedByAgent: "play-tester",
+                origin: "play_tester_edit",
+              }),
+            });
+            // The editor corrects canonical prose while preserving the typed
+            // speaker identity that the packet resolver uses separately.
+            expect(canonicalEditVersion.data).toMatchObject({
+              speakerLabel: expect.objectContaining({
+                speakerId: expect.objectContaining({ displayName: PERSISTED_SPEAKER_NAME }),
+              }),
+            });
+            return edited;
+          },
         );
-        const correctionVersionId = correction.contextArtifact.headVersionId;
-        if (correctionVersionId === null) {
-          throw new Error("correction did not append a canonical context version");
-        }
-        expect(correction.invalidatedArtifactIds.length).toBeGreaterThan(0);
-        const versions = await contextArtifacts.listEntryVersions(ACTOR, {
-          projectId: PROJECT_ID,
-          localeBranchId: LOCALE_BRANCH_ID,
-          contextArtifactId: correction.contextArtifact.contextArtifactId,
-        });
-        expect(versions).toEqual([
-          expect.objectContaining({
-            contextEntryVersionId: correctionVersionId,
-            body: PLAY_TESTER_GLOSSARY_BODY,
-            affectedUnitIds: [UNIT_A_ID],
-          }),
-        ]);
+        const correctionVersionId = correction.contextEntryVersionId;
         expect(runnerCalls).toBe(1);
         if (refreshRunId === undefined || refreshDir === undefined) {
           throw new Error("database-services did not run the registered context-correction worker");
@@ -1054,12 +1359,12 @@ describe.skipIf(!process.env.DATABASE_URL)(
         expect(refreshedOutcome.contextPacket).toMatchObject({
           unitContextPacket: {
             resolvedFromVersions: {
-              [correction.contextArtifact.contextArtifactId]: correctionVersionId,
+              [correction.contextArtifactId]: correctionVersionId,
             },
             artifacts: expect.arrayContaining([
               expect.objectContaining({
                 contextEntryVersionId: correctionVersionId,
-                body: PLAY_TESTER_GLOSSARY_BODY,
+                body: PLAY_TESTER_SPEAKER_BODY,
               }),
             ]),
           },
@@ -1075,7 +1380,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           ).rows[0]?.target_text,
         ).toBe(CONTEXT_CORRECTED_DRAFT);
         const queue = new ItotoriEventQueueRepository(context.db);
-        expect((await queue.getJob(ACTOR, correction.redraftJob.jobId))?.status).toBe("succeeded");
+        expect((await queue.getJob(ACTOR, correction.redraftJobId))?.status).toBe("succeeded");
       } finally {
         await context.close();
       }
@@ -1088,4 +1393,12 @@ function exportedTargetText(runDir: string, bridgeUnitId: string): string | unde
     units: Array<{ bridgeUnitId: string; target?: { text?: string } }>;
   };
   return bridge.units.find((unit) => unit.bridgeUnitId === bridgeUnitId)?.target?.text;
+}
+
+function requiredCliOutput<T>(outputs: ReadonlyMap<string, unknown>, path: string): T {
+  const output = outputs.get(path);
+  if (output === undefined) {
+    throw new Error(`wiki CLI did not write ${path}`);
+  }
+  return output as T;
 }

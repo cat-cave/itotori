@@ -12,11 +12,15 @@ import type {
   ProjectDashboardStatus,
   RuntimeDashboardStatus,
   TerminologySearchReadModel,
+  WikiContextEntriesReadModel,
+  WikiContextEntryHistoryReadModel,
+  WikiContextEntryReadModel,
   WikiEntriesReadModel,
 } from "@itotori/db";
 import { summarizeQaAgents } from "../src/benchmark-report-summary.js";
 import type {
   ApiAuthIdentityResponse,
+  ApiWikiEditResponse,
   ApiLocalizationRunConfigResponse,
   ApiBranchPolicySettingsResponse,
   ApiDraftBranchRequest,
@@ -555,6 +559,115 @@ export const terminologySearchFixture: TerminologySearchReadModel = {
       },
     },
   ],
+};
+
+const wikiContextVersionFixture = {
+  contextEntryVersionId: "context-version-hero-scene-1",
+  contextArtifactId: "context-artifact-hero-scene",
+  parentVersionId: null,
+  projectId: "project-1",
+  localeBranchId: "locale-1",
+  sourceRevisionId: "source-revision-1",
+  category: "scene_summary" as const,
+  kind: "scene" as const,
+  status: "active" as const,
+  title: "Prologue arrival",
+  body: "The protagonist arrives at the academy and meets the guide.",
+  data: { sceneId: "scene-prologue", summaryLocale: "en-US" },
+  contentHash: "sha256:wiki-context-hero-scene",
+  provenance: {
+    producedByAgent: "scene-summary",
+    producedByTool: "tool.scene-summary",
+    producerVersion: "1.0.0",
+    createdByUserId: null,
+    origin: "localization_run",
+    runId: "localization-run-1",
+    providerRunId: "provider-run-1",
+    provenance: {
+      origin: "localization_run",
+      runId: "localization-run-1",
+      providerRunId: "provider-run-1",
+    },
+  },
+  citations: [
+    {
+      bridgeUnitId: "bridge-unit-1",
+      sourceRevisionId: "source-revision-1",
+      sourceHash: "source-hash-1",
+      citation: "scene 1 line 1",
+      metadata: { sceneId: "scene-prologue" },
+    },
+  ],
+  impact: {
+    affectedUnitIds: ["bridge-unit-1"],
+    invalidatedReason: null,
+    invalidatedAt: null,
+  },
+  createdAt: new Date("2026-07-10T00:00:00.000Z"),
+  isHead: true,
+} as const;
+
+export const wikiContextEntryFixture: WikiContextEntryReadModel = {
+  schemaVersion: "wiki.context.entry.v0.1",
+  generatedAt: new Date("2026-07-10T00:01:00.000Z"),
+  entry: {
+    contextArtifactId: "context-artifact-hero-scene",
+    projectId: "project-1",
+    localeBranchId: "locale-1",
+    sourceRevisionId: "source-revision-1",
+    category: "scene_summary",
+    kind: "scene",
+    status: "active",
+    title: "Prologue arrival",
+    body: "The protagonist arrives at the academy and meets the guide.",
+    data: { sceneId: "scene-prologue", summaryLocale: "en-US" },
+    contentHash: "sha256:wiki-context-hero-scene",
+    headVersionId: "context-version-hero-scene-1",
+    versionCount: 1,
+    provenance: wikiContextVersionFixture.provenance,
+    citations: wikiContextVersionFixture.citations,
+    impact: wikiContextVersionFixture.impact,
+    createdAt: new Date("2026-07-10T00:00:00.000Z"),
+    updatedAt: new Date("2026-07-10T00:00:00.000Z"),
+    history: [wikiContextVersionFixture],
+  },
+};
+
+const { history: _wikiContextHistory, ...wikiContextEntrySummaryFixture } =
+  wikiContextEntryFixture.entry;
+
+export const wikiContextEntriesFixture: WikiContextEntriesReadModel = {
+  schemaVersion: "wiki.context.entries.v0.1",
+  generatedAt: new Date("2026-07-10T00:01:00.000Z"),
+  filter: {
+    projectId: "project-1",
+    localeBranchId: "locale-1",
+    sourceRevisionId: null,
+    kind: null,
+    includeStale: true,
+  },
+  pagination: { total: 1, limit: 20, offset: 0, hasMore: false, nextOffset: null },
+  entries: [wikiContextEntrySummaryFixture],
+};
+
+export const wikiContextHistoryFixture: WikiContextEntryHistoryReadModel = {
+  schemaVersion: "wiki.context.entry-history.v0.1",
+  generatedAt: new Date("2026-07-10T00:01:00.000Z"),
+  contextArtifactId: "context-artifact-hero-scene",
+  headVersionId: "context-version-hero-scene-1",
+  versions: [wikiContextVersionFixture],
+};
+
+export const wikiEditFixture: ApiWikiEditResponse = {
+  schemaVersion: "wiki.context.edit.v0.1",
+  generatedAt: new Date("2026-07-10T00:02:00.000Z"),
+  correctionId: "context-correction-hero-scene",
+  contextArtifactId: "context-artifact-hero-scene",
+  contextEntryVersionId: "context-version-hero-scene-1",
+  affectedUnitIds: ["bridge-unit-1"],
+  invalidatedArtifactIds: ["context-artifact-dependent"],
+  redraftJobId: "context-redraft-job-1",
+  entry: wikiContextEntryFixture.entry,
 };
 
 export const wikiEntriesFixture: WikiEntriesReadModel = {

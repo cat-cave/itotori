@@ -2533,6 +2533,108 @@
       ],
       "type": "object"
     },
+    "ApiWikiAddRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedUnitIds": {
+          "type": "array"
+        },
+        "body": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "note",
+            "glossary",
+            "style"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "sourceRevisionId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "affectedUnitIds",
+        "body",
+        "kind",
+        "reason",
+        "sourceRevisionId",
+        "title"
+      ],
+      "type": "object"
+    },
+    "ApiWikiEditRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedUnitIds": {
+          "type": "array"
+        },
+        "body": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "body",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "ApiWikiEditResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedUnitIds": {
+          "type": "array"
+        },
+        "contextArtifactId": {
+          "type": "string"
+        },
+        "contextEntryVersionId": {
+          "type": "string"
+        },
+        "correctionId": {
+          "type": "string"
+        },
+        "entry": {
+          "type": "object"
+        },
+        "generatedAt": {
+          "type": "string"
+        },
+        "invalidatedArtifactIds": {
+          "type": "array"
+        },
+        "redraftJobId": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "wiki.context.edit.v0.1"
+        }
+      },
+      "required": [
+        "affectedUnitIds",
+        "contextArtifactId",
+        "contextEntryVersionId",
+        "correctionId",
+        "entry",
+        "generatedAt",
+        "invalidatedArtifactIds",
+        "redraftJobId",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
     "ApiWorkspaceCorrectionSubmitRequest": {
       "additionalProperties": true,
       "properties": {
@@ -3327,6 +3429,85 @@
         "normalizedQuery",
         "query",
         "results"
+      ],
+      "type": "object"
+    },
+    "WikiContextEntriesReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "type": "array"
+        },
+        "filter": {
+          "type": "object"
+        },
+        "generatedAt": {
+          "type": "string"
+        },
+        "pagination": {
+          "type": "object"
+        },
+        "schemaVersion": {
+          "const": "wiki.context.entries.v0.1"
+        }
+      },
+      "required": [
+        "entries",
+        "filter",
+        "generatedAt",
+        "pagination",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
+    "WikiContextEntryHistoryReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "contextArtifactId": {
+          "type": "string"
+        },
+        "generatedAt": {
+          "type": "string"
+        },
+        "headVersionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schemaVersion": {
+          "const": "wiki.context.entry-history.v0.1"
+        },
+        "versions": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "contextArtifactId",
+        "generatedAt",
+        "headVersionId",
+        "schemaVersion",
+        "versions"
+      ],
+      "type": "object"
+    },
+    "WikiContextEntryReadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "entry": {
+          "type": "object"
+        },
+        "generatedAt": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "wiki.context.entry.v0.1"
+        }
+      },
+      "required": [
+        "entry",
+        "generatedAt",
+        "schemaVersion"
       ],
       "type": "object"
     },

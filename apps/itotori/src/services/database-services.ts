@@ -34,6 +34,7 @@ import {
   ItotoriStyleGuideRepository,
   ItotoriTerminologyRepository,
   ItotoriWikiReadmodelRepository,
+  ItotoriWikiContextRepository,
   ItotoriTranslationBatchRepository,
   ItotoriTranslationMemoryRepository,
   ItotoriTranslationMemoryService,
@@ -151,6 +152,7 @@ import {
   type WorkspaceCorrectionServicePort,
 } from "../workspace/correction-service.js";
 import { ContextCorrectionService } from "../orchestrator/context-correction-service.js";
+import { WikiBrainService, type WikiBrainServicePort } from "../wiki/service.js";
 import {
   bindPlayTesterResultRevisionService,
   PlayTesterResultRevisionService,
@@ -222,6 +224,8 @@ export type ItotoriApplicationServices = {
   wikiRepository: {
     loadEntries(input: WikiEntriesFilter): Promise<WikiEntriesReadModel>;
   };
+  /** Shared node-6 browse + node-8 edit surface for dashboard, API, and CLI. */
+  wiki: WikiBrainServicePort;
   reviewerQueue: ReviewerQueueApiServicePort;
   workspace: LocalizationWorkspaceApiServicePort;
   /** Read-only before/after context for the workspace correction preview. */
@@ -770,6 +774,7 @@ export async function withDatabaseItotoriServices<T>(
     const branchReferenceRepository = new ItotoriBranchReferenceRepository(context.db);
     const terminologyRepository = new ItotoriTerminologyRepository(context.db);
     const wikiReadmodelRepository = new ItotoriWikiReadmodelRepository(context.db);
+    const wikiContextRepository = new ItotoriWikiContextRepository(context.db);
     const exactSearchRepository = new ItotoriExactSearchDocumentRepository(context.db);
     const translationMemoryRepository = new ItotoriTranslationMemoryRepository(context.db);
     const translationMemoryService = new ItotoriTranslationMemoryService(
@@ -890,6 +895,18 @@ export async function withDatabaseItotoriServices<T>(
       },
       drain: async () => await contextCorrectionWorker.runUntilIdle(),
     };
+    const wikiBrainService = new WikiBrainService({
+      // Bind the actor once at composition time. All dashboard/API/CLI calls
+      // use this exact node-6 projection rather than a separate wiki store.
+      readRepository: {
+        listEntries: (input) => wikiContextRepository.listEntries(localUserActor, input),
+        showEntry: (input) => wikiContextRepository.showEntry(localUserActor, input),
+        listEntryHistory: (input) => wikiContextRepository.listEntryHistory(localUserActor, input),
+      },
+      // The only mutation dependency is the installed node-8 service, which
+      // atomically versions + invalidates + queues and drains the redraft.
+      contextCorrections: contextCorrectionService,
+    });
     const manualFeedbackService = new ManualFeedbackImportService(
       feedbackRepository,
       localUserActor,
@@ -983,6 +1000,7 @@ export async function withDatabaseItotoriServices<T>(
       wikiRepository: {
         loadEntries: (input) => wikiReadmodelRepository.loadEntries(localUserActor, input),
       },
+      wiki: wikiBrainService,
       reviewerQueue: reviewerQueueApiService,
       workspace: workspaceApiService,
       workspaceCorrections: workspaceCorrectionService,

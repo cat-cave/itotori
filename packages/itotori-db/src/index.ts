@@ -460,6 +460,29 @@ export type {
   WikiTermReference,
 } from "./repositories/wiki-readmodel-repository.js";
 export {
+  ItotoriWikiContextRepository,
+  WIKI_CONTEXT_ENTRIES_SCHEMA_VERSION,
+  WIKI_CONTEXT_ENTRY_HISTORY_SCHEMA_VERSION,
+  WIKI_CONTEXT_ENTRY_SCHEMA_VERSION,
+  wikiContextEntryKindValues,
+} from "./repositories/wiki-context-repository.js";
+export type {
+  ItotoriWikiContextRepositoryPort,
+  WikiContextCitation,
+  WikiContextEntriesFilter,
+  WikiContextEntriesReadModel,
+  WikiContextEntry,
+  WikiContextEntryDetail,
+  WikiContextEntryHistoryReadModel,
+  WikiContextEntryKind,
+  WikiContextEntryLookup,
+  WikiContextEntryReadModel,
+  WikiContextEntryVersion,
+  WikiContextImpact,
+  WikiContextPagination,
+  WikiContextProvenance,
+} from "./repositories/wiki-context-repository.js";
+export {
   ContextArtifactRepositoryError,
   contextArtifactDiagnosticCodeValues,
   contextCorrectionAuthorityValues,

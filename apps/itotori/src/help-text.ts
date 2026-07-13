@@ -50,6 +50,22 @@ export function buildHelpText(allCommands = false): string {
   lines.push("  validate                Validate a patched game (replay + render).");
   lines.push("");
 
+  lines.push("WIKI:");
+  lines.push(
+    "  wiki list               Browse run-generated scenes, characters, routes, terms, and context.",
+  );
+  lines.push(
+    "  wiki show               Show canonical content, provenance, citations, impact, and lineage.",
+  );
+  lines.push("  wiki history            Show immutable canonical context versions.");
+  lines.push(
+    "  wiki edit               Correct an entry; without --entry-id, add note/glossary/style context.",
+  );
+  lines.push(
+    "                          Common: --project <ID> --locale-branch <ID> [--output <JSON>].",
+  );
+  lines.push("");
+
   if (allCommands) {
     lines.push("ADVANCED:");
     lines.push("  dashboard-status        Write dashboard status JSON.");
@@ -107,6 +123,9 @@ export function buildHelpText(allCommands = false): string {
   lines.push("  itotori --help                    # this help");
   lines.push("  itotori --version                 # version");
   lines.push("  itotori db-migrate                # run database migrations");
+  lines.push("  itotori wiki list --project <ID> --locale-branch <ID>");
+  lines.push("  itotori wiki edit --project <ID> --locale-branch <ID> --entry-id <ID> \\");
+  lines.push("    --body <TEXT> --reason <TEXT>");
   lines.push("  itotori localize-game \\");
   lines.push("    --config <config.json> \\");
   lines.push("    --source <game-root> \\");

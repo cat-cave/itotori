@@ -183,6 +183,52 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: [],
     responseSchema: "TerminologySearchReadModel",
   },
+  "wiki.list": {
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/locale-branches/{localeBranchId}/wiki",
+    operationId: "wikiList",
+    summary: "Browse the populated canonical context wiki.",
+    pathParams: ["projectId", "localeBranchId"],
+    responseSchema: "WikiContextEntriesReadModel",
+  },
+  "wiki.add": {
+    method: "POST",
+    pathTemplate: "/api/projects/{projectId}/locale-branches/{localeBranchId}/wiki",
+    operationId: "wikiAdd",
+    summary:
+      "Add a note, glossary fact, or style instruction through canonical context correction.",
+    pathParams: ["projectId", "localeBranchId"],
+    requestSchema: "ApiWikiAddRequest",
+    responseSchema: "ApiWikiEditResponse",
+  },
+  "wiki.show": {
+    method: "GET",
+    pathTemplate:
+      "/api/projects/{projectId}/locale-branches/{localeBranchId}/wiki/{contextArtifactId}",
+    operationId: "wikiShow",
+    summary: "Show one canonical wiki entry with content, provenance, citations, and history.",
+    pathParams: ["projectId", "localeBranchId", "contextArtifactId"],
+    responseSchema: "WikiContextEntryReadModel",
+  },
+  "wiki.history": {
+    method: "GET",
+    pathTemplate:
+      "/api/projects/{projectId}/locale-branches/{localeBranchId}/wiki/{contextArtifactId}/history",
+    operationId: "wikiHistory",
+    summary: "Show immutable canonical version history for a wiki entry.",
+    pathParams: ["projectId", "localeBranchId", "contextArtifactId"],
+    responseSchema: "WikiContextEntryHistoryReadModel",
+  },
+  "wiki.edit": {
+    method: "POST",
+    pathTemplate:
+      "/api/projects/{projectId}/locale-branches/{localeBranchId}/wiki/{contextArtifactId}",
+    operationId: "wikiEdit",
+    summary: "Apply a canonical context correction for a wiki entry and schedule redraft.",
+    pathParams: ["projectId", "localeBranchId", "contextArtifactId"],
+    requestSchema: "ApiWikiEditRequest",
+    responseSchema: "ApiWikiEditResponse",
+  },
   "wiki.entries": {
     method: "GET",
     pathTemplate: "/api/wiki/entries",

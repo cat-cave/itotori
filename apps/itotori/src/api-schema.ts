@@ -40,6 +40,9 @@ import type {
   ReviewerQueueAction,
   RuntimeDashboardStatus,
   TerminologySearchReadModel,
+  WikiContextEntriesReadModel,
+  WikiContextEntryHistoryReadModel,
+  WikiContextEntryReadModel,
   WikiEntriesReadModel,
 } from "@itotori/db";
 import {
@@ -61,6 +64,7 @@ import {
   reviewerQueueItemKindList,
   reviewerQueueItemStateList,
   translationScopeValues,
+  wikiContextEntryKindList,
   wikiEntryKindValues,
 } from "./api-enum-values.js";
 import {
@@ -143,6 +147,7 @@ import {
   BMK_COCKPIT_SCHEMA_VERSION,
 } from "./bmk-cockpit-read-model.js";
 import type { CatalogContextPanelReadModel } from "./catalog-context-panel.js";
+import type { WikiBrainEditResult } from "./wiki/service.js";
 
 export type ItotoriApiRouteId =
   | "assetDecisions.active"
@@ -158,6 +163,11 @@ export type ItotoriApiRouteId =
   | "reviewer.batchExecute"
   | "reviewer.itemAction"
   | "terminology.search"
+  | "wiki.list"
+  | "wiki.show"
+  | "wiki.history"
+  | "wiki.edit"
+  | "wiki.add"
   | "wiki.entries"
   | "workspace.projects"
   | "workspace.scenes"
@@ -284,6 +294,26 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "pagination",
     "brandContext",
     "entries",
+  ],
+  WikiContextEntriesReadModel: ["schemaVersion", "generatedAt", "filter", "pagination", "entries"],
+  WikiContextEntryReadModel: ["schemaVersion", "generatedAt", "entry"],
+  WikiContextEntryHistoryReadModel: [
+    "schemaVersion",
+    "generatedAt",
+    "contextArtifactId",
+    "headVersionId",
+    "versions",
+  ],
+  ApiWikiEditResponse: [
+    "schemaVersion",
+    "generatedAt",
+    "correctionId",
+    "contextArtifactId",
+    "contextEntryVersionId",
+    "affectedUnitIds",
+    "invalidatedArtifactIds",
+    "redraftJobId",
+    "entry",
   ],
   CatalogBenchmarkSeedFinderReadModel: ["schemaVersion", "targetLanguage", "generatedAt", "rows"],
   CatalogContextPanelReadModel: [
@@ -847,6 +877,44 @@ export type ApiCatalogOpportunitiesResponse = CatalogOpportunityRankingReadModel
 export type ApiTerminologySearchResponse = TerminologySearchReadModel;
 
 export type ApiWikiEntriesResponse = WikiEntriesReadModel;
+
+/** Generic node-6 context-brain browse surface (not the legacy wiki.entries projection). */
+export type ApiWikiListResponse = WikiContextEntriesReadModel;
+
+/** One canonical entry with content, provenance, citations, impact, and lineage. */
+export type ApiWikiShowResponse = WikiContextEntryReadModel;
+
+/** Immutable version history for one canonical entry. */
+export type ApiWikiHistoryResponse = WikiContextEntryHistoryReadModel;
+
+/**
+ * A human correction body. Identity/scope/category/source revision/data and
+ * citations are deliberately absent: the server loads those from the existing
+ * canonical entry before calling ContextCorrectionService.
+ */
+export type ApiWikiEditRequest = {
+  body: string;
+  reason: string;
+  title?: string;
+  affectedUnitIds?: string[];
+};
+
+/** Result of the node-8-backed canonical wiki correction. */
+export type ApiWikiEditResponse = WikiBrainEditResult;
+
+export type ApiWikiAddKind = "note" | "glossary" | "style";
+
+/** New human context is also a node-8 correction; source scope is mandatory. */
+export type ApiWikiAddRequest = {
+  sourceRevisionId: string;
+  kind: ApiWikiAddKind;
+  title: string;
+  body: string;
+  reason: string;
+  affectedUnitIds: string[];
+};
+
+export type ApiWikiAddResponse = ApiWikiEditResponse;
 
 export type ApiWorkspaceProjectBrowseResponse = WorkspaceProjectBrowseReadModel;
 
@@ -1650,6 +1718,11 @@ export type ItotoriApiResponseBody =
   | ApiReviewerBatchExecuteResponse
   | ApiReviewerSingleActionResponse
   | ApiTerminologySearchResponse
+  | ApiWikiListResponse
+  | ApiWikiShowResponse
+  | ApiWikiHistoryResponse
+  | ApiWikiEditResponse
+  | ApiWikiAddResponse
   | ApiWikiEntriesResponse
   | ApiWorkspaceProjectBrowseResponse
   | ApiWorkspaceSceneBrowseResponse
@@ -2366,6 +2439,21 @@ export function assertItotoriApiResponse(
     case "terminology.search":
       assertTerminologySearchReadModel(value);
       return;
+    case "wiki.list":
+      assertWikiListResponse(value);
+      return;
+    case "wiki.show":
+      assertWikiShowResponse(value);
+      return;
+    case "wiki.history":
+      assertWikiHistoryResponse(value);
+      return;
+    case "wiki.edit":
+      assertWikiEditResponse(value);
+      return;
+    case "wiki.add":
+      assertWikiEditResponse(value);
+      return;
     case "wiki.entries":
       assertWikiEntriesReadModel(value);
       return;
@@ -2726,6 +2814,358 @@ export function assertWikiEntriesReadModel(
       assertString(relatedRef.relation, `${relatedLabel}.relation`);
     }
   }
+}
+
+const wikiContextArtifactCategoryList = [
+  "scene_summary",
+  "character_note",
+  "route_map",
+  "speaker_label",
+  "terminology_candidate",
+  "glossary",
+  "style",
+  "context_note",
+] as const;
+
+const wikiContextArtifactStatusList = ["active", "stale", "superseded", "rejected"] as const;
+
+/** Assert the generic node-6 context-brain list response used by `wiki.list`. */
+export function assertWikiListResponse(
+  value: unknown,
+  label = "WikiContextEntriesReadModel",
+): asserts value is ApiWikiListResponse {
+  const model = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.WikiContextEntriesReadModel,
+  );
+  assertLiteral(model.schemaVersion, "wiki.context.entries.v0.1", `${label}.schemaVersion`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  const filter = asStrictRecord(model.filter, `${label}.filter`, [
+    "projectId",
+    "localeBranchId",
+    "sourceRevisionId",
+    "kind",
+    "includeStale",
+  ]);
+  assertString(filter.projectId, `${label}.filter.projectId`);
+  assertString(filter.localeBranchId, `${label}.filter.localeBranchId`);
+  assertNullableString(filter.sourceRevisionId, `${label}.filter.sourceRevisionId`);
+  if (filter.kind !== null) {
+    assertEnum(filter.kind, wikiContextEntryKindList, `${label}.filter.kind`);
+  }
+  assertBoolean(filter.includeStale, `${label}.filter.includeStale`);
+  assertWikiContextPagination(model.pagination, `${label}.pagination`);
+  const entries = asArray(model.entries, `${label}.entries`);
+  for (const [index, entry] of entries.entries()) {
+    assertWikiContextEntry(entry, `${label}.entries[${index}]`);
+  }
+}
+
+/** Assert detail/content/provenance/history returned by `wiki.show`. */
+export function assertWikiShowResponse(
+  value: unknown,
+  label = "WikiContextEntryReadModel",
+): asserts value is ApiWikiShowResponse {
+  const model = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.WikiContextEntryReadModel,
+  );
+  assertLiteral(model.schemaVersion, "wiki.context.entry.v0.1", `${label}.schemaVersion`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  assertWikiContextEntry(model.entry, `${label}.entry`, { includesHistory: true });
+}
+
+/** Assert immutable context-entry lineage returned by `wiki.history`. */
+export function assertWikiHistoryResponse(
+  value: unknown,
+  label = "WikiContextEntryHistoryReadModel",
+): asserts value is ApiWikiHistoryResponse {
+  const model = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.WikiContextEntryHistoryReadModel,
+  );
+  assertLiteral(model.schemaVersion, "wiki.context.entry-history.v0.1", `${label}.schemaVersion`);
+  assertDateLike(model.generatedAt, `${label}.generatedAt`);
+  assertString(model.contextArtifactId, `${label}.contextArtifactId`);
+  assertNullableString(model.headVersionId, `${label}.headVersionId`);
+  const versions = asArray(model.versions, `${label}.versions`);
+  for (const [index, version] of versions.entries()) {
+    assertWikiContextEntryVersion(version, `${label}.versions[${index}]`);
+  }
+}
+
+/** Assert the durable correction/writeback receipt returned by `wiki.edit`. */
+export function assertWikiEditResponse(
+  value: unknown,
+  label = "ApiWikiEditResponse",
+): asserts value is ApiWikiEditResponse {
+  const response = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiWikiEditResponse);
+  assertLiteral(response.schemaVersion, "wiki.context.edit.v0.1", `${label}.schemaVersion`);
+  assertDateLike(response.generatedAt, `${label}.generatedAt`);
+  assertString(response.correctionId, `${label}.correctionId`);
+  assertString(response.contextArtifactId, `${label}.contextArtifactId`);
+  assertString(response.contextEntryVersionId, `${label}.contextEntryVersionId`);
+  assertStringArray(response.affectedUnitIds, `${label}.affectedUnitIds`);
+  assertStringArray(response.invalidatedArtifactIds, `${label}.invalidatedArtifactIds`);
+  assertString(response.redraftJobId, `${label}.redraftJobId`);
+  assertWikiContextEntry(response.entry, `${label}.entry`, { includesHistory: true });
+}
+
+/** Parse the only client-controlled fields of an existing canonical wiki edit. */
+export function parseWikiEditRequest(body: unknown): ApiWikiEditRequest {
+  return parseRequest("ApiWikiEditRequest", () => {
+    const request = asStrictRecord(body, "ApiWikiEditRequest", [
+      "body",
+      "reason",
+      "title",
+      "affectedUnitIds",
+    ]);
+    assertString(request.body, "ApiWikiEditRequest.body");
+    assertString(request.reason, "ApiWikiEditRequest.reason");
+    const parsed: ApiWikiEditRequest = {
+      body: request.body.trim(),
+      reason: request.reason.trim(),
+    };
+    if (parsed.body.length === 0) {
+      throw new Error("ApiWikiEditRequest.body must be non-blank");
+    }
+    if (parsed.reason.length === 0) {
+      throw new Error("ApiWikiEditRequest.reason must be non-blank");
+    }
+    if (request.title !== undefined) {
+      assertString(request.title, "ApiWikiEditRequest.title");
+      const title = request.title.trim();
+      if (title.length === 0) {
+        throw new Error("ApiWikiEditRequest.title must be non-blank");
+      }
+      parsed.title = title;
+    }
+    if (request.affectedUnitIds !== undefined) {
+      const values = asArray(request.affectedUnitIds, "ApiWikiEditRequest.affectedUnitIds");
+      parsed.affectedUnitIds = values.map((value, index) => {
+        assertString(value, `ApiWikiEditRequest.affectedUnitIds[${index}]`);
+        const unitId = value.trim();
+        if (unitId.length === 0) {
+          throw new Error(`ApiWikiEditRequest.affectedUnitIds[${index}] must be non-blank`);
+        }
+        return unitId;
+      });
+    }
+    return parsed;
+  });
+}
+
+/** Parse a new note/glossary/style entry with an explicit source-unit scope. */
+export function parseWikiAddRequest(body: unknown): ApiWikiAddRequest {
+  return parseRequest("ApiWikiAddRequest", () => {
+    const request = asStrictRecord(body, "ApiWikiAddRequest", [
+      "sourceRevisionId",
+      "kind",
+      "title",
+      "body",
+      "reason",
+      "affectedUnitIds",
+    ]);
+    assertString(request.sourceRevisionId, "ApiWikiAddRequest.sourceRevisionId");
+    assertEnum(request.kind, ["note", "glossary", "style"] as const, "ApiWikiAddRequest.kind");
+    assertString(request.title, "ApiWikiAddRequest.title");
+    assertString(request.body, "ApiWikiAddRequest.body");
+    assertString(request.reason, "ApiWikiAddRequest.reason");
+    const affectedUnitIds = asArray(
+      request.affectedUnitIds,
+      "ApiWikiAddRequest.affectedUnitIds",
+    ).map((value, index) => {
+      assertString(value, `ApiWikiAddRequest.affectedUnitIds[${index}]`);
+      const unitId = value.trim();
+      if (unitId.length === 0) {
+        throw new Error(`ApiWikiAddRequest.affectedUnitIds[${index}] must be non-blank`);
+      }
+      return unitId;
+    });
+    if (affectedUnitIds.length === 0) {
+      throw new Error("ApiWikiAddRequest.affectedUnitIds must contain at least one unit");
+    }
+    const parsed = {
+      sourceRevisionId: request.sourceRevisionId.trim(),
+      kind: request.kind,
+      title: request.title.trim(),
+      body: request.body.trim(),
+      reason: request.reason.trim(),
+      affectedUnitIds,
+    };
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === "string" && value.length === 0) {
+        throw new Error(`ApiWikiAddRequest.${key} must be non-blank`);
+      }
+    }
+    return parsed;
+  });
+}
+
+function assertWikiContextPagination(value: unknown, label: string): void {
+  const pagination = asStrictRecord(value, label, [
+    "total",
+    "limit",
+    "offset",
+    "hasMore",
+    "nextOffset",
+  ]);
+  assertNonNegativeInteger(pagination.total, `${label}.total`);
+  assertPositiveInteger(pagination.limit, `${label}.limit`);
+  assertNonNegativeInteger(pagination.offset, `${label}.offset`);
+  assertBoolean(pagination.hasMore, `${label}.hasMore`);
+  if (pagination.nextOffset !== null) {
+    assertNonNegativeInteger(pagination.nextOffset, `${label}.nextOffset`);
+  }
+}
+
+function assertWikiContextEntry(
+  value: unknown,
+  label: string,
+  options: { includesHistory?: boolean } = {},
+): void {
+  const entry = asStrictRecord(value, label, [
+    "contextArtifactId",
+    "projectId",
+    "localeBranchId",
+    "sourceRevisionId",
+    "category",
+    "kind",
+    "status",
+    "title",
+    "body",
+    "data",
+    "contentHash",
+    "headVersionId",
+    "versionCount",
+    "provenance",
+    "citations",
+    "impact",
+    "createdAt",
+    "updatedAt",
+    ...(options.includesHistory === true ? ["history"] : []),
+  ]);
+  assertString(entry.contextArtifactId, `${label}.contextArtifactId`);
+  assertString(entry.projectId, `${label}.projectId`);
+  assertString(entry.localeBranchId, `${label}.localeBranchId`);
+  assertString(entry.sourceRevisionId, `${label}.sourceRevisionId`);
+  assertEnum(entry.category, wikiContextArtifactCategoryList, `${label}.category`);
+  assertEnum(entry.kind, wikiContextEntryKindList, `${label}.kind`);
+  assertEnum(entry.status, wikiContextArtifactStatusList, `${label}.status`);
+  assertString(entry.title, `${label}.title`);
+  assertString(entry.body, `${label}.body`);
+  asRecord(entry.data, `${label}.data`);
+  assertString(entry.contentHash, `${label}.contentHash`);
+  assertNullableString(entry.headVersionId, `${label}.headVersionId`);
+  assertNonNegativeInteger(entry.versionCount, `${label}.versionCount`);
+  assertWikiContextProvenance(entry.provenance, `${label}.provenance`);
+  const citations = asArray(entry.citations, `${label}.citations`);
+  for (const [index, citation] of citations.entries()) {
+    assertWikiContextCitation(citation, `${label}.citations[${index}]`);
+  }
+  assertWikiContextImpact(entry.impact, `${label}.impact`);
+  assertDateLike(entry.createdAt, `${label}.createdAt`);
+  assertDateLike(entry.updatedAt, `${label}.updatedAt`);
+  if (options.includesHistory === true) {
+    const history = asArray(entry.history, `${label}.history`);
+    for (const [index, version] of history.entries()) {
+      assertWikiContextEntryVersion(version, `${label}.history[${index}]`);
+    }
+  }
+}
+
+function assertWikiContextEntryVersion(value: unknown, label: string): void {
+  const version = asStrictRecord(value, label, [
+    "contextEntryVersionId",
+    "contextArtifactId",
+    "parentVersionId",
+    "projectId",
+    "localeBranchId",
+    "sourceRevisionId",
+    "category",
+    "kind",
+    "status",
+    "title",
+    "body",
+    "data",
+    "contentHash",
+    "provenance",
+    "citations",
+    "impact",
+    "createdAt",
+    "isHead",
+  ]);
+  assertString(version.contextEntryVersionId, `${label}.contextEntryVersionId`);
+  assertString(version.contextArtifactId, `${label}.contextArtifactId`);
+  assertNullableString(version.parentVersionId, `${label}.parentVersionId`);
+  assertString(version.projectId, `${label}.projectId`);
+  assertString(version.localeBranchId, `${label}.localeBranchId`);
+  assertString(version.sourceRevisionId, `${label}.sourceRevisionId`);
+  assertEnum(version.category, wikiContextArtifactCategoryList, `${label}.category`);
+  assertEnum(version.kind, wikiContextEntryKindList, `${label}.kind`);
+  assertEnum(version.status, wikiContextArtifactStatusList, `${label}.status`);
+  assertString(version.title, `${label}.title`);
+  assertString(version.body, `${label}.body`);
+  asRecord(version.data, `${label}.data`);
+  assertString(version.contentHash, `${label}.contentHash`);
+  assertWikiContextProvenance(version.provenance, `${label}.provenance`);
+  const citations = asArray(version.citations, `${label}.citations`);
+  for (const [index, citation] of citations.entries()) {
+    assertWikiContextCitation(citation, `${label}.citations[${index}]`);
+  }
+  assertWikiContextImpact(version.impact, `${label}.impact`);
+  assertDateLike(version.createdAt, `${label}.createdAt`);
+  assertBoolean(version.isHead, `${label}.isHead`);
+}
+
+function assertWikiContextCitation(value: unknown, label: string): void {
+  const citation = asStrictRecord(value, label, [
+    "bridgeUnitId",
+    "sourceRevisionId",
+    "sourceHash",
+    "citation",
+    "metadata",
+  ]);
+  assertString(citation.bridgeUnitId, `${label}.bridgeUnitId`);
+  assertString(citation.sourceRevisionId, `${label}.sourceRevisionId`);
+  assertString(citation.sourceHash, `${label}.sourceHash`);
+  assertString(citation.citation, `${label}.citation`);
+  asRecord(citation.metadata, `${label}.metadata`);
+}
+
+function assertWikiContextProvenance(value: unknown, label: string): void {
+  const provenance = asStrictRecord(value, label, [
+    "producedByAgent",
+    "producedByTool",
+    "producerVersion",
+    "createdByUserId",
+    "origin",
+    "runId",
+    "providerRunId",
+    "provenance",
+  ]);
+  assertNullableString(provenance.producedByAgent, `${label}.producedByAgent`);
+  assertNullableString(provenance.producedByTool, `${label}.producedByTool`);
+  assertString(provenance.producerVersion, `${label}.producerVersion`);
+  assertNullableString(provenance.createdByUserId, `${label}.createdByUserId`);
+  assertNullableString(provenance.origin, `${label}.origin`);
+  assertNullableString(provenance.runId, `${label}.runId`);
+  assertNullableString(provenance.providerRunId, `${label}.providerRunId`);
+  asRecord(provenance.provenance, `${label}.provenance`);
+}
+
+function assertWikiContextImpact(value: unknown, label: string): void {
+  const impact = asStrictRecord(value, label, [
+    "affectedUnitIds",
+    "invalidatedReason",
+    "invalidatedAt",
+  ]);
+  assertStringArray(impact.affectedUnitIds, `${label}.affectedUnitIds`);
+  assertNullableString(impact.invalidatedReason, `${label}.invalidatedReason`);
+  assertNullableDateLike(impact.invalidatedAt, `${label}.invalidatedAt`);
 }
 
 function assertWikiEntryScope(value: unknown, label: string, extraKeys: string[] = []): void {
