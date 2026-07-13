@@ -986,8 +986,7 @@ function productionOpenRouterResponse(content: string): Response {
       model: DEV_PAIR.modelId,
       provider: DEV_PAIR.providerId,
       choices: [{ finish_reason: "stop", message: { role: "assistant", content } }],
-      // itotori-225-audit-allow: deterministic mock-wire cost only below the real external transport.
-      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2, cost: 0.000001 },
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2, cost: 0.000001 }, // itotori-225-audit-allow: deterministic mock-wire cost only, below the real external transport
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );
