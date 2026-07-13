@@ -1133,7 +1133,11 @@ function requiredString(record: Record<string, unknown>, field: string): string 
 }
 
 function requiredNonBlankString(record: Record<string, unknown>, field: string): string {
-  const value = requiredString(record, field).trim();
+  const raw = record[fieldName(field)];
+  if (typeof raw !== "string") {
+    throw new Error(`manual feedback ${field} must be a non-empty string`);
+  }
+  const value = raw.trim();
   if (value.length === 0) {
     throw new Error(`manual feedback ${field} must be a non-empty string`);
   }

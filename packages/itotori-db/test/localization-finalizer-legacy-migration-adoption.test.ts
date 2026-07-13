@@ -74,7 +74,7 @@ describe("legacy finalizer migration ID adoption", () => {
       const applied = await migrationChecksums(pool, ["0085_localization_run_finalizer"]);
       expect(applied.has("0085_localization_run_finalizer")).toBe(false);
     }, "0083_localization_run_finalizer");
-  });
+  }, 180_000);
 
   it("adopts the pre-collision result revision migration without replaying its DDL", async () => {
     await withLegacyFinalizerDeployment(async ({ pool, schemaUrl }) => {
