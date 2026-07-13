@@ -147,13 +147,6 @@ export async function runReviewQueueFixtureCommand(
       "escalated",
       "glossary",
     );
-    const repair = await createDecision(
-      repository,
-      idByPersistedItemId,
-      "repair-rerun",
-      "runtimeEvidence",
-    );
-
     allResults.push(
       await actionService.approve(actor, actionInput(approved)),
       await actionService.defer(actor, {
@@ -164,10 +157,6 @@ export async function runReviewQueueFixtureCommand(
         ...actionInput(escalated),
         escalationReason: "ambiguous glossary ownership",
         escalationTarget: "senior-reviewer",
-      }),
-      await actionService.requestRepair(actor, {
-        ...actionInput(repair),
-        repairHint: "rerun targeted draft with runtime trace context",
       }),
     );
 
@@ -181,7 +170,6 @@ export async function runReviewQueueFixtureCommand(
         approved,
         deferred,
         escalated,
-        repair,
         ...batchResults.flatMap((batch) => batch.items),
       ],
       results: allResults,

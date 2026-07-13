@@ -15,13 +15,18 @@ export {
 export {
   PatchExporter,
   PatchExporterIdentityMismatchError,
+  DeliveredPatchExporter,
   type DraftArtifactBundleLoad,
+  type DeliveredPatchExportInput,
   type DraftArtifactBundleLoaderPort,
   type PatchExportInput,
   type PatchExporterDeps,
   type PreflightFailure,
   type SourceBridgeViewLoaderPort,
+  type SelectedPatchDeliveryLoaderPort,
 } from "./exporter.js";
+
+export { createDeliveredPatchArchive, type DeliveredPatchArchive } from "./delivery-archive.js";
 
 export {
   prepareKaifuuPatchPayload,

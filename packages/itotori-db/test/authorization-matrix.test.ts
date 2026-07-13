@@ -38,6 +38,7 @@ import { ItotoriExactSearchDocumentRepository } from "../src/repositories/exact-
 import { ItotoriFeedbackRepository } from "../src/repositories/feedback-repository.js";
 import { ItotoriLocalizationJournalRepository } from "../src/repositories/localization-journal-repository.js";
 import { ItotoriLocalizationRunFinalizerRepository } from "../src/repositories/localization-run-finalizer-repository.js";
+import { ItotoriLocalizationResultRevisionRepository } from "../src/repositories/localization-result-revision-repository.js";
 import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-repository.js";
 import { ItotoriModelRoutingSettingsRepository } from "../src/repositories/model-routing-settings-repository.js";
 import {
@@ -1099,6 +1100,18 @@ const repositoryPermissionGateMatrix = [
     "draftWrite",
     "localization-run-finalizer-repository.test.ts terminal transition coverage",
     (repo) => repo.terminalize(deniedActor, undefined as never),
+  ),
+  localizationResultRevisionGate(
+    "applyPlayTesterTargetEdit",
+    "draftWrite",
+    "localization-result-revision-repository.test.ts play-tester edit coverage",
+    (repo) => repo.applyPlayTesterTargetEdit(deniedActor, undefined as never),
+  ),
+  localizationResultRevisionGate(
+    "loadSelectedPatchExport",
+    "catalogRead",
+    "localization-result-revision-repository.test.ts selected export coverage",
+    (repo) => repo.loadSelectedPatchExport(deniedActor, undefined as never),
   ),
   principalGate(
     "createAccount",
@@ -2351,6 +2364,18 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationResultRevisionRepository.applyPlayTesterTargetEdit",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-result-revision-repository.test.ts play-tester edit coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationResultRevisionRepository.loadSelectedPatchExport",
+          "requiredPermission": "catalog.read",
+          "successFixture": "localization-result-revision-repository.test.ts selected export coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriPrincipalRepository.createAccount",
           "requiredPermission": "auth.admin",
           "successFixture": "principal-repository.test.ts create account coverage",
@@ -3266,6 +3291,32 @@ function localizationRunFinalizerGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriLocalizationRunFinalizerRepository(db)),
+  });
+}
+
+function localizationResultRevisionGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriLocalizationResultRevisionRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriLocalizationResultRevisionRepository",
+    sourceFile: "localization-result-revision-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    // Authorization is checked before patch materialization. This impossible
+    // materializer makes that ordering explicit without giving the matrix a
+    // filesystem-producing test implementation.
+    runDeniedMutation: (db) =>
+      run(
+        new ItotoriLocalizationResultRevisionRepository(db, {
+          materialize: async () => {
+            throw new Error("authorization denial must precede patch materialization");
+          },
+        }),
+      ),
   });
 }
 

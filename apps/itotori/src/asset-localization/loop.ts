@@ -258,16 +258,10 @@ export function isBlockingAssetFinding(finding: AssetQaFinding): boolean {
 /**
  * Reviewer actions for an asset draft. Mirrors the dialogue reviewer-queue
  * action vocabulary (`reviewerQueueActionValues`) so an asset draft flows
- * through the same approve / reject / defer / escalate / request-repair
- * decision path as a dialogue item.
+ * through the same approve / reject / defer / escalate / revise decision
+ * path as a dialogue item.
  */
-export const ASSET_REVIEW_ACTIONS = [
-  "approve",
-  "reject",
-  "defer",
-  "escalate",
-  "request_repair",
-] as const;
+export const ASSET_REVIEW_ACTIONS = ["approve", "reject", "defer", "escalate", "revise"] as const;
 export type AssetReviewAction = (typeof ASSET_REVIEW_ACTIONS)[number];
 
 export const ASSET_REVIEW_STATES = [
@@ -284,7 +278,7 @@ const ASSET_ACTION_TO_STATE: Record<AssetReviewAction, AssetReviewState> = {
   reject: "rejected",
   defer: "deferred",
   escalate: "escalated",
-  request_repair: "repair_requested",
+  revise: "repair_requested",
 };
 
 /**
@@ -301,7 +295,7 @@ export type AssetReviewItem = {
   summary: string;
   draft: AssetTextDraft;
   findings: AssetQaFinding[];
-  recommendedAction: Extract<AssetReviewAction, "approve" | "request_repair">;
+  recommendedAction: Extract<AssetReviewAction, "approve" | "revise">;
   provenance: AssetTextProvenance;
 };
 
@@ -318,7 +312,7 @@ export function buildAssetReviewItem(
     summary: `${draft.provenance.assetName}#${draft.provenance.regionId}: “${draft.sourceText}” → “${draft.draftText}” (${findings.length} finding${findings.length === 1 ? "" : "s"})`,
     draft,
     findings,
-    recommendedAction: blocking ? "request_repair" : "approve",
+    recommendedAction: blocking ? "revise" : "approve",
     provenance: draft.provenance,
   };
 }

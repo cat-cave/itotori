@@ -188,6 +188,7 @@ type ApiMutationService =
   | { surface: "localizationRunConfig"; method: "saveRunConfig" }
   | { surface: "sceneCoverage"; method: "setSceneCoverage" }
   | { surface: "manualFeedback"; method: "importManualFeedback" }
+  | { surface: "playTesterResultRevision"; method: "editTarget" }
   | {
       surface: "authMembers";
       method: "listMembers" | "inviteMember" | "acceptInvitation" | "removeMember";
@@ -552,6 +553,14 @@ const apiMutationPermissionMatrix = [
       coverageState: "validated",
     }),
     { surface: "sceneCoverage", method: "setSceneCoverage" },
+  ),
+  apiGateForService(
+    "playTargetEdit",
+    post("/api/play/patch-versions/patch-parent-api/target-edits", {
+      bridgeUnitId: "bridge-unit-1",
+      targetBody: "Edited target line.",
+    }),
+    { surface: "playTesterResultRevision", method: "editTarget" },
   ),
   apiGateForService(
     "flagAnnotation",
@@ -4285,6 +4294,13 @@ describe("Itotori API handlers", () => {
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "play target edit",
+          "requiredPermission": "draft.write",
+          "route": "POST /api/play/patch-versions/:parentPatchVersionId/target-edits",
+          "successFixture": "api-handlers.test.ts play target edit success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "play flag annotation",
           "requiredPermission": "feedback.import",
           "route": "POST /api/projects/:projectId/locale-branches/:localeBranchId/flags",
@@ -4993,6 +5009,9 @@ function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutati
   if (service.surface === "manualFeedback") {
     return services.manualFeedback[service.method];
   }
+  if (service.surface === "playTesterResultRevision") {
+    return services.playTesterResultRevision[service.method];
+  }
   return services.authSsoSettings[service.method];
 }
 
@@ -5007,6 +5026,12 @@ function apiMutationRouteId(request: ItotoriApiRequest): string {
   );
   if (request.method === "POST" && flagRoute !== null) {
     return "POST /api/projects/:projectId/locale-branches/:localeBranchId/flags";
+  }
+  const targetEditRoute = /^\/api\/play\/patch-versions\/[^/]+\/target-edits$/u.exec(
+    request.pathname,
+  );
+  if (request.method === "POST" && targetEditRoute !== null) {
+    return "POST /api/play/patch-versions/:parentPatchVersionId/target-edits";
   }
   const localizationRunConfigRoute =
     /^\/api\/projects\/[^/]+\/locale-branches\/[^/]+\/settings\/localization-run-config$/u.exec(
@@ -5489,6 +5514,49 @@ function serviceFixture(): ItotoriApiServices {
           };
         },
       ),
+    },
+    playTesterResultRevision: {
+      editTarget: vi.fn(async () => ({
+        schemaVersion: "play.tester_result_revision.v0.1" as const,
+        generatedAt: new Date("2026-07-12T00:00:00.000Z"),
+        result: {
+          resultRevision: {
+            resultRevisionId: "result-revision-api-edit",
+            journalOutcomeId: "journal-outcome-api-edit",
+            runId: "run-api-edit",
+            bridgeUnitId: "bridge-unit-1",
+            selectedCandidateId: "candidate-api-edit",
+            targetBody: "Edited target line.",
+            origin: "play_tester_edit" as const,
+            parentRevisionId: "result-revision-api-parent",
+            actorUserId: "local-user",
+            createdForPatchVersionId: "patch-version-api-child",
+            createdAt: new Date("2026-07-12T00:00:00.000Z"),
+          },
+          patchVersion: {
+            patchVersionId: "patch-version-api-child",
+            runId: "run-api-edit",
+            parentPatchVersionId: "patch-parent-api",
+            status: "playable" as const,
+            origin: "play_tester_edit" as const,
+            actorUserId: "local-user",
+            artifactHashes: { delivered_bundle: "sha256:api-child" },
+            artifactRefs: { delivered_bundle: "artifact://api-child" },
+            playableAt: new Date("2026-07-12T00:00:00.000Z"),
+            selectedAt: new Date("2026-07-12T00:00:00.000Z"),
+            createdAt: new Date("2026-07-12T00:00:00.000Z"),
+            updatedAt: new Date("2026-07-12T00:00:00.000Z"),
+            units: [],
+          },
+          idempotentReplay: false,
+        },
+      })),
+      loadSelectedExport: vi.fn(async () => ({
+        schemaVersion: "play.selected_patch_export.v0.1" as const,
+        generatedAt: new Date("2026-06-30T00:00:00Z"),
+        export: null,
+      })),
+      loadSelectedArchive: vi.fn(async () => null),
     },
     workspaceCorrections: {
       loadPreview: vi.fn(async ({ localeBranchId, permission }) => ({
@@ -6248,6 +6316,172 @@ describe("Itotori API handlers — workspace manual corrections (ITOTORI-118)", 
   });
 });
 
+describe("Itotori API handlers — play target revision delivery", () => {
+  it("accepts a target-only edit, binds the parent path identity, and returns the selected child", async () => {
+    const services = serviceFixture();
+    vi.mocked(services.playTesterResultRevision.editTarget).mockResolvedValueOnce({
+      schemaVersion: "play.tester_result_revision.v0.1",
+      generatedAt: new Date("2026-07-12T00:00:00.000Z"),
+      result: {
+        resultRevision: {
+          resultRevisionId: "result-revision-edited",
+          journalOutcomeId: "outcome-parent-1",
+          runId: "run-delivery-1",
+          bridgeUnitId: "bridge-unit-1",
+          selectedCandidateId: "candidate-parent-1",
+          targetBody: "Edited target line.",
+          origin: "play_tester_edit",
+          parentRevisionId: "result-revision-parent",
+          actorUserId: "local-user",
+          createdForPatchVersionId: "patch-child-edited",
+          createdAt: new Date("2026-07-12T00:00:00.000Z"),
+        },
+        patchVersion: {
+          patchVersionId: "patch-child-edited",
+          runId: "run-delivery-1",
+          parentPatchVersionId: "patch-parent-1",
+          status: "playable",
+          origin: "play_tester_edit",
+          actorUserId: "local-user",
+          artifactHashes: { delivered_bundle: "sha256:child" },
+          artifactRefs: { delivered_bundle: "artifact://child" },
+          playableAt: new Date("2026-07-12T00:00:00.000Z"),
+          selectedAt: new Date("2026-07-12T00:00:00.000Z"),
+          createdAt: new Date("2026-07-12T00:00:00.000Z"),
+          updatedAt: new Date("2026-07-12T00:00:00.000Z"),
+          units: [],
+        },
+        idempotentReplay: false,
+      },
+    });
+
+    const response = await handleItotoriApiRequest(
+      post("/api/play/patch-versions/patch-parent-1/target-edits", {
+        bridgeUnitId: "bridge-unit-1",
+        targetBody: "Edited target line.",
+      }),
+      services,
+    );
+
+    expect(response).toEqual({
+      statusCode: 200,
+      body: {
+        schemaVersion: "itotori.play.target-edit.v0",
+        resultRevisionId: "result-revision-edited",
+        patchVersionId: "patch-child-edited",
+        runId: "run-delivery-1",
+        parentPatchVersionId: "patch-parent-1",
+        bridgeUnitId: "bridge-unit-1",
+        targetBody: "Edited target line.",
+        status: "playable",
+        selectedAt: "2026-07-12T00:00:00.000Z",
+        idempotentReplay: false,
+      },
+    });
+    expect(services.authorization.requirePermission).toHaveBeenCalledWith(
+      permissionValues.draftWrite,
+    );
+    expect(services.playTesterResultRevision.editTarget).toHaveBeenCalledWith({
+      parentPatchVersionId: "patch-parent-1",
+      bridgeUnitId: "bridge-unit-1",
+      targetBody: "Edited target line.",
+    });
+  });
+
+  it("rejects actor, artifact, and source fields before invoking the bound edit port", async () => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      post("/api/play/patch-versions/patch-parent-1/target-edits", {
+        bridgeUnitId: "bridge-unit-1",
+        targetBody: "Edited target line.",
+        actorUserId: "forged-user",
+        artifactRootDir: "/forged/path",
+        sourceText: "forged source",
+      }),
+      services,
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toMatchObject({ code: "bad_request" });
+    expect(services.playTesterResultRevision.editTarget).not.toHaveBeenCalled();
+  });
+
+  it("reads the selected real delivery export through the GET route", async () => {
+    const services = serviceFixture();
+    vi.mocked(services.playTesterResultRevision.loadSelectedExport).mockResolvedValueOnce({
+      schemaVersion: "play.selected_patch_export.v0.1",
+      generatedAt: new Date("2026-07-12T00:00:00.000Z"),
+      export: {
+        patchVersionId: "patch-child-edited",
+        runId: "run-delivery-1",
+        parentPatchVersionId: "patch-parent-1",
+        origin: "play_tester_edit",
+        actorUserId: "local-user",
+        status: "playable",
+        selectedAt: new Date("2026-07-12T00:00:00.000Z"),
+        playableAt: new Date("2026-07-12T00:00:00.000Z"),
+        artifactHashes: { delivered_bundle: "sha256:child" },
+        artifactRefs: { delivered_bundle: "artifact://child" },
+        units: [
+          {
+            bridgeUnitId: "bridge-unit-1",
+            journalOutcomeId: "outcome-parent-1",
+            resultRevisionId: "result-revision-edited",
+            unitOrdinal: 0,
+            targetBody: "Edited target line.",
+            origin: "play_tester_edit",
+            actorUserId: "local-user",
+          },
+        ],
+      },
+    });
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/play/runs/run-delivery-1/delivery" },
+      services,
+    );
+
+    expect(response).toEqual({
+      statusCode: 200,
+      body: {
+        schemaVersion: "itotori.play.delivery.v0",
+        patchVersionId: "patch-child-edited",
+        runId: "run-delivery-1",
+        parentPatchVersionId: "patch-parent-1",
+        status: "playable",
+        selectedAt: "2026-07-12T00:00:00.000Z",
+        artifactHashes: { delivered_bundle: "sha256:child" },
+        downloadUrl: "/api/play/runs/run-delivery-1/delivery/archive",
+        units: [
+          {
+            bridgeUnitId: "bridge-unit-1",
+            unitOrdinal: 0,
+            targetBody: "Edited target line.",
+          },
+        ],
+      },
+    });
+    expect(services.playTesterResultRevision.loadSelectedExport).toHaveBeenCalledWith({
+      runId: "run-delivery-1",
+    });
+  });
+
+  it("returns route-specific 405s for the opposite methods", async () => {
+    const services = serviceFixture();
+    const targetRead = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/play/patch-versions/patch-parent-1/target-edits" },
+      services,
+    );
+    const deliveryWrite = await handleItotoriApiRequest(
+      post("/api/play/runs/run-delivery-1/delivery", {}),
+      services,
+    );
+    expect(targetRead.statusCode).toBe(405);
+    expect(deliveryWrite.statusCode).toBe(405);
+  });
+});
+
 describe("ITOTORI-043 read-only API service factory (least-privilege query surface)", () => {
   const permissionFixture = {
     actorUserId: "reader-1",
@@ -6332,8 +6566,6 @@ describe("ITOTORI-043 read-only API service factory (least-privilege query surfa
     void readOnly.projectWorkflow.draftProject;
     // @ts-expect-error executeBatch is a mutation excluded from the read-only surface
     void readOnly.reviewerQueue.executeBatch;
-    // @ts-expect-error submitCorrections is a mutation excluded from the read-only surface
-    void readOnly.workspaceCorrections.submitCorrections;
     expect(readOnly.workspace).toBeDefined();
   });
 

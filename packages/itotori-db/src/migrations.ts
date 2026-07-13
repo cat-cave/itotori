@@ -457,6 +457,15 @@ export const migrations = [
     id: "0089_playtester_context_categories",
     file: "0089_playtester_context_categories.sql",
   },
+  {
+    // This shipped briefly as 0089 on the result-revision branch before
+    // origin/main claimed that number for context categories. Its SQL is
+    // byte-identical after the rename, so adopt that deployed row rather
+    // than replaying the structural DDL.
+    id: "0090_play_tester_result_revision",
+    file: "0090_play_tester_result_revision.sql",
+    legacyIds: ["0089_play_tester_result_revision"],
+  },
 ] as const;
 
 function migrationPath(file: string): string {

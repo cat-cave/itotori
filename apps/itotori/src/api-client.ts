@@ -51,6 +51,9 @@ import type {
   ApiPlayRouteMapResponse,
   ApiPlayFlagAnnotationRequest,
   ApiPlayFlagAnnotationResponse,
+  ApiPlayTargetEditRequest,
+  ApiPlayTargetEditResponse,
+  ApiPlayDeliveryResponse,
   ApiPlaySceneCoverageResponse,
   ApiPlaySetSceneCoverageRequest,
   ApiPlaySetSceneCoverageResponse,
@@ -412,6 +415,16 @@ interface ItotoriApiRouteTypeMap {
     pathParams: { projectId: string; localeBranchId: string };
     request: ApiPlayFlagAnnotationRequest;
   };
+  "play.targetEdit": {
+    response: ApiPlayTargetEditResponse;
+    pathParams: { parentPatchVersionId: string };
+    request: ApiPlayTargetEditRequest;
+  };
+  "play.delivery": {
+    response: ApiPlayDeliveryResponse;
+    pathParams: { runId: string };
+    collectionKey: "units";
+  };
 }
 
 /** The typed response body a route returns (from api-schema.ts). */
@@ -537,6 +550,7 @@ const ITOTORI_API_COLLECTION_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, st
   "play.routeMap": "nodes",
   // play-mark-validated — empty when no RouteMap nodes (no scenes to cover).
   "play.sceneCoverage": "nodes",
+  "play.delivery": "units",
 };
 
 function defaultIsEmpty(routeId: ItotoriApiRouteId, data: unknown): boolean {

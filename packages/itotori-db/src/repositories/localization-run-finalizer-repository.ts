@@ -146,6 +146,10 @@ export type LocalizationRunFinalizerPatchVersionRecord = {
   artifactHashes: Record<string, string>;
   artifactRefs: Record<string, string>;
   playableAt: Date | null;
+  parentPatchVersionId: string | null;
+  origin: "run_finalizer" | "play_tester_edit";
+  actorUserId: string | null;
+  selectedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   units: LocalizationRunFinalizerPatchUnitRecord[];
@@ -481,13 +485,19 @@ export class ItotoriLocalizationRunFinalizerRepository implements ItotoriLocaliz
         select patch_version_id
         from itotori_localization_patch_versions
         where run_id = ${input.runId}
+          and parent_patch_version_id is null
         for update
       `);
 
       const existingRows = await tx
         .select()
         .from(localizationPatchVersions)
-        .where(eq(localizationPatchVersions.runId, input.runId))
+        .where(
+          and(
+            eq(localizationPatchVersions.runId, input.runId),
+            sql`${localizationPatchVersions.parentPatchVersionId} is null`,
+          ),
+        )
         .limit(1);
       const existing = existingRows[0];
       if (existing !== undefined && existing.patchVersionId !== patchVersionId) {
@@ -507,6 +517,10 @@ export class ItotoriLocalizationRunFinalizerRepository implements ItotoriLocaliz
             artifactHashes,
             artifactRefs,
             playableAt: null,
+            parentPatchVersionId: null,
+            origin: "run_finalizer",
+            actorUserId: null,
+            selectedAt: null,
             createdAt: new Date(),
             updatedAt: new Date(),
           })
@@ -534,7 +548,12 @@ export class ItotoriLocalizationRunFinalizerRepository implements ItotoriLocaliz
       const patchRows = await tx
         .select()
         .from(localizationPatchVersions)
-        .where(eq(localizationPatchVersions.runId, input.runId))
+        .where(
+          and(
+            eq(localizationPatchVersions.runId, input.runId),
+            sql`${localizationPatchVersions.parentPatchVersionId} is null`,
+          ),
+        )
         .limit(1);
       const patch = patchRows[0];
       if (patch === undefined || patch.patchVersionId !== patchVersionId) {
@@ -799,9 +818,27 @@ async function terminalizeInTx(
       .where(eq(localizationPatchVersionUnits.patchVersionId, patchVersionId))
       .orderBy(asc(localizationPatchVersionUnits.unitOrdinal));
     await assertSuccessBarrierInTx(tx, input.runId, patch, members);
+    const now = new Date();
+    // Clear any prior selection on this run, then mark the origin patch playable
+    // and selected for export. Play-tester child revisions (node 10) may later
+    // move selection without an approval gate.
     await tx
       .update(localizationPatchVersions)
-      .set({ status: "playable", playableAt: new Date(), updatedAt: new Date() })
+      .set({ selectedAt: null, updatedAt: now })
+      .where(
+        and(
+          eq(localizationPatchVersions.runId, input.runId),
+          sql`${localizationPatchVersions.selectedAt} is not null`,
+        ),
+      );
+    await tx
+      .update(localizationPatchVersions)
+      .set({
+        status: "playable",
+        playableAt: now,
+        selectedAt: now,
+        updatedAt: now,
+      })
       .where(eq(localizationPatchVersions.patchVersionId, patchVersionId));
     const playableRows = await tx
       .select()
@@ -816,7 +853,12 @@ async function terminalizeInTx(
     const patchRows = await tx
       .select()
       .from(localizationPatchVersions)
-      .where(eq(localizationPatchVersions.runId, input.runId))
+      .where(
+        and(
+          eq(localizationPatchVersions.runId, input.runId),
+          sql`${localizationPatchVersions.parentPatchVersionId} is null`,
+        ),
+      )
       .limit(1);
     const patch = patchRows[0];
     if (patch !== undefined && patch.status !== "playable") {
@@ -1055,7 +1097,12 @@ async function loadSnapshotInTx(
     db
       .select()
       .from(localizationPatchVersions)
-      .where(eq(localizationPatchVersions.runId, runId))
+      .where(
+        and(
+          eq(localizationPatchVersions.runId, runId),
+          sql`${localizationPatchVersions.selectedAt} is not null`,
+        ),
+      )
       .limit(1),
     db
       .select()
@@ -1075,7 +1122,21 @@ async function loadSnapshotInTx(
       )
       .where(eq(writtenUnitOutcomes.runId, runId)),
   ]);
-  const patchRow = patchRows[0];
+  let patchRow = patchRows[0];
+  // Fall back to the run-origin patch when nothing is selected yet (building).
+  if (patchRow === undefined) {
+    const originRows = await db
+      .select()
+      .from(localizationPatchVersions)
+      .where(
+        and(
+          eq(localizationPatchVersions.runId, runId),
+          sql`${localizationPatchVersions.parentPatchVersionId} is null`,
+        ),
+      )
+      .limit(1);
+    patchRow = originRows[0];
+  }
   const memberRows =
     patchRow === undefined
       ? []
@@ -1183,6 +1244,7 @@ async function loadCoverageRowsInTx(
         eq(localizationResultRevisions.journalOutcomeId, writtenUnitOutcomes.journalOutcomeId),
         eq(localizationResultRevisions.runId, localizationJournalRunUnits.runId),
         eq(localizationResultRevisions.bridgeUnitId, localizationJournalRunUnits.bridgeUnitId),
+        eq(localizationResultRevisions.origin, "run_written_outcome"),
         eq(
           localizationResultRevisions.selectedCandidateId,
           writtenUnitOutcomes.selectedCandidateId,
@@ -1583,6 +1645,10 @@ function patchVersionFromRows(
     artifactHashes: { ...patch.artifactHashes },
     artifactRefs: { ...patch.artifactRefs },
     playableAt: patch.playableAt,
+    parentPatchVersionId: patch.parentPatchVersionId ?? null,
+    origin: patch.origin ?? "run_finalizer",
+    actorUserId: patch.actorUserId ?? null,
+    selectedAt: patch.selectedAt ?? null,
     createdAt: patch.createdAt,
     updatedAt: patch.updatedAt,
     units: members.map((member) => ({

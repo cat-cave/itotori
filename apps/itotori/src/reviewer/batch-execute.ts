@@ -119,10 +119,8 @@ export type ReviewerBatchExecuteResult = {
 
 /**
  * Per-action input the executor needs from the caller, keyed by the
- * `ReviewerQueueAction`. The single-action API requires extra inputs
- * for `requestRepair` and `importRuntimeFeedback`; the batch surface
- * uses a function so the dashboard can compute per-item inputs (for
- * example, a per-item repair hint).
+ * `ReviewerQueueAction`. The batch surface uses a function so the dashboard
+ * can compute per-item inputs such as defer reasons and evidence references.
  */
 export type BatchActionPayloadResolver = (item: ReviewerQueueItemRecord) => BatchActionPayload;
 
@@ -134,11 +132,6 @@ export type BatchActionPayload =
       kind: "escalate";
       escalationReason: string;
       escalationTarget: string;
-      metadata?: Record<string, unknown>;
-    }
-  | {
-      kind: "requestRepair";
-      repairHint: string;
       metadata?: Record<string, unknown>;
     }
   | {
@@ -383,17 +376,6 @@ function buildPreparedActionInput(
           escalationReason: payload.escalationReason,
           escalationTarget: payload.escalationTarget,
         },
-      );
-    case "requestRepair":
-      assertActionMatches(preview.action, "request_repair");
-      assertNonEmptyPayload("repairHint", payload.repairHint);
-      return buildReviewerQueueActionInput(
-        {
-          ...common,
-          ...(payload.metadata === undefined ? {} : { metadata: payload.metadata }),
-        },
-        reviewerQueueActionValues.requestRepair,
-        { repairHint: payload.repairHint },
       );
     case "importRuntimeFeedback":
       assertActionMatches(preview.action, "import_runtime_feedback");

@@ -32,7 +32,6 @@
 
 import {
   reviewerQueueActionAllowedKinds,
-  reviewerQueueActionList,
   reviewerQueueActionToNextState,
   reviewerQueueItemKindValues,
   reviewerQueueItemStateValues,
@@ -44,6 +43,7 @@ import {
   type ReviewerQueueItemState,
   type ReviewerQueueRepositoryErrorCode,
 } from "@itotori/db";
+import { reviewerQueueActionList } from "../api-enum-values.js";
 
 /**
  * Permission view consumed by the batch preview / execute services.
@@ -336,7 +336,7 @@ export class ReviewerBatchPreviewService implements ReviewerBatchPreviewServiceP
 }
 
 function assertRequestShape(request: ReviewerBatchActionRequest): void {
-  if (!reviewerQueueActionList.includes(request.action)) {
+  if (!(reviewerQueueActionList as readonly ReviewerQueueAction[]).includes(request.action)) {
     throw new ReviewerBatchPreviewServiceInputError(
       "action",
       `action must be one of ${reviewerQueueActionList.join(", ")}`,

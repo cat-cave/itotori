@@ -1291,6 +1291,79 @@
         ],
         "type": "object"
       },
+      "ApiPlayDeliveryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "artifactHashes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "downloadUrl": {
+            "type": "string"
+          },
+          "parentPatchVersionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "patchVersionId": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "const": "itotori.play.delivery.v0"
+          },
+          "selectedAt": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/ApiPlayDeliveryUnit"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "artifactHashes",
+          "downloadUrl",
+          "parentPatchVersionId",
+          "patchVersionId",
+          "runId",
+          "schemaVersion",
+          "selectedAt",
+          "status",
+          "units"
+        ],
+        "type": "object"
+      },
+      "ApiPlayDeliveryUnit": {
+        "additionalProperties": false,
+        "properties": {
+          "bridgeUnitId": {
+            "type": "string"
+          },
+          "targetBody": {
+            "type": "string"
+          },
+          "unitOrdinal": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "bridgeUnitId",
+          "targetBody",
+          "unitOrdinal"
+        ],
+        "type": "object"
+      },
       "ApiPlayFlagAnnotationRequest": {
         "additionalProperties": true,
         "properties": {
@@ -1698,6 +1771,70 @@
         ],
         "type": "object"
       },
+      "ApiPlayTargetEditRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "bridgeUnitId": {
+            "type": "string"
+          },
+          "targetBody": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bridgeUnitId",
+          "targetBody"
+        ],
+        "type": "object"
+      },
+      "ApiPlayTargetEditResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bridgeUnitId": {
+            "type": "string"
+          },
+          "idempotentReplay": {
+            "type": "boolean"
+          },
+          "parentPatchVersionId": {
+            "type": "string"
+          },
+          "patchVersionId": {
+            "type": "string"
+          },
+          "resultRevisionId": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "const": "itotori.play.target-edit.v0"
+          },
+          "selectedAt": {
+            "type": "string"
+          },
+          "status": {
+            "const": "playable"
+          },
+          "targetBody": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bridgeUnitId",
+          "idempotentReplay",
+          "parentPatchVersionId",
+          "patchVersionId",
+          "resultRevisionId",
+          "runId",
+          "schemaVersion",
+          "selectedAt",
+          "status",
+          "targetBody"
+        ],
+        "type": "object"
+      },
       "ApiPrincipalPermissionSetGrantRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2036,8 +2173,7 @@
               "approve",
               "reject",
               "defer",
-              "escalate",
-              "request_repair"
+              "escalate"
             ]
           },
           "actorUserId": {
@@ -3369,7 +3505,12 @@
           "batchId": {
             "type": "string"
           },
-          "batchLabel": {},
+          "batchLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "decisionQueueReportIds": {
             "type": "array"
           },
@@ -3379,7 +3520,9 @@
           "edits": {
             "type": "array"
           },
-          "generatedAt": {},
+          "generatedAt": {
+            "type": "string"
+          },
           "localeBranchId": {
             "type": "string"
           },
@@ -4945,6 +5088,254 @@
         },
         "summary": "Paged jobs run table with physical journal attempts and served provider facts.",
         "x-itotoriRouteId": "jobs.runTable"
+      }
+    },
+    "/api/play/patch-versions/{parentPatchVersionId}/target-edits": {
+      "post": {
+        "operationId": "playTargetEdit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "parentPatchVersionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiPlayTargetEditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPlayTargetEditResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Replace one delivered target line and select its child patch revision.",
+        "x-itotoriRouteId": "play.targetEdit"
+      }
+    },
+    "/api/play/runs/{runId}/delivery": {
+      "get": {
+        "operationId": "playDelivery",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPlayDeliveryResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Load the selected delivered patch export for a run.",
+        "x-itotoriRouteId": "play.delivery"
+      }
+    },
+    "/api/play/runs/{runId}/delivery/archive": {
+      "get": {
+        "operationId": "playDeliveryArchive",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/x-tar": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Selected delivered patch archive."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Download the selected delivered patch archive for a run.",
+        "x-itotoriBinaryRouteId": "play.deliveryArchive"
       }
     },
     "/api/projects": {
@@ -8473,7 +8864,7 @@
             "description": "Internal error (internal_error)."
           }
         },
-        "summary": "Submit workspace corrections.",
+        "summary": "Submit feedback corrections to canonical context.",
         "x-itotoriRouteId": "workspace.correctionSubmit"
       }
     },

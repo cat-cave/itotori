@@ -454,9 +454,9 @@ describe("loadReviewerDetailContext — transition history", () => {
       item,
       transitions: [
         repositoryTransitionFixture({
-          action: reviewerQueueActionValues.requestRepair,
+          action: reviewerQueueActionValues.approve,
           priorState: reviewerQueueItemStateValues.pending,
-          nextState: reviewerQueueItemStateValues.repairRequested,
+          nextState: reviewerQueueItemStateValues.accepted,
         }),
       ],
       payload: {
@@ -478,8 +478,8 @@ describe("loadReviewerDetailContext — transition history", () => {
 
     expect(context.transitions.length).toBe(1);
     const first = context.transitions[0]!;
-    expect(first.action).toBe(reviewerQueueActionValues.requestRepair);
-    expect(first.nextState).toBe(reviewerQueueItemStateValues.repairRequested);
+    expect(first.action).toBe(reviewerQueueActionValues.approve);
+    expect(first.nextState).toBe(reviewerQueueItemStateValues.accepted);
   });
 });
 

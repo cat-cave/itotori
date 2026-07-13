@@ -164,7 +164,6 @@ export const reviewerQueueActionValues = {
   reject: "reject",
   defer: "defer",
   escalate: "escalate",
-  requestRepair: "request_repair",
   importRuntimeFeedback: "import_runtime_feedback",
 } as const;
 

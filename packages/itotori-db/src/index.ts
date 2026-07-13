@@ -119,6 +119,8 @@ export {
   localizationRunFinalizerStageValues,
   localizationRunPatchVersionStatusValues,
   localizationRunTerminalStatusValues,
+  localizationResultRevisionOriginValues,
+  localizationPatchVersionOriginValues,
 } from "./schema.js";
 export type {
   AuthSsoProviderProtocol,
@@ -182,6 +184,8 @@ export type {
   LocalizationRunFinalizerStage,
   LocalizationRunPatchVersionStatus,
   LocalizationRunTerminalStatus,
+  LocalizationResultRevisionOrigin,
+  LocalizationPatchVersionOrigin,
 } from "./schema.js";
 export {
   ItotoriAuthBillingSeatRepository,
@@ -889,6 +893,12 @@ export {
   patchVersionIdFor,
 } from "./repositories/localization-run-finalizer-repository.js";
 export {
+  ItotoriLocalizationResultRevisionRepository,
+  LocalizationResultRevisionRepositoryError,
+  playTesterChildPatchVersionId,
+  playTesterResultRevisionId,
+} from "./repositories/localization-result-revision-repository.js";
+export {
   LocalizationArtifactIntegrityError,
   hashLocalizationArtifact,
   verifyLocalizationArtifactManifest,
@@ -914,6 +924,18 @@ export type {
   TerminalizeLocalizationRunInput,
   UpsertLocalizationRunFinalizerStageEvidenceInput,
 } from "./repositories/localization-run-finalizer-repository.js";
+export type {
+  ApplyPlayTesterTargetEditInput,
+  ApplyPlayTesterTargetEditResult,
+  ItotoriLocalizationResultRevisionRepositoryPort,
+  MaterializedPlayTesterPatchArtifact,
+  PlayTesterPatchArtifactMaterializationInput,
+  PlayTesterPatchArtifactMaterializer,
+  PlayTesterChildPatchVersionRecord,
+  PlayTesterResultRevisionRecord,
+  SelectedPatchExport,
+  SelectedPatchExportUnit,
+} from "./repositories/localization-result-revision-repository.js";
 export type {
   BeginLocalizationJournalAttemptInput,
   CompleteLocalizationJournalAttemptInput,

@@ -16,6 +16,7 @@ import { bridgeFixture, costReportFixture, dashboardStatusFixture } from "./api-
 import {
   assertHttpContractError,
   assertHttpContractOk,
+  fixturePlayTesterResultRevision,
   fixtureProjectWorkflow,
   fixtureRequirePermission,
   resetFixtureServiceFactoryMocks,
@@ -97,6 +98,7 @@ const READ_MODEL_CASES: readonly ReadModelCase[] = [
       },
     },
   },
+  { routeId: "play.delivery", init: { params: { runId: "run-contract-delivery-1" } } },
 ];
 
 describe("fe-http-contract-harness: read-model /api routes over real loopback HTTP", () => {
@@ -161,6 +163,71 @@ describe("fe-http-contract-harness: mutation /api route over real loopback HTTP"
       project: { projectId: dashboardStatusFixture.projectId },
     });
   });
+
+  it("POST target edit and GET delivery cross the real HTTP boundary with target-only input", async () => {
+    const edited = await harness.httpRequest("play.targetEdit", {
+      params: { parentPatchVersionId: "patch-version-contract-parent" },
+      body: {
+        bridgeUnitId: "bridge-unit-contract-1",
+        targetBody: "Edited contract target.",
+      },
+    });
+
+    assertHttpContractOk("play.targetEdit", edited);
+    expect(edited.body).toMatchObject({
+      schemaVersion: "itotori.play.target-edit.v0",
+      patchVersionId: "patch-version-contract-child",
+      targetBody: "Edited contract target.",
+    });
+    expect(fixtureRequirePermission).toHaveBeenCalledWith("draft.write" as Permission);
+    expect(fixturePlayTesterResultRevision.editTarget).toHaveBeenCalledWith({
+      parentPatchVersionId: "patch-version-contract-parent",
+      bridgeUnitId: "bridge-unit-contract-1",
+      targetBody: "Edited contract target.",
+    });
+
+    const delivery = await harness.httpRequest("play.delivery", {
+      params: { runId: "run-contract-delivery-1" },
+    });
+    assertHttpContractOk("play.delivery", delivery);
+    expect(delivery.body).toMatchObject({
+      patchVersionId: "patch-version-contract-child",
+      artifactHashes: { delivered_bundle: "sha256:contract-child" },
+      downloadUrl: "/api/play/runs/run-contract-delivery-1/delivery/archive",
+      units: [{ targetBody: "Edited contract target." }],
+    });
+    expect(delivery.body).not.toHaveProperty("artifactRefs");
+  });
+
+  it("downloads the selected delivered patch as real binary bytes through its authenticated URL", async () => {
+    const delivery = await harness.httpRequest("play.delivery", {
+      params: { runId: "run-contract-delivery-1" },
+    });
+    assertHttpContractOk("play.delivery", delivery);
+    const downloadUrl = (delivery.body as { downloadUrl: string }).downloadUrl;
+
+    const archive = await fetch(`${harness.origin}${downloadUrl}`);
+
+    expect(archive.status).toBe(200);
+    expect(archive.headers.get("content-type")).toContain("application/x-tar");
+    expect(archive.headers.get("content-disposition")).toContain(
+      'attachment; filename="patch-version-contract-child.tar"',
+    );
+    expect(archive.headers.get("cache-control")).toBe("no-store");
+    expect(Buffer.from(await archive.arrayBuffer())).toEqual(
+      Buffer.from("fixture-delivered-patch-tar", "utf8"),
+    );
+    expect(fixturePlayTesterResultRevision.loadSelectedArchive).toHaveBeenCalledWith({
+      runId: "run-contract-delivery-1",
+    });
+  });
+
+  it("does not route an encoded traversal run id to the archive loader", async () => {
+    const traversal = await harness.httpRequest("/api/play/runs/%2E%2E%2Foutside/delivery/archive");
+
+    assertHttpContractError(traversal, { status: 404, code: "not_found" });
+    expect(fixturePlayTesterResultRevision.loadSelectedArchive).not.toHaveBeenCalled();
+  });
 });
 
 describe("fe-http-contract-harness: typed error wire contract", () => {
@@ -184,6 +251,14 @@ describe("fe-http-contract-harness: typed error wire contract", () => {
 
   it("answers a GET on a POST-only reviewer mutation path with 405 method_not_allowed", async () => {
     const result = await harness.httpRequest("/api/reviewer/queue/batch-preview");
+
+    assertHttpContractError(result, { status: 405, code: "method_not_allowed" });
+  });
+
+  it("answers a GET on the target-edit mutation path with 405 method_not_allowed", async () => {
+    const result = await harness.httpRequest(
+      "/api/play/patch-versions/patch-version-contract-parent/target-edits",
+    );
 
     assertHttpContractError(result, { status: 405, code: "method_not_allowed" });
   });

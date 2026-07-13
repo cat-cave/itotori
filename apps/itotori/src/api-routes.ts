@@ -17,6 +17,18 @@ export type ItotoriApiRoute = {
   readonly responseSchema: string;
 };
 
+/** A non-JSON API route published in OpenAPI but intentionally not in the typed JSON client. */
+export type ItotoriApiBinaryRoute = {
+  readonly method: "GET";
+  readonly pathTemplate: string;
+  readonly operationId: string;
+  readonly summary: string;
+  readonly pathParams: readonly string[];
+  readonly contentType: "application/x-tar";
+};
+
+export type ItotoriApiBinaryRouteId = "play.deliveryArchive";
+
 /**
  * Every `/api` route, keyed by {@link ItotoriApiRouteId}. The
  * `Record<ItotoriApiRouteId, …>` type makes this table EXHAUSTIVE against the
@@ -282,7 +294,7 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     method: "POST",
     pathTemplate: "/api/workspace/corrections",
     operationId: "workspaceCorrectionSubmit",
-    summary: "Submit workspace corrections.",
+    summary: "Submit feedback corrections to canonical context.",
     pathParams: [],
     requestSchema: "ApiWorkspaceCorrectionSubmitRequest",
     responseSchema: "WorkspaceCorrectionSubmitReadModel",
@@ -601,12 +613,56 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     requestSchema: "ApiPlayFlagAnnotationRequest",
     responseSchema: "ApiPlayFlagAnnotationResponse",
   },
+  // p0-result-revision — a target-only play-tester edit creates a selected,
+  // delivered child patch revision. The parent patch is path-scoped so the
+  // body cannot fabricate patch identity, actor identity, or artifact paths.
+  "play.targetEdit": {
+    method: "POST",
+    pathTemplate: "/api/play/patch-versions/{parentPatchVersionId}/target-edits",
+    operationId: "playTargetEdit",
+    summary: "Replace one delivered target line and select its child patch revision.",
+    pathParams: ["parentPatchVersionId"],
+    requestSchema: "ApiPlayTargetEditRequest",
+    responseSchema: "ApiPlayTargetEditResponse",
+  },
+  // p0-result-revision — production delivery boundary for the selected patch.
+  "play.delivery": {
+    method: "GET",
+    pathTemplate: "/api/play/runs/{runId}/delivery",
+    operationId: "playDelivery",
+    summary: "Load the selected delivered patch export for a run.",
+    pathParams: ["runId"],
+    responseSchema: "ApiPlayDeliveryResponse",
+  },
 };
 
 /** Stable, sorted list of every route id (deterministic iteration order). */
 export const ITOTORI_API_ROUTE_IDS: readonly ItotoriApiRouteId[] = Object.keys(
   ITOTORI_API_ROUTES,
 ).sort() as ItotoriApiRouteId[];
+
+/**
+ * Binary download topology. This is adjacent to (rather than inside) the JSON
+ * route registry because the typed JSON response guard/client must never try
+ * to parse archive bytes as an API response body.
+ */
+export const ITOTORI_API_BINARY_ROUTES: Readonly<
+  Record<ItotoriApiBinaryRouteId, ItotoriApiBinaryRoute>
+> = {
+  "play.deliveryArchive": {
+    method: "GET",
+    pathTemplate: "/api/play/runs/{runId}/delivery/archive",
+    operationId: "playDeliveryArchive",
+    summary: "Download the selected delivered patch archive for a run.",
+    pathParams: ["runId"],
+    contentType: "application/x-tar",
+  },
+};
+
+/** Public, encoded URL used by the JSON delivery metadata response. */
+export function playDeliveryArchivePath(runId: string): string {
+  return `/api/play/runs/${encodeURIComponent(runId)}/delivery/archive`;
+}
 
 /**
  * Interpolate a route's `{param}` path template with concrete values (used by

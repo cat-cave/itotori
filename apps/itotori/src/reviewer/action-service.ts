@@ -6,8 +6,6 @@
 //   - approve()                 — mark a QA / style / glossary / feedback /
 //                                 runtime evidence item accepted
 //   - reject()                  — mark an item rejected
-//   - requestRepair()           — record a QA / feedback / runtime-evidence
-//                                 repair request on the transition log
 //   - importRuntimeFeedback()   — approve a runtime evidence / feedback
 //                                 item; for runtime-evidence items it
 //                                 asserts the supplied evidence tier and
@@ -40,10 +38,6 @@ export type ReviewerQueueActionServicePort = {
   escalate(
     actor: AuthorizationActor,
     input: EscalateActionInput,
-  ): Promise<ReviewerQueueActionResult>;
-  requestRepair(
-    actor: AuthorizationActor,
-    input: RequestRepairActionInput,
   ): Promise<ReviewerQueueActionResult>;
   importRuntimeFeedback(
     actor: AuthorizationActor,
@@ -118,15 +112,6 @@ export type EscalateActionInput = ReviewerQueueActionCommonInput & {
   escalationTarget: string;
 };
 
-export type RequestRepairActionInput = ReviewerQueueActionCommonInput & {
-  /**
-   * Free-form hint string surfaced to the agentic-loop on the next
-   * attempt. Recorded on the transition row's metadata so the audit
-   * trail captures why the reviewer asked for a repair.
-   */
-  repairHint: string;
-};
-
 export type ImportRuntimeFeedbackActionInput = ReviewerQueueActionCommonInput & {
   /**
    * Utsushi evidence tier for the import. For runtime-evidence items the
@@ -193,19 +178,6 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
       buildActionInput(input, reviewerQueueActionValues.escalate, {
         escalationReason: input.escalationReason,
         escalationTarget: input.escalationTarget,
-      }),
-    );
-  }
-
-  async requestRepair(
-    actor: AuthorizationActor,
-    input: RequestRepairActionInput,
-  ): Promise<ReviewerQueueActionResult> {
-    assertNonEmpty("repairHint", input.repairHint);
-    return this.applyActionAndRecord(
-      actor,
-      buildActionInput(input, reviewerQueueActionValues.requestRepair, {
-        repairHint: input.repairHint,
       }),
     );
   }

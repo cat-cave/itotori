@@ -32,7 +32,6 @@ const REQUIRED_RESPONSE_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, readonl
   "workspace.comparison": ["reviewItemId", "cells"],
   "workspace.search": ["results"],
   "workspace.correctionPreview": ["units"],
-  "workspace.correctionSubmit": ["submittedCount", "edits"],
   "assetDecisions.active": ["decisions"],
   "assetDecisions.candidates": ["candidateAssets"],
   "terminology.search": ["rows"],
@@ -45,6 +44,8 @@ const REQUIRED_RESPONSE_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, readonl
   "catalog.opportunities": ["rows"],
   "settings.translationScope.get": ["projectId", "localeBranchId", "scope"],
   "settings.translationScope.save": ["projectId", "localeBranchId", "scope"],
+  "play.targetEdit": ["patchVersionId", "resultRevisionId", "selectedAt"],
+  "play.delivery": ["patchVersionId", "artifactHashes", "downloadUrl", "units"],
 };
 
 /**

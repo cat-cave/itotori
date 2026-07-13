@@ -9,11 +9,11 @@
 //     must see BEFORE submitting (acceptance #3). It is gated on `queue.read`,
 //     so it composes the same read seam as browsing.
 //
-//   - SUBMIT (`workspace.correction_submit`): the result of a POST that records
-//     durable edit-history events and routes each correction through the SAME
-//     feedback + decision + targeted-rerun loop as QA / runtime findings
-//     (acceptance #1 + #2). It is gated on `queue.manage`; a reviewer without
-//     it gets a denial read-model and NO mutation occurs (acceptance #4).
+//   - SUBMIT (`workspace.correction_submit`): records feedback and applies
+//     the canonical context-correction flow without reviewer-queue routing.
+//     A delivered target-line replacement is instead a first-class
+//     play-tester result revision + child delivered patch revision
+//     (`PlayTesterResultRevisionService`).
 //
 // Locale-branch identity (ITOTORI-059) is load-bearing: a single submit is
 // scoped to one `localeBranchId`, and preview units whose own branch disagrees

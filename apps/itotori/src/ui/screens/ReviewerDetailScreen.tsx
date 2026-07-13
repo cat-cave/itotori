@@ -69,7 +69,6 @@ const reviewerQueueActionValues = {
   reject: "reject",
   defer: "defer",
   escalate: "escalate",
-  requestRepair: "request_repair",
   importRuntimeFeedback: "import_runtime_feedback",
 } as const satisfies Record<string, ReviewerQueueAction>;
 
@@ -337,13 +336,6 @@ function actionButtonsForKind(
     { action: reviewerQueueActionValues.reject, label: "Reject" },
   ];
   if (
-    kind === reviewerQueueItemKindValues.qa ||
-    kind === reviewerQueueItemKindValues.runtimeEvidence ||
-    kind === reviewerQueueItemKindValues.feedback
-  ) {
-    base.push({ action: reviewerQueueActionValues.requestRepair, label: "Request repair" });
-  }
-  if (
     kind === reviewerQueueItemKindValues.runtimeEvidence ||
     kind === reviewerQueueItemKindValues.feedback
   ) {
@@ -396,19 +388,12 @@ function ActionStrip({
 }
 
 // HI-FI STUDIO EPIC · Review — the DECIDE action.
-// The two buttons a `canDecide` reviewer uses on the detail page:
+// The approve button a `canDecide` reviewer uses on the detail page:
 //
 //   - "Approve"            → POST /api/reviewer/queue/:id/action
 //                             { action: "approve" } — item becomes accepted
 //                             (the "proven" state).
-//   - "Queue correction"   → POST /api/reviewer/queue/:id/action
-//                             { action: "request_repair", repairHint }
-//                             the item is moved to `repair_requested` and
-//                             enqueued for the next repair pass (the "next
-//                             pass" state) by the SAME action service path
-//                             the batch route consumes (ITOTORI-082).
-//
-// Both fire THROUGH `apiClient.request("reviewer.itemAction", ...)` — the
+// It fires THROUGH `apiClient.request("reviewer.itemAction", ...)` — the
 // typed single-item seam that already exists in the API contract, NOT an
 // ad-hoc fetch and NOT a new api-contract route.
 //
@@ -435,9 +420,6 @@ function DecideActionStrip({
         <CapGatedButton capability="decide" allowed={false} data-action="approve">
           Approve
         </CapGatedButton>
-        <CapGatedButton capability="decide" allowed={false} data-action="queue_correction">
-          Queue correction
-        </CapGatedButton>
         <span role="note" data-cap-denial="decide">
           {reason}
         </span>
@@ -455,13 +437,13 @@ function DecideActionBody({
   item: NonNullable<ReviewerDetailContext["item"]>;
 }): ReactNode {
   const { notifyHandoff } = useWorkflowHandoffToasts();
-  const [pending, setPending] = useState<null | "approve" | "queue_correction">(null);
+  const [pending, setPending] = useState<null | "approve">(null);
   const [error, setError] = useState<{
-    action: "approve" | "queue_correction";
+    action: "approve";
     message: string;
   } | null>(null);
   const reviewerUserId = context.permission.actorUserId;
-  async function fire(action: "approve" | "queue_correction"): Promise<void> {
+  async function fire(action: "approve"): Promise<void> {
     if (pending !== null) {
       return;
     }
@@ -469,27 +451,11 @@ function DecideActionBody({
     setPending(action);
     // Wire body — matches the `ApiReviewerSingleActionRequest` schema
     // exactly (no `reviewItemId`; the item id lives on the URL path).
-    type DecideRequestBody =
-      | { action: "approve"; actorUserId: string; expectedSourceRevisionId: string }
-      | {
-          action: "request_repair";
-          actorUserId: string;
-          expectedSourceRevisionId: string;
-          repairHint: string;
-        };
-    const body: DecideRequestBody =
-      action === "approve"
-        ? {
-            action: "approve",
-            actorUserId: reviewerUserId,
-            expectedSourceRevisionId: item.sourceRevisionId,
-          }
-        : {
-            action: "request_repair",
-            actorUserId: reviewerUserId,
-            expectedSourceRevisionId: item.sourceRevisionId,
-            repairHint: `Reviewer queued for next pass from /reviewer-queue/${context.reviewItemId}`,
-          };
+    const body = {
+      action: "approve" as const,
+      actorUserId: reviewerUserId,
+      expectedSourceRevisionId: item.sourceRevisionId,
+    };
     const result = await apiClient.request("reviewer.itemAction", {
       pathParams: { reviewItemId: context.reviewItemId },
       // The wire shape matches `body`; the typed contract includes
@@ -500,13 +466,8 @@ function DecideActionBody({
     });
     if (result.state === "ready" && result.data.applied) {
       // shell-toasts — a successful decide is a workflow handoff: surface it
-      // as a legible toast (approved / correction-queued), matching the
-      // hi-fi studio store wording. Failures stay in-strip (alert).
-      if (action === "approve") {
-        notifyHandoff({ kind: "approved" });
-      } else {
-        notifyHandoff({ kind: "correction-queued" });
-      }
+      // as a legible toast. Failures stay in-strip (alert).
+      notifyHandoff({ kind: "approved" });
       setPending(null);
       return;
     }
@@ -543,19 +504,6 @@ function DecideActionBody({
         title="Approve the item — marks the unit as proven"
       >
         {pending === "approve" ? "Approving…" : "Approve"}
-      </button>
-      <button
-        type="button"
-        data-action="decide-queue-correction"
-        data-decide="queue_correction"
-        disabled={busy}
-        aria-disabled={busy}
-        onClick={() => {
-          void fire("queue_correction");
-        }}
-        title="Queue a correction — sends the item to the next repair pass"
-      >
-        {pending === "queue_correction" ? "Queueing…" : "Queue correction"}
       </button>
       {error !== null && (
         <p
