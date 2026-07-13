@@ -124,6 +124,15 @@ describe("Shell frame — nav", () => {
     expect(screen.getByRole("tab", { name: "Workspace" })).toHaveAttribute("aria-selected", "true");
   });
 
+  it("exposes the patch-iteration dashboard as its own Play navigation destination", () => {
+    const navigate = vi.fn();
+    mountFrame({ pathname: "/play/patches", search: "" }, navigate);
+    expect(screen.getByRole("tab", { name: "Patches" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Play" })).toHaveAttribute("aria-selected", "false");
+    fireEvent.click(screen.getByRole("tab", { name: "Patches" }));
+    expect(navigate).toHaveBeenCalledWith("/play/patches");
+  });
+
   it("navigates to the surface href when a pill is selected", () => {
     const navigate = vi.fn();
     mountFrame({ pathname: "/", search: "" }, navigate);
@@ -300,6 +309,8 @@ describe("Shell frame — pure helpers", () => {
     expect(activeShellNavId("/")).toBe("workbench");
     expect(activeShellNavId("/reviewer-queue")).toBe("review");
     expect(activeShellNavId("/reviewer-queue/some-item")).toBe("review");
+    expect(activeShellNavId("/play")).toBe("play");
+    expect(activeShellNavId("/play/patches")).toBe("patches");
     expect(activeShellNavId("/catalog")).toBe("catalog");
     expect(activeShellNavId("/workspace")).toBe("workspace");
     expect(activeShellNavId("/workspace/scenes")).toBe("workspace");

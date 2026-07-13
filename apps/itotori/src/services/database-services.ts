@@ -17,8 +17,10 @@ import {
   ItotoriCatalogCrawlerRunner,
   ItotoriCatalogRepository,
   ItotoriContextArtifactRepository,
+  ItotoriLocalizationIterationRepository,
   ItotoriLocalizationJournalRepository,
   ItotoriLocalizationResultRevisionRepository,
+  ItotoriLocalizationRunFinalizerRepository,
   ItotoriLocalizationPassRunConfigRepository,
   ItotoriModelLedgerRepository,
   ItotoriModelRoutingSettingsRepository,
@@ -162,6 +164,11 @@ import {
   type BoundPlayTesterResultRevisionServicePort,
 } from "../play/result-revision-service.js";
 import { ProductionPlayTesterPatchArtifactMaterializer } from "../play/production-patch-revision-materializer.js";
+import { UtsushiPatchRuntimeLauncher } from "../play/patch-runtime-launcher.js";
+import {
+  PatchIterationService,
+  type PatchIterationServicePort,
+} from "../iteration/patch-iteration-service.js";
 import {
   ItotoriProjectWorkflowService,
   type ItotoriProjectWorkflowPort,
@@ -234,6 +241,8 @@ export type ItotoriApplicationServices = {
   contextCorrections: ContextCorrectionServicePort;
   /** p0-core-result-revision-hitl — play-tester target edit → result + patch revision. */
   playTesterResultRevision: BoundPlayTesterResultRevisionServicePort;
+  /** Node 11's bound versions → play session → feedback → refinement loop. */
+  patchIteration: PatchIterationServicePort;
   exactSearch: {
     refreshDocuments(
       input: RefreshExactSearchDocumentsInput,
@@ -951,6 +960,32 @@ export async function withDatabaseItotoriServices<T>(
     const playTesterResultRevisionService = new PlayTesterResultRevisionService({
       repository: resultRevisionRepository,
     });
+    const boundPlayTesterResultRevision = bindPlayTesterResultRevisionService(
+      playTesterResultRevisionService,
+      localUserActor,
+    );
+    const patchIterationService = new PatchIterationService({
+      actor: localUserActor,
+      iteration: new ItotoriLocalizationIterationRepository(context.db),
+      journal: journalRepository,
+      finalizer: new ItotoriLocalizationRunFinalizerRepository(context.db),
+      resultRevisions: boundPlayTesterResultRevision,
+      // "Play this patch" drives the exact hash-bound RealLive bytes through
+      // Utsushi before it creates the durable play session. Rendering real
+      // Sweetie frames remains the separate runtime-evidence bridge.
+      runtimeLauncher: new UtsushiPatchRuntimeLauncher(),
+      // Context feedback enters through the established Node 9 facade, which
+      // owns the Node 8 canonical correction + registered rerun path.
+      wiki: wikiBrainService,
+      contextCorrections: contextCorrectionService,
+      // A context/comment refinement never fabricates a new run outcome from
+      // its base target. It reads the Node 8 worker's persisted branch draft
+      // so the exact redraft that survived the flywheel becomes the v(n+1)
+      // target body.
+      draftTexts: {
+        load: (input) => projectRepository.loadLocaleBranchDraftTexts(localUserActor, input),
+      },
+    });
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(
@@ -1019,10 +1054,8 @@ export async function withDatabaseItotoriServices<T>(
       workspace: workspaceApiService,
       workspaceCorrections: workspaceCorrectionService,
       contextCorrections: contextCorrectionService,
-      playTesterResultRevision: bindPlayTesterResultRevisionService(
-        playTesterResultRevisionService,
-        localUserActor,
-      ),
+      playTesterResultRevision: boundPlayTesterResultRevision,
+      patchIteration: patchIterationService,
       exactSearch: {
         refreshDocuments: (input) => exactSearchRepository.refreshDocuments(localUserActor, input),
         searchExact: (input) => exactSearchRepository.searchExact(localUserActor, input),

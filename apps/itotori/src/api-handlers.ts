@@ -40,6 +40,14 @@ import {
   type ProjectCostReport,
   type ProjectDashboardStatus,
   type ProjectTelemetryTimeseries,
+  type LocalizationRefinementRunRecord,
+  type PatchPlaySurface,
+  type PatchVersionIterationRecord,
+  type PlaySessionQaCallout,
+  type PlaySessionRecord,
+  type PlayTestFeedbackBatchRecord,
+  type PlayTestFeedbackEventRecord,
+  type PlayTestFeedbackInbox,
   type QueueHealthReadModel,
   type AuthSessionAdminRecord,
   type AuthAccountSeatUsageRecord,
@@ -90,6 +98,10 @@ import {
   parsePlayFlagAnnotationRequest,
   parseWorkspaceCorrectionSubmitRequest,
   parsePlayTargetEditRequest,
+  parsePatchIterationPlayRequest,
+  parsePatchIterationFeedbackBatchRequest,
+  parsePatchIterationFeedbackRequest,
+  parsePatchIterationRefineRequest,
   parseWikiAddRequest,
   parseWikiEditRequest,
   type ApiAuthCapabilitiesResponse,
@@ -104,6 +116,13 @@ import {
   type ApiPlayFlagAnnotationResponse,
   type ApiPlayTargetEditResponse,
   type ApiPlayDeliveryResponse,
+  type ApiPatchIterationDeliveryResponse,
+  type ApiPatchIterationFeedbackBatchResponse,
+  type ApiPatchIterationFeedbackResponse,
+  type ApiPatchIterationPlayResponse,
+  type ApiPatchIterationRefineResponse,
+  type ApiPatchIterationSurfaceResponse,
+  type ApiPatchIterationVersionsResponse,
   type ApiPlaySceneCoverageResponse,
   type ApiPlaySetSceneCoverageResponse,
   type ApiConfigureAuthSsoSettingsRequest,
@@ -159,10 +178,15 @@ import {
 import type { RouteMapReadModelPort } from "./play/route-map-read-model.js";
 import type {
   PlayTesterTargetEditResponse,
+  PlayablePatchExportResponse,
   SelectedPatchExportResponse,
 } from "./play/result-revision-service.js";
 import type { DeliveredPatchArchive } from "./patch-export/delivery-archive.js";
-import { playDeliveryArchivePath } from "./api-routes.js";
+import type {
+  PatchIterationRefinementResult,
+  PatchIterationServicePort,
+} from "./iteration/patch-iteration-service.js";
+import { patchIterationDeliveryArchivePath, playDeliveryArchivePath } from "./api-routes.js";
 import { buildPlayFlagFeedbackInput, type PlayFlagSeverity } from "./play/flag-annotation.js";
 import type { ManualFeedbackImportPort } from "./manual-feedback.js";
 import {
@@ -261,6 +285,9 @@ export const apiMutationPermissionGates = {
   // selects a new patch revision, so it carries the same `draft.write`
   // authority as other draft-affecting production mutations.
   playTargetEdit: apiMutationGate("play target edit", "draftWrite"),
+  patchIterationPlay: apiMutationGate("patch iteration play session", "draftWrite"),
+  patchIterationFeedback: apiMutationGate("patch iteration feedback", "draftWrite"),
+  patchIterationRefine: apiMutationGate("patch iteration refine", "draftWrite"),
   // play-flag-composer — canFlag is feedback.import (playtester flags into
   // the canonical context-correction path via ManualFeedbackImport).
   flagAnnotation: apiMutationGate("play flag annotation", "feedbackImport"),
@@ -292,6 +319,8 @@ export type PlayTesterResultRevisionApiPort = {
   }): Promise<PlayTesterTargetEditResponse>;
   loadSelectedExport(input: { runId: string }): Promise<SelectedPatchExportResponse>;
   loadSelectedArchive(input: { runId: string }): Promise<DeliveredPatchArchive | null>;
+  loadExactPatchExport(input: { patchVersionId: string }): Promise<PlayablePatchExportResponse>;
+  loadExactPatchArchive(input: { patchVersionId: string }): Promise<DeliveredPatchArchive | null>;
 };
 
 /**
@@ -418,8 +447,10 @@ export type ItotoriReadOnlyApiServices = {
   /** p0-result-revision — read only the selected production delivery export. */
   playTesterResultRevision: Pick<
     PlayTesterResultRevisionApiPort,
-    "loadSelectedExport" | "loadSelectedArchive"
+    "loadSelectedExport" | "loadSelectedArchive" | "loadExactPatchExport" | "loadExactPatchArchive"
   >;
+  /** Node 11 read projection: versions + exact patch/inbox surface. */
+  patchIteration: Pick<PatchIterationServicePort, "list" | "load">;
 };
 
 /**
@@ -526,6 +557,8 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
   manualFeedback: ManualFeedbackImportPort;
   /** p0-result-revision — actor/artifact-root-bound target edit + delivery read. */
   playTesterResultRevision: PlayTesterResultRevisionApiPort;
+  /** Node 11 mutation + read loop, bound to the authenticated actor. */
+  patchIteration: PatchIterationServicePort;
 };
 
 /**
@@ -626,6 +659,14 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     playTesterResultRevision: {
       loadSelectedExport: (input) => services.playTesterResultRevision.loadSelectedExport(input),
       loadSelectedArchive: (input) => services.playTesterResultRevision.loadSelectedArchive(input),
+      loadExactPatchExport: (input) =>
+        services.playTesterResultRevision.loadExactPatchExport(input),
+      loadExactPatchArchive: (input) =>
+        services.playTesterResultRevision.loadExactPatchArchive(input),
+    },
+    patchIteration: {
+      list: (input) => services.patchIteration.list(input),
+      load: (input) => services.patchIteration.load(input),
     },
   };
 }
@@ -744,6 +785,16 @@ function readOnlyMutationPathResponse(request: ItotoriApiRequest): ApiJsonRespon
   }
   if (parsePlayTargetEditApiRoute(request.pathname) !== null) {
     return methodNotAllowed(["POST"]);
+  }
+  const patchIterationRoute = parsePatchIterationApiRoute(request.pathname);
+  if (patchIterationRoute !== null) {
+    return methodNotAllowed(
+      patchIterationRoute.resource === "versions" ||
+        patchIterationRoute.resource === "surface" ||
+        patchIterationRoute.resource === "delivery"
+        ? ["GET"]
+        : ["POST"],
+    );
   }
   if (parseCatalogContextPanelApiRoute(request.pathname) !== null) {
     return methodNotAllowed(["GET"]);
@@ -900,6 +951,109 @@ async function routeItotoriApiRequest(
     return ok("play.targetEdit", playTargetEditResponseBody(result));
   }
 
+  const patchIterationRoute = parsePatchIterationApiRoute(request.pathname);
+  if (request.method === "POST" && patchIterationRoute !== null) {
+    switch (patchIterationRoute.resource) {
+      case "session": {
+        const body = parsePatchIterationPlayRequest(request.body);
+        await requireApiPermission(services, apiMutationPermissionGates.patchIterationPlay);
+        return ok(
+          "patchIteration.play",
+          patchIterationPlayResponseBody(
+            await services.patchIteration.play({
+              patchVersionId: patchIterationRoute.patchVersionId,
+              ...(body.launchDescriptor === undefined
+                ? {}
+                : { launchDescriptor: body.launchDescriptor }),
+            }),
+          ),
+        );
+      }
+      case "feedback-batch": {
+        const body = parsePatchIterationFeedbackBatchRequest(request.body);
+        await requireApiPermission(services, apiMutationPermissionGates.patchIterationFeedback);
+        return ok(
+          "patchIteration.feedbackBatch",
+          patchIterationFeedbackBatchResponseBody(
+            await services.patchIteration.createFeedbackBatch({
+              observedPatchVersionId: patchIterationRoute.patchVersionId,
+              ...(body.feedbackBatchId === undefined
+                ? {}
+                : { feedbackBatchId: body.feedbackBatchId }),
+              ...(body.label === undefined ? {} : { label: body.label }),
+            }),
+          ),
+        );
+      }
+      case "feedback": {
+        const body = parsePatchIterationFeedbackRequest(request.body);
+        await requireApiPermission(services, apiMutationPermissionGates.patchIterationFeedback);
+        return ok(
+          "patchIteration.feedback",
+          patchIterationFeedbackResponseBody(
+            await services.patchIteration.feedback({
+              observedPatchVersionId: patchIterationRoute.patchVersionId,
+              eventKind: body.eventKind,
+              ...(body.feedbackBatchId === undefined
+                ? {}
+                : { feedbackBatchId: body.feedbackBatchId }),
+              ...(body.playSessionId === undefined ? {} : { playSessionId: body.playSessionId }),
+              ...(body.body === undefined ? {} : { body: body.body }),
+              ...(body.metadata === undefined ? {} : { metadata: body.metadata }),
+              ...(body.targetBody === undefined ? {} : { targetBody: body.targetBody }),
+              ...(body.resultRevisionId === undefined
+                ? {}
+                : { resultRevisionId: body.resultRevisionId }),
+              ...(body.contextArtifactId === undefined
+                ? {}
+                : { contextArtifactId: body.contextArtifactId }),
+              ...(body.contextEntryVersionId === undefined
+                ? {}
+                : { contextEntryVersionId: body.contextEntryVersionId }),
+              ...(body.contextFeedback === undefined
+                ? {}
+                : { contextFeedback: body.contextFeedback }),
+              ...(body.affectedBridgeUnitIds === undefined
+                ? {}
+                : { affectedBridgeUnitIds: body.affectedBridgeUnitIds }),
+            }),
+          ),
+        );
+      }
+      case "refine": {
+        const body = parsePatchIterationRefineRequest(request.body);
+        await requireApiPermission(services, apiMutationPermissionGates.patchIterationRefine);
+        return ok(
+          "patchIteration.refine",
+          patchIterationRefineResponseBody(
+            await services.patchIteration.refine({
+              basePatchVersionId: patchIterationRoute.patchVersionId,
+              ...(body.feedbackBatchIds === undefined
+                ? {}
+                : { feedbackBatchIds: body.feedbackBatchIds }),
+              ...(body.feedbackEventIds === undefined
+                ? {}
+                : { feedbackEventIds: body.feedbackEventIds }),
+              ...(body.scopeUnitIds === undefined ? {} : { scopeUnitIds: body.scopeUnitIds }),
+              ...(body.targetBodiesByUnit === undefined
+                ? {}
+                : { targetBodiesByUnit: body.targetBodiesByUnit }),
+              ...(body.wikiHeads === undefined ? {} : { wikiHeads: body.wikiHeads }),
+            }),
+          ),
+        );
+      }
+      case "versions":
+      case "surface":
+      case "delivery":
+        return methodNotAllowed(["GET"]);
+      default: {
+        const exhaustive: never = patchIterationRoute;
+        throw new Error(`unsupported patch iteration route ${String(exhaustive)}`);
+      }
+    }
+  }
+
   const flagRoute = parsePlayFlagApiRoute(request.pathname);
   if (request.method === "POST" && flagRoute !== null) {
     const body = parsePlayFlagAnnotationRequest(request.body);
@@ -953,6 +1107,15 @@ async function routeItotoriApiRequest(
 
   if (targetEditRoute !== null) {
     return methodNotAllowed(["POST"]);
+  }
+  if (patchIterationRoute !== null) {
+    return methodNotAllowed(
+      patchIterationRoute.resource === "versions" ||
+        patchIterationRoute.resource === "surface" ||
+        patchIterationRoute.resource === "delivery"
+        ? ["GET"]
+        : ["POST"],
+    );
   }
 
   if (
@@ -1408,6 +1571,230 @@ function playDeliveryResponseBody(input: SelectedPatchExportResponse): ApiPlayDe
       bridgeUnitId: unit.bridgeUnitId,
       unitOrdinal: unit.unitOrdinal,
       targetBody: unit.targetBody,
+    })),
+  };
+}
+
+/** Immutable historical-version delivery projection; artifact refs stay server-side. */
+function patchIterationDeliveryResponseBody(
+  input: PlayablePatchExportResponse,
+): ApiPatchIterationDeliveryResponse {
+  if (input.export === null) {
+    throw new Error("cannot build exact patch delivery response without a playable export");
+  }
+  const patch = input.export;
+  if (patch.status !== "playable" || patch.playableAt === null) {
+    throw new Error(`exact patch ${patch.patchVersionId} is not playable`);
+  }
+  if (
+    patch.origin !== "run_finalizer" &&
+    patch.origin !== "play_tester_edit" &&
+    patch.origin !== "refinement_run"
+  ) {
+    throw new Error(`exact patch ${patch.patchVersionId} has invalid origin ${patch.origin}`);
+  }
+  return {
+    schemaVersion: "itotori.patch-iteration.delivery.v0",
+    patchVersionId: patch.patchVersionId,
+    runId: patch.runId,
+    parentPatchVersionId: patch.parentPatchVersionId,
+    origin: patch.origin,
+    status: "playable",
+    playableAt: patch.playableAt.toISOString(),
+    artifactHashes: { ...patch.artifactHashes },
+    downloadUrl: patchIterationDeliveryArchivePath(patch.patchVersionId),
+    units: patch.units.map((unit) => ({
+      bridgeUnitId: unit.bridgeUnitId,
+      unitOrdinal: unit.unitOrdinal,
+      targetBody: unit.targetBody,
+    })),
+  };
+}
+
+// p0-core-iterative-patch-versioning-and-playtest-feedback — all public
+// iteration views are explicit projections of durable records. In particular,
+// artifact refs remain server-side provenance: the dashboard gets the exact
+// version identity and integrity hashes, never a filesystem/artifact locator.
+function patchIterationVersionsResponseBody(
+  versions: readonly PatchVersionIterationRecord[],
+): ApiPatchIterationVersionsResponse {
+  return {
+    schemaVersion: "itotori.patch-iteration.versions.v0",
+    versions: versions.map(patchIterationVersionResponseBody),
+  };
+}
+
+function patchIterationSurfaceResponseBody(input: {
+  patch: PatchPlaySurface;
+  versions: readonly PatchVersionIterationRecord[];
+  feedback: PlayTestFeedbackInbox;
+}): ApiPatchIterationSurfaceResponse {
+  return {
+    schemaVersion: "itotori.patch-iteration.surface.v0",
+    patch: patchIterationPatchResponseBody(input.patch),
+    versions: input.versions.map(patchIterationVersionResponseBody),
+    feedback: patchIterationFeedbackInboxResponseBody(input.feedback),
+  };
+}
+
+function patchIterationPlayResponseBody(input: PlaySessionRecord): ApiPatchIterationPlayResponse {
+  return {
+    schemaVersion: "itotori.patch-iteration.play.v0",
+    session: patchIterationSessionResponseBody(input),
+  };
+}
+
+function patchIterationFeedbackBatchResponseBody(
+  input: PlayTestFeedbackBatchRecord,
+): ApiPatchIterationFeedbackBatchResponse {
+  return {
+    schemaVersion: "itotori.patch-iteration.feedback-batch.v0",
+    // A just-created durable batch has no events yet. Keep the public batch
+    // shape identical to the inbox shape so dashboard code has no special
+    // "new batch" representation to reconcile.
+    batch: patchIterationFeedbackBatchView(input, []),
+  };
+}
+
+function patchIterationFeedbackResponseBody(
+  input: PlayTestFeedbackEventRecord,
+): ApiPatchIterationFeedbackResponse {
+  return {
+    schemaVersion: "itotori.patch-iteration.feedback.v0",
+    feedback: patchIterationFeedbackEventResponseBody(input),
+  };
+}
+
+function patchIterationRefineResponseBody(
+  input: PatchIterationRefinementResult,
+): ApiPatchIterationRefineResponse {
+  return {
+    schemaVersion: "itotori.patch-iteration.refine.v0",
+    refinement: patchIterationRefinementResponseBody(input.refinement),
+    patch: patchIterationPatchResponseBody(input.patch),
+  };
+}
+
+function patchIterationPatchResponseBody(input: PatchPlaySurface) {
+  return {
+    patchVersionId: input.patchVersionId,
+    runId: input.runId,
+    parentPatchVersionId: input.parentPatchVersionId,
+    origin: input.origin,
+    status: input.status,
+    playableAt: input.playableAt?.toISOString() ?? null,
+    selectedAt: input.selectedAt?.toISOString() ?? null,
+    artifactHashes: { ...input.artifactHashes },
+    units: input.units.map((unit) => ({
+      bridgeUnitId: unit.bridgeUnitId,
+      sourceRunId: unit.sourceRunId,
+      journalOutcomeId: unit.journalOutcomeId,
+      resultRevisionId: unit.resultRevisionId,
+      targetBody: unit.targetBody,
+      memberOrigin: unit.memberOrigin,
+      reusedFromPatchVersionId: unit.reusedFromPatchVersionId,
+      unitOrdinal: unit.unitOrdinal,
+    })),
+    qaCallouts: input.qaCallouts.map(patchIterationQaCalloutResponseBody),
+  };
+}
+
+function patchIterationVersionResponseBody(input: PatchVersionIterationRecord) {
+  return {
+    patchVersionId: input.patchVersionId,
+    runId: input.runId,
+    parentPatchVersionId: input.parentPatchVersionId,
+    origin: input.origin,
+    status: input.status,
+    playableAt: input.playableAt?.toISOString() ?? null,
+    selectedAt: input.selectedAt?.toISOString() ?? null,
+    artifactHashes: { ...input.artifactHashes },
+    basePatchVersionId: input.basePatchVersionId,
+  };
+}
+
+function patchIterationFeedbackInboxResponseBody(input: PlayTestFeedbackInbox) {
+  return {
+    observedPatchVersionId: input.observedPatchVersionId,
+    batches: input.batches.map((batch) => patchIterationFeedbackBatchView(batch, batch.events)),
+  };
+}
+
+function patchIterationFeedbackBatchView(
+  input: PlayTestFeedbackBatchRecord,
+  events: readonly PlayTestFeedbackEventRecord[],
+) {
+  return {
+    feedbackBatchId: input.feedbackBatchId,
+    observedPatchVersionId: input.observedPatchVersionId,
+    actorUserId: input.actorUserId,
+    selectionKind: input.selectionKind,
+    label: input.label,
+    createdAt: input.createdAt.toISOString(),
+    updatedAt: input.updatedAt.toISOString(),
+    events: events.map(patchIterationFeedbackEventResponseBody),
+  };
+}
+
+function patchIterationFeedbackEventResponseBody(input: PlayTestFeedbackEventRecord) {
+  return {
+    feedbackEventId: input.feedbackEventId,
+    feedbackBatchId: input.feedbackBatchId,
+    observedPatchVersionId: input.observedPatchVersionId,
+    playSessionId: input.playSessionId,
+    actorUserId: input.actorUserId,
+    eventKind: input.eventKind,
+    body: input.body,
+    metadata: { ...input.metadata },
+    resultRevisionId: input.resultRevisionId,
+    contextArtifactId: input.contextArtifactId,
+    contextEntryVersionId: input.contextEntryVersionId,
+    affectedBridgeUnitIds: [...input.affectedBridgeUnitIds],
+    createdAt: input.createdAt.toISOString(),
+  };
+}
+
+function patchIterationSessionResponseBody(input: PlaySessionRecord) {
+  return {
+    playSessionId: input.playSessionId,
+    observedPatchVersionId: input.observedPatchVersionId,
+    actorUserId: input.actorUserId,
+    status: input.status,
+    startedAt: input.startedAt.toISOString(),
+    endedAt: input.endedAt?.toISOString() ?? null,
+    qaCallouts: input.qaCallouts.map(patchIterationQaCalloutResponseBody),
+  };
+}
+
+function patchIterationQaCalloutResponseBody(input: PlaySessionQaCallout) {
+  return {
+    journalFindingId: input.journalFindingId,
+    bridgeUnitId: input.bridgeUnitId,
+    severity: input.severity,
+    category: input.category,
+    note: input.note,
+    confidence: input.confidence,
+    contested: input.contested,
+    informational: true as const,
+  };
+}
+
+function patchIterationRefinementResponseBody(input: LocalizationRefinementRunRecord) {
+  return {
+    runId: input.run.runId,
+    basePatchVersionId: input.basePatchVersionId,
+    feedbackBatchIds: input.feedbackBatches.map((batch) => batch.feedbackBatchId),
+    wikiHeads: input.wikiHeads.map((head) => ({
+      contextArtifactId: head.contextArtifactId,
+      contextEntryVersionId: head.contextEntryVersionId,
+    })),
+    members: input.members.map((member) => ({
+      bridgeUnitId: member.bridgeUnitId,
+      strategy: member.strategy,
+      basePatchVersionId: member.basePatchVersionId,
+      baseSourceRunId: member.baseSourceRunId,
+      baseJournalOutcomeId: member.baseJournalOutcomeId,
+      baseResultRevisionId: member.baseResultRevisionId,
     })),
   };
 }
@@ -1955,6 +2342,50 @@ async function routeReadOnlyItotoriApiRequest(
       request.pathname === "/api/workspace/search")
   ) {
     return methodNotAllowed(["GET"]);
+  }
+
+  const patchIterationRoute = parsePatchIterationApiRoute(request.pathname);
+  if (request.method === "GET" && patchIterationRoute !== null) {
+    switch (patchIterationRoute.resource) {
+      case "versions":
+        return ok(
+          "patchIteration.versions",
+          patchIterationVersionsResponseBody(
+            await services.patchIteration.list({
+              localeBranchId: patchIterationRoute.localeBranchId,
+            }),
+          ),
+        );
+      case "surface": {
+        const surface = await services.patchIteration.load({
+          patchVersionId: patchIterationRoute.patchVersionId,
+        });
+        return surface === null
+          ? notFound(request.pathname)
+          : ok("patchIteration.surface", patchIterationSurfaceResponseBody(surface));
+      }
+      case "delivery": {
+        const delivery = await services.playTesterResultRevision.loadExactPatchExport({
+          patchVersionId: patchIterationRoute.patchVersionId,
+        });
+        return delivery.export === null
+          ? errorBody(
+              404,
+              "not_found",
+              `playable patch ${patchIterationRoute.patchVersionId} was not found`,
+            )
+          : ok("patchIteration.delivery", patchIterationDeliveryResponseBody(delivery));
+      }
+      case "session":
+      case "feedback-batch":
+      case "feedback":
+      case "refine":
+        return methodNotAllowed(["POST"]);
+      default: {
+        const exhaustive: never = patchIterationRoute;
+        throw new Error(`unsupported patch iteration read route ${String(exhaustive)}`);
+      }
+    }
   }
 
   const playDeliveryRoute = parsePlayDeliveryApiRoute(request.pathname);
@@ -3133,6 +3564,48 @@ function parsePlayTargetEditApiRoute(pathname: string): {
   };
 }
 
+type PatchIterationApiRoute =
+  | { resource: "versions"; localeBranchId: string }
+  | { resource: "surface"; patchVersionId: string }
+  | { resource: "delivery"; patchVersionId: string }
+  | { resource: "session"; patchVersionId: string }
+  | { resource: "feedback-batch"; patchVersionId: string }
+  | { resource: "feedback"; patchVersionId: string }
+  | { resource: "refine"; patchVersionId: string };
+
+/** Parse the node-11 topology once so GET/POST cannot diverge on path identity. */
+function parsePatchIterationApiRoute(pathname: string): PatchIterationApiRoute | null {
+  const versions = /^\/api\/play\/locale-branches\/([^/]+)\/patch-versions\/?$/u.exec(pathname);
+  if (versions?.[1] !== undefined) {
+    return {
+      resource: "versions",
+      localeBranchId: decodeApiPathSegment(versions[1], "localeBranchId"),
+    };
+  }
+  const match =
+    /^\/api\/play\/patch-versions\/([^/]+)(?:\/(delivery|sessions|feedback-batches|feedback|refine))?\/?$/u.exec(
+      pathname,
+    );
+  if (match === null || match[1] === undefined) return null;
+  const patchVersionId = decodeApiPathSegment(match[1], "patchVersionId");
+  switch (match[2]) {
+    case undefined:
+      return { resource: "surface", patchVersionId };
+    case "delivery":
+      return { resource: "delivery", patchVersionId };
+    case "sessions":
+      return { resource: "session", patchVersionId };
+    case "feedback-batches":
+      return { resource: "feedback-batch", patchVersionId };
+    case "feedback":
+      return { resource: "feedback", patchVersionId };
+    case "refine":
+      return { resource: "refine", patchVersionId };
+    default:
+      return null;
+  }
+}
+
 function parsePlayDeliveryApiRoute(pathname: string): { runId: string } | null {
   const match = /^\/api\/play\/runs\/([^/]+)\/delivery\/?$/u.exec(pathname);
   if (match === null || match[1] === undefined) {
@@ -3752,6 +4225,31 @@ function ok(
 function ok(routeId: "play.flagAnnotation", body: ApiPlayFlagAnnotationResponse): ApiJsonResponse;
 function ok(routeId: "play.targetEdit", body: ApiPlayTargetEditResponse): ApiJsonResponse;
 function ok(routeId: "play.delivery", body: ApiPlayDeliveryResponse): ApiJsonResponse;
+function ok(
+  routeId: "patchIteration.versions",
+  body: ApiPatchIterationVersionsResponse,
+): ApiJsonResponse;
+function ok(
+  routeId: "patchIteration.surface",
+  body: ApiPatchIterationSurfaceResponse,
+): ApiJsonResponse;
+function ok(
+  routeId: "patchIteration.delivery",
+  body: ApiPatchIterationDeliveryResponse,
+): ApiJsonResponse;
+function ok(routeId: "patchIteration.play", body: ApiPatchIterationPlayResponse): ApiJsonResponse;
+function ok(
+  routeId: "patchIteration.feedbackBatch",
+  body: ApiPatchIterationFeedbackBatchResponse,
+): ApiJsonResponse;
+function ok(
+  routeId: "patchIteration.feedback",
+  body: ApiPatchIterationFeedbackResponse,
+): ApiJsonResponse;
+function ok(
+  routeId: "patchIteration.refine",
+  body: ApiPatchIterationRefineResponse,
+): ApiJsonResponse;
 function ok(routeId: ItotoriApiRouteId, body: ItotoriApiResponseBody): ApiJsonResponse {
   assertItotoriApiResponse(routeId, body);
   return { statusCode: 200, body };

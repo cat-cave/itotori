@@ -18,6 +18,7 @@ import { createHash } from "node:crypto";
 import {
   verifyLocalizationArtifactManifest,
   type AuthorizationActor,
+  type PlayablePatchExport,
   type SelectedPatchExport,
 } from "@itotori/db";
 import {
@@ -68,6 +69,14 @@ export interface SelectedPatchDeliveryLoaderPort {
   ): Promise<SelectedPatchExport | null>;
 }
 
+/** Immutable historical-version delivery source (not current-run selection). */
+export interface PlayablePatchDeliveryLoaderPort {
+  loadPlayablePatchExport(
+    actor: AuthorizationActor,
+    input: { patchVersionId: string },
+  ): Promise<PlayablePatchExport | null>;
+}
+
 export type DeliveredPatchExportInput = {
   runId?: string;
   patchVersionId?: string;
@@ -79,7 +88,9 @@ export type DeliveredPatchExportInput = {
  * patch, so delivery is the selected hash-bound artifact manifest itself.
  */
 export class DeliveredPatchExporter {
-  constructor(private readonly loader: SelectedPatchDeliveryLoaderPort) {}
+  constructor(
+    private readonly loader: SelectedPatchDeliveryLoaderPort & PlayablePatchDeliveryLoaderPort,
+  ) {}
 
   async export(
     actor: AuthorizationActor,
@@ -97,6 +108,25 @@ export class DeliveredPatchExporter {
   }
 
   /**
+   * Load exact historical delivery by immutable patch id. This intentionally
+   * does not consult the run's mutable selected revision.
+   */
+  async exportExact(
+    actor: AuthorizationActor,
+    input: { patchVersionId: string },
+  ): Promise<PlayablePatchExport | null> {
+    const patch = await this.loader.loadPlayablePatchExport(actor, input);
+    if (patch === null) return null;
+    if (patch.status !== "playable" || patch.playableAt === null) {
+      throw new Error(
+        `delivered patch export refused: patch ${patch.patchVersionId} is not playable`,
+      );
+    }
+    verifyLocalizationArtifactManifest(patch.artifactRefs, patch.artifactHashes);
+    return patch;
+  }
+
+  /**
    * Produce the bytes a player downloads for the selected patch. Calling
    * {@link export} first preserves the same actor authorization, playable
    * state, and manifest verification used by metadata delivery.
@@ -107,6 +137,15 @@ export class DeliveredPatchExporter {
   ): Promise<DeliveredPatchArchive | null> {
     const selected = await this.export(actor, input);
     return selected === null ? null : createDeliveredPatchArchive(selected);
+  }
+
+  /** Produce trusted archive bytes for the addressed immutable patch version. */
+  async archiveExact(
+    actor: AuthorizationActor,
+    input: { patchVersionId: string },
+  ): Promise<DeliveredPatchArchive | null> {
+    const patch = await this.exportExact(actor, input);
+    return patch === null ? null : createDeliveredPatchArchive(patch);
   }
 }
 

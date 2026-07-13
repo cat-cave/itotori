@@ -27,7 +27,7 @@ export type ItotoriApiBinaryRoute = {
   readonly contentType: "application/x-tar";
 };
 
-export type ItotoriApiBinaryRouteId = "play.deliveryArchive";
+export type ItotoriApiBinaryRouteId = "play.deliveryArchive" | "patchIteration.deliveryArchive";
 
 /**
  * Every `/api` route, keyed by {@link ItotoriApiRouteId}. The
@@ -672,6 +672,69 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: ["runId"],
     responseSchema: "ApiPlayDeliveryResponse",
   },
+  // p0-core-iterative-patch-versioning-and-playtest-feedback — exact-version
+  // iteration topology. Historical versions are readable/playable; feedback
+  // and refinement mutations remain resource-scoped to the observed base.
+  "patchIteration.versions": {
+    method: "GET",
+    pathTemplate: "/api/play/locale-branches/{localeBranchId}/patch-versions",
+    operationId: "patchIterationVersions",
+    summary: "List durable patch versions and lineage for one locale branch.",
+    pathParams: ["localeBranchId"],
+    responseSchema: "ApiPatchIterationVersionsResponse",
+  },
+  "patchIteration.surface": {
+    method: "GET",
+    pathTemplate: "/api/play/patch-versions/{patchVersionId}",
+    operationId: "patchIterationSurface",
+    summary: "Load a historical patch play surface, feedback inbox, and informational QA callouts.",
+    pathParams: ["patchVersionId"],
+    responseSchema: "ApiPatchIterationSurfaceResponse",
+  },
+  "patchIteration.delivery": {
+    method: "GET",
+    pathTemplate: "/api/play/patch-versions/{patchVersionId}/delivery",
+    operationId: "patchIterationDelivery",
+    summary: "Load immutable archive metadata for one exact playable patch version.",
+    pathParams: ["patchVersionId"],
+    responseSchema: "ApiPatchIterationDeliveryResponse",
+  },
+  "patchIteration.play": {
+    method: "POST",
+    pathTemplate: "/api/play/patch-versions/{patchVersionId}/sessions",
+    operationId: "patchIterationPlay",
+    summary: "Start a play session for the exact playable patch version observed.",
+    pathParams: ["patchVersionId"],
+    requestSchema: "ApiPatchIterationPlayRequest",
+    responseSchema: "ApiPatchIterationPlayResponse",
+  },
+  "patchIteration.feedbackBatch": {
+    method: "POST",
+    pathTemplate: "/api/play/patch-versions/{patchVersionId}/feedback-batches",
+    operationId: "patchIterationFeedbackBatch",
+    summary: "Create a persisted feedback batch for the exact patch version observed.",
+    pathParams: ["patchVersionId"],
+    requestSchema: "ApiPatchIterationFeedbackBatchRequest",
+    responseSchema: "ApiPatchIterationFeedbackBatchResponse",
+  },
+  "patchIteration.feedback": {
+    method: "POST",
+    pathTemplate: "/api/play/patch-versions/{patchVersionId}/feedback",
+    operationId: "patchIterationFeedback",
+    summary: "Persist individual or batched result, comment, context, or wiki play-test feedback.",
+    pathParams: ["patchVersionId"],
+    requestSchema: "ApiPatchIterationFeedbackRequest",
+    responseSchema: "ApiPatchIterationFeedbackResponse",
+  },
+  "patchIteration.refine": {
+    method: "POST",
+    pathTemplate: "/api/play/patch-versions/{patchVersionId}/refine",
+    operationId: "patchIterationRefine",
+    summary: "Freeze feedback/wiki inputs and complete a real-byte refinement patch version.",
+    pathParams: ["patchVersionId"],
+    requestSchema: "ApiPatchIterationRefineRequest",
+    responseSchema: "ApiPatchIterationRefineResponse",
+  },
 };
 
 /** Stable, sorted list of every route id (deterministic iteration order). */
@@ -695,11 +758,24 @@ export const ITOTORI_API_BINARY_ROUTES: Readonly<
     pathParams: ["runId"],
     contentType: "application/x-tar",
   },
+  "patchIteration.deliveryArchive": {
+    method: "GET",
+    pathTemplate: "/api/play/patch-versions/{patchVersionId}/delivery/archive",
+    operationId: "patchIterationDeliveryArchive",
+    summary: "Download the immutable delivered patch archive for one exact patch version.",
+    pathParams: ["patchVersionId"],
+    contentType: "application/x-tar",
+  },
 };
 
 /** Public, encoded URL used by the JSON delivery metadata response. */
 export function playDeliveryArchivePath(runId: string): string {
   return `/api/play/runs/${encodeURIComponent(runId)}/delivery/archive`;
+}
+
+/** Public, encoded URL for the immutable historical-version archive endpoint. */
+export function patchIterationDeliveryArchivePath(patchVersionId: string): string {
+  return `/api/play/patch-versions/${encodeURIComponent(patchVersionId)}/delivery/archive`;
 }
 
 /**

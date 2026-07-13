@@ -4907,6 +4907,53 @@ export const localizationRunPatchVersionStatusValues = {
 export type LocalizationRunPatchVersionStatus =
   (typeof localizationRunPatchVersionStatusValues)[keyof typeof localizationRunPatchVersionStatusValues];
 
+/** How a patch member arrived in this exact delivered version. */
+export const localizationPatchVersionMemberOriginValues = {
+  runWrittenOutcome: "run_written_outcome",
+  reusedFromBase: "reused_from_base",
+  playTesterEdit: "play_tester_edit",
+} as const;
+
+export type LocalizationPatchVersionMemberOrigin =
+  (typeof localizationPatchVersionMemberOriginValues)[keyof typeof localizationPatchVersionMemberOriginValues];
+
+/** Durable play-test feedback event kinds; quality callouts remain annotations. */
+export const playTestFeedbackEventKindValues = {
+  resultEdit: "result_edit",
+  comment: "comment",
+  addedContext: "added_context",
+  wikiEdit: "wiki_edit",
+} as const;
+
+export type PlayTestFeedbackEventKind =
+  (typeof playTestFeedbackEventKindValues)[keyof typeof playTestFeedbackEventKindValues];
+
+export const playTestFeedbackBatchSelectionKindValues = {
+  individual: "individual",
+  batch: "batch",
+} as const;
+
+export type PlayTestFeedbackBatchSelectionKind =
+  (typeof playTestFeedbackBatchSelectionKindValues)[keyof typeof playTestFeedbackBatchSelectionKindValues];
+
+export const playSessionStatusValues = {
+  active: "active",
+  completed: "completed",
+  abandoned: "abandoned",
+} as const;
+
+export type PlaySessionStatus =
+  (typeof playSessionStatusValues)[keyof typeof playSessionStatusValues];
+
+export const localizationRefinementMemberStrategyValues = {
+  reuse: "reuse",
+  redraft: "redraft",
+  newScope: "new_scope",
+} as const;
+
+export type LocalizationRefinementMemberStrategy =
+  (typeof localizationRefinementMemberStrategyValues)[keyof typeof localizationRefinementMemberStrategyValues];
+
 /** The only terminal run states that receive a canonical terminal summary. */
 export const localizationRunTerminalStatusValues = {
   succeeded: "succeeded",
@@ -4971,6 +5018,9 @@ export const localizationJournalRuns = pgTable(
     frozenScope: jsonb("frozen_scope").$type<LocalizationJournalFrozenScopeJson>(),
     routingPolicy: jsonb("routing_policy").$type<LocalizationJournalRoutingPolicyJson>(),
     costPolicy: jsonb("cost_policy").$type<LocalizationJournalCostPolicyJson>(),
+    // A non-null base version marks this run as a refinement. The migration
+    // owns the FK because PatchVersion is declared later in this module.
+    basePatchVersionId: text("base_patch_version_id"),
     status: text("status").notNull().default("running"),
     pausedBlocker: jsonb("paused_blocker").$type<LocalizationJournalPausedBlockerJson>(),
     leaseOwnerId: text("lease_owner_id"),
@@ -5415,6 +5465,7 @@ export const outcomeSpeakerLabels = pgTable(
 export const localizationPatchVersionOriginValues = {
   runFinalizer: "run_finalizer",
   playTesterEdit: "play_tester_edit",
+  refinementRun: "refinement_run",
 } as const;
 export type LocalizationPatchVersionOrigin =
   (typeof localizationPatchVersionOriginValues)[keyof typeof localizationPatchVersionOriginValues];
@@ -5455,10 +5506,15 @@ export const localizationPatchVersionUnits = pgTable(
   "itotori_localization_patch_version_units",
   {
     patchVersionId: text("patch_version_id").notNull(),
+    /** The patch-owning run; this remains the frozen scope identity. */
     runId: text("run_id").notNull(),
+    /** The run that owns the immutable outcome/result revision. */
+    sourceRunId: text("source_run_id").notNull(),
     bridgeUnitId: text("bridge_unit_id").notNull(),
     journalOutcomeId: text("journal_outcome_id").notNull(),
     resultRevisionId: text("result_revision_id").notNull(),
+    memberOrigin: text("member_origin").$type<LocalizationPatchVersionMemberOrigin>().notNull(),
+    reusedFromPatchVersionId: text("reused_from_patch_version_id"),
     unitOrdinal: integer("unit_ordinal").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -5469,6 +5525,17 @@ export const localizationPatchVersionUnits = pgTable(
       table.unitOrdinal,
     ),
     index("itotori_localization_patch_version_units_run_idx").on(table.runId, table.bridgeUnitId),
+    index("itotori_localization_patch_version_units_source_run_idx").on(
+      table.sourceRunId,
+      table.bridgeUnitId,
+    ),
+    unique("itotori_localization_patch_version_units_provenance_key").on(
+      table.patchVersionId,
+      table.bridgeUnitId,
+      table.sourceRunId,
+      table.journalOutcomeId,
+      table.resultRevisionId,
+    ),
     foreignKey({
       columns: [table.patchVersionId, table.runId],
       foreignColumns: [localizationPatchVersions.patchVersionId, localizationPatchVersions.runId],
@@ -5480,24 +5547,302 @@ export const localizationPatchVersionUnits = pgTable(
       name: "itotori_localization_patch_version_units_planned_unit_fkey",
     }).onDelete("cascade"),
     foreignKey({
-      columns: [table.journalOutcomeId, table.runId, table.bridgeUnitId],
+      columns: [table.journalOutcomeId, table.sourceRunId, table.bridgeUnitId],
       foreignColumns: [
         writtenUnitOutcomes.journalOutcomeId,
         writtenUnitOutcomes.runId,
         writtenUnitOutcomes.bridgeUnitId,
       ],
-      name: "itotori_localization_patch_version_units_outcome_fkey",
+      name: "itotori_localization_patch_version_units_source_outcome_fkey",
     }).onDelete("cascade"),
     foreignKey({
-      columns: [table.resultRevisionId, table.journalOutcomeId, table.runId, table.bridgeUnitId],
+      columns: [
+        table.resultRevisionId,
+        table.journalOutcomeId,
+        table.sourceRunId,
+        table.bridgeUnitId,
+      ],
       foreignColumns: [
         localizationResultRevisions.resultRevisionId,
         localizationResultRevisions.journalOutcomeId,
         localizationResultRevisions.runId,
         localizationResultRevisions.bridgeUnitId,
       ],
-      name: "itotori_localization_patch_version_units_result_revision_fkey",
+      name: "itotori_localization_patch_version_units_source_result_revision_fkey",
     }),
+  ],
+);
+
+/** A persisted open/play/close session bound to the exact patch bytes observed. */
+export const playSessions = pgTable(
+  "itotori_play_sessions",
+  {
+    playSessionId: text("play_session_id").primaryKey(),
+    observedPatchVersionId: text("observed_patch_version_id")
+      .notNull()
+      .references(() => localizationPatchVersions.patchVersionId, { onDelete: "restrict" }),
+    actorUserId: text("actor_user_id").notNull(),
+    status: text("status").$type<PlaySessionStatus>().notNull(),
+    launchDescriptor: jsonb("launch_descriptor").$type<Record<string, unknown>>().notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_play_sessions_patch_started_idx").on(
+      table.observedPatchVersionId,
+      table.startedAt,
+    ),
+  ],
+);
+
+/** A first-class feedback inbox grouping; individual feedback has a singleton batch. */
+export const playTestFeedbackBatches = pgTable(
+  "itotori_play_test_feedback_batches",
+  {
+    feedbackBatchId: text("feedback_batch_id").primaryKey(),
+    observedPatchVersionId: text("observed_patch_version_id")
+      .notNull()
+      .references(() => localizationPatchVersions.patchVersionId, { onDelete: "restrict" }),
+    actorUserId: text("actor_user_id").notNull(),
+    selectionKind: text("selection_kind").$type<PlayTestFeedbackBatchSelectionKind>().notNull(),
+    label: text("label"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("itotori_play_test_feedback_batches_id_patch_unique").on(
+      table.feedbackBatchId,
+      table.observedPatchVersionId,
+    ),
+    index("itotori_play_test_feedback_batches_patch_created_idx").on(
+      table.observedPatchVersionId,
+      table.createdAt,
+    ),
+  ],
+);
+
+/** One exact-version observation/edit/comment/context feedback event. */
+export const playTestFeedbackEvents = pgTable(
+  "itotori_play_test_feedback_events",
+  {
+    feedbackEventId: text("feedback_event_id").primaryKey(),
+    feedbackBatchId: text("feedback_batch_id").notNull(),
+    observedPatchVersionId: text("observed_patch_version_id").notNull(),
+    playSessionId: text("play_session_id").references(() => playSessions.playSessionId, {
+      onDelete: "set null",
+    }),
+    actorUserId: text("actor_user_id").notNull(),
+    eventKind: text("event_kind").$type<PlayTestFeedbackEventKind>().notNull(),
+    body: text("body"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
+    resultRevisionId: text("result_revision_id").references(
+      () => localizationResultRevisions.resultRevisionId,
+      { onDelete: "restrict" },
+    ),
+    contextArtifactId: text("context_artifact_id").references(
+      () => contextArtifacts.contextArtifactId,
+      { onDelete: "restrict" },
+    ),
+    contextEntryVersionId: text("context_entry_version_id").references(
+      () => contextEntryVersions.contextEntryVersionId,
+      { onDelete: "restrict" },
+    ),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.feedbackBatchId, table.observedPatchVersionId],
+      foreignColumns: [
+        playTestFeedbackBatches.feedbackBatchId,
+        playTestFeedbackBatches.observedPatchVersionId,
+      ],
+      name: "itotori_play_test_feedback_events_batch_patch_fkey",
+    }).onDelete("restrict"),
+    index("itotori_play_test_feedback_events_patch_created_idx").on(
+      table.observedPatchVersionId,
+      table.createdAt,
+    ),
+    index("itotori_play_test_feedback_events_batch_created_idx").on(
+      table.feedbackBatchId,
+      table.createdAt,
+    ),
+  ],
+);
+
+/** A feedback event can target any number of members from the patch observed. */
+export const playTestFeedbackEventUnits = pgTable(
+  "itotori_play_test_feedback_event_units",
+  {
+    feedbackEventId: text("feedback_event_id")
+      .notNull()
+      .references(() => playTestFeedbackEvents.feedbackEventId, { onDelete: "cascade" }),
+    observedPatchVersionId: text("observed_patch_version_id").notNull(),
+    bridgeUnitId: text("bridge_unit_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.feedbackEventId, table.bridgeUnitId] }),
+    foreignKey({
+      columns: [table.observedPatchVersionId, table.bridgeUnitId],
+      foreignColumns: [
+        localizationPatchVersionUnits.patchVersionId,
+        localizationPatchVersionUnits.bridgeUnitId,
+      ],
+      name: "itotori_play_test_feedback_event_units_observed_member_fkey",
+    }).onDelete("restrict"),
+    index("itotori_play_test_feedback_event_units_patch_unit_idx").on(
+      table.observedPatchVersionId,
+      table.bridgeUnitId,
+    ),
+  ],
+);
+
+/** Which informational QA annotations were rendered at the start of a session. */
+export const playSessionQaCallouts = pgTable(
+  "itotori_play_session_qa_callouts",
+  {
+    playSessionId: text("play_session_id")
+      .notNull()
+      .references(() => playSessions.playSessionId, { onDelete: "cascade" }),
+    journalFindingId: text("journal_finding_id")
+      .notNull()
+      .references(() => writtenQaFindings.journalFindingId, { onDelete: "restrict" }),
+    presentedAt: timestamp("presented_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.playSessionId, table.journalFindingId] })],
+);
+
+/** Exact feedback-batch snapshot selected at refinement launch. */
+export const localizationRefinementRunFeedbackBatches = pgTable(
+  "itotori_localization_refinement_run_feedback_batches",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => localizationJournalRuns.runId, { onDelete: "cascade" }),
+    feedbackBatchId: text("feedback_batch_id")
+      .notNull()
+      .references(() => playTestFeedbackBatches.feedbackBatchId, { onDelete: "restrict" }),
+    observedPatchVersionId: text("observed_patch_version_id")
+      .notNull()
+      .references(() => localizationPatchVersions.patchVersionId, { onDelete: "restrict" }),
+    batchOrdinal: integer("batch_ordinal").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.runId, table.feedbackBatchId] }),
+    unique("itotori_localization_refinement_run_feedback_batches_ordinal_unique").on(
+      table.runId,
+      table.batchOrdinal,
+    ),
+    foreignKey({
+      columns: [table.feedbackBatchId, table.observedPatchVersionId],
+      foreignColumns: [
+        playTestFeedbackBatches.feedbackBatchId,
+        playTestFeedbackBatches.observedPatchVersionId,
+      ],
+      name: "itotori_localization_refinement_run_feedback_batches_batch_patch_fkey",
+    }).onDelete("restrict"),
+  ],
+);
+
+/** Exact feedback-event snapshot, preventing a later batch edit from changing a run. */
+export const localizationRefinementRunFeedbackEvents = pgTable(
+  "itotori_localization_refinement_run_feedback_events",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => localizationJournalRuns.runId, { onDelete: "cascade" }),
+    feedbackEventId: text("feedback_event_id")
+      .notNull()
+      .references(() => playTestFeedbackEvents.feedbackEventId, { onDelete: "restrict" }),
+    feedbackBatchId: text("feedback_batch_id").notNull(),
+    eventOrdinal: integer("event_ordinal").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.runId, table.feedbackEventId] }),
+    unique("itotori_localization_refinement_run_feedback_events_ordinal_unique").on(
+      table.runId,
+      table.eventOrdinal,
+    ),
+    foreignKey({
+      columns: [table.runId, table.feedbackBatchId],
+      foreignColumns: [
+        localizationRefinementRunFeedbackBatches.runId,
+        localizationRefinementRunFeedbackBatches.feedbackBatchId,
+      ],
+      name: "itotori_localization_refinement_run_feedback_events_batch_fkey",
+    }).onDelete("cascade"),
+  ],
+);
+
+/** Current wiki heads resolved and frozen at refinement-run launch. */
+export const localizationRefinementRunWikiHeads = pgTable(
+  "itotori_localization_refinement_run_wiki_heads",
+  {
+    runId: text("run_id")
+      .notNull()
+      .references(() => localizationJournalRuns.runId, { onDelete: "cascade" }),
+    contextArtifactId: text("context_artifact_id")
+      .notNull()
+      .references(() => contextArtifacts.contextArtifactId, { onDelete: "restrict" }),
+    contextEntryVersionId: text("context_entry_version_id")
+      .notNull()
+      .references(() => contextEntryVersions.contextEntryVersionId, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.runId, table.contextArtifactId] }),
+    unique("itotori_localization_refinement_run_wiki_heads_version_unique").on(
+      table.runId,
+      table.contextEntryVersionId,
+    ),
+  ],
+);
+
+/** Per-unit frozen choice for a refinement run's complete scope. */
+export const localizationRefinementRunMembers = pgTable(
+  "itotori_localization_refinement_run_members",
+  {
+    runId: text("run_id").notNull(),
+    bridgeUnitId: text("bridge_unit_id").notNull(),
+    strategy: text("strategy").$type<LocalizationRefinementMemberStrategy>().notNull(),
+    basePatchVersionId: text("base_patch_version_id"),
+    baseSourceRunId: text("base_source_run_id"),
+    baseJournalOutcomeId: text("base_journal_outcome_id"),
+    baseResultRevisionId: text("base_result_revision_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.runId, table.bridgeUnitId] }),
+    index("itotori_localization_refinement_run_members_strategy_idx").on(
+      table.runId,
+      table.strategy,
+    ),
+    foreignKey({
+      columns: [table.runId, table.bridgeUnitId],
+      foreignColumns: [localizationJournalRunUnits.runId, localizationJournalRunUnits.bridgeUnitId],
+      name: "itotori_localization_refinement_run_members_planned_unit_fkey",
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [
+        table.basePatchVersionId,
+        table.bridgeUnitId,
+        table.baseSourceRunId,
+        table.baseJournalOutcomeId,
+        table.baseResultRevisionId,
+      ],
+      foreignColumns: [
+        localizationPatchVersionUnits.patchVersionId,
+        localizationPatchVersionUnits.bridgeUnitId,
+        localizationPatchVersionUnits.sourceRunId,
+        localizationPatchVersionUnits.journalOutcomeId,
+        localizationPatchVersionUnits.resultRevisionId,
+      ],
+      name: "itotori_localization_refinement_run_members_base_member_fkey",
+    }).onDelete("restrict"),
   ],
 );
 

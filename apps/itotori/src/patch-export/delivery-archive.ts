@@ -8,7 +8,7 @@
 
 import { lstat, readdir, readFile, realpath } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
-import { verifyLocalizationArtifactManifest, type SelectedPatchExport } from "@itotori/db";
+import { verifyLocalizationArtifactManifest, type PlayablePatchExport } from "@itotori/db";
 
 export type DeliveredPatchArchive = {
   contentType: "application/x-tar";
@@ -26,7 +26,7 @@ type ArchiveEntry =
  * this is the final byte-serving boundary, not merely metadata inspection.
  */
 export async function createDeliveredPatchArchive(
-  selected: SelectedPatchExport,
+  selected: PlayablePatchExport,
 ): Promise<DeliveredPatchArchive> {
   verifyLocalizationArtifactManifest(selected.artifactRefs, selected.artifactHashes);
   const patchTarget = selected.artifactRefs.patchTarget;

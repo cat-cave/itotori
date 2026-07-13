@@ -181,6 +181,9 @@ describe("dlsite-demand recorded importer", () => {
     }
   });
 
+  // This assertion deliberately provisions two fresh 55-migration schemas.
+  // In a parallel full DB run they can queue behind the migration advisory
+  // lock, so retain its deterministic replay coverage with a generous timeout.
   it("assigns non-rank demand fact observedAt deterministically from recorded input across reprocessing", async () => {
     // CATALOG-086: non-rank DLsite demand facts previously derived observedAt from
     // insertion wall-clock time, so reprocessing the same recorded input produced
@@ -216,7 +219,7 @@ describe("dlsite-demand recorded importer", () => {
     expect(observedAtForKind(first, catalogDemandFactKindValues.rank)).toBe(
       observedAtForKind(second, catalogDemandFactKindValues.rank),
     );
-  });
+  }, 180_000);
 
   it("reports present malformed demand fields as DLsite parse drift", () => {
     expect(() => createDlsiteRecordedStorefrontAdapter(parseDriftFixture)).toThrow(

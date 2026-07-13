@@ -40,6 +40,7 @@ import {
   parsePlayScenePickerRoute,
   playRouteFromAddressable,
 } from "./screens/PlayScenePickerScreen.js";
+import { PatchIterationScreen, parsePatchIterationRoute } from "./screens/PatchIterationScreen.js";
 import { PlayRouteMapScreen, parsePlayRouteMapRoute } from "./screens/PlayRouteMapScreen.js";
 import {
   PlayFlagComposerScreen,
@@ -148,14 +149,20 @@ function AppWithCaps({
     <RedactionGovernor revealSensitive={resolvedReveal}>
       <ToastProvider>
         <ShellFrame location={location} navigate={navigate}>
-          <RoutedScreen location={location} />
+          <RoutedScreen location={location} navigate={navigate} />
         </ShellFrame>
       </ToastProvider>
     </RedactionGovernor>
   );
 }
 
-function RoutedScreen({ location }: { location: AppLocation }): ReactNode {
+function RoutedScreen({
+  location,
+  navigate,
+}: {
+  location: AppLocation;
+  navigate: (path: string) => void;
+}): ReactNode {
   // Legacy (not-yet-ported) routes are checked FIRST so `/reviewer-queue/batch`
   // resolves to the batch renderer before the reviewer-detail regex (which
   // also matches that path) — preserving the original dispatch precedence.
@@ -234,6 +241,13 @@ function RoutedScreen({ location }: { location: AppLocation }): ReactNode {
   const playFlag = parsePlayFlagComposerRoute(location.pathname, location.search);
   if (playFlag !== null) {
     return <PlayFlagComposerScreen route={playFlag} />;
+  }
+
+  // `/play/patches` — immutable lineage → exact-version play session →
+  // persisted feedback → refinement v2. Keep it before the bare Play route.
+  const patchIteration = parsePatchIterationRoute(location.pathname, location.search);
+  if (patchIteration !== null) {
+    return <PatchIterationScreen route={patchIteration} navigate={navigate} />;
   }
 
   // `/play` — the Play scene picker (translated-summary navigation + source ↔

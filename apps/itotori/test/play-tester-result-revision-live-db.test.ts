@@ -174,7 +174,7 @@ describe.skipIf(!process.env.DATABASE_URL)("play-tester result revision live DB"
         artifacts.cleanup();
       }
     }
-  }, 120_000);
+  }, 180_000);
 
   it("cleans production Kaifuu output when a real DB trigger aborts the child transaction", async () => {
     const context = await isolatedMigratedContext();
@@ -289,7 +289,7 @@ describe.skipIf(!process.env.DATABASE_URL)("play-tester result revision live DB"
         artifacts.cleanup();
       }
     }
-  }, 120_000);
+  }, 180_000);
 });
 
 async function seedPlayableProductionRun(

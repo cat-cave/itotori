@@ -54,6 +54,17 @@ import type {
   ApiPlayTargetEditRequest,
   ApiPlayTargetEditResponse,
   ApiPlayDeliveryResponse,
+  ApiPatchIterationDeliveryResponse,
+  ApiPatchIterationFeedbackBatchRequest,
+  ApiPatchIterationFeedbackBatchResponse,
+  ApiPatchIterationFeedbackRequest,
+  ApiPatchIterationFeedbackResponse,
+  ApiPatchIterationPlayRequest,
+  ApiPatchIterationPlayResponse,
+  ApiPatchIterationRefineRequest,
+  ApiPatchIterationRefineResponse,
+  ApiPatchIterationSurfaceResponse,
+  ApiPatchIterationVersionsResponse,
   ApiPlaySceneCoverageResponse,
   ApiPlaySetSceneCoverageRequest,
   ApiPlaySetSceneCoverageResponse,
@@ -451,6 +462,40 @@ interface ItotoriApiRouteTypeMap {
     pathParams: { runId: string };
     collectionKey: "units";
   };
+  "patchIteration.versions": {
+    response: ApiPatchIterationVersionsResponse;
+    pathParams: { localeBranchId: string };
+    collectionKey: "versions";
+  };
+  "patchIteration.surface": {
+    response: ApiPatchIterationSurfaceResponse;
+    pathParams: { patchVersionId: string };
+  };
+  "patchIteration.delivery": {
+    response: ApiPatchIterationDeliveryResponse;
+    pathParams: { patchVersionId: string };
+    collectionKey: "units";
+  };
+  "patchIteration.play": {
+    response: ApiPatchIterationPlayResponse;
+    pathParams: { patchVersionId: string };
+    request: ApiPatchIterationPlayRequest;
+  };
+  "patchIteration.feedbackBatch": {
+    response: ApiPatchIterationFeedbackBatchResponse;
+    pathParams: { patchVersionId: string };
+    request: ApiPatchIterationFeedbackBatchRequest;
+  };
+  "patchIteration.feedback": {
+    response: ApiPatchIterationFeedbackResponse;
+    pathParams: { patchVersionId: string };
+    request: ApiPatchIterationFeedbackRequest;
+  };
+  "patchIteration.refine": {
+    response: ApiPatchIterationRefineResponse;
+    pathParams: { patchVersionId: string };
+    request: ApiPatchIterationRefineRequest;
+  };
 }
 
 /** The typed response body a route returns (from api-schema.ts). */
@@ -578,6 +623,7 @@ const ITOTORI_API_COLLECTION_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, st
   // play-mark-validated — empty when no RouteMap nodes (no scenes to cover).
   "play.sceneCoverage": "nodes",
   "play.delivery": "units",
+  "patchIteration.versions": "versions",
 };
 
 function defaultIsEmpty(routeId: ItotoriApiRouteId, data: unknown): boolean {

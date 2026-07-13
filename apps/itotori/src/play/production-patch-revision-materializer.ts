@@ -26,6 +26,7 @@ import { bracketWrapForRealLive } from "../orchestrator/localize-project-stage-c
 import type { TranslationScope } from "../orchestrator/project-driven-executor.js";
 
 const PATCH_APPLY_RECEIPT_SCHEMA_VERSION = "itotori.play-tester-patch-apply.v0.1";
+const REFINEMENT_PATCH_APPLY_RECEIPT_SCHEMA_VERSION = "itotori.refinement-patch-apply.v0.1";
 
 type ParentPatchApplyReceipt = {
   command: string;
@@ -47,6 +48,34 @@ type ChildPatchApplyReceipt = {
 };
 
 /**
+ * A refinement is one complete next PatchVersion, not a chain of one-off
+ * play-tester edit patches.  It may rewrite several feedback-affected targets
+ * while carrying the untouched targets forward from the observed version.
+ */
+export type RefinementPatchArtifactMaterializationInput = {
+  patchVersionId: string;
+  parentPatchVersionId: string;
+  parentArtifactRefs: Readonly<Record<string, string>>;
+  parentArtifactHashes: Readonly<Record<string, string>>;
+  targetRevisions: ReadonlyArray<{ bridgeUnitId: string; targetBody: string }>;
+};
+
+export type MaterializedRefinementPatchArtifact = {
+  artifactRefs: Record<string, string>;
+  artifactHashes: Record<string, string>;
+  cleanup(): void;
+};
+
+type RefinementPatchApplyReceipt = {
+  schemaVersion: typeof REFINEMENT_PATCH_APPLY_RECEIPT_SCHEMA_VERSION;
+  parentPatchVersionId: string;
+  patchVersionId: string;
+  bridgeUnitIds: string[];
+  engine: PatchEngine;
+  apply: ParentPatchApplyReceipt;
+};
+
+/**
  * Produces a child delivery under the parent patch target's owned run directory.
  * The route never supplies a filesystem path; the child location is derived
  * solely from the hash-bound parent manifest.
@@ -55,93 +84,150 @@ export class ProductionPlayTesterPatchArtifactMaterializer implements PlayTester
   async materialize(
     input: PlayTesterPatchArtifactMaterializationInput,
   ): Promise<MaterializedPlayTesterPatchArtifact> {
-    verifyLocalizationArtifactManifest(input.parentArtifactRefs, input.parentArtifactHashes);
-
-    const parentTranslatedBridge = requiredArtifactRef(
-      input.parentArtifactRefs,
-      "translatedBridge",
-    );
-    const parentPatchApply = requiredArtifactRef(input.parentArtifactRefs, "patchApply");
-    const parentPatchTarget = requiredArtifactRef(input.parentArtifactRefs, "patchTarget");
-    const priorApply = readPatchApplyReceipt(parentPatchApply, input.parentPatchVersionId);
-    const engine = patchEngineFromArgs(priorApply.args);
-    assertParentPatchApplyProvenance({
-      receipt: priorApply,
-      engine,
-      translatedBridgePath: parentTranslatedBridge,
-      patchTargetPath: parentPatchTarget,
+    const materialized = await materializeInheritedPatch({
+      patchVersionId: input.childPatchVersionId,
+      parentPatchVersionId: input.parentPatchVersionId,
+      parentArtifactRefs: input.parentArtifactRefs,
+      parentArtifactHashes: input.parentArtifactHashes,
+      targetRevisions: [{ bridgeUnitId: input.bridgeUnitId, targetBody: input.targetBody }],
+      revisionKind: "play-tester",
     });
-    const sourceRoot = requiredOption(priorApply.args, "--source");
+    return materialized;
+  }
+}
 
-    // Retain the complete inherited translation set. The underlying patcher
-    // requires the original (hash-matching) game source, so a child is
-    // re-materialized from this parent delivery bridge rather than treating a
-    // sparse patched overlay as a source game.
-    const childRoot = childRevisionRoot(parentPatchTarget, input.childPatchVersionId);
-    const childTarget = join(childRoot, "patch-target");
-    const childTranslatedBridge = join(childRoot, "translated-bridge.json");
-    const childPatchApply = join(childRoot, "patch-apply.json");
-    const childDelta = join(childRoot, "patch.delta.kaifuu");
+/**
+ * The refinement coordinator reuses this real-byte materializer after it has
+ * assembled feedback-affected revisions with inherited unaffected membership.
+ * This deliberately shares the node-10 Kaifuu path rather than producing a
+ * synthetic patch tree for the iteration loop.
+ */
+export class ProductionRefinementPatchArtifactMaterializer {
+  async materialize(
+    input: RefinementPatchArtifactMaterializationInput,
+  ): Promise<MaterializedRefinementPatchArtifact> {
+    return await materializeInheritedPatch({ ...input, revisionKind: "refinement" });
+  }
+}
 
-    rmSync(childRoot, { recursive: true, force: true });
-    try {
-      mkdirSync(childRoot, { recursive: true });
-      const revisedBridge = rewriteInheritedTarget({
-        translatedBridgePath: parentTranslatedBridge,
-        bridgeUnitId: input.bridgeUnitId,
-        targetBody: input.targetBody,
-        engine,
-      });
-      writeFileSync(childTranslatedBridge, `${JSON.stringify(revisedBridge, null, 2)}\n`, "utf8");
+async function materializeInheritedPatch(input: {
+  patchVersionId: string;
+  parentPatchVersionId: string;
+  parentArtifactRefs: Readonly<Record<string, string>>;
+  parentArtifactHashes: Readonly<Record<string, string>>;
+  targetRevisions: ReadonlyArray<{ bridgeUnitId: string; targetBody: string }>;
+  revisionKind: "play-tester" | "refinement";
+}): Promise<MaterializedRefinementPatchArtifact> {
+  if (input.targetRevisions.length === 0) {
+    throw new Error("refinement patch materialization requires at least one changed target");
+  }
+  const targetBodies = new Map<string, string>();
+  for (const revision of input.targetRevisions) {
+    if (revision.bridgeUnitId.trim().length === 0 || revision.targetBody.trim().length === 0) {
+      throw new Error("refinement patch materialization requires non-blank unit ids and targets");
+    }
+    if (targetBodies.has(revision.bridgeUnitId)) {
+      throw new Error(
+        `refinement patch materialization received duplicate unit ${revision.bridgeUnitId}`,
+      );
+    }
+    targetBodies.set(revision.bridgeUnitId, revision.targetBody);
+  }
+  verifyLocalizationArtifactManifest(input.parentArtifactRefs, input.parentArtifactHashes);
 
-      const apply =
-        engine === "reallive"
-          ? applyKaifuuRealLivePatch({
-              sourceRoot,
-              targetRoot: childTarget,
-              translatedBundlePath: childTranslatedBridge,
-              translationScope: translationScopeFromKaifuu(
-                requiredOption(priorApply.args, "--scope"),
-              ),
-              force: false,
-            })
-          : applyKaifuuRpgMakerPatch({
-              sourceRoot,
-              patchedDataOutputPath: childTarget,
-              deltaOutputPath: childDelta,
-              translatedBundlePath: childTranslatedBridge,
-            });
+  const parentTranslatedBridge = requiredArtifactRef(input.parentArtifactRefs, "translatedBridge");
+  const parentPatchApply = requiredArtifactRef(input.parentArtifactRefs, "patchApply");
+  const parentPatchTarget = requiredArtifactRef(input.parentArtifactRefs, "patchTarget");
+  const priorApply = readPatchApplyReceipt(parentPatchApply, input.parentPatchVersionId);
+  const engine = patchEngineFromArgs(priorApply.args);
+  assertParentPatchApplyProvenance({
+    receipt: priorApply,
+    engine,
+    translatedBridgePath: parentTranslatedBridge,
+    patchTargetPath: parentPatchTarget,
+  });
+  const sourceRoot = requiredOption(priorApply.args, "--source");
 
-      assertMaterializedPatchOutput(engine, childTarget, childDelta);
+  // Retain the complete inherited translation set. The underlying patcher
+  // requires the original (hash-matching) game source, so a version is
+  // re-materialized from the parent delivery bridge rather than treating a
+  // sparse patched overlay as a source game.
+  const childRoot = childRevisionRoot(
+    parentPatchTarget,
+    input.patchVersionId,
+    input.revisionKind === "refinement" ? "refinement-revisions" : "play-tester-revisions",
+  );
+  const childTarget = join(childRoot, "patch-target");
+  const childTranslatedBridge = join(childRoot, "translated-bridge.json");
+  const childPatchApply = join(childRoot, "patch-apply.json");
+  const childDelta = join(childRoot, "patch.delta.kaifuu");
+
+  rmSync(childRoot, { recursive: true, force: true });
+  try {
+    mkdirSync(childRoot, { recursive: true });
+    const revisedBridge = rewriteInheritedTargets({
+      translatedBridgePath: parentTranslatedBridge,
+      targetBodies,
+      engine,
+    });
+    writeFileSync(childTranslatedBridge, `${JSON.stringify(revisedBridge, null, 2)}\n`, "utf8");
+
+    const apply =
+      engine === "reallive"
+        ? applyKaifuuRealLivePatch({
+            sourceRoot,
+            targetRoot: childTarget,
+            translatedBundlePath: childTranslatedBridge,
+            translationScope: translationScopeFromKaifuu(
+              requiredOption(priorApply.args, "--scope"),
+            ),
+            force: false,
+          })
+        : applyKaifuuRpgMakerPatch({
+            sourceRoot,
+            patchedDataOutputPath: childTarget,
+            deltaOutputPath: childDelta,
+            translatedBundlePath: childTranslatedBridge,
+          });
+
+    assertMaterializedPatchOutput(engine, childTarget, childDelta);
+    if (input.revisionKind === "play-tester") {
+      const onlyRevision = input.targetRevisions[0]!;
       writePatchApplyReceipt(childPatchApply, {
         parentPatchVersionId: input.parentPatchVersionId,
-        childPatchVersionId: input.childPatchVersionId,
-        bridgeUnitId: input.bridgeUnitId,
+        childPatchVersionId: input.patchVersionId,
+        bridgeUnitId: onlyRevision.bridgeUnitId,
         engine,
         apply,
       });
-
-      const artifactRefs: Record<string, string> = {
-        translatedBridge: childTranslatedBridge,
-        patchApply: childPatchApply,
-        patchTarget: childTarget,
-      };
-      if (engine === "rpgmaker") {
-        artifactRefs.rpgMakerDelta = childDelta;
-      }
-      const artifactHashes = Object.fromEntries(
-        Object.entries(artifactRefs).map(([key, path]) => [key, hashLocalizationArtifact(path)]),
-      );
-      verifyLocalizationArtifactManifest(artifactRefs, artifactHashes);
-      return {
-        artifactRefs,
-        artifactHashes,
-        cleanup: () => rmSync(childRoot, { recursive: true, force: true }),
-      };
-    } catch (error) {
-      rmSync(childRoot, { recursive: true, force: true });
-      throw error;
+    } else {
+      writeRefinementPatchApplyReceipt(childPatchApply, {
+        parentPatchVersionId: input.parentPatchVersionId,
+        patchVersionId: input.patchVersionId,
+        bridgeUnitIds: [...targetBodies.keys()].sort(),
+        engine,
+        apply,
+      });
     }
+
+    const artifactRefs: Record<string, string> = {
+      translatedBridge: childTranslatedBridge,
+      patchApply: childPatchApply,
+      patchTarget: childTarget,
+    };
+    if (engine === "rpgmaker") artifactRefs.rpgMakerDelta = childDelta;
+    const artifactHashes = Object.fromEntries(
+      Object.entries(artifactRefs).map(([key, path]) => [key, hashLocalizationArtifact(path)]),
+    );
+    verifyLocalizationArtifactManifest(artifactRefs, artifactHashes);
+    return {
+      artifactRefs,
+      artifactHashes,
+      cleanup: () => rmSync(childRoot, { recursive: true, force: true }),
+    };
+  } catch (error) {
+    rmSync(childRoot, { recursive: true, force: true });
+    throw error;
   }
 }
 
@@ -153,8 +239,12 @@ function requiredArtifactRef(refs: Readonly<Record<string, string>>, key: string
   return resolve(value);
 }
 
-function childRevisionRoot(parentPatchTarget: string, childPatchVersionId: string): string {
-  const root = join(dirname(resolve(parentPatchTarget)), "play-tester-revisions");
+function childRevisionRoot(
+  parentPatchTarget: string,
+  childPatchVersionId: string,
+  directoryName: "play-tester-revisions" | "refinement-revisions",
+): string {
+  const root = join(dirname(resolve(parentPatchTarget)), directoryName);
   // The external id can contain arbitrary user/project identifiers. A lossy
   // replacement (for example, mapping both `a/b` and `a?b` to `a_b`) could
   // make one revision delete another's output on retry. Keep the filesystem
@@ -169,6 +259,9 @@ function readPatchApplyReceipt(
   try {
     const value = JSON.parse(readFileSync(path, "utf8")) as unknown;
     if (isRecord(value) && "apply" in value) {
+      if (value.schemaVersion === REFINEMENT_PATCH_APPLY_RECEIPT_SCHEMA_VERSION) {
+        return readRefinementPatchApplyReceipt(value, expectedPatchVersionId);
+      }
       return readChildPatchApplyReceipt(value, expectedPatchVersionId);
     }
     return parseKaifuuPatchApplyResult(value);
@@ -216,6 +309,40 @@ function readChildPatchApplyReceipt(
   const apply = parseKaifuuPatchApplyResult(value.apply);
   if (patchEngineFromArgs(apply.args) !== engine) {
     throw new Error("child patch-apply receipt engine does not match nested apply arguments");
+  }
+  return apply;
+}
+
+function readRefinementPatchApplyReceipt(
+  value: Record<string, unknown>,
+  expectedPatchVersionId: string,
+): ParentPatchApplyReceipt {
+  if (value.schemaVersion !== REFINEMENT_PATCH_APPLY_RECEIPT_SCHEMA_VERSION) {
+    throw new Error(
+      `unsupported refinement patch-apply receipt schema '${String(value.schemaVersion)}'`,
+    );
+  }
+  if (requiredReceiptString(value, "patchVersionId") !== expectedPatchVersionId) {
+    throw new Error(
+      `refinement patch-apply receipt does not identify expected parent ${expectedPatchVersionId}`,
+    );
+  }
+  requiredReceiptString(value, "parentPatchVersionId");
+  if (!Array.isArray(value.bridgeUnitIds) || value.bridgeUnitIds.length === 0) {
+    throw new Error("refinement patch-apply receipt has no rewritten bridge units");
+  }
+  if (
+    value.bridgeUnitIds.some((unitId) => typeof unitId !== "string" || unitId.trim().length === 0)
+  ) {
+    throw new Error("refinement patch-apply receipt has invalid rewritten bridge units");
+  }
+  const engine = value.engine;
+  if (engine !== "reallive" && engine !== "rpgmaker") {
+    throw new Error("refinement patch-apply receipt has an unsupported engine");
+  }
+  const apply = parseKaifuuPatchApplyResult(value.apply);
+  if (patchEngineFromArgs(apply.args) !== engine) {
+    throw new Error("refinement patch-apply receipt engine does not match nested apply arguments");
   }
   return apply;
 }
@@ -316,10 +443,9 @@ function translationScopeFromKaifuu(scope: string): TranslationScope {
   throw new Error(`play-tester patch revision cannot replay unsupported Kaifuu scope '${scope}'`);
 }
 
-function rewriteInheritedTarget(input: {
+function rewriteInheritedTargets(input: {
   translatedBridgePath: string;
-  bridgeUnitId: string;
-  targetBody: string;
+  targetBodies: ReadonlyMap<string, string>;
   engine: PatchEngine;
 }): Record<string, unknown> {
   let raw: unknown;
@@ -340,33 +466,36 @@ function rewriteInheritedTarget(input: {
     throw new Error("play-tester patch revision parent translated bridge has no units array");
   }
 
-  let rewrites = 0;
+  const rewritten = new Set<string>();
   for (const unit of clone.units) {
     if (typeof unit !== "object" || unit === null || Array.isArray(unit)) continue;
     const record = unit as Record<string, unknown>;
-    if (record.bridgeUnitId !== input.bridgeUnitId) continue;
+    if (typeof record.bridgeUnitId !== "string") continue;
+    const targetBody = input.targetBodies.get(record.bridgeUnitId);
+    if (targetBody === undefined) continue;
     const priorTarget = record.target;
     if (typeof priorTarget !== "object" || priorTarget === null || Array.isArray(priorTarget)) {
-      throw new Error(
-        `play-tester patch revision parent unit ${input.bridgeUnitId} has no target provenance`,
-      );
+      throw new Error(`patch revision parent unit ${record.bridgeUnitId} has no target provenance`);
     }
     const locale = (priorTarget as Record<string, unknown>).locale;
     if (typeof locale !== "string" || locale.trim().length === 0) {
       throw new Error(
-        `play-tester patch revision parent unit ${input.bridgeUnitId} has no target locale provenance`,
+        `patch revision parent unit ${record.bridgeUnitId} has no target locale provenance`,
       );
     }
     record.target = {
       locale,
-      text:
-        input.engine === "reallive" ? bracketWrapForRealLive(input.targetBody) : input.targetBody,
+      text: input.engine === "reallive" ? bracketWrapForRealLive(targetBody) : targetBody,
     };
-    rewrites += 1;
+    if (rewritten.has(record.bridgeUnitId)) {
+      throw new Error(`patch revision expected one inherited bridge unit ${record.bridgeUnitId}`);
+    }
+    rewritten.add(record.bridgeUnitId);
   }
-  if (rewrites !== 1) {
+  const missing = [...input.targetBodies.keys()].filter((unitId) => !rewritten.has(unitId));
+  if (missing.length > 0) {
     throw new Error(
-      `play-tester patch revision expected exactly one inherited bridge unit ${input.bridgeUnitId}, found ${rewrites}`,
+      `patch revision expected inherited bridge unit(s) ${missing.join(", ")}, found ${rewritten.size}`,
     );
   }
   return clone;
@@ -400,6 +529,27 @@ function writePatchApplyReceipt(
     parentPatchVersionId: input.parentPatchVersionId,
     childPatchVersionId: input.childPatchVersionId,
     bridgeUnitId: input.bridgeUnitId,
+    engine: input.engine,
+    apply: input.apply,
+  };
+  writeFileSync(path, `${JSON.stringify(receipt, null, 2)}\n`, "utf8");
+}
+
+function writeRefinementPatchApplyReceipt(
+  path: string,
+  input: {
+    parentPatchVersionId: string;
+    patchVersionId: string;
+    bridgeUnitIds: string[];
+    engine: PatchEngine;
+    apply: KaifuuPatchApplyResult;
+  },
+): void {
+  const receipt: RefinementPatchApplyReceipt = {
+    schemaVersion: REFINEMENT_PATCH_APPLY_RECEIPT_SCHEMA_VERSION,
+    parentPatchVersionId: input.parentPatchVersionId,
+    patchVersionId: input.patchVersionId,
+    bridgeUnitIds: input.bridgeUnitIds,
     engine: input.engine,
     apply: input.apply,
   };

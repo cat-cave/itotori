@@ -466,6 +466,10 @@ export const migrations = [
     file: "0090_play_tester_result_revision.sql",
     legacyIds: ["0089_play_tester_result_revision"],
   },
+  {
+    id: "0091_iterative_patch_versioning_and_playtest_feedback",
+    file: "0091_iterative_patch_versioning_and_playtest_feedback.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

@@ -14,19 +14,30 @@ import {
   type WrittenQaFinding,
   type WrittenUnitOutcome,
 } from "@itotori/localization-bridge-schema";
-import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import type { ItotoriDatabase } from "../connection.js";
 import {
+  contextArtifacts,
+  contextEntryVersions,
   localeBranches,
   localizationJournalCostReservations,
   localizationJournalLlmAttempts,
   localizationJournalRunCostAccounts,
-  localizationResultRevisions,
   localizationJournalRuns,
   localizationJournalRunUnits,
+  localizationPatchVersionUnits,
+  localizationPatchVersions,
+  localizationRefinementRunFeedbackBatches,
+  localizationRefinementRunFeedbackEvents,
+  localizationRefinementRunMembers,
+  localizationRefinementRunWikiHeads,
+  localizationResultRevisions,
   outcomeContextRefs,
   outcomeSpeakerLabels,
+  playTestFeedbackBatches,
+  playTestFeedbackEvents,
+  playTestFeedbackEventUnits,
   sourceRevisions,
   translationCandidates,
   type LocalizationJournalQaSpan,
@@ -105,6 +116,27 @@ export type SeedLocalizationJournalRunUnitInput = {
   nextAction: LocalizationJournalUnitNextAction;
 };
 
+/** A caller-supplied immutable wiki head; omit the array to freeze all current heads. */
+export type SeedLocalizationJournalRefinementWikiHeadInput = {
+  contextArtifactId: string;
+  contextEntryVersionId: string;
+};
+
+/**
+ * Frozen iteration inputs for a refinement run. The journal owns these fields
+ * so run creation and its complete obligation set commit atomically.
+ */
+export type SeedLocalizationJournalRefinementInput = {
+  basePatchVersionId: string;
+  /** Whole durable batches selected by the play tester. */
+  feedbackBatchIds: readonly string[];
+  /** Individually selected immutable events, including events within a batch. */
+  feedbackEventIds?: readonly string[];
+  wikiHeads?: readonly SeedLocalizationJournalRefinementWikiHeadInput[];
+  /** Explicit affected units in addition to feedback and wiki impact. */
+  redraftUnitIds?: readonly string[];
+};
+
 /** Immutable run inputs plus the complete ordered unit obligation set. */
 export type SeedLocalizationJournalRunInput = {
   runId?: string;
@@ -116,6 +148,8 @@ export type SeedLocalizationJournalRunInput = {
   routingPolicy: Record<string, unknown>;
   costPolicy: Record<string, unknown>;
   units: readonly SeedLocalizationJournalRunUnitInput[];
+  /** Present only for a vN refinement launched from a playable base patch. */
+  refinement?: SeedLocalizationJournalRefinementInput;
   /** Present on a newly-driven run; resume verifies the plan before taking a new fence. */
   lease?: SeedLocalizationJournalRunLeaseInput;
   createdAt?: LocalizationJournalTimestamp;
@@ -342,6 +376,7 @@ export type LocalizationJournalRunRecord = {
   frozenScope: Record<string, unknown> | unknown[] | null;
   routingPolicy: Record<string, unknown> | null;
   costPolicy: Record<string, unknown> | null;
+  basePatchVersionId: string | null;
   status: LocalizationJournalRunStatus;
   pausedBlocker: LocalizationJournalOperationalBlocker | null;
   leaseOwnerId: string | null;
@@ -800,6 +835,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
           frozenScope: input.frozenScope,
           routingPolicy: input.routingPolicy,
           costPolicy: input.costPolicy,
+          basePatchVersionId: input.refinement?.basePatchVersionId ?? null,
           status: "running",
           pausedBlocker: null,
           leaseOwnerId: initialLease?.ownerId ?? null,
@@ -815,6 +851,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
       let run = await requireRunInTx(tx, runId);
       const preExistingFrozenRun = insertedRuns[0] === undefined && run.frozenScope !== null;
       assertSeedRunIdentity(run, input);
+      assertSeedRefinementIdentity(run, input.refinement);
       if (run.frozenScope === null && run.routingPolicy === null && run.costPolicy === null) {
         const upgraded = await tx
           .update(localizationJournalRuns)
@@ -858,6 +895,9 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
       if (preExistingFrozenRun) {
         const persistedUnits = await loadRunUnitsInTx(tx, runId);
         assertSeededUnitSet(runId, persistedUnits, input.units);
+        if (input.refinement !== undefined) {
+          await ensureRefinementRunMetadataInTx(tx, run, input);
+        }
         return journalRunRowToRecord(run);
       }
 
@@ -882,6 +922,9 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
 
       const persistedUnits = await loadRunUnitsInTx(tx, runId);
       assertSeededUnitSet(runId, persistedUnits, input.units);
+      if (input.refinement !== undefined) {
+        await ensureRefinementRunMetadataInTx(tx, run, input);
+      }
       return journalRunRowToRecord(run);
     });
   }
@@ -939,6 +982,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
         frozenScope: null,
         routingPolicy: null,
         costPolicy: null,
+        basePatchVersionId: null,
         status: "running",
         pausedBlocker: null,
         leaseOwnerId: null,
@@ -2579,7 +2623,60 @@ function validateSeedRunInput(input: SeedLocalizationJournalRunInput): void {
     }
     normalizeNextAction(unit.nextAction, `units[${index}].nextAction`);
   }
+  if (input.refinement !== undefined) validateSeedRefinementInput(input.refinement);
   if (input.lease !== undefined) normalizeSeedRunLease(input.lease, "lease");
+}
+
+function validateSeedRefinementInput(input: SeedLocalizationJournalRefinementInput): void {
+  assertNonBlank(input.basePatchVersionId, "refinement.basePatchVersionId");
+  if (!Array.isArray(input.feedbackBatchIds)) {
+    throw new LocalizationJournalRepositoryError(
+      "invalid_input",
+      "refinement.feedbackBatchIds must be an array",
+    );
+  }
+  assertUniqueNonBlankStrings(input.feedbackBatchIds, "refinement.feedbackBatchIds");
+  if (input.feedbackEventIds !== undefined) {
+    if (!Array.isArray(input.feedbackEventIds)) {
+      throw new LocalizationJournalRepositoryError(
+        "invalid_input",
+        "refinement.feedbackEventIds must be an array when supplied",
+      );
+    }
+    assertUniqueNonBlankStrings(input.feedbackEventIds, "refinement.feedbackEventIds");
+  }
+  if (input.wikiHeads !== undefined) {
+    if (!Array.isArray(input.wikiHeads)) {
+      throw new LocalizationJournalRepositoryError(
+        "invalid_input",
+        "refinement.wikiHeads must be an array when supplied",
+      );
+    }
+    const artifactIds = new Set<string>();
+    for (const [index, head] of input.wikiHeads.entries()) {
+      assertNonBlank(head.contextArtifactId, `refinement.wikiHeads[${index}].contextArtifactId`);
+      assertNonBlank(
+        head.contextEntryVersionId,
+        `refinement.wikiHeads[${index}].contextEntryVersionId`,
+      );
+      if (artifactIds.has(head.contextArtifactId)) {
+        throw new LocalizationJournalRepositoryError(
+          "invalid_input",
+          `refinement.wikiHeads contains duplicate artifact ${head.contextArtifactId}`,
+        );
+      }
+      artifactIds.add(head.contextArtifactId);
+    }
+  }
+  if (input.redraftUnitIds !== undefined) {
+    if (!Array.isArray(input.redraftUnitIds)) {
+      throw new LocalizationJournalRepositoryError(
+        "invalid_input",
+        "refinement.redraftUnitIds must be an array when supplied",
+      );
+    }
+    assertUniqueNonBlankStrings(input.redraftUnitIds, "refinement.redraftUnitIds");
+  }
 }
 
 function normalizeLeaseSeconds(value: number | undefined, label: string): number {
@@ -3118,6 +3215,19 @@ function assertSeedRunIdentity(
   }
 }
 
+function assertSeedRefinementIdentity(
+  row: typeof localizationJournalRuns.$inferSelect,
+  refinement: SeedLocalizationJournalRefinementInput | undefined,
+): void {
+  const expected = refinement?.basePatchVersionId ?? null;
+  if ((row.basePatchVersionId ?? null) !== expected) {
+    throw new LocalizationJournalRepositoryError(
+      "run_seed_conflict",
+      `journal run ${row.runId} already exists with a different refinement base patch`,
+    );
+  }
+}
+
 function assertSeededUnitSet(
   runId: string,
   rows: Array<typeof localizationJournalRunUnits.$inferSelect>,
@@ -3143,6 +3253,403 @@ function assertSeededUnitSet(
       );
     }
   }
+}
+
+/**
+ * Persist the immutable iteration inputs in the same transaction that seeded
+ * the run and its units. A retry sees the existing snapshot rather than
+ * recomputing it against newer feedback or wiki heads.
+ */
+async function ensureRefinementRunMetadataInTx(
+  tx: JournalTransaction,
+  run: typeof localizationJournalRuns.$inferSelect,
+  input: SeedLocalizationJournalRunInput,
+): Promise<void> {
+  const refinement = input.refinement;
+  if (refinement === undefined) return;
+
+  const existingMembers = await tx
+    .select()
+    .from(localizationRefinementRunMembers)
+    .where(eq(localizationRefinementRunMembers.runId, run.runId));
+  if (existingMembers.length > 0) {
+    const [existingBatches, existingEvents] = await Promise.all([
+      tx
+        .select()
+        .from(localizationRefinementRunFeedbackBatches)
+        .where(eq(localizationRefinementRunFeedbackBatches.runId, run.runId))
+        .orderBy(asc(localizationRefinementRunFeedbackBatches.batchOrdinal)),
+      tx
+        .select()
+        .from(localizationRefinementRunFeedbackEvents)
+        .where(eq(localizationRefinementRunFeedbackEvents.runId, run.runId)),
+    ]);
+    const existingBatchIds = new Set(existingBatches.map((row) => row.feedbackBatchId));
+    const existingEventIds = new Set(existingEvents.map((row) => row.feedbackEventId));
+    const missingRequestedBatch = refinement.feedbackBatchIds.find(
+      (feedbackBatchId) => !existingBatchIds.has(feedbackBatchId),
+    );
+    const missingRequestedEvent = (refinement.feedbackEventIds ?? []).find(
+      (feedbackEventId) => !existingEventIds.has(feedbackEventId),
+    );
+    if (
+      existingMembers.length !== input.units.length ||
+      missingRequestedBatch !== undefined ||
+      missingRequestedEvent !== undefined
+    ) {
+      throw new LocalizationJournalRepositoryError(
+        "run_seed_conflict",
+        `refinement snapshot for run ${run.runId} differs from the requested frozen inputs`,
+      );
+    }
+    return;
+  }
+
+  await tx.execute(sql`
+    select patch_version_id
+    from itotori_localization_patch_versions
+    where patch_version_id = ${refinement.basePatchVersionId}
+    for update
+  `);
+  const baseRows = await tx
+    .select({
+      patchVersionId: localizationPatchVersions.patchVersionId,
+      status: localizationPatchVersions.status,
+      projectId: localizationJournalRuns.projectId,
+      localeBranchId: localizationJournalRuns.localeBranchId,
+      sourceRevisionId: localizationJournalRuns.sourceRevisionId,
+      targetLocale: localizationJournalRuns.targetLocale,
+    })
+    .from(localizationPatchVersions)
+    .innerJoin(
+      localizationJournalRuns,
+      eq(localizationPatchVersions.runId, localizationJournalRuns.runId),
+    )
+    .where(eq(localizationPatchVersions.patchVersionId, refinement.basePatchVersionId))
+    .limit(1);
+  const base = baseRows[0];
+  if (base === undefined || base.status !== "playable") {
+    throw new LocalizationJournalRepositoryError(
+      "invalid_input",
+      `refinement base patch ${refinement.basePatchVersionId} must exist and be playable`,
+    );
+  }
+  if (
+    base.projectId !== run.projectId ||
+    base.localeBranchId !== run.localeBranchId ||
+    base.sourceRevisionId !== run.sourceRevisionId ||
+    base.targetLocale !== run.targetLocale
+  ) {
+    throw new LocalizationJournalRepositoryError(
+      "run_scope_mismatch",
+      `refinement base patch ${refinement.basePatchVersionId} does not share run ${run.runId}'s project/branch/source/locale identity`,
+    );
+  }
+
+  const unitIds = input.units.map((unit) => unit.bridgeUnitId);
+  const baseMembers =
+    unitIds.length === 0
+      ? []
+      : await tx
+          .select()
+          .from(localizationPatchVersionUnits)
+          .where(
+            and(
+              eq(localizationPatchVersionUnits.patchVersionId, refinement.basePatchVersionId),
+              inArray(localizationPatchVersionUnits.bridgeUnitId, unitIds),
+            ),
+          );
+  const baseMemberByUnit = new Map(baseMembers.map((member) => [member.bridgeUnitId, member]));
+
+  const explicitlySelectedBatchIds = [...refinement.feedbackBatchIds];
+  const explicitlySelectedEventIds = [...(refinement.feedbackEventIds ?? [])];
+  const individuallySelectedEvents =
+    explicitlySelectedEventIds.length === 0
+      ? []
+      : await tx
+          .select()
+          .from(playTestFeedbackEvents)
+          .where(inArray(playTestFeedbackEvents.feedbackEventId, explicitlySelectedEventIds));
+  if (individuallySelectedEvents.length !== explicitlySelectedEventIds.length) {
+    throw new LocalizationJournalRepositoryError(
+      "invalid_input",
+      `one or more individually selected feedback events do not exist for refinement run ${run.runId}`,
+    );
+  }
+  const individualEventById = new Map(
+    individuallySelectedEvents.map((event) => [event.feedbackEventId, event]),
+  );
+  const batchIds = [
+    ...explicitlySelectedBatchIds,
+    ...explicitlySelectedEventIds.map(
+      (feedbackEventId) => individualEventById.get(feedbackEventId)!.feedbackBatchId,
+    ),
+  ].filter((feedbackBatchId, index, values) => values.indexOf(feedbackBatchId) === index);
+  const batches =
+    batchIds.length === 0
+      ? []
+      : await tx
+          .select()
+          .from(playTestFeedbackBatches)
+          .where(inArray(playTestFeedbackBatches.feedbackBatchId, batchIds));
+  if (batches.length !== batchIds.length) {
+    throw new LocalizationJournalRepositoryError(
+      "invalid_input",
+      `one or more frozen feedback batches do not exist for refinement run ${run.runId}`,
+    );
+  }
+  const batchById = new Map(batches.map((batch) => [batch.feedbackBatchId, batch]));
+  for (const batchId of batchIds) {
+    const batch = batchById.get(batchId)!;
+    if (!(await isPatchAncestorOrSameInTx(tx, batch.observedPatchVersionId, base.patchVersionId))) {
+      throw new LocalizationJournalRepositoryError(
+        "invalid_input",
+        `feedback batch ${batchId} observed patch ${batch.observedPatchVersionId}, which is not in base patch ${base.patchVersionId}'s lineage`,
+      );
+    }
+  }
+  const feedbackEvents =
+    explicitlySelectedBatchIds.length === 0 && explicitlySelectedEventIds.length === 0
+      ? []
+      : await tx
+          .select()
+          .from(playTestFeedbackEvents)
+          .where(
+            or(
+              ...(explicitlySelectedBatchIds.length === 0
+                ? []
+                : [inArray(playTestFeedbackEvents.feedbackBatchId, explicitlySelectedBatchIds)]),
+              ...(explicitlySelectedEventIds.length === 0
+                ? []
+                : [inArray(playTestFeedbackEvents.feedbackEventId, explicitlySelectedEventIds)]),
+            ),
+          )
+          .orderBy(
+            asc(playTestFeedbackEvents.createdAt),
+            asc(playTestFeedbackEvents.feedbackEventId),
+          );
+  // A result edit atomically creates a selected child patch. If that child is
+  // already in the base patch's ancestry, the selected event remains in the
+  // immutable run snapshot but is provenance, not fresh redraft input. This
+  // prevents a later refinement from replaying an old target (or demanding a
+  // redraft source) merely because the feedback is inherited in the inbox.
+  const activeFeedbackEventIds: string[] = [];
+  for (const event of feedbackEvents) {
+    if (!(await isResultEditAlreadyAppliedInBaseInTx(tx, event, base.patchVersionId))) {
+      activeFeedbackEventIds.push(event.feedbackEventId);
+    }
+  }
+  const feedbackEventUnits =
+    activeFeedbackEventIds.length === 0
+      ? []
+      : await tx
+          .select()
+          .from(playTestFeedbackEventUnits)
+          .where(inArray(playTestFeedbackEventUnits.feedbackEventId, activeFeedbackEventIds));
+  const feedbackAffectedUnitIds = new Set(
+    feedbackEventUnits.map((eventUnit) => eventUnit.bridgeUnitId),
+  );
+  const requestedUnitIds = new Set(unitIds);
+  const outsideScopeFeedback = [...feedbackAffectedUnitIds].find(
+    (unitId) => !requestedUnitIds.has(unitId),
+  );
+  if (outsideScopeFeedback !== undefined) {
+    throw new LocalizationJournalRepositoryError(
+      "run_scope_mismatch",
+      `feedback affects ${outsideScopeFeedback}, which is outside refinement run ${run.runId}'s frozen scope`,
+    );
+  }
+
+  const requestedHeads = refinement.wikiHeads;
+  const wikiHeads =
+    requestedHeads === undefined
+      ? await tx
+          .select({
+            contextArtifactId: contextArtifacts.contextArtifactId,
+            contextEntryVersionId: contextArtifacts.headVersionId,
+            affectedUnitIds: contextEntryVersions.affectedUnitIds,
+          })
+          .from(contextArtifacts)
+          .innerJoin(
+            contextEntryVersions,
+            and(
+              eq(contextArtifacts.headVersionId, contextEntryVersions.contextEntryVersionId),
+              eq(contextArtifacts.contextArtifactId, contextEntryVersions.contextArtifactId),
+            ),
+          )
+          .where(
+            and(
+              eq(contextArtifacts.projectId, run.projectId),
+              eq(contextArtifacts.localeBranchId, run.localeBranchId),
+            ),
+          )
+      : await loadRequestedRefinementWikiHeadsInTx(tx, run, requestedHeads);
+  const wikiAffectedUnitIds = new Set(
+    wikiHeads.flatMap((head) => (head.affectedUnitIds ?? []).filter(isNonBlankString)),
+  );
+
+  const explicitRedraftIds = new Set(refinement.redraftUnitIds ?? []);
+  const outsideExplicit = [...explicitRedraftIds].find((unitId) => !requestedUnitIds.has(unitId));
+  if (outsideExplicit !== undefined) {
+    throw new LocalizationJournalRepositoryError(
+      "run_scope_mismatch",
+      `explicit redraft unit ${outsideExplicit} is outside refinement run ${run.runId}'s frozen scope`,
+    );
+  }
+  const redraftUnitIds = new Set([
+    ...explicitRedraftIds,
+    ...feedbackAffectedUnitIds,
+    ...[...wikiAffectedUnitIds].filter((unitId) => requestedUnitIds.has(unitId)),
+  ]);
+
+  const now = new Date();
+  if (batchIds.length > 0) {
+    await tx.insert(localizationRefinementRunFeedbackBatches).values(
+      batchIds.map((feedbackBatchId, batchOrdinal) => ({
+        runId: run.runId,
+        feedbackBatchId,
+        observedPatchVersionId: batchById.get(feedbackBatchId)!.observedPatchVersionId,
+        batchOrdinal,
+        createdAt: now,
+      })),
+    );
+  }
+  if (feedbackEvents.length > 0) {
+    await tx.insert(localizationRefinementRunFeedbackEvents).values(
+      feedbackEvents.map((event, eventOrdinal) => ({
+        runId: run.runId,
+        feedbackEventId: event.feedbackEventId,
+        feedbackBatchId: event.feedbackBatchId,
+        eventOrdinal,
+        createdAt: now,
+      })),
+    );
+  }
+  if (wikiHeads.length > 0) {
+    await tx.insert(localizationRefinementRunWikiHeads).values(
+      wikiHeads.map((head) => ({
+        runId: run.runId,
+        contextArtifactId: head.contextArtifactId,
+        contextEntryVersionId: head.contextEntryVersionId!,
+        createdAt: now,
+      })),
+    );
+  }
+  if (input.units.length > 0) {
+    await tx.insert(localizationRefinementRunMembers).values(
+      input.units.map((unit) => {
+        const baseMember = baseMemberByUnit.get(unit.bridgeUnitId);
+        if (baseMember === undefined) {
+          return {
+            runId: run.runId,
+            bridgeUnitId: unit.bridgeUnitId,
+            strategy: "new_scope" as const,
+            basePatchVersionId: null,
+            baseSourceRunId: null,
+            baseJournalOutcomeId: null,
+            baseResultRevisionId: null,
+            createdAt: now,
+          };
+        }
+        return {
+          runId: run.runId,
+          bridgeUnitId: unit.bridgeUnitId,
+          strategy: redraftUnitIds.has(unit.bridgeUnitId)
+            ? ("redraft" as const)
+            : ("reuse" as const),
+          basePatchVersionId: refinement.basePatchVersionId,
+          baseSourceRunId: baseMember.sourceRunId,
+          baseJournalOutcomeId: baseMember.journalOutcomeId,
+          baseResultRevisionId: baseMember.resultRevisionId,
+          createdAt: now,
+        };
+      }),
+    );
+  }
+}
+
+async function loadRequestedRefinementWikiHeadsInTx(
+  tx: JournalTransaction,
+  run: typeof localizationJournalRuns.$inferSelect,
+  requestedHeads: readonly SeedLocalizationJournalRefinementWikiHeadInput[],
+): Promise<
+  Array<{
+    contextArtifactId: string;
+    contextEntryVersionId: string;
+    affectedUnitIds: string[];
+  }>
+> {
+  if (requestedHeads.length === 0) return [];
+  const artifactIds = requestedHeads.map((head) => head.contextArtifactId);
+  const rows = await tx
+    .select({
+      contextArtifactId: contextArtifacts.contextArtifactId,
+      contextEntryVersionId: contextEntryVersions.contextEntryVersionId,
+      affectedUnitIds: contextEntryVersions.affectedUnitIds,
+    })
+    .from(contextArtifacts)
+    .innerJoin(
+      contextEntryVersions,
+      and(
+        eq(contextArtifacts.headVersionId, contextEntryVersions.contextEntryVersionId),
+        eq(contextArtifacts.contextArtifactId, contextEntryVersions.contextArtifactId),
+      ),
+    )
+    .where(
+      and(
+        eq(contextArtifacts.projectId, run.projectId),
+        eq(contextArtifacts.localeBranchId, run.localeBranchId),
+        inArray(contextArtifacts.contextArtifactId, artifactIds),
+      ),
+    );
+  const rowByArtifactId = new Map(rows.map((row) => [row.contextArtifactId, row]));
+  return requestedHeads.map((head) => {
+    const row = rowByArtifactId.get(head.contextArtifactId);
+    if (row === undefined || row.contextEntryVersionId !== head.contextEntryVersionId) {
+      throw new LocalizationJournalRepositoryError(
+        "invalid_input",
+        `wiki head ${head.contextArtifactId}/${head.contextEntryVersionId} is not the current scoped head at refinement launch`,
+      );
+    }
+    return row;
+  });
+}
+
+async function isPatchAncestorOrSameInTx(
+  tx: JournalTransaction,
+  ancestorPatchVersionId: string,
+  descendantPatchVersionId: string,
+): Promise<boolean> {
+  const result = await tx.execute(sql<{ reachable: boolean }>`
+    with recursive lineage as (
+      select patch_version_id, parent_patch_version_id
+      from itotori_localization_patch_versions
+      where patch_version_id = ${descendantPatchVersionId}
+      union all
+      select parent.patch_version_id, parent.parent_patch_version_id
+      from itotori_localization_patch_versions parent
+      join lineage child on child.parent_patch_version_id = parent.patch_version_id
+    )
+    select exists (
+      select 1 from lineage where patch_version_id = ${ancestorPatchVersionId}
+    ) as reachable
+  `);
+  return result.rows[0]?.reachable === true;
+}
+
+async function isResultEditAlreadyAppliedInBaseInTx(
+  tx: JournalTransaction,
+  event: typeof playTestFeedbackEvents.$inferSelect,
+  basePatchVersionId: string,
+): Promise<boolean> {
+  if (event.eventKind !== "result_edit") return false;
+  const childPatchVersionId = event.metadata.resultRevisionPatchVersionId;
+  if (typeof childPatchVersionId !== "string" || childPatchVersionId.trim().length === 0) {
+    // Older events without the atomic child binding remain actionable. The
+    // service will still require a real target body before materializing.
+    return false;
+  }
+  return isPatchAncestorOrSameInTx(tx, childPatchVersionId, basePatchVersionId);
 }
 
 async function requireSeededUnitInTx(
@@ -4129,6 +4636,7 @@ function journalRunRowToRecord(
     frozenScope: row.frozenScope,
     routingPolicy: row.routingPolicy,
     costPolicy: row.costPolicy,
+    basePatchVersionId: row.basePatchVersionId ?? null,
     status: row.status as LocalizationJournalRunStatus,
     pausedBlocker: row.pausedBlocker,
     leaseOwnerId: row.leaseOwnerId,
@@ -4469,6 +4977,20 @@ function assertNonBlank(value: string, label: string): void {
 
 function isNonBlankString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function assertUniqueNonBlankStrings(values: readonly string[], label: string): void {
+  const seen = new Set<string>();
+  for (const [index, value] of values.entries()) {
+    assertNonBlank(value, `${label}[${index}]`);
+    if (seen.has(value)) {
+      throw new LocalizationJournalRepositoryError(
+        "invalid_input",
+        `${label} contains duplicate value ${value}`,
+      );
+    }
+    seen.add(value);
+  }
 }
 
 function assertNonNegativeInteger(value: number, label: string): void {

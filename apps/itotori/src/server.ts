@@ -57,6 +57,18 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
   return createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
     if (isItotoriApiPath(url.pathname)) {
+      const patchIterationDeliveryArchiveRoute = parsePatchIterationDeliveryArchiveRoute(
+        url.pathname,
+      );
+      if (patchIterationDeliveryArchiveRoute !== null) {
+        await servePatchIterationDeliveryArchiveRequest({
+          request,
+          response,
+          patchVersionId: patchIterationDeliveryArchiveRoute.patchVersionId,
+          readOnlyServiceFactory,
+        });
+        return;
+      }
       const deliveryArchiveRoute = parsePlayDeliveryArchiveRoute(url.pathname);
       if (deliveryArchiveRoute !== null) {
         await servePlayDeliveryArchiveRequest({
@@ -158,6 +170,60 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
   });
 }
 
+async function servePatchIterationDeliveryArchiveRequest(input: {
+  request: IncomingMessage;
+  response: ServerResponse;
+  patchVersionId: string;
+  readOnlyServiceFactory: ItotoriReadOnlyServiceFactory;
+}): Promise<void> {
+  if (input.request.method !== "GET") {
+    writeApiError(input.response, 405, "method_not_allowed", "method must be GET");
+    return;
+  }
+  try {
+    const sessionId = parseItotoriSessionCookie(input.request.headers.cookie);
+    const serviceOptions = sessionId === undefined ? undefined : { sessionId };
+    // Exact historical delivery has the same authenticated catalog.read and
+    // manifest-verification boundary as current-run delivery. The URL carries
+    // only an opaque version id, never an artifact filesystem path.
+    const archive = await input.readOnlyServiceFactory(
+      (services) =>
+        services.playTesterResultRevision.loadExactPatchArchive({
+          patchVersionId: input.patchVersionId,
+        }),
+      serviceOptions,
+    );
+    if (archive === null) {
+      writeApiError(
+        input.response,
+        404,
+        "not_found",
+        `playable patch ${input.patchVersionId} was not found`,
+      );
+      return;
+    }
+    input.response.writeHead(200, {
+      "content-type": archive.contentType,
+      "content-length": String(archive.bytes.byteLength),
+      "content-disposition": `attachment; filename="${archive.fileName}"`,
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+    });
+    input.response.end(archive.bytes);
+  } catch (error) {
+    if (error instanceof AuthorizationError || error instanceof ItotoriInvalidAuthSessionError) {
+      writeApiError(input.response, 403, "forbidden", error.message);
+      return;
+    }
+    writeApiError(
+      input.response,
+      500,
+      "internal_error",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
 async function servePlayDeliveryArchiveRequest(input: {
   request: IncomingMessage;
   response: ServerResponse;
@@ -226,6 +292,35 @@ function parsePlayDeliveryArchiveRoute(pathname: string): { runId: string } | nu
       return null;
     }
     return { runId };
+  } catch {
+    return null;
+  }
+}
+
+function parsePatchIterationDeliveryArchiveRoute(pathname: string): {
+  patchVersionId: string;
+} | null {
+  const match = /^\/api\/play\/patch-versions\/([^/]+)\/delivery\/archive\/?$/u.exec(pathname);
+  if (match === null || match[1] === undefined) {
+    return null;
+  }
+  const patchVersionId = decodeSafeDeliveryPathId(match[1]);
+  return patchVersionId === null ? null : { patchVersionId };
+}
+
+function decodeSafeDeliveryPathId(value: string): string | null {
+  try {
+    const decoded = decodeURIComponent(value);
+    if (
+      decoded.trim().length === 0 ||
+      decoded.includes("/") ||
+      decoded.includes("\\") ||
+      decoded === "." ||
+      decoded === ".."
+    ) {
+      return null;
+    }
+    return decoded;
   } catch {
     return null;
   }

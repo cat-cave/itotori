@@ -246,7 +246,17 @@ export type ItotoriApiRouteId =
   // creating and selecting a child delivered patch revision.
   | "play.targetEdit"
   // p0-result-revision — inspect the selected delivered patch for a run.
-  | "play.delivery";
+  | "play.delivery"
+  // p0-core-iterative-patch-versioning-and-playtest-feedback — historical
+  // version play surface, exact observed sessions, persisted feedback inbox,
+  // and refinement launch all share the node-11 coordinator.
+  | "patchIteration.versions"
+  | "patchIteration.surface"
+  | "patchIteration.delivery"
+  | "patchIteration.play"
+  | "patchIteration.feedbackBatch"
+  | "patchIteration.feedback"
+  | "patchIteration.refine";
 
 export type ApiErrorResponse = {
   error: string;
@@ -801,6 +811,46 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "units",
   ],
   ApiPlayDeliveryUnit: ["bridgeUnitId", "unitOrdinal", "targetBody"],
+  ApiPatchIterationDeliveryResponse: [
+    "schemaVersion",
+    "patchVersionId",
+    "runId",
+    "parentPatchVersionId",
+    "origin",
+    "status",
+    "playableAt",
+    "artifactHashes",
+    "downloadUrl",
+    "units",
+  ],
+  ApiPatchIterationVersionsResponse: ["schemaVersion", "versions"],
+  ApiPatchIterationSurfaceResponse: ["schemaVersion", "patch", "versions", "feedback"],
+  ApiPatchIterationPlayRequest: ["launchDescriptor"],
+  ApiPatchIterationPlayResponse: ["schemaVersion", "session"],
+  ApiPatchIterationFeedbackBatchRequest: ["feedbackBatchId", "label"],
+  ApiPatchIterationFeedbackBatchResponse: ["schemaVersion", "batch"],
+  ApiPatchIterationFeedbackRequest: [
+    "feedbackBatchId",
+    "playSessionId",
+    "eventKind",
+    "body",
+    "metadata",
+    "targetBody",
+    "resultRevisionId",
+    "contextArtifactId",
+    "contextEntryVersionId",
+    "contextFeedback",
+    "affectedBridgeUnitIds",
+  ],
+  ApiPatchIterationFeedbackResponse: ["schemaVersion", "feedback"],
+  ApiPatchIterationRefineRequest: [
+    "feedbackBatchIds",
+    "feedbackEventIds",
+    "scopeUnitIds",
+    "targetBodiesByUnit",
+    "wikiHeads",
+  ],
+  ApiPatchIterationRefineResponse: ["schemaVersion", "refinement", "patch"],
 } as const satisfies Readonly<Record<string, readonly string[]>>;
 
 export type ItotoriStrictApiBodyName = keyof typeof ITOTORI_STRICT_API_BODY_KEYS;
@@ -1692,6 +1742,222 @@ export type ApiPlayDeliveryResponse = {
   units: ApiPlayDeliveryUnit[];
 };
 
+// ---------------------------------------------------------------------------
+// Node 11 — patch-version iteration wire shapes. These deliberately expose
+// immutable identifiers and delivery hashes, never local artifact paths.
+// ---------------------------------------------------------------------------
+
+/**
+ * Exact immutable-version delivery. Unlike `ApiPlayDeliveryResponse`, this
+ * remains available after a newer version becomes the selected run delivery.
+ */
+export type ApiPatchIterationDeliveryResponse = {
+  schemaVersion: "itotori.patch-iteration.delivery.v0";
+  patchVersionId: string;
+  runId: string;
+  parentPatchVersionId: string | null;
+  origin: "run_finalizer" | "play_tester_edit" | "refinement_run";
+  status: "playable";
+  playableAt: string;
+  artifactHashes: Record<string, string>;
+  /** Authenticated exact-version archive endpoint; never a server path. */
+  downloadUrl: string;
+  units: ApiPlayDeliveryUnit[];
+};
+
+export type ApiPatchIterationQaCallout = {
+  journalFindingId: string;
+  bridgeUnitId: string;
+  severity: string;
+  category: string;
+  note: string;
+  confidence: string;
+  contested: boolean;
+  informational: true;
+};
+
+export type ApiPatchIterationUnit = {
+  bridgeUnitId: string;
+  sourceRunId: string;
+  journalOutcomeId: string;
+  resultRevisionId: string;
+  targetBody: string;
+  memberOrigin: "run_written_outcome" | "reused_from_base" | "play_tester_edit";
+  reusedFromPatchVersionId: string | null;
+  unitOrdinal: number;
+};
+
+export type ApiPatchIterationPatch = {
+  patchVersionId: string;
+  runId: string;
+  parentPatchVersionId: string | null;
+  origin: "run_finalizer" | "play_tester_edit" | "refinement_run";
+  status: string;
+  playableAt: string | null;
+  selectedAt: string | null;
+  artifactHashes: Record<string, string>;
+  units: ApiPatchIterationUnit[];
+  qaCallouts: ApiPatchIterationQaCallout[];
+};
+
+export type ApiPatchIterationVersion = {
+  patchVersionId: string;
+  runId: string;
+  parentPatchVersionId: string | null;
+  origin: "run_finalizer" | "play_tester_edit" | "refinement_run";
+  status: string;
+  playableAt: string | null;
+  selectedAt: string | null;
+  artifactHashes: Record<string, string>;
+  basePatchVersionId: string | null;
+};
+
+export type ApiPatchIterationFeedbackEvent = {
+  feedbackEventId: string;
+  feedbackBatchId: string;
+  observedPatchVersionId: string;
+  playSessionId: string | null;
+  actorUserId: string;
+  eventKind: "result_edit" | "comment" | "added_context" | "wiki_edit";
+  body: string | null;
+  metadata: Record<string, unknown>;
+  resultRevisionId: string | null;
+  contextArtifactId: string | null;
+  contextEntryVersionId: string | null;
+  affectedBridgeUnitIds: string[];
+  createdAt: string;
+};
+
+export type ApiPatchIterationFeedbackBatch = {
+  feedbackBatchId: string;
+  observedPatchVersionId: string;
+  actorUserId: string;
+  selectionKind: "individual" | "batch";
+  label: string | null;
+  createdAt: string;
+  updatedAt: string;
+  events: ApiPatchIterationFeedbackEvent[];
+};
+
+export type ApiPatchIterationFeedbackInbox = {
+  observedPatchVersionId: string;
+  batches: ApiPatchIterationFeedbackBatch[];
+};
+
+export type ApiPatchIterationSession = {
+  playSessionId: string;
+  observedPatchVersionId: string;
+  actorUserId: string;
+  status: "active" | "completed" | "abandoned";
+  startedAt: string;
+  endedAt: string | null;
+  qaCallouts: ApiPatchIterationQaCallout[];
+};
+
+export type ApiPatchIterationRefinementMember = {
+  bridgeUnitId: string;
+  strategy: "reuse" | "redraft" | "new_scope";
+  basePatchVersionId: string | null;
+  baseSourceRunId: string | null;
+  baseJournalOutcomeId: string | null;
+  baseResultRevisionId: string | null;
+};
+
+export type ApiPatchIterationRefinement = {
+  runId: string;
+  basePatchVersionId: string;
+  feedbackBatchIds: string[];
+  wikiHeads: Array<{ contextArtifactId: string; contextEntryVersionId: string }>;
+  members: ApiPatchIterationRefinementMember[];
+};
+
+export type ApiPatchIterationVersionsResponse = {
+  schemaVersion: "itotori.patch-iteration.versions.v0";
+  versions: ApiPatchIterationVersion[];
+};
+
+export type ApiPatchIterationSurfaceResponse = {
+  schemaVersion: "itotori.patch-iteration.surface.v0";
+  patch: ApiPatchIterationPatch;
+  versions: ApiPatchIterationVersion[];
+  feedback: ApiPatchIterationFeedbackInbox;
+};
+
+export type ApiPatchIterationPlayRequest = {
+  launchDescriptor?: Record<string, unknown>;
+};
+
+export type ApiPatchIterationPlayResponse = {
+  schemaVersion: "itotori.patch-iteration.play.v0";
+  session: ApiPatchIterationSession;
+};
+
+export type ApiPatchIterationFeedbackBatchRequest = {
+  feedbackBatchId?: string;
+  label?: string;
+};
+
+export type ApiPatchIterationFeedbackBatchResponse = {
+  schemaVersion: "itotori.patch-iteration.feedback-batch.v0";
+  batch: ApiPatchIterationFeedbackBatch;
+};
+
+/**
+ * A first-class context correction performed through the existing WikiBrain
+ * boundary. The observed patch supplies project/branch/source identity; this
+ * payload intentionally contains only the human correction itself.
+ */
+export type ApiPatchIterationContextFeedback =
+  | {
+      operation: "add";
+      kind: ApiWikiAddKind;
+      title: string;
+      body: string;
+      reason: string;
+      affectedBridgeUnitIds: string[];
+    }
+  | {
+      operation: "edit";
+      contextArtifactId: string;
+      body: string;
+      reason: string;
+      title?: string;
+      affectedBridgeUnitIds?: string[];
+    };
+
+export type ApiPatchIterationFeedbackRequest = {
+  feedbackBatchId?: string;
+  playSessionId?: string;
+  eventKind: ApiPatchIterationFeedbackEvent["eventKind"];
+  body?: string;
+  metadata?: Record<string, unknown>;
+  targetBody?: string;
+  resultRevisionId?: string;
+  contextArtifactId?: string;
+  contextEntryVersionId?: string;
+  contextFeedback?: ApiPatchIterationContextFeedback;
+  affectedBridgeUnitIds?: string[];
+};
+
+export type ApiPatchIterationFeedbackResponse = {
+  schemaVersion: "itotori.patch-iteration.feedback.v0";
+  feedback: ApiPatchIterationFeedbackEvent;
+};
+
+export type ApiPatchIterationRefineRequest = {
+  feedbackBatchIds?: string[];
+  feedbackEventIds?: string[];
+  scopeUnitIds?: string[];
+  targetBodiesByUnit?: Record<string, string>;
+  wikiHeads?: Array<{ contextArtifactId: string; contextEntryVersionId: string }>;
+};
+
+export type ApiPatchIterationRefineResponse = {
+  schemaVersion: "itotori.patch-iteration.refine.v0";
+  refinement: ApiPatchIterationRefinement;
+  patch: ApiPatchIterationPatch;
+};
+
 export type ItotoriApiResponseBody =
   | ApiAssetDecisionsResponse
   | ApiCandidateAssetsResponse
@@ -1760,6 +2026,13 @@ export type ItotoriApiResponseBody =
   | ApiPlayFlagAnnotationResponse
   | ApiPlayTargetEditResponse
   | ApiPlayDeliveryResponse
+  | ApiPatchIterationVersionsResponse
+  | ApiPatchIterationSurfaceResponse
+  | ApiPatchIterationDeliveryResponse
+  | ApiPatchIterationPlayResponse
+  | ApiPatchIterationFeedbackBatchResponse
+  | ApiPatchIterationFeedbackResponse
+  | ApiPatchIterationRefineResponse
   | ApiErrorResponse;
 
 export class ApiValidationError extends Error {
@@ -2591,6 +2864,27 @@ export function assertItotoriApiResponse(
       return;
     case "play.delivery":
       assertPlayDeliveryResponse(value);
+      return;
+    case "patchIteration.versions":
+      assertPatchIterationVersionsResponse(value);
+      return;
+    case "patchIteration.surface":
+      assertPatchIterationSurfaceResponse(value);
+      return;
+    case "patchIteration.delivery":
+      assertPatchIterationDeliveryResponse(value);
+      return;
+    case "patchIteration.play":
+      assertPatchIterationPlayResponse(value);
+      return;
+    case "patchIteration.feedbackBatch":
+      assertPatchIterationFeedbackBatchResponse(value);
+      return;
+    case "patchIteration.feedback":
+      assertPatchIterationFeedbackResponse(value);
+      return;
+    case "patchIteration.refine":
+      assertPatchIterationRefineResponse(value);
       return;
   }
 }
@@ -7713,6 +8007,246 @@ export function parsePlayTargetEditRequest(body: unknown): ApiPlayTargetEditRequ
   });
 }
 
+/** Node 11 request parsers keep patch identity in the URL and freeze only typed inputs. */
+export function parsePatchIterationPlayRequest(body: unknown): ApiPatchIterationPlayRequest {
+  return parseRequest("ApiPatchIterationPlayRequest", () => {
+    const request = asStrictRecord(
+      body,
+      "ApiPatchIterationPlayRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationPlayRequest,
+    );
+    if (request.launchDescriptor === undefined) return {};
+    return { launchDescriptor: { ...asRecord(request.launchDescriptor, "launchDescriptor") } };
+  });
+}
+
+export function parsePatchIterationFeedbackBatchRequest(
+  body: unknown,
+): ApiPatchIterationFeedbackBatchRequest {
+  return parseRequest("ApiPatchIterationFeedbackBatchRequest", () => {
+    const request = asStrictRecord(
+      body,
+      "ApiPatchIterationFeedbackBatchRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackBatchRequest,
+    );
+    return {
+      ...(request.feedbackBatchId === undefined
+        ? {}
+        : { feedbackBatchId: parseNonBlankApiString(request.feedbackBatchId, "feedbackBatchId") }),
+      ...(request.label === undefined
+        ? {}
+        : { label: parseNonBlankApiString(request.label, "label") }),
+    };
+  });
+}
+
+const apiPatchIterationFeedbackEventKinds = [
+  "result_edit",
+  "comment",
+  "added_context",
+  "wiki_edit",
+] as const satisfies readonly ApiPatchIterationFeedbackRequest["eventKind"][];
+
+const apiPatchIterationContextFeedbackOperations = [
+  "add",
+  "edit",
+] as const satisfies readonly ApiPatchIterationContextFeedback["operation"][];
+
+function parsePatchIterationContextFeedback(value: unknown): ApiPatchIterationContextFeedback {
+  const contextFeedback = asRecord(value, "contextFeedback");
+  assertEnum(
+    contextFeedback.operation,
+    apiPatchIterationContextFeedbackOperations,
+    "contextFeedback.operation",
+  );
+  if (contextFeedback.operation === "add") {
+    const add = asStrictRecord(value, "contextFeedback", [
+      "operation",
+      "kind",
+      "title",
+      "body",
+      "reason",
+      "affectedBridgeUnitIds",
+    ]);
+    assertEnum(add.kind, ["note", "glossary", "style"] as const, "contextFeedback.kind");
+    const affectedBridgeUnitIds = parseNonBlankApiStringArray(
+      add.affectedBridgeUnitIds,
+      "contextFeedback.affectedBridgeUnitIds",
+    );
+    if (affectedBridgeUnitIds.length === 0) {
+      throw new ApiValidationError(
+        "contextFeedback.affectedBridgeUnitIds must contain at least one unit",
+      );
+    }
+    return {
+      operation: "add",
+      kind: add.kind,
+      title: parseNonBlankApiString(add.title, "contextFeedback.title"),
+      body: parseNonBlankApiString(add.body, "contextFeedback.body"),
+      reason: parseNonBlankApiString(add.reason, "contextFeedback.reason"),
+      affectedBridgeUnitIds,
+    };
+  }
+
+  const edit = asStrictRecord(value, "contextFeedback", [
+    "operation",
+    "contextArtifactId",
+    "body",
+    "reason",
+    "title",
+    "affectedBridgeUnitIds",
+  ]);
+  const response: Extract<ApiPatchIterationContextFeedback, { operation: "edit" }> = {
+    operation: "edit",
+    contextArtifactId: parseNonBlankApiString(
+      edit.contextArtifactId,
+      "contextFeedback.contextArtifactId",
+    ),
+    body: parseNonBlankApiString(edit.body, "contextFeedback.body"),
+    reason: parseNonBlankApiString(edit.reason, "contextFeedback.reason"),
+  };
+  if (edit.title !== undefined) {
+    response.title = parseNonBlankApiString(edit.title, "contextFeedback.title");
+  }
+  if (edit.affectedBridgeUnitIds !== undefined) {
+    response.affectedBridgeUnitIds = parseNonBlankApiStringArray(
+      edit.affectedBridgeUnitIds,
+      "contextFeedback.affectedBridgeUnitIds",
+    );
+  }
+  return response;
+}
+
+export function parsePatchIterationFeedbackRequest(
+  body: unknown,
+): ApiPatchIterationFeedbackRequest {
+  return parseRequest("ApiPatchIterationFeedbackRequest", () => {
+    const request = asStrictRecord(
+      body,
+      "ApiPatchIterationFeedbackRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackRequest,
+    );
+    assertEnum(request.eventKind, apiPatchIterationFeedbackEventKinds, "eventKind");
+    const response: ApiPatchIterationFeedbackRequest = { eventKind: request.eventKind };
+    if (request.feedbackBatchId !== undefined) {
+      response.feedbackBatchId = parseNonBlankApiString(request.feedbackBatchId, "feedbackBatchId");
+    }
+    if (request.playSessionId !== undefined) {
+      response.playSessionId = parseNonBlankApiString(request.playSessionId, "playSessionId");
+    }
+    if (request.body !== undefined) response.body = parseNonBlankApiString(request.body, "body");
+    if (request.metadata !== undefined)
+      response.metadata = { ...asRecord(request.metadata, "metadata") };
+    if (request.targetBody !== undefined) {
+      response.targetBody = parseNonBlankApiString(request.targetBody, "targetBody");
+    }
+    if (request.resultRevisionId !== undefined) {
+      response.resultRevisionId = parseNonBlankApiString(
+        request.resultRevisionId,
+        "resultRevisionId",
+      );
+    }
+    if (request.contextArtifactId !== undefined) {
+      response.contextArtifactId = parseNonBlankApiString(
+        request.contextArtifactId,
+        "contextArtifactId",
+      );
+    }
+    if (request.contextEntryVersionId !== undefined) {
+      response.contextEntryVersionId = parseNonBlankApiString(
+        request.contextEntryVersionId,
+        "contextEntryVersionId",
+      );
+    }
+    if (request.contextFeedback !== undefined) {
+      response.contextFeedback = parsePatchIterationContextFeedback(request.contextFeedback);
+    }
+    if (request.affectedBridgeUnitIds !== undefined) {
+      response.affectedBridgeUnitIds = parseNonBlankApiStringArray(
+        request.affectedBridgeUnitIds,
+        "affectedBridgeUnitIds",
+      );
+    }
+    return response;
+  });
+}
+
+export function parsePatchIterationRefineRequest(body: unknown): ApiPatchIterationRefineRequest {
+  return parseRequest("ApiPatchIterationRefineRequest", () => {
+    const request = asStrictRecord(
+      body,
+      "ApiPatchIterationRefineRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationRefineRequest,
+    );
+    const response: ApiPatchIterationRefineRequest = {};
+    if (request.feedbackBatchIds !== undefined) {
+      response.feedbackBatchIds = parseNonBlankApiStringArray(
+        request.feedbackBatchIds,
+        "feedbackBatchIds",
+      );
+    }
+    if (request.feedbackEventIds !== undefined) {
+      response.feedbackEventIds = parseNonBlankApiStringArray(
+        request.feedbackEventIds,
+        "feedbackEventIds",
+      );
+    }
+    if (request.scopeUnitIds !== undefined) {
+      response.scopeUnitIds = parseNonBlankApiStringArray(request.scopeUnitIds, "scopeUnitIds");
+    }
+    if (request.targetBodiesByUnit !== undefined) {
+      const targetBodies = asRecord(request.targetBodiesByUnit, "targetBodiesByUnit");
+      const normalized: Record<string, string> = {};
+      for (const [unitId, targetBody] of Object.entries(targetBodies)) {
+        if (unitId.trim().length === 0) {
+          throw new ApiValidationError("targetBodiesByUnit keys must be non-blank");
+        }
+        normalized[unitId] = parseNonBlankApiString(targetBody, `targetBodiesByUnit.${unitId}`);
+      }
+      response.targetBodiesByUnit = normalized;
+    }
+    if (request.wikiHeads !== undefined) {
+      const values = asArray(request.wikiHeads, "wikiHeads");
+      response.wikiHeads = values.map((value, index) => {
+        const head = asStrictRecord(value, `wikiHeads[${index}]`, [
+          "contextArtifactId",
+          "contextEntryVersionId",
+        ]);
+        return {
+          contextArtifactId: parseNonBlankApiString(
+            head.contextArtifactId,
+            `wikiHeads[${index}].contextArtifactId`,
+          ),
+          contextEntryVersionId: parseNonBlankApiString(
+            head.contextEntryVersionId,
+            `wikiHeads[${index}].contextEntryVersionId`,
+          ),
+        };
+      });
+    }
+    return response;
+  });
+}
+
+function parseNonBlankApiString(value: unknown, label: string): string {
+  assertString(value, label);
+  const normalized = value.trim();
+  if (normalized.length === 0) throw new ApiValidationError(`${label} must be non-blank`);
+  return normalized;
+}
+
+function parseNonBlankApiStringArray(value: unknown, label: string): string[] {
+  const values = asArray(value, label);
+  const seen = new Set<string>();
+  return values.map((entry, index) => {
+    const normalized = parseNonBlankApiString(entry, `${label}[${index}]`);
+    if (seen.has(normalized))
+      throw new ApiValidationError(`${label} contains duplicate ${normalized}`);
+    seen.add(normalized);
+    return normalized;
+  });
+}
+
 function assertPlaySceneCoverageResponse(
   value: unknown,
 ): asserts value is ApiPlaySceneCoverageResponse {
@@ -8000,25 +8534,423 @@ function assertPlayDeliveryResponse(value: unknown): asserts value is ApiPlayDel
   assertDateLike(response.selectedAt, "ApiPlayDeliveryResponse.selectedAt");
   assertStringRecord(response.artifactHashes, "ApiPlayDeliveryResponse.artifactHashes");
   assertString(response.downloadUrl, "ApiPlayDeliveryResponse.downloadUrl");
-  const units = asArray(response.units, "ApiPlayDeliveryResponse.units");
+  assertPlayDeliveryUnits(response.units, "ApiPlayDeliveryResponse.units");
+}
+
+function assertPlayDeliveryUnits(value: unknown, label: string): void {
+  const units = asArray(value, label);
   let previousOrdinal = -1;
   for (const [index, value] of units.entries()) {
     const unit = asStrictRecord(
       value,
-      `ApiPlayDeliveryResponse.units[${index}]`,
+      `${label}[${index}]`,
       ITOTORI_STRICT_API_BODY_KEYS.ApiPlayDeliveryUnit,
     );
-    assertString(unit.bridgeUnitId, `ApiPlayDeliveryResponse.units[${index}].bridgeUnitId`);
-    assertNonNegativeInteger(
-      unit.unitOrdinal,
-      `ApiPlayDeliveryResponse.units[${index}].unitOrdinal`,
-    );
+    assertString(unit.bridgeUnitId, `${label}[${index}].bridgeUnitId`);
+    assertNonNegativeInteger(unit.unitOrdinal, `${label}[${index}].unitOrdinal`);
     if (unit.unitOrdinal <= previousOrdinal) {
-      throw new Error("ApiPlayDeliveryResponse.units must be strictly ordered by unitOrdinal");
+      throw new Error(`${label} must be strictly ordered by unitOrdinal`);
     }
     previousOrdinal = unit.unitOrdinal;
-    assertString(unit.targetBody, `ApiPlayDeliveryResponse.units[${index}].targetBody`);
+    assertString(unit.targetBody, `${label}[${index}].targetBody`);
   }
+}
+
+function assertPatchIterationDeliveryResponse(
+  value: unknown,
+): asserts value is ApiPatchIterationDeliveryResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPatchIterationDeliveryResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationDeliveryResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.patch-iteration.delivery.v0",
+    "ApiPatchIterationDeliveryResponse.schemaVersion",
+  );
+  assertString(response.patchVersionId, "ApiPatchIterationDeliveryResponse.patchVersionId");
+  assertString(response.runId, "ApiPatchIterationDeliveryResponse.runId");
+  assertNullableString(
+    response.parentPatchVersionId,
+    "ApiPatchIterationDeliveryResponse.parentPatchVersionId",
+  );
+  assertPatchIterationOrigin(response.origin, "ApiPatchIterationDeliveryResponse.origin");
+  assertLiteral(response.status, "playable", "ApiPatchIterationDeliveryResponse.status");
+  assertDateLike(response.playableAt, "ApiPatchIterationDeliveryResponse.playableAt");
+  assertStringRecord(response.artifactHashes, "ApiPatchIterationDeliveryResponse.artifactHashes");
+  assertString(response.downloadUrl, "ApiPatchIterationDeliveryResponse.downloadUrl");
+  assertPlayDeliveryUnits(response.units, "ApiPatchIterationDeliveryResponse.units");
+}
+
+function assertPatchIterationVersionsResponse(
+  value: unknown,
+): asserts value is ApiPatchIterationVersionsResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPatchIterationVersionsResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationVersionsResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.patch-iteration.versions.v0",
+    "ApiPatchIterationVersionsResponse.schemaVersion",
+  );
+  const versions = asArray(response.versions, "ApiPatchIterationVersionsResponse.versions");
+  for (const [index, version] of versions.entries()) {
+    assertPatchIterationVersion(version, `ApiPatchIterationVersionsResponse.versions[${index}]`);
+  }
+}
+
+function assertPatchIterationSurfaceResponse(
+  value: unknown,
+): asserts value is ApiPatchIterationSurfaceResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPatchIterationSurfaceResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationSurfaceResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.patch-iteration.surface.v0",
+    "ApiPatchIterationSurfaceResponse.schemaVersion",
+  );
+  assertPatchIterationPatch(response.patch, "ApiPatchIterationSurfaceResponse.patch");
+  const versions = asArray(response.versions, "ApiPatchIterationSurfaceResponse.versions");
+  for (const [index, version] of versions.entries()) {
+    assertPatchIterationVersion(version, `ApiPatchIterationSurfaceResponse.versions[${index}]`);
+  }
+  assertPatchIterationFeedbackInbox(response.feedback, "ApiPatchIterationSurfaceResponse.feedback");
+}
+
+function assertPatchIterationPlayResponse(
+  value: unknown,
+): asserts value is ApiPatchIterationPlayResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPatchIterationPlayResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationPlayResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.patch-iteration.play.v0",
+    "ApiPatchIterationPlayResponse.schemaVersion",
+  );
+  assertPatchIterationSession(response.session, "ApiPatchIterationPlayResponse.session");
+}
+
+function assertPatchIterationFeedbackBatchResponse(
+  value: unknown,
+): asserts value is ApiPatchIterationFeedbackBatchResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPatchIterationFeedbackBatchResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackBatchResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.patch-iteration.feedback-batch.v0",
+    "ApiPatchIterationFeedbackBatchResponse.schemaVersion",
+  );
+  assertPatchIterationFeedbackBatch(
+    response.batch,
+    "ApiPatchIterationFeedbackBatchResponse.batch",
+    true,
+  );
+}
+
+function assertPatchIterationFeedbackResponse(
+  value: unknown,
+): asserts value is ApiPatchIterationFeedbackResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPatchIterationFeedbackResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationFeedbackResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.patch-iteration.feedback.v0",
+    "ApiPatchIterationFeedbackResponse.schemaVersion",
+  );
+  assertPatchIterationFeedbackEvent(
+    response.feedback,
+    "ApiPatchIterationFeedbackResponse.feedback",
+  );
+}
+
+function assertPatchIterationRefineResponse(
+  value: unknown,
+): asserts value is ApiPatchIterationRefineResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPatchIterationRefineResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationRefineResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.patch-iteration.refine.v0",
+    "ApiPatchIterationRefineResponse.schemaVersion",
+  );
+  assertPatchIterationRefinement(response.refinement, "ApiPatchIterationRefineResponse.refinement");
+  assertPatchIterationPatch(response.patch, "ApiPatchIterationRefineResponse.patch");
+}
+
+function assertPatchIterationPatch(value: unknown, label: string): void {
+  const patch = asStrictRecord(value, label, [
+    "patchVersionId",
+    "runId",
+    "parentPatchVersionId",
+    "origin",
+    "status",
+    "playableAt",
+    "selectedAt",
+    "artifactHashes",
+    "units",
+    "qaCallouts",
+  ]);
+  assertString(patch.patchVersionId, `${label}.patchVersionId`);
+  assertString(patch.runId, `${label}.runId`);
+  assertNullableString(patch.parentPatchVersionId, `${label}.parentPatchVersionId`);
+  assertPatchIterationOrigin(patch.origin, `${label}.origin`);
+  assertString(patch.status, `${label}.status`);
+  assertNullableDateLike(patch.playableAt, `${label}.playableAt`);
+  assertNullableDateLike(patch.selectedAt, `${label}.selectedAt`);
+  assertStringRecord(patch.artifactHashes, `${label}.artifactHashes`);
+  const units = asArray(patch.units, `${label}.units`);
+  let priorOrdinal = -1;
+  for (const [index, unit] of units.entries()) {
+    assertPatchIterationUnit(unit, `${label}.units[${index}]`);
+    const unitRecord = unit as { unitOrdinal: number };
+    if (unitRecord.unitOrdinal <= priorOrdinal) {
+      throw new Error(`${label}.units must be ordered by unitOrdinal`);
+    }
+    priorOrdinal = unitRecord.unitOrdinal;
+  }
+  const callouts = asArray(patch.qaCallouts, `${label}.qaCallouts`);
+  for (const [index, callout] of callouts.entries()) {
+    assertPatchIterationQaCallout(callout, `${label}.qaCallouts[${index}]`);
+  }
+}
+
+function assertPatchIterationVersion(value: unknown, label: string): void {
+  const version = asStrictRecord(value, label, [
+    "patchVersionId",
+    "runId",
+    "parentPatchVersionId",
+    "origin",
+    "status",
+    "playableAt",
+    "selectedAt",
+    "artifactHashes",
+    "basePatchVersionId",
+  ]);
+  assertString(version.patchVersionId, `${label}.patchVersionId`);
+  assertString(version.runId, `${label}.runId`);
+  assertNullableString(version.parentPatchVersionId, `${label}.parentPatchVersionId`);
+  assertPatchIterationOrigin(version.origin, `${label}.origin`);
+  assertString(version.status, `${label}.status`);
+  assertNullableDateLike(version.playableAt, `${label}.playableAt`);
+  assertNullableDateLike(version.selectedAt, `${label}.selectedAt`);
+  assertStringRecord(version.artifactHashes, `${label}.artifactHashes`);
+  assertNullableString(version.basePatchVersionId, `${label}.basePatchVersionId`);
+}
+
+function assertPatchIterationUnit(value: unknown, label: string): void {
+  const unit = asStrictRecord(value, label, [
+    "bridgeUnitId",
+    "sourceRunId",
+    "journalOutcomeId",
+    "resultRevisionId",
+    "targetBody",
+    "memberOrigin",
+    "reusedFromPatchVersionId",
+    "unitOrdinal",
+  ]);
+  assertString(unit.bridgeUnitId, `${label}.bridgeUnitId`);
+  assertString(unit.sourceRunId, `${label}.sourceRunId`);
+  assertString(unit.journalOutcomeId, `${label}.journalOutcomeId`);
+  assertString(unit.resultRevisionId, `${label}.resultRevisionId`);
+  assertString(unit.targetBody, `${label}.targetBody`);
+  assertEnum(
+    unit.memberOrigin,
+    ["run_written_outcome", "reused_from_base", "play_tester_edit"] as const,
+    `${label}.memberOrigin`,
+  );
+  assertNullableString(unit.reusedFromPatchVersionId, `${label}.reusedFromPatchVersionId`);
+  assertNonNegativeInteger(unit.unitOrdinal, `${label}.unitOrdinal`);
+}
+
+function assertPatchIterationQaCallout(value: unknown, label: string): void {
+  const callout = asStrictRecord(value, label, [
+    "journalFindingId",
+    "bridgeUnitId",
+    "severity",
+    "category",
+    "note",
+    "confidence",
+    "contested",
+    "informational",
+  ]);
+  assertString(callout.journalFindingId, `${label}.journalFindingId`);
+  assertString(callout.bridgeUnitId, `${label}.bridgeUnitId`);
+  assertString(callout.severity, `${label}.severity`);
+  assertString(callout.category, `${label}.category`);
+  assertString(callout.note, `${label}.note`);
+  assertString(callout.confidence, `${label}.confidence`);
+  assertBoolean(callout.contested, `${label}.contested`);
+  assertBoolean(callout.informational, `${label}.informational`);
+  if (callout.informational !== true) {
+    throw new Error(`${label}.informational must be true`);
+  }
+}
+
+function assertPatchIterationFeedbackInbox(value: unknown, label: string): void {
+  const inbox = asStrictRecord(value, label, ["observedPatchVersionId", "batches"]);
+  assertString(inbox.observedPatchVersionId, `${label}.observedPatchVersionId`);
+  const batches = asArray(inbox.batches, `${label}.batches`);
+  for (const [index, batch] of batches.entries()) {
+    assertPatchIterationFeedbackBatch(batch, `${label}.batches[${index}]`, true);
+  }
+}
+
+function assertPatchIterationFeedbackBatch(
+  value: unknown,
+  label: string,
+  withEvents: boolean,
+): void {
+  const fields = [
+    "feedbackBatchId",
+    "observedPatchVersionId",
+    "actorUserId",
+    "selectionKind",
+    "label",
+    "createdAt",
+    "updatedAt",
+    ...(withEvents ? ["events"] : []),
+  ];
+  const batch = asStrictRecord(value, label, fields);
+  assertString(batch.feedbackBatchId, `${label}.feedbackBatchId`);
+  assertString(batch.observedPatchVersionId, `${label}.observedPatchVersionId`);
+  assertString(batch.actorUserId, `${label}.actorUserId`);
+  assertEnum(batch.selectionKind, ["individual", "batch"] as const, `${label}.selectionKind`);
+  assertNullableString(batch.label, `${label}.label`);
+  assertDateLike(batch.createdAt, `${label}.createdAt`);
+  assertDateLike(batch.updatedAt, `${label}.updatedAt`);
+  if (withEvents) {
+    const events = asArray(batch.events, `${label}.events`);
+    for (const [index, event] of events.entries()) {
+      assertPatchIterationFeedbackEvent(event, `${label}.events[${index}]`);
+    }
+  }
+}
+
+function assertPatchIterationFeedbackEvent(value: unknown, label: string): void {
+  const event = asStrictRecord(value, label, [
+    "feedbackEventId",
+    "feedbackBatchId",
+    "observedPatchVersionId",
+    "playSessionId",
+    "actorUserId",
+    "eventKind",
+    "body",
+    "metadata",
+    "resultRevisionId",
+    "contextArtifactId",
+    "contextEntryVersionId",
+    "affectedBridgeUnitIds",
+    "createdAt",
+  ]);
+  assertString(event.feedbackEventId, `${label}.feedbackEventId`);
+  assertString(event.feedbackBatchId, `${label}.feedbackBatchId`);
+  assertString(event.observedPatchVersionId, `${label}.observedPatchVersionId`);
+  assertNullableString(event.playSessionId, `${label}.playSessionId`);
+  assertString(event.actorUserId, `${label}.actorUserId`);
+  assertEnum(event.eventKind, apiPatchIterationFeedbackEventKinds, `${label}.eventKind`);
+  assertNullableString(event.body, `${label}.body`);
+  asRecord(event.metadata, `${label}.metadata`);
+  assertNullableString(event.resultRevisionId, `${label}.resultRevisionId`);
+  assertNullableString(event.contextArtifactId, `${label}.contextArtifactId`);
+  assertNullableString(event.contextEntryVersionId, `${label}.contextEntryVersionId`);
+  assertStringArray(event.affectedBridgeUnitIds, `${label}.affectedBridgeUnitIds`);
+  assertDateLike(event.createdAt, `${label}.createdAt`);
+}
+
+function assertPatchIterationSession(value: unknown, label: string): void {
+  const session = asStrictRecord(value, label, [
+    "playSessionId",
+    "observedPatchVersionId",
+    "actorUserId",
+    "status",
+    "startedAt",
+    "endedAt",
+    "qaCallouts",
+  ]);
+  assertString(session.playSessionId, `${label}.playSessionId`);
+  assertString(session.observedPatchVersionId, `${label}.observedPatchVersionId`);
+  assertString(session.actorUserId, `${label}.actorUserId`);
+  assertEnum(session.status, ["active", "completed", "abandoned"] as const, `${label}.status`);
+  assertDateLike(session.startedAt, `${label}.startedAt`);
+  assertNullableDateLike(session.endedAt, `${label}.endedAt`);
+  const callouts = asArray(session.qaCallouts, `${label}.qaCallouts`);
+  for (const [index, callout] of callouts.entries()) {
+    assertPatchIterationQaCallout(callout, `${label}.qaCallouts[${index}]`);
+  }
+}
+
+function assertPatchIterationRefinement(value: unknown, label: string): void {
+  const refinement = asStrictRecord(value, label, [
+    "runId",
+    "basePatchVersionId",
+    "feedbackBatchIds",
+    "wikiHeads",
+    "members",
+  ]);
+  assertString(refinement.runId, `${label}.runId`);
+  assertString(refinement.basePatchVersionId, `${label}.basePatchVersionId`);
+  assertStringArray(refinement.feedbackBatchIds, `${label}.feedbackBatchIds`);
+  const wikiHeads = asArray(refinement.wikiHeads, `${label}.wikiHeads`);
+  for (const [index, headValue] of wikiHeads.entries()) {
+    const head = asStrictRecord(headValue, `${label}.wikiHeads[${index}]`, [
+      "contextArtifactId",
+      "contextEntryVersionId",
+    ]);
+    assertString(head.contextArtifactId, `${label}.wikiHeads[${index}].contextArtifactId`);
+    assertString(head.contextEntryVersionId, `${label}.wikiHeads[${index}].contextEntryVersionId`);
+  }
+  const members = asArray(refinement.members, `${label}.members`);
+  for (const [index, memberValue] of members.entries()) {
+    const member = asStrictRecord(memberValue, `${label}.members[${index}]`, [
+      "bridgeUnitId",
+      "strategy",
+      "basePatchVersionId",
+      "baseSourceRunId",
+      "baseJournalOutcomeId",
+      "baseResultRevisionId",
+    ]);
+    assertString(member.bridgeUnitId, `${label}.members[${index}].bridgeUnitId`);
+    assertEnum(
+      member.strategy,
+      ["reuse", "redraft", "new_scope"] as const,
+      `${label}.members[${index}].strategy`,
+    );
+    assertNullableString(
+      member.basePatchVersionId,
+      `${label}.members[${index}].basePatchVersionId`,
+    );
+    assertNullableString(member.baseSourceRunId, `${label}.members[${index}].baseSourceRunId`);
+    assertNullableString(
+      member.baseJournalOutcomeId,
+      `${label}.members[${index}].baseJournalOutcomeId`,
+    );
+    assertNullableString(
+      member.baseResultRevisionId,
+      `${label}.members[${index}].baseResultRevisionId`,
+    );
+  }
+}
+
+function assertPatchIterationOrigin(value: unknown, label: string): void {
+  assertEnum(value, ["run_finalizer", "play_tester_edit", "refinement_run"] as const, label);
 }
 
 function assertStringRecord(

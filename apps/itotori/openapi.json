@@ -1241,6 +1241,841 @@
         ],
         "type": "object"
       },
+      "ApiPatchIterationContextFeedback": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "affectedBridgeUnitIds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "body": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "note",
+                  "glossary",
+                  "style"
+                ]
+              },
+              "operation": {
+                "const": "add"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "affectedBridgeUnitIds",
+              "body",
+              "kind",
+              "operation",
+              "reason",
+              "title"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "affectedBridgeUnitIds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "body": {
+                "type": "string"
+              },
+              "contextArtifactId": {
+                "type": "string"
+              },
+              "operation": {
+                "const": "edit"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "body",
+              "contextArtifactId",
+              "operation",
+              "reason"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ApiPatchIterationDeliveryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "artifactHashes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "downloadUrl": {
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "run_finalizer",
+              "play_tester_edit",
+              "refinement_run"
+            ]
+          },
+          "parentPatchVersionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "patchVersionId": {
+            "type": "string"
+          },
+          "playableAt": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "const": "itotori.patch-iteration.delivery.v0"
+          },
+          "status": {
+            "const": "playable"
+          },
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/ApiPlayDeliveryUnit"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "artifactHashes",
+          "downloadUrl",
+          "origin",
+          "parentPatchVersionId",
+          "patchVersionId",
+          "playableAt",
+          "runId",
+          "schemaVersion",
+          "status",
+          "units"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationFeedbackBatch": {
+        "additionalProperties": false,
+        "properties": {
+          "actorUserId": {},
+          "createdAt": {},
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/ApiPatchIterationFeedbackEvent"
+            },
+            "type": "array"
+          },
+          "feedbackBatchId": {},
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "observedPatchVersionId": {},
+          "selectionKind": {
+            "enum": [
+              "individual",
+              "batch"
+            ]
+          },
+          "updatedAt": {}
+        },
+        "required": [
+          "actorUserId",
+          "createdAt",
+          "events",
+          "feedbackBatchId",
+          "label",
+          "observedPatchVersionId",
+          "selectionKind",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationFeedbackBatchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "feedbackBatchId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "feedbackBatchId",
+          "label"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationFeedbackBatchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/ApiPatchIterationFeedbackBatch"
+          },
+          "schemaVersion": {
+            "const": "itotori.patch-iteration.feedback-batch.v0"
+          }
+        },
+        "required": [
+          "batch",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationFeedbackEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "actorUserId": {},
+          "affectedBridgeUnitIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "contextArtifactId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "contextEntryVersionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {},
+          "eventKind": {
+            "enum": [
+              "result_edit",
+              "comment",
+              "added_context",
+              "wiki_edit"
+            ]
+          },
+          "feedbackBatchId": {},
+          "feedbackEventId": {},
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "observedPatchVersionId": {},
+          "playSessionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resultRevisionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "actorUserId",
+          "affectedBridgeUnitIds",
+          "body",
+          "contextArtifactId",
+          "contextEntryVersionId",
+          "createdAt",
+          "eventKind",
+          "feedbackBatchId",
+          "feedbackEventId",
+          "metadata",
+          "observedPatchVersionId",
+          "playSessionId",
+          "resultRevisionId"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationFeedbackInbox": {
+        "additionalProperties": false,
+        "properties": {
+          "batches": {
+            "items": {
+              "$ref": "#/components/schemas/ApiPatchIterationFeedbackBatch"
+            },
+            "type": "array"
+          },
+          "observedPatchVersionId": {}
+        },
+        "required": [
+          "batches",
+          "observedPatchVersionId"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationFeedbackRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "affectedBridgeUnitIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "body": {
+            "type": "string"
+          },
+          "contextArtifactId": {
+            "type": "string"
+          },
+          "contextEntryVersionId": {
+            "type": "string"
+          },
+          "contextFeedback": {
+            "$ref": "#/components/schemas/ApiPatchIterationContextFeedback"
+          },
+          "eventKind": {
+            "enum": [
+              "result_edit",
+              "comment",
+              "added_context",
+              "wiki_edit"
+            ]
+          },
+          "feedbackBatchId": {
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "playSessionId": {
+            "type": "string"
+          },
+          "resultRevisionId": {
+            "type": "string"
+          },
+          "targetBody": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "affectedBridgeUnitIds",
+          "body",
+          "contextArtifactId",
+          "contextEntryVersionId",
+          "contextFeedback",
+          "eventKind",
+          "feedbackBatchId",
+          "metadata",
+          "playSessionId",
+          "resultRevisionId",
+          "targetBody"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationFeedbackResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "feedback": {
+            "$ref": "#/components/schemas/ApiPatchIterationFeedbackEvent"
+          },
+          "schemaVersion": {
+            "const": "itotori.patch-iteration.feedback.v0"
+          }
+        },
+        "required": [
+          "feedback",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "artifactHashes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "origin": {
+            "enum": [
+              "run_finalizer",
+              "play_tester_edit",
+              "refinement_run"
+            ]
+          },
+          "parentPatchVersionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "patchVersionId": {},
+          "playableAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "qaCallouts": {
+            "items": {
+              "$ref": "#/components/schemas/ApiPatchIterationQaCallout"
+            },
+            "type": "array"
+          },
+          "runId": {},
+          "selectedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {},
+          "units": {
+            "items": {
+              "$ref": "#/components/schemas/ApiPatchIterationUnit"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "artifactHashes",
+          "origin",
+          "parentPatchVersionId",
+          "patchVersionId",
+          "playableAt",
+          "qaCallouts",
+          "runId",
+          "selectedAt",
+          "status",
+          "units"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationPlayRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "launchDescriptor": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "launchDescriptor"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationPlayResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "schemaVersion": {
+            "const": "itotori.patch-iteration.play.v0"
+          },
+          "session": {
+            "$ref": "#/components/schemas/ApiPatchIterationSession"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "session"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationQaCallout": {
+        "additionalProperties": false,
+        "properties": {
+          "bridgeUnitId": {},
+          "category": {},
+          "confidence": {},
+          "contested": {
+            "type": "boolean"
+          },
+          "informational": {
+            "const": true
+          },
+          "journalFindingId": {},
+          "note": {},
+          "severity": {}
+        },
+        "required": [
+          "bridgeUnitId",
+          "category",
+          "confidence",
+          "contested",
+          "informational",
+          "journalFindingId",
+          "note",
+          "severity"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationRefineRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "feedbackBatchIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "feedbackEventIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "scopeUnitIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "targetBodiesByUnit": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "wikiHeads": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "contextArtifactId": {},
+                "contextEntryVersionId": {}
+              },
+              "required": [
+                "contextArtifactId",
+                "contextEntryVersionId"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "feedbackBatchIds",
+          "feedbackEventIds",
+          "scopeUnitIds",
+          "targetBodiesByUnit",
+          "wikiHeads"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationRefineResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "patch": {
+            "$ref": "#/components/schemas/ApiPatchIterationPatch"
+          },
+          "refinement": {
+            "$ref": "#/components/schemas/ApiPatchIterationRefinement"
+          },
+          "schemaVersion": {
+            "const": "itotori.patch-iteration.refine.v0"
+          }
+        },
+        "required": [
+          "patch",
+          "refinement",
+          "schemaVersion"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationRefinement": {
+        "additionalProperties": false,
+        "properties": {
+          "basePatchVersionId": {},
+          "feedbackBatchIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/ApiPatchIterationRefinementMember"
+            },
+            "type": "array"
+          },
+          "runId": {},
+          "wikiHeads": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "contextArtifactId": {},
+                "contextEntryVersionId": {}
+              },
+              "required": [
+                "contextArtifactId",
+                "contextEntryVersionId"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "basePatchVersionId",
+          "feedbackBatchIds",
+          "members",
+          "runId",
+          "wikiHeads"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationRefinementMember": {
+        "additionalProperties": false,
+        "properties": {
+          "baseJournalOutcomeId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "basePatchVersionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "baseResultRevisionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "baseSourceRunId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bridgeUnitId": {},
+          "strategy": {
+            "enum": [
+              "reuse",
+              "redraft",
+              "new_scope"
+            ]
+          }
+        },
+        "required": [
+          "baseJournalOutcomeId",
+          "basePatchVersionId",
+          "baseResultRevisionId",
+          "baseSourceRunId",
+          "bridgeUnitId",
+          "strategy"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationSession": {
+        "additionalProperties": false,
+        "properties": {
+          "actorUserId": {},
+          "endedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "observedPatchVersionId": {},
+          "playSessionId": {},
+          "qaCallouts": {
+            "items": {
+              "$ref": "#/components/schemas/ApiPatchIterationQaCallout"
+            },
+            "type": "array"
+          },
+          "startedAt": {},
+          "status": {
+            "enum": [
+              "active",
+              "completed",
+              "abandoned"
+            ]
+          }
+        },
+        "required": [
+          "actorUserId",
+          "endedAt",
+          "observedPatchVersionId",
+          "playSessionId",
+          "qaCallouts",
+          "startedAt",
+          "status"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationSurfaceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "feedback": {
+            "$ref": "#/components/schemas/ApiPatchIterationFeedbackInbox"
+          },
+          "patch": {
+            "$ref": "#/components/schemas/ApiPatchIterationPatch"
+          },
+          "schemaVersion": {
+            "const": "itotori.patch-iteration.surface.v0"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/ApiPatchIterationVersion"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "feedback",
+          "patch",
+          "schemaVersion",
+          "versions"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationUnit": {
+        "additionalProperties": false,
+        "properties": {
+          "bridgeUnitId": {},
+          "journalOutcomeId": {},
+          "memberOrigin": {
+            "enum": [
+              "run_written_outcome",
+              "reused_from_base",
+              "play_tester_edit"
+            ]
+          },
+          "resultRevisionId": {},
+          "reusedFromPatchVersionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sourceRunId": {},
+          "targetBody": {},
+          "unitOrdinal": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "bridgeUnitId",
+          "journalOutcomeId",
+          "memberOrigin",
+          "resultRevisionId",
+          "reusedFromPatchVersionId",
+          "sourceRunId",
+          "targetBody",
+          "unitOrdinal"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationVersion": {
+        "additionalProperties": false,
+        "properties": {
+          "artifactHashes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "basePatchVersionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "origin": {
+            "enum": [
+              "run_finalizer",
+              "play_tester_edit",
+              "refinement_run"
+            ]
+          },
+          "parentPatchVersionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "patchVersionId": {},
+          "playableAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runId": {},
+          "selectedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {}
+        },
+        "required": [
+          "artifactHashes",
+          "basePatchVersionId",
+          "origin",
+          "parentPatchVersionId",
+          "patchVersionId",
+          "playableAt",
+          "runId",
+          "selectedAt",
+          "status"
+        ],
+        "type": "object"
+      },
+      "ApiPatchIterationVersionsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "schemaVersion": {
+            "const": "itotori.patch-iteration.versions.v0"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/ApiPatchIterationVersion"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "versions"
+        ],
+        "type": "object"
+      },
       "ApiPermissionSetRecord": {
         "additionalProperties": false,
         "properties": {
@@ -5274,6 +6109,85 @@
         "x-itotoriRouteId": "jobs.runTable"
       }
     },
+    "/api/play/locale-branches/{localeBranchId}/patch-versions": {
+      "get": {
+        "operationId": "patchIterationVersions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "localeBranchId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPatchIterationVersionsResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "List durable patch versions and lineage for one locale branch.",
+        "x-itotoriRouteId": "patchIteration.versions"
+      }
+    },
     "/api/play/patch-versions/{parentPatchVersionId}/target-edits": {
       "post": {
         "operationId": "playTargetEdit",
@@ -5361,6 +6275,600 @@
         },
         "summary": "Replace one delivered target line and select its child patch revision.",
         "x-itotoriRouteId": "play.targetEdit"
+      }
+    },
+    "/api/play/patch-versions/{patchVersionId}": {
+      "get": {
+        "operationId": "patchIterationSurface",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patchVersionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPatchIterationSurfaceResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Load a historical patch play surface, feedback inbox, and informational QA callouts.",
+        "x-itotoriRouteId": "patchIteration.surface"
+      }
+    },
+    "/api/play/patch-versions/{patchVersionId}/delivery": {
+      "get": {
+        "operationId": "patchIterationDelivery",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patchVersionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPatchIterationDeliveryResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Load immutable archive metadata for one exact playable patch version.",
+        "x-itotoriRouteId": "patchIteration.delivery"
+      }
+    },
+    "/api/play/patch-versions/{patchVersionId}/delivery/archive": {
+      "get": {
+        "operationId": "patchIterationDeliveryArchive",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patchVersionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/x-tar": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Selected delivered patch archive."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Download the immutable delivered patch archive for one exact patch version.",
+        "x-itotoriBinaryRouteId": "patchIteration.deliveryArchive"
+      }
+    },
+    "/api/play/patch-versions/{patchVersionId}/feedback": {
+      "post": {
+        "operationId": "patchIterationFeedback",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patchVersionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiPatchIterationFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPatchIterationFeedbackResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Persist individual or batched result, comment, context, or wiki play-test feedback.",
+        "x-itotoriRouteId": "patchIteration.feedback"
+      }
+    },
+    "/api/play/patch-versions/{patchVersionId}/feedback-batches": {
+      "post": {
+        "operationId": "patchIterationFeedbackBatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patchVersionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiPatchIterationFeedbackBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPatchIterationFeedbackBatchResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Create a persisted feedback batch for the exact patch version observed.",
+        "x-itotoriRouteId": "patchIteration.feedbackBatch"
+      }
+    },
+    "/api/play/patch-versions/{patchVersionId}/refine": {
+      "post": {
+        "operationId": "patchIterationRefine",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patchVersionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiPatchIterationRefineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPatchIterationRefineResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Freeze feedback/wiki inputs and complete a real-byte refinement patch version.",
+        "x-itotoriRouteId": "patchIteration.refine"
+      }
+    },
+    "/api/play/patch-versions/{patchVersionId}/sessions": {
+      "post": {
+        "operationId": "patchIterationPlay",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "patchVersionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiPatchIterationPlayRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiPatchIterationPlayResponse"
+                }
+              }
+            },
+            "description": "Success."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Start a play session for the exact playable patch version observed.",
+        "x-itotoriRouteId": "patchIteration.play"
       }
     },
     "/api/play/runs/{runId}/delivery": {
