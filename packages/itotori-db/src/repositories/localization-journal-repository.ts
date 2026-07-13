@@ -1025,6 +1025,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     assertNonBlank(reservationId, "reservationId");
 
     return this.db.transaction(async (tx) => {
+      await lockRunForCostAccountingInTx(tx, attempt.runId);
       const run = await renewRunLeaseInTx(tx, attempt.runId, attempt.lease, ["running", "paused"]);
       // Another concurrent worker may have just paused this same fenced run
       // after its own denial. Do not turn that expected convergence into an
@@ -1125,6 +1126,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     const completion = normalizeCompleteAttempt(input);
 
     return this.db.transaction(async (tx) => {
+      await lockRunForCostAccountingInTx(tx, completion.runId);
       await renewRunLeaseInTx(tx, completion.runId, completion.lease, ["running", "paused"]);
       const before = await loadAttemptInTx(tx, completion.attemptId);
       const persisted = await completeAttemptInTx(tx, completion);
@@ -1192,6 +1194,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     if (input.providerId !== undefined) assertNonBlank(input.providerId, "providerId");
 
     return this.db.transaction(async (tx) => {
+      await lockRunForCostAccountingInTx(tx, input.runId);
       const current = await loadAttemptInTx(tx, input.attemptId);
       if (current === undefined) {
         throw new LocalizationJournalRepositoryError(
@@ -1811,6 +1814,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     assertNonBlank(runId, "runId");
     const lease = normalizeSeedRunLease(leaseInput, "lease");
     return this.db.transaction(async (tx) => {
+      await lockRunForCostAccountingInTx(tx, runId);
       const resumedAt = new Date();
       // This is the takeover boundary. Fencing guarantees that the old fence
       // cannot persist a duplicate or incorrect OUTCOME. A duplicate provider
@@ -4373,6 +4377,10 @@ async function pauseRunForOverCapSettlementInTx(
 }
 
 async function lockRunForCostAccountingInTx(tx: JournalTransaction, runId: string): Promise<void> {
+  // The migration backfill acquires this same transaction-scoped key before
+  // examining terminal reservations. Take it before the row lock so every
+  // live cost-accounting transaction and the migration share one order.
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${runId}))`);
   await tx.execute(sql`
     select 1
     from ${localizationJournalRuns}

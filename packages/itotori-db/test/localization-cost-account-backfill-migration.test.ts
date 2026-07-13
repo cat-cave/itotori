@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { migrate, migrations } from "../src/migrations.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const terminalBackfillRunId = "run-cost-backfill-existing-account";
 
 describe("0082 localization cost-account backfill", () => {
   it("upgrades historical billed spend without counting estimates and refreshes existing accounts", async () => {
@@ -72,30 +73,7 @@ describe("0100 terminal cost-reservation backfill", () => {
     try {
       await migrateThrough(pool, "0099_release_interrupted_cost_reservations");
       await seedHistoricalJournalState(pool);
-      await pool.query(`
-        update itotori_localization_run_cost_accounts
-        set reserved_usd = 4.5
-        where run_id = 'run-cost-backfill-existing-account'
-      `);
-      await pool.query(`
-        insert into itotori_localization_cost_reservations (
-          reservation_id, run_id, attempt_id, reserved_usd, state
-        ) values
-          (
-            'reservation-terminal-backfill-billed',
-            'run-cost-backfill-existing-account',
-            'attempt-cost-backfill-existing-billed',
-            2.25,
-            'reserved'
-          ),
-          (
-            'reservation-terminal-backfill-legacy',
-            'run-cost-backfill-existing-account',
-            'attempt-cost-backfill-existing-legacy',
-            2.25,
-            'reserved'
-          )
-      `);
+      await seedTerminalReservationLeak(pool);
 
       // This is the real upgrade boundary: 0099 is already recorded with its
       // stranded rows, then 0100 migrates the live pre-fix state.
@@ -139,6 +117,82 @@ describe("0100 terminal cost-reservation backfill", () => {
       `);
       expect(applied.rows).toEqual([{ migration_id: "0100_backfill_terminal_cost_reservations" }]);
     } finally {
+      await pool.end();
+      await admin.query(`drop schema if exists ${quoteIdentifier(schemaName)} cascade`);
+      await admin.end();
+    }
+  });
+
+  it("waits for the matching run advisory lock before repairing a terminal reservation leak", async () => {
+    const databaseUrl = requiredDatabaseUrl();
+    const admin = new pg.Pool({ connectionString: databaseUrl });
+    const schemaName = `itotori_terminal_reservation_lock_${Date.now()}_${randomBytes(6).toString("hex")}`;
+    const schemaUrl = databaseUrlWithSearchPath(databaseUrl, schemaName);
+    const migrationApplicationName = `itotori-0100-lock-${randomBytes(6).toString("hex")}`;
+    const migrationUrl = databaseUrlWithSearchPathAndApplicationName(
+      databaseUrl,
+      schemaName,
+      migrationApplicationName,
+    );
+
+    await admin.query(`create schema ${quoteIdentifier(schemaName)}`);
+    const pool = new pg.Pool({ connectionString: schemaUrl });
+    const locker = await pool.connect();
+    let lockerTransactionOpen = false;
+    let migration: Promise<void> | undefined;
+    try {
+      await migrateThrough(pool, "0099_release_interrupted_cost_reservations");
+      await seedHistoricalJournalState(pool);
+      await seedTerminalReservationLeak(pool);
+
+      await locker.query("begin");
+      lockerTransactionOpen = true;
+      const holder = await locker.query<{ pid: number }>("select pg_backend_pid() as pid");
+      const holderPid = holder.rows[0]?.pid;
+      if (holderPid === undefined) throw new Error("advisory-lock holder has no backend pid");
+      await locker.query("select pg_advisory_xact_lock(hashtext($1))", [terminalBackfillRunId]);
+
+      migration = migrate(migrationUrl);
+      await waitForMigrationAdvisoryLockWaiter(admin, migrationApplicationName, holderPid);
+
+      const whileBlocked = await pool.query<{
+        reserved_usd: string;
+        terminal_reserved_count: string;
+      }>(`
+        select
+          account.reserved_usd,
+          count(reservation.reservation_id) filter (where reservation.state = 'reserved')
+            as terminal_reserved_count
+        from itotori_localization_run_cost_accounts account
+        left join itotori_localization_cost_reservations reservation
+          on reservation.run_id = account.run_id
+        where account.run_id = '${terminalBackfillRunId}'
+        group by account.reserved_usd
+      `);
+      expect(whileBlocked.rows).toEqual([{ reserved_usd: "4.5", terminal_reserved_count: "2" }]);
+
+      await locker.query("commit");
+      lockerTransactionOpen = false;
+      await migration;
+
+      const repaired = await pool.query<{
+        reserved_is_zero: boolean;
+        released_count: string;
+      }>(`
+        select
+          account.reserved_usd = 0 as reserved_is_zero,
+          count(reservation.reservation_id) filter (where reservation.state = 'released') as released_count
+        from itotori_localization_run_cost_accounts account
+        left join itotori_localization_cost_reservations reservation
+          on reservation.run_id = account.run_id
+        where account.run_id = '${terminalBackfillRunId}'
+        group by account.reserved_usd
+      `);
+      expect(repaired.rows).toEqual([{ reserved_is_zero: true, released_count: "2" }]);
+    } finally {
+      if (lockerTransactionOpen) await locker.query("rollback");
+      locker.release();
+      if (migration !== undefined) await migration.catch(() => undefined);
       await pool.end();
       await admin.query(`drop schema if exists ${quoteIdentifier(schemaName)} cascade`);
       await admin.end();
@@ -262,6 +316,33 @@ async function seedHistoricalJournalState(pool: pg.Pool): Promise<void> {
   `);
 }
 
+async function seedTerminalReservationLeak(pool: pg.Pool): Promise<void> {
+  await pool.query(`
+    update itotori_localization_run_cost_accounts
+    set reserved_usd = 4.5
+    where run_id = '${terminalBackfillRunId}'
+  `);
+  await pool.query(`
+    insert into itotori_localization_cost_reservations (
+      reservation_id, run_id, attempt_id, reserved_usd, state
+    ) values
+      (
+        'reservation-terminal-backfill-billed',
+        '${terminalBackfillRunId}',
+        'attempt-cost-backfill-existing-billed',
+        2.25,
+        'reserved'
+      ),
+      (
+        'reservation-terminal-backfill-legacy',
+        '${terminalBackfillRunId}',
+        'attempt-cost-backfill-existing-legacy',
+        2.25,
+        'reserved'
+      )
+  `);
+}
+
 async function insertHistoricalAttempts(
   pool: pg.Pool,
   input: {
@@ -372,6 +453,41 @@ function databaseUrlWithSearchPath(databaseUrl: string, schemaName: string): str
   const url = new URL(databaseUrl);
   url.searchParams.set("options", `-csearch_path=${schemaName}`);
   return url.toString();
+}
+
+function databaseUrlWithSearchPathAndApplicationName(
+  databaseUrl: string,
+  schemaName: string,
+  applicationName: string,
+): string {
+  const url = new URL(databaseUrl);
+  url.searchParams.set("options", `-csearch_path=${schemaName}`);
+  url.searchParams.set("application_name", applicationName);
+  return url.toString();
+}
+
+async function waitForMigrationAdvisoryLockWaiter(
+  pool: pg.Pool,
+  applicationName: string,
+  holderPid: number,
+): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const waiting = await pool.query<{ count: number }>(
+      `
+        select count(*)::int as count
+        from pg_stat_activity
+        where application_name = $1
+          and wait_event_type = 'Lock'
+          and wait_event = 'advisory'
+          and $2::int = any(pg_blocking_pids(pid))
+      `,
+      [applicationName, holderPid],
+    );
+    if (waiting.rows[0]?.count === 1) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("expected 0100 migration to wait for the held run advisory lock");
 }
 
 function quoteIdentifier(identifier: string): string {
