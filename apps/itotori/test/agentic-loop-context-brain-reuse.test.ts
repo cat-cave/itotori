@@ -1298,7 +1298,10 @@ describe.skipIf(!process.env.DATABASE_URL)(
       } finally {
         await context.close();
       }
-    }, 45_000);
+      // Heavy live e2e: dashboard POST add+edit → production redrafter → real
+      // Kaifuu delivery over HTTP. Its sibling (parent+child edit) runs ~25s
+      // locally; CI is slower, so 45s tips over. Give it a generous ceiling.
+    }, 180_000);
   },
 );
 
