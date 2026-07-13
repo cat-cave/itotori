@@ -281,7 +281,7 @@ function historyFixture(): WikiContextEntryHistoryReadModel {
 
 function editFixture(): ApiWikiEditResponse {
   return {
-    schemaVersion: "wiki.context.edit.v0.1",
+    schemaVersion: "wiki.context.edit.v0.2",
     generatedAt: GENERATED_AT,
     correctionId: "context-correction-wiki-screen",
     contextArtifactId: SELECTED_ENTRY_ID,
@@ -289,6 +289,7 @@ function editFixture(): ApiWikiEditResponse {
     affectedUnitIds: ["bridge-unit-scene-1", "bridge-unit-added-by-tester"],
     invalidatedArtifactIds: ["context-route-3", "context-speaker-4"],
     redraftJobId: "job-context-redraft-77",
+    rerun: { state: "succeeded", jobStatus: "succeeded", error: null },
     entry: selectedDetail(),
   };
 }
@@ -296,7 +297,7 @@ function editFixture(): ApiWikiEditResponse {
 function addFixture(): ApiWikiEditResponse {
   const entry = addedDetail();
   return {
-    schemaVersion: "wiki.context.edit.v0.1",
+    schemaVersion: "wiki.context.edit.v0.2",
     generatedAt: GENERATED_AT,
     correctionId: "context-correction-wiki-add",
     contextArtifactId: entry.contextArtifactId,
@@ -304,6 +305,7 @@ function addFixture(): ApiWikiEditResponse {
     affectedUnitIds: ["bridge-unit-added-by-tester"],
     invalidatedArtifactIds: [],
     redraftJobId: "job-context-redraft-add-88",
+    rerun: { state: "succeeded", jobStatus: "succeeded", error: null },
     entry,
   };
 }
@@ -470,7 +472,9 @@ describe("SPA shell — generic context Wiki", () => {
       });
     });
     expect(
-      await screen.findByRole("heading", { name: "Canonical wiki version saved" }),
+      await screen.findByRole("heading", {
+        name: "Canonical wiki version saved; redraft completed",
+      }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("version-scene-3").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("job-context-redraft-77")).toBeInTheDocument();
@@ -482,6 +486,40 @@ describe("SPA shell — generic context Wiki", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /approve|reject|defer/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps the canonical-save receipt honest when the redraft is retrying", async () => {
+    server.use(
+      http.post(wikiEntryPath, () =>
+        apiJson("wiki.edit", {
+          ...editFixture(),
+          rerun: {
+            state: "pending",
+            jobStatus: "retry_waiting",
+            error: "recorded redraft failure; retry is scheduled",
+          },
+        }),
+      ),
+    );
+    render(<App location={WIKI_ROUTE} />);
+    expect(await screen.findByText(currentBody, { selector: "p" })).toBeInTheDocument();
+
+    const editor = screen.getByRole("form", { name: "Edit shared context" });
+    fireEvent.change(within(editor).getByLabelText("Why this context needs correction"), {
+      target: { value: "Retry the redraft after the provider recovers." },
+    });
+    fireEvent.click(within(editor).getByRole("button", { name: "Save canonical wiki edit" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Canonical wiki version saved; redraft pending" }),
+    ).toBeInTheDocument();
+    const receipt = screen.getByTestId("wiki-edit-receipt");
+    expect(receipt).toHaveAttribute("data-wiki-rerun-state", "pending");
+    expect(receipt).toHaveTextContent("The redraft is retry_waiting");
+    expect(receipt).toHaveTextContent("recorded redraft failure; retry is scheduled");
+    expect(
+      screen.queryByRole("heading", { name: "Canonical wiki version saved; redraft completed" }),
+    ).not.toBeInTheDocument();
   });
 
   it("adds new shared context through the same canonical correction surface", async () => {
@@ -515,7 +553,9 @@ describe("SPA shell — generic context Wiki", () => {
       });
     });
     expect(
-      await screen.findByRole("heading", { name: "Canonical wiki version saved" }),
+      await screen.findByRole("heading", {
+        name: "Canonical wiki version saved; redraft completed",
+      }),
     ).toBeInTheDocument();
     expect(screen.getByText("job-context-redraft-add-88")).toBeInTheDocument();
     expect(await screen.findByRole("tab", { name: /Shrine bell timing/u })).toBeInTheDocument();

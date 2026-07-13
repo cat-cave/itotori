@@ -142,7 +142,6 @@ import {
   wikiContextEntryFixture,
   wikiContextHistoryFixture,
   wikiEditFixture,
-  wikiEntriesFixture,
 } from "./api-fixtures.js";
 
 const deniedActor = { userId: "api-user-without-required-permission" };
@@ -3064,52 +3063,6 @@ describe("Itotori API handlers", () => {
     expect(services.terminologyRepository.searchTerms).not.toHaveBeenCalled();
   });
 
-  it.each([
-    {
-      query: "?projectId=project-1&localeBranchId=locale-1&limit=5&offset=10",
-      filter: { projectId: "project-1", localeBranchId: "locale-1", limit: 5, offset: 10 },
-    },
-    {
-      query: "?projectId=project-1&localeBranchId=locale-1&sourceRevisionId=rev-1&kind=term",
-      filter: {
-        projectId: "project-1",
-        localeBranchId: "locale-1",
-        sourceRevisionId: "rev-1",
-        kind: "term",
-      },
-    },
-  ])("passes wiki.entries filter $query to the read model", async ({ query, filter }) => {
-    const services = serviceFixture();
-
-    const response = await handleItotoriApiRequest(
-      { method: "GET", pathname: "/api/wiki/entries", search: query },
-      services,
-    );
-
-    expect(response).toEqual({ statusCode: 200, body: wikiEntriesFixture });
-    expect(services.wikiRepository.loadEntries).toHaveBeenCalledWith(filter);
-    expect(services.authorization.requirePermission).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    { query: "?localeBranchId=locale-1", error: /projectId/u },
-    { query: "?projectId=project-1&localeBranchId=locale-1&kind=asset", error: /kind/u },
-    { query: "?projectId=project-1&localeBranchId=locale-1&limit=0", error: /limit/u },
-    { query: "?projectId=project-1&localeBranchId=locale-1&offset=-1", error: /offset/u },
-  ])("rejects malformed wiki.entries query $query", async ({ query, error }) => {
-    const services = serviceFixture();
-
-    const response = await handleItotoriApiRequest(
-      { method: "GET", pathname: "/api/wiki/entries", search: query },
-      services,
-    );
-
-    expect(response.statusCode).toBe(400);
-    expect(response.body).toMatchObject({ code: "bad_request" });
-    expect(response.body.error).toMatch(error);
-    expect(services.wikiRepository.loadEntries).not.toHaveBeenCalled();
-  });
-
   it("serves generic populated wiki list/show/history through the shared wiki service", async () => {
     const services = serviceFixture();
     const listPath = "/api/projects/project-1/locale-branches/locale-1/wiki";
@@ -5534,9 +5487,6 @@ function serviceFixture(): ItotoriApiServices {
     },
     terminologyRepository: {
       searchTerms: vi.fn(async () => terminologySearchFixture),
-    },
-    wikiRepository: {
-      loadEntries: vi.fn(async () => wikiEntriesFixture),
     },
     wiki: {
       list: vi.fn(async () => wikiContextEntriesFixture),

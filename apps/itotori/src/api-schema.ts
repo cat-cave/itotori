@@ -43,7 +43,6 @@ import type {
   WikiContextEntriesReadModel,
   WikiContextEntryHistoryReadModel,
   WikiContextEntryReadModel,
-  WikiEntriesReadModel,
 } from "@itotori/db";
 import {
   assetLocalizationDecisionAssetKindList,
@@ -65,7 +64,6 @@ import {
   reviewerQueueItemStateList,
   translationScopeValues,
   wikiContextEntryKindList,
-  wikiEntryKindValues,
 } from "./api-enum-values.js";
 import {
   assertBenchmarkReportV02,
@@ -168,7 +166,6 @@ export type ItotoriApiRouteId =
   | "wiki.history"
   | "wiki.edit"
   | "wiki.add"
-  | "wiki.entries"
   | "workspace.projects"
   | "workspace.scenes"
   | "workspace.assets"
@@ -287,14 +284,6 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   ReviewerQueuePermissionView: ["actorUserId", "canReadQueue", "canManageQueue", "denialReasons"],
   ApiAssetDecisionsResponse: ["decisions"],
   ApiCandidateAssetsResponse: ["candidateAssets"],
-  WikiEntriesReadModel: [
-    "schemaVersion",
-    "generatedAt",
-    "filter",
-    "pagination",
-    "brandContext",
-    "entries",
-  ],
   WikiContextEntriesReadModel: ["schemaVersion", "generatedAt", "filter", "pagination", "entries"],
   WikiContextEntryReadModel: ["schemaVersion", "generatedAt", "entry"],
   WikiContextEntryHistoryReadModel: [
@@ -313,6 +302,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "affectedUnitIds",
     "invalidatedArtifactIds",
     "redraftJobId",
+    "rerun",
     "entry",
   ],
   CatalogBenchmarkSeedFinderReadModel: ["schemaVersion", "targetLanguage", "generatedAt", "rows"],
@@ -876,9 +866,7 @@ export type ApiCatalogOpportunitiesResponse = CatalogOpportunityRankingReadModel
 
 export type ApiTerminologySearchResponse = TerminologySearchReadModel;
 
-export type ApiWikiEntriesResponse = WikiEntriesReadModel;
-
-/** Generic node-6 context-brain browse surface (not the legacy wiki.entries projection). */
+/** Generic node-6 context-brain browse surface. */
 export type ApiWikiListResponse = WikiContextEntriesReadModel;
 
 /** One canonical entry with content, provenance, citations, impact, and lineage. */
@@ -1723,7 +1711,6 @@ export type ItotoriApiResponseBody =
   | ApiWikiHistoryResponse
   | ApiWikiEditResponse
   | ApiWikiAddResponse
-  | ApiWikiEntriesResponse
   | ApiWorkspaceProjectBrowseResponse
   | ApiWorkspaceSceneBrowseResponse
   | ApiWorkspaceAssetBrowseResponse
@@ -2454,9 +2441,6 @@ export function assertItotoriApiResponse(
     case "wiki.add":
       assertWikiEditResponse(value);
       return;
-    case "wiki.entries":
-      assertWikiEntriesReadModel(value);
-      return;
     case "workspace.projects":
       assertWorkspaceProjectBrowseReadModel(value);
       return;
@@ -2698,124 +2682,6 @@ function assertAssetDecisionKind(
   assertEnum(value, assetLocalizationDecisionAssetKindList, label);
 }
 
-export function assertWikiEntriesReadModel(
-  value: unknown,
-  label = "WikiEntriesReadModel",
-): asserts value is WikiEntriesReadModel {
-  const model = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.WikiEntriesReadModel);
-  assertLiteral(model.schemaVersion, "wiki.entries.v0.1", `${label}.schemaVersion`);
-  assertDateLike(model.generatedAt, `${label}.generatedAt`);
-  const filter = asStrictRecord(model.filter, `${label}.filter`, [
-    "projectId",
-    "localeBranchId",
-    "sourceRevisionId",
-    "kind",
-  ]);
-  assertString(filter.projectId, `${label}.filter.projectId`);
-  assertString(filter.localeBranchId, `${label}.filter.localeBranchId`);
-  assertNullableString(filter.sourceRevisionId, `${label}.filter.sourceRevisionId`);
-  if (filter.kind !== null) {
-    assertEnum(filter.kind, Object.values(wikiEntryKindValues), `${label}.filter.kind`);
-  }
-  const pagination = asStrictRecord(model.pagination, `${label}.pagination`, [
-    "total",
-    "limit",
-    "offset",
-    "hasMore",
-    "nextOffset",
-  ]);
-  assertNonNegativeInteger(pagination.total, `${label}.pagination.total`);
-  assertNonNegativeInteger(pagination.limit, `${label}.pagination.limit`);
-  assertNonNegativeInteger(pagination.offset, `${label}.pagination.offset`);
-  assertBoolean(pagination.hasMore, `${label}.pagination.hasMore`);
-  if (pagination.nextOffset !== null) {
-    assertNonNegativeInteger(pagination.nextOffset, `${label}.pagination.nextOffset`);
-  }
-  const brandContext = asStrictRecord(model.brandContext, `${label}.brandContext`, [
-    "requestedProjectId",
-    "requestedLocaleBranchId",
-    "contexts",
-    "inheritedContextArtifacts",
-  ]);
-  assertString(brandContext.requestedProjectId, `${label}.brandContext.requestedProjectId`);
-  assertString(
-    brandContext.requestedLocaleBranchId,
-    `${label}.brandContext.requestedLocaleBranchId`,
-  );
-  const contexts = asArray(brandContext.contexts, `${label}.brandContext.contexts`);
-  for (const [contextIndex, contextValue] of contexts.entries()) {
-    const contextLabel = `${label}.brandContext.contexts[${contextIndex}]`;
-    const context = asStrictRecord(contextValue, contextLabel, [
-      "brandContextId",
-      "contextKey",
-      "name",
-      "requestedRole",
-      "inheritedSources",
-    ]);
-    assertString(context.brandContextId, `${contextLabel}.brandContextId`);
-    assertString(context.contextKey, `${contextLabel}.contextKey`);
-    assertString(context.name, `${contextLabel}.name`);
-    assertString(context.requestedRole, `${contextLabel}.requestedRole`);
-    const inheritedSources = asArray(context.inheritedSources, `${contextLabel}.inheritedSources`);
-    for (const [sourceIndex, sourceValue] of inheritedSources.entries()) {
-      assertWikiEntryScope(sourceValue, `${contextLabel}.inheritedSources[${sourceIndex}]`, [
-        "inheritedCharacterArcs",
-        "inheritedGlossary",
-        "inheritedContext",
-      ]);
-    }
-  }
-  const inheritedArtifacts = asArray(
-    brandContext.inheritedContextArtifacts,
-    `${label}.brandContext.inheritedContextArtifacts`,
-  );
-  for (const [artifactIndex, artifactValue] of inheritedArtifacts.entries()) {
-    const artifactLabel = `${label}.brandContext.inheritedContextArtifacts[${artifactIndex}]`;
-    const artifact = asStrictRecord(artifactValue, artifactLabel, [
-      "contextArtifactId",
-      "projectId",
-      "localeBranchId",
-      "sourceRevisionId",
-      "category",
-      "status",
-      "title",
-      "body",
-      "source",
-    ]);
-    assertString(artifact.contextArtifactId, `${artifactLabel}.contextArtifactId`);
-    assertString(artifact.projectId, `${artifactLabel}.projectId`);
-    assertString(artifact.localeBranchId, `${artifactLabel}.localeBranchId`);
-    assertString(artifact.sourceRevisionId, `${artifactLabel}.sourceRevisionId`);
-    assertString(artifact.category, `${artifactLabel}.category`);
-    assertString(artifact.status, `${artifactLabel}.status`);
-    assertString(artifact.title, `${artifactLabel}.title`);
-    assertString(artifact.body, `${artifactLabel}.body`);
-    assertWikiEntryScope(artifact.source, `${artifactLabel}.source`);
-  }
-  const entries = asArray(model.entries, `${label}.entries`);
-  for (const [index, entryValue] of entries.entries()) {
-    const entryLabel = `${label}.entries[${index}]`;
-    const entry = asRecord(entryValue, entryLabel);
-    assertString(entry.entryId, `${entryLabel}.entryId`);
-    assertEnum(entry.kind, Object.values(wikiEntryKindValues), `${entryLabel}.kind`);
-    assertString(entry.title, `${entryLabel}.title`);
-    const related = asArray(entry.related, `${entryLabel}.related`);
-    for (const [relatedIndex, relatedValue] of related.entries()) {
-      const relatedLabel = `${entryLabel}.related[${relatedIndex}]`;
-      const relatedRef = asStrictRecord(relatedValue, relatedLabel, [
-        "refKind",
-        "refId",
-        "label",
-        "relation",
-      ]);
-      assertString(relatedRef.refKind, `${relatedLabel}.refKind`);
-      assertString(relatedRef.refId, `${relatedLabel}.refId`);
-      assertString(relatedRef.label, `${relatedLabel}.label`);
-      assertString(relatedRef.relation, `${relatedLabel}.relation`);
-    }
-  }
-}
-
 const wikiContextArtifactCategoryList = [
   "scene_summary",
   "character_note",
@@ -2903,7 +2769,7 @@ export function assertWikiEditResponse(
   label = "ApiWikiEditResponse",
 ): asserts value is ApiWikiEditResponse {
   const response = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiWikiEditResponse);
-  assertLiteral(response.schemaVersion, "wiki.context.edit.v0.1", `${label}.schemaVersion`);
+  assertLiteral(response.schemaVersion, "wiki.context.edit.v0.2", `${label}.schemaVersion`);
   assertDateLike(response.generatedAt, `${label}.generatedAt`);
   assertString(response.correctionId, `${label}.correctionId`);
   assertString(response.contextArtifactId, `${label}.contextArtifactId`);
@@ -2911,7 +2777,32 @@ export function assertWikiEditResponse(
   assertStringArray(response.affectedUnitIds, `${label}.affectedUnitIds`);
   assertStringArray(response.invalidatedArtifactIds, `${label}.invalidatedArtifactIds`);
   assertString(response.redraftJobId, `${label}.redraftJobId`);
+  assertContextCorrectionRerunStatus(response.rerun, `${label}.rerun`);
   assertWikiContextEntry(response.entry, `${label}.entry`, { includesHistory: true });
+}
+
+function assertContextCorrectionRerunStatus(value: unknown, label: string): void {
+  const rerun = asStrictRecord(value, label, ["state", "jobStatus", "error"]);
+  assertEnum(rerun.state, ["succeeded", "pending", "failed"] as const, `${label}.state`);
+  assertNullableString(rerun.error, `${label}.error`);
+  switch (rerun.state) {
+    case "succeeded":
+      assertLiteral(rerun.jobStatus, "succeeded", `${label}.jobStatus`);
+      if (rerun.error !== null) {
+        throw new Error(`${label}.error must be null when rerun.state is succeeded`);
+      }
+      return;
+    case "pending":
+      assertEnum(
+        rerun.jobStatus,
+        ["queued", "running", "retry_waiting"] as const,
+        `${label}.jobStatus`,
+      );
+      return;
+    case "failed":
+      assertEnum(rerun.jobStatus, ["dead_letter", "cancelled"] as const, `${label}.jobStatus`);
+      return;
+  }
 }
 
 /** Parse the only client-controlled fields of an existing canonical wiki edit. */
@@ -3166,39 +3057,6 @@ function assertWikiContextImpact(value: unknown, label: string): void {
   assertStringArray(impact.affectedUnitIds, `${label}.affectedUnitIds`);
   assertNullableString(impact.invalidatedReason, `${label}.invalidatedReason`);
   assertNullableDateLike(impact.invalidatedAt, `${label}.invalidatedAt`);
-}
-
-function assertWikiEntryScope(value: unknown, label: string, extraKeys: string[] = []): void {
-  const scope = asStrictRecord(value, label, [
-    "inheritance",
-    "requestedProjectId",
-    "requestedLocaleBranchId",
-    "sourceProjectId",
-    "sourceLocaleBranchId",
-    "brandContextId",
-    "brandContextKey",
-    "brandContextName",
-    "brandContextRole",
-    ...extraKeys,
-  ]);
-  assertString(scope.inheritance, `${label}.inheritance`);
-  assertString(scope.requestedProjectId, `${label}.requestedProjectId`);
-  assertString(scope.requestedLocaleBranchId, `${label}.requestedLocaleBranchId`);
-  assertString(scope.sourceProjectId, `${label}.sourceProjectId`);
-  assertString(scope.sourceLocaleBranchId, `${label}.sourceLocaleBranchId`);
-  assertNullableString(scope.brandContextId, `${label}.brandContextId`);
-  assertNullableString(scope.brandContextKey, `${label}.brandContextKey`);
-  assertNullableString(scope.brandContextName, `${label}.brandContextName`);
-  assertNullableString(scope.brandContextRole, `${label}.brandContextRole`);
-  if (extraKeys.includes("inheritedCharacterArcs")) {
-    assertBoolean(scope.inheritedCharacterArcs, `${label}.inheritedCharacterArcs`);
-  }
-  if (extraKeys.includes("inheritedGlossary")) {
-    assertBoolean(scope.inheritedGlossary, `${label}.inheritedGlossary`);
-  }
-  if (extraKeys.includes("inheritedContext")) {
-    assertBoolean(scope.inheritedContext, `${label}.inheritedContext`);
-  }
 }
 
 export function assertReviewerQueueDashboardReadModel(

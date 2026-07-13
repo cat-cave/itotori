@@ -57,7 +57,6 @@ import { ItotoriSourceUnitRepository } from "../src/repositories/source-unit-rep
 import { ItotoriTranslationMemoryRepository } from "../src/repositories/translation-memory-repository.js";
 import { ItotoriTranslationScopeSettingsRepository } from "../src/repositories/translation-scope-settings-repository.js";
 import { ItotoriLocalizationPassRunConfigRepository } from "../src/repositories/localization-pass-run-config-repository.js";
-import { ItotoriWikiReadmodelRepository } from "../src/repositories/wiki-readmodel-repository.js";
 import { ItotoriWikiContextRepository } from "../src/repositories/wiki-context-repository.js";
 import { ItotoriWorkspaceCorrectionRepository } from "../src/repositories/workspace-correction-repository.js";
 import type { DatabaseContext, ItotoriDatabase } from "../src/connection.js";
@@ -674,16 +673,6 @@ const repositoryPermissionGateMatrix = [
     "projectImport",
     "engine-capability-report-repository.test.ts capability evidence coverage",
     (repo) => repo.recordCapabilityEvidence(deniedActor, undefined as never),
-  ),
-  wikiReadmodelGate(
-    "loadEntries",
-    "catalogRead",
-    "wiki-readmodel-repository.test.ts entries read-model coverage",
-    (repo) =>
-      repo.loadEntries(deniedActor, {
-        projectId: "project-denied",
-        localeBranchId: "locale-denied",
-      }),
   ),
   wikiContextGate(
     "listEntries",
@@ -1989,12 +1978,6 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriWikiReadmodelRepository.loadEntries",
-          "requiredPermission": "catalog.read",
-          "successFixture": "wiki-readmodel-repository.test.ts entries read-model coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriWikiContextRepository.listEntries",
           "requiredPermission": "catalog.read",
           "successFixture": "wiki-context-repository.test.ts generic context browse coverage",
@@ -3182,22 +3165,6 @@ function engineCapabilityReportGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new EngineCapabilityReportRepository(db)),
-  });
-}
-
-function wikiReadmodelGate(
-  mutation: string,
-  permissionKey: PermissionKey,
-  successFixture: string,
-  run: (repository: ItotoriWikiReadmodelRepository) => Promise<unknown>,
-): RepositoryPermissionGateCase {
-  return repositoryGate({
-    repository: "ItotoriWikiReadmodelRepository",
-    sourceFile: "wiki-readmodel-repository.ts",
-    mutation,
-    permissionKey,
-    successFixture,
-    runDeniedMutation: (db) => run(new ItotoriWikiReadmodelRepository(db)),
   });
 }
 

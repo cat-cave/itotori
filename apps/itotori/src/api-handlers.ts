@@ -52,11 +52,8 @@ import {
   type SaveModelRoutingSettingsInput,
   type TerminologySearchInput,
   type TerminologySearchReadModel,
-  type WikiEntriesFilter,
-  type WikiEntriesReadModel,
   type WikiContextEntriesFilter,
   wikiContextEntryKindValues,
-  wikiEntryKindValues,
 } from "@itotori/db";
 import {
   resolveStudioCapabilityPermissionView,
@@ -333,9 +330,6 @@ export type ItotoriReadOnlyApiServices = {
   terminologyRepository: {
     searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
   };
-  wikiRepository: {
-    loadEntries(input: WikiEntriesFilter): Promise<WikiEntriesReadModel>;
-  };
   /** Generic node-6 context wiki reads; mutation is excluded from this surface. */
   wiki: Pick<WikiBrainServicePort, "list" | "show" | "history">;
   reviewerQueue: Pick<ReviewerQueueApiServicePort, "loadDashboard" | "loadDetailContext">;
@@ -560,9 +554,6 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     },
     terminologyRepository: {
       searchTerms: (input) => services.terminologyRepository.searchTerms(input),
-    },
-    wikiRepository: {
-      loadEntries: (input) => services.wikiRepository.loadEntries(input),
     },
     wiki: {
       list: (input) => services.wiki.list(input),
@@ -1882,13 +1873,6 @@ async function routeReadOnlyItotoriApiRequest(
     }
   }
 
-  if (request.method === "GET" && request.pathname === "/api/wiki/entries") {
-    return ok(
-      "wiki.entries",
-      await services.wikiRepository.loadEntries(parseWikiEntriesQuery(request.search)),
-    );
-  }
-
   if (request.method === "GET" && request.pathname === "/api/workspace/projects") {
     const permission = await resolveApiReviewerQueuePermissionView(
       services,
@@ -2158,7 +2142,6 @@ async function routeReadOnlyItotoriApiRequest(
     request.pathname === "/api/catalog/benchmark-seeds" ||
     request.pathname === "/api/catalog/opportunities" ||
     request.pathname === "/api/terminology/search" ||
-    request.pathname === "/api/wiki/entries" ||
     request.pathname === "/api/queue/health" ||
     playDeliveryRoute !== null ||
     playRouteMapRoute !== null ||
@@ -3542,44 +3525,6 @@ function parseTerminologySearchInput(search = ""): TerminologySearchInput {
   return input;
 }
 
-function parseWikiEntriesQuery(search = ""): WikiEntriesFilter {
-  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  assertKnownQueryParams(
-    params,
-    ["projectId", "localeBranchId", "sourceRevisionId", "kind", "limit", "offset"],
-    "wiki entries",
-  );
-  const input: WikiEntriesFilter = {
-    projectId: requiredNonEmptyParam(params, "projectId"),
-    localeBranchId: requiredNonEmptyParam(params, "localeBranchId"),
-  };
-  const sourceRevisionId = params.get("sourceRevisionId");
-  if (sourceRevisionId !== null) {
-    input.sourceRevisionId = nonEmptyParam(sourceRevisionId, "sourceRevisionId");
-  }
-  const kind = params.get("kind");
-  if (kind !== null) {
-    input.kind = enumParam(kind, Object.values(wikiEntryKindValues), "kind");
-  }
-  const limit = params.get("limit");
-  if (limit !== null) {
-    const parsedLimit = Number(limit);
-    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
-      throw new ApiValidationError("limit must be an integer from 1 through 100");
-    }
-    input.limit = parsedLimit;
-  }
-  const offset = params.get("offset");
-  if (offset !== null) {
-    const parsedOffset = Number(offset);
-    if (!Number.isInteger(parsedOffset) || parsedOffset < 0) {
-      throw new ApiValidationError("offset must be a non-negative integer");
-    }
-    input.offset = parsedOffset;
-  }
-  return input;
-}
-
 function parseWikiContextListQuery(
   search = "",
 ): Omit<WikiContextEntriesFilter, "projectId" | "localeBranchId"> {
@@ -3704,7 +3649,6 @@ function ok(routeId: "wiki.show", body: ApiWikiShowResponse): ApiJsonResponse;
 function ok(routeId: "wiki.history", body: ApiWikiHistoryResponse): ApiJsonResponse;
 function ok(routeId: "wiki.edit", body: ApiWikiEditResponse): ApiJsonResponse;
 function ok(routeId: "wiki.add", body: ApiWikiAddResponse): ApiJsonResponse;
-function ok(routeId: "wiki.entries", body: WikiEntriesReadModel): ApiJsonResponse;
 function ok(
   routeId: "workspace.projects",
   body: ApiWorkspaceProjectBrowseResponse,

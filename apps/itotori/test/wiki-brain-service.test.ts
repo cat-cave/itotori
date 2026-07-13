@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { wikiContextEntryFixture } from "./api-fixtures.js";
 import { WikiBrainService } from "../src/wiki/service.js";
-import type { ContextCorrectionResult } from "../src/orchestrator/context-correction-service.js";
+import type { ContextCorrectionRerunResult } from "../src/orchestrator/context-correction-service.js";
 
 describe("WikiBrainService", () => {
   it("keeps an identical edit retry idempotent by excluding prior correction markers from semantic data", async () => {
@@ -18,15 +18,18 @@ describe("WikiBrainService", () => {
     };
     const showEntry = vi.fn(async () => persistedHead);
     const apply = vi.fn(async (input) => {
-      const correction: ContextCorrectionResult = {
+      const correction: ContextCorrectionRerunResult = {
         correctionId: `context-correction-${JSON.stringify(input.data)}`,
         contextArtifact: {
           contextArtifactId: "context-artifact-hero-scene",
           headVersionId: "context-version-hero-scene-2",
-        } as ContextCorrectionResult["contextArtifact"],
+        } as ContextCorrectionRerunResult["contextArtifact"],
         affectedUnitIds: ["bridge-unit-1"],
         invalidatedArtifactIds: [],
-        redraftJob: { jobId: "context-redraft-job-2" } as ContextCorrectionResult["redraftJob"],
+        redraftJob: {
+          jobId: "context-redraft-job-2",
+        } as ContextCorrectionRerunResult["redraftJob"],
+        rerun: { state: "succeeded", jobStatus: "succeeded", error: null },
       };
       return correction;
     });

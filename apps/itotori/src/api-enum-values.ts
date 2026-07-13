@@ -171,11 +171,6 @@ export const reviewerQueueItemKindList = Object.values(reviewerQueueItemKindValu
 export const reviewerQueueItemStateList = Object.values(reviewerQueueItemStateValues);
 export const reviewerQueueActionList = Object.values(reviewerQueueActionValues);
 
-export const wikiEntryKindValues = {
-  character: "character",
-  term: "term",
-} as const;
-
 /** Browser-safe mirror of the generic node-6 context wiki kinds. */
 export const wikiContextEntryKindValues = {
   scene: "scene",

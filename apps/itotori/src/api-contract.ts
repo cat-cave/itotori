@@ -257,19 +257,6 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       properties: { query: str, normalizedQuery: str, localeBranchId: str, results: arr },
       additionalProperties: true,
     }),
-  WikiEntriesReadModel: () =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.WikiEntriesReadModel,
-      properties: {
-        generatedAt: str,
-        filter: obj,
-        pagination: obj,
-        brandContext: obj,
-        entries: arr,
-      },
-      additionalProperties: false,
-      schemaVersion: "wiki.entries.v0.1",
-    }),
   WikiContextEntriesReadModel: () =>
     object({
       required: ITOTORI_STRICT_API_BODY_KEYS.WikiContextEntriesReadModel,
@@ -336,10 +323,21 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
         affectedUnitIds: arr,
         invalidatedArtifactIds: arr,
         redraftJobId: str,
+        rerun: object({
+          required: ["state", "jobStatus", "error"],
+          properties: {
+            state: { enum: ["succeeded", "pending", "failed"] },
+            jobStatus: {
+              enum: ["queued", "running", "retry_waiting", "succeeded", "dead_letter", "cancelled"],
+            },
+            error: nullableStr,
+          },
+          additionalProperties: false,
+        }),
         entry: obj,
       },
       additionalProperties: false,
-      schemaVersion: "wiki.context.edit.v0.1",
+      schemaVersion: "wiki.context.edit.v0.2",
     }),
 
   // Workspace --------------------------------------------------------------

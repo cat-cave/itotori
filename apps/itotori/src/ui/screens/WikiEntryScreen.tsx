@@ -41,12 +41,13 @@ const wikiKindLabel: Readonly<Record<WikiContextEntryKind, string>> = {
 const wikiAddKinds = ["note", "glossary", "style"] as const;
 type WikiAddKind = (typeof wikiAddKinds)[number];
 
-type WikiEditSuccess = {
+type WikiEditReceipt = {
   contextArtifactId: string;
   versionId: string;
   invalidatedArtifactIds: string[];
   affectedUnitIds: string[];
   jobId: string;
+  rerun: ApiWikiEditResponse["rerun"];
 };
 
 export type WikiEntryRouteParams = {
@@ -176,7 +177,7 @@ function WikiEntryForBranch({
 }): ReactNode {
   const [refresh, setRefresh] = useState(0);
   const [offset, setOffset] = useState(0);
-  const [editSuccess, setEditSuccess] = useState<WikiEditSuccess | null>(null);
+  const [editReceipt, setEditReceipt] = useState<WikiEditReceipt | null>(null);
   const entries = useApiQuery(
     "wiki.list",
     {
@@ -200,7 +201,7 @@ function WikiEntryForBranch({
       data-focus-kind={focusKind ?? undefined}
     >
       <ShellHeader eyebrow="Wiki" title="Shared context" />
-      <WikiEditSuccessNotice success={editSuccess} />
+      <WikiEditReceiptNotice receipt={editReceipt} />
       {entries.state === "loading" && <LoadingState label="Loading context entries…" />}
       {entries.state === "empty" && (
         <>
@@ -213,7 +214,7 @@ function WikiEntryForBranch({
             localeBranchId={localeBranchId}
             sourceRevisionId=""
             onAdded={(saved) => {
-              setEditSuccess(saved);
+              setEditReceipt(saved);
               setRefresh((current) => current + 1);
             }}
           />
@@ -236,7 +237,7 @@ function WikiEntryForBranch({
             }
           }}
           onEdited={(saved) => {
-            setEditSuccess(saved);
+            setEditReceipt(saved);
             setRefresh((current) => current + 1);
           }}
         />
@@ -260,7 +261,7 @@ function WikiEntryReady({
   refresh: number;
   onPreviousPage(): void;
   onNextPage(): void;
-  onEdited(saved: WikiEditSuccess): void;
+  onEdited(saved: WikiEditReceipt): void;
 }): ReactNode {
   const [selectedEntryId, setSelectedEntryId] = useState(() =>
     initialSelection(model, focusEntryId, focusKind),
@@ -348,7 +349,7 @@ function WikiContextDetail({
 }: {
   entry: WikiContextEntry;
   refresh: number;
-  onEdited(saved: WikiEditSuccess): void;
+  onEdited(saved: WikiEditReceipt): void;
 }): ReactNode {
   const identity = `${entry.projectId}:${entry.localeBranchId}:${entry.contextArtifactId}:${refresh}`;
   const pathParams = {
@@ -388,7 +389,7 @@ function WikiContextDetailReady({
 }: {
   entry: WikiContextEntry;
   history: WikiContextEntryHistoryReadModel;
-  onEdited(saved: WikiEditSuccess): void;
+  onEdited(saved: WikiEditReceipt): void;
 }): ReactNode {
   return (
     <section
@@ -620,7 +621,7 @@ function WikiAddContextForm({
   projectId: string;
   localeBranchId: string;
   sourceRevisionId: string;
-  onAdded(saved: WikiEditSuccess): void;
+  onAdded(saved: WikiEditReceipt): void;
 }): ReactNode {
   const [kind, setKind] = useState<WikiAddKind>("note");
   const [sourceRevisionId, setSourceRevisionId] = useState(initialSourceRevisionId);
@@ -658,7 +659,7 @@ function WikiAddContextForm({
     if (result.state === "ready") {
       onAdded({
         contextArtifactId: result.data.contextArtifactId,
-        ...editSuccessFromResponse(result.data),
+        ...editReceiptFromResponse(result.data),
       });
       return;
     }
@@ -768,7 +769,7 @@ function WikiEditForm({
   onEdited,
 }: {
   entry: WikiContextEntry;
-  onEdited(saved: WikiEditSuccess): void;
+  onEdited(saved: WikiEditReceipt): void;
 }): ReactNode {
   const [title, setTitle] = useState(entry.title);
   const [body, setBody] = useState(entry.body);
@@ -802,7 +803,7 @@ function WikiEditForm({
       },
     });
     if (result.state === "ready") {
-      const saved = editSuccessFromResponse(result.data);
+      const saved = editReceiptFromResponse(result.data);
       onEdited({ contextArtifactId: result.data.contextArtifactId, ...saved });
       return;
     }
@@ -820,8 +821,9 @@ function WikiEditForm({
   return (
     <Panel title="Edit shared context" eyebrow="Direct canonical correction">
       <p>
-        Saving writes a new canonical context version, invalidates dependent units, and schedules
-        their redraft. It does not wait for a review or approval step.
+        Saving writes a new canonical context version, invalidates dependent units, and reports
+        whether their immediate redraft completed, remains pending, or failed. It does not wait for
+        a review or approval step.
       </p>
       <form aria-label="Edit shared context" onSubmit={(event) => void submit(event)}>
         <p>
@@ -875,43 +877,66 @@ function WikiEditForm({
   );
 }
 
-function WikiEditSuccessNotice({ success }: { success: WikiEditSuccess | null }): ReactNode {
-  if (success === null) {
+function WikiEditReceiptNotice({ receipt }: { receipt: WikiEditReceipt | null }): ReactNode {
+  if (receipt === null) {
     return null;
   }
+  const rerunCopy = rerunNoticeCopy(receipt);
   return (
     <Panel
-      title="Canonical wiki version saved"
+      title={rerunCopy.title}
       eyebrow="Node-8 context correction"
-      data-wiki-edit-success="true"
+      data-testid="wiki-edit-receipt"
+      data-wiki-edit-receipt="true"
+      data-wiki-rerun-state={receipt.rerun.state}
     >
       <p>
-        Version <code>{success.versionId}</code> is now the canonical head.
+        Version <code>{receipt.versionId}</code> is now the canonical head.
       </p>
       <p>
-        Invalidated {success.invalidatedArtifactIds.length} dependent context artifact(s); the
-        redraft job is <code>{success.jobId}</code>.
+        Invalidated {receipt.invalidatedArtifactIds.length} dependent context artifact(s); the
+        redraft job is <code>{receipt.jobId}</code>.
       </p>
-      <p>
-        {success.affectedUnitIds.length} affected unit(s) will resolve the new head in their next
-        ContextPacket.
-      </p>
+      <p>{rerunCopy.body}</p>
+      {receipt.rerun.error !== null && <p role="alert">Redraft detail: {receipt.rerun.error}</p>}
     </Panel>
   );
 }
 
-/** Project the typed node-8 correction result into the persistent success notice. */
-function editSuccessFromResponse(value: ApiWikiEditResponse): {
+function rerunNoticeCopy(receipt: WikiEditReceipt): { title: string; body: string } {
+  switch (receipt.rerun.state) {
+    case "succeeded":
+      return {
+        title: "Canonical wiki version saved; redraft completed",
+        body: `${receipt.affectedUnitIds.length} affected unit(s) resolved the new head in their refreshed ContextPacket.`,
+      };
+    case "pending":
+      return {
+        title: "Canonical wiki version saved; redraft pending",
+        body: `The redraft is ${receipt.rerun.jobStatus}; ${receipt.affectedUnitIds.length} affected unit(s) have not yet completed a refreshed ContextPacket.`,
+      };
+    case "failed":
+      return {
+        title: "Canonical wiki version saved; redraft failed",
+        body: `The redraft is ${receipt.rerun.jobStatus}; the canonical version remains saved, but affected units need a successful rerun before their ContextPackets refresh.`,
+      };
+  }
+}
+
+/** Project the typed node-8 correction result into the persistent receipt notice. */
+function editReceiptFromResponse(value: ApiWikiEditResponse): {
   versionId: string;
   invalidatedArtifactIds: string[];
   affectedUnitIds: string[];
   jobId: string;
+  rerun: ApiWikiEditResponse["rerun"];
 } {
   return {
     versionId: value.contextEntryVersionId,
     invalidatedArtifactIds: value.invalidatedArtifactIds,
     affectedUnitIds: value.affectedUnitIds,
     jobId: value.redraftJobId,
+    rerun: value.rerun,
   };
 }
 

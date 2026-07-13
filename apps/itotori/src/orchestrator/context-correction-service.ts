@@ -68,6 +68,34 @@ export type ContextCorrectionResult = {
   redraftJob: JobQueueRecord;
 };
 
+/**
+ * The durable state of the exact queued rerun after a request-time worker
+ * drain. A canonical correction is committed before the rerun starts, so a
+ * caller must distinguish that successful write from the separate redraft
+ * outcome instead of treating every edit receipt as an unqualified success.
+ */
+export type ContextCorrectionRerunStatus =
+  | {
+      state: "succeeded";
+      jobStatus: "succeeded";
+      error: null;
+    }
+  | {
+      state: "pending";
+      jobStatus: "queued" | "running" | "retry_waiting";
+      error: string | null;
+    }
+  | {
+      state: "failed";
+      jobStatus: "dead_letter" | "cancelled";
+      error: string | null;
+    };
+
+/** A correction receipt enriched by the installed worker's exact job state. */
+export type ContextCorrectionRerunResult = ContextCorrectionResult & {
+  rerun: ContextCorrectionRerunStatus;
+};
+
 export type ContextCorrectionServiceDeps = {
   actor: AuthorizationActor;
   contextArtifacts: ItotoriContextCorrectionPersistencePort;

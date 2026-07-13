@@ -2618,8 +2618,42 @@
         "redraftJobId": {
           "type": "string"
         },
+        "rerun": {
+          "additionalProperties": false,
+          "properties": {
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "jobStatus": {
+              "enum": [
+                "queued",
+                "running",
+                "retry_waiting",
+                "succeeded",
+                "dead_letter",
+                "cancelled"
+              ]
+            },
+            "state": {
+              "enum": [
+                "succeeded",
+                "pending",
+                "failed"
+              ]
+            }
+          },
+          "required": [
+            "error",
+            "jobStatus",
+            "state"
+          ],
+          "type": "object"
+        },
         "schemaVersion": {
-          "const": "wiki.context.edit.v0.1"
+          "const": "wiki.context.edit.v0.2"
         }
       },
       "required": [
@@ -2631,6 +2665,7 @@
         "generatedAt",
         "invalidatedArtifactIds",
         "redraftJobId",
+        "rerun",
         "schemaVersion"
       ],
       "type": "object"
@@ -3507,38 +3542,6 @@
       "required": [
         "entry",
         "generatedAt",
-        "schemaVersion"
-      ],
-      "type": "object"
-    },
-    "WikiEntriesReadModel": {
-      "additionalProperties": false,
-      "properties": {
-        "brandContext": {
-          "type": "object"
-        },
-        "entries": {
-          "type": "array"
-        },
-        "filter": {
-          "type": "object"
-        },
-        "generatedAt": {
-          "type": "string"
-        },
-        "pagination": {
-          "type": "object"
-        },
-        "schemaVersion": {
-          "const": "wiki.entries.v0.1"
-        }
-      },
-      "required": [
-        "brandContext",
-        "entries",
-        "filter",
-        "generatedAt",
-        "pagination",
         "schemaVersion"
       ],
       "type": "object"

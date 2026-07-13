@@ -33,7 +33,6 @@ import {
   ItotoriStyleGuideService,
   ItotoriStyleGuideRepository,
   ItotoriTerminologyRepository,
-  ItotoriWikiReadmodelRepository,
   ItotoriWikiContextRepository,
   ItotoriTranslationBatchRepository,
   ItotoriTranslationMemoryRepository,
@@ -59,6 +58,7 @@ import {
   type CatalogConflictReviewReadModel,
   type CatalogCompletenessBenchmarkPools,
   type CatalogCompletenessPoolFilter,
+  type JobQueueRecord,
   type JobWorkerResult,
   type LoadQueueHealthOptions,
   type LoadJobsRunTableOptions,
@@ -72,8 +72,6 @@ import {
   type AuthAccountSeatUsageRecord,
   type TerminologySearchInput,
   type TerminologySearchReadModel,
-  type WikiEntriesFilter,
-  type WikiEntriesReadModel,
   type RefreshExactSearchDocumentsInput,
   type RefreshExactSearchDocumentsResult,
   type SearchExactInput,
@@ -151,7 +149,12 @@ import {
   WorkspaceCorrectionService,
   type WorkspaceCorrectionServicePort,
 } from "../workspace/correction-service.js";
-import { ContextCorrectionService } from "../orchestrator/context-correction-service.js";
+import {
+  ContextCorrectionService,
+  type ApplyContextCorrectionInput,
+  type ContextCorrectionRerunResult,
+  type ContextCorrectionRerunStatus,
+} from "../orchestrator/context-correction-service.js";
 import { WikiBrainService, type WikiBrainServicePort } from "../wiki/service.js";
 import {
   bindPlayTesterResultRevisionService,
@@ -220,9 +223,6 @@ export type ItotoriApplicationServices = {
   };
   terminologyRepository: {
     searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
-  };
-  wikiRepository: {
-    loadEntries(input: WikiEntriesFilter): Promise<WikiEntriesReadModel>;
   };
   /** Shared node-6 browse + node-8 edit surface for dashboard, API, and CLI. */
   wiki: WikiBrainServicePort;
@@ -397,8 +397,9 @@ export type ItotoriApplicationServices = {
   sceneCoverage: SceneCoverageServicePort;
 };
 
-/** Production correction mutation plus the installed queue-worker drain seam. */
-export type ContextCorrectionServicePort = Pick<ContextCorrectionService, "apply"> & {
+/** Production correction mutation plus its exact rerun outcome and worker drain seam. */
+export type ContextCorrectionServicePort = {
+  apply(input: ApplyContextCorrectionInput): Promise<ContextCorrectionRerunResult>;
   drain(): Promise<JobWorkerResult>;
 };
 
@@ -773,7 +774,6 @@ export async function withDatabaseItotoriServices<T>(
     const styleGuideService = new ItotoriStyleGuideService(styleGuideRepository);
     const branchReferenceRepository = new ItotoriBranchReferenceRepository(context.db);
     const terminologyRepository = new ItotoriTerminologyRepository(context.db);
-    const wikiReadmodelRepository = new ItotoriWikiReadmodelRepository(context.db);
     const wikiContextRepository = new ItotoriWikiContextRepository(context.db);
     const exactSearchRepository = new ItotoriExactSearchDocumentRepository(context.db);
     const translationMemoryRepository = new ItotoriTranslationMemoryRepository(context.db);
@@ -886,12 +886,29 @@ export async function withDatabaseItotoriServices<T>(
     const contextCorrectionService: ContextCorrectionServicePort = {
       apply: async (input) => {
         const correction = await atomicContextCorrectionService.apply(input);
-        // `drain` is intentionally awaited: this is the production
-        // handler registration/drain point, not a test-only worker. A durable
-        // failure remains in the queue for retry; it cannot be reported as a
-        // successful redraft by the API response.
+        // `drain` is intentionally awaited: this is the production handler
+        // registration/drain point, not a test-only worker. It can reject for
+        // an unexpected worker/DB failure; deliberately let that propagate
+        // rather than converting it into a successful wiki receipt.
         await contextCorrectionWorker.runUntilIdle();
-        return correction;
+        // The aggregate worker result may include adjacent queue work, so read
+        // the exact correction job before responding. Its durable state is the
+        // only honest per-edit answer: retry_waiting/running stays pending and
+        // a dead-lettered/cancelled redraft is failed, even though the canonical
+        // version above correctly remains persisted.
+        const redraftJob = await eventQueueRepository.getJob(
+          defaultLocalUserActor,
+          correction.redraftJob.jobId,
+        );
+        if (redraftJob === null) {
+          throw new Error(
+            `context correction ${correction.correctionId} lost its queued redraft job ${correction.redraftJob.jobId}`,
+          );
+        }
+        return {
+          ...correction,
+          rerun: contextCorrectionRerunStatus(redraftJob),
+        };
       },
       drain: async () => await contextCorrectionWorker.runUntilIdle(),
     };
@@ -996,9 +1013,6 @@ export async function withDatabaseItotoriServices<T>(
       },
       terminologyRepository: {
         searchTerms: (input) => terminologyRepository.searchTerms(localUserActor, input),
-      },
-      wikiRepository: {
-        loadEntries: (input) => wikiReadmodelRepository.loadEntries(localUserActor, input),
       },
       wiki: wikiBrainService,
       reviewerQueue: reviewerQueueApiService,
@@ -1475,4 +1489,24 @@ async function loadMemberByPrincipalId(input: {
     throw new Error(`principal ${input.principalId} is not a member of account ${input.accountId}`);
   }
   return member;
+}
+
+/**
+ * Project the exact durable redraft job into the receipt returned to a wiki
+ * caller. `runUntilIdle()` reports a batch aggregate; this job record supplies
+ * the per-correction truth without attributing an adjacent correction's
+ * failure or lease loss to this receipt.
+ */
+function contextCorrectionRerunStatus(job: JobQueueRecord): ContextCorrectionRerunStatus {
+  switch (job.status) {
+    case "succeeded":
+      return { state: "succeeded", jobStatus: "succeeded", error: null };
+    case "queued":
+    case "running":
+    case "retry_waiting":
+      return { state: "pending", jobStatus: job.status, error: job.lastError };
+    case "dead_letter":
+    case "cancelled":
+      return { state: "failed", jobStatus: job.status, error: job.lastError };
+  }
 }

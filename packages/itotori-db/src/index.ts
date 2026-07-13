@@ -434,32 +434,6 @@ export type {
   UpsertGlossaryReviewItemInput,
 } from "./repositories/terminology-repository.js";
 export {
-  ItotoriWikiReadmodelRepository,
-  WIKI_ENTRIES_SCHEMA_VERSION,
-  wikiEntryKindValues,
-} from "./repositories/wiki-readmodel-repository.js";
-export type {
-  ItotoriWikiReadmodelRepositoryPort,
-  WikiBrandContextInheritedSource,
-  WikiBrandContextReadModel,
-  WikiBrandContextSummary,
-  WikiCharacterEntry,
-  WikiCharacterRelationship,
-  WikiCharacterRevision,
-  WikiCitation,
-  WikiCrossReference,
-  WikiEntriesFilter,
-  WikiEntriesPagination,
-  WikiEntriesReadModel,
-  WikiEntry,
-  WikiEntryKind,
-  WikiEntryScope,
-  WikiInheritedContextArtifact,
-  WikiTermAlias,
-  WikiTermEntry,
-  WikiTermReference,
-} from "./repositories/wiki-readmodel-repository.js";
-export {
   ItotoriWikiContextRepository,
   WIKI_CONTEXT_ENTRIES_SCHEMA_VERSION,
   WIKI_CONTEXT_ENTRY_HISTORY_SCHEMA_VERSION,

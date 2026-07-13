@@ -115,7 +115,6 @@ import type {
   ApiWikiAddResponse,
   ApiWikiEditRequest,
   ApiWikiEditResponse,
-  ApiWikiEntriesResponse,
   ApiWikiHistoryResponse,
   ApiWikiListResponse,
   ApiWikiShowResponse,
@@ -196,10 +195,6 @@ interface ItotoriApiRouteTypeMap {
   "terminology.search": {
     response: ApiTerminologySearchResponse;
     collectionKey: "results";
-  };
-  "wiki.entries": {
-    response: ApiWikiEntriesResponse;
-    collectionKey: "entries";
   };
   "wiki.list": {
     response: ApiWikiListResponse;
@@ -563,7 +558,6 @@ const ITOTORI_API_COLLECTION_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, st
   "reviewer.queue": "rows",
   "reviewer.batchPreview": "items",
   "terminology.search": "results",
-  "wiki.entries": "entries",
   "wiki.list": "entries",
   "wiki.history": "versions",
   "workspace.projects": "projects",

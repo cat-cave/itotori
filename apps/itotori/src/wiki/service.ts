@@ -11,9 +11,12 @@ import type {
   WikiContextEntryLookup,
   WikiContextEntryReadModel,
 } from "@itotori/db";
-import type { ContextCorrectionService } from "../orchestrator/context-correction-service.js";
+import type {
+  ApplyContextCorrectionInput,
+  ContextCorrectionRerunResult,
+} from "../orchestrator/context-correction-service.js";
 
-export const WIKI_CONTEXT_EDIT_SCHEMA_VERSION = "wiki.context.edit.v0.1" as const;
+export const WIKI_CONTEXT_EDIT_SCHEMA_VERSION = "wiki.context.edit.v0.2" as const;
 
 /**
  * The caller only supplies the human correction. Entry identity and scope are
@@ -63,6 +66,12 @@ export type WikiBrainEditResult = {
   invalidatedArtifactIds: string[];
   /** Registered node-8 redraft job that resolves a fresh ContextPacket. */
   redraftJobId: string;
+  /**
+   * The durable state of this exact redraft job after the request-time drain.
+   * The canonical version is already persisted for every state; callers must
+   * branch on this discriminant before describing the rerun as successful.
+   */
+  rerun: ContextCorrectionRerunResult["rerun"];
   /** Re-read after the correction so callers see the actual new head. */
   entry: WikiContextEntryReadModel["entry"];
 };
@@ -78,7 +87,9 @@ export type WikiBrainReadPort = {
   listEntryHistory(input: WikiContextEntryLookup): Promise<WikiContextEntryHistoryReadModel | null>;
 };
 
-export type WikiBrainCorrectionPort = Pick<ContextCorrectionService, "apply">;
+export type WikiBrainCorrectionPort = {
+  apply(input: ApplyContextCorrectionInput): Promise<ContextCorrectionRerunResult>;
+};
 
 export type WikiBrainServiceDeps = {
   /** Actor-bound node-6 generic context projection. */
@@ -209,6 +220,7 @@ export class WikiBrainService implements WikiBrainServicePort {
       affectedUnitIds: [...correction.affectedUnitIds],
       invalidatedArtifactIds: [...correction.invalidatedArtifactIds],
       redraftJobId: correction.redraftJob.jobId,
+      rerun: correction.rerun,
       entry: canonical.entry,
     };
   }
@@ -265,6 +277,7 @@ export class WikiBrainService implements WikiBrainServicePort {
       affectedUnitIds: [...correction.affectedUnitIds],
       invalidatedArtifactIds: [...correction.invalidatedArtifactIds],
       redraftJobId: correction.redraftJob.jobId,
+      rerun: correction.rerun,
       entry: canonical.entry,
     };
   }

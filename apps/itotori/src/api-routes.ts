@@ -229,14 +229,6 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     requestSchema: "ApiWikiEditRequest",
     responseSchema: "ApiWikiEditResponse",
   },
-  "wiki.entries": {
-    method: "GET",
-    pathTemplate: "/api/wiki/entries",
-    operationId: "wikiEntries",
-    summary: "Wiki character and terminology entries with cross-references.",
-    pathParams: [],
-    responseSchema: "WikiEntriesReadModel",
-  },
   "queue.health": {
     method: "GET",
     pathTemplate: "/api/queue/health",

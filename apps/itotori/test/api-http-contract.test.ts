@@ -82,10 +82,6 @@ const READ_MODEL_CASES: readonly ReadModelCase[] = [
     init: { query: { q: "Hero", localeBranchId: "locale-1" } },
   },
   {
-    routeId: "wiki.entries",
-    init: { query: { projectId: "project-1", localeBranchId: "locale-1" } },
-  },
-  {
     routeId: "wiki.list",
     init: { params: { projectId: "project-1", localeBranchId: "locale-1" } },
   },
