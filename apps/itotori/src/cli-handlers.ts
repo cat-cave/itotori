@@ -43,7 +43,6 @@ import type {
   ItotoriCatalogExactExternalIdLinkerPort,
   ItotoriCatalogFuzzyCandidateGeneratorPort,
   ItotoriContextArtifactRepositoryPort,
-  ManualFeedbackImportResult,
   StyleGuideFixtureFlowInput,
   StyleGuideFixtureFlowResult,
 } from "@itotori/db";
@@ -57,7 +56,7 @@ import {
   type AssetDecisionsCliPort,
 } from "./asset-decisions/cli.js";
 import { runQueueHealthCli, type QueueHealthCliPort } from "./queue/cli.js";
-import type { ManualFeedbackImportPort } from "./manual-feedback.js";
+import type { ManualFeedbackImportOutcome, ManualFeedbackImportPort } from "./manual-feedback.js";
 import type { DraftFeedbackBatchInput, DraftFeedbackBatchPort } from "./draft-feedback/index.js";
 import type { ItotoriProjectWorkflowPort, ProjectState } from "./services/project-workflow.js";
 import type { PlanBatchesOutput } from "./batch-planner/index.js";
@@ -1600,7 +1599,7 @@ type ChannelFeedbackImportCliSummary = {
       externalId: string;
       url?: string;
     };
-    result: ManualFeedbackImportResult;
+    result: ManualFeedbackImportOutcome;
     redactions: {
       kind: string;
       count: number;

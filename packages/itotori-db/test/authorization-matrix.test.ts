@@ -94,6 +94,12 @@ const repositoryPermissionGateMatrix = [
     repo.saveDrafts(deniedActor, undefined as never),
   ),
   projectGate(
+    "loadLocaleBranchDraftTexts",
+    "catalogRead",
+    "context-correction-redrafter durable draft verification coverage",
+    (repo) => repo.loadLocaleBranchDraftTexts(deniedActor, undefined as never),
+  ),
+  projectGate(
     "savePatchExport",
     "patchExport",
     "repository.test.ts patch export persistence coverage",
@@ -134,11 +140,11 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.importManualFeedback(deniedActor, undefined as never),
   ),
   feedbackGate(
-    "loadManualFeedbackReviewerQueueContext",
+    "loadManualFeedbackCorrectionContext",
     "feedbackImport",
-    "repository.test.ts manual feedback queue context coverage",
+    "repository.test.ts manual feedback correction context coverage",
     (repo) =>
-      repo.loadManualFeedbackReviewerQueueContext(
+      repo.loadManualFeedbackCorrectionContext(
         deniedActor,
         "feedback-report-denied",
         "feedback-evidence-denied",
@@ -556,6 +562,21 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.upsertArtifact(deniedActor, undefined as never),
   ),
   contextArtifactGate(
+    "persistContextCorrection",
+    "projectImport",
+    "context-artifact-repository.test.ts atomic correction coverage",
+    (repo) => repo.persistContextCorrection(deniedActor, undefined as never),
+  ),
+  contextArtifactGate(
+    "persistContextCorrection",
+    "feedbackImport",
+    "context-artifact-repository.test.ts feedback-import correction authority coverage",
+    (repo) =>
+      repo.persistContextCorrection(deniedActor, {
+        authority: permissionValues.feedbackImport,
+      } as never),
+  ),
+  contextArtifactGate(
     "invalidateAffectedArtifacts",
     "projectImport",
     "context-artifact-repository.test.ts source invalidation coverage",
@@ -566,6 +587,12 @@ const repositoryPermissionGateMatrix = [
     "catalogRead",
     "context-artifact-repository.test.ts retrieval coverage",
     (repo) => repo.retrieveArtifacts(deniedActor, undefined as never),
+  ),
+  contextArtifactGate(
+    "loadArtifact",
+    "catalogRead",
+    "context-artifact-repository.test.ts current-head load coverage",
+    (repo) => repo.loadArtifact(deniedActor, undefined as never),
   ),
   contextArtifactGate(
     "listEntryVersions",
@@ -1358,6 +1385,12 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriProjectRepository.loadLocaleBranchDraftTexts",
+          "requiredPermission": "catalog.read",
+          "successFixture": "context-correction-redrafter durable draft verification coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriProjectRepository.savePatchExport",
           "requiredPermission": "patch.export",
           "successFixture": "repository.test.ts patch export persistence coverage",
@@ -1406,9 +1439,9 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriFeedbackRepository.loadManualFeedbackReviewerQueueContext",
+          "mutation": "ItotoriFeedbackRepository.loadManualFeedbackCorrectionContext",
           "requiredPermission": "feedback.import",
-          "successFixture": "repository.test.ts manual feedback queue context coverage",
+          "successFixture": "repository.test.ts manual feedback correction context coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
@@ -1808,6 +1841,18 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriContextArtifactRepository.persistContextCorrection",
+          "requiredPermission": "project.import",
+          "successFixture": "context-artifact-repository.test.ts atomic correction coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriContextArtifactRepository.persistContextCorrection",
+          "requiredPermission": "feedback.import",
+          "successFixture": "context-artifact-repository.test.ts feedback-import correction authority coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriContextArtifactRepository.invalidateAffectedArtifacts",
           "requiredPermission": "project.import",
           "successFixture": "context-artifact-repository.test.ts source invalidation coverage",
@@ -1817,6 +1862,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriContextArtifactRepository.retrieveArtifacts",
           "requiredPermission": "catalog.read",
           "successFixture": "context-artifact-repository.test.ts retrieval coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriContextArtifactRepository.loadArtifact",
+          "requiredPermission": "catalog.read",
+          "successFixture": "context-artifact-repository.test.ts current-head load coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

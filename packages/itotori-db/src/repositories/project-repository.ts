@@ -94,6 +94,13 @@ export type ItotoriProjectRecord = {
   runtimeReport?: RuntimeVerificationReport | RuntimeEvidenceReportV02;
 };
 
+/** Narrow persisted-draft projection used by durable rerun verification. */
+export type LoadLocaleBranchDraftTextsInput = {
+  projectId: string;
+  localeBranchId: string;
+  bridgeUnitIds: readonly string[];
+};
+
 /**
  * The run-identity a whole-project localize run declares in its config
  * (`projectId` / `localeBranchId` / `sourceRevisionId` + the target/source
@@ -402,6 +409,10 @@ export interface ItotoriProjectRepositoryPort {
     scope: LocalizationRunProjectScope,
   ): Promise<void>;
   saveDrafts(actor: AuthorizationActor, project: ItotoriProjectRecord): Promise<void>;
+  loadLocaleBranchDraftTexts(
+    actor: AuthorizationActor,
+    input: LoadLocaleBranchDraftTextsInput,
+  ): Promise<Map<string, string | null>>;
   savePatchExport(
     actor: AuthorizationActor,
     project: ItotoriProjectRecord,
@@ -954,6 +965,38 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           });
       }
     });
+  }
+
+  async loadLocaleBranchDraftTexts(
+    actor: AuthorizationActor,
+    input: LoadLocaleBranchDraftTextsInput,
+  ): Promise<Map<string, string | null>> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    const result = new Map<string, string | null>();
+    if (input.bridgeUnitIds.length === 0) {
+      return result;
+    }
+    const rows = await this.db
+      .select({
+        bridgeUnitId: localeBranchUnits.bridgeUnitId,
+        targetText: localeBranchUnits.targetText,
+      })
+      .from(localeBranchUnits)
+      .innerJoin(
+        localeBranches,
+        eq(localeBranches.localeBranchId, localeBranchUnits.localeBranchId),
+      )
+      .where(
+        and(
+          eq(localeBranches.projectId, input.projectId),
+          eq(localeBranchUnits.localeBranchId, input.localeBranchId),
+          inArray(localeBranchUnits.bridgeUnitId, [...input.bridgeUnitIds]),
+        ),
+      );
+    for (const row of rows) {
+      result.set(row.bridgeUnitId, row.targetText);
+    }
+    return result;
   }
 
   async savePatchExport(

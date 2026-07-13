@@ -8,6 +8,7 @@ import {
   feedbackReportEvidence,
   feedbackReports,
   feedbackSources,
+  localeBranches,
   sourceBundles,
 } from "../schema.js";
 
@@ -169,7 +170,12 @@ export type ManualFeedbackImportResult = {
   duplicate: boolean;
 };
 
-export type ManualFeedbackReviewerQueueContext = {
+/**
+ * Persisted context needed to turn a feedback report into a canonical context
+ * correction. This deliberately does not describe a reviewer-queue item:
+ * feedback intake is allowed to feed the shared correction path directly.
+ */
+export type ManualFeedbackCorrectionContext = {
   feedbackReportId: string;
   feedbackEvidenceId: string;
   projectId: string;
@@ -178,10 +184,11 @@ export type ManualFeedbackReviewerQueueContext = {
   feedbackType: FeedbackType;
   triageLabel: FeedbackTriageLabel;
   contextStatus: FeedbackContextStatus;
+  /** The report/evidence text as durably persisted by feedback intake. */
   reporterNote: string;
-  context: Record<string, unknown>;
-  attachments: unknown[];
-  affectedArtifactIds: string[];
+  suggestedEdit: string | null;
+  /** Stable, persisted target units; never inferred from a caller's raw input. */
+  affectedUnitIds: string[];
 };
 
 export interface ItotoriFeedbackRepositoryPort {
@@ -189,11 +196,11 @@ export interface ItotoriFeedbackRepositoryPort {
     actor: AuthorizationActor,
     input: ManualFeedbackImportInput,
   ): Promise<ManualFeedbackImportResult>;
-  loadManualFeedbackReviewerQueueContext(
+  loadManualFeedbackCorrectionContext(
     actor: AuthorizationActor,
     feedbackReportId: string,
     feedbackEvidenceId: string,
-  ): Promise<ManualFeedbackReviewerQueueContext | null>;
+  ): Promise<ManualFeedbackCorrectionContext | null>;
 }
 
 export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort {
@@ -384,11 +391,11 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
     });
   }
 
-  async loadManualFeedbackReviewerQueueContext(
+  async loadManualFeedbackCorrectionContext(
     actor: AuthorizationActor,
     feedbackReportId: string,
     feedbackEvidenceId: string,
-  ): Promise<ManualFeedbackReviewerQueueContext | null> {
+  ): Promise<ManualFeedbackCorrectionContext | null> {
     await requirePermission(this.db, actor, permissionValues.feedbackImport);
     const rows = await this.db
       .select({
@@ -396,13 +403,13 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
         feedbackEvidenceId: feedbackReportEvidence.feedbackEvidenceId,
         projectId: feedbackReports.projectId,
         localeBranchId: feedbackReports.localeBranchId,
-        sourceBundleId: feedbackReports.sourceBundleId,
+        bridgeUnitId: feedbackReports.bridgeUnitId,
         feedbackType: feedbackReports.feedbackType,
         triageLabel: feedbackReports.triageLabel,
         contextStatus: feedbackReports.contextStatus,
-        reporterNote: feedbackReports.reporterNote,
-        context: feedbackReportEvidence.contextSignals,
-        attachments: feedbackReportEvidence.attachments,
+        reportMetadata: feedbackReports.metadata,
+        reporterNote: feedbackReportEvidence.reporterNote,
+        evidenceMetadata: feedbackReportEvidence.metadata,
       })
       .from(feedbackReports)
       .innerJoin(
@@ -417,21 +424,21 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
       )
       .limit(1);
     const row = rows[0];
-    if (row === undefined || row.localeBranchId === null || row.sourceBundleId === null) {
+    if (row === undefined || row.localeBranchId === null) {
       return null;
     }
 
-    const bundleRows = await this.db
-      .select({ sourceRevisionId: sourceBundles.sourceBundleRevisionId })
-      .from(sourceBundles)
-      .where(eq(sourceBundles.sourceBundleId, row.sourceBundleId))
-      .limit(1);
-    const sourceRevisionId = bundleRows[0]?.sourceRevisionId;
+    // The rerun must target the branch's CURRENT source revision. A report's
+    // optional source-bundle/metadata fields are historical caller input and
+    // can be stale by the time feedback becomes a correction.
+    const sourceRevisionId = await this.loadCurrentBranchSourceRevisionId(
+      row.projectId,
+      row.localeBranchId,
+    );
     if (sourceRevisionId === undefined) {
       return null;
     }
 
-    const attachments = sanitizeFeedbackAttachments(row.attachments);
     return {
       feedbackReportId: row.feedbackReportId,
       feedbackEvidenceId: row.feedbackEvidenceId,
@@ -442,10 +449,31 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
       triageLabel: labelFromRow(row.triageLabel) ?? feedbackTriageLabelValues.needsContext,
       contextStatus: contextFromRow(row.contextStatus) ?? feedbackContextStatusValues.needsContext,
       reporterNote: row.reporterNote,
-      context: sanitizeFeedbackContext(row.context),
-      attachments,
-      affectedArtifactIds: artifactIdsFromAttachments(attachments),
+      suggestedEdit:
+        stringFromRecord(row.evidenceMetadata, "suggestedEdit") ??
+        stringFromRecord(row.reportMetadata, "suggestedEdit") ??
+        null,
+      affectedUnitIds:
+        row.bridgeUnitId === null || row.bridgeUnitId.trim().length === 0 ? [] : [row.bridgeUnitId],
     };
+  }
+
+  private async loadCurrentBranchSourceRevisionId(
+    projectId: string,
+    localeBranchId: string,
+  ): Promise<string | undefined> {
+    const branchRows = await this.db
+      .select({ sourceRevisionId: sourceBundles.sourceBundleRevisionId })
+      .from(localeBranches)
+      .innerJoin(sourceBundles, eq(sourceBundles.sourceBundleId, localeBranches.sourceBundleId))
+      .where(
+        and(
+          eq(localeBranches.projectId, projectId),
+          eq(localeBranches.localeBranchId, localeBranchId),
+        ),
+      )
+      .limit(1);
+    return branchRows[0]?.sourceRevisionId;
   }
 }
 
@@ -1081,78 +1109,6 @@ function parseAttachment(value: unknown, context: string): ManualFeedbackAttachm
   }
 }
 
-function sanitizeFeedbackContext(context: Record<string, unknown>): Record<string, unknown> {
-  return sanitizeRecord(context, feedbackContextOmittedKeys);
-}
-
-function sanitizeFeedbackAttachments(attachments: unknown[]): unknown[] {
-  return attachments
-    .map((attachment) => {
-      if (!isRecord(attachment)) {
-        return null;
-      }
-      return compactRecord({
-        attachmentKind: attachment.attachmentKind,
-        attachmentId: attachment.attachmentId,
-        artifactId: attachment.artifactId,
-        hash: attachment.hash,
-        caption: attachment.caption,
-        capturePosition: attachment.capturePosition,
-        evidenceTier: attachment.evidenceTier,
-        contextToken: attachment.contextToken,
-        routeRef: attachment.routeRef,
-        sceneRef: attachment.sceneRef,
-        createdAt: attachment.createdAt,
-        contextKind: attachment.contextKind,
-        contextId: attachment.contextId,
-        speakerRef: attachment.speakerRef,
-        runtimeArtifactId: attachment.runtimeArtifactId,
-      });
-    })
-    .filter((attachment): attachment is Record<string, unknown> => attachment !== null);
-}
-
-function artifactIdsFromAttachments(attachments: unknown[]): string[] {
-  const artifactIds = new Set<string>();
-  for (const attachment of attachments) {
-    if (!isRecord(attachment) || typeof attachment.artifactId !== "string") {
-      continue;
-    }
-    artifactIds.add(attachment.artifactId);
-  }
-  return [...artifactIds];
-}
-
-function sanitizeRecord(
-  value: Record<string, unknown>,
-  omittedKeys: ReadonlySet<string>,
-): Record<string, unknown> {
-  const sanitized: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (omittedKeys.has(key)) {
-      continue;
-    }
-    if (Array.isArray(entry)) {
-      const nested = entry
-        .map((item) => (isRecord(item) ? sanitizeRecord(item, omittedKeys) : item))
-        .filter((item) => !isRecord(item) || Object.keys(item).length > 0);
-      if (nested.length > 0) {
-        sanitized[key] = nested;
-      }
-      continue;
-    }
-    if (isRecord(entry)) {
-      const nested = sanitizeRecord(entry, omittedKeys);
-      if (Object.keys(nested).length > 0) {
-        sanitized[key] = nested;
-      }
-      continue;
-    }
-    sanitized[key] = entry;
-  }
-  return compactRecord(sanitized);
-}
-
 function requireRecord(value: unknown, context: string): Record<string, unknown> {
   if (!isRecord(value)) {
     throw new Error(`${context} must be an object`);
@@ -1164,17 +1120,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const feedbackContextOmittedKeys = new Set([
-  "uri",
-  "fileUri",
-  "path",
-  "filePath",
-  "localPath",
-  "sourceLocation",
-  "quotedText",
-  "visibleText",
-  "metadata",
-]);
+function stringFromRecord(value: unknown, key: string): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const candidate = value[key];
+  return typeof candidate === "string" && candidate.trim().length > 0 ? candidate : undefined;
+}
 
 function requiredString(record: Record<string, unknown>, field: string): string {
   const value = record[fieldName(field)];

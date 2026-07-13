@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
-// play-flag-composer — behavior-first test for AnnotationComposer → review queue.
+// play-flag-composer — behavior-first test for AnnotationComposer → context correction.
 //
 // Mounts the REAL `PlayFlagComposerScreen` over msw-intercepted
 // `play.flagAnnotation` (+ optional auth.capabilities) and asserts:
 //
 //   1. a canFlag user composes a severity-scaled annotation and POSTs
-//      play.flagAnnotation; the success surface reports queue enqueue;
+//      play.flagAnnotation; the success surface reports correction scheduling;
 //   2. a denied canFlag actor sees a disabled + explained composer (no POST);
 //   3. a write error surfaces as a visible alert (never silent success).
 //
@@ -47,7 +47,7 @@ function flagResponse(
     note: "Line overflows the textbox.",
     triageLabel: "style_dispute_candidate",
     contextStatus: "contextualized",
-    queueEnqueued: true,
+    contextCorrectionEnqueued: true,
     duplicate: false,
     ...overrides,
   };
@@ -112,7 +112,7 @@ describe("play-flag-composer — PlayFlagComposerScreen", () => {
     fireEvent.click(screen.getByRole("radio", { name: "critical" }));
     typeInto(screen.getByPlaceholderText(/What's wrong/i), "Line overflows the textbox.");
     typeInto(screen.getByPlaceholderText(/tone · layout/i), "tone");
-    fireEvent.click(screen.getByRole("button", { name: /Send to review/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Send correction/i }));
 
     await waitFor(() => {
       expect(posts).toHaveLength(1);
@@ -130,9 +130,9 @@ describe("play-flag-composer — PlayFlagComposerScreen", () => {
       expect(document.querySelector('[data-flag-outcome="ok"]')).not.toBeNull();
     });
     const status = document.querySelector('[data-flag-outcome="ok"]');
-    expect(status?.getAttribute("data-queue-enqueued")).toBe("true");
+    expect(status?.getAttribute("data-context-correction-enqueued")).toBe("true");
     expect(status?.getAttribute("data-severity")).toBe("critical");
-    expect(status?.textContent).toMatch(/Flag sent to review · critical · tone/i);
+    expect(status?.textContent).toMatch(/Flag sent to correction · critical · tone/i);
   });
 
   it("denies composition when the actor lacks canFlag (no POST)", async () => {
@@ -152,7 +152,7 @@ describe("play-flag-composer — PlayFlagComposerScreen", () => {
       "false",
     );
     expect(screen.getByRole("status")).toHaveTextContent(/feedback\.import/i);
-    const submit = screen.getByRole("button", { name: /Send to review/i });
+    const submit = screen.getByRole("button", { name: /Send correction/i });
     expect(submit).toBeDisabled();
     // Attempting to type + click does not fire the network.
     typeInto(screen.getByPlaceholderText(/What's wrong/i), "should not post");
@@ -174,10 +174,10 @@ describe("play-flag-composer — PlayFlagComposerScreen", () => {
 
     renderComposer();
     typeInto(screen.getByPlaceholderText(/What's wrong/i), "Broken line.");
-    fireEvent.click(screen.getByRole("button", { name: /Send to review/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Send correction/i }));
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(/forbidden|feedback\.import/i);
-    expect(screen.queryByText(/Flag sent to review/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Flag sent to correction/i)).not.toBeInTheDocument();
   });
 });

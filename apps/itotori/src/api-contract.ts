@@ -1407,7 +1407,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayFlagAnnotationResponse,
       properties: {
         severity: { enum: ["blocker", "critical", "warning", "note"] },
-        queueEnqueued: bool,
+        contextCorrectionEnqueued: bool,
         duplicate: bool,
       },
       additionalProperties: false,

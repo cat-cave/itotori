@@ -590,13 +590,13 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     requestSchema: "ApiPlaySetSceneCoverageRequest",
     responseSchema: "ApiPlaySetSceneCoverageResponse",
   },
-  // play-flag-composer — in-the-moment AnnotationComposer note → reviewer queue
-  // via ManualFeedbackImport (feedback.import / canFlag). Severity-scaled.
+  // play-flag-composer — in-the-moment AnnotationComposer note → canonical
+  // context correction via ManualFeedbackImport (feedback.import / canFlag).
   "play.flagAnnotation": {
     method: "POST",
     pathTemplate: "/api/projects/{projectId}/locale-branches/{localeBranchId}/flags",
     operationId: "playFlagAnnotation",
-    summary: "Compose a playtest flag (AnnotationComposer) into the reviewer queue.",
+    summary: "Compose a playtest flag (AnnotationComposer) into a context correction.",
     pathParams: ["projectId", "localeBranchId"],
     requestSchema: "ApiPlayFlagAnnotationRequest",
     responseSchema: "ApiPlayFlagAnnotationResponse",

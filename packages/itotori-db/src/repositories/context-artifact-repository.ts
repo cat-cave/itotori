@@ -8,6 +8,7 @@ import {
   contextArtifactSourceUnits,
   contextArtifactStatusValues,
   contextEntryVersions,
+  jobIdempotencyPolicyValues,
   localeBranches,
   projects,
   sourceBundles,
@@ -16,7 +17,18 @@ import {
   type ContextArtifactStatus,
   type ContextEntryVersionCitation,
 } from "../schema.js";
-import { createUuid7 } from "./event-queue-repository.js";
+import {
+  createUuid7,
+  ItotoriEventQueueRepository,
+  type JobQueueRecord,
+  type QueueSqlExecutor,
+} from "./event-queue-repository.js";
+import {
+  buildRegisteredJobInput,
+  contextCorrectionRedraftJobName,
+  contextCorrectionRedraftPayloadSchemaVersion,
+  type NonEmptyReadonlyArray,
+} from "../job-registry.js";
 
 export { contextArtifactCategoryValues, contextArtifactStatusValues } from "../schema.js";
 
@@ -94,8 +106,67 @@ export type InvalidateContextArtifactsInput = {
   reason?: string;
 };
 
+/**
+ * Permission modes accepted by the atomic context-correction write.
+ *
+ * A correction created from a play-tester flag is authorized by
+ * `feedback.import`; the durable version/invalidation/rerun-job effects are
+ * part of that one authorized correction and must not require a second,
+ * unrelated `queue.manage` grant. Direct editor flows retain the historical
+ * `project.import` authority by default.
+ */
+export const contextCorrectionAuthorityValues = {
+  projectImport: permissionValues.projectImport,
+  feedbackImport: permissionValues.feedbackImport,
+} as const;
+
+export type ContextCorrectionAuthority =
+  (typeof contextCorrectionAuthorityValues)[keyof typeof contextCorrectionAuthorityValues];
+
+/**
+ * The repository-owned write model for a canonical play-tester correction.
+ * `requestedAffectedUnitIds` is deliberately distinct from the output's
+ * `affectedUnitIds`: the latter additionally carries the previous entry head's
+ * citations, so reducing an entry's scope still refreshes formerly influenced
+ * units.
+ */
+export type PersistContextCorrectionInput = {
+  authority?: ContextCorrectionAuthority;
+  correctionId: string;
+  contextArtifactId: string;
+  projectId: string;
+  localeBranchId: string;
+  sourceRevisionId: string;
+  category: string;
+  title: string;
+  body: string;
+  reason: string;
+  requestedAffectedUnitIds: readonly string[];
+  data?: ContextArtifactJsonRecord;
+  producedByAgent: string;
+  producedByTool: string;
+  producerVersion: string;
+  provenance?: ContextArtifactJsonRecord;
+};
+
+export type PersistContextCorrectionResult = {
+  contextArtifact: ContextArtifactRecord;
+  affectedUnitIds: string[];
+  invalidatedArtifactIds: string[];
+  redraftJob: JobQueueRecord;
+  /** True when an identical correction id was already committed for this entry. */
+  duplicate: boolean;
+};
+
 /** Scope for the append-only ContextEntryVersion history of one entry. */
 export type ListContextEntryVersionsInput = {
+  projectId: string;
+  localeBranchId: string;
+  contextArtifactId: string;
+};
+
+/** Read the mutable head projection for one canonical ContextEntry. */
+export type LoadContextArtifactInput = {
   projectId: string;
   localeBranchId: string;
   contextArtifactId: string;
@@ -222,9 +293,27 @@ export interface ItotoriContextArtifactRepositoryPort {
     actor: AuthorizationActor,
     input: RetrieveContextArtifactsInput,
   ): Promise<ContextArtifactRetrievalResult>;
+  loadArtifact(
+    actor: AuthorizationActor,
+    input: LoadContextArtifactInput,
+  ): Promise<ContextArtifactRecord | null>;
 }
 
-export class ItotoriContextArtifactRepository implements ItotoriContextArtifactRepositoryPort {
+/**
+ * Narrow port for the all-or-nothing correction path. It intentionally stays
+ * separate from the broad context-read/write port so in-memory context stores
+ * used by unrelated translation tests do not pretend to offer durable jobs.
+ */
+export interface ItotoriContextCorrectionPersistencePort {
+  persistContextCorrection(
+    actor: AuthorizationActor,
+    input: PersistContextCorrectionInput,
+  ): Promise<PersistContextCorrectionResult>;
+}
+
+export class ItotoriContextArtifactRepository
+  implements ItotoriContextArtifactRepositoryPort, ItotoriContextCorrectionPersistencePort
+{
   constructor(private readonly db: ItotoriDatabase) {}
 
   async upsertArtifact(
@@ -439,6 +528,304 @@ export class ItotoriContextArtifactRepository implements ItotoriContextArtifactR
     return await requireArtifactById(this.db, contextArtifactId);
   }
 
+  /**
+   * Atomically persists one canonical correction, stales its dependent context,
+   * and enqueues the registered redraft job. There is intentionally no
+   * sequential fallback: a failed version append, invalidation, or queue write
+   * rolls the entire correction back.
+   */
+  async persistContextCorrection(
+    actor: AuthorizationActor,
+    input: PersistContextCorrectionInput,
+  ): Promise<PersistContextCorrectionResult> {
+    // Keep both authority modes explicit so the repository permission matrix
+    // proves the direct editor and feedback-import entry points separately.
+    if (input?.authority === contextCorrectionAuthorityValues.feedbackImport) {
+      await requirePermission(this.db, actor, permissionValues.feedbackImport);
+    } else {
+      await requirePermission(this.db, actor, permissionValues.projectImport);
+    }
+
+    return await this.db.transaction(async (tx) => {
+      const transaction = tx as unknown as ContextArtifactTransaction;
+      // This is the same lock as upsertArtifact(). It serializes a correction
+      // with every ordinary write of this ContextEntry, so previous citations,
+      // its next lineage parent, and its dedupe lookup agree.
+      await transaction.execute(
+        sql`select pg_advisory_xact_lock(
+          hashtext(coalesce(current_schema(), '') || ':' || ${input.contextArtifactId})
+        )`,
+      );
+
+      // A retry must reuse the durable version and job even if the source set
+      // has subsequently changed. Check this before source validation so the
+      // retry cannot turn a committed correction into a new append or failure.
+      const duplicateVersion = await correctionVersionForId(transaction, input);
+      if (duplicateVersion !== undefined) {
+        const affectedUnitIds = sortedUniqueBridgeUnitIds(duplicateVersion.affectedUnitIds);
+        const redraftJob = await enqueueContextCorrectionRedraftJob(transaction, {
+          correctionId: input.correctionId,
+          contextArtifactId: input.contextArtifactId,
+          contextEntryVersionId: duplicateVersion.contextEntryVersionId,
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId,
+          sourceRevisionId: duplicateVersion.sourceRevisionId,
+          affectedUnitIds: requireNonEmptyContextCorrectionAffectedUnitIds(affectedUnitIds),
+        });
+        return {
+          contextArtifact: await requireArtifactById(transaction, input.contextArtifactId),
+          affectedUnitIds,
+          invalidatedArtifactIds: [],
+          redraftJob,
+          duplicate: true,
+        };
+      }
+
+      const context = await currentLocaleBranchContext(
+        transaction,
+        input.projectId,
+        input.localeBranchId,
+      );
+      if (context.diagnostic !== undefined) {
+        throw new ContextArtifactRepositoryError([context.diagnostic]);
+      }
+      if (input.sourceRevisionId !== context.value.sourceRevisionId) {
+        throw new ContextArtifactRepositoryError([
+          staleSourceRevisionDiagnostic(input.sourceRevisionId, context.value.sourceRevisionId),
+        ]);
+      }
+
+      const category = parseCategory(input.category, "category");
+      const data = { ...input.data, correctionId: input.correctionId };
+      const provenance = {
+        ...input.provenance,
+        schemaVersion: contextArtifactSchemaVersion,
+        producedByAgent: input.producedByAgent,
+        producedByTool: input.producedByTool,
+        producerVersion: input.producerVersion,
+        correctionId: input.correctionId,
+      };
+      const bounded = validateBoundedPayload({
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        sourceRevisionId: input.sourceRevisionId,
+        category,
+        title: input.title,
+        body: input.body,
+        data,
+        producedByAgent: input.producedByAgent,
+        producedByTool: input.producedByTool,
+        producerVersion: input.producerVersion,
+        provenance,
+        sourceUnits: [],
+      });
+      if (bounded.length > 0) {
+        throw new ContextArtifactRepositoryError(bounded);
+      }
+
+      const [existing] = await transaction
+        .select({
+          projectId: contextArtifacts.projectId,
+          localeBranchId: contextArtifacts.localeBranchId,
+          headVersionId: contextArtifacts.headVersionId,
+        })
+        .from(contextArtifacts)
+        .where(eq(contextArtifacts.contextArtifactId, input.contextArtifactId))
+        .limit(1);
+      if (
+        existing !== undefined &&
+        (existing.projectId !== input.projectId || existing.localeBranchId !== input.localeBranchId)
+      ) {
+        throw new Error(
+          `context artifact ${input.contextArtifactId} belongs to a different project or locale branch`,
+        );
+      }
+
+      const previousSourceUnitIds =
+        existing === undefined
+          ? []
+          : (
+              await transaction
+                .select({ bridgeUnitId: contextArtifactSourceUnits.bridgeUnitId })
+                .from(contextArtifactSourceUnits)
+                .where(eq(contextArtifactSourceUnits.contextArtifactId, input.contextArtifactId))
+            ).map((row) => row.bridgeUnitId);
+      // The old head and requested correction scope are intentionally merged
+      // under the entry lock. Otherwise shrinking a correction's scope could
+      // leave drafts influenced by a now-removed citation untouched.
+      const affectedUnitIds = sortedUniqueBridgeUnitIds([
+        ...previousSourceUnitIds,
+        ...input.requestedAffectedUnitIds,
+      ]);
+      if (affectedUnitIds.length === 0) {
+        throw new ContextArtifactRepositoryError([missingSourceCitationDiagnostic()]);
+      }
+
+      const sourceUnitRows = await currentSourceUnitRows(
+        transaction,
+        context.value.sourceBundleId,
+        affectedUnitIds,
+      );
+      const sourceUnitById = new Map(sourceUnitRows.map((row) => [row.bridgeUnitId, row]));
+      const sourceDiagnostics = affectedUnitIds.flatMap((bridgeUnitId, index) => {
+        return sourceUnitById.has(bridgeUnitId)
+          ? []
+          : [sourceUnitMissingDiagnostic(bridgeUnitId, index)];
+      });
+      if (sourceDiagnostics.length > 0) {
+        throw new ContextArtifactRepositoryError(sourceDiagnostics);
+      }
+
+      const sourceCitation = `play-tester context correction: ${input.reason.trim()}`;
+      const versionCitations: ContextEntryVersionCitation[] = affectedUnitIds.map(
+        (bridgeUnitId) => {
+          const row = sourceUnitById.get(bridgeUnitId);
+          if (row === undefined) {
+            throw new Error(`validated source unit disappeared: ${bridgeUnitId}`);
+          }
+          return {
+            bridgeUnitId,
+            sourceRevisionId: row.sourceRevisionId,
+            sourceHash: row.sourceHash,
+            citation: sourceCitation,
+            metadata: {},
+          };
+        },
+      );
+      const normalizedTitle = normalizeContextArtifactText(input.title);
+      const contentHash = contextArtifactContentHash({
+        category,
+        title: input.title,
+        body: input.body,
+        data,
+        sourceUnits: versionCitations.map((citation) => ({
+          bridgeUnitId: citation.bridgeUnitId,
+          sourceHash: citation.sourceHash,
+          citation: citation.citation,
+        })),
+      });
+      const contextEntryVersionId = createUuid7();
+
+      if (existing === undefined) {
+        await transaction.insert(contextArtifacts).values({
+          contextArtifactId: input.contextArtifactId,
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId,
+          sourceRevisionId: input.sourceRevisionId,
+          category,
+          status: contextArtifactStatusValues.active,
+          title: input.title,
+          normalizedTitle,
+          body: input.body,
+          data,
+          contentHash,
+          producedByAgent: input.producedByAgent,
+          producedByTool: input.producedByTool,
+          producerVersion: input.producerVersion,
+          provenance,
+          headVersionId: null,
+          invalidatedReason: null,
+          invalidatedAt: null,
+          createdByUserId: actor.userId,
+          updatedAt: sql`now()`,
+        });
+      }
+
+      await transaction.insert(contextEntryVersions).values({
+        contextEntryVersionId,
+        contextArtifactId: input.contextArtifactId,
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        parentVersionId: existing?.headVersionId ?? null,
+        sourceRevisionId: input.sourceRevisionId,
+        category,
+        status: contextArtifactStatusValues.active,
+        title: input.title,
+        normalizedTitle,
+        body: input.body,
+        data,
+        contentHash,
+        producedByAgent: input.producedByAgent,
+        producedByTool: input.producedByTool,
+        producerVersion: input.producerVersion,
+        provenance,
+        citations: versionCitations,
+        affectedUnitIds,
+        invalidatedReason: null,
+        invalidatedAt: null,
+        createdByUserId: actor.userId,
+      });
+
+      await transaction
+        .update(contextArtifacts)
+        .set({
+          sourceRevisionId: input.sourceRevisionId,
+          category,
+          status: contextArtifactStatusValues.active,
+          title: input.title,
+          normalizedTitle,
+          body: input.body,
+          data,
+          contentHash,
+          producedByAgent: input.producedByAgent,
+          producedByTool: input.producedByTool,
+          producerVersion: input.producerVersion,
+          provenance,
+          headVersionId: contextEntryVersionId,
+          invalidatedReason: null,
+          invalidatedAt: null,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(contextArtifacts.contextArtifactId, input.contextArtifactId));
+      await transaction
+        .delete(contextArtifactSourceUnits)
+        .where(eq(contextArtifactSourceUnits.contextArtifactId, input.contextArtifactId));
+      await transaction.insert(contextArtifactSourceUnits).values(
+        versionCitations.map((citation) => ({
+          contextArtifactId: input.contextArtifactId,
+          bridgeUnitId: citation.bridgeUnitId,
+          sourceRevisionId: citation.sourceRevisionId,
+          sourceHash: citation.sourceHash,
+          citation: citation.citation,
+          metadata: citation.metadata,
+        })),
+      );
+
+      // This is deliberately after the append and explicitly omits the new
+      // canonical head. The historic sequence invalidated first, so a rejected
+      // upsert could leave stale context with no durable rerun.
+      const invalidatedArtifactIds = await invalidateContextCorrectionArtifactsInTransaction(
+        transaction,
+        {
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId,
+          sourceBundleId: context.value.sourceBundleId,
+          sourceRevisionId: context.value.sourceRevisionId,
+          affectedUnitIds,
+          excludedContextArtifactId: input.contextArtifactId,
+          reason: `play_tester_context_correction:${input.correctionId}`,
+        },
+      );
+      const redraftJob = await enqueueContextCorrectionRedraftJob(transaction, {
+        correctionId: input.correctionId,
+        contextArtifactId: input.contextArtifactId,
+        contextEntryVersionId,
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        sourceRevisionId: input.sourceRevisionId,
+        affectedUnitIds: requireNonEmptyContextCorrectionAffectedUnitIds(affectedUnitIds),
+      });
+
+      return {
+        contextArtifact: await requireArtifactById(transaction, input.contextArtifactId),
+        affectedUnitIds,
+        invalidatedArtifactIds,
+        redraftJob,
+        duplicate: false,
+      };
+    });
+  }
+
   async invalidateAffectedArtifacts(
     actor: AuthorizationActor,
     input: InvalidateContextArtifactsInput,
@@ -607,6 +994,21 @@ export class ItotoriContextArtifactRepository implements ItotoriContextArtifactR
     };
   }
 
+  async loadArtifact(
+    actor: AuthorizationActor,
+    input: LoadContextArtifactInput,
+  ): Promise<ContextArtifactRecord | null> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    const rows = await artifactsWithSources(this.db, {
+      contextArtifactId: input.contextArtifactId,
+      projectId: input.projectId,
+      localeBranchId: input.localeBranchId,
+      includeStale: true,
+      limit: 1,
+    });
+    return rows[0] ?? null;
+  }
+
   async listEntryVersions(
     actor: AuthorizationActor,
     input: ListContextEntryVersionsInput,
@@ -628,6 +1030,163 @@ export class ItotoriContextArtifactRepository implements ItotoriContextArtifactR
       );
     return rows.map(contextEntryVersionRecordFromRow);
   }
+}
+
+type ContextArtifactTransaction = Parameters<Parameters<ItotoriDatabase["transaction"]>[0]>[0];
+type ContextArtifactReadExecutor = Pick<ItotoriDatabase, "select">;
+
+async function correctionVersionForId(
+  db: ContextArtifactReadExecutor,
+  input: Pick<
+    PersistContextCorrectionInput,
+    "correctionId" | "contextArtifactId" | "projectId" | "localeBranchId"
+  >,
+): Promise<
+  | {
+      contextEntryVersionId: string;
+      sourceRevisionId: string;
+      affectedUnitIds: string[];
+    }
+  | undefined
+> {
+  const [version] = await db
+    .select({
+      contextEntryVersionId: contextEntryVersions.contextEntryVersionId,
+      sourceRevisionId: contextEntryVersions.sourceRevisionId,
+      affectedUnitIds: contextEntryVersions.affectedUnitIds,
+    })
+    .from(contextEntryVersions)
+    .where(
+      and(
+        eq(contextEntryVersions.contextArtifactId, input.contextArtifactId),
+        eq(contextEntryVersions.projectId, input.projectId),
+        eq(contextEntryVersions.localeBranchId, input.localeBranchId),
+        sql`${contextEntryVersions.provenance} ->> 'correctionId' = ${input.correctionId}`,
+      ),
+    )
+    .orderBy(asc(contextEntryVersions.createdAt), asc(contextEntryVersions.contextEntryVersionId))
+    .limit(1);
+  return version;
+}
+
+async function invalidateContextCorrectionArtifactsInTransaction(
+  db: ContextArtifactTransaction,
+  input: {
+    projectId: string;
+    localeBranchId: string;
+    sourceBundleId: string;
+    sourceRevisionId: string;
+    affectedUnitIds: readonly string[];
+    excludedContextArtifactId: string;
+    reason: string;
+  },
+): Promise<string[]> {
+  const activeRows = await artifactsWithSources(db, {
+    projectId: input.projectId,
+    localeBranchId: input.localeBranchId,
+    includeStale: false,
+  });
+  const currentRows = await currentSourceUnitRows(
+    db,
+    input.sourceBundleId,
+    unique(
+      activeRows.flatMap((artifact) => artifact.sourceUnits.map((source) => source.bridgeUnitId)),
+    ),
+  );
+  const currentById = new Map(currentRows.map((row) => [row.bridgeUnitId, row]));
+  const explicitBridgeUnitIds = new Set(input.affectedUnitIds);
+  const invalidatedArtifactIds = activeRows
+    .filter((artifact) => artifact.contextArtifactId !== input.excludedContextArtifactId)
+    .filter((artifact) => {
+      if (artifact.sourceRevisionId !== input.sourceRevisionId) {
+        return true;
+      }
+      return artifact.sourceUnits.some((source) => {
+        if (explicitBridgeUnitIds.has(source.bridgeUnitId)) {
+          return true;
+        }
+        const current = currentById.get(source.bridgeUnitId);
+        return (
+          current === undefined ||
+          current.sourceRevisionId !== source.sourceRevisionId ||
+          current.sourceHash !== source.sourceHash
+        );
+      });
+    })
+    .map((artifact) => artifact.contextArtifactId);
+
+  if (invalidatedArtifactIds.length > 0) {
+    await db
+      .update(contextArtifacts)
+      .set({
+        status: contextArtifactStatusValues.stale,
+        invalidatedReason: input.reason,
+        invalidatedAt: sql`now()`,
+        updatedAt: sql`now()`,
+      })
+      .where(inArray(contextArtifacts.contextArtifactId, invalidatedArtifactIds));
+  }
+  return invalidatedArtifactIds;
+}
+
+async function enqueueContextCorrectionRedraftJob(
+  db: ContextArtifactTransaction,
+  input: {
+    correctionId: string;
+    contextArtifactId: string;
+    contextEntryVersionId: string;
+    projectId: string;
+    localeBranchId: string;
+    sourceRevisionId: string;
+    affectedUnitIds: NonEmptyReadonlyArray<string>;
+  },
+): Promise<JobQueueRecord> {
+  const [redraftJob] = await ItotoriEventQueueRepository.enqueueJobsInTransaction(
+    db as unknown as QueueSqlExecutor,
+    [
+      buildRegisteredJobInput(
+        contextCorrectionRedraftJobName,
+        {
+          schemaVersion: contextCorrectionRedraftPayloadSchemaVersion,
+          correctionId: input.correctionId,
+          contextArtifactId: input.contextArtifactId,
+          contextEntryVersionId: input.contextEntryVersionId,
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId,
+          sourceRevisionId: input.sourceRevisionId,
+          affectedUnitIds: input.affectedUnitIds,
+        },
+        {
+          jobId: `context-correction-${shortHash(
+            `${input.correctionId}:${input.contextEntryVersionId}`,
+          )}`,
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId,
+          queueName: "context-correction",
+          idempotency: {
+            policy: jobIdempotencyPolicyValues.idempotent,
+            key: `context-correction:${input.correctionId}`,
+          },
+          correlationId: input.correctionId,
+          causationId: input.contextEntryVersionId,
+          subjectRefs: [
+            { subjectKind: "context_artifact", subjectId: input.contextArtifactId },
+            { subjectKind: "context_entry_version", subjectId: input.contextEntryVersionId },
+            { subjectKind: "locale_branch", subjectId: input.localeBranchId },
+            ...input.affectedUnitIds.map((subjectId) => ({
+              subjectKind: "bridge_unit",
+              subjectId,
+            })),
+          ],
+          priority: 40,
+        },
+      ),
+    ],
+  );
+  if (redraftJob === undefined) {
+    throw new Error(`context correction ${input.correctionId} did not enqueue a redraft job`);
+  }
+  return redraftJob;
 }
 
 export class ContextArtifactRepositoryError extends Error {
@@ -716,7 +1275,7 @@ function sourceUnitRecordFromRow(
 }
 
 async function requireArtifactById(
-  db: ItotoriDatabase,
+  db: ContextArtifactReadExecutor,
   contextArtifactId: string,
 ): Promise<ContextArtifactRecord> {
   const rows = await artifactsWithSources(db, { contextArtifactId, includeStale: true, limit: 1 });
@@ -740,7 +1299,7 @@ type ArtifactFilter = {
 };
 
 async function artifactsWithSources(
-  db: ItotoriDatabase,
+  db: ContextArtifactReadExecutor,
   filter: ArtifactFilter,
 ): Promise<ContextArtifactRecord[]> {
   const conditions = [];
@@ -905,7 +1464,7 @@ type LocaleBranchContextResult =
     };
 
 async function currentLocaleBranchContext(
-  db: ItotoriDatabase,
+  db: ContextArtifactReadExecutor,
   projectId: string,
   localeBranchId: string,
 ): Promise<LocaleBranchContextResult> {
@@ -941,7 +1500,7 @@ async function currentLocaleBranchContext(
 }
 
 async function currentSourceUnitRows(
-  db: ItotoriDatabase,
+  db: ContextArtifactReadExecutor,
   sourceBundleId: string,
   bridgeUnitIds: readonly string[],
 ): Promise<
@@ -1089,6 +1648,26 @@ function stableStringify(value: unknown): string {
 
 function unique<T>(values: readonly T[]): T[] {
   return [...new Set(values)];
+}
+
+function sortedUniqueBridgeUnitIds(values: readonly string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter((value) => value.length > 0))].sort(
+    (left, right) => left.localeCompare(right),
+  );
+}
+
+function requireNonEmptyContextCorrectionAffectedUnitIds(
+  values: readonly string[],
+): NonEmptyReadonlyArray<string> {
+  const [first, ...rest] = values;
+  if (first === undefined) {
+    throw new ContextArtifactRepositoryError([missingSourceCitationDiagnostic()]);
+  }
+  return [first, ...rest];
+}
+
+function shortHash(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 24);
 }
 
 function clampLimit(limit: number | undefined): number {

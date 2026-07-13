@@ -1,288 +1,147 @@
+import { createHash } from "node:crypto";
 import {
+  contextCorrectionAuthorityValues,
   type AuthorizationActor,
   type ItotoriFeedbackRepositoryPort,
-  type ItotoriReviewerQueueRepositoryPort,
+  type ManualFeedbackCorrectionContext,
   type ManualFeedbackImportInput,
   parseManualFeedbackImportInput,
   type ManualFeedbackImportResult,
-  type ReviewerQueueItemRecord,
-  ReviewerQueueRepositoryError,
   feedbackContextStatusValues,
-  feedbackTriageLabelValues,
-  reviewerQueueItemKindValues,
+  feedbackTypeValues,
 } from "@itotori/db";
 import { localUserActor } from "./auth.js";
-import type { BridgeUnitMetadata } from "./draft-feedback/bridge-unit-metadata.js";
+import {
+  playTesterContextKindValues,
+  type ApplyContextCorrectionInput,
+  type ContextCorrectionResult,
+} from "./orchestrator/context-correction-service.js";
+
+/** The actual correction result, not an inferred routing status. */
+export type ManualFeedbackImportOutcome = ManualFeedbackImportResult & {
+  contextCorrection: ContextCorrectionResult | null;
+};
 
 export interface ManualFeedbackImportPort {
-  importManualFeedback(input: unknown): Promise<ManualFeedbackImportResult>;
+  importManualFeedback(input: unknown): Promise<ManualFeedbackImportOutcome>;
 }
 
-export class ManualFeedbackImportService {
+/**
+ * Narrow, actor-bound correction seam. Keeping it structural lets bare
+ * feedback importers retain their audit-only behavior in callers that do not
+ * own canonical-context mutation wiring.
+ */
+export interface ManualFeedbackContextCorrectionPort {
+  apply(input: ApplyContextCorrectionInput): Promise<ContextCorrectionResult>;
+}
+
+export class ManualFeedbackImportService implements ManualFeedbackImportPort {
   constructor(
     private readonly repository: Pick<ItotoriFeedbackRepositoryPort, "importManualFeedback"> &
-      Partial<Pick<ItotoriFeedbackRepositoryPort, "loadManualFeedbackReviewerQueueContext">>,
+      Partial<Pick<ItotoriFeedbackRepositoryPort, "loadManualFeedbackCorrectionContext">>,
     private readonly actor: AuthorizationActor = localUserActor,
-    private readonly reviewerQueueRepository?: Pick<
-      ItotoriReviewerQueueRepositoryPort,
-      "createItem"
-    > &
-      Partial<Pick<ItotoriReviewerQueueRepositoryPort, "loadItemsByBranch">>,
+    private readonly contextCorrections?: ManualFeedbackContextCorrectionPort,
   ) {}
 
-  async importManualFeedback(input: unknown): Promise<ManualFeedbackImportResult> {
+  async importManualFeedback(input: unknown): Promise<ManualFeedbackImportOutcome> {
     const parsed = parseManualFeedbackImportInput(input);
     const result = await this.repository.importManualFeedback(this.actor, parsed);
-    await this.enqueueReviewerQueueItem(result);
-    return result;
+    const contextCorrection = await this.applyContextCorrection(result);
+    return { ...result, contextCorrection };
   }
 
-  private async enqueueReviewerQueueItem(result: ManualFeedbackImportResult): Promise<void> {
+  private async applyContextCorrection(
+    result: ManualFeedbackImportResult,
+  ): Promise<ContextCorrectionResult | null> {
     if (
-      this.reviewerQueueRepository === undefined ||
-      this.repository.loadManualFeedbackReviewerQueueContext === undefined ||
-      result.duplicate ||
+      this.contextCorrections === undefined ||
+      this.repository.loadManualFeedbackCorrectionContext === undefined ||
       result.contextStatus !== feedbackContextStatusValues.contextualized
     ) {
-      return;
+      return null;
     }
 
-    const context = await this.repository.loadManualFeedbackReviewerQueueContext(
+    // Deliberately do not short-circuit duplicates. The correction service owns
+    // idempotency atomically, and an aggregated report must still reach that
+    // durable path rather than silently remaining unprocessed.
+    const context = await this.repository.loadManualFeedbackCorrectionContext(
       this.actor,
       result.feedbackReportId,
       result.feedbackEvidenceId,
     );
-    if (context === null || context.contextStatus !== feedbackContextStatusValues.contextualized) {
-      return;
-    }
-    const queueContext = sanitizeReviewerQueueRecord(context.context);
-    const queueAttachments = sanitizeReviewerQueueAttachments(context.attachments);
-    const isStyleDispute = context.triageLabel === feedbackTriageLabelValues.styleDisputeCandidate;
-    const styleDisputeKey = isStyleDispute ? context.feedbackReportId : undefined;
-    const affectedBridgeUnitIds = bridgeUnitIdsFromContext(queueContext);
-    // Typed against the SAME contract the batch service reads back
-    // (`BridgeUnitMetadata`), so a rename/reshape of these keys is a compile
-    // error on the producer as well as the consumer.
-    const affectedUnitMetadata: BridgeUnitMetadata =
-      affectedBridgeUnitIds.length === 0
-        ? {}
-        : { affectedUnitIds: affectedBridgeUnitIds, bridgeUnitIds: affectedBridgeUnitIds };
-
     if (
-      isStyleDispute &&
-      (await this.hasExistingStyleDisputeItem({
-        localeBranchId: context.localeBranchId,
-        sourceRevisionId: context.sourceRevisionId,
-        styleDisputeKey: context.feedbackReportId,
-      }))
+      context === null ||
+      context.contextStatus !== feedbackContextStatusValues.contextualized ||
+      context.affectedUnitIds.length === 0
     ) {
-      return;
+      return null;
     }
 
-    try {
-      await this.reviewerQueueRepository.createItem(this.actor, {
-        projectId: context.projectId,
-        localeBranchId: context.localeBranchId,
-        sourceRevisionId: context.sourceRevisionId,
-        itemKind: isStyleDispute
-          ? reviewerQueueItemKindValues.style
-          : reviewerQueueItemKindValues.feedback,
-        sourceItemRef: context.feedbackReportId,
-        summary: summarizeFeedbackForQueue(context.reporterNote),
-        affectedArtifactIds: context.affectedArtifactIds,
-        payload: {
-          feedbackReportId: context.feedbackReportId,
-          feedbackEvidenceId: context.feedbackEvidenceId,
-          evidenceId: context.feedbackEvidenceId,
-          ...(styleDisputeKey === undefined ? {} : { styleDisputeKey }),
-          feedbackType: context.feedbackType,
-          triageLabel: context.triageLabel,
-          ...affectedUnitMetadata,
-          context: queueContext,
-          attachments: queueAttachments,
-          reporterNote: context.reporterNote,
-        },
-        metadata: {
-          source: "manual_feedback_import",
-          feedbackReportId: context.feedbackReportId,
-          feedbackEvidenceId: context.feedbackEvidenceId,
-          evidenceId: context.feedbackEvidenceId,
-          ...(styleDisputeKey === undefined ? {} : { styleDisputeKey }),
-          triageLabel: context.triageLabel,
-          contextStatus: context.contextStatus,
-          ...affectedUnitMetadata,
-          context: queueContext,
-          attachments: queueAttachments,
-        },
-        createdByUserId: this.actor.userId,
-      });
-    } catch (error) {
-      if (
-        error instanceof ReviewerQueueRepositoryError &&
-        error.code === "reviewer_queue_item_duplicate"
-      ) {
-        return;
-      }
-      throw error;
-    }
-  }
-
-  private async hasExistingStyleDisputeItem(input: {
-    localeBranchId: string;
-    sourceRevisionId: string;
-    styleDisputeKey: string;
-  }): Promise<boolean> {
-    if (this.reviewerQueueRepository?.loadItemsByBranch === undefined) {
-      return false;
-    }
-    const items = await this.reviewerQueueRepository.loadItemsByBranch(
-      this.actor,
-      input.localeBranchId,
-    );
-    return items.some(
-      (item) =>
-        item.sourceRevisionId === input.sourceRevisionId &&
-        item.sourceItemRef === input.styleDisputeKey &&
-        isStyleDisputeQueueItem(item, input.styleDisputeKey),
-    );
+    return await this.contextCorrections.apply(contextCorrectionInputForFeedback(context));
   }
 }
 
-function summarizeFeedbackForQueue(reporterNote: string): string {
-  const singleLine = reporterNote.replace(/\s+/g, " ").trim();
-  if (singleLine.length <= 120) {
-    return `Manual feedback: ${singleLine}`;
+/**
+ * Build an idempotent canonical-context write entirely from persisted feedback
+ * state. A caller cannot redirect a duplicate report by changing raw request
+ * fields after its feedback report has already been created.
+ */
+export function contextCorrectionInputForFeedback(
+  context: ManualFeedbackCorrectionContext,
+): ApplyContextCorrectionInput {
+  return {
+    projectId: context.projectId,
+    localeBranchId: context.localeBranchId,
+    sourceRevisionId: context.sourceRevisionId,
+    contextArtifactId: manualFeedbackContextArtifactId(context.feedbackReportId),
+    correctionId: manualFeedbackCorrectionId(context.feedbackReportId),
+    authority: contextCorrectionAuthorityValues.feedbackImport,
+    kind: contextKindForFeedback(context),
+    title: `Feedback correction for ${context.feedbackReportId}`,
+    body: correctionBodyForFeedback(context),
+    reason: context.reporterNote,
+    affectedUnitIds: context.affectedUnitIds,
+    data: {
+      feedbackReportId: context.feedbackReportId,
+      feedbackEvidenceId: context.feedbackEvidenceId,
+      feedbackType: context.feedbackType,
+      triageLabel: context.triageLabel,
+      reporterNote: context.reporterNote,
+      suggestedEdit: context.suggestedEdit,
+    },
+  };
+}
+
+export function manualFeedbackContextArtifactId(feedbackReportId: string): string {
+  return `feedback-context-artifact-${shortHash(feedbackReportId)}`;
+}
+
+export function manualFeedbackCorrectionId(feedbackReportId: string): string {
+  return `feedback-context-correction-${shortHash(feedbackReportId)}`;
+}
+
+function contextKindForFeedback(context: ManualFeedbackCorrectionContext) {
+  if (context.feedbackType === feedbackTypeValues.glossaryCanonIssue) {
+    return playTesterContextKindValues.glossary;
   }
-  return `Manual feedback: ${singleLine.slice(0, 117)}...`;
-}
-
-function sanitizeReviewerQueueAttachments(attachments: unknown[]): unknown[] {
-  return attachments
-    .map((attachment) => {
-      if (!isRecord(attachment)) {
-        return null;
-      }
-      return compactRecord({
-        attachmentKind: attachment.attachmentKind,
-        attachmentId: attachment.attachmentId,
-        artifactId: attachment.artifactId,
-        hash: attachment.hash,
-        caption: attachment.caption,
-        capturePosition: attachment.capturePosition,
-        evidenceTier: attachment.evidenceTier,
-        contextToken: attachment.contextToken,
-        routeRef: attachment.routeRef,
-        sceneRef: attachment.sceneRef,
-        createdAt: attachment.createdAt,
-        contextKind: attachment.contextKind,
-        contextId: attachment.contextId,
-        speakerRef: attachment.speakerRef,
-        runtimeArtifactId: attachment.runtimeArtifactId,
-      });
-    })
-    .filter((attachment): attachment is Record<string, unknown> => attachment !== null);
-}
-
-function sanitizeReviewerQueueRecord(value: Record<string, unknown>): Record<string, unknown> {
-  const sanitized: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (reviewerQueueContextOmittedKeys.has(key)) {
-      continue;
-    }
-    if (Array.isArray(entry)) {
-      const items = entry
-        .map((item) => (isRecord(item) ? sanitizeReviewerQueueRecord(item) : item))
-        .filter((item) => !isRecord(item) || Object.keys(item).length > 0);
-      if (items.length > 0) {
-        sanitized[key] = items;
-      }
-      continue;
-    }
-    if (isRecord(entry)) {
-      const nested = sanitizeReviewerQueueRecord(entry);
-      if (Object.keys(nested).length > 0) {
-        sanitized[key] = nested;
-      }
-      continue;
-    }
-    sanitized[key] = entry;
+  if (context.feedbackType === feedbackTypeValues.stylePreference) {
+    return playTesterContextKindValues.style;
   }
-  return compactRecord(sanitized);
+  return playTesterContextKindValues.context;
 }
 
-function bridgeUnitIdsFromContext(context: Record<string, unknown>): string[] {
-  return sortedUnique([
-    ...stringArrayValue(context.affectedUnitIds),
-    ...stringArrayValue(context.affectedBridgeUnitIds),
-    ...stringArrayValue(context.bridgeUnitIds),
-    ...stringArrayValue(context.unitIds),
-    ...stringValue(recordValue(context.lineReference)?.bridgeUnitId),
-  ]);
+function correctionBodyForFeedback(context: ManualFeedbackCorrectionContext): string {
+  const suggestedEdit = context.suggestedEdit?.trim();
+  return [
+    ...(suggestedEdit === undefined || suggestedEdit.length === 0
+      ? []
+      : [`Suggested draft:\n${suggestedEdit}`]),
+    `Reporter feedback:\n${context.reporterNote}`,
+  ].join("\n\n");
 }
 
-function isStyleDisputeQueueItem(item: ReviewerQueueItemRecord, styleDisputeKey: string): boolean {
-  if (item.itemKind === reviewerQueueItemKindValues.style) {
-    return true;
-  }
-  if (item.itemKind !== reviewerQueueItemKindValues.feedback) {
-    return false;
-  }
-  return [item.payload, item.metadata].some(
-    (record) =>
-      record.styleDisputeKey === styleDisputeKey ||
-      record.triageLabel === feedbackTriageLabelValues.styleDisputeCandidate,
-  );
+function shortHash(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 24);
 }
-
-function compactRecord(value: Record<string, unknown>): Record<string, unknown> {
-  const compacted: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (entry === undefined || entry === null || entry === "") {
-      continue;
-    }
-    if (Array.isArray(entry) && entry.length === 0) {
-      continue;
-    }
-    if (isRecord(entry) && Object.keys(entry).length === 0) {
-      continue;
-    }
-    compacted[key] = entry;
-  }
-  return compacted;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function recordValue(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
-function stringValue(value: unknown): string[] {
-  return typeof value === "string" && value.length > 0 ? [value] : [];
-}
-
-function stringArrayValue(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
-    : [];
-}
-
-function sortedUnique(values: readonly string[]): string[] {
-  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
-}
-
-const reviewerQueueContextOmittedKeys = new Set([
-  "uri",
-  "fileUri",
-  "path",
-  "filePath",
-  "localPath",
-  "sourceLocation",
-  "quotedText",
-  "visibleText",
-  "metadata",
-]);
 
 export type { ManualFeedbackImportInput };

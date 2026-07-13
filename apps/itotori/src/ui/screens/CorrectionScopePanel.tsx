@@ -3,7 +3,7 @@
 // A panel WITHIN the reviewer detail screen (not a new route): for the
 // correction under review it shows the correction's SCOPE (which unit / scene
 // it affects) and which durable RUN folds it in. It consumes the
-// correction-feedback-loop read-model — the `workspace.correctionPreview`
+// context-correction preview read-model — the `workspace.correctionPreview`
 // GET read-model, the read-only leg of the correction feedback loop
 // (ITOTORI-118) — DIRECTLY through the typed `ItotoriApiClient`
 // (`useApiQuery`, never an ad-hoc fetch), and derives the folding run from
@@ -56,7 +56,7 @@ export function deriveCorrectionFoldingRun(runCount: number): CorrectionFoldingR
 }
 
 // ---------------------------------------------------------------------------
-// Panel — owns its correction-feedback-loop read through the typed client.
+// Panel — owns its context-correction preview read through the typed client.
 // The preview is shared in spirit with the workspace correction flow, but
 // each panel issues its own typed query (the api-client's per-depsKey cache
 // keeps the reads independent; a re-render does not double-fetch).
@@ -71,7 +71,7 @@ export interface CorrectionScopePanelProps {
 
 /**
  * The reviewer detail correction-scope panel. Issues the typed
- * `workspace.correctionPreview` query (the correction-feedback-loop
+ * `workspace.correctionPreview` query (the context-correction
  * read-model) + the `projects.overview` query (the repair / execution-journal
  * read-model) through the API client and renders the correction's scope +
  * folding pass. Settles into loading / empty / error independently of the
@@ -153,7 +153,7 @@ function CorrectionScopeBodyContent({
     return (
       <EmptyState
         title="No correction scope"
-        message="No correction-feedback-loop preview was returned for this reviewer item."
+        message="No context-correction preview was returned for this reviewer item."
       />
     );
   }
@@ -169,7 +169,7 @@ function CorrectionScopeBodyContent({
     return (
       <EmptyState
         title="No correction scope"
-        message="No correction-feedback-loop preview was returned for this reviewer item."
+        message="No context-correction preview was returned for this reviewer item."
       />
     );
   }

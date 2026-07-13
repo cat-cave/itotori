@@ -6,13 +6,13 @@ import {
   type CatalogFuzzyCandidateRequest,
   type CatalogFuzzyCandidateResult,
   type CatalogResolverFixtureInput,
-  type CreateReviewerQueueItemInput,
   catalogFuzzyCandidateDiagnosticCodeValues,
   catalogResolverFixtureDiagnosticCodeValues,
   catalogExactExternalIdLinkStatusValues,
   catalogExactExternalIdLinkSchemaVersion,
   catalogFuzzyCandidateSchemaVersion,
   catalogFuzzyCandidateStatusValues,
+  contextCorrectionAuthorityValues,
   ItotoriCatalogExactExternalIdLinkerService,
   ItotoriCatalogFuzzyCandidateGeneratorService,
   feedbackContextStatusValues,
@@ -22,11 +22,9 @@ import {
   feedbackTypeValues,
   type ManualFeedbackImportInput,
   type ManualFeedbackImportResult,
+  type ManualFeedbackCorrectionContext,
   type ProjectCostReport,
   type ProjectDashboardStatus,
-  type ReviewerQueueItemRecord,
-  reviewerQueueItemKindValues,
-  reviewerQueueItemStateValues,
   StyleGuideFixtureFlowRerunError,
   styleGuideFixtureFlowSchemaVersion,
   type StyleGuideFixtureFlowResult,
@@ -34,7 +32,16 @@ import {
 import type { BridgeBundle, BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import { describe, expect, it, vi } from "vitest";
 import { runItotoriCliCommand, type ItotoriCliServices } from "../src/cli-handlers.js";
-import { ManualFeedbackImportService } from "../src/manual-feedback.js";
+import {
+  ManualFeedbackImportService,
+  manualFeedbackContextArtifactId,
+  manualFeedbackCorrectionId,
+  type ManualFeedbackImportOutcome,
+} from "../src/manual-feedback.js";
+import type {
+  ApplyContextCorrectionInput,
+  ContextCorrectionResult,
+} from "../src/orchestrator/context-correction-service.js";
 import type { ProjectState } from "../src/services/project-workflow.js";
 
 describe("itotori scaffold", () => {
@@ -64,168 +71,45 @@ describe("ManualFeedbackImportService", () => {
     expect(importManualFeedback).not.toHaveBeenCalled();
   });
 
-  it("enqueues contextual imported style disputes as style reviewer items", async () => {
+  it("turns persisted contextual feedback into one canonical correction", async () => {
     const importManualFeedback = vi.fn(async () => manualFeedbackResultFixture);
-    const loadManualFeedbackReviewerQueueContext = vi.fn(async () => ({
-      feedbackReportId: "feedback-1",
-      feedbackEvidenceId: "evidence-1",
-      projectId: "project-1",
-      localeBranchId: "locale-1",
-      sourceRevisionId: "source-revision-from-bundle",
-      feedbackType: feedbackTypeValues.stylePreference,
-      triageLabel: feedbackTriageLabelValues.styleDisputeCandidate,
-      contextStatus: feedbackContextStatusValues.contextualized,
-      reporterNote: "The protagonist sounds too formal here.",
-      context: {
-        lineReference: {
-          bridgeUnitId: "unit-1",
-          sourceUnitKey: "scene.001",
-          path: "/private/tmp/source.json",
-          line: 7,
-          sourceLocation: {
-            fileUri: "file:///private/tmp/source.json",
-            localPath: "/private/tmp/source.json",
-          },
-          quotedText: "raw captured line",
-        },
-        attachmentSignals: [
-          {
-            attachmentKind: "screenshot",
-            artifactId: "artifact-shot-1",
-            uri: "private://captures/shot.png",
-          },
-        ],
-      },
-      attachments: [
-        {
-          attachmentKind: "screenshot",
-          artifactId: "artifact-shot-1",
-          uri: "private://captures/shot.png",
-          hash: "sha256:shot",
-          evidenceTier: "E2",
-          metadata: { localPath: "/private/tmp/shot.png" },
-        },
-      ],
-      affectedArtifactIds: ["artifact-shot-1"],
-    }));
-    const createItem = vi.fn(
-      async (_actor: AuthorizationActor, input: CreateReviewerQueueItemInput) =>
-        reviewerQueueItemRecord(input),
+    const context = manualFeedbackCorrectionContextFixture();
+    const loadManualFeedbackCorrectionContext = vi.fn(async () => context);
+    const apply = vi.fn(
+      async (_input: ApplyContextCorrectionInput) => contextCorrectionResultFixture,
     );
     const service = new ManualFeedbackImportService(
-      { importManualFeedback, loadManualFeedbackReviewerQueueContext },
+      { importManualFeedback, loadManualFeedbackCorrectionContext },
       { userId: "local-user" },
-      { createItem },
+      { apply },
     );
 
-    await service.importManualFeedback(manualFeedbackInputFixture());
+    const outcome = await service.importManualFeedback(manualFeedbackInputFixture());
 
-    expect(createItem).toHaveBeenCalledTimes(1);
-    expect(createItem.mock.calls[0]?.[1]).toMatchObject({
-      itemKind: reviewerQueueItemKindValues.style,
-      sourceItemRef: "feedback-1",
-      sourceRevisionId: "source-revision-from-bundle",
-      affectedArtifactIds: ["artifact-shot-1"],
-      payload: {
-        feedbackReportId: "feedback-1",
-        feedbackEvidenceId: "evidence-1",
-        evidenceId: "evidence-1",
-        styleDisputeKey: "feedback-1",
-        feedbackType: feedbackTypeValues.stylePreference,
-        triageLabel: "style_dispute_candidate",
+    expect(outcome.contextCorrection).toBe(contextCorrectionResultFixture);
+    expect(apply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contextArtifactId: manualFeedbackContextArtifactId("feedback-1"),
+        correctionId: manualFeedbackCorrectionId("feedback-1"),
+        projectId: "project-1",
+        localeBranchId: "locale-1",
+        sourceRevisionId: "source-revision-from-bundle",
+        authority: contextCorrectionAuthorityValues.feedbackImport,
+        kind: "style",
         affectedUnitIds: ["unit-1"],
-        bridgeUnitIds: ["unit-1"],
-        context: {
-          lineReference: { bridgeUnitId: "unit-1", sourceUnitKey: "scene.001", line: 7 },
-        },
-        attachments: [
-          {
-            attachmentKind: "screenshot",
-            artifactId: "artifact-shot-1",
-            evidenceTier: "E2",
-          },
-        ],
-      },
-      metadata: {
-        feedbackReportId: "feedback-1",
-        feedbackEvidenceId: "evidence-1",
-        evidenceId: "evidence-1",
-        styleDisputeKey: "feedback-1",
-        triageLabel: "style_dispute_candidate",
-        affectedUnitIds: ["unit-1"],
-        bridgeUnitIds: ["unit-1"],
-      },
-    });
-    expect(JSON.stringify(createItem.mock.calls[0]?.[1])).not.toContain("private://");
-    expect(JSON.stringify(createItem.mock.calls[0]?.[1])).not.toContain("/private/tmp");
-    expect(JSON.stringify(createItem.mock.calls[0]?.[1])).not.toContain("file:///private");
-    expect(JSON.stringify(createItem.mock.calls[0]?.[1])).not.toContain("raw captured line");
-    expect(JSON.stringify(createItem.mock.calls[0]?.[1])).not.toContain("playtester@example.com");
-  });
-
-  it("keeps contextual objective feedback as feedback reviewer items", async () => {
-    const importManualFeedback = vi.fn(async () => ({
-      ...manualFeedbackResultFixture,
-      triageLabel: feedbackTriageLabelValues.objectiveDefectCandidate,
-    }));
-    const loadManualFeedbackReviewerQueueContext = vi.fn(async () => ({
-      feedbackReportId: "feedback-objective-1",
-      feedbackEvidenceId: "evidence-objective-1",
-      projectId: "project-1",
-      localeBranchId: "locale-1",
-      sourceRevisionId: "source-revision-from-bundle",
-      feedbackType: feedbackTypeValues.objectiveDefect,
-      triageLabel: feedbackTriageLabelValues.objectiveDefectCandidate,
-      contextStatus: feedbackContextStatusValues.contextualized,
-      reporterNote: "The translated line has a typo.",
-      context: {
-        lineReference: {
-          bridgeUnitId: "unit-1",
-          sourceUnitKey: "scene.001",
-          line: 7,
-        },
-      },
-      attachments: [],
-      affectedArtifactIds: [],
-    }));
-    const createItem = vi.fn(
-      async (_actor: AuthorizationActor, input: CreateReviewerQueueItemInput) =>
-        reviewerQueueItemRecord(input),
-    );
-    const service = new ManualFeedbackImportService(
-      { importManualFeedback, loadManualFeedbackReviewerQueueContext },
-      { userId: "local-user" },
-      { createItem },
-    );
-
-    await service.importManualFeedback(
-      manualFeedbackInputFixture({
-        feedbackType: feedbackTypeValues.objectiveDefect,
-        reporterNote: "The translated line has a typo.",
+        reason: "The protagonist sounds too formal here.",
+        body: expect.stringContaining("Suggested draft:\nThey sound natural here."),
+        data: expect.objectContaining({
+          feedbackReportId: "feedback-1",
+          feedbackEvidenceId: "evidence-1",
+          reporterNote: "The protagonist sounds too formal here.",
+          suggestedEdit: "They sound natural here.",
+        }),
       }),
     );
-
-    expect(createItem).toHaveBeenCalledTimes(1);
-    expect(createItem.mock.calls[0]?.[1]).toMatchObject({
-      itemKind: reviewerQueueItemKindValues.feedback,
-      sourceItemRef: "feedback-objective-1",
-      payload: {
-        feedbackReportId: "feedback-objective-1",
-        feedbackEvidenceId: "evidence-objective-1",
-        feedbackType: feedbackTypeValues.objectiveDefect,
-        triageLabel: "objective_defect_candidate",
-      },
-      metadata: {
-        feedbackReportId: "feedback-objective-1",
-        feedbackEvidenceId: "evidence-objective-1",
-        triageLabel: "objective_defect_candidate",
-      },
-    });
-    expect(createItem.mock.calls[0]?.[1].payload).not.toHaveProperty("styleDisputeKey");
-    expect(createItem.mock.calls[0]?.[1].metadata).not.toHaveProperty("styleDisputeKey");
   });
 
-  it("does not enqueue duplicate imported feedback twice", async () => {
+  it("routes duplicate contextual feedback through the idempotent correction path", async () => {
     const duplicateResult: ManualFeedbackImportResult = {
       ...manualFeedbackResultFixture,
       duplicate: true,
@@ -235,28 +119,16 @@ describe("ManualFeedbackImportService", () => {
       .fn<[AuthorizationActor, ManualFeedbackImportInput], Promise<ManualFeedbackImportResult>>()
       .mockResolvedValueOnce(manualFeedbackResultFixture)
       .mockResolvedValueOnce(duplicateResult);
-    const loadManualFeedbackReviewerQueueContext = vi.fn(async () => ({
-      feedbackReportId: "feedback-1",
-      feedbackEvidenceId: "evidence-1",
-      projectId: "project-1",
-      localeBranchId: "locale-1",
-      sourceRevisionId: "source-revision-from-bundle",
-      feedbackType: feedbackTypeValues.stylePreference,
-      triageLabel: "style_dispute_candidate" as const,
-      contextStatus: feedbackContextStatusValues.contextualized,
-      reporterNote: "The protagonist sounds too formal here.",
-      context: { lineReference: { bridgeUnitId: "unit-1" } },
-      attachments: [],
-      affectedArtifactIds: [],
-    }));
-    const createItem = vi.fn(
-      async (_actor: AuthorizationActor, input: CreateReviewerQueueItemInput) =>
-        reviewerQueueItemRecord(input),
+    const loadManualFeedbackCorrectionContext = vi.fn(async () =>
+      manualFeedbackCorrectionContextFixture(),
+    );
+    const apply = vi.fn(
+      async (_input: ApplyContextCorrectionInput) => contextCorrectionResultFixture,
     );
     const service = new ManualFeedbackImportService(
-      { importManualFeedback, loadManualFeedbackReviewerQueueContext },
+      { importManualFeedback, loadManualFeedbackCorrectionContext },
       { userId: "local-user" },
-      { createItem },
+      { apply },
     );
 
     const first = await service.importManualFeedback(manualFeedbackInputFixture());
@@ -264,89 +136,49 @@ describe("ManualFeedbackImportService", () => {
 
     expect(first.duplicate).toBe(false);
     expect(second.duplicate).toBe(true);
-    expect(createItem).toHaveBeenCalledTimes(1);
-    expect(createItem.mock.calls[0]?.[1].sourceItemRef).toBe("feedback-1");
+    expect(apply).toHaveBeenCalledTimes(2);
+    expect(apply.mock.calls.map(([input]) => input.correctionId)).toEqual([
+      manualFeedbackCorrectionId("feedback-1"),
+      manualFeedbackCorrectionId("feedback-1"),
+    ]);
   });
 
-  it("does not re-enqueue a legacy rejected feedback-kind style dispute", async () => {
-    const importManualFeedback = vi.fn(async () => manualFeedbackResultFixture);
-    const loadManualFeedbackReviewerQueueContext = vi.fn(async () => ({
-      feedbackReportId: "feedback-legacy-style-1",
-      feedbackEvidenceId: "evidence-legacy-style-1",
-      projectId: "project-1",
-      localeBranchId: "locale-1",
-      sourceRevisionId: "source-revision-from-bundle",
-      feedbackType: feedbackTypeValues.stylePreference,
-      triageLabel: feedbackTriageLabelValues.styleDisputeCandidate,
-      contextStatus: feedbackContextStatusValues.contextualized,
-      reporterNote: "The protagonist sounds too formal here.",
-      context: { lineReference: { bridgeUnitId: "unit-1" } },
-      attachments: [],
-      affectedArtifactIds: [],
-    }));
-    const legacyRejectedItem: ReviewerQueueItemRecord = {
-      ...reviewerQueueItemRecord({
-        projectId: "project-1",
-        localeBranchId: "locale-1",
-        sourceRevisionId: "source-revision-from-bundle",
-        itemKind: reviewerQueueItemKindValues.feedback,
-        sourceItemRef: "feedback-legacy-style-1",
-        summary: "Manual feedback: legacy style dispute",
-        payload: {
-          feedbackReportId: "feedback-legacy-style-1",
-          triageLabel: feedbackTriageLabelValues.styleDisputeCandidate,
-        },
-        metadata: {
-          rejectionReason: "Existing style guide already covers this.",
-          triageLabel: feedbackTriageLabelValues.styleDisputeCandidate,
-        },
-      }),
-      state: reviewerQueueItemStateValues.rejected,
-      resolvedAt: new Date("2026-06-17T00:00:00.000Z"),
-    };
-    const loadItemsByBranch = vi.fn(async () => [legacyRejectedItem]);
-    const createItem = vi.fn(
-      async (_actor: AuthorizationActor, input: CreateReviewerQueueItemInput) =>
-        reviewerQueueItemRecord(input),
-    );
-    const service = new ManualFeedbackImportService(
-      { importManualFeedback, loadManualFeedbackReviewerQueueContext },
-      { userId: "local-user" },
-      { createItem, loadItemsByBranch },
-    );
-
-    await service.importManualFeedback(manualFeedbackInputFixture());
-
-    expect(loadItemsByBranch).toHaveBeenCalledWith({ userId: "local-user" }, "locale-1");
-    expect(createItem).not.toHaveBeenCalled();
-  });
-
-  it("does not enqueue missing-context feedback", async () => {
+  it("returns no correction for feedback without enough persisted context", async () => {
     const importManualFeedback = vi.fn(async () => ({
       ...manualFeedbackResultFixture,
       triageLabel: "needs_context" as const,
       reportStatus: "needs_context" as const,
       contextStatus: feedbackContextStatusValues.needsContext,
     }));
-    const loadManualFeedbackReviewerQueueContext = vi.fn(async () => null);
-    const createItem = vi.fn(
-      async (_actor: AuthorizationActor, input: CreateReviewerQueueItemInput) =>
-        reviewerQueueItemRecord(input),
+    const loadManualFeedbackCorrectionContext = vi.fn(async () => null);
+    const apply = vi.fn(
+      async (_input: ApplyContextCorrectionInput) => contextCorrectionResultFixture,
     );
     const service = new ManualFeedbackImportService(
-      { importManualFeedback, loadManualFeedbackReviewerQueueContext },
+      { importManualFeedback, loadManualFeedbackCorrectionContext },
       { userId: "local-user" },
-      { createItem },
+      { apply },
     );
 
-    await service.importManualFeedback({
+    const outcome = await service.importManualFeedback({
       ...manualFeedbackInputFixture(),
       lineReference: undefined,
       attachments: undefined,
     });
 
-    expect(loadManualFeedbackReviewerQueueContext).not.toHaveBeenCalled();
-    expect(createItem).not.toHaveBeenCalled();
+    expect(outcome.contextCorrection).toBeNull();
+    expect(loadManualFeedbackCorrectionContext).not.toHaveBeenCalled();
+    expect(apply).not.toHaveBeenCalled();
+  });
+
+  it("keeps an audit-only importer compatible when no correction port is wired", async () => {
+    const importManualFeedback = vi.fn(async () => manualFeedbackResultFixture);
+    const service = new ManualFeedbackImportService({ importManualFeedback });
+
+    const outcome = await service.importManualFeedback(manualFeedbackInputFixture());
+
+    expect(outcome).toMatchObject(manualFeedbackResultFixture);
+    expect(outcome.contextCorrection).toBeNull();
   });
 });
 
@@ -404,7 +236,7 @@ describe("Itotori CLI handlers", () => {
     );
 
     expect(services.manualFeedback.importManualFeedback).toHaveBeenCalledWith(feedback);
-    expect(writes.get("feedback-result.json")).toEqual(manualFeedbackResultFixture);
+    expect(writes.get("feedback-result.json")).toEqual(manualFeedbackOutcomeFixture);
   });
 
   it("imports a community-channel forms export through the feedback service", async () => {
@@ -1042,7 +874,7 @@ function servicesFixture(): ItotoriCliServices {
       })),
     },
     manualFeedback: {
-      importManualFeedback: vi.fn(async () => manualFeedbackResultFixture),
+      importManualFeedback: vi.fn(async () => manualFeedbackOutcomeFixture),
     },
     draftFeedbackBatch: {
       submitBatch: vi.fn(async () => ({
@@ -1203,6 +1035,31 @@ const manualFeedbackResultFixture: ManualFeedbackImportResult = {
   duplicate: false,
 };
 
+const manualFeedbackOutcomeFixture: ManualFeedbackImportOutcome = {
+  ...manualFeedbackResultFixture,
+  contextCorrection: null,
+};
+
+const contextCorrectionResultFixture = {
+  correctionId: "feedback-context-correction-result",
+} as ContextCorrectionResult;
+
+function manualFeedbackCorrectionContextFixture(): ManualFeedbackCorrectionContext {
+  return {
+    feedbackReportId: "feedback-1",
+    feedbackEvidenceId: "evidence-1",
+    projectId: "project-1",
+    localeBranchId: "locale-1",
+    sourceRevisionId: "source-revision-from-bundle",
+    feedbackType: feedbackTypeValues.stylePreference,
+    triageLabel: feedbackTriageLabelValues.styleDisputeCandidate,
+    contextStatus: feedbackContextStatusValues.contextualized,
+    reporterNote: "The protagonist sounds too formal here.",
+    suggestedEdit: "They sound natural here.",
+    affectedUnitIds: ["unit-1"],
+  };
+}
+
 function manualFeedbackInputFixture(
   overrides: Partial<ManualFeedbackImportInput> = {},
 ): ManualFeedbackImportInput {
@@ -1231,32 +1088,6 @@ function manualFeedbackInputFixture(
       },
     ],
     ...overrides,
-  };
-}
-
-function reviewerQueueItemRecord(input: CreateReviewerQueueItemInput): ReviewerQueueItemRecord {
-  const createdAt = input.createdAt ?? new Date("2026-06-17T00:00:00.000Z");
-  return {
-    reviewItemId: "review-item-1",
-    projectId: input.projectId,
-    localeBranchId: input.localeBranchId,
-    sourceRevisionId: input.sourceRevisionId,
-    itemKind: input.itemKind,
-    sourceItemRef: input.sourceItemRef,
-    state: reviewerQueueItemStateValues.pending,
-    priority: input.priority ?? 0,
-    summary: input.summary,
-    affectedArtifactIds: input.affectedArtifactIds ?? [],
-    evidenceTier: null,
-    observationEventIds: null,
-    artifactHashes: null,
-    payload: input.payload ?? {},
-    metadata: input.metadata ?? {},
-    createdByUserId: input.createdByUserId ?? null,
-    assignedToUserId: input.assignedToUserId ?? null,
-    createdAt,
-    updatedAt: createdAt,
-    resolvedAt: null,
   };
 }
 

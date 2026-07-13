@@ -6,28 +6,19 @@
 //   - durable edit history: every correction yields one persisted edit row
 //     tied to (project, locale branch, source revision, bridge unit, actor,
 //     reason) + the feedback report / evidence it produced.
-//   - SAME feedback + decision + targeted-rerun loop: the corrections drive the
-//     REAL `ManualFeedbackImportService`, which enqueues REAL reviewer-queue
-//     items; feeding one of those items into the REAL
-//     `buildReviewerTriggeredRerunJobInputs` scopes the rerun to exactly the
-//     corrected bridge units (affected-unit rerun enqueue integration).
+//   - feedback audit: corrections drive the REAL `ManualFeedbackImportService`
+//     but deliberately do not inject a reviewer-queue item.
 //   - branch-scoping: corrections on two branches are never conflated.
 //
-// Only the leaf DB ports (feedback repository, reviewer-queue repository,
-// edit-history repository) are in-memory stubs.
+// Only the leaf DB ports (feedback repository and edit-history repository) are
+// in-memory stubs.
 
 import { describe, expect, it } from "vitest";
 import type {
   AuthorizationActor,
-  CreateReviewerQueueItemInput,
   ItotoriFeedbackRepositoryPort,
-  ItotoriReviewerQueueRepositoryPort,
   ManualFeedbackImportInput,
   ManualFeedbackImportResult,
-  ManualFeedbackReviewerQueueContext,
-  ReviewerQueueActionResult,
-  ReviewerQueueItemRecord,
-  ReviewerQueueTransitionRecord,
   WorkspaceCorrectionEditInput,
   WorkspaceCorrectionEditRecord,
 } from "@itotori/db";
@@ -35,12 +26,8 @@ import {
   feedbackContextStatusValues,
   feedbackTriageLabelValues,
   feedbackTypeValues,
-  reviewerQueueActionValues,
-  reviewerQueueItemKindValues,
-  reviewerQueueItemStateValues,
 } from "@itotori/db";
 import { ManualFeedbackImportService } from "../src/manual-feedback.js";
-import { buildReviewerTriggeredRerunJobInputs } from "../src/reviewer/repair-rerun-scheduler.js";
 import {
   WorkspaceCorrectionService,
   type WorkspaceCorrectionComparisonPort,
@@ -87,10 +74,9 @@ function triageLabelFor(type: ManualFeedbackImportInput["feedbackType"]) {
 
 class StubFeedbackRepository implements Pick<
   ItotoriFeedbackRepositoryPort,
-  "importManualFeedback" | "loadManualFeedbackReviewerQueueContext"
+  "importManualFeedback"
 > {
   private counter = 0;
-  private readonly reports = new Map<string, ManualFeedbackReviewerQueueContext>();
   readonly imported: ManualFeedbackImportInput[] = [];
 
   async importManualFeedback(
@@ -102,24 +88,6 @@ class StubFeedbackRepository implements Pick<
     const feedbackReportId = `feedback-report-${this.counter}`;
     const feedbackEvidenceId = `feedback-evidence-${this.counter}`;
     const triageLabel = triageLabelFor(input.feedbackType);
-    const bridgeUnitId = input.lineReference?.bridgeUnitId;
-    this.reports.set(`${feedbackReportId}:${feedbackEvidenceId}`, {
-      feedbackReportId,
-      feedbackEvidenceId,
-      projectId: input.projectId,
-      localeBranchId: input.localeBranchId ?? BRANCH_ID,
-      sourceRevisionId: SOURCE_REVISION_ID,
-      feedbackType: input.feedbackType,
-      triageLabel,
-      contextStatus: feedbackContextStatusValues.contextualized,
-      reporterNote: input.reporterNote,
-      context:
-        bridgeUnitId === undefined
-          ? { lineReference: {} }
-          : { lineReference: { bridgeUnitId }, affectedUnitIds: [bridgeUnitId] },
-      attachments: [],
-      affectedArtifactIds: [],
-    });
     return {
       feedbackReportId,
       feedbackEvidenceId,
@@ -131,58 +99,6 @@ class StubFeedbackRepository implements Pick<
       reportCount: 1,
       duplicate: false,
     };
-  }
-
-  async loadManualFeedbackReviewerQueueContext(
-    _actor: AuthorizationActor,
-    feedbackReportId: string,
-    feedbackEvidenceId: string,
-  ): Promise<ManualFeedbackReviewerQueueContext | null> {
-    return this.reports.get(`${feedbackReportId}:${feedbackEvidenceId}`) ?? null;
-  }
-}
-
-class StubReviewerQueueRepository implements Pick<
-  ItotoriReviewerQueueRepositoryPort,
-  "createItem" | "loadItemsByBranch"
-> {
-  private counter = 0;
-  readonly created: ReviewerQueueItemRecord[] = [];
-
-  async createItem(
-    _actor: AuthorizationActor,
-    input: CreateReviewerQueueItemInput,
-  ): Promise<ReviewerQueueItemRecord> {
-    this.counter += 1;
-    const now = new Date("2026-06-30T00:00:00Z");
-    const record: ReviewerQueueItemRecord = {
-      reviewItemId: `reviewer-queue-item-${this.counter}`,
-      projectId: input.projectId,
-      localeBranchId: input.localeBranchId,
-      sourceRevisionId: input.sourceRevisionId,
-      itemKind: input.itemKind,
-      sourceItemRef: input.sourceItemRef,
-      state: reviewerQueueItemStateValues.pending,
-      priority: input.priority ?? 0,
-      summary: input.summary,
-      affectedArtifactIds: input.affectedArtifactIds ?? [],
-      evidenceTier: input.evidenceTier ?? null,
-      observationEventIds: input.observationEventIds ?? null,
-      artifactHashes: input.artifactHashes ?? null,
-      payload: input.payload ?? {},
-      metadata: input.metadata ?? {},
-      createdByUserId: input.createdByUserId ?? null,
-      assignedToUserId: input.assignedToUserId ?? null,
-      createdAt: now,
-      updatedAt: now,
-      resolvedAt: null,
-    };
-    this.created.push(record);
-    return record;
-  }
-
-  async loadItemsByBranch(): Promise<ReviewerQueueItemRecord[]> {
-    return [...this.created];
   }
 }
 
@@ -224,12 +140,10 @@ class StubEditRepository {
 function buildService(): {
   service: WorkspaceCorrectionService;
   feedbackRepo: StubFeedbackRepository;
-  reviewerQueue: StubReviewerQueueRepository;
   editRepo: StubEditRepository;
 } {
   const feedbackRepo = new StubFeedbackRepository();
-  const reviewerQueue = new StubReviewerQueueRepository();
-  const manualFeedback = new ManualFeedbackImportService(feedbackRepo, actor, reviewerQueue);
+  const manualFeedback = new ManualFeedbackImportService(feedbackRepo, actor);
   const editRepo = new StubEditRepository();
   const comparisonPort: WorkspaceCorrectionComparisonPort = {
     loadComparisonContext: async () => deniedContextFixture("reviewer-1"),
@@ -242,28 +156,7 @@ function buildService(): {
     comparisonPort,
     now: () => new Date("2026-06-30T00:00:00Z"),
   });
-  return { service, feedbackRepo, reviewerQueue, editRepo };
-}
-
-// Build a real `requestRepair` action result from a created feedback item so
-// the REAL rerun scheduler scopes the rerun to the item's affected units.
-function requestRepairResult(item: ReviewerQueueItemRecord): ReviewerQueueActionResult {
-  const transition: ReviewerQueueTransitionRecord = {
-    transitionId: `transition-${item.reviewItemId}`,
-    reviewItemId: item.reviewItemId,
-    localeBranchId: item.localeBranchId,
-    sourceRevisionId: item.sourceRevisionId,
-    itemKind: item.itemKind,
-    action: reviewerQueueActionValues.requestRepair,
-    priorState: reviewerQueueItemStateValues.pending,
-    nextState: reviewerQueueItemStateValues.repairRequested,
-    actorUserId: actor.userId,
-    affectedArtifactIds: [],
-    diagnostics: [],
-    metadata: {},
-    createdAt: new Date("2026-06-30T01:00:00Z"),
-  };
-  return { item, transition };
+  return { service, feedbackRepo, editRepo };
 }
 
 const submitBase = {
@@ -284,8 +177,8 @@ function annotationFields() {
 }
 
 describe("WorkspaceCorrectionService — submit", () => {
-  it("records durable edit history tied to project/branch/revision/unit/actor/reason and routes through the same feedback path", async () => {
-    const { service, feedbackRepo, reviewerQueue, editRepo } = buildService();
+  it("records durable edit history and feedback audit without routing a reviewer queue item", async () => {
+    const { service, feedbackRepo, editRepo } = buildService();
 
     const result = await service.submitCorrections({
       ...submitBase,
@@ -355,15 +248,8 @@ describe("WorkspaceCorrectionService — submit", () => {
       },
     });
 
-    // SAME decision queue: the style correction became a `style` reviewer-queue
-    // item; the typo became a `feedback` item — both enqueued by the real
-    // ManualFeedbackImportService, not a fork.
-    const kinds = reviewerQueue.created.map((item) => item.itemKind).sort();
-    expect(kinds).toEqual(
-      [reviewerQueueItemKindValues.feedback, reviewerQueueItemKindValues.style].sort(),
-    );
-
-    // Routing partitions + affected-unit rerun scope.
+    // Triage labels remain as audit classification only; this service supplied
+    // no reviewer-queue sink to ManualFeedbackImportService.
     expect(result.repairCandidateReportIds).toEqual(["feedback-report-1"]);
     expect(result.decisionQueueReportIds).toEqual(["feedback-report-2"]);
     expect(result.affectedBridgeUnitIds).toEqual(["unit-a", "unit-b"]);
@@ -371,48 +257,8 @@ describe("WorkspaceCorrectionService — submit", () => {
     expect(result.edits[1]?.disposition).toBe("decision_queue");
   });
 
-  it("scopes the targeted rerun to exactly the corrected bridge units (real scheduler)", async () => {
-    const { service, reviewerQueue } = buildService();
-
-    await service.submitCorrections({
-      ...submitBase,
-      corrections: [
-        {
-          bridgeUnitId: "unit-a",
-          sourceRevisionId: SOURCE_REVISION_ID,
-          ...annotationFields(),
-          reason: "Typo fix",
-          correctedText: "Fixed text.",
-        },
-      ],
-    });
-
-    // The real feedback path enqueued a `feedback` reviewer-queue item carrying
-    // the affected bridge unit; a reviewer `requestRepair` runs through the REAL
-    // rerun scheduler and scopes the rerun to that unit only.
-    const feedbackItem = reviewerQueue.created.find(
-      (item) => item.itemKind === reviewerQueueItemKindValues.feedback,
-    );
-    expect(feedbackItem).toBeDefined();
-    const jobs = buildReviewerTriggeredRerunJobInputs(requestRepairResult(feedbackItem!));
-    expect(jobs.length).toBeGreaterThan(0);
-    const bridgeUnitSubjects = new Set(
-      jobs.flatMap((job) =>
-        (job.subjectRefs ?? [])
-          .filter(
-            (ref): ref is { subjectKind: string; subjectId: string } =>
-              typeof ref === "object" &&
-              ref !== null &&
-              (ref as { subjectKind?: unknown }).subjectKind === "bridge_unit",
-          )
-          .map((ref) => ref.subjectId),
-      ),
-    );
-    expect([...bridgeUnitSubjects]).toEqual(["unit-a"]);
-  });
-
   it("refuses the mutation without queue.manage and preserves read-only browsing", async () => {
-    const { service, feedbackRepo, reviewerQueue, editRepo } = buildService();
+    const { service, feedbackRepo, editRepo } = buildService();
 
     const result = await service.submitCorrections({
       ...submitBase,
@@ -433,9 +279,8 @@ describe("WorkspaceCorrectionService — submit", () => {
     expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
       "workspace_correction_mutation_permission_denied",
     );
-    // No feedback import, no queue item, no edit-history row was created.
+    // No feedback import, canonical context mutation, or edit-history row was created.
     expect(feedbackRepo.imported).toEqual([]);
-    expect(reviewerQueue.created).toEqual([]);
     expect(editRepo.recorded).toEqual([]);
   });
 
@@ -479,7 +324,7 @@ describe("WorkspaceCorrectionService — submit", () => {
   });
 
   it("rejects a mid-batch invalid correction at the service boundary with NO partial mutation", async () => {
-    const { service, feedbackRepo, reviewerQueue, editRepo } = buildService();
+    const { service, feedbackRepo, editRepo } = buildService();
 
     const result = await service.submitCorrections({
       ...submitBase,
@@ -520,11 +365,10 @@ describe("WorkspaceCorrectionService — submit", () => {
     expect(messages).toContain("reason");
     expect(messages).toContain("correctedText");
 
-    // NO partial mutation: not one feedback row, queue item, or edit-history
-    // row was written for ANY correction in the batch — including the two valid
+    // NO partial mutation: not one feedback row or edit-history row was
+    // written for ANY correction in the batch — including the two valid
     // corrections that precede the invalid one.
     expect(feedbackRepo.imported).toEqual([]);
-    expect(reviewerQueue.created).toEqual([]);
     expect(editRepo.recorded).toEqual([]);
   });
 
@@ -566,8 +410,7 @@ describe("WorkspaceCorrectionService — preview", () => {
   it("composes the reviewer-detail context into before/after + style/glossary/runtime", async () => {
     const { editRepo } = buildService();
     const feedbackRepo = new StubFeedbackRepository();
-    const reviewerQueue = new StubReviewerQueueRepository();
-    const manualFeedback = new ManualFeedbackImportService(feedbackRepo, actor, reviewerQueue);
+    const manualFeedback = new ManualFeedbackImportService(feedbackRepo, actor);
     const service = new WorkspaceCorrectionService({
       importPort: manualFeedback,
       editRepository: {
@@ -602,8 +445,7 @@ describe("WorkspaceCorrectionService — preview", () => {
   it("drops a review item on a different branch with a conflation guard", async () => {
     const { editRepo } = buildService();
     const feedbackRepo = new StubFeedbackRepository();
-    const reviewerQueue = new StubReviewerQueueRepository();
-    const manualFeedback = new ManualFeedbackImportService(feedbackRepo, actor, reviewerQueue);
+    const manualFeedback = new ManualFeedbackImportService(feedbackRepo, actor);
     const service = new WorkspaceCorrectionService({
       importPort: manualFeedback,
       editRepository: {

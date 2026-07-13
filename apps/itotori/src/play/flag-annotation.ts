@@ -1,15 +1,15 @@
 // play-flag-composer — pure mapping from an in-the-moment playtest flag
 // (AnnotationComposer value) into the ManualFeedbackImportInput that creates
-// a reviewer queue item via ManualFeedbackImportService.
+// a canonical context correction via ManualFeedbackImportService.
 //
 // Backend path (same intake the workspace correction service uses):
 //   ManualFeedbackImportPort.importManualFeedback
 //     → feedback report + evidence
-//     → reviewer-queue item (when contextualized)
+//     → canonical context correction (when contextualized and targetable)
 //
 // Permission: `feedback.import` (canFlag). Severity is the design-system
 // annotation-severity ramp (blocker/critical/warning/note), carried on
-// metadata so the queue UI can severity-scale the finding.
+// metadata so the correction path preserves its severity provenance.
 
 import {
   feedbackSourceKindValues,

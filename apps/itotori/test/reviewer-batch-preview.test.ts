@@ -247,7 +247,7 @@ describe("ReviewerBatchPreviewService — refusal paths (shared validator)", () 
     expect(preview.items[0]?.status).toBe(reviewerBatchPreviewStatusValues.allowed);
     expect(preview.items[1]?.status).toBe(reviewerBatchPreviewStatusValues.invalidInput);
     expect(preview.items[1]?.message).toContain(
-      "action 'update_glossary' is not valid for item kind 'qa'",
+      "action 'request_repair' is not valid for item kind 'glossary'",
     );
     expect(preview.allAllowed).toBe(false);
     expect(preview.aggregate.invalidInput).toBe(1);

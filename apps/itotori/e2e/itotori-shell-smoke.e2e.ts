@@ -239,13 +239,13 @@ test("Play surface drives filmstrip runtime evidence and flag-to-review loop", a
   await page.getByRole("radio", { name: "critical" }).click();
   await page.getByPlaceholder(/What's wrong with this line/i).fill("Textbox clips the final line.");
   await page.getByPlaceholder(/tone · layout · glossary/i).fill("layout");
-  await page.getByRole("button", { name: "Send to review" }).click();
+  await page.getByRole("button", { name: "Send correction" }).click();
 
   const outcome = page.locator('[data-flag-outcome="ok"]');
   await expect(outcome).toBeVisible();
-  await expect(outcome).toHaveAttribute("data-queue-enqueued", "true");
+  await expect(outcome).toHaveAttribute("data-context-correction-enqueued", "true");
   await expect(outcome).toHaveAttribute("data-severity", "critical");
-  await expect(outcome).toContainText("Flag sent to review");
+  await expect(outcome).toContainText("Flag sent to correction");
 
   expect(e2eObservedFlagAnnotations).toEqual([
     {
@@ -554,7 +554,7 @@ function playFlagAnnotationResponse(
     note: request.note,
     triageLabel: request.category === "layout" ? "layout_runtime_candidate" : "playtest_flag",
     contextStatus: request.bridgeUnitId === undefined ? "needs_context" : "contextualized",
-    queueEnqueued: request.bridgeUnitId !== undefined,
+    contextCorrectionEnqueued: request.bridgeUnitId !== undefined,
     duplicate: false,
   };
 }

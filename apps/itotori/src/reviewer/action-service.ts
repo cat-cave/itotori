@@ -6,13 +6,8 @@
 //   - approve()                 — mark a QA / style / glossary / feedback /
 //                                 runtime evidence item accepted
 //   - reject()                  — mark an item rejected
-//   - requestRepair()           — return a QA / feedback / runtime evidence
-//                                 item to the agentic loop for a targeted
-//                                 re-run
-//   - updateGlossary()          — approve a glossary item, recording the
-//                                 downstream glossary writes that follow
-//   - updateStyle()             — approve a style item, recording the
-//                                 downstream style-guide edit that follows
+//   - requestRepair()           — record a QA / feedback / runtime-evidence
+//                                 repair request on the transition log
 //   - importRuntimeFeedback()   — approve a runtime evidence / feedback
 //                                 item; for runtime-evidence items it
 //                                 asserts the supplied evidence tier and
@@ -30,13 +25,13 @@ import type {
   ItotoriReviewerQueueRepositoryPort,
   ReviewerQueueAction,
   ReviewerQueueActionInput,
+  ReviewerQueueActionJobPlanner,
   ReviewerQueueActionResult,
   ReviewerQueueDiagnostic,
   ReviewerQueueItemKind,
   ReviewerQueueItemRecord,
 } from "@itotori/db";
 import { reviewerQueueActionValues } from "@itotori/db";
-import { buildReviewerTriggeredRerunJobInputs } from "./repair-rerun-scheduler.js";
 
 export type ReviewerQueueActionServicePort = {
   approve(actor: AuthorizationActor, input: ApproveActionInput): Promise<ReviewerQueueActionResult>;
@@ -50,14 +45,6 @@ export type ReviewerQueueActionServicePort = {
     actor: AuthorizationActor,
     input: RequestRepairActionInput,
   ): Promise<ReviewerQueueActionResult>;
-  updateGlossary(
-    actor: AuthorizationActor,
-    input: UpdateGlossaryActionInput,
-  ): Promise<ReviewerQueueActionResult>;
-  updateStyle(
-    actor: AuthorizationActor,
-    input: UpdateStyleActionInput,
-  ): Promise<ReviewerQueueActionResult>;
   importRuntimeFeedback(
     actor: AuthorizationActor,
     input: ImportRuntimeFeedbackActionInput,
@@ -69,6 +56,12 @@ export type ReviewerQueueActionServicePort = {
 };
 
 export type ReviewerQueueActionServiceDeps = Record<string, never>;
+
+// Reviewer queue decisions remain durable transition records, but they are no
+// longer an execution route. Context corrections schedule their own registered
+// worker from the canonical-context service rather than lowering a queue action
+// into the retired reviewer rerun chain.
+const noReviewerQueueJobs: ReviewerQueueActionJobPlanner = () => [];
 
 export type ReviewerQueueDecisionContextRefs = {
   source: {
@@ -134,24 +127,6 @@ export type RequestRepairActionInput = ReviewerQueueActionCommonInput & {
   repairHint: string;
 };
 
-export type UpdateGlossaryActionInput = ReviewerQueueActionCommonInput & {
-  /**
-   * Term id the glossary edit will write to. Recorded on the transition
-   * metadata; the actual glossary write lands via the glossary
-   * repository on a downstream worker (out of scope for this service).
-   */
-  termId: string;
-  /** Final preferred translation the reviewer approved. */
-  approvedTranslation: string;
-};
-
-export type UpdateStyleActionInput = ReviewerQueueActionCommonInput & {
-  /** Style-guide version id the edit will write to. */
-  styleGuideVersionId: string;
-  /** Short label describing the approved style rule edit. */
-  ruleLabel: string;
-};
-
 export type ImportRuntimeFeedbackActionInput = ReviewerQueueActionCommonInput & {
   /**
    * Utsushi evidence tier for the import. For runtime-evidence items the
@@ -178,7 +153,7 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
     actor: AuthorizationActor,
     input: ApproveActionInput,
   ): Promise<ReviewerQueueActionResult> {
-    return this.applyActionAndSchedule(
+    return this.applyActionAndRecord(
       actor,
       buildActionInput(input, reviewerQueueActionValues.approve),
     );
@@ -188,7 +163,7 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
     actor: AuthorizationActor,
     input: RejectActionInput,
   ): Promise<ReviewerQueueActionResult> {
-    return this.applyActionAndSchedule(
+    return this.applyActionAndRecord(
       actor,
       buildActionInput(input, reviewerQueueActionValues.reject),
     );
@@ -199,7 +174,7 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
     input: DeferActionInput,
   ): Promise<ReviewerQueueActionResult> {
     assertNonEmpty("deferReason", input.deferReason);
-    return this.applyActionAndSchedule(
+    return this.applyActionAndRecord(
       actor,
       buildActionInput(input, reviewerQueueActionValues.defer, {
         deferReason: input.deferReason,
@@ -213,7 +188,7 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
   ): Promise<ReviewerQueueActionResult> {
     assertNonEmpty("escalationReason", input.escalationReason);
     assertNonEmpty("escalationTarget", input.escalationTarget);
-    return this.applyActionAndSchedule(
+    return this.applyActionAndRecord(
       actor,
       buildActionInput(input, reviewerQueueActionValues.escalate, {
         escalationReason: input.escalationReason,
@@ -227,40 +202,10 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
     input: RequestRepairActionInput,
   ): Promise<ReviewerQueueActionResult> {
     assertNonEmpty("repairHint", input.repairHint);
-    return this.applyActionAndSchedule(
+    return this.applyActionAndRecord(
       actor,
       buildActionInput(input, reviewerQueueActionValues.requestRepair, {
         repairHint: input.repairHint,
-      }),
-    );
-  }
-
-  async updateGlossary(
-    actor: AuthorizationActor,
-    input: UpdateGlossaryActionInput,
-  ): Promise<ReviewerQueueActionResult> {
-    assertNonEmpty("termId", input.termId);
-    assertNonEmpty("approvedTranslation", input.approvedTranslation);
-    return this.applyActionAndSchedule(
-      actor,
-      buildActionInput(input, reviewerQueueActionValues.updateGlossary, {
-        termId: input.termId,
-        approvedTranslation: input.approvedTranslation,
-      }),
-    );
-  }
-
-  async updateStyle(
-    actor: AuthorizationActor,
-    input: UpdateStyleActionInput,
-  ): Promise<ReviewerQueueActionResult> {
-    assertNonEmpty("styleGuideVersionId", input.styleGuideVersionId);
-    assertNonEmpty("ruleLabel", input.ruleLabel);
-    return this.applyActionAndSchedule(
-      actor,
-      buildActionInput(input, reviewerQueueActionValues.updateStyle, {
-        styleGuideVersionId: input.styleGuideVersionId,
-        ruleLabel: input.ruleLabel,
       }),
     );
   }
@@ -299,7 +244,7 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
     // hashes verbatim onto the transition's metadata so the audit trail
     // captures what was imported, in addition to the persisted values
     // on the item row itself.
-    return this.applyActionAndSchedule(
+    return this.applyActionAndRecord(
       actor,
       buildActionInput(input, reviewerQueueActionValues.importRuntimeFeedback, {
         evidenceTier: input.evidenceTier,
@@ -309,14 +254,14 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
     );
   }
 
-  private async applyActionAndSchedule(
+  private async applyActionAndRecord(
     actor: AuthorizationActor,
     input: ReviewerQueueActionInput,
   ): Promise<ReviewerQueueActionResult> {
     const result = await this.repository.applyActionAndEnqueueJobs(
       actor,
       input,
-      buildReviewerTriggeredRerunJobInputs,
+      noReviewerQueueJobs,
     );
     return result.actionResult;
   }
@@ -328,7 +273,7 @@ export class ReviewerQueueActionService implements ReviewerQueueActionServicePor
     const result = await this.repository.applyActionsAndEnqueueJobs(
       actor,
       inputs,
-      buildReviewerTriggeredRerunJobInputs,
+      noReviewerQueueJobs,
     );
     return result.actionResults;
   }

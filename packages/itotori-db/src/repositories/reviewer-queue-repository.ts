@@ -61,8 +61,6 @@ export const reviewerQueueActionList: ReadonlyArray<ReviewerQueueAction> = [
   reviewerQueueActionValues.defer,
   reviewerQueueActionValues.escalate,
   reviewerQueueActionValues.requestRepair,
-  reviewerQueueActionValues.updateGlossary,
-  reviewerQueueActionValues.updateStyle,
   reviewerQueueActionValues.importRuntimeFeedback,
 ];
 
@@ -137,13 +135,7 @@ export type ReviewerQueueActionInput = {
   affectedArtifactIds?: string[];
   diagnostics?: ReviewerQueueDiagnostic[];
   metadata?: Record<string, unknown>;
-  /**
-   * Optional override of the next state. The default per-action
-   * mapping is documented on `reviewerQueueActionToNextState`. The override is
-   * only honored for the `approve` and `reject` actions for the
-   * glossary / style guide kinds, which may collapse to `accepted`
-   * via either path.
-   */
+  /** Optional override of the next state; otherwise the action default applies. */
   forcedNextState?: ReviewerQueueItemState;
   at?: Date;
 };
@@ -300,15 +292,13 @@ export const reviewerQueueActionToNextState: Readonly<
   [reviewerQueueActionValues.defer]: reviewerQueueItemStateValues.deferred,
   [reviewerQueueActionValues.escalate]: reviewerQueueItemStateValues.escalated,
   [reviewerQueueActionValues.requestRepair]: reviewerQueueItemStateValues.repairRequested,
-  [reviewerQueueActionValues.updateGlossary]: reviewerQueueItemStateValues.accepted,
-  [reviewerQueueActionValues.updateStyle]: reviewerQueueItemStateValues.accepted,
   [reviewerQueueActionValues.importRuntimeFeedback]: reviewerQueueItemStateValues.accepted,
 };
 
 /**
  * Each action is only valid for a subset of item kinds. Mixing an
- * action with the wrong kind (e.g. `updateGlossary` on a runtime
- * evidence item) returns `reviewer_queue_item_invalid_input` before any
+ * action with the wrong kind (e.g. `requestRepair` on a glossary item)
+ * returns `reviewer_queue_item_invalid_input` before any
  * SQL fires. Exported so the ITOTORI-083 batch preview reads the SAME
  * mapping (audit focus).
  */
@@ -324,8 +314,6 @@ export const reviewerQueueActionAllowedKinds: Readonly<
     reviewerQueueItemKindValues.runtimeEvidence,
     reviewerQueueItemKindValues.feedback,
   ],
-  [reviewerQueueActionValues.updateGlossary]: [reviewerQueueItemKindValues.glossary],
-  [reviewerQueueActionValues.updateStyle]: [reviewerQueueItemKindValues.style],
   [reviewerQueueActionValues.importRuntimeFeedback]: [
     reviewerQueueItemKindValues.runtimeEvidence,
     reviewerQueueItemKindValues.feedback,

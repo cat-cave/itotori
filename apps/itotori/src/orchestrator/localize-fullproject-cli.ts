@@ -91,7 +91,13 @@ export type RunLocalizeFullProjectLiveArgs = {
   /** Directory the patch export + provider-run artifacts + run summary land in. */
   runDir: string;
   io: LocalizeFullProjectIo;
-  /** Existing paused executor run or finalizing terminal commit to resume. */
+  /**
+   * Explicit database target for an in-process production service. The CLI
+   * keeps its environment default; the DB service factory must not silently
+   * open a different database while its worker is draining a job.
+   */
+  databaseUrl?: string;
+  /** Existing durable journal run to resume from its first pending unit or terminal commit. */
   resumeRunId?: string;
   /** Workflow-owned scope fence for a server-originated resume request. */
   expectedResumeScope?: { projectId: string; localeBranchId: string };
@@ -296,7 +302,7 @@ export async function runLocalizeFullProjectLive(
     run: () => parseLocalizeProjectPairPolicy(args.io.readJson(config.pairPolicyPath)),
   });
 
-  const databaseUrl = databaseUrlFromEnv();
+  const databaseUrl = args.databaseUrl ?? databaseUrlFromEnv();
   const context = createDatabaseContext(databaseUrl);
   try {
     await bootstrapLocalUser(context.db);
@@ -808,7 +814,7 @@ async function resumeDurableFinalizingRun(
   const runId = args.resumeRunId;
   if (runId === undefined || runId.trim().length === 0) return null;
 
-  const context = createDatabaseContext(databaseUrlFromEnv());
+  const context = createDatabaseContext(args.databaseUrl ?? databaseUrlFromEnv());
   try {
     await bootstrapLocalUser(context.db);
     const actor: AuthorizationActor = { userId: localUserId };

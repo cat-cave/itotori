@@ -112,22 +112,6 @@ export function fixtureRerunJobConsequence(reviewItemId: string): ReviewerBatchC
   };
 }
 
-export function fixturePolicyWriteConsequence(reviewItemId: string): ReviewerBatchConsequence {
-  return {
-    kind: "policy_version_write",
-    styleGuidePolicyVersionId: `style-guide-version-${reviewItemId}`,
-    ruleLabel: "Honorifics: keep -san suffix",
-  };
-}
-
-export function fixtureGlossaryWriteConsequence(reviewItemId: string): ReviewerBatchConsequence {
-  return {
-    kind: "glossary_term_write",
-    termId: `term-${reviewItemId}`,
-    approvedTranslation: "Hero",
-  };
-}
-
 export function fixtureExportConsequence(reviewItemId: string): ReviewerBatchConsequence {
   return {
     kind: "export_artifact",
@@ -232,18 +216,19 @@ export function fixtureMixedKindRequest(): ReviewerBatchActionRequest {
 }
 
 export function fixtureConflictingActionRequest(): ReviewerBatchActionRequest {
-  // `updateGlossary` is only valid for glossary kind. Mixing it with a
-  // qa item triggers the action-allowed-kinds refusal.
+  // `requestRepair` is valid for QA but not glossary items. Mixing the
+  // two keeps the generic action-allowed-kinds refusal covered without
+  // pretending a queue action can mutate canonical glossary data.
   return {
-    action: reviewerQueueActionValues.updateGlossary,
+    action: reviewerQueueActionValues.requestRepair,
     actorUserId: "local-user",
     selections: [
       {
-        reviewItemId: "reviewer-queue-083-glossary-1",
+        reviewItemId: "reviewer-queue-083-qa-1",
         expectedSourceRevisionId: fixtureSourceRevisionId,
       },
       {
-        reviewItemId: "reviewer-queue-083-qa-1",
+        reviewItemId: "reviewer-queue-083-glossary-1",
         expectedSourceRevisionId: fixtureSourceRevisionId,
       },
     ],
@@ -277,20 +262,6 @@ export function fixtureAllowedRow(reviewItemId = "reviewer-queue-083-qa-1"): Bat
       fixtureRerunJobConsequence(reviewItemId),
       fixtureDraftStateChangeConsequence(reviewItemId),
       fixtureExportConsequence(reviewItemId),
-    ],
-  });
-}
-
-export function fixtureAllowedGlossaryRow(
-  reviewItemId = "reviewer-queue-083-glossary-1",
-): BatchPreviewItem {
-  return makePreviewItem({
-    reviewItemId,
-    action: reviewerQueueActionValues.updateGlossary,
-    item: fixturePendingGlossaryItem(reviewItemId),
-    consequences: [
-      fixtureGlossaryWriteConsequence(reviewItemId),
-      fixturePolicyWriteConsequence(reviewItemId),
     ],
   });
 }
@@ -339,13 +310,13 @@ export function fixtureInvalidInputRow(
 ): BatchPreviewItem {
   return makePreviewItem({
     reviewItemId,
-    action: reviewerQueueActionValues.updateGlossary,
+    action: reviewerQueueActionValues.requestRepair,
     status: reviewerBatchPreviewStatusValues.invalidInput,
-    item: fixturePendingQaItem(reviewItemId),
+    item: fixturePendingGlossaryItem(reviewItemId),
     priorState: reviewerQueueItemStateValues.pending,
     nextState: null,
     diagnostics: [],
-    message: `action 'update_glossary' is not valid for item kind 'qa'`,
+    message: `action 'request_repair' is not valid for item kind 'glossary'`,
   });
 }
 

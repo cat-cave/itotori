@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   EngineCapabilityReportRepository,
   ItotoriAssetLocalizationDecisionRepository,
@@ -56,6 +57,7 @@ import {
   type CatalogConflictReviewReadModel,
   type CatalogCompletenessBenchmarkPools,
   type CatalogCompletenessPoolFilter,
+  type JobWorkerResult,
   type LoadQueueHealthOptions,
   type LoadJobsRunTableOptions,
   type JobsRunTableReadModel,
@@ -147,7 +149,7 @@ import {
   WorkspaceCorrectionService,
   type WorkspaceCorrectionServicePort,
 } from "../workspace/correction-service.js";
-import { WorkspaceCorrectionFeedbackLoop } from "../workspace/correction-feedback-loop.js";
+import { ContextCorrectionService } from "../orchestrator/context-correction-service.js";
 import {
   ItotoriProjectWorkflowService,
   type ItotoriProjectWorkflowPort,
@@ -158,6 +160,12 @@ import {
   createDbBackedLivePassRunner,
   createDbBackedLocalizationPassDriver,
 } from "./db-live-workflow-ports.js";
+import {
+  DbBackedContextCorrectionRedrafter,
+  DbBackedContextCorrectionRerunVerifier,
+  type ContextCorrectionRedraftRunner,
+} from "./context-correction-redrafter.js";
+import { ContextCorrectionRerunWorker } from "../orchestrator/context-correction-worker.js";
 import {
   composeBmkCockpitReadModel,
   loadBmkCockpitRunHistory,
@@ -210,6 +218,8 @@ export type ItotoriApplicationServices = {
   reviewerQueue: ReviewerQueueApiServicePort;
   workspace: LocalizationWorkspaceApiServicePort;
   workspaceCorrections: WorkspaceCorrectionServicePort;
+  /** Direct play-tester shared-brain correction API + installed worker drain. */
+  contextCorrections: ContextCorrectionServicePort;
   exactSearch: {
     refreshDocuments(
       input: RefreshExactSearchDocumentsInput,
@@ -373,6 +383,11 @@ export type ItotoriApplicationServices = {
   sceneCoverage: SceneCoverageServicePort;
 };
 
+/** Production correction mutation plus the installed queue-worker drain seam. */
+export type ContextCorrectionServicePort = Pick<ContextCorrectionService, "apply"> & {
+  drain(): Promise<JobWorkerResult>;
+};
+
 export type ItotoriServiceFactory = <T>(
   callback: (services: ItotoriApplicationServices) => Promise<T>,
   options?: ItotoriServiceFactoryOptions,
@@ -430,7 +445,28 @@ export type DatabaseServiceOptions = {
   bootstrapLocalUser?: boolean;
   actor?: AuthorizationActor;
   sessionId?: string;
+  /**
+   * Test-only deterministic runner seam. Production leaves this unset so
+   * queued corrections call the registered full-project live redrafter.
+   */
+  contextCorrectionRedraftRunner?: ContextCorrectionRedraftRunner;
 };
+
+export type DatabaseContextCorrectionWorkerRuntime = {
+  /** Stop future polls. A current leased redraft is allowed to finish safely. */
+  stop(): void;
+  /** Trigger an immediate single-flight production drain (primarily operational/test use). */
+  runNow(): Promise<void>;
+};
+
+export type DatabaseContextCorrectionWorkerRuntimeOptions = {
+  /** Poll cadence for retry_waiting and recovered abandoned jobs. */
+  pollIntervalMs?: number;
+  /** Observability hook for factory/poll failures that escaped job-level retry handling. */
+  onError?: (error: unknown) => void;
+};
+
+const contextCorrectionPollIntervalMs = 5_000;
 
 export class ItotoriInvalidAuthSessionError extends Error {
   override readonly name = "ItotoriInvalidAuthSessionError";
@@ -753,11 +789,6 @@ export async function withDatabaseItotoriServices<T>(
     // Physical attempt telemetry and the jobs run table both read the
     // durable journal. There is intentionally no draft-attempt ledger path.
     const telemetryQuery = new LedgerTelemetryQuery(journalRepository);
-    const manualFeedbackService = new ManualFeedbackImportService(
-      feedbackRepository,
-      localUserActor,
-      reviewerQueueRepository,
-    );
     const reviewerQueueApiService = new ReviewerQueueApiService({
       repository: {
         loadItemsByBranch: (localeBranchId) =>
@@ -797,28 +828,65 @@ export async function withDatabaseItotoriServices<T>(
         loadComparisonContext: (input) => reviewerQueueApiService.loadDetailContext(input),
       },
     });
-    // ITOTORI-118 — the mutation service composes the feedback intake (so
-    // corrections enter the same decision + targeted-rerun loop), the durable
-    // edit-history repository, and the reviewer-detail comparison read-model
-    // for the before/after preview. Repository calls are bound to the local
-    // authorization actor, exactly like the read workspace.
-    // itotori-correction-feedback-writeback-e2e — the feedback loop's RETURN
-    // path: a repair-candidate correction writes its corrected target back into
-    // the translation-memory (+ glossary when term-scoped) stores and schedules
-    // an affected rerun over every unit sharing that source, so the next draft
-    // reflects the correction. Composes the existing TM + terminology repos and
-    // the shared reviewer-rerun job queue; no new store.
+    // Play-tester corrections retain a feedback audit row but intentionally do
+    // not inject that feedback into a reviewer queue. The canonical context
+    // service atomically versions + invalidates + enqueues; this production
+    // factory owns the installed worker and drains it through the real
+    // registered-pass redrafter before the request context closes.
     const eventQueueRepository = new ItotoriEventQueueRepository(context.db);
-    const workspaceCorrectionFeedbackLoop = new WorkspaceCorrectionFeedbackLoop({
+    const atomicContextCorrectionService = new ContextCorrectionService({
       actor: localUserActor,
-      translationMemory: translationMemoryRepository,
-      glossary: terminologyRepository,
-      rerunQueue: {
-        enqueueJobs: (actor, inputs) => eventQueueRepository.enqueueJobs(actor, inputs),
-      },
+      contextArtifacts: contextArtifactRepository,
     });
+    const contextCorrectionWorker = new ContextCorrectionRerunWorker({
+      queue: eventQueueRepository,
+      // A queued worker is a privileged, installed service actor. The request
+      // actor has already been authorized by the atomic correction write;
+      // background draft/journal/queue actions must not inherit a narrowly
+      // scoped feedback.import-only session.
+      actor: defaultLocalUserActor,
+      // Every short-lived request/poll factory gets a distinct lease owner.
+      // A stale process must never be able to complete a later worker's lease
+      // merely because both used a shared static id.
+      workerId: `database-services-context-correction-rerun-worker-${randomUUID()}`,
+      redrafter: new DbBackedContextCorrectionRedrafter({
+        actor: defaultLocalUserActor,
+        projectRepository,
+        resolveRunConfig: (input) =>
+          localizationPassRunConfigRepository.resolveRunConfig(
+            input.projectId,
+            input.localeBranchId,
+          ),
+        ...(options.databaseUrl !== undefined ? { databaseUrl: options.databaseUrl } : {}),
+        ...(options.contextCorrectionRedraftRunner !== undefined
+          ? { runLive: options.contextCorrectionRedraftRunner }
+          : {}),
+      }),
+      verifier: new DbBackedContextCorrectionRerunVerifier({
+        actor: defaultLocalUserActor,
+        projectRepository,
+        journalRepository,
+      }),
+    });
+    const contextCorrectionService: ContextCorrectionServicePort = {
+      apply: async (input) => {
+        const correction = await atomicContextCorrectionService.apply(input);
+        // `drain` is intentionally awaited: this is the production
+        // handler registration/drain point, not a test-only worker. A durable
+        // failure remains in the queue for retry; it cannot be reported as a
+        // successful redraft by the API response.
+        await contextCorrectionWorker.runUntilIdle();
+        return correction;
+      },
+      drain: async () => await contextCorrectionWorker.runUntilIdle(),
+    };
+    const manualFeedbackService = new ManualFeedbackImportService(
+      feedbackRepository,
+      localUserActor,
+      contextCorrectionService,
+    );
     const workspaceCorrectionService = new WorkspaceCorrectionService({
-      importPort: manualFeedbackService,
+      importPort: new ManualFeedbackImportService(feedbackRepository, localUserActor),
       // The correction service's edit-history port is write-only; reads of the
       // edit history bypass the service and hit
       // `ItotoriWorkspaceCorrectionRepository.loadCorrectionEditsByBranch` directly
@@ -830,7 +898,7 @@ export async function withDatabaseItotoriServices<T>(
       comparisonPort: {
         loadComparisonContext: (input) => reviewerQueueApiService.loadDetailContext(input),
       },
-      feedbackLoop: workspaceCorrectionFeedbackLoop,
+      contextCorrections: contextCorrectionService,
     });
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
@@ -901,6 +969,7 @@ export async function withDatabaseItotoriServices<T>(
       reviewerQueue: reviewerQueueApiService,
       workspace: workspaceApiService,
       workspaceCorrections: workspaceCorrectionService,
+      contextCorrections: contextCorrectionService,
       exactSearch: {
         refreshDocuments: (input) => exactSearchRepository.refreshDocuments(localUserActor, input),
         searchExact: (input) => exactSearchRepository.searchExact(localUserActor, input),
@@ -1239,6 +1308,91 @@ export async function withDatabaseItotoriServices<T>(
   } finally {
     await context.close();
   }
+}
+
+/**
+ * Start the production retry/recovery lifecycle for context-correction jobs.
+ *
+ * Request-time `apply()` drains immediately for low latency, but it cannot
+ * service a retry_waiting job after its backoff when no new request arrives.
+ * This small single-flight poller repeatedly opens the normal DB service
+ * composition, so it uses the same installed redrafter/verifier/worker as the
+ * HTTP path and closes each DB context after the pass.
+ */
+export function startDatabaseContextCorrectionWorker(
+  options: DatabaseServiceOptions,
+  runtimeOptions: DatabaseContextCorrectionWorkerRuntimeOptions = {},
+): DatabaseContextCorrectionWorkerRuntime {
+  const pollIntervalMs = runtimeOptions.pollIntervalMs ?? contextCorrectionPollIntervalMs;
+  if (!Number.isInteger(pollIntervalMs) || pollIntervalMs <= 0) {
+    throw new Error("context-correction worker pollIntervalMs must be a positive integer");
+  }
+  const onError =
+    runtimeOptions.onError ??
+    ((error: unknown) => {
+      console.error(
+        "context-correction production worker poll failed:",
+        error instanceof Error ? error.message : String(error),
+      );
+    });
+  // Never inherit a request session/actor into the background worker. The
+  // worker itself uses its installed privileged actor; this factory actor is
+  // only needed to build the surrounding application services.
+  const workerServiceOptions: DatabaseServiceOptions = {
+    ...(options.databaseUrl === undefined ? {} : { databaseUrl: options.databaseUrl }),
+    bootstrapLocalUser: options.bootstrapLocalUser ?? false,
+    ...(options.contextCorrectionRedraftRunner === undefined
+      ? {}
+      : { contextCorrectionRedraftRunner: options.contextCorrectionRedraftRunner }),
+  };
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let inFlight: Promise<void> | undefined;
+
+  const scheduleNext = (): void => {
+    if (stopped) return;
+    timer = setTimeout(() => {
+      void runNow();
+    }, pollIntervalMs);
+    timer.unref();
+  };
+
+  const runNow = async (): Promise<void> => {
+    if (stopped) return;
+    if (inFlight !== undefined) {
+      await inFlight;
+      return;
+    }
+    const drain = withDatabaseItotoriServices(workerServiceOptions, async (services) => {
+      await services.contextCorrections.drain();
+    }).catch((error: unknown) => {
+      onError(error);
+    });
+    inFlight = drain;
+    try {
+      await drain;
+    } finally {
+      // Retain the exact in-flight promise until it has settled. That keeps an
+      // external/manual `runNow()` from starting a second worker in the tiny
+      // completion window before this pass schedules its next tick.
+      if (inFlight === drain) {
+        inFlight = undefined;
+        scheduleNext();
+      }
+    }
+  };
+
+  // Start immediately so jobs that predate server startup are recovered too.
+  void runNow();
+  return {
+    stop: () => {
+      stopped = true;
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
+    },
+    runNow,
+  };
 }
 
 async function resolveDatabaseServiceActor(

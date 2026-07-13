@@ -28,7 +28,6 @@ import {
   ReviewerQueueActionService,
   ReviewerQueueActionServiceInputError,
   type ReviewerQueueDecisionContextRefs,
-  reviewerTriggeredRerunJobNameValues,
 } from "../src/reviewer/index.js";
 
 const actor: AuthorizationActor = { userId: "local-user" };
@@ -107,10 +106,6 @@ function transitionFixture(
 
 function itemKindForAction(input: ReviewerQueueActionInput): ReviewerQueueItemRecord["itemKind"] {
   switch (input.action) {
-    case reviewerQueueActionValues.updateStyle:
-      return reviewerQueueItemKindValues.style;
-    case reviewerQueueActionValues.updateGlossary:
-      return reviewerQueueItemKindValues.glossary;
     case reviewerQueueActionValues.importRuntimeFeedback:
       return reviewerQueueItemKindValues.feedback;
     default:
@@ -279,7 +274,7 @@ describe("ReviewerQueueActionService", () => {
     });
   });
 
-  it("defer dispatches the defer action with no rerun jobs", async () => {
+  it("defer dispatches the defer action without queue jobs", async () => {
     const { repo, applyAction, plannedJobs } = makeStubRepo();
     const service = new ReviewerQueueActionService(repo);
 
@@ -300,7 +295,7 @@ describe("ReviewerQueueActionService", () => {
     expect(plannedJobs).toHaveLength(0);
   });
 
-  it("escalate dispatches the escalate action with no rerun jobs", async () => {
+  it("escalate dispatches the escalate action without queue jobs", async () => {
     const { repo, applyAction, plannedJobs } = makeStubRepo();
     const service = new ReviewerQueueActionService(repo);
 
@@ -375,7 +370,7 @@ describe("ReviewerQueueActionService", () => {
     });
   });
 
-  it("plans reviewer reruns inside the repository action composition", async () => {
+  it("records a repair request while passing an empty queue-job planner", async () => {
     const { repo, applyActionAndEnqueueJobs, plannedJobs } = makeStubRepo();
     const service = new ReviewerQueueActionService(repo);
 
@@ -390,18 +385,7 @@ describe("ReviewerQueueActionService", () => {
     expect(applyActionAndEnqueueJobs).toHaveBeenCalledTimes(1);
     expect(applyActionAndEnqueueJobs.mock.calls[0]![0]).toBe(actor);
     expect(result.transition.action).toBe(reviewerQueueActionValues.requestRepair);
-    expect(plannedJobs.map((job) => job.jobName)).toEqual([
-      reviewerTriggeredRerunJobNameValues.draftRepair,
-      reviewerTriggeredRerunJobNameValues.qaReplay,
-      reviewerTriggeredRerunJobNameValues.exportRegeneration,
-      reviewerTriggeredRerunJobNameValues.runtimeValidation,
-    ]);
-    expect(plannedJobs.map((job) => job.dependsOnJobIds)).toEqual([
-      [],
-      [plannedJobs[0]!.jobId],
-      [plannedJobs[1]!.jobId],
-      [plannedJobs[2]!.jobId],
-    ]);
+    expect(plannedJobs).toHaveLength(0);
   });
 
   it("does not enter the repository composition when input validation fails", async () => {
@@ -420,7 +404,7 @@ describe("ReviewerQueueActionService", () => {
     expect(applyActionAndEnqueueJobs).not.toHaveBeenCalled();
   });
 
-  it("does not plan reruns when the repository denies or rejects the action", async () => {
+  it("does not create queue jobs when the repository rejects the action", async () => {
     const { repo, applyActionAndEnqueueJobs, plannedJobs } = makeStubRepo();
     applyActionAndEnqueueJobs.mockRejectedValueOnce(
       new ReviewerQueueRepositoryError(
@@ -441,88 +425,6 @@ describe("ReviewerQueueActionService", () => {
     ).rejects.toBeInstanceOf(ReviewerQueueRepositoryError);
 
     expect(plannedJobs).toHaveLength(0);
-  });
-
-  it("updateGlossary requires termId and approvedTranslation", async () => {
-    const { repo } = makeStubRepo();
-    const service = new ReviewerQueueActionService(repo);
-
-    await expect(
-      service.updateGlossary(actor, {
-        reviewItemId: "reviewer-queue-5",
-        actorUserId: "local-user",
-        expectedSourceRevisionId: "source-revision-fixture",
-        termId: "",
-        approvedTranslation: "Hero",
-      }),
-    ).rejects.toBeInstanceOf(ReviewerQueueActionServiceInputError);
-
-    await expect(
-      service.updateGlossary(actor, {
-        reviewItemId: "reviewer-queue-5",
-        actorUserId: "local-user",
-        expectedSourceRevisionId: "source-revision-fixture",
-        termId: "term-1",
-        approvedTranslation: "",
-      }),
-    ).rejects.toBeInstanceOf(ReviewerQueueActionServiceInputError);
-  });
-
-  it("updateStyle forwards the style guide version id and rule label onto metadata", async () => {
-    const { repo, applyAction } = makeStubRepo();
-    const service = new ReviewerQueueActionService(repo);
-
-    await service.updateStyle(actor, {
-      reviewItemId: "reviewer-queue-6",
-      actorUserId: "local-user",
-      expectedSourceRevisionId: "source-revision-fixture",
-      contextRefs: decisionContextRefs,
-      styleGuideVersionId: "style-version-1",
-      ruleLabel: "Honorifics: keep -san suffix",
-    });
-
-    expect(applyAction.mock.calls[0]![1]!.action).toBe(reviewerQueueActionValues.updateStyle);
-    expect(applyAction.mock.calls[0]![1]!.metadata).toMatchObject({
-      styleGuideVersionId: "style-version-1",
-      ruleLabel: "Honorifics: keep -san suffix",
-      contextRefs: decisionContextRefs,
-    });
-  });
-
-  it("updateStyle on a style dispute item plans style invalidation reruns", async () => {
-    const { repo, plannedJobs } = makeStubRepo();
-    const service = new ReviewerQueueActionService(repo);
-
-    await service.updateStyle(actor, {
-      reviewItemId: "reviewer-queue-style-dispute",
-      actorUserId: "local-user",
-      expectedSourceRevisionId: "source-revision-fixture",
-      contextRefs: decisionContextRefs,
-      metadata: {
-        styleDisputeKey: "feedback-1",
-        feedbackReportId: "feedback-1",
-        triageLabel: "style_dispute_candidate",
-        affectedUnitIds: ["bridge-unit-from-feedback"],
-      },
-      styleGuideVersionId: "style-version-1",
-      ruleLabel: "Protagonist voice: use casual register",
-    });
-
-    expect(plannedJobs.map((job) => job.jobName)).toEqual([
-      reviewerTriggeredRerunJobNameValues.draftRepair,
-      reviewerTriggeredRerunJobNameValues.qaReplay,
-      reviewerTriggeredRerunJobNameValues.exportRegeneration,
-      reviewerTriggeredRerunJobNameValues.runtimeValidation,
-    ]);
-    expect(plannedJobs[0]!.payload).toMatchObject({
-      itemKind: reviewerQueueItemKindValues.style,
-      reviewerAction: reviewerQueueActionValues.updateStyle,
-      affectedUnitIds: ["bridge-unit-from-feedback"],
-      ruleLabel: "Protagonist voice: use casual register",
-      policyVersions: {
-        styleGuideVersionId: "style-version-1",
-      },
-    });
   });
 
   it("importRuntimeFeedback refuses empty observationEventIds / artifactHashes", async () => {

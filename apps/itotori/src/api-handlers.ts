@@ -33,7 +33,6 @@ import {
   type CostDrilldownFilter,
   type CostDrilldownPage,
   type DashboardDecisionReadModel,
-  feedbackContextStatusValues,
   type JobsRunTableReadModel,
   type LoadJobsRunTableOptions,
   type ModelRoutingSettingsRecord,
@@ -235,7 +234,7 @@ export const apiMutationPermissionGates = {
   sessionsRevoke: apiMutationGate("sessions revoke", "authSessionsManage"),
   setSceneCoverage: apiMutationGate("set scene coverage", "queueManage"),
   // play-flag-composer — canFlag is feedback.import (playtester flags into
-  // the reviewer queue via ManualFeedbackImport).
+  // the canonical context-correction path via ManualFeedbackImport).
   flagAnnotation: apiMutationGate("play flag annotation", "feedbackImport"),
 } as const;
 
@@ -474,7 +473,7 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
     ): Promise<AuthSessionAdminRecord>;
   };
   sceneCoverage: SceneCoverageServicePort;
-  /** play-flag-composer — ManualFeedbackImport creates the reviewer queue item. */
+  /** play-flag-composer — ManualFeedbackImport creates a context correction. */
   manualFeedback: ManualFeedbackImportPort;
 };
 
@@ -824,8 +823,7 @@ async function routeItotoriApiRequest(
       note: body.note.trim(),
       triageLabel: result.triageLabel,
       contextStatus: result.contextStatus,
-      queueEnqueued:
-        !result.duplicate && result.contextStatus === feedbackContextStatusValues.contextualized,
+      contextCorrectionEnqueued: result.contextCorrection !== null,
       duplicate: result.duplicate,
     };
     return ok("play.flagAnnotation", response);

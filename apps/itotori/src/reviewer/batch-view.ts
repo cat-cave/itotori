@@ -359,10 +359,6 @@ function renderConsequence(entry: ReviewerBatchConsequence): string {
   switch (entry.kind) {
     case "rerun_job":
       return `Rerun <code data-runtime-target-id="${escapeHtml(entry.runtimeTargetId)}">${escapeHtml(entry.runtimeTargetId)}</code>: ${escapeHtml(entry.jobLabel)}`;
-    case "policy_version_write":
-      return `Write policy <code data-policy-version-id="${escapeHtml(entry.styleGuidePolicyVersionId)}">${escapeHtml(entry.styleGuidePolicyVersionId)}</code>: ${escapeHtml(entry.ruleLabel)}`;
-    case "glossary_term_write":
-      return `Write glossary term <code data-glossary-term-id="${escapeHtml(entry.termId)}">${escapeHtml(entry.termId)}</code> → ${escapeHtml(entry.approvedTranslation)}`;
     case "export_artifact":
       return `Affects export <code data-export-artifact-id="${escapeHtml(entry.exportArtifactId)}">${escapeHtml(entry.exportArtifactId)}</code>: ${escapeHtml(entry.artifactLabel)}`;
     case "benchmark_artifact":

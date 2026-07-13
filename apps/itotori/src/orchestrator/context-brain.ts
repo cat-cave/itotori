@@ -806,6 +806,33 @@ export class InMemoryContextArtifactRepository implements ItotoriContextArtifact
     };
   }
 
+  async loadArtifact(
+    _actor: AuthorizationActor,
+    input: {
+      projectId: string;
+      localeBranchId: string;
+      contextArtifactId: string;
+    },
+  ): Promise<ContextArtifactRecord | null> {
+    const artifact = this.artifacts.get(input.contextArtifactId);
+    if (
+      artifact === undefined ||
+      artifact.projectId !== input.projectId ||
+      artifact.localeBranchId !== input.localeBranchId
+    ) {
+      return null;
+    }
+    return {
+      ...artifact,
+      data: { ...artifact.data },
+      provenance: { ...artifact.provenance },
+      sourceUnits: artifact.sourceUnits.map((unit) => ({
+        ...unit,
+        metadata: { ...unit.metadata },
+      })),
+    };
+  }
+
   async listEntryVersions(
     _actor: AuthorizationActor,
     input: {

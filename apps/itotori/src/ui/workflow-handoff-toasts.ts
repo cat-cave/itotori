@@ -1,7 +1,7 @@
 // shell-toasts — legible copy for the three workflow handoffs the hi-fi
 // studio store surfaces as toasts:
 //
-//   flag-sent     — playtester flags a unit into the review queue
+//   flag-sent     — playtester flags a unit for context correction
 //   approved      — reviewer approves as-is (unit marked proven)
 //   pass-launched — director launches the next localization pass
 //
@@ -40,7 +40,7 @@ export function describeWorkflowHandoff(handoff: WorkflowHandoff): WorkflowHando
       return {
         kind: "flag-sent",
         tone: "neutral",
-        message: `Flag sent to review · ${handoff.severity} · ${handoff.category}`,
+        message: `Flag sent for correction · ${handoff.severity} · ${handoff.category}`,
       };
     case "approved":
       return {

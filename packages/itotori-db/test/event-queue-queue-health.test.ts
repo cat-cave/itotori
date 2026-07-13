@@ -63,7 +63,7 @@ function jobInput(overrides: Partial<JobQueueInput> = {}): JobQueueInput {
     projectId: "project-test",
     localeBranchId: "locale-en-us",
     jobType: jobTaskTypeValues.rerun,
-    jobName: "rerun.affected-drafts",
+    jobName: "test.affected-drafts",
     idempotency: {
       policy: jobIdempotencyPolicyValues.idempotent,
       key: "job:rerun:affected-drafts",

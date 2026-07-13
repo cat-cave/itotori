@@ -34,8 +34,6 @@ const reviewerQueueActionValues = {
   defer: "defer",
   escalate: "escalate",
   requestRepair: "request_repair",
-  updateGlossary: "update_glossary",
-  updateStyle: "update_style",
   importRuntimeFeedback: "import_runtime_feedback",
 } as const;
 

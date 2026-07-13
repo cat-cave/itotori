@@ -19,39 +19,7 @@ export type {
   ReviewerQueueDecisionContextRefs,
   ReviewerQueueActionServiceDeps,
   ReviewerQueueActionServicePort,
-  UpdateGlossaryActionInput,
-  UpdateStyleActionInput,
 } from "./action-service.js";
-
-export {
-  buildReviewerTriggeredRerunJobInputs,
-  ReviewerRepairRerunScheduler,
-  reviewerTriggeredRerunJobNameValues,
-  reviewerTriggeredRerunPayloadSchemaVersion,
-  reviewerTriggeredRerunReasonCodeValues,
-  reviewerTriggeredRerunStageValues,
-} from "./repair-rerun-scheduler.js";
-export type {
-  ReviewerRepairRerunSchedulerOptions,
-  ReviewerRepairRerunSchedulerPort,
-  ReviewerTriggeredRerunJobName,
-  ReviewerTriggeredRerunPayload,
-  ReviewerTriggeredRerunPolicyVersions,
-  ReviewerTriggeredRerunQueuePort,
-  ReviewerTriggeredRerunReasonCode,
-  ReviewerTriggeredRerunScheduleResult,
-  ReviewerTriggeredRerunStage,
-} from "./repair-rerun-scheduler.js";
-export {
-  fixtureBatchRepairRerun,
-  fixturePolicyInvalidationRerun,
-  fixtureRuntimeFeedbackRerun,
-  fixtureSingleItemRepairRerun,
-  itotori084FixtureLocaleBranchId,
-  itotori084FixturePolicyVersions,
-  itotori084FixtureProjectId,
-  itotori084FixtureSourceRevisionId,
-} from "./repair-rerun-fixtures.js";
 
 // ITOTORI-082 — reviewer detail route loader + route identity. The
 // HTML-string detail VIEW was deleted by fnd-spa-shell; the React
@@ -188,7 +156,6 @@ export type {
 export {
   fixtureAcceptedItem,
   fixtureAllAllowedPreview,
-  fixtureAllowedGlossaryRow,
   fixtureAllowedRow,
   fixtureAllowedRuntimeRow,
   fixtureBatchPermissionView,
@@ -200,7 +167,6 @@ export {
   fixtureEmptyPreview,
   fixtureEmptyRequest,
   fixtureExportConsequence,
-  fixtureGlossaryWriteConsequence,
   fixtureInvalidInputRow,
   fixtureInvalidTransitionRow,
   fixtureMixedKindRequest,
@@ -209,7 +175,6 @@ export {
   fixturePendingGlossaryItem,
   fixturePendingQaItem,
   fixturePendingRuntimeEvidenceItem,
-  fixturePolicyWriteConsequence,
   fixtureRerunJobConsequence,
   fixtureStaleRow,
   itotori083FixtureLocaleBranchId,

@@ -76,6 +76,7 @@ import {
   createDbBackedLivePassRunner,
   createDbBackedLocalizationPassDriver,
 } from "../src/services/db-live-workflow-ports.js";
+import type { ContextCorrectionResult } from "../src/orchestrator/context-correction-service.js";
 import type { ProjectOverviewReadModelOptions } from "../src/project-overview-read-model.js";
 import {
   REDACTED_RUNTIME_FINDING_MESSAGE,
@@ -566,6 +567,55 @@ const apiMutationPermissionMatrix = [
 ] as const satisfies readonly ApiMutationPermissionCase[];
 
 describe("Itotori API handlers", () => {
+  it("reports the actual feedback correction outcome instead of inferring it from context status", async () => {
+    const services = serviceFixture();
+    const request = post("/api/projects/project-1/locale-branches/locale-1/flags", {
+      note: "The final line is clipped.",
+      severity: "warning",
+      targetLocale: "en-US",
+      bridgeUnitId: "bridge-unit-1",
+      category: "layout",
+    });
+
+    vi.mocked(services.manualFeedback.importManualFeedback).mockResolvedValueOnce({
+      feedbackReportId: "feedback-report-api",
+      feedbackEvidenceId: "feedback-evidence-api",
+      feedbackSourceId: "feedback-source-api",
+      dedupeKey: "feedback:manual:api",
+      triageLabel: "objective_defect_candidate",
+      reportStatus: "open",
+      contextStatus: "contextualized",
+      reportCount: 1,
+      duplicate: false,
+      contextCorrection: null,
+    });
+    const noCorrection = await handleItotoriApiRequest(request, services);
+
+    expect(noCorrection).toMatchObject({
+      statusCode: 200,
+      body: { contextStatus: "contextualized", contextCorrectionEnqueued: false },
+    });
+
+    vi.mocked(services.manualFeedback.importManualFeedback).mockResolvedValueOnce({
+      feedbackReportId: "feedback-report-api",
+      feedbackEvidenceId: "feedback-evidence-api",
+      feedbackSourceId: "feedback-source-api",
+      dedupeKey: "feedback:manual:api",
+      triageLabel: "objective_defect_candidate",
+      reportStatus: "open",
+      contextStatus: "contextualized",
+      reportCount: 1,
+      duplicate: false,
+      contextCorrection: { correctionId: "context-correction-api" } as ContextCorrectionResult,
+    });
+    const scheduledCorrection = await handleItotoriApiRequest(request, services);
+
+    expect(scheduledCorrection).toMatchObject({
+      statusCode: 200,
+      body: { contextCorrectionEnqueued: true },
+    });
+  });
+
   it("routes project and runtime status reads, gating project reads on catalog.read", async () => {
     const services = serviceFixture();
 
@@ -1387,15 +1437,14 @@ describe("Itotori API handlers", () => {
     expect(response.body).toMatchObject({ code: "bad_request" });
   });
 
-  it("rejects an unsupported single-item action verb with a 400 bad_request", async () => {
+  it("rejects an unknown single-item action verb with a 400 bad_request", async () => {
     const services = serviceFixture();
     const response = await handleItotoriApiRequest(
       {
         method: "POST",
         pathname: "/api/reviewer/queue/reviewer-queue-7/action",
         body: {
-          // update_glossary is a batch/agentic-loop verb, not a per-item verb.
-          action: reviewerQueueActionValues.updateGlossary,
+          action: "not_a_reviewer_action",
           actorUserId: "reviewer-user",
           expectedSourceRevisionId: "source-revision-1",
         },
@@ -5760,6 +5809,7 @@ function serviceFixture(): ItotoriApiServices {
         contextStatus: "contextualized" as const,
         reportCount: 1,
         duplicate: false,
+        contextCorrection: null,
       })),
     },
   };

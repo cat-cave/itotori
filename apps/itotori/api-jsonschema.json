@@ -1348,6 +1348,9 @@
       "additionalProperties": false,
       "properties": {
         "category": {},
+        "contextCorrectionEnqueued": {
+          "type": "boolean"
+        },
         "contextStatus": {},
         "duplicate": {
           "type": "boolean"
@@ -1357,9 +1360,6 @@
         "localeBranchId": {},
         "note": {},
         "projectId": {},
-        "queueEnqueued": {
-          "type": "boolean"
-        },
         "schemaVersion": {
           "const": "itotori.play.flag-annotation.v0"
         },
@@ -1375,6 +1375,7 @@
       },
       "required": [
         "category",
+        "contextCorrectionEnqueued",
         "contextStatus",
         "duplicate",
         "feedbackEvidenceId",
@@ -1382,7 +1383,6 @@
         "localeBranchId",
         "note",
         "projectId",
-        "queueEnqueued",
         "schemaVersion",
         "severity",
         "triageLabel"

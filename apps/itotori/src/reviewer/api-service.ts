@@ -568,21 +568,6 @@ function defaultBatchPayload(
       };
     case reviewerQueueActionValues.requestRepair:
       return { kind: "requestRepair", repairHint: "batch repair requested", metadata };
-    case reviewerQueueActionValues.updateGlossary:
-      return {
-        kind: "updateGlossary",
-        termId: firstContextRef(item, "glossary") ?? item.reviewItemId,
-        approvedTranslation:
-          stringMetadata(item.metadata, "approvedTranslation") ?? "batch-approved",
-        metadata,
-      };
-    case reviewerQueueActionValues.updateStyle:
-      return {
-        kind: "updateStyle",
-        styleGuideVersionId: firstContextRef(item, "style") ?? item.reviewItemId,
-        ruleLabel: stringMetadata(item.metadata, "ruleLabel") ?? "batch-approved style rule",
-        metadata,
-      };
     case reviewerQueueActionValues.importRuntimeFeedback:
       return {
         kind: "importRuntimeFeedback",
@@ -596,24 +581,6 @@ function defaultBatchPayload(
       throw new Error(`unhandled reviewer batch action: ${exhaustive as string}`);
     }
   }
-}
-
-function firstContextRef(item: ReviewerQueueItemRecord, kind: "glossary" | "style"): string | null {
-  const contextRefs = (item.metadata as { contextRefs?: unknown }).contextRefs;
-  if (!contextRefs || typeof contextRefs !== "object") {
-    return null;
-  }
-  const record = contextRefs as {
-    glossary?: { termIds?: unknown };
-    style?: { styleGuidePolicyVersionId?: unknown };
-  };
-  if (kind === "glossary") {
-    const termIds = record.glossary?.termIds;
-    return Array.isArray(termIds) && typeof termIds[0] === "string" ? termIds[0] : null;
-  }
-  return typeof record.style?.styleGuidePolicyVersionId === "string"
-    ? record.style.styleGuidePolicyVersionId
-    : null;
 }
 
 function dashboardStateFor(

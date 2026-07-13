@@ -70,8 +70,6 @@ const reviewerQueueActionValues = {
   defer: "defer",
   escalate: "escalate",
   requestRepair: "request_repair",
-  updateGlossary: "update_glossary",
-  updateStyle: "update_style",
   importRuntimeFeedback: "import_runtime_feedback",
 } as const satisfies Record<string, ReviewerQueueAction>;
 
@@ -204,7 +202,7 @@ function ReadyView({
         <DraftHistoryPanel context={context} />
         <RevisionHistoryComparisonPane reviewItemId={context.reviewItemId} />
         {/* rev-correction-loop-ui — the correction's scope + which pass (N+1)
-            folds it in. Consumes the correction-feedback-loop preview
+            folds it in. Consumes the context-correction preview
             read-model directly through the client; mounted only when the
             item's locale-branch identity is available (the preview key). */}
         {item !== null && (
@@ -344,12 +342,6 @@ function actionButtonsForKind(
     kind === reviewerQueueItemKindValues.feedback
   ) {
     base.push({ action: reviewerQueueActionValues.requestRepair, label: "Request repair" });
-  }
-  if (kind === reviewerQueueItemKindValues.glossary) {
-    base.push({ action: reviewerQueueActionValues.updateGlossary, label: "Update glossary" });
-  }
-  if (kind === reviewerQueueItemKindValues.style) {
-    base.push({ action: reviewerQueueActionValues.updateStyle, label: "Update style" });
   }
   if (
     kind === reviewerQueueItemKindValues.runtimeEvidence ||

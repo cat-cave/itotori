@@ -11,7 +11,9 @@ import {
   contextArtifactToolName,
   contextArtifactToolVersion,
   ItotoriContextArtifactRepository,
+  type PersistContextCorrectionInput,
 } from "../src/repositories/context-artifact-repository.js";
+import { ItotoriEventQueueRepository } from "../src/repositories/event-queue-repository.js";
 import { ItotoriSemanticContextReadRepository } from "../src/repositories/semantic-context-read-repository.js";
 import {
   ItotoriProjectRepository,
@@ -627,7 +629,163 @@ describe("ItotoriContextArtifactRepository", () => {
       await context.close();
     }
   });
+
+  it("atomically appends a correction, stales only dependents, and reuses its version and job on retry", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedContextProject(context.db);
+      const repository = new ItotoriContextArtifactRepository(context.db);
+      await repository.upsertArtifact(localActor, {
+        contextArtifactId: "context-artifact-atomic-dependent",
+        projectId: "project-context",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-context:bundle-revision",
+        category: contextArtifactCategoryValues.sceneSummary,
+        title: "Dependent opening summary",
+        body: "This dependent artifact must be refreshed after the correction.",
+        producedByTool: "context-artifact-atomic-test",
+        producerVersion: "1.0.0",
+        sourceUnits: [{ bridgeUnitId: "unit-opening", citation: "scene.001.opening" }],
+      });
+      const input = atomicCorrectionInput();
+
+      const first = await repository.persistContextCorrection(localActor, input);
+
+      expect(first).toMatchObject({
+        duplicate: false,
+        affectedUnitIds: ["unit-opening"],
+        invalidatedArtifactIds: ["context-artifact-atomic-dependent"],
+        contextArtifact: {
+          contextArtifactId: input.contextArtifactId,
+          status: contextArtifactStatusValues.active,
+          invalidatedAt: null,
+        },
+        redraftJob: {
+          jobName: "context-correction.redraft",
+          queueName: "context-correction",
+          idempotencyKey: `context-correction:${input.correctionId}`,
+          payload: expect.objectContaining({
+            correctionId: input.correctionId,
+            contextArtifactId: input.contextArtifactId,
+            contextEntryVersionId: first.contextArtifact.headVersionId,
+            affectedUnitIds: ["unit-opening"],
+          }),
+        },
+      });
+      expect(first.contextArtifact.headVersionId).toEqual(expect.any(String));
+      const dependent = await repository.loadArtifact(localActor, {
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        contextArtifactId: "context-artifact-atomic-dependent",
+      });
+      expect(dependent).toMatchObject({
+        status: contextArtifactStatusValues.stale,
+        invalidatedReason: `play_tester_context_correction:${input.correctionId}`,
+      });
+
+      const retry = await repository.persistContextCorrection(localActor, input);
+
+      expect(retry).toMatchObject({
+        duplicate: true,
+        invalidatedArtifactIds: [],
+        contextArtifact: { headVersionId: first.contextArtifact.headVersionId },
+        redraftJob: { jobId: first.redraftJob.jobId },
+      });
+      await expect(
+        repository.listEntryVersions(localActor, {
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId,
+          contextArtifactId: input.contextArtifactId,
+        }),
+      ).resolves.toHaveLength(1);
+      await expect(
+        new ItotoriEventQueueRepository(context.db).getJob(localActor, first.redraftJob.jobId),
+      ).resolves.toMatchObject({ jobId: first.redraftJob.jobId, status: "queued" });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("preserves active context and leaves no rerun job when an atomic correction cites an unknown unit", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedContextProject(context.db);
+      const repository = new ItotoriContextArtifactRepository(context.db);
+      await repository.upsertArtifact(localActor, {
+        contextArtifactId: "context-artifact-atomic-preserved",
+        projectId: "project-context",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-context:bundle-revision",
+        category: contextArtifactCategoryValues.sceneSummary,
+        title: "Preserved opening summary",
+        body: "This artifact must remain active when a correction cannot append.",
+        producedByTool: "context-artifact-atomic-test",
+        producerVersion: "1.0.0",
+        sourceUnits: [{ bridgeUnitId: "unit-opening", citation: "scene.001.opening" }],
+      });
+      const input = atomicCorrectionInput({
+        correctionId: "context-correction-atomic-rejected",
+        contextArtifactId: "context-artifact-atomic-rejected",
+        requestedAffectedUnitIds: ["unit-opening", "missing-unit"],
+      });
+
+      await expect(repository.persistContextCorrection(localActor, input)).rejects.toMatchObject({
+        diagnostics: [
+          expect.objectContaining({ code: contextArtifactDiagnosticCodeValues.sourceUnitMissing }),
+        ],
+      });
+
+      await expect(
+        repository.loadArtifact(localActor, {
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId,
+          contextArtifactId: "context-artifact-atomic-preserved",
+        }),
+      ).resolves.toMatchObject({
+        status: contextArtifactStatusValues.active,
+        invalidatedReason: null,
+        invalidatedAt: null,
+      });
+      await expect(
+        repository.loadArtifact(localActor, {
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId,
+          contextArtifactId: input.contextArtifactId,
+        }),
+      ).resolves.toBeNull();
+      const queuedJobs = await context.pool.query<{ job_id: string }>(
+        "select job_id from itotori_jobs where queue_name = $1",
+        ["context-correction"],
+      );
+      expect(queuedJobs.rows).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
 });
+
+function atomicCorrectionInput(
+  overrides: Partial<PersistContextCorrectionInput> = {},
+): PersistContextCorrectionInput {
+  return {
+    correctionId: "context-correction-atomic-success",
+    contextArtifactId: "context-artifact-atomic-correction",
+    projectId: "project-context",
+    localeBranchId: "locale-en-us",
+    sourceRevisionId: "bridge-context:bundle-revision",
+    category: contextArtifactCategoryValues.glossary,
+    title: "Captain Wato",
+    body: "The canonical title is Captain Wato.",
+    reason: "Play-test evidence corrected the character title.",
+    requestedAffectedUnitIds: ["unit-opening"],
+    data: { origin: "atomic-context-artifact-repository-test" },
+    producedByAgent: "play-tester",
+    producedByTool: "tool.play-tester-context-correction",
+    producerVersion: "1.0.0",
+    provenance: { origin: "play_tester_edit" },
+    ...overrides,
+  };
+}
 
 async function seedArtifacts(repository: ItotoriContextArtifactRepository): Promise<void> {
   await repository.upsertArtifact(localActor, {
