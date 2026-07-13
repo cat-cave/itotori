@@ -1910,9 +1910,9 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
 
       // The pre-dispatch reservation is tied to the physical attempt, not to
       // the logical unit. Once this resume fences and closes that attempt, it
-      // can no longer be in flight and must stop consuming capacity. Preserve
-      // the reservation row as `released` so a later exact provider bill adds
-      // spent cost without subtracting a fresh attempt's reservation again.
+      // can no longer be in flight and must stop consuming capacity. `released`
+      // is terminal: this interrupted attempt keeps unknown billing and records
+      // no speculative late cost.
       await releaseInterruptedAttemptReservationsInTx(
         tx,
         runId,
@@ -4203,6 +4203,12 @@ async function reconcileKnownAttemptReservationInTx(
   const prior = reservationRows[0];
   // Legacy / deliberately unbudgeted attempts have no reservation.
   if (prior === undefined) return;
+  if (prior.state === "released") {
+    throw new LocalizationJournalRepositoryError(
+      "attempt_conflict",
+      `attempt ${input.attemptId} cost reservation was terminally released with unknown billing`,
+    );
+  }
   if (prior.state === "reconciled") {
     if (prior.reconciledUsd !== input.settledCostUsd) {
       throw new LocalizationJournalRepositoryError(
@@ -4214,7 +4220,6 @@ async function reconcileKnownAttemptReservationInTx(
     return;
   }
 
-  const releasedOnResume = prior.state === "released";
   const transitioned = await tx
     .update(localizationJournalCostReservations)
     .set({
@@ -4226,7 +4231,7 @@ async function reconcileKnownAttemptReservationInTx(
       and(
         eq(localizationJournalCostReservations.runId, input.runId),
         eq(localizationJournalCostReservations.attemptId, input.attemptId),
-        eq(localizationJournalCostReservations.state, prior.state),
+        eq(localizationJournalCostReservations.state, "reserved"),
       ),
     )
     .returning();
@@ -4237,29 +4242,20 @@ async function reconcileKnownAttemptReservationInTx(
       `attempt ${input.attemptId} cost reservation changed while its bill reconciled`,
     );
   }
-  const account = releasedOnResume
-    ? await tx
-        .update(localizationJournalRunCostAccounts)
-        .set({
-          spentCostUsd: sql`${localizationJournalRunCostAccounts.spentCostUsd} + ${input.settledCostUsd}`,
-          updatedAt: new Date(),
-        })
-        .where(eq(localizationJournalRunCostAccounts.runId, input.runId))
-        .returning()
-    : await tx
-        .update(localizationJournalRunCostAccounts)
-        .set({
-          spentCostUsd: sql`${localizationJournalRunCostAccounts.spentCostUsd} + ${input.settledCostUsd}`,
-          reservedCostUsd: sql`${localizationJournalRunCostAccounts.reservedCostUsd} - ${reservation.reservedUsd}`,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(localizationJournalRunCostAccounts.runId, input.runId),
-            sql`${localizationJournalRunCostAccounts.reservedCostUsd} >= ${reservation.reservedUsd}`,
-          ),
-        )
-        .returning();
+  const account = await tx
+    .update(localizationJournalRunCostAccounts)
+    .set({
+      spentCostUsd: sql`${localizationJournalRunCostAccounts.spentCostUsd} + ${input.settledCostUsd}`,
+      reservedCostUsd: sql`${localizationJournalRunCostAccounts.reservedCostUsd} - ${reservation.reservedUsd}`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(localizationJournalRunCostAccounts.runId, input.runId),
+        sql`${localizationJournalRunCostAccounts.reservedCostUsd} >= ${reservation.reservedUsd}`,
+      ),
+    )
+    .returning();
   const updatedAccount = account[0];
   if (updatedAccount === undefined) {
     throw new LocalizationJournalRepositoryError(
@@ -4272,8 +4268,7 @@ async function reconcileKnownAttemptReservationInTx(
 
 /**
  * Release capacity held by attempts that this resume transaction just closed.
- * The exact per-attempt amount remains durable in a `released` reservation so
- * delayed billing can charge spent cost without touching a newer reservation.
+ * `released` is terminal and deliberately records no later provider bill.
  */
 async function releaseInterruptedAttemptReservationsInTx(
   tx: JournalTransaction,
@@ -4306,18 +4301,20 @@ async function releaseInterruptedAttemptReservationsInTx(
   const account = await tx
     .update(localizationJournalRunCostAccounts)
     .set({
-      reservedCostUsd: sql`greatest(
-        ${localizationJournalRunCostAccounts.reservedCostUsd} - ${releasedUsd},
-        0
-      )`,
+      reservedCostUsd: sql`${localizationJournalRunCostAccounts.reservedCostUsd} - ${releasedUsd}`,
       updatedAt: resumedAt,
     })
-    .where(eq(localizationJournalRunCostAccounts.runId, runId))
+    .where(
+      and(
+        eq(localizationJournalRunCostAccounts.runId, runId),
+        sql`${localizationJournalRunCostAccounts.reservedCostUsd} >= ${releasedUsd}`,
+      ),
+    )
     .returning();
   if (account[0] === undefined) {
     throw new LocalizationJournalRepositoryError(
       "attempt_conflict",
-      `cost account for interrupted attempts in run ${runId} is missing`,
+      `cost account for interrupted attempts in run ${runId} has insufficient reserved balance`,
     );
   }
 }

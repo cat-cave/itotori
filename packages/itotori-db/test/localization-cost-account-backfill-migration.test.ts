@@ -20,7 +20,7 @@ describe("0082 localization cost-account backfill", () => {
     await admin.query(`create schema ${quoteIdentifier(schemaName)}`);
     const pool = new pg.Pool({ connectionString: schemaUrl });
     try {
-      await migrateThroughAtomicCostReservations(pool);
+      await migrateThrough(pool, "0081_atomic_cost_reservations");
       await seedHistoricalJournalState(pool);
 
       // This is a real upgrade from the pre-0082 migration boundary, rather
@@ -60,7 +60,93 @@ describe("0082 localization cost-account backfill", () => {
   });
 });
 
-async function migrateThroughAtomicCostReservations(pool: pg.Pool): Promise<void> {
+describe("0100 terminal cost-reservation backfill", () => {
+  it("repairs a pre-existing $4.50 completed-attempt reservation leak", async () => {
+    const databaseUrl = requiredDatabaseUrl();
+    const admin = new pg.Pool({ connectionString: databaseUrl });
+    const schemaName = `itotori_terminal_reservation_backfill_${Date.now()}_${randomBytes(6).toString("hex")}`;
+    const schemaUrl = databaseUrlWithSearchPath(databaseUrl, schemaName);
+
+    await admin.query(`create schema ${quoteIdentifier(schemaName)}`);
+    const pool = new pg.Pool({ connectionString: schemaUrl });
+    try {
+      await migrateThrough(pool, "0099_release_interrupted_cost_reservations");
+      await seedHistoricalJournalState(pool);
+      await pool.query(`
+        update itotori_localization_run_cost_accounts
+        set reserved_usd = 4.5
+        where run_id = 'run-cost-backfill-existing-account'
+      `);
+      await pool.query(`
+        insert into itotori_localization_cost_reservations (
+          reservation_id, run_id, attempt_id, reserved_usd, state
+        ) values
+          (
+            'reservation-terminal-backfill-billed',
+            'run-cost-backfill-existing-account',
+            'attempt-cost-backfill-existing-billed',
+            2.25,
+            'reserved'
+          ),
+          (
+            'reservation-terminal-backfill-legacy',
+            'run-cost-backfill-existing-account',
+            'attempt-cost-backfill-existing-legacy',
+            2.25,
+            'reserved'
+          )
+      `);
+
+      // This is the real upgrade boundary: 0099 is already recorded with its
+      // stranded rows, then 0100 migrates the live pre-fix state.
+      await migrate(schemaUrl);
+
+      const reservations = await pool.query<{
+        reservation_id: string;
+        state: string;
+        reserved_usd: string;
+        reconciled_usd: string | null;
+      }>(`
+        select reservation_id, state, reserved_usd, reconciled_usd
+        from itotori_localization_cost_reservations
+        where run_id = 'run-cost-backfill-existing-account'
+        order by reservation_id
+      `);
+      expect(reservations.rows).toEqual([
+        {
+          reservation_id: "reservation-terminal-backfill-billed",
+          state: "released",
+          reserved_usd: "2.25",
+          reconciled_usd: null,
+        },
+        {
+          reservation_id: "reservation-terminal-backfill-legacy",
+          state: "released",
+          reserved_usd: "2.25",
+          reconciled_usd: null,
+        },
+      ]);
+      const account = await pool.query<{ released_to_zero: boolean }>(`
+        select reserved_usd = 0 as released_to_zero
+        from itotori_localization_run_cost_accounts
+        where run_id = 'run-cost-backfill-existing-account'
+      `);
+      expect(account.rows).toEqual([{ released_to_zero: true }]);
+      const applied = await pool.query<{ migration_id: string }>(`
+        select migration_id
+        from itotori_schema_migrations
+        where migration_id = '0100_backfill_terminal_cost_reservations'
+      `);
+      expect(applied.rows).toEqual([{ migration_id: "0100_backfill_terminal_cost_reservations" }]);
+    } finally {
+      await pool.end();
+      await admin.query(`drop schema if exists ${quoteIdentifier(schemaName)} cascade`);
+      await admin.end();
+    }
+  });
+});
+
+async function migrateThrough(pool: pg.Pool, lastMigrationId: string): Promise<void> {
   await pool.query(`
     create table itotori_schema_migrations (
       migration_id text primary key,
@@ -69,12 +155,10 @@ async function migrateThroughAtomicCostReservations(pool: pg.Pool): Promise<void
     )
   `);
 
-  const atomicCostReservationIndex = migrations.findIndex(
-    (migration) => migration.id === "0081_atomic_cost_reservations",
-  );
-  expect(atomicCostReservationIndex).toBeGreaterThanOrEqual(0);
+  const lastMigrationIndex = migrations.findIndex((migration) => migration.id === lastMigrationId);
+  expect(lastMigrationIndex).toBeGreaterThanOrEqual(0);
 
-  for (const migration of migrations.slice(0, atomicCostReservationIndex + 1)) {
+  for (const migration of migrations.slice(0, lastMigrationIndex + 1)) {
     const body = migrationSql(migration.file);
     await pool.query(body);
     await pool.query(

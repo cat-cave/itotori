@@ -4767,11 +4767,9 @@ export const localizationJournalRunCostAccounts = pgTable(
 
 /**
  * One worst-case reservation, coupled to the exact physical attempt that it
- * admitted. An unresolved reservation is intentionally conservative: it is
- * included in the account's `reservedCostUsd` until a settled bill arrives,
- * except for a `released` reservation whose dispatch was durably interrupted
- * during resume. That state keeps the exact reservation fact available for a
- * later bill without occupying capacity for a no-longer-in-flight request.
+ * admitted. A `reserved` row consumes the account until a known bill
+ * reconciles it. A `released` row is terminal: a completed interrupted
+ * attempt freed its capacity with unknown billing, so it records no cost.
  */
 export const localizationJournalCostReservations = pgTable(
   "itotori_localization_cost_reservations",

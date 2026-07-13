@@ -41,6 +41,14 @@ describe("ItotoriLocalizationRunFinalizerRepository", () => {
       await journal.seedRun(localActor, seedRunInput(runId, unitIds));
       await writeUnit(journal, runId, unitIds[0]!, { criticalFinding: true });
       await writeUnit(journal, runId, unitIds[1]!);
+      await context.db.execute(sql`
+        insert into itotori_localization_cost_reservations (
+          reservation_id, run_id, attempt_id, reserved_usd, state
+        ) values (
+          'reservation-finalizer-released', ${runId},
+          ${`terminal-finalizer-attempt:${runId}:${unitIds[0]!}`}, '0.5', 'released'
+        )
+      `);
 
       const patch = await repository.ensurePatchVersion(localActor, {
         runId,
@@ -68,6 +76,7 @@ describe("ItotoriLocalizationRunFinalizerRepository", () => {
             missingUnitIds: [],
           },
           patch: { playable: true, exactFrozenScope: true },
+          reservations: { totalCount: 1, reconciledCount: 0, unresolvedCount: 0 },
         },
       });
 
