@@ -285,10 +285,21 @@ export async function runLocalizeGameCommand(
       undefined,
     );
   }
+  // The localize driver enforces a durable identity fence: the config's
+  // `sourceRevisionId` MUST name the bridge bundle's content-hash revisionId
+  // (localize-fullproject-cli `provision-project-scope`). In this whole-game
+  // vertical the bridge is THIS run's fresh stage-1 extract, whose revisionId is
+  // content-derived and only known after extract — a static base-config value
+  // (provenance only, like `bridgePath`) can never match it. Reconcile it the
+  // SAME way we reconcile `bridgePath`/`structureJsonPath`: name the revision of
+  // the bridge we just produced. This keeps the fence intact (the config names
+  // the actual bridge) while making the one-command vertical runnable.
+  const freshBridgeRevisionId = readBridgeSourceRevisionId(args.io, bridgePath);
   const effectiveConfig = {
     ...(baseConfig as Record<string, unknown>),
     bridgePath,
     structureJsonPath,
+    ...(freshBridgeRevisionId !== undefined ? { sourceRevisionId: freshBridgeRevisionId } : {}),
   };
   args.io.writeJson(effectiveConfigPath, effectiveConfig);
 
@@ -444,6 +455,31 @@ export async function runLocalizeGameCommand(
     replayLogPath,
     renderEvidencePath,
   };
+}
+
+/**
+ * Read the freshly-extracted bridge bundle's content-hash source revisionId so
+ * the effective config can name it (the localize driver's identity fence). Best
+ * effort: on any shape mismatch return `undefined` and leave the base config's
+ * value in place, so the driver still surfaces its own precise fence error
+ * rather than this command guessing.
+ */
+function readBridgeSourceRevisionId(io: LocalizeGameIo, bridgePath: string): string | undefined {
+  let bridge: unknown;
+  try {
+    bridge = io.readJson(bridgePath);
+  } catch {
+    return undefined;
+  }
+  if (bridge === null || typeof bridge !== "object") {
+    return undefined;
+  }
+  const revision = (bridge as Record<string, unknown>).sourceBundleRevision;
+  if (revision === null || typeof revision !== "object") {
+    return undefined;
+  }
+  const revisionId = (revision as Record<string, unknown>).revisionId;
+  return typeof revisionId === "string" && revisionId.length > 0 ? revisionId : undefined;
 }
 
 /**
