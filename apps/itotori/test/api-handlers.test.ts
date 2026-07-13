@@ -138,7 +138,10 @@ import {
   runtimeReportFixture,
   runtimeStatusFixture,
   terminologySearchFixture,
-  wikiEntriesFixture,
+  wikiContextEntriesFixture,
+  wikiContextEntryFixture,
+  wikiContextHistoryFixture,
+  wikiEditFixture,
 } from "./api-fixtures.js";
 
 const deniedActor = { userId: "api-user-without-required-permission" };
@@ -187,6 +190,7 @@ type ApiMutationService =
   | { surface: "translationScope"; method: "loadSettings" | "saveSettings" }
   | { surface: "localizationRunConfig"; method: "saveRunConfig" }
   | { surface: "sceneCoverage"; method: "setSceneCoverage" }
+  | { surface: "wiki"; method: "edit" | "add" }
   | { surface: "manualFeedback"; method: "importManualFeedback" }
   | { surface: "playTesterResultRevision"; method: "editTarget" }
   | {
@@ -410,6 +414,14 @@ const apiMutationPermissionMatrix = [
       runtimeReport: runtimeReportFixture,
     }),
     "ingestRuntimeReport",
+  ),
+  apiGateForService(
+    "wikiEdit",
+    post("/api/projects/project-1/locale-branches/locale-1/wiki/context-artifact-hero-scene", {
+      body: "Corrected fact.",
+      reason: "Playtest observation.",
+    }),
+    { surface: "wiki", method: "edit" },
   ),
   apiGate(
     "launchPass",
@@ -3051,50 +3063,101 @@ describe("Itotori API handlers", () => {
     expect(services.terminologyRepository.searchTerms).not.toHaveBeenCalled();
   });
 
-  it.each([
-    {
-      query: "?projectId=project-1&localeBranchId=locale-1&limit=5&offset=10",
-      filter: { projectId: "project-1", localeBranchId: "locale-1", limit: 5, offset: 10 },
-    },
-    {
-      query: "?projectId=project-1&localeBranchId=locale-1&sourceRevisionId=rev-1&kind=term",
-      filter: {
-        projectId: "project-1",
-        localeBranchId: "locale-1",
-        sourceRevisionId: "rev-1",
-        kind: "term",
-      },
-    },
-  ])("passes wiki.entries filter $query to the read model", async ({ query, filter }) => {
+  it("serves generic populated wiki list/show/history through the shared wiki service", async () => {
     const services = serviceFixture();
+    const listPath = "/api/projects/project-1/locale-branches/locale-1/wiki";
+    const entryPath = `${listPath}/context-artifact-hero-scene`;
 
-    const response = await handleItotoriApiRequest(
-      { method: "GET", pathname: "/api/wiki/entries", search: query },
+    const list = await handleItotoriApiRequest(
+      { method: "GET", pathname: listPath, search: "?kind=scene&includeStale=true" },
+      services,
+    );
+    const show = await handleItotoriApiRequest({ method: "GET", pathname: entryPath }, services);
+    const history = await handleItotoriApiRequest(
+      { method: "GET", pathname: `${entryPath}/history` },
       services,
     );
 
-    expect(response).toEqual({ statusCode: 200, body: wikiEntriesFixture });
-    expect(services.wikiRepository.loadEntries).toHaveBeenCalledWith(filter);
-    expect(services.authorization.requirePermission).not.toHaveBeenCalled();
+    expect(list).toEqual({ statusCode: 200, body: wikiContextEntriesFixture });
+    expect(show).toEqual({ statusCode: 200, body: wikiContextEntryFixture });
+    expect(history).toEqual({ statusCode: 200, body: wikiContextHistoryFixture });
+    expect(services.wiki.list).toHaveBeenCalledWith({
+      projectId: "project-1",
+      localeBranchId: "locale-1",
+      kind: "scene",
+      includeStale: true,
+    });
+    expect(services.wiki.show).toHaveBeenCalledWith({
+      projectId: "project-1",
+      localeBranchId: "locale-1",
+      contextArtifactId: "context-artifact-hero-scene",
+    });
+    expect(services.wiki.history).toHaveBeenCalledWith({
+      projectId: "project-1",
+      localeBranchId: "locale-1",
+      contextArtifactId: "context-artifact-hero-scene",
+    });
   });
 
-  it.each([
-    { query: "?localeBranchId=locale-1", error: /projectId/u },
-    { query: "?projectId=project-1&localeBranchId=locale-1&kind=asset", error: /kind/u },
-    { query: "?projectId=project-1&localeBranchId=locale-1&limit=0", error: /limit/u },
-    { query: "?projectId=project-1&localeBranchId=locale-1&offset=-1", error: /offset/u },
-  ])("rejects malformed wiki.entries query $query", async ({ query, error }) => {
+  it("routes existing-entry wiki edits and no-entry context additions through the same service", async () => {
     const services = serviceFixture();
+    const listPath = "/api/projects/project-1/locale-branches/locale-1/wiki";
+    const entryPath = `${listPath}/context-artifact-hero-scene`;
 
-    const response = await handleItotoriApiRequest(
-      { method: "GET", pathname: "/api/wiki/entries", search: query },
+    const edit = await handleItotoriApiRequest(
+      post(entryPath, { body: "Corrected fact.", reason: "Playtest observation." }),
+      services,
+    );
+    const add = await handleItotoriApiRequest(
+      post(listPath, {
+        sourceRevisionId: "source-revision-1",
+        kind: "note",
+        title: "Playtest note",
+        body: "New shared context.",
+        reason: "Observed while playing.",
+        affectedUnitIds: ["bridge-unit-1"],
+      }),
       services,
     );
 
-    expect(response.statusCode).toBe(400);
-    expect(response.body).toMatchObject({ code: "bad_request" });
-    expect(response.body.error).toMatch(error);
-    expect(services.wikiRepository.loadEntries).not.toHaveBeenCalled();
+    expect(edit).toEqual({ statusCode: 200, body: wikiEditFixture });
+    expect(add).toEqual({ statusCode: 200, body: wikiEditFixture });
+    expect(services.wiki.edit).toHaveBeenCalledWith({
+      projectId: "project-1",
+      localeBranchId: "locale-1",
+      contextArtifactId: "context-artifact-hero-scene",
+      body: "Corrected fact.",
+      reason: "Playtest observation.",
+    });
+    expect(services.wiki.add).toHaveBeenCalledWith({
+      projectId: "project-1",
+      localeBranchId: "locale-1",
+      sourceRevisionId: "source-revision-1",
+      kind: "note",
+      title: "Playtest note",
+      body: "New shared context.",
+      reason: "Observed while playing.",
+      affectedUnitIds: ["bridge-unit-1"],
+    });
+    expect(services.authorization.requirePermission).toHaveBeenCalledWith("project.import");
+  });
+
+  it("rejects a zero-unit new wiki context before invoking node-8 service", async () => {
+    const services = serviceFixture();
+    const response = await handleItotoriApiRequest(
+      post("/api/projects/project-1/locale-branches/locale-1/wiki", {
+        sourceRevisionId: "source-revision-1",
+        kind: "note",
+        title: "Playtest note",
+        body: "New shared context.",
+        reason: "Observed while playing.",
+        affectedUnitIds: [],
+      }),
+      services,
+    );
+
+    expect(response).toMatchObject({ statusCode: 400, body: { code: "bad_request" } });
+    expect(services.wiki.add).not.toHaveBeenCalled();
   });
 
   it("serves project cost reports with unknown token source component counters", async () => {
@@ -4154,6 +4217,13 @@ describe("Itotori API handlers", () => {
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "wiki edit",
+          "requiredPermission": "project.import",
+          "route": "POST /api/projects/:projectId/locale-branches/:localeBranchId/wiki/:contextArtifactId",
+          "successFixture": "api-handlers.test.ts wiki edit success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "launch pass",
           "requiredPermission": "draft.write",
           "route": "POST /api/projects/:projectId/launch-pass",
@@ -5006,6 +5076,9 @@ function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutati
   if (service.surface === "sceneCoverage") {
     return services.sceneCoverage[service.method];
   }
+  if (service.surface === "wiki") {
+    return services.wiki[service.method];
+  }
   if (service.surface === "manualFeedback") {
     return services.manualFeedback[service.method];
   }
@@ -5016,6 +5089,12 @@ function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutati
 }
 
 function apiMutationRouteId(request: ItotoriApiRequest): string {
+  const wikiEntryRoute = /^\/api\/projects\/[^/]+\/locale-branches\/[^/]+\/wiki\/[^/]+$/u.exec(
+    request.pathname,
+  );
+  if (request.method === "POST" && wikiEntryRoute !== null) {
+    return "POST /api/projects/:projectId/locale-branches/:localeBranchId/wiki/:contextArtifactId";
+  }
   const sceneCoverageRoute =
     /^\/api\/projects\/[^/]+\/locale-branches\/[^/]+\/scene-coverage$/u.exec(request.pathname);
   if (request.method === "POST" && sceneCoverageRoute !== null) {
@@ -5409,8 +5488,12 @@ function serviceFixture(): ItotoriApiServices {
     terminologyRepository: {
       searchTerms: vi.fn(async () => terminologySearchFixture),
     },
-    wikiRepository: {
-      loadEntries: vi.fn(async () => wikiEntriesFixture),
+    wiki: {
+      list: vi.fn(async () => wikiContextEntriesFixture),
+      show: vi.fn(async () => wikiContextEntryFixture),
+      history: vi.fn(async () => wikiContextHistoryFixture),
+      edit: vi.fn(async () => wikiEditFixture),
+      add: vi.fn(async () => wikiEditFixture),
     },
     reviewerQueue: {
       loadDashboard: vi.fn(async ({ localeBranchId, permission }) => ({

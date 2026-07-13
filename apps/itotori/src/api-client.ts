@@ -111,7 +111,13 @@ import type {
   ApiAuthCapabilitiesResponse,
   ApiCatalogContextPanelResponse,
   ApiTerminologySearchResponse,
-  ApiWikiEntriesResponse,
+  ApiWikiAddRequest,
+  ApiWikiAddResponse,
+  ApiWikiEditRequest,
+  ApiWikiEditResponse,
+  ApiWikiHistoryResponse,
+  ApiWikiListResponse,
+  ApiWikiShowResponse,
   ApiWorkspaceAssetBrowseResponse,
   ApiWorkspaceComparisonResponse,
   ApiWorkspaceCorrectionPreviewResponse,
@@ -190,9 +196,29 @@ interface ItotoriApiRouteTypeMap {
     response: ApiTerminologySearchResponse;
     collectionKey: "results";
   };
-  "wiki.entries": {
-    response: ApiWikiEntriesResponse;
+  "wiki.list": {
+    response: ApiWikiListResponse;
+    pathParams: { projectId: string; localeBranchId: string };
     collectionKey: "entries";
+  };
+  "wiki.add": {
+    response: ApiWikiAddResponse;
+    pathParams: { projectId: string; localeBranchId: string };
+    request: ApiWikiAddRequest;
+  };
+  "wiki.show": {
+    response: ApiWikiShowResponse;
+    pathParams: { projectId: string; localeBranchId: string; contextArtifactId: string };
+  };
+  "wiki.history": {
+    response: ApiWikiHistoryResponse;
+    pathParams: { projectId: string; localeBranchId: string; contextArtifactId: string };
+    collectionKey: "versions";
+  };
+  "wiki.edit": {
+    response: ApiWikiEditResponse;
+    pathParams: { projectId: string; localeBranchId: string; contextArtifactId: string };
+    request: ApiWikiEditRequest;
   };
   "workspace.projects": {
     response: ApiWorkspaceProjectBrowseResponse;
@@ -532,7 +558,8 @@ const ITOTORI_API_COLLECTION_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, st
   "reviewer.queue": "rows",
   "reviewer.batchPreview": "items",
   "terminology.search": "results",
-  "wiki.entries": "entries",
+  "wiki.list": "entries",
+  "wiki.history": "versions",
   "workspace.projects": "projects",
   "workspace.scenes": "scenes",
   "workspace.assets": "assets",

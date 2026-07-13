@@ -1,86 +1,65 @@
-// wiki-entry-ui (HI-FI STUDIO EPIC · Wiki) — the Wiki entry surface.
+// Wiki — the play tester's browsable, editable view of the shared context brain.
 //
-// A WIKI surface: the user browses character + term profiles, navigating by
-// entry title (NavPills), and reads each entry's profile (character bio /
-// relationships / appearances, or term translation / aliases / references)
-// with CrossRef jumps to the scenes where the entry is cited. Backed by the
-// EXISTING wiki.entries read-model (wiki-readmodel-api) — consumed THROUGH
-// the typed ItotoriApiClient (`useApiQuery`, never an ad-hoc fetch) and
-// painted with @itotori/ds (NavPills / Panel / Badge / DataTable / BiText),
-// tokens-never-literals.
-//
-// The read-model's entries carry:
-//   - character: bio text + appearances (cited units) + relationships (to
-//     other characters, each with its own citations) + related cross-refs +
-//     revisions.
-//   - term: preferred translation + aliases + references (cited units) +
-//     related cross-refs.
-// The cited units (appearances / references / relationship citations) each
-// carry a `bridgeUnitId` — the addressable UNIT the wiki entry is witnessed
-// in. Those become the "jump to scene" source links: a deep-link to
-// /play/units/:bridgeUnitId lands the Play scene picker on that unit (and
-// its parent scene). `related` cross-refs (character / term / scene /
-// source_unit) deep-link to their own addressable surface.
-//
-// Rendered INSIDE the shell frame (the shell-frame-ui gate): `App` dispatches
-// bare `/wiki` here, and fnd-addressable-routing deep-links
-// (`/wiki/characters/:id`, `/wiki/terms/:id`) focus an entry.
-// [[feedback_behavior_first_code_agnostic_testing]] — no game is named; only
-// the rendered profiles + cross-ref jumps + loading / empty / error states
-// are asserted.
+// Node 6 owns the durable, versioned context entries. This screen deliberately
+// reads the generic node-9 projections (`wiki.list` / `wiki.show` /
+// `wiki.history`) instead of the retired character-and-term-only facade. A
+// direct save is a context correction (`wiki.edit`), so it appends a canonical
+// version and schedules the existing node-8 invalidation/redraft flywheel;
+// there is no reviewer or approval control here.
 
-import { useState, type ReactNode } from "react";
-import {
-  Badge,
-  BiText,
-  DataTable,
-  NavPills,
-  Panel,
-  WikiEntry as DsWikiEntry,
-  type NavPillItem,
-} from "@itotori/ds";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { Badge, DataTable, NavPills, Pagination, Panel, type NavPillItem } from "@itotori/ds";
 import type {
-  WikiCitation,
-  WikiCrossReference,
-  WikiEntry as WikiEntryReadModel,
-  WikiEntryKind,
-  WikiCharacterEntry,
-  WikiTermEntry,
+  WikiContextCitation,
+  WikiContextEntriesReadModel,
+  WikiContextEntry,
+  WikiContextEntryHistoryReadModel,
+  WikiContextEntryKind,
 } from "@itotori/db";
-import type { ApiWikiEntriesResponse } from "../../api-schema.js";
-import { useApiQuery } from "../use-api-resource.js";
+import type { ApiWikiEditResponse } from "../../api-schema.js";
 import { hrefForAddressable } from "../addressable-routing.js";
+import { apiClient } from "../client.js";
+import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
-
-const wikiEntryKindValues = {
-  character: "character",
-  term: "term",
-} as const satisfies Record<string, WikiEntryKind>;
-
-// ---------------------------------------------------------------------------
-// Route identity — `/wiki` (bare) plus addressable deep-links
-// (`/wiki/characters|terms/:id` via `wikiRouteFromAddressable`). Optional
-// `?projectId=&localeBranchId=` scopes the wiki; omitted, the screen falls
-// back to the project's selected locale branch (same source the play-scene
-// picker and the dashboard reviewer panel use). Focus fields come from
-// fnd-addressable-routing deep-links so a character/term URL selects +
-// stamps `data-addressable-focus`.
-// ---------------------------------------------------------------------------
 
 export const wikiRoutePathRegex = /^\/wiki\/?$/u;
 
-/** The wiki page size — a generous first page so the index is useful. */
+/** Keep the index useful without concealing any run-generated context kind. */
 const WIKI_ENTRY_INDEX_LIMIT = 100;
+
+const wikiKindLabel: Readonly<Record<WikiContextEntryKind, string>> = {
+  scene: "Scene",
+  character: "Character",
+  route: "Route",
+  term: "Term",
+  speaker: "Speaker",
+  glossary: "Glossary",
+  style: "Style",
+  note: "Note",
+};
+
+const wikiAddKinds = ["note", "glossary", "style"] as const;
+type WikiAddKind = (typeof wikiAddKinds)[number];
+
+type WikiEditReceipt = {
+  contextArtifactId: string;
+  versionId: string;
+  invalidatedArtifactIds: string[];
+  affectedUnitIds: string[];
+  jobId: string;
+  rerun: ApiWikiEditResponse["rerun"];
+};
 
 export type WikiEntryRouteParams = {
   projectId: string | null;
   localeBranchId: string | null;
-  /** Focused entry kind (from /wiki/characters|terms/:id). */
-  focusKind: WikiEntryKind | null;
-  /** Focused entry id (`character:<id>` / `term:<id>`). */
+  /** Retained for character/term addressable links owned by the shell. */
+  focusKind: "character" | "term" | null;
+  /** A generic context-artifact id when supplied by a future wiki deep-link. */
   focusEntryId: string | null;
 };
 
+/** Parse the stable root wiki route and its optional branch/entry scope. */
 export function parseWikiRoute(pathname: string, search: string): WikiEntryRouteParams | null {
   if (!wikiRoutePathRegex.test(pathname)) {
     return null;
@@ -90,14 +69,15 @@ export function parseWikiRoute(pathname: string, search: string): WikiEntryRoute
     projectId: nonEmpty(params.get("projectId")),
     localeBranchId: nonEmpty(params.get("localeBranchId")),
     focusKind: null,
-    focusEntryId: null,
+    focusEntryId: nonEmpty(params.get("entryId")),
   };
 }
 
 /**
- * Map an addressable wiki deep-link (character / term) onto the Wiki entry
- * route params. Used by `App` when `parseAddressableLocation` resolves a
- * wiki-surface target.
+ * Preserve the shell's character/term deep-link contract. The generic read
+ * model resolves a character through its canonical semantic data; an unknown
+ * legacy link is deliberately left unselected rather than showing an
+ * unrelated first entry.
  */
 export function wikiRouteFromAddressable(location: {
   kind: "character" | "term";
@@ -113,21 +93,14 @@ export function wikiRouteFromAddressable(location: {
   };
 }
 
-/** Build a wiki entry id (`character:<id>` / `term:<id>`) from a kind + raw id. */
-export function entryIdFor(kind: WikiEntryKind, id: string): string {
+/** Retained as a stable helper for callers that own legacy addressable URLs. */
+export function entryIdFor(kind: "character" | "term", id: string): string {
   return `${kind}:${id}`;
 }
 
 function nonEmpty(value: string | null): string | null {
-  if (value === null || value.trim().length === 0) {
-    return null;
-  }
-  return value;
+  return value === null || value.trim().length === 0 ? null : value;
 }
-
-// ---------------------------------------------------------------------------
-// Screen — dispatches on whether a branch scope was supplied explicitly.
-// ---------------------------------------------------------------------------
 
 export function WikiEntryScreen({ route }: { route: WikiEntryRouteParams }): ReactNode {
   if (route.projectId !== null && route.localeBranchId !== null) {
@@ -135,32 +108,27 @@ export function WikiEntryScreen({ route }: { route: WikiEntryRouteParams }): Rea
       <WikiEntryForBranch
         projectId={route.projectId}
         localeBranchId={route.localeBranchId}
-        focus={wikiFocusFromRoute(route)}
+        focusEntryId={route.focusEntryId}
+        focusKind={route.focusKind}
       />
     );
   }
-  return <WikiEntryFromStatus focus={wikiFocusFromRoute(route)} />;
+  return <WikiEntryFromStatus focusEntryId={route.focusEntryId} focusKind={route.focusKind} />;
 }
 
-type WikiFocus = {
-  kind: WikiEntryKind | null;
-  entryId: string | null;
-};
-
-function wikiFocusFromRoute(route: WikiEntryRouteParams): WikiFocus {
-  return { kind: route.focusKind, entryId: route.focusEntryId };
-}
-
-/**
- * No explicit `?projectId=&localeBranchId=` — scope the wiki to the project's
- * selected locale branch, read through the typed client.
- */
-function WikiEntryFromStatus({ focus }: { focus: WikiFocus }): ReactNode {
-  const status = useApiQuery("projects.status", {}, "wiki-entry:status");
+/** Resolve an unscoped /wiki route through the selected Studio branch. */
+function WikiEntryFromStatus({
+  focusEntryId,
+  focusKind,
+}: {
+  focusEntryId: string | null;
+  focusKind: WikiEntryRouteParams["focusKind"];
+}): ReactNode {
+  const status = useApiQuery("projects.status", {}, "wiki:project-status");
   if (status.state === "loading") {
     return (
       <main className="itotori-shell wiki-entry" data-screen="wiki-entry" data-state="loading">
-        <ShellHeader eyebrow="Wiki" title="Wiki entries" />
+        <ShellHeader eyebrow="Wiki" title="Wiki" />
         <LoadingState label="Loading project context…" />
       </main>
     );
@@ -168,8 +136,8 @@ function WikiEntryFromStatus({ focus }: { focus: WikiFocus }): ReactNode {
   if (status.state === "error") {
     return (
       <main className="itotori-shell wiki-entry" data-screen="wiki-entry" data-state="error">
-        <ShellHeader eyebrow="Wiki" title="Wiki entries" />
-        <ErrorState title="Wiki entries" error={status.error} />
+        <ShellHeader eyebrow="Wiki" title="Wiki" />
+        <ErrorState title="Wiki" error={status.error} />
       </main>
     );
   }
@@ -178,536 +146,885 @@ function WikiEntryFromStatus({ focus }: { focus: WikiFocus }): ReactNode {
   if (projectId === null || localeBranchId === null) {
     return (
       <main className="itotori-shell wiki-entry" data-screen="wiki-entry" data-state="empty">
-        <ShellHeader eyebrow="Wiki" title="Wiki entries" />
+        <ShellHeader eyebrow="Wiki" title="Wiki" />
         <EmptyState
           title="No locale branch selected"
-          message="Select a locale branch to browse wiki entries."
+          message="Select a locale branch to browse the shared context wiki."
         />
       </main>
     );
   }
-  return <WikiEntryForBranch projectId={projectId} localeBranchId={localeBranchId} focus={focus} />;
+  return (
+    <WikiEntryForBranch
+      projectId={projectId}
+      localeBranchId={localeBranchId}
+      focusEntryId={focusEntryId}
+      focusKind={focusKind}
+    />
+  );
 }
 
 function WikiEntryForBranch({
   projectId,
   localeBranchId,
-  focus,
+  focusEntryId,
+  focusKind,
 }: {
   projectId: string;
   localeBranchId: string;
-  focus: WikiFocus;
+  focusEntryId: string | null;
+  focusKind: WikiEntryRouteParams["focusKind"];
 }): ReactNode {
+  const [refresh, setRefresh] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [editReceipt, setEditReceipt] = useState<WikiEditReceipt | null>(null);
   const entries = useApiQuery(
-    "wiki.entries",
-    { query: { projectId, localeBranchId, limit: WIKI_ENTRY_INDEX_LIMIT } },
-    `wiki-entry:entries:${projectId}:${localeBranchId}`,
+    "wiki.list",
+    {
+      pathParams: { projectId, localeBranchId },
+      query: { includeStale: true, limit: WIKI_ENTRY_INDEX_LIMIT, offset },
+      // An empty later page is not an empty wiki: retain its pagination
+      // controls so a concurrent deletion cannot strand the play tester.
+      isEmpty: (model) => model.pagination.total === 0,
+    },
+    `wiki:list:${projectId}:${localeBranchId}:${refresh}:${offset}`,
   );
-  const focusToken = focus.entryId;
+
   return (
     <main
       className="itotori-shell wiki-entry"
       data-screen="wiki-entry"
       data-state={entries.state}
       data-locale-branch-id={localeBranchId}
-      data-addressable-focus={focusToken ?? undefined}
-      data-addressable-focused={focusToken !== null ? "true" : undefined}
-      data-focus-kind={focus.kind ?? undefined}
+      data-addressable-focus={focusEntryId ?? undefined}
+      data-addressable-focused={focusEntryId !== null ? "true" : undefined}
+      data-focus-kind={focusKind ?? undefined}
     >
-      <ShellHeader eyebrow="Wiki" title="Wiki entries" />
-      {entries.state === "loading" && <LoadingState label="Loading wiki entries…" />}
+      <ShellHeader eyebrow="Wiki" title="Shared context" />
+      <WikiEditReceiptNotice receipt={editReceipt} />
+      {entries.state === "loading" && <LoadingState label="Loading context entries…" />}
       {entries.state === "empty" && (
-        <EmptyState
-          title="Wiki entries"
-          message="No character or term entries were returned for this locale branch."
+        <>
+          <EmptyState
+            title="Shared context"
+            message="No run-generated or play-tester context entries were returned for this locale branch."
+          />
+          <WikiAddContextForm
+            projectId={projectId}
+            localeBranchId={localeBranchId}
+            sourceRevisionId=""
+            onAdded={(saved) => {
+              setEditReceipt(saved);
+              setRefresh((current) => current + 1);
+            }}
+          />
+        </>
+      )}
+      {entries.state === "error" && <ErrorState title="Shared context" error={entries.error} />}
+      {entries.state === "ready" && (
+        <WikiEntryReady
+          model={entries.data}
+          focusEntryId={focusEntryId}
+          focusKind={focusKind}
+          refresh={refresh}
+          onPreviousPage={() => {
+            setOffset((current) => Math.max(0, current - WIKI_ENTRY_INDEX_LIMIT));
+          }}
+          onNextPage={() => {
+            const nextOffset = entries.data.pagination.nextOffset;
+            if (nextOffset !== null) {
+              setOffset(nextOffset);
+            }
+          }}
+          onEdited={(saved) => {
+            setEditReceipt(saved);
+            setRefresh((current) => current + 1);
+          }}
         />
       )}
-      {entries.state === "error" && <ErrorState title="Wiki entries" error={entries.error} />}
-      {entries.state === "ready" && <WikiEntryReady model={entries.data} focus={focus} />}
     </main>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Ready — the entry index (NavPills labeled by title) + the selected entry's
-// profile (character bio / relationships / appearances, or term translation /
-// aliases / references) with CrossRef jumps to scenes.
-// ---------------------------------------------------------------------------
-
 function WikiEntryReady({
   model,
-  focus,
+  focusEntryId,
+  focusKind,
+  refresh,
+  onPreviousPage,
+  onNextPage,
+  onEdited,
 }: {
-  model: ApiWikiEntriesResponse;
-  focus: WikiFocus;
+  model: WikiContextEntriesReadModel;
+  focusEntryId: string | null;
+  focusKind: WikiEntryRouteParams["focusKind"];
+  refresh: number;
+  onPreviousPage(): void;
+  onNextPage(): void;
+  onEdited(saved: WikiEditReceipt): void;
 }): ReactNode {
-  const initial = initialWikiSelection(model, focus);
-  const [selectedEntryId, setSelectedEntryId] = useState<string>(initial);
-  const selectedEntry =
-    model.entries.find((entry) => entry.entryId === selectedEntryId) ?? model.entries[0] ?? null;
+  const [selectedEntryId, setSelectedEntryId] = useState(() =>
+    initialSelection(model, focusEntryId, focusKind),
+  );
 
+  // A valid incoming deep link should win once. After an edit refresh, retain
+  // the user's current selection when it is still present in the real list.
+  useEffect(() => {
+    if (focusEntryId !== null) {
+      setSelectedEntryId(resolveFocusEntryId(model.entries, focusEntryId, focusKind) ?? "");
+    }
+  }, [focusEntryId, focusKind, model.entries]);
+
+  const selectedEntry =
+    model.entries.find((entry) => entry.contextArtifactId === selectedEntryId) ??
+    (selectedEntryId === "" ? null : (model.entries[0] ?? null));
   const items: NavPillItem[] = model.entries.map((entry) => ({
-    id: entry.entryId,
+    id: entry.contextArtifactId,
     label: entry.title,
-    badge: entryKindBadge(entry),
+    badge: wikiKindLabel[entry.kind],
   }));
 
   return (
     <section
       className="wiki-entry__body"
-      aria-label="Wiki entries"
-      data-selected-entry-id={selectedEntry?.entryId ?? ""}
-      data-selected-kind={selectedEntry?.kind ?? ""}
+      aria-label="Context wiki entries"
       data-entry-count={model.entries.length}
+      data-selected-entry-id={selectedEntry?.contextArtifactId ?? ""}
+      data-selected-kind={selectedEntry?.kind ?? ""}
     >
-      <NavPills
-        items={items}
-        activeId={selectedEntry?.entryId ?? ""}
-        onSelect={setSelectedEntryId}
-        label="Wiki entries by title"
-        className="wiki-entry__index"
-      />
+      <Panel
+        title="Context index"
+        eyebrow={`${model.pagination.total} canonical entr${model.pagination.total === 1 ? "y" : "ies"}`}
+        lamps={<Badge status="active">all kinds</Badge>}
+      >
+        <p>
+          Browse context written by runs and by play testers. Stale entries remain visible so their
+          provenance and downstream impact can be inspected.
+        </p>
+        <NavPills
+          items={items}
+          activeId={selectedEntry?.contextArtifactId ?? ""}
+          onSelect={setSelectedEntryId}
+          label="Context entries by title"
+          className="wiki-entry__index"
+        />
+        {model.pagination.total > model.pagination.limit && (
+          <Pagination
+            label="Context wiki pagination"
+            page={Math.floor(model.pagination.offset / model.pagination.limit)}
+            pageCount={Math.max(1, Math.ceil(model.pagination.total / model.pagination.limit))}
+            totalItems={model.pagination.total}
+            itemName="context item"
+            onPrevious={onPreviousPage}
+            onNext={onNextPage}
+          />
+        )}
+        <WikiAddContextForm
+          projectId={model.filter.projectId}
+          localeBranchId={model.filter.localeBranchId}
+          sourceRevisionId={selectedEntry?.sourceRevisionId ?? ""}
+          onAdded={onEdited}
+        />
+      </Panel>
       {selectedEntry === null ? (
-        <EmptyState title="No entry selected" message="This locale branch has no wiki entries." />
+        <EmptyState
+          title={focusEntryId === null ? "No entry selected" : "Context link unavailable"}
+          message={
+            focusEntryId === null
+              ? "This locale branch has no context entries."
+              : "The requested wiki link does not resolve to a canonical context entry in this locale branch."
+          }
+        />
       ) : (
-        <WikiEntryProfile entry={selectedEntry} focus={focus} />
+        <WikiContextDetail entry={selectedEntry} refresh={refresh} onEdited={onEdited} />
       )}
     </section>
   );
 }
 
-function WikiEntryProfile({
+function WikiContextDetail({
   entry,
-  focus,
+  refresh,
+  onEdited,
 }: {
-  entry: WikiEntryReadModel;
-  focus: WikiFocus;
+  entry: WikiContextEntry;
+  refresh: number;
+  onEdited(saved: WikiEditReceipt): void;
 }): ReactNode {
-  const focusToken = focus.entryId;
-  const scope = sourceScope(entry);
-  if (entry.kind === wikiEntryKindValues.character) {
-    return <CharacterProfile entry={entry} scope={scope} focusToken={focusToken} />;
+  const identity = `${entry.projectId}:${entry.localeBranchId}:${entry.contextArtifactId}:${refresh}`;
+  const pathParams = {
+    projectId: entry.projectId,
+    localeBranchId: entry.localeBranchId,
+    contextArtifactId: entry.contextArtifactId,
+  };
+  const detail = useApiQuery("wiki.show", { pathParams }, `wiki:show:${identity}`);
+  const history = useApiQuery("wiki.history", { pathParams }, `wiki:history:${identity}`);
+
+  if (detail.state === "loading" || history.state === "loading") {
+    return <LoadingState label="Loading canonical content, provenance, and history…" />;
   }
-  return <TermProfile entry={entry} scope={scope} focusToken={focusToken} />;
-}
-
-// ---------------------------------------------------------------------------
-// CharacterProfile — bio + appearances (jump to scene) + relationships (jump
-// to character / scene) + related cross-refs + revisions.
-// ---------------------------------------------------------------------------
-
-function CharacterProfile({
-  entry,
-  scope,
-  focusToken,
-}: {
-  entry: WikiCharacterEntry;
-  scope: AddressableScope;
-  focusToken: string | null;
-}): ReactNode {
-  return (
-    <DsWikiEntry
-      title={entry.title}
-      kind="character"
-      locale={entry.bio.locale}
-      identifier={entry.characterId}
-      status={entry.bio.status}
-      stale={entry.bio.stale}
-      className="wiki-entry__profile"
-      data-wiki-kind="character"
-      data-character-id={entry.characterId}
-      data-addressable-focus={focusToken ?? undefined}
-      data-addressable-focused={focusToken !== null ? "true" : undefined}
-      facts={[
-        { label: "Character", value: entry.characterId, mono: true },
-        { label: "Appearances", value: entry.appearances.length },
-        { label: "Relationships", value: entry.relationships.length },
-      ]}
-    >
-      <p className="wiki-entry__bio" data-wiki-bio={entry.characterId}>
-        {entry.bio.text}
-      </p>
-
-      <section
-        className="wiki-entry__appearances"
-        data-wiki-appearance-count={entry.appearances.length}
-      >
-        <h3 className="wiki-entry__subhead">Appearances</h3>
-        <CitationTable
-          caption="Cited units"
-          emptyLabel="No appearances were cited for this character."
-          citations={entry.appearances}
-          scope={scope}
-        />
-      </section>
-
-      <section
-        className="wiki-entry__relationships"
-        data-wiki-relationship-count={entry.relationships.length}
-      >
-        <h3 className="wiki-entry__subhead">Relationships</h3>
-        {entry.relationships.length === 0 ? (
-          <p className="wiki-entry__empty">No relationships were recorded for this character.</p>
-        ) : (
-          <ul className="wiki-entry__relationship-list">
-            {entry.relationships.map((relationship) => (
-              <li
-                key={relationship.characterRelationshipId}
-                className="wiki-entry__relationship"
-                data-relationship-id={relationship.characterRelationshipId}
-              >
-                <div className="wiki-entry__relationship-head">
-                  <a
-                    href={hrefForAddressable({
-                      kind: "character",
-                      id: relationship.toCharacterId,
-                      ...scope,
-                    })}
-                    className="wiki-entry__crossref"
-                    data-wiki-cross-ref="character"
-                    data-wiki-cross-ref-id={relationship.toCharacterId}
-                  >
-                    {relationship.toCharacterId}
-                  </a>
-                  <Badge status={relationship.status}>{relationship.kind}</Badge>
-                  <span className="wiki-entry__relationship-descriptor">
-                    {relationship.descriptor}
-                  </span>
-                </div>
-                {relationship.citations.length > 0 && (
-                  <CitationTable
-                    caption="Relationship witnesses"
-                    emptyLabel="No witnesses were cited for this relationship."
-                    citations={relationship.citations}
-                    scope={scope}
-                    compact
-                  />
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <CrossReferenceList related={entry.related} scope={scope} />
-
-      {entry.revisions.length > 0 && (
-        <section
-          className="wiki-entry__revisions"
-          data-wiki-revision-count={entry.revisions.length}
-        >
-          <h3 className="wiki-entry__subhead">Revisions</h3>
-          <DataTable
-            caption="Bio revisions"
-            columns={[
-              {
-                key: "revision",
-                header: "Revision",
-                render: (row) => <code>{row.characterBioId}</code>,
-              },
-              {
-                key: "status",
-                header: "Status",
-                render: (row) => <Badge status={row.status}>{row.status}</Badge>,
-              },
-              {
-                key: "generated",
-                header: "Generated",
-                render: (row) => formatDate(row.generatedAt),
-              },
-            ]}
-            rows={entry.revisions}
-            getRowKey={(row) => row.characterBioId}
-            emptyLabel="No revisions were recorded."
-          />
-        </section>
-      )}
-    </DsWikiEntry>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// TermProfile — preferred translation + aliases + references (jump to scene)
-// + related cross-refs.
-// ---------------------------------------------------------------------------
-
-function TermProfile({
-  entry,
-  scope,
-  focusToken,
-}: {
-  entry: WikiTermEntry;
-  scope: AddressableScope;
-  focusToken: string | null;
-}): ReactNode {
-  return (
-    <DsWikiEntry
-      title={entry.title}
-      kind="term"
-      locale={entry.termKind}
-      identifier={entry.termId}
-      status={entry.status}
-      className="wiki-entry__profile"
-      data-wiki-kind="term"
-      data-term-id={entry.termId}
-      data-addressable-focus={focusToken ?? undefined}
-      data-addressable-focused={focusToken !== null ? "true" : undefined}
-      facts={[
-        { label: "Term", value: entry.termId, mono: true },
-        { label: "Aliases", value: entry.aliases.length },
-        { label: "References", value: entry.references.length },
-      ]}
-    >
-      <BiText
-        sourceLocale={entry.sourceLocale}
-        targetLocale={entry.targetLocale}
-        source={entry.sourceTerm}
-        translation={entry.preferredTranslation}
-        speaker={entry.partOfSpeech ?? entry.termKind}
+  if (detail.state === "error") {
+    return <ErrorState title="Wiki entry" error={detail.error} />;
+  }
+  if (history.state === "error") {
+    return <ErrorState title="Wiki history" error={history.error} />;
+  }
+  if (detail.state === "empty" || history.state === "empty") {
+    return (
+      <EmptyState
+        title="Wiki entry unavailable"
+        message="The selected context entry no longer has a readable canonical projection."
       />
-      {entry.notes !== null && <p className="wiki-entry__notes">{entry.notes}</p>}
-
-      <section className="wiki-entry__aliases" data-wiki-alias-count={entry.aliases.length}>
-        <h3 className="wiki-entry__subhead">Aliases</h3>
-        <DataTable
-          caption="Term aliases"
-          columns={[
-            { key: "alias", header: "Alias", render: (row) => row.aliasText },
-            { key: "kind", header: "Kind", render: (row) => row.aliasKind },
-            {
-              key: "locale",
-              header: "Locale",
-              render: (row) => row.locale ?? "—",
-            },
-          ]}
-          rows={entry.aliases}
-          getRowKey={(row) => row.aliasId}
-          emptyLabel="No aliases were recorded for this term."
-        />
-      </section>
-
-      <section
-        className="wiki-entry__references"
-        data-wiki-reference-count={entry.references.length}
-      >
-        <h3 className="wiki-entry__subhead">References</h3>
-        <DataTable
-          caption="Cited units"
-          columns={[
-            {
-              key: "unit",
-              header: "Unit",
-              render: (row) => <SceneJump citation={row} scope={scope} />,
-            },
-            { key: "kind", header: "Kind", render: (row) => row.referenceKind },
-            {
-              key: "citation",
-              header: "Citation",
-              render: (row) => row.citation,
-            },
-            {
-              key: "context",
-              header: "Context",
-              render: (row) => row.context ?? "—",
-            },
-          ]}
-          rows={entry.references}
-          getRowKey={(row) => row.sourceRefId}
-          emptyLabel="No references were cited for this term."
-        />
-      </section>
-
-      <CrossReferenceList related={entry.related} scope={scope} />
-    </DsWikiEntry>
+    );
+  }
+  return (
+    <WikiContextDetailReady entry={detail.data.entry} history={history.data} onEdited={onEdited} />
   );
 }
 
-// ---------------------------------------------------------------------------
-// Cross references — the `related[]` array on every entry. Each ref deep-
-// links to its own addressable surface (character / term / scene / unit).
-// ---------------------------------------------------------------------------
-
-function CrossReferenceList({
-  related,
-  scope,
+function WikiContextDetailReady({
+  entry,
+  history,
+  onEdited,
 }: {
-  related: WikiCrossReference[];
-  scope: AddressableScope;
+  entry: WikiContextEntry;
+  history: WikiContextEntryHistoryReadModel;
+  onEdited(saved: WikiEditReceipt): void;
 }): ReactNode {
   return (
-    <section className="wiki-entry__crossrefs" data-wiki-crossref-count={related.length}>
-      <h3 className="wiki-entry__subhead">Cross references</h3>
+    <section
+      className="wiki-entry__detail"
+      aria-label="Selected context entry"
+      data-context-artifact-id={entry.contextArtifactId}
+      data-wiki-kind={entry.kind}
+      data-head-version-id={entry.headVersionId ?? ""}
+    >
+      <Panel
+        title={entry.title}
+        eyebrow={wikiKindLabel[entry.kind]}
+        lamps={<Badge status={entry.status}>{entry.status}</Badge>}
+      >
+        <dl className="wiki-entry__facts">
+          <div>
+            <dt>Canonical entry</dt>
+            <dd>
+              <code>{entry.contextArtifactId}</code>
+            </dd>
+          </div>
+          <div>
+            <dt>Head version</dt>
+            <dd>
+              <code>{entry.headVersionId ?? "No canonical version yet"}</code>
+            </dd>
+          </div>
+          <div>
+            <dt>Versions</dt>
+            <dd>{entry.versionCount}</dd>
+          </div>
+          <div>
+            <dt>Source revision</dt>
+            <dd>
+              <code>{entry.sourceRevisionId}</code>
+            </dd>
+          </div>
+        </dl>
+      </Panel>
+      <WikiContentPanel entry={entry} />
+      <WikiProvenancePanel entry={entry} />
+      <WikiCitationsPanel entry={entry} />
+      <WikiImpactPanel entry={entry} />
+      <WikiHistoryPanel history={history} />
+      <WikiEditForm
+        key={`${entry.contextArtifactId}:${entry.headVersionId ?? "new"}`}
+        entry={entry}
+        onEdited={onEdited}
+      />
+    </section>
+  );
+}
+
+function WikiContentPanel({ entry }: { entry: WikiContextEntry }): ReactNode {
+  return (
+    <Panel title="Content" eyebrow="Canonical head">
+      <p className="wiki-entry__body" data-wiki-content={entry.contextArtifactId}>
+        {entry.body}
+      </p>
+      <details>
+        <summary>Structured context data</summary>
+        <pre>{formatJson(entry.data)}</pre>
+      </details>
+    </Panel>
+  );
+}
+
+function WikiProvenancePanel({ entry }: { entry: WikiContextEntry }): ReactNode {
+  const provenance = entry.provenance;
+  return (
+    <Panel title="Provenance" eyebrow="How this enrichment was written">
       <DataTable
-        caption="Cross references"
+        caption="Canonical provenance"
+        columns={[
+          { key: "producer", header: "Producer", render: () => provenance.producedByAgent ?? "—" },
+          { key: "tool", header: "Tool", render: () => provenance.producedByTool ?? "—" },
+          { key: "version", header: "Version", render: () => provenance.producerVersion },
+          { key: "origin", header: "Origin", render: () => provenance.origin ?? "—" },
+          { key: "run", header: "Run", render: () => provenance.runId ?? "—" },
+          { key: "actor", header: "Actor", render: () => provenance.createdByUserId ?? "—" },
+        ]}
+        rows={[provenance]}
+        getRowKey={() => entry.contextArtifactId}
+      />
+      <details>
+        <summary>Full provenance payload</summary>
+        <pre>{formatJson(provenance.provenance)}</pre>
+      </details>
+    </Panel>
+  );
+}
+
+function WikiCitationsPanel({ entry }: { entry: WikiContextEntry }): ReactNode {
+  return (
+    <Panel
+      title="Citations"
+      eyebrow={`${entry.citations.length} source witness${entry.citations.length === 1 ? "" : "es"}`}
+    >
+      <DataTable
+        caption="Cited source units"
         columns={[
           {
-            key: "label",
-            header: "Entry",
-            render: (row) => <CrossRefLink crossRef={row} scope={scope} />,
+            key: "unit",
+            header: "Unit",
+            render: (citation) => <CitationJump citation={citation} entry={entry} />,
           },
-          { key: "kind", header: "Kind", render: (row) => row.refKind },
+          { key: "citation", header: "Citation", render: (citation) => citation.citation },
           {
-            key: "relation",
-            header: "Relation",
-            render: (row) => row.relation,
+            key: "revision",
+            header: "Source revision",
+            render: (citation) => citation.sourceRevisionId,
+          },
+          {
+            key: "hash",
+            header: "Source hash",
+            render: (citation) => <code>{citation.sourceHash}</code>,
           },
         ]}
-        rows={related}
-        getRowKey={(row) => `${row.refKind}:${row.refId}:${row.relation}`}
-        emptyLabel="No cross references were recorded."
+        rows={entry.citations}
+        getRowKey={(citation) =>
+          `${citation.bridgeUnitId}:${citation.sourceHash}:${citation.citation}`
+        }
+        emptyLabel="No source witnesses were persisted for this entry."
       />
+    </Panel>
+  );
+}
+
+function CitationJump({
+  citation,
+  entry,
+}: {
+  citation: WikiContextCitation;
+  entry: WikiContextEntry;
+}): ReactNode {
+  return (
+    <a
+      href={hrefForAddressable({
+        kind: "unit",
+        id: citation.bridgeUnitId,
+        projectId: entry.projectId,
+        localeBranchId: entry.localeBranchId,
+      })}
+      data-wiki-scene-jump={citation.bridgeUnitId}
+    >
+      {citation.bridgeUnitId}
+    </a>
+  );
+}
+
+function WikiImpactPanel({ entry }: { entry: WikiContextEntry }): ReactNode {
+  const { impact } = entry;
+  return (
+    <Panel title="Impact" eyebrow="Next ContextPacket and redraft scope">
+      <p data-wiki-affected-unit-count={impact.affectedUnitIds.length}>
+        {impact.affectedUnitIds.length === 0
+          ? "No affected units were recorded for this version."
+          : `${impact.affectedUnitIds.length} unit(s) resolve this canonical context into their next ContextPacket.`}
+      </p>
+      {impact.affectedUnitIds.length > 0 && (
+        <ul aria-label="Affected units">
+          {impact.affectedUnitIds.map((unitId) => (
+            <li key={unitId}>
+              <code>{unitId}</code>
+            </li>
+          ))}
+        </ul>
+      )}
+      <dl className="wiki-entry__facts">
+        <div>
+          <dt>Invalidation reason</dt>
+          <dd>{impact.invalidatedReason ?? "No invalidation is currently recorded."}</dd>
+        </div>
+        <div>
+          <dt>Invalidated at</dt>
+          <dd>{formatDate(impact.invalidatedAt)}</dd>
+        </div>
+      </dl>
+    </Panel>
+  );
+}
+
+function WikiHistoryPanel({ history }: { history: WikiContextEntryHistoryReadModel }): ReactNode {
+  return (
+    <Panel
+      title="History"
+      eyebrow={`${history.versions.length} immutable version${history.versions.length === 1 ? "" : "s"}`}
+    >
+      <DataTable
+        caption="Canonical version history"
+        columns={[
+          {
+            key: "version",
+            header: "Version",
+            render: (version) => <code>{version.contextEntryVersionId}</code>,
+          },
+          {
+            key: "head",
+            header: "Head",
+            render: (version) => (version.isHead ? <Badge status="active">current</Badge> : ""),
+          },
+          { key: "body", header: "Content", render: (version) => version.body },
+          {
+            key: "origin",
+            header: "Origin",
+            render: (version) => version.provenance.origin ?? "—",
+          },
+          {
+            key: "impact",
+            header: "Affected units",
+            render: (version) => version.impact.affectedUnitIds.length,
+          },
+          { key: "created", header: "Created", render: (version) => formatDate(version.createdAt) },
+        ]}
+        rows={history.versions}
+        getRowKey={(version) => version.contextEntryVersionId}
+        emptyLabel="No immutable versions were returned for this canonical entry."
+      />
+    </Panel>
+  );
+}
+
+function WikiAddContextForm({
+  projectId,
+  localeBranchId,
+  sourceRevisionId: initialSourceRevisionId,
+  onAdded,
+}: {
+  projectId: string;
+  localeBranchId: string;
+  sourceRevisionId: string;
+  onAdded(saved: WikiEditReceipt): void;
+}): ReactNode {
+  const [kind, setKind] = useState<WikiAddKind>("note");
+  const [sourceRevisionId, setSourceRevisionId] = useState(initialSourceRevisionId);
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [reason, setReason] = useState("");
+  const [affectedUnits, setAffectedUnits] = useState("");
+  const [outcome, setOutcome] = useState<WikiEditFormState>({ state: "idle" });
+  const affectedUnitIds = lines(affectedUnits);
+  const canAdd =
+    sourceRevisionId.trim().length > 0 &&
+    title.trim().length > 0 &&
+    body.trim().length > 0 &&
+    reason.trim().length > 0 &&
+    affectedUnitIds.length > 0 &&
+    outcome.state !== "saving";
+
+  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!canAdd) {
+      return;
+    }
+    setOutcome({ state: "saving" });
+    const result = await apiClient.request("wiki.add", {
+      pathParams: { projectId, localeBranchId },
+      body: {
+        sourceRevisionId: sourceRevisionId.trim(),
+        kind,
+        title: title.trim(),
+        body: body.trim(),
+        reason: reason.trim(),
+        affectedUnitIds,
+      },
+    });
+    if (result.state === "ready") {
+      onAdded({
+        contextArtifactId: result.data.contextArtifactId,
+        ...editReceiptFromResponse(result.data),
+      });
+      return;
+    }
+    if (result.state === "error") {
+      setOutcome({
+        state: "error",
+        message:
+          result.error.message ??
+          `Adding context failed with status ${String(result.error.status)}.`,
+      });
+      return;
+    }
+    setOutcome({ state: "error", message: "Adding context returned no canonical version." });
+  }
+
+  return (
+    <section aria-label="Add shared context">
+      <h3>Add context</h3>
+      <p>
+        Write a new shared note, glossary fact, or style instruction directly into the context
+        brain.
+      </p>
+      <form aria-label="Add shared context" onSubmit={(event) => void submit(event)}>
+        <p>
+          <label htmlFor="wiki-add-kind">Context kind</label>
+          <select
+            id="wiki-add-kind"
+            name="kind"
+            value={kind}
+            onChange={(event) => setKind(event.target.value as WikiAddKind)}
+          >
+            {wikiAddKinds.map((value) => (
+              <option key={value} value={value}>
+                {wikiKindLabel[value]}
+              </option>
+            ))}
+          </select>
+        </p>
+        <p>
+          <label htmlFor="wiki-add-source-revision">Source revision</label>
+          <input
+            id="wiki-add-source-revision"
+            name="sourceRevisionId"
+            value={sourceRevisionId}
+            onChange={(event) => setSourceRevisionId(event.target.value)}
+            required
+          />
+        </p>
+        <p>
+          <label htmlFor="wiki-add-title">Entry title</label>
+          <input
+            id="wiki-add-title"
+            name="title"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            required
+          />
+        </p>
+        <p>
+          <label htmlFor="wiki-add-body">Canonical content</label>
+          <textarea
+            id="wiki-add-body"
+            name="body"
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            rows={5}
+            required
+          />
+        </p>
+        <p>
+          <label htmlFor="wiki-add-reason">Why this context matters</label>
+          <textarea
+            id="wiki-add-reason"
+            name="reason"
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            rows={3}
+            required
+          />
+        </p>
+        <p>
+          <label htmlFor="wiki-add-affected-units">Affected units (one per line)</label>
+          <textarea
+            id="wiki-add-affected-units"
+            name="affectedUnits"
+            value={affectedUnits}
+            onChange={(event) => setAffectedUnits(event.target.value)}
+            rows={3}
+          />
+        </p>
+        <button type="submit" disabled={!canAdd}>
+          {outcome.state === "saving" ? "Adding canonical context…" : "Add canonical context"}
+        </button>
+      </form>
+      {outcome.state === "error" && <p role="alert">{outcome.message}</p>}
     </section>
   );
 }
 
-function CrossRefLink({
-  crossRef,
-  scope,
+type WikiEditFormState =
+  | { state: "idle" }
+  | { state: "saving" }
+  | { state: "error"; message: string };
+
+function WikiEditForm({
+  entry,
+  onEdited,
 }: {
-  crossRef: WikiCrossReference;
-  scope: AddressableScope;
+  entry: WikiContextEntry;
+  onEdited(saved: WikiEditReceipt): void;
 }): ReactNode {
-  const href = crossRefHref(crossRef, scope);
-  if (href === null) {
-    return <span>{crossRef.label}</span>;
+  const [title, setTitle] = useState(entry.title);
+  const [body, setBody] = useState(entry.body);
+  const [reason, setReason] = useState("");
+  const [affectedUnits, setAffectedUnits] = useState(entry.impact.affectedUnitIds.join("\n"));
+  const [outcome, setOutcome] = useState<WikiEditFormState>({ state: "idle" });
+  const canSave =
+    title.trim().length > 0 &&
+    body.trim().length > 0 &&
+    reason.trim().length > 0 &&
+    outcome.state !== "saving";
+
+  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!canSave) {
+      return;
+    }
+    setOutcome({ state: "saving" });
+    const affectedUnitIds = lines(affectedUnits);
+    const result = await apiClient.request("wiki.edit", {
+      pathParams: {
+        projectId: entry.projectId,
+        localeBranchId: entry.localeBranchId,
+        contextArtifactId: entry.contextArtifactId,
+      },
+      body: {
+        body: body.trim(),
+        reason: reason.trim(),
+        ...(title.trim() === entry.title ? {} : { title: title.trim() }),
+        ...(affectedUnitIds.length === 0 ? {} : { affectedUnitIds }),
+      },
+    });
+    if (result.state === "ready") {
+      const saved = editReceiptFromResponse(result.data);
+      onEdited({ contextArtifactId: result.data.contextArtifactId, ...saved });
+      return;
+    }
+    if (result.state === "error") {
+      setOutcome({
+        state: "error",
+        message:
+          result.error.message ?? `Wiki edit failed with status ${String(result.error.status)}.`,
+      });
+      return;
+    }
+    setOutcome({ state: "error", message: "Wiki edit returned no canonical version." });
   }
+
   return (
-    <a
-      href={href}
-      className="wiki-entry__crossref"
-      data-wiki-cross-ref={crossRef.refKind}
-      data-wiki-cross-ref-id={crossRef.refId}
+    <Panel title="Edit shared context" eyebrow="Direct canonical correction">
+      <p>
+        Saving writes a new canonical context version, invalidates dependent units, and reports
+        whether their immediate redraft completed, remains pending, or failed. It does not wait for
+        a review or approval step.
+      </p>
+      <form aria-label="Edit shared context" onSubmit={(event) => void submit(event)}>
+        <p>
+          <label htmlFor="wiki-edit-title">Entry title</label>
+          <input
+            id="wiki-edit-title"
+            name="title"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            required
+          />
+        </p>
+        <p>
+          <label htmlFor="wiki-edit-body">Canonical content</label>
+          <textarea
+            id="wiki-edit-body"
+            name="body"
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            rows={8}
+            required
+          />
+        </p>
+        <p>
+          <label htmlFor="wiki-edit-reason">Why this context needs correction</label>
+          <textarea
+            id="wiki-edit-reason"
+            name="reason"
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            rows={3}
+            required
+          />
+        </p>
+        <p>
+          <label htmlFor="wiki-edit-affected-units">Affected units (one per line)</label>
+          <textarea
+            id="wiki-edit-affected-units"
+            name="affectedUnits"
+            value={affectedUnits}
+            onChange={(event) => setAffectedUnits(event.target.value)}
+            rows={3}
+          />
+        </p>
+        <button type="submit" disabled={!canSave}>
+          {outcome.state === "saving" ? "Saving canonical version…" : "Save canonical wiki edit"}
+        </button>
+      </form>
+      {outcome.state === "error" && <p role="alert">{outcome.message}</p>}
+    </Panel>
+  );
+}
+
+function WikiEditReceiptNotice({ receipt }: { receipt: WikiEditReceipt | null }): ReactNode {
+  if (receipt === null) {
+    return null;
+  }
+  const rerunCopy = rerunNoticeCopy(receipt);
+  return (
+    <Panel
+      title={rerunCopy.title}
+      eyebrow="Node-8 context correction"
+      data-testid="wiki-edit-receipt"
+      data-wiki-edit-receipt="true"
+      data-wiki-rerun-state={receipt.rerun.state}
     >
-      {crossRef.label}
-    </a>
+      <p>
+        Version <code>{receipt.versionId}</code> is now the canonical head.
+      </p>
+      <p>
+        Invalidated {receipt.invalidatedArtifactIds.length} dependent context artifact(s); the
+        redraft job is <code>{receipt.jobId}</code>.
+      </p>
+      <p>{rerunCopy.body}</p>
+      {receipt.rerun.error !== null && <p role="alert">Redraft detail: {receipt.rerun.error}</p>}
+    </Panel>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Citation table — the shared "jump to scene" rendering for cited units
-// (character appearances + relationship witnesses). Each cited unit's
-// `bridgeUnitId` deep-links to /play/units/:id so the Play scene picker
-// focuses the unit (and its parent scene).
-// ---------------------------------------------------------------------------
-
-function CitationTable({
-  caption,
-  emptyLabel,
-  citations,
-  scope,
-  compact = false,
-}: {
-  caption: string;
-  emptyLabel: string;
-  citations: WikiCitation[];
-  scope: AddressableScope;
-  compact?: boolean;
-}): ReactNode {
-  return (
-    <DataTable
-      caption={caption}
-      columns={
-        compact
-          ? [
-              {
-                key: "unit",
-                header: "Unit",
-                render: (row) => <SceneJump citation={row} scope={scope} />,
-              },
-            ]
-          : [
-              {
-                key: "unit",
-                header: "Unit",
-                render: (row) => <SceneJump citation={row} scope={scope} />,
-              },
-              {
-                key: "ordinal",
-                header: "Cite #",
-                align: "end",
-                render: (row) => row.citeOrdinal,
-              },
-            ]
-      }
-      rows={citations}
-      getRowKey={(row) => `${row.bridgeUnitId}:${row.citeOrdinal}`}
-      emptyLabel={emptyLabel}
-    />
-  );
-}
-
-/** A cited-unit deep-link — jumps to /play/units/:bridgeUnitId. */
-function SceneJump({
-  citation,
-  scope,
-}: {
-  citation: { bridgeUnitId: string | null; sourceUnitKey: string | null };
-  scope: AddressableScope;
-}): ReactNode {
-  const label = citation.sourceUnitKey ?? citation.bridgeUnitId ?? "—";
-  if (citation.bridgeUnitId === null) {
-    return <span>{label}</span>;
+function rerunNoticeCopy(receipt: WikiEditReceipt): { title: string; body: string } {
+  switch (receipt.rerun.state) {
+    case "succeeded":
+      return {
+        title: "Canonical wiki version saved; redraft completed",
+        body: `${receipt.affectedUnitIds.length} affected unit(s) resolved the new head in their refreshed ContextPacket.`,
+      };
+    case "pending":
+      return {
+        title: "Canonical wiki version saved; redraft pending",
+        body: `The redraft is ${receipt.rerun.jobStatus}; ${receipt.affectedUnitIds.length} affected unit(s) have not yet completed a refreshed ContextPacket.`,
+      };
+    case "failed":
+      return {
+        title: "Canonical wiki version saved; redraft failed",
+        body: `The redraft is ${receipt.rerun.jobStatus}; the canonical version remains saved, but affected units need a successful rerun before their ContextPackets refresh.`,
+      };
   }
-  const href = hrefForAddressable({ kind: "unit", id: citation.bridgeUnitId, ...scope });
-  return (
-    <a href={href} className="wiki-entry__scene-jump" data-wiki-scene-jump={citation.bridgeUnitId}>
-      {label}
-    </a>
-  );
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-type AddressableScope = { projectId: string | null; localeBranchId: string | null };
-
-function sourceScope(entry: WikiEntryReadModel): AddressableScope {
+/** Project the typed node-8 correction result into the persistent receipt notice. */
+function editReceiptFromResponse(value: ApiWikiEditResponse): {
+  versionId: string;
+  invalidatedArtifactIds: string[];
+  affectedUnitIds: string[];
+  jobId: string;
+  rerun: ApiWikiEditResponse["rerun"];
+} {
   return {
-    projectId: entry.scope.sourceProjectId,
-    localeBranchId: entry.scope.sourceLocaleBranchId,
+    versionId: value.contextEntryVersionId,
+    invalidatedArtifactIds: value.invalidatedArtifactIds,
+    affectedUnitIds: value.affectedUnitIds,
+    jobId: value.redraftJobId,
+    rerun: value.rerun,
   };
 }
 
-/** Resolve the initial entry selection from an addressable focus. */
-function initialWikiSelection(model: ApiWikiEntriesResponse, focus: WikiFocus): string {
-  if (focus.entryId !== null) {
-    const focused = model.entries.find((entry) => entry.entryId === focus.entryId);
-    if (focused !== undefined) {
-      return focused.entryId;
+function initialSelection(
+  model: WikiContextEntriesReadModel,
+  focusEntryId: string | null,
+  focusKind: WikiEntryRouteParams["focusKind"],
+): string {
+  if (focusEntryId !== null) {
+    return resolveFocusEntryId(model.entries, focusEntryId, focusKind) ?? "";
+  }
+  return model.entries[0]?.contextArtifactId ?? "";
+}
+
+/**
+ * Addressable character URLs predate the generic context-artifact IDs. A
+ * character's durable semantic id is retained in its canonical data payload,
+ * so resolve it without attempting to construct a browser-side hash. Terms
+ * may opt in with `termId` or `surfaceForm`; otherwise an old term URL stays
+ * explicitly unresolved instead of opening a misleading unrelated entry.
+ */
+function resolveFocusEntryId(
+  entries: readonly WikiContextEntry[],
+  focusEntryId: string,
+  focusKind: WikiEntryRouteParams["focusKind"],
+): string | null {
+  const direct = entries.find((entry) => entry.contextArtifactId === focusEntryId);
+  if (direct !== undefined) {
+    return direct.contextArtifactId;
+  }
+  const legacy = parseLegacyFocusEntryId(focusEntryId, focusKind);
+  if (legacy === null) {
+    return null;
+  }
+  const entry = entries.find((candidate) => {
+    if (candidate.kind !== legacy.kind) {
+      return false;
     }
-  }
-  if (focus.kind !== null) {
-    const byKind = model.entries.find((entry) => entry.kind === focus.kind);
-    if (byKind !== undefined) {
-      return byKind.entryId;
+    if (legacy.kind === "character") {
+      return stringData(candidate, "characterId") === legacy.id;
     }
+    return (
+      stringData(candidate, "termId") === legacy.id ||
+      stringData(candidate, "surfaceForm") === legacy.id
+    );
+  });
+  return entry?.contextArtifactId ?? null;
+}
+
+function parseLegacyFocusEntryId(
+  focusEntryId: string,
+  focusKind: WikiEntryRouteParams["focusKind"],
+): { kind: "character" | "term"; id: string } | null {
+  if (focusKind === null) {
+    return null;
   }
-  return model.entries[0]?.entryId ?? "";
-}
-
-/** A short kind badge for the entry index (the title distinguishes entries). */
-function entryKindBadge(entry: WikiEntryReadModel): ReactNode {
-  return entry.kind === wikiEntryKindValues.character ? "char" : "term";
-}
-
-/** Map a cross reference onto its addressable href (null when unresolvable). */
-function crossRefHref(crossRef: WikiCrossReference, scope: AddressableScope): string | null {
-  switch (crossRef.refKind) {
-    case "character":
-      return hrefForAddressable({ kind: "character", id: crossRef.refId, ...scope });
-    case "term":
-      return hrefForAddressable({ kind: "term", id: crossRef.refId, ...scope });
-    case "scene":
-      return hrefForAddressable({ kind: "scene", id: crossRef.refId, ...scope });
-    case "source_unit":
-      return hrefForAddressable({ kind: "unit", id: crossRef.refId, ...scope });
-    default:
-      return null;
+  const prefix = `${focusKind}:`;
+  if (!focusEntryId.startsWith(prefix)) {
+    return null;
   }
+  const id = focusEntryId.slice(prefix.length);
+  return id.length > 0 ? { kind: focusKind, id } : null;
 }
 
-function formatDate(value: Date | string): string {
+function stringData(entry: WikiContextEntry, key: string): string | null {
+  const value = entry.data[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function lines(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(/\r?\n/gu)
+        .map((line) => line.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function formatDate(value: Date | string | null): string {
+  if (value === null) {
+    return "—";
+  }
   const date = value instanceof Date ? value : new Date(value);
-  return date.toISOString().slice(0, 10);
+  return Number.isNaN(date.getTime()) ? "—" : date.toISOString().slice(0, 10);
+}
+
+function formatJson(value: unknown): string {
+  return JSON.stringify(value, null, 2) ?? "null";
 }

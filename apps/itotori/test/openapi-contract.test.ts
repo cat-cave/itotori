@@ -59,7 +59,10 @@ import {
   runtimeEvidenceIngestResponseFixture,
   runtimeStatusFixture,
   terminologySearchFixture,
-  wikiEntriesFixture,
+  wikiContextEntriesFixture,
+  wikiContextEntryFixture,
+  wikiContextHistoryFixture,
+  wikiEditFixture,
 } from "./api-fixtures.js";
 import {
   workspaceAssetBrowseFixture,
@@ -119,7 +122,11 @@ const RESPONSE_FIXTURES: Partial<Record<ItotoriApiRouteId, unknown>> = {
   "catalog.benchmarkSeeds": catalogBenchmarkSeedsFixture,
   "catalog.opportunities": catalogOpportunitiesFixture,
   "terminology.search": terminologySearchFixture,
-  "wiki.entries": wikiEntriesFixture,
+  "wiki.list": wikiContextEntriesFixture,
+  "wiki.show": wikiContextEntryFixture,
+  "wiki.history": wikiContextHistoryFixture,
+  "wiki.edit": wikiEditFixture,
+  "wiki.add": wikiEditFixture,
   "workspace.projects": workspaceProjectBrowseFixture(),
   "workspace.scenes": workspaceSceneBrowseFixture(),
   "workspace.assets": workspaceAssetBrowseFixture(),
@@ -458,7 +465,7 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all routes, request + r
     }
   }
 
-  it("covers a body for every one of the 67 routes (no route left un-teethed)", () => {
+  it("covers a body for every one of the 71 routes (no route left un-teethed)", () => {
     // Every route has a response body; the mutation + reviewer/workspace
     // POST routes (incl. ovw-launch-pass-action's `projects.launchPass` and
     // play-mark-validated's `play.setSceneCoverage`) add a request body.
@@ -472,7 +479,7 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all routes, request + r
     const routesWithRequest = ITOTORI_API_ROUTE_IDS.filter(
       (id) => ITOTORI_API_ROUTES[id].requestSchema !== undefined,
     ).length;
-    expect(ITOTORI_API_ROUTE_IDS.length).toBe(67);
+    expect(ITOTORI_API_ROUTE_IDS.length).toBe(71);
     expect(bodyCount).toBe(ITOTORI_API_ROUTE_IDS.length + routesWithRequest);
   });
 });

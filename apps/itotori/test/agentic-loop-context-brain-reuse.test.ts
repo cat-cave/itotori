@@ -5,10 +5,10 @@
 // adapter; the behavioral boundary under test is the actual executor wiring
 // into the migrated Postgres context-artifact repository.
 
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ItotoriContextArtifactRepository,
   ItotoriEventQueueRepository,
@@ -18,6 +18,8 @@ import {
   bootstrapLocalUser,
   localUserId,
   type AuthorizationActor,
+  type WikiContextEntriesReadModel,
+  type WikiContextEntryHistoryReadModel,
 } from "@itotori/db";
 import type { BridgeBundleV02, LocalizationUnitV02 } from "@itotori/localization-bridge-schema";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
@@ -27,11 +29,7 @@ import {
   runProjectDrivenExecutor,
   type DrivenUnitJournalRecord,
 } from "../src/orchestrator/project-driven-executor.js";
-import {
-  DrivenJournalPersistenceAdapter,
-  FsDrivenPatchExportSink,
-} from "../src/orchestrator/project-driven-executor-sinks.js";
-import { withDatabaseItotoriServices } from "../src/services/database-services.js";
+import { FsDrivenPatchExportSink } from "../src/orchestrator/project-driven-executor-sinks.js";
 import { DEV_PAIR } from "../src/providers/dev-pair.js";
 import {
   createProviderRunId,
@@ -45,6 +43,8 @@ import {
   parseNarrativeStructure,
   type NarrativeStructure,
 } from "../src/agents/structure-informed-context/index.js";
+import type { WikiBrainEditResult } from "../src/wiki/service.js";
+import { assertHttpContractOk, startPostgresHttpContractHarness } from "./http-contract-harness.js";
 
 const ACTOR: AuthorizationActor = { userId: localUserId };
 const PROJECT_ID = "019ed0cb-1000-7000-8000-00000000cb11";
@@ -62,15 +62,24 @@ const PERSISTED_SPEAKER_BODY = "Speaker: Captain Wato (characterId=wato, confide
 const PERSISTED_SPEAKER_PROMPT = "Captain Wato (persisted speaker label, confidence=high)";
 const SOURCE_REVISION_HASH = `sha256:${"a".repeat(64)}`;
 const SOURCE_PROFILE_HASH = `sha256:${"b".repeat(64)}`;
+const RPG_MAKER_MAP_ASSET_KEY = "rpgmaker:Map001.json";
+const RPG_MAKER_UNIT_HASHES = [
+  "sha256:0aec2f529887f276a2f89a9ca914df3d1b8e246bc408d4d55244de383a4dfca1",
+  "sha256:928e61f8df4cbd30519b9f1577973398ec13063663bc2276900aa965c699a542",
+] as const;
 const SEMANTIC_SCENE_SUMMARY_BODY =
   "PERSISTED-SEMANTIC-SCENE-SUMMARY: the station scene where 和人 greets the morning sky.";
 const CONTEXT_AWARE_DRAFT = "Captain Wato's context-aware greeting.";
 const PRIMARY_REPAIR_DRAFT = "Captain Wato's draft before repair.";
 const REPAIRED_DRAFT = "Captain Wato's repaired context-aware greeting.";
 const DELIVERED_DRAFT = "Captain Wato's delivered greeting before the context correction.";
-const CONTEXT_CORRECTED_DRAFT = "Captain Wato's glossary-corrected greeting.";
-const PLAY_TESTER_GLOSSARY_BODY =
-  "PLAY-TESTER GLOSSARY: Captain Wato must be rendered as Captain Wato in this scene.";
+const CONTEXT_CORRECTED_DRAFT = "Captain Wato's formally delivered wiki-corrected greeting.";
+const PLAY_TESTER_SPEAKER_BODY =
+  "PLAY-TESTER WIKI CORRECTION: Captain Wato uses a formal naval honorific in this scene.";
+const PLAY_TESTER_NOTE_TITLE = "Captain Wato dashboard note";
+const PLAY_TESTER_NOTE_BODY =
+  "PLAY-TESTER WIKI NOTE: This follow-up line must retain the captain's formal naval honorific.";
+const NOTE_CORRECTED_DRAFT = "Captain Wato's dashboard-note-corrected follow-up greeting.";
 const QA_FINDING_ID = "019ed0cb-1000-7000-8000-00000000cb31";
 
 const providerDescriptor: ProviderDescriptor = {
@@ -127,7 +136,9 @@ function makeStructure(): NarrativeStructure {
 }
 
 function makeUnit(bridgeUnitId: string, line: number, sourceText: string): LocalizationUnitV02 {
-  const sourceUnitKey = `scene-${SCENE_ID}/line-${String(line).padStart(3, "0")}`;
+  const pointer = `/events/1/pages/0/list/${String(line - 1)}/parameters/0`;
+  const sourceUnitKey = `${RPG_MAKER_MAP_ASSET_KEY}#${pointer}`;
+  const entryPath = pointer.slice(1).split("/");
   return {
     bridgeUnitId,
     surfaceId: ASSET_ID,
@@ -136,10 +147,10 @@ function makeUnit(bridgeUnitId: string, line: number, sourceText: string): Local
     occurrenceId: `context-brain-occurrence-${line}`,
     sourceLocale: "ja-JP",
     sourceText,
-    sourceHash: `sha256:${line === 1 ? "e".repeat(64) : "f".repeat(64)}`,
+    sourceHash: RPG_MAKER_UNIT_HASHES[line - 1]!,
     sourceRevision: revision(SOURCE_REVISION_ID, SOURCE_REVISION_HASH),
-    sourceAssetRef: { assetId: ASSET_ID, assetKey: "context-brain-scenario" },
-    sourceLocation: { containerKey: "context-brain-scenario" },
+    sourceAssetRef: { assetId: ASSET_ID, assetKey: RPG_MAKER_MAP_ASSET_KEY },
+    sourceLocation: { containerKey: RPG_MAKER_MAP_ASSET_KEY, entryPath },
     speaker: { knowledgeState: "known", speakerId: SPEAKER_ID, displayName: SPEAKER_NAME },
     context: { route: { sceneKey: String(SCENE_ID) } },
     spans: [],
@@ -200,7 +211,7 @@ function makeBridge(): BridgeBundleV02 {
     assets: [
       {
         assetId: ASSET_ID,
-        assetKey: "context-brain-scenario",
+        assetKey: RPG_MAKER_MAP_ASSET_KEY,
         assetKind: "text",
         sourceHash: SOURCE_REVISION_HASH,
         sourceRevision: revision(SOURCE_REVISION_ID, SOURCE_REVISION_HASH),
@@ -828,7 +839,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       }
     }, 30_000);
 
-    it("persists a play-tester glossary version and reruns it through production database services", async () => {
+    it("runs dashboard wiki POST add and edit corrections through the default production redrafter", async () => {
       const context = await isolatedMigratedContext();
       try {
         await bootstrapLocalUser(context.db);
@@ -845,13 +856,20 @@ describe.skipIf(!process.env.DATABASE_URL)(
 
         const contextArtifacts = new ItotoriContextArtifactRepository(context.db);
         const workDir = mkdtempSync(join(tmpdir(), "itotori-context-correction-"));
+        materializeRpgMakerSource(workDir);
         const initialDir = join(workDir, "delivered-before-refresh");
         const registeredRunDir = join(workDir, "registered-live-pass");
         const registeredBridgePath = join(workDir, "registered-bridge.json");
         const registeredConfigPath = join(workDir, "registered.config.json");
         const registeredPairPolicyPath = join(workDir, "registered.pair-policy.json");
         writeFileSync(registeredBridgePath, `${JSON.stringify(bridge, null, 2)}\n`);
-        writeFileSync(registeredPairPolicyPath, "{}\n");
+        const rawPairPolicy = JSON.parse(
+          readFileSync(
+            new URL("./fixtures/agentic-loop-smoke-pair-policy.json", import.meta.url),
+            "utf8",
+          ),
+        ) as unknown;
+        writeFileSync(registeredPairPolicyPath, `${JSON.stringify(rawPairPolicy, null, 2)}\n`);
         writeFileSync(
           registeredConfigPath,
           `${JSON.stringify(
@@ -864,6 +882,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
               targetLocale: "en-US",
               bridgePath: registeredBridgePath,
               pairPolicyPath: registeredPairPolicyPath,
+              translationScope: "all",
+              concurrency: 1,
+              maxRepairAttempts: 0,
             },
             null,
             2,
@@ -881,24 +902,16 @@ describe.skipIf(!process.env.DATABASE_URL)(
         });
         const prompts = makePromptCaptures();
         const sceneSummaryCalls = { count: 0 };
-        let refreshPass = false;
         const providerFactory = executorProviderFactory({
           sceneSummaryCalls,
           prompts,
-          responseOverride: ({ bridgeUnitId, prompt, stage }) => {
+          responseOverride: ({ bridgeUnitId, stage }) => {
             if (stage !== "translation") {
               return undefined;
             }
-            if (!refreshPass) {
-              return translationContent(
-                bridgeUnitId,
-                bridgeUnitId === UNIT_A_ID ? DELIVERED_DRAFT : "Delivered unaffected greeting.",
-              );
-            }
-            const reloadedCorrection = prompt.includes(PLAY_TESTER_GLOSSARY_BODY);
             return translationContent(
               bridgeUnitId,
-              reloadedCorrection ? CONTEXT_CORRECTED_DRAFT : "Context packet was not reloaded.",
+              bridgeUnitId === UNIT_A_ID ? DELIVERED_DRAFT : "Delivered unaffected greeting.",
             );
           },
         });
@@ -950,136 +963,345 @@ describe.skipIf(!process.env.DATABASE_URL)(
           ).rows[0]?.target_text,
         ).toBe(DELIVERED_DRAFT);
 
-        let refreshRunId: string | undefined;
-        let refreshDir: string | undefined;
-        let runnerCalls = 0;
-        const correction = await withDatabaseItotoriServices(
-          {
+        const speakerArtifactId = speakerLabelArtifactId(PROJECT_ID, UNIT_A_ID);
+        let added: WikiBrainEditResult | undefined;
+        let edited: WikiBrainEditResult | undefined;
+        const productionTransport = await withProductionOpenRouterTransport(async (transport) => {
+          // This is the actual Studio dashboard's loopback HTTP server over
+          // the migrated DB. The only fake is below the production redrafter:
+          // OpenRouter's external transport gets deterministic fixture bytes.
+          const dashboard = await startPostgresHttpContractHarness({
             databaseUrl: context.databaseUrl,
-            bootstrapLocalUser: false,
-            contextCorrectionRedraftRunner: async (input) => {
-              runnerCalls += 1;
-              refreshPass = true;
-              refreshDir = input.runDir;
-              // The production redrafter must give the runner exactly the
-              // affected scope, not a prefix or the full registered bridge.
-              expect(input.bridge.units.map((unit) => unit.bridgeUnitId)).toEqual([UNIT_A_ID]);
-              const refresh = await runProjectDrivenExecutor({
-                bridge: input.bridge,
-                rawBridge: input.rawBridge,
-                pairPolicy: DEV_POLICY,
-                pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+          });
+          try {
+            const dashboardList = await dashboard.httpRequest("wiki.list", {
+              params: { projectId: PROJECT_ID, localeBranchId: LOCALE_BRANCH_ID },
+              query: {
+                sourceRevisionId: SOURCE_REVISION_ID,
+                kind: "speaker",
+                includeStale: true,
+              },
+            });
+            assertHttpContractOk("wiki.list", dashboardList);
+            const dashboardEntries = dashboardList.body as WikiContextEntriesReadModel;
+            const dashboardSpeaker = dashboardEntries.entries.find(
+              (entry) => entry.contextArtifactId === speakerArtifactId,
+            );
+            if (dashboardSpeaker === undefined || dashboardSpeaker.headVersionId === null) {
+              throw new Error("generated speaker enrichment was not visible in the dashboard wiki");
+            }
+            const generatedSpeakerVersionId = dashboardSpeaker.headVersionId;
+            expect(dashboardSpeaker).toMatchObject({
+              contextArtifactId: speakerArtifactId,
+              category: "speaker_label",
+              kind: "speaker",
+              body: PERSISTED_SPEAKER_BODY,
+              provenance: expect.objectContaining({
+                producedByAgent: "speaker-label",
+                producedByTool: "tool.context-brain",
+              }),
+              citations: [
+                expect.objectContaining({
+                  bridgeUnitId: UNIT_A_ID,
+                  citation: `speaker-label:${UNIT_A_ID}`,
+                }),
+              ],
+            });
+
+            const dashboardShow = await dashboard.httpRequest("wiki.show", {
+              params: {
                 projectId: PROJECT_ID,
                 localeBranchId: LOCALE_BRANCH_ID,
-                sourceRevisionId: SOURCE_REVISION_ID,
-                actor: ACTOR,
-                providerFactory,
-                contextArtifactRepository: contextArtifacts,
-                resolveUnitContext: () => ({
-                  narrativeStructure: makeStructure(),
-                  sceneId: SCENE_ID,
-                }),
-                translationScope: "all",
-                engineProfile: "rpg-maker-mv-mz",
-                concurrency: 1,
-                maxRepairAttempts: 0,
-                sinks: {
-                  journal: new DrivenJournalPersistenceAdapter(
-                    new ItotoriLocalizationJournalRepository(context.db),
-                    { actor: ACTOR },
-                  ),
-                  patchExport: new FsDrivenPatchExportSink(input.runDir),
-                },
-              });
-              refreshRunId = refresh.journalRunId;
-              return {
-                journalRunId: refresh.journalRunId,
-                targetLocale: input.targetLocale,
-                unitOutcomes: refresh.unitOutcomes.map((outcome) => ({
-                  bridgeUnitId: outcome.bridgeUnitId,
-                  selectedBody: outcome.selectedBody,
-                })),
-              };
-            },
-          },
-          async (services) =>
-            await services.contextCorrections.apply({
-              projectId: PROJECT_ID,
-              localeBranchId: LOCALE_BRANCH_ID,
-              sourceRevisionId: SOURCE_REVISION_ID,
-              contextArtifactId: "play-tester-glossary-captain-wato",
-              kind: "glossary",
-              title: "Captain Wato",
-              body: PLAY_TESTER_GLOSSARY_BODY,
-              reason: "The play test established the canonical captain title.",
-              affectedUnitIds: [UNIT_A_ID],
-            }),
-        );
-        const correctionVersionId = correction.contextArtifact.headVersionId;
-        if (correctionVersionId === null) {
-          throw new Error("correction did not append a canonical context version");
-        }
-        expect(correction.invalidatedArtifactIds.length).toBeGreaterThan(0);
-        const versions = await contextArtifacts.listEntryVersions(ACTOR, {
-          projectId: PROJECT_ID,
-          localeBranchId: LOCALE_BRANCH_ID,
-          contextArtifactId: correction.contextArtifact.contextArtifactId,
-        });
-        expect(versions).toEqual([
-          expect.objectContaining({
-            contextEntryVersionId: correctionVersionId,
-            body: PLAY_TESTER_GLOSSARY_BODY,
-            affectedUnitIds: [UNIT_A_ID],
-          }),
-        ]);
-        expect(runnerCalls).toBe(1);
-        if (refreshRunId === undefined || refreshDir === undefined) {
-          throw new Error("database-services did not run the registered context-correction worker");
-        }
+                contextArtifactId: speakerArtifactId,
+              },
+            });
+            assertHttpContractOk("wiki.show", dashboardShow);
+            expect(dashboardShow.body).toMatchObject({
+              entry: expect.objectContaining({
+                contextArtifactId: speakerArtifactId,
+                body: PERSISTED_SPEAKER_BODY,
+                history: [
+                  expect.objectContaining({
+                    contextEntryVersionId: generatedSpeakerVersionId,
+                    body: PERSISTED_SPEAKER_BODY,
+                    isHead: true,
+                  }),
+                ],
+              }),
+            });
 
-        const refreshJournalUnits = await new ItotoriLocalizationJournalRepository(
-          context.db,
-        ).loadRunOutcomes(ACTOR, refreshRunId);
-        const refreshedOutcome = refreshJournalUnits.find(
-          (record) => record.bridgeUnitId === UNIT_A_ID,
-        );
-        if (refreshedOutcome === undefined) {
-          throw new Error("registered redraft did not run unit A");
+            // Dashboard POST add is a canonical node-8 correction, not a
+            // front-end fixture: it must create a version and run a real
+            // scoped production full-project rerun for unit A.
+            const dashboardAdd = await dashboard.httpRequest("wiki.add", {
+              params: { projectId: PROJECT_ID, localeBranchId: LOCALE_BRANCH_ID },
+              body: {
+                sourceRevisionId: SOURCE_REVISION_ID,
+                kind: "note",
+                title: PLAY_TESTER_NOTE_TITLE,
+                body: PLAY_TESTER_NOTE_BODY,
+                reason: "The dashboard play test added delivery guidance for the follow-up line.",
+                affectedUnitIds: [UNIT_A_ID],
+              },
+            });
+            assertHttpContractOk("wiki.add", dashboardAdd);
+            added = dashboardAdd.body as WikiBrainEditResult;
+            expect(added).toMatchObject({
+              schemaVersion: "wiki.context.edit.v0.2",
+              contextArtifactId: expect.any(String),
+              contextEntryVersionId: expect.any(String),
+              affectedUnitIds: [UNIT_A_ID],
+              rerun: { state: "succeeded", jobStatus: "succeeded", error: null },
+              entry: expect.objectContaining({
+                category: "context_note",
+                kind: "note",
+                title: PLAY_TESTER_NOTE_TITLE,
+                body: PLAY_TESTER_NOTE_BODY,
+              }),
+            });
+            expect(added.entry.headVersionId).toBe(added.contextEntryVersionId);
+
+            const addedHistoryResponse = await dashboard.httpRequest("wiki.history", {
+              params: {
+                projectId: PROJECT_ID,
+                localeBranchId: LOCALE_BRANCH_ID,
+                contextArtifactId: added.contextArtifactId,
+              },
+            });
+            assertHttpContractOk("wiki.history", addedHistoryResponse);
+            const addedHistory = addedHistoryResponse.body as WikiContextEntryHistoryReadModel;
+            expect(addedHistory).toMatchObject({
+              contextArtifactId: added.contextArtifactId,
+              headVersionId: added.contextEntryVersionId,
+              versions: [
+                expect.objectContaining({
+                  contextEntryVersionId: added.contextEntryVersionId,
+                  parentVersionId: null,
+                  body: PLAY_TESTER_NOTE_BODY,
+                  isHead: true,
+                }),
+              ],
+            });
+
+            // Dashboard POST edit server-loads the generated entry and only
+            // accepts human correction fields. The returned receipt must tell
+            // the client that the durable rerun actually succeeded.
+            const dashboardEdit = await dashboard.httpRequest("wiki.edit", {
+              params: {
+                projectId: PROJECT_ID,
+                localeBranchId: LOCALE_BRANCH_ID,
+                contextArtifactId: speakerArtifactId,
+              },
+              body: {
+                body: PLAY_TESTER_SPEAKER_BODY,
+                reason: "The play test corrected the captain's delivery guidance for this scene.",
+              },
+            });
+            assertHttpContractOk("wiki.edit", dashboardEdit);
+            edited = dashboardEdit.body as WikiBrainEditResult;
+            expect(edited).toMatchObject({
+              schemaVersion: "wiki.context.edit.v0.2",
+              contextArtifactId: speakerArtifactId,
+              contextEntryVersionId: expect.any(String),
+              affectedUnitIds: [UNIT_A_ID],
+              rerun: { state: "succeeded", jobStatus: "succeeded", error: null },
+              entry: expect.objectContaining({
+                contextArtifactId: speakerArtifactId,
+                category: "speaker_label",
+                kind: "speaker",
+                body: PLAY_TESTER_SPEAKER_BODY,
+              }),
+            });
+            expect(edited.contextEntryVersionId).not.toBe(generatedSpeakerVersionId);
+            expect(edited.entry.headVersionId).toBe(edited.contextEntryVersionId);
+            expect(edited.invalidatedArtifactIds.length).toBeGreaterThan(0);
+
+            const editedHistoryResponse = await dashboard.httpRequest("wiki.history", {
+              params: {
+                projectId: PROJECT_ID,
+                localeBranchId: LOCALE_BRANCH_ID,
+                contextArtifactId: speakerArtifactId,
+              },
+            });
+            assertHttpContractOk("wiki.history", editedHistoryResponse);
+            const editedHistory = editedHistoryResponse.body as WikiContextEntryHistoryReadModel;
+            expect(editedHistory.contextArtifactId).toBe(speakerArtifactId);
+            expect(editedHistory.headVersionId).toBe(edited.contextEntryVersionId);
+            expect(editedHistory.versions.length).toBeGreaterThanOrEqual(2);
+            const generatedVersion = editedHistory.versions.find(
+              (version) => version.contextEntryVersionId === generatedSpeakerVersionId,
+            );
+            const canonicalEditVersion = editedHistory.versions.find(
+              (version) => version.contextEntryVersionId === edited.contextEntryVersionId,
+            );
+            if (generatedVersion === undefined || canonicalEditVersion === undefined) {
+              throw new Error(
+                "dashboard wiki edit history did not retain both generated and canonical versions",
+              );
+            }
+            expect(generatedVersion).toMatchObject({
+              contextEntryVersionId: generatedSpeakerVersionId,
+              body: PERSISTED_SPEAKER_BODY,
+              isHead: false,
+            });
+            expect(canonicalEditVersion).toMatchObject({
+              contextEntryVersionId: edited.contextEntryVersionId,
+              parentVersionId: expect.any(String),
+              body: PLAY_TESTER_SPEAKER_BODY,
+              isHead: true,
+              impact: { affectedUnitIds: [UNIT_A_ID] },
+              provenance: expect.objectContaining({
+                producedByAgent: "play-tester",
+                origin: "play_tester_edit",
+              }),
+            });
+            expect(
+              editedHistory.versions.some(
+                (version) => version.contextEntryVersionId === canonicalEditVersion.parentVersionId,
+              ),
+            ).toBe(true);
+            // The editor corrects canonical prose while preserving the typed
+            // speaker identity that the packet resolver uses separately.
+            expect(canonicalEditVersion.data).toMatchObject({
+              speakerLabel: expect.objectContaining({
+                speakerId: expect.objectContaining({ displayName: PERSISTED_SPEAKER_NAME }),
+              }),
+            });
+
+            const dashboardPostEditShow = await dashboard.httpRequest("wiki.show", {
+              params: {
+                projectId: PROJECT_ID,
+                localeBranchId: LOCALE_BRANCH_ID,
+                contextArtifactId: speakerArtifactId,
+              },
+            });
+            assertHttpContractOk("wiki.show", dashboardPostEditShow);
+            expect(dashboardPostEditShow.body).toMatchObject({
+              entry: expect.objectContaining({
+                headVersionId: edited.contextEntryVersionId,
+                body: PLAY_TESTER_SPEAKER_BODY,
+              }),
+            });
+            return transport;
+          } finally {
+            await dashboard.close();
+          }
+        });
+        if (added === undefined || edited === undefined) {
+          throw new Error("dashboard POST proof did not return both canonical wiki receipts");
         }
         expect(
-          refreshedOutcome.outcome.candidates.find(
-            (candidate) => candidate.id === refreshedOutcome.outcome.selectedCandidateId,
+          productionTransport.messageTexts.some((message) =>
+            message.includes(PLAY_TESTER_NOTE_BODY),
+          ),
+        ).toBe(true);
+        expect(
+          productionTransport.messageTexts.some((message) =>
+            message.includes(PLAY_TESTER_SPEAKER_BODY),
+          ),
+        ).toBe(true);
+
+        const queue = new ItotoriEventQueueRepository(context.db);
+        const addedRunId = successfulRedraftJournalRunId(
+          await queue.getJob(ACTOR, added.redraftJobId),
+          { bridgeUnitId: UNIT_A_ID, contextEntryVersionId: added.contextEntryVersionId },
+        );
+        const editedRunId = successfulRedraftJournalRunId(
+          await queue.getJob(ACTOR, edited.redraftJobId),
+          { bridgeUnitId: UNIT_A_ID, contextEntryVersionId: edited.contextEntryVersionId },
+        );
+        const journal = new ItotoriLocalizationJournalRepository(context.db);
+        const [addedJournalUnits, editedJournalUnits] = await Promise.all([
+          journal.loadRunOutcomes(ACTOR, addedRunId),
+          journal.loadRunOutcomes(ACTOR, editedRunId),
+        ]);
+        const addedOutcome = requiredJournalOutcome(
+          addedJournalUnits,
+          UNIT_A_ID,
+          "dashboard wiki add",
+        );
+        expect(
+          addedOutcome.outcome.candidates.find(
+            (candidate) => candidate.id === addedOutcome.outcome.selectedCandidateId,
           )?.body,
-        ).toBe(CONTEXT_CORRECTED_DRAFT);
-        expect(refreshedOutcome.contextPacket).toMatchObject({
+        ).toBe(NOTE_CORRECTED_DRAFT);
+        expect(addedOutcome.contextPacket).toMatchObject({
           unitContextPacket: {
             resolvedFromVersions: {
-              [correction.contextArtifact.contextArtifactId]: correctionVersionId,
+              [added.contextArtifactId]: added.contextEntryVersionId,
             },
             artifacts: expect.arrayContaining([
               expect.objectContaining({
-                contextEntryVersionId: correctionVersionId,
-                body: PLAY_TESTER_GLOSSARY_BODY,
+                contextArtifactId: added.contextArtifactId,
+                contextEntryVersionId: added.contextEntryVersionId,
+                body: PLAY_TESTER_NOTE_BODY,
               }),
             ]),
           },
         });
-        expect(exportedTargetText(refreshDir, UNIT_A_ID)).toBe(CONTEXT_CORRECTED_DRAFT);
-        expect(exportedTargetText(initialDir, UNIT_A_ID)).toBe(DELIVERED_DRAFT);
+
+        const editedOutcome = requiredJournalOutcome(
+          editedJournalUnits,
+          UNIT_A_ID,
+          "dashboard wiki edit",
+        );
         expect(
-          (
-            await context.pool.query<{ target_text: string }>(
-              "select target_text from itotori_locale_branch_units where locale_branch_id = $1 and bridge_unit_id = $2",
-              [LOCALE_BRANCH_ID, UNIT_A_ID],
-            )
-          ).rows[0]?.target_text,
+          editedOutcome.outcome.candidates.find(
+            (candidate) => candidate.id === editedOutcome.outcome.selectedCandidateId,
+          )?.body,
         ).toBe(CONTEXT_CORRECTED_DRAFT);
-        const queue = new ItotoriEventQueueRepository(context.db);
-        expect((await queue.getJob(ACTOR, correction.redraftJob.jobId))?.status).toBe("succeeded");
+        expect(editedOutcome.contextPacket).toMatchObject({
+          unitContextPacket: {
+            resolvedFromVersions: {
+              [edited.contextArtifactId]: edited.contextEntryVersionId,
+            },
+            artifacts: expect.arrayContaining([
+              expect.objectContaining({
+                contextArtifactId: edited.contextArtifactId,
+                contextEntryVersionId: edited.contextEntryVersionId,
+                body: PLAY_TESTER_SPEAKER_BODY,
+              }),
+            ]),
+          },
+        });
+
+        const addRunDir = join(registeredRunDir, "context-corrections", added.redraftJobId);
+        const editRunDir = join(registeredRunDir, "context-corrections", edited.redraftJobId);
+        expect(exportedTargetText(addRunDir, UNIT_A_ID)).toBe(NOTE_CORRECTED_DRAFT);
+        expect(exportedTargetText(editRunDir, UNIT_A_ID)).toBe(CONTEXT_CORRECTED_DRAFT);
+        expect(exportedTargetText(initialDir, UNIT_A_ID)).toBe(DELIVERED_DRAFT);
+        expect(readFileSync(join(addRunDir, "patched-game", "Map001.json"), "utf8")).toContain(
+          NOTE_CORRECTED_DRAFT,
+        );
+        expect(readFileSync(join(editRunDir, "patched-game", "Map001.json"), "utf8")).toContain(
+          CONTEXT_CORRECTED_DRAFT,
+        );
+        expect(
+          readFileSync(join(editRunDir, "rpgmaker-delta.kaifuu"), "utf8").length,
+        ).toBeGreaterThan(0);
+        const persistedTargets = await context.pool.query<{
+          bridge_unit_id: string;
+          target_text: string;
+        }>(
+          `select bridge_unit_id, target_text
+           from itotori_locale_branch_units
+           where locale_branch_id = $1 and bridge_unit_id = $2`,
+          [LOCALE_BRANCH_ID, UNIT_A_ID],
+        );
+        expect(
+          Object.fromEntries(
+            persistedTargets.rows.map((row) => [row.bridge_unit_id, row.target_text]),
+          ),
+        ).toEqual({
+          [UNIT_A_ID]: CONTEXT_CORRECTED_DRAFT,
+        });
       } finally {
         await context.close();
       }
-    }, 30_000);
+      // Heavy live e2e: dashboard POST add+edit → production redrafter → real
+      // Kaifuu delivery over HTTP. Its sibling (parent+child edit) runs ~25s
+      // locally; CI is slower, so 45s tips over. Give it a generous ceiling.
+    }, 180_000);
   },
 );
 
@@ -1088,4 +1310,198 @@ function exportedTargetText(runDir: string, bridgeUnitId: string): string | unde
     units: Array<{ bridgeUnitId: string; target?: { text?: string } }>;
   };
   return bridge.units.find((unit) => unit.bridgeUnitId === bridgeUnitId)?.target?.text;
+}
+
+function materializeRpgMakerSource(root: string): void {
+  const dataDir = join(root, "data");
+  mkdirSync(dataDir, { recursive: true });
+  writeFileSync(
+    join(dataDir, "Map001.json"),
+    `${JSON.stringify({
+      events: [
+        null,
+        {
+          id: 1,
+          pages: [
+            {
+              list: [
+                { code: 401, indent: 0, parameters: ["おはよう。"] },
+                { code: 401, indent: 0, parameters: ["今日はいい天気だね。"] },
+              ],
+            },
+          ],
+        },
+      ],
+    })}\n`,
+  );
+}
+
+type ProductionOpenRouterTransport = {
+  messageTexts: string[];
+};
+
+// Keep the real default `DbBackedContextCorrectionRedrafter` and its
+// `runLocalizeFullProjectLive` boundary intact. Only its external OpenRouter
+// HTTP transport is deterministic, while loopback dashboard requests continue
+// to reach the real server and Postgres.
+async function withProductionOpenRouterTransport<T>(
+  callback: (transport: ProductionOpenRouterTransport) => Promise<T>,
+): Promise<T> {
+  const originalFetch = globalThis.fetch;
+  const originalApiKey = process.env.OPENROUTER_API_KEY;
+  const originalZdrAssertion = process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED;
+  const transport: ProductionOpenRouterTransport = { messageTexts: [] };
+  process.env.OPENROUTER_API_KEY = "test-context-correction-production-transport";
+  process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED = "1";
+  vi.stubGlobal("fetch", (async (input, init) => {
+    if (fetchInputUrl(input) !== "https://openrouter.ai/api/v1/chat/completions") {
+      return await originalFetch(input, init);
+    }
+    const messageText = openRouterMessageText(init);
+    transport.messageTexts.push(messageText);
+    return productionOpenRouterResponse(productionRedraftContent(messageText));
+  }) as typeof fetch);
+  try {
+    return await callback(transport);
+  } finally {
+    vi.unstubAllGlobals();
+    restoreEnvironment("OPENROUTER_API_KEY", originalApiKey);
+    restoreEnvironment("OPENROUTER_ZDR_ACCOUNT_ASSERTED", originalZdrAssertion);
+  }
+}
+
+function fetchInputUrl(input: Parameters<typeof fetch>[0]): string {
+  if (typeof input === "string") return input;
+  if (input instanceof URL) return input.href;
+  return input.url;
+}
+
+function openRouterMessageText(init: Parameters<typeof fetch>[1]): string {
+  if (typeof init?.body !== "string") {
+    throw new Error("production redrafter transport received a non-string OpenRouter request body");
+  }
+  const parsed = JSON.parse(init.body) as { messages?: unknown };
+  if (!Array.isArray(parsed.messages)) {
+    throw new Error("production redrafter transport request omitted chat messages");
+  }
+  return parsed.messages
+    .map((message) => {
+      if (message === null || typeof message !== "object") return "";
+      const content = (message as { content?: unknown }).content;
+      return typeof content === "string" ? content : JSON.stringify(content);
+    })
+    .join("\n");
+}
+
+function productionRedraftContent(messageText: string): string {
+  if (messageText.includes("You are a localization translation agent.")) {
+    const unitId = currentBridgeUnitIdFromWire(messageText);
+    if (messageText.includes(PLAY_TESTER_SPEAKER_BODY)) {
+      return translationContent(unitId, CONTEXT_CORRECTED_DRAFT);
+    }
+    if (messageText.includes(PLAY_TESTER_NOTE_BODY)) {
+      return translationContent(unitId, NOTE_CORRECTED_DRAFT);
+    }
+    throw new Error(
+      "production redraft translation did not receive the canonical dashboard correction",
+    );
+  }
+  if (messageText.includes("You are a localization QA agent.")) {
+    return emptyQaFindingsContent();
+  }
+  if (messageText.includes("You are a localization speaker-labeling agent.")) {
+    return speakerLabelContent(currentBridgeUnitIdFromWire(messageText));
+  }
+  if (messageText.includes("Summarize the following scene")) {
+    return SEMANTIC_SCENE_SUMMARY_BODY;
+  }
+  if (messageText.includes("return a JSON object naming every character")) {
+    return JSON.stringify({ bios: [], relationships: [] });
+  }
+  if (messageText.includes("surface forms that should become glossary entries")) {
+    return JSON.stringify({ candidates: [] });
+  }
+  if (messageText.includes("return a JSON object naming the routes")) {
+    return JSON.stringify({ routes: [], choices: [] });
+  }
+  throw new Error("production redrafter made an unexpected OpenRouter request");
+}
+
+function currentBridgeUnitIdFromWire(messageText: string): string {
+  const match = messageText.match(/unitId=(019ed0cb-1000-7000-8000-00000000cb(?:21|22))/u);
+  if (match === null || match[1] === undefined) {
+    throw new Error("production redrafter transport could not identify the current bridge unit");
+  }
+  return match[1];
+}
+
+function productionOpenRouterResponse(content: string): Response {
+  return new Response(
+    JSON.stringify({
+      id: "gen-context-correction-production-transport",
+      model: DEV_PAIR.modelId,
+      provider: DEV_PAIR.providerId,
+      choices: [{ finish_reason: "stop", message: { role: "assistant", content } }],
+      // Synthetic mock-wire usage.cost lets the unmodified live provider,
+      // durable admission, and ledger reconciliation path run without a paid
+      // request. It stays far below the fixture policy's real reservation cap.
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2, cost: 0.000001 }, // itotori-225-audit-allow: synthetic mock-wire usage.cost for the production transport boundary; never a real captured bill.
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+}
+
+function restoreEnvironment(name: string, priorValue: string | undefined): void {
+  if (priorValue === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = priorValue;
+  }
+}
+
+function successfulRedraftJournalRunId(
+  job: {
+    status: string;
+    result: Record<string, unknown> | null;
+  } | null,
+  expected: {
+    bridgeUnitId: string;
+    contextEntryVersionId: string;
+  },
+): string {
+  if (job === null) {
+    throw new Error(
+      `dashboard correction did not persist a redraft job for ${expected.bridgeUnitId}`,
+    );
+  }
+  expect(job.status).toBe("succeeded");
+  expect(job.result).toMatchObject({
+    journalRunId: expect.any(String),
+    redraftedUnitIds: [expected.bridgeUnitId],
+    changedDraftCount: expect.any(Number),
+    contextEntryVersionId: expected.contextEntryVersionId,
+  });
+  const changedDraftCount = job.result?.["changedDraftCount"];
+  if (typeof changedDraftCount !== "number" || changedDraftCount <= 0) {
+    throw new Error(`dashboard correction did not durably change ${expected.bridgeUnitId}`);
+  }
+  const journalRunId = job.result?.["journalRunId"];
+  if (typeof journalRunId !== "string" || journalRunId.length === 0) {
+    throw new Error(
+      `dashboard correction job for ${expected.bridgeUnitId} omitted its journal run`,
+    );
+  }
+  return journalRunId;
+}
+
+function requiredJournalOutcome<T extends { bridgeUnitId: string }>(
+  outcomes: readonly T[],
+  bridgeUnitId: string,
+  label: string,
+): T {
+  const outcome = outcomes.find((candidate) => candidate.bridgeUnitId === bridgeUnitId);
+  if (outcome === undefined) {
+    throw new Error(`${label} did not durably journal ${bridgeUnitId}`);
+  }
+  return outcome;
 }

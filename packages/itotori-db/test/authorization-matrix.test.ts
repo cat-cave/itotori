@@ -57,7 +57,7 @@ import { ItotoriSourceUnitRepository } from "../src/repositories/source-unit-rep
 import { ItotoriTranslationMemoryRepository } from "../src/repositories/translation-memory-repository.js";
 import { ItotoriTranslationScopeSettingsRepository } from "../src/repositories/translation-scope-settings-repository.js";
 import { ItotoriLocalizationPassRunConfigRepository } from "../src/repositories/localization-pass-run-config-repository.js";
-import { ItotoriWikiReadmodelRepository } from "../src/repositories/wiki-readmodel-repository.js";
+import { ItotoriWikiContextRepository } from "../src/repositories/wiki-context-repository.js";
 import { ItotoriWorkspaceCorrectionRepository } from "../src/repositories/workspace-correction-repository.js";
 import type { DatabaseContext, ItotoriDatabase } from "../src/connection.js";
 import { assertDeniedRepositoryMutation } from "./authorization-test-helpers.js";
@@ -674,14 +674,36 @@ const repositoryPermissionGateMatrix = [
     "engine-capability-report-repository.test.ts capability evidence coverage",
     (repo) => repo.recordCapabilityEvidence(deniedActor, undefined as never),
   ),
-  wikiReadmodelGate(
-    "loadEntries",
+  wikiContextGate(
+    "listEntries",
     "catalogRead",
-    "wiki-readmodel-repository.test.ts entries read-model coverage",
+    "wiki-context-repository.test.ts generic context browse coverage",
     (repo) =>
-      repo.loadEntries(deniedActor, {
+      repo.listEntries(deniedActor, {
         projectId: "project-denied",
         localeBranchId: "locale-denied",
+      }),
+  ),
+  wikiContextGate(
+    "showEntry",
+    "catalogRead",
+    "wiki-context-repository.test.ts generic context detail coverage",
+    (repo) =>
+      repo.showEntry(deniedActor, {
+        projectId: "project-denied",
+        localeBranchId: "locale-denied",
+        contextArtifactId: "context-denied",
+      }),
+  ),
+  wikiContextGate(
+    "listEntryHistory",
+    "catalogRead",
+    "wiki-context-repository.test.ts generic context history coverage",
+    (repo) =>
+      repo.listEntryHistory(deniedActor, {
+        projectId: "project-denied",
+        localeBranchId: "locale-denied",
+        contextArtifactId: "context-denied",
       }),
   ),
   draftJobGate(
@@ -1956,9 +1978,21 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriWikiReadmodelRepository.loadEntries",
+          "mutation": "ItotoriWikiContextRepository.listEntries",
           "requiredPermission": "catalog.read",
-          "successFixture": "wiki-readmodel-repository.test.ts entries read-model coverage",
+          "successFixture": "wiki-context-repository.test.ts generic context browse coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriWikiContextRepository.showEntry",
+          "requiredPermission": "catalog.read",
+          "successFixture": "wiki-context-repository.test.ts generic context detail coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriWikiContextRepository.listEntryHistory",
+          "requiredPermission": "catalog.read",
+          "successFixture": "wiki-context-repository.test.ts generic context history coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
@@ -3134,19 +3168,19 @@ function engineCapabilityReportGate(
   });
 }
 
-function wikiReadmodelGate(
+function wikiContextGate(
   mutation: string,
   permissionKey: PermissionKey,
   successFixture: string,
-  run: (repository: ItotoriWikiReadmodelRepository) => Promise<unknown>,
+  run: (repository: ItotoriWikiContextRepository) => Promise<unknown>,
 ): RepositoryPermissionGateCase {
   return repositoryGate({
-    repository: "ItotoriWikiReadmodelRepository",
-    sourceFile: "wiki-readmodel-repository.ts",
+    repository: "ItotoriWikiContextRepository",
+    sourceFile: "wiki-context-repository.ts",
     mutation,
     permissionKey,
     successFixture,
-    runDeniedMutation: (db) => run(new ItotoriWikiReadmodelRepository(db)),
+    runDeniedMutation: (db) => run(new ItotoriWikiContextRepository(db)),
   });
 }
 

@@ -52,9 +52,8 @@ import {
   type SaveModelRoutingSettingsInput,
   type TerminologySearchInput,
   type TerminologySearchReadModel,
-  type WikiEntriesFilter,
-  type WikiEntriesReadModel,
-  wikiEntryKindValues,
+  type WikiContextEntriesFilter,
+  wikiContextEntryKindValues,
 } from "@itotori/db";
 import {
   resolveStudioCapabilityPermissionView,
@@ -91,6 +90,8 @@ import {
   parsePlayFlagAnnotationRequest,
   parseWorkspaceCorrectionSubmitRequest,
   parsePlayTargetEditRequest,
+  parseWikiAddRequest,
+  parseWikiEditRequest,
   type ApiAuthCapabilitiesResponse,
   type ApiAuthBillingSeatUsageResponse,
   type ApiAuthIdentityResponse,
@@ -143,6 +144,11 @@ import {
   type ApiReviewerSingleActionResponse,
   type ApiReviewerDetailResponse,
   type ApiReviewerQueueDashboardResponse,
+  type ApiWikiEditResponse,
+  type ApiWikiAddResponse,
+  type ApiWikiHistoryResponse,
+  type ApiWikiListResponse,
+  type ApiWikiShowResponse,
   type ItotoriApiResponseBody,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
@@ -201,6 +207,11 @@ import type {
   ApiWorkspaceSceneBrowseResponse,
   ApiWorkspaceSearchResponse,
 } from "./api-schema.js";
+import {
+  WikiBrainEntryNotFoundError,
+  WikiBrainEditInputError,
+  type WikiBrainServicePort,
+} from "./wiki/service.js";
 
 export type ApiMutationPermissionGate = {
   mutation: string;
@@ -219,6 +230,10 @@ export const apiMutationPermissionGates = {
   decisionRecord: apiMutationGate("decision record", "runtimeIngest"),
   benchmarkRecord: apiMutationGate("benchmark record", "runtimeIngest"),
   runtimeEvidenceIngest: apiMutationGate("runtime evidence ingest", "runtimeIngest"),
+  // A wiki edit is a direct node-8 context correction. The service still
+  // enforces this authority at its persistence boundary; this keeps the HTTP
+  // route's capability declaration explicit as well.
+  wikiEdit: apiMutationGate("wiki edit", "projectImport"),
   // ovw-launch-pass-action — the `canSteer` steer permission is `draft.write`:
   // launching the next pass drives the drafting of pass N+1, the same authority
   // that protects the draft workflow.
@@ -315,9 +330,8 @@ export type ItotoriReadOnlyApiServices = {
   terminologyRepository: {
     searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
   };
-  wikiRepository: {
-    loadEntries(input: WikiEntriesFilter): Promise<WikiEntriesReadModel>;
-  };
+  /** Generic node-6 context wiki reads; mutation is excluded from this surface. */
+  wiki: Pick<WikiBrainServicePort, "list" | "show" | "history">;
   reviewerQueue: Pick<ReviewerQueueApiServicePort, "loadDashboard" | "loadDetailContext">;
   workspace: LocalizationWorkspaceApiServicePort;
   workspaceCorrections: Pick<WorkspaceCorrectionServicePort, "loadPreview">;
@@ -416,6 +430,8 @@ export type ItotoriReadOnlyApiServices = {
  * full port and `projectWorkflow` gains the record/draft/ingest writes.
  */
 export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
+  /** Full shared wiki service; POST edits route through node 8. */
+  wiki: WikiBrainServicePort;
   reviewerQueue: ReviewerQueueApiServicePort;
   workspaceCorrections: WorkspaceCorrectionServicePort;
   projectWorkflow: Pick<
@@ -539,8 +555,10 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     terminologyRepository: {
       searchTerms: (input) => services.terminologyRepository.searchTerms(input),
     },
-    wikiRepository: {
-      loadEntries: (input) => services.wikiRepository.loadEntries(input),
+    wiki: {
+      list: (input) => services.wiki.list(input),
+      show: (input) => services.wiki.show(input),
+      history: (input) => services.wiki.history(input),
     },
     reviewerQueue: {
       loadDashboard: (input) => services.reviewerQueue.loadDashboard(input),
@@ -750,6 +768,48 @@ async function routeItotoriApiRequest(
   );
   if (readOnlyResponse !== null) {
     return readOnlyResponse;
+  }
+
+  const wikiContextMutationRoute = parseWikiContextApiRoute(request.pathname);
+  if (
+    request.method === "POST" &&
+    wikiContextMutationRoute !== null &&
+    (wikiContextMutationRoute.resource === "entry" || wikiContextMutationRoute.resource === "list")
+  ) {
+    await requireApiPermission(services, apiMutationPermissionGates.wikiEdit);
+    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+      projectId: wikiContextMutationRoute.projectId,
+      localeBranchId: wikiContextMutationRoute.localeBranchId,
+    });
+    if (wikiContextMutationRoute.resource === "list") {
+      const body = parseWikiAddRequest(request.body);
+      return ok(
+        "wiki.add",
+        await services.wiki.add({
+          projectId: scope.projectId,
+          localeBranchId: scope.localeBranchId,
+          sourceRevisionId: body.sourceRevisionId,
+          kind: body.kind,
+          title: body.title,
+          body: body.body,
+          reason: body.reason,
+          affectedUnitIds: body.affectedUnitIds,
+        }),
+      );
+    }
+    const body = parseWikiEditRequest(request.body);
+    return ok(
+      "wiki.edit",
+      await services.wiki.edit({
+        projectId: scope.projectId,
+        localeBranchId: scope.localeBranchId,
+        contextArtifactId: wikiContextMutationRoute.contextArtifactId,
+        body: body.body,
+        reason: body.reason,
+        ...(body.title === undefined ? {} : { title: body.title }),
+        ...(body.affectedUnitIds === undefined ? {} : { affectedUnitIds: body.affectedUnitIds }),
+      }),
+    );
   }
 
   if (request.method === "POST" && request.pathname === "/api/reviewer/queue/batch-preview") {
@@ -1774,11 +1834,43 @@ async function routeReadOnlyItotoriApiRequest(
     );
   }
 
-  if (request.method === "GET" && request.pathname === "/api/wiki/entries") {
-    return ok(
-      "wiki.entries",
-      await services.wikiRepository.loadEntries(parseWikiEntriesQuery(request.search)),
-    );
+  const wikiContextRoute = parseWikiContextApiRoute(request.pathname);
+  if (request.method === "GET" && wikiContextRoute !== null) {
+    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+      projectId: wikiContextRoute.projectId,
+      localeBranchId: wikiContextRoute.localeBranchId,
+    });
+    switch (wikiContextRoute.resource) {
+      case "list":
+        return ok(
+          "wiki.list",
+          await services.wiki.list({
+            ...parseWikiContextListQuery(request.search),
+            projectId: scope.projectId,
+            localeBranchId: scope.localeBranchId,
+          }),
+        );
+      case "entry": {
+        const entry = await services.wiki.show({
+          projectId: scope.projectId,
+          localeBranchId: scope.localeBranchId,
+          contextArtifactId: wikiContextRoute.contextArtifactId,
+        });
+        return entry === null ? notFound(request.pathname) : ok("wiki.show", entry);
+      }
+      case "history": {
+        const history = await services.wiki.history({
+          projectId: scope.projectId,
+          localeBranchId: scope.localeBranchId,
+          contextArtifactId: wikiContextRoute.contextArtifactId,
+        });
+        return history === null ? notFound(request.pathname) : ok("wiki.history", history);
+      }
+      default: {
+        const exhaustive: never = wikiContextRoute;
+        throw new Error(`unsupported wiki context route ${String(exhaustive)}`);
+      }
+    }
   }
 
   if (request.method === "GET" && request.pathname === "/api/workspace/projects") {
@@ -2050,7 +2142,6 @@ async function routeReadOnlyItotoriApiRequest(
     request.pathname === "/api/catalog/benchmark-seeds" ||
     request.pathname === "/api/catalog/opportunities" ||
     request.pathname === "/api/terminology/search" ||
-    request.pathname === "/api/wiki/entries" ||
     request.pathname === "/api/queue/health" ||
     playDeliveryRoute !== null ||
     playRouteMapRoute !== null ||
@@ -2060,6 +2151,23 @@ async function routeReadOnlyItotoriApiRequest(
     reviewerDetailRoute !== null
   ) {
     return methodNotAllowed(["GET"]);
+  }
+
+  // A detail entry owns both GET (show) and POST (edit); list/history remain
+  // pure read routes. Keep POST detail unresolved here so the full mutation
+  // router can invoke the shared node-8-backed WikiBrainService.
+  if (wikiContextRoute !== null) {
+    if (
+      (wikiContextRoute.resource === "entry" || wikiContextRoute.resource === "list") &&
+      request.method === "POST"
+    ) {
+      return null;
+    }
+    return methodNotAllowed(
+      wikiContextRoute.resource === "entry" || wikiContextRoute.resource === "list"
+        ? ["GET", "POST"]
+        : ["GET"],
+    );
   }
 
   // Not a read route this handler owns — defer to the mutation router.
@@ -2770,6 +2878,53 @@ function parseReviewerDetailApiRoute(pathname: string): { reviewItemId: string }
   return { reviewItemId: decodeURIComponent(match[1]) };
 }
 
+type WikiContextApiRoute =
+  | {
+      resource: "list";
+      projectId: string;
+      localeBranchId: string;
+    }
+  | {
+      resource: "entry" | "history";
+      projectId: string;
+      localeBranchId: string;
+      contextArtifactId: string;
+    };
+
+/** Parse project/branch-scoped generic wiki routes without conflating entry ids. */
+function parseWikiContextApiRoute(pathname: string): WikiContextApiRoute | null {
+  const list = /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/wiki$/.exec(pathname);
+  if (list?.[1] !== undefined && list[2] !== undefined) {
+    return {
+      resource: "list",
+      projectId: decodeApiPathSegment(list[1], "projectId"),
+      localeBranchId: decodeApiPathSegment(list[2], "localeBranchId"),
+    };
+  }
+  const history =
+    /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/wiki\/([^/]+)\/history$/.exec(pathname);
+  if (history?.[1] !== undefined && history[2] !== undefined && history[3] !== undefined) {
+    return {
+      resource: "history",
+      projectId: decodeApiPathSegment(history[1], "projectId"),
+      localeBranchId: decodeApiPathSegment(history[2], "localeBranchId"),
+      contextArtifactId: decodeApiPathSegment(history[3], "contextArtifactId"),
+    };
+  }
+  const entry = /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/wiki\/([^/]+)$/.exec(
+    pathname,
+  );
+  if (entry?.[1] === undefined || entry[2] === undefined || entry[3] === undefined) {
+    return null;
+  }
+  return {
+    resource: "entry",
+    projectId: decodeApiPathSegment(entry[1], "projectId"),
+    localeBranchId: decodeApiPathSegment(entry[2], "localeBranchId"),
+    contextArtifactId: decodeApiPathSegment(entry[3], "contextArtifactId"),
+  };
+}
+
 function parseReviewerSingleActionApiRoute(pathname: string): { reviewItemId: string } | null {
   const match = /^\/api\/reviewer\/queue\/([^/]+)\/action$/u.exec(pathname);
   if (match === null || match[1] === undefined || match[1].length === 0) {
@@ -3370,24 +3525,27 @@ function parseTerminologySearchInput(search = ""): TerminologySearchInput {
   return input;
 }
 
-function parseWikiEntriesQuery(search = ""): WikiEntriesFilter {
+function parseWikiContextListQuery(
+  search = "",
+): Omit<WikiContextEntriesFilter, "projectId" | "localeBranchId"> {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   assertKnownQueryParams(
     params,
-    ["projectId", "localeBranchId", "sourceRevisionId", "kind", "limit", "offset"],
-    "wiki entries",
+    ["sourceRevisionId", "kind", "includeStale", "limit", "offset"],
+    "wiki context list",
   );
-  const input: WikiEntriesFilter = {
-    projectId: requiredNonEmptyParam(params, "projectId"),
-    localeBranchId: requiredNonEmptyParam(params, "localeBranchId"),
-  };
+  const input: Omit<WikiContextEntriesFilter, "projectId" | "localeBranchId"> = {};
   const sourceRevisionId = params.get("sourceRevisionId");
   if (sourceRevisionId !== null) {
     input.sourceRevisionId = nonEmptyParam(sourceRevisionId, "sourceRevisionId");
   }
   const kind = params.get("kind");
   if (kind !== null) {
-    input.kind = enumParam(kind, Object.values(wikiEntryKindValues), "kind");
+    input.kind = enumParam(kind, Object.values(wikiContextEntryKindValues), "kind");
+  }
+  const includeStale = params.get("includeStale");
+  if (includeStale !== null) {
+    input.includeStale = booleanParam(includeStale, "includeStale");
   }
   const limit = params.get("limit");
   if (limit !== null) {
@@ -3486,7 +3644,11 @@ function ok(
 ): ApiJsonResponse;
 function ok(routeId: "reviewer.itemAction", body: ApiReviewerSingleActionResponse): ApiJsonResponse;
 function ok(routeId: "terminology.search", body: TerminologySearchReadModel): ApiJsonResponse;
-function ok(routeId: "wiki.entries", body: WikiEntriesReadModel): ApiJsonResponse;
+function ok(routeId: "wiki.list", body: ApiWikiListResponse): ApiJsonResponse;
+function ok(routeId: "wiki.show", body: ApiWikiShowResponse): ApiJsonResponse;
+function ok(routeId: "wiki.history", body: ApiWikiHistoryResponse): ApiJsonResponse;
+function ok(routeId: "wiki.edit", body: ApiWikiEditResponse): ApiJsonResponse;
+function ok(routeId: "wiki.add", body: ApiWikiAddResponse): ApiJsonResponse;
 function ok(
   routeId: "workspace.projects",
   body: ApiWorkspaceProjectBrowseResponse,
@@ -3668,6 +3830,12 @@ function errorResponse(error: unknown): ApiJsonResponse {
   }
   if (error instanceof RuntimeRunNotFoundError) {
     return errorBody(404, "not_found", error.message);
+  }
+  if (error instanceof WikiBrainEntryNotFoundError) {
+    return errorBody(404, "not_found", error.message);
+  }
+  if (error instanceof WikiBrainEditInputError) {
+    return errorBody(400, "bad_request", error.message);
   }
   if (error instanceof SceneCoverageServiceError && error.code === "unknown_scene") {
     return errorBody(400, "bad_request", error.message);

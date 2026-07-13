@@ -82,8 +82,28 @@ const READ_MODEL_CASES: readonly ReadModelCase[] = [
     init: { query: { q: "Hero", localeBranchId: "locale-1" } },
   },
   {
-    routeId: "wiki.entries",
-    init: { query: { projectId: "project-1", localeBranchId: "locale-1" } },
+    routeId: "wiki.list",
+    init: { params: { projectId: "project-1", localeBranchId: "locale-1" } },
+  },
+  {
+    routeId: "wiki.show",
+    init: {
+      params: {
+        projectId: "project-1",
+        localeBranchId: "locale-1",
+        contextArtifactId: "context-artifact-hero-scene",
+      },
+    },
+  },
+  {
+    routeId: "wiki.history",
+    init: {
+      params: {
+        projectId: "project-1",
+        localeBranchId: "locale-1",
+        contextArtifactId: "context-artifact-hero-scene",
+      },
+    },
   },
   {
     routeId: "workspace.search",
@@ -228,6 +248,37 @@ describe("fe-http-contract-harness: mutation /api route over real loopback HTTP"
     assertHttpContractError(traversal, { status: 404, code: "not_found" });
     expect(fixturePlayTesterResultRevision.loadSelectedArchive).not.toHaveBeenCalled();
   });
+
+  it("routes wiki.edit through the typed canonical-correction receipt", async () => {
+    const result = await harness.httpRequest("wiki.edit", {
+      params: {
+        projectId: "project-1",
+        localeBranchId: "locale-1",
+        contextArtifactId: "context-artifact-hero-scene",
+      },
+      body: { body: "Corrected scene fact.", reason: "Playtest observation." },
+    });
+
+    assertHttpContractOk("wiki.edit", result);
+    expect(fixtureRequirePermission).toHaveBeenCalledWith("project.import" as Permission);
+  });
+
+  it("routes wiki.add through the same typed canonical-correction receipt", async () => {
+    const result = await harness.httpRequest("wiki.add", {
+      params: { projectId: "project-1", localeBranchId: "locale-1" },
+      body: {
+        sourceRevisionId: "source-revision-1",
+        kind: "note",
+        title: "Playtest context",
+        body: "A new durable context note.",
+        reason: "Observed during play.",
+        affectedUnitIds: ["bridge-unit-1"],
+      },
+    });
+
+    assertHttpContractOk("wiki.add", result);
+    expect(fixtureRequirePermission).toHaveBeenCalledWith("project.import" as Permission);
+  });
 });
 
 describe("fe-http-contract-harness: typed error wire contract", () => {
@@ -258,6 +309,15 @@ describe("fe-http-contract-harness: typed error wire contract", () => {
   it("answers a GET on the target-edit mutation path with 405 method_not_allowed", async () => {
     const result = await harness.httpRequest(
       "/api/play/patch-versions/patch-version-contract-parent/target-edits",
+    );
+
+    assertHttpContractError(result, { status: 405, code: "method_not_allowed" });
+  });
+
+  it("answers a POST on the GET-only wiki history path with 405 method_not_allowed", async () => {
+    const result = await harness.httpRequest(
+      "/api/projects/project-1/locale-branches/locale-1/wiki/context-artifact-hero-scene/history",
+      { method: "POST" },
     );
 
     assertHttpContractError(result, { status: 405, code: "method_not_allowed" });

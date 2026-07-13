@@ -182,7 +182,6 @@ function minimalServices(workflow: ItotoriProjectWorkflowService): ItotoriApplic
     projectWorkflow: workflow,
     catalogRepository: unusedPort,
     terminologyRepository: unusedPort,
-    wikiRepository: unusedPort,
     reviewerQueue: unusedPort,
     workspace: unusedPort,
     workspaceCorrections: unusedPort,

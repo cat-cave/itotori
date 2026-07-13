@@ -30,6 +30,7 @@ import {
   createCatalogResolverFixtureArtifact,
   GitHubIssuesImporter,
   StyleGuideFixtureFlowRerunError,
+  wikiContextEntryKindValues,
 } from "@itotori/db";
 import type {
   AdapterCapabilityMatrixRecord,
@@ -56,6 +57,14 @@ import {
   type AssetDecisionsCliPort,
 } from "./asset-decisions/cli.js";
 import { runQueueHealthCli, type QueueHealthCliPort } from "./queue/cli.js";
+import {
+  runWikiAddCli,
+  runWikiEditCli,
+  runWikiHistoryCli,
+  runWikiListCli,
+  runWikiShowCli,
+  type WikiCliPort,
+} from "./wiki/cli.js";
 import type { ManualFeedbackImportOutcome, ManualFeedbackImportPort } from "./manual-feedback.js";
 import type { DraftFeedbackBatchInput, DraftFeedbackBatchPort } from "./draft-feedback/index.js";
 import type { ItotoriProjectWorkflowPort, ProjectState } from "./services/project-workflow.js";
@@ -245,6 +254,8 @@ export type ItotoriCliServices = {
    * missing.
    */
   queueHealth?: QueueHealthCliPort;
+  /** Shared node-6 browse + node-8 edit wiki surface. */
+  wiki?: WikiCliPort;
 };
 
 export type ItotoriCliDependencies = {
@@ -415,6 +426,9 @@ export async function runItotoriCliCommand(
       break;
     case "queue-health":
       await runQueueHealthHandler(args, dependencies);
+      break;
+    case "wiki":
+      await runWikiHandler(args, dependencies);
       break;
     case "help":
       process.stdout.write(`${buildHelpText(args.includes("--all"))}\n`);
@@ -2860,6 +2874,186 @@ async function runQueueHealthHandler(
     }
     await runQueueHealthCli(cliArgs, port, dependencies.io);
   });
+}
+
+// Wiki commands are intentionally a nested user-facing surface:
+//   itotori wiki list/show/history/edit
+// Every operation delegates to the same actor-bound WikiBrainService used by
+// the Studio/API. `edit` without --entry-id creates a note/glossary/style
+// entry through node 8; it never writes a separate CLI-only record.
+async function runWikiHandler(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
+  const subcommand = args[1];
+  if (
+    subcommand !== "list" &&
+    subcommand !== "show" &&
+    subcommand !== "history" &&
+    subcommand !== "edit"
+  ) {
+    throw new Error("itotori wiki requires one of: list, show, history, edit");
+  }
+  const projectId = requiredFlag(args, "--project");
+  const localeBranchId = requiredWikiLocaleBranch(args);
+  const outputPath = optionalFlag(args, "--output");
+  const result = await dependencies.withServices(async (services) => {
+    const wiki = requireWikiPort(services);
+    switch (subcommand) {
+      case "list": {
+        const kindRaw = optionalFlag(args, "--kind");
+        const includeStaleRaw = optionalFlag(args, "--include-stale");
+        const limitRaw = optionalFlag(args, "--limit");
+        const offsetRaw = optionalFlag(args, "--offset");
+        return await runWikiListCli(
+          {
+            projectId,
+            localeBranchId,
+            ...(optionalFlag(args, "--source-revision") === undefined
+              ? {}
+              : { sourceRevisionId: optionalFlag(args, "--source-revision")! }),
+            ...(kindRaw === undefined ? {} : { kind: parseWikiContextKind(kindRaw) }),
+            ...(includeStaleRaw === undefined
+              ? {}
+              : { includeStale: parseBooleanFlag(includeStaleRaw, "--include-stale") }),
+            ...(limitRaw === undefined
+              ? {}
+              : { limit: parseWikiPositiveInteger(limitRaw, "--limit") }),
+            ...(offsetRaw === undefined
+              ? {}
+              : { offset: parseNonNegativeInteger(offsetRaw, "--offset") }),
+          },
+          wiki,
+        );
+      }
+      case "show": {
+        const entry = await runWikiShowCli(
+          { projectId, localeBranchId, contextArtifactId: requiredWikiEntryId(args) },
+          wiki,
+        );
+        if (entry === null) {
+          throw new Error("wiki entry was not found");
+        }
+        return entry;
+      }
+      case "history": {
+        const history = await runWikiHistoryCli(
+          { projectId, localeBranchId, contextArtifactId: requiredWikiEntryId(args) },
+          wiki,
+        );
+        if (history === null) {
+          throw new Error("wiki entry was not found");
+        }
+        return history;
+      }
+      case "edit": {
+        const body = requiredFlag(args, "--body");
+        const reason = requiredFlag(args, "--reason");
+        const title = optionalFlag(args, "--title");
+        const affectedUnitIds = repeatedFlag(args, "--affected-unit");
+        const entryId = optionalFlag(args, "--entry-id") ?? optionalFlag(args, "--entry");
+        if (entryId !== undefined) {
+          return await runWikiEditCli(
+            {
+              projectId,
+              localeBranchId,
+              contextArtifactId: entryId,
+              body,
+              reason,
+              ...(title === undefined ? {} : { title }),
+              ...(affectedUnitIds.length === 0 ? {} : { affectedUnitIds }),
+            },
+            wiki,
+          );
+        }
+        const sourceRevisionId = requiredFlag(args, "--source-revision");
+        const kind = parseWikiAddKind(optionalFlag(args, "--kind") ?? "note");
+        if (title === undefined) {
+          throw new Error("itotori wiki edit without --entry-id requires --title");
+        }
+        if (affectedUnitIds.length === 0) {
+          throw new Error(
+            "itotori wiki edit without --entry-id requires at least one --affected-unit",
+          );
+        }
+        return await runWikiAddCli(
+          {
+            projectId,
+            localeBranchId,
+            sourceRevisionId,
+            kind,
+            title,
+            body,
+            reason,
+            affectedUnitIds,
+          },
+          wiki,
+        );
+      }
+    }
+  });
+  if (outputPath !== undefined) {
+    dependencies.io.writeJson(outputPath, result);
+    return;
+  }
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+}
+
+function requireWikiPort(services: ItotoriCliServices): WikiCliPort {
+  if (services.wiki === undefined) {
+    throw new Error("wiki service is not configured in this CLI build");
+  }
+  return services.wiki;
+}
+
+function requiredWikiLocaleBranch(args: string[]): string {
+  return optionalFlag(args, "--locale-branch") ?? requiredFlag(args, "--locale");
+}
+
+function requiredWikiEntryId(args: string[]): string {
+  return (
+    optionalFlag(args, "--entry-id") ??
+    optionalFlag(args, "--entry") ??
+    requiredFlag(args, "--entry-id")
+  );
+}
+
+function parseWikiContextKind(
+  value: string,
+): (typeof wikiContextEntryKindValues)[keyof typeof wikiContextEntryKindValues] {
+  if (!(Object.values(wikiContextEntryKindValues) as string[]).includes(value)) {
+    throw new Error(
+      `unknown wiki kind: ${value} (expected one of ${Object.values(wikiContextEntryKindValues).join(", ")})`,
+    );
+  }
+  return value as (typeof wikiContextEntryKindValues)[keyof typeof wikiContextEntryKindValues];
+}
+
+function parseWikiAddKind(value: string): "note" | "glossary" | "style" {
+  if (value === "note" || value === "glossary" || value === "style") {
+    return value;
+  }
+  throw new Error("new wiki context kind must be note, glossary, or style");
+}
+
+function parseWikiPositiveInteger(value: string, name: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 1 || String(parsed) !== value) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return parsed;
+}
+
+function repeatedFlag(args: string[], name: string): string[] {
+  const values: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] !== name) {
+      continue;
+    }
+    const value = args[index + 1];
+    if (value === undefined || value.length === 0 || value.startsWith("--")) {
+      throw new Error(`${name} requires a non-empty value`);
+    }
+    values.push(value);
+  }
+  return values;
 }
 
 function requireQueueHealthPort(services: ItotoriCliServices): QueueHealthCliPort {

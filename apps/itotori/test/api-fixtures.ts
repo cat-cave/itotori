@@ -12,11 +12,14 @@ import type {
   ProjectDashboardStatus,
   RuntimeDashboardStatus,
   TerminologySearchReadModel,
-  WikiEntriesReadModel,
+  WikiContextEntriesReadModel,
+  WikiContextEntryHistoryReadModel,
+  WikiContextEntryReadModel,
 } from "@itotori/db";
 import { summarizeQaAgents } from "../src/benchmark-report-summary.js";
 import type {
   ApiAuthIdentityResponse,
+  ApiWikiEditResponse,
   ApiLocalizationRunConfigResponse,
   ApiBranchPolicySettingsResponse,
   ApiDraftBranchRequest,
@@ -557,138 +560,114 @@ export const terminologySearchFixture: TerminologySearchReadModel = {
   ],
 };
 
-export const wikiEntriesFixture: WikiEntriesReadModel = {
-  schemaVersion: "wiki.entries.v0.1",
-  generatedAt: new Date("2026-07-06T00:00:00.000Z"),
+const wikiContextVersionFixture = {
+  contextEntryVersionId: "context-version-hero-scene-1",
+  contextArtifactId: "context-artifact-hero-scene",
+  parentVersionId: null,
+  projectId: "project-1",
+  localeBranchId: "locale-1",
+  sourceRevisionId: "source-revision-1",
+  category: "scene_summary" as const,
+  kind: "scene" as const,
+  status: "active" as const,
+  title: "Prologue arrival",
+  body: "The protagonist arrives at the academy and meets the guide.",
+  data: { sceneId: "scene-prologue", summaryLocale: "en-US" },
+  contentHash: "sha256:wiki-context-hero-scene",
+  provenance: {
+    producedByAgent: "scene-summary",
+    producedByTool: "tool.scene-summary",
+    producerVersion: "1.0.0",
+    createdByUserId: null,
+    origin: "localization_run",
+    runId: "localization-run-1",
+    providerRunId: "provider-run-1",
+    provenance: {
+      origin: "localization_run",
+      runId: "localization-run-1",
+      providerRunId: "provider-run-1",
+    },
+  },
+  citations: [
+    {
+      bridgeUnitId: "bridge-unit-1",
+      sourceRevisionId: "source-revision-1",
+      sourceHash: "source-hash-1",
+      citation: "scene 1 line 1",
+      metadata: { sceneId: "scene-prologue" },
+    },
+  ],
+  impact: {
+    affectedUnitIds: ["bridge-unit-1"],
+    invalidatedReason: null,
+    invalidatedAt: null,
+  },
+  createdAt: new Date("2026-07-10T00:00:00.000Z"),
+  isHead: true,
+} as const;
+
+export const wikiContextEntryFixture: WikiContextEntryReadModel = {
+  schemaVersion: "wiki.context.entry.v0.1",
+  generatedAt: new Date("2026-07-10T00:01:00.000Z"),
+  entry: {
+    contextArtifactId: "context-artifact-hero-scene",
+    projectId: "project-1",
+    localeBranchId: "locale-1",
+    sourceRevisionId: "source-revision-1",
+    category: "scene_summary",
+    kind: "scene",
+    status: "active",
+    title: "Prologue arrival",
+    body: "The protagonist arrives at the academy and meets the guide.",
+    data: { sceneId: "scene-prologue", summaryLocale: "en-US" },
+    contentHash: "sha256:wiki-context-hero-scene",
+    headVersionId: "context-version-hero-scene-1",
+    versionCount: 1,
+    provenance: wikiContextVersionFixture.provenance,
+    citations: wikiContextVersionFixture.citations,
+    impact: wikiContextVersionFixture.impact,
+    createdAt: new Date("2026-07-10T00:00:00.000Z"),
+    updatedAt: new Date("2026-07-10T00:00:00.000Z"),
+    history: [wikiContextVersionFixture],
+  },
+};
+
+const { history: _wikiContextHistory, ...wikiContextEntrySummaryFixture } =
+  wikiContextEntryFixture.entry;
+
+export const wikiContextEntriesFixture: WikiContextEntriesReadModel = {
+  schemaVersion: "wiki.context.entries.v0.1",
+  generatedAt: new Date("2026-07-10T00:01:00.000Z"),
   filter: {
     projectId: "project-1",
     localeBranchId: "locale-1",
     sourceRevisionId: null,
     kind: null,
+    includeStale: true,
   },
-  pagination: {
-    total: 2,
-    limit: 20,
-    offset: 0,
-    hasMore: false,
-    nextOffset: null,
-  },
-  brandContext: {
-    requestedProjectId: "project-1",
-    requestedLocaleBranchId: "locale-1",
-    contexts: [],
-    inheritedContextArtifacts: [],
-  },
-  entries: [
-    {
-      entryId: "character:Hero",
-      kind: "character",
-      projectId: "project-1",
-      localeBranchId: "locale-1",
-      scope: {
-        inheritance: "local",
-        requestedProjectId: "project-1",
-        requestedLocaleBranchId: "locale-1",
-        sourceProjectId: "project-1",
-        sourceLocaleBranchId: "locale-1",
-        brandContextId: null,
-        brandContextKey: null,
-        brandContextName: null,
-        brandContextRole: null,
-      },
-      sourceRevisionId: "source-revision-1",
-      title: "Hero",
-      characterId: "Hero",
-      bio: {
-        characterBioId: "bio-hero",
-        locale: "en-US",
-        text: "The protagonist.",
-        status: "Fresh",
-        stale: false,
-        generatedAt: new Date("2026-07-06T00:00:00.000Z"),
-      },
-      appearances: [
-        {
-          bridgeUnitId: "bridge-unit-1",
-          sourceUnitKey: "hello.scene.001.line.001",
-          occurrenceId: "occurrence-1",
-          citedSourceHash: "source-hash-1",
-          citeOrdinal: 1,
-        },
-      ],
-      related: [
-        {
-          refKind: "term",
-          refId: "term-hero",
-          label: "Hero",
-          relation: "terminology_alias",
-        },
-      ],
-      relationships: [],
-      revisions: [
-        {
-          characterBioId: "bio-hero",
-          sourceRevisionId: "source-revision-1",
-          status: "Fresh",
-          generatedAt: new Date("2026-07-06T00:00:00.000Z"),
-        },
-      ],
-    },
-    {
-      entryId: "term:term-hero",
-      kind: "term",
-      projectId: "project-1",
-      localeBranchId: "locale-1",
-      scope: {
-        inheritance: "local",
-        requestedProjectId: "project-1",
-        requestedLocaleBranchId: "locale-1",
-        sourceProjectId: "project-1",
-        sourceLocaleBranchId: "locale-1",
-        brandContextId: null,
-        brandContextKey: null,
-        brandContextName: null,
-        brandContextRole: null,
-      },
-      title: "Hero",
-      termId: "term-hero",
-      sourceTerm: "Hero",
-      preferredTranslation: "Hero",
-      sourceLocale: "ja-JP",
-      targetLocale: "en-US",
-      termKind: "character_name",
-      partOfSpeech: null,
-      status: "active",
-      notes: null,
-      aliases: [
-        {
-          aliasId: "alias-hero",
-          aliasText: "勇者",
-          aliasKind: "source_alias",
-          locale: "ja-JP",
-        },
-      ],
-      references: [
-        {
-          sourceRefId: "source-ref-hero",
-          sourceRevisionId: "source-revision-1",
-          bridgeUnitId: "bridge-unit-1",
-          sourceUnitKey: "hello.scene.001.line.001",
-          referenceKind: "source_unit",
-          citation: "hello.scene.001.line.001",
-          context: "Speaker name",
-        },
-      ],
-      related: [
-        {
-          refKind: "character",
-          refId: "Hero",
-          label: "Hero",
-          relation: "terminology_alias",
-        },
-      ],
-    },
-  ],
+  pagination: { total: 1, limit: 20, offset: 0, hasMore: false, nextOffset: null },
+  entries: [wikiContextEntrySummaryFixture],
+};
+
+export const wikiContextHistoryFixture: WikiContextEntryHistoryReadModel = {
+  schemaVersion: "wiki.context.entry-history.v0.1",
+  generatedAt: new Date("2026-07-10T00:01:00.000Z"),
+  contextArtifactId: "context-artifact-hero-scene",
+  headVersionId: "context-version-hero-scene-1",
+  versions: [wikiContextVersionFixture],
+};
+
+export const wikiEditFixture: ApiWikiEditResponse = {
+  schemaVersion: "wiki.context.edit.v0.2",
+  generatedAt: new Date("2026-07-10T00:02:00.000Z"),
+  correctionId: "context-correction-hero-scene",
+  contextArtifactId: "context-artifact-hero-scene",
+  contextEntryVersionId: "context-version-hero-scene-1",
+  affectedUnitIds: ["bridge-unit-1"],
+  invalidatedArtifactIds: ["context-artifact-dependent"],
+  redraftJobId: "context-redraft-job-1",
+  rerun: { state: "succeeded", jobStatus: "succeeded", error: null },
+  entry: wikiContextEntryFixture.entry,
 };
 
 export const dashboardStatusFixture: ProjectDashboardStatus = {

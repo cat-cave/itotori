@@ -67,7 +67,10 @@ import {
   projectFixture,
   runtimeStatusFixture,
   terminologySearchFixture,
-  wikiEntriesFixture,
+  wikiContextEntriesFixture,
+  wikiContextEntryFixture,
+  wikiContextHistoryFixture,
+  wikiEditFixture,
 } from "./api-fixtures.js";
 import {
   workspaceAssetBrowseFixture,
@@ -523,8 +526,12 @@ const fixtureServices = {
   terminologyRepository: {
     searchTerms: vi.fn(async () => terminologySearchFixture),
   },
-  wikiRepository: {
-    loadEntries: vi.fn(async () => wikiEntriesFixture),
+  wiki: {
+    list: vi.fn(async () => wikiContextEntriesFixture),
+    show: vi.fn(async () => wikiContextEntryFixture),
+    history: vi.fn(async () => wikiContextHistoryFixture),
+    edit: vi.fn(async () => wikiEditFixture),
+    add: vi.fn(async () => wikiEditFixture),
   },
   reviewerQueue: {
     loadDashboard: vi.fn(unused),
