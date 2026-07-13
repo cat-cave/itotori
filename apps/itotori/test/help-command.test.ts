@@ -85,6 +85,10 @@ describe("itotori --help / help", () => {
     expect(text).toContain("structure-export");
     expect(text).toContain("localize");
     expect(text).toContain("patch");
+    expect(text).toContain("patch versions");
+    expect(text).toContain("patch play <VERSION>");
+    expect(text).toContain("feedback list|batch|add");
+    expect(text).toContain("refine");
     expect(text).toContain("validate");
     expect(text).toContain("db-migrate");
     expect(text).toContain("db-reset");

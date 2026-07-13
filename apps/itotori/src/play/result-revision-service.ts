@@ -11,6 +11,7 @@ import type {
   ApplyPlayTesterTargetEditResult,
   AuthorizationActor,
   ItotoriLocalizationResultRevisionRepositoryPort,
+  PlayablePatchExport,
   SelectedPatchExport,
 } from "@itotori/db";
 import { DeliveredPatchExporter } from "../patch-export/exporter.js";
@@ -35,6 +36,12 @@ export type SelectedPatchExportResponse = {
   export: SelectedPatchExport | null;
 };
 
+export type PlayablePatchExportResponse = {
+  schemaVersion: "play.playable_patch_export.v0.1";
+  generatedAt: Date;
+  export: PlayablePatchExport | null;
+};
+
 export type PlayTesterResultRevisionServiceDeps = {
   repository: ItotoriLocalizationResultRevisionRepositoryPort;
   /** The production selected-patch delivery boundary. */
@@ -55,6 +62,14 @@ export interface PlayTesterResultRevisionServicePort {
     actor: AuthorizationActor,
     input: { runId?: string; patchVersionId?: string },
   ): Promise<DeliveredPatchArchive | null>;
+  loadExactPatchExport(
+    actor: AuthorizationActor,
+    input: { patchVersionId: string },
+  ): Promise<PlayablePatchExportResponse>;
+  loadExactPatchArchive(
+    actor: AuthorizationActor,
+    input: { patchVersionId: string },
+  ): Promise<DeliveredPatchArchive | null>;
 }
 
 /**
@@ -71,6 +86,8 @@ export interface BoundPlayTesterResultRevisionServicePort {
     runId?: string;
     patchVersionId?: string;
   }): Promise<DeliveredPatchArchive | null>;
+  loadExactPatchExport(input: { patchVersionId: string }): Promise<PlayablePatchExportResponse>;
+  loadExactPatchArchive(input: { patchVersionId: string }): Promise<DeliveredPatchArchive | null>;
 }
 
 export class PlayTesterResultRevisionService implements PlayTesterResultRevisionServicePort {
@@ -141,6 +158,25 @@ export class PlayTesterResultRevisionService implements PlayTesterResultRevision
   ): Promise<DeliveredPatchArchive | null> {
     return this.deliveryExporter.archive(actor, input);
   }
+
+  async loadExactPatchExport(
+    actor: AuthorizationActor,
+    input: { patchVersionId: string },
+  ): Promise<PlayablePatchExportResponse> {
+    const patch = await this.deliveryExporter.exportExact(actor, input);
+    return {
+      schemaVersion: "play.playable_patch_export.v0.1",
+      generatedAt: this.now(),
+      export: patch,
+    };
+  }
+
+  async loadExactPatchArchive(
+    actor: AuthorizationActor,
+    input: { patchVersionId: string },
+  ): Promise<DeliveredPatchArchive | null> {
+    return this.deliveryExporter.archiveExact(actor, input);
+  }
 }
 
 export function bindPlayTesterResultRevisionService(
@@ -151,6 +187,8 @@ export function bindPlayTesterResultRevisionService(
     editTarget: (input) => service.editTarget(actor, input),
     loadSelectedExport: (input) => service.loadSelectedExport(actor, input),
     loadSelectedArchive: (input) => service.loadSelectedArchive(actor, input),
+    loadExactPatchExport: (input) => service.loadExactPatchExport(actor, input),
+    loadExactPatchArchive: (input) => service.loadExactPatchArchive(actor, input),
   };
 }
 

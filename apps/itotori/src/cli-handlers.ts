@@ -44,6 +44,10 @@ import type {
   ItotoriCatalogExactExternalIdLinkerPort,
   ItotoriCatalogFuzzyCandidateGeneratorPort,
   ItotoriContextArtifactRepositoryPort,
+  PatchPlaySurface,
+  PatchVersionIterationRecord,
+  PlayTestFeedbackEventKind,
+  PlayablePatchExport,
   StyleGuideFixtureFlowInput,
   StyleGuideFixtureFlowResult,
 } from "@itotori/db";
@@ -168,6 +172,12 @@ import {
 import { runNativeCli, type NativeCliRunner } from "./native-bin/cli-bin-resolver.js";
 import { buildHelpText } from "./help-text.js";
 import { runInitCommand, type InitCommandDeps } from "./init-command.js";
+import type {
+  PatchIterationContextFeedbackInput,
+  PatchIterationServicePort,
+  PatchIterationSurface,
+} from "./iteration/patch-iteration-service.js";
+import type { BoundPlayTesterResultRevisionServicePort } from "./play/result-revision-service.js";
 
 export type JsonFileStore = {
   readJson(path: string): unknown;
@@ -256,6 +266,14 @@ export type ItotoriCliServices = {
   queueHealth?: QueueHealthCliPort;
   /** Shared node-6 browse + node-8 edit wiki surface. */
   wiki?: WikiCliPort;
+  /**
+   * Node 11's actor-bound version/play/feedback/refinement surface. Optional
+   * so unrelated CLI unit suites can omit the expensive DB-backed workflow;
+   * iteration commands refuse loudly when it is not installed.
+   */
+  patchIteration?: PatchIterationServicePort;
+  /** Exact immutable-version delivery metadata for `itotori patch play`. */
+  playTesterResultRevision?: Pick<BoundPlayTesterResultRevisionServicePort, "loadExactPatchExport">;
 };
 
 export type ItotoriCliDependencies = {
@@ -338,6 +356,12 @@ export async function runItotoriCliCommand(
       break;
     case "patch":
       await runPatchCommand(args, dependencies);
+      break;
+    case "feedback":
+      await runPatchIterationFeedbackCommand(args, dependencies);
+      break;
+    case "refine":
+      await runPatchIterationRefineCommand(args, dependencies);
       break;
     case "validate":
       await runValidateCommand(args, dependencies);
@@ -445,6 +469,18 @@ async function runPatchCommand(
   args: string[],
   dependencies: ItotoriCliDependencies,
 ): Promise<void> {
+  // Node 11 keeps the historical native `itotori patch --bundle ...` path
+  // intact, while giving versioned patches their own first-class surface.
+  // Branch before parsing legacy flags: `patch versions` and `patch play` do
+  // not have a source/target/bundle and must never fall through to kaifuu.
+  switch (args[1]) {
+    case "versions":
+      await runPatchIterationVersionsCommand(args, dependencies);
+      return;
+    case "play":
+      await runPatchIterationPlayCommand(args, dependencies);
+      return;
+  }
   const sourceRoot = requiredFlag(args, "--source");
   const targetRoot = requiredFlag(args, "--target");
   const bundlePath = requiredFlag(args, "--bundle");
@@ -471,6 +507,482 @@ async function runPatchCommand(
     nativeArgs.push("--force");
   }
   runNativeCommandOrThrow("patch", "kaifuu-cli", nativeArgs, dependencies.nativeCli);
+}
+
+/**
+ * `itotori patch versions --locale-branch <id> [--output <json>]`
+ *
+ * This is deliberately a read of the same actor-bound service the dashboard
+ * uses; it does not reconstruct lineage from patch artifacts on disk.
+ */
+async function runPatchIterationVersionsCommand(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const localeBranchId = requiredPatchIterationLocaleBranch(args);
+  const outputPath = optionalFlag(args, "--output");
+  const versions = await dependencies.withServices((services) =>
+    requirePatchIterationPort(services).list({ localeBranchId }),
+  );
+  writePatchIterationOutput(dependencies, outputPath, versions.map(patchIterationVersionCliView));
+}
+
+/**
+ * `itotori patch play <version> [--launch-json <object>] [--output <json>]`
+ *
+ * Loading the surface before starting the persisted session keeps the CLI's
+ * open/play result useful to an operator and exposes the same informational QA
+ * callouts as the dashboard. `play` itself still verifies playable status.
+ */
+async function runPatchIterationPlayCommand(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const patchVersionId = requiredPatchIterationVersionArgument(args);
+  const outputPath = optionalFlag(args, "--output");
+  const launchDescriptor = optionalJsonObjectFlag(args, "--launch-json");
+  const result = await dependencies.withServices(async (services) => {
+    const patchIteration = requirePatchIterationPort(services);
+    const surface = await patchIteration.load({ patchVersionId });
+    if (surface === null) {
+      throw new Error(`patch version ${patchVersionId} was not found`);
+    }
+    const session = await patchIteration.play({
+      patchVersionId,
+      ...(launchDescriptor === undefined ? {} : { launchDescriptor }),
+    });
+    const exactDelivery = await requirePatchIterationDeliveryPort(services).loadExactPatchExport({
+      patchVersionId,
+    });
+    if (exactDelivery.export === null) {
+      throw new Error(
+        `playable archive metadata for patch version ${patchVersionId} was not found`,
+      );
+    }
+    return {
+      surface: patchIterationSurfaceCliView(surface),
+      session,
+      delivery: patchIterationDeliveryCliView(exactDelivery.export),
+    };
+  });
+  writePatchIterationOutput(dependencies, outputPath, result);
+}
+
+/**
+ * First-class play-test feedback inbox/write surface. The legacy
+ * `import-feedback*` commands remain ingestion compatibility paths; they do
+ * not replace exact-version feedback used by a refinement run.
+ *
+ *   itotori feedback list --patch-version <version>
+ *   itotori feedback batch --patch-version <version> [--batch-id <id>] [--label <text>]
+ *   itotori feedback add --patch-version <version> --kind <kind> [...]
+ *
+ * Context feedback has two intentionally distinct paths:
+ *
+ *   # Write canonical context through the existing Node 9 -> Node 8 flywheel.
+ *   itotori feedback add --patch-version <version> --kind added_context \
+ *     --context-operation add --context-kind glossary --context-title <title> \
+ *     --context-body <body> --context-reason <reason> --affected-unit <unit>
+ *   itotori feedback add --patch-version <version> --kind wiki_edit \
+ *     --context-operation edit --context-artifact <artifact> \
+ *     --context-body <body> --context-reason <reason>
+ *
+ *   # Attach an immutable Node 9 head that was already written elsewhere.
+ *   itotori feedback add --patch-version <version> --kind wiki_edit \
+ *     --context-artifact <artifact> --context-entry-version <version>
+ */
+async function runPatchIterationFeedbackCommand(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const subcommand = args[1];
+  if (subcommand !== "list" && subcommand !== "batch" && subcommand !== "add") {
+    throw new Error("itotori feedback requires one of: list, batch, add");
+  }
+  const observedPatchVersionId = requiredObservedPatchVersionId(args);
+  const outputPath = optionalFlag(args, "--output");
+  const result = await dependencies.withServices(async (services) => {
+    const patchIteration = requirePatchIterationPort(services);
+    switch (subcommand) {
+      case "list": {
+        const surface = await patchIteration.load({ patchVersionId: observedPatchVersionId });
+        if (surface === null) {
+          throw new Error(`patch version ${observedPatchVersionId} was not found`);
+        }
+        return surface.feedback;
+      }
+      case "batch":
+        return await patchIteration.createFeedbackBatch({
+          observedPatchVersionId,
+          ...(optionalFlag(args, "--batch-id") === undefined
+            ? {}
+            : { feedbackBatchId: optionalFlag(args, "--batch-id")! }),
+          ...(optionalFlag(args, "--label") === undefined
+            ? {}
+            : { label: optionalFlag(args, "--label")! }),
+        });
+      case "add": {
+        const affectedBridgeUnitIds = repeatedFlag(args, "--affected-unit");
+        const feedbackBatchId = optionalFlag(args, "--batch") ?? optionalFlag(args, "--batch-id");
+        const metadata = optionalJsonObjectFlag(args, "--metadata-json");
+        const eventKind = parsePatchIterationFeedbackKind(requiredFlag(args, "--kind"));
+        const contextFeedback = optionalPatchIterationContextFeedback(
+          args,
+          eventKind,
+          affectedBridgeUnitIds,
+        );
+        const contextArtifactId = optionalFlag(args, "--context-artifact");
+        const contextEntryVersionId = optionalFlag(args, "--context-entry-version");
+        return await patchIteration.feedback({
+          observedPatchVersionId,
+          eventKind,
+          ...(feedbackBatchId === undefined ? {} : { feedbackBatchId }),
+          ...(optionalFlag(args, "--play-session") === undefined
+            ? {}
+            : { playSessionId: optionalFlag(args, "--play-session")! }),
+          ...(optionalFlag(args, "--body") === undefined
+            ? {}
+            : { body: optionalFlag(args, "--body")! }),
+          ...(metadata === undefined ? {} : { metadata }),
+          ...(optionalFlag(args, "--target-body") === undefined
+            ? {}
+            : { targetBody: optionalFlag(args, "--target-body")! }),
+          ...(optionalFlag(args, "--result-revision") === undefined
+            ? {}
+            : { resultRevisionId: optionalFlag(args, "--result-revision")! }),
+          // Direct context feedback carries its mutation target in the nested
+          // canonical payload; only the reference-only route sends a caller
+          // supplied immutable artifact/version pair to the iteration service.
+          ...(contextFeedback !== undefined
+            ? {}
+            : contextArtifactId === undefined
+              ? {}
+              : { contextArtifactId }),
+          ...(contextFeedback !== undefined
+            ? {}
+            : contextEntryVersionId === undefined
+              ? {}
+              : { contextEntryVersionId }),
+          ...(contextFeedback === undefined && affectedBridgeUnitIds.length > 0
+            ? { affectedBridgeUnitIds }
+            : {}),
+          ...(contextFeedback === undefined ? {} : { contextFeedback }),
+        });
+      }
+    }
+  });
+  writePatchIterationOutput(dependencies, outputPath, result);
+}
+
+/**
+ * `itotori refine` selects persisted batches/events from a base version and
+ * delegates the entire frozen-scope/refinement operation to the shared
+ * service. It never creates a CLI-only substitute patch or result revision.
+ */
+async function runPatchIterationRefineCommand(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const basePatchVersionId = requiredFlag(args, "--base-patch-version");
+  const outputPath = optionalFlag(args, "--output");
+  const feedbackBatchIds = repeatedFlag(args, "--batch");
+  const feedbackEventIds = repeatedFlag(args, "--event");
+  const scopeUnitIds = repeatedFlag(args, "--unit");
+  const targetBodiesByUnit = optionalJsonStringRecordFlag(args, "--target-bodies-json");
+  const wikiHeads = optionalPatchIterationWikiHeadsFlag(args, "--wiki-heads-json");
+  const result = await dependencies.withServices((services) =>
+    requirePatchIterationPort(services).refine({
+      basePatchVersionId,
+      ...(feedbackBatchIds.length === 0 ? {} : { feedbackBatchIds }),
+      ...(feedbackEventIds.length === 0 ? {} : { feedbackEventIds }),
+      ...(scopeUnitIds.length === 0 ? {} : { scopeUnitIds }),
+      ...(targetBodiesByUnit === undefined ? {} : { targetBodiesByUnit }),
+      ...(wikiHeads === undefined ? {} : { wikiHeads }),
+    }),
+  );
+  writePatchIterationOutput(dependencies, outputPath, {
+    ...result,
+    patch: patchIterationPatchCliView(result.patch),
+  });
+}
+
+function requirePatchIterationPort(services: ItotoriCliServices): PatchIterationServicePort {
+  if (services.patchIteration === undefined) {
+    throw new Error(
+      "patch-iteration service is not configured for this CLI context (patchIteration port missing)",
+    );
+  }
+  return services.patchIteration;
+}
+
+function requirePatchIterationDeliveryPort(
+  services: ItotoriCliServices,
+): Pick<BoundPlayTesterResultRevisionServicePort, "loadExactPatchExport"> {
+  if (services.playTesterResultRevision === undefined) {
+    throw new Error(
+      "exact patch delivery is not configured for this CLI context (playTesterResultRevision port missing)",
+    );
+  }
+  return services.playTesterResultRevision;
+}
+
+/** Keep local CLI output useful without leaking artifact filesystem refs. */
+function patchIterationDeliveryCliView(input: PlayablePatchExport) {
+  return {
+    patchVersionId: input.patchVersionId,
+    runId: input.runId,
+    parentPatchVersionId: input.parentPatchVersionId,
+    origin: input.origin,
+    status: input.status,
+    playableAt: input.playableAt?.toISOString() ?? null,
+    selectedAt: input.selectedAt?.toISOString() ?? null,
+    artifactHashes: { ...input.artifactHashes },
+    units: input.units.map((unit) => ({
+      bridgeUnitId: unit.bridgeUnitId,
+      unitOrdinal: unit.unitOrdinal,
+      targetBody: unit.targetBody,
+    })),
+  };
+}
+
+/**
+ * CLI is an external surface just like HTTP: durable artifact refs are
+ * server-side provenance and must never be serialized into an operator's
+ * output file. These mirror the public API projections rather than relying
+ * on JSON.stringify to omit private fields incidentally.
+ */
+function patchIterationVersionCliView(input: PatchVersionIterationRecord) {
+  return {
+    patchVersionId: input.patchVersionId,
+    runId: input.runId,
+    parentPatchVersionId: input.parentPatchVersionId,
+    origin: input.origin,
+    status: input.status,
+    playableAt: input.playableAt?.toISOString() ?? null,
+    selectedAt: input.selectedAt?.toISOString() ?? null,
+    artifactHashes: { ...input.artifactHashes },
+    basePatchVersionId: input.basePatchVersionId,
+  };
+}
+
+function patchIterationPatchCliView(input: PatchPlaySurface) {
+  return {
+    patchVersionId: input.patchVersionId,
+    runId: input.runId,
+    parentPatchVersionId: input.parentPatchVersionId,
+    origin: input.origin,
+    status: input.status,
+    playableAt: input.playableAt?.toISOString() ?? null,
+    selectedAt: input.selectedAt?.toISOString() ?? null,
+    artifactHashes: { ...input.artifactHashes },
+    units: input.units.map((unit) => ({
+      bridgeUnitId: unit.bridgeUnitId,
+      sourceRunId: unit.sourceRunId,
+      journalOutcomeId: unit.journalOutcomeId,
+      resultRevisionId: unit.resultRevisionId,
+      targetBody: unit.targetBody,
+      memberOrigin: unit.memberOrigin,
+      reusedFromPatchVersionId: unit.reusedFromPatchVersionId,
+      unitOrdinal: unit.unitOrdinal,
+    })),
+    qaCallouts: input.qaCallouts.map((callout) => ({ ...callout })),
+  };
+}
+
+function patchIterationSurfaceCliView(input: PatchIterationSurface) {
+  return {
+    patch: patchIterationPatchCliView(input.patch),
+    versions: input.versions.map(patchIterationVersionCliView),
+    feedback: input.feedback,
+  };
+}
+
+function requiredPatchIterationLocaleBranch(args: string[]): string {
+  return optionalFlag(args, "--locale-branch") ?? requiredFlag(args, "--locale");
+}
+
+function requiredObservedPatchVersionId(args: string[]): string {
+  return optionalFlag(args, "--observed-patch-version") ?? requiredFlag(args, "--patch-version");
+}
+
+function requiredPatchIterationVersionArgument(args: string[]): string {
+  const flag = optionalFlag(args, "--patch-version");
+  if (flag !== undefined) return flag;
+  const positional = args[2];
+  if (positional === undefined || positional.length === 0 || positional.startsWith("--")) {
+    throw new Error("itotori patch play requires <patch-version> or --patch-version <id>");
+  }
+  return positional;
+}
+
+function writePatchIterationOutput(
+  dependencies: ItotoriCliDependencies,
+  outputPath: string | undefined,
+  result: unknown,
+): void {
+  if (outputPath !== undefined) {
+    dependencies.io.writeJson(outputPath, result);
+    return;
+  }
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+}
+
+function parsePatchIterationFeedbackKind(value: string): PlayTestFeedbackEventKind {
+  if (
+    value === "result_edit" ||
+    value === "comment" ||
+    value === "added_context" ||
+    value === "wiki_edit"
+  ) {
+    return value;
+  }
+  throw new Error("--kind must be one of: result_edit, comment, added_context, wiki_edit");
+}
+
+/**
+ * Decode the explicit mutation form without weakening the older
+ * artifact/version attachment form. The service remains the authority for
+ * project/branch identity and for the actual Node 9 -> Node 8 write; this
+ * parser only turns clear CLI intent into its actor-bound request shape.
+ */
+function optionalPatchIterationContextFeedback(
+  args: string[],
+  eventKind: PlayTestFeedbackEventKind,
+  affectedBridgeUnitIds: readonly string[],
+): PatchIterationContextFeedbackInput | undefined {
+  const operation = optionalFlag(args, "--context-operation");
+  if (operation === undefined) {
+    for (const flag of [
+      "--context-kind",
+      "--context-title",
+      "--context-body",
+      "--context-reason",
+    ]) {
+      if (optionalFlag(args, flag) !== undefined) {
+        throw new Error(`${flag} requires --context-operation add or edit`);
+      }
+    }
+    return undefined;
+  }
+
+  if (optionalFlag(args, "--context-entry-version") !== undefined) {
+    throw new Error(
+      "--context-entry-version is only for reference-only context feedback; omit it with --context-operation",
+    );
+  }
+
+  switch (operation) {
+    case "add":
+      if (eventKind !== "added_context") {
+        throw new Error("--context-operation add requires --kind added_context");
+      }
+      if (optionalFlag(args, "--context-artifact") !== undefined) {
+        throw new Error("--context-artifact is not valid with --context-operation add");
+      }
+      if (affectedBridgeUnitIds.length === 0) {
+        throw new Error("--context-operation add requires at least one --affected-unit");
+      }
+      return {
+        operation: "add",
+        kind: parsePatchIterationContextKind(requiredFlag(args, "--context-kind")),
+        title: requiredFlag(args, "--context-title"),
+        body: requiredFlag(args, "--context-body"),
+        reason: requiredFlag(args, "--context-reason"),
+        affectedBridgeUnitIds,
+      };
+    case "edit":
+      if (eventKind !== "wiki_edit") {
+        throw new Error("--context-operation edit requires --kind wiki_edit");
+      }
+      return {
+        operation: "edit",
+        contextArtifactId: requiredFlag(args, "--context-artifact"),
+        body: requiredFlag(args, "--context-body"),
+        reason: requiredFlag(args, "--context-reason"),
+        ...(optionalFlag(args, "--context-title") === undefined
+          ? {}
+          : { title: optionalFlag(args, "--context-title")! }),
+        ...(affectedBridgeUnitIds.length === 0 ? {} : { affectedBridgeUnitIds }),
+      };
+    default:
+      throw new Error("--context-operation must be add or edit");
+  }
+}
+
+function parsePatchIterationContextKind(value: string): "note" | "glossary" | "style" {
+  if (value === "note" || value === "glossary" || value === "style") {
+    return value;
+  }
+  throw new Error("--context-kind must be one of: note, glossary, style");
+}
+
+function optionalJsonObjectFlag(args: string[], name: string): Record<string, unknown> | undefined {
+  const value = optionalFlag(args, name);
+  if (value === undefined) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value) as unknown;
+  } catch {
+    throw new Error(`${name} must be valid JSON object text`);
+  }
+  if (!isRecord(parsed)) {
+    throw new Error(`${name} must be a JSON object`);
+  }
+  return parsed;
+}
+
+function optionalJsonStringRecordFlag(
+  args: string[],
+  name: string,
+): Record<string, string> | undefined {
+  const record = optionalJsonObjectFlag(args, name);
+  if (record === undefined) return undefined;
+  const strings: Record<string, string> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (typeof value !== "string") {
+      throw new Error(`${name}.${key} must be a string`);
+    }
+    strings[key] = value;
+  }
+  return strings;
+}
+
+function optionalPatchIterationWikiHeadsFlag(
+  args: string[],
+  name: string,
+): Array<{ contextArtifactId: string; contextEntryVersionId: string }> | undefined {
+  const value = optionalFlag(args, name);
+  if (value === undefined) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value) as unknown;
+  } catch {
+    throw new Error(`${name} must be valid JSON array text`);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${name} must be a JSON array`);
+  }
+  return parsed.map((entry, index) => {
+    if (
+      !isRecord(entry) ||
+      typeof entry.contextArtifactId !== "string" ||
+      entry.contextArtifactId.trim().length === 0 ||
+      typeof entry.contextEntryVersionId !== "string" ||
+      entry.contextEntryVersionId.trim().length === 0
+    ) {
+      throw new Error(
+        `${name}[${index}] requires non-empty contextArtifactId and contextEntryVersionId strings`,
+      );
+    }
+    return {
+      contextArtifactId: entry.contextArtifactId,
+      contextEntryVersionId: entry.contextEntryVersionId,
+    };
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function runValidateCommand(

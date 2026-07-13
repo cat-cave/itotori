@@ -17,6 +17,7 @@ import {
   localizationResultRevisions,
   localizationPatchVersionUnits,
   localizationPatchVersions,
+  localizationRefinementRunMembers,
   localizationRunFinalizerOutbox,
   localizationRunTerminalSummaries,
   translationCandidates,
@@ -96,6 +97,7 @@ export type LocalizationRunFinalizerRunRecord = {
   frozenScope: Record<string, unknown> | unknown[] | null;
   routingPolicy: Record<string, unknown> | null;
   costPolicy: Record<string, unknown> | null;
+  basePatchVersionId: string | null;
   status: LocalizationJournalRunStatus;
   pausedBlocker: LocalizationJournalOperationalBlocker | null;
   leaseOwnerId: string | null;
@@ -134,8 +136,12 @@ export type LocalizationRunFinalizerAttemptRecord = {
 
 export type LocalizationRunFinalizerPatchUnitRecord = {
   bridgeUnitId: string;
+  /** Patch-owning run is on the parent patch record; this owns the revision. */
+  sourceRunId: string;
   journalOutcomeId: string;
   resultRevisionId: string;
+  memberOrigin: "run_written_outcome" | "reused_from_base" | "play_tester_edit";
+  reusedFromPatchVersionId: string | null;
   unitOrdinal: number;
 };
 
@@ -147,7 +153,7 @@ export type LocalizationRunFinalizerPatchVersionRecord = {
   artifactRefs: Record<string, string>;
   playableAt: Date | null;
   parentPatchVersionId: string | null;
-  origin: "run_finalizer" | "play_tester_edit";
+  origin: "run_finalizer" | "play_tester_edit" | "refinement_run";
   actorUserId: string | null;
   selectedAt: Date | null;
   createdAt: Date;
@@ -452,22 +458,15 @@ export class ItotoriLocalizationRunFinalizerRepository implements ItotoriLocaliz
     const artifactRefs = normalizeStringRecord(input.artifactRefs ?? {}, "artifactRefs");
 
     return this.db.transaction(async (tx) => {
-      await requireRunInTx(tx, input.runId);
+      const run = await requireRunInTx(tx, input.runId);
       await tx.execute(sql`
         select run_id
         from itotori_localization_journal_runs
         where run_id = ${input.runId}
         for update
       `);
-      const coverage = await loadCoverageRowsInTx(tx, input.runId);
-      const incomplete = coverage.filter(
-        (row) =>
-          row.journalOutcomeId === null ||
-          row.selectedCandidateId === null ||
-          row.selectedCandidateBody === null ||
-          row.selectedCandidateBody.trim().length === 0 ||
-          row.resultRevisionId === null,
-      );
+      const expectedMembers = await loadExpectedPatchMembersInTx(tx, run);
+      const incomplete = expectedMembers.filter((member) => !member.valid);
       if (incomplete.length > 0) {
         throw new LocalizationRunFinalizerRepositoryError(
           "coverage_incomplete",
@@ -485,7 +484,7 @@ export class ItotoriLocalizationRunFinalizerRepository implements ItotoriLocaliz
         select patch_version_id
         from itotori_localization_patch_versions
         where run_id = ${input.runId}
-          and parent_patch_version_id is null
+          and origin in ('run_finalizer', 'refinement_run')
         for update
       `);
 
@@ -495,7 +494,7 @@ export class ItotoriLocalizationRunFinalizerRepository implements ItotoriLocaliz
         .where(
           and(
             eq(localizationPatchVersions.runId, input.runId),
-            sql`${localizationPatchVersions.parentPatchVersionId} is null`,
+            sql`${localizationPatchVersions.origin} in ('run_finalizer', 'refinement_run')`,
           ),
         )
         .limit(1);
@@ -517,8 +516,8 @@ export class ItotoriLocalizationRunFinalizerRepository implements ItotoriLocaliz
             artifactHashes,
             artifactRefs,
             playableAt: null,
-            parentPatchVersionId: null,
-            origin: "run_finalizer",
+            parentPatchVersionId: run.basePatchVersionId,
+            origin: run.basePatchVersionId === null ? "run_finalizer" : "refinement_run",
             actorUserId: null,
             selectedAt: null,
             createdAt: new Date(),
@@ -551,7 +550,7 @@ export class ItotoriLocalizationRunFinalizerRepository implements ItotoriLocaliz
         .where(
           and(
             eq(localizationPatchVersions.runId, input.runId),
-            sql`${localizationPatchVersions.parentPatchVersionId} is null`,
+            sql`${localizationPatchVersions.origin} in ('run_finalizer', 'refinement_run')`,
           ),
         )
         .limit(1);
@@ -573,12 +572,15 @@ export class ItotoriLocalizationRunFinalizerRepository implements ItotoriLocaliz
       await tx
         .insert(localizationPatchVersionUnits)
         .values(
-          coverage.map((row) => ({
+          expectedMembers.map((row) => ({
             patchVersionId,
             runId: input.runId,
             bridgeUnitId: row.bridgeUnitId,
+            sourceRunId: row.sourceRunId!,
             journalOutcomeId: row.journalOutcomeId!,
             resultRevisionId: row.resultRevisionId!,
+            memberOrigin: row.memberOrigin,
+            reusedFromPatchVersionId: row.reusedFromPatchVersionId,
             unitOrdinal: row.unitOrdinal,
             createdAt: new Date(),
           })),
@@ -590,7 +592,7 @@ export class ItotoriLocalizationRunFinalizerRepository implements ItotoriLocaliz
         .from(localizationPatchVersionUnits)
         .where(eq(localizationPatchVersionUnits.patchVersionId, patchVersionId))
         .orderBy(asc(localizationPatchVersionUnits.unitOrdinal));
-      assertExactPatchMembership(input.runId, patchVersionId, coverage, members);
+      assertExactPatchMembership(input.runId, patchVersionId, expectedMembers, members);
 
       for (const stage of patchWorkerStages) {
         await insertOutboxIfMissingInTx(tx, input.runId, stage, {});
@@ -817,7 +819,7 @@ async function terminalizeInTx(
       .from(localizationPatchVersionUnits)
       .where(eq(localizationPatchVersionUnits.patchVersionId, patchVersionId))
       .orderBy(asc(localizationPatchVersionUnits.unitOrdinal));
-    await assertSuccessBarrierInTx(tx, input.runId, patch, members);
+    await assertSuccessBarrierInTx(tx, run, patch, members);
     const now = new Date();
     // Clear any prior selection on this run, then mark the origin patch playable
     // and selected for export. Play-tester child revisions (node 10) may later
@@ -856,7 +858,7 @@ async function terminalizeInTx(
       .where(
         and(
           eq(localizationPatchVersions.runId, input.runId),
-          sql`${localizationPatchVersions.parentPatchVersionId} is null`,
+          sql`${localizationPatchVersions.origin} in ('run_finalizer', 'refinement_run')`,
         ),
       )
       .limit(1);
@@ -970,26 +972,20 @@ async function terminalizeInTx(
 /** The coverage-only success barrier: QA rows are intentionally not read here. */
 async function assertSuccessBarrierInTx(
   tx: JournalTransaction,
-  runId: string,
+  run: LocalizationRunFinalizerRunRecord,
   patch: typeof localizationPatchVersions.$inferSelect,
   members: Array<typeof localizationPatchVersionUnits.$inferSelect>,
 ): Promise<void> {
-  const coverage = await loadCoverageRowsInTx(tx, runId);
-  const incomplete = coverage.filter(
-    (row) =>
-      row.journalOutcomeId === null ||
-      row.selectedCandidateId === null ||
-      row.selectedCandidateBody === null ||
-      row.selectedCandidateBody.trim().length === 0 ||
-      row.resultRevisionId === null,
-  );
+  const runId = run.runId;
+  const expectedMembers = await loadExpectedPatchMembersInTx(tx, run);
+  const incomplete = expectedMembers.filter((member) => !member.valid);
   if (incomplete.length > 0) {
     throw new LocalizationRunFinalizerRepositoryError(
       "coverage_incomplete",
       `run ${runId} has incomplete coverage for ${incomplete.map((row) => row.bridgeUnitId).join(", ")}`,
     );
   }
-  assertExactPatchMembership(runId, patch.patchVersionId, coverage, members);
+  assertExactPatchMembership(runId, patch.patchVersionId, expectedMembers, members);
   if (
     Object.keys(patch.artifactHashes).length === 0 ||
     Object.keys(patch.artifactRefs).length === 0
@@ -1021,7 +1017,7 @@ async function assertSuccessBarrierInTx(
       .from(localizationRunFinalizerOutbox)
       .where(eq(localizationRunFinalizerOutbox.runId, runId)),
   ]);
-  const writtenUnitIds = new Set(coverage.map((row) => row.bridgeUnitId));
+  const writtenUnitIds = new Set(expectedMembers.map((row) => row.bridgeUnitId));
   const liveAttempt = attempts.find(
     (attempt) =>
       attempt.lifecycleState === "dispatching" ||
@@ -1131,7 +1127,7 @@ async function loadSnapshotInTx(
       .where(
         and(
           eq(localizationPatchVersions.runId, runId),
-          sql`${localizationPatchVersions.parentPatchVersionId} is null`,
+          sql`${localizationPatchVersions.origin} in ('run_finalizer', 'refinement_run')`,
         ),
       )
       .limit(1);
@@ -1208,6 +1204,128 @@ type CoverageRow = {
   selectedCandidateBody: string | null;
   resultRevisionId: string | null;
 };
+
+type ExpectedPatchMember = {
+  bridgeUnitId: string;
+  unitOrdinal: number;
+  sourceRunId: string | null;
+  journalOutcomeId: string | null;
+  resultRevisionId: string | null;
+  memberOrigin: "run_written_outcome" | "reused_from_base";
+  reusedFromPatchVersionId: string | null;
+  valid: boolean;
+};
+
+/**
+ * Normal runs use their own written outcomes. A refinement's persisted member
+ * plan instead selects either the new run's written result or the exact
+ * immutable base membership. This is the only finalizer branch required for
+ * reuse; the normal node-5 coverage predicate remains unchanged.
+ */
+async function loadExpectedPatchMembersInTx(
+  db: Pick<ItotoriDatabase, "select"> | JournalTransaction,
+  run: LocalizationRunFinalizerRunRecord,
+): Promise<ExpectedPatchMember[]> {
+  const [units, coverage] = await Promise.all([
+    db
+      .select()
+      .from(localizationJournalRunUnits)
+      .where(eq(localizationJournalRunUnits.runId, run.runId))
+      .orderBy(asc(localizationJournalRunUnits.unitOrdinal)),
+    loadCoverageRowsInTx(db, run.runId),
+  ]);
+  if (run.basePatchVersionId === null) {
+    return coverage.map((row) => ({
+      bridgeUnitId: row.bridgeUnitId,
+      unitOrdinal: row.unitOrdinal,
+      sourceRunId: run.runId,
+      journalOutcomeId: row.journalOutcomeId,
+      resultRevisionId: row.resultRevisionId,
+      memberOrigin: "run_written_outcome",
+      reusedFromPatchVersionId: null,
+      valid:
+        row.journalOutcomeId !== null &&
+        row.selectedCandidateId !== null &&
+        row.selectedCandidateBody !== null &&
+        row.selectedCandidateBody.trim().length > 0 &&
+        row.resultRevisionId !== null,
+    }));
+  }
+
+  const plans = await db
+    .select()
+    .from(localizationRefinementRunMembers)
+    .where(eq(localizationRefinementRunMembers.runId, run.runId));
+  const planByUnit = new Map(plans.map((plan) => [plan.bridgeUnitId, plan]));
+  const coverageByUnit = new Map(coverage.map((row) => [row.bridgeUnitId, row]));
+  const reusedRevisionIds = plans
+    .filter((plan) => plan.strategy === "reuse" && plan.baseResultRevisionId !== null)
+    .map((plan) => plan.baseResultRevisionId!);
+  const revisions =
+    reusedRevisionIds.length === 0
+      ? []
+      : await db
+          .select()
+          .from(localizationResultRevisions)
+          .where(inArray(localizationResultRevisions.resultRevisionId, reusedRevisionIds));
+  const revisionById = new Map(revisions.map((revision) => [revision.resultRevisionId, revision]));
+
+  return units.map((unit) => {
+    const plan = planByUnit.get(unit.bridgeUnitId);
+    if (plan === undefined) {
+      return {
+        bridgeUnitId: unit.bridgeUnitId,
+        unitOrdinal: unit.unitOrdinal,
+        sourceRunId: null,
+        journalOutcomeId: null,
+        resultRevisionId: null,
+        memberOrigin: "run_written_outcome" as const,
+        reusedFromPatchVersionId: null,
+        valid: false,
+      };
+    }
+    if (plan.strategy === "reuse") {
+      const revision =
+        plan.baseResultRevisionId === null
+          ? undefined
+          : revisionById.get(plan.baseResultRevisionId);
+      const valid =
+        plan.basePatchVersionId !== null &&
+        plan.baseSourceRunId !== null &&
+        plan.baseJournalOutcomeId !== null &&
+        plan.baseResultRevisionId !== null &&
+        revision !== undefined &&
+        revision.targetBody.trim().length > 0;
+      return {
+        bridgeUnitId: unit.bridgeUnitId,
+        unitOrdinal: unit.unitOrdinal,
+        sourceRunId: plan.baseSourceRunId,
+        journalOutcomeId: plan.baseJournalOutcomeId,
+        resultRevisionId: plan.baseResultRevisionId,
+        memberOrigin: "reused_from_base" as const,
+        reusedFromPatchVersionId: plan.basePatchVersionId,
+        valid,
+      };
+    }
+    const current = coverageByUnit.get(unit.bridgeUnitId);
+    return {
+      bridgeUnitId: unit.bridgeUnitId,
+      unitOrdinal: unit.unitOrdinal,
+      sourceRunId: run.runId,
+      journalOutcomeId: current?.journalOutcomeId ?? null,
+      resultRevisionId: current?.resultRevisionId ?? null,
+      memberOrigin: "run_written_outcome" as const,
+      reusedFromPatchVersionId: null,
+      valid:
+        current?.journalOutcomeId !== null &&
+        current?.journalOutcomeId !== undefined &&
+        current.selectedCandidateId !== null &&
+        current.selectedCandidateBody !== null &&
+        current.selectedCandidateBody.trim().length > 0 &&
+        current.resultRevisionId !== null,
+    };
+  });
+}
 
 async function loadCoverageRowsInTx(
   db: Pick<ItotoriDatabase, "select"> | JournalTransaction,
@@ -1583,26 +1701,29 @@ function summaryStageRank(status: LocalizationRunTerminalSummaryStageStatus): nu
 function assertExactPatchMembership(
   runId: string,
   patchVersionId: string,
-  coverage: CoverageRow[],
+  expectedMembers: ExpectedPatchMember[],
   members: Array<typeof localizationPatchVersionUnits.$inferSelect>,
 ): void {
-  if (coverage.length !== members.length) {
+  if (expectedMembers.length !== members.length) {
     throw new LocalizationRunFinalizerRepositoryError(
       "patch_conflict",
-      `patch ${patchVersionId} has ${members.length} members for ${coverage.length} planned units`,
+      `patch ${patchVersionId} has ${members.length} members for ${expectedMembers.length} planned units`,
     );
   }
-  for (let index = 0; index < coverage.length; index += 1) {
-    const row = coverage[index]!;
+  for (let index = 0; index < expectedMembers.length; index += 1) {
+    const row = expectedMembers[index]!;
     const member = members[index];
     if (
       member === undefined ||
       member.runId !== runId ||
       member.bridgeUnitId !== row.bridgeUnitId ||
+      member.sourceRunId !== row.sourceRunId ||
       member.journalOutcomeId !== row.journalOutcomeId ||
       member.unitOrdinal !== row.unitOrdinal ||
       row.resultRevisionId === null ||
-      member.resultRevisionId !== row.resultRevisionId
+      member.resultRevisionId !== row.resultRevisionId ||
+      member.memberOrigin !== row.memberOrigin ||
+      member.reusedFromPatchVersionId !== row.reusedFromPatchVersionId
     ) {
       throw new LocalizationRunFinalizerRepositoryError(
         "patch_conflict",
@@ -1624,6 +1745,7 @@ function runFromRow(
     frozenScope: row.frozenScope,
     routingPolicy: row.routingPolicy,
     costPolicy: row.costPolicy,
+    basePatchVersionId: row.basePatchVersionId ?? null,
     status: row.status as LocalizationJournalRunStatus,
     pausedBlocker: row.pausedBlocker as LocalizationJournalOperationalBlocker | null,
     leaseOwnerId: row.leaseOwnerId,
@@ -1653,8 +1775,11 @@ function patchVersionFromRows(
     updatedAt: patch.updatedAt,
     units: members.map((member) => ({
       bridgeUnitId: member.bridgeUnitId,
+      sourceRunId: member.sourceRunId,
       journalOutcomeId: member.journalOutcomeId,
       resultRevisionId: member.resultRevisionId,
+      memberOrigin: member.memberOrigin,
+      reusedFromPatchVersionId: member.reusedFromPatchVersionId ?? null,
       unitOrdinal: member.unitOrdinal,
     })),
   };

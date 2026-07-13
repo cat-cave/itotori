@@ -58,6 +58,7 @@ export const SHELL_NAV_ITEMS: readonly ShellNavItem[] = [
   { id: "onboarding", label: "First run", href: "/onboarding" },
   { id: "review", label: "Review", href: "/reviewer-queue" },
   { id: "play", label: "Play", href: "/play" },
+  { id: "patches", label: "Patches", href: "/play/patches" },
   { id: "wiki", label: "Wiki", href: "/wiki" },
   { id: "benchmark", label: "Benchmark", href: "/benchmark" },
   { id: "catalog", label: "Catalog", href: "/catalog" },
@@ -83,6 +84,9 @@ export function activeShellNavId(pathname: string): string {
   }
   if (pathname === "/reviewer-queue" || pathname.startsWith("/reviewer-queue/")) {
     return "review";
+  }
+  if (pathname === "/play/patches" || pathname.startsWith("/play/patches/")) {
+    return "patches";
   }
   if (pathname === "/play" || pathname.startsWith("/play/")) {
     return "play";

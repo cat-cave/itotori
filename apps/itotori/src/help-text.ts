@@ -50,6 +50,19 @@ export function buildHelpText(allCommands = false): string {
   lines.push("  validate                Validate a patched game (replay + render).");
   lines.push("");
 
+  lines.push("PATCH ITERATION:");
+  lines.push(
+    "  patch versions          List durable patch versions and their lineage for a locale branch.",
+  );
+  lines.push(
+    "  patch play <VERSION>    Start an exact-version play session and show its QA callouts.",
+  );
+  lines.push("  feedback list|batch|add Browse or attach exact-version play-test feedback.");
+  lines.push(
+    "  refine                  Build the next complete patch version from selected feedback.",
+  );
+  lines.push("");
+
   lines.push("WIKI:");
   lines.push(
     "  wiki list               Browse run-generated scenes, characters, routes, terms, and context.",

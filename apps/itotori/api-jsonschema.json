@@ -1242,6 +1242,841 @@
       ],
       "type": "object"
     },
+    "ApiPatchIterationContextFeedback": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "affectedBridgeUnitIds": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "body": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "note",
+                "glossary",
+                "style"
+              ]
+            },
+            "operation": {
+              "const": "add"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "affectedBridgeUnitIds",
+            "body",
+            "kind",
+            "operation",
+            "reason",
+            "title"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "affectedBridgeUnitIds": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "body": {
+              "type": "string"
+            },
+            "contextArtifactId": {
+              "type": "string"
+            },
+            "operation": {
+              "const": "edit"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "body",
+            "contextArtifactId",
+            "operation",
+            "reason"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ApiPatchIterationDeliveryResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "artifactHashes": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "downloadUrl": {
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "run_finalizer",
+            "play_tester_edit",
+            "refinement_run"
+          ]
+        },
+        "parentPatchVersionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "patchVersionId": {
+          "type": "string"
+        },
+        "playableAt": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "itotori.patch-iteration.delivery.v0"
+        },
+        "status": {
+          "const": "playable"
+        },
+        "units": {
+          "items": {
+            "$ref": "#/definitions/ApiPlayDeliveryUnit"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "artifactHashes",
+        "downloadUrl",
+        "origin",
+        "parentPatchVersionId",
+        "patchVersionId",
+        "playableAt",
+        "runId",
+        "schemaVersion",
+        "status",
+        "units"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationFeedbackBatch": {
+      "additionalProperties": false,
+      "properties": {
+        "actorUserId": {},
+        "createdAt": {},
+        "events": {
+          "items": {
+            "$ref": "#/definitions/ApiPatchIterationFeedbackEvent"
+          },
+          "type": "array"
+        },
+        "feedbackBatchId": {},
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observedPatchVersionId": {},
+        "selectionKind": {
+          "enum": [
+            "individual",
+            "batch"
+          ]
+        },
+        "updatedAt": {}
+      },
+      "required": [
+        "actorUserId",
+        "createdAt",
+        "events",
+        "feedbackBatchId",
+        "label",
+        "observedPatchVersionId",
+        "selectionKind",
+        "updatedAt"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationFeedbackBatchRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "feedbackBatchId": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "feedbackBatchId",
+        "label"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationFeedbackBatchResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "batch": {
+          "$ref": "#/definitions/ApiPatchIterationFeedbackBatch"
+        },
+        "schemaVersion": {
+          "const": "itotori.patch-iteration.feedback-batch.v0"
+        }
+      },
+      "required": [
+        "batch",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationFeedbackEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "actorUserId": {},
+        "affectedBridgeUnitIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "body": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "contextArtifactId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "contextEntryVersionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "createdAt": {},
+        "eventKind": {
+          "enum": [
+            "result_edit",
+            "comment",
+            "added_context",
+            "wiki_edit"
+          ]
+        },
+        "feedbackBatchId": {},
+        "feedbackEventId": {},
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "observedPatchVersionId": {},
+        "playSessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resultRevisionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "actorUserId",
+        "affectedBridgeUnitIds",
+        "body",
+        "contextArtifactId",
+        "contextEntryVersionId",
+        "createdAt",
+        "eventKind",
+        "feedbackBatchId",
+        "feedbackEventId",
+        "metadata",
+        "observedPatchVersionId",
+        "playSessionId",
+        "resultRevisionId"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationFeedbackInbox": {
+      "additionalProperties": false,
+      "properties": {
+        "batches": {
+          "items": {
+            "$ref": "#/definitions/ApiPatchIterationFeedbackBatch"
+          },
+          "type": "array"
+        },
+        "observedPatchVersionId": {}
+      },
+      "required": [
+        "batches",
+        "observedPatchVersionId"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationFeedbackRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "affectedBridgeUnitIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "body": {
+          "type": "string"
+        },
+        "contextArtifactId": {
+          "type": "string"
+        },
+        "contextEntryVersionId": {
+          "type": "string"
+        },
+        "contextFeedback": {
+          "$ref": "#/definitions/ApiPatchIterationContextFeedback"
+        },
+        "eventKind": {
+          "enum": [
+            "result_edit",
+            "comment",
+            "added_context",
+            "wiki_edit"
+          ]
+        },
+        "feedbackBatchId": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "playSessionId": {
+          "type": "string"
+        },
+        "resultRevisionId": {
+          "type": "string"
+        },
+        "targetBody": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "affectedBridgeUnitIds",
+        "body",
+        "contextArtifactId",
+        "contextEntryVersionId",
+        "contextFeedback",
+        "eventKind",
+        "feedbackBatchId",
+        "metadata",
+        "playSessionId",
+        "resultRevisionId",
+        "targetBody"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationFeedbackResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "feedback": {
+          "$ref": "#/definitions/ApiPatchIterationFeedbackEvent"
+        },
+        "schemaVersion": {
+          "const": "itotori.patch-iteration.feedback.v0"
+        }
+      },
+      "required": [
+        "feedback",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationPatch": {
+      "additionalProperties": false,
+      "properties": {
+        "artifactHashes": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "origin": {
+          "enum": [
+            "run_finalizer",
+            "play_tester_edit",
+            "refinement_run"
+          ]
+        },
+        "parentPatchVersionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "patchVersionId": {},
+        "playableAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "qaCallouts": {
+          "items": {
+            "$ref": "#/definitions/ApiPatchIterationQaCallout"
+          },
+          "type": "array"
+        },
+        "runId": {},
+        "selectedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {},
+        "units": {
+          "items": {
+            "$ref": "#/definitions/ApiPatchIterationUnit"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "artifactHashes",
+        "origin",
+        "parentPatchVersionId",
+        "patchVersionId",
+        "playableAt",
+        "qaCallouts",
+        "runId",
+        "selectedAt",
+        "status",
+        "units"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationPlayRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "launchDescriptor": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "launchDescriptor"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationPlayResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "itotori.patch-iteration.play.v0"
+        },
+        "session": {
+          "$ref": "#/definitions/ApiPatchIterationSession"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "session"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationQaCallout": {
+      "additionalProperties": false,
+      "properties": {
+        "bridgeUnitId": {},
+        "category": {},
+        "confidence": {},
+        "contested": {
+          "type": "boolean"
+        },
+        "informational": {
+          "const": true
+        },
+        "journalFindingId": {},
+        "note": {},
+        "severity": {}
+      },
+      "required": [
+        "bridgeUnitId",
+        "category",
+        "confidence",
+        "contested",
+        "informational",
+        "journalFindingId",
+        "note",
+        "severity"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationRefineRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "feedbackBatchIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "feedbackEventIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "scopeUnitIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "targetBodiesByUnit": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "wikiHeads": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "contextArtifactId": {},
+              "contextEntryVersionId": {}
+            },
+            "required": [
+              "contextArtifactId",
+              "contextEntryVersionId"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "feedbackBatchIds",
+        "feedbackEventIds",
+        "scopeUnitIds",
+        "targetBodiesByUnit",
+        "wikiHeads"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationRefineResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "patch": {
+          "$ref": "#/definitions/ApiPatchIterationPatch"
+        },
+        "refinement": {
+          "$ref": "#/definitions/ApiPatchIterationRefinement"
+        },
+        "schemaVersion": {
+          "const": "itotori.patch-iteration.refine.v0"
+        }
+      },
+      "required": [
+        "patch",
+        "refinement",
+        "schemaVersion"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationRefinement": {
+      "additionalProperties": false,
+      "properties": {
+        "basePatchVersionId": {},
+        "feedbackBatchIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "members": {
+          "items": {
+            "$ref": "#/definitions/ApiPatchIterationRefinementMember"
+          },
+          "type": "array"
+        },
+        "runId": {},
+        "wikiHeads": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "contextArtifactId": {},
+              "contextEntryVersionId": {}
+            },
+            "required": [
+              "contextArtifactId",
+              "contextEntryVersionId"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "basePatchVersionId",
+        "feedbackBatchIds",
+        "members",
+        "runId",
+        "wikiHeads"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationRefinementMember": {
+      "additionalProperties": false,
+      "properties": {
+        "baseJournalOutcomeId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "basePatchVersionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "baseResultRevisionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "baseSourceRunId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bridgeUnitId": {},
+        "strategy": {
+          "enum": [
+            "reuse",
+            "redraft",
+            "new_scope"
+          ]
+        }
+      },
+      "required": [
+        "baseJournalOutcomeId",
+        "basePatchVersionId",
+        "baseResultRevisionId",
+        "baseSourceRunId",
+        "bridgeUnitId",
+        "strategy"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationSession": {
+      "additionalProperties": false,
+      "properties": {
+        "actorUserId": {},
+        "endedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "observedPatchVersionId": {},
+        "playSessionId": {},
+        "qaCallouts": {
+          "items": {
+            "$ref": "#/definitions/ApiPatchIterationQaCallout"
+          },
+          "type": "array"
+        },
+        "startedAt": {},
+        "status": {
+          "enum": [
+            "active",
+            "completed",
+            "abandoned"
+          ]
+        }
+      },
+      "required": [
+        "actorUserId",
+        "endedAt",
+        "observedPatchVersionId",
+        "playSessionId",
+        "qaCallouts",
+        "startedAt",
+        "status"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationSurfaceResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "feedback": {
+          "$ref": "#/definitions/ApiPatchIterationFeedbackInbox"
+        },
+        "patch": {
+          "$ref": "#/definitions/ApiPatchIterationPatch"
+        },
+        "schemaVersion": {
+          "const": "itotori.patch-iteration.surface.v0"
+        },
+        "versions": {
+          "items": {
+            "$ref": "#/definitions/ApiPatchIterationVersion"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "feedback",
+        "patch",
+        "schemaVersion",
+        "versions"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationUnit": {
+      "additionalProperties": false,
+      "properties": {
+        "bridgeUnitId": {},
+        "journalOutcomeId": {},
+        "memberOrigin": {
+          "enum": [
+            "run_written_outcome",
+            "reused_from_base",
+            "play_tester_edit"
+          ]
+        },
+        "resultRevisionId": {},
+        "reusedFromPatchVersionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceRunId": {},
+        "targetBody": {},
+        "unitOrdinal": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "bridgeUnitId",
+        "journalOutcomeId",
+        "memberOrigin",
+        "resultRevisionId",
+        "reusedFromPatchVersionId",
+        "sourceRunId",
+        "targetBody",
+        "unitOrdinal"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationVersion": {
+      "additionalProperties": false,
+      "properties": {
+        "artifactHashes": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "basePatchVersionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "origin": {
+          "enum": [
+            "run_finalizer",
+            "play_tester_edit",
+            "refinement_run"
+          ]
+        },
+        "parentPatchVersionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "patchVersionId": {},
+        "playableAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {},
+        "selectedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {}
+      },
+      "required": [
+        "artifactHashes",
+        "basePatchVersionId",
+        "origin",
+        "parentPatchVersionId",
+        "patchVersionId",
+        "playableAt",
+        "runId",
+        "selectedAt",
+        "status"
+      ],
+      "type": "object"
+    },
+    "ApiPatchIterationVersionsResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "itotori.patch-iteration.versions.v0"
+        },
+        "versions": {
+          "items": {
+            "$ref": "#/definitions/ApiPatchIterationVersion"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "versions"
+      ],
+      "type": "object"
+    },
     "ApiPermissionSetRecord": {
       "additionalProperties": false,
       "properties": {

@@ -53,8 +53,11 @@ export type PlayTesterChildPatchVersionRecord = {
   updatedAt: Date;
   units: Array<{
     bridgeUnitId: string;
+    sourceRunId: string;
     journalOutcomeId: string;
     resultRevisionId: string;
+    memberOrigin: string;
+    reusedFromPatchVersionId: string | null;
     unitOrdinal: number;
     targetBody: string;
   }>;
@@ -113,8 +116,11 @@ export type ApplyPlayTesterTargetEditResult = {
 
 export type SelectedPatchExportUnit = {
   bridgeUnitId: string;
+  sourceRunId: string;
   journalOutcomeId: string;
   resultRevisionId: string;
+  memberOrigin: string;
+  reusedFromPatchVersionId: string | null;
   unitOrdinal: number;
   targetBody: string;
   origin: string;
@@ -133,6 +139,15 @@ export type SelectedPatchExport = {
   artifactHashes: Record<string, string>;
   artifactRefs: Record<string, string>;
   units: SelectedPatchExportUnit[];
+};
+
+/**
+ * A durable, playable patch addressed by its immutable version id. Unlike a
+ * run-selected export, historical delivery deliberately remains available
+ * after a newer sibling becomes the run's current selection.
+ */
+export type PlayablePatchExport = Omit<SelectedPatchExport, "selectedAt"> & {
+  selectedAt: Date | null;
 };
 
 export class LocalizationResultRevisionRepositoryError extends Error {
@@ -160,6 +175,11 @@ export interface ItotoriLocalizationResultRevisionRepositoryPort {
     actor: AuthorizationActor,
     input: { runId?: string; patchVersionId?: string },
   ): Promise<SelectedPatchExport | null>;
+  /** Load one immutable playable patch version, regardless of current run selection. */
+  loadPlayablePatchExport(
+    actor: AuthorizationActor,
+    input: { patchVersionId: string },
+  ): Promise<PlayablePatchExport | null>;
 }
 
 type Tx = Parameters<Parameters<ItotoriDatabase["transaction"]>[0]>[0];
@@ -283,6 +303,8 @@ export class ItotoriLocalizationResultRevisionRepository implements ItotoriLocal
                 ...unit,
                 resultRevisionId,
                 targetBody,
+                memberOrigin: "play_tester_edit" as const,
+                reusedFromPatchVersionId: parent.patchVersionId,
               }
             : unit,
         );
@@ -293,7 +315,7 @@ export class ItotoriLocalizationResultRevisionRepository implements ItotoriLocal
         materialized = await this.patchArtifactMaterializer.materialize({
           childPatchVersionId,
           parentPatchVersionId: parent.patchVersionId,
-          runId: parent.runId,
+          runId: parentUnit.sourceRunId,
           bridgeUnitId: input.bridgeUnitId,
           targetBody,
           parentArtifactRefs: { ...parent.artifactRefs },
@@ -304,7 +326,10 @@ export class ItotoriLocalizationResultRevisionRepository implements ItotoriLocal
         await tx.insert(localizationResultRevisions).values({
           resultRevisionId,
           journalOutcomeId: parentUnit.journalOutcomeId,
-          runId: parent.runId,
+          // A refinement patch may carry an immutable result forward from an
+          // earlier source run. Result revisions remain bound to the outcome
+          // they derive from, rather than the later patch-owning run.
+          runId: parentUnit.sourceRunId,
           bridgeUnitId: input.bridgeUnitId,
           selectedCandidateId: parentUnit.selectedCandidateId,
           targetBody,
@@ -334,9 +359,12 @@ export class ItotoriLocalizationResultRevisionRepository implements ItotoriLocal
           childUnits.map((unit) => ({
             patchVersionId: childPatchVersionId,
             runId: parent.runId,
+            sourceRunId: unit.sourceRunId,
             bridgeUnitId: unit.bridgeUnitId,
             journalOutcomeId: unit.journalOutcomeId,
             resultRevisionId: unit.resultRevisionId,
+            memberOrigin: unit.memberOrigin,
+            reusedFromPatchVersionId: unit.reusedFromPatchVersionId,
             unitOrdinal: unit.unitOrdinal,
             createdAt: now,
           })),
@@ -424,7 +452,7 @@ export class ItotoriLocalizationResultRevisionRepository implements ItotoriLocal
       assertNonBlank(input.patchVersionId, "patchVersionId");
       const loaded = await loadPatchWithUnitsInTx(this.db, input.patchVersionId);
       if (loaded === null || loaded.selectedAt === null) return null;
-      return exportFromLoaded(loaded);
+      return selectedExportFromLoaded(loaded);
     }
     if (input.runId === undefined || input.runId.trim().length === 0) {
       throw new LocalizationResultRevisionRepositoryError(
@@ -445,7 +473,20 @@ export class ItotoriLocalizationResultRevisionRepository implements ItotoriLocal
     const row = rows[0];
     if (row === undefined) return null;
     const loaded = await loadPatchWithUnitsInTx(this.db, row.patchVersionId);
-    return loaded === null ? null : exportFromLoaded(loaded);
+    return loaded === null ? null : selectedExportFromLoaded(loaded);
+  }
+
+  async loadPlayablePatchExport(
+    actor: AuthorizationActor,
+    input: { patchVersionId: string },
+  ): Promise<PlayablePatchExport | null> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    assertNonBlank(input.patchVersionId, "patchVersionId");
+    const loaded = await loadPatchWithUnitsInTx(this.db, input.patchVersionId);
+    if (loaded === null || loaded.status !== "playable" || loaded.playableAt === null) {
+      return null;
+    }
+    return playableExportFromLoaded(loaded);
   }
 }
 
@@ -464,8 +505,11 @@ type LoadedPatch = {
   updatedAt: Date;
   units: Array<{
     bridgeUnitId: string;
+    sourceRunId: string;
     journalOutcomeId: string;
     resultRevisionId: string;
+    memberOrigin: "run_written_outcome" | "reused_from_base" | "play_tester_edit";
+    reusedFromPatchVersionId: string | null;
     unitOrdinal: number;
     targetBody: string;
     selectedCandidateId: string;
@@ -489,8 +533,11 @@ async function loadPatchWithUnitsInTx(
   const memberRows = await db
     .select({
       bridgeUnitId: localizationPatchVersionUnits.bridgeUnitId,
+      sourceRunId: localizationPatchVersionUnits.sourceRunId,
       journalOutcomeId: localizationPatchVersionUnits.journalOutcomeId,
       resultRevisionId: localizationPatchVersionUnits.resultRevisionId,
+      memberOrigin: localizationPatchVersionUnits.memberOrigin,
+      reusedFromPatchVersionId: localizationPatchVersionUnits.reusedFromPatchVersionId,
       unitOrdinal: localizationPatchVersionUnits.unitOrdinal,
       targetBody: localizationResultRevisions.targetBody,
       selectedCandidateId: localizationResultRevisions.selectedCandidateId,
@@ -509,7 +556,7 @@ async function loadPatchWithUnitsInTx(
           localizationResultRevisions.journalOutcomeId,
           localizationPatchVersionUnits.journalOutcomeId,
         ),
-        eq(localizationResultRevisions.runId, localizationPatchVersionUnits.runId),
+        eq(localizationResultRevisions.runId, localizationPatchVersionUnits.sourceRunId),
         eq(localizationResultRevisions.bridgeUnitId, localizationPatchVersionUnits.bridgeUnitId),
       ),
     )
@@ -531,8 +578,11 @@ async function loadPatchWithUnitsInTx(
     updatedAt: patch.updatedAt,
     units: memberRows.map((row) => ({
       bridgeUnitId: row.bridgeUnitId,
+      sourceRunId: row.sourceRunId,
       journalOutcomeId: row.journalOutcomeId,
       resultRevisionId: row.resultRevisionId,
+      memberOrigin: row.memberOrigin,
+      reusedFromPatchVersionId: row.reusedFromPatchVersionId ?? null,
       unitOrdinal: row.unitOrdinal,
       targetBody: row.targetBody,
       selectedCandidateId: row.selectedCandidateId,
@@ -634,21 +684,31 @@ function childPatchRecordFromLoaded(
     updatedAt: loaded.updatedAt,
     units: loaded.units.map((unit) => ({
       bridgeUnitId: unit.bridgeUnitId,
+      sourceRunId: unit.sourceRunId,
       journalOutcomeId: unit.journalOutcomeId,
       resultRevisionId: unit.resultRevisionId,
+      memberOrigin: unit.memberOrigin,
+      reusedFromPatchVersionId: unit.reusedFromPatchVersionId,
       unitOrdinal: unit.unitOrdinal,
       targetBody: unit.targetBody,
     })),
   };
 }
 
-function exportFromLoaded(loaded: LoadedPatch): SelectedPatchExport {
+function selectedExportFromLoaded(loaded: LoadedPatch): SelectedPatchExport {
   if (loaded.selectedAt === null) {
     throw new LocalizationResultRevisionRepositoryError(
       "artifact_fault",
       `patch ${loaded.patchVersionId} is not selected`,
     );
   }
+  return {
+    ...playableExportFromLoaded(loaded),
+    selectedAt: loaded.selectedAt,
+  };
+}
+
+function playableExportFromLoaded(loaded: LoadedPatch): PlayablePatchExport {
   return {
     patchVersionId: loaded.patchVersionId,
     runId: loaded.runId,
@@ -662,8 +722,11 @@ function exportFromLoaded(loaded: LoadedPatch): SelectedPatchExport {
     artifactRefs: loaded.artifactRefs,
     units: loaded.units.map((unit) => ({
       bridgeUnitId: unit.bridgeUnitId,
+      sourceRunId: unit.sourceRunId,
       journalOutcomeId: unit.journalOutcomeId,
       resultRevisionId: unit.resultRevisionId,
+      memberOrigin: unit.memberOrigin,
+      reusedFromPatchVersionId: unit.reusedFromPatchVersionId,
       unitOrdinal: unit.unitOrdinal,
       targetBody: unit.targetBody,
       origin: unit.origin,

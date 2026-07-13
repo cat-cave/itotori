@@ -142,6 +142,19 @@ describe("ItotoriLocalizationResultRevisionRepository", () => {
       );
       expect(parentRow.rows[0]).toMatchObject({ status: "playable", selected_at: null });
 
+      // The run now selects the child, but the immutable parent must remain
+      // exportable by exact version id for historical play sessions.
+      const historicalParent = await revisions.loadPlayablePatchExport(localActor, {
+        patchVersionId: parentPatch.patchVersionId,
+      });
+      expect(historicalParent).toMatchObject({
+        patchVersionId: parentPatch.patchVersionId,
+        status: "playable",
+        selectedAt: null,
+        artifactHashes: artifact.artifactHashes,
+      });
+      expect(historicalParent?.artifactRefs).toEqual(artifact.artifactRefs);
+
       // Idempotent replay of the same edit.
       const replay = await revisions.applyPlayTesterTargetEdit(playTesterActor, {
         parentPatchVersionId: parentPatch.patchVersionId,
@@ -160,6 +173,108 @@ describe("ItotoriLocalizationResultRevisionRepository", () => {
       }
     }
   });
+
+  it("keeps an edit of a reused refinement member bound to its source outcome run", async () => {
+    const context = await isolatedMigratedContext();
+    const artifactV1 = createRealArtifact("reused-source-v1");
+    const artifactV2 = createRealArtifact("reused-source-v2");
+    const childRoot = mkdtempSync(join(tmpdir(), "itotori-play-tester-reused-source-"));
+    try {
+      await seedScope(context);
+      await grantDraftWrite(context, playTesterActor.userId);
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const finalizer = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const materializer = createTestPatchArtifactMaterializer(childRoot);
+      const revisions = new ItotoriLocalizationResultRevisionRepository(
+        context.db,
+        materializer.materializer,
+      );
+      const v1RunId = "play-tester-reused-source-v1";
+      const v2RunId = "play-tester-reused-source-v2";
+      const bridgeUnitId = "reused-unit";
+      const v1Patch = await seedPlayablePatch({
+        journal,
+        finalizer,
+        runId: v1RunId,
+        unitIds: [bridgeUnitId],
+        artifact: artifactV1,
+      });
+
+      await journal.seedRun(localActor, {
+        runId: v2RunId,
+        ...scope,
+        frozenScope: { kind: "explicit_units", unitIds: [bridgeUnitId] },
+        routingPolicy: { routes: ["model-play-tester/provider-play-tester"] },
+        // itotori-225-audit-allow: deterministic synthetic ceiling for fixture attempts.
+        costPolicy: { kind: "play-tester-reused-source-fixture", capUsd: "1.00" },
+        units: [
+          {
+            bridgeUnitId,
+            sourceUnitKey: `scene.${bridgeUnitId}`,
+            nextAction: { kind: "reuse_from_base" },
+          },
+        ],
+        refinement: {
+          basePatchVersionId: v1Patch.patchVersionId,
+          feedbackBatchIds: [],
+        },
+        lease: { ownerId: driverLease.ownerId },
+        createdAt: "2026-07-12T18:10:00.000Z",
+      });
+      const v2Patch = await finalizer.ensurePatchVersion(localActor, {
+        runId: v2RunId,
+        artifactHashes: artifactV2.artifactHashes,
+        artifactRefs: artifactV2.artifactRefs,
+      });
+      for (const stage of ["patch_build", "patch_apply", "validation"] as const) {
+        await finalizer.upsertPatchStageEvidence(localActor, {
+          runId: v2RunId,
+          stage,
+          status: "succeeded",
+          evidence: { fixture: "play-tester-reused-source" },
+        });
+      }
+      await finalizer.enterFinalizing(localActor, { runId: v2RunId, lease: driverLease });
+      await finalizer.completeSucceededRun(localActor, {
+        runId: v2RunId,
+        patchVersionId: v2Patch.patchVersionId,
+        lease: driverLease,
+      });
+
+      const result = await revisions.applyPlayTesterTargetEdit(playTesterActor, {
+        parentPatchVersionId: v2Patch.patchVersionId,
+        bridgeUnitId,
+        targetBody: "A play tester revised the inherited v1 result.",
+      });
+
+      expect(result.resultRevision).toMatchObject({
+        runId: v1RunId,
+        journalOutcomeId: expect.stringContaining(`:${v1RunId}:`),
+        parentRevisionId: `run-result:${v1RunId}:${bridgeUnitId}`,
+      });
+      expect(result.patchVersion).toMatchObject({
+        runId: v2RunId,
+        parentPatchVersionId: v2Patch.patchVersionId,
+      });
+      expect(result.patchVersion.units).toEqual([
+        expect.objectContaining({
+          bridgeUnitId,
+          sourceRunId: v1RunId,
+          resultRevisionId: result.resultRevision.resultRevisionId,
+          memberOrigin: "play_tester_edit",
+          reusedFromPatchVersionId: v2Patch.patchVersionId,
+        }),
+      ]);
+    } finally {
+      try {
+        await context.close();
+      } finally {
+        artifactV1.cleanup();
+        artifactV2.cleanup();
+        rmSync(childRoot, { recursive: true, force: true });
+      }
+    }
+  }, 180_000);
 
   it("leaves no partial revision when the atomic write fails mid-flight", async () => {
     const context = await isolatedMigratedContext();

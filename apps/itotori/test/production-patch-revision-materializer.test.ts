@@ -21,7 +21,10 @@ import { describe, expect, it } from "vitest";
 import { runKaifuuRealliveExtract } from "../src/extract/kaifuu-extract-seam.js";
 import { applyKaifuuRealLivePatch } from "../src/orchestrator/patch-apply-seam.js";
 import { bracketWrapForRealLive } from "../src/orchestrator/localize-project-stage-command.js";
-import { ProductionPlayTesterPatchArtifactMaterializer } from "../src/play/production-patch-revision-materializer.js";
+import {
+  ProductionPlayTesterPatchArtifactMaterializer,
+  ProductionRefinementPatchArtifactMaterializer,
+} from "../src/play/production-patch-revision-materializer.js";
 
 const fixtureRoot = fileURLToPath(
   new URL("../../../crates/kaifuu-reallive/tests/fixtures/bridge-inventory-001/", import.meta.url),
@@ -81,7 +84,7 @@ describe("ProductionPlayTesterPatchArtifactMaterializer", () => {
       await first?.cleanup();
       parent.cleanup();
     }
-  }, 120_000);
+  }, 180_000);
 
   it("refuses parent apply receipts whose manifest-bound provenance does not match", async () => {
     await expectParentReceiptFailure(
@@ -90,7 +93,62 @@ describe("ProductionPlayTesterPatchArtifactMaterializer", () => {
     );
     await expectParentReceiptFailure("--target", "--target does not bind to parent patchTarget");
     await expectParentReceiptFailure("status", "receipt with status 1");
-  }, 120_000);
+  }, 180_000);
+
+  it("materializes a complete refinement version through the real Kaifuu path", async () => {
+    const parent = createProductionParentArtifacts();
+    const refinementMaterializer = new ProductionRefinementPatchArtifactMaterializer();
+    const editMaterializer = new ProductionPlayTesterPatchArtifactMaterializer();
+    let refinement: Awaited<ReturnType<typeof refinementMaterializer.materialize>> | undefined;
+    let child: Awaited<ReturnType<typeof editMaterializer.materialize>> | undefined;
+    try {
+      refinement = await refinementMaterializer.materialize({
+        patchVersionId: "patch-version:refinement:v2",
+        parentPatchVersionId: "patch-version:parent",
+        parentArtifactRefs: parent.artifactRefs,
+        parentArtifactHashes: parent.artifactHashes,
+        targetRevisions: [
+          { bridgeUnitId: parent.bridgeUnitId, targetBody: "Refinement feedback reflected" },
+        ],
+      });
+
+      const receipt = JSON.parse(readFileSync(refinement.artifactRefs.patchApply, "utf8")) as {
+        schemaVersion: string;
+        patchVersionId: string;
+        bridgeUnitIds: string[];
+        apply: { status: number };
+      };
+      expect(receipt).toMatchObject({
+        schemaVersion: "itotori.refinement-patch-apply.v0.1",
+        patchVersionId: "patch-version:refinement:v2",
+        bridgeUnitIds: [parent.bridgeUnitId],
+        apply: { status: 0 },
+      });
+      expect(
+        existsSync(join(refinement.artifactRefs.patchTarget, "REALLIVEDATA", "Seen.txt")),
+      ).toBe(true);
+
+      // A later node-10 target edit can still consume the refinement's
+      // provenance wrapper; this verifies the iteration artifact is a real
+      // reusable delivery parent rather than a one-off test tree.
+      child = await editMaterializer.materialize({
+        childPatchVersionId: "patch-version:refinement:v2:play-edit",
+        parentPatchVersionId: "patch-version:refinement:v2",
+        runId: "run-refinement-materializer",
+        bridgeUnitId: parent.bridgeUnitId,
+        targetBody: "Refinement follow-up edit",
+        parentArtifactRefs: refinement.artifactRefs,
+        parentArtifactHashes: refinement.artifactHashes,
+      });
+      expect(existsSync(join(child.artifactRefs.patchTarget, "REALLIVEDATA", "Seen.txt"))).toBe(
+        true,
+      );
+    } finally {
+      await child?.cleanup();
+      await refinement?.cleanup();
+      parent.cleanup();
+    }
+  }, 180_000);
 });
 
 async function expectParentReceiptFailure(

@@ -465,7 +465,7 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all routes, request + r
     }
   }
 
-  it("covers a body for every one of the 71 routes (no route left un-teethed)", () => {
+  it("covers a body for every one of the 78 routes (no route left un-teethed)", () => {
     // Every route has a response body; the mutation + reviewer/workspace
     // POST routes (incl. ovw-launch-pass-action's `projects.launchPass` and
     // play-mark-validated's `play.setSceneCoverage`) add a request body.
@@ -475,11 +475,12 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all routes, request + r
     // target-edit mutation plus selected delivery GET; model-routing and branch-policy
     // settings each add a GET + POST settings pair; translation-scope-
     // configuration-ui adds a third GET + POST settings pair; localization
-    // run-config adds the scoped registration mutation.
+    // run-config adds the scoped registration mutation; node 11 adds exact
+    // immutable patch-version delivery alongside selected-run delivery.
     const routesWithRequest = ITOTORI_API_ROUTE_IDS.filter(
       (id) => ITOTORI_API_ROUTES[id].requestSchema !== undefined,
     ).length;
-    expect(ITOTORI_API_ROUTE_IDS.length).toBe(71);
+    expect(ITOTORI_API_ROUTE_IDS.length).toBe(78);
     expect(bodyCount).toBe(ITOTORI_API_ROUTE_IDS.length + routesWithRequest);
   });
 });

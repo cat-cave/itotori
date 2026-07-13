@@ -43,6 +43,7 @@ import {
   jsonSchemaForApiError,
   jsonSchemaForRoute,
 } from "../src/api-contract.js";
+import type { PatchIterationFeedbackInput } from "../src/iteration/patch-iteration-service.js";
 import { createItotoriServer, type DashboardServerOptions } from "../src/server.js";
 import type {
   ItotoriReadOnlyServiceFactory,
@@ -465,6 +466,210 @@ const selectedPlayDeliveryServiceFixture = {
   },
 };
 
+// The run's current delivery above is a child. This explicitly models the
+// deselected v1 archive that must still be served by immutable version id.
+const exactPatchIterationDeliveryServiceFixture = {
+  schemaVersion: "play.playable_patch_export.v0.1" as const,
+  generatedAt: new Date("2026-07-13T12:00:00.000Z"),
+  export: {
+    patchVersionId: "patch-iteration-v1",
+    runId: "run-iteration-v1",
+    parentPatchVersionId: null,
+    origin: "run_finalizer",
+    actorUserId: null,
+    status: "playable",
+    selectedAt: null,
+    playableAt: new Date("2026-07-13T12:00:00.000Z"),
+    artifactHashes: { patchTarget: "sha256:iteration-v1-exact" },
+    artifactRefs: { patchTarget: "artifact://private/iteration-v1-exact" },
+    units: [
+      {
+        bridgeUnitId: "bridge-unit-iteration-changed",
+        sourceRunId: "run-iteration-v1",
+        journalOutcomeId: "outcome-iteration-v1-changed",
+        resultRevisionId: "result-revision-iteration-v1-changed",
+        memberOrigin: "run_written_outcome",
+        reusedFromPatchVersionId: null,
+        unitOrdinal: 0,
+        targetBody: "The original playable line.",
+        origin: "run_written_outcome",
+        actorUserId: null,
+      },
+    ],
+  },
+};
+
+// p0-core-iterative-patch-versioning-and-playtest-feedback — a complete,
+// deterministic historical v1/v2 seam for the real-HTTP contract tests. The
+// private artifact refs are intentionally present here: handler projections
+// must remove them before these values cross the HTTP boundary.
+const patchIterationTimestamp = new Date("2026-07-13T12:00:00.000Z");
+const patchIterationQaCalloutFixture = {
+  journalFindingId: "finding-iteration-low-confidence",
+  bridgeUnitId: "bridge-unit-iteration-changed",
+  severity: "warning",
+  category: "low_confidence",
+  note: "Review this line while playing; it is informational only.",
+  confidence: "0.42",
+  contested: true,
+  informational: true as const,
+};
+const patchIterationVersionV1Fixture = {
+  patchVersionId: "patch-iteration-v1",
+  runId: "run-iteration-v1",
+  parentPatchVersionId: null,
+  origin: "run_finalizer" as const,
+  status: "playable",
+  playableAt: patchIterationTimestamp,
+  selectedAt: patchIterationTimestamp,
+  artifactHashes: { delivered_bundle: "sha256:iteration-v1" },
+  artifactRefs: { delivered_bundle: "artifact://private/iteration-v1.tar" },
+  basePatchVersionId: null,
+};
+const patchIterationVersionV2Fixture = {
+  patchVersionId: "patch-iteration-v2",
+  runId: "run-iteration-v2",
+  parentPatchVersionId: "patch-iteration-v1",
+  origin: "refinement_run" as const,
+  status: "playable",
+  playableAt: new Date("2026-07-13T12:05:00.000Z"),
+  selectedAt: new Date("2026-07-13T12:05:00.000Z"),
+  artifactHashes: { delivered_bundle: "sha256:iteration-v2" },
+  artifactRefs: { delivered_bundle: "artifact://private/iteration-v2.tar" },
+  basePatchVersionId: "patch-iteration-v1",
+};
+const patchIterationSurfaceV1Fixture = {
+  ...patchIterationVersionV1Fixture,
+  units: [
+    {
+      bridgeUnitId: "bridge-unit-iteration-changed",
+      sourceRunId: "run-iteration-v1",
+      journalOutcomeId: "outcome-iteration-v1-changed",
+      resultRevisionId: "result-revision-iteration-v1-changed",
+      targetBody: "The original playable line.",
+      memberOrigin: "run_written_outcome" as const,
+      reusedFromPatchVersionId: null,
+      unitOrdinal: 0,
+    },
+    {
+      bridgeUnitId: "bridge-unit-iteration-reused",
+      sourceRunId: "run-iteration-v1",
+      journalOutcomeId: "outcome-iteration-v1-reused",
+      resultRevisionId: "result-revision-iteration-v1-reused",
+      targetBody: "The unchanged playable line.",
+      memberOrigin: "run_written_outcome" as const,
+      reusedFromPatchVersionId: null,
+      unitOrdinal: 1,
+    },
+  ],
+  qaCallouts: [patchIterationQaCalloutFixture],
+};
+const patchIterationSurfaceV2Fixture = {
+  ...patchIterationVersionV2Fixture,
+  units: [
+    {
+      bridgeUnitId: "bridge-unit-iteration-changed",
+      sourceRunId: "run-iteration-v2",
+      journalOutcomeId: "outcome-iteration-v2-changed",
+      resultRevisionId: "result-revision-iteration-v2-changed",
+      targetBody: "The refined playable line.",
+      memberOrigin: "run_written_outcome" as const,
+      reusedFromPatchVersionId: null,
+      unitOrdinal: 0,
+    },
+    {
+      bridgeUnitId: "bridge-unit-iteration-reused",
+      sourceRunId: "run-iteration-v1",
+      journalOutcomeId: "outcome-iteration-v1-reused",
+      resultRevisionId: "result-revision-iteration-v1-reused",
+      targetBody: "The unchanged playable line.",
+      memberOrigin: "reused_from_base" as const,
+      reusedFromPatchVersionId: "patch-iteration-v1",
+      unitOrdinal: 1,
+    },
+  ],
+  qaCallouts: [patchIterationQaCalloutFixture],
+};
+const patchIterationFeedbackEventFixture = {
+  feedbackEventId: "feedback-event-iteration-individual",
+  feedbackBatchId: "feedback-batch-iteration-individual",
+  observedPatchVersionId: "patch-iteration-v1",
+  playSessionId: "play-session-iteration-v1",
+  actorUserId: "local-user",
+  eventKind: "result_edit" as const,
+  body: "The route needs a more natural line.",
+  metadata: { source: "fixture-play-surface", targetBody: "The refined playable line." },
+  resultRevisionId: "result-revision-iteration-v1-changed",
+  contextArtifactId: null,
+  contextEntryVersionId: null,
+  affectedBridgeUnitIds: ["bridge-unit-iteration-changed"],
+  createdAt: patchIterationTimestamp,
+};
+const patchIterationFeedbackBatchFixture = {
+  feedbackBatchId: "feedback-batch-iteration-batched",
+  observedPatchVersionId: "patch-iteration-v1",
+  actorUserId: "local-user",
+  selectionKind: "batch" as const,
+  label: "Route playtest notes",
+  createdAt: patchIterationTimestamp,
+  updatedAt: patchIterationTimestamp,
+};
+const patchIterationSessionFixture = {
+  playSessionId: "play-session-iteration-v1",
+  observedPatchVersionId: "patch-iteration-v1",
+  actorUserId: "local-user",
+  status: "active" as const,
+  launchDescriptor: { source: "fixture-only-private-launch-data" },
+  startedAt: patchIterationTimestamp,
+  endedAt: null,
+  createdAt: patchIterationTimestamp,
+  updatedAt: patchIterationTimestamp,
+  qaCallouts: [patchIterationQaCalloutFixture],
+};
+const patchIterationRefinementFixture = {
+  refinement: {
+    run: { runId: "run-iteration-v2" },
+    basePatchVersionId: "patch-iteration-v1",
+    feedbackBatches: [
+      {
+        feedbackBatchId: "feedback-batch-iteration-batched",
+        observedPatchVersionId: "patch-iteration-v1",
+        eventIds: ["feedback-event-iteration-batched"],
+      },
+      {
+        feedbackBatchId: "feedback-batch-iteration-individual",
+        observedPatchVersionId: "patch-iteration-v1",
+        eventIds: ["feedback-event-iteration-individual"],
+      },
+    ],
+    wikiHeads: [
+      {
+        contextArtifactId: "context-artifact-iteration-route",
+        contextEntryVersionId: "context-entry-version-iteration-route-v2",
+      },
+    ],
+    members: [
+      {
+        bridgeUnitId: "bridge-unit-iteration-changed",
+        strategy: "redraft" as const,
+        basePatchVersionId: "patch-iteration-v1",
+        baseSourceRunId: "run-iteration-v1",
+        baseJournalOutcomeId: "outcome-iteration-v1-changed",
+        baseResultRevisionId: "result-revision-iteration-v1-changed",
+      },
+      {
+        bridgeUnitId: "bridge-unit-iteration-reused",
+        strategy: "reuse" as const,
+        basePatchVersionId: "patch-iteration-v1",
+        baseSourceRunId: "run-iteration-v1",
+        baseJournalOutcomeId: "outcome-iteration-v1-reused",
+        baseResultRevisionId: "result-revision-iteration-v1-reused",
+      },
+    ],
+  },
+  patch: patchIterationSurfaceV2Fixture,
+};
+
 /**
  * The stable, module-level fixture service surface. Built ONCE so every
  * request the harness drives flows through the SAME mock instances — tests can
@@ -581,6 +786,59 @@ const fixtureServices = {
       fileName: "patch-version-contract-child.tar",
       bytes: Buffer.from("fixture-delivered-patch-tar", "utf8"),
     })),
+    loadExactPatchExport: vi.fn(async () => exactPatchIterationDeliveryServiceFixture),
+    loadExactPatchArchive: vi.fn(async () => ({
+      contentType: "application/x-tar" as const,
+      fileName: "patch-iteration-v1.tar",
+      bytes: Buffer.from("fixture-exact-historical-patch-tar", "utf8"),
+    })),
+  },
+  patchIteration: {
+    list: vi.fn(async () => [patchIterationVersionV2Fixture, patchIterationVersionV1Fixture]),
+    load: vi.fn(async () => ({
+      patch: patchIterationSurfaceV1Fixture,
+      versions: [patchIterationVersionV2Fixture, patchIterationVersionV1Fixture],
+      feedback: {
+        observedPatchVersionId: "patch-iteration-v1",
+        batches: [
+          {
+            ...patchIterationFeedbackBatchFixture,
+            events: [patchIterationFeedbackEventFixture],
+          },
+        ],
+      },
+    })),
+    play: vi.fn(async () => patchIterationSessionFixture),
+    createFeedbackBatch: vi.fn(
+      async (input: {
+        observedPatchVersionId: string;
+        feedbackBatchId?: string;
+        label?: string;
+      }) => ({
+        ...patchIterationFeedbackBatchFixture,
+        feedbackBatchId:
+          input.feedbackBatchId ?? patchIterationFeedbackBatchFixture.feedbackBatchId,
+        observedPatchVersionId: input.observedPatchVersionId,
+        ...(input.label === undefined ? {} : { label: input.label }),
+      }),
+    ),
+    feedback: vi.fn(async (input: PatchIterationFeedbackInput) => ({
+      ...patchIterationFeedbackEventFixture,
+      feedbackBatchId: input.feedbackBatchId ?? "feedback-batch-iteration-individual",
+      observedPatchVersionId: input.observedPatchVersionId,
+      playSessionId: input.playSessionId ?? null,
+      eventKind: input.eventKind,
+      body: input.body ?? null,
+      metadata: {
+        ...input.metadata,
+        ...(input.targetBody === undefined ? {} : { targetBody: input.targetBody }),
+      },
+      resultRevisionId: input.resultRevisionId ?? null,
+      contextArtifactId: input.contextArtifactId ?? null,
+      contextEntryVersionId: input.contextEntryVersionId ?? null,
+      affectedBridgeUnitIds: [...(input.affectedBridgeUnitIds ?? [])],
+    })),
+    refine: vi.fn(async () => patchIterationRefinementFixture),
   },
   assetDecisions: {
     loadActiveDecisions: vi.fn(unused),
@@ -763,5 +1021,7 @@ export const fixtureRequirePermission = grantAllPermissions;
  */
 export const fixtureProjectWorkflow = fixtureServices.projectWorkflow;
 export const fixturePlayTesterResultRevision = fixtureServices.playTesterResultRevision;
+/** Node 11 fixture port exposed for black-box route-to-service assertions. */
+export const fixturePatchIteration = fixtureServices.patchIteration;
 
 export type { ItotoriReadOnlyServiceFactory };

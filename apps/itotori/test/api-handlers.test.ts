@@ -194,6 +194,10 @@ type ApiMutationService =
   | { surface: "manualFeedback"; method: "importManualFeedback" }
   | { surface: "playTesterResultRevision"; method: "editTarget" }
   | {
+      surface: "patchIteration";
+      method: "play" | "createFeedbackBatch" | "feedback" | "refine";
+    }
+  | {
       surface: "authMembers";
       method: "listMembers" | "inviteMember" | "acceptInvitation" | "removeMember";
     }
@@ -573,6 +577,21 @@ const apiMutationPermissionMatrix = [
       targetBody: "Edited target line.",
     }),
     { surface: "playTesterResultRevision", method: "editTarget" },
+  ),
+  apiGateForService(
+    "patchIterationPlay",
+    post("/api/play/patch-versions/patch-parent-api/sessions", {}),
+    { surface: "patchIteration", method: "play" },
+  ),
+  apiGateForService(
+    "patchIterationFeedback",
+    post("/api/play/patch-versions/patch-parent-api/feedback-batches", {}),
+    { surface: "patchIteration", method: "createFeedbackBatch" },
+  ),
+  apiGateForService(
+    "patchIterationRefine",
+    post("/api/play/patch-versions/patch-parent-api/refine", {}),
+    { surface: "patchIteration", method: "refine" },
   ),
   apiGateForService(
     "flagAnnotation",
@@ -4371,6 +4390,27 @@ describe("Itotori API handlers", () => {
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "patch iteration play session",
+          "requiredPermission": "draft.write",
+          "route": "POST /api/play/patch-versions/patch-parent-api/sessions",
+          "successFixture": "api-handlers.test.ts patch iteration play session success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "patch iteration feedback",
+          "requiredPermission": "draft.write",
+          "route": "POST /api/play/patch-versions/patch-parent-api/feedback-batches",
+          "successFixture": "api-handlers.test.ts patch iteration feedback success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "patch iteration refine",
+          "requiredPermission": "draft.write",
+          "route": "POST /api/play/patch-versions/patch-parent-api/refine",
+          "successFixture": "api-handlers.test.ts patch iteration refine success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "play flag annotation",
           "requiredPermission": "feedback.import",
           "route": "POST /api/projects/:projectId/locale-branches/:localeBranchId/flags",
@@ -5085,6 +5125,9 @@ function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutati
   if (service.surface === "playTesterResultRevision") {
     return services.playTesterResultRevision[service.method];
   }
+  if (service.surface === "patchIteration") {
+    return services.patchIteration[service.method];
+  }
   return services.authSsoSettings[service.method];
 }
 
@@ -5162,7 +5205,11 @@ function sourceApiPermissionGateIdsFromSource(
     }
   });
 
-  return gateIds;
+  // One permission gate can intentionally protect multiple sibling routes
+  // (for example, batch and individual playtest feedback). The matrix has
+  // one success/denial fixture per declared gate, rather than duplicating the
+  // same authorization proof for each use site.
+  return [...new Set(gateIds)];
 }
 
 function sourceApiMutationRoutes(): ApiMutationRoute[] {
@@ -5640,7 +5687,70 @@ function serviceFixture(): ItotoriApiServices {
         export: null,
       })),
       loadSelectedArchive: vi.fn(async () => null),
+      loadExactPatchExport: vi.fn(async () => ({
+        schemaVersion: "play.playable_patch_export.v0.1" as const,
+        generatedAt: new Date("2026-07-13T00:00:00.000Z"),
+        export: null,
+      })),
+      loadExactPatchArchive: vi.fn(async () => null),
     },
+    patchIteration: {
+      play: vi.fn(async () => ({
+        playSessionId: "play-session-api",
+        observedPatchVersionId: "patch-parent-api",
+        actorUserId: "local-user",
+        status: "active",
+        startedAt: new Date("2026-07-13T00:00:00.000Z"),
+        endedAt: null,
+        qaCallouts: [],
+      })),
+      createFeedbackBatch: vi.fn(async () => ({
+        feedbackBatchId: "feedback-batch-api",
+        observedPatchVersionId: "patch-parent-api",
+        actorUserId: "local-user",
+        selectionKind: "batch",
+        label: null,
+        createdAt: new Date("2026-07-13T00:00:00.000Z"),
+        updatedAt: new Date("2026-07-13T00:00:00.000Z"),
+      })),
+      feedback: vi.fn(async () => ({
+        feedbackEventId: "feedback-event-api",
+        feedbackBatchId: "feedback-batch-api",
+        observedPatchVersionId: "patch-parent-api",
+        playSessionId: null,
+        actorUserId: "local-user",
+        eventKind: "comment",
+        body: null,
+        metadata: {},
+        resultRevisionId: null,
+        contextArtifactId: null,
+        contextEntryVersionId: null,
+        affectedBridgeUnitIds: [],
+        createdAt: new Date("2026-07-13T00:00:00.000Z"),
+      })),
+      refine: vi.fn(async () => ({
+        refinement: {
+          run: { runId: "run-api-refinement" },
+          basePatchVersionId: "patch-parent-api",
+          feedbackBatches: [],
+          wikiHeads: [],
+          members: [],
+        },
+        patch: {
+          patchVersionId: "patch-api-refinement",
+          runId: "run-api-refinement",
+          parentPatchVersionId: "patch-parent-api",
+          origin: "refinement_run",
+          status: "playable",
+          playableAt: new Date("2026-07-13T00:00:00.000Z"),
+          selectedAt: new Date("2026-07-13T00:00:00.000Z"),
+          artifactHashes: {},
+          artifactRefs: {},
+          units: [],
+          qaCallouts: [],
+        },
+      })),
+    } as unknown as ItotoriApiServices["patchIteration"],
     workspaceCorrections: {
       loadPreview: vi.fn(async ({ localeBranchId, permission }) => ({
         schemaVersion: "workspace.correction_preview.v0.1" as const,

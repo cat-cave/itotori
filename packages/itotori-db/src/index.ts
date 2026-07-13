@@ -121,6 +121,11 @@ export {
   localizationRunTerminalStatusValues,
   localizationResultRevisionOriginValues,
   localizationPatchVersionOriginValues,
+  localizationPatchVersionMemberOriginValues,
+  localizationRefinementMemberStrategyValues,
+  playSessionStatusValues,
+  playTestFeedbackBatchSelectionKindValues,
+  playTestFeedbackEventKindValues,
 } from "./schema.js";
 export type {
   AuthSsoProviderProtocol,
@@ -186,6 +191,11 @@ export type {
   LocalizationRunTerminalStatus,
   LocalizationResultRevisionOrigin,
   LocalizationPatchVersionOrigin,
+  LocalizationPatchVersionMemberOrigin,
+  LocalizationRefinementMemberStrategy,
+  PlaySessionStatus,
+  PlayTestFeedbackBatchSelectionKind,
+  PlayTestFeedbackEventKind,
 } from "./schema.js";
 export {
   ItotoriAuthBillingSeatRepository,
@@ -930,9 +940,33 @@ export type {
   PlayTesterPatchArtifactMaterializer,
   PlayTesterChildPatchVersionRecord,
   PlayTesterResultRevisionRecord,
+  PlayablePatchExport,
   SelectedPatchExport,
   SelectedPatchExportUnit,
 } from "./repositories/localization-result-revision-repository.js";
+export {
+  ItotoriLocalizationIterationRepository,
+  LocalizationIterationRepositoryError,
+  PLAY_TEST_QA_LOW_CONFIDENCE_THRESHOLD,
+} from "./repositories/localization-iteration-repository.js";
+export type {
+  CreatePlayTestFeedbackBatchInput,
+  CreateRefinementRunInput,
+  ItotoriLocalizationIterationRepositoryPort,
+  LocalizationRefinementRunRecord,
+  PatchPlaySurface,
+  PatchVersionIterationRecord,
+  PlaySessionQaCallout,
+  PlaySessionRecord,
+  PlayTestFeedbackBatchRecord,
+  PlayTestFeedbackEventRecord,
+  PlayTestFeedbackInbox,
+  RecordPlayTestFeedbackEventInput,
+  RefinementRunFeedbackBatchSnapshot,
+  RefinementRunMemberPlan,
+  RefinementRunWikiHeadSnapshot,
+  StartPlaySessionInput,
+} from "./repositories/localization-iteration-repository.js";
 export type {
   BeginLocalizationJournalAttemptInput,
   CompleteLocalizationJournalAttemptInput,
@@ -982,6 +1016,8 @@ export type {
   ReserveLocalizationJournalAttemptResult,
   SeedLocalizationJournalRunInput,
   SeedLocalizationJournalRunLeaseInput,
+  SeedLocalizationJournalRefinementInput,
+  SeedLocalizationJournalRefinementWikiHeadInput,
   SeedLocalizationJournalRunUnitInput,
 } from "./repositories/localization-journal-repository.js";
 export type {

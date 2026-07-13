@@ -139,6 +139,7 @@ describe("localization attempt/outcome journal migration", () => {
       ).toEqual([
         "itotori_llm_attempts",
         "itotori_localization_patch_version_units",
+        "itotori_localization_refinement_run_members",
         "itotori_written_unit_outcomes",
       ]);
     } finally {

@@ -36,6 +36,7 @@ import { ItotoriDraftJobRepository } from "../src/repositories/draft-job-reposit
 import { ItotoriEventQueueRepository } from "../src/repositories/event-queue-repository.js";
 import { ItotoriExactSearchDocumentRepository } from "../src/repositories/exact-search-document-repository.js";
 import { ItotoriFeedbackRepository } from "../src/repositories/feedback-repository.js";
+import { ItotoriLocalizationIterationRepository } from "../src/repositories/localization-iteration-repository.js";
 import { ItotoriLocalizationJournalRepository } from "../src/repositories/localization-journal-repository.js";
 import { ItotoriLocalizationRunFinalizerRepository } from "../src/repositories/localization-run-finalizer-repository.js";
 import { ItotoriLocalizationResultRevisionRepository } from "../src/repositories/localization-result-revision-repository.js";
@@ -1087,6 +1088,54 @@ const repositoryPermissionGateMatrix = [
     "jobs-run-table-read-model.test.ts journal jobs run table coverage",
     (repo) => repo.loadJobsRunTable(deniedActor, { projectId: "project" }),
   ),
+  localizationIterationGate(
+    "loadRefinementRun",
+    "catalogRead",
+    "localization-iteration-repository.test.ts refinement snapshot read coverage",
+    (repo) => repo.loadRefinementRun(deniedActor, "refinement-run-denied"),
+  ),
+  localizationIterationGate(
+    "createFeedbackBatch",
+    "draftWrite",
+    "localization-iteration-repository.test.ts feedback batch persistence coverage",
+    (repo) => repo.createFeedbackBatch(deniedActor, undefined as never),
+  ),
+  localizationIterationGate(
+    "recordFeedbackEvent",
+    "draftWrite",
+    "localization-iteration-repository.test.ts feedback event persistence coverage",
+    (repo) => repo.recordFeedbackEvent(deniedActor, undefined as never),
+  ),
+  localizationIterationGate(
+    "loadFeedbackInbox",
+    "catalogRead",
+    "localization-iteration-repository.test.ts feedback inbox read coverage",
+    (repo) => repo.loadFeedbackInbox(deniedActor, "patch-version-denied"),
+  ),
+  localizationIterationGate(
+    "startPlaySession",
+    "draftWrite",
+    "localization-iteration-repository.test.ts play session start coverage",
+    (repo) => repo.startPlaySession(deniedActor, undefined as never),
+  ),
+  localizationIterationGate(
+    "finishPlaySession",
+    "draftWrite",
+    "localization-iteration-repository.test.ts play session completion coverage",
+    (repo) => repo.finishPlaySession(deniedActor, undefined as never),
+  ),
+  localizationIterationGate(
+    "loadPatchPlaySurface",
+    "catalogRead",
+    "localization-iteration-repository.test.ts patch play surface read coverage",
+    (repo) => repo.loadPatchPlaySurface(deniedActor, "patch-version-denied"),
+  ),
+  localizationIterationGate(
+    "listPatchVersions",
+    "catalogRead",
+    "localization-iteration-repository.test.ts patch version listing coverage",
+    (repo) => repo.listPatchVersions(deniedActor, { localeBranchId: "locale-branch-denied" }),
+  ),
   localizationRunFinalizerGate(
     "loadSnapshot",
     "catalogRead",
@@ -1134,6 +1183,12 @@ const repositoryPermissionGateMatrix = [
     "catalogRead",
     "localization-result-revision-repository.test.ts selected export coverage",
     (repo) => repo.loadSelectedPatchExport(deniedActor, undefined as never),
+  ),
+  localizationResultRevisionGate(
+    "loadPlayablePatchExport",
+    "catalogRead",
+    "localization-result-revision-repository.test.ts historical exact export coverage",
+    (repo) => repo.loadPlayablePatchExport(deniedActor, undefined as never),
   ),
   principalGate(
     "createAccount",
@@ -2362,6 +2417,54 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationIterationRepository.loadRefinementRun",
+          "requiredPermission": "catalog.read",
+          "successFixture": "localization-iteration-repository.test.ts refinement snapshot read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationIterationRepository.createFeedbackBatch",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-iteration-repository.test.ts feedback batch persistence coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationIterationRepository.recordFeedbackEvent",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-iteration-repository.test.ts feedback event persistence coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationIterationRepository.loadFeedbackInbox",
+          "requiredPermission": "catalog.read",
+          "successFixture": "localization-iteration-repository.test.ts feedback inbox read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationIterationRepository.startPlaySession",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-iteration-repository.test.ts play session start coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationIterationRepository.finishPlaySession",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-iteration-repository.test.ts play session completion coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationIterationRepository.loadPatchPlaySurface",
+          "requiredPermission": "catalog.read",
+          "successFixture": "localization-iteration-repository.test.ts patch play surface read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationIterationRepository.listPatchVersions",
+          "requiredPermission": "catalog.read",
+          "successFixture": "localization-iteration-repository.test.ts patch version listing coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriLocalizationRunFinalizerRepository.loadSnapshot",
           "requiredPermission": "catalog.read",
           "successFixture": "localization-run-finalizer-repository.test.ts snapshot read coverage",
@@ -2407,6 +2510,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriLocalizationResultRevisionRepository.loadSelectedPatchExport",
           "requiredPermission": "catalog.read",
           "successFixture": "localization-result-revision-repository.test.ts selected export coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationResultRevisionRepository.loadPlayablePatchExport",
+          "requiredPermission": "catalog.read",
+          "successFixture": "localization-result-revision-repository.test.ts historical exact export coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
@@ -3309,6 +3418,22 @@ function localizationJournalGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriLocalizationJournalRepository(db)),
+  });
+}
+
+function localizationIterationGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriLocalizationIterationRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriLocalizationIterationRepository",
+    sourceFile: "localization-iteration-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriLocalizationIterationRepository(db)),
   });
 }
 
