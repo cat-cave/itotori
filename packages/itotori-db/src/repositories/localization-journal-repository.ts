@@ -196,7 +196,7 @@ export type LocalizationJournalCostReservationRecord = {
   attemptId: string;
   reservedUsd: string;
   reconciledUsd: string | null;
-  state: "reserved" | "reconciled";
+  state: "reserved" | "released" | "reconciled";
   createdAt: Date;
   reconciledAt: Date | null;
 };
@@ -617,7 +617,7 @@ export interface ItotoriLocalizationJournalRepositoryPort {
     actor: AuthorizationActor,
     input: CompleteLocalizationJournalAttemptInput,
   ): Promise<LocalizationJournalAttemptRecord>;
-  /** Releases an unknown-billing reservation only after a later exact settlement. */
+  /** Records an exact later bill for a completed attempt with unknown billing. */
   reconcileAttemptBilling(
     actor: AuthorizationActor,
     input: ReconcileLocalizationJournalAttemptBillingInput,
@@ -1328,6 +1328,11 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
     assertNonBlank(runId, "runId");
     const capUsd = normalizeExactNonNegativeDecimal(capUsdInput, "capUsd");
     return this.db.transaction(async (tx) => {
+      // Every production path which mutates this account locks the run first.
+      // Keep cap raises in the same order as reserve, reconciliation, and
+      // resume so a run takeover cannot deadlock against an operator raise.
+      await lockRunForCostAccountingInTx(tx, runId);
+      const run = await requireRunInTx(tx, runId);
       const account = await requireRunCostAccountInTx(tx, runId);
       if (account.capUsd !== null && compareExactNonNegativeDecimals(capUsd, account.capUsd) < 0) {
         throw new LocalizationJournalRepositoryError(
@@ -1335,7 +1340,6 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
           `cost cap ${capUsd} may not lower existing cap ${account.capUsd}`,
         );
       }
-      const run = await requireRunInTx(tx, runId);
       if (run.costPolicy === null) {
         throw new LocalizationJournalRepositoryError(
           "invalid_input",
@@ -1868,7 +1872,7 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
       // completion write. Explicit resume is the recovery boundary: close
       // every orphaned attempt truthfully as providerless/interrupted before
       // any pending unit is re-driven with a fresh physical attempt id.
-      await tx
+      const interrupted = await tx
         .update(localizationJournalLlmAttempts)
         .set({
           lifecycleState: "completed",
@@ -1901,7 +1905,20 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
             eq(localizationJournalLlmAttempts.lifecycleState, "dispatching"),
             sql`${localizationJournalLlmAttempts.fenceToken} < ${resumed.fenceToken}`,
           ),
-        );
+        )
+        .returning({ attemptId: localizationJournalLlmAttempts.attemptId });
+
+      // The pre-dispatch reservation is tied to the physical attempt, not to
+      // the logical unit. Once this resume fences and closes that attempt, it
+      // can no longer be in flight and must stop consuming capacity. Preserve
+      // the reservation row as `released` so a later exact provider bill adds
+      // spent cost without subtracting a fresh attempt's reservation again.
+      await releaseInterruptedAttemptReservationsInTx(
+        tx,
+        runId,
+        interrupted.map((attempt) => attempt.attemptId),
+        resumedAt,
+      );
 
       await tx
         .update(localizationJournalRunUnits)
@@ -4172,7 +4189,32 @@ async function reconcileKnownAttemptReservationInTx(
   // Cost admission locks the run before its account. Take the same lock order
   // on both immediate completion and late reconciliation, so an over-cap
   // settlement can pause the run without racing a concurrent reservation.
-  await lockRunForCostReconciliationInTx(tx, input.runId);
+  await lockRunForCostAccountingInTx(tx, input.runId);
+  const reservationRows = await tx
+    .select()
+    .from(localizationJournalCostReservations)
+    .where(
+      and(
+        eq(localizationJournalCostReservations.runId, input.runId),
+        eq(localizationJournalCostReservations.attemptId, input.attemptId),
+      ),
+    )
+    .limit(1);
+  const prior = reservationRows[0];
+  // Legacy / deliberately unbudgeted attempts have no reservation.
+  if (prior === undefined) return;
+  if (prior.state === "reconciled") {
+    if (prior.reconciledUsd !== input.settledCostUsd) {
+      throw new LocalizationJournalRepositoryError(
+        "attempt_conflict",
+        `attempt ${input.attemptId} cost reservation was reconciled with different facts`,
+      );
+    }
+    await pauseRunForOverCapSettlementInTx(tx, input);
+    return;
+  }
+
+  const releasedOnResume = prior.state === "released";
   const transitioned = await tx
     .update(localizationJournalCostReservations)
     .set({
@@ -4184,48 +4226,40 @@ async function reconcileKnownAttemptReservationInTx(
       and(
         eq(localizationJournalCostReservations.runId, input.runId),
         eq(localizationJournalCostReservations.attemptId, input.attemptId),
-        eq(localizationJournalCostReservations.state, "reserved"),
+        eq(localizationJournalCostReservations.state, prior.state),
       ),
     )
     .returning();
   const reservation = transitioned[0];
   if (reservation === undefined) {
-    const existing = await tx
-      .select()
-      .from(localizationJournalCostReservations)
-      .where(
-        and(
-          eq(localizationJournalCostReservations.runId, input.runId),
-          eq(localizationJournalCostReservations.attemptId, input.attemptId),
-        ),
-      )
-      .limit(1);
-    const prior = existing[0];
-    // Legacy / deliberately unbudgeted attempts have no reservation.
-    if (prior === undefined) return;
-    if (prior.state !== "reconciled" || prior.reconciledUsd !== input.settledCostUsd) {
-      throw new LocalizationJournalRepositoryError(
-        "attempt_conflict",
-        `attempt ${input.attemptId} cost reservation was reconciled with different facts`,
-      );
-    }
-    await pauseRunForOverCapSettlementInTx(tx, input);
-    return;
+    throw new LocalizationJournalRepositoryError(
+      "attempt_conflict",
+      `attempt ${input.attemptId} cost reservation changed while its bill reconciled`,
+    );
   }
-  const account = await tx
-    .update(localizationJournalRunCostAccounts)
-    .set({
-      spentCostUsd: sql`${localizationJournalRunCostAccounts.spentCostUsd} + ${input.settledCostUsd}`,
-      reservedCostUsd: sql`${localizationJournalRunCostAccounts.reservedCostUsd} - ${reservation.reservedUsd}`,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(localizationJournalRunCostAccounts.runId, input.runId),
-        sql`${localizationJournalRunCostAccounts.reservedCostUsd} >= ${reservation.reservedUsd}`,
-      ),
-    )
-    .returning();
+  const account = releasedOnResume
+    ? await tx
+        .update(localizationJournalRunCostAccounts)
+        .set({
+          spentCostUsd: sql`${localizationJournalRunCostAccounts.spentCostUsd} + ${input.settledCostUsd}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(localizationJournalRunCostAccounts.runId, input.runId))
+        .returning()
+    : await tx
+        .update(localizationJournalRunCostAccounts)
+        .set({
+          spentCostUsd: sql`${localizationJournalRunCostAccounts.spentCostUsd} + ${input.settledCostUsd}`,
+          reservedCostUsd: sql`${localizationJournalRunCostAccounts.reservedCostUsd} - ${reservation.reservedUsd}`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(localizationJournalRunCostAccounts.runId, input.runId),
+            sql`${localizationJournalRunCostAccounts.reservedCostUsd} >= ${reservation.reservedUsd}`,
+          ),
+        )
+        .returning();
   const updatedAccount = account[0];
   if (updatedAccount === undefined) {
     throw new LocalizationJournalRepositoryError(
@@ -4234,6 +4268,58 @@ async function reconcileKnownAttemptReservationInTx(
     );
   }
   await pauseRunForOverCapSettlementInTx(tx, input, updatedAccount);
+}
+
+/**
+ * Release capacity held by attempts that this resume transaction just closed.
+ * The exact per-attempt amount remains durable in a `released` reservation so
+ * delayed billing can charge spent cost without touching a newer reservation.
+ */
+async function releaseInterruptedAttemptReservationsInTx(
+  tx: JournalTransaction,
+  runId: string,
+  attemptIds: readonly string[],
+  resumedAt: Date,
+): Promise<void> {
+  if (attemptIds.length === 0) return;
+  const released = await tx
+    .update(localizationJournalCostReservations)
+    .set({ state: "released" })
+    .where(
+      and(
+        eq(localizationJournalCostReservations.runId, runId),
+        inArray(localizationJournalCostReservations.attemptId, attemptIds),
+        eq(localizationJournalCostReservations.state, "reserved"),
+      ),
+    )
+    .returning({ reservedUsd: localizationJournalCostReservations.reservedUsd });
+  const releasedUsd = released.reduce(
+    (total, reservation) =>
+      addExactNonNegativeDecimals(
+        total,
+        normalizeExactNonNegativeDecimal(reservation.reservedUsd, "reservedUsd"),
+      ),
+    "0",
+  );
+  if (releasedUsd === "0") return;
+
+  const account = await tx
+    .update(localizationJournalRunCostAccounts)
+    .set({
+      reservedCostUsd: sql`greatest(
+        ${localizationJournalRunCostAccounts.reservedCostUsd} - ${releasedUsd},
+        0
+      )`,
+      updatedAt: resumedAt,
+    })
+    .where(eq(localizationJournalRunCostAccounts.runId, runId))
+    .returning();
+  if (account[0] === undefined) {
+    throw new LocalizationJournalRepositoryError(
+      "attempt_conflict",
+      `cost account for interrupted attempts in run ${runId} is missing`,
+    );
+  }
 }
 
 /**
@@ -4289,10 +4375,7 @@ async function pauseRunForOverCapSettlementInTx(
     );
 }
 
-async function lockRunForCostReconciliationInTx(
-  tx: JournalTransaction,
-  runId: string,
-): Promise<void> {
+async function lockRunForCostAccountingInTx(tx: JournalTransaction, runId: string): Promise<void> {
   await tx.execute(sql`
     select 1
     from ${localizationJournalRuns}

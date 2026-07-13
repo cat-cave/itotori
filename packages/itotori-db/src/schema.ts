@@ -4481,7 +4481,7 @@ export type LocalizationJournalNextActionJson = {
 export type LocalizationJournalAttemptBillingState = "known" | "unknown";
 
 /** Lifecycle state of a pre-dispatch worst-case cost reservation. */
-export type LocalizationJournalCostReservationState = "reserved" | "reconciled";
+export type LocalizationJournalCostReservationState = "reserved" | "released" | "reconciled";
 
 /** Minimal run-scoped patch-version lifecycle owned by the terminal finalizer. */
 export const localizationRunPatchVersionStatusValues = {
@@ -4768,7 +4768,10 @@ export const localizationJournalRunCostAccounts = pgTable(
 /**
  * One worst-case reservation, coupled to the exact physical attempt that it
  * admitted. An unresolved reservation is intentionally conservative: it is
- * still included in the account's `reservedCostUsd` until a settled bill arrives.
+ * included in the account's `reservedCostUsd` until a settled bill arrives,
+ * except for a `released` reservation whose dispatch was durably interrupted
+ * during resume. That state keeps the exact reservation fact available for a
+ * later bill without occupying capacity for a no-longer-in-flight request.
  */
 export const localizationJournalCostReservations = pgTable(
   "itotori_localization_cost_reservations",

@@ -11,6 +11,7 @@ import {
   TERMINAL_RUN_SUMMARY_SCHEMA_VERSION,
   TerminalRunCommitResumableError,
   TerminalRunOperationalBlockerError,
+  evaluateTerminalRunCoverage,
   finalizeTerminalRun,
   terminalFinalizerStageValues,
   type TerminalFinalizerStage,
@@ -234,6 +235,16 @@ describe("terminal run finalizer", () => {
       },
     });
     expect(persistence.commits).toHaveLength(1);
+  });
+
+  it("keeps a released reservation unresolved until its exact provider bill reconciles", () => {
+    const snapshot = completeSnapshot();
+    snapshot.reservations = [{ reservationId: "reservation-a", state: "released" }];
+
+    expect(evaluateTerminalRunCoverage(snapshot)).toMatchObject({
+      complete: false,
+      unreconciledReservationIds: ["reservation-a"],
+    });
   });
 
   it("keeps an operational blocker resumable, then completes after resume", async () => {

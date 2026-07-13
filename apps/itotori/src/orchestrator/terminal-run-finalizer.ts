@@ -78,7 +78,7 @@ export type TerminalRunAttempt = {
 
 export type TerminalRunReservation = {
   reservationId: string;
-  state: "reserved" | "reconciled";
+  state: "reserved" | "released" | "reconciled";
 };
 
 export type TerminalPatchVersion = {
