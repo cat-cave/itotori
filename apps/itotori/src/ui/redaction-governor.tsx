@@ -20,7 +20,7 @@
 // `revealSensitive` (the capability) is the cap gate. The downstream
 // `fnd-caps-context` node will lift this onto a real caps context; until it
 // lands, the shell (and tests) pass `revealSensitive` explicitly — the SAME
-// pattern `ReviewerDetailScreen.canDecide` uses for the decide-action cap.
+// same capability-provider pattern used by other gated Studio actions.
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { RedactionFrame, type RedactionFrameProps } from "@itotori/ds";

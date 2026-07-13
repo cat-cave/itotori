@@ -29,7 +29,6 @@ import type {
   PatchResultV02,
   RuntimeEvidenceReportV02,
   RuntimeVerificationReport,
-  TriageEventV02,
 } from "@itotori/localization-bridge-schema";
 import {
   assertConformanceManifestResultJoinV01,
@@ -80,12 +79,6 @@ export type RuntimeIngestResult = {
 export type FindingRecordResult = {
   findingId: string;
   status: "open" | "resolved" | "superseded";
-};
-
-export type DecisionRecordResult = {
-  decisionId: string;
-  eventKind: TriageEventV02["eventKind"];
-  recorded: boolean;
 };
 
 export type BenchmarkRecordResult = {
@@ -203,8 +196,8 @@ export type LaunchLocalizationPassResult =
   | { outcome: "refused"; refusalMessage: string };
 
 /**
- * ovw-launch-pass-action — the driver seam the launch-pass mutation folds
- * queued corrections through and DRIVES the next localization pass with (the
+ * ovw-launch-pass-action — the driver seam the launch-pass mutation uses to
+ * DRIVE the next localization pass with (the
  * project-driven-executor / localize-fullproject driver). It is a PORT so
  * production binds it to the real driver while a test binds a double (no game
  * bytes, no live pipeline). The driver itself is unchanged — this is the thin
@@ -362,17 +355,13 @@ export interface ItotoriProjectWorkflowPort {
       status?: "open" | "resolved" | "superseded";
     },
   ): Promise<FindingRecordResult>;
-  recordDecision(
-    projectId: string,
-    input: { localeBranchId?: string; event: TriageEventV02 },
-  ): Promise<DecisionRecordResult>;
   recordBenchmarkReport(
     projectId: string,
     input: { benchmarkReport: BenchmarkReportV02 },
   ): Promise<BenchmarkRecordResult>;
   /**
-   * ovw-launch-pass-action — fold queued corrections and DRIVE the next
-   * localization pass for the (server-resolved) project + locale branch via the
+   * ovw-launch-pass-action — DRIVE the next localization pass for the
+   * (server-resolved) project + locale branch via the
    * injected pass driver. `canSteer`-gated at the HTTP boundary (the
    * `draft.write` steer permission). Throws
    * {@link LocalizationPassDriverNotConfiguredError} when no driver is wired.
@@ -886,22 +875,6 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     };
   }
 
-  async recordDecision(
-    projectId: string,
-    input: { localeBranchId?: string; event: TriageEventV02 },
-  ): Promise<DecisionRecordResult> {
-    await this.repository.appendEvent(this.actor, {
-      projectId,
-      event: input.event,
-      ...(input.localeBranchId === undefined ? {} : { localeBranchId: input.localeBranchId }),
-    });
-    return {
-      decisionId: input.event.eventId,
-      eventKind: input.event.eventKind,
-      recorded: true,
-    };
-  }
-
   async recordBenchmarkReport(
     projectId: string,
     input: { benchmarkReport: BenchmarkReportV02 },
@@ -950,8 +923,8 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     input: LaunchLocalizationPassInput,
   ): Promise<LaunchLocalizationPassResult> {
     // ovw-launch-pass-action — the workflow is a thin adapter over the injected
-    // pass driver: it folds queued corrections + drives the next pass. The
-    // driver consumes prior written outcomes through the durable journal. With
+    // pass driver: it drives the next pass. The driver consumes prior written
+    // outcomes through the durable journal. With
     // no driver wired the install has no
     // game-bytes pipeline, so it refuses LOUDLY (never a fabricated pass),
     // mirroring the draft path's provider-not-configured refusal.

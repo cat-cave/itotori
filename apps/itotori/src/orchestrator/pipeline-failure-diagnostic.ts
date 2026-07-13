@@ -181,7 +181,6 @@ function redactValue(value: unknown, seen: WeakSet<object>): unknown {
  * - `executor.persist-draft`       — per-unit draft persistence.
  * - `executor.persist-provider-run`— per-unit provider-run persistence.
  * - `executor.export-patch`        — per-run patch export.
- * - `executor.flush-queue`         — flush a buffered reviewer-queue write.
  *
  * The set is closed: a new step is a deliberate change to the diagnostic
  * surface, not a silent widening.
@@ -208,8 +207,7 @@ export type PipelineStep =
   | "executor.drive-unit"
   | "executor.persist-draft"
   | "executor.persist-provider-run"
-  | "executor.export-patch"
-  | "executor.flush-queue";
+  | "executor.export-patch";
 
 /**
  * The closed set of diagnostic codes a step failure can carry. Each code

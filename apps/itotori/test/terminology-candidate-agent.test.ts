@@ -324,7 +324,7 @@ describe("generateTerminologyCandidates", () => {
     // Empty input glossary: the conflictIndex path finds NOTHING, so this
     // proves the authoritative glossary lookup is what fires — closing the TOCTOU
     // window (a curator inserted the term mid-run) synchronously at
-    // pre-persist instead of asynchronously as RejectedByReviewer.
+    // pre-persist instead of as an asynchronous downstream rejection.
     const input: TerminologyCandidateInput = { ...inputFixture(), existingGlossary: [] };
     const pack = JSON.stringify({
       candidates: [

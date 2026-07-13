@@ -45,7 +45,7 @@ test("recorded ledger is read from a public fixtures/ path", () => {
   assert.ok(inputs.ledgerByRole.has("qa"));
 });
 
-test("compose produces exactly the seven ordered stages, each schema-valid", () => {
+test("compose produces exactly the six ordered stages, each schema-valid", () => {
   const { composed } = run("success");
   assert.deepEqual(
     composed.stageResults.map((s) => s.stageId),
@@ -68,23 +68,22 @@ test("provider-backed stages surface verbatim recorded cost; non-provider stages
   assert.equal(importStage.providerProofId, null);
 });
 
-test("success path: no blocking findings -> verdict accepted; billed cost is the verbatim sum", () => {
+test("complete path: no blocking findings -> verdict complete; billed cost is the verbatim sum", () => {
   const { verdict, billedMicrosUsd, findings } = run("success");
-  assert.equal(verdict, "accepted");
+  assert.equal(verdict, "complete");
   assert.equal(billedMicrosUsd, 32);
   assert.equal(findings.filter((f) => f.severity === "blocking").length, 0);
 });
 
-test("qa-rejection path -> rejected with the QA defect demoted to a visible rationale", () => {
-  const { verdict, findings } = run("qa-rejection");
-  assert.equal(verdict, "rejected");
-  assert.ok(findings.some((f) => f.code === "qa.defect_found.rejected" && f.severity === "warn"));
-  assert.ok(findings.some((f) => f.code === "reviewer.rejected"));
-  assert.equal(findings.filter((f) => f.severity === "blocking").length, 0);
+test("QA finding path remains blocked until canonical context correction starts an iteration", () => {
+  const { verdict, findings } = run("qa-finding");
+  assert.equal(verdict, "blocked");
+  assert.ok(findings.some((f) => f.code === "qa.defect_found" && f.severity === "blocking"));
+  assert.equal(findings.filter((f) => f.severity === "blocking").length, 1);
 });
 
-test("rerun-repair path -> repaired; the QA defect blocking finding is cleared by the rerun", () => {
-  const { verdict, findings } = run("rerun-repair");
+test("context-correction rerun path clears the QA finding", () => {
+  const { verdict, findings } = run("context-correction-rerun");
   assert.equal(verdict, "repaired");
   assert.ok(findings.some((f) => f.code === "rerun.repaired" && f.severity === "info"));
   assert.equal(findings.filter((f) => f.severity === "blocking").length, 0);
@@ -92,18 +91,18 @@ test("rerun-repair path -> repaired; the QA defect blocking finding is cleared b
 
 test("a missing stage recording is a blocking finding -> verdict broken (no silent skip)", () => {
   const inputs = load("success");
-  delete inputs.recording.stages.reviewer;
+  delete inputs.recording.stages.feedback;
   const composed = composeIteration(inputs, { now: NOW });
   const { verdict, findings } = validateIteration(composed);
   assert.equal(verdict, "broken");
   const missing = findings.find((f) => f.code === "iteration.stage_missing");
   assert.ok(missing);
-  assert.equal(missing.stageId, "reviewer");
+  assert.equal(missing.stageId, "feedback");
   assert.equal(missing.severity, "blocking");
-  // The reviewer stage is still emitted (as a visible 'missing' artifact).
-  const reviewer = composed.stageResults.find((s) => s.stageId === "reviewer");
-  assert.equal(reviewer.status, "missing");
-  assertSchemaValid("stage-result", reviewer);
+  // The feedback stage is still emitted (as a visible 'missing' artifact).
+  const feedback = composed.stageResults.find((s) => s.stageId === "feedback");
+  assert.equal(feedback.status, "missing");
+  assertSchemaValid("stage-result", feedback);
 });
 
 test("locale-branch conflation (059) on any stage is a blocking diagnostic -> broken", () => {

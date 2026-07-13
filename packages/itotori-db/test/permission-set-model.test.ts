@@ -246,24 +246,34 @@ describe("permission-set model (auth-004)", () => {
       // Idempotent.
       await seedDefaultPermissionSets(context.db, { accountId: "account-model" });
 
-      const reviewerSetId = defaultPermissionSetId("account-model", "reviewer");
-      // Granting the seed 'Reviewer' set resolves to exactly its seeded permissions
+      const viewerSetId = defaultPermissionSetId("account-model", "viewer");
+      // Granting the seed 'Viewer' set resolves to exactly its seeded permissions
       // — proving resolution is by permissions, never by the set's name.
       await repo.grantPermissionSet(localActor, {
         actorPrincipalId: "principal-admin",
         targetPrincipalId: "principal-target",
-        permissionSetId: reviewerSetId,
+        permissionSetId: viewerSetId,
       });
-      const reviewerSeed = defaultPermissionSetSeeds.find((seed) => seed.key === "reviewer");
-      expect(reviewerSeed).toBeDefined();
+      const viewerSeed = defaultPermissionSetSeeds.find((seed) => seed.key === "viewer");
+      expect(viewerSeed).toBeDefined();
+      expect(defaultPermissionSetSeeds.map((seed) => seed.key)).not.toContain("reviewer");
+      expect(defaultPermissionSetSeeds.find((seed) => seed.key === "contributor")).toMatchObject({
+        name: "Contributor",
+        permissions: [
+          permissionValues.draftWrite,
+          permissionValues.feedbackImport,
+          permissionValues.styleGuideApprove,
+          permissionValues.catalogRead,
+        ],
+      });
       expect(await repo.resolvePrincipalPermissions(localActor, "principal-target")).toEqual(
-        [...(reviewerSeed?.permissions ?? [])].sort(),
+        [...(viewerSeed?.permissions ?? [])].sort(),
       );
 
       // The seeded set is an ordinary editable set: extend it and the grantee gains.
       await repo.addPermissionToSet(localActor, {
         actorPrincipalId: "principal-admin",
-        permissionSetId: reviewerSetId,
+        permissionSetId: viewerSetId,
         permission: permissionValues.patchExport,
       });
       expect(await repo.resolvePrincipalPermissions(localActor, "principal-target")).toContain(

@@ -1,22 +1,17 @@
 // RouteMap — the Play route/choice tree diagram.
 //
-// Renders nodes (routes/scenes) + edges (choices) with per-node localization
-// coverage state. Uses diagram tokens (`--ito-diagram-*`); never raw color
-// literals. Nodes carry col/row layout positions, a closed coverage vocabulary,
-// and an optional issues count — the product surface owns the state; this
-// component only paints it.
+// Renders nodes (routes/scenes) + edges (choices) with canonical route-context
+// freshness. Uses diagram tokens (`--ito-diagram-*`); never raw color literals.
+// Nodes carry col/row layout positions, a closed freshness vocabulary, and an
+// optional issues count — the product surface owns the state; this component
+// only paints it.
 
 import type { ReactNode } from "react";
 import { cx } from "../../cx.js";
 import { Badge } from "../core/Badge.js";
 
-/**
- * Coverage state painted on each node. Includes both the route-choice map
- * statuses (`fresh` / `stale`) and the play-mark-validated workflow states
- * (`needs_check` / `flagged` / `validated`) so one diagram component serves
- * both the read-model tree and the mark-validated surface.
- */
-export type RouteMapCoverageState = "fresh" | "stale" | "needs_check" | "flagged" | "validated";
+/** Canonical route-choice context freshness painted on each node. */
+export type RouteMapCoverageState = "fresh" | "stale";
 
 export type RouteMapNode = {
   id: string;
@@ -29,8 +24,6 @@ export type RouteMapNode = {
   state: string;
   /** Coverage state driving the node chrome + data-coverage attribute. */
   coverage: RouteMapCoverageState;
-  /** Durable scene coverage when different from route freshness. */
-  sceneCoverageState?: Extract<RouteMapCoverageState, "needs_check" | "flagged" | "validated">;
   /** Open issue count (e.g. stale citations); 0 when clean. */
   issues: number;
 };
@@ -55,26 +48,14 @@ export type RouteMapProps = {
   emptyLabel?: string;
 };
 
-/**
- * Map coverage state -> Badge status / tone. `validated` / `fresh` are mint
- * "ok"; `flagged` is coral "critical"; the rest are neutral.
- */
+/** Map canonical freshness to its badge status and tone. */
 function coverageBadgeProps(coverage: RouteMapCoverageState): {
   status: string;
-  tone: "neutral" | "ok" | "critical";
+  tone: "neutral" | "ok";
 } {
-  switch (coverage) {
-    case "validated":
-      return { status: "validated", tone: "ok" };
-    case "fresh":
-      return { status: "fresh", tone: "ok" };
-    case "flagged":
-      return { status: "flagged", tone: "critical" };
-    case "stale":
-      return { status: "stale", tone: "neutral" };
-    default:
-      return { status: "needs_check", tone: "neutral" };
-  }
+  return coverage === "fresh"
+    ? { status: "fresh", tone: "ok" }
+    : { status: "stale", tone: "neutral" };
 }
 
 export function RouteMap({
@@ -127,10 +108,6 @@ export function RouteMap({
           >
             {colNodes.map((node) => {
               const badge = coverageBadgeProps(node.coverage);
-              const sceneBadge =
-                node.sceneCoverageState !== undefined
-                  ? coverageBadgeProps(node.sceneCoverageState)
-                  : null;
               const isActive = activeId === node.id;
               const interactive = onSelect !== undefined;
               return (
@@ -150,7 +127,6 @@ export function RouteMap({
                     data-route-id={node.id}
                     data-scene-id={node.id}
                     data-coverage={node.coverage}
-                    data-scene-coverage={node.sceneCoverageState}
                     data-state={node.state}
                     data-issues={node.issues}
                     data-active={isActive ? "true" : "false"}
@@ -163,11 +139,6 @@ export function RouteMap({
                     <Badge status={badge.status} tone={badge.tone}>
                       {node.coverage}
                     </Badge>
-                    {sceneBadge !== null && node.sceneCoverageState !== undefined && (
-                      <Badge status={sceneBadge.status} tone={sceneBadge.tone}>
-                        {node.sceneCoverageState}
-                      </Badge>
-                    )}
                     {node.issues > 0 && (
                       <span
                         className="itotori-route-map__node-issues"

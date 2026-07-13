@@ -29,7 +29,7 @@ const secondAccount = {
   accountId: "account-second",
   accountSlug: "second",
   accountName: "Second workspace",
-  permissionSetIds: ["permission-set-second-reviewer"],
+  permissionSetIds: ["permission-set-second-contributor"],
   createdAt: "2026-07-08T00:00:00.000Z",
 };
 
@@ -207,7 +207,7 @@ describe("identity-org-switcher — shell-frame wiring", () => {
 
     render(
       <RedactionGovernor>
-        <ShellFrame location={{ pathname: "/reviewer-queue", search: "" }} navigate={navigate}>
+        <ShellFrame location={{ pathname: "/play/patches", search: "" }} navigate={navigate}>
           <div data-screen-stub />
         </ShellFrame>
       </RedactionGovernor>,

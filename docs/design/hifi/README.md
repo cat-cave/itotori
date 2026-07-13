@@ -7,43 +7,46 @@ workflow, cross-surface interaction, and cohesion of the product — the destina
 for the (now-ported React SPA) Studio screens.
 
 It builds on the **Itotori Design System** project
-(`428be6c4-a1db-41d2-954f-b50ff2e38353`, embedded here as `studio/_ds/…`) — see
+(`428be6c4-a1db-41d2-954f-b50ff2e38353`) — see
 `docs/design/itotori-design-system.md` for the distilled design language.
 
-## What's mirrored here
+## Current design alignment
 
-`studio/` mirrors the design project's studio screens for design↔repo alignment:
+The former `studio/` DesignSync mirror has been removed. It modeled a retired
+per-unit handoff workflow and therefore cannot serve as a current product
+reference. Do not restore it as a compatibility mockup or use it to derive
+screens, fixtures, or API contracts.
 
-- `studio/store.jsx` — the studio store: the human-in-the-loop workflow model
-  (playtester **flags** → reviewer **decides** → corrections **queue** → director
-  **launches** a pass → benchmark **re-scores** → **confidence** moves) + the
-  identity/**capability** model (`canFlag`/`canDecide`/`canSteer`/`canReveal` gate
-  actions + redaction). Note: it gates on **capabilities (permissions), not roles**.
-- `studio/data.js` — the fixture data model: the game-agnostic
-  **org → work → edition → project → locale-branch** hierarchy and every surface's
-  entities (review queue, pass ledger, cost/ZDR, jobs, routes/scenes, runtime
-  evidence, benchmark/contestants, wiki, members, project settings, catalog).
-- Screens (`OverviewScreen`, `PlayScreen`, `ReviewScreen`, `WikiScreen`,
-  `MembersScreen`, `NewProjectScreen`, `SettingsScreen`, `Shell`, `SceneStage`,
-  `app.jsx`) — the layouts. These are synced verbatim; **do not hand-edit** —
-  edit in the design project and re-sync, or edit here and push, via the DesignSync
-  MCP.
+The current design contract is the durable iteration loop:
 
-## Keeping them aligned
+```text
+complete patch → play-test evidence → result revision or canonical context correction
+  → refinement run → next complete patch
+```
 
-The mockup (remote) and this mirror (local) are kept aligned via the **DesignSync
-MCP** (`https://api.anthropic.com/v1/design/mcp`, auth via `/design-login`) and the
-**`/design-sync` skill**:
+Use [`../hifi-brief.md`](../hifi-brief.md),
+[`../../itotori-product-workflow.md`](../../itotori-product-workflow.md), and
+[`../../frontend.md`](../../frontend.md) as the product references. The remote
+DesignSync project must be revised to this contract before its screens are
+synced back into the repository.
+
+## Future synchronization
+
+When design work resumes, use the **DesignSync MCP**
+(`https://api.anthropic.com/v1/design/mcp`, auth via `/design-login`) and the
+**`/design-sync` skill** only after the remote project reflects the current
+result-revision/context-correction/iteration contract:
 
 - **Pull** (remote → local): `get_file` / `list_files` on project `93c04f61…`
-  → write under `studio/`. (The `/design-sync` skill automates a full sync; it is
-  model-invocation-disabled, so a human runs it — `/design-sync`.)
-- **Push** (local → remote): `write_files` back to the project after a repo-side
-  change we want reflected in the mockup.
+  → write only a current design mirror. (The `/design-sync` skill automates a
+  full sync; it is model-invocation-disabled, so a human runs it —
+  `/design-sync`.)
+- **Push** (local → remote): `write_files` after a repo-side product change we
+  want reflected in the mockup.
 
-Whenever we change the mockup or the repo implementation, re-sync so both agree.
-The design system (`428be6c4…`) is synced separately (its distilled reference is
-`docs/design/itotori-design-system.md`).
+Whenever we change the mockup or the repo implementation, re-sync so both
+agree. The design system (`428be6c4…`) is synced separately (its distilled
+reference is `docs/design/itotori-design-system.md`).
 
 ## Implementation
 
@@ -60,16 +63,13 @@ foundation landing:
   language into React + CSS tokens; the **`fnd-api-client`** typed API client
   (`apps/itotori/src/api-client.ts`) drives the SPA off the existing `/api/*`
   routes with discriminated `loading | ready | empty | error` states; and the
-  **`fnd-spa-shell`** React app shell (`apps/itotori/src/ui/`) replaced the
-  deleted HTML-string `dashboard.ts` / `reviewer/detail-view.ts` /
-  `workspace/view.ts` renderers with React screens composing
-  `useApiQuery` + `@itotori/ds`. Addressable-id routing and the capability
-  context also shipped. The deleted string renderers are NOT in the tree
-  (`dashboard.ts` was deleted by `fnd-spa-shell`; downstream screens parity-port
-  from the deleted originals). Remaining work is the ~50 screen nodes that
-  inherit this foundation.
-- **Highest-leverage first surface: Review** — its backend is complete end-to-end,
-  and building it forces the whole foundation into existence for every other surface.
+  **`fnd-spa-shell`** React app shell (`apps/itotori/src/ui/`) serves React
+  screens composing `useApiQuery` + `@itotori/ds`. Addressable-id routing and
+  the capability context also shipped. Remaining work is the screen set that
+  inherits this foundation.
+- **Highest-leverage surfaces: Play, Results, Wiki, and Feedback / Refine.** They
+  make the complete-patch → evidence → durable change → refinement loop visible
+  without a parallel handoff workflow.
 - **Org / multi-user / Members** is owned by the **auth epic** (`auth-*` nodes);
   the hi-fi Members/Shell-org-switch surfaces consume it (permission-based, no roles
   — see `docs/permissions.md`).

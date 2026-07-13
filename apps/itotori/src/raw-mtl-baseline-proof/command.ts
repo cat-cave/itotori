@@ -24,7 +24,6 @@ import {
   STRUCTURED_TRANSLATION_DRAFT_OUTPUT_TOOL_NAME,
   parseStructuredQaFindingOutput,
   type ProviderProofRoleName,
-  type ProviderProofSeededDefect,
   type QaFinding,
   type RawMtlBaselineProofArtifact,
 } from "@itotori/localization-bridge-schema";

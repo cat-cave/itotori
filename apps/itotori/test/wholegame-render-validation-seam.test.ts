@@ -116,7 +116,6 @@ function patchReport(
     unitsRun: written.length,
     writtenOutcomeCount: written.length,
     failureCount: 0,
-    reviewerQueueItemCount: 0,
     totalUsageCostExactUsd: "0",
     totalUsageCostUsd: 0,
     zdrConfirmed: true,

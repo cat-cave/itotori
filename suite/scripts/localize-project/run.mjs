@@ -56,7 +56,6 @@ import {
   statSync,
   writeFileSync,
   readdirSync,
-  chmodSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, parse, relative, resolve as resolvePath, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -308,28 +307,6 @@ function buildPathRedactor(rules) {
     }
     return redacted;
   };
-}
-
-function copyDirRecursive(srcDir, dstDir) {
-  mkdirSync(dstDir, { recursive: true });
-  for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
-    if (entry.isSymbolicLink()) {
-      throw new Error(`refusing to follow symlink at ${join(srcDir, entry.name)}`);
-    }
-    const srcPath = join(srcDir, entry.name);
-    const dstPath = join(dstDir, entry.name);
-    if (entry.isDirectory()) {
-      copyDirRecursive(srcPath, dstPath);
-    } else if (entry.isFile()) {
-      copyFileSync(srcPath, dstPath);
-      try {
-        const stat = statSync(dstPath);
-        chmodSync(dstPath, stat.mode | 0o200);
-      } catch {
-        // best-effort writability bump; non-Unix platforms ignored.
-      }
-    }
-  }
 }
 
 function pathIsInsideRoot(path, root) {

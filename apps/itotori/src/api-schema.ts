@@ -34,10 +34,8 @@ import type {
   ActorIdentityAccountRecord,
   ActorIdentityRecord,
   AuthBillingPeriod,
-  FeedbackType,
   MemberInvitationRecord,
   MemberRecord,
-  ReviewerQueueAction,
   RuntimeDashboardStatus,
   TerminologySearchReadModel,
   WikiContextEntriesReadModel,
@@ -58,10 +56,6 @@ import {
   catalogRawContentRedactionClassValues,
   catalogSourceRecordKindValues,
   catalogSourceValues,
-  feedbackTypeValues,
-  reviewerQueueActionList,
-  reviewerQueueItemKindList,
-  reviewerQueueItemStateList,
   translationScopeValues,
   wikiContextEntryKindList,
 } from "./api-enum-values.js";
@@ -73,10 +67,8 @@ import {
   assertPatchExport,
   assertPatchExportV02,
   assertRuntimeReport,
-  assertTriageBundleV02,
   BENCHMARK_TOKEN_COUNT_SOURCES,
   BRIDGE_SCHEMA_VERSION_V02,
-  TRIAGE_EVENT_KINDS,
   type BenchmarkReportV02,
   type BridgeBundle,
   type BridgeBundleV02,
@@ -85,53 +77,13 @@ import {
   type PatchExportV02,
   type RuntimeEvidenceReportV02,
   type RuntimeVerificationReport,
-  type TriageEventV02,
 } from "@itotori/localization-bridge-schema";
 import type {
   BenchmarkRecordResult,
-  DecisionRecordResult,
   FindingRecordResult,
   ProjectState,
   RuntimeIngestResult,
 } from "./services/project-workflow.js";
-import type {
-  ReviewerQueueDashboardReadModel,
-  ReviewerQueueDashboardRow,
-  ReviewerQueueDashboardState,
-  ReviewerSingleActionRequest,
-  ReviewerSingleActionResult,
-} from "./reviewer/api-service.js";
-import { reviewerQueueDashboardStateValues } from "./reviewer/api-service.js";
-import type { ReviewerBatchActionRequest, ReviewerBatchPreview } from "./reviewer/batch-preview.js";
-import type { ReviewerBatchExecuteResult } from "./reviewer/batch-execute.js";
-import type { ReviewerDetailContext } from "./reviewer/detail-fixtures.js";
-import {
-  workspaceDiagnosticCodeValues,
-  workspaceSearchResultKindValues,
-  workspaceSearchModeValues,
-} from "./workspace/read-model.js";
-import type {
-  WorkspaceAssetBrowseReadModel,
-  WorkspaceComparisonReadModel,
-  WorkspaceProjectBrowseReadModel,
-  WorkspaceSceneBrowseReadModel,
-  WorkspaceSearchReadModel,
-} from "./workspace/read-model.js";
-import {
-  workspaceCorrectionDiagnosticCodeValues,
-  workspaceCorrectionDispositionValues,
-} from "./workspace/correction-model.js";
-import { ANNOTATION_SEVERITIES } from "./annotation.js";
-import type {
-  WorkspaceCorrectionPreviewReadModel,
-  WorkspaceCorrectionSubmitReadModel,
-} from "./workspace/correction-model.js";
-import type {
-  SubmitWorkspaceCorrectionsInput,
-  WorkspaceCorrectionScope,
-  WorkspaceCorrectionSubmission,
-} from "./workspace/correction-service.js";
-import { workspaceCorrectionScopeKindValues } from "./workspace/correction-service.js";
 import type {
   ProjectOverviewBenchmarkHeadline,
   ProjectOverviewJournalPage,
@@ -155,24 +107,12 @@ export type ItotoriApiRouteId =
   | "catalog.completeness"
   | "catalog.conflicts"
   | "catalog.opportunities"
-  | "reviewer.queue"
-  | "reviewer.detail"
-  | "reviewer.batchPreview"
-  | "reviewer.batchExecute"
-  | "reviewer.itemAction"
   | "terminology.search"
   | "wiki.list"
   | "wiki.show"
   | "wiki.history"
   | "wiki.edit"
   | "wiki.add"
-  | "workspace.projects"
-  | "workspace.scenes"
-  | "workspace.assets"
-  | "workspace.comparison"
-  | "workspace.search"
-  | "workspace.correctionPreview"
-  | "workspace.correctionSubmit"
   | "projects.list"
   | "projects.overview"
   | "projects.status"
@@ -201,7 +141,6 @@ export type ItotoriApiRouteId =
   | "imports.bridge"
   | "branches.draft"
   | "findings.record"
-  | "decisions.record"
   | "benchmarks.record"
   | "runtimeEvidence.ingest"
   | "settings.modelRouting.get"
@@ -224,21 +163,16 @@ export type ItotoriApiRouteId =
   | "auth.sessions.revoke"
   | "auth.identity"
   // fnd-caps-context — the actor's Studio capability permission VIEW
-  // (canFlag / canDecide / canSteer / canReveal), resolved from exact
+  // (canFlag / canSteer / canReveal), resolved from exact
   // permission grants via the auth-002 effective-permission resolver.
   | "auth.capabilities"
-  // ovw-launch-pass-action — the Overview "launch next pass" mutation: folds
-  // queued corrections and DRIVES the next localization pass via the
+  // ovw-launch-pass-action — the Overview "launch next pass" mutation drives
+  // the next localization pass via the
   // project-driven-executor / localize-fullproject driver. `canSteer`-gated
   // (the `draft.write` steer permission). The HTTP surface is a thin adapter;
   // the driver itself is unchanged.
   | "projects.launchPass"
-  // play-mark-validated — per-scene localization coverage for the Play RouteMap.
-  // GET loads nodes/edges with coverage state; POST sets a scene's state
-  // (needs_check / flagged / validated). Persistence is `itotori_scene_localization_coverage`.
   | "play.routeMap"
-  | "play.sceneCoverage"
-  | "play.setSceneCoverage"
   // play-flag-composer — in-the-moment AnnotationComposer flag → canonical
   // context correction via ManualFeedbackImport (feedback.import / canFlag).
   | "play.flagAnnotation"
@@ -291,7 +225,6 @@ export const API_ERROR_RESPONSE_CODES = [
  */
 export const ITOTORI_STRICT_API_BODY_KEYS = {
   ApiErrorResponse: ["error", "code"],
-  ReviewerQueuePermissionView: ["actorUserId", "canReadQueue", "canManageQueue", "denialReasons"],
   ApiAssetDecisionsResponse: ["decisions"],
   ApiCandidateAssetsResponse: ["candidateAssets"],
   WikiContextEntriesReadModel: ["schemaVersion", "generatedAt", "filter", "pagination", "entries"],
@@ -333,42 +266,6 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "weightsVersion",
     "rows",
   ],
-  ReviewerQueueDashboardReadModel: [
-    "schemaVersion",
-    "localeBranchId",
-    "generatedAt",
-    "permission",
-    "pagination",
-    "rows",
-    "aggregate",
-    "defaultBatchRequest",
-  ],
-  ReviewerDetailContext: [
-    "reviewItemId",
-    "permission",
-    "item",
-    "source",
-    "draft",
-    "policy",
-    "glossary",
-    "branchReference",
-    "qaFindings",
-    "runtimeEvidence",
-    "rationaleRefs",
-    "structureContextFeed",
-    "transitions",
-    "diagnostics",
-  ],
-  ReviewerBatchPreview: [
-    "request",
-    "permission",
-    "items",
-    "aggregate",
-    "allAllowed",
-    "permissionDenied",
-  ],
-  ReviewerBatchExecuteResult: ["request", "preview", "applied", "refusedAll", "appliedAll"],
-  ReviewerSingleActionResult: ["request", "preview", "outcome", "applied", "refused"],
   CostDrilldownPage: ["filter", "pagination", "rows"],
   JobsRunTableReadModel: ["schemaVersion", "generatedAt", "filter", "pagination", "rows"],
   ProjectOverviewReadModel: [
@@ -464,7 +361,6 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "styleGuideVersionId",
     "glossaryContentHash",
     "glossaryTermCount",
-    "glossaryReviewItemCount",
     "updateReason",
     "createdAt",
   ],
@@ -635,100 +531,13 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   ApiAuthCapabilitiesResponse: [
     "schemaVersion",
     "actorUserId",
-    "canReadQueue",
-    "canManageQueue",
     "canFlag",
-    "canDecide",
     "canSteer",
     "canReveal",
     "denials",
     "denialReasons",
   ],
-  ApiStudioCapabilityDenials: ["flag", "decide", "steer", "reveal", "queueRead", "queueManage"],
-  WorkspaceProjectBrowseReadModel: [
-    "schemaVersion",
-    "generatedAt",
-    "permission",
-    "projects",
-    "diagnostics",
-  ],
-  WorkspaceSceneBrowseReadModel: [
-    "schemaVersion",
-    "generatedAt",
-    "permission",
-    "projectId",
-    "localeBranchId",
-    "pagination",
-    "scenes",
-    "diagnostics",
-  ],
-  WorkspaceAssetBrowseReadModel: [
-    "schemaVersion",
-    "generatedAt",
-    "permission",
-    "projectId",
-    "localeBranchId",
-    "assets",
-    "diagnostics",
-  ],
-  WorkspaceComparisonReadModel: [
-    "schemaVersion",
-    "generatedAt",
-    "permission",
-    "reviewItemId",
-    "localeBranchId",
-    "sourceRevisionId",
-    "bridgeUnitId",
-    "sourceUnitKey",
-    "contextNote",
-    "cells",
-    "hasFinal",
-    "runtimeEvidenceLinks",
-    "diagnostics",
-  ],
-  WorkspaceSearchReadModel: [
-    "schemaVersion",
-    "generatedAt",
-    "permission",
-    "projectId",
-    "localeBranchId",
-    "query",
-    "normalizedQuery",
-    "mode",
-    "pagination",
-    "results",
-    "droppedOpaqueCount",
-    "diagnostics",
-  ],
-  WorkspaceCorrectionPreviewReadModel: [
-    "schemaVersion",
-    "generatedAt",
-    "permission",
-    "projectId",
-    "localeBranchId",
-    "sourceBundleId",
-    "targetLocale",
-    "units",
-    "diagnostics",
-  ],
-  WorkspaceCorrectionSubmitReadModel: [
-    "schemaVersion",
-    "generatedAt",
-    "permission",
-    "localeBranchId",
-    "batchId",
-    "batchLabel",
-    "submittedCount",
-    "edits",
-    "repairCandidateReportIds",
-    "decisionQueueReportIds",
-    "needsContextReportIds",
-    "affectedBridgeUnitIds",
-    "writebacks",
-    "scheduledRerunJobIds",
-    "diagnostics",
-  ],
-  ReviewerBatchActionRequest: ["action", "actorUserId", "selections"],
+  ApiStudioCapabilityDenials: ["flag", "steer", "reveal"],
   // ovw-launch-pass-action — the typed launch-pass response envelope. The
   // schemaVersion const pins the wire shape; a renamed / leaked field fails a
   // contract test instead of silently drifting.
@@ -749,25 +558,6 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "edges",
     "counts",
   ],
-  // play-mark-validated — coverage read model + set response (strict).
-  ApiPlaySceneCoverageResponse: [
-    "schemaVersion",
-    "generatedAt",
-    "projectId",
-    "localeBranchId",
-    "nodes",
-    "edges",
-    "counts",
-  ],
-  ApiPlaySetSceneCoverageResponse: [
-    "schemaVersion",
-    "projectId",
-    "localeBranchId",
-    "sceneId",
-    "coverageState",
-    "updatedAt",
-    "updatedByUserId",
-  ],
   // play-flag-composer — AnnotationComposer submit result (severity-scaled flag).
   ApiPlayFlagAnnotationResponse: [
     "schemaVersion",
@@ -780,7 +570,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "note",
     "triageLabel",
     "contextStatus",
-    "contextCorrectionEnqueued",
+    "contextCorrectionId",
     "duplicate",
   ],
   // p0-result-revision — the target-only request body intentionally excludes
@@ -954,42 +744,6 @@ export type ApiWikiAddRequest = {
 
 export type ApiWikiAddResponse = ApiWikiEditResponse;
 
-export type ApiWorkspaceProjectBrowseResponse = WorkspaceProjectBrowseReadModel;
-
-export type ApiWorkspaceSceneBrowseResponse = WorkspaceSceneBrowseReadModel;
-
-export type ApiWorkspaceAssetBrowseResponse = WorkspaceAssetBrowseReadModel;
-
-export type ApiWorkspaceComparisonResponse = WorkspaceComparisonReadModel;
-
-export type ApiWorkspaceSearchResponse = WorkspaceSearchReadModel;
-
-export type ApiWorkspaceCorrectionPreviewResponse = WorkspaceCorrectionPreviewReadModel;
-
-export type ApiWorkspaceCorrectionSubmitResponse = WorkspaceCorrectionSubmitReadModel;
-
-export type ApiWorkspaceCorrectionSubmitRequest = Omit<
-  SubmitWorkspaceCorrectionsInput,
-  "permission"
->;
-
-export type ApiReviewerQueueDashboardResponse = ReviewerQueueDashboardReadModel;
-
-export type ApiReviewerDetailResponse = ReviewerDetailContext;
-
-export type ApiReviewerBatchPreviewRequest = ReviewerBatchActionRequest;
-
-export type ApiReviewerBatchPreviewResponse = ReviewerBatchPreview;
-
-export type ApiReviewerBatchExecuteRequest = ReviewerBatchActionRequest;
-
-export type ApiReviewerBatchExecuteResponse = ReviewerBatchExecuteResult;
-
-/** ITOTORI-082 — single-item reviewer action. */
-export type ApiReviewerSingleActionRequest = ReviewerSingleActionRequest;
-
-export type ApiReviewerSingleActionResponse = ReviewerSingleActionResult;
-
 export type ApiAssetDecisionsResponse = {
   decisions: AssetDecisionRecord[];
 };
@@ -1082,13 +836,6 @@ export type ApiRecordFindingRequest = {
 };
 
 export type ApiRecordFindingResponse = FindingRecordResult;
-
-export type ApiRecordDecisionRequest = {
-  localeBranchId?: string;
-  event: TriageEventV02;
-};
-
-export type ApiRecordDecisionResponse = DecisionRecordResult;
 
 export type ApiRecordBenchmarkRequest = {
   benchmarkReport: BenchmarkReportV02;
@@ -1237,7 +984,6 @@ export type ApiBranchPolicyGlossaryReference = {
   styleGuideVersionId: string | null;
   glossaryContentHash: string;
   glossaryTermCount: number;
-  glossaryReviewItemCount: number;
   updateReason: string;
   createdAt: string;
 };
@@ -1417,24 +1163,18 @@ export type ApiAuthIdentityResponse = Omit<ActorIdentityRecord, "accounts"> & {
  * fnd-caps-context — the actor's Studio capability permission VIEW on the
  * wire. Sourced server-side from exact permission grants (capabilities, NOT
  * roles) via `resolveStudioCapabilityPermissionView`. The SPA CapsProvider
- * consumes this shape to gate flag / decide / steer / reveal actions.
+ * consumes this shape to gate flag / steer / reveal actions.
  */
 export type ApiAuthCapabilitiesResponse = {
   schemaVersion: "itotori.auth.capabilities.v0";
   actorUserId: string;
-  canReadQueue: boolean;
-  canManageQueue: boolean;
   canFlag: boolean;
-  canDecide: boolean;
   canSteer: boolean;
   canReveal: boolean;
   denials: {
     flag: string | null;
-    decide: string | null;
     steer: string | null;
     reveal: string | null;
-    queueRead: string | null;
-    queueManage: string | null;
   };
   denialReasons: string[];
 };
@@ -1522,82 +1262,6 @@ export type ApiLaunchPassResponse = {
   refusalMessage: string | null;
 };
 
-/** Closed coverage vocabulary (play-mark-validated). */
-export type ApiSceneCoverageState = "needs_check" | "flagged" | "validated";
-
-export const API_SCENE_COVERAGE_STATES = [
-  "needs_check",
-  "flagged",
-  "validated",
-] as const satisfies readonly ApiSceneCoverageState[];
-
-/**
- * play-mark-validated — request body for setting a scene's coverage state.
- * projectId + localeBranchId live on the URL path; the body carries the scene
- * and the target state.
- */
-export type ApiPlaySetSceneCoverageRequest = {
-  sceneId: string;
-  coverageState: ApiSceneCoverageState;
-};
-
-/**
- * play-mark-validated — one RouteMap node with its coverage state. `sceneId` is
- * the opaque game-agnostic key (matches scene-summary / route-map identity when
- * shared). Unpersisted scenes default to `needs_check`.
- */
-export type ApiPlaySceneCoverageNode = {
-  sceneId: string;
-  label: string;
-  coverageState: ApiSceneCoverageState;
-  routeKey: string | null;
-  routeMapId: string | null;
-};
-
-/** play-mark-validated — one choice edge between scenes on the RouteMap. */
-export type ApiPlaySceneCoverageEdge = {
-  fromSceneId: string;
-  toSceneId: string;
-  choiceKey: string;
-  label: string;
-};
-
-/** play-mark-validated — aggregate counts for the branch's coverage. */
-export type ApiPlaySceneCoverageCounts = {
-  needsCheck: number;
-  flagged: number;
-  validated: number;
-  total: number;
-};
-
-/**
- * play-mark-validated — GET response: the Play RouteMap coverage read-model.
- * Nodes carry per-scene coverage; edges come from routeChoices.
- */
-export type ApiPlaySceneCoverageResponse = {
-  schemaVersion: "itotori.play.scene-coverage.v0";
-  generatedAt: string;
-  projectId: string;
-  localeBranchId: string;
-  nodes: ApiPlaySceneCoverageNode[];
-  edges: ApiPlaySceneCoverageEdge[];
-  counts: ApiPlaySceneCoverageCounts;
-};
-
-/**
- * play-mark-validated — POST response: the scene's durable coverage after the
- * upsert. The client re-fetches the full map (or patches local state) from this.
- */
-export type ApiPlaySetSceneCoverageResponse = {
-  schemaVersion: "itotori.play.set-scene-coverage.v0";
-  projectId: string;
-  localeBranchId: string;
-  sceneId: string;
-  coverageState: ApiSceneCoverageState;
-  updatedAt: string;
-  updatedByUserId: string;
-};
-
 // play-routemap-ui — route/choice tree read-model response. Coverage is derived
 // from the route-choice map status (Fresh -> fresh, Stale -> stale).
 export type ApiPlayRouteMapCoverageState = "fresh" | "stale";
@@ -1658,8 +1322,8 @@ export type ApiPlayFlagAnnotationRequest = {
   severity: ApiPlayFlagSeverity;
   /** Free-form category (tone / layout / glossary / …). */
   category?: string;
-  targetLocale: string;
-  bridgeUnitId?: string;
+  /** The persisted target unit required for the canonical correction. */
+  bridgeUnitId: string;
   sourceUnitKey?: string;
   sourceBundleId?: string;
   sourceRevisionId?: string;
@@ -1670,8 +1334,7 @@ export type ApiPlayFlagAnnotationRequest = {
 };
 
 /**
- * play-flag-composer — response after ManualFeedbackImport creates the
- * canonical context correction (when a persisted target unit is available).
+ * play-flag-composer — receipt for a completed canonical context correction.
  */
 export type ApiPlayFlagAnnotationResponse = {
   schemaVersion: "itotori.play.flag-annotation.v0";
@@ -1684,8 +1347,8 @@ export type ApiPlayFlagAnnotationResponse = {
   note: string;
   triageLabel: string;
   contextStatus: string;
-  /** True only when the manual-feedback service actually created a correction. */
-  contextCorrectionEnqueued: boolean;
+  /** Durable canonical-context write created by this successful flag. */
+  contextCorrectionId: string;
   duplicate: boolean;
 };
 
@@ -1966,24 +1629,12 @@ export type ItotoriApiResponseBody =
   | ApiCatalogCompletenessResponse
   | ApiCatalogConflictReviewResponse
   | ApiCatalogOpportunitiesResponse
-  | ApiReviewerQueueDashboardResponse
-  | ApiReviewerDetailResponse
-  | ApiReviewerBatchPreviewResponse
-  | ApiReviewerBatchExecuteResponse
-  | ApiReviewerSingleActionResponse
   | ApiTerminologySearchResponse
   | ApiWikiListResponse
   | ApiWikiShowResponse
   | ApiWikiHistoryResponse
   | ApiWikiEditResponse
   | ApiWikiAddResponse
-  | ApiWorkspaceProjectBrowseResponse
-  | ApiWorkspaceSceneBrowseResponse
-  | ApiWorkspaceAssetBrowseResponse
-  | ApiWorkspaceComparisonResponse
-  | ApiWorkspaceSearchResponse
-  | ApiWorkspaceCorrectionPreviewResponse
-  | ApiWorkspaceCorrectionSubmitResponse
   | ApiProjectsResponse
   | ApiProjectOverviewResponse
   | ProjectDashboardStatus
@@ -2000,7 +1651,6 @@ export type ItotoriApiResponseBody =
   | ApiProjectImportResponse
   | ApiDraftBranchResponse
   | ApiRecordFindingResponse
-  | ApiRecordDecisionResponse
   | ApiRecordBenchmarkResponse
   | ApiRuntimeEvidenceResponse
   | ApiModelRoutingSettingsResponse
@@ -2021,8 +1671,6 @@ export type ItotoriApiResponseBody =
   | ApiAuthCapabilitiesResponse
   | ApiLaunchPassResponse
   | ApiPlayRouteMapResponse
-  | ApiPlaySceneCoverageResponse
-  | ApiPlaySetSceneCoverageResponse
   | ApiPlayFlagAnnotationResponse
   | ApiPlayTargetEditResponse
   | ApiPlayDeliveryResponse
@@ -2230,21 +1878,6 @@ export function parseRecordFindingRequest(body: unknown): ApiRecordFindingReques
         "ApiRecordFindingRequest.status",
       );
       result.status = request.status;
-    }
-    return result;
-  });
-}
-
-export function parseRecordDecisionRequest(body: unknown): ApiRecordDecisionRequest {
-  return parseRequest("ApiRecordDecisionRequest", () => {
-    const request = asRecord(body, "ApiRecordDecisionRequest");
-    if (request.localeBranchId !== undefined) {
-      assertString(request.localeBranchId, "ApiRecordDecisionRequest.localeBranchId");
-    }
-    assertDecisionEvent(request.event, "ApiRecordDecisionRequest.event");
-    const result: ApiRecordDecisionRequest = { event: request.event };
-    if (request.localeBranchId !== undefined) {
-      result.localeBranchId = request.localeBranchId;
     }
     return result;
   });
@@ -2531,130 +2164,6 @@ export function parseRevokeAuthSessionRequest(body: unknown): ApiRevokeAuthSessi
   });
 }
 
-export function parseReviewerBatchPreviewRequest(body: unknown): ApiReviewerBatchPreviewRequest {
-  return parseRequest("ApiReviewerBatchPreviewRequest", () => {
-    const request = asStrictRecord(
-      body,
-      "ApiReviewerBatchPreviewRequest",
-      ITOTORI_STRICT_API_BODY_KEYS.ReviewerBatchActionRequest,
-    );
-    assertEnum(
-      request.action,
-      reviewerQueueActionList as readonly ReviewerQueueAction[],
-      "ApiReviewerBatchPreviewRequest.action",
-    );
-    assertString(request.actorUserId, "ApiReviewerBatchPreviewRequest.actorUserId");
-    const selections = asArray(request.selections, "ApiReviewerBatchPreviewRequest.selections").map(
-      (value, index) => {
-        const selection = asStrictRecord(
-          value,
-          `ApiReviewerBatchPreviewRequest.selections[${index}]`,
-          ["reviewItemId", "expectedSourceRevisionId"],
-        );
-        assertString(
-          selection.reviewItemId,
-          `ApiReviewerBatchPreviewRequest.selections[${index}].reviewItemId`,
-        );
-        assertString(
-          selection.expectedSourceRevisionId,
-          `ApiReviewerBatchPreviewRequest.selections[${index}].expectedSourceRevisionId`,
-        );
-        return {
-          reviewItemId: selection.reviewItemId,
-          expectedSourceRevisionId: selection.expectedSourceRevisionId,
-        };
-      },
-    );
-    return {
-      action: request.action,
-      actorUserId: request.actorUserId,
-      selections,
-    };
-  });
-}
-
-export function parseReviewerBatchExecuteRequest(body: unknown): ApiReviewerBatchExecuteRequest {
-  return parseReviewerBatchActionRequestBody(body, "ApiReviewerBatchExecuteRequest");
-}
-
-/**
- * ITOTORI-082 — single-item reviewer action. Only the four per-item verbs
- * are accepted here (accept/reject/defer/escalate); the
- * glossary/style/runtime-feedback verbs stay batch/agentic-loop
- * concerns. `reviewItemId` is threaded in from the URL path, never the
- * body, so the item acted upon always matches the route.
- */
-export const reviewerSingleActionList = [
-  "approve",
-  "reject",
-  "defer",
-  "escalate",
-] as const satisfies readonly ReviewerQueueAction[];
-
-export function parseReviewerSingleActionRequest(
-  body: unknown,
-  reviewItemId: string,
-): ApiReviewerSingleActionRequest {
-  return parseRequest("ApiReviewerSingleActionRequest", () => {
-    assertString(reviewItemId, "ApiReviewerSingleActionRequest.reviewItemId");
-    const preview = asRecord(body, "ApiReviewerSingleActionRequest");
-    assertEnum(preview.action, reviewerSingleActionList, "ApiReviewerSingleActionRequest.action");
-    const allowedKeys = allowedKeysForSingleAction(preview.action);
-    const request = asStrictRecord(body, "ApiReviewerSingleActionRequest", allowedKeys);
-    assertString(request.actorUserId, "ApiReviewerSingleActionRequest.actorUserId");
-    assertString(
-      request.expectedSourceRevisionId,
-      "ApiReviewerSingleActionRequest.expectedSourceRevisionId",
-    );
-    const base = {
-      reviewItemId,
-      actorUserId: request.actorUserId,
-      expectedSourceRevisionId: request.expectedSourceRevisionId,
-    };
-    switch (preview.action) {
-      case "approve":
-        return { ...base, action: "approve" };
-      case "reject":
-        return { ...base, action: "reject" };
-      case "defer":
-        assertString(request.deferReason, "ApiReviewerSingleActionRequest.deferReason");
-        return { ...base, action: "defer", deferReason: request.deferReason };
-      case "escalate":
-        assertString(request.escalationReason, "ApiReviewerSingleActionRequest.escalationReason");
-        assertString(request.escalationTarget, "ApiReviewerSingleActionRequest.escalationTarget");
-        return {
-          ...base,
-          action: "escalate",
-          escalationReason: request.escalationReason,
-          escalationTarget: request.escalationTarget,
-        };
-      default: {
-        const exhaustive: never = preview.action;
-        throw new Error(`unhandled single reviewer action: ${String(exhaustive)}`);
-      }
-    }
-  });
-}
-
-function allowedKeysForSingleAction(
-  action: (typeof reviewerSingleActionList)[number],
-): readonly string[] {
-  const base = ["action", "actorUserId", "expectedSourceRevisionId"] as const;
-  switch (action) {
-    case "approve":
-    case "reject":
-      return base;
-    case "defer":
-      return [...base, "deferReason"];
-    case "escalate":
-      return [...base, "escalationReason", "escalationTarget"];
-    default: {
-      const exhaustive: never = action;
-      throw new Error(`unhandled single reviewer action: ${String(exhaustive)}`);
-    }
-  }
-}
-
 export function assertItotoriApiResponse(
   routeId: ItotoriApiRouteId,
   value: unknown,
@@ -2681,21 +2190,6 @@ export function assertItotoriApiResponse(
     case "catalog.opportunities":
       assertCatalogOpportunityRankingReadModel(value);
       return;
-    case "reviewer.queue":
-      assertReviewerQueueDashboardReadModel(value);
-      return;
-    case "reviewer.detail":
-      assertReviewerDetailContext(value);
-      return;
-    case "reviewer.batchPreview":
-      assertReviewerBatchPreview(value);
-      return;
-    case "reviewer.batchExecute":
-      assertReviewerBatchExecuteResult(value);
-      return;
-    case "reviewer.itemAction":
-      assertReviewerSingleActionResult(value);
-      return;
     case "terminology.search":
       assertTerminologySearchReadModel(value);
       return;
@@ -2713,27 +2207,6 @@ export function assertItotoriApiResponse(
       return;
     case "wiki.add":
       assertWikiEditResponse(value);
-      return;
-    case "workspace.projects":
-      assertWorkspaceProjectBrowseReadModel(value);
-      return;
-    case "workspace.scenes":
-      assertWorkspaceSceneBrowseReadModel(value);
-      return;
-    case "workspace.assets":
-      assertWorkspaceAssetBrowseReadModel(value);
-      return;
-    case "workspace.comparison":
-      assertWorkspaceComparisonReadModel(value);
-      return;
-    case "workspace.search":
-      assertWorkspaceSearchReadModel(value);
-      return;
-    case "workspace.correctionPreview":
-      assertWorkspaceCorrectionPreviewReadModel(value);
-      return;
-    case "workspace.correctionSubmit":
-      assertWorkspaceCorrectionSubmitReadModel(value);
       return;
     case "projects.list":
       assertProjectsResponse(value);
@@ -2782,9 +2255,6 @@ export function assertItotoriApiResponse(
       return;
     case "findings.record":
       assertRecordFindingResponse(value);
-      return;
-    case "decisions.record":
-      assertRecordDecisionResponse(value);
       return;
     case "benchmarks.record":
       assertRecordBenchmarkResponse(value);
@@ -2849,12 +2319,6 @@ export function assertItotoriApiResponse(
       return;
     case "play.routeMap":
       assertPlayRouteMapResponse(value);
-      return;
-    case "play.sceneCoverage":
-      assertPlaySceneCoverageResponse(value);
-      return;
-    case "play.setSceneCoverage":
-      assertPlaySetSceneCoverageResponse(value);
       return;
     case "play.flagAnnotation":
       assertPlayFlagAnnotationResponse(value);
@@ -3351,1023 +2815,6 @@ function assertWikiContextImpact(value: unknown, label: string): void {
   assertStringArray(impact.affectedUnitIds, `${label}.affectedUnitIds`);
   assertNullableString(impact.invalidatedReason, `${label}.invalidatedReason`);
   assertNullableDateLike(impact.invalidatedAt, `${label}.invalidatedAt`);
-}
-
-export function assertReviewerQueueDashboardReadModel(
-  value: unknown,
-  label = "ReviewerQueueDashboardReadModel",
-): asserts value is ReviewerQueueDashboardReadModel {
-  const model = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ReviewerQueueDashboardReadModel,
-  );
-  assertLiteral(model.schemaVersion, "reviewer.queue_dashboard.v0.1", `${label}.schemaVersion`);
-  assertString(model.localeBranchId, `${label}.localeBranchId`);
-  assertDateLike(model.generatedAt, `${label}.generatedAt`);
-  assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
-  assertProjectOverviewPagination(model.pagination, `${label}.pagination`);
-  const rows = asArray(model.rows, `${label}.rows`);
-  if (rows.length > Number((model.pagination as { limit: unknown }).limit)) {
-    throw new Error(`${label}.rows must not exceed pagination.limit`);
-  }
-  for (const [index, row] of rows.entries()) {
-    assertReviewerQueueDashboardRow(row, `${label}.rows[${index}]`);
-  }
-  assertReviewerQueueDashboardAggregate(model.aggregate, `${label}.aggregate`);
-  assertReviewerBatchActionRequest(model.defaultBatchRequest, `${label}.defaultBatchRequest`);
-}
-
-function assertReviewerQueueDashboardRow(
-  value: unknown,
-  label: string,
-): asserts value is ReviewerQueueDashboardRow {
-  const row = asStrictRecord(value, label, [
-    "reviewItemId",
-    "projectId",
-    "localeBranchId",
-    "sourceRevisionId",
-    "itemKind",
-    "sourceItemRef",
-    "summary",
-    "priority",
-    "state",
-    "dashboardState",
-    "lastAction",
-    "batchActionId",
-    "findingId",
-    "decisionId",
-    "detailPath",
-    "selectedForBatch",
-    "createdAt",
-    "updatedAt",
-    "resolvedAt",
-  ]);
-  assertString(row.reviewItemId, `${label}.reviewItemId`);
-  assertString(row.projectId, `${label}.projectId`);
-  assertString(row.localeBranchId, `${label}.localeBranchId`);
-  assertString(row.sourceRevisionId, `${label}.sourceRevisionId`);
-  assertEnum(row.itemKind, reviewerQueueItemKindList, `${label}.itemKind`);
-  assertString(row.sourceItemRef, `${label}.sourceItemRef`);
-  assertString(row.summary, `${label}.summary`);
-  assertNonNegativeInteger(row.priority, `${label}.priority`);
-  assertEnum(row.state, reviewerQueueItemStateList, `${label}.state`);
-  assertEnum(
-    row.dashboardState,
-    Object.values(reviewerQueueDashboardStateValues) as ReviewerQueueDashboardState[],
-    `${label}.dashboardState`,
-  );
-  assertNullableReviewerQueueAction(row.lastAction, `${label}.lastAction`);
-  assertNullableString(row.batchActionId, `${label}.batchActionId`);
-  assertNullableString(row.findingId, `${label}.findingId`);
-  assertNullableString(row.decisionId, `${label}.decisionId`);
-  assertString(row.detailPath, `${label}.detailPath`);
-  assertBoolean(row.selectedForBatch, `${label}.selectedForBatch`);
-  assertDateLike(row.createdAt, `${label}.createdAt`);
-  assertDateLike(row.updatedAt, `${label}.updatedAt`);
-  assertNullableDateLike(row.resolvedAt, `${label}.resolvedAt`);
-}
-
-function assertReviewerQueueDashboardAggregate(value: unknown, label: string): void {
-  const aggregate = asStrictRecord(value, label, [
-    "pending",
-    "resolved",
-    "deferred",
-    "escalated",
-    "batch_applied",
-  ]);
-  for (const state of Object.values(reviewerQueueDashboardStateValues)) {
-    assertNonNegativeInteger(aggregate[state], `${label}.${state}`);
-  }
-}
-
-function assertReviewerQueuePermissionView(value: unknown, label: string): void {
-  const permission = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ReviewerQueuePermissionView,
-  );
-  assertString(permission.actorUserId, `${label}.actorUserId`);
-  assertBoolean(permission.canReadQueue, `${label}.canReadQueue`);
-  assertBoolean(permission.canManageQueue, `${label}.canManageQueue`);
-  assertStringArray(permission.denialReasons, `${label}.denialReasons`);
-}
-
-const workspaceDiagnosticCodeList = Object.values(workspaceDiagnosticCodeValues);
-const workspaceSearchModeList = Object.values(workspaceSearchModeValues);
-
-function assertWorkspaceDiagnostics(value: unknown, label: string): void {
-  const diagnostics = asArray(value, label);
-  for (const [index, diagnosticValue] of diagnostics.entries()) {
-    const diagnostic = asStrictRecord(diagnosticValue, `${label}[${index}]`, ["code", "message"]);
-    assertEnum(diagnostic.code, workspaceDiagnosticCodeList, `${label}[${index}].code`);
-    assertString(diagnostic.message, `${label}[${index}].message`);
-  }
-}
-
-const workspaceCorrectionDiagnosticCodeList = Object.values(
-  workspaceCorrectionDiagnosticCodeValues,
-);
-const workspaceCorrectionDispositionList = Object.values(workspaceCorrectionDispositionValues);
-const feedbackTypeList = Object.values(feedbackTypeValues);
-const annotationSeverityList = [...ANNOTATION_SEVERITIES];
-const workspaceCorrectionScopeKindList = Object.values(workspaceCorrectionScopeKindValues);
-
-function assertWorkspaceCorrectionDiagnostics(value: unknown, label: string): void {
-  const diagnostics = asArray(value, label);
-  for (const [index, diagnosticValue] of diagnostics.entries()) {
-    const diagnostic = asStrictRecord(diagnosticValue, `${label}[${index}]`, ["code", "message"]);
-    assertEnum(diagnostic.code, workspaceCorrectionDiagnosticCodeList, `${label}[${index}].code`);
-    assertString(diagnostic.message, `${label}[${index}].message`);
-  }
-}
-
-export function assertWorkspaceCorrectionPreviewReadModel(
-  value: unknown,
-  label = "WorkspaceCorrectionPreviewReadModel",
-): asserts value is WorkspaceCorrectionPreviewReadModel {
-  const model = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.WorkspaceCorrectionPreviewReadModel,
-  );
-  assertLiteral(model.schemaVersion, "workspace.correction_preview.v0.1", `${label}.schemaVersion`);
-  assertDateLike(model.generatedAt, `${label}.generatedAt`);
-  assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
-  assertNullableString(model.projectId, `${label}.projectId`);
-  assertString(model.localeBranchId, `${label}.localeBranchId`);
-  assertNullableString(model.sourceBundleId, `${label}.sourceBundleId`);
-  assertNullableString(model.targetLocale, `${label}.targetLocale`);
-  const units = asArray(model.units, `${label}.units`);
-  for (const [index, unitValue] of units.entries()) {
-    const unitLabel = `${label}.units[${index}]`;
-    const unit = asStrictRecord(unitValue, unitLabel, [
-      "reviewItemId",
-      "localeBranchId",
-      "sourceRevisionId",
-      "bridgeUnitId",
-      "sourceUnitKey",
-      "sourceLocale",
-      "sourceText",
-      "targetLocale",
-      "draftText",
-      "finalText",
-      "styleGuidePolicyVersionId",
-      "styleGuidePolicyStatus",
-      "glossary",
-      "runtimeEvidenceLinks",
-      "screenshotArtifactHashes",
-      "diagnostics",
-    ]);
-    assertString(unit.reviewItemId, `${unitLabel}.reviewItemId`);
-    assertNullableString(unit.localeBranchId, `${unitLabel}.localeBranchId`);
-    assertNullableString(unit.sourceRevisionId, `${unitLabel}.sourceRevisionId`);
-    assertNullableString(unit.bridgeUnitId, `${unitLabel}.bridgeUnitId`);
-    assertNullableString(unit.sourceUnitKey, `${unitLabel}.sourceUnitKey`);
-    assertNullableString(unit.sourceLocale, `${unitLabel}.sourceLocale`);
-    assertNullableString(unit.sourceText, `${unitLabel}.sourceText`);
-    assertNullableString(unit.targetLocale, `${unitLabel}.targetLocale`);
-    assertNullableString(unit.draftText, `${unitLabel}.draftText`);
-    assertNullableString(unit.finalText, `${unitLabel}.finalText`);
-    assertNullableString(unit.styleGuidePolicyVersionId, `${unitLabel}.styleGuidePolicyVersionId`);
-    assertNullableString(unit.styleGuidePolicyStatus, `${unitLabel}.styleGuidePolicyStatus`);
-    const glossary = asArray(unit.glossary, `${unitLabel}.glossary`);
-    for (const [glossaryIndex, glossaryValue] of glossary.entries()) {
-      const glossaryLabel = `${unitLabel}.glossary[${glossaryIndex}]`;
-      const ref = asStrictRecord(glossaryValue, glossaryLabel, [
-        "termId",
-        "sourceTerm",
-        "preferredTranslation",
-        "status",
-      ]);
-      assertString(ref.termId, `${glossaryLabel}.termId`);
-      assertString(ref.sourceTerm, `${glossaryLabel}.sourceTerm`);
-      assertString(ref.preferredTranslation, `${glossaryLabel}.preferredTranslation`);
-      assertString(ref.status, `${glossaryLabel}.status`);
-    }
-    asArray(unit.runtimeEvidenceLinks, `${unitLabel}.runtimeEvidenceLinks`);
-    assertStringArray(unit.screenshotArtifactHashes, `${unitLabel}.screenshotArtifactHashes`);
-    assertWorkspaceCorrectionDiagnostics(unit.diagnostics, `${unitLabel}.diagnostics`);
-  }
-  assertWorkspaceCorrectionDiagnostics(model.diagnostics, `${label}.diagnostics`);
-}
-
-export function assertWorkspaceCorrectionSubmitReadModel(
-  value: unknown,
-  label = "WorkspaceCorrectionSubmitReadModel",
-): asserts value is WorkspaceCorrectionSubmitReadModel {
-  const model = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.WorkspaceCorrectionSubmitReadModel,
-  );
-  assertLiteral(model.schemaVersion, "workspace.correction_submit.v0.1", `${label}.schemaVersion`);
-  assertDateLike(model.generatedAt, `${label}.generatedAt`);
-  assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
-  assertString(model.localeBranchId, `${label}.localeBranchId`);
-  assertString(model.batchId, `${label}.batchId`);
-  assertNullableString(model.batchLabel, `${label}.batchLabel`);
-  assertNonNegativeInteger(model.submittedCount, `${label}.submittedCount`);
-  const edits = asArray(model.edits, `${label}.edits`);
-  for (const [index, editValue] of edits.entries()) {
-    const editLabel = `${label}.edits[${index}]`;
-    const edit = asStrictRecord(editValue, editLabel, [
-      "correctionEditId",
-      "projectId",
-      "localeBranchId",
-      "sourceRevisionId",
-      "bridgeUnitId",
-      "actorUserId",
-      "reason",
-      "beforeText",
-      "afterText",
-      "disposition",
-      "triageLabel",
-      "feedbackReportId",
-      "feedbackEvidenceId",
-      "reviewItemId",
-      "duplicate",
-    ]);
-    assertString(edit.correctionEditId, `${editLabel}.correctionEditId`);
-    assertString(edit.projectId, `${editLabel}.projectId`);
-    assertString(edit.localeBranchId, `${editLabel}.localeBranchId`);
-    assertString(edit.sourceRevisionId, `${editLabel}.sourceRevisionId`);
-    assertString(edit.bridgeUnitId, `${editLabel}.bridgeUnitId`);
-    assertString(edit.actorUserId, `${editLabel}.actorUserId`);
-    assertString(edit.reason, `${editLabel}.reason`);
-    assertNullableString(edit.beforeText, `${editLabel}.beforeText`);
-    assertString(edit.afterText, `${editLabel}.afterText`);
-    assertEnum(edit.disposition, workspaceCorrectionDispositionList, `${editLabel}.disposition`);
-    assertString(edit.triageLabel, `${editLabel}.triageLabel`);
-    assertString(edit.feedbackReportId, `${editLabel}.feedbackReportId`);
-    assertString(edit.feedbackEvidenceId, `${editLabel}.feedbackEvidenceId`);
-    assertNullableString(edit.reviewItemId, `${editLabel}.reviewItemId`);
-    assertBoolean(edit.duplicate, `${editLabel}.duplicate`);
-  }
-  assertStringArray(model.repairCandidateReportIds, `${label}.repairCandidateReportIds`);
-  assertStringArray(model.decisionQueueReportIds, `${label}.decisionQueueReportIds`);
-  assertStringArray(model.needsContextReportIds, `${label}.needsContextReportIds`);
-  assertStringArray(model.affectedBridgeUnitIds, `${label}.affectedBridgeUnitIds`);
-  const writebacks = asArray(model.writebacks, `${label}.writebacks`);
-  for (const [index, writebackValue] of writebacks.entries()) {
-    const writebackLabel = `${label}.writebacks[${index}]`;
-    const writeback = asStrictRecord(writebackValue, writebackLabel, [
-      "bridgeUnitId",
-      "contextArtifactId",
-      "contextEntryVersionId",
-      "invalidatedArtifactIds",
-      "affectedBridgeUnitIds",
-      "scheduledJobIds",
-    ]);
-    assertString(writeback.bridgeUnitId, `${writebackLabel}.bridgeUnitId`);
-    assertString(writeback.contextArtifactId, `${writebackLabel}.contextArtifactId`);
-    assertString(writeback.contextEntryVersionId, `${writebackLabel}.contextEntryVersionId`);
-    assertStringArray(writeback.invalidatedArtifactIds, `${writebackLabel}.invalidatedArtifactIds`);
-    assertStringArray(writeback.affectedBridgeUnitIds, `${writebackLabel}.affectedBridgeUnitIds`);
-    assertStringArray(writeback.scheduledJobIds, `${writebackLabel}.scheduledJobIds`);
-  }
-  assertStringArray(model.scheduledRerunJobIds, `${label}.scheduledRerunJobIds`);
-  assertWorkspaceCorrectionDiagnostics(model.diagnostics, `${label}.diagnostics`);
-}
-
-export function parseWorkspaceCorrectionSubmitRequest(
-  body: unknown,
-): ApiWorkspaceCorrectionSubmitRequest {
-  return parseRequest("ApiWorkspaceCorrectionSubmitRequest", () => {
-    const request = asRecord(body, "ApiWorkspaceCorrectionSubmitRequest");
-    assertString(request.projectId, "ApiWorkspaceCorrectionSubmitRequest.projectId");
-    assertString(request.localeBranchId, "ApiWorkspaceCorrectionSubmitRequest.localeBranchId");
-    assertString(request.targetLocale, "ApiWorkspaceCorrectionSubmitRequest.targetLocale");
-    assertString(request.actorUserId, "ApiWorkspaceCorrectionSubmitRequest.actorUserId");
-    const corrections = asArray(
-      request.corrections,
-      "ApiWorkspaceCorrectionSubmitRequest.corrections",
-    ).map((value, index) => {
-      const correctionLabel = `ApiWorkspaceCorrectionSubmitRequest.corrections[${index}]`;
-      const correction = asRecord(value, correctionLabel);
-      assertString(correction.bridgeUnitId, `${correctionLabel}.bridgeUnitId`);
-      assertString(correction.sourceRevisionId, `${correctionLabel}.sourceRevisionId`);
-      assertEnum(correction.severity, annotationSeverityList, `${correctionLabel}.severity`);
-      assertString(correction.reason, `${correctionLabel}.reason`);
-      assertString(correction.correctedText, `${correctionLabel}.correctedText`);
-      const scope = parseWorkspaceCorrectionScope(correction.scope, `${correctionLabel}.scope`);
-      const parsed: WorkspaceCorrectionSubmission = {
-        bridgeUnitId: correction.bridgeUnitId,
-        sourceRevisionId: correction.sourceRevisionId,
-        severity: correction.severity,
-        scope,
-        reason: correction.reason,
-        correctedText: correction.correctedText,
-      };
-      if (correction.sourceUnitKey !== undefined) {
-        assertString(correction.sourceUnitKey, `${correctionLabel}.sourceUnitKey`);
-        parsed.sourceUnitKey = correction.sourceUnitKey;
-      }
-      if (correction.draftText !== undefined) {
-        assertString(correction.draftText, `${correctionLabel}.draftText`);
-        parsed.draftText = correction.draftText;
-      }
-      if (correction.feedbackType !== undefined) {
-        assertEnum(
-          correction.feedbackType,
-          feedbackTypeList as readonly FeedbackType[],
-          `${correctionLabel}.feedbackType`,
-        );
-        parsed.feedbackType = correction.feedbackType;
-      }
-      return parsed;
-    });
-    const result: ApiWorkspaceCorrectionSubmitRequest = {
-      projectId: request.projectId,
-      localeBranchId: request.localeBranchId,
-      targetLocale: request.targetLocale,
-      actorUserId: request.actorUserId,
-      corrections,
-    };
-    if (request.sourceBundleId !== undefined) {
-      assertString(request.sourceBundleId, "ApiWorkspaceCorrectionSubmitRequest.sourceBundleId");
-      result.sourceBundleId = request.sourceBundleId;
-    }
-    if (request.batchLabel !== undefined) {
-      assertString(request.batchLabel, "ApiWorkspaceCorrectionSubmitRequest.batchLabel");
-      result.batchLabel = request.batchLabel;
-    }
-    if (request.actorDisplayName !== undefined) {
-      assertString(
-        request.actorDisplayName,
-        "ApiWorkspaceCorrectionSubmitRequest.actorDisplayName",
-      );
-      result.actorDisplayName = request.actorDisplayName;
-    }
-    return result;
-  });
-}
-
-function parseWorkspaceCorrectionScope(value: unknown, label: string): WorkspaceCorrectionScope {
-  const scope = asRecord(value, label);
-  assertEnum(scope.kind, workspaceCorrectionScopeKindList, `${label}.kind`);
-  if (scope.kind === workspaceCorrectionScopeKindValues.scene) {
-    assertString(scope.sceneId, `${label}.sceneId`);
-    if (scope.sceneId.trim().length === 0) {
-      throw new ApiValidationError(`${label}.sceneId must be non-empty`);
-    }
-    return { kind: "scene", sceneId: scope.sceneId };
-  }
-  return { kind: "line" };
-}
-export function assertWorkspaceProjectBrowseReadModel(
-  value: unknown,
-  label = "WorkspaceProjectBrowseReadModel",
-): asserts value is WorkspaceProjectBrowseReadModel {
-  const model = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.WorkspaceProjectBrowseReadModel,
-  );
-  assertLiteral(model.schemaVersion, "workspace.project_browse.v0.1", `${label}.schemaVersion`);
-  assertDateLike(model.generatedAt, `${label}.generatedAt`);
-  assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
-  const projects = asArray(model.projects, `${label}.projects`);
-  for (const [index, projectValue] of projects.entries()) {
-    const project = asStrictRecord(projectValue, `${label}.projects[${index}]`, [
-      "projectId",
-      "projectKey",
-      "name",
-      "status",
-      "sourceLocale",
-      "sourceBundleRevisionId",
-      "branchCount",
-      "unitCount",
-      "localeBranches",
-    ]);
-    const projectLabel = `${label}.projects[${index}]`;
-    assertString(project.projectId, `${projectLabel}.projectId`);
-    assertString(project.projectKey, `${projectLabel}.projectKey`);
-    assertString(project.name, `${projectLabel}.name`);
-    assertString(project.status, `${projectLabel}.status`);
-    assertString(project.sourceLocale, `${projectLabel}.sourceLocale`);
-    assertString(project.sourceBundleRevisionId, `${projectLabel}.sourceBundleRevisionId`);
-    assertNonNegativeInteger(project.branchCount, `${projectLabel}.branchCount`);
-    assertNonNegativeInteger(project.unitCount, `${projectLabel}.unitCount`);
-    const branches = asArray(project.localeBranches, `${projectLabel}.localeBranches`);
-    for (const [branchIndex, branchValue] of branches.entries()) {
-      assertWorkspaceLocaleBranchSummary(
-        branchValue,
-        `${projectLabel}.localeBranches[${branchIndex}]`,
-      );
-    }
-  }
-  assertWorkspaceDiagnostics(model.diagnostics, `${label}.diagnostics`);
-}
-
-function assertWorkspaceLocaleBranchSummary(value: unknown, label: string): void {
-  const branch = asStrictRecord(value, label, [
-    "localeBranchId",
-    "projectId",
-    "branchName",
-    "sourceLocale",
-    "targetLocale",
-    "status",
-    "unitCount",
-    "translatedUnitCount",
-    "openFindingCount",
-    "artifactCount",
-    "currentStyleGuidePolicyVersionId",
-    "sceneBrowsePath",
-    "assetBrowsePath",
-  ]);
-  assertString(branch.localeBranchId, `${label}.localeBranchId`);
-  assertString(branch.projectId, `${label}.projectId`);
-  assertString(branch.branchName, `${label}.branchName`);
-  assertString(branch.sourceLocale, `${label}.sourceLocale`);
-  assertString(branch.targetLocale, `${label}.targetLocale`);
-  assertString(branch.status, `${label}.status`);
-  assertNonNegativeInteger(branch.unitCount, `${label}.unitCount`);
-  assertNonNegativeInteger(branch.translatedUnitCount, `${label}.translatedUnitCount`);
-  assertNonNegativeInteger(branch.openFindingCount, `${label}.openFindingCount`);
-  assertNonNegativeInteger(branch.artifactCount, `${label}.artifactCount`);
-  assertNullableString(
-    branch.currentStyleGuidePolicyVersionId,
-    `${label}.currentStyleGuidePolicyVersionId`,
-  );
-  assertString(branch.sceneBrowsePath, `${label}.sceneBrowsePath`);
-  assertString(branch.assetBrowsePath, `${label}.assetBrowsePath`);
-}
-
-export function assertWorkspaceSceneBrowseReadModel(
-  value: unknown,
-  label = "WorkspaceSceneBrowseReadModel",
-): asserts value is WorkspaceSceneBrowseReadModel {
-  const model = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.WorkspaceSceneBrowseReadModel,
-  );
-  assertLiteral(model.schemaVersion, "workspace.scene_browse.v0.1", `${label}.schemaVersion`);
-  assertDateLike(model.generatedAt, `${label}.generatedAt`);
-  assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
-  assertString(model.projectId, `${label}.projectId`);
-  assertString(model.localeBranchId, `${label}.localeBranchId`);
-  assertProjectOverviewPagination(model.pagination, `${label}.pagination`);
-  const scenes = asArray(model.scenes, `${label}.scenes`);
-  if (scenes.length > Number((model.pagination as { limit: unknown }).limit)) {
-    throw new Error(`${label}.scenes must not exceed pagination.limit`);
-  }
-  for (const [index, sceneValue] of scenes.entries()) {
-    const sceneLabel = `${label}.scenes[${index}]`;
-    const scene = asStrictRecord(sceneValue, sceneLabel, [
-      "sceneId",
-      "sceneSummaryId",
-      "localeBranchId",
-      "sourceRevisionId",
-      "summaryLocale",
-      "summaryText",
-      "status",
-      "stale",
-      "generatedAt",
-      "units",
-      "citedUnitCount",
-    ]);
-    assertString(scene.sceneId, `${sceneLabel}.sceneId`);
-    assertString(scene.sceneSummaryId, `${sceneLabel}.sceneSummaryId`);
-    assertString(scene.localeBranchId, `${sceneLabel}.localeBranchId`);
-    assertString(scene.sourceRevisionId, `${sceneLabel}.sourceRevisionId`);
-    assertString(scene.summaryLocale, `${sceneLabel}.summaryLocale`);
-    assertString(scene.summaryText, `${sceneLabel}.summaryText`);
-    assertString(scene.status, `${sceneLabel}.status`);
-    assertBoolean(scene.stale, `${sceneLabel}.stale`);
-    assertDateLike(scene.generatedAt, `${sceneLabel}.generatedAt`);
-    assertNonNegativeInteger(scene.citedUnitCount, `${sceneLabel}.citedUnitCount`);
-    const units = asArray(scene.units, `${sceneLabel}.units`);
-    for (const [unitIndex, unitValue] of units.entries()) {
-      const unitLabel = `${sceneLabel}.units[${unitIndex}]`;
-      const unit = asStrictRecord(unitValue, unitLabel, [
-        "bridgeUnitId",
-        "reviewItemId",
-        "sourceUnitKey",
-        "speaker",
-        "occurrenceId",
-        "sourceText",
-        "cited",
-      ]);
-      assertString(unit.bridgeUnitId, `${unitLabel}.bridgeUnitId`);
-      assertNullableString(unit.reviewItemId, `${unitLabel}.reviewItemId`);
-      assertString(unit.sourceUnitKey, `${unitLabel}.sourceUnitKey`);
-      assertNullableString(unit.speaker, `${unitLabel}.speaker`);
-      assertString(unit.occurrenceId, `${unitLabel}.occurrenceId`);
-      assertNullableString(unit.sourceText, `${unitLabel}.sourceText`);
-      assertBoolean(unit.cited, `${unitLabel}.cited`);
-    }
-  }
-  assertWorkspaceDiagnostics(model.diagnostics, `${label}.diagnostics`);
-}
-
-export function assertWorkspaceAssetBrowseReadModel(
-  value: unknown,
-  label = "WorkspaceAssetBrowseReadModel",
-): asserts value is WorkspaceAssetBrowseReadModel {
-  const model = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.WorkspaceAssetBrowseReadModel,
-  );
-  assertLiteral(model.schemaVersion, "workspace.asset_browse.v0.1", `${label}.schemaVersion`);
-  assertDateLike(model.generatedAt, `${label}.generatedAt`);
-  assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
-  assertString(model.projectId, `${label}.projectId`);
-  assertString(model.localeBranchId, `${label}.localeBranchId`);
-  const assets = asArray(model.assets, `${label}.assets`);
-  for (const [index, assetValue] of assets.entries()) {
-    const assetLabel = `${label}.assets[${index}]`;
-    const asset = asStrictRecord(assetValue, assetLabel, [
-      "assetRef",
-      "assetKind",
-      "displayLabel",
-      "decided",
-      "decisionPolicy",
-      "decisionRationale",
-    ]);
-    const assetRef = asStrictRecord(asset.assetRef, `${assetLabel}.assetRef`, ["kind", "ref"]);
-    assertString(assetRef.kind, `${assetLabel}.assetRef.kind`);
-    assertString(assetRef.ref, `${assetLabel}.assetRef.ref`);
-    assertString(asset.assetKind, `${assetLabel}.assetKind`);
-    assertNullableString(asset.displayLabel, `${assetLabel}.displayLabel`);
-    assertBoolean(asset.decided, `${assetLabel}.decided`);
-    assertNullableString(asset.decisionPolicy, `${assetLabel}.decisionPolicy`);
-    assertNullableString(asset.decisionRationale, `${assetLabel}.decisionRationale`);
-  }
-  assertWorkspaceDiagnostics(model.diagnostics, `${label}.diagnostics`);
-}
-
-export function assertWorkspaceComparisonReadModel(
-  value: unknown,
-  label = "WorkspaceComparisonReadModel",
-): asserts value is WorkspaceComparisonReadModel {
-  const model = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.WorkspaceComparisonReadModel,
-  );
-  assertLiteral(model.schemaVersion, "workspace.comparison.v0.1", `${label}.schemaVersion`);
-  assertDateLike(model.generatedAt, `${label}.generatedAt`);
-  assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
-  assertString(model.reviewItemId, `${label}.reviewItemId`);
-  assertNullableString(model.localeBranchId, `${label}.localeBranchId`);
-  assertNullableString(model.sourceRevisionId, `${label}.sourceRevisionId`);
-  assertNullableString(model.bridgeUnitId, `${label}.bridgeUnitId`);
-  assertNullableString(model.sourceUnitKey, `${label}.sourceUnitKey`);
-  assertNullableString(model.contextNote, `${label}.contextNote`);
-  assertBoolean(model.hasFinal, `${label}.hasFinal`);
-  const cells = asArray(model.cells, `${label}.cells`);
-  for (const [index, cellValue] of cells.entries()) {
-    const cellLabel = `${label}.cells[${index}]`;
-    const cell = asStrictRecord(cellValue, cellLabel, ["side", "locale", "text", "label"]);
-    assertEnum(cell.side, ["source", "draft", "final"] as const, `${cellLabel}.side`);
-    assertString(cell.locale, `${cellLabel}.locale`);
-    assertString(cell.text, `${cellLabel}.text`);
-    assertString(cell.label, `${cellLabel}.label`);
-  }
-  const links = asArray(model.runtimeEvidenceLinks, `${label}.runtimeEvidenceLinks`);
-  for (const [index, linkValue] of links.entries()) {
-    const linkLabel = `${label}.runtimeEvidenceLinks[${index}]`;
-    const link = asStrictRecord(linkValue, linkLabel, [
-      "evidenceKind",
-      "evidenceTier",
-      "runtimeTargetId",
-      "observationEventIds",
-      "artifactHashes",
-      "providerProofRefs",
-      "summary",
-    ]);
-    assertString(link.evidenceKind, `${linkLabel}.evidenceKind`);
-    assertString(link.evidenceTier, `${linkLabel}.evidenceTier`);
-    assertString(link.runtimeTargetId, `${linkLabel}.runtimeTargetId`);
-    assertStringArray(link.observationEventIds, `${linkLabel}.observationEventIds`);
-    assertStringArray(link.artifactHashes, `${linkLabel}.artifactHashes`);
-    assertStringArray(link.providerProofRefs, `${linkLabel}.providerProofRefs`);
-    assertString(link.summary, `${linkLabel}.summary`);
-  }
-  assertWorkspaceDiagnostics(model.diagnostics, `${label}.diagnostics`);
-}
-
-export function assertWorkspaceSearchReadModel(
-  value: unknown,
-  label = "WorkspaceSearchReadModel",
-): asserts value is WorkspaceSearchReadModel {
-  const model = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.WorkspaceSearchReadModel);
-  assertLiteral(model.schemaVersion, "workspace.search.v0.1", `${label}.schemaVersion`);
-  assertDateLike(model.generatedAt, `${label}.generatedAt`);
-  assertReviewerQueuePermissionView(model.permission, `${label}.permission`);
-  assertString(model.projectId, `${label}.projectId`);
-  assertString(model.localeBranchId, `${label}.localeBranchId`);
-  assertString(model.query, `${label}.query`);
-  assertString(model.normalizedQuery, `${label}.normalizedQuery`);
-  assertEnum(model.mode, workspaceSearchModeList, `${label}.mode`);
-  assertProjectOverviewPagination(model.pagination, `${label}.pagination`);
-  assertNonNegativeInteger(model.droppedOpaqueCount, `${label}.droppedOpaqueCount`);
-  const results = asArray(model.results, `${label}.results`);
-  if (results.length > Number((model.pagination as { limit: unknown }).limit)) {
-    throw new Error(`${label}.results must not exceed pagination.limit`);
-  }
-  for (const [index, resultValue] of results.entries()) {
-    const resultLabel = `${label}.results[${index}]`;
-    const result = asStrictRecord(resultValue, resultLabel, [
-      "resultKind",
-      "matchKind",
-      "id",
-      "title",
-      "subtitle",
-      "targetPath",
-      "localeBranchId",
-      "sourceArtifactId",
-      "bridgeUnitRef",
-      "sourceRevisionId",
-      "sourceLocale",
-      "targetLocale",
-      "snippet",
-      "score",
-      "matchRefId",
-    ]);
-    assertEnum(
-      result.resultKind,
-      Object.values(workspaceSearchResultKindValues),
-      `${resultLabel}.resultKind`,
-    );
-    assertEnum(
-      result.matchKind,
-      ["exact", "terminology", "entity", "action"] as const,
-      `${resultLabel}.matchKind`,
-    );
-    assertString(result.id, `${resultLabel}.id`);
-    assertString(result.title, `${resultLabel}.title`);
-    assertNullableString(result.subtitle, `${resultLabel}.subtitle`);
-    assertString(result.targetPath, `${resultLabel}.targetPath`);
-    // Acceptance: every search result MUST cite a locale branch id, a
-    // source artifact id, and a bridge unit ref (never an opaque snippet).
-    assertString(result.localeBranchId, `${resultLabel}.localeBranchId`);
-    assertString(result.sourceArtifactId, `${resultLabel}.sourceArtifactId`);
-    assertString(result.bridgeUnitRef, `${resultLabel}.bridgeUnitRef`);
-    assertNullableString(result.sourceRevisionId, `${resultLabel}.sourceRevisionId`);
-    assertNullableString(result.sourceLocale, `${resultLabel}.sourceLocale`);
-    assertNullableString(result.targetLocale, `${resultLabel}.targetLocale`);
-    assertString(result.snippet, `${resultLabel}.snippet`);
-    assertFiniteNumber(result.score, `${resultLabel}.score`);
-    assertNullableString(result.matchRefId, `${resultLabel}.matchRefId`);
-  }
-  assertWorkspaceDiagnostics(model.diagnostics, `${label}.diagnostics`);
-}
-
-function assertReviewerBatchActionRequest(value: unknown, label: string): void {
-  const request = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ReviewerBatchActionRequest,
-  );
-  assertEnum(
-    request.action,
-    reviewerQueueActionList as readonly ReviewerQueueAction[],
-    `${label}.action`,
-  );
-  assertString(request.actorUserId, `${label}.actorUserId`);
-  const selections = asArray(request.selections, `${label}.selections`);
-  for (const [index, selectionValue] of selections.entries()) {
-    const selection = asStrictRecord(selectionValue, `${label}.selections[${index}]`, [
-      "reviewItemId",
-      "expectedSourceRevisionId",
-    ]);
-    assertString(selection.reviewItemId, `${label}.selections[${index}].reviewItemId`);
-    assertString(
-      selection.expectedSourceRevisionId,
-      `${label}.selections[${index}].expectedSourceRevisionId`,
-    );
-  }
-}
-
-function parseReviewerBatchActionRequestBody(
-  body: unknown,
-  label: string,
-): ReviewerBatchActionRequest {
-  return parseRequest(label, () => {
-    const request = asStrictRecord(
-      body,
-      label,
-      ITOTORI_STRICT_API_BODY_KEYS.ReviewerBatchActionRequest,
-    );
-    assertEnum(
-      request.action,
-      reviewerQueueActionList as readonly ReviewerQueueAction[],
-      `${label}.action`,
-    );
-    assertString(request.actorUserId, `${label}.actorUserId`);
-    const selections = asArray(request.selections, `${label}.selections`).map((value, index) => {
-      const selection = asStrictRecord(value, `${label}.selections[${index}]`, [
-        "reviewItemId",
-        "expectedSourceRevisionId",
-      ]);
-      assertString(selection.reviewItemId, `${label}.selections[${index}].reviewItemId`);
-      assertString(
-        selection.expectedSourceRevisionId,
-        `${label}.selections[${index}].expectedSourceRevisionId`,
-      );
-      return {
-        reviewItemId: selection.reviewItemId,
-        expectedSourceRevisionId: selection.expectedSourceRevisionId,
-      };
-    });
-    return {
-      action: request.action,
-      actorUserId: request.actorUserId,
-      selections,
-    };
-  });
-}
-
-function assertReviewerDetailContext(
-  value: unknown,
-  label = "ReviewerDetailContext",
-): asserts value is ReviewerDetailContext {
-  const context = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ReviewerDetailContext);
-  assertString(context.reviewItemId, `${label}.reviewItemId`);
-  assertReviewerQueuePermissionView(context.permission, `${label}.permission`);
-  if (context.item !== null) {
-    assertReviewerQueueItemRecord(context.item, `${label}.item`);
-  }
-  if (context.branchReference !== null) {
-    assertReviewerDetailBranchReference(context.branchReference, `${label}.branchReference`);
-  }
-  asArray(context.glossary, `${label}.glossary`);
-  asArray(context.qaFindings, `${label}.qaFindings`);
-  asArray(context.runtimeEvidence, `${label}.runtimeEvidence`);
-  asArray(context.rationaleRefs, `${label}.rationaleRefs`);
-  // wiki-structure-context-feed — nullable structure-informed context feed.
-  if (context.structureContextFeed !== null) {
-    assertReviewerDetailStructureContextFeed(
-      context.structureContextFeed,
-      `${label}.structureContextFeed`,
-    );
-  }
-  asArray(context.transitions, `${label}.transitions`);
-  asArray(context.diagnostics, `${label}.diagnostics`);
-}
-
-function assertReviewerDetailStructureContextFeed(value: unknown, label: string): void {
-  const feed = asStrictRecord(value, label, [
-    "whyHeading",
-    "sceneId",
-    "items",
-    "contextArtifactIds",
-    "citationRefs",
-    "fedTheDraft",
-  ]);
-  assertString(feed.whyHeading, `${label}.whyHeading`);
-  if (feed.sceneId !== null) {
-    assertNonNegativeInteger(feed.sceneId, `${label}.sceneId`);
-  }
-  assertBoolean(feed.fedTheDraft, `${label}.fedTheDraft`);
-  const items = asArray(feed.items, `${label}.items`);
-  for (const [index, itemValue] of items.entries()) {
-    const item = asStrictRecord(itemValue, `${label}.items[${index}]`, [
-      "kind",
-      "artifactRef",
-      "title",
-      "body",
-      "feedRole",
-    ]);
-    assertString(item.kind, `${label}.items[${index}].kind`);
-    assertString(item.artifactRef, `${label}.items[${index}].artifactRef`);
-    assertString(item.title, `${label}.items[${index}].title`);
-    assertString(item.body, `${label}.items[${index}].body`);
-    assertString(item.feedRole, `${label}.items[${index}].feedRole`);
-  }
-  asArray(feed.contextArtifactIds, `${label}.contextArtifactIds`);
-  asArray(feed.citationRefs, `${label}.citationRefs`);
-}
-
-// ITOTORI-139 — branch policy/glossary reference provenance on the
-// reviewer detail (review context) API response. A non-DB consumer that
-// receives the `reviewer.detail` JSON body validates and reads the exact
-// reference (branchPolicyRef + glossaryRef) the draft was produced under.
-function assertReviewerDetailBranchReference(value: unknown, label: string): void {
-  const reference = asStrictRecord(value, label, [
-    "referenceId",
-    "localeBranchId",
-    "versionSequence",
-    "draftId",
-    "branchPolicyRef",
-    "glossaryRef",
-    "supersedesReferenceId",
-    "updateReason",
-  ]);
-  assertString(reference.referenceId, `${label}.referenceId`);
-  assertString(reference.localeBranchId, `${label}.localeBranchId`);
-  assertNonNegativeInteger(reference.versionSequence, `${label}.versionSequence`);
-  assertString(reference.draftId, `${label}.draftId`);
-  assertNullableString(reference.branchPolicyRef, `${label}.branchPolicyRef`);
-  assertString(reference.glossaryRef, `${label}.glossaryRef`);
-  assertNullableString(reference.supersedesReferenceId, `${label}.supersedesReferenceId`);
-  assertString(reference.updateReason, `${label}.updateReason`);
-}
-
-function assertReviewerBatchPreview(
-  value: unknown,
-  label = "ReviewerBatchPreview",
-): asserts value is ReviewerBatchPreview {
-  const preview = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ReviewerBatchPreview);
-  assertReviewerBatchActionRequest(preview.request, `${label}.request`);
-  assertReviewerQueuePermissionView(preview.permission, `${label}.permission`);
-  asArray(preview.items, `${label}.items`);
-  const aggregate = asStrictRecord(preview.aggregate, `${label}.aggregate`, [
-    "total",
-    "allowed",
-    "denied",
-    "stale",
-    "notFound",
-    "duplicate",
-    "runtimeEvidenceInvariant",
-    "invalidInput",
-    "invalidTransition",
-    "concurrentModification",
-    "permissionDeniedRead",
-    "permissionDeniedManage",
-  ]);
-  for (const key of Object.keys(aggregate)) {
-    assertNonNegativeInteger(aggregate[key], `${label}.aggregate.${key}`);
-  }
-  assertBoolean(preview.allAllowed, `${label}.allAllowed`);
-  assertBoolean(preview.permissionDenied, `${label}.permissionDenied`);
-}
-
-function assertReviewerBatchExecuteResult(
-  value: unknown,
-  label = "ReviewerBatchExecuteResult",
-): asserts value is ReviewerBatchExecuteResult {
-  const result = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ReviewerBatchExecuteResult,
-  );
-  assertReviewerBatchActionRequest(result.request, `${label}.request`);
-  assertReviewerBatchPreview(result.preview, `${label}.preview`);
-  const applied = asArray(result.applied, `${label}.applied`);
-  for (const [index, entryValue] of applied.entries()) {
-    assertReviewerBatchExecuteOutcome(entryValue, `${label}.applied[${index}]`);
-  }
-  assertBoolean(result.refusedAll, `${label}.refusedAll`);
-  assertBoolean(result.appliedAll, `${label}.appliedAll`);
-}
-
-function assertReviewerSingleActionResult(
-  value: unknown,
-  label = "ReviewerSingleActionResult",
-): asserts value is ReviewerSingleActionResult {
-  const result = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.ReviewerSingleActionResult,
-  );
-  assertReviewerSingleActionRequest(result.request, `${label}.request`);
-  // `preview` is one BatchPreviewItem; the batch preview schema only
-  // asserts the item array shape, so assert the load-bearing fields here.
-  const preview = asRecord(result.preview, `${label}.preview`);
-  assertString(preview.reviewItemId, `${label}.preview.reviewItemId`);
-  assertString(preview.status, `${label}.preview.status`);
-  assertEnum(
-    preview.action,
-    reviewerQueueActionList as readonly ReviewerQueueAction[],
-    `${label}.preview.action`,
-  );
-  // `outcome` mirrors a single batch-confirm outcome (applied | refused).
-  assertReviewerBatchExecuteOutcome(result.outcome, `${label}.outcome`);
-  assertBoolean(result.applied, `${label}.applied`);
-  assertBoolean(result.refused, `${label}.refused`);
-}
-
-function assertReviewerSingleActionRequest(value: unknown, label: string): void {
-  const request = asRecord(value, label);
-  assertString(request.reviewItemId, `${label}.reviewItemId`);
-  assertString(request.actorUserId, `${label}.actorUserId`);
-  assertString(request.expectedSourceRevisionId, `${label}.expectedSourceRevisionId`);
-  assertEnum(request.action, reviewerSingleActionList, `${label}.action`);
-}
-
-function assertReviewerBatchExecuteOutcome(value: unknown, label: string): void {
-  const outcome = asRecord(value, label);
-  assertEnum(outcome.kind, ["applied", "refused"] as const, `${label}.kind`);
-  if (outcome.kind === "applied") {
-    const applied = asStrictRecord(value, label, ["kind", "reviewItemId", "result"]);
-    assertString(applied.reviewItemId, `${label}.reviewItemId`);
-    assertReviewerQueueActionResult(applied.result, `${label}.result`);
-    return;
-  }
-  const refused = asStrictRecord(value, label, [
-    "kind",
-    "reviewItemId",
-    "status",
-    "code",
-    "message",
-    "diagnostics",
-  ]);
-  assertString(refused.reviewItemId, `${label}.reviewItemId`);
-  assertString(refused.status, `${label}.status`);
-  assertString(refused.code, `${label}.code`);
-  assertString(refused.message, `${label}.message`);
-  asArray(refused.diagnostics, `${label}.diagnostics`);
-}
-
-function assertReviewerQueueActionResult(value: unknown, label: string): void {
-  const result = asStrictRecord(value, label, ["item", "transition"]);
-  assertReviewerQueueItemRecord(result.item, `${label}.item`);
-  assertReviewerQueueTransitionRecord(result.transition, `${label}.transition`);
-}
-
-function assertReviewerQueueTransitionRecord(value: unknown, label: string): void {
-  const transition = asStrictRecord(value, label, [
-    "transitionId",
-    "reviewItemId",
-    "localeBranchId",
-    "sourceRevisionId",
-    "itemKind",
-    "action",
-    "priorState",
-    "nextState",
-    "actorUserId",
-    "affectedArtifactIds",
-    "diagnostics",
-    "metadata",
-    "createdAt",
-  ]);
-  assertString(transition.transitionId, `${label}.transitionId`);
-  assertString(transition.reviewItemId, `${label}.reviewItemId`);
-  assertString(transition.localeBranchId, `${label}.localeBranchId`);
-  assertString(transition.sourceRevisionId, `${label}.sourceRevisionId`);
-  assertEnum(transition.itemKind, reviewerQueueItemKindList, `${label}.itemKind`);
-  assertEnum(
-    transition.action,
-    reviewerQueueActionList as readonly ReviewerQueueAction[],
-    `${label}.action`,
-  );
-  assertEnum(transition.priorState, reviewerQueueItemStateList, `${label}.priorState`);
-  assertEnum(transition.nextState, reviewerQueueItemStateList, `${label}.nextState`);
-  assertString(transition.actorUserId, `${label}.actorUserId`);
-  assertStringArray(transition.affectedArtifactIds, `${label}.affectedArtifactIds`);
-  asArray(transition.diagnostics, `${label}.diagnostics`);
-  asRecord(transition.metadata, `${label}.metadata`);
-  assertDateLike(transition.createdAt, `${label}.createdAt`);
-}
-
-function assertReviewerQueueItemRecord(value: unknown, label: string): void {
-  const item = asStrictRecord(value, label, [
-    "reviewItemId",
-    "projectId",
-    "localeBranchId",
-    "sourceRevisionId",
-    "itemKind",
-    "sourceItemRef",
-    "state",
-    "priority",
-    "summary",
-    "affectedArtifactIds",
-    "evidenceTier",
-    "observationEventIds",
-    "artifactHashes",
-    "payload",
-    "metadata",
-    "createdByUserId",
-    "assignedToUserId",
-    "createdAt",
-    "updatedAt",
-    "resolvedAt",
-  ]);
-  assertString(item.reviewItemId, `${label}.reviewItemId`);
-  assertString(item.projectId, `${label}.projectId`);
-  assertString(item.localeBranchId, `${label}.localeBranchId`);
-  assertString(item.sourceRevisionId, `${label}.sourceRevisionId`);
-  assertEnum(item.itemKind, reviewerQueueItemKindList, `${label}.itemKind`);
-  assertString(item.sourceItemRef, `${label}.sourceItemRef`);
-  assertEnum(item.state, reviewerQueueItemStateList, `${label}.state`);
-  assertNonNegativeInteger(item.priority, `${label}.priority`);
-  assertString(item.summary, `${label}.summary`);
-  assertStringArray(item.affectedArtifactIds, `${label}.affectedArtifactIds`);
-  assertNullableString(item.evidenceTier, `${label}.evidenceTier`);
-  if (item.observationEventIds !== null) {
-    assertStringArray(item.observationEventIds, `${label}.observationEventIds`);
-  }
-  if (item.artifactHashes !== null) {
-    assertStringArray(item.artifactHashes, `${label}.artifactHashes`);
-  }
-  asRecord(item.payload, `${label}.payload`);
-  asRecord(item.metadata, `${label}.metadata`);
-  assertNullableString(item.createdByUserId, `${label}.createdByUserId`);
-  assertNullableString(item.assignedToUserId, `${label}.assignedToUserId`);
-  assertDateLike(item.createdAt, `${label}.createdAt`);
-  assertDateLike(item.updatedAt, `${label}.updatedAt`);
-  assertNullableDateLike(item.resolvedAt, `${label}.resolvedAt`);
-}
-
-function assertNullableReviewerQueueAction(value: unknown, label: string): void {
-  if (value !== null) {
-    assertEnum(value, reviewerQueueActionList as readonly ReviewerQueueAction[], label);
-  }
 }
 
 export function assertCatalogOpportunityRankingReadModel(
@@ -7242,13 +5689,6 @@ function assertRecordFindingResponse(value: unknown): asserts value is ApiRecord
   );
 }
 
-function assertRecordDecisionResponse(value: unknown): asserts value is ApiRecordDecisionResponse {
-  const response = asRecord(value, "ApiRecordDecisionResponse");
-  assertString(response.decisionId, "ApiRecordDecisionResponse.decisionId");
-  assertEnum(response.eventKind, TRIAGE_EVENT_KINDS, "ApiRecordDecisionResponse.eventKind");
-  assertBoolean(response.recorded, "ApiRecordDecisionResponse.recorded");
-}
-
 function assertRecordBenchmarkResponse(
   value: unknown,
 ): asserts value is ApiRecordBenchmarkResponse {
@@ -7478,7 +5918,6 @@ function assertNullableBranchPolicyReference(value: unknown, label: string): voi
   assertNullableString(reference.styleGuideVersionId, `${label}.styleGuideVersionId`);
   assertString(reference.glossaryContentHash, `${label}.glossaryContentHash`);
   assertNonNegativeInteger(reference.glossaryTermCount, `${label}.glossaryTermCount`);
-  assertNonNegativeInteger(reference.glossaryReviewItemCount, `${label}.glossaryReviewItemCount`);
   assertString(reference.updateReason, `${label}.updateReason`);
   assertDateLike(reference.createdAt, `${label}.createdAt`);
 }
@@ -7795,10 +6234,7 @@ function assertAuthCapabilitiesResponse(
     "ApiAuthCapabilitiesResponse.schemaVersion",
   );
   assertString(response.actorUserId, "ApiAuthCapabilitiesResponse.actorUserId");
-  assertBoolean(response.canReadQueue, "ApiAuthCapabilitiesResponse.canReadQueue");
-  assertBoolean(response.canManageQueue, "ApiAuthCapabilitiesResponse.canManageQueue");
   assertBoolean(response.canFlag, "ApiAuthCapabilitiesResponse.canFlag");
-  assertBoolean(response.canDecide, "ApiAuthCapabilitiesResponse.canDecide");
   assertBoolean(response.canSteer, "ApiAuthCapabilitiesResponse.canSteer");
   assertBoolean(response.canReveal, "ApiAuthCapabilitiesResponse.canReveal");
   const denials = asStrictRecord(
@@ -7807,11 +6243,8 @@ function assertAuthCapabilitiesResponse(
     ITOTORI_STRICT_API_BODY_KEYS.ApiStudioCapabilityDenials,
   );
   assertNullableString(denials.flag, "ApiAuthCapabilitiesResponse.denials.flag");
-  assertNullableString(denials.decide, "ApiAuthCapabilitiesResponse.denials.decide");
   assertNullableString(denials.steer, "ApiAuthCapabilitiesResponse.denials.steer");
   assertNullableString(denials.reveal, "ApiAuthCapabilitiesResponse.denials.reveal");
-  assertNullableString(denials.queueRead, "ApiAuthCapabilitiesResponse.denials.queueRead");
-  assertNullableString(denials.queueManage, "ApiAuthCapabilitiesResponse.denials.queueManage");
   const denialReasons = asArray(
     response.denialReasons,
     "ApiAuthCapabilitiesResponse.denialReasons",
@@ -7953,30 +6386,6 @@ export function parseLaunchPassRequest(body: unknown): ApiLaunchPassRequest {
       localeBranchId: request.localeBranchId,
       cancelled: true,
       resumeRunId,
-    };
-  });
-}
-
-/**
- * play-mark-validated — parse + validate the set-coverage request body. The
- * scene id and coverage state are required; the project / branch live on the
- * URL path and are ownership-verified server-side before the write.
- */
-export function parsePlaySetSceneCoverageRequest(body: unknown): ApiPlaySetSceneCoverageRequest {
-  return parseRequest("ApiPlaySetSceneCoverageRequest", () => {
-    const request = asRecord(body, "ApiPlaySetSceneCoverageRequest");
-    assertString(request.sceneId, "ApiPlaySetSceneCoverageRequest.sceneId");
-    if (request.sceneId.trim().length === 0) {
-      throw new ApiValidationError("ApiPlaySetSceneCoverageRequest.sceneId must be non-empty");
-    }
-    assertEnum(
-      request.coverageState,
-      API_SCENE_COVERAGE_STATES,
-      "ApiPlaySetSceneCoverageRequest.coverageState",
-    );
-    return {
-      sceneId: request.sceneId.trim(),
-      coverageState: request.coverageState,
     };
   });
 }
@@ -8167,6 +6576,21 @@ export function parsePatchIterationFeedbackRequest(
         "affectedBridgeUnitIds",
       );
     }
+    if (response.eventKind === "comment") {
+      if (response.body === undefined) {
+        throw new ApiValidationError(
+          "comment feedback requires a non-blank body for its canonical context correction",
+        );
+      }
+      if (
+        response.affectedBridgeUnitIds === undefined ||
+        response.affectedBridgeUnitIds.length === 0
+      ) {
+        throw new ApiValidationError(
+          "comment feedback requires at least one affectedBridgeUnitId for its canonical context correction",
+        );
+      }
+    }
     return response;
   });
 }
@@ -8247,66 +6671,6 @@ function parseNonBlankApiStringArray(value: unknown, label: string): string[] {
   });
 }
 
-function assertPlaySceneCoverageResponse(
-  value: unknown,
-): asserts value is ApiPlaySceneCoverageResponse {
-  const response = asStrictRecord(
-    value,
-    "ApiPlaySceneCoverageResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPlaySceneCoverageResponse,
-  );
-  assertLiteral(
-    response.schemaVersion,
-    "itotori.play.scene-coverage.v0",
-    "ApiPlaySceneCoverageResponse.schemaVersion",
-  );
-  assertString(response.generatedAt, "ApiPlaySceneCoverageResponse.generatedAt");
-  assertString(response.projectId, "ApiPlaySceneCoverageResponse.projectId");
-  assertString(response.localeBranchId, "ApiPlaySceneCoverageResponse.localeBranchId");
-  if (!Array.isArray(response.nodes)) {
-    throw new Error("ApiPlaySceneCoverageResponse.nodes must be an array");
-  }
-  for (const [index, node] of response.nodes.entries()) {
-    assertPlaySceneCoverageNode(node, `ApiPlaySceneCoverageResponse.nodes[${index}]`);
-  }
-  if (!Array.isArray(response.edges)) {
-    throw new Error("ApiPlaySceneCoverageResponse.edges must be an array");
-  }
-  for (const [index, edge] of response.edges.entries()) {
-    assertPlaySceneCoverageEdge(edge, `ApiPlaySceneCoverageResponse.edges[${index}]`);
-  }
-  assertPlaySceneCoverageCounts(response.counts, "ApiPlaySceneCoverageResponse.counts");
-}
-
-function assertPlaySceneCoverageNode(value: unknown, label: string): void {
-  const node = asRecord(value, label);
-  assertString(node.sceneId, `${label}.sceneId`);
-  assertString(node.label, `${label}.label`);
-  assertEnum(node.coverageState, API_SCENE_COVERAGE_STATES, `${label}.coverageState`);
-  if (node.routeKey !== null) {
-    assertString(node.routeKey, `${label}.routeKey`);
-  }
-  if (node.routeMapId !== null) {
-    assertString(node.routeMapId, `${label}.routeMapId`);
-  }
-}
-
-function assertPlaySceneCoverageEdge(value: unknown, label: string): void {
-  const edge = asRecord(value, label);
-  assertString(edge.fromSceneId, `${label}.fromSceneId`);
-  assertString(edge.toSceneId, `${label}.toSceneId`);
-  assertString(edge.choiceKey, `${label}.choiceKey`);
-  assertString(edge.label, `${label}.label`);
-}
-
-function assertPlaySceneCoverageCounts(value: unknown, label: string): void {
-  const counts = asRecord(value, label);
-  assertNonNegativeInteger(counts.needsCheck, `${label}.needsCheck`);
-  assertNonNegativeInteger(counts.flagged, `${label}.flagged`);
-  assertNonNegativeInteger(counts.validated, `${label}.validated`);
-  assertNonNegativeInteger(counts.total, `${label}.total`);
-}
-
 function assertPlayRouteMapResponse(value: unknown): asserts value is ApiPlayRouteMapResponse {
   const response = asStrictRecord(
     value,
@@ -8375,60 +6739,44 @@ function assertPlayRouteMapCounts(
   assertNonNegativeInteger(counts.choiceCount, `${label}.choiceCount`);
 }
 
-function assertPlaySetSceneCoverageResponse(
-  value: unknown,
-): asserts value is ApiPlaySetSceneCoverageResponse {
-  const response = asStrictRecord(
-    value,
-    "ApiPlaySetSceneCoverageResponse",
-    ITOTORI_STRICT_API_BODY_KEYS.ApiPlaySetSceneCoverageResponse,
-  );
-  assertLiteral(
-    response.schemaVersion,
-    "itotori.play.set-scene-coverage.v0",
-    "ApiPlaySetSceneCoverageResponse.schemaVersion",
-  );
-  assertString(response.projectId, "ApiPlaySetSceneCoverageResponse.projectId");
-  assertString(response.localeBranchId, "ApiPlaySetSceneCoverageResponse.localeBranchId");
-  assertString(response.sceneId, "ApiPlaySetSceneCoverageResponse.sceneId");
-  assertEnum(
-    response.coverageState,
-    API_SCENE_COVERAGE_STATES,
-    "ApiPlaySetSceneCoverageResponse.coverageState",
-  );
-  assertString(response.updatedAt, "ApiPlaySetSceneCoverageResponse.updatedAt");
-  assertString(response.updatedByUserId, "ApiPlaySetSceneCoverageResponse.updatedByUserId");
-}
-
 /**
  * play-flag-composer — parse + validate the AnnotationComposer submit body.
  * projectId + localeBranchId live on the URL path; the body carries the note,
- * severity ramp, and optional unit/scene anchors.
+ * severity ramp, required target unit, and optional scene anchors.
  */
 export function parsePlayFlagAnnotationRequest(body: unknown): ApiPlayFlagAnnotationRequest {
   return parseRequest("ApiPlayFlagAnnotationRequest", () => {
-    const request = asRecord(body, "ApiPlayFlagAnnotationRequest");
+    const request = asStrictRecord(body, "ApiPlayFlagAnnotationRequest", [
+      "note",
+      "severity",
+      "category",
+      "bridgeUnitId",
+      "sourceUnitKey",
+      "sourceBundleId",
+      "sourceRevisionId",
+      "sceneId",
+      "suggestedEdit",
+      "actorUserId",
+      "actorDisplayName",
+    ]);
     assertString(request.note, "ApiPlayFlagAnnotationRequest.note");
     if (request.note.trim().length === 0) {
       throw new ApiValidationError("ApiPlayFlagAnnotationRequest.note must be non-empty");
     }
     assertEnum(request.severity, API_PLAY_FLAG_SEVERITIES, "ApiPlayFlagAnnotationRequest.severity");
-    assertString(request.targetLocale, "ApiPlayFlagAnnotationRequest.targetLocale");
-    if (request.targetLocale.trim().length === 0) {
-      throw new ApiValidationError("ApiPlayFlagAnnotationRequest.targetLocale must be non-empty");
+    assertString(request.bridgeUnitId, "ApiPlayFlagAnnotationRequest.bridgeUnitId");
+    const bridgeUnitId = request.bridgeUnitId.trim();
+    if (bridgeUnitId.length === 0) {
+      throw new ApiValidationError("ApiPlayFlagAnnotationRequest.bridgeUnitId must be non-empty");
     }
     const parsed: ApiPlayFlagAnnotationRequest = {
       note: request.note.trim(),
       severity: request.severity,
-      targetLocale: request.targetLocale.trim(),
+      bridgeUnitId,
     };
     if (request.category !== undefined) {
       assertString(request.category, "ApiPlayFlagAnnotationRequest.category");
       parsed.category = request.category;
-    }
-    if (request.bridgeUnitId !== undefined) {
-      assertString(request.bridgeUnitId, "ApiPlayFlagAnnotationRequest.bridgeUnitId");
-      parsed.bridgeUnitId = request.bridgeUnitId;
     }
     if (request.sourceUnitKey !== undefined) {
       assertString(request.sourceUnitKey, "ApiPlayFlagAnnotationRequest.sourceUnitKey");
@@ -8484,10 +6832,7 @@ function assertPlayFlagAnnotationResponse(
   assertString(response.note, "ApiPlayFlagAnnotationResponse.note");
   assertString(response.triageLabel, "ApiPlayFlagAnnotationResponse.triageLabel");
   assertString(response.contextStatus, "ApiPlayFlagAnnotationResponse.contextStatus");
-  assertBoolean(
-    response.contextCorrectionEnqueued,
-    "ApiPlayFlagAnnotationResponse.contextCorrectionEnqueued",
-  );
+  assertString(response.contextCorrectionId, "ApiPlayFlagAnnotationResponse.contextCorrectionId");
   assertBoolean(response.duplicate, "ApiPlayFlagAnnotationResponse.duplicate");
 }
 
@@ -9087,20 +7432,6 @@ function assertFindingRecordInput(
   const finding = asRecord(value, label);
   if (finding.findingId === undefined) {
     throw new Error(`${label}.findingId is required`);
-  }
-}
-
-function assertDecisionEvent(value: unknown, label: string): asserts value is TriageEventV02 {
-  assertTriageBundleV02({
-    schemaVersion: BRIDGE_SCHEMA_VERSION_V02,
-    triageBundleId: "019ed004-0000-7000-8000-000000000005",
-    events: [value],
-    tasks: [],
-    findings: [],
-  });
-  const event = asRecord(value, label);
-  if (event.eventKind !== "triage_decision_recorded") {
-    throw new Error(`${label}.eventKind must be triage_decision_recorded`);
   }
 }
 

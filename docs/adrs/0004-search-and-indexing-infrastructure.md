@@ -8,8 +8,8 @@ Accepted for ITOTORI-030 and refreshed after ITOTORI-071.
 
 Itotori needs lookup and retrieval across source units, glossary terms, scenes,
 context artifacts, feedback reports, findings, and agent tool records. These
-lookups support reviewer queue context, deterministic QA, feedback dedupe,
-affected-work planning, and future agent tool calls.
+lookups support canonical context correction, deterministic QA, feedback
+dedupe, affected-work planning, and future agent tool calls.
 
 The current database is plain Postgres from `docker-compose.yml`. It does not
 install `pgvector`, and public CI must keep working when optional extensions are
@@ -90,22 +90,22 @@ The current schema already supplies these mandatory exact indexes:
 Current migrations include first-class glossary terminology tables and semantic
 glossary index rows used by `search.glossary` v1. Future migrations that add
 scene, context artifact, and additional agent-tool tables must add exact indexes
-before those records are used by review or agent search:
+before those records are used by context correction or agent search:
 
-| Area              | Required index shape                                                          | Purpose                                                                    |
-| ----------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Glossary terms    | Current terminology term, source-reference, review, and semantic-index tables | Exact glossary lookup, review, citations, and recorded semantic readiness. |
-| Scenes            | Unique `(project_id, source_bundle_id, scene_key)`                            | Exact scene lookup from bridge context.                                    |
-| Scenes            | `(project_id, source_bundle_id, route_key, scene_order)`                      | Route-ordered scene traversal.                                             |
-| Scene units       | `(scene_id, unit_order)` and `(bridge_unit_id)`                               | Nearby-unit and reverse scene lookup.                                      |
-| Context artifacts | `(project_id, locale_branch_id, artifact_kind, created_at)`                   | Reviewer evidence lists.                                                   |
-| Context artifacts | `(project_id, source_bundle_id)` and `(bridge_unit_id)`                       | Bundle and source-unit evidence lookup.                                    |
-| Context artifacts | `(hash)` where non-null                                                       | Exact artifact dedupe.                                                     |
-| Feedback reports  | `(project_id, locale_branch_id, target_locale, feedback_type, report_status)` | Typed feedback queues.                                                     |
-| Feedback reports  | `(project_id, context_status, last_reported_at)`                              | Missing-context triage.                                                    |
-| Agent tools       | Unique `(tool_name, tool_version)` on the registry table                      | Exact tool capability lookup.                                              |
-| Agent tools       | `(tool_status, capability_key)` on the registry table                         | Enabled tool discovery.                                                    |
-| Agent tool calls  | `(project_id, task_id, created_at)` and `(project_id, tool_name, created_at)` | Tool-run audit and replay.                                                 |
+| Area              | Required index shape                                                          | Purpose                                                            |
+| ----------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Glossary terms    | Current terminology term, source-reference, and semantic-index tables         | Exact glossary lookup, citations, and recorded semantic readiness. |
+| Scenes            | Unique `(project_id, source_bundle_id, scene_key)`                            | Exact scene lookup from bridge context.                            |
+| Scenes            | `(project_id, source_bundle_id, route_key, scene_order)`                      | Route-ordered scene traversal.                                     |
+| Scene units       | `(scene_id, unit_order)` and `(bridge_unit_id)`                               | Nearby-unit and reverse scene lookup.                              |
+| Context artifacts | `(project_id, locale_branch_id, artifact_kind, created_at)`                   | Play-test and context-correction evidence lists.                   |
+| Context artifacts | `(project_id, source_bundle_id)` and `(bridge_unit_id)`                       | Bundle and source-unit evidence lookup.                            |
+| Context artifacts | `(hash)` where non-null                                                       | Exact artifact dedupe.                                             |
+| Feedback reports  | `(project_id, locale_branch_id, target_locale, feedback_type, report_status)` | Typed feedback queues.                                             |
+| Feedback reports  | `(project_id, context_status, last_reported_at)`                              | Missing-context triage.                                            |
+| Agent tools       | Unique `(tool_name, tool_version)` on the registry table                      | Exact tool capability lookup.                                      |
+| Agent tools       | `(tool_status, capability_key)` on the registry table                         | Enabled tool discovery.                                            |
+| Agent tool calls  | `(project_id, task_id, created_at)` and `(project_id, tool_name, created_at)` | Tool-run audit and replay.                                         |
 
 Normalized text columns must be materialized by application code or generated
 columns before unique indexes rely on them. The normalization rule is lower-case
@@ -132,7 +132,7 @@ The generic exact and semantic tool contract accepts:
   `context_artifacts`, `feedback_reports`, `findings`, or `agent_tools`;
 - `filters` for source bundle, revision, surface kind, artifact kind, feedback
   type, status, privacy classification, and evidence tier;
-- `limit`, capped at 50 unless a reviewer-visible workflow raises it;
+- `limit`, capped at 50 unless a user-facing workflow raises it;
 - `cursor` for pagination.
 
 `itotori.search.exact.v1` also accepts structured exact predicates such as
@@ -219,16 +219,16 @@ Docker and CI behavior:
 4. Add optional pgvector companion storage only after the exact search document
    table exists and a capability probe can skip vector setup without failing CI.
 5. Add performance tests or explain-plan snapshots once project-scale fixture
-   data exists. Until then, every new queue or retrieval path must name the
-   exact index it relies on in its repository test.
+   data exists. Until then, every new retrieval path must name the exact index
+   it relies on in its repository test.
 
 ## Consequences
 
 - Current CI stays extension-free and deterministic.
 - Agent search calls are auditable because every result cites concrete Itotori
   ids and source revisions.
-- Semantic search can improve ranking later without changing the reviewer or
-  agent retrieval contract.
+- Semantic search can improve ranking later without changing the canonical
+  context-correction or agent retrieval contract.
 - Future migrations have a checklist for exact indexes before adding broader
   search features.
 

@@ -417,10 +417,5 @@ function servicesFixtureWithConformanceWorkflow(): ItotoriCliServices {
         throw new Error("not used");
       }),
     },
-    styleGuideFixtureFlow: {
-      run: vi.fn(async () => {
-        throw new Error("not used");
-      }),
-    },
   };
 }

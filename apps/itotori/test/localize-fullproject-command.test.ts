@@ -24,7 +24,6 @@ import {
 } from "@itotori/localization-bridge-schema";
 import {
   ItotoriLocalizationJournalRepository,
-  ItotoriReviewerQueueRepository,
   ItotoriTranslationScopeSettingsRepository,
   bootstrapLocalUser,
   createDatabaseContext,
@@ -59,12 +58,9 @@ const PROJECT_ID = "019ed0dd-0000-7000-8000-000000000001";
 const LOCALE_BRANCH_ID = "019ed0dd-0000-7000-8000-000000000002";
 const REVISION_ID = "019ed0dd-0000-7000-8000-000000000003";
 // Per-unit content-hash revision — DELIBERATELY distinct from the run/bundle
-// REVISION_ID and DELIBERATELY never seeded into itotori_source_revisions. This
-// is what makes the reviewer-queue QA-callout a genuine FK regression guard
-// (issue #76): the OLD bridge FK'd this unregistered per-unit id -> FK
-// violation on UNIT_B's QA callout; the fix FKs the run-level REVISION_ID that
-// seedProjectScope registers. If the two ids were equal (as before) the test
-// would pass with OR without the fix.
+// REVISION_ID and never seeded into itotori_source_revisions. A complete
+// localization run records its canonical outcomes against the run identity,
+// while preserving the per-unit source revision as provenance.
 const UNIT_CONTENT_HASH_REVISION_ID = "019ed0dd-0000-7000-8000-0000000000c0";
 const ASSET_ID = "019ed0dd-0000-7000-8000-000000000004";
 const SPEAKER_ID = "019ed0dd-0000-7000-8000-000000000005";
@@ -439,10 +435,6 @@ async function seedProjectScope(pool: DatabaseContext["pool"]): Promise<void> {
   await pool.query("delete from itotori_localization_journal_runs where project_id = $1", [
     PROJECT_ID,
   ]);
-  await pool.query("delete from itotori_reviewer_queue_transitions where locale_branch_id = $1", [
-    LOCALE_BRANCH_ID,
-  ]);
-  await pool.query("delete from itotori_reviewer_queue_items where project_id = $1", [PROJECT_ID]);
   await pool.query("delete from itotori_projects where project_id = $1", [PROJECT_ID]);
   await pool.query(
     `insert into itotori_workspaces (workspace_id, name) values ($1, $2)
@@ -501,7 +493,7 @@ function deterministicClock(): () => Date {
 
 describe("runLocalizeFullProjectCommand (full-project durable journal, real DB)", () => {
   it.skipIf(!process.env.DATABASE_URL)(
-    "writes every in-scope unit, persists its lossless journal, and exports a complete patch",
+    "writes every in-scope unit and exports a complete patch without a deferred or human-routed result",
     async () => {
       const databaseUrl = process.env.DATABASE_URL as string;
       await migrate(databaseUrl);
@@ -519,7 +511,6 @@ describe("runLocalizeFullProjectCommand (full-project durable journal, real DB)"
         const runJournal = async (runLabel: string) => {
           const capture = makeCaptureFactory();
           const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
-          const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
           const journal = new DrivenJournalPersistenceAdapter(journalRepo, { actor });
           const runDir = join(workDir, runLabel);
           mkdirSync(runDir, { recursive: true });
@@ -532,7 +523,6 @@ describe("runLocalizeFullProjectCommand (full-project durable journal, real DB)"
               actor,
               providerFactory: capture.factory,
               sinks: { journal, patchExport: patchSink },
-              reviewerQueue: { repository: reviewerQueueRepo },
               now: clock,
             },
           });
@@ -580,6 +570,12 @@ describe("runLocalizeFullProjectCommand (full-project durable journal, real DB)"
         const attempts = await journalRepo.loadAttemptsForRun(actor, result.journalRunId);
         expect(outcomes).toHaveLength(3);
         expect(attempts).toHaveLength(result.attemptsPersisted);
+        for (const outcome of outcomes) {
+          const selected = outcome.candidates.find(
+            (candidate) => candidate.id === outcome.outcome.selectedCandidateId,
+          );
+          expect(selected?.body.trim()).not.toHaveLength(0);
+        }
         const flagged = outcomes.find((outcome) => outcome.bridgeUnitId === UNIT_B)!;
         expect(flagged.outcome.selectedCandidateId).toBe(flagged.candidates[0]?.id);
         expect(flagged.candidates).toHaveLength(1);
@@ -597,16 +593,24 @@ describe("runLocalizeFullProjectCommand (full-project durable journal, real DB)"
         );
         expect(flagged.speakerLabels).toHaveLength(1);
 
-        const queueAfterJournal = Number(
-          (
-            await context.pool.query(
-              "select count(*)::int as n from itotori_reviewer_queue_items where project_id = $1",
-              [PROJECT_ID],
-            )
-          ).rows[0].n,
+        // A critical QA observation stays attached to UNIT_B's existing
+        // selected candidate. The complete patch has neither a deferred unit
+        // nor a human-routing projection anywhere in its run/report/output.
+        const translatedBridge = JSON.parse(
+          readFileSync(join(journalRun.runDir, "translated-bridge.json"), "utf8"),
+        ) as {
+          units: Array<{ bridgeUnitId: string; target?: { text?: string } }>;
+        };
+        const translatedInScope = translatedBridge.units.filter((unit) =>
+          [UNIT_A, UNIT_B, UNIT_C].includes(unit.bridgeUnitId),
         );
-        expect(queueAfterJournal).toBe(result.reviewerQueueItemCount);
-        expect(queueAfterJournal).toBeGreaterThanOrEqual(1); // UNIT_B's QA callout
+        expect(translatedInScope).toHaveLength(3);
+        for (const unit of translatedInScope) {
+          expect(unit.target?.text.trim().length).toBeGreaterThan(0);
+        }
+        expect(
+          JSON.stringify({ result, outcomes, patchReport: result.patchReport, translatedBridge }),
+        ).not.toMatch(/(?:deferred|human.{0,16}queue|reviewer.{0,16}queue)/iu);
       } finally {
         await context.close();
       }
@@ -631,7 +635,6 @@ describe("runLocalizeFullProjectCommand (full-project durable journal, real DB)"
         const { configPath } = materializeProject(workDir);
         const io = fsIo();
         const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
-        const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
 
         const runJournalPass = async (label: string) => {
           const capture = makeCaptureFactory();
@@ -649,7 +652,6 @@ describe("runLocalizeFullProjectCommand (full-project durable journal, real DB)"
               // The new read path: pass N+1 obtains prior state directly from
               // normalized journal runs/outcomes, not a legacy pass record.
               journalHistory: journalRepo,
-              reviewerQueue: { repository: reviewerQueueRepo },
               now: deterministicClock(),
             },
           });
@@ -767,7 +769,6 @@ describe("runLocalizeFullProjectCommand (full-project durable journal, real DB)"
         ) => {
           const capture = makeCaptureFactory();
           const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
-          const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
           const journal = new DrivenJournalPersistenceAdapter(journalRepo, { actor });
           const runDir = join(workDir, runLabel);
           mkdirSync(runDir, { recursive: true });
@@ -779,7 +780,6 @@ describe("runLocalizeFullProjectCommand (full-project durable journal, real DB)"
               actor,
               providerFactory: capture.factory,
               sinks: { journal, patchExport: patchSink },
-              reviewerQueue: { repository: reviewerQueueRepo },
               ...(runtimeValidation !== undefined
                 ? { afterExecutor: (result) => ({ ...result, runtimeValidation }) }
                 : {}),
@@ -906,7 +906,6 @@ describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope de
 
         const capture = makeCaptureFactory();
         const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
-        const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
         const journal = new DrivenJournalPersistenceAdapter(journalRepo, { actor });
         const runDir = join(workDir, "pass-1");
         mkdirSync(runDir, { recursive: true });
@@ -919,7 +918,6 @@ describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope de
             actor,
             providerFactory: capture.factory,
             sinks: { journal, patchExport: patchSink },
-            reviewerQueue: { repository: reviewerQueueRepo },
             // The REAL production port: reads through the SAME repository
             // instance the save above just wrote through.
             translationScopeSettings: {
@@ -990,7 +988,6 @@ describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope de
 
         const capture = makeCaptureFactory();
         const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
-        const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
         const journal = new DrivenJournalPersistenceAdapter(journalRepo, { actor });
         const runDir = join(workDir, "pass-1");
         mkdirSync(runDir, { recursive: true });
@@ -1003,7 +1000,6 @@ describe("runLocalizeFullProjectCommand reads the DB-backed translation-scope de
             actor,
             providerFactory: capture.factory,
             sinks: { journal, patchExport: patchSink },
-            reviewerQueue: { repository: reviewerQueueRepo },
             translationScopeSettings: {
               resolveScope: (projectId, localeBranchId) =>
                 translationScopeSettingsRepo.resolveScope(projectId, localeBranchId),

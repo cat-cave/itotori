@@ -2,10 +2,10 @@
 // (AnnotationComposer value) into the ManualFeedbackImportInput that creates
 // a canonical context correction via ManualFeedbackImportService.
 //
-// Backend path (same intake the workspace correction service uses):
+// Backend path (the canonical context-correction intake):
 //   ManualFeedbackImportPort.importManualFeedback
 //     → feedback report + evidence
-//     → canonical context correction (when contextualized and targetable)
+//     → canonical context correction (target unit required)
 //
 // Permission: `feedback.import` (canFlag). Severity is the design-system
 // annotation-severity ramp (blocker/critical/warning/note), carried on
@@ -30,18 +30,17 @@ export type PlayFlagSeverity = AnnotationSeverity;
 export type PlayFlagAnnotationInput = {
   projectId: string;
   localeBranchId: string;
-  targetLocale: string;
   /** Free-text note from the AnnotationComposer. */
   note: string;
   severity: PlayFlagSeverity;
   /** Free-form category (tone / layout / glossary / …). */
   category?: string;
-  /** Optional bridge unit the flag is anchored to. */
-  bridgeUnitId?: string;
+  /** Persisted bridge unit the flag is anchored to. */
+  bridgeUnitId: string;
   sourceUnitKey?: string;
   sourceBundleId?: string;
   sourceRevisionId?: string;
-  /** Optional scene identity for coverage / context (game-agnostic key). */
+  /** Optional scene identity for canonical context (game-agnostic key). */
   sceneId?: string;
   actorUserId: string;
   actorDisplayName?: string;
@@ -114,6 +113,9 @@ export function buildPlayFlagFeedbackInput(
   if (!isAnnotationSeverity(input.severity)) {
     throw new Error(`play flag severity must be one of: ${PLAY_FLAG_SEVERITIES.join(", ")}`);
   }
+  if (input.bridgeUnitId.trim().length === 0) {
+    throw new Error("play flag bridgeUnitId must be a non-empty string");
+  }
 
   const category = (input.category ?? "").trim();
   const feedbackType = feedbackTypeForFlagCategory(category);
@@ -122,7 +124,6 @@ export function buildPlayFlagFeedbackInput(
   const payload: ManualFeedbackImportInput = {
     projectId: input.projectId,
     localeBranchId: input.localeBranchId,
-    targetLocale: input.targetLocale,
     feedbackType,
     reporter: {
       role: "playtester",
@@ -130,6 +131,15 @@ export function buildPlayFlagFeedbackInput(
       displayName: reporterName,
     },
     reporterNote: note,
+    lineReference: {
+      bridgeUnitId: input.bridgeUnitId.trim(),
+      ...(input.sourceUnitKey !== undefined && input.sourceUnitKey.length > 0
+        ? { sourceUnitKey: input.sourceUnitKey }
+        : {}),
+      ...(input.sceneId !== undefined && input.sceneId.length > 0
+        ? { sourceLocation: { sceneId: input.sceneId } }
+        : {}),
+    },
     feedbackSource: {
       sourceKind: feedbackSourceKindValues.manualPlaytest,
       label: "Playtest flag",
@@ -153,17 +163,5 @@ export function buildPlayFlagFeedbackInput(
   if (input.suggestedEdit !== undefined && input.suggestedEdit.trim().length > 0) {
     payload.suggestedEdit = input.suggestedEdit.trim();
   }
-  if (input.bridgeUnitId !== undefined && input.bridgeUnitId.length > 0) {
-    payload.lineReference = {
-      bridgeUnitId: input.bridgeUnitId,
-      ...(input.sourceUnitKey !== undefined && input.sourceUnitKey.length > 0
-        ? { sourceUnitKey: input.sourceUnitKey }
-        : {}),
-      ...(input.sceneId !== undefined && input.sceneId.length > 0
-        ? { sourceLocation: { sceneId: input.sceneId } }
-        : {}),
-    };
-  }
-
   return payload;
 }

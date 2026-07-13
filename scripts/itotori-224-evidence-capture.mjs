@@ -286,8 +286,6 @@ const c6Records = callRecords.filter((c) => c.label.startsWith("call_6_generatio
 const c6Final = c6Records.find((c) => c.response.status === 200) ?? c6Records[c6Records.length - 1];
 const c6 = c6Final?.response.body;
 
-const numericCost = (v) => (typeof v === "number" ? v : Number(v));
-
 docAmbiguous["DOC-AMBIGUOUS-1"] = {
   question: "Is there a response field declaring 'ZDR was in effect for this call'?",
   resolution: "no_single_field",
@@ -314,7 +312,7 @@ docAmbiguous["DOC-AMBIGUOUS-2"] = {
 
 docAmbiguous["DOC-AMBIGUOUS-3"] = {
   question: "Do :nitro / :floor / :online / :free suffixes still work?",
-  resolution: "deferred_to_docs",
+  resolution: "documented_pending",
   evidence: {
     note: "Not directly tested. OR's currently accessible docs at /docs/guides/routing/model-fallbacks do not document these suffixes, and the canonical paths (presets and provider-routing) treat the same job as configurable via provider.sort. Until a future evidence capture probes a suffixed slug, the audit's stance stands: prefer provider.sort over suffixes.",
   },
@@ -322,7 +320,7 @@ docAmbiguous["DOC-AMBIGUOUS-3"] = {
 
 docAmbiguous["DOC-AMBIGUOUS-4"] = {
   question: "What is the Auto Router; usable from chat-completions?",
-  resolution: "deferred_to_docs",
+  resolution: "documented_pending",
   evidence: {
     note: "Not tested in this capture pass; OR docs only reference the Auto Router obliquely. Pinning concrete (modelId, providerId) pairs is itotori's load-bearing posture; auto-routing would violate the pair-pinning rule regardless.",
   },
@@ -331,7 +329,7 @@ docAmbiguous["DOC-AMBIGUOUS-4"] = {
 docAmbiguous["DOC-AMBIGUOUS-5"] = {
   question:
     "Does the standalone `structured_outputs: true` boolean parameter do anything alone (without response_format)?",
-  resolution: "deferred",
+  resolution: "documented_pending",
   evidence: {
     note: "Not tested here. The docs state response_format.type='json_schema' is the canonical path; the boolean appears to be a capability declaration only. Resolved sufficiently for itotori posture: always send response_format when structured output is required; never rely on the boolean alone.",
   },

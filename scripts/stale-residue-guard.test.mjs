@@ -11,6 +11,20 @@ test("fails on missing markdown link targets", () => {
   assert.match(renderReport(result), /missing-file\.md/u);
 });
 
+test("ignores a tracked source file pending deletion", () => {
+  const result = scanStaleResidue({
+    root: "/fixture",
+    files: ["apps/itotori/src/orchestrator/retired.ts"],
+    readFile: () => {
+      throw new Error("a deleted path must not be read");
+    },
+    pathExists: () => false,
+  });
+
+  assert.deepEqual(result.violations, []);
+  assert.equal(result.scannedFiles, 0);
+});
+
 test("fails on stale New-Game undecoded comments", () => {
   const result = scanFixture({
     "apps/itotori/src/agents/work-scope/manifest.ts":

@@ -44,7 +44,6 @@ import {
 } from "@itotori/localization-bridge-schema";
 import {
   ItotoriLocalizationJournalRepository,
-  ItotoriReviewerQueueRepository,
   bootstrapLocalUser,
   createDatabaseContext,
   localUserId,
@@ -702,7 +701,6 @@ function seamPatchReport(
     unitsRun: writtenUnits.length,
     writtenOutcomeCount: writtenUnits.length,
     failureCount: 0,
-    reviewerQueueItemCount: 0,
     totalUsageCostExactUsd: "0",
     totalUsageCostUsd: 0,
     zdrConfirmed: true,
@@ -1246,10 +1244,6 @@ async function seedProjectScope(
   await pool.query("delete from itotori_localization_journal_runs where project_id = $1", [
     PROJECT_ID,
   ]);
-  await pool.query("delete from itotori_reviewer_queue_transitions where locale_branch_id = $1", [
-    LOCALE_BRANCH_ID,
-  ]);
-  await pool.query("delete from itotori_reviewer_queue_items where project_id = $1", [PROJECT_ID]);
   await pool.query("delete from itotori_draft_jobs where project_id = $1", [PROJECT_ID]);
   await pool.query("delete from itotori_projects where project_id = $1", [PROJECT_ID]);
   await pool.query(
@@ -1351,7 +1345,6 @@ describe("runWholeGamePatchExportAndApply (whole-game -> applyable patch, real D
         mkdirSync(runDir, { recursive: true });
 
         const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
-        const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
         const journal = new DrivenJournalPersistenceAdapter(journalRepo, { actor });
         const patchSink = new FsDrivenPatchExportSink(runDir);
         const io = {
@@ -1367,7 +1360,6 @@ describe("runWholeGamePatchExportAndApply (whole-game -> applyable patch, real D
             actor,
             providerFactory: fakeFactory(),
             sinks: { journal, patchExport: patchSink },
-            reviewerQueue: { repository: reviewerQueueRepo },
             now: deterministicClock(),
           },
         });
@@ -1514,7 +1506,6 @@ describe("runWholeGamePatchExportAndApply (env-gated real-Sweetie byte proof)", 
         const runDir = join(workDir, "run");
         mkdirSync(runDir, { recursive: true });
         const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
-        const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
         const journal = new DrivenJournalPersistenceAdapter(journalRepo, { actor });
         const patchSink = new FsDrivenPatchExportSink(runDir);
         const io = {
@@ -1528,7 +1519,6 @@ describe("runWholeGamePatchExportAndApply (env-gated real-Sweetie byte proof)", 
             actor,
             providerFactory: fakeFactory(),
             sinks: { journal, patchExport: patchSink },
-            reviewerQueue: { repository: reviewerQueueRepo },
             now: deterministicClock(),
           },
         });

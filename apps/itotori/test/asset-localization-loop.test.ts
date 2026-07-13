@@ -8,8 +8,6 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   buildAssetExportOutcome,
-  buildAssetReviewItem,
-  decideAssetReview,
   draftAssetTexts,
   isBlockingAssetFinding,
   runAssetDraftQa,
@@ -22,9 +20,6 @@ import {
   titleCardOcrDocumentFixture,
   unsupportedEngineCapabilityFixture,
 } from "../src/asset-localization/index.js";
-
-const NOW = () => new Date("2026-07-05T00:00:00Z");
-const USER = "user-reviewer";
 
 describe("asset-localization loop — draft stage", () => {
   it("drafts asset text from OCR regions carrying asset provenance", () => {
@@ -102,29 +97,18 @@ describe("asset-localization loop — QA stage", () => {
   });
 });
 
-describe("asset-localization loop — review + export (happy path)", () => {
-  it("drafts → QA's → reviews (approve) → exports a patch payload for a supported engine", () => {
+describe("asset-localization loop — export (happy path)", () => {
+  it("drafts → QA annotations → exports a patch payload for a supported engine", () => {
     const doc = titleCardOcrDocumentFixture();
     const [newDraft] = draftAssetTexts(doc, "translate_text", fixtureTranslateFn());
     const findings = runAssetDraftQa(newDraft);
 
-    const item = buildAssetReviewItem(newDraft, findings);
-    expect(item.reviewItemRef).toBe(newDraft.draftId);
-    expect(item.recommendedAction).toBe("approve");
-    expect(item.provenance.regionId).toBe("region-0001");
-
-    const decision = decideAssetReview(item, "approve", USER, { now: NOW });
-    expect(decision.state).toBe("accepted");
-
-    const outcome = buildAssetExportOutcome(
-      newDraft,
-      decision,
-      findings,
-      supportedEngineCapabilityFixture(),
-    );
+    const outcome = buildAssetExportOutcome(newDraft, findings, supportedEngineCapabilityFixture());
     expect(outcome.kind).toBe("patch");
     if (outcome.kind === "patch") {
       expect(outcome.draftText).toBe("NUEVO");
+      expect(outcome.draftId).toBe(newDraft.draftId);
+      expect(outcome.qaFindings).toEqual(findings);
       expect(outcome.patchBackMode).toBe("re_encrypt_same_key");
       expect(outcome.provenance.assetRef).toBe("bridgeAssetRef:title-card.png");
     }
@@ -136,16 +120,7 @@ describe("asset-localization loop — unsupported patching stays EXPLICIT", () =
   it("refuses (typed) when the engine cannot patch — never a silent drop", () => {
     const doc = titleCardOcrDocumentFixture();
     const [newDraft] = draftAssetTexts(doc, "translate_text", fixtureTranslateFn());
-    const decision = decideAssetReview(buildAssetReviewItem(newDraft, []), "approve", USER, {
-      now: NOW,
-    });
-
-    const outcome = buildAssetExportOutcome(
-      newDraft,
-      decision,
-      [],
-      unsupportedEngineCapabilityFixture(),
-    );
+    const outcome = buildAssetExportOutcome(newDraft, [], unsupportedEngineCapabilityFixture());
     expect(isAssetPatchRefusal(outcome)).toBe(true);
     if (isAssetPatchRefusal(outcome)) {
       expect(outcome.reason).toBe("unsupported_engine");
@@ -159,58 +134,28 @@ describe("asset-localization loop — unsupported patching stays EXPLICIT", () =
   it("refuses inventory-only assets (does not pretend every asset is editable)", () => {
     const doc = titleCardOcrDocumentFixture();
     const [newDraft] = draftAssetTexts(doc, "translate_text", fixtureTranslateFn());
-    const decision = decideAssetReview(buildAssetReviewItem(newDraft, []), "approve", USER, {
-      now: NOW,
-    });
-    const outcome = buildAssetExportOutcome(
-      newDraft,
-      decision,
-      [],
-      inventoryOnlyCapabilityFixture(),
-    );
+    const outcome = buildAssetExportOutcome(newDraft, [], inventoryOnlyCapabilityFixture());
     expect(isAssetPatchRefusal(outcome) && outcome.reason).toBe("inventory_only");
   });
 
   it("refuses when the encrypted-media key is absent", () => {
     const doc = titleCardOcrDocumentFixture();
     const [newDraft] = draftAssetTexts(doc, "translate_text", fixtureTranslateFn());
-    const decision = decideAssetReview(buildAssetReviewItem(newDraft, []), "approve", USER, {
-      now: NOW,
-    });
-    const outcome = buildAssetExportOutcome(newDraft, decision, [], keyAbsentCapabilityFixture());
+    const outcome = buildAssetExportOutcome(newDraft, [], keyAbsentCapabilityFixture());
     expect(isAssetPatchRefusal(outcome) && outcome.reason).toBe("key_absent");
   });
 
-  it("refuses when the reviewer rejected the draft", () => {
-    const doc = titleCardOcrDocumentFixture();
-    const [newDraft] = draftAssetTexts(doc, "translate_text", fixtureTranslateFn());
-    const decision = decideAssetReview(buildAssetReviewItem(newDraft, []), "reject", USER, {
-      now: NOW,
-      rationale: "wrong glyphs",
-    });
-    const outcome = buildAssetExportOutcome(
-      newDraft,
-      decision,
-      [],
-      supportedEngineCapabilityFixture(),
-    );
-    expect(isAssetPatchRefusal(outcome) && outcome.reason).toBe("draft_rejected");
-  });
-
-  it("refuses (qa_blocked) when a blocking QA finding is still open on approval", () => {
+  it("exports even a critical QA finding as a patch annotation", () => {
     const doc = titleCardOcrDocumentFixture();
     const [newDraft] = draftAssetTexts(doc, "translate_text", fixtureTranslateFn({ NEW: "  " }));
     const findings = runAssetDraftQa(newDraft);
-    const item = buildAssetReviewItem(newDraft, findings);
-    expect(item.recommendedAction).toBe("revise");
-    // Reviewer force-approves despite the blocking finding; export still refuses.
-    const decision = decideAssetReview(item, "approve", USER, { now: NOW });
-    const outcome = buildAssetExportOutcome(
-      newDraft,
-      decision,
-      findings,
-      supportedEngineCapabilityFixture(),
-    );
-    expect(isAssetPatchRefusal(outcome) && outcome.reason).toBe("qa_blocked");
+    expect(findings.some(isBlockingAssetFinding)).toBe(true);
+
+    const outcome = buildAssetExportOutcome(newDraft, findings, supportedEngineCapabilityFixture());
+    expect(outcome.kind).toBe("patch");
+    if (outcome.kind === "patch") {
+      expect(outcome.qaFindings).toEqual(findings);
+      expect(outcome.draftText).toBe("  ");
+    }
   });
 });

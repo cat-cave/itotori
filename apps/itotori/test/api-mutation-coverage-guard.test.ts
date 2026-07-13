@@ -70,11 +70,11 @@ async function routeItotoriApiRequest(request, services) {
 // `switch (projectRoute.resource)`; a switch over any other value slips past.
 const otherSwitchUncovered = `
 async function routeItotoriApiRequest(request, services) {
-  const assetRoute = parseAssetMutationRoute(request.pathname);
-  switch (assetRoute.action) {
-    case "record-decision": {
-      const body = parseRecordDecisionRequest(request.body);
-      return ok("asset.decision", await services.projectWorkflow.recordDecision(assetRoute.projectId, body));
+  const findingRoute = parseFindingMutationRoute(request.pathname);
+  switch (findingRoute.action) {
+    case "record-finding": {
+      const body = parseRecordFindingRequest(request.body);
+      return ok("finding.record", await services.projectWorkflow.recordFinding(findingRoute.projectId, body));
     }
   }
 }
@@ -82,19 +82,19 @@ async function routeItotoriApiRequest(request, services) {
 
 const otherSwitchCovered = `
 async function routeItotoriApiRequest(request, services) {
-  const assetRoute = parseAssetMutationRoute(request.pathname);
-  switch (assetRoute.action) {
-    case "record-decision": {
-      const body = parseRecordDecisionRequest(request.body);
-      await requireApiPermission(services, apiMutationPermissionGates.decisionRecord);
-      return ok("asset.decision", await services.projectWorkflow.recordDecision(assetRoute.projectId, body));
+  const findingRoute = parseFindingMutationRoute(request.pathname);
+  switch (findingRoute.action) {
+    case "record-finding": {
+      const body = parseRecordFindingRequest(request.body);
+      await requireApiPermission(services, apiMutationPermissionGates.findingRecord);
+      return ok("finding.record", await services.projectWorkflow.recordFinding(findingRoute.projectId, body));
     }
   }
 }
 `;
 
-// Form 3 — HELPER-PREDICATE `if`. Shaped like the existing reviewer/asset parse
-// routes: `if (request.method === "POST" && parsed !== null)`. `postRoutePathname`
+// Form 3 — HELPER-PREDICATE `if`. Shaped like an asset parse
+// route: `if (request.method === "POST" && parsed !== null)`. `postRoutePathname`
 // in the legacy scan requires the right operand to be `request.pathname === <literal>`,
 // so a `parsed !== null` predicate is skipped even though it is a POST mutation.
 const helperPredicateUncovered = `
@@ -118,80 +118,15 @@ async function routeItotoriApiRequest(request, services) {
 }
 `;
 
-const reviewerQueueUncovered = `
-async function routeItotoriApiRequest(request, services) {
-  const reviewerRoute = parseReviewerMutationRoute(request.pathname);
-  if (request.method === "POST" && reviewerRoute !== null) {
-    const body = parseReviewerSingleActionRequest(request.body, reviewerRoute.reviewItemId);
-    return ok("reviewer.itemAction", await services.reviewerQueue.actionSingleItem({
-      actor: { userId: body.actorUserId },
-      request: body,
-      permission: {
-        actorUserId: body.actorUserId,
-        canReadQueue: true,
-        canManageQueue: true,
-        denialReasons: [],
-      },
-    }));
-  }
-}
-`;
-
-const reviewerQueueCovered = `
-async function routeItotoriApiRequest(request, services) {
-  const reviewerRoute = parseReviewerMutationRoute(request.pathname);
-  if (request.method === "POST" && reviewerRoute !== null) {
-    const body = parseReviewerSingleActionRequest(request.body, reviewerRoute.reviewItemId);
-    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
-    return ok("reviewer.itemAction", await services.reviewerQueue.actionSingleItem({
-      actor: { userId: body.actorUserId },
-      request: body,
-      permission,
-    }));
-  }
-}
-`;
-
-const assetDecisionsUncovered = `
-async function routeItotoriApiRequest(request, services) {
-  const assetRoute = parseAssetDecisionMutationRoute(request.pathname);
-  if (request.method === "POST" && assetRoute !== null) {
-    const body = parseAssetDecisionRecordRequest(request.body);
-    return ok("assetDecisions.record", await services.assetDecisions.recordDecision(body));
-  }
-}
-`;
-
-const assetDecisionsCovered = `
-async function routeItotoriApiRequest(request, services) {
-  const assetRoute = parseAssetDecisionMutationRoute(request.pathname);
-  if (request.method === "POST" && assetRoute !== null) {
-    const body = parseAssetDecisionRecordRequest(request.body);
-    await requireApiPermission(services, apiMutationPermissionGates.assetDecisionRecord);
-    return ok("assetDecisions.record", await services.assetDecisions.recordDecision(body));
-  }
-}
-`;
-
 describe("SHARED-026 shape-robust API mutation-permission guard", () => {
   it.each([
     { form: "route-table entry", source: routeTableUncovered, method: "importBridge" },
     {
       form: "switch on a non-projectRoute discriminant",
       source: otherSwitchUncovered,
-      method: "recordDecision",
+      method: "recordFinding",
     },
     { form: "helper-predicate if", source: helperPredicateUncovered, method: "recordFinding" },
-    {
-      form: "reviewerQueue permission-view route",
-      source: reviewerQueueUncovered,
-      method: "actionSingleItem",
-    },
-    {
-      form: "assetDecisions write port route",
-      source: assetDecisionsUncovered,
-      method: "recordDecision",
-    },
   ])("FAILS on an uncovered mutating route declared as a $form", ({ source, method }) => {
     const uncovered = findUncoveredProjectWorkflowMutations(source, FILE);
     expect(uncovered).toHaveLength(1);
@@ -203,8 +138,6 @@ describe("SHARED-026 shape-robust API mutation-permission guard", () => {
     { form: "switch on a non-projectRoute discriminant", source: otherSwitchCovered },
     { form: "helper-predicate if", source: helperPredicateCovered },
     { form: "aliased requireApiPermission helper", source: aliasedRequireApiPermissionCovered },
-    { form: "reviewerQueue resolved permission view", source: reviewerQueueCovered },
-    { form: "assetDecisions explicit API permission gate", source: assetDecisionsCovered },
   ])(
     "passes the same $form once the matching API permission gate covers the mutation",
     ({ source }) => {
@@ -281,18 +214,6 @@ async function routeItotoriApiRequest(request, services) {
       async function routeItotoriApiRequest(request, services) {
         if (request.method === "GET" && request.pathname === "/api/projects/status") {
           return ok("projects.status", await services.projectWorkflow.getDashboardStatus());
-        }
-        if (request.method === "GET" && request.pathname === "/api/reviewer/queue") {
-          return ok("reviewer.queue", await services.reviewerQueue.loadDashboard());
-        }
-        if (request.method === "GET" && request.pathname === "/api/workspace/corrections") {
-          return ok(
-            "workspace.correctionPreview",
-            await services.workspaceCorrections.loadPreview(),
-          );
-        }
-        if (request.method === "GET" && request.pathname === "/api/assets/decisions") {
-          return ok("assetDecisions.active", await services.assetDecisions.loadActiveDecisions());
         }
       }
     `;

@@ -18,7 +18,6 @@ import {
   costDrilldownFixture,
   dashboardDecisionsFixture,
   dashboardStatusFixture,
-  decisionEventFixture,
   findingRecordFixture,
   projectFixture,
   projectOverviewFixture,
@@ -167,43 +166,6 @@ describe("Itotori server API contracts", () => {
         await expect(deepLinkResponse.text()).resolves.toBe("runtime dashboard");
         expect(getRuntimeStatus).not.toHaveBeenCalled();
 
-        const styleGuideBuilderResponse = await fetch(`${origin}/style-guide-builder`);
-        expect(styleGuideBuilderResponse.status).toBe(200);
-        expect(styleGuideBuilderResponse.headers.get("content-type")).toBe("text/html");
-        await expect(styleGuideBuilderResponse.text()).resolves.toBe("itotori dashboard");
-
-        for (const pathname of [
-          "/reviewer-queue",
-          "/reviewer-queue/batch",
-          "/reviewer-queue/reviewer-queue-1",
-          "/projects/project-1/locale-branches/locale-1/asset-decisions",
-          "/projects/project-1/locale-branches/locale-1/asset-decisions/batch",
-        ]) {
-          const dashboardResponse = await fetch(`${origin}${pathname}`);
-          expect(dashboardResponse.status).toBe(200);
-          expect(dashboardResponse.headers.get("content-type")).toBe("text/html");
-          await expect(dashboardResponse.text()).resolves.toBe("itotori dashboard");
-        }
-
-        // ITOTORI-040 — the localization workspace SPA must be reachable at
-        // /workspace deep links for ANY project (project/unit context comes
-        // from query params, not the path). Each variant resolves to the
-        // dashboard index so the SPA loader can re-route client-side.
-        for (const pathname of [
-          "/workspace",
-          "/workspace/projects",
-          "/workspace/scenes",
-          "/workspace/assets",
-          "/workspace/comparison",
-          "/workspace/search",
-          "/workspace/corrections",
-        ]) {
-          const workspaceResponse = await fetch(`${origin}${pathname}`);
-          expect(workspaceResponse.status).toBe(200);
-          expect(workspaceResponse.headers.get("content-type")).toBe("text/html");
-          await expect(workspaceResponse.text()).resolves.toBe("itotori dashboard");
-        }
-
         // fnd-addressable-routing — entity deep-links + surface roots the
         // Studio SPA owns. Each must serve the itotori index so a cold load
         // re-routes client-side (not a 404). `/runtime/*` stays on the
@@ -225,17 +187,7 @@ describe("Itotori server API contracts", () => {
           await expect(addressableResponse.text()).resolves.toBe("itotori dashboard");
         }
 
-        for (const pathname of [
-          "/reviewer-queue/batch/",
-          "/reviewer-queue/reviewer-queue-1/extra",
-          "/reviewer-queue/reviewer-queue-1/%2e%2e",
-          "/projects/project-1/locale-branches/locale-1/asset-decisions/",
-          "/projects/project-1/locale-branches/locale-1/asset-decisions/extra",
-          "/projects/project-1/locale-branches/locale-1/asset-decisions/%2e%2e",
-          "/projects/project-1/locale-branches/locale-1",
-          "/workspace/unknown",
-          "/workspace/projects/extra",
-        ]) {
+        for (const pathname of ["/projects/project-1/locale-branches/locale-1"]) {
           const notFoundResponse = await fetch(`${origin}${pathname}`);
           expect(notFoundResponse.status).toBe(404);
           await expect(notFoundResponse.text()).resolves.toBe("not found");
@@ -504,30 +456,6 @@ describe("itotori-043-followup transport-level read-only routing", () => {
     }
   });
 
-  it("preserves 405 method_not_allowed for a GET on a POST-only reviewer mutation path", async () => {
-    const readOnlyFactory = vi.fn(toReadOnlyServiceFactory(serviceFactory));
-    const server = createItotoriServer({
-      serviceFactory,
-      readOnlyServiceFactory: readOnlyFactory,
-      webRoot: new URL("file:///tmp/itotori-empty-web/"),
-    });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    try {
-      const address = server.address() as AddressInfo;
-      const response = await fetch(
-        `http://127.0.0.1:${address.port}/api/reviewer/queue/batch-preview`,
-      );
-
-      expect(response.status).toBe(405);
-      await expect(response.json()).resolves.toMatchObject({ code: "method_not_allowed" });
-      // A GET still flows through the read-only factory (no mutation surface
-      // constructed) even when it is refused as a wrong-method request.
-      expect(readOnlyFactory).toHaveBeenCalledTimes(1);
-    } finally {
-      await closeServer(server);
-    }
-  });
-
   it("preserves 405 method_not_allowed for a GET on a project mutation route", async () => {
     const readOnlyFactory = vi.fn(toReadOnlyServiceFactory(serviceFactory));
     const server = createItotoriServer({
@@ -628,11 +556,6 @@ async function serviceFactory<T>(
       recordFinding: vi.fn(async () => ({
         findingId: findingRecordFixture.findingId,
         status: "open" as const,
-      })),
-      recordDecision: vi.fn(async () => ({
-        decisionId: decisionEventFixture.eventId,
-        eventKind: decisionEventFixture.eventKind,
-        recorded: true,
       })),
       recordBenchmarkReport: vi.fn(async () => ({
         benchmarkRunId: benchmarkReportFixture.benchmarkRunId,

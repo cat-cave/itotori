@@ -35,7 +35,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join, resolve as resolvePath } from "node:path";
 import process from "node:process";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { assertSchemaValid } from "./schema-validate.mjs";
 import {
   DEFAULT_INPUTS,
@@ -228,7 +228,7 @@ async function main() {
 
     // Carry forward hash-addressing findings from input loading, the executed
     // runtime render's own findings, and the artifact-bytes guard findings.
-    const { verdict, findings } = validateLinkage(composed.linkage);
+    const { findings } = validateLinkage(composed.linkage);
     const allFindings = [
       ...inputs.hashFindings,
       ...composed.runtimeRun.findings,

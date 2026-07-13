@@ -113,9 +113,15 @@ export function scanStaleResidue({
   pathExists = (path) => existsSync(resolve(root, path)),
 }) {
   const violations = [];
-  const exportedSymbols = collectExportedSymbols({ files, readFile });
+  // `git ls-files` intentionally sees entries that are staged or unstaged for
+  // deletion. CI guards run before the deletion commit, so scan the working
+  // tree that will actually be validated rather than trying to read a file the
+  // capstone has deliberately removed. Existing docs still validate links to
+  // those paths through `pathExists` below.
+  const existingFiles = files.filter((file) => pathExists(file));
+  const exportedSymbols = collectExportedSymbols({ files: existingFiles, readFile });
 
-  for (const file of files) {
+  for (const file of existingFiles) {
     const extension = extname(file);
     if (checkedTextExtensions.has(extension)) {
       const text = readFile(file);
@@ -129,12 +135,12 @@ export function scanStaleResidue({
     }
   }
 
-  scanUtsushiFacadeDocSymbols({ violations, files, readFile, exportedSymbols });
-  scanRoadmapQdText({ violations, files, readFile });
+  scanUtsushiFacadeDocSymbols({ violations, files: existingFiles, readFile, exportedSymbols });
+  scanRoadmapQdText({ violations, files: existingFiles, readFile });
 
   return {
     violations,
-    scannedFiles: files.length,
+    scannedFiles: existingFiles.length,
   };
 }
 

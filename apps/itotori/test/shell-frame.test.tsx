@@ -110,18 +110,18 @@ describe("Shell frame — nav", () => {
       "aria-selected",
       "true",
     );
-    expect(within(nav).getByRole("tab", { name: "Review" })).toHaveAttribute(
+    expect(within(nav).getByRole("tab", { name: "Play" })).toHaveAttribute(
       "aria-selected",
       "false",
     );
   });
 
-  it("marks Review active on /reviewer-queue and Workspace active on /workspace", () => {
-    mountFrame({ pathname: "/reviewer-queue", search: "" });
-    expect(screen.getByRole("tab", { name: "Review" })).toHaveAttribute("aria-selected", "true");
+  it("marks Play active on /play and Patches active on /play/patches", () => {
+    mountFrame({ pathname: "/play", search: "" });
+    expect(screen.getByRole("tab", { name: "Play" })).toHaveAttribute("aria-selected", "true");
     cleanup();
-    mountFrame({ pathname: "/workspace/scenes", search: "" });
-    expect(screen.getByRole("tab", { name: "Workspace" })).toHaveAttribute("aria-selected", "true");
+    mountFrame({ pathname: "/play/patches", search: "" });
+    expect(screen.getByRole("tab", { name: "Patches" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("exposes the patch-iteration dashboard as its own Play navigation destination", () => {
@@ -136,8 +136,8 @@ describe("Shell frame — nav", () => {
   it("navigates to the surface href when a pill is selected", () => {
     const navigate = vi.fn();
     mountFrame({ pathname: "/", search: "" }, navigate);
-    fireEvent.click(screen.getByRole("tab", { name: "Review" }));
-    expect(navigate).toHaveBeenCalledWith("/reviewer-queue");
+    fireEvent.click(screen.getByRole("tab", { name: "Patches" }));
+    expect(navigate).toHaveBeenCalledWith("/play/patches");
   });
 
   it("exposes settings destinations from the shell nav", () => {
@@ -307,19 +307,15 @@ describe("Shell frame — loading / empty / error handling", () => {
 describe("Shell frame — pure helpers", () => {
   it("activeShellNavId maps each surface path to its pill id", () => {
     expect(activeShellNavId("/")).toBe("workbench");
-    expect(activeShellNavId("/reviewer-queue")).toBe("review");
-    expect(activeShellNavId("/reviewer-queue/some-item")).toBe("review");
     expect(activeShellNavId("/play")).toBe("play");
     expect(activeShellNavId("/play/patches")).toBe("patches");
     expect(activeShellNavId("/catalog")).toBe("catalog");
-    expect(activeShellNavId("/workspace")).toBe("workspace");
-    expect(activeShellNavId("/workspace/scenes")).toBe("workspace");
     expect(activeShellNavId("/settings")).toBe("settings-privacy");
     expect(activeShellNavId("/settings/privacy")).toBe("settings-privacy");
     expect(activeShellNavId("/settings/model-routing")).toBe("settings-model-routing");
     expect(activeShellNavId("/settings/branch-policy")).toBe("settings-branch-policy");
-    // A legacy / unknown route matches no pill.
-    expect(activeShellNavId("/asset-decisions")).toBe("");
+    // An unknown route matches no pill.
+    expect(activeShellNavId("/removed-route")).toBe("");
   });
 
   it("readZdrPosture classifies enforced / opted_out / unavailable from the real posture", () => {

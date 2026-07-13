@@ -5,7 +5,7 @@
 // `ItotoriLocalizationResultRevisionRepository`: it creates a
 // LocalizedResultRevision + child delivered PatchVersion atomically with
 // real actor provenance, and immediately selects that child for export.
-// There is no approval/reviewer-queue gate between an edit and delivery.
+// There is no manual approval gate between an edit and delivery.
 
 import type {
   ApplyPlayTesterTargetEditResult,

@@ -7,11 +7,11 @@
  * engines over PUBLIC RECORDED inputs into ONE manifest-bound run — it does
  * NOT re-implement any stage:
  *
- *   1. Itotori iteration (ITOTORI-095) — the seven-stage loop
- *        import -> draft -> qa -> reviewer -> export -> feedback -> rerun
+ *   1. Itotori iteration (ITOTORI-095) — the six-stage loop
+ *        import -> draft -> qa -> export -> feedback -> rerun
  *      is produced by the ITOTORI-095 `composeIteration` / `validateIteration`
  *      engine, threaded VERBATIM (this module imports it; it never re-derives
- *      a draft/QA/reviewer/export/feedback/rerun stage).
+ *      a draft/QA/export/feedback/rerun stage).
  *   2. Kaifuu patch result      — `patch-result` cross-tool stage, read from a
  *      recorded public Kaifuu patch_result artifact (hash-addressed).
  *   3. Utsushi runtime observation — `runtime-observation` cross-tool stage,
@@ -21,7 +21,7 @@
  * The feedback import + targeted rerun are part of the ITOTORI-095 loop and
  * are surfaced (feedbackIds / rerunIds) at the manifest level.
  *
- * The emitted SHARED-025 manifest binds all nine stages to ONE fixture id and
+ * The emitted SHARED-025 manifest binds all eight stages to ONE fixture id and
  * ONE source revision and proves the Itotori, Kaifuu, and Utsushi artifacts
  * belong together (the ALPHA-007 cross-tool linkage pattern, extended over the
  * full Itotori loop). Every per-stage artifact is hash-addressed.
@@ -58,7 +58,7 @@ export { REPO_ROOT };
 export const ITERATION_FIXTURE_RESULT_SCHEMA_VERSION = "itotori.iteration-fixture.result.v0";
 export const CROSS_STAGE_SCHEMA_VERSION = "itotori.iteration-fixture.cross-stage.v0";
 
-// The two cross-tool stages this command adds on top of the seven-stage
+// The two cross-tool stages this command adds on top of the six-stage
 // ITOTORI-095 Itotori loop. Project ownership is fixed.
 export const CROSS_STAGE_ORDER = ["patch-result", "runtime-observation"];
 const PROJECT_BY_CROSS_STAGE = { "patch-result": "kaifuu", "runtime-observation": "utsushi" };
@@ -549,12 +549,12 @@ export function validateIterationFixture(composed) {
   let verdict;
   if (loopVerdict === "broken" || blockingCross.length > 0) {
     verdict = "broken";
-  } else if (loopVerdict === "rejected") {
-    verdict = "rejected";
+  } else if (loopVerdict === "blocked") {
+    verdict = "blocked";
   } else if (loopVerdict === "repaired") {
     verdict = "repaired";
   } else {
-    verdict = "accepted";
+    verdict = "complete";
   }
 
   return { verdict, crossFindings, billedMicrosUsd: composed.loopValidation.billedMicrosUsd };

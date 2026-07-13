@@ -358,6 +358,8 @@ function runOne(mutation, { withReal, sandbox }) {
     realOutcome: undefined,
     realElapsedMs: 0,
   };
+  let runFailed = false;
+  let runError;
   try {
     const mutated = applyMutation(original, mutation);
     writeFileSync(absPath, mutated);
@@ -385,10 +387,19 @@ function runOne(mutation, { withReal, sandbox }) {
         result.realElapsedMs = real.elapsedMs;
       }
     }
-  } finally {
-    // Restore the sandbox copy's pristine bytes so the NEXT mutation targeting
-    // the same file applies cleanly, then verify byte-identity (within the
-    // sandbox — the live tree is never touched at all).
+  } catch (error) {
+    runFailed = true;
+    runError = error;
+  }
+
+  // Restore the sandbox copy's pristine bytes so the NEXT mutation targeting
+  // the same file applies cleanly, then verify byte-identity (within the
+  // sandbox — the live tree is never touched at all). Preserve the original
+  // finally semantics: a restoration failure takes precedence over a run
+  // failure, while a successful restoration rethrows the run failure.
+  let restorationFailed = false;
+  let restorationError;
+  try {
     writeFileSync(absPath, original);
     const restored = readFileSync(absPath, "utf8");
     if (restored !== original) {
@@ -396,7 +407,12 @@ function runOne(mutation, { withReal, sandbox }) {
         `failed to restore sandbox copy of ${mutation.file} to its pristine bytes after mutation`,
       );
     }
+  } catch (error) {
+    restorationFailed = true;
+    restorationError = error;
   }
+  if (restorationFailed) throw restorationError;
+  if (runFailed) throw runError;
   return result;
 }
 

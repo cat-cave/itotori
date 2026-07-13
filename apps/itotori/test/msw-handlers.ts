@@ -6,7 +6,6 @@ import {
   parseDraftBranchRequest,
   parseProjectImportRequest,
   parseRecordBenchmarkRequest,
-  parseRecordDecisionRequest,
   parseRecordFindingRequest,
   parseRuntimeEvidenceRequest,
   type ApiErrorResponse,
@@ -31,19 +30,15 @@ import {
   draftBranchResponseFixture,
   recordBenchmarkRequestFixture,
   recordBenchmarkResponseFixture,
-  recordDecisionRequestFixture,
-  recordDecisionResponseFixture,
   recordFindingRequestFixture,
   recordFindingResponseFixture,
   runtimeEvidenceIngestRequestFixture,
   runtimeEvidenceIngestResponseFixture,
   runtimeStatusFixture,
 } from "./api-fixtures.js";
-import { reviewQueueDashboardFixtures } from "../src/reviewer/index.js";
-import type { ReviewerQueueDashboardReadModel } from "../src/reviewer/index.js";
 
 /**
- * ITOTORI-051 — the SUCCESS handlers for the six project mutation routes.
+ * ITOTORI-051 — the SUCCESS handlers for the project mutation routes.
  * Defined before {@link itotoriApiMswHandlers} so the dashboard MSW server
  * can spread them in without a temporal-dead-zone reference. Exported on its
  * own so a contract test can register JUST the mutation surface (or swap in
@@ -73,11 +68,6 @@ export const itotoriProjectMutationMswHandlers = [
     parseRecordFindingRequest(body);
     return apiJson("findings.record", recordFindingResponseFixture);
   }),
-  http.post("http://itotori.test/api/projects/project-1/decisions", async ({ request }) => {
-    const body = await readJsonBody(request);
-    parseRecordDecisionRequest(body);
-    return apiJson("decisions.record", recordDecisionResponseFixture);
-  }),
   http.post("http://itotori.test/api/projects/project-1/benchmarks", async ({ request }) => {
     const body = await readJsonBody(request);
     parseRecordBenchmarkRequest(body);
@@ -91,7 +81,7 @@ export const itotoriProjectMutationMswHandlers = [
 ];
 
 /**
- * ITOTORI-051 — typed VALIDATION FAILURE handlers for the six project
+ * ITOTORI-051 — typed VALIDATION FAILURE handlers for the project
  * mutation routes. Each one feeds the SUCCESS request fixture to the parser
  * (proving the fixture parses cleanly) and then returns the shared
  * `bad_request` error response shape every mutation emits when the parser
@@ -111,10 +101,6 @@ export const itotoriProjectMutationValidationFailureMswHandlers = [
     parseRecordFindingRequest(recordFindingRequestFixture);
     return apiErrorJson(apiMutationBadRequestResponseFixture, 400);
   }),
-  http.post("http://itotori.test/api/projects/project-1/decisions", async () => {
-    parseRecordDecisionRequest(recordDecisionRequestFixture);
-    return apiErrorJson(apiMutationBadRequestResponseFixture, 400);
-  }),
   http.post("http://itotori.test/api/projects/project-1/benchmarks", async () => {
     parseRecordBenchmarkRequest(recordBenchmarkRequestFixture);
     return apiErrorJson(apiMutationBadRequestResponseFixture, 400);
@@ -127,7 +113,7 @@ export const itotoriProjectMutationValidationFailureMswHandlers = [
 
 /**
  * ITOTORI-050 / ITOTORI-051 — typed PERMISSION / SCOPING DENIAL handlers for
- * the six project mutation routes. Each returns the shared `forbidden` error
+ * the project mutation routes. Each returns the shared `forbidden` error
  * response shape every mutation emits when either the permission gate
  * (`AuthorizationError`) or the server-side project/branch ownership scope
  * check (`ProjectMutationScopeError`) refuses the write. Used by the
@@ -142,9 +128,6 @@ export const itotoriProjectMutationPermissionDeniedMswHandlers = [
     apiErrorJson(apiMutationForbiddenResponseFixture, 403),
   ),
   http.post("http://itotori.test/api/projects/project-1/findings", async () =>
-    apiErrorJson(apiMutationForbiddenResponseFixture, 403),
-  ),
-  http.post("http://itotori.test/api/projects/project-1/decisions", async () =>
     apiErrorJson(apiMutationForbiddenResponseFixture, 403),
   ),
   http.post("http://itotori.test/api/projects/project-1/benchmarks", async () =>
@@ -167,9 +150,6 @@ export const itotoriApiMswHandlers = [
   ),
   http.get("http://itotori.test/api/projects/decisions", () =>
     apiJson("projects.decisions", dashboardDecisionsFixture),
-  ),
-  http.get("http://itotori.test/api/reviewer/queue", () =>
-    apiJson("reviewer.queue", reviewerQueueDashboardApiFixture()),
   ),
   http.get("http://itotori.test/api/projects/cost", () =>
     apiJson("projects.cost", costReportFixture),
@@ -210,19 +190,13 @@ export const itotoriApiMswHandlers = [
 export const authCapabilitiesGrantedFixture = {
   schemaVersion: "itotori.auth.capabilities.v0" as const,
   actorUserId: "local-user",
-  canReadQueue: true,
-  canManageQueue: true,
   canFlag: true,
-  canDecide: true,
   canSteer: true,
   canReveal: true,
   denials: {
     flag: null,
-    decide: null,
     steer: null,
     reveal: null,
-    queueRead: null,
-    queueManage: null,
   },
   denialReasons: [] as string[],
 };
@@ -265,67 +239,4 @@ async function readJsonBody(request: Request): Promise<unknown> {
     const message = error instanceof Error ? error.message : String(error);
     throw new ApiValidationError(`request body must be valid JSON: ${message}`);
   }
-}
-
-export function reviewerQueueDashboardApiFixture(): ReviewerQueueDashboardReadModel {
-  const fixtures = reviewQueueDashboardFixtures();
-  const rows = fixtures.decisions.map((decision) => ({
-    reviewItemId: decision.item.reviewItemId,
-    projectId: decision.item.projectId,
-    localeBranchId: decision.item.localeBranchId,
-    sourceRevisionId: decision.item.sourceRevisionId,
-    itemKind: decision.item.itemKind,
-    sourceItemRef: decision.item.sourceItemRef,
-    summary: decision.item.summary,
-    priority: decision.item.priority,
-    state: decision.item.state,
-    dashboardState: decision.dashboardState,
-    lastAction: decision.lastAction,
-    batchActionId: decision.batchActionId,
-    findingId: decision.findingId,
-    decisionId: decision.decisionId,
-    detailPath: `/reviewer-queue/${encodeURIComponent(decision.item.reviewItemId)}`,
-    selectedForBatch: decision.dashboardState === "pending",
-    createdAt: decision.item.createdAt,
-    updatedAt: decision.item.updatedAt,
-    resolvedAt: decision.item.resolvedAt,
-  }));
-  return {
-    schemaVersion: "reviewer.queue_dashboard.v0.1",
-    localeBranchId: "019ed065-0000-7000-8000-000000000110",
-    generatedAt: new Date("2026-06-26T00:00:00Z"),
-    permission: {
-      actorUserId: "local-user",
-      canReadQueue: true,
-      canManageQueue: true,
-      denialReasons: [],
-    },
-    pagination: {
-      total: rows.length,
-      limit: 100,
-      offset: 0,
-      page: 1,
-      pageCount: rows.length === 0 ? 0 : 1,
-      hasMore: false,
-      nextOffset: null,
-    },
-    rows,
-    aggregate: {
-      pending: rows.filter((row) => row.dashboardState === "pending").length,
-      resolved: rows.filter((row) => row.dashboardState === "resolved").length,
-      deferred: rows.filter((row) => row.dashboardState === "deferred").length,
-      escalated: rows.filter((row) => row.dashboardState === "escalated").length,
-      batch_applied: rows.filter((row) => row.dashboardState === "batch_applied").length,
-    },
-    defaultBatchRequest: {
-      ...fixtures.batchAppliedPreview.request,
-      action: "approve",
-      selections: rows
-        .filter((row) => row.selectedForBatch)
-        .map((row) => ({
-          reviewItemId: row.reviewItemId,
-          expectedSourceRevisionId: row.sourceRevisionId,
-        })),
-    },
-  };
 }

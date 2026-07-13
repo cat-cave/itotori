@@ -5,9 +5,8 @@
 //   - P0/P1 QA findings produce targeted repair jobs (narrow scope,
 //     correct pipeline stage, pinned pair recorded verbatim).
 //   - Protected-span violations enqueue translation reruns.
-//   - Human decisions can rerun a narrow set of bridge units OR the
-//     scene OR the whole project — the selector NEVER widens past
-//     what the human declared.
+//   - Repair triggers are machine-verifiable QA or protected-span findings
+//     and always remain narrowed to their named bridge unit.
 //   - Repair history is auditable: every state transition (enqueue,
 //     start, complete, drop) appears in `repairHistory()` with a
 //     stable order.
@@ -23,8 +22,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  AffectedWorkSelectorError,
-  REPAIR_AFFECTED_SCOPES,
   REPAIR_JOB_OUTCOMES,
   REPAIR_JOB_SEVERITIES,
   REPAIR_JOB_TRIGGERS,
@@ -32,8 +29,6 @@ import {
   RepairJobService,
   RepairJobServiceError,
   selectAffectedWork,
-  type AffectedWorkSelection,
-  type RepairAffectedScope,
   type RepairAffectedWork,
   type RepairEvent,
   type RepairJob,
@@ -43,22 +38,10 @@ import {
   type RepairPipelineStage,
   type RepairProviderPair,
   type RepairTrigger,
-  type RepairSceneIndex,
 } from "../src/orchestrator/repair/index.js";
 
-// A consumer that wants the concrete bridge-unit list MUST first branch on
-// the `affectedScope` discriminant: the `project` variant carries no list,
-// so reading one without narrowing is a compile error. This helper makes
-// that narrowing explicit in the unit-scoped assertions below.
 function unitsOf(work: RepairAffectedWork): readonly string[] {
-  if (work.affectedScope === "project") {
-    throw new Error("expected unit-scoped affected work but got project scope");
-  }
   return work.affectedBridgeUnitIds;
-}
-
-function assertNeverScope(value: never): never {
-  throw new Error(`unexpected affected scope ${String(value)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -120,42 +103,7 @@ function spanTrigger(
   };
 }
 
-function humanTrigger(
-  args:
-    | {
-        scope: RepairTrigger extends { trigger: "human_decision" } ? never : never;
-      }
-    | {
-        scope:
-          | { kind: "bridge_units"; bridgeUnitIds: ReadonlyArray<string> }
-          | { kind: "scene"; sceneId: string; bridgeUnitIds: ReadonlyArray<string> }
-          | { kind: "project" };
-        severity?: RepairJobSeverity;
-        targetStage?: RepairPipelineStage;
-        decisionId?: string;
-        rationale?: string;
-      },
-): RepairTrigger {
-  if ("scope" in args) {
-    return {
-      trigger: "human_decision",
-      decisionId: args.decisionId ?? "human-decision-001",
-      decisionRecordedAt: new Date("2026-06-24T12:00:00Z"),
-      scope: args.scope,
-      severity: args.severity ?? "p1",
-      targetStage: args.targetStage ?? "translation",
-      rationale: args.rationale ?? "reviewer rejected primary draft",
-    };
-  }
-  throw new Error("humanTrigger requires a scope");
-}
-
-function makeService(
-  opts: {
-    sceneIndex?: RepairSceneIndex;
-    minimumSeverity?: RepairJobSeverity;
-  } = {},
-): RepairJobService {
+function makeService(opts: { minimumSeverity?: RepairJobSeverity } = {}): RepairJobService {
   return new RepairJobService({
     now: deterministicClock(),
     ...opts,
@@ -168,21 +116,19 @@ function makeService(
 // The trigger set the end-to-end audit-trail test replays lives at
 // fixtures/repair-loop/fixture.json — an on-disk deliverable, not an
 // inline literal — so downstream nodes (e.g. ITOTORI-222's repair stage)
-// can replay the exact (QA, protected-span, human-decision) trigger set
+// can replay the exact QA and protected-span trigger set
 // off disk without re-instantiating RepairJobService.
 // ---------------------------------------------------------------------------
 
 type RepairLoopFixtureEntry = {
   name: string;
   trigger: RepairTrigger;
-  expectedScope?: RepairAffectedScope;
   expectedUnits?: ReadonlyArray<string>;
   outcome: RepairJobOutcome;
 };
 
 type RepairLoopFixture = {
   pair: RepairProviderPair;
-  sceneIndex: Record<string, ReadonlyArray<string>>;
   triggers: ReadonlyArray<RepairLoopFixtureEntry>;
   expectedDrainOrder: ReadonlyArray<string>;
   expectedSeverityOrder: ReadonlyArray<RepairJobSeverity>;
@@ -192,16 +138,6 @@ function loadRepairLoopFixture(): RepairLoopFixture {
   const fixture = JSON.parse(
     readFileSync(new URL("../../../fixtures/repair-loop/fixture.json", import.meta.url), "utf8"),
   ) as RepairLoopFixture;
-  // Revive the human-decision timestamp: JSON carries it as an ISO
-  // string, but RepairTriggerHumanDecision.decisionRecordedAt is a Date.
-  for (const entry of fixture.triggers) {
-    if (entry.trigger.trigger === "human_decision") {
-      entry.trigger = {
-        ...entry.trigger,
-        decisionRecordedAt: new Date(entry.trigger.decisionRecordedAt),
-      };
-    }
-  }
   return fixture;
 }
 
@@ -211,17 +147,8 @@ function loadRepairLoopFixture(): RepairLoopFixture {
 
 describe("ITOTORI-038 closed enums", () => {
   it("REPAIR_JOB_TRIGGERS covers every union variant", () => {
-    const expected: ReadonlyArray<RepairJobTrigger> = [
-      "qa_finding",
-      "protected_span_violation",
-      "human_decision",
-    ];
+    const expected: ReadonlyArray<RepairJobTrigger> = ["qa_finding", "protected_span_violation"];
     expect([...REPAIR_JOB_TRIGGERS].sort()).toEqual([...expected].sort());
-  });
-
-  it("REPAIR_AFFECTED_SCOPES enumerates every scope", () => {
-    const expected: ReadonlyArray<RepairAffectedScope> = ["bridge_units", "scene", "project"];
-    expect([...REPAIR_AFFECTED_SCOPES].sort()).toEqual([...expected].sort());
   });
 
   it("REPAIR_JOB_OUTCOMES enumerates every terminal outcome", () => {
@@ -263,82 +190,6 @@ describe("selectAffectedWork", () => {
     const selection = selectAffectedWork(spanTrigger({ bridgeUnitId: BRIDGE_UNIT_B }));
     expect(selection.pipelineStage).toBe("translation");
     expect(unitsOf(selection)).toEqual([BRIDGE_UNIT_B]);
-  });
-
-  it("human decision: explicit bridge unit list is honored verbatim + deduped", () => {
-    const selection = selectAffectedWork(
-      humanTrigger({
-        scope: {
-          kind: "bridge_units",
-          bridgeUnitIds: [BRIDGE_UNIT_A, BRIDGE_UNIT_B, BRIDGE_UNIT_A],
-        },
-      }),
-    );
-    expect(selection.affectedScope).toBe("bridge_units");
-    expect(unitsOf(selection)).toEqual([BRIDGE_UNIT_A, BRIDGE_UNIT_B]);
-  });
-
-  it("human decision: project scope is reachable only via explicit opt-in and omits the unit list", () => {
-    const selection = selectAffectedWork(humanTrigger({ scope: { kind: "project" } }));
-    expect(selection.affectedScope).toBe("project");
-    // The project variant has NO `affectedBridgeUnitIds` field. The
-    // discriminated union makes "every unit in the project" structurally
-    // distinct from "[] = nothing affected", so a consumer cannot read an
-    // empty array and skip the rerun. (`selection.affectedBridgeUnitIds`
-    // does not type-check on the project variant.)
-    expect("affectedBridgeUnitIds" in selection).toBe(false);
-  });
-
-  it("a downstream consumer must enumerate project scope instead of treating it as empty", () => {
-    const projectUnits = [BRIDGE_UNIT_A, BRIDGE_UNIT_B, BRIDGE_UNIT_C];
-    // Models the orchestrator's repair stage resolving a selection into the
-    // concrete set of units to rerun. The `project` case CANNOT fall
-    // through to `[]`: the discriminant forces an explicit enumeration
-    // branch, which is the safety property finding d5743e7b asked for.
-    const unitsToRerun = (selection: AffectedWorkSelection): readonly string[] => {
-      switch (selection.affectedScope) {
-        case "project":
-          return projectUnits;
-        case "bridge_units":
-        case "scene":
-          return selection.affectedBridgeUnitIds;
-        default:
-          return assertNeverScope(selection);
-      }
-    };
-    const projectSelection = selectAffectedWork(humanTrigger({ scope: { kind: "project" } }));
-    expect(unitsToRerun(projectSelection)).toEqual(projectUnits);
-    expect(unitsToRerun(projectSelection)).not.toEqual([]);
-  });
-
-  it("human decision: scene scope expands via the SceneIndex", () => {
-    const sceneIndex: RepairSceneIndex = {
-      bridgeUnitsInSceneOf: (seed) =>
-        seed === BRIDGE_UNIT_A ? [BRIDGE_UNIT_A, BRIDGE_UNIT_B, BRIDGE_UNIT_C] : [],
-    };
-    const selection = selectAffectedWork(
-      humanTrigger({
-        scope: { kind: "scene", sceneId: "scene-001", bridgeUnitIds: [BRIDGE_UNIT_A] },
-      }),
-      sceneIndex,
-    );
-    expect(selection.affectedScope).toBe("scene");
-    expect(unitsOf(selection)).toEqual([BRIDGE_UNIT_A, BRIDGE_UNIT_B, BRIDGE_UNIT_C]);
-  });
-
-  it("empty human bridge_units scope is rejected", () => {
-    expect(() =>
-      selectAffectedWork(humanTrigger({ scope: { kind: "bridge_units", bridgeUnitIds: [] } })),
-    ).toThrowError(AffectedWorkSelectorError);
-  });
-
-  it("scene scope without a SceneIndex falls back to the declared seeds", () => {
-    const selection = selectAffectedWork(
-      humanTrigger({
-        scope: { kind: "scene", sceneId: "scene-001", bridgeUnitIds: [BRIDGE_UNIT_A] },
-      }),
-    );
-    expect(unitsOf(selection)).toEqual([BRIDGE_UNIT_A]);
   });
 });
 
@@ -463,18 +314,6 @@ describe("RepairJobService.enqueue", () => {
     const jb = b.enqueue({ trigger: qaTrigger(), pair: PAIR });
     expect(ja.jobId).not.toEqual(jb.jobId);
   });
-
-  it("scene-scoped human decision without a sceneIndex throws a typed error", () => {
-    const service = makeService();
-    expect(() =>
-      service.enqueue({
-        trigger: humanTrigger({
-          scope: { kind: "scene", sceneId: "scene-001", bridgeUnitIds: [BRIDGE_UNIT_A] },
-        }),
-        pair: PAIR,
-      }),
-    ).toThrowError(RepairJobServiceError);
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -527,13 +366,13 @@ describe("RepairJobService outcome flow", () => {
   it("drop() removes a queued job and records the reason on history", () => {
     const service = makeService();
     const job = service.enqueue({ trigger: qaTrigger(), pair: PAIR });
-    service.drop(job.jobId, "human decision rescinded");
+    service.drop(job.jobId, "finding superseded by a later QA pass");
     expect(service.pending()).toEqual([]);
     const last = service.repairHistory().at(-1);
     if (last?.kind !== "job_dropped") {
       throw new Error("expected job_dropped event");
     }
-    expect(last.reason).toBe("human decision rescinded");
+    expect(last.reason).toBe("finding superseded by a later QA pass");
   });
 
   it("recordOutcome on an unclaimed jobId throws a typed error", () => {
@@ -555,7 +394,7 @@ describe("RepairJobService outcome flow", () => {
     const service = makeService();
     let caught: unknown;
     try {
-      service.drop("repair-job-typo", "human decision rescinded");
+      service.drop("repair-job-typo", "finding superseded by a later QA pass");
     } catch (err) {
       caught = err;
     }
@@ -575,14 +414,10 @@ describe("RepairJobService outcome flow", () => {
 describe("ITOTORI-038 fixture repair loop", () => {
   it("QA finding → repair job → completion preserves audit history end-to-end", () => {
     const fixture = loadRepairLoopFixture();
-    const sceneIndex: RepairSceneIndex = {
-      bridgeUnitsInSceneOf: (seed) => fixture.sceneIndex[seed] ?? [],
-    };
-    const service = makeService({ sceneIndex });
+    const service = makeService();
 
     // Enqueue the on-disk trigger set in fixture order: a critical QA
-    // finding on unit A, a protected-span violation on a different unit,
-    // and a human reviewer's scene-wide rerun seeded by unit A.
+    // finding on unit A and a protected-span violation on a different unit.
     const jobsByName = new Map<string, RepairJob>();
     for (const entry of fixture.triggers) {
       jobsByName.set(entry.name, service.enqueue({ trigger: entry.trigger, pair: fixture.pair }));
@@ -595,7 +430,7 @@ describe("ITOTORI-038 fixture repair loop", () => {
       return job;
     };
 
-    // Two p0 jobs go first in FIFO order; the human p1 lands last.
+    // The p0 job drains before the p1 job.
     const drained: RepairJob[] = [];
     while (true) {
       const next = service.claimNext();
@@ -607,13 +442,10 @@ describe("ITOTORI-038 fixture repair loop", () => {
     );
     expect(drained.map((j) => j.severity)).toEqual([...fixture.expectedSeverityOrder]);
 
-    // Each job's affected scope matches the fixture's recorded expectation:
-    // the human-scoped job expanded via the scene index without widening
-    // past what the human declared; the QA job stayed narrow at one unit.
+    // Every machine-verifiable trigger remains narrowed to its named unit.
     for (const entry of fixture.triggers) {
-      if (entry.expectedScope === undefined) continue;
       const job = jobFor(entry.name);
-      expect(job.affectedScope).toBe(entry.expectedScope);
+      expect(job.affectedScope).toBe("bridge_units");
       if (entry.expectedUnits !== undefined) {
         expect(unitsOf(job)).toEqual([...entry.expectedUnits]);
       }
@@ -621,8 +453,7 @@ describe("ITOTORI-038 fixture repair loop", () => {
 
     // Replay the orchestrator's repair-stage outcomes from the fixture:
     //   - QA job: succeeded (written body persisted).
-    //   - Span job: succeeded (quality concern remains an annotation, not a deferral).
-    //   - Human job: no_change (already-clean reruns are noop).
+    //   - Span job: succeeded (quality concern remains an annotation, not a hold).
     for (const entry of fixture.triggers) {
       service.recordOutcome(jobFor(entry.name).jobId, entry.outcome);
     }

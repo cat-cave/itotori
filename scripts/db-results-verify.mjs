@@ -1,5 +1,5 @@
 // Shared integrity checks for DB-gate verify-only mode.
-// Used by permission-denial / catalog-replay / style-guide-fixture-flow gates
+// Used by the database-result receipt gates
 // when they consume a shared vitest JSON report from the one full `test:db` run.
 import { readdir } from "node:fs/promises";
 import path from "node:path";

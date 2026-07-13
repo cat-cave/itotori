@@ -44,18 +44,20 @@ chrome. Use neutral/placeholder content (a "configured target corpus"), not a ha
 Design these as a cohesive whole, not isolated pages. Emphasis on layout + how they connect.
 
 1. **Overview / cockpit.** The director's home: project + source→branch, the first-class
-   **localization progress** (stage breakouts, cycle/ETA), a pending-decisions band, the
-   pass-ledger (pass N → feedback → N+1) run table, live model **cost/ZDR posture**, and
-   entry points to review / player / benchmark / runtime / wiki.
-2. **Review workspace.** The core loop: **source ↔ draft ↔ re-draft** history side-by-side
-   (`ComparisonPane`/`BiText`), QA findings, the director's **correction/annotation** and
-   its severity, glossary + branch policy, and the "request repair / approve" decision.
-   This is where taste enters the loop.
+   **localization progress** (stage breakouts, cycle/ETA), complete-patch and play-test
+   callouts, the pass-ledger (pass N → feedback → N+1) run table, live model **cost/ZDR
+   posture**, and entry points to results / player / benchmark / runtime / wiki.
+2. **Results and refinement.** The core loop: **source ↔ selected result ↔ revision**
+   history side-by-side (`ComparisonPane`/`BiText`), QA findings, runtime evidence, the
+   director's direct target-text revision, and factual/context correction. Glossary and
+   branch policy live in canonical context. This is where taste enters the next iteration:
+   a target edit writes a result revision; a fact writes context that scopes a refinement.
 3. **Embedded player / playthrough.** The **ScenePlayer**: the localized build running
    in-scene (background + sprites + composited localized textbox) with VN **transport**
    (restart scene, prev/next choice, auto, end-of-scene), a **route/arc scene picker**
-   (`RouteMap`), bilingual dialogue, and in-the-moment **AnnotationComposer** (note → QA
-   finding). One player, two intents — _play_ and _review_.
+   (`RouteMap`), bilingual dialogue, and in-the-moment **AnnotationComposer** (observation
+   → result revision or context correction). One player, two intents — _play_ and
+   _improve_.
 4. **Benchmark / confidence.** Blind-judged quality vs raw-MTL / fan / official / Itotori
    (with & without context); the actionable backlog; and the **"strong-caliber vs keep
    iterating"** confidence verdict anchored to the director's own ratings.
@@ -98,4 +100,4 @@ Design these as a cohesive whole, not isolated pages. Emphasis on layout + how t
 Hi-fi mockups of the surfaces above **as designed layouts + the flows between them**,
 in the design system's language, delivered back into the Claude Design project (so we can
 import + break them into implementation nodes here). Prioritize the **director's core loop**
-(overview → review → player → correction → re-draft → benchmark) as one cohesive pass first.
+(overview → result → player → correction → refinement → benchmark) as one cohesive pass first.

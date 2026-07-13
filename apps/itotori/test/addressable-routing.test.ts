@@ -126,8 +126,7 @@ describe("addressable-id routing scheme", () => {
     expect(isAddressableSpaPath("/findings/f-1")).toBe(true);
     expect(isAddressableSpaPath("/benchmark")).toBe(true);
     // Not addressable entity paths (still may be SPA via other matchers).
-    expect(isAddressableSpaPath("/reviewer-queue")).toBe(false);
-    expect(isAddressableSpaPath("/workspace")).toBe(false);
+    expect(isAddressableSpaPath("/removed-surface")).toBe(false);
   });
 
   it("does not treat surface roots without an entity id as entity deep-links", () => {

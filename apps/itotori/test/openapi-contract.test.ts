@@ -54,7 +54,6 @@ import {
   draftBranchResponseFixture,
   jobsRunTableFixture,
   recordBenchmarkResponseFixture,
-  recordDecisionResponseFixture,
   recordFindingResponseFixture,
   runtimeEvidenceIngestResponseFixture,
   runtimeStatusFixture,
@@ -64,13 +63,6 @@ import {
   wikiContextHistoryFixture,
   wikiEditFixture,
 } from "./api-fixtures.js";
-import {
-  workspaceAssetBrowseFixture,
-  workspaceComparisonFixture,
-  workspaceProjectBrowseFixture,
-  workspaceSceneBrowseFixture,
-  workspaceSearchFixture,
-} from "../src/workspace/fixtures.js";
 
 const OPENAPI_PATH = fileURLToPath(new URL("../openapi.json", import.meta.url));
 const JSON_SCHEMA_PATH = fileURLToPath(new URL("../api-jsonschema.json", import.meta.url));
@@ -127,49 +119,6 @@ const RESPONSE_FIXTURES: Partial<Record<ItotoriApiRouteId, unknown>> = {
   "wiki.history": wikiContextHistoryFixture,
   "wiki.edit": wikiEditFixture,
   "wiki.add": wikiEditFixture,
-  "workspace.projects": workspaceProjectBrowseFixture(),
-  "workspace.scenes": workspaceSceneBrowseFixture(),
-  "workspace.assets": workspaceAssetBrowseFixture(),
-  "workspace.comparison": workspaceComparisonFixture(),
-  "workspace.search": workspaceSearchFixture(),
-  "workspace.correctionPreview": {
-    schemaVersion: "workspace.correction_preview.v0.1",
-    generatedAt: "2026-07-08T00:00:00.000Z",
-    permission: {
-      actorUserId: "local-user",
-      canReadQueue: true,
-      canManageQueue: true,
-      denialReasons: [],
-    },
-    projectId: null,
-    localeBranchId: "locale-branch-itotori-040",
-    sourceBundleId: null,
-    targetLocale: null,
-    units: [],
-    diagnostics: [],
-  },
-  "workspace.correctionSubmit": {
-    schemaVersion: "workspace.correction_submit.v0.1",
-    generatedAt: "2026-07-08T00:00:00.000Z",
-    permission: {
-      actorUserId: "local-user",
-      canReadQueue: true,
-      canManageQueue: true,
-      denialReasons: [],
-    },
-    localeBranchId: "locale-branch-itotori-040",
-    batchId: "workspace-correction-openapi-batch",
-    batchLabel: null,
-    submittedCount: 0,
-    edits: [],
-    repairCandidateReportIds: [],
-    decisionQueueReportIds: [],
-    needsContextReportIds: [],
-    affectedBridgeUnitIds: [],
-    writebacks: [],
-    scheduledRerunJobIds: [],
-    diagnostics: [],
-  },
   "play.targetEdit": {
     schemaVersion: "itotori.play.target-edit.v0",
     resultRevisionId: "result-revision-openapi-edit",
@@ -203,7 +152,6 @@ const RESPONSE_FIXTURES: Partial<Record<ItotoriApiRouteId, unknown>> = {
   "imports.bridge": bridgeImportResponseFixture,
   "branches.draft": draftBranchResponseFixture,
   "findings.record": recordFindingResponseFixture,
-  "decisions.record": recordDecisionResponseFixture,
   "benchmarks.record": recordBenchmarkResponseFixture,
   "runtimeEvidence.ingest": runtimeEvidenceIngestResponseFixture,
   "auth.identity": authIdentityFixture,
@@ -211,19 +159,13 @@ const RESPONSE_FIXTURES: Partial<Record<ItotoriApiRouteId, unknown>> = {
   "auth.capabilities": {
     schemaVersion: "itotori.auth.capabilities.v0",
     actorUserId: "local-user",
-    canReadQueue: true,
-    canManageQueue: true,
     canFlag: true,
-    canDecide: true,
     canSteer: true,
     canReveal: true,
     denials: {
       flag: null,
-      decide: null,
       steer: null,
       reveal: null,
-      queueRead: null,
-      queueManage: null,
     },
     denialReasons: [],
   },
@@ -465,13 +407,11 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all routes, request + r
     }
   }
 
-  it("covers a body for every one of the 78 routes (no route left un-teethed)", () => {
-    // Every route has a response body; the mutation + reviewer/workspace
-    // POST routes (incl. ovw-launch-pass-action's `projects.launchPass` and
-    // play-mark-validated's `play.setSceneCoverage`) add a request body.
-    // bmk-cockpit contributes two GET read models; play-mark-validated adds
-    // the scene coverage GET + POST pair; play-routemap-ui adds routeMap;
-    // play-flag-composer adds flagAnnotation; p0-result-revision adds the
+  it("covers a body for every one of the 64 routes (no route left un-teethed)", () => {
+    // Every route has a response body; mutation routes (incl.
+    // ovw-launch-pass-action's `projects.launchPass`) add a request body.
+    // bmk-cockpit contributes two GET read models; play-routemap-ui adds
+    // routeMap; play-flag-composer adds flagAnnotation; p0-result-revision adds
     // target-edit mutation plus selected delivery GET; model-routing and branch-policy
     // settings each add a GET + POST settings pair; translation-scope-
     // configuration-ui adds a third GET + POST settings pair; localization
@@ -480,7 +420,7 @@ describe("fe-openapi-parity-all-routes: per-route teeth (all routes, request + r
     const routesWithRequest = ITOTORI_API_ROUTE_IDS.filter(
       (id) => ITOTORI_API_ROUTES[id].requestSchema !== undefined,
     ).length;
-    expect(ITOTORI_API_ROUTE_IDS.length).toBe(78);
+    expect(ITOTORI_API_ROUTE_IDS.length).toBe(63);
     expect(bodyCount).toBe(ITOTORI_API_ROUTE_IDS.length + routesWithRequest);
   });
 });

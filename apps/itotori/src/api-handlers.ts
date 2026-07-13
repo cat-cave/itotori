@@ -63,11 +63,7 @@ import {
   type WikiContextEntriesFilter,
   wikiContextEntryKindValues,
 } from "@itotori/db";
-import {
-  resolveStudioCapabilityPermissionView,
-  type ItotoriAuthorizationPort,
-  type ReviewerQueuePermissionView,
-} from "./auth.js";
+import { resolveStudioCapabilityPermissionView, type ItotoriAuthorizationPort } from "./auth.js";
 import {
   ApiValidationError,
   REDACTED_RUNTIME_FINDING_MESSAGE,
@@ -77,11 +73,7 @@ import {
   parseProjectImportRequest,
   parseProjectDecodeExtractRequest,
   parseRecordBenchmarkRequest,
-  parseRecordDecisionRequest,
   parseRecordFindingRequest,
-  parseReviewerBatchExecuteRequest,
-  parseReviewerBatchPreviewRequest,
-  parseReviewerSingleActionRequest,
   parseRuntimeEvidenceRequest,
   parseSaveBranchPolicySettingsRequest,
   parseSaveLocalizationRunConfigRequest,
@@ -94,9 +86,7 @@ import {
   parsePrincipalPermissionSetGrantRequest,
   parseRevokeAuthSessionRequest,
   parseLaunchPassRequest,
-  parsePlaySetSceneCoverageRequest,
   parsePlayFlagAnnotationRequest,
-  parseWorkspaceCorrectionSubmitRequest,
   parsePlayTargetEditRequest,
   parsePatchIterationPlayRequest,
   parsePatchIterationFeedbackBatchRequest,
@@ -123,8 +113,6 @@ import {
   type ApiPatchIterationRefineResponse,
   type ApiPatchIterationSurfaceResponse,
   type ApiPatchIterationVersionsResponse,
-  type ApiPlaySceneCoverageResponse,
-  type ApiPlaySetSceneCoverageResponse,
   type ApiConfigureAuthSsoSettingsRequest,
   type ApiConfigureAuthSsoSettingsResponse,
   type ApiAcceptMemberInvitationRequest,
@@ -158,11 +146,6 @@ import {
   type ApiSaveBranchPolicySettingsRequest,
   type ApiTranslationScopeSettingsResponse,
   type ApiSaveTranslationScopeSettingsRequest,
-  type ApiReviewerBatchExecuteResponse,
-  type ApiReviewerBatchPreviewResponse,
-  type ApiReviewerSingleActionResponse,
-  type ApiReviewerDetailResponse,
-  type ApiReviewerQueueDashboardResponse,
   type ApiWikiEditResponse,
   type ApiWikiAddResponse,
   type ApiWikiHistoryResponse,
@@ -171,10 +154,6 @@ import {
   type ItotoriApiResponseBody,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
-import {
-  SceneCoverageServiceError,
-  type SceneCoverageServicePort,
-} from "./play/scene-coverage-service.js";
 import type { RouteMapReadModelPort } from "./play/route-map-read-model.js";
 import type {
   PlayTesterTargetEditResponse,
@@ -196,7 +175,6 @@ import {
 import {
   DraftProviderNotConfiguredError,
   type BenchmarkRecordResult,
-  type DecisionRecordResult,
   type FindingRecordResult,
   type ItotoriProjectWorkflowPort,
   type LaunchLocalizationPassResult,
@@ -210,27 +188,8 @@ import {
 import { AccountZdrAssertionError } from "./providers/account-zdr.js";
 import { OpenRouterMissingApiKeyError } from "./providers/openrouter.js";
 import { InvocationOperationalPauseError } from "./orchestrator/invocation-supervisor.js";
-import { reviewerDetailDiagnosticCodeValues } from "./reviewer/detail-fixtures.js";
-import { emptyReviewerDetailEvidence } from "./reviewer/detail-route.js";
-import type { ReviewerQueueApiServicePort } from "./reviewer/api-service.js";
-import { reviewerBatchPreviewStatusValues } from "./reviewer/batch-preview.js";
-import type {
-  LocalizationWorkspaceApiServicePort,
-  LoadWorkspaceSearchInput,
-} from "./workspace/api-service.js";
-import type { WorkspaceCorrectionServicePort } from "./workspace/correction-service.js";
-import { workspaceSearchModeValues } from "./workspace/read-model.js";
 import type { BmkCockpitReadModel, BmkCockpitRunHistoryPage } from "./bmk-cockpit-read-model.js";
 import type { CatalogContextPanelReadModel } from "./catalog-context-panel.js";
-import type {
-  ApiWorkspaceAssetBrowseResponse,
-  ApiWorkspaceComparisonResponse,
-  ApiWorkspaceCorrectionPreviewResponse,
-  ApiWorkspaceCorrectionSubmitResponse,
-  ApiWorkspaceProjectBrowseResponse,
-  ApiWorkspaceSceneBrowseResponse,
-  ApiWorkspaceSearchResponse,
-} from "./api-schema.js";
 import {
   WikiBrainEntryNotFoundError,
   WikiBrainEditInputError,
@@ -251,7 +210,6 @@ export const apiMutationPermissionGates = {
   decodeExtract: apiMutationGate("decode extract", "projectImport"),
   branchDraft: apiMutationGate("branch draft", "draftWrite"),
   findingRecord: apiMutationGate("finding record", "runtimeIngest"),
-  decisionRecord: apiMutationGate("decision record", "runtimeIngest"),
   benchmarkRecord: apiMutationGate("benchmark record", "runtimeIngest"),
   runtimeEvidenceIngest: apiMutationGate("runtime evidence ingest", "runtimeIngest"),
   // A wiki edit is a direct node-8 context correction. The service still
@@ -280,7 +238,6 @@ export const apiMutationPermissionGates = {
   permissionSetsRevoke: apiMutationGate("permission set revoke", "authPermissionsManage"),
   sessionsList: apiMutationGate("sessions list", "authSessionsManage"),
   sessionsRevoke: apiMutationGate("sessions revoke", "authSessionsManage"),
-  setSceneCoverage: apiMutationGate("set scene coverage", "queueManage"),
   // p0-result-revision — replacing a delivered target line creates and
   // selects a new patch revision, so it carries the same `draft.write`
   // authority as other draft-affecting production mutations.
@@ -328,7 +285,7 @@ export type PlayTesterResultRevisionApiPort = {
  * API handlers. This is a least-privilege surface: it deliberately picks ONLY
  * the read methods of each shared service, so a query handler that receives an
  * {@link ItotoriReadOnlyApiServices} is *structurally* (type-level) unable to
- * reach a mutation — `reviewerQueue.executeBatch`,
+ * reach a mutation — `projectWorkflow.draftProject`,
  * `projectWorkflow.draftProject`,
  * etc. are not on the type. The default read-only factory
  * (`readOnlyApiServices` / `withDatabaseReadOnlyApiServices` in
@@ -361,9 +318,6 @@ export type ItotoriReadOnlyApiServices = {
   };
   /** Generic node-6 context wiki reads; mutation is excluded from this surface. */
   wiki: Pick<WikiBrainServicePort, "list" | "show" | "history">;
-  reviewerQueue: Pick<ReviewerQueueApiServicePort, "loadDashboard" | "loadDetailContext">;
-  workspace: LocalizationWorkspaceApiServicePort;
-  workspaceCorrections: Pick<WorkspaceCorrectionServicePort, "loadPreview">;
   assetDecisions: {
     loadActiveDecisions(
       projectId: string,
@@ -443,7 +397,6 @@ export type ItotoriReadOnlyApiServices = {
    * from routeMaps / routeChoices (coverage from map status).
    */
   playRouteMap: RouteMapReadModelPort;
-  sceneCoverage: Pick<SceneCoverageServicePort, "loadRouteMapCoverage">;
   /** p0-result-revision — read only the selected production delivery export. */
   playTesterResultRevision: Pick<
     PlayTesterResultRevisionApiPort,
@@ -457,14 +410,12 @@ export type ItotoriReadOnlyApiServices = {
  * The full dependency surface for the API handler entrypoint. It is the
  * read-only surface {@link ItotoriReadOnlyApiServices} INTERSECTED with the
  * mutation methods the write (POST) handlers need. The intersection keeps the
- * read picks and adds the mutation picks, so `reviewerQueue` resolves to its
- * full port and `projectWorkflow` gains the record/draft/ingest writes.
+ * read picks and adds the mutation picks, so `projectWorkflow` gains the
+ * record/draft/ingest writes.
  */
 export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
   /** Full shared wiki service; POST edits route through node 8. */
   wiki: WikiBrainServicePort;
-  reviewerQueue: ReviewerQueueApiServicePort;
-  workspaceCorrections: WorkspaceCorrectionServicePort;
   projectWorkflow: Pick<
     ItotoriProjectWorkflowPort,
     | "listLocaleBranchIdentities"
@@ -478,7 +429,6 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
     | "decodeExtract"
     | "draftProject"
     | "recordFinding"
-    | "recordDecision"
     | "recordBenchmarkReport"
     | "ingestRuntimeReport"
     | "launchNextLocalizationPass"
@@ -552,7 +502,6 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
       input: ApiRevokeAuthSessionRequest,
     ): Promise<AuthSessionAdminRecord>;
   };
-  sceneCoverage: SceneCoverageServicePort;
   /** play-flag-composer — ManualFeedbackImport creates a context correction. */
   manualFeedback: ManualFeedbackImportPort;
   /** p0-result-revision — actor/artifact-root-bound target edit + delivery read. */
@@ -592,14 +541,6 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
       list: (input) => services.wiki.list(input),
       show: (input) => services.wiki.show(input),
       history: (input) => services.wiki.history(input),
-    },
-    reviewerQueue: {
-      loadDashboard: (input) => services.reviewerQueue.loadDashboard(input),
-      loadDetailContext: (input) => services.reviewerQueue.loadDetailContext(input),
-    },
-    workspace: services.workspace,
-    workspaceCorrections: {
-      loadPreview: (input) => services.workspaceCorrections.loadPreview(input),
     },
     assetDecisions: {
       loadActiveDecisions: (projectId, localeBranchId, opts) =>
@@ -652,9 +593,6 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     },
     playRouteMap: {
       loadRouteMap: (input) => services.playRouteMap.loadRouteMap(input),
-    },
-    sceneCoverage: {
-      loadRouteMapCoverage: (input) => services.sceneCoverage.loadRouteMapCoverage(input),
     },
     playTesterResultRevision: {
       loadSelectedExport: (input) => services.playTesterResultRevision.loadSelectedExport(input),
@@ -742,13 +680,6 @@ export async function handleReadOnlyItotoriApiRequest(
  * surface is sufficient.
  */
 function readOnlyMutationPathResponse(request: ItotoriApiRequest): ApiJsonResponse {
-  if (
-    request.pathname === "/api/reviewer/queue/batch-preview" ||
-    request.pathname === "/api/reviewer/queue/batch-confirm" ||
-    parseReviewerSingleActionApiRoute(request.pathname) !== null
-  ) {
-    return methodNotAllowed(["POST"]);
-  }
   if (request.pathname === "/api/settings/security/sso") {
     return methodNotAllowed(["POST"]);
   }
@@ -776,9 +707,6 @@ function readOnlyMutationPathResponse(request: ItotoriApiRequest): ApiJsonRespon
     parseAuthPermissionSetRevokeRoute(request.pathname) !== null
   ) {
     return methodNotAllowed(["POST"]);
-  }
-  if (parseSceneCoverageApiRoute(request.pathname) !== null) {
-    return methodNotAllowed(["GET", "POST"]);
   }
   if (parsePlayFlagApiRoute(request.pathname) !== null) {
     return methodNotAllowed(["POST"]);
@@ -861,82 +789,6 @@ async function routeItotoriApiRequest(
         ...(body.affectedUnitIds === undefined ? {} : { affectedUnitIds: body.affectedUnitIds }),
       }),
     );
-  }
-
-  if (request.method === "POST" && request.pathname === "/api/reviewer/queue/batch-preview") {
-    const body = parseReviewerBatchPreviewRequest(request.body);
-    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
-    return ok(
-      "reviewer.batchPreview",
-      await services.reviewerQueue.previewBatch({ request: body, permission }),
-    );
-  }
-
-  if (request.method === "POST" && request.pathname === "/api/reviewer/queue/batch-confirm") {
-    const body = parseReviewerBatchExecuteRequest(request.body);
-    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
-    return ok(
-      "reviewer.batchExecute",
-      await services.reviewerQueue.executeBatch({
-        actor: { userId: body.actorUserId },
-        request: body,
-        permission,
-      }),
-    );
-  }
-
-  const reviewerSingleActionRoute = parseReviewerSingleActionApiRoute(request.pathname);
-  if (request.method === "POST" && reviewerSingleActionRoute !== null) {
-    // ITOTORI-082 — single-item reviewer action. Reuses the batch route's
-    // actor-gating (the SAME permission view), validation, and
-    // consequence disclosure via `actionSingleItem` (a batch-of-one over
-    // ReviewerQueueActionService). No new auth path, service, or
-    // migration. A refused outcome (unknown item / invalid transition /
-    // already-actioned / stale / permission) becomes a typed HTTP error
-    // rather than an in-band 200 or a 500.
-    const body = parseReviewerSingleActionRequest(
-      request.body,
-      reviewerSingleActionRoute.reviewItemId,
-    );
-    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
-    const result = await services.reviewerQueue.actionSingleItem({
-      actor: { userId: body.actorUserId },
-      request: body,
-      permission,
-    });
-    if (result.outcome.kind === "refused") {
-      return reviewerSingleActionRefusal(result.outcome.status, result.outcome.message);
-    }
-    return ok("reviewer.itemAction", result);
-  }
-
-  if (request.method === "POST" && request.pathname === "/api/workspace/corrections") {
-    const body = parseWorkspaceCorrectionSubmitRequest(request.body);
-    const permission = await resolveApiReviewerQueuePermissionView(services, body.actorUserId);
-    return ok(
-      "workspace.correctionSubmit",
-      await services.workspaceCorrections.submitCorrections({ ...body, permission }),
-    );
-  }
-
-  const setSceneCoverageRoute = parseSceneCoverageApiRoute(request.pathname);
-  if (request.method === "POST" && setSceneCoverageRoute !== null) {
-    const body = parsePlaySetSceneCoverageRequest(request.body);
-    await requireApiPermission(services, apiMutationPermissionGates.setSceneCoverage);
-    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
-      projectId: setSceneCoverageRoute.projectId,
-      localeBranchId: setSceneCoverageRoute.localeBranchId,
-    });
-    const actorUserId = "local-user";
-    const result = await services.sceneCoverage.setSceneCoverage({
-      actor: { userId: actorUserId },
-      projectId: scope.projectId,
-      localeBranchId: scope.localeBranchId,
-      sceneId: body.sceneId,
-      coverageState: body.coverageState,
-      updatedByUserId: actorUserId,
-    });
-    return ok("play.setSceneCoverage", result);
   }
 
   const targetEditRoute = parsePlayTargetEditApiRoute(request.pathname);
@@ -1066,12 +918,11 @@ async function routeItotoriApiRequest(
     const importInput = buildPlayFlagFeedbackInput({
       projectId: scope.projectId,
       localeBranchId: scope.localeBranchId,
-      targetLocale: body.targetLocale,
       note: body.note,
       severity: body.severity as PlayFlagSeverity,
       actorUserId,
       ...(body.category === undefined ? {} : { category: body.category }),
-      ...(body.bridgeUnitId === undefined ? {} : { bridgeUnitId: body.bridgeUnitId }),
+      bridgeUnitId: body.bridgeUnitId,
       ...(body.sourceUnitKey === undefined ? {} : { sourceUnitKey: body.sourceUnitKey }),
       ...(body.sourceBundleId === undefined ? {} : { sourceBundleId: body.sourceBundleId }),
       ...(body.sourceRevisionId === undefined ? {} : { sourceRevisionId: body.sourceRevisionId }),
@@ -1091,18 +942,10 @@ async function routeItotoriApiRequest(
       note: body.note.trim(),
       triageLabel: result.triageLabel,
       contextStatus: result.contextStatus,
-      contextCorrectionEnqueued: result.contextCorrection !== null,
+      contextCorrectionId: result.contextCorrection.correctionId,
       duplicate: result.duplicate,
     };
     return ok("play.flagAnnotation", response);
-  }
-
-  if (
-    request.pathname === "/api/workspace/corrections" &&
-    request.method !== "GET" &&
-    request.method !== "POST"
-  ) {
-    return methodNotAllowed(["GET", "POST"]);
   }
 
   if (targetEditRoute !== null) {
@@ -1116,14 +959,6 @@ async function routeItotoriApiRequest(
         ? ["GET"]
         : ["POST"],
     );
-  }
-
-  if (
-    request.pathname === "/api/reviewer/queue/batch-preview" ||
-    request.pathname === "/api/reviewer/queue/batch-confirm" ||
-    reviewerSingleActionRoute !== null
-  ) {
-    return methodNotAllowed(["POST"]);
   }
 
   if (request.method === "POST" && request.pathname === "/api/projects/decode-extract") {
@@ -1434,19 +1269,6 @@ async function routeItotoriApiRequest(
       const result = await services.projectWorkflow.recordFinding(scope.projectId, scopedBody);
       return ok("findings.record", result);
     }
-    case "decisions": {
-      const body = parseRecordDecisionRequest(request.body);
-      await requireApiPermission(services, apiMutationPermissionGates.decisionRecord);
-      // ITOTORI-050 — verify the project (and, when supplied, the branch)
-      // server-side before recording; a foreign/forged branch id is refused.
-      const scope = await resolveProjectMutationScope(services.projectWorkflow, {
-        projectId: projectRoute.projectId,
-        ...(body.localeBranchId === undefined ? {} : { clientLocaleBranchId: body.localeBranchId }),
-      });
-      const scopedBody = scopeRecordBranch(body, scope.localeBranchId);
-      const result = await services.projectWorkflow.recordDecision(scope.projectId, scopedBody);
-      return ok("decisions.record", result);
-    }
     case "benchmarks": {
       const body = parseRecordBenchmarkRequest(request.body);
       await requireApiPermission(services, apiMutationPermissionGates.benchmarkRecord);
@@ -1486,8 +1308,8 @@ async function routeItotoriApiRequest(
       return ok("runtimeEvidence.ingest", result.result);
     }
     case "launch-pass": {
-      // ovw-launch-pass-action — fold queued corrections + drive the next pass
-      // via the driver. `canSteer`-gated (draft.write). The locale branch is
+      // ovw-launch-pass-action — drive the next pass via the driver.
+      // `canSteer`-gated (draft.write). The locale branch is
       // VERIFIED server-side against the project's ownership set (a forged
       // branch is refused before the driver runs — ITOTORI-050), then the
       // authoritative branch id is handed to the driver.
@@ -2144,7 +1966,7 @@ async function routeReadOnlyItotoriApiRequest(
   }
 
   // fnd-caps-context — the actor's Studio capability permission VIEW
-  // (canFlag / canDecide / canSteer / canReveal). Resolved from exact
+  // (canFlag / canSteer / canReveal). Resolved from exact
   // permission grants through the auth-002 effective-permission resolver;
   // never branches on a role name. No permission is required to *read* the
   // view itself (a missing grant simply yields canX=false + a denial reason).
@@ -2258,90 +2080,6 @@ async function routeReadOnlyItotoriApiRequest(
         throw new Error(`unsupported wiki context route ${String(exhaustive)}`);
       }
     }
-  }
-
-  if (request.method === "GET" && request.pathname === "/api/workspace/projects") {
-    const permission = await resolveApiReviewerQueuePermissionView(
-      services,
-      parseActorUserIdQuery(request.search),
-    );
-    return ok("workspace.projects", await services.workspace.loadProjectBrowse({ permission }));
-  }
-
-  if (request.method === "GET" && request.pathname === "/api/workspace/scenes") {
-    const permission = await resolveApiReviewerQueuePermissionView(
-      services,
-      parseActorUserIdQuery(request.search),
-    );
-    const scope = parseWorkspaceBranchScopeQuery(request.search, "workspace scenes");
-    return ok(
-      "workspace.scenes",
-      await services.workspace.loadSceneBrowse({ ...scope, permission }),
-    );
-  }
-
-  if (request.method === "GET" && request.pathname === "/api/workspace/assets") {
-    const permission = await resolveApiReviewerQueuePermissionView(
-      services,
-      parseActorUserIdQuery(request.search),
-    );
-    const scope = parseWorkspaceBranchScopeQuery(request.search, "workspace assets");
-    return ok(
-      "workspace.assets",
-      await services.workspace.loadAssetBrowse({
-        projectId: scope.projectId,
-        localeBranchId: scope.localeBranchId,
-        permission,
-      }),
-    );
-  }
-
-  if (request.method === "GET" && request.pathname === "/api/workspace/comparison") {
-    const permission = await resolveApiReviewerQueuePermissionView(
-      services,
-      parseActorUserIdQuery(request.search),
-    );
-    const reviewItemId = parseWorkspaceComparisonQuery(request.search);
-    return ok(
-      "workspace.comparison",
-      await services.workspace.loadComparison({ reviewItemId, permission }),
-    );
-  }
-
-  if (request.method === "GET" && request.pathname === "/api/workspace/search") {
-    const permission = await resolveApiReviewerQueuePermissionView(
-      services,
-      parseActorUserIdQuery(request.search),
-    );
-    const canReadCatalog = await resolveProjectReadPermission(services);
-    const searchInput = parseWorkspaceSearchQuery(request.search);
-    return ok(
-      "workspace.search",
-      await services.workspace.loadSearch({ ...searchInput, permission, canReadCatalog }),
-    );
-  }
-
-  if (request.method === "GET" && request.pathname === "/api/workspace/corrections") {
-    const permission = await resolveApiReviewerQueuePermissionView(
-      services,
-      parseActorUserIdQuery(request.search),
-    );
-    const previewInput = parseWorkspaceCorrectionPreviewQuery(request.search);
-    return ok(
-      "workspace.correctionPreview",
-      await services.workspaceCorrections.loadPreview({ ...previewInput, permission }),
-    );
-  }
-
-  if (
-    request.method !== "GET" &&
-    (request.pathname === "/api/workspace/projects" ||
-      request.pathname === "/api/workspace/scenes" ||
-      request.pathname === "/api/workspace/assets" ||
-      request.pathname === "/api/workspace/comparison" ||
-      request.pathname === "/api/workspace/search")
-  ) {
-    return methodNotAllowed(["GET"]);
   }
 
   const patchIterationRoute = parsePatchIterationApiRoute(request.pathname);
@@ -2485,76 +2223,9 @@ async function routeReadOnlyItotoriApiRequest(
     });
   }
 
-  const sceneCoverageRoute = parseSceneCoverageApiRoute(request.pathname);
-  if (request.method === "GET" && sceneCoverageRoute !== null) {
-    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
-      projectId: sceneCoverageRoute.projectId,
-      localeBranchId: sceneCoverageRoute.localeBranchId,
-    });
-    const model = await services.sceneCoverage.loadRouteMapCoverage({
-      actor: { userId: "local-user" },
-      projectId: scope.projectId,
-      localeBranchId: scope.localeBranchId,
-    });
-    return ok("play.sceneCoverage", model);
-  }
-
-  if (request.method === "GET" && request.pathname === "/api/reviewer/queue") {
-    const permission = await resolveApiReviewerQueuePermissionView(
-      services,
-      parseActorUserIdQuery(request.search),
-    );
-    if (!permission.canReadQueue) {
-      throw new AuthorizationError({ userId: permission.actorUserId }, permissionValues.queueRead);
-    }
-    const query = parseReviewerQueueDashboardQuery(request.search);
-    const localeBranchId =
-      query.localeBranchId ??
-      (await services.projectWorkflow.getDashboardStatus()).selectedLocaleBranchId;
-    if (localeBranchId === null) {
-      throw new ApiValidationError(
-        "reviewer queue dashboard requires localeBranchId when no dashboard branch is selected",
-      );
-    }
-    return ok(
-      "reviewer.queue",
-      await services.reviewerQueue.loadDashboard({
-        localeBranchId,
-        permission,
-        ...(query.limit === undefined ? {} : { limit: query.limit }),
-        ...(query.offset === undefined ? {} : { offset: query.offset }),
-      }),
-    );
-  }
-
   if (request.method === "GET" && request.pathname === "/api/queue/health") {
     return ok("queue.health", await services.queueHealth.loadQueueHealth());
   }
-
-  const reviewerDetailRoute = parseReviewerDetailApiRoute(request.pathname);
-  if (request.method === "GET" && reviewerDetailRoute !== null) {
-    const permission = await resolveApiReviewerQueuePermissionView(
-      services,
-      parseActorUserIdQuery(request.search),
-    );
-    if (!permission.canReadQueue) {
-      return ok(
-        "reviewer.detail",
-        deniedReviewerDetailApiResponse(reviewerDetailRoute.reviewItemId, permission),
-      );
-    }
-    return ok(
-      "reviewer.detail",
-      await services.reviewerQueue.loadDetailContext({
-        reviewItemId: reviewerDetailRoute.reviewItemId,
-        permission,
-      }),
-    );
-  }
-
-  // The pure-GET read paths reject a non-GET request with 405 here (the POST
-  // routes that share the `/api/reviewer/queue/...` prefix are dispatched by
-  // the mutation router, which owns their own method-not-allowed handling).
   if (
     request.pathname === "/api/projects/status" ||
     request.pathname === "/api/projects/decisions" ||
@@ -2577,9 +2248,7 @@ async function routeReadOnlyItotoriApiRequest(
     playDeliveryRoute !== null ||
     playRouteMapRoute !== null ||
     catalogContextRoute !== null ||
-    assetDecisionRoute !== null ||
-    request.pathname === "/api/reviewer/queue" ||
-    reviewerDetailRoute !== null
+    assetDecisionRoute !== null
   ) {
     return methodNotAllowed(["GET"]);
   }
@@ -2612,29 +2281,6 @@ async function requireApiPermission(
   await services.authorization.requirePermission(gate.permission);
 }
 
-async function resolveApiReviewerQueuePermissionView(
-  services: ApiAuthorizationDependency,
-  actorUserId = "local-user",
-): Promise<ReviewerQueuePermissionView> {
-  // fnd-caps-context — project the queue subset from the full studio
-  // capability view so the queue + SPA caps share one resolver path.
-  // Queue denial reasons stay queue-scoped.
-  const studio = await resolveStudioCapabilityPermissionView(services.authorization, actorUserId);
-  const denialReasons: string[] = [];
-  if (studio.denials.queueRead !== null) {
-    denialReasons.push(studio.denials.queueRead);
-  }
-  if (studio.denials.queueManage !== null) {
-    denialReasons.push(studio.denials.queueManage);
-  }
-  return {
-    actorUserId: studio.actorUserId,
-    canReadQueue: studio.canReadQueue,
-    canManageQueue: studio.canManageQueue,
-    denialReasons,
-  };
-}
-
 /**
  * fnd-caps-context — optional `?actorUserId=` for the capabilities read.
  * Defaults to the local-user actor (the SPA's default authorization actor).
@@ -2657,10 +2303,7 @@ function authCapabilitiesResponseBody(
   return {
     schemaVersion: "itotori.auth.capabilities.v0",
     actorUserId: view.actorUserId,
-    canReadQueue: view.canReadQueue,
-    canManageQueue: view.canManageQueue,
     canFlag: view.canFlag,
-    canDecide: view.canDecide,
     canSteer: view.canSteer,
     canReveal: view.canReveal,
     denials: view.denials,
@@ -2845,31 +2488,6 @@ function catalogContextPanelResponse(input: {
       targetLanguage: input.localeBranch.targetLocale,
       localeBranch: input.localeBranch,
     },
-  };
-}
-
-function deniedReviewerDetailApiResponse(
-  reviewItemId: string,
-  permission: ReviewerQueuePermissionView,
-): ApiReviewerDetailResponse {
-  const denialReason =
-    permission.denialReasons.find((reason) => reason.includes(permissionValues.queueRead)) ??
-    permission.denialReasons[0] ??
-    `user ${permission.actorUserId} is missing permission queue.read`;
-  return {
-    ...emptyReviewerDetailEvidence(),
-    reviewItemId,
-    permission: {
-      ...permission,
-      denialReasons:
-        permission.denialReasons.length === 0 ? [denialReason] : permission.denialReasons,
-    },
-    diagnostics: [
-      {
-        code: reviewerDetailDiagnosticCodeValues.permissionDenied,
-        message: denialReason,
-      },
-    ],
   };
 }
 
@@ -3105,210 +2723,6 @@ function parseNonNegativeIntParam(raw: string | null, label: string): number | u
   return Number.parseInt(raw.trim(), 10);
 }
 
-function parseActorUserIdQuery(search = ""): string | undefined {
-  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  const actorUserId = params.get("actorUserId");
-  if (actorUserId === null) {
-    return undefined;
-  }
-  if (actorUserId.trim().length === 0) {
-    throw new ApiValidationError("actorUserId must be non-empty");
-  }
-  return actorUserId;
-}
-
-function parseReviewerQueueDashboardQuery(search = ""): {
-  localeBranchId: string | null;
-  limit?: number;
-  offset?: number;
-} {
-  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  assertKnownQueryParams(
-    params,
-    ["localeBranchId", "actorUserId", "limit", "offset"],
-    "reviewer queue dashboard",
-  );
-  const localeBranchId = params.get("localeBranchId");
-  if (localeBranchId !== null && localeBranchId.trim().length === 0) {
-    throw new ApiValidationError("localeBranchId must be non-empty");
-  }
-  const query: { localeBranchId: string | null; limit?: number; offset?: number } = {
-    localeBranchId,
-  };
-  const limit = parseNonNegativeIntParam(params.get("limit"), "limit");
-  if (limit !== undefined) {
-    if (limit < 1) {
-      throw new ApiValidationError("limit must be a positive integer");
-    }
-    query.limit = limit;
-  }
-  const offset = parseNonNegativeIntParam(params.get("offset"), "offset");
-  if (offset !== undefined) {
-    query.offset = offset;
-  }
-  return query;
-}
-
-function parseWorkspaceBranchScopeQuery(
-  search = "",
-  context: string,
-): {
-  projectId: string;
-  localeBranchId: string;
-  sceneId?: string;
-  sourceRevisionId?: string;
-  limit?: number;
-  offset?: number;
-} {
-  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  assertKnownQueryParams(
-    params,
-    [
-      "projectId",
-      "localeBranchId",
-      "sceneId",
-      "sourceRevisionId",
-      "actorUserId",
-      "limit",
-      "offset",
-    ],
-    context,
-  );
-  const projectId = requiredNonEmptyParam(params, "projectId");
-  const localeBranchId = requiredNonEmptyParam(params, "localeBranchId");
-  const scope: {
-    projectId: string;
-    localeBranchId: string;
-    sceneId?: string;
-    sourceRevisionId?: string;
-    limit?: number;
-    offset?: number;
-  } = { projectId, localeBranchId };
-  const sceneId = params.get("sceneId");
-  if (sceneId !== null) {
-    if (sceneId.trim().length === 0) {
-      throw new ApiValidationError("sceneId must be non-empty");
-    }
-    scope.sceneId = sceneId;
-  }
-  const sourceRevisionId = params.get("sourceRevisionId");
-  if (sourceRevisionId !== null) {
-    if (sourceRevisionId.trim().length === 0) {
-      throw new ApiValidationError("sourceRevisionId must be non-empty");
-    }
-    scope.sourceRevisionId = sourceRevisionId;
-  }
-  const limit = parseNonNegativeIntParam(params.get("limit"), "limit");
-  if (limit !== undefined) {
-    if (limit < 1) {
-      throw new ApiValidationError("limit must be a positive integer");
-    }
-    scope.limit = limit;
-  }
-  const offset = parseNonNegativeIntParam(params.get("offset"), "offset");
-  if (offset !== undefined) {
-    scope.offset = offset;
-  }
-  return scope;
-}
-
-function parseWorkspaceCorrectionPreviewQuery(search = ""): {
-  localeBranchId: string;
-  reviewItemIds: string[];
-} {
-  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  assertKnownQueryParams(
-    params,
-    ["localeBranchId", "reviewItemIds", "actorUserId"],
-    "workspace corrections preview",
-  );
-  const localeBranchId = requiredNonEmptyParam(params, "localeBranchId");
-  const reviewItemIdsRaw = params.get("reviewItemIds");
-  const reviewItemIds =
-    reviewItemIdsRaw === null
-      ? []
-      : reviewItemIdsRaw
-          .split(",")
-          .map((value) => value.trim())
-          .filter((value) => value.length > 0);
-  return { localeBranchId, reviewItemIds };
-}
-
-function parseWorkspaceComparisonQuery(search = ""): string {
-  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  assertKnownQueryParams(params, ["reviewItemId", "actorUserId"], "workspace comparison");
-  return requiredNonEmptyParam(params, "reviewItemId");
-}
-
-function parseWorkspaceSearchQuery(
-  search = "",
-): Omit<LoadWorkspaceSearchInput, "canReadCatalog" | "permission"> {
-  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  assertKnownQueryParams(
-    params,
-    ["projectId", "localeBranchId", "query", "mode", "limit", "offset", "actorUserId"],
-    "workspace search",
-  );
-  const input: Omit<LoadWorkspaceSearchInput, "canReadCatalog" | "permission"> = {
-    projectId: requiredNonEmptyParam(params, "projectId"),
-    localeBranchId: requiredNonEmptyParam(params, "localeBranchId"),
-    query: requiredQueryParam(params, "query"),
-  };
-  const mode = params.get("mode");
-  if (mode !== null) {
-    input.mode = enumParam(
-      mode,
-      [
-        workspaceSearchModeValues.all,
-        workspaceSearchModeValues.exact,
-        workspaceSearchModeValues.terminology,
-      ] as const,
-      "mode",
-    );
-  }
-  const limit = params.get("limit");
-  if (limit !== null) {
-    const parsedLimit = Number(limit);
-    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
-      throw new ApiValidationError("limit must be an integer from 1 through 100");
-    }
-    input.limit = parsedLimit;
-  }
-  const offset = params.get("offset");
-  if (offset !== null) {
-    const parsedOffset = Number(offset);
-    if (!Number.isInteger(parsedOffset) || parsedOffset < 0) {
-      throw new ApiValidationError("offset must be a non-negative integer");
-    }
-    input.offset = parsedOffset;
-  }
-  return input;
-}
-
-function requiredNonEmptyParam(params: URLSearchParams, name: string): string {
-  const value = params.get(name);
-  if (value === null || value.trim().length === 0) {
-    throw new ApiValidationError(`${name} is required and must be non-empty`);
-  }
-  return value;
-}
-
-function requiredQueryParam(params: URLSearchParams, name: string): string {
-  const value = params.get(name);
-  if (value === null) {
-    throw new ApiValidationError(`${name} is required`);
-  }
-  return value;
-}
-
-function parseReviewerDetailApiRoute(pathname: string): { reviewItemId: string } | null {
-  const match = /^\/api\/reviewer\/queue\/([^/]+)\/detail$/u.exec(pathname);
-  if (match === null || match[1] === undefined || match[1].length === 0) {
-    return null;
-  }
-  return { reviewItemId: decodeURIComponent(match[1]) };
-}
-
 type WikiContextApiRoute =
   | {
       resource: "list";
@@ -3354,14 +2768,6 @@ function parseWikiContextApiRoute(pathname: string): WikiContextApiRoute | null 
     localeBranchId: decodeApiPathSegment(entry[2], "localeBranchId"),
     contextArtifactId: decodeApiPathSegment(entry[3], "contextArtifactId"),
   };
-}
-
-function parseReviewerSingleActionApiRoute(pathname: string): { reviewItemId: string } | null {
-  const match = /^\/api\/reviewer\/queue\/([^/]+)\/action$/u.exec(pathname);
-  if (match === null || match[1] === undefined || match[1].length === 0) {
-    return null;
-  }
-  return { reviewItemId: decodeURIComponent(match[1]) };
 }
 
 function parseAuthMemberAcceptRoute(pathname: string): { invitationId: string } | null {
@@ -3446,26 +2852,6 @@ function parseAuthPermissionSetRevokeRoute(
   };
 }
 
-/**
- * Map a single-item action refusal (the same closed status taxonomy the
- * batch preview/execute uses) to a typed HTTP error — never a 500. A
- * missing item is a 404; a permission denial is a 403; every remaining
- * refusal (invalid transition, already-actioned, stale revision,
- * concurrent modification, runtime-evidence invariant, invalid input,
- * duplicate) is a 400 bad_request carrying the refusal message.
- */
-function reviewerSingleActionRefusal(status: string, message: string): ApiJsonResponse {
-  switch (status) {
-    case reviewerBatchPreviewStatusValues.notFound:
-      return errorBody(404, "not_found", message);
-    case reviewerBatchPreviewStatusValues.permissionDeniedRead:
-    case reviewerBatchPreviewStatusValues.permissionDeniedManage:
-      return errorBody(403, "forbidden", message);
-    default:
-      return errorBody(400, "bad_request", message);
-  }
-}
-
 function parseAssetDecisionApiRoute(pathname: string): {
   projectId: string;
   localeBranchId: string;
@@ -3511,22 +2897,6 @@ function parsePlayRouteMapApiRoute(
   pathname: string,
 ): { projectId: string; localeBranchId: string } | null {
   const match = /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/route-map\/?$/u.exec(
-    pathname,
-  );
-  if (match === null || match[1] === undefined || match[2] === undefined) {
-    return null;
-  }
-  return {
-    projectId: decodeApiPathSegment(match[1], "projectId"),
-    localeBranchId: decodeApiPathSegment(match[2], "localeBranchId"),
-  };
-}
-
-function parseSceneCoverageApiRoute(pathname: string): {
-  projectId: string;
-  localeBranchId: string;
-} | null {
-  const match = /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/scene-coverage$/u.exec(
     pathname,
   );
   if (match === null || match[1] === undefined || match[2] === undefined) {
@@ -4105,39 +3475,12 @@ function ok(
   routeId: "catalog.opportunities",
   body: CatalogOpportunityRankingReadModel,
 ): ApiJsonResponse;
-function ok(routeId: "reviewer.queue", body: ApiReviewerQueueDashboardResponse): ApiJsonResponse;
-function ok(routeId: "reviewer.detail", body: ApiReviewerDetailResponse): ApiJsonResponse;
-function ok(
-  routeId: "reviewer.batchPreview",
-  body: ApiReviewerBatchPreviewResponse,
-): ApiJsonResponse;
-function ok(
-  routeId: "reviewer.batchExecute",
-  body: ApiReviewerBatchExecuteResponse,
-): ApiJsonResponse;
-function ok(routeId: "reviewer.itemAction", body: ApiReviewerSingleActionResponse): ApiJsonResponse;
 function ok(routeId: "terminology.search", body: TerminologySearchReadModel): ApiJsonResponse;
 function ok(routeId: "wiki.list", body: ApiWikiListResponse): ApiJsonResponse;
 function ok(routeId: "wiki.show", body: ApiWikiShowResponse): ApiJsonResponse;
 function ok(routeId: "wiki.history", body: ApiWikiHistoryResponse): ApiJsonResponse;
 function ok(routeId: "wiki.edit", body: ApiWikiEditResponse): ApiJsonResponse;
 function ok(routeId: "wiki.add", body: ApiWikiAddResponse): ApiJsonResponse;
-function ok(
-  routeId: "workspace.projects",
-  body: ApiWorkspaceProjectBrowseResponse,
-): ApiJsonResponse;
-function ok(routeId: "workspace.scenes", body: ApiWorkspaceSceneBrowseResponse): ApiJsonResponse;
-function ok(routeId: "workspace.assets", body: ApiWorkspaceAssetBrowseResponse): ApiJsonResponse;
-function ok(routeId: "workspace.comparison", body: ApiWorkspaceComparisonResponse): ApiJsonResponse;
-function ok(routeId: "workspace.search", body: ApiWorkspaceSearchResponse): ApiJsonResponse;
-function ok(
-  routeId: "workspace.correctionPreview",
-  body: ApiWorkspaceCorrectionPreviewResponse,
-): ApiJsonResponse;
-function ok(
-  routeId: "workspace.correctionSubmit",
-  body: ApiWorkspaceCorrectionSubmitResponse,
-): ApiJsonResponse;
 function ok(routeId: "projects.status", body: ProjectDashboardStatus): ApiJsonResponse;
 function ok(routeId: "projects.overview", body: ApiProjectOverviewResponse): ApiJsonResponse;
 function ok(routeId: "projects.decisions", body: DashboardDecisionReadModel): ApiJsonResponse;
@@ -4156,7 +3499,6 @@ function ok(
 function ok(routeId: "imports.bridge", body: ApiProjectImportResponse): ApiJsonResponse;
 function ok(routeId: "branches.draft", body: ApiDraftBranchResponse): ApiJsonResponse;
 function ok(routeId: "findings.record", body: FindingRecordResult): ApiJsonResponse;
-function ok(routeId: "decisions.record", body: DecisionRecordResult): ApiJsonResponse;
 function ok(routeId: "benchmarks.record", body: BenchmarkRecordResult): ApiJsonResponse;
 function ok(routeId: "runtimeEvidence.ingest", body: RuntimeIngestResult): ApiJsonResponse;
 function ok(
@@ -4217,11 +3559,6 @@ function ok(routeId: "auth.identity", body: ApiAuthIdentityResponse): ApiJsonRes
 function ok(routeId: "auth.capabilities", body: ApiAuthCapabilitiesResponse): ApiJsonResponse;
 function ok(routeId: "projects.launchPass", body: ApiLaunchPassResponse): ApiJsonResponse;
 function ok(routeId: "play.routeMap", body: ApiPlayRouteMapResponse): ApiJsonResponse;
-function ok(routeId: "play.sceneCoverage", body: ApiPlaySceneCoverageResponse): ApiJsonResponse;
-function ok(
-  routeId: "play.setSceneCoverage",
-  body: ApiPlaySetSceneCoverageResponse,
-): ApiJsonResponse;
 function ok(routeId: "play.flagAnnotation", body: ApiPlayFlagAnnotationResponse): ApiJsonResponse;
 function ok(routeId: "play.targetEdit", body: ApiPlayTargetEditResponse): ApiJsonResponse;
 function ok(routeId: "play.delivery", body: ApiPlayDeliveryResponse): ApiJsonResponse;
@@ -4335,9 +3672,6 @@ function errorResponse(error: unknown): ApiJsonResponse {
   if (error instanceof WikiBrainEditInputError) {
     return errorBody(400, "bad_request", error.message);
   }
-  if (error instanceof SceneCoverageServiceError && error.code === "unknown_scene") {
-    return errorBody(400, "bad_request", error.message);
-  }
   return errorBody(500, "internal_error", error instanceof Error ? error.message : String(error));
 }
 
@@ -4351,13 +3685,7 @@ function errorBody(
 
 function parseProjectRoute(pathname: string): {
   projectId: string;
-  resource:
-    | "branches"
-    | "findings"
-    | "decisions"
-    | "benchmarks"
-    | "runtime-evidence"
-    | "launch-pass";
+  resource: "branches" | "findings" | "benchmarks" | "runtime-evidence" | "launch-pass";
 } | null {
   const match = /^\/api\/projects\/([^/]+)\/([^/]+)$/.exec(pathname);
   if (!match) {
@@ -4371,7 +3699,6 @@ function parseProjectRoute(pathname: string): {
   if (
     resource !== "branches" &&
     resource !== "findings" &&
-    resource !== "decisions" &&
     resource !== "benchmarks" &&
     resource !== "runtime-evidence" &&
     resource !== "launch-pass"

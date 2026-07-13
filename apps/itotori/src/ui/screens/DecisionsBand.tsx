@@ -1,17 +1,12 @@
-// ovw-decisions-band-ui — the Overview screen's pending-decisions band.
+// ovw-decisions-band-ui — the Overview screen's open-QA-findings band.
 //
-// A panel WITHIN the Workbench dashboard (not a new route): the queue of items
-// awaiting a decision, backed by `projects.decisions` (the /api route + read
-// model EXIST). It CONSUMES the read model THROUGH the typed client
-// (`useApiQuery`, never an ad-hoc fetch) and paints each pending decision as a
-// row with a JUMP-TO link into the reviewer queue — the surface where a
-// decision is triaged — scoped to the decision's locale branch when present and
-// addressable to the specific decision via `?decisionId=`. The read model
-// carries no per-item `detailPath`, so the jump target is derived purely from
-// the row's typed fields (projectId / localeBranchId / decisionId); the
-// reviewer-queue route parser reads only `localeBranchId` and ignores the
-// addressable `decisionId` anchor, so the link is forward-compatible (the
-// destination may later highlight the item) without a contract edit.
+// A panel WITHIN the Workbench dashboard (not a new route): the open QA
+// findings backed by `projects.decisions` (the /api route + read model EXIST).
+// It CONSUMES the read model THROUGH the typed client (`useApiQuery`, never an
+// ad-hoc fetch) and paints each finding with a real follow-up surface: a
+// branch-scoped finding opens patch iteration (result revision), while a
+// project-scoped finding opens the Wiki (canonical context correction). The
+// dashboard is read-only and offers no workflow mutation.
 //
 // Follows the app-shell pattern the ~50 downstream screen nodes inherit:
 // `useApiQuery("projects.decisions")` -> ds paint (Panel / NavPills / DataTable
@@ -37,8 +32,8 @@ import { decisionSignal, plural } from "../format.js";
 import { EmptyState, ErrorState, LoadingState } from "../states.js";
 
 // ---------------------------------------------------------------------------
-// Categories — the closed `decisionKind` set, in a stable display order with
-// human labels. Only kinds PRESENT in the loaded decisions become pills (the
+// Categories — the closed finding-kind set, in a stable display order with
+// human labels. Only kinds PRESENT in the loaded findings become pills (the
 // band never offers a filter that would show zero rows).
 // ---------------------------------------------------------------------------
 
@@ -56,15 +51,15 @@ const CATEGORY_LABEL: Record<DashboardPendingDecisionKind, string> = {
   runtime_validation: "Runtime",
 };
 
-/** Client-side page window size over the returned pending decisions. */
+/** Client-side page window size over the returned open findings. */
 const PAGE_SIZE = 8;
 
 // ---------------------------------------------------------------------------
-// Pure derivation — the per-row view model + the jump-to link.
+// Pure derivation — the per-row view model + the follow-up link.
 // ---------------------------------------------------------------------------
 
-/** A pending decision's scope label, derived from its kind + nullable fields. */
-export function decisionScope(decision: DashboardPendingDecision): string {
+/** An open finding's scope label, derived from its kind + nullable fields. */
+export function findingScope(decision: DashboardPendingDecision): string {
   switch (decision.decisionKind) {
     case "project_finding":
       return "Project";
@@ -78,19 +73,18 @@ export function decisionScope(decision: DashboardPendingDecision): string {
 }
 
 /**
- * The jump-to link for a pending decision: the reviewer queue (the surface a
- * decision is triaged on), scoped to the decision's locale branch when present
- * and addressable to the specific decision via `?decisionId=`. The destination
- * parser ignores the unknown anchor, so the link is forward-compatible without
- * a route edit.
+ * The next real workflow surface for an open finding. Branch-scoped findings
+ * open the patch-iteration surface, where feedback creates a result revision;
+ * project-scoped findings open the Wiki, which resolves the selected branch
+ * and records canonical context without fabricating a line target.
  */
-export function decisionJumpPath(decision: DashboardPendingDecision): string {
-  const params = new URLSearchParams();
+export function findingFollowupPath(decision: DashboardPendingDecision): string {
   if (decision.localeBranchId !== null) {
-    params.set("localeBranchId", decision.localeBranchId);
+    return `/play/patches?${new URLSearchParams({
+      localeBranchId: decision.localeBranchId,
+    }).toString()}`;
   }
-  params.set("decisionId", decision.decisionId);
-  return `/reviewer-queue?${params.toString()}`;
+  return "/wiki";
 }
 
 function buildCategoryItems(decisions: readonly DashboardPendingDecision[]): NavPillItem[] {
@@ -112,18 +106,18 @@ function buildCategoryItems(decisions: readonly DashboardPendingDecision[]): Nav
 // Panel — owns its `projects.decisions` read through the typed client.
 // ---------------------------------------------------------------------------
 
-export function DecisionsBand(): ReactNode {
+export function QaFindingsBand(): ReactNode {
   const decisions = useApiQuery("projects.decisions", {}, "decisions");
-  return <DecisionsBandPanel decisions={decisions} />;
+  return <QaFindingsBandPanel decisions={decisions} />;
 }
 
 /**
  * The state-bound panel body. Exported (and the prop is the resolved
  * `ApiCallState`) so a behavior-first test can mount the band over msw via the
- * self-contained {@link DecisionsBand} and so the dashboard may host the panel
+ * self-contained {@link QaFindingsBand} and so the dashboard may host the panel
  * without re-issuing the read.
  */
-export function DecisionsBandPanel({
+export function QaFindingsBandPanel({
   decisions,
 }: {
   decisions: ApiCallState<ApiDashboardDecisionsResponse>;
@@ -131,47 +125,43 @@ export function DecisionsBandPanel({
   const count = decisions.state === "ready" ? decisions.data.counts.pendingDecisionCount : null;
   const headline =
     count === null
-      ? "Pending decisions"
+      ? "Open QA findings"
       : count === 0
-        ? "No pending decisions"
-        : `${count} pending ${plural(count, "decision")}`;
+        ? "No open QA findings"
+        : `${count} open ${plural(count, "QA finding")}`;
   return (
-    <section
-      className="itotori-decisions-band"
-      aria-label="Pending decisions"
-      id="pending-decisions"
-    >
+    <section className="itotori-decisions-band" aria-label="Open QA findings" id="open-qa-findings">
       <Panel
         title={headline}
-        eyebrow="Pending decisions"
+        eyebrow="QA"
         tone="mint"
         className="itotori-panel--decisions"
         data-panel-state={decisions.state}
       >
-        {decisions.state === "loading" && <LoadingState label="Loading decisions…" />}
+        {decisions.state === "loading" && <LoadingState label="Loading QA findings…" />}
         {decisions.state === "error" && (
-          <ErrorState title="Pending decisions" error={decisions.error} />
+          <ErrorState title="Open QA findings" error={decisions.error} />
         )}
         {(decisions.state === "ready" || decisions.state === "empty") && (
-          <DecisionsBandReady decisions={decisions.state === "ready" ? decisions.data : null} />
+          <QaFindingsBandReady decisions={decisions.state === "ready" ? decisions.data : null} />
         )}
       </Panel>
     </section>
   );
 }
 
-function DecisionsBandReady({
+function QaFindingsBandReady({
   decisions,
 }: {
   decisions: ApiDashboardDecisionsResponse | null;
 }): ReactNode {
   if (decisions === null || decisions.pendingDecisions.length === 0) {
-    return <EmptyState title="Pending decisions" message="No pending decisions returned." />;
+    return <EmptyState title="Open QA findings" message="No open QA findings returned." />;
   }
   return (
     <>
-      <div className="itotori-metric-row" aria-label="Pending decisions aggregate">
-        <StatReadout label="Pending" value={decisions.counts.pendingDecisionCount} />
+      <div className="itotori-metric-row" aria-label="Open QA findings aggregate">
+        <StatReadout label="Open" value={decisions.counts.pendingDecisionCount} />
         <StatReadout label="Project" value={decisions.counts.projectFindingDecisionCount} />
         <StatReadout
           label="Locale branch"
@@ -179,12 +169,12 @@ function DecisionsBandReady({
         />
         <StatReadout label="Runtime" value={decisions.counts.runtimeValidationDecisionCount} />
       </div>
-      <DecisionsBandQueue pendingDecisions={decisions.pendingDecisions} />
+      <QaFindingsTable pendingDecisions={decisions.pendingDecisions} />
     </>
   );
 }
 
-function DecisionsBandQueue({
+function QaFindingsTable({
   pendingDecisions,
 }: {
   pendingDecisions: readonly DashboardPendingDecision[];
@@ -219,23 +209,21 @@ function DecisionsBandQueue({
         items={categoryItems}
         activeId={effectiveCategory}
         onSelect={selectCategory}
-        label="Pending decision categories"
+        label="Open QA finding categories"
       />
       <DataTable
-        caption="Pending decisions"
+        caption="Open QA findings"
         columns={[
           {
-            key: "decision",
-            header: "Decision",
+            key: "finding",
+            header: "Finding",
             render: (decision) => {
-              const href = decisionJumpPath(decision);
+              const href = findingFollowupPath(decision);
+              const surface =
+                decision.localeBranchId === null ? "context-correction" : "patch-iteration";
               return (
                 <span>
-                  <a
-                    href={href}
-                    data-jump-to="reviewer-queue"
-                    data-decision-id={decision.decisionId}
-                  >
+                  <a href={href} data-jump-to={surface} data-finding-id={decision.findingId}>
                     {decision.title}
                   </a>
                   <br />
@@ -252,7 +240,7 @@ function DecisionsBandQueue({
           {
             key: "scope",
             header: "Scope",
-            render: (decision) => decisionScope(decision),
+            render: (decision) => findingScope(decision),
           },
           {
             key: "signal",
@@ -262,10 +250,10 @@ function DecisionsBandQueue({
         ]}
         rows={pageRows}
         getRowKey={(decision) => decision.decisionId}
-        emptyLabel="No pending decisions in this category."
+        emptyLabel="No open QA findings in this category."
       />
       <Pagination
-        label="Pending decisions pagination"
+        label="Open QA findings pagination"
         page={safePage}
         pageCount={pageCount}
         totalItems={filtered.length}

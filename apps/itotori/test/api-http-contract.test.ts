@@ -75,7 +75,7 @@ const READ_MODEL_CASES: readonly ReadModelCase[] = [
   { routeId: "auth.members.list", init: { query: { accountId: "account-local" } } },
   { routeId: "auth.billing.seatUsage", init: { query: { accountId: "account-local" } } },
   { routeId: "auth.identity" },
-  // fnd-caps-context — Studio capability permission view (flag/decide/steer/reveal).
+  // fnd-caps-context — Studio capability permission view (flag/steer/reveal).
   { routeId: "auth.capabilities" },
   {
     routeId: "terminology.search",
@@ -102,19 +102,6 @@ const READ_MODEL_CASES: readonly ReadModelCase[] = [
         projectId: "project-1",
         localeBranchId: "locale-1",
         contextArtifactId: "context-artifact-hero-scene",
-      },
-    },
-  },
-  {
-    routeId: "workspace.search",
-    init: {
-      query: {
-        projectId: "project-itotori-040",
-        localeBranchId: "locale-branch-itotori-040",
-        query: "世界",
-        mode: "all",
-        limit: 10,
-        offset: 0,
       },
     },
   },
@@ -296,12 +283,6 @@ describe("fe-http-contract-harness: typed error wire contract", () => {
 
   it("answers a GET on a POST-only project mutation path with 405 method_not_allowed", async () => {
     const result = await harness.httpRequest("/api/projects/project-1/branches");
-
-    assertHttpContractError(result, { status: 405, code: "method_not_allowed" });
-  });
-
-  it("answers a GET on a POST-only reviewer mutation path with 405 method_not_allowed", async () => {
-    const result = await harness.httpRequest("/api/reviewer/queue/batch-preview");
 
     assertHttpContractError(result, { status: 405, code: "method_not_allowed" });
   });

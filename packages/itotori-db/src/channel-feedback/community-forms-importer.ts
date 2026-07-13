@@ -23,6 +23,11 @@ import {
 
 export const COMMUNITY_FORMS_CHANNEL = "community_forms" as const;
 
+/** External form data may omit the canonical bridge-unit target. */
+type CommunityFormLineReference = Omit<ManualFeedbackLineReference, "bridgeUnitId"> & {
+  bridgeUnitId?: string;
+};
+
 export type CommunityFormFeedbackKind =
   | "objective_defect"
   | "style_preference"
@@ -42,7 +47,7 @@ export type CommunityFormResponseRecord = {
   title?: string;
   note: string;
   url?: string;
-  lineReference?: ManualFeedbackLineReference;
+  lineReference?: CommunityFormLineReference;
   tags?: string[];
 };
 
@@ -83,7 +88,7 @@ function optionalString(value: unknown, context: string): string | undefined {
   return value;
 }
 
-function parseLineReference(value: unknown): ManualFeedbackLineReference | undefined {
+function parseLineReference(value: unknown): CommunityFormLineReference | undefined {
   if (value === undefined || value === null) {
     return undefined;
   }
@@ -93,7 +98,7 @@ function parseLineReference(value: unknown): ManualFeedbackLineReference | undef
       "response.lineReference must be an object",
     );
   }
-  const lineReference: ManualFeedbackLineReference = {};
+  const lineReference: CommunityFormLineReference = {};
   for (const key of [
     "bridgeUnitId",
     "sourceUnitKey",
@@ -219,11 +224,19 @@ export class CommunityFormsImporter implements ChannelFeedbackImporter<Community
 
   mapExport(sourceExport: unknown, options: ChannelImportOptions): ChannelFeedbackImportItem[] {
     const parsed = parseExport(sourceExport);
+    const localeBranchId = requiredLocaleBranchId(options);
     const feedbackSourceId = `feedback-source:community_forms:${parsed.formId}`;
     const privacyClassification = options.privacyClassification ?? "community";
 
     return parsed.responses.map((response) =>
-      this.mapResponse(response, parsed, feedbackSourceId, privacyClassification, options),
+      this.mapResponse(
+        response,
+        parsed,
+        feedbackSourceId,
+        privacyClassification,
+        options,
+        localeBranchId,
+      ),
     );
   }
 
@@ -233,6 +246,7 @@ export class CommunityFormsImporter implements ChannelFeedbackImporter<Community
     feedbackSourceId: string,
     privacyClassification: string,
     options: ChannelImportOptions,
+    localeBranchId: string,
   ): ChannelFeedbackImportItem {
     const externalId = `${sourceExport.formId}:${response.responseId}`;
     const externalRef: ChannelExternalRef = {
@@ -248,9 +262,9 @@ export class CommunityFormsImporter implements ChannelFeedbackImporter<Community
 
     const input: ManualFeedbackImportInput = {
       projectId: options.projectId,
-      targetLocale: options.targetLocale,
-      ...(options.localeBranchId === undefined ? {} : { localeBranchId: options.localeBranchId }),
+      localeBranchId,
       ...(options.sourceBundleId === undefined ? {} : { sourceBundleId: options.sourceBundleId }),
+      lineReference: lineReferenceFor(response.lineReference, options),
       feedbackType: parseFeedbackType(response.feedbackType),
       reporter: {
         role: "community",
@@ -276,7 +290,6 @@ export class CommunityFormsImporter implements ChannelFeedbackImporter<Community
       privacyClassification,
       redactionState: redacted ? "redacted" : "raw",
       ...(response.submittedAt === undefined ? {} : { reportedAt: response.submittedAt }),
-      ...(response.lineReference === undefined ? {} : { lineReference: response.lineReference }),
       metadata: {
         channel: this.channel,
         externalId,
@@ -293,4 +306,30 @@ export class CommunityFormsImporter implements ChannelFeedbackImporter<Community
 
     return { input, externalRef, redactions };
   }
+}
+
+function requiredLocaleBranchId(options: ChannelImportOptions): string {
+  const localeBranchId = options.localeBranchId.trim();
+  if (localeBranchId.length === 0) {
+    throw new ChannelImportError(
+      COMMUNITY_FORMS_CHANNEL,
+      "localeBranchId must be a non-empty string",
+    );
+  }
+  return localeBranchId;
+}
+
+function lineReferenceFor(
+  source: CommunityFormLineReference | undefined,
+  options: ChannelImportOptions,
+): ManualFeedbackLineReference {
+  const bridgeUnitId = source?.bridgeUnitId?.trim() || options.bridgeUnitId?.trim();
+  if (bridgeUnitId === undefined || bridgeUnitId.length === 0) {
+    throw new ChannelImportError(
+      COMMUNITY_FORMS_CHANNEL,
+      "each form response needs lineReference.bridgeUnitId or an explicit bridgeUnitId import target",
+    );
+  }
+  const { bridgeUnitId: _sourceBridgeUnitId, ...detail } = source ?? {};
+  return { bridgeUnitId, ...detail };
 }

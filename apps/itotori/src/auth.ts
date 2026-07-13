@@ -39,34 +39,19 @@ export class ItotoriAuthorizationService implements ItotoriAuthorizationPort {
   }
 }
 
-/**
- * Permission view consumed by the reviewer detail SPA route
- * (ITOTORI-082). Resolved here (and not inside the route loader) so
- * that all `requirePermission` callsites stay confined to the
- * canonical auth / api-handler boundary per the API mutation
- * permission matrix audit.
- */
-export type ReviewerQueuePermissionView = {
-  actorUserId: string;
-  canReadQueue: boolean;
-  canManageQueue: boolean;
-  denialReasons: string[];
-};
-
-/** The four hi-fi Studio capabilities gated by exact permission grants. */
-export type StudioCapability = "flag" | "decide" | "steer" | "reveal";
+/** The three Studio capabilities gated by exact permission grants. */
+export type StudioCapability = "flag" | "steer" | "reveal";
 
 /**
  * fnd-caps-context — Studio capability → exact Permission mapping.
  *
- * Capabilities are permissions, NOT roles. Each flag / decide / steer / reveal
+ * Capabilities are permissions, NOT roles. Each flag / steer / reveal
  * action is gated by one exact-match permission grant resolved through the
  * auth epic's effective-permission resolver (`requirePermission` →
  * `resolvePrincipalEffectivePermissions` / legacy grants). Nothing branches
  * on a role string.
  *
- *   canFlag   ← feedback.import  (playtester flags into the review queue)
- *   canDecide ← queue.manage     (reviewer approve / queue-correction)
+ *   canFlag   ← feedback.import  (playtester flags into canonical context)
  *   canSteer  ← draft.write      (director launch next pass — same as
  *                                  ovw-launch-pass-action)
  *   canReveal ← catalog.read     (privileged content detail / unredacted
@@ -75,7 +60,6 @@ export type StudioCapability = "flag" | "decide" | "steer" | "reveal";
  */
 export const studioCapabilityPermissions = {
   flag: permissionValues.feedbackImport,
-  decide: permissionValues.queueManage,
   steer: permissionValues.draftWrite,
   reveal: permissionValues.catalogRead,
 } as const satisfies Readonly<Record<StudioCapability, Permission>>;
@@ -87,50 +71,22 @@ export const studioCapabilityPermissions = {
  */
 export type StudioCapabilityDenials = {
   flag: string | null;
-  decide: string | null;
   steer: string | null;
   reveal: string | null;
-  queueRead: string | null;
-  queueManage: string | null;
 };
 
 /**
- * fnd-caps-context — the client-facing permission VIEW that extends the
- * reviewer-queue view beyond the queue. Sourced from exact permission grants
- * via {@link resolveStudioCapabilityPermissionView}; the SPA CapsProvider
- * consumes this shape (never a role name).
+ * fnd-caps-context — the client-facing permission view resolved from exact
+ * grants. The SPA CapsProvider consumes this shape (never a role name).
  */
-export type StudioCapabilityPermissionView = ReviewerQueuePermissionView & {
+export type StudioCapabilityPermissionView = {
+  actorUserId: string;
   canFlag: boolean;
-  canDecide: boolean;
   canSteer: boolean;
   canReveal: boolean;
   denials: StudioCapabilityDenials;
+  denialReasons: string[];
 };
-
-export async function resolveReviewerQueuePermissionView(
-  authorization: ItotoriAuthorizationPort,
-  actorUserId: string,
-): Promise<ReviewerQueuePermissionView> {
-  // Extend-beyond-queue: resolve the full studio capability view and project
-  // the queue subset so both surfaces share ONE resolver path. Queue denial
-  // reasons stay queue-scoped (callers of this view only care about
-  // queue.read / queue.manage).
-  const studio = await resolveStudioCapabilityPermissionView(authorization, actorUserId);
-  const denialReasons: string[] = [];
-  if (studio.denials.queueRead !== null) {
-    denialReasons.push(studio.denials.queueRead);
-  }
-  if (studio.denials.queueManage !== null) {
-    denialReasons.push(studio.denials.queueManage);
-  }
-  return {
-    actorUserId: studio.actorUserId,
-    canReadQueue: studio.canReadQueue,
-    canManageQueue: studio.canManageQueue,
-    denialReasons,
-  };
-}
 
 /**
  * fnd-caps-context — resolve the actor's Studio capability view by probing
@@ -143,21 +99,9 @@ export async function resolveStudioCapabilityPermissionView(
   authorization: ItotoriAuthorizationPort,
   actorUserId: string,
 ): Promise<StudioCapabilityPermissionView> {
-  const [canReadQueue, queueReadDenial] = await tryRequirePermission(
-    authorization,
-    permissionValues.queueRead,
-  );
-  const [canManageQueue, queueManageDenial] = await tryRequirePermission(
-    authorization,
-    permissionValues.queueManage,
-  );
   const [canFlag, flagDenial] = await tryRequirePermission(
     authorization,
     studioCapabilityPermissions.flag,
-  );
-  const [canDecide, decideDenial] = await tryRequirePermission(
-    authorization,
-    studioCapabilityPermissions.decide,
   );
   const [canSteer, steerDenial] = await tryRequirePermission(
     authorization,
@@ -170,11 +114,8 @@ export async function resolveStudioCapabilityPermissionView(
 
   const denials: StudioCapabilityDenials = {
     flag: flagDenial,
-    decide: decideDenial,
     steer: steerDenial,
     reveal: revealDenial,
-    queueRead: queueReadDenial,
-    queueManage: queueManageDenial,
   };
 
   const denialReasons: string[] = [];
@@ -186,10 +127,7 @@ export async function resolveStudioCapabilityPermissionView(
 
   return {
     actorUserId,
-    canReadQueue,
-    canManageQueue,
     canFlag,
-    canDecide,
     canSteer,
     canReveal,
     denials,

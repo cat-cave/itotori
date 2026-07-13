@@ -89,9 +89,9 @@ export function buildHelpText(allCommands = false): string {
     lines.push("  ingest-runtime          Ingest a runtime evidence report.");
     lines.push("  ingest-patch-result     Ingest a patch result.");
     lines.push("  ingest-conformance      Ingest a conformance report.");
-    lines.push("  import-feedback         Import manual feedback.");
-    lines.push("  import-channel-feedback Import a community-channel export.");
-    lines.push("  import-feedback-batch   Import a batch of feedback.");
+    lines.push("  import-feedback         Import target-scoped feedback as a context correction.");
+    lines.push("  import-channel-feedback Import a target-scoped community-channel export.");
+    lines.push("  import-feedback-batch   Import a target-scoped feedback batch.");
     lines.push("  catalog-link-exact      Link external IDs to catalog works.");
     lines.push("  catalog-fuzzy-candidates  Generate fuzzy catalog candidates.");
     lines.push("  catalog-local-scan      Scan a local corpus root.");
@@ -103,7 +103,6 @@ export function buildHelpText(allCommands = false): string {
     lines.push("  engine-capabilities-record  Record an engine capability matrix.");
     lines.push("  engine-capabilities-list  List engine capability matrices.");
     lines.push("  asset-decisions-list    List asset localization decisions.");
-    lines.push("  asset-decisions-record  Record an asset localization decision.");
     lines.push("  telemetry-summary       Summarize provider telemetry.");
     lines.push("  benchmark-harness-run   Run the benchmark harness.");
     lines.push("  experiment-report-compose  Compose an experiment report.");
@@ -116,7 +115,6 @@ export function buildHelpText(allCommands = false): string {
     lines.push("  raw-mtl-baseline-proof  Run the raw-MTL baseline proof.");
     lines.push("  agentic-loop-smoke      Run an agentic-loop smoke test.");
     lines.push("  catalog-resolve-fixture Run the catalog resolver fixture.");
-    lines.push("  style-guide-fixture-flow  Run the style-guide fixture flow.");
     lines.push("");
   }
 

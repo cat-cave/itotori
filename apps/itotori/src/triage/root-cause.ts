@@ -3,8 +3,8 @@
 // A finding (QA agent or human) is routed to exactly one `RootCause` by
 // `FindingTriageRouter`. The `class` enum is the closed set of hypotheses
 // the orchestrator branches on when deciding whether to retry a draft,
-// open a glossary editor, file a Kaifuu bug, or escalate to a human
-// reviewer. Each value names a distinct *system* that owns the fix —
+// open a glossary editor, file a Kaifuu bug, or record a context correction.
+// Each value names a distinct *system* that owns the fix —
 // translator vs. context vs. source-annotation vs. glossary vs. style
 // guide vs. Kaifuu vs. runtime evidence vs. unknown.
 //
@@ -20,7 +20,7 @@
 // The `affectedComponent` string names the system that owns the fix in
 // human-readable form (e.g. 'TranslationAgent', 'SpeakerLabelAgent',
 // 'kaifuu-reallive::bridge'). Workers route their repair plans by this
-// component name; the orchestrator surfaces it in the triage queue UI.
+// component name; the orchestrator surfaces it in the triage view.
 
 /**
  * Closed enum of root-cause classes. Adding a value requires:
@@ -72,7 +72,7 @@ export type RootCause = {
    *   - 'SpeakerLabelAgent'          — speaker-label drift.
    *   - 'kaifuu-reallive::bridge'    — Kaifuu RealLive bridge unit.
    *   - 'GlossaryService'            — glossary editor.
-   *   - 'StyleGuideBuilder'          — style guide rule update.
+   *   - 'BranchPolicyWiki'           — style guide rule update.
    *   - 'RuntimeFeedbackIntake'      — runtime evidence intake.
    *   - 'UnknownTriageComponent'     — unknown class (carries the
    *                                    fallback so the dashboard can

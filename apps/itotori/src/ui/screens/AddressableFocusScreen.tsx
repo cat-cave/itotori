@@ -21,7 +21,6 @@ import type { ApiCallState } from "../../api-client.js";
 
 const SURFACE_EYEBROW: Readonly<Record<AddressableSurface, string>> = {
   play: "Play",
-  review: "Review",
   runtime: "Runtime",
   wiki: "Wiki",
   workbench: "Workbench",

@@ -30,7 +30,7 @@
       "status": "drafted",
       "detail": {
         "draftJobId": "draft-job-itotori-095",
-        "outcome": "accepted",
+        "outcome": "written",
         "draftUnitCount": 3
       }
     },
@@ -41,16 +41,6 @@
       "detail": {
         "qaJobId": "qa-job-itotori-095",
         "findings": []
-      }
-    },
-    "reviewer": {
-      "artifactId": "reviewer:decision-itotori-095-runtime",
-      "status": "resolved",
-      "detail": {
-        "action": "importRuntimeFeedback",
-        "priorState": "pending",
-        "nextState": "resolved",
-        "transitionId": "transition-itotori-095-runtime"
       }
     },
     "export": {
@@ -64,22 +54,24 @@
     },
     "feedback": {
       "artifactId": "feedback:feedback-report-itotori-095-runtime",
-      "status": "triaged",
+      "status": "corrected",
       "detail": {
-        "triageLabel": "runtime_issue_candidate",
-        "reportStatus": "triaged",
-        "contextStatus": "contextualized",
+        "triageLabel": "context_correction",
+        "reportStatus": "applied",
+        "contextStatus": "corrected",
+        "contextCorrectionId": "context-correction:itotori-095-runtime",
         "affectedBridgeUnitIds": ["019ed064-0000-7000-8000-0000000000b1"]
       }
     },
     "rerun": {
-      "artifactId": "rerun:rerun-itotori-095-runtime",
+      "artifactId": "rerun:patch-iteration-itotori-095-runtime",
       "status": "repaired",
       "detail": {
-        "stage": "runtime-validation",
+        "stage": "patch-iteration",
+        "contextCorrectionId": "context-correction:itotori-095-runtime",
         "affectedUnitIds": ["019ed064-0000-7000-8000-0000000000b1"],
-        "reasonCodes": ["runtime_observation_regression"],
-        "repairedFindingCodes": ["feedback.runtime_issue"]
+        "reasonCodes": ["context_correction"],
+        "repairedFindingCodes": ["feedback.context_correction"]
       }
     }
   }

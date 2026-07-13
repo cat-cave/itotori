@@ -1,10 +1,10 @@
-//! UTSUSHI-010: MV/MZ review-package manifest tests.
+//! UTSUSHI-010: MV/MZ play-test evidence manifest tests.
 //!
 //! These prove that the manifest aggregates the merged MV/MZ proof surfaces —
 //! patch artifacts, UTSUSHI-006 + UTSUSHI-033 runtime trace evidence, and
-//! UTSUSHI-065 screenshot artifact refs — that it names LIMITATIONS and
-//! SUPPORTED REVIEW ACTIONS, that it exports standalone (no annotation / no
-//! feedback import), and that unsupported host capabilities surface as
+//! UTSUSHI-065 screenshot artifact refs — that it names LIMITATIONS, exports
+//! standalone (no annotation / no feedback import), and that unsupported host
+//! capabilities surface as
 //! non-silent SEMANTIC diagnostics + recorded limitations.
 
 use std::path::{Path, PathBuf};
@@ -100,17 +100,15 @@ fn manifest_names_all_required_surfaces() {
     // Limitations: a non-empty honest-limits list.
     assert!(!manifest["limitations"].as_array().unwrap().is_empty());
 
-    // Supported review actions: named (not executed).
-    let actions: Vec<&str> = manifest["supportedReviewActions"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|action| action["action"].as_str().unwrap())
-        .collect();
-    assert!(actions.contains(&"approve"));
-    assert!(actions.contains(&"reject"));
-    assert!(actions.contains(&"request_repair"));
-    assert!(actions.contains(&"import_runtime_feedback"));
+    // Evidence packages describe proof surfaces only; they do not advertise
+    // per-unit workflow actions or a feedback-routing protocol.
+    assert!(
+        manifest
+            .as_object()
+            .unwrap()
+            .keys()
+            .all(|key| !key.ends_with("Actions"))
+    );
 }
 
 #[test]
@@ -132,28 +130,11 @@ fn manifest_export_needs_no_annotation_or_feedback_import() {
     })
     .unwrap();
 
-    // It still NAMES import_runtime_feedback as a supported action — naming is
-    // not coupling. The manifest never imports or requires feedback to build.
-    let actions: Vec<&str> = manifest["supportedReviewActions"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|action| action["action"].as_str().unwrap())
-        .collect();
-    assert!(actions.contains(&"import_runtime_feedback"));
-
-    // The manifest carries no imported annotation / feedback payload: "feedback"
-    // occurs ONLY inside the named supported-actions surface (as the
-    // `import_runtime_feedback` action + its label), never as ingested data.
+    // The manifest carries no imported annotation / feedback payload or
+    // workflow action surface.
     let serialized = serde_json::to_string(&manifest).unwrap();
     assert!(!serialized.contains("annotation"));
-    let mut without_actions = manifest.clone();
-    without_actions
-        .as_object_mut()
-        .unwrap()
-        .remove("supportedReviewActions");
-    let serialized_without_actions = serde_json::to_string(&without_actions).unwrap();
-    assert!(!serialized_without_actions.contains("feedback"));
+    assert!(!serialized.contains("workflowAction"));
 }
 
 #[test]

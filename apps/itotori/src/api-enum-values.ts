@@ -141,36 +141,6 @@ export const feedbackTypeValues = {
   assetIssue: "asset_issue",
 } as const;
 
-export const reviewerQueueItemKindValues = {
-  qa: "qa",
-  style: "style",
-  glossary: "glossary",
-  feedback: "feedback",
-  runtimeEvidence: "runtime_evidence",
-} as const;
-
-export const reviewerQueueItemStateValues = {
-  pending: "pending",
-  inReview: "in_review",
-  accepted: "accepted",
-  rejected: "rejected",
-  repairRequested: "repair_requested",
-  deferred: "deferred",
-  escalated: "escalated",
-} as const;
-
-export const reviewerQueueActionValues = {
-  approve: "approve",
-  reject: "reject",
-  defer: "defer",
-  escalate: "escalate",
-  importRuntimeFeedback: "import_runtime_feedback",
-} as const;
-
-export const reviewerQueueItemKindList = Object.values(reviewerQueueItemKindValues);
-export const reviewerQueueItemStateList = Object.values(reviewerQueueItemStateValues);
-export const reviewerQueueActionList = Object.values(reviewerQueueActionValues);
-
 /** Browser-safe mirror of the generic node-6 context wiki kinds. */
 export const wikiContextEntryKindValues = {
   scene: "scene",

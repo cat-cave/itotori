@@ -7,7 +7,7 @@
  * patch result + Utsushi runtime observation into ONE manifest-bound run,
  * emits a schema-valid + hash-addressed artifact for EVERY stage, surfaces the
  * patch-result id / runtime-report id / provider-proof ids / feedback ids /
- * rerun ids, proves all nine stages belong to the same fixture id + source
+ * rerun ids, proves all eight stages belong to the same fixture id + source
  * revision, and that every recorded path reaches its declared verdict with
  * structured diagnostics.
  */
@@ -31,7 +31,6 @@ const LOOP_FILES = [
   "import.json",
   "draft.json",
   "qa.json",
-  "reviewer.json",
   "export.json",
   "feedback.json",
   "rerun.json",
@@ -67,22 +66,22 @@ function readJson(outDir, file) {
   return JSON.parse(readFileSync(join(outDir, file), "utf8"));
 }
 
-test("success: full Itotori-loop + Kaifuu + Utsushi composition exits 0 (accepted), emits all 10 artifacts", () => {
+test("success: full Itotori-loop + Kaifuu + Utsushi composition exits 0 (complete), emits all 9 artifacts", () => {
   withTmp((outDir) => {
     const result = runDriver([], outDir);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     for (const f of ALL_FILES)
       assert.ok(existsSync(join(outDir, f)), `missing emitted artifact ${f}`);
-    assert.match(result.stdout, /verdict=accepted/);
+    assert.match(result.stdout, /verdict=complete/);
     const m = readManifest(outDir);
-    assert.equal(m.verdict, "accepted");
+    assert.equal(m.verdict, "complete");
     assert.equal(m.command, "vp run itotori:iteration-fixture");
-    assert.equal(m.stages.length, 9);
-    assert.equal(m.emittedArtifacts.length, 9);
+    assert.equal(m.stages.length, 8);
+    assert.equal(m.emittedArtifacts.length, 8);
   });
 });
 
-test("the run threads ALL nine ordered stages across three engines; none are skipped", () => {
+test("the run threads ALL eight ordered stages across three engines; none are skipped", () => {
   withTmp((outDir) => {
     runDriver(["--scenario", "success"], outDir);
     const m = readManifest(outDir);
@@ -92,7 +91,6 @@ test("the run threads ALL nine ordered stages across three engines; none are ski
         "import",
         "draft",
         "qa",
-        "reviewer",
         "export",
         "feedback",
         "rerun",
@@ -102,17 +100,7 @@ test("the run threads ALL nine ordered stages across three engines; none are ski
     );
     assert.deepEqual(
       m.stages.map((s) => s.project),
-      [
-        "itotori",
-        "itotori",
-        "itotori",
-        "itotori",
-        "itotori",
-        "itotori",
-        "itotori",
-        "kaifuu",
-        "utsushi",
-      ],
+      ["itotori", "itotori", "itotori", "itotori", "itotori", "itotori", "kaifuu", "utsushi"],
     );
   });
 });
@@ -141,7 +129,7 @@ test("emitted artifacts are hash-addressed: manifest hashes equal the file bytes
   withTmp((outDir) => {
     runDriver(["--scenario", "success"], outDir);
     const m = readManifest(outDir);
-    assert.equal(m.emittedArtifacts.length, 9);
+    assert.equal(m.emittedArtifacts.length, 8);
     for (const entry of m.emittedArtifacts) {
       assert.equal(sha256(join(outDir, entry.path)), entry.hash, `hash drift for ${entry.path}`);
     }
@@ -158,8 +146,8 @@ test("manifest surfaces patch-result id, runtime-report id, provider-proof ids, 
       "recorded:pp-draft-attempt-1",
       "recorded:pp-qa-attempt-0",
     ]);
-    assert.deepEqual(m.feedbackIds, ["feedback:feedback-report-hello-game-ctx"]);
-    assert.deepEqual(m.rerunIds, ["rerun:rerun-hello-game-noop"]);
+    assert.deepEqual(m.feedbackIds, ["feedback:none-received-hello-game"]);
+    assert.deepEqual(m.rerunIds, ["rerun:not-required-hello-game"]);
   });
 });
 
@@ -195,35 +183,34 @@ test("draft + QA cost/(model,provider)/tokens are composed VERBATIM from the ITO
     assert.equal(qa.cost.amountMicrosUsd, 20);
     const m = readManifest(outDir);
     assert.equal(m.billedMicrosUsd, 32); // 12 + 20, verbatim; cross-tool stages bill nothing
-    assert.equal(m.iteration.verdict, "accepted");
+    assert.equal(m.iteration.verdict, "complete");
   });
 });
 
-test("qa-rejection path -> rejected; the QA defect stays visible as a demoted rationale", () => {
+test("qa-finding path -> blocked; the QA defect remains visible until context correction", () => {
   withTmp((outDir) => {
-    const result = runDriver(["--scenario", "qa-rejection"], outDir);
+    const result = runDriver(["--scenario", "qa-finding"], outDir);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     const m = readManifest(outDir);
-    assert.equal(m.verdict, "rejected");
-    assert.ok(m.findings.some((f) => f.code === "qa.defect_found.rejected"));
-    assert.ok(m.findings.some((f) => f.code === "reviewer.rejected"));
+    assert.equal(m.verdict, "blocked");
+    assert.ok(m.findings.some((f) => f.code === "qa.defect_found"));
   });
 });
 
-test("runtime-feedback path -> repaired (feedback import -> reviewer -> runtime-validation rerun)", () => {
+test("runtime-feedback path -> repaired (feedback import -> context correction -> patch iteration)", () => {
   withTmp((outDir) => {
     const result = runDriver(["--scenario", "runtime-feedback"], outDir);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     const m = readManifest(outDir);
     assert.equal(m.verdict, "repaired");
-    assert.ok(m.findings.some((f) => f.code === "feedback.runtime_issue.repaired"));
+    assert.ok(m.findings.some((f) => f.code === "feedback.context_correction.repaired"));
     assert.ok(m.findings.some((f) => f.code === "rerun.repaired"));
   });
 });
 
-test("rerun-repair path -> repaired; the rerun re-bills the recorded draft cost (12) -> 44 total", () => {
+test("context-correction rerun path -> repaired; the rerun re-bills the recorded draft cost (12) -> 44 total", () => {
   withTmp((outDir) => {
-    const result = runDriver(["--scenario", "rerun-repair"], outDir);
+    const result = runDriver(["--scenario", "context-correction-rerun"], outDir);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     const m = readManifest(outDir);
     assert.equal(m.verdict, "repaired");
@@ -254,7 +241,7 @@ test("provider-fallback path: OR fallback is a non-blocking diagnostic; cost is 
     const result = runDriver(["--scenario", "provider-fallback"], outDir);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     const m = readManifest(outDir);
-    assert.equal(m.verdict, "accepted");
+    assert.equal(m.verdict, "complete");
     assert.equal(m.blockingFindingCount, 0);
     const f = m.findings.find((x) => x.code === "provider.fallback_used");
     assert.ok(f, "provider.fallback_used diagnostic must be present");

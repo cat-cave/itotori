@@ -40,7 +40,7 @@ export const ADDRESSABLE_KINDS = [
 export type AddressableKind = (typeof ADDRESSABLE_KINDS)[number];
 
 /** Studio surface a deep-link lands on. */
-export type AddressableSurface = "play" | "review" | "runtime" | "wiki" | "workbench";
+export type AddressableSurface = "play" | "runtime" | "wiki" | "workbench";
 
 /** Default surface each kind resolves to. */
 export const ADDRESSABLE_DEFAULT_SURFACE: Readonly<Record<AddressableKind, AddressableSurface>> = {

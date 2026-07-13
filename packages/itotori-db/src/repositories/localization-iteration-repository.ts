@@ -473,13 +473,16 @@ export class ItotoriLocalizationIterationRepository implements ItotoriLocalizati
         "contextArtifactId and contextEntryVersionId must be supplied together",
       );
     }
-    if (
-      (input.eventKind === "added_context" || input.eventKind === "wiki_edit") &&
-      !hasContextArtifact
-    ) {
+    if (input.eventKind !== "result_edit" && !hasContextArtifact) {
       throw new LocalizationIterationRepositoryError(
         "invalid_input",
         `${input.eventKind} feedback requires an immutable context artifact/version pair`,
+      );
+    }
+    if (input.eventKind === "comment" && (body === null || affectedBridgeUnitIds.length === 0)) {
+      throw new LocalizationIterationRepositoryError(
+        "invalid_input",
+        "comment feedback requires a non-blank body and at least one affectedBridgeUnitId alongside its canonical context receipt",
       );
     }
     const observedPatch = await requirePlayablePatchInTx(tx, input.observedPatchVersionId);

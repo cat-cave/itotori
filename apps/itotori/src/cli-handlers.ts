@@ -18,18 +18,16 @@ import {
   assertConformanceResultV01,
   assertPatchResultV02,
   assertRuntimeReport,
-  assertStyleGuideConversationTranscript,
   ITOTORI_PRODUCT_VERSION,
   type ConformanceManifestV01,
   type ConformanceResultV01,
-  type StyleGuideConversationTranscript,
 } from "@itotori/localization-bridge-schema";
 import {
   capabilityLevelValues,
   CommunityFormsImporter,
   createCatalogResolverFixtureArtifact,
   GitHubIssuesImporter,
-  StyleGuideFixtureFlowRerunError,
+  parseManualFeedbackImportInput,
   wikiContextEntryKindValues,
 } from "@itotori/db";
 import type {
@@ -47,18 +45,9 @@ import type {
   PatchPlaySurface,
   PatchVersionIterationRecord,
   PlayTestFeedbackEventKind,
-  StyleGuideFixtureFlowInput,
-  StyleGuideFixtureFlowResult,
 } from "@itotori/db";
 import type { EngineCapabilityReportPort } from "./services/engine-capability-report.js";
-import {
-  parseAssetDecisionPolicy,
-  parseAssetKind,
-  parseAssetRef,
-  runAssetDecisionsList,
-  runAssetDecisionsRecord,
-  type AssetDecisionsCliPort,
-} from "./asset-decisions/cli.js";
+import { runAssetDecisionsList, type AssetDecisionsCliPort } from "./asset-decisions/cli.js";
 import { runQueueHealthCli, type QueueHealthCliPort } from "./queue/cli.js";
 import {
   runWikiAddCli,
@@ -195,9 +184,6 @@ export type ItotoriCliServices = {
   draftFeedbackBatch: DraftFeedbackBatchPort;
   catalogExactExternalIdLinker: ItotoriCatalogExactExternalIdLinkerPort;
   catalogFuzzyCandidateGenerator: ItotoriCatalogFuzzyCandidateGeneratorPort;
-  styleGuideFixtureFlow: {
-    run(input: StyleGuideFixtureFlowInput): Promise<StyleGuideFixtureFlowResult>;
-  };
   batchPlanner: {
     loadContext: PlanBatchesContextLoader;
     persist: PlanBatchesPersister;
@@ -242,7 +228,7 @@ export type ItotoriCliServices = {
   engineCapabilityReports: EngineCapabilityReportPort;
   /**
    * Optional so unit suites can omit it. The CLI commands
-   * `itotori:asset-decisions-list` / `-record` require it at runtime.
+   * `itotori:asset-decisions-list` requires it at runtime.
    */
   assetDecisions?: AssetDecisionsCliPort;
   /**
@@ -393,9 +379,6 @@ export async function runItotoriCliCommand(
     case "catalog-local-scan":
       await runCatalogLocalScan(args, dependencies);
       break;
-    case "style-guide-fixture-flow":
-      await runStyleGuideFixtureFlow(args, dependencies);
-      break;
     case "plan-batches":
       await runPlanBatchesHandler(args, dependencies);
       break;
@@ -419,9 +402,6 @@ export async function runItotoriCliCommand(
       break;
     case "asset-decisions-list":
       await runAssetDecisionsListHandler(args, dependencies);
-      break;
-    case "asset-decisions-record":
-      await runAssetDecisionsRecordHandler(args, dependencies);
       break;
     case "telemetry-summary":
       await runTelemetrySummaryHandler(args, dependencies);
@@ -556,9 +536,9 @@ async function runPatchIterationPlayCommand(
 }
 
 /**
- * First-class play-test feedback inbox/write surface. The legacy
- * `import-feedback*` commands remain ingestion compatibility paths; they do
- * not replace exact-version feedback used by a refinement run.
+ * First-class play-test feedback intake writes a target-scoped canonical
+ * context correction. The import commands share that same direct path; they
+ * do not create a separate review or deferred-feedback surface.
  *
  *   itotori feedback list --patch-version <version>
  *   itotori feedback batch --patch-version <version> [--batch-id <id>] [--label <text>]
@@ -1527,8 +1507,8 @@ async function runLocalizeProjectStage(
  * itotori-localize-fullproject-cli — the general `itotori localize <project>`
  * whole-game driver. Runs the FULL configured project (every in-scope unit)
  * through the durable attempt/outcome journal against LIVE OpenRouter + real
- * Postgres: persists every physical call, canonical outcomes, provenance, and
- * reviewer-queue items before exporting a patch. GAME-AGNOSTIC — the only
+ * Postgres: persists every physical call, canonical outcomes, and provenance
+ * before exporting a patch. GAME-AGNOSTIC — the only
  * inputs are the config path + a run directory; the project/branch/revision
  * ids + the pinned pair arrive through the config + its pair-policy.
  *
@@ -1655,7 +1635,6 @@ async function runLocalizeFullProject(
         unitsRun: result.unitsRun,
         writtenOutcomeCount: result.writtenOutcomeCount,
         failureCount: result.failures.length,
-        reviewerQueueItemCount: result.reviewerQueueItemCount,
         attemptsPersisted: result.attemptsPersisted,
         totalUsageCostExactUsd: result.totalUsageCostExactUsd,
         totalUsageCostUsd: result.totalUsageCostUsd,
@@ -2098,19 +2077,24 @@ async function runImportChannelFeedback(
   const channel = requiredFlag(args, "--channel");
   const sourceExportPath = requiredFlag(args, "--export");
   const outputPath = requiredFlag(args, "--output");
-  const localeBranchId = optionalFlag(args, "--locale-branch-id");
+  const localeBranchId = requiredFlag(args, "--locale-branch-id");
+  const bridgeUnitId = optionalFlag(args, "--bridge-unit-id");
   const sourceBundleId = optionalFlag(args, "--source-bundle-id");
   const privacyClassification = optionalFlag(args, "--privacy-classification");
   const options: ChannelImportOptions = {
     projectId: requiredFlag(args, "--project-id"),
-    targetLocale: requiredFlag(args, "--target-locale"),
-    ...(localeBranchId === undefined ? {} : { localeBranchId }),
+    localeBranchId,
+    ...(bridgeUnitId === undefined ? {} : { bridgeUnitId }),
     ...(sourceBundleId === undefined ? {} : { sourceBundleId }),
     ...(privacyClassification === undefined ? {} : { privacyClassification }),
   };
   const importer = channelFeedbackImporterFor(channel);
   const sourceExport = dependencies.io.readJson(sourceExportPath);
-  const mappedItems = importer.mapExport(sourceExport, options);
+  // Validate every mapped item before service acquisition/persistence so one
+  // targetless channel record cannot leave a partially imported batch.
+  const mappedItems = importer
+    .mapExport(sourceExport, options)
+    .map((item) => ({ ...item, input: parseManualFeedbackImportInput(item.input) }));
 
   const items: ChannelFeedbackImportCliSummary["items"] = [];
   await dependencies.withServices(async (services) => {
@@ -2218,51 +2202,6 @@ async function runCatalogLocalScan(
     ...(hashKey === undefined ? {} : { hashKey }),
   });
   dependencies.io.writeJson(outputPath, report);
-}
-
-async function runStyleGuideFixtureFlow(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const fixturePath =
-    optionalFlag(args, "--fixture") ?? "fixtures/itotori-style-guide/conversations/accepted.json";
-  const seedWorkPath =
-    optionalFlag(args, "--seed-work") ?? "fixtures/itotori-style-guide/seed-work.json";
-  const outputPath =
-    optionalFlag(args, "--output") ?? "artifacts/itotori/style-guide-fixture-flow.json";
-  const fixture = dependencies.io.readJson(fixturePath);
-  assertStyleGuideConversationTranscript(fixture);
-  // The recorded fixture flow is DATA + service LOGIC: the bridge/draft/
-  // affected-work/benchmark seed records live in the seed-work DATA file, not
-  // hardcoded in the service. Editing seed text is a data edit.
-  const seedWork = dependencies.io.readJson(seedWorkPath);
-  const fixtureId = optionalFlag(args, "--fixture-id");
-  let result: StyleGuideFixtureFlowResult;
-  try {
-    result = await dependencies.withServices((services) =>
-      services.styleGuideFixtureFlow.run({
-        transcript: fixture satisfies StyleGuideConversationTranscript,
-        seedWork,
-        ...(fixtureId === undefined ? {} : { fixtureId }),
-      }),
-    );
-  } catch (error) {
-    if (error instanceof StyleGuideFixtureFlowRerunError) {
-      // Seed-once flow: a rerun is rejected before any write. Surface the typed,
-      // actionable diagnostic (no stack trace) and exit non-zero so the rerun is
-      // an explicit expected failure rather than a partial-duplicated mutation.
-      process.stderr.write(
-        `style-guide-fixture-flow: rerun rejected [${error.code}]\n` +
-          `  ${error.message}\n` +
-          `  This flow seeds a deterministic style-guide version chain exactly once. ` +
-          `Reset the database (or point --fixture at a fresh locale branch) before re-running.\n`,
-      );
-      process.exitCode = 1;
-      return;
-    }
-    throw error;
-  }
-  dependencies.io.writeJson(outputPath, result);
 }
 
 async function runBenchmarkHarnessHandler(
@@ -3264,9 +3203,8 @@ function assertCapabilityLevelStatus(value: unknown, label: string): void {
   }
 }
 
-// ITOTORI-035: asset localization decision CLI commands. The handlers
-// expose the same writes the dashboard does, intended primarily for CI
-// scripts and recorded-fixture authoring.
+// ITOTORI-035: historic asset-localization decisions remain observable for
+// patch export and diagnostics, but no longer expose a human decision write.
 
 async function runAssetDecisionsListHandler(
   args: string[],
@@ -3278,36 +3216,6 @@ async function runAssetDecisionsListHandler(
   await dependencies.withServices(async (services) => {
     const port = requireAssetDecisionsPort(services);
     await runAssetDecisionsList({ projectId, localeBranchId, outputPath }, port, dependencies.io);
-  });
-}
-
-async function runAssetDecisionsRecordHandler(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const projectId = requiredFlag(args, "--project");
-  const localeBranchId = requiredFlag(args, "--locale");
-  const assetRef = parseAssetRef(requiredFlag(args, "--asset-ref"));
-  const assetKind = parseAssetKind(requiredFlag(args, "--asset-kind"));
-  const policy = parseAssetDecisionPolicy(requiredFlag(args, "--policy"));
-  const rationale = optionalFlag(args, "--rationale");
-  const outputPath = optionalFlag(args, "--output");
-  await dependencies.withServices(async (services) => {
-    const port = requireAssetDecisionsPort(services);
-    const recordArgs: Parameters<typeof runAssetDecisionsRecord>[0] = {
-      projectId,
-      localeBranchId,
-      assetRef,
-      assetKind,
-      policy,
-    };
-    if (rationale !== undefined) {
-      recordArgs.rationale = rationale;
-    }
-    if (outputPath !== undefined) {
-      recordArgs.outputPath = outputPath;
-    }
-    await runAssetDecisionsRecord(recordArgs, port, dependencies.io);
   });
 }
 

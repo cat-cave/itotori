@@ -6,8 +6,8 @@
 // posture: denied actors see a disabled + explained composer.
 //
 // Backed by POST play.flagAnnotation → ManualFeedbackImport (same intake
-// path workspace corrections use under the hood) which creates a correction
-// when the flag is contextualized and has a persisted target unit.
+// path canonical context corrections use under the hood). A persisted target
+// unit is required, so this surface never acknowledges audit-only feedback.
 //
 // Rendered at `/play/flag`. Game-agnostic: project / branch / unit are query
 // params or status fallbacks; no title is hardcoded.
@@ -28,7 +28,6 @@ export type PlayFlagComposerRouteParams = {
   localeBranchId: string | null;
   bridgeUnitId: string | null;
   sceneId: string | null;
-  targetLocale: string | null;
   sourceUnitKey: string | null;
 };
 
@@ -45,7 +44,6 @@ export function parsePlayFlagComposerRoute(
     localeBranchId: nonEmpty(params.get("localeBranchId")),
     bridgeUnitId: nonEmpty(params.get("bridgeUnitId") ?? params.get("unitId")),
     sceneId: nonEmpty(params.get("sceneId")),
-    targetLocale: nonEmpty(params.get("targetLocale")),
     sourceUnitKey: nonEmpty(params.get("sourceUnitKey")),
   };
 }
@@ -62,17 +60,19 @@ export function PlayFlagComposerScreen({
 }: {
   route: PlayFlagComposerRouteParams;
 }): ReactNode {
-  if (route.projectId !== null && route.localeBranchId !== null) {
+  if (route.projectId !== null && route.localeBranchId !== null && route.bridgeUnitId !== null) {
     return (
       <PlayFlagComposerForBranch
         projectId={route.projectId}
         localeBranchId={route.localeBranchId}
         bridgeUnitId={route.bridgeUnitId}
         sceneId={route.sceneId}
-        targetLocale={route.targetLocale}
         sourceUnitKey={route.sourceUnitKey}
       />
     );
+  }
+  if (route.projectId !== null && route.localeBranchId !== null) {
+    return <PlayFlagTargetRequired />;
   }
   return <PlayFlagComposerFromStatus route={route} />;
 }
@@ -82,7 +82,7 @@ function PlayFlagComposerFromStatus({ route }: { route: PlayFlagComposerRoutePar
   if (status.state === "loading") {
     return (
       <main className="itotori-shell play-flag" data-screen="play-flag" data-state="loading">
-        <ShellHeader eyebrow="Play" title="Flag to review" />
+        <ShellHeader eyebrow="Play" title="Flag a correction" />
         <LoadingState label="Loading project context…" />
       </main>
     );
@@ -90,7 +90,7 @@ function PlayFlagComposerFromStatus({ route }: { route: PlayFlagComposerRoutePar
   if (status.state === "error") {
     return (
       <main className="itotori-shell play-flag" data-screen="play-flag" data-state="error">
-        <ShellHeader eyebrow="Play" title="Flag to review" />
+        <ShellHeader eyebrow="Play" title="Flag a correction" />
         <ErrorState title="Flag composer" error={status.error} />
       </main>
     );
@@ -100,7 +100,7 @@ function PlayFlagComposerFromStatus({ route }: { route: PlayFlagComposerRoutePar
   if (projectId === null || localeBranchId === null) {
     return (
       <main className="itotori-shell play-flag" data-screen="play-flag" data-state="empty">
-        <ShellHeader eyebrow="Play" title="Flag to review" />
+        <ShellHeader eyebrow="Play" title="Flag a correction" />
         <EmptyState
           title="No project context"
           message="Select a project and locale branch to compose a playtest flag."
@@ -108,15 +108,29 @@ function PlayFlagComposerFromStatus({ route }: { route: PlayFlagComposerRoutePar
       </main>
     );
   }
+  if (route.bridgeUnitId === null) {
+    return <PlayFlagTargetRequired />;
+  }
   return (
     <PlayFlagComposerForBranch
       projectId={projectId}
       localeBranchId={localeBranchId}
       bridgeUnitId={route.bridgeUnitId}
       sceneId={route.sceneId}
-      targetLocale={route.targetLocale}
       sourceUnitKey={route.sourceUnitKey}
     />
+  );
+}
+
+function PlayFlagTargetRequired(): ReactNode {
+  return (
+    <main className="itotori-shell play-flag" data-screen="play-flag" data-state="empty">
+      <ShellHeader eyebrow="Play" title="Flag a correction" />
+      <EmptyState
+        title="Choose a target line"
+        message="Open this composer from a persisted play-test line so the flag can write canonical context."
+      />
+    </main>
   );
 }
 
@@ -129,14 +143,12 @@ function PlayFlagComposerForBranch({
   localeBranchId,
   bridgeUnitId,
   sceneId,
-  targetLocale,
   sourceUnitKey,
 }: {
   projectId: string;
   localeBranchId: string;
-  bridgeUnitId: string | null;
+  bridgeUnitId: string;
   sceneId: string | null;
-  targetLocale: string | null;
   sourceUnitKey: string | null;
 }): ReactNode {
   const caps = useCaps();
@@ -145,10 +157,9 @@ function PlayFlagComposerForBranch({
   const [outcome, setOutcome] = useState<FlagOutcome | null>(null);
   const [pending, setPending] = useState(false);
 
-  const resolvedLocale = targetLocale ?? "en-US";
   const contextParts = [
     sceneId !== null ? `scene ${sceneId}` : null,
-    bridgeUnitId !== null ? `unit ${bridgeUnitId}` : null,
+    `unit ${bridgeUnitId}`,
   ].filter((part): part is string => part !== null);
   const contextLabel = contextParts.length > 0 ? contextParts.join(" · ") : null;
 
@@ -163,9 +174,8 @@ function PlayFlagComposerForBranch({
       body: {
         note: value.note,
         severity: value.severity,
-        targetLocale: resolvedLocale,
         ...(value.category.length > 0 ? { category: value.category } : {}),
-        ...(bridgeUnitId !== null ? { bridgeUnitId } : {}),
+        bridgeUnitId,
         ...(sourceUnitKey !== null ? { sourceUnitKey } : {}),
         ...(sceneId !== null ? { sceneId } : {}),
         actorUserId: caps.actorUserId,
@@ -233,17 +243,13 @@ function PlayFlagComposerForBranch({
             <p
               role="status"
               data-flag-outcome="ok"
-              data-context-correction-enqueued={
-                outcome.response.contextCorrectionEnqueued ? "true" : "false"
-              }
+              data-context-correction-id={outcome.response.contextCorrectionId}
               data-severity={outcome.response.severity}
               className="play-flag__status"
             >
               Flag sent to correction · {outcome.response.severity}
               {outcome.response.category.length > 0 ? ` · ${outcome.response.category}` : ""}
-              {outcome.response.contextCorrectionEnqueued
-                ? " · correction scheduled"
-                : " · needs context"}
+              {" · correction scheduled"}
             </p>
           )}
           {outcome?.kind === "error" && (

@@ -3,7 +3,7 @@
 // Findings entering the triage router come from two sources:
 //   1. QA agents (typed `QaFinding` from
 //      `@itotori/localization-bridge-schema`). Wire-validated.
-//   2. Humans (this file) — reviewers, translators, runtime observers, or
+//   2. Humans (this file) — feedback authors, translators, runtime observers, or
 //      playtesters. The shape is intentionally narrow; richer fields
 //      (attachments, screenshots, save-state references) are added in
 //      ITOTORI-024 (playtest feedback intake).
@@ -12,16 +12,11 @@
 // is `runtime_evidence` vs. a more specific class. Today only the
 // `'runtime'` attribution has a dedicated routing rule; other
 // attributions fall through to `unknown` until ITOTORI-024 and the
-// reviewer-queue UI land richer category routing.
+// richer category routing lands.
 
 import type { Uuid7 } from "@itotori/localization-bridge-schema";
 
-export const HUMAN_FINDING_ATTRIBUTIONS = [
-  "translator",
-  "reviewer",
-  "runtime",
-  "playtest",
-] as const;
+export const HUMAN_FINDING_ATTRIBUTIONS = ["translator", "runtime", "playtest"] as const;
 export type HumanFindingAttribution = (typeof HUMAN_FINDING_ATTRIBUTIONS)[number];
 
 export const HUMAN_FINDING_SEVERITIES = ["critical", "major", "minor", "info"] as const;
@@ -41,7 +36,7 @@ export type HumanFinding = {
   severity: HumanFindingSeverity;
   /**
    * Free-text category coined by the reporter. Not enforced; surfaced in
-   * triage rationale verbatim so reviewers see what the reporter wrote.
+   * triage rationale verbatim so downstream consumers see what the reporter wrote.
    */
   category: string;
   summary: string;

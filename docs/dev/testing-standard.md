@@ -365,34 +365,6 @@ denial fixtures` tests executed exactly one DB-backed denial assertion for
   Run `DATABASE_URL= just permission-denial-db-strict` to see the missing-
   `DATABASE_URL` hard failure.
 
-- **Style-guide fixture-flow persistence (ITOTORI-135, for the ITOTORI-007
-  suite)** — `just style-guide-fixture-flow-db-strict`
-  (`scripts/style-guide-fixture-flow-db-gate.mjs`). This drives the recorded
-  conversational style-guide flow
-  (`fixtures/itotori-style-guide/conversations/accepted.json`) through the real
-  `@itotori/db` repositories against a migrated Postgres, so it is DB-classified
-  and a fast-local run SKIPS it — and a skipped suite is NOT persistence
-  coverage. The gate reuses the `--require-database` runner path, then asserts
-  `packages/itotori-db/test/style-guide-fixture-flow.test.ts` actually executed
-  (count > 0, 0 skipped). Skip artifact
-  `.tmp/itotori-db/style-guide-fixture-flow-skipped.json`; proof artifact
-  `.tmp/itotori-db/style-guide-fixture-flow-proof.json`; one-line marker
-  `STYLE_GUIDE_FIXTURE_FLOW_DB_SKIP`; regression
-  `scripts/style-guide-fixture-flow-db-gate.test.mjs` (wired into `just check`).
-  Bring up a disposable Postgres first (`just db-up && just db-migrate`); the
-  recipe does not itself manage docker. The full up/migrate/run/down flow:
-
-  ```sh
-  just db-up
-  just db-migrate
-  DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori \
-    just style-guide-fixture-flow-db-strict
-  just db-down
-  ```
-
-  Run `DATABASE_URL= just style-guide-fixture-flow-db-strict` to see the
-  missing-`DATABASE_URL` hard failure.
-
 ## Rust Adapter Tests
 
 Rust tests run through Cargo and should use normal `#[test]` functions unless a

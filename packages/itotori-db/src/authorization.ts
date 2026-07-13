@@ -593,25 +593,25 @@ export const defaultPermissionSetSeeds = [
   {
     key: "viewer",
     name: "Viewer",
-    description: "Read-only reviewer-queue and catalog access.",
+    description: "Read-only project-context and catalog access.",
     permissions: [permissionValues.queueRead, permissionValues.catalogRead],
   },
   {
-    key: "reviewer",
-    name: "Reviewer",
-    description: "Review drafts, manage the reviewer queue, and approve style guides.",
+    key: "contributor",
+    name: "Contributor",
+    description: "Contribute drafts, feedback, style-guide changes, and catalog context.",
     permissions: [
       permissionValues.draftWrite,
-      permissionValues.queueRead,
-      permissionValues.queueManage,
+      permissionValues.feedbackImport,
       permissionValues.styleGuideApprove,
+      permissionValues.catalogRead,
     ],
   },
   {
     key: "director",
     name: "Director",
     description:
-      "Broad localization authority: import, draft, review, approve, and export, plus catalog curation.",
+      "Broad localization authority: import, draft, approve, and export, plus catalog curation.",
     permissions: [
       permissionValues.projectImport,
       permissionValues.draftWrite,

@@ -28,8 +28,8 @@ export interface PaginationProps {
  * Pagination — a reusable prev/next pager with a `page-of-N` status. Lives in
  * the navigation group because it advances a screen cursor; aligned with the
  * server-side `OffsetPager` (apps/itotori/src/api-client.ts) so the same
- * component renders both the client-side reviewer-queue window and any future
- * server-paginated surface. Disabled at bounds; the prev/next buttons remain
+ * component renders both client-side collections and future server-paginated
+ * surfaces. Disabled at bounds; the prev/next buttons remain
  * real `<button>`s so keyboard + screen-reader users get focus + `aria-label`
  * semantics, not div-arrows.
  */

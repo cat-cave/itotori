@@ -121,7 +121,7 @@ export type PriorPassFeedback = {
   /** Informational QA/repair flags retained with the written outcome. */
   qualityFlags: string[];
   /**
-   * Free-form feedback note carried from the prior pass — a reviewer
+   * Free-form feedback note carried from the prior pass — a context
    * correction, a QA-finding recommendation, or any project-agnostic hint the
    * ledger recorded. Rendered verbatim into the prompt so pass N+1 addresses
    * the SAME flagged issue rather than rediscovering it.

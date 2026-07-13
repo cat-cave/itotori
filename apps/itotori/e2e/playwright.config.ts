@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 
 // Playwright smoke for the current Itotori shell served by src/server.ts.
-// The server renders the real built HTML for dashboard/reviewer/workspace
+// The server renders the real built HTML for dashboard/play/patch-iteration
 // deep links; the browser test fulfills only the closed fixture API surface it
 // needs so this dev-only lane stays deterministic and DB-free.
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
@@ -28,7 +28,9 @@ export default defineConfig({
   retries: 0,
   forbidOnly: true,
   reporter: [["list"]],
-  timeout: 45_000,
+  // Full current-surface smoke can rebuild all workspace packages before the
+  // browser starts; give that deterministic heavy lane the requested ceiling.
+  timeout: 180_000,
   expect: { timeout: 10_000 },
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
@@ -48,7 +50,9 @@ export default defineConfig({
     cwd: repoRoot,
     url: `http://127.0.0.1:${PORT}/`,
     reuseExistingServer: !process.env.CI,
-    timeout: 90_000,
+    // The server command builds every workspace package before launch, so it
+    // needs the same heavy-e2e ceiling as the test itself.
+    timeout: 180_000,
     stdout: "pipe",
     stderr: "pipe",
   },

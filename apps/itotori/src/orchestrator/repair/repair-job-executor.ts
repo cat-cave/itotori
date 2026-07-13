@@ -41,7 +41,6 @@ import {
   type AgenticLoopUnitInput,
   type PairPolicy,
 } from "../agentic-loop.js";
-import type { AgenticLoopReviewerQueueSink } from "../reviewer-queue-bridge.js";
 import {
   materializeDrivenWrittenOutcome,
   summariseProviderTelemetry,
@@ -117,11 +116,6 @@ export type RepairJobExecutorDeps = {
     writtenOutcome: DrivenWrittenOutcomeSink;
     providerRun: DrivenProviderRunSink;
   };
-  /**
-   * Optional legacy reviewer-queue sink. When present it can receive its own
-   * informational annotations, but it never controls written-outcome storage.
-   */
-  reviewerQueue?: AgenticLoopReviewerQueueSink;
   log?: (message: string) => void;
 };
 
@@ -218,18 +212,10 @@ export async function executeRepairJob(
   let sawInvocation = false;
   const failures: RepairUnitFailure[] = [];
 
-  // Thread the legacy reviewer-queue sink into each input when the resolver did
-  // not already supply one. This side channel is informational only; it cannot
-  // clear or withhold the written outcome.
-  const reviewerQueue = deps.reviewerQueue;
-
   for (const resolvedInput of unitInputs) {
     const unitInput: AgenticLoopUnitInput = {
       ...resolvedInput,
       sourceRevisionId: deps.sourceRevisionId,
-      ...(reviewerQueue !== undefined && resolvedInput.reviewerQueue === undefined
-        ? { reviewerQueue }
-        : {}),
     };
     const result = await runRepairUnit(unitInput, job, deps, log);
     if (result.status === "failed") {

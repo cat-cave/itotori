@@ -1,11 +1,10 @@
 // fnd-caps-context — the client-side Studio capability context.
 //
 // A React provider that holds the actor's resolved permission VIEW
-// (`StudioCapabilityPermissionView`) and exposes the four hi-fi Studio
+// (`StudioCapabilityPermissionView`) and exposes the Studio
 // capabilities the screens gate on:
 //
-//   canFlag   — compose a playtest flag into the review queue
-//   canDecide — approve / queue a correction on a queue item
+//   canFlag   — compose a playtest flag into canonical context
 //   canSteer  — launch the next localization pass
 //   canReveal — unblur sensitive frames for private viewing
 //
@@ -32,8 +31,8 @@ import { useApiQuery } from "./use-api-resource.js";
 // Value surface
 // ---------------------------------------------------------------------------
 
-/** The four hi-fi Studio capabilities gated by exact permission grants. */
-export type StudioCapability = "flag" | "decide" | "steer" | "reveal";
+/** The Studio capabilities gated by exact permission grants. */
+export type StudioCapability = "flag" | "steer" | "reveal";
 
 /**
  * Browser-local copy of the exact permission strings shown in disabled action
@@ -42,26 +41,19 @@ export type StudioCapability = "flag" | "decide" | "steer" | "reveal";
  */
 export const studioCapabilityPermissions = {
   flag: "feedback.import",
-  decide: "queue.manage",
   steer: "draft.write",
   reveal: "catalog.read",
 } as const satisfies Readonly<Record<StudioCapability, string>>;
 
 export type StudioCapabilityDenials = {
   flag: string | null;
-  decide: string | null;
   steer: string | null;
   reveal: string | null;
-  queueRead: string | null;
-  queueManage: string | null;
 };
 
 export type StudioCapabilityPermissionView = {
   actorUserId: string;
-  canReadQueue: boolean;
-  canManageQueue: boolean;
   canFlag: boolean;
-  canDecide: boolean;
   canSteer: boolean;
   canReveal: boolean;
   denials: StudioCapabilityDenials;
@@ -72,7 +64,6 @@ export type CapsContextValue = {
   /** Actor the view was resolved for. */
   actorUserId: string;
   canFlag: boolean;
-  canDecide: boolean;
   canSteer: boolean;
   canReveal: boolean;
   /** Per-capability denial explanations (null when allowed). */
@@ -97,19 +88,13 @@ export function deniedStudioCapabilityView(
 ): StudioCapabilityPermissionView {
   return {
     actorUserId,
-    canReadQueue: false,
-    canManageQueue: false,
     canFlag: false,
-    canDecide: false,
     canSteer: false,
     canReveal: false,
     denials: {
       flag: reason,
-      decide: reason,
       steer: reason,
       reveal: reason,
-      queueRead: reason,
-      queueManage: reason,
     },
     denialReasons: [reason],
   };
@@ -121,19 +106,13 @@ export function grantedStudioCapabilityView(
 ): StudioCapabilityPermissionView {
   return {
     actorUserId,
-    canReadQueue: true,
-    canManageQueue: true,
     canFlag: true,
-    canDecide: true,
     canSteer: true,
     canReveal: true,
     denials: {
       flag: null,
-      decide: null,
       steer: null,
       reveal: null,
-      queueRead: null,
-      queueManage: null,
     },
     denialReasons: [],
   };
@@ -147,7 +126,6 @@ function valueFromView(
   return {
     actorUserId: view.actorUserId,
     canFlag: view.canFlag,
-    canDecide: view.canDecide,
     canSteer: view.canSteer,
     canReveal: view.canReveal,
     denials: view.denials,
@@ -157,11 +135,9 @@ function valueFromView(
       const allowed =
         capability === "flag"
           ? view.canFlag
-          : capability === "decide"
-            ? view.canDecide
-            : capability === "steer"
-              ? view.canSteer
-              : view.canReveal;
+          : capability === "steer"
+            ? view.canSteer
+            : view.canReveal;
       const reason = view.denials[capability];
       return { allowed, reason };
     },
@@ -228,8 +204,7 @@ export function useCaps(): CapsContextValue {
 
 /**
  * Soft variant: returns null outside a provider so screens that still accept
- * explicit prop overrides can fall back without throwing (e.g. a unit test
- * that mounts ReviewerDetailScreen with `canDecide={false}` and no provider).
+ * explicit prop overrides can fall back without throwing.
  */
 export function useCapsOptional(): CapsContextValue | null {
   return useContext(CapsContext);

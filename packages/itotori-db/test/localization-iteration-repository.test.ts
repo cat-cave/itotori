@@ -97,6 +97,9 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriLocalizationIterationReposito
         feedbackBatchId: feedbackBatch.feedbackBatchId,
         eventKind: "comment",
         body: "This sibling must not be pulled into an individual selection.",
+        contextArtifactId: addedContextHead.contextArtifactId,
+        contextEntryVersionId: addedContextHead.contextEntryVersionId,
+        affectedBridgeUnitIds: [changedUnit],
       });
       const addedContext = await iteration.recordFeedbackEvent(actor, {
         observedPatchVersionId: v1Patch.patchVersionId,
@@ -313,6 +316,14 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriLocalizationIterationReposito
           observedPatchVersionId: patch.patchVersionId,
           eventKind: "wiki_edit",
           body: "A wiki reference without an immutable head is not feedback provenance.",
+        }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+
+      await expect(
+        iteration.recordFeedbackEvent(actor, {
+          observedPatchVersionId: patch.patchVersionId,
+          eventKind: "comment",
+          body: "An event-only comment must never become a hidden review backlog.",
         }),
       ).rejects.toMatchObject({ code: "invalid_input" });
 

@@ -1,171 +1,118 @@
 # Itotori frontend — SPA, design system, and typed API client
 
-The Itotori frontend is the React SPA + design-system + typed API client that
-replaced the deleted HTML-string dashboard / reviewer-detail / workspace
-renderers. It is the surface every downstream Studio screen node inherits, so
-the patterns below are the precedent — see each component's README for the
-finer-grained conventions.
+The Itotori frontend is the React Studio surface for one complete localization
+cycle:
+
+```
+run → complete patch → play → result revision or context correction → refinement run
+```
+
+The interface makes quality evidence useful without making it a release gate.
+Every in-scope unit has a written result before a patch is emitted; QA findings
+are visible annotations on that result. Play-test input changes a result revision
+or canonical context, then feeds a deliberate iteration. There is no
+per-line gate or parallel handoff path.
 
 ## Pieces
 
 - **`@itotori/ds`** (`packages/itotori-ds/`) — the Dusk Observatory design
-  system. React components (`Panel`, `Badge`, `DataTable`, `ProgressBar`,
-  `ComparisonPane`, `LocalizationProgress`, `StatReadout`, `BiText`, `NavPills`,
-  `CommandPalette`, `Pagination`, `RedactionFrame`, `ContestantSwatch`,
-  `Toast`, …) plus the CSS token set under `tokens/`. The
-  canonical CSS entry is `@itotori/ds/styles.css` — consumed once at the SPA
-  shell. `Pagination` is the ds-side prev/next pager bound to the typed
-  client's server-side `OffsetPager` (the cost ledger, glossary terms, and
-  any future paginated surface use the same primitive); `RedactionFrame` is
-  the governing redaction-as-toggle primitive — redaction is on by default
-  for committed/shared frames, cap-gated reveal is the ONLY way to unblur
-  locally, and share/export mode forces the blur back on (the rule from
-  `feedback_redaction_is_a_toggle` is the only authority; the
-  `RedactionFrame` component is the ds-side realization). See
-  [`packages/itotori-ds/README.md`](../packages/itotori-ds/README.md)
-  for the layout + the patterns downstream nodes copy (className-based
-  styling, closed status vocabulary, tokens over literals, sentence case,
-  behaviour-first tests).
-- **Typed API client — `fnd-api-client`** (`apps/itotori/src/api-client.ts`).
-  A framework-agnostic typed client generated from `api-schema.ts` (the
-  `ItotoriApiRouteId` union + the route / response / error types) and
-  `api-contract.ts` (the `ITOTORI_API_ROUTES` registry — the single authority
-  for method / path / path-params). Every call's request + response types come
-  from `api-schema.ts`; every response is validated by the same
-  `assertItotoriApiResponse` guard the server + contract harness use; the
-  error state carries the typed `ApiErrorResponse` (`{ code, error }`).
-  `query()` returns a stateful `ApiResource`; `request()` returns the settled
-  `ready | empty | error` states; the shared discriminated union
-  `{ loading | ready | empty | error }` is the contract every consumer reads.
-  Pagination primitives (`OffsetPager`) walk the offset-paginated route(s)
-  per the api-schema `pagination` shape.
-- **React app shell — `fnd-spa-shell`** (`apps/itotori/src/ui/`). The single
-  SPA served by `apps/itotori/src/server.ts`:
-  - `App.tsx` — client-routes off `window.location` and renders one of the
-    ported screens. Routes this node does not port (asset-decisions /
-    reviewer-batch / style-guide-builder) are bridged to their existing
-    renderers via `LegacyRoute` (a tracked, temporary mount, not a dual path
-    for a replaced view).
-  - `client.ts` — the shared `ItotoriApiClient` instance the SPA screens
-    consume. A relative base URL means the client hits the same origin the SPA
-    is served from.
-  - `use-api-resource.ts` — the React binding for `ApiResource`. Adapts the
-    stateful resource to React via `useSyncExternalStore` so a screen
-    re-renders on the transition; `useApiQuery` reissues on `depsKey` change.
-  - `screens/` — the parity-ported screens (`DashboardScreen`,
-    `ReviewerQueueScreen`, `ReviewerDetailScreen`, `WorkspaceScreen`,
-    `BenchmarkCockpitScreen`, `BenchmarkHeadlineTile`,
-    `PlayScenePickerScreen`, `AddressableFocusScreen`, …) plus the
-    overview panels the dashboard composes (`PassLedgerPanel`,
-    `ProgressInstrumentPanel`, `CostDrilldownPanel`, `DecisionsBand`,
-    `RevisionHistoryComparisonPane`, `RuntimeEvidencePanel`,
-    `CorrectionScopePanel`, …). Each consumes the typed client and paints
-    with `@itotori/ds`. The `PassLedgerPanel` /
-    `ProgressInstrumentPanel` / `BenchmarkHeadlineTile` /
-    `RuntimeEvidencePanel` / `DecisionsBand` overview panels are the
-    overview surface — they each fetch their own read-model through the
-    typed client and settle into `loading | ready | empty | error`
-    independently, so a single failed read degrades only its panel. The
-    `CostDrilldownPanel` composes the cost summary + a paginated
-    ledger bound to the ds `Pagination` primitive; the `RevisionHistoryComparisonPane`
-    uses the `ComparisonPane` component to render the diff. Sensitive
-    runtime-evidence artifacts are wrapped in `<RedactionFrame sensitive>` —
-    the toggle is on by default; `canReveal` is the cap-gated authority
-    that unblurs the frame locally, and `shareRedaction` (set when the
-    screen enters share/export mode) ALWAYS forces the blur back on.
-  - `legacy-routes.ts` — the honest, temporary bridge for routes that still
-    own their own HTML-string renderers (a tracked follow-on screen per
-    route, not a dual path for a replaced view).
-  - `format.ts` — presentation formatters ported verbatim from the deleted
-    string renderers so the SPA keeps byte-for-byte number/label parity.
-  - **Addressable-id routing — `fnd-addressable-routing`**
-    (`apps/itotori/src/ui/addressable-routing.ts`). Stable URLs for every
-    entity the loop spine / cmdk / cross-surface jumps touch
-    (`unit` / `scene` / `route` / `character` / `term` / `run` / `finding`):
-    `hrefForAddressable` builds, `parseAddressableLocation` resolves, and
-    `App` focuses the entity (`data-addressable-focus`). Play deep-links
-    select the unit/scene; wiki/runtime land on `AddressableFocusScreen`
-    until their full screens ship. Compact refs (`unit:<id>`,
-    `bridge-unit:<id>`) feed cmdk.
+  system. React components (`Panel`, `Badge`, `DataTable`,
+  `ProgressBar`, `ComparisonPane`, `LocalizationProgress`,
+  `StatReadout`, `BiText`, `NavPills`, `CommandPalette`,
+  `Pagination`, `RedactionFrame`, `ContestantSwatch`, `Toast`, …)
+  plus the CSS token set under `tokens/`. The canonical CSS entry is
+  `@itotori/ds/styles.css`, consumed once at the SPA shell. `Pagination`
+  is bound to the typed client's server-side `OffsetPager`; redaction is on
+  by default for committed or shared runtime evidence, and capability-gated
+  reveal is local only. See
+  [`packages/itotori-ds/README.md`](../packages/itotori-ds/README.md) for
+  the component conventions.
+- **Typed API client — `fnd-api-client`**
+  (`apps/itotori/src/api-client.ts`). A framework-agnostic typed client
+  generated from `api-schema.ts` (route, request, response, and error
+  types) and `api-contract.ts` (the method/path registry). Every response is
+  validated by the same `assertItotoriApiResponse` guard used by the server
+  and contract harness. `query()` exposes a stateful `ApiResource`;
+  `request()` settles into `ready | empty | error`; and the React-facing
+  state union is `loading | ready | empty | error`.
+- **React app shell — `fnd-spa-shell`** (`apps/itotori/src/ui/`). The
+  single SPA served by `apps/itotori/src/server.ts`:
+  - `App.tsx` routes one Studio surface at a time, while the persistent shell
+    keeps project/branch, ZDR, source-to-branch, and live-cost context visible.
+  - `client.ts` owns the shared `ItotoriApiClient`; screens use a relative
+    base URL and therefore stay on the served origin.
+  - `use-api-resource.ts` adapts `ApiResource` with
+    `useSyncExternalStore`, so a screen rerenders on its data transition and
+    reissues a query when its dependency key changes.
+  - `screens/` contains the overview/run instruments, Play and patch
+    iteration, direct result comparison and revision, context-correction and
+    feedback composition, wiki, benchmark, runtime evidence, catalog, and
+    settings surfaces. `ComparisonPane`/`BiText` make source, selected
+    result, history, and QA annotations inspectable; the edit action records a
+    result revision, while an explanation or missing-fact action records a
+    context correction.
+  - `addressable-routing.ts` provides stable deep links for `unit`,
+    `scene`, `route`, `character`, `term`, `run`, and `finding`.
+    A link can move from a play observation to the precise result, wiki entry,
+    or runtime artifact without losing project and branch scope.
 
-## How a screen is shaped
+## The Studio workflow
 
-```tsx
-import "@itotori/ds/styles.css";            // consumed once at the SPA shell
-import { Panel, DataTable, Badge } from "@itotori/ds";
-import { useApiQuery } from "../use-api-resource.js";
+The primary navigation is organized around the durable identity chain:
 
-export function ReviewerQueueScreen({ route }) {
-  const state = useApiQuery(
-    "reviewerQueue:list",
-    { params: { branchId: route.branchId }, query: route.query },
-    `${route.branchId}/${JSON.stringify(route.query)}`,
-  );
-  switch (state.state) {
-    case "loading":
-    case "empty":
-      return <Panel title="Review queue" loading={state.state === "loading"} />;
-    case "ready":
-      return <DataTable rows={state.data.rows} columns={…} />;
-    case "error":
-      return <Panel title="Review queue" error={state.error} />;
-  }
-}
-```
+| Surface           | What it changes or shows                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------ |
+| Runs              | Frozen scope, progress, cost, written-outcome coverage, and operational pause/resume state |
+| Patches / Play    | A concrete patch version, runtime evidence, QA callouts, and play-test observations        |
+| Results           | Source/target comparison, candidate history, annotations, and direct result revision       |
+| Wiki              | Versioned canonical facts, glossary, speaker, scene, and style context                     |
+| Feedback / Refine | Context corrections, imported feedback, affected scope, and the next refinement run        |
+| Settings          | Routing, scope, privacy, project, and account configuration                                |
 
-Every screen reads `/api/*` THROUGH `ItotoriApiClient` — never an ad-hoc
-`fetch` — so the loading / ready / empty / error states + response validation
-are the ones the data layer already pins. The discriminated-union `switch`
-narrows `state.data` (only on `ready`) and `state.error` (only on `error`) at
-compile time; that is the type-safety guarantee the client exports.
+An edit is never merely a UI acknowledgement. A target-text change creates a
+result revision and a deterministic child patch revision. A factual correction,
+glossary change, or wiki edit writes canonical context and determines affected
+units for the next refinement run. Notes and runtime observations retain their
+evidence and become those concrete changes when acted on.
 
-## Deleted predecessors (historical context only)
+## Screen contract
 
-The SPA replaced these HTML-string renderers, which are NOT in the tree:
+Every screen reads `/api/*` through `ItotoriApiClient`, never an ad-hoc
+`fetch`. That keeps request/response validation, pagination, and the
+`loading | ready | empty | error` contract consistent across the app.
 
-- `apps/itotori/src/dashboard.ts` — the project / runtime / cost / decisions
-  workbench dashboard.
-- `apps/itotori/src/reviewer/detail-view.ts` — the reviewer detail page.
-- `apps/itotori/src/workspace/view.ts` — the workspace view.
+A screen that mutates localization data must make its durable effect explicit:
 
-Each React screen parity-ports the deleted renderer's layout + presentation
-formatters so the SPA keeps byte-for-byte number/label parity (the
-`apps/itotori/src/ui/format.ts` module is the centralised home for those
-formatters). The legacy error model the deleted `dashboard.ts` exposed
-(`DashboardApiError` / `DashboardApiErrorDetail` / `parseTypedApiError`) is
-mirrored by the typed client's `ApiClientError` and reuses the SAME
-`assertItotoriApiErrorResponse` guard the server uses, so the failure shape
-is the one the data layer already pins.
+- a target-text edit writes a result revision;
+- a factual, terminology, or scene correction writes canonical context;
+- a feedback batch starts a refinement run from a frozen base patch and context
+  heads;
+- a read-only evidence action does not claim to have changed localization data.
+
+QA findings, confidence, and contested checks remain readable in Play and
+Results. They inform the next revision or context change but do not suppress a
+written in-scope result or make an incomplete patch look complete.
 
 ## Patterns every downstream screen inherits
 
 1. **className-based styling, CSS ships separately.** Components render
-   semantic DOM with `itotori-*` classes; the visual truth lives in the DS
-   token set + co-located component CSS, shipped as one bundle
-   (`@itotori/ds/styles.css`). No CSS-in-JS, no CSS modules.
-2. **Type-safe API access through `useApiQuery`.** Never an ad-hoc `fetch`;
-   always the typed client. The discriminated `loading | ready | empty |
-error` states are the contract.
-3. **Status is a closed vocabulary → derived tone.** Pass the product status
-   to `<Badge status={…} />` / `statusTone(…)`; never pick a badge colour by
+   semantic DOM with `itotori-*` classes; visual truth lives in the DS token
+   set and co-located component CSS. No CSS-in-JS or CSS modules.
+2. **Type-safe API access through `useApiQuery`.** Never use an ad-hoc
+   `fetch`; let the typed client and discriminated state union narrow data and
+   errors.
+3. **Status is a closed vocabulary → derived tone.** Pass product status to
+   `<Badge status={…} />` or `statusTone(…)`; never choose a badge color by
    hand.
 4. **Tokens, never literals.** Reference `--ito-*` variables; never inline a
-   hex value.
-5. **Behaviour-first tests.** Render the screen with Testing Library, assert
-   the rendered DOM + real interactions, never component internals.
-6. **Redaction is a toggle, default-on.** Sensitive runtime-evidence
-   artifacts (any frame an `isSensitiveRuntimeEvidenceArtifact` rule
-   flags) are wrapped in `<RedactionFrame sensitive>`. The toggle is on by
-   default for committed/shared frames — `canReveal` (a capability /
-   permission, NOT a role) is the ONLY authority that unblurs the frame
-   locally, and `shareRedaction` ALWAYS forces the blur back on so an
-   exported screenshot can never leak a sensitive full-fidelity frame
-   (the `feedback_redaction_is_a_toggle` brief is the only authority).
-   `RedactionFrame` is the ds-side realization; screens never hand-roll
-   the blur.
-7. **Pagination is bound to the typed client.** Server-paginated surfaces
-   walk the api-schema `pagination` shape through `OffsetPager`
-   (`apps/itotori/src/api-client.ts`); the ds-side `Pagination` component
-   renders the prev/next pager the user sees. Disabled at bounds; the
-   prev/next buttons remain real `<button>`s so keyboard + screen-reader
-   users get focus + `aria-label` semantics, not div-arrows.
+   hex color.
+5. **Behaviour-first tests.** Render a screen with Testing Library and assert
+   observable DOM and interactions rather than component internals.
+6. **Redaction is a toggle, default-on.** Sensitive runtime evidence is
+   wrapped in `<RedactionFrame sensitive>`. `canReveal` is the
+   capability-gated local authority; share/export mode always restores the
+   blur.
+7. **Pagination is bound to the typed client.** Server-paginated surfaces use
+   the api-schema pagination shape through `OffsetPager`; the DS
+   `Pagination` component keeps real, accessible previous/next buttons at
+   bounds.

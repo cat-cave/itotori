@@ -24,7 +24,7 @@ export interface PanelProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
  *
  * Unknown HTML attributes (`data-*`, `aria-*`, `id`, …) are forwarded to the
  * root `<section>` so callers can stamp the panel with structured markers
- * (pane id / state / review-item-id, test ids, …) without a per-prop contract
+ * (pane id / state / entity id, test ids, …) without a per-prop contract
  * in `PanelProps`.
  */
 export function Panel({

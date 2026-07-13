@@ -31,7 +31,6 @@ import {
   localUserId,
   permissionValues,
   requirePermission,
-  reviewerQueueActionValues,
   type CandidateAssetRecord,
   type CatalogCompletenessPool,
   type CatalogConfidence,
@@ -93,25 +92,6 @@ import {
 } from "../src/api-schema.js";
 import { translateTextFixture } from "../src/asset-decisions/decision-fixtures.js";
 import {
-  fixtureAllAllowedPreview,
-  readyContextFixture,
-  reviewQueueDashboardFixtures,
-  reviewerBatchPreviewStatusValues,
-  type BatchPreviewItem,
-  type ReviewerBatchExecuteResult,
-  type ReviewerQueueDashboardReadModel,
-  type ReviewerSingleActionRequest,
-  type ReviewerSingleActionResult,
-} from "../src/reviewer/index.js";
-import {
-  workspaceAssetBrowseFixture,
-  workspaceComparisonFixture,
-  workspaceDeniedComparisonFixture,
-  workspaceProjectBrowseFixture,
-  workspaceSceneBrowseFixture,
-  workspaceSearchFixture,
-} from "../src/workspace/index.js";
-import {
   bmkCockpitFixture,
   bmkCockpitHistoryFixture,
   benchmarkReportFixture,
@@ -126,7 +106,6 @@ import {
   costReportFixture,
   dashboardDecisionsFixture,
   dashboardStatusFixture,
-  decisionEventFixture,
   findingRecordFixture,
   modelRoutingSettingsFixture,
   localizationRunConfigFixture,
@@ -189,7 +168,6 @@ type ApiMutationService =
   | { surface: "branchPolicy"; method: "loadSettings" | "saveSettings" }
   | { surface: "translationScope"; method: "loadSettings" | "saveSettings" }
   | { surface: "localizationRunConfig"; method: "saveRunConfig" }
-  | { surface: "sceneCoverage"; method: "setSceneCoverage" }
   | { surface: "wiki"; method: "edit" | "add" }
   | { surface: "manualFeedback"; method: "importManualFeedback" }
   | { surface: "playTesterResultRevision"; method: "editTarget" }
@@ -253,11 +231,6 @@ const readOnlyProjectWorkflowServices = new Set<keyof ItotoriApiServices["projec
 ]);
 
 const readOnlyPostApiRoutes = new Set([
-  "POST /api/reviewer/queue/batch-preview",
-  "POST /api/reviewer/queue/batch-confirm",
-  // ITOTORI-118 — the correction submit mutates via the workspace correction
-  // service (gated on queue.manage), not via a projectWorkflow call.
-  "POST /api/workspace/corrections",
   "POST /api/settings/security/sso",
   "POST /api/settings/model-routing",
   "POST /api/projects/:projectId/locale-branches/:localeBranchId/settings/branch-policy",
@@ -265,7 +238,6 @@ const readOnlyPostApiRoutes = new Set([
   "POST /api/auth/members/invitations/invitation-api/accept",
   "POST /api/auth/members/membership-api/remove",
   "POST /api/auth/principals/principal-api-member/sessions/session-api/revoke",
-  "POST /api/projects/:projectId/locale-branches/:localeBranchId/scene-coverage",
   "POST /api/projects/:projectId/locale-branches/:localeBranchId/flags",
 ]);
 
@@ -338,7 +310,7 @@ const saveLocalizationRunConfigRequestFixture = {
 const inviteMemberRequestFixture = {
   accountId: "account-local",
   email: "member@example.test",
-  initialPermissionSetIds: ["permission-set-account-local-reviewer"],
+  initialPermissionSetIds: ["permission-set-account-local-contributor"],
   expiresAt: "2026-07-09T00:00:00.000Z",
   reason: "onboarding",
   requestId: "req-api-invite",
@@ -395,14 +367,6 @@ const apiMutationPermissionMatrix = [
       finding: findingRecordFixture,
     }),
     "recordFinding",
-  ),
-  apiGate(
-    "decisionRecord",
-    post("/api/projects/project-1/decisions", {
-      localeBranchId: "locale-1",
-      event: decisionEventFixture,
-    }),
-    "recordDecision",
   ),
   apiGate(
     "benchmarkRecord",
@@ -541,7 +505,7 @@ const apiMutationPermissionMatrix = [
   apiGateForService(
     "permissionSetsRevoke",
     post(
-      "/api/auth/principals/principal-api-member/permission-sets/permission-set-account-local-reviewer/revoke",
+      "/api/auth/principals/principal-api-member/permission-sets/permission-set-account-local-contributor/revoke",
       { reason: null, requestId: null },
     ),
     { surface: "authPermissions", method: "revokePermissionSet" },
@@ -561,14 +525,6 @@ const apiMutationPermissionMatrix = [
       revokeAuthSessionRequestFixture,
     ),
     { surface: "authSessions", method: "revokePrincipalSession" },
-  ),
-  apiGateForService(
-    "setSceneCoverage",
-    post("/api/projects/project-1/locale-branches/locale-1/scene-coverage", {
-      sceneId: "scene-opening",
-      coverageState: "validated",
-    }),
-    { surface: "sceneCoverage", method: "setSceneCoverage" },
   ),
   apiGateForService(
     "playTargetEdit",
@@ -598,7 +554,6 @@ const apiMutationPermissionMatrix = [
     post("/api/projects/project-1/locale-branches/locale-1/flags", {
       note: "Line overflows the textbox.",
       severity: "warning",
-      targetLocale: "en-US",
       bridgeUnitId: "bridge-unit-1",
       category: "layout",
     }),
@@ -607,33 +562,13 @@ const apiMutationPermissionMatrix = [
 ] as const satisfies readonly ApiMutationPermissionCase[];
 
 describe("Itotori API handlers", () => {
-  it("reports the actual feedback correction outcome instead of inferring it from context status", async () => {
+  it("returns the durable canonical-correction receipt for a target-scoped flag", async () => {
     const services = serviceFixture();
     const request = post("/api/projects/project-1/locale-branches/locale-1/flags", {
       note: "The final line is clipped.",
       severity: "warning",
-      targetLocale: "en-US",
       bridgeUnitId: "bridge-unit-1",
       category: "layout",
-    });
-
-    vi.mocked(services.manualFeedback.importManualFeedback).mockResolvedValueOnce({
-      feedbackReportId: "feedback-report-api",
-      feedbackEvidenceId: "feedback-evidence-api",
-      feedbackSourceId: "feedback-source-api",
-      dedupeKey: "feedback:manual:api",
-      triageLabel: "objective_defect_candidate",
-      reportStatus: "open",
-      contextStatus: "contextualized",
-      reportCount: 1,
-      duplicate: false,
-      contextCorrection: null,
-    });
-    const noCorrection = await handleItotoriApiRequest(request, services);
-
-    expect(noCorrection).toMatchObject({
-      statusCode: 200,
-      body: { contextStatus: "contextualized", contextCorrectionEnqueued: false },
     });
 
     vi.mocked(services.manualFeedback.importManualFeedback).mockResolvedValueOnce({
@@ -652,8 +587,25 @@ describe("Itotori API handlers", () => {
 
     expect(scheduledCorrection).toMatchObject({
       statusCode: 200,
-      body: { contextCorrectionEnqueued: true },
+      body: { contextCorrectionId: "context-correction-api" },
     });
+  });
+
+  it("rejects a caller-owned flag target locale before importing feedback", async () => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      post("/api/projects/project-1/locale-branches/locale-1/flags", {
+        note: "The final line is clipped.",
+        severity: "warning",
+        bridgeUnitId: "bridge-unit-1",
+        targetLocale: "fr-FR",
+      }),
+      services,
+    );
+
+    expect(response).toMatchObject({ statusCode: 400, body: { code: "bad_request" } });
+    expect(services.manualFeedback.importManualFeedback).not.toHaveBeenCalled();
   });
 
   it("routes project and runtime status reads, gating project reads on catalog.read", async () => {
@@ -1163,378 +1115,6 @@ describe("Itotori API handlers", () => {
         })),
       }),
     ).toThrow(/uri must be redacted/u);
-  });
-
-  it("routes reviewer queue dashboard, detail, batch preview, and batch confirm through typed services", async () => {
-    const services = serviceFixture();
-    const batchBody = {
-      action: reviewerQueueActionValues.approve,
-      actorUserId: "reviewer-user",
-      selections: [
-        {
-          reviewItemId: "reviewer-queue-1",
-          expectedSourceRevisionId: "source-revision-1",
-        },
-      ],
-    };
-
-    const dashboard = await handleItotoriApiRequest(
-      {
-        method: "GET",
-        pathname: "/api/reviewer/queue",
-        search: "?localeBranchId=locale-1&actorUserId=reviewer-user",
-      },
-      services,
-    );
-    const detail = await handleItotoriApiRequest(
-      {
-        method: "GET",
-        pathname: "/api/reviewer/queue/reviewer-queue-1/detail",
-        search: "?actorUserId=reviewer-user",
-      },
-      services,
-    );
-    const preview = await handleItotoriApiRequest(
-      {
-        method: "POST",
-        pathname: "/api/reviewer/queue/batch-preview",
-        body: batchBody,
-      },
-      services,
-    );
-    const confirm = await handleItotoriApiRequest(
-      {
-        method: "POST",
-        pathname: "/api/reviewer/queue/batch-confirm",
-        body: batchBody,
-      },
-      services,
-    );
-
-    expect(dashboard.statusCode).toBe(200);
-    expect(dashboard.body).toMatchObject({
-      schemaVersion: "reviewer.queue_dashboard.v0.1",
-      localeBranchId: "locale-1",
-      aggregate: expect.objectContaining({
-        pending: 1,
-        resolved: 1,
-        deferred: 1,
-        escalated: 1,
-        batch_applied: 1,
-      }),
-    });
-    expect(detail.statusCode).toBe(200);
-    expect(detail.body).toMatchObject({
-      reviewItemId: "reviewer-queue-1",
-      permission: expect.objectContaining({
-        actorUserId: "reviewer-user",
-        canReadQueue: true,
-      }),
-    });
-    expect(preview.statusCode).toBe(200);
-    expect(preview.body).toMatchObject({
-      request: expect.objectContaining({
-        actorUserId: "reviewer-user",
-        selections: [
-          {
-            reviewItemId: "reviewer-queue-1",
-            expectedSourceRevisionId: "source-revision-1",
-          },
-        ],
-      }),
-    });
-    expect(confirm.statusCode).toBe(200);
-    expect(confirm.body).toMatchObject({
-      request: expect.objectContaining({ actorUserId: "reviewer-user" }),
-      appliedAll: true,
-      refusedAll: false,
-    });
-    expect(services.reviewerQueue.loadDashboard).toHaveBeenCalledWith(
-      expect.objectContaining({
-        localeBranchId: "locale-1",
-        permission: expect.objectContaining({ actorUserId: "reviewer-user" }),
-      }),
-    );
-    expect(services.reviewerQueue.loadDetailContext).toHaveBeenCalledTimes(1);
-    expect(services.reviewerQueue.previewBatch).toHaveBeenCalledTimes(1);
-    expect(services.reviewerQueue.executeBatch).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actor: { userId: "reviewer-user" },
-        request: batchBody,
-        permission: expect.objectContaining({
-          actorUserId: "reviewer-user",
-          canReadQueue: true,
-          canManageQueue: true,
-        }),
-      }),
-    );
-  });
-
-  it("returns a closed reviewer batch refusal when queue.manage is denied", async () => {
-    const services = serviceFixture();
-    vi.mocked(services.authorization.requirePermission).mockImplementation(async (permission) => {
-      if (permission === permissionValues.queueManage) {
-        throw new AuthorizationError({ userId: "missing-manage" }, permission);
-      }
-    });
-
-    const response = await handleItotoriApiRequest(
-      {
-        method: "POST",
-        pathname: "/api/reviewer/queue/batch-confirm",
-        body: {
-          action: reviewerQueueActionValues.approve,
-          actorUserId: "missing-manage",
-          selections: [
-            {
-              reviewItemId: "reviewer-queue-1",
-              expectedSourceRevisionId: "source-revision-1",
-            },
-          ],
-        },
-      },
-      services,
-    );
-
-    expect(response.statusCode).toBe(200);
-    expect(response.body).toMatchObject({
-      refusedAll: true,
-      appliedAll: false,
-      applied: [
-        expect.objectContaining({
-          kind: "refused",
-          status: reviewerBatchPreviewStatusValues.permissionDeniedManage,
-        }),
-      ],
-    });
-    expect(services.reviewerQueue.executeBatch).toHaveBeenCalledWith(
-      expect.objectContaining({
-        permission: expect.objectContaining({ canManageQueue: false }),
-      }),
-    );
-  });
-
-  it("routes a single-item reviewer action through the typed service and returns the new state", async () => {
-    const services = serviceFixture();
-    const response = await handleItotoriApiRequest(
-      {
-        method: "POST",
-        pathname: "/api/reviewer/queue/reviewer-queue-7/action",
-        body: {
-          action: reviewerQueueActionValues.approve,
-          actorUserId: "reviewer-user",
-          expectedSourceRevisionId: "source-revision-1",
-        },
-      },
-      services,
-    );
-
-    expect(response.statusCode).toBe(200);
-    expect(response.body).toMatchObject({
-      request: expect.objectContaining({
-        reviewItemId: "reviewer-queue-7",
-        action: reviewerQueueActionValues.approve,
-        actorUserId: "reviewer-user",
-      }),
-      applied: true,
-      refused: false,
-      outcome: expect.objectContaining({
-        kind: "applied",
-        reviewItemId: "reviewer-queue-7",
-        result: expect.objectContaining({
-          transition: expect.objectContaining({ nextState: "accepted" }),
-        }),
-      }),
-    });
-    // Reuses the batch route's actor-gating: the SAME resolved permission
-    // view (queue.read + queue.manage) flows into the single-item service.
-    expect(services.reviewerQueue.actionSingleItem).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actor: { userId: "reviewer-user" },
-        request: expect.objectContaining({
-          reviewItemId: "reviewer-queue-7",
-          action: reviewerQueueActionValues.approve,
-          expectedSourceRevisionId: "source-revision-1",
-        }),
-        permission: expect.objectContaining({
-          actorUserId: "reviewer-user",
-          canReadQueue: true,
-          canManageQueue: true,
-        }),
-      }),
-    );
-    expect(services.reviewerQueue.executeBatch).not.toHaveBeenCalled();
-  });
-
-  it("threads a reviewer-supplied defer reason through the single-item action body", async () => {
-    const services = serviceFixture();
-    const response = await handleItotoriApiRequest(
-      {
-        method: "POST",
-        pathname: "/api/reviewer/queue/reviewer-queue-7/action",
-        body: {
-          action: reviewerQueueActionValues.defer,
-          actorUserId: "reviewer-user",
-          expectedSourceRevisionId: "source-revision-1",
-          deferReason: "waiting on runtime evidence",
-        },
-      },
-      services,
-    );
-
-    expect(response.statusCode).toBe(200);
-    expect(services.reviewerQueue.actionSingleItem).toHaveBeenCalledWith(
-      expect.objectContaining({
-        request: expect.objectContaining({
-          action: reviewerQueueActionValues.defer,
-          deferReason: "waiting on runtime evidence",
-        }),
-      }),
-    );
-  });
-
-  it("maps a single-item action refused for queue.manage to a 403 forbidden", async () => {
-    const services = serviceFixture();
-    vi.mocked(services.reviewerQueue.actionSingleItem).mockResolvedValueOnce(
-      refusedSingleActionResult(
-        "reviewer-queue-7",
-        reviewerQueueActionValues.approve,
-        reviewerBatchPreviewStatusValues.permissionDeniedManage,
-        "user reviewer-user is missing permission queue.manage",
-      ),
-    );
-
-    const response = await handleItotoriApiRequest(
-      {
-        method: "POST",
-        pathname: "/api/reviewer/queue/reviewer-queue-7/action",
-        body: {
-          action: reviewerQueueActionValues.approve,
-          actorUserId: "reviewer-user",
-          expectedSourceRevisionId: "source-revision-1",
-        },
-      },
-      services,
-    );
-
-    expect(response.statusCode).toBe(403);
-    expect(response.body).toMatchObject({ code: "forbidden" });
-  });
-
-  it("maps a single-item action on an unknown item to a 404 not_found", async () => {
-    const services = serviceFixture();
-    vi.mocked(services.reviewerQueue.actionSingleItem).mockResolvedValueOnce(
-      refusedSingleActionResult(
-        "reviewer-queue-missing",
-        reviewerQueueActionValues.approve,
-        reviewerBatchPreviewStatusValues.notFound,
-        "reviewer queue item reviewer-queue-missing not found",
-      ),
-    );
-
-    const response = await handleItotoriApiRequest(
-      {
-        method: "POST",
-        pathname: "/api/reviewer/queue/reviewer-queue-missing/action",
-        body: {
-          action: reviewerQueueActionValues.approve,
-          actorUserId: "reviewer-user",
-          expectedSourceRevisionId: "source-revision-1",
-        },
-      },
-      services,
-    );
-
-    expect(response.statusCode).toBe(404);
-    expect(response.body).toMatchObject({ code: "not_found" });
-  });
-
-  it("maps an already-actioned single item (invalid transition) to a 400 bad_request", async () => {
-    const services = serviceFixture();
-    vi.mocked(services.reviewerQueue.actionSingleItem).mockResolvedValueOnce(
-      refusedSingleActionResult(
-        "reviewer-queue-7",
-        reviewerQueueActionValues.approve,
-        reviewerBatchPreviewStatusValues.invalidTransition,
-        "reviewer queue item reviewer-queue-7 is already accepted",
-      ),
-    );
-
-    const response = await handleItotoriApiRequest(
-      {
-        method: "POST",
-        pathname: "/api/reviewer/queue/reviewer-queue-7/action",
-        body: {
-          action: reviewerQueueActionValues.approve,
-          actorUserId: "reviewer-user",
-          expectedSourceRevisionId: "source-revision-1",
-        },
-      },
-      services,
-    );
-
-    expect(response.statusCode).toBe(400);
-    expect(response.body).toMatchObject({ code: "bad_request" });
-  });
-
-  it("rejects an unknown single-item action verb with a 400 bad_request", async () => {
-    const services = serviceFixture();
-    const response = await handleItotoriApiRequest(
-      {
-        method: "POST",
-        pathname: "/api/reviewer/queue/reviewer-queue-7/action",
-        body: {
-          action: "not_a_reviewer_action",
-          actorUserId: "reviewer-user",
-          expectedSourceRevisionId: "source-revision-1",
-        },
-      },
-      services,
-    );
-
-    expect(response.statusCode).toBe(400);
-    expect(response.body).toMatchObject({ code: "bad_request" });
-    expect(services.reviewerQueue.actionSingleItem).not.toHaveBeenCalled();
-  });
-
-  it("rejects a GET on the single-item action route with 405 method_not_allowed", async () => {
-    const services = serviceFixture();
-    const response = await handleItotoriApiRequest(
-      { method: "GET", pathname: "/api/reviewer/queue/reviewer-queue-7/action" },
-      services,
-    );
-
-    expect(response.statusCode).toBe(405);
-    expect(response.body).toMatchObject({ code: "method_not_allowed" });
-    expect(services.reviewerQueue.actionSingleItem).not.toHaveBeenCalled();
-  });
-
-  it("returns denied reviewer detail without calling the evidence-backed detail service", async () => {
-    const services = serviceFixture();
-    vi.mocked(services.authorization.requirePermission).mockImplementation(async (permission) => {
-      if (permission === permissionValues.queueRead) {
-        throw new AuthorizationError({ userId: "missing-read" }, permission);
-      }
-    });
-
-    const response = await handleItotoriApiRequest(
-      {
-        method: "GET",
-        pathname: "/api/reviewer/queue/reviewer-queue-denied/detail",
-        search: "?actorUserId=missing-read",
-      },
-      services,
-    );
-
-    expect(response.statusCode).toBe(200);
-    expect(response.body).toMatchObject({
-      reviewItemId: "reviewer-queue-denied",
-      permission: expect.objectContaining({
-        actorUserId: "missing-read",
-        canReadQueue: false,
-      }),
-    });
-    expect(services.reviewerQueue.loadDetailContext).not.toHaveBeenCalled();
   });
 
   it("passes the requested runtime run id to the runtime status read model", async () => {
@@ -3601,7 +3181,7 @@ describe("Itotori API handlers", () => {
     );
     const revoke = await handleItotoriApiRequest(
       post(
-        "/api/auth/principals/principal-api-member/permission-sets/permission-set-account-local-reviewer/revoke",
+        "/api/auth/principals/principal-api-member/permission-sets/permission-set-account-local-contributor/revoke",
         { reason: null, requestId: null },
       ),
       services,
@@ -3611,7 +3191,7 @@ describe("Itotori API handlers", () => {
       schemaVersion: "itotori.auth.permission-sets.v0",
       accountId: "account-local",
       permissionSets: [
-        { permissionSetId: "permission-set-account-local-reviewer", name: "Reviewer" },
+        { permissionSetId: "permission-set-account-local-contributor", name: "Contributor" },
         { permissionSetId: "permission-set-account-local-director", name: "Director" },
       ],
     });
@@ -3623,15 +3203,15 @@ describe("Itotori API handlers", () => {
       updatedMember: {
         principalId: "principal-api-member",
         permissionSetIds: [
+          "permission-set-account-local-contributor",
           "permission-set-account-local-director",
-          "permission-set-account-local-reviewer",
         ],
       },
     });
     expect(revoke.body).toMatchObject({
       schemaVersion: "itotori.auth.permission-set-grant.v0",
       principalId: "principal-api-member",
-      permissionSetId: "permission-set-account-local-reviewer",
+      permissionSetId: "permission-set-account-local-contributor",
       action: "revoked",
       updatedMember: { principalId: "principal-api-member", permissionSetIds: [] },
     });
@@ -3643,7 +3223,7 @@ describe("Itotori API handlers", () => {
     });
     expect(services.authPermissions.revokePermissionSet).toHaveBeenCalledWith({
       principalId: "principal-api-member",
-      permissionSetId: "permission-set-account-local-reviewer",
+      permissionSetId: "permission-set-account-local-contributor",
       request: { reason: null, requestId: null },
     });
   });
@@ -3932,22 +3512,6 @@ describe("Itotori API handlers", () => {
       expect(services.projectWorkflow.recordFinding).toHaveBeenCalledTimes(1);
     });
 
-    it("refuses a decision record against an unknown project", async () => {
-      const services = serviceFixture();
-
-      const response = await handleItotoriApiRequest(
-        post("/api/projects/project-not-owned/decisions", {
-          localeBranchId: "locale-1",
-          event: decisionEventFixture,
-        }),
-        services,
-      );
-
-      expect(response.statusCode).toBe(403);
-      expect(response.body).toMatchObject({ code: "forbidden" });
-      expect(services.projectWorkflow.recordDecision).not.toHaveBeenCalled();
-    });
-
     it("refuses a benchmark whose (real) branch is not owned by the project in the path", async () => {
       const services = serviceFixture();
 
@@ -4215,13 +3779,6 @@ describe("Itotori API handlers", () => {
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
-          "mutation": "decision record",
-          "requiredPermission": "runtime.ingest",
-          "route": "POST /api/projects/:projectId/decisions",
-          "successFixture": "api-handlers.test.ts decision record success fixture",
-        },
-        {
-          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "benchmark record",
           "requiredPermission": "runtime.ingest",
           "route": "POST /api/projects/:projectId/benchmarks",
@@ -4357,7 +3914,7 @@ describe("Itotori API handlers", () => {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "permission set revoke",
           "requiredPermission": "auth.permissions.manage",
-          "route": "POST /api/auth/principals/principal-api-member/permission-sets/permission-set-account-local-reviewer/revoke",
+          "route": "POST /api/auth/principals/principal-api-member/permission-sets/permission-set-account-local-contributor/revoke",
           "successFixture": "api-handlers.test.ts permission set revoke success fixture",
         },
         {
@@ -4373,13 +3930,6 @@ describe("Itotori API handlers", () => {
           "requiredPermission": "auth.sessions.manage",
           "route": "POST /api/auth/principals/principal-api-member/sessions/session-api/revoke",
           "successFixture": "api-handlers.test.ts sessions revoke success fixture",
-        },
-        {
-          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
-          "mutation": "set scene coverage",
-          "requiredPermission": "queue.manage",
-          "route": "POST /api/projects/:projectId/locale-branches/:localeBranchId/scene-coverage",
-          "successFixture": "api-handlers.test.ts set scene coverage success fixture",
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
@@ -5113,9 +4663,6 @@ function apiMutationServiceMock(services: ItotoriApiServices, service: ApiMutati
   if (service.surface === "authSessions") {
     return services.authSessions[service.method];
   }
-  if (service.surface === "sceneCoverage") {
-    return services.sceneCoverage[service.method];
-  }
   if (service.surface === "wiki") {
     return services.wiki[service.method];
   }
@@ -5137,11 +4684,6 @@ function apiMutationRouteId(request: ItotoriApiRequest): string {
   );
   if (request.method === "POST" && wikiEntryRoute !== null) {
     return "POST /api/projects/:projectId/locale-branches/:localeBranchId/wiki/:contextArtifactId";
-  }
-  const sceneCoverageRoute =
-    /^\/api\/projects\/[^/]+\/locale-branches\/[^/]+\/scene-coverage$/u.exec(request.pathname);
-  if (request.method === "POST" && sceneCoverageRoute !== null) {
-    return "POST /api/projects/:projectId/locale-branches/:localeBranchId/scene-coverage";
   }
   const flagRoute = /^\/api\/projects\/[^/]+\/locale-branches\/[^/]+\/flags$/u.exec(
     request.pathname,
@@ -5495,11 +5037,6 @@ function serviceFixture(): ItotoriApiServices {
         findingId: findingRecordFixture.findingId,
         status: "open" as const,
       })),
-      recordDecision: vi.fn(async () => ({
-        decisionId: decisionEventFixture.eventId,
-        eventKind: decisionEventFixture.eventKind,
-        recorded: true,
-      })),
       recordBenchmarkReport: vi.fn(async () => ({
         benchmarkRunId: benchmarkReportFixture.benchmarkRunId,
         artifactId: benchmarkReportFixture.benchmarkRunId,
@@ -5542,108 +5079,9 @@ function serviceFixture(): ItotoriApiServices {
       edit: vi.fn(async () => wikiEditFixture),
       add: vi.fn(async () => wikiEditFixture),
     },
-    reviewerQueue: {
-      loadDashboard: vi.fn(async ({ localeBranchId, permission }) => ({
-        ...reviewerQueueDashboardApiFixture(),
-        localeBranchId,
-        permission,
-      })),
-      loadDetailContext: vi.fn(async ({ reviewItemId, permission }) => ({
-        ...readyContextFixture(),
-        reviewItemId,
-        permission,
-      })),
-      previewBatch: vi.fn(async ({ request, permission }) => ({
-        request,
-        permission,
-        items: [],
-        aggregate: {
-          total: 0,
-          allowed: 0,
-          denied: 0,
-          stale: 0,
-          notFound: 0,
-          duplicate: 0,
-          runtimeEvidenceInvariant: 0,
-          invalidInput: 0,
-          invalidTransition: 0,
-          concurrentModification: 0,
-          permissionDeniedRead: 0,
-          permissionDeniedManage: 0,
-        },
-        allAllowed: false,
-        permissionDenied: !permission.canReadQueue,
-      })),
-      executeBatch: vi.fn(async ({ request, permission }) =>
-        makeApiBatchExecuteResult(request, permission),
-      ),
-      actionSingleItem: vi.fn(async ({ request, permission }) =>
-        makeApiSingleActionResult(request, permission),
-      ),
-    },
     assetDecisions: {
       loadActiveDecisions: vi.fn(async () => [assetDecisionApiFixture]),
       loadCandidateAssets: vi.fn(async () => [candidateAssetApiFixture]),
-    },
-    workspace: {
-      loadProjectBrowse: vi.fn(async ({ permission }) => ({
-        ...workspaceProjectBrowseFixture(),
-        permission,
-      })),
-      loadSceneBrowse: vi.fn(async ({ projectId, localeBranchId, permission }) => ({
-        ...workspaceSceneBrowseFixture(),
-        projectId,
-        localeBranchId,
-        permission,
-      })),
-      loadAssetBrowse: vi.fn(async ({ projectId, localeBranchId, permission }) => ({
-        ...workspaceAssetBrowseFixture(),
-        projectId,
-        localeBranchId,
-        permission,
-      })),
-      loadComparison: vi.fn(async ({ reviewItemId, permission }) =>
-        permission.canReadQueue
-          ? { ...workspaceComparisonFixture(), reviewItemId, permission }
-          : workspaceDeniedComparisonFixture(reviewItemId),
-      ),
-      loadSearch: vi.fn(
-        async ({ projectId, localeBranchId, query, mode, permission, canReadCatalog }) => {
-          const fixture = workspaceSearchFixture();
-          const results = canReadCatalog
-            ? [
-                ...fixture.results,
-                {
-                  resultKind: "run" as const,
-                  matchKind: "entity" as const,
-                  id: "run-draft-api-1",
-                  title: "draft scene greeting",
-                  subtitle: "succeeded · provider-fixture",
-                  targetPath: "/jobs?projectId=project-itotori-040&runId=run-draft-api-1",
-                  localeBranchId: fixture.localeBranchId,
-                  sourceArtifactId: "ledger-run-api-1",
-                  bridgeUnitRef: "draft-job-api-1",
-                  sourceRevisionId: null,
-                  sourceLocale: null,
-                  targetLocale: null,
-                  snippet: "provider-run-api-1",
-                  score: 0.5,
-                  matchRefId: "run-draft-api-1",
-                },
-              ]
-            : fixture.results;
-          return {
-            ...fixture,
-            projectId,
-            localeBranchId,
-            query,
-            mode: mode ?? "all",
-            permission,
-            results,
-            pagination: { ...fixture.pagination, total: results.length },
-          };
-        },
-      ),
     },
     playTesterResultRevision: {
       editTarget: vi.fn(async () => ({
@@ -5720,12 +5158,16 @@ function serviceFixture(): ItotoriApiServices {
         playSessionId: null,
         actorUserId: "local-user",
         eventKind: "comment",
-        body: null,
-        metadata: {},
+        body: "The API comment has a canonical scoped correction.",
+        metadata: {
+          contextCorrection: {
+            rerun: { state: "succeeded", jobStatus: "succeeded", error: null },
+          },
+        },
         resultRevisionId: null,
-        contextArtifactId: null,
-        contextEntryVersionId: null,
-        affectedBridgeUnitIds: [],
+        contextArtifactId: "context-artifact-api-comment",
+        contextEntryVersionId: "context-version-api-comment",
+        affectedBridgeUnitIds: ["bridge-unit-api-comment"],
         createdAt: new Date("2026-07-13T00:00:00.000Z"),
       })),
       refine: vi.fn(async () => ({
@@ -5751,43 +5193,6 @@ function serviceFixture(): ItotoriApiServices {
         },
       })),
     } as unknown as ItotoriApiServices["patchIteration"],
-    workspaceCorrections: {
-      loadPreview: vi.fn(async ({ localeBranchId, permission }) => ({
-        schemaVersion: "workspace.correction_preview.v0.1" as const,
-        generatedAt: new Date("2026-06-30T00:00:00Z"),
-        permission,
-        projectId: "project-1",
-        localeBranchId,
-        sourceBundleId: null,
-        targetLocale: "en-US",
-        units: [],
-        diagnostics: [],
-      })),
-      submitCorrections: vi.fn(async ({ localeBranchId, permission }) => ({
-        schemaVersion: "workspace.correction_submit.v0.1" as const,
-        generatedAt: new Date("2026-06-30T00:00:00Z"),
-        permission,
-        localeBranchId,
-        batchId: "workspace-correction-batch-test",
-        batchLabel: null,
-        submittedCount: permission.canManageQueue ? 1 : 0,
-        edits: [],
-        repairCandidateReportIds: [],
-        decisionQueueReportIds: [],
-        needsContextReportIds: [],
-        affectedBridgeUnitIds: [],
-        writebacks: [],
-        scheduledRerunJobIds: [],
-        diagnostics: permission.canManageQueue
-          ? []
-          : [
-              {
-                code: "workspace_correction_mutation_permission_denied" as const,
-                message: "Workspace correction blocked: queue.manage missing",
-              },
-            ],
-      })),
-    },
     benchmarkCockpit: {
       loadCockpit: vi.fn(async () => bmkCockpitFixture),
       loadHistory: vi.fn(async () => bmkCockpitHistoryFixture),
@@ -5876,7 +5281,7 @@ function serviceFixture(): ItotoriApiServices {
           principalId: "principal-api-member",
           email: "member@example.test",
           displayName: "API Member",
-          permissionSetIds: ["permission-set-account-local-reviewer"],
+          permissionSetIds: ["permission-set-account-local-contributor"],
           createdAt: new Date("2026-07-08T00:00:00.000Z"),
         },
       ]),
@@ -5898,7 +5303,7 @@ function serviceFixture(): ItotoriApiServices {
           principalId: input.principalId,
           email: input.email,
           displayName: input.displayName,
-          permissionSetIds: ["permission-set-account-local-reviewer"],
+          permissionSetIds: ["permission-set-account-local-contributor"],
           createdAt: new Date("2026-07-08T00:00:00.000Z"),
         }),
       ),
@@ -5909,7 +5314,7 @@ function serviceFixture(): ItotoriApiServices {
         principalId: "principal-api-member",
         email: "member@example.test",
         displayName: "API Member",
-        permissionSetIds: ["permission-set-account-local-reviewer"],
+        permissionSetIds: ["permission-set-account-local-contributor"],
         createdAt: new Date("2026-07-08T00:00:00.000Z"),
       })),
     },
@@ -5931,14 +5336,10 @@ function serviceFixture(): ItotoriApiServices {
     authPermissions: {
       listPermissionSets: vi.fn(async (accountId: string) => [
         {
-          permissionSetId: "permission-set-account-local-reviewer",
+          permissionSetId: "permission-set-account-local-contributor",
           accountId,
-          name: "Reviewer",
-          permissions: [
-            permissionValues.draftWrite,
-            permissionValues.queueManage,
-            permissionValues.queueRead,
-          ],
+          name: "Contributor",
+          permissions: [permissionValues.draftWrite, permissionValues.feedbackImport],
         },
         {
           permissionSetId: "permission-set-account-local-director",
@@ -5954,7 +5355,7 @@ function serviceFixture(): ItotoriApiServices {
         principalId,
         email: "member@example.test",
         displayName: "API Member",
-        permissionSetIds: ["permission-set-account-local-reviewer", permissionSetId].sort(),
+        permissionSetIds: ["permission-set-account-local-contributor", permissionSetId].sort(),
         createdAt: new Date("2026-07-08T00:00:00.000Z"),
       })),
       revokePermissionSet: vi.fn(async ({ principalId, permissionSetId }) => ({
@@ -5964,7 +5365,7 @@ function serviceFixture(): ItotoriApiServices {
         principalId,
         email: "member@example.test",
         displayName: "API Member",
-        permissionSetIds: ["permission-set-account-local-reviewer"].filter(
+        permissionSetIds: ["permission-set-account-local-contributor"].filter(
           (id) => id !== permissionSetId,
         ),
         createdAt: new Date("2026-07-08T00:00:00.000Z"),
@@ -6015,39 +5416,6 @@ function serviceFixture(): ItotoriApiServices {
         ],
       })),
     },
-    sceneCoverage: {
-      loadRouteMapCoverage: vi.fn(async ({ projectId, localeBranchId }) => ({
-        schemaVersion: "itotori.play.scene-coverage.v0" as const,
-        projectId,
-        localeBranchId,
-        generatedAt: "2026-07-08T00:00:00.000Z",
-        nodes: [
-          {
-            sceneId: "scene-opening",
-            label: "Opening",
-            coverageState: "needs_check" as const,
-            routeKey: "scene-opening",
-            routeMapId: "route-map-opening",
-          },
-        ],
-        edges: [],
-        counts: {
-          total: 1,
-          needsCheck: 1,
-          flagged: 0,
-          validated: 0,
-        },
-      })),
-      setSceneCoverage: vi.fn(async ({ projectId, localeBranchId, sceneId, coverageState }) => ({
-        schemaVersion: "itotori.play.set-scene-coverage.v0" as const,
-        projectId,
-        localeBranchId,
-        sceneId,
-        coverageState,
-        updatedAt: "2026-07-08T00:00:00.000Z",
-        updatedByUserId: "local-user",
-      })),
-    },
     playRouteMap: {
       loadRouteMap: vi.fn(async (input: { projectId: string; localeBranchId: string }) => ({
         schemaVersion: "itotori.play.route-map.v0" as const,
@@ -6070,444 +5438,11 @@ function serviceFixture(): ItotoriApiServices {
         contextStatus: "contextualized" as const,
         reportCount: 1,
         duplicate: false,
-        contextCorrection: null,
+        contextCorrection: { correctionId: "context-correction-api" } as ContextCorrectionResult,
       })),
     },
   };
 }
-
-function makeApiBatchExecuteResult(
-  request: Parameters<ItotoriApiServices["reviewerQueue"]["executeBatch"]>[0]["request"],
-  permission: Parameters<ItotoriApiServices["reviewerQueue"]["executeBatch"]>[0]["permission"],
-): ReviewerBatchExecuteResult {
-  const preview = {
-    ...fixtureAllAllowedPreview(),
-    request,
-    permission,
-    allAllowed: permission.canManageQueue,
-    permissionDenied: !permission.canReadQueue,
-  };
-  if (!permission.canManageQueue) {
-    const denialReason =
-      permission.denialReasons.find((reason) => reason.includes(permissionValues.queueManage)) ??
-      `user ${permission.actorUserId} is missing permission queue.manage`;
-    return {
-      request,
-      preview,
-      applied: request.selections.map((selection) => ({
-        kind: "refused" as const,
-        reviewItemId: selection.reviewItemId,
-        status: reviewerBatchPreviewStatusValues.permissionDeniedManage,
-        code: "reviewer_batch_skipped" as const,
-        message: denialReason,
-        diagnostics: [
-          {
-            code: "reviewer_batch_permission_denied_manage",
-            message: denialReason,
-          },
-        ],
-      })),
-      refusedAll: true,
-      appliedAll: false,
-    };
-  }
-  const item = fixtureAllAllowedPreview().items[0]?.item;
-  if (item === null || item === undefined) {
-    throw new Error("fixtureAllAllowedPreview must include an item");
-  }
-  return {
-    request,
-    preview,
-    applied: request.selections.map((selection) => ({
-      kind: "applied" as const,
-      reviewItemId: selection.reviewItemId,
-      result: {
-        item: { ...item, reviewItemId: selection.reviewItemId },
-        transition: {
-          transitionId: `transition-${selection.reviewItemId}`,
-          reviewItemId: selection.reviewItemId,
-          localeBranchId: item.localeBranchId,
-          sourceRevisionId: selection.expectedSourceRevisionId,
-          itemKind: item.itemKind,
-          action: request.action,
-          priorState: item.state,
-          nextState: "accepted",
-          actorUserId: request.actorUserId,
-          affectedArtifactIds: [],
-          diagnostics: [],
-          metadata: { batchActionId: "batch-action-api-test" },
-          createdAt: new Date("2026-01-01T00:00:00.000Z"),
-        },
-      },
-    })),
-    refusedAll: false,
-    appliedAll: true,
-  };
-}
-
-function makeApiSingleActionResult(
-  request: ReviewerSingleActionRequest,
-  permission: Parameters<ItotoriApiServices["reviewerQueue"]["executeBatch"]>[0]["permission"],
-): ReviewerSingleActionResult {
-  // Reuse the batch-of-one path so the mock mirrors what the real
-  // ReviewerQueueApiService.actionSingleItem returns.
-  const batch = makeApiBatchExecuteResult(
-    {
-      action: request.action,
-      actorUserId: request.actorUserId,
-      selections: [
-        {
-          reviewItemId: request.reviewItemId,
-          expectedSourceRevisionId: request.expectedSourceRevisionId,
-        },
-      ],
-    },
-    permission,
-  );
-  const outcome = batch.applied[0];
-  const templatePreview = fixtureAllAllowedPreview().items[0];
-  if (outcome === undefined || templatePreview === undefined) {
-    throw new Error("single action mock requires an outcome + preview template");
-  }
-  const preview: BatchPreviewItem = {
-    ...templatePreview,
-    reviewItemId: request.reviewItemId,
-    expectedSourceRevisionId: request.expectedSourceRevisionId,
-    action: request.action,
-  };
-  return {
-    request,
-    preview,
-    outcome,
-    applied: outcome.kind === "applied",
-    refused: outcome.kind === "refused",
-  };
-}
-
-function refusedSingleActionResult(
-  reviewItemId: string,
-  action: ReviewerSingleActionRequest["action"],
-  status: (typeof reviewerBatchPreviewStatusValues)[keyof typeof reviewerBatchPreviewStatusValues],
-  message: string,
-): ReviewerSingleActionResult {
-  const templatePreview = fixtureAllAllowedPreview().items[0];
-  if (templatePreview === undefined) {
-    throw new Error("single action refusal mock requires a preview template");
-  }
-  const preview: BatchPreviewItem = {
-    ...templatePreview,
-    reviewItemId,
-    action,
-    status,
-    item: null,
-    nextState: null,
-    consequences: [],
-    diagnostics: [{ code: "reviewer_single_action_refused", message }],
-    message,
-  };
-  return {
-    request: {
-      reviewItemId,
-      action: "approve",
-      actorUserId: "reviewer-user",
-      expectedSourceRevisionId: "source-revision-1",
-    },
-    preview,
-    outcome: {
-      kind: "refused",
-      reviewItemId,
-      status,
-      code: "reviewer_queue_item_invalid_transition",
-      message,
-      diagnostics: [{ code: "reviewer_single_action_refused", message }],
-    },
-    applied: false,
-    refused: true,
-  };
-}
-
-function reviewerQueueDashboardApiFixture(): ReviewerQueueDashboardReadModel {
-  const fixtures = reviewQueueDashboardFixtures();
-  const rows = fixtures.decisions.map((decision) => ({
-    reviewItemId: decision.item.reviewItemId,
-    projectId: decision.item.projectId,
-    localeBranchId: decision.item.localeBranchId,
-    sourceRevisionId: decision.item.sourceRevisionId,
-    itemKind: decision.item.itemKind,
-    sourceItemRef: decision.item.sourceItemRef,
-    summary: decision.item.summary,
-    priority: decision.item.priority,
-    state: decision.item.state,
-    dashboardState: decision.dashboardState,
-    lastAction: decision.lastAction,
-    batchActionId: decision.batchActionId,
-    findingId: decision.findingId,
-    decisionId: decision.decisionId,
-    detailPath: `/reviewer-queue/${encodeURIComponent(decision.item.reviewItemId)}`,
-    selectedForBatch: decision.dashboardState === "pending",
-    createdAt: decision.item.createdAt,
-    updatedAt: decision.item.updatedAt,
-    resolvedAt: decision.item.resolvedAt,
-  }));
-  return {
-    schemaVersion: "reviewer.queue_dashboard.v0.1",
-    localeBranchId: "locale-1",
-    generatedAt: new Date("2026-06-26T00:00:00Z"),
-    permission: {
-      actorUserId: "reviewer-user",
-      canReadQueue: true,
-      canManageQueue: true,
-      denialReasons: [],
-    },
-    pagination: {
-      total: rows.length,
-      limit: 100,
-      offset: 0,
-      page: 1,
-      pageCount: rows.length === 0 ? 0 : 1,
-      hasMore: false,
-      nextOffset: null,
-    },
-    rows,
-    aggregate: {
-      pending: rows.filter((row) => row.dashboardState === "pending").length,
-      resolved: rows.filter((row) => row.dashboardState === "resolved").length,
-      deferred: rows.filter((row) => row.dashboardState === "deferred").length,
-      escalated: rows.filter((row) => row.dashboardState === "escalated").length,
-      batch_applied: rows.filter((row) => row.dashboardState === "batch_applied").length,
-    },
-    defaultBatchRequest: {
-      action: reviewerQueueActionValues.approve,
-      actorUserId: "reviewer-user",
-      selections: rows
-        .filter((row) => row.selectedForBatch)
-        .map((row) => ({
-          reviewItemId: row.reviewItemId,
-          expectedSourceRevisionId: row.sourceRevisionId,
-        })),
-    },
-  };
-}
-
-describe("Itotori API handlers — localization workspace (ITOTORI-040)", () => {
-  it("serves the project browse, scene, asset, comparison, and search read-models through the API", async () => {
-    const services = serviceFixture();
-    const projects = await handleItotoriApiRequest(
-      { method: "GET", pathname: "/api/workspace/projects" },
-      services,
-    );
-    const scenes = await handleItotoriApiRequest(
-      {
-        method: "GET",
-        pathname: "/api/workspace/scenes",
-        search: "?projectId=project-itotori-040&localeBranchId=locale-branch-itotori-040",
-      },
-      services,
-    );
-    const assets = await handleItotoriApiRequest(
-      {
-        method: "GET",
-        pathname: "/api/workspace/assets",
-        search: "?projectId=project-itotori-040&localeBranchId=locale-branch-itotori-040",
-      },
-      services,
-    );
-    const comparison = await handleItotoriApiRequest(
-      {
-        method: "GET",
-        pathname: "/api/workspace/comparison",
-        search: "?reviewItemId=reviewer-queue-itotori-040",
-      },
-      services,
-    );
-    const search = await handleItotoriApiRequest(
-      {
-        method: "GET",
-        pathname: "/api/workspace/search",
-        search:
-          "?projectId=project-itotori-040&localeBranchId=locale-branch-itotori-040&query=世界&mode=all&limit=10&offset=20",
-      },
-      services,
-    );
-    expect(projects.statusCode).toBe(200);
-    expect(scenes.statusCode).toBe(200);
-    expect(assets.statusCode).toBe(200);
-    expect(comparison.statusCode).toBe(200);
-    expect(search.statusCode).toBe(200);
-    // The handler validated each body via assertItotoriApiResponse before
-    // returning it, so reaching 200 IS the read-through-API proof.
-    expect((scenes.body as { localeBranchId: string }).localeBranchId).toBe(
-      "locale-branch-itotori-040",
-    );
-    expect(services.workspace.loadComparison).toHaveBeenCalledWith(
-      expect.objectContaining({ reviewItemId: "reviewer-queue-itotori-040" }),
-    );
-    expect(services.workspace.loadSearch).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 10, offset: 20 }),
-    );
-  });
-
-  it("omits run-table results from workspace search for queue.read-only callers", async () => {
-    const services = serviceFixture();
-    vi.mocked(services.authorization.requirePermission).mockImplementation(async (permission) => {
-      if (permission === permissionValues.catalogRead) {
-        throw new AuthorizationError({ userId: "api-user-without-catalog-read" }, permission);
-      }
-    });
-
-    const response = await handleItotoriApiRequest(
-      {
-        method: "GET",
-        pathname: "/api/workspace/search",
-        search:
-          "?projectId=project-itotori-040&localeBranchId=locale-branch-itotori-040&query=%E4%B8%96%E7%95%8C&mode=all",
-      },
-      services,
-    );
-
-    expect(response.statusCode).toBe(200);
-    expect(services.workspace.loadSearch).toHaveBeenCalledWith(
-      expect.objectContaining({
-        canReadCatalog: false,
-        permission: expect.objectContaining({ canReadQueue: true }),
-      }),
-    );
-    const serialized = JSON.stringify(response.body);
-    expect(serialized).toContain("search-document-itotori-040");
-    expect(serialized).not.toContain("provider-run-api-1");
-    expect(serialized).not.toContain("run-draft-api-1");
-  });
-
-  it("rejects unknown query params and missing branch scope", async () => {
-    const services = serviceFixture();
-    const missingScope = await handleItotoriApiRequest(
-      { method: "GET", pathname: "/api/workspace/scenes" },
-      services,
-    );
-    const unknownParam = await handleItotoriApiRequest(
-      {
-        method: "GET",
-        pathname: "/api/workspace/search",
-        search: "?projectId=p1&localeBranchId=b1&query=x&bogus=1",
-      },
-      services,
-    );
-    expect(missingScope.statusCode).toBe(400);
-    expect(unknownParam.statusCode).toBe(400);
-  });
-
-  it("405s a non-GET workspace request", async () => {
-    const services = serviceFixture();
-    const response = await handleItotoriApiRequest(
-      { method: "POST", pathname: "/api/workspace/projects", body: {} },
-      services,
-    );
-    expect(response.statusCode).toBe(405);
-  });
-
-  it("returns a denied comparison read-model when queue.read is missing", async () => {
-    const services = serviceFixture();
-    (services.authorization.requirePermission as ReturnType<typeof vi.fn>).mockImplementation(
-      async () => {
-        throw new AuthorizationError({ userId: "unauthorized-user" }, permissionValues.queueRead);
-      },
-    );
-    const response = await handleItotoriApiRequest(
-      {
-        method: "GET",
-        pathname: "/api/workspace/comparison",
-        search: "?reviewItemId=reviewer-queue-itotori-040&actorUserId=unauthorized-user",
-      },
-      services,
-    );
-    expect(response.statusCode).toBe(200);
-    expect((response.body as { cells: unknown[] }).cells).toHaveLength(0);
-    expect(
-      (response.body as { permission: { canReadQueue: boolean } }).permission.canReadQueue,
-    ).toBe(false);
-  });
-});
-
-describe("Itotori API handlers — workspace manual corrections (ITOTORI-118)", () => {
-  const submitBody = {
-    projectId: "project-1",
-    localeBranchId: "branch-1",
-    sourceBundleId: "bundle-1",
-    targetLocale: "en-US",
-    actorUserId: "reviewer-1",
-    corrections: [
-      {
-        bridgeUnitId: "unit-a",
-        sourceRevisionId: "rev-1",
-        severity: "warning",
-        scope: { kind: "line" },
-        reason: "Typo fix",
-        correctedText: "The hero.",
-      },
-    ],
-  };
-
-  it("GET preview reads through the API gated on queue.read", async () => {
-    const services = serviceFixture();
-    const response = await handleItotoriApiRequest(
-      {
-        method: "GET",
-        pathname: "/api/workspace/corrections",
-        search: "?localeBranchId=branch-1&reviewItemIds=item-1,item-2",
-      },
-      services,
-    );
-    expect(response.statusCode).toBe(200);
-    expect((response.body as { schemaVersion: string }).schemaVersion).toBe(
-      "workspace.correction_preview.v0.1",
-    );
-    expect(services.workspaceCorrections.loadPreview).toHaveBeenCalledWith(
-      expect.objectContaining({ localeBranchId: "branch-1", reviewItemIds: ["item-1", "item-2"] }),
-    );
-  });
-
-  it("POST submit records corrections through the API when queue.manage is held", async () => {
-    const services = serviceFixture();
-    const response = await handleItotoriApiRequest(
-      { method: "POST", pathname: "/api/workspace/corrections", body: submitBody },
-      services,
-    );
-    expect(response.statusCode).toBe(200);
-    expect((response.body as { submittedCount: number }).submittedCount).toBe(1);
-    expect(services.workspaceCorrections.submitCorrections).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: "project-1", localeBranchId: "branch-1" }),
-    );
-  });
-
-  it("POST submit is refused (no mutation) when queue.manage is missing", async () => {
-    const services = serviceFixture();
-    (services.authorization.requirePermission as ReturnType<typeof vi.fn>).mockImplementation(
-      async (permission) => {
-        if (permission === permissionValues.queueManage) {
-          throw new AuthorizationError({ userId: "reviewer-1" }, permissionValues.queueManage);
-        }
-      },
-    );
-    const response = await handleItotoriApiRequest(
-      { method: "POST", pathname: "/api/workspace/corrections", body: submitBody },
-      services,
-    );
-    expect(response.statusCode).toBe(200);
-    expect((response.body as { submittedCount: number }).submittedCount).toBe(0);
-    expect(
-      (response.body as { diagnostics: Array<{ code: string }> }).diagnostics.map((d) => d.code),
-    ).toContain("workspace_correction_mutation_permission_denied");
-  });
-
-  it("405s an unsupported method on the corrections route", async () => {
-    const services = serviceFixture();
-    const response = await handleItotoriApiRequest(
-      { method: "DELETE", pathname: "/api/workspace/corrections" },
-      services,
-    );
-    expect(response.statusCode).toBe(405);
-  });
-});
 
 describe("Itotori API handlers — play target revision delivery", () => {
   it("accepts a target-only edit, binds the parent path identity, and returns the selected child", async () => {
@@ -6676,13 +5611,6 @@ describe("Itotori API handlers — play target revision delivery", () => {
 });
 
 describe("ITOTORI-043 read-only API service factory (least-privilege query surface)", () => {
-  const permissionFixture = {
-    actorUserId: "reader-1",
-    canReadQueue: true,
-    canManageQueue: true,
-    denialReasons: [] as string[],
-  };
-
   // Every mutation method that MUST NOT be reachable through the read-only
   // surface, keyed by the shared service that owns it.
   const excludedMutations: Array<{ service: string; methods: string[] }> = [
@@ -6692,13 +5620,10 @@ describe("ITOTORI-043 read-only API service factory (least-privilege query surfa
         "importBridge",
         "draftProject",
         "recordFinding",
-        "recordDecision",
         "recordBenchmarkReport",
         "ingestRuntimeReport",
       ],
     },
-    { service: "reviewerQueue", methods: ["previewBatch", "executeBatch", "actionSingleItem"] },
-    { service: "workspaceCorrections", methods: ["submitCorrections"] },
   ];
 
   it("projects the full services onto a surface carrying NO mutation methods at runtime", () => {
@@ -6722,19 +5647,6 @@ describe("ITOTORI-043 read-only API service factory (least-privilege query surfa
     expect(await readOnly.projectWorkflow.getDashboardStatus()).toBe(dashboardStatusFixture);
     expect(full.projectWorkflow.getDashboardStatus).toHaveBeenCalledTimes(1);
 
-    await readOnly.reviewerQueue.loadDetailContext({
-      reviewItemId: "review-1",
-      permission: permissionFixture,
-    });
-    expect(full.reviewerQueue.loadDetailContext).toHaveBeenCalledTimes(1);
-
-    await readOnly.workspaceCorrections.loadPreview({
-      localeBranchId: "branch-1",
-      reviewItemIds: [],
-      permission: permissionFixture,
-    });
-    expect(full.workspaceCorrections.loadPreview).toHaveBeenCalledTimes(1);
-
     await readOnly.catalogRepository.catalogConflictReview();
     expect(full.catalogRepository.catalogConflictReview).toHaveBeenCalledTimes(1);
 
@@ -6757,9 +5669,6 @@ describe("ITOTORI-043 read-only API service factory (least-privilege query surfa
     const readOnly = readOnlyApiServices(serviceFixture());
     // @ts-expect-error draftProject is a mutation excluded from the read-only surface
     void readOnly.projectWorkflow.draftProject;
-    // @ts-expect-error executeBatch is a mutation excluded from the read-only surface
-    void readOnly.reviewerQueue.executeBatch;
-    expect(readOnly.workspace).toBeDefined();
   });
 
   it.skipIf(!process.env.DATABASE_URL)(

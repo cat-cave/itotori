@@ -18,9 +18,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  API_CONTRACT_FORMAT_STABILITY,
   BRIDGE_FORMAT_STABILITY,
-  DB_SCHEMA_FORMAT_STABILITY,
   FORMAT_STABILITY_TIERS,
   type FormatStabilityDeclaration,
   FormatVersionMismatchError,

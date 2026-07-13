@@ -3,16 +3,14 @@
 // Proves the driven executor turns the at-scale plumbing proof into a REAL
 // driven pilot: it ENUMERATES the in-scope units (consuming the batch
 // planner's scene grouping), runs `runAgenticLoopForUnit` PER unit WITH the
-// real structure-informed context (narrativeStructure + sceneId, P0#1) AND the
-// reviewer-queue DB sink wired (P0#2), PERSISTS written outcomes + provider-run
-// summaries (real usage.cost + ZDR) + reviewer_queue_items, and produces ONE
-// patch export only after configured-scope coverage is complete. Per-unit failure isolation: one unit's
-// malformed-pack failure (the filed P2) does NOT abort the run.
+// real structure-informed context (narrativeStructure + sceneId, P0#1),
+// persists written outcomes + provider-run summaries (real usage.cost + ZDR),
+// and produces ONE patch export only after configured-scope coverage is
+// complete. Per-unit failure isolation: one unit's malformed-pack failure (the
+// filed P2) does NOT abort the run.
 //
-// Driven with a FakeModelProvider + in-memory sinks + an in-memory
-// reviewer-queue repository — no live LLM, no Postgres. The DB-backed
-// createItem path is exercised by the reviewer-queue repository tests under
-// `ci-itotori`; the LIVE (real ZDR OpenRouter) proof is the env-gated pilot.
+// Driven with a FakeModelProvider + in-memory sinks — no live LLM or Postgres.
+// The LIVE (real ZDR OpenRouter) proof is the env-gated pilot.
 
 import { readFileSync, mkdtempSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,21 +27,15 @@ import {
 } from "@itotori/localization-bridge-schema";
 import {
   ItotoriLocalizationJournalRepository,
-  ItotoriReviewerQueueRepository,
-  ReviewerQueueRepositoryError,
   bootstrapLocalUser,
   createDatabaseContext,
   databaseUrlFromEnv,
   localUserId,
   migrate,
-  reviewerQueueItemStateValues,
   type AuthorizationActor,
   type ContextArtifactInvalidationResult,
-  type CreateReviewerQueueItemInput,
   type DatabaseContext,
   type InvalidateContextArtifactsInput,
-  type ItotoriReviewerQueueRepositoryPort,
-  type ReviewerQueueItemRecord,
 } from "@itotori/db";
 import {
   DEV_POLICY,
@@ -111,69 +103,7 @@ const SCENE_ID = 6010;
 const SPEAKER_NAME = "和人";
 
 const POISON_MARKER = "POISON_MALFORMED_PACK";
-const DEFER_MARKER = "DEFER_CRITICAL";
-
-// --- In-memory reviewer queue (same unique key as the real table) -----------
-
-class InMemoryReviewerQueue implements Pick<
-  ItotoriReviewerQueueRepositoryPort,
-  "createItem" | "loadItemsByBranch"
-> {
-  readonly items: ReviewerQueueItemRecord[] = [];
-  private seq = 0;
-
-  async createItem(
-    _actor: AuthorizationActor,
-    input: CreateReviewerQueueItemInput,
-  ): Promise<ReviewerQueueItemRecord> {
-    const clash = this.items.some(
-      (item) =>
-        item.localeBranchId === input.localeBranchId &&
-        item.sourceRevisionId === input.sourceRevisionId &&
-        item.itemKind === input.itemKind &&
-        item.sourceItemRef === input.sourceItemRef,
-    );
-    if (clash) {
-      throw new ReviewerQueueRepositoryError(
-        "reviewer_queue_item_duplicate",
-        `duplicate ${input.sourceItemRef}`,
-      );
-    }
-    this.seq += 1;
-    const createdAt = input.createdAt ?? new Date();
-    const record: ReviewerQueueItemRecord = {
-      reviewItemId: `driven-inmem-${this.seq}`,
-      projectId: input.projectId,
-      localeBranchId: input.localeBranchId,
-      sourceRevisionId: input.sourceRevisionId,
-      itemKind: input.itemKind,
-      sourceItemRef: input.sourceItemRef,
-      state: reviewerQueueItemStateValues.pending,
-      priority: input.priority ?? 0,
-      summary: input.summary,
-      affectedArtifactIds: input.affectedArtifactIds ?? [],
-      evidenceTier: input.evidenceTier ?? null,
-      observationEventIds: input.observationEventIds ?? null,
-      artifactHashes: input.artifactHashes ?? null,
-      payload: input.payload ?? {},
-      metadata: input.metadata ?? {},
-      createdByUserId: input.createdByUserId ?? null,
-      assignedToUserId: input.assignedToUserId ?? null,
-      createdAt,
-      updatedAt: createdAt,
-      resolvedAt: null,
-    };
-    this.items.push(record);
-    return record;
-  }
-
-  async loadItemsByBranch(
-    _actor: AuthorizationActor,
-    localeBranchId: string,
-  ): Promise<ReviewerQueueItemRecord[]> {
-    return this.items.filter((item) => item.localeBranchId === localeBranchId);
-  }
-}
+const CRITICAL_QA_MARKER = "CRITICAL_QA";
 
 // --- In-memory persistence sinks --------------------------------------------
 
@@ -283,7 +213,7 @@ function makeUnit(
 function makeBridge(): BridgeBundleV02 {
   const units: LocalizationUnitV02[] = [
     makeUnit(UNIT_A, "おはよう、和人。", "dialogue", 1),
-    makeUnit(UNIT_B, `今日は${DEFER_MARKER}だね。`, "dialogue", 2),
+    makeUnit(UNIT_B, `今日は${CRITICAL_QA_MARKER}だね。`, "dialogue", 2),
     makeUnit(UNIT_C, "いい天気だね。", "dialogue", 3),
     makeUnit(UNIT_D, `これは${POISON_MARKER}。`, "dialogue", 4),
     makeUnit(UNIT_E, "設定", "ui_label", 5),
@@ -367,7 +297,7 @@ function cleanQaContent(): string {
  * Fake provider factory. Keyed on the CURRENT unit's source markers:
  *   - a unit carrying POISON_MARKER emits a malformed translation pack (wrong
  *     schemaVersion) so the translation agent throws — the P2 shape.
- *   - a unit carrying DEFER_MARKER emits a critical QA finding. With zero
+ *   - a unit carrying CRITICAL_QA_MARKER emits a critical QA finding. With zero
  *     repair budget it remains a written primary candidate plus annotations.
  *   - every other unit translates cleanly into a written outcome.
  */
@@ -393,7 +323,7 @@ function drivenProviderFactory(): AgenticLoopProviderFactory {
           return translationContent(bridgeUnitIdOf(request));
         }
         if (request.taskKind === "llm_qa") {
-          if (blob.includes(DEFER_MARKER)) {
+          if (blob.includes(CRITICAL_QA_MARKER)) {
             return criticalQaContent(bridgeUnitIdOf(request));
           }
           return cleanQaContent();
@@ -433,7 +363,7 @@ function promptCapturingProviderFactory(
     });
 }
 
-function baseInput(queue?: InMemoryReviewerQueue, sinks?: InMemorySinks) {
+function baseInput(sinks?: InMemorySinks) {
   const bridge = makeBridge();
   const structure = makeStructure();
   const resolveUnitContext = (): DrivenUnitContext => ({
@@ -455,7 +385,6 @@ function baseInput(queue?: InMemoryReviewerQueue, sinks?: InMemorySinks) {
     translationScope: "dialogue-only" as const,
     engineProfile: "reallive" as const,
     sinks: sinks ?? new InMemorySinks(),
-    ...(queue !== undefined ? { reviewerQueue: { repository: queue } } : {}),
   };
 }
 
@@ -530,9 +459,8 @@ describe("synthesiseDrivenTranslatedBridge (written-body coverage)", () => {
 
 describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () => {
   it("persists written progress and pauses without a partial patch at the retry ceiling", async () => {
-    const queue = new InMemoryReviewerQueue();
     const sinks = new InMemorySinks();
-    const result = await runProjectDrivenExecutor(baseInput(queue, sinks));
+    const result = await runProjectDrivenExecutor(baseInput(sinks));
 
     // Enumeration: 5 units total, 4 in scope (UNIT_E ui_label excluded).
     expect(result.unitsEnumerated).toBe(5);
@@ -548,7 +476,7 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
 
     // Every successfully returned loop bundle persists one required selected
     // body. UNIT_B's critical QA finding is annotation only, never a missing
-    // draft/deferred state.
+    // draft state.
     expect(result.writtenOutcomesPersisted).toBe(3);
     expect(result.writtenOutcomeCount).toBe(3);
     expect(result.journalUnitsPersisted).toBe(3);
@@ -613,10 +541,6 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     });
     expect(result.zdrConfirmed).toBe(true);
 
-    // The legacy queue is not a write gate; its contents do not affect the
-    // required bodies above.
-    expect(result.reviewerQueueItemCount).toBe(queue.items.length);
-
     // UNIT_D paused operationally. Do not fabricate source text for that
     // in-scope unit or emit a partial patch.
     expect(result.patchReport.coverageComplete).toBe(false);
@@ -628,9 +552,8 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
   });
 
   it("supports a bounded slice via maxUnits (whole-game capable, pilot-bounded)", async () => {
-    const queue = new InMemoryReviewerQueue();
     const sinks = new InMemorySinks();
-    const result = await runProjectDrivenExecutor({ ...baseInput(queue, sinks), maxUnits: 2 });
+    const result = await runProjectDrivenExecutor({ ...baseInput(sinks), maxUnits: 2 });
     // Only the first 2 in-scope units (A, B) run; the poison D is never reached.
     expect(result.unitsRun).toBe(2);
     expect(result.failures).toHaveLength(0);
@@ -640,11 +563,9 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     expect(result.patchExportCount).toBe(0);
   });
 
-  it("threads real context per unit: without a wired queue nothing is bridged", async () => {
+  it("threads resolved context per unit while persisting written outcomes", async () => {
     const sinks = new InMemorySinks();
-    const result = await runProjectDrivenExecutor(baseInput(undefined, sinks));
-    // No sink -> no queue items counted; written outcomes + attempts still persist.
-    expect(result.reviewerQueueItemCount).toBe(0);
+    const result = await runProjectDrivenExecutor(baseInput(sinks));
     expect(result.writtenOutcomesPersisted).toBe(3);
     expect(result.journalUnitsPersisted).toBe(3);
     expect(result.attemptsPersisted).toBeGreaterThan(3);
@@ -665,7 +586,7 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     }
 
     const result = await runProjectDrivenExecutor({
-      ...baseInput(undefined, sinks),
+      ...baseInput(sinks),
       providerFactory: promptCapturingProviderFactory(promptsByUnit, semanticPrompts),
       maxUnits: 1,
     });
@@ -680,7 +601,7 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
 
   it("a run over units WITHOUT any structure still drives + persists (synthetic path)", async () => {
     const sinks = new InMemorySinks();
-    const input = baseInput(undefined, sinks);
+    const input = baseInput(sinks);
     const result = await runProjectDrivenExecutor({
       ...input,
       resolveUnitContext: () => undefined,
@@ -695,7 +616,7 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
   it("pauses malformed structure context as an itotori bug without a terminal unit failure", async () => {
     const sinks = new InMemorySinks();
     const result = await runProjectDrivenExecutor({
-      ...baseInput(undefined, sinks),
+      ...baseInput(sinks),
       maxUnits: 1,
       resolveUnitContext: (): DrivenUnitContext =>
         ({ narrativeStructure: makeStructure() }) as unknown as DrivenUnitContext,
@@ -799,7 +720,7 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     };
 
     const result = await runProjectDrivenExecutor({
-      ...baseInput(undefined, sinks),
+      ...baseInput(sinks),
       providerFactory: promptCapturingProviderFactory(promptsByUnit),
       maxUnits: 3,
       styleGuide,
@@ -953,7 +874,7 @@ class InstrumentedProvider implements ModelProvider {
   }
 }
 
-function deferred(): { promise: Promise<void>; resolve(): void } {
+function signal(): { promise: Promise<void>; resolve(): void } {
   let resolve!: () => void;
   const promise = new Promise<void>((resolvePromise) => {
     resolve = resolvePromise;
@@ -1005,7 +926,7 @@ function drivenGenerate(agentLabel: string, request: ModelInvocationRequest): st
     return translationContent(bridgeUnitId, `Concurrent target ${bridgeUnitId.slice(-4)}`);
   }
   if (request.taskKind === "llm_qa") {
-    if (blob.includes(DEFER_MARKER)) {
+    if (blob.includes(CRITICAL_QA_MARKER)) {
       return criticalQaContent(bridgeUnitIdOf(request));
     }
     return cleanQaContent();
@@ -1052,7 +973,7 @@ function makeManyUnitBridge(
     if (markers?.poisonAt === i) {
       sourceText = `これは${POISON_MARKER}。${i}`;
     } else if (markers?.deferAt === i) {
-      sourceText = `今日は${DEFER_MARKER}だね。${i}`;
+      sourceText = `今日は${CRITICAL_QA_MARKER}だね。${i}`;
     }
     units.push(makeUnit(id, sourceText, "dialogue", i + 1));
     orderedInScopeIds.push(id);
@@ -1070,7 +991,6 @@ function concurrencyBaseInput(args: {
   bridge: BridgeBundleV02;
   factory: AgenticLoopProviderFactory;
   sinks: InMemorySinks;
-  queue?: InMemoryReviewerQueue;
 }) {
   const structure = makeStructure();
   return {
@@ -1091,7 +1011,6 @@ function concurrencyBaseInput(args: {
     translationScope: "dialogue-only" as const,
     engineProfile: "reallive" as const,
     sinks: args.sinks,
-    ...(args.queue !== undefined ? { reviewerQueue: { repository: args.queue } } : {}),
   };
 }
 
@@ -1340,9 +1259,9 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     if (slowUnitId === undefined || fastUnitId === undefined) {
       throw new Error("incremental-persistence fixture requires two units");
     }
-    const slowTranslationEntered = deferred();
-    const releaseSlowTranslation = deferred();
-    const fastUnitPersisted = deferred();
+    const slowTranslationEntered = signal();
+    const releaseSlowTranslation = signal();
+    const fastUnitPersisted = signal();
     const sinks = new InMemorySinks();
     const persistUnitJournal = sinks.journal.persistUnitJournal;
     sinks.journal.persistUnitJournal = async (record): Promise<void> => {
@@ -1426,14 +1345,12 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     }> => {
       const meter = new ConcurrencyMeter();
       const sinks = new InMemorySinks();
-      const queue = new InMemoryReviewerQueue();
       const { bridge, orderedInScopeIds } = makeManyUnitBridge(UNIT_COUNT, markers);
       const result = await runProjectDrivenExecutor({
         ...concurrencyBaseInput({
           bridge,
           factory: instrumentedFactory({ meter, delayMs: 6 }),
           sinks,
-          queue,
         }),
         concurrency: 4,
       });
@@ -1529,16 +1446,15 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
 
 // ---------------------------------------------------------------------------
 // LIVE bounded-slice pilot — real ZDR OpenRouter DEV_PAIR, budget-capped, and
-// PERSISTED TO REAL STORAGE (Postgres attempt/outcome journal + reviewer_queue
-// + on-disk patch export).
+// PERSISTED TO REAL STORAGE (Postgres attempt/outcome journal + on-disk patch
+// export).
 //
 // Drives a BOUNDED set of REAL Sweetie Rin-route units (built from the decoded
 // narrative structure's real per-scene message stream, held out-of-repo)
 // through the executor with the REAL OpenRouter provider + the CONCRETE DB/fs
 // sinks. Post-run it QUERIES Postgres to prove N outcome rows + every physical
-// attempt + reviewer_queue rows landed, ≥1 patch export written, real
-// usage.cost in (0, $3], zdr:true on every call. Env-gated so CI never
-// charges/needs a DB.
+// attempt landed, ≥1 patch export written, real usage.cost in (0, $3],
+// zdr:true on every call. Env-gated so CI never charges/needs a DB.
 // ---------------------------------------------------------------------------
 
 const LIVE_ENABLED =
@@ -1605,12 +1521,6 @@ function makeLiveUnit(
 
 async function seedLiveProjectScope(pool: DatabaseContext["pool"]): Promise<void> {
   await pool.query("delete from itotori_localization_journal_runs where project_id = $1", [
-    LIVE_PROJECT_ID,
-  ]);
-  await pool.query("delete from itotori_reviewer_queue_transitions where locale_branch_id = $1", [
-    LIVE_LOCALE_BRANCH_ID,
-  ]);
-  await pool.query("delete from itotori_reviewer_queue_items where project_id = $1", [
     LIVE_PROJECT_ID,
   ]);
   await pool.query("delete from itotori_projects where project_id = $1", [LIVE_PROJECT_ID]);
@@ -1708,7 +1618,6 @@ describe("runProjectDrivenExecutor (live bounded-slice pilot, real DB + fs)", ()
       } as unknown as BridgeBundleV02;
 
       const journalRepo = new ItotoriLocalizationJournalRepository(context.db);
-      const reviewerQueueRepo = new ItotoriReviewerQueueRepository(context.db);
       const journal = new DrivenJournalPersistenceAdapter(journalRepo, { actor: liveActor });
       const runDir = mkdtempSync(join(tmpdir(), "itotori-driven-live-patch-"));
       const patchSink = new FsDrivenPatchExportSink(runDir);
@@ -1729,7 +1638,6 @@ describe("runProjectDrivenExecutor (live bounded-slice pilot, real DB + fs)", ()
         sourceRevisionId: LIVE_REVISION_ID,
         actor: liveActor,
         providerFactory: () => provider,
-        reviewerQueue: { repository: reviewerQueueRepo },
         resolveUnitContext: () => ({ narrativeStructure: structure, sceneId }),
         translationScope: "dialogue-only",
         engineProfile: "reallive",
@@ -1752,17 +1660,11 @@ describe("runProjectDrivenExecutor (live bounded-slice pilot, real DB + fs)", ()
         liveActor,
         result.journalRunId,
       );
-      const queueRows = await context.pool.query(
-        "select count(*)::int as n from itotori_reviewer_queue_items where project_id = $1",
-        [LIVE_PROJECT_ID],
-      );
-      const persistedQueue = Number(queueRows.rows[0].n);
 
       expect(persistedRun?.runId).toBe(result.journalRunId);
       expect(persistedOutcomes).toHaveLength(result.unitsRun);
       expect(persistedAttempts).toHaveLength(result.attemptsPersisted);
       expect(persistedAttempts.every((attempt) => attempt.zdr)).toBe(true);
-      expect(persistedQueue).toBe(result.reviewerQueueItemCount);
 
       // A patch export exists only after complete configured-scope coverage.
       expect(patchSink.exportCount).toBe(result.patchReport.coverageComplete ? 1 : 0);
@@ -1777,7 +1679,7 @@ describe("runProjectDrivenExecutor (live bounded-slice pilot, real DB + fs)", ()
       console.warn(
         `[driven-live] scene=${sceneId} unitsRun=${result.unitsRun} written=${result.writtenOutcomeCount} ` +
           `failed=${result.failures.length} coverageComplete=${result.patchReport.coverageComplete} ` +
-          `persisted{outcomes=${persistedOutcomes.length} attempts=${persistedAttempts.length} queue=${persistedQueue}} ` +
+          `persisted{outcomes=${persistedOutcomes.length} attempts=${persistedAttempts.length}} ` +
           `totalCost=$${result.totalUsageCostUsd.toFixed(6)} zdr=${result.zdrConfirmed} ` +
           `budgetStopped=${result.budgetStopped} patchDir=${runDir}`,
       );

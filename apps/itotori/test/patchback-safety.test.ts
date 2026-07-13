@@ -21,6 +21,7 @@ import {
 } from "../src/localization/patchback-safety.js";
 
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
+const protectedSpanPlaceholder = String.fromCodePoint(1);
 
 function encodingRsSjisEncodableCodepoints(): readonly number[] {
   const result = spawnSync(
@@ -131,7 +132,9 @@ describe("reconstructTarget — multi-quote round-trip", () => {
     // The model translated each segment and KEPT the placeholder boundary,
     // so the deterministic re-inject restores the interior 」「 verbatim.
     const skeleton = splitProtectedSpans("「A」x「B」");
-    const placeholders = skeleton.body.match(/\u0001/gu) ?? [];
+    const placeholders = [...skeleton.body].filter(
+      (character) => character === protectedSpanPlaceholder,
+    );
     expect(placeholders.length).toBe(2);
     // Model translates A→Apple, B→Banana, preserving the \u0001 placeholders.
     const preserved = skeleton.body.replace("A", "Apple").replace("B", "Banana");
@@ -141,18 +144,18 @@ describe("reconstructTarget — multi-quote round-trip", () => {
     // If the model strips the placeholders, the interior 」「 are lost — but
     // no bare \u0001 control char may leak into the patchback target.
     const skeleton = splitProtectedSpans("「A」x「B」");
-    const stripped = skeleton.body.replace(/\u0001/gu, "");
+    const stripped = skeleton.body.replaceAll(protectedSpanPlaceholder, "");
     const out = reconstructTarget(skeleton, stripped);
-    expect(out).not.toContain("\u0001");
+    expect(out).not.toContain(protectedSpanPlaceholder);
     expect(out).toBe("「AxB」");
   });
   it("degrades gracefully when the model ADDS extra placeholders", () => {
     // Extra placeholders (model hallucinated them) must be stripped, not
     // left as bare control chars in the patchback target.
     const skeleton = splitProtectedSpans("「A」x「B」");
-    const extra = skeleton.body + "\u0001";
+    const extra = skeleton.body + protectedSpanPlaceholder;
     const out = reconstructTarget(skeleton, extra);
-    expect(out).not.toContain("\u0001");
+    expect(out).not.toContain(protectedSpanPlaceholder);
   });
 });
 

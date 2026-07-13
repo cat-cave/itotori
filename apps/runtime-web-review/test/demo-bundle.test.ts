@@ -111,7 +111,7 @@ describe("MV/MZ embedded playback demo bundle surface", () => {
     expect(root.querySelector("img, video, audio, canvas")).toBeNull();
   });
 
-  it("references the UTSUSHI-119/102/065/010 proof + review artifacts", () => {
+  it("references the UTSUSHI-119/102/065/010 proof and evidence artifacts", () => {
     const bundle = loadBundle();
     renderDemoBundle(root, bundle);
 
@@ -131,11 +131,10 @@ describe("MV/MZ embedded playback demo bundle surface", () => {
     expect(root.querySelector('[data-proof-link="screenshot-evidence"]')).not.toBeNull();
     expect(root.textContent).toContain("UTSUSHI-065");
 
-    // Review manifest (010) surfaces its id + supported actions.
+    // Evidence manifest (010) surfaces its immutable provenance only.
     expect(root.textContent).toContain("UTSUSHI-010");
     expect(root.textContent).toContain(bundle.reviewManifest.reviewPackageId ?? "");
-    expect(root.querySelector('[data-review-action="approve"]')).not.toBeNull();
-    expect(root.querySelector('[data-review-action="import_runtime_feedback"]')).not.toBeNull();
+    expect(root.querySelector("[data-review-action]")).toBeNull();
   });
 
   it("renders the bundle validation verdict and per-check status", () => {

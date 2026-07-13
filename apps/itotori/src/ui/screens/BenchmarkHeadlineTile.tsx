@@ -14,8 +14,7 @@
 // The cockpit route is project-scoped; the project identity comes from the
 // composed `projects.overview` read model (the same read the sibling Overview
 // panels issue), so this tile waits for the overview's `projectId` before
-// issuing the cockpit read — mirroring how the dashboard's reviewer-queue
-// panel waits on `projects.status` for its `selectedLocaleBranchId`.
+// issuing the cockpit read after its project context is available.
 
 import type { ReactNode } from "react";
 import { Badge, Panel, StatReadout } from "@itotori/ds";

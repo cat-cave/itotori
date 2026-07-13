@@ -39,7 +39,6 @@ import {
 } from "../agents/structure-informed-context/index.js";
 import type { PriorPassFeedback, TranslationGlossaryEntry } from "../agents/translation/shapes.js";
 import type { AgenticLoopProviderFactory } from "./agentic-loop.js";
-import type { AgenticLoopReviewerQueueSink } from "./reviewer-queue-bridge.js";
 import { parseLocalizeProjectPairPolicy } from "./localize-project-stage-command.js";
 import {
   runProjectDrivenExecutor,
@@ -147,7 +146,7 @@ export type PriorJournalRunContext = {
 };
 
 /**
- * Injected dependencies. The journal + patch sinks and reviewer queue are ports
+ * Injected dependencies. The journal + patch sinks are ports
  * so production binds them to real DB/fs adapters while a test binds in-memory
  * sinks + a fake provider (no live cost). The provider factory is injected
  * verbatim so the (model, provider) pinning + ZDR flow unchanged.
@@ -166,7 +165,6 @@ export type LocalizeFullProjectDeps = {
    * feedback into the next translation prompt.
    */
   journalHistory?: LocalizationJournalHistoryPort;
-  reviewerQueue?: AgenticLoopReviewerQueueSink;
   contextArtifactRepository?: ItotoriContextArtifactRepositoryPort;
   glossary?: ReadonlyArray<TranslationGlossaryEntry>;
   styleGuide?: StyleGuidePolicyV0Draft;
@@ -497,7 +495,6 @@ export async function runLocalizeFullProjectCommand(
       journal: deps.sinks.journal,
       patchExport: deps.sinks.patchExport,
     },
-    ...(deps.reviewerQueue !== undefined ? { reviewerQueue: deps.reviewerQueue } : {}),
     ...(deps.contextArtifactRepository !== undefined
       ? { contextArtifactRepository: deps.contextArtifactRepository }
       : {}),

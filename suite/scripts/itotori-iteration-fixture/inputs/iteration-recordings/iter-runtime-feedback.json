@@ -30,7 +30,7 @@
       "status": "drafted",
       "detail": {
         "draftJobId": "draft-job-hello-game",
-        "outcome": "accepted",
+        "outcome": "written",
         "draftUnitCount": 11
       }
     },
@@ -41,16 +41,6 @@
       "detail": {
         "qaJobId": "qa-job-hello-game",
         "findings": []
-      }
-    },
-    "reviewer": {
-      "artifactId": "reviewer:decision-hello-game-runtime",
-      "status": "resolved",
-      "detail": {
-        "action": "importRuntimeFeedback",
-        "priorState": "pending",
-        "nextState": "resolved",
-        "transitionId": "transition-hello-game-runtime"
       }
     },
     "export": {
@@ -64,11 +54,12 @@
     },
     "feedback": {
       "artifactId": "feedback:feedback-report-hello-game-runtime",
-      "status": "triaged",
+      "status": "corrected",
       "detail": {
-        "triageLabel": "runtime_issue_candidate",
-        "reportStatus": "triaged",
-        "contextStatus": "contextualized",
+        "triageLabel": "context_correction",
+        "reportStatus": "applied",
+        "contextStatus": "corrected",
+        "contextCorrectionId": "context-correction:hello-game-runtime",
         "affectedBridgeUnitIds": ["019ed012-0000-7000-8000-000000000402"]
       }
     },
@@ -76,10 +67,11 @@
       "artifactId": "rerun:rerun-hello-game-runtime",
       "status": "repaired",
       "detail": {
-        "stage": "runtime-validation",
+        "stage": "patch-iteration",
+        "contextCorrectionId": "context-correction:hello-game-runtime",
         "affectedUnitIds": ["019ed012-0000-7000-8000-000000000402"],
-        "reasonCodes": ["runtime_observation_regression"],
-        "repairedFindingCodes": ["feedback.runtime_issue"]
+        "reasonCodes": ["context_correction"],
+        "repairedFindingCodes": ["feedback.context_correction"]
       }
     }
   }

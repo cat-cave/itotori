@@ -101,9 +101,7 @@ export function OnboardingScreen(): ReactNode {
   const readyHref =
     readyStatus === null || readyStatus.selectedLocaleBranchId === null
       ? null
-      : `/workspace/scenes?projectId=${encodeURIComponent(
-          readyStatus.projectId,
-        )}&localeBranchId=${encodeURIComponent(readyStatus.selectedLocaleBranchId)}`;
+      : `/play?localeBranchId=${encodeURIComponent(readyStatus.selectedLocaleBranchId)}`;
 
   const configureSso = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
@@ -287,8 +285,8 @@ export function OnboardingScreen(): ReactNode {
             title="Locale branch"
             body={
               readyStatus === null
-                ? `Create ${targetLocale.trim() || "the target locale"} and unlock the workspace handoff.`
-                : "Workspace links are ready for localization work."
+                ? `Create ${targetLocale.trim() || "the target locale"} and unlock patch iteration.`
+                : "Patch iteration is ready for localization work."
             }
           />
         </div>
@@ -310,7 +308,7 @@ export function OnboardingScreen(): ReactNode {
             >
               <p>
                 Save account security defaults in the dashboard. Localization defaults continue from
-                the workspace policy attached to the selected project.
+                the branch policy attached to the selected project.
               </p>
               <label className="onboarding-screen__field">
                 <span>Provider id</span>
@@ -510,7 +508,7 @@ export function OnboardingScreen(): ReactNode {
           {readyStatus !== null && readyHref !== null && (
             <div className="onboarding-screen__handoff">
               <p>{`${readyStatus.name} is ready for localization in ${readyBranch?.targetLocale ?? "the selected locale"}.`}</p>
-              <a href={readyHref}>Open workspace scenes</a>
+              <a href={readyHref}>Open patch iteration</a>
             </div>
           )}
         </Panel>

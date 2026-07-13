@@ -56,13 +56,11 @@ export interface ShellNavItem {
 export const SHELL_NAV_ITEMS: readonly ShellNavItem[] = [
   { id: "workbench", label: "Workbench", href: "/" },
   { id: "onboarding", label: "First run", href: "/onboarding" },
-  { id: "review", label: "Review", href: "/reviewer-queue" },
   { id: "play", label: "Play", href: "/play" },
   { id: "patches", label: "Patches", href: "/play/patches" },
   { id: "wiki", label: "Wiki", href: "/wiki" },
   { id: "benchmark", label: "Benchmark", href: "/benchmark" },
   { id: "catalog", label: "Catalog", href: "/catalog" },
-  { id: "workspace", label: "Workspace", href: "/workspace" },
   { id: "members", label: "Members", href: "/members" },
   { id: "settings-privacy", label: "Privacy", href: "/settings/privacy" },
   { id: "settings-model-routing", label: "Model routing", href: "/settings/model-routing" },
@@ -82,9 +80,6 @@ export function activeShellNavId(pathname: string): string {
   if (pathname === "/onboarding") {
     return "onboarding";
   }
-  if (pathname === "/reviewer-queue" || pathname.startsWith("/reviewer-queue/")) {
-    return "review";
-  }
   if (pathname === "/play/patches" || pathname.startsWith("/play/patches/")) {
     return "patches";
   }
@@ -101,9 +96,6 @@ export function activeShellNavId(pathname: string): string {
   }
   if (pathname === "/catalog" || pathname.startsWith("/catalog/")) {
     return "catalog";
-  }
-  if (pathname === "/workspace" || pathname.startsWith("/workspace/")) {
-    return "workspace";
   }
   if (pathname === "/members" || pathname.startsWith("/members/")) {
     return "members";
@@ -356,10 +348,9 @@ function LiveCostCell({ cost }: { cost: ApiCallState<ProjectCostReport> }): Reac
 //
 // The Project / Branch / Source cells render the EFFECTIVE selection (server
 // selection reconciled with the shell switcher's client override) so picking
-// a project / locale branch in the switcher updates the chrome — the same
-// client-state model the hi-fi studio store uses. The loading / error phase
-// of those cells is still driven by the `projects.status` read (the project
-// context read), so a failed read degrades only those cells.
+// a project / locale branch in the switcher updates the chrome. The loading /
+// error phase of those cells is still driven by the `projects.status` read
+// (the project context read), so a failed read degrades only those cells.
 // ---------------------------------------------------------------------------
 
 type EffectiveContext = {

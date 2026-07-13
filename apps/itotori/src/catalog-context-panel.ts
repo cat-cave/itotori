@@ -1,7 +1,6 @@
 // ITOTORI-119 — Project CONTEXT PANEL.
 //
-// A reviewer who does NOT read the source language still has to decide whether
-// a draft/patch is worth reviewing. To do that they need the work's CATALOG
+// A play tester who does NOT read the source language still needs the work's CATALOG
 // CONTEXT: which work this is (identity + source IDs + aliases), which edition,
 // how complete the translation for their target language is, how much demand
 // the work has, whether we own a local corpus for it, and how ready the engine
@@ -10,13 +9,13 @@
 // state (`LocaleBranchStatus`) already carry it.
 //
 // This module PROJECTS those typed read-model fields into a compact,
-// reviewer-facing view-model (`catalogContextPanelViewFromReadModel`) and
+// play-tester-facing view-model (`catalogContextPanelViewFromReadModel`) and
 // renders it (`renderCatalogContextPanel`). It NEVER touches bridge-unit
 // message streams / scene prose: the projection input is structurally limited
 // to typed catalog facts + project state, so no raw source-language dialogue
-// the reviewer cannot read can ever reach the panel. The only source-language
+// the play tester cannot read can ever reach the panel. The only source-language
 // strings it surfaces are catalog IDENTITY fields (canonical title, alternate
-// release titles) — the very identity the reviewer asked to see.
+// release titles) — the identity the operator needs to see.
 
 import type {
   CatalogBenchmarkDemandBucket,
@@ -32,14 +31,14 @@ import type {
 } from "@itotori/db";
 
 /**
- * Typed project state the panel consumes. This is the reviewer's localization
- * project context — the target language they are reviewing FOR, and (if the
+ * Typed project state the panel consumes. This is the play tester's localization
+ * project context — the target language they are playing in, and (if the
  * work is being localized here) the tracking locale-branch status. Sourced
  * verbatim from `LocaleBranchStatus` (a `ProjectDashboardStatus` read-model
  * field); never re-inferred.
  */
 export type CatalogContextProjectState = {
-  /** The reviewer's working target language (BCP-47), e.g. `en-US`. */
+  /** The play tester's working target language (BCP-47), e.g. `en-US`. */
   targetLanguage: string;
   /** The locale branch localizing this work here, if one exists. */
   localeBranch: LocaleBranchStatus | null;
@@ -60,7 +59,7 @@ export type CatalogContextPanelInput = {
   row: CatalogBenchmarkSeedRow;
   /** Edition facts: one catalog release per edition/platform/language. */
   releases: readonly CatalogReleaseRecord[];
-  /** Reviewer project state (target language + optional tracking branch). */
+  /** Play-tester project state (target language + optional tracking branch). */
   projectState: CatalogContextProjectState;
 };
 
@@ -106,9 +105,9 @@ export type CatalogContextReadinessRung = {
 };
 
 /**
- * Translation-completeness view for the reviewer's target language, plus the
+ * Translation-completeness view for the play tester's target language, plus the
  * full per-language status list. `targetLanguageStatus` is the status row whose
- * language matches the reviewer's target language, if any (so a reviewer can
+ * language matches the play tester's target language, if any (so a play tester can
  * see completeness for THEIR language at a glance without scanning the table).
  */
 export type CatalogContextCompleteness = {
@@ -306,8 +305,8 @@ function percentage(value: number, max: number): number {
 
 // ---------------------------------------------------------------------------
 // Render — pure, DOM-free. Returns an HTML string mirroring the dashboard panel
-// pattern (`section.panel` + `dl.metric-list` + tables) so it can drop into the
-// reviewer workbench and be unit-tested by assigning to `element.innerHTML`.
+// pattern (`section.panel` + `dl.metric-list` + tables) so it can render in a
+// catalog context route and be unit-tested by assigning to `element.innerHTML`.
 // ---------------------------------------------------------------------------
 
 export function renderCatalogContextPanel(view: CatalogContextPanelView): string {

@@ -522,6 +522,7 @@ describe("agent and deterministic tool registries", () => {
     expect(contextMetadata).toMatchObject({
       registryKind: "deterministic_tool",
       toolName: glossaryContextRegistryToolName,
+      toolVersion: "2.0.0",
       capabilityKey: "glossary.context",
       reproducibility: {
         algorithmName: "glossary.context",
@@ -587,7 +588,7 @@ describe("agent and deterministic tool registries", () => {
     const contextJob = {
       jobKind: "deterministic_tool_job",
       toolName: glossaryContextRegistryToolName,
-      toolVersion: "1.0.0",
+      toolVersion: "2.0.0",
       context: fixtureInvocationContext,
       input: {
         localeBranchId: "locale-en-us",
@@ -2118,7 +2119,6 @@ function glossaryContextServiceResult(): GlossaryContextReadModel {
       },
     ],
     protectedSpanReferences: [],
-    reviewItems: [],
   };
 }
 
@@ -2216,7 +2216,7 @@ function glossaryContextToolJobFixture(): DeterministicToolJobInput<GlossaryCont
   return {
     jobKind: "deterministic_tool_job",
     toolName: glossaryContextRegistryToolName,
-    toolVersion: "1.0.0",
+    toolVersion: "2.0.0",
     context: fixtureInvocationContext,
     input: {
       localeBranchId: "locale-en-us",

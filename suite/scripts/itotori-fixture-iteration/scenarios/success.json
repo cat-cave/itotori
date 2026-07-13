@@ -1,7 +1,7 @@
 {
   "schemaVersion": "itotori.fixture-iteration.recording.v0",
   "scenario": "success",
-  "expectedVerdict": "accepted",
+  "expectedVerdict": "complete",
   "fixtureId": "itotori-fixture-iteration-success-v0",
   "identity": {
     "projectId": "project-itotori-095",
@@ -30,7 +30,7 @@
       "status": "drafted",
       "detail": {
         "draftJobId": "draft-job-itotori-095",
-        "outcome": "accepted",
+        "outcome": "written",
         "draftUnitCount": 3
       }
     },
@@ -43,16 +43,6 @@
         "findings": []
       }
     },
-    "reviewer": {
-      "artifactId": "reviewer:decision-itotori-095-approve",
-      "status": "resolved",
-      "detail": {
-        "action": "approve",
-        "priorState": "pending",
-        "nextState": "resolved",
-        "transitionId": "transition-itotori-095-01"
-      }
-    },
     "export": {
       "artifactId": "export:patch-export-itotori-095",
       "status": "exported",
@@ -63,20 +53,19 @@
       }
     },
     "feedback": {
-      "artifactId": "feedback:feedback-report-itotori-095-ctx",
-      "status": "imported",
+      "artifactId": "feedback:none-received-itotori-095",
+      "status": "not_received",
       "detail": {
-        "triageLabel": "needs_context",
-        "reportStatus": "intake",
-        "contextStatus": "unknown",
-        "affectedBridgeUnitIds": []
+        "importedCount": 0,
+        "contextCorrectionCount": 0
       }
     },
     "rerun": {
-      "artifactId": "rerun:rerun-itotori-095-noop",
-      "status": "noop",
+      "artifactId": "rerun:not-required-itotori-095",
+      "status": "not_required",
       "detail": {
-        "stage": "draft-repair",
+        "stage": "patch-iteration",
+        "contextCorrectionCount": 0,
         "affectedUnitIds": [],
         "reasonCodes": [],
         "repairedFindingCodes": []

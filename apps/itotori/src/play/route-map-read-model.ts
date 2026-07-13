@@ -2,7 +2,8 @@
 // central context artifacts. Nodes are routes (col/row/state/coverage/
 // issues); edges are choice options. Coverage state is derived from the
 // route-choice map status (Fresh → fresh, Stale → stale) — the durable
-// needs_check/flagged/validated workflow lands with play-mark-validated.
+// Fresh/stale coverage is derived directly from canonical route/choice
+// artifact status; no independent human-validation state is maintained.
 
 import type { AuthorizationActor, ContextRouteChoice, ContextRouteMap } from "@itotori/db";
 

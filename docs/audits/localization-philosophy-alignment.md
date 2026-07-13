@@ -2,6 +2,14 @@
 
 **Snapshot.** Static audit of commit `4a2ae090c4bcdf3deabca568a34be8f3f34410c3`.
 
+> **Historical snapshot; superseded for the retired queue tree.** The final
+> `p0-core-purge-reviewer-queue-as-deferral` capstone deletes the queue
+> producer, storage, APIs, UI, and decision/rerun consumers that this audit
+> describes. Consequently #86/#87 are moot rather than repaired with a
+> `contextRefs` compatibility path. Current human changes use result revisions,
+> canonical context corrections/wiki edits, and patch iteration. The findings
+> below remain preserved as evidence about the audited commit only.
+
 **Method.** I traced the actual TypeScript control paths from structured translation through the agentic loop, QA, repair, project-driven export, reviewer queue/API/UI, failure handling, and context persistence. I also inspected the relevant database schema/repositories and the whole-project CLI behavior. This is a raise-the-issues audit, not a runtime test or a proposed implementation.
 
 **Caveats.** The findings below are code-path conclusions, not observations from a live provider or a populated production database. Where an external worker, a custom evidence loader, or provider-side fallback could change behavior, that is called out as **unknown / needs deeper trace** rather than assumed absent.

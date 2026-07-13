@@ -511,17 +511,6 @@ export const terminologyConflictStatusValues = {
 export type TerminologyConflictStatus =
   (typeof terminologyConflictStatusValues)[keyof typeof terminologyConflictStatusValues];
 
-export const glossaryReviewItemStateValues = {
-  proposed: "proposed",
-  approved: "approved",
-  rejected: "rejected",
-  conflict: "conflict",
-  staleSource: "stale_source",
-} as const;
-
-export type GlossaryReviewItemState =
-  (typeof glossaryReviewItemStateValues)[keyof typeof glossaryReviewItemStateValues];
-
 export const translationMemorySegmentStatusValues = {
   reusable: "reusable",
   blocked: "blocked",
@@ -1771,10 +1760,6 @@ export const branchPolicyGlossaryReferences = pgTable(
       .$type<Record<string, unknown>[]>()
       .notNull()
       .default(sql`'[]'::jsonb`),
-    glossaryReviewItemRefs: jsonb("glossary_review_item_refs")
-      .$type<Record<string, unknown>[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
     updateReason: text("update_reason").notNull(),
     eventId: text("event_id").references(() => events.eventId, { onDelete: "set null" }),
     supersedesReferenceId: text("supersedes_reference_id"),
@@ -1812,10 +1797,6 @@ export const branchPolicyGlossaryReferences = pgTable(
     check(
       "itotori_branch_policy_glossary_refs_term_refs_check",
       sql`jsonb_typeof(${table.glossaryTermRefs}) = 'array'`,
-    ),
-    check(
-      "itotori_branch_policy_glossary_refs_review_refs_check",
-      sql`jsonb_typeof(${table.glossaryReviewItemRefs}) = 'array'`,
     ),
     check(
       "itotori_branch_policy_glossary_refs_metadata_check",
@@ -2914,73 +2895,6 @@ export const terminologyConflictEvidence = pgTable(
   ],
 );
 
-export const glossaryReviewItems = pgTable(
-  "itotori_glossary_review_items",
-  {
-    reviewItemId: text("review_item_id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.projectId, { onDelete: "cascade" }),
-    localeBranchId: text("locale_branch_id")
-      .notNull()
-      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
-    termId: text("term_id").references(() => terminologyTerms.termId, { onDelete: "set null" }),
-    sourceRevisionId: text("source_revision_id")
-      .notNull()
-      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
-    styleGuideVersionId: text("style_guide_version_id").references(
-      () => styleGuideVersions.styleGuideVersionId,
-      { onDelete: "set null" },
-    ),
-    glossaryReferenceId: text("glossary_reference_id").references(
-      () => branchPolicyGlossaryReferences.referenceId,
-      { onDelete: "set null" },
-    ),
-    state: text("state").notNull(),
-    sourceTerm: text("source_term").notNull(),
-    normalizedSourceTerm: text("normalized_source_term").notNull(),
-    proposedTranslation: text("proposed_translation").notNull(),
-    normalizedProposedTranslation: text("normalized_proposed_translation").notNull(),
-    protectedSpanRefs: jsonb("protected_span_refs")
-      .$type<Record<string, unknown>[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    provenance: jsonb("provenance")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    semanticDiagnostics: jsonb("semantic_diagnostics")
-      .$type<Record<string, unknown>[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    metadata: jsonb("metadata")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    createdByUserId: text("created_by_user_id").references(() => users.userId, {
-      onDelete: "set null",
-    }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("itotori_glossary_review_items_proposal_idx").on(
-      table.localeBranchId,
-      table.sourceRevisionId,
-      table.normalizedSourceTerm,
-      table.normalizedProposedTranslation,
-    ),
-    index("itotori_glossary_review_items_term_idx").on(table.termId, table.sourceRevisionId),
-    index("itotori_glossary_review_items_queue_idx").on(
-      table.localeBranchId,
-      table.state,
-      table.updatedAt,
-    ),
-    index("itotori_glossary_review_items_style_guide_idx").on(table.styleGuideVersionId),
-    index("itotori_glossary_review_items_glossary_reference_idx").on(table.glossaryReferenceId),
-  ],
-);
-
 export const artifacts = pgTable(
   "itotori_artifacts",
   {
@@ -3203,15 +3117,15 @@ export const feedbackReports = pgTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.projectId, { onDelete: "cascade" }),
-    localeBranchId: text("locale_branch_id").references(() => localeBranches.localeBranchId, {
-      onDelete: "set null",
-    }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "restrict" }),
     sourceBundleId: text("source_bundle_id").references(() => sourceBundles.sourceBundleId, {
       onDelete: "set null",
     }),
-    bridgeUnitId: text("bridge_unit_id").references(() => sourceUnits.bridgeUnitId, {
-      onDelete: "set null",
-    }),
+    bridgeUnitId: text("bridge_unit_id")
+      .notNull()
+      .references(() => sourceUnits.bridgeUnitId, { onDelete: "restrict" }),
     targetLocale: text("target_locale").notNull(),
     feedbackSourceId: text("feedback_source_id")
       .notNull()
@@ -3931,288 +3845,6 @@ export const auditFindings = pgTable(
   ],
 );
 
-// ---------------------------------------------------------------------
-// ITOTORI-081 — reviewer queue action API + state machine
-// ---------------------------------------------------------------------
-
-/**
- * Closed enum of reviewer-queue item kinds. Mirrors the SQL check
- * constraint on `itotori_reviewer_queue_items.item_kind`. Adding a kind
- * requires (1) a SQL migration that replaces the check constraint and
- * (2) a routing rule in the reviewer-queue action service so the new
- * kind dispatches to a typed action.
- */
-export const reviewerQueueItemKindValues = {
-  qa: "qa",
-  style: "style",
-  glossary: "glossary",
-  feedback: "feedback",
-  runtimeEvidence: "runtime_evidence",
-} as const;
-
-export type ReviewerQueueItemKind =
-  (typeof reviewerQueueItemKindValues)[keyof typeof reviewerQueueItemKindValues];
-
-/**
- * Closed enum of reviewer-queue item states. Mirrors the SQL check
- * constraint on `itotori_reviewer_queue_items.state` and the prior /
- * next state constraints on `itotori_reviewer_queue_transitions`.
- *
- * Terminal states (`accepted`, `rejected`) require `resolvedAt`; the
- * `itotori_reviewer_queue_items_resolved_state_consistent` check guards
- * that invariant at the database level.
- */
-export const reviewerQueueItemStateValues = {
-  pending: "pending",
-  inReview: "in_review",
-  accepted: "accepted",
-  rejected: "rejected",
-  repairRequested: "repair_requested",
-  deferred: "deferred",
-  escalated: "escalated",
-} as const;
-
-export type ReviewerQueueItemState =
-  (typeof reviewerQueueItemStateValues)[keyof typeof reviewerQueueItemStateValues];
-
-/**
- * Closed enum of reviewer-queue actions. Each maps 1:1 to a typed entry
- * on the action API (`approve`, `reject`, `requestRepair`,
- * `importRuntimeFeedback`).
- */
-export const reviewerQueueActionValues = {
-  approve: "approve",
-  reject: "reject",
-  defer: "defer",
-  escalate: "escalate",
-  requestRepair: "request_repair",
-  importRuntimeFeedback: "import_runtime_feedback",
-} as const;
-
-export type ReviewerQueueAction =
-  (typeof reviewerQueueActionValues)[keyof typeof reviewerQueueActionValues];
-
-/**
- * Persisted shape of a reviewer-queue item row. Runtime-evidence rows
- * carry `evidenceTier`, `observationEventIds`, and `artifactHashes` per
- * the SQL discriminant; every other kind has those three fields = null.
- */
-export type ReviewerQueueItemRecord = {
-  reviewItemId: string;
-  projectId: string;
-  localeBranchId: string;
-  sourceRevisionId: string;
-  itemKind: ReviewerQueueItemKind;
-  sourceItemRef: string;
-  state: ReviewerQueueItemState;
-  priority: number;
-  summary: string;
-  affectedArtifactIds: string[];
-  evidenceTier: string | null;
-  observationEventIds: string[] | null;
-  artifactHashes: string[] | null;
-  payload: Record<string, unknown>;
-  metadata: Record<string, unknown>;
-  createdByUserId: string | null;
-  assignedToUserId: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  resolvedAt: Date | null;
-};
-
-/**
- * Persisted shape of one append-only transition log row.
- */
-export type ReviewerQueueTransitionRecord = {
-  transitionId: string;
-  reviewItemId: string;
-  localeBranchId: string;
-  sourceRevisionId: string;
-  itemKind: ReviewerQueueItemKind;
-  action: ReviewerQueueAction;
-  priorState: ReviewerQueueItemState;
-  nextState: ReviewerQueueItemState;
-  actorUserId: string;
-  affectedArtifactIds: string[];
-  diagnostics: ReviewerQueueDiagnostic[];
-  metadata: Record<string, unknown>;
-  createdAt: Date;
-};
-
-/**
- * Semantic diagnostic emitted alongside a transition (e.g. invalid
- * transition reason, stale-source explanation). Stored verbatim on the
- * transition row so the dashboard can render the reviewer's diagnostic
- * trail without re-querying the orchestrator.
- */
-export type ReviewerQueueDiagnostic = {
-  code: string;
-  message: string;
-};
-
-export const reviewerQueueItems = pgTable(
-  "itotori_reviewer_queue_items",
-  {
-    reviewItemId: text("review_item_id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.projectId, { onDelete: "cascade" }),
-    localeBranchId: text("locale_branch_id")
-      .notNull()
-      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
-    sourceRevisionId: text("source_revision_id")
-      .notNull()
-      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
-    itemKind: text("item_kind").$type<ReviewerQueueItemKind>().notNull(),
-    sourceItemRef: text("source_item_ref").notNull(),
-    state: text("state").$type<ReviewerQueueItemState>().notNull().default("pending"),
-    priority: integer("priority").notNull().default(0),
-    summary: text("summary").notNull(),
-    affectedArtifactIds: jsonb("affected_artifact_ids")
-      .$type<string[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    evidenceTier: text("evidence_tier"),
-    observationEventIds: jsonb("observation_event_ids").$type<string[]>(),
-    artifactHashes: jsonb("artifact_hashes").$type<string[]>(),
-    payload: jsonb("payload")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    metadata: jsonb("metadata")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    createdByUserId: text("created_by_user_id").references(() => users.userId, {
-      onDelete: "set null",
-    }),
-    assignedToUserId: text("assigned_to_user_id").references(() => users.userId, {
-      onDelete: "set null",
-    }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
-  },
-  (table) => [
-    uniqueIndex("itotori_reviewer_queue_items_source_item_unique").on(
-      table.localeBranchId,
-      table.sourceRevisionId,
-      table.itemKind,
-      table.sourceItemRef,
-    ),
-    index("itotori_reviewer_queue_items_branch_state_idx").on(
-      table.localeBranchId,
-      table.state,
-      table.updatedAt,
-    ),
-    index("itotori_reviewer_queue_items_project_kind_state_idx").on(
-      table.projectId,
-      table.itemKind,
-      table.state,
-    ),
-    index("itotori_reviewer_queue_items_assigned_idx").on(table.assignedToUserId, table.state),
-  ],
-);
-
-export const reviewerQueueTransitions = pgTable(
-  "itotori_reviewer_queue_transitions",
-  {
-    transitionId: text("transition_id").primaryKey(),
-    reviewItemId: text("review_item_id")
-      .notNull()
-      .references(() => reviewerQueueItems.reviewItemId, { onDelete: "cascade" }),
-    localeBranchId: text("locale_branch_id")
-      .notNull()
-      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
-    sourceRevisionId: text("source_revision_id")
-      .notNull()
-      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
-    itemKind: text("item_kind").$type<ReviewerQueueItemKind>().notNull(),
-    action: text("action").$type<ReviewerQueueAction>().notNull(),
-    priorState: text("prior_state").$type<ReviewerQueueItemState>().notNull(),
-    nextState: text("next_state").$type<ReviewerQueueItemState>().notNull(),
-    actorUserId: text("actor_user_id")
-      .notNull()
-      .references(() => users.userId, { onDelete: "restrict" }),
-    affectedArtifactIds: jsonb("affected_artifact_ids")
-      .$type<string[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    diagnostics: jsonb("diagnostics")
-      .$type<ReviewerQueueDiagnostic[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    metadata: jsonb("metadata")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    index("itotori_reviewer_queue_transitions_item_idx").on(table.reviewItemId, table.createdAt),
-    index("itotori_reviewer_queue_transitions_actor_idx").on(table.actorUserId, table.createdAt),
-  ],
-);
-
-// ITOTORI-118 — durable edit history for reviewer manual corrections.
-//
-// One append-only row per correction. Tied to (project, locale branch, source
-// revision, bridge unit, actor, reason) and linked back to the feedback report
-// / evidence / reviewer-queue item the correction produced — the correction
-// enters the same feedback + decision + targeted-rerun loop, this table only
-// records the durable audit trail. `localeBranchId` keeps corrections
-// branch-scoped (ITOTORI-059); a correction is never conflated across branches.
-export const workspaceCorrectionEdits = pgTable(
-  "itotori_workspace_correction_edits",
-  {
-    correctionEditId: text("correction_edit_id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.projectId, { onDelete: "cascade" }),
-    localeBranchId: text("locale_branch_id")
-      .notNull()
-      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
-    sourceRevisionId: text("source_revision_id")
-      .notNull()
-      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
-    bridgeUnitId: text("bridge_unit_id").notNull(),
-    actorUserId: text("actor_user_id")
-      .notNull()
-      .references(() => users.userId, { onDelete: "restrict" }),
-    reason: text("reason").notNull(),
-    beforeText: text("before_text"),
-    afterText: text("after_text").notNull(),
-    disposition: text("disposition").notNull(),
-    triageLabel: text("triage_label").notNull(),
-    feedbackReportId: text("feedback_report_id")
-      .notNull()
-      .references(() => feedbackReports.feedbackReportId, { onDelete: "cascade" }),
-    feedbackEvidenceId: text("feedback_evidence_id").notNull(),
-    reviewItemId: text("review_item_id").references(() => reviewerQueueItems.reviewItemId, {
-      onDelete: "set null",
-    }),
-    batchId: text("batch_id").notNull(),
-    metadata: jsonb("metadata")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    index("itotori_workspace_correction_edits_branch_time_idx").on(
-      table.localeBranchId,
-      table.createdAt,
-    ),
-    index("itotori_workspace_correction_edits_unit_idx").on(
-      table.localeBranchId,
-      table.sourceRevisionId,
-      table.bridgeUnitId,
-    ),
-    index("itotori_workspace_correction_edits_feedback_idx").on(table.feedbackReportId),
-    index("itotori_workspace_correction_edits_batch_idx").on(table.batchId),
-  ],
-);
-
 /**
  * itotori-bmk-cockpit-read-model — durable store for benchmark cockpit runs.
  * One row per benchmark run; the benchmark facility's body
@@ -4249,52 +3881,6 @@ export const benchmarkRuns = pgTable(
       table.projectId,
       table.localeBranchId,
       table.recordedAt,
-    ),
-  ],
-);
-
-// ---------------------------------------------------------------------------
-// play-mark-validated — per-scene localization coverage (needs_check / flagged /
-// validated). The Play RouteMap paints each node with this state; "Mark
-// validated" writes through this table. Game-agnostic: scene_id is an opaque
-// key (matches scene-summary sceneId / route-map routeKey when shared).
-// ---------------------------------------------------------------------------
-
-export const sceneLocalizationCoverageStateValues = {
-  needsCheck: "needs_check",
-  flagged: "flagged",
-  validated: "validated",
-} as const;
-
-export type SceneLocalizationCoverageState =
-  (typeof sceneLocalizationCoverageStateValues)[keyof typeof sceneLocalizationCoverageStateValues];
-
-export const sceneLocalizationCoverage = pgTable(
-  "itotori_scene_localization_coverage",
-  {
-    coverageId: text("coverage_id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.projectId, { onDelete: "cascade" }),
-    localeBranchId: text("locale_branch_id")
-      .notNull()
-      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
-    sceneId: text("scene_id").notNull(),
-    coverageState: text("coverage_state").$type<SceneLocalizationCoverageState>().notNull(),
-    updatedByUserId: text("updated_by_user_id").notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("itotori_scene_localization_coverage_unique_idx").on(
-      table.projectId,
-      table.localeBranchId,
-      table.sceneId,
-    ),
-    index("itotori_scene_localization_coverage_branch_idx").on(
-      table.projectId,
-      table.localeBranchId,
-      table.coverageState,
     ),
   ],
 );
@@ -5660,6 +5246,33 @@ export const playTestFeedbackEvents = pgTable(
       ],
       name: "itotori_play_test_feedback_events_batch_patch_fkey",
     }).onDelete("restrict"),
+    check(
+      "itotori_play_test_feedback_events_result_edit_revision",
+      sql`${table.eventKind} <> 'result_edit' or ${table.resultRevisionId} is not null`,
+    ),
+    check(
+      "itotori_play_test_feedback_events_context_version_pair",
+      sql`(${table.contextArtifactId} is null) = (${table.contextEntryVersionId} is null)`,
+    ),
+    // Every durable play-test feedback fact anchors a real outcome: a target
+    // edit names its immutable result revision; all other feedback names the
+    // canonical ContextEntry version it changed or references. This prevents
+    // an event-only inbox row from becoming a hidden reviewer backlog.
+    check(
+      "itotori_play_test_feedback_events_canonical_outcome",
+      sql`(
+        (${table.eventKind} = 'result_edit' and ${table.resultRevisionId} is not null)
+        or (
+          ${table.eventKind} in ('comment', 'added_context', 'wiki_edit')
+          and ${table.contextArtifactId} is not null
+          and ${table.contextEntryVersionId} is not null
+        )
+      )`,
+    ),
+    check(
+      "itotori_play_test_feedback_events_comment_body",
+      sql`${table.eventKind} <> 'comment' or ${table.body} is not null`,
+    ),
     index("itotori_play_test_feedback_events_patch_created_idx").on(
       table.observedPatchVersionId,
       table.createdAt,

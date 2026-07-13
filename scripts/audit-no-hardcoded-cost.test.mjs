@@ -122,13 +122,6 @@ test("a marked synthetic amountUsd literal is exempt; without a marker it fires"
   ]);
 });
 
-test("enumerated JSON fixtures skip the amountUsd cost-literal pattern", () => {
-  // amountUsd is a cost-literal pattern, so the enumerated comment-incapable
-  // JSON fixtures (COST_LITERAL_ALLOW) skip it like the other cost literals.
-  const listed = "fixtures/itotori-style-guide/provider-smoke-suggestion.json";
-  assert.deepEqual(labels(listed, '    "amountUsd": "0.000123",'), []);
-});
-
 test("CLI exits 1 on a crafted file with a hardcoded amountUsd literal", () => {
   const dir = mkdtempSync(join(tmpdir(), "audit-cost-"));
   const probe = join(dir, "probe-amountusd.ts");
@@ -305,16 +298,6 @@ test("per-line audit-allow marker (with a reason) passes; without one it still f
   assert.deepEqual(labels("apps/itotori/test/some.test.ts", noReason), [
     "hardcoded non-zero amountMicrosUsd literal",
   ]);
-});
-
-test("enumerated JSON fixtures skip cost-literal patterns but nothing else", () => {
-  // COST_LITERAL_ALLOW files (JSON has no line-comment syntax) skip ONLY the
-  // cost-literal patterns; a revived legacy enum in them still fires.
-  const listed = "fixtures/itotori-style-guide/provider-smoke-suggestion.json";
-  assert.deepEqual(labels(listed, '    "amountMicrosUsd": 42,'), []);
-  assert.deepEqual(labels(listed, '    "cost": 0.000123,'), []);
-  // A non-cost-literal pattern (deprecated costTier) still fires on the file.
-  assert.deepEqual(labels(listed, '    "costTier": 2,'), ["deprecated costTier field/enum"]);
 });
 
 test("catches a JSON-quoted legacy-enum costKind literal (not just the TS form)", () => {

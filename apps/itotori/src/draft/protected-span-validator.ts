@@ -23,7 +23,7 @@
 // Any new violation kind MUST be added to the enum AND to the switch in the
 // retry policy — the `assertNever` default makes that a compile error.
 
-import type { ProtectedSpanRef, TranslationDraft } from "@itotori/localization-bridge-schema";
+import type { ProtectedSpanRef } from "@itotori/localization-bridge-schema";
 import type { TranslationBridgeUnit } from "../agents/translation/shapes.js";
 
 /**
@@ -451,7 +451,7 @@ export class DraftProtectedSpanValidator {
   }
 
   private validateGlossarySpan(args: PerKindArgs): void {
-    const { input, sourceSpan, draftRef, observedRanges, violations } = args;
+    const { input, sourceSpan, draftRef, violations } = args;
     const expected = sourceSpan.expectedTargetForm ?? sourceSpan.sourceText;
     const expectedOccurrences = findAllOccurrences(input.draftText, expected);
 

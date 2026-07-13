@@ -193,7 +193,7 @@ describe("FindingTriageRouter — QA findings", () => {
     if (routing === undefined) return;
     expect(routing.rootCause.class).toBe("style_guide_issue");
     expect(routing.rootCause.confidence).toBe("medium");
-    expect(routing.rootCause.affectedComponent).toBe("StyleGuideBuilder");
+    expect(routing.rootCause.affectedComponent).toBe("BranchPolicyWiki");
   });
 
   it("routes QA 'tone' + severity='major' → translator_mistake (high)", () => {
@@ -238,7 +238,7 @@ describe("FindingTriageRouter — QA findings", () => {
     expect(routing.rootCause.class).toBe("unknown");
     expect(routing.rootCause.confidence).toBe("low");
     expect(routing.rootCause.rationale).toContain("no routing rule matched");
-    expect(routing.rootCause.suggestedAction).toContain("Escalate");
+    expect(routing.rootCause.suggestedAction).toContain("context correction");
   });
 });
 
@@ -385,21 +385,6 @@ describe("FindingTriageRouter — human findings", () => {
     expect(routing.rootCause.class).toBe("unknown");
     expect(routing.rootCause.confidence).toBe("low");
     expect(routing.rootCause.rationale).toContain("translator");
-  });
-
-  it("routes attribution='reviewer' → unknown (low)", () => {
-    const finding = humanFinding({ attribution: "reviewer" });
-    const result = makeRouter().route({
-      findings: [],
-      protectedSpanViolations: [],
-      humanFindings: [finding],
-      context: {},
-    });
-    const routing = result.routings[0];
-    expect(routing).toBeDefined();
-    if (routing === undefined) return;
-    expect(routing.rootCause.class).toBe("unknown");
-    expect(routing.rootCause.confidence).toBe("low");
   });
 
   it("routes attribution='playtest' → unknown (low)", () => {

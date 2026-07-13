@@ -1,7 +1,7 @@
 // ALPHA-002 — Batched draft-feedback intake.
 //
 // Composes the existing `ManualFeedbackImportService` (driven once per
-// submission) so a reviewer can collect many corrections from a playable
+// submission) so a play tester can collect many corrections from a playable
 // slice and submit them as one batch. The service adds NO new persistence
 // of its own — every submission flows through the same feedback
 // repository path the single-item importer already uses. When the importer is
@@ -9,14 +9,11 @@
 // routing; this module only batches and partitions the audit results.
 
 import { createHash } from "node:crypto";
-import { type FeedbackTriageLabel, feedbackTriageLabelValues } from "@itotori/db";
 import type { ManualFeedbackImportPort } from "../manual-feedback.js";
-import { BRIDGE_UNIT_METADATA_KEYS, readBridgeUnitMetadata } from "./bridge-unit-metadata.js";
 import type {
   DraftFeedbackBatchInput,
   DraftFeedbackBatchItem,
   DraftFeedbackBatchResult,
-  DraftFeedbackDisposition,
 } from "./types.js";
 
 export interface DraftFeedbackBatchPort {
@@ -38,9 +35,8 @@ export class DraftFeedbackBatchService implements DraftFeedbackBatchPort {
 
   /**
    * Submit a batch of feedback. Each submission is imported through the
-   * existing single-item path (preserving its triage label, canonical
-   * correction routing when configured, and dedupe behavior); the results are
-   * partitioned by disposition for downstream audit/read-model consumers.
+   * existing single-item path, which always writes its canonical correction
+   * before returning an outcome. A batch cannot park a targetless submission.
    */
   async submitBatch(input: DraftFeedbackBatchInput): Promise<DraftFeedbackBatchResult> {
     if (input.submissions.length === 0) {
@@ -59,8 +55,8 @@ export class DraftFeedbackBatchService implements DraftFeedbackBatchPort {
         submissionIndex: index,
         feedbackType: submission.feedbackType,
         triageLabel,
-        disposition: dispositionFor(triageLabel),
         feedbackReportId: result.feedbackReportId,
+        contextCorrectionId: result.contextCorrection.correctionId,
         bridgeUnitIds: bridgeUnitIdsForSubmission(submission),
         observed: submission.reporterNote,
         ...(submission.suggestedEdit === undefined
@@ -75,40 +71,16 @@ export class DraftFeedbackBatchService implements DraftFeedbackBatchPort {
   }
 }
 
-/**
- * Narrow the feedback repository's triage label to a loop disposition.
- * Exhaustive over `FeedbackTriageLabel`: adding a new label without a
- * branch here is a compile error.
- */
-export function dispositionFor(label: FeedbackTriageLabel): DraftFeedbackDisposition {
-  switch (label) {
-    case feedbackTriageLabelValues.styleDisputeCandidate:
-      return "decision_queue";
-    case feedbackTriageLabelValues.needsContext:
-      return "needs_context";
-    case feedbackTriageLabelValues.objectiveDefectCandidate:
-    case feedbackTriageLabelValues.glossaryCanonCandidate:
-    case feedbackTriageLabelValues.runtimeIssueCandidate:
-    case feedbackTriageLabelValues.assetIssueCandidate:
-      return "repair_candidate";
-    default:
-      return assertNever(label);
-  }
-}
-
 function assembleResult(
   input: DraftFeedbackBatchInput,
   items: ReadonlyArray<DraftFeedbackBatchItem>,
 ): DraftFeedbackBatchResult {
-  const repairCandidateReportIds: string[] = [];
-  const decisionQueueReportIds: string[] = [];
+  const contextCorrectionReportIds: string[] = [];
+  const contextCorrectionIds: string[] = [];
   const affected = new Set<string>();
   for (const item of items) {
-    if (item.disposition === "repair_candidate") {
-      repairCandidateReportIds.push(item.feedbackReportId);
-    } else if (item.disposition === "decision_queue") {
-      decisionQueueReportIds.push(item.feedbackReportId);
-    }
+    contextCorrectionReportIds.push(item.feedbackReportId);
+    contextCorrectionIds.push(item.contextCorrectionId);
     for (const unit of item.bridgeUnitIds) {
       affected.add(unit);
     }
@@ -118,34 +90,16 @@ function assembleResult(
     ...(input.batchLabel === undefined ? {} : { batchLabel: input.batchLabel }),
     submittedCount: items.length,
     items,
-    repairCandidateReportIds,
-    decisionQueueReportIds,
+    contextCorrectionReportIds,
+    contextCorrectionIds,
     affectedBridgeUnitIds: sortedUnique([...affected]),
   };
 }
 
-function bridgeUnitIdsForSubmission(submission: {
-  lineReference?: { bridgeUnitId?: string };
-  metadata?: Record<string, unknown>;
-}): ReadonlyArray<string> {
-  const ids: string[] = [];
-  const fromLine = submission.lineReference?.bridgeUnitId;
-  if (typeof fromLine === "string" && fromLine.length > 0) {
-    ids.push(fromLine);
-  }
-  // Read the bridge-unit ids through the typed contract rather than scanning
-  // raw string-indexed metadata keys: a rename/reshape of the recognized keys
-  // is now a compile error, and a malformed value is thrown (never silently
-  // dropped). See `bridge-unit-metadata.ts`.
-  const bridgeUnitMetadata = readBridgeUnitMetadata(submission.metadata);
-  for (const key of BRIDGE_UNIT_METADATA_KEYS) {
-    for (const entry of bridgeUnitMetadata[key] ?? []) {
-      if (entry.length > 0) {
-        ids.push(entry);
-      }
-    }
-  }
-  return sortedUnique(ids);
+function bridgeUnitIdsForSubmission(
+  submission: DraftFeedbackBatchInput["submissions"][number],
+): string[] {
+  return [submission.lineReference.bridgeUnitId];
 }
 
 function mintBatchId(input: DraftFeedbackBatchInput): string {
@@ -155,7 +109,7 @@ function mintBatchId(input: DraftFeedbackBatchInput): string {
     label: input.batchLabel ?? null,
     submissions: input.submissions.map((submission) => ({
       projectId: submission.projectId,
-      targetLocale: submission.targetLocale,
+      localeBranchId: submission.localeBranchId,
       feedbackType: submission.feedbackType,
       reporterNote: submission.reporterNote,
       bridgeUnitIds: bridgeUnitIdsForSubmission(submission),
@@ -167,8 +121,4 @@ function mintBatchId(input: DraftFeedbackBatchInput): string {
 
 function sortedUnique(values: readonly string[]): string[] {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b));
-}
-
-function assertNever(value: never): never {
-  throw new Error(`draft feedback batch: unexpected triage label ${String(value)}`);
 }

@@ -1,19 +1,17 @@
 // xs-loop-spine-ui — the iterative-loop SPINE, made visible end-to-end.
 //
-// The hi-fi studio store models the human-in-the-loop workflow as a single
-// legible handoff chain:
+// The live human-in-the-loop workflow is a single legible handoff chain:
 //
 //   playtester FLAGS a unit →
-//   reviewer DECIDES each queued item (approve / queue-correction) →
-//   corrections queue for the CORRECT / next run →
+//   a canonical context correction captures the finding →
+//   iteration writes the next result revision →
 //   director LAUNCHES the run →
 //   benchmark RE-SCORES →
 //   panel↔human CONFIDENCE moves.
 //
-// Each link already has its own surface (PlayFlagComposer, ReviewerQueue +
-// DecisionsBand, CorrectionScopePanel, LaunchPassAction, ExecutionJournal,
-// BenchmarkHeadline). This is the CROSS node that composes the whole loop into
-// ONE legible spine so the handoff is visible at a glance — a READ-ONLY
+// Each link already has its own surface (PlayFlagComposer, PatchIteration,
+// ExecutionJournal, BenchmarkHeadline). This is the CROSS node that composes
+// the whole loop into ONE legible spine so the handoff is visible at a glance — a READ-ONLY
 // legibility view (it re-states the live signal each stage currently carries,
 // sourced from the SAME read models the dedicated surfaces read; it is NOT a
 // duplicate action surface). Every stage carries a deep-link into its surface
@@ -47,7 +45,7 @@ import {
 // ---------------------------------------------------------------------------
 
 /** The six stages of the iterative loop, in handoff order. */
-export type LoopSpineStageId = "flag" | "decide" | "correct" | "launch" | "rescore" | "confidence";
+export type LoopSpineStageId = "flag" | "correct" | "iterate" | "launch" | "rescore" | "confidence";
 
 /** One stage of the loop spine — a sourced signal + a deep-link + a handoff. */
 export type LoopSpineStage = {
@@ -106,7 +104,7 @@ export function deriveLoopSpine(
   confidence: LoopSpineConfidence | null,
 ): LoopSpineStage[] {
   const findings = overview.progress.findingCount;
-  const pending = overview.decisions.counts.pendingDecisionCount;
+  const openFindings = overview.decisions.counts.pendingDecisionCount;
   const latestRun = overview.journal.latestRow ?? latestLoopSpineJournalRow(overview.journal.rows);
   const nextRun = overview.journal.pagination.total + 1;
 
@@ -116,24 +114,27 @@ export function deriveLoopSpine(
       label: "Flag",
       signal: `${findings} open`,
       status: null,
-      href: "/play/flag",
-      handoff: "Playtester flags a unit into the review queue.",
-    },
-    {
-      id: "decide",
-      label: "Decide",
-      signal: pending === 0 ? "none pending" : `${pending} pending`,
-      status: pending > 0 ? "in_review" : "proven",
-      href: "/reviewer-queue",
-      handoff: "Reviewer approves as-is, or queues a correction.",
+      // A dashboard aggregate has no bridge-unit target. The Wiki resolves the
+      // selected branch and is the canonical-context surface for an unscoped
+      // finding; the flag composer intentionally requires an exact line.
+      href: "/wiki",
+      handoff: "Wiki records canonical context for the next run.",
     },
     {
       id: "correct",
       label: "Correct",
+      signal: openFindings === 0 ? "none open" : `${openFindings} open`,
+      status: openFindings > 0 ? "pending" : "proven",
+      href: "/wiki",
+      handoff: "Wiki corrections update canonical context for the next run.",
+    },
+    {
+      id: "iterate",
+      label: "Iterate",
       signal: "—",
       status: null,
-      href: "/reviewer-queue",
-      handoff: `Corrections fold into run ${nextRun}.`,
+      href: "/play/patches",
+      handoff: `Patch feedback creates the result revision for run ${nextRun}.`,
     },
     {
       id: "launch",
@@ -186,7 +187,7 @@ export function resolveLoopSpineConfidence(cockpit: BmkCockpitReadModel): LoopSp
 
 /**
  * The Overview iterative-loop spine panel. Composes the whole loop
- * (flag → decide → correct → launch → rescore → confidence) into one legible
+ * (flag → correct → iterate → launch → rescore → confidence) into one legible
  * band, sourced from the composed `projects.overview` read model + the
  * project-scoped `projects.bmkCockpit` read model through the typed client.
  * Renders loading / empty / error surfaces independently of the other panels.

@@ -79,7 +79,8 @@ The surface governed by this policy is:
    and the `.kaifuu` delta package it produces.
 4. **The API contract** — the `*.schemaVersion` literals pinned in
    [`apps/itotori/src/api-schema.ts`](../apps/itotori/src/api-schema.ts)
-   (`reviewer.queue_dashboard.v0.1`, `workspace.*.v0.1`, etc.).
+   (`itotori.play.flag-annotation.v0`, `itotori.play.target-edit.v0`,
+   `itotori.patch-iteration.*.v0`, etc.).
 
 Every artifact on this surface carries a literal `schemaVersion` that strict
 validators assert verbatim.

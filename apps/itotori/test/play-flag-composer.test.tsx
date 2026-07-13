@@ -47,7 +47,7 @@ function flagResponse(
     note: "Line overflows the textbox.",
     triageLabel: "style_dispute_candidate",
     contextStatus: "contextualized",
-    contextCorrectionEnqueued: true,
+    contextCorrectionId: "context-correction-1",
     duplicate: false,
     ...overrides,
   };
@@ -73,7 +73,6 @@ function renderComposer(caps = grantedStudioCapabilityView("playtester")) {
             localeBranchId: "locale-1",
             bridgeUnitId: "bridge-unit-1",
             sceneId: "scene-a",
-            targetLocale: "en-US",
             sourceUnitKey: "unit.key.1",
           }}
         />
@@ -83,6 +82,27 @@ function renderComposer(caps = grantedStudioCapabilityView("playtester")) {
 }
 
 describe("play-flag-composer — PlayFlagComposerScreen", () => {
+  it("requires a persisted target unit before exposing a context-correction action", () => {
+    render(
+      <ToastProvider>
+        <CapsProvider value={grantedStudioCapabilityView("playtester")}>
+          <PlayFlagComposerScreen
+            route={{
+              projectId: "project-1",
+              localeBranchId: "locale-1",
+              bridgeUnitId: null,
+              sceneId: null,
+              sourceUnitKey: null,
+            }}
+          />
+        </CapsProvider>
+      </ToastProvider>,
+    );
+
+    expect(screen.getByText("Choose a target line")).toBeInTheDocument();
+    expect(document.querySelector('[data-component="annotation-composer"]')).toBeNull();
+  });
+
   it("canFlag user composes a severity-scaled annotation that POSTs flagAnnotation", async () => {
     const posts: unknown[] = [];
     server.use(
@@ -121,7 +141,6 @@ describe("play-flag-composer — PlayFlagComposerScreen", () => {
       note: "Line overflows the textbox.",
       severity: "critical",
       category: "tone",
-      targetLocale: "en-US",
       bridgeUnitId: "bridge-unit-1",
       sceneId: "scene-a",
     });
@@ -130,7 +149,7 @@ describe("play-flag-composer — PlayFlagComposerScreen", () => {
       expect(document.querySelector('[data-flag-outcome="ok"]')).not.toBeNull();
     });
     const status = document.querySelector('[data-flag-outcome="ok"]');
-    expect(status?.getAttribute("data-context-correction-enqueued")).toBe("true");
+    expect(status?.getAttribute("data-context-correction-id")).toBe("context-correction-1");
     expect(status?.getAttribute("data-severity")).toBe("critical");
     expect(status?.textContent).toMatch(/Flag sent to correction · critical · tone/i);
   });

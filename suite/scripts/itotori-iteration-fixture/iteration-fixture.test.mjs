@@ -41,15 +41,15 @@ function run(scenario) {
   return { inputs, composed, ...validated };
 }
 
-test("the Itotori loop is composed VERBATIM from the ITOTORI-095 engine (seven schema-valid stages)", () => {
+test("the Itotori loop is composed VERBATIM from the ITOTORI-095 engine (six schema-valid stages)", () => {
   const { composed } = run("success");
   assert.deepEqual(
     composed.loop.stageResults.map((s) => s.stageId),
-    ["import", "draft", "qa", "reviewer", "export", "feedback", "rerun"],
+    ["import", "draft", "qa", "export", "feedback", "rerun"],
   );
   for (const s of composed.loop.stageResults) assertLoopStageValid("stage-result", s);
   // The loop verdict comes straight from ITOTORI-095's validateIteration.
-  assert.equal(composed.loopValidation.verdict, "accepted");
+  assert.equal(composed.loopValidation.verdict, "complete");
 });
 
 test("the two cross-tool stages are schema-valid and bound to the iteration source revision", () => {
@@ -64,9 +64,9 @@ test("the two cross-tool stages are schema-valid and bound to the iteration sour
   assert.equal(composed.runtimeObservationStage.targetLocale, composed.targetLocale);
 });
 
-test("success: no blocking findings -> verdict accepted; billed cost is the verbatim ITOTORI-095 sum", () => {
+test("success: no blocking findings -> verdict complete; billed cost is the verbatim ITOTORI-095 sum", () => {
   const { verdict, billedMicrosUsd, crossFindings } = run("success");
-  assert.equal(verdict, "accepted");
+  assert.equal(verdict, "complete");
   assert.equal(billedMicrosUsd, 32);
   assert.equal(crossFindings.filter((f) => f.severity === "blocking").length, 0);
 });
@@ -81,9 +81,9 @@ test("patch-failure: a non-passed Kaifuu patch status folds the run to broken wi
   assert.ok(f.remediation.length > 0);
 });
 
-test("provider-fallback: a served!=requested provider is a non-blocking diagnostic; verdict stays accepted", () => {
+test("provider-fallback: a served!=requested provider is a non-blocking diagnostic; verdict stays complete", () => {
   const { verdict, crossFindings } = run("provider-fallback");
-  assert.equal(verdict, "accepted");
+  assert.equal(verdict, "complete");
   const f = crossFindings.find((x) => x.code === "provider.fallback_used");
   assert.ok(f);
   assert.equal(f.severity, "warn");
@@ -143,6 +143,6 @@ test("manifest skeleton carries the cross-tool ids, ledger linkage, and the comp
   assert.equal(m.patchResultId, composed.patchResultStage.artifactId);
   assert.equal(m.runtimeReportId, composed.runtimeObservationStage.artifactId);
   assert.match(m.iteration.providerLedger.hash, /^sha256:[a-f0-9]{64}$/);
-  assert.equal(m.iteration.verdict, "accepted");
+  assert.equal(m.iteration.verdict, "complete");
   assert.ok(m.providerProofIds.length >= 2);
 });

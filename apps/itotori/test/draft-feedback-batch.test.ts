@@ -1,86 +1,59 @@
-// ALPHA-002 — Playable draft feedback loop tests.
-//
-// Drives the real batched intake composition end to end with no DB:
-//   batched intake → triage labels → feedback audit results
-//   (real `ManualFeedbackImportService` path, with no reviewer-queue sink).
-//
-// Only the feedback repository leaf port is an in-memory stub.
+// ALPHA-002 — Playable draft feedback batches are direct canonical corrections.
 
 import { describe, expect, it } from "vitest";
-import type {
-  AuthorizationActor,
-  ItotoriFeedbackRepositoryPort,
-  ManualFeedbackImportInput,
-  ManualFeedbackImportResult,
-} from "@itotori/db";
 import {
   feedbackContextStatusValues,
   feedbackTriageLabelValues,
   feedbackTypeValues,
+  type ManualFeedbackImportInput,
 } from "@itotori/db";
-import { ManualFeedbackImportService } from "../src/manual-feedback.js";
-import {
-  DraftFeedbackBatchError,
-  DraftFeedbackBatchService,
-  dispositionFor,
-} from "../src/draft-feedback/index.js";
+import type {
+  ManualFeedbackImportOutcome,
+  ManualFeedbackImportPort,
+} from "../src/manual-feedback.js";
+import type { ContextCorrectionResult } from "../src/orchestrator/context-correction-service.js";
+import { DraftFeedbackBatchError, DraftFeedbackBatchService } from "../src/draft-feedback/index.js";
 
-const actor: AuthorizationActor = { userId: "local-user" };
 const PROJECT_ID = "project-fixture";
 const BRANCH_ID = "branch-fixture";
-// ---------------------------------------------------------------------------
-// In-memory feedback port (mirrors real triage-label mapping).
-// ---------------------------------------------------------------------------
 
-function triageLabelFor(type: ManualFeedbackImportInput["feedbackType"]) {
-  switch (type) {
-    case feedbackTypeValues.objectiveDefect:
-      return feedbackTriageLabelValues.objectiveDefectCandidate;
-    case feedbackTypeValues.stylePreference:
-      return feedbackTriageLabelValues.styleDisputeCandidate;
-    default:
-      return feedbackTriageLabelValues.needsContext;
-  }
-}
-
-class StubFeedbackRepository implements Pick<
-  ItotoriFeedbackRepositoryPort,
-  "importManualFeedback"
-> {
+class StubFeedbackImportPort implements ManualFeedbackImportPort {
   private counter = 0;
 
   async importManualFeedback(
-    _actor: AuthorizationActor,
     input: ManualFeedbackImportInput,
-  ): Promise<ManualFeedbackImportResult> {
+  ): Promise<ManualFeedbackImportOutcome> {
     this.counter += 1;
-    const feedbackReportId = `feedback-report-${this.counter}`;
-    const feedbackEvidenceId = `feedback-evidence-${this.counter}`;
-    const triageLabel = triageLabelFor(input.feedbackType);
+    const id = String(this.counter);
     return {
-      feedbackReportId,
-      feedbackEvidenceId,
-      feedbackSourceId: `feedback-source-${this.counter}`,
-      dedupeKey: `dedupe-${this.counter}`,
-      triageLabel,
+      feedbackReportId: `feedback-report-${id}`,
+      feedbackEvidenceId: `feedback-evidence-${id}`,
+      feedbackSourceId: `feedback-source-${id}`,
+      dedupeKey: `dedupe-${id}`,
+      triageLabel:
+        input.feedbackType === feedbackTypeValues.stylePreference
+          ? feedbackTriageLabelValues.styleDisputeCandidate
+          : feedbackTriageLabelValues.objectiveDefectCandidate,
       reportStatus: "open",
       contextStatus: feedbackContextStatusValues.contextualized,
       reportCount: 1,
       duplicate: false,
+      contextCorrection: {
+        correctionId: `context-correction-${id}`,
+      } as ContextCorrectionResult,
     };
   }
 }
 
-// ---------------------------------------------------------------------------
-// Submission fixtures.
-// ---------------------------------------------------------------------------
-
-function typoSubmission(bridgeUnitId: string, note: string): ManualFeedbackImportInput {
+function submission(
+  bridgeUnitId: string,
+  feedbackType: ManualFeedbackImportInput["feedbackType"],
+  note: string,
+): ManualFeedbackImportInput {
   return {
     projectId: PROJECT_ID,
     localeBranchId: BRANCH_ID,
-    targetLocale: "en-US",
-    feedbackType: feedbackTypeValues.objectiveDefect,
+    feedbackType,
     reporter: { role: "playtester", displayName: "Alice" },
     reporterNote: note,
     suggestedEdit: `${note} (corrected)`,
@@ -88,84 +61,55 @@ function typoSubmission(bridgeUnitId: string, note: string): ManualFeedbackImpor
   };
 }
 
-function styleSubmission(bridgeUnitId: string, note: string): ManualFeedbackImportInput {
-  return {
-    projectId: PROJECT_ID,
-    localeBranchId: BRANCH_ID,
-    targetLocale: "en-US",
-    feedbackType: feedbackTypeValues.stylePreference,
-    reporter: { role: "reviewer", displayName: "Bob" },
-    reporterNote: note,
-    lineReference: { bridgeUnitId },
-  };
+function buildBatch(): DraftFeedbackBatchService {
+  return new DraftFeedbackBatchService(new StubFeedbackImportPort());
 }
 
-function buildLoop(): { batch: DraftFeedbackBatchService } {
-  const feedbackRepo = new StubFeedbackRepository();
-  const manualFeedback = new ManualFeedbackImportService(feedbackRepo, actor);
-  return { batch: new DraftFeedbackBatchService(manualFeedback) };
-}
-
-describe("DraftFeedbackBatchService — batched intake + triage", () => {
-  it("collects multiple typo corrections with context while retaining style triage as audit data", async () => {
-    const { batch } = buildLoop();
-
-    const result = await batch.submitBatch({
+describe("DraftFeedbackBatchService", () => {
+  it("writes one canonical context correction for every target-scoped submission", async () => {
+    const result = await buildBatch().submitBatch({
       batchLabel: "oshioki-slice-1",
       submissions: [
-        typoSubmission("unit-a", "Teh hero speaks"),
-        typoSubmission("unit-b", "recieve the sword"),
-        styleSubmission("unit-c", "honorifics should stay"),
+        submission("unit-a", feedbackTypeValues.objectiveDefect, "Teh hero speaks"),
+        submission("unit-b", feedbackTypeValues.objectiveDefect, "recieve the sword"),
+        submission("unit-c", feedbackTypeValues.stylePreference, "honorifics should stay"),
       ],
     });
 
-    // Batched: every submission collected in order.
     expect(result.submittedCount).toBe(3);
     expect(result.items.map((item) => item.submissionIndex)).toEqual([0, 1, 2]);
-
-    // Typo corrections carry their context (the bridge unit they target)
-    // and the proposed correction.
-    expect(result.items[0]?.disposition).toBe("repair_candidate");
+    expect(result.items.map((item) => item.contextCorrectionId)).toEqual([
+      "context-correction-1",
+      "context-correction-2",
+      "context-correction-3",
+    ]);
     expect(result.items[0]?.bridgeUnitIds).toEqual(["unit-a"]);
     expect(result.items[0]?.suggestedEdit).toBe("Teh hero speaks (corrected)");
-    expect(result.items[1]?.bridgeUnitIds).toEqual(["unit-b"]);
-    expect(result.repairCandidateReportIds).toHaveLength(2);
+    expect(result.contextCorrectionReportIds).toEqual([
+      "feedback-report-1",
+      "feedback-report-2",
+      "feedback-report-3",
+    ]);
+    expect(result.contextCorrectionIds).toEqual([
+      "context-correction-1",
+      "context-correction-2",
+      "context-correction-3",
+    ]);
     expect(result.affectedBridgeUnitIds).toEqual(["unit-a", "unit-b", "unit-c"]);
-
-    // Style feedback retains its triage disposition for downstream audit; this
-    // batch path itself does not create a reviewer-queue item.
-    expect(result.items[2]?.disposition).toBe("decision_queue");
-    expect(result.decisionQueueReportIds).toHaveLength(1);
   });
 
   it("rejects an empty batch with a typed error", async () => {
-    const { batch } = buildLoop();
-    await expect(batch.submitBatch({ submissions: [] })).rejects.toBeInstanceOf(
+    await expect(buildBatch().submitBatch({ submissions: [] })).rejects.toBeInstanceOf(
       DraftFeedbackBatchError,
     );
   });
 
   it("is deterministic: the same batch yields the same batchId", async () => {
-    const submissions = [typoSubmission("unit-a", "Teh hero speaks")];
-    const first = await buildLoop().batch.submitBatch({ submissions });
-    const second = await buildLoop().batch.submitBatch({ submissions });
+    const submissions = [
+      submission("unit-a", feedbackTypeValues.objectiveDefect, "Teh hero speaks"),
+    ];
+    const first = await buildBatch().submitBatch({ submissions });
+    const second = await buildBatch().submitBatch({ submissions });
     expect(first.batchId).toBe(second.batchId);
-  });
-});
-
-describe("dispositionFor — exhaustive triage-label mapping", () => {
-  it("maps every triage label to a disposition", () => {
-    expect(dispositionFor(feedbackTriageLabelValues.styleDisputeCandidate)).toBe("decision_queue");
-    expect(dispositionFor(feedbackTriageLabelValues.needsContext)).toBe("needs_context");
-    expect(dispositionFor(feedbackTriageLabelValues.objectiveDefectCandidate)).toBe(
-      "repair_candidate",
-    );
-    expect(dispositionFor(feedbackTriageLabelValues.glossaryCanonCandidate)).toBe(
-      "repair_candidate",
-    );
-    expect(dispositionFor(feedbackTriageLabelValues.runtimeIssueCandidate)).toBe(
-      "repair_candidate",
-    );
-    expect(dispositionFor(feedbackTriageLabelValues.assetIssueCandidate)).toBe("repair_candidate");
   });
 });

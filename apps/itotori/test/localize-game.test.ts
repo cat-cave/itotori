@@ -66,7 +66,6 @@ function fakeLocalizeResult(
     unitsRun: 3,
     writtenOutcomeCount: 3,
     failures: [],
-    reviewerQueueItemCount: 1,
     totalUsageCostExactUsd: "0.0042",
     totalUsageCostUsd: 0.0042,
     zdrConfirmed: true,

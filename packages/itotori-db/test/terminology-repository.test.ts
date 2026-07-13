@@ -24,10 +24,7 @@ import {
   branchPolicyGlossaryReferences,
   events,
   findings,
-  glossaryReviewItems,
-  glossaryReviewItemStateValues,
   localeBranchUnits,
-  sourceRevisions,
   styleGuideVersionStatusValues,
   terminologyAliasKindValues,
   terminologyConflictEvidence,
@@ -37,7 +34,6 @@ import {
   terminologySemanticIndexStatusValues,
   terminologySourceReferenceKindValues,
   terminologyTermKindValues,
-  terminologyTermStatusValues,
   terminologyTerms,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
@@ -952,7 +948,7 @@ describe("ItotoriTerminologyRepository", () => {
     }
   });
 
-  it("reads glossary context with style guide, provenance, protected spans, and review items", async () => {
+  it("reads glossary context with style guide, provenance, and protected spans", async () => {
     const context = await isolatedMigratedContext();
     try {
       await seedProject(context.db);
@@ -974,23 +970,6 @@ describe("ItotoriTerminologyRepository", () => {
             context: "Policy fixture includes a protected placeholder near the term.",
           },
         ],
-      });
-
-      const reviewItem = await repository.upsertGlossaryReviewItem(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        termId: "term-context-crimson-moon",
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-        sourceTerm: "紅月",
-        proposedTranslation: "Crimson Moon",
-        sourceReferences: [
-          {
-            sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-            bridgeUnitId: "bridge-unit-term",
-            citation: "terminology.scene.001.line.001",
-          },
-        ],
-        provenance: { fixture: "policy-aware-glossary" },
       });
 
       await expect(
@@ -1024,173 +1003,7 @@ describe("ItotoriTerminologyRepository", () => {
             preserveMode: "exact",
           }),
         ],
-        reviewItems: [
-          expect.objectContaining({
-            reviewItemId: reviewItem.reviewItemId,
-            state: glossaryReviewItemStateValues.proposed,
-            provenance: expect.objectContaining({
-              fixture: "policy-aware-glossary",
-              localeBranchId: "locale-en-us",
-              sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-              styleGuideVersionId: "style-guide-version-glossary-policy",
-            }),
-          }),
-        ],
       });
-    } finally {
-      await context.close();
-    }
-  });
-
-  it("persists proposed, approved, rejected, conflict, and stale-source review states with stable ids", async () => {
-    const context = await isolatedMigratedContext();
-    try {
-      await seedProject(context.db);
-      await seedApprovedGlossaryPolicy(context.db);
-      await context.db.insert(sourceRevisions).values({
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-stale",
-        projectId: "project-terminology",
-        revisionKind: "content_hash",
-        value: "stale-source-hash",
-      });
-      const repository = new ItotoriTerminologyRepository(context.db);
-      await repository.upsertTerm(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        termId: "term-approved-hero",
-        sourceTerm: "勇者",
-        preferredTranslation: "Hero",
-        termKind: terminologyTermKindValues.characterName,
-      });
-
-      const proposed = await repository.upsertGlossaryReviewItem(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-        sourceTerm: "紅月",
-        proposedTranslation: "Crimson Moon",
-      });
-      const proposedAgain = await repository.upsertGlossaryReviewItem(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-        sourceTerm: "紅月",
-        proposedTranslation: "Crimson Moon",
-        metadata: { reviewerQueueFixture: "same-proposal" },
-      });
-      const explicitlyApprovedProposal = await repository.upsertGlossaryReviewItem(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-        sourceTerm: "紅月",
-        proposedTranslation: "Crimson Moon",
-        state: glossaryReviewItemStateValues.approved,
-      });
-      const approved = await repository.upsertGlossaryReviewItem(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-        state: glossaryReviewItemStateValues.approved,
-        sourceTerm: "司書",
-        proposedTranslation: "Archivist",
-      });
-      const approvedDuplicate = await repository.upsertGlossaryReviewItem(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-        sourceTerm: "司書",
-        proposedTranslation: "Archivist",
-      });
-      const rejected = await repository.upsertGlossaryReviewItem(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-        state: glossaryReviewItemStateValues.rejected,
-        sourceTerm: "門",
-        proposedTranslation: "Portal",
-      });
-      const rejectedDuplicate = await repository.upsertGlossaryReviewItem(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-        sourceTerm: "門",
-        proposedTranslation: "Portal",
-      });
-      const conflict = await repository.upsertGlossaryReviewItem(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-        sourceTerm: "勇者",
-        proposedTranslation: "Brave",
-      });
-      const stale = await repository.upsertGlossaryReviewItem(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-stale",
-        sourceTerm: "古い名",
-        proposedTranslation: "Old Name",
-      });
-
-      expect(proposedAgain.reviewItemId).toBe(proposed.reviewItemId);
-      expect(explicitlyApprovedProposal.reviewItemId).toBe(proposed.reviewItemId);
-      expect(approvedDuplicate.reviewItemId).toBe(approved.reviewItemId);
-      expect(rejectedDuplicate.reviewItemId).toBe(rejected.reviewItemId);
-      expect(proposed.reviewItemId).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
-      );
-      expect([
-        proposedAgain.state,
-        explicitlyApprovedProposal.state,
-        approved.state,
-        approvedDuplicate.state,
-        rejected.state,
-        rejectedDuplicate.state,
-        conflict.state,
-        stale.state,
-      ]).toEqual([
-        glossaryReviewItemStateValues.proposed,
-        glossaryReviewItemStateValues.approved,
-        glossaryReviewItemStateValues.approved,
-        glossaryReviewItemStateValues.approved,
-        glossaryReviewItemStateValues.rejected,
-        glossaryReviewItemStateValues.rejected,
-        glossaryReviewItemStateValues.conflict,
-        glossaryReviewItemStateValues.staleSource,
-      ]);
-      expect(conflict.semanticDiagnostics).toEqual([
-        expect.objectContaining({
-          code: "glossary_review.proposal.preferred_translation_conflict",
-          severity: "error",
-          provenance: expect.objectContaining({
-            conflictingTermIds: ["term-approved-hero"],
-            approvedTranslations: ["Hero"],
-          }),
-        }),
-      ]);
-      expect(stale.semanticDiagnostics).toEqual([
-        expect.objectContaining({
-          code: "glossary_review.source_revision.stale",
-          severity: "warning",
-          provenance: expect.objectContaining({
-            currentSourceBundleId: "bridge-terminology",
-          }),
-        }),
-      ]);
-
-      await expect(
-        repository.listGlossaryReviewItems(localActor, {
-          localeBranchId: "locale-en-us",
-          state: glossaryReviewItemStateValues.conflict,
-        }),
-      ).resolves.toEqual([expect.objectContaining({ reviewItemId: conflict.reviewItemId })]);
-
-      const approvedTermRows = await context.db
-        .select({ termId: terminologyTerms.termId, status: terminologyTerms.status })
-        .from(terminologyTerms)
-        .where(eq(terminologyTerms.termId, "term-approved-hero"));
-      expect(approvedTermRows).toEqual([
-        { termId: "term-approved-hero", status: terminologyTermStatusValues.active },
-      ]);
     } finally {
       await context.close();
     }
@@ -1410,170 +1223,6 @@ describe("ItotoriTerminologyRepository", () => {
         draftProvenanceBefore?.glossaryReferenceId,
         updatedReference.referenceId,
       ]);
-    } finally {
-      await context.close();
-    }
-  });
-
-  it("snapshots the branch glossary reference on review-item create/approve/reject without later rewrites", async () => {
-    const context = await isolatedMigratedContext();
-    try {
-      await seedProject(context.db);
-      await seedApprovedGlossaryPolicy(context.db);
-      const repository = new ItotoriTerminologyRepository(context.db);
-      const branchReferences = new ItotoriBranchReferenceRepository(context.db);
-
-      const readReviewRow = async (
-        reviewItemId: string,
-      ): Promise<{
-        state: string;
-        glossaryReferenceId: string | null;
-        provenanceGlossaryReferenceId: unknown;
-      }> => {
-        const rows = await context.db
-          .select({
-            state: glossaryReviewItems.state,
-            glossaryReferenceId: glossaryReviewItems.glossaryReferenceId,
-            provenance: glossaryReviewItems.provenance,
-          })
-          .from(glossaryReviewItems)
-          .where(eq(glossaryReviewItems.reviewItemId, reviewItemId));
-        const row = rows[0];
-        if (row === undefined) {
-          throw new Error(`review item ${reviewItemId} not found`);
-        }
-        return {
-          state: row.state,
-          glossaryReferenceId: row.glossaryReferenceId,
-          provenanceGlossaryReferenceId: row.provenance.glossaryReferenceId,
-        };
-      };
-      const currentReferenceId = async (): Promise<string> => {
-        const reference = await branchReferences.resolveBranchPolicyGlossaryReference(localActor, {
-          projectId: "project-terminology",
-          localeBranchId: "locale-en-us",
-        });
-        if (reference === null) {
-          throw new Error("expected a branch glossary reference to exist");
-        }
-        return reference.referenceId;
-      };
-
-      // Group 1: a freshly created review item captures the branch glossary reference in force
-      // at create time (both the row column and the provenance JSON snapshot).
-      const item1 = await repository.upsertGlossaryReviewItem(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-        sourceTerm: "司書",
-        proposedTranslation: "Archivist",
-      });
-      const item2 = await repository.upsertGlossaryReviewItem(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-        sourceTerm: "門",
-        proposedTranslation: "Portal",
-      });
-      const createReferenceId = await currentReferenceId();
-      const item1AtCreate = await readReviewRow(item1.reviewItemId);
-      const item2AtCreate = await readReviewRow(item2.reviewItemId);
-      expect(item1AtCreate).toMatchObject({
-        state: glossaryReviewItemStateValues.proposed,
-        glossaryReferenceId: createReferenceId,
-        provenanceGlossaryReferenceId: createReferenceId,
-      });
-      expect(item2AtCreate).toMatchObject({
-        state: glossaryReviewItemStateValues.proposed,
-        glossaryReferenceId: createReferenceId,
-        provenanceGlossaryReferenceId: createReferenceId,
-      });
-
-      // A branch glossary reference update lands BEFORE the review decisions, so approving must
-      // capture this newer reference (a material update re-snapshots the reference at that point).
-      await repository.upsertTerm(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        termId: "term-bump-alpha",
-        sourceTerm: "甲",
-        preferredTranslation: "Alpha",
-      });
-      const bumpBeforeDecisions = await branchReferences.updateBranchPolicyGlossaryReference(
-        localActor,
-        {
-          projectId: "project-terminology",
-          localeBranchId: "locale-en-us",
-          updateReason: "test_reference_bump_before_decisions",
-        },
-      );
-      expect(bumpBeforeDecisions.referenceId).not.toBe(createReferenceId);
-
-      // Group 2: approving/rejecting captures the reference intended at decision time and does not
-      // retroactively keep the older create-time reference.
-      const approved = await repository.upsertGlossaryReviewItem(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-        sourceTerm: "司書",
-        proposedTranslation: "Archivist",
-        state: glossaryReviewItemStateValues.approved,
-      });
-      expect(approved.reviewItemId).toBe(item1.reviewItemId);
-      const item1AtApprove = await readReviewRow(item1.reviewItemId);
-      expect(item1AtApprove).toMatchObject({
-        state: glossaryReviewItemStateValues.approved,
-        glossaryReferenceId: bumpBeforeDecisions.referenceId,
-        provenanceGlossaryReferenceId: bumpBeforeDecisions.referenceId,
-      });
-      expect(item1AtApprove.glossaryReferenceId).not.toBe(createReferenceId);
-
-      const rejected = await repository.upsertGlossaryReviewItem(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
-        sourceTerm: "門",
-        proposedTranslation: "Portal",
-        state: glossaryReviewItemStateValues.rejected,
-      });
-      expect(rejected.reviewItemId).toBe(item2.reviewItemId);
-      // Materially transitioning to rejected re-snapshots the reference in force at decision time
-      // (approving item1 changed the branch glossary, so this row records that newer reference).
-      const rejectReferenceId = await currentReferenceId();
-      const item2AtReject = await readReviewRow(item2.reviewItemId);
-      expect(item2AtReject).toMatchObject({
-        state: glossaryReviewItemStateValues.rejected,
-        glossaryReferenceId: rejectReferenceId,
-        provenanceGlossaryReferenceId: rejectReferenceId,
-      });
-      expect(item2AtReject.glossaryReferenceId).not.toBe(createReferenceId);
-
-      // Group 3: a LATER branch glossary reference update must not rewrite the historical review
-      // rows' provenance — approved/rejected rows keep the reference captured at decision time and
-      // never silently adopt the newer glossary reference.
-      await repository.upsertTerm(localActor, {
-        projectId: "project-terminology",
-        localeBranchId: "locale-en-us",
-        termId: "term-bump-beta",
-        sourceTerm: "乙",
-        preferredTranslation: "Beta",
-      });
-      const bumpAfterDecisions = await branchReferences.updateBranchPolicyGlossaryReference(
-        localActor,
-        {
-          projectId: "project-terminology",
-          localeBranchId: "locale-en-us",
-          updateReason: "test_reference_bump_after_decisions",
-        },
-      );
-      expect(bumpAfterDecisions.referenceId).not.toBe(item1AtApprove.glossaryReferenceId);
-      expect(bumpAfterDecisions.referenceId).not.toBe(item2AtReject.glossaryReferenceId);
-
-      const item1AfterLaterUpdate = await readReviewRow(item1.reviewItemId);
-      const item2AfterLaterUpdate = await readReviewRow(item2.reviewItemId);
-      expect(item1AfterLaterUpdate).toEqual(item1AtApprove);
-      expect(item2AfterLaterUpdate).toEqual(item2AtReject);
-      expect(item1AfterLaterUpdate.glossaryReferenceId).not.toBe(bumpAfterDecisions.referenceId);
-      expect(item2AfterLaterUpdate.glossaryReferenceId).not.toBe(bumpAfterDecisions.referenceId);
     } finally {
       await context.close();
     }

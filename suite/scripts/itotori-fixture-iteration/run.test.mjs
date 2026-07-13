@@ -28,7 +28,6 @@ const STAGE_FILES = [
   "import.json",
   "draft.json",
   "qa.json",
-  "reviewer.json",
   "export.json",
   "feedback.json",
   "rerun.json",
@@ -58,17 +57,17 @@ function readManifest(outDir) {
   return JSON.parse(readFileSync(join(outDir, "fixture-iteration-result.json"), "utf8"));
 }
 
-test("default scenario (success) runs the full import->rerun iteration and exits 0 (accepted)", () => {
+test("default scenario (success) runs the full import->rerun iteration and exits 0 (complete)", () => {
   withTmp((outDir) => {
     const result = runDriver([], outDir);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     for (const f of ALL_FILES) {
       assert.ok(existsSync(join(outDir, f)), `missing emitted artifact ${f}`);
     }
-    assert.match(result.stdout, /verdict=accepted/);
+    assert.match(result.stdout, /verdict=complete/);
     const m = readManifest(outDir);
-    assert.equal(m.verdict, "accepted");
-    assert.equal(m.stages.length, 7);
+    assert.equal(m.verdict, "complete");
+    assert.equal(m.stages.length, 6);
   });
 });
 
@@ -86,13 +85,13 @@ test("every stage emits a schema-valid artifact carrying id + locale branch + so
   });
 });
 
-test("the iteration runs ALL eight ordered stages (import->rerun + final result); none are skipped", () => {
+test("the iteration runs all six ordered stages (import->rerun + final result); none are skipped", () => {
   withTmp((outDir) => {
     runDriver(["--scenario", "success"], outDir);
     const m = readManifest(outDir);
     assert.deepEqual(
       m.stages.map((s) => s.stageId),
-      ["import", "draft", "qa", "reviewer", "export", "feedback", "rerun"],
+      ["import", "draft", "qa", "export", "feedback", "rerun"],
     );
     // final-result is the manifest itself — present + schema-valid (it loaded).
     assert.equal(m.command, "vp run itotori:fixture-iteration");
@@ -103,7 +102,7 @@ test("emitted artifacts are hash-addressed: manifest hashes equal the file bytes
   withTmp((outDir) => {
     runDriver(["--scenario", "success"], outDir);
     const m = readManifest(outDir);
-    assert.equal(m.emittedArtifacts.length, 7);
+    assert.equal(m.emittedArtifacts.length, 6);
     for (const entry of m.emittedArtifacts) {
       assert.equal(sha256(join(outDir, entry.path)), entry.hash, `hash drift for ${entry.path}`);
     }
@@ -129,35 +128,33 @@ test("draft + QA cost/(model,provider)/tokens are read VERBATIM from the recorde
   });
 });
 
-test("QA-rejection path: QA defect + reviewer reject -> verdict rejected (failed stage stays visible)", () => {
+test("QA finding path remains blocked without a context correction iteration", () => {
   withTmp((outDir) => {
-    const result = runDriver(["--scenario", "qa-rejection"], outDir);
+    const result = runDriver(["--scenario", "qa-finding"], outDir);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     const m = readManifest(outDir);
-    assert.equal(m.verdict, "rejected");
-    // The QA defect is still visible (demoted to a warn rationale, not deleted).
-    const qaDefect = m.findings.find((f) => f.code === "qa.defect_found.rejected");
-    assert.ok(qaDefect, "QA defect rationale must stay visible");
+    assert.equal(m.verdict, "blocked");
+    const qaDefect = m.findings.find((f) => f.code === "qa.defect_found");
+    assert.ok(qaDefect, "QA defect must stay visible");
     assert.equal(qaDefect.stageId, "qa");
-    assert.equal(qaDefect.remediation, "rerun-targeted-draft-repair");
-    assert.ok(m.findings.some((f) => f.code === "reviewer.rejected"));
+    assert.equal(qaDefect.remediation, "record-context-correction-and-start-iteration");
   });
 });
 
-test("runtime-feedback path: feedback import -> reviewer -> runtime-validation rerun -> verdict repaired", () => {
+test("runtime-feedback path: feedback import -> context correction -> patch iteration -> verdict repaired", () => {
   withTmp((outDir) => {
     const result = runDriver(["--scenario", "runtime-feedback"], outDir);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     const m = readManifest(outDir);
     assert.equal(m.verdict, "repaired");
-    assert.ok(m.findings.some((f) => f.code === "feedback.runtime_issue.repaired"));
+    assert.ok(m.findings.some((f) => f.code === "feedback.context_correction.repaired"));
     assert.ok(m.findings.some((f) => f.code === "rerun.repaired"));
   });
 });
 
-test("rerun-repair path: QA defect -> requestRepair -> targeted draft rerun clears the defect -> repaired", () => {
+test("context-correction rerun path clears the QA finding -> repaired", () => {
   withTmp((outDir) => {
-    const result = runDriver(["--scenario", "rerun-repair"], outDir);
+    const result = runDriver(["--scenario", "context-correction-rerun"], outDir);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     const m = readManifest(outDir);
     assert.equal(m.verdict, "repaired");
@@ -178,7 +175,7 @@ test("locale-branch conflation (ITOTORI-059) is a blocking diagnostic -> verdict
     // identity; the conflation guard must fire and the iteration must break.
     const scenario = JSON.parse(readFileSync(join(SCENARIOS, "success.json"), "utf8"));
     scenario.stages.export.localeBranchId = "locale-branch-WRONG";
-    scenario.expectedVerdict = "accepted";
+    scenario.expectedVerdict = "complete";
     const tampered = join(outDir, "tampered-scenario.json");
     writeFileSync(tampered, `${JSON.stringify(scenario, null, 2)}\n`);
     // The tampered scenario lives outside the public roots, so the public-path

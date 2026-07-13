@@ -33,15 +33,23 @@ for (const stage of bundle.stages) {
       `cost=${stage.costUsd}`,
   );
 }
-console.log(
-  `routing outcome=${bundle.routingSummary.outcome} ` +
-    `routedFindings=${bundle.routingSummary.routedFindingCount} ` +
-    `critical=${bundle.routingSummary.criticalFindingCount} ` +
-    `repairAttempts=${bundle.routingSummary.repairAttempts}/` +
-    `${bundle.routingSummary.maxRepairAttempts}`,
+const outcome = bundle.writtenOutcome;
+const selectedCandidate = outcome.candidates.find(
+  (candidate) => candidate.id === outcome.selectedCandidateId,
 );
-if (bundle.finalDraft.draftText !== undefined) {
-  console.log(`finalDraft.draftText=${bundle.finalDraft.draftText}`);
-} else if (bundle.finalDraft.deferredReason !== undefined) {
-  console.log(`finalDraft.deferredReason=${bundle.finalDraft.deferredReason}`);
+if (selectedCandidate === undefined) {
+  throw new Error(
+    `writtenOutcome.selectedCandidateId=${outcome.selectedCandidateId} does not resolve to a candidate`,
+  );
 }
+
+console.log(
+  `writtenOutcome status=${outcome.status} ` +
+    `candidates=${outcome.candidates.length} ` +
+    `findings=${outcome.findings.length} ` +
+    `qualityFlags=${outcome.qualityFlags.join(",") || "none"}`,
+);
+console.log(
+  `selectedCandidate id=${selectedCandidate.id} kind=${selectedCandidate.kind} ` +
+    `body=${selectedCandidate.body}`,
+);

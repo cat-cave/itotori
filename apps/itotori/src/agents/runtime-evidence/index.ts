@@ -84,12 +84,7 @@ export {
   type RenderedRuntimeEvidenceQaPrompt,
   type RuntimeEvidenceQaPromptInput,
 } from "./prompt-template.js";
-export {
-  buildRuntimeEvidenceReviewerQueueItem,
-  runtimeEvidenceFindingsToHumanFindings,
-  runtimeEvidenceSourceItemRef,
-  type RuntimeEvidenceReviewerQueueInput,
-} from "./triage-integration.js";
+export { runtimeEvidenceFindingsToHumanFindings } from "./triage-integration.js";
 export {
   RUNTIME_EVIDENCE_FIXTURE_IDS,
   makeRuntimeEvidenceFixtureStore,

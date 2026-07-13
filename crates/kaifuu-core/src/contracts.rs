@@ -3727,8 +3727,6 @@ fn validate_triage_event(
             "model_output_recorded",
             "qa_finding_reported",
             "patch_result_recorded",
-            "triage_decision_recorded",
-            "repair_requested",
             "finding_superseded",
         ],
         &format!("{label}.eventKind"),

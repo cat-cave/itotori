@@ -1,8 +1,8 @@
 // m1-wholegame-localize-to-patch-seam — the M1 keystone.
 //
 // The whole-game localize driver (`runProjectDrivenExecutor` via
-// `runLocalizeFullProjectCommand`) persists drafts + provider-runs + reviewer
-// items and writes `translated-bridge.json` + `patch-report.json`. Before this
+// `runLocalizeFullProjectCommand`) persists drafts + provider-runs and writes
+// `translated-bridge.json` + `patch-report.json`. Before this
 // module that was the END of the shipped path: nothing turned the translated
 // bridge into an APPLYED patch.
 //

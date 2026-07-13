@@ -1,8 +1,8 @@
-// ITOTORI-041 — Asset-localization drafting / QA / review / export loop.
+// ITOTORI-041 — Asset-localization drafting / QA / export loop.
 //
-// The dialogue loop drafts a source UNIT, QA's it, reviews it in the
-// reviewer queue, and exports a patch payload. This module is the parallel
-// loop for IMAGE / UI text, consuming the KAIFUU-026 OCR text regions +
+// The dialogue loop drafts a source UNIT, attaches QA annotations, and exports
+// a patch payload. This module is the parallel loop for IMAGE / UI text,
+// consuming the KAIFUU-026 OCR text regions +
 // KAIFUU-059 media-surface capability, and honoring the two upstream rules:
 // OCR output is evidence (never ground truth), and unsupported engine asset
 // patching stays EXPLICIT (a typed refusal, never a silent drop).
@@ -10,10 +10,8 @@
 // The four stages, each a pure function over synthetic-testable inputs:
 //   1. draftAssetTexts        — OCR text regions      → AssetTextDraft[]
 //   2. runAssetDraftQa        — AssetTextDraft        → AssetQaFinding[]
-//   3. buildAssetReviewItem   — draft + findings      → AssetReviewItem
-//      decideAssetReview      — item + action         → AssetReviewDecision
-//   4. buildAssetExportOutcome — decision + capability → AssetExportOutcome
-//                                                        (patch | refusal)
+//   3. buildAssetExportOutcome — draft + annotations + capability →
+//                                AssetExportOutcome (patch | refusal)
 
 import { createHash } from "node:crypto";
 import {
@@ -202,7 +200,7 @@ export function runAssetDraftQa(draft: AssetTextDraft): AssetQaFinding[] {
         "major",
         "uncertain-ocr-source",
         `OCR source for ${draft.provenance.regionId} is uncertain (confidence=${draft.provenance.ocrConfidence}); the draft rests on a candidate, not ground truth`,
-        "confirm the source glyphs against the asset before approving",
+        "confirm the source glyphs against the asset before producing a corrected patch",
         [regionRef, draft.provenance.regionContentHash],
       ),
     );
@@ -246,110 +244,13 @@ export function runAssetDraftQa(draft: AssetTextDraft): AssetQaFinding[] {
   return findings;
 }
 
-/** A finding severity that blocks patch export until resolved. */
+/** A critical asset finding is an annotation for play-test follow-up. */
 export function isBlockingAssetFinding(finding: AssetQaFinding): boolean {
   return finding.severity === "critical";
 }
 
 // ---------------------------------------------------------------------------
-// Stage 3 — review integration
-// ---------------------------------------------------------------------------
-
-/**
- * Reviewer actions for an asset draft. Mirrors the dialogue reviewer-queue
- * action vocabulary (`reviewerQueueActionValues`) so an asset draft flows
- * through the same approve / reject / defer / escalate / revise decision
- * path as a dialogue item.
- */
-export const ASSET_REVIEW_ACTIONS = ["approve", "reject", "defer", "escalate", "revise"] as const;
-export type AssetReviewAction = (typeof ASSET_REVIEW_ACTIONS)[number];
-
-export const ASSET_REVIEW_STATES = [
-  "accepted",
-  "rejected",
-  "deferred",
-  "escalated",
-  "repair_requested",
-] as const;
-export type AssetReviewState = (typeof ASSET_REVIEW_STATES)[number];
-
-const ASSET_ACTION_TO_STATE: Record<AssetReviewAction, AssetReviewState> = {
-  approve: "accepted",
-  reject: "rejected",
-  defer: "deferred",
-  escalate: "escalated",
-  revise: "repair_requested",
-};
-
-/**
- * A reviewer-queue-shaped item for an asset draft: the draft, its findings,
- * and a recommended action, keyed by an item ref (the draft id) the reviewer
- * detail view can render. Distinct from a dialogue reviewer item only in that
- * its `sourceItemRef` points at an asset draft and it carries asset provenance.
- */
-export type AssetReviewItem = {
-  reviewItemRef: string;
-  assetRef: string;
-  regionId: string;
-  assetKind: string;
-  summary: string;
-  draft: AssetTextDraft;
-  findings: AssetQaFinding[];
-  recommendedAction: Extract<AssetReviewAction, "approve" | "revise">;
-  provenance: AssetTextProvenance;
-};
-
-export function buildAssetReviewItem(
-  draft: AssetTextDraft,
-  findings: AssetQaFinding[],
-): AssetReviewItem {
-  const blocking = findings.some(isBlockingAssetFinding);
-  return {
-    reviewItemRef: draft.draftId,
-    assetRef: draft.provenance.assetRef,
-    regionId: draft.provenance.regionId,
-    assetKind: draft.assetKind,
-    summary: `${draft.provenance.assetName}#${draft.provenance.regionId}: “${draft.sourceText}” → “${draft.draftText}” (${findings.length} finding${findings.length === 1 ? "" : "s"})`,
-    draft,
-    findings,
-    recommendedAction: blocking ? "revise" : "approve",
-    provenance: draft.provenance,
-  };
-}
-
-export type AssetReviewDecision = {
-  reviewItemRef: string;
-  decisionId: string;
-  action: AssetReviewAction;
-  state: AssetReviewState;
-  decidedByUserId: string;
-  rationale?: string;
-  decidedAt: string;
-};
-
-export function decideAssetReview(
-  item: AssetReviewItem,
-  action: AssetReviewAction,
-  decidedByUserId: string,
-  options: { rationale?: string; now?: () => Date } = {},
-): AssetReviewDecision {
-  const decidedAt = (options.now ?? (() => new Date()))().toISOString();
-  const decision: AssetReviewDecision = {
-    reviewItemRef: item.reviewItemRef,
-    decisionId: `asset-decision-${item.reviewItemRef}`,
-    action,
-    state: ASSET_ACTION_TO_STATE[action],
-    decidedByUserId,
-    decidedAt,
-  };
-  if (options.rationale !== undefined) {
-    decision.rationale = options.rationale;
-  }
-  return decision;
-}
-
-// ---------------------------------------------------------------------------
-// Stage 4 — patch / export handoff (unsupported patching stays EXPLICIT)
+// Stage 3 — patch / export handoff (unsupported patching stays EXPLICIT)
 // ---------------------------------------------------------------------------
 
 /**
@@ -384,28 +285,24 @@ export function isLocalizationSurfaceRole(role: AssetSurfaceRole): boolean {
 }
 
 /**
- * Turn an approved asset review decision into a patch directive — or, when the
- * engine cannot patch the asset, a TYPED explicit refusal. Every non-patch
- * outcome is surfaced with a reason + detail; nothing is silently dropped.
+ * Turn an asset draft into a patch directive — or, when the engine cannot
+ * patch the asset, a TYPED explicit refusal. QA is retained as an annotation;
+ * no manual confirmation step can withhold an otherwise patchable asset.
  *
- * Gate order (first match wins):
- *   1. decision not approved            → draft_rejected
- *   2. an open blocking (critical) QA   → qa_blocked
- *   3. engine patch unsupported         → unsupported_engine
- *   4. inventory-only (not a surface)   → inventory_only / not_a_localization_surface
- *   5. encrypted media key absent       → key_absent
- *   6. no honored patch-back mode       → capability_mismatch
- *   7. otherwise                        → patch directive
+ * Capability order (first match wins):
+ *   1. engine patch unsupported         → unsupported_engine
+ *   2. inventory-only (not a surface)   → inventory_only / not_a_localization_surface
+ *   3. encrypted media key absent       → key_absent
+ *   4. no honored patch-back mode       → capability_mismatch
+ *   5. otherwise                        → patch directive with QA annotations
  */
 export function buildAssetExportOutcome(
   draft: AssetTextDraft,
-  decision: AssetReviewDecision,
   findings: AssetQaFinding[],
   capability: AssetEngineCapability,
 ): AssetExportOutcome {
   const assetRef = draft.provenance.assetRef;
   const regionId = draft.provenance.regionId;
-  const decisionId = decision.decisionId;
   const refuse = (reason: AssetPatchRefusalReason, detail: string): AssetExportOutcome => ({
     kind: "explicit_refusal",
     assetRef,
@@ -413,23 +310,8 @@ export function buildAssetExportOutcome(
     regionId,
     reason,
     detail,
-    decisionId,
+    draftId: draft.draftId,
   });
-
-  if (decision.action !== "approve" || decision.state !== "accepted") {
-    return refuse(
-      "draft_rejected",
-      `reviewer ${decision.action} (state=${decision.state}); no patch is emitted for an unapproved asset draft`,
-    );
-  }
-
-  const blocking = findings.filter(isBlockingAssetFinding);
-  if (blocking.length > 0) {
-    return refuse(
-      "qa_blocked",
-      `${blocking.length} blocking QA finding(s) open: ${blocking.map((f) => f.category).join(", ")}`,
-    );
-  }
 
   if (capability.patchStatus !== "supported" && capability.patchStatus !== "partial") {
     return refuse(
@@ -467,7 +349,11 @@ export function buildAssetExportOutcome(
     policy: draft.policy,
     draftText: draft.draftText,
     patchBackMode: capability.patchBackMode,
-    decisionId,
+    draftId: draft.draftId,
+    qaFindings: findings.map((finding) => ({
+      ...finding,
+      evidenceRefs: [...finding.evidenceRefs],
+    })),
     provenance: draft.provenance,
   };
 }

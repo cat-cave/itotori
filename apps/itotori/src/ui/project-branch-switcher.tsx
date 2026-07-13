@@ -4,11 +4,9 @@
 // A disclosure in the shell toolbar that lists the effective work + edition,
 // every project the typed client can see, and the effective project's locale
 // branches; picking a project/branch switches the shell chrome's context
-// (status bar) through the client-side `ShellSelectionProvider`. This mirrors
-// the hi-fi studio store
-// (`docs/design/hifi/studio/store.jsx`), which models the switcher as CLIENT
-// state (`setProjectId` / `setBranch`) overlaid on the workspace's active
-// project — there is no server-side select-project/branch mutation today.
+// (status bar) through the client-side `ShellSelectionProvider`. There is no
+// server-side select-project/branch mutation today, so the selection is a
+// viewer-local overlay on the workspace's active project.
 //
 // DATA SOURCE — reachable, typed, no invented surface: the hierarchy comes
 // from `projects.list` (`{ projects: ProjectDashboardStatus[] }`), where each

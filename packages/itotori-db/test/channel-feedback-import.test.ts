@@ -77,8 +77,8 @@ function communityFormsExport(): CommunityFormsExport {
 
 const importOptions = {
   projectId: "project-test",
-  targetLocale: "en-US",
   localeBranchId: "locale-en-us",
+  bridgeUnitId: "bridge-unit-test",
   sourceBundleId: "bridge-test",
 } as const;
 
@@ -100,6 +100,7 @@ describe("GitHubIssuesImporter (pure mapping)", () => {
       url: "https://github.com/example-org/example-localization/issues/41",
     });
     expect(first.input.dedupeKey).toBe(ISSUE_41_EXTERNAL_ID);
+    expect(first.input.lineReference).toEqual({ bridgeUnitId: "bridge-unit-test" });
     expect(first.input.feedbackSource?.sourceChannel).toBe("github_issues");
     expect(first.input.feedbackSource?.sourceKind).toBe(feedbackSourceKindValues.communityChannel);
     expect(first.input.metadata).toMatchObject({
@@ -310,8 +311,7 @@ describe("GitHub channel feedback import (real Postgres)", () => {
         url: "https://github.com/example-org/example-localization/issues/41",
       });
       expect(issue41?.reporterRole).toBe("community");
-      // No bridge-unit reference on a raw community report → needs context.
-      expect(issue41?.contextStatus).toBe(feedbackContextStatusValues.needsContext);
+      expect(issue41?.contextStatus).toBe(feedbackContextStatusValues.contextualized);
     } finally {
       await context.close();
     }

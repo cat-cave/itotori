@@ -18,7 +18,7 @@ export const TERMINOLOGY_CANDIDATE_KINDS = [
 
 export type CandidateKind = (typeof TERMINOLOGY_CANDIDATE_KINDS)[number];
 
-export type TerminologyCandidateStatus = "Fresh" | "Stale" | "Promoted" | "RejectedByReviewer";
+export type TerminologyCandidateStatus = "Fresh" | "Stale" | "Promoted" | "Rejected";
 
 export type TerminologyCandidateInvalidatedReason =
   | "source_hash_drift"

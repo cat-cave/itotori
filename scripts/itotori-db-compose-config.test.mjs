@@ -20,7 +20,6 @@ const tier1Workflow = readFileSync(".github/workflows/_tier1.yml", "utf8");
 const flake = readFileSync("flake.nix", "utf8");
 const permissionDenialGate = readFileSync("scripts/permission-denial-db-gate.mjs", "utf8");
 const catalogReplayGate = readFileSync("scripts/catalog-replay-db-gate.mjs", "utf8");
-const styleGuideGate = readFileSync("scripts/style-guide-fixture-flow-db-gate.mjs", "utf8");
 
 /** Extract a top-level job block (`  jobId:`) from a GitHub Actions workflow YAML. */
 function extractWorkflowJob(workflow, jobId) {
@@ -145,7 +144,6 @@ test("db-strict remediation hints derive per-worktree (no shared fixed host port
   for (const [name, gate] of [
     ["permission-denial", permissionDenialGate],
     ["catalog-replay", catalogReplayGate],
-    ["style-guide-fixture-flow", styleGuideGate],
   ]) {
     assert.doesNotMatch(
       gate,
