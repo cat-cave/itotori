@@ -18,15 +18,19 @@ import { asNonBlankTargetText, type WrittenUnitOutcome } from "@itotori/localiza
 import {
   bootstrapLocalUser,
   hashLocalizationArtifact,
+  ItotoriContextArtifactRepository,
   ItotoriLocalizationIterationRepository,
   ItotoriLocalizationJournalRepository,
   ItotoriLocalizationResultRevisionRepository,
   ItotoriLocalizationRunFinalizerRepository,
   localUserId,
   type AuthorizationActor,
+  type CreateRefinementRunInput,
   type LocalizationJournalRunLeaseIdentity,
+  type LocalizationRefinementRunRecord,
 } from "@itotori/db";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { runItotoriCliCommand, type ItotoriCliServices } from "../src/cli-handlers.js";
 import { runKaifuuRealliveExtract } from "../src/extract/kaifuu-extract-seam.js";
 import { PatchIterationService } from "../src/iteration/patch-iteration-service.js";
 import { applyKaifuuRealLivePatch } from "../src/orchestrator/patch-apply-seam.js";
@@ -52,6 +56,22 @@ const driverLease: LocalizationJournalRunLeaseIdentity = {
 const fixtureRoot = fileURLToPath(
   new URL("../../../crates/kaifuu-reallive/tests/fixtures/bridge-inventory-001/", import.meta.url),
 );
+// The public Kaifuu fixture's Gameexe is extraction-only metadata (its first
+// line is a comment that Utsushi correctly refuses). The runtime launch proof
+// supplies the same minimal valid RealLive window configuration used by the
+// whole-game Utsushi integration test; Seen.txt remains the real fixture bytes.
+const runtimeGameexeIni =
+  "#SCREENSIZE_MOD=1\r\n" +
+  "#WINDOW_ATTR=100,100,160,200,0\r\n" +
+  "#WINDOW.000.POS=0:0,345\r\n" +
+  "#WINDOW.000.ATTR_MOD=0\r\n" +
+  "#WINDOW.000.ATTR=080,112,160,255,0\r\n" +
+  "#WINDOW.000.MOJI_SIZE=25\r\n" +
+  "#WINDOW.000.MOJI_POS=19,0,53,0\r\n" +
+  "#WINDOW.000.MOJI_CNT=22,3\r\n" +
+  "#WINDOW.000.MOJI_REP=-1,3\r\n" +
+  "#WINDOW.000.NAME_MOD=0\r\n" +
+  "#WINDOW.000.MESSAGE_MOD=0\r\n";
 
 type ProductionParentArtifacts = {
   root: string;
@@ -67,8 +87,18 @@ type ProductionParentArtifacts = {
   cleanup(): void;
 };
 
+type LivePatchPlayCliOutput = {
+  surface: { patch: { patchVersionId: string } };
+  session: {
+    playSessionId: string;
+    observedPatchVersionId: string;
+    launchDescriptor: Record<string, unknown>;
+    qaCallouts: unknown[];
+  };
+};
+
 describe.skipIf(!process.env.DATABASE_URL)("PatchIterationService live Postgres", () => {
-  it("takes a real Kaifuu v1 through play feedback into a lineage-linked v2 with exact reuse", async () => {
+  it("takes a real Kaifuu v1 through CLI play feedback into a lineage-linked v2 with exact reuse", async () => {
     const context = await isolatedMigratedContext();
     const artifacts = createProductionParentArtifacts();
     try {
@@ -113,16 +143,91 @@ describe.skipIf(!process.env.DATABASE_URL)("PatchIterationService live Postgres"
         ]),
       });
 
-      const session = await service.play({
-        patchVersionId: v1.patchVersionId,
-        launchDescriptor: { surface: "live-postgres-fixture" },
+      // No test launcher or scene override: `itotori patch play` reaches the
+      // same default production service the dashboard uses. The launcher
+      // derives the scene only from the hash-bound translated bridge, then
+      // drives the materialized Kaifuu target through real Utsushi before the
+      // CLI receives a durable session receipt.
+      const cliOutputPath = "patch-iteration-live-play.json";
+      const cliWrites = new Map<string, unknown>();
+      await runItotoriCliCommand(["patch", "play", v1.patchVersionId, "--output", cliOutputPath], {
+        io: {
+          readJson: () => {
+            throw new Error("CLI play must not read an input JSON artifact");
+          },
+          writeJson: (path, value) => {
+            cliWrites.set(path, value);
+          },
+        },
+        migrateDatabase: async () => {},
+        withServices: async (callback) =>
+          await callback({ patchIteration: service } as unknown as ItotoriCliServices),
       });
+      const cliOutput = cliWrites.get(cliOutputPath) as LivePatchPlayCliOutput | undefined;
+      expect(cliOutput).toMatchObject({
+        surface: { patch: { patchVersionId: v1.patchVersionId } },
+        session: {
+          observedPatchVersionId: v1.patchVersionId,
+          launchDescriptor: {
+            runtime: "utsushi-reallive",
+            engine: "reallive",
+            scene: 1,
+            replay: "observed",
+            observedTextLineCount: expect.any(Number),
+          },
+        },
+      });
+      expect(cliOutput).not.toHaveProperty("delivery");
+      expect(JSON.stringify(cliOutput)).not.toContain("artifactRefs");
+      if (cliOutput === undefined) {
+        throw new Error("CLI play did not write its requested output receipt");
+      }
+      const session = cliOutput.session;
+      expect(session.launchDescriptor).toMatchObject({
+        runtime: "utsushi-reallive",
+        engine: "reallive",
+        scene: 1,
+        replay: "observed",
+        observedTextLineCount: expect.any(Number),
+      });
+      expect(session.launchDescriptor).not.toHaveProperty("source");
       expect(session.qaCallouts).toEqual([
         expect.objectContaining({
           bridgeUnitId: artifacts.changedBridgeUnitId,
           contested: true,
           informational: true,
         }),
+      ]);
+      const persistedRuntime = await context.pool.query<{
+        observed_patch_version_id: string;
+        runtime: string | null;
+        engine: string | null;
+        scene: string | null;
+        replay: string | null;
+        observed_text_line_count: string | null;
+      }>(
+        `
+          select
+            observed_patch_version_id,
+            launch_descriptor ->> 'runtime' as runtime,
+            launch_descriptor ->> 'engine' as engine,
+            launch_descriptor ->> 'scene' as scene,
+            launch_descriptor ->> 'replay' as replay,
+            launch_descriptor ->> 'observedTextLineCount' as observed_text_line_count
+          from itotori_play_sessions
+          where play_session_id = $1
+        `,
+        [session.playSessionId],
+      );
+      expect(persistedRuntime.rows).toEqual([
+        {
+          observed_patch_version_id: v1.patchVersionId,
+          runtime: "utsushi-reallive",
+          engine: "reallive",
+          scene: "1",
+          replay: "observed",
+          observed_text_line_count: expect.stringMatching(/^\d+$/u),
+        },
       ]);
 
       const reflectedTarget = "Refinement feedback is now in the real patch";
@@ -331,7 +436,347 @@ describe.skipIf(!process.env.DATABASE_URL)("PatchIterationService live Postgres"
       }
     }
   }, 180_000);
+
+  it("refines the default selected child from inherited canonical feedback without replaying its v1 result edit", async () => {
+    const context = await isolatedMigratedContext();
+    const artifacts = createProductionParentArtifacts();
+    try {
+      await bootstrapLocalUser(context.db);
+      await seedScope(context);
+      await seedCurrentSourceUnit(context, artifacts.changedBridgeUnitId);
+      await seedCurrentSourceUnit(context, artifacts.reusedBridgeUnitId);
+      const v1 = await seedPlayableProductionRun(
+        context,
+        artifacts,
+        "patch-iteration-live-inherited-v1",
+      );
+      const iteration = new ItotoriLocalizationIterationRepository(context.db);
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const finalizer = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const resultRevisions = bindPlayTesterResultRevisionService(
+        new PlayTesterResultRevisionService({
+          repository: new ItotoriLocalizationResultRevisionRepository(
+            context.db,
+            new ProductionPlayTesterPatchArtifactMaterializer(),
+          ),
+        }),
+        actor,
+      );
+      const v3Target = "Canonical inherited feedback drives this real v3 patch.";
+      const loadDraftTexts = vi.fn(async () => new Map([[artifacts.reusedBridgeUnitId, v3Target]]));
+      const service = new PatchIterationService({
+        actor,
+        iteration,
+        journal,
+        finalizer,
+        resultRevisions,
+        draftTexts: { load: loadDraftTexts },
+        now: () => new Date("2026-07-13T04:00:00.000Z"),
+      });
+
+      const batch = await service.createFeedbackBatch({
+        observedPatchVersionId: v1.patchVersionId,
+        label: "v1 feedback that must remain refinable from its selected child",
+      });
+      const v2Target = "The v1 result edit is already selected in this v2 child.";
+      const resultEdit = await service.feedback({
+        observedPatchVersionId: v1.patchVersionId,
+        feedbackBatchId: batch.feedbackBatchId,
+        eventKind: "result_edit",
+        targetBody: v2Target,
+        affectedBridgeUnitIds: [artifacts.changedBridgeUnitId],
+      });
+
+      // Seed the exact canonical head/receipt that a completed Node 9/8
+      // correction would have returned for a different unit. The service must
+      // retain the already-selected v1 result edit on A while using this
+      // durable B draft for v3. That catches a whole-batch replay that would
+      // otherwise re-redraft inherited result-edit feedback.
+      const contextEntry = await new ItotoriContextArtifactRepository(context.db).upsertArtifact(
+        actor,
+        {
+          projectId: scope.projectId,
+          localeBranchId: scope.localeBranchId,
+          sourceRevisionId: scope.sourceRevisionId,
+          category: "glossary",
+          title: "Inherited feedback canonical context",
+          body: "The play-test correction has a durable v3 draft.",
+          producedByAgent: "patch-iteration-live-fixture",
+          producedByTool: "tool.context-artifacts",
+          producerVersion: "1.0.0",
+          sourceUnits: [
+            {
+              bridgeUnitId: artifacts.reusedBridgeUnitId,
+              citation: `patch-iteration-live:${artifacts.reusedBridgeUnitId}`,
+            },
+          ],
+        },
+      );
+      if (contextEntry.headVersionId === null) {
+        throw new Error("canonical inherited-feedback fixture did not select a context head");
+      }
+      const comment = await iteration.recordFeedbackEvent(actor, {
+        observedPatchVersionId: v1.patchVersionId,
+        feedbackBatchId: batch.feedbackBatchId,
+        eventKind: "comment",
+        body: "The canonical comment must redraft the other selected-child unit.",
+        metadata: {
+          contextCorrection: {
+            rerun: { state: "succeeded", jobStatus: "succeeded", error: null },
+          },
+        },
+        contextArtifactId: contextEntry.contextArtifactId,
+        contextEntryVersionId: contextEntry.headVersionId,
+        affectedBridgeUnitIds: [artifacts.reusedBridgeUnitId],
+      });
+
+      const selectedChild = (await service.list({ localeBranchId: scope.localeBranchId })).find(
+        (version) =>
+          version.origin === "play_tester_edit" &&
+          version.parentPatchVersionId === v1.patchVersionId &&
+          version.selectedAt !== null,
+      );
+      if (selectedChild === undefined) {
+        throw new Error("Node 10 did not select the result-edit child patch");
+      }
+      const childSurface = await service.load({ patchVersionId: selectedChild.patchVersionId });
+      expect(childSurface?.feedback).toMatchObject({
+        observedPatchVersionId: selectedChild.patchVersionId,
+        batches: [
+          expect.objectContaining({
+            feedbackBatchId: batch.feedbackBatchId,
+            observedPatchVersionId: v1.patchVersionId,
+            events: expect.arrayContaining([
+              expect.objectContaining({ feedbackEventId: resultEdit.feedbackEventId }),
+              expect.objectContaining({ feedbackEventId: comment.feedbackEventId }),
+            ]),
+          }),
+        ],
+      });
+
+      const v3 = await service.refine({
+        basePatchVersionId: selectedChild.patchVersionId,
+        feedbackBatchIds: [batch.feedbackBatchId],
+      });
+      expect(v3.refinement.members).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            bridgeUnitId: artifacts.changedBridgeUnitId,
+            strategy: "reuse",
+          }),
+          expect.objectContaining({
+            bridgeUnitId: artifacts.reusedBridgeUnitId,
+            strategy: "redraft",
+          }),
+        ]),
+      );
+      expect(v3.patch).toMatchObject({
+        parentPatchVersionId: selectedChild.patchVersionId,
+        units: expect.arrayContaining([
+          expect.objectContaining({
+            bridgeUnitId: artifacts.reusedBridgeUnitId,
+            targetBody: v3Target,
+          }),
+          expect.objectContaining({
+            bridgeUnitId: artifacts.changedBridgeUnitId,
+            targetBody: v2Target,
+          }),
+        ]),
+      });
+      expect(loadDraftTexts).toHaveBeenCalledWith({
+        projectId: scope.projectId,
+        localeBranchId: scope.localeBranchId,
+        bridgeUnitIds: [artifacts.reusedBridgeUnitId],
+      });
+      const v3Seen = readFileSync(
+        join(v3.patch.artifactRefs.patchTarget, "REALLIVEDATA", "Seen.txt"),
+      );
+      expect(
+        reextractPatchedUnit({
+          artifacts,
+          bridgeUnitId: artifacts.reusedBridgeUnitId,
+          seenBytes: v3Seen,
+          label: "verify-inherited-feedback-v3",
+        }),
+      ).toContain(bracketWrapForRealLive(v3Target));
+    } finally {
+      try {
+        await context.close();
+      } finally {
+        artifacts.cleanup();
+      }
+    }
+  }, 180_000);
+
+  it("terminalizes a failed refinement instead of leaking its running lease", async () => {
+    const context = await isolatedMigratedContext();
+    const artifacts = createProductionParentArtifacts();
+    try {
+      await bootstrapLocalUser(context.db);
+      await seedScope(context);
+      const v1 = await seedPlayableProductionRun(
+        context,
+        artifacts,
+        "patch-iteration-live-cleanup-v1",
+      );
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const finalizer = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const iteration = new ItotoriLocalizationIterationRepository(context.db);
+      const service = new PatchIterationService({
+        actor,
+        iteration,
+        journal,
+        finalizer,
+        now: () => new Date("2026-07-13T03:00:00.000Z"),
+      });
+
+      const batch = await service.createFeedbackBatch({
+        observedPatchVersionId: v1.patchVersionId,
+        label: "exercise failed-refinement cleanup",
+      });
+      await service.feedback({
+        observedPatchVersionId: v1.patchVersionId,
+        feedbackBatchId: batch.feedbackBatchId,
+        eventKind: "comment",
+        body: "This intentionally has no target impact, so refinement must fail after seeding.",
+      });
+
+      await expect(
+        service.refine({
+          basePatchVersionId: v1.patchVersionId,
+          feedbackBatchIds: [batch.feedbackBatchId],
+        }),
+      ).rejects.toMatchObject({ code: "no_refinement_changes" });
+
+      const persisted = await context.pool.query<{
+        status: string;
+        lease_owner_id: string | null;
+        lease_expires_at: Date | null;
+        terminal_status: string | null;
+        root_cause_code: string | null;
+      }>(
+        `
+          select
+            run.status,
+            run.lease_owner_id,
+            run.lease_expires_at,
+            summary.terminal_status,
+            summary.summary_json -> 'rootCause' ->> 'code' as root_cause_code
+          from itotori_localization_journal_runs run
+          left join itotori_localization_run_terminal_summaries summary
+            on summary.run_id = run.run_id
+          where run.base_patch_version_id = $1
+        `,
+        [v1.patchVersionId],
+      );
+      expect(persisted.rows).toEqual([
+        {
+          status: "failed",
+          lease_owner_id: null,
+          lease_expires_at: null,
+          terminal_status: "failed",
+          root_cause_code: "no_refinement_changes",
+        },
+      ]);
+    } finally {
+      try {
+        await context.close();
+      } finally {
+        artifacts.cleanup();
+      }
+    }
+  }, 180_000);
+
+  it("terminalizes a run when refinement snapshot loading fails after its commit", async () => {
+    const context = await isolatedMigratedContext();
+    const artifacts = createProductionParentArtifacts();
+    try {
+      await bootstrapLocalUser(context.db);
+      await seedScope(context);
+      const v1 = await seedPlayableProductionRun(
+        context,
+        artifacts,
+        "patch-iteration-live-post-commit-cleanup-v1",
+      );
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const finalizer = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const iteration = new PostCommitRefinementSnapshotFailureRepository(context.db);
+      const service = new PatchIterationService({
+        actor,
+        iteration,
+        journal,
+        finalizer,
+        now: () => new Date("2026-07-13T03:30:00.000Z"),
+      });
+
+      const batch = await service.createFeedbackBatch({
+        observedPatchVersionId: v1.patchVersionId,
+        label: "post-commit refinement snapshot cleanup",
+      });
+      await service.feedback({
+        observedPatchVersionId: v1.patchVersionId,
+        feedbackBatchId: batch.feedbackBatchId,
+        eventKind: "comment",
+        body: "The post-commit snapshot fixture must never retain a running lease.",
+      });
+
+      await expect(
+        service.refine({
+          basePatchVersionId: v1.patchVersionId,
+          feedbackBatchIds: [batch.feedbackBatchId],
+        }),
+      ).rejects.toThrow("fixture refinement snapshot read failed after seed commit");
+
+      const persisted = await context.pool.query<{
+        status: string;
+        lease_owner_id: string | null;
+        lease_expires_at: Date | null;
+        terminal_status: string | null;
+        root_cause_code: string | null;
+      }>(
+        `
+          select
+            run.status,
+            run.lease_owner_id,
+            run.lease_expires_at,
+            summary.terminal_status,
+            summary.summary_json -> 'rootCause' ->> 'code' as root_cause_code
+          from itotori_localization_journal_runs run
+          left join itotori_localization_run_terminal_summaries summary
+            on summary.run_id = run.run_id
+          where run.base_patch_version_id = $1
+        `,
+        [v1.patchVersionId],
+      );
+      expect(persisted.rows).toEqual([
+        {
+          status: "failed",
+          lease_owner_id: null,
+          lease_expires_at: null,
+          terminal_status: "failed",
+          root_cause_code: "refinement_failure",
+        },
+      ]);
+    } finally {
+      try {
+        await context.close();
+      } finally {
+        artifacts.cleanup();
+      }
+    }
+  }, 180_000);
 });
+
+/** Simulates the only dangerous refinement-creation shape: seed commits, then snapshot load fails. */
+class PostCommitRefinementSnapshotFailureRepository extends ItotoriLocalizationIterationRepository {
+  override async createRefinementRun(
+    actor: AuthorizationActor,
+    input: CreateRefinementRunInput,
+  ): Promise<LocalizationRefinementRunRecord> {
+    await super.createRefinementRun(actor, input);
+    throw new Error("fixture refinement snapshot read failed after seed commit");
+  }
+}
 
 async function seedPlayableProductionRun(
   context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
@@ -392,9 +837,9 @@ function createProductionParentArtifacts(): ProductionParentArtifacts {
   const root = mkdtempSync(join(tmpdir(), "itotori-patch-iteration-live-"));
   const sourceRoot = join(root, "source-game");
   const sourceData = join(sourceRoot, "REALLIVEDATA");
-  mkdirSync(sourceData, { recursive: true });
+  mkdirSync(join(sourceData, "g00"), { recursive: true });
   copyFileSync(join(fixtureRoot, "SEEN.TXT"), join(sourceData, "Seen.txt"));
-  copyFileSync(join(fixtureRoot, "Gameexe.ini"), join(sourceRoot, "Gameexe.ini"));
+  writeFileSync(join(sourceRoot, "Gameexe.ini"), runtimeGameexeIni, "utf8");
 
   const extractedBridgePath = join(root, "extracted-bridge.json");
   runKaifuuRealliveExtract({
@@ -661,5 +1106,46 @@ async function seedScope(
       )
     `,
     [scope.localeBranchId, scope.projectId, scope.targetLocale],
+  );
+}
+
+/** Add one current bundle member so the canonical-context repository can cite it. */
+async function seedCurrentSourceUnit(
+  context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
+  bridgeUnitId: string,
+): Promise<void> {
+  const assetId = `asset-patch-iteration-live-${bridgeUnitId}`;
+  await context.pool.query(
+    `
+      insert into itotori_assets (
+        asset_id, project_id, source_bundle_id, source_revision_id,
+        asset_key, asset_kind, source_hash
+      ) values ($1, $2, 'source-bundle-patch-iteration-live', $3, $4, 'text', 'hash:live-unit')
+    `,
+    [assetId, scope.projectId, scope.sourceRevisionId, `fixture:${bridgeUnitId}`],
+  );
+  await context.pool.query(
+    `
+      insert into itotori_source_units (
+        bridge_unit_id, project_id, source_bundle_id, source_asset_id, source_revision_id,
+        surface_id, surface_kind, source_unit_key, occurrence_id, source_locale,
+        source_text, source_hash, source_location, speaker, context, policy,
+        spans, patch_ref, runtime_expectation
+      ) values (
+        $1, $2, 'source-bundle-patch-iteration-live', $3, $4,
+        $5, 'dialogue', $6, $7, 'ja-JP',
+        'fixture source', 'hash:live-unit', '{}'::jsonb, null, '{}'::jsonb, null,
+        '[]'::jsonb, '{}'::jsonb, '{}'::jsonb
+      )
+    `,
+    [
+      bridgeUnitId,
+      scope.projectId,
+      assetId,
+      scope.sourceRevisionId,
+      `surface:${bridgeUnitId}`,
+      `fixture:${bridgeUnitId}`,
+      `occurrence:${bridgeUnitId}`,
+    ],
   );
 }

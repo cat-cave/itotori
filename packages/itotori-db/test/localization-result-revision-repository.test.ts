@@ -22,6 +22,7 @@ import { ItotoriLocalizationRunFinalizerRepository } from "../src/repositories/l
 import {
   ItotoriLocalizationResultRevisionRepository,
   LocalizationResultRevisionRepositoryError,
+  type ApplyPlayTesterTargetEditWithFeedbackInput,
   type PlayTesterPatchArtifactMaterializer,
 } from "../src/repositories/localization-result-revision-repository.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
@@ -173,6 +174,180 @@ describe("ItotoriLocalizationResultRevisionRepository", () => {
       }
     }
   });
+
+  it("rolls back a selected child when its linked feedback fails validation", async () => {
+    const context = await isolatedMigratedContext();
+    const artifact = createRealArtifact("atomic-feedback-fail");
+    const childRoot = mkdtempSync(join(tmpdir(), "itotori-play-tester-feedback-fail-"));
+    try {
+      await seedScope(context);
+      await grantDraftWrite(context, playTesterActor.userId);
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const finalizer = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const materializer = createTestPatchArtifactMaterializer(childRoot);
+      const revisions = new ItotoriLocalizationResultRevisionRepository(
+        context.db,
+        materializer.materializer,
+      );
+      const runId = "play-tester-edit-atomic-feedback-fail";
+      const parentPatch = await seedPlayablePatch({
+        journal,
+        finalizer,
+        runId,
+        unitIds: ["unit-only"],
+        artifact,
+      });
+
+      // This is deliberately checked by feedback persistence after the child
+      // result revision/patch selection work has started. The one shared DB
+      // transaction must roll every child write back rather than leaving the
+      // dashboard's current version ahead of its feedback inbox.
+      await expect(
+        revisions.applyPlayTesterTargetEditWithFeedback(playTesterActor, {
+          parentPatchVersionId: parentPatch.patchVersionId,
+          bridgeUnitId: "unit-only",
+          targetBody: "An invalid linked feedback session must not select this child.",
+          feedback: {
+            playSessionId: "missing-play-session-for-atomic-feedback-test",
+            body: "Record this only if its observed play session is valid.",
+          },
+        }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+
+      const persisted = await context.pool.query<{
+        child_revisions: string;
+        child_patches: string;
+        feedback_events: string;
+        selected_patch: string;
+      }>(
+        `
+          select
+            (
+              select count(*)
+              from itotori_localization_result_revisions
+              where run_id = $1 and origin = 'play_tester_edit'
+            )::text as child_revisions,
+            (
+              select count(*)
+              from itotori_localization_patch_versions
+              where run_id = $1 and origin = 'play_tester_edit'
+            )::text as child_patches,
+            (
+              select count(*)
+              from itotori_play_test_feedback_events
+              where observed_patch_version_id = $2
+            )::text as feedback_events,
+            (
+              select patch_version_id
+              from itotori_localization_patch_versions
+              where run_id = $1 and selected_at is not null
+            ) as selected_patch
+        `,
+        [runId, parentPatch.patchVersionId],
+      );
+      expect(persisted.rows[0]).toEqual({
+        child_revisions: "0",
+        child_patches: "0",
+        feedback_events: "0",
+        selected_patch: parentPatch.patchVersionId,
+      });
+      expect(materializer.cleanupCallCount()).toBe(1);
+      expect(materializer.materializedRoots).toHaveLength(1);
+      expect(existsSync(materializer.materializedRoots[0]!)).toBe(false);
+    } finally {
+      try {
+        await context.close();
+      } finally {
+        artifact.cleanup();
+        rmSync(childRoot, { recursive: true, force: true });
+      }
+    }
+  }, 180_000);
+
+  it("rejects a missing linked feedback object before it selects a child", async () => {
+    const context = await isolatedMigratedContext();
+    const artifact = createRealArtifact("atomic-feedback-missing");
+    const childRoot = mkdtempSync(join(tmpdir(), "itotori-play-tester-feedback-missing-"));
+    try {
+      await seedScope(context);
+      await grantDraftWrite(context, playTesterActor.userId);
+      const journal = new ItotoriLocalizationJournalRepository(context.db);
+      const finalizer = new ItotoriLocalizationRunFinalizerRepository(context.db);
+      const materializer = createTestPatchArtifactMaterializer(childRoot);
+      const revisions = new ItotoriLocalizationResultRevisionRepository(
+        context.db,
+        materializer.materializer,
+      );
+      const runId = "play-tester-edit-atomic-feedback-missing";
+      const parentPatch = await seedPlayablePatch({
+        journal,
+        finalizer,
+        runId,
+        unitIds: ["unit-only"],
+        artifact,
+      });
+
+      // The TypeScript field is required, but this repository is also a
+      // JavaScript boundary. A malformed caller must fail before the patcher
+      // can create/select a child that has no immutable feedback event.
+      const malformedInput = {
+        parentPatchVersionId: parentPatch.patchVersionId,
+        bridgeUnitId: "unit-only",
+        targetBody: "This target must not materialize without linked feedback.",
+        feedback: undefined,
+      } as unknown as ApplyPlayTesterTargetEditWithFeedbackInput;
+      await expect(
+        revisions.applyPlayTesterTargetEditWithFeedback(playTesterActor, malformedInput),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+
+      const persisted = await context.pool.query<{
+        child_revisions: string;
+        child_patches: string;
+        feedback_events: string;
+        selected_patch: string;
+      }>(
+        `
+          select
+            (
+              select count(*)
+              from itotori_localization_result_revisions
+              where run_id = $1 and origin = 'play_tester_edit'
+            )::text as child_revisions,
+            (
+              select count(*)
+              from itotori_localization_patch_versions
+              where run_id = $1 and origin = 'play_tester_edit'
+            )::text as child_patches,
+            (
+              select count(*)
+              from itotori_play_test_feedback_events
+              where observed_patch_version_id = $2
+            )::text as feedback_events,
+            (
+              select patch_version_id
+              from itotori_localization_patch_versions
+              where run_id = $1 and selected_at is not null
+            ) as selected_patch
+        `,
+        [runId, parentPatch.patchVersionId],
+      );
+      expect(persisted.rows[0]).toEqual({
+        child_revisions: "0",
+        child_patches: "0",
+        feedback_events: "0",
+        selected_patch: parentPatch.patchVersionId,
+      });
+      expect(materializer.cleanupCallCount()).toBe(0);
+      expect(materializer.materializedRoots).toEqual([]);
+    } finally {
+      try {
+        await context.close();
+      } finally {
+        artifact.cleanup();
+        rmSync(childRoot, { recursive: true, force: true });
+      }
+    }
+  }, 180_000);
 
   it("keeps an edit of a reused refinement member bound to its source outcome run", async () => {
     const context = await isolatedMigratedContext();

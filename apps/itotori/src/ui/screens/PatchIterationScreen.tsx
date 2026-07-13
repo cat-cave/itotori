@@ -8,7 +8,6 @@ import { useEffect, useState, type ReactNode } from "react";
 import type {
   ApiPatchIterationFeedbackRequest,
   ApiPatchIterationFeedbackInbox,
-  ApiPatchIterationDeliveryResponse,
   ApiPatchIterationPatch,
   ApiPatchIterationVersion,
 } from "../../api-schema.js";
@@ -18,6 +17,7 @@ import { useApiQuery, useApiQueryWhen } from "../use-api-resource.js";
 import {
   PatchIterationPanel,
   type PatchIterationFeedbackInboxView,
+  type PatchIterationFeedbackRefinementStatus,
   type PatchIterationQaCalloutView,
   type PatchIterationRefinementRequest,
   type PatchIterationVersionStatus,
@@ -234,8 +234,6 @@ type MutationOutcome =
   | { kind: "refine"; patchVersionId: string }
   | { kind: "error"; message: string };
 
-type ExactPatchDelivery = Pick<ApiPatchIterationDeliveryResponse, "patchVersionId" | "downloadUrl">;
-
 function PatchIterationReady({
   localeBranchId,
   surface,
@@ -254,13 +252,11 @@ function PatchIterationReady({
   const [pending, setPending] = useState<"play" | "refine" | null>(null);
   const [outcome, setOutcome] = useState<MutationOutcome | null>(null);
   const [playSessionId, setPlaySessionId] = useState<string | null>(null);
-  const [exactDelivery, setExactDelivery] = useState<ExactPatchDelivery | null>(null);
 
   // Patch versions are immutable and a session must never leak from the
   // previously viewed version into feedback for the next one.
   useEffect(() => {
     setPlaySessionId(null);
-    setExactDelivery(null);
   }, [surface.patch.patchVersionId]);
 
   const startPlay = async (patchVersionId: string): Promise<void> => {
@@ -268,7 +264,6 @@ function PatchIterationReady({
     setPending("play");
     setOutcome(null);
     setPlaySessionId(null);
-    setExactDelivery(null);
     try {
       const result = await apiClient.request("patchIteration.play", {
         pathParams: { patchVersionId },
@@ -278,24 +273,6 @@ function PatchIterationReady({
         const startedPlaySessionId = result.data.session.playSessionId;
         setPlaySessionId(startedPlaySessionId);
         setOutcome({ kind: "play", playSessionId: startedPlaySessionId });
-        // This endpoint addresses immutable patch identity directly, rather
-        // than the run's mutable selected revision. A historical v1 stays
-        // playable/downloadable after a v2 child becomes selected.
-        try {
-          const delivery = await apiClient.request("patchIteration.delivery", {
-            pathParams: { patchVersionId },
-          });
-          if (delivery.state === "ready" && delivery.data.patchVersionId === patchVersionId) {
-            setExactDelivery({
-              patchVersionId: delivery.data.patchVersionId,
-              downloadUrl: delivery.data.downloadUrl,
-            });
-          }
-        } catch {
-          // A session is still durable and feedback remains linked even when
-          // exact archive construction fails (for example, a corrupted
-          // manifest discovered at the byte-serving boundary).
-        }
       } else if (result.state === "error") {
         setOutcome({ kind: "error", message: apiErrorMessage(result.error) });
       } else {
@@ -351,7 +328,11 @@ function PatchIterationReady({
   const versions = surface.versions.map((version) =>
     patchIterationVersionView(version, localeBranchId, surface.patch),
   );
-  const feedback = patchIterationFeedbackInboxView(surface.feedback);
+  const feedback = patchIterationFeedbackInboxView(
+    surface.feedback,
+    surface.patch.patchVersionId,
+    surface.versions,
+  );
   const qaCallouts = surface.patch.qaCallouts.map(patchIterationQaCalloutView);
   return (
     <PatchIterationShell state="ready" localeBranchId={localeBranchId}>
@@ -387,20 +368,8 @@ function PatchIterationReady({
         )}
         {outcome?.kind === "play" && (
           <p role="status" data-patch-iteration-status="play-started">
-            Play session <code>{outcome.playSessionId}</code> started for this exact patch version.
-          </p>
-        )}
-        {playSessionId !== null && exactDelivery === null && (
-          <p data-patch-iteration-status="exact-session-only">
-            Feedback is linked to exact play session <code>{playSessionId}</code>; no matching
-            archive is exposed for this selected patch version.
-          </p>
-        )}
-        {exactDelivery !== null && (
-          <p data-patch-iteration-status="exact-delivery-ready">
-            <a href={exactDelivery.downloadUrl}>
-              Download the authenticated archive for <code>{exactDelivery.patchVersionId}</code>
-            </a>
+            Patched runtime opened; play session <code>{outcome.playSessionId}</code> is linked to
+            this exact patch version.
           </p>
         )}
         {outcome?.kind === "refine" && (
@@ -589,9 +558,10 @@ function PatchFeedbackComposer({
     >
       <h2 id="patch-feedback-compose-heading">Record play-test feedback</h2>
       <p>
-        Feedback is attached to <code>{patchVersionId}</code>. Result edits create the existing
-        immutable result revision; context feedback writes through the existing canonical wiki and
-        correction flywheel, or can cite a correction already recorded there.
+        Feedback is attached to <code>{patchVersionId}</code>. A scoped comment becomes a canonical
+        note for the registered redraft; result edits create the existing immutable result revision;
+        context feedback writes through the existing canonical wiki and correction flywheel, or can
+        cite a correction already recorded there.
       </p>
       <div className="patch-iteration-feedback-composer__batch">
         <label>
@@ -872,35 +842,143 @@ const EMPTY_FEEDBACK_INBOX: PatchIterationFeedbackInboxView = {
 
 function patchIterationFeedbackInboxView(
   inbox: ApiPatchIterationFeedbackInbox,
+  activePatchVersionId: string,
+  versions: readonly ApiPatchIterationVersion[],
 ): PatchIterationFeedbackInboxView {
+  const activeLineagePatchVersionIds = patchVersionLineageIds(activePatchVersionId, versions);
   const batches = inbox.batches
     .filter((batch) => batch.selectionKind === "batch")
-    .map((batch) => ({
-      feedbackBatchId: batch.feedbackBatchId,
-      status: batch.selectionKind,
-      eventCount: batch.events.length,
-      selected: true,
-      label: batch.label,
-    }));
+    .map((batch) => {
+      const events = batch.events.map((event) => ({
+        feedbackEventId: event.feedbackEventId,
+        eventKind: event.eventKind,
+        summary: patchIterationFeedbackSummary(event),
+        refinementStatus: patchIterationFeedbackRefinementStatus(
+          event,
+          activeLineagePatchVersionIds,
+        ),
+      }));
+      const refinementStatus = aggregateFeedbackRefinementStatus(
+        events.map((event) => event.refinementStatus),
+      );
+      return {
+        feedbackBatchId: batch.feedbackBatchId,
+        status: batch.selectionKind,
+        eventCount: batch.events.length,
+        selected: refinementStatus === "refinable",
+        label: batch.label,
+        refinementStatus,
+        events,
+      };
+    });
   const individualEvents = inbox.batches
     .filter((batch) => batch.selectionKind === "individual")
     .flatMap((batch) =>
-      batch.events.map((event) => ({
-        feedbackEventId: event.feedbackEventId,
-        feedbackBatchId: batch.feedbackBatchId,
-        eventKind: event.eventKind,
-        summary: patchIterationFeedbackSummary(event),
-        selected: true,
-      })),
+      batch.events.map((event) => {
+        const refinementStatus = patchIterationFeedbackRefinementStatus(
+          event,
+          activeLineagePatchVersionIds,
+        );
+        return {
+          feedbackEventId: event.feedbackEventId,
+          feedbackBatchId: batch.feedbackBatchId,
+          eventKind: event.eventKind,
+          summary: patchIterationFeedbackSummary(event),
+          selected: refinementStatus === "refinable",
+          refinementStatus,
+        };
+      }),
     );
   return {
     eventCount: inbox.batches.reduce((count, batch) => count + batch.events.length, 0),
     individualEventCount: individualEvents.length,
     batches,
     individualEvents,
-    selectedFeedbackEventIds: individualEvents.map((event) => event.feedbackEventId),
-    selectedFeedbackBatchIds: batches.map((batch) => batch.feedbackBatchId),
+    selectedFeedbackEventIds: individualEvents
+      .filter((event) => event.selected)
+      .map((event) => event.feedbackEventId),
+    selectedFeedbackBatchIds: batches
+      .filter((batch) => batch.selected)
+      .map((batch) => batch.feedbackBatchId),
   };
+}
+
+function patchVersionLineageIds(
+  activePatchVersionId: string,
+  versions: readonly ApiPatchIterationVersion[],
+): ReadonlySet<string> {
+  const parentByPatchVersionId = new Map(
+    versions.map((version) => [version.patchVersionId, version.parentPatchVersionId]),
+  );
+  const lineage = new Set<string>();
+  let patchVersionId: string | null = activePatchVersionId;
+  while (patchVersionId !== null && !lineage.has(patchVersionId)) {
+    lineage.add(patchVersionId);
+    patchVersionId = parentByPatchVersionId.get(patchVersionId) ?? null;
+  }
+  return lineage;
+}
+
+function patchIterationFeedbackRefinementStatus(
+  event: ApiPatchIterationFeedbackInbox["batches"][number]["events"][number],
+  activeLineagePatchVersionIds: ReadonlySet<string>,
+): PatchIterationFeedbackRefinementStatus {
+  if (event.eventKind === "result_edit") {
+    const childPatchVersionId = event.metadata.resultRevisionPatchVersionId;
+    if (
+      typeof childPatchVersionId === "string" &&
+      activeLineagePatchVersionIds.has(childPatchVersionId)
+    ) {
+      return "already_applied";
+    }
+    return "refinable";
+  }
+  // Current scoped comments and context feedback are backed by the canonical
+  // WikiBrain head they caused. Older generic notes remain visible for audit,
+  // but are not preselected because they have no safe durable redraft source.
+  if (event.contextArtifactId === null || event.contextEntryVersionId === null) {
+    return "needs_canonical_context";
+  }
+  // A legacy/reference-only context head has no request-time correction
+  // receipt, so it remains a valid refinable input. A receipt that explicitly
+  // reports any state other than success must match the server-side gate and
+  // stay visible but disabled.
+  const rerunState = patchIterationContextRerunState(event);
+  if (rerunState !== null && rerunState !== "succeeded") {
+    return "canonical_redraft_not_succeeded";
+  }
+  return "refinable";
+}
+
+function aggregateFeedbackRefinementStatus(
+  statuses: readonly PatchIterationFeedbackRefinementStatus[],
+): PatchIterationFeedbackRefinementStatus {
+  // Batch selection is atomic: submitting a batch includes every event in it.
+  // A failed/pending context receipt therefore blocks its otherwise
+  // refinable siblings too, matching the server's all-selected-events gate.
+  if (statuses.some((status) => status === "canonical_redraft_not_succeeded")) {
+    return "canonical_redraft_not_succeeded";
+  }
+  if (statuses.some((status) => status === "refinable")) return "refinable";
+  if (statuses.some((status) => status === "needs_canonical_context")) {
+    return "needs_canonical_context";
+  }
+  return "already_applied";
+}
+
+/** Match the refinement service's distinction between legacy and failed receipts. */
+function patchIterationContextRerunState(
+  event: ApiPatchIterationFeedbackInbox["batches"][number]["events"][number],
+): string | null {
+  const correction = event.metadata.contextCorrection;
+  if (!isRecord(correction)) return null;
+  const rerun = correction.rerun;
+  if (!isRecord(rerun)) return "unverified";
+  return typeof rerun.state === "string" ? rerun.state : "unverified";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function patchIterationFeedbackSummary(

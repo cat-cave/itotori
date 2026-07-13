@@ -37,6 +37,24 @@ export interface PatchIterationFeedbackBatchView {
   selected: boolean;
   /** Optional display label; the durable ID remains visible either way. */
   label?: string | null;
+  /** Whether this inherited batch still has actionable refinement input. */
+  refinementStatus?: PatchIterationFeedbackRefinementStatus;
+  /** Immutable event summaries retained inside this selectable batch. */
+  events?: readonly PatchIterationFeedbackBatchEventView[];
+}
+
+export type PatchIterationFeedbackRefinementStatus =
+  | "refinable"
+  | "already_applied"
+  | "needs_canonical_context"
+  | "canonical_redraft_not_succeeded";
+
+/** A visible immutable event retained inside a selectable feedback batch. */
+export interface PatchIterationFeedbackBatchEventView {
+  feedbackEventId: string;
+  eventKind: string;
+  summary: string;
+  refinementStatus?: PatchIterationFeedbackRefinementStatus;
 }
 
 /** An individually selectable feedback event (not a whole feedback batch). */
@@ -48,6 +66,8 @@ export interface PatchIterationFeedbackIndividualEventView {
   summary: string;
   /** Whether this event is part of the initial refinement selection. */
   selected: boolean;
+  /** Old child-bound edits remain visible but must not be replayed. */
+  refinementStatus?: PatchIterationFeedbackRefinementStatus;
 }
 
 /**
@@ -152,17 +172,37 @@ export function PatchIterationPanel({
         activePatchVersionId ?? "none",
         `selected-batches:${feedback.selectedFeedbackBatchIds.join(",")}`,
         `selected-events:${feedback.selectedFeedbackEventIds.join(",")}`,
-        ...feedback.batches.map((batch) => `batch:${batch.feedbackBatchId}:${batch.selected}`),
+        ...feedback.batches.map(
+          (batch) =>
+            `batch:${batch.feedbackBatchId}:${batch.selected}:${batch.refinementStatus ?? "refinable"}`,
+        ),
         ...feedback.individualEvents.map(
-          (event) => `event:${event.feedbackEventId}:${event.selected}`,
+          (event) =>
+            `event:${event.feedbackEventId}:${event.selected}:${event.refinementStatus ?? "refinable"}`,
         ),
       ].join("|"),
     [activePatchVersionId, feedback.batches, feedback.individualEvents],
   );
   const initialSelection = useMemo(
     () => ({
-      feedbackBatchIds: new Set(feedback.selectedFeedbackBatchIds),
-      feedbackEventIds: new Set(feedback.selectedFeedbackEventIds),
+      feedbackBatchIds: new Set(
+        feedback.selectedFeedbackBatchIds.filter((feedbackBatchId) =>
+          feedback.batches.some(
+            (batch) =>
+              batch.feedbackBatchId === feedbackBatchId &&
+              isRefinableFeedback(batch.refinementStatus),
+          ),
+        ),
+      ),
+      feedbackEventIds: new Set(
+        feedback.selectedFeedbackEventIds.filter((feedbackEventId) =>
+          feedback.individualEvents.some(
+            (event) =>
+              event.feedbackEventId === feedbackEventId &&
+              isRefinableFeedback(event.refinementStatus),
+          ),
+        ),
+      ),
     }),
     [feedbackSelectionKey],
   );
@@ -354,17 +394,20 @@ function PatchFeedbackInbox({
           {feedback.batches.map((batch) => {
             const selected = selectedFeedbackBatchIds.has(batch.feedbackBatchId);
             const label = batch.label ?? batch.feedbackBatchId;
+            const refinable = isRefinableFeedback(batch.refinementStatus);
             return (
               <li
                 key={batch.feedbackBatchId}
                 className="patch-iteration-panel__batch"
                 data-feedback-batch-id={batch.feedbackBatchId}
                 data-selected={selected ? "true" : "false"}
+                data-refinement-status={batch.refinementStatus ?? "refinable"}
               >
                 <label className="patch-iteration-panel__selection">
                   <input
                     type="checkbox"
                     checked={selected}
+                    disabled={!refinable}
                     onChange={() => onToggleBatch(batch.feedbackBatchId)}
                     aria-label={`Select feedback batch ${label}`}
                   />
@@ -373,6 +416,30 @@ function PatchFeedbackInbox({
                   </span>
                 </label>
                 <Badge status={batch.status}>{batch.status}</Badge>
+                {!refinable && (
+                  <Badge status={batch.refinementStatus ?? "already_applied"}>
+                    {feedbackRefinementStatusLabel(batch.refinementStatus)}
+                  </Badge>
+                )}
+                {batch.events !== undefined && batch.events.length > 0 && (
+                  <ul
+                    className="patch-iteration-panel__batch-events"
+                    aria-label={`Feedback events in batch ${batch.feedbackBatchId}`}
+                  >
+                    {batch.events.map((event) => (
+                      <li
+                        key={event.feedbackEventId}
+                        data-feedback-event-id={event.feedbackEventId}
+                        data-refinement-status={event.refinementStatus ?? "refinable"}
+                      >
+                        {event.eventKind}: {event.summary}
+                        {!isRefinableFeedback(event.refinementStatus) && (
+                          <> ({feedbackRefinementStatusLabel(event.refinementStatus)})</>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             );
           })}
@@ -382,6 +449,7 @@ function PatchFeedbackInbox({
         <ul className="patch-iteration-panel__batches" aria-label="Individual feedback events">
           {feedback.individualEvents.map((event) => {
             const selected = selectedFeedbackEventIds.has(event.feedbackEventId);
+            const refinable = isRefinableFeedback(event.refinementStatus);
             return (
               <li
                 key={event.feedbackEventId}
@@ -389,11 +457,13 @@ function PatchFeedbackInbox({
                 data-feedback-event-id={event.feedbackEventId}
                 data-feedback-batch-id={event.feedbackBatchId}
                 data-selected={selected ? "true" : "false"}
+                data-refinement-status={event.refinementStatus ?? "refinable"}
               >
                 <label className="patch-iteration-panel__selection">
                   <input
                     type="checkbox"
                     checked={selected}
+                    disabled={!refinable}
                     onChange={() => onToggleEvent(event.feedbackEventId)}
                     aria-label={`Select feedback event ${event.feedbackEventId}`}
                   />
@@ -402,6 +472,11 @@ function PatchFeedbackInbox({
                   </span>
                 </label>
                 <Badge status="draft">individual</Badge>
+                {!refinable && (
+                  <Badge status={event.refinementStatus ?? "already_applied"}>
+                    {feedbackRefinementStatusLabel(event.refinementStatus)}
+                  </Badge>
+                )}
               </li>
             );
           })}
@@ -556,6 +631,7 @@ function PatchRefinementAction({
         type="button"
         className="patch-iteration-panel__action"
         data-action="refine-patch"
+        disabled={feedbackBatchIds.length === 0 && feedbackEventIds.length === 0}
         onClick={submitRefinement}
       >
         Refine selected feedback
@@ -563,6 +639,22 @@ function PatchRefinementAction({
       {validationError !== null && <p role="alert">{validationError}</p>}
     </section>
   );
+}
+
+function isRefinableFeedback(
+  refinementStatus: PatchIterationFeedbackRefinementStatus | undefined,
+): boolean {
+  return refinementStatus === undefined || refinementStatus === "refinable";
+}
+
+function feedbackRefinementStatusLabel(
+  refinementStatus: PatchIterationFeedbackRefinementStatus | undefined,
+): string {
+  if (refinementStatus === "needs_canonical_context") return "needs canonical context";
+  if (refinementStatus === "canonical_redraft_not_succeeded") {
+    return "canonical redraft not succeeded";
+  }
+  return "already applied";
 }
 
 function toggleSelectedId(current: ReadonlySet<string>, id: string): Set<string> {

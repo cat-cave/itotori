@@ -4,7 +4,7 @@
 // or context system.
 
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, lt, or } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import type { ItotoriDatabase } from "../connection.js";
 import {
@@ -258,7 +258,17 @@ export class LocalizationIterationRepositoryError extends Error {
   }
 }
 
-type Tx = Parameters<Parameters<ItotoriDatabase["transaction"]>[0]>[0];
+/**
+ * The shared transaction shape used when one durable operation needs to add a
+ * feedback event before its surrounding mutation commits.  In particular, a
+ * play-tester result edit uses this to make its selected child patch and the
+ * feedback fact one database commit.
+ */
+export type LocalizationIterationTransaction = Parameters<
+  Parameters<ItotoriDatabase["transaction"]>[0]
+>[0];
+
+type Tx = LocalizationIterationTransaction;
 
 /**
  * First-class iteration persistence. It delegates run seeding to the existing
@@ -411,6 +421,22 @@ export class ItotoriLocalizationIterationRepository implements ItotoriLocalizati
     input: RecordPlayTestFeedbackEventInput,
   ): Promise<PlayTestFeedbackEventRecord> {
     await requirePermission(this.db, actor, permissionValues.draftWrite);
+    return this.db.transaction(async (tx) => this.recordFeedbackEventInTx(tx, actor, input));
+  }
+
+  /**
+   * Record immutable play-test feedback inside a caller-owned transaction.
+   *
+   * The result-revision repository uses this boundary so a target edit cannot
+   * select a child patch unless the linked feedback fact commits with it.  It
+   * deliberately keeps all of the ordinary feedback validation here; callers
+   * do not receive a weaker write path merely because they share a transaction.
+   */
+  async recordFeedbackEventInTx(
+    tx: LocalizationIterationTransaction,
+    actor: AuthorizationActor,
+    input: RecordPlayTestFeedbackEventInput,
+  ): Promise<PlayTestFeedbackEventRecord> {
     assertNonBlank(input.observedPatchVersionId, "observedPatchVersionId");
     const feedbackEventId = input.feedbackEventId ?? `feedback-event:${randomUUID()}`;
     assertNonBlank(feedbackEventId, "feedbackEventId");
@@ -456,240 +482,234 @@ export class ItotoriLocalizationIterationRepository implements ItotoriLocalizati
         `${input.eventKind} feedback requires an immutable context artifact/version pair`,
       );
     }
-    return this.db.transaction(async (tx) => {
-      const observedPatch = await requirePlayablePatchInTx(tx, input.observedPatchVersionId);
-      const feedbackBatchId =
-        input.feedbackBatchId ?? `feedback-batch:individual:${feedbackEventId}`;
-      const batch = await loadFeedbackBatchInTx(tx, feedbackBatchId);
-      if (batch === null) {
-        const now = new Date();
-        await tx.insert(playTestFeedbackBatches).values({
-          feedbackBatchId,
-          observedPatchVersionId: input.observedPatchVersionId,
-          actorUserId: actor.userId,
-          selectionKind: "individual",
-          label: null,
-          createdAt: now,
-          updatedAt: now,
-        });
-      } else if (batch.observedPatchVersionId !== input.observedPatchVersionId) {
-        throw new LocalizationIterationRepositoryError(
-          "feedback_batch_conflict",
-          `feedback batch ${feedbackBatchId} belongs to another observed patch`,
-        );
-      }
-      if (input.playSessionId !== undefined) {
-        const [session] = await tx
-          .select()
-          .from(playSessions)
-          .where(eq(playSessions.playSessionId, input.playSessionId))
-          .limit(1);
-        if (
-          session === undefined ||
-          session.observedPatchVersionId !== input.observedPatchVersionId
-        ) {
-          throw new LocalizationIterationRepositoryError(
-            "invalid_input",
-            `play session ${input.playSessionId} is not for the observed patch`,
-          );
-        }
-      }
-      if (input.resultRevisionId !== undefined) {
-        const [revision] = await tx
-          .select({
-            resultRevisionId: localizationResultRevisions.resultRevisionId,
-            runId: localizationResultRevisions.runId,
-            bridgeUnitId: localizationResultRevisions.bridgeUnitId,
-            journalOutcomeId: localizationResultRevisions.journalOutcomeId,
-            parentRevisionId: localizationResultRevisions.parentRevisionId,
-          })
-          .from(localizationResultRevisions)
-          .where(eq(localizationResultRevisions.resultRevisionId, input.resultRevisionId))
-          .limit(1);
-        if (revision === undefined) {
-          throw new LocalizationIterationRepositoryError(
-            "invalid_input",
-            `result revision ${input.resultRevisionId} does not exist`,
-          );
-        }
-        const observedMembers = await tx
-          .select({
-            sourceRunId: localizationPatchVersionUnits.sourceRunId,
-            bridgeUnitId: localizationPatchVersionUnits.bridgeUnitId,
-            journalOutcomeId: localizationPatchVersionUnits.journalOutcomeId,
-            resultRevisionId: localizationPatchVersionUnits.resultRevisionId,
-          })
-          .from(localizationPatchVersionUnits)
-          .where(
-            and(
-              eq(localizationPatchVersionUnits.patchVersionId, input.observedPatchVersionId),
-              eq(localizationPatchVersionUnits.bridgeUnitId, revision.bridgeUnitId),
-            ),
-          );
-        const anchoredToObservedPatch = observedMembers.some(
-          (member) =>
-            member.sourceRunId === revision.runId &&
-            member.journalOutcomeId === revision.journalOutcomeId &&
-            (member.resultRevisionId === revision.resultRevisionId ||
-              member.resultRevisionId === revision.parentRevisionId),
-        );
-        if (!anchoredToObservedPatch) {
-          throw new LocalizationIterationRepositoryError(
-            "invalid_input",
-            `result revision ${input.resultRevisionId} does not derive from observed patch ${input.observedPatchVersionId}`,
-          );
-        }
-        if (
-          input.eventKind === "result_edit" &&
-          affectedBridgeUnitIds[0] !== revision.bridgeUnitId
-        ) {
-          throw new LocalizationIterationRepositoryError(
-            "invalid_input",
-            `result_edit revision ${input.resultRevisionId} belongs to ${revision.bridgeUnitId}, not ${affectedBridgeUnitIds[0]}`,
-          );
-        }
-      }
-      if (input.contextArtifactId !== undefined) {
-        const [observedRun] = await tx
-          .select({
-            projectId: localizationJournalRuns.projectId,
-            localeBranchId: localizationJournalRuns.localeBranchId,
-            sourceRevisionId: localizationJournalRuns.sourceRevisionId,
-          })
-          .from(localizationJournalRuns)
-          .where(eq(localizationJournalRuns.runId, observedPatch.runId))
-          .limit(1);
-        if (observedRun === undefined) {
-          throw new LocalizationIterationRepositoryError(
-            "invalid_input",
-            `observed patch ${input.observedPatchVersionId} has no owning run`,
-          );
-        }
-        const [contextArtifact] = await tx
-          .select({
-            projectId: contextArtifacts.projectId,
-            localeBranchId: contextArtifacts.localeBranchId,
-            sourceRevisionId: contextArtifacts.sourceRevisionId,
-          })
-          .from(contextArtifacts)
-          .where(eq(contextArtifacts.contextArtifactId, input.contextArtifactId))
-          .limit(1);
-        if (
-          contextArtifact === undefined ||
-          contextArtifact.projectId !== observedRun.projectId ||
-          contextArtifact.localeBranchId !== observedRun.localeBranchId ||
-          contextArtifact.sourceRevisionId !== observedRun.sourceRevisionId
-        ) {
-          throw new LocalizationIterationRepositoryError(
-            "invalid_input",
-            `context artifact ${input.contextArtifactId} is not scoped to observed patch ${input.observedPatchVersionId}`,
-          );
-        }
-        if (input.contextEntryVersionId !== undefined) {
-          const [contextVersion] = await tx
-            .select({
-              contextArtifactId: contextEntryVersions.contextArtifactId,
-              projectId: contextEntryVersions.projectId,
-              localeBranchId: contextEntryVersions.localeBranchId,
-              sourceRevisionId: contextEntryVersions.sourceRevisionId,
-            })
-            .from(contextEntryVersions)
-            .where(eq(contextEntryVersions.contextEntryVersionId, input.contextEntryVersionId))
-            .limit(1);
-          if (
-            contextVersion === undefined ||
-            contextVersion.contextArtifactId !== input.contextArtifactId
-          ) {
-            throw new LocalizationIterationRepositoryError(
-              "invalid_input",
-              `context entry version ${input.contextEntryVersionId} does not belong to ${input.contextArtifactId}`,
-            );
-          }
-          if (
-            contextVersion.projectId !== observedRun.projectId ||
-            contextVersion.localeBranchId !== observedRun.localeBranchId ||
-            contextVersion.sourceRevisionId !== observedRun.sourceRevisionId
-          ) {
-            throw new LocalizationIterationRepositoryError(
-              "invalid_input",
-              `context entry version ${input.contextEntryVersionId} is not scoped to observed patch ${input.observedPatchVersionId}`,
-            );
-          }
-        }
-      }
-      if (affectedBridgeUnitIds.length > 0) {
-        const members = await tx
-          .select({ bridgeUnitId: localizationPatchVersionUnits.bridgeUnitId })
-          .from(localizationPatchVersionUnits)
-          .where(
-            and(
-              eq(localizationPatchVersionUnits.patchVersionId, input.observedPatchVersionId),
-              inArray(localizationPatchVersionUnits.bridgeUnitId, affectedBridgeUnitIds),
-            ),
-          );
-        if (members.length !== affectedBridgeUnitIds.length) {
-          throw new LocalizationIterationRepositoryError(
-            "invalid_input",
-            "feedback units must belong to the exact patch version observed",
-          );
-        }
-      }
-      const existing = await loadFeedbackEventInTx(tx, feedbackEventId);
-      if (existing !== null) {
-        const existingUnits = await loadFeedbackEventUnitsInTx(tx, feedbackEventId);
-        if (
-          !feedbackEventMatchesInput({
-            row: existing,
-            affectedBridgeUnitIds: existingUnits,
-            actorUserId: actor.userId,
-            feedbackBatchId,
-            observedPatchVersionId: input.observedPatchVersionId,
-            playSessionId: input.playSessionId ?? null,
-            eventKind: input.eventKind,
-            body,
-            metadata,
-            resultRevisionId: input.resultRevisionId ?? null,
-            contextArtifactId: input.contextArtifactId ?? null,
-            contextEntryVersionId: input.contextEntryVersionId ?? null,
-            requestedAffectedBridgeUnitIds: affectedBridgeUnitIds,
-          })
-        ) {
-          throw new LocalizationIterationRepositoryError(
-            "feedback_event_conflict",
-            `feedback event ${feedbackEventId} already has different immutable facts`,
-          );
-        }
-        return feedbackEventFromRows(existing, existingUnits);
-      }
+    const observedPatch = await requirePlayablePatchInTx(tx, input.observedPatchVersionId);
+    const feedbackBatchId = input.feedbackBatchId ?? `feedback-batch:individual:${feedbackEventId}`;
+    const batch = await loadFeedbackBatchInTx(tx, feedbackBatchId);
+    if (batch === null) {
       const now = new Date();
-      await tx.insert(playTestFeedbackEvents).values({
-        feedbackEventId,
+      await tx.insert(playTestFeedbackBatches).values({
         feedbackBatchId,
         observedPatchVersionId: input.observedPatchVersionId,
-        playSessionId: input.playSessionId ?? null,
         actorUserId: actor.userId,
-        eventKind: input.eventKind,
-        body,
-        metadata,
-        resultRevisionId: input.resultRevisionId ?? null,
-        contextArtifactId: input.contextArtifactId ?? null,
-        contextEntryVersionId: input.contextEntryVersionId ?? null,
+        selectionKind: "individual",
+        label: null,
         createdAt: now,
+        updatedAt: now,
       });
-      if (affectedBridgeUnitIds.length > 0) {
-        await tx.insert(playTestFeedbackEventUnits).values(
-          affectedBridgeUnitIds.map((bridgeUnitId) => ({
-            feedbackEventId,
-            observedPatchVersionId: input.observedPatchVersionId,
-            bridgeUnitId,
-            createdAt: now,
-          })),
+    } else if (batch.observedPatchVersionId !== input.observedPatchVersionId) {
+      throw new LocalizationIterationRepositoryError(
+        "feedback_batch_conflict",
+        `feedback batch ${feedbackBatchId} belongs to another observed patch`,
+      );
+    }
+    if (input.playSessionId !== undefined) {
+      const [session] = await tx
+        .select()
+        .from(playSessions)
+        .where(eq(playSessions.playSessionId, input.playSessionId))
+        .limit(1);
+      if (
+        session === undefined ||
+        session.observedPatchVersionId !== input.observedPatchVersionId
+      ) {
+        throw new LocalizationIterationRepositoryError(
+          "invalid_input",
+          `play session ${input.playSessionId} is not for the observed patch`,
         );
       }
-      const event = await loadFeedbackEventInTx(tx, feedbackEventId);
-      if (event === null) throw new Error("feedback event write unexpectedly disappeared");
-      return feedbackEventFromRows(event, affectedBridgeUnitIds);
+    }
+    if (input.resultRevisionId !== undefined) {
+      const [revision] = await tx
+        .select({
+          resultRevisionId: localizationResultRevisions.resultRevisionId,
+          runId: localizationResultRevisions.runId,
+          bridgeUnitId: localizationResultRevisions.bridgeUnitId,
+          journalOutcomeId: localizationResultRevisions.journalOutcomeId,
+          parentRevisionId: localizationResultRevisions.parentRevisionId,
+        })
+        .from(localizationResultRevisions)
+        .where(eq(localizationResultRevisions.resultRevisionId, input.resultRevisionId))
+        .limit(1);
+      if (revision === undefined) {
+        throw new LocalizationIterationRepositoryError(
+          "invalid_input",
+          `result revision ${input.resultRevisionId} does not exist`,
+        );
+      }
+      const observedMembers = await tx
+        .select({
+          sourceRunId: localizationPatchVersionUnits.sourceRunId,
+          bridgeUnitId: localizationPatchVersionUnits.bridgeUnitId,
+          journalOutcomeId: localizationPatchVersionUnits.journalOutcomeId,
+          resultRevisionId: localizationPatchVersionUnits.resultRevisionId,
+        })
+        .from(localizationPatchVersionUnits)
+        .where(
+          and(
+            eq(localizationPatchVersionUnits.patchVersionId, input.observedPatchVersionId),
+            eq(localizationPatchVersionUnits.bridgeUnitId, revision.bridgeUnitId),
+          ),
+        );
+      const anchoredToObservedPatch = observedMembers.some(
+        (member) =>
+          member.sourceRunId === revision.runId &&
+          member.journalOutcomeId === revision.journalOutcomeId &&
+          (member.resultRevisionId === revision.resultRevisionId ||
+            member.resultRevisionId === revision.parentRevisionId),
+      );
+      if (!anchoredToObservedPatch) {
+        throw new LocalizationIterationRepositoryError(
+          "invalid_input",
+          `result revision ${input.resultRevisionId} does not derive from observed patch ${input.observedPatchVersionId}`,
+        );
+      }
+      if (input.eventKind === "result_edit" && affectedBridgeUnitIds[0] !== revision.bridgeUnitId) {
+        throw new LocalizationIterationRepositoryError(
+          "invalid_input",
+          `result_edit revision ${input.resultRevisionId} belongs to ${revision.bridgeUnitId}, not ${affectedBridgeUnitIds[0]}`,
+        );
+      }
+    }
+    if (input.contextArtifactId !== undefined) {
+      const [observedRun] = await tx
+        .select({
+          projectId: localizationJournalRuns.projectId,
+          localeBranchId: localizationJournalRuns.localeBranchId,
+          sourceRevisionId: localizationJournalRuns.sourceRevisionId,
+        })
+        .from(localizationJournalRuns)
+        .where(eq(localizationJournalRuns.runId, observedPatch.runId))
+        .limit(1);
+      if (observedRun === undefined) {
+        throw new LocalizationIterationRepositoryError(
+          "invalid_input",
+          `observed patch ${input.observedPatchVersionId} has no owning run`,
+        );
+      }
+      const [contextArtifact] = await tx
+        .select({
+          projectId: contextArtifacts.projectId,
+          localeBranchId: contextArtifacts.localeBranchId,
+          sourceRevisionId: contextArtifacts.sourceRevisionId,
+        })
+        .from(contextArtifacts)
+        .where(eq(contextArtifacts.contextArtifactId, input.contextArtifactId))
+        .limit(1);
+      if (
+        contextArtifact === undefined ||
+        contextArtifact.projectId !== observedRun.projectId ||
+        contextArtifact.localeBranchId !== observedRun.localeBranchId ||
+        contextArtifact.sourceRevisionId !== observedRun.sourceRevisionId
+      ) {
+        throw new LocalizationIterationRepositoryError(
+          "invalid_input",
+          `context artifact ${input.contextArtifactId} is not scoped to observed patch ${input.observedPatchVersionId}`,
+        );
+      }
+      if (input.contextEntryVersionId !== undefined) {
+        const [contextVersion] = await tx
+          .select({
+            contextArtifactId: contextEntryVersions.contextArtifactId,
+            projectId: contextEntryVersions.projectId,
+            localeBranchId: contextEntryVersions.localeBranchId,
+            sourceRevisionId: contextEntryVersions.sourceRevisionId,
+          })
+          .from(contextEntryVersions)
+          .where(eq(contextEntryVersions.contextEntryVersionId, input.contextEntryVersionId))
+          .limit(1);
+        if (
+          contextVersion === undefined ||
+          contextVersion.contextArtifactId !== input.contextArtifactId
+        ) {
+          throw new LocalizationIterationRepositoryError(
+            "invalid_input",
+            `context entry version ${input.contextEntryVersionId} does not belong to ${input.contextArtifactId}`,
+          );
+        }
+        if (
+          contextVersion.projectId !== observedRun.projectId ||
+          contextVersion.localeBranchId !== observedRun.localeBranchId ||
+          contextVersion.sourceRevisionId !== observedRun.sourceRevisionId
+        ) {
+          throw new LocalizationIterationRepositoryError(
+            "invalid_input",
+            `context entry version ${input.contextEntryVersionId} is not scoped to observed patch ${input.observedPatchVersionId}`,
+          );
+        }
+      }
+    }
+    if (affectedBridgeUnitIds.length > 0) {
+      const members = await tx
+        .select({ bridgeUnitId: localizationPatchVersionUnits.bridgeUnitId })
+        .from(localizationPatchVersionUnits)
+        .where(
+          and(
+            eq(localizationPatchVersionUnits.patchVersionId, input.observedPatchVersionId),
+            inArray(localizationPatchVersionUnits.bridgeUnitId, affectedBridgeUnitIds),
+          ),
+        );
+      if (members.length !== affectedBridgeUnitIds.length) {
+        throw new LocalizationIterationRepositoryError(
+          "invalid_input",
+          "feedback units must belong to the exact patch version observed",
+        );
+      }
+    }
+    const existing = await loadFeedbackEventInTx(tx, feedbackEventId);
+    if (existing !== null) {
+      const existingUnits = await loadFeedbackEventUnitsInTx(tx, feedbackEventId);
+      if (
+        !feedbackEventMatchesInput({
+          row: existing,
+          affectedBridgeUnitIds: existingUnits,
+          actorUserId: actor.userId,
+          feedbackBatchId,
+          observedPatchVersionId: input.observedPatchVersionId,
+          playSessionId: input.playSessionId ?? null,
+          eventKind: input.eventKind,
+          body,
+          metadata,
+          resultRevisionId: input.resultRevisionId ?? null,
+          contextArtifactId: input.contextArtifactId ?? null,
+          contextEntryVersionId: input.contextEntryVersionId ?? null,
+          requestedAffectedBridgeUnitIds: affectedBridgeUnitIds,
+        })
+      ) {
+        throw new LocalizationIterationRepositoryError(
+          "feedback_event_conflict",
+          `feedback event ${feedbackEventId} already has different immutable facts`,
+        );
+      }
+      return feedbackEventFromRows(existing, existingUnits);
+    }
+    const now = new Date();
+    await tx.insert(playTestFeedbackEvents).values({
+      feedbackEventId,
+      feedbackBatchId,
+      observedPatchVersionId: input.observedPatchVersionId,
+      playSessionId: input.playSessionId ?? null,
+      actorUserId: actor.userId,
+      eventKind: input.eventKind,
+      body,
+      metadata,
+      resultRevisionId: input.resultRevisionId ?? null,
+      contextArtifactId: input.contextArtifactId ?? null,
+      contextEntryVersionId: input.contextEntryVersionId ?? null,
+      createdAt: now,
     });
+    if (affectedBridgeUnitIds.length > 0) {
+      await tx.insert(playTestFeedbackEventUnits).values(
+        affectedBridgeUnitIds.map((bridgeUnitId) => ({
+          feedbackEventId,
+          observedPatchVersionId: input.observedPatchVersionId,
+          bridgeUnitId,
+          createdAt: now,
+        })),
+      );
+    }
+    const event = await loadFeedbackEventInTx(tx, feedbackEventId);
+    if (event === null) throw new Error("feedback event write unexpectedly disappeared");
+    return feedbackEventFromRows(event, affectedBridgeUnitIds);
   }
 
   async loadFeedbackInbox(
@@ -698,11 +718,35 @@ export class ItotoriLocalizationIterationRepository implements ItotoriLocalizati
   ): Promise<PlayTestFeedbackInbox> {
     await requirePermission(this.db, actor, permissionValues.catalogRead);
     assertNonBlank(observedPatchVersionId, "observedPatchVersionId");
+    // Feedback remains an immutable fact about the exact patch a tester
+    // observed. A selected child patch nevertheless needs to expose its
+    // ancestor observations so the normal "latest playable" dashboard route
+    // can refine them without reopening v1. Do not rewrite the event/batch
+    // observedPatchVersionId: the refinement snapshot retains that provenance
+    // and validates it as an ancestor of the chosen base patch.
+    const lineage = await this.db.execute(sql<{ patch_version_id: string }>`
+      with recursive lineage as (
+        select patch_version_id, parent_patch_version_id
+        from itotori_localization_patch_versions
+        where patch_version_id = ${observedPatchVersionId}
+        union all
+        select parent.patch_version_id, parent.parent_patch_version_id
+        from itotori_localization_patch_versions parent
+        join lineage child on child.parent_patch_version_id = parent.patch_version_id
+      )
+      select patch_version_id from lineage
+    `);
+    const lineagePatchVersionIds = lineage.rows
+      .map((row) => row.patch_version_id)
+      .filter((patchVersionId): patchVersionId is string => typeof patchVersionId === "string");
+    if (lineagePatchVersionIds.length === 0) {
+      return { observedPatchVersionId, batches: [] };
+    }
     const [batches, events] = await Promise.all([
       this.db
         .select()
         .from(playTestFeedbackBatches)
-        .where(eq(playTestFeedbackBatches.observedPatchVersionId, observedPatchVersionId))
+        .where(inArray(playTestFeedbackBatches.observedPatchVersionId, lineagePatchVersionIds))
         .orderBy(
           asc(playTestFeedbackBatches.createdAt),
           asc(playTestFeedbackBatches.feedbackBatchId),
@@ -710,7 +754,7 @@ export class ItotoriLocalizationIterationRepository implements ItotoriLocalizati
       this.db
         .select()
         .from(playTestFeedbackEvents)
-        .where(eq(playTestFeedbackEvents.observedPatchVersionId, observedPatchVersionId))
+        .where(inArray(playTestFeedbackEvents.observedPatchVersionId, lineagePatchVersionIds))
         .orderBy(
           asc(playTestFeedbackEvents.createdAt),
           asc(playTestFeedbackEvents.feedbackEventId),

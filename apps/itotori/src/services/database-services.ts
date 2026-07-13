@@ -164,6 +164,7 @@ import {
   type BoundPlayTesterResultRevisionServicePort,
 } from "../play/result-revision-service.js";
 import { ProductionPlayTesterPatchArtifactMaterializer } from "../play/production-patch-revision-materializer.js";
+import { UtsushiPatchRuntimeLauncher } from "../play/patch-runtime-launcher.js";
 import {
   PatchIterationService,
   type PatchIterationServicePort,
@@ -969,6 +970,10 @@ export async function withDatabaseItotoriServices<T>(
       journal: journalRepository,
       finalizer: new ItotoriLocalizationRunFinalizerRepository(context.db),
       resultRevisions: boundPlayTesterResultRevision,
+      // "Play this patch" drives the exact hash-bound RealLive bytes through
+      // Utsushi before it creates the durable play session. Rendering real
+      // Sweetie frames remains the separate runtime-evidence bridge.
+      runtimeLauncher: new UtsushiPatchRuntimeLauncher(),
       // Context feedback enters through the established Node 9 facade, which
       // owns the Node 8 canonical correction + registered rerun path.
       wiki: wikiBrainService,

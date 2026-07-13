@@ -47,7 +47,6 @@ import type {
   PatchPlaySurface,
   PatchVersionIterationRecord,
   PlayTestFeedbackEventKind,
-  PlayablePatchExport,
   StyleGuideFixtureFlowInput,
   StyleGuideFixtureFlowResult,
 } from "@itotori/db";
@@ -177,7 +176,6 @@ import type {
   PatchIterationServicePort,
   PatchIterationSurface,
 } from "./iteration/patch-iteration-service.js";
-import type { BoundPlayTesterResultRevisionServicePort } from "./play/result-revision-service.js";
 
 export type JsonFileStore = {
   readJson(path: string): unknown;
@@ -272,8 +270,6 @@ export type ItotoriCliServices = {
    * iteration commands refuse loudly when it is not installed.
    */
   patchIteration?: PatchIterationServicePort;
-  /** Exact immutable-version delivery metadata for `itotori patch play`. */
-  playTesterResultRevision?: Pick<BoundPlayTesterResultRevisionServicePort, "loadExactPatchExport">;
 };
 
 export type ItotoriCliDependencies = {
@@ -530,9 +526,9 @@ async function runPatchIterationVersionsCommand(
 /**
  * `itotori patch play <version> [--launch-json <object>] [--output <json>]`
  *
- * Loading the surface before starting the persisted session keeps the CLI's
- * open/play result useful to an operator and exposes the same informational QA
- * callouts as the dashboard. `play` itself still verifies playable status.
+ * The shared service opens the exact hash-bound patch through the real runtime
+ * before it creates a session. This command deliberately returns that launch
+ * receipt, not a delivery archive masquerading as a play surface.
  */
 async function runPatchIterationPlayCommand(
   args: string[],
@@ -551,18 +547,9 @@ async function runPatchIterationPlayCommand(
       patchVersionId,
       ...(launchDescriptor === undefined ? {} : { launchDescriptor }),
     });
-    const exactDelivery = await requirePatchIterationDeliveryPort(services).loadExactPatchExport({
-      patchVersionId,
-    });
-    if (exactDelivery.export === null) {
-      throw new Error(
-        `playable archive metadata for patch version ${patchVersionId} was not found`,
-      );
-    }
     return {
       surface: patchIterationSurfaceCliView(surface),
       session,
-      delivery: patchIterationDeliveryCliView(exactDelivery.export),
     };
   });
   writePatchIterationOutput(dependencies, outputPath, result);
@@ -713,36 +700,6 @@ function requirePatchIterationPort(services: ItotoriCliServices): PatchIteration
     );
   }
   return services.patchIteration;
-}
-
-function requirePatchIterationDeliveryPort(
-  services: ItotoriCliServices,
-): Pick<BoundPlayTesterResultRevisionServicePort, "loadExactPatchExport"> {
-  if (services.playTesterResultRevision === undefined) {
-    throw new Error(
-      "exact patch delivery is not configured for this CLI context (playTesterResultRevision port missing)",
-    );
-  }
-  return services.playTesterResultRevision;
-}
-
-/** Keep local CLI output useful without leaking artifact filesystem refs. */
-function patchIterationDeliveryCliView(input: PlayablePatchExport) {
-  return {
-    patchVersionId: input.patchVersionId,
-    runId: input.runId,
-    parentPatchVersionId: input.parentPatchVersionId,
-    origin: input.origin,
-    status: input.status,
-    playableAt: input.playableAt?.toISOString() ?? null,
-    selectedAt: input.selectedAt?.toISOString() ?? null,
-    artifactHashes: { ...input.artifactHashes },
-    units: input.units.map((unit) => ({
-      bridgeUnitId: unit.bridgeUnitId,
-      unitOrdinal: unit.unitOrdinal,
-      targetBody: unit.targetBody,
-    })),
-  };
 }
 
 /**

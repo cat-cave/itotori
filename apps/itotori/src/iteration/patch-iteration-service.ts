@@ -34,6 +34,10 @@ import type {
   WikiBrainEditResult,
   WikiBrainServicePort,
 } from "../wiki/service.js";
+import {
+  UtsushiPatchRuntimeLauncher,
+  type PatchRuntimeLauncherPort,
+} from "../play/patch-runtime-launcher.js";
 
 export type PatchIterationSurface = {
   patch: PatchPlaySurface;
@@ -126,8 +130,12 @@ export type PatchIterationServiceDeps = {
   iteration: ItotoriLocalizationIterationRepositoryPort;
   journal: ItotoriLocalizationJournalRepositoryPort;
   finalizer: ItotoriLocalizationRunFinalizerRepositoryPort;
-  /** Node 10: result-edit feedback first becomes a real immutable revision. */
-  resultRevisions?: Pick<BoundPlayTesterResultRevisionServicePort, "editTarget">;
+  /**
+   * Node 10: a result edit and its immutable feedback fact commit together.
+   * Production must never select a child patch before feedback validation has
+   * succeeded in that same database transaction.
+   */
+  resultRevisions?: Pick<BoundPlayTesterResultRevisionServicePort, "editTargetWithFeedback">;
   /**
    * Node 8 persists the result of its registered redraft to the canonical
    * locale-branch draft projection. Refinement reads that durable output
@@ -148,6 +156,8 @@ export type PatchIterationServiceDeps = {
   wiki?: Pick<WikiBrainServicePort, "add" | "edit">;
   /** Node 8's installed flywheel is drained before its wiki heads are frozen. */
   contextCorrections?: { drain(): Promise<unknown> };
+  /** Exact-version runtime launch; a play session follows a real Utsushi replay. */
+  runtimeLauncher?: PatchRuntimeLauncherPort;
   materializer?: ProductionRefinementPatchArtifactMaterializer;
   now?: () => Date;
 };
@@ -160,10 +170,12 @@ export type PatchIterationServiceDeps = {
  */
 export class PatchIterationService implements PatchIterationServicePort {
   private readonly materializer: ProductionRefinementPatchArtifactMaterializer;
+  private readonly runtimeLauncher: PatchRuntimeLauncherPort;
   private readonly now: () => Date;
 
   constructor(private readonly deps: PatchIterationServiceDeps) {
     this.materializer = deps.materializer ?? new ProductionRefinementPatchArtifactMaterializer();
+    this.runtimeLauncher = deps.runtimeLauncher ?? new UtsushiPatchRuntimeLauncher();
     this.now = deps.now ?? (() => new Date());
   }
 
@@ -197,9 +209,32 @@ export class PatchIterationService implements PatchIterationServicePort {
     patchVersionId: string;
     launchDescriptor?: Record<string, unknown>;
   }): Promise<PlaySessionRecord> {
+    const patch = await this.deps.iteration.loadPatchPlaySurface(
+      this.deps.actor,
+      input.patchVersionId,
+    );
+    if (patch === null) {
+      throw new PatchIterationServiceError(
+        "patch_not_found",
+        `patch ${input.patchVersionId} was not found`,
+      );
+    }
+    // A play session is not an archive-download receipt. Drive the exact,
+    // hash-bound patch through the runtime before recording an active session,
+    // so a launch failure cannot leave a false successful play state behind.
+    const launch = await this.runtimeLauncher.launch({
+      patch,
+      ...(input.launchDescriptor === undefined ? {} : { launchDescriptor: input.launchDescriptor }),
+    });
     return this.deps.iteration.startPlaySession(this.deps.actor, {
       observedPatchVersionId: input.patchVersionId,
-      ...(input.launchDescriptor === undefined ? {} : { launchDescriptor: input.launchDescriptor }),
+      launchDescriptor: {
+        runtime: launch.runtime,
+        engine: launch.engine,
+        scene: launch.scene,
+        replay: launch.replay,
+        observedTextLineCount: launch.observedTextLineCount,
+      },
     });
   }
 
@@ -223,6 +258,10 @@ export class PatchIterationService implements PatchIterationServicePort {
     let contextArtifactId = input.contextArtifactId;
     let contextEntryVersionId = input.contextEntryVersionId;
     let affectedBridgeUnitIds = input.affectedBridgeUnitIds;
+    // Scoped comments create their canonical note before the feedback event is
+    // inserted. Reserve the immutable event identity here so the note title
+    // cannot collide with a later comment on the same observed patch.
+    let feedbackEventId: string | undefined;
     if (input.eventKind === "result_edit") {
       if (input.targetBody === undefined || input.targetBody.trim().length === 0) {
         throw new PatchIterationServiceError(
@@ -254,29 +293,59 @@ export class PatchIterationService implements PatchIterationServicePort {
           `result-edit unit ${affected[0]} does not belong to observed patch ${surface.patchVersionId}`,
         );
       }
+      metadata.targetBody = input.targetBody;
       // The observed immutable result revision is the feedback anchor. The
       // refinement writes a new run-owned revision from this supplied target
-      // body. When installed, node 10 also produces its immediate real child
-      // revision, which is retained as the exact feedback provenance rather
-      // than reimplementing that mutation here.
+      // body. When Node 10 is installed, its child selection and this exact
+      // feedback event share one database transaction; an invalid session,
+      // batch, or provenance reference cannot leave a selected orphan child.
       if (this.deps.resultRevisions !== undefined) {
-        const revised = await this.deps.resultRevisions.editTarget({
+        if (input.contextFeedback !== undefined) {
+          throw new PatchIterationServiceError(
+            "context_feedback_kind_mismatch",
+            "a context feedback payload requires added_context or wiki_edit feedback",
+          );
+        }
+        const revised = await this.deps.resultRevisions.editTargetWithFeedback({
           parentPatchVersionId: input.observedPatchVersionId,
           bridgeUnitId: observedUnit.bridgeUnitId,
           targetBody: input.targetBody,
+          feedback: {
+            ...(input.feedbackBatchId === undefined
+              ? {}
+              : { feedbackBatchId: input.feedbackBatchId }),
+            ...(input.playSessionId === undefined ? {} : { playSessionId: input.playSessionId }),
+            ...(input.body === undefined ? {} : { body: input.body }),
+            metadata,
+            ...(contextArtifactId === undefined ? {} : { contextArtifactId }),
+            ...(contextEntryVersionId === undefined ? {} : { contextEntryVersionId }),
+          },
         });
-        resultRevisionId = revised.result.resultRevision.resultRevisionId;
-        metadata.resultRevisionPatchVersionId = revised.result.patchVersion.patchVersionId;
+        return revised.result.feedback;
       } else {
         resultRevisionId ??= observedUnit.resultRevisionId;
       }
-      metadata.targetBody = input.targetBody;
     }
     if (input.contextFeedback !== undefined) {
       if (input.eventKind !== "added_context" && input.eventKind !== "wiki_edit") {
         throw new PatchIterationServiceError(
           "context_feedback_kind_mismatch",
           "a context feedback payload requires added_context or wiki_edit feedback",
+        );
+      }
+      // Canonical mutation owns the new head receipt.  The nested mutation
+      // payload owns its requested unit scope, while the outer fields are
+      // reserved for the reference-only route.  Rejecting those assertions up
+      // front prevents a post-write receipt mismatch from orphaning a Node 9
+      // entry or scheduling a duplicate Node 8 correction.
+      if (
+        contextArtifactId !== undefined ||
+        contextEntryVersionId !== undefined ||
+        affectedBridgeUnitIds !== undefined
+      ) {
+        throw new PatchIterationServiceError(
+          "context_feedback_receipt_not_allowed",
+          "canonical context mutation derives its context receipt and impact server-side",
         );
       }
       if (this.deps.wiki === undefined) {
@@ -291,30 +360,7 @@ export class PatchIterationService implements PatchIterationServicePort {
         eventKind: input.eventKind,
         contextFeedback: input.contextFeedback,
       });
-      if (contextArtifactId !== undefined && contextArtifactId !== receipt.contextArtifactId) {
-        throw new PatchIterationServiceError(
-          "context_feedback_artifact_mismatch",
-          "contextArtifactId must match the canonical wiki receipt",
-        );
-      }
-      if (
-        contextEntryVersionId !== undefined &&
-        contextEntryVersionId !== receipt.contextEntryVersionId
-      ) {
-        throw new PatchIterationServiceError(
-          "context_feedback_version_mismatch",
-          "contextEntryVersionId must match the canonical wiki receipt",
-        );
-      }
-      if (
-        affectedBridgeUnitIds !== undefined &&
-        !sameStringSet(affectedBridgeUnitIds, receipt.affectedUnitIds)
-      ) {
-        throw new PatchIterationServiceError(
-          "context_feedback_impact_mismatch",
-          "affectedBridgeUnitIds must match the canonical wiki correction impact",
-        );
-      }
+      assertSuccessfulContextCorrectionReceipt(receipt);
       // Persist the exact Node 9/8 receipt, not client-supplied identity.
       // That receipt proves this feedback versioned canonical context, queued
       // the registered rerun, and names the immutable head/impact consumed by
@@ -323,6 +369,56 @@ export class PatchIterationService implements PatchIterationServicePort {
       contextEntryVersionId = receipt.contextEntryVersionId;
       affectedBridgeUnitIds = receipt.affectedUnitIds;
       metadata.contextCorrection = contextCorrectionReceiptMetadata(receipt);
+    } else if (input.eventKind === "comment" && (input.affectedBridgeUnitIds?.length ?? 0) > 0) {
+      // A scoped play-test comment is not a target-text shortcut. Persist it
+      // as a real canonical Node 9 note, which queues the installed Node 8
+      // correction worker. The immutable receipt then makes the COMMENT an
+      // honest redraft input alongside added-context and wiki-edit feedback.
+      if (input.body === undefined || input.body.trim().length === 0) {
+        throw new PatchIterationServiceError(
+          "scoped_comment_body_required",
+          "scoped comment feedback requires a non-blank body for its canonical redraft",
+        );
+      }
+      const scopedCommentUnitIds = uniqueNonBlank(
+        input.affectedBridgeUnitIds ?? [],
+        "affectedBridgeUnitIds",
+      );
+      // A scoped comment owns the exact Node 9 receipt.  A caller cannot
+      // meaningfully predict a new immutable entry-version ID, so accepting a
+      // supplied pair would defer a guaranteed mismatch until after the wiki
+      // mutation had already committed.
+      if (contextArtifactId !== undefined || contextEntryVersionId !== undefined) {
+        throw new PatchIterationServiceError(
+          "context_feedback_receipt_not_allowed",
+          "scoped comment feedback derives its canonical context receipt server-side",
+        );
+      }
+      const observed = await this.loadObservedPatchRun(input.observedPatchVersionId);
+      assertObservedFeedbackUnits(observed.patch, scopedCommentUnitIds, "scoped comment");
+      if (this.deps.wiki === undefined) {
+        throw new PatchIterationServiceError(
+          "wiki_not_configured",
+          "scoped comment feedback requires the installed WikiBrain service",
+        );
+      }
+      feedbackEventId = `feedback-event:${randomUUID()}`;
+      const receipt = await this.deps.wiki.add({
+        projectId: observed.run.projectId,
+        localeBranchId: observed.run.localeBranchId,
+        sourceRevisionId: observed.run.sourceRevisionId,
+        kind: "note",
+        title: `Play-test comment ${feedbackEventId}`,
+        body: input.body.trim(),
+        reason: "Scoped play-test comment requires a durable refinement redraft.",
+        affectedUnitIds: scopedCommentUnitIds,
+      });
+      assertSuccessfulContextCorrectionReceipt(receipt);
+      contextArtifactId = receipt.contextArtifactId;
+      contextEntryVersionId = receipt.contextEntryVersionId;
+      affectedBridgeUnitIds = receipt.affectedUnitIds;
+      metadata.contextCorrection = contextCorrectionReceiptMetadata(receipt);
+      metadata.commentRedraft = true;
     } else if (input.eventKind === "added_context" || input.eventKind === "wiki_edit") {
       // A user can also attach feedback about a correction already performed
       // through the standalone Node 9 surface. This deliberately remains a
@@ -336,6 +432,7 @@ export class PatchIterationService implements PatchIterationServicePort {
       }
     }
     return this.deps.iteration.recordFeedbackEvent(this.deps.actor, {
+      ...(feedbackEventId === undefined ? {} : { feedbackEventId }),
       observedPatchVersionId: input.observedPatchVersionId,
       eventKind: input.eventKind,
       ...(input.feedbackBatchId === undefined ? {} : { feedbackBatchId: input.feedbackBatchId }),
@@ -401,6 +498,11 @@ export class PatchIterationService implements PatchIterationServicePort {
           "a new canonical context entry must be recorded as added_context feedback",
         );
       }
+      const affectedUnitIds = uniqueNonBlank(
+        input.contextFeedback.affectedBridgeUnitIds,
+        "contextFeedback.affectedBridgeUnitIds",
+      );
+      assertObservedFeedbackUnits(input.observed.patch, affectedUnitIds, "context feedback");
       return await wiki.add({
         projectId: run.projectId,
         localeBranchId: run.localeBranchId,
@@ -409,10 +511,7 @@ export class PatchIterationService implements PatchIterationServicePort {
         title: input.contextFeedback.title,
         body: input.contextFeedback.body,
         reason: input.contextFeedback.reason,
-        affectedUnitIds: uniqueNonBlank(
-          input.contextFeedback.affectedBridgeUnitIds,
-          "contextFeedback.affectedBridgeUnitIds",
-        ),
+        affectedUnitIds,
       });
     }
     if (input.eventKind !== "wiki_edit") {
@@ -421,6 +520,16 @@ export class PatchIterationService implements PatchIterationServicePort {
         "an existing canonical context entry must be recorded as wiki_edit feedback",
       );
     }
+    const affectedUnitIds =
+      input.contextFeedback.affectedBridgeUnitIds === undefined
+        ? undefined
+        : uniqueNonBlank(
+            input.contextFeedback.affectedBridgeUnitIds,
+            "contextFeedback.affectedBridgeUnitIds",
+          );
+    if (affectedUnitIds !== undefined) {
+      assertObservedFeedbackUnits(input.observed.patch, affectedUnitIds, "context feedback");
+    }
     return await wiki.edit({
       projectId: run.projectId,
       localeBranchId: run.localeBranchId,
@@ -428,14 +537,7 @@ export class PatchIterationService implements PatchIterationServicePort {
       body: input.contextFeedback.body,
       reason: input.contextFeedback.reason,
       ...(input.contextFeedback.title === undefined ? {} : { title: input.contextFeedback.title }),
-      ...(input.contextFeedback.affectedBridgeUnitIds === undefined
-        ? {}
-        : {
-            affectedUnitIds: uniqueNonBlank(
-              input.contextFeedback.affectedBridgeUnitIds,
-              "contextFeedback.affectedBridgeUnitIds",
-            ),
-          }),
+      ...(affectedUnitIds === undefined ? {} : { affectedUnitIds }),
     });
   }
 
@@ -475,6 +577,7 @@ export class PatchIterationService implements PatchIterationServicePort {
       );
     }
     const selectedEvents = selectedFeedback.events;
+    assertSelectedContextCorrectionsSucceeded(selectedEvents);
     // Wiki/added-context feedback is created through the existing node-8/9
     // correction path. Drain its registered worker before snapshotting heads;
     // this keeps the flywheel's actual rerun in front of the new immutable
@@ -490,6 +593,39 @@ export class PatchIterationService implements PatchIterationServicePort {
     ) {
       await this.deps.contextCorrections.drain();
     }
+    const baseUnitById = new Map(base.units.map((unit) => [unit.bridgeUnitId, unit]));
+    const hasChildBoundResultEdit = selectedEvents.some(
+      (event) =>
+        event.eventKind === "result_edit" &&
+        typeof event.metadata.resultRevisionPatchVersionId === "string" &&
+        event.metadata.resultRevisionPatchVersionId.trim().length > 0,
+    );
+    const baseLineagePatchVersionIds = hasChildBoundResultEdit
+      ? await loadPatchVersionLineageIds(this.deps.iteration, this.deps.actor, base)
+      : new Set([base.patchVersionId]);
+    const provenanceOnlyResultEditEventIds = new Set(
+      selectedEvents
+        .filter((event) => {
+          if (event.eventKind !== "result_edit") return false;
+          const childPatchVersionId = event.metadata.resultRevisionPatchVersionId;
+          return (
+            typeof childPatchVersionId === "string" &&
+            baseLineagePatchVersionIds.has(childPatchVersionId)
+          );
+        })
+        .map((event) => event.feedbackEventId),
+    );
+    const activeSelectedEvents = selectedEvents.filter(
+      (event) => !provenanceOnlyResultEditEventIds.has(event.feedbackEventId),
+    );
+    const canonicalRedraftUnitIds = successfulContextRedraftUnitIds(activeSelectedEvents);
+    // Only caller-supplied targets are an explicit planning override. A
+    // result-edit event supplies the target body after the journal has
+    // classified whether that edit is still active for this base patch. In
+    // particular, an edit whose selected child is already an ancestor of the
+    // base is retained as audit provenance but must not force a second
+    // redraft (or replay an older target over a newer child).
+    const explicitTargetUnitIds = new Set(Object.keys(input.targetBodiesByUnit ?? {}));
     const targetBodies = new Map<string, string>();
     for (const [bridgeUnitId, targetBody] of Object.entries(input.targetBodiesByUnit ?? {})) {
       assertNonBlankTarget(targetBody, `targetBodiesByUnit.${bridgeUnitId}`);
@@ -497,6 +633,7 @@ export class PatchIterationService implements PatchIterationServicePort {
     }
     for (const event of selectedEvents) {
       if (event.eventKind !== "result_edit") continue;
+      if (provenanceOnlyResultEditEventIds.has(event.feedbackEventId)) continue;
       const targetBody = event.metadata.targetBody;
       if (typeof targetBody !== "string" || targetBody.trim().length === 0) {
         throw new PatchIterationServiceError(
@@ -528,7 +665,6 @@ export class PatchIterationService implements PatchIterationServicePort {
       ),
     );
 
-    const baseUnitById = new Map(base.units.map((unit) => [unit.bridgeUnitId, unit]));
     const scopeUnitIds = uniqueNonBlank(
       input.scopeUnitIds === undefined
         ? base.units.map((unit) => unit.bridgeUnitId)
@@ -536,7 +672,7 @@ export class PatchIterationService implements PatchIterationServicePort {
       "scopeUnitIds",
     );
     const scopeSet = new Set(scopeUnitIds);
-    for (const event of selectedEvents) {
+    for (const event of activeSelectedEvents) {
       for (const bridgeUnitId of event.affectedBridgeUnitIds) {
         if (!scopeSet.has(bridgeUnitId)) {
           throw new PatchIterationServiceError(
@@ -557,129 +693,198 @@ export class PatchIterationService implements PatchIterationServicePort {
 
     const leaseOwnerId = `patch-iteration-refinement:${randomUUID()}`;
     const runId = `patch-iteration-refinement:${randomUUID()}`;
-    const refinement = await this.deps.iteration.createRefinementRun(this.deps.actor, {
-      runId,
-      projectId: baseRun.projectId,
-      localeBranchId: baseRun.localeBranchId,
-      sourceRevisionId: baseRun.sourceRevisionId,
-      targetLocale: baseRun.targetLocale,
-      frozenScope: {
-        kind: "patch_iteration_refinement",
+    let refinement: LocalizationRefinementRunRecord;
+    try {
+      refinement = await this.deps.iteration.createRefinementRun(this.deps.actor, {
+        runId,
+        projectId: baseRun.projectId,
+        localeBranchId: baseRun.localeBranchId,
+        sourceRevisionId: baseRun.sourceRevisionId,
+        targetLocale: baseRun.targetLocale,
+        frozenScope: {
+          kind: "patch_iteration_refinement",
+          basePatchVersionId: base.patchVersionId,
+          unitIds: scopeUnitIds,
+        },
+        routingPolicy: baseRun.routingPolicy ?? {},
+        costPolicy: baseRun.costPolicy ?? {},
+        units: scopeUnitIds.map((bridgeUnitId) => ({
+          bridgeUnitId,
+          sourceUnitKey: `patch-iteration:${bridgeUnitId}`,
+          nextAction: {
+            kind: "refine_from_play_feedback",
+            basePatchVersionId: base.patchVersionId,
+          },
+        })),
         basePatchVersionId: base.patchVersionId,
-        unitIds: scopeUnitIds,
-      },
-      routingPolicy: baseRun.routingPolicy ?? {},
-      costPolicy: baseRun.costPolicy ?? {},
-      units: scopeUnitIds.map((bridgeUnitId) => ({
-        bridgeUnitId,
-        sourceUnitKey: `patch-iteration:${bridgeUnitId}`,
-        nextAction: { kind: "refine_from_play_feedback", basePatchVersionId: base.patchVersionId },
-      })),
-      basePatchVersionId: base.patchVersionId,
-      feedbackBatchIds: selectedFeedback.feedbackBatchIds,
-      feedbackEventIds: selectedFeedback.feedbackEventIds,
-      // An explicit caller list remains an operator override; otherwise this
-      // is the exact set linked by selected feedback (including an explicit
-      // empty list for result-only/comment iterations).
-      wikiHeads: input.wikiHeads === undefined ? feedbackWikiHeads : input.wikiHeads,
-      // The DB snapshot includes feedback and wiki affected units; explicit
-      // targets make a manual result edit/redraft equally first-class.
-      redraftUnitIds: [...targetBodies.keys()],
-      lease: { ownerId: leaseOwnerId },
-      createdAt: this.now(),
-    });
+        feedbackBatchIds: selectedFeedback.feedbackBatchIds,
+        feedbackEventIds: selectedFeedback.feedbackEventIds,
+        // An explicit caller list remains an operator override; otherwise this
+        // is the exact set linked by selected feedback (including an explicit
+        // empty list for result-only/comment iterations).
+        wikiHeads: input.wikiHeads === undefined ? feedbackWikiHeads : input.wikiHeads,
+        // The DB derives redrafts from selected feedback. Only caller-supplied
+        // targets are an override; result-edit feedback is classified there by
+        // its selected child lineage, so inherited edits remain provenance.
+        redraftUnitIds: [...explicitTargetUnitIds],
+        lease: { ownerId: leaseOwnerId },
+        createdAt: this.now(),
+      });
+    } catch (error) {
+      // `createRefinementRun` seeds its durable run before loading the full
+      // refinement snapshot. If that post-commit read fails, the caller never
+      // receives a refinement record but the just-created run still owns a
+      // live lease. Recover it by its known id/owner before surfacing the
+      // original error; a run another executor has already taken over is left
+      // alone rather than terminalized with a stale fence.
+      const cleanupFailures: unknown[] = [];
+      try {
+        const persistedRun = await this.deps.journal.loadRun(this.deps.actor, runId);
+        if (persistedRun?.status === "running" && persistedRun.leaseOwnerId === leaseOwnerId) {
+          await this.deps.finalizer.terminalize(this.deps.actor, {
+            runId,
+            terminalStatus: "failed",
+            lease: { ownerId: leaseOwnerId, fenceToken: persistedRun.fenceToken },
+            rootCause: {
+              kind: "itotori_defect",
+              stage: "persistence",
+              code: error instanceof PatchIterationServiceError ? error.code : "refinement_failure",
+              message:
+                error instanceof Error && error.message.trim().length > 0
+                  ? error.message
+                  : "refinement creation failed without a usable error message",
+            },
+          });
+        }
+      } catch (cleanupError) {
+        cleanupFailures.push(cleanupError);
+      }
+      if (cleanupFailures.length > 0) {
+        throw new PatchIterationServiceError(
+          "refinement_cleanup_failed",
+          `refinement ${runId} failed during creation and its cleanup could not complete: ${cleanupFailures
+            .map((cleanupError) =>
+              cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+            )
+            .join("; ")}`,
+        );
+      }
+      throw error;
+    }
     const lease: LocalizationJournalRunLeaseIdentity = {
       ownerId: leaseOwnerId,
       fenceToken: refinement.run.fenceToken,
     };
-    const plannedByUnit = new Map(
-      refinement.members.map((member) => [member.bridgeUnitId, member]),
-    );
-    const draftBackedRedraftUnitIds = scopeUnitIds.filter((bridgeUnitId) => {
-      const plan = plannedByUnit.get(bridgeUnitId);
-      return plan?.strategy === "redraft" && !targetBodies.has(bridgeUnitId);
-    });
-    if (draftBackedRedraftUnitIds.length > 0) {
-      if (this.deps.draftTexts === undefined) {
+    let materialized:
+      | Awaited<ReturnType<ProductionRefinementPatchArtifactMaterializer["materialize"]>>
+      | undefined;
+    try {
+      const plannedByUnit = new Map(
+        refinement.members.map((member) => [member.bridgeUnitId, member]),
+      );
+      const plannedRedraftUnitIds = scopeUnitIds.filter((bridgeUnitId) => {
+        const plan = plannedByUnit.get(bridgeUnitId);
+        return plan?.strategy === "redraft";
+      });
+      const unitsWithoutRedraftSource = plannedRedraftUnitIds.filter(
+        (bridgeUnitId) =>
+          !targetBodies.has(bridgeUnitId) && !canonicalRedraftUnitIds.has(bridgeUnitId),
+      );
+      if (unitsWithoutRedraftSource.length > 0) {
         throw new PatchIterationServiceError(
-          "redraft_source_not_configured",
-          "feedback requires durable Node 8 redraft output, but the locale-branch draft reader is not configured",
+          "feedback_redraft_source_missing",
+          `selected feedback has no target body or successful canonical redraft receipt for ${unitsWithoutRedraftSource.join(", ")}`,
         );
       }
-      const durableDrafts = await this.deps.draftTexts.load({
-        projectId: baseRun.projectId,
-        localeBranchId: baseRun.localeBranchId,
-        bridgeUnitIds: draftBackedRedraftUnitIds,
-      });
-      for (const bridgeUnitId of draftBackedRedraftUnitIds) {
-        const targetBody = durableDrafts.get(bridgeUnitId);
-        if (targetBody === undefined || targetBody === null || targetBody.trim().length === 0) {
+      // A successful canonical correction is the source of truth for a
+      // context/comment redraft. It deliberately replaces a simultaneous
+      // result-edit body unless the caller supplied an explicit current
+      // override. This also prevents an inherited result edit from masking
+      // the durable v3 draft on a selected descendant.
+      const canonicalDraftRedraftUnitIds = plannedRedraftUnitIds.filter(
+        (bridgeUnitId) =>
+          canonicalRedraftUnitIds.has(bridgeUnitId) && !explicitTargetUnitIds.has(bridgeUnitId),
+      );
+      if (canonicalDraftRedraftUnitIds.length > 0) {
+        if (this.deps.draftTexts === undefined) {
+          throw new PatchIterationServiceError(
+            "redraft_source_not_configured",
+            "feedback requires durable Node 8 redraft output, but the locale-branch draft reader is not configured",
+          );
+        }
+        const durableDrafts = await this.deps.draftTexts.load({
+          projectId: baseRun.projectId,
+          localeBranchId: baseRun.localeBranchId,
+          bridgeUnitIds: canonicalDraftRedraftUnitIds,
+        });
+        for (const bridgeUnitId of canonicalDraftRedraftUnitIds) {
+          const targetBody = durableDrafts.get(bridgeUnitId);
+          if (targetBody === undefined || targetBody === null || targetBody.trim().length === 0) {
+            throw new PatchIterationServiceError(
+              "redraft_target_unavailable",
+              `registered redraft has no durable non-blank target for ${bridgeUnitId}`,
+            );
+          }
+          const baseTarget = baseUnitById.get(bridgeUnitId)?.targetBody;
+          if (baseTarget === targetBody) {
+            throw new PatchIterationServiceError(
+              "redraft_output_unchanged",
+              `registered redraft for ${bridgeUnitId} did not change the observed patch target`,
+            );
+          }
+          targetBodies.set(bridgeUnitId, targetBody);
+        }
+      }
+      const revisedTargets: Array<{ bridgeUnitId: string; targetBody: string }> = [];
+      for (const bridgeUnitId of scopeUnitIds) {
+        const plan = plannedByUnit.get(bridgeUnitId);
+        if (plan === undefined) {
+          throw new PatchIterationServiceError(
+            "refinement_plan_missing",
+            `refinement run ${refinement.run.runId} did not freeze a member for ${bridgeUnitId}`,
+          );
+        }
+        if (plan.strategy === "reuse") continue;
+        const targetBody = targetBodies.get(bridgeUnitId);
+        if (targetBody === undefined || targetBody.trim().length === 0) {
           throw new PatchIterationServiceError(
             "redraft_target_unavailable",
-            `registered redraft has no durable non-blank target for ${bridgeUnitId}`,
+            `redraft unit ${bridgeUnitId} has no durable target body from feedback or the registered rerun`,
           );
         }
         const baseTarget = baseUnitById.get(bridgeUnitId)?.targetBody;
-        if (baseTarget === targetBody) {
+        if (plan.strategy === "redraft" && baseTarget === targetBody) {
           throw new PatchIterationServiceError(
             "redraft_output_unchanged",
-            `registered redraft for ${bridgeUnitId} did not change the observed patch target`,
+            `redraft unit ${bridgeUnitId} must differ from the observed patch target`,
           );
         }
-        targetBodies.set(bridgeUnitId, targetBody);
+        await persistRefinementUnit({
+          journal: this.deps.journal,
+          actor: this.deps.actor,
+          runId: refinement.run.runId,
+          bridgeUnitId,
+          targetLocale: baseRun.targetLocale,
+          targetBody,
+          lease,
+          now: this.now,
+        });
+        revisedTargets.push({ bridgeUnitId, targetBody });
       }
-    }
-    const revisedTargets: Array<{ bridgeUnitId: string; targetBody: string }> = [];
-    for (const bridgeUnitId of scopeUnitIds) {
-      const plan = plannedByUnit.get(bridgeUnitId);
-      if (plan === undefined) {
+      if (revisedTargets.length === 0) {
         throw new PatchIterationServiceError(
-          "refinement_plan_missing",
-          `refinement run ${refinement.run.runId} did not freeze a member for ${bridgeUnitId}`,
+          "no_refinement_changes",
+          "selected feedback did not require a redraft or newly scoped unit",
         );
       }
-      if (plan.strategy === "reuse") continue;
-      const targetBody = targetBodies.get(bridgeUnitId);
-      if (targetBody === undefined || targetBody.trim().length === 0) {
-        throw new PatchIterationServiceError(
-          "redraft_target_unavailable",
-          `redraft unit ${bridgeUnitId} has no durable target body from feedback or the registered rerun`,
-        );
-      }
-      const baseTarget = baseUnitById.get(bridgeUnitId)?.targetBody;
-      if (plan.strategy === "redraft" && baseTarget === targetBody) {
-        throw new PatchIterationServiceError(
-          "redraft_output_unchanged",
-          `redraft unit ${bridgeUnitId} must differ from the observed patch target`,
-        );
-      }
-      await persistRefinementUnit({
-        journal: this.deps.journal,
-        actor: this.deps.actor,
-        runId: refinement.run.runId,
-        bridgeUnitId,
-        targetLocale: baseRun.targetLocale,
-        targetBody,
-        lease,
-        now: this.now,
+      const patchVersionId = patchVersionIdFor(refinement.run.runId);
+      materialized = await this.materializer.materialize({
+        patchVersionId,
+        parentPatchVersionId: base.patchVersionId,
+        parentArtifactRefs: base.artifactRefs,
+        parentArtifactHashes: base.artifactHashes,
+        targetRevisions: revisedTargets,
       });
-      revisedTargets.push({ bridgeUnitId, targetBody });
-    }
-    if (revisedTargets.length === 0) {
-      throw new PatchIterationServiceError(
-        "no_refinement_changes",
-        "selected feedback did not require a redraft or newly scoped unit",
-      );
-    }
-    const patchVersionId = patchVersionIdFor(refinement.run.runId);
-    const materialized = await this.materializer.materialize({
-      patchVersionId,
-      parentPatchVersionId: base.patchVersionId,
-      parentArtifactRefs: base.artifactRefs,
-      parentArtifactHashes: base.artifactHashes,
-      targetRevisions: revisedTargets,
-    });
-    try {
       const patch = await this.deps.finalizer.ensurePatchVersion(this.deps.actor, {
         runId: refinement.run.runId,
         patchVersionId,
@@ -709,7 +914,42 @@ export class PatchIterationService implements PatchIterationServicePort {
         lease,
       });
     } catch (error) {
-      materialized.cleanup();
+      const cleanupFailures: unknown[] = [];
+      if (materialized !== undefined) {
+        try {
+          await materialized.cleanup();
+        } catch (cleanupError) {
+          cleanupFailures.push(cleanupError);
+        }
+      }
+      try {
+        await this.deps.finalizer.terminalize(this.deps.actor, {
+          runId: refinement.run.runId,
+          terminalStatus: "failed",
+          lease,
+          rootCause: {
+            kind: "itotori_defect",
+            stage: "persistence",
+            code: error instanceof PatchIterationServiceError ? error.code : "refinement_failure",
+            message:
+              error instanceof Error && error.message.trim().length > 0
+                ? error.message
+                : "refinement failed without a usable error message",
+          },
+        });
+      } catch (terminalizationError) {
+        cleanupFailures.push(terminalizationError);
+      }
+      if (cleanupFailures.length > 0) {
+        throw new PatchIterationServiceError(
+          "refinement_cleanup_failed",
+          `refinement ${refinement.run.runId} failed and its cleanup could not complete: ${cleanupFailures
+            .map((cleanupError) =>
+              cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+            )
+            .join("; ")}`,
+        );
+      }
       throw error;
     }
     const refinedPatch = await this.deps.iteration.loadPatchPlaySurface(
@@ -724,6 +964,46 @@ export class PatchIterationService implements PatchIterationServicePort {
     }
     return { refinement, patch: refinedPatch };
   }
+}
+
+/**
+ * The UI inbox intentionally inherits ancestor feedback. For result-edit
+ * events the atomic child patch in metadata tells us whether the edit is
+ * already embodied by this base. Walk the immutable parent chain instead of
+ * trusting the event's older observed-patch ID: sibling children remain
+ * actionable, while actual ancestors are provenance only.
+ */
+async function loadPatchVersionLineageIds(
+  iteration: Pick<ItotoriLocalizationIterationRepositoryPort, "loadPatchPlaySurface">,
+  actor: AuthorizationActor,
+  base: PatchPlaySurface,
+): Promise<ReadonlySet<string>> {
+  const patchVersionIds = new Set<string>([base.patchVersionId]);
+  let parentPatchVersionId = base.parentPatchVersionId;
+  while (parentPatchVersionId !== null) {
+    if (patchVersionIds.has(parentPatchVersionId)) {
+      throw new PatchIterationServiceError(
+        "patch_not_found",
+        `patch version lineage for ${base.patchVersionId} contains a parent cycle`,
+      );
+    }
+    const parent = await iteration.loadPatchPlaySurface(actor, parentPatchVersionId);
+    if (parent === null) {
+      throw new PatchIterationServiceError(
+        "patch_not_found",
+        `parent patch ${parentPatchVersionId} for ${base.patchVersionId} was not found`,
+      );
+    }
+    if (parent.patchVersionId !== parentPatchVersionId) {
+      throw new PatchIterationServiceError(
+        "patch_not_found",
+        `parent patch lookup for ${parentPatchVersionId} returned ${parent.patchVersionId}`,
+      );
+    }
+    patchVersionIds.add(parent.patchVersionId);
+    parentPatchVersionId = parent.parentPatchVersionId;
+  }
+  return patchVersionIds;
 }
 
 /** Server-authored provenance retained with the immutable feedback event. */
@@ -741,13 +1021,100 @@ function contextCorrectionReceiptMetadata(receipt: WikiBrainEditResult): Record<
   };
 }
 
-function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
-  const normalizedLeft = uniqueNonBlank(left, "affectedBridgeUnitIds");
-  const normalizedRight = uniqueNonBlank(right, "canonicalAffectedBridgeUnitIds");
-  return (
-    normalizedLeft.length === normalizedRight.length &&
-    normalizedLeft.every((value) => normalizedRight.includes(value))
+/**
+ * Node 9 commits its canonical entry before Node 8 drains its exact redraft
+ * job.  The entry alone is not enough to promise that a feedback selection is
+ * refinable: accepting a pending or failed receipt would let a later refine
+ * read an unrelated/stale branch draft.  Keep that durable distinction at the
+ * service boundary rather than describing every canonical edit as success.
+ */
+function assertSuccessfulContextCorrectionReceipt(receipt: WikiBrainEditResult): void {
+  if (receipt.rerun.state === "succeeded") return;
+  throw new PatchIterationServiceError(
+    "context_redraft_not_succeeded",
+    `canonical context correction ${receipt.correctionId} has a ${receipt.rerun.state} redraft and cannot be used as refinement feedback`,
   );
+}
+
+/**
+ * Feedback persisted before the receipt gate existed remains immutable.  Do
+ * not let an old pending/failed receipt become refinable merely because some
+ * other correction later changed the branch draft projection.
+ */
+function assertSelectedContextCorrectionsSucceeded(
+  events: readonly PlayTestFeedbackEventRecord[],
+): void {
+  for (const event of events) {
+    const rerunState = contextCorrectionRerunState(event);
+    if (rerunState === null || rerunState === "succeeded") continue;
+    throw new PatchIterationServiceError(
+      "context_redraft_not_succeeded",
+      `feedback ${event.feedbackEventId} has a ${rerunState} canonical context redraft and cannot be refined`,
+    );
+  }
+}
+
+/**
+ * A validated immutable context head can supply the durable draft for a
+ * context/comment redraft; when the event carries a Node 8 receipt, that
+ * exact receipt must have succeeded. A legacy generic comment with affected
+ * units is still visible, but cannot accidentally consume an unrelated branch
+ * draft and revert the current patch.
+ */
+function successfulContextRedraftUnitIds(
+  events: readonly PlayTestFeedbackEventRecord[],
+): ReadonlySet<string> {
+  const unitIds = new Set<string>();
+  for (const event of events) {
+    const rerunState = contextCorrectionRerunState(event);
+    // A reference-only context event has no request-time job receipt, but its
+    // artifact/version pair was validated against the observed branch by the
+    // iteration repository. It remains a supported way to attach a completed
+    // standalone Node 9 correction. A receipt that *does* name a pending,
+    // failed, or malformed rerun has already been rejected above.
+    if (
+      event.contextArtifactId === null ||
+      event.contextEntryVersionId === null ||
+      (rerunState !== null && rerunState !== "succeeded")
+    ) {
+      continue;
+    }
+    for (const bridgeUnitId of event.affectedBridgeUnitIds) unitIds.add(bridgeUnitId);
+  }
+  return unitIds;
+}
+
+function contextCorrectionRerunState(event: PlayTestFeedbackEventRecord): string | null {
+  // Reference-only feedback predates the service-owned correction receipt and
+  // deliberately carries no job metadata. Its immutable head remains a valid
+  // reference path; only a feedback event that actually carries correction
+  // metadata is subject to this exact-rerun gate.
+  if (event.contextArtifactId === null || event.contextEntryVersionId === null) return null;
+  const correction = event.metadata.contextCorrection;
+  if (!isRecord(correction)) return null;
+  const rerun = correction.rerun;
+  if (!isRecord(rerun)) return "unverified";
+  const state = rerun.state;
+  return typeof state === "string" ? state : "unverified";
+}
+
+function assertObservedFeedbackUnits(
+  patch: PatchPlaySurface,
+  bridgeUnitIds: readonly string[],
+  label: string,
+): void {
+  const observedUnitIds = new Set(patch.units.map((unit) => unit.bridgeUnitId));
+  for (const bridgeUnitId of bridgeUnitIds) {
+    if (observedUnitIds.has(bridgeUnitId)) continue;
+    throw new PatchIterationServiceError(
+      "feedback_unit_not_observed",
+      `${label} unit ${bridgeUnitId} does not belong to observed patch ${patch.patchVersionId}`,
+    );
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function persistRefinementUnit(input: {
@@ -949,11 +1316,11 @@ export class PatchIterationServiceError extends Error {
       | "target_body_required"
       | "result_edit_single_unit"
       | "feedback_unit_not_observed"
+      | "scoped_comment_body_required"
       | "context_feedback_kind_mismatch"
       | "wiki_not_configured"
-      | "context_feedback_artifact_mismatch"
-      | "context_feedback_version_mismatch"
-      | "context_feedback_impact_mismatch"
+      | "context_feedback_receipt_not_allowed"
+      | "context_redraft_not_succeeded"
       | "context_reference_required"
       | "feedback_required"
       | "result_edit_target_missing"
@@ -961,9 +1328,11 @@ export class PatchIterationServiceError extends Error {
       | "new_scope_target_required"
       | "refinement_plan_missing"
       | "redraft_source_not_configured"
+      | "feedback_redraft_source_missing"
       | "redraft_target_unavailable"
       | "redraft_output_unchanged"
       | "no_refinement_changes"
+      | "refinement_cleanup_failed"
       | "refined_patch_missing"
       | "feedback_event_not_observed"
       | "feedback_batch_not_observed",

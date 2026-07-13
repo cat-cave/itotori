@@ -9,9 +9,11 @@
 
 import type {
   ApplyPlayTesterTargetEditResult,
+  ApplyPlayTesterTargetEditWithFeedbackResult,
   AuthorizationActor,
   ItotoriLocalizationResultRevisionRepositoryPort,
   PlayablePatchExport,
+  RecordPlayTestFeedbackEventInput,
   SelectedPatchExport,
 } from "@itotori/db";
 import { DeliveredPatchExporter } from "../patch-export/exporter.js";
@@ -28,6 +30,24 @@ export type PlayTesterTargetEditResponse = {
   schemaVersion: "play.tester_result_revision.v0.1";
   generatedAt: Date;
   result: ApplyPlayTesterTargetEditResult;
+};
+
+/**
+ * The feedback fields that accompany a target edit. The observed patch,
+ * edited unit, event kind, result revision, and affected unit are derived by
+ * the DB transaction from the edit itself.
+ */
+export type PlayTesterTargetEditFeedbackRequest = PlayTesterTargetEditRequest & {
+  feedback: Omit<
+    RecordPlayTestFeedbackEventInput,
+    "observedPatchVersionId" | "eventKind" | "resultRevisionId" | "affectedBridgeUnitIds"
+  >;
+};
+
+export type PlayTesterTargetEditFeedbackResponse = {
+  schemaVersion: "play.tester_result_revision_feedback.v0.1";
+  generatedAt: Date;
+  result: ApplyPlayTesterTargetEditWithFeedbackResult;
 };
 
 export type SelectedPatchExportResponse = {
@@ -54,6 +74,14 @@ export interface PlayTesterResultRevisionServicePort {
     actor: AuthorizationActor,
     input: PlayTesterTargetEditRequest,
   ): Promise<PlayTesterTargetEditResponse>;
+  /**
+   * Atomically persists the selected child patch and its result-edit feedback
+   * event. A rejected feedback fact cannot leave a selected child behind.
+   */
+  editTargetWithFeedback(
+    actor: AuthorizationActor,
+    input: PlayTesterTargetEditFeedbackRequest,
+  ): Promise<PlayTesterTargetEditFeedbackResponse>;
   loadSelectedExport(
     actor: AuthorizationActor,
     input: { runId?: string; patchVersionId?: string },
@@ -78,6 +106,9 @@ export interface PlayTesterResultRevisionServicePort {
  */
 export interface BoundPlayTesterResultRevisionServicePort {
   editTarget(input: PlayTesterTargetEditRequest): Promise<PlayTesterTargetEditResponse>;
+  editTargetWithFeedback(
+    input: PlayTesterTargetEditFeedbackRequest,
+  ): Promise<PlayTesterTargetEditFeedbackResponse>;
   loadSelectedExport(input: {
     runId?: string;
     patchVersionId?: string;
@@ -103,23 +134,7 @@ export class PlayTesterResultRevisionService implements PlayTesterResultRevision
     actor: AuthorizationActor,
     input: PlayTesterTargetEditRequest,
   ): Promise<PlayTesterTargetEditResponse> {
-    // Target-first: reject any accidental source fields so a non-source-speaker
-    // path cannot be polluted by source-language requirements.
-    const record = input as PlayTesterTargetEditRequest & {
-      sourceText?: unknown;
-      sourceBody?: unknown;
-      source?: unknown;
-    };
-    if (
-      record.sourceText !== undefined ||
-      record.sourceBody !== undefined ||
-      record.source !== undefined
-    ) {
-      throw new PlayTesterResultRevisionServiceError(
-        "source_not_accepted",
-        "play-tester target edit accepts only target text; source language is not required or accepted",
-      );
-    }
+    assertTargetOnlyEdit(input);
     if (input.targetBody.trim().length === 0) {
       throw new PlayTesterResultRevisionServiceError(
         "blank_target",
@@ -135,6 +150,25 @@ export class PlayTesterResultRevisionService implements PlayTesterResultRevision
 
     return {
       schemaVersion: "play.tester_result_revision.v0.1",
+      generatedAt: this.now(),
+      result,
+    };
+  }
+
+  async editTargetWithFeedback(
+    actor: AuthorizationActor,
+    input: PlayTesterTargetEditFeedbackRequest,
+  ): Promise<PlayTesterTargetEditFeedbackResponse> {
+    assertTargetOnlyEdit(input);
+    if (input.targetBody.trim().length === 0) {
+      throw new PlayTesterResultRevisionServiceError(
+        "blank_target",
+        "play-tester target edit requires non-blank target text",
+      );
+    }
+    const result = await this.deps.repository.applyPlayTesterTargetEditWithFeedback(actor, input);
+    return {
+      schemaVersion: "play.tester_result_revision_feedback.v0.1",
       generatedAt: this.now(),
       result,
     };
@@ -179,12 +213,32 @@ export class PlayTesterResultRevisionService implements PlayTesterResultRevision
   }
 }
 
+/** Target-first guard shared by the standalone and atomic feedback paths. */
+function assertTargetOnlyEdit(input: PlayTesterTargetEditRequest): void {
+  const record = input as PlayTesterTargetEditRequest & {
+    sourceText?: unknown;
+    sourceBody?: unknown;
+    source?: unknown;
+  };
+  if (
+    record.sourceText !== undefined ||
+    record.sourceBody !== undefined ||
+    record.source !== undefined
+  ) {
+    throw new PlayTesterResultRevisionServiceError(
+      "source_not_accepted",
+      "play-tester target edit accepts only target text; source language is not required or accepted",
+    );
+  }
+}
+
 export function bindPlayTesterResultRevisionService(
   service: PlayTesterResultRevisionServicePort,
   actor: AuthorizationActor,
 ): BoundPlayTesterResultRevisionServicePort {
   return {
     editTarget: (input) => service.editTarget(actor, input),
+    editTargetWithFeedback: (input) => service.editTargetWithFeedback(actor, input),
     loadSelectedExport: (input) => service.loadSelectedExport(actor, input),
     loadSelectedArchive: (input) => service.loadSelectedArchive(actor, input),
     loadExactPatchExport: (input) => service.loadExactPatchExport(actor, input),

@@ -55,7 +55,7 @@ export function buildHelpText(allCommands = false): string {
     "  patch versions          List durable patch versions and their lineage for a locale branch.",
   );
   lines.push(
-    "  patch play <VERSION>    Start an exact-version play session and show its QA callouts.",
+    "  patch play <VERSION>    Open the exact patch in its runtime and record a play session.",
   );
   lines.push("  feedback list|batch|add Browse or attach exact-version play-test feedback.");
   lines.push(

@@ -29,7 +29,19 @@ function patchIterationFixture(): PatchIterationFixture {
   const play = vi.fn(async () => ({
     playSessionId: "session-1",
     observedPatchVersionId: "patch-v1",
+    actorUserId: "local-user",
     status: "active",
+    launchDescriptor: {
+      runtime: "utsushi-reallive",
+      engine: "reallive",
+      scene: 1,
+      replay: "observed",
+      observedTextLineCount: 2,
+    },
+    startedAt: new Date("2026-07-13T00:00:00.000Z"),
+    endedAt: null,
+    createdAt: new Date("2026-07-13T00:00:00.000Z"),
+    updatedAt: new Date("2026-07-13T00:00:00.000Z"),
     qaCallouts: [],
   }));
   const createFeedbackBatch = vi.fn(async () => ({
@@ -111,29 +123,10 @@ function patchSurfaceFixture(overrides: Record<string, unknown> = {}) {
 function cliFixture(port: PatchIterationServicePort): {
   dependencies: ItotoriCliDependencies;
   writes: Map<string, unknown>;
-  loadExactPatchExport: ReturnType<typeof vi.fn>;
 } {
   const writes = new Map<string, unknown>();
-  const loadExactPatchExport = vi.fn(async () => ({
-    schemaVersion: "play.playable_patch_export.v0.1" as const,
-    generatedAt: new Date("2026-07-13T00:00:00.000Z"),
-    export: {
-      patchVersionId: "patch-v1",
-      runId: "run-v1",
-      parentPatchVersionId: null,
-      origin: "run_finalizer",
-      actorUserId: null,
-      status: "playable",
-      playableAt: new Date("2026-07-13T00:00:00.000Z"),
-      selectedAt: null,
-      artifactHashes: { patch: "sha256:fixture" },
-      artifactRefs: { patchTarget: "/private/fixture" },
-      units: [],
-    },
-  }));
   const services = {
     patchIteration: port,
-    playTesterResultRevision: { loadExactPatchExport },
   } as unknown as ItotoriCliServices;
   return {
     dependencies: {
@@ -147,21 +140,20 @@ function cliFixture(port: PatchIterationServicePort): {
       withServices: async (callback) => await callback(services),
     },
     writes,
-    loadExactPatchExport,
   };
 }
 
 describe("patch iteration CLI", () => {
   it("maps patch versions and play to the shared version/play service before legacy patch parsing", async () => {
     const service = patchIterationFixture();
-    const { dependencies, writes, loadExactPatchExport } = cliFixture(service.port);
+    const { dependencies, writes } = cliFixture(service.port);
 
     await runItotoriCliCommand(
       ["patch", "versions", "--locale-branch", "branch-fr", "--output", "versions.json"],
       dependencies,
     );
     await runItotoriCliCommand(
-      ["patch", "play", "patch-v1", "--launch-json", '{"surface":"cli"}', "--output", "play.json"],
+      ["patch", "play", "patch-v1", "--launch-json", '{"scene":1}', "--output", "play.json"],
       dependencies,
     );
 
@@ -169,9 +161,8 @@ describe("patch iteration CLI", () => {
     expect(service.load).toHaveBeenCalledWith({ patchVersionId: "patch-v1" });
     expect(service.play).toHaveBeenCalledWith({
       patchVersionId: "patch-v1",
-      launchDescriptor: { surface: "cli" },
+      launchDescriptor: { scene: 1 },
     });
-    expect(loadExactPatchExport).toHaveBeenCalledWith({ patchVersionId: "patch-v1" });
     expect(writes.get("versions.json")).toEqual([
       expect.objectContaining({ patchVersionId: "patch-v1" }),
     ]);
@@ -181,13 +172,16 @@ describe("patch iteration CLI", () => {
         surface: expect.objectContaining({
           patch: expect.objectContaining({ patchVersionId: "patch-v1" }),
         }),
-        session: expect.objectContaining({ playSessionId: "session-1" }),
-        delivery: expect.objectContaining({
-          patchVersionId: "patch-v1",
-          artifactHashes: { patch: "sha256:fixture" },
+        session: expect.objectContaining({
+          playSessionId: "session-1",
+          launchDescriptor: expect.objectContaining({
+            runtime: "utsushi-reallive",
+            scene: 1,
+          }),
         }),
       }),
     );
+    expect(writes.get("play.json")).not.toHaveProperty("delivery");
     expect(JSON.stringify(writes.get("play.json"))).not.toContain("artifactRefs");
   });
 

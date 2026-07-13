@@ -934,6 +934,8 @@ export type {
 export type {
   ApplyPlayTesterTargetEditInput,
   ApplyPlayTesterTargetEditResult,
+  ApplyPlayTesterTargetEditWithFeedbackInput,
+  ApplyPlayTesterTargetEditWithFeedbackResult,
   ItotoriLocalizationResultRevisionRepositoryPort,
   MaterializedPlayTesterPatchArtifact,
   PlayTesterPatchArtifactMaterializationInput,
@@ -953,6 +955,7 @@ export type {
   CreatePlayTestFeedbackBatchInput,
   CreateRefinementRunInput,
   ItotoriLocalizationIterationRepositoryPort,
+  LocalizationIterationTransaction,
   LocalizationRefinementRunRecord,
   PatchPlaySurface,
   PatchVersionIterationRecord,

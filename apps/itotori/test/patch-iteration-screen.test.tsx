@@ -16,7 +16,6 @@ import type {
   ApiPatchIterationFeedbackResponse,
   ApiPatchIterationFeedbackInbox,
   ApiPatchIterationPatch,
-  ApiPatchIterationDeliveryResponse,
   ApiPatchIterationPlayResponse,
   ApiPatchIterationRefineResponse,
   ApiPatchIterationVersion,
@@ -30,6 +29,7 @@ import { apiJson, authCapabilitiesMswHandler, authIdentityMswHandler } from "./m
 const LOCALE_BRANCH_ID = "locale-branch-patch-iteration";
 const PATCH_V1 = "patch-version-v1";
 const PATCH_V2 = "patch-version-v2";
+const PATCH_V3 = "patch-version-v3";
 const ITERATION_ROUTE = {
   pathname: "/play/patches",
   search: `?localeBranchId=${LOCALE_BRANCH_ID}&patchVersionId=${PATCH_V1}`,
@@ -92,6 +92,37 @@ const v1Patch: ApiPatchIterationPatch = {
   qaCallouts: [qaCallout],
 };
 
+const v2: ApiPatchIterationVersion = {
+  ...v1,
+  patchVersionId: PATCH_V2,
+  runId: "run-v2-result-edit",
+  parentPatchVersionId: PATCH_V1,
+  origin: "play_tester_edit",
+  selectedAt: "2026-07-13T12:07:00.000Z",
+  artifactHashes: { patch: "sha256:patch-v2" },
+};
+
+const v2Patch: ApiPatchIterationPatch = {
+  ...v1Patch,
+  patchVersionId: PATCH_V2,
+  runId: v2.runId,
+  parentPatchVersionId: PATCH_V1,
+  origin: "play_tester_edit",
+  selectedAt: v2.selectedAt,
+  artifactHashes: { ...v2.artifactHashes },
+  units: v1Patch.units.map((unit) =>
+    unit.bridgeUnitId === "bridge-unit-v1-1"
+      ? {
+          ...unit,
+          resultRevisionId: "result-v2-1",
+          targetBody: "The first line selected by the play-tester edit.",
+          memberOrigin: "play_tester_edit",
+          reusedFromPatchVersionId: PATCH_V1,
+        }
+      : { ...unit, reusedFromPatchVersionId: PATCH_V1 },
+  ),
+};
+
 const feedback: ApiPatchIterationFeedbackInbox = {
   observedPatchVersionId: PATCH_V1,
   batches: [
@@ -112,10 +143,14 @@ const feedback: ApiPatchIterationFeedbackInbox = {
           actorUserId: "local-user",
           eventKind: "comment",
           body: "The name felt inconsistent in context.",
-          metadata: {},
+          metadata: {
+            contextCorrection: {
+              rerun: { state: "succeeded", jobStatus: "succeeded", error: null },
+            },
+          },
           resultRevisionId: null,
-          contextArtifactId: null,
-          contextEntryVersionId: null,
+          contextArtifactId: "context-artifact-comment",
+          contextEntryVersionId: "context-version-comment",
           affectedBridgeUnitIds: ["bridge-unit-v1-1"],
           createdAt: "2026-07-13T12:05:00.000Z",
         },
@@ -138,7 +173,10 @@ const feedback: ApiPatchIterationFeedbackInbox = {
           actorUserId: "local-user",
           eventKind: "result_edit",
           body: null,
-          metadata: { targetBody: "The first line corrected after play." },
+          metadata: {
+            targetBody: "The first line corrected after play.",
+            resultRevisionPatchVersionId: PATCH_V2,
+          },
           resultRevisionId: "result-v1-1-edited",
           contextArtifactId: null,
           contextEntryVersionId: null,
@@ -148,6 +186,13 @@ const feedback: ApiPatchIterationFeedbackInbox = {
       ],
     },
   ],
+};
+
+const inheritedFeedback: ApiPatchIterationFeedbackInbox = {
+  ...feedback,
+  // The child is the currently selected surface, while every batch/event
+  // preserves its immutable v1 observation provenance.
+  observedPatchVersionId: PATCH_V2,
 };
 
 const versionsResponse: ApiPatchIterationVersionsResponse = {
@@ -166,25 +211,6 @@ const playResponse: ApiPatchIterationPlayResponse = {
     endedAt: null,
     qaCallouts: [qaCallout],
   },
-};
-
-const exactDeliveryResponse: ApiPatchIterationDeliveryResponse = {
-  schemaVersion: "itotori.patch-iteration.delivery.v0",
-  patchVersionId: PATCH_V1,
-  runId: "run-v1",
-  parentPatchVersionId: null,
-  origin: "run_finalizer",
-  status: "playable",
-  playableAt: "2026-07-13T12:00:00.000Z",
-  artifactHashes: { patch: "sha256:patch-v1" },
-  downloadUrl: `/api/play/patch-versions/${PATCH_V1}/delivery/archive`,
-  units: [
-    {
-      bridgeUnitId: "bridge-unit-v1-1",
-      unitOrdinal: 0,
-      targetBody: "The first line of the playable v1 patch.",
-    },
-  ],
 };
 
 const feedbackBatchResponse: ApiPatchIterationFeedbackBatchResponse = {
@@ -270,6 +296,22 @@ const refineResponse: ApiPatchIterationRefineResponse = {
   },
 };
 
+const inheritedRefineResponse: ApiPatchIterationRefineResponse = {
+  ...refineResponse,
+  refinement: {
+    ...refineResponse.refinement,
+    runId: "run-v3-from-inherited-feedback",
+    basePatchVersionId: PATCH_V2,
+  },
+  patch: {
+    ...refineResponse.patch,
+    patchVersionId: PATCH_V3,
+    runId: "run-v3-from-inherited-feedback",
+    parentPatchVersionId: PATCH_V2,
+    units: v2Patch.units,
+  },
+};
+
 let capturedPlay: unknown = null;
 let capturedRefinement: unknown = null;
 let capturedFeedbackBatch: unknown = null;
@@ -298,9 +340,6 @@ const server = setupServer(
     capturedPlay = await request.json();
     return apiJson("patchIteration.play", playResponse);
   }),
-  http.get(`*/api/play/patch-versions/${PATCH_V1}/delivery`, () =>
-    apiJson("patchIteration.delivery", exactDeliveryResponse),
-  ),
   http.post(`*/api/play/patch-versions/${PATCH_V1}/feedback-batches`, async ({ request }) => {
     capturedFeedbackBatch = await request.json();
     return apiJson("patchIteration.feedbackBatch", feedbackBatchResponse);
@@ -326,8 +365,81 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
+function useDefaultChildSurface(feedbackForChild: ApiPatchIterationFeedbackInbox): void {
+  server.use(
+    http.get(`*/api/play/locale-branches/${LOCALE_BRANCH_ID}/patch-versions`, () =>
+      apiJson("patchIteration.versions", {
+        schemaVersion: "itotori.patch-iteration.versions.v0",
+        versions: [v1, v2],
+      }),
+    ),
+    http.get(`*/api/play/patch-versions/${PATCH_V2}`, () =>
+      apiJson("patchIteration.surface", {
+        schemaVersion: "itotori.patch-iteration.surface.v0",
+        patch: v2Patch,
+        versions: [v1, v2],
+        feedback: feedbackForChild,
+      }),
+    ),
+    http.post(`*/api/play/patch-versions/${PATCH_V2}/refine`, async ({ request }) => {
+      capturedRefinement = await request.json();
+      return apiJson("patchIteration.refine", inheritedRefineResponse);
+    }),
+  );
+}
+
+function inheritedFeedbackWithCommentMetadata(
+  metadata: Record<string, unknown>,
+): ApiPatchIterationFeedbackInbox {
+  return {
+    ...inheritedFeedback,
+    batches: inheritedFeedback.batches.map((batch) =>
+      batch.feedbackBatchId !== "feedback-batch-session"
+        ? batch
+        : {
+            ...batch,
+            events: batch.events.map((event) =>
+              event.feedbackEventId === "feedback-event-comment" ? { ...event, metadata } : event,
+            ),
+          },
+    ),
+  };
+}
+
+function inheritedFeedbackWithMixedContextCorrectionStates(): ApiPatchIterationFeedbackInbox {
+  const pendingMetadata = {
+    contextCorrection: {
+      rerun: { state: "pending", jobStatus: "queued", error: null },
+    },
+  };
+  const succeededMetadata = {
+    contextCorrection: {
+      rerun: { state: "succeeded", jobStatus: "succeeded", error: null },
+    },
+  };
+  const feedbackWithPendingComment = inheritedFeedbackWithCommentMetadata(pendingMetadata);
+  return {
+    ...feedbackWithPendingComment,
+    batches: feedbackWithPendingComment.batches.map((batch) =>
+      batch.feedbackBatchId !== "feedback-batch-session"
+        ? batch
+        : {
+            ...batch,
+            events: [
+              ...batch.events,
+              {
+                ...batch.events[0]!,
+                feedbackEventId: "feedback-event-comment-succeeded-sibling",
+                metadata: succeededMetadata,
+              },
+            ],
+          },
+    ),
+  };
+}
+
 describe("SPA shell — patch iteration dashboard", () => {
-  it("starts an exact play session, exposes only its matching delivery, and refines the selected feedback without QA gating", async () => {
+  it("opens the exact patched runtime and refines selected feedback without QA gating", async () => {
     const navigate = vi.fn();
     render(<App location={ITERATION_ROUTE} navigate={navigate} />);
 
@@ -358,10 +470,7 @@ describe("SPA shell — patch iteration dashboard", () => {
         (_content, element) =>
           element?.getAttribute("data-patch-iteration-status") === "play-started",
       ),
-    ).toHaveTextContent(/Play session.*play-session-v1.*started/i);
-    expect(
-      screen.getByRole("link", { name: /Download the authenticated archive/i }),
-    ).toHaveAttribute("href", `/api/play/patch-versions/${PATCH_V1}/delivery/archive`);
+    ).toHaveTextContent(/Patched runtime opened.*play-session-v1.*linked/i);
 
     fireEvent.click(screen.getByLabelText("Select feedback batch Session observations"));
     fireEvent.click(screen.getByText("Optional scope and wiki inputs"));
@@ -399,7 +508,7 @@ describe("SPA shell — patch iteration dashboard", () => {
     ).toHaveTextContent(/Refinement produced.*patch-version-v2/i);
 
     const feedbackBatches = screen.getByLabelText("Feedback batches");
-    expect(within(feedbackBatches).getAllByRole("listitem")).toHaveLength(1);
+    expect(feedbackBatches.querySelectorAll(":scope > li")).toHaveLength(1);
     expect(
       within(screen.getByLabelText("Individual feedback events")).getAllByRole("listitem"),
     ).toHaveLength(1);
@@ -505,28 +614,118 @@ describe("SPA shell — patch iteration dashboard", () => {
     });
   });
 
-  it("keeps the v1 archive link when the current run selection has moved to v2", async () => {
-    server.use(
-      http.get(`*/api/play/patch-versions/${PATCH_V1}/delivery`, () =>
-        apiJson("patchIteration.delivery", {
-          ...exactDeliveryResponse,
-          artifactHashes: { patch: "sha256:patch-v1-historical" },
-        }),
-      ),
+  it("shows inherited v1 feedback on the default selected child and refines from that child", async () => {
+    useDefaultChildSurface(inheritedFeedback);
+    const navigate = vi.fn();
+    render(
+      <App
+        location={{
+          pathname: "/play/patches",
+          search: `?localeBranchId=${LOCALE_BRANCH_ID}`,
+        }}
+        navigate={navigate}
+      />,
     );
-    render(<App location={ITERATION_ROUTE} navigate={vi.fn()} />);
-    await screen.findByLabelText("Patch iteration dashboard");
 
-    fireEvent.click(screen.getByRole("button", { name: "Play this patch" }));
-    await waitFor(() => expect(capturedPlay).toEqual({}));
+    const dashboard = await screen.findByLabelText("Patch iteration dashboard");
+    expect(dashboard.querySelector("[data-active-patch-version-id]")).toHaveAttribute(
+      "data-active-patch-version-id",
+      PATCH_V2,
+    );
+    expect(screen.getByText(/The name felt inconsistent in context\./u)).toBeInTheDocument();
+    expect(screen.getByLabelText("Feedback batches")).toHaveTextContent("Session observations");
+    expect(screen.getByLabelText("Individual feedback events")).toHaveTextContent("result_edit");
     expect(
-      await screen.findByRole("link", { name: /Download the authenticated archive/i }),
-    ).toHaveAttribute("href", `/api/play/patch-versions/${PATCH_V1}/delivery/archive`);
+      screen.getByLabelText("Select feedback event feedback-event-result-edit"),
+    ).toBeDisabled();
+    expect(screen.getByText("already applied")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refine selected feedback" }));
+    await waitFor(() => {
+      expect(capturedRefinement).toEqual({
+        feedbackBatchIds: ["feedback-batch-session"],
+        feedbackEventIds: [],
+      });
+    });
+    expect(navigate).toHaveBeenCalledWith(
+      patchIterationHref({ localeBranchId: LOCALE_BRANCH_ID, patchVersionId: PATCH_V3 }),
+    );
     expect(
-      screen.queryByText(
+      await screen.findByText(
         (_content, element) =>
-          element?.getAttribute("data-patch-iteration-status") === "exact-session-only",
+          element?.getAttribute("data-patch-iteration-status") === "refinement-built",
       ),
-    ).toBeNull();
+    ).toHaveTextContent(new RegExp(PATCH_V3, "u"));
+  });
+
+  it.each([
+    ["pending", { state: "pending", jobStatus: "queued", error: null }],
+    ["failed", { state: "failed", jobStatus: "dead_letter", error: "redraft exhausted" }],
+  ] as const)(
+    "keeps inherited feedback with a $state canonical rerun visible but disabled",
+    async (_state, rerun) => {
+      useDefaultChildSurface(
+        inheritedFeedbackWithCommentMetadata({ contextCorrection: { rerun } }),
+      );
+      render(
+        <App
+          location={{
+            pathname: "/play/patches",
+            search: `?localeBranchId=${LOCALE_BRANCH_ID}`,
+          }}
+          navigate={vi.fn()}
+        />,
+      );
+
+      await screen.findByLabelText("Patch iteration dashboard");
+      const batches = screen.getByLabelText("Feedback batches");
+      const batch = batches.querySelector('[data-feedback-batch-id="feedback-batch-session"]');
+      expect(batch).toHaveAttribute("data-refinement-status", "canonical_redraft_not_succeeded");
+      expect(screen.getByLabelText("Select feedback batch Session observations")).toBeDisabled();
+      expect(
+        within(batches).getAllByText(/canonical redraft not succeeded/u).length,
+      ).toBeGreaterThan(0);
+      expect(screen.getByRole("button", { name: "Refine selected feedback" })).toBeDisabled();
+    },
+  );
+
+  it("disables an atomic batch when a failed-redraft event has a refinable sibling", async () => {
+    useDefaultChildSurface(inheritedFeedbackWithMixedContextCorrectionStates());
+    render(
+      <App
+        location={{
+          pathname: "/play/patches",
+          search: `?localeBranchId=${LOCALE_BRANCH_ID}`,
+        }}
+        navigate={vi.fn()}
+      />,
+    );
+
+    await screen.findByLabelText("Patch iteration dashboard");
+    const batches = screen.getByLabelText("Feedback batches");
+    const batch = batches.querySelector('[data-feedback-batch-id="feedback-batch-session"]');
+    expect(batch).toHaveAttribute("data-selected", "false");
+    expect(batch).toHaveAttribute("data-refinement-status", "canonical_redraft_not_succeeded");
+    expect(screen.getByLabelText("Select feedback batch Session observations")).toBeDisabled();
+    expect(
+      batches.querySelector('[data-feedback-event-id="feedback-event-comment-succeeded-sibling"]'),
+    ).toHaveAttribute("data-refinement-status", "refinable");
+  });
+
+  it("keeps legacy/reference-only inherited context feedback refinable", async () => {
+    useDefaultChildSurface(inheritedFeedbackWithCommentMetadata({}));
+    render(
+      <App
+        location={{
+          pathname: "/play/patches",
+          search: `?localeBranchId=${LOCALE_BRANCH_ID}`,
+        }}
+        navigate={vi.fn()}
+      />,
+    );
+
+    await screen.findByLabelText("Patch iteration dashboard");
+    expect(screen.getByLabelText("Select feedback batch Session observations")).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Refine selected feedback" })).toBeEnabled();
   });
 });

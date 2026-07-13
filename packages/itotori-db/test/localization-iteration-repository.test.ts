@@ -214,6 +214,65 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriLocalizationIterationReposito
           reusedFromPatchVersionId: v1Patch.patchVersionId,
         }),
       ]);
+
+      // The selected/default child must retain visibility of the immutable
+      // observation made on its parent. The returned event remains truthfully
+      // anchored to v1, while the inbox itself is addressed to the v2 child.
+      const inheritedInbox = await iteration.loadFeedbackInbox(actor, v2Patch.patchVersionId);
+      expect(inheritedInbox).toMatchObject({
+        observedPatchVersionId: v2Patch.patchVersionId,
+        batches: expect.arrayContaining([
+          expect.objectContaining({
+            feedbackBatchId: feedbackBatch.feedbackBatchId,
+            observedPatchVersionId: v1Patch.patchVersionId,
+            events: expect.arrayContaining([
+              expect.objectContaining({
+                feedbackEventId: feedback.feedbackEventId,
+                observedPatchVersionId: v1Patch.patchVersionId,
+              }),
+            ]),
+          }),
+        ]),
+      });
+
+      // Selection from that inherited inbox is accepted for the current
+      // child: the durable refinement snapshot keeps the v1 observation but
+      // uses v2 as its base patch, so the dashboard never needs to reopen v1.
+      const v3RunId = "iteration-v3-inherited-feedback-run";
+      const inheritedRefinement = await iteration.createRefinementRun(actor, {
+        ...seedInput(v3RunId, [changedUnit, reusedUnit]),
+        basePatchVersionId: v2Patch.patchVersionId,
+        feedbackBatchIds: [],
+        feedbackEventIds: [feedback.feedbackEventId],
+        wikiHeads: [],
+      });
+      expect(inheritedRefinement).toMatchObject({
+        basePatchVersionId: v2Patch.patchVersionId,
+        feedbackBatches: [
+          {
+            feedbackBatchId: feedbackBatch.feedbackBatchId,
+            observedPatchVersionId: v1Patch.patchVersionId,
+            eventIds: [feedback.feedbackEventId],
+          },
+        ],
+        members: expect.arrayContaining([
+          expect.objectContaining({ bridgeUnitId: changedUnit, strategy: "redraft" }),
+        ]),
+      });
+      await finalizer.terminalize(actor, {
+        runId: v3RunId,
+        terminalStatus: "failed",
+        lease: {
+          ownerId: lease.ownerId,
+          fenceToken: inheritedRefinement.run.fenceToken,
+        },
+        rootCause: {
+          kind: "itotori_defect",
+          stage: "persistence",
+          code: "lineage_fixture_complete",
+          message: "The lineage-inbox fixture intentionally stops before patch materialization.",
+        },
+      });
     } finally {
       try {
         await context.close();

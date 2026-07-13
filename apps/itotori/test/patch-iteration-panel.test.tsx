@@ -40,6 +40,13 @@ function panelProps(overrides: Partial<PatchIterationPanelProps> = {}): PatchIte
           eventCount: 2,
           selected: true,
           label: "Playtest notes",
+          events: [
+            {
+              feedbackEventId: "feedback-batch-event-1",
+              eventKind: "comment",
+              summary: "The route note remains visible before refinement.",
+            },
+          ],
         },
       ],
       individualEvents: [
@@ -95,6 +102,9 @@ describe("PatchIterationPanel", () => {
     const feedback = scoped.getByLabelText("Feedback batches");
     expect(feedback).toHaveTextContent("Playtest notes (2 events)");
     expect(feedback).toHaveTextContent("ready");
+    expect(feedback).toHaveTextContent(
+      "comment: The route note remains visible before refinement.",
+    );
     expect(scoped.getByText(/3 events attached to this version/i)).toBeInTheDocument();
     const individual = scoped.getByLabelText("Individual feedback events");
     expect(individual).toHaveTextContent("result_edit: The route needs one exact result revision.");

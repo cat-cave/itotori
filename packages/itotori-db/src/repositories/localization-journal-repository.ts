@@ -3428,14 +3428,24 @@ async function ensureRefinementRunMetadataInTx(
             asc(playTestFeedbackEvents.createdAt),
             asc(playTestFeedbackEvents.feedbackEventId),
           );
-  const feedbackEventIds = feedbackEvents.map((event) => event.feedbackEventId);
+  // A result edit atomically creates a selected child patch. If that child is
+  // already in the base patch's ancestry, the selected event remains in the
+  // immutable run snapshot but is provenance, not fresh redraft input. This
+  // prevents a later refinement from replaying an old target (or demanding a
+  // redraft source) merely because the feedback is inherited in the inbox.
+  const activeFeedbackEventIds: string[] = [];
+  for (const event of feedbackEvents) {
+    if (!(await isResultEditAlreadyAppliedInBaseInTx(tx, event, base.patchVersionId))) {
+      activeFeedbackEventIds.push(event.feedbackEventId);
+    }
+  }
   const feedbackEventUnits =
-    feedbackEventIds.length === 0
+    activeFeedbackEventIds.length === 0
       ? []
       : await tx
           .select()
           .from(playTestFeedbackEventUnits)
-          .where(inArray(playTestFeedbackEventUnits.feedbackEventId, feedbackEventIds));
+          .where(inArray(playTestFeedbackEventUnits.feedbackEventId, activeFeedbackEventIds));
   const feedbackAffectedUnitIds = new Set(
     feedbackEventUnits.map((eventUnit) => eventUnit.bridgeUnitId),
   );
@@ -3625,6 +3635,21 @@ async function isPatchAncestorOrSameInTx(
     ) as reachable
   `);
   return result.rows[0]?.reachable === true;
+}
+
+async function isResultEditAlreadyAppliedInBaseInTx(
+  tx: JournalTransaction,
+  event: typeof playTestFeedbackEvents.$inferSelect,
+  basePatchVersionId: string,
+): Promise<boolean> {
+  if (event.eventKind !== "result_edit") return false;
+  const childPatchVersionId = event.metadata.resultRevisionPatchVersionId;
+  if (typeof childPatchVersionId !== "string" || childPatchVersionId.trim().length === 0) {
+    // Older events without the atomic child binding remain actionable. The
+    // service will still require a real target body before materializing.
+    return false;
+  }
+  return isPatchAncestorOrSameInTx(tx, childPatchVersionId, basePatchVersionId);
 }
 
 async function requireSeededUnitInTx(

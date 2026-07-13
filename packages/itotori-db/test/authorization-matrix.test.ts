@@ -1179,6 +1179,12 @@ const repositoryPermissionGateMatrix = [
     (repo) => repo.applyPlayTesterTargetEdit(deniedActor, undefined as never),
   ),
   localizationResultRevisionGate(
+    "applyPlayTesterTargetEditWithFeedback",
+    "draftWrite",
+    "localization-result-revision-repository.test.ts atomic edit-feedback coverage",
+    (repo) => repo.applyPlayTesterTargetEditWithFeedback(deniedActor, undefined as never),
+  ),
+  localizationResultRevisionGate(
     "loadSelectedPatchExport",
     "catalogRead",
     "localization-result-revision-repository.test.ts selected export coverage",
@@ -2504,6 +2510,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriLocalizationResultRevisionRepository.applyPlayTesterTargetEdit",
           "requiredPermission": "draft.write",
           "successFixture": "localization-result-revision-repository.test.ts play-tester edit coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriLocalizationResultRevisionRepository.applyPlayTesterTargetEditWithFeedback",
+          "requiredPermission": "draft.write",
+          "successFixture": "localization-result-revision-repository.test.ts atomic edit-feedback coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

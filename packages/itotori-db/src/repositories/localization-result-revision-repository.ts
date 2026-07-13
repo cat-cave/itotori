@@ -23,6 +23,11 @@ import {
   localizationPatchVersions,
   localizationResultRevisions,
 } from "../schema.js";
+import {
+  ItotoriLocalizationIterationRepository,
+  type PlayTestFeedbackEventRecord,
+  type RecordPlayTestFeedbackEventInput,
+} from "./localization-iteration-repository.js";
 
 export type PlayTesterResultRevisionRecord = {
   resultRevisionId: string;
@@ -72,6 +77,19 @@ export type ApplyPlayTesterTargetEditInput = {
 };
 
 /**
+ * The feedback fact that must commit with a play-tester target edit.  The
+ * parent patch, edited unit, result revision, event kind, and affected unit
+ * are derived from the edit itself so callers cannot split the two facts or
+ * accidentally attach the event to a different observation.
+ */
+export type ApplyPlayTesterTargetEditWithFeedbackInput = ApplyPlayTesterTargetEditInput & {
+  feedback: Omit<
+    RecordPlayTestFeedbackEventInput,
+    "observedPatchVersionId" | "eventKind" | "resultRevisionId" | "affectedBridgeUnitIds"
+  >;
+};
+
+/**
  * Input supplied to the production patch materializer after the parent lineage
  * has been locked. The DB repository owns revision membership and selection;
  * the application-owned materializer owns engine-specific bytes.
@@ -112,6 +130,16 @@ export type ApplyPlayTesterTargetEditResult = {
   patchVersion: PlayTesterChildPatchVersionRecord;
   /** True when the same edit was already committed (content-addressed id). */
   idempotentReplay: boolean;
+};
+
+export type ApplyPlayTesterTargetEditWithFeedbackResult = {
+  edit: ApplyPlayTesterTargetEditResult;
+  feedback: PlayTestFeedbackEventRecord;
+};
+
+type AppliedPlayTesterTargetEdit = {
+  edit: ApplyPlayTesterTargetEditResult;
+  feedback: PlayTestFeedbackEventRecord | null;
 };
 
 export type SelectedPatchExportUnit = {
@@ -171,6 +199,15 @@ export interface ItotoriLocalizationResultRevisionRepositoryPort {
     actor: AuthorizationActor,
     input: ApplyPlayTesterTargetEditInput,
   ): Promise<ApplyPlayTesterTargetEditResult>;
+  /**
+   * Atomically creates/selects a play-tester child and writes its linked
+   * result-edit feedback event.  Any feedback validation failure rolls back
+   * the child selection, revision, patch rows, and owned patch artifacts.
+   */
+  applyPlayTesterTargetEditWithFeedback(
+    actor: AuthorizationActor,
+    input: ApplyPlayTesterTargetEditWithFeedbackInput,
+  ): Promise<ApplyPlayTesterTargetEditWithFeedbackResult>;
   loadSelectedPatchExport(
     actor: AuthorizationActor,
     input: { runId?: string; patchVersionId?: string },
@@ -189,16 +226,49 @@ type Tx = Parameters<Parameters<ItotoriDatabase["transaction"]>[0]>[0];
  * Writes require draft.write; export reads require catalog.read.
  */
 export class ItotoriLocalizationResultRevisionRepository implements ItotoriLocalizationResultRevisionRepositoryPort {
+  private readonly feedbackEvents: ItotoriLocalizationIterationRepository;
+
   constructor(
     private readonly db: ItotoriDatabase,
     private readonly patchArtifactMaterializer: PlayTesterPatchArtifactMaterializer,
-  ) {}
+  ) {
+    this.feedbackEvents = new ItotoriLocalizationIterationRepository(db);
+  }
 
   async applyPlayTesterTargetEdit(
     actor: AuthorizationActor,
     input: ApplyPlayTesterTargetEditInput,
   ): Promise<ApplyPlayTesterTargetEditResult> {
     await requirePermission(this.db, actor, permissionValues.draftWrite);
+    const committed = await this.applyPlayTesterTargetEditInternal(actor, input, null);
+    return committed.edit;
+  }
+
+  async applyPlayTesterTargetEditWithFeedback(
+    actor: AuthorizationActor,
+    input: ApplyPlayTesterTargetEditWithFeedbackInput,
+  ): Promise<ApplyPlayTesterTargetEditWithFeedbackResult> {
+    await requirePermission(this.db, actor, permissionValues.draftWrite);
+    // Types disappear at this public repository boundary. Read the required
+    // feedback object once and reject a malformed runtime caller before any
+    // child patch/revision work starts; otherwise `undefined` would select a
+    // child and only trip the defensive postcondition after commit.
+    const feedback = requireAtomicFeedbackInput(input);
+    const committed = await this.applyPlayTesterTargetEditInternal(actor, input, feedback);
+    if (committed.feedback === null) {
+      throw new LocalizationResultRevisionRepositoryError(
+        "artifact_fault",
+        "atomic play-tester edit committed without its required feedback event",
+      );
+    }
+    return { edit: committed.edit, feedback: committed.feedback };
+  }
+
+  private async applyPlayTesterTargetEditInternal(
+    actor: AuthorizationActor,
+    input: ApplyPlayTesterTargetEditInput,
+    feedbackInput: ApplyPlayTesterTargetEditWithFeedbackInput["feedback"] | null,
+  ): Promise<AppliedPlayTesterTargetEdit> {
     assertNonBlank(input.bridgeUnitId, "bridgeUnitId");
     const targetBody = input.targetBody;
     if (targetBody.trim().length === 0) {
@@ -215,6 +285,26 @@ export class ItotoriLocalizationResultRevisionRepository implements ItotoriLocal
     let committed = false;
     try {
       const result = await this.db.transaction(async (tx) => {
+        const recordLinkedFeedback = async (
+          edit: ApplyPlayTesterTargetEditResult,
+        ): Promise<PlayTestFeedbackEventRecord | null> => {
+          if (feedbackInput === null) return null;
+          return this.feedbackEvents.recordFeedbackEventInTx(tx, actor, {
+            ...feedbackInput,
+            observedPatchVersionId: input.parentPatchVersionId,
+            eventKind: "result_edit",
+            resultRevisionId: edit.resultRevision.resultRevisionId,
+            affectedBridgeUnitIds: [input.bridgeUnitId],
+            // The revision payload is server-derived. A caller cannot use
+            // arbitrary metadata to make the immutable feedback disagree with
+            // the child patch it commits alongside.
+            metadata: {
+              ...feedbackInput.metadata,
+              targetBody,
+              resultRevisionPatchVersionId: edit.patchVersion.patchVersionId,
+            },
+          });
+        };
         // Serialize against concurrent edits on the same parent lineage.
         await tx.execute(sql`
           select patch_version_id
@@ -290,11 +380,12 @@ export class ItotoriLocalizationResultRevisionRepository implements ItotoriLocal
               `failed to re-select existing child patch ${childPatchVersionId}`,
             );
           }
-          return {
+          const edit = {
             resultRevision: revisionRecordFromRow(existingRevision),
             patchVersion: childPatchRecordFromLoaded(reloaded, actorUserId),
             idempotentReplay: true,
           };
+          return { edit, feedback: await recordLinkedFeedback(edit) };
         }
 
         const childUnits = parent.units.map((unit) =>
@@ -418,11 +509,12 @@ export class ItotoriLocalizationResultRevisionRepository implements ItotoriLocal
           );
         }
 
-        return {
+        const edit = {
           resultRevision: revisionRecordFromRow(committedRevision),
           patchVersion: childPatchRecordFromLoaded(committedPatch, actorUserId),
           idempotentReplay: false,
         };
+        return { edit, feedback: await recordLinkedFeedback(edit) };
       });
       committed = true;
       return result;
@@ -749,6 +841,24 @@ export function playTesterResultRevisionId(parentRevisionId: string, bodyDigest:
 
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+/**
+ * Keep the atomic mutation safe for JavaScript/untyped callers as well as
+ * typed service callers. The feedback object is mandatory: a missing value
+ * must fail before the transaction can select a child patch.
+ */
+function requireAtomicFeedbackInput(
+  input: ApplyPlayTesterTargetEditWithFeedbackInput,
+): ApplyPlayTesterTargetEditWithFeedbackInput["feedback"] {
+  const feedback = (input as { feedback?: unknown }).feedback;
+  if (typeof feedback !== "object" || feedback === null || Array.isArray(feedback)) {
+    throw new LocalizationResultRevisionRepositoryError(
+      "invalid_input",
+      "atomic play-tester target edit requires a feedback object",
+    );
+  }
+  return feedback as ApplyPlayTesterTargetEditWithFeedbackInput["feedback"];
 }
 
 function assertNonBlank(value: string, label: string): void {
