@@ -10,6 +10,7 @@ import {
 import {
   toReadOnlyServiceFactory,
   ItotoriInvalidAuthSessionError,
+  startDatabaseContextCorrectionWorker,
   withDatabaseItotoriServices,
   type ItotoriServiceFactory,
   type ItotoriReadOnlyServiceFactory,
@@ -169,6 +170,18 @@ function databaseOptions(options: DashboardServerOptions) {
 export function startItotoriServer(options: DashboardServerOptions = {}) {
   const port = options.port ?? Number(process.env.PORT ?? "4173");
   const server = createItotoriServer(options);
+  // The normal request path drains a new correction immediately. The default
+  // production server also owns a small unref'd poller for retry_waiting and
+  // recovered abandoned leases, which cannot depend on another HTTP request
+  // arriving. An injected service factory is a test/custom host boundary and
+  // owns its own worker lifecycle instead.
+  const contextCorrectionWorker =
+    options.serviceFactory === undefined
+      ? startDatabaseContextCorrectionWorker(databaseOptions(options))
+      : undefined;
+  server.once("close", () => {
+    contextCorrectionWorker?.stop();
+  });
   server.listen(port, dashboardListenHost, () => {
     console.log(`Itotori dashboard listening on http://${dashboardListenHost}:${port}`);
   });

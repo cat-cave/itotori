@@ -1,29 +1,22 @@
 // ALPHA-002 — Playable draft feedback loop tests.
 //
 // Drives the real batched intake composition end to end with no DB:
-//   batched intake → triage labels → reviewer-queue decision items
-//   (real `ManualFeedbackImportService.createItem` path).
+//   batched intake → triage labels → feedback audit results
+//   (real `ManualFeedbackImportService` path, with no reviewer-queue sink).
 //
-// Only the leaf DB ports (feedback repository, reviewer-queue repository)
-// are in-memory stubs, mirroring the existing reviewer-action-service tests.
+// Only the feedback repository leaf port is an in-memory stub.
 
 import { describe, expect, it } from "vitest";
 import type {
   AuthorizationActor,
-  CreateReviewerQueueItemInput,
   ItotoriFeedbackRepositoryPort,
-  ItotoriReviewerQueueRepositoryPort,
   ManualFeedbackImportInput,
   ManualFeedbackImportResult,
-  ManualFeedbackReviewerQueueContext,
-  ReviewerQueueItemRecord,
 } from "@itotori/db";
 import {
   feedbackContextStatusValues,
   feedbackTriageLabelValues,
   feedbackTypeValues,
-  reviewerQueueItemKindValues,
-  reviewerQueueItemStateValues,
 } from "@itotori/db";
 import { ManualFeedbackImportService } from "../src/manual-feedback.js";
 import {
@@ -35,18 +28,9 @@ import {
 const actor: AuthorizationActor = { userId: "local-user" };
 const PROJECT_ID = "project-fixture";
 const BRANCH_ID = "branch-fixture";
-const SOURCE_REVISION_ID = "source-revision-fixture";
-
 // ---------------------------------------------------------------------------
-// In-memory leaf ports (mirror real triage-label mapping + queue create).
+// In-memory feedback port (mirrors real triage-label mapping).
 // ---------------------------------------------------------------------------
-
-type StoredReport = {
-  feedbackReportId: string;
-  feedbackEvidenceId: string;
-  triageLabel: ManualFeedbackImportResult["triageLabel"];
-  context: ManualFeedbackReviewerQueueContext;
-};
 
 function triageLabelFor(type: ManualFeedbackImportInput["feedbackType"]) {
   switch (type) {
@@ -61,10 +45,9 @@ function triageLabelFor(type: ManualFeedbackImportInput["feedbackType"]) {
 
 class StubFeedbackRepository implements Pick<
   ItotoriFeedbackRepositoryPort,
-  "importManualFeedback" | "loadManualFeedbackReviewerQueueContext"
+  "importManualFeedback"
 > {
   private counter = 0;
-  private readonly reports = new Map<string, StoredReport>();
 
   async importManualFeedback(
     _actor: AuthorizationActor,
@@ -74,30 +57,6 @@ class StubFeedbackRepository implements Pick<
     const feedbackReportId = `feedback-report-${this.counter}`;
     const feedbackEvidenceId = `feedback-evidence-${this.counter}`;
     const triageLabel = triageLabelFor(input.feedbackType);
-    const bridgeUnitId = input.lineReference?.bridgeUnitId;
-    const context: ManualFeedbackReviewerQueueContext = {
-      feedbackReportId,
-      feedbackEvidenceId,
-      projectId: input.projectId,
-      localeBranchId: input.localeBranchId ?? BRANCH_ID,
-      sourceRevisionId: SOURCE_REVISION_ID,
-      feedbackType: input.feedbackType,
-      triageLabel,
-      contextStatus: feedbackContextStatusValues.contextualized,
-      reporterNote: input.reporterNote,
-      context:
-        bridgeUnitId === undefined
-          ? { lineReference: {} }
-          : { lineReference: { bridgeUnitId }, affectedUnitIds: [bridgeUnitId] },
-      attachments: [],
-      affectedArtifactIds: [],
-    };
-    this.reports.set(`${feedbackReportId}:${feedbackEvidenceId}`, {
-      feedbackReportId,
-      feedbackEvidenceId,
-      triageLabel,
-      context,
-    });
     return {
       feedbackReportId,
       feedbackEvidenceId,
@@ -109,58 +68,6 @@ class StubFeedbackRepository implements Pick<
       reportCount: 1,
       duplicate: false,
     };
-  }
-
-  async loadManualFeedbackReviewerQueueContext(
-    _actor: AuthorizationActor,
-    feedbackReportId: string,
-    feedbackEvidenceId: string,
-  ): Promise<ManualFeedbackReviewerQueueContext | null> {
-    return this.reports.get(`${feedbackReportId}:${feedbackEvidenceId}`)?.context ?? null;
-  }
-}
-
-class StubReviewerQueueRepository implements Pick<
-  ItotoriReviewerQueueRepositoryPort,
-  "createItem" | "loadItemsByBranch"
-> {
-  private counter = 0;
-  readonly created: ReviewerQueueItemRecord[] = [];
-
-  async createItem(
-    _actor: AuthorizationActor,
-    input: CreateReviewerQueueItemInput,
-  ): Promise<ReviewerQueueItemRecord> {
-    this.counter += 1;
-    const now = new Date("2026-06-28T00:00:00Z");
-    const record: ReviewerQueueItemRecord = {
-      reviewItemId: `reviewer-queue-item-${this.counter}`,
-      projectId: input.projectId,
-      localeBranchId: input.localeBranchId,
-      sourceRevisionId: input.sourceRevisionId,
-      itemKind: input.itemKind,
-      sourceItemRef: input.sourceItemRef,
-      state: reviewerQueueItemStateValues.pending,
-      priority: input.priority ?? 0,
-      summary: input.summary,
-      affectedArtifactIds: input.affectedArtifactIds ?? [],
-      evidenceTier: input.evidenceTier ?? null,
-      observationEventIds: input.observationEventIds ?? null,
-      artifactHashes: input.artifactHashes ?? null,
-      payload: input.payload ?? {},
-      metadata: input.metadata ?? {},
-      createdByUserId: input.createdByUserId ?? null,
-      assignedToUserId: input.assignedToUserId ?? null,
-      createdAt: now,
-      updatedAt: now,
-      resolvedAt: null,
-    };
-    this.created.push(record);
-    return record;
-  }
-
-  async loadItemsByBranch(): Promise<ReviewerQueueItemRecord[]> {
-    return [...this.created];
   }
 }
 
@@ -193,19 +100,15 @@ function styleSubmission(bridgeUnitId: string, note: string): ManualFeedbackImpo
   };
 }
 
-function buildLoop(): {
-  batch: DraftFeedbackBatchService;
-  reviewerQueue: StubReviewerQueueRepository;
-} {
+function buildLoop(): { batch: DraftFeedbackBatchService } {
   const feedbackRepo = new StubFeedbackRepository();
-  const reviewerQueue = new StubReviewerQueueRepository();
-  const manualFeedback = new ManualFeedbackImportService(feedbackRepo, actor, reviewerQueue);
-  return { batch: new DraftFeedbackBatchService(manualFeedback), reviewerQueue };
+  const manualFeedback = new ManualFeedbackImportService(feedbackRepo, actor);
+  return { batch: new DraftFeedbackBatchService(manualFeedback) };
 }
 
 describe("DraftFeedbackBatchService — batched intake + triage", () => {
-  it("collects multiple typo corrections with context and routes a style dispute to the decision queue", async () => {
-    const { batch, reviewerQueue } = buildLoop();
+  it("collects multiple typo corrections with context while retaining style triage as audit data", async () => {
+    const { batch } = buildLoop();
 
     const result = await batch.submitBatch({
       batchLabel: "oshioki-slice-1",
@@ -229,22 +132,10 @@ describe("DraftFeedbackBatchService — batched intake + triage", () => {
     expect(result.repairCandidateReportIds).toHaveLength(2);
     expect(result.affectedBridgeUnitIds).toEqual(["unit-a", "unit-b", "unit-c"]);
 
-    // Style dispute → decision queue.
+    // Style feedback retains its triage disposition for downstream audit; this
+    // batch path itself does not create a reviewer-queue item.
     expect(result.items[2]?.disposition).toBe("decision_queue");
     expect(result.decisionQueueReportIds).toHaveLength(1);
-
-    // The style dispute became a real `style` reviewer-queue (decision
-    // queue) item; the typos became `feedback` items.
-    const styleItems = reviewerQueue.created.filter(
-      (item) => item.itemKind === reviewerQueueItemKindValues.style,
-    );
-    const feedbackItems = reviewerQueue.created.filter(
-      (item) => item.itemKind === reviewerQueueItemKindValues.feedback,
-    );
-    expect(styleItems).toHaveLength(1);
-    expect(feedbackItems).toHaveLength(2);
-    // Feedback items carry the affected unit so the repair can be scoped.
-    expect(feedbackItems[0]?.payload.affectedUnitIds).toEqual(["unit-a"]);
   });
 
   it("rejects an empty batch with a typed error", async () => {

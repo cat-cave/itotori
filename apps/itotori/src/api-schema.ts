@@ -232,8 +232,8 @@ export type ItotoriApiRouteId =
   | "play.routeMap"
   | "play.sceneCoverage"
   | "play.setSceneCoverage"
-  // play-flag-composer — in-the-moment AnnotationComposer flag → reviewer queue
-  // via ManualFeedbackImport (feedback.import / canFlag).
+  // play-flag-composer — in-the-moment AnnotationComposer flag → canonical
+  // context correction via ManualFeedbackImport (feedback.import / canFlag).
   | "play.flagAnnotation";
 
 export type ApiErrorResponse = {
@@ -745,7 +745,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "note",
     "triageLabel",
     "contextStatus",
-    "queueEnqueued",
+    "contextCorrectionEnqueued",
     "duplicate",
   ],
 } as const satisfies Readonly<Record<string, readonly string[]>>;
@@ -1531,8 +1531,8 @@ export type ApiPlayFlagAnnotationRequest = {
 };
 
 /**
- * play-flag-composer — response after ManualFeedbackImport enqueues the flag
- * into the reviewer queue (when contextualized).
+ * play-flag-composer — response after ManualFeedbackImport creates the
+ * canonical context correction (when a persisted target unit is available).
  */
 export type ApiPlayFlagAnnotationResponse = {
   schemaVersion: "itotori.play.flag-annotation.v0";
@@ -1545,11 +1545,8 @@ export type ApiPlayFlagAnnotationResponse = {
   note: string;
   triageLabel: string;
   contextStatus: string;
-  /**
-   * True when the import was contextualized (and therefore the manual-feedback
-   * service enqueues a reviewer-queue item). False for needs_context flags.
-   */
-  queueEnqueued: boolean;
+  /** True only when the manual-feedback service actually created a correction. */
+  contextCorrectionEnqueued: boolean;
   duplicate: boolean;
 };
 
@@ -7542,7 +7539,10 @@ function assertPlayFlagAnnotationResponse(
   assertString(response.note, "ApiPlayFlagAnnotationResponse.note");
   assertString(response.triageLabel, "ApiPlayFlagAnnotationResponse.triageLabel");
   assertString(response.contextStatus, "ApiPlayFlagAnnotationResponse.contextStatus");
-  assertBoolean(response.queueEnqueued, "ApiPlayFlagAnnotationResponse.queueEnqueued");
+  assertBoolean(
+    response.contextCorrectionEnqueued,
+    "ApiPlayFlagAnnotationResponse.contextCorrectionEnqueued",
+  );
   assertBoolean(response.duplicate, "ApiPlayFlagAnnotationResponse.duplicate");
 }
 

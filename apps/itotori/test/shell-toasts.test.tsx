@@ -114,7 +114,7 @@ describe("shell-toasts — pure handoff copy", () => {
     ).toEqual({
       kind: "flag-sent",
       tone: "neutral",
-      message: "Flag sent to review · warning · tone",
+      message: "Flag sent for correction · warning · tone",
     });
     expect(describeWorkflowHandoff({ kind: "approved" })).toEqual({
       kind: "approved",
@@ -153,7 +153,9 @@ describe("shell-toasts — ToastProvider host", () => {
     expect(toast).toHaveClass("itotori-toast");
     expect(toast).toHaveAttribute("data-toast-tone", "neutral");
     expect(toast).toHaveAttribute("role", "status");
-    expect(within(toast).getByText("Flag sent to review · warning · tone")).toBeInTheDocument();
+    expect(
+      within(toast).getByText("Flag sent for correction · warning · tone"),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /enqueue approved/i }));
     fireEvent.click(screen.getByRole("button", { name: /enqueue pass-launched/i }));

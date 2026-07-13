@@ -406,7 +406,7 @@ interface ItotoriApiRouteTypeMap {
     pathParams: { projectId: string; localeBranchId: string };
     request: ApiPlaySetSceneCoverageRequest;
   };
-  // play-flag-composer — AnnotationComposer note → reviewer queue.
+  // play-flag-composer — AnnotationComposer note → context correction.
   "play.flagAnnotation": {
     response: ApiPlayFlagAnnotationResponse;
     pathParams: { projectId: string; localeBranchId: string };

@@ -319,7 +319,15 @@ const nodeJsonFileStore: LocalizeFullProjectIo = {
   },
 };
 
-function materializeRegisteredRunConfig(
+/**
+ * Materialize a registered pass configuration into a run-owned directory.
+ *
+ * Context-correction reruns use the same pinned pair/configuration as a
+ * normal launch, but replace the bridge with the correction's exact affected
+ * scope. Exporting this small helper keeps both production paths subject to
+ * the same pair-pinning rule.
+ */
+export function materializeRegisteredRunConfig(
   registered: DbBackedPassRunConfig,
   input: LaunchLocalizationPassInput & { actor: AuthorizationActor },
   io: LocalizeFullProjectIo,

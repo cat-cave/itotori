@@ -4,10 +4,9 @@
 // submission) so a reviewer can collect many corrections from a playable
 // slice and submit them as one batch. The service adds NO new persistence
 // of its own — every submission flows through the same feedback
-// repository + reviewer-queue path the single-item importer already uses,
-// so style disputes land in the decision queue and objective defects
-// become repair candidates exactly as before. This module only batches
-// and partitions the results.
+// repository path the single-item importer already uses. When the importer is
+// wired with canonical context corrections, it owns that direct no-queue
+// routing; this module only batches and partitions the audit results.
 
 import { createHash } from "node:crypto";
 import { type FeedbackTriageLabel, feedbackTriageLabelValues } from "@itotori/db";
@@ -39,10 +38,9 @@ export class DraftFeedbackBatchService implements DraftFeedbackBatchPort {
 
   /**
    * Submit a batch of feedback. Each submission is imported through the
-   * existing single-item path (preserving its triage label, reviewer-
-   * queue routing, and dedupe behavior); the results are partitioned by
-   * disposition so the orchestrator can drive the existing repair /
-   * decision-queue seams.
+   * existing single-item path (preserving its triage label, canonical
+   * correction routing when configured, and dedupe behavior); the results are
+   * partitioned by disposition for downstream audit/read-model consumers.
    */
   async submitBatch(input: DraftFeedbackBatchInput): Promise<DraftFeedbackBatchResult> {
     if (input.submissions.length === 0) {

@@ -230,7 +230,7 @@ function RoutedScreen({ location }: { location: AppLocation }): ReactNode {
     return <PlayRouteMapScreen route={playRouteMap} />;
   }
 
-  // `/play/flag` — AnnotationComposer flag → reviewer queue (canFlag).
+  // `/play/flag` — AnnotationComposer flag → context correction (canFlag).
   const playFlag = parsePlayFlagComposerRoute(location.pathname, location.search);
   if (playFlag !== null) {
     return <PlayFlagComposerScreen route={playFlag} />;

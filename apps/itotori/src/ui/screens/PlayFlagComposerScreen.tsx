@@ -1,13 +1,13 @@
-// play-flag-composer — Flag → review (AnnotationComposer).
+// play-flag-composer — Flag → context correction (AnnotationComposer).
 //
-// In-the-moment playtest note that creates a reviewer queue item. The form is
+// In-the-moment playtest note that creates a canonical context correction. The form is
 // the DS AnnotationComposer (severity-scaled via `--ito-severity-*` tokens).
 // Submit is gated on canFlag (feedback.import) via CapsProvider / CapGated
 // posture: denied actors see a disabled + explained composer.
 //
 // Backed by POST play.flagAnnotation → ManualFeedbackImport (same intake
-// path workspace corrections use under the hood) which enqueues a
-// reviewer-queue item when the flag is contextualized (bridge unit / scene).
+// path workspace corrections use under the hood) which creates a correction
+// when the flag is contextualized and has a persisted target unit.
 //
 // Rendered at `/play/flag`. Game-agnostic: project / branch / unit are query
 // params or status fallbacks; no title is hardcoded.
@@ -197,7 +197,7 @@ function PlayFlagComposerForBranch({
       data-locale-branch-id={localeBranchId}
       data-can-flag={flagGate.allowed ? "true" : "false"}
     >
-      <ShellHeader eyebrow="Play" title="Flag to review">
+      <ShellHeader eyebrow="Play" title="Flag a correction">
         <p
           className="itotori-eyebrow"
           data-project-id={projectId}
@@ -209,7 +209,7 @@ function PlayFlagComposerForBranch({
       <section className="play-flag__body" aria-label="Playtest flag composer">
         <Panel
           title="Annotation"
-          eyebrow="In-the-moment note → reviewer queue"
+          eyebrow="In-the-moment note → context correction"
           className="play-flag__panel"
           data-pane-id="flag-composer"
         >
@@ -223,23 +223,27 @@ function PlayFlagComposerForBranch({
             disabled={!flagGate.allowed || pending}
             disabledReason={flagGate.reason}
             contextLabel={contextLabel}
-            submitLabel="Send to review"
+            submitLabel="Send correction"
           />
           {/* CapGatedButton mirrors the composer submit gate for a11y audit. */}
           <div className="play-flag__cap-mirror" hidden>
-            <CapGatedButton capability="flag">Send to review</CapGatedButton>
+            <CapGatedButton capability="flag">Send correction</CapGatedButton>
           </div>
           {outcome?.kind === "ok" && (
             <p
               role="status"
               data-flag-outcome="ok"
-              data-queue-enqueued={outcome.response.queueEnqueued ? "true" : "false"}
+              data-context-correction-enqueued={
+                outcome.response.contextCorrectionEnqueued ? "true" : "false"
+              }
               data-severity={outcome.response.severity}
               className="play-flag__status"
             >
-              Flag sent to review · {outcome.response.severity}
+              Flag sent to correction · {outcome.response.severity}
               {outcome.response.category.length > 0 ? ` · ${outcome.response.category}` : ""}
-              {outcome.response.queueEnqueued ? " · queued" : " · needs context"}
+              {outcome.response.contextCorrectionEnqueued
+                ? " · correction scheduled"
+                : " · needs context"}
             </p>
           )}
           {outcome?.kind === "error" && (

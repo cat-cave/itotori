@@ -1,24 +1,20 @@
 // Play-tester context correction — the direct shared-brain mutation path.
 //
 // A correction is deliberately not routed through the reviewer queue or a
-// translation-memory writeback. It appends a canonical ContextEntryVersion,
-// invalidates the dependent context before advancing the head, then enqueues
-// one registered redraft job. The job payload carries provenance only; its
-// handler must resolve a fresh ContextPacket when it executes.
+// translation-memory writeback. The repository atomically appends a canonical
+// ContextEntryVersion, invalidates dependent context while excluding that new
+// head, and enqueues one registered redraft job. The job payload carries
+// provenance only; its handler must resolve a fresh ContextPacket when it
+// executes.
 
 import { createHash } from "node:crypto";
 import {
-  buildRegisteredJobInput,
-  contextCorrectionRedraftJobName,
-  contextCorrectionRedraftPayloadSchemaVersion,
-  jobIdempotencyPolicyValues,
   type AuthorizationActor,
   type ContextArtifactJsonRecord,
   type ContextArtifactRecord,
-  type ItotoriContextArtifactRepositoryPort,
-  type ItotoriEventQueueRepositoryPort,
+  type ContextCorrectionAuthority,
+  type ItotoriContextCorrectionPersistencePort,
   type JobQueueRecord,
-  type NonEmptyReadonlyArray,
 } from "@itotori/db";
 
 export const playTesterContextKindValues = {
@@ -34,6 +30,8 @@ export const PLAY_TESTER_CONTEXT_CORRECTION_TOOL = "tool.play-tester-context-cor
 export const PLAY_TESTER_CONTEXT_CORRECTION_VERSION = "1.0.0";
 
 export type ApplyContextCorrectionInput = {
+  /** Defaults to project.import; feedback-originated corrections use feedback.import. */
+  authority?: ContextCorrectionAuthority;
   projectId: string;
   localeBranchId: string;
   sourceRevisionId: string;
@@ -60,8 +58,7 @@ export type ContextCorrectionResult = {
 
 export type ContextCorrectionServiceDeps = {
   actor: AuthorizationActor;
-  contextArtifacts: ItotoriContextArtifactRepositoryPort;
-  jobs: Pick<ItotoriEventQueueRepositoryPort, "enqueueJobs">;
+  contextArtifacts: ItotoriContextCorrectionPersistencePort;
 };
 
 export class ContextCorrectionInputError extends Error {
@@ -99,45 +96,9 @@ export class ContextCorrectionService {
         affectedUnitIds: input.affectedUnitIds,
       });
 
-    // Include the previous head's citations as well as the edit's new
-    // citations. Shrinking a context entry's scope must still refresh units
-    // that were influenced by the old head.
-    const previous = await this.deps.contextArtifacts.loadArtifact(this.deps.actor, {
-      projectId: input.projectId,
-      localeBranchId: input.localeBranchId,
-      contextArtifactId,
-    });
-    const affectedUnitIds = sortedUnique([
-      ...input.affectedUnitIds,
-      ...(previous?.sourceUnits.map((sourceUnit) => sourceUnit.bridgeUnitId) ?? []),
-    ]);
-    if (affectedUnitIds.length === 0) {
-      throw new ContextCorrectionInputError(
-        "context correction requires at least one affected unit",
-      );
-    }
-
-    // Node 6 invalidation must happen BEFORE the append. The invalidator marks
-    // every active artifact citing these units stale; doing it after upsert
-    // would immediately stale the new canonical head too.
-    const invalidation = await this.deps.contextArtifacts.invalidateAffectedArtifacts(
-      this.deps.actor,
-      {
-        projectId: input.projectId,
-        localeBranchId: input.localeBranchId,
-        sourceRevisionId: input.sourceRevisionId,
-        bridgeUnitIds: affectedUnitIds,
-        reason: `play_tester_context_correction:${correctionId}`,
-      },
-    );
-    if (invalidation.status !== "completed") {
-      const detail = invalidation.diagnostics.map((diagnostic) => diagnostic.message).join("; ");
-      throw new Error(
-        `context correction invalidation failed${detail.length === 0 ? "" : `: ${detail}`}`,
-      );
-    }
-
-    const contextArtifact = await this.deps.contextArtifacts.upsertArtifact(this.deps.actor, {
+    const persisted = await this.deps.contextArtifacts.persistContextCorrection(this.deps.actor, {
+      ...(input.authority === undefined ? {} : { authority: input.authority }),
+      correctionId,
       contextArtifactId,
       projectId: input.projectId,
       localeBranchId: input.localeBranchId,
@@ -145,6 +106,8 @@ export class ContextCorrectionService {
       category: input.kind,
       title: input.title.trim(),
       body: input.body,
+      reason: input.reason,
+      requestedAffectedUnitIds: input.affectedUnitIds,
       data: {
         kind: input.kind,
         correctionId,
@@ -158,58 +121,18 @@ export class ContextCorrectionService {
         origin: "play_tester_edit",
         reason: input.reason.trim(),
       },
-      sourceUnits: affectedUnitIds.map((bridgeUnitId) => ({
-        bridgeUnitId,
-        citation: `play-tester context correction: ${input.reason.trim()}`,
-      })),
     });
+    const { contextArtifact } = persisted;
     if (contextArtifact.headVersionId === null) {
       throw new Error(`context correction ${correctionId} did not persist a canonical version`);
-    }
-
-    const nonEmptyAffectedUnitIds = requireNonEmptyAffectedUnitIds(affectedUnitIds);
-    const payload = {
-      schemaVersion: contextCorrectionRedraftPayloadSchemaVersion,
-      correctionId,
-      contextArtifactId,
-      contextEntryVersionId: contextArtifact.headVersionId,
-      projectId: input.projectId,
-      localeBranchId: input.localeBranchId,
-      sourceRevisionId: input.sourceRevisionId,
-      affectedUnitIds: nonEmptyAffectedUnitIds,
-    };
-    const jobId = `context-correction-${shortHash(`${correctionId}:${contextArtifact.headVersionId}`)}`;
-    const [redraftJob] = await this.deps.jobs.enqueueJobs(this.deps.actor, [
-      buildRegisteredJobInput(contextCorrectionRedraftJobName, payload, {
-        jobId,
-        projectId: input.projectId,
-        localeBranchId: input.localeBranchId,
-        queueName: "context-correction",
-        idempotency: {
-          policy: jobIdempotencyPolicyValues.idempotent,
-          key: `context-correction:${contextArtifact.headVersionId}`,
-        },
-        correlationId: correctionId,
-        causationId: contextArtifact.headVersionId,
-        subjectRefs: [
-          { subjectKind: "context_artifact", subjectId: contextArtifactId },
-          { subjectKind: "context_entry_version", subjectId: contextArtifact.headVersionId },
-          { subjectKind: "locale_branch", subjectId: input.localeBranchId },
-          ...affectedUnitIds.map((subjectId) => ({ subjectKind: "bridge_unit", subjectId })),
-        ],
-        priority: 40,
-      }),
-    ]);
-    if (redraftJob === undefined) {
-      throw new Error(`context correction ${correctionId} did not enqueue a redraft job`);
     }
 
     return {
       correctionId,
       contextArtifact,
-      affectedUnitIds,
-      invalidatedArtifactIds: invalidation.invalidatedArtifactIds,
-      redraftJob,
+      affectedUnitIds: persisted.affectedUnitIds,
+      invalidatedArtifactIds: persisted.invalidatedArtifactIds,
+      redraftJob: persisted.redraftJob,
     };
   }
 }
@@ -268,14 +191,6 @@ function sortedUnique(values: readonly string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter((value) => value.length > 0))].sort(
     (left, right) => left.localeCompare(right),
   );
-}
-
-function requireNonEmptyAffectedUnitIds(values: readonly string[]): NonEmptyReadonlyArray<string> {
-  const [first, ...rest] = values;
-  if (first === undefined) {
-    throw new ContextCorrectionInputError("context correction requires at least one affected unit");
-  }
-  return [first, ...rest];
 }
 
 function normalize(value: string): string {

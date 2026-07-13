@@ -19,7 +19,6 @@ import type {
   ItotoriFeedbackRepositoryPort,
   ManualFeedbackImportInput,
   ManualFeedbackImportResult,
-  ManualFeedbackReviewerQueueContext,
   WorkspaceCorrectionEditInput,
   WorkspaceCorrectionEditRecord,
 } from "@itotori/db";
@@ -75,10 +74,9 @@ function triageLabelFor(type: ManualFeedbackImportInput["feedbackType"]) {
 
 class StubFeedbackRepository implements Pick<
   ItotoriFeedbackRepositoryPort,
-  "importManualFeedback" | "loadManualFeedbackReviewerQueueContext"
+  "importManualFeedback"
 > {
   private counter = 0;
-  private readonly reports = new Map<string, ManualFeedbackReviewerQueueContext>();
   readonly imported: ManualFeedbackImportInput[] = [];
 
   async importManualFeedback(
@@ -90,24 +88,6 @@ class StubFeedbackRepository implements Pick<
     const feedbackReportId = `feedback-report-${this.counter}`;
     const feedbackEvidenceId = `feedback-evidence-${this.counter}`;
     const triageLabel = triageLabelFor(input.feedbackType);
-    const bridgeUnitId = input.lineReference?.bridgeUnitId;
-    this.reports.set(`${feedbackReportId}:${feedbackEvidenceId}`, {
-      feedbackReportId,
-      feedbackEvidenceId,
-      projectId: input.projectId,
-      localeBranchId: input.localeBranchId ?? BRANCH_ID,
-      sourceRevisionId: SOURCE_REVISION_ID,
-      feedbackType: input.feedbackType,
-      triageLabel,
-      contextStatus: feedbackContextStatusValues.contextualized,
-      reporterNote: input.reporterNote,
-      context:
-        bridgeUnitId === undefined
-          ? { lineReference: {} }
-          : { lineReference: { bridgeUnitId }, affectedUnitIds: [bridgeUnitId] },
-      attachments: [],
-      affectedArtifactIds: [],
-    });
     return {
       feedbackReportId,
       feedbackEvidenceId,
@@ -119,14 +99,6 @@ class StubFeedbackRepository implements Pick<
       reportCount: 1,
       duplicate: false,
     };
-  }
-
-  async loadManualFeedbackReviewerQueueContext(
-    _actor: AuthorizationActor,
-    feedbackReportId: string,
-    feedbackEvidenceId: string,
-  ): Promise<ManualFeedbackReviewerQueueContext | null> {
-    return this.reports.get(`${feedbackReportId}:${feedbackEvidenceId}`) ?? null;
   }
 }
 

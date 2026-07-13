@@ -33,6 +33,7 @@ import {
   feedbackReportEvidence,
   feedbackReports,
   feedbackSources,
+  localeBranches,
   sourceBundles,
   userPermissionGrants,
 } from "../src/schema.js";
@@ -4099,7 +4100,7 @@ describe("ItotoriProjectRepository", () => {
     }
   });
 
-  it("loads sanitized reviewer queue context for contextual feedback from the imported source bundle", async () => {
+  it("loads persisted correction context for contextual feedback from the imported source bundle", async () => {
     const context = await migratedContext();
     try {
       const repo = new ItotoriProjectRepository(context.db);
@@ -4110,6 +4111,7 @@ describe("ItotoriProjectRepository", () => {
       const result = await feedbackRepo.importManualFeedback(
         localActor,
         manualFeedbackFixture({
+          suggestedEdit: "The protagonist speaks naturally here.",
           lineReference: {
             bridgeUnitId: "bridge-unit-test",
             sourceUnitKey: "hello.scene.001.line.001",
@@ -4148,13 +4150,13 @@ describe("ItotoriProjectRepository", () => {
         .from(sourceBundles)
         .where(eq(sourceBundles.sourceBundleId, "bridge-test"))
         .limit(1);
-      const queueContext = await feedbackRepo.loadManualFeedbackReviewerQueueContext(
+      const correctionContext = await feedbackRepo.loadManualFeedbackCorrectionContext(
         localActor,
         result.feedbackReportId,
         result.feedbackEvidenceId,
       );
 
-      expect(queueContext).toMatchObject({
+      expect(correctionContext).toMatchObject({
         feedbackReportId: result.feedbackReportId,
         feedbackEvidenceId: result.feedbackEvidenceId,
         projectId: "project-test",
@@ -4163,44 +4165,49 @@ describe("ItotoriProjectRepository", () => {
         feedbackType: feedbackTypeValues.stylePreference,
         triageLabel: feedbackTriageLabelValues.styleDisputeCandidate,
         contextStatus: feedbackContextStatusValues.contextualized,
-        affectedArtifactIds: ["feedback-private-screenshot"],
+        reporterNote: "The protagonist sounds too formal in this line.",
+        suggestedEdit: "The protagonist speaks naturally here.",
+        affectedUnitIds: ["bridge-unit-test"],
       });
-      expect(queueContext?.context).toMatchObject({
-        lineReference: {
-          bridgeUnitId: "bridge-unit-test",
-          sourceUnitKey: "hello.scene.001.line.001",
-          line: 1,
-        },
-        attachmentSignals: [
-          {
-            attachmentKind: "screenshot",
-            artifactId: "feedback-private-screenshot",
-            hash: "sha256:private-screenshot",
-          },
-          {
-            attachmentKind: "save_context",
-            contextToken: "fixture-save-before-line",
-          },
-        ],
+      expect(correctionContext).not.toHaveProperty("attachments");
+      expect(correctionContext).not.toHaveProperty("context");
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("resolves the current branch source revision when a play flag omits sourceBundleId", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      const feedbackRepo = new ItotoriFeedbackRepository(context.db);
+      await repo.reset(localActor);
+      await repo.importSourceBundle(localActor, projectFixture());
+
+      const result = await feedbackRepo.importManualFeedback(
+        localActor,
+        manualFeedbackFixture({
+          sourceBundleId: undefined,
+          metadata: { sourceRevisionId: "caller-supplied-stale-revision" },
+        }),
+      );
+      const correctionContext = await feedbackRepo.loadManualFeedbackCorrectionContext(
+        localActor,
+        result.feedbackReportId,
+        result.feedbackEvidenceId,
+      );
+      const [branch] = await context.db
+        .select({ sourceRevisionId: sourceBundles.sourceBundleRevisionId })
+        .from(localeBranches)
+        .innerJoin(sourceBundles, eq(sourceBundles.sourceBundleId, localeBranches.sourceBundleId))
+        .where(eq(localeBranches.localeBranchId, "locale-en-us"))
+        .limit(1);
+
+      expect(correctionContext).toMatchObject({
+        sourceRevisionId: branch?.sourceRevisionId,
+        affectedUnitIds: ["bridge-unit-test"],
       });
-      expect(queueContext?.attachments).toEqual([
-        expect.objectContaining({
-          attachmentKind: "screenshot",
-          artifactId: "feedback-private-screenshot",
-          hash: "sha256:private-screenshot",
-          evidenceTier: "E2",
-        }),
-        expect.objectContaining({
-          attachmentKind: "save_context",
-          contextToken: "fixture-save-before-line",
-          routeRef: "hello-route",
-          sceneRef: "hello.scene.001",
-        }),
-      ]);
-      expect(JSON.stringify(queueContext)).not.toContain("private://");
-      expect(JSON.stringify(queueContext)).not.toContain("/private/tmp");
-      expect(JSON.stringify(queueContext)).not.toContain("file:///private");
-      expect(JSON.stringify(queueContext)).not.toContain("raw captured line");
+      expect(correctionContext?.sourceRevisionId).not.toBe("caller-supplied-stale-revision");
     } finally {
       await context.close();
     }
