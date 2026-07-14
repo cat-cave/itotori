@@ -81,7 +81,7 @@ set -eu
 url=""
 for arg in "$@"; do
   case "$arg" in
-    file: // *) url="$arg";;
+    file://*) url="$arg" ;;
   esac
 done
 [ -n "$url" ] || exit 70
