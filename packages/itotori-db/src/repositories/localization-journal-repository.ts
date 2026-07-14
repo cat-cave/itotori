@@ -903,21 +903,32 @@ export class ItotoriLocalizationJournalRepository implements ItotoriLocalization
 
       if (input.units.length > 0) {
         const unitCreatedAt = new Date();
-        await tx
-          .insert(localizationJournalRunUnits)
-          .values(
-            input.units.map((unit, unitOrdinal) => ({
-              runId,
-              bridgeUnitId: unit.bridgeUnitId,
-              sourceUnitKey: unit.sourceUnitKey ?? null,
-              unitOrdinal,
-              state: "pending",
-              nextAction: unit.nextAction,
-              createdAt: unitCreatedAt,
-              updatedAt: unitCreatedAt,
-            })),
-          )
-          .onConflictDoNothing();
+        // Insert the frozen scope in bounded chunks. A whole-game RealLive run
+        // freezes tens of thousands of units (Sweetie HD: 27,159 dialogue
+        // units); a single drizzle `.values([...])` of that size overflows the
+        // query-builder call stack (RangeError: Maximum call stack size
+        // exceeded) and would also blow past PostgreSQL's 65,535 bind-parameter
+        // ceiling. Chunking keeps each INSERT bounded while preserving the
+        // GLOBAL `unitOrdinal` (the frozen dispatch order) across chunks.
+        const SEED_UNIT_INSERT_CHUNK = 1000;
+        for (let offset = 0; offset < input.units.length; offset += SEED_UNIT_INSERT_CHUNK) {
+          const chunk = input.units.slice(offset, offset + SEED_UNIT_INSERT_CHUNK);
+          await tx
+            .insert(localizationJournalRunUnits)
+            .values(
+              chunk.map((unit, indexInChunk) => ({
+                runId,
+                bridgeUnitId: unit.bridgeUnitId,
+                sourceUnitKey: unit.sourceUnitKey ?? null,
+                unitOrdinal: offset + indexInChunk,
+                state: "pending" as const,
+                nextAction: unit.nextAction,
+                createdAt: unitCreatedAt,
+                updatedAt: unitCreatedAt,
+              })),
+            )
+            .onConflictDoNothing();
+        }
       }
 
       const persistedUnits = await loadRunUnitsInTx(tx, runId);
