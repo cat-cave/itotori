@@ -10,6 +10,7 @@ import { migrate, migrations } from "../src/migrations.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const terminalBackfillRunId = "run-cost-backfill-existing-account";
+const dbIntegrationTimeoutMs = 90_000;
 
 describe("0082 localization cost-account backfill", () => {
   it("upgrades historical billed spend without counting estimates and refreshes existing accounts", async () => {
@@ -123,42 +124,121 @@ describe("0100 terminal cost-reservation backfill", () => {
     }
   });
 
-  it("waits for the matching run advisory lock before repairing a terminal reservation leak", async () => {
+  it("preserves a normal completed unknown-billing reservation while releasing interrupted leaks", async () => {
     const databaseUrl = requiredDatabaseUrl();
     const admin = new pg.Pool({ connectionString: databaseUrl });
-    const schemaName = `itotori_terminal_reservation_lock_${Date.now()}_${randomBytes(6).toString("hex")}`;
+    const schemaName = `itotori_terminal_reservation_pending_billing_${Date.now()}_${randomBytes(6).toString("hex")}`;
     const schemaUrl = databaseUrlWithSearchPath(databaseUrl, schemaName);
-    const migrationApplicationName = `itotori-0100-lock-${randomBytes(6).toString("hex")}`;
-    const migrationUrl = databaseUrlWithSearchPathAndApplicationName(
-      databaseUrl,
-      schemaName,
-      migrationApplicationName,
-    );
 
     await admin.query(`create schema ${quoteIdentifier(schemaName)}`);
     const pool = new pg.Pool({ connectionString: schemaUrl });
-    const locker = await pool.connect();
-    let lockerTransactionOpen = false;
-    let migration: Promise<void> | undefined;
     try {
       await migrateThrough(pool, "0099_release_interrupted_cost_reservations");
       await seedHistoricalJournalState(pool);
       await seedTerminalReservationLeak(pool);
+      await seedNormalUnknownBillingReservation(pool);
 
-      await locker.query("begin");
-      lockerTransactionOpen = true;
-      const holder = await locker.query<{ pid: number }>("select pg_backend_pid() as pid");
-      const holderPid = holder.rows[0]?.pid;
-      if (holderPid === undefined) throw new Error("advisory-lock holder has no backend pid");
-      await locker.query("select pg_advisory_xact_lock(hashtext($1))", [terminalBackfillRunId]);
+      await migrate(schemaUrl);
 
-      migration = migrate(migrationUrl);
-      await waitForMigrationAdvisoryLockWaiter(admin, migrationApplicationName, holderPid);
-
-      const whileBlocked = await pool.query<{
+      const reservations = await pool.query<{
+        reservation_id: string;
+        state: string;
         reserved_usd: string;
-        terminal_reserved_count: string;
+        billing_state: string | null;
+        finish_state: string | null;
+        failure_class: string | null;
       }>(`
+        select
+          reservation.reservation_id,
+          reservation.state,
+          reservation.reserved_usd,
+          attempt.billing_state,
+          attempt.finish_state,
+          attempt.failure_class
+        from itotori_localization_cost_reservations reservation
+        join itotori_llm_attempts attempt
+          on attempt.run_id = reservation.run_id
+         and attempt.attempt_id = reservation.attempt_id
+        where reservation.run_id = '${terminalBackfillRunId}'
+        order by reservation.reservation_id
+      `);
+      expect(reservations.rows).toEqual([
+        {
+          reservation_id: "reservation-normal-unknown-billing",
+          state: "reserved",
+          reserved_usd: "0.5",
+          billing_state: "unknown",
+          finish_state: "stop",
+          failure_class: null,
+        },
+        {
+          reservation_id: "reservation-terminal-backfill-billed",
+          state: "released",
+          reserved_usd: "2.25",
+          billing_state: "unknown",
+          finish_state: "interrupted",
+          failure_class: "interrupted",
+        },
+        {
+          reservation_id: "reservation-terminal-backfill-legacy",
+          state: "released",
+          reserved_usd: "2.25",
+          billing_state: "unknown",
+          finish_state: "interrupted",
+          failure_class: "interrupted",
+        },
+      ]);
+      const account = await pool.query<{ reserved_usd: string }>(`
+        select reserved_usd
+        from itotori_localization_run_cost_accounts
+        where run_id = '${terminalBackfillRunId}'
+      `);
+      expect(account.rows).toEqual([{ reserved_usd: "0.50" }]);
+    } finally {
+      await pool.end();
+      await admin.query(`drop schema if exists ${quoteIdentifier(schemaName)} cascade`);
+      await admin.end();
+    }
+  });
+
+  it(
+    "waits for the matching run advisory lock before repairing a terminal reservation leak",
+    async () => {
+      const databaseUrl = requiredDatabaseUrl();
+      const admin = new pg.Pool({ connectionString: databaseUrl });
+      const schemaName = `itotori_terminal_reservation_lock_${Date.now()}_${randomBytes(6).toString("hex")}`;
+      const schemaUrl = databaseUrlWithSearchPath(databaseUrl, schemaName);
+      const migrationApplicationName = `itotori-0100-lock-${randomBytes(6).toString("hex")}`;
+      const migrationUrl = databaseUrlWithSearchPathAndApplicationName(
+        databaseUrl,
+        schemaName,
+        migrationApplicationName,
+      );
+
+      await admin.query(`create schema ${quoteIdentifier(schemaName)}`);
+      const pool = new pg.Pool({ connectionString: schemaUrl });
+      const locker = await pool.connect();
+      let lockerTransactionOpen = false;
+      let migration: Promise<void> | undefined;
+      try {
+        await migrateThrough(pool, "0099_release_interrupted_cost_reservations");
+        await seedHistoricalJournalState(pool);
+        await seedTerminalReservationLeak(pool);
+
+        await locker.query("begin");
+        lockerTransactionOpen = true;
+        const holder = await locker.query<{ pid: number }>("select pg_backend_pid() as pid");
+        const holderPid = holder.rows[0]?.pid;
+        if (holderPid === undefined) throw new Error("advisory-lock holder has no backend pid");
+        await locker.query("select pg_advisory_xact_lock(hashtext($1))", [terminalBackfillRunId]);
+
+        migration = migrate(migrationUrl);
+        await waitForMigrationAdvisoryLockWaiter(admin, migrationApplicationName, holderPid);
+
+        const whileBlocked = await pool.query<{
+          reserved_usd: string;
+          terminal_reserved_count: string;
+        }>(`
         select
           account.reserved_usd,
           count(reservation.reservation_id) filter (where reservation.state = 'reserved')
@@ -169,16 +249,16 @@ describe("0100 terminal cost-reservation backfill", () => {
         where account.run_id = '${terminalBackfillRunId}'
         group by account.reserved_usd
       `);
-      expect(whileBlocked.rows).toEqual([{ reserved_usd: "4.5", terminal_reserved_count: "2" }]);
+        expect(whileBlocked.rows).toEqual([{ reserved_usd: "4.5", terminal_reserved_count: "2" }]);
 
-      await locker.query("commit");
-      lockerTransactionOpen = false;
-      await migration;
+        await locker.query("commit");
+        lockerTransactionOpen = false;
+        await migration;
 
-      const repaired = await pool.query<{
-        reserved_is_zero: boolean;
-        released_count: string;
-      }>(`
+        const repaired = await pool.query<{
+          reserved_is_zero: boolean;
+          released_count: string;
+        }>(`
         select
           account.reserved_usd = 0 as reserved_is_zero,
           count(reservation.reservation_id) filter (where reservation.state = 'released') as released_count
@@ -188,16 +268,18 @@ describe("0100 terminal cost-reservation backfill", () => {
         where account.run_id = '${terminalBackfillRunId}'
         group by account.reserved_usd
       `);
-      expect(repaired.rows).toEqual([{ reserved_is_zero: true, released_count: "2" }]);
-    } finally {
-      if (lockerTransactionOpen) await locker.query("rollback");
-      locker.release();
-      if (migration !== undefined) await migration.catch(() => undefined);
-      await pool.end();
-      await admin.query(`drop schema if exists ${quoteIdentifier(schemaName)} cascade`);
-      await admin.end();
-    }
-  });
+        expect(repaired.rows).toEqual([{ reserved_is_zero: true, released_count: "2" }]);
+      } finally {
+        if (lockerTransactionOpen) await locker.query("rollback");
+        locker.release();
+        if (migration !== undefined) await migration.catch(() => undefined);
+        await pool.end();
+        await admin.query(`drop schema if exists ${quoteIdentifier(schemaName)} cascade`);
+        await admin.end();
+      }
+    },
+    dbIntegrationTimeoutMs * 2,
+  );
 });
 
 async function migrateThrough(pool: pg.Pool, lastMigrationId: string): Promise<void> {
@@ -318,6 +400,16 @@ async function seedHistoricalJournalState(pool: pg.Pool): Promise<void> {
 
 async function seedTerminalReservationLeak(pool: pg.Pool): Promise<void> {
   await pool.query(`
+    update itotori_llm_attempts
+    set billing_state = 'unknown',
+        finish_state = 'interrupted',
+        failure_class = 'interrupted'
+    where attempt_id in (
+      'attempt-cost-backfill-existing-billed',
+      'attempt-cost-backfill-existing-legacy'
+    )
+  `);
+  await pool.query(`
     update itotori_localization_run_cost_accounts
     set reserved_usd = 4.5
     where run_id = '${terminalBackfillRunId}'
@@ -340,6 +432,32 @@ async function seedTerminalReservationLeak(pool: pg.Pool): Promise<void> {
         2.25,
         'reserved'
       )
+  `);
+}
+
+async function seedNormalUnknownBillingReservation(pool: pg.Pool): Promise<void> {
+  await pool.query(`
+    update itotori_llm_attempts
+    set billing_state = 'unknown',
+        finish_state = 'stop',
+        failure_class = null
+    where attempt_id = 'attempt-cost-backfill-existing-provider-estimate'
+  `);
+  await pool.query(`
+    update itotori_localization_run_cost_accounts
+    set reserved_usd = reserved_usd + 0.5
+    where run_id = '${terminalBackfillRunId}'
+  `);
+  await pool.query(`
+    insert into itotori_localization_cost_reservations (
+      reservation_id, run_id, attempt_id, reserved_usd, state
+    ) values (
+      'reservation-normal-unknown-billing',
+      '${terminalBackfillRunId}',
+      'attempt-cost-backfill-existing-provider-estimate',
+      0.5,
+      'reserved'
+    )
   `);
 }
 
@@ -471,7 +589,7 @@ async function waitForMigrationAdvisoryLockWaiter(
   applicationName: string,
   holderPid: number,
 ): Promise<void> {
-  const deadline = Date.now() + 5_000;
+  const deadline = Date.now() + dbIntegrationTimeoutMs;
   while (Date.now() < deadline) {
     const waiting = await pool.query<{ count: number }>(
       `

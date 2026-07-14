@@ -22,6 +22,8 @@ begin
      and attempt.attempt_id = reservation.attempt_id
     where reservation.state = 'reserved'
       and attempt.lifecycle_state = 'completed'
+      and attempt.finish_state = 'interrupted'
+      and attempt.failure_class = 'interrupted'
     order by reservation.run_id
   loop
     perform pg_advisory_xact_lock(hashtext(locked_run));
@@ -38,6 +40,8 @@ begin
        and attempt.attempt_id = reservation.attempt_id
       where reservation.state = 'reserved'
         and attempt.lifecycle_state = 'completed'
+        and attempt.finish_state = 'interrupted'
+        and attempt.failure_class = 'interrupted'
       group by reservation.run_id
     )
     select 1
@@ -61,6 +65,8 @@ begin
       and attempt.attempt_id = reservation.attempt_id
       and reservation.state = 'reserved'
       and attempt.lifecycle_state = 'completed'
+      and attempt.finish_state = 'interrupted'
+      and attempt.failure_class = 'interrupted'
     returning reservation.run_id, reservation.reserved_usd
   ),
   totals as (
