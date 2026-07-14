@@ -75,7 +75,6 @@ import {
 } from "../agents/structure-informed-context/index.js";
 import {
   TRANSLATION_PROMPT_TEMPLATE_VERSION_V1,
-  TranslationPartialResultError,
   type PriorPassFeedback,
   type TranslationBridgeUnit,
   type TranslationContextArtifact,
@@ -107,7 +106,6 @@ import {
 import { QaAgent } from "../agents/qa/agent.js";
 import {
   QA_PROMPT_TEMPLATE_VERSION_V1,
-  QaPartialResultError,
   type QaBridgeUnit,
   type QaGlossaryEntry,
   type QaInvocationInput,
@@ -132,7 +130,6 @@ import type { ModelProvider, ProviderFamily, ProviderRunRecord } from "../provid
 import { addDecimalUsd, assertBilledCostDecimal } from "../providers/cost.js";
 import { assertReportedTokenUsage } from "../providers/token-accounting.js";
 import {
-  InvocationContentExhaustedError,
   InvocationRetryCeilingError,
   isInvocationOperationalPause,
 } from "./invocation-supervisor.js";
@@ -892,7 +889,6 @@ export async function runAgenticLoopForUnit(
   // Deterministic-check P0 short-circuits before QA fires.            //
   // ------------------------------------------------------------------ //
   let qaFindings: QaFinding[] = [];
-  let qaIncomplete = false;
   if (deterministicResult.shortCircuit) {
     for (const violation of deterministicResult.violations) {
       qualityFlags.add(`deterministic_${violation.kind}`);
@@ -995,31 +991,18 @@ export async function runAgenticLoopForUnit(
         speaker: resolvedAgentContext.speaker,
       });
     } catch (error) {
-      rethrowOperationalInvocation(error);
-      // A primary candidate is already non-blank and canonical at this
-      // point. A provider's empty/truncated QA response is an informational
-      // loss of review coverage, not grounds to discard that candidate.
-      markJournalAttemptFailure(
-        input,
-        "qa_findings",
-        entry.agentLabel,
-        error,
-        isQaPartialResultError(error) ? "advance" : "pause",
-      );
-      if (!isQaPartialResultError(error)) {
-        throw error;
-      }
-      qaIncomplete = true;
-      continue;
+      // A QA call that cannot produce a valid structured result rides the
+      // supervisor's retry-to-valid + hard-ceiling pause exactly like the
+      // primary translation call above. There is no advance-with-flag escape
+      // hatch: a mechanically-failed QA stage pauses the run for the operator.
+      markJournalAttemptFailure(input, "qa_findings", entry.agentLabel, error, "pause");
+      throw error;
     }
     qaInvocationResults.push({ agentLabel: entry.agentLabel, pair: entry.pair, result });
     pushInvocation(qaStage, providerTelemetryFromQa(result, entry.pair, entry.agentLabel));
     qaFindings = qaFindings.concat(result.findings);
   }
-  if (qaIncomplete) {
-    qualityFlags.add("qa_incomplete");
-  }
-  qaStage.outcome = qaIncomplete ? "incomplete:partial_result" : "succeeded";
+  qaStage.outcome = "succeeded";
   stages.push(qaStage);
 
   // ------------------------------ routing ----------------------------
@@ -1054,7 +1037,7 @@ export async function runAgenticLoopForUnit(
 
   if (qaFindings.length === 0 && deterministicResult.violations.length === 0) {
     // Nothing to repair — short, clean path.
-    repairStage.outcome = qaIncomplete ? "skipped:qa_incomplete" : "skipped:no_findings";
+    repairStage.outcome = "skipped:no_findings";
   } else if (repairableCauseCount === 0) {
     repairStage.outcome = "skipped:no_repairable_cause";
     qualityFlags.add("qa_unresolved");
@@ -1070,7 +1053,6 @@ export async function runAgenticLoopForUnit(
     // failed repair never erases the already-written primary candidate.
     let attempt = 0;
     let lastReQaRejected = false;
-    let repairFlowIncomplete = false;
     while (attempt < policy.maxRepairAttempts) {
       attempt += 1;
       const repairProvider = providerFactory({
@@ -1097,24 +1079,12 @@ export async function runAgenticLoopForUnit(
           priorPassFeedback: input.priorPassFeedback,
         });
       } catch (error) {
-        rethrowOperationalInvocation(error);
-        // The selected primary (or an earlier selected repair) remains valid.
-        // Do not manufacture a replacement or let a partial repair erase it.
-        markJournalAttemptFailure(
-          input,
-          "repair",
-          "repair-primary",
-          error,
-          isTranslationPartialResultError(error) ? "advance" : "pause",
-        );
-        if (!isTranslationPartialResultError(error)) {
-          throw error;
-        }
-        repairAttempts = attempt;
-        repairFlowIncomplete = true;
-        qualityFlags.add("repair_incomplete");
-        repairStage.outcome = `incomplete:partial_result_at_attempt_${attempt}`;
-        break;
+        // A repair translation that cannot produce a valid structured result
+        // rides the supervisor's retry-to-valid + hard-ceiling pause exactly
+        // like the primary translation call. A mechanically-failed repair
+        // pauses the run for the operator; it is never masked as an advance.
+        markJournalAttemptFailure(input, "repair", "repair-primary", error, "pause");
+        throw error;
       }
       pushInvocation(
         repairStage,
@@ -1178,16 +1148,6 @@ export async function runAgenticLoopForUnit(
           writtenFindingFromQa(finding, outcomeId, repairedCandidate.id, outcomeFindings.length),
         );
       }
-      if (reQa.incomplete) {
-        // A repaired candidate has not received a complete QA pass, so it
-        // cannot displace the known selected candidate. The latter remains a
-        // written outcome with an explicit review-coverage annotation.
-        repairAttempts = attempt;
-        repairFlowIncomplete = true;
-        qualityFlags.add("qa_incomplete");
-        repairStage.outcome = `incomplete:qa_partial_result_at_attempt_${attempt}`;
-        break;
-      }
       const reTriage = routeFindingsAndViolations({
         findings: reQa.findings,
         // Gate (1) already confirmed zero deterministic violations remain.
@@ -1214,7 +1174,7 @@ export async function runAgenticLoopForUnit(
       // primary candidate remains selected until a repair earns selection.
       lastReQaRejected = true;
     }
-    if (!repairSucceeded && !repairFlowIncomplete) {
+    if (!repairSucceeded) {
       repairAttempts = attempt;
       qualityFlags.add("qa_unresolved");
       qualityFlags.add("repair_budget_exhausted");
@@ -3033,9 +2993,6 @@ async function invokeTranslationStage(args: {
 }): Promise<TranslationInvocationResult> {
   const agent = new TranslationAgent({
     provider: args.provider,
-    ...(args.agentLabel.startsWith("repair-")
-      ? { contentFailureMode: "retain_existing" as const }
-      : {}),
   });
 
   // PATCHBACK-SAFETY (primary, deterministic). Strip EVERY protected control
@@ -3322,7 +3279,7 @@ async function runPostRepairReQaPass(args: {
   repairStage: StageAccumulator;
   contextArtifacts: ReadonlyArray<TranslationContextArtifact>;
   speaker?: string | undefined;
-}): Promise<{ findings: QaFinding[]; incomplete: boolean }> {
+}): Promise<{ findings: QaFinding[] }> {
   const {
     input,
     policy,
@@ -3335,7 +3292,6 @@ async function runPostRepairReQaPass(args: {
     speaker,
   } = args;
   let findings: QaFinding[] = [];
-  let incomplete = false;
   for (const entry of [
     { agentLabel: "qa-style-adherence", pair: pairPolicy.qa.styleAdherence },
     { agentLabel: "qa-semantic-drift", pair: pairPolicy.qa.semanticDrift },
@@ -3360,23 +3316,12 @@ async function runPostRepairReQaPass(args: {
         ...(speaker !== undefined ? { speaker } : {}),
       });
     } catch (error) {
-      rethrowOperationalInvocation(error);
-      // Re-QA happens only after both the primary and this repair candidate
-      // exist. Retain the known selection while making the coverage loss
-      // visible to the caller; other focused judges may still contribute
-      // their findings during this bounded pass.
-      markJournalAttemptFailure(
-        input,
-        "qa_findings",
-        entry.agentLabel,
-        error,
-        isQaPartialResultError(error) ? "advance" : "pause",
-      );
-      if (!isQaPartialResultError(error)) {
-        throw error;
-      }
-      incomplete = true;
-      continue;
+      // Re-QA rides the same retry-to-valid + hard-ceiling pause contract as
+      // every other stage. A judge that cannot produce a valid structured
+      // result pauses the run for the operator rather than advancing the unit
+      // with review coverage silently skipped.
+      markJournalAttemptFailure(input, "qa_findings", entry.agentLabel, error, "pause");
+      throw error;
     }
     pushInvocation(
       repairStage,
@@ -3384,18 +3329,7 @@ async function runPostRepairReQaPass(args: {
     );
     findings = findings.concat(result.findings);
   }
-  return { findings, incomplete };
-}
-
-function isQaPartialResultError(error: unknown): error is QaPartialResultError {
-  return error instanceof QaPartialResultError || error instanceof InvocationContentExhaustedError;
-}
-
-function isTranslationPartialResultError(error: unknown): error is TranslationPartialResultError {
-  return (
-    error instanceof TranslationPartialResultError ||
-    error instanceof InvocationContentExhaustedError
-  );
+  return { findings };
 }
 
 function rethrowOperationalInvocation(error: unknown): void {

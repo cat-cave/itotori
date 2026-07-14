@@ -193,12 +193,6 @@ export type StructuredInvocationOptions<T> = {
   requiredUnitIds?: readonly string[];
   successDecision?: "write" | "advance";
   /**
-   * Stages that already hold a usable written candidate may stop after one
-   * bounded pass and retain it with an annotation. Translation and speaker
-   * calls keep the default and must eventually produce usable content.
-   */
-  contentFailureMode?: "must_succeed" | "retain_existing";
-  /**
    * True for a tool-only contract. A model that never emits a tool call is the
    * degenerate-misconfiguration ceiling path, never a fabricated result.
    */
@@ -291,21 +285,6 @@ export class InvocationRetryCeilingError extends Error {
       `InvocationSupervisor hard retry ceiling ${attempts} reached after ${lastFailure}: ${detail}`,
     );
     this.name = "InvocationRetryCeilingError";
-  }
-}
-
-/**
- * Content failure from a non-writing stage after its bounded route pass. The
- * caller may retain an already-written primary candidate and annotate the
- * incomplete QA/enrichment/repair; this is never an operational pause.
- */
-export class InvocationContentExhaustedError extends Error {
-  constructor(
-    readonly failureClass: InvocationFailureClass,
-    readonly detail: string,
-  ) {
-    super(`bounded ${failureClass} recovery exhausted: ${detail}`);
-    this.name = "InvocationContentExhaustedError";
   }
 }
 
@@ -491,12 +470,17 @@ export class InvocationSupervisor {
             error,
           );
         }
-        const reachedOneRoutePass = routeAction.advance && routeIndex === routes.length - 1;
-        if (reachedOneRoutePass && !isTransportFailure(failure.kind)) {
-          if (this.standalone) throw error;
-          if (mayReturnToExistingWrittenCandidate(this.context.stage)) {
-            throw new InvocationContentExhaustedError(failure.kind, failure.detail);
-          }
+        // A standalone utility/fixture call has no attempt journal or pause
+        // sink, so a non-transport failure at the last route surfaces its raw
+        // error instead of riding to the ceiling pause. A durable run keeps
+        // correcting within the hard ceiling, then pauses (below).
+        if (
+          routeAction.advance &&
+          routeIndex === routes.length - 1 &&
+          !isTransportFailure(failure.kind) &&
+          this.standalone
+        ) {
+          throw error;
         }
         request = {
           ...request,
@@ -555,22 +539,19 @@ export class InvocationSupervisor {
         ...request,
         messages: correctiveMessages(baseMessages, failure, input.requiredUnitIds ?? []),
       };
-      const reachedOneRoutePass = routeAction.advance && routeIndex === routes.length - 1;
-      if (reachedOneRoutePass) {
-        // Structured agent/library calls preserve their established typed
-        // validation error after one bounded route pass. Plain-text callers
-        // cannot do that: their only result is the invocation itself, and an
-        // evaluator-rejected invocation is not a successful result. Keep
-        // correcting it within the hard ceiling, then surface the operational
-        // ceiling signal if no usable invocation exists.
-        if (this.standalone && input.parse !== null) throw failure.error;
-        if (
-          !this.standalone &&
-          (input.contentFailureMode === "retain_existing" ||
-            mayReturnToExistingWrittenCandidate(this.context.stage))
-        ) {
-          throw new InvocationContentExhaustedError(failure.kind, failure.detail);
-        }
+      // A standalone structured agent/library call preserves its established
+      // typed validation error after one bounded route pass — it has no
+      // attempt journal or pause sink to ride to. A durable run instead keeps
+      // correcting within the hard ceiling, then surfaces the operational
+      // ceiling pause (below) if no usable invocation ever materialises. This
+      // is identical for translation, QA, context, and repair calls.
+      if (
+        routeAction.advance &&
+        routeIndex === routes.length - 1 &&
+        this.standalone &&
+        input.parse !== null
+      ) {
+        throw failure.error;
       }
       ({ routeIndex, routeAttempt } = nextRoutePosition(
         routeAction,
@@ -1371,10 +1352,6 @@ function isTransportFailure(kind: InvocationFailureClass): boolean {
     kind === "network" ||
     kind === "provider_unavailable"
   );
-}
-
-function mayReturnToExistingWrittenCandidate(stage: string): boolean {
-  return stage === "context" || stage === "qa_findings" || stage === "repair";
 }
 
 function isRefusalFinish(finishReason: string): boolean {

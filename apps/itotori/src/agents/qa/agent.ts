@@ -133,7 +133,6 @@ export class QaAgent {
         },
         requiredUnitIds: input.units.map((unit) => unit.bridgeUnitId),
         successDecision: "advance",
-        contentFailureMode: "retain_existing",
       },
     );
     const providerRun = invocation.providerRun;

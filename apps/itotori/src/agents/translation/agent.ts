@@ -81,8 +81,6 @@ export type TranslationAgentOptions = {
    * runs before any provider call.
    */
   provider: ModelProvider;
-  /** Repair already has a primary candidate to retain after a bounded pass. */
-  contentFailureMode?: "must_succeed" | "retain_existing";
 };
 
 /**
@@ -151,9 +149,6 @@ export class TranslationAgent {
         },
         requiredUnitIds: input.sourceBridgeUnits.map((unit) => unit.bridgeUnitId),
         successDecision: "write",
-        ...(this.options.contentFailureMode !== undefined
-          ? { contentFailureMode: this.options.contentFailureMode }
-          : {}),
       },
     );
     const providerRun = invocation.providerRun;
