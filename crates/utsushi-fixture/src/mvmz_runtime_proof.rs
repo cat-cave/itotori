@@ -1,8 +1,8 @@
-//! UTSUSHI-102: the load-bearing MV/MZ **runtime-observation proof**.
+//! The load-bearing MV/MZ **runtime-observation proof**.
 //!
-//! This module consumes the UTSUSHI-006 browser trace-probe output — the
+//! This module consumes the browser trace-probe output — the
 //! runtime evidence report an ACTUAL LAUNCHED Chromium (`--dump-dom`) produced
-//! from the public MV/MZ fixture — and decides, under a strict-proof bar,
+//! from the public MV/MZ fixture — and decides, under a strict-proof bar
 //! whether it genuinely proves **E1 runtime observation**: text + choice events
 //! observed from a live post-render DOM, each linked to its bridge unit, source
 //! revision, runtime target, adapter, and environment metadata.
@@ -34,8 +34,8 @@
 //! ## What it aggregates
 //!
 //! ```text
-//! runtime trace         UTSUSHI-006 browser trace probe   -> observation + linkage
-//! screenshot evidence   UTSUSHI-065 capture artifactRef   -> screenshotEvidence (when supplied)
+//! runtime trace browser trace probe -> observation + linkage
+//! screenshot evidence capture artifactRef -> screenshotEvidence (when supplied)
 //! ```
 
 use std::fs;
@@ -57,7 +57,7 @@ const RUNTIME_OBSERVATION_PROOF_UUID_NAMESPACE: &str =
     "utsushi-u102:mvmz-runtime-observation-proof";
 
 /// The runtime observation source marker a genuine live launch stamps on every
-/// observation event. Anything else (notably `fixture_declared`) is a static /
+/// observation event. Anything else (notably `fixture_declared`) is a static
 /// non-runtime read and cannot satisfy E1.
 const OBSERVATION_SOURCE_LIVE_DOM: &str = "live_dom";
 
@@ -86,12 +86,12 @@ pub const CHECK_SCREENSHOT_ARTIFACT_LINKED: &str = "screenshot_artifact_ref_link
 
 /// Inputs to the runtime-observation proof.
 pub struct RuntimeObservationProofInputs<'a> {
-    /// The UTSUSHI-006 browser trace-probe output (a runtime evidence report).
+    /// The browser trace-probe output (a runtime evidence report).
     pub runtime_trace: &'a Value,
     /// The concatenated bytes of every STATIC file the public fixture ships.
     /// The crux check confirms no observed string is recoverable from it.
     pub static_fixture_source: &'a str,
-    /// The optional UTSUSHI-065 screenshot capture evidence (a runtime evidence
+    /// The optional screenshot capture evidence (a runtime evidence
     /// report carrying at least one screenshot capture with an `artifactRef`).
     pub screenshot_evidence: Option<&'a Value>,
 }
@@ -203,8 +203,8 @@ fn event_has_full_linkage(event: &Value) -> bool {
 
 /// Build the MV/MZ runtime-observation proof manifest.
 ///
-/// Runs every strict-proof check over the consumed UTSUSHI-006 trace and
-/// (when supplied) the UTSUSHI-065 screenshot evidence, then emits a manifest
+/// Runs every strict-proof check over the consumed trace and
+/// (when supplied) the screenshot evidence, then emits a manifest
 /// whose `runtimeObservationProven` verdict is `true` iff every mandatory check
 /// passes. A trace that a static fixture read could have produced fails the
 /// crux check and is rejected with `provenEvidenceTier: "none"`.
@@ -328,7 +328,7 @@ pub fn build_mvmz_runtime_observation_proof(
         },
     });
 
-    // 7. Screenshot evidence (UTSUSHI-065 artifactRef linkage), when supplied.
+    // 7. Screenshot evidence ( artifactRef linkage), when supplied.
     let screenshot_section = if let Some(evidence) = inputs.screenshot_evidence {
         let (section, check) = screenshot_evidence_section(evidence);
         checks.push(check);
@@ -421,7 +421,7 @@ pub fn build_mvmz_runtime_observation_proof(
     }))
 }
 
-/// Extract the UTSUSHI-065 screenshot artifactRef linkage from a capture
+/// Extract the screenshot artifactRef linkage from a capture
 /// evidence report and produce both the manifest section and the gating check.
 fn screenshot_evidence_section(evidence: &Value) -> (Value, Check) {
     let captures = evidence
@@ -496,8 +496,8 @@ pub fn read_static_fixture_source(fixture_dir: &Path) -> UtsushiResult<String> {
 
 /// Read the proof inputs from files and build the manifest.
 ///
-/// The IO shell the CLI uses: it reads the UTSUSHI-006 runtime trace, the static
-/// fixture source, and the optional UTSUSHI-065 screenshot evidence, then
+/// The IO shell the CLI uses: it reads the runtime trace, the static
+/// fixture source, and the optional screenshot evidence, then
 /// delegates to the pure [`build_mvmz_runtime_observation_proof`].
 pub fn mvmz_runtime_observation_proof_from_paths(
     runtime_trace_path: &Path,
@@ -522,7 +522,7 @@ pub fn mvmz_runtime_observation_proof_from_paths(
 mod tests {
     use super::*;
 
-    /// The real UTSUSHI-006 fixture directory.
+    /// The real fixture directory.
     fn fixture_dir() -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mvmz_observation")
     }
@@ -583,7 +583,7 @@ mod tests {
         })
     }
 
-    /// A UTSUSHI-065 screenshot capture evidence report shaped as
+    /// A screenshot capture evidence report shaped as
     /// `BrowserLaunchAdapter::capture` emits it.
     fn screenshot_evidence() -> Value {
         json!({
@@ -644,7 +644,7 @@ mod tests {
         }
 
         // Observation linkage surfaced — text + choice AND the broader
-        // scene + branch event kinds (beyond the UTSUSHI-102 surface).
+        // scene + branch event kinds (beyond the surface).
         assert_eq!(proof["observation"]["textEventCount"], 2);
         assert_eq!(proof["observation"]["choiceEventCount"], 1);
         assert_eq!(proof["observation"]["sceneEventCount"], 1);
@@ -667,7 +667,7 @@ mod tests {
             5
         );
 
-        // Screenshot artifactRef linkage (UTSUSHI-065).
+        // Screenshot artifactRef linkage ().
         assert_eq!(proof["screenshotEvidence"]["available"], true);
         assert_eq!(proof["screenshotEvidence"]["source"], "UTSUSHI-065");
         let art = &proof["screenshotEvidence"]["artifactRefs"][0];

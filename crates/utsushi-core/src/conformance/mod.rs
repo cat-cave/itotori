@@ -1,4 +1,4 @@
-//! Runtime conformance contract (UTSUSHI-026).
+//! Runtime conformance contract ().
 //!
 //! Engine-neutral substrate every Utsushi runtime participant uses to
 //! declare what it claims to validate and to report what each declared
@@ -10,7 +10,7 @@
 //!   of which profiles the adapter claims to satisfy. Built once at
 //!   registration time, validated by [`manifest::ConformanceManifest::validate`].
 //! - [`result::ConformanceResult`] — one outcome per profile attempted
-//!   in a conformance run. The result schema distinguishes Pass / Fail /
+//!   in a conformance run. The result schema distinguishes Pass / Fail
 //!   Skip / Unsupported with required semantic codes; the audit-focus
 //!   item "Skipped != Pass" is structural (separate enum variants).
 //!
@@ -76,7 +76,7 @@ use crate::{EvidenceTier, port::PortManifest};
 
 /// Schema version pin for the runtime conformance contract.
 ///
-/// Bumped to `0.2.0-alpha` by UTSUSHI-028 for the additive
+/// Bumped to `0.2.0-alpha` by for the additive
 /// [`result::EvidenceRef::StatePath`] enum variant. The minor bump (not a
 /// patch bump) reflects the additive enum variant: forward-compatible
 /// for readers, but exhaustive-match downstream consumers must add the
@@ -90,22 +90,22 @@ pub const CONFORMANCE_SCHEMA_VERSION: &str = "0.2.0-alpha";
 #[serde(rename_all = "kebab-case")]
 pub enum ProfileId {
     /// Adapter can produce a deterministic text trace whose ordering
-    /// and bridge-unit linkage UTSUSHI-027 validates.
+    /// and bridge-unit linkage validates.
     TextTrace,
     /// Adapter can enumerate runtime choice / branch points and the
-    /// observed traversal matches expected (UTSUSHI-027).
+    /// observed traversal matches expected ().
     BranchCapture,
     /// Adapter can take a snapshot at a logical tick and restore it
-    /// (UTSUSHI-028).
+    /// ().
     SnapshotRestore,
     /// Adapter can emit at least one frame artifact referenced through
-    /// the managed runtime artifact root (UTSUSHI-029).
+    /// the managed runtime artifact root ().
     FrameCapture,
     /// Adapter can emit a recording artifact referenced through the
-    /// managed runtime artifact root (UTSUSHI-029).
+    /// managed runtime artifact root ().
     RecordingCapture,
     /// Adapter can drive a replay log and replay the recorded trace
-    /// (UTSUSHI-021/103 substrate).
+    /// ( substrate).
     DeterministicReplay,
 }
 

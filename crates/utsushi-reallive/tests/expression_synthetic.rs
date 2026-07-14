@@ -1,4 +1,4 @@
-//! UTSUSHI-205 synthetic round-trip suite.
+//! Synthetic round-trip suite.
 //!
 //! 50 hand-built byte streams covering every operator at least once
 //! (per acceptance criterion #0) plus the three documented specific
@@ -13,8 +13,6 @@ use utsushi_reallive::{
     AssignOp, BankId, ExprNode, ExprOp, ExpressionParseError, ExpressionWarning, Value, VarBanks,
     evaluate, evaluate_assignment, parse_expression, parse_expression_with_warnings,
 };
-
-// ----- Encoding helpers --------------------------------------------
 
 /// `$ FF <i32 LE>` — int-literal token.
 fn lit(value: i32) -> Vec<u8> {
@@ -85,9 +83,7 @@ fn parse_and_eval(bytes: &[u8], expected: i32) -> ExprNode {
     node
 }
 
-// ===================================================================
 // Spec-node acceptance criterion #1: three specific case evaluations.
-// ===================================================================
 
 #[test]
 fn ac1_one_plus_two_equals_three() {
@@ -125,9 +121,7 @@ fn ac1_intb_zero_plus_five_with_value_ten_equals_fifteen() {
     assert_eq!(result, 15, "intB[0]=10, +5 must equal 15");
 }
 
-// ===================================================================
 // Spec-node acceptance criterion #2: unknown-operator partial recovery.
-// ===================================================================
 
 #[test]
 fn ac2_unknown_operator_byte_emits_warning_and_partial_result() {
@@ -153,7 +147,7 @@ fn ac2_unknown_operator_byte_emits_warning_and_partial_result() {
 
 #[test]
 fn ac2_unknown_operator_inside_chain_partial_result_at_warning_point() {
-    // (1 + 2) \ EE  — chain breaks after the recognised 1+2.
+    // (1 + 2) \ EE — chain breaks after the recognised 1+2.
     let mut bytes = binary(&lit(1), op(ExprOp::Add), &lit(2));
     bytes.push(0x5C);
     bytes.push(0xEE);
@@ -164,9 +158,7 @@ fn ac2_unknown_operator_inside_chain_partial_result_at_warning_point() {
     assert_eq!(parsed.warnings.len(), 1);
 }
 
-// ===================================================================
 // Synthetic 50-case round-trip suite — each operator at least once.
-// ===================================================================
 
 // --- Arithmetic ops (Add / Sub / Mul / Div / Mod) ------------------
 
@@ -583,7 +575,7 @@ fn truncated_int_literal_is_typed_error() {
 
 #[test]
 fn unclosed_memory_ref_is_malformed() {
-    // $ 0B [ $ FF 00 00 00 00  — missing ]
+    // $ 0B [ $ FF 00 00 00 00 — missing ]
     let bytes = [0x24, 0x01, 0x5B, 0x24, 0xFF, 0x00, 0x00, 0x00, 0x00];
     let err = parse_expression(&bytes).expect_err("missing ']' must be typed error");
     assert!(

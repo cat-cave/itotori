@@ -14,7 +14,7 @@ use super::state::StateTree;
 
 /// Schema version pin for the snapshot substrate.
 ///
-/// UTSUSHI-223 bumped the pin from `0.1.0-alpha` to `0.2.0-alpha` when the
+/// bumped the pin from `0.1.0-alpha` to `0.2.0-alpha` when the
 /// previous fixed-byte ceiling was replaced with the per-port
 /// [`SnapshotEnvelope`] tier and the manifest grew a required
 /// `envelope_class` field. **No upgrade path; old snapshots are not
@@ -395,7 +395,7 @@ pub struct SnapshotRef {
 }
 
 impl SnapshotRef {
-    /// Validate the `SnapshotRef` shape (id parse, inspectable id parse,
+    /// Validate the `SnapshotRef` shape (id parse, inspectable id parse
     /// tier ceiling).
     pub fn validate(&self) -> Result<(), SnapshotError> {
         SnapshotId::parse(self.snapshot_id.as_str())?;
@@ -474,7 +474,7 @@ impl<'a> SnapshotRequest<'a> {
 }
 
 fn derive_snapshot_id(run_id: &str, tick: Option<u64>) -> Result<SnapshotId, SnapshotError> {
-    // Derive a deterministic id from run_id + tick. Lowercase ASCII /
+    // Derive a deterministic id from run_id + tick. Lowercase ASCII
     // digits / hyphen so the parser accepts the output. The id is a
     // stable, run-scoped seed; downstream callers may still supply their
     // own via `SnapshotRequest::with_snapshot_id` when they need control
@@ -522,7 +522,7 @@ pub fn take_snapshot(
     // The canonical envelope check runs against the whole serialized
     // snapshot inside `Snapshot::validate`, attributing observed_bytes
     // and limit_bytes to the declared `envelope_class.max_bytes()`. No
-    // separate per-tree pre-check fires here — under UTSUSHI-223 the
+    // separate per-tree pre-check fires here — under the
     // envelope ceiling is the single canonical size gate.
     let snapshot_id = match &request.snapshot_id {
         Some(id) => id.clone(),

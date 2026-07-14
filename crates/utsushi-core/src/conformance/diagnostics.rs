@@ -3,7 +3,7 @@
 //! Mirrors the [`crate::sink::errors`] and [`crate::vfs::diagnostics`]
 //! precedents: every variant carries a stable `utsushi.conformance.*`
 //! semantic code and a `codes::ALL` registry the downstream allowed-code
-//! validator joins against (UTSUSHI-022). The audit-focus item is
+//! validator joins against (). The audit-focus item is
 //! "Skipped != Pass": the enum below makes a manifest-declared
 //! `Skip`/`Unsupported` outcome a typed rejection rather than a silent
 //! omission.
@@ -41,7 +41,7 @@ pub mod codes {
     pub const ADAPTER_ID_MISMATCH: &str = "utsushi.conformance.adapter_id_mismatch";
     pub const PASS_ABOVE_MANIFEST_CEILING: &str = "utsushi.conformance.pass_above_manifest_ceiling";
 
-    // UTSUSHI-027 — trace and branch conformance codes.
+    // trace and branch conformance codes.
     pub const TRACE_TEXT_MISMATCH: &str = "utsushi.conformance.trace_text_mismatch";
     pub const TRACE_ORDER_MISMATCH: &str = "utsushi.conformance.trace_order_mismatch";
     pub const TRACE_SPEAKER_MISMATCH: &str = "utsushi.conformance.trace_speaker_mismatch";
@@ -56,7 +56,7 @@ pub mod codes {
     pub const TRACE_EVIDENCE_TIER_OVERCLAIM: &str =
         "utsushi.conformance.trace_evidence_tier_overclaim";
 
-    // ---- UTSUSHI-029: capture/recording codes. Source of truth is
+    // capture/recording codes. Source of truth is
     // `super::super::capture_recording::codes`; re-export here so legacy
     // dotted paths continue to resolve and so the unified `ALL` slice
     // can name each entry locally. ----
@@ -73,7 +73,7 @@ pub mod codes {
         RECORDING_EVIDENCE_TIER_OVERCLAIM, RECORDING_FRAME_COUNT_MISMATCH, RECORDING_ID_MALFORMED,
     };
 
-    // ---- UTSUSHI-028: snapshot conformance codes. Source of truth is
+    // snapshot conformance codes. Source of truth is
     // `super::super::snapshot_check::codes`; re-export here so legacy
     // dotted paths continue to resolve and so the unified `ALL` slice
     // can name each entry locally. ----
@@ -87,7 +87,7 @@ pub mod codes {
     /// schemas that gate runtime diagnostics by allowed-code list
     /// include each of these.
     pub const ALL: &[&str] = &[
-        // UTSUSHI-026 substrate (manifest + result envelope).
+        // substrate (manifest + result envelope).
         UNSUPPORTED_SCHEMA_VERSION,
         ADAPTER_ID_MALFORMED,
         UNKNOWN_ABI_VERSION,
@@ -109,7 +109,7 @@ pub mod codes {
         PROFILE_NOT_REPORTED,
         ADAPTER_ID_MISMATCH,
         PASS_ABOVE_MANIFEST_CEILING,
-        // UTSUSHI-027 trace/branch.
+        // trace/branch.
         TRACE_TEXT_MISMATCH,
         TRACE_ORDER_MISMATCH,
         TRACE_SPEAKER_MISMATCH,
@@ -122,7 +122,7 @@ pub mod codes {
         BRANCH_CHOICE_PATH_MISMATCH,
         BRANCH_OUTCOME_MISMATCH,
         TRACE_EVIDENCE_TIER_OVERCLAIM,
-        // UTSUSHI-029 capture/recording.
+        // capture/recording.
         FRAME_CAPTURE_UNSUPPORTED,
         RECORDING_CAPTURE_UNSUPPORTED,
         FRAME_CAPTURE_NO_ARTIFACTS,
@@ -147,7 +147,7 @@ pub mod codes {
         RECORDING_FRAME_COUNT_MISMATCH,
         RECORDING_DURATION_OUT_OF_RANGE,
         RECORDING_EVENT_COUNT_OUT_OF_RANGE,
-        // UTSUSHI-028 snapshot conformance.
+        // snapshot conformance.
         SNAPSHOT_RESTORE_UNSUPPORTED,
         SNAPSHOT_CHECK_PROFILE_MISMATCH,
         SNAPSHOT_REF_INVALID,
@@ -160,7 +160,7 @@ pub mod codes {
 
 /// Diagnostic variants emitted by the conformance manifest and result
 /// validators. Each variant is a stable conformance signal; never
-/// silent. Audit-focus invariants ("Skipped != Pass",
+/// silent. Audit-focus invariants ("Skipped != Pass"
 /// "declared profile cannot be Skip/Unsupported") are enforced by the
 /// `DeclaredProfile*` variants below.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -206,7 +206,7 @@ pub enum ConformanceError {
     ExtensionKeyMalformed { key: String },
     /// `recorded_at` did not parse as RFC3339.
     RecordedAtMalformed { recorded_at: String },
-    /// Evidence ref failed structural validation (URI shape, whitespace,
+    /// Evidence ref failed structural validation (URI shape, whitespace
     /// or local-path leak).
     EvidenceRefInvalid {
         artifact_kind: &'static str,
@@ -234,7 +234,6 @@ pub enum ConformanceError {
         claimed: EvidenceTier,
         ceiling: EvidenceTier,
     },
-    // ---- UTSUSHI-029 capture/recording variants (additive). ----
     /// Capture or recording check carried a profile id that does not
     /// match the check kind.
     CaptureCheckProfileMismatch {
@@ -306,7 +305,6 @@ pub enum ConformanceError {
     /// Recording event count (`frame_count + audio_event_count`) sat
     /// outside `expected_event_count_range`.
     RecordingEventCountOutOfRange { observed: u32, min: u32, max: u32 },
-    // ---- UTSUSHI-028 snapshot conformance variants (additive). ----
     /// Snapshot conformance check carried a profile id other than
     /// [`ProfileId::SnapshotRestore`].
     SnapshotCheckProfileMismatch {
@@ -503,7 +501,7 @@ impl fmt::Display for ConformanceError {
             | Self::RecordingEventCountOutOfRange { observed, min, max } => {
                 write!(formatter, "{code}: observed={observed} min={min} max={max}")
             }
-            // reason: identical Display body to the u32 *OutOfRange arms above,
+            // reason: identical Display body to the u32 *OutOfRange arms above
             // but `observed`/`min`/`max` are u64 here, so folding it into the
             // same `|` pattern would not type-check.
             #[allow(clippy::match_same_arms)]

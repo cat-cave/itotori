@@ -1,4 +1,4 @@
-//! UTSUSHI-181 substrate-conformance test for `utsushi-kirikiri-xp3`.
+//! Substrate-conformance test for `utsushi-kirikiri-xp3`.
 //!
 //! Guarantees, all through the public substrate facade:
 //!

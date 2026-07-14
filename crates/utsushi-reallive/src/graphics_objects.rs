@@ -1,14 +1,14 @@
-//! UTSUSHI-214 — graphics object stack (headless render pipeline).
+//! Graphics object stack (headless render pipeline).
 //!
 //! Implements the rlvm `GraphicsSystem` equivalent: a stack of
-//! **256 graphics objects per render layer × 3 layers** (`DCs` +
+//! **256 graphics objects per render layer × 3 layers** (`DCs`
 //! `BackgroundObject` + `ForegroundObject`) addressed by `(layer, slot)`.
 //! Each object carries
 //! `(position, scale, alpha, colour_tone, image_ref, layer_order, kind)`
 //! state.
 //!
 //! The stack is **purely state**: the headless render-pipeline at
-//! [`crate::render_pipeline`] walks the stack, sorted by `(render layer,
+//! [`crate::render_pipeline`] walks the stack, sorted by `(render layer
 //! layer_order)`, and rasterises a per-frame
 //! [`crate::render_pipeline::Framebuffer`] into a deterministic PNG
 //! blob.
@@ -25,10 +25,10 @@
 //!
 //! # Clean-room provenance
 //!
-//! The object-state shape (`position`, `scale`, `alpha`, `colour_tone`,
+//! The object-state shape (`position`, `scale`, `alpha`, `colour_tone`
 //! `image_ref`, `layer_order`) is re-derived from the publicly-archived
 //! RLDEV format documentation (Haeleth's RLDEV site) plus the
-//! UTSUSHI-216 g00 decoder's [`crate::G00Image`] surface. No rlvm
+//! g00 decoder's [`crate::G00Image`] surface. No rlvm
 //! source is vendored, linked, or mechanically translated, per the
 //! crate-wide
 //! [`crate::RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT`].
@@ -266,7 +266,7 @@ impl WipeColour {
 /// Reference to an image asset loaded by a graphics RLOperation. The
 /// render pass at [`crate::render_pipeline`] **dereferences** this
 /// reference during compositing: it resolves `g00/<asset_key>.g00`
-/// through the render pass's bound [`utsushi_core::substrate::AssetPackage`],
+/// through the render pass's bound [`utsushi_core::substrate::AssetPackage`]
 /// decodes the bytes with [`crate::decode_g00`], and blits the decoded
 /// bitmap into the framebuffer (subject to the object's scale, tone, and
 /// alpha). The reference is also carried verbatim on the object so audit
@@ -454,7 +454,7 @@ pub enum ImageProvenance {
 
 /// One graphics object slot. The state is intentionally `pub` so audit
 /// tooling can introspect a slot without going through accessors. A
-/// slot is either `Some(GraphicsObject { ... })` (allocated) or
+/// slot is either `Some(GraphicsObject {... })` (allocated) or
 /// `None` (free).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -473,7 +473,7 @@ pub struct GraphicsObject {
     pub kind: GraphicsObjectKind,
     /// Whether this object was created by a direct file form.
     pub image_provenance: ImageProvenance,
-    /// Visibility flag (`objShow` / `objHide` in UTSUSHI-215). The
+    /// Visibility flag (`objShow` / `objHide` in ). The
     /// render pass skips invisible objects without dereferencing their
     /// image refs.
     pub visible: bool,
@@ -583,7 +583,7 @@ impl GraphicsObject {
     /// `GraphicsObject::GetWidthScaleFactor` /`GetHeightScaleFactor`
     /// (`src/systems/base/graphics_object.cc:256-262`):
     /// `(width_ / 100.0f) * (hq_width_ / 1000.0f)`. In thousandths that is
-    /// `x_percent * x_thousandths / 100`. The classic-percent (`objScale` /
+    /// `x_percent * x_thousandths / 100`. The classic-percent (`objScale`
     /// `objWidth` / `objHeight`) and hq (`objHqScale...`) setters call this so
     /// the render pass — which composites through [`Self::scale`] — reflects
     /// every scale opcode, exactly as rlvm's `DstRect` multiplies both factors.
@@ -637,7 +637,7 @@ impl GraphicsObject {
     }
 }
 
-/// Typed errors surfaced by [`GraphicsObjectStack::allocate`] /
+/// Typed errors surfaced by [`GraphicsObjectStack::allocate`]
 /// [`GraphicsObjectStack::set`]. Every variant carries the
 /// `(plane, slot)` it failed against.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -981,11 +981,11 @@ mod tests {
     fn dst_rect_kernel_pins_oracle_order_and_truncation() {
         // rlvm `DstRect` hand-trace (no parent), src=(11,7):
         //   center_x = trunc(100 + 18 - 0 + 11/2=5.5) = trunc(123.5) = 123
-        //   half_x   = trunc(11 * 1 * 1.3 / 2 = 7.15)  = 7
-        //   x = 123 - 7 = 116 ; width = 2*7 = 14
+        //   half_x = trunc(11 * 1 * 1.3 / 2 = 7.15) = 7
+        //   x = 123 - 7 = 116; width = 2*7 = 14
         //   center_y = trunc(50 + 7 - 5 + 7/2=3.5) = trunc(55.5) = 55
-        //   half_y   = trunc(7 * 1 * 0.7 / 2 = 2.45) = 2
-        //   y = 55 - 2 = 53 ; height = 2*2 = 4
+        //   half_y = trunc(7 * 1 * 0.7 / 2 = 2.45) = 2
+        //   y = 55 - 2 = 53; height = 2*2 = 4
         assert_eq!(
             derive_dst_rect(kernel_input()),
             Ok(HitRect {
@@ -997,14 +997,14 @@ mod tests {
         );
         // rlvm `DstRect` hand-trace WITH a parent — the y axis is the
         // discriminating case for the separate `center` truncation:
-        //   center_y_core = -10 + 2 - (-2) + 7/2=3.5 = -2.5 ; trunc(-2.5) = -2
+        //   center_y_core = -10 + 2 - (-2) + 7/2=3.5 = -2.5; trunc(-2.5) = -2
         //   center_y = -2 + parent.y(50) + parent.adj(8) = 56
-        //   half_y   = trunc(7 * (2.0*0.75=1.5) * (0.8*0.5=0.4) / 2 = 2.1) = 2
-        //   y = 56 - 2 = 54  (folding parent into the pre-trunc sum would give
+        //   half_y = trunc(7 * (2.0*0.75=1.5) * (0.8*0.5=0.4) / 2 = 2.1) = 2
+        //   y = 56 - 2 = 54 (folding parent into the pre-trunc sum would give
         //   trunc(-2.5 + 58 - 2.1) = trunc(53.4) = 53, which is WRONG).
-        //   center_x_core = 20 + 6 - 3 + 5.5 = 28.5 ; trunc = 28
-        //   center_x = 28 + 100 + (-5) = 123 ; half_x = trunc(11*0.75*1.8/2=7.425)=7
-        //   x = 123 - 7 = 116 ; width = 2*7 = 14 ; height = 2*2 = 4
+        //   center_x_core = 20 + 6 - 3 + 5.5 = 28.5; trunc = 28
+        //   center_x = 28 + 100 + (-5) = 123; half_x = trunc(11*0.75*1.8/2=7.425)=7
+        //   x = 123 - 7 = 116; width = 2*7 = 14; height = 2*2 = 4
         assert_eq!(
             derive_dst_rect(DstRectKernelInput {
                 surface: [11.0, 7.0],
@@ -1028,8 +1028,8 @@ mod tests {
         // Discriminates rlvm's SEPARATE center/half truncation from a single
         // `trunc(center - half)`. src=(10,10), scale 0.3, no parent:
         //   center = trunc(0 + 0 - 0 + 10/2=5.0) = 5
-        //   half   = trunc(10 * 1 * 0.3 / 2 = 1.5) = 1
-        //   x = y = 5 - 1 = 4 ; width = height = 2*1 = 2
+        //   half = trunc(10 * 1 * 0.3 / 2 = 1.5) = 1
+        //   x = y = 5 - 1 = 4; width = height = 2*1 = 2
         // A single-truncation kernel yields trunc(5.0 - 1.5)=trunc(3.5)=3 (WRONG).
         assert_eq!(
             derive_dst_rect(DstRectKernelInput {

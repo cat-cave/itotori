@@ -1,7 +1,7 @@
-//! UTSUSHI-119: the CAPSTONE MV/MZ **patched-output** runtime-observation proof.
+//! The CAPSTONE MV/MZ **patched-output** runtime-observation proof.
 //!
-//! UTSUSHI-102 proved that a real launched Chromium observes the *fixture*
-//! runtime output at evidence tier E1. This node extends that proof to the
+//! Prior work proved that a real launched Chromium observes the *fixture*
+//! runtime output at evidence tier E1. This extends that proof to the
 //! **PATCHED** output: the fixture AFTER a Kaifuu patch-back swapped the
 //! localized (translated) text in. It answers the load-bearing question — does
 //! Utsushi observe the TRANSLATION a real launched render produced, provably the
@@ -11,17 +11,17 @@
 //! ## What it consumes
 //!
 //! ```text
-//! patched runtime trace   UTSUSHI-006 browser trace probe over the PATCHED   -> observation
+//! patched runtime trace browser trace probe over the PATCHED -> observation
 //!                         fixture (real Chromium --dump-dom)
-//! Kaifuu PatchResult      the patch-back result envelope; its outputHash      -> patch attestation
+//! Kaifuu PatchResult the patch-back result envelope; its outputHash -> patch attestation
 //!                         attests the patched (translated) output by HASH
-//! alpha proof manifest    the UTSUSHI-102 runtime-observation proof — the     -> baseline continuity
+//! alpha proof manifest the runtime-observation proof — the -> baseline continuity
 //!                         just-merged alpha capstone this node builds on
 //! ```
 //!
 //! ## Why a static read cannot forge the patched E1 observation
 //!
-//! Every strict-proof guarantee UTSUSHI-102 established is RE-DERIVED here over
+//! Every strict-proof guarantee established is RE-DERIVED here over
 //! the patched trace (not trusted from any self-declared verdict): the observed
 //! translation must be live-DOM, E1-tiered, fully bridge-linked, and — the crux
 //! — ABSENT from every consumed static input (the patched fixture bytes, the
@@ -41,12 +41,12 @@
 //!   pre-patch `sourceText` of its unit. The observation is provably the
 //!   translated (patched) content, not the original the game shipped with.
 //! - **Alpha continuity:** the consumed alpha proof must itself be a proven E1
-//!   UTSUSHI-102 runtime-observation proof, and the patched observation must
+//!   runtime-observation proof, and the patched observation must
 //!   cover the same bridge units it proved reachable.
 //!
 //! ## Honest residual
 //!
-//! Like UTSUSHI-102, the guarantee is against LIFTING the observed text from a
+//! Like the alpha proof, the guarantee is against LIFTING the observed text from a
 //! consumed static input; an operator who hand-authors the correct translation
 //! into a fabricated trace is out of scope (that is fabrication, not a static
 //! read). The `outputHash` provenance link is what makes even a correctly-typed
@@ -81,7 +81,7 @@ const EVIDENCE_TIER_E1: &str = "E1";
 
 // --- Check identifiers (stable, machine-readable) -------------------------
 
-/// The patched trace passes the full UTSUSHI-102 E1 strict proof (live-DOM,
+/// The patched trace passes the full E1 strict proof (live-DOM
 /// E1-tiered, fully linked, observed text absent from every static input).
 pub const CHECK_BASE_RUNTIME_OBSERVATION_PROVEN_E1: &str = "base_runtime_observation_proven_e1";
 /// The consumed Kaifuu PatchResult reports a passed patch-back.
@@ -94,7 +94,7 @@ pub const CHECK_PATCHED_OUTPUT_MATCHES_PATCH_RESULT_HASH: &str =
 /// sourceText of its unit — the observation is the translation, not the original.
 pub const CHECK_OBSERVED_IS_TRANSLATION_NOT_PREPATCH_SOURCE: &str =
     "observed_text_is_translation_not_prepatch_source";
-/// The consumed alpha proof is a proven E1 UTSUSHI-102 runtime-observation proof.
+/// The consumed alpha proof is a proven E1 runtime-observation proof.
 pub const CHECK_ALPHA_PROOF_BASELINE_E1: &str = "alpha_proof_manifest_baseline_e1_proven";
 /// The patched observation covers the same bridge units the alpha proof proved.
 pub const CHECK_PATCHED_UNITS_MATCH_ALPHA_PROOF_UNITS: &str =
@@ -102,11 +102,11 @@ pub const CHECK_PATCHED_UNITS_MATCH_ALPHA_PROOF_UNITS: &str =
 
 /// Inputs to the patched-runtime-observation proof.
 pub struct PatchedRuntimeProofInputs<'a> {
-    /// UTSUSHI-006 browser trace-probe output over the PATCHED fixture launch.
+    /// browser trace-probe output over the PATCHED fixture launch.
     pub patched_runtime_trace: &'a Value,
     /// The Kaifuu `PatchResult` whose `outputHash` attests the patched output.
     pub patch_result: &'a Value,
-    /// The UTSUSHI-102 runtime-observation proof consumed as the alpha baseline.
+    /// The runtime-observation proof consumed as the alpha baseline.
     pub alpha_proof_manifest: &'a Value,
     /// Concatenated bytes of EVERY consumed static input: the patched fixture
     /// source, the PatchResult JSON, and the alpha proof JSON. The E1 crux
@@ -115,7 +115,7 @@ pub struct PatchedRuntimeProofInputs<'a> {
     /// Pre-patch `sourceText` per unit key, read from the patched fixture's
     /// `source.json`. The observation must differ from these originals.
     pub prepatch_source_texts: &'a BTreeMap<String, String>,
-    /// Optional UTSUSHI-065 screenshot capture evidence.
+    /// Optional screenshot capture evidence.
     pub screenshot_evidence: Option<&'a Value>,
 }
 
@@ -225,7 +225,7 @@ pub fn canonical_patched_output_hash(units: &BTreeMap<String, String>) -> String
     format!("sha256:{}", sha256_hex(&bytes))
 }
 
-/// The bridge unit ids the alpha (UTSUSHI-102) proof recorded as observed.
+/// The bridge unit ids the alpha () proof recorded as observed.
 fn alpha_proof_bridge_units(alpha: &Value) -> Vec<String> {
     alpha
         .get("observation")
@@ -258,7 +258,7 @@ fn patched_trace_bridge_units(trace: &Value) -> Vec<String> {
 
 /// Build the MV/MZ **patched-output** runtime-observation proof manifest.
 ///
-/// Re-derives the full UTSUSHI-102 E1 verdict over the patched trace (a static
+/// Re-derives the full E1 verdict over the patched trace (a static
 /// read cannot forge it), then layers the patch attestation: the observation
 /// reproduces the `PatchResult`-attested output by hash, differs from the
 /// pre-patch source, and continues the alpha proof's bridge units. The verdict
@@ -268,7 +268,7 @@ pub fn build_mvmz_patched_runtime_proof(
 ) -> UtsushiResult<Value> {
     let trace = inputs.patched_runtime_trace;
 
-    // 1. RE-DERIVE the full UTSUSHI-102 E1 strict proof over the patched trace.
+    // 1. RE-DERIVE the full E1 strict proof over the patched trace.
     //    This carries the live-DOM / E1 / full-linkage / observed-text-absent-
     //    from-every-static-input crux. We do NOT trust any self-declared
     //    verdict; we recompute it from the patched trace + combined static bytes.
@@ -379,7 +379,7 @@ pub fn build_mvmz_patched_runtime_proof(
         },
     });
 
-    // 5. The consumed alpha proof is a proven E1 UTSUSHI-102 proof.
+    // 5. The consumed alpha proof is a proven E1 proof.
     let alpha_kind = inputs
         .alpha_proof_manifest
         .get("proofKind")
@@ -627,7 +627,7 @@ mod tests {
         })
     }
 
-    /// A minimal proven E1 UTSUSHI-102 alpha proof manifest with the same three
+    /// A minimal proven E1 alpha proof manifest with the same three
     /// top-level bridge units the patched trace covers.
     fn alpha_proof() -> Value {
         json!({

@@ -1,11 +1,11 @@
 //! Engine-port implementation for the synthetic fixture runtime
-//! (UTSUSHI-224 sinks-bridge migration).
+//! ( sinks-bridge migration).
 //!
 //! [`FixtureEnginePort`] is the substrate alpha gate's "≥1 non-test
 //! consumer of each sink subsystem outside `utsushi-core`". It owns a
 //! [`FixtureObservationSinks`] container (text + frame buffers shaped as
 //! `Mutex<Vec<_>>`) and pushes one [`TextLine`] emission per
-//! [`EnginePort::observe`] call until the fixture source is exhausted,
+//! [`EnginePort::observe`] call until the fixture source is exhausted
 //! followed by one [`FrameArtifact`] emission for capture/smoke operations.
 //! Trace stays text-only so it never reports a frame artifact URI without the
 //! capture stage materializing that file. The runner drains the sinks per tick
@@ -34,7 +34,7 @@ use utsushi_core::{
 /// Schema-version literal advertised on the legacy
 /// `observationHookEvents[]` JSON envelopes the fixture still produces in
 /// its `RuntimeAdapter` reports. The `utsushi-core` Rust type that owned
-/// this constant was deleted by UTSUSHI-224; the fixture re-exports the
+/// this constant was deleted by; the fixture re-exports the
 /// literal so cli/test consumers can still pin against it.
 pub const FIXTURE_OBSERVATION_HOOK_SCHEMA_VERSION: &str = "0.1.0-alpha";
 
@@ -263,7 +263,7 @@ impl FixturePortInspectState {
     }
 
     /// Materialize the shared fixture-port state contract as a
-    /// [`StateTree`]. Paths are stable public names under `port.*` /
+    /// [`StateTree`]. Paths are stable public names under `port.*`
     /// `metadata.*` so golden baselines and live snapshots share the
     /// same schema.
     pub fn to_state_tree(&self) -> Result<StateTree, SnapshotError> {
@@ -374,7 +374,7 @@ impl FixtureEnginePort {
     /// fixture wires the four required lifecycle capabilities; the
     /// port-driven `Snapshot` / `DeterministicReplay` capabilities (which
     /// `utsushi-reallive` wires) are declared dev-`Pending` — Inspectable
-    /// is wired for snapshot-restore conformance, but Restorable /
+    /// is wired for snapshot-restore conformance, but Restorable
     /// deterministic replay are not, so this remains a dev gap rather than
     /// a permanent one-engine hole.
     pub const PARITY_PROFILE: EngineParityProfile = EngineParityProfile {

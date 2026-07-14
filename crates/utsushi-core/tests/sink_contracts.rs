@@ -1,4 +1,4 @@
-//! Cross-sink integration tests for the UTSUSHI-022 substrate.
+//! Cross-sink integration tests for the substrate.
 //!
 //! These tests run from outside the `utsushi-core` crate and exercise the
 //! public sink API together with the published

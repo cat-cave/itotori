@@ -1,4 +1,4 @@
-//! UTSUSHI-220 synthetic acceptance for `replay_scene`.
+//! Synthetic acceptance for `replay_scene`.
 //!
 //! Builds a one-scene Seen.txt envelope in memory: a Shift-JIS textout
 //! run `"hello"` followed by a `msg.pause` command. Drives
@@ -18,7 +18,7 @@ use utsushi_reallive::{
 const SLOT_BYTE_LEN: usize = 8;
 /// Total directory length (10 000 slots × 8 bytes).
 const DIRECTORY_BYTE_LEN: usize = 80_000;
-/// Scene-blob header byte length (mirrors UTSUSHI-202 constant).
+/// Scene-blob header byte length (mirrors constant).
 const SCENE_HEADER_BYTE_LEN: usize = 0x1d0;
 
 /// Build a single-scene Seen.txt envelope carrying `scene_bytes` as the
@@ -43,8 +43,8 @@ fn build_scene_blob() -> Vec<u8> {
     //   - Textout `"hello"` (5 bytes, lead byte 'h' = 0x68, which is in
     //     the printable ASCII range → lexer classifies it as a
     //     non-Shift-JIS textout run).
-    //   - `msg.pause` command (8 bytes: `0x23` + module_type +
-    //     module_id + opcode_lo + opcode_hi + arg_count + overload +
+    //   - `msg.pause` command (8 bytes: `0x23` + module_type
+    //     module_id + opcode_lo + opcode_hi + arg_count + overload
     //     trailing 0 byte).
     //
     // The bytecode lexer requires textout lead bytes to be in the
@@ -149,7 +149,7 @@ fn compress_avg32(input: &[u8]) -> Vec<u8> {
     while i < input.len() {
         let chunk_end = (i + 8).min(input.len());
         let chunk = &input[i..chunk_end];
-        // Flag byte: every set bit means "literal byte from src,
+        // Flag byte: every set bit means "literal byte from src
         // shifted by mask_idx". Use `0xff` (all bits set) so every
         // following byte is a literal; the decompressor's flag-byte
         // walker matches bit-by-bit.

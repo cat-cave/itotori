@@ -1,6 +1,6 @@
 //! Registry-routed replay capability for the CLI replay commands.
 //!
-//! The registry name remains the stable CLI-facing reallive adapter name,
+//! The registry name remains the stable CLI-facing reallive adapter name
 //! but the implementation now constructs a request-bound
 //! EnginePortAdapter<UtsushiReallivePort>. The generic adapter owns the
 //! Runner lifecycle; this module only translates the port's retained review

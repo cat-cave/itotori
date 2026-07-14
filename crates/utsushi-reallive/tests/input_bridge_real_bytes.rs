@@ -159,7 +159,7 @@ fn capture_then_replay_reproduces_identical_real_scene_playthrough() {
             corpus.label,
         );
 
-        // (4) USER PATH: the SAME committing events, fed through a browser /
+        // (4) USER PATH: the SAME committing events, fed through a browser
         // dashboard event queue, drive the runtime to the identical
         // playthrough — proving the live user-input source reaches the runtime.
         let queue = UserInputQueue::new();

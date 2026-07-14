@@ -1,4 +1,4 @@
-//! UTSUSHI-208 — RealLive bytecode VM (fetch / decode / dispatch /
+//! RealLive bytecode VM (fetch / decode / dispatch
 //! advance) with longop yield + substrate snapshot.
 //!
 //! The VM owns the central RealLive execution state: the active
@@ -97,7 +97,7 @@ pub const DEFAULT_STEP_BUDGET: u32 = 100_000;
 /// Hard ceiling on the call-stack depth. Pinned at the rlvm-documented
 /// 1024 frames so a runaway `gosub`/`farcall` chain produces a typed
 /// [`VmError::StackOverflow`] instead of an unbounded `Vec` growth.
-/// Acceptance criterion #4 in UTSUSHI-210 — exercised by the
+/// Acceptance criterion #4 in — exercised by the
 /// `stack_overflow_after_limit_pushes` test.
 pub const STACK_DEPTH_LIMIT: usize = 1024;
 
@@ -161,7 +161,7 @@ pub struct Scene {
     pub id: SceneId,
     /// Pre-decoded bytecode elements. The byte_offset/byte_len ranges
     /// partition the underlying decompressed bytes exactly (per the
-    /// UTSUSHI-204 invariant).
+    /// invariant).
     pub elements: Vec<BytecodeElement>,
     /// Total decompressed bytecode length. Used as the terminating pc
     /// value — a `pc` equal to `bytecode_len` indicates "past the end
@@ -222,7 +222,7 @@ impl Scene {
     ///
     /// Entrypoint `0` is the scene start (`pc 0`) whether or not an
     /// explicit [`BytecodeElement::MetaEntrypoint`] marker names it — this
-    /// matches the RealLive convention that a bare `farcall(scene)` /
+    /// matches the RealLive convention that a bare `farcall(scene)`
     /// `jump(scene)` (no explicit entrypoint arg) enters at the top. A
     /// non-zero entrypoint resolves through the marker map; an index with
     /// no marker returns `None` so the VM surfaces a typed
@@ -327,7 +327,7 @@ pub enum StepOutcome {
         longop_id: LongOpId,
     },
     /// The pc reached the end of the current scene. The VM does not
-    /// advance further until the caller resets it (Jump / FarCall /
+    /// advance further until the caller resets it (Jump / FarCall
     /// restore).
     EndOfScene {
         /// Scene id that hit end-of-scene.
@@ -342,7 +342,7 @@ pub enum StepOutcome {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StepManyOutcome {
     /// The VM completed `executed` steps and stopped because it
-    /// reached one of the terminating outcomes (`EndOfScene`,
+    /// reached one of the terminating outcomes (`EndOfScene`
     /// `Halted`, `Suspended` with no progress).
     Completed {
         /// Number of `Advanced` / `LongOpResumed` steps observed
@@ -361,7 +361,7 @@ pub enum StepManyOutcome {
 }
 
 /// Typed observation produced by a successful step. Engine ports that
-/// own a `SinkSet` (UTSUSHI-209+) will lift these into typed text /
+/// own a `SinkSet` (+) will lift these into typed text
 /// frame events.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VmEvent {
@@ -370,13 +370,13 @@ pub enum VmEvent {
     /// audit-grep can pin which elements were touched without
     /// re-walking the bytecode.
     Advanced {
-        /// Variant name of the consumed element (`meta_line`,
+        /// Variant name of the consumed element (`meta_line`
         /// `command`, etc.).
         element: &'static str,
     },
     /// A textout run was consumed. The VM has no sinks yet (per the
-    /// UTSUSHI-208 scope) so the raw bytes are surfaced for the
-    /// follow-up UTSUSHI-209 / UTSUSHI-220 sinks to consume.
+    /// scope) so the raw bytes are surfaced for the
+    /// follow-up sinks to consume.
     Textout {
         /// Raw bytes of the textout run (Shift-JIS bytes; UTF-8
         /// conversion is the sink's responsibility).
@@ -439,7 +439,7 @@ pub enum VmWarning {
         reason: String,
     },
     /// Selection-option marker was observed. The full selection-runtime
-    /// landing is a follow-up node; the VM records the marker as a
+    /// landing is a later work; the VM records the marker as a
     /// warning so the audit trail names the unimplemented surface
     /// instead of silently advancing past it.
     SelectionRuntimeUnimplemented {
@@ -455,7 +455,7 @@ pub enum VmWarning {
     /// the warning names the op family + reason so the audit trail can
     /// pin the call site.
     RlopArgsInvalid {
-        /// Stable string naming the op family (e.g. `"goto"`,
+        /// Stable string naming the op family (e.g. `"goto"`
         /// `"farcall_with_args"`).
         op: &'static str,
         /// Short reason ("expected 1 Int arg, got 0", etc.).
@@ -621,7 +621,7 @@ impl From<BytecodeDecodeError> for VmError {
 
 /// The RealLive bytecode VM.
 ///
-/// Owns the active scene/pc, the call stack, the typed variable banks,
+/// Owns the active scene/pc, the call stack, the typed variable banks
 /// and the suspended-longop queue. Stepping is driven by
 /// [`Vm::step`] / [`Vm::step_many`]; the substrate
 /// [`Inspectable`] / [`Restorable`] impls round-trip the whole VM
@@ -644,7 +644,7 @@ pub struct Vm {
     /// boundary.
     post_pc: u32,
     /// One-shot deterministic spin-break request. When `true`, the NEXT
-    /// executed control-transfer command (goto / goto_if / goto_on /
+    /// executed control-transfer command (goto / goto_if / goto_on
     /// gosub / farcall — anything whose [`DispatchOutcome`] would move the
     /// pc off the natural fall-through) is FORCED to fall through to its
     /// post-command pc instead, and the flag is cleared. Set by the
@@ -663,13 +663,13 @@ pub struct Vm {
 // Object-button bindings belong to the graphics runtime, not VM state.
 // Historical note: `objButtonOpts` (`obj (1,{81,82},1064)`) recovers each
 // selectable on-screen button (0-based `number` + button-group `group`)
-// for a matching `select_objbtn` (`sel (0,2,4)`). Screen coordinates /
+// for a matching `select_objbtn` (`sel (0,2,4)`). Screen coordinates
 // g00 refs come from separate `objSetPos` / `objOfFile` ops; the render
 // layer lays buttons out from that real count (see
 // `SpatialChoiceWindow` / `ImageGridChoiceWindow`).
 
 impl Vm {
-    /// Construct a VM positioned at `(scene, pc)` with empty banks /
+    /// Construct a VM positioned at `(scene, pc)` with empty banks
     /// stack / longop queue.
     pub fn new(scene: SceneId, pc: u32) -> Self {
         Self {
@@ -686,14 +686,14 @@ impl Vm {
         }
     }
 
-    /// Fold the FULL deterministic control state — active `(scene, pc)`,
+    /// Fold the FULL deterministic control state — active `(scene, pc)`
     /// the call-stack shape (each frame's return scene / pc / kind), the
     /// complete mutable memory ([`VarBanks::fingerprint`]), and the
     /// suspended-longop queue (length + each longop's id / private
     /// state) — into a 64-bit fingerprint.
     ///
     /// Two VMs sharing a `control_fingerprint` will, under the same store
-    /// / registry / (deterministic) scheduler, execute an IDENTICAL next
+    /// registry / (deterministic) scheduler, execute an IDENTICAL next
     /// step: stepping is a pure function of exactly this state. The
     /// branch-following driver uses the fingerprint to PROVE a spin — a
     /// walk that returns to an already-seen fingerprint is in a
@@ -818,7 +818,7 @@ impl Vm {
 
     /// Append a fail-soft warning to the VM's diagnostic buffer.
     ///
-    /// Per-module RLOperation tables (UTSUSHI-209, UTSUSHI-210, …) use
+    /// Per-module RLOperation tables (, …) use
     /// this to surface a typed observation (e.g. a malformed argument
     /// list) without panicking and without inventing a separate side
     /// channel. The warning is drained by [`Vm::take_warnings`] at the
@@ -935,7 +935,7 @@ impl Vm {
                         .longop_queue
                         .pop_front()
                         .expect("front_mut returned Some, pop_front must succeed");
-                    // UTSUSHI-211: typed resume side-effect. If the
+                    // typed resume side-effect. If the
                     // popped longop carries a SelectLongOp payload
                     // (magic byte = SELECT_PRIVATE_STATE_MAGIC), decode
                     // the chosen index and write it into the store
@@ -945,7 +945,7 @@ impl Vm {
                     // private state before signalling Ready; this path
                     // is the substrate-coupled translation from
                     // "scheduler said Ready" to "VM observed a chosen
-                    // index". The audit-focus pin for UTSUSHI-211
+                    // index". The audit-focus pin for
                     // ("Longop coupling — the longop must use the
                     // substrate scheduler, not a private wait loop")
                     // lands here.
@@ -1104,7 +1104,7 @@ impl Vm {
                         && module_id == crate::rlop::SEL_MODULE_ID
                     {
                         // Text `select` / `select_s` / `select_w` carry option
-                        // labels in the trailing `{ ... }` SelectElement block.
+                        // labels in the trailing `{... }` SelectElement block.
                         // Object-button ops (`select_objbtn` / cancel / setup)
                         // carry their payload in the `(...)` arg list instead
                         // (e.g. `select_objbtn(group)`) with no option block —
@@ -1128,7 +1128,7 @@ impl Vm {
                         // `goto_case` / `gosub_case`: the decoded `(disc)`
                         // list left the discriminant in `args[0]`. Evaluate
                         // each case's match EXPRESSION against it (in real VM
-                        // memory context) and pre-resolve the matched target,
+                        // memory context) and pre-resolve the matched target
                         // reproducing the exact `value == case_i` selection.
                         // The op receives the single resolved target (or an
                         // empty arg list ⇒ no case matched and no default `()`
@@ -1207,7 +1207,7 @@ impl Vm {
     /// used to pass `&[]`, so control-flow opcodes never received their
     /// targets and a real scene's `goto` was silently walked linearly
     /// instead of jumping. Each comma-separated argument value is decoded
-    /// to its real `ExprValue` — expression-shaped data is parsed +
+    /// to its real `ExprValue` — expression-shaped data is parsed
     /// evaluated to an `Int`, string / complex data is carried as
     /// `Bytes`.
     ///
@@ -1267,7 +1267,7 @@ impl Vm {
     /// evaluating each case's match expression against the discriminant.
     ///
     /// Faithful to rlvm `GotoCaseElement`: the cases are checked in order;
-    /// a non-empty case `(expr)` matches when `eval(expr) == discriminant`,
+    /// a non-empty case `(expr)` matches when `eval(expr) == discriminant`
     /// and the default case (the empty `()`, recorded as an empty
     /// expression) matches unconditionally. Returns the absolute target pc
     /// of the first matching case, or `None` when no case matches and no
@@ -1363,7 +1363,7 @@ impl Vm {
         }
     }
 
-    /// Rewrite a cross-scene [`DispatchOutcome::JumpToScene`] /
+    /// Rewrite a cross-scene [`DispatchOutcome::JumpToScene`]
     /// [`DispatchOutcome::FarCallToScene`] into a concrete
     /// [`DispatchOutcome::Jump`] / [`DispatchOutcome::FarCall`] by
     /// resolving the target scene's entrypoint against `scenes`. Every
@@ -1382,8 +1382,8 @@ impl Vm {
     /// FALL-THROUGH (`Advance` to `post_pc`) instead of a transfer or a
     /// spurious `SceneNotFound` / `EntrypointNotFound`:
     ///
-    /// - **The null scene (`scene 0`)** — RealLive scene ids are 1-based,
-    ///   so scene `0` is the "no scene" sentinel. A `farcall(0, …)` /
+    /// - **The null scene (`scene 0`)** — RealLive scene ids are 1-based
+    ///   so scene `0` is the "no scene" sentinel. A `farcall(0, …)`
     ///   `jump(0)` is the game's own guarded "nothing to call" path (Kanon
     ///   emits `farcall(0, 10)`); the engine takes no transfer. This is
     ///   the "absent-but-guarded" case: the guard is intrinsic (the target
@@ -1466,7 +1466,7 @@ impl Vm {
 
     /// Apply a [`DispatchOutcome`] from a command-dispatch path. The
     /// `post_pc` argument is the byte offset immediately past the
-    /// dispatching command — used by `Advance` / `Subroutine` /
+    /// dispatching command — used by `Advance` / `Subroutine`
     /// `FarCall`.
     fn apply_outcome(&mut self, outcome: &DispatchOutcome, post_pc: u32) -> Result<(), VmError> {
         match outcome {
@@ -1483,7 +1483,7 @@ impl Vm {
                 // These must be resolved into Jump / FarCall against the
                 // scene store by `resolve_scene_outcome` before reaching
                 // here. If one arrives (e.g. via the public
-                // `apply_dispatch_outcome` test seam, which has no store),
+                // `apply_dispatch_outcome` test seam, which has no store)
                 // refuse it rather than silently mis-transferring.
                 Err(VmError::UnexpectedDispatchOutcome {
                     scene: self.scene,
@@ -1625,13 +1625,13 @@ fn is_system_return_sentinel(target_scene: SceneId, entrypoint: u16) -> bool {
 }
 
 /// Whether a [`DispatchOutcome`] moves the pc OFF the natural
-/// fall-through by transferring control (an intra- or cross-scene jump,
+/// fall-through by transferring control (an intra- or cross-scene jump
 /// a `gosub`, or a `farcall`) — the outcomes the deterministic
 /// spin-break model may rewrite to a fall-through.
 ///
 /// Stack-UNWINDING outcomes (`Return` / `ReturnFromCall`) are excluded:
 /// rewriting a `ret` into a fall-through would leave an orphaned frame
-/// on the stack and desynchronise the call depth. `Advance` / `Yield` /
+/// on the stack and desynchronise the call depth. `Advance` / `Yield`
 /// `Halt` are not transfers.
 fn outcome_is_pc_moving_transfer(outcome: &DispatchOutcome) -> bool {
     matches!(
@@ -1661,9 +1661,7 @@ impl std::fmt::Display for ExpressionWrapError {
     }
 }
 
-// ---------------------------------------------------------------------
 // Substrate Inspectable / Restorable
-// ---------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct StackFrameWire {
@@ -2015,7 +2013,7 @@ mod tests {
         b
     }
 
-    /// Encode a `farcall(return_scene, return_pc, target_scene,
+    /// Encode a `farcall(return_scene, return_pc, target_scene
     /// target_pc)` command (module 0/1, opcode 0x0020) with four
     /// int-literal arguments.
     fn farcall_command(rs: i32, rp: i32, ts: i32, tp: i32) -> Vec<u8> {
@@ -2331,7 +2329,7 @@ mod tests {
     /// Soundness of the event-flag spin-break: `control_fingerprint`
     /// MUST fold the suspended-longop queue. `step()` polls the queue
     /// head before fetching the next element, so on a wait/event-poll
-    /// loop the next step is NOT a pure function of (scene, pc, stack,
+    /// loop the next step is NOT a pure function of (scene, pc, stack
     /// banks) alone when the queue is non-empty and evolving. If the
     /// queue were omitted, a back-edge that returns to the same
     /// (scene, pc) with a DIFFERENT — still-evolving — queue would
@@ -2339,7 +2337,7 @@ mod tests {
     /// spin, silently rewriting a real transfer to `Advance`.
     ///
     /// This asserts:
-    ///  1. false-positive guard — an evolving queue (same scene/pc/
+    ///  1. false-positive guard — an evolving queue (same scene/pc
     ///     stack/banks) yields a DISTINCT fingerprint each step, so the
     ///     spin-break cannot fire on it; and
     ///  2. the spin-break is not weakened — a genuine pure-state repeat
@@ -2351,7 +2349,7 @@ mod tests {
         // Baseline: empty queue.
         let fp_empty = vm.control_fingerprint();
 
-        // Enqueuing a longop changes the fingerprint (queue length +
+        // Enqueuing a longop changes the fingerprint (queue length
         // contents are folded), even though scene/pc/stack/banks are
         // unchanged.
         vm.enqueue_longop(LongOp::new(LongOpId(1), vec![0x00]));

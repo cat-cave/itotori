@@ -1,13 +1,13 @@
-//! Branch-coverage EXPORT artifact (UTSUSHI-070).
+//! Branch-coverage EXPORT artifact ().
 //!
 //! A DATA-ONLY job that reshapes two already-derived surfaces into a single
 //! STABLE export artifact for alpha reports + offline review:
 //!
-//! - the UTSUSHI-009
+//! - the
 //!   [`BranchCoverageReadModel`](super::branch_coverage::BranchCoverageReadModel)
-//!   (per-branch coverage view: branch ids, route-map ids, observed trace ids,
+//!   (per-branch coverage view: branch ids, route-map ids, observed trace ids
 //!   reachable text counts, coverage status, and the per-status summary), and
-//! - the UTSUSHI-069
+//! - the
 //!   [`BranchCoverageGapReport`](super::branch_coverage_gaps::BranchCoverageGapReport)
 //!   gap findings (unvisited-reachable / ambiguous-route, with severity).
 //!
@@ -27,7 +27,7 @@
 //!   the per-status coverage summary.
 //! - `gaps.summary` — the gap COUNTS (per kind + per severity + uncovered
 //!   reachable text). Always present.
-//! - `gaps.findings` — the detailed gap findings from UTSUSHI-069. Present only
+//! - `gaps.findings` — the detailed gap findings from. Present only
 //!   when the caller opts in (`include_findings`); the export "can include gap
 //!   findings" without being forced to.
 
@@ -46,7 +46,7 @@ pub const BRANCH_COVERAGE_EXPORT_SCHEMA_VERSION: &str = "utsushi.branch_coverage
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BranchCoverageExportGaps {
-    /// Schema id of the UTSUSHI-069 gap-findings report the counts came from.
+    /// Schema id of the gap-findings report the counts came from.
     pub schema_version: String,
     /// Per-kind / per-severity gap counts. Always present, even with no
     /// findings requested — the counts stand alone.
@@ -65,16 +65,16 @@ pub struct BranchCoverageExport {
     /// INJECTED generated-at metadata — never read from the clock.
     pub generated_at: String,
     pub adapter_id: String,
-    /// The full UTSUSHI-009 read model (records + coverage summary).
+    /// The full read model (records + coverage summary).
     pub read_model: BranchCoverageReadModel,
-    /// The UTSUSHI-069 gap counts (+ optional findings).
+    /// The gap counts (+ optional findings).
     pub gaps: BranchCoverageExportGaps,
 }
 
 /// Export-construction error.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BranchCoverageExportError {
-    /// The injected `generated_at` is empty, too long, or carries whitespace /
+    /// The injected `generated_at` is empty, too long, or carries whitespace
     /// control characters (which would corrupt the JSON + Markdown outputs).
     GeneratedAtMalformed { value: String },
 }
@@ -103,7 +103,7 @@ fn validate_generated_at(value: &str) -> bool {
 
 /// Build the export artifact from a read model and an INJECTED generated-at.
 ///
-/// Emits the UTSUSHI-069 gap report internally (pure), hoists its counts into
+/// Emits the gap report internally (pure), hoists its counts into
 /// `gaps.summary`, and includes the detailed `gaps.findings` only when
 /// `include_findings` is set. Deterministic: the same read model + the same
 /// `generated_at` always produces the same artifact.

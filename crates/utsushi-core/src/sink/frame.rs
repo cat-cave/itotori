@@ -42,7 +42,7 @@ pub trait FrameArtifactSink: Send + Sync {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FrameArtifact {
-    /// Stable per-run identifier; UTSUSHI-029 uses this for portability
+    /// Stable per-run identifier; uses this for portability
     /// assertions.
     pub frame_id: String,
     /// Always `>= E2`. `E3` is allowed for replay-review adapters; `E4` is
@@ -60,7 +60,7 @@ pub struct FrameArtifact {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub height: Option<u32>,
     /// Monotonic frame number from the runtime clock. Required so frame
-    /// streams stay deterministic; UTSUSHI-021 owns the clock.
+    /// streams stay deterministic; owns the clock.
     pub frame_index: u64,
     /// Bridge-unit linkage (the bridge unit this capture was taken for).
     /// Optional because not every capture corresponds to a specific

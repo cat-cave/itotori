@@ -49,9 +49,7 @@ impl TextSurfaceSink for CollectingTextSink {
     }
 }
 
-// -------------------------------------------------------------------------
 // Asset packages
-// -------------------------------------------------------------------------
 
 /// An [`AssetPackage`] that resolves nothing — for structural / synthetic
 /// tests where no g00 art is composited (an empty graphics stack renders a
@@ -167,7 +165,6 @@ impl AssetPackage for OnDiskG00Package {
     }
 }
 
-// -------------------------------------------------------------------------
 // Synthetic Seen.txt envelope
 //
 // One-scene envelope whose scene 1 emits a Shift-JIS textout run
@@ -175,7 +172,6 @@ impl AssetPackage for OnDiskG00Package {
 // `replay_scene_synthetic` builder so the engine-port smoke can drive REAL
 // decoded text (through the whole scene-index → header → AVG32-inflate →
 // bytecode-decode → dispatch chain) without a game corpus.
-// -------------------------------------------------------------------------
 
 const SLOT_BYTE_LEN: usize = 8;
 const DIRECTORY_BYTE_LEN: usize = 80_000;
@@ -225,9 +221,9 @@ fn multi_message_bytecode(count: usize) -> Vec<u8> {
     // proves each playthrough frame renders a DIFFERENT play-order message
     // rather than repeating message #0 (a glyph-coverage-independent check).
     const MESSAGES: [&[[u8; 2]]; 3] = [
-        &[[0x82, 0xa0]],                             // あ      (len 1)
-        &[[0x82, 0xa9], [0x82, 0xab]],               // かき    (len 2)
-        &[[0x82, 0xb3], [0x82, 0xb5], [0x82, 0xb7]], // さしす  (len 3)
+        &[[0x82, 0xa0]],                             // あ (len 1)
+        &[[0x82, 0xa9], [0x82, 0xab]],               // かき (len 2)
+        &[[0x82, 0xb3], [0x82, 0xb5], [0x82, 0xb7]], // さしす (len 3)
     ];
     assert!(
         count >= 1 && count <= MESSAGES.len(),

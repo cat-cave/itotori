@@ -220,7 +220,7 @@ impl UtsushiRpgmakerMvPort {
 
     /// Cross-engine capability parity profile (UTSUSHI parity gate). This
     /// static event-stream port wires the four required lifecycle
-    /// capabilities and declares the port-driven `Snapshot` /
+    /// capabilities and declares the port-driven `Snapshot`
     /// `DeterministicReplay` capabilities (wired by `utsushi-reallive`) as
     /// dev-`Pending`: the port is inspect-only (implements `Inspectable` but
     /// not `Restorable`) and drives no live JS runtime, so full snapshot

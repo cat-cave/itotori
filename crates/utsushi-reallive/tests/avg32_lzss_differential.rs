@@ -9,7 +9,7 @@
 //!   (`utsushi-reallive/src/decompressor.rs`), the runtime decoder the port
 //!   replays scene bytecode through.
 //!
-//! The two share **no code** — the workspace "format-identical,
+//! The two share **no code** — the workspace "format-identical
 //! implementation-separate" rule keeps them independent so a regression in one
 //! cannot poison the other. That independence is exactly why they can silently
 //! DISAGREE on an edge case (a literal run, a back-reference distance/length
@@ -17,7 +17,7 @@
 //! would mean the runtime replays *different bytes* than were extracted and
 //! translated — a correctness hole invisible to either crate's own unit tests.
 //!
-//! This test builds a shared corpus of AVG32 streams with a **third,
+//! This test builds a shared corpus of AVG32 streams with a **third
 //! independent** encoder (neither decoder's own test encoder) and decodes each
 //! stream through BOTH decoders, asserting:
 //!
@@ -44,7 +44,7 @@ enum Token {
     /// A single literal byte.
     Literal(u8),
     /// A back-reference. `back_distance` is the window distance
-    /// (`count >> 4`), `run_length` is the emitted length (`(count & 0x0f) +
+    /// (`count >> 4`), `run_length` is the emitted length (`(count & 0x0f)
     /// 2`). The encoder does NOT validate these — malformed values are emitted
     /// verbatim so the decoders' error paths can be compared.
     BackRef { back_distance: u16, run_length: u8 },
@@ -57,7 +57,7 @@ enum Token {
 /// decoders against a neutral producer rather than against one side's inverse.
 ///
 /// Layout (matches the documented AVG32 format both decoders decode):
-/// * 8-byte preamble carrying the LE `u32` pair `(compressed_size,
+/// * 8-byte preamble carrying the LE `u32` pair `(compressed_size
 ///   uncompressed_size)` XOR'd against mask slots `0..8`. The decoders *skip*
 ///   the preamble (they only advance the mask index to 8), so its content is
 ///   cosmetic — we still write a truthful pair for realism.
@@ -156,7 +156,7 @@ fn utsushi_category(err: &utsushi_reallive::DecompressError) -> ErrCategory {
 ///   disagree on whether the stream is decodable) — hard failure.
 fn assert_decoders_agree(label: &str, compressed: &[u8], dst_len: u32) -> Option<Vec<u8>> {
     let kaifuu = kaifuu_reallive::decompress_avg32(compressed, dst_len as usize);
-    // Runtime side: xor2_key = None + compiler_version = 0 => first-level-only,
+    // Runtime side: xor2_key = None + compiler_version = 0 => first-level-only
     // no second-level XOR, no warning — the apples-to-apples codec comparison.
     let utsushi = AvgDecompressor::new().decompress(compressed, dst_len, None, 0);
 
@@ -204,9 +204,7 @@ fn assert_decoders_agree(label: &str, compressed: &[u8], dst_len: u32) -> Option
     }
 }
 
-// ---------------------------------------------------------------------------
 // Valid-stream coverage: literals, back-references, boundaries.
-// ---------------------------------------------------------------------------
 
 #[test]
 fn differential_pure_literals() {
@@ -395,9 +393,7 @@ fn differential_mixed_realistic_pattern() {
     assert_eq!(out, expected);
 }
 
-// ---------------------------------------------------------------------------
 // Malformed-but-bounded coverage: both decoders must reject the same way.
-// ---------------------------------------------------------------------------
 
 #[test]
 fn differential_empty_input() {
@@ -470,11 +466,9 @@ fn differential_truncated_mid_backref_token() {
     assert_decoders_agree("truncated_mid_backref", &compressed, 16);
 }
 
-// ---------------------------------------------------------------------------
 // Corpus tamper-evidence: pin a SHA-256 over the full synthetic corpus so a
 // silent change to the shared inputs (which would weaken the differential) is
 // caught. No copyrighted bytes are committed — every byte here is synthetic.
-// ---------------------------------------------------------------------------
 
 /// The complete synthetic corpus, regenerated deterministically. Each entry is
 /// `(label, compressed_stream, declared_uncompressed_size)`.
@@ -522,13 +516,11 @@ fn synthetic_corpus_hash_is_pinned() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // Real-bytes differential (env-gated, STRICT — runs only in the periodic
 // ground-truth oracle where corpora are staged). Decodes every populated
 // scene's real compressed bytecode through BOTH decoders and asserts the
 // runtime and extract paths inflate to identical bytes. No raw copyrighted
 // bytes are committed; the corpus is supplied at runtime via env var.
-// ---------------------------------------------------------------------------
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (+ ITOTORI_REAL_GAME_ROOT_2)"]

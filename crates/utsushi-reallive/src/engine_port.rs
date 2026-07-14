@@ -1,7 +1,7 @@
-//! The real RealLive [`EnginePort`] — drives the substrate text, frame,
+//! The real RealLive [`EnginePort`] — drives the substrate text, frame
 //! AND audio sinks from a SINGLE real-bytes RealLive replay.
 //!
-//! This replaces the former UTSUSHI-200 inert scaffold (every lifecycle
+//! This replaces the former inert scaffold (every lifecycle
 //! method returned a typed `unimplemented` marker and the port held an
 //! EMPTY [`SinkSet`]). That scaffold was the substrate-honesty gap the
 //! `docs/audits/substrate-honesty.md` re-grounding flagged (F.2 / I.1):
@@ -108,13 +108,11 @@ const DEFAULT_PLAYTHROUGH_MAX: usize = 8;
 /// rendered through-line spans scene A → scene B.
 const PLAYTHROUGH_MAX_SCENES: usize = 4;
 
-// -------------------------------------------------------------------------
 // Production sink collectors
 //
 // The port's live `SinkSet` holds these three buffering sinks. The runner
 // drains them per tick (text → frame → audio). They ARE the substrate sink
 // contracts (`&self` emit + drain, interior mutability), not a bypass.
-// -------------------------------------------------------------------------
 
 #[derive(Debug, Default)]
 struct PortTextSink {
@@ -225,7 +223,7 @@ pub struct UtsushiReallivePort {
     assets: Arc<dyn AssetPackage>,
     entry_scene: SceneId,
     /// The `#WINDOW.000` message-window layout read from the game's
-    /// `Gameexe.ini` — drives the dialogue box position/colour/alpha/
+    /// `Gameexe.ini` — drives the dialogue box position/colour/alpha
     /// font-size/insets + the `NAME_MOD` name box. Config-driven, not
     /// hardcoded.
     window_config: MessageWindowConfig,
@@ -301,7 +299,7 @@ impl std::fmt::Debug for UtsushiReallivePort {
 }
 
 impl UtsushiReallivePort {
-    /// Audit-grade manifest declaration. `Snapshot` +
+    /// Audit-grade manifest declaration. `Snapshot`
     /// `DeterministicReplay` are declared because the port DRIVES them (see
     /// [`Self::launch`]) — not advertised-but-inert.
     pub const MANIFEST: PortManifest = PortManifest {
@@ -336,7 +334,7 @@ impl UtsushiReallivePort {
 
     /// Cross-engine capability parity profile (UTSUSHI parity gate). The
     /// RealLive port is the interpreter-backed reference: it OWNS the VM and
-    /// wires every REQUIRED capability plus the port-driven `Snapshot` /
+    /// wires every REQUIRED capability plus the port-driven `Snapshot`
     /// `DeterministicReplay` capabilities. The one contract capability it does
     /// not wire is `Jump` (jump-to-moment): the `EnginePort::jump` optional
     /// lifecycle method is on the reference VM's roadmap but not yet driven
@@ -489,7 +487,7 @@ impl UtsushiReallivePort {
     /// `self.screen_size` to the port frame. A speaker + `NAME_MOD=1`
     /// yields a separate name box; narration renders none.
     ///
-    /// - The PRIVATE frame (real decoded g00 + dialogue) is written,
+    /// - The PRIVATE frame (real decoded g00 + dialogue) is written
     ///   uncommitted and hashable, under `<root>/private-full/`.
     /// - The PUBLIC frame composites a copyright-safe edge-outline of the
     ///   g00 (scene structure/layout, no source pixels) with the SAME
@@ -556,7 +554,7 @@ impl EnginePort for UtsushiReallivePort {
         }
 
         // --- 1. ONE real MULTI-SCENE replay observation: follow the real
-        //         RealLive scene-dispatch ACROSS scene boundaries (jump /
+        //         RealLive scene-dispatch ACROSS scene boundaries (jump
         //         farcall / return into another SEEN present in the store) to
         //         recover a bounded, continuous play-order stream that spans
         //         ≥1 scene boundary — the play-loop a player walks THROUGH the
@@ -629,7 +627,7 @@ impl EnginePort for UtsushiReallivePort {
         //         through-line that CROSSES the scene boundary: leading
         //         messages of scene A over A's background, then leading
         //         messages of scene B over B's OWN background, in dispatch
-        //         order — each message to its OWN E2 frame (its speaker /
+        //         order — each message to its OWN E2 frame (its speaker
         //         name-box + word-wrap). Per-scene capping guarantees a long
         //         scene A cannot consume the whole budget before scene B
         //         appears (so the render actually crosses the boundary); the

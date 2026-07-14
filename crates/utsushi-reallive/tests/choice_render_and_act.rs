@@ -3,13 +3,13 @@
 //! a selection screen and (b) that ACTING on option K drives the branch for
 //! option K.
 //!
-//! The scene is a hand-laid synthetic select-block (fast + deterministic,
+//! The scene is a hand-laid synthetic select-block (fast + deterministic
 //! CI-friendly) that exercises the REAL seams, not a shortcut:
 //!
 //! * The `select` command is framed exactly as RealLive's SelectElement
 //!   (`{ option \n option }`), so the VM's real
 //!   [`extract_select_choice_texts`] path — the one a real Seen.txt would
-//!   hit — pulls the option labels out of the `{ ... }` block and feeds them
+//!   hit — pulls the option labels out of the `{... }` block and feeds them
 //!   to the choice op, which emits them through the substrate text sink
 //!   (tagged `text_surface = "choice:<idx>"`).
 //! * The choice resolves through the substrate
@@ -19,7 +19,7 @@
 //!
 //! RENDER proof: the observed choice-option lines lay out into a
 //! [`ChoiceWindow`] inside the Gameexe sel-window box; the frame lists ALL
-//! options and paints > 0 glyph pixels (a not-rendered regression fails),
+//! options and paints > 0 glyph pixels (a not-rendered regression fails)
 //! and choosing option 0 vs 1 highlights DIFFERENT rows (distinct pixels).
 //!
 //! ACT proof: `branch_following_lines(Fixed(0))` vs `Fixed(1)` yield
@@ -48,7 +48,7 @@ const OPCODE_GOTO: u16 = 0;
 const OPCODE_GOTO_ON: u16 = 3;
 
 /// A `module_sel.select` command framed as a real SelectElement:
-/// `{ opt0 \n opt1 }`. The option labels live in the `{ ... }` block, NOT a
+/// `{ opt0 \n opt1 }`. The option labels live in the `{... }` block, NOT a
 /// `(...)` arg list — exactly the framing `extract_select_choice_texts`
 /// walks on real bytes.
 fn select_command(offset: usize, options: &[&str]) -> (BytecodeElement, usize) {
@@ -90,7 +90,7 @@ fn select_command(offset: usize, options: &[&str]) -> (BytecodeElement, usize) {
     )
 }
 
-/// `goto_on($store, { t0, t1, ... })` — indexed jump keyed by the store
+/// `goto_on($store, { t0, t1,... })` — indexed jump keyed by the store
 /// register (the resolved choice index). The `($\xC8)` value expression
 /// lives in the `(...)` arg list; the jump targets are carried in
 /// `goto_targets` (the trailing pointers the decoder frames outside `(...)`).
@@ -185,10 +185,10 @@ const BRANCH_1_MSG: &str = "The loud road roars to meet you.";
 /// Build the two-branch select scene + the Shift-JIS textout offset set.
 ///
 /// Layout (offsets computed from element lengths):
-///   @0    select { LEFT \n RIGHT }
-///   @s    goto_on($store, { t0, t1 })
-///   @t0   textout BRANCH_0 ; goto END
-///   @t1   textout BRANCH_1 ; goto END
+///   @0 select { LEFT \n RIGHT }
+///   @s goto_on($store, { t0, t1 })
+///   @t0 textout BRANCH_0; goto END
+///   @t1 textout BRANCH_1; goto END
 fn build_choice_engine() -> ReplayEngine {
     let mut offset = 0usize;
     let (select_el, select_len) = select_command(offset, &[OPTION_LEFT, OPTION_RIGHT]);
@@ -276,13 +276,11 @@ fn observed_branch_messages(engine: &ReplayEngine, policy: HeadlessChoicePolicy)
         .collect()
 }
 
-// -------------------------------------------------------------------------
 // ACT: selecting option K drives branch K
-// -------------------------------------------------------------------------
 
 #[test]
 fn extract_select_choice_texts_pulls_both_options_from_the_block() {
-    // The raw SelectElement `{ ... }` framing yields exactly the two option
+    // The raw SelectElement `{... }` framing yields exactly the two option
     // labels — the seam a real Seen.txt hits.
     let (select_el, _) = select_command(0, &[OPTION_LEFT, OPTION_RIGHT]);
     let BytecodeElement::Command { raw_bytes, .. } = &select_el else {
@@ -325,9 +323,7 @@ fn selecting_option_k_drives_branch_k_not_always_first() {
     );
 }
 
-// -------------------------------------------------------------------------
 // RENDER: the select prompt renders all options as a selection screen
-// -------------------------------------------------------------------------
 
 fn sel_config() -> (MessageWindowConfig, (u32, u32)) {
     // A real-shaped Gameexe: DEFAULT_SEL_WINDOW picks the #WINDOW set that

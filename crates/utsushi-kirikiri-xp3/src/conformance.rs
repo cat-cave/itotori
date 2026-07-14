@@ -1,4 +1,4 @@
-//! UTSUSHI-181 — `utsushi-kirikiri-xp3` **conformance manifest**.
+//! `utsushi-kirikiri-xp3` **conformance manifest**.
 //!
 //! Builds the engine-neutral [`utsushi_core::port::impl_map::ImplementationMap`]
 //! that wires this port through the substrate facade: it declares the engine
@@ -10,7 +10,7 @@
 //! The map validates + promotes via
 //! [`utsushi_core::port::impl_map::validate_and_promote`], and links to the
 //! port's [`crate::KirikiriXp3EnginePort::MANIFEST`] via
-//! [`utsushi_core::port::impl_map::validate_against_manifest`] (port-id match +
+//! [`utsushi_core::port::impl_map::validate_against_manifest`] (port-id match
 //! engine-family manifest-prefix match). Together those two checks are what
 //! "the port is registered through the conformance manifest" means here —
 //! there is no global mutable port registry; registration is the manifest ⇄

@@ -1,4 +1,4 @@
-//! UTSUSHI-203 — AVG32 LZSS + XOR scene-bytecode decompressor.
+//! AVG32 LZSS + XOR scene-bytecode decompressor.
 //!
 //! Decodes the AVG32-shape compressed bytecode payload that sits after
 //! the [`crate::SceneHeader`] in every populated RealLive scene blob.
@@ -7,7 +7,7 @@
 //! 1. **First-level XOR** — every consumed byte of the compressed stream
 //!    is XOR'd against a fixed, public 256-byte mask
 //!    ([`AVG32_XOR_MASK`]) indexed by a counter that increments per
-//!    consumed byte (the first 8 mask slots are spent on the preamble,
+//!    consumed byte (the first 8 mask slots are spent on the preamble
 //!    so the first flag byte XOR'es against `mask[8]`).
 //! 2. **LZSS** — rlvm-shape sliding-window decompression with 16-bit
 //!    flag bytes (LSB first), a 4096-byte addressable window, and a
@@ -85,7 +85,7 @@ pub const AVG32_LZSS_MAX_BACK_DISTANCE: usize = 4095;
 ///
 /// Public numeric constant; the same fixed array used by every RealLive
 /// title since AVG32. Reproduced from rlvm
-/// `src/libreallive/compression.cc::xor_mask[256]` (BSD-3-Clause,
+/// `src/libreallive/compression.cc::xor_mask[256]` (BSD-3-Clause
 /// Peter Jolly, 2006). A documented numeric constant is not a
 /// license-protected expression.
 pub const AVG32_XOR_MASK: [u8; AVG32_XOR_MASK_LEN] = [
@@ -249,7 +249,7 @@ impl AvgDecompressor {
     /// Decompress an AVG32-shape compressed bytecode payload.
     ///
     /// `compressed` is the on-disk bytes pointed at by
-    /// `SceneHeader::bytecode_offset .. + bytecode_compressed_size`.
+    /// `SceneHeader::bytecode_offset.. + bytecode_compressed_size`.
     /// `uncompressed_size` is the typed `bytecode_uncompressed_size`
     /// field from the scene header (the decoder uses it to short-circuit
     /// the LZSS loop on the documented `dst.len() < uncompressed_size`
@@ -300,7 +300,7 @@ impl AvgDecompressor {
         // declare up to 0xFFFF_FFFF and force a ~4 GiB allocation before a single byte
         // is decoded. Each source byte expands to at most `AVG32_LZSS_MAX_RUN` output
         // bytes, so `compressed.len() * AVG32_LZSS_MAX_RUN` is a hard upper bound on the
-        // real output: when the declared size is legitimate this preallocates it in full,
+        // real output: when the declared size is legitimate this preallocates it in full
         // and when it is implausible we cap the up-front reservation. The decode loop
         // below grows `dst` incrementally, so this never affects output correctness — a
         // genuine shortfall still surfaces as `UnexpectedEndOfStream`.
@@ -789,7 +789,7 @@ mod tests {
     }
 
     /// Synthetic case #8: edge case at end-of-stream. The final token
-    /// must take the dst to exactly `uncompressed_size` — no overshoot,
+    /// must take the dst to exactly `uncompressed_size` — no overshoot
     /// no undershoot.
     #[test]
     fn synthetic_end_of_stream_exact_fit_round_trip() {

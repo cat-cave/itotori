@@ -1,9 +1,9 @@
-//! UTSUSHI-209 real-bytes integration test for the `module_msg`
+//! Real-bytes integration test for the `module_msg`
 //! text/messaging RLOperation family.
 //!
-//! Loads Sweetie HD scene 1 through the full UTSUSHI-201 → UTSUSHI-204
+//! Loads Sweetie HD scene 1 through the full →
 //! decode chain, mounts the [`utsushi_reallive::register_text_rlops`]
-//! registry on top of the UTSUSHI-208 VM, and steps for ≥100
+//! registry on top of the VM, and steps for ≥100
 //! `step_many` iterations. The acceptance criterion is:
 //!
 //! - At least one [`TextLine`] fires through the
@@ -75,7 +75,7 @@ fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
     let bytes = fs::read(&seen_path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
 
-    // UTSUSHI-201 -> UTSUSHI-202 -> UTSUSHI-203 -> UTSUSHI-204
+    // > -> ->
     let index = RealSceneIndex::parse(&bytes)
         .expect("Sweetie HD Seen.txt must parse through the UTSUSHI-201 directory parser");
     let entry = index
@@ -109,7 +109,7 @@ fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
         .expect("Sweetie HD scene 1 must lex into a BytecodeElement stream");
     let element_count = elements.len();
 
-    // --- UTSUSHI-209 surface under test ----------------------------
+    // --- surface under test ----------------------------
     let sink = Arc::new(CollectingSink::default());
     let runtime = Arc::new(MsgRuntime::with_sink(
         Arc::clone(&sink) as Arc<dyn TextSurfaceSink>
@@ -120,7 +120,7 @@ fn reallive_real_bytes_scene_one_emits_at_least_one_text_line_through_sink() {
 
     // Pre-walk: surface the per-variant histogram so CI logs show the
     // density of the elements the VM walked. This is the same shape
-    // the UTSUSHI-204 real-bytes test uses.
+    // the real-bytes test uses.
     let mut counts: std::collections::BTreeMap<&'static str, usize> =
         std::collections::BTreeMap::new();
     let mut shift_jis_textout_offsets: std::collections::HashSet<u32> =

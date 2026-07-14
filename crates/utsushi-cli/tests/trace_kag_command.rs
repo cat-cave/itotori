@@ -1,4 +1,4 @@
-//! UTSUSHI-008: end-to-end test for the `utsushi trace-kag` subcommand.
+//! End-to-end test for the `utsushi trace-kag` subcommand.
 //!
 //! Drives the actual CLI binary against the committed synthetic plaintext KAG
 //! fixture and asserts the emitted command trace matches the committed golden

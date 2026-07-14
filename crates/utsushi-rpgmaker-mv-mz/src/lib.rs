@@ -1,4 +1,4 @@
-//! UTSUSHI-179 — `utsushi-rpgmaker-mv-mz` engine-port scaffold.
+//! `utsushi-rpgmaker-mv-mz` engine-port scaffold.
 //!
 //! # The browser IS the runtime
 //!
@@ -23,11 +23,11 @@
 //!
 //! # Clean-room provenance
 //!
-//! - No RPG Maker engine source (rpg_core / rpg_managers / rpg_objects /
-//!   rpg_scenes / rpg_sprites / rpg_windows, MV or MZ) is vendored,
+//! - No RPG Maker engine source (rpg_core / rpg_managers / rpg_objects
+//!   rpg_scenes / rpg_sprites / rpg_windows, MV or MZ) is vendored
 //!   linked, or mechanically translated into this crate.
 //! - No decompiled or copyrighted engine bytes, no game project bytes, no
-//!   NW.js binary are embedded. The event-command *code numbers* (101,
+//!   NW.js binary are embedded. The event-command *code numbers* (101
 //!   401, 102, …) are public, widely-documented MV/MZ engine constants —
 //!   and this crate does not even use them, because it dispatches nothing.
 //! - The from-scratch posture is carried as reachable data
@@ -150,7 +150,7 @@ impl RpgMakerMvMzEnginePort {
     /// Audit-grade manifest declaration. Mirrors [`EnginePort::MANIFEST`]
     /// for direct introspection without going through the trait.
     ///
-    /// Tier ceilings pin trace-only / E1: this port proves the *family +
+    /// Tier ceilings pin trace-only / E1: this port proves the *family
     /// clean-room* contract for the browser/NW.js path, not on-screen
     /// fidelity (that evidence is produced by the browser/NW.js runtime
     /// adapter, not by this Rust port).
@@ -182,7 +182,7 @@ impl RpgMakerMvMzEnginePort {
     /// delegation scaffold wires the four required lifecycle capabilities and
     /// declares the port-driven `Snapshot` / `DeterministicReplay`
     /// capabilities (wired by `utsushi-reallive`) as dev-`Pending`: they are
-    /// driven by the browser/NW.js JS runtime the delegation adapter targets,
+    /// driven by the browser/NW.js JS runtime the delegation adapter targets
     /// which is not yet wired here. They are NOT `NotApplicable` — the
     /// delegated runtime can snapshot/replay — so the parity gate keeps them
     /// visible as a dev gap, never a permanent hole.

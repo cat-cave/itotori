@@ -2,7 +2,7 @@
 //!
 //! Authors MINIMAL, feature-complete SYNTHETIC RealLive archives that
 //! instantiate every component of the RealLive engine family in the coverage
-//! manifest (`fixtures/synthetic/coverage-manifest.v0.json`) EXACTLY ONCE,
+//! manifest (`fixtures/synthetic/coverage-manifest.v0.json`) EXACTLY ONCE
 //! and drives them through the REAL decode / framing / cipher / patchback
 //! pipeline — the same pipeline the ~30-minute real-bytes lanes use — proving
 //! they decode/replay/patch CLEAN just like the real archives, orders of
@@ -14,15 +14,15 @@
 //! hand-guessed: every scene is assembled with the SAME encoders the real
 //! pipeline uses —
 //!
-//! - the real AVG32 re-compressor ([`kaifuu_reallive::compress_avg32_literal`]),
+//! - the real AVG32 re-compressor ([`kaifuu_reallive::compress_avg32_literal`])
 //! - the documented `0x1d0`-byte [`kaifuu_reallive::SceneHeader`] framing and
-//!   the 10,000-slot `Seen.txt` envelope ([`kaifuu_reallive::parse_archive`]),
+//!   the 10,000-slot `Seen.txt` envelope ([`kaifuu_reallive::parse_archive`])
 //! - the real `xor_2` second-level segment transform (recovered + decrypted by
-//!   [`kaifuu_reallive::recover_and_decrypt_archive`]),
+//!   [`kaifuu_reallive::recover_and_decrypt_archive`])
 //! - the real `module_sel` select-block framing + the NextString-safe choice
-//!   encoder ([`kaifuu_reallive::encode_choice_option_next_string_safe`]),
+//!   encoder ([`kaifuu_reallive::encode_choice_option_next_string_safe`])
 //! - the real bundle-driven patchback
-//!   ([`kaifuu_reallive::apply_translated_bundle`]),
+//!   ([`kaifuu_reallive::apply_translated_bundle`])
 //!
 //! — and each one is then CONFIRMED to decode back through the REAL decoders
 //! ([`kaifuu_reallive::parse_real_bytecode`] and utsushi's independent
@@ -50,9 +50,7 @@ use utsushi_reallive::{
 #[path = "support/g00_synthetic.rs"]
 mod g00_synthetic;
 
-// ---------------------------------------------------------------------------
 // Manifest access.
-// ---------------------------------------------------------------------------
 
 fn manifest_value() -> Value {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -90,9 +88,7 @@ fn manifest_string_list(manifest: &Value, group: &str) -> Vec<String> {
         .collect()
 }
 
-// ---------------------------------------------------------------------------
 // Synthetic RealLive archive builder — built FROM the real encoders.
-// ---------------------------------------------------------------------------
 
 /// A planted 16-byte `xor_2` key used to STAGE the encrypted-at-rest xor2
 /// corpus. Recovery is done by the REAL cross-scene known-plaintext recovery
@@ -147,7 +143,7 @@ const SYNTH_CHOICE_1: &[u8] = b"Right path homeward";
 /// element form + every manifest `(module_id, opcode)` tuple exactly once.
 ///
 /// Layout: `pad` MetaLine(0) triples (so the `xor_2` segment `[256, 513)` is
-/// uniform across scenes and the real known-plaintext key recovery is exact),
+/// uniform across scenes and the real known-plaintext key recovery is exact)
 /// then the feature-complete body.
 fn build_content_bytecode(tuples: &[(u8, u16)]) -> Vec<u8> {
     let mut out: Vec<u8> = Vec::new();
@@ -158,7 +154,6 @@ fn build_content_bytecode(tuples: &[(u8, u16)]) -> Vec<u8> {
         push_meta_line(&mut out, 0); // 0a 00 00
     }
 
-    // ---- element forms: Meta / Comma / Textout / Expression ----
     push_meta_line(&mut out, 1); // MetaLine
     out.extend_from_slice(&[0x21, 0x00, 0x00]); // MetaEntrypoint
     out.extend_from_slice(&[0x40, 0x00, 0x00]); // MetaKidoku
@@ -171,7 +166,6 @@ fn build_content_bytecode(tuples: &[(u8, u16)]) -> Vec<u8> {
     // kaifuu-decoded corpus snippets in `decoder_snippets`, kept OUT of the
     // archived scene so utsushi's independent decoder reaches clean parity.
 
-    // ---- element forms only reachable via specific commands ----
     push_cmd(&mut out, 1, 3, 3); //  CharacterTextDisplay (msg opcode 3)
     push_cmd(&mut out, 1, 4, 17); // End (sys opcode 17)
     push_cmd(&mut out, 1, 11, 0); // SetVariable (mem)
@@ -182,10 +176,8 @@ fn build_content_bytecode(tuples: &[(u8, u16)]) -> Vec<u8> {
     push_cmd(&mut out, 1, 1, 20); // Return (jmp 20..=22)
     push_cmd(&mut out, 1, 1, 30); // Jump (jmp default)
 
-    // ---- Choice: a real module_sel select-block ({ ... }) ----
     push_select_block(&mut out, &[SYNTH_CHOICE_0, SYNTH_CHOICE_1]);
 
-    // ---- every manifest (module_id, opcode) tuple, module_type = 1 ----
     // module_type 1 keeps every tuple on the ordinary function-call framing
     // (no select/goto special-casing), so each is exactly an 8-byte header the
     // classifier maps to a recognised semantic family.
@@ -316,7 +308,7 @@ fn build_corpus(label: &'static str, tuples: &[(u8, u16)], xor2: bool) -> Synthe
     }
 }
 
-/// Decompress + (for xor2) recover-and-decrypt every scene of a corpus,
+/// Decompress + (for xor2) recover-and-decrypt every scene of a corpus
 /// returning `(scene_id, plaintext_bytecode)` pairs — exactly the staging the
 /// real decoder-parity harness performs.
 fn staged_scenes(corpus: &SyntheticCorpus) -> Vec<(u16, Vec<u8>)> {
@@ -349,9 +341,7 @@ fn staged_scenes(corpus: &SyntheticCorpus) -> Vec<(u16, Vec<u8>)> {
         .collect()
 }
 
-// ---------------------------------------------------------------------------
 // Tests.
-// ---------------------------------------------------------------------------
 
 /// The synthetic archives decode CLEAN (zero-unknown) through BOTH the kaifuu
 /// decompiler and utsushi's independent decoder, and their framing round-trips
@@ -735,7 +725,7 @@ fn synthetic_archive_patchback_round_trips_choice_and_length_changing() {
         "synthetic scene must surface dialogue"
     );
 
-    // Length-CHANGING dialogue + NextString-hostile choices (contain `[`, `(`,
+    // Length-CHANGING dialogue + NextString-hostile choices (contain `[`, `(`
     // `)`, `!`, `,`, `-`, `.` — all outside the unquoted NextString set, so a
     // naive splice would corrupt the select block; the real encoder quotes it).
     let long_dialogue =
@@ -885,7 +875,7 @@ fn synthetic_archives_carry_no_copyrighted_bytes() {
     }
 }
 
-/// Every `g00_type` in the manifest is instantiated: the RAW_BGR (type 0),
+/// Every `g00_type` in the manifest is instantiated: the RAW_BGR (type 0)
 /// PALETTED_LZSS (type 1) and REGIONED_LZSS (type 2) synthetic images all
 /// decode through the REAL `decode_g00` to exactly their declared type. The
 /// type-1 paletted-LZSS fixture was added by
@@ -904,7 +894,7 @@ fn synthetic_g00_images_instantiate_every_g00_type() {
     let (t1, _) = decode_g00(&g00_synthetic::synthetic_type1_g00())
         .expect("synthetic type-1 (paletted LZSS) G00 decodes through decode_g00");
     assert_eq!(t1.g00_type, G00Type::PalettedLzss);
-    // The paletted decode actually ran: the first pixel is palette entry 0,
+    // The paletted decode actually ran: the first pixel is palette entry 0
     // whose on-disk BGRA (0x11,0x22,0x33,0xff) reorders to RGBA
     // (0x33,0x22,0x11,0xff). A skipped B/R reorder or a broken paletted decode
     // changes these bytes, so a mutation there is now caught.

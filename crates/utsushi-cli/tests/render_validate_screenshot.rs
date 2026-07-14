@@ -1,4 +1,4 @@
-//! ALPHA-006b — the `render-validate` screenshot real-bytes test lived here.
+//! The `render-validate` screenshot real-bytes test lived here.
 //!
 //! It was a hollow planted-sentinel proof: it patched the all-binary
 //! bootstrap scene 1 with a HARD-CODED en-US sentinel and then asserted the

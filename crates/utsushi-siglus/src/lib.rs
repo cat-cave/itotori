@@ -1,9 +1,9 @@
-//! UTSUSHI-147 cross-engine substrate-alignment scaffold — `utsushi-siglus`
+//! Cross-engine substrate-alignment scaffold — `utsushi-siglus`
 //! engine-port crate.
 //!
 //! This crate is the **second non-synthetic engine-port scaffold** in the
 //! Utsushi workspace. Its sole load-bearing role at the alpha gate is to
-//! prove the UTSUSHI-120 substrate facade is engine-extensible *beyond*
+//! prove the substrate facade is engine-extensible *beyond*
 //! the [`utsushi-reallive`](../utsushi_reallive/index.html) port: every
 //! substrate symbol this crate consumes is sourced through
 //! `utsushi_core::substrate::*`, and the
@@ -108,7 +108,7 @@ const PORT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// no dedicated `Unimplemented` variant, so the scaffold uses the
 /// `Lifecycle { stage, message }` shape with this constant message.
 ///
-/// When a successor node replaces a lifecycle body with real behaviour,
+/// When a successor node replaces a lifecycle body with real behaviour
 /// it MUST stop returning this value — the orchestration-level audit
 /// looks for this exact string as a "still a scaffold" marker.
 pub const UNIMPLEMENTED_MESSAGE: &str = "unimplemented: utsushi-siglus scaffold";
@@ -146,7 +146,7 @@ pub const SIGLUS_RS_RESEARCH_ANCHOR_BOUNDARY_STATEMENT: &str = concat!(
 /// are introduced here.
 #[derive(Clone, Default)]
 pub struct UtsushiSiglusPortContext {
-    /// Asset package the eventual implementation will read `Scene.pck`,
+    /// Asset package the eventual implementation will read `Scene.pck`
     /// `Resource.txt`, and per-namespace `Gameexe.dat` entries from.
     /// Wrapped in `Option<Arc<dyn AssetPackage>>` so the scaffold can be
     /// constructed without any I/O wiring; once real behaviour lands the
@@ -231,11 +231,11 @@ impl UtsushiSiglusPort {
 
     /// Cross-engine capability parity profile (UTSUSHI parity gate). This
     /// substrate-alignment scaffold wires no runtime capability yet. The four
-    /// lifecycle capabilities and the port-driven `Snapshot` /
+    /// lifecycle capabilities and the port-driven `Snapshot`
     /// `DeterministicReplay` capabilities (wired by `utsushi-reallive`) are
     /// explicit dev-`Pending` declarations: the future behavioural Siglus VM
     /// will drive them, but this scaffold does not. They are NOT
-    /// `NotApplicable` — a Siglus interpreter can launch, observe, capture,
+    /// `NotApplicable` — a Siglus interpreter can launch, observe, capture
     /// shut down, snapshot, and replay — so the parity gate keeps them visible
     /// as dev gaps, never permanent holes.
     pub const PARITY_PROFILE: EngineParityProfile = EngineParityProfile {

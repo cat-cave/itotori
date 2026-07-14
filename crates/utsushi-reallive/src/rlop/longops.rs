@@ -1,7 +1,7 @@
-//! UTSUSHI-209 — typed `LongOp` wrappers for the text / messaging
+//! Typed `LongOp` wrappers for the text / messaging
 //! family.
 //!
-//! The UTSUSHI-208 [`crate::rlop::LongOp`] carrier is a tuple of
+//! The [`crate::rlop::LongOp`] carrier is a tuple of
 //! `(LongOpId, private_state: Vec<u8>)`. The private state is opaque to
 //! the VM and to the snapshot store; per-family typed wrappers encode
 //! and decode the state into the carrier so the runtime scheduler (and
@@ -13,7 +13,7 @@
 //! - [`PauseLongOp`] — produced by `msg.pause`. Private state carries
 //!   a single byte indicating whether the user has dismissed the
 //!   pause. The test scheduler ([`AfterNPollsScheduler`] from
-//!   UTSUSHI-208) flips the byte after `N` polls; the runtime
+//!   ) flips the byte after `N` polls; the runtime
 //!   scheduler will wire user input later.
 //! - [`SelectLongOp`] — produced by `msg.select`. Private state
 //!   carries the byte-length-prefixed choices plus a chosen-index
@@ -227,7 +227,7 @@ impl SelectLongOp {
     }
 
     /// Encode the wrapper into a [`LongOp`] carrier. Payload shape:
-    /// `[SELECT_PRIVATE_STATE_MAGIC, chosen_lo, chosen_hi, count_lo,
+    /// `[SELECT_PRIVATE_STATE_MAGIC, chosen_lo, chosen_hi, count_lo
     /// count_hi, [<len_lo, len_hi, body...>; count]]`. The magic byte
     /// lets the snapshot path round-trip the shape without ambiguity.
     pub fn into_longop(self) -> LongOp {
@@ -623,7 +623,7 @@ pub enum HeadlessChoicePolicy {
 }
 
 impl HeadlessChoicePolicy {
-    /// Resolve the chosen index for a prompt of `choice_count` options,
+    /// Resolve the chosen index for a prompt of `choice_count` options
     /// advancing any internal cursor. Always returns an in-range index
     /// (or `0` for an empty prompt).
     ///

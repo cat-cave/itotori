@@ -1,33 +1,33 @@
-//! UTSUSHI-210 — control-flow RLOperation family (`module_jmp`).
+//! Control-flow RLOperation family (`module_jmp`).
 //!
 //! Implements the subset of rlvm's `module_jmp.cc` that drives scene
 //! navigation: unconditional / conditional / indexed jumps, intra-scene
 //! and cross-scene subroutine calls, paired returns, the `select` long-op
 //! yield, and a hard halt. The registered ops drive scene navigation
-//! through the typed [`DispatchOutcome`] variants pinned in UTSUSHI-208 —
+//! through the typed [`DispatchOutcome`] variants pinned in —
 //! no new direct VM mutation happens in op code.
 //!
 //! # Opcodes covered
 //!
-//! | Op                | Outcome                                |
-//! | ----------------- | -------------------------------------- |
-//! | `goto`            | [`DispatchOutcome::Jump`]              |
-//! | `goto_if`         | `Jump` if `cond != 0`, else `Advance`  |
-//! | `goto_unless`     | `Jump` if `cond == 0`, else `Advance`  |
-//! | `goto_on`         | `Jump` to `table[value]` or `Advance`  |
-//! | `gosub`           | [`DispatchOutcome::Subroutine`]        |
-//! | `gosub_if`        | `Subroutine` if `cond != 0`            |
-//! | `farcall`         | [`DispatchOutcome::FarCall`]           |
-//! | `farcall_with_args` | `FarCall` + intL arg-bank populated  |
-//! | `ret`             | [`DispatchOutcome::Return`]            |
-//! | `rtl`             | [`DispatchOutcome::ReturnFromCall`]    |
-//! | `halt`            | [`DispatchOutcome::Halt`]              |
+//! Op | Outcome
+//! ----------------- | --------------------------------------
+//! `goto` | [`DispatchOutcome::Jump`]
+//! `goto_if` | `Jump` if `cond != 0`, else `Advance`
+//! `goto_unless` | `Jump` if `cond == 0`, else `Advance`
+//! `goto_on` | `Jump` to `table[value]` or `Advance`
+//! `gosub` | [`DispatchOutcome::Subroutine`]
+//! `gosub_if` | `Subroutine` if `cond != 0`
+//! `farcall` | [`DispatchOutcome::FarCall`]
+//! `farcall_with_args` | `FarCall` + intL arg-bank populated
+//! `ret` | [`DispatchOutcome::Return`]
+//! `rtl` | [`DispatchOutcome::ReturnFromCall`]
+//! `halt` | [`DispatchOutcome::Halt`]
 //!
 //! The choice (`select` / `select_s` / `select_w` / `select_objbtn`)
 //! family is **not** a control-flow opcode in RealLive — it lives in
-//! `module_sel` ([`crate::rlop::module_sel`]) at `(module_type=0,
+//! `module_sel` ([`crate::rlop::module_sel`]) at `(module_type=0
 //! module_id=2)`. The speculative `module_jmp` `select` slot that
-//! UTSUSHI-210 introduced was deleted in UTSUSHI-211 per the
+//! introduced was deleted in per the
 //! no-legacy-compat rule.
 //!
 //! # `(module_type, module_id, opcode)` keys
@@ -37,7 +37,7 @@
 //! Module `(0, 0x01)` is the jmp module; the opcode column matches the
 //! integer arguments rlvm registers for the same op. The values are
 //! re-pinned here as `const` so audit tooling can pin "the registry
-//! covers exactly the UTSUSHI-210 opcode set" without spelunking through
+//! covers exactly the opcode set" without spelunking through
 //! the registration helper.
 //!
 //! # Substrate-honesty posture
@@ -50,7 +50,7 @@
 //!   [`crate::vm::Vm::step`] surfaces a typed
 //!   [`crate::vm::VmError::SceneNotFound`] when a `Jump` / `FarCall`
 //!   resolves to a missing scene. This keeps the op layer thin.
-//! - No `unwrap()` clusters in production code. The only `expect` /
+//! - No `unwrap()` clusters in production code. The only `expect`
 //!   `unwrap` references in this module are in the `#[cfg(test)]`
 //!   block.
 
@@ -117,7 +117,7 @@ pub const KEY_RTL: RlopKey = RlopKey::new(MODULE_JMP_TYPE, MODULE_JMP_ID, OPCODE
 /// Key for `halt`.
 pub const KEY_HALT: RlopKey = RlopKey::new(MODULE_JMP_TYPE, MODULE_JMP_ID, OPCODE_HALT);
 
-/// rlvm-documented integer bank used to pass `farcall_with_args` /
+/// rlvm-documented integer bank used to pass `farcall_with_args`
 /// `gosub_with` parameter slots. Pinned at `intL` per
 /// `docs/research/reallive-engine.md` §G — the "local" bank that rlvm's
 /// `gosub_with` lower as a parameter-slot scratch area.
@@ -129,9 +129,7 @@ pub const FARCALL_ARG_BANK: BankId = BankId::IntL;
 /// `LL_PARAMETERS_PER_CALL` heuristic in `stack_frame.cc`.
 pub const FARCALL_ARG_BANK_SLOT_CAP: u16 = 32;
 
-// ---------------------------------------------------------------------
 // Internal arg-validation helpers
-// ---------------------------------------------------------------------
 
 /// Extract a non-negative `u32` pc from an [`ExprValue`]. Returns the
 /// canonical "expected int arg" reason string when the variant is wrong
@@ -169,9 +167,7 @@ fn warn_and_advance(vm: &mut Vm, op: &'static str, reason: String) -> DispatchOu
     DispatchOutcome::Advance
 }
 
-// ---------------------------------------------------------------------
 // goto family
-// ---------------------------------------------------------------------
 
 /// `goto(target_pc)` — unconditional intra-scene jump.
 #[derive(Debug, Clone, Copy, Default)]
@@ -260,7 +256,7 @@ impl RLOperation for GotoUnlessOp {
     }
 }
 
-/// `goto_on(value, [target_0, target_1, ...])` — switch dispatch. Uses
+/// `goto_on(value, [target_0, target_1,...])` — switch dispatch. Uses
 /// `value` as an index into the target table. Out-of-range produces a
 /// fall-through `Advance`; the spec calls this "indexed jump with a
 /// default sink".
@@ -297,16 +293,14 @@ impl RLOperation for GotoOnOp {
     }
 }
 
-// ---------------------------------------------------------------------
 // gosub family
-// ---------------------------------------------------------------------
 
 /// `gosub(return_pc, target_pc)` — push a subroutine frame and jump.
 ///
 /// The `return_pc` is supplied as an explicit arg rather than read from
 /// `vm.pc()` because `vm.pc()` reflects the *pre-command* pc inside
 /// dispatch and the VM does not pass the post-command byte to the op
-/// layer. The dispatcher (a follow-up node) will prepend the
+/// layer. The dispatcher (a later work) will prepend the
 /// computed `pc + cmd.byte_len` as the first arg before invoking this
 /// op; for the synthetic test surface, the test passes it directly.
 #[derive(Debug, Clone, Copy, Default)]
@@ -377,9 +371,7 @@ impl RLOperation for GosubIfOp {
     }
 }
 
-// ---------------------------------------------------------------------
 // farcall family
-// ---------------------------------------------------------------------
 
 /// `farcall(return_scene, return_pc, target_scene, target_pc)` —
 /// cross-scene subroutine.
@@ -428,8 +420,8 @@ impl RLOperation for FarcallOp {
     }
 }
 
-/// `farcall_with_args(return_scene, return_pc, target_scene,
-/// target_pc, arg0, arg1, ...)` — cross-scene call that also populates
+/// `farcall_with_args(return_scene, return_pc, target_scene
+/// target_pc, arg0, arg1,...)` — cross-scene call that also populates
 /// the parameter-slot bank ([`FARCALL_ARG_BANK`], i.e. `intL`) with the
 /// trailing integer args.
 ///
@@ -521,9 +513,7 @@ impl RLOperation for FarcallWithArgsOp {
     }
 }
 
-// ---------------------------------------------------------------------
 // ret / rtl / halt
-// ---------------------------------------------------------------------
 
 /// `ret()` — return from `gosub`.
 #[derive(Debug, Clone, Copy, Default)]
@@ -564,18 +554,16 @@ impl RLOperation for HaltOp {
     }
 }
 
-// ---------------------------------------------------------------------
 // Registry helper
-// ---------------------------------------------------------------------
 
 /// Number of opcodes [`register_control_flow_rlops`] populates. Pinned
-/// so audit tooling can assert "the registry covers the UTSUSHI-210
-/// frontier exactly" without scraping the helper body. UTSUSHI-211
+/// so audit tooling can assert "the registry covers the
+/// frontier exactly" without scraping the helper body.
 /// deleted the speculative `module_jmp` `select` slot — the choice
 /// family lives in [`crate::rlop::module_sel`].
 pub const CONTROL_FLOW_RLOP_COUNT: usize = 11;
 
-/// Populate `registry` with the UTSUSHI-210 control-flow RLOperation
+/// Populate `registry` with the control-flow RLOperation
 /// family. Returns the number of registered ops (matches
 /// [`CONTROL_FLOW_RLOP_COUNT`]).
 ///
@@ -605,16 +593,14 @@ pub fn register_control_flow_rlops(registry: &mut RlopRegistry) -> usize {
     count
 }
 
-// ---------------------------------------------------------------------
 // Real-bytes control-flow numbering + exhaustive-linear-walk registrar
-// ---------------------------------------------------------------------
 
-/// The real `module_jmp` opcode numbering (rlvm `module_jmp.cc`),
+/// The real `module_jmp` opcode numbering (rlvm `module_jmp.cc`)
 /// cross-checked against the `kaifuu-reallive` decompiler's byte-validated
-/// `goto_kind` id sets on Sweetie HD + Kanon. Each entry is `(opcode,
+/// `goto_kind` id sets on Sweetie HD + Kanon. Each entry is `(opcode
 /// semantic name)`.
 ///
-/// This SUPERSEDES the speculative UTSUSHI-210 numbering
+/// This SUPERSEDES the speculative numbering
 /// (`gosub`/`ret`/`farcall`/`rtl` invented at `0x10`/`0x12`/`0x20`/`0x22`):
 /// on the real bytes `gosub` is opcode 5, `ret`/`jump`/`farcall`/`rtl` are
 /// 10..=13, and the `*_with` variants are 16..=19.
@@ -691,9 +677,7 @@ pub fn register_control_flow_linear_walk(registry: &mut RlopRegistry) -> usize {
     registered
 }
 
-// ---------------------------------------------------------------------
 // Real-numbered branch-FOLLOWING control-flow family
-// ---------------------------------------------------------------------
 //
 // This is the counterpart to [`register_control_flow_linear_walk`]: where
 // the linear walk mounts every `module_jmp` opcode as a cataloguing
@@ -702,31 +686,31 @@ pub fn register_control_flow_linear_walk(registry: &mut RlopRegistry) -> usize {
 // EXECUTES its actual control flow — goto/goto_if/goto_unless/goto_on
 // rewrite the pc, gosub/ret push+pop an intra-scene frame, and
 // jump/farcall/rtl transfer across the multi-scene store. Following a
-// branch means the un-taken arms are NOT visited (correct for execution,
+// branch means the un-taken arms are NOT visited (correct for execution
 // vs cataloguing); the linear walk is retained as the exhaustive-coverage
 // check.
 //
 // Arg layout each op observes (the VM decodes the `(...)` list, then
 // APPENDS the trailing goto-family jump-target pointers as `Int` args —
 // see `Vm::dispatch_element`):
-//   goto (0)          : [target]                     (1 target, no arglist)
-//   goto_if (1)       : [cond, target]               ((cond) + 1 target)
-//   goto_unless (2)   : [cond, target]
-//   goto_on (3)       : [value, t0, t1, …]           ((value) + N targets)
-//   goto_case (4)     : [target]                     (VM pre-resolves the
+//   goto (0): [target] (1 target, no arglist)
+//   goto_if (1): [cond, target] ((cond) + 1 target)
+//   goto_unless (2): [cond, target]
+//   goto_on (3): [value, t0, t1, …] ((value) + N targets)
+//   goto_case (4): [target] (VM pre-resolves the
 //                                                      matched case via
 //                                                      Command::goto_case_exprs;
 //                                                      empty ⇒ fall through)
-//   gosub (5)         : [target]                     (return pc from vm.post_pc())
-//   gosub_if (6)      : [cond, target]
-//   ret (10)          : []                            (pop subroutine frame)
-//   jump (11)         : [scene] | [scene, entrypoint] (cross-scene, no return)
-//   farcall (12)      : [scene] | [scene, entrypoint] (cross-scene call)
-//   rtl (13)          : []                            (pop far-call frame)
-//   gosub_with (16)   : [arg0, …, argN, target]       (args + 1 target)
-//   ret_with (17)     : [value]                       (pop subroutine frame)
-//   farcall_with (18) : [scene, entrypoint, arg0, …]  (cross-scene call + args)
-//   rtl_with (19)     : [value]                       (pop far-call frame)
+//   gosub (5): [target] (return pc from vm.post_pc())
+//   gosub_if (6): [cond, target]
+//   ret (10): [] (pop subroutine frame)
+//   jump (11): [scene] | [scene, entrypoint] (cross-scene, no return)
+//   farcall (12): [scene] | [scene, entrypoint] (cross-scene call)
+//   rtl (13): [] (pop far-call frame)
+//   gosub_with (16): [arg0, …, argN, target] (args + 1 target)
+//   ret_with (17): [value] (pop subroutine frame)
+//   farcall_with (18): [scene, entrypoint, arg0, …] (cross-scene call + args)
+//   rtl_with (19): [value] (pop far-call frame)
 
 /// Extract an optional entrypoint index from a cross-scene op's args.
 /// `[scene]` → entrypoint 0 (scene start); `[scene, ep, …]` → `ep`.
@@ -1030,7 +1014,7 @@ impl RLOperation for JmpFarcallWith {
     }
 }
 
-/// `ret()` / `ret_with(value)` — pop a subroutine frame (real opcodes 10 /
+/// `ret()` / `ret_with(value)` — pop a subroutine frame (real opcodes 10
 /// 17). Any `ret_with` return value is not modelled (it affects data, not
 /// control flow).
 #[derive(Debug, Clone, Copy, Default)]
@@ -1041,7 +1025,7 @@ impl RLOperation for JmpRet {
     }
 }
 
-/// `rtl()` / `rtl_with(value)` — pop a far-call frame (real opcodes 13 /
+/// `rtl()` / `rtl_with(value)` — pop a far-call frame (real opcodes 13
 /// 19).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct JmpRtl;
@@ -1051,8 +1035,8 @@ impl RLOperation for JmpRtl {
     }
 }
 
-/// Spill `slots` into the `intL` parameter bank ([`FARCALL_ARG_BANK`]),
-/// bounded by [`FARCALL_ARG_BANK_SLOT_CAP`]. Shared by `gosub_with` /
+/// Spill `slots` into the `intL` parameter bank ([`FARCALL_ARG_BANK`])
+/// bounded by [`FARCALL_ARG_BANK_SLOT_CAP`]. Shared by `gosub_with`
 /// `farcall_with`; bytes-shaped slots surface a typed warning.
 fn populate_arg_bank(vm: &mut Vm, op: &'static str, slots: &[ExprValue]) {
     for (slot_idx, value) in slots.iter().enumerate() {
@@ -1114,7 +1098,7 @@ pub const JMP_BRANCH_OPS: &[(u16, JmpOpFactory)] = &[
 /// linear-walking. Returns the number of `(type, opcode)` keys registered.
 ///
 /// This SUPERSEDES [`register_control_flow_rlops`] (the speculative
-/// UTSUSHI-210 numbering) for the real-bytes execution path; the linear
+/// numbering) for the real-bytes execution path; the linear
 /// walk ([`register_control_flow_linear_walk`]) is retained separately as
 /// the exhaustive-coverage check.
 pub fn register_control_flow_branch_following(registry: &mut RlopRegistry) -> usize {

@@ -39,7 +39,7 @@ pub mod codes {
 /// capability-list validation failure.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EmbedError {
-    /// `EmbedCapability` validation failed (e.g. supported without ceiling,
+    /// `EmbedCapability` validation failed (e.g. supported without ceiling
     /// partial without limitations).
     InvalidCapability {
         capability_id: EmbedCapabilityId,

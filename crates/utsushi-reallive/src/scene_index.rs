@@ -1,8 +1,8 @@
-//! UTSUSHI-201 — Real Seen.txt 10,000-slot directory parser.
+//! Real Seen.txt 10,000-slot directory parser.
 //!
 //! This module is the **utsushi-reallive head** of the runtime parsing
 //! chain. It owns its own parser for the real RealLive `Seen.txt`
-//! envelope: a fixed 10,000-slot directory of `(u32_le byte_offset,
+//! envelope: a fixed 10,000-slot directory of `(u32_le byte_offset
 //! u32_le byte_len)` records followed by scene payloads referenced by
 //! absolute file offsets.
 //!
@@ -11,18 +11,18 @@
 //! **not** shared is the implementation: `utsushi-reallive` does **not**
 //! depend on `kaifuu-reallive` (neither as a Cargo dep nor by re-export).
 //! That separation is the alpha-gate architectural constraint behind
-//! UTSUSHI-201 — every runtime port owns its own parser so a regression
+//! every runtime port owns its own parser so a regression
 //! in one project cannot quietly poison the other.
 //!
 //! # Format
 //!
 //! ```text
-//! +-----------+-----------+----- … -----+-----------+-----------+
-//! | slot 0    | slot 1    |             | slot 9999 | payload   |
-//! | u32 off   | u32 off   |             | u32 off   | bytes …   |
-//! | u32 size  | u32 size  |             | u32 size  |           |
-//! +-----------+-----------+----- … -----+-----------+-----------+
-//! 0x00000000  0x00000008                0x00013878  0x00013880
+//! -----------+-----------+----- … -----+-----------+-----------
+//! slot 0 | slot 1 | | slot 9999 | payload
+//! u32 off | u32 off | | u32 off | bytes …
+//! u32 size | u32 size | | u32 size |
+//! -----------+-----------+----- … -----+-----------+-----------
+//! 0x00000000 0x00000008 0x00013878 0x00013880
 //! ```
 //!
 //! - Bytes `0..80_000` are the directory: 10,000 slots × 8 bytes each.
@@ -112,7 +112,7 @@ pub struct RealSceneIndex {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RealSceneIndexError {
     /// The input bytes are too short to be a real `Seen.txt` envelope
-    /// (either empty, or shorter than the fixed 80,000-byte directory),
+    /// (either empty, or shorter than the fixed 80,000-byte directory)
     /// or a populated slot declares a `(byte_offset, byte_len)` range
     /// that runs past the end of the archive.
     TruncatedScene {

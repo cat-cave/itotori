@@ -1,4 +1,4 @@
-//! Inspectable state and snapshot primitives (UTSUSHI-023).
+//! Inspectable state and snapshot primitives ().
 //!
 //! Engine-neutral substrate for inspectable runtime state and
 //! controlled-playback snapshots. Provides:
@@ -35,12 +35,12 @@
 //! ## Engine-port escape hatch
 //!
 //! Engine ports add their port-specific fields under [`StateNamespace::Port`]
-//! (`port.*`). The substrate pre-declares six namespaces total: `runtime`,
+//! (`port.*`). The substrate pre-declares six namespaces total: `runtime`
 //! `replay`, `bridge`, `vfs`, `port`, `metadata`. Unknown namespaces are
 //! rejected at parse time; adding a new namespace is an additive enum
 //! extension reviewed once per port slice.
 //!
-//! ## Coordination with UTSUSHI-021 logical clock
+//! ## Coordination with logical clock
 //!
 //! `StateValue::Tick` exposes [`crate::LogicalClockTick`] as a typed leaf
 //! so the state tree can name `runtime.clock.tick` semantically. The

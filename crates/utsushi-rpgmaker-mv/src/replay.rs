@@ -20,14 +20,14 @@
 //!
 //! # Declared command subset
 //!
-//! | code | command             | replay effect                               |
-//! |------|---------------------|---------------------------------------------|
-//! | 101  | Show Text (setup)   | opens a message window; MZ speaker = p\[4\]  |
-//! | 401  | Show Text (body)    | appends one line to the open message window |
-//! | 102  | Show Choices        | emits a choice event (options in decl order)|
-//! | 121  | Control Switches    | sets switch(es) ON/OFF → switch state trace |
-//! | 122  | Control Variables   | mutates variable(s) → variable state trace  |
-//! | 0    | end of list         | flushes any open message window; no event   |
+//! code | command | replay effect
+//! ------|---------------------|---------------------------------------------
+//! 101 | Show Text (setup) | opens a message window; MZ speaker = p\[4\]
+//! 401 | Show Text (body) | appends one line to the open message window
+//! 102 | Show Choices | emits a choice event (options in decl order)
+//! 121 | Control Switches | sets switch(es) ON/OFF → switch state trace
+//! 122 | Control Variables | mutates variable(s) → variable state trace
+//! 0 | end of list | flushes any open message window; no event
 //!
 //! Code `0` (list terminator) is recognised as a structural no-op so a
 //! well-formed list does not trip the unknown-command diagnostic. Every other
@@ -52,8 +52,8 @@ use serde_json::{Value, json};
 /// re-execution of the event bytes, not a live-DOM observation.
 pub const REPLAY_TRACE_SCHEMA: &str = "0.1.0-alpha";
 
-/// Observation-source tag distinguishing a replay trace from the live-DOM /
-/// fixture-declared sources the UTSUSHI-006 envelope carries.
+/// Observation-source tag distinguishing a replay trace from the live-DOM
+/// fixture-declared sources the envelope carries.
 pub const OBSERVATION_SOURCE_STATIC_REPLAY: &str = "static_replay";
 
 /// How the replay reacts to a command outside the declared subset.
@@ -198,7 +198,7 @@ pub enum ReplayEvent {
 
 impl ReplayEvent {
     /// Envelope-compatible JSON for the event. Text/choice events mirror the
-    /// UTSUSHI-006 `payloadKind` vocabulary (`text` / `choice`); the `state`
+    /// `payloadKind` vocabulary (`text` / `choice`); the `state`
     /// kind is a replay-specific extension the live-observation envelope has
     /// no slot for.
     fn to_json(&self) -> Value {
@@ -239,7 +239,7 @@ impl ReplayEvent {
 }
 
 /// The switch/variable state threaded across the replay. Deterministic: reads
-/// of an unset switch/variable return the engine defaults (switch = OFF,
+/// of an unset switch/variable return the engine defaults (switch = OFF
 /// variable = 0), matching RPG Maker MV/MZ runtime semantics.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ReplayState {
@@ -309,7 +309,7 @@ impl ReplayOutcome {
     }
 }
 
-/// Replay one event-command `list[]` (a JSON array of `{code, indent,
+/// Replay one event-command `list[]` (a JSON array of `{code, indent
 /// parameters}` objects) through the declared subset.
 ///
 /// Under [`UnknownPolicy::SkipWithDiagnostic`] the whole list is replayed and
@@ -440,7 +440,7 @@ impl Replayer {
                 self.flush_message();
                 self.step_control_switches(code, command_index, params)
             }
-            // Control Variables — [startId, endId, operation, operandType, ...].
+            // Control Variables — [startId, endId, operation, operandType,...].
             122 => {
                 self.flush_message();
                 self.step_control_variables(code, command_index, params)

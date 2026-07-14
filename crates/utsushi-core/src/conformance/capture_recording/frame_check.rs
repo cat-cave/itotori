@@ -3,8 +3,8 @@
 //! See [`FrameCaptureConformanceCheck`] for the wire shape and
 //! [`FrameCaptureConformanceCheck::validate`] for the rules. The check is
 //! engine-neutral: every artifact reference passes through
-//! [`crate::ObservationArtifactRef::validate`] /
-//! [`crate::validate_runtime_artifact_uri`], so host paths,
+//! [`crate::ObservationArtifactRef::validate`]
+//! [`crate::validate_runtime_artifact_uri`], so host paths
 //! `file:`/`data:`/`blob:` schemes, traversal, and any URI outside
 //! [`crate::RUNTIME_ARTIFACT_URI_ROOT`] are rejected.
 
@@ -49,7 +49,7 @@ pub struct FrameArtifactRef {
     /// Portable artifact reference. URI MUST live under
     /// [`crate::RUNTIME_ARTIFACT_URI_ROOT`].
     pub artifact_ref: ObservationArtifactRef,
-    /// Monotonic frame number from the runtime clock (UTSUSHI-021 owns
+    /// Monotonic frame number from the runtime clock ( owns
     /// the clock). Used for sequencing.
     pub frame_index: u64,
     /// Optional bridge-unit linkage (the unit this capture was taken for).
@@ -80,7 +80,7 @@ pub struct FrameCaptureConformanceCheck {
 impl FrameCaptureConformanceCheck {
     /// Validate the check's structural rules. Returns the first failure;
     /// the validator does not accumulate a list of errors (one
-    /// `ConformanceError` per call mirrors the UTSUSHI-026 result
+    /// `ConformanceError` per call mirrors the result
     /// validator).
     pub fn validate(&self) -> Result<(), ConformanceError> {
         // Rule 4.1.1 — profile must be `FrameCapture`.
@@ -209,7 +209,7 @@ impl FrameCaptureConformanceCheck {
     }
 
     /// Convenience helper that runs the check and bundles the outcome
-    /// into a public summary tuple `(outcome, evidence_tier_floor,
+    /// into a public summary tuple `(outcome, evidence_tier_floor
     /// profile_ceiling, sink_ceiling)` so a runner has the three
     /// numbers the audit checklist requires without having to re-derive
     /// them.
@@ -422,7 +422,7 @@ mod tests {
 
     #[test]
     fn frame_capture_check_rejects_frame_above_sink_ceiling() {
-        // Frame at E4 would be allowed by `SinkKind::FrameArtifact`,
+        // Frame at E4 would be allowed by `SinkKind::FrameArtifact`
         // but raising the *profile* tier floor to anything above E2 is
         // already rejected by the floor/ceiling rule. Forge a tier
         // above the sink ceiling by directly crafting an `EvidenceTier`

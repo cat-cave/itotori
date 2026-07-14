@@ -1,4 +1,4 @@
-//! UTSUSHI-065: attach narrow SCREENSHOT CAPTURE evidence to MV/MZ runtime
+//! Attach narrow SCREENSHOT CAPTURE evidence to MV/MZ runtime
 //! traces.
 //!
 //! This module builds a *narrow* runtime-evidence report that links RPG Maker
@@ -12,13 +12,13 @@
 //! ## What links to what
 //!
 //! ```text
-//! map / common-event command id     trace event id           screenshot artifactRef
+//! map / common-event command id trace event id screenshot artifactRef
 //! (mvCommandRef + sourceUnitKey) -> (traceEventId, frame) -> (artifactRef.uri, artifactId)
-//!                    \___________ shared bridgeUnitRef + frame ___________/
+//!                    \___________ shared bridgeUnitRef + frame ___________
 //! ```
 //!
 //! Every command produces exactly one trace event and one screenshot capture.
-//! They carry the SAME `bridgeUnitRef` (the deterministic KAIFUU-109 bridge
+//! They carry the SAME `bridgeUnitRef` (the deterministic bridge
 //! unit id derived from the command's `rpgmaker:<file>#<pointer>` source key)
 //! and the SAME `frame` id, and the capture additionally records
 //! `evidencesTraceEventId` so the screenshot -> trace link is explicit rather
@@ -31,11 +31,11 @@
 //! the screenshot capture context. Each screenshot capture repeats the same
 //! metadata inline so an isolated capture entry is self-describing.
 //!
-//! ## Builds on UTSUSHI-006 + runtime artifact storage
+//! ## Builds on + runtime artifact storage
 //!
-//! The screenshot side reuses the UTSUSHI-006 browser capture path shape: the
+//! The screenshot side reuses the browser capture path shape: the
 //! screenshot artifactRef is a managed [`RuntimeArtifactKind::Screenshot`]
-//! reference under the runtime artifact root (via [`runtime_artifact_uri`]),
+//! reference under the runtime artifact root (via [`runtime_artifact_uri`])
 //! and a frame `observationHookEvent` mirrors
 //! `browser_frame_observation_hook_event`. A [`ScreenshotEvidenceRef`] can be
 //! built either synthetically (the deterministic, browser-free fixture path) or
@@ -55,7 +55,7 @@ use utsushi_core::{
 
 use crate::FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL;
 
-/// KAIFUU-109 fixture-profile id the bridge-unit id derivation is namespaced
+/// fixture-profile id the bridge-unit id derivation is namespaced
 /// with. Matching the value `kaifuu-rpgmaker` stamps its map / common-event
 /// units with means the bridge unit ids this fixture emits are byte-identical
 /// to the ones the decompiler would emit for the same command — the linkage is
@@ -63,7 +63,7 @@ use crate::FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL;
 const KAIFUU_MV_MZ_FIXTURE_PROFILE_ID: &str = "KAIFUU-109";
 
 /// Namespace for the runtime-report / trace / capture / screenshot uuid7s this
-/// module mints. Distinct from the KAIFUU-109 bridge namespace so runtime ids
+/// module mints. Distinct from the bridge namespace so runtime ids
 /// never collide with bridge unit ids.
 const EVIDENCE_UUID_NAMESPACE: &str = "utsushi-u065:mvmz-screenshot-evidence";
 
@@ -102,7 +102,7 @@ impl CaptureMetadata {
 ///
 /// It is deliberately a subset of the runtime artifactRef wire shape so it can
 /// be built from either a deterministic synthetic screenshot or a real
-/// [`RuntimeCapturedArtifact`] the UTSUSHI-006 browser adapter produced.
+/// [`RuntimeCapturedArtifact`] the browser adapter produced.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScreenshotEvidenceRef {
     pub artifact_id: String,
@@ -147,7 +147,7 @@ impl ScreenshotEvidenceRef {
 }
 
 /// A single MV/MZ command lifted from the fixture, resolved to its stable
-/// pointer / source key / bridge unit id (the KAIFUU-109 scheme).
+/// pointer / source key / bridge unit id (the scheme).
 struct MvMzCommand {
     source_file: String,
     container_kind: &'static str,
@@ -192,7 +192,7 @@ impl MvMzCommand {
                 let event_index = require_usize(container, "eventIndex", index)?;
                 let page_index = require_usize(container, "pageIndex", index)?;
                 // Matches kaifuu-rpgmaker::map_common_event::extract_map:
-                // /events/<event_index>/pages/<page_index>/list
+                // events/<event_index>/pages/<page_index>/list
                 let base = vec![
                     "events".to_string(),
                     event_index.to_string(),
@@ -206,7 +206,7 @@ impl MvMzCommand {
                 let common_event_id = require_i64(container, "commonEventId", index)?;
                 let entry_index = require_usize(container, "entryIndex", index)?;
                 // Matches kaifuu-rpgmaker::extract_common_events:
-                // /<entry_index>/list
+                // <entry_index>/list
                 let base = vec![entry_index.to_string(), "list".to_string()];
                 ("common_event", common_event_id, entry_index, None, base)
             }
@@ -218,7 +218,7 @@ impl MvMzCommand {
             }
         };
 
-        // Command-text pointer suffix, mirroring the KAIFUU-109 extractor:
+        // Command-text pointer suffix, mirroring the extractor:
         // show_text -> list/<cmd>/parameters/0
         // choice_option -> list/<cmd>/parameters/0/<option_index>
         let mut pointer_tokens = pointer_base;
@@ -287,7 +287,7 @@ impl MvMzCommand {
 /// document and one screenshot reference per command.
 ///
 /// The linkage is positional-by-frame: command `i` (frame `i + 1`) produces the
-/// trace event and screenshot capture that share command `i`'s bridge unit ref,
+/// trace event and screenshot capture that share command `i`'s bridge unit ref
 /// and `screenshots[i]` is the artifactRef that capture points at. The pure
 /// builder performs NO IO and needs NO browser — the same report is produced
 /// whether `screenshots` come from synthetic placeholders or a live capture.
@@ -387,7 +387,7 @@ pub fn build_mv_mz_screenshot_evidence(
             "artifactRef": screenshot.to_artifact_ref_json(),
         }));
 
-        // Frame observation-hook event, mirroring the UTSUSHI-006 browser
+        // Frame observation-hook event, mirroring the browser
         // capture path so the screenshot evidence is also attached on the
         // observation-hook surface.
         observation_events.push(json!({
@@ -586,7 +586,7 @@ fn require_usize(value: &Value, key: &str, index: usize) -> UtsushiResult<usize>
 }
 
 /// Encode RFC6901 pointer tokens into a `/`-joined pointer string, escaping `~`
-/// and `/` per the spec — identical to the KAIFUU-109 pointer encoding.
+/// and `/` per the spec — identical to the pointer encoding.
 fn rfc6901_pointer(tokens: &[String]) -> String {
     let mut out = String::new();
     for token in tokens {

@@ -30,23 +30,23 @@ pub struct ConformanceAbiVersion(pub u32);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SubsystemRequirement {
-    /// VFS (UTSUSHI-020).
+    /// VFS ().
     AssetAccess,
-    /// Input events / replay (UTSUSHI-021).
+    /// Input events / replay ().
     Input,
-    /// Logical clock (UTSUSHI-021).
+    /// Logical clock ().
     Clock,
-    /// ReplayLog finalisation (UTSUSHI-021).
+    /// ReplayLog finalisation ().
     ReplayLog,
-    /// TextSurfaceSink (UTSUSHI-022).
+    /// TextSurfaceSink ().
     TextSink,
-    /// FrameArtifactSink (UTSUSHI-022).
+    /// FrameArtifactSink ().
     FrameSink,
-    /// AudioEventSink (UTSUSHI-022).
+    /// AudioEventSink ().
     AudioSink,
     /// `RuntimeArtifactRoot` artifact-store policy.
     ArtifactStore,
-    /// Reserved for UTSUSHI-023 snapshot primitives. Inert in this slice.
+    /// Reserved for snapshot primitives. Inert in this slice.
     SnapshotPrimitives,
 }
 
@@ -95,8 +95,8 @@ pub struct ProfileExtension {
     /// `supported_profiles`; orphans are rejected.
     pub profile_id: ProfileId,
 
-    /// Stable, namespaced extension key. Lowercased,
-    /// `[a-z][a-z0-9-]{0,63}`. Examples: `"rgba8"`, `"monotonic-tick"`,
+    /// Stable, namespaced extension key. Lowercased
+    /// `[a-z][a-z0-9-]{0,63}`. Examples: `"rgba8"`, `"monotonic-tick"`
     /// `"lossless-recording"`.
     pub key: String,
 

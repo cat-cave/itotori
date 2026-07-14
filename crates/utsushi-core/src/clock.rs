@@ -36,7 +36,7 @@ pub enum ClockOrigin {
     /// Tick 0 is when the runtime begins driving the recorded session.
     RunStart,
     /// Tick 0 is when a recorded snapshot was restored. Used by snapshot
-    /// primitives (UTSUSHI-023) so log tails can be replayed against a
+    /// primitives () so log tails can be replayed against a
     /// restored state.
     SnapshotRestore,
 }

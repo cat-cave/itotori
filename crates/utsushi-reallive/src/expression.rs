@@ -1,9 +1,9 @@
-//! UTSUSHI-205 — RealLive expression byte-stream parser.
+//! RealLive expression byte-stream parser.
 //!
 //! Consumes the `raw_bytes` payload of a
-//! [`crate::BytecodeElement::Expression`] (UTSUSHI-204) and produces a
+//! [`crate::BytecodeElement::Expression`] () and produces a
 //! typed [`ExprNode`] AST. The byte stream is the documented RealLive
-//! expression encoding (`docs/research/reallive-engine.md` §G,
+//! expression encoding (`docs/research/reallive-engine.md` §G
 //! re-derived from publicly archived RLDEV documentation and
 //! `rlvm/src/libreallive/expression.cc` as a research anchor only):
 //!
@@ -14,7 +14,7 @@
 //! - `\ <op_byte> <rhs>` — binary or compound-assignment operator
 //!   continuation. The op byte values are pinned in [`ExprOp`] and
 //!   [`AssignOp`].
-//! - `\ 0x00 <term>` / `\ 0x01 <term>` — unary forms (no-op /
+//! - `\ 0x00 <term>` / `\ 0x01 <term>` — unary forms (no-op
 //!   unary-minus).
 //!
 //! A standalone [`crate::BytecodeElement::Expression`] is shaped as an
@@ -25,43 +25,43 @@
 //!
 //! # Operator byte table
 //!
-//! Pinned from the UTSUSHI-205 spec node:
+//! Pinned from the spec node:
 //!
-//! | Byte (after `\`) | Operator     | Variant            |
-//! | ---------------- | ------------ | ------------------ |
-//! | `0x02`           | `+`          | [`ExprOp::Add`]    |
-//! | `0x03`           | `-`          | [`ExprOp::Sub`]    |
-//! | `0x04`           | `*`          | [`ExprOp::Mul`]    |
-//! | `0x05`           | `/`          | [`ExprOp::Div`]    |
-//! | `0x06`           | `%`          | [`ExprOp::Mod`]    |
-//! | `0x07`           | `&`          | [`ExprOp::And`]    |
-//! | `0x08`           | `\|`         | [`ExprOp::Or`]     |
-//! | `0x09`           | `^`          | [`ExprOp::Xor`]    |
-//! | `0x28`           | `==`         | [`ExprOp::Equ`]    |
-//! | `0x29`           | `!=`         | [`ExprOp::Neq`]    |
-//! | `0x2A`           | `<`          | [`ExprOp::Lt`]     |
-//! | `0x2B`           | `<=`         | [`ExprOp::Le`]     |
-//! | `0x2C`           | `>`          | [`ExprOp::Gt`]     |
-//! | `0x2D`           | `>=`         | [`ExprOp::Ge`]     |
-//! | `0x3C`           | `&&`         | [`ExprOp::LogicAnd`] |
-//! | `0x3D`           | `\|\|`       | [`ExprOp::LogicOr`]  |
+//! Byte (after `\`) | Operator | Variant
+//! ---------------- | ------------ | ------------------
+//! `0x02` | `+` | [`ExprOp::Add`]
+//! `0x03` | `-` | [`ExprOp::Sub`]
+//! `0x04` | `*` | [`ExprOp::Mul`]
+//! `0x05` | `/` | [`ExprOp::Div`]
+//! `0x06` | `%` | [`ExprOp::Mod`]
+//! `0x07` | `&` | [`ExprOp::And`]
+//! `0x08` | `\|` | [`ExprOp::Or`]
+//! `0x09` | `^` | [`ExprOp::Xor`]
+//! `0x28` | `==` | [`ExprOp::Equ`]
+//! `0x29` | `!=` | [`ExprOp::Neq`]
+//! `0x2A` | `<` | [`ExprOp::Lt`]
+//! `0x2B` | `<=` | [`ExprOp::Le`]
+//! `0x2C` | `>` | [`ExprOp::Gt`]
+//! `0x2D` | `>=` | [`ExprOp::Ge`]
+//! `0x3C` | `&&` | [`ExprOp::LogicAnd`]
+//! `0x3D` | `\|\|` | [`ExprOp::LogicOr`]
 //!
 //! Assignment ops live in `0x14..=0x24` per the bytecode walker, with
 //! the documented sub-range expanded below:
 //!
-//! | Byte (after `\`) | Operator | Variant                  |
-//! | ---------------- | -------- | ------------------------ |
-//! | `0x14`           | `+=`     | [`AssignOp::AddAssign`]  |
-//! | `0x15`           | `-=`     | [`AssignOp::SubAssign`]  |
-//! | `0x16`           | `*=`     | [`AssignOp::MulAssign`]  |
-//! | `0x17`           | `/=`     | [`AssignOp::DivAssign`]  |
-//! | `0x18`           | `%=`     | [`AssignOp::ModAssign`]  |
-//! | `0x19`           | `&=`     | [`AssignOp::AndAssign`]  |
-//! | `0x1A`           | `\|=`    | [`AssignOp::OrAssign`]   |
-//! | `0x1B`           | `^=`     | [`AssignOp::XorAssign`]  |
-//! | `0x1C`           | `<<=`    | [`AssignOp::ShlAssign`]  |
-//! | `0x1D`           | `>>=`    | [`AssignOp::ShrAssign`]  |
-//! | `0x1E`           | `=`      | [`AssignOp::Plain`]      |
+//! Byte (after `\`) | Operator | Variant
+//! ---------------- | -------- | ------------------------
+//! `0x14` | `+=` | [`AssignOp::AddAssign`]
+//! `0x15` | `-=` | [`AssignOp::SubAssign`]
+//! `0x16` | `*=` | [`AssignOp::MulAssign`]
+//! `0x17` | `/=` | [`AssignOp::DivAssign`]
+//! `0x18` | `%=` | [`AssignOp::ModAssign`]
+//! `0x19` | `&=` | [`AssignOp::AndAssign`]
+//! `0x1A` | `\|=` | [`AssignOp::OrAssign`]
+//! `0x1B` | `^=` | [`AssignOp::XorAssign`]
+//! `0x1C` | `<<=` | [`AssignOp::ShlAssign`]
+//! `0x1D` | `>>=` | [`AssignOp::ShrAssign`]
+//! `0x1E` | `=` | [`AssignOp::Plain`]
 //!
 //! (This matches rlvm's `libreallive/expression.cc`: op `30`/`0x1E` is the
 //! special-cased plain `=`, `0x14..=0x1D` are the compound forms.)
@@ -348,7 +348,7 @@ pub enum ExprNode {
 /// Non-fatal warning surfaced by [`parse_expression`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExpressionWarning {
-    /// An operator byte outside the documented [`ExprOp`] /
+    /// An operator byte outside the documented [`ExprOp`]
     /// [`AssignOp`] / [`UnaryOp`] table appeared at `offset`. The
     /// parser recovered by treating the unknown byte as a single-byte
     /// int-literal and continued. Audit code uses the typed code
@@ -379,7 +379,7 @@ impl ExpressionWarning {
 }
 
 /// Typed parse-side failure modes. Recoverable conditions surface as
-/// [`ExpressionWarning`]s; only structural breaks (truncated input,
+/// [`ExpressionWarning`]s; only structural breaks (truncated input
 /// missing brackets / parens) become errors here.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ExpressionParseError {
@@ -986,7 +986,7 @@ mod tests {
 
     #[test]
     fn memory_ref_bank_b_index_zero() {
-        // $ 01 [ $ FF 00 00 00 00 ]  — intB[0]
+        // $ 01 [ $ FF 00 00 00 00 ] — intB[0]
         let bytes = [0x24, 0x01, 0x5B, 0x24, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x5D];
         let (node, consumed) = parse_expression(&bytes).expect("parse");
         assert_eq!(consumed, bytes.len());
@@ -1019,7 +1019,7 @@ mod tests {
 
     #[test]
     fn assignment_shape_yields_assignment_node() {
-        // $ 01 [ $ FF 00 00 00 00 ] \ 1E $ FF 07 00 00 00  — intB[0] = 7
+        // $ 01 [ $ FF 00 00 00 00 ] \ 1E $ FF 07 00 00 00 — intB[0] = 7
         // (plain `=` is op 0x1E per rlvm's table).
         let bytes = [
             0x24, 0x01, 0x5B, 0x24, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x5D, 0x5C, 0x1E, 0x24, 0xFF,

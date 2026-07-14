@@ -1,10 +1,10 @@
-//! Substrate-side smoke test for the UTSUSHI-224 sinks-bridge path on
+//! Substrate-side smoke test for the sinks-bridge path on
 //! the `EnginePort` trait. Mirrors the per-tick ordering invariant doc
 //! comment on [`utsushi_core::Runner::tick`] and asserts that a port can
 //! drive the sink set without going through the deleted
 //! observation-hook envelope.
 //!
-//! This is the substrate-side, in-crate smoke (a labelled `SmokePort`,
+//! This is the substrate-side, in-crate smoke (a labelled `SmokePort`
 //! not an engine). The REAL-bytes producer proof — a real RealLive port
 //! driving all three sinks from decoded Sweetie HD / Kanon bytes — lives
 //! in `utsushi-reallive`'s `tests/engine_port_real_bytes.rs`.

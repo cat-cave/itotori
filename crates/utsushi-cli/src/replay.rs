@@ -1,4 +1,4 @@
-//! UTSUSHI-220 — `utsushi-cli replay --engine <engine>` command.
+//! `utsushi-cli replay --engine <engine>` command.
 //!
 //! Routes replay through the CLI runtime adapter registry's replay-review
 //! capability and writes the selected engine's deterministic replay-log JSON.

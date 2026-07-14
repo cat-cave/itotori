@@ -3,20 +3,20 @@
 //!
 //! Renders the frames the orchestrator visually verifies against the real
 //! Sweetie HD clothing-box screenshots
-//! (`dialogue-choice-with-clothing-boxes.png`,
+//! (`dialogue-choice-with-clothing-boxes.png`
 //! `clothing-box-choice-clicked.png`, `clothing-box-confirmation.png`):
 //! the game's THIRD choice modality — the IMAGE-GRID costume pick.
 //!
 //!   * an IMAGE-GRID select with box 0 highlighted (the costume strip, box
 //!     0 full-colour + bright frame, the others desaturated), then the same
-//!     grid with box 2 highlighted (the highlight moved across the strip),
+//!     grid with box 2 highlighted (the highlight moved across the strip)
 //!     then the follow-on dialogue-style CONFIRM screen (a two-option
 //!     [`ChoiceWindow`], cursor on "keep") — a three-panel montage proving
 //!     the "pick image -> confirm" flow.
 //!
 //! Both graphical modalities (the 2-way route pick and this N-icon grid)
 //! ride the SAME `select_objbtn` opcode `(0,2,4)`; the image-grid
-//! interpretation is keyed on the placed-button LAYOUT count (≥3 → grid),
+//! interpretation is keyed on the placed-button LAYOUT count (≥3 → grid)
 //! tagged `choice:<idx>;imagegrid`. The costume ART (the real icon
 //! graphics) is a faithful PLACEHOLDER box; the grid LAYOUT, the selected
 //! colour/highlight state, the caption, and the follow-on confirm are the
@@ -25,7 +25,7 @@
 //!
 //! Run:
 //!   cargo run -p utsushi-reallive --example image_choice_diag -- <out.png>
-//!   (defaults to .private-render/diag/image-choice.png)
+//!   (defaults to.private-render/diag/image-choice.png)
 
 use std::path::PathBuf;
 

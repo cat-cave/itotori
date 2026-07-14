@@ -140,8 +140,8 @@ fn synthetic_type2_decodes_with_real_regions_zero_warnings() {
 
 #[test]
 fn malformed_short_type2_stream_pads_to_canvas_and_warns_not_silent() {
-    // UTSUSHI-216 promoted finding 65c7433f: type-2 decode must pad or
-    // truncate the LZSS-decoded payload to exactly `width * height * 4`,
+    // promoted finding 65c7433f: type-2 decode must pad or
+    // truncate the LZSS-decoded payload to exactly `width * height * 4`
     // symmetric with type-0 — a malformed/short stream must NOT yield a
     // silent wrong-size buffer. Author the malformed input from the
     // FIX-3 synthetic fixture (no retail pixels): take the well-formed

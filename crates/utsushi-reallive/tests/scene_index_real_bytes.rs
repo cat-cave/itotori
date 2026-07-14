@@ -1,4 +1,4 @@
-//! UTSUSHI-201 real-bytes integration test for the `utsushi-reallive`
+//! Real-bytes integration test for the `utsushi-reallive`
 //! 10,000-slot `Seen.txt` directory parser.
 //!
 //! Anchors the parser against the Sweetie HD corpus supplied via
@@ -13,8 +13,8 @@
 //! corpora before its node is merged-complete. The MV/MZ and KAG
 //! corpora are different engines and do not contain a `Seen.txt`.
 //! `utsushi-reallive` is therefore in the same single-RealLive-corpus
-//! position as `kaifuu-reallive` was for KAIFUU-188: Sweetie HD is the
-//! only RealLive title currently staged. UTSUSHI-201 mirrors that
+//! position as `kaifuu-reallive` was for: Sweetie HD is the
+//! only RealLive title currently staged. mirrors that
 //! pattern — the node stays `planned` until a second RealLive corpus is
 //! sourced and exercised by an additional
 //! `scene_index_second_reallive_real_bytes.rs` test. The orchestrator
@@ -22,7 +22,7 @@
 //!
 //! Until the second corpus is staged this test is `#[ignore]`-gated and
 //! only runs when `ITOTORI_REAL_GAME_ROOT` is set (the same env
-//! var KAIFUU-188 uses, so a single export drives both projects).
+//! var uses, so a single export drives both projects).
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -92,7 +92,7 @@ fn scene_index_real_bytes_parses_reallive_real_bytes_seen_txt_into_198_populated
 
     // First entry pinning: slot 1 @ (0x13880, 0x5fa). These three
     // invariants together prove (a) the directory walk starts at slot
-    // 0, (b) slot 0 is reserved so the first emitted entry is slot 1,
+    // 0, (b) slot 0 is reserved so the first emitted entry is slot 1
     // and (c) the (offset, length) decoder uses little-endian u32 reads
     // at the documented byte stride.
     let first = index

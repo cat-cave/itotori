@@ -1,18 +1,18 @@
-//! Deterministic bridge-unit identifier helpers for the UTSUSHI-008 KAG
+//! Deterministic bridge-unit identifier helpers for the KAG
 //! command trace.
 //!
-//! A `[speaker]`/`[branch]` trace row links back to the KAIFUU-009 extraction
+//! A `[speaker]`/`[branch]` trace row links back to the extraction
 //! bridge unit for the same source text. To make that link the ACTUAL
 //! extraction identity (not a parallel invented one), this module re-derives
 //! the exact identifier scheme `kaifuu_kirikiri` uses:
 //!
 //! - `source_unit_key` = `kirikiri-kag:<file>#L<line>#seg<seg>#<role>`
-//! - `bridge_unit_id`   = SHA-256 → UUID7-shaped digest of
+//! - `bridge_unit_id` = SHA-256 → UUID7-shaped digest of
 //!   `(namespace, "unit-<source_unit_key>")`, where
 //!   `namespace = "kirikiri-kag-bridge:source-file=<file>"`.
 //!
 //! Re-derived rather than imported, matching this crate's regression-isolation
-//! posture (KAIFUU-009 is a dev-dependency ORACLE only). The
+//! posture ( is a dev-dependency ORACLE only). The
 //! `command_trace_bridge` oracle test proves these ids are byte-identical to
 //! `kaifuu_kirikiri::parse_ks`'s own `bridge_unit_id` / `source_unit_key` for
 //! every speaker/branch/message row, so the linkage is provably the real
@@ -20,7 +20,7 @@
 
 use sha2::{Digest, Sha256};
 
-/// The `role` label KAIFUU-009 stamps into a `source_unit_key` / uses to pick
+/// The `role` label stamps into a `source_unit_key` / uses to pick
 /// which units carry which text. Mirrors `kaifuu_kirikiri::TextRole`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum BridgeRole {
@@ -39,14 +39,14 @@ impl BridgeRole {
     }
 }
 
-/// The `kirikiri-kag-bridge:source-file=<file>` namespace KAIFUU-009 derives
+/// The `kirikiri-kag-bridge:source-file=<file>` namespace derives
 /// its `bridge_unit_id` under.
 pub(crate) fn bridge_namespace(source_file: &str) -> String {
     format!("kirikiri-kag-bridge:source-file={source_file}")
 }
 
 /// `kirikiri-kag:<file>#L<line>#seg<seg>#<role>` — the stable, human-readable
-/// bridge-unit key KAIFUU-009 stamps on every extraction unit.
+/// bridge-unit key stamps on every extraction unit.
 pub(crate) fn source_unit_key(
     source_file: &str,
     line_index: usize,
@@ -92,8 +92,8 @@ pub(crate) fn deterministic_uuid7(namespace: &str, role: &str) -> String {
     )
 }
 
-/// Build the `(bridge_unit_id, source_unit_key)` pair for a source-text unit,
-/// exactly as KAIFUU-009 would for the same `(file, line, seg, role)`.
+/// Build the `(bridge_unit_id, source_unit_key)` pair for a source-text unit
+/// exactly as would for the same `(file, line, seg, role)`.
 pub(crate) fn bridge_ids(
     source_file: &str,
     line_index: usize,

@@ -1,12 +1,12 @@
-//! UTSUSHI-147 — RealLive/Siglus shared substrate alignment fixture.
+//! RealLive/Siglus shared substrate alignment fixture.
 //!
 //! This is the cross-engine conformance fixture promised by the
-//! UTSUSHI-147 spec. It is **the** load-bearing test for the
-//! UTSUSHI-147 deliverable list:
+//! spec. It is **the** load-bearing test for the
+//! deliverable list:
 //!
 //! 1. Cross-engine conformance fixture covering RealLive and Siglus
 //!    ports against one substrate API surface.
-//! 2. Conformance evidence that both engines share VFS / render /
+//! 2. Conformance evidence that both engines share VFS / render
 //!    snapshot semantics through the substrate facade.
 //! 3. Substrate-API-drift regression coverage (the
 //!    identical-import-set audit).
@@ -16,10 +16,10 @@
 //! ## Why this lives in `utsushi-siglus/tests/`, not `utsushi-reallive/tests/`
 //!
 //! Per the project memory `feedback_multi_game_validation.md`, substrate
-//! work means at least two engine families. UTSUSHI-221 first proved
+//! work means at least two engine families. first proved
 //! the substrate facade is engine-extensible at the **scaffold-contract
 //! level** via an *inline* Siglus minimal-port scaffold inside
-//! `utsushi-reallive`'s test crate. UTSUSHI-147 promotes that inline
+//! `utsushi-reallive`'s test crate. promotes that inline
 //! scaffold into a real sibling crate (`utsushi-siglus`) and routes the
 //! cross-engine conformance fixture through the new crate.
 //!
@@ -32,7 +32,7 @@
 //!   RealLive-only, so the RealLive crate must not gain a runtime
 //!   dependency on the Siglus crate. The cross-engine fixture is a
 //!   second-engine concern.
-//! - **The fixture observes the substrate facade as a shared surface,
+//! - **The fixture observes the substrate facade as a shared surface
 //!   not as a per-engine fork.** The two engines are co-loaded here
 //!   only via `utsushi_core::substrate::*`. Engine-internal
 //!   types from `utsushi_reallive::*` or `utsushi_siglus::*` are
@@ -49,7 +49,7 @@
 //!
 //! - **Compile-time:** Both `UtsushiReallivePort` and `UtsushiSiglusPort`
 //!   resolve the substrate's `EnginePort` trait bound through the
-//!   facade re-export. If a future substrate refactor splits the bound,
+//!   facade re-export. If a future substrate refactor splits the bound
 //!   this file fails to compile — blocking the API drift from landing
 //!   without a paired conformance update.
 //! - **Manifest shape:** Both ports declare identical
@@ -63,7 +63,7 @@
 //!   semantics; if the trait moves out of `utsushi_core::substrate::*`
 //!   this compiles against the wrong path and breaks.
 //! - **Render shape:** Both ports' `EnginePort::sink_set()` returns the
-//!   facade's `SinkSet` type. The three drains (`drain_text`,
+//!   facade's `SinkSet` type. The three drains (`drain_text`
 //!   `drain_frame`, `drain_audio`) consume facade-typed event lists
 //!   (`TextLine`, `FrameArtifact`, `AudioEvent`). Engine-neutral.
 //! - **Snapshot shape:** Both ports route lifecycle errors through
@@ -102,18 +102,16 @@ use utsushi_siglus::{
     UNIMPLEMENTED_MESSAGE as SIGLUS_UNIMPLEMENTED_MESSAGE, UtsushiSiglusPort,
 };
 
-// ---------------------------------------------------------------------
 // §1. Compile-time witnesses.
 //
 // Both ports satisfy the substrate's `EnginePort` bound through the
 // facade re-export. If a future refactor splits the bound, this file
 // fails to compile — proving the substrate API drift would have to be
 // addressed before either port is updated.
-// ---------------------------------------------------------------------
 
 fn assert_implements_engine_port<P: EnginePort>() {}
 
-/// Touch the facade types named in the doc-comment's "VFS / render /
+/// Touch the facade types named in the doc-comment's "VFS / render
 /// snapshot semantics" guarantee at the type level so a substrate
 /// refactor that moves any of them out of `utsushi_core::substrate::*`
 /// breaks this file at compile time. The `PhantomData` tuple is the
@@ -141,14 +139,12 @@ fn both_ports_satisfy_facade_engine_port_bound_at_compile_time() {
     assert_implements_engine_port::<UtsushiSiglusPort>();
 }
 
-// ---------------------------------------------------------------------
 // §2. Manifest-shape conformance.
 //
 // Both ports' manifests share identical required lifecycle stages and ABI
 // versions through the facade's `PortManifest` type. Capability declarations
 // are intentionally asymmetric: RealLive claims only wired behaviour, while
 // the inert Siglus scaffold carries peer-wired capabilities as dev-Pending.
-// ---------------------------------------------------------------------
 
 #[test]
 fn both_ports_manifests_validate_through_facade_rules() {
@@ -282,14 +278,12 @@ fn ports_declare_distinct_engine_ids() {
     );
 }
 
-// ---------------------------------------------------------------------
 // §3. VFS / render semantics — shared facade carriers.
 //
 // Both ports' inert contexts expose an `Option<Arc<dyn AssetPackage>>`
 // asset-package slot (VFS). Both ports' `EnginePort::sink_set()` returns
 // the facade's `SinkSet` whose three drains consume facade-typed event
 // lists (render: TextLine / FrameArtifact / AudioEvent).
-// ---------------------------------------------------------------------
 
 #[test]
 fn siglus_scaffold_exposes_facade_asset_package_slot() {
@@ -330,7 +324,6 @@ fn both_ports_expose_facade_sink_set() {
     );
 }
 
-// ---------------------------------------------------------------------
 // §4. Snapshot semantics — shared facade carrier.
 //
 // Both ports route lifecycle errors through `EnginePortError::Lifecycle`.
@@ -339,7 +332,6 @@ fn both_ports_expose_facade_sink_set() {
 // typed-error variant identically across engines and touches the
 // `take_snapshot` free function through the facade so the function's
 // path is part of the conformance witness.
-// ---------------------------------------------------------------------
 
 #[test]
 fn siglus_scaffold_routes_lifecycle_errors_through_facade_typed_error() {
@@ -396,7 +388,7 @@ fn snapshot_free_function_path_is_reachable_through_facade_for_both_engines() {
 
 #[test]
 fn substrate_capture_outcome_is_reachable_through_facade() {
-    // `CaptureOutcome` is the typed `EnginePort::capture` return value,
+    // `CaptureOutcome` is the typed `EnginePort::capture` return value
     // so it is part of the stable engine-port substrate surface.
     let outcome: CaptureOutcome =
         CaptureOutcome::new("artifacts/utsushi/runtime/cross-engine-substrate-alignment");
@@ -406,7 +398,6 @@ fn substrate_capture_outcome_is_reachable_through_facade() {
     );
 }
 
-// ---------------------------------------------------------------------
 // §5. Substrate-API-drift regression — identical-imports source scan.
 //
 // Parses both crates' `src/lib.rs` and asserts:
@@ -421,7 +412,6 @@ fn substrate_capture_outcome_is_reachable_through_facade() {
 //   post-scaffold behavioural imports).
 // - `CaptureOutcome` appears in the facade import set and never as a
 //   crate-root reach-around.
-// ---------------------------------------------------------------------
 
 const REALLIVE_LIB_SRC: &str = include_str!("../../utsushi-reallive/src/lib.rs");
 // The real RealLive port's substrate-facade imports live in the port
@@ -712,8 +702,8 @@ fn no_subsystem_root_reach_around_on_either_port() {
 fn substrate_facade_leaf_baseline_matches_across_engines() {
     // The Siglus scaffold's import set IS the scaffold-baseline (it
     // ships no behaviour beyond the EnginePort contract). The RealLive
-    // scaffold's import set is a strict superset because UTSUSHI-201..
-    // UTSUSHI-220 grow real behaviour on top of the same baseline.
+    // scaffold's import set is a strict superset because..
+    // grow real behaviour on top of the same baseline.
     //
     // Step 1: assert the Siglus scaffold imports exactly the pinned
     // baseline.
@@ -813,14 +803,12 @@ fn engine_port_crates_import_capture_outcome_through_substrate_facade() {
     }
 }
 
-// ---------------------------------------------------------------------
 // §6. Clean-room boundary statements.
 //
 // Both ports carry a clean-room boundary statement against their
 // respective research anchors. Asserting both statements here proves
 // the boundary posture is held identically across engines, and that
 // neither port has silently lost its research-anchor disclaimer.
-// ---------------------------------------------------------------------
 
 #[test]
 fn both_ports_carry_clean_room_research_anchor_boundary_statements() {
@@ -848,14 +836,12 @@ fn both_ports_carry_clean_room_research_anchor_boundary_statements() {
     }
 }
 
-// ---------------------------------------------------------------------
 // §7. Lineage-extension notes anchor.
 //
 // Pins that `docs/research/reallive-engine.md` Appendix M is present
 // and carries the per-sub-node engine-specific boundary notes the spec
 // promises, plus the §M.7 update documenting the inline-scaffold
 // promotion this node accomplishes.
-// ---------------------------------------------------------------------
 
 const REALLIVE_ENGINE_DOC: &str = include_str!("../../../docs/research/reallive-engine.md");
 
@@ -936,7 +922,7 @@ fn appendix_m_lineage_notes_are_present_and_carry_required_anchors() {
 
 #[test]
 fn appendix_m_documents_inline_scaffold_promotion_to_sibling_crate() {
-    // UTSUSHI-147 promotes the inline Siglus scaffold (UTSUSHI-221's
+    // promotes the inline Siglus scaffold (the
     // `cross_engine_facade_only_imports.rs`) into a real sibling crate
     // (`crates/utsushi-siglus/`). Appendix M must document the
     // promotion so future readers know the inline scaffold is the

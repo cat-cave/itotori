@@ -1,11 +1,11 @@
-//! UTSUSHI-227 — `utsushi-cli replay-validate --engine <engine>` command.
+//! `utsushi-cli replay-validate --engine <engine>` command.
 //!
 //! Routes replay through the CLI runtime adapter registry and EMITS the
 //! engine's OBSERVED output: captured TextLine bodies (stdout) plus the
 //! deterministic replay-log JSON (`--print-replay-log`).
 //!
 //! This command performs NO substring assertion of its own. The runtime
-//! evidence is validated by the caller (the localize-project driver),
+//! evidence is validated by the caller (the localize-project driver)
 //! which reads the emitted ReplayLog and asserts that the engine's
 //! observed TextLine bodies reflect the REAL translated text it patched
 //! into Seen.txt (recorded in `patch-report.json`). There is no
@@ -88,7 +88,7 @@ VALIDATION CONTRACT:
 ///   [--print-textlines]
 /// ```
 ///
-/// Returns `Err` only when the underlying driver fails (read, parse,
+/// Returns `Err` only when the underlying driver fails (read, parse
 /// decode) or the ReplayLog cannot be serialised/written. A scene that
 /// emits zero TextLine events is NOT an error here — the caller's
 /// observed-output validation surfaces that as a failed match.

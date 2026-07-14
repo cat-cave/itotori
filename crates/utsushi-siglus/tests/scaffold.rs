@@ -1,4 +1,4 @@
-//! UTSUSHI-147 scaffold conformance test for the `utsushi-siglus` crate.
+//! Scaffold conformance test for the `utsushi-siglus` crate.
 //!
 //! Mirrors the role `utsushi-reallive/tests/scaffold.rs` plays for the
 //! RealLive port. This is a **structural** smoke. It verifies:

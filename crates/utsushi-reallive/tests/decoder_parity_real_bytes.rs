@@ -3,11 +3,11 @@
 //!
 //! Proves utsushi's [`decode_bytecode_stream`] reaches **true parity** with
 //! the proven `kaifuu-reallive` decompiler (`parse_real_bytecode`) on the two
-//! staged RealLive corpora: every populated scene the kaifuu decoder decodes,
+//! staged RealLive corpora: every populated scene the kaifuu decoder decodes
 //! utsushi decodes too. Before this node utsushi decoded only 133/198 Sweetie
 //! HD + 16/79 Kanon scenes (the LOADABLE subset), so a cross-scene
 //! Jump/FarCall into an un-decoded-but-present scene surfaced a spurious
-//! `SceneNotFound`. The gap was a diverged expression / special-parameter /
+//! `SceneNotFound`. The gap was a diverged expression / special-parameter
 //! SelectElement grammar in utsushi's decoder; it is now aligned onto the
 //! same grammar the kaifuu decoder uses.
 //!
@@ -45,7 +45,7 @@ fn expected_populated(label: &str) -> Option<usize> {
     }
 }
 
-/// Decompress every populated scene through the AVG32 first-level inflate,
+/// Decompress every populated scene through the AVG32 first-level inflate
 /// then interpose the dev-only `use_xor_2` recovery (a no-op for Kanon), so
 /// both decoders see the same plaintext bytecode the kaifuu multi-corpus
 /// harness decodes.

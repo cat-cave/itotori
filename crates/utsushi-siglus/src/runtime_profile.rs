@@ -1,4 +1,4 @@
-//! UTSUSHI-035 — Siglus `Scene.pck` / `Gameexe.dat` **runtime-profile boundary
+//! Siglus `Scene.pck` / `Gameexe.dat` **runtime-profile boundary
 //! fixtures** + classifier.
 //!
 //! The [`crate`]-root `UtsushiSiglusPort` is a substrate-facade scaffold: it
@@ -11,13 +11,13 @@
 //!
 //! # The five boundary classes
 //!
-//! | class            | fixture posture                                    | outcome                          |
-//! |------------------|----------------------------------------------------|----------------------------------|
-//! | [`no-key`]       | profile declares no key requirement (plaintext)    | **admitted** — claim may be built |
-//! | [`zero-key`]     | key required, resolves in-process to the zero key  | **admitted** — claim may be built |
-//! | [`required-key`] | key required, no in-process material, no helper    | **rejected** — typed diagnostic  |
-//! | [`helper-req.`]  | key required, only an external helper could resolve| **rejected** — typed diagnostic  |
-//! | [`out-of-prof.`] | container encoding/compression outside the profile | **rejected** — typed diagnostic  |
+//! class | fixture posture | outcome
+//! ------------------|----------------------------------------------------|----------------------------------
+//! [`no-key`] | profile declares no key requirement (plaintext) | **admitted** — claim may be built
+//! [`zero-key`] | key required, resolves in-process to the zero key | **admitted** — claim may be built
+//! [`required-key`] | key required, no in-process material, no helper | **rejected** — typed diagnostic
+//! [`helper-req.`] | key required, only an external helper could resolve| **rejected** — typed diagnostic
+//! [`out-of-prof.`] | container encoding/compression outside the profile | **rejected** — typed diagnostic
 //!
 //! [`no-key`]: RuntimeBoundaryClass::NoKey
 //! [`zero-key`]: RuntimeBoundaryClass::ZeroKey
@@ -27,7 +27,7 @@
 //!
 //! # Three load-bearing invariants
 //!
-//! 1. **Reject-before-claim.** A boundary failure (required-key /
+//! 1. **Reject-before-claim.** A boundary failure (required-key
 //!    helper-required / out-of-profile) short-circuits *before* any
 //!    runtime-evidence claim is constructed. This is enforced at the type
 //!    level: the only constructor of [`RuntimeEvidenceClaim`] is
@@ -70,7 +70,7 @@ pub const RUNTIME_PROFILE_BOUNDARY_SUPPORT_BOUNDARY: &str = "Utsushi Siglus runt
 // so the boundary can walk the directory before touching any key. Only the
 // per-record payloads carry (optionally key-masked) text.
 //
-//   Scene.pck:   <14B magic><u8 compressionFlag><u32 sceneId><u32 unitCount>
+//   Scene.pck: <14B magic><u8 compressionFlag><u32 sceneId><u32 unitCount>
 //                unitCount * { <u32 payloadLen><payload bytes> }
 //   Gameexe.dat: <14B magic><u8 compressionFlag><u32 entryCount>
 //                entryCount * { <u32 payloadLen><payload bytes> }
@@ -101,7 +101,7 @@ const FIXTURE_GAMEEXE_ENTRIES: &[(&str, &str)] = &[
 
 /// The all-zero identity key the zero-key fixture is gated by. This is the one
 /// place raw "key" bytes exist; they never leave [`RuntimeKeyMaterial`]. XOR
-/// with a zero key is the identity transform — a present-but-degenerate key,
+/// with a zero key is the identity transform — a present-but-degenerate key
 /// distinct from the no-key case which references no key at all.
 const ZERO_KEY_LEN: usize = 16;
 
@@ -323,7 +323,7 @@ impl RuntimeCompression {
 
 /// The runtime-profile key posture a fixture declares. This is what makes the
 /// five classes distinguishable: `NoKeyRequired` vs `ZeroKeyResolved` differ in
-/// whether a key is *referenced at all*, and `RequiredUnresolved` /
+/// whether a key is *referenced at all*, and `RequiredUnresolved`
 /// `HelperRequired` differ in *why* the referenced key cannot be resolved
 /// in-process.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -495,7 +495,7 @@ pub enum RuntimeBoundaryDiagnostic {
 
 impl RuntimeBoundaryDiagnostic {
     /// The boundary class this diagnostic rejects under, if it maps to one of
-    /// the five classes. `MalformedContainer` is a fixture-integrity failure,
+    /// the five classes. `MalformedContainer` is a fixture-integrity failure
     /// not a boundary class, so it returns `None`.
     pub fn boundary_class(&self) -> Option<RuntimeBoundaryClass> {
         match self {
@@ -663,9 +663,9 @@ impl RuntimeEvidenceClaim {
 ///
 /// On an **admitted** class (`no-key` / `zero-key`) returns
 /// `Ok(`[`RuntimeProfileAdmission`]`)`. On a **rejected** class (`required-key`
-/// / `helper-required` / `out-of-profile`) returns
+/// `helper-required` / `out-of-profile`) returns
 /// `Err(`[`RuntimeBoundaryDiagnostic`]`)` — and, crucially, **never constructs a
-/// [`RuntimeEvidenceClaim`]**. The container parse-boundary (magic +
+/// [`RuntimeEvidenceClaim`]**. The container parse-boundary (magic
 /// compression) is checked first, so an out-of-profile container is rejected
 /// before any key handling; the key posture is resolved second.
 pub fn classify_runtime_profile(
@@ -694,7 +694,7 @@ pub fn classify_runtime_profile(
         &gameexe_bytes,
     )?;
 
-    // --- Key boundary SECOND: resolve the declared key posture. Required /
+    // --- Key boundary SECOND: resolve the declared key posture. Required
     // helper-required reject here, still before any claim.
     match &fixture.key_posture {
         RuntimeKeyPosture::NoKeyRequired => Ok(RuntimeProfileAdmission {

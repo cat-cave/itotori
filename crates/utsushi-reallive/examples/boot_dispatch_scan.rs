@@ -129,7 +129,7 @@ fn main() {
         else {
             continue;
         };
-        // Print control-flow-relevant commands: jmp module (1),
+        // Print control-flow-relevant commands: jmp module (1)
         // cross-scene jump/farcall (5/6), and sel module (2) — any module_type.
         let interesting = matches!(*module_id, 1 | 5 | 6 | 2);
         if !interesting && goto_targets.is_empty() {

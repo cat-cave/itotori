@@ -1,15 +1,15 @@
-//! UTSUSHI-037 — **KAG plaintext REPLAY skeleton** for KiriKiri/KAG.
+//! **KAG plaintext REPLAY skeleton** for KiriKiri/KAG.
 //!
-//! This crate is the Utsushi (faithful-runtime) counterpart to KAIFUU-009's
-//! KAG `.ks` *extraction* adapter (`kaifuu-kirikiri`). Where KAIFUU-009
+//! This crate is the Utsushi (faithful-runtime) counterpart to the
+//! KAG `.ks` *extraction* adapter (`kaifuu-kirikiri`). Where the paired adapter
 //! parses translatable text units + byte spans for byte-preserving
 //! patchback, this crate **replays** an already-plaintext KAG `.ks` script
 //! into a deterministic, typed [`KagTrace`] of the four structural surfaces
-//! the node scopes:
+//! this crate scopes:
 //!
-//! - **message text** (per text run) — [`KagEvent::Message`],
+//! - **message text** (per text run) — [`KagEvent::Message`]
 //! - **speaker / name state** (the active `#name`) — [`KagEvent::SpeakerChange`]
-//!   plus the `speaker` carried on every message,
+//!   plus the `speaker` carried on every message
 //! - **choices** (`[link …]…[endlink]` menus) — [`KagEvent::Choice`], and
 //! - **jumps** (`@jump` / `[jump target=*label]`, and the label a choice
 //!   jumps to) — [`KagEvent::Jump`].
@@ -29,10 +29,10 @@
 //!   script).
 //! - **Structural flow + a bounded macro/storage subset, NOT full TJS.** The
 //!   skeleton replays text/name/choice/jump control flow, expands a defined
-//!   subset of macros (`[macro]…[endmacro]` definition + `%param` invocation),
+//!   subset of macros (`[macro]…[endmacro]` definition + `%param` invocation)
 //!   and evaluates a defined subset of storage variables (simple `f.`/`sf.`
 //!   `[eval]` assignments and `[emb]` reads — see [`capability_note`]). It
-//!   does NOT evaluate general TJS: richer `[eval]`/`[emb]` expressions,
+//!   does NOT evaluate general TJS: richer `[eval]`/`[emb]` expressions
 //!   `[if]` conditionals, `[iscript]…[endscript]` blocks, out-of-subset or
 //!   unresolved macros, and reads of unbound variables all surface as typed
 //!   [`KagDiagnostic`]s (never faked, never a panic, never a silent skip). A
@@ -43,16 +43,16 @@
 //! makes every unsupported construct visible so a reduced render can never
 //! masquerade as a faithful one.
 //!
-//! # Reuse of KAIFUU-009
+//! # Reuse of
 //!
 //! The `.ks` line dialect (column-0 classification, the `[[` escape, the
-//! `#voice/display` speaker convention) is re-derived from KAIFUU-009's
+//! `#voice/display` speaker convention) is re-derived from the
 //! documented parser rather than imported — matching the workspace's
 //! engine-port isolation posture (`utsushi-reallive` likewise re-implements
 //! the parsers it shares with `kaifuu-reallive` so a regression in one
 //! project cannot poison the other). `kaifuu-kirikiri` is a **dev-dependency
 //! oracle**: the `text_name_trace` test asserts this crate's independent
-//! replay reproduces KAIFUU-009's authoritative `(dialogue text, speaker)`
+//! replay reproduces the authoritative `(dialogue text, speaker)`
 //! extraction byte-for-byte, so the reuse is proven against real parse
 //! OUTPUT, not asserted by production linkage.
 //!

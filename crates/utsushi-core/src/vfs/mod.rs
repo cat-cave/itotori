@@ -1,8 +1,8 @@
 //! Runtime virtual filesystem and asset-package boundary.
 //!
-//! See plan `.plan/UTSUSHI-020.md` for the design rationale and
+//! See plan `.plan/.md` for the design rationale and
 //! `docs/audits/substrate-honesty.md` §M.1 for the multiplex extension
-//! that landed with UTSUSHI-222. The trait surface is engine-neutral,
+//! that landed with. The trait surface is engine-neutral
 //! read-only, and produces redaction-safe diagnostics.
 //!
 //! `RuntimeVfs` is implemented by `MountedVfs`, which composes one

@@ -1,4 +1,4 @@
-//! UTSUSHI-207 real-bytes integration test for
+//! Real-bytes integration test for
 //! [`utsushi_reallive::Gameexe`].
 //!
 //! This file is **env-gated**: the assertions only run when the
@@ -9,12 +9,12 @@
 //! "real Shift-JIS Gameexe.ini bytes are available locally".
 //!
 //! Two `#[test]` entrypoints exist per assertion body so the same
-//! verification matches every named filter in the UTSUSHI-207 spec.
+//! verification matches every named filter in the spec.
 //! The bodies live in private `verify_*` helpers; the entrypoints are
 //! thin wrappers whose only purpose is to give cargo's substring
 //! filter a name it can match:
 //!
-//! - `cargo test -p utsushi-reallive gameexe_real_bytes ...` — the
+//! - `cargo test -p utsushi-reallive gameexe_real_bytes...` — the
 //!   verification command in the worktree dispatch prompt. Matches the
 //!   `gameexe_real_bytes_*` names.
 //! - `cargo test -p utsushi-reallive gameexe_known_values`
@@ -257,36 +257,35 @@ fn verify_dotted_path_lookup() {
     );
 }
 
-// ---------- `#[test]` entrypoints ----------
 //
 // Each pair below is an alias-only delegator that runs the same body.
 // The duplication is intentional: cargo's substring filter sees each
 // entry point under a different name so a single source of truth can
-// be selected by every named verification command in the UTSUSHI-207
+// be selected by every named verification command in the
 // spec without surfacing duplicate assertion logic.
 
-/// Worktree-prompt filter: `cargo test ... gameexe_real_bytes ...`.
+/// Worktree-prompt filter: `cargo test... gameexe_real_bytes...`.
 #[test]
 #[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
 fn gameexe_real_bytes_known_values() {
     verify_real_bytes_known_values();
 }
 
-/// Worktree-prompt filter: `cargo test ... gameexe_real_bytes ...`.
+/// Worktree-prompt filter: `cargo test... gameexe_real_bytes...`.
 #[test]
 #[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
 fn gameexe_real_bytes_dotted_path_lookup() {
     verify_dotted_path_lookup();
 }
 
-/// DAG-spec filter: `cargo test ... gameexe_known_values`.
+/// DAG-spec filter: `cargo test... gameexe_known_values`.
 #[test]
 #[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
 fn gameexe_known_values() {
     verify_real_bytes_known_values();
 }
 
-/// DAG-spec filter: `cargo test ... gameexe_dotted_path_lookup`.
+/// DAG-spec filter: `cargo test... gameexe_dotted_path_lookup`.
 #[test]
 #[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
 fn gameexe_dotted_path_lookup() {

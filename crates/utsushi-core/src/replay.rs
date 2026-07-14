@@ -5,7 +5,7 @@
 //! carries:
 //!
 //! - schema version pinned to [`REPLAY_LOG_SCHEMA_VERSION`];
-//! - run-level [`ReplayMetadata`] (run id, adapter name/version, clock origin,
+//! - run-level [`ReplayMetadata`] (run id, adapter name/version, clock origin
 //!   RNG seed, optional public source label);
 //! - a strictly tick-monotonic sequence of [`ReplayEntry`] payloads;
 //! - the set of asset ids the recording depended on, surfaced through

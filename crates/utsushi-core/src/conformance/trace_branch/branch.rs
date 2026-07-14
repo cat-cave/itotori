@@ -1,4 +1,4 @@
-//! Branch conformance check (UTSUSHI-027 §4).
+//! Branch conformance check ( §4).
 //!
 //! Id-keyed comparison of an ordered set of discovered branches with
 //! per-branch `choice_index_path` + `expected_outcome`. The order of the
@@ -413,7 +413,7 @@ pub fn accepts_branch_capture_evidence(evidence: &EvidenceRef) -> bool {
         | EvidenceRef::BridgeUnit { .. }
         | EvidenceRef::ReplayLogRef { .. }
         | EvidenceRef::ImplMapFixture { .. } => true,
-        // `EvidenceRef::StatePath` (UTSUSHI-028) belongs to the
+        // `EvidenceRef::StatePath` () belongs to the
         // snapshot-restore profile only.
         EvidenceRef::FrameArtifactRef { .. } | EvidenceRef::StatePath { .. } => false,
         EvidenceRef::RuntimeArtifact { kind, .. } => matches!(

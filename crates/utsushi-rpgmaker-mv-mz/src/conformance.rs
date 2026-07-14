@@ -1,4 +1,4 @@
-//! UTSUSHI-179 — `utsushi-rpgmaker-mv-mz` **conformance manifest**.
+//! `utsushi-rpgmaker-mv-mz` **conformance manifest**.
 //!
 //! Builds the engine-neutral [`utsushi_core::port::impl_map::ImplementationMap`]
 //! that wires this port through the substrate facade: it declares the
@@ -94,7 +94,7 @@ pub fn build_rpgmaker_mv_mz_impl_map() -> ImplementationMap {
                     .to_string(),
             },
             // The MV/MZ command runtime itself: NOT implemented in Rust by
-            // design. The browser/NW.js JS engine dispatches every command,
+            // design. The browser/NW.js JS engine dispatches every command
             // so this port has zero opcode handlers. Declared Unsupported
             // with a semantic code, never Supported/Partial.
             Subsystem {

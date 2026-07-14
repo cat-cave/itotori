@@ -1,5 +1,5 @@
 //! Integration test for the snapshot substrate's round-trip determinism
-//! claim (UTSUSHI-023 §1 claim 1).
+//! claim ( §1 claim 1).
 //!
 //! Builds an in-test fixture port that implements `Inspectable` + `Restorable`
 //! against a small state surface, takes a snapshot, mutates the port, restores
@@ -196,7 +196,7 @@ fn fixture_inspectable_round_trip_produces_equal_state_tree() {
 
 #[test]
 fn fixture_inspectable_round_trip_observation_sequence_matches_after_restore() {
-    // Coordination with UTSUSHI-021: a fixture-driven adapter that
+    // Coordination with: a fixture-driven adapter that
     // produces a deterministic observation sequence from a known state
     // tree (here a list of (tick, frame) pairs) must produce the same
     // sequence after a snapshot round trip.

@@ -1,4 +1,4 @@
-//! UTSUSHI-039 acceptance — **KiriKiri XP3-backed VFS handoff smoke**.
+//! Acceptance — **KiriKiri XP3-backed VFS handoff smoke**.
 //!
 //! Proves the handoff boundary end-to-end on synthetic bytes:
 //!
@@ -8,14 +8,14 @@
 //!   Utsushi never parses the XP3 container — it consumes only the already
 //!   extracted members Kaifuu hands over.
 //! - **Utsushi consumes via the VFS.** The extracted members are handed to the
-//!   shared VFS boundary's XP3 handoff; the KAG `.ks` member is resolved, opened,
+//!   shared VFS boundary's XP3 handoff; the KAG `.ks` member is resolved, opened
 //!   and replayed THROUGH the VFS.
-//! - **Redacted reports.** The runtime-evidence report carries no archive keys,
+//! - **Redacted reports.** The runtime-evidence report carries no archive keys
 //!   protected paths, or private local filenames — secret-refs + hashes only.
 //! - **Reject-before-claim.** An out-of-profile (encrypted) archive is refused
 //!   with a typed diagnostic BEFORE any KAG runtime-evidence claim.
 //!
-//! No retail bytes and no retail key: the XP3 members are synthetic, authored,
+//! No retail bytes and no retail key: the XP3 members are synthetic, authored
 //! CC0 KAG script bytes assembled in-process.
 
 use kaifuu_core::{
@@ -31,7 +31,7 @@ use utsushi_kirikiri::{KagEvent, KagVfsHandoffError, admit_and_replay};
 /// The in-archive path of the KAG script member.
 const SCRIPT_MEMBER: &str = "scenario/intro.ks";
 
-/// A synthetic, authored, CC0 KAG `.ks` script: a named speaker, message runs,
+/// A synthetic, authored, CC0 KAG `.ks` script: a named speaker, message runs
 /// a same-file `@jump`, and a `[link]…[endlink]` choice menu with per-branch
 /// text. ASCII so the byte assertions are transparent.
 const KAG_SOURCE: &[u8] = b"; UTSUSHI-039 synthetic KAG (CC0)\n\
@@ -75,8 +75,8 @@ fn plain_entry(path: &str, payload: Vec<u8>) -> PlainXp3ArchiveEntry {
     }
 }
 
-/// Build synthetic plain-XP3 container bytes carrying the KAG member + a decoy,
-/// then EXTRACT them through the Kaifuu reader. Returns `(archive_bytes,
+/// Build synthetic plain-XP3 container bytes carrying the KAG member + a decoy
+/// then EXTRACT them through the Kaifuu reader. Returns `(archive_bytes
 /// extracted_members)` — the archive bytes are Kaifuu's to own; the members are
 /// what Kaifuu hands Utsushi.
 fn kaifuu_extract() -> (Vec<u8>, Vec<Xp3ExtractedMember>) {
@@ -230,7 +230,7 @@ fn runtime_report_carries_no_keys_paths_or_filenames() {
         admit_and_replay(manifest, SCRIPT_MEMBER).expect("plain handoff admits and replays");
     let json = evidence.stable_json().expect("evidence stable json");
 
-    // The redacted metadata carries the secret-ref, the archive content hash,
+    // The redacted metadata carries the secret-ref, the archive content hash
     // and the in-archive member ids (public logical paths).
     assert!(json.contains("local-secret:kirikiri.archive.key.v1"));
     assert!(json.contains(&content_hash));

@@ -3,7 +3,7 @@
 //! Sweetie HD background through the fixed pipeline and writes the two
 //! frames the orchestrator VISUALLY verifies:
 //!
-//!   * `fix-01-private-full.png`   — full-fidelity PRIVATE frame: the real
+//!   * `fix-01-private-full.png` — full-fidelity PRIVATE frame: the real
 //!     decoded g00 mansion background + the translated English dialogue
 //!     rendered LEGIBLY in a VN dialogue box with the bundled DejaVu Sans
 //!     font.
@@ -140,7 +140,7 @@ fn main() {
         .unwrap()
         .with_assets(Arc::clone(&assets));
 
-    // The composited scene: a dark wipe under the real g00 background,
+    // The composited scene: a dark wipe under the real g00 background
     // scaled to cover the frame.
     let mut stack = GraphicsObjectStack::new();
     stack
@@ -157,7 +157,7 @@ fn main() {
     };
     stack.set(GraphicsPlane::Background, 1, bg).unwrap();
 
-    // STAGED English translation of the opening line (see module note),
+    // STAGED English translation of the opening line (see module note)
     // laid out as ONE message in the default message-window box (no
     // Gameexe here — this is the g00 + redaction diag, not the
     // config-driven message-window diag; see the `msgwin_diag` example).

@@ -13,7 +13,7 @@ serde_json.workspace = true
 sha2.workspace = true
 unicode-normalization.workspace = true
 
-# UTSUSHI-093: fd-relative / no-follow (openat/unlinkat/renameat/getdents)
+# fd-relative / no-follow (openat/unlinkat/renameat/getdents)
 # filesystem operations for the runtime artifact root. Opening the managed root
 # once as a directory descriptor and driving every write/rename/cleanup relative
 # to that descriptor with `O_NOFOLLOW` closes the TOCTOU window between path

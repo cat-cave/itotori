@@ -165,7 +165,7 @@ fn main() {
         },
     );
 
-    // Staged English play-order content: the last two messages of scene A,
+    // Staged English play-order content: the last two messages of scene A
     // then the first two of scene B (the boundary the montage makes visible).
     let scene_a_messages: [(Option<&str>, &str); 2] = [
         (

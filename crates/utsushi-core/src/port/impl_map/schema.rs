@@ -1,14 +1,14 @@
-//! Typed schema for the engine-port implementation map (UTSUSHI-025).
+//! Typed schema for the engine-port implementation map ().
 //!
 //! The implementation map is a coverage scaffolding artifact every engine
-//! port slice produces. The schema is **engine-neutral**: no XP3, KAG,
+//! port slice produces. The schema is **engine-neutral**: no XP3, KAG
 //! RGSS3, `.koe`, or similar engine-specific field names appear here.
 //! Engine-specific shape lives entirely in (a) the
 //! [`EngineFamily`] discriminant, (b) free-form
-//! [`Subsystem::capabilities`] tags, and (c) audit-visible `notes` /
+//! [`Subsystem::capabilities`] tags, and (c) audit-visible `notes`
 //! `caption` strings.
 //!
-//! See `.plan/UTSUSHI-025.md` for the design rationale.
+//! See `.plan/.md` for the design rationale.
 
 use serde::{Deserialize, Serialize};
 
@@ -70,7 +70,7 @@ pub struct ImplementationMap {
     pub status_disclaimer: Option<String>,
 
     /// RFC 3339 timestamp at generation. Validator does not interpret
-    /// freshness; downstream consumers (UTSUSHI-031+) compare against
+    /// freshness; downstream consumers (+) compare against
     /// manifest and dep-graph timestamps.
     #[serde(rename = "generatedAt")]
     pub generated_at: String,
@@ -123,7 +123,7 @@ pub enum SubsystemStatus {
     /// Explicitly out of scope. The reason MUST cite a semantic error code
     /// or a `deferred-to-<NODE-ID>` sentinel.
     Unsupported { reason: UnsupportedReason },
-    /// Research subsystem: not yet covered by a fixture-driven validation,
+    /// Research subsystem: not yet covered by a fixture-driven validation
     /// but documented with cited evidence references.
     Research {
         #[serde(rename = "evidenceRefs")]
@@ -280,7 +280,7 @@ pub enum Status {
     /// (see [`crate::port::impl_map::STATUS_VALIDATED_DISCLAIMER`]).
     Validated,
     /// A previously-validated map whose dependencies have shifted.
-    /// UTSUSHI-025 ships only the variant; downstream consumers own
+    /// ships only the variant; downstream consumers own
     /// detection.
     Outdated,
 }
@@ -343,7 +343,7 @@ impl EngineFamily {
     /// substrate manifest must carry (`None` for `Other`, which has no
     /// dedicated substrate). The `match self` below is intentionally
     /// EXHAUSTIVE with NO `_ =>` wildcard arm: adding a new `EngineFamily`
-    /// variant is a compile error here until its manifest prefix is declared,
+    /// variant is a compile error here until its manifest prefix is declared
     /// keeping the prefix surface in lockstep with the variant set.
     pub fn manifest_prefix(self) -> Option<&'static str> {
         match self {
@@ -365,10 +365,8 @@ impl EngineFamily {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Newtype id wrappers. Transparent serde so they appear as plain strings in
 // JSON; typed in Rust so they cannot cross-contaminate at validator time.
-// ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]

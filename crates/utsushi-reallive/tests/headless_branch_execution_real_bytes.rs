@@ -1,9 +1,9 @@
 //! Real-bytes acceptance for `reallive-utsushi-headless-branch-execution`.
 //!
 //! Drives a full scene of BOTH titles (Sweetie HD + Kanon) to its NATURAL
-//! TERMINUS by EXECUTING real RealLive control flow — Jump / Subroutine /
+//! TERMINUS by EXECUTING real RealLive control flow — Jump / Subroutine
 //! FarCall FOLLOWED across the multi-scene store, NOT linear-walked — using
-//! a deterministic headless input-provider ([`HeadlessInputScheduler`],
+//! a deterministic headless input-provider ([`HeadlessInputScheduler`]
 //! policy = always the first choice) to advance past pause / wait-for-click
 //! yields and to resolve choices.
 //!
@@ -204,7 +204,7 @@ fn headless_branch_following_drives_both_titles_to_natural_terminus() {
             s.total_unknown_on_executed_paths == 0,
         );
 
-        // (2) Natural terminus by executing real control flow, zero unknown,
+        // (2) Natural terminus by executing real control flow, zero unknown
         // zero SceneNotFound on the executed path.
         assert!(report.terminus.is_natural());
         assert!(
@@ -295,7 +295,7 @@ fn headless_branch_following_drives_both_titles_to_natural_terminus() {
 /// This is the piece the branch-execution node could not reach: driving the
 /// game's CONFIGURED ENTRY scene (`#SEEN_START` — Sweetie HD scene 1, Kanon
 /// scene 9030) all the way to a NATURAL terminus. The entry scene opens the
-/// game and busy-`goto`s on event flags a headless walk never sets (title /
+/// game and busy-`goto`s on event flags a headless walk never sets (title
 /// animation / message wait loops); the deterministic event-flag model
 /// PROVES each spin (a repeated `(scene, pc, stack, memory)` fingerprint) and
 /// models the awaited events as fired, unwinding the stuck frame so the scene
@@ -456,7 +456,7 @@ fn headless_input_provider_is_deterministic_and_never_deadlocks_on_input() {
 /// SCENE-TRANSITION FIDELITY (`utsushi-scene-transition-fidelity`).
 ///
 /// The play-loop must advance ACROSS scene boundaries via the real RealLive
-/// scene-dispatch — so the game plays THROUGH multiple consecutive scenes,
+/// scene-dispatch — so the game plays THROUGH multiple consecutive scenes
 /// not one in isolation. `observe_playthrough` starts at the game's
 /// `#SEEN_START` entry scene and follows the FIRST cross-scene dispatch
 /// target (a real `jump` / `farcall` / entrypoint resolution into another

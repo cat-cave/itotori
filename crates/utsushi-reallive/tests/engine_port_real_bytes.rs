@@ -2,12 +2,12 @@
 //!
 //! Proves the REAL RealLive [`UtsushiReallivePort`] drives the substrate
 //! **text**, **frame**, AND **audio** sinks — all from a SINGLE real-bytes
-//! replay of a real game's entry scene — on TWO titles (Sweetie HD +
+//! replay of a real game's entry scene — on TWO titles (Sweetie HD
 //! Kanon). The port is driven through the substrate [`Runner`] exactly as a
 //! production consumer would drive it; the assertions read the runner's
 //! drained observations.
 //!
-//! Also asserts the port DROVE its declared `Snapshot` +
+//! Also asserts the port DROVE its declared `Snapshot`
 //! `DeterministicReplay` capabilities (snapshot/restore identity at >0 tick
 //! boundaries; two replays byte-identical), so those manifest capabilities
 //! are backed by exercised machinery rather than advertised-but-inert.
@@ -108,7 +108,7 @@ fn pick_all_three_scene(engine: &ReplayEngine, entry_scene: u16, label: &str) ->
 }
 
 /// Drive the real port over a scene that exercises all three sinks and
-/// assert every sink flowed for the SAME run, plus the driven Snapshot +
+/// assert every sink flowed for the SAME run, plus the driven Snapshot
 /// DeterministicReplay capabilities.
 fn run_title(corpus: &RealCorpus, g00_env: &str, label: &str) {
     let g00_dir = real_corpus::g00_dir_for_env(g00_env).unwrap_or_else(|| {

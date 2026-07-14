@@ -1,10 +1,10 @@
-//! UTSUSHI-036 — first Siglus **opcode-profile scaffold**.
+//! First Siglus **opcode-profile scaffold**.
 //!
-//! [`crate::vm`] (UTSUSHI-034) runs a synthetic Siglus-shaped bytecode program
-//! through an in-process interpreter; [`crate::runtime_profile`] (UTSUSHI-035)
+//! [`crate::vm`] () runs a synthetic Siglus-shaped bytecode program
+//! through an in-process interpreter; [`crate::runtime_profile`] ()
 //! gates the *container* boundary before any VM run. This module lands the
 //! missing layer between them: an **opcode profile** that **DECLARES**, *before*
-//! any opcode is dispatched, exactly which Siglus opcodes the runner covers,
+//! any opcode is dispatched, exactly which Siglus opcodes the runner covers
 //! which it names-but-refuses, and what happens when it meets an opcode it never
 //! declared. It is a **narrow scaffold** — the golden fixture is **one** covered
 //! text-show opcode, not a broad VM opcode pack.
@@ -22,11 +22,11 @@
 //!
 //! # The three dispatch outcomes (all VISIBLE)
 //!
-//! | opcode vs. profile                  | outcome                                    |
-//! |-------------------------------------|--------------------------------------------|
-//! | declared [`OpcodeSupport::Covered`] | dispatched; recorded in the golden trace   |
-//! | declared [`OpcodeSupport::DeclaredUnsupported`] | structured diagnostic; run halts |
-//! | **not declared at all**             | structured `NotInProfile` diagnostic; halt |
+//! opcode vs. profile | outcome
+//! -------------------------------------|--------------------------------------------
+//! declared [`OpcodeSupport::Covered`] | dispatched; recorded in the golden trace
+//! declared [`OpcodeSupport::DeclaredUnsupported`] | structured diagnostic; run halts
+//! **not declared at all** | structured `NotInProfile` diagnostic; halt
 //!
 //! The last two are the "no silent skip" law. They are enforced at the *type*
 //! level too: the only declared reaction to an unsupported opcode is
@@ -38,7 +38,7 @@
 //!
 //! The opcode bytes + mnemonics here are **authored synthetic stand-ins**, NOT
 //! the real Siglus opcode table (that is the `siglus-opcode-dispatch` Research
-//! subsystem in [`crate::vm_impl_map`]). Siglus real bytes are corpus-blocked,
+//! subsystem in [`crate::vm_impl_map`]). Siglus real bytes are corpus-blocked
 //! so this scaffold is synthetic-fixture-based per the synthetic-CI model. What
 //! it proves is the *shape* a real Siglus opcode profile must take: a declared
 //! coverage surface, a golden trace for a covered opcode, and a
@@ -189,7 +189,7 @@ impl OpcodeProfile {
 
 // --- The fixture program (the one narrow opcode stream the runner walks) -----
 
-/// A synthetic opcode-profile fixture: a magic header + a flat list of opcodes,
+/// A synthetic opcode-profile fixture: a magic header + a flat list of opcodes
 /// each optionally carrying a length-prefixed text payload. Authored in-process
 /// from module constants — no retail bytes.
 ///
@@ -361,7 +361,7 @@ pub struct OpcodeConformanceResult {
     /// The declared coverage surface, echoed from the profile manifest BEFORE
     /// the run. Never rebuilt from the program's opcodes.
     pub declared_coverage: Vec<DeclaredOpcode>,
-    /// The dispatch trace: one visible entry per opcode the program presented,
+    /// The dispatch trace: one visible entry per opcode the program presented
     /// in program order, up to (and including) the halting opcode.
     pub trace: Vec<OpcodeDispatch>,
     /// Every unsupported/unknown opcode encountered. Non-empty iff the run met
@@ -587,7 +587,7 @@ mod tests {
 
     #[test]
     fn profile_declares_coverage_before_any_run() {
-        // The manifest is fully declared without running anything: two entries,
+        // The manifest is fully declared without running anything: two entries
         // one Covered, one DeclaredUnsupported, plus a non-silent unknown policy.
         let profile = canonical_opcode_profile();
         assert_eq!(profile.entries.len(), 2, "narrow scaffold: exactly two");

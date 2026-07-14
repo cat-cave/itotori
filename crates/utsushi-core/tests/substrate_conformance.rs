@@ -1,4 +1,4 @@
-//! UTSUSHI-120 — Substrate facade conformance test.
+//! Substrate facade conformance test.
 //!
 //! Drives a fixture runtime end-to-end through the substrate facade
 //! only. No subsystem submodule path is reachable from this test file;
@@ -7,7 +7,7 @@
 //!
 //! Each `#[test]` exercises one substrate subsystem so a future
 //! facade-narrowing churn fails one specific test rather than the
-//! whole file. See `.plan/UTSUSHI-120.md` §7.1 for the case list.
+//! whole file. See `.plan/.md` §7.1 for the case list.
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -96,13 +96,11 @@ use utsushi_core::substrate::{
     take_snapshot,
 };
 
-// ---------------------------------------------------------------------
 // §7.1 case 1: VFS — mount a fixture package via the facade only.
-// ---------------------------------------------------------------------
 
 /// Tiny in-memory `AssetPackage` implementation built using only facade
 /// types. Stands in for `PlaintextDirPackage` (which is intentionally
-/// excluded from the facade per `.plan/UTSUSHI-120.md` §3.2).
+/// excluded from the facade per `.plan/.md` §3.2).
 struct InMemoryFixturePackage {
     id: String,
     source: PackageSource,
@@ -232,9 +230,7 @@ fn mount_a_fixture_vfs_through_the_facade() {
     assert_eq!(bytes.as_slice(), b"hello");
 }
 
-// ---------------------------------------------------------------------
 // §7.1 case 2: drive a logical clock + replay log through the facade.
-// ---------------------------------------------------------------------
 
 fn build_replay_log() -> ReplayLog {
     let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata::new(
@@ -270,9 +266,7 @@ fn drive_a_logical_clock_and_replay_log_through_the_facade() {
     assert_eq!(log.schema_version().as_str(), REPLAY_LOG_SCHEMA_VERSION);
 }
 
-// ---------------------------------------------------------------------
 // §7.1 case 3: sinks — accept one text/audio/frame event each.
-// ---------------------------------------------------------------------
 
 struct CollectingTextSink {
     capability: SinkCapability,
@@ -400,9 +394,7 @@ fn emit_text_audio_frame_sink_events_through_the_facade() {
     reject_unredacted_local_paths("emitted", &json_payload).expect("no redaction violation");
 }
 
-// ---------------------------------------------------------------------
 // §7.1 case 4: snapshot — take/store/restore through the facade.
-// ---------------------------------------------------------------------
 
 struct FixturePort {
     frame: u32,
@@ -472,9 +464,7 @@ fn take_and_restore_a_snapshot_through_the_facade() {
     assert_eq!(resolved.snapshot_id(), snapshot.snapshot_id());
 }
 
-// ---------------------------------------------------------------------
 // §7.1 case 5: recorder — byte-stable finalize through the facade.
-// ---------------------------------------------------------------------
 
 #[test]
 fn record_a_reference_trace_through_the_facade() {
@@ -520,9 +510,7 @@ fn record_a_reference_trace_through_the_facade() {
     assert_eq!(canonical, bytes_a);
 }
 
-// ---------------------------------------------------------------------
 // §7.1 case 6: trace conformance check via the facade.
-// ---------------------------------------------------------------------
 
 #[test]
 fn run_a_trace_conformance_check_through_the_facade() {
@@ -585,9 +573,7 @@ fn run_a_trace_conformance_check_through_the_facade() {
     );
 }
 
-// ---------------------------------------------------------------------
 // §7.1 case 7: port manifest + lifecycle stages via the facade.
-// ---------------------------------------------------------------------
 
 #[test]
 fn instantiate_a_port_manifest_and_inspect_lifecycle_through_the_facade() {
@@ -622,9 +608,7 @@ fn instantiate_a_port_manifest_and_inspect_lifecycle_through_the_facade() {
     assert_eq!(optional, vec![LifecycleStage::Jump]);
 }
 
-// ---------------------------------------------------------------------
 // §7.1 case 8: every facade-re-exported schema version is pinned.
-// ---------------------------------------------------------------------
 
 #[test]
 fn every_facade_exposed_schema_version_is_pinned() {
@@ -637,7 +621,7 @@ fn every_facade_exposed_schema_version_is_pinned() {
 // §7.1 case 8b: the schema-authority doc's §3 version table must agree
 // with the pinned constants. This is the drift-guard that keeps
 // docs/utsushi-substrate-facade.md §3 honest — a bump to any pinned
-// constant without revising the doc table trips this test (UTSUSHI-223
+// constant without revising the doc table trips this test (
 // bumped SNAPSHOT_SCHEMA_VERSION to 0.2.0-alpha; the doc had stayed at
 // 0.1.0-alpha until this guard was added).
 #[test]
@@ -674,9 +658,7 @@ fn facade_documentation_schema_version_table_matches_pinned_constants() {
     }
 }
 
-// ---------------------------------------------------------------------
 // §7.1 case 9: SourceTag variant set is engine-neutral.
-// ---------------------------------------------------------------------
 
 #[test]
 fn source_tag_variant_set_is_engine_neutral() {
@@ -700,10 +682,8 @@ fn source_tag_variant_set_is_engine_neutral() {
     assert_eq!(all.len(), 4);
 }
 
-// ---------------------------------------------------------------------
 // §7.3 Engine-neutrality lint — facade source contains no engine
 // family names.
-// ---------------------------------------------------------------------
 
 #[test]
 fn facade_module_source_contains_no_engine_family_names() {
@@ -757,12 +737,10 @@ fn facade_documentation_contains_no_engine_family_names() {
     }
 }
 
-// ---------------------------------------------------------------------
 // File-level import discipline: this test file must reach the
 // substrate only through the facade. The lint forbids any reach-around
 // per-subsystem use statement; the conformance test's whole point is
 // to prove the facade is sufficient.
-// ---------------------------------------------------------------------
 
 #[test]
 fn substrate_conformance_test_imports_only_through_the_facade() {

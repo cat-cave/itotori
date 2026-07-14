@@ -1,11 +1,11 @@
-//! UTSUSHI-039 — KiriKiri **XP3-backed VFS handoff**.
+//! KiriKiri **XP3-backed VFS handoff**.
 //!
 //! Utsushi consumes Kaifuu-owned XP3 / profile output through the shared VFS
 //! boundary **without owning archive decryption**. The handoff is:
 //!
-//! 1. **Kaifuu owns the bytes.** Kaifuu detects, profiles, and (for a *plain*,
+//! 1. **Kaifuu owns the bytes.** Kaifuu detects, profiles, and (for a *plain*
 //!    unencrypted XP3) extracts the archive members. Encrypted / helper-required
-//!    / compressed-payload / protected-executable archives stay Kaifuu's problem
+//!    compressed-payload / protected-executable archives stay Kaifuu's problem
 //!    — Utsushi never decrypts anything.
 //! 2. **Utsushi consumes the extracted output via the VFS.** Kaifuu hands over an
 //!    [`Xp3HandoffManifest`]: a redacted archive id, a one-way content-hash
@@ -18,8 +18,8 @@
 //!
 //! # Archive-capability boundary (reject-before-claim)
 //!
-//! The handoff is **gated** exactly like UTSUSHI-035's runtime-profile boundary.
-//! The only constructor of an [`Xp3HandoffAdmission`] is [`admit_xp3_handoff`],
+//! The handoff is **gated** exactly like the runtime-profile boundary.
+//! The only constructor of an [`Xp3HandoffAdmission`] is [`admit_xp3_handoff`]
 //! which returns `Err(`[`Xp3HandoffDiagnostic`]`)` for every out-of-profile
 //! archive **before** any VFS reader is built. Because the archive reader (and
 //! therefore any KAG replay through the VFS) can only be obtained from an
@@ -72,12 +72,10 @@ pub const XP3_HANDOFF_PACKAGE_ID: &str = "xp3-handoff";
 /// VFS — NOT Utsushi decrypting an archive.
 pub const XP3_HANDOFF_SUPPORT_BOUNDARY: &str = "Utsushi consumes Kaifuu-owned XP3 output through the shared VFS boundary: Kaifuu detects/profiles/extracts the archive (it owns the bytes and any decryption), and hands Utsushi the already-extracted plaintext members plus redacted metadata (a one-way archive content-hash and, where a key was involved, a local secret-ref). Only a plain (unencrypted) XP3 that Kaifuu extracted is admitted; encrypted, helper-required, and other out-of-profile archives are rejected with a typed diagnostic before any VFS reader is built. Utsushi never parses the XP3 container, never touches a key, and never decrypts. Reports carry redacted metadata and secret-refs only — never keys, protected paths, or private local filenames.";
 
-// ---------------------------------------------------------------------------
 // Secret reference + one-way proof hash (redaction-safe references).
-// ---------------------------------------------------------------------------
 
 /// A structured, **local** secret reference. Handoff reports name key material
-/// only through this — never raw bytes. Mirrors the UTSUSHI-035 `SecretRef`
+/// only through this — never raw bytes. Mirrors the `SecretRef`
 /// discipline: a `scheme:name` string in a local-secret scheme, carrying no raw
 /// key material, no local path, no whitespace, no traversal, no null bytes.
 ///
@@ -194,9 +192,7 @@ impl std::fmt::Debug for ProofHash {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Archive capability profile (the Kaifuu-derived routing tier).
-// ---------------------------------------------------------------------------
 
 /// The archive-capability profile Kaifuu attaches to the handoff. This is the
 /// Utsushi-side view of the Kaifuu XP3 capability tier: only a **plain**
@@ -236,9 +232,7 @@ impl Xp3HandoffProfile {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Extracted member + manifest (the Kaifuu -> Utsushi handoff shape).
-// ---------------------------------------------------------------------------
 
 /// One Kaifuu-extracted archive member: an in-archive logical path plus the
 /// already-extracted plaintext bytes. This is Utsushi's view of the Kaifuu
@@ -288,7 +282,7 @@ impl std::fmt::Debug for Xp3ExtractedMember {
 }
 
 /// The handoff Kaifuu produces for Utsushi. Carries the redacted archive id, the
-/// capability profile, a one-way commitment to the Kaifuu-owned archive bytes,
+/// capability profile, a one-way commitment to the Kaifuu-owned archive bytes
 /// an optional secret-ref to the key material, and the extracted members.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Xp3HandoffManifest {
@@ -347,9 +341,7 @@ impl Xp3HandoffManifest {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Reject-before-claim diagnostic.
-// ---------------------------------------------------------------------------
 
 /// Typed, redaction-safe diagnostic for a **refused** XP3 VFS handoff. Holding
 /// one is proof that **no** VFS reader (and therefore no KAG runtime-evidence
@@ -445,14 +437,12 @@ impl std::fmt::Display for Xp3HandoffDiagnostic {
 
 impl std::error::Error for Xp3HandoffDiagnostic {}
 
-// ---------------------------------------------------------------------------
 // Admission (only produced by clearing the capability gate).
-// ---------------------------------------------------------------------------
 
-/// A cleared XP3 VFS handoff. **The only constructor is [`admit_xp3_handoff`]**,
+/// A cleared XP3 VFS handoff. **The only constructor is [`admit_xp3_handoff`]**
 /// which returns this only for a plain-extracted archive whose members are all
 /// safe. Holding one is proof the archive-capability gate was cleared; it is the
-/// sole key that unlocks [`Xp3HandoffAdmission::archive_reader`] /
+/// sole key that unlocks [`Xp3HandoffAdmission::archive_reader`]
 /// [`Xp3HandoffAdmission::mount`] — and therefore any KAG replay through the
 /// VFS. The fields are private so an admission can never be forged.
 #[derive(Debug)]
@@ -474,7 +464,7 @@ impl Xp3HandoffAdmission {
         self.members.len()
     }
 
-    /// The redacted archive-metadata report for this handoff. Carries counts,
+    /// The redacted archive-metadata report for this handoff. Carries counts
     /// hashes, in-archive member ids, and a secret-ref — never keys, protected
     /// paths, or private local filenames.
     pub fn metadata(&self) -> Xp3HandoffMetadata {
@@ -583,9 +573,7 @@ pub fn admit_xp3_handoff(
     })
 }
 
-// ---------------------------------------------------------------------------
 // Sealed archive reader over the extracted members.
-// ---------------------------------------------------------------------------
 
 /// Sealed [`AssetArchiveReader`] that serves Kaifuu-extracted XP3 members.
 ///
@@ -638,11 +626,9 @@ impl AssetArchiveReader for Xp3HandoffArchiveReader {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Redacted archive-metadata report.
-// ---------------------------------------------------------------------------
 
-/// The redacted archive-metadata report carried by a handoff. Counts, hashes,
+/// The redacted archive-metadata report carried by a handoff. Counts, hashes
 /// in-archive member ids, and a secret-ref — never keys, protected paths, or
 /// private local filenames.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -678,9 +664,7 @@ impl Xp3HandoffMetadata {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Validation helpers.
-// ---------------------------------------------------------------------------
 
 /// Validate a redaction-safe public id (archive id): non-empty, no control
 /// bytes, and not a local-path shape.

@@ -1,8 +1,8 @@
-//! UTSUSHI-211 — RealLive `module_sel` (choice / selection) RLOperation
+//! RealLive `module_sel` (choice / selection) RLOperation
 //! family.
 //!
 //! Implements the EXACT rlvm `Sel`-module opcode set `{0,1,2,3,4,14,20}`:
-//! the SELECT ops `select`, `select_s`, `select_w`, `select_s` (opcode `3`),
+//! the SELECT ops `select`, `select_s`, `select_w`, `select_s` (opcode `3`)
 //! `select_objbtn`, `select_objbtn_cancel` plus the `objbtn_init` setup op.
 //! Each SELECT opcode yields a
 //! [`crate::rlop::longops::SelectLongOp`] carrier whose private state
@@ -16,7 +16,7 @@
 //! On resume, the VM's [`crate::vm::Vm::step`] decodes the popped longop's
 //! private state and writes the chosen index into the store register
 //! (`vm.banks().store()`), keeping the longop coupling honest: the audit
-//! focus pinned by UTSUSHI-211 ("Longop coupling — the longop must use
+//! focus pinned by ("Longop coupling — the longop must use
 //! the substrate scheduler, not a private wait loop") is enforced
 //! structurally — there is no per-op wait loop, the chosen index lives
 //! on the scheduler until the substrate poll returns `Ready`, and the
@@ -46,7 +46,7 @@
 //!
 //! NOTE (pre-existing `0/1/2` naming, out of this node's scope): the port's
 //! variant NAMES for opcodes `0/1/2` (`select` / `select_s` / `select_w`) do
-//! NOT line up with rlvm's `module_sel.cc` labels (`0`=`select_w`, `1`=`select`,
+//! NOT line up with rlvm's `module_sel.cc` labels (`0`=`select_w`, `1`=`select`
 //! `2`=`select_s2`, `3`=`select_s`). The opcode NUMBERS registered are what
 //! matters for dispatch; every port SELECT opcode funnels through the same
 //! [`SelectLongOp`] carrier, so the label mismatch is cosmetic. This node
@@ -56,15 +56,15 @@
 //!
 //! # Opcode coverage (rlvm `SelModule` — `module_sel.cc`)
 //!
-//! | Opcode | rlvm name              | Port variant                       |
-//! | ------ | ---------------------- | ---------------------------------- |
-//! | `0`    | `select_w`             | [`SelectVariant::Select`]          |
-//! | `1`    | `select`               | [`SelectVariant::SelectS`]         |
-//! | `2`    | `select_s2`            | [`SelectVariant::SelectW`]         |
-//! | `3`    | `select_s`             | [`SelectVariant::SelectS3`]        |
-//! | `4`    | `select_objbtn`        | [`SelectVariant::SelectObjbtn`]    |
-//! | `14`   | `select_objbtn_cancel` | [`SelectVariant::SelectObjbtnCancel`] |
-//! | `20`   | `objbtn_init`          | [`ObjbtnInitOp`] (setup, not a select) |
+//! Opcode | rlvm name | Port variant
+//! ------ | ---------------------- | ----------------------------------
+//! `0` | `select_w` | [`SelectVariant::Select`]
+//! `1` | `select` | [`SelectVariant::SelectS`]
+//! `2` | `select_s2` | [`SelectVariant::SelectW`]
+//! `3` | `select_s` | [`SelectVariant::SelectS3`]
+//! `4` | `select_objbtn` | [`SelectVariant::SelectObjbtn`]
+//! `14` | `select_objbtn_cancel` | [`SelectVariant::SelectObjbtnCancel`]
+//! `20` | `objbtn_init` | [`ObjbtnInitOp`] (setup, not a select)
 //!
 //! # Choice MODALITY — the graphical / text split (real-bytes-derived)
 //!
@@ -72,7 +72,7 @@
 //! option count (the retired heuristic). It is derived from the surrounding
 //! [`SelectionControl`] button-setup ops — see [`SelectionControlSignal`] and
 //! [`select_modality`]. Surveying all 198 real Sweetie HD scenes, the
-//! button-object SelectionControl setup ops are `objbtn_init` (`(0,2,20)`,
+//! button-object SelectionControl setup ops are `objbtn_init` (`(0,2,20)`
 //! 43×) and `select_objbtn` (`(0,2,4)`, 33×). A select that sits in a scene
 //! carrying those ops is a GRAPHICAL button-object select; a select with no
 //! such setup is a plain vertical TEXT list. The count-based route-vs-clothing
@@ -154,8 +154,6 @@ pub const SEL_MODULE_TYPE: u8 = 0;
 /// real Sweetie HD / Kanon select is `module_id = 2`).
 pub const SEL_MODULE_ID: u8 = 2;
 
-// ---- Opcode numerics --------------------------------------------------
-
 /// `module_sel` `select` opcode (basic choice).
 pub const OPCODE_SELECT: u16 = 0x0000;
 /// `module_sel` `select_s` opcode (string-table choice).
@@ -164,7 +162,7 @@ pub const OPCODE_SELECT_S: u16 = 0x0001;
 pub const OPCODE_SELECT_W: u16 = 0x0002;
 /// `module_sel` `select_s` opcode (string-table choice, rlvm opcode `3`).
 ///
-/// REAL RealLive value `3` — rlvm `module_sel.cc` `AddOpcode(3, 0, "select_s",
+/// REAL RealLive value `3` — rlvm `module_sel.cc` `AddOpcode(3, 0, "select_s"
 /// new Sel_select_s)`, which pushes the same `ButtonSelectLongOperation` as the
 /// `select_s2` opcode (`2`). In this port that is the ordinary text-choice
 /// [`dispatch_select`] carrier: `select_s` reads its option labels from the
@@ -177,7 +175,7 @@ pub const OPCODE_SELECT_W: u16 = 0x0002;
 /// [`OPCODE_SELECT_S`]; see the module note on the pre-existing `0/1/2` naming.
 pub const OPCODE_SELECT_S3: u16 = 0x0003;
 /// `module_sel` `select_objbtn` opcode (object-button choice). REAL RealLive
-/// value `4` (rlvm `module_sel.cc` — `AddOpcode(4, 0, "select_objbtn")`),
+/// value `4` (rlvm `module_sel.cc` — `AddOpcode(4, 0, "select_objbtn")`)
 /// VALIDATED against real Sweetie HD bytes: `(0, 2, 4)` occurs 33× across the
 /// archive (the button-object graphical select — the route love-interest and
 /// clothing/costume picks, driven by on-screen button SPRITES, carrying NO
@@ -193,7 +191,7 @@ pub const OPCODE_SELECT_OBJBTN: u16 = 0x0004;
 /// button-object select rather than a plain text-window select.
 pub const OPCODE_OBJBTN_INIT: u16 = 20;
 /// `module_sel` `select_objbtn_cancel` opcode (cancelable button-object
-/// select). REAL RealLive value `14` — rlvm `module_sel.cc` `AddOpcode(14, 0,
+/// select). REAL RealLive value `14` — rlvm `module_sel.cc` `AddOpcode(14, 0
 /// "select_objbtn_cancel", new Sel_select_objbtn_cancel_0)` (and its
 /// two-arg `_1` overload): it pushes the SAME `ButtonObjectSelectLongOperation`
 /// as `select_objbtn` (`4`) but calls `set_cancelable()` so the user may escape
@@ -273,7 +271,7 @@ impl SelectVariant {
     /// The canonical [`SelectionControl`] button-object SETUP opcodes — the
     /// real-bytes signal that a scene presents its select GRAPHICALLY (button
     /// sprites placed on screen) rather than as a plain text-window list. On
-    /// real Sweetie HD these are `objbtn_init` ([`OPCODE_OBJBTN_INIT`] = 20,
+    /// real Sweetie HD these are `objbtn_init` ([`OPCODE_OBJBTN_INIT`] = 20
     /// 43×), `select_objbtn` ([`OPCODE_SELECT_OBJBTN`] = 4, 33×), and
     /// `select_objbtn_cancel` ([`OPCODE_SELECT_OBJBTN_CANCEL`] = 14, 3×). A
     /// select whose scene carries any of these is a GRAPHICAL button-object
@@ -301,7 +299,7 @@ pub enum SelectionControlSignal {
     /// plain text-window select (the vast majority of real selects: the
     /// dialogue yes/no choices). Renders as [`SelectModality::TextList`].
     TextWindow,
-    /// Button-object SelectionControl setup ops (`objbtn_init` /
+    /// Button-object SelectionControl setup ops (`objbtn_init`
     /// `select_objbtn`) are present in the scene — the select is presented
     /// GRAPHICALLY, with on-screen button sprites. Renders as a graphical
     /// modality (see [`select_modality`]).
@@ -681,7 +679,7 @@ impl SelRuntime {
         // `SELBTN.NNN.*` styling suffix. The render MODALITY (graphical
         // button-object vs. plain text list) is NOT a per-command property —
         // it is a SCENE-context property derived from the surrounding
-        // [`SelectionControl`] button-setup ops (see [`select_modality`] /
+        // [`SelectionControl`] button-setup ops (see [`select_modality`]
         // [`selection_control_signal`]), applied by the render / analysis
         // layer that has the whole scene, not by this single-command dispatch.
         //
@@ -1071,9 +1069,7 @@ pub fn register_sel_rlops(registry: &mut RlopRegistry, runtime: Arc<SelRuntime>)
     SEL_RLOP_COUNT
 }
 
-// ---------------------------------------------------------------------
 // Choice-input scheduler
-// ---------------------------------------------------------------------
 
 /// Substrate [`LongOpScheduler`] that resumes a queued
 /// [`SelectLongOp`] once an [`InputEvent::Choice`] has been recorded
@@ -1269,7 +1265,7 @@ mod tests {
     #[test]
     fn register_sel_rlops_covers_exact_rlvm_oracle_opcode_set() {
         // rlvm `SelModule` (`module_sel.cc`) registers EXACTLY these opcodes:
-        //   0 select_w, 1 select, 2 select_s2, 3 select_s,
+        //   0 select_w, 1 select, 2 select_s2, 3 select_s
         //   4 select_objbtn, 14 select_objbtn_cancel, 20 objbtn_init.
         // The port must register that set — no more, no less. In particular
         // opcode 120 (a retired synthetic alias) must be ABSENT.
@@ -1675,7 +1671,7 @@ mod tests {
         // stored `choices` Vec, so the two surviving choices occupy Vec
         // positions 0 and 1. The emitted `choice:<idx>` surfaces must name
         // those contiguous positions (0, 1) — NOT the raw arg indices
-        // (0, 2) — so a user pick routed through `SelectLongOp::choose` /
+        // (0, 2) — so a user pick routed through `SelectLongOp::choose`
         // `set_store` lands on the matching stored entry.
         let sink = Arc::new(CollectingSink::new());
         let runtime = Arc::new(SelRuntime::with_sink(

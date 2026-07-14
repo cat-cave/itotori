@@ -94,11 +94,11 @@ pub enum EvidenceRef {
     FrameArtifactRef { frame_id: String },
 
     /// Reference to a recorded `ReplayLog` whose `run_id` proves the
-    /// replay run (UTSUSHI-021).
+    /// replay run ().
     #[serde(rename = "replayLogRef", rename_all = "camelCase")]
     ReplayLogRef { run_id: String },
 
-    /// Cross-reference to an impl-map fixture id (UTSUSHI-025). This is
+    /// Cross-reference to an impl-map fixture id (). This is
     /// the only coupling between conformance and impl-map; it is
     /// one-way and string-keyed (no Rust type coupling).
     #[serde(rename = "implMapFixture", rename_all = "camelCase")]
@@ -111,7 +111,7 @@ pub enum EvidenceRef {
     BridgeUnit { bridge_unit_id: String },
 
     /// Reference to a [`crate::StatePath`] quoted verbatim from a
-    /// snapshot diff. Additive variant introduced by UTSUSHI-028. The
+    /// snapshot diff. Additive variant introduced by. The
     /// `path` string is the canonical wire form returned by
     /// [`crate::StatePath::as_str`] (already lowercase ASCII with `.`
     /// segment separators; the snapshot substrate enforces this at parse
@@ -174,7 +174,7 @@ impl EvidenceRef {
                         reason: "path looks like a local path".to_string(),
                     });
                 }
-                // Reuse the UTSUSHI-023 parser so the conformance layer
+                // Reuse the parser so the conformance layer
                 // cannot accept any string the substrate would have
                 // rejected. The parser enforces the namespace allow
                 // list, the segment shape, and the byte ceiling.
@@ -216,8 +216,8 @@ fn validate_id_string(
     Ok(())
 }
 
-/// Discriminator-tagged outcome variants. The wire tag is `"kind"`,
-/// matching the UTSUSHI-030 ingestion contract.
+/// Discriminator-tagged outcome variants. The wire tag is `"kind"`
+/// matching the ingestion contract.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ResultOutcome {
@@ -789,8 +789,6 @@ mod tests {
             })
         ));
     }
-
-    // ---- UTSUSHI-028: EvidenceRef::StatePath ----
 
     #[test]
     fn evidence_ref_state_path_round_trips_through_serde_json() {

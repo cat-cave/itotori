@@ -1,10 +1,10 @@
-//! UTSUSHI-217 — RealLive `.ovk` voice archive decoder.
+//! RealLive `.ovk` voice archive decoder.
 //!
 //! Decodes the OVK on-disk layout the Sweetie HD `REALLIVEDATA/koe/`
 //! corpus (139 files) ships. Each archive is a 4-byte entry count
 //! followed by a flat table of **16-byte** records; the per-record
 //! `(offset, length)` pair points into the inline Ogg Vorbis stream
-//! body that follows the table. Per the UTSUSHI-217 spec the decoder
+//! body that follows the table. Per the spec the decoder
 //! verifies the table decode and exposes the inline `OggS`-prefixed
 //! sample bytes — it does **not** invoke a Vorbis decoder.
 //!
@@ -15,27 +15,27 @@
 //! (voice archive)", the layout is:
 //!
 //! ```text
-//! @0x00  u32  entry_count    (=2 for z0001.ovk)
-//! @0x04  Entry[entry_count]  (16 bytes each)
-//! @...   <ogg vorbis stream bodies, OggS-prefixed>
+//! @0x00 u32 entry_count (=2 for z0001.ovk)
+//! @0x04 Entry[entry_count] (16 bytes each)
+//! @... <ogg vorbis stream bodies, OggS-prefixed>
 //! ```
 //!
 //! Each entry is four `u32` LE fields:
 //!
 //! ```text
-//! field_0  u32  data_size           (length of the inline Ogg body)
-//! field_1  u32  data_offset         (byte offset from file start where
+//! field_0 u32 data_size (length of the inline Ogg body)
+//! field_1 u32 data_offset (byte offset from file start where
 //!                                   the Ogg body begins)
-//! field_2  u32  sample_num          (sample index inside the archive;
+//! field_2 u32 sample_num (sample index inside the archive;
 //!                                   matches the `koePlay` argument)
-//! field_3  u32  reserved_or_unknown (observed as a non-zero u32 in
+//! field_3 u32 reserved_or_unknown (observed as a non-zero u32 in
 //!                                   Sweetie HD; treated as opaque
 //!                                   metadata)
 //! ```
 //!
-//! The (`field_0`, `field_1`) pair is what the spec calls "data_size,
+//! The (`field_0`, `field_1`) pair is what the spec calls "data_size
 //! data_offset". The table is **not** sorted by `sample_num` — Sweetie
-//! HD's `z0001.ovk` carries `sample_num = 46` in entry 0 (at offset 36,
+//! HD's `z0001.ovk` carries `sample_num = 46` in entry 0 (at offset 36
 //! the file body start, length 176,576) and `sample_num = 52` in
 //! entry 1 (at offset 176,612, length 160,474). Entry 1's body
 //! `[176_612, 176_612 + 160_474 = 337_086)` exactly fills the file
@@ -44,11 +44,11 @@
 //!
 //! # Spec acceptance vs. real bytes
 //!
-//! The UTSUSHI-217 spec acceptance pins the entries as `(sample_num=46,
+//! The spec acceptance pins the entries as `(sample_num=46
 //! length=36)` and `(sample_num=52, length=183,476)`. The actual byte
 //! decoding (`xxd -l 96 z0001.ovk`) shows the four-field record at
 //! `@0x04` is `c0 b1 02 00 | 24 00 00 00 | 2e 00 00 00 | 9e fb 05 00`
-//! — i.e. `(0x0002B1C0, 0x24, 0x2E, 0x0005FB9E) = (176_576, 36, 46,
+//! — i.e. `(0x0002B1C0, 0x24, 0x2E, 0x0005FB9E) = (176_576, 36, 46
 //! 392_094)`. The spec's `(sample_num=46, length=36)` matches if the
 //! second u32 field is interpreted as the "length" the spec quotes;
 //! however the actual data body for sample 46 is the 176,576-byte Ogg
@@ -78,7 +78,7 @@
 //! public-format commentary in `docs/research/reallive-engine.md` §
 //! ".ovk". rlvm's `ovk_voice_archive.cc` is a **research anchor only**:
 //! its `ReadVisualArtsTable(file, 16, entries_)` call is consulted for
-//! the entry size constant (`16`) but no rlvm source is vendored,
+//! the entry size constant (`16`) but no rlvm source is vendored
 //! linked, or mechanically translated. See
 //! [`crate::RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT`].
 
@@ -138,7 +138,7 @@ pub enum OvkDecodeError {
 
 /// Decoded OVK entry record. Fields are laid out in the on-disk byte
 /// order; see the module docstring for the field-name reconciliation
-/// against the UTSUSHI-217 spec text.
+/// against the spec text.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OvkEntry {
@@ -152,7 +152,7 @@ pub struct OvkEntry {
     /// archive (matches the `koePlay` argument).
     pub sample_num: u32,
     /// Field 3 (`@offset+12`, u32 LE) — engine-opaque metadata field
-    /// (observed as a non-zero u32 in Sweetie HD; possibly a hash,
+    /// (observed as a non-zero u32 in Sweetie HD; possibly a hash
     /// possibly a tail size). Recorded verbatim.
     pub reserved: u32,
 }
@@ -359,7 +359,7 @@ mod tests {
 
     #[test]
     fn audit_focus_entry_record_size_is_pinned_at_16_bytes() {
-        // Audit-focus pin (UTSUSHI-217 spec): "OVK entry size as
+        // Audit-focus pin : "OVK entry size as
         // anything other than 16 bytes". The constant is the typed
         // surface; the spec verification test cross-references through
         // it.

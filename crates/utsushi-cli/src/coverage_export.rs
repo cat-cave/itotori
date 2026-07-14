@@ -1,6 +1,6 @@
-//! UTSUSHI-070 — `coverage-export` subcommand.
+//! `coverage-export` subcommand.
 //!
-//! Reads a committed branch-coverage read-model fixture (the UTSUSHI-009
+//! Reads a committed branch-coverage read-model fixture (the
 //! observations + route-map join inputs), builds the read model, and writes a
 //! STABLE export artifact for alpha reports + offline review:
 //!
@@ -9,7 +9,7 @@
 //! - `--markdown-output <PATH>` — an optional human-readable Markdown summary
 //!   (coverage counts per status + gap counts / severity).
 //!
-//! The generated-at metadata is taken as an INJECTED `--generated-at` value,
+//! The generated-at metadata is taken as an INJECTED `--generated-at` value
 //! never read from the clock, so the JSON + Markdown outputs are deterministic
 //! and snapshot-testable. This command launches no runtime host, opens no
 //! browser, and reads no screenshot artifact — it only reshapes committed data.

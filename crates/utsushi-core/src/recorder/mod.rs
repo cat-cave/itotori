@@ -1,4 +1,4 @@
-//! Reference runtime trace and capture recorder (UTSUSHI-060).
+//! Reference runtime trace and capture recorder ().
 //!
 //! Engine-neutral recording substrate that captures a runtime's observed
 //! trace, capability state, snapshot refs, and replay events from a fixture
@@ -8,10 +8,10 @@
 //! checks consume to compare partial-VM and replay-engine behavior against an
 //! observed reference.
 //!
-//! ## Posture (matches UTSUSHI-022 / UTSUSHI-023 / UTSUSHI-024 substrates)
+//! ## Posture (matches substrates)
 //!
 //! - **Engine-neutral.** [`SourceTag`] is the only place an engine family
-//!   surfaces, and it is a closed enum (`Browser`, `Native`, `Wine`,
+//!   surfaces, and it is a closed enum (`Browser`, `Native`, `Wine`
 //!   `Fixture`). Never a host path; never a binary version.
 //! - **No raw bytes.** Snapshot and capture references are id-only
 //!   ([`crate::SnapshotRef`]). The recorder never accepts payload bytes.
@@ -27,7 +27,7 @@
 //! - No engine port. A fixture runtime is the only producer in this slice;
 //!   real engine ports plug in via existing [`SourceTag`] variants without
 //!   schema churn.
-//! - No live capture orchestration; UTSUSHI-061 will own that.
+//! - No live capture orchestration; will own that.
 //! - No frame / audio artifact recording; the substrate widens when the first
 //!   capture consumer lands.
 //! - No replay of a recorded trace; conformance checks consume the JSON

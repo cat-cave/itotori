@@ -3,7 +3,7 @@
 //! `AssetPackage` is the trait every runtime port implements (or composes via
 //! `MountedVfs`) to expose game content to Utsushi runtime adapters. The
 //! trait surface is read-only, sync, `Send + Sync`, and engine-neutral; the
-//! adapter is responsible for translating its internal store (XP3 readers,
+//! adapter is responsible for translating its internal store (XP3 readers
 //! a layered Kaifuu pipeline, a plaintext directory, etc.) into the
 //! `AssetId`-keyed read model.
 
@@ -13,7 +13,7 @@ use super::diagnostics::{VfsError, VfsResult};
 use super::id::AssetId;
 
 /// Reference-counted asset byte buffer returned by `RuntimeVfs::open` and
-/// `AssetPackage::open`. Cheap to clone across observation hook payloads,
+/// `AssetPackage::open`. Cheap to clone across observation hook payloads
 /// snapshots, and recording slices.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AssetBytes(Bytes);
@@ -216,7 +216,7 @@ pub fn case_rule_matches(rule: CaseRule, stored: &str, requested: &str) -> bool 
 }
 
 /// Helper: validate a logical path against the canonical asset-id grammar
-/// rules. Returns a `VfsError::AssetPathUnsafe` for each forbidden pattern,
+/// rules. Returns a `VfsError::AssetPathUnsafe` for each forbidden pattern
 /// distinct from the parse-level `InvalidAssetId` because the source is an
 /// engine-supplied logical, not a wire-format id.
 pub fn validate_logical_path(package: &str, logical: &str) -> Result<String, VfsError> {

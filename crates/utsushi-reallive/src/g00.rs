@@ -1,4 +1,4 @@
-//! UTSUSHI-216 — RealLive `g00` image-format decoder (types 0, 1, 2).
+//! RealLive `g00` image-format decoder (types 0, 1, 2).
 //!
 //! Decodes the three publicly-documented sub-formats of the RealLive
 //! `g00` image container family. Sweetie HD's `$GAME/REALLIVEDATA/g00/`
@@ -12,7 +12,7 @@
 //!
 //! After byte-level probing of Sweetie HD's `BACK.g00` (type 0) and
 //! `btn000.g00` (type 2) under
-//! `docs/research/reallive-engine.md` § "g00 (RealLive image format)",
+//! `docs/research/reallive-engine.md` § "g00 (RealLive image format)"
 //! all three sub-formats share the same five-byte preamble
 //! `(type:u8, width:u16, height:u16)` and the same trailing LZSS
 //! payload structure
@@ -27,30 +27,30 @@
 //!
 //! ```text
 //! Type 0 (24-bpp BGRA, LZSS):
-//!   0x00  u8   type        = 0x00
-//!   0x01  u16  width
-//!   0x03  u16  height
-//!   0x05  u32  compressed_size       (LZSS section length from byte 5)
-//!   0x09  u32  uncompressed_size     (== width * height * 4)
-//!   0x0d  u8[] lzss_payload[compressed_size - 8]
+//!   0x00 u8 type = 0x00
+//!   0x01 u16 width
+//!   0x03 u16 height
+//!   0x05 u32 compressed_size (LZSS section length from byte 5)
+//!   0x09 u32 uncompressed_size (== width * height * 4)
+//!   0x0d u8[] lzss_payload[compressed_size - 8]
 //!
 //! Type 1 (8-bpp paletted, LZSS):
-//!   0x00  u8   type        = 0x01
-//!   0x01  u16  width
-//!   0x03  u16  height
-//!   0x05  u32  compressed_size       (LZSS section length from byte 5)
-//!   0x09  u32  uncompressed_size     (== 256*4 palette + width*height indices)
-//!   0x0d  u8[] lzss_payload[compressed_size - 8]
+//!   0x00 u8 type = 0x01
+//!   0x01 u16 width
+//!   0x03 u16 height
+//!   0x05 u32 compressed_size (LZSS section length from byte 5)
+//!   0x09 u32 uncompressed_size (== 256*4 palette + width*height indices)
+//!   0x0d u8[] lzss_payload[compressed_size - 8]
 //!
 //! Type 2 (24-bpp BGRA + regions, LZSS):
-//!   0x00  u8   type        = 0x02
-//!   0x01  u16  width
-//!   0x03  u16  height
-//!   0x05  u32  region_count
-//!   0x09  G00RegionRecord[region_count]  (24 bytes each)
-//!   ....  u32  compressed_size            (LZSS section length from here)
-//!   ....  u32  uncompressed_size
-//!   ....  u8[] lzss_payload[compressed_size - 8]
+//!   0x00 u8 type = 0x02
+//!   0x01 u16 width
+//!   0x03 u16 height
+//!   0x05 u32 region_count
+//!   0x09 G00RegionRecord[region_count] (24 bytes each)
+//!   .... u32 compressed_size (LZSS section length from here)
+//!   .... u32 uncompressed_size
+//!   .... u8[] lzss_payload[compressed_size - 8]
 //! ```
 //!
 //! Each [`G00Region`]'s record on disk is six little-endian `i32`
@@ -59,7 +59,7 @@
 //! rectangle being **inclusive** at `(x2, y2)`, so the region's pixel
 //! width is `x2 - x1 + 1`. The `name` field is reserved (the on-disk
 //! record does not store a string; the `objLoadRegion` opcode at
-//! UTSUSHI-214 supplies names through `Gameexe.ini`-driven
+//! supplies names through `Gameexe.ini`-driven
 //! cross-references, not through the g00 record itself).
 //!
 //! # LZSS variant (relative back-reference LZ77)
@@ -251,7 +251,7 @@ impl G00Rect {
 /// Type 2 g00 files carry a region list immediately after the header.
 /// Each region describes a sub-bitmap inside the file's canvas plus an
 /// origin offset (`origin_x`, `origin_y`) used by the `objLoadRegion`
-/// opcode in UTSUSHI-214 to anchor the sub-bitmap inside the parent
+/// opcode in to anchor the sub-bitmap inside the parent
 /// surface. The `name` field is `None` here: the on-disk region record
 /// does **not** store a string; cross-referenced names land through
 /// `Gameexe.ini` lookups handled at the opcode layer. The slot is
@@ -270,7 +270,7 @@ pub struct G00Region {
     pub origin_y: i32,
     /// Optional region name. Always `None` from the on-disk record;
     /// populated by the `objLoadRegion` cross-reference at the opcode
-    /// layer (UTSUSHI-214).
+    /// layer ().
     pub name: Option<String>,
 }
 
@@ -389,7 +389,7 @@ pub enum G00DecodeError {
     /// distinguishes type 2 from type 0).
     Type2ZeroRegions,
     /// Decoded LZSS payload is shorter than the per-type pixel-buffer
-    /// requirement (type 0/2: `< width*height*4`; type 1: `< palette +
+    /// requirement (type 0/2: `< width*height*4`; type 1: `< palette
     /// width*height`).
     DecodedBufferTooShort {
         /// Sub-format whose decoded buffer was short.
@@ -551,7 +551,7 @@ impl std::fmt::Display for G00Warning {
 /// Corpus-wide histogram of g00 lead bytes.
 ///
 /// Produced by directory walks over `$GAME/REALLIVEDATA/g00/`. The
-/// `acceptance` criterion of UTSUSHI-216 calls for this aggregate to
+/// `acceptance` criterion of calls for this aggregate to
 /// surface the per-type distribution and to emit a typed
 /// [`G00Warning::NoTypeNInCorpus`] for every documented type the
 /// corpus has zero files of.
@@ -647,7 +647,7 @@ struct LzssSection<'a> {
     uncompressed_size: usize,
 }
 
-/// Count-only proof of framing and LZSS tokens, not pixels, checksums,
+/// Count-only proof of framing and LZSS tokens, not pixels, checksums
 /// container semantics, or visual interpretation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct G00LzssValidation {
@@ -986,7 +986,7 @@ fn strict_lzss_section(
 
 /// Strict, allocation-free walk of the LZSS token stream.
 ///
-/// Emits toward `expected` (the decoder's output target). Two real,
+/// Emits toward `expected` (the decoder's output target). Two real
 /// format-legal tolerances — both grounded in the xclannad `G00CONV`
 /// `lzExtract` oracle (`file.cc`, loop guard
 /// `while (ldest < ldestend && lsrc < lsrcend)`) — are honoured:
@@ -1106,7 +1106,7 @@ fn walk_lzss_counts(
         }
     }
     // Full declared output emitted. The payload is normally fully consumed;
-    // a bounded trailing pad (type-2's single byte) is legitimate framing,
+    // a bounded trailing pad (type-2's single byte) is legitimate framing
     // anything larger is a genuine unconsumed-payload error.
     let trailing = payload.len().saturating_sub(src_offset);
     if trailing > max_trailing {
@@ -1147,8 +1147,8 @@ pub fn decode_g00(input: &[u8]) -> Result<(G00Image, Vec<G00Warning>), G00Decode
 
 /// Decode a type-0 (24-bpp BGRA, LZSS) g00 file.
 ///
-/// Header: 5-byte preamble + `(u32 compressed_size, u32 uncompressed_size)` +
-/// LZSS payload. Decoded payload is `width * height * 4` bytes of BGRA pixels,
+/// Header: 5-byte preamble + `(u32 compressed_size, u32 uncompressed_size)`
+/// LZSS payload. Decoded payload is `width * height * 4` bytes of BGRA pixels
 /// reordered to RGBA at the decoder boundary.
 fn decode_type0(
     input: &[u8],
@@ -1200,7 +1200,7 @@ fn decode_type0(
 
 /// Decode a type-1 (8-bpp paletted + LZSS) g00 file.
 ///
-/// Header layout: 5-byte preamble, `u32 LE compressed_size`,
+/// Header layout: 5-byte preamble, `u32 LE compressed_size`
 /// `u32 LE uncompressed_size`. The LZSS payload decodes to a 1024-byte
 /// BGRA palette followed by `width * height` palette indices.
 fn decode_type1(
@@ -1287,7 +1287,7 @@ fn decode_type1(
 
 /// Decode a type-2 (24-bpp + regions + LZSS) g00 file.
 ///
-/// Header layout: 5-byte preamble, `u32 LE region_count`,
+/// Header layout: 5-byte preamble, `u32 LE region_count`
 /// `region_count` × 24-byte region records, then the LZSS preamble
 /// (`u32 LE compressed_size`, `u32 LE uncompressed_size`) and stream.
 fn decode_type2(
@@ -1932,7 +1932,7 @@ mod tests {
 
     #[test]
     fn type1_synthetic_palette_round_trip() {
-        // SCN2k container: u16 colortable_len=2, then 2 BGRA entries,
+        // SCN2k container: u16 colortable_len=2, then 2 BGRA entries
         // then indices [0,1] for a 2x1 image.
         let mut decoded = Vec::new();
         decoded.extend_from_slice(&2u16.to_le_bytes());
@@ -2240,7 +2240,7 @@ mod tests {
         // non-zero, so the OLD unchecked `bx + region.rect.x1` (and the
         // per-pixel `dst_x + col`) OVERFLOW i32 — a panic under debug
         // `overflow-checks`, a silent wraparound into a wrong pixel under
-        // release. Saturating arithmetic clamps the destination to i32::MAX,
+        // release. Saturating arithmetic clamps the destination to i32::MAX
         // which the bounds check rejects, so the corrupt region writes
         // NOTHING and the canvas stays fully transparent — no panic, no OOB.
         let bgra = [0x11u8, 0x22, 0x33, 0xff, 0x44, 0x55, 0x66, 0x77];

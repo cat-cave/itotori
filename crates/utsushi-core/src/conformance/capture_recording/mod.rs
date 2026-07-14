@@ -1,12 +1,12 @@
-//! Capture- and recording-side runtime conformance checks (UTSUSHI-029).
+//! Capture- and recording-side runtime conformance checks ().
 //!
-//! This module ships the per-profile shape, validators, semantic codes,
+//! This module ships the per-profile shape, validators, semantic codes
 //! and `run()` helpers for the [`crate::conformance::ProfileId::FrameCapture`]
 //! and [`crate::conformance::ProfileId::RecordingCapture`] profiles. The
 //! module is engine-neutral; no XP3/KAG/RGSS3/Tyrano-specific surface
 //! lives here. Every artifact reference flows through
-//! [`crate::ObservationArtifactRef`] /
-//! [`crate::validate_runtime_artifact_uri`], so host paths, `file:`/
+//! [`crate::ObservationArtifactRef`]
+//! [`crate::validate_runtime_artifact_uri`], so host paths, `file:`
 //! `data:`/`blob:` schemes, traversal, and any URI outside
 //! [`crate::RUNTIME_ARTIFACT_URI_ROOT`] are rejected.
 //!
@@ -14,9 +14,9 @@
 //!
 //! Two check structs:
 //!
-//! - [`FrameCaptureConformanceCheck`] — single frames (screenshots,
+//! - [`FrameCaptureConformanceCheck`] — single frames (screenshots
 //!   standalone frame captures).
-//! - [`RecordingConformanceCheck`] — composite recording: container +
+//! - [`RecordingConformanceCheck`] — composite recording: container
 //!   sequential frame refs + audio-event count metadata.
 //!
 //! Both expose `validate()` (structural rules) and `run()` (project the

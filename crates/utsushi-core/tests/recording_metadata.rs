@@ -1,8 +1,8 @@
-//! Controlled playback recording metadata smoke (UTSUSHI-064).
+//! Controlled playback recording metadata smoke ().
 //!
 //! This single integration test exercises the controlled playback contract
 //! through an inline fixture recording path. The substrate
-//! (`RecordingMetadata`, `RecordingConformanceCheck`, `FrameArtifactSink`,
+//! (`RecordingMetadata`, `RecordingConformanceCheck`, `FrameArtifactSink`
 //! `AudioEventSink`) already exists; this slice is the structural smoke
 //! that pins:
 //!
@@ -16,7 +16,7 @@
 //! - **Missing recording → `Unsupported`, never silent Pass.** When the
 //!   manifest does not declare `RecordingCapture`, the smoke shape is
 //!   `ResultOutcome::Unsupported { semantic_code:
-//!   "utsushi.conformance.recording_capture_unsupported",
+//!   "utsushi.conformance.recording_capture_unsupported"
 //!   declared_in_manifest: false }`. When the manifest DOES declare it but
 //!   the recording is empty (`frame_count = 0`), validation fails with
 //!   `RecordingFrameCountMismatch`.
@@ -230,7 +230,7 @@ fn baseline_check() -> RecordingConformanceCheck {
 
 /// Walk a serde_json::Value, rebuilding every Object as a BTreeMap so the
 /// emitted key order is sorted (matches the recorder's
-/// `deterministic_json_bytes` canonicalization pattern from UTSUSHI-060).
+/// `deterministic_json_bytes` canonicalization pattern from ).
 fn canonicalize(value: Value) -> Value {
     match value {
         Value::Object(map) => {
@@ -676,7 +676,7 @@ fn recording_conformance_pass_result_cross_validates_against_manifest_declaring_
  {
     // Build a full ConformanceResult envelope from the Pass outcome and
     // assert the envelope-level validator accepts it. This pins the
-    // structural compatibility with UTSUSHI-026's `validate`.
+    // structural compatibility with the `validate`.
     let check = baseline_check();
     let outcome = check.run();
     // Project each artifact ref into the substrate's

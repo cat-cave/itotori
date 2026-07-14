@@ -2,7 +2,7 @@
 //!
 //! The validator NEVER executes shell commands and NEVER touches the
 //! filesystem. It enforces structural invariants only. Command execution is
-//! UTSUSHI-027–030's responsibility; fixture-hash verification lives in the
+//! 030's responsibility; fixture-hash verification lives in the
 //! separate [`super::verify_fixture_hashes`] helper.
 
 use std::collections::HashSet;
@@ -76,9 +76,7 @@ pub fn validate(map: &ImplementationMap) -> Result<ValidationReport, Vec<ImplMap
     }
 }
 
-// ---------------------------------------------------------------------------
 // Top-level invariants.
-// ---------------------------------------------------------------------------
 
 fn validate_schema_version(map: &ImplementationMap, errors: &mut Vec<ImplMapError>) {
     let declared = map.schema_version.as_str();
@@ -209,9 +207,7 @@ fn validate_cross_references(map: &ImplementationMap, errors: &mut Vec<ImplMapEr
     }
 }
 
-// ---------------------------------------------------------------------------
 // Per-subsystem invariants.
-// ---------------------------------------------------------------------------
 
 fn validate_each_subsystem(
     map: &ImplementationMap,
@@ -433,7 +429,7 @@ fn is_evidence_locator_valid(kind: EvidenceKind, locator: &str) -> bool {
         EvidenceKind::Fixture => is_rooted_repo_path(trimmed, "fixtures/"),
         EvidenceKind::Doc => is_rooted_repo_path(trimmed, "docs/"),
         EvidenceKind::RoadmapNode => is_node_id(trimmed),
-        // A reference-impl anchor MUST be a colon-anchored URI (`scheme:path`),
+        // A reference-impl anchor MUST be a colon-anchored URI (`scheme:path`)
         // e.g. `https://github.com/...` or `rlvm:src/machine/rlmachine.cc`.
         EvidenceKind::ReferenceImplAnchor => is_colon_anchored_uri(trimmed),
     }
@@ -468,9 +464,7 @@ fn is_colon_anchored_uri(value: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.')
 }
 
-// ---------------------------------------------------------------------------
 // Per-command invariants.
-// ---------------------------------------------------------------------------
 
 const RESERVED_COMMAND_PREFIXES: &[&str] = &["cargo ", "just ", "node ", "pnpm "];
 
@@ -515,7 +509,7 @@ fn first_unsafe_token(command: &str) -> Option<String> {
     if let Some(ch) = command.chars().find(|c| forbidden.contains(c)) {
         return Some(ch.to_string());
     }
-    // Allowed chars: alnum, dot, underscore, slash, equals, colon, at,
+    // Allowed chars: alnum, dot, underscore, slash, equals, colon, at
     // plus, dash, space.
     for ch in command.chars() {
         let ok = ch.is_ascii_alphanumeric()
@@ -553,9 +547,7 @@ fn validate_expected_outcome(
     }
 }
 
-// ---------------------------------------------------------------------------
 // Reference behavior.
-// ---------------------------------------------------------------------------
 
 fn validate_reference_behavior(
     map: &ImplementationMap,
@@ -580,9 +572,7 @@ fn validate_reference_behavior(
     }
 }
 
-// ---------------------------------------------------------------------------
 // generated_at.
-// ---------------------------------------------------------------------------
 
 fn validate_generated_at(map: &ImplementationMap, errors: &mut Vec<ImplMapError>) {
     if !is_rfc3339_instant(map.generated_at.as_str()) {
@@ -651,9 +641,7 @@ fn is_rfc3339_instant(value: &str) -> bool {
         && offset[4..6].chars().all(|c| c.is_ascii_digit())
 }
 
-// ---------------------------------------------------------------------------
 // Cross-validation against PortManifest.
-// ---------------------------------------------------------------------------
 
 /// Cross-validate the map against a `PortManifest`. OFFERED but NOT REQUIRED
 /// — the map remains standalone-validatable.
@@ -716,10 +704,8 @@ pub fn validate_against_manifest(
     }
 }
 
-// ---------------------------------------------------------------------------
 // Status promotion helper. Applied by the public surface in mod.rs to keep
 // the validator pure-data here.
-// ---------------------------------------------------------------------------
 
 /// Promote a Draft map to Validated when validation succeeds. Used by
 /// [`super::validate_and_promote`]. Idempotent on already-Validated maps;

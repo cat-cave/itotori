@@ -1,5 +1,5 @@
 //! `utsushi-cli patch-render --engine reallive` — the composed
-//! Kaifuu-patchback + Utsushi render-validate pipeline as ONE repeatable,
+//! Kaifuu-patchback + Utsushi render-validate pipeline as ONE repeatable
 //! config-parameterized command.
 //!
 //! Today two steps exist separately:
@@ -17,13 +17,13 @@
 //! This command composes them: given a config (project engine + data-root
 //! paths + the translated bundle + the scene + the translation scope) it
 //! (1) patches the translated script via Kaifuu, writes the patched
-//! `Seen.txt` to an operator-chosen path (kept uncommitted under `/scratch`),
+//! `Seen.txt` to an operator-chosen path (kept uncommitted under `/scratch`)
 //! then (2) drives the SAME Utsushi render-validate pipeline over the patched
 //! bytes to render the localized scene, emitting a REDACTED public PNG plus
 //! (3) a redaction-clean JSON evidence report (ids + hashes + counts; NO raw
 //! translated text, NO absolute filesystem paths).
 //!
-//! ENGINE-GENERAL / GAME-AGNOSTIC: every game-specific input (data root,
+//! ENGINE-GENERAL / GAME-AGNOSTIC: every game-specific input (data root
 //! scene, translated bundle, scope, output paths) is a CONFIG flag — there is
 //! no hard-coded game path or scene reference. Validated first on a real
 //! RealLive project (Sweetie HD) via config.
@@ -31,7 +31,7 @@
 //! COPYRIGHT REDACTION (PROJECT LAW): the public PNG is redacted by default
 //! (real g00 image rects replaced by a synthetic marker; translated glyphs
 //! stay legible). The full-fidelity private PNG is written only to the
-//! gitignored private tree. The JSON evidence report carries only ids /
+//! gitignored private tree. The JSON evidence report carries only ids
 //! sha256 hashes / counts, so it is the committable artifact; the frames are
 //! not committed.
 

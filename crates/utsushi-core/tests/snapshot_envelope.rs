@@ -1,16 +1,16 @@
-//! Integration test for the snapshot envelope tier (UTSUSHI-223).
+//! Integration test for the snapshot envelope tier ().
 //!
 //! Asserts the three deliverables the spec calls out:
 //!
-//! 1. **Const-asserted tier ceilings** — `Small = 16 KiB`,
+//! 1. **Const-asserted tier ceilings** — `Small = 16 KiB`
 //!    `Medium = 256 KiB`, `Large = 4 MiB`.
 //! 2. **Medium-class round trip on a simulated RealLive scene-1 shape**
-//!    — `int_bank: 1000 × i32`, `str_bank: 200 × String≈32 chars`,
+//!    — `int_bank: 1000 × i32`, `str_bank: 200 × String≈32 chars`
 //!    `graphics: 4 layers × {asset_id, transform, blend_mode}`. The
 //!    serialized form must land between 64 KiB and 256 KiB and be
 //!    byte-equal through `serialize → deserialize → serialize`.
 //! 3. **Small-class overflow surfaces typed
-//!    `SnapshotEnvelopeOverflow { envelope_class: Small, observed_bytes,
+//!    `SnapshotEnvelopeOverflow { envelope_class: Small, observed_bytes
 //!    limit_bytes: 16384 }`** and writes nothing — `Snapshot` value is
 //!    never constructed and no output buffer escapes.
 //! 4. **Second engine family round trip** — MV/MZ-shaped `.rpgsave`
@@ -22,9 +22,7 @@ use utsushi_core::{
     SnapshotManifest, SnapshotRequest, StatePath, StateTree, StateValue, take_snapshot,
 };
 
-// =====================================================================
 // 1. Const-asserted tier ceilings.
-// =====================================================================
 
 #[test]
 fn small_envelope_max_bytes_returns_sixteen_kib() {
@@ -57,12 +55,10 @@ fn manifest_carries_envelope_class_field_for_each_tier() {
     }
 }
 
-// =====================================================================
 // 2. Medium-class round trip on a simulated RealLive Sweetie HD scene-1
 //    state shape: int bank (1000 entries × i32) + str bank
 //    (200 entries × ~32-char String) + 4 graphics layers with
 //    {asset_id, affine transform, blend_mode}.
-// =====================================================================
 
 const REALLIVE_INSPECTABLE_ID: &str = "reallive-sweetie-hd";
 const REALLIVE_INT_BANK_ENTRIES: usize = 1000;
@@ -177,10 +173,8 @@ fn reallive_sweetie_hd_scene_1_round_trips_byte_equal_through_medium_envelope() 
     assert_eq!(restored.envelope_class(), SnapshotEnvelope::Medium);
 }
 
-// =====================================================================
 // 3. Small-class overflow returns typed `SnapshotEnvelopeOverflow` and
 //    no output is constructed.
-// =====================================================================
 
 const OVERSIZE_INSPECTABLE_ID: &str = "oversize-small-port";
 
@@ -251,9 +245,7 @@ fn small_envelope_overflow_returns_typed_error_and_writes_nothing() {
     );
 }
 
-// =====================================================================
 // 4. Second engine family round trip — MV/MZ `.rpgsave` shape.
-// =====================================================================
 
 const MVMZ_INSPECTABLE_ID: &str = "mv-mz-rpgsave";
 const MVMZ_VARIABLE_ENTRIES: usize = 600;

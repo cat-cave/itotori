@@ -92,7 +92,7 @@ pub fn run_structure_command(tail: &[String]) -> Result<(), Box<dyn std::error::
 ///
 /// # Why coverage cannot be a single chain from the Gameexe entry scene
 ///
-/// A RealLive title's `#SEEN_START` scene is a LAUNCHER: it draws the title /
+/// A RealLive title's `#SEEN_START` scene is a LAUNCHER: it draws the title
 /// game-select and then dispatches into the chosen work with a jump/farcall
 /// whose target scene id is a STORE-RELATIVE expression (the value the player's
 /// menu pick wrote), not a literal. Headless replay cannot know that runtime
@@ -164,7 +164,7 @@ pub fn build_narrative_structure(
         .collect();
 
     // The replay engine with `use_xor_2` staging (Sweetie HD compiler 110002)
-    // + the Gameexe `#NAMAE`/`#COLOR_TABLE` speaker resolver.
+    // the Gameexe `#NAMAE`/`#COLOR_TABLE` speaker resolver.
     let engine = staged_engine(seen_path)?.with_namae_resolver(resolver);
 
     let opts = ReplayOpts {
@@ -184,7 +184,7 @@ pub fn build_narrative_structure(
         ids
     };
 
-    // Roots: the Gameexe entry scene FIRST (its dynamic dispatch chain leads),
+    // Roots: the Gameexe entry scene FIRST (its dynamic dispatch chain leads)
     // then every remaining archive scene ascending. Seeding an observation from
     // every scene — deduping scenes an earlier chain already crossed — reaches
     // the store-gated narrative a single chain from `#SEEN_START` cannot (see
@@ -196,7 +196,7 @@ pub fn build_narrative_structure(
             .filter(|scene| *scene != entry),
     );
 
-    // Scene-dispatch GRAPH + per-scene MESSAGE STREAM (play order) + SPEAKERS +
+    // Scene-dispatch GRAPH + per-scene MESSAGE STREAM (play order) + SPEAKERS
     // CHOICES — all read verbatim from each root's observe_playthrough.
     let mut scenes: Vec<Value> = Vec::new();
     let mut dispatch_order: Vec<SceneId> = Vec::new();
@@ -259,7 +259,7 @@ pub fn build_narrative_structure(
 }
 
 /// Build one scene's `utsushi.narrative-structure.v1` object from its driven
-/// [`ScenePlaySegment`] observation: per-scene play-order MESSAGE STREAM +
+/// [`ScenePlaySegment`] observation: per-scene play-order MESSAGE STREAM
 /// SPEAKERS + CHOICES (each option's branch-following walk), the statically
 /// decoded `selectionControl` signal, the resolved `nextScene`, and the static
 /// `dispatchFanoutScenes`. Every field is read verbatim from the decode APIs.
@@ -298,7 +298,7 @@ fn scene_value(
             engine.branch_following_observation(scene_id, opts, HeadlessChoicePolicy::Fixed(*idx));
         // `branchMessages` is a bounded PREVIEW of where an option leads — the
         // option's dispatch target is `branchEntryScene`, whose full content is
-        // captured as its own scene entry, so the whole (often route-length,
+        // captured as its own scene entry, so the whole (often route-length
         // and — when the branch crosses into a select the headless drive cannot
         // satisfy — spinning) branch stream must NOT be inlined here. Dedup
         // consecutive identical lines (kills any spin repetition) then cap to a
@@ -540,7 +540,7 @@ fn is_choice_line(line: &TextLine) -> bool {
         .is_some_and(|s| s.starts_with(CHOICE_SURFACE_PREFIX))
 }
 
-/// The distinct option indices offered by this scene's `select {}` prompt(s),
+/// The distinct option indices offered by this scene's `select {}` prompt(s)
 /// read from the `choice:<idx>` play-order tags (ascending, de-duplicated).
 fn choice_option_indices(lines: &[TextLine]) -> Vec<u16> {
     let mut set: BTreeSet<u16> = BTreeSet::new();

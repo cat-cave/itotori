@@ -1,8 +1,8 @@
-//! UTSUSHI-217 — RealLive `module_bgm` / `module_koe` / `module_pcm` /
+//! RealLive `module_bgm` / `module_koe` / `module_pcm`
 //! `module_se` RLOperation families.
 //!
 //! Implements the ~15 audio opcodes across the four submodules
-//! (`bgm`, `koe`, `pcm`, `se`) the UTSUSHI-217 spec node pins as the
+//! (`bgm`, `koe`, `pcm`, `se`) the spec node pins as the
 //! alpha-tier coverage frontier. Every op routes through a shared
 //! [`AudioRuntime`] that owns:
 //!
@@ -21,7 +21,7 @@
 //!
 //! # Module addressing
 //!
-//! The four `(module_type, module_id)` pairs follow the rlvm /
+//! The four `(module_type, module_id)` pairs follow the rlvm
 //! RLDEV catalogue (`docs/research/reallive-engine.md` §F). rlvm is a
 //! research anchor only; the byte values below are restated as
 //! const-pinned audit anchors, not derived by mechanical translation.
@@ -29,7 +29,7 @@
 //! - `module_bgm` — `(1, 20)` per RLDEV `module_bgm.cc`
 //! - `module_koe` — `(1, 23)` per RLDEV `module_koe.cc`
 //! - `module_pcm` — `(1, 21)` per RLDEV `module_pcm.cc`
-//! - `module_se`  — `(1, 22)` per RLDEV `module_se.cc`
+//! - `module_se` — `(1, 22)` per RLDEV `module_se.cc`
 //!
 //! # Audit-focus posture
 //!
@@ -41,7 +41,7 @@
 //!   structural surface that addresses the spec's audit-focus pin —
 //!   the type forbids a stringly-typed collapse at the type-system
 //!   layer.
-//! - **No actual sample mixing.** The decoder layer ([`crate::nwa`] /
+//! - **No actual sample mixing.** The decoder layer ([`crate::nwa`]
 //!   [`crate::ovk`]) verifies header / table decode; the rlop layer
 //!   emits typed metadata; nothing in this module references an audio
 //!   output device.
@@ -53,8 +53,6 @@ use crate::gameexe::Gameexe;
 use crate::vm::Vm;
 
 use super::{DispatchOutcome, ExprValue, RLOperation, RlopKey, RlopRegistry};
-
-// ---- module_bgm ------------------------------------------------------
 
 /// `module_type` byte for the BGM submodule. Per RLDEV catalogue.
 pub const BGM_MODULE_TYPE: u8 = 1;
@@ -118,8 +116,6 @@ impl BgmOpcode {
     }
 }
 
-// ---- module_koe ------------------------------------------------------
-
 /// `module_type` byte for the KOE (voice) submodule.
 pub const KOE_MODULE_TYPE: u8 = 1;
 /// `module_id` byte for the KOE submodule.
@@ -180,8 +176,6 @@ impl KoeOpcode {
     }
 }
 
-// ---- module_pcm ------------------------------------------------------
-
 /// `module_type` byte for the PCM (wav) submodule.
 pub const PCM_MODULE_TYPE: u8 = 1;
 /// `module_id` byte for the PCM submodule.
@@ -225,8 +219,6 @@ impl PcmOpcode {
     }
 }
 
-// ---- module_se -------------------------------------------------------
-
 /// `module_type` byte for the SE submodule.
 pub const SE_MODULE_TYPE: u8 = 1;
 /// `module_id` byte for the SE submodule.
@@ -268,11 +260,9 @@ impl SeOpcode {
 }
 
 /// Total RLOperations the audio family registers. Pinned at the
-/// UTSUSHI-217 spec target of ~15 (15 today).
+/// spec target of ~15 (15 today).
 pub const AUDIO_RLOP_COUNT: usize =
     BgmOpcode::ALL.len() + KoeOpcode::ALL.len() + PcmOpcode::ALL.len() + SeOpcode::ALL.len();
-
-// ---- AudioRuntime ----------------------------------------------------
 
 /// Typed warnings the [`AudioRuntime`] records on arg-shape / lookup
 /// failure. Drained via [`AudioRuntime::take_warnings`].
@@ -326,7 +316,7 @@ struct AudioRuntimeInner {
     /// koePlay against a freshly-built runtime can pin the
     /// "no Gameexe" path without spelunking.
     current_speaker_archive_id: i32,
-    /// 1 if the BGM channel is currently playing (post-bgmPlay,
+    /// 1 if the BGM channel is currently playing (post-bgmPlay
     /// pre-bgmStop/bgmFadeOut). The bgmStatus opcode reads this.
     bgm_playing: bool,
     /// 1 if a voice is currently playing. The koeStatus opcode reads
@@ -342,7 +332,7 @@ impl std::fmt::Debug for AudioRuntime {
 }
 
 impl AudioRuntime {
-    /// Build a runtime without any Gameexe context. `bgmPlay` /
+    /// Build a runtime without any Gameexe context. `bgmPlay`
     /// `wavPlay` / `koePlay` resolve through the **default** subdir
     /// conventions (`"bgm"`, `"wav"`, `"koe"`); callers that need the
     /// Gameexe-driven subdir resolution should call
@@ -408,12 +398,12 @@ impl AudioRuntime {
     /// sticky-speaker fallback that exploits a numbering coincidence in
     /// THIS title: `mode * 1000 + color_table_index` happens to equal
     /// the `koe/z<NNNN>.ovk` archive number for its character speakers
-    /// (`(1, 015, -1)` ↔ `z1015.ovk`, `(1, 016, -1)` ↔ `z1016.ovk`,
+    /// (`(1, 015, -1)` ↔ `z1015.ovk`, `(1, 016, -1)` ↔ `z1016.ovk`
     /// `(0, 011, -1)` ↔ `z0011.ovk`). The last field is reserved
     /// (unused here).
     ///
     /// This composition matches the file listing under Sweetie HD's
-    /// `REALLIVEDATA/koe/` exactly (we observe `z1011`, `z1014`,
+    /// `REALLIVEDATA/koe/` exactly (we observe `z1011`, `z1014`
     /// `z1015`, `z1016`, `z1018` etc. for the character speakers whose
     /// NAMAE rows declare `(1, 011)` through `(1, 018)`); see the
     /// integration test in `tests/audio_rlop_real_bytes.rs` for the
@@ -474,7 +464,7 @@ impl AudioRuntime {
         let gameexe = guard.gameexe.as_ref()?;
         let key = format!("SE.{slot:03}");
         let value = gameexe.get(&key)?;
-        // The `#SE.<slot>` value shape in RealLive is `"asset_name",
+        // The `#SE.<slot>` value shape in RealLive is `"asset_name"
         // <volume>`; the Gameexe parser stores this as a string-prefix
         // arg array. We accept either the raw scalar string or the
         // first element of an int-array shape as the asset name.
@@ -489,7 +479,7 @@ impl AudioRuntime {
     /// `koe/z<archive>.ovk` convention).
     pub fn voice_archive_label(archive_id: i32) -> String {
         // Visual Arts pads voice archive ids to 4 digits with a
-        // leading `z`. Sweetie HD's `z0001.ovk` ↔ `archive_id = 1`,
+        // leading `z`. Sweetie HD's `z0001.ovk` ↔ `archive_id = 1`
         // `z1015.ovk` ↔ `archive_id = 1015`.
         if archive_id < 0 {
             format!("z{:04}", 0)
@@ -528,8 +518,6 @@ impl AudioRuntime {
         self.emitter.emit(kind, payload)
     }
 }
-
-// ---- per-op implementors ---------------------------------------------
 
 /// `bgm.bgmPlay(string asset_name)` — emits a typed `BgmStart`
 /// audio event with the engine-resolved asset id.
@@ -1223,7 +1211,7 @@ mod tests {
 
     #[test]
     fn audio_rlop_count_is_fifteen() {
-        // The UTSUSHI-217 spec target: ~15 audio RLOperations across
+        // The spec target: ~15 audio RLOperations across
         // bgm + koe + pcm + se. We pin the exact count so a future
         // addition shows up in the audit trail.
         assert_eq!(AUDIO_RLOP_COUNT, 15);
@@ -1278,7 +1266,7 @@ mod tests {
     #[test]
     fn bgm_play_honours_gameexe_foldname_bgm() {
         let runtime = synth_runtime();
-        // Synthesise a Gameexe with `FOLDNAME.BGM = "BGM" = 0 :
+        // Synthesise a Gameexe with `FOLDNAME.BGM = "BGM" = 0:
         // "BGM.PAK"` — same shape as Sweetie HD.
         let gameexe = synth_gameexe("#FOLDNAME.BGM = \"BGM\" = 0 : \"BGM.PAK\"\n");
         runtime.set_gameexe(gameexe);

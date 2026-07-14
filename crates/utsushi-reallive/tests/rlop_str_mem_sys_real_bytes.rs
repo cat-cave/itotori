@@ -1,9 +1,9 @@
-//! UTSUSHI-212 real-bytes integration test for the new
+//! Real-bytes integration test for the new
 //! `module_str` / `module_mem` / `module_sys` RLOperation families.
 //!
-//! Loads Sweetie HD scene 1 through the full UTSUSHI-201 → UTSUSHI-204
+//! Loads Sweetie HD scene 1 through the full →
 //! decode chain, mounts the three new registries on top of the
-//! UTSUSHI-208 VM, and walks the bytecode to surface how many of the
+//! VM, and walks the bytecode to surface how many of the
 //! new opcodes the corpus exercises.
 //!
 //! Per the multi-game-validation feedback note, RealLive's
@@ -14,7 +14,7 @@
 //! shape against real bytes (no panic, no MissingRlop storm for the
 //! covered opcodes) and emits a histogram so the audit trail names
 //! the density. The histogram is the load-bearing evidence; the
-//! synthetic unit tests (in `src/rlop/module_str.rs`,
+//! synthetic unit tests (in `src/rlop/module_str.rs`
 //! `src/rlop/module_mem.rs`, `src/rlop/module_sys.rs`) carry the
 //! semantic acceptance.
 //!
@@ -74,8 +74,8 @@ fn real_seen_txt_path() -> Option<PathBuf> {
 /// 2. Stepping over Sweetie HD scene 1 produces zero panics from the
 ///    `module_str` / `module_mem` / `module_sys` dispatch paths.
 /// 3. The per-family histogram (zero is acceptable per
-///    UTSUSHI-201/202/203 sibling pattern — the multi-game-gap note
-///    documents the corpus's sparse `module_str` / `module_mem` /
+///    sibling pattern — the multi-game-gap note
+///    documents the corpus's sparse `module_str` / `module_mem`
 ///    `module_sys` density).
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
@@ -159,13 +159,13 @@ fn str_mem_sys_registries_dispatch_against_reallive_real_bytes_scene_one() {
         per_opcode.iter().take(20).collect::<Vec<_>>(),
     );
     // Documented observation: Sweetie HD scene 1 carries ≥12
-    // `(1, 4, ...)` commands (the `module_sys` namespace) but **none**
-    // of them land on the arithmetic subset UTSUSHI-212 implements
-    // (opcodes 0x0000..=0x0008). The 12 observed opcodes (`110`,
-    // `111`, `302`, `371`, `373`, `452`, `1000`, `1212`, `1213`,
+    // `(1, 4,...)` commands (the `module_sys` namespace) but **none**
+    // of them land on the arithmetic subset implements
+    // (opcodes 0x0000..=0x0008). The 12 observed opcodes (`110`
+    // `111`, `302`, `371`, `373`, `452`, `1000`, `1212`, `1213`
     // `1222`, `2230`, `3502`) are the system-menu / wait / save-load
-    // / message-speed surface, addressed by sibling nodes; the
-    // UTSUSHI-208 fail-soft `MissingRlop` warning surface handles
+    // message-speed surface, addressed by sibling nodes; the
+    // fail-soft `MissingRlop` warning surface handles
     // them without panicking.
     let arithmetic_hits: usize = per_opcode
         .iter()
@@ -178,7 +178,7 @@ fn str_mem_sys_registries_dispatch_against_reallive_real_bytes_scene_one() {
     );
 
     // Multi-game-gap note: the spec's scoping rule
-    // (UTSUSHI-201/202/203 sibling pattern) accepts a histogram-only
+    // ( sibling pattern) accepts a histogram-only
     // observation when the corpus does not exercise the family
     // densely. The test does NOT assert a non-zero hit count; it
     // asserts the registry dispatches cleanly when the family IS

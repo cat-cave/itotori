@@ -1,5 +1,5 @@
 //! Real-bytes multi-engine validation for the M.1 composite asset
-//! package (UTSUSHI-222).
+//! package ().
 //!
 //! Two engine families are exercised here per the
 //! `docs/dev/orchestration-operating-model.md` "Single-game validation
@@ -7,7 +7,7 @@
 //! Both must pass for the substrate's cross-engine genericity claim to
 //! hold. Single-corpus validation is a P0 audit failure.
 //!
-//! Each test is gated on a generic `ITOTORI_REAL_*` env var. When unset,
+//! Each test is gated on a generic `ITOTORI_REAL_*` env var. When unset
 //! the test emits a visible-skip via `eprintln!` and returns OK — silent
 //! pass is explicitly forbidden by the spec node's audit-focus list.
 
@@ -88,7 +88,7 @@ fn parse_foldname_directives(gameexe_text: &str) -> Vec<(String, String)> {
         if !trimmed.starts_with("#FOLDNAME.") {
             continue;
         }
-        // Form: #FOLDNAME.<KIND> = "<FOLDER>" = N : "<ARCHIVE>"
+        // Form: #FOLDNAME.<KIND> = "<FOLDER>" = N: "<ARCHIVE>"
         let Some(equals_index) = trimmed.find('=') else {
             continue;
         };
@@ -124,7 +124,7 @@ fn extract_last_quoted(value: &str) -> Option<String> {
 #[test]
 fn composite_asset_package_real_bytes_sweetie_hd_realivedata() {
     let Some(realivedata) = real_corpus::reallivedata_dir() else {
-        // Visible-skip per UTSUSHI-222 acceptance criteria.
+        // Visible-skip acceptance criteria.
         eprintln!(
             "SKIP composite_asset_package_real_bytes_sweetie_hd_realivedata: {}; \
              multi-engine validation needs both ITOTORI_REAL_GAME_ROOT and \
@@ -209,7 +209,7 @@ fn composite_asset_package_real_bytes_sweetie_hd_realivedata() {
 
     // The substrate contract requires the multiplex policy works for at
     // least one plaintext-backed FOLDNAME entry; the audit-focus rule
-    // ("at least one plaintext-only folder, one archive-only folder,
+    // ("at least one plaintext-only folder, one archive-only folder
     // one mixed folder") is exercised in the synthetic suite. Here we
     // require strictly >0 plaintext-backed resolves so a future tree
     // reshuffle is loud.
@@ -268,7 +268,7 @@ fn composite_asset_package_real_bytes_lust_memory_www_data_system_json() {
     let env_path = if let Ok(value) = env::var(RPG_MAKER_MV_MZ_ROOT_ENV) {
         PathBuf::from(value)
     } else {
-        // Visible-skip per UTSUSHI-222 acceptance criteria.
+        // Visible-skip acceptance criteria.
         assert!(env::var(RPG_MAKER_MV_MZ_ROOT_ENV).is_err());
         eprintln!(
             "SKIP composite_asset_package_real_bytes_lust_memory_www_data_system_json: \

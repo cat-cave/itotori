@@ -1,4 +1,4 @@
-//! UTSUSHI-214 — sanity check that our deterministic PNG encoder
+//! Sanity check that our deterministic PNG encoder
 //! produces a stream a known PNG/zlib reader can parse. The Rust-only
 //! tests in `tests/graphics_object_stack.rs` and the in-module
 //! `crate::render_pipeline::tests` cover the determinism contract; this

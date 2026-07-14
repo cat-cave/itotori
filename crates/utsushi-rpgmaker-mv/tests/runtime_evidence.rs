@@ -66,7 +66,6 @@ fn mz_run_emits_real_text_stream_capture_and_snapshot() {
     let outcome =
         run_capture_against_project(&input_root, &artifact_root, "rpgmaker-mv-mz-evidence-0001");
 
-    // ---- Observed text stream is real -------------------------------------
     let lines: Vec<&utsushi_core::TextLine> = outcome
         .observations
         .iter()
@@ -90,7 +89,6 @@ fn mz_run_emits_real_text_stream_capture_and_snapshot() {
         Some("vfs://game/data/Map002.json")
     );
 
-    // ---- Capture artifact is materialised under the managed root ----------
     let capture = outcome.capture.expect("capture outcome present");
     let path = capture.artifact_path.expect("capture wrote a path");
     assert!(path.starts_with(artifact_root.path()), "artifact contained");

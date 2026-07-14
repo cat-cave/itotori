@@ -1,12 +1,12 @@
 //! `RuntimeVfs` trait and concrete implementations.
 //!
 //! `MountedVfs` is a thin wrapper around a single internal
-//! [`CompositeAssetPackage`] (substrate extension M.1, UTSUSHI-222). The
+//! [`CompositeAssetPackage`] (substrate extension M.1, ). The
 //! caller registers plaintext directories and sealed archive readers in
 //! priority order via `mount_plaintext_dir` / `mount_archive`; every
 //! resolve walks the composite's source list first-match-wins. This
 //! replaces the route-by-package-id resolver that shipped with
-//! UTSUSHI-020. No shim, no `#[deprecated]` alias, no `legacy_*` module —
+//! . No shim, no `#[deprecated]` alias, no `legacy_*` module —
 //! the orchestration-operating-model "Legacy-path preservation" rule
 //! refuses dual paths.
 //!
@@ -228,7 +228,7 @@ impl PlaintextDirPackage {
         Ok(accumulator)
     }
 
-    /// Match a request against directory entries under `parent_host_path`,
+    /// Match a request against directory entries under `parent_host_path`
     /// applying the package's case rule. Returns the matching entry name as
     /// it is stored on disk so we can build the canonical id from it.
     fn match_case(&self, parent_host_path: &Path, requested: &str) -> VfsResult<Option<String>> {

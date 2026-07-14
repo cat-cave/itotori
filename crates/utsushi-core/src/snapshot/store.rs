@@ -1,4 +1,4 @@
-//! Snapshot resolution trait (UTSUSHI-028).
+//! Snapshot resolution trait ().
 //!
 //! [`SnapshotStore`] is the resolution layer for
 //! [`crate::RuntimeRequest::snapshot`]: a [`super::SnapshotRef`]
@@ -32,7 +32,7 @@ pub mod codes {
     pub const STORE_UNAVAILABLE: &str = "utsushi.snapshot.store_unavailable";
     pub const STATE_DRIFT: &str = "utsushi.snapshot.state_drift";
 
-    /// Full set of additive UTSUSHI-028 codes (store + state-drift). The
+    /// Full set of additive codes (store + state-drift). The
     /// snapshot substrate's full code registry is in
     /// [`super::super::diagnostics::codes::ALL`].
     pub const ALL: &[&str] = &[
@@ -150,15 +150,15 @@ impl std::error::Error for SnapshotStoreError {}
 /// - Returns `Err(SnapshotStoreError::NotFound { snapshot_id })` when no
 ///   snapshot matches the requested id (NEVER a stale payload, NEVER an
 ///   empty [`Snapshot`]).
-/// - Returns `Err(SnapshotStoreError::MismatchedSchemaVersion { ... })`
+/// - Returns `Err(SnapshotStoreError::MismatchedSchemaVersion {... })`
 ///   when a stored payload exists but its `schema_version` does not
 ///   match the pin.
-/// - Returns `Err(SnapshotStoreError::InvalidSnapshotRef { ... })` when
+/// - Returns `Err(SnapshotStoreError::InvalidSnapshotRef {... })` when
 ///   [`SnapshotRef::validate`] fails.
-/// - Returns `Err(SnapshotStoreError::InspectableIdMismatch { ... })`
+/// - Returns `Err(SnapshotStoreError::InspectableIdMismatch {... })`
 ///   when a stored payload exists at the id but its inspectable id
 ///   diverges from the ref.
-/// - Returns `Err(SnapshotStoreError::StoreUnavailable { ... })` on
+/// - Returns `Err(SnapshotStoreError::StoreUnavailable {... })` on
 ///   backing-store failures (I/O, lock poison, etc.); never silently
 ///   returns success.
 ///

@@ -1,6 +1,6 @@
 //! Sealed archive-reader trait and case-folded directory index.
 //!
-//! Substrate extension M.1 (UTSUSHI-222). The trait lets future PAK / XP3
+//! Substrate extension M.1 (). The trait lets future PAK / XP3
 //! readers plug into [`super::CompositeAssetPackage`] without rewriting the
 //! resolver. The seal makes the multiplex-policy invariant load-bearing:
 //! only readers defined inside `utsushi-core` can be composed in, so an
@@ -15,7 +15,7 @@
 //!   returns the bytes for a previously-resolved entry.
 //!
 //! No concrete archive impls ship in this node — PAK and XP3 land in
-//! later nodes (UTSUSHI-146 series) when their corpora are staged.
+//! later nodes ( series) when their corpora are staged.
 
 use std::collections::BTreeMap;
 

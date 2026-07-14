@@ -32,7 +32,7 @@ pub use reference_corpus::{ReferenceCaptureValidationReport, validate_reference_
 /// emitted by the fixture adapters. Kept as a local constant so the
 /// fixture wire shape continues to advertise the `0.1.0-alpha` value
 /// `kaifuu-core` validates against, even though the `utsushi-core` Rust
-/// type that previously held this constant was deleted by UTSUSHI-224.
+/// type that previously held this constant was deleted by.
 pub const FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL: &str = "0.1.0-alpha";
 
 pub struct FixtureRuntimeAdapter {
@@ -95,7 +95,7 @@ pub fn smoke_fixture(input_root: &Path) -> UtsushiResult<Value> {
 }
 
 /// Engine family the fixture runtime adapter attempts when it reads an
-/// input root. The fixture adapter interprets its input as a synthetic,
+/// input root. The fixture adapter interprets its input as a synthetic
 /// deterministic fixture manifest (`source.json`); it never emulates a
 /// commercial engine, so the family it attempts is the fixture family
 /// itself. Carried on the [`UnsupportedInputShape`] diagnostic so a caller
@@ -103,7 +103,7 @@ pub fn smoke_fixture(input_root: &Path) -> UtsushiResult<Value> {
 pub const FIXTURE_ENGINE_FAMILY: &str = "fixture";
 
 /// Structured diagnostic emitted when the fixture runtime adapter is handed
-/// an input that is not a valid fixture — for example a real game directory,
+/// an input that is not a valid fixture — for example a real game directory
 /// or any directory missing the `source.json` fixture manifest. The adapter
 /// refuses such input with this typed `utsushi.unsupported_input_shape`
 /// diagnostic (carrying the attempted `engine_family` and a helpful detail)

@@ -1,8 +1,8 @@
-//! UTSUSHI-102 / UTSUSHI-031 integration proof: an ACTUAL LAUNCHED browser
-//! process emits text + choice observation events AND the broader scene +
-//! branch runtime event kinds (UTSUSHI-031) from the public MV/MZ fixture, and
-//! the runtime-observation proof consumes that UTSUSHI-006 trace output to
-//! render an E1 verdict with full bridge/source-revision/runtime-target/adapter/
+//! Integration proof: an ACTUAL LAUNCHED browser
+//! process emits text + choice observation events AND the broader scene
+//! branch runtime event kinds () from the public MV/MZ fixture, and
+//! the runtime-observation proof consumes that trace output to
+//! render an E1 verdict with full bridge/source-revision/runtime-target/adapter
 //! environment linkage.
 //!
 //! Two lanes:
@@ -101,8 +101,8 @@ fn write_fake_browser(dir: &Path, body: &str) -> PathBuf {
 }
 
 /// ALWAYS-RUN: a launched (fake) browser subprocess renders the fixture, the
-/// UTSUSHI-006 trace probe observes the live-DOM text + choice events, and the
-/// UTSUSHI-102 proof renders an E1 verdict with full linkage — no real Chromium
+/// trace probe observes the live-DOM text + choice events, and the
+/// proof renders an E1 verdict with full linkage — no real Chromium
 /// required.
 #[cfg(unix)]
 #[test]
@@ -130,7 +130,7 @@ fn launched_browser_process_trace_proves_e1_runtime_observation() {
     assert_eq!(proof["provenEvidenceTier"], "E1");
     assert_eq!(proof["observation"]["textEventCount"], 2);
     assert_eq!(proof["observation"]["choiceEventCount"], 1);
-    // The broader event kinds beyond the UTSUSHI-102 text+choice surface.
+    // The broader event kinds beyond the text+choice surface.
     assert_eq!(proof["observation"]["sceneEventCount"], 1);
     assert_eq!(proof["observation"]["branchEventCount"], 1);
     assert_eq!(
@@ -229,13 +229,13 @@ fn real_chromium_launch_proves_e1_and_matches_committed_evidence() {
     let adapter = BrowserLaunchAdapter::with_browser_program(&browser);
     let artifacts = temp_dir("real-chromium-artifacts");
 
-    // UTSUSHI-006 trace probe through real Chromium --dump-dom.
+    // trace probe through real Chromium --dump-dom.
     let trace = adapter
         .trace(&RuntimeRequest::new(&fixture_dir()))
         .expect("real Chromium trace launch must succeed when a browser resolved");
     assert_eq!(trace["evidenceTier"], "E1");
 
-    // UTSUSHI-065 screenshot capture through real Chromium --screenshot.
+    // screenshot capture through real Chromium --screenshot.
     let capture = adapter
         .capture(&RuntimeRequest::new(&fixture_dir()).with_artifact_root(&artifacts))
         .expect("real Chromium screenshot capture must succeed when a browser resolved");

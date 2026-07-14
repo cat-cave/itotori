@@ -1,8 +1,8 @@
-//! UTSUSHI-010: MV/MZ play-test evidence manifest tests.
+//! MV/MZ play-test evidence manifest tests.
 //!
 //! These prove that the manifest aggregates the merged MV/MZ proof surfaces —
-//! patch artifacts, UTSUSHI-006 + UTSUSHI-033 runtime trace evidence, and
-//! UTSUSHI-065 screenshot artifact refs — that it names LIMITATIONS, exports
+//! patch artifacts, runtime trace evidence, and
+//! screenshot artifact refs — that it names LIMITATIONS, exports
 //! standalone (no annotation / no feedback import), and that unsupported host
 //! capabilities surface as
 //! non-silent SEMANTIC diagnostics + recorded limitations.
@@ -79,7 +79,7 @@ fn manifest_names_all_required_surfaces() {
             .starts_with("sha256:")
     );
 
-    // Runtime trace evidence: UTSUSHI-006 observation + UTSUSHI-033 replay pack.
+    // Runtime trace evidence: observation + replay pack.
     let trace = &manifest["runtimeTraceEvidence"];
     assert_eq!(trace["observation"]["source"], "UTSUSHI-006");
     assert_eq!(trace["observation"]["traceEventCount"], 3);
@@ -113,7 +113,7 @@ fn manifest_names_all_required_surfaces() {
 
 #[test]
 fn manifest_export_needs_no_annotation_or_feedback_import() {
-    // Build the manifest from ONLY the three evidence surfaces — patch export,
+    // Build the manifest from ONLY the three evidence surfaces — patch export
     // runtime evidence report, replay-pack trace — with no annotation handling
     // and no feedback import in sight. The property is structural: the builder
     // has no annotation/feedback parameter, so a manifest always exports

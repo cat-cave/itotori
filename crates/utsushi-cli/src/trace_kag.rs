@@ -1,11 +1,11 @@
-//! UTSUSHI-008 — `trace-kag` subcommand.
+//! `trace-kag` subcommand.
 //!
 //! Drives the [`utsushi_kirikiri`] KAG command-trace probe against a
 //! **plaintext / already-extracted** KiriKiri/KAG `.ks` script and writes the
 //! deterministic (sorted-key) trace JSON to `--output`. The trace records, per
-//! command in trace order: command index, source line, active label, macro id,
-//! jump target, branch id, speaker, and observed text; speaker / message /
-//! branch-option rows link back to the KAIFUU-009 extraction bridge unit for
+//! command in trace order: command index, source line, active label, macro id
+//! jump target, branch id, speaker, and observed text; speaker / message
+//! branch-option rows link back to the extraction bridge unit for
 //! their source text (`bridgeRef`).
 //!
 //! ## Honest scope

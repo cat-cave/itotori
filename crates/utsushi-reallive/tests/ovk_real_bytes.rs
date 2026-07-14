@@ -1,14 +1,14 @@
-//! UTSUSHI-217 real-bytes integration tests for the OVK voice-archive
+//! Real-bytes integration tests for the OVK voice-archive
 //! decoder.
 //!
 //! Pins the decoder against Sweetie HD's `REALLIVEDATA/koe/z0001.ovk`
-//! (337,086 bytes, 2 entries — the canonical UTSUSHI-217 spec fixture).
+//! (337,086 bytes, 2 entries — the canonical spec fixture).
 //! Mirrors the `g00_real_bytes.rs` env-gating pattern
 //! (`ITOTORI_REAL_GAME_ROOT` must be set).
 //!
 //! # Acceptance criteria pinned here
 //!
-//! 1. [`ovk_z0001_two_entries`] — UTSUSHI-217 spec-pinned name. The
+//! 1. [`ovk_z0001_two_entries`] — spec-pinned name. The
 //!    decoder returns exactly 2 entries against z0001.ovk. The
 //!    `(sample_num, data_size, data_offset)` values are pinned at
 //!    the real-bytes-decoded values; see the module docstring on
@@ -30,7 +30,7 @@
 //! engine substrate must be exercised against at least two real
 //! corpora before its node is merged-complete. Sweetie HD is the only
 //! RealLive title currently staged. The OVK module mirrors the
-//! single-corpus posture its sibling parsers (UTSUSHI-216 g00 etc.)
+//! single-corpus posture its sibling parsers ( g00 etc.)
 //! landed; the commit message records the gap explicitly.
 
 #[path = "support/real_corpus.rs"]
@@ -41,7 +41,7 @@ use std::path::PathBuf;
 
 use utsushi_reallive::{OGG_PAGE_MAGIC, OVK_ENTRY_BYTE_LEN, OvkDecodeError, decode_ovk};
 
-/// File name of the UTSUSHI-217 spec-pinned z0001.ovk fixture.
+/// File name of the spec-pinned z0001.ovk fixture.
 const Z0001_OVK: &str = "z0001.ovk";
 
 /// Pinned file size for z0001.ovk.
@@ -59,8 +59,8 @@ const Z0001_ENTRY0_SAMPLE_NUM: u32 = 46;
 /// Real-bytes decoded values for entry 1 of z0001.ovk.
 ///
 /// Entry 1 raw bytes `da 72 02 00 | e4 b1 02 00 | 34 00 00 00 | cc 7e
-/// 05 00` decode as `(data_size=0x000272DA=160_474,
-/// data_offset=0x0002B1E4=176_612, sample_num=0x34=52,
+/// 05 00` decode as `(data_size=0x000272DA=160_474
+/// data_offset=0x0002B1E4=176_612, sample_num=0x34=52
 /// reserved=0x00057ECC=360_140)`.
 const Z0001_ENTRY1_DATA_SIZE: u32 = 160_474;
 const Z0001_ENTRY1_DATA_OFFSET: u32 = 176_612;

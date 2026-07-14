@@ -1,4 +1,4 @@
-//! kaifuu-utsushi-patch-to-render-path — real-bytes end-to-end acceptance for
+//! Kaifuu-utsushi-patch-to-render-path — real-bytes end-to-end acceptance for
 //! the composed patch / replay / render paths.
 //!
 //! Proves the whole patch→render chain on REAL Sweetie HD bytes through the
@@ -18,12 +18,12 @@
 //!      source; a redacted public PNG on disk (real g00 pixels not published);
 //!      a private full-fidelity PNG in the gitignored private tree; and a
 //!      redaction-clean JSON evidence report whose render half proves the
-//!      TRANSLATED text landed in the rendered message (`containsExpected`),
+//!      TRANSLATED text landed in the rendered message (`containsExpected`)
 //!      at E2, with redaction ON — and which leaks NO absolute path and NO raw
 //!      translated text (committable artifact).
 //!
 //! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE (no
-//! opt-out; runs only in the periodic ground-truth oracle,
+//! opt-out; runs only in the periodic ground-truth oracle
 //! `just real-bytes-oracle`, where corpora are staged). Run with
 //! `ITOTORI_REAL_GAME_ROOT=<sweetie-hd> cargo test -p utsushi-cli
 //! --test patch_render_real_bytes -- --ignored`.
@@ -55,7 +55,7 @@ const DIALOGUE_SCENE_ID: u16 = 1017;
 /// then render. Wrapped in full-width SJIS brackets (`「`/`」`) so the patched
 /// bytes still parse as a Textout run; the ASCII core avoids every byte the
 /// textout partitioner treats as a structural lead (no digits, no
-/// `! # $ , @`) so the whole phrase surfaces as ONE observed message. Real
+/// `! # $, @`) so the whole phrase surfaces as ONE observed message. Real
 /// game text never aliases this exact phrase.
 const EN_TRANSLATION: &str = "「[EN] composed patch-render localized line for utsushi cli」";
 
@@ -427,7 +427,7 @@ fn patch_render_composes_patchback_and_render_on_real_bytes() {
     fs::write(&bundle_path, &bundle_json).expect("write translated bundle");
 
     // Output paths — ALL under the (uncommitted) work dir: the patched
-    // Seen.txt (game-derived bytes), the public + private PNG artifact roots,
+    // Seen.txt (game-derived bytes), the public + private PNG artifact roots
     // and the JSON evidence report.
     let patched_seen = work_dir.join("patched").join("Seen.txt");
     let artifact_root = work_dir.join("artifacts");

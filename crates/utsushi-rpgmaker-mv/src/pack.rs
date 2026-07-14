@@ -2,8 +2,8 @@
 //!
 //! # What a pack adds on top of the [`crate::replay`] skeleton
 //!
-//! UTSUSHI-032's [`crate::replay`] threads deterministic switch/variable state
-//! across the declared command subset and emits plain `text` / `choice` /
+//! The [`crate::replay`] module threads deterministic switch/variable state
+//! across the declared command subset and emits plain `text` / `choice`
 //! `state` trace events. It has no notion of *where a line came from* nor of
 //! *where a choice branch leads* — those two Itotori linkages were left for a
 //! follow-up. This module is that follow-up.
@@ -13,7 +13,7 @@
 //!
 //! - **Source unit links** — each message window (`Show Text` 101 setup + its
 //!   401 body lines) links back to the *source bridge unit* it was decoded
-//!   into. The linkage is the same `bridgeRef` shape the UTSUSHI-006
+//!   into. The linkage is the same `bridgeRef` shape the
 //!   observation envelope carries: `{ sourceUnitKey, bridgeUnitId }`. A text
 //!   trace event that does not name its source unit cannot be fed the richer
 //!   structure-informed context, so the pack makes the link first-class.
@@ -23,7 +23,7 @@
 //!   A branch that names its destination route lets a downstream summariser
 //!   know which arc the player is stepping into.
 //!
-//! The pack reuses UTSUSHI-032's [`replay_event_list`] verbatim for the base
+//! The pack reuses the [`replay_event_list`] verbatim for the base
 //! outcome — final switch/variable state **and** the typed unsupported-command
 //! diagnostics — so a command outside the declared subset surfaces exactly the
 //! same [`ReplayDiagnostic`] here as it does in the bare skeleton: never a
@@ -44,7 +44,7 @@ use crate::replay::{
 };
 
 /// A link from a replayed runtime event back to the source bridge unit it was
-/// decoded into. Mirrors the UTSUSHI-006 envelope's `bridgeRef` shape
+/// decoded into. Mirrors the envelope's `bridgeRef` shape
 /// (`{ sourceUnitKey, bridgeUnitId }`); `bridge_unit_id` is optional so a
 /// pack authored before the bridge units are minted still names *something*.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -130,7 +130,7 @@ pub enum LinkedEvent {
 impl LinkedEvent {
     /// Envelope-compatible JSON. Text events carry `bridgeRefs` at the event
     /// level and choice options carry a per-option `bridgeRef`, mirroring the
-    /// UTSUSHI-006 live-observation hook events.
+    /// live-observation hook events.
     fn to_json(&self) -> Value {
         match self {
             Self::Text(event) => {
@@ -213,10 +213,10 @@ impl ReplayPack {
     ///
     /// ```json
     /// {
-    ///   "eventList": [ { "code": 101, "parameters": [...] }, ... ],
+    ///   "eventList": [ { "code": 101, "parameters": [...] },... ]
     ///   "sourceUnitLinks": [
     ///     { "commandIndex": 0, "sourceUnitKey": "...", "bridgeUnitId": "..." }
-    ///   ],
+    ///   ]
     ///   "routeAlignments": [
     ///     { "commandIndex": 3, "options": [
     ///       { "optionIndex": 0, "routeKey": "...", "sourceUnitKey": "..." }
@@ -299,13 +299,13 @@ fn require_index(value: &Value, field: &str) -> Result<usize, PackError> {
         })
 }
 
-/// The result of replaying a pack: the enriched message + choice event stream,
-/// plus the UTSUSHI-032 base outcome (final state + typed diagnostics).
+/// The result of replaying a pack: the enriched message + choice event stream
+/// plus the base outcome (final state + typed diagnostics).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PackOutcome {
     /// The enriched message + choice events, in dispatch order.
     pub linked_events: Vec<LinkedEvent>,
-    /// The UTSUSHI-032 base outcome: threaded switch/variable state and the
+    /// The base outcome: threaded switch/variable state and the
     /// typed unsupported-command diagnostics.
     pub base: ReplayOutcome,
 }
@@ -313,7 +313,7 @@ pub struct PackOutcome {
 impl PackOutcome {
     /// Deterministic, envelope-compatible JSON serialization of the whole pack
     /// trace. Golden tests assert against this. The `finalState` and
-    /// `diagnostics` are lifted straight from the UTSUSHI-032 base outcome, so
+    /// `diagnostics` are lifted straight from the base outcome, so
     /// an unsupported command is as visible here as in the bare skeleton.
     pub fn to_trace_json(&self) -> Value {
         let base = self.base.to_trace_json();
@@ -331,7 +331,7 @@ impl PackOutcome {
     }
 }
 
-/// Replay a pack: run the UTSUSHI-032 skeleton for the base outcome (state +
+/// Replay a pack: run the skeleton for the base outcome (state
 /// diagnostics), then emit the enriched, link-carrying message + choice stream.
 ///
 /// Under [`UnknownPolicy::Fail`] the base replay aborts at the first
@@ -350,7 +350,7 @@ pub fn replay_pack(
 }
 
 /// Walk the event list a second time, grouping message windows and choices and
-/// attaching the Itotori overlays. Non-message/choice commands (state,
+/// attaching the Itotori overlays. Non-message/choice commands (state
 /// terminator, out-of-subset) only *flush* an open window here — their state
 /// effect and any diagnostic are the base outcome's job, so this pass never
 /// re-diagnoses and never double-counts.

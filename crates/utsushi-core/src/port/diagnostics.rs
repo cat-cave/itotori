@@ -7,7 +7,7 @@ use crate::{EvidenceTier, FidelityTier, RuntimeOperation};
 use super::manifest::{EnvFieldShape, LifecycleStage, PortCapability};
 
 /// Top-level error surface for the engine port template. Every typed
-/// rejection a port emits — manifest drift, ABI mismatch, env leak,
+/// rejection a port emits — manifest drift, ABI mismatch, env leak
 /// cancellation, capability gap — flows through this enum.
 #[derive(Debug)]
 pub enum EnginePortError {

@@ -3,19 +3,19 @@
 //! RPG Maker MV/MZ ships its game database as a directory of JSON files.
 //! MV places them under `www/data/`; MZ places them under `data/`. Each
 //! map (`MapNNN.json`) and the common-event table (`CommonEvents.json`)
-//! carries an ordered list of *event commands* — `{ code, indent,
+//! carries an ordered list of *event commands* — `{ code, indent
 //! parameters }` objects — and the runtime dispatches them top-to-bottom.
 //!
 //! This module is the runtime port's own parser. It does **not** depend on
 //! `kaifuu-rpgmaker`: the format it recognises is the same, but the
 //! implementation stays separate so a regression in one project cannot
-//! poison the other. The command-code numbers (`101`, `401`, `405`,
+//! poison the other. The command-code numbers (`101`, `401`, `405`
 //! `102`, `105`) are public RPG Maker MV/MZ engine constants documented
 //! across the community wikis; no game-specific bytes inform this table.
 //!
 //! The walk is a *static event-stream walk*, not a live interpreter: it
 //! visits every command in declaration order and surfaces the text-bearing
-//! ones. It does not evaluate conditional branches, choose choice options,
+//! ones. It does not evaluate conditional branches, choose choice options
 //! or thread variable state. That deliberate limitation is what pins the
 //! port at the trace-only / E1 evidence tier (see `port.rs`).
 
@@ -116,7 +116,7 @@ pub struct MessageLine {
     pub role: TextRole,
     /// Decoded line text exactly as the runtime would emit it.
     pub text: String,
-    /// Speaker label, when the preceding `Show Text` setup (code 101,
+    /// Speaker label, when the preceding `Show Text` setup (code 101
     /// MZ parameters\[4\]) declared one.
     pub speaker: Option<String>,
     /// Index of the `Show Text` / `Show Choices` window this line belongs

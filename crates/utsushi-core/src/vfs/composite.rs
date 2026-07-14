@@ -1,9 +1,9 @@
 //! Composite asset package: ordered, first-match-wins multiplex over a
 //! mix of plaintext directories and sealed archive readers.
 //!
-//! Substrate extension M.1 (UTSUSHI-222). Replaces the route-by-package-id
-//! resolver that shipped with UTSUSHI-020. RealLive's
-//! `#FOLDNAME.G00 = "G00" = 0 : "G00.PAK"` Gameexe pattern declares
+//! Substrate extension M.1 (). Replaces the route-by-package-id
+//! resolver that shipped with. RealLive's
+//! `#FOLDNAME.G00 = "G00" = 0: "G00.PAK"` Gameexe pattern declares
 //! per-asset-kind dual sources — try directory, fall back to archive — and
 //! the composite is the substrate-side primitive that lets engine ports
 //! express it without re-implementing the multiplex policy.

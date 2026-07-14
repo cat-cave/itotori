@@ -18,7 +18,7 @@
 //!
 //! Run:
 //!   cargo run -p utsushi-reallive --example route_select_diag -- <out.png>
-//!   (defaults to .private-render/diag/route-select.png)
+//!   (defaults to.private-render/diag/route-select.png)
 
 use std::path::PathBuf;
 

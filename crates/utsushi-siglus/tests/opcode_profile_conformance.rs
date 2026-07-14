@@ -1,4 +1,4 @@
-//! UTSUSHI-036 — integration coverage for the Siglus **opcode-profile
+//! Integration coverage for the Siglus **opcode-profile
 //! scaffold**: the declared manifest, the one golden text-show fixture, the
 //! unsupported-opcode diagnostics (no silent pass), and the committed
 //! conformance-result fixture.
@@ -16,7 +16,7 @@ use utsushi_siglus::opcode_profile::{
     fixture_text_show_program, fixture_unknown_opcode_program, run_opcode_conformance,
 };
 
-/// Committed golden: the DECLARED opcode-profile manifest (the coverage surface,
+/// Committed golden: the DECLARED opcode-profile manifest (the coverage surface
 /// before any run).
 const GOLDEN_MANIFEST_JSON: &str = r#"{"capabilityId":"utsushi-siglus-opcode-profile","entries":[{"mnemonic":"text.show","opcode":1,"support":{"status":"covered"}},{"mnemonic":"grp.load","opcode":64,"support":{"reason":"graphics-surface dispatch is Research scope (siglus-opcode-dispatch)","status":"declared-unsupported"}}],"profileId":"siglus-opcode-profile-text-show-v1","schemaVersion":"0.1.0","supportBoundary":"Utsushi Siglus opcode profile DECLARES — before any opcode is dispatched — which SYNTHETIC (authored, NOT the real Siglus opcode table) opcodes the scaffold runner covers, which it names-but-refuses (declared-unsupported), and that any opcode outside the declared surface surfaces a structured diagnostic and halts (never a silent skip). A covered opcode produces a deterministic golden trace at the E1 admission tier. It does NOT claim real Siglus opcode-table coverage, real Scene.pck decode, or a rendered frame; the real opcode table is the siglus-opcode-dispatch Research subsystem.","unknownOpcodeBehavior":"surface-diagnostic-and-halt"}"#;
 

@@ -1,10 +1,10 @@
-//! UTSUSHI-211 — synthetic acceptance tests for the `module_sel`
+//! Synthetic acceptance tests for the `module_sel`
 //! choice family (`select` / `select_s` / `select_w` / `select_objbtn`).
 //!
 //! Two acceptance tests are pinned by the spec:
 //!
 //! - `choice_select_s_emits_three_options`: a synthetic `select_s` with
-//!   three byte-string args emits 3 `TextLine` events through the sink,
+//!   three byte-string args emits 3 `TextLine` events through the sink
 //!   each tagged `text_surface = "choice:<idx>"`, and then suspends
 //!   with a queued [`SelectLongOp`] carrying the chosen-pending
 //!   sentinel.
@@ -143,9 +143,7 @@ fn sel_command_with_options(offset: usize, opcode: u16, options: &[&str]) -> Byt
     }
 }
 
-// ---------------------------------------------------------------------
 // Spec acceptance 1: select_s emits 3 TextLines then suspends
-// ---------------------------------------------------------------------
 
 #[test]
 fn choice_select_s_emits_three_options() {
@@ -201,10 +199,8 @@ fn choice_select_s_emits_three_options() {
     assert_eq!(decoded.chosen(), None);
 }
 
-// ---------------------------------------------------------------------
 // Spec acceptance 2: ChoiceIndex(1) resume writes store_reg and pc
 // advanced past the choice element on dispatch
-// ---------------------------------------------------------------------
 
 #[test]
 fn choice_resume_writes_store_reg() {
@@ -233,7 +229,7 @@ fn choice_resume_writes_store_reg() {
     let mut vm = Vm::new(1, 0);
     // Bytecode dispatch path supplies zero args; build a longop via
     // direct dispatch so the synthetic choice list is non-empty. This
-    // mirrors the production path where UTSUSHI-205+ argument decoding
+    // mirrors the production path where + argument decoding
     // will supply the Shift-JIS choice strings.
     {
         let op = registry
@@ -250,7 +246,7 @@ fn choice_resume_writes_store_reg() {
                 ExprValue::Bytes(b"right".to_vec()),
             ],
         );
-        // Threaded apply mirrors the VM step path (Yield → enqueue +
+        // Threaded apply mirrors the VM step path (Yield → enqueue
         // advance pc past the dispatching command).
         vm.apply_dispatch_outcome(&outcome, 8).expect("apply");
     }
@@ -269,9 +265,7 @@ fn choice_resume_writes_store_reg() {
     assert_eq!(vm.longop_queue().len(), 0);
 }
 
-// ---------------------------------------------------------------------
 // SELBTN.NNN.* Gameexe styling surfaces on the emitted choice line
-// ---------------------------------------------------------------------
 
 #[test]
 fn selbtn_styling_surfaces_on_emitted_choice_lines() {
@@ -316,9 +310,7 @@ fn selbtn_styling_surfaces_on_emitted_choice_lines() {
     assert_eq!(lines[1].text_surface.as_deref(), Some("choice:1"));
 }
 
-// ---------------------------------------------------------------------
 // Registry shape — every canonical variant + the objbtn_init setup op
-// ---------------------------------------------------------------------
 
 #[test]
 fn register_sel_rlops_covers_every_variant() {
@@ -351,7 +343,7 @@ fn register_sel_rlops_covers_every_variant() {
 /// opcode `120` is absent.
 #[test]
 fn register_sel_rlops_covers_exact_rlvm_oracle_opcode_set() {
-    // rlvm SelModule: 0 select_w, 1 select, 2 select_s2, 3 select_s,
+    // rlvm SelModule: 0 select_w, 1 select, 2 select_s2, 3 select_s
     // 4 select_objbtn, 14 select_objbtn_cancel, 20 objbtn_init.
     const ORACLE_OPCODES: [u16; 7] = [
         SEL_OPCODE_SELECT,
@@ -387,10 +379,8 @@ fn register_sel_rlops_covers_exact_rlvm_oracle_opcode_set() {
     );
 }
 
-// ---------------------------------------------------------------------
 // Substrate scheduler audit — pending without recorded choice stays
 // suspended; no private wait loop
-// ---------------------------------------------------------------------
 
 #[test]
 fn scheduler_keeps_vm_suspended_until_choice_recorded() {
@@ -432,9 +422,7 @@ fn scheduler_keeps_vm_suspended_until_choice_recorded() {
     assert_eq!(vm.banks().store(), 0);
 }
 
-// ---------------------------------------------------------------------
 // objbtn carrier is built from graphics bindings
-// ---------------------------------------------------------------------
 
 #[test]
 fn select_objbtn_yields_slot_ordered_object_carrier_without_text() {
@@ -506,10 +494,8 @@ fn select_objbtn_yields_slot_ordered_object_carrier_without_text() {
     assert_eq!(OPCODE_SELECT_OBJBTN, 4);
 }
 
-// ---------------------------------------------------------------------
 // Never-ready scheduler with a queued select keeps the VM suspended —
 // pin the substrate-honesty posture (no panic, no infinite loop).
-// ---------------------------------------------------------------------
 
 #[test]
 fn never_ready_scheduler_keeps_select_longop_pending() {

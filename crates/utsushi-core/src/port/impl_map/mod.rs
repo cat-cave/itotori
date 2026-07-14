@@ -1,4 +1,4 @@
-//! Engine-port implementation-map artifact (UTSUSHI-025).
+//! Engine-port implementation-map artifact ().
 //!
 //! Every Utsushi engine port slice ships an `ImplementationMap` JSON
 //! document declaring (a) the engine subsystems it covers, (b) the public

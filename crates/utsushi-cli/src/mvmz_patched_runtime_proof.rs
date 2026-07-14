@@ -1,19 +1,19 @@
-//! UTSUSHI-119: the MV/MZ **patched-output** runtime-observation PROOF command
+//! The MV/MZ **patched-output** runtime-observation PROOF command
 //! (`utsushi mvmz-patched-runtime-proof`).
 //!
-//! Consumes the UTSUSHI-006 browser trace-probe output over the PATCHED fixture
+//! Consumes the browser trace-probe output over the PATCHED fixture
 //! (a real launched Chromium `--dump-dom` of the game AFTER a Kaifuu patch-back
 //! swapped the translation in), the Kaifuu `PatchResult` that attests the
-//! patched output by hash, and the UTSUSHI-102 alpha proof, and emits a
+//! patched output by hash, and the alpha proof, and emits a
 //! strict-proof verdict that the observed runtime text is the TRANSLATION the
 //! PatchResult attests to — not the pre-patch original — linked to bridge units.
 //!
 //! The verdict is `patchedRuntimeObservationProven: true` only when every
-//! mandatory check passes: the patched trace re-derives the full UTSUSHI-102 E1
+//! mandatory check passes: the patched trace re-derives the full E1
 //! strict proof (live-DOM, E1 tier, full linkage, observed translation absent
 //! from EVERY consumed static input), the observed output hashes to the
 //! PatchResult.outputHash, every observed string differs from the pre-patch
-//! source, and the alpha proof is a proven E1 UTSUSHI-102 proof over the same
+//! source, and the alpha proof is a proven E1 proof over the same
 //! bridge units. When the verdict is false the command exits non-zero.
 //!
 //! ```text

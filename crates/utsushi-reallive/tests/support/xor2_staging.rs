@@ -1,7 +1,7 @@
 //! Test-only admission guard for staging recovered `xor_2` bytecode.
 //!
 //! A successful recovery is usable only after every eligible scene was
-//! decrypted.  The fixed error deliberately carries no report fields: those
+//! decrypted. The fixed error deliberately carries no report fields: those
 //! fields describe a private corpus and must not leak through test output.
 
 use std::fmt;

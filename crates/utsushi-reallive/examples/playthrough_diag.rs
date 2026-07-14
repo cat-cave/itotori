@@ -16,7 +16,7 @@
 //!
 //! The message CONTENT here is STAGED English (the product output: legible
 //! English in the real box; an untranslated title's Japanese source renders
-//! as the font's `.notdef` boxes). This mirrors how `msgwin_diag` /
+//! as the font's `.notdef` boxes). This mirrors how `msgwin_diag`
 //! `render_diag` stage their translated lines — only the CONTENT is staged;
 //! the per-message-frame SEQUENCING is the real port behaviour. The
 //! background is a neutral gradient (never fakes copyrighted game art);
@@ -81,7 +81,7 @@ fn background_frame() -> Framebuffer {
 }
 
 fn main() {
-    // The staged-English play-order stream: narration + speaker lines,
+    // The staged-English play-order stream: narration + speaker lines
     // exercising the `NAME_MOD` name box, in click-advance order.
     let messages: [(Option<&str>, &str); 4] = [
         (

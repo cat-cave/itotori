@@ -124,7 +124,7 @@ fn cross_validate_rejects_undeclared_profile_with_unsupported_declared_in_manife
     // checker before any join rules run) always rejects
     // declared_in_manifest=true as an immediate
     // DeclaredProfileReportedAsUnsupported. This guards the symmetric
-    // false-claim path: even when the profile is NOT in the manifest,
+    // false-claim path: even when the profile is NOT in the manifest
     // the result payload's self-claim of "declared" is treated as a
     // structural lie and rejected on the result alone, no join needed.
     let results = vec![

@@ -11,7 +11,7 @@ use super::text::TextSurfaceSink;
 use super::{SinkCapability, SinkKind};
 
 /// Container for the three runtime sink trait objects. Cheap to clone (each
-/// sink is an `Arc<dyn ...>` slot).
+/// sink is an `Arc<dyn...>` slot).
 #[derive(Clone, Default)]
 pub struct SinkSet {
     text: Option<Arc<dyn TextSurfaceSink>>,
@@ -117,7 +117,7 @@ fn marker<T: ?Sized>(slot: &Option<Arc<T>>) -> &'static str {
 }
 
 /// Per-sink capability snapshot. The summary intentionally collapses an
-/// absent sink (no `Arc<dyn ...>` registered) and an explicitly-unsupported
+/// absent sink (no `Arc<dyn...>` registered) and an explicitly-unsupported
 /// sink (registered but reporting `SinkCapability::Unsupported`) into the
 /// same `Unsupported` value — both must surface the same way to downstream
 /// conformance.

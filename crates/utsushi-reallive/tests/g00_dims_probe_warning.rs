@@ -1,7 +1,7 @@
 //! Synthetic coverage for [`GraphicsRuntime::read_g00_through_vfs`] and
 //! the g00-decode-warning surface.
 //!
-//! Prior to the genaudit3-p3-cleanup-dead-helpers-warnings-doc fix,
+//! Prior to the genaudit3-p3-cleanup-dead-helpers-warnings-doc fix
 //! `read_g00_through_vfs` silently bound the decoder's
 //! `Vec<G00Warning>` to `_warnings` and dropped it — only the
 //! `(width, height)` tuple was returned and the non-fatal
@@ -12,7 +12,7 @@
 //!
 //! The package is an in-memory [`AssetPackage`] (no real bytes) that
 //! returns a hand-authored type-0 g00 file whose declared canvas is
-//! larger than the LZSS payload — the canonical "best-effort decode +
+//! larger than the LZSS payload — the canonical "best-effort decode
 //! PayloadLengthMismatch" pattern exercised by the in-crate
 //! `g00::type0_short_stream_pads_and_warns_not_silent`.
 

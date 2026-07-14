@@ -1,7 +1,7 @@
-//! UTSUSHI-206 — sparse `VarBanks` adopted into the substrate
+//! Sparse `VarBanks` adopted into the substrate
 //! `Inspectable` / `Restorable` traits.
 //!
-//! Replaces UTSUSHI-205's dense `[i32; 4096]` representation with sparse
+//! Replaces the dense `[i32; 4096]` representation with sparse
 //! `BTreeMap` storage so a snapshot of an unchanged machine stays under
 //! 1 KB (only set indices appear). The integer-bank window is clamped to
 //! the rlvm-documented **2 000 indices per bank** (per
@@ -11,8 +11,8 @@
 //!
 //! # Bank layout
 //!
-//! - **Integer banks:** `intA`..`intM` (13 banks, bank bytes `0x00..=0x0C`,
-//!   pinned by the UTSUSHI-205 mapping). Each bank stores its values in a
+//! - **Integer banks:** `intA`..`intM` (13 banks, bank bytes `0x00..=0x0C`
+//!   pinned by the mapping). Each bank stores its values in a
 //!   sparse [`BTreeMap<u16, i32>`].
 //! - **String banks:** `strS`, `strM`, `strK` (three banks, names per
 //!   §G of the research doc). Each bank stores **raw Shift-JIS bytes**
@@ -59,13 +59,13 @@ pub const INT_BANK_COUNT: usize = 13;
 /// Number of typed string banks (`strS`, `strM`, `strK`).
 pub const STR_BANK_COUNT: usize = 3;
 
-/// Bank byte for the `intM` bank (pinned by UTSUSHI-205, byte `0x0C`).
+/// Bank byte for the `intM` bank (pinned by, byte `0x0C`).
 /// The matching `BANK_BYTE_INT_A` constant lives in
 /// [`crate::expression`] so this module does not introduce a duplicate
 /// re-export.
 pub const BANK_BYTE_INT_M: u8 = 0x0C;
 /// Bank byte for the `strM` bank. Reserved outside the int-bank window
-/// (`0x00..=0x0C`); not load-bearing for the UTSUSHI-205 expression
+/// (`0x00..=0x0C`); not load-bearing for the expression
 /// evaluator today (it only addresses int banks). Pinned here so future
 /// nodes have a stable handle.
 pub const BANK_BYTE_STR_M: u8 = 0x0D;
@@ -96,8 +96,8 @@ const MANIFEST_PATH: &str = "port.var_banks.manifest";
 const VAR_BANKS_MANIFEST: &str = "utsushi-reallive-var-banks/0.1.0-alpha";
 
 /// Identifier of a single variable bank. The discriminant for each
-/// integer bank matches UTSUSHI-205's bank-byte encoding (`0x00` =
-/// `IntA`, ..., `0x0C` = `IntM`); the string banks use distinct,
+/// integer bank matches the bank-byte encoding (`0x00` =
+/// `IntA`,..., `0x0C` = `IntM`); the string banks use distinct
 /// reserved byte codes outside the int window. See [`BANK_BYTE_STR_M`]
 /// for the load-bearing posture.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -160,7 +160,7 @@ impl BankId {
         }
     }
 
-    /// State-path-safe lowercase segment (`intA` → `int_a`,
+    /// State-path-safe lowercase segment (`intA` → `int_a`
     /// `strK` → `str_k`). The substrate's `StatePath` parser rejects
     /// uppercase ASCII, so the canonical name has to be lower-snake when
     /// it appears in the path.
@@ -258,7 +258,7 @@ impl BankId {
     }
 
     /// Resolve a bank from its raw byte across the int and string
-    /// windows. The int window is pinned by UTSUSHI-205 (`0x00..=0x0C`);
+    /// windows. The int window is pinned by (`0x00..=0x0C`);
     /// the string bank bytes (`0x0D`, `0x0E`, `0x12`) are reserved by
     /// this module and not load-bearing for any expression evaluator
     /// path today.
@@ -365,7 +365,7 @@ pub enum VarBanksRestoreError {
 
 /// Sparse representation of RealLive's typed variable banks.
 ///
-/// Integer banks (`intA`..`intM`) and string banks (`strS`, `strM`,
+/// Integer banks (`intA`..`intM`) and string banks (`strS`, `strM`
 /// `strK`) are stored as [`BTreeMap<u16, _>`] so only set indices
 /// appear in the snapshot. The store register is a single `u32`.
 ///
@@ -406,7 +406,7 @@ impl VarBanks {
 
     /// Write `value` to `(bank, idx)`. Returns `Ok(())` on a clean
     /// write; returns
-    /// `Err(VarBanksWarning::BankIndexOutOfRange { .. })` and clamps to
+    /// `Err(VarBanksWarning::BankIndexOutOfRange {.. })` and clamps to
     /// `BANK_INDEX_CAP - 1` when `idx >= BANK_INDEX_CAP`.
     ///
     /// # Errors
@@ -415,7 +415,7 @@ impl VarBanks {
     ///   BANK_INDEX_CAP`. The write **still applies** at the clamped
     ///   index per the spec; the warning is the typed "no silent
     ///   fallback" surface.
-    /// - Panics in this method are structurally impossible — a bank /
+    /// - Panics in this method are structurally impossible — a bank
     ///   value-kind mismatch (e.g. writing a string into `intA`) is
     ///   rejected as a typed warning before any mutation happens. The
     ///   current variant set exposes no mismatch error variant because
@@ -939,7 +939,7 @@ mod tests {
     #[test]
     fn str_bank_round_trips_raw_shift_jis_bytes() {
         let mut banks = VarBanks::new();
-        // High-bit Shift-JIS bytes: 0x82 0xa0 = ｱ in half-width Katakana,
+        // High-bit Shift-JIS bytes: 0x82 0xa0 = ｱ in half-width Katakana
         // 0x5C is the half-width yen sign / Windows backslash. These
         // bytes are NOT valid UTF-8 and would be lost by any String
         // conversion.

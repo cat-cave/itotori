@@ -1,18 +1,18 @@
-//! Fixture snapshot restore playback smoke (UTSUSHI-063).
+//! Fixture snapshot restore playback smoke ().
 //!
 //! This single integration test exercises the controlled playback contract
 //! through an inline fixture by performing a full **snapshot save → restore
-//! → re-playback** cycle. The substrate (`InMemorySnapshotStore`,
-//! `SnapshotConformanceCheck`, `InMemoryReferenceRecorder`,
+//! → re-playback** cycle. The substrate (`InMemorySnapshotStore`
+//! `SnapshotConformanceCheck`, `InMemoryReferenceRecorder`
 //! `deterministic_json_bytes`) already exists; this slice is the structural
 //! smoke gate that consumes it.
 //!
 //! Headline structural defenses:
 //!
-//! - **Pass on identity.** When `(baseline, observed)` are byte-identical,
+//! - **Pass on identity.** When `(baseline, observed)` are byte-identical
 //!   `SnapshotConformanceCheck::run` returns `Pass` with an evidence tier
 //!   that is the floor of `expected_tier`, the baseline tier, and the
-//!   observed tier (UTSUSHI-028 contract).
+//!   observed tier ( contract).
 //! - **Fail with state_drift on divergence.** Mutating any `StatePath`
 //!   value yields `Fail { semantic_code: "utsushi.snapshot.state_drift" }`
 //!   with one `EvidenceRef::StatePath` entry per drifted path.
@@ -464,7 +464,7 @@ fn fixture_snapshot_clock_tick_aligns_with_replay_log_post_restore_tail() {
     assert_eq!(bytes_a, bytes_b);
 
     // Round-trip the tail through `ReplayLogBuilder` so the test exercises
-    // the existing UTSUSHI-021 surface end-to-end as well.
+    // the existing surface end-to-end as well.
     let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata::new(
         SMOKE_RUN_ID.to_string(),
         INSPECTABLE_ID.to_string(),

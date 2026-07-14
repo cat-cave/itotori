@@ -1,5 +1,5 @@
-//! Integration tests for the UTSUSHI-103 engine-port runner template and
-//! the UTSUSHI-224 sinks-bridge migration.
+//! Integration tests for the engine-port runner template and
+//! the sinks-bridge migration.
 //!
 //! Every behavior test exercises a synthetic port defined inside this
 //! file; the test crate has no dependency on `utsushi-fixture`. The
@@ -25,9 +25,7 @@ use utsushi_core::{
     TextLine, TextSurfaceSink, port::conformance, validate_runtime_evidence_report_value,
 };
 
-// ===================================================================
 // Helper sinks shared by the synthetic ports
-// ===================================================================
 
 struct CollectingTextSink {
     inner: Mutex<Vec<TextLine>>,
@@ -181,9 +179,7 @@ fn build_default_sink_set() -> (
     (text, frame, audio, sink_set)
 }
 
-// ===================================================================
 // Synthetic ports
-// ===================================================================
 
 /// Reference port: implements every required stage and pushes one text
 /// observation per launch into its sink set.
@@ -421,7 +417,7 @@ impl EnginePort for JumpUndeclaredPort {
     }
 }
 
-/// Missing-observe port: returns CapabilityUnsupported from `observe`,
+/// Missing-observe port: returns CapabilityUnsupported from `observe`
 /// which the conformance harness must surface as a lifecycle failure.
 struct MissingObservePort {
     launched: bool,
@@ -853,7 +849,7 @@ impl EnginePort for OrderingProbePort {
         }
         self.observe_calls = 1;
         // Push one text + one frame + one audio in a single tick so the
-        // recorder can verify the runner drains text first, then frame,
+        // recorder can verify the runner drains text first, then frame
         // then audio, regardless of the push order on the port side.
         // Deliberately push audio first to exercise the ordering invariant.
         self.audio
@@ -888,9 +884,7 @@ impl EnginePort for OrderingProbePort {
     }
 }
 
-// ===================================================================
 // Helpers
-// ===================================================================
 
 fn build_artifact_root() -> (TempDir, RuntimeArtifactRoot) {
     let dir = TempDir::new().expect("tempdir");
@@ -911,9 +905,7 @@ fn build_fixture(
     }
 }
 
-// ===================================================================
 // Positive port behaviors
-// ===================================================================
 
 #[test]
 fn synthetic_port_passes_required_abi_conformance() {
@@ -980,7 +972,7 @@ fn synthetic_port_capture_without_artifact_root_is_rejected() {
     let (_input_dir, input_root) = build_input_root();
     let runner = Runner::new();
     let mut port = ReferencePort::new();
-    // No `.with_artifact_root(...)`: capture containment cannot be enforced,
+    // No `.with_artifact_root(...)`: capture containment cannot be enforced
     // so the runner must reject the request up front rather than silently
     // skipping the containment guard.
     let request = PortRequest::new(&input_root, "capture-run", RuntimeOperation::Capture);
@@ -1029,9 +1021,7 @@ fn synthetic_port_jump_returns_capability_unsupported_when_not_declared() {
     }
 }
 
-// ===================================================================
-// Tick ordering invariant (UTSUSHI-224)
-// ===================================================================
+// Tick ordering invariant ()
 
 #[test]
 fn runner_tick_drains_sinks_in_text_then_frame_then_audio_order() {
@@ -1058,9 +1048,7 @@ fn runner_tick_drains_sinks_in_text_then_frame_then_audio_order() {
     );
 }
 
-// ===================================================================
 // Missing-method / drift
-// ===================================================================
 
 #[test]
 fn port_with_unimplemented_observe_fails_conformance_with_drift_diagnostic() {
@@ -1125,9 +1113,7 @@ fn port_declaring_jump_capability_runs_jump_against_synthetic_moment() {
     assert_eq!(report.jump_outcome, conformance::JumpOutcome::Honoured);
 }
 
-// ===================================================================
 // Version mismatch
-// ===================================================================
 
 #[test]
 fn port_with_unsupported_abi_version_fails_runner_validate_manifest() {
@@ -1147,9 +1133,7 @@ fn port_with_unsupported_abi_version_fails_runner_validate_manifest() {
     }
 }
 
-// ===================================================================
 // Env-leak rejection
-// ===================================================================
 
 #[test]
 fn port_with_path_shape_env_schema_fails_manifest_validate() {
@@ -1222,9 +1206,7 @@ fn runtime_request_debug_does_not_leak_cancellation_or_replay_log() {
     assert!(!rendered.contains("Arc { strong:"));
 }
 
-// ===================================================================
 // EnginePortAdapter bridge onto the RuntimeAdapter surface
-// ===================================================================
 
 #[test]
 fn engine_port_adapter_descriptor_reflects_manifest_id_and_version() {
@@ -1279,7 +1261,7 @@ fn engine_port_adapter_trace_runs_lifecycle_and_returns_sink_shaped_observations
             .len(),
         1
     );
-    // UTSUSHI-224: the adapter's wire shape is now `sinkObservations` —
+    // the adapter's wire shape is now `sinkObservations` —
     // a sink-shaped array — rather than the deleted hook envelope. At
     // least the text emission the reference port pushes during observe
     // must surface here.
@@ -1381,9 +1363,7 @@ fn engine_port_adapter_capture_without_artifact_root_fails_closed() {
     );
 }
 
-// ===================================================================
 // Fixture-style helpers reused across tests
-// ===================================================================
 
 fn build_input_root() -> (TempDir, PathBuf) {
     let dir = TempDir::new().expect("tempdir");

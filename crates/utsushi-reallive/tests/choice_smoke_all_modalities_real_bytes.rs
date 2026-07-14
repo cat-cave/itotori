@@ -12,13 +12,13 @@
 //! Surveying every `module_sel` command across all 198 scenes of the real
 //! Sweetie HD `Seen.txt` (SEEN_START = scene 1), the reality is:
 //!
-//!  * EVERY real OPTION-BLOCK choice/select is `select_w` at `(module_type=0,
+//!  * EVERY real OPTION-BLOCK choice/select is `select_w` at `(module_type=0
 //!    module_id=2, opcode=2)` — 117 occurrences, EACH framed with the
 //!    `SelectElement` `{ … }` option block (so `extract_select_choice_texts`
 //!    recovers the real option count). These include plain dialogue yes/no
 //!    choices AND gallery / scene-jump / time-of-day menus.
 //!  * The GRAPHICAL route / clothing PICK screens are the `select_objbtn`
-//!    button-object ops — REAL opcode `4` (rlvm `AddOpcode(4, 0,
+//!    button-object ops — REAL opcode `4` (rlvm `AddOpcode(4, 0
 //!    "select_objbtn")`), `(0,2,4)`, 33× — NOT the fictional opcode `3` the old
 //!    code used (0×), and NOT the `select_w` option-block form. They carry no
 //!    inline option block; the graphical presentation is set up by button-object
@@ -29,12 +29,12 @@
 //!    from `1` (a wrong constant misread from a `(1,5,120)` `SYS2` byte) to
 //!    `0` (the real RealLive `Sel` module, `RLModule("Sel", 0, 2)`). BEFORE
 //!    the fix the real `(0,2,2)` commands never dispatched through the
-//!    pipeline (`SelRuntime` / `SelectLongOp` / `choice:<idx>` emission /
+//!    pipeline (`SelRuntime` / `SelectLongOp` / `choice:<idx>` emission
 //!    `goto_on($store)` branch driving) — they were gap-filled by the opcode
 //!    CATALOG as `Advance` no-ops, leaving the choice machinery DORMANT
 //!    (recognized 0-unknown but never presented, never driving a branch).
 //!    AFTER the fix they dispatch through `SelRuntime`: a `choice:<idx>`
-//!    surface is emitted per option, the `HeadlessChoicePolicy` resolves it,
+//!    surface is emitted per option, the `HeadlessChoicePolicy` resolves it
 //!    and the chosen index writes `$store` so `goto_on($store)` drives the
 //!    matching branch.
 //!
@@ -47,19 +47,19 @@
 //! SAME opcode. `select_modality` now keys on the REAL SelectionControl
 //! SIGNAL: the presence of button-object setup ops in the select's scene. On
 //! real Sweetie those setup ops are `objbtn_init` (`(0,2,20)`, 43×) and
-//! `select_objbtn` (the REAL opcode `4` — NOT the fictional `3` — `(0,2,4)`,
+//! `select_objbtn` (the REAL opcode `4` — NOT the fictional `3` — `(0,2,4)`
 //! 33×). A select whose scene carries them is GRAPHICAL (button-object);
 //! a select with none is a plain vertical TEXT list.
 //!
 //! HONEST finding (from decoding the real button-object scenes): the real
 //! route (character-panel) and clothing (costume-strip) PICK screens are the
 //! `select_objbtn` button-object ops themselves (no inline option block); the
-//! button-object-context `select_w` selects in this corpus are gallery /
+//! button-object-context `select_w` selects in this corpus are gallery
 //! scene-jump / time-of-day menus. The SelectionControl ops do NOT carry a
 //! route-vs-clothing discriminator, so pair-vs-grid is only a LAYOUT
-//! arrangement of the placed option-buttons (≤2 → side-by-side, ≥3 → grid),
+//! arrangement of the placed option-buttons (≤2 → side-by-side, ≥3 → grid)
 //! not a route-vs-clothing semantic. The prompt's hypothesised `(0,2,30..36)`
-//! / `(0,2,122)` ops are NOT the story signal — they live in the 999x system
+//! `(0,2,122)` ops are NOT the story signal — they live in the 999x system
 //! menu-builder scenes.
 //!
 //! # What this gate asserts on real bytes
@@ -296,7 +296,7 @@ fn sweetie_real_bytes_choice_smoke_all_modalities() {
     let seen_bytes = fs::read(&seen_path).expect("read Seen.txt");
     let (store, shift_jis) = staged_store_and_engine(&seen_bytes);
 
-    // ---- (1)+(2) Locate the real select commands + characterize the opcode --
+    // (1)+(2) Locate the real select commands + characterize the opcode --
     let selects = scan_real_selects(&store);
     assert!(
         !selects.is_empty(),
@@ -361,7 +361,6 @@ fn sweetie_real_bytes_choice_smoke_all_modalities() {
          {button_object_setup_ops}"
     );
 
-    // ---- (3) Modality is now keyed on the REAL SelectionControl signal ------
     // A select in a scene WITHOUT button-object setup ops is a plain TEXT
     // list; a select in a scene WITH button-object setup ops is GRAPHICAL —
     // laid out as a side-by-side pair (≤2 buttons) or an icon grid (≥3). The
@@ -428,7 +427,6 @@ fn sweetie_real_bytes_choice_smoke_all_modalities() {
          the count-based misclassification is RESOLVED"
     );
 
-    // ---- (4) Recognized 0-unknown AND the choice machinery is LIVE ---------
     let engine = ReplayEngine::from_store(store, shift_jis);
     let entry = 1u16; // SEEN_START
     let entry_report =
@@ -578,7 +576,6 @@ fn sweetie_real_bytes_choice_smoke_all_modalities() {
          — the choice is not driving the branch"
     );
 
-    // ---- (5) Render the three smoke PNGs per their REAL modality -----------
     // The route-signature (button-object, ≤2) renders as the side-by-side
     // SpatialChoiceWindow; the clothing-signature (button-object, ≥3) as the
     // ImageGridChoiceWindow icon strip; the plain text select as the vertical

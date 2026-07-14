@@ -1,4 +1,4 @@
-//! UTSUSHI-038 acceptance — KAG macro DEFINITION + invocation expansion (the
+//! Acceptance — KAG macro DEFINITION + invocation expansion (the
 //! bounded `%param` subset), and the subset BOUNDARY (unresolved params and
 //! runaway recursion stay typed diagnostics, never a faked expansion).
 //!

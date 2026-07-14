@@ -6,9 +6,9 @@
 //! that the port DRIVES the substrate sinks in production code:
 //!
 //! - a real decoded **text line** flows through the text sink, and
-//! - a real composited **frame artifact** flows through the frame sink,
+//! - a real composited **frame artifact** flows through the frame sink
 //!
-//! for the SAME run, plus that the port drove its `Snapshot` +
+//! for the SAME run, plus that the port drove its `Snapshot`
 //! `DeterministicReplay` capabilities (snapshot/restore identity verified
 //! at >0 tick boundaries; two replays byte-identical).
 //!

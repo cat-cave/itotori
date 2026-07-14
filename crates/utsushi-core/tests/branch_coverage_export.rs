@@ -1,8 +1,8 @@
-//! UTSUSHI-070 export SNAPSHOT tests.
+//! Export SNAPSHOT tests.
 //!
 //! Loads the committed synthetic read-model fixture
 //! `tests/fixtures/conformance/branch_coverage/coverage_status.json` (shared
-//! byte-for-byte with the UTSUSHI-009 read-model test), builds the export with
+//! byte-for-byte with the read-model test), builds the export with
 //! an INJECTED generated-at, and byte-compares the JSON + Markdown outputs
 //! against committed goldens.
 //!

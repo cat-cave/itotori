@@ -3,10 +3,10 @@
 //! This module authors two non-copyrighted g00 blobs from the public
 //! RealLive g00 format (see `src/g00.rs` module docstring and
 //! `docs/research/g00-type0-decoder-findings.md`): one **type-0** (raw
-//! 24-bpp BGR + relative-LZ77) and one **type-2** (region-container +
+//! 24-bpp BGR + relative-LZ77) and one **type-2** (region-container
 //! SCN2k LZSS). The byte layout mirrors the real on-disk shape — lead
 //! byte, `u16 LE` width/height, the type-2 `u32 LE region_count`, the
-//! 24-byte-per-record region table, the `(u32 compressed_size,
+//! 24-byte-per-record region table, the `(u32 compressed_size
 //! u32 uncompressed_size, lzss_payload)` framing, and (for type 2) the
 //! region-container the SCN2k payload decodes to.
 //!
@@ -62,7 +62,7 @@ pub const EXPECTED_FIRST_PIXEL_RGBA: [u8; 4] = [0x33, 0x22, 0x11, 0xff];
 
 /// Encode a byte stream as an all-literal g00 LZSS stream (`bit = 1` →
 /// literal), for the given per-literal `unit` (3 for type-0 BGR, 1 for
-/// SCN2k). The decoder stops the instant the output target is reached,
+/// SCN2k). The decoder stops the instant the output target is reached
 /// so the trailing clear bits of a partial final flag group are never
 /// interpreted as tokens.
 fn encode_all_literals(bytes: &[u8], unit: usize) -> Vec<u8> {
@@ -151,7 +151,7 @@ fn encode_type0_with_trailing_backref(bgr: &[u8]) -> Vec<u8> {
             &bgr[p * 3..p * 3 + 3],
         );
     }
-    // Back-reference token: distance = literal_pixels pixels,
+    // Back-reference token: distance = literal_pixels pixels
     // length = 1 pixel. t = (distance)<<4 | (length_pixels - 1); the
     // length nibble is 0 (one pixel).
     let t: u16 = (literal_pixels as u16) << 4;
@@ -185,7 +185,7 @@ pub fn synthetic_type0_g00() -> Vec<u8> {
     bytes
 }
 
-/// A structurally-faithful synthetic **type-2** (region-container +
+/// A structurally-faithful synthetic **type-2** (region-container
 /// SCN2k LZSS) g00 file with one full-canvas region. Decodes cleanly
 /// through [`utsushi_reallive::decode_g00`] with zero warnings.
 pub fn synthetic_type2_g00() -> Vec<u8> {

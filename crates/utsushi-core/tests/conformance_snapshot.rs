@@ -1,6 +1,6 @@
-//! Integration tests for snapshot conformance (UTSUSHI-028).
+//! Integration tests for snapshot conformance ().
 //!
-//! Exercises the [`utsushi_core::SnapshotConformanceCheck`] +
+//! Exercises the [`utsushi_core::SnapshotConformanceCheck`]
 //! [`utsushi_core::SnapshotStore`] surface end-to-end via the synthetic
 //! fixtures in [`utsushi_core::conformance::fixtures`]. The headline
 //! audit-focus tests assert:

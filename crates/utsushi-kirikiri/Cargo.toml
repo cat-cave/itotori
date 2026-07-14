@@ -9,15 +9,15 @@ description = "UTSUSHI-037 KAG plaintext REPLAY skeleton: deterministically repl
 
 [dependencies]
 # The `.ks` source is decoded once (UTF-8 / Shift-JIS) and every control-flow
-# scan runs over the decoded `&str`, so the encoding-safety hazard KAIFUU-009
+# scan runs over the decoded `&str`, so the encoding-safety hazard
 # handles at the byte level (a Shift-JIS trailing byte equal to an ASCII
 # delimiter) is dissolved before scanning. `encoding_rs` is the same decoder
 # `kaifuu-kirikiri` uses.
 encoding_rs.workspace = true
 serde = { workspace = true }
 serde_json.workspace = true
-# UTSUSHI-008: the KAG command-trace bridge refs re-derive the SAME
-# SHA-256 → UUID7-shaped `bridgeUnitId` scheme KAIFUU-009's extraction uses
+# the KAG command-trace bridge refs re-derive the SAME
+# SHA-256 → UUID7-shaped `bridgeUnitId` scheme the extraction uses
 # (namespace `kirikiri-kag-bridge:source-file=<file>`), so a speaker/branch
 # trace row links to the ACTUAL extraction bridge unit. Re-derived (not
 # imported) per this crate's regression-isolation posture; the
@@ -25,22 +25,22 @@ serde_json.workspace = true
 # `kaifuu_kirikiri::parse_ks` output.
 sha2.workspace = true
 thiserror.workspace = true
-# UTSUSHI-039: the shared VFS boundary + the sealed XP3-backed handoff reader.
+# the shared VFS boundary The sealed XP3-backed handoff reader.
 # Utsushi consumes Kaifuu-owned extracted output through this VFS (no
 # Utsushi-side archive decryption); the KAG replay smoke reads the `.ks`
 # through the VFS.
 utsushi-core = { path = "../utsushi-core" }
 
 [dev-dependencies]
-# KAIFUU-009's KAG `.ks` PARSER is a dev-dependency ORACLE, not a production
+# the KAG `.ks` PARSER is a dev-dependency ORACLE, not a production
 # coupling — mirroring how `utsushi-reallive` keeps `kaifuu-reallive` as a
 # dev-dep oracle so a regression in one project cannot poison the other. The
 # text+name cross-validation test asserts this crate's independent replay
-# reproduces KAIFUU-009's authoritative `(dialogue text, speaker)` extraction
+# reproduces the authoritative `(dialogue text, speaker)` extraction
 # byte-for-byte on the shared dialect, so the reuse is proven against real
 # parse OUTPUT rather than by production linkage.
 kaifuu-kirikiri = { path = "../kaifuu-kirikiri" }
-# UTSUSHI-039: kaifuu-core is a dev-dependency ORACLE used to build + EXTRACT a
+# kaifuu-core is a dev-dependency ORACLE used to build + EXTRACT a
 # synthetic plain XP3 (Kaifuu owns the container bytes and the extraction) so
 # the handoff smoke hands REAL Kaifuu-extracted members to Utsushi's VFS.
 # Utsushi never links kaifuu-core in production — it consumes only the

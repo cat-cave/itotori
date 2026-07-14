@@ -2,7 +2,7 @@
 //!
 //! This crate is the non-synthetic engine port for the RealLive runtime.
 //! Its [`UtsushiReallivePort`] is the PRODUCTION producer for the
-//! UTSUSHI-022 substrate sinks: a single real-bytes replay drives the
+//! substrate sinks: a single real-bytes replay drives the
 //! substrate text, frame, AND audio sinks (see [`engine_port`]). It
 //! decodes real `Seen.txt` bytecode, composites real g00 art through the
 //! headless [`render_pipeline`], and emits real `bgm`/`koe` audio events —
@@ -14,7 +14,7 @@
 //!
 //! - All RealLive format observations consumed by this crate's eventual
 //!   implementation are derived from publicly archived format
-//!   documentation (Haeleth's RLDEV site,
+//!   documentation (Haeleth's RLDEV site
 //!   `https://dev.haeleth.net/rldev.shtml`) plus the Sweetie HD bytes
 //!   audited under `docs/audits/real-bytes-validation-2026-06-24.md`. No
 //!   source expression is copied from RLDEV or rlvm.
@@ -61,11 +61,11 @@
 
 pub mod gameexe;
 
-// UTSUSHI-217: in-crate `AudioEvent` carrier + sink, the audible
-// counterpart to UTSUSHI-214's headless render pipeline.
+// in-crate `AudioEvent` carrier + sink, the audible
+// counterpart to the headless render pipeline.
 pub mod audio;
 
-// UTSUSHI-217: typed decoders for the `.nwa` BGM / SE container and
+// typed decoders for the `.nwa` BGM / SE container and
 // the `.ovk` voice archive container.
 pub mod nwa;
 pub mod ovk;
@@ -92,66 +92,66 @@ pub use gameexe::{
     parse_into_arc as parse_gameexe_into_arc,
 };
 
-// UTSUSHI-201: `utsushi-reallive` owns its own `Seen.txt` parser. The
+// `utsushi-reallive` owns its own `Seen.txt` parser. The
 // scene-index types below are the ones successor nodes
-// (UTSUSHI-202..UTSUSHI-221) consume.
+// (..) consume.
 pub mod scene_index;
 
-// UTSUSHI-202: typed decoder for the 0x1d0-byte scene header that
+// typed decoder for the 0x1d0-byte scene header that
 // prefixes every populated scene blob. Consumes the scene-blob slice
-// pointed at by a `RealSceneEntry` from UTSUSHI-201 and produces a
+// pointed at by a `RealSceneEntry` from and produces a
 // typed `SceneHeader` plus the list of non-fatal warnings observed
 // during the walk.
 pub mod scene_header;
 
-// UTSUSHI-203: AVG32 LZSS + XOR decompressor for the scene bytecode
+// AVG32 LZSS + XOR decompressor for the scene bytecode
 // payload pointed at by `SceneHeader::bytecode_offset`. Consumes the
 // compressed slice and produces the post-LZSS plaintext bytecode.
 pub mod decompressor;
 
-// UTSUSHI-204: typed lead-byte lexer for the decompressed bytecode
+// typed lead-byte lexer for the decompressed bytecode
 // stream produced by `AvgDecompressor::decompress`. Produces a
 // `Vec<BytecodeElement>` whose `byte_offset`/`byte_len` ranges
 // partition the input slice exactly.
 pub mod bytecode_element;
 
-// UTSUSHI-205: RealLive expression byte-stream parser + evaluator.
+// RealLive expression byte-stream parser + evaluator.
 // `parse_expression` consumes the `raw_bytes` payload of a
-// `BytecodeElement::Expression` (UTSUSHI-204) and produces a typed
+// `BytecodeElement::Expression` () and produces a typed
 // `ExprNode`. `evaluate` / `evaluate_assignment` reduce the AST against
 // a typed `VarBanks` snapshot.
 pub mod expression;
 pub mod expression_eval;
 
-// UTSUSHI-206: sparse `VarBanks` adopted into the substrate
-// `Inspectable` / `Restorable` traits. Replaces UTSUSHI-205's dense
+// sparse `VarBanks` adopted into the substrate
+// `Inspectable` / `Restorable` traits. Replaces the dense
 // `[i32; 4096]` representation; integer banks clamp to the
 // rlvm-documented 2 000 indices per bank, string banks store raw
 // Shift-JIS bytes, and the store register lives on the same struct.
 pub mod var_banks;
 
-// UTSUSHI-208: `RLOperation` trait, dispatch outcomes, and the
+// `RLOperation` trait, dispatch outcomes, and the
 // fail-soft `RlopRegistry` / `LongOpScheduler` plumbing the VM
 // consumes during `step`. The per-module RLOperation tables (the
-// actual text / control-flow / sys operations) land in UTSUSHI-209
-// and UTSUSHI-210; this module only ships the trait, the dispatch
+// actual text / control-flow / sys operations) land in
+// and; this module only ships the trait, the dispatch
 // outcome enum, and the test-controllable scheduler implementations.
 pub mod rlop;
 
-// UTSUSHI-208: bytecode VM. Owns the active `(scene, pc)`, the call
+// bytecode VM. Owns the active `(scene, pc)`, the call
 // stack, the typed variable banks, and the suspended-longop queue.
 // The substrate `Inspectable` / `Restorable` impls round-trip the
 // whole VM through the snapshot store (paused longops carry their
 // private state through the round trip — acceptance criterion #3).
 pub mod vm;
 
-// UTSUSHI-220: end-to-end Sweetie HD scene-1 text-replay smoke. Drives
-// a Seen.txt envelope through the full UTSUSHI-201..UTSUSHI-210 chain
+// end-to-end Sweetie HD scene-1 text-replay smoke. Drives
+// a Seen.txt envelope through the full.. chain
 // and produces a typed `ReplayLog` containing the alpha-defining
 // `TextLine` events.
 pub mod replay;
 
-// utsushi-reallive-interactive-input-bridge: human-driven advance /
+// utsushi-reallive-interactive-input-bridge: human-driven advance
 // choice / navigation for the RealLive runtime. Generalises the
 // `LongOpScheduler` seam into an `InputSource` (headless / user / replay)
 // consumed by a `BridgeScheduler` that deterministically captures every
@@ -160,44 +160,44 @@ pub mod input_bridge;
 
 // utsushi-reallive-jump-resume: deterministic jump / resume to a
 // `(scene, line, frame)` target for ANY RealLive project. Owns the
-// engine-general, game-agnostic addressing model (`JumpTarget` +
+// engine-general, game-agnostic addressing model (`JumpTarget`
 // reproducible address strings) a reviewer pins an annotation to; the
 // drive-to-target lives on `ReplayEngine::jump_to` (see `replay`).
 pub mod jump;
 
-// UTSUSHI-216: g00 image-format decoder (types 0, 1, 2). Owns the
+// g00 image-format decoder (types 0, 1, 2). Owns the
 // shared LZSS variants and the corpus-wide lead-byte histogram that
 // emits `utsushi.reallive.g00_no_type_N_in_corpus` for types not
 // represented in a given corpus.
 pub mod g00;
 
-// UTSUSHI-213: system-call dispatch wired to Gameexe routes. Owns the
+// system-call dispatch wired to Gameexe routes. Owns the
 // typed `SyscallDispatcher` that builds a route table from the
 // Sweetie HD-shaped `Gameexe.ini` and invokes each route through the
-// UTSUSHI-211 `FarcallOp` (no private dispatch path).
+// `FarcallOp` (no private dispatch path).
 pub mod syscall;
 
-// UTSUSHI-214: graphics object stack (256 slots × 2 planes) — the
+// graphics object stack (256 slots × 2 planes) — the
 // rlvm `GraphicsSystem` equivalent. Owns per-object state
-// (`position`, `scale`, `alpha`, `colour_tone`, `image_ref`,
+// (`position`, `scale`, `alpha`, `colour_tone`, `image_ref`
 // `layer_order`) but no rasterisation logic; the headless render
 // pipeline at [`render_pipeline`] is what walks the stack and emits
 // PNGs.
 pub mod graphics_objects;
 
-// UTSUSHI-214 / ALPHA-006b: headless render pipeline + localized text
+// headless render pipeline + localized text
 // layer + deterministic PNG encoder + substrate frame-artifact
-// emission. Walks the [`graphics_objects::GraphicsObjectStack`],
+// emission. Walks the [`graphics_objects::GraphicsObjectStack`]
 // rasterises into a `Framebuffer`, paints the localized
 // [`render_pipeline::TextLayer`] (our translated text, never the source
-// g00 pixels), encodes a deterministic (no timestamp metadata) PNG,
+// g00 pixels), encodes a deterministic (no timestamp metadata) PNG
 // writes it to a managed [`utsushi_core::RuntimeArtifactRoot`], and
 // announces it through the substrate
 // [`utsushi_core::substrate::FrameArtifactSink`] at `EvidenceTier::E2`.
 pub mod render_pipeline;
 
-// UTSUSHI-218: AVG-derived save format (`SAVE_FORMAT=3`). Typed
-// reader/writer for `REALLIVE.sav` (per-slot system save),
+// AVG-derived save format (`SAVE_FORMAT=3`). Typed
+// reader/writer for `REALLIVE.sav` (per-slot system save)
 // `save999.sav` (global save), and `read.sav` (per-line read flags).
 // The substrate `SnapshotStore` is the in-memory backing for save
 // state; the on-disk serialiser is intentionally separate.
@@ -205,7 +205,7 @@ pub mod save;
 
 // substrate-sinks real producer: the real RealLive `EnginePort` that
 // drives the substrate text / frame / audio sinks from a single
-// real-bytes replay. Replaces the former UTSUSHI-200 inert scaffold.
+// real-bytes replay. Replaces the former inert scaffold.
 pub mod engine_port;
 
 pub use engine_port::UtsushiReallivePort;

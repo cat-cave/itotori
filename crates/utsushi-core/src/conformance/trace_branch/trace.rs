@@ -1,4 +1,4 @@
-//! Trace conformance check (UTSUSHI-027 §3).
+//! Trace conformance check ( §3).
 //!
 //! Index-paired comparison of an ordered golden text trace against an
 //! ordered observed text trace, with per-event mismatch diagnostics and
@@ -108,7 +108,7 @@ pub struct TraceConformanceCheck {
 }
 
 impl TraceConformanceCheck {
-    /// Build a check. Validates adapter id, non-empty golden trace,
+    /// Build a check. Validates adapter id, non-empty golden trace
     /// monotonic order indices, non-empty bridge unit ids on the golden
     /// side, and event id well-formedness on the golden side.
     pub fn new(
@@ -508,7 +508,7 @@ pub fn accepts_text_trace_evidence(evidence: &EvidenceRef) -> bool {
         | EvidenceRef::BridgeUnit { .. }
         | EvidenceRef::ReplayLogRef { .. }
         | EvidenceRef::ImplMapFixture { .. } => true,
-        // `EvidenceRef::StatePath` (UTSUSHI-028) belongs to the
+        // `EvidenceRef::StatePath` () belongs to the
         // snapshot-restore profile only; rejecting it here keeps the
         // text-trace evidence filter narrow.
         EvidenceRef::FrameArtifactRef { .. } | EvidenceRef::StatePath { .. } => false,

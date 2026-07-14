@@ -4,7 +4,7 @@
 //! Drives a REAL RealLive game through the fixed message-window pipeline
 //! and writes the frames the orchestrator visually verifies:
 //!
-//!   * `<prefix>-01.png`  — message #0 ALONE in the Gameexe-configured box
+//!   * `<prefix>-01.png` — message #0 ALONE in the Gameexe-configured box
 //!     (ONE message per frame, not the whole scene concatenated).
 //!   * `<prefix>-seq.png` — the first N (≤3) play-order messages, each
 //!     rendered as its OWN frame and stacked vertically, proving one
@@ -348,7 +348,7 @@ fn main() {
     );
 
     // These are PRIVATE full-fidelity frames (real g00 art) written to the
-    // gitignored .private-render/diag for orchestrator visual verification
+    // gitignored.private-render/diag for orchestrator visual verification
     // — never committed.
     println!("done: {} messages rendered one-per-frame", messages.len());
 }
