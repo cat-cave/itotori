@@ -8,6 +8,7 @@
 use std::env;
 use std::fs;
 
+use kaifuu_core::RedactedContentSummary;
 use kaifuu_reallive::{
     GameexeKeyTreatment, parse_archive, parse_gameexe_inventory, parse_scene_into_ast,
 };
@@ -26,8 +27,10 @@ fn probe_seen_txt(path: &str) -> Result<(), Box<dyn std::error::Error>> {
     println!("=== SEEN.TXT probe: {path} ===");
     let bytes = fs::read(path)?;
     println!("file bytes: {}", bytes.len());
-    let head: Vec<String> = bytes.iter().take(32).map(|b| format!("{b:02X}")).collect();
-    println!("first 32 bytes hex: {}", head.join(" "));
+    println!(
+        "first 32 bytes summary: {}",
+        RedactedContentSummary::from_bytes(&bytes[..bytes.len().min(32)])
+    );
 
     match parse_archive(&bytes) {
         Ok(index) => {
@@ -120,20 +123,20 @@ fn probe_gameexe_ini(path: &str) -> Result<(), Box<dyn std::error::Error>> {
         0.0
     };
     println!("unknown-key share: {pct:.1}%");
-    let bridge_keys: Vec<&str> = report
+    let bridge_keys: Vec<RedactedContentSummary> = report
         .entries
         .iter()
         .filter(|e| e.treatment == GameexeKeyTreatment::BridgeUnit)
-        .map(|e| e.key.as_str())
+        .map(|e| RedactedContentSummary::from_text(&e.key))
         .collect();
-    let asset_keys: Vec<&str> = report
+    let asset_keys: Vec<RedactedContentSummary> = report
         .entries
         .iter()
         .filter(|e| e.treatment == GameexeKeyTreatment::AssetReference)
         .take(8)
-        .map(|e| e.key.as_str())
+        .map(|e| RedactedContentSummary::from_text(&e.key))
         .collect();
-    println!("bridge keys: {bridge_keys:?}");
-    println!("first asset-ref keys: {asset_keys:?}");
+    println!("bridge key summaries: {bridge_keys:?}");
+    println!("first asset-ref key summaries: {asset_keys:?}");
     Ok(())
 }

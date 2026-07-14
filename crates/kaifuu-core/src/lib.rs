@@ -14609,7 +14609,7 @@ pub struct BridgeBundle {
     pub units: Vec<BridgeUnit>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BridgeUnit {
     pub bridge_unit_id: String,
@@ -14624,7 +14624,28 @@ pub struct BridgeUnit {
     pub patch_ref: PatchRef,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+impl fmt::Debug for BridgeUnit {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BridgeUnit")
+            .field("bridge_unit_id", &self.bridge_unit_id)
+            .field("source_unit_key", &self.source_unit_key)
+            .field("occurrence_id", &self.occurrence_id)
+            .field("source_hash", &self.source_hash)
+            .field("source_locale", &self.source_locale)
+            .field(
+                "source_text",
+                &RedactedContentSummary::from_text(&self.source_text),
+            )
+            .field("speaker", &RedactedContentSummary::from_text(&self.speaker))
+            .field("text_surface", &self.text_surface)
+            .field("protected_spans", &self.protected_spans)
+            .field("patch_ref", &self.patch_ref)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProtectedSpan {
     #[serde(skip)]
@@ -14658,6 +14679,70 @@ pub struct ProtectedSpan {
     pub annotation_locale: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_mode: Option<String>,
+}
+
+impl fmt::Debug for ProtectedSpan {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let arguments = self
+            .arguments
+            .as_ref()
+            .map(|arguments| RedactedContentSummary::from_text(&arguments.join("\u{1f}")));
+        let example_values = self
+            .example_values
+            .as_ref()
+            .map(|values| RedactedContentSummary::from_text(&values.join("\u{1f}")));
+        formatter
+            .debug_struct("ProtectedSpan")
+            .field("span_id", &self.span_id)
+            .field("kind", &self.kind)
+            .field("raw", &RedactedContentSummary::from_text(&self.raw))
+            .field("start", &self.start)
+            .field("end", &self.end)
+            .field("preserve_mode", &self.preserve_mode)
+            .field("parsed_name", &self.parsed_name)
+            .field("arguments", &arguments)
+            .field(
+                "variable_name",
+                &self
+                    .variable_name
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field(
+                "format_hint",
+                &self
+                    .format_hint
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field("example_values", &example_values)
+            .field("base_start_byte", &self.base_start_byte)
+            .field("base_end_byte", &self.base_end_byte)
+            .field("annotation_start_byte", &self.annotation_start_byte)
+            .field("annotation_end_byte", &self.annotation_end_byte)
+            .field(
+                "annotation_text",
+                &self
+                    .annotation_text
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field(
+                "annotation_locale",
+                &self
+                    .annotation_locale
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field(
+                "display_mode",
+                &self
+                    .display_mode
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .finish()
+    }
 }
 
 impl ProtectedSpan {
@@ -14881,8 +14966,10 @@ fn source_slice_for_span<'a>(
     }
     let actual = &source_text[start..end];
     if actual != expected_raw {
+        let expected = RedactedContentSummary::from_text(expected_raw);
+        let observed = RedactedContentSummary::from_text(actual);
         return Err(format!(
-            "protected span raw {expected_raw:?} must match sourceText byte range {actual:?}"
+            "protected span raw {expected} must match sourceText byte range {start}..{end} ({observed})"
         )
         .into());
     }
@@ -14904,10 +14991,20 @@ pub struct PatchRef {
     pub source_unit_key: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct BridgeContractValidationError {
     message: String,
     code: Option<&'static str>,
+}
+
+impl fmt::Debug for BridgeContractValidationError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BridgeContractValidationError")
+            .field("message", &RedactedContentSummary::from_text(&self.message))
+            .field("code", &self.code)
+            .finish()
+    }
 }
 
 impl BridgeContractValidationError {
@@ -14970,9 +15067,11 @@ pub struct BridgeBundleV02 {
 
 impl BridgeBundleV02 {
     pub fn validate_json(value: &Value) -> BridgeContractResult<Self> {
-        let bundle: Self = serde_json::from_value(value.clone()).map_err(|error| {
+        let bundle: Self = serde_json::from_value(value.clone()).map_err(|_| {
+            let serialized = value.to_string();
+            let summary = RedactedContentSummary::from_text(&serialized);
             BridgeContractValidationError::new(format!(
-                "BridgeBundleV02 must match the Rust serde contract: {error}"
+                "BridgeBundleV02 must match the Rust serde contract (serialized input {summary})"
             ))
         })?;
         bundle.validate()?;
@@ -15216,7 +15315,7 @@ impl BridgeAssetV02 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LocalizationUnitV02 {
     pub bridge_unit_id: String,
@@ -15236,6 +15335,36 @@ pub struct LocalizationUnitV02 {
     pub spans: Vec<BridgeSpanV02>,
     pub patch_ref: PatchRefV02,
     pub runtime_expectation: RuntimeExpectationV02,
+}
+
+impl fmt::Debug for LocalizationUnitV02 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let source_location = RedactedContentSummary::from_text(&self.source_location.to_string());
+        let context = RedactedContentSummary::from_text(&self.context.to_string());
+        let policy = self
+            .policy
+            .as_ref()
+            .map(|value| RedactedContentSummary::from_text(&value.to_string()));
+        formatter
+            .debug_struct("LocalizationUnitV02")
+            .field("bridge_unit_id", &self.bridge_unit_id)
+            .field("surface_id", &self.surface_id)
+            .field("surface_kind", &self.surface_kind)
+            .field("source_unit_key", &self.source_unit_key)
+            .field("occurrence_id", &self.occurrence_id)
+            .field("source_locale", &self.source_locale)
+            .field(
+                "source_text",
+                &RedactedContentSummary::from_text(&self.source_text),
+            )
+            .field("source_hash", &self.source_hash)
+            .field("source_location", &source_location)
+            .field("speaker", &self.speaker)
+            .field("context", &context)
+            .field("policy", &policy)
+            .field("spans", &self.spans)
+            .finish()
+    }
 }
 
 impl LocalizationUnitV02 {
@@ -15316,7 +15445,7 @@ impl AssetRefV02 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpeakerContextV02 {
     pub knowledge_state: String,
@@ -15326,6 +15455,45 @@ pub struct SpeakerContextV02 {
     pub raw_speaker_text: Option<String>,
     pub evidence: Option<String>,
     pub reader_label: Option<String>,
+}
+
+impl fmt::Debug for SpeakerContextV02 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SpeakerContextV02")
+            .field("knowledge_state", &self.knowledge_state)
+            .field("speaker_id", &self.speaker_id)
+            .field(
+                "display_name",
+                &self
+                    .display_name
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field("canonical_name_ref", &self.canonical_name_ref)
+            .field(
+                "raw_speaker_text",
+                &self
+                    .raw_speaker_text
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field(
+                "evidence",
+                &self
+                    .evidence
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field(
+                "reader_label",
+                &self
+                    .reader_label
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .finish()
+    }
 }
 
 impl SpeakerContextV02 {
@@ -15377,7 +15545,7 @@ impl SpeakerContextV02 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BridgeSpanV02 {
     pub span_id: String,
@@ -15399,6 +15567,44 @@ pub struct BridgeSpanV02 {
     pub annotation_locale: Option<Value>,
     pub display_mode: Option<Value>,
     pub policy: Option<Value>,
+}
+
+impl fmt::Debug for BridgeSpanV02 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let metadata = [
+            ("parsed_name", self.parsed_name.as_ref()),
+            ("arguments", self.arguments.as_ref()),
+            ("variable_name", self.variable_name.as_ref()),
+            ("format_hint", self.format_hint.as_ref()),
+            ("example_values", self.example_values.as_ref()),
+            ("base_start_byte", self.base_start_byte.as_ref()),
+            ("base_end_byte", self.base_end_byte.as_ref()),
+            ("annotation_start_byte", self.annotation_start_byte.as_ref()),
+            ("annotation_end_byte", self.annotation_end_byte.as_ref()),
+            ("annotation_text", self.annotation_text.as_ref()),
+            ("annotation_locale", self.annotation_locale.as_ref()),
+            ("display_mode", self.display_mode.as_ref()),
+            ("policy", self.policy.as_ref()),
+        ]
+        .into_iter()
+        .map(|(name, value)| {
+            (
+                name,
+                value.map(|value| RedactedContentSummary::from_text(&value.to_string())),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+        formatter
+            .debug_struct("BridgeSpanV02")
+            .field("span_id", &self.span_id)
+            .field("span_kind", &self.span_kind)
+            .field("raw", &RedactedContentSummary::from_text(&self.raw))
+            .field("start_byte", &self.start_byte)
+            .field("end_byte", &self.end_byte)
+            .field("preserve_mode", &self.preserve_mode)
+            .field("metadata", &metadata)
+            .finish()
+    }
 }
 
 impl BridgeSpanV02 {
@@ -15542,7 +15748,7 @@ impl RuntimeExpectationV02 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PolicyRecordV02 {
     pub policy_record_id: String,
@@ -15557,6 +15763,56 @@ pub struct PolicyRecordV02 {
     pub scope: Option<String>,
     pub policy_reason: String,
     pub review_required: Option<bool>,
+}
+
+impl fmt::Debug for PolicyRecordV02 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PolicyRecordV02")
+            .field("policy_record_id", &self.policy_record_id)
+            .field("policy_record_kind", &self.policy_record_kind)
+            .field("policy_action", &self.policy_action)
+            .field(
+                "term_key",
+                &RedactedContentSummary::from_text(&self.term_key),
+            )
+            .field(
+                "source_text",
+                &RedactedContentSummary::from_text(&self.source_text),
+            )
+            .field(
+                "target_locale",
+                &self
+                    .target_locale
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field("locale_branch_id", &self.locale_branch_id)
+            .field(
+                "romanization_system",
+                &self
+                    .romanization_system
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field(
+                "preserve_form",
+                &self
+                    .preserve_form
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field(
+                "scope",
+                &self.scope.as_deref().map(RedactedContentSummary::from_text),
+            )
+            .field(
+                "policy_reason",
+                &RedactedContentSummary::from_text(&self.policy_reason),
+            )
+            .field("review_required", &self.review_required)
+            .finish()
+    }
 }
 
 impl PolicyRecordV02 {
@@ -15885,7 +16141,7 @@ impl PatchExport {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PatchExportEntry {
     pub bridge_unit_id: String,
@@ -15895,7 +16151,23 @@ pub struct PatchExportEntry {
     pub protected_span_mappings: Vec<ProtectedSpanMapping>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+impl fmt::Debug for PatchExportEntry {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PatchExportEntry")
+            .field("bridge_unit_id", &self.bridge_unit_id)
+            .field("source_unit_key", &self.source_unit_key)
+            .field("source_hash", &self.source_hash)
+            .field(
+                "target_text",
+                &RedactedContentSummary::from_text(&self.target_text),
+            )
+            .field("protected_span_mappings", &self.protected_span_mappings)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProtectedSpanMapping {
     pub raw: String,
@@ -15907,6 +16179,20 @@ pub struct ProtectedSpanMapping {
     pub source_end_byte: Option<u64>,
     pub target_start: u64,
     pub target_end: u64,
+}
+
+impl fmt::Debug for ProtectedSpanMapping {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ProtectedSpanMapping")
+            .field("raw", &RedactedContentSummary::from_text(&self.raw))
+            .field("source_span_id", &self.source_span_id)
+            .field("source_start_byte", &self.source_start_byte)
+            .field("source_end_byte", &self.source_end_byte)
+            .field("target_start", &self.target_start)
+            .field("target_end", &self.target_end)
+            .finish()
+    }
 }
 
 impl ProtectedSpanMapping {
@@ -16262,7 +16548,7 @@ pub enum GoldenAssertionStatus {
     Skipped,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GoldenPhaseReport {
     pub phase: String,
@@ -16285,7 +16571,42 @@ pub struct GoldenPhaseReport {
     pub required_capability: Option<Capability>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+impl fmt::Debug for GoldenPhaseReport {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("GoldenPhaseReport")
+            .field("phase", &self.phase)
+            .field("status", &self.status)
+            .field("details", &RedactedContentSummary::from_text(&self.details))
+            .field("asset_ref", &self.asset_ref)
+            .field("source_unit_key", &self.source_unit_key)
+            .field(
+                "support_boundary",
+                &self
+                    .support_boundary
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field(
+                "expected",
+                &self
+                    .expected
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field(
+                "actual",
+                &self
+                    .actual
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field("required_capability", &self.required_capability)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GoldenFailure {
     pub code: String,
@@ -16306,6 +16627,42 @@ pub struct GoldenFailure {
     /// keyed on (e.g. the unsupported-surface capability whose asset mutated).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub required_capability: Option<Capability>,
+}
+
+impl fmt::Debug for GoldenFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("GoldenFailure")
+            .field("code", &self.code)
+            .field("phase", &self.phase)
+            .field("adapter_id", &self.adapter_id)
+            .field("message", &RedactedContentSummary::from_text(&self.message))
+            .field("asset_ref", &self.asset_ref)
+            .field("source_unit_key", &self.source_unit_key)
+            .field(
+                "support_boundary",
+                &self
+                    .support_boundary
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field(
+                "expected",
+                &self
+                    .expected
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field(
+                "actual",
+                &self
+                    .actual
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field("required_capability", &self.required_capability)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -18060,6 +18417,59 @@ pub fn content_hash(input: &str) -> String {
 
 pub fn sha256_hash_bytes(input: &[u8]) -> String {
     format!("sha256:{}", sha256_hex(input))
+}
+
+/// Content metadata safe to include in diagnostics without revealing bytes.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RedactedContentSummary {
+    byte_len: usize,
+    sha256: String,
+}
+
+impl RedactedContentSummary {
+    #[must_use]
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        Self {
+            byte_len: bytes.len(),
+            sha256: sha256_hex(bytes),
+        }
+    }
+
+    #[must_use]
+    pub fn from_text(text: &str) -> Self {
+        Self::from_bytes(text.as_bytes())
+    }
+
+    #[must_use]
+    pub fn byte_len(&self) -> usize {
+        self.byte_len
+    }
+
+    #[must_use]
+    pub fn sha256(&self) -> &str {
+        &self.sha256
+    }
+}
+
+impl fmt::Display for RedactedContentSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{} bytes (sha256 {})",
+            self.byte_len, self.sha256
+        )
+    }
+}
+
+impl fmt::Debug for RedactedContentSummary {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RedactedContentSummary")
+            .field("byte_len", &self.byte_len)
+            .field("sha256", &self.sha256)
+            .finish()
+    }
 }
 
 pub fn sha256_file_ref(path: &Path) -> io::Result<String> {
@@ -20065,7 +20475,7 @@ pub fn run_round_trip_golden(
                     code: "detect_error".to_string(),
                     phase: "detect".to_string(),
                     adapter_id: adapter.id().to_string(),
-                    message: error.to_string(),
+                    message: golden_error_summary(&error),
                     asset_ref: None,
                     source_unit_key: None,
                     support_boundary: None,
@@ -20097,7 +20507,7 @@ pub fn run_round_trip_golden(
                     code: "extract_error".to_string(),
                     phase: "extract".to_string(),
                     adapter_id: adapter.id().to_string(),
-                    message: error.to_string(),
+                    message: golden_error_summary(&error),
                     asset_ref: None,
                     source_unit_key: None,
                     support_boundary: None,
@@ -20218,7 +20628,7 @@ fn run_golden_patch_phase(args: GoldenPatchPhaseArgs<'_>) -> KaifuuResult<Option
                     code: format!("{phase}_preflight_error"),
                     phase: phase.to_string(),
                     adapter_id: adapter.id().to_string(),
-                    message: error.to_string(),
+                    message: golden_error_summary(&error),
                     asset_ref: Some("source.json".to_string()),
                     source_unit_key: None,
                     support_boundary: None,
@@ -20252,7 +20662,7 @@ fn run_golden_patch_phase(args: GoldenPatchPhaseArgs<'_>) -> KaifuuResult<Option
                     code: patch_error_code.to_string(),
                     phase: phase.to_string(),
                     adapter_id: adapter.id().to_string(),
-                    message: error.to_string(),
+                    message: golden_error_summary(&error),
                     asset_ref: Some("source.json".to_string()),
                     source_unit_key: None,
                     support_boundary: None,
@@ -20312,13 +20722,14 @@ fn unchanged_patch_export(bridge: &BridgeBundle) -> Result<PatchExport, Box<Gold
                 continue;
             }
             let Some(relative_start) = unit.source_text[search_start..].find(&span.raw) else {
+                let span_summary = RedactedContentSummary::from_text(&span.raw);
+                let source_summary = RedactedContentSummary::from_text(&unit.source_text);
                 return Err(Box::new(GoldenFailure {
                     code: "unchanged_patch_protected_span_missing".to_string(),
                     phase: "unchanged_patch_build".to_string(),
                     adapter_id: String::new(),
                     message: format!(
-                        "protected span raw text {:?} was not present while building unchanged patch",
-                        span.raw
+                        "protected span raw text {span_summary} was not present while building unchanged patch"
                     ),
                     asset_ref: Some(unit.patch_ref.asset_id.clone()),
                     source_unit_key: Some(unit.source_unit_key.clone()),
@@ -20326,8 +20737,8 @@ fn unchanged_patch_export(bridge: &BridgeBundle) -> Result<PatchExport, Box<Gold
                         "unchanged patch generation requires protected span raw text to exist in sourceText"
                             .to_string(),
                     ),
-                    expected: Some(span.raw.clone()),
-                    actual: Some(unit.source_text.clone()),
+                    expected: Some(span_summary.to_string()),
+                    actual: Some(source_summary.to_string()),
                                     required_capability: None,
 }));
             };
@@ -20397,6 +20808,18 @@ fn record_golden_failure(report: &mut GoldenRoundTripReport, failure: GoldenFail
     report.failures.push(failure);
 }
 
+fn golden_error_summary(error: impl fmt::Display) -> String {
+    let rendered = error.to_string();
+    format!("error {}", RedactedContentSummary::from_text(&rendered))
+}
+
+fn golden_diagnostic_summary(diagnostic: &str) -> String {
+    format!(
+        "diagnostic {}",
+        RedactedContentSummary::from_text(diagnostic)
+    )
+}
+
 fn record_adapter_failures(
     report: &mut GoldenRoundTripReport,
     adapter_id: &str,
@@ -20435,13 +20858,15 @@ fn record_adapter_failures(
                 code: failure.error_code.clone(),
                 phase: phase.to_string(),
                 adapter_id: adapter_id.to_string(),
-                message: failure
-                    .remediation
-                    .clone()
-                    .unwrap_or_else(|| failure.support_boundary.clone()),
+                message: golden_diagnostic_summary(
+                    failure
+                        .remediation
+                        .as_deref()
+                        .unwrap_or(&failure.support_boundary),
+                ),
                 source_unit_key: source_unit_key_from_asset_ref(asset_ref.as_deref()),
                 asset_ref,
-                support_boundary: Some(failure.support_boundary.clone()),
+                support_boundary: Some(golden_diagnostic_summary(&failure.support_boundary)),
                 expected: Some("patch status passed".to_string()),
                 actual: Some("patch status failed".to_string()),
                 required_capability: None,
@@ -20510,8 +20935,14 @@ fn report_byte_equivalence(
                         adapter_id: report.adapter_id.clone(),
                         message: format!(
                             "could not read source.json for byte comparison: original={}, patched={}",
-                            original.err().map(|error| error.to_string()).unwrap_or_default(),
-                            patched.err().map(|error| error.to_string()).unwrap_or_default()
+                            original
+                                .err()
+                                .map(golden_error_summary)
+                                .unwrap_or_default(),
+                            patched
+                                .err()
+                                .map(golden_error_summary)
+                                .unwrap_or_default()
                         ),
                         asset_ref: Some("source.json".to_string()),
                         source_unit_key: None,
@@ -20572,7 +21003,7 @@ fn report_inventory_asset_preservation(
                     code: "inventory_asset_preservation_input_error".to_string(),
                     phase: "inventory_asset_preservation".to_string(),
                     adapter_id: adapter.id().to_string(),
-                    message: error.to_string(),
+                    message: golden_error_summary(&error),
                     asset_ref: None,
                     source_unit_key: None,
                     support_boundary: Some(
@@ -20598,7 +21029,7 @@ fn report_inventory_asset_preservation(
                     code: "inventory_asset_preservation_output_error".to_string(),
                     phase: "inventory_asset_preservation".to_string(),
                     adapter_id: adapter.id().to_string(),
-                    message: error.to_string(),
+                    message: golden_error_summary(&error),
                     asset_ref: None,
                     source_unit_key: None,
                     support_boundary: Some(
@@ -20804,12 +21235,17 @@ fn report_verify_phase(
                             code: failure.error_code,
                             phase: phase.to_string(),
                             adapter_id: adapter.id().to_string(),
-                            message: failure
-                                .remediation
-                                .unwrap_or_else(|| failure.support_boundary.clone()),
+                            message: golden_diagnostic_summary(
+                                failure
+                                    .remediation
+                                    .as_deref()
+                                    .unwrap_or(&failure.support_boundary),
+                            ),
                             source_unit_key: source_unit_key_from_asset_ref(asset_ref.as_deref()),
                             asset_ref,
-                            support_boundary: Some(failure.support_boundary),
+                            support_boundary: Some(golden_diagnostic_summary(
+                                &failure.support_boundary,
+                            )),
                             expected: Some("verify status passed".to_string()),
                             actual: Some("verify status failed".to_string()),
                             required_capability: None,
@@ -20824,7 +21260,7 @@ fn report_verify_phase(
                 code: "verify_error".to_string(),
                 phase: phase.to_string(),
                 adapter_id: adapter.id().to_string(),
-                message: error.to_string(),
+                message: golden_error_summary(&error),
                 asset_ref: Some("source.json".to_string()),
                 source_unit_key: None,
                 support_boundary: None,
@@ -20854,7 +21290,7 @@ fn report_output_equivalence(
                     code: "output_equivalence_extract_error".to_string(),
                     phase: phase.to_string(),
                     adapter_id: adapter.id().to_string(),
-                    message: error.to_string(),
+                    message: golden_error_summary(&error),
                     asset_ref: Some("source.json".to_string()),
                     source_unit_key: None,
                     support_boundary: Some(
@@ -20885,7 +21321,7 @@ fn report_output_equivalence(
     for (key, expected_signature) in &expected {
         match actual.get(key) {
             Some(actual_signature) if actual_signature == expected_signature => {}
-            Some(actual_signature) => record_golden_failure(
+            Some(_) => record_golden_failure(
                 report,
                 GoldenFailure {
                     code: "output_unit_mismatch".to_string(),
@@ -20898,8 +21334,20 @@ fn report_output_equivalence(
                         "unchanged patch output equivalence requires source units to extract identically"
                             .to_string(),
                     ),
-                    expected: Some(expected_signature.clone()),
-                    actual: Some(actual_signature.clone()),
+                    expected: original_extraction
+                        .bridge
+                        .units
+                        .iter()
+                        .rev()
+                        .find(|unit| unit.source_unit_key == *key)
+                        .map(unit_signature_summary),
+                    actual: patched_extraction
+                        .bridge
+                        .units
+                        .iter()
+                        .rev()
+                        .find(|unit| unit.source_unit_key == *key)
+                        .map(unit_signature_summary),
                                     required_capability: None,
 },
             ),
@@ -20916,7 +21364,13 @@ fn report_output_equivalence(
                         "unchanged patch output equivalence requires all source units to remain present"
                             .to_string(),
                     ),
-                    expected: Some(expected_signature.clone()),
+                    expected: original_extraction
+                        .bridge
+                        .units
+                        .iter()
+                        .rev()
+                        .find(|unit| unit.source_unit_key == *key)
+                        .map(unit_signature_summary),
                     actual: None,
                                     required_capability: None,
 },
@@ -20938,7 +21392,13 @@ fn report_output_equivalence(
                     "unchanged patch output equivalence requires no extra source units".to_string(),
                 ),
                 expected: None,
-                actual: actual.get(key).cloned(),
+                actual: patched_extraction
+                    .bridge
+                    .units
+                    .iter()
+                    .rev()
+                    .find(|unit| unit.source_unit_key == *key)
+                    .map(unit_signature_summary),
                 required_capability: None,
             },
         );
@@ -20956,6 +21416,14 @@ fn unit_signatures(bridge: &BridgeBundle) -> BTreeMap<String, String> {
             )
         })
         .collect()
+}
+
+fn unit_signature_summary(unit: &BridgeUnit) -> String {
+    format!(
+        "sourceHash={}; sourceText={}",
+        unit.source_hash,
+        RedactedContentSummary::from_text(&unit.source_text)
+    )
 }
 
 fn report_translated_patch(
@@ -20982,7 +21450,7 @@ fn report_translated_patch(
                         code: "translated_patch_contract_invalid".to_string(),
                         phase: "translated_patch_contract".to_string(),
                         adapter_id: adapter.id().to_string(),
-                        message: error.to_string(),
+                        message: golden_error_summary(&error),
                         asset_ref: None,
                         source_unit_key: None,
                         support_boundary: Some(
@@ -21029,7 +21497,7 @@ fn report_translated_patch(
                     code: "translated_patch_conversion_failed".to_string(),
                     phase: "translated_patch_conversion".to_string(),
                     adapter_id: adapter.id().to_string(),
-                    message: error.to_string(),
+                    message: golden_error_summary(&error),
                     asset_ref: None,
                     source_unit_key: None,
                     support_boundary: Some(
@@ -21109,7 +21577,7 @@ fn report_v02_source_compatibility(
                     code: "translated_source_bridge_invalid".to_string(),
                     phase: "translated_source_compatibility".to_string(),
                     adapter_id: adapter_id.to_string(),
-                    message: error.to_string(),
+                    message: golden_error_summary(&error),
                     asset_ref: None,
                     source_unit_key: None,
                     support_boundary: Some(
@@ -21437,7 +21905,7 @@ fn report_translated_target_equivalence(
                     code: "translated_target_read_error".to_string(),
                     phase: "translated_target_equivalence".to_string(),
                     adapter_id: adapter_id.to_string(),
-                    message: error.to_string(),
+                    message: golden_error_summary(&error),
                     asset_ref: Some("source.json".to_string()),
                     source_unit_key: None,
                     support_boundary: Some(
@@ -21505,8 +21973,10 @@ fn report_translated_target_equivalence(
                         "translated patch target equivalence requires each targetText to be written exactly"
                             .to_string(),
                     ),
-                    expected: Some(entry.target_text.clone()),
-                    actual: Some(actual.clone()),
+                    expected: Some(
+                        RedactedContentSummary::from_text(&entry.target_text).to_string(),
+                    ),
+                    actual: Some(RedactedContentSummary::from_text(actual).to_string()),
                                     required_capability: None,
 },
             ),
@@ -21523,7 +21993,9 @@ fn report_translated_target_equivalence(
                         "translated patch target equivalence requires each patched unit to contain targetText"
                             .to_string(),
                     ),
-                    expected: Some(entry.target_text.clone()),
+                    expected: Some(
+                        RedactedContentSummary::from_text(&entry.target_text).to_string(),
+                    ),
                     actual: None,
                                     required_capability: None,
 },
@@ -21541,7 +22013,9 @@ fn report_translated_target_equivalence(
                         "translated patch target equivalence requires every patch entry sourceUnitKey to be present"
                             .to_string(),
                     ),
-                    expected: Some(entry.target_text.clone()),
+                    expected: Some(
+                        RedactedContentSummary::from_text(&entry.target_text).to_string(),
+                    ),
                     actual: None,
                                     required_capability: None,
 },

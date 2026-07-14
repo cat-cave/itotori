@@ -6,7 +6,7 @@
 //! below and exists as `pub const` strings so KAIFUU-174 (the adapter
 //! that will call this crate) can hard-code the contract.
 
-use kaifuu_core::SemanticErrorCode;
+use kaifuu_core::{RedactedContentSummary, SemanticErrorCode};
 use serde::{Deserialize, Serialize};
 
 use crate::ast::DiagnosticSeverity;
@@ -35,8 +35,8 @@ pub struct ParseDiagnostic {
     pub byte_offset: u64,
     /// Covered byte run if known.
     pub byte_len: Option<u64>,
-    /// Up to first 16 bytes of the offending span as uppercase hex.
-    pub raw_bytes_hex: Option<String>,
+    /// Safe summary of up to the first 16 offending bytes.
+    pub raw_bytes_summary: Option<RedactedContentSummary>,
     pub message: String,
     pub remediation: Option<String>,
 }
@@ -46,7 +46,7 @@ impl ParseDiagnostic {
         code: ParseDiagnosticCode,
         byte_offset: u64,
         byte_len: Option<u64>,
-        raw_bytes_hex: Option<String>,
+        raw_bytes_summary: Option<RedactedContentSummary>,
         message: impl Into<String>,
     ) -> Self {
         Self {
@@ -54,7 +54,7 @@ impl ParseDiagnostic {
             severity: DiagnosticSeverity::Warning,
             byte_offset,
             byte_len,
-            raw_bytes_hex,
+            raw_bytes_summary,
             message: message.into(),
             remediation: None,
         }
@@ -64,7 +64,7 @@ impl ParseDiagnostic {
         code: ParseDiagnosticCode,
         byte_offset: u64,
         byte_len: Option<u64>,
-        raw_bytes_hex: Option<String>,
+        raw_bytes_summary: Option<RedactedContentSummary>,
         message: impl Into<String>,
     ) -> Self {
         Self {
@@ -72,7 +72,7 @@ impl ParseDiagnostic {
             severity: DiagnosticSeverity::Fatal,
             byte_offset,
             byte_len,
-            raw_bytes_hex,
+            raw_bytes_summary,
             message: message.into(),
             remediation: None,
         }

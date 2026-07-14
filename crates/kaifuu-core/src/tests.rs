@@ -7558,7 +7558,12 @@ fn rust_bridge_contract_documents_non_bridge_fixture_scope() {
         .expect_err("triage fixture is not a bridge bundle")
         .to_string();
 
-    assert!(error.contains("missing field `bridgeId`"), "{error}");
+    assert!(
+        error.contains("BridgeBundleV02 must match the Rust serde contract"),
+        "{error}"
+    );
+    assert!(error.contains("serialized input"), "{error}");
+    assert!(error.contains("sha256"), "{error}");
 }
 
 #[test]

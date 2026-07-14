@@ -32,6 +32,7 @@ mod real_corpus;
 use std::collections::HashMap;
 use std::fs;
 
+use kaifuu_core::RedactedContentSummary;
 use kaifuu_reallive::{GameexeKeyFamily, GameexeKeyTreatment, parse_gameexe_inventory};
 
 #[test]
@@ -111,7 +112,13 @@ fn classifies_every_staged_gameexe_ini_to_zero_unknown() {
                 .entries
                 .iter()
                 .filter(|e| treatment_label(e.treatment) == "unknown")
-                .map(|e| format!("{} (line {})", e.key, e.line_number))
+                .map(|e| {
+                    format!(
+                        "{} (line {})",
+                        RedactedContentSummary::from_text(&e.key),
+                        e.line_number
+                    )
+                })
                 .collect();
             panic!(
                 "corpus {} ({}) must classify EVERY Gameexe.ini key (substrate law: \

@@ -6,11 +6,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
-    OperationStatus, ProtectedSpanMapping, STRING_RELOCATION_INVALID_SOURCE_BYTES,
-    STRING_RELOCATION_OVERLAPPING_WRITES, STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH,
-    STRING_RELOCATION_UNRESOLVED_REFERENCE, STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
-    STRING_SLOT_INVALID_ENCODING, STRING_SLOT_OVERFLOW, STRING_SLOT_PROTECTED_SPAN_MUTATION,
-    STRING_SLOT_TERMINATOR_LOSS, content_hash,
+    OperationStatus, ProtectedSpanMapping, RedactedContentSummary,
+    STRING_RELOCATION_INVALID_SOURCE_BYTES, STRING_RELOCATION_OVERLAPPING_WRITES,
+    STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH, STRING_RELOCATION_UNRESOLVED_REFERENCE,
+    STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT, STRING_SLOT_INVALID_ENCODING,
+    STRING_SLOT_OVERFLOW, STRING_SLOT_PROTECTED_SPAN_MUTATION, STRING_SLOT_TERMINATOR_LOSS,
+    content_hash,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -421,13 +422,14 @@ impl EncodedStringSlot {
             let required_count = source_spans.len();
             let mapped_count = matching_ranges.get(raw).map_or(0, BTreeSet::len);
             let actual_count = count_protected_token_occurrences(target_text, raw);
+            let raw_summary = RedactedContentSummary::from_text(raw);
             if mapped_count == 0 {
                 let message = if required_count > 1 {
                     format!(
-                        "protected span {raw:?} is missing from protectedSpanMappings (expected {required_count} distinct target mapping(s) for repeated source token)"
+                        "protected span {raw_summary} is missing from protectedSpanMappings (expected {required_count} distinct target mapping(s) for repeated source token)"
                     )
                 } else {
-                    format!("protected span {raw:?} is missing from protectedSpanMappings")
+                    format!("protected span {raw_summary} is missing from protectedSpanMappings")
                 };
                 diagnostics.push(self.diagnostic(
                     STRING_SLOT_PROTECTED_SPAN_MUTATION,
@@ -443,7 +445,7 @@ impl EncodedStringSlot {
                 diagnostics.push(self.diagnostic(
                     STRING_SLOT_PROTECTED_SPAN_MUTATION,
                     format!(
-                        "protected span {raw:?} has {mapped_count} target mapping(s) and {actual_count} target occurrence(s), expected {required_count}"
+                        "protected span {raw_summary} has {mapped_count} target mapping(s) and {actual_count} target occurrence(s), expected {required_count}"
                     ),
                     "restore_protected_span",
                     "map each duplicate protected token to a distinct targetText byte range and preserve exact multiplicity",
@@ -479,7 +481,7 @@ pub enum EncodedStringSlotLayout {
     NullTerminated { terminator_hex: String },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EncodedStringSlotProtectedSpan {
     pub raw: String,
@@ -489,6 +491,18 @@ pub struct EncodedStringSlotProtectedSpan {
     pub source_start_byte: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_end_byte: Option<u64>,
+}
+
+impl fmt::Debug for EncodedStringSlotProtectedSpan {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("EncodedStringSlotProtectedSpan")
+            .field("raw", &RedactedContentSummary::from_text(&self.raw))
+            .field("source_span_id", &self.source_span_id)
+            .field("source_start_byte", &self.source_start_byte)
+            .field("source_end_byte", &self.source_end_byte)
+            .finish()
+    }
 }
 
 impl EncodedStringSlotProtectedSpan {
@@ -589,7 +603,7 @@ impl EncodedStringSlotPreflightReport {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EncodedStringSlotDiagnostic {
     pub code: String,
@@ -598,6 +612,23 @@ pub struct EncodedStringSlotDiagnostic {
     pub message: String,
     pub remediation_code: String,
     pub remediation: String,
+}
+
+impl fmt::Debug for EncodedStringSlotDiagnostic {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("EncodedStringSlotDiagnostic")
+            .field("code", &self.code)
+            .field("slot_id", &self.slot_id)
+            .field("byte_range", &self.byte_range)
+            .field("message", &RedactedContentSummary::from_text(&self.message))
+            .field("remediation_code", &self.remediation_code)
+            .field(
+                "remediation",
+                &RedactedContentSummary::from_text(&self.remediation),
+            )
+            .finish()
+    }
 }
 
 impl SourceRange {
@@ -1474,7 +1505,7 @@ fn encode_shift_jis(value: &str) -> Result<Vec<u8>, String> {
     if had_unmappable {
         let (char_index, encoded_byte_offset, offending) = locate_first_unmappable_shift_jis(value);
         return Err(format!(
-            "character {offending:?} (U+{codepoint:04X}) at char index {char_index} \
+            "character U+{codepoint:04X} at char index {char_index} \
              (encoded byte offset {encoded_byte_offset}) is not representable in Shift-JIS",
             codepoint = offending as u32,
         ));
@@ -1534,7 +1565,7 @@ fn hex_nibble(byte: u8) -> Option<u8> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StringTableRebuildRequest {
     pub fixture_id: String,
@@ -1544,6 +1575,23 @@ pub struct StringTableRebuildRequest {
     pub references: Vec<StringRelocationReference>,
     #[serde(default)]
     pub string_slot_diagnostics: Vec<EncodedStringSlotDiagnostic>,
+}
+
+impl fmt::Debug for StringTableRebuildRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("StringTableRebuildRequest")
+            .field("fixture_id", &self.fixture_id)
+            .field(
+                "source_bytes_hex",
+                &RedactedContentSummary::from_text(&self.source_bytes_hex),
+            )
+            .field("slots", &self.slots)
+            .field("replacements", &self.replacements)
+            .field("references", &self.references)
+            .field("string_slot_diagnostics", &self.string_slot_diagnostics)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1557,13 +1605,27 @@ pub struct StringRelocationSlot {
     pub protected_spans: Vec<EncodedStringSlotProtectedSpan>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StringRelocationTarget {
     pub slot_id: String,
     pub target_text: String,
     #[serde(default)]
     pub protected_span_mappings: Vec<ProtectedSpanMapping>,
+}
+
+impl fmt::Debug for StringRelocationTarget {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("StringRelocationTarget")
+            .field("slot_id", &self.slot_id)
+            .field(
+                "target_text",
+                &RedactedContentSummary::from_text(&self.target_text),
+            )
+            .field("protected_span_mappings", &self.protected_span_mappings)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1615,7 +1677,7 @@ pub enum StringReferenceRelocationKind {
     Unsupported,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StringRelocationPlanReport {
     pub schema_version: String,
@@ -1631,6 +1693,29 @@ pub struct StringRelocationPlanReport {
     pub output_bytes_hex: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_hash: Option<String>,
+}
+
+impl fmt::Debug for StringRelocationPlanReport {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("StringRelocationPlanReport")
+            .field("schema_version", &self.schema_version)
+            .field("status", &self.status)
+            .field("fixture_id", &self.fixture_id)
+            .field("relocated_strings", &self.relocated_strings)
+            .field("relocated_references", &self.relocated_references)
+            .field("string_slot_diagnostics", &self.string_slot_diagnostics)
+            .field("relocation_diagnostics", &self.relocation_diagnostics)
+            .field(
+                "output_bytes_hex",
+                &self
+                    .output_bytes_hex
+                    .as_deref()
+                    .map(RedactedContentSummary::from_text),
+            )
+            .field("output_hash", &self.output_hash)
+            .finish()
+    }
 }
 
 impl StringRelocationPlanReport {
@@ -1696,7 +1781,7 @@ pub struct RelocatedStringReference {
     pub output_hash_inputs: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StringRelocationDiagnostic {
     pub code: String,
@@ -1709,6 +1794,24 @@ pub struct StringRelocationDiagnostic {
     pub message: String,
     pub remediation_code: String,
     pub remediation: String,
+}
+
+impl fmt::Debug for StringRelocationDiagnostic {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("StringRelocationDiagnostic")
+            .field("code", &self.code)
+            .field("reference_id", &self.reference_id)
+            .field("slot_id", &self.slot_id)
+            .field("byte_range", &self.byte_range)
+            .field("message", &RedactedContentSummary::from_text(&self.message))
+            .field("remediation_code", &self.remediation_code)
+            .field(
+                "remediation",
+                &RedactedContentSummary::from_text(&self.remediation),
+            )
+            .finish()
+    }
 }
 
 type EncodedStringSlotResult<T> = Result<T, Box<EncodedStringSlotDiagnostic>>;
@@ -2242,13 +2345,14 @@ fn encode_relocated_slot(
         let required_count = source_spans.len();
         let mapped_count = matching_ranges.get(raw).map_or(0, BTreeSet::len);
         let actual_count = count_protected_token_occurrences(&replacement.target_text, raw);
+        let raw_summary = RedactedContentSummary::from_text(raw);
         // Exact multiplicity both directions (under- and over-count).
         if mapped_count != required_count || actual_count != required_count {
             return Err(Box::new(relocated_slot_diagnostic(
                 slot,
                 STRING_SLOT_PROTECTED_SPAN_MUTATION,
                 format!(
-                    "protected span {raw:?} has {mapped_count} target mapping(s) and {actual_count} target occurrence(s), expected {required_count}"
+                    "protected span {raw_summary} has {mapped_count} target mapping(s) and {actual_count} target occurrence(s), expected {required_count}"
                 ),
                 "restore_protected_span",
                 "preserve protected tokens and align protectedSpanMappings before relocation",
@@ -2901,7 +3005,7 @@ mod tests {
             "{collapsed:?}"
         );
         assert!(
-            collapsed.diagnostics[0].message.contains("{name}"),
+            collapsed.diagnostics[0].message.contains("sha256"),
             "{collapsed:?}"
         );
         assert_eq!(
@@ -2924,7 +3028,7 @@ mod tests {
             "{missing:?}"
         );
         assert!(
-            missing.diagnostics[0].message.contains("{name}"),
+            missing.diagnostics[0].message.contains("sha256"),
             "{missing:?}"
         );
         assert_eq!(
@@ -2945,7 +3049,7 @@ mod tests {
             extra.diagnostics[0].message.contains("expected 2"),
             "{extra:?}"
         );
-        assert!(extra.diagnostics[0].message.contains("{name}"), "{extra:?}");
+        assert!(extra.diagnostics[0].message.contains("sha256"), "{extra:?}");
         assert!(
             extra.diagnostics[0]
                 .message

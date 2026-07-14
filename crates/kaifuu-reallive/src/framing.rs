@@ -38,6 +38,9 @@
 //!    the decoder consumed every byte into an exact partition and can
 //!    reproduce it — framing is complete and exact.
 
+use std::fmt;
+
+use kaifuu_core::RedactedContentSummary;
 use serde::{Deserialize, Serialize};
 
 use crate::opcode::{
@@ -145,7 +148,7 @@ impl From<RealLiveParseError> for FramingError {
 /// Structural framing bytes are captured as **decoded fields** (so
 /// [`FramedElement::reemit`] reconstructs them rather than copying the
 /// input); genuinely-opaque operand payloads are captured verbatim.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum FramedElement {
     /// A 3-byte Meta element: opener (`0x0A` / `0x21` / `0x40`) + `u16 LE`.
     Meta { opener: u8, value: u16 },
@@ -167,6 +170,30 @@ enum FramedElement {
         overload: u8,
         body: Vec<u8>,
     },
+}
+
+impl fmt::Debug for FramedElement {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Meta { value, .. } => formatter
+                .debug_struct("Meta")
+                .field("value", value)
+                .finish(),
+            Self::Comma { .. } => formatter.write_str("Comma"),
+            Self::Textout { raw } => formatter
+                .debug_struct("Textout")
+                .field("raw", &RedactedContentSummary::from_bytes(raw))
+                .finish(),
+            Self::Expression { raw } => formatter
+                .debug_struct("Expression")
+                .field("raw", &RedactedContentSummary::from_bytes(raw))
+                .finish(),
+            Self::Command { body, .. } => formatter
+                .debug_struct("Command")
+                .field("body", &RedactedContentSummary::from_bytes(body))
+                .finish(),
+        }
+    }
 }
 
 impl FramedElement {

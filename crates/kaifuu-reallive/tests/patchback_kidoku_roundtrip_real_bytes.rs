@@ -37,6 +37,7 @@ const DISTINCT: &str = "[EN] kidoku roundtrip proof line";
 
 use std::fs;
 
+use kaifuu_core::RedactedContentSummary;
 use kaifuu_reallive::{
     BridgeOpts, PatchbackOpts, REALLIVE_OUT_OF_BAND_MARKER_OPEN, RealLiveOpcode, SceneHeader,
     TranslatedBundleV02, TranslationScope, Xor2Cipher, Xor2DecScene, apply_translated_bundle,
@@ -352,18 +353,24 @@ fn run_corpus(corpus: &real_corpus::RealCorpus, preferred_scene: u16) {
             patched_decompressed
                 .windows(name_sjis.len())
                 .any(|w| w == name_sjis.as_slice()),
-            "[{}] scene {scene_id}: the `{name_marker}` name-token bytes must survive byte-identical",
-            corpus.label
+            "[{}] scene {scene_id}: name-token bytes {} must survive byte-identical",
+            corpus.label,
+            RedactedContentSummary::from_text(name_marker)
         );
     }
 
+    let name_marker = chosen
+        .name_marker
+        .as_deref()
+        .map(RedactedContentSummary::from_text)
+        .map_or_else(|| "none".to_string(), |summary| summary.to_string());
+
     eprintln!(
         "[{}] scene {scene_id} occ {}: control-markup round-trip OK — {} MetaKidoku marks \
-         byte-identical, name_marker={:?}, English observed, 0-unknown",
+         byte-identical, name_marker={name_marker}, English observed, 0-unknown",
         corpus.label,
         chosen.occurrence,
         source_marks.len(),
-        chosen.name_marker,
     );
 }
 

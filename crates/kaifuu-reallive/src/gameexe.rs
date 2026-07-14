@@ -18,6 +18,9 @@
 //!   from Sweetie HD only. Second-corpus retroactive validation is welcome
 //!   but not blocking (see test file header).
 
+use std::fmt;
+
+use kaifuu_core::RedactedContentSummary;
 use serde::{Deserialize, Serialize};
 
 use crate::encoding::decode_shift_jis_slot;
@@ -26,7 +29,7 @@ use crate::encoding::decode_shift_jis_slot;
 pub const UNKNOWN_GAMEEXE_KEY_CODE: &str = "kaifuu.reallive.inventory.unknown_gameexe_key";
 
 /// One Gameexe.ini entry classified for the inventory layer.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameexeInventoryEntry {
     /// 1-based line number.
@@ -45,6 +48,20 @@ pub struct GameexeInventoryEntry {
     pub treatment: GameexeKeyTreatment,
     /// Typed family classification (carries suffix/index data).
     pub family: GameexeKeyFamily,
+}
+
+impl fmt::Debug for GameexeInventoryEntry {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("GameexeInventoryEntry")
+            .field("line_number", &self.line_number)
+            .field("byte_offset", &self.byte_offset)
+            .field("byte_len", &self.byte_len)
+            .field("key", &RedactedContentSummary::from_text(&self.key))
+            .field("value", &RedactedContentSummary::from_text(&self.value))
+            .field("treatment", &self.treatment)
+            .finish()
+    }
 }
 
 /// High-level treatment of one Gameexe.ini entry.
@@ -82,7 +99,7 @@ pub enum GameexeKeyTreatment {
 /// `#WAKU.NNN.MMM.FIELD`, `#KOEONOFF.NNN.(MMM).ON="..."`), the
 /// classifier records the suffix segments here; full parsing of the
 /// triple-equals RHS shape is left to the consumers that need it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "family")]
 pub enum GameexeKeyFamily {
     // ---- Engine bootstrap / window ----
@@ -502,6 +519,19 @@ pub enum GameexeKeyFamily {
     },
 }
 
+impl fmt::Debug for GameexeKeyFamily {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut debug = formatter.debug_struct("GameexeKeyFamily");
+        debug.field("variant", &std::mem::discriminant(self));
+        if let Self::Unknown { raw_key, reason } = self {
+            debug
+                .field("raw_key", &RedactedContentSummary::from_text(raw_key))
+                .field("reason", reason);
+        }
+        debug.finish()
+    }
+}
+
 /// Why the classifier could not assign a key to a documented family.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -515,13 +545,25 @@ pub enum UnknownReason {
 }
 
 /// Warning emitted by [`parse_gameexe_inventory`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GameexeIniDiagnostic {
     pub code: String,
     pub line_number: u64,
     pub key: String,
     pub message: String,
+}
+
+impl fmt::Debug for GameexeIniDiagnostic {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("GameexeIniDiagnostic")
+            .field("code", &self.code)
+            .field("line_number", &self.line_number)
+            .field("key", &RedactedContentSummary::from_text(&self.key))
+            .field("message", &RedactedContentSummary::from_text(&self.message))
+            .finish()
+    }
 }
 
 /// Output of [`parse_gameexe_inventory`].
@@ -577,12 +619,13 @@ pub fn parse_gameexe_inventory(bytes: &[u8]) -> GameexeInventoryReport {
 
         let (family, treatment) = classify_key(&key, &value);
         if treatment == GameexeKeyTreatment::Unknown {
+            let key_summary = RedactedContentSummary::from_text(&key);
             warnings.push(GameexeIniDiagnostic {
                 code: UNKNOWN_GAMEEXE_KEY_CODE.to_string(),
                 line_number,
                 key: key.clone(),
                 message: format!(
-                    "Gameexe.ini key {key} is not in the documented RealLive key surface \
+                    "Gameexe.ini key {key_summary} is not in the documented RealLive key surface \
                      (KAIFUU-190 catalogue); recording with typed UnknownReason"
                 ),
             });
