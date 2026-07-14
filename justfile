@@ -81,6 +81,10 @@ check:
     node scripts/audit-no-hardcoded-roles.mjs
     node --test scripts/audit-no-direct-provider-invoke.test.mjs
     node scripts/audit-no-direct-provider-invoke.mjs
+    node --test scripts/audit-no-node-ids.test.mjs
+    node scripts/audit-no-node-ids.mjs
+    node --test scripts/file-line-cap-guard.test.mjs
+    node scripts/file-line-cap-guard.mjs
     node --test scripts/generate-engine-capability-matrix.test.mjs
     node scripts/generate-engine-capability-matrix.mjs --check
     node --test scripts/synthetic-coverage-manifest.test.mjs
@@ -775,6 +779,10 @@ ci-tier0-meta:
     node scripts/audit-no-hardcoded-roles.mjs
     node --test scripts/audit-no-direct-provider-invoke.test.mjs
     node scripts/audit-no-direct-provider-invoke.mjs
+    node --test scripts/audit-no-node-ids.test.mjs
+    node scripts/audit-no-node-ids.mjs
+    node --test scripts/file-line-cap-guard.test.mjs
+    node scripts/file-line-cap-guard.mjs
     node --test scripts/generate-engine-capability-matrix.test.mjs
     node scripts/generate-engine-capability-matrix.mjs --check
     node --test scripts/synthetic-coverage-manifest.test.mjs
