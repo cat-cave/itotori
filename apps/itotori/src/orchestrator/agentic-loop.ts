@@ -37,7 +37,6 @@ import {
   type AgenticLoopInvocation,
   type AgenticLoopStageName,
   type AgenticLoopStageRecord,
-  type DroppedContextEnrichment,
   type LocalizationUnitV02,
   type QaFinding,
   type SpeakerLabel,
@@ -57,6 +56,7 @@ import { TranslationAgent } from "../agents/translation/agent.js";
 import { generateSceneSummary } from "../agents/scene-summary/agent.js";
 import { generateCharacterRelationships } from "../agents/character-relationship/agent.js";
 import { generateTerminologyCandidates } from "../agents/terminology-candidate/agent.js";
+import { ExistingGlossaryConflictError } from "../agents/terminology-candidate/shapes.js";
 import type { ExistingGlossaryEntry } from "../agents/terminology-candidate/shapes.js";
 import {
   characterBioArtifactData,
@@ -91,7 +91,6 @@ import {
   characterRelationshipArtifactId,
   CONTEXT_BRAIN_PRODUCER_VERSION,
   findReusableArtifact,
-  persistTypedEnrichmentFailure,
   retrieveActiveContextArtifacts,
   routeMapArtifactId,
   sceneSummaryArtifactId,
@@ -129,10 +128,6 @@ import type { FindingTriageResult } from "../triage/router.js";
 import type { ModelProvider, ProviderFamily, ProviderRunRecord } from "../providers/types.js";
 import { addDecimalUsd, assertBilledCostDecimal } from "../providers/cost.js";
 import { assertReportedTokenUsage } from "../providers/token-accounting.js";
-import {
-  InvocationRetryCeilingError,
-  isInvocationOperationalPause,
-} from "./invocation-supervisor.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -681,12 +676,6 @@ type StageAccumulator = {
    */
   costUsd: string;
   latencyMs: number;
-  /**
-   * Best-effort semantic-enrichment agents that were DROPPED on this stage
-   * (context stage only). Empty for every other stage and for an all-succeed
-   * context stage; surfaced into the bundle record only when non-empty.
-   */
-  droppedEnrichments: DroppedContextEnrichment[];
 };
 
 type RawProviderTelemetry = {
@@ -752,14 +741,11 @@ export async function runAgenticLoopForUnit(
   for (const invocation of contextResult.telemetry) {
     pushInvocation(contextStage, invocation);
   }
-  // Typed enrichment failures (never silent): each dropped agent has a
-  // persisted failure record when the store is wired; stage telemetry names
-  // agent + reason.
-  contextStage.droppedEnrichments = contextResult.droppedEnrichments;
-  contextStage.outcome =
-    contextResult.droppedEnrichments.length > 0
-      ? `succeeded:enrichment-degraded:${contextResult.droppedEnrichments.length}-dropped`
-      : "succeeded";
+  // Every enrichment agent either committed a valid result (possibly a valid
+  // empty pack) or propagated its mechanical failure as an operational pause —
+  // there is no swallowed "degraded" state, so the context stage simply
+  // succeeds once control reaches here.
+  contextStage.outcome = "succeeded";
   stages.push(contextStage);
 
   // ----------------------- pre-translation stage ---------------------
@@ -1241,7 +1227,6 @@ function startStage(stageName: AgenticLoopStageName): StageAccumulator {
     tokensOut: 0,
     costUsd: "0",
     latencyMs: 0,
-    droppedEnrichments: [],
   };
 }
 
@@ -1280,12 +1265,6 @@ function stageAccumulatorToRecord(stage: StageAccumulator): AgenticLoopStageReco
     tokensOut: stage.tokensOut,
     costUsd: stage.costUsd,
     latencyMs: stage.latencyMs,
-    // Present only when a best-effort semantic agent was dropped; an all-succeed
-    // context stage (and every non-context stage) omits the field entirely so
-    // the bundle shape is byte-identical to the pre-robustness path.
-    ...(stage.droppedEnrichments.length > 0
-      ? { droppedEnrichments: stage.droppedEnrichments }
-      : {}),
   };
 }
 
@@ -1644,65 +1623,53 @@ type SemanticContextStageResult = {
   structuredContext?: StructuredContextInjection | undefined;
   /** Content-bearing packet resolved for this unit (ids + bodies + versions). */
   contextPacket: UnitContextPacket;
-  /**
-   * Best-effort semantic agents that failed after supervisor retry. Each entry
-   * names the agent + reason; a typed failure record is also persisted to the
-   * central store when wired (never a silent drop).
-   */
-  droppedEnrichments: DroppedContextEnrichment[];
 };
 
 /**
- * Run ONE best-effort semantic enrichment agent. A thrown error / malformed /
- * uncitable pack is CAUGHT; a typed failure record is persisted to the central
- * store; the unit PROCEEDS on deterministic structure + whichever agents DID
- * succeed. Telemetry + resolved artifacts are only committed on success.
+ * Run ONE semantic enrichment agent under the uniform invocation contract. A
+ * VALID result — INCLUDING a valid EMPTY pack (a scene with no dialogue, no
+ * new characters/terminology/routes) — is committed: telemetry + resolved
+ * artifacts. A MECHANICAL failure (partial / null / unsalvageable / schema-
+ * invalid model output) is NEVER swallowed: it PROPAGATES so the unit cannot
+ * draft with enrichment silently skipped. In a durable run the supervisor has
+ * already driven it to a resumable operational pause
+ * (InvocationRetryCeilingError → pauseRun); in unbound/standalone mode the raw
+ * typed error surfaces (fail loud). This is the same retry-to-valid-then-pause
+ * contract that translation, QA, and repair follow — enrichment is not special.
  */
-async function runBestEffortEnrichment(
+async function runSemanticEnrichment(
   agentLabel: ContextEnrichmentType,
   sink: {
     telemetry: RawProviderTelemetry[];
     artifacts: ResolvedContextArtifact[];
-    droppedEnrichments: DroppedContextEnrichment[];
     attemptOutcomeObserver?: AgenticLoopAttemptOutcomeObserver;
-    input: AgenticLoopUnitInput;
-    policy: AgenticLoopPolicy;
     contextEnrichmentSingleFlight: ContextEnrichmentSingleFlight | undefined;
     sceneKey: string;
   },
-  run: () => Promise<{ telemetry: RawProviderTelemetry; artifacts: ResolvedContextArtifact[] }>,
+  run: () => Promise<{ telemetry?: RawProviderTelemetry; artifacts: ResolvedContextArtifact[] }>,
 ): Promise<void> {
   const runOnce = async (): Promise<void> => {
     try {
       const { telemetry, artifacts } = await run();
-      sink.telemetry.push(telemetry);
+      // A legitimate no-op outcome (e.g. a terminology candidate that dedups
+      // against an authoritative existing glossary term) commits its resolved
+      // artifact with no new physical provider call to charge.
+      if (telemetry !== undefined) {
+        sink.telemetry.push(telemetry);
+      }
       for (const artifact of artifacts) {
         sink.artifacts.push(artifact);
       }
     } catch (error) {
-      rethrowOperationalInvocation(error);
+      // No advance-with-flag escape hatch. Mark the failed attempt (pause) and
+      // rethrow; the operational pause / raw mechanical error propagates.
       sink.attemptOutcomeObserver?.markFailedAttempt({
         stage: "context",
         agentLabel,
         error,
-        retryDecision: "advance",
+        retryDecision: "pause",
       });
-      const failure = await persistTypedEnrichmentFailure({
-        repository: sink.input.contextArtifactRepository,
-        actor: sink.input.actor,
-        projectId: sink.policy.projectId,
-        localeBranchId: sink.policy.localeBranchId,
-        sourceRevisionId: sink.input.sourceRevisionId,
-        bridgeUnitId: sink.input.unit.bridgeUnitId,
-        agentLabel,
-        error,
-      });
-      sink.droppedEnrichments.push({
-        agentLabel,
-        reason: failure.contextArtifactId
-          ? `${failure.code}: ${failure.reason} (failureArtifact=${failure.contextArtifactId})`
-          : `${failure.code}: ${failure.reason}`,
-      });
+      throw error;
     }
   };
 
@@ -1712,16 +1679,12 @@ async function runBestEffortEnrichment(
   }
 
   const artifactsBefore = sink.artifacts.length;
-  const dropsBefore = sink.droppedEnrichments.length;
   const sharedBuild = await sink.contextEnrichmentSingleFlight.run(
     sink.sceneKey,
     agentLabel,
     async () => {
       await runOnce();
-      return {
-        artifacts: sink.artifacts.slice(artifactsBefore),
-        droppedEnrichments: sink.droppedEnrichments.slice(dropsBefore),
-      };
+      return { artifacts: sink.artifacts.slice(artifactsBefore) };
     },
   );
   // The leader already wrote its own telemetry/artifact state. Followers
@@ -1729,7 +1692,6 @@ async function runBestEffortEnrichment(
   // provider call to every waiting unit would corrupt run accounting.
   if (sharedBuild.shared) {
     sink.artifacts.push(...sharedBuild.value.artifacts);
-    sink.droppedEnrichments.push(...sharedBuild.value.droppedEnrichments);
   }
 }
 
@@ -1845,16 +1807,12 @@ async function invokeSemanticContextStage(args: {
   const { input, policy, pairPolicy, providerFactory, now } = args;
   const telemetry: RawProviderTelemetry[] = [];
   const resolvedArtifacts: ResolvedContextArtifact[] = [];
-  const droppedEnrichments: DroppedContextEnrichment[] = [];
   const sceneKey =
     input.semanticSceneKey ??
     (input.sceneId !== undefined ? String(input.sceneId) : input.unit.sourceUnitKey);
   const sink = {
     telemetry,
     artifacts: resolvedArtifacts,
-    droppedEnrichments,
-    input,
-    policy,
     contextEnrichmentSingleFlight: input.contextEnrichmentSingleFlight,
     sceneKey,
     ...(input.attemptOutcomeObserver !== undefined
@@ -1995,7 +1953,7 @@ async function invokeSemanticContextStage(args: {
     resolvedArtifacts.push(reusableScene);
   } else {
     const buildSceneSummary = async (): Promise<void> => {
-      await runBestEffortEnrichment("scene-summary", sink, async () => {
+      await runSemanticEnrichment("scene-summary", sink, async () => {
         const pair = pairPolicy.context.sceneSummary;
         const provider = providerFactory({ stage: "context", agentLabel: "scene-summary", pair });
         const output = await generateSceneSummary(
@@ -2100,7 +2058,7 @@ async function invokeSemanticContextStage(args: {
     if (reusableNoContentCharacter !== undefined) {
       resolvedArtifacts.push(reusableNoContentCharacter);
     } else if (missingCharacterIds.length > 0 || rosterIds.length === 0) {
-      await runBestEffortEnrichment("character-relationship", sink, async () => {
+      await runSemanticEnrichment("character-relationship", sink, async () => {
         const pair = pairPolicy.context.characterRelationship;
         const provider = providerFactory({
           stage: "context",
@@ -2238,26 +2196,56 @@ async function invokeSemanticContextStage(args: {
   } else if (reusableNoContentTerminology !== undefined) {
     resolvedArtifacts.push(reusableNoContentTerminology);
   } else {
-    await runBestEffortEnrichment("terminology-candidate", sink, async () => {
+    await runSemanticEnrichment("terminology-candidate", sink, async () => {
       const pair = pairPolicy.context.terminologyCandidate;
       const provider = providerFactory({
         stage: "context",
         agentLabel: "terminology-candidate",
         pair,
       });
-      const output = await generateTerminologyCandidates(
-        {
-          projectId: policy.projectId,
-          localeBranchId: policy.localeBranchId,
-          sourceRevisionId: input.sourceRevisionId,
-          sourceLocale: policy.sourceLocale,
-          units,
-          existingGlossary: toExistingGlossaryEntries(input.glossary),
-          modelProfile: semanticModelProfile(provider, pair),
-          now,
-        },
-        { provider },
-      );
+      let output: Awaited<ReturnType<typeof generateTerminologyCandidates>>;
+      try {
+        output = await generateTerminologyCandidates(
+          {
+            projectId: policy.projectId,
+            localeBranchId: policy.localeBranchId,
+            sourceRevisionId: input.sourceRevisionId,
+            sourceLocale: policy.sourceLocale,
+            units,
+            existingGlossary: toExistingGlossaryEntries(input.glossary),
+            modelProfile: semanticModelProfile(provider, pair),
+            now,
+          },
+          { provider },
+        );
+      } catch (error) {
+        // A glossary conflict is a LEGITIMATE domain dedup, not a mechanical
+        // model failure: the proposed surface form already exists in the
+        // authoritative glossary, so there is no NEW terminology candidate to
+        // add. Treat it as a valid no-content result (like an empty pack) and
+        // proceed — never a swallowed mechanical failure or a run pause. Any
+        // OTHER error is a mechanical failure and propagates (fail loud / pause).
+        if (error instanceof ExistingGlossaryConflictError) {
+          return {
+            artifacts: [
+              await persistSemanticNoContentArtifact({
+                input,
+                policy,
+                contextArtifactId: noContentTerminologyArtifactId,
+                category: contextArtifactCategoryValues.terminologyCandidate,
+                agentLabel: "terminology-candidate",
+                title: `Terminology deduplicated against existing glossary: scene ${sceneKey}`,
+                reason:
+                  `Proposed surface form ${error.surfaceForm} already exists in the ` +
+                  `glossary (term ${error.terminologyTermId}); no new candidate added.`,
+                sceneKey,
+                sourceUnits: sourceUnitCitations,
+              }),
+            ],
+          };
+        }
+        throw error;
+      }
       const artifacts: ResolvedContextArtifact[] = [];
       for (const candidate of output.candidates) {
         artifacts.push(
@@ -2342,7 +2330,7 @@ async function invokeSemanticContextStage(args: {
   } else if (reusableNoContentRoute !== undefined) {
     resolvedArtifacts.push(reusableNoContentRoute);
   } else {
-    await runBestEffortEnrichment("route-choice-map", sink, async () => {
+    await runSemanticEnrichment("route-choice-map", sink, async () => {
       const pair = pairPolicy.context.routeChoiceMap;
       const provider = providerFactory({ stage: "context", agentLabel: "route-choice-map", pair });
       const output = await generateRouteChoiceMap(
@@ -2482,7 +2470,6 @@ async function invokeSemanticContextStage(args: {
       artifacts: deduped,
       speakers: reusedSpeakers,
     }),
-    droppedEnrichments,
   };
 }
 
@@ -3330,12 +3317,6 @@ async function runPostRepairReQaPass(args: {
     findings = findings.concat(result.findings);
   }
   return { findings };
-}
-
-function rethrowOperationalInvocation(error: unknown): void {
-  if (isInvocationOperationalPause(error) || error instanceof InvocationRetryCeilingError) {
-    throw error;
-  }
 }
 
 function markJournalAttemptFailure(

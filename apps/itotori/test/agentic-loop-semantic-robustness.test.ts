@@ -1,25 +1,23 @@
-// itotori-semantic-agent-live-robustness-single-unit — the loop's context
-// stage runs the four semantic agents BEST-EFFORT: a persistent model-content
-// failure (empty, malformed, or uncitable output) is CAUGHT + recorded as a
-// dropped-enrichment signal, and the unit degrades
-// to the DETERMINISTIC structure-informed context (+ whichever semantic agents
-// DID succeed) instead of failing the whole unit.
+// itotori-semantic-agent-uniform-invocation-contract — the loop's context
+// stage runs the four semantic enrichment agents under the SAME invocation
+// contract as translation / QA / repair: retry-to-valid, then a resumable
+// operational pause on genuine exhaustion. There is NO best-effort swallow: a
+// MECHANICAL enrichment failure (empty / malformed / unsalvageable model
+// output) is NEVER caught-and-degraded — it PROPAGATES (an operational pause
+// in a durable run; the raw typed error in unbound/standalone mode) so no unit
+// ever drafts with enrichment silently skipped. A VALID result — including a
+// valid EMPTY pack — still proceeds.
 //
-// Before this node, `invokeSemanticContextStage` had NO try/catch around the
-// four agents, so one malformed pack failed the whole unit. The deterministic
-// structure-informed context is the load-bearing, never-failing artifact; only
-// the LLM enrichment is best-effort.
-//
-// DB-less, fake-provider-only. Four proofs:
-//   1. One agent's pack is malformed → unit still completes; the draft is
-//      produced on the deterministic context + the other three agents; the
-//      dropped agent is recorded in telemetry (not silent).
-//   2. ALL four agents fail → unit still completes on the deterministic
-//      structure context alone; all four are recorded as dropped.
-//   3. In both, the deterministic structure block is STILL injected into the
-//      translation prompt (assert the prompt carries it).
-//   4. All four agents succeed → unchanged (no `droppedEnrichments`, all four
-//      invocations recorded) — no regression to the real-context behavior.
+// DB-less, fake-provider-only (unbound/standalone supervisor). Proofs:
+//   1. One agent emits an unsalvageable pack → the unit PROPAGATES the
+//      mechanical failure (no silent written outcome); the failing agent was
+//      retried before it failed loud.
+//   2. ALL four agents fail → the unit still PROPAGATES (no silent written
+//      outcome) — never a degraded write.
+//   3. All four agents succeed → written outcome, four invocations, context
+//      stage `succeeded` (no regression).
+//   4. Valid EMPTY packs → written outcome + explicit no-content records
+//      persisted (valid-empty proceeds, never a false failure).
 
 import { describe, expect, it } from "vitest";
 import type { AuthorizationActor } from "@itotori/db";
@@ -33,9 +31,7 @@ import {
 } from "../src/orchestrator/agentic-loop.js";
 import {
   characterRelationshipArtifactId,
-  EnrichmentFailurePersistenceError,
   InMemoryContextArtifactRepository,
-  persistTypedEnrichmentFailure,
 } from "../src/orchestrator/context-brain.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import type { ModelInvocationRequest } from "../src/providers/types.js";
@@ -192,10 +188,10 @@ function validSemanticPack(agentLabel: SemanticAgent): string {
 
 /**
  * Capturing fake factory. Semantic agents in `failing` return EMPTY or
- * MALFORMED model output so the loop's best-effort
- * seam must catch them; the rest return minimal-valid packs. Records every
+ * MALFORMED model output — an unsalvageable mechanical failure that must
+ * PROPAGATE (no swallow); the rest return minimal-valid packs. Records every
  * `draft_translation` user prompt so the deterministic structure block can be
- * asserted.
+ * asserted when the unit actually completes.
  */
 function makeFactory(
   unit: LocalizationUnitV02,
@@ -255,102 +251,62 @@ function makeInput(unit: LocalizationUnitV02): AgenticLoopUnitInput {
   };
 }
 
-describe("itotori-semantic-agent-live-robustness-single-unit (best-effort enrichment)", () => {
-  it("one malformed semantic pack → unit still completes on deterministic + the other three agents; the drop is recorded", async () => {
+describe("itotori-semantic-agent-uniform-invocation-contract", () => {
+  it("one unsalvageable semantic pack → the unit PROPAGATES the mechanical failure (no silent written outcome)", async () => {
     const unit = makeUnit("おはよう。");
     const captured: string[] = [];
     const attemptCounts = new Map<SemanticAgent, number>();
-    const bundle = await runAgenticLoopForUnit(
-      makeInput(unit),
-      DEV_POLICY,
-      makePolicy(),
-      makeFactory(unit, captured, { "route-choice-map": "malformed" }, attemptCounts),
-    );
 
-    // The unit STILL completes with a real draft.
-    expect(selectedWrittenCandidateBody(bundle)).toBe("Good morning.");
-
-    const contextStage = bundle.stages.find((s) => s.stageName === "context");
-    expect(contextStage).toBeDefined();
-
-    // The three surviving agents each recorded an invocation; the dropped one did not.
-    expect(contextStage?.invocations.map((i) => i.agentLabel).sort()).toEqual([
-      "character-relationship",
-      "scene-summary",
-      "terminology-candidate",
-    ]);
-
-    // The drop is TELEMETRY, not silent: which agent + why.
-    expect(contextStage?.droppedEnrichments).toBeDefined();
-    expect(contextStage?.droppedEnrichments?.length).toBe(1);
-    const drop = contextStage?.droppedEnrichments?.[0];
-    expect(drop?.agentLabel).toBe("route-choice-map");
-    expect(drop?.reason.length).toBeGreaterThan(0);
-    expect(attemptCounts.get("route-choice-map")).toBeGreaterThan(1);
-    // The stage still SUCCEEDS (degraded), never fails.
-    expect(contextStage?.outcome).toContain("succeeded");
-    expect(contextStage?.outcome).toContain("1-dropped");
-
-    // The DETERMINISTIC structure context is still injected into the prompt.
-    const prompt = captured[0] ?? "";
-    expect(prompt).toContain("Structure-informed context");
-    expect(prompt).toContain(`Scene ${SCENE_ID}`);
-    expect(prompt).toContain(SPEAKER_NAME);
-    expect(prompt).toContain("dispatches to scene 7020");
-    // Deterministic artifact refs (scene slice + route-branch map) survive; the
-    // dropped route-choice-map agent's `route:`/`choice:` refs do not appear.
-    expect(prompt).toContain(`scene-summary:${SCENE_ID}`);
-    expect(prompt).toContain("route-branch-map");
-  });
-
-  it("ALL four semantic agents fail → unit still completes on the deterministic structure context alone; all four are recorded", async () => {
-    const unit = makeUnit("おはよう。");
-    const captured: string[] = [];
-    const attemptCounts = new Map<SemanticAgent, number>();
-    const bundle = await runAgenticLoopForUnit(
-      makeInput(unit),
-      DEV_POLICY,
-      makePolicy(),
-      makeFactory(
-        unit,
-        captured,
-        {
-          "scene-summary": "empty",
-          "character-relationship": "malformed",
-          "terminology-candidate": "malformed",
-          "route-choice-map": "malformed",
-        },
-        attemptCounts,
+    // route-choice-map emits an unsalvageable pack. In unbound/standalone mode
+    // the supervisor retries to the route bound, then surfaces the raw typed
+    // mechanical error instead of the old advance-with-drop swallow.
+    await expect(
+      runAgenticLoopForUnit(
+        makeInput(unit),
+        DEV_POLICY,
+        makePolicy(),
+        makeFactory(unit, captured, { "route-choice-map": "malformed" }, attemptCounts),
       ),
-    );
+    ).rejects.toThrow();
 
-    // The unit STILL completes on the deterministic context alone.
-    expect(selectedWrittenCandidateBody(bundle)).toBe("Good morning.");
-
-    const contextStage = bundle.stages.find((s) => s.stageName === "context");
-    // No semantic invocations survived...
-    expect(contextStage?.invocations.length).toBe(0);
-    // ...but all four drops are recorded (not silent).
-    expect(contextStage?.droppedEnrichments?.map((d) => d.agentLabel).sort()).toEqual(
-      [...SEMANTIC_AGENTS].sort(),
-    );
-    for (const drop of contextStage?.droppedEnrichments ?? []) {
-      expect(drop.reason.length).toBeGreaterThan(0);
-    }
-    for (const agent of SEMANTIC_AGENTS) {
-      expect(attemptCounts.get(agent)).toBeGreaterThan(1);
-    }
-    expect(contextStage?.outcome).toContain("4-dropped");
-
-    // The DETERMINISTIC structure context is STILL injected.
-    const prompt = captured[0] ?? "";
-    expect(prompt).toContain("Structure-informed context");
-    expect(prompt).toContain(`Scene ${SCENE_ID}`);
-    expect(prompt).toContain("dispatches to scene 7020");
-    expect(prompt).toContain(`scene-summary:${SCENE_ID}`);
+    // retry-to-valid was attempted before failing loud (not a single-shot drop).
+    expect(attemptCounts.get("route-choice-map")).toBeGreaterThan(1);
+    // No unit ever drafts with enrichment mechanically skipped: the failure
+    // aborted before any translation prompt was issued.
+    expect(captured).toHaveLength(0);
   });
 
-  it("all four semantic agents succeed → unchanged: four invocations, no droppedEnrichments (no regression)", async () => {
+  it("ALL four semantic agents fail → the unit PROPAGATES (no degraded write)", async () => {
+    const unit = makeUnit("おはよう。");
+    const captured: string[] = [];
+    const attemptCounts = new Map<SemanticAgent, number>();
+
+    await expect(
+      runAgenticLoopForUnit(
+        makeInput(unit),
+        DEV_POLICY,
+        makePolicy(),
+        makeFactory(
+          unit,
+          captured,
+          {
+            "scene-summary": "empty",
+            "character-relationship": "malformed",
+            "terminology-candidate": "malformed",
+            "route-choice-map": "malformed",
+          },
+          attemptCounts,
+        ),
+      ),
+    ).rejects.toThrow();
+
+    // The FIRST enrichment agent (scene-summary) fails loud after retrying;
+    // control never reaches translation, so no degraded outcome is written.
+    expect(attemptCounts.get("scene-summary")).toBeGreaterThan(1);
+    expect(captured).toHaveLength(0);
+  });
+
+  it("all four semantic agents succeed → written outcome, four invocations, context succeeded (no regression)", async () => {
     const unit = makeUnit("おはよう。");
     const captured: string[] = [];
     const bundle = await runAgenticLoopForUnit(
@@ -365,15 +321,13 @@ describe("itotori-semantic-agent-live-robustness-single-unit (best-effort enrich
     expect(contextStage?.invocations.map((i) => i.agentLabel).sort()).toEqual(
       [...SEMANTIC_AGENTS].sort(),
     );
-    // No drops → the field is OMITTED entirely (byte-identical to pre-robustness).
-    expect(contextStage?.droppedEnrichments).toBeUndefined();
     expect(contextStage?.outcome).toBe("succeeded");
     // Deterministic context + all semantic refs present.
     const prompt = captured[0] ?? "";
     expect(prompt).toContain("Structure-informed context");
   });
 
-  it("persists explicit no-content records for valid empty semantic packs", async () => {
+  it("valid EMPTY semantic packs proceed → written outcome + explicit no-content records (valid-empty, never a false failure)", async () => {
     const unit = makeUnit("おはよう。");
     const store = new InMemoryContextArtifactRepository();
     const bundle = await runAgenticLoopForUnit(
@@ -383,8 +337,10 @@ describe("itotori-semantic-agent-live-robustness-single-unit (best-effort enrich
       makeFactory(unit, [], {}),
     );
 
+    // Valid-empty is SUCCESS: the unit completes and the context stage succeeds.
+    expect(selectedWrittenCandidateBody(bundle)).toBe("Good morning.");
     const contextStage = bundle.stages.find((stage) => stage.stageName === "context");
-    expect(contextStage?.droppedEnrichments).toBeUndefined();
+    expect(contextStage?.outcome).toBe("succeeded");
     const noContentRecords = store.listAll().filter((artifact) => {
       const semanticResult = artifact.data.semanticResult;
       return (
@@ -535,56 +491,5 @@ describe("itotori-semantic-agent-live-robustness-single-unit (best-effort enrich
       outcome: "reused:existing-speaker-label",
       invocations: [],
     });
-  });
-
-  it("surfaces a typed error when a failure record cannot be persisted", async () => {
-    const repository: NonNullable<AgenticLoopUnitInput["contextArtifactRepository"]> = {
-      upsertArtifact: async () => {
-        throw new Error("Postgres unavailable");
-      },
-      invalidateAffectedArtifacts: async () => ({
-        status: "completed",
-        projectId: "unused",
-        localeBranchId: "unused",
-        sourceRevisionId: null,
-        invalidatedCount: 0,
-        invalidatedArtifactIds: [],
-        diagnostics: [],
-      }),
-      retrieveArtifacts: async () => ({
-        status: "completed",
-        toolName: "tool.context-artifacts",
-        toolVersion: "1.0.0",
-        projectId: "unused",
-        localeBranchId: "unused",
-        sourceRevisionId: null,
-        query: null,
-        normalizedQuery: null,
-        categories: [],
-        matches: [],
-        diagnostics: [],
-      }),
-    };
-
-    const failure = await persistTypedEnrichmentFailure({
-      repository,
-      actor: ACTOR,
-      projectId: "019ed079-1000-7000-8000-0000000sr010",
-      localeBranchId: "019ed079-1000-7000-8000-0000000sr011",
-      sourceRevisionId: REVISION_ID,
-      bridgeUnitId: BRIDGE_UNIT_ID,
-      agentLabel: "scene-summary",
-      error: new Error("provider response malformed"),
-    }).then(
-      () => undefined,
-      (error: unknown) => error,
-    );
-    expect(failure).toBeInstanceOf(EnrichmentFailurePersistenceError);
-    expect(failure).toMatchObject({
-      attemptedFailure: {
-        agentLabel: "scene-summary",
-      },
-    });
-    expect(failure).not.toHaveProperty("contextArtifactId");
   });
 });
