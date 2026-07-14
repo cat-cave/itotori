@@ -96,8 +96,21 @@ export type TerminologyCandidate = {
   invalidatedReason?: TerminologyCandidateInvalidatedReason;
 };
 
+/**
+ * A model-proposed surface form that was FILTERED because it already exists in
+ * the authoritative glossary (the in-memory conflict index or the repository
+ * TOCTOU lookup). This is legitimate dedup — recorded, never a failure — and it
+ * never discards the other, non-conflicting candidates in the same pack.
+ */
+export type DeduplicatedTerminologyCandidate = {
+  surfaceForm: string;
+  terminologyTermId: string;
+};
+
 export type TerminologyCandidateOutput = {
   candidates: TerminologyCandidate[];
+  /** Non-failing dedup: candidates already covered by the authoritative glossary. */
+  deduped: DeduplicatedTerminologyCandidate[];
   providerRun: ProviderRunRecord;
 };
 
@@ -134,18 +147,6 @@ export class TerminologyCandidateUncitedError extends Error {
   constructor(public readonly surfaceForm: string) {
     super(`terminology-candidate agent refused: candidate ${surfaceForm} cites no bridge units`);
     this.name = "TerminologyCandidateUncitedError";
-  }
-}
-
-export class ExistingGlossaryConflictError extends Error {
-  constructor(
-    public readonly surfaceForm: string,
-    public readonly terminologyTermId: string,
-  ) {
-    super(
-      `terminology-candidate agent refused: surface form ${surfaceForm} already exists in glossary (term ${terminologyTermId})`,
-    );
-    this.name = "ExistingGlossaryConflictError";
   }
 }
 

@@ -26,15 +26,13 @@
 // orchestrator entry. There is no silent fallback — an unfilled pair
 // is a typed wire-schema failure, not a missing field.
 //
-// The schema version is locked to a literal so any change forces a
-// downstream consumer migration.
-
-// v3 replaces the optional/deferred final-draft XOR with the canonical
-// `WrittenUnitOutcome`. Every in-scope unit has a selected, non-blank target
-// candidate; QA persists as annotations and cannot erase the text.
-//
-// No-legacy-compat: v1 and v2 bundles no longer load. Tests + drivers must
-// produce the v3 written-outcome shape in the same change.
+// There is exactly ONE canonical bundle shape — no multi-version acceptance, no
+// legacy/tolerant reader, no migration dispatch. The identifier below is a
+// single self-describing wire tag (the bundle is persisted and re-read on
+// resume, so a grossly-wrong blob fails fast on an exact-match mismatch).
+// Changing the shape changes this tag in the same commit; old bundles are not
+// read because there are none worth reading. The removed-machinery fields
+// (e.g. the former stage-record `droppedEnrichments`) simply do not exist here.
 export const AGENTIC_LOOP_BUNDLE_SCHEMA_VERSION = "itotori.agentic-loop-bundle.v3" as const;
 
 /**

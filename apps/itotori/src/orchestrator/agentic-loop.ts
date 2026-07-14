@@ -56,7 +56,6 @@ import { TranslationAgent } from "../agents/translation/agent.js";
 import { generateSceneSummary } from "../agents/scene-summary/agent.js";
 import { generateCharacterRelationships } from "../agents/character-relationship/agent.js";
 import { generateTerminologyCandidates } from "../agents/terminology-candidate/agent.js";
-import { ExistingGlossaryConflictError } from "../agents/terminology-candidate/shapes.js";
 import type { ExistingGlossaryEntry } from "../agents/terminology-candidate/shapes.js";
 import {
   characterBioArtifactData,
@@ -2203,49 +2202,25 @@ async function invokeSemanticContextStage(args: {
         agentLabel: "terminology-candidate",
         pair,
       });
-      let output: Awaited<ReturnType<typeof generateTerminologyCandidates>>;
-      try {
-        output = await generateTerminologyCandidates(
-          {
-            projectId: policy.projectId,
-            localeBranchId: policy.localeBranchId,
-            sourceRevisionId: input.sourceRevisionId,
-            sourceLocale: policy.sourceLocale,
-            units,
-            existingGlossary: toExistingGlossaryEntries(input.glossary),
-            modelProfile: semanticModelProfile(provider, pair),
-            now,
-          },
-          { provider },
-        );
-      } catch (error) {
-        // A glossary conflict is a LEGITIMATE domain dedup, not a mechanical
-        // model failure: the proposed surface form already exists in the
-        // authoritative glossary, so there is no NEW terminology candidate to
-        // add. Treat it as a valid no-content result (like an empty pack) and
-        // proceed — never a swallowed mechanical failure or a run pause. Any
-        // OTHER error is a mechanical failure and propagates (fail loud / pause).
-        if (error instanceof ExistingGlossaryConflictError) {
-          return {
-            artifacts: [
-              await persistSemanticNoContentArtifact({
-                input,
-                policy,
-                contextArtifactId: noContentTerminologyArtifactId,
-                category: contextArtifactCategoryValues.terminologyCandidate,
-                agentLabel: "terminology-candidate",
-                title: `Terminology deduplicated against existing glossary: scene ${sceneKey}`,
-                reason:
-                  `Proposed surface form ${error.surfaceForm} already exists in the ` +
-                  `glossary (term ${error.terminologyTermId}); no new candidate added.`,
-                sceneKey,
-                sourceUnits: sourceUnitCitations,
-              }),
-            ],
-          };
-        }
-        throw error;
-      }
+      // A glossary conflict is NOT a failure the loop catches: the agent
+      // FILTERS conflicting candidates as legitimate dedup and keeps the rest.
+      // A genuinely MECHANICAL failure (bad / partial / null model output)
+      // still throws out of this call and propagates like every other stage
+      // (operational pause in a durable run; raw error in standalone) — it is
+      // never masked here.
+      const output = await generateTerminologyCandidates(
+        {
+          projectId: policy.projectId,
+          localeBranchId: policy.localeBranchId,
+          sourceRevisionId: input.sourceRevisionId,
+          sourceLocale: policy.sourceLocale,
+          units,
+          existingGlossary: toExistingGlossaryEntries(input.glossary),
+          modelProfile: semanticModelProfile(provider, pair),
+          now,
+        },
+        { provider },
+      );
       const artifacts: ResolvedContextArtifact[] = [];
       for (const candidate of output.candidates) {
         artifacts.push(
@@ -2285,7 +2260,20 @@ async function invokeSemanticContextStage(args: {
           }),
         );
       }
-      if (artifacts.length === 0) {
+      // Record the legitimate dedup (terms already in the authoritative
+      // glossary) as an explicit no-content artifact — never a silent drop. If
+      // nothing was proposed at all, record the honest "no candidates" result.
+      // Both are valid outcomes that proceed; the kept candidates above are
+      // persisted with their own content artifacts regardless.
+      const noContentReason =
+        output.deduped.length > 0
+          ? `Deduplicated against existing glossary (no new candidate added): ${output.deduped
+              .map((entry) => `${entry.surfaceForm} (term ${entry.terminologyTermId})`)
+              .join(", ")}.`
+          : artifacts.length === 0
+            ? "No terminology candidates were found for this scene evidence."
+            : undefined;
+      if (noContentReason !== undefined) {
         artifacts.push(
           await persistSemanticNoContentArtifact({
             input,
@@ -2293,8 +2281,8 @@ async function invokeSemanticContextStage(args: {
             contextArtifactId: noContentTerminologyArtifactId,
             category: contextArtifactCategoryValues.terminologyCandidate,
             agentLabel: "terminology-candidate",
-            title: `No terminology candidates: scene ${sceneKey}`,
-            reason: "No terminology candidates were found for this scene evidence.",
+            title: `Terminology dedup/no-content: scene ${sceneKey}`,
+            reason: noContentReason,
             sceneKey,
             sourceUnits: sourceUnitCitations,
           }),

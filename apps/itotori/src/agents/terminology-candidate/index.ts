@@ -22,7 +22,6 @@ export {
   type CentralTerminologyCheckResult,
 } from "./cli.js";
 export {
-  ExistingGlossaryConflictError,
   TERMINOLOGY_CANDIDATE_KINDS,
   TerminologyCandidateEmptyInputError,
   TerminologyCandidateInvalidKindError,
@@ -33,6 +32,7 @@ export {
   TerminologyCandidateUnknownCitationError,
   type BridgeUnitForTerminology,
   type CandidateKind,
+  type DeduplicatedTerminologyCandidate,
   type ExistingGlossaryEntry,
   type PriorCandidateRef,
   type ProviderEmittedPack,
