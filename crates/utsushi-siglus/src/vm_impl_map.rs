@@ -1,4 +1,4 @@
-//! UTSUSHI-034 — Siglus VM **implementation map**.
+//! Siglus VM **implementation map**.
 //!
 //! Names the concrete Siglus VM subsystems as follow-ups **without claiming
 //! broad compatibility**. Built on the engine-neutral
@@ -220,7 +220,7 @@ mod tests {
         let report = validate_and_promote(&mut map).expect("impl map validates");
         assert_eq!(map.status, Status::Validated);
         assert!(map.status_disclaimer.is_some(), "disclaimer stamped");
-        // The map carries Research subsystems -> the validator warns about them,
+        // The map carries Research subsystems -> the validator warns about them
         // confirming the honest-scope mechanism is engaged (not suppressed).
         assert!(
             report.warnings.iter().any(|warning| matches!(

@@ -1,6 +1,6 @@
 //! Engine-neutral input-event model for the deterministic runtime substrate.
 //!
-//! See `.plan/UTSUSHI-021.md` for the design rationale. This module is the
+//! See `.plan/.md` for the design rationale. This module is the
 //! single source of truth for the input shapes the substrate models. Engine
 //! ports lower their native input into [`InputEvent`] at recording time; the
 //! runner replays the same events deterministically. No variant carries a

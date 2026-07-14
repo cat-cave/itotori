@@ -1,4 +1,4 @@
-//! UTSUSHI-177: the `utsushi trace` command REFUSES a non-fixture input with
+//! The `utsushi trace` command REFUSES a non-fixture input with
 //! a structured `utsushi.unsupported_input_shape` diagnostic on stdout and a
 //! non-zero exit, instead of surfacing an opaque `os::Error::NotFound`. A
 //! valid fixture input still traces.

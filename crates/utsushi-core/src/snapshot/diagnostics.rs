@@ -37,7 +37,7 @@ pub mod codes {
     pub const EMPTY_STATE_TREE: &str = "utsushi.snapshot.empty_state_tree";
     pub const SERIALIZATION_FAILURE: &str = "utsushi.snapshot.serialization_failure";
 
-    // ---- UTSUSHI-028 additive store + state-drift codes. Source of
+    // additive store + state-drift codes. Source of
     // truth is `super::super::store::codes`; re-export here so legacy
     // dotted paths continue to resolve and so the unified `ALL` slice
     // can name each entry locally. ----
@@ -69,7 +69,7 @@ pub mod codes {
         INVALID_GENERATED_AT,
         EMPTY_STATE_TREE,
         SERIALIZATION_FAILURE,
-        // UTSUSHI-028 store + state-drift additions.
+        // store + state-drift additions.
         STORE_NOT_FOUND,
         STORE_MISMATCHED_SCHEMA_VERSION,
         STORE_INVALID_SNAPSHOT_REF,
@@ -130,7 +130,7 @@ pub enum SnapshotError {
     /// `looks_like_local_path`.
     RedactionViolation { field_path: String },
 
-    /// A `BytesValue` carried a sample longer than `BYTES_SAMPLE_HEX_LEN`,
+    /// A `BytesValue` carried a sample longer than `BYTES_SAMPLE_HEX_LEN`
     /// a hash of wrong length, or a non-hex digest character.
     InvalidBytesValue { field_path: String, reason: String },
 

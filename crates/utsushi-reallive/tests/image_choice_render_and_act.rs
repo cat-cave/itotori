@@ -2,7 +2,7 @@
 //! IMAGE-GRID select (Sweetie HD's clothing / costume pick, the game's
 //! THIRD choice modality, distinct from the vertical text select and the
 //! side-by-side spatial route-select) is (a) RECOGNIZED as the
-//! `sel.select_objbtn` object-button variant (0-unknown preserved) and,
+//! `sel.select_objbtn` object-button variant (0-unknown preserved) and
 //! because it offers THREE-plus option buttons, INTERPRETED as the
 //! image-grid modality (tagged `choice:<idx>;imagegrid`, distinct from the
 //! 2-option pair's `;spatial`), (b) RENDERED as a horizontal STRIP of
@@ -31,7 +31,7 @@
 //! jumps through the selected button number; each image branch converges on
 //! a second, dialogue-style confirm select whose own `goto_on($store)`
 //! resolves the confirm. A real-bytes Sweetie HD clothing-select scene was
-//! not cheaply reachable on this path; the recognition (opcode `(0,2,4)`),
+//! not cheaply reachable on this path; the recognition (opcode `(0,2,4)`)
 //! the image-grid interpretation (option-count keyed), and the act/render
 //! seams are the real ones. Real costume ART is a follow-up — the icon
 //! boxes are faithful placeholders.
@@ -61,7 +61,7 @@ const OPCODE_GOTO: u16 = 0;
 const OPCODE_GOTO_ON: u16 = 3;
 
 /// A text `module_sel` command framed as a real SelectElement:
-/// `{ opt0 \n opt1 \n ... }`. This fixture uses it only for the follow-on
+/// `{ opt0 \n opt1 \n... }`. This fixture uses it only for the follow-on
 /// dialogue-style confirm; graphical `select_objbtn` has no inline labels.
 fn select_command(offset: usize, opcode: u16, options: &[&str]) -> (BytecodeElement, usize) {
     let mut raw = vec![
@@ -305,12 +305,12 @@ const OUTCOME_REDO: &str = "Back to the wardrobe for another look.";
 /// Layout (byte offsets computed as we lay elements down):
 ///   [foreground objects + objButtonOpts] [grid select_objbtn(group)]
 ///   [goto_on -> rA/rB/rC]
-///   rA: textout REACTION_A ; goto CONFIRM
-///   rB: textout REACTION_B ; goto CONFIRM
-///   rC: textout REACTION_C ; goto CONFIRM
+///   rA: textout REACTION_A; goto CONFIRM
+///   rB: textout REACTION_B; goto CONFIRM
+///   rC: textout REACTION_C; goto CONFIRM
 ///   CONFIRM: [confirm select] [goto_on -> keep/redo]
-///   keep: textout OUTCOME_KEPT ; goto END
-///   redo: textout OUTCOME_REDO ; goto END
+///   keep: textout OUTCOME_KEPT; goto END
+///   redo: textout OUTCOME_REDO; goto END
 ///   END
 fn build_clothing_select_engine() -> ReplayEngine {
     let mut offset = 0usize;
@@ -505,7 +505,6 @@ fn observed_branch_messages(engine: &ReplayEngine, policy: HeadlessChoicePolicy)
         .collect()
 }
 
-// -------------------------------------------------------------------------
 // RECOGNIZE: the image-grid select is the object-button `(0,2,4)` variant.
 // Because a `select_objbtn` op is itself a button-object SelectionControl
 // setup and foreground `objButtonOpts` bindings, the scene exposes a real
@@ -513,7 +512,6 @@ fn observed_branch_messages(engine: &ReplayEngine, policy: HeadlessChoicePolicy)
 // as an image grid). The modality is derived from the REAL SelectionControl
 // signal, NOT the option count. The graphical prompt has no `choice:<idx>`
 // text lines; only the follow-on text confirm does.
-// -------------------------------------------------------------------------
 
 #[test]
 fn image_grid_select_is_objbtn_and_classifies_graphical_from_the_signal() {
@@ -570,10 +568,8 @@ fn image_grid_select_is_objbtn_and_classifies_graphical_from_the_signal() {
     );
 }
 
-// -------------------------------------------------------------------------
 // ACT: selecting box K drives branch K (not always-first), AND the
 // follow-on confirm step resolves independently.
-// -------------------------------------------------------------------------
 
 #[test]
 fn selecting_box_k_drives_branch_k_and_the_confirm_resolves() {
@@ -618,12 +614,10 @@ fn selecting_box_k_drives_branch_k_and_the_confirm_resolves() {
     );
 }
 
-// -------------------------------------------------------------------------
 // RENDER: a horizontal strip of >=2 costume-icon boxes with a selected
 // box (bright/chromatic) vs. unselected (dim grayscale); selecting box 0
 // vs. box 1 renders DIFFERENT frames; the follow-on confirm renders as a
 // standard dialogue-style ChoiceWindow.
-// -------------------------------------------------------------------------
 
 const SCREEN: (u32, u32) = (1280, 720);
 
@@ -701,7 +695,7 @@ fn image_grid_renders_a_strip_with_a_moving_highlight() {
         "box 0's pixels differ between selected and unselected"
     );
 
-    // The two full frames differ (the highlight moved). A not-rendered /
+    // The two full frames differ (the highlight moved). A not-rendered
     // selection-ignored / always-first render regression makes the frames
     // equal and FAILS here.
     let png0 = encode_png_rgba_deterministic(&fb0);

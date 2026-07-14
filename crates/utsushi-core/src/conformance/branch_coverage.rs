@@ -1,12 +1,12 @@
-//! MV/MZ branch coverage read model (UTSUSHI-009).
+//! MV/MZ branch coverage read model ().
 //!
 //! A DATA-ONLY read model that JOINS three existing surfaces into a
 //! per-branch coverage view:
 //!
-//! - **MV/MZ runtime trace observations** — the UTSUSHI-006 observation
-//!   events + UTSUSHI-033 replay pack. Each observed branch carries the
+//! - **MV/MZ runtime trace observations** — the observation
+//!   events + replay pack. Each observed branch carries the
 //!   `route_key` its choice option leads to
-//!   (`crates/utsushi-rpgmaker-mv` `LinkedChoiceOption.route_key` /
+//!   (`crates/utsushi-rpgmaker-mv` `LinkedChoiceOption.route_key`
 //!   `ReplayPack.route_alignments`), the set of observed runtime trace
 //!   event ids seen on that branch (`ObservedTextEvent.event_id`), and
 //!   the count of reachable runtime-visible text events.
@@ -16,7 +16,7 @@
 //! - **Coverage status** — DERIVED per branch from the join (see
 //!   [`CoverageStatus`] / [`derive_coverage_status`]).
 //!
-//! This module NEVER launches a runtime host, plays back a browser,
+//! This module NEVER launches a runtime host, plays back a browser
 //! captures a screenshot, or imports annotations. It only reshapes data
 //! that other nodes already produced. Its only dependency is `serde`.
 //!
@@ -34,7 +34,7 @@ pub const BRANCH_COVERAGE_READ_MODEL_SCHEMA_VERSION: &str = "utsushi.branch_cove
 
 /// A single MV/MZ runtime-trace branch observation (join INPUT A).
 ///
-/// Models the UTSUSHI-006 observation event + UTSUSHI-033 replay-pack
+/// Models the observation event + replay-pack
 /// view of one discovered branch: which route it leads to, the runtime
 /// trace ids that were actually observed on it, and how much reachable
 /// text it exposes.
@@ -108,13 +108,13 @@ impl CoverageStatus {
 /// maps the branch's `route_key` resolves to and (b) whether the branch
 /// has at least one observed runtime trace id:
 ///
-/// | route-map ids | observed | status       |
-/// | ------------- | -------- | ------------ |
-/// | 1             | yes      | `Visited`    |
-/// | 1             | no       | `Unvisited`  |
-/// | 0             | yes      | `Ambiguous`  |
-/// | 0             | no       | `Unreachable`|
-/// | >1            | any      | `Ambiguous`  |
+/// route-map ids | observed | status
+/// ------------- | -------- | ------------
+/// 1 | yes | `Visited`
+/// 1 | no | `Unvisited`
+/// 0 | yes | `Ambiguous`
+/// 0 | no | `Unreachable`
+/// >1 | any | `Ambiguous`
 ///
 /// `Ambiguous` covers the two cases where coverage cannot be uniquely
 /// attributed: an observed branch whose route key does not resolve to

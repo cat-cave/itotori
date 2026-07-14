@@ -1,4 +1,4 @@
-//! Bridge-linked jump target fixtures (UTSUSHI-062).
+//! Bridge-linked jump target fixtures ().
 //!
 //! A [`JumpTargetSet`] is the engine-neutral fixture surface that pairs a list
 //! of bridge-linked [`JumpTargetFixture`] entries with the deterministic
@@ -27,7 +27,7 @@ use serde_json::Value;
 use utsushi_core::{LogicalClockTick, SourceTag, looks_like_local_path};
 
 /// Schema version pin for the jump target fixture wire form. Co-versioned
-/// with `REFERENCE_TRACE_SCHEMA_VERSION` (UTSUSHI-060) so a future schema
+/// with `REFERENCE_TRACE_SCHEMA_VERSION` () so a future schema
 /// bump is a single coordinated event.
 pub const JUMP_TARGET_SCHEMA_VERSION: &str = "0.1.0-alpha";
 
@@ -292,7 +292,7 @@ impl JumpTargetSet {
         Ok(set)
     }
 
-    /// Validate the set against a [`BridgeUnitIndex`]. Pure function: no I/O,
+    /// Validate the set against a [`BridgeUnitIndex`]. Pure function: no I/O
     /// no clock, no env.
     pub fn validate(&self, index: &dyn BridgeUnitIndex) -> Result<(), JumpTargetError> {
         let mut seen: BTreeSet<&str> = BTreeSet::new();

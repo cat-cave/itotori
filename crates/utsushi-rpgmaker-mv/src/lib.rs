@@ -2,14 +2,14 @@
 //!
 //! This crate is the **second real (non-scaffold) engine-port** in the
 //! Utsushi workspace and the runtime half of the MV/MZ loop: the impl-map
-//! already names it (`EngineFamily::RpgmakerMv -> "utsushi-rpgmaker-mv"`,
+//! already names it (`EngineFamily::RpgmakerMv -> "utsushi-rpgmaker-mv"`
 //! `utsushi_core::port::impl_map`'s validator), and the positive impl-map
 //! fixture declares `cargo test -p utsushi-rpgmaker-mv`. ALPHA-001's
 //! runtime evidence / feedback / rerun loop for MV/MZ runs against this
 //! port.
 //!
 //! Unlike the `utsushi-reallive` and `utsushi-siglus` scaffolds (every
-//! lifecycle method returns a typed `Lifecycle` "unimplemented" error),
+//! lifecycle method returns a typed `Lifecycle` "unimplemented" error)
 //! this port's lifecycle methods do real work — see [`UtsushiRpgmakerMvPort`].
 //!
 //! # What is real vs deferred
@@ -18,8 +18,8 @@
 //! - `launch` resolves the project's data directory (MV `www/data/`, MZ
 //!   `data/`) and parses the real MV/MZ event-command lists
 //!   (`events[].pages[].list[]`, `CommonEvents[].list[]`).
-//! - `observe` emits the runtime text stream — `Show Text` (101 setup +
-//!   401 lines, with the MZ speaker name), `Show Scrolling Text` (405),
+//! - `observe` emits the runtime text stream — `Show Text` (101 setup
+//!   401 lines, with the MZ speaker name), `Show Scrolling Text` (405)
 //!   and `Show Choices` (102) — one `TextLine` per tick, in deterministic
 //!   dispatch order, into the text sink at evidence tier E1.
 //! - `capture` materialises a deterministic trace-log artifact under the
@@ -44,7 +44,7 @@
 //!
 //! # Clean-room provenance
 //!
-//! - The MV/MZ event-command-code numbers (`101`, `401`, `405`, `102`,
+//! - The MV/MZ event-command-code numbers (`101`, `401`, `405`, `102`
 //!   `105`) are public RPG Maker MV/MZ engine constants documented across
 //!   the community wikis. No game-specific bytes inform the parser.
 //! - This crate intentionally does **not** depend on `kaifuu-rpgmaker`.
@@ -64,7 +64,7 @@
 //!
 //! Every `utsushi_core::*` import is sourced through
 //! `utsushi_core::substrate::*`, with three documented reach-arounds the
-//! facade does not yet re-export (`CaptureOutcome`, `runtime_artifact_uri`,
+//! facade does not yet re-export (`CaptureOutcome`, `runtime_artifact_uri`
 //! `RuntimeArtifactKind`) — each forced by the `capture` lifecycle and the
 //! managed-artifact-store contract. See `port.rs`.
 

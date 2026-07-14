@@ -1,12 +1,12 @@
 //! KAG `.ks` → REPLAY instruction stream.
 //!
-//! This is the Utsushi-side counterpart to KAIFUU-009's *extraction* parser
+//! This is the Utsushi-side counterpart to the *extraction* parser
 //! (`kaifuu-kirikiri::parse_ks`). Where the extraction parser produces
 //! translatable text units + byte spans for patchback, this parser produces
 //! a flat, execution-ordered [`Instr`] stream plus a `label -> index` map
 //! that the [`crate::replay`] engine walks like a tiny VM.
 //!
-//! It re-derives the SAME documented KAG line dialect KAIFUU-009 handles
+//! It re-derives the SAME documented KAG line dialect handles
 //! (column-0 classification: `;` comment, `*label` label, `@cmd` line
 //! command, `#name` speaker line, and message/text lines split into runs
 //! between inline `[tag …]` tags, with `[[` as the literal-`[` escape). The
@@ -14,7 +14,7 @@
 //! workspace's engine-port isolation posture; the text+name cross-validation
 //! test proves the two parsers agree on real output.
 //!
-//! ## What is modelled vs. deferred (UTSUSHI-038 macro subset)
+//! ## What is modelled vs. deferred ( macro subset)
 //!
 //! - Modelled control flow: `*label`, `@jump`/`[jump]`, and
 //!   `[link …]…[endlink]` choices (each `link` item is one choice option;
@@ -110,11 +110,11 @@ impl BlockKind {
 pub enum Instr {
     /// `*name` (the optional `|caption` page name is dropped). A jump target.
     Label(String),
-    /// `#name` speaker line: `Some(display)` sets the active speaker,
+    /// `#name` speaker line: `Some(display)` sets the active speaker
     /// `None` (bare `#` or empty display) clears it.
     Name(Option<String>),
     /// A maximal run of message text between inline tags. Whitespace-only
-    /// runs are dropped (matching KAIFUU-009), so every `Text` is
+    /// runs are dropped (matching ), so every `Text` is
     /// translatable.
     Text(String),
     /// An inline `[tag …]` tag or an `@cmd …` line command.
@@ -225,7 +225,7 @@ pub fn parse_kag_with_encoding(
         emit_line(line, &macros, &mut instrs, 0);
     }
 
-    // An unterminated block/definition still surfaces its marker (recorded,
+    // An unterminated block/definition still surfaces its marker (recorded
     // not lost).
     if open_iscript {
         instrs.push(Instr::UnsupportedBlock(BlockKind::IScript));
@@ -298,7 +298,7 @@ fn emit_line(
 }
 
 /// Expand a macro invocation `cmd` by splicing its (parameter-substituted)
-/// body into `instrs`. A `%param` with no supplied attribute and no default,
+/// body into `instrs`. A `%param` with no supplied attribute and no default
 /// or nesting past [`MAX_MACRO_DEPTH`], is NOT faked — the whole invocation
 /// collapses to a single [`Instr::UnexpandedMacro`].
 fn expand_invocation(
@@ -484,7 +484,7 @@ fn parse_line(line: &str, instrs: &mut Vec<Instr>) {
     }
 }
 
-/// `#display` / `#voice/display` / bare `#` (mirrors KAIFUU-009's
+/// `#display` / `#voice/display` / bare `#` (mirrors the
 /// `parse_name_line`).
 fn parse_name_line(line: &str) -> Instr {
     let after = &line['#'.len_utf8()..];
@@ -524,7 +524,7 @@ fn parse_text_line(line: &str, instrs: &mut Vec<Instr>) {
                 i = i + 1 + close_rel + 1;
             } else {
                 // Unclosed inline tag: preserve the remainder as a command
-                // name (no crash), matching KAIFUU-009's finding posture.
+                // name (no crash), matching the finding posture.
                 let inner = &line[i + 1..];
                 instrs.push(Instr::Command(parse_command(inner)));
                 i = bytes.len();

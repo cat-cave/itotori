@@ -1,4 +1,4 @@
-//! UTSUSHI-217 real-bytes integration tests for the NWA decoder.
+//! Real-bytes integration tests for the NWA decoder.
 //!
 //! Pins the decoder against Sweetie HD's `REALLIVEDATA/bgm/ASA.nwa`
 //! (18,317,046 bytes) and `REALLIVEDATA/wav/CHIME.nwa`. Mirrors the
@@ -7,8 +7,8 @@
 //!
 //! # Acceptance criteria pinned here
 //!
-//! 1. [`nwa_asa_decodes_33M_frames`] — UTSUSHI-217 spec-pinned name.
-//!    The decoder returns channels=2, bits_per_sample=16,
+//! 1. [`nwa_asa_decodes_33M_frames`] — spec-pinned name.
+//!    The decoder returns channels=2, bits_per_sample=16
 //!    sample_rate=44_100 against `ASA.nwa`. The spec text quotes
 //!    "33,818,820 sample frames" as the acceptance value; the real
 //!    bytes at `@0x14` decode to `uncompressed_byte_size = 33,866,972`
@@ -23,7 +23,7 @@
 //!    the discrepancy explicitly so a future spec correction surfaces
 //!    here.
 //! 2. [`nwa_chime_decodes_raw_pcm_header`] — Sweetie HD's
-//!    `REALLIVEDATA/wav/CHIME.nwa` decodes to channels >= 1,
+//!    `REALLIVEDATA/wav/CHIME.nwa` decodes to channels >= 1
 //!    bps == 16, sample_rate within the documented audio-grade band.
 //!    Acts as a second-file cross-reference inside the same corpus —
 //!    not a second engine corpus (the single-corpus posture is
@@ -36,7 +36,7 @@
 //! real engine substrate must be exercised against at least two real
 //! corpora before its node is merged-complete. Sweetie HD is the only
 //! RealLive title currently staged. The NWA module mirrors the pattern its
-//! UTSUSHI-201/202/203/216 sibling parsers landed: real-bytes pinned
+//! sibling parsers landed: real-bytes pinned
 //! against the only staged corpus today (two distinct files within
 //! that corpus — `bgm/ASA.nwa` and `wav/CHIME.nwa`), with the
 //! second-corpus follow-up tracked as a known gap. The commit message
@@ -59,7 +59,7 @@ use utsushi_reallive::{
 
 // Relative path under the title dir to the `wav/` corpus.
 
-/// File name of the UTSUSHI-217 spec-pinned ASA.nwa fixture.
+/// File name of the spec-pinned ASA.nwa fixture.
 const ASA_NWA: &str = "ASA.nwa";
 
 /// File name of CHIME.nwa — the second-file cross-reference inside
@@ -93,7 +93,7 @@ fn real_wav_dir() -> Option<PathBuf> {
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-// The test name is the UTSUSHI-217 spec verification handle quoted
+// The test name is the spec verification handle quoted
 // verbatim (`cargo test -p utsushi-reallive nwa_asa_decodes_33M_frames`).
 // The `M` is upper-case because the spec quotes "33M" as the
 // human-readable order-of-magnitude shorthand for the frame count.
@@ -173,7 +173,7 @@ fn nwa_asa_decodes_33M_frames() {
         header.total_sample_count,
     );
 
-    // Audit-focus pin (UTSUSHI-217 spec): "Treating NWA as raw bytes
+    // Audit-focus pin : "Treating NWA as raw bytes
     // (i.e. skipping the offset table)". ASA.nwa is compressed, so
     // the per-block table MUST be populated.
     assert_eq!(

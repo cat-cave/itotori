@@ -1,4 +1,4 @@
-//! Integration tests for the UTSUSHI-020 Slice A runtime VFS.
+//! Integration tests for the Slice A runtime VFS.
 //!
 //! Exercises the diagnostic enum via a `FixturePolicyPackage` test type that
 //! reads `package.toml` and produces the right `VfsError` variants on
@@ -358,7 +358,7 @@ fn fixture_package() -> Arc<FixturePolicyPackage> {
     Arc::new(FixturePolicyPackage::load(fixture_root()))
 }
 
-// The UTSUSHI-020 route-by-package-id `MountedVfs` is removed; the
+// The route-by-package-id `MountedVfs` is removed; the
 // synthetic fixture exercises the `AssetPackage` boundary directly. The
 // composite path is exercised by `composite_asset_package.rs` and the
 // real-bytes integration suite. See
@@ -528,7 +528,7 @@ fn case_rule_sensitive_helper_matches_only_exact_case() {
 /// (`utsushi_core::redaction::reject_unredacted_local_paths`). The
 /// envelope shape mirrors the previous test, which used the deleted
 /// (now-deleted) typed hook envelope as a transport for the same assertion;
-/// after UTSUSHI-224 we exercise the redaction filter directly.
+/// after we exercise the redaction filter directly.
 fn assert_message_passes_redaction(message: &str) -> UtsushiResult<()> {
     let value = serde_json::json!({
         "diagnostic": {
@@ -613,7 +613,7 @@ fn every_vfs_error_display_passes_observation_redaction() {
 #[test]
 fn vfs_error_for_real_host_path_input_does_not_leak_path_into_display() {
     // Build a temporary copy of the fixture so the host path is a real
-    // /tmp/... directory — Display output must still not contain that
+    // tmp/... directory — Display output must still not contain that
     // substring.
     let temp = tempfile::tempdir().unwrap();
     let host_root = temp.path().join("synthetic");

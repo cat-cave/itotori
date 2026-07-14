@@ -12,9 +12,9 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-// UTSUSHI-093: fd-relative / no-follow runtime-artifact filesystem operations.
+// fd-relative / no-follow runtime-artifact filesystem operations.
 // The managed root is opened once as a directory descriptor and every
-// write/rename/cleanup is driven RELATIVE to that descriptor with `O_NOFOLLOW`,
+// write/rename/cleanup is driven RELATIVE to that descriptor with `O_NOFOLLOW`
 // so a subdirectory validated as a real directory cannot be swapped for a
 // symlink that escapes the root between the check and the operation.
 #[cfg(unix)]
@@ -55,7 +55,7 @@ pub use conformance::{
     unsupported_frame_capture_result, unsupported_recording_capture_result,
     unsupported_snapshot_restore_result,
 };
-// UTSUSHI-009: MV/MZ branch coverage read model (data-only join of runtime
+// MV/MZ branch coverage read model (data-only join of runtime
 // trace observations + Itotori route maps → per-branch coverage status).
 pub use conformance::branch_coverage::{
     BRANCH_COVERAGE_READ_MODEL_SCHEMA_VERSION, BranchCoverageError, BranchCoverageFixture,
@@ -64,16 +64,16 @@ pub use conformance::branch_coverage::{
     derive_coverage_status, join_branch_coverage,
     read_model_from_json as branch_coverage_read_model_from_json,
 };
-// UTSUSHI-069: branch-coverage GAP FINDING emitter (data-only; reads the
-// UTSUSHI-009 read model and emits gap findings for unvisited-reachable +
+// branch-coverage GAP FINDING emitter (data-only; reads the
+// read model and emits gap findings for unvisited-reachable
 // ambiguous branches, never visited/unreachable).
 pub use conformance::branch_coverage_gaps::{
     BRANCH_COVERAGE_GAP_FINDINGS_SCHEMA_VERSION, BranchCoverageGapFinding, BranchCoverageGapReport,
     BranchCoverageGapSummary, GapArtifactLink, GapKind, GapSeverity, HIGH_TEXT_SEVERITY_THRESHOLD,
     emit_branch_coverage_gap_findings, severity_for as branch_coverage_gap_severity_for,
 };
-// UTSUSHI-070: branch-coverage EXPORT artifact (data-only; reshapes the
-// UTSUSHI-009 read model + UTSUSHI-069 gap summaries into a stable JSON +
+// branch-coverage EXPORT artifact (data-only; reshapes the
+// read model + gap summaries into a stable JSON
 // Markdown export with an INJECTED generated-at for deterministic snapshots).
 pub use conformance::branch_coverage_export::{
     BRANCH_COVERAGE_EXPORT_SCHEMA_VERSION, BranchCoverageExport, BranchCoverageExportError,
@@ -119,7 +119,7 @@ pub use snapshot::{
 
 /// Re-exports for the local-path redaction filter. The helper itself is a
 /// crate-private utility used by observation-hook validators and by the sink
-/// payload tests (see UTSUSHI-022). The re-export keeps the public surface
+/// payload tests. The re-export keeps the public surface
 /// narrow — only the `reject_unredacted_local_paths` entry point is exposed
 /// — so cross-crate consumers can run the same filter on their own sink
 /// emissions without grabbing the rest of the helper module.
@@ -158,7 +158,7 @@ pub(crate) fn looks_like_local_path_public(value: &str) -> bool {
 ///
 /// `utsushi-core` is the runtime substrate: a single call chain mixes
 /// `std::io::Error`, `serde_json::Error`, the crate's own typed errors
-/// (`SinkError`, `InputError`, `VfsError`, `SnapshotError`, `EnginePortError`,
+/// (`SinkError`, `InputError`, `VfsError`, `SnapshotError`, `EnginePortError`
 /// `ConformanceError`, …) and JSON-shape validation messages. Boxing is the
 /// correct heterogeneous-boundary choice: a single closed enum spanning all of
 /// those subsystems would be a churn magnet that no caller matches on in full.
@@ -219,7 +219,7 @@ impl std::error::Error for ObservationHookValidationError {}
 
 pub const RUNTIME_ARTIFACT_URI_ROOT: &str = "artifacts/utsushi/runtime";
 pub const RUNTIME_ARTIFACT_ROOT_MARKER: &str = ".utsushi-runtime-artifacts";
-// UTSUSHI-224: the legacy `deleted-hook-envelope` enum + its schema version
+// the legacy `deleted-hook-envelope` enum + its schema version
 // constant were deleted along with the typed observation-hook envelope. The
 // engine-port substrate now drives observation via the sink-set bridge in
 // `crate::sink::SinkSet`; the wire-shape `observationHookEvents` array
@@ -250,11 +250,11 @@ pub struct RuntimeRequest<'a> {
     /// operations. Core trace/capture/smoke paths ignore this field.
     pub parameters: Option<Value>,
     /// Optional, additive handoff for downstream nodes that consume the
-    /// runtime VFS (UTSUSHI-021/022/023/024/103). Slice A of UTSUSHI-020
+    /// runtime VFS (). Slice A of
     /// only adds the field so callers can begin to populate it.
     pub vfs: Option<Arc<dyn RuntimeVfs>>,
     /// Optional, additive handoff for the deterministic replay log
-    /// (UTSUSHI-021). When `Some`, an adapter that drives input MUST consume
+    /// (). When `Some`, an adapter that drives input MUST consume
     /// events through `ReplayLog::next_event` instead of querying live input.
     /// `Arc<ReplayLog>` keeps cloning cheap when the runner shares the log
     /// across multiple adapter invocations.
@@ -264,13 +264,13 @@ pub struct RuntimeRequest<'a> {
     /// port honours cooperative cancellation; adapters that do not run a
     /// cancellable loop ignore the field.
     pub cancellation: Option<RunnerCancellation>,
-    /// Optional snapshot anchor (UTSUSHI-023). When `Some`, the runner is
+    /// Optional snapshot anchor (). When `Some`, the runner is
     /// being asked to restore the snapshot at `start` and replay from the
     /// matching anchor. The reference is intentionally lightweight
     /// (id-only, no payload); the full [`Snapshot`] is resolved by the
-    /// runner through the [`SnapshotStore`] trait (UTSUSHI-028). The
-    /// trait has typed errors only — `NotFound`,
-    /// `MismatchedSchemaVersion`, `InvalidSnapshotRef`,
+    /// runner through the [`SnapshotStore`] trait (). The
+    /// trait has typed errors only — `NotFound`
+    /// `MismatchedSchemaVersion`, `InvalidSnapshotRef`
     /// `InspectableIdMismatch`, `StoreUnavailable` — so an adapter
     /// receiving this field can rely on the runner having resolved the
     /// ref through a single audit seam. Adapters that do not consume
@@ -461,7 +461,7 @@ impl RuntimeArtifactRoot {
 
     /// Configure a soft artifact-byte budget. A subsequent [`Self::write_bytes`]
     /// whose payload exceeds `budget` bytes surfaces
-    /// [`SinkError::BudgetExhausted`] (`sink = SinkKind::FrameArtifact`,
+    /// [`SinkError::BudgetExhausted`] (`sink = SinkKind::FrameArtifact`
     /// `budget = RUNTIME_ARTIFACT_SOFT_BYTE_BUDGET_LABEL`) rather than writing.
     /// This is the real artifact-store budget surface: any adapter writing
     /// through this root receives the diagnostic on the live path.
@@ -499,7 +499,7 @@ impl RuntimeArtifactRoot {
     }
 }
 
-// UTSUSHI-093: all mutating runtime-artifact operations are fd-relative and
+// all mutating runtime-artifact operations are fd-relative and
 // no-follow (openat/mkdirat/renameat/unlinkat/getdents against a directory
 // descriptor opened once with `O_NOFOLLOW`). This closes the TOCTOU window in
 // which a concurrent actor could swap a directory that was validated as real
@@ -1368,7 +1368,7 @@ impl ControlledPlaybackSession {
     }
 }
 
-// UTSUSHI-224: `deleted-hook-envelopeKind` + `deleted-hook-envelope` deleted.
+// `deleted-hook-envelopeKind` + `deleted-hook-envelope` deleted.
 // Engine ports now push observation payloads through the
 // `crate::sink::SinkSet` bridge. The wire-shape `observationHookEvents`
 // array remains a `kaifuu-core` contract surface and is synthesized as raw
@@ -1546,12 +1546,12 @@ impl ObservationRedactionMetadata {
     }
 }
 
-// UTSUSHI-224: `deleted-hookPayload` + every payload variant
-// (`ObservationTextPayload`, `ObservationChoicePayload`,
-// `ObservationChoiceOption`, `ObservationBranchPayload`,
-// `ObservationScenePayload`, `ObservationFramePayload`,
+// `deleted-hookPayload` + every payload variant
+// (`ObservationTextPayload`, `ObservationChoicePayload`
+// `ObservationChoiceOption`, `ObservationBranchPayload`
+// `ObservationScenePayload`, `ObservationFramePayload`
 // `ObservationErrorPayload`) deleted. The substrate observation surface is
-// now the sink-set bridge (`crate::sink::TextLine` / `FrameArtifact` /
+// now the sink-set bridge (`crate::sink::TextLine` / `FrameArtifact`
 // `AudioEvent`); choice / branch / scene / error payloads have no
 // production consumer in the Sweetie HD ground-truth scope and are
 // re-introduced only when an engine port pushes them through a typed
@@ -1668,7 +1668,7 @@ pub fn validate_runtime_evidence_report_value(report: &Value) -> UtsushiResult<(
             &format!("RuntimeEvidenceReportV02.branchEvents[{index}]"),
         )?;
     }
-    // UTSUSHI-224: the per-event observation envelope validation that
+    // the per-event observation envelope validation that
     // previously round-tripped each entry through `deleted-hook-envelope`
     // is replaced by a structural shape check. The full wire-shape
     // contract lives in `kaifuu-core::contracts::validate_runtime_evidence_report_v02`
@@ -2516,7 +2516,7 @@ fn is_runtime_playback_feature(value: &str) -> bool {
     )
 }
 
-// UTSUSHI-224: `ObservationErrorPayload` deleted along with the rest of
+// `ObservationErrorPayload` deleted along with the rest of
 // the typed observation-hook surface. Error-shaped runtime diagnostics are
 // surfaced through `RuntimeAdapterDiagnostic` (already engine-neutral) and
 // never flow through a deleted enum variant.
@@ -2683,7 +2683,7 @@ fn reject_unredacted_local_paths(path: &str, value: &Value) -> UtsushiResult<()>
 
 /// Audit predicate used by `EnvFieldSchema::validate_value` and the
 /// observation event redaction filter. Widened from crate-private to
-/// `pub` by UTSUSHI-103 so engine port crates can apply the same
+/// `pub` by so engine port crates can apply the same
 /// rejection rule when stamping their own diagnostics.
 pub fn looks_like_local_path(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
@@ -2710,7 +2710,7 @@ pub fn looks_like_local_path(value: &str) -> bool {
 ///
 /// `to_command` builds the `std::process::Command::new(&self.program)` spawn
 /// that drives the MV/MZ browser runtime-evidence adapter
-/// (`BrowserLaunchAdapter` in `utsushi-fixture`/`launch_adapters.rs`,
+/// (`BrowserLaunchAdapter` in `utsushi-fixture`/`launch_adapters.rs`
 /// registered as a production adapter in `utsushi-cli`). RPG Maker MV/MZ games
 /// are browser/NW.js JavaScript games with no proprietary opcode VM, so
 /// launching a real headless Chromium runs the actual engine rather than a
@@ -2926,7 +2926,7 @@ pub enum RuntimeHarnessErrorKind {
     ProcessCleanupFailed,
     CaptureTimeout,
     CaptureFailed,
-    /// UTSUSHI-096: a capture hook worker attempted to write a managed runtime
+    /// a capture hook worker attempted to write a managed runtime
     /// artifact after the capture boundary closed (the hook timed out or
     /// `launch-capture` already returned). The write fence refuses the mutation
     /// so a detached, still-running hook worker cannot corrupt managed artifact
@@ -2950,7 +2950,7 @@ pub enum RuntimeHarnessErrorKind {
     ChromiumVersionMismatch,
     /// Browser-launch path could not reach a usable display surface under
     /// strict display checking. Produced by the strict-display probe
-    /// (UTSUSHI-162) when the operator opts into the `UTSUSHI_STRICT_DISPLAY`
+    /// () when the operator opts into the `UTSUSHI_STRICT_DISPLAY`
     /// activation gate and no usable display surface is detected; off by
     /// default. Semantic code: `utsushi.browser.display_unavailable`.
     ChromiumDisplayUnavailable,
@@ -3231,7 +3231,7 @@ impl RuntimeCaptureArtifactStore {
     }
 }
 
-/// UTSUSHI-096: a write fence shared between the launch-capture harness and a
+/// a write fence shared between the launch-capture harness and a
 /// spawned capture-hook worker thread.
 ///
 /// A capture hook runs on a detached worker thread (see
@@ -3289,7 +3289,7 @@ pub struct RuntimeCaptureContext {
     pub run_id: String,
     artifact_store: Option<RuntimeCaptureArtifactStore>,
     artifacts: Vec<RuntimeCapturedArtifact>,
-    // UTSUSHI-096: gates managed-artifact writes. Shared (cloned) with the
+    // gates managed-artifact writes. Shared (cloned) with the
     // harness so the harness can close it at the capture boundary and refuse
     // writes from a detached worker that outlives `launch-capture`.
     write_fence: CaptureWriteFence,
@@ -3321,7 +3321,7 @@ impl RuntimeCaptureContext {
         media_type: impl Into<Option<String>>,
         contents: &[u8],
     ) -> Result<RuntimeCapturedArtifact, RuntimeHarnessError> {
-        // UTSUSHI-096: refuse writes once the capture boundary has closed. This
+        // refuse writes once the capture boundary has closed. This
         // is checked before touching the store so a detached worker that keeps
         // running after `launch-capture` returns cannot mutate managed artifact
         // state; the refusal carries a distinct code from a normal timeout.
@@ -3489,7 +3489,7 @@ impl RuntimeLaunchCaptureHarness {
         // Drain stdout on a dedicated thread so a large `--dump-dom` payload
         // cannot deadlock the poll-based wait by filling the pipe buffer while
         // the child blocks writing. The buffer is joined only on the success
-        // path; on every error path the child is terminated, the pipe closes,
+        // path; on every error path the child is terminated, the pipe closes
         // and the detached reader thread completes on its own.
         let mut stdout_reader: Option<thread::JoinHandle<Vec<u8>>> = if plan.capture_stdout {
             child.stdout.take().map(|mut stdout| {
@@ -3701,7 +3701,7 @@ fn run_capture_hook_with_timeout(
     let operation = context.operation;
     let boundary = context.boundary;
     let process_id = context.process_id;
-    // UTSUSHI-096: install a fresh open fence and keep a clone in the harness.
+    // install a fresh open fence and keep a clone in the harness.
     // The worker thread receives its own clone inside `context`; closing the
     // harness-side handle at the capture boundary flips the shared flag so any
     // later write from a still-running worker is refused.
@@ -3727,7 +3727,7 @@ fn run_capture_hook_with_timeout(
     });
 
     let outcome = receiver.recv_timeout(timeout);
-    // UTSUSHI-096: the capture boundary is crossed the instant the harness stops
+    // the capture boundary is crossed the instant the harness stops
     // waiting for the hook (completion OR timeout). Close the fence here so any
     // write the worker attempts after this point is refused, while writes made
     // during the valid in-progress window above still succeeded.
@@ -3989,7 +3989,7 @@ fn validate_artifact_extension(extension: &str) -> UtsushiResult<()> {
     Ok(())
 }
 
-/// UTSUSHI-093: fd-relative / no-follow filesystem primitives for the runtime
+/// fd-relative / no-follow filesystem primitives for the runtime
 /// artifact root.
 ///
 /// Every mutating operation resolves paths RELATIVE to a directory descriptor
@@ -4720,7 +4720,7 @@ mod tests {
         path.exists()
     }
 
-    // UTSUSHI-096: poll the out-of-band slot the detached hook worker records
+    // poll the out-of-band slot the detached hook worker records
     // its (fenced) write outcome into.
     fn wait_for_late_write(
         slot: &Arc<Mutex<Option<Result<PathBuf, String>>>>,
@@ -4738,8 +4738,8 @@ mod tests {
         }
     }
 
-    // UTSUSHI-224: tests that exercised the deleted typed
-    // `deleted-hook-envelope` envelope (round-trip, schema-version,
+    // tests that exercised the deleted typed
+    // `deleted-hook-envelope` envelope (round-trip, schema-version
     // redaction rejection on the typed shape) have been removed. The
     // wire-shape envelope's per-field validation is now tested only by
     // the independent `kaifuu-core::contracts::validate_runtime_evidence_report_v02`
@@ -4752,7 +4752,7 @@ mod tests {
     #[test]
     fn evidence_report_observation_event_rejects_tier_above_report_ceiling() {
         // Spot-check that the JSON-shape observationHookEvents validator
-        // (rewritten in UTSUSHI-224 to drop its `deleted-hook-envelope`
+        // (rewritten in to drop its `deleted-hook-envelope`
         // dependency) still rejects an entry whose tier exceeds the
         // report's declared evidenceTier.
         let report = json!({
@@ -5020,7 +5020,7 @@ mod tests {
         }
     }
 
-    // UTSUSHI-096: a hook that blocks past its timeout and, once released by the
+    // a hook that blocks past its timeout and, once released by the
     // test (after `launch-capture` has already returned), attempts a managed
     // artifact write from the detached worker thread. The outcome is recorded
     // out-of-band so the test can assert the write was fenced.
@@ -5514,7 +5514,7 @@ mod tests {
         assert_eq!(cleanup.scope, RuntimeProcessCleanupScope::ProcessTree);
     }
 
-    // UTSUSHI-096: a hook that times out during launch-capture leaves a detached
+    // a hook that times out during launch-capture leaves a detached
     // worker thread running that still holds a clone of the managed artifact
     // store. This test proves that once the capture boundary closes, a late
     // write from that worker is REFUSED by the write fence (managed artifact
@@ -5582,7 +5582,7 @@ mod tests {
         let _ = fs::remove_dir_all(temp);
     }
 
-    // UTSUSHI-096: the fence must not disturb the normal path — a write made
+    // the fence must not disturb the normal path — a write made
     // while the capture window is still valid (fence open) succeeds and persists.
     #[test]
     fn in_boundary_hook_write_succeeds_within_fence() {
@@ -6096,9 +6096,9 @@ mod tests {
         let _ = fs::remove_dir_all(temp);
     }
 
-    // UTSUSHI-093 crux: a concurrent actor SWAPS a validated run directory for a
+    // crux: a concurrent actor SWAPS a validated run directory for a
     // symlink pointing OUTSIDE the managed root while writes are in flight. The
-    // fd-relative / no-follow write path must never follow the swapped-in link,
+    // fd-relative / no-follow write path must never follow the swapped-in link
     // so nothing is ever created under the escape target — proving the TOCTOU
     // window between "validated as a real directory" and "written into" is shut.
     #[cfg(unix)]
@@ -6178,7 +6178,7 @@ mod tests {
         let _ = fs::remove_dir_all(temp);
     }
 
-    // UTSUSHI-151: the soft artifact-byte budget is enforced on the REAL
+    // the soft artifact-byte budget is enforced on the REAL
     // artifact-store write path (RuntimeArtifactRoot::write_bytes), not a
     // cfg(test) shim. An over-budget write surfaces SinkError::BudgetExhausted
     // with the artifact-store sink id + budget label; an under-budget write
@@ -6229,7 +6229,7 @@ mod tests {
         let _ = fs::remove_dir_all(temp);
     }
 
-    // UTSUSHI-151: a root with no configured budget never rejects a write for
+    // a root with no configured budget never rejects a write for
     // budget reasons — the historical unbudgeted behaviour is preserved.
     #[cfg(unix)]
     #[test]
@@ -6248,7 +6248,7 @@ mod tests {
         let _ = fs::remove_dir_all(temp);
     }
 
-    // UTSUSHI-093: cleanup traverses ONLY real directories. A symlink anywhere
+    // cleanup traverses ONLY real directories. A symlink anywhere
     // in the managed tree (top-level or nested) is unlinked in place — the link
     // itself is removed and is never recursed into — so cleanup can never follow
     // a symlink to a target outside the root.

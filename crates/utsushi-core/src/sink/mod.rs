@@ -1,13 +1,13 @@
 //! Headless runtime sink contracts.
 //!
-//! Three engine-neutral sink traits (`TextSurfaceSink`, `FrameArtifactSink`,
+//! Three engine-neutral sink traits (`TextSurfaceSink`, `FrameArtifactSink`
 //! `AudioEventSink`) describe what a runtime port can announce as observed
 //! evidence. Each sink carries its own evidence-tier ceiling so a low-tier
 //! sink can not be mistaken for high-tier evidence. See plan
-//! `.plan/UTSUSHI-022.md` and `docs/utsushi-fidelity-policy.md` (section
+//! `.plan/.md` and `docs/utsushi-fidelity-policy.md` (section
 //! "Sink Tier Rules") for the per-sink rules.
 //!
-//! Posture (matches the UTSUSHI-020 `RuntimeVfs` substrate posture):
+//! Posture (matches the `RuntimeVfs` substrate posture):
 //!
 //! - `Send + Sync`, `&self`-only methods. Interior mutability is the
 //!   implementor's concern (typically a `Mutex<Vec<...>>` collector in the

@@ -17,7 +17,7 @@
 //! making it visible to this crate, exporting its port type, or publishing a
 //! `PARITY_PROFILE` fails during the generated registry build/compile.
 //!
-//! To PROVE the gate has teeth, flip any engine's `Snapshot` /
+//! To PROVE the gate has teeth, flip any engine's `Snapshot`
 //! `DeterministicReplay` declaration from `Pending` to `NotApplicable` (or
 //! delete it): `parity_gate_is_green_for_the_current_engine_set` then FAILS
 //! with a `ForbiddenNotApplicable` / `Undeclared` gap, because

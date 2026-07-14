@@ -12,7 +12,7 @@ use super::diagnostics::{DriftKind, EnginePortError, ManifestError};
 /// Capability classes an `EnginePort` may declare.
 ///
 /// `Snapshot` and `DeterministicReplay` are **port-driven, self-verifying**
-/// capabilities (as opposed to `Launch`/`Observe`/`Capture`/`Shutdown`,
+/// capabilities (as opposed to `Launch`/`Observe`/`Capture`/`Shutdown`
 /// which map to runner-invoked lifecycle stages). They have no lifecycle
 /// stage: a port that declares them exercises the substrate's snapshot
 /// (`Snapshot`/`Inspectable`/`Restorable`) and deterministic-replay
@@ -31,14 +31,14 @@ pub enum PortCapability {
     Capture,
     /// Required: shut down deterministically and idempotently.
     Shutdown,
-    /// Optional: jump to a moment id (UTSUSHI-104/106).
+    /// Optional: jump to a moment id ().
     Jump,
     /// Port-driven: the port takes and restores substrate snapshots
-    /// (UTSUSHI-023 `Snapshot`/`Inspectable`/`Restorable`) and
+    /// (`Snapshot`/`Inspectable`/`Restorable`) and
     /// self-verifies round-trip identity within its own lifecycle.
     Snapshot,
     /// Port-driven: the port drives byte-deterministic input/clock replay
-    /// (UTSUSHI-021 `ReplayLog`) and self-verifies determinism within its
+    /// (`ReplayLog`) and self-verifies determinism within its
     /// own lifecycle.
     DeterministicReplay,
     /// Port-driven: the port exposes deterministic replay-review evidence
@@ -109,7 +109,7 @@ pub const REQUIRED_LIFECYCLE_STAGES: &[LifecycleStage] = &[
 /// Optional lifecycle methods a port may declare. Currently only `Jump`.
 pub const OPTIONAL_LIFECYCLE_STAGES: &[LifecycleStage] = &[LifecycleStage::Jump];
 
-/// Audit shape declaration for an environment field. Path / LocalPath /
+/// Audit shape declaration for an environment field. Path / LocalPath
 /// Secret shapes are rejected at manifest validation time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum EnvFieldShape {
@@ -240,10 +240,10 @@ fn is_valid_env_key(key: &str) -> bool {
 }
 
 /// Static, audit-grade declaration of an engine port. Every port crate
-/// exposes one `pub const MANIFEST: PortManifest = PortManifest { ... }`.
+/// exposes one `pub const MANIFEST: PortManifest = PortManifest {... }`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PortManifest {
-    /// Stable, lowercased port id, e.g. `"utsushi-fixture"`,
+    /// Stable, lowercased port id, e.g. `"utsushi-fixture"`
     /// `"utsushi-reallive"`, `"utsushi-rpgmaker-mv"`.
     pub id: &'static str,
 

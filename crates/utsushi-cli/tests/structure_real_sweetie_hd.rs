@@ -139,7 +139,7 @@ fn utsushi_structure_real_sweetie_writes_real_dispatch_order() {
         "expected ≥3 distinct decoded speakers (#NAMAE); got {}",
         speakers.len()
     );
-    // sceneDispatchOrder is exactly the crossed scenes, once each (no doubling,
+    // sceneDispatchOrder is exactly the crossed scenes, once each (no doubling
     // no dropped scene), and leads with the entry scene — the REAL dispatch
     // order from the replay walk, NOT archive slot order.
     assert_eq!(

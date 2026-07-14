@@ -30,7 +30,7 @@ pub trait Inspectable: Send + Sync {
 
 /// Audit-focus report produced by a successful `Restorable::restore_state`
 /// call. A port either consumes a path, declares it ignored on purpose, or
-/// returns a typed error. There is no third option — the `consumed_paths` /
+/// returns a typed error. There is no third option — the `consumed_paths`
 /// `ignored_by_design` split is the "silent best effort" mitigation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RestoreReport {
@@ -67,7 +67,7 @@ pub trait Restorable: Inspectable {
     ///   [`SnapshotError::RestoreTypeMismatch`].
     /// - Reject out-of-range or invalid values with
     ///   [`SnapshotError::RestoreValueOutOfRange`].
-    /// - Never silently skip a path; every path is either consumed,
+    /// - Never silently skip a path; every path is either consumed
     ///   ignored-by-design (must show up in
     ///   [`RestoreReport::ignored_by_design`]), or rejected.
     fn restore_state(&mut self, state: &StateTree) -> Result<RestoreReport, SnapshotError>;

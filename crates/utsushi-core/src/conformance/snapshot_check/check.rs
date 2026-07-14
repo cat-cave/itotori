@@ -1,4 +1,4 @@
-//! Snapshot-restore conformance check (UTSUSHI-028).
+//! Snapshot-restore conformance check ().
 //!
 //! See [`SnapshotConformanceCheck`] for the wire shape and validation
 //! rules. The check is engine-neutral: it carries two [`SnapshotRef`]s
@@ -46,7 +46,7 @@ pub struct SnapshotConformanceCheck {
 impl SnapshotConformanceCheck {
     /// Validate the check's structural rules. Returns the first
     /// failure; the validator does not accumulate a list of errors (one
-    /// [`ConformanceError`] per call mirrors the UTSUSHI-026 result
+    /// [`ConformanceError`] per call mirrors the result
     /// validator).
     pub fn validate(&self) -> Result<(), ConformanceError> {
         if self.profile != ProfileId::SnapshotRestore {
@@ -143,7 +143,7 @@ impl SnapshotConformanceCheck {
     /// [`crate::snapshot::store::codes::STATE_DRIFT`] code; the runner
     /// uses these to populate the [`crate::ConformanceResult::evidence`]
     /// vec. The diff's `changed_paths()` iterator is sorted (the diff
-    /// validates the sort per UTSUSHI-023); the resulting evidence vec
+    /// validates the sort; the resulting evidence vec
     /// inherits the sort. This is the audit-focus defense for "state
     /// drift reported too vaguely": every drifted path is quoted
     /// verbatim, no summarization, no truncation.
@@ -158,7 +158,7 @@ impl SnapshotConformanceCheck {
     /// Build a deterministic load-bearing [`EvidenceRef::StatePath`]
     /// from the baseline snapshot's first sorted path. The runner uses
     /// this on `Pass` so the [`crate::ConformanceResult`] envelope
-    /// satisfies the UTSUSHI-026 "Pass without evidence" rejection.
+    /// satisfies the "Pass without evidence" rejection.
     /// Returns `None` if the snapshot's state tree is empty (the
     /// substrate rejects this at construction time, so it should not
     /// occur in practice).

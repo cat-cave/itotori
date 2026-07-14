@@ -18,12 +18,12 @@
 //!    group).
 //!  * Each `objButtonOpts` (`obj (1,{81,82},1064)` → rlvm
 //!    `GraphicsObject::SetButtonOpts`) places ONE selectable button; its
-//!    args carry the button's 0-based ordinal (arg 0) and group id (arg 1,
+//!    args carry the button's 0-based ordinal (arg 0) and group id (arg 1
 //!    observed `9`). The COUNT of these before the select is the real
 //!    option count.
 //!  * `select_objbtn` (`sel (0,2,4)`, one group arg) selects over that group.
 //!  * The select result reaches the branch via the scene's OWN bytecode:
-//!    an expression element `intL[0] = store` (`24 0b 5b .. 5d 5c 1e 24 c8`)
+//!    an expression element `intL[0] = store` (`24 0b 5b.. 5d 5c 1e 24 c8`)
 //!    copies the picked index, then `goto_on(intL[0])` (`jmp (0,1,4)`)
 //!    jumps to `targets[index]`. Across the archive the goto_on target
 //!    count is consistently `objButtonOpts_count + 1`.
@@ -198,7 +198,6 @@ fn sweetie_real_bytes_select_objbtn_drivable() {
     let seen_bytes = fs::read(&seen_path).expect("read Seen.txt");
     let (store, shift_jis) = staged(&seen_bytes);
 
-    // ---- (1) Decode the button-object setup ------------------------------
     let objbtn_scenes = scan_objbtn_scenes(&store);
     assert!(
         !objbtn_scenes.is_empty(),
@@ -224,7 +223,6 @@ fn sweetie_real_bytes_select_objbtn_drivable() {
         );
     }
 
-    // ---- (2)+(3) Dispatch + drive: the choice machinery is LIVE ----------
     let engine = ReplayEngine::from_store(store, shift_jis);
 
     // The route-select the pilot needs is a SEEN_START-region graphical
@@ -315,7 +313,6 @@ fn sweetie_real_bytes_select_objbtn_drivable() {
 
     let _ = proven_button_count;
 
-    // ---- Diag: re-render the route-select from the REAL button count -----
     // The route / love-interest pick is the 2-button PAIR (rendered as the
     // side-by-side SpatialChoiceWindow, matching the real
     // route-select-screen-tutorial.png). Pick the smallest-count drivable

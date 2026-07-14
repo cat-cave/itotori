@@ -122,7 +122,7 @@ fn full_module_replay_all_scenes_zero_unknown() {
 }
 
 /// Resolve both corpora, or HARD-FAIL when fewer than two are staged.
-/// Real-bytes coverage is STRICT (no opt-out): `require_real_bytes` panics,
+/// Real-bytes coverage is STRICT (no opt-out): `require_real_bytes` panics
 /// so the `return Vec::new()` below is never reached.
 fn corpora_or_skip(test_name: &str) -> Vec<real_corpus::RealCorpus> {
     let corpora = real_corpus::corpora();
@@ -293,8 +293,8 @@ fn full_module_replay_full_scene_zero_unknown_zero_scene_not_found() {
         step_budget: FULL_BUDGET,
         stop_at_first_pause: false,
     };
-    // Collect + PRINT every corpus's full result first (no truncation),
-    // so a single run surfaces the complete residual across both titles,
+    // Collect + PRINT every corpus's full result first (no truncation)
+    // so a single run surfaces the complete residual across both titles
     // then assert.
     let mut failures: Vec<String> = Vec::new();
     for corpus in &corpora {

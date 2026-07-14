@@ -1,13 +1,13 @@
-//! UTSUSHI-204 — RealLive bytecode element stream decoder.
+//! RealLive bytecode element stream decoder.
 //!
 //! Consumes the AVG32-decompressed bytecode produced by
-//! [`crate::AvgDecompressor::decompress`] (UTSUSHI-203) and lexes it
+//! [`crate::AvgDecompressor::decompress`] () and lexes it
 //! into a typed [`Vec<BytecodeElement>`]. The decoder is a **structural
-//! lexer**: it identifies each element's start byte, its byte length,
+//! lexer**: it identifies each element's start byte, its byte length
 //! and (for the cheap-to-extract header fields) the typed values that
 //! immediately follow the lead byte. It does **not** evaluate
 //! expressions or decode command argument lists semantically — that is
-//! UTSUSHI-205's responsibility. Each element preserves its
+//! the responsibility. Each element preserves its
 //! `raw_bytes` so the follow-up evaluator can consume them without
 //! re-walking the stream.
 //!
@@ -19,16 +19,16 @@
 //! (`RealLive encryption research notes` §4.2)
 //! before being encoded here:
 //!
-//! | Lead byte          | Element                               | Body shape                       |
-//! | ------------------ | ------------------------------------- | -------------------------------- |
-//! | `0x00` / `0x2C`    | [`BytecodeElement::Comma`]            | 1 byte (lead only)               |
-//! | `0x0A`             | [`BytecodeElement::MetaLine`]         | lead + `u16 LE` (3 bytes)        |
-//! | `0x21`             | [`BytecodeElement::MetaEntrypoint`]   | lead + `u16 LE` (3 bytes)        |
-//! | `0x23`             | [`BytecodeElement::Command`]          | 8-byte header + optional `(...)` |
-//! | `0x24`             | [`BytecodeElement::Expression`]       | lead + one expression body       |
-//! | `0x30..=0x34`      | [`BytecodeElement::SelectionOption`]  | 1-byte marker                    |
-//! | `0x40`             | [`BytecodeElement::MetaKidoku`]       | lead + `u16 LE` (3 bytes)        |
-//! | other              | [`BytecodeElement::Textout`]          | textout run (Shift-JIS aware)    |
+//! Lead byte | Element | Body shape
+//! ------------------ | ------------------------------------- | --------------------------------
+//! `0x00` / `0x2C` | [`BytecodeElement::Comma`] | 1 byte (lead only)
+//! `0x0A` | [`BytecodeElement::MetaLine`] | lead + `u16 LE` (3 bytes)
+//! `0x21` | [`BytecodeElement::MetaEntrypoint`] | lead + `u16 LE` (3 bytes)
+//! `0x23` | [`BytecodeElement::Command`] | 8-byte header + optional `(...)`
+//! `0x24` | [`BytecodeElement::Expression`] | lead + one expression body
+//! `0x30..=0x34` | [`BytecodeElement::SelectionOption`] | 1-byte marker
+//! `0x40` | [`BytecodeElement::MetaKidoku`] | lead + `u16 LE` (3 bytes)
+//! other | [`BytecodeElement::Textout`] | textout run (Shift-JIS aware)
 //!
 //! # Partition invariant
 //!
@@ -53,7 +53,7 @@
 //! that walks the documented expression encoding
 //! (`docs/research/reallive-engine.md` §G) for the sole purpose of
 //! determining how many bytes a single expression consumes. It does
-//! not evaluate the expression or build an AST — that is UTSUSHI-205.
+//! not evaluate the expression or build an AST — that is.
 //! The walker is the minimum machinery required to satisfy the
 //! partition invariant for [`BytecodeElement::Expression`] and for
 //! the `(...)` argument list inside [`BytecodeElement::Command`].
@@ -212,7 +212,7 @@ pub enum BytecodeElement {
     /// `0x00` or `0x2C` — comma sentinel separating sibling elements.
     /// 1 byte total.
     Comma {
-        /// The lead byte that introduced this comma (`0x00` or `0x2C`),
+        /// The lead byte that introduced this comma (`0x00` or `0x2C`)
         /// preserved so the value is round-trippable.
         lead_byte: u8,
         /// Byte offset of the lead byte within the decoded input slice.
@@ -221,16 +221,16 @@ pub enum BytecodeElement {
         byte_len: usize,
     },
     /// `0x30..=0x34` — SelectElement option marker
-    /// (`OPTION_COLOUR`/`OPTION_TITLE`/`OPTION_HIDE`/`OPTION_BLANK`/
+    /// (`OPTION_COLOUR`/`OPTION_TITLE`/`OPTION_HIDE`/`OPTION_BLANK`
     /// `OPTION_CURSOR`). The marker is recognised at lex time so it is
     /// not swallowed by the textout default branch; full SelectElement
-    /// option-body decoding is a follow-up node's responsibility.
+    /// option-body decoding is a later work's responsibility.
     SelectionOption {
         /// The lead byte that introduced this option
         /// (`0x30..=0x34`).
         marker: u8,
         /// The full element bytes. Currently this is the 1-byte marker;
-        /// the field is `Vec<u8>` so a follow-up node can extend the
+        /// the field is `Vec<u8>` so a later work can extend the
         /// shape without breaking the API.
         raw_bytes: Vec<u8>,
         /// Byte offset of the lead byte within the decoded input slice.
@@ -382,7 +382,7 @@ fn is_shift_jis_lead(byte: u8) -> bool {
     matches!(byte, 0x81..=0x9F | 0xE0..=0xFC)
 }
 
-/// `true` when `byte` is the lead byte of a structural element (meta,
+/// `true` when `byte` is the lead byte of a structural element (meta
 /// command, expression, comma, selection-option marker). Used by the
 /// textout walker to know when to stop absorbing bytes.
 fn is_structural_lead_byte(byte: u8) -> bool {
@@ -405,7 +405,7 @@ fn is_structural_lead_byte(byte: u8) -> bool {
 /// each variant's `byte_len` field — the caller is responsible for
 /// stepping `pos` forward by `element.byte_len()`.
 ///
-/// Exposed `pub` so the UTSUSHI-208 VM can fetch one element at a
+/// Exposed `pub` so the VM can fetch one element at a
 /// time from a scene's decompressed bytecode without re-walking the
 /// full stream on every step.
 pub fn decode_one_element(
@@ -524,7 +524,7 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<BytecodeElement, BytecodeD
     let module_id = bytes[pos + 2];
     let opcode = u16::from_le_bytes([bytes[pos + 3], bytes[pos + 4]]);
     // Bytes 5..7 are the `u16 LE` argument / target count; byte 7 is the
-    // overload selector (re-derived from rlvm `bytecode.h:CommandElement`,
+    // overload selector (re-derived from rlvm `bytecode.h:CommandElement`
     // research anchor only). For `goto_on`/`goto_case`, `arg_count` is the
     // number of trailing jump targets / cases.
     let arg_count = u16::from_le_bytes([bytes[pos + 5], bytes[pos + 6]]);
@@ -655,10 +655,10 @@ fn decode_command(bytes: &[u8], pos: usize) -> Result<BytecodeElement, BytecodeD
             }
         }
         GotoKind::Select => {
-            // `module_sel` selection commands carry a `{ ... }` option
+            // `module_sel` selection commands carry a `{... }` option
             // block (SelectElement framing) rather than a `(...)` list.
             // `walk_select_block` consumes the optional leading `(param)`
-            // expression and the whole `{ ... }` option block, mirroring
+            // expression and the whole `{... }` option block, mirroring
             // the proven `kaifuu-reallive` `decode_select`.
             cursor = walk_select_block(bytes, pos, cursor)?;
         }
@@ -703,12 +703,12 @@ const SELECT_BLOCK_CLOSE: u8 = 0x7D;
 enum GotoKind {
     /// `goto` / `gosub`: 8-byte header + one `i32` target, no arglist.
     Goto,
-    /// `goto_if` / `goto_unless` / `gosub_if` / `gosub_with`: header +
+    /// `goto_if` / `goto_unless` / `gosub_if` / `gosub_with`: header
     /// `(cond|args)` + one `i32` target.
     GotoIf,
     /// `goto_on`: header + `(expr)` + `{` + `arg_count` × `i32` + `}`.
     GotoOn,
-    /// `goto_case`: header + `(expr)` + `{` + `arg_count` × (`(case)` +
+    /// `goto_case`: header + `(expr)` + `{` + `arg_count` × (`(case)`
     /// `i32`) + `}`.
     GotoCase,
     /// `gosub_with`: header + `(args)` + one `i32` target.
@@ -759,7 +759,7 @@ fn expect_block_close(
 /// Walk a `module_sel` SelectElement command's framing starting at
 /// `header_start` (the first byte past the 8-byte command header):
 /// the optional leading `(param)` expression, then the mandatory
-/// `{ ... }` option block. Returns the index immediately past the
+/// `{... }` option block. Returns the index immediately past the
 /// matching `}` (plus any trailing `\n`+i16 line markers).
 ///
 /// This is a faithful restatement of the proven `kaifuu-reallive`
@@ -886,9 +886,9 @@ fn is_next_string_byte(byte: u8) -> bool {
         || matches!(byte, b' ' | b'?' | b'_' | b'"' | b'\\')
 }
 
-/// Length in bytes of the `NextString` option token beginning at `pos`,
+/// Length in bytes of the `NextString` option token beginning at `pos`
 /// a faithful restatement of `kaifuu-reallive` `next_string_len`: a run
-/// of [`is_next_string_byte`] bytes with Shift-JIS pairs consumed whole,
+/// of [`is_next_string_byte`] bytes with Shift-JIS pairs consumed whole
 /// `"`-quoted spans (backslash-escaped) that ignore the boundary set
 /// until the closing quote, and the embedded `###PRINT(<expr>)`
 /// interpolation form. Returns `0` when `pos` does not begin a string
@@ -943,7 +943,7 @@ fn next_select_string_len(bytes: &[u8], pos: usize) -> usize {
 }
 
 /// Extract the option TEXT byte-strings from a `module_sel`
-/// SelectElement command's `{ ... }` option block.
+/// SelectElement command's `{... }` option block.
 ///
 /// `raw_bytes` is the full command element (8-byte header + optional
 /// leading `(param)` window/selection expression + the `{ options }`
@@ -1130,7 +1130,7 @@ fn walk_command_arg_list(bytes: &[u8], start: usize) -> Result<usize, BytecodeDe
 /// expression: the `\<op>` join and its operand are folded in by the
 /// binary-operator continuation in [`next_arith`], which accepts **any**
 /// op byte after the `\` prefix. The previous implementation hard-coded
-/// the assignment form and rejected any op byte outside `0x14..=0x24`,
+/// the assignment form and rejected any op byte outside `0x14..=0x24`
 /// which desynced on real Sweetie HD scene 2 (an expression element whose
 /// `\<op>` is `0x03`) where the kaifuu decoder — and the general walker —
 /// frame it cleanly. Restricting the `0x24` element to the assignment
@@ -1224,7 +1224,7 @@ fn decode_textout(bytes: &[u8], pos: usize) -> BytecodeElement {
 }
 
 /// Backslash byte (`0x5C`) — the documented operator-introducer
-/// prefix in the expression byte encoding (`\<op>` for binary ops,
+/// prefix in the expression byte encoding (`\<op>` for binary ops
 /// `\<op>` for compound assignments, `\<0x00>` no-op, `\<0x01>`
 /// unary minus).
 const EXPRESSION_BACKSLASH: u8 = 0x5C;
@@ -1565,7 +1565,7 @@ fn next_expression(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeErro
 ///   (3 bytes + recurse). RealLive's compiler may emit line markers
 ///   in the middle of an argument list; the walker absorbs them.
 /// - Shift-JIS lead bytes, printable ASCII letters / digits / spaces
-///   / quotes — string-shaped data (delegated to [`next_string`]).
+///   quotes — string-shaped data (delegated to [`next_string`]).
 /// - `a` or `(` — complex tag (`a<tag>(<data>...)`) — bracketed
 ///   compound entry with optional trailing `\<expression>`.
 /// - Otherwise — fall through to [`next_expression`].
@@ -1609,7 +1609,7 @@ fn skip_data_separators(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecod
     }
 }
 
-/// Length-walk a single command-argument **value** (string / complex /
+/// Length-walk a single command-argument **value** (string / complex
 /// expression) starting at `bytes[pos]`. Unlike [`next_data`] this does
 /// not absorb leading `,`/MetaLine separators — the caller strips those
 /// via [`skip_data_separators`].
@@ -1747,7 +1747,7 @@ pub(crate) fn decode_command_arg_values(
 
 /// `true` when `byte` is one of the lead bytes that introduces a
 /// string-shaped argument (per rlvm `expression.cc::NextData` and
-/// `NextString`): Shift-JIS lead bytes, ASCII letters / digits,
+/// `NextString`): Shift-JIS lead bytes, ASCII letters / digits
 /// space, `?`, `_`, and `"`.
 fn is_data_string_lead(byte: u8) -> bool {
     matches!(
@@ -1766,7 +1766,7 @@ fn is_data_string_lead(byte: u8) -> bool {
 
 /// Walk a string-shaped command argument starting at `bytes[pos]`.
 ///
-/// Mirrors rlvm `expression.cc::NextString`: tracks a `quoted` flag,
+/// Mirrors rlvm `expression.cc::NextString`: tracks a `quoted` flag
 /// absorbs Shift-JIS pairs atomically, recognises the literal
 /// `###PRINT(<expr>)` escape (`9 + 1 + NextExpression(end)`), and
 /// stops at the first non-string lead byte.
@@ -2113,7 +2113,7 @@ mod tests {
     #[test]
     fn decode_command_arg_values_splits_comma_separated_int_args() {
         // `goto`-shaped header (module 0/1, opcode 0) with a 2-int arg
-        // list: `( $FF<7> , $FF<9> )`. The value extractor must return
+        // list: `( $FF<7>, $FF<9> )`. The value extractor must return
         // two Expression-shaped args carrying the literal bytes.
         let mut raw = vec![0x23, 0x00, 0x01, 0x00, 0x00, 0x02, 0x00, 0x00, b'('];
         raw.extend_from_slice(&[0x24, 0xFF]);
@@ -2355,9 +2355,9 @@ mod tests {
         // assign_op = 0x14 (`+=`).
         //
         // Bytes:
-        //   0x24 0x42 0x5b 0x24 0xff 0x00 0x00 0x00 0x00 0x5d    -- $B[$0]
-        //   0x5c 0x14                                              -- `\` `+=`
-        //   0x24 0xff 0x00 0x00 0x00 0x00                          -- $0
+        //   0x24 0x42 0x5b 0x24 0xff 0x00 0x00 0x00 0x00 0x5d -- $B[$0]
+        //   0x5c 0x14 -- `\` `+=`
+        //   0x24 0xff 0x00 0x00 0x00 0x00 -- $0
         let bytes = [
             0x24, 0x42, 0x5b, 0x24, 0xff, 0x00, 0x00, 0x00, 0x00, 0x5d, 0x5c, 0x14, 0x24, 0xff,
             0x00, 0x00, 0x00, 0x00,
@@ -2431,7 +2431,7 @@ mod tests {
     fn shift_jis_lead_followed_by_kidoku_byte_does_not_split_pair() {
         // 0x82 (SJIS lead) followed by 0x40 (would-be MetaKidoku).
         // The pair must be consumed atomically, NOT split as
-        // `Textout(0x82) + MetaKidoku(0x40 ...)`.
+        // `Textout(0x82) + MetaKidoku(0x40...)`.
         let bytes = [0x82, 0x40, 0x0a, 0x05, 0x00];
         let elements = decode_bytecode_stream(&bytes).expect("must decode");
         assert_eq!(elements.len(), 2);
@@ -2560,9 +2560,9 @@ mod tests {
         bytes.extend_from_slice(&[0x23, 0x01, 0x05, 0x78, 0x00, 0x00, 0x00, 0x00]);
         // ExpressionElement: $B[$0] \+= $0
         //
-        //   0x24 0x42 0x5b 0x24 0xff 00 00 00 00 0x5d  -- dest $B[$0]
-        //   0x5c 0x14                                    -- `\` `+=`
-        //   0x24 0xff 00 00 00 00                        -- source $0
+        //   0x24 0x42 0x5b 0x24 0xff 00 00 00 00 0x5d -- dest $B[$0]
+        //   0x5c 0x14 -- `\` `+=`
+        //   0x24 0xff 00 00 00 00 -- source $0
         bytes.extend_from_slice(&[
             0x24, 0x42, 0x5b, 0x24, 0xff, 0x00, 0x00, 0x00, 0x00, 0x5d, 0x5c, 0x14, 0x24, 0xff,
             0x00, 0x00, 0x00, 0x00,

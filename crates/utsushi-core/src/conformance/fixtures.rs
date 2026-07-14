@@ -1,6 +1,6 @@
 //! Conformance fixture builders.
 //!
-//! Public test-aid surface for downstream consumers (UTSUSHI-027/028/029
+//! Public test-aid surface for downstream consumers (
 //! integration tests) that need a well-formed `ConformanceManifest` or
 //! `ConformanceResult` to layer their own assertions on top of. The
 //! builders are deterministic and engine-neutral: no XP3/KAG/RGSS3/JSON
@@ -114,7 +114,7 @@ pub fn synthetic_frame_capture_pass_result() -> ConformanceResult {
 
 /// Synthesise a manifest declaring both the `frame-capture` and
 /// `recording-capture` profiles at the per-profile ceiling. Used by the
-/// UTSUSHI-029 paired manifest+results fixtures.
+/// paired manifest+results fixtures.
 pub fn synthetic_capture_recording_manifest() -> ConformanceManifest {
     ConformanceManifest {
         schema_version: CONFORMANCE_SCHEMA_VERSION.to_string(),
@@ -142,8 +142,8 @@ pub fn synthetic_capture_recording_manifest() -> ConformanceManifest {
     }
 }
 
-/// Synthesise a frame-capture check carrying three frame refs at E2,
-/// all under the managed runtime artifact root, with `frame_index = 0,
+/// Synthesise a frame-capture check carrying three frame refs at E2
+/// all under the managed runtime artifact root, with `frame_index = 0
 /// 1, 2`.
 pub fn synthetic_frame_capture_check_three_artifacts_at_e2() -> FrameCaptureConformanceCheck {
     FrameCaptureConformanceCheck {
@@ -179,7 +179,7 @@ pub fn synthetic_frame_artifact_ref_at_e2(frame_index: u64) -> FrameArtifactRef 
 }
 
 /// Synthesise a recording check with one container ref + three
-/// frame-capture refs, `frame_count=3`, `audio_event_count=4`,
+/// frame-capture refs, `frame_count=3`, `audio_event_count=4`
 /// `duration_ms=1500`, claimed tier E2.
 pub fn synthetic_recording_check_metadata_only() -> RecordingConformanceCheck {
     let frame_refs: Vec<ObservationArtifactRef> = (1..=3u32)
@@ -343,8 +343,6 @@ pub fn synthetic_capture_recording_paired_negative() -> (ConformanceManifest, Ve
     }
     (manifest, results)
 }
-
-// ---- UTSUSHI-028 snapshot conformance fixtures ----
 
 /// Canonical inspectable id used by the snapshot conformance fixtures.
 pub const SNAPSHOT_FIXTURE_INSPECTABLE_ID: &str = "utsushi-fixture";
@@ -683,8 +681,6 @@ mod tests {
         );
     }
 
-    // ---- UTSUSHI-029 capture/recording fixtures ----
-
     #[test]
     fn synthetic_capture_recording_manifest_validates() {
         synthetic_capture_recording_manifest()
@@ -784,8 +780,6 @@ mod tests {
             crate::conformance::ConformanceError::PassAboveManifestCeiling { .. }
         ));
     }
-
-    // ---- UTSUSHI-028 snapshot conformance fixtures ----
 
     #[test]
     fn synthetic_snapshot_check_identical_baseline_and_observed_validates() {

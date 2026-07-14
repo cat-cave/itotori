@@ -1,4 +1,4 @@
-//! UTSUSHI-208 — bytecode VM synthetic acceptance tests.
+//! Bytecode VM synthetic acceptance tests.
 //!
 //! Pins the four acceptance criteria from the spec node:
 //!
@@ -26,12 +26,10 @@ use utsushi_reallive::{
     StepManyOutcome, StepOutcome, Vm, VmError, VmEvent, VmWarning,
 };
 
-// ---------------------------------------------------------------------
 // Synthetic-element constructors. Each builds a single, well-shaped
 // `BytecodeElement` whose `byte_offset` / `byte_len` honour the
-// partition invariant from UTSUSHI-204 — `Scene::new` consumes the
+// partition invariant from — `Scene::new` consumes the
 // `byte_offset` field, and `pc_advance` math depends on `byte_len`.
-// ---------------------------------------------------------------------
 
 fn meta_line(offset: usize, line_number: u16) -> BytecodeElement {
     BytecodeElement::MetaLine {
@@ -65,12 +63,10 @@ fn command(offset: usize, module_type: u8, module_id: u8, opcode: u16) -> Byteco
     }
 }
 
-// ---------------------------------------------------------------------
 // Test RLOperation implementations. These are intentionally tiny:
 // each one returns a single `DispatchOutcome` so the VM test can
 // assert on the pc / stack / queue transition without dragging in a
 // full per-module table.
-// ---------------------------------------------------------------------
 
 struct GotoZero;
 impl RLOperation for GotoZero {
@@ -141,10 +137,8 @@ impl RLOperation for PauseLongOp {
     }
 }
 
-// ---------------------------------------------------------------------
 // Acceptance criterion #0 — `goto +0` infinite loop with `max_steps=100`
 // produces a deterministic `OutOfBudget` outcome (no panic).
-// ---------------------------------------------------------------------
 
 #[test]
 fn synthetic_goto_zero_infinite_loop_terminates_with_out_of_budget() {
@@ -176,17 +170,15 @@ fn synthetic_goto_zero_infinite_loop_terminates_with_out_of_budget() {
     assert_eq!(vm.scene(), 1);
 }
 
-// ---------------------------------------------------------------------
 // Acceptance criterion #1 — gosub → ret returns pc to the post-`gosub`
 // byte.
-// ---------------------------------------------------------------------
 
 #[test]
 fn synthetic_gosub_ret_returns_pc_to_post_gosub_byte() {
     // Scene layout:
-    //   0x00..=0x07  gosub (8 bytes; targets pc=11)
-    //   0x08..=0x0A  meta_line (the "return target" — 3 bytes)
-    //   0x0B..=0x12  ret (8 bytes — the subroutine body)
+    //   0x00..=0x07 gosub (8 bytes; targets pc=11)
+    //   0x08..=0x0A meta_line (the "return target" — 3 bytes)
+    //   0x0B..=0x12 ret (8 bytes — the subroutine body)
     // After gosub-then-ret, pc must be 0x08 (the start of the
     // meta_line).
     let elements = vec![
@@ -234,10 +226,8 @@ fn synthetic_gosub_ret_returns_pc_to_post_gosub_byte() {
     assert_eq!(vm.pc(), 11);
 }
 
-// ---------------------------------------------------------------------
 // Acceptance criterion #2 — cross-scene farcall → rtl returns to the
 // calling scene at the post-`farcall` byte.
-// ---------------------------------------------------------------------
 
 #[test]
 fn synthetic_farcall_rtl_returns_to_calling_scene_at_post_farcall_byte() {
@@ -296,11 +286,9 @@ fn synthetic_farcall_rtl_returns_to_calling_scene_at_post_farcall_byte() {
     }
 }
 
-// ---------------------------------------------------------------------
 // Acceptance criterion #3 — synthetic `pause` longop yields; next
 // step resumes from the paused state; snapshot at suspend → restore →
 // continue with same private state.
-// ---------------------------------------------------------------------
 
 #[test]
 fn synthetic_pause_longop_yields_then_resumes_with_same_private_state() {
@@ -397,10 +385,8 @@ fn synthetic_pause_longop_yields_then_resumes_with_same_private_state() {
     assert_eq!(vm.pc(), 11);
 }
 
-// ---------------------------------------------------------------------
 // Reinforcing tests — empty-stack failure, missing-RLOp fail-soft, and
 // the longop scheduler ordering.
-// ---------------------------------------------------------------------
 
 #[test]
 fn ret_on_empty_stack_returns_typed_empty_stack_error() {

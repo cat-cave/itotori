@@ -364,14 +364,12 @@ fn observed_branch_messages(engine: &ReplayEngine, policy: HeadlessChoicePolicy)
         .collect()
 }
 
-// -------------------------------------------------------------------------
 // RECOGNIZE: the spatial select is the object-button `(0,2,4)` variant. A
 // `select_objbtn` plus foreground `objButtonOpts` bindings creates a real
 // object-button prompt → a graphical modality (≤2 placed buttons → the
 // side-by-side pair). Modality is derived from the REAL SelectionControl
 // signal, NOT the option count; graphical dispatch emits no inline
 // `choice:<idx>` text surfaces.
-// -------------------------------------------------------------------------
 
 #[test]
 fn spatial_select_is_objbtn_and_classifies_graphical_from_the_signal() {
@@ -420,9 +418,7 @@ fn spatial_select_is_objbtn_and_classifies_graphical_from_the_signal() {
     );
 }
 
-// -------------------------------------------------------------------------
 // ACT: selecting side K drives route branch K (not always-first).
-// -------------------------------------------------------------------------
 
 #[test]
 fn selecting_side_k_drives_route_branch_k_not_always_first() {
@@ -441,11 +437,9 @@ fn selecting_side_k_drives_route_branch_k_not_always_first() {
     );
 }
 
-// -------------------------------------------------------------------------
 // RENDER: two option images side-by-side, focused side full-colour vs.
 // unfocused side grayscale; focused side shows its name; side 0 vs side 1
 // render DIFFERENT frames.
-// -------------------------------------------------------------------------
 
 const SCREEN: (u32, u32) = (1280, 720);
 

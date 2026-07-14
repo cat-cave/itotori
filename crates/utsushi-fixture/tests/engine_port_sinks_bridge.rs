@@ -1,4 +1,4 @@
-//! UTSUSHI-224 alpha-gate test for the substrate sinks-bridge: drive a
+//! Alpha-gate test for the substrate sinks-bridge: drive a
 //! 10-tick run of [`utsushi_fixture::FixtureEnginePort`] through the
 //! substrate [`utsushi_core::Runner`] and assert the runner drains text-only
 //! trace observations and capture-time frame emissions per the documented

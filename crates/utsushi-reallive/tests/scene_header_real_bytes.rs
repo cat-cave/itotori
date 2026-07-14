@@ -1,11 +1,11 @@
-//! UTSUSHI-202 real-bytes integration test for the `utsushi-reallive`
+//! Real-bytes integration test for the `utsushi-reallive`
 //! 0x1d0-byte scene header decoder.
 //!
 //! Pins the typed header parser against the Sweetie HD corpus supplied
 //! via `ITOTORI_REAL_GAME_ROOT`
 //! using the documented field values from
 //! `docs/research/reallive-engine.md` §D plus the directory offsets
-//! confirmed by UTSUSHI-201's
+//! confirmed by the
 //! `tests/scene_index_real_bytes.rs`.
 //!
 //! **Multi-game validation status.** Per the itotori operating model
@@ -14,9 +14,9 @@
 //! corpora before its node is merged-complete. The MV/MZ and KAG
 //! corpora are different engines and do not carry a `Seen.txt`.
 //! `utsushi-reallive` is therefore in the same single-RealLive-corpus
-//! position as `kaifuu-reallive` was for KAIFUU-188 and as
-//! `utsushi-reallive` was for UTSUSHI-201: Sweetie HD is the only
-//! RealLive title currently staged. UTSUSHI-202 mirrors that pattern —
+//! position as `kaifuu-reallive` was for and as
+//! `utsushi-reallive` was for: Sweetie HD is the only
+//! RealLive title currently staged. mirrors that pattern —
 //! the node stays `planned` until a second RealLive corpus is sourced
 //! and exercised by an additional
 //! `scene_header_second_reallive_real_bytes.rs` test. The orchestrator
@@ -24,7 +24,7 @@
 //!
 //! Until the second corpus is staged this test is `#[ignore]`-gated and
 //! only runs when `ITOTORI_REAL_GAME_ROOT` is set (the same env
-//! var KAIFUU-188 and UTSUSHI-201 use, so a single export drives every
+//! var use, so a single export drives every
 //! real-bytes integration test in the workspace).
 
 #[path = "support/real_corpus.rs"]
@@ -40,16 +40,16 @@ use utsushi_reallive::{
 // Relative path under the Sweetie HD extraction root that holds the
 // raw `Seen.txt` envelope.
 
-/// Sweetie HD scene #0001 file-offset pin. Verified by UTSUSHI-201's
+/// Sweetie HD scene #0001 file-offset pin. Verified by the
 /// integration test. The scene blob starts here in the `Seen.txt`
 /// envelope.
 const SWEETIE_HD_SCENE_ONE_FILE_OFFSET: u64 = 0x13880;
 
 /// Scene-blob byte length for Sweetie HD scene #0001. Verified by
-/// UTSUSHI-201's integration test.
+/// the integration test.
 const SWEETIE_HD_SCENE_ONE_BLOB_LEN: u32 = 0x5fa;
 
-/// Documented scene-header field values for Sweetie HD scene #0001,
+/// Documented scene-header field values for Sweetie HD scene #0001
 /// drawn from `docs/research/reallive-engine.md` §D.
 const SWEETIE_HD_SCENE_ONE_COMPILER_VERSION: u32 = 110002;
 const SWEETIE_HD_SCENE_ONE_KIDOKU_OFFSET: u32 = 464;
@@ -74,9 +74,9 @@ fn scene1_header_matches_reallive_real_bytes() {
     let bytes = fs::read(&seen_path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
 
-    // Resolve scene #0001's blob window via the UTSUSHI-201 directory
+    // Resolve scene #0001's blob window via the directory
     // parser. We deliberately route through `RealSceneIndex::lookup`
-    // (rather than hard-coding the file offset) so a future UTSUSHI-201
+    // (rather than hard-coding the file offset) so a future
     // regression that silently dropped scene 1 would surface here too.
     let index = RealSceneIndex::parse(&bytes)
         .expect("Sweetie HD Seen.txt must parse through the UTSUSHI-201 directory parser");
@@ -177,7 +177,7 @@ fn scene1_header_matches_reallive_real_bytes() {
 
     // Entrypoint table assertions. The research doc names the 0x34
     // lattice as the entrypoint table and pins each populated slot to
-    // value 0x06. Assert (a) the table is the fixed 100-slot length,
+    // value 0x06. Assert (a) the table is the fixed 100-slot length
     // (b) it is non-empty (table length > 0), and (c) the first
     // entry's value is 0x06 — the documented lattice marker.
     assert_eq!(

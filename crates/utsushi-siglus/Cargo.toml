@@ -13,7 +13,7 @@ description = "UTSUSHI-147 cross-engine substrate-alignment scaffold: pure-Rust 
 # Sharing through the facade is the load-bearing alignment claim, and is
 # proven by `tests/cross_engine_substrate_alignment.rs`.
 utsushi-core = { path = "../utsushi-core" }
-# UTSUSHI-035 runtime-profile boundary fixtures serialize typed admission
+# runtime-profile boundary fixtures serialize typed admission
 # claims / boundary diagnostics as redacted JSON (secret-refs + one-way
 # proof hashes only — never raw key bytes). No `sha2` dep: the one-way
 # proof hash reuses `utsushi_core::port::impl_map::sha256_hex`.
@@ -22,7 +22,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [package.metadata.research-anchor]
-# Research anchor metadata for UTSUSHI-147. The crate intentionally does
+# Research anchor metadata for this crate. The crate intentionally does
 # NOT depend on siglus_rs — neither as a source dep nor a build artifact.
 # This block exists so audit tooling can detect the boundary statement
 # without parsing crate-level docs.
@@ -36,7 +36,7 @@ url = "https://github.com/xmoezzz/siglus_rs"
 # is treated as all-rights-reserved, documentation-only; SiglusExtract is
 # xmoezzz GPLv3. Neither is vendored, linked, or mechanically translated.)
 license = "MPL-2.0"
-# Linkage posture: siglus_rs is NOT linked at any tier (source, object,
+# Linkage posture: siglus_rs is NOT linked at any tier (source, object
 # or distribution). itotori's distribution posture for this crate is the
 # workspace-default `MIT OR Apache-2.0`.
 linkage = "none"

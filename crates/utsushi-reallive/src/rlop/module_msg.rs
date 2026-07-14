@@ -1,9 +1,9 @@
-//! UTSUSHI-209 — RealLive `module_msg` (text / messaging) RLOperation
+//! RealLive `module_msg` (text / messaging) RLOperation
 //! family.
 //!
 //! Implements the text/messaging opcodes RealLive's `module_msg` exposes:
 //! line / paragraph breaks, pause, line-number markers, the selection
-//! prompt, speaker bracket marks, font size, font colour, msg-clear /
+//! prompt, speaker bracket marks, font size, font colour, msg-clear
 //! msg-hide / page / text-window. Each op pushes its observation
 //! through the substrate
 //! [`utsushi_core::substrate::TextSurfaceSink`] — there is no direct
@@ -14,14 +14,14 @@
 //! The `(module_type, module_id)` pair the Sweetie HD corpus exhibits
 //! for the message-control submodule is `(1, 5)` — verified at byte
 //! offset `0x001e` of scene 1 (see
-//! `RealLive encryption research notes` §4.2,
+//! `RealLive encryption research notes` §4.2
 //! "[10] @0x001e Command type=1 id=5 opcode=120"). That pair is pinned
 //! here as [`MSG_MODULE_TYPE`] / [`MSG_MODULE_ID`].
 //!
 //! # Opcode coverage
 //!
 //! The numeric opcode values are restated from Haeleth's public RLDEV
-//! documentation (`https://dev.haeleth.net/rldev.shtml`,
+//! documentation (`https://dev.haeleth.net/rldev.shtml`
 //! `bin/Reallive.kfn` opcode table), re-validated against Sweetie HD
 //! bytes where the corpus exercises them. No rlvm source is vendored or
 //! mechanically translated — each opcode here is a clean-room re-derive
@@ -29,7 +29,7 @@
 //!
 //! 1. RLDEV's published name + arity for the opcode (`[P]`).
 //! 2. The dispatch shape (Advance / Yield / typed sink emission) the
-//!    UTSUSHI-209 spec requires.
+//!    spec requires.
 //! 3. A synthetic test that pins the observable side effect.
 //!
 //! # Substrate-honesty posture
@@ -53,8 +53,8 @@ use utsushi_core::substrate::{EvidenceTier, SinkError, TextLine, TextSurfaceSink
 use super::{DispatchOutcome, ExprValue, LongOp, LongOpId, RLOperation, RlopKey, RlopRegistry};
 use crate::gameexe::NamaeResolver;
 use crate::vm::Vm;
-// `msg.select` lived here briefly (UTSUSHI-209) as a placeholder for the
-// `(1, 5, 120)` Sweetie-HD-observed byte. UTSUSHI-211 moved the
+// `msg.select` lived here briefly () as a placeholder for the
+// `(1, 5, 120)` Sweetie-HD-observed byte. moved the
 // four-variant choice family into `module_sel` at its proper
 // `module_id=2` address; the placeholder was deleted in the same change
 // per the no-legacy-compat rule. (The raw `(1, 5, 120)` byte is a `SYS2`
@@ -68,7 +68,7 @@ pub const MSG_MODULE_TYPE: u8 = 1;
 /// `module_id` byte of the message-control submodule (`msg`). This is
 /// the REAL RealLive semantic id `3` used by the `kaifuu-reallive`
 /// decompiler (`opcode::module_id::MSG`) and validated on the Sweetie HD
-/// / Kanon bytecode. An earlier revision mislabelled it `5` (which is
+/// Kanon bytecode. An earlier revision mislabelled it `5` (which is
 /// actually `SYS2`); that clobbered `sel.select_objbtn` and `msg.pause`
 /// onto the same `(1, 5, 3)` key. Corrected to `3` so `msg` and `sel`
 /// occupy distinct keys.
@@ -327,7 +327,7 @@ pub enum MsgRuntimeWarning {
     ArgShapeMismatch {
         /// Opcode that observed the mismatched arg shape.
         opcode: MsgOpcode,
-        /// Stable string naming what the opcode expected ("int",
+        /// Stable string naming what the opcode expected ("int"
         /// "bytes", etc.).
         expected: &'static str,
     },
@@ -614,7 +614,7 @@ impl MsgRuntime {
     fn end_speaker(&self) {
         // Intentionally empty: `begin_speaker` already wrote the
         // speaker label. The method exists for symmetry so the
-        // per-opcode dispatch path is uniform across name_open /
+        // per-opcode dispatch path is uniform across name_open
         // name_close.
     }
 }
@@ -635,7 +635,7 @@ fn sink_error_reason(err: &SinkError) -> String {
 /// `【` and has a matching `】`; the remainder is the byte run after the
 /// closing bracket (the spoken dialogue, typically opening with `「`).
 /// Returns `None` when there is no leading `【` (narration) or no closing
-/// `】`. The `【` (U+3010) / `】` (U+3011) pair is Shift-JIS `81 79` /
+/// `】`. The `【` (U+3010) / `】` (U+3011) pair is Shift-JIS `81 79`
 /// `81 7A`; here it is matched in the already-decoded UTF-8 string.
 fn split_leading_lenticular(text: &str) -> Option<(&str, &str)> {
     let after_open = text.strip_prefix('【')?;

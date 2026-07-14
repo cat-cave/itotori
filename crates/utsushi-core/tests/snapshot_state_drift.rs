@@ -1,9 +1,9 @@
 //! Integration test for the snapshot substrate's path-keyed diff claim
-//! (UTSUSHI-023 §1 claim 2).
+//! ( §1 claim 2).
 //!
 //! Takes two snapshots that differ at exactly one state path, then asserts
 //! `diff_snapshots` names the drifted path verbatim — not "snapshot did not
-//! match". The same diff drives UTSUSHI-028's per-path conformance
+//! match". The same diff drives the per-path conformance
 //! diagnostics.
 
 use utsushi_core::{

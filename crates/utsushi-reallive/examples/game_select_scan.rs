@@ -133,7 +133,7 @@ fn dump_cross_scene_targets(decompressed: &[utsushi_reallive::DecompressedScene]
             continue;
         }
         jump_cmds += 1;
-        // raw_bytes = 8-byte header + optional "(" arglist ... ; the first arg
+        // raw_bytes = 8-byte header + optional "(" arglist...; the first arg
         // is the target scene id expression.
         let body = &raw_bytes[8.min(raw_bytes.len())..];
         let after_paren = if body.first() == Some(&b'(') {

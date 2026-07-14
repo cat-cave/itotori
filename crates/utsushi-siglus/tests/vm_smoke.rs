@@ -1,4 +1,4 @@
-//! UTSUSHI-034 — Siglus VM text-trace smoke integration test.
+//! Siglus VM text-trace smoke integration test.
 //!
 //! Proves the acceptance criteria:
 //!

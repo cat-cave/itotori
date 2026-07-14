@@ -1,4 +1,4 @@
-//! UTSUSHI-216 real-bytes integration tests for the g00 image-format
+//! Real-bytes integration tests for the g00 image-format
 //! decoder.
 //!
 //! Pins the decoder against the Sweetie HD `$GAME/REALLIVEDATA/g00/`
@@ -30,7 +30,7 @@
 //! 3. `g00_type2_btn000_decodes_header_and_regions` — Sweetie HD's
 //!    `$GAME/REALLIVEDATA/g00/btn000.g00` (type 2) decodes its
 //!    header + region table cleanly. The region rectangles must be
-//!    non-degenerate so the `objLoadRegion` opcode at UTSUSHI-214 can
+//!    non-degenerate so the `objLoadRegion` opcode at can
 //!    consume them.
 //!
 //! # Multi-game validation status
@@ -40,7 +40,7 @@
 //! real engine substrate must be exercised against at least two real
 //! corpora before its node is merged-complete. Sweetie HD is the only
 //! RealLive title currently staged. The g00 module mirrors the pattern
-//! its UTSUSHI-201/202/203 sibling parsers landed: real-bytes pinned
+//! its sibling parsers landed: real-bytes pinned
 //! against the only staged corpus today, with the second-corpus
 //! follow-up tracked as a known gap. The commit message records the
 //! single-corpus posture explicitly.
@@ -60,7 +60,7 @@ use utsushi_reallive::{
 // Relative path under the Sweetie HD extraction root to the
 // `g00` directory.
 
-/// File name of the type-0 BACK.g00 image pinned by the UTSUSHI-216
+/// File name of the type-0 BACK.g00 image pinned by the
 /// acceptance criterion.
 const SWEETIE_HD_TYPE0_BACK_FILENAME: &str = "BACK.g00";
 
@@ -70,7 +70,7 @@ const SWEETIE_HD_TYPE0_BACK_FILENAME: &str = "BACK.g00";
 const SWEETIE_HD_TYPE2_BTN_FILENAME: &str = "btn000.g00";
 
 /// Expected number of `.g00` files in the Sweetie HD corpus (pinned by
-/// the UTSUSHI-216 acceptance block).
+/// the acceptance block).
 const SWEETIE_HD_G00_CORPUS_SIZE: u64 = 2450;
 
 /// Documented BACK.g00 canvas dimensions (header bytes 1-4 LE).
@@ -160,7 +160,7 @@ fn g00_type0_back_decodes() {
 
     // The relative-LZ77 decode must consume the whole payload and fill
     // the exact canvas: BACK.g00 is 1280*720*4 = 3686400 bytes with NO
-    // PayloadLengthMismatch. The pre-fix decoder produced a truncated,
+    // PayloadLengthMismatch. The pre-fix decoder produced a truncated
     // garbage buffer; a zero-warning full fill is only reachable with the
     // correct algorithm.
     assert!(
@@ -316,9 +316,9 @@ fn metadata_err_kind(err: &G00MetadataError) -> &'static str {
     }
 }
 
-/// Real-oracle proof for the UTSUSHI-217/218 strict `validate_g00_lzss_content`
+/// Real-oracle proof for the strict `validate_g00_lzss_content`
 /// (and `probe_g00_pattern_geometry`) helpers: the strict validator adds
-/// invariants (exact outer-length match, fully-consumed payload,
+/// invariants (exact outer-length match, fully-consumed payload
 /// declared-output cross-check) that the tolerant `decode_g00` does NOT
 /// enforce. This walks the whole real corpus and asserts the strict validator
 /// ACCEPTS every real g00 file the decoder decodes **cleanly** (`Ok` with zero
@@ -559,10 +559,10 @@ fn g00_type2_btn000_decodes_header_and_regions() {
     let bytes =
         fs::read(&path).unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
 
-    // The decode call exercises header parsing, region-table parsing,
+    // The decode call exercises header parsing, region-table parsing
     // and the LZSS pixel-stream decode. The acceptance criterion
     // specifically requires the region table to be usable by
-    // `objLoadRegion` (UTSUSHI-214). The header/region-table layer is
+    // `objLoadRegion` (). The header/region-table layer is
     // hand-verified below so the acceptance does not depend on the
     // LZSS payload round-trip matching this exact file's variant.
     let raw_type = bytes[0];

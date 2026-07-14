@@ -1,9 +1,9 @@
 //! Real-bytes opcode CATALOG completion (`utsushi-reallive-full-module-replay`).
 //!
-//! The per-family RLOperation tables ([`crate::rlop::module_msg`],
+//! The per-family RLOperation tables ([`crate::rlop::module_msg`]
 //! [`crate::rlop::module_sys`], …) implement the alpha subset of the
 //! RealLive opcode space with full runtime semantics. This module closes
-//! the remaining coverage gap: it registers EVERY `(module_type,
+//! the remaining coverage gap: it registers EVERY `(module_type
 //! module_id, opcode)` tuple observed on the real bytes of the two proven
 //! corpora (Sweetie HD + Kanon) so a full-scene replay traverses with
 //! ZERO unknown-opcode events.
@@ -11,12 +11,12 @@
 //! # What "catalog" means here
 //!
 //! Completion is **semantic cataloguing**: each tuple is IDENTIFIED — its
-//! semantic family (control-flow / message-window / system / graphics /
+//! semantic family (control-flow / message-window / system / graphics
 //! audio / …) is known and named ([`CatalogOp::family`]) — which is the
 //! prerequisite the rendering engine needs (Utsushi cannot render a
 //! command it cannot identify). The tuples are the exact set the
 //! `kaifuu-reallive` decompiler types on the same real bytes (module_id
-//! is the real semantic key; `module_type` is a compiler-version artifact,
+//! is the real semantic key; `module_type` is a compiler-version artifact
 //! so every tuple is registered under all three observed lattice types
 //! `{0, 1, 2}`).
 //!
@@ -53,7 +53,7 @@ use crate::vm::Vm;
 /// tuple is registered under all three.
 const LATTICE_TYPES: [u8; 3] = [0, 1, 2];
 
-/// A catalogued opcode: identified by its semantic family + `(module_id,
+/// A catalogued opcode: identified by its semantic family + `(module_id
 /// opcode)`, dispatched as a linear-walk [`DispatchOutcome::Advance`].
 ///
 /// The `family` string is the semantic identity the rendering engine keys
@@ -106,7 +106,7 @@ fn family_for(module_id: u8) -> &'static str {
 type CatalogEntry = (u8, u16);
 
 /// The union of every `(module_id, opcode)` observed as an unresolved
-/// command across ALL scenes of both proven corpora (Sweetie HD + Kanon),
+/// command across ALL scenes of both proven corpora (Sweetie HD + Kanon)
 /// harvested by the `dump_all_scene_unknowns` real-bytes enumeration. This
 /// is the evidence-first coverage set — no speculative opcodes.
 const REAL_CATALOG: &[CatalogEntry] = &[
@@ -297,7 +297,7 @@ const REAL_CATALOG: &[CatalogEntry] = &[
     // exactly like the block above.
     (2, 1),
     // NOTE: the sel-family `select_objbtn_cancel` entry (module_id 2, opcode 14)
-    // was removed — it is now a REAL `module_sel` op (`SelectObjbtnCancelOp`,
+    // was removed — it is now a REAL `module_sel` op (`SelectObjbtnCancelOp`
     // registered at module_type 0 / module_id 2 / opcode 14), not a catalog
     // `Advance` fallback. On real bytes that opcode occurs ONLY at module_type 0
     // (Sweetie HD 3×; 0× at types 1/2; 0× in Kanon), which the sel registry now

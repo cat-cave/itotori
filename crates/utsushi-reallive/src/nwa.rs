@@ -1,10 +1,10 @@
-//! UTSUSHI-217 — RealLive `.nwa` BGM / SE container decoder.
+//! RealLive `.nwa` BGM / SE container decoder.
 //!
 //! Decodes the NWA on-disk layout the Sweetie HD `REALLIVEDATA/bgm/`
 //! corpus (28 files) and `REALLIVEDATA/wav/` corpus (73 files) ship.
-//! Per the UTSUSHI-217 spec acceptance criterion, the decoder verifies
-//! header decode and reports the typed `(channels, bps, sample_rate,
-//! sample_count, ...)` shape — actual PCM mixing is **not** required.
+//! Per the spec acceptance criterion, the decoder verifies
+//! header decode and reports the typed `(channels, bps, sample_rate
+//! sample_count,...)` shape — actual PCM mixing is **not** required.
 //!
 //! # On-disk layout (44-byte header)
 //!
@@ -13,20 +13,20 @@
 //! (BGM / SE)", the header is 44 bytes wide:
 //!
 //! ```text
-//! @0x00  u16  channels        (=2 for ASA.nwa)
-//! @0x02  u16  bits_per_sample (=16)
-//! @0x04  u32  sample_rate     (=44100 / 0x0000AC44)
-//! @0x08  i32  compression_mode (-1 = raw PCM, 0..=5 = NWA-compressed
+//! @0x00 u16 channels (=2 for ASA.nwa)
+//! @0x02 u16 bits_per_sample (=16)
+//! @0x04 u32 sample_rate (=44100 / 0x0000AC44)
+//! @0x08 i32 compression_mode (-1 = raw PCM, 0..=5 = NWA-compressed
 //!                              level n; ASA.nwa = 0)
-//! @0x0c  u32  use_runlength   (0 = no run-length wrapping)
-//! @0x10  u32  block_count     (ASA.nwa = 33,074)
-//! @0x14  u32  uncompressed_byte_size  (raw PCM data size, in bytes)
-//! @0x18  u32  compressed_data_size    (file size minus header bytes)
-//! @0x1c  u32  total_sample_count       (= uncompressed_byte_size / (bps/8))
-//! @0x20  u32  samples_per_block        (samples-per-channel per block)
-//! @0x24  u32  last_block_sample_count  (samples in the final, possibly
+//! @0x0c u32 use_runlength (0 = no run-length wrapping)
+//! @0x10 u32 block_count (ASA.nwa = 33,074)
+//! @0x14 u32 uncompressed_byte_size (raw PCM data size, in bytes)
+//! @0x18 u32 compressed_data_size (file size minus header bytes)
+//! @0x1c u32 total_sample_count (= uncompressed_byte_size / (bps/8))
+//! @0x20 u32 samples_per_block (samples-per-channel per block)
+//! @0x24 u32 last_block_sample_count (samples in the final, possibly
 //!                                      short, block)
-//! @0x28  u32  reserved_or_unknown      (observed as 0 in Sweetie HD)
+//! @0x28 u32 reserved_or_unknown (observed as 0 in Sweetie HD)
 //! ```
 //!
 //! After the header, a **per-block offset table** of `block_count`
@@ -40,11 +40,11 @@
 //!
 //! # Spec acceptance vs. real bytes
 //!
-//! The UTSUSHI-217 spec acceptance text pins
-//! "decoder returns 33,818,820 sample frames at 44,100 Hz, 16-bit,
+//! The spec acceptance text pins
+//! "decoder returns 33,818,820 sample frames at 44,100 Hz, 16-bit
 //! 2-channel" for `bgm/ASA.nwa`. The real bytes at `@0x1c` of ASA.nwa
 //! decode to `total_sample_count = 16,933,486` (= `uncompressed_byte_size
-//! / 2` = `33,866,972 / 2`), which is one per-channel sample value at
+//! 2` = `33,866,972 / 2`), which is one per-channel sample value at
 //! every frame. The spec's "33,818,820" was a transcription typo
 //! (`docs/research/reallive-engine.md` `@0x14` annotated the byte
 //! sequence `dc c4 04 02` as `0x020404c4 = 33,818,820` rather than the
@@ -120,9 +120,9 @@ pub enum NwaDecodeError {
 /// Per the public format docs, `-1` is the raw-PCM sentinel; `0..=5`
 /// are the NWA-compressed levels. Sweetie HD's `bgm/ASA.nwa` carries
 /// `compression_mode = 0` (level-0 NWA compression). The actual sample
-/// decompression for `Compressed { .. }` is **not** implemented in
-/// UTSUSHI-217 (the spec says "decoder verifies header decode and emits
-/// metadata") — the typed variant is the surface a follow-up node can
+/// decompression for `Compressed {.. }` is **not** implemented in
+/// (the spec says "decoder verifies header decode and emits
+/// metadata") — the typed variant is the surface a later work can
 /// extend without changing the file format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
@@ -196,7 +196,7 @@ pub struct NwaHeader {
     pub compressed_data_size: u32,
     /// `@0x1c` — total int16 (or int8) sample count, across all
     /// channels (= 16,933,486 for ASA.nwa). For a stereo file the
-    /// per-channel sample frame count is `total_sample_count /
+    /// per-channel sample frame count is `total_sample_count
     /// channels`.
     pub total_sample_count: u32,
     /// `@0x20` — samples per block (per channel).
@@ -228,7 +228,7 @@ impl NwaHeader {
 
 /// Decode the 44-byte NWA header from `bytes`.
 ///
-/// The decoder validates `channels != 0`, `bits_per_sample in {8, 16}`,
+/// The decoder validates `channels != 0`, `bits_per_sample in {8, 16}`
 /// and `compression_mode in -1..=5`. Every other field is recorded
 /// verbatim — a wrong-looking `block_count` would surface at the
 /// caller's sample-frame computation, not as a hard decoder error.
@@ -296,7 +296,7 @@ pub struct NwaFile<'a> {
     pub block_offsets: Vec<u32>,
     /// Borrowed view of the entire file bytes — useful for downstream
     /// callers that want to decode the PCM payload themselves. The
-    /// header is the prefix; the per-block table follows; the PCM /
+    /// header is the prefix; the per-block table follows; the PCM
     /// compressed payload tails it.
     pub bytes: &'a [u8],
 }
@@ -557,7 +557,7 @@ mod tests {
 
     #[test]
     fn audit_focus_raw_pcm_path_does_not_skip_offset_table_when_compression_active() {
-        // Audit-focus pin (UTSUSHI-217 spec): "Treating NWA as raw
+        // Audit-focus pin : "Treating NWA as raw
         // bytes (i.e. skipping the offset table)". When the compression
         // mode is `Compressed`, the decoder MUST read the per-block
         // table. We pin the surface by checking the payload-start

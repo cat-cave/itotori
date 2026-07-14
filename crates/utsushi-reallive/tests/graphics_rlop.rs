@@ -1,4 +1,4 @@
-//! UTSUSHI-215 integration tests for the graphics RLOperation family
+//! Integration tests for the graphics RLOperation family
 //! (`module_grp` + `module_obj_management` + `module_obj_fg_bg`).
 //!
 //! Pins the alpha-tier acceptance criteria from the spec:
@@ -21,7 +21,7 @@
 //! engine substrate must be exercised against at least two real corpora
 //! before its node is merged-complete. Sweetie HD is the only RealLive
 //! title currently staged. This
-//! crate's UTSUSHI-201/202/203 sibling parsers landed under the
+//! crate's sibling parsers landed under the
 //! same single-corpus posture, and the spec node explicitly accepts
 //! the multi-game gap. The commit message records the single-corpus
 //! posture explicitly.

@@ -40,13 +40,13 @@ pub trait TextSurfaceSink: Send + Sync {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextLine {
-    /// Stable per-run identifier. Used by trace conformance (UTSUSHI-027) to
+    /// Stable per-run identifier. Used by trace conformance () to
     /// assert ordering.
     pub line_id: String,
     /// `E0` (no runtime ran, e.g. static text) or `E1` (runtime trace).
     /// Higher tiers are rejected by the sink.
     pub evidence_tier: EvidenceTier,
-    /// The observed text. UTF-8, post-decoding,
+    /// The observed text. UTF-8, post-decoding
     /// post-engine-text-substitution.
     pub text: String,
     /// Optional speaker label observed by the runtime (e.g. RealLive name
@@ -58,14 +58,14 @@ pub struct TextLine {
     /// `#COLOR_TABLE` row). `None` = the surface's default glyph colour.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<[u8; 3]>,
-    /// Optional engine-supplied surface label (e.g. "ADV", "NVL", "Choice",
+    /// Optional engine-supplied surface label (e.g. "ADV", "NVL", "Choice"
     /// "Database.terms"). Engine-neutral string; the sink does not interpret.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_surface: Option<String>,
     /// Bridge-unit linkage. Required by trace conformance bridge-ref checks.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bridge_ref: Option<ObservationBridgeRef>,
-    /// Optional asset id this text came from. Uses the UTSUSHI-020 `AssetId`
+    /// Optional asset id this text came from. Uses the `AssetId`
     /// shape, so it is engine-neutral and host-path-free by construction.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_asset: Option<AssetId>,

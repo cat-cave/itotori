@@ -91,7 +91,7 @@ fn run_cli_with_registry(
             replay::run_replay_command(&tail, registry)?;
         }
         Some("replay-validate") => {
-            // UTSUSHI-227 — sibling of `replay` that drives the same
+            // sibling of `replay` that drives the same
             // pipeline and asserts an expected substring lands in at
             // least one captured TextLine body. Skips the leading
             // `replay-validate` argv slot.
@@ -99,7 +99,7 @@ fn run_cli_with_registry(
             replay_validate::run_replay_validate_command(&tail, registry)?;
         }
         Some("render-validate") => {
-            // ALPHA-006b — rasterized localized screenshot through the
+            // rasterized localized screenshot through the
             // substrate frame sink at E2. The rasterized successor to
             // the text-only `replay-validate` capture surface.
             let tail: Vec<String> = args.iter().skip(1).cloned().collect();
@@ -108,7 +108,7 @@ fn run_cli_with_registry(
         Some("structure") => {
             // Narrative-structure exporter — the UTSUSHI-side producer of the
             // `utsushi.narrative-structure.v1` artifact the itotori whole-game
-            // localize driver consumes. Deriving the real scene-dispatch order +
+            // localize driver consumes. Deriving the real scene-dispatch order
             // per-scene play-order streams needs the replay runtime (utsushi's
             // job); `kaifuu extract --whole-seen` produces the BRIDGE, this
             // produces the STRUCTURE, and the driver consumes them separately.
@@ -136,10 +136,10 @@ fn run_cli_with_registry(
             rpgmaker_mv_capture::run_rpgmaker_mv_capture_command(&tail)?;
         }
         Some("mvmz-runtime-proof") => {
-            // UTSUSHI-102 — the load-bearing MV/MZ launched-runtime observation
-            // proof. CONSUMES the UTSUSHI-006 browser trace-probe output (an
+            // the load-bearing MV/MZ launched-runtime observation
+            // proof. CONSUMES the browser trace-probe output (an
             // actual launched Chromium `--dump-dom`) + the static fixture source
-            // + optional UTSUSHI-065 screenshot evidence, and emits a strict
+            // optional screenshot evidence, and emits a strict
             // E1-vs-static proof verdict. Exits non-zero when the trace could
             // not satisfy E1. Owns its own flag parsing; skips the leading
             // `mvmz-runtime-proof` argv slot.
@@ -147,11 +147,11 @@ fn run_cli_with_registry(
             mvmz_runtime_proof::run_mvmz_runtime_proof_command(&tail)?;
         }
         Some("mvmz-patched-runtime-proof") => {
-            // UTSUSHI-119 — the CAPSTONE MV/MZ PATCHED-output launched-runtime
-            // observation proof. CONSUMES the UTSUSHI-006 trace over the PATCHED
+            // the CAPSTONE MV/MZ PATCHED-output launched-runtime
+            // observation proof. CONSUMES the trace over the PATCHED
             // fixture (real launched Chromium `--dump-dom` of the game AFTER a
             // Kaifuu patch-back), the Kaifuu PatchResult (attests the patched
-            // output by hash), and the UTSUSHI-102 alpha proof, and emits a
+            // output by hash), and the alpha proof, and emits a
             // strict verdict that the observed runtime text is the TRANSLATION
             // the PatchResult attests to — not the pre-patch original. Exits
             // non-zero when the trace could not satisfy the patched E1 proof.
@@ -160,9 +160,9 @@ fn run_cli_with_registry(
             mvmz_patched_runtime_proof::run_mvmz_patched_runtime_proof_command(&tail)?;
         }
         Some("review-package") => {
-            // UTSUSHI-010 — the MV/MZ alpha-proof CAPSTONE: aggregate the
-            // merged proof surfaces (KAIFUU patch artifact, UTSUSHI-006 +
-            // UTSUSHI-033 runtime trace evidence, UTSUSHI-065 screenshot
+            // the MV/MZ alpha-proof CAPSTONE: aggregate the
+            // merged proof surfaces (KAIFUU patch artifact,
+            // runtime trace evidence, screenshot
             // artifact refs) into one reviewer-facing evidence manifest. Owns
             // its own flag parsing because it carries boolean host-capability
             // flags (`--no-browser` / `--no-screenshot`) that the value-flag
@@ -172,8 +172,8 @@ fn run_cli_with_registry(
             run_review_package_command(&tail)?;
         }
         Some("coverage-export") => {
-            // UTSUSHI-070 — export the UTSUSHI-009 branch-coverage read model +
-            // UTSUSHI-069 gap summaries as a STABLE JSON + Markdown artifact for
+            // export the branch-coverage read model
+            // gap summaries as a STABLE JSON + Markdown artifact for
             // alpha reports + offline review. Takes an INJECTED `--generated-at`
             // (never a clock read) so the outputs are deterministic and
             // snapshot-testable. DATA-ONLY: launches no runtime host. Owns its
@@ -186,7 +186,7 @@ fn run_cli_with_registry(
             conform::run_conform_command(&tail)?;
         }
         Some("trace-kag") => {
-            // UTSUSHI-008 — KAG command-trace probe for plaintext /
+            // KAG command-trace probe for plaintext
             // already-extracted KiriKiri/KAG `.ks` scripts. Owns its own flag
             // parsing (single positional script path + `--output`). Skips the
             // leading `trace-kag` argv slot. Plaintext ONLY — never opens or
@@ -244,13 +244,13 @@ fn run_cli_with_registry(
     Ok(())
 }
 
-/// UTSUSHI-010 review-package manifest export.
+/// review-package manifest export.
 ///
-/// Reads the three MV/MZ proof surfaces from disk (KAIFUU patch export,
-/// UTSUSHI-065 runtime evidence report, optional UTSUSHI-033 replay-pack trace)
+/// Reads the three MV/MZ proof surfaces from disk (KAIFUU patch export
+/// runtime evidence report, optional replay-pack trace)
 /// and writes the aggregated review-package manifest. Host capabilities default
 /// to a fully-supported alpha host; `--no-browser` / `--no-screenshot` model an
-/// unsupported host so the manifest records screenshot evidence as an honest,
+/// unsupported host so the manifest records screenshot evidence as an honest
 /// non-silent limitation + semantic diagnostic rather than omitting it.
 fn run_review_package_command(tail: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     const VALUE_FLAGS: &[&str] = &[

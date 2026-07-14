@@ -6,7 +6,7 @@
 //! The recording carries metadata only — no raw bytes ever. Frame bytes
 //! and the container ride through [`ObservationArtifactRef`] under
 //! [`crate::RUNTIME_ARTIFACT_URI_ROOT`]; audio events are summarised by
-//! count (matching the UTSUSHI-022 audio-event posture: E0 ceiling,
+//! count (matching the audio-event posture: E0 ceiling
 //! metadata only).
 
 use serde::{Deserialize, Serialize};
@@ -27,7 +27,7 @@ pub struct DurationRangeMs {
     pub max: u64,
 }
 
-/// Recording metadata. Narrow on purpose: no per-event URIs, no codec,
+/// Recording metadata. Narrow on purpose: no per-event URIs, no codec
 /// no mix levels — nothing that looks like playback evidence.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,10 +38,10 @@ pub struct RecordingMetadata {
     pub frame_count: u32,
     /// Number of `AudioEventSink` events captured during the recording.
     /// Metadata only — the events themselves live in the runtime
-    /// evidence report under the existing UTSUSHI-022 shape.
+    /// evidence report under the existing shape.
     pub audio_event_count: u32,
     /// Recording duration in milliseconds. Monotonic from the runtime
-    /// clock (UTSUSHI-021).
+    /// clock ().
     pub duration_ms: u64,
     /// Overall evidence tier the adapter claims for this recording.
     pub evidence_tier: EvidenceTier,

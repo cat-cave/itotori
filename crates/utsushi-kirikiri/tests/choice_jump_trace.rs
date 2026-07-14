@@ -1,10 +1,10 @@
-//! UTSUSHI-037 acceptance — deterministic choice + jump replay trace.
+//! Acceptance — deterministic choice + jump replay trace.
 //!
 //! Fixture is synthetic, authored, CC0 (`fixtures/choices_and_jumps.ks`).
 //! Asserts a `[link]…[endlink]` choice menu presents both options with the
 //! `*label` each jumps to, that the deterministic selection policy picks a
 //! reproducible option, and that the chosen option's jump lands on the right
-//! branch (`selection 0 -> *left`, `selection 1 -> *right`). Same script +
+//! branch (`selection 0 -> *left`, `selection 1 -> *right`). Same script
 //! same selections => byte-identical JSON.
 
 use std::path::PathBuf;

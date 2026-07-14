@@ -1,6 +1,6 @@
-//! UTSUSHI-205 real-bytes integration test.
+//! Real-bytes integration test.
 //!
-//! Drives the UTSUSHI-201 → 202 → 203 → 204 → 205 chain end-to-end
+//! Drives the → 202 → 203 → 204 → 205 chain end-to-end
 //! against the Sweetie HD corpus, lifts the 20
 //! [`utsushi_reallive::BytecodeElement::Expression`] elements out of
 //! the scene #0001 decompressed bytecode, and runs
@@ -20,7 +20,7 @@
 //! [`utsushi_reallive::VarBanks`] snapshot so the test surfaces any
 //! panic / infinite-loop regression at evaluation time. The per-
 //! expression AST kinds + evaluation outcomes are emitted via
-//! `eprintln!` so CI logs preserve the trace for follow-up nodes.
+//! `eprintln!` so CI logs preserve the trace for later work.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -41,7 +41,7 @@ use utsushi_reallive::{
 // upstream fixture surfaces in both tests.
 
 /// Documented Expression-element count for scene #0001. Pinned by the
-/// UTSUSHI-204 real-bytes test ("20 Expressions" in the per-variant
+/// real-bytes test ("20 Expressions" in the per-variant
 /// histogram).
 const SCENE_ONE_EXPECTED_EXPRESSION_COUNT: usize = 20;
 
@@ -64,7 +64,7 @@ fn scene1_expression_elements_parse_and_evaluate() {
     let bytes = fs::read(&seen_path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
 
-    // Walk the UTSUSHI-201 → 202 → 203 → 204 chain to recover the
+    // Walk the → 202 → 203 → 204 chain to recover the
     // decompressed scene-1 bytecode and lex its element stream.
     let index = RealSceneIndex::parse(&bytes)
         .expect("Sweetie HD Seen.txt must parse through the UTSUSHI-201 directory parser");
@@ -107,7 +107,7 @@ fn scene1_expression_elements_parse_and_evaluate() {
     let elements = decode_bytecode_stream(&decompressed)
         .expect("Sweetie HD scene 1 decompressed bytes must lex (UTSUSHI-204 anchor)");
 
-    // === UTSUSHI-205 surface under test ===
+    // === surface under test ===
     let expression_raw_bytes: Vec<(usize, Vec<u8>)> = elements
         .iter()
         .filter_map(|element| match element {

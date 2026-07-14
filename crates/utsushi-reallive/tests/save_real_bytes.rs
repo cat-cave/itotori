@@ -1,4 +1,4 @@
-//! UTSUSHI-218 — real-bytes integration test for the AVG-derived save
+//! Real-bytes integration test for the AVG-derived save
 //! format against Sweetie HD's `SAVEDATA/` directory.
 //!
 //! This file is **opt-in and env-gated**: the private-corpus assertions
@@ -109,9 +109,7 @@ fn save_real_bytes_are_ignored_without_private_corpus() {
     );
 }
 
-// ---------------------------------------------------------------------
 // `REALLIVE.sav` — system save (`AVG_SYSTEM_SAVE`).
-// ---------------------------------------------------------------------
 
 fn verify_system_save() {
     let Some(bytes) = load_required("REALLIVE.sav") else {
@@ -178,9 +176,7 @@ fn save_real_bytes_system_save_round_trips() {
     verify_system_save();
 }
 
-// ---------------------------------------------------------------------
 // `save999.sav` — global save (`AVG_GLOBAL_SAVE`).
-// ---------------------------------------------------------------------
 
 fn verify_global_save() {
     let Some(bytes) = load_required("save999.sav") else {
@@ -221,9 +217,7 @@ fn save_real_bytes_global_save_round_trips() {
     verify_global_save();
 }
 
-// ---------------------------------------------------------------------
 // `read.sav` — read flags (Shift-JIS title at offset 0x18).
-// ---------------------------------------------------------------------
 
 fn verify_read_flags() {
     let Some(bytes) = load_required("read.sav") else {

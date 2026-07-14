@@ -376,7 +376,7 @@ fn assignop_blast_radius_and_rlvm_parity_on_real_bytes() {
 }
 
 /// (3) Regression coverage: pin the corrected assignment-driven state
-/// fingerprint per corpus AND prove the OLD table diverges (proof-of-catch),
+/// fingerprint per corpus AND prove the OLD table diverges (proof-of-catch)
 /// plus pin the entry-scene branch-following outcomes.
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT + _2"]

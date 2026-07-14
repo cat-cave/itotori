@@ -5,9 +5,7 @@ use crate::looks_like_local_path;
 use crate::port::impl_map::diagnostics::REDACTED_LOCAL_PATH_TOKEN;
 use crate::port::impl_map::json_schema::build_schema;
 
-// ---------------------------------------------------------------------------
 // Builders for well-formed and negative fixtures.
-// ---------------------------------------------------------------------------
 
 fn baseline_map() -> ImplementationMap {
     ImplementationMap {
@@ -48,9 +46,7 @@ fn baseline_map() -> ImplementationMap {
     }
 }
 
-// ---------------------------------------------------------------------------
 // 7.1 Positive shape.
-// ---------------------------------------------------------------------------
 
 #[test]
 fn validates_well_formed_engine_neutral_impl_map() {
@@ -194,9 +190,7 @@ fn accepts_reference_behavior_no_reference_comparison_as_warning_not_error() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // 7.2 Negative shape — one test per error variant.
-// ---------------------------------------------------------------------------
 
 fn assert_has_error<F: Fn(&ImplMapError) -> bool>(errors: &[ImplMapError], pred: F, label: &str) {
     assert!(
@@ -778,9 +772,7 @@ fn rejects_port_id_with_uppercase() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // 7.3 Multi-error aggregation.
-// ---------------------------------------------------------------------------
 
 #[test]
 fn returns_all_validation_errors_in_one_pass_for_a_map_with_three_distinct_violations() {
@@ -809,9 +801,7 @@ fn returns_all_validation_errors_in_one_pass_for_a_map_with_three_distinct_viola
     );
 }
 
-// ---------------------------------------------------------------------------
 // 7.4 Diagnostic redaction.
-// ---------------------------------------------------------------------------
 
 #[test]
 fn error_display_strings_pass_looks_like_local_path_filter() {
@@ -856,9 +846,7 @@ fn error_display_strings_pass_looks_like_local_path_filter() {
     }
 }
 
-// ---------------------------------------------------------------------------
 // 7.5 JSON schema parity.
-// ---------------------------------------------------------------------------
 
 #[test]
 fn json_schema_under_roadmap_validates_the_example_fixture() {
@@ -896,9 +884,7 @@ fn json_schema_rejects_an_otherwise_well_formed_map_missing_fixture_hash() {
     let _ = validate(&map).expect_err("map with empty hash must fail");
 }
 
-// ---------------------------------------------------------------------------
 // 7.6 Cross-validation against PortManifest.
-// ---------------------------------------------------------------------------
 
 fn matching_port_manifest() -> crate::port::PortManifest {
     crate::port::PortManifest {
@@ -962,9 +948,7 @@ fn validate_against_manifest_flags_capability_in_map_absent_from_manifest() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // 7.7 verify_fixture_hashes helper.
-// ---------------------------------------------------------------------------
 
 struct InMemoryStore {
     by_id: std::collections::HashMap<String, Vec<u8>>,
@@ -1020,9 +1004,7 @@ fn verify_fixture_hashes_returns_mismatch_when_store_bytes_diverge_from_declared
     assert_eq!(mismatches[0].observed_hash, sha256_hex(observed_bytes));
 }
 
-// ---------------------------------------------------------------------------
 // 7.8 Engine-neutrality discipline.
-// ---------------------------------------------------------------------------
 
 #[test]
 fn schema_serialization_contains_no_engine_specific_field_names() {
@@ -1088,7 +1070,6 @@ fn walk(value: &serde_json::Value, out: &mut Vec<String>) {
     }
 }
 
-// ---------------------------------------------------------------------------
 // JSON Schema artifact drift guard. The schema document committed at
 // `roadmap/impl-map.schema.json` must be semantically equal to
 // `build_schema()` — i.e. the parsed JSON Value of the committed file equals
@@ -1099,7 +1080,6 @@ fn walk(value: &serde_json::Value, out: &mut Vec<String>) {
 // formatter own surface shape. Set `BLESS_IMPL_MAP_SCHEMA=1` to regenerate
 // the artifact (pretty-printed) when intentionally bumping the schema; the
 // formatter will reflow it on the next `vp check --fix`.
-// ---------------------------------------------------------------------------
 
 #[test]
 fn roadmap_schema_artifact_matches_build_schema_output() {
@@ -1128,9 +1108,7 @@ fn roadmap_schema_artifact_matches_build_schema_output() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // JSON fixture corpus parity tests.
-// ---------------------------------------------------------------------------
 
 mod corpus {
     use super::*;

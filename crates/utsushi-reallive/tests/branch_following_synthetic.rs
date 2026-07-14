@@ -67,10 +67,10 @@ fn jmp_bare(offset: usize, opcode: u16) -> BytecodeElement {
 /// Two-scene store exercising every branch-following transfer kind.
 fn two_scene_engine() -> ReplayEngine {
     // Scene 1 (opcodes: 5=gosub, 12=farcall, 0=goto, 10=ret):
-    //   @0  gosub(32)      → push subroutine frame, jump to 32
-    //   @12 farcall(2)     → push far-call frame, jump to scene 2 @0
-    //   @28 goto(40)       → jump to bytecode_len (40) ⇒ EndOfScene
-    //   @32 ret            → pop subroutine frame, return to @12
+    //   @0 gosub(32) → push subroutine frame, jump to 32
+    //   @12 farcall(2) → push far-call frame, jump to scene 2 @0
+    //   @28 goto(40) → jump to bytecode_len (40) ⇒ EndOfScene
+    //   @32 ret → pop subroutine frame, return to @12
     let scene1 = Scene::new(
         1,
         vec![
@@ -248,9 +248,9 @@ fn goto_case(offset: usize, discriminant: i32, cases: &[(Option<i32>, u32)]) -> 
 /// → last target) would instead take case index 1 into an infinite spin.
 #[test]
 fn goto_case_selects_target_by_matched_case_expression() {
-    // @0   goto_case(7) { (7)->@100 ; (5)->@200 }
-    // @100 goto(300)  → 300 >= bytecode_len (212) ⇒ EndOfScene   (matched)
-    // @200 goto(200)  → self-loop ⇒ BudgetExhausted              (index sink)
+    // @0 goto_case(7) { (7)->@100; (5)->@200 }
+    // @100 goto(300) → 300 >= bytecode_len (212) ⇒ EndOfScene (matched)
+    // @200 goto(200) → self-loop ⇒ BudgetExhausted (index sink)
     let scene = Scene::new(
         1,
         vec![
@@ -414,8 +414,8 @@ fn nested_event_gated_spin_unwinds_to_caller_via_depth_scoped_break() {
     // A spin INSIDE a far-called scene: the model must unwind the stuck
     // frame (suppress its transfers until it `rtl`s) and RESUME normal
     // branch-following in the caller, which then reaches EndOfScene.
-    //   scene1: @0 farcall(2) → scene2 ; @16 goto(28) → EndOfScene
-    //   scene2: @0 goto(0) self-loop ; @12 rtl → return to scene1 @16
+    //   scene1: @0 farcall(2) → scene2; @16 goto(28) → EndOfScene
+    //   scene2: @0 goto(0) self-loop; @12 rtl → return to scene1 @16
     let scene1 = Scene::new(
         1,
         vec![jmp_scene_arg(0, 12, 2), jmp_targeted(16, 0, vec![28])],
@@ -447,7 +447,7 @@ fn null_scene_sentinel_farcall_falls_through_deterministically() {
     // SceneNotFound), letting the scene run to its natural end. This is the
     // "absent-but-guarded" case, DISTINCT from the event-model spin break:
     // no fingerprint spin is involved (modeled_events stays 0).
-    //   scene1: @0 farcall(0) → fall through ; @16 goto(28) → EndOfScene
+    //   scene1: @0 farcall(0) → fall through; @16 goto(28) → EndOfScene
     let scene = Scene::new(
         1,
         vec![jmp_scene_arg(0, 12, 0), jmp_targeted(16, 0, vec![28])],

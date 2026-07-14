@@ -1,4 +1,4 @@
-//! Snapshot envelope size class (UTSUSHI-223).
+//! Snapshot envelope size class ().
 //!
 //! Per-port declaration of how big the serialized snapshot may grow. The
 //! substrate exposes three tiers; the runner enforces the declared tier
@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 pub enum SnapshotEnvelope {
     /// 16 KiB. Fixture / smoke shapes only.
     Small,
-    /// 256 KiB. Single-engine save state — RealLive `REALLIVE.sav`,
+    /// 256 KiB. Single-engine save state — RealLive `REALLIVE.sav`
     /// MV/MZ `www/save/file*.rpgsave`.
     Medium,
     /// 4 MiB. Full-engine state including asset / layer references at

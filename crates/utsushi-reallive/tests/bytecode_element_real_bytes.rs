@@ -1,9 +1,9 @@
-//! UTSUSHI-204 real-bytes integration test for the bytecode element
+//! Real-bytes integration test for the bytecode element
 //! stream decoder.
 //!
 //! Pins [`utsushi_reallive::decode_bytecode_stream`] against the
-//! Sweetie HD corpus supplied via `ITOTORI_REAL_GAME_ROOT`. The full UTSUSHI-201 →
-//! UTSUSHI-202 → UTSUSHI-203 → UTSUSHI-204 chain is exercised
+//! Sweetie HD corpus supplied via `ITOTORI_REAL_GAME_ROOT`. The full →
+//! → → chain is exercised
 //! end-to-end so that a regression earlier in the chain surfaces here
 //! as a chain-level diagnostic.
 //!
@@ -11,8 +11,8 @@
 //! (`docs/dev/orchestration-operating-model.md`), a parser that targets a
 //! real engine substrate must be exercised against at least two real
 //! corpora before its node is merged-complete. Sweetie HD is the only
-//! RealLive title currently staged. UTSUSHI-204 mirrors the pattern
-//! its UTSUSHI-201/202/203 predecessors landed: the node stays
+//! RealLive title currently staged. mirrors the pattern
+//! its predecessors landed: the node stays
 //! `planned` until a second RealLive corpus is sourced and exercised
 //! by an additional `bytecode_element_second_reallive_real_bytes.rs`
 //! test.
@@ -37,13 +37,13 @@ use utsushi_reallive::{
 /// Documented decompressed-output values for Sweetie HD scene #0001.
 /// Sourced from
 /// `RealLive encryption research notes` §1 and
-/// re-validated by the UTSUSHI-203 real-bytes test.
+/// re-validated by the real-bytes test.
 const SWEETIE_HD_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE: u32 = 1660;
 
 /// Acceptance-criterion bounds on the element count for the 1660-byte
 /// decompressed payload.
 ///
-/// The UTSUSHI-204 dag node lists "≤ 200, ≥ 50 elements based on the
+/// The dag node lists "≤ 200, ≥ 50 elements based on the
 /// 1660-byte size and typical RealLive density" as a target. The
 /// real-bytes evidence under `REALLIVEDATA/Seen.txt` produces
 /// 235 elements: 145 MetaLines (matching the 146 `0x0a` opener bytes
@@ -79,8 +79,8 @@ fn scene1_element_stream_partition_and_first_command_header() {
     let bytes = fs::read(&seen_path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
 
-    // Walk through the UTSUSHI-201 -> UTSUSHI-202 -> UTSUSHI-203 chain
-    // before exercising the UTSUSHI-204 lexer.
+    // Walk through the -> -> chain
+    // before exercising the lexer.
     let index = RealSceneIndex::parse(&bytes)
         .expect("Sweetie HD Seen.txt must parse through the UTSUSHI-201 directory parser");
     let entry = index
@@ -126,13 +126,13 @@ fn scene1_element_stream_partition_and_first_command_header() {
         "decompressed payload must be the documented 1660 bytes",
     );
 
-    // === UTSUSHI-204 surface under test ===
+    // === surface under test ===
     let elements = decode_bytecode_stream(&decompressed)
         .expect("Sweetie HD scene 1 decompressed bytes must lex into a BytecodeElement stream");
 
     let element_count = elements.len();
     // -- Per-variant element histogram (eprintln so CI logs surface
-    //    the counts for follow-up nodes). --
+    //    the counts for later work). --
     let mut counts: std::collections::BTreeMap<&'static str, usize> =
         std::collections::BTreeMap::new();
     for element in &elements {
@@ -142,8 +142,8 @@ fn scene1_element_stream_partition_and_first_command_header() {
         "[UTSUSHI-204 real-bytes] Sweetie HD scene #0001: {element_count} elements (range {ELEMENT_COUNT_MIN}..={ELEMENT_COUNT_MAX} expected) \
          — per-variant counts {counts:?}",
     );
-    // Surface the selection-option offsets for follow-up nodes
-    // (UTSUSHI-205 will decide whether they are real SelectElement
+    // Surface the selection-option offsets for later work
+    // ( will decide whether they are real SelectElement
     // children or coincidental 0x30..=0x34 bytes at the top level).
     for (idx, element) in elements.iter().enumerate() {
         if let BytecodeElement::SelectionOption { marker, .. } = element {
@@ -165,9 +165,9 @@ fn scene1_element_stream_partition_and_first_command_header() {
 
     // -- First element kind (acceptance criterion #0) --
     // The research doc pins the first 16 bytes as `0a 02 00 0a 03 00
-    // 21 00 00 ...`, so the first element MUST be a MetaLine with
+    // 21 00 00...`, so the first element MUST be a MetaLine with
     // line_number=2. The spec allows EITHER MetaLine{2} OR
-    // MetaEntrypoint{0}; we accept either to mirror the spec exactly,
+    // MetaEntrypoint{0}; we accept either to mirror the spec exactly
     // but the observed first element on real bytes is MetaLine{2}.
     let first = elements.first().expect("at least one element");
     let first_ok = match first {

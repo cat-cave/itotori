@@ -1,6 +1,6 @@
-//! Trace and branch conformance checks (UTSUSHI-027).
+//! Trace and branch conformance checks ().
 //!
-//! Two executable checks that ride on top of the UTSUSHI-026 manifest +
+//! Two executable checks that ride on top of the manifest
 //! result contract — the only checks that the `text-trace` and
 //! `branch-capture` profiles authorise:
 //!
@@ -20,7 +20,7 @@
 //!
 //! - Trace evidence is text-trace only: the
 //!   [`trace::accepts_text_trace_evidence`] filter rejects
-//!   `EvidenceRef::FrameArtifactRef` and screenshot / frame-capture /
+//!   `EvidenceRef::FrameArtifactRef` and screenshot / frame-capture
 //!   recording `RuntimeArtifact` kinds. The trace check has no
 //!   screenshot or render-fidelity claim. E1 ceiling.
 //! - Every observed text event carries a `bridge_unit_id`. A `None`

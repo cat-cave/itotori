@@ -1,4 +1,4 @@
-//! UTSUSHI-218 — AVG-derived save format (`SAVE_FORMAT=3`).
+//! AVG-derived save format (`SAVE_FORMAT=3`).
 //!
 //! Sweetie HD ships three save files under `$GAME/SAVEDATA/`:
 //!
@@ -13,11 +13,11 @@
 //! All three share the same 24-byte preamble + null-terminated magic
 //! string layout (the **AVG32-derived save format** documented under
 //! `docs/research/reallive-engine.md` §J). The preamble has the shape
-//! `(u32 leading, u32 compiler_version, [u16; 6] timestamp,
+//! `(u32 leading, u32 compiler_version, [u16; 6] timestamp
 //!   u16 padding_a, u16 tail)` and the magic string begins at offset
 //! `0x18`. The leading u32 is the file size for `REALLIVE.sav` (the
 //! audit-focus item the doc names verbatim); for the other two it is a
-//! per-format constant (`0x000000A4` for `save999.sav`,
+//! per-format constant (`0x000000A4` for `save999.sav`
 //! `0x00000098` for `read.sav`).
 //!
 //! # Module structure
@@ -48,14 +48,14 @@
 //!   test layer.** The real-bytes test in
 //!   `tests/save_real_bytes.rs` reads the Sweetie HD save bytes
 //!   from `$ITOTORI_REAL_GAME_ROOT` (mode 0444, dr-x------) but
-//!   the test source has **no** `fs::write` / `fs::create_dir_all` /
+//!   the test source has **no** `fs::write` / `fs::create_dir_all`
 //!   `OpenOptions::write` calls — the audit grep
 //!   `tests/save_real_bytes.rs` keeps the "no writes against the
 //!   research mount" invariant pinned.
 //! - **Endianness flips between read and write.** Both directions use
 //!   little-endian; the [`AvgSavePreamble::encode`] / `decode` pair is
 //!   load-bearing for the round-trip test.
-//! - **Silently truncating slots.** [`SystemSave::payload`] /
+//! - **Silently truncating slots.** [`SystemSave::payload`]
 //!   [`GlobalSave::payload`] / [`ReadFlags::payload`] carry the
 //!   variable-length tail verbatim; the round-trip tests assert
 //!   `encoded.len() == decoded.preamble.leading_u32 as usize` for
@@ -168,7 +168,7 @@ pub enum SaveDecodeError {
         search_len: usize,
     },
     /// The magic string at offset 0x18 did not match the expected pin
-    /// (`SYSTEM_SAVE_MAGIC` for `SystemSave::decode`,
+    /// (`SYSTEM_SAVE_MAGIC` for `SystemSave::decode`
     /// `GLOBAL_SAVE_MAGIC` for `GlobalSave::decode`).
     #[error("utsushi.reallive.save.magic_mismatch: observed={observed:?} expected={expected:?}")]
     MagicMismatch {
@@ -424,7 +424,7 @@ pub struct ReadFlags {
     /// field at offset 0x18). Round-tripped verbatim through `encode`.
     pub title_bytes: Vec<u8>,
     /// UTF-8 decoded title. For Sweetie HD, the bytes
-    /// `83 49 83 56 83 49 83 4C ... 81 40` decode to
+    /// `83 49 83 56 83 49 83 4C... 81 40` decode to
     /// `"オシオキSweetie＋Sweets!! HD Edition\u{3000}"` (the trailing
     /// `0x8140` is Shift-JIS code point for IDEOGRAPHIC SPACE, which
     /// maps to `U+3000`).
@@ -768,7 +768,7 @@ impl SaveRoundTrip {
             0x02E0,
             AVG_DERIVED_COMPILER_VERSION,
         );
-        // Global save's leading u32 is a per-format constant (`0xA4`),
+        // Global save's leading u32 is a per-format constant (`0xA4`)
         // not the file size; rewrite it after the helper has filled in
         // the rest of the preamble.
         bytes[0x00..0x04].copy_from_slice(&0x0000_00A4u32.to_le_bytes());
@@ -923,7 +923,7 @@ mod tests {
         // NOT decode as a `SystemSave`.
         let global = SaveRoundTrip::synthetic_global_save(64);
         let err = SystemSave::decode(&global).expect_err("magic mismatch");
-        // The synthetic global save has leading_u32 = 0xA4 = 164 != actual length,
+        // The synthetic global save has leading_u32 = 0xA4 = 164 != actual length
         // so file-size cross-check fires first. That is the system-save's
         // dedicated guard, so synthesise a same-size-but-wrong-magic stream
         // to reach the magic-mismatch branch.

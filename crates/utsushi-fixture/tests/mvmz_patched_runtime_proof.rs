@@ -1,12 +1,12 @@
-//! UTSUSHI-119 integration proof: an ACTUAL LAUNCHED browser process observes
+//! Integration proof: an ACTUAL LAUNCHED browser process observes
 //! the **PATCHED** MV/MZ output — the fixture AFTER a Kaifuu patch-back swapped
 //! the localized translation in — and the patched-runtime-observation proof
-//! consumes that UTSUSHI-006 trace + the Kaifuu PatchResult + the UTSUSHI-102
+//! consumes that trace + the Kaifuu PatchResult + the
 //! alpha proof to render an E1 verdict proving the observed text is the
 //! TRANSLATION the PatchResult attests to (not the pre-patch original), linked
 //! to bridge unit refs.
 //!
-//! Two lanes (identical structure to UTSUSHI-102):
+//! Two lanes (identical structure to ):
 //! - **Always-run:** a launched fake-browser SUBPROCESS genuinely renders the
 //!   PATCHED fixture (decodes the runtime base64 payload exactly as the page JS
 //!   would) and emits the observation island on stdout, exactly as real Chromium
@@ -74,14 +74,14 @@ fn temp_dir(name: &str) -> PathBuf {
 }
 
 /// A launched fake browser that genuinely renders the fixture on stdout exactly
-/// as real Chromium `--dump-dom` does. Identical to the UTSUSHI-102 lane.
+/// as real Chromium `--dump-dom` does. Identical to the lane.
 #[cfg(unix)]
 const LIVE_DOM_FAKE_BROWSER: &str = r#"#!/bin/sh
 set -eu
 url=""
 for arg in "$@"; do
   case "$arg" in
-    file://*) url="$arg" ;;
+    file: // *) url="$arg";;
   esac
 done
 [ -n "$url" ] || exit 70
@@ -127,9 +127,9 @@ fn build_patched_proof_from_trace(trace: &Value) -> Value {
     .unwrap()
 }
 
-/// ALWAYS-RUN: a launched (fake) browser subprocess renders the PATCHED fixture,
-/// the UTSUSHI-006 trace probe observes the live-DOM translated text + choice
-/// events, and the UTSUSHI-119 patched proof renders an E1 verdict that
+/// ALWAYS-RUN: a launched (fake) browser subprocess renders the PATCHED fixture
+/// the trace probe observes the live-DOM translated text + choice
+/// events, and the patched proof renders an E1 verdict that
 /// reproduces the committed golden — no real Chromium required.
 #[cfg(unix)]
 #[test]
@@ -204,7 +204,7 @@ fn resolve_real_browser() -> Option<PathBuf> {
 }
 
 /// REAL-BROWSER GATE: drive the whole pipeline through genuine headless
-/// Chromium over the PATCHED fixture and prove the patched E1 observation,
+/// Chromium over the PATCHED fixture and prove the patched E1 observation
 /// cross-checking the committed real-launch evidence. Skips honestly when no
 /// browser resolves — it NEVER fabricates an E1 artifact from a static read.
 #[test]
@@ -295,7 +295,7 @@ fn from_paths_rejects_a_static_read_forged_patched_trace() {
     let _ = fs::remove_dir_all(work);
 }
 
-/// Regenerate the committed UTSUSHI-119 patched-output evidence artifacts from a
+/// Regenerate the committed patched-output evidence artifacts from a
 /// genuine launched-browser render. Env-gated so it only writes when explicitly
 /// asked (`UTSUSHI_U119_REGEN=1`); prefers real Chromium (via
 /// `UTSUSHI_BROWSER_BIN`) and falls back to the deterministic fake-browser
@@ -328,7 +328,7 @@ fn regenerate_committed_patched_artifacts() {
     };
     write_pretty(&out.join("patched-runtime-trace.json"), &trace);
 
-    // The UTSUSHI-102 alpha proof over the patched fixture's runtime observation.
+    // The alpha proof over the patched fixture's runtime observation.
     let static_source = read_static_fixture_source(&fixture_dir()).unwrap();
     let alpha = build_mvmz_runtime_observation_proof(&RuntimeObservationProofInputs {
         runtime_trace: &trace,

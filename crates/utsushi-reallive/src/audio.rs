@@ -1,35 +1,35 @@
-//! UTSUSHI-217 — audio system: in-crate `AudioEvent` carrier + sink.
+//! Audio system: in-crate `AudioEvent` carrier + sink.
 //!
-//! Owns the audible counterpart to UTSUSHI-214's headless render
+//! Owns the audible counterpart to the headless render
 //! pipeline. The `module_bgm` / `module_koe` / `module_pcm` / `module_se`
 //! RLOperation families emit a typed [`AudioEvent`] through an
 //! [`AudioEventSink`] backed by an [`InMemoryAudioEventStore`]. Per the
 //! spec the decoder does **not** mix samples — it verifies header decode
-//! (UTSUSHI-217 `nwa` + `ovk` modules) and emits metadata.
+//! (`nwa` + `ovk` modules) and emits metadata.
 //!
-//! # Substrate-gap honesty (UTSUSHI-217 spec, mirrors UTSUSHI-214)
+//! # Substrate-gap honesty
 //!
 //! The substrate's [`utsushi_core::substrate::AudioEventSink`] caps audio
 //! emissions at `EvidenceTier::E0` — "audio metadata is not playback
-//! parity" (see `crates/utsushi-core/src/sink/audio.rs`). The UTSUSHI-217
+//! parity" (see `crates/utsushi-core/src/sink/audio.rs`). The
 //! spec, however, requires the engine-emitted [`AudioEvent`] to carry
 //! `evidence_tier=EvidenceTier::E1` because the engine has actually
 //! consumed real bytes through the NWA / OVK decoders, resolved through
 //! the Gameexe `FOLDNAME.BGM` / `NAMAE` tables, and produced a typed
 //! `(archive_id, sample_id)` or `(asset_id)` payload. That is observably
 //! stronger than "an opcode fired without bytes". To stay
-//! substrate-honest, UTSUSHI-217 emits through a typed in-crate carrier
+//! substrate-honest, emits through a typed in-crate carrier
 //! ([`AudioEvent`] + [`InMemoryAudioEventStore`]) rather than through the
 //! E0-floored substrate sink. When the substrate slice lands the
 //! E1-emission-from-engine extension (tracked under the same
-//! substrate-gap line in `reallive-engine-dag-proposal.md` § "UTSUSHI-146r"
-//! and § "UTSUSHI-146o"), the wiring into
+//! substrate-gap line in `reallive-engine-dag-proposal.md`
+//! and ), the wiring into
 //! [`utsushi_core::substrate::SinkSet`] becomes a one-line swap at the
 //! emission call site — no on-disk format or callsite shape changes.
 //!
 //! # Audit-focus pin: AudioEvent payload carries voice-archive metadata
 //!
-//! The UTSUSHI-217 spec audit-focus item "AudioEvent payload missing
+//! The spec audit-focus item "AudioEvent payload missing
 //! voice-archive metadata" is the explicit motivation for
 //! [`AudioEventPayload::Voice`] carrying both `archive_id` and
 //! `sample_id` as distinct typed fields. A reduced "asset_id only"
@@ -43,7 +43,7 @@
 //! The kinds match the substrate's
 //! [`utsushi_core::substrate::AudioEventKind`] enum verbatim (re-exported
 //! from there via [`AudioEventKind`]) so the post-substrate-gap swap is
-//! a no-op at the kind layer. The UTSUSHI-217 deliverable is the
+//! a no-op at the kind layer. The deliverable is the
 //! engine-side carrier + the typed payload, not a new taxonomy.
 
 use std::collections::BTreeMap;
@@ -73,7 +73,7 @@ pub enum AudioEventPayload {
     /// BGM / wav / se start; engine-resolved asset id (e.g.
     /// `"bgm/ASA"`).
     Asset {
-        /// Asset id (engine-supplied stable identifier — `"bgm/ASA"`,
+        /// Asset id (engine-supplied stable identifier — `"bgm/ASA"`
         /// `"wav/CHIME"`, `"se/door1"`).
         #[serde(rename = "assetId")]
         asset_id: String,
@@ -120,7 +120,7 @@ pub enum AudioEventPayload {
 /// gap swap (see the module docstring) is a structural change to one
 /// site rather than a redesign of the consumers.
 ///
-/// `evidence_tier` is fixed to `E1` per the UTSUSHI-217 spec acceptance
+/// `evidence_tier` is fixed to `E1` per the spec acceptance
 /// criteria. The substrate sink today rejects `E1`, which is exactly
 /// the substrate-gap this node documents.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,7 +134,7 @@ pub struct AudioEvent {
     /// Monotonic emission index, sourced from the
     /// [`AudioEventEmitter`]'s `next_index` counter.
     pub emission_index: u64,
-    /// `EvidenceTier::E1` for every UTSUSHI-217 emission.
+    /// `EvidenceTier::E1` for every emission.
     pub evidence_tier: EvidenceTier,
     /// Engine-neutral kind enum (re-exported from the substrate).
     pub event_kind: AudioEventKind,

@@ -1,10 +1,10 @@
-//! UTSUSHI-213 — system-call dispatch wired to Gameexe routes.
+//! System-call dispatch wired to Gameexe routes.
 //!
 //! Builds a typed dispatch table from the Sweetie HD-shaped Gameexe
 //! routes documented in `docs/research/reallive-engine.md` § H, then
 //! lowers a substrate [`InputEvent`] or a pixel-space pointer-move into
 //! a [`SyscallRoute`] that the VM event loop invokes through the
-//! UTSUSHI-211 [`FarcallOp`]. No private dispatch path — every route
+//! [`FarcallOp`]. No private dispatch path — every route
 //! invocation goes through the existing control-flow [`FarcallOp`]
 //! so the call stack, frame-kind discipline, and stack-depth ceiling
 //! are reused verbatim (acceptance criterion #4).
@@ -14,16 +14,16 @@
 //! The dispatcher recognises **eight** route kinds covering Sweetie HD
 //! § H:
 //!
-//! | Kind                              | Gameexe key                      | `_MOD` key                 |
-//! | --------------------------------- | -------------------------------- | -------------------------- |
-//! | [`SyscallRouteKind::Cancel`]      | `CANCELCALL`                     | `CANCELCALL_MOD`           |
-//! | [`SyscallRouteKind::SystemcallSave`]   | `SYSTEMCALL_SAVE`           | `SYSTEMCALL_SAVE_MOD`      |
-//! | [`SyscallRouteKind::SystemcallLoad`]   | `SYSTEMCALL_LOAD`           | `SYSTEMCALL_LOAD_MOD`      |
-//! | [`SyscallRouteKind::SystemcallSystem`] | `SYSTEMCALL_SYSTEM`         | `SYSTEMCALL_SYSTEM_MOD`    |
-//! | [`SyscallRouteKind::MouseAction`] | `MOUSEACTIONCALL.NNN.SEEN`+`AREA` | `MOUSEACTIONCALL.NNN.MOD`  |
-//! | [`SyscallRouteKind::Loadcall`]    | `LOADCALL`                       | `LOADCALL_MOD`             |
-//! | [`SyscallRouteKind::Exaftercall`] | `EXAFTERCALL`                    | `EXAFTERCALL_MOD`          |
-//! | [`SyscallRouteKind::Wbcall`]      | `WBCALL.000`-`007`               | none (always active)       |
+//! Kind | Gameexe key | `_MOD` key
+//! --------------------------------- | -------------------------------- | --------------------------
+//! [`SyscallRouteKind::Cancel`] | `CANCELCALL` | `CANCELCALL_MOD`
+//! [`SyscallRouteKind::SystemcallSave`] | `SYSTEMCALL_SAVE` | `SYSTEMCALL_SAVE_MOD`
+//! [`SyscallRouteKind::SystemcallLoad`] | `SYSTEMCALL_LOAD` | `SYSTEMCALL_LOAD_MOD`
+//! [`SyscallRouteKind::SystemcallSystem`] | `SYSTEMCALL_SYSTEM` | `SYSTEMCALL_SYSTEM_MOD`
+//! [`SyscallRouteKind::MouseAction`] | `MOUSEACTIONCALL.NNN.SEEN`+`AREA` | `MOUSEACTIONCALL.NNN.MOD`
+//! [`SyscallRouteKind::Loadcall`] | `LOADCALL` | `LOADCALL_MOD`
+//! [`SyscallRouteKind::Exaftercall`] | `EXAFTERCALL` | `EXAFTERCALL_MOD`
+//! [`SyscallRouteKind::Wbcall`] | `WBCALL.000`-`007` | none (always active)
 //!
 //! Sweetie HD declares one `MOUSEACTIONCALL.000` and eight
 //! `WBCALL.NNN` instances, so the parsed dispatcher holds **15
@@ -60,7 +60,7 @@
 //!   an `Other(String)` fallback.
 //! - The dispatcher does not own a private call stack; it returns
 //!   the typed [`SyscallRoute`] and the VM dispatches through the
-//!   UTSUSHI-211 [`FarcallOp`] (see [`SyscallDispatcher::invoke`]).
+//!   [`FarcallOp`] (see [`SyscallDispatcher::invoke`]).
 //! - `_MOD=0` masks the route at parse time so a stale Gameexe with a
 //!   disabled route cannot accidentally fire — the entry is not even
 //!   in the table.
@@ -117,7 +117,7 @@ pub const SYSCALL_WBCALL_BEYOND_CAP_CODE: &str = "utsushi.reallive.syscall.wbcal
 
 /// The fixed kind-distinct route count documented in
 /// `docs/research/reallive-engine.md` § H. Eight kinds:
-/// `Cancel`, `SystemcallSave`, `SystemcallLoad`, `SystemcallSystem`,
+/// `Cancel`, `SystemcallSave`, `SystemcallLoad`, `SystemcallSystem`
 /// `MouseAction`, `Loadcall`, `Exaftercall`, `Wbcall`. The Sweetie HD
 /// acceptance test pins
 /// [`SyscallDispatcher::route_count`] against this value.
@@ -170,7 +170,7 @@ impl SyscallRouteKind {
     }
 
     /// Discriminant index (0..8) used by [`SYSCALL_KIND_COUNT`]
-    /// presence checks. Distinct per-variant; the `MouseAction` /
+    /// presence checks. Distinct per-variant; the `MouseAction`
     /// `Wbcall` instance index does not affect the discriminant.
     pub fn discriminant(self) -> u8 {
         match self {
@@ -255,7 +255,7 @@ impl ScreenSize {
     /// (floor, since the clamped product is non-negative) via an
     /// `as i32` cast on `value * (dim - 1)` — *not* rounded to the
     /// nearest pixel. Coordinates outside `[0.0, 1.0]` are clamped
-    /// before the multiply. Hot-region boundary tests are inclusive,
+    /// before the multiply. Hot-region boundary tests are inclusive
     /// so a coordinate exactly on a pixel edge maps to that edge
     /// pixel; a sub-pixel fraction maps to the pixel below it.
     pub fn pointer_to_pixel(&self, x: f32, y: f32) -> (i32, i32) {
@@ -323,7 +323,7 @@ pub enum SyscallDispatchBuildError {
     /// corpus-observed [`WBCALL_SLOT_COUNT`] cap. Sweetie HD (the only
     /// alpha-corpus RealLive title that declares WBCALL routes) declares
     /// exactly `WBCALL.000`-`007`; RLDEV documents a larger namespace but
-    /// no staged corpus game exercises it, so the cap is corpus-observed,
+    /// no staged corpus game exercises it, so the cap is corpus-observed
     /// NOT engine-validated. The dispatcher refuses to silently ignore
     /// the out-of-range slot (the original silent-truncation behaviour)
     /// rather than register a route no staged corpus has validated. When
@@ -554,7 +554,7 @@ impl SyscallDispatcher {
         seen.iter().filter(|present| **present).count()
     }
 
-    /// Total entry count (15 for Sweetie HD: 6 named scalar routes +
+    /// Total entry count (15 for Sweetie HD: 6 named scalar routes
     /// 1 MOUSEACTIONCALL + 8 WBCALL — minus any `_MOD=0`-disabled
     /// entries).
     pub fn entry_count(&self) -> usize {
@@ -578,7 +578,7 @@ impl SyscallDispatcher {
     /// The translation is:
     /// - [`InputEvent::Save`] → [`SyscallRouteKind::SystemcallSave`].
     /// - [`InputEvent::Load`] → [`SyscallRouteKind::SystemcallLoad`].
-    /// - [`InputEvent::MenuSelect`] with `menu_id == "system"`,
+    /// - [`InputEvent::MenuSelect`] with `menu_id == "system"`
     ///   `item_id == "cancel" | "system" | "loadcall" | "exaftercall"`
     ///   → the matching kind.
     /// - [`InputEvent::Pointer`] → first MOUSEACTIONCALL hot region the
@@ -662,8 +662,8 @@ impl SyscallDispatcher {
         self.route_for_kind(SyscallRouteKind::Wbcall { index })
     }
 
-    /// Invoke a route through the UTSUSHI-211 [`FarcallOp`]. The VM
-    /// pushes a `FarCall` frame and jumps to `(route.scene_id,
+    /// Invoke a route through the [`FarcallOp`]. The VM
+    /// pushes a `FarCall` frame and jumps to `(route.scene_id
     /// route.entrypoint)`. The caller supplies the post-command
     /// `(return_scene, return_pc)` so the VM `rtl` lands at the right
     /// byte after the route returns.
@@ -740,8 +740,6 @@ fn require_far_call_outcome(
     }
 }
 
-// ---------- internal helpers ----------
-
 /// Parse a `(scene, entrypoint)` named pair from `key`, honouring a
 /// sibling `_MOD=0` disable flag.
 fn parse_named_pair(
@@ -805,7 +803,7 @@ fn normalise_pair(
 /// A degenerate dimension (`width == 0` or `height == 0`) is treated as
 /// malformed and yields `None`, exactly as an absent or non-3-int
 /// `SCREENSIZE_MOD` does. A zero dimension cannot index a pixel grid:
-/// [`ScreenSize::pointer_to_pixel`] would collapse that axis to `0`,
+/// [`ScreenSize::pointer_to_pixel`] would collapse that axis to `0`
 /// silently mis-routing or vanishing every pointer hot-region dispatch.
 /// Returning `None` instead routes the case through the existing
 /// [`SyscallDispatchError::MissingScreenSize`] guard so the defect
@@ -881,7 +879,7 @@ mod tests {
         let gx = parse_gameexe(&text);
         let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
         assert_eq!(dispatcher.route_count(), SYSCALL_KIND_COUNT);
-        // Sweetie HD shape: 6 named (cancel/save/load/system/loadcall/
+        // Sweetie HD shape: 6 named (cancel/save/load/system/loadcall
         // exaftercall) + 1 mouse-action + 8 wbcall = 15 entries.
         assert_eq!(dispatcher.entry_count(), 15);
     }
@@ -981,7 +979,7 @@ mod tests {
 
     #[test]
     fn exaftercall_mod_zero_in_real_bytes_disables_route() {
-        // The Sweetie HD Gameexe.ini carries `EXAFTERCALL_MOD=0`,
+        // The Sweetie HD Gameexe.ini carries `EXAFTERCALL_MOD=0`
         // so by default the dispatcher does NOT include
         // `exaftercall`.
         let gx = parse_gameexe(reallive_real_bytes_lines_14_28());
@@ -1088,7 +1086,7 @@ mod tests {
     fn zero_dimension_screen_size_is_rejected_not_silently_zeroed() {
         // A present-but-degenerate `SCREENSIZE_MOD` (a zero width or a
         // zero height) cannot index a pixel grid: the old path parsed
-        // it into `ScreenSize { width: 0, .. }`, bypassing the
+        // it into `ScreenSize { width: 0,.. }`, bypassing the
         // `MissingScreenSize` guard while `pointer_to_pixel` collapsed
         // that axis to `0` — silently mis-routing every pointer
         // hot-region dispatch. The corrected `parse_screen_size`
@@ -1252,7 +1250,7 @@ mod tests {
 
     #[test]
     fn invoke_through_rtl_resumes_at_post_command_byte() {
-        // Drive a roundtrip: invoke a route, then dispatch `rtl`,
+        // Drive a roundtrip: invoke a route, then dispatch `rtl`
         // and assert the VM lands back at the supplied return
         // (scene, pc).
         let gx = parse_gameexe(reallive_real_bytes_lines_14_28());

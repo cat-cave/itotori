@@ -1,10 +1,10 @@
-//! UTSUSHI-065: MV/MZ screenshot-evidence fixture tests.
+//! MV/MZ screenshot-evidence fixture tests.
 //!
 //! These prove, WITHOUT a live browser, that the fixture run emits runtime
 //! trace events and screenshot artifactRefs linked by `bridgeUnitRef` + frame
 //! id, that the capture metadata (viewport / device scale / adapter) is
 //! recorded, and that the screenshot side accepts a real captured artifact from
-//! the UTSUSHI-006 capture path.
+//! the capture path.
 
 use std::path::{Path, PathBuf};
 
@@ -122,7 +122,7 @@ fn trace_events_link_to_screenshot_artifact_refs_by_bridge_ref_and_frame() {
     }
 
     // The capture bridge unit id is the SAME id kaifuu-rpgmaker's decompiler
-    // derives for that command (KAIFUU-109 scheme), so the evidence links the
+    // derives for that command ( scheme), so the evidence links the
     // real map/event command, not a fixture-local invention.
     assert_eq!(
         captures[0]["bridgeUnitRef"]["sourceUnitKey"],
@@ -203,7 +203,7 @@ fn committed_fixture_report_has_no_dangling_screenshot_artifact_refs() {
 
 #[test]
 fn attaches_a_real_captured_screenshot_from_the_capture_path() {
-    // Simulate the UTSUSHI-006 capture path: a real screenshot artifact
+    // Simulate the capture path: a real screenshot artifact
     // persisted to the runtime artifact root. This is what the browser adapter
     // produces on the env-gated Chromium path; here we attach it WITHOUT a live
     // browser to prove the linkage/metadata logic consumes a real artifact.

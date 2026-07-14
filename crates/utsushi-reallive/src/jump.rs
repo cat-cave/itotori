@@ -51,7 +51,7 @@ pub const JUMP_ADDRESS_PREFIX: &str = "reallive://scene/";
 /// A reproducible jump / resume target for the RealLive runtime, resolved
 /// from the decoded scene structure (never a hardcoded game reference).
 ///
-/// Serializes to a stable JSON shape and to a [`JumpTarget::address`] string,
+/// Serializes to a stable JSON shape and to a [`JumpTarget::address`] string
 /// so a reviewer annotation can persist the target and re-land on it in a
 /// later session ([`JumpTarget::from_address`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

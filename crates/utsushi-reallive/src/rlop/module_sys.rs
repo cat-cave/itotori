@@ -1,55 +1,55 @@
-//! UTSUSHI-212 — RealLive `module_sys` system-arithmetic RLOperation
+//! RealLive `module_sys` system-arithmetic RLOperation
 //! family subset.
 //!
 //! Implements the arithmetic subset of RealLive's `module_sys`:
-//! `rnd`, `pcnt`, `abs`, `power`, `sin`, `cos`, `min`, `max`,
-//! `constrain`. The non-arithmetic `module_sys` opcodes (`title`,
+//! `rnd`, `pcnt`, `abs`, `power`, `sin`, `cos`, `min`, `max`
+//! `constrain`. The non-arithmetic `module_sys` opcodes (`title`
 //! `end`, `save`/`load` triggers, screen-mode, message-speed) are out
-//! of UTSUSHI-212 scope — they land in a sibling node when the runtime
+//! of scope — they land in a sibling node when the runtime
 //! VM grows the save-load surface.
 //!
 //! # Module addressing
 //!
 //! `module_sys` is registered at `(module_type=1, module_id=4)` —
 //! confirmed against Sweetie HD bytes (the scene-1 byte histogram
-//! observed `(1, 4, ...)` commands at multiple offsets — see the
+//! observed `(1, 4,...)` commands at multiple offsets — see the
 //! integration test `rlop_str_mem_sys_real_bytes` for the
 //! observation log). The `(1, X)` convention aligns this family
 //! with [`crate::rlop::module_msg`] / [`crate::rlop::module_sel`].
 //!
 //! # Opcode coverage (9)
 //!
-//! | Opcode               | Op          | Semantics                              |
-//! | -------------------- | ----------- | -------------------------------------- |
-//! | `0x0000`             | `rnd`       | `store := rnd_in_range(max)`           |
-//! | `0x0001`             | `pcnt`      | `store := (numerator * 100) / denom`   |
-//! | `0x0002`             | `abs`       | `store := abs(value)`                  |
-//! | `0x0003`             | `power`     | `store := base ^ exponent` (saturating)|
-//! | `0x0004`             | `sin`       | `store := round(32768 * sin(2π·θ/256))`|
-//! | `0x0005`             | `cos`       | `store := round(32768 * cos(2π·θ/256))`|
-//! | `0x0006`             | `min`       | `store := min(a, b)`                   |
-//! | `0x0007`             | `max`       | `store := max(a, b)`                   |
-//! | `0x0008`             | `constrain` | `store := clamp(value, lo, hi)`        |
+//! Opcode | Op | Semantics
+//! -------------------- | ----------- | --------------------------------------
+//! `0x0000` | `rnd` | `store:= rnd_in_range(max)`
+//! `0x0001` | `pcnt` | `store:= (numerator * 100) / denom`
+//! `0x0002` | `abs` | `store:= abs(value)`
+//! `0x0003` | `power` | `store:= base ^ exponent` (saturating)
+//! `0x0004` | `sin` | `store:= round(32768 * sin(2π·θ/256))`
+//! `0x0005` | `cos` | `store:= round(32768 * cos(2π·θ/256))`
+//! `0x0006` | `min` | `store:= min(a, b)`
+//! `0x0007` | `max` | `store:= max(a, b)`
+//! `0x0008` | `constrain` | `store:= clamp(value, lo, hi)`
 //!
 //! Every op writes its result through the substrate-coupled VM store
 //! register ([`crate::var_banks::VarBanks::set_store`]) so the
-//! caller-side `intern() := store` paste-back in the RealLive expression
+//! caller-side `intern():= store` paste-back in the RealLive expression
 //! evaluator picks it up.
 //!
 //! # Deterministic `rnd`
 //!
 //! [`rnd`] reads from a substrate
-//! [`utsushi_core::clock::LogicalClockTick`]-seeded XorShift64 stream,
+//! [`utsushi_core::clock::LogicalClockTick`]-seeded XorShift64 stream
 //! not from the OS rng. The stream lives inside a [`SysRuntime`] held
 //! on the registry side — the audit-focus pinned by the spec ("`rnd`
 //! reading from the OS rng instead of substrate clock-seeded rng") is
 //! enforced structurally: this module imports neither `std::time` nor
 //! a `Rng` provider; the rng's only entropy source is the
-//! `LogicalClock` snapshot passed in via [`SysRuntime::new`] +
+//! `LogicalClock` snapshot passed in via [`SysRuntime::new`]
 //! [`SysRuntime::reseed_from_clock`].
 //!
 //! The rng state is round-trippable through the substrate
-//! [`utsushi_core::substrate::Inspectable`] /
+//! [`utsushi_core::substrate::Inspectable`]
 //! [`utsushi_core::substrate::Restorable`] traits via
 //! [`SysRuntime::inspect_state`] / [`SysRuntime::restore_state`]
 //! helpers. The acceptance test
@@ -72,7 +72,7 @@ use super::{DispatchOutcome, ExprValue, RLOperation, RlopKey, RlopRegistry};
 use crate::vm::{Vm, VmWarning};
 
 /// `module_sys` module type byte. Pinned at `1` per the Sweetie HD
-/// byte observation — the `(1, 4, ...)` commands in the scene-1
+/// byte observation — the `(1, 4,...)` commands in the scene-1
 /// histogram are the `module_sys` family.
 pub const SYS_MODULE_TYPE: u8 = 1;
 /// `module_sys` module id byte. Pinned at `4` per the Sweetie HD
@@ -110,7 +110,7 @@ const MANIFEST_PATH: &str = "port.sys_runtime.manifest";
 /// Stable manifest string.
 const SYS_RUNTIME_MANIFEST: &str = "utsushi-reallive-sys-runtime/0.1.0-alpha";
 
-/// Stable enum naming the `module_sys` opcodes UTSUSHI-212 implements.
+/// Stable enum naming the `module_sys` opcodes implements.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SysOpcode {
     /// `rnd` — pseudo-random number.
@@ -186,9 +186,7 @@ impl SysOpcode {
 /// Number of opcodes [`register_sys_rlops`] mounts.
 pub const SYS_RLOP_COUNT: usize = SysOpcode::ALL.len();
 
-// ---------------------------------------------------------------------
 // Deterministic XorShift64 rng — substrate-clock-seeded.
-// ---------------------------------------------------------------------
 
 /// 64-bit XorShift PRNG state. Determined entirely by the seed; no OS
 /// entropy is involved at any point. Held as a public-API-safe wrapper
@@ -228,9 +226,7 @@ impl XorShift64State {
     }
 }
 
-// ---------------------------------------------------------------------
 // SysRuntime
-// ---------------------------------------------------------------------
 
 /// Runtime carrier for the `module_sys` arithmetic family. Owns the
 /// deterministic rng state and exposes substrate
@@ -388,9 +384,7 @@ impl Restorable for SysRuntime {
     }
 }
 
-// ---------------------------------------------------------------------
 // Argument helpers
-// ---------------------------------------------------------------------
 
 fn arg_int(args: &[ExprValue], at: usize, slot: &str) -> Result<i32, String> {
     args.get(at)
@@ -411,11 +405,9 @@ fn store_i32(vm: &mut Vm, value: i32) {
     vm.banks_mut().set_store(value as u32);
 }
 
-// ---------------------------------------------------------------------
 // Per-opcode RLOperation implementors
-// ---------------------------------------------------------------------
 
-/// `rnd(max)` — store := rnd_in_range(max).
+/// `rnd(max)` — store:= rnd_in_range(max).
 #[derive(Debug)]
 pub struct RndOp {
     runtime: Arc<SysRuntime>,
@@ -439,7 +431,7 @@ impl RLOperation for RndOp {
     }
 }
 
-/// `pcnt(numerator, denominator)` — store := (n * 100) / d.
+/// `pcnt(numerator, denominator)` — store:= (n * 100) / d.
 #[derive(Debug)]
 pub struct PcntOp;
 
@@ -470,7 +462,7 @@ impl RLOperation for PcntOp {
     }
 }
 
-/// `abs(value)` — store := |value|. Saturates on `i32::MIN`.
+/// `abs(value)` — store:= |value|. Saturates on `i32::MIN`.
 #[derive(Debug)]
 pub struct AbsOp;
 
@@ -491,7 +483,7 @@ impl RLOperation for AbsOp {
     }
 }
 
-/// `power(base, exponent)` — store := base ^ exponent (saturating).
+/// `power(base, exponent)` — store:= base ^ exponent (saturating).
 #[derive(Debug)]
 pub struct PowerOp;
 
@@ -555,7 +547,7 @@ const SIN_TABLE_256: [i32; 256] = sine_table_for_256();
 /// inspection without dragging in a floating-point cosine library at
 /// const-eval time. The approximation differs from the IEEE `sin`
 /// table by ≤2 LSB across the table; the tests pin the table
-/// observably (`sin(0)=0`, `sin(64)=32768`, `sin(128)=0`,
+/// observably (`sin(0)=0`, `sin(64)=32768`, `sin(128)=0`
 /// `sin(192)=-32768`).
 const fn sine_table_for_256() -> [i32; 256] {
     let mut table = [0i32; 256];
@@ -601,7 +593,7 @@ const fn sine_q15_bhaskara(theta: i32) -> i32 {
     if negate { -q15 } else { q15 }
 }
 
-/// `sin(theta)` — store := sin256(theta).
+/// `sin(theta)` — store:= sin256(theta).
 #[derive(Debug)]
 pub struct SinOp;
 
@@ -616,7 +608,7 @@ impl RLOperation for SinOp {
     }
 }
 
-/// `cos(theta)` — store := cos256(theta).
+/// `cos(theta)` — store:= cos256(theta).
 #[derive(Debug)]
 pub struct CosOp;
 
@@ -631,7 +623,7 @@ impl RLOperation for CosOp {
     }
 }
 
-/// `min(a, b)` — store := min(a, b).
+/// `min(a, b)` — store:= min(a, b).
 #[derive(Debug)]
 pub struct MinOp;
 
@@ -650,7 +642,7 @@ impl RLOperation for MinOp {
     }
 }
 
-/// `max(a, b)` — store := max(a, b).
+/// `max(a, b)` — store:= max(a, b).
 #[derive(Debug)]
 pub struct MaxOp;
 
@@ -669,7 +661,7 @@ impl RLOperation for MaxOp {
     }
 }
 
-/// `constrain(value, lo, hi)` — store := clamp(value, lo, hi).
+/// `constrain(value, lo, hi)` — store:= clamp(value, lo, hi).
 #[derive(Debug)]
 pub struct ConstrainOp;
 
@@ -695,9 +687,7 @@ impl RLOperation for ConstrainOp {
     }
 }
 
-// ---------------------------------------------------------------------
 // Registry helper
-// ---------------------------------------------------------------------
 
 /// Mount every `module_sys` arithmetic op this module ships into
 /// `registry`. The runtime is shared so the rng state lives at one
@@ -718,9 +708,7 @@ pub fn register_sys_rlops(registry: &mut RlopRegistry, runtime: Arc<SysRuntime>)
     SYS_RLOP_COUNT
 }
 
-// ---------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -764,9 +752,7 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------
     // Acceptance: `sys_rnd_deterministic_under_logical_clock`
-    // -----------------------------------------------------------------
 
     #[test]
     fn sys_rnd_deterministic_under_logical_clock() {
@@ -867,9 +853,7 @@ mod tests {
         assert_eq!(left_seq, right_seq);
     }
 
-    // -----------------------------------------------------------------
     // Acceptance: per-op input/output tables (≥3 cases incl. boundary)
-    // -----------------------------------------------------------------
 
     #[test]
     fn sys_pcnt_three_cases() {

@@ -26,7 +26,7 @@ use super::runner::RunnerCancellation;
 /// translate the id into whatever scene/scenario/frame coordinate is
 /// natural. The substrate models a moment as an opaque, port-defined
 /// identifier so the `jump` method has a typed argument; the cross-engine
-/// moment index and jump planner (UTSUSHI-104) consume this identifier
+/// moment index and jump planner () consume this identifier
 /// without changing its shape.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MomentId {
@@ -94,7 +94,7 @@ pub struct PortRequest<'a> {
     /// Managed artifact root for capture output. Required for capture.
     pub artifact_root: Option<&'a RuntimeArtifactRoot>,
 
-    /// VFS handoff added by UTSUSHI-020.
+    /// VFS handoff added by.
     pub vfs: Option<Arc<dyn RuntimeVfs>>,
 
     /// Cancellation token. Lifecycle methods MUST check this at every
@@ -115,7 +115,7 @@ pub struct PortRequest<'a> {
 }
 
 impl<'a> PortRequest<'a> {
-    /// Cheap constructor for ports that drive the port directly (tests,
+    /// Cheap constructor for ports that drive the port directly (tests
     /// conformance harness).
     pub fn new(input_root: &'a Path, run_id: &'a str, operation: RuntimeOperation) -> Self {
         Self {
@@ -202,7 +202,7 @@ impl CaptureOutcome {
     }
 }
 
-/// The substrate trait every engine port implements (UTSUSHI-224 sinks
+/// The substrate trait every engine port implements ( sinks
 /// bridge). Required lifecycle methods are enforced at the type system
 /// level: there is no default impl on `launch`, `observe`, `capture`, or
 /// `shutdown`. The optional `jump` method has a default impl that returns

@@ -1,6 +1,6 @@
-//! Integration test for the UTSUSHI-133 runtime target profile read
+//! Integration test for the runtime target profile read
 //! model. Loads the committed synthetic fixture
-//! `tests/fixtures/conformance/runtime_target_profile/candidate_profiles.json`,
+//! `tests/fixtures/conformance/runtime_target_profile/candidate_profiles.json`
 //! validates each candidate is well-formed AND resolves against the bound
 //! catalog/corpus/bridge/proof metadata, and asserts the negative profile
 //! (an arbitrary unregistered runtime target) is rejected.
@@ -36,7 +36,7 @@ fn every_candidate_records_all_required_bindings_and_resolves() {
     );
 
     for candidate in &fixture.candidates {
-        // Every required binding is present (well-formed) ...
+        // Every required binding is present (well-formed)...
         candidate
             .validate()
             .unwrap_or_else(|error| panic!("candidate {candidate:?} is not well-formed: {error}"));
@@ -108,7 +108,7 @@ fn negative_profile_binding_an_arbitrary_fixture_is_rejected() {
 
     for rejected in &fixture.rejected {
         // The negative is well-formed in SHAPE (proving the rejection is
-        // about the binding, not a typo) ...
+        // about the binding, not a typo)...
         rejected
             .validate()
             .expect("negative profile is well-formed in shape");

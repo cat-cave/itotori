@@ -1,4 +1,4 @@
-//! Runtime target profile read model (UTSUSHI-133).
+//! Runtime target profile read model ().
 //!
 //! A DATA-ONLY read model that BINDS an Utsushi alpha runtime-validation
 //! target to the MEANINGFUL candidate metadata it must run against, so a
@@ -6,7 +6,7 @@
 //! fixture. It links four existing identity surfaces into one profile:
 //!
 //! - **Catalog work identity** — the carved work id
-//!   (`apps/itotori` work-scope `CarvedWork.workId` /
+//!   (`apps/itotori` work-scope `CarvedWork.workId`
 //!   `WorkScope.workId`, and the catalog `catalog-work` stable id in
 //!   `packages/itotori-db`) plus its optional catalog **edition** id (the
 //!   specific distribution — platform / shipped languages / edition —
@@ -18,13 +18,13 @@
 //! - **Bridge-unit fixture revision** — the revision of the bridge-unit
 //!   bundle the runtime target consumes (the Kaifuu bridge fixture
 //!   revision), distinct from the raw source revision.
-//! - **Runtime target + proof manifest** — the UTSUSHI-102/119
+//! - **Runtime target + proof manifest** — the
 //!   `runtimeTargetId` the launched runtime observation stamps, and the
 //!   alpha proof manifest id (`proofId`) that attests the target's
 //!   runtime observation, at a declared **readiness level** (the four-tier
 //!   `docs/project-readiness.md` model).
 //!
-//! This module NEVER launches a runtime host, plays back a browser,
+//! This module NEVER launches a runtime host, plays back a browser
 //! captures a screenshot, or reads game bytes. It only records and
 //! validates identity bindings that other nodes already produced. Its
 //! only dependency is `serde`.
@@ -32,13 +32,13 @@
 //! Validation has two layers:
 //!
 //! 1. **Well-formed** ([`RuntimeTargetProfile::validate`]) — every
-//!    required binding is present and every id is well-shaped (non-empty,
-//!    bounded, no whitespace, not a local path). The optional edition id,
+//!    required binding is present and every id is well-shaped (non-empty
+//!    bounded, no whitespace, not a local path). The optional edition id
 //!    when present, is held to the same shape.
 //! 2. **Resolves against referenced metadata**
 //!    ([`resolve_runtime_target_profile`]) — the profile's ids name REAL
 //!    members of a supplied [`RuntimeTargetMetadata`] catalog (known work
-//!    ids, edition ids, source revisions, bridge-unit fixture revisions,
+//!    ids, edition ids, source revisions, bridge-unit fixture revisions
 //!    runtime target ids, proof manifest ids). A profile that binds an
 //!    arbitrary fixture — an id absent from the catalog — is rejected.
 
@@ -96,8 +96,8 @@ impl ReadinessLevel {
 /// One runtime target profile: the meaningful candidate bindings a runtime
 /// proof run targets.
 ///
-/// Records exactly the identities the acceptance requires: work id,
-/// edition id (when known), source revision, bridge-unit fixture revision,
+/// Records exactly the identities the acceptance requires: work id
+/// edition id (when known), source revision, bridge-unit fixture revision
 /// runtime target id, readiness level, and proof manifest id.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,7 +120,7 @@ pub struct RuntimeTargetProfile {
     pub source_revision: String,
     /// Bridge-unit fixture revision the runtime target consumes. REQUIRED.
     pub bridge_unit_fixture_revision: String,
-    /// The UTSUSHI-102/119 `runtimeTargetId` the launched observation
+    /// The `runtimeTargetId` the launched observation
     /// stamps. REQUIRED.
     pub runtime_target_id: String,
     /// Declared readiness level (the four-tier model). REQUIRED.
@@ -362,7 +362,7 @@ pub struct RuntimeTargetProfileFixture {
     /// Meaningful candidates: well-formed AND resolve against `metadata`.
     #[serde(default)]
     pub candidates: Vec<RuntimeTargetProfile>,
-    /// Rejected profiles: each fails validation or resolution (unbound /
+    /// Rejected profiles: each fails validation or resolution (unbound
     /// arbitrary fixture).
     #[serde(default)]
     pub rejected: Vec<RuntimeTargetProfile>,

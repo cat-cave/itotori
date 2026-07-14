@@ -20,7 +20,7 @@
 //!
 //! Run:
 //!   cargo run -p utsushi-reallive --example choice_diag -- <out.png>
-//!   (defaults to .private-render/diag/choice-render.png)
+//!   (defaults to.private-render/diag/choice-render.png)
 
 use std::collections::HashSet;
 use std::path::PathBuf;

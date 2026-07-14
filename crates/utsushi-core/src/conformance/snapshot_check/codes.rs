@@ -1,4 +1,4 @@
-//! Stable semantic codes for snapshot conformance checks (UTSUSHI-028).
+//! Stable semantic codes for snapshot conformance checks ().
 //!
 //! Each code namespaces under `utsushi.conformance.*` so it lives in
 //! the same provider/subsystem registry as the rest of the conformance
@@ -19,7 +19,7 @@ pub const SNAPSHOT_DIFF_INSPECTABLE_ID_MISMATCH: &str =
 pub const SNAPSHOT_RESOLUTION_FAILED: &str = "utsushi.conformance.snapshot_resolution_failed";
 
 /// Full set of stable snapshot-conformance semantic codes registered by
-/// UTSUSHI-028. Mirrored into [`super::super::diagnostics::codes::ALL`].
+/// . Mirrored into [`super::super::diagnostics::codes::ALL`].
 pub const ALL: &[&str] = &[
     SNAPSHOT_RESTORE_UNSUPPORTED,
     SNAPSHOT_CHECK_PROFILE_MISMATCH,

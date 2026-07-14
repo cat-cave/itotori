@@ -1,6 +1,6 @@
 //! Semantic diagnostics for runtime VFS failures.
 //!
-//! Every variant carries enough context to be a stable conformance signal,
+//! Every variant carries enough context to be a stable conformance signal
 //! and every variant carries an [`AssetId`] (or a package id) — never a raw
 //! host path. `Display` output is redaction-safe by construction: it contains
 //! only the semantic code, the `AssetId` (which is `vfs://` scoped and
@@ -391,7 +391,7 @@ impl VfsError {
     pub fn debug_render(&self) -> String {
         // Slice A intentionally does not enable a host-path debug channel;
         // see plan §5 for rationale. The `vfs_debug` feature is reserved for a
-        // follow-up node.
+        // later work.
         self.to_string()
     }
 }

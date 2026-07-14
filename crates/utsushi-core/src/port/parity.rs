@@ -16,7 +16,7 @@
 //!    [`EnginePort`](super::EnginePort) trait + adapters express **today**
 //!    (the [`PortCapability`] set). A compile-time guard forces every new
 //!    `PortCapability` variant into the contract, so a capability added later
-//!    (embed-surface, word-wrap-metrics, jump-to-scene, hook-text,
+//!    (embed-surface, word-wrap-metrics, jump-to-scene, hook-text
 //!    inject-preview, read-state, …) is automatically swept into the parity
 //!    check across all engines.
 //!
@@ -605,7 +605,7 @@ mod tests {
 
     #[test]
     fn uniform_limitation_when_no_engine_wires_a_capability() {
-        // No engine wires Snapshot/DeterministicReplay/Jump -> uniform, green,
+        // No engine wires Snapshot/DeterministicReplay/Jump -> uniform, green
         // no declaration required.
         let a = EngineParityProfile {
             manifest: manifest("utsushi-port-aaa", BASE_CAPS),

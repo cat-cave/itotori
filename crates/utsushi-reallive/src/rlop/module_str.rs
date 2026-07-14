@@ -1,9 +1,9 @@
-//! UTSUSHI-212 — RealLive `module_str` string-manipulation RLOperation
+//! RealLive `module_str` string-manipulation RLOperation
 //! family.
 //!
 //! Implements the string opcodes RealLive's `module_str` exposes:
-//! `strcpy`, `strcat`, `strlen`, `Uppercase`, `Lowercase`, `itoa`,
-//! `atoi`, `strout`, `intout`, `strpos`, `strlpos`, `hantozen`,
+//! `strcpy`, `strcat`, `strlen`, `Uppercase`, `Lowercase`, `itoa`
+//! `atoi`, `strout`, `intout`, `strpos`, `strlpos`, `hantozen`
 //! `zentohan`. Each op consumes typed `(BankId, idx)` references via the
 //! [`ExprValue`] argument carrier and produces its observable side
 //! effect through the VM's typed [`crate::var_banks::VarBanks`] surface
@@ -15,52 +15,52 @@
 //! `module_str` is registered at `(module_type=1, module_id=10)` —
 //! the REAL RealLive semantic id for the string family (matching the
 //! `kaifuu-reallive` decompiler), consistent with the `(1, X)`
-//! convention pinned by [`crate::rlop::module_msg`] (`(1, 3)`),
+//! convention pinned by [`crate::rlop::module_msg`] (`(1, 3)`)
 //! [`crate::rlop::module_sel`] (`(1, 2)`), and
 //! [`crate::rlop::module_sys`] (`(1, 4)`). The opcode numbers below are re-derived
 //! clean-room from the RLDEV name table (see
 //! `docs/research/reallive-engine.md`) and pinned as `const u16`
 //! constants so audit tooling can assert "the registry covers
-//! exactly the UTSUSHI-212 surface".
+//! exactly the surface".
 //!
 //! # Opcode coverage (13)
 //!
-//! | Opcode               | Op           | Semantics                            |
-//! | -------------------- | ------------ | ------------------------------------ |
-//! | `0x0000`             | `strcpy`     | `strX[dst] := strX[src]`             |
-//! | `0x0001`             | `strclear`   | (covered by `strcpy("")` — not exposed) |
-//! | `0x0002`             | `strcat`     | `strX[dst] := strX[dst] + strX[src]` |
-//! | `0x0003`             | `strlen`     | `intX[dst] := byte-length(strX[src])` |
-//! | `0x0004`             | `strcmp`     | (not in UTSUSHI-212 surface)         |
-//! | `0x0005`             | `strsub`     | (not in UTSUSHI-212 surface)         |
-//! | `0x0006`             | `strrsub`    | (not in UTSUSHI-212 surface)         |
-//! | `0x0007`             | `strcharlen` | (not in UTSUSHI-212 surface)         |
-//! | `0x0008`             | `strtrunc`   | (not in UTSUSHI-212 surface)         |
-//! | `0x0009`             | `strout`     | sink emission of strX[src]           |
-//! | `0x000a`             | `intout`     | sink emission of intX[src] as ASCII  |
-//! | `0x000b`             | `Uppercase`  | strX[idx] ASCII upper-case in place  |
-//! | `0x000c`             | `Lowercase`  | strX[idx] ASCII lower-case in place  |
-//! | `0x000d`             | `itoa`       | `strX[dst] := decimal_ascii(int_src)` |
-//! | `0x000e`             | `atoi`       | `intX[dst] := parse_decimal(strX[src])` |
-//! | `0x000f`             | `strpos`     | byte position of needle in haystack  |
-//! | `0x0010`             | `strlpos`    | last byte position of needle         |
-//! | `0x0011`             | `hantozen`   | half-width → full-width in place     |
-//! | `0x0012`             | `zentohan`   | full-width → half-width in place     |
+//! Opcode | Op | Semantics
+//! -------------------- | ------------ | ------------------------------------
+//! `0x0000` | `strcpy` | `strX[dst]:= strX[src]`
+//! `0x0001` | `strclear` | (covered by `strcpy("")` — not exposed)
+//! `0x0002` | `strcat` | `strX[dst]:= strX[dst] + strX[src]`
+//! `0x0003` | `strlen` | `intX[dst]:= byte-length(strX[src])`
+//! `0x0004` | `strcmp` | (not in surface)
+//! `0x0005` | `strsub` | (not in surface)
+//! `0x0006` | `strrsub` | (not in surface)
+//! `0x0007` | `strcharlen` | (not in surface)
+//! `0x0008` | `strtrunc` | (not in surface)
+//! `0x0009` | `strout` | sink emission of strX[src]
+//! `0x000a` | `intout` | sink emission of intX[src] as ASCII
+//! `0x000b` | `Uppercase` | strX[idx] ASCII upper-case in place
+//! `0x000c` | `Lowercase` | strX[idx] ASCII lower-case in place
+//! `0x000d` | `itoa` | `strX[dst]:= decimal_ascii(int_src)`
+//! `0x000e` | `atoi` | `intX[dst]:= parse_decimal(strX[src])`
+//! `0x000f` | `strpos` | byte position of needle in haystack
+//! `0x0010` | `strlpos` | last byte position of needle
+//! `0x0011` | `hantozen` | half-width → full-width in place
+//! `0x0012` | `zentohan` | full-width → half-width in place
 //!
-//! The "not in UTSUSHI-212 surface" rows are reserved opcode slots —
+//! The "not in surface" rows are reserved opcode slots —
 //! the registry only mounts the 13 ops listed in [`StrOpcode::ALL`].
-//! Other slots resolve to `MissingRlop` (the fail-soft path UTSUSHI-208
+//! Other slots resolve to `MissingRlop` (the fail-soft path
 //! pinned).
 //!
 //! # Argument shape
 //!
 //! Per RLDEV, `module_str` ops carry **typed variable references** in
 //! their argument slots — `strX[idx]` for string operands and
-//! `intX[idx]` for integer operands. The UTSUSHI-205 expression parser
+//! `intX[idx]` for integer operands. The expression parser
 //! does not yet emit a `BankRef` variant on the [`ExprValue`] carrier;
 //! this module accepts a **two-int convention** for each variable
 //! reference: a leading `Int(bank_byte)` followed by `Int(idx)`. A
-//! literal `Bytes` payload for `strX` is also accepted in `strcpy` /
+//! literal `Bytes` payload for `strX` is also accepted in `strcpy`
 //! `strcat` / `strout` so the synthetic tests can drive the ops without
 //! plumbing a writer into the bank in advance — the runtime path will
 //! always emit `(bank, idx)` pairs.
@@ -81,7 +81,7 @@
 //!   `hantozen_half_width_katakana_round_trips` pins this.
 //! - **No host print.** `strout` / `intout` emit through the substrate
 //!   [`TextSurfaceSink::emit_line`] surface, never via stdout. The
-//!   emitted [`TextLine`] carries `text_surface = "strout"` /
+//!   emitted [`TextLine`] carries `text_surface = "strout"`
 //!   `"intout"` so audit tooling can distinguish them from `msg.*`
 //!   emissions.
 
@@ -95,7 +95,7 @@ use crate::vm::{Vm, VmWarning};
 
 /// `module_str` module type byte. Pinned at `1` to match the
 /// `(1, X)` convention established by
-/// [`crate::rlop::module_msg`] / [`crate::rlop::module_sel`] /
+/// [`crate::rlop::module_msg`] / [`crate::rlop::module_sel`]
 /// [`crate::rlop::module_sys`].
 pub const STR_MODULE_TYPE: u8 = 1;
 /// `module_str` module id byte. This is the REAL RealLive semantic id
@@ -105,11 +105,11 @@ pub const STR_MODULE_TYPE: u8 = 1;
 /// Corrected to `10`.
 pub const STR_MODULE_ID: u8 = 10;
 
-/// `strcpy` — `strX[dst] := strX[src]`.
+/// `strcpy` — `strX[dst]:= strX[src]`.
 pub const OPCODE_STRCPY: u16 = 0x0000;
-/// `strcat` — `strX[dst] := strX[dst] + strX[src]`.
+/// `strcat` — `strX[dst]:= strX[dst] + strX[src]`.
 pub const OPCODE_STRCAT: u16 = 0x0002;
-/// `strlen` — `intX[dst] := byte-length(strX[src])`.
+/// `strlen` — `intX[dst]:= byte-length(strX[src])`.
 pub const OPCODE_STRLEN: u16 = 0x0003;
 /// `strout` — emit `strX[src]` through the substrate sink.
 pub const OPCODE_STROUT: u16 = 0x0009;
@@ -119,9 +119,9 @@ pub const OPCODE_INTOUT: u16 = 0x000a;
 pub const OPCODE_UPPERCASE: u16 = 0x000b;
 /// `Lowercase` — ASCII lower-case `strX[idx]` in place.
 pub const OPCODE_LOWERCASE: u16 = 0x000c;
-/// `itoa` — `strX[dst] := decimal_ascii(int_src)`.
+/// `itoa` — `strX[dst]:= decimal_ascii(int_src)`.
 pub const OPCODE_ITOA: u16 = 0x000d;
-/// `atoi` — `intX[dst] := parse_decimal(strX[src])`.
+/// `atoi` — `intX[dst]:= parse_decimal(strX[src])`.
 pub const OPCODE_ATOI: u16 = 0x000e;
 /// `strpos` — byte position of needle in haystack (`-1` on miss).
 pub const OPCODE_STRPOS: u16 = 0x000f;
@@ -132,7 +132,7 @@ pub const OPCODE_HANTOZEN: u16 = 0x0011;
 /// `zentohan` — full-width → half-width transform on `strX[idx]`.
 pub const OPCODE_ZENTOHAN: u16 = 0x0012;
 
-/// Stable enum naming the `module_str` opcodes UTSUSHI-212 implements.
+/// Stable enum naming the `module_str` opcodes implements.
 /// Used by audit tooling to assert the registry covers every variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum StrOpcode {
@@ -165,7 +165,7 @@ pub enum StrOpcode {
 }
 
 impl StrOpcode {
-    /// All `module_str` opcodes UTSUSHI-212 ships. The registry covers
+    /// All `module_str` opcodes ships. The registry covers
     /// exactly this list.
     pub const ALL: &'static [StrOpcode] = &[
         Self::Strcpy,
@@ -228,13 +228,11 @@ impl StrOpcode {
 }
 
 /// Number of opcodes [`register_str_rlops`] mounts. Pinned so audit
-/// tooling can assert the registry covers exactly the UTSUSHI-212
+/// tooling can assert the registry covers exactly the
 /// surface without walking the helper body.
 pub const STR_RLOP_COUNT: usize = StrOpcode::ALL.len();
 
-// ---------------------------------------------------------------------
 // Runtime carrier
-// ---------------------------------------------------------------------
 
 /// Runtime carrier the per-op [`RLOperation`] impls thread through to
 /// the [`TextSurfaceSink`] (for `strout` / `intout`). Held inside `Arc`
@@ -300,9 +298,7 @@ impl StrRuntime {
     }
 }
 
-// ---------------------------------------------------------------------
 // Argument helpers
-// ---------------------------------------------------------------------
 
 /// Resolve `args[start..start+2]` as a `(BankId, idx)` pair. Returns
 /// `Err` with a typed reason string on a malformed pair.
@@ -424,9 +420,7 @@ fn warn_and_advance(vm: &mut Vm, op: StrOpcode, reason: String) -> DispatchOutco
     DispatchOutcome::Advance
 }
 
-// ---------------------------------------------------------------------
-// Shift-JIS half/full-width conversion tables (UTSUSHI-212).
-// ---------------------------------------------------------------------
+// Shift-JIS half/full-width conversion tables ().
 //
 // The tables below are re-derived clean-room from the RLDEV-published
 // half/full mapping (`bin/Reallive.kfn` glossary entry for
@@ -709,7 +703,7 @@ fn fullwidth_katakana_to_halfwidth(lead: u8, trail: u8) -> Option<u8> {
     })
 }
 
-/// Walk Shift-JIS `bytes` and apply [`ascii_to_fullwidth`] +
+/// Walk Shift-JIS `bytes` and apply [`ascii_to_fullwidth`]
 /// [`halfwidth_katakana_to_fullwidth`] in a single pass. Bytes with no
 /// mapping pass through unchanged.
 ///
@@ -745,7 +739,7 @@ pub fn hantozen_bytes(bytes: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Walk Shift-JIS `bytes` and apply [`fullwidth_to_ascii`] +
+/// Walk Shift-JIS `bytes` and apply [`fullwidth_to_ascii`]
 /// [`fullwidth_katakana_to_halfwidth`] in a single pass. Double-byte
 /// pairs with no mapping pass through unchanged; single-byte runs
 /// (already half-width) pass through unchanged.
@@ -864,9 +858,7 @@ fn byte_find_last(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     None
 }
 
-// ---------------------------------------------------------------------
 // Per-opcode RLOperation implementors
-// ---------------------------------------------------------------------
 
 /// `strcpy(dst_bank, dst_idx, src…)` — copy a string slot.
 #[derive(Debug)]
@@ -1093,7 +1085,7 @@ impl RLOperation for AtoiOp {
 }
 
 /// Leading-decimal-prefix parse, matching the documented `atoi`
-/// behaviour. Skips leading whitespace, accepts an optional sign,
+/// behaviour. Skips leading whitespace, accepts an optional sign
 /// stops at the first non-digit byte. Returns `0` on no digits.
 fn parse_leading_decimal(bytes: &[u8]) -> i32 {
     let mut i = 0;
@@ -1236,9 +1228,7 @@ impl RLOperation for ZentohanOp {
     }
 }
 
-// ---------------------------------------------------------------------
 // Registry helper
-// ---------------------------------------------------------------------
 
 /// Mount every `module_str` op this module ships into `registry`.
 /// Returns the number of opcodes registered (matches
@@ -1266,9 +1256,7 @@ pub fn register_str_rlops(registry: &mut RlopRegistry, runtime: Arc<StrRuntime>)
     STR_RLOP_COUNT
 }
 
-// ---------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -1357,9 +1345,7 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------
     // Acceptance: register_helper covers exactly STR_RLOP_COUNT opcodes
-    // -----------------------------------------------------------------
 
     #[test]
     fn str_register_helper_populates_expected_count() {
@@ -1381,10 +1367,8 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------
     // Acceptance: `str_ops_table` — input/output table for each op
     // with ≥3 cases including a boundary.
-    // -----------------------------------------------------------------
 
     #[test]
     fn str_ops_table_strcpy_three_cases() {
@@ -1733,9 +1717,7 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------
     // Argument validation surfaces — warnings, not panics.
-    // -----------------------------------------------------------------
 
     #[test]
     fn strcpy_with_missing_dst_warns() {

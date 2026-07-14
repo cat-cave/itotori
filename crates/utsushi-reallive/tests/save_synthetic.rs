@@ -1,4 +1,4 @@
-//! UTSUSHI-218 — synthetic-byte round-trip tests for the AVG-derived
+//! Synthetic-byte round-trip tests for the AVG-derived
 //! save format.
 //!
 //! These tests do **not** require the Sweetie HD research mount;
@@ -52,12 +52,10 @@ fn reallive_real_bytes_title_bytes() -> Vec<u8> {
 }
 
 /// UTF-8 form of the Sweetie HD title (`オシオキSweetie＋Sweets!! HD Edition`
-/// + IDEOGRAPHIC SPACE U+3000).
+/// IDEOGRAPHIC SPACE U+3000).
 const SWEETIE_HD_TITLE_UTF8: &str = "オシオキSweetie＋Sweets!! HD Edition\u{3000}";
 
-// =====================================================================
 // `SystemSave` (REALLIVE.sav, `AVG_SYSTEM_SAVE`).
-// =====================================================================
 
 #[test]
 fn save_reads_avg_system_save_synthetic_round_trips_byte_identically() {
@@ -103,9 +101,7 @@ fn save_reads_avg_system_save_decode_rejects_file_size_mismatch() {
     ));
 }
 
-// =====================================================================
 // `GlobalSave` (save999.sav, `AVG_GLOBAL_SAVE`).
-// =====================================================================
 
 #[test]
 fn save_reads_avg_global_save_synthetic_round_trips_byte_identically() {
@@ -144,9 +140,7 @@ fn save_reads_avg_global_save_decode_rejects_wrong_magic() {
     }
 }
 
-// =====================================================================
 // `ReadFlags` (read.sav, Shift-JIS title).
-// =====================================================================
 
 #[test]
 fn save_read_flags_decodes_title_round_trips_shift_jis_bytes() {
@@ -189,9 +183,7 @@ fn save_read_flags_decodes_title_accepts_ascii_title() {
     assert_eq!(flags.encode(), bytes);
 }
 
-// =====================================================================
 // Preamble cross-checks.
-// =====================================================================
 
 #[test]
 fn save_preamble_round_trips_reallive_real_bytes_shaped_values() {
@@ -218,11 +210,9 @@ fn save_preamble_round_trips_reallive_real_bytes_shaped_values() {
     assert_eq!(parsed, preamble);
 }
 
-// =====================================================================
 // Substrate `SnapshotStore` round-trip — the in-memory backing seam
 // the spec names: "substrate `SnapshotStore` is used as the in-memory
 // backing for save state; on-disk write is a separate serialiser".
-// =====================================================================
 
 #[test]
 fn save_state_inspectable_id_is_pinned() {

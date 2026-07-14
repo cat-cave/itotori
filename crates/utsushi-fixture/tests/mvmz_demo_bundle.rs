@@ -1,8 +1,8 @@
-//! UTSUSHI-134 integration proof: the MV/MZ **embedded playback demo bundle**
-//! PACKAGES the committed UTSUSHI-119 patched proof + UTSUSHI-102 alpha proof +
-//! UTSUSHI-006 patched trace + UTSUSHI-010 review manifest + UTSUSHI-065
+//! Integration proof: the MV/MZ **embedded playback demo bundle**
+//! PACKAGES the committed patched proof + alpha proof
+//! patched trace + review manifest
 //! screenshot evidence into ONE self-contained descriptor a public playback
-//! surface can render — links observed text / choices to bridge unit refs,
+//! surface can render — links observed text / choices to bridge unit refs
 //! validates the screenshot capture references, and re-checks the packaged proof
 //! verdicts, WITHOUT re-deriving any of them.
 
@@ -108,7 +108,7 @@ fn bundle_is_valid_and_packages_the_proof_links() {
     assert_eq!(bundle["playbackSurface"]["live"], false);
     assert_eq!(bundle["playbackSurface"]["public"], true);
 
-    // Proof links reference the UTSUSHI-119/102/065/010 artifacts by id/verdict.
+    // Proof links reference the artifacts by id/verdict.
     let links = &bundle["proofLinks"];
     assert_eq!(links["patchedRuntimeProof"]["source"], "UTSUSHI-119");
     assert_eq!(
@@ -121,7 +121,7 @@ fn bundle_is_valid_and_packages_the_proof_links() {
     assert_eq!(links["screenshotEvidence"]["source"], "UTSUSHI-065");
     assert_eq!(bundle["reviewManifest"]["source"], "UTSUSHI-010");
 
-    // The packaged patched-proof id is the committed 119 proof id (packaging,
+    // The packaged patched-proof id is the committed 119 proof id (packaging
     // not re-derivation).
     let committed_119 = read_json(&patched_proof_path());
     assert_eq!(
@@ -254,7 +254,7 @@ fn unproven_patched_proof_invalidates_the_bundle() {
     assert_eq!(check_status(&bundle, CHECK_PATCHED_PROOF_PROVEN_E1), "fail");
 }
 
-/// Regenerate the committed UTSUSHI-134 demo-bundle golden from the committed
+/// Regenerate the committed demo-bundle golden from the committed
 /// upstream artifacts. Env-gated so it only writes when explicitly asked.
 #[test]
 #[ignore = "regenerates the committed demo-bundle golden; run manually with UTSUSHI_U134_REGEN=1"]

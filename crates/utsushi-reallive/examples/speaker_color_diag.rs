@@ -24,7 +24,7 @@
 //!
 //! Run:
 //!   cargo run -p utsushi-reallive --example speaker_color_diag -- \
-//!     <gameexe.ini> <out.png> [KEY::text ...]
+//!     <gameexe.ini> <out.png> [KEY::text...]
 
 use std::path::PathBuf;
 

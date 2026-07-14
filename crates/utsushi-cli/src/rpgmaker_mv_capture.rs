@@ -11,7 +11,7 @@
 //! patched into the game data (from `patch-report.json`), NOT a planted
 //! sentinel: the assertion is over the engine's real decoded output.
 //!
-//! The emitted summary carries counts + the capture-artifact pointer +
+//! The emitted summary carries counts + the capture-artifact pointer
 //! the boolean match result only — never verbatim game text (the
 //! expected translated text is passed in, not echoed back), so committed
 //! runtime evidence stays redaction-safe.

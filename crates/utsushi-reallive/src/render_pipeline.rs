@@ -1,4 +1,4 @@
-//! UTSUSHI-214 / ALPHA-006b — headless render pipeline, localized text
+//! Headless render pipeline, localized text
 //! layer, deterministic PNG encoder, and substrate frame-artifact
 //! emission.
 //!
@@ -45,7 +45,7 @@
 //! URI, then announces an [`utsushi_core::substrate::FrameArtifact`] at
 //! `EvidenceTier::E2` through the supplied
 //! [`utsushi_core::substrate::FrameArtifactSink`]. The sink enforces the
-//! E2 per-payload floor, the artifact-kind allow-list (`screenshot`),
+//! E2 per-payload floor, the artifact-kind allow-list (`screenshot`)
 //! and the managed-URI shape; a frame that fails any of these is
 //! rejected rather than silently dropped.
 //!
@@ -101,7 +101,7 @@ pub const RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE: &str =
     "utsushi.reallive.render_pipeline.blank_localized_text";
 
 /// Stable diagnostic code emitted by [`RenderPass::paint_image`] when an
-/// image object contributes NO pixels (missing asset package, resolve /
+/// image object contributes NO pixels (missing asset package, resolve
 /// open / decode failure, or a zero-extent sprite). The compositor is
 /// fail-soft — it keeps rendering the rest of the stack — but the skip is
 /// NEVER silent: it is logged under this code AND recorded on the
@@ -141,13 +141,13 @@ const PNG_FILTER_NONE: u8 = 0;
 /// selects what an *emitted* frame carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RedactionPolicy {
-    /// Composite the real decoded g00 art. Used for the PRIVATE,
+    /// Composite the real decoded g00 art. Used for the PRIVATE
     /// uncommitted full-fidelity artifact and for locally-authorized
     /// (redaction-off) public frames.
     Full,
     /// Replace every image object's rect with a copyright-safe
     /// EDGE-OUTLINE of the decoded g00 (see [`redact_edge_map`]): the
-    /// scene's structure/layout survives for proof value while colour,
+    /// scene's structure/layout survives for proof value while colour
     /// tone, and texture are discarded and no verbatim art is republished.
     /// The default for committed / CI proof.
     Redact,
@@ -557,7 +557,7 @@ impl Framebuffer {
         painted
     }
 
-    /// Paint a hollow rectangle border of `colour`, `thickness` px wide,
+    /// Paint a hollow rectangle border of `colour`, `thickness` px wide
     /// along the inside edge of the `(x, y, w, h)` rect. Used to frame a
     /// [`SpatialChoiceWindow`] option panel.
     fn stroke_rect(&mut self, x: u32, y: u32, w: u32, h: u32, thickness: u32, colour: WipeColour) {
@@ -611,7 +611,7 @@ pub struct TextLayer {
     /// dialogue-box backing). `None` paints glyphs directly over the
     /// composited frame.
     pub backdrop: Option<TextBackdrop>,
-    /// Optional separate speaker name box (RealLive `NAME_MOD=1`),
+    /// Optional separate speaker name box (RealLive `NAME_MOD=1`)
     /// painted as its own backdrop + glyph layer floating above the main
     /// message box. `None` for narration or `NAME_MOD=0`.
     pub name_box: Option<Box<TextLayer>>,
@@ -714,7 +714,7 @@ impl TextLayer {
         // The waku (frame graphic) that sizes a real RealLive window is
         // not decoded in this port, so the box extent is derived from the
         // POS offsets: POS.x is the horizontal inset (symmetric), and the
-        // POS origin type + POS.y anchor the vertical band — a documented,
+        // POS origin type + POS.y anchor the vertical band — a documented
         // config-driven approximation.
         let geometry = window_box_geometry(config, screen_size, frame_size);
         let backdrop = geometry.backdrop;
@@ -837,7 +837,7 @@ fn box_text_height_virtual(config: &MessageWindowConfig, virtual_height: i32) ->
 /// ([`TextLayer::message_window`]) and the choice / selection window
 /// ([`ChoiceWindow::from_config`]).
 ///
-/// Every field is derived from a `#WINDOW.NNN` [`MessageWindowConfig`],
+/// Every field is derived from a `#WINDOW.NNN` [`MessageWindowConfig`]
 /// scaled from the game's virtual screen space to the actual framebuffer —
 /// the backdrop rectangle (POS-anchored, ATTR-coloured), the text origin
 /// (MOJI_POS insets), the glyph size (MOJI_SIZE), the inner text width, and
@@ -970,7 +970,7 @@ impl ChoiceWindow {
     /// Lay out `options` as a selection screen inside the sel-window
     /// `config` (typically [`crate::Gameexe::sel_window`]), with `selected`
     /// cursor-highlighted. `screen_size` is the game's virtual space the
-    /// config lives in; `frame_size` is the framebuffer. Box position /
+    /// config lives in; `frame_size` is the framebuffer. Box position
     /// colour / alpha / font-size / insets are all config-driven.
     pub fn from_config(
         options: &[String],
@@ -1042,7 +1042,7 @@ impl ChoiceWindow {
     }
 }
 
-/// A single option in a [`SpatialChoiceWindow`]: its localized name /
+/// A single option in a [`SpatialChoiceWindow`]: its localized name
 /// label and the panel rectangle it occupies. `art_colour` is the
 /// placeholder fill standing in for the not-yet-decoded option g00 art
 /// (full-colour when the option is focused; [`desaturate_dim`]-ed when
@@ -1064,9 +1064,9 @@ pub struct SpatialOption {
 }
 
 /// A RealLive `select_objbtn` (object-button) prompt rendered as a
-/// SPATIAL, side-by-side graphical select — Sweetie HD's route /
+/// SPATIAL, side-by-side graphical select — Sweetie HD's route
 /// love-interest pick (the game's first choice: two characters
-/// side-by-side, the hovered one in full colour, the other grayscale,
+/// side-by-side, the hovered one in full colour, the other grayscale
 /// with the hovered one's name shown).
 ///
 /// This is a distinct RENDER modality from the vertical text-list
@@ -1171,7 +1171,7 @@ impl SpatialChoiceWindow {
     }
 }
 
-/// A single box in an [`ImageGridChoiceWindow`]: its localized name /
+/// A single box in an [`ImageGridChoiceWindow`]: its localized name
 /// label and the small icon rectangle it occupies. `art_colour` is the
 /// placeholder fill standing in for the not-yet-decoded costume-icon g00
 /// art (full-colour when selected; [`desaturate_dim`]-ed when not).
@@ -1201,9 +1201,9 @@ pub struct ImageGridCell {
 /// [`ChoiceWindow`] AND the side-by-side [`SpatialChoiceWindow`]: the
 /// options are laid out as a horizontal GRID of many small icon boxes
 /// (rather than two big character panels or a vertical list), and the
-/// selected box is cued by a bright highlight border + full colour +
+/// selected box is cued by a bright highlight border + full colour
 /// a caption naming it. A select is a GRAPHICAL button-object modality when
-/// its scene carries button-object SelectionControl setup ops (`objbtn_init` /
+/// its scene carries button-object SelectionControl setup ops (`objbtn_init`
 /// `select_objbtn`, the REAL opcodes 20 / 4) — see
 /// [`crate::SelectionControlSignal`] / [`crate::select_modality`]. Within a
 /// button-object select the image-GRID vs. side-by-side-PAIR choice is a
@@ -1393,7 +1393,7 @@ mod font {
             let mut caret_x = layer.origin_x as f32;
 
             for character in line.chars() {
-                // A code point the font lacks maps to glyph 0 (`.notdef`,
+                // A code point the font lacks maps to glyph 0 (`.notdef`
                 // the box), so a localized English layer stays provably
                 // distinct — at the pixel level — from the untranslated
                 // Shift-JIS source.
@@ -1418,7 +1418,7 @@ mod font {
 
                 for gy in 0..placement.height {
                     for gx in 0..placement.width {
-                        // 8-bit alpha mask: one coverage byte per pixel,
+                        // 8-bit alpha mask: one coverage byte per pixel
                         // row-major, for anti-aliased edges.
                         let cover = image.data[(gy * placement.width + gx) as usize];
                         if cover == 0 {
@@ -1460,7 +1460,7 @@ mod font {
     }
 
     /// Greedily word-wrap `text` so that each returned line, when
-    /// rasterised at `px` em size through the bundled PROPORTIONAL font,
+    /// rasterised at `px` em size through the bundled PROPORTIONAL font
     /// stays within `max_width` framebuffer pixels.
     ///
     /// This is the message-window body wrap: RealLive breaks message text
@@ -1640,7 +1640,7 @@ pub enum SkipReason {
         error: String,
     },
     /// [`decode_g00`] returned a hard error on the real bytes (e.g. the
-    /// UTSUSHI-216 `BACK.g00` decoder bug). This is the branch that would
+    /// `BACK.g00` decoder bug). This is the branch that would
     /// otherwise silently drop the dominant scene background.
     DecodeFailed {
         /// Display of the g00 decode error.
@@ -1705,7 +1705,7 @@ impl RenderReport {
         self.skipped_objects.is_empty() && self.warnings.is_empty()
     }
 
-    /// True when at least one object was DROPPED (contributed no pixels),
+    /// True when at least one object was DROPPED (contributed no pixels)
     /// so the rendered frame is incomplete regardless of warnings.
     pub fn is_incomplete(&self) -> bool {
         !self.skipped_objects.is_empty()
@@ -1841,7 +1841,7 @@ impl RenderPass {
     }
 
     /// Rasterise `stack` into a fresh framebuffer under `policy` (no text
-    /// layer). The render order is `(layer: DCs, bg objects, fg objects)`,
+    /// layer). The render order is `(layer: DCs, bg objects, fg objects)`
     /// then within each layer `(layer_order ascending, slot ascending)`.
     pub fn rasterise_with_policy(
         &self,
@@ -1916,7 +1916,7 @@ impl RenderPass {
     }
 
     /// Rasterise `stack` + the localized `text` layer under the default
-    /// [`RedactionPolicy::Redact`] policy, encode the deterministic PNG,
+    /// [`RedactionPolicy::Redact`] policy, encode the deterministic PNG
     /// persist it to `root` under a managed `screenshots/<artifact_id>.png`
     /// URI, and announce a [`FrameArtifact`] at [`EvidenceTier::E2`]
     /// through `sink`. This is the public, redacted single-frame emit: an
@@ -1925,7 +1925,7 @@ impl RenderPass {
     /// The full-fidelity path is [`Self::emit_scene_screenshots`].
     ///
     /// NON-VACUOUS LOCALIZATION PROOF: a non-empty `text` layer that
-    /// paints ZERO framebuffer pixels (off-screen origin, all-whitespace,
+    /// paints ZERO framebuffer pixels (off-screen origin, all-whitespace
     /// or a glyph-less layer) is rejected with
     /// [`RenderEmitError::BlankLocalizedText`] **before** any PNG is
     /// written or any frame announced, so an E2 localized screenshot can
@@ -1946,7 +1946,7 @@ impl RenderPass {
     /// Emit the full-fidelity PRIVATE screenshot AND the public
     /// (policy-selected) screenshot for `stack` + `text`.
     ///
-    /// 1. The full-fidelity framebuffer (real decoded g00 composited,
+    /// 1. The full-fidelity framebuffer (real decoded g00 composited
     ///    [`RedactionPolicy::Full`]) is encoded and written to
     ///    `private_dir/<sha256>.png` — an uncommitted, hashable file on
     ///    disk. Its pixels are byte-derived from the decoded g00.
@@ -2355,7 +2355,7 @@ fn redact_edge_map(pixels_rgba: &[u8], width: u32, height: u32) -> Vec<u8> {
     out
 }
 
-/// Scale `dimension` (pixels) by `thousandths` (`1000` = identity),
+/// Scale `dimension` (pixels) by `thousandths` (`1000` = identity)
 /// rounding to nearest. Negative or zero scale collapses the extent to
 /// `0` (the object contributes no pixels); axis mirroring is out of
 /// scope for the headless rasteriser.
@@ -2498,7 +2498,7 @@ fn write_ihdr_chunk(out: &mut Vec<u8>, width: u32, height: u32) {
 }
 
 fn write_idat_chunk(out: &mut Vec<u8>, width: u32, height: u32, pixels: &[u8]) {
-    // Build the PNG scanline stream: one filter byte (0 = None) per row,
+    // Build the PNG scanline stream: one filter byte (0 = None) per row
     // followed by the row's RGBA bytes.
     let row_stride = (width as usize) * RGBA_BYTES_PER_PIXEL;
     let mut scanlines = Vec::with_capacity((height as usize) * (1 + row_stride));
@@ -2519,7 +2519,7 @@ fn write_iend_chunk(out: &mut Vec<u8>) {
 /// deflate stored blocks (`BTYPE=00`). RFC 1951 caps a stored block at
 /// `65_535` bytes; longer payloads are split into multiple blocks. The
 /// final block sets the `BFINAL` bit. The zlib header is the
-/// well-known `0x78 0x01` (deflate, no compression, no dictionary,
+/// well-known `0x78 0x01` (deflate, no compression, no dictionary
 /// `FCHECK` chosen so `(CMF*256 + FLG) % 31 == 0`).
 fn wrap_as_zlib_stored(data: &[u8]) -> Vec<u8> {
     // CMF: deflate, 32K window. FLG: FCHECK chosen so the RFC 1950
@@ -2829,7 +2829,7 @@ mod tests {
     }
 
     fn kanon_like_config() -> MessageWindowConfig {
-        // Kanon-shaped: top-left origin, bottom box, full width (POS.x=0),
+        // Kanon-shaped: top-left origin, bottom box, full width (POS.x=0)
         // narration only (NAME_MOD=0).
         MessageWindowConfig {
             origin: 0,
@@ -2921,7 +2921,7 @@ mod tests {
 
     #[test]
     fn message_window_wraps_long_message_at_moji_cnt_within_the_box() {
-        // A Sweetie-shaped window: 1280x720, MOJI_SIZE=36, MOJI_CNT=22,3,
+        // A Sweetie-shaped window: 1280x720, MOJI_SIZE=36, MOJI_CNT=22,3
         // MOJI_REP=0,2, MOJI_POS=48,0,12,0, POS bottom-anchored inset 220.
         let cfg = MessageWindowConfig {
             origin: 2,

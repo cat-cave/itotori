@@ -9,10 +9,10 @@
 //! They are `#[ignore]`-gated and env-driven, following the crate's
 //! real-bytes convention:
 //!
-//! - `ITOTORI_REAL_GAME_ROOT`   — title 1 (Sweetie HD).
+//! - `ITOTORI_REAL_GAME_ROOT` — title 1 (Sweetie HD).
 //! - `ITOTORI_REAL_GAME_ROOT_2` — title 2 (Kanon).
 //!
-//! The full-fidelity (real-art) frame is written ONLY to a private,
+//! The full-fidelity (real-art) frame is written ONLY to a private
 //! uncommitted path under the repo's gitignored `/.private-render/`
 //! directory (which lives under `/scratch`); the public frame is
 //! redacted by default. No test embeds or asserts a real-art pixel
@@ -36,8 +36,6 @@ use utsushi_reallive::{
     GraphicsPlane, GraphicsScale, PNG_FILE_MAGIC, RecordingFrameArtifactSink, RedactionPolicy,
     RenderPass, SceneEmit, SkipReason, TextLayer, WipeColour, decode_g00, sha256_hex,
 };
-
-// ---- on-disk g00 asset package --------------------------------------
 
 /// Minimal [`AssetPackage`] that resolves `g00/<NAME>.g00` against a
 /// real on-disk g00 directory (no whole-tree indexing). Case-sensitive:
@@ -106,8 +104,6 @@ fn strip_g00_prefix(logical: &str) -> &str {
     logical.strip_prefix("g00/").unwrap_or(logical)
 }
 
-// ---- corpus helpers -------------------------------------------------
-
 /// Scan `g00_dir` for the first type-0 (`RawBgr`) g00 file whose bytes
 /// decode cleanly into a canvas with genuine pixel variance (so the
 /// downstream "not all fill" / "differs" invariants are non-vacuous).
@@ -152,7 +148,7 @@ fn pick_varied_type0_g00(g00_dir: &Path) -> Option<(String, G00Image)> {
 /// [`G00DecodeError::MalformedCompressedSize`]. It carries a plausible
 /// header — a valid type-0 lead byte and non-zero `width`/`height` — but
 /// its LZSS section declares a `compressed_size` of `0`, which is below
-/// the mandatory 8-byte section preamble the field is defined to include,
+/// the mandatory 8-byte section preamble the field is defined to include
 /// so the decoder rejects it as internally inconsistent (rather than
 /// clamping to an empty payload and surfacing only a downstream warning).
 ///
@@ -312,10 +308,9 @@ fn run_title_render_proof(g00_dir: PathBuf, title: &str) {
         .expect("bg only");
     let bg_frame = pass.rasterise_with_policy(&bg_only, RedactionPolicy::Full);
 
-    // ---- NODE 1: graphics-object state IS applied --------------------
     // Three full-fidelity renders of the SAME sprite geometry:
-    //  - ignore:  neutral tone, opaque alpha (state-ignored baseline)
-    //  - opaque:  applied tone, opaque alpha
+    //  - ignore: neutral tone, opaque alpha (state-ignored baseline)
+    //  - opaque: applied tone, opaque alpha
     //  - blended: applied tone, half alpha
     let ignore_frame = pass.rasterise_with_policy(
         &build_stack(
@@ -376,7 +371,6 @@ fn run_title_render_proof(g00_dir: PathBuf, title: &str) {
         "{title}: object scale must resample the sprite (scale applied)"
     );
 
-    // ---- NODE 2: real g00 rasterised into the framebuffer -----------
     // The full-fidelity opaque frame's object rect is NOT all background
     // fill — it carries decoded-g00-derived pixels.
     let bg_rgba = [
@@ -399,7 +393,6 @@ fn run_title_render_proof(g00_dir: PathBuf, title: &str) {
          (not all synthetic fill) in the object rect"
     );
 
-    // ---- NODE 2: emit private full-fidelity + public redacted --------
     let text = TextLayer::localized(vec![format!("{title} SCENE-1 EN").to_uppercase()]);
 
     // Redaction ON (default): public frame is redacted; private is full.
@@ -513,7 +506,7 @@ fn run_title_render_proof(g00_dir: PathBuf, title: &str) {
 /// suite hid by only ever picking cleanly-decodable sprites.
 ///
 /// It renders a background wipe + localized text + one image object whose
-/// asset is a SYNTHETIC malformed g00 (authored by [`malformed_type0_g00`],
+/// asset is a SYNTHETIC malformed g00 (authored by [`malformed_type0_g00`]
 /// which [`decode_g00`] hard-rejects with
 /// [`G00DecodeError::MalformedCompressedSize`]), and asserts the emit
 /// result REPORTS the skip (`is_incomplete() == true`, `skipped_objects`
@@ -722,8 +715,6 @@ fn rect_differs(
     }
     false
 }
-
-// ---- gated entry points (one per title) -----------------------------
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var (title 1)"]

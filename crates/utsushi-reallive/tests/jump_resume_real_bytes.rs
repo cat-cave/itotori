@@ -21,7 +21,7 @@
 //!     jump/resume code lands deterministically on Kanon's entry scene.
 //!
 //! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE (no
-//! opt-out; runs only in the periodic ground-truth oracle,
+//! opt-out; runs only in the periodic ground-truth oracle
 //! `just real-bytes-oracle`). Run with
 //! `ITOTORI_REAL_GAME_ROOT=<sweetie> ITOTORI_REAL_GAME_ROOT_2=<kanon>
 //! cargo test -p utsushi-reallive --test jump_resume_real_bytes -- --ignored`.

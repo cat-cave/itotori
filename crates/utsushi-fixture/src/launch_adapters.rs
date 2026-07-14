@@ -7,14 +7,14 @@
 //! `--dump-dom`) to render/observe RPG Maker MV/MZ games, and
 //! `browser_detection::probe_version` runs the bounded `<binary> --version`
 //! probe that resolves and validates the binary. Both spawn through
-//! `utsushi_core::RuntimeLaunchCommand` (the single shipped external spawn),
+//! `utsushi_core::RuntimeLaunchCommand` (the single shipped external spawn)
 //! and `BrowserLaunchAdapter` is registered as a production runtime adapter in
 //! `utsushi-cli`. RPG Maker MV/MZ games are browser/NW.js JavaScript games
 //! with no proprietary opcode VM, so launching the real browser runs the
 //! actual engine rather than a from-scratch mimic. See
 //! `docs/dev/architecture.md` ("MV/MZ runtime evidence: real-Chromium
 //! policy") for the decided policy and its scope boundary; every other
-//! `kaifuu`/`utsushi` engine module keeps its no-`Command::new`,
+//! `kaifuu`/`utsushi` engine module keeps its no-`Command::new`
 //! in-process-Rust rule unchanged.
 
 use std::env;
@@ -467,7 +467,7 @@ fn attach_reason_details(
 mod browser_detection {
     //! Bounded Chromium probe used by the browser launch adapter.
     //!
-    //! UTSUSHI-148 enforces the orchestrator's "no optionality on claimed
+    //! enforces the orchestrator's "no optionality on claimed
     //! inputs" architectural commitment for MV/MZ alpha: probe outcomes
     //! categorize environmental misconfiguration with typed semantic codes
     //! in the engine-neutral `utsushi.browser.*` namespace, never silent
@@ -583,11 +583,11 @@ mod browser_detection {
             required_major: u32,
         },
         /// No usable display surface under strict display checking
-        /// (UTSUSHI-162). Produced by [`probe_display`] when the operator
+        /// (). Produced by [`probe_display`] when the operator
         /// opts into the `UTSUSHI_STRICT_DISPLAY` activation gate and the
         /// host exposes no X11/Wayland display env var on a platform that
         /// uses that convention. Off by default, so the headless-only
-        /// UTSUSHI-148 path is unchanged.
+        /// path is unchanged.
         DisplayUnavailable {
             source: BrowserDetectionLabel,
             platform: &'static str,
@@ -658,7 +658,7 @@ mod browser_detection {
         /// Display env vars present (X11/Wayland session). Headless launch
         /// nonetheless proceeds with `--headless=new --disable-gpu --no-sandbox`.
         PresentEnv,
-        /// No display env vars present but the adapter operates headlessly,
+        /// No display env vars present but the adapter operates headlessly
         /// so launch is not gated.
         HeadlessOnly,
         /// Strict display checking explicitly enabled and no usable surface
@@ -714,7 +714,7 @@ mod browser_detection {
         //    order documented in the descriptor limitation list.
         let Some((program, source)) = resolve_binary_candidate(configured) else {
             // candidates_tried = configured + env probe + PATH candidates
-            // + platform paths (all attempted unsuccessfully)
+            // platform paths (all attempted unsuccessfully)
             let tried = 1 // env (if absent it still counts as one slot inspected)
                 + BROWSER_CANDIDATES.len()
                 + BROWSER_PLATFORM_PATHS.len();
@@ -748,10 +748,10 @@ mod browser_detection {
             });
         }
 
-        // 3. Strict-display gate (UTSUSHI-162). Under the UTSUSHI_STRICT_DISPLAY
+        // 3. Strict-display gate (). Under the UTSUSHI_STRICT_DISPLAY
         //    activation gate the probe requires a usable display surface and
         //    emits DisplayUnavailable when none is detected. With the gate off
-        //    (default) this is a no-op headless-only outcome, so the UTSUSHI-148
+        //    (default) this is a no-op headless-only outcome, so the
         //    headless launch path is unchanged.
         probe_display(source)?;
 
@@ -762,9 +762,9 @@ mod browser_detection {
         })
     }
 
-    /// Activation-gate env var for strict display checking (UTSUSHI-162).
+    /// Activation-gate env var for strict display checking ().
     /// Absent / falsey (unset, `""`, `0`, `false`, `off`) leaves the
-    /// headless-only UTSUSHI-148 behavior untouched: no display env var is
+    /// headless-only behavior untouched: no display env var is
     /// NOT an error. Truthy opts the operator into requiring a usable
     /// display surface, so a CI runner with a broken/absent display gets a
     /// typed `utsushi.browser.display_unavailable` diagnostic instead of a
@@ -819,7 +819,7 @@ mod browser_detection {
         cfg!(all(unix, not(target_os = "macos")))
     }
 
-    /// Real strict-display probe (UTSUSHI-162). Reads the activation gate and
+    /// Real strict-display probe (). Reads the activation gate and
     /// the host display env, then decides via [`evaluate_display`].
     pub(super) fn probe_display(
         source: BrowserDetectionLabel,
@@ -839,7 +839,7 @@ mod browser_detection {
     ///
     /// - A present display surface is always usable (`PresentEnv`).
     /// - Gate off keeps the headless-only default (`HeadlessOnly`); absence of
-    ///   a display is never an error, preserving UTSUSHI-148 behavior.
+    ///   a display is never an error, preserving behavior.
     /// - Gate on with no display: on env-convention platforms this is a hard
     ///   [`BrowserUnavailabilityReason::DisplayUnavailable`]; on native-window
     ///   platforms the env signal is inapplicable, so it stays `PresentEnv`.
@@ -895,7 +895,7 @@ mod browser_detection {
         None
     }
 
-    /// Bounded `<binary> --version` probe. Returns `None` on spawn failure,
+    /// Bounded `<binary> --version` probe. Returns `None` on spawn failure
     /// non-zero exit, output that does not parse, or timeout.
     fn probe_version(program: &Path) -> Option<ChromiumVersion> {
         let mut child = Command::new(program)
@@ -929,7 +929,7 @@ mod browser_detection {
     }
 
     /// Parse a Chromium-style `--version` output of the form
-    /// `"Chromium 124.0.6367.118 ..."` or `"Google Chrome 124.0.6367.118 ..."`.
+    /// `"Chromium 124.0.6367.118..."` or `"Google Chrome 124.0.6367.118..."`.
     /// Returns `None` if no dotted-number token is found.
     pub(super) fn parse_chromium_version(text: &str) -> Option<ChromiumVersion> {
         for token in text.split_whitespace() {
@@ -1010,7 +1010,7 @@ mod browser_detection {
     /// Test-only constructor for the `DisplayUnavailable` variant. The real
     /// probe ([`probe_display`]) now produces this variant under the
     /// `UTSUSHI_STRICT_DISPLAY` gate; this helper builds a deterministic
-    /// instance so the wiring smoke test can assert the semantic-code /
+    /// instance so the wiring smoke test can assert the semantic-code
     /// harness-kind contract without depending on host env.
     #[cfg(test)]
     pub(super) fn force_display_unavailable() -> BrowserUnavailabilityReason {
@@ -1440,14 +1440,14 @@ fn parse_observed_dom(dom: &str) -> Vec<Value> {
 ///
 /// The observed surface spans the RPG Maker MV/MZ runtime event kinds the
 /// public fixture emits from a live render:
-/// - `text` -> a trace event AND a text observation hook event,
-/// - `choice` -> a choice observation hook event,
-/// - `scene` -> a scene observation hook event (SceneManager/map transition),
+/// - `text` -> a trace event AND a text observation hook event
+/// - `choice` -> a choice observation hook event
+/// - `scene` -> a scene observation hook event (SceneManager/map transition)
 /// - `branch` -> a branch observation hook event (conditional-branch routing).
 ///
 /// `scene` and `branch` are carried by the existing observation-hook envelope
 /// (`ObservationScenePayload` / `ObservationBranchPayload`); no schema change is
-/// required to observe them beyond the UTSUSHI-102 text+choice surface.
+/// required to observe them beyond the text+choice surface.
 fn build_observed_events(
     descriptor: &RuntimeAdapterDescriptor,
     source: &Value,
@@ -1594,7 +1594,7 @@ fn observed_choice_hook_event(
 }
 
 /// A scene/map-transition observation hook event. RPG Maker MV/MZ drives play
-/// through `SceneManager` scene changes (`Scene_Map`, `Scene_Battle`, ...); the
+/// through `SceneManager` scene changes (`Scene_Map`, `Scene_Battle`,...); the
 /// live `Window_MapName` display name (`sceneName`) is a runtime-only string
 /// that determines which message stream is active. Carried by the schema's
 /// `ObservationScenePayload` (`payloadKind: "scene"`).
@@ -2411,7 +2411,7 @@ exit 0
         // capture launch — surfacing `CaptureFailed` instead of the expected
         // `ChromiumVersionMismatch`. The fake browser's own `--version` here
         // prints a NEWER (passing) version on purpose: if this test ever
-        // regressed to the real shell-out it would detect "124.*" and fail,
+        // regressed to the real shell-out it would detect "124.*" and fail
         // proving the injected value — not a spawned process — drives the
         // outcome. The real shell-out probe stays live for production and is
         // covered by the env-gated real-browser tests.
@@ -2583,7 +2583,7 @@ exit 0
     fn reserved_display_unavailable_reason_carries_typed_semantic_code() {
         // Wiring smoke for the DisplayUnavailable variant: pins the semantic
         // code, harness error kind, and detail-attachment contract that the
-        // real strict-display probe (UTSUSHI-162) relies on. Uses the
+        // real strict-display probe () relies on. Uses the
         // deterministic force_display_unavailable constructor so the contract
         // is asserted without depending on host display env.
         let reason = super::browser_detection::force_display_unavailable();
@@ -2614,7 +2614,7 @@ exit 0
     #[test]
     fn strict_display_policy_gate_off_default_is_headless_only() {
         // Gate OFF (default): a missing display surface is NOT an error, so
-        // the UTSUSHI-148 headless launch path is unchanged. Uses the pure
+        // the headless launch path is unchanged. Uses the pure
         // policy fn so the default is asserted deterministically regardless
         // of host env, on every platform.
         for platform_uses_display_env in [true, false] {
@@ -2802,8 +2802,6 @@ exit 0
         }
     }
 
-    // ---- UTSUSHI-006: live MV/MZ DOM text + choice observation --------------
-
     fn mvmz_observation_fixture_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mvmz_observation")
     }
@@ -2820,7 +2818,7 @@ set -eu
 url=""
 for arg in "$@"; do
   case "$arg" in
-    file://*) url="$arg" ;;
+    file: // *) url="$arg";;
   esac
 done
 [ -n "$url" ] || exit 70

@@ -1,4 +1,4 @@
-//! UTSUSHI-205 — expression evaluator (UTSUSHI-206 sparse-banks edition).
+//! Expression evaluator ( sparse-banks edition).
 //!
 //! Given an [`ExprNode`] produced by [`crate::expression::parse_expression`]
 //! and a [`crate::var_banks::VarBanks`] snapshot, [`evaluate`] reduces the
@@ -9,7 +9,7 @@
 //!
 //! Per `docs/research/reallive-engine.md` §G the integer banks are
 //! `intA`..`intM` (13 letters per Haeleth's documented RLDEV manual;
-//! rlvm caps each bank at 2 000 entries). The UTSUSHI-206 sparse model
+//! rlvm caps each bank at 2 000 entries). The sparse model
 //! uses a [`std::collections::BTreeMap<u16, i32>`] per bank and clamps
 //! to [`crate::var_banks::BANK_INDEX_CAP`] (`2 000`). Bank-byte indexing
 //! follows the documented `\x00..=\x0C` convention pinned in
@@ -17,7 +17,7 @@
 //!
 //! # Division and modulo by zero
 //!
-//! Per the alpha-gate hardness constraint listed in the UTSUSHI-205
+//! Per the alpha-gate hardness constraint listed in the
 //! task, division or modulo by zero surfaces as
 //! [`EvaluationError::DivisionByZero`]. No panic, no
 //! "silent return zero" path.
@@ -32,25 +32,25 @@ use crate::var_banks::{BANK_INDEX_CAP, BankId, Value, VarBanks};
 /// the documented RLDEV bank-letter encoding (mirrors rlvm's
 /// `Memory::Get` convention — `intA`..`intM` are zero-indexed):
 ///
-/// | Bank byte | Bank   | Dense index |
-/// | --------- | ------ | ----------- |
-/// | `0x00`    | `intA` | 0           |
-/// | `0x01`    | `intB` | 1           |
-/// | `0x02`    | `intC` | 2           |
-/// | `0x03`    | `intD` | 3           |
-/// | `0x04`    | `intE` | 4           |
-/// | `0x05`    | `intF` | 5           |
-/// | `0x06`    | `intG` | 6           |
-/// | `0x07`    | `intH` | 7           |
-/// | `0x08`    | `intI` | 8           |
-/// | `0x09`    | `intJ` | 9           |
-/// | `0x0A`    | `intK` | 10          |
-/// | `0x0B`    | `intL` | 11          |
-/// | `0x0C`    | `intM` | 12          |
+/// Bank byte | Bank | Dense index
+/// --------- | ------ | -----------
+/// `0x00` | `intA` | 0
+/// `0x01` | `intB` | 1
+/// `0x02` | `intC` | 2
+/// `0x03` | `intD` | 3
+/// `0x04` | `intE` | 4
+/// `0x05` | `intF` | 5
+/// `0x06` | `intG` | 6
+/// `0x07` | `intH` | 7
+/// `0x08` | `intI` | 8
+/// `0x09` | `intJ` | 9
+/// `0x0A` | `intK` | 10
+/// `0x0B` | `intL` | 11
+/// `0x0C` | `intM` | 12
 ///
 /// The Sweetie HD scene #0001 Expression elements address `intF`
 /// (byte `0x05`) and `intG` (byte `0x06`) under this mapping — pinned
-/// by the UTSUSHI-205 real-bytes test.
+/// by the real-bytes test.
 ///
 /// Returns [`EvaluationError::UnknownBank`] for any byte outside that
 /// window. The store register (`0xC8`) is handled directly by the
@@ -98,7 +98,7 @@ fn read_int_bank(banks: &VarBanks, bank_byte: u8, index: i32) -> Result<i32, Eva
     Ok(match banks.get(bank, idx) {
         Some(Value::Int(value)) => value,
         // Sparse storage: unset indices read as zero — matches the
-        // dense-bank surface UTSUSHI-205 exposed (every slot defaulted
+        // dense-bank surface exposed (every slot defaulted
         // to zero) so the evaluator's arithmetic on unset slots is
         // unchanged.
         None => 0,
@@ -470,7 +470,7 @@ mod tests {
 
     #[test]
     fn bank_byte_table_maps_documented_letters() {
-        // Zero-indexed encoding: 0x00=intA, ..., 0x0C=intM.
+        // Zero-indexed encoding: 0x00=intA,..., 0x0C=intM.
         assert_eq!(bank_byte_to_index(0x00).unwrap(), 0);
         assert_eq!(bank_byte_to_index(0x01).unwrap(), 1);
         assert_eq!(bank_byte_to_index(0x0C).unwrap(), 12);

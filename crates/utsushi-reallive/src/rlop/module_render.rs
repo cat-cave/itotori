@@ -6,48 +6,48 @@
 //! The earlier `module_grp` / `module_obj` tables implemented graphics
 //! semantics under SYNTHETIC opcode numbers (`grp.allocDC = 1`, …) that
 //! never occur on real bytes. On the proven corpora (Sweetie HD + Kanon)
-//! the real RealLive opcode numbers (rlvm's `module_grp` at `15/16/31/32/
+//! the real RealLive opcode numbers (rlvm's `module_grp` at `15/16/31/32
 //! 70/72/73/…` and the object modules at `1000/1003/1004/1026/1039/…`)
-//! were caught by the [`crate::rlop::module_catalog`] `Advance` gap-fill,
+//! were caught by the [`crate::rlop::module_catalog`] `Advance` gap-fill
 //! so they PARSED but never mutated render state — a faithful frame could
 //! not be produced.
 //!
-//! This module gives those REAL opcode numbers REAL render semantics,
-//! re-derived from the rlvm research anchor (`module_grp.cc`,
-//! `module_obj_creation.cc`, `module_obj_fg_bg.cc`,
+//! This module gives those REAL opcode numbers REAL render semantics
+//! re-derived from the rlvm research anchor (`module_grp.cc`
+//! `module_obj_creation.cc`, `module_obj_fg_bg.cc`
 //! `module_obj_management.cc`, `object_module.cc`) — the LOGIC is
 //! re-implemented, no source is vendored. Each op mutates the shared
-//! [`GraphicsRuntime`] (the [`crate::GraphicsObjectStack`] +
+//! [`GraphicsRuntime`] (the [`crate::GraphicsObjectStack`]
 //! side-tables) so a composited frame reflects it.
 //!
 //! # Opcode numbering (rlvm-anchored)
 //!
 //! - `module_grp` = `module_id 33` (rlvm `GrpModule("Grp", 1, 33)`).
-//!   `allocDC=15, FreeDC=16, wipe=31, shake=32, grpBuffer=70,
-//!   grpMaskBuffer=71, grpDisplay=72, grpOpenBg=73, grpMaskOpen=74,
-//!   grpMulti=75/77, grpOpen=76, grpCopy=100, grpMaskCopy=101,
-//!   grpFill=201, grpInvert=300, grpMono=301, grpColour=302, grpLight=303,
+//!   `allocDC=15, FreeDC=16, wipe=31, shake=32, grpBuffer=70
+//!   grpMaskBuffer=71, grpDisplay=72, grpOpenBg=73, grpMaskOpen=74
+//!   grpMulti=75/77, grpOpen=76, grpCopy=100, grpMaskCopy=101
+//!   grpFill=201, grpInvert=300, grpMono=301, grpColour=302, grpLight=303
 //!   grpFade=403`. `rec*` = the same ops on the `REC` coordinate space at
 //!   `1050+` (`recOpenBg=1053, recOpen=1056, recCopy=1100, recFill=1201`).
 //! - object CREATION = `module_id 71` (ObjFg) / `72` (ObjBg):
-//!   `objOfFile=1000, objOfFileGan=1003, objOfArea=1100, objOfRect=1101,
-//!   objOfText=1200, objDriftOfFile=1300, objOfDigits=1400,
+//!   `objOfFile=1000, objOfFileGan=1003, objOfArea=1100, objOfRect=1101
+//!   objOfText=1200, objDriftOfFile=1300, objOfDigits=1400
 //!   objOfChild=1500`.
 //! - object SETTERS = `module_id 81` (ObjFg) / `82` (ObjBg) / `90`,`91`
 //!   (range). rlvm's `object_module.cc` maps a base id `n` to opcode
-//!   `1000+n` (`Move=1000, Left=1001, Top=1002, Alpha=1003, Mono=1009,
+//!   `1000+n` (`Move=1000, Left=1001, Top=1002, Alpha=1003, Mono=1009
 //!   Invert=1010, Light=1011, Layer=1026, PattNo=1039, Scale=1046, …`) plus
-//!   the `addObjectFunctions` block (`objShow=1004, objTint=1012,
+//!   the `addObjectFunctions` block (`objShow=1004, objTint=1012
 //!   objColour=1016, objButtonOpts=1064, objEveDisplay=2004`).
 //! - object MANAGEMENT = `module_id 60`/`61`(fg)/`62`(bg):
-//!   `objFree=0, objInit=10, objFreeInit=11, objFreeAll=100,
+//!   `objFree=0, objInit=10, objFreeInit=11, objFreeAll=100
 //!   objInitAll=110, objFreeInitAll=111` (+ `objCopyFgToBg=2` on `60`).
 //!
 //! # Lattice-type registration
 //!
 //! On the real bytes the SAME semantic op appears under more than one
 //! `module_type` (Sweetie HD's object setters carry `module_type=2`;
-//! Kanon's carry `module_type=1`). Like [`crate::rlop::module_catalog`],
+//! Kanon's carry `module_type=1`). Like [`crate::rlop::module_catalog`]
 //! every op here is registered under all three observed lattice types
 //! `{0, 1, 2}` so it fires regardless of the compiler-version artifact.
 //!
@@ -77,8 +77,6 @@ use crate::graphics_objects::{
     GraphicsObjectTarget, GraphicsPlane, GraphicsScale, ImageProvenance, WipeColour,
 };
 use crate::vm::Vm;
-
-// ---- module addressing -----------------------------------------------
 
 /// `module_id` of `module_grp` (graphic DC / background ops).
 pub const GRP_MODULE_ID: u8 = 33;
@@ -189,8 +187,6 @@ fn object_layer(plane: GraphicsPlane) -> GraphicsLayer {
     }
 }
 
-// ---- argument helpers ------------------------------------------------
-
 fn arg_int(args: &[ExprValue], at: usize) -> Option<i32> {
     args.get(at).and_then(ExprValue::as_int)
 }
@@ -219,9 +215,7 @@ fn warn(runtime: &GraphicsRuntime, tag: &'static str, slot: usize) {
     runtime.push_warning(GraphicsRuntimeWarning::OperateOnEmptySlot { slot }.with_opcode(tag));
 }
 
-// ======================================================================
 // module_grp — DC / background graphics (module_id 33)
-// ======================================================================
 
 /// The `module_grp` opcodes this module implements with real numbers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -393,7 +387,7 @@ impl RLOperation for GrpRenderOp {
                 self.load_image_to(args, SCREEN_DC_SLOT, true)
             }
             GrpOp::Multi => {
-                // grpMulti(filename, ...): base image to DC0; overlays gap.
+                // grpMulti(filename,...): base image to DC0; overlays gap.
                 self.load_image_to(args, SCREEN_DC_SLOT, true)
             }
             GrpOp::Display => {
@@ -490,7 +484,7 @@ impl RLOperation for GrpRenderOp {
                 DispatchOutcome::Advance
             }
             GrpOp::Fade => {
-                // grpFade(dc?, target_alpha?, ...) — fade DC0 to a target.
+                // grpFade(dc?, target_alpha?,...) — fade DC0 to a target.
                 // rlvm's fade family has many overloads; we schedule a fade
                 // of the DC0 alpha towards a target (the common visible
                 // effect). arg 0 may be a DC or an RGB depending on
@@ -526,9 +520,7 @@ impl RLOperation for GrpRenderOp {
     }
 }
 
-// ======================================================================
 // object creation — objOfFile & friends (module_id 71 fg / 72 bg)
-// ======================================================================
 
 /// Object CREATION op (`objOfFile` and the placeholder-modelled
 /// text/digit/drift/gan/area/child variants). Loads an image into an
@@ -795,9 +787,7 @@ impl RLOperation for ParentCreateOp {
     }
 }
 
-// ======================================================================
 // object setters — Move / Alpha / Show / Layer / PattNo / tone / scale
-// ======================================================================
 
 /// The object-setter properties this module implements, keyed by rlvm's
 /// `object_module.cc` base id (opcode = `1000 + base_id`) or the
@@ -1087,9 +1077,7 @@ impl RLOperation for ObjSetOp {
     }
 }
 
-// ======================================================================
 // object management — Free / Init / FreeAll (module 60/61/62)
-// ======================================================================
 
 /// Object-management operations (per rlvm `module_obj_management.cc`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1178,9 +1166,7 @@ impl RLOperation for ObjMgmtRenderOp {
     }
 }
 
-// ======================================================================
 // registration
-// ======================================================================
 
 /// Register EVERY real-numbered render op under all three lattice types.
 /// Returns the number of `(module_type, module_id, opcode)` keys mounted.
@@ -1200,7 +1186,6 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
             }
         };
 
-    // ---- module_grp (id 33) --------------------------------------------
     let grp =
         |o: GrpOp| -> Arc<dyn RLOperation> { Arc::new(GrpRenderOp::new(Arc::clone(&runtime), o)) };
     reg(registry, GRP_MODULE_ID, 15, grp(GrpOp::AllocDc));
@@ -1231,7 +1216,6 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
     reg(registry, GRP_MODULE_ID, 303, grp(GrpOp::Light));
     reg(registry, GRP_MODULE_ID, 403, grp(GrpOp::Fade));
 
-    // ---- object creation (71 fg / 72 bg) -------------------------------
     for (mid, plane) in [
         (OBJ_FG_CREATION_ID, GraphicsPlane::Foreground),
         (OBJ_BG_CREATION_ID, GraphicsPlane::Background),
@@ -1282,7 +1266,6 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
         );
     }
 
-    // ---- object setters (81 fg / 82 bg / 90,91 range) ------------------
     for (mid, plane) in [
         (OBJ_FG_SETTER_ID, GraphicsPlane::Foreground),
         (OBJ_BG_SETTER_ID, GraphicsPlane::Background),
@@ -1369,7 +1352,6 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
         );
     }
 
-    // ---- object management (60 / 61 fg / 62 bg) ------------------------
     for (mid, plane) in [
         (OBJ_MGMT_ID, None),
         (OBJ_FG_MGMT_ID, Some(GraphicsPlane::Foreground)),
@@ -1402,8 +1384,6 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
 
     count
 }
-
-// ---- tests: rlvm-semantics oracle ------------------------------------
 
 #[cfg(test)]
 mod tests {

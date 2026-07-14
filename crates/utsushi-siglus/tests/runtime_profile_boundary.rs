@@ -1,8 +1,8 @@
-//! UTSUSHI-035 — runtime-profile boundary conformance.
+//! Runtime-profile boundary conformance.
 //!
 //! Proves, on synthetic `Scene.pck` / `Gameexe.dat` runtime-profile fixtures:
 //!
-//! 1. Each of the five boundary classes (no-key / zero-key / required-key /
+//! 1. Each of the five boundary classes (no-key / zero-key / required-key
 //!    helper-required / out-of-profile) is distinguished on its own fixture.
 //! 2. The three rejected classes yield a typed
 //!    [`RuntimeBoundaryDiagnostic`] and emit **no** runtime-evidence claim

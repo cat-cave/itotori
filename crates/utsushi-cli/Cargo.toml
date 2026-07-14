@@ -18,7 +18,7 @@ serde_json.workspace = true
 kaifuu-reallive = { path = "../kaifuu-reallive" }
 utsushi-core = { path = "../utsushi-core" }
 utsushi-fixture = { path = "../utsushi-fixture" }
-# UTSUSHI-008: the `trace-kag` subcommand drives the KAG command-trace probe
+# the `trace-kag` subcommand drives the KAG command-trace probe
 # for plaintext / already-extracted KiriKiri/KAG `.ks` scripts.
 utsushi-kirikiri = { path = "../utsushi-kirikiri" }
 utsushi-reallive = { path = "../utsushi-reallive" }

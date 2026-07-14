@@ -1,7 +1,7 @@
-//! Snapshot-restore runtime conformance check (UTSUSHI-028).
+//! Snapshot-restore runtime conformance check ().
 //!
-//! Sibling to [`crate::conformance::trace_branch`] (UTSUSHI-027) and
-//! [`crate::conformance::capture_recording`] (UTSUSHI-029). The module
+//! Sibling to [`crate::conformance::trace_branch`] () and
+//! [`crate::conformance::capture_recording`] (). The module
 //! ships the per-profile shape, validator, semantic codes, and `run`
 //! helper for the [`crate::conformance::ProfileId::SnapshotRestore`]
 //! profile, plus an `Unsupported` outcome helper for the path the runner

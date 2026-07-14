@@ -1,4 +1,4 @@
-//! UTSUSHI-210 — synthetic tests for the control-flow RLOperation
+//! Synthetic tests for the control-flow RLOperation
 //! family.
 //!
 //! Each test dispatches one of the registered ops directly (via
@@ -6,9 +6,9 @@
 //! [`DispatchOutcome`] variant plus the VM state transitions produced
 //! by [`Vm::apply_dispatch_outcome`]. The op layer does not own scene
 //! storage / pc arithmetic / queue plumbing — that surface is exercised
-//! by the UTSUSHI-208 `vm_synthetic.rs` integration tests; here we
+//! by the `vm_synthetic.rs` integration tests; here we
 //! exercise the per-op contract and the documented acceptance criteria
-//! for UTSUSHI-210:
+//! for:
 //!
 //! - `ctl_goto_if_branches`: condition true → Jump; false → Advance.
 //! - `ctl_gosub_with_parameter_passing`: `gosub_if` true → pushes
@@ -29,9 +29,7 @@ use utsushi_reallive::{
     register_control_flow_rlops,
 };
 
-// ---------------------------------------------------------------------
 // goto family
-// ---------------------------------------------------------------------
 
 #[test]
 fn ctl_goto_emits_jump() {
@@ -105,9 +103,7 @@ fn ctl_goto_on_negative_value_falls_through() {
     assert_eq!(outcome, DispatchOutcome::Advance);
 }
 
-// ---------------------------------------------------------------------
 // gosub family
-// ---------------------------------------------------------------------
 
 #[test]
 fn ctl_gosub_pushes_subroutine_frame() {
@@ -195,9 +191,7 @@ fn ctl_gosub_with_parameter_passing() {
     assert_eq!(vm.banks().get(FARCALL_ARG_BANK, 3), None);
 }
 
-// ---------------------------------------------------------------------
 // farcall family
-// ---------------------------------------------------------------------
 
 #[test]
 fn ctl_farcall_emits_far_call_outcome() {
@@ -253,9 +247,7 @@ fn ctl_farcall_scene9999_entrypoint10() {
     );
 }
 
-// ---------------------------------------------------------------------
 // ret / rtl
-// ---------------------------------------------------------------------
 
 #[test]
 fn ctl_ret_pops_subroutine_frame() {
@@ -324,9 +316,7 @@ fn ctl_rtl_on_empty_stack_is_typed_error() {
     }
 }
 
-// ---------------------------------------------------------------------
 // halt
-// ---------------------------------------------------------------------
 
 #[test]
 fn ctl_halt_sets_halted_flag() {
@@ -338,14 +328,12 @@ fn ctl_halt_sets_halted_flag() {
 }
 
 // The choice (`select` / `select_s` / `select_w` / `select_objbtn`)
-// family lives in `module_sel` as of UTSUSHI-211 — see
+// family lives in `module_sel` as of — see
 // `tests/rlop_sel.rs`. The speculative `module_jmp` `select` slot
 // previously documented here was deleted in the same change per the
 // no-legacy-compat rule.
 
-// ---------------------------------------------------------------------
 // Stack overflow & invalid args
-// ---------------------------------------------------------------------
 
 #[test]
 fn ctl_stack_overflow_after_1024_pushes() {
@@ -422,9 +410,7 @@ fn ctl_invalid_args_warn_and_advance() {
     assert_eq!(warnings.len(), 1);
 }
 
-// ---------------------------------------------------------------------
 // Registry helper
-// ---------------------------------------------------------------------
 
 #[test]
 fn ctl_register_helper_populates_full_family() {

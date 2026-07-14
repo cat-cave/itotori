@@ -1,4 +1,4 @@
-//! UTSUSHI-207 — structured `Gameexe.ini` parser.
+//! Structured `Gameexe.ini` parser.
 //!
 //! This module is the structured complement to
 //! `kaifuu-reallive::gameexe`. Where the kaifuu module is a
@@ -7,7 +7,7 @@
 //! buckets, no value materialisation), this module decodes the
 //! Shift-JIS bytes and parses each recognised value shape into a typed
 //! [`GameexeValue`] keyed by its dotted path. The RealLive engine
-//! queries the file by dotted path (`SYSCOM.005.000`,
+//! queries the file by dotted path (`SYSCOM.005.000`
 //! `FOLDNAME.G00`, `MOUSEACTIONCALL.000.AREA`, etc.); this module
 //! provides that shape.
 //!
@@ -39,14 +39,14 @@
 //!    [`GameexeValue::Str`].
 //! 3. **Integer array** — `#KEY = 999, 1280, 720`. Stored as
 //!    [`GameexeValue::IntArray`].
-//! 4. **`FOLDNAME` triple** — `#FOLDNAME.G00 = "G00" = 0 : "G00.PAK"`.
+//! 4. **`FOLDNAME` triple** — `#FOLDNAME.G00 = "G00" = 0: "G00.PAK"`.
 //!    Stored as [`GameexeValue::Tuple3`] with `(name, mode, archive)`.
 //! 5. **`NAMAE` quintuple** —
 //!    `#NAMAE = "display" = "canonical" = (mode, color_table_index, reserved)`.
 //!    Stored as [`GameexeValue::Namae`]. Keyed by `NAMAE.<display>`
 //!    so the file's 11 entries land under a queryable dotted-path
 //!    namespace.
-//! 6. **`SYSCOM` labelled string** — `#SYSCOM.NNN = U:"label"` /
+//! 6. **`SYSCOM` labelled string** — `#SYSCOM.NNN = U:"label"`
 //!    `#SYSCOM.NNN = N:"label"` / `#SYSCOM.NNN.MMM = "label"`. The
 //!    `U:` / `N:` prefix (when present) is captured as
 //!    [`SyscomVisibility`]; the body is the user-visible label.
@@ -118,8 +118,8 @@ pub enum SyscomVisibility {
 /// reserved field is the `-1` engine-default sentinel; the integer is
 /// stored as-is, not coerced to `Option<i32>`.
 ///
-/// Example: `#NAMAE="和人" = "和人" = (1,016, -1)` → `mode = 1`,
-/// `color_table_index = 16` (→ `#COLOR_TABLE.016 = 204,204,255`,
+/// Example: `#NAMAE="和人" = "和人" = (1,016, -1)` → `mode = 1`
+/// `color_table_index = 16` (→ `#COLOR_TABLE.016 = 204,204,255`
 /// Kazuto's pale text), `reserved = -1`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -205,7 +205,7 @@ pub enum GameexeValue {
     /// A single-integer scalar (`#SEEN_START=0001`) is stored as a
     /// one-element vector so `get_int` works uniformly.
     IntArray(Vec<i32>),
-    /// `#FOLDNAME.<KIND> = "<subdir>" = <mode> : "<pakname>"`.
+    /// `#FOLDNAME.<KIND> = "<subdir>" = <mode>: "<pakname>"`.
     Tuple3 {
         /// Subdirectory string (first RHS).
         name: String,
@@ -503,7 +503,7 @@ impl Gameexe {
     /// is authored with zero-padded 3-digit indices
     /// (`#COLOR_TABLE.016=204,204,255`); a bare `<index>` form is
     /// accepted as a fallback. Returns `None` for a missing / malformed
-    /// / negative index.
+    /// negative index.
     pub fn color_table_rgb(&self, index: i32) -> Option<[u8; 3]> {
         if index < 0 {
             return None;
@@ -573,7 +573,7 @@ impl Gameexe {
     }
 
     /// The game's declared framebuffer size, read from
-    /// `#SCREENSIZE_MOD`. The message-window `POS` / `MOJI_POS` /
+    /// `#SCREENSIZE_MOD`. The message-window `POS` / `MOJI_POS`
     /// `NAME_POS` coordinates are authored in THIS space.
     ///
     /// - `#SCREENSIZE_MOD=0` → classic `640x480` (Kanon and other
@@ -592,7 +592,7 @@ impl Gameexe {
 
     /// Resolve the [`MessageWindowConfig`] for the `#WINDOW.<index>` set
     /// (typically index `0`, `#WINDOW.000`). Every field is a REAL
-    /// Gameexe value read from disk — the dialogue box position, colour,
+    /// Gameexe value read from disk — the dialogue box position, colour
     /// alpha, font size and insets are config-driven, never hardcoded.
     ///
     /// The `ATTR` RGBA is resolved through the RealLive `ATTR_MOD`
@@ -692,7 +692,7 @@ impl Gameexe {
     /// prompt's option list into: the `#WINDOW.<index>` set named by
     /// [`Gameexe::sel_window_index`] (`#DEFAULT_SEL_WINDOW`). Config-driven
     /// exactly like [`Gameexe::message_window`] — position / colour / alpha
-    /// / font-size / insets are the real Gameexe values, never hardcoded.
+    /// font-size / insets are the real Gameexe values, never hardcoded.
     pub fn sel_window(&self) -> MessageWindowConfig {
         self.message_window(self.sel_window_index())
     }
@@ -709,7 +709,7 @@ impl Gameexe {
 /// game with a different `Gameexe.ini` yields a different box.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MessageWindowConfig {
-    /// `POS` origin/anchor type: `0`=top-left, `1`=top-right,
+    /// `POS` origin/anchor type: `0`=top-left, `1`=top-right
     /// `2`=bottom-left, `3`=bottom-right.
     pub origin: i32,
     /// `POS` x offset from the anchor (screen-space px).
@@ -789,8 +789,6 @@ fn clamp_u8(value: i32) -> u8 {
 pub fn parse_into_arc(bytes: &[u8]) -> Result<Arc<Gameexe>, GameexeParseError> {
     Gameexe::parse(bytes).map(Arc::new)
 }
-
-// ---------- key + value parsers ----------
 
 fn normalise_key(key: &str) -> String {
     key.trim().trim_start_matches('#').to_uppercase()
@@ -880,8 +878,8 @@ fn parse_int_list(text: &str) -> Option<Vec<i32>> {
 }
 
 /// Parse a `FOLDNAME` RHS:
-/// `"<name>" = <mode> : "<archive>"`. The archive string may be empty
-/// (`#FOLDNAME.KOE = "KOE" = 1 : ""`).
+/// `"<name>" = <mode>: "<archive>"`. The archive string may be empty
+/// (`#FOLDNAME.KOE = "KOE" = 1: ""`).
 fn parse_foldname_triple(raw: &str) -> Option<GameexeValue> {
     let (name_field, after_name) = take_quoted_string(raw)?;
     let after_name = skip_separator(after_name, '=');
@@ -977,8 +975,6 @@ fn take_until(text: &str, delimiter: char) -> (&str, &str) {
         None => (text, ""),
     }
 }
-
-// ---------- unit tests (synthetic) ----------
 
 #[cfg(test)]
 mod tests {

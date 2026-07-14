@@ -52,7 +52,7 @@ pub trait ReferenceRecorder: Send + Sync {
 /// In-memory recorder. The only [`ReferenceRecorder`] impl in this slice.
 ///
 /// `Mutex<Inner>` gives interior mutability so push sites only need `&self`.
-/// Buffer growth is unbounded with no per-trace cap (UTSUSHI-061 will tackle
+/// Buffer growth is unbounded with no per-trace cap ( will tackle
 /// long-run capture).
 pub struct InMemoryReferenceRecorder {
     source: SourceTag,

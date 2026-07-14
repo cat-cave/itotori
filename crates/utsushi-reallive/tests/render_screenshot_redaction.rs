@@ -1,4 +1,4 @@
-//! ALPHA-006b — copyright-redaction proof for the screenshot
+//! Copyright-redaction proof for the screenshot
 //! rasterizer, exercised entirely with the FIX-3 **synthetic** g00
 //! fixtures (zero retail bytes).
 //!
@@ -203,7 +203,7 @@ fn object_position_coordinate_overflow_is_skipped_not_panicking() {
     // genaudit3 blit-coordinate-overflow hardening: `object.position`
     // comes from VM state and can be arbitrary. Two image objects are
     // placed at near-`i32::MAX` positions — one overflowing the X axis
-    // (`object.position.x + dx`), one the Y axis (`object.position.y +
+    // (`object.position.x + dx`), one the Y axis (`object.position.y
     // dy`). Under the OLD unchecked adds these OVERFLOW i32 (a panic under
     // debug `overflow-checks`, a wraparound into a wrong/out-of-bounds
     // pixel under release). Saturating arithmetic clamps the destination
@@ -332,7 +332,6 @@ fn emitted_png_embeds_zero_g00_bytes() {
     .expect("png on disk");
     assert_eq!(&png[..8], &PNG_FILE_MAGIC);
 
-    // ---- ZERO-G00-BYTES REDACTION ASSERTION ----
     // None of the decoded g00 RGBA pixel bytes appear in the PNG.
     assert!(
         !contains_subslice(&png, &type0_decoded.pixels_rgba),

@@ -1,6 +1,6 @@
 //! Structural conformance test for the real [`UtsushiReallivePort`].
 //!
-//! (Formerly the UTSUSHI-200 *scaffold* smoke that pinned an inert port
+//! (Formerly the *scaffold* smoke that pinned an inert port
 //! returning `UNIMPLEMENTED_MESSAGE` on every lifecycle method. That
 //! scaffold was the substrate-honesty gap the re-grounding flagged and is
 //! now deleted — the port is the real substrate-sink producer.) This test
@@ -11,7 +11,7 @@
 //! 3. `EnginePort::sink_set` registers all THREE substrate sinks
 //!    (text / frame / audio) as `Supported` — the port is NOT an empty
 //!    `SinkSet`.
-//! 4. The manifest declares the driven capabilities (incl. `Snapshot` +
+//! 4. The manifest declares the driven capabilities (incl. `Snapshot`
 //!    `DeterministicReplay`) and passes substrate structural validation.
 //! 5. The rlvm research-anchor boundary statement is reachable.
 

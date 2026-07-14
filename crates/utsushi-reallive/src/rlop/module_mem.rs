@@ -1,7 +1,7 @@
-//! UTSUSHI-212 — RealLive `module_mem` memory-bulk RLOperation family.
+//! RealLive `module_mem` memory-bulk RLOperation family.
 //!
 //! Implements the eight memory opcodes RealLive's `module_mem` exposes:
-//! `setarray`, `setrng`, `cpyrng`, `setarray_stepped`, `setrng_stepped`,
+//! `setarray`, `setrng`, `cpyrng`, `setarray_stepped`, `setrng_stepped`
 //! `cpyvars`, `sum`, `sums`. Each op operates on integer banks
 //! (`intA..intM`) per the rlvm-documented module_mem semantics; string
 //! banks are not part of this family.
@@ -10,22 +10,22 @@
 //!
 //! `module_mem` is registered at `(module_type=1, module_id=11)` —
 //! consistent with the `(1, X)` convention pinned by the other
-//! UTSUSHI-209/210/211/213 modules. The rlvm-documented `module_id`
+//! modules. The rlvm-documented `module_id`
 //! for the memory-bulk family is `11`. Pinned here so audit tooling
 //! can assert the dispatch key.
 //!
 //! # Opcode coverage (8)
 //!
-//! | Opcode               | Op                  | Semantics                                            |
-//! | -------------------- | ------------------- | ---------------------------------------------------- |
-//! | `0x0000`             | `setarray`          | `intX[base..base+n] := v0, v1, …, v_{n-1}`           |
-//! | `0x0001`             | `setrng`            | `intX[start..=end] := value`                         |
-//! | `0x0002`             | `cpyrng`            | `intX[dst..dst+n] := intY[src..src+n]`               |
-//! | `0x0003`             | `setarray_stepped`  | `intX[base + i*step] := v_i` for i in 0..n           |
-//! | `0x0004`             | `setrng_stepped`    | `intX[start + i*step] := value` for i in 0..n        |
-//! | `0x0005`             | `cpyvars`           | `intX[dst] := intY[src]` for k pairs                 |
-//! | `0x0006`             | `sum`               | `intX[dst] := sum(intY[start..=end])`                |
-//! | `0x0007`             | `sums`              | `intX[dst] := sum(intY[start_0..=end_0], …)`         |
+//! Opcode | Op | Semantics
+//! -------------------- | ------------------- | ----------------------------------------------------
+//! `0x0000` | `setarray` | `intX[base..base+n]:= v0, v1, …, v_{n-1}`
+//! `0x0001` | `setrng` | `intX[start..=end]:= value`
+//! `0x0002` | `cpyrng` | `intX[dst..dst+n]:= intY[src..src+n]`
+//! `0x0003` | `setarray_stepped` | `intX[base + i*step]:= v_i` for i in 0..n
+//! `0x0004` | `setrng_stepped` | `intX[start + i*step]:= value` for i in 0..n
+//! `0x0005` | `cpyvars` | `intX[dst]:= intY[src]` for k pairs
+//! `0x0006` | `sum` | `intX[dst]:= sum(intY[start..=end])`
+//! `0x0007` | `sums` | `intX[dst]:= sum(intY[start_0..=end_0], …)`
 //!
 //! # Argument shape
 //!
@@ -75,7 +75,7 @@ pub const OPCODE_SUM: u16 = 0x0006;
 /// `sums` opcode.
 pub const OPCODE_SUMS: u16 = 0x0007;
 
-/// Stable enum naming the `module_mem` opcodes UTSUSHI-212 implements.
+/// Stable enum naming the `module_mem` opcodes implements.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MemOpcode {
     /// `setarray` — array initialiser.
@@ -146,9 +146,7 @@ impl MemOpcode {
 /// Number of opcodes [`register_mem_rlops`] mounts.
 pub const MEM_RLOP_COUNT: usize = MemOpcode::ALL.len();
 
-// ---------------------------------------------------------------------
 // Argument helpers
-// ---------------------------------------------------------------------
 
 fn arg_int_bank_ref(args: &[ExprValue], start: usize) -> Result<(BankId, u16), String> {
     let bank_arg = args
@@ -206,9 +204,7 @@ fn checked_idx_add(base: u16, offset: u16, op: MemOpcode) -> Result<u16, String>
         .ok_or_else(|| format!("{}: idx overflow base={base} offset={offset}", op.as_str()))
 }
 
-// ---------------------------------------------------------------------
 // Per-opcode RLOperation implementors
-// ---------------------------------------------------------------------
 
 /// `setarray(bank, base, n, v0, v1, …, v_{n-1})` — array initialiser.
 #[derive(Debug)]
@@ -665,9 +661,7 @@ impl RLOperation for SumsOp {
     }
 }
 
-// ---------------------------------------------------------------------
 // Registry helper
-// ---------------------------------------------------------------------
 
 /// Mount every `module_mem` op this module ships into `registry`.
 pub fn register_mem_rlops(registry: &mut RlopRegistry) -> usize {
@@ -685,9 +679,7 @@ pub fn register_mem_rlops(registry: &mut RlopRegistry) -> usize {
     MEM_RLOP_COUNT
 }
 
-// ---------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -736,10 +728,8 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------
     // Acceptance: `mem_setarray_stepped_table` — input/output table
     // for setarray_stepped with ≥3 cases incl. boundary.
-    // -----------------------------------------------------------------
 
     #[test]
     fn mem_setarray_stepped_table_three_cases() {

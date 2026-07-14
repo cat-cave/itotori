@@ -10,8 +10,8 @@ use utsushi_core::{
     validate_runtime_evidence_report_value,
 };
 
-/// Local JSON-shape view of one entry under `observationHookEvents[]`,
-/// introduced in UTSUSHI-224 in place of the deleted typed envelope
+/// Local JSON-shape view of one entry under `observationHookEvents[]`
+/// introduced in in place of the deleted typed envelope
 /// Rust type. Carries exactly the fields the reference-corpus validator
 /// needs to compare a fixture against its runtime report.
 #[derive(Debug)]

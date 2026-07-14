@@ -133,7 +133,7 @@ pub(crate) fn write_dispatch_report(
 }
 
 /// Strict-gate failure: the scene did NOT reach a fully-semantic, natural
-/// terminus (an unimplemented opcode, a catalog gap fill, a linear fallback,
+/// terminus (an unimplemented opcode, a catalog gap fill, a linear fallback
 /// or a non-natural terminus). Carries the tuples so the failure is
 /// machine-readable, and — deliberately — never the artifact filesystem
 /// paths.
@@ -160,7 +160,7 @@ impl fmt::Display for SemanticPathUnavailable {
 impl Error for SemanticPathUnavailable {}
 
 /// The strict coverage gate: succeed iff the scene reached a natural terminus
-/// through a fully-semantic, branch-following path with NO missing opcodes,
+/// through a fully-semantic, branch-following path with NO missing opcodes
 /// NO catalog gap fills, and NO linear fallback. Otherwise fail with the
 /// machine-readable [`SemanticPathUnavailable`] (`missingKeys[]` included).
 pub(crate) fn require_semantic_reached_path(

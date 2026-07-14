@@ -1,5 +1,5 @@
 //! Integration tests for the capture/recording conformance slice
-//! (UTSUSHI-029).
+//! ().
 //!
 //! Each test exercises the slice end-to-end: building a check via the
 //! fixture helpers, running it, and asserting outcome shape and audit

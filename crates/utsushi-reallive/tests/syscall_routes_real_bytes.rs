@@ -1,8 +1,8 @@
-//! UTSUSHI-213 real-bytes + synthetic integration tests for
+//! Real-bytes + synthetic integration tests for
 //! [`utsushi_reallive::SyscallDispatcher`].
 //!
 //! Two named entrypoints match the verification commands pinned in the
-//! UTSUSHI-213 spec node:
+//! spec node:
 //!
 //! - `cargo test -p utsushi-reallive syscall_routes_match_reallive_real_bytes`
 //! - `cargo test -p utsushi-reallive mouseactioncall_hot_region_dispatches`
@@ -238,7 +238,7 @@ fn verify_syscall_routes_match_section_h(gameexe: &Gameexe) {
     assert_eq!(screen.height, 720);
 }
 
-/// DAG-spec filter `cargo test ... syscall_routes_match_reallive_real_bytes`.
+/// DAG-spec filter `cargo test... syscall_routes_match_reallive_real_bytes`.
 /// Env-gated on `ITOTORI_REAL_GAME_ROOT` so the harness can
 /// also run without the corpus.
 #[test]
@@ -265,7 +265,7 @@ fn syscall_routes_match_reallive_real_bytes_synthetic() {
 /// Acceptance test for the pointer hot-region predicate. The
 /// `MOUSEACTIONCALL.000.AREA=1232,0,1279,719` rectangle covers the
 /// top-right edge of the HD screen; the spec pins two probes:
-///   * pixel `(1250, 300)` is inside  → dispatches the route.
+///   * pixel `(1250, 300)` is inside → dispatches the route.
 ///   * pixel `(100, 100)` is outside → no route fires.
 ///
 /// The synthetic harness exercises both the raw pixel-space predicate
@@ -347,7 +347,7 @@ fn mouseactioncall_hot_region_dispatches() {
 }
 
 /// DAG-spec verification command also runs as a worktree-prompt
-/// filter: `cargo test ... syscall_routes ...`.
+/// filter: `cargo test... syscall_routes...`.
 #[test]
 fn syscall_routes_synthetic_eight_kinds_pinned() {
     let gameexe = Gameexe::parse(&synthetic_reallive_real_bytes_section_h())
@@ -366,7 +366,7 @@ fn syscall_routes_synthetic_eight_kinds_pinned() {
 /// first absent slot past index 0
 /// (`if index > 0 && area.is_none() { break; }`), a "last index"
 /// sentinel that silently dropped every declared slot beyond the first
-/// gap. The repair (walk the whole bounded `000..=255` namespace,
+/// gap. The repair (walk the whole bounded `000..=255` namespace
 /// skipping absent slots) was verified only against a synthetic unit
 /// fixture — "Sweetie HD is contiguous, so the regression is not
 /// observable in the corpus." A sister RealLive title with index gaps
@@ -478,7 +478,7 @@ fn mouseactioncall_scan_discovers_real_bytes_non_contiguous_namespace() {
 /// raw (Shift-JIS) Gameexe byte buffer, ascending. Mirrors
 /// [`mouseactioncall_indices`]: the RealLive key namespace is ASCII inside the
 /// Shift-JIS file, so a byte scan is exact and encoding-independent. A
-/// `#WBCALL.NNN=scene,entrypoint` line is a scalar route (no dotted `.MOD` /
+/// `#WBCALL.NNN=scene,entrypoint` line is a scalar route (no dotted `.MOD`
 /// `.AREA` sub-keys), so the digits are terminated by `=` rather than `.`.
 fn wbcall_indices(bytes: &[u8]) -> Vec<u8> {
     let prefix = b"#WBCALL.";
@@ -524,7 +524,7 @@ fn wbcall_slot_count_is_corpus_observed_not_engine_validated() {
     );
 }
 
-/// BETA-GATE regression guard (multi-game-validation law,
+/// BETA-GATE regression guard (multi-game-validation law
 /// `docs/dev/orchestration-operating-model.md`): [`WBCALL_SLOT_COUNT`] may only be
 /// promoted from CORPUS-OBSERVED (Sweetie HD) to engine-validated once a 2nd
 /// RealLive title itself declares WBCALL routes that corroborate (or revise)
@@ -540,7 +540,7 @@ fn wbcall_slot_count_is_corpus_observed_not_engine_validated() {
 ///   review) instead of silently corroborating nothing.
 /// - **>= 1 slot**: a real 2nd-corpus WBCALL namespace exists. Its highest
 ///   declared index must be `< WBCALL_SLOT_COUNT` (the 8-slot cap covers it);
-///   if a 2nd corpus declares a HIGHER slot the cap is too small and this fails,
+///   if a 2nd corpus declares a HIGHER slot the cap is too small and this fails
 ///   telling us to widen it. Either way the corpus-observed marker on
 ///   [`WBCALL_SLOT_COUNT`] can then be revisited with real 2-game evidence.
 ///

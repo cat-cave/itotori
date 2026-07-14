@@ -1,10 +1,10 @@
-//! UTSUSHI-102: the MV/MZ runtime-observation PROOF command
+//! The MV/MZ runtime-observation PROOF command
 //! (`utsushi mvmz-runtime-proof`).
 //!
-//! Consumes the UTSUSHI-006 browser trace-probe output (the runtime evidence
+//! Consumes the browser trace-probe output (the runtime evidence
 //! report a real launched Chromium `--dump-dom` produced from the public MV/MZ
 //! fixture) plus the fixture's STATIC source bytes, and — optionally — the
-//! UTSUSHI-065 screenshot capture evidence, and emits a strict-proof verdict
+//! screenshot capture evidence, and emits a strict-proof verdict
 //! manifest.
 //!
 //! The verdict is `runtimeObservationProven: true` only when EVERY mandatory
@@ -15,10 +15,10 @@
 //! observation). When the verdict is false the command exits non-zero: a static
 //! read cannot satisfy E1.
 //!
-//! Producing the consumed inputs (the UTSUSHI-006 contract):
+//! Producing the consumed inputs (the contract):
 //!
 //! ```text
-//! utsushi trace   <FIXTURE> --adapter utsushi-browser --output trace.json
+//! utsushi trace <FIXTURE> --adapter utsushi-browser --output trace.json
 //! utsushi capture <FIXTURE> --adapter utsushi-browser --artifact-root <DIR> --output capture.json
 //! utsushi mvmz-runtime-proof --runtime-trace trace.json --fixture-dir <FIXTURE> \
 //!         --screenshot-evidence capture.json --output proof.json

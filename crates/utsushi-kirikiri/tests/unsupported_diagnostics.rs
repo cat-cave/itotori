@@ -1,4 +1,4 @@
-//! UTSUSHI-037 + UTSUSHI-038 acceptance — constructs OUTSIDE the supported
+//! Acceptance — constructs OUTSIDE the supported
 //! macro/storage subset surface as typed SEMANTIC diagnostics (not a crash,
 //! not a silent skip, not a faked value). This pins the SUBSET BOUNDARY: each
 //! `[eval]`/`[emb]` here is deliberately just past the supported form.

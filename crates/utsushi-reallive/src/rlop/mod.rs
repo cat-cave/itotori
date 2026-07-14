@@ -1,13 +1,13 @@
-//! UTSUSHI-208 — `RLOperation` trait, dispatch outcomes, and the
+//! `RLOperation` trait, dispatch outcomes, and the
 //! registry / longop-scheduler seam.
 //!
 //! Per-module RLOperation tables (the actual text / control-flow / sys
-//! operations) land in UTSUSHI-209 and UTSUSHI-210. This module hosts
+//! operations) land in. This module hosts
 //! both the trait substrate (defined here) and the per-module submodules
 //! that register concrete ops:
 //!
 //! - [`longops`] — typed long-op implementors (selection runtime, …).
-//! - [`module_ctrl`] — UTSUSHI-210 control-flow family
+//! - [`module_ctrl`] — control-flow family
 //!   (`goto`/`gosub`/`farcall`/`ret`/`rtl`/`select`/`halt`).
 //!
 //! # Public surface
@@ -15,7 +15,7 @@
 //! - [`RLOperation`] — object-safe trait with a single
 //!   [`RLOperation::dispatch`] method.
 //! - [`DispatchOutcome`] — typed enum every dispatch must return.
-//!   Variants cover plain advance, intra-scene jump, subroutine,
+//!   Variants cover plain advance, intra-scene jump, subroutine
 //!   cross-scene far-call, paired returns, longop yield, and a hard
 //!   halt.
 //! - [`ExprValue`] — engine-neutral value carried as a dispatch arg.
@@ -42,12 +42,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::vm::{SceneId, Vm};
 
-// UTSUSHI-209 / UTSUSHI-210 / UTSUSHI-211 / UTSUSHI-212: per-module
+// per-module
 // RLOperation tables. The text/messaging family lives in
 // [`module_msg`]; the control-flow family in [`module_ctrl`]; the
 // choice (`select` / `select_s` / `select_w` / `select_objbtn`) family
 // in [`module_sel`]; the typed `LongOp` shapes (`pause`, `select`)
-// live in [`longops`]. UTSUSHI-212 adds the string / memory /
+// live in [`longops`]. adds the string / memory
 // system-arithmetic families in [`module_str`], [`module_mem`], and
 // [`module_sys`].
 pub mod longops;
@@ -90,7 +90,7 @@ pub use module_sel::{
     select_modality, selection_control_signal,
 };
 
-/// Engine-neutral dispatch argument. The UTSUSHI-205 evaluator returns
+/// Engine-neutral dispatch argument. The evaluator returns
 /// `i32`, so the integer variant is `i32` for that path; the byte-string
 /// variant carries raw Shift-JIS bytes (no UTF-8 lossy conversion) so a
 /// future textout/string op can consume them verbatim.
@@ -98,7 +98,7 @@ pub use module_sel::{
 pub enum ExprValue {
     /// Signed 32-bit integer (matches `evaluate` / `evaluate_assignment`).
     Int(i32),
-    /// Raw byte string. Used by UTSUSHI-209/210 when a string-shaped
+    /// Raw byte string. Used by when a string-shaped
     /// argument flows into a dispatch.
     Bytes(Vec<u8>),
 }
@@ -209,7 +209,7 @@ pub enum DispatchOutcome {
     /// `ret`. The VM produces a typed `VmError::EmptyStack` if the
     /// stack is empty.
     Return,
-    /// Pop a far-call frame and resume at its `return_scene` /
+    /// Pop a far-call frame and resume at its `return_scene`
     /// `return_pc`. Used by `rtl`. Produces a typed `VmError::EmptyStack`
     /// on an empty stack.
     ReturnFromCall,
@@ -233,8 +233,8 @@ pub enum DispatchOutcome {
 /// Object-safe trait every per-module RLOperation table implements.
 ///
 /// The trait is intentionally small: dispatch consumes a `&mut Vm` so
-/// the op can mutate banks / store register through the VM's accessors,
-/// and an arg slice. UTSUSHI-209 / UTSUSHI-210 will provide concrete
+/// the op can mutate banks / store register through the VM's accessors
+/// and an arg slice. will provide concrete
 /// implementors; this crate only ships the trait + the dispatch loop.
 pub trait RLOperation: Send + Sync {
     /// Dispatch this RLOperation with the supplied argument values.
@@ -242,7 +242,7 @@ pub trait RLOperation: Send + Sync {
     fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome;
 }
 
-/// Composite key for the RLOperation registry: `(module_type, module_id,
+/// Composite key for the RLOperation registry: `(module_type, module_id
 /// opcode)`. Matches the three fields the bytecode `Command` element
 /// exposes; overload is not part of the key today because the rlvm
 /// research anchor documents overload selection happening inside the
@@ -283,7 +283,7 @@ impl fmt::Display for RlopKey {
 ///
 /// The registry is **fail-soft**: a missing key surfaces as a
 /// [`crate::vm::VmWarning::MissingRlop`] at the VM level and the VM
-/// advances past the command. Per the UTSUSHI-208 spec node this is
+/// advances past the command. Per the spec node this is
 /// intentional — the alpha-tier opcode coverage frontier is the gating
 /// criterion, not the all-opcodes-implemented bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -316,7 +316,7 @@ impl fmt::Debug for RlopRegistry {
 
 impl RlopRegistry {
     /// Construct an empty registry. The alpha-tier per-module tables
-    /// (UTSUSHI-209 / UTSUSHI-210) will register their ops here.
+    /// () will register their ops here.
     pub fn new() -> Self {
         Self::default()
     }
@@ -340,7 +340,7 @@ impl RlopRegistry {
     /// with [`Self::get`] `.is_none()` before registering; they do.
     ///
     /// Returns `None` (there is never a displaced op to return); the
-    /// return type is retained so callers can still `assert!(… .is_none())`.
+    /// return type is retained so callers can still `assert!(….is_none())`.
     pub fn register(
         &mut self,
         key: RlopKey,
@@ -460,7 +460,7 @@ pub enum LongOpReadiness {
 /// commit a typed resume payload (e.g. the chosen index for a select
 /// longop) into the head's private state before signalling `Ready`.
 /// Schedulers that don't need to mutate the head simply ignore the
-/// mutable reference — see [`NeverReadyScheduler`] /
+/// mutable reference — see [`NeverReadyScheduler`]
 /// [`AlwaysReadyScheduler`].
 pub trait LongOpScheduler: Send + Sync {
     /// Inspect the queue head and report whether it should resume.

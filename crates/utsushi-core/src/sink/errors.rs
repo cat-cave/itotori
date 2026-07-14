@@ -1,6 +1,6 @@
 //! Stable semantic diagnostics for the runtime sink contracts.
 //!
-//! These mirror the UTSUSHI-020 `vfs::diagnostics::codes::ALL` precedent so a
+//! These mirror the `vfs::diagnostics::codes::ALL` precedent so a
 //! downstream conformance allowed-code validator can not silently drop a
 //! variant. Every variant carries a stable `utsushi.sink.*` semantic code and
 //! enough public context (sink kind, adapter id, tier values) to be
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn display_output_contains_no_host_path_substrings() {
-        // The sink error display surface is constructed from only public,
+        // The sink error display surface is constructed from only public
         // engine-neutral fields (sink kind enum, adapter id, semantic
         // reasons, tier names). Caller-supplied free-form `reason` strings
         // are still in adapter scope, so this is a structural check: the

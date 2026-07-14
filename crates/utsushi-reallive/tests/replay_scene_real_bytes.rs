@@ -1,6 +1,6 @@
-//! UTSUSHI-220 real-bytes acceptance test for `replay_scene`.
+//! Real-bytes acceptance test for `replay_scene`.
 //!
-//! Drives the full UTSUSHI-201 → UTSUSHI-210 chain against Sweetie HD
+//! Drives the full → chain against Sweetie HD
 //! scene #0001 via [`replay_scene`] and asserts the four acceptance
 //! criteria:
 //!
@@ -8,7 +8,7 @@
 //!    [`ReplayEvent::TextLine`] whose `body_shift_jis` is non-empty.
 //! 1. **Byte-determinism.** Two invocations produce byte-equal
 //!    `to_deterministic_json()` output.
-//! 2. **Snapshot/restore identity.** Drive halfway, snapshot, restore,
+//! 2. **Snapshot/restore identity.** Drive halfway, snapshot, restore
 //!    continue → final state matches a fresh full replay.
 //! 3. **Fail-soft unknown opcodes.** The log may contain
 //!    [`ReplayEvent::UnknownOpcode`] entries, but `final_outcome` MUST
@@ -29,7 +29,7 @@ use utsushi_reallive::{
 };
 
 // Relative path under the Sweetie HD extraction root that holds the
-// raw `Seen.txt` envelope. Mirrors the UTSUSHI-201..UTSUSHI-209
+// raw `Seen.txt` envelope. Mirrors the..
 // real-bytes integration tests in this crate.
 
 fn real_seen_txt_path() -> Option<PathBuf> {

@@ -14,17 +14,17 @@
 //! correct response is to file a substrate facade revision — not to
 //! reach around the facade.
 //!
-//! The deliberately-excluded surface (engine-implementation helpers,
+//! The deliberately-excluded surface (engine-implementation helpers
 //! conformance internals, crate-private validators) is enumerated in
-//! the doc cited above. See §3.2 of `.plan/UTSUSHI-120.md`.
+//! the doc cited above. See §3.2 of `.plan/.md`.
 
-// --- VFS subsystem (UTSUSHI-020) -------------------------------------
+// --- VFS subsystem () -------------------------------------
 pub use crate::vfs::{
     AssetBytes, AssetId, AssetKind, AssetMetadata, AssetPackage, AssetSize, CaseRule,
     PackageDescriptor, PackageKind, PackageSource, RuntimeVfs, TraversalKind, VfsError, VfsResult,
 };
 
-// --- Clock + input + replay (UTSUSHI-021) -----------------------------
+// --- Clock + input + replay () -----------------------------
 pub use crate::clock::{ClockOrigin, LogicalClock, LogicalClockTick};
 pub use crate::input::{
     ChoiceIndex, InputError, InputEvent, InputKind, MenuTarget, PointerButton, RawInputCode,
@@ -34,13 +34,13 @@ pub use crate::replay::{
     ReplayMetadata, ReplaySchemaVersion,
 };
 
-// --- Sink subsystem (UTSUSHI-022) -------------------------------------
+// --- Sink subsystem () -------------------------------------
 pub use crate::sink::{
     AudioEvent, AudioEventKind, AudioEventSink, FrameArtifact, FrameArtifactSink, SinkCapability,
     SinkCapabilitySummary, SinkError, SinkKind, SinkResult, SinkSet, TextLine, TextSurfaceSink,
 };
 
-// --- Snapshot subsystem (UTSUSHI-023) ---------------------------------
+// --- Snapshot subsystem () ---------------------------------
 pub use crate::snapshot::{
     InMemorySnapshotStore, Inspectable, Restorable, RestoreReport, SNAPSHOT_SCHEMA_VERSION,
     Snapshot, SnapshotError, SnapshotId, SnapshotRef, SnapshotRequest, SnapshotSchemaVersion,
@@ -48,16 +48,16 @@ pub use crate::snapshot::{
     StatePath, StateTree, StateValue, diff_snapshots, restore_snapshot, take_snapshot,
 };
 
-// --- Embed capability surface (UTSUSHI-024) ---------------------------
+// --- Embed capability surface () ---------------------------
 pub use crate::embed::{EmbedCapability, EmbedCapabilityId, EmbedCapabilityStatus, EmbedError};
 
-// --- Recorder + reference trace (UTSUSHI-060/062) ---------------------
+// --- Recorder + reference trace () ---------------------
 pub use crate::recorder::{
     InMemoryReferenceRecorder, REFERENCE_TRACE_SCHEMA_VERSION, RecordingTextSink,
     ReferenceRecorder, ReferenceTrace, SourceTag, deterministic_json_bytes,
 };
 
-// --- Conformance manifest + checks (UTSUSHI-025..030) -----------------
+// --- Conformance manifest + checks (..030) -----------------
 pub use crate::conformance::trace_branch::{
     BranchCheckResult, BranchConformanceCheck, GoldenTextEvent, ObservedBranch, ObservedTextEvent,
     TextNormalisation, TraceCheckOptions, TraceCheckResult, TraceConformanceCheck,
@@ -71,7 +71,7 @@ pub use crate::conformance::{
     cross_validate_results_against_manifest,
 };
 
-// --- Port + sinks bridge (UTSUSHI-025/056, refactored in UTSUSHI-224) -
+// --- Port + sinks bridge (, refactored in ) -
 pub use crate::port::{
     CaptureOutcome, EnginePort, EnginePortAdapter, EnginePortError, LifecycleStage, MomentId,
     OPTIONAL_LIFECYCLE_STAGES, PortCapability, PortEnv, PortManifest, PortRequest,
@@ -101,34 +101,32 @@ pub use crate::port::{
 // consumes.
 pub use crate::{EvidenceTier, FidelityTier, ObservationArtifactRef, ObservationBridgeRef};
 
-// --- Redaction policy (UTSUSHI-056) -----------------------------------
+// --- Redaction policy () -----------------------------------
 //
 // The redaction filter is exposed through the facade because every
-// substrate-emitted artifact (snapshot, replay log, reference trace,
+// substrate-emitted artifact (snapshot, replay log, reference trace
 // conformance result) is required to pass the same filter on the way
 // out. Engine ports run the filter on adapter-emitted strings before
 // handing them to the substrate.
 pub use crate::redaction::reject_unredacted_local_paths;
 
-// ---------------------------------------------------------------------
 // Const-assertion block. Pins every facade-re-exported schema version
 // constant to its expected literal so a substrate slice that bumps its
 // version without revising the facade contract fails the build.
 //
-// The block is a private `const _: () = ...;` so it has no runtime
+// The block is a private `const _: () =...;` so it has no runtime
 // cost; the assertion is purely compile-time. The runtime mirror lives
 // in `tests/substrate_conformance.rs` case
 // `every_facade_exposed_schema_version_is_pinned`.
-// ---------------------------------------------------------------------
 
 const _: () = {
-    // Recorder reference-trace schema (UTSUSHI-060).
+    // Recorder reference-trace schema ().
     assert!(const_str_eq(REFERENCE_TRACE_SCHEMA_VERSION, "0.1.0-alpha"));
-    // Conformance result + manifest schema (UTSUSHI-026/028).
+    // Conformance result + manifest schema ().
     assert!(const_str_eq(CONFORMANCE_SCHEMA_VERSION, "0.2.0-alpha"));
-    // Snapshot envelope schema (UTSUSHI-023, bumped under UTSUSHI-223).
+    // Snapshot envelope schema (, bumped under ).
     assert!(const_str_eq(SNAPSHOT_SCHEMA_VERSION, "0.2.0-alpha"));
-    // Replay log schema (UTSUSHI-021).
+    // Replay log schema ().
     assert!(const_str_eq(REPLAY_LOG_SCHEMA_VERSION, "0.1.0-alpha"));
 
     // Engine-neutrality: `SourceTag` is the only engine-family axis and

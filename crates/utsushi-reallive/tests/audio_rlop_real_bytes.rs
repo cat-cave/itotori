@@ -1,4 +1,4 @@
-//! UTSUSHI-217 real-bytes integration tests for the audio RLOperation
+//! Real-bytes integration tests for the audio RLOperation
 //! family.
 //!
 //! Pins the `koePlay` and `bgmPlay` resolution paths against Sweetie HD's
@@ -8,17 +8,17 @@
 //!
 //! # Acceptance criteria pinned here
 //!
-//! 1. [`koe_play_resolves_through_namae_table`] — UTSUSHI-217
+//! 1. [`koe_play_resolves_through_namae_table`] —
 //!    spec-pinned name. With the Sweetie HD Gameexe.ini's NAMAE table
 //!    populated, `koePlay(46)` dispatched through the rlop emits an
 //!    `AudioEvent { kind: VoicePlay, payload: Voice { archive_id:
-//!    "z0001", sample_id: 46, ... } }` — the spec's E1 emission. The
+//!    "z0001", sample_id: 46,... } }` — the spec's E1 emission. The
 //!    archive_id resolution path: `koePlay(46)` consults the runtime's
 //!    current-speaker register (defaulted to archive `1` for Sweetie
 //!    HD's `z0001.ovk` system-event archive), formatted as `z<id:04>`.
 //! 2. [`bgm_play_resolves_through_foldname_bgm`] — `bgmPlay("ASA")`
 //!    dispatched after `set_gameexe` with Sweetie HD's
-//!    `#FOLDNAME.BGM = "BGM" = 0 : "BGM.PAK"` emits an
+//!    `#FOLDNAME.BGM = "BGM" = 0: "BGM.PAK"` emits an
 //!    `AudioEvent { kind: BgmStart, payload: Asset { asset_id:
 //!    "bgm/ASA" } }` — the spec's E1 emission.
 //! 3. [`bgm_play_asset_id_resolves_against_real_asa_nwa_path`] — the

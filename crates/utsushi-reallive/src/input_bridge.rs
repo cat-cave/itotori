@@ -1,7 +1,7 @@
 //! `utsushi-reallive-interactive-input-bridge` — human-driven input for the
 //! RealLive runtime.
 //!
-//! The runtime advances through input-gated yields (`msg.pause` /
+//! The runtime advances through input-gated yields (`msg.pause`
 //! wait-for-click, `msg.select` / choice) via the substrate
 //! [`LongOpScheduler`](crate::rlop::LongOpScheduler) seam.
 //! [`HeadlessInputScheduler`](crate::rlop::HeadlessInputScheduler) resolves
@@ -117,9 +117,7 @@ pub trait InputSource: Send + Sync + std::fmt::Debug {
     fn next_event(&mut self, pending: PendingYield) -> Option<InputEvent>;
 }
 
-// ---------------------------------------------------------------------------
 // Headless source
-// ---------------------------------------------------------------------------
 
 /// Deterministic auto-policy source: advance every pause, resolve every choice
 /// through a [`HeadlessChoicePolicy`]. The interactive-bridge counterpart to
@@ -161,9 +159,7 @@ impl InputSource for HeadlessSource {
     }
 }
 
-// ---------------------------------------------------------------------------
 // User-input source (browser / dashboard)
-// ---------------------------------------------------------------------------
 
 /// Shared FIFO of browser / dashboard input events. Cloneable handle so the
 /// web bridge (which pushes events) and the runtime driver (which drains them)
@@ -179,7 +175,7 @@ impl UserInputQueue {
         Self::default()
     }
 
-    /// Push one browser / dashboard input event (advance / choice / pointer /
+    /// Push one browser / dashboard input event (advance / choice / pointer
     /// menu). The next runtime poll consumes it in FIFO order.
     pub fn push(&self, event: InputEvent) {
         self.lock().push_back(event);
@@ -244,9 +240,7 @@ impl InputSource for UserInputSource {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Replay source
-// ---------------------------------------------------------------------------
 
 /// Deterministic replay source: replays a captured [`ReplayLog`]'s events in
 /// recorded order. Feeding a captured playthrough's log into a [`ReplaySource`]
@@ -286,9 +280,7 @@ impl InputSource for ReplaySource {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Bridge scheduler
-// ---------------------------------------------------------------------------
 
 /// The substrate [`LongOpScheduler`] that drives the runtime from an
 /// [`InputSource`] and DETERMINISTICALLY captures every consumed input event.
@@ -302,7 +294,7 @@ impl InputSource for ReplaySource {
 ///    a strictly-monotonic tick;
 /// 3. applies the commit to the head's private state (exactly as the legacy
 ///    headless / choice schedulers do) and returns
-///    [`LongOpReadiness::Ready`]; or, if the source runs dry before a commit,
+///    [`LongOpReadiness::Ready`]; or, if the source runs dry before a commit
 ///    returns [`LongOpReadiness::Pending`] so the runtime SUSPENDS.
 ///
 /// Pointer and integer-`item_id` menu events are NAVIGATION: they move the

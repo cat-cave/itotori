@@ -1,5 +1,5 @@
 //! Replay-log determinism gate for the committed bridge-linked jump target
-//! fixtures (UTSUSHI-062 §7.5, §7.6).
+//! fixtures ( §7.5, §7.6).
 //!
 //! For each committed `*.json` jump target fixture under
 //! `crates/utsushi-fixture/tests/fixtures/jump_targets/`, this gate:
@@ -10,7 +10,7 @@
 //! 2. Drives an [`InMemoryReferenceRecorder`] with a deterministic input
 //!    plan that text-advances up to each target's `activates_at_tick` and
 //!    fires a [`InputEvent::Choice`] at the activation tick.
-//! 3. Serializes through [`deterministic_json_bytes`] (UTSUSHI-060) and
+//! 3. Serializes through [`deterministic_json_bytes`] () and
 //!    compares the bytes byte-for-byte to the committed
 //!    `replay_logs/<name>.replay-log.json` artifact.
 //!
@@ -291,20 +291,20 @@ fn jump_target_activates_at_tick_aligns_to_replay_entry_index_for_each_fixture()
 #[test]
 fn replay_log_byte_form_does_not_embed_bridge_unit_id_on_replay_entry_shape() {
     // §5 plan constraint: ReplayLog has no per-entry bridge_unit_id field.
-    // The fixture's recorded Choice DOES carry one (UTSUSHI-021 already
-    // exposes `bridge_unit_id` as an optional field on `InputEvent::Choice`),
+    // The fixture's recorded Choice DOES carry one ( already
+    // exposes `bridge_unit_id` as an optional field on `InputEvent::Choice`)
     // but the assertion here is structural: the schema_version stays pinned
     // to the existing ReferenceTrace version and the entry shape is the
-    // canonical UTSUSHI-021 form.
+    // canonical form.
     let trace = build_reference_trace(FixtureCase::SingleBranch);
     assert_eq!(
         trace.schema_version,
         utsushi_core::REFERENCE_TRACE_SCHEMA_VERSION,
         "fixture trace must use the existing ReferenceTrace schema version (no bump in this slice)"
     );
-    // The recorder's replay_events list mirrors UTSUSHI-021's ReplayEntry
+    // The recorder's replay_events list mirrors the ReplayEntry
     // shape; the test crate already round-trips the wire form. We assert
-    // the produced trace contains a Choice with a populated bridge id,
+    // the produced trace contains a Choice with a populated bridge id
     // proving the linkage rides on InputEvent::Choice, not a new field.
     let choice = trace
         .replay_events
@@ -320,7 +320,7 @@ fn replay_log_byte_form_does_not_embed_bridge_unit_id_on_replay_entry_shape() {
 fn replay_log_round_trips_through_the_existing_replay_log_builder() {
     // Sanity: the ReplayEntry sequence the recorder gathered also passes
     // ReplayLogBuilder validation (monotonic ticks, redaction, schema pin)
-    // without any UTSUSHI-021 schema change.
+    // without any schema change.
     let set = JumpTargetSet::load_from_json(SINGLE_BRANCH_JSON).unwrap();
     let entries = build_replay_entries(FixtureCase::SingleBranch, &set);
     let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata::new(

@@ -1,4 +1,4 @@
-//! Golden-trace acceptance for the UTSUSHI-033 MV/MZ message + choice replay
+//! Golden-trace acceptance for the MV/MZ message + choice replay
 //! PACK.
 //!
 //! Each case loads a synthetic pack document (a raw MV/MZ event `list[]` plus
@@ -7,8 +7,8 @@
 //! trace against a committed golden JSON. The trace equality is the primary
 //! acceptance; targeted assertions then pin the load-bearing crux:
 //!
-//! - message commands emit declared text events WITH source unit links,
-//! - choice options align to Itotori route-map ids,
+//! - message commands emit declared text events WITH source unit links
+//! - choice options align to Itotori route-map ids
 //! - an out-of-subset command surfaces a typed diagnostic (no silent skip).
 //!
 //! All fixtures are SYNTHETIC — hand-authored `{code, parameters}` lists using
@@ -104,7 +104,7 @@ fn message_events_carry_source_unit_links() {
 
 #[test]
 fn choice_options_align_to_route_map_ids() {
-    // Crux #2: each choice option aligns to an Itotori route-map id (routeKey),
+    // Crux #2: each choice option aligns to an Itotori route-map id (routeKey)
     // and the two options fan out to *distinct* routes.
     let pack = load_pack("pack_choice_routes");
     let outcome = replay_pack(&pack, UnknownPolicy::SkipWithDiagnostic).unwrap();

@@ -1,4 +1,4 @@
-//! UTSUSHI-010: end-to-end test for the `utsushi review-package` subcommand.
+//! End-to-end test for the `utsushi review-package` subcommand.
 //!
 //! Drives the actual CLI binary against the committed synthetic MV/MZ proof
 //! surfaces and asserts (1) the emitted manifest matches the committed golden

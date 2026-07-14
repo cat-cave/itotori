@@ -1,4 +1,4 @@
-//! UTSUSHI-038 acceptance — the supported storage-variable subset: simple
+//! Acceptance — the supported storage-variable subset: simple
 //! `f.`/`sf.` `[eval]` assignments and bare-variable `[emb]` reads, with state
 //! visible as VariableSet/EmbeddedValue events + the final `variables`
 //! snapshot, and the subset BOUNDARY (out-of-subset expressions and unbound
@@ -40,7 +40,7 @@ fn embeds(events: &[KagEvent]) -> Vec<(String, VarValue)> {
         .collect()
 }
 
-/// Acceptance (3): a supported storage assignment is visible in the trace +
+/// Acceptance (3): a supported storage assignment is visible in the trace
 /// snapshot, and a later read reflects it (the `[emb]` after two increments
 /// reads 2, proving reads observe prior writes).
 #[test]

@@ -1,4 +1,4 @@
-//! UTSUSHI-203 real-bytes integration test for the AVG32 LZSS + XOR
+//! Real-bytes integration test for the AVG32 LZSS + XOR
 //! scene decompressor.
 //!
 //! Pins the decompressor against the Sweetie HD corpus supplied via
@@ -11,8 +11,8 @@
 //! (`docs/dev/orchestration-operating-model.md`), a parser that targets a
 //! real engine substrate must be exercised against at least two real
 //! corpora before its node is merged-complete. Sweetie HD is the only
-//! RealLive title currently staged. UTSUSHI-203 mirrors the pattern
-//! its UTSUSHI-201/202 predecessors landed: the node stays `planned`
+//! RealLive title currently staged. mirrors the pattern
+//! its predecessors landed: the node stays `planned`
 //! until a second RealLive corpus is sourced and exercised by an
 //! additional `decompressor_second_reallive_real_bytes.rs` test.
 //!
@@ -60,7 +60,7 @@ fn scene1_decompressor_matches_reallive_real_bytes_outcome_a() {
     let bytes = fs::read(&seen_path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
 
-    // Walk through the chain UTSUSHI-201 -> UTSUSHI-202 -> UTSUSHI-203.
+    // Walk through the chain -> ->.
     // We deliberately route through each typed parser (rather than
     // hard-coding the file offsets) so a regression earlier in the chain
     // surfaces here as a chain-level diagnostic.

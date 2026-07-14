@@ -1,4 +1,4 @@
-//! UTSUSHI-179 substrate-conformance test for `utsushi-rpgmaker-mv-mz`.
+//! Substrate-conformance test for `utsushi-rpgmaker-mv-mz`.
 //!
 //! Guarantees, all through the public substrate facade:
 //!

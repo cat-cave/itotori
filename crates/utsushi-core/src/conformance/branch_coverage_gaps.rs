@@ -1,9 +1,9 @@
-//! MV/MZ branch-coverage GAP FINDING emitter (UTSUSHI-069).
+//! MV/MZ branch-coverage GAP FINDING emitter ().
 //!
-//! A DATA-ONLY job that reads the UTSUSHI-009
+//! A DATA-ONLY job that reads the
 //! [`BranchCoverageReadModel`](super::branch_coverage::BranchCoverageReadModel)
 //! and emits machine-readable **gap findings**. It is the emitter half of the
-//! branch-coverage surface: the UTSUSHI-067 branch explorer *browses* the read
+//! branch-coverage surface: the branch explorer *browses* the read
 //! model as a paginated dashboard; this module instead *judges* it and names
 //! the branches that represent real coverage gaps.
 //!
@@ -16,13 +16,13 @@
 //! The read model derives a [`CoverageStatus`] per branch. Exactly two of the
 //! four states are coverage gaps:
 //!
-//! | coverage status                     | reachable text | gap?  | gap kind             |
-//! | ----------------------------------- | -------------- | ----- | -------------------- |
-//! | `Unvisited`                         | `> 0`          | YES   | `unvisited_reachable`|
-//! | `Unvisited`                         | `0`            | no    | —                    |
-//! | `Ambiguous`                         | any            | YES   | `ambiguous_route`    |
-//! | `Visited`                           | any            | no    | —                    |
-//! | `Unreachable`                       | any            | no    | —                    |
+//! coverage status | reachable text | gap? | gap kind
+//! ----------------------------------- | -------------- | ----- | --------------------
+//! `Unvisited` | `> 0` | YES | `unvisited_reachable`
+//! `Unvisited` | `0` | no | —
+//! `Ambiguous` | any | YES | `ambiguous_route`
+//! `Visited` | any | no | —
+//! `Unreachable` | any | no | —
 //!
 //! - **`Visited`** branches are already covered — not a gap.
 //! - **`Unreachable`** branches are legitimately unreachable (no route map
@@ -49,7 +49,7 @@ pub const BRANCH_COVERAGE_GAP_FINDINGS_SCHEMA_VERSION: &str = "utsushi.branch_co
 #[serde(rename_all = "snake_case")]
 pub enum GapKind {
     /// A branch reachable through exactly one route map, exposing reachable
-    /// text, that was never observed at runtime (`Unvisited` +
+    /// text, that was never observed at runtime (`Unvisited`
     /// `reachable_text_count > 0`).
     UnvisitedReachable,
     /// A branch whose route evidence cannot be uniquely attributed
@@ -78,7 +78,7 @@ impl GapKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GapSeverity {
-    /// An ambiguous-route gap: a data-quality problem in the route evidence,
+    /// An ambiguous-route gap: a data-quality problem in the route evidence
     /// but not proof of missing coverage.
     Low,
     /// An unvisited-reachable gap that exposes a small amount of reachable
@@ -138,7 +138,7 @@ pub fn severity_for(kind: GapKind, reachable_text_count: u32) -> GapSeverity {
 
 /// A managed artifact-store link named by a gap finding.
 ///
-/// Mirrors the UTSUSHI-067 branch-explorer artifact links so the two surfaces
+/// Mirrors the branch-explorer artifact links so the two surfaces
 /// point at the same managed `/artifact-store/` mount: one `runtime-trace`
 /// link per observed trace id, one `route-map` link per route-map id. The
 /// `uri` is a managed-mount relative path — never a raw filesystem / `file:`
@@ -230,7 +230,7 @@ fn gap_kind_for(record: &BranchCoverageRecord) -> Option<GapKind> {
         }
         // Ambiguous route evidence is always a gap.
         CoverageStatus::Ambiguous => Some(GapKind::AmbiguousRoute),
-        // Everything else is NOT a gap: `Visited` (already covered),
+        // Everything else is NOT a gap: `Visited` (already covered)
         // `Unreachable` (legitimately unreachable — emitting a finding would
         // be a false positive), and `Unvisited` with no reachable text.
         CoverageStatus::Unvisited | CoverageStatus::Visited | CoverageStatus::Unreachable => None,
@@ -239,7 +239,7 @@ fn gap_kind_for(record: &BranchCoverageRecord) -> Option<GapKind> {
 
 /// Derive the managed artifact-store links for a record: one `runtime-trace`
 /// link per observed trace id, one `route-map` link per route-map id. Pure and
-/// deterministic; mirrors the UTSUSHI-067 branch-explorer path scheme.
+/// deterministic; mirrors the branch-explorer path scheme.
 fn derive_artifact_links(adapter_id: &str, record: &BranchCoverageRecord) -> Vec<GapArtifactLink> {
     let base = format!("/artifact-store/artifacts/utsushi/branch-coverage/{adapter_id}");
     let mut links =

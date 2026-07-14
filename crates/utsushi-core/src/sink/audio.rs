@@ -43,7 +43,7 @@ pub struct AudioEvent {
     /// the sink does not interpret. NEVER a host path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cue_id: Option<String>,
-    /// Optional asset id of the audio resource. Uses the UTSUSHI-020
+    /// Optional asset id of the audio resource. Uses the
     /// `AssetId`, so it is engine-neutral and host-path-free by construction.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_asset: Option<AssetId>,

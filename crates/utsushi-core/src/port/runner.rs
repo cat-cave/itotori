@@ -13,7 +13,7 @@ use super::manifest::{LifecycleStage, PortCapability, PortManifest};
 use super::trait_::{CaptureOutcome, EnginePort, MomentId, PortRequest};
 
 /// Cooperative cancellation token. Cheaply clonable; backed by
-/// `Arc<AtomicBool>`. The runner sets `requested = true` on timeout,
+/// `Arc<AtomicBool>`. The runner sets `requested = true` on timeout
 /// hook failure, or explicit shutdown.
 #[derive(Clone, Debug, Default)]
 pub struct RunnerCancellation {
@@ -127,7 +127,7 @@ impl Runner {
         Ok(())
     }
 
-    /// Drive a port through a full Trace lifecycle: validate manifest,
+    /// Drive a port through a full Trace lifecycle: validate manifest
     /// launch, drain observations, shutdown.
     pub fn run_trace<P: EnginePort>(
         &self,
@@ -376,8 +376,8 @@ fn ensure_capture_within_root(
         let violation = || EnginePortError::ArtifactRootViolation {
             artifact_uri: outcome.artifact_uri.clone(),
         };
-        // A capture artifact that cannot be canonicalized (non-existent,
-        // broken symlink, ...) cannot be proven to live under the managed
+        // A capture artifact that cannot be canonicalized (non-existent
+        // broken symlink,...) cannot be proven to live under the managed
         // root. Treat the canonicalize failure itself as a containment
         // violation rather than falling back to the unresolved path, which
         // would let a missing/symlinked artifact defeat the starts_with
@@ -395,7 +395,7 @@ fn ensure_capture_within_root(
 fn sink_error_into_send_sync(
     error: crate::sink::SinkError,
 ) -> Box<dyn std::error::Error + Send + Sync> {
-    // Boxed on purpose: the target is `EnginePortError::ObservationInvalid.source`,
+    // Boxed on purpose: the target is `EnginePortError::ObservationInvalid.source`
     // the enum's opaque `Send + Sync` error carrier. `SinkError` already
     // implements Display via its stable semantic code surface; re-stringify for
     // the runner's diagnostic carrier.

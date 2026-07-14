@@ -1,5 +1,5 @@
 //! Synthetic integration tests for the composite asset package
-//! introduced by substrate extension M.1 (UTSUSHI-222).
+//! introduced by substrate extension M.1 ().
 //!
 //! These tests don't require real-byte corpora: they exercise the
 //! first-match-wins resolution policy, case-folded indexing, and

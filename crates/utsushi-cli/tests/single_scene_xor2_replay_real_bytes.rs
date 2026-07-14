@@ -1,5 +1,5 @@
-//! utsushi-cli-single-scene-xor2-staging — real-bytes acceptance for the
-//! single-scene `replay-validate` path on a `use_xor_2` title (Sweetie HD,
+//! Utsushi-cli-single-scene-xor2-staging — real-bytes acceptance for the
+//! single-scene `replay-validate` path on a `use_xor_2` title (Sweetie HD
 //! compiler `110002`).
 //!
 //! The bug this pins: the single-scene CLI replay path
@@ -29,7 +29,7 @@
 //!      bytes — proving the xor2 staging is load-bearing.
 //!
 //! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE
-//! (no opt-out; runs only in the periodic ground-truth oracle,
+//! (no opt-out; runs only in the periodic ground-truth oracle
 //! `just real-bytes-oracle`, where corpora are staged). Run with
 //! `ITOTORI_REAL_GAME_ROOT=<sweetie-hd> cargo test -p utsushi-cli
 //! --test single_scene_xor2_replay_real_bytes -- --ignored`.

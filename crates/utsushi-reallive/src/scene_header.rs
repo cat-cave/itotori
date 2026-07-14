@@ -1,4 +1,4 @@
-//! UTSUSHI-202 — Real RealLive scene header decoder.
+//! Real RealLive scene header decoder.
 //!
 //! This module decodes the fixed `0x1d0`-byte (464-byte) scene header
 //! that prefixes every populated scene blob in a RealLive `Seen.txt`
@@ -14,30 +14,30 @@
 //! All multi-byte fields are little-endian `u32`. The header is exactly
 //! `0x1d0 = 464` bytes and is followed immediately by the
 //! AVG32-compressed bytecode (decoded by the next link in the parsing
-//! chain, UTSUSHI-203).
+//! chain, ).
 //!
 //! ```text
-//! 0x000  u32  header_size            (always 0x1d0 = 464)
-//! 0x004  u32  compiler_version       (10002 | 110002 | 1110002)
-//! 0x008  u32  kidoku_offset          (read-tracking flags region)
-//! 0x00c  u32  kidoku_count
-//! 0x010  u32  (line_table_count, unparsed — reserved for U-flagged use)
-//! 0x014  u32  dramatis_offset
-//! 0x018  u32  dramatis_count
-//! 0x01c  u32  metadata_block_length  (unparsed — typically 0 in retail)
-//! 0x020  u32  bytecode_offset        (AVG32 compressed bytecode start)
-//! 0x024  u32  bytecode_uncompressed_size
-//! 0x028  u32  bytecode_compressed_size
-//! 0x02c  u32  z_minus_one            (debug entrypoint, retail: 0)
-//! 0x030  u32  z_minus_two            (debug entrypoint)
-//! 0x034  u32  entrypoint_table[0]    \
-//! 0x038  u32  entrypoint_table[1]     |
-//!  ...                                 > 100 × u32 = 0x190 bytes
-//! 0x1c0  u32  entrypoint_table[99]   /
-//! 0x1c4  u32  savepoint_message
-//! 0x1c8  u32  savepoint_selcom
-//! 0x1cc  u32  savepoint_seentop
-//! 0x1d0  -- header ends, compressed bytecode follows --
+//! 0x000 u32 header_size (always 0x1d0 = 464)
+//! 0x004 u32 compiler_version (10002 | 110002 | 1110002)
+//! 0x008 u32 kidoku_offset (read-tracking flags region)
+//! 0x00c u32 kidoku_count
+//! 0x010 u32 (line_table_count, unparsed — reserved for U-flagged use)
+//! 0x014 u32 dramatis_offset
+//! 0x018 u32 dramatis_count
+//! 0x01c u32 metadata_block_length (unparsed — typically 0 in retail)
+//! 0x020 u32 bytecode_offset (AVG32 compressed bytecode start)
+//! 0x024 u32 bytecode_uncompressed_size
+//! 0x028 u32 bytecode_compressed_size
+//! 0x02c u32 z_minus_one (debug entrypoint, retail: 0)
+//! 0x030 u32 z_minus_two (debug entrypoint)
+//! 0x034 u32 entrypoint_table[0] \
+//! 0x038 u32 entrypoint_table[1]
+//!  ... > 100 × u32 = 0x190 bytes
+//! 0x1c0 u32 entrypoint_table[99]
+//! 0x1c4 u32 savepoint_message
+//! 0x1c8 u32 savepoint_selcom
+//! 0x1cc u32 savepoint_seentop
+//! 0x1d0 -- header ends, compressed bytecode follows --
 //! ```
 //!
 //! # Compiler-version policy
@@ -47,7 +47,7 @@
 //! `1110002` (1.1110). Any other observed value emits
 //! [`SceneHeaderWarning::UnknownCompilerVersion`] and parsing **still
 //! succeeds** — the unknown value is preserved on the returned struct
-//! so downstream code (the AVG32 decompressor in UTSUSHI-203) can make
+//! so downstream code (the AVG32 decompressor in ) can make
 //! its own decision about second-level XOR keying. Silent fallback to
 //! a "default" version is forbidden by the alpha-gate contract.
 //!
@@ -221,9 +221,9 @@ impl SceneHeader {
     ///
     /// The `blob_bytes` slice is the scene blob the
     /// [`crate::RealSceneIndex`] pointed at (e.g. the bytes from
-    /// `file_offset .. file_offset + byte_len` for an entry). Only
+    /// `file_offset.. file_offset + byte_len` for an entry). Only
     /// the first `0x1d0` bytes are read; trailing bytes (the AVG32
-    /// compressed bytecode) are left to UTSUSHI-203.
+    /// compressed bytecode) are left to.
     ///
     /// On success returns the parsed header **and** the list of
     /// non-fatal warnings observed during the walk. On a fatal

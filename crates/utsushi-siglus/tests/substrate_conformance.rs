@@ -1,4 +1,4 @@
-//! UTSUSHI-147 substrate-conformance test for the `utsushi-siglus` crate.
+//! Substrate-conformance test for the `utsushi-siglus` crate.
 //!
 //! Pins that the `utsushi-siglus` scaffold consumes **only** the public
 //! substrate facade (`utsushi_core::substrate::*`) — no internal
@@ -46,7 +46,7 @@ fn scaffold_consumes_only_facade_engine_port_trait() {
 #[test]
 fn scaffold_constructs_through_facade_only() {
     // Every type touched on this path is sourced through the substrate
-    // facade. The scaffold's public API (`UtsushiSiglusPort::new`,
+    // facade. The scaffold's public API (`UtsushiSiglusPort::new`
     // `UtsushiSiglusPortContext::empty`) round-trips through facade
     // types only.
     let port = UtsushiSiglusPort::new();

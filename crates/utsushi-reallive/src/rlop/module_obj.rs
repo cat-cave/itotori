@@ -1,13 +1,13 @@
-//! UTSUSHI-215 — RealLive `module_obj_management` + `module_obj_fg_bg`
+//! RealLive `module_obj_management` + `module_obj_fg_bg`
 //! RLOperation family subset.
 //!
-//! Implements the alpha-tier object-stack subset the UTSUSHI-215 spec
+//! Implements the alpha-tier object-stack subset the spec
 //! node pins:
 //!
-//! - `module_obj_management` (`(1, 60)`): `objAlloc`, `objFree`,
+//! - `module_obj_management` (`(1, 60)`): `objAlloc`, `objFree`
 //!   `objInit`, `objCopy`.
 //! - `module_obj_fg_bg` (`(1, 81)` foreground / `(1, 82)` background):
-//!   per-object setters `objSetPos`, `objSetAlpha`, `objSetScale`,
+//!   per-object setters `objSetPos`, `objSetAlpha`, `objSetScale`
 //!   `objSetLayer`, plus `objShow` / `objHide`.
 //!
 //! Every op routes through a shared [`GraphicsRuntime`] that owns the
@@ -20,8 +20,8 @@
 //! The DAG node carries the audit-focus item "layer-ordering that
 //! ignores `objSetLayer`". The render-pass at
 //! [`crate::RenderPass::rasterise`] already sorts allocated objects by
-//! `(plane.paint_order(), layer_order, slot)` — UTSUSHI-214 pinned
-//! this. UTSUSHI-215's `objSetLayer` directly mutates
+//! `(plane.paint_order(), layer_order, slot)` — pinned
+//! this. the `objSetLayer` directly mutates
 //! [`crate::GraphicsObject::layer_order`], so a render after a
 //! `objSetLayer` re-orders the paint output observably; the acceptance
 //! test `obj_set_layer_reorders_render_pass_output` pins that the
@@ -43,8 +43,6 @@ use crate::rlop::{LongOp, LongOpId};
 use crate::vm::Vm;
 use utsushi_core::substrate::{AssetPackage, VfsError};
 
-// ---- module addressing -----------------------------------------------
-
 /// `module_type` byte for the `module_obj_management` submodule.
 pub const OBJ_MGMT_MODULE_TYPE: u8 = 1;
 /// `module_id` byte for the `module_obj_management` submodule. Per
@@ -60,8 +58,6 @@ pub const OBJ_FG_MODULE_ID: u8 = 81;
 pub const OBJ_BG_MODULE_TYPE: u8 = 1;
 /// `module_id` byte for the per-object `module_obj_bg` setters.
 pub const OBJ_BG_MODULE_ID: u8 = 82;
-
-// ---- module_obj_fg_bg opcodes ---------------------------------------
 
 /// `objButtonOpts` opcode (button-object setup). REAL RealLive value
 /// `1064` (rlvm `AddOpcode(1064, 2, "objButtonOpts")` →
@@ -81,8 +77,6 @@ pub const DEFAULT_FADE_TICKS_PER_MS: u64 = 1;
 
 /// Magic byte that prefixes every [`FadeLongOp`] private-state payload.
 pub const FADE_PRIVATE_STATE_MAGIC: u8 = 0xA3;
-
-// ---- runtime warnings -----------------------------------------------
 
 /// Fail-soft warning surface for the graphics RLOperation family. The
 /// `opcode_tag` is populated by [`Self::with_opcode`] at the dispatch
@@ -196,8 +190,6 @@ impl GraphicsRuntimeWarning {
         self
     }
 }
-
-// ---- graphics runtime ------------------------------------------------
 
 /// Recorded DC-allocation observation. Pinned on the state-snapshot so
 /// the audit trail names the requested canvas size even though the
@@ -485,7 +477,7 @@ impl GraphicsRuntime {
         self.lock_inner().warnings.clone()
     }
 
-    /// Resolve `g00/<asset_name>.g00` through the substrate VFS,
+    /// Resolve `g00/<asset_name>.g00` through the substrate VFS
     /// decode the bytes, and return the decoded `(width, height)`.
     /// Returns `Ok(None)` when no asset package was set so the caller
     /// can record the gap observably. Non-fatal [`crate::g00::G00Warning`]
@@ -581,8 +573,6 @@ impl Default for GraphicsRuntime {
         Self::new()
     }
 }
-
-// ---- fade longop wrapper --------------------------------------------
 
 /// Typed wrapper around the `Fade` private state. Carries the alpha
 /// endpoints and the total tick count the substrate scheduler will
@@ -718,8 +708,6 @@ pub enum FadeLongOpDecodeError {
     MagicMismatch { observed: u8, expected: u8 },
 }
 
-// ---- registry helper ------------------------------------------------
-
 /// `objButtonOpts` (`obj (1,{81,82},1064)`) binds the authoritative
 /// `(buf, action, se, group, button_number)` tuple to the exact graphics
 /// object at `(plane, buf)`. Bad shapes, invalid slots, and empty slots fail
@@ -810,8 +798,6 @@ impl RLOperation for ObjButtonOptsOp {
         DispatchOutcome::Advance
     }
 }
-
-// ---- tests -----------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

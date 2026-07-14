@@ -15,7 +15,7 @@ pub trait FixtureStore {
     /// Read the bytes for a fixture id. Returns the canonical byte string —
     /// for directory fixtures, that means the canonicalized
     /// `(relative-path, file-hash, byte-count)` manifest defined in
-    /// `.plan/UTSUSHI-025.md` §9.5.
+    /// `.plan/.md` §9.5.
     fn read(&self, id: &str) -> Result<Vec<u8>, FixtureStoreError>;
 }
 
@@ -108,12 +108,10 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     out
 }
 
-// ---------------------------------------------------------------------------
 // Minimal SHA-256 implementation. We deliberately avoid pulling `sha2` into
 // the public dep tree of `utsushi-core` for this helper. The implementation
 // is the textbook FIPS 180-4 algorithm; unit-tested against a known vector
 // in this module's tests.
-// ---------------------------------------------------------------------------
 
 const SHA256_K: [u32; 64] = [
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,

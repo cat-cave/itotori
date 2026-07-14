@@ -1,5 +1,5 @@
-//! UTSUSHI-008 acceptance — the KAG command trace links speaker / message /
-//! branch rows back to the REAL KAIFUU-009 extraction bridge units.
+//! Acceptance — the KAG command trace links speaker / message
+//! branch rows back to the REAL extraction bridge units.
 //!
 //! `kaifuu-kirikiri` is a dev-dependency ORACLE here (never a production
 //! coupling — see this crate's `Cargo.toml`). This test proves the trace's
@@ -84,7 +84,7 @@ fn speaker_message_branch_rows_link_to_real_extraction_bridge_units() {
 #[test]
 fn every_extracted_dialogue_and_speaker_unit_is_reachable_in_the_trace() {
     // The reverse direction: no extraction unit is silently dropped by the
-    // probe. Every `dialogue`/`speaker_name` unit KAIFUU-009 finds (EXCEPT the
+    // probe. Every `dialogue`/`speaker_name` unit finds (EXCEPT the
     // macro-body template line, which is not executed until invoked) is present
     // as a trace bridge ref.
     let units = extraction_units();

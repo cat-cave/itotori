@@ -1,4 +1,4 @@
-//! WASM embed ABI capability surface (UTSUSHI-024).
+//! WASM embed ABI capability surface ().
 //!
 //! Engine-neutral capability declaration for browser / WASM embeds of an
 //! Utsushi controlled-playback session. The capability list is the canonical

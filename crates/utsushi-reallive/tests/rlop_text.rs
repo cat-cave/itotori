@@ -1,4 +1,4 @@
-//! UTSUSHI-209 — synthetic acceptance tests for the `module_msg`
+//! Synthetic acceptance tests for the `module_msg`
 //! text/messaging RLOperation family.
 //!
 //! Each opcode covered by [`utsushi_reallive::register_text_rlops`] gets
@@ -6,12 +6,12 @@
 //! when expected, the VM advances per the
 //! [`utsushi_reallive::DispatchOutcome`] contract, and the variable
 //! banks stay untouched (the text opcodes do not write banks; that is
-//! the `module_sys` / `module_mem` job for UTSUSHI-210).
+//! the `module_sys` / `module_mem` job for ).
 //!
 //! `msg.pause` exercises the longop queue path: it yields and resumes
 //! once the [`utsushi_reallive::AlwaysReadyScheduler`] sees the head.
-//! The choice family (`select` / `select_s` / `select_w` /
-//! `select_objbtn`) lives in `module_sel` as of UTSUSHI-211; see
+//! The choice family (`select` / `select_s` / `select_w`
+//! `select_objbtn`) lives in `module_sel` as of; see
 //! `tests/rlop_sel.rs` for that family's acceptance tests.
 
 use std::sync::{Arc, Mutex};
@@ -27,9 +27,7 @@ use utsushi_reallive::{
     VmEvent, dispatch_textout, dispatch_textout_at, register_text_rlops, text_module_msg_keys,
 };
 
-// ---------------------------------------------------------------------
 // Test sink
-// ---------------------------------------------------------------------
 
 #[derive(Default)]
 struct CollectingSink {
@@ -81,10 +79,8 @@ impl TextSurfaceSink for RejectingSink {
     }
 }
 
-// ---------------------------------------------------------------------
-// Element constructors mirroring the UTSUSHI-208 vm_synthetic.rs
+// Element constructors mirroring the vm_synthetic.rs
 // helpers.
-// ---------------------------------------------------------------------
 
 fn command_element(offset: usize, opcode: u16) -> BytecodeElement {
     BytecodeElement::Command {
@@ -120,12 +116,10 @@ fn build_scene(opcodes: &[u16]) -> Scene {
     Scene::new(1, elements).expect("non-empty synthetic scene")
 }
 
-// ---------------------------------------------------------------------
 // Per-opcode harness — each helper builds a runtime + registry around a
 // fresh sink and dispatches the requested opcode directly through the
 // registered Arc<dyn RLOperation>. Tests call these to assert the
 // outcome.
-// ---------------------------------------------------------------------
 
 fn dispatch_command(
     opcode: u16,
@@ -143,9 +137,7 @@ fn dispatch_command(
     (outcome, lines, runtime)
 }
 
-// ---------------------------------------------------------------------
 // Registry shape
-// ---------------------------------------------------------------------
 
 #[test]
 fn register_text_rlops_registers_exactly_twelve_opcodes() {
@@ -173,9 +165,7 @@ fn text_module_msg_keys_all_target_module_one_three() {
     }
 }
 
-// ---------------------------------------------------------------------
 // msg.text_out — top-level Textout element handler
-// ---------------------------------------------------------------------
 
 #[test]
 fn text_out_appends_to_runtime_pending_body_no_emission_yet() {
@@ -214,9 +204,7 @@ fn port_textout_metadata_preserves_offset_and_shift_jis_bytes() {
     assert_eq!(lines[0].body_shift_jis, Some(body));
 }
 
-// ---------------------------------------------------------------------
 // msg.line_break — flushes the pending body as one line
-// ---------------------------------------------------------------------
 
 #[test]
 fn line_break_flushes_pending_body_as_one_text_line() {
@@ -446,9 +434,7 @@ fn text_window_switches_active_slot() {
     assert_eq!(runtime.current_text_window(), Some(2));
 }
 
-// ---------------------------------------------------------------------
 // msg.pause — yields a LongOp; resumes through AlwaysReadyScheduler
-// ---------------------------------------------------------------------
 
 #[test]
 fn pause_yields_a_pause_longop_with_typed_private_state() {
@@ -516,9 +502,7 @@ fn pause_through_vm_yields_then_resumes_with_always_ready_scheduler() {
     assert!(sink.drain().is_empty());
 }
 
-// ---------------------------------------------------------------------
 // VarBanks invariant — none of the text ops mutate banks
-// ---------------------------------------------------------------------
 
 #[test]
 fn dispatching_every_text_opcode_leaves_var_banks_untouched() {
@@ -543,9 +527,7 @@ fn dispatching_every_text_opcode_leaves_var_banks_untouched() {
     assert_eq!(*vm.banks(), snapshot_before, "no text opcode writes banks");
 }
 
-// ---------------------------------------------------------------------
 // Sink failure path — fail-soft warning, not a panic
-// ---------------------------------------------------------------------
 
 #[test]
 fn sink_rejection_records_fail_soft_warning_no_panic() {
@@ -568,9 +550,7 @@ fn sink_rejection_records_fail_soft_warning_no_panic() {
     assert_eq!(warnings.len(), 1);
 }
 
-// ---------------------------------------------------------------------
 // LongOpIdSequence pin — used by audit tooling
-// ---------------------------------------------------------------------
 
 #[test]
 fn longop_id_sequence_pin() {

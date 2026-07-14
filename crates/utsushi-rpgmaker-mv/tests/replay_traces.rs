@@ -1,4 +1,4 @@
-//! Golden-trace acceptance for the UTSUSHI-032 MV/MZ replay skeleton.
+//! Golden-trace acceptance for the MV/MZ replay skeleton.
 //!
 //! Each case loads a synthetic MV/MZ event `list[]` fixture, replays it
 //! through the declared subset, and asserts the deterministic trace against a

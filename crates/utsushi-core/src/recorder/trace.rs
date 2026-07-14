@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::{EmbedCapability, ReplayEntry, SnapshotRef, TextLine};
 
 /// Schema version pin for the reference trace wire form. Pinned for the
-/// duration of the UTSUSHI-060 slice; downstream conformance checks
-/// (UTSUSHI-027 / -028 / -029) verify the pin verbatim.
+/// duration of the slice; downstream conformance checks
+/// ( / -028 / -029) verify the pin verbatim.
 pub const REFERENCE_TRACE_SCHEMA_VERSION: &str = "0.1.0-alpha";
 
 /// Engine-family-neutral source tag for a recorded run.
@@ -43,7 +43,7 @@ pub enum SourceTag {
 ///   produce identical JSON.
 /// - `snapshot_refs` and `replay_events` preserve insertion order; the
 ///   caller is expected to feed them in the order their upstream substrate
-///   already guarantees (UTSUSHI-021 for replay events).
+///   already guarantees ( for replay events).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ReferenceTrace {
@@ -62,7 +62,7 @@ pub struct ReferenceTrace {
     /// Snapshot references by id only. No raw bytes, no host paths.
     pub snapshot_refs: Vec<SnapshotRef>,
     /// Replay log events, in logical-tick order (the order ReplayLog
-    /// already guarantees through UTSUSHI-021).
+    /// already guarantees through ).
     pub replay_events: Vec<ReplayEntry>,
     /// Stable, source-supplied recording label. Must NOT be a wall-clock
     /// instant; it is a deterministic identifier (run id / fixture name).

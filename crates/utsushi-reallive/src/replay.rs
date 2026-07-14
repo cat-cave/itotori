@@ -1,9 +1,9 @@
-//! UTSUSHI-220 — alpha-defining end-to-end Sweetie HD scene-1
+//! Alpha-defining end-to-end Sweetie HD scene-1
 //! text-replay smoke.
 //!
-//! Drives a RealLive `Seen.txt` envelope through the full UTSUSHI-201 →
-//! UTSUSHI-210 decode + dispatch chain, collecting a typed
-//! [`ReplayLog`] that records [`ReplayEvent::TextLine`] /
+//! Drives a RealLive `Seen.txt` envelope through the full →
+//! decode + dispatch chain, collecting a typed
+//! [`ReplayLog`] that records [`ReplayEvent::TextLine`]
 //! [`ReplayEvent::Pause`] / [`ReplayEvent::UnknownOpcode`] observations
 //! against scene #0001. This is the alpha-gate evidence for the
 //! utsushi-reallive vertical: real bytes → real `TextLine` → typed log.
@@ -27,7 +27,7 @@
 //!   `Inspectable` impl in `crate::vm`. The snapshot round-trips
 //!   identically into a fresh VM (acceptance criterion #2).
 //! - **No silent fallbacks.** Every error path is typed
-//!   [`ReplayError`]. Read failures, parse failures, decode failures,
+//!   [`ReplayError`]. Read failures, parse failures, decode failures
 //!   and decompression failures all surface as named variants.
 //! - **No `unwrap()` clusters in production code.** Synthetic tests
 //!   still use `expect()` for ergonomics, but the production driver
@@ -107,7 +107,7 @@ impl Default for ReplayOpts {
 }
 
 /// One observation produced during a replay walk. The variants cover
-/// the alpha-gate evidence the spec node lists (TextLine, Pause,
+/// the alpha-gate evidence the spec node lists (TextLine, Pause
 /// UnknownOpcode, Tick).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -281,7 +281,7 @@ impl ReplayLog {
             .count()
     }
 
-    /// Sorted, de-duplicated list of every `(module_type, module_id,
+    /// Sorted, de-duplicated list of every `(module_type, module_id
     /// opcode)` the replay could not dispatch (each recorded as a
     /// [`ReplayEvent::UnknownOpcode`]). The full-scene acceptance test
     /// asserts this is EMPTY — an unknown opcode is a HARD failure of the
@@ -736,7 +736,7 @@ struct ReplayContext {
     shift_jis_textout_offsets: HashSet<(SceneId, u32)>,
 }
 
-/// The multi-scene store, its `(scene, offset)` Shift-JIS textout set,
+/// The multi-scene store, its `(scene, offset)` Shift-JIS textout set
 /// and the build diagnostics — the tuple [`build_scene_store`] returns.
 pub type SceneStoreBundle = (InMemorySceneStore, HashSet<(SceneId, u32)>, SceneStoreStats);
 
@@ -768,7 +768,7 @@ struct DecodedScene {
 /// bytecode. This is the seam a real-bytes test uses to interpose the
 /// dev-only `kaifuu-reallive` `use_xor_2` segment-cipher recovery between
 /// the first-level AVG32 inflate (owned here) and the bytecode decode:
-/// the test decompresses the whole archive via [`decompress_all_scenes`],
+/// the test decompresses the whole archive via [`decompress_all_scenes`]
 /// hands the eligible scenes to the recovery, then rebuilds the store via
 /// [`build_scene_store_from_decompressed`]. No key material lives in this
 /// crate.
@@ -892,7 +892,7 @@ fn decode_one_scene(blob: &[u8], scene_id: SceneId) -> Result<DecodedScene, Repl
 
 /// Decompress EVERY populated scene of a Seen.txt envelope through the
 /// AVG32 first-level inflate, returning one [`DecompressedScene`] per
-/// scene that decompressed cleanly. Scenes whose blob slice / header /
+/// scene that decompressed cleanly. Scenes whose blob slice / header
 /// inflate fails are dropped (the same skip policy as
 /// [`build_scene_store`]); the returned count vs the index length is the
 /// caller's skip diagnostic.
@@ -917,7 +917,7 @@ pub fn decompress_all_scenes(seen_bytes: &[u8]) -> Result<Vec<DecompressedScene>
     Ok(out)
 }
 
-/// Build a multi-scene store from a list of already-decompressed (and,
+/// Build a multi-scene store from a list of already-decompressed (and
 /// when applicable, `use_xor_2`-decrypted) scenes. `populated` should be
 /// the Seen.txt index length so [`SceneStoreStats::skipped`] reflects the
 /// scenes that did not survive decompress + decode.
@@ -1028,9 +1028,9 @@ pub fn build_scene_store(seen_bytes: &[u8]) -> Result<SceneStoreBundle, ReplayEr
 ///
 /// This is the acceptance-criterion-#1 surface: `rg -n
 /// 'register_.*_rlops' src/replay.rs` shows all families
-/// (`register_text_rlops`, `register_control_flow_rlops`,
-/// `register_render_rlops`, `register_audio_rlops`,
-/// `register_sel_rlops`, `register_sys_rlops`, `register_mem_rlops`,
+/// (`register_text_rlops`, `register_control_flow_rlops`
+/// `register_render_rlops`, `register_audio_rlops`
+/// `register_sel_rlops`, `register_sys_rlops`, `register_mem_rlops`
 /// `register_str_rlops`). The text family threads the supplied
 /// [`MsgRuntime`]; every other family is backed by a fixed-seed runtime
 /// so the traversal is byte-deterministic (the `sys` clock/RNG is seeded
@@ -1089,7 +1089,7 @@ struct RegistryHandles {
 /// Mount all nine opcode families + the catalog gap-fill, returning the
 /// registry ALONGSIDE the shared audio + graphics runtimes. Single source
 /// of truth for the registry composition: [`mount_registry`] delegates
-/// here and drops the handles, so the cataloguing / branch-following /
+/// here and drops the handles, so the cataloguing / branch-following
 /// engine-port paths all mount byte-identical op tables.
 fn mount_registry_handles(
     sink: Arc<dyn TextSurfaceSink>,
@@ -1113,7 +1113,7 @@ fn mount_registry_handles(
         }
     }
 
-    // Graphics: the REAL-numbered render family (module_grp DCs +
+    // Graphics: the REAL-numbered render family (module_grp DCs
     // backgrounds, object creation/setters/management) all share one
     // GraphicsRuntime. Registered under all three lattice types so it
     // fires on real bytes regardless of the compiler's module_type
@@ -1148,7 +1148,7 @@ fn mount_registry_handles(
 
     // Real-bytes opcode-catalog completion: gap-fill every
     // `(module_type, module_id, opcode)` tuple observed on the proven
-    // corpora that the nine per-family tables above do not already claim,
+    // corpora that the nine per-family tables above do not already claim
     // so a full-scene replay traverses with ZERO unknown opcodes. Mounted
     // LAST and gap-fill-only, so it never shadows a real-semantics op.
     register_catalog_rlops(&mut registry);
@@ -1213,7 +1213,7 @@ impl ReplayContext {
     }
 }
 
-/// A reusable replay engine over ONE multi-scene store: decompress +
+/// A reusable replay engine over ONE multi-scene store: decompress
 /// decode the whole Seen.txt archive ONCE, then replay from any scene id
 /// without re-inflating the archive. Each [`ReplayEngine::replay_from`]
 /// mounts a fresh 9-module registry + fresh VM/sink so per-scene runs are
@@ -1425,7 +1425,7 @@ impl ReplayEngine {
     /// caller supplying the input scheduler.
     ///
     /// This is the interactive-bridge seam: pass a
-    /// [`crate::input_bridge::BridgeScheduler`] driven by a headless / user /
+    /// [`crate::input_bridge::BridgeScheduler`] driven by a headless / user
     /// replay [`crate::input_bridge::InputSource`] and a HUMAN (or a captured
     /// input log) drives the advance / choice / navigation decisions the walk
     /// makes, instead of the built-in headless auto policy. Because the
@@ -1460,7 +1460,7 @@ impl ReplayEngine {
     ///
     /// Two resolution mechanisms, both deterministic:
     ///
-    /// - **Positional seek** ([`JumpTarget::Scene`](crate::JumpTarget::Scene) /
+    /// - **Positional seek** ([`JumpTarget::Scene`](crate::JumpTarget::Scene)
     ///   [`JumpTarget::Line`](crate::JumpTarget::Line)) — resolve a `(scene, pc)`
     ///   straight out of the decoded dispatch graph (scene start = `pc 0`; a
     ///   source line = its
@@ -1530,7 +1530,7 @@ impl ReplayEngine {
     /// the `frame_index`-th (0-based) rendered message surfaces, landing on it.
     ///
     /// The frame stream is defined EXACTLY as [`Self::observe_for_port`]'s
-    /// play-order: the real branch-following pass when it reaches dialogue,
+    /// play-order: the real branch-following pass when it reaches dialogue
     /// else the single-pass linear byte-order catalogue (the fallback for a
     /// title whose dialogue sits behind a headless-gated menu — e.g. Kanon's
     /// `#SEEN_START` title spin). So a `Frame` target is engine-general: it
@@ -1570,7 +1570,7 @@ impl ReplayEngine {
                     available: emitted,
                 });
             }
-            // Branch reached NO dialogue: fall through to the linear catalogue,
+            // Branch reached NO dialogue: fall through to the linear catalogue
             // exactly as `observe_for_port`'s play-order fallback does.
             Err(_) => {}
         }
@@ -1583,7 +1583,7 @@ impl ReplayEngine {
             })
     }
 
-    /// Drive ONE play-order pass (`control_flow`) from `scene_id`'s start,
+    /// Drive ONE play-order pass (`control_flow`) from `scene_id`'s start
     /// draining messages step-by-step and landing on `frame_index` when it
     /// surfaces. Returns `Ok(landing)` with the VM state at that frame, or
     /// `Err(emitted)` naming how many frames the pass produced before it ended.
@@ -1688,7 +1688,7 @@ impl ReplayEngine {
     ///
     /// 1. **Branch-following execution** — the REAL engine path: FOLLOWS
     ///    goto/gosub/farcall across the multi-scene store (a rich opening
-    ///    that farcalls into dialogue surfaces its whole executed text +
+    ///    that farcalls into dialogue surfaces its whole executed text
     ///    audio + composited graphics here).
     /// 2. **Exhaustive linear-walk cataloguing** — VISITS every command of
     ///    the entry scene in byte order (guarantees the scene's own
@@ -1760,7 +1760,7 @@ impl ReplayEngine {
     ///    true play order. When the headless drive reaches dialogue, its
     ///    emitted [`TextLine`]s — in order, single pass — ARE
     ///    [`PortObservation::play_order_lines`].
-    /// 2. **Linear-catalogue** (every command of the scene in byte order,
+    /// 2. **Linear-catalogue** (every command of the scene in byte order
     ///    single pass) is the WORKAROUND for titles whose real dialogue is
     ///    gated behind a menu/選択 the headless input-provider cannot walk
     ///    into (e.g. Kanon's `#SEEN_START` title scene branch-follows into
@@ -1809,10 +1809,10 @@ impl ReplayEngine {
         let linear = linear_pass.scene;
         let linear_lines = linear_sink.take_lines();
 
-        // Choose the play order: retain branch unless it reached no dialogue,
+        // Choose the play order: retain branch unless it reached no dialogue
         // or it SPUN while a nonempty linear pass reached a natural terminus;
         // then use the single-pass byte-order catalogue. Prompts follow that
-        // exact same choice: they identify the text lines in their own pass,
+        // exact same choice: they identify the text lines in their own pass
         // never a cross-pass mixture. NEVER combine passes (no doubling).
         let (play_order_lines, selection_prompts) = select_port_pass(
             branch_lines,
@@ -1849,10 +1849,10 @@ impl ReplayEngine {
     /// play-loop a player walks THROUGH the game, not one scene in isolation.
     ///
     /// Starting from `entry`, each scene is observed with
-    /// [`Self::observe_for_port`] (its own single-pass play-order messages +
+    /// [`Self::observe_for_port`] (its own single-pass play-order messages
     /// its own composited background / audio). The next scene is the FIRST
     /// cross-scene dispatch target that scene's branch-following walk followed
-    /// ([`PortObservation::first_cross_scene`] — a real `jump` / `farcall` /
+    /// ([`PortObservation::first_cross_scene`] — a real `jump` / `farcall`
     /// entrypoint resolution into a scene present in the store). The loop
     /// chains into it and continues, so scene A's messages are followed by
     /// scene B's messages in the correct dispatch order.
@@ -1898,7 +1898,7 @@ impl ReplayEngine {
     }
 
     /// One observation pass: mount the `control_flow` registry (retaining
-    /// the audio + graphics runtimes), drive `scene_id` with `scheduler`,
+    /// the audio + graphics runtimes), drive `scene_id` with `scheduler`
     /// dispatching every Shift-JIS `Textout` into `text_sink`. Also reports
     /// the first cross-scene dispatch target the pass followed (only the
     /// branch-following mount can leave the start scene), so the play-loop
@@ -1980,7 +1980,7 @@ impl ReplayEngine {
     }
 
     /// Snapshot/restore identity at every tick boundary while driving
-    /// `scene_id` to its terminus with the BRANCH-FOLLOWING registry +
+    /// `scene_id` to its terminus with the BRANCH-FOLLOWING registry
     /// the deterministic headless input-provider. The branch-following
     /// counterpart to [`Self::verify_snapshot_restore_each_tick`].
     pub fn verify_branch_snapshot_restore_each_tick(
@@ -2122,7 +2122,7 @@ pub fn verify_snapshot_restore_each_tick(
     )
 }
 
-/// Drive `vm` against `store`/`registry` to its terminus with `scheduler`,
+/// Drive `vm` against `store`/`registry` to its terminus with `scheduler`
 /// asserting the substrate snapshot round-trips byte-identically at every
 /// tick boundary. Shared by the cataloguing snapshot-identity checks (with
 /// [`AlwaysReadyScheduler`]) and the branch-following one (with
@@ -2263,7 +2263,7 @@ fn drive_loop(vm: &mut Vm, refs: &DriveRefs<'_>, opts: &ReplayOpts, scene_id: u1
                         // Flush immediately via OPCODE_LINE_BREAK so
                         // each Shift-JIS run surfaces as a distinct
                         // TextLine before any control opcode lands.
-                        // Mirrors the UTSUSHI-209 real-bytes test
+                        // Mirrors the real-bytes test
                         // strategy — keeps the per-run audit trail
                         // honest.
                         if let Some(op) = refs.registry.get(RlopKey::new(
@@ -2336,8 +2336,8 @@ fn drive_loop(vm: &mut Vm, refs: &DriveRefs<'_>, opts: &ReplayOpts, scene_id: u1
             }
             StepOutcome::LongOpResumed { .. } => {}
             StepOutcome::Suspended { .. } => {
-                // AlwaysReadyScheduler should never produce Suspended,
-                // but if it ever does (e.g. a future scheduler swap),
+                // AlwaysReadyScheduler should never produce Suspended
+                // but if it ever does (e.g. a future scheduler swap)
                 // bail out as BudgetExhausted to keep the loop bounded.
                 break ReplayOutcome::BudgetExhausted {
                     events: events.len() as u32,
@@ -2372,7 +2372,7 @@ fn drive_loop(vm: &mut Vm, refs: &DriveRefs<'_>, opts: &ReplayOpts, scene_id: u1
 /// Counts of the real control-flow transfers a branch-following replay
 /// EXECUTED — the evidence that jumps/calls were FOLLOWED (not
 /// linear-walked). A linear walk would record ZERO of every field; a
-/// branch-following walk records non-zero transfers and, crucially,
+/// branch-following walk records non-zero transfers and, crucially
 /// backward jumps + cross-scene transfers a linear walk can never produce.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -2412,11 +2412,11 @@ impl ControlTransferCounts {
 ///
 /// A RealLive scene reaches its natural end in one of two ways: it runs
 /// off the end of its bytecode / halts (`EndOfScene`), or — for a scene
-/// that is itself a subroutine (entered by the parent via `farcall` /
+/// that is itself a subroutine (entered by the parent via `farcall`
 /// `gosub`) — it executes its top-level `ret` / `rtl`. Driven STANDALONE
 /// (with an empty call stack, rather than being called into), that
 /// top-level return pops an empty stack; the driver classifies it as
-/// [`BranchTerminus::ReturnedToCaller`] — a NATURAL terminus, not a fault,
+/// [`BranchTerminus::ReturnedToCaller`] — a NATURAL terminus, not a fault
 /// because the scene ran its real control flow to its return point. Both
 /// are natural termini ([`BranchTerminus::is_natural`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2535,7 +2535,7 @@ pub struct SceneObservation {
     pub graphics_stack: GraphicsObjectStack,
     /// Number of `Advanced` / `LongOpResumed` steps executed.
     pub steps: u32,
-    /// Whether the drive reached a natural terminus (`EndOfScene` /
+    /// Whether the drive reached a natural terminus (`EndOfScene`
     /// `Halt`) rather than the step budget.
     pub reached_natural_terminus: bool,
 }
@@ -2545,7 +2545,7 @@ pub struct SceneObservation {
 /// kept distinct from the frame/audio observation.
 #[derive(Debug)]
 pub struct PortObservation {
-    /// The branch-following (real play-order) message stream, single pass,
+    /// The branch-following (real play-order) message stream, single pass
     /// in the order a player sees the messages. This is what the message
     /// window renders one-per-frame and what the substrate text sink
     /// surfaces — NOT the doubled two-pass catalogue.
@@ -2565,7 +2565,7 @@ pub struct PortObservation {
 }
 
 /// Choose the single replay pass that supplies port-facing text, carrying its
-/// prompt trace alongside it. This is deliberately private transport logic,
+/// prompt trace alongside it. This is deliberately private transport logic
 /// not selection policy: both passes have already executed their respective
 /// schedulers before this point.
 ///
@@ -2691,12 +2691,12 @@ impl ScenePlaythrough {
 pub struct ScenePlaySegment {
     /// The scene id this segment's messages/background belong to.
     pub scene_id: SceneId,
-    /// The scene's port observation: play-order messages + its own frame /
+    /// The scene's port observation: play-order messages + its own frame
     /// audio observation (its background is `observation.scene.graphics_stack`).
     pub observation: PortObservation,
 }
 
-/// Drive `vm` to its natural terminus by FOLLOWING real control flow,
+/// Drive `vm` to its natural terminus by FOLLOWING real control flow
 /// using `scheduler` (a deterministic headless input-provider) to advance
 /// past pause/wait yields and resolve choices. Records the executed
 /// control-transfer counts + terminus into a [`BranchReplayReport`].
@@ -3314,7 +3314,7 @@ mod tests {
     #[test]
     fn selected_port_pass_falls_back_to_linear_when_branch_spins() {
         // A headless select/redraw SPIN: the branch pass emitted many
-        // (duplicated) prompt lines but never reached a natural terminus,
+        // (duplicated) prompt lines but never reached a natural terminus
         // while the byte-order linear pass surfaced each message once and DID
         // complete. The linear catalogue must win — the runaway branch stream
         // is a repetition, not a faithful play order.
@@ -3468,7 +3468,7 @@ mod tests {
     /// COLLISION: `msg.pause` and `sel.select_objbtn` used to share a key
     /// because `module_id`s were mislabelled (both 5), so `sel` silently
     /// clobbered `msg.pause` in the shared registry and Pause-event
-    /// detection dispatched the wrong op. With the real ids (msg=3,
+    /// detection dispatched the wrong op. With the real ids (msg=3
     /// sel=2) the two ops occupy DISTINCT keys and `mount_full_registry`
     /// registers both with no displacement (the dup-key guard would panic
     /// on any collision).
@@ -3499,7 +3499,7 @@ mod tests {
         );
 
         // Mounting the full registry must NOT panic (the dup-key guard
-        // proves there is no displacement anywhere in the 9-family +
+        // proves there is no displacement anywhere in the 9-family
         // catalog mount), and both keys must resolve to their own op.
         let sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
         let sink_dyn: Arc<dyn TextSurfaceSink> = Arc::clone(&sink) as Arc<dyn TextSurfaceSink>;

@@ -1,4 +1,4 @@
-//! UTSUSHI-034 — first Siglus **runtime-VM** integration smoke.
+//! First Siglus **runtime-VM** integration smoke.
 //!
 //! This module is the first Siglus VM *adapter skeleton*. It runs a **synthetic**
 //! Siglus-shaped text-trace program through a tiny in-process interpreter and
@@ -15,25 +15,25 @@
 //!
 //! 1. resolves the key **in-process** (never shelling out, never serializing raw
 //!    key bytes); a posture that would need an external helper or an unavailable
-//!    key is **rejected before the VM runs**,
-//! 2. descrambles + decodes the synthetic bytecode into a typed op stream,
+//!    key is **rejected before the VM runs**
+//! 2. descrambles + decodes the synthetic bytecode into a typed op stream
 //! 3. executes it, emitting each dialogue line through a substrate
-//!    [`TextSurfaceSink`] as an E1 [`TextLine`],
+//!    [`TextSurfaceSink`] as an E1 [`TextLine`]
 //! 4. exposes its flag/variable/PC state through the substrate
 //!    [`Inspectable`] contract, captured as a [`Snapshot`] (the VM-state
-//!    evidence),
+//!    evidence)
 //! 5. assembles a [`VmTraceEvidence`] runtime-evidence claim that references key
 //!    material **only** through a secret-ref + one-way [`ProofHash`] commitment.
 //!
 //! # What it does NOT prove
 //!
-//! Real `Scene.pck` decode, the real Siglus opcode table, LZSS decompression,
+//! Real `Scene.pck` decode, the real Siglus opcode table, LZSS decompression
 //! `Gameexe.dat` namespace resolution, or a rendered Siglus frame. Those are the
 //! Research follow-ups enumerated in [`crate::vm_impl_map`].
 //!
-//! # Key discipline (mirrors UTSUSHI-035)
+//! # Key discipline (mirrors )
 //!
-//! Raw key bytes live only inside the module-private, zeroize-on-drop,
+//! Raw key bytes live only inside the module-private, zeroize-on-drop
 //! `Debug`-redacting [`VmKeyMaterial`] holder and never cross a serialization
 //! boundary. The committed evidence carries a [`RuntimeKeyReference`]
 //! (secret-ref + one-way commitment + byte length) — never the key.
@@ -50,7 +50,7 @@ use utsushi_core::substrate::{
 };
 
 // The secret-ref / one-way-commitment / key-reference discipline is itotori's
-// own UTSUSHI-035 code, reused here (NOT an external reference). See the
+// own code, reused here (NOT an external reference). See the
 // provenance doc §2.
 use crate::runtime_profile::{ProofHash, RuntimeKeyReference, SecretRef};
 
@@ -124,7 +124,7 @@ pub enum SiglusTraceOp {
     Halt,
 }
 
-/// The key posture a VM fixture declares. Mirrors UTSUSHI-035's five-class
+/// The key posture a VM fixture declares. Mirrors the five-class
 /// discipline in miniature: `NoKey` / `LocalKeyResolved` are admitted (the VM
 /// runs); `RequiredUnresolved` is rejected before the VM runs.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -162,7 +162,7 @@ pub struct SiglusVmFixture {
 
 /// Typed VM smoke error. A rejected key posture or a decode failure short-circuits
 /// **before** any [`VmTraceEvidence`] is constructed — the reject-before-claim
-/// discipline carried from UTSUSHI-035.
+/// discipline carried from.
 #[derive(Debug, Clone, PartialEq, Eq, Error, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "code")]
 pub enum VmError {
@@ -190,7 +190,7 @@ pub enum VmError {
         /// Human detail.
         detail: String,
     },
-    /// The VM produced state that failed a substrate contract (snapshot /
+    /// The VM produced state that failed a substrate contract (snapshot
     /// redaction). Surfaced as a stable string so no snapshot internals leak.
     #[error("utsushi.siglus.vm.state_contract_violation: profile {profile_id} ({detail})")]
     StateContractViolation {
@@ -201,9 +201,9 @@ pub enum VmError {
     },
 }
 
-// --- Module-private key holder (mirrors UTSUSHI-035 RuntimeKeyMaterial) ------
+// --- Module-private key holder (mirrors RuntimeKeyMaterial) ------
 
-/// Resolved local key bytes. Raw material is module-private, never serialized,
+/// Resolved local key bytes. Raw material is module-private, never serialized
 /// redacted in `Debug`, and zeroized on drop. The only outward surfaces are a
 /// byte length and a one-way [`ProofHash`] commitment.
 struct VmKeyMaterial {
@@ -637,9 +637,9 @@ pub fn run_vm_trace_smoke(fixture: &SiglusVmFixture) -> Result<VmTraceEvidence, 
     // consumes; its digest goes into the evidence.
     let mut on_wire = encode_program(&ops, keyed);
     if let Some(key) = &key_material {
-        // Scramble everything after the plaintext header (magic + keyed flag +
+        // Scramble everything after the plaintext header (magic + keyed flag
         // op count stay walkable so the container boundary is inspectable before
-        // key handling — the same reject-before-key ordering as UTSUSHI-035).
+        // key handling — the same reject-before-key ordering as ).
         let header_len = VM_PROGRAM_MAGIC.len() + 1 + 4;
         key.apply_xor(&mut on_wire[header_len..]);
         // Reject-on-secret: the resolved key must not appear verbatim in the

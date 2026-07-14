@@ -1,4 +1,4 @@
-//! UTSUSHI-039 — **KAG replay through the XP3-backed VFS handoff**.
+//! **KAG replay through the XP3-backed VFS handoff**.
 //!
 //! This is the Utsushi consumer of the shared VFS boundary's XP3 handoff
 //! ([`utsushi_core::vfs::xp3_handoff`]). The chain is:
@@ -6,8 +6,8 @@
 //! 1. **Kaifuu owns the bytes.** Kaifuu detects/profiles/extracts a *plain*
 //!    (unencrypted) XP3 and hands Utsushi an
 //!    [`Xp3HandoffManifest`](utsushi_core::vfs::xp3_handoff::Xp3HandoffManifest):
-//!    a redacted archive id, a one-way content-hash, an optional key secret-ref,
-//!    and the already-extracted members. Utsushi never parses the container,
+//!    a redacted archive id, a one-way content-hash, an optional key secret-ref
+//!    and the already-extracted members. Utsushi never parses the container
 //!    never touches a key, never decrypts.
 //! 2. **Archive-capability gate.**
 //!    [`admit_xp3_handoff`](utsushi_core::vfs::xp3_handoff::admit_xp3_handoff)
@@ -17,7 +17,7 @@
 //!    yields a reader.
 //! 3. **KAG replay through the VFS.** [`replay_kag_through_vfs`] mounts the
 //!    admission's extracted members into a
-//!    [`MountedVfs`](utsushi_core::MountedVfs), resolves the `.ks` member,
+//!    [`MountedVfs`](utsushi_core::MountedVfs), resolves the `.ks` member
 //!    opens it through the VFS, and replays it with [`crate::replay_kag`] into a
 //!    [`KagVfsEvidence`] runtime-evidence claim.
 //!
@@ -72,7 +72,7 @@ pub struct KagVfsEvidence {
     pub capability_id: String,
     /// The blunt support boundary.
     pub support_boundary: String,
-    /// Redacted archive metadata carried by the handoff (secret-refs + hashes,
+    /// Redacted archive metadata carried by the handoff (secret-refs + hashes
     /// no keys / protected paths / private local filenames).
     pub archive_metadata: Xp3HandoffMetadata,
     /// The `vfs://…` id the `.ks` member resolved to through the VFS.

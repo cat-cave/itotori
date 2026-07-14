@@ -6,7 +6,7 @@
 //! decoded structure and lands DETERMINISTICALLY on it, and the reviewer
 //! address seam round-trips. The real-bytes counterpart
 //! (`jump_resume_real_bytes.rs`) exercises the frame fast-forward on Sweetie HD
-//! + Kanon.
+//! Kanon.
 
 use utsushi_reallive::{
     BytecodeElement, InMemorySceneStore, JumpError, JumpTarget, ReplayEngine, ReplayOpts, Scene,

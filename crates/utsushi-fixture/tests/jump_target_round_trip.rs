@@ -1,5 +1,5 @@
 //! Loader + validator round-trip + redaction-filter coverage for the
-//! committed jump target fixtures (UTSUSHI-062 §7.1-§7.4, §7.7).
+//! committed jump target fixtures ( §7.1-§7.4, §7.7).
 //!
 //! The determinism gate (§7.5/§7.6) lives in
 //! `crates/utsushi-core/tests/replay_log_jump_target.rs` because it consumes

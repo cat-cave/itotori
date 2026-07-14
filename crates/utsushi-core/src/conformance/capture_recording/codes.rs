@@ -1,5 +1,5 @@
 //! Stable semantic codes for capture and recording conformance checks
-//! (UTSUSHI-029).
+//! ().
 //!
 //! Each code namespaces under `utsushi.conformance.*` so it lives in the
 //! same provider/subsystem registry as the rest of the conformance

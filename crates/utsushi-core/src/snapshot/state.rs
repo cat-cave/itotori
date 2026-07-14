@@ -117,8 +117,8 @@ impl StatePath {
                 reason: format!("state path exceeds maximum byte length {MAX_STATE_PATH_BYTES}"),
             });
         }
-        // The local-path filter rejects backslashes, drive-letter shapes,
-        // /home/, /tmp/, /Users/, etc. Apply it before per-segment shape so
+        // The local-path filter rejects backslashes, drive-letter shapes
+        // home/, /tmp/, /Users/, etc. Apply it before per-segment shape so
         // the diagnostic is the most specific one.
         reject_unredacted_local_path_string(raw, raw).map_err(|err| match err {
             SnapshotError::RedactionViolation { field_path } => SnapshotError::InvalidStatePath {
@@ -230,7 +230,7 @@ pub struct BytesValue {
 }
 
 impl BytesValue {
-    /// Validate the bytes value shape (sample length, hex characters,
+    /// Validate the bytes value shape (sample length, hex characters
     /// digest length).
     pub fn validate(&self, field_path: &str) -> Result<(), SnapshotError> {
         if self.sample_hex.len() > BYTES_SAMPLE_HEX_LEN {
@@ -488,7 +488,7 @@ impl StateTree {
     /// `BytesValue` has a non-empty hash. Serialized-form size is
     /// enforced one layer up, at the snapshot envelope tier
     /// ([`super::envelope::SnapshotEnvelope`]); the per-tree size budget
-    /// is no longer a global constant under UTSUSHI-223.
+    /// is no longer a global constant under.
     pub fn validate(&self) -> Result<(), SnapshotError> {
         if self.0.is_empty() {
             return Err(SnapshotError::EmptyStateTree);

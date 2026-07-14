@@ -8,10 +8,10 @@
 //!    direct `utsushi_core::port::EnginePort` reach-around). Mirrors the
 //!    `utsushi-reallive` substrate_conformance test.
 //! 2. **ABI conformance** — the port passes the `utsushi-core` ABI
-//!    conformance harness (`run_required_abi`): manifest validation,
-//!    launch → drain observations → capture → idempotent shutdown,
+//!    conformance harness (`run_required_abi`): manifest validation
+//!    launch → drain observations → capture → idempotent shutdown
 //!    cancellation observance, and the undeclared-`jump` typed
-//!    `CapabilityUnsupported`. Because this port does real work on launch,
+//!    `CapabilityUnsupported`. Because this port does real work on launch
 //!    the harness runs against a synthetic MV project written to a
 //!    tempdir.
 

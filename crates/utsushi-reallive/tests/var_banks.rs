@@ -1,4 +1,4 @@
-//! UTSUSHI-206 — sparse `VarBanks` substrate integration tests.
+//! Sparse `VarBanks` substrate integration tests.
 //!
 //! Pins the four acceptance criteria from the spec node:
 //!
@@ -40,9 +40,7 @@ fn take(banks: &VarBanks, tick: u64) -> Snapshot {
     take_snapshot(banks, &request).expect("snapshot")
 }
 
-// ---------------------------------------------------------------------
 // Acceptance criterion #0 — sparse round-trip through the snapshot store.
-// ---------------------------------------------------------------------
 
 #[test]
 fn variable_banks_snapshot_restore_round_trips_inta_zero_equals_forty_two() {
@@ -116,9 +114,7 @@ fn variable_banks_snapshot_restore_through_snapshot_store_round_trips_state() {
     assert_eq!(banks.store(), 0xCAFE_BABE);
 }
 
-// ---------------------------------------------------------------------
 // Acceptance criterion #1 — empty-machine snapshot fits in < 1 KB.
-// ---------------------------------------------------------------------
 
 #[test]
 fn variable_banks_empty_machine_snapshot_serializes_under_one_kilobyte() {
@@ -155,9 +151,7 @@ fn variable_banks_empty_machine_snapshot_serializes_under_one_kilobyte() {
     }
 }
 
-// ---------------------------------------------------------------------
 // Acceptance criterion #2 — out-of-range writes emit warning and clamp.
-// ---------------------------------------------------------------------
 
 #[test]
 fn variable_banks_out_of_range_write_emits_warning_and_clamps() {
@@ -193,9 +187,7 @@ fn variable_banks_out_of_range_write_emits_warning_and_clamps() {
     assert_eq!(banks.get(BankId::IntA, BANK_INDEX_CAP), None);
 }
 
-// ---------------------------------------------------------------------
 // Acceptance criterion #3 — string banks preserve Shift-JIS bytes.
-// ---------------------------------------------------------------------
 
 #[test]
 fn variable_banks_string_bank_round_trips_raw_shift_jis_bytes_verbatim() {
@@ -228,9 +220,7 @@ fn variable_banks_string_bank_round_trips_raw_shift_jis_bytes_verbatim() {
     );
 }
 
-// ---------------------------------------------------------------------
 // Inspectable / Restorable trait pinning.
-// ---------------------------------------------------------------------
 
 #[test]
 fn variable_banks_inspectable_id_is_pinned_constant() {

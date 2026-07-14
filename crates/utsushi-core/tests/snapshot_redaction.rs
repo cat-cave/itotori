@@ -1,5 +1,5 @@
 //! Integration test for the snapshot substrate's redaction claim
-//! (UTSUSHI-023 §1 claim 3).
+//! ( §1 claim 3).
 //!
 //! Exercises all three redaction layers:
 //! 1. `StatePath::parse` rejects host-path-shaped path strings.

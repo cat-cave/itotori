@@ -339,9 +339,7 @@ impl fmt::Display for ImplMapError {
 
 impl std::error::Error for ImplMapError {}
 
-// ---------------------------------------------------------------------------
 // Cross-validation against PortManifest (helper surface).
-// ---------------------------------------------------------------------------
 
 /// Diagnostics for the optional `validate_against_manifest` helper.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -401,9 +399,7 @@ impl fmt::Display for ImplMapManifestMismatch {
 
 impl std::error::Error for ImplMapManifestMismatch {}
 
-// ---------------------------------------------------------------------------
 // verify_fixture_hashes helper diagnostics.
-// ---------------------------------------------------------------------------
 
 /// One mismatch discovered by [`super::verify_fixture_hashes`].
 #[derive(Debug, Clone, PartialEq, Eq)]

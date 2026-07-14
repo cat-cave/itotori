@@ -9,10 +9,10 @@
 //! `#NAMAE` middle field was mislabelled as a voice slot rather than a
 //! `#COLOR_TABLE` row index.
 //!
-//! This test drives the REAL Sweetie HD scenes with the `#NAMAE` +
+//! This test drives the REAL Sweetie HD scenes with the `#NAMAE`
 //! `#COLOR_TABLE` resolver installed and asserts:
 //!
-//!   * NAMED lines now resolve a non-empty `TextLine.speaker` (count > 0,
+//!   * NAMED lines now resolve a non-empty `TextLine.speaker` (count > 0
 //!     was 0), with the resolved `TextLine.color`.
 //!   * The two documented speakers resolve to the right colour
 //!     (`和人` → pale `(204,204,255)`, `真理子` → pink `(255,153,204)`).
@@ -170,7 +170,7 @@ fn sweetie_named_lines_resolve_speaker_and_color_narration_none_zero_unknown_pre
 
     // 0 unknown opcodes PRESERVED: WITH vs WITHOUT the resolver, a
     // speaker-bearing scene replays to the identical unknown-opcode count
-    // (and no fatal). The 【…】 parse is on already-decoded Textout bytes,
+    // (and no fatal). The 【…】 parse is on already-decoded Textout bytes
     // so it cannot change opcode recognition.
     let probe_scene = speaker_bearing_scene.expect("a speaker-bearing scene was observed");
     let with = engine.replay_from(probe_scene, &opts);

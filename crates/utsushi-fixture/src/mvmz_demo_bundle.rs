@@ -1,4 +1,4 @@
-//! UTSUSHI-134: the MV/MZ **embedded playback demo bundle**.
+//! The MV/MZ **embedded playback demo bundle**.
 //!
 //! This node does NOT prove anything new. It PACKAGES the already-merged MV/MZ
 //! patched-output proof surfaces into ONE self-contained, verifiable demo
@@ -9,12 +9,12 @@
 //! ## What it packages
 //!
 //! ```text
-//! patched runtime proof   UTSUSHI-119  proof.golden.json          -> proofLinks.patchedRuntimeProof
-//! alpha proof             UTSUSHI-102  alpha-proof.json           -> proofLinks.alphaProof
-//! Kaifuu PatchResult      (119)        patch-result.json          -> proofLinks.patchResult
-//! patched runtime trace   UTSUSHI-006  patched-runtime-trace.json -> observationEnvelope (text/choices)
-//! review-package manifest UTSUSHI-010  manifest.golden.json       -> reviewManifest
-//! screenshot evidence     UTSUSHI-065  evidence.golden.json       -> captureRefs (validated)
+//! patched runtime proof proof.golden.json -> proofLinks.patchedRuntimeProof
+//! alpha proof alpha-proof.json -> proofLinks.alphaProof
+//! Kaifuu PatchResult (119) patch-result.json -> proofLinks.patchResult
+//! patched runtime trace patched-runtime-trace.json -> observationEnvelope (text/choices)
+//! review-package manifest manifest.golden.json -> reviewManifest
+//! screenshot evidence evidence.golden.json -> captureRefs (validated)
 //! ```
 //!
 //! ## The crux
@@ -60,9 +60,9 @@ const EVIDENCE_TIER_E1: &str = "E1";
 
 // --- Bundle-validation check identifiers (stable, machine-readable) --------
 
-/// The packaged UTSUSHI-119 patched proof is proven at E1.
+/// The packaged patched proof is proven at E1.
 pub const CHECK_PATCHED_PROOF_PROVEN_E1: &str = "patched_proof_proven_e1";
-/// The packaged UTSUSHI-102 alpha proof is proven at E1.
+/// The packaged alpha proof is proven at E1.
 pub const CHECK_ALPHA_PROOF_PROVEN_E1: &str = "alpha_proof_proven_e1";
 /// The PatchResult status is passed and its outputHash matches the patched
 /// proof's attestation — the packaged patch links are internally consistent.
@@ -76,22 +76,22 @@ pub const CHECK_CAPTURE_REFS_VALIDATED: &str = "capture_refs_validated";
 /// Every packaged 065 capture is also named by the 010 review manifest's
 /// screenshot artifact refs — the two evidence surfaces agree.
 pub const CHECK_CAPTURES_AGREE_WITH_REVIEW_MANIFEST: &str = "captures_agree_with_review_manifest";
-/// The packaged review manifest carries the UTSUSHI-010 manifest kind.
+/// The packaged review manifest carries the manifest kind.
 pub const CHECK_REVIEW_MANIFEST_KIND: &str = "review_manifest_kind";
 
 /// The committed artifacts a demo bundle packages.
 pub struct DemoBundleInputs<'a> {
-    /// UTSUSHI-119 patched-runtime-observation proof (`proof.golden.json`).
+    /// patched-runtime-observation proof (`proof.golden.json`).
     pub patched_runtime_proof: &'a Value,
-    /// UTSUSHI-102 alpha runtime-observation proof (`alpha-proof.json`).
+    /// alpha runtime-observation proof (`alpha-proof.json`).
     pub alpha_proof: &'a Value,
     /// The Kaifuu `PatchResult` whose `outputHash` attests the patched output.
     pub patch_result: &'a Value,
-    /// UTSUSHI-006 patched runtime trace — the observed text / choices source.
+    /// patched runtime trace — the observed text / choices source.
     pub patched_runtime_trace: &'a Value,
-    /// UTSUSHI-010 review-package manifest (`manifest.golden.json`).
+    /// review-package manifest (`manifest.golden.json`).
     pub review_manifest: &'a Value,
-    /// UTSUSHI-065 screenshot capture evidence (`evidence.golden.json`).
+    /// screenshot capture evidence (`evidence.golden.json`).
     pub screenshot_evidence: &'a Value,
 }
 
@@ -126,7 +126,7 @@ fn is_managed_artifact_uri(uri: &str) -> bool {
     uri.starts_with(MANAGED_ARTIFACT_URI_ROOT)
         && !uri.contains('\\')
         && !uri.starts_with('/')
-        // no `scheme:` prefix (file:, data:, http:, C: ...).
+        // no `scheme:` prefix (file:, data:, http:, C:...).
         && !uri
             .split_once(':')
             .is_some_and(|(scheme, _)| !scheme.is_empty() && !scheme.contains('/'))
@@ -234,7 +234,7 @@ fn envelope_bridge_unit_ids(envelope: &Value) -> Vec<String> {
 }
 
 /// Validate one screenshot capture reference and build its packaged form. A
-/// capture is validated iff its artifactRef resolves to a managed runtime URI,
+/// capture is validated iff its artifactRef resolves to a managed runtime URI
 /// declares a screenshot artifact kind + media type + byte size, and links to a
 /// bridge unit ref + the trace event it evidences. The `refHash` is a
 /// deterministic content-addressed handle over the canonical artifactRef so the

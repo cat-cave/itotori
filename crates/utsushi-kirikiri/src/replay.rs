@@ -1,6 +1,6 @@
 //! KAG plaintext REPLAY engine + typed trace.
 //!
-//! [`replay_kag`] walks a [`KagScript`] instruction stream like a tiny VM,
+//! [`replay_kag`] walks a [`KagScript`] instruction stream like a tiny VM
 //! tracking the active speaker (`#name` state), emitting message text, and
 //! following jumps + choices, producing a deterministic [`KagTrace`]. It is
 //! the Utsushi-side analogue of `utsushi-reallive::replay_scene`: same
@@ -9,7 +9,7 @@
 //! posture (an unsupported command records a semantic diagnostic and
 //! advances; it never panics and never silently skips).
 //!
-//! ## Honest scope (UTSUSHI-038 macro + storage subset)
+//! ## Honest scope ( macro + storage subset)
 //!
 //! This is a plaintext KAG REPLAY *skeleton*. It replays the structural
 //! flow — message text, name state, choices, jumps — of a `.ks` script that
@@ -18,18 +18,18 @@
 //!
 //! - **Storage variables (bounded subset).** `[eval exp="f.x = …"]` performs a
 //!   SIMPLE assignment to an `f.` (game flag) or `sf.` (system flag) variable
-//!   whose right-hand side is an integer literal, a quoted string literal,
+//!   whose right-hand side is an integer literal, a quoted string literal
 //!   another already-bound `f.`/`sf.` variable (a copy), or a single spaced
 //!   `A + B` / `A - B` over integer operands (so `f.count = f.count + 1`
 //!   counters work). `[emb exp="f.x"]` reads a single already-bound variable
 //!   and records its value. Variable state is visible as
 //!   [`KagEvent::VariableSet`] / [`KagEvent::EmbeddedValue`] events and in the
 //!   final [`KagTrace::variables`] snapshot.
-//! - **Everything else is a typed diagnostic, never faked.** Any `[eval]`/
-//!   `[emb]` expression outside that subset (multiplication, comparisons,
+//! - **Everything else is a typed diagnostic, never faked.** Any `[eval]`
+//!   `[emb]` expression outside that subset (multiplication, comparisons
 //!   function/method calls, string concatenation, multi-statement, a
 //!   non-`f.`/`sf.` target) is an `unsupported_tjs_expression`; a read/copy of
-//!   an UNBOUND variable is an `unresolved_variable`; `[if]` conditionals,
+//!   an UNBOUND variable is an `unresolved_variable`; `[if]` conditionals
 //!   `[iscript]` blocks, and out-of-subset macros surface as their own typed
 //!   diagnostics. It does NOT open or decrypt XP3 containers. Every
 //!   unsupported construct is a [`KagDiagnostic`], so the boundary is visible
@@ -42,7 +42,7 @@ use serde::Serialize;
 use crate::parse::{BlockKind, Command, Instr, KagScript};
 
 /// Stable schema label for [`KagTrace`], pinned so a consumer detects a
-/// future bump at parse time. Bumped for UTSUSHI-038 (macro expansion +
+/// future bump at parse time. Bumped for (macro expansion
 /// storage-variable events and the `variables` snapshot).
 pub const KAG_TRACE_SCHEMA_VERSION: &str = "utsushi-kirikiri-kag-trace/0.2.0-beta";
 
@@ -87,7 +87,7 @@ pub enum VarValue {
 
 /// One replay observation. Covers the four structural surfaces the skeleton
 /// scopes (text, name state, choices, jumps) plus the two storage-variable
-/// surfaces of the UTSUSHI-038 subset (a set, and an embedded read).
+/// surfaces of the subset (a set, and an embedded read).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum KagEvent {
@@ -267,7 +267,7 @@ impl KagTrace {
     }
 
     /// The `(text, speaker)` of every message, in order — the surface the
-    /// text+name cross-validation test compares against KAIFUU-009's
+    /// text+name cross-validation test compares against the
     /// dialogue units.
     #[must_use]
     pub fn message_texts_with_speakers(&self) -> Vec<(String, Option<String>)> {
@@ -798,7 +798,7 @@ fn strip_label_star(target: &str) -> &str {
 
 /// Outcome of evaluating an `[eval]` expression against the supported subset.
 enum EvalOutcome {
-    /// A supported assignment: `name` := `value`.
+    /// A supported assignment: `name`:= `value`.
     Assigned { name: String, value: VarValue },
     /// A recognised assignment shape that reads an UNBOUND variable.
     UnresolvedVar(String),

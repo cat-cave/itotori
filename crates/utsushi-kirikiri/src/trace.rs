@@ -1,26 +1,26 @@
-//! UTSUSHI-008 — **KAG command-trace probe** for plaintext / already-extracted
+//! **KAG command-trace probe** for plaintext / already-extracted
 //! KiriKiri/KAG `.ks` scripts.
 //!
 //! Where [`crate::replay`] walks the script like a tiny jump-FOLLOWING VM
-//! (UTSUSHI-037), this probe produces a **linear, command-indexed trace** in
+//! (), this probe produces a **linear, command-indexed trace** in
 //! source (trace) order for review: one row per significant command, each
 //! carrying the columns a reviewer needs to correlate the runtime stream to
 //! the extraction bridge —
 //!
-//! - **command index** (dense position in trace order) + source **line index**,
-//! - the active **label** scope (and, on a `*label` row, the label entered),
+//! - **command index** (dense position in trace order) + source **line index**
+//! - the active **label** scope (and, on a `*label` row, the label entered)
 //! - a **macro id** (a `[macro name=x]` definition or a later `[x …]`
-//!   invocation of a defined macro),
-//! - a **jump target** (`[jump]` / `@jump` / `[call]`),
+//!   invocation of a defined macro)
+//! - a **jump target** (`[jump]` / `@jump` / `[call]`)
 //! - a **branch id** (a `[link …]…[endlink]` choice option, or a `[select …]`
-//!   option) plus the option target,
+//!   option) plus the option target
 //! - the active **speaker** (`#name` state), and
 //! - the observed **text** (a message run, or a choice option's visible text).
 //!
-//! # Bridge-unit linkage (mirrors UTSUSHI-006)
+//! # Bridge-unit linkage (mirrors )
 //!
 //! Every **speaker**, **message**, and **branch-option** row carries a
-//! [`BridgeRef`] identifying the KAIFUU-009 extraction unit for that exact
+//! [`BridgeRef`] identifying the extraction unit for that exact
 //! source text. The `(bridge_unit_id, source_unit_key)` pair is re-derived
 //! (per this crate's dev-dep-oracle isolation posture) with the SAME scheme
 //! `kaifuu_kirikiri` stamps on its extraction units, and the
@@ -60,12 +60,12 @@ pub const KAG_COMMAND_TRACE_SCOPE: &str = "plaintext / already-extracted KAG `.k
      an XP3 container — commercial encrypted-XP3 titles are a separate capability \
      and out of scope. Structural flow probe, not a full TJS runtime.";
 
-/// A link back to the KAIFUU-009 extraction bridge unit for a row's source
+/// A link back to the extraction bridge unit for a row's source
 /// text (mirrors `utsushi_core::ObservationBridgeRef`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BridgeRef {
-    /// Deterministic UUID7-shaped id — byte-identical to KAIFUU-009's.
+    /// Deterministic UUID7-shaped id — byte-identical to the.
     pub bridge_unit_id: String,
     /// Stable human-readable key: `kirikiri-kag:<file>#L<line>#seg<seg>#<role>`.
     pub source_unit_key: String,
@@ -363,7 +363,7 @@ impl Tracer<'_> {
     fn trace_text_line(&mut self, line: &str, line_index: usize) {
         let tokens = split_text_line(line);
         // Per-line dialogue segment counter, shared by message runs AND link
-        // option text — matching KAIFUU-009's `parse_text_line` seg counting.
+        // option text — matching the `parse_text_line` seg counting.
         let mut dialogue_seg = 0usize;
         // `Some((target, text))` while inside a `[link]…[endlink]` option.
         let mut open_link: Option<(String, String)> = None;
@@ -434,7 +434,7 @@ impl Tracer<'_> {
             }
             // Every other recognised tag (presentational / TJS / storage) is
             // deliberately NOT a row in this structural probe — the replay
-            // skeleton (UTSUSHI-037) is where those are evaluated. Recorded as
+            // skeleton () is where those are evaluated. Recorded as
             // a no-op here, never crashed.
             _ => {}
         }
@@ -507,7 +507,7 @@ fn strip_star(target: &str) -> &str {
 
 /// Split a message/text line into ordered [`LineToken`]s. `[[` is the KAG
 /// literal-`[` escape and stays inside the text run. Whitespace-only runs are
-/// dropped (matching KAIFUU-009), so every emitted `Run` is translatable text.
+/// dropped (matching ), so every emitted `Run` is translatable text.
 fn split_text_line(line: &str) -> Vec<LineToken> {
     let chars: Vec<char> = line.chars().collect();
     let mut tokens: Vec<LineToken> = Vec::new();

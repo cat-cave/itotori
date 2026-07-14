@@ -1,20 +1,20 @@
-//! Engine-port runner template (UTSUSHI-103).
+//! Engine-port runner template ().
 //!
 //! This module is the engine-neutral substrate every Utsushi engine port
 //! implements. The substrate defines:
 //!
 //! 1. [`PortManifest`] — a static, audit-grade declaration every port
 //!    exposes as an associated `const`.
-//! 2. [`EnginePort`] — the lifecycle trait (launch / observe / capture /
+//! 2. [`EnginePort`] — the lifecycle trait (launch / observe / capture
 //!    shutdown plus optional `jump`).
-//! 3. [`Runner`] — orchestrates manifest validation, cancellation,
+//! 3. [`Runner`] — orchestrates manifest validation, cancellation
 //!    artifact-root containment, and observation re-validation.
 //! 4. [`EnginePortAdapter`] — a bridge that lets an `EnginePort` register
 //!    on the [`RuntimeAdapter`](crate::RuntimeAdapter) registry surface.
 //! 5. [`conformance`] — the ABI conformance harness engine port crates
 //!    use in their integration tests.
 //!
-//! See the plan in `.plan/UTSUSHI-103.md` for the design rationale.
+//! See the plan in `.plan/.md` for the design rationale.
 
 pub mod conformance;
 pub mod diagnostics;

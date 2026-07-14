@@ -2,7 +2,7 @@
 //!
 //! `diff_snapshots` produces a path-keyed [`StateDiff`] when two snapshots
 //! disagree. Every change carries the full [`super::state::StatePath`] so the
-//! conformance layer (UTSUSHI-028) can quote the path verbatim when it fails
+//! conformance layer () can quote the path verbatim when it fails
 //! a restore.
 
 use std::collections::BTreeSet;
@@ -36,7 +36,7 @@ impl StateDiff {
         self.changes.iter().map(|change| &change.path)
     }
 
-    /// Validate the diff shape: schema version pin, sorted changes,
+    /// Validate the diff shape: schema version pin, sorted changes
     /// serialized form passes the local-path filter.
     pub fn validate(&self) -> Result<(), SnapshotError> {
         if self.schema_version.as_str() != SNAPSHOT_SCHEMA_VERSION {

@@ -1,4 +1,4 @@
-//! ALPHA-006b — `utsushi-cli render-validate --engine reallive` command.
+//! `utsushi-cli render-validate --engine reallive` command.
 //!
 //! Drives the REAL RealLive message-window render pipeline over a
 //! (localized) Seen.txt and emits a deterministic rasterized PNG
@@ -16,7 +16,7 @@
 //!   * The real g00 graphics-object stack the drive observed is composited
 //!     into the full-fidelity buffer (the real decoded background art).
 //!   * The message is laid out inside the game's real `#WINDOW.000`
-//!     dialogue box read from `Gameexe.ini` (position / colour / alpha /
+//!     dialogue box read from `Gameexe.ini` (position / colour / alpha
 //!     font-size / insets), word-wrapped at the `MOJI_CNT` boundary, with
 //!     a separate `NAME_MOD=1` speaker name box in the speaker's colour.
 //!
@@ -228,7 +228,7 @@ pub(crate) struct Params<'a> {
     pub(crate) artifact_root: &'a Path,
     pub(crate) run_id: &'a str,
     pub(crate) expect_text_contains: Option<&'a str>,
-    /// Zero-based play-order message index within the scene. When present,
+    /// Zero-based play-order message index within the scene. When present
     /// selection is positional first; `expect_text_contains` then asserts that
     /// the selected message is the intended patched draft.
     pub(crate) message_index: Option<usize>,
@@ -269,7 +269,7 @@ pub(crate) struct Params<'a> {
 pub(crate) fn drive(
     params: Params<'_>,
 ) -> Result<(serde_json::Value, DispatchReport), Box<dyn Error>> {
-    // 1. Parse the real Gameexe.ini → the #WINDOW.000 message-box config,
+    // 1. Parse the real Gameexe.ini → the #WINDOW.000 message-box config
     //    the game's declared virtual screen size the config coordinates
     //    live in, and the #NAMAE → #COLOR_TABLE speaker/colour resolver.
     //    Nothing about the box is hardcoded.
@@ -332,7 +332,7 @@ pub(crate) fn drive(
     // into the NAME_MOD name box ourselves, and recover the REAL
     // per-speaker colour from the PRISTINE source Seen (the #NAMAE colour is
     // a property of the character, untouched by dialogue-only patchback).
-    // The source play-order aligns 1:1 with the patched one (same scene,
+    // The source play-order aligns 1:1 with the patched one (same scene
     // same structure), so the colour at the same index is this speaker's.
     let (rendered_text, speaker, resolved_color) = if chosen.speaker.is_some() {
         (chosen.text.clone(), chosen.speaker.clone(), chosen.color)
@@ -463,7 +463,7 @@ pub(crate) fn drive(
         .map_err(|err| format!("utsushi.cli.render_validate.artifact_path: {err}"))?;
 
     // Re-run the opcode/dispatch COVERAGE gate over the SAME branch-following
-    // pass the play-order observation drove (same engine, same step budget),
+    // pass the play-order observation drove (same engine, same step budget)
     // so a scene that skipped an unimplemented opcode is surfaced rather than
     // hidden behind the emitted E2 frame. Folded into the report below and
     // gated on by the caller's `--require-semantic-reached-path`.
@@ -1054,7 +1054,7 @@ mod tests {
 
     use crate::dispatch_gate::{dispatch_report_from_engine, require_semantic_reached_path};
 
-    /// A single 8-byte RealLive `Command` element for `(module_type,
+    /// A single 8-byte RealLive `Command` element for `(module_type
     /// module_id, opcode)` at `byte_offset`. Mirrors the reallive replay
     /// helper: branch-following dispatches on the decoded header fields.
     fn command_element(

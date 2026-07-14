@@ -1,5 +1,5 @@
 //! Integration tests for the deterministic input/clock/replay substrate
-//! (UTSUSHI-021).
+//! ().
 //!
 //! Exercises the recording adapter / replay-driver contract end-to-end and
 //! pins the on-disk JSON form to a checked-in golden fixture so accidental
@@ -16,7 +16,7 @@ use utsushi_core::{
 
 /// A purely in-test adapter that observes each replayed `InputEvent` and
 /// emits a synthetic trace line. It does not implement `RuntimeAdapter`
-/// (that's UTSUSHI-103's surface decision); instead it models the contract
+/// (that's the surface decision); instead it models the contract
 /// runner-template authors will inherit.
 struct RecordingAdapter {
     supported_kinds: Vec<InputKind>,
@@ -229,7 +229,7 @@ fn runtime_request_replay_field_is_additive_and_shared_via_arc() {
     let log = sample_log();
     let shared = Arc::new(log.clone());
     // The field is additive; constructing a request without replay still
-    // works exactly as in the UTSUSHI-020 baseline.
+    // works exactly as in the baseline.
     let bare = RuntimeRequest::new(std::path::Path::new("/scratch/cwd"));
     assert!(bare.replay.is_none());
 

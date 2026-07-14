@@ -1,10 +1,10 @@
-//! UTSUSHI-010: export an MV/MZ **review-package manifest** — the capstone
+//! Export an MV/MZ **review-package manifest** — the capstone
 //! that aggregates the just-merged MV/MZ alpha-proof surfaces into a single
 //! play-test evidence manifest.
 //!
 //! The manifest is an *evidence-surface* document: it NAMES the artifacts that
 //! prove an MV/MZ localized run, plus the honest limits of that proof. It does
-//! not embed raw copyrighted bytes or pixels — it references artifacts by id,
+//! not embed raw copyrighted bytes or pixels — it references artifacts by id
 //! uri, and content hash only. It is deliberately standalone: building it needs
 //! NO annotation handling and NO feedback import (see
 //! [`build_mv_mz_review_package_manifest`]); it carries no workflow action
@@ -13,21 +13,21 @@
 //! ## What it aggregates
 //!
 //! ```text
-//! patch artifacts            KAIFUU PatchExport            -> patchArtifacts[]
-//! runtime trace evidence     UTSUSHI-006 observation +     -> runtimeTraceEvidence
-//!                            UTSUSHI-033 replay pack
-//! screenshot artifact refs   UTSUSHI-065 capture evidence  -> screenshotArtifactRefs
+//! patch artifacts KAIFUU PatchExport -> patchArtifacts[]
+//! runtime trace evidence observation + -> runtimeTraceEvidence
+//!                            replay pack
+//! screenshot artifact refs capture evidence -> screenshotArtifactRefs
 //!                            (WHEN the host can capture)
 //! ```
 //!
 //! Every surface the manifest names is one of the freshly-merged MV/MZ proof
 //! surfaces:
-//! - **Patch artifacts** — the KAIFUU MV/MZ patch-back output ([`PatchExport`]),
+//! - **Patch artifacts** — the KAIFUU MV/MZ patch-back output ([`PatchExport`])
 //!   named by `patchExportId`, locales, entry count, and a content hash.
-//! - **Runtime trace evidence** — the UTSUSHI-006 observation-hook trace events
-//!   embedded in the runtime evidence report, and the UTSUSHI-033 message +
+//! - **Runtime trace evidence** — the observation-hook trace events
+//!   embedded in the runtime evidence report, and the message
 //!   choice **replay pack** trace, named by counts.
-//! - **Screenshot artifact refs** — the UTSUSHI-065 screenshot captures, whose
+//! - **Screenshot artifact refs** — the screenshot captures, whose
 //!   `artifactRef`s (id + uri + hash-bearing coordinates) are surfaced **only
 //!   when the host can produce them**.
 //!
@@ -100,16 +100,16 @@ impl HostCapabilities {
 /// The evidence surfaces aggregated into one review-package manifest.
 ///
 /// These are exactly the freshly-merged MV/MZ proof surfaces — a patch
-/// artifact, a runtime evidence report (UTSUSHI-006 traces + UTSUSHI-065
-/// captures), and an optional UTSUSHI-033 replay-pack trace — plus the host
+/// artifact, a runtime evidence report ( traces
+/// captures), and an optional replay-pack trace — plus the host
 /// capabilities. There is deliberately NO annotation or feedback-import input.
 pub struct ReviewPackageInputs<'a> {
     /// A KAIFUU MV/MZ `PatchExport` document (the patch-back output).
     pub patch_export: &'a Value,
-    /// A UTSUSHI-065 runtime evidence report: it embeds the UTSUSHI-006
+    /// A runtime evidence report: it embeds the
     /// observation-hook trace events and the screenshot captures.
     pub runtime_evidence_report: &'a Value,
-    /// An optional UTSUSHI-033 replay-pack trace (`PackOutcome::to_trace_json`).
+    /// An optional replay-pack trace (`PackOutcome::to_trace_json`).
     pub replay_pack_trace: Option<&'a Value>,
     /// The host capabilities gating screenshot/browser evidence availability.
     pub host: HostCapabilities,
@@ -141,7 +141,7 @@ impl Diagnostic {
 /// Build the MV/MZ review-package manifest from its evidence surfaces.
 ///
 /// The manifest names, in order: **patch artifacts**, **runtime trace
-/// evidence** (UTSUSHI-006 observation + UTSUSHI-033 replay pack), **screenshot
+/// evidence** ( observation + replay pack), **screenshot
 /// artifact refs** (when the host can produce them), and **limitations**.
 /// Unsupported host capabilities become semantic
 /// diagnostics + recorded limitations, never silent omissions.
@@ -261,8 +261,8 @@ fn patch_artifact_ref(patch_export: &Value) -> UtsushiResult<Value> {
     }))
 }
 
-/// Build the runtime-trace-evidence section: the UTSUSHI-006 observation-hook
-/// trace events embedded in the report, plus the UTSUSHI-033 replay-pack trace
+/// Build the runtime-trace-evidence section: the observation-hook
+/// trace events embedded in the report, plus the replay-pack trace
 /// when one was supplied. A missing replay pack is recorded honestly (a
 /// diagnostic + `available: false`), never silently dropped.
 fn runtime_trace_evidence_section(
@@ -340,10 +340,10 @@ fn runtime_trace_evidence_section(
     })
 }
 
-/// Build the screenshot-artifact-refs section from the UTSUSHI-065 captures in
+/// Build the screenshot-artifact-refs section from the captures in
 /// the report, gated by host capability.
 ///
-/// The refs are surfaced ONLY when the host can produce them (browser present,
+/// The refs are surfaced ONLY when the host can produce them (browser present
 /// screenshot capture supported, and captures actually present). Otherwise the
 /// section records `availability: "unavailable"` with a reason, and a semantic
 /// diagnostic + limitation are pushed — the manifest never silently omits the
@@ -441,7 +441,7 @@ fn screenshot_artifact_refs_section(
 /// Read the review-package inputs from files and build the manifest.
 ///
 /// This is the IO shell the CLI uses: it reads the KAIFUU patch export, the
-/// UTSUSHI-065 runtime evidence report, and the optional UTSUSHI-033 replay-pack
+/// runtime evidence report, and the optional replay-pack
 /// trace, then delegates to the pure [`build_mv_mz_review_package_manifest`].
 pub fn mv_mz_review_package_manifest_from_paths(
     patch_export_path: &Path,

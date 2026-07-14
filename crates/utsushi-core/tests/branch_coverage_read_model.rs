@@ -1,4 +1,4 @@
-//! Integration test for the UTSUSHI-009 MV/MZ branch coverage read
+//! Integration test for the MV/MZ branch coverage read
 //! model. Loads the committed synthetic fixture
 //! `tests/fixtures/conformance/branch_coverage/coverage_status.json`
 //! (shared byte-for-byte with the TypeScript dashboard seed), builds the
@@ -44,7 +44,7 @@ fn fixture_join_records_every_required_field() {
     );
     assert_eq!(model.adapter_id, "utsushi-synthetic");
 
-    // Every record carries branch id, route-map ids, observed trace ids,
+    // Every record carries branch id, route-map ids, observed trace ids
     // reachable text count, and a coverage status.
     for record in &model.records {
         assert!(!record.branch_id.is_empty());

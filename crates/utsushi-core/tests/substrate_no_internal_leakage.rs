@@ -1,4 +1,4 @@
-//! UTSUSHI-120 — Substrate facade leakage gate.
+//! Substrate facade leakage gate.
 //!
 //! Defense-in-depth lint that asserts the curated facade surface is
 //! exactly what the plan and the public docs claim it is. The headline
@@ -8,15 +8,15 @@
 //! by comparing the substrate source against the documented exclusion
 //! list and the documented inclusion list.
 //!
-//! See `.plan/UTSUSHI-120.md` §7.2 and `docs/utsushi-substrate-facade.md`
+//! See `.plan/.md` §7.2 and `docs/utsushi-substrate-facade.md`
 //! §5.
 
 /// Symbols that MUST NOT appear inside `crates/utsushi-core/src/substrate.rs`
-/// because they are engine-implementation helpers, conformance internals,
+/// because they are engine-implementation helpers, conformance internals
 /// or crate-private validators that downstream port authors must not
 /// reach through the substrate facade.
 const EXCLUDED_SYMBOLS: &[&str] = &[
-    // VFS implementation helpers (UTSUSHI-020).
+    // VFS implementation helpers ().
     "AssetIdErrorReason",
     "AssetRef",
     "MountedVfs",
@@ -26,7 +26,7 @@ const EXCLUDED_SYMBOLS: &[&str] = &[
     "ResourceBoundKind",
     "TransformKind",
     // Trace-branch helper types only conformance crate internals need
-    // (UTSUSHI-025/027). The facade exposes the check entry points
+    // (). The facade exposes the check entry points
     // (`TraceConformanceCheck`, `BranchConformanceCheck`) plus the
     // adapter-emitted `ObservedTextEvent` / `ObservedBranch` and the
     // golden-side `GoldenTextEvent` types needed to construct a check.

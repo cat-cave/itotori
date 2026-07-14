@@ -9,15 +9,15 @@
 //!
 //! ## Why decode-first dissolves the delimiter hazard
 //!
-//! KAIFUU-009's byte-level parser must guard against a Shift-JIS trailing
-//! byte that happens to equal an ASCII delimiter (`[`=0x5B, `]`=0x5D,
+//! the byte-level parser must guard against a Shift-JIS trailing
+//! byte that happens to equal an ASCII delimiter (`[`=0x5B, `]`=0x5D
 //! `@`=0x40, `#`=0x23, `*`=0x2A all fall inside the Shift-JIS trailing-byte
 //! range 0x40..=0x7E). The replay parser sidesteps that hazard entirely by
-//! decoding the whole file to a Rust `String` up front: after decoding,
+//! decoding the whole file to a Rust `String` up front: after decoding
 //! every character is a proper Unicode scalar, so scanning the decoded
 //! `&str` for ASCII delimiters via `char_indices` can never mis-read a
 //! multi-byte character's interior. Byte-preserving patchback (which *does*
-//! need byte spans) is KAIFUU-009's job, not the replay's.
+//! need byte spans) is the job, not the replay's.
 
 use serde::Serialize;
 
@@ -35,7 +35,7 @@ pub enum KagEncoding {
 
 impl KagEncoding {
     /// Detect encoding: valid UTF-8 → [`KagEncoding::Utf8`], else
-    /// [`KagEncoding::ShiftJis`]. Same policy KAIFUU-009 uses so the two
+    /// [`KagEncoding::ShiftJis`]. Same policy uses so the two
     /// parsers classify a given `.ks` file identically.
     #[must_use]
     pub fn detect(bytes: &[u8]) -> Self {

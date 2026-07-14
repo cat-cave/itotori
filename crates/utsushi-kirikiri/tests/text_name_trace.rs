@@ -1,4 +1,4 @@
-//! UTSUSHI-037 acceptance — deterministic text + name-state replay trace.
+//! Acceptance — deterministic text + name-state replay trace.
 //!
 //! Fixture is synthetic, authored, CC0 (`fixtures/text_and_names.ks`); no
 //! retail KiriKiri bytes. Asserts:
@@ -8,10 +8,10 @@
 //!    bare-`#` reset);
 //! 2. the same script produces byte-identical deterministic JSON across two
 //!    runs;
-//! 3. CROSS-VALIDATION against KAIFUU-009's independent `.ks` parser: the
+//! 3. CROSS-VALIDATION against the independent `.ks` parser: the
 //!    replay's message text + speaker sequence reproduces
 //!    `kaifuu_kirikiri::parse_ks`'s authoritative dialogue-unit extraction
-//!    byte-for-byte (proving the dialect reuse against real parse output,
+//!    byte-for-byte (proving the dialect reuse against real parse output
 //!    not by production linkage).
 
 use std::path::PathBuf;
@@ -87,7 +87,7 @@ fn same_script_yields_identical_json() {
     assert_eq!(a, c);
 }
 
-/// Cross-validation oracle: KAIFUU-009's independent parser must agree with
+/// Cross-validation oracle: the independent parser must agree with
 /// this crate's replay on `(dialogue text, speaker)`.
 #[test]
 fn replay_matches_kaifuu_009_dialogue_extraction() {
@@ -97,7 +97,7 @@ fn replay_matches_kaifuu_009_dialogue_extraction() {
     let trace = replay_kag(&parse_kag(FIXTURE, &bytes));
     let replay_pairs = trace.message_texts_with_speakers();
 
-    // KAIFUU-009's extraction parser (the dev-dependency oracle).
+    // the extraction parser (the dev-dependency oracle).
     let doc = kaifuu_kirikiri::parse_ks(FIXTURE, &bytes);
     let kaifuu_pairs: Vec<(String, Option<String>)> = doc
         .dialogue_units()

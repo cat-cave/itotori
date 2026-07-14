@@ -1,4 +1,4 @@
-//! UTSUSHI-181 — `utsushi-kirikiri-xp3` engine-port scaffold.
+//! `utsushi-kirikiri-xp3` engine-port scaffold.
 //!
 //! # The KiriKiri/KAG TJS engine IS the runtime
 //!
@@ -27,7 +27,7 @@
 //!   sources, the TJS2 interpreter) is vendored, linked, or mechanically
 //!   translated into this crate.
 //! - No decompiled or copyrighted engine bytes, no game project bytes, and no
-//!   XP3 container bytes are embedded. The KAG tag names (`@text`, `@ruby`,
+//!   XP3 container bytes are embedded. The KAG tag names (`@text`, `@ruby`
 //!   `[l]`, `[p]`, …) are public, widely-documented KAG constructs — and this
 //!   crate does not even use them, because it dispatches nothing.
 //! - The `.ks` scripts this path concerns are **plaintext** (already extracted
@@ -155,7 +155,7 @@ impl KirikiriXp3EnginePort {
     /// Audit-grade manifest declaration. Mirrors [`EnginePort::MANIFEST`] for
     /// direct introspection without going through the trait.
     ///
-    /// Tier ceilings pin trace-only / E1: this port proves the *family +
+    /// Tier ceilings pin trace-only / E1: this port proves the *family
     /// clean-room* contract for the KAG plaintext path, not on-screen fidelity
     /// (that evidence is produced by the native/browser KiriKiri runtime
     /// adapter, not by this Rust port).
