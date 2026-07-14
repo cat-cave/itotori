@@ -1,10 +1,10 @@
 {
-  "schemaVersion": "itotori.private-corpus-manifest.rb-001.v1",
-  "manifestId": "sweetie-hd-rb-001",
+  "schemaVersion": "itotori.private-corpus-manifest.v1",
+  "manifestId": "sweetie-hd-reallive",
   "contentAddress": {
     "algorithm": "sha256",
     "canonicalization": "json-key-sort-v1",
-    "manifestSha256": "sha256:b2257ac1abbee13bfe99b7289d283d21a1371c2323663b426913f8472de1ef7d"
+    "manifestSha256": "sha256:7b12ea456383c55f06e668c2d9a481e9abaf8b74ba30419c932ed3d4a28ad531"
   },
   "privacy": {
     "classification": "private-corpus-metadata-only",
@@ -19,6 +19,9 @@
   },
   "corpus": {
     "corpusId": "sweetie-hd-reallive",
+    "gameId": "sweetie-hd",
+    "gameVersion": "1.0.0",
+    "sourceProfileId": "kaifuu-reallive-sweetie-hd",
     "engine": "reallive",
     "sourceLocale": "ja-JP",
     "inputs": {
@@ -64,13 +67,14 @@
         "messageCount": 47299,
         "choiceCount": 176,
         "speakerCount": 6,
-        "scene1017": {
+        "scopedScene": {
           "sceneId": 1017,
           "messageCount": 819,
           "choiceCount": 2,
           "nextScene": 8508,
           "selectionControl": "none",
-          "dispatchFanoutScenes": []
+          "dispatchFanoutScenes": [],
+          "dispatchIndex": 38
         }
       }
     }
@@ -78,6 +82,11 @@
   "outputScope": {
     "scopeId": "sweetie-hd-reallive:scene-1017",
     "sceneId": 1017,
+    "ordinalRange": {
+      "start": 0,
+      "end": 128,
+      "width": 4
+    },
     "bridge": {
       "schemaVersion": "0.2.0",
       "bridgeExport": {
@@ -96,7 +105,7 @@
       "unitCount": 129,
       "uniqueBridgeUnitIdCount": 129,
       "uniqueSourceHashCount": 129,
-      "unitsProjectionSha256": "sha256:b3bf43c360cbfd5e4c4a813658cfd71f0a42910530d0be7cf94e72d4a3b51218"
+      "unitsProjectionSha256": "sha256:302dc692db2a9c5d0fae1ddf61ce1b84b04161870c770a7d420090870113d031"
     },
     "units": [
       {
@@ -119,7 +128,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 73,
           "decompressedSourceByteLength": 36,
@@ -190,7 +199,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 172,
           "decompressedSourceByteLength": 102,
@@ -249,7 +258,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 142,
           "decompressedSourceByteLength": 82,
@@ -308,7 +317,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 106,
           "decompressedSourceByteLength": 58,
@@ -379,7 +388,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 166,
           "decompressedSourceByteLength": 98,
@@ -438,7 +447,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 112,
           "decompressedSourceByteLength": 62,
@@ -509,7 +518,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 112,
           "decompressedSourceByteLength": 62,
@@ -568,7 +577,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 91,
           "decompressedSourceByteLength": 48,
@@ -627,7 +636,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 97,
           "decompressedSourceByteLength": 52,
@@ -698,7 +707,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 101,
           "decompressedSourceByteLength": 54,
@@ -757,7 +766,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 161,
           "decompressedSourceByteLength": 94,
@@ -816,7 +825,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 119,
           "decompressedSourceByteLength": 66,
@@ -887,7 +896,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 56,
           "decompressedSourceByteLength": 24,
@@ -946,7 +955,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 89,
           "decompressedSourceByteLength": 46,
@@ -1005,7 +1014,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 47,
           "decompressedSourceByteLength": 18,
@@ -1064,7 +1073,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 125,
           "decompressedSourceByteLength": 70,
@@ -1135,7 +1144,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 110,
           "decompressedSourceByteLength": 60,
@@ -1194,7 +1203,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 113,
           "decompressedSourceByteLength": 62,
@@ -1253,7 +1262,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 74,
           "decompressedSourceByteLength": 36,
@@ -1324,7 +1333,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 71,
           "decompressedSourceByteLength": 34,
@@ -1383,7 +1392,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 158,
           "decompressedSourceByteLength": 92,
@@ -1442,7 +1451,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 50,
           "decompressedSourceByteLength": 20,
@@ -1513,7 +1522,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 125,
           "decompressedSourceByteLength": 70,
@@ -1572,7 +1581,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 149,
           "decompressedSourceByteLength": 86,
@@ -1643,7 +1652,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 122,
           "decompressedSourceByteLength": 68,
@@ -1702,7 +1711,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 191,
           "decompressedSourceByteLength": 114,
@@ -1761,7 +1770,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 167,
           "decompressedSourceByteLength": 98,
@@ -1820,7 +1829,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 62,
           "decompressedSourceByteLength": 28,
@@ -1891,7 +1900,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 56,
           "decompressedSourceByteLength": 24,
@@ -1962,7 +1971,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 122,
           "decompressedSourceByteLength": 68,
@@ -2021,7 +2030,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 179,
           "decompressedSourceByteLength": 106,
@@ -2092,7 +2101,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 77,
           "decompressedSourceByteLength": 38,
@@ -2163,7 +2172,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 143,
           "decompressedSourceByteLength": 82,
@@ -2222,7 +2231,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 62,
           "decompressedSourceByteLength": 28,
@@ -2293,7 +2302,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 137,
           "decompressedSourceByteLength": 78,
@@ -2352,7 +2361,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 68,
           "decompressedSourceByteLength": 32,
@@ -2423,7 +2432,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 104,
           "decompressedSourceByteLength": 56,
@@ -2482,7 +2491,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 158,
           "decompressedSourceByteLength": 92,
@@ -2541,7 +2550,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 161,
           "decompressedSourceByteLength": 94,
@@ -2612,7 +2621,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 80,
           "decompressedSourceByteLength": 40,
@@ -2683,7 +2692,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 107,
           "decompressedSourceByteLength": 58,
@@ -2742,7 +2751,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 176,
           "decompressedSourceByteLength": 104,
@@ -2801,7 +2810,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 149,
           "decompressedSourceByteLength": 86,
@@ -2872,7 +2881,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 47,
           "decompressedSourceByteLength": 18,
@@ -2943,7 +2952,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 104,
           "decompressedSourceByteLength": 56,
@@ -3002,7 +3011,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 134,
           "decompressedSourceByteLength": 76,
@@ -3061,7 +3070,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 173,
           "decompressedSourceByteLength": 102,
@@ -3132,7 +3141,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 68,
           "decompressedSourceByteLength": 32,
@@ -3203,7 +3212,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 143,
           "decompressedSourceByteLength": 82,
@@ -3262,7 +3271,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 44,
           "decompressedSourceByteLength": 16,
@@ -3321,7 +3330,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 53,
           "decompressedSourceByteLength": 22,
@@ -3392,7 +3401,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 98,
           "decompressedSourceByteLength": 52,
@@ -3451,7 +3460,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 161,
           "decompressedSourceByteLength": 94,
@@ -3510,7 +3519,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 89,
           "decompressedSourceByteLength": 46,
@@ -3581,7 +3590,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 50,
           "decompressedSourceByteLength": 20,
@@ -3652,7 +3661,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 200,
           "decompressedSourceByteLength": 120,
@@ -3723,7 +3732,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 56,
           "decompressedSourceByteLength": 24,
@@ -3794,7 +3803,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 227,
           "decompressedSourceByteLength": 138,
@@ -3865,7 +3874,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 47,
           "decompressedSourceByteLength": 18,
@@ -3936,7 +3945,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 221,
           "decompressedSourceByteLength": 134,
@@ -4007,7 +4016,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 59,
           "decompressedSourceByteLength": 26,
@@ -4078,7 +4087,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 182,
           "decompressedSourceByteLength": 108,
@@ -4137,7 +4146,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 128,
           "decompressedSourceByteLength": 72,
@@ -4196,7 +4205,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 179,
           "decompressedSourceByteLength": 106,
@@ -4255,7 +4264,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 110,
           "decompressedSourceByteLength": 60,
@@ -4314,7 +4323,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 86,
           "decompressedSourceByteLength": 44,
@@ -4385,7 +4394,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 128,
           "decompressedSourceByteLength": 72,
@@ -4444,7 +4453,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 56,
           "decompressedSourceByteLength": 24,
@@ -4515,7 +4524,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 137,
           "decompressedSourceByteLength": 78,
@@ -4574,7 +4583,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 65,
           "decompressedSourceByteLength": 30,
@@ -4645,7 +4654,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 83,
           "decompressedSourceByteLength": 42,
@@ -4716,7 +4725,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 185,
           "decompressedSourceByteLength": 110,
@@ -4775,7 +4784,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 110,
           "decompressedSourceByteLength": 60,
@@ -4834,7 +4843,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 143,
           "decompressedSourceByteLength": 82,
@@ -4893,7 +4902,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 143,
           "decompressedSourceByteLength": 82,
@@ -4964,7 +4973,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 68,
           "decompressedSourceByteLength": 32,
@@ -5035,7 +5044,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 74,
           "decompressedSourceByteLength": 36,
@@ -5106,7 +5115,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 53,
           "decompressedSourceByteLength": 22,
@@ -5177,7 +5186,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 74,
           "decompressedSourceByteLength": 36,
@@ -5248,7 +5257,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 53,
           "decompressedSourceByteLength": 22,
@@ -5319,7 +5328,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 158,
           "decompressedSourceByteLength": 92,
@@ -5390,7 +5399,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 122,
           "decompressedSourceByteLength": 68,
@@ -5461,7 +5470,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 62,
           "decompressedSourceByteLength": 28,
@@ -5532,7 +5541,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 140,
           "decompressedSourceByteLength": 80,
@@ -5591,7 +5600,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 149,
           "decompressedSourceByteLength": 86,
@@ -5650,7 +5659,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 137,
           "decompressedSourceByteLength": 78,
@@ -5709,7 +5718,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 137,
           "decompressedSourceByteLength": 78,
@@ -5768,7 +5777,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 227,
           "decompressedSourceByteLength": 138,
@@ -5839,7 +5848,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 98,
           "decompressedSourceByteLength": 52,
@@ -5898,7 +5907,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 110,
           "decompressedSourceByteLength": 60,
@@ -5969,7 +5978,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 143,
           "decompressedSourceByteLength": 82,
@@ -6028,7 +6037,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 56,
           "decompressedSourceByteLength": 24,
@@ -6099,7 +6108,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 50,
           "decompressedSourceByteLength": 20,
@@ -6170,7 +6179,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 56,
           "decompressedSourceByteLength": 24,
@@ -6241,7 +6250,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 59,
           "decompressedSourceByteLength": 26,
@@ -6312,7 +6321,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 53,
           "decompressedSourceByteLength": 22,
@@ -6383,7 +6392,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 125,
           "decompressedSourceByteLength": 70,
@@ -6442,7 +6451,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 110,
           "decompressedSourceByteLength": 60,
@@ -6501,7 +6510,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 110,
           "decompressedSourceByteLength": 60,
@@ -6560,7 +6569,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 186,
           "decompressedSourceByteLength": 110,
@@ -6631,7 +6640,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 168,
           "decompressedSourceByteLength": 98,
@@ -6690,7 +6699,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 108,
           "decompressedSourceByteLength": 58,
@@ -6761,7 +6770,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 189,
           "decompressedSourceByteLength": 112,
@@ -6832,7 +6841,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 81,
           "decompressedSourceByteLength": 40,
@@ -6891,7 +6900,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 162,
           "decompressedSourceByteLength": 94,
@@ -6950,7 +6959,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 57,
           "decompressedSourceByteLength": 24,
@@ -7021,7 +7030,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 99,
           "decompressedSourceByteLength": 52,
@@ -7092,7 +7101,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 174,
           "decompressedSourceByteLength": 102,
@@ -7151,7 +7160,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 123,
           "decompressedSourceByteLength": 68,
@@ -7222,7 +7231,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 48,
           "decompressedSourceByteLength": 18,
@@ -7293,7 +7302,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 99,
           "decompressedSourceByteLength": 52,
@@ -7364,7 +7373,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 45,
           "decompressedSourceByteLength": 16,
@@ -7435,7 +7444,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 147,
           "decompressedSourceByteLength": 84,
@@ -7494,7 +7503,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 51,
           "decompressedSourceByteLength": 20,
@@ -7565,7 +7574,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 45,
           "decompressedSourceByteLength": 16,
@@ -7636,7 +7645,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 126,
           "decompressedSourceByteLength": 70,
@@ -7695,7 +7704,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 207,
           "decompressedSourceByteLength": 124,
@@ -7754,7 +7763,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 180,
           "decompressedSourceByteLength": 106,
@@ -7825,7 +7834,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 54,
           "decompressedSourceByteLength": 22,
@@ -7884,7 +7893,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 147,
           "decompressedSourceByteLength": 84,
@@ -7955,7 +7964,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 132,
           "decompressedSourceByteLength": 74,
@@ -8026,7 +8035,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 90,
           "decompressedSourceByteLength": 46,
@@ -8097,7 +8106,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 108,
           "decompressedSourceByteLength": 58,
@@ -8168,7 +8177,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 144,
           "decompressedSourceByteLength": 82,
@@ -8239,7 +8248,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 120,
           "decompressedSourceByteLength": 66,
@@ -8310,7 +8319,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 153,
           "decompressedSourceByteLength": 88,
@@ -8369,7 +8378,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 90,
           "decompressedSourceByteLength": 46,
@@ -8428,7 +8437,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 102,
           "decompressedSourceByteLength": 54,
@@ -8487,7 +8496,7 @@
           }
         },
         "protectedSkeleton": {
-          "format": "rb001.redacted-sjis-protected-shell.v1",
+          "format": "itotori.redacted-sjis-protected-shell.v1",
           "sourceEncoding": "shift-jis-with-reallive-control-spans",
           "sourceTextUtf8ByteLength": 108,
           "decompressedSourceByteLength": 58,
