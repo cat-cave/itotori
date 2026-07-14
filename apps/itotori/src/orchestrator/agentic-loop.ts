@@ -926,7 +926,7 @@ export async function runAgenticLoopForUnit(
             workScopeContext: input.workScopeContext,
             priorPassFeedback: input.priorPassFeedback,
             priorJournalRunId: input.priorJournalRunId,
-            speakerLabels: contextPacket.speakers,
+            speakerLabels: ownSpeakerLabels(contextPacket, input.unit.bridgeUnitId),
             qaFindings: [],
             writtenFindings: outcomeFindings,
             selectedCandidateCitationRefs: primaryDraftCitationRefs,
@@ -1201,7 +1201,7 @@ export async function runAgenticLoopForUnit(
           workScopeContext: input.workScopeContext,
           priorPassFeedback: input.priorPassFeedback,
           priorJournalRunId: input.priorJournalRunId,
-          speakerLabels: contextPacket.speakers,
+          speakerLabels: ownSpeakerLabels(contextPacket, input.unit.bridgeUnitId),
           qaFindings,
           writtenFindings: outcomeFindings,
           selectedCandidateCitationRefs,
@@ -2645,6 +2645,23 @@ function mergeSpeakerLabels(
   return [...byUnitId.values()].sort((left, right) =>
     left.bridgeUnitId.localeCompare(right.bridgeUnitId),
   );
+}
+
+/**
+ * A unit's DURABLE speaker-label provenance is strictly its OWN label. The
+ * scene-shared context packet carries sibling units' labels too (they are
+ * legitimate read-only prompt context — see `contextArtifactsFromPacket` and
+ * the per-unit `speaker` pick in `resolvedAgentContextFromPacket`), and under
+ * bounded concurrency the single-flight scene enrichment resolves whichever
+ * siblings have already persisted. Persisting/asserting THIS unit's outcome
+ * against that sibling-inclusive set is a cross-unit isolation violation: the
+ * journal repository requires every persisted speaker label to reference the
+ * outcome's own bridgeUnitId. Scope the provenance to this unit at the root so
+ * a unit only ever writes its own label, independent of concurrency.
+ */
+function ownSpeakerLabels(packet: UnitContextPacket, bridgeUnitId: string): SpeakerLabel[] {
+  const own = speakerLabelToMap(packet.speakers).get(bridgeUnitId);
+  return own === undefined ? [] : [own];
 }
 
 async function persistSpeakerLabelsToContextBrain(args: {
