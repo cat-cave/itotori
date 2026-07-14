@@ -498,6 +498,14 @@ export const migrations = [
     id: "0098_require_canonical_play_feedback_outcomes",
     file: "0098_require_canonical_play_feedback_outcomes.sql",
   },
+  {
+    id: "0099_release_interrupted_cost_reservations",
+    file: "0099_release_interrupted_cost_reservations.sql",
+  },
+  {
+    id: "0100_backfill_terminal_cost_reservations",
+    file: "0100_backfill_terminal_cost_reservations.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

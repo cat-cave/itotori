@@ -78,7 +78,7 @@ export type TerminalRunAttempt = {
 
 export type TerminalRunReservation = {
   reservationId: string;
-  state: "reserved" | "reconciled";
+  state: "reserved" | "released" | "reconciled";
 };
 
 export type TerminalPatchVersion = {
@@ -122,7 +122,7 @@ export type TerminalCoverageEvaluation = {
   missingUnitIds: string[];
   duplicateOutcomeUnitIds: string[];
   runningAttemptIds: string[];
-  unreconciledReservationIds: string[];
+  unresolvedReservationIds: string[];
   patchExactFrozenScope: boolean;
   patchArtifactsPresent: boolean;
   patchStagesSucceeded: boolean;
@@ -305,8 +305,8 @@ export function evaluateTerminalRunCoverage(
     )
     .map((attempt) => attempt.attemptId)
     .sort();
-  const unreconciledReservationIds = snapshot.reservations
-    .filter((reservation) => reservation.state !== "reconciled")
+  const unresolvedReservationIds = snapshot.reservations
+    .filter((reservation) => reservation.state === "reserved")
     .map((reservation) => reservation.reservationId)
     .sort();
   const patch = snapshot.patch;
@@ -331,13 +331,13 @@ export function evaluateTerminalRunCoverage(
       missingUnitIds.length === 0 &&
       duplicateOutcomeUnitIds.length === 0 &&
       runningAttemptIds.length === 0 &&
-      unreconciledReservationIds.length === 0 &&
+      unresolvedReservationIds.length === 0 &&
       patchComplete,
     frozenUnitIds,
     missingUnitIds,
     duplicateOutcomeUnitIds,
     runningAttemptIds,
-    unreconciledReservationIds,
+    unresolvedReservationIds,
     patchExactFrozenScope,
     patchArtifactsPresent,
     patchStagesSucceeded,
@@ -752,7 +752,7 @@ export function buildTerminalRunSummary(input: {
         (reservation) => reservation.state === "reconciled",
       ).length,
       unresolvedCount: input.snapshot.reservations.filter(
-        (reservation) => reservation.state !== "reconciled",
+        (reservation) => reservation.state === "reserved",
       ).length,
     },
     patch: {
@@ -866,8 +866,8 @@ function coverageMessage(coverage: TerminalCoverageEvaluation): string {
     clauses.push(`duplicate outcomes=${coverage.duplicateOutcomeUnitIds.join(",")}`);
   if (coverage.runningAttemptIds.length > 0)
     clauses.push(`live attempts=${coverage.runningAttemptIds.join(",")}`);
-  if (coverage.unreconciledReservationIds.length > 0)
-    clauses.push(`unreconciled reservations=${coverage.unreconciledReservationIds.join(",")}`);
+  if (coverage.unresolvedReservationIds.length > 0)
+    clauses.push(`unresolved reservations=${coverage.unresolvedReservationIds.join(",")}`);
   if (!coverage.patchExactFrozenScope) clauses.push("patch does not exactly match frozen scope");
   if (!coverage.patchArtifactsPresent) clauses.push("patch artifacts/hashes are absent");
   if (!coverage.patchStagesSucceeded) clauses.push("patch build/apply/validation is incomplete");

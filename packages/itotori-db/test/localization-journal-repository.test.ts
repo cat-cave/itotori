@@ -410,10 +410,18 @@ describe("ItotoriLocalizationJournalRepository", () => {
     try {
       await seedScope(context);
       const repository = new ItotoriLocalizationJournalRepository(context.db);
-      const seed = lifecycleSeedInput("journal-run-resume-fence");
+      const seed = costAccountSeedInput(
+        "journal-run-resume-fence",
+        ["raw-bridge-unit-lifecycle-1", "raw-bridge-unit-lifecycle-2"],
+        "0.5",
+      );
       await repository.seedRun(localActor, seed);
       const oldBegin = lifecycleBeginAttempt(seed.runId, "raw-bridge-unit-lifecycle-1");
-      await repository.beginAttempt(localActor, oldBegin);
+      const oldReservation = await repository.reserveAttemptCost(localActor, {
+        ...oldBegin,
+        worstCaseCostUsd: "0.5",
+      });
+      if (!oldReservation.admitted) throw new Error("interrupted reservation was denied");
 
       await expect(
         repository.resumeRun(localActor, seed.runId, { ownerId: "journal-driver-b" }),
@@ -425,7 +433,6 @@ describe("ItotoriLocalizationJournalRepository", () => {
           fenceToken: 1,
         }),
       ]);
-
       await context.db.execute(sql`
         update itotori_localization_journal_runs
         set lease_expires_at = now() - interval '1 second'
@@ -447,6 +454,28 @@ describe("ItotoriLocalizationJournalRepository", () => {
           failureClass: "interrupted",
           fenceToken: 1,
         }),
+      ]);
+      expect(await repository.loadRunCostAccount(localActor, seed.runId)).toMatchObject({
+        reservedCostUsd: "0",
+      });
+      expect(await repository.loadCostReservations(localActor, seed.runId)).toEqual([
+        expect.objectContaining({
+          attemptId: oldBegin.attemptId,
+          reservedUsd: "0.5",
+          state: "released",
+        }),
+      ]);
+      await expect(
+        repository.reconcileAttemptBilling(localActor, {
+          runId: seed.runId,
+          attemptId: oldBegin.attemptId,
+          costUsd: "0.5",
+          modelId: "model-cost-account",
+          providerId: "provider-cost-account",
+        }),
+      ).rejects.toMatchObject({ code: "attempt_conflict" });
+      expect(await repository.loadAttemptsForRun(localActor, seed.runId)).toEqual([
+        expect.objectContaining({ attemptId: oldBegin.attemptId, billingState: "unknown" }),
       ]);
 
       await expect(
@@ -475,18 +504,47 @@ describe("ItotoriLocalizationJournalRepository", () => {
         }),
       ).rejects.toMatchObject({ code: "run_lease_lost" });
 
-      await expect(
-        repository.beginAttempt(localActor, {
-          ...lifecycleBeginAttempt(seed.runId, "raw-bridge-unit-lifecycle-1", {
-            ownerId: "journal-driver-b",
-            fenceToken: takeover.fenceToken,
-          }),
-          attemptId: "provider-run-lifecycle-fence-2-replacement",
-          logicalCallId: "logical-lifecycle-fence-2-replacement",
-          artifactRef: "provider-run:provider-run-lifecycle-fence-2-replacement",
-          attemptIndex: 2,
+      const replacement = await repository.reserveAttemptCost(localActor, {
+        ...lifecycleBeginAttempt(seed.runId, "raw-bridge-unit-lifecycle-2", {
+          ownerId: "journal-driver-b",
+          fenceToken: takeover.fenceToken,
         }),
-      ).resolves.toMatchObject({ lifecycleState: "dispatching", fenceToken: 2 });
+        worstCaseCostUsd: "0.5",
+      });
+      if (!replacement.admitted) throw new Error("released capacity was not admitted");
+      await context.db.execute(sql`
+        with drifted as (
+          update itotori_localization_run_cost_accounts
+          set reserved_usd = '0.49'
+          where run_id = ${seed.runId}
+        )
+        update itotori_localization_journal_runs
+        set lease_expires_at = now() - interval '1 second'
+        where run_id = ${seed.runId}
+      `);
+      await expect(
+        repository.resumeRun(localActor, seed.runId, { ownerId: "journal-driver-c" }),
+      ).rejects.toMatchObject({ code: "attempt_conflict" });
+      expect(await repository.loadRun(localActor, seed.runId)).toMatchObject({
+        status: "running",
+        fenceToken: 2,
+      });
+      expect(await repository.loadAttemptsForRun(localActor, seed.runId)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            attemptId: replacement.attempt.attemptId,
+            lifecycleState: "dispatching",
+          }),
+        ]),
+      );
+      expect(await repository.loadRunCostAccount(localActor, seed.runId)).toMatchObject({
+        reservedCostUsd: "0.49",
+      });
+      expect(await repository.loadCostReservations(localActor, seed.runId)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ attemptId: replacement.attempt.attemptId, state: "reserved" }),
+        ]),
+      );
     } finally {
       await context.close();
     }

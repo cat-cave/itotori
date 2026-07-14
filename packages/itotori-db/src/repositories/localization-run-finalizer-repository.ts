@@ -1030,7 +1030,7 @@ async function assertSuccessBarrierInTx(
     );
   }
   const unresolvedReservation = reservations.find(
-    (reservation) => reservation.state !== "reconciled",
+    (reservation) => reservation.state === "reserved",
   );
   if (unresolvedReservation !== undefined) {
     throw new LocalizationRunFinalizerRepositoryError(
@@ -1574,7 +1574,7 @@ function projectTerminalSummary(
         (reservation) => reservation.state === "reconciled",
       ).length,
       unresolvedCount: snapshot.reservations.filter(
-        (reservation) => reservation.state !== "reconciled",
+        (reservation) => reservation.state === "reserved",
       ).length,
     },
     patch: {
