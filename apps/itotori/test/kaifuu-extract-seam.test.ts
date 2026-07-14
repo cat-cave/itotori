@@ -1,33 +1,27 @@
 // itotori-cli-extract-command (P1, user-shaped CLI) — tests.
 //
-// Proves the user-shaped `itotori extract` command produces a real bridge:
+// Proves the user-shaped `itotori extract` command produces a bridge:
 //
 //   1. FAST (no kaifuu-cli, no real bytes) — the invocation shape mirrors the
 //      suite runner's Phase 1 (`kaifuu extract --engine reallive --game-root
 //      ... --game-id ... --scene <N> --bundle-output ...`) for BOTH per-scene
 //      AND --whole-seen, plus the validation / failure paths. A faked
 //      `runProcess` captures the argv so CI touches NO real bytes.
-//   2. ENV-GATED real Sweetie — when ITOTORI_REAL_SWEETIE_ROOT is exported,
-//      actually run the REAL kaifuu-cli extract against the operator's game
-//      tree and assert a v0.2 BridgeBundle landed (no retail bytes committed;
-//      the bridge is written to a scratch tmp path).
-//
-// Mirrors the patch-apply-seam test structure (the sibling M1 keystone).
-
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+//   2. Native-output redaction — a simulated protected-span drift cannot put
+//      source dialogue in an error. The generic corpus-manifest suite owns the
+//      opt-in real-corpus proof.
 import { describe, expect, it } from "vitest";
 import {
   buildExtractArgs,
   KaifuuExtractError,
+  KAIFUU_NATIVE_OUTPUT_REDACTED,
   REALLIVE_SCENE_ID_MAX,
   runKaifuuRealliveExtract,
   type KaifuuProcessResult,
 } from "../src/extract/kaifuu-extract-seam.js";
 
 const IDENTITY = {
-  gameId: "sweetie",
+  gameId: "sample-game",
   gameVersion: "1.0",
   sourceProfileId: "profile-1",
   sourceLocale: "ja-JP",
@@ -41,7 +35,7 @@ describe("buildExtractArgs (argv shape)", () => {
   it("per-scene: mirrors run.mjs Phase 1 ordering", () => {
     const a = buildExtractArgs({
       ...IDENTITY,
-      gameRoot: "/games/sweetie",
+      gameRoot: "/games/sample-game",
       scene: 6010,
       bundleOutputPath: "/run/bridge.json",
     });
@@ -50,9 +44,9 @@ describe("buildExtractArgs (argv shape)", () => {
       "--engine",
       "reallive",
       "--game-root",
-      "/games/sweetie",
+      "/games/sample-game",
       "--game-id",
-      "sweetie",
+      "sample-game",
       "--game-version",
       "1.0",
       "--source-profile-id",
@@ -86,7 +80,7 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
     let captured: { command: string; args: string[] } | undefined;
     const res = runKaifuuRealliveExtract({
       ...IDENTITY,
-      gameRoot: "/games/sweetie",
+      gameRoot: "/games/sample-game",
       scene: 6010,
       bundleOutputPath: "/run/bridge.json",
       // ITOTORI_KAIFUU_BIN unset -> cargo fallback; runProcess is faked.
@@ -99,6 +93,8 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
     expect(res.status).toBe(0);
     expect(res.mode).toBe("per-scene");
     expect(res.bundleOutputPath).toBe("/run/bridge.json");
+    expect(res.stdout).toBe(KAIFUU_NATIVE_OUTPUT_REDACTED);
+    expect(res.stderr).toBe("");
     // Slice from "extract" to skip the binary-resolution prefix (cargo fallback
     // when ITOTORI_KAIFUU_BIN is unset; a resolved binary has no prefix).
     const a = captured!.args;
@@ -108,9 +104,9 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
       "--engine",
       "reallive",
       "--game-root",
-      "/games/sweetie",
+      "/games/sample-game",
       "--game-id",
-      "sweetie",
+      "sample-game",
       "--game-version",
       "1.0",
       "--source-profile-id",
@@ -128,7 +124,7 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
     let captured: string[] | undefined;
     const res = runKaifuuRealliveExtract({
       ...IDENTITY,
-      gameRoot: "/games/sweetie",
+      gameRoot: "/games/sample-game",
       wholeSeen: true,
       bundleOutputPath: "/run/bridge.json",
       env: {},
@@ -176,19 +172,20 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
     expect(spawned).toBe(true);
   });
 
-  it("throws KaifuuExtractError on a non-zero exit", () => {
+  it("redacts protected-span decode drift dialogue on a non-zero exit", () => {
+    const sourceDialogue = "PRIVATE-SOURCE-DIALOGUE-SENTINEL-4e0d4cb3";
     let caught: KaifuuExtractError | undefined;
     try {
       runKaifuuRealliveExtract({
         ...IDENTITY,
-        gameRoot: "/games/sweetie",
+        gameRoot: "/games/sample-game",
         scene: 1,
         bundleOutputPath: "/run/bridge.json",
         env: {},
         runProcess: (): KaifuuProcessResult => ({
           status: 4,
-          stdout: "",
-          stderr: "kaifuu.reallive.archive_parse: boom",
+          stdout: `kaifuu.reallive.protected_span_drift: ${sourceDialogue}`,
+          stderr: `kaifuu.reallive.protected_span_drift: source=${sourceDialogue}`,
         }),
       });
     } catch (error) {
@@ -196,14 +193,18 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
     }
     expect(caught).toBeInstanceOf(KaifuuExtractError);
     expect(caught?.status).toBe(4);
-    expect(caught?.message).toMatch(/status 4.*kaifuu\.reallive\.archive_parse/su);
+    expect(caught?.message).toContain(KAIFUU_NATIVE_OUTPUT_REDACTED);
+    expect(caught?.stderr).toBe(KAIFUU_NATIVE_OUTPUT_REDACTED);
+    expect(caught?.message).not.toContain(sourceDialogue);
+    expect(caught?.stderr).not.toContain(sourceDialogue);
+    expect(caught?.stack).not.toContain(sourceDialogue);
   });
 
   it("refuses --whole-seen together with --scene (mutually exclusive)", () => {
     expect(() =>
       runKaifuuRealliveExtract({
         ...IDENTITY,
-        gameRoot: "/games/sweetie",
+        gameRoot: "/games/sample-game",
         wholeSeen: true,
         scene: 1,
         bundleOutputPath: "/run/bridge.json",
@@ -217,7 +218,7 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
     expect(() =>
       runKaifuuRealliveExtract({
         ...IDENTITY,
-        gameRoot: "/games/sweetie",
+        gameRoot: "/games/sample-game",
         bundleOutputPath: "/run/bridge.json",
         env: {},
         runProcess: () => ({ status: 0, stdout: "", stderr: "" }),
@@ -229,7 +230,7 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
     expect(() =>
       runKaifuuRealliveExtract({
         ...IDENTITY,
-        gameRoot: "/games/sweetie",
+        gameRoot: "/games/sample-game",
         scene: REALLIVE_SCENE_ID_MAX + 1,
         bundleOutputPath: "/run/bridge.json",
         env: {},
@@ -254,7 +255,7 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
     const lines: string[] = [];
     runKaifuuRealliveExtract({
       ...IDENTITY,
-      gameRoot: "/games/sweetie",
+      gameRoot: "/games/sample-game",
       scene: 7,
       bundleOutputPath: "/run/bridge.json",
       env: {},
@@ -267,71 +268,4 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
       lines.some((line) => line.startsWith("kaifuu-extract:") && line.includes("--scene 7")),
     ).toBe(true);
   });
-});
-
-// ---------------------------------------------------------------------------
-// (2) ENV-GATED real-Sweetie proof — actually extract via the real kaifuu-cli
-// ---------------------------------------------------------------------------
-
-/**
- * Reads the env-gated real game root (an operator machine export, never
- * committed). When unset, every real-Sweetie test is skipped — no real bytes
- * reach CI.
- */
-const REAL_SWEETIE_ROOT = process.env.ITOTORI_REAL_SWEETIE_ROOT;
-
-describe("runKaifuuRealliveExtract (env-gated real-Sweetie byte proof)", () => {
-  it.skipIf(!REAL_SWEETIE_ROOT)(
-    "produces a REAL whole-game bridge from the Sweetie Seen.txt (--whole-seen)",
-    () => {
-      const bundleOutputPath = join(
-        mkdtempSync(join(tmpdir(), "itotori-extract-whole-")),
-        "bridge.json",
-      );
-      // No faked runProcess -> the REAL kaifuu-cli runs.
-      const res = runKaifuuRealliveExtract({
-        ...IDENTITY,
-        gameId: "sweetie-real",
-        gameRoot: REAL_SWEETIE_ROOT,
-        wholeSeen: true,
-        bundleOutputPath,
-      });
-      expect(res.status).toBe(0);
-      expect(res.mode).toBe("whole-seen");
-      // A real v0.2 bridge landed on disk.
-      expect(existsSync(bundleOutputPath)).toBe(true);
-      const bridge = JSON.parse(readFileSync(bundleOutputPath, "utf8")) as Record<string, unknown>;
-      expect(typeof bridge.schemaVersion).toBe("string");
-      expect(Array.isArray(bridge.units)).toBe(true);
-      expect((bridge.units as unknown[]).length).toBeGreaterThan(0);
-    },
-    600_000,
-  );
-
-  it.skipIf(!REAL_SWEETIE_ROOT || !process.env.ITOTORI_REAL_SWEETIE_SCENE)(
-    "produces a REAL per-scene bridge from the Sweetie Seen.txt (--scene)",
-    () => {
-      const sceneId = Number.parseInt(process.env.ITOTORI_REAL_SWEETIE_SCENE as string, 10);
-      expect(Number.isInteger(sceneId) && sceneId >= 0).toBe(true);
-      const bundleOutputPath = join(
-        mkdtempSync(join(tmpdir(), "itotori-extract-scene-")),
-        "bridge.json",
-      );
-      const res = runKaifuuRealliveExtract({
-        ...IDENTITY,
-        gameId: "sweetie-real",
-        gameRoot: REAL_SWEETIE_ROOT,
-        scene: sceneId,
-        bundleOutputPath,
-        decompileReportOutputPath: join(bundleOutputPath, "..", "decompile.json"),
-      });
-      expect(res.status).toBe(0);
-      expect(res.mode).toBe("per-scene");
-      expect(existsSync(bundleOutputPath)).toBe(true);
-      const bridge = JSON.parse(readFileSync(bundleOutputPath, "utf8")) as Record<string, unknown>;
-      expect(typeof bridge.schemaVersion).toBe("string");
-      expect(Array.isArray(bridge.units)).toBe(true);
-    },
-    300_000,
-  );
 });

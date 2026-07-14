@@ -19,7 +19,7 @@
 // target release|debug -> PATH), falling back to `cargo run -p kaifuu-cli` in a
 // dev checkout so the seam ships in both an installed artifact and the dev
 // shell. `runProcess` is the injection seam so CI touches NO real bytes; the
-// env-gated real-Sweetie proof exercises the real `spawnSync` path.
+// env-gated real-corpus proof exercises the real `spawnSync` path.
 
 import { resolveKaifuuCli, type KaifuuProcessResult } from "../orchestrator/patch-apply-seam.js";
 import { spawnNativeCliProcess } from "../native-bin/cli-bin-resolver.js";
@@ -60,7 +60,12 @@ export type KaifuuExtractResult = {
   command: string;
   args: string[];
   status: number;
+  /**
+   * Deliberately redacted native output. A kaifuu decode diagnostic can embed
+   * protected source dialogue, so this seam never lets native stdout escape.
+   */
   stdout: string;
+  /** Deliberately redacted native output; see {@link stdout}. */
   stderr: string;
   /** The bridge output path (verbatim from the args — kaifuu writes the file). */
   bundleOutputPath: string;
@@ -77,6 +82,14 @@ export class KaifuuExtractError extends Error {
     this.name = "KaifuuExtractError";
   }
 }
+
+/**
+ * The only native-process diagnostic this boundary may expose. In particular,
+ * RealLive protected-span drift errors can include the source dialogue that
+ * drifted; retaining the original stderr (or stdout fallback) would leak it
+ * into CLI/API error handling and logs.
+ */
+export const KAIFUU_NATIVE_OUTPUT_REDACTED = "[native kaifuu output redacted]";
 
 /** The highest scene id RealLive's u16 scene directory can address. */
 export const REALLIVE_SCENE_ID_MAX = 65_535;
@@ -142,16 +155,16 @@ export function runKaifuuRealliveExtract(args: KaifuuExtractArgs): KaifuuExtract
   if (res.status !== 0) {
     throw new KaifuuExtractError(
       res.status,
-      res.stderr,
-      `kaifuu extract (reallive) failed with status ${String(res.status)}: ${res.stderr.trim() || res.stdout.trim() || "<no output>"}`,
+      KAIFUU_NATIVE_OUTPUT_REDACTED,
+      `kaifuu extract (reallive) failed with status ${String(res.status)}: ${KAIFUU_NATIVE_OUTPUT_REDACTED}`,
     );
   }
   return {
     command,
     args: extractArgs,
     status: res.status,
-    stdout: res.stdout,
-    stderr: res.stderr,
+    stdout: redactNativeOutput(res.stdout),
+    stderr: redactNativeOutput(res.stderr),
     bundleOutputPath: args.bundleOutputPath,
     mode: args.wholeSeen === true ? "whole-seen" : "per-scene",
   };
@@ -202,8 +215,8 @@ function defaultRunProcess(
   if (res.error !== undefined) {
     throw new KaifuuExtractError(
       null,
-      res.error.message,
-      `kaifuu extract (reallive) could not be spawned (${command}): ${res.error.message}`,
+      KAIFUU_NATIVE_OUTPUT_REDACTED,
+      `kaifuu extract (reallive) could not be spawned (${command}): ${KAIFUU_NATIVE_OUTPUT_REDACTED}`,
     );
   }
   return {
@@ -211,4 +224,9 @@ function defaultRunProcess(
     stdout: res.stdout,
     stderr: res.stderr,
   };
+}
+
+/** Return a content-free marker whenever the native CLI emitted any bytes. */
+function redactNativeOutput(output: string): string {
+  return output.length === 0 ? "" : KAIFUU_NATIVE_OUTPUT_REDACTED;
 }
