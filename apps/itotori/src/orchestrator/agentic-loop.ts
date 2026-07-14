@@ -2293,6 +2293,7 @@ async function invokeSemanticContextStage(args: {
           output.providerRun,
           pair,
           "terminology-candidate",
+          output.retryProviderRuns,
         ),
         artifacts,
       };
@@ -2813,21 +2814,28 @@ function providerTelemetryFromSemanticRun(
   providerRun: ProviderRunRecord,
   pair: PairChoice,
   agentLabel: string,
+  // Provider runs of earlier salvage/corrective-retry attempts. Real paid calls,
+  // so their token/cost is summed in — a retried enrichment never understates
+  // usage. Defaults to none for agents that do not (yet) expose their retries.
+  retryRuns: readonly ProviderRunRecord[] = [],
 ): RawProviderTelemetry {
   // PROJECT LAW: token counts + cost come ONLY from real provider output; an
   // omitted count is a real failure (mirror of assertBilledCost), never a
   // silent coercion to zero that would understate the persisted usage.
-  const { tokensIn, tokensOut } = assertReportedTokenUsage(
-    providerRun.tokenUsage,
-    providerRun.runId,
-  );
+  let tokensIn = 0;
+  let tokensOut = 0;
+  for (const run of [providerRun, ...retryRuns]) {
+    const usage = assertReportedTokenUsage(run.tokenUsage, run.runId);
+    tokensIn += usage.tokensIn;
+    tokensOut += usage.tokensOut;
+  }
   return {
     invocationId: `context:${agentLabel}:${providerRun.runId}`,
     agentLabel,
     pair,
     tokensIn,
     tokensOut,
-    costUsd: assertBilledCostDecimal(providerRun.cost),
+    costUsd: sumBilledCostDecimal([providerRun, ...retryRuns]),
     latencyMs: providerRun.latencyMs,
     providerProofId: providerRun.runId,
     seed: pair.seed,

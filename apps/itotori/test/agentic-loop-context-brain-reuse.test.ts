@@ -370,6 +370,8 @@ class DeterministicExecutorProvider implements ModelProvider {
       agentLabel: string;
       sceneSummaryCalls: { count: number };
       speakerLabelCalls: { count: number };
+      terminologyCalls: { count: number };
+      terminologyFails: { value: boolean };
       prompts: PromptCaptures;
       responseOverride?: ProviderResponseOverride | undefined;
     },
@@ -428,7 +430,12 @@ class DeterministicExecutorProvider implements ModelProvider {
         case "character-relationship":
           return JSON.stringify({ bios: [], relationships: [] });
         case "terminology-candidate":
-          return JSON.stringify({ candidates: [] });
+          this.args.terminologyCalls.count += 1;
+          // A mechanical failure (unparseable, unsalvageable output) that the
+          // supervisor cannot repair — rides retry to the hard-ceiling pause.
+          return this.args.terminologyFails.value
+            ? "MECHANICALLY BROKEN TERMINOLOGY OUTPUT (unparseable)"
+            : JSON.stringify({ candidates: [] });
         case "route-choice-map":
           return JSON.stringify({ routes: [], choices: [] });
         default:
@@ -480,10 +487,14 @@ class DeterministicExecutorProvider implements ModelProvider {
 function executorProviderFactory(args: {
   sceneSummaryCalls: { count: number };
   speakerLabelCalls?: { count: number } | undefined;
+  terminologyCalls?: { count: number } | undefined;
+  terminologyFails?: { value: boolean } | undefined;
   prompts?: PromptCaptures | undefined;
   responseOverride?: ProviderResponseOverride | undefined;
 }): AgenticLoopProviderFactory {
   const speakerLabelCalls = args.speakerLabelCalls ?? { count: 0 };
+  const terminologyCalls = args.terminologyCalls ?? { count: 0 };
+  const terminologyFails = args.terminologyFails ?? { value: false };
   const prompts = args.prompts ?? makePromptCaptures();
   return ({ stage, agentLabel }) =>
     new DeterministicExecutorProvider({
@@ -491,6 +502,8 @@ function executorProviderFactory(args: {
       agentLabel,
       sceneSummaryCalls: args.sceneSummaryCalls,
       speakerLabelCalls,
+      terminologyCalls,
+      terminologyFails,
       prompts,
       ...(args.responseOverride !== undefined ? { responseOverride: args.responseOverride } : {}),
     });
@@ -701,6 +714,100 @@ describe.skipIf(!process.env.DATABASE_URL)(
           expect(prompt).toContain(`speaker=${PERSISTED_SPEAKER_PROMPT}`);
           expect(prompt).not.toContain("Context artifacts available for citation:");
         }
+      } finally {
+        await context.close();
+      }
+    }, 30_000);
+
+    it("resume does not bypass a mechanically-failed enrichment: it re-runs while the successful earlier enrichment is reused", async () => {
+      const context = await isolatedMigratedContext();
+      try {
+        await bootstrapLocalUser(context.db);
+        const bridge = makeBridge();
+        await new ItotoriProjectRepository(context.db).importSourceBundle(ACTOR, {
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          targetLocale: "en-US",
+          drafts: {},
+          bridge,
+        });
+        const contextArtifacts = new ItotoriContextArtifactRepository(context.db);
+        const sceneSummaryCalls = { count: 0 };
+        const terminologyCalls = { count: 0 };
+        // scene-summary runs and persists BEFORE terminology; terminology then
+        // mechanically fails on the first pass.
+        const terminologyFails = { value: true };
+        const providerFactory = executorProviderFactory({
+          sceneSummaryCalls,
+          terminologyCalls,
+          terminologyFails,
+        });
+
+        const driveArgs = {
+          bridge,
+          rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
+          pairPolicy: DEV_POLICY,
+          pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          sourceRevisionId: SOURCE_REVISION_ID,
+          actor: ACTOR,
+          providerFactory,
+          contextArtifactRepository: contextArtifacts,
+          resolveUnitContext: () => ({ narrativeStructure: makeStructure(), sceneId: SCENE_ID }),
+          translationScope: "dialogue-only" as const,
+          engineProfile: "rpg-maker-mv-mz" as const,
+          concurrency: 1,
+          maxUnits: 1,
+          maxRepairAttempts: 0,
+          sinks: {
+            journal: {
+              createCostAdmission: () => ({ admit: async () => ({ admitted: true }) }),
+              persistUnitJournal: async () => {},
+              persistFailedUnitAttempts: async () => {},
+              pauseRun: async () => {},
+            },
+            patchExport: { exportPatch: async () => {} },
+          },
+        };
+
+        // First pass: scene-summary succeeds + persists, terminology fails → PAUSE.
+        const paused = await runProjectDrivenExecutor(driveArgs);
+        expect(paused.runState).toBe("paused");
+        expect(paused.pausedBlocker).not.toBeNull();
+        expect(paused.writtenOutcomesPersisted).toBe(0);
+        expect(paused.unitsRun).toBe(0);
+        expect(sceneSummaryCalls.count).toBe(1);
+        const terminologyCallsAfterFailure = terminologyCalls.count;
+        expect(terminologyCallsAfterFailure).toBeGreaterThan(0); // the failed enrichment WAS attempted
+
+        // The successful scene-summary is durably persisted; the failed
+        // terminology enrichment persisted NOTHING (no stale partial artifact to
+        // bypass the re-run).
+        const afterFailure = await contextArtifacts.retrieveArtifacts(ACTOR, {
+          projectId: PROJECT_ID,
+          localeBranchId: LOCALE_BRANCH_ID,
+          sourceRevisionId: SOURCE_REVISION_ID,
+          categories: ["scene_summary", "terminology_candidate"],
+        });
+        expect(afterFailure.status).toBe("completed");
+        expect(afterFailure.matches.some((a) => a.body === SEMANTIC_SCENE_SUMMARY_BODY)).toBe(true);
+        expect(afterFailure.matches.some((a) => a.category === "terminology_candidate")).toBe(
+          false,
+        );
+
+        // Resume: re-drive the still-unwritten unit. Terminology now succeeds.
+        terminologyFails.value = false;
+        const resumed = await runProjectDrivenExecutor(driveArgs);
+        expect(resumed.runState).toBe("running");
+        expect(resumed.pausedBlocker).toBeNull();
+        expect(resumed.unitsRun).toBe(1); // the unit now completes and is written
+
+        // The already-successful scene-summary was REUSED, not re-called.
+        expect(sceneSummaryCalls.count).toBe(1);
+        // The previously-failed terminology enrichment was RE-RUN on resume — it
+        // was NOT skipped/bypassed by a stale partial artifact.
+        expect(terminologyCalls.count).toBeGreaterThan(terminologyCallsAfterFailure);
       } finally {
         await context.close();
       }

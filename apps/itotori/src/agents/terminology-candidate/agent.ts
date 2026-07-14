@@ -96,19 +96,25 @@ export async function generateTerminologyCandidates(
         : { maxOutputTokens: input.modelProfile.maxOutputTokens },
   };
 
-  const supervised: { invocation: ModelInvocationResult; parsed: ProviderEmittedPack } =
-    await executeStructuredInvocation(options.provider, {
-      request,
-      parse: parseProviderPack,
-      isSchemaValidationError: (error) =>
-        error instanceof TerminologyCandidateParseError ||
-        error instanceof TerminologyCandidateInvalidKindError,
-      validateParsed: (pack) =>
-        validateProviderPack(pack, validUnitIds, sourceHashByUnitId, sourceTextByUnitId),
-      successDecision: "advance",
-    });
-  const { invocation, parsed: pack } = supervised;
+  const supervised: {
+    invocation: ModelInvocationResult;
+    parsed: ProviderEmittedPack;
+    priorAttempts: ModelInvocationResult[];
+  } = await executeStructuredInvocation(options.provider, {
+    request,
+    parse: parseProviderPack,
+    isSchemaValidationError: (error) =>
+      error instanceof TerminologyCandidateParseError ||
+      error instanceof TerminologyCandidateInvalidKindError,
+    validateParsed: (pack) =>
+      validateProviderPack(pack, validUnitIds, sourceHashByUnitId, sourceTextByUnitId),
+    successDecision: "advance",
+  });
+  const { invocation, parsed: pack, priorAttempts } = supervised;
   const providerRun: ProviderRunRecord = invocation.providerRun;
+  // Retain the retried (discarded) attempts' provider runs so their real
+  // token/cost is summed into stage accounting rather than silently lost.
+  const retryProviderRuns = priorAttempts.map((attempt) => attempt.providerRun);
 
   const now = (input.now ?? (() => new Date()))();
   const generatedAt = now.toISOString();
@@ -173,7 +179,7 @@ export async function generateTerminologyCandidates(
     candidates.push(candidate);
   }
 
-  return { candidates, deduped, providerRun };
+  return { candidates, deduped, providerRun, retryProviderRuns };
 }
 
 export async function generateTerminologyCandidatesBatch(

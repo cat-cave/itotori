@@ -111,7 +111,15 @@ export type TerminologyCandidateOutput = {
   candidates: TerminologyCandidate[];
   /** Non-failing dedup: candidates already covered by the authoritative glossary. */
   deduped: DeduplicatedTerminologyCandidate[];
+  /** The FINAL (accepted) attempt's provider run. */
   providerRun: ProviderRunRecord;
+  /**
+   * Provider runs of the earlier attempts a salvage/corrective retry discarded
+   * before this one was accepted. Retained so their (real, paid) token/cost is
+   * summed into stage accounting and never lost — mirror of the QA / translation
+   * agents' `retryProviderRuns`.
+   */
+  retryProviderRuns: ProviderRunRecord[];
 };
 
 export type ProviderEmittedPack = {

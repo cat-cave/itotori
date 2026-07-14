@@ -563,6 +563,142 @@ describe("generateTerminologyCandidates", () => {
       TerminologyCandidateParseError,
     );
   });
+
+  it("authoritative repository lookup: a candidate that exists ONLY via the lookup (not the in-memory glossary) is filtered, valid candidates kept + telemetered", async () => {
+    // Empty in-memory glossary: the ONLY way ハル can be recognised as a dup is
+    // the authoritative repository-backed lookup — the same filter path a
+    // production wiring of the TOCTOU closer would drive. (NB: the agentic loop
+    // does NOT currently wire this lookup — see COMPLETION-REPORT follow-up —
+    // so this locks in the mechanism the wiring would use.)
+    const input: TerminologyCandidateInput = { ...inputFixture(), existingGlossary: [] };
+    const pack = JSON.stringify({
+      candidates: [
+        {
+          kind: "ProperNoun",
+          surfaceForm: "ハル", // exists ONLY in the repository lookup below
+          rationale: "主人公の固有名。",
+          citedUnitIds: ["019ed018-0000-7000-8000-000000000a01"],
+        },
+        {
+          kind: "WrittenSign",
+          surfaceForm: "魔王城", // not in the repository → kept
+          rationale: "場所名・看板。",
+          citedUnitIds: ["019ed018-0000-7000-8000-000000000a03"],
+        },
+      ],
+    });
+    const provider = new FakeModelProvider({
+      providerName: "terminology-candidate-fake",
+      modelId: input.modelProfile.modelId,
+      generate: () => pack,
+    });
+    // Models the authoritative repository term store: ハル exists, 魔王城 does not.
+    const repositoryTerms = new Map([["ハル", "019ed018-0000-7000-8000-000000000t01"]]);
+    const lookupCalls = { count: 0 };
+    const output = await generateTerminologyCandidates(input, {
+      provider,
+      lookupExistingGlossaryTerm: glossaryLookup(repositoryTerms, lookupCalls),
+    });
+
+    // ハル filtered as a repository-only dedup; 魔王城 kept + carries telemetry.
+    expect(output.candidates.map((candidate) => candidate.surfaceForm)).toEqual(["魔王城"]);
+    expect(output.candidates[0]!.completionTokens).toBeGreaterThan(0);
+    expect(output.deduped).toEqual([
+      { surfaceForm: "ハル", terminologyTermId: "019ed018-0000-7000-8000-000000000t01" },
+    ]);
+    // The authoritative repository lookup actually fired (per non-conflicting candidate).
+    expect(lookupCalls.count).toBeGreaterThan(0);
+  });
+
+  it("mixed-pack retry telemetry: a salvaged/retried pack keeps its candidates AND retains the retried attempt's usage (no lost accounting)", async () => {
+    const input = inputFixture();
+    let call = 0;
+    const provider = new FakeModelProvider({
+      providerName: "terminology-candidate-fake",
+      modelId: input.modelProfile.modelId,
+      generate: () => {
+        call += 1;
+        // Attempt 1: unsalvageable output → the supervisor corrective-retries.
+        if (call === 1) {
+          return "NOT VALID TERMINOLOGY JSON AT ALL";
+        }
+        // Attempt 2: a valid pack with two non-conflicting candidates.
+        return JSON.stringify({
+          candidates: [
+            {
+              kind: "ProperNoun",
+              surfaceForm: "ハル",
+              rationale: "主人公の固有名。",
+              citedUnitIds: ["019ed018-0000-7000-8000-000000000a01"],
+            },
+            {
+              kind: "ProperNoun",
+              surfaceForm: "ミラ",
+              rationale: "王女の固有名。",
+              citedUnitIds: ["019ed018-0000-7000-8000-000000000a02"],
+            },
+          ],
+        });
+      },
+    });
+    const output = await generateTerminologyCandidates(input, { provider });
+
+    // A retry actually happened before a usable pack was accepted.
+    expect(call).toBe(2);
+    // The valid candidates from the accepted (retried-to) attempt are retained
+    // with correct per-candidate telemetry.
+    expect(output.candidates.map((candidate) => candidate.surfaceForm).sort()).toEqual(
+      ["ハル", "ミラ"].sort(),
+    );
+    for (const candidate of output.candidates) {
+      expect(candidate.completionTokens).toBeGreaterThan(0);
+    }
+    // The earlier (failed) attempt's real usage is RETAINED for stage accounting
+    // — not silently dropped (mirror of the QA / translation retry accounting).
+    // The agentic loop sums these into the context-stage cost/tokens.
+    expect(output.retryProviderRuns).toHaveLength(1);
+    expect(output.retryProviderRuns[0]!.runId).not.toBe(output.providerRun.runId);
+    expect(output.retryProviderRuns[0]!.tokenUsage.completionTokens).toBeGreaterThan(0);
+  });
+
+  it("same-surface within one pack: a repeated glossary-dup surface form is filtered for every instance while a distinct valid candidate is kept exactly once", async () => {
+    const input = inputFixture(); // existingGlossary contains 勇者
+    const pack = JSON.stringify({
+      candidates: [
+        {
+          kind: "ProperNoun",
+          surfaceForm: "勇者", // dup (in glossary)
+          rationale: "first instance",
+          citedUnitIds: ["019ed018-0000-7000-8000-000000000a01"],
+        },
+        {
+          kind: "TitleOrHonorific",
+          surfaceForm: "勇者", // SAME surface form, also a dup
+          rationale: "second instance, same surface",
+          citedUnitIds: ["019ed018-0000-7000-8000-000000000a01"],
+        },
+        {
+          kind: "ProperNoun",
+          surfaceForm: "ハル", // distinct, valid
+          rationale: "主人公の固有名。",
+          citedUnitIds: ["019ed018-0000-7000-8000-000000000a01"],
+        },
+      ],
+    });
+    const provider = new FakeModelProvider({
+      providerName: "terminology-candidate-fake",
+      modelId: input.modelProfile.modelId,
+      generate: () => pack,
+    });
+    const output = await generateTerminologyCandidates(input, { provider });
+
+    // The distinct valid candidate is kept EXACTLY once (no accidental double-drop)...
+    expect(output.candidates.map((candidate) => candidate.surfaceForm)).toEqual(["ハル"]);
+    // ...and BOTH instances of the duplicate surface form are filtered (no
+    // accidental keep of a dup, no per-instance state leak).
+    expect(output.candidates.map((candidate) => candidate.surfaceForm)).not.toContain("勇者");
+    expect(output.deduped.filter((entry) => entry.surfaceForm === "勇者")).toHaveLength(2);
+  });
 });
 
 describe("generateTerminologyCandidatesBatch", () => {
