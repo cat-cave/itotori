@@ -4,6 +4,9 @@
 //! serialize as semantic JSON suitable for golden testing; field names use
 //! camelCase to align with the rest of the kaifuu-core surface.
 
+use std::fmt;
+
+use kaifuu_core::RedactedContentSummary;
 use serde::{Deserialize, Serialize};
 
 use crate::diagnostics::ParseDiagnostic;
@@ -95,11 +98,29 @@ pub struct Instruction {
 /// Either a known named opcode or a raw opener byte that did not match
 /// the catalogue. Both shapes are paired with a diagnostic so the parser
 /// never silently drops bytes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "tag", rename_all = "snake_case")]
 pub enum InstructionKind {
     Named { opcode: NamedOpcode },
     Unrecognized { raw_opener_byte: u8 },
+}
+
+impl fmt::Debug for InstructionKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Named { opcode } => formatter
+                .debug_struct("Named")
+                .field("opcode", opcode)
+                .finish(),
+            Self::Unrecognized { raw_opener_byte } => formatter
+                .debug_struct("Unrecognized")
+                .field(
+                    "raw_opener_byte",
+                    &RedactedContentSummary::from_bytes(&[*raw_opener_byte]),
+                )
+                .finish(),
+        }
+    }
 }
 
 /// Operand value. Byte ranges are scene-blob-relative offsets.
@@ -160,7 +181,7 @@ pub struct StringSlotRef {
 /// uppercase-hex; encoding is set from the surrounding instruction
 /// context (defaults to [`kaifuu_core::SourceEncoding::Binary`] for the
 /// smoke). Decoding to a `String` is KAIFUU-174's responsibility.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StringSlot {
     pub slot_id: StringSlotId,
@@ -169,6 +190,21 @@ pub struct StringSlot {
     pub encoding: kaifuu_core::SourceEncoding,
     pub raw_bytes_hex: String,
     pub semantic_role: StringSlotRole,
+}
+
+impl fmt::Debug for StringSlot {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let raw_bytes_hex = RedactedContentSummary::from_text(&self.raw_bytes_hex);
+        formatter
+            .debug_struct("StringSlot")
+            .field("slot_id", &self.slot_id)
+            .field("byte_offset_within_scene", &self.byte_offset_within_scene)
+            .field("byte_len", &self.byte_len)
+            .field("encoding", &self.encoding)
+            .field("raw_bytes_hex", &raw_bytes_hex)
+            .field("semantic_role", &self.semantic_role)
+            .finish()
+    }
 }
 
 /// Best-guess semantic role for a [`StringSlot`], derived from the

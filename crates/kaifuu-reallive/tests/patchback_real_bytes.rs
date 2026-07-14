@@ -31,6 +31,7 @@ mod real_corpus;
 use std::fs;
 use std::path::PathBuf;
 
+use kaifuu_core::RedactedContentSummary;
 use kaifuu_reallive::{
     BridgeOpts, PatchbackOpts, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveOpcode, SceneHeader,
     TranslatedBundleV02, TranslationScope, Xor2Cipher, Xor2DecScene, apply_translated_bundle,
@@ -407,17 +408,21 @@ fn provenance_mismatch_byte_range_emits_typed_error_on_real_bytes() {
     }
     let translated =
         TranslatedBundleV02::from_json(&translated_value).expect("translated bundle parses");
-    let err = apply_translated_bundle(
+    let err = match apply_translated_bundle(
         &seen_bytes,
         &translated,
         &PatchbackOpts::shift_jis(TranslationScope::DialogueOnly),
-    )
-    .expect_err("corrupted provenance must raise a typed mismatch");
-    eprintln!("provenance-mismatch error surfaced: {err}");
+    ) {
+        Err(err) => err,
+        Ok(patched) => panic!(
+            "corrupted provenance must raise a typed mismatch (unexpected archive {})",
+            RedactedContentSummary::from_bytes(&patched)
+        ),
+    };
     let err_string = format!("{err}");
     assert!(
         err_string.contains("kaifuu.reallive.patchback_provenance_mismatch"),
-        "expected provenance_mismatch code; got: {err_string}"
+        "expected provenance_mismatch code"
     );
 }
 
@@ -447,14 +452,19 @@ fn missing_target_payload_surfaces_typed_schema_invalid_on_real_bytes() {
     .expect("v0.2 bundle");
     // The source-side JSON has no `target` field — must fail to parse
     // as a translated bundle.
-    let err = TranslatedBundleV02::from_json(&produced.json)
-        .expect_err("missing target.text must surface a typed error");
-    eprintln!("schema-invalid error surfaced: {err}");
+    let err = match TranslatedBundleV02::from_json(&produced.json) {
+        Err(err) => err,
+        Ok(bundle) => panic!(
+            "missing target.text must surface a typed error (unexpected source_units={} targets={})",
+            bundle.source.units.len(),
+            bundle.targets.len()
+        ),
+    };
     let err_string = format!("{err}");
     assert!(
         err_string.contains("kaifuu.reallive.patchback_bundle_schema_invalid")
             || err_string.contains("target"),
-        "expected bundle_schema_invalid code; got: {err_string}"
+        "expected bundle_schema_invalid code"
     );
 }
 
@@ -594,9 +604,11 @@ fn scope_dialogue_and_choices_patches_scene_2011_choice_nextstring_safe_round_tr
     for (i, expected_text) in tricky.iter().enumerate() {
         let expected_bytes =
             encode_choice_option_next_string_safe(expected_text).expect("tricky text encodes");
-        assert_eq!(
-            choices[i].bytes, expected_bytes,
-            "option {i} bytes must be the NextString-safe quoted encoding of the translation"
+        assert!(
+            choices[i].bytes == expected_bytes,
+            "option {i} bytes must be the NextString-safe quoted encoding of the translation: actual {}, expected {}",
+            RedactedContentSummary::from_bytes(&choices[i].bytes),
+            RedactedContentSummary::from_bytes(&expected_bytes),
         );
         assert!(
             decode_dialogue_textout(&choices[i].bytes).is_some(),
@@ -686,10 +698,12 @@ fn scope_dialogue_only_carries_scene_2011_choice_byte_identical() {
         })
         .expect("patched scene still carries a Choice command");
 
-    assert_eq!(
-        patched_choice, source_choice,
+    assert!(
+        patched_choice == source_choice,
         "out-of-scope Choice options must be byte-identical under dialogue-only scope \
-         (the corrupting `[` target must NOT have been applied)"
+         (the corrupting `[` target must NOT have been applied): actual {}, expected {}",
+        RedactedContentSummary::from_bytes(&patched_choice.concat()),
+        RedactedContentSummary::from_bytes(&source_choice.concat()),
     );
 
     // Sanity: the dialogue WAS translated (the scope boundary is non-vacuous).
@@ -1203,9 +1217,11 @@ fn select_block_patchback_round_trips_byte_correct_on_real_scene_1018() {
     for (i, translation) in translations.iter().enumerate() {
         let expected = encode_choice_option_next_string_safe(translation)
             .expect("translation encodes NextString-safe");
-        assert_eq!(
-            patched_options[i].bytes, expected,
-            "option {i} bytes must be the NextString-safe quoted encoding of the translation"
+        assert!(
+            patched_options[i].bytes == expected,
+            "option {i} bytes must be the NextString-safe quoted encoding of the translation: actual {}, expected {}",
+            RedactedContentSummary::from_bytes(&patched_options[i].bytes),
+            RedactedContentSummary::from_bytes(&expected),
         );
         assert!(
             decode_dialogue_textout(&patched_options[i].bytes).is_some(),

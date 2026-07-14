@@ -44,8 +44,9 @@
 //! is an error ([`RealLiveParseError::TruncatedBytecode`]), never a silent
 //! `Ok(vec![])`.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt};
 
+use kaifuu_core::RedactedContentSummary;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -104,7 +105,7 @@ pub enum TextEncoding {
 /// - `Audio` — module_bgm / module_se / module_pcm channels.
 /// - `VoicePlay` — module_koe family (rlvm `module_koe.cc`).
 /// - `SetVariable` — module_mem family (rlvm `module_mem.cc`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RealLiveOpcode {
     /// `0x0A` MetaLine — source-line number marker. 3 bytes total
@@ -254,13 +255,68 @@ pub enum RealLiveOpcode {
 /// `byte_offset_within_scene` at the option's real bytes instead of at the
 /// opcode header — the latter would make a slot-keyed splice land on the
 /// opcode header and structurally corrupt the scene.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommandArg {
     /// Scene-relative byte offset where this argument's bytes begin.
     pub byte_offset: u64,
     /// The argument's raw bytes (Shift-JIS text run, expression bytes, or
     /// empty for an interior `,,` slot).
     pub bytes: Vec<u8>,
+}
+
+impl fmt::Debug for CommandArg {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let bytes = RedactedContentSummary::from_bytes(&self.bytes);
+        formatter
+            .debug_struct("CommandArg")
+            .field("byte_offset", &self.byte_offset)
+            .field("bytes", &bytes)
+            .finish()
+    }
+}
+
+impl fmt::Debug for RealLiveOpcode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut debug = formatter.debug_struct("RealLiveOpcode");
+        debug.field("label", &self.label());
+        match self {
+            Self::Textout {
+                encoding,
+                raw_bytes,
+            } => {
+                debug
+                    .field("encoding", encoding)
+                    .field("raw_bytes", &RedactedContentSummary::from_bytes(raw_bytes));
+            }
+            Self::Expression { raw_bytes } => {
+                debug.field("raw_bytes", &RedactedContentSummary::from_bytes(raw_bytes));
+            }
+            Self::Choice { choices } => {
+                debug.field("choices", choices);
+            }
+            Self::Command {
+                module_type,
+                module_id,
+                opcode,
+                overload,
+                args,
+            } => {
+                debug
+                    .field("module_type", module_type)
+                    .field("module_id", module_id)
+                    .field("opcode", opcode)
+                    .field("overload", overload)
+                    .field("args", args);
+            }
+            Self::Unknown { opcode, raw_bytes } => {
+                debug
+                    .field("opcode", opcode)
+                    .field("raw_bytes", &RedactedContentSummary::from_bytes(raw_bytes));
+            }
+            _ => {}
+        }
+        debug.finish()
+    }
 }
 
 impl RealLiveOpcode {
@@ -371,7 +427,7 @@ pub fn unrecognized_opcode_histogram(opcodes: &[RealLiveOpcode]) -> BTreeMap<(u8
 }
 
 /// Decoder error surface. Typed; no `unwrap()` clusters in production.
-#[derive(Debug, Clone, PartialEq, Eq, Error, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Error, Serialize, Deserialize)]
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum RealLiveParseError {
     /// The bytecode stream was empty or produced no opcodes — silent
@@ -382,7 +438,7 @@ pub enum RealLiveParseError {
     TruncatedBytecode { input_len: usize },
     /// A Meta element header ran past the end of the stream.
     #[error(
-        "kaifuu.reallive.truncated_meta_header: {opener:#04x} at offset {offset} needs {needed} bytes, {available} available"
+        "kaifuu.reallive.truncated_meta_header: meta header at offset {offset} needs {needed} bytes, {available} available"
     )]
     TruncatedMetaHeader {
         opener: u8,
@@ -420,9 +476,61 @@ pub enum RealLiveParseError {
     /// operator form (a structurally invalid expression, not merely an
     /// unrecognised opcode).
     #[error(
-        "kaifuu.reallive.malformed_expression: byte {byte:#04x} at offset {offset} is not a valid ExpressionPiece token"
+        "kaifuu.reallive.malformed_expression: invalid ExpressionPiece token at offset {offset}"
     )]
     MalformedExpression { offset: u64, byte: u8 },
+}
+
+impl fmt::Debug for RealLiveParseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::TruncatedBytecode { input_len } => formatter
+                .debug_struct("TruncatedBytecode")
+                .field("input_len", input_len)
+                .finish(),
+            Self::TruncatedMetaHeader {
+                opener,
+                offset,
+                needed,
+                available,
+            } => formatter
+                .debug_struct("TruncatedMetaHeader")
+                .field("opener", &RedactedContentSummary::from_bytes(&[*opener]))
+                .field("offset", offset)
+                .field("needed", needed)
+                .field("available", available)
+                .finish(),
+            Self::TruncatedCommandHeader { offset, available } => formatter
+                .debug_struct("TruncatedCommandHeader")
+                .field("offset", offset)
+                .field("available", available)
+                .finish(),
+            Self::TruncatedCommandArgs { offset, argc } => formatter
+                .debug_struct("TruncatedCommandArgs")
+                .field("offset", offset)
+                .field("argc", argc)
+                .finish(),
+            Self::InvalidLengthPrefix {
+                offset,
+                declared,
+                available,
+            } => formatter
+                .debug_struct("InvalidLengthPrefix")
+                .field("offset", offset)
+                .field("declared", declared)
+                .field("available", available)
+                .finish(),
+            Self::TruncatedExpression { offset } => formatter
+                .debug_struct("TruncatedExpression")
+                .field("offset", offset)
+                .finish(),
+            Self::MalformedExpression { offset, byte } => formatter
+                .debug_struct("MalformedExpression")
+                .field("offset", offset)
+                .field("byte", &RedactedContentSummary::from_bytes(&[*byte]))
+                .finish(),
+        }
+    }
 }
 
 /// Module-id catalogue keys (rlvm `src/modules/module_*.cc` names).
@@ -582,7 +690,7 @@ const EXPR_SPECIAL: u8 = 0x61;
 /// the parse both to evaluate the expression's structure and to compute
 /// the exact byte span an Expression element / Command argument occupies,
 /// so the bytecode stream stays aligned with zero residual unknown bytes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "node", rename_all = "snake_case")]
 pub enum Expr {
     /// `0xFF`+i32 (or `$ 0xFF`+i32) integer literal.
@@ -613,6 +721,47 @@ pub enum Expr {
     /// argument list; bytes preserved verbatim (downstream Shift-JIS
     /// decode is [`crate::encoding`]'s job).
     StrLiteral { raw_bytes: Vec<u8> },
+}
+
+impl fmt::Debug for Expr {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::IntLiteral { value } => formatter
+                .debug_struct("IntLiteral")
+                .field("value", value)
+                .finish(),
+            Self::StoreRegister => formatter.write_str("StoreRegister"),
+            Self::MemoryRef { bank, index } => formatter
+                .debug_struct("MemoryRef")
+                .field("bank", bank)
+                .field("index", index)
+                .finish(),
+            Self::Binary { op, lhs, rhs } => formatter
+                .debug_struct("Binary")
+                .field("op", op)
+                .field("lhs", lhs)
+                .field("rhs", rhs)
+                .finish(),
+            Self::Unary { op, operand } => formatter
+                .debug_struct("Unary")
+                .field("op", op)
+                .field("operand", operand)
+                .finish(),
+            Self::Complex { items } => formatter
+                .debug_struct("Complex")
+                .field("items", items)
+                .finish(),
+            Self::SpecialParam { tag, content } => formatter
+                .debug_struct("SpecialParam")
+                .field("tag", tag)
+                .field("content", content)
+                .finish(),
+            Self::StrLiteral { raw_bytes } => formatter
+                .debug_struct("StrLiteral")
+                .field("raw_bytes", &RedactedContentSummary::from_bytes(raw_bytes))
+                .finish(),
+        }
+    }
 }
 
 /// Read a little-endian `i32` at `pos`, erroring if fewer than 4 bytes

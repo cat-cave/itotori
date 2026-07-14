@@ -34,6 +34,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use kaifuu_core::RedactedContentSummary;
+
 use crate::diagnostics::{ParseDiagnostic, ParseDiagnosticCode};
 
 /// Number of slots in the RealLive SEEN.TXT directory. Fixed by the
@@ -46,8 +48,8 @@ pub const REALLIVE_SEEN_TXT_SLOT_COUNT: usize = 10_000;
 /// * 8 = 80_000 = 0x0001_3880`.
 pub const REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN: u64 = (REALLIVE_SEEN_TXT_SLOT_COUNT as u64) * 8;
 
-/// Maximum bytes captured into [`ParseDiagnostic::raw_bytes_hex`].
-const DIAGNOSTIC_HEX_PREVIEW_LEN: usize = 16;
+/// Maximum bytes represented in [`ParseDiagnostic::raw_bytes_summary`].
+const DIAGNOSTIC_PREVIEW_LEN: usize = 16;
 
 /// Index of every populated scene in a SEEN.TXT archive.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -106,7 +108,7 @@ pub fn parse_archive(bytes: &[u8]) -> Result<RealLiveSceneIndex, ParseDiagnostic
         return Err(out_of_profile(
             0,
             Some(archive_len),
-            preview_hex(bytes, 0),
+            preview_summary(bytes, 0),
             format!(
                 "SEEN.TXT archive length {archive_len} is shorter than the fixed \
                  {REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN}-byte 10,000-slot directory"
@@ -135,7 +137,7 @@ pub fn parse_archive(bytes: &[u8]) -> Result<RealLiveSceneIndex, ParseDiagnostic
                 ParseDiagnosticCode::TruncatedScene,
                 slot_byte_offset as u64,
                 Some(8),
-                preview_hex(bytes, slot_byte_offset),
+                preview_summary(bytes, slot_byte_offset),
                 format!(
                     "scene slot {scene_id} declares (offset={byte_offset}, len={byte_len}) \
                      running to byte {end} past archive length {archive_len}"
@@ -163,30 +165,25 @@ fn read_u32_le(bytes: &[u8], offset: usize) -> u32 {
     u32::from_le_bytes(buf)
 }
 
-pub(crate) fn preview_hex(bytes: &[u8], start: usize) -> Option<String> {
-    use std::fmt::Write as _;
+pub(crate) fn preview_summary(bytes: &[u8], start: usize) -> Option<RedactedContentSummary> {
     if start >= bytes.len() {
         return None;
     }
-    let end = (start + DIAGNOSTIC_HEX_PREVIEW_LEN).min(bytes.len());
-    let mut hex = String::with_capacity((end - start) * 2);
-    for byte in &bytes[start..end] {
-        let _ = write!(hex, "{byte:02X}");
-    }
-    Some(hex)
+    let end = (start + DIAGNOSTIC_PREVIEW_LEN).min(bytes.len());
+    Some(RedactedContentSummary::from_bytes(&bytes[start..end]))
 }
 
 fn out_of_profile(
     byte_offset: u64,
     byte_len: Option<u64>,
-    raw_bytes_hex: Option<String>,
+    raw_bytes_summary: Option<RedactedContentSummary>,
     message: impl Into<String>,
 ) -> ParseDiagnostic {
     ParseDiagnostic::fatal(
         ParseDiagnosticCode::OutOfProfileInput,
         byte_offset,
         byte_len,
-        raw_bytes_hex,
+        raw_bytes_summary,
         message,
     )
     .with_remediation(

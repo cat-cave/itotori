@@ -49,6 +49,8 @@
 
 use sha2::{Digest, Sha256};
 
+use kaifuu_core::RedactedContentSummary;
+
 use crate::archive::RealLiveSceneIndex;
 use crate::decompressor::decompress_avg32;
 use crate::opcode::parse_real_bytecode;
@@ -75,10 +77,23 @@ pub fn compiler_version_uses_xor2(compiler_version: u32) -> bool {
 /// A decompressed scene handed to the archive-level decryptor: its plaintext
 /// `compiler_version` (decides `use_xor_2`) plus its decompressed bytecode
 /// (decrypted in place when eligible and validated).
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Xor2DecScene {
     pub compiler_version: u32,
     pub bytecode: Vec<u8>,
+}
+
+impl std::fmt::Debug for Xor2DecScene {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Xor2DecScene")
+            .field("compiler_version", &self.compiler_version)
+            .field(
+                "bytecode",
+                &RedactedContentSummary::from_bytes(&self.bytecode),
+            )
+            .finish()
+    }
 }
 
 /// The decompressed corpus of a whole SEEN.TXT archive, produced by
@@ -87,7 +102,7 @@ pub struct Xor2DecScene {
 /// archive scene whose id is `scene_ids[i]`; the two run in lockstep and the
 /// recovery functions never reorder [`Self::scenes`], so a caller can map a
 /// target scene id to its position with [`Self::position_of`].
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DecompressedArchive {
     /// One entry per successfully-decompressed populated scene, in archive
     /// directory order. Handed directly to [`recover_and_decrypt_archive`] /
@@ -95,6 +110,16 @@ pub struct DecompressedArchive {
     pub scenes: Vec<Xor2DecScene>,
     /// `scene_ids[i]` is the archive scene id of `scenes[i]`.
     pub scene_ids: Vec<u16>,
+}
+
+impl std::fmt::Debug for DecompressedArchive {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("DecompressedArchive")
+            .field("scenes", &self.scenes)
+            .field("scene_ids", &self.scene_ids)
+            .finish()
+    }
 }
 
 impl DecompressedArchive {

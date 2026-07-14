@@ -22,15 +22,30 @@
 //!   Used by [`crate::protected_spans`] and [`crate::patchback`].
 
 use encoding_rs::SHIFT_JIS;
+use std::fmt;
+
+use kaifuu_core::RedactedContentSummary;
 use serde::{Deserialize, Serialize};
 
 /// Output of [`decode_shift_jis_slot`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShiftJisDecode {
     pub text: String,
     pub had_replacement: bool,
     pub diagnostics: Vec<ShiftJisDecodeDiagnostic>,
+}
+
+impl fmt::Debug for ShiftJisDecode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let text = RedactedContentSummary::from_text(&self.text);
+        formatter
+            .debug_struct("ShiftJisDecode")
+            .field("text", &text)
+            .field("had_replacement", &self.had_replacement)
+            .field("diagnostics", &self.diagnostics)
+            .finish()
+    }
 }
 
 /// Per-byte diagnostic emitted when the Shift-JIS decoder substitutes
@@ -48,7 +63,7 @@ pub struct ShiftJisDecodeDiagnostic {
 }
 
 /// Error returned by [`encode_shift_jis_slot`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ShiftJisEncodeError {
     /// 0-based char index of the first character the encoder could not map.
     pub first_unmappable_char_index: usize,
@@ -57,6 +72,21 @@ pub struct ShiftJisEncodeError {
     /// patch-back rejects edits that yield this error.
     pub partial_bytes: Vec<u8>,
     pub message: String,
+}
+
+impl fmt::Debug for ShiftJisEncodeError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let partial_bytes = RedactedContentSummary::from_bytes(&self.partial_bytes);
+        formatter
+            .debug_struct("ShiftJisEncodeError")
+            .field(
+                "first_unmappable_char_index",
+                &self.first_unmappable_char_index,
+            )
+            .field("partial_bytes", &partial_bytes)
+            .field("message", &self.message)
+            .finish()
+    }
 }
 
 impl std::fmt::Display for ShiftJisEncodeError {
@@ -130,7 +160,7 @@ fn locate_first_unmappable_char(text: &str) -> usize {
 }
 
 /// One segment produced by [`slice_control_bytes`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum SliceSegment<'a> {
     /// A run of "text bytes" (every byte `>= 0x20`).
     Text {
@@ -144,6 +174,25 @@ pub enum SliceSegment<'a> {
         byte_offset: usize,
         byte: u8,
     },
+}
+
+impl fmt::Debug for SliceSegment<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Text { byte_offset, bytes } => {
+                let bytes = RedactedContentSummary::from_bytes(bytes);
+                formatter
+                    .debug_struct("SliceSegment::Text")
+                    .field("byte_offset", byte_offset)
+                    .field("bytes", &bytes)
+                    .finish()
+            }
+            Self::Control { byte_offset, .. } => formatter
+                .debug_struct("SliceSegment::Control")
+                .field("byte_offset", byte_offset)
+                .finish(),
+        }
+    }
 }
 
 /// Split a byte slice into alternating text and control-byte segments.

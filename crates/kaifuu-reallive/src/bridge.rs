@@ -41,11 +41,16 @@
 //! Empty scene → typed [`BridgeProduceError::EmptyScene`] (no silent
 //! `Ok(empty bundle)`).
 
+use std::fmt;
+
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use kaifuu_core::{BRIDGE_SCHEMA_VERSION_V02, BridgeBundleV02, BridgeContractValidationError};
+use kaifuu_core::{
+    BRIDGE_SCHEMA_VERSION_V02, BridgeBundleV02, BridgeContractValidationError,
+    RedactedContentSummary,
+};
 
 use crate::gameexe::{GameexeInventoryReport, GameexeKeyFamily};
 use crate::opcode::{
@@ -82,7 +87,7 @@ pub struct BridgeOpts<'a> {
 }
 
 /// One decoded scene supplied to [`produce_whole_seen_bundle`].
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct BridgeSceneInput<'a> {
     /// Scene id from the 10,000-slot SEEN directory.
     pub scene_id: u16,
@@ -93,6 +98,20 @@ pub struct BridgeSceneInput<'a> {
     pub decompressed_bytecode: &'a [u8],
     /// Number of kidoku-table entries declared in this scene's header.
     pub scene_kidoku_count: u32,
+}
+
+impl fmt::Debug for BridgeSceneInput<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let scene_bytes = RedactedContentSummary::from_bytes(self.scene_bytes);
+        let decompressed_bytecode = RedactedContentSummary::from_bytes(self.decompressed_bytecode);
+        formatter
+            .debug_struct("BridgeSceneInput")
+            .field("scene_id", &self.scene_id)
+            .field("scene_bytes", &scene_bytes)
+            .field("decompressed_bytecode", &decompressed_bytecode)
+            .field("scene_kidoku_count", &self.scene_kidoku_count)
+            .finish()
+    }
 }
 
 /// Fatal errors raised by [`produce_bundle`].
@@ -156,10 +175,23 @@ impl From<BridgeContractValidationError> for BridgeProduceError {
 /// validator accepted. Both are returned because [`BridgeBundleV02`]
 /// derives `Deserialize` only — callers writing a JSON file want the
 /// validated `Value`.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ProducedBundle {
     pub bundle: BridgeBundleV02,
     pub json: Value,
+}
+
+impl fmt::Debug for ProducedBundle {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let serialized_json = self.json.to_string();
+        let json = RedactedContentSummary::from_text(&serialized_json);
+        formatter
+            .debug_struct("ProducedBundle")
+            .field("bridge_id", &self.bundle.bridge_id)
+            .field("unit_count", &self.bundle.units.len())
+            .field("json", &json)
+            .finish()
+    }
 }
 
 /// Walk a scene's decompressed bytecode into a v0.2 BridgeBundle.
@@ -266,7 +298,7 @@ pub fn produce_whole_seen_bundle(
 // Unit collection
 // ---------------------------------------------------------------------
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct ProtoUnit {
     /// `dialogue` | `choice_label`.
     surface_kind: &'static str,
@@ -300,7 +332,7 @@ struct ProtoUnit {
     choice_option_index: Option<usize>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct ProtoSpan {
     /// Parsed name on the v0.2 span (e.g. `"reallive.kidoku"`).
     parsed_name: &'static str,
@@ -312,6 +344,47 @@ struct ProtoSpan {
     end_byte: u64,
     /// Raw substring.
     raw: String,
+}
+
+impl fmt::Debug for ProtoUnit {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let decoded_text = RedactedContentSummary::from_text(&self.decoded_text);
+        let control_prefix = RedactedContentSummary::from_text(&self.control_prefix);
+        let raw_speaker = self
+            .raw_speaker
+            .as_deref()
+            .map(RedactedContentSummary::from_text);
+        formatter
+            .debug_struct("ProtoUnit")
+            .field("surface_kind", &self.surface_kind)
+            .field("decoded_text", &decoded_text)
+            .field("control_prefix", &control_prefix)
+            .field("spans", &self.spans)
+            .field("raw_speaker", &raw_speaker)
+            .field("text_color", &self.text_color)
+            .field("decompressed_byte_offset", &self.decompressed_byte_offset)
+            .field("decompressed_byte_len", &self.decompressed_byte_len)
+            .field("voice_archive_id", &self.voice_archive_id)
+            .field("voice_sample_id", &self.voice_sample_id)
+            .field("occurrence_index", &self.occurrence_index)
+            .field("choice_group_index", &self.choice_group_index)
+            .field("choice_option_index", &self.choice_option_index)
+            .finish()
+    }
+}
+
+impl fmt::Debug for ProtoSpan {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let raw = RedactedContentSummary::from_text(&self.raw);
+        formatter
+            .debug_struct("ProtoSpan")
+            .field("parsed_name", &self.parsed_name)
+            .field("out_of_band", &self.out_of_band)
+            .field("start_byte", &self.start_byte)
+            .field("end_byte", &self.end_byte)
+            .field("raw", &raw)
+            .finish()
+    }
 }
 
 fn collect_units(
@@ -1089,11 +1162,7 @@ fn build_unit_json(
                 parsed_name: span.parsed_name,
                 start_byte: span.start_byte,
                 end_byte: span.end_byte,
-                reason: format!(
-                    "end_byte {} exceeds sourceText length {}",
-                    span.end_byte,
-                    source_text.len()
-                ),
+                reason: format!("end_byte exceeds sourceText length {}", source_text.len()),
             });
         }
         let actual = &source_text.as_bytes()[span.start_byte as usize..span.end_byte as usize];
@@ -1106,9 +1175,9 @@ fn build_unit_json(
                 start_byte: span.start_byte,
                 end_byte: span.end_byte,
                 reason: format!(
-                    "byte range covers {:?} but span.raw is {:?}",
-                    String::from_utf8_lossy(actual),
-                    span.raw
+                    "byte range covers {} but span.raw is {}",
+                    RedactedContentSummary::from_bytes(actual),
+                    RedactedContentSummary::from_text(&span.raw),
                 ),
             });
         }
@@ -1523,7 +1592,7 @@ mod tests {
                     ..
                 }
             ),
-            "expected ProtectedSpanInvalid, got {err:?}"
+            "expected ProtectedSpanInvalid"
         );
 
         // Out-of-range: end_byte past sourceText length.
@@ -1544,8 +1613,70 @@ mod tests {
                     ..
                 }
             ),
-            "expected ProtectedSpanInvalid, got {err:?}"
+            "expected ProtectedSpanInvalid"
         );
+    }
+
+    #[test]
+    fn protected_span_mismatch_redacts_source_content_from_error_renderings() {
+        const SOURCE_SENTINEL: &str = "RBH_SOURCE_DIALOGUE_SENTINEL";
+        const RAW_SENTINEL: &str = "RBH_PROTECTED_SPAN_SENTINEL";
+
+        let unit = ProtoUnit {
+            surface_kind: "dialogue",
+            decoded_text: SOURCE_SENTINEL.to_string(),
+            control_prefix: String::new(),
+            spans: vec![ProtoSpan {
+                parsed_name: "reallive.asset_ref",
+                out_of_band: false,
+                start_byte: 0,
+                end_byte: SOURCE_SENTINEL.len() as u64,
+                raw: RAW_SENTINEL.to_string(),
+            }],
+            raw_speaker: None,
+            text_color: None,
+            decompressed_byte_offset: 0,
+            decompressed_byte_len: SOURCE_SENTINEL.len() as u64,
+            voice_archive_id: None,
+            voice_sample_id: None,
+            occurrence_index: 0,
+            choice_group_index: None,
+            choice_option_index: None,
+        };
+        let err = build_unit_json(7, "a", "k", "r", "h", "ns", &opts_for_test(), &unit)
+            .expect_err("mismatched protected span must error");
+        let display = err.to_string();
+        let debug = format!("{err:?}");
+        let protected_range = unit.spans[0].start_byte as usize..unit.spans[0].end_byte as usize;
+        let protected_range_len = protected_range.len();
+        let source_summary =
+            RedactedContentSummary::from_bytes(&SOURCE_SENTINEL.as_bytes()[protected_range]);
+        let raw_summary = RedactedContentSummary::from_text(RAW_SENTINEL);
+
+        for rendered in [&display, &debug] {
+            assert!(
+                !rendered.contains(SOURCE_SENTINEL),
+                "protected-span errors must not emit source text"
+            );
+            assert!(
+                !rendered.contains(RAW_SENTINEL),
+                "protected-span errors must not emit protected-span text"
+            );
+            assert!(rendered.contains(&source_summary.to_string()));
+            assert!(rendered.contains(&raw_summary.to_string()));
+            assert!(rendered.contains(source_summary.sha256()));
+            assert!(rendered.contains(raw_summary.sha256()));
+        }
+        assert!(display.contains("scene 7 unit 0 span #0"));
+        assert!(display.contains("parsedName=reallive.asset_ref"));
+        assert!(display.contains(&source_summary.to_string()));
+        assert!(display.contains(&raw_summary.to_string()));
+        assert!(debug.contains("scene_id: 7"));
+        assert!(debug.contains("occurrence_index: 0"));
+        assert!(debug.contains("span_index: 0"));
+        assert!(debug.contains("parsed_name: \"reallive.asset_ref\""));
+        assert_eq!(source_summary.byte_len(), protected_range_len);
+        assert_eq!(raw_summary.byte_len(), unit.spans[0].raw.len());
     }
 
     #[test]
@@ -1646,7 +1777,12 @@ mod tests {
             2,
             "fixture must decode to exactly two Textout runs (dialogue + binary)"
         );
-        assert_eq!(textouts[1], SCENE1_BINARY_BLOCK_214B);
+        assert!(
+            textouts[1] == SCENE1_BINARY_BLOCK_214B,
+            "binary block mismatch: actual {}, expected {}",
+            RedactedContentSummary::from_bytes(textouts[1]),
+            RedactedContentSummary::from_bytes(SCENE1_BINARY_BLOCK_214B),
+        );
 
         let report = parse_gameexe_inventory(b"");
         let produced = produce_bundle(1, &[0u8; 32], &bytecode, &report, &opts_for_test())
@@ -1663,8 +1799,8 @@ mod tests {
         assert_eq!(unit.surface_kind, "dialogue");
         assert!(
             unit.source_text.contains(SCENE2011_DIALOGUE_TEXT),
-            "the surfaced unit must carry the decoded dialogue text; got {:?}",
-            unit.source_text
+            "the surfaced unit must carry the decoded dialogue text (sourceText {})",
+            RedactedContentSummary::from_text(&unit.source_text)
         );
         // No surfaced unit may carry the binary block's decoded form.
         let (binary_decoded, _, _) = encoding_rs::SHIFT_JIS.decode(SCENE1_BINARY_BLOCK_214B);

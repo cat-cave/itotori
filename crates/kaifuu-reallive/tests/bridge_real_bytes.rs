@@ -31,6 +31,7 @@ mod real_corpus;
 use std::fs;
 use std::path::PathBuf;
 
+use kaifuu_core::RedactedContentSummary;
 use kaifuu_reallive::{
     BridgeOpts, BridgeProduceError, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveOpcode,
     SceneHeader, decode_dialogue_textout, decompress_avg32, gameexe::parse_gameexe_inventory,
@@ -182,7 +183,7 @@ fn scene_1_all_textouts_are_binary_and_produce_no_translatable_units_real_bytes(
     .expect_err("an all-binary scene must not produce translatable units");
     assert!(
         matches!(err, BridgeProduceError::NoTextUnits { scene_id: 1, .. }),
-        "expected NoTextUnits for all-binary scene 1; got {err:?}"
+        "expected NoTextUnits for all-binary scene 1"
     );
 }
 
@@ -303,8 +304,8 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
     }
     let first_unit = &produced.bundle.units[0];
     eprintln!(
-        "first unit: sourceText (truncated)='{}' surfaceKind={}",
-        first_unit.source_text.chars().take(40).collect::<String>(),
+        "first unit: sourceText={} surfaceKind={}",
+        RedactedContentSummary::from_text(&first_unit.source_text),
         first_unit.surface_kind,
     );
 

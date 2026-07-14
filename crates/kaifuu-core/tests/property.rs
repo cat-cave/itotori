@@ -29,7 +29,8 @@ use kaifuu_core::contracts::proptest_thresholds::{
 };
 use kaifuu_core::{
     ByteSpan, EncodedStringSlot, EncodedStringSlotLayout, EncodedStringSlotProtectedSpan,
-    OperationStatus, ProtectedSpanMapping, STRING_SLOT_PROTECTED_SPAN_MUTATION, SourceEncoding,
+    OperationStatus, ProtectedSpanMapping, RedactedContentSummary,
+    STRING_SLOT_PROTECTED_SPAN_MUTATION, SourceEncoding,
 };
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngAlgorithm, TestRng, TestRunner};
@@ -126,8 +127,8 @@ fn build_slot_and_mappings(
 ///   * With the complete, correct mapping set the preflight passes with NO
 ///     protected-span-mutation diagnostic (preservation holds).
 ///   * Dropping ANY single mapping is ALWAYS caught: preflight fails with a
-///     protected-span-mutation diagnostic that names the dropped token
-///     (no surviving mutation).
+///     protected-span-mutation diagnostic that identifies the dropped token
+///     by safe content metadata (no surviving mutation).
 #[test]
 fn property_protected_span_preservation_holds_and_detects_drop() {
     let mut runner = seeded_runner(
@@ -137,14 +138,15 @@ fn property_protected_span_preservation_holds_and_detects_drop() {
     runner
         .run(&preservation_input(), |input| {
             let (slot, target, mappings) = build_slot_and_mappings(&input);
+            let target_summary = RedactedContentSummary::from_text(&target);
 
             // Half 1: preservation holds for the complete mapping set.
             let complete = slot.preflight(&target, &mappings, None);
             prop_assert_eq!(
                 complete.status.clone(),
                 OperationStatus::Passed,
-                "protected-span preservation: complete mappings must preflight-pass for target {:?}, got diagnostics {:?}",
-                target,
+                "protected-span preservation: complete mappings must preflight-pass for target {}, got diagnostics {:?}",
+                target_summary,
                 complete.diagnostics
             );
             prop_assert!(
@@ -152,13 +154,14 @@ fn property_protected_span_preservation_holds_and_detects_drop() {
                     .diagnostics
                     .iter()
                     .all(|diagnostic| diagnostic.code != STRING_SLOT_PROTECTED_SPAN_MUTATION),
-                "protected-span preservation: complete mappings must not emit a protected-span-mutation diagnostic for target {:?}",
-                target
+                "protected-span preservation: complete mappings must not emit a protected-span-mutation diagnostic for target {}",
+                target_summary
             );
 
             // Half 2: dropping one mapping is always caught, naming the token.
             let mut dropped = mappings.clone();
             let removed = dropped.remove(input.drop_index);
+            let removed_summary = RedactedContentSummary::from_text(&removed.raw);
             let after_drop = slot.preflight(&target, &dropped, None);
             let mutation_diagnostics: Vec<_> = after_drop
                 .diagnostics
@@ -167,16 +170,16 @@ fn property_protected_span_preservation_holds_and_detects_drop() {
                 .collect();
             prop_assert!(
                 !mutation_diagnostics.is_empty(),
-                "protected-span preservation SURVIVOR: dropping the mapping for token {:?} from target {:?} was NOT caught",
-                removed.raw,
-                target
+                "protected-span preservation SURVIVOR: dropping the mapping for token {} from target {} was NOT caught",
+                removed_summary,
+                target_summary
             );
             prop_assert!(
                 mutation_diagnostics
                     .iter()
-                    .any(|diagnostic| diagnostic.message.contains(&removed.raw)),
-                "protected-span preservation: the mutation diagnostic must name the dropped token {:?}; got {:?}",
-                removed.raw,
+                    .any(|diagnostic| diagnostic.message.contains(removed_summary.sha256())),
+                "protected-span preservation: the mutation diagnostic must identify the dropped token {}; got {:?}",
+                removed_summary,
                 mutation_diagnostics
                     .iter()
                     .map(|diagnostic| diagnostic.message.clone())
@@ -185,8 +188,8 @@ fn property_protected_span_preservation_holds_and_detects_drop() {
             prop_assert_eq!(
                 after_drop.status,
                 OperationStatus::Failed,
-                "protected-span preservation: a dropped mapping must fail preflight for target {:?}",
-                target
+                "protected-span preservation: a dropped mapping must fail preflight for target {}",
+                target_summary
             );
             Ok(())
         })

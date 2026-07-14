@@ -59,6 +59,7 @@ mod real_corpus;
 use std::fs;
 use std::path::PathBuf;
 
+use kaifuu_core::RedactedContentSummary;
 use kaifuu_reallive::{
     REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveOpcode, parse_real_bytecode,
     parse_real_bytecode_spans,
@@ -133,13 +134,15 @@ fn pins_sweetie_hd_scene_1_dispatch_with_zero_unknown_opcodes() {
     // The first 16 bytes of the decompressed stream are documented as
     // `0a 02 00 0a 03 00 21 00 00 0a 04 00 0a 05 00 0a` —
     // MetaLine(2), MetaLine(3), MetaEntrypoint(0), MetaLine(4..7).
-    assert_eq!(
-        &decompressed[..16],
-        &[
-            0x0a, 0x02, 0x00, 0x0a, 0x03, 0x00, 0x21, 0x00, 0x00, 0x0a, 0x04, 0x00, 0x0a, 0x05,
-            0x00, 0x0a,
-        ],
-        "decompressed[0..16] must match the documented scene-1 prologue"
+    let expected_prologue = [
+        0x0a, 0x02, 0x00, 0x0a, 0x03, 0x00, 0x21, 0x00, 0x00, 0x0a, 0x04, 0x00, 0x0a, 0x05, 0x00,
+        0x0a,
+    ];
+    assert!(
+        decompressed[..16] == expected_prologue,
+        "decompressed[0..16] must match the documented scene-1 prologue: actual {}, expected {}",
+        RedactedContentSummary::from_bytes(&decompressed[..16]),
+        RedactedContentSummary::from_bytes(&expected_prologue),
     );
 
     // Dispatch to the new opcode parser.

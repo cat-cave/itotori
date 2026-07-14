@@ -5,8 +5,7 @@
 //! payload, applies the rlvm-documented AVG32 LZSS+XOR decompression
 //! (no second-level XOR), and reports:
 //!
-//! - first 32 bytes of raw compressed payload (for traceability),
-//! - first 64 bytes of decompressed output,
+//! - redacted summaries of compressed and decompressed byte windows,
 //! - whether byte 0 matches the BytecodeElement opener set,
 //! - Shannon entropy + byte-frequency histogram of the decompressed output,
 //! - known-plaintext XOR-mask candidates for the first opener.
@@ -19,6 +18,8 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use kaifuu_core::RedactedContentSummary;
 
 const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
 
@@ -177,14 +178,6 @@ fn top_bytes(bytes: &[u8], k: usize) -> Vec<(u8, u64)> {
     indexed.into_iter().take(k).collect()
 }
 
-fn hex_row(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 fn resolve_seen_path(root: &Path) -> PathBuf {
     let direct = root.join("REALLIVEDATA").join("Seen.txt");
     if direct.is_file() {
@@ -275,39 +268,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         slot1_offset + cstart,
         slot1_offset + cend
     );
-    println!("compressed[0..32] (raw): {}", hex_row(&compressed[..32]));
+    println!(
+        "compressed[0..32] summary: {}",
+        RedactedContentSummary::from_bytes(&compressed[..compressed.len().min(32)])
+    );
 
     // First 8 bytes of the compressed stream are a preamble (`src += 8` in rlvm).
     // After the preamble: byte_pos = 8 in mask cycle for the first XOR.
-    // Show the first 8 raw bytes (preamble) and what they XOR to with mask[0..8].
+    // Summarize the preamble and its mask transform without emitting native bytes.
     let preamble: Vec<u8> = compressed[..8]
         .iter()
         .enumerate()
         .map(|(i, &b)| b ^ AVG32_XOR_MASK[i])
         .collect();
     println!(
-        "compressed_preamble[0..8] raw: {}",
-        hex_row(&compressed[..8])
+        "compressed_preamble[0..8] summary: {}",
+        RedactedContentSummary::from_bytes(&compressed[..8])
     );
     println!(
-        "compressed_preamble[0..8] ^ mask[0..8]: {}",
-        hex_row(&preamble)
+        "compressed_preamble[0..8] ^ mask[0..8] summary: {}",
+        RedactedContentSummary::from_bytes(&preamble)
     );
-    // The XOR'd preamble in rlvm carries the uncompressed size as little-endian u32 at offset 4?
-    // Some titles encode (compressed_size, uncompressed_size) here. Just print both u32 LE for record.
-    let pre_lo = u32::from_le_bytes(preamble[0..4].try_into()?);
-    let pre_hi = u32::from_le_bytes(preamble[4..8].try_into()?);
-    println!("preamble_u32_le_pair: lo=0x{pre_lo:x} ({pre_lo}) hi=0x{pre_hi:x} ({pre_hi})");
 
     // Decompress (LZSS + first-level XOR; NO second-level XOR yet).
     match decompress_avg32(compressed, bytecode_uncompressed) {
         Ok(dst) => {
             println!("decompress: OK, dst.len()={}", dst.len());
-            println!("dst[0..64]: {}", hex_row(&dst[..dst.len().min(64)]));
+            println!(
+                "dst[0..64] summary: {}",
+                RedactedContentSummary::from_bytes(&dst[..dst.len().min(64)])
+            );
             let first = dst[0];
             println!(
-                "dst[0] = 0x{:02x} -> opener_match={} ({})",
-                first,
+                "dst[0] opener_match={} ({})",
                 is_opener_byte(first),
                 opener_name(first)
             );
@@ -318,20 +311,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("entropy(dst): {h_whole:.3} bits/byte");
             println!("entropy(dst[..256]): {h_head:.3} bits/byte");
             let top = top_bytes(&dst, 16);
-            println!("top 16 byte frequencies (whole dst):");
-            for (b, c) in &top {
-                println!(
-                    "  0x{:02x} ({:>3}): {:>5} ({:.2}%)",
-                    b,
-                    if (0x20..0x7e).contains(b) {
-                        *b as char
-                    } else {
-                        '.'
-                    },
-                    c,
-                    100.0 * (*c as f64) / (dst.len() as f64)
-                );
-            }
+            println!("top-byte histogram buckets considered: {}", top.len());
 
             // Count of opener-byte appearances in dst (every BytecodeElement starts with one).
             let mut opener_hits = 0usize;
@@ -351,17 +331,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // opener bytes; compute candidate single-byte XOR masks if outcome
             // is not A.
             if is_opener_byte(first) {
-                // Outcome A confirmed: emit a longer dump for traceability.
-                println!("--- outcome A confirmed: emit first 128 bytes of dst ---");
+                println!("--- outcome A confirmed: summarize first 128 bytes of dst ---");
                 let n = dst.len().min(128);
-                for chunk_start in (0..n).step_by(16) {
-                    let end = (chunk_start + 16).min(n);
-                    println!(
-                        "  @0x{:04x}: {}",
-                        chunk_start,
-                        hex_row(&dst[chunk_start..end])
-                    );
-                }
+                println!("  {}", RedactedContentSummary::from_bytes(&dst[..n]));
                 // Walk the first few elements naively and report what they look like.
                 println!("--- naive element walk (first 16 elements) ---");
                 let mut pos = 0usize;
@@ -392,36 +364,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // Skip just the 8-byte header; we don't parse args here.
                         pos += 8;
                     } else if b == 0x00 || b == 0x2C {
-                        println!("  [{elem_idx:>2}] @0x{pos:04x} Comma (0x{b:02x})");
+                        println!("  [{elem_idx:>2}] @0x{pos:04x} Comma");
                         pos += 1;
                     } else {
-                        println!(
-                            "  [{elem_idx:>2}] @0x{pos:04x} byte=0x{b:02x} (textout / unknown)"
-                        );
+                        println!("  [{elem_idx:>2}] @0x{pos:04x} textout / unknown");
                         pos += 1;
                     }
                     elem_idx += 1;
                 }
             } else {
-                println!("--- known-plaintext XOR-mask candidates for dst[0] ---");
-                for plain in [0x00u8, 0x0A, 0x21, 0x23, 0x24, 0x2C, 0x40] {
-                    println!(
-                        "  if plaintext[0]=0x{:02x}: mask_byte=0x{:02x}",
-                        plain,
-                        first ^ plain
-                    );
-                }
+                println!("--- known-plaintext XOR-mask candidate analysis completed ---");
                 // Check whether dst looks like a periodic-XOR'd plaintext by
                 // testing common period candidates (16, 32, 256, etc.). For
                 // each candidate plaintext opener, see if mask is periodic.
                 println!(
                     "--- mask-period probe: assume plaintext[0]=0x23 (Command), period in {{16,32,256}} ---"
                 );
-                // Recover a candidate mask by XORing dst[..256] with a guessed
-                // pattern of opener bytes; just emit dst[..16] and dst[..32]
-                // for the user to eyeball.
-                println!("dst[0..16] raw: {}", hex_row(&dst[..dst.len().min(16)]));
-                println!("dst[16..32] raw: {}", hex_row(&dst[16..dst.len().min(32)]));
+                println!(
+                    "dst[0..16] summary: {}",
+                    RedactedContentSummary::from_bytes(&dst[..dst.len().min(16)])
+                );
+                println!(
+                    "dst[16..32] summary: {}",
+                    RedactedContentSummary::from_bytes(&dst[16.min(dst.len())..32.min(dst.len())])
+                );
             }
         }
         Err(e) => {

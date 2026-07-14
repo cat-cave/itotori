@@ -143,8 +143,9 @@ fn map_parse_error(err: &RealLiveParseError) -> ParseDiagnostic {
         } => (
             *offset,
             format!(
-                "meta header {opener:#04x} truncated at offset {offset}: needs {needed} bytes, \
-                 {available} available"
+                "meta header {} truncated at offset {offset}: needs {needed} bytes, \
+                 {available} available",
+                kaifuu_core::RedactedContentSummary::from_bytes(&[*opener]),
             ),
         ),
         RealLiveParseError::TruncatedCommandHeader { offset, available } => (
@@ -174,7 +175,10 @@ fn map_parse_error(err: &RealLiveParseError) -> ParseDiagnostic {
         ),
         RealLiveParseError::MalformedExpression { offset, byte } => (
             *offset,
-            format!("byte {byte:#04x} at offset {offset} is not a valid ExpressionPiece token"),
+            format!(
+                "input byte {} at offset {offset} is not a valid ExpressionPiece token",
+                kaifuu_core::RedactedContentSummary::from_bytes(&[*byte]),
+            ),
         ),
     };
     ParseDiagnostic::fatal(

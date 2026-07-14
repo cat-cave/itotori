@@ -32,12 +32,13 @@
 //!   No length-preserving constraint is imposed on the translated text.
 
 use std::collections::BTreeMap;
+use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use kaifuu_core::{BridgeBundleV02, BridgeContractValidationError};
+use kaifuu_core::{BridgeBundleV02, BridgeContractValidationError, RedactedContentSummary};
 
 use crate::archive::{
     REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, REALLIVE_SEEN_TXT_SLOT_COUNT, RealLiveSceneIndex,
@@ -236,7 +237,7 @@ pub enum PatchbackEncoding {
 }
 
 /// One per-unit translation entry consumed by the patchback driver.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TranslatedUnitTarget {
     /// Matches the source [`kaifuu_core::LocalizationUnitV02::bridge_unit_id`].
     pub bridge_unit_id: String,
@@ -245,6 +246,18 @@ pub struct TranslatedUnitTarget {
     /// The translated body — UTF-8 string that will be re-encoded to
     /// Shift-JIS at write time.
     pub target_text: String,
+}
+
+impl fmt::Debug for TranslatedUnitTarget {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let target_text = RedactedContentSummary::from_text(&self.target_text);
+        formatter
+            .debug_struct("TranslatedUnitTarget")
+            .field("bridge_unit_id", &self.bridge_unit_id)
+            .field("target_locale", &self.target_locale)
+            .field("target_text", &target_text)
+            .finish()
+    }
 }
 
 /// Translated v0.2 BridgeBundle.
@@ -269,10 +282,21 @@ pub struct TranslatedUnitTarget {
 ///   ]
 /// }
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TranslatedBundleV02 {
     pub source: BridgeBundleV02,
     pub targets: Vec<TranslatedUnitTarget>,
+}
+
+impl fmt::Debug for TranslatedBundleV02 {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("TranslatedBundleV02")
+            .field("source_bridge_id", &self.source.bridge_id)
+            .field("source_unit_count", &self.source.units.len())
+            .field("targets", &self.targets)
+            .finish()
+    }
 }
 
 impl TranslatedBundleV02 {
@@ -591,7 +615,7 @@ fn recover_xor2_cipher_if_needed(
 /// [`patch_scene_blob`] re-walks the bytecode with [`parse_real_bytecode`]
 /// and matches edits to opcodes by occurrence index, which is the
 /// authoritative key per the v0.2 schema.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct ResolvedEdit {
     /// Index into `scene_index.entries` (NOT the raw slot id).
     scene_entry_index: usize,
@@ -607,6 +631,20 @@ struct ResolvedEdit {
     /// New Shift-JIS-encoded bytes to splice in place of the existing
     /// Textout body.
     new_textout_bytes: Vec<u8>,
+}
+
+impl fmt::Debug for ResolvedEdit {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let new_textout_bytes = RedactedContentSummary::from_bytes(&self.new_textout_bytes);
+        formatter
+            .debug_struct("ResolvedEdit")
+            .field("scene_entry_index", &self.scene_entry_index)
+            .field("bridge_unit_id", &self.bridge_unit_id)
+            .field("surface_kind", &self.surface_kind)
+            .field("occurrence_index", &self.occurrence_index)
+            .field("new_textout_bytes", &new_textout_bytes)
+            .finish()
+    }
 }
 
 fn resolve_edit(

@@ -18,8 +18,9 @@
 //!   carrying `(kind, raw_bytes, raw_string, decoded_start, decoded_end)`)
 //!   plus any warnings.
 
-use std::fmt::Write;
+use std::fmt::{self, Write};
 
+use kaifuu_core::RedactedContentSummary;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -89,7 +90,7 @@ fn decoded_slice(
 /// The serde label (snake_case) is used verbatim as the
 /// `ProtectedSpan.parsed_name` for `control_markup` spans, or as the
 /// `variable_name` shape on `variable_placeholder` spans.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProtectedSpanKind {
     ColorCode { color_index: u8 },
@@ -102,6 +103,48 @@ pub enum ProtectedSpanKind {
     LineBreak,
     VariablePlaceholder { name: String },
     UnknownControl { byte: u8 },
+}
+
+impl fmt::Debug for ProtectedSpanKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ColorCode { color_index } => formatter
+                .debug_struct("ColorCode")
+                .field("color_index", color_index)
+                .finish(),
+            Self::Ruby { base, ruby } => formatter
+                .debug_struct("Ruby")
+                .field("base", &RedactedContentSummary::from_text(base))
+                .field("ruby", &RedactedContentSummary::from_text(ruby))
+                .finish(),
+            Self::NamePlaceholder { index } => formatter
+                .debug_struct("NamePlaceholder")
+                .field("index", &RedactedContentSummary::from_text(index))
+                .finish(),
+            Self::ChoiceToken { choice_index } => formatter
+                .debug_struct("ChoiceToken")
+                .field("choice_index", choice_index)
+                .finish(),
+            Self::TextSizeDirective { size_byte } => formatter
+                .debug_struct("TextSizeDirective")
+                .field("size_byte", size_byte)
+                .finish(),
+            Self::WaitDirective { frames_byte } => formatter
+                .debug_struct("WaitDirective")
+                .field("frames_byte", frames_byte)
+                .finish(),
+            Self::ClearTextBox => formatter.write_str("ClearTextBox"),
+            Self::LineBreak => formatter.write_str("LineBreak"),
+            Self::VariablePlaceholder { name } => formatter
+                .debug_struct("VariablePlaceholder")
+                .field("name", &RedactedContentSummary::from_text(name))
+                .finish(),
+            Self::UnknownControl { byte } => formatter
+                .debug_struct("UnknownControl")
+                .field("byte", &RedactedContentSummary::from_bytes(&[*byte]))
+                .finish(),
+        }
+    }
 }
 
 impl ProtectedSpanKind {
@@ -131,7 +174,7 @@ pub const PROTECTED_SPAN_UNKNOWN_CONTROL_CODE: &str =
 /// bytes including the control byte); `decoded_range` covers the
 /// equivalent characters within the decoded `String`. Patch-back uses
 /// `byte_range`; the bridge schema uses `decoded_range`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RealLiveProtectedSpan {
     pub kind: ProtectedSpanKind,
@@ -148,14 +191,44 @@ pub struct RealLiveProtectedSpan {
     pub decoded_range_end: u64,
 }
 
+impl fmt::Debug for RealLiveProtectedSpan {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let raw_bytes_hex = RedactedContentSummary::from_text(&self.raw_bytes_hex);
+        let raw_text = RedactedContentSummary::from_text(&self.raw_text);
+        formatter
+            .debug_struct("RealLiveProtectedSpan")
+            .field("kind", &self.kind)
+            .field("raw_bytes_hex", &raw_bytes_hex)
+            .field("raw_text", &raw_text)
+            .field("byte_range_start", &self.byte_range_start)
+            .field("byte_range_end", &self.byte_range_end)
+            .field("decoded_range_start", &self.decoded_range_start)
+            .field("decoded_range_end", &self.decoded_range_end)
+            .finish()
+    }
+}
+
 /// Warning emitted during protected-span detection.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProtectedSpanWarning {
     pub code: String,
     pub message: String,
     pub byte_offset: u64,
     pub byte_len: u64,
+}
+
+impl fmt::Debug for ProtectedSpanWarning {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = RedactedContentSummary::from_text(&self.message);
+        formatter
+            .debug_struct("ProtectedSpanWarning")
+            .field("code", &self.code)
+            .field("message", &message)
+            .field("byte_offset", &self.byte_offset)
+            .field("byte_len", &self.byte_len)
+            .finish()
+    }
 }
 
 /// Detection output.
@@ -240,8 +313,8 @@ pub fn detect_protected_spans(
                     warnings.push(ProtectedSpanWarning {
                         code: PROTECTED_SPAN_UNKNOWN_CONTROL_CODE.to_string(),
                         message: format!(
-                            "0x0d ruby-open at byte offset {byte_offset} did not match the \
-                         documented `<base> 0x0a <ruby> 0x09` shape; preserving as unknown control"
+                            "ruby-open at byte offset {byte_offset} did not match the documented \
+                         base-and-annotation shape; preserving as unknown control"
                         ),
                         byte_offset: byte_offset as u64,
                         byte_len: 1,
@@ -324,10 +397,11 @@ pub fn detect_protected_spans(
             )?),
             // Anything else `< 0x20`: unknown control byte. Preserve.
             other if other < 0x20 => {
+                let byte_summary = RedactedContentSummary::from_bytes(&[other]);
                 warnings.push(ProtectedSpanWarning {
                     code: PROTECTED_SPAN_UNKNOWN_CONTROL_CODE.to_string(),
                     message: format!(
-                        "unrecognized RealLive control byte 0x{other:02X} at byte offset \
+                        "unrecognized control byte {byte_summary} at byte offset \
                          {byte_offset}; preserving verbatim per no-silent-skip policy"
                     ),
                     byte_offset: byte_offset as u64,
