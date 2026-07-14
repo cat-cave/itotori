@@ -134,6 +134,15 @@ export default defineConfig({
       "fixtures/public/reallive-detector.manifest.json",
       "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/**",
       "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes.manifest.json",
+      // The lean-code ratchet whitelists are machine-generated lockfile-style
+      // artifacts OWNED by the CI guards `scripts/audit-no-node-ids.mjs` and
+      // `scripts/file-line-cap-guard.mjs`, which emit them as
+      // `JSON.stringify(value, null, 2)`. Letting the formatter collapse the
+      // arrays would rewrite the committed bytes, so every `--update` would
+      // clash with the formatter. Pin them so the guards stay the single source
+      // of truth (the shrink-only ratchet is byte-stable across regenerations).
+      "scripts/lint/node-id-whitelist.json",
+      "scripts/lint/file-line-cap-whitelist.json",
     ],
   },
   resolve: {
