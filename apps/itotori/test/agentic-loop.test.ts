@@ -356,19 +356,16 @@ function persistentlyFlaggingProviderFactory(args: {
 }
 
 /**
- * Returns empty structured-agent content at a selected point in the loop.
- * Empty content is deliberately used instead of an invalid JSON shape: it
- * exercises the agents' typed partial-result path, which bounded structured
- * retry intentionally does not retry as a schema problem.
+ * Emits a blank structured translation body on the PRIMARY draft's first
+ * attempt, then a valid body. This exercises the supervisor's corrective retry
+ * driving a partial primary translation to a usable candidate — the reference
+ * path that QA / context / repair now match uniformly. A persistently-blank
+ * body (no recovery) would instead ride the same retry to the hard-ceiling
+ * operational pause; see the driven-executor partial-outcome test.
  */
 function partialResultProviderFactory(args: {
   primaryTranslationPartial?: boolean;
-  initialQaPartial?: boolean;
-  repairTranslationPartial?: boolean;
-  reQaPartial?: boolean;
-  qaFinding?: QaFinding;
 }): AgenticLoopProviderFactory {
-  let qaCallCount = 0;
   let translationCallCount = 0;
   return ({ stage, agentLabel }) =>
     new FakeModelProvider({
@@ -382,10 +379,7 @@ function partialResultProviderFactory(args: {
         }
         if (request.taskKind === "draft_translation") {
           translationCallCount += 1;
-          if (
-            (translationCallCount === 1 && args.primaryTranslationPartial === true) ||
-            (translationCallCount > 1 && args.repairTranslationPartial === true)
-          ) {
+          if (translationCallCount === 1 && args.primaryTranslationPartial === true) {
             return "";
           }
           return makeTranslationContent({
@@ -396,18 +390,62 @@ function partialResultProviderFactory(args: {
           });
         }
         if (request.taskKind === "llm_qa") {
-          qaCallCount += 1;
-          const initialQaPass = qaCallCount <= 4;
-          if (
-            (initialQaPass && args.initialQaPartial === true) ||
-            (!initialQaPass && args.reQaPartial === true)
-          ) {
-            return "";
-          }
-          if (initialQaPass && qaCallCount === 1 && args.qaFinding !== undefined) {
-            return makeQaContent([args.qaFinding]);
-          }
           return makeQaContent([]);
+        }
+        return "";
+      },
+    });
+}
+
+/** Wrap a JSON payload in a markdown ```json fence — invalid JSON that the
+ * supervisor's deterministic repairJsonObject salvages back to a valid parse. */
+function markdownFenced(json: string): string {
+  return `\`\`\`json\n${json}\n\`\`\``;
+}
+
+/**
+ * Emits salvageable (markdown-fenced) JSON for EVERY structured stage — context
+ * packs, speaker label, primary + repair translation, and QA — plus one QA
+ * finding to force a repair. Each response is invalid JSON on its face; the
+ * supervisor salvages every one deterministically, so the loop is driven to a
+ * written outcome uniformly across phases with no pause and no escape-hatch flag.
+ */
+function salvageableJsonProviderFactory(args: {
+  qaFinding: QaFinding;
+}): AgenticLoopProviderFactory {
+  let qaCallCount = 0;
+  return ({ stage, agentLabel }) =>
+    new FakeModelProvider({
+      providerName: `salvageable-${stage}-${agentLabel}`,
+      generate: (request: ModelInvocationRequest) => {
+        if (request.taskKind === "experiment" && agentLabel === "speaker-label") {
+          return markdownFenced(makeSpeakerLabelContent(makeUnit()));
+        }
+        if (request.taskKind === "experiment") {
+          // scene-summary is free text (no JSON parse); the other three
+          // context agents parse a structured pack, so fence those.
+          return agentLabel === "scene-summary"
+            ? fakeSemanticContextContent(agentLabel)
+            : markdownFenced(fakeSemanticContextContent(agentLabel));
+        }
+        if (request.taskKind === "draft_translation") {
+          // Primary and repair drafts share the same body so the repair keeps
+          // the protected-span bytes byte-equal and clears the deterministic
+          // recheck; only its `kind` marks it as the selected repair candidate.
+          return markdownFenced(
+            makeTranslationContent({
+              unit: makeUnit(),
+              draftText: DRAFT_TEXT,
+              spanStart: 7,
+              spanEnd: 15,
+            }),
+          );
+        }
+        if (request.taskKind === "llm_qa") {
+          qaCallCount += 1;
+          // The first initial-QA judge emits the repairable finding; every
+          // other judge (including the whole re-QA pass) is clean-empty.
+          return markdownFenced(makeQaContent(qaCallCount === 1 ? [args.qaFinding] : []));
         }
         return "";
       },
@@ -596,78 +634,62 @@ describe("runAgenticLoopForUnit (ITOTORI-222)", () => {
     expect(repairStage?.outcome).toBe("repair_budget_exhausted");
   });
 
-  it("writes the primary candidate with qa_incomplete when initial QA returns no content", async () => {
+  it("salvages invalid JSON across QA, context, and repair — no pause, no incomplete flag", async () => {
+    // Every structured stage (context packs, speaker label, primary + repair
+    // translation, initial QA + re-QA) emits its content wrapped in a markdown
+    // ```json fence — invalid JSON that JSON.parse rejects. The supervisor's
+    // deterministic repairJsonObject salvages each one to a valid parse on the
+    // same physical response, so the unit is driven to a written outcome with
+    // NO operational pause and NO *_incomplete escape-hatch flag on any phase.
+    const finding: QaFinding = {
+      findingId: "019ed079-0000-7000-8000-000000000f04",
+      bridgeUnitId: BRIDGE_UNIT_ID,
+      severity: "critical",
+      category: "mistranslation",
+      evidenceRefs: [],
+      recommendation: "fixture: trigger a repair via a salvaged finding",
+      agentRationale: "fixture-salvage-finding",
+    };
+    const bundle = await runAgenticLoopForUnit(
+      makeInput(),
+      DEV_POLICY,
+      makePolicy({ maxRepairAttempts: 1 }),
+      salvageableJsonProviderFactory({ qaFinding: finding }),
+    );
+
+    expect(bundle.writtenOutcome.status).toBe("written");
+    // QA salvage produced a parseable finding → a repair fired and its salvaged
+    // clean draft was selected. Neither escape-hatch flag is present.
+    expect(selectedCandidateOf(bundle).kind).toBe("repair");
+    expect(bundle.writtenOutcome.findings).not.toHaveLength(0);
+    expect(bundle.writtenOutcome.qualityFlags).not.toContain("qa_incomplete");
+    expect(bundle.writtenOutcome.qualityFlags).not.toContain("repair_incomplete");
+    expect(bundle.stages.find((stage) => stage.stageName === "qa_findings")?.outcome).toBe(
+      "succeeded",
+    );
+    assertAgenticLoopBundle(JSON.parse(JSON.stringify(bundle)));
+  });
+
+  it("a valid EMPTY QA result proceeds — no false pause, no incomplete flag", async () => {
+    // QA legitimately runs and returns `{ findings: [] }`. This is SUCCESS, not
+    // a mechanical failure: the unit proceeds normally with the primary
+    // candidate, the qa_findings stage records `succeeded`, repair short-circuits
+    // on no findings, and no qa_incomplete flag is manufactured.
     const bundle = await runAgenticLoopForUnit(
       makeInput(),
       DEV_POLICY,
       makePolicy(),
-      partialResultProviderFactory({ initialQaPartial: true }),
+      happyPathProviderFactory(),
     );
 
     expect(bundle.writtenOutcome.status).toBe("written");
     expect(selectedCandidateOf(bundle)).toMatchObject({ body: DRAFT_TEXT, kind: "primary" });
-    expect(bundle.writtenOutcome.qualityFlags).toContain("qa_incomplete");
+    expect(bundle.writtenOutcome.qualityFlags).not.toContain("qa_incomplete");
     expect(bundle.stages.find((stage) => stage.stageName === "qa_findings")?.outcome).toBe(
-      "incomplete:partial_result",
+      "succeeded",
     );
     expect(bundle.stages.find((stage) => stage.stageName === "repair")?.outcome).toBe(
-      "skipped:qa_incomplete",
-    );
-    assertAgenticLoopBundle(JSON.parse(JSON.stringify(bundle)));
-  });
-
-  it("retains the primary candidate with repair_incomplete when repair returns no content", async () => {
-    const finding: QaFinding = {
-      findingId: "019ed079-0000-7000-8000-000000000f05",
-      bridgeUnitId: BRIDGE_UNIT_ID,
-      severity: "critical",
-      category: "mistranslation",
-      evidenceRefs: [],
-      recommendation: "fixture: trigger a repair",
-      agentRationale: "fixture-repair-partial",
-    };
-    const bundle = await runAgenticLoopForUnit(
-      makeInput(),
-      DEV_POLICY,
-      makePolicy({ maxRepairAttempts: 1 }),
-      partialResultProviderFactory({ qaFinding: finding, repairTranslationPartial: true }),
-    );
-
-    expect(bundle.writtenOutcome.status).toBe("written");
-    expect(selectedCandidateOf(bundle)).toMatchObject({ body: DRAFT_TEXT, kind: "primary" });
-    expect(bundle.writtenOutcome.candidates).toHaveLength(1);
-    expect(bundle.writtenOutcome.findings).toHaveLength(1);
-    expect(bundle.writtenOutcome.qualityFlags).toContain("repair_incomplete");
-    expect(bundle.stages.find((stage) => stage.stageName === "repair")?.outcome).toBe(
-      "incomplete:partial_result_at_attempt_1",
-    );
-    expect(bundle.writtenOutcome.provenance).toMatchObject({ repairAttempts: 1 });
-    assertAgenticLoopBundle(JSON.parse(JSON.stringify(bundle)));
-  });
-
-  it("retains the known primary candidate with qa_incomplete when post-repair QA returns no content", async () => {
-    const finding: QaFinding = {
-      findingId: "019ed079-0000-7000-8000-000000000f06",
-      bridgeUnitId: BRIDGE_UNIT_ID,
-      severity: "critical",
-      category: "mistranslation",
-      evidenceRefs: [],
-      recommendation: "fixture: trigger re-QA",
-      agentRationale: "fixture-reqa-partial",
-    };
-    const bundle = await runAgenticLoopForUnit(
-      makeInput(),
-      DEV_POLICY,
-      makePolicy({ maxRepairAttempts: 1 }),
-      partialResultProviderFactory({ qaFinding: finding, reQaPartial: true }),
-    );
-
-    expect(bundle.writtenOutcome.status).toBe("written");
-    expect(selectedCandidateOf(bundle)).toMatchObject({ body: DRAFT_TEXT, kind: "primary" });
-    expect(bundle.writtenOutcome.candidates).toHaveLength(2);
-    expect(bundle.writtenOutcome.qualityFlags).toContain("qa_incomplete");
-    expect(bundle.stages.find((stage) => stage.stageName === "repair")?.outcome).toBe(
-      "incomplete:qa_partial_result_at_attempt_1",
+      "skipped:no_findings",
     );
     assertAgenticLoopBundle(JSON.parse(JSON.stringify(bundle)));
   });

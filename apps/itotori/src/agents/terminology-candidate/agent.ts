@@ -11,7 +11,6 @@ import type {
 } from "../../providers/types.js";
 import { buildPrompt, PROMPT_TEMPLATE_VERSION_V1, promptHash } from "./prompt-template.js";
 import {
-  ExistingGlossaryConflictError,
   TERMINOLOGY_CANDIDATE_KINDS,
   TerminologyCandidateEmptyInputError,
   TerminologyCandidateInvalidKindError,
@@ -21,6 +20,7 @@ import {
   TerminologyCandidateUncitedError,
   TerminologyCandidateUnknownCitationError,
   type CandidateKind,
+  type DeduplicatedTerminologyCandidate,
   type ExistingGlossaryEntry,
   type ProviderEmittedPack,
   type TerminologyCandidate,
@@ -96,25 +96,25 @@ export async function generateTerminologyCandidates(
         : { maxOutputTokens: input.modelProfile.maxOutputTokens },
   };
 
-  const supervised: { invocation: ModelInvocationResult; parsed: ProviderEmittedPack } =
-    await executeStructuredInvocation(options.provider, {
-      request,
-      parse: parseProviderPack,
-      isSchemaValidationError: (error) =>
-        error instanceof TerminologyCandidateParseError ||
-        error instanceof TerminologyCandidateInvalidKindError,
-      validateParsed: (pack) =>
-        validateProviderPack(
-          pack,
-          conflictIndex,
-          validUnitIds,
-          sourceHashByUnitId,
-          sourceTextByUnitId,
-        ),
-      successDecision: "advance",
-    });
-  const { invocation, parsed: pack } = supervised;
+  const supervised: {
+    invocation: ModelInvocationResult;
+    parsed: ProviderEmittedPack;
+    priorAttempts: ModelInvocationResult[];
+  } = await executeStructuredInvocation(options.provider, {
+    request,
+    parse: parseProviderPack,
+    isSchemaValidationError: (error) =>
+      error instanceof TerminologyCandidateParseError ||
+      error instanceof TerminologyCandidateInvalidKindError,
+    validateParsed: (pack) =>
+      validateProviderPack(pack, validUnitIds, sourceHashByUnitId, sourceTextByUnitId),
+    successDecision: "advance",
+  });
+  const { invocation, parsed: pack, priorAttempts } = supervised;
   const providerRun: ProviderRunRecord = invocation.providerRun;
+  // Retain the retried (discarded) attempts' provider runs so their real
+  // token/cost is summed into stage accounting rather than silently lost.
+  const retryProviderRuns = priorAttempts.map((attempt) => attempt.providerRun);
 
   const now = (input.now ?? (() => new Date()))();
   const generatedAt = now.toISOString();
@@ -130,17 +130,28 @@ export async function generateTerminologyCandidates(
   );
 
   const candidates: TerminologyCandidate[] = [];
+  const deduped: DeduplicatedTerminologyCandidate[] = [];
   for (const emitted of pack.candidates) {
-    // Re-read the glossary immediately before projecting the candidate. This
-    // closes the prompt-to-persist TOCTOU window without reintroducing the
-    // retired terminology-candidate persistence silo.
+    // A surface form already covered by the authoritative glossary is a
+    // legitimate DEDUP, not a failure: FILTER it out (recording it) and keep
+    // every other, non-conflicting candidate in this pack. The authoritative
+    // glossary is checked two ways — the in-memory conflict index built from
+    // the supplied glossary, and (to close the prompt-to-persist TOCTOU window)
+    // a live repository re-read immediately before projection. Neither is a
+    // mechanical failure, so neither aborts the pack or retries the model.
+    const indexedConflict = conflictIndex.get(emitted.surfaceForm);
+    if (indexedConflict !== undefined) {
+      deduped.push({ surfaceForm: emitted.surfaceForm, terminologyTermId: indexedConflict });
+      continue;
+    }
     if (options.lookupExistingGlossaryTerm !== undefined) {
       const repositoryConflict = await options.lookupExistingGlossaryTerm({
         projectId: input.projectId,
         surfaceForm: emitted.surfaceForm,
       });
       if (repositoryConflict !== null) {
-        throw new ExistingGlossaryConflictError(emitted.surfaceForm, repositoryConflict);
+        deduped.push({ surfaceForm: emitted.surfaceForm, terminologyTermId: repositoryConflict });
+        continue;
       }
     }
     const citedUnitIds = [...emitted.citedUnitIds];
@@ -168,7 +179,7 @@ export async function generateTerminologyCandidates(
     candidates.push(candidate);
   }
 
-  return { candidates, providerRun };
+  return { candidates, deduped, providerRun, retryProviderRuns };
 }
 
 export async function generateTerminologyCandidatesBatch(
@@ -201,21 +212,21 @@ export function buildConflictIndex(
 
 function validateProviderPack(
   pack: ProviderEmittedPack,
-  conflictIndex: ReadonlyMap<string, string>,
   validUnitIds: ReadonlySet<string>,
   sourceHashByUnitId: ReadonlyMap<string, string>,
   sourceTextByUnitId: ReadonlyMap<string, string>,
 ): void {
+  // NOTE: a glossary conflict is NOT validated here. Validation runs inside the
+  // supervisor's retry loop, so throwing on a conflict would (a) wastefully
+  // retry a legitimate dedup and (b) let a genuinely mechanical failure be
+  // masked as a conflict. Conflicts are filtered post-validation (see above);
+  // only genuinely malformed / uncitable / mis-cited packs fail here.
   for (const emitted of pack.candidates) {
     if (!isValidCandidateKind(emitted.kind)) {
       throw new TerminologyCandidateInvalidKindError(emitted.kind);
     }
     if (emitted.surfaceForm.trim().length === 0 || emitted.citedUnitIds.length === 0) {
       throw new TerminologyCandidateUncitedError(emitted.surfaceForm);
-    }
-    const conflict = conflictIndex.get(emitted.surfaceForm);
-    if (conflict !== undefined) {
-      throw new ExistingGlossaryConflictError(emitted.surfaceForm, conflict);
     }
 
     let surfaceFormAppearsInCitedUnit = false;

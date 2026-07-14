@@ -26,15 +26,13 @@
 // orchestrator entry. There is no silent fallback — an unfilled pair
 // is a typed wire-schema failure, not a missing field.
 //
-// The schema version is locked to a literal so any change forces a
-// downstream consumer migration.
-
-// v3 replaces the optional/deferred final-draft XOR with the canonical
-// `WrittenUnitOutcome`. Every in-scope unit has a selected, non-blank target
-// candidate; QA persists as annotations and cannot erase the text.
-//
-// No-legacy-compat: v1 and v2 bundles no longer load. Tests + drivers must
-// produce the v3 written-outcome shape in the same change.
+// There is exactly ONE canonical bundle shape — no multi-version acceptance, no
+// legacy/tolerant reader, no migration dispatch. The identifier below is a
+// single self-describing wire tag (the bundle is persisted and re-read on
+// resume, so a grossly-wrong blob fails fast on an exact-match mismatch).
+// Changing the shape changes this tag in the same commit; old bundles are not
+// read because there are none worth reading. The removed-machinery fields
+// (e.g. the former stage-record `droppedEnrichments`) simply do not exist here.
 export const AGENTIC_LOOP_BUNDLE_SCHEMA_VERSION = "itotori.agentic-loop-bundle.v3" as const;
 
 /**
@@ -104,27 +102,15 @@ export type AgenticLoopInvocation = {
 };
 
 /**
- * A semantic-context enrichment that was DROPPED because its live agent
- * threw / emitted a malformed or uncitable pack. The context stage is
- * BEST-EFFORT: a single semantic agent's bad output degrades the unit to the
- * deterministic structure-informed context (+ whichever agents did succeed)
- * instead of failing the whole unit. Each drop names which agent was dropped
- * and why, so the enrichment loss is TELEMETRY, never silent.
- */
-export type DroppedContextEnrichment = {
-  agentLabel: string;
-  reason: string;
-};
-
-/**
  * One stage of the agentic loop. `outcome` is a free-text status
  * tag — e.g. `succeeded`, `skipped:no-repairable-cause`,
  * `diagnosed:deterministic`. It is telemetry only: it can never gate or
  * remove the written outcome.
  *
- * `droppedEnrichments` is present ONLY on the context stage and ONLY when at
- * least one best-effort semantic agent was dropped; an all-succeed context
- * stage omits the field entirely (byte-identical to the pre-robustness shape).
+ * There is no dropped/degraded-enrichment field: every semantic enrichment
+ * agent either commits a valid result (possibly a valid empty pack) or
+ * propagates its mechanical failure as a resumable operational pause — a unit
+ * never advances with enrichment silently skipped.
  */
 export type AgenticLoopStageRecord = {
   stageName: AgenticLoopStageName;
@@ -134,7 +120,6 @@ export type AgenticLoopStageRecord = {
   tokensOut: number;
   costUsd: string;
   latencyMs: number;
-  droppedEnrichments?: DroppedContextEnrichment[];
 };
 
 /**
@@ -312,7 +297,6 @@ function assertStageRecord(value: unknown, label: string): void {
     "tokensOut",
     "costUsd",
     "latencyMs",
-    "droppedEnrichments",
   ]);
   for (const key of Object.keys(record)) {
     if (!allowed.has(key)) {
@@ -341,46 +325,6 @@ function assertStageRecord(value: unknown, label: string): void {
   assertNonNegativeInteger(record.tokensOut, `${label}.tokensOut`);
   assertDecimalString(record.costUsd, `${label}.costUsd`);
   assertNonNegativeInteger(record.latencyMs, `${label}.latencyMs`);
-  if (record.droppedEnrichments !== undefined) {
-    if (!Array.isArray(record.droppedEnrichments)) {
-      throw new AgenticLoopBundleValidationError(
-        `${label}.droppedEnrichments`,
-        "type",
-        "expected array",
-      );
-    }
-    if (record.droppedEnrichments.length === 0) {
-      // The field is present ONLY to carry drops; an empty array would be an
-      // ambiguous shape (indistinguishable from "no drops" but not omitted).
-      throw new AgenticLoopBundleValidationError(
-        `${label}.droppedEnrichments`,
-        "nonEmpty",
-        "must be omitted when empty",
-      );
-    }
-    for (const [index, drop] of record.droppedEnrichments.entries()) {
-      assertDroppedEnrichment(drop, `${label}.droppedEnrichments[${index}]`);
-    }
-  }
-}
-
-function assertDroppedEnrichment(value: unknown, label: string): void {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new AgenticLoopBundleValidationError(label, "type", "expected object");
-  }
-  const record = value as Record<string, unknown>;
-  const allowed = new Set(["agentLabel", "reason"]);
-  for (const key of Object.keys(record)) {
-    if (!allowed.has(key)) {
-      throw new AgenticLoopBundleValidationError(
-        `${label}.${key}`,
-        "additionalProperties",
-        `unexpected property ${key}`,
-      );
-    }
-  }
-  assertNonEmptyString(record.agentLabel, `${label}.agentLabel`);
-  assertNonEmptyString(record.reason, `${label}.reason`);
 }
 
 function assertInvocation(value: unknown, label: string): void {

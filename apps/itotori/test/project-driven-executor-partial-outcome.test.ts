@@ -1,6 +1,9 @@
-// F1 — a typed partial QA response after primary translation is informational:
-// the driven executor must persist and export the canonical written outcome,
-// rather than classify the unit as an operational failure and omit it.
+// A QA call whose structured content is persistently unsalvageable is a
+// MECHANICAL failure, not an informational one. It must ride the supervisor's
+// retry-to-valid + hard-ceiling exactly like a translation call and become a
+// RESUMABLE operational pause — the unit does NOT advance with QA silently
+// skipped, and nothing is exported. This is the same uniform invocation
+// contract now shared by every phase (see the escape-hatch prune).
 
 import { describe, expect, it } from "vitest";
 import type { AuthorizationActor } from "@itotori/db";
@@ -21,7 +24,11 @@ import {
   type DrivenPatchExportRecord,
   type DrivenUnitJournalRecord,
 } from "../src/orchestrator/project-driven-executor.js";
-import type { InvocationCostAdmission } from "../src/orchestrator/invocation-supervisor.js";
+import {
+  INVOCATION_HARD_RETRY_CEILING,
+  type InvocationCostAdmission,
+} from "../src/orchestrator/invocation-supervisor.js";
+import type { OperationalBlocker } from "../src/orchestrator/invocation-supervisor.js";
 import { DEV_PAIR } from "../src/providers/dev-pair.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import type { ModelInvocationRequest } from "../src/providers/types.js";
@@ -118,8 +125,10 @@ function partialQaProviderFactory(): AgenticLoopProviderFactory {
           return primaryTranslationContent();
         }
         if (request.taskKind === "llm_qa") {
-          // `QaAgent` turns this into QaPartialResultError. The loop must
-          // retain the primary candidate because it already exists.
+          // Persistently blank QA content. `QaAgent` classifies this as an
+          // empty/partial mechanical failure that the supervisor can never
+          // salvage or retry to a valid finding set, so the QA stage rides to
+          // the hard-ceiling operational pause.
           return "";
         }
         return "";
@@ -127,11 +136,12 @@ function partialQaProviderFactory(): AgenticLoopProviderFactory {
     });
 }
 
-describe("runProjectDrivenExecutor (partial QA outcome retention)", () => {
-  it("persists and exports a primary candidate when QA coverage is incomplete", async () => {
+describe("runProjectDrivenExecutor (unsalvageable QA pauses resumably)", () => {
+  it("rides QA to the hard-ceiling operational pause instead of advancing the unit", async () => {
     const journalUnits: DrivenUnitJournalRecord[] = [];
     const failedUnitAttempts: DrivenFailedUnitJournalRecord[] = [];
     const patchExports: DrivenPatchExportRecord[] = [];
+    const pauses: Array<{ runId: string; blocker: OperationalBlocker }> = [];
     const bridge = makeBridge();
 
     const result = await runProjectDrivenExecutor({
@@ -149,6 +159,9 @@ describe("runProjectDrivenExecutor (partial QA outcome retention)", () => {
       engineProfile: "rpg-maker-mv-mz",
       sinks: {
         journal: {
+          pauseRun: async (runId, blocker) => {
+            pauses.push({ runId, blocker });
+          },
           persistUnitJournal: async (record) => {
             journalUnits.push(record);
           },
@@ -164,56 +177,36 @@ describe("runProjectDrivenExecutor (partial QA outcome retention)", () => {
       },
     });
 
-    expect(result.failures).toEqual([]);
-    expect(result.writtenOutcomesPersisted).toBe(1);
-    expect(result.journalUnitsPersisted).toBe(1);
-    expect(result.patchExportCount).toBe(1);
-    expect(result.patchReport.coverageComplete).toBe(true);
-    expect(journalUnits).toHaveLength(1);
-    expect(journalUnits[0]!.writtenOutcome).toMatchObject({
-      bridgeUnitId: BRIDGE_UNIT_ID,
-      selectedBody: SELECTED_TARGET,
-      outcome: { status: "written", qualityFlags: expect.arrayContaining(["qa_incomplete"]) },
+    // The run is PAUSED, not advanced. Nothing was written or exported.
+    expect(result.runState).toBe("paused");
+    expect(result.pausedBlocker).not.toBeNull();
+    expect(result.writtenOutcomesPersisted).toBe(0);
+    expect(result.journalUnitsPersisted).toBe(0);
+    expect(result.writtenOutcomeCount).toBe(0);
+    expect(result.patchExportCount).toBe(0);
+    expect(result.patchReport.coverageComplete).toBe(false);
+    expect(journalUnits).toEqual([]);
+    expect(patchExports).toEqual([]);
+
+    // The pause is a RESUMABLE operational blocker (the hard-ceiling class,
+    // same as translation) — the operator fixes the model/tool/schema and
+    // resumes. It is NOT a silent drop.
+    expect(pauses.length).toBeGreaterThan(0);
+    expect(result.pausedBlocker).toMatchObject({
+      kind: "itotori_bug",
+      operatorAction: "fix the model/tool/schema configuration, then resume",
     });
-    expect(failedUnitAttempts).toEqual([]);
-    expect(result.attemptsPersisted).toBe(journalUnits[0]!.attempts.length);
-    expect(journalUnits[0]!.attempts.length).toBeGreaterThan(0);
-    const incompleteQaAttempts = journalUnits[0]!.attempts.filter(
+
+    // The failing QA output rode the supervisor's retry to the hard ceiling
+    // and every attempt was captured (never fabricated) before the pause.
+    expect(failedUnitAttempts).toHaveLength(1);
+    const qaAttempts = failedUnitAttempts[0]!.attempts.filter(
       (attempt) => attempt.stage === "qa_findings",
     );
-    expect(incompleteQaAttempts).toHaveLength(8);
-    expect(incompleteQaAttempts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          validationResult: "semantic_invalid",
-          retryDecision: "retry",
-          failureClass: "empty",
-        }),
-        expect.objectContaining({
-          validationResult: "semantic_invalid",
-          retryDecision: "advance",
-          failureClass: "InvocationContentExhaustedError",
-        }),
-      ]),
+    expect(qaAttempts).toHaveLength(INVOCATION_HARD_RETRY_CEILING);
+    expect(qaAttempts.every((attempt) => attempt.failureClass === "empty")).toBe(true);
+    expect(qaAttempts.every((attempt) => attempt.validationResult === "semantic_invalid")).toBe(
+      true,
     );
-    expect(
-      incompleteQaAttempts.every((attempt) => attempt.validationResult === "semantic_invalid"),
-    ).toBe(true);
-    expect(
-      incompleteQaAttempts.filter((attempt) => attempt.retryDecision === "retry"),
-    ).toHaveLength(4);
-    expect(
-      incompleteQaAttempts.filter((attempt) => attempt.retryDecision === "advance"),
-    ).toHaveLength(4);
-    expect(patchExports).toHaveLength(1);
-    const exported = patchExports[0]!.translatedBridge as {
-      units: Array<{ bridgeUnitId: string; target: { text: string } }>;
-    };
-    expect(exported.units).toEqual([
-      expect.objectContaining({
-        bridgeUnitId: BRIDGE_UNIT_ID,
-        target: expect.objectContaining({ text: SELECTED_TARGET }),
-      }),
-    ]);
   });
 });

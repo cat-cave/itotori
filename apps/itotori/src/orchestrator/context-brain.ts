@@ -83,38 +83,6 @@ export type ContextArtifactSemanticResult =
   | { kind: "no_content"; agentLabel: string; reason: string }
   | { kind: "failure"; agentLabel: string; code: EnrichmentFailureCode; reason: string };
 
-export type TypedEnrichmentFailure = {
-  agentLabel: string;
-  code: EnrichmentFailureCode;
-  reason: string;
-  contextArtifactId?: string;
-};
-
-/**
- * Raised when the fallback failure record itself could not be durably stored.
- * Callers must surface this rather than pretending an unpersisted artifact id
- * exists; otherwise the next unit would have no durable explanation for the
- * dropped enrichment.
- */
-export class EnrichmentFailurePersistenceError extends Error {
-  readonly attemptedFailure: Omit<TypedEnrichmentFailure, "contextArtifactId">;
-  readonly persistenceCause: unknown;
-
-  constructor(args: {
-    attemptedFailure: Omit<TypedEnrichmentFailure, "contextArtifactId">;
-    persistenceCause: unknown;
-  }) {
-    const persistence = classifyEnrichmentFailure(args.persistenceCause);
-    super(
-      `context-brain failed to persist enrichment failure for ${args.attemptedFailure.agentLabel}: ` +
-        `${args.attemptedFailure.reason} | persist: ${persistence.reason}`,
-    );
-    this.name = "EnrichmentFailurePersistenceError";
-    this.attemptedFailure = args.attemptedFailure;
-    this.persistenceCause = args.persistenceCause;
-  }
-}
-
 /** Stable, deterministic artifact id for a logical enrichment key. */
 export function stableContextArtifactId(parts: ReadonlyArray<string>): string {
   const material = parts
@@ -152,55 +120,6 @@ export function terminologyCandidateArtifactId(projectId: string, surfaceForm: s
 
 export function speakerLabelArtifactId(projectId: string, bridgeUnitId: string): string {
   return stableContextArtifactId(["speaker_label", projectId, bridgeUnitId]);
-}
-
-export function enrichmentFailureArtifactId(
-  projectId: string,
-  agentLabel: string,
-  unitId: string,
-): string {
-  return stableContextArtifactId(["enrichment_failure", projectId, agentLabel, unitId]);
-}
-
-export function classifyEnrichmentFailure(error: unknown): {
-  code: EnrichmentFailureCode;
-  reason: string;
-} {
-  if (!(error instanceof Error)) {
-    return { code: "unknown", reason: `NonError: ${String(error)}` };
-  }
-  const name = error.name.length > 0 ? error.name : "Error";
-  const reason = error.message.length > 0 ? `${name}: ${error.message}` : name;
-  if (name.includes("Parse") || name.includes("InvalidJson") || /malformed/i.test(reason)) {
-    return { code: "parse_failure", reason };
-  }
-  if (
-    name.includes("Validation") ||
-    name.includes("UnknownCitation") ||
-    name.includes("Schema") ||
-    name.includes("Empty")
-  ) {
-    return { code: "validation_failure", reason };
-  }
-  if (
-    name.includes("Exhausted") ||
-    name.includes("RetryCeiling") ||
-    name.includes("PartialResult")
-  ) {
-    return { code: "content_exhausted", reason };
-  }
-  if (
-    name.includes("Provider") ||
-    name.includes("Network") ||
-    name.includes("Timeout") ||
-    name.includes("RateLimit")
-  ) {
-    return { code: "provider_failure", reason };
-  }
-  if (name.includes("ContextArtifact") || name.includes("Repository")) {
-    return { code: "persistence_failure", reason };
-  }
-  return { code: "unknown", reason };
 }
 
 export function recordToResolvedArtifact(record: ContextArtifactRecord): ResolvedContextArtifact {
@@ -323,75 +242,6 @@ export async function upsertContextBrainArtifact(args: {
   return recordToResolvedArtifact(record);
 }
 
-export async function persistTypedEnrichmentFailure(args: {
-  repository: ItotoriContextArtifactRepositoryPort | undefined;
-  actor: AuthorizationActor;
-  projectId: string;
-  localeBranchId: string;
-  sourceRevisionId: string;
-  bridgeUnitId: string;
-  agentLabel: string;
-  error: unknown;
-}): Promise<TypedEnrichmentFailure> {
-  const classified = classifyEnrichmentFailure(args.error);
-  const contextArtifactId = enrichmentFailureArtifactId(
-    args.projectId,
-    args.agentLabel,
-    args.bridgeUnitId,
-  );
-  try {
-    await upsertContextBrainArtifact({
-      repository: args.repository,
-      actor: args.actor,
-      input: {
-        contextArtifactId,
-        projectId: args.projectId,
-        localeBranchId: args.localeBranchId,
-        sourceRevisionId: args.sourceRevisionId,
-        category: categoryForAgentLabel(args.agentLabel),
-        status: contextArtifactStatusValues.rejected,
-        title: `Enrichment failure: ${args.agentLabel}`,
-        body: classified.reason,
-        data: {
-          enrichmentFailure: {
-            agentLabel: args.agentLabel,
-            code: classified.code,
-            reason: classified.reason,
-          },
-        },
-        producedByAgent: args.agentLabel,
-        producerVersion: CONTEXT_BRAIN_PRODUCER_VERSION,
-        provenance: {
-          kind: "enrichment_failure",
-          agentLabel: args.agentLabel,
-          code: classified.code,
-        },
-        sourceUnits: [
-          {
-            bridgeUnitId: args.bridgeUnitId,
-            citation: `enrichment-failure:${args.agentLabel}`,
-          },
-        ],
-      },
-    });
-    return {
-      agentLabel: args.agentLabel,
-      code: classified.code,
-      reason: classified.reason,
-      contextArtifactId,
-    };
-  } catch (persistError) {
-    throw new EnrichmentFailurePersistenceError({
-      attemptedFailure: {
-        agentLabel: args.agentLabel,
-        code: classified.code,
-        reason: classified.reason,
-      },
-      persistenceCause: persistError,
-    });
-  }
-}
-
 function isNoContentSemanticResult(
   value: unknown,
 ): value is Extract<ContextArtifactSemanticResult, { kind: "no_content" }> {
@@ -404,23 +254,6 @@ function isNoContentSemanticResult(
     typeof candidate.agentLabel === "string" &&
     typeof candidate.reason === "string"
   );
-}
-
-function categoryForAgentLabel(agentLabel: string): ContextArtifactCategory {
-  switch (agentLabel) {
-    case "scene-summary":
-      return contextArtifactCategoryValues.sceneSummary;
-    case "character-relationship":
-      return contextArtifactCategoryValues.characterNote;
-    case "route-choice-map":
-      return contextArtifactCategoryValues.routeMap;
-    case "terminology-candidate":
-      return contextArtifactCategoryValues.terminologyCandidate;
-    case "speaker-label":
-      return contextArtifactCategoryValues.speakerLabel;
-    default:
-      return contextArtifactCategoryValues.sceneSummary;
-  }
 }
 
 export async function retrieveActiveContextArtifacts(args: {

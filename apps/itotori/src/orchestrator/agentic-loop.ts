@@ -37,7 +37,6 @@ import {
   type AgenticLoopInvocation,
   type AgenticLoopStageName,
   type AgenticLoopStageRecord,
-  type DroppedContextEnrichment,
   type LocalizationUnitV02,
   type QaFinding,
   type SpeakerLabel,
@@ -75,7 +74,6 @@ import {
 } from "../agents/structure-informed-context/index.js";
 import {
   TRANSLATION_PROMPT_TEMPLATE_VERSION_V1,
-  TranslationPartialResultError,
   type PriorPassFeedback,
   type TranslationBridgeUnit,
   type TranslationContextArtifact,
@@ -92,7 +90,6 @@ import {
   characterRelationshipArtifactId,
   CONTEXT_BRAIN_PRODUCER_VERSION,
   findReusableArtifact,
-  persistTypedEnrichmentFailure,
   retrieveActiveContextArtifacts,
   routeMapArtifactId,
   sceneSummaryArtifactId,
@@ -107,7 +104,6 @@ import {
 import { QaAgent } from "../agents/qa/agent.js";
 import {
   QA_PROMPT_TEMPLATE_VERSION_V1,
-  QaPartialResultError,
   type QaBridgeUnit,
   type QaGlossaryEntry,
   type QaInvocationInput,
@@ -131,11 +127,6 @@ import type { FindingTriageResult } from "../triage/router.js";
 import type { ModelProvider, ProviderFamily, ProviderRunRecord } from "../providers/types.js";
 import { addDecimalUsd, assertBilledCostDecimal } from "../providers/cost.js";
 import { assertReportedTokenUsage } from "../providers/token-accounting.js";
-import {
-  InvocationContentExhaustedError,
-  InvocationRetryCeilingError,
-  isInvocationOperationalPause,
-} from "./invocation-supervisor.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -684,12 +675,6 @@ type StageAccumulator = {
    */
   costUsd: string;
   latencyMs: number;
-  /**
-   * Best-effort semantic-enrichment agents that were DROPPED on this stage
-   * (context stage only). Empty for every other stage and for an all-succeed
-   * context stage; surfaced into the bundle record only when non-empty.
-   */
-  droppedEnrichments: DroppedContextEnrichment[];
 };
 
 type RawProviderTelemetry = {
@@ -755,14 +740,11 @@ export async function runAgenticLoopForUnit(
   for (const invocation of contextResult.telemetry) {
     pushInvocation(contextStage, invocation);
   }
-  // Typed enrichment failures (never silent): each dropped agent has a
-  // persisted failure record when the store is wired; stage telemetry names
-  // agent + reason.
-  contextStage.droppedEnrichments = contextResult.droppedEnrichments;
-  contextStage.outcome =
-    contextResult.droppedEnrichments.length > 0
-      ? `succeeded:enrichment-degraded:${contextResult.droppedEnrichments.length}-dropped`
-      : "succeeded";
+  // Every enrichment agent either committed a valid result (possibly a valid
+  // empty pack) or propagated its mechanical failure as an operational pause —
+  // there is no swallowed "degraded" state, so the context stage simply
+  // succeeds once control reaches here.
+  contextStage.outcome = "succeeded";
   stages.push(contextStage);
 
   // ----------------------- pre-translation stage ---------------------
@@ -892,7 +874,6 @@ export async function runAgenticLoopForUnit(
   // Deterministic-check P0 short-circuits before QA fires.            //
   // ------------------------------------------------------------------ //
   let qaFindings: QaFinding[] = [];
-  let qaIncomplete = false;
   if (deterministicResult.shortCircuit) {
     for (const violation of deterministicResult.violations) {
       qualityFlags.add(`deterministic_${violation.kind}`);
@@ -995,31 +976,18 @@ export async function runAgenticLoopForUnit(
         speaker: resolvedAgentContext.speaker,
       });
     } catch (error) {
-      rethrowOperationalInvocation(error);
-      // A primary candidate is already non-blank and canonical at this
-      // point. A provider's empty/truncated QA response is an informational
-      // loss of review coverage, not grounds to discard that candidate.
-      markJournalAttemptFailure(
-        input,
-        "qa_findings",
-        entry.agentLabel,
-        error,
-        isQaPartialResultError(error) ? "advance" : "pause",
-      );
-      if (!isQaPartialResultError(error)) {
-        throw error;
-      }
-      qaIncomplete = true;
-      continue;
+      // A QA call that cannot produce a valid structured result rides the
+      // supervisor's retry-to-valid + hard-ceiling pause exactly like the
+      // primary translation call above. There is no advance-with-flag escape
+      // hatch: a mechanically-failed QA stage pauses the run for the operator.
+      markJournalAttemptFailure(input, "qa_findings", entry.agentLabel, error, "pause");
+      throw error;
     }
     qaInvocationResults.push({ agentLabel: entry.agentLabel, pair: entry.pair, result });
     pushInvocation(qaStage, providerTelemetryFromQa(result, entry.pair, entry.agentLabel));
     qaFindings = qaFindings.concat(result.findings);
   }
-  if (qaIncomplete) {
-    qualityFlags.add("qa_incomplete");
-  }
-  qaStage.outcome = qaIncomplete ? "incomplete:partial_result" : "succeeded";
+  qaStage.outcome = "succeeded";
   stages.push(qaStage);
 
   // ------------------------------ routing ----------------------------
@@ -1054,7 +1022,7 @@ export async function runAgenticLoopForUnit(
 
   if (qaFindings.length === 0 && deterministicResult.violations.length === 0) {
     // Nothing to repair — short, clean path.
-    repairStage.outcome = qaIncomplete ? "skipped:qa_incomplete" : "skipped:no_findings";
+    repairStage.outcome = "skipped:no_findings";
   } else if (repairableCauseCount === 0) {
     repairStage.outcome = "skipped:no_repairable_cause";
     qualityFlags.add("qa_unresolved");
@@ -1070,7 +1038,6 @@ export async function runAgenticLoopForUnit(
     // failed repair never erases the already-written primary candidate.
     let attempt = 0;
     let lastReQaRejected = false;
-    let repairFlowIncomplete = false;
     while (attempt < policy.maxRepairAttempts) {
       attempt += 1;
       const repairProvider = providerFactory({
@@ -1097,24 +1064,12 @@ export async function runAgenticLoopForUnit(
           priorPassFeedback: input.priorPassFeedback,
         });
       } catch (error) {
-        rethrowOperationalInvocation(error);
-        // The selected primary (or an earlier selected repair) remains valid.
-        // Do not manufacture a replacement or let a partial repair erase it.
-        markJournalAttemptFailure(
-          input,
-          "repair",
-          "repair-primary",
-          error,
-          isTranslationPartialResultError(error) ? "advance" : "pause",
-        );
-        if (!isTranslationPartialResultError(error)) {
-          throw error;
-        }
-        repairAttempts = attempt;
-        repairFlowIncomplete = true;
-        qualityFlags.add("repair_incomplete");
-        repairStage.outcome = `incomplete:partial_result_at_attempt_${attempt}`;
-        break;
+        // A repair translation that cannot produce a valid structured result
+        // rides the supervisor's retry-to-valid + hard-ceiling pause exactly
+        // like the primary translation call. A mechanically-failed repair
+        // pauses the run for the operator; it is never masked as an advance.
+        markJournalAttemptFailure(input, "repair", "repair-primary", error, "pause");
+        throw error;
       }
       pushInvocation(
         repairStage,
@@ -1178,16 +1133,6 @@ export async function runAgenticLoopForUnit(
           writtenFindingFromQa(finding, outcomeId, repairedCandidate.id, outcomeFindings.length),
         );
       }
-      if (reQa.incomplete) {
-        // A repaired candidate has not received a complete QA pass, so it
-        // cannot displace the known selected candidate. The latter remains a
-        // written outcome with an explicit review-coverage annotation.
-        repairAttempts = attempt;
-        repairFlowIncomplete = true;
-        qualityFlags.add("qa_incomplete");
-        repairStage.outcome = `incomplete:qa_partial_result_at_attempt_${attempt}`;
-        break;
-      }
       const reTriage = routeFindingsAndViolations({
         findings: reQa.findings,
         // Gate (1) already confirmed zero deterministic violations remain.
@@ -1214,7 +1159,7 @@ export async function runAgenticLoopForUnit(
       // primary candidate remains selected until a repair earns selection.
       lastReQaRejected = true;
     }
-    if (!repairSucceeded && !repairFlowIncomplete) {
+    if (!repairSucceeded) {
       repairAttempts = attempt;
       qualityFlags.add("qa_unresolved");
       qualityFlags.add("repair_budget_exhausted");
@@ -1281,7 +1226,6 @@ function startStage(stageName: AgenticLoopStageName): StageAccumulator {
     tokensOut: 0,
     costUsd: "0",
     latencyMs: 0,
-    droppedEnrichments: [],
   };
 }
 
@@ -1320,12 +1264,6 @@ function stageAccumulatorToRecord(stage: StageAccumulator): AgenticLoopStageReco
     tokensOut: stage.tokensOut,
     costUsd: stage.costUsd,
     latencyMs: stage.latencyMs,
-    // Present only when a best-effort semantic agent was dropped; an all-succeed
-    // context stage (and every non-context stage) omits the field entirely so
-    // the bundle shape is byte-identical to the pre-robustness path.
-    ...(stage.droppedEnrichments.length > 0
-      ? { droppedEnrichments: stage.droppedEnrichments }
-      : {}),
   };
 }
 
@@ -1684,65 +1622,53 @@ type SemanticContextStageResult = {
   structuredContext?: StructuredContextInjection | undefined;
   /** Content-bearing packet resolved for this unit (ids + bodies + versions). */
   contextPacket: UnitContextPacket;
-  /**
-   * Best-effort semantic agents that failed after supervisor retry. Each entry
-   * names the agent + reason; a typed failure record is also persisted to the
-   * central store when wired (never a silent drop).
-   */
-  droppedEnrichments: DroppedContextEnrichment[];
 };
 
 /**
- * Run ONE best-effort semantic enrichment agent. A thrown error / malformed /
- * uncitable pack is CAUGHT; a typed failure record is persisted to the central
- * store; the unit PROCEEDS on deterministic structure + whichever agents DID
- * succeed. Telemetry + resolved artifacts are only committed on success.
+ * Run ONE semantic enrichment agent under the uniform invocation contract. A
+ * VALID result — INCLUDING a valid EMPTY pack (a scene with no dialogue, no
+ * new characters/terminology/routes) — is committed: telemetry + resolved
+ * artifacts. A MECHANICAL failure (partial / null / unsalvageable / schema-
+ * invalid model output) is NEVER swallowed: it PROPAGATES so the unit cannot
+ * draft with enrichment silently skipped. In a durable run the supervisor has
+ * already driven it to a resumable operational pause
+ * (InvocationRetryCeilingError → pauseRun); in unbound/standalone mode the raw
+ * typed error surfaces (fail loud). This is the same retry-to-valid-then-pause
+ * contract that translation, QA, and repair follow — enrichment is not special.
  */
-async function runBestEffortEnrichment(
+async function runSemanticEnrichment(
   agentLabel: ContextEnrichmentType,
   sink: {
     telemetry: RawProviderTelemetry[];
     artifacts: ResolvedContextArtifact[];
-    droppedEnrichments: DroppedContextEnrichment[];
     attemptOutcomeObserver?: AgenticLoopAttemptOutcomeObserver;
-    input: AgenticLoopUnitInput;
-    policy: AgenticLoopPolicy;
     contextEnrichmentSingleFlight: ContextEnrichmentSingleFlight | undefined;
     sceneKey: string;
   },
-  run: () => Promise<{ telemetry: RawProviderTelemetry; artifacts: ResolvedContextArtifact[] }>,
+  run: () => Promise<{ telemetry?: RawProviderTelemetry; artifacts: ResolvedContextArtifact[] }>,
 ): Promise<void> {
   const runOnce = async (): Promise<void> => {
     try {
       const { telemetry, artifacts } = await run();
-      sink.telemetry.push(telemetry);
+      // A legitimate no-op outcome (e.g. a terminology candidate that dedups
+      // against an authoritative existing glossary term) commits its resolved
+      // artifact with no new physical provider call to charge.
+      if (telemetry !== undefined) {
+        sink.telemetry.push(telemetry);
+      }
       for (const artifact of artifacts) {
         sink.artifacts.push(artifact);
       }
     } catch (error) {
-      rethrowOperationalInvocation(error);
+      // No advance-with-flag escape hatch. Mark the failed attempt (pause) and
+      // rethrow; the operational pause / raw mechanical error propagates.
       sink.attemptOutcomeObserver?.markFailedAttempt({
         stage: "context",
         agentLabel,
         error,
-        retryDecision: "advance",
+        retryDecision: "pause",
       });
-      const failure = await persistTypedEnrichmentFailure({
-        repository: sink.input.contextArtifactRepository,
-        actor: sink.input.actor,
-        projectId: sink.policy.projectId,
-        localeBranchId: sink.policy.localeBranchId,
-        sourceRevisionId: sink.input.sourceRevisionId,
-        bridgeUnitId: sink.input.unit.bridgeUnitId,
-        agentLabel,
-        error,
-      });
-      sink.droppedEnrichments.push({
-        agentLabel,
-        reason: failure.contextArtifactId
-          ? `${failure.code}: ${failure.reason} (failureArtifact=${failure.contextArtifactId})`
-          : `${failure.code}: ${failure.reason}`,
-      });
+      throw error;
     }
   };
 
@@ -1752,16 +1678,12 @@ async function runBestEffortEnrichment(
   }
 
   const artifactsBefore = sink.artifacts.length;
-  const dropsBefore = sink.droppedEnrichments.length;
   const sharedBuild = await sink.contextEnrichmentSingleFlight.run(
     sink.sceneKey,
     agentLabel,
     async () => {
       await runOnce();
-      return {
-        artifacts: sink.artifacts.slice(artifactsBefore),
-        droppedEnrichments: sink.droppedEnrichments.slice(dropsBefore),
-      };
+      return { artifacts: sink.artifacts.slice(artifactsBefore) };
     },
   );
   // The leader already wrote its own telemetry/artifact state. Followers
@@ -1769,7 +1691,6 @@ async function runBestEffortEnrichment(
   // provider call to every waiting unit would corrupt run accounting.
   if (sharedBuild.shared) {
     sink.artifacts.push(...sharedBuild.value.artifacts);
-    sink.droppedEnrichments.push(...sharedBuild.value.droppedEnrichments);
   }
 }
 
@@ -1885,16 +1806,12 @@ async function invokeSemanticContextStage(args: {
   const { input, policy, pairPolicy, providerFactory, now } = args;
   const telemetry: RawProviderTelemetry[] = [];
   const resolvedArtifacts: ResolvedContextArtifact[] = [];
-  const droppedEnrichments: DroppedContextEnrichment[] = [];
   const sceneKey =
     input.semanticSceneKey ??
     (input.sceneId !== undefined ? String(input.sceneId) : input.unit.sourceUnitKey);
   const sink = {
     telemetry,
     artifacts: resolvedArtifacts,
-    droppedEnrichments,
-    input,
-    policy,
     contextEnrichmentSingleFlight: input.contextEnrichmentSingleFlight,
     sceneKey,
     ...(input.attemptOutcomeObserver !== undefined
@@ -2035,7 +1952,7 @@ async function invokeSemanticContextStage(args: {
     resolvedArtifacts.push(reusableScene);
   } else {
     const buildSceneSummary = async (): Promise<void> => {
-      await runBestEffortEnrichment("scene-summary", sink, async () => {
+      await runSemanticEnrichment("scene-summary", sink, async () => {
         const pair = pairPolicy.context.sceneSummary;
         const provider = providerFactory({ stage: "context", agentLabel: "scene-summary", pair });
         const output = await generateSceneSummary(
@@ -2140,7 +2057,7 @@ async function invokeSemanticContextStage(args: {
     if (reusableNoContentCharacter !== undefined) {
       resolvedArtifacts.push(reusableNoContentCharacter);
     } else if (missingCharacterIds.length > 0 || rosterIds.length === 0) {
-      await runBestEffortEnrichment("character-relationship", sink, async () => {
+      await runSemanticEnrichment("character-relationship", sink, async () => {
         const pair = pairPolicy.context.characterRelationship;
         const provider = providerFactory({
           stage: "context",
@@ -2278,13 +2195,19 @@ async function invokeSemanticContextStage(args: {
   } else if (reusableNoContentTerminology !== undefined) {
     resolvedArtifacts.push(reusableNoContentTerminology);
   } else {
-    await runBestEffortEnrichment("terminology-candidate", sink, async () => {
+    await runSemanticEnrichment("terminology-candidate", sink, async () => {
       const pair = pairPolicy.context.terminologyCandidate;
       const provider = providerFactory({
         stage: "context",
         agentLabel: "terminology-candidate",
         pair,
       });
+      // A glossary conflict is NOT a failure the loop catches: the agent
+      // FILTERS conflicting candidates as legitimate dedup and keeps the rest.
+      // A genuinely MECHANICAL failure (bad / partial / null model output)
+      // still throws out of this call and propagates like every other stage
+      // (operational pause in a durable run; raw error in standalone) — it is
+      // never masked here.
       const output = await generateTerminologyCandidates(
         {
           projectId: policy.projectId,
@@ -2337,7 +2260,20 @@ async function invokeSemanticContextStage(args: {
           }),
         );
       }
-      if (artifacts.length === 0) {
+      // Record the legitimate dedup (terms already in the authoritative
+      // glossary) as an explicit no-content artifact — never a silent drop. If
+      // nothing was proposed at all, record the honest "no candidates" result.
+      // Both are valid outcomes that proceed; the kept candidates above are
+      // persisted with their own content artifacts regardless.
+      const noContentReason =
+        output.deduped.length > 0
+          ? `Deduplicated against existing glossary (no new candidate added): ${output.deduped
+              .map((entry) => `${entry.surfaceForm} (term ${entry.terminologyTermId})`)
+              .join(", ")}.`
+          : artifacts.length === 0
+            ? "No terminology candidates were found for this scene evidence."
+            : undefined;
+      if (noContentReason !== undefined) {
         artifacts.push(
           await persistSemanticNoContentArtifact({
             input,
@@ -2345,8 +2281,8 @@ async function invokeSemanticContextStage(args: {
             contextArtifactId: noContentTerminologyArtifactId,
             category: contextArtifactCategoryValues.terminologyCandidate,
             agentLabel: "terminology-candidate",
-            title: `No terminology candidates: scene ${sceneKey}`,
-            reason: "No terminology candidates were found for this scene evidence.",
+            title: `Terminology dedup/no-content: scene ${sceneKey}`,
+            reason: noContentReason,
             sceneKey,
             sourceUnits: sourceUnitCitations,
           }),
@@ -2357,6 +2293,7 @@ async function invokeSemanticContextStage(args: {
           output.providerRun,
           pair,
           "terminology-candidate",
+          output.retryProviderRuns,
         ),
         artifacts,
       };
@@ -2382,7 +2319,7 @@ async function invokeSemanticContextStage(args: {
   } else if (reusableNoContentRoute !== undefined) {
     resolvedArtifacts.push(reusableNoContentRoute);
   } else {
-    await runBestEffortEnrichment("route-choice-map", sink, async () => {
+    await runSemanticEnrichment("route-choice-map", sink, async () => {
       const pair = pairPolicy.context.routeChoiceMap;
       const provider = providerFactory({ stage: "context", agentLabel: "route-choice-map", pair });
       const output = await generateRouteChoiceMap(
@@ -2522,7 +2459,6 @@ async function invokeSemanticContextStage(args: {
       artifacts: deduped,
       speakers: reusedSpeakers,
     }),
-    droppedEnrichments,
   };
 }
 
@@ -2878,21 +2814,28 @@ function providerTelemetryFromSemanticRun(
   providerRun: ProviderRunRecord,
   pair: PairChoice,
   agentLabel: string,
+  // Provider runs of earlier salvage/corrective-retry attempts. Real paid calls,
+  // so their token/cost is summed in — a retried enrichment never understates
+  // usage. Defaults to none for agents that do not (yet) expose their retries.
+  retryRuns: readonly ProviderRunRecord[] = [],
 ): RawProviderTelemetry {
   // PROJECT LAW: token counts + cost come ONLY from real provider output; an
   // omitted count is a real failure (mirror of assertBilledCost), never a
   // silent coercion to zero that would understate the persisted usage.
-  const { tokensIn, tokensOut } = assertReportedTokenUsage(
-    providerRun.tokenUsage,
-    providerRun.runId,
-  );
+  let tokensIn = 0;
+  let tokensOut = 0;
+  for (const run of [providerRun, ...retryRuns]) {
+    const usage = assertReportedTokenUsage(run.tokenUsage, run.runId);
+    tokensIn += usage.tokensIn;
+    tokensOut += usage.tokensOut;
+  }
   return {
     invocationId: `context:${agentLabel}:${providerRun.runId}`,
     agentLabel,
     pair,
     tokensIn,
     tokensOut,
-    costUsd: assertBilledCostDecimal(providerRun.cost),
+    costUsd: sumBilledCostDecimal([providerRun, ...retryRuns]),
     latencyMs: providerRun.latencyMs,
     providerProofId: providerRun.runId,
     seed: pair.seed,
@@ -3033,9 +2976,6 @@ async function invokeTranslationStage(args: {
 }): Promise<TranslationInvocationResult> {
   const agent = new TranslationAgent({
     provider: args.provider,
-    ...(args.agentLabel.startsWith("repair-")
-      ? { contentFailureMode: "retain_existing" as const }
-      : {}),
   });
 
   // PATCHBACK-SAFETY (primary, deterministic). Strip EVERY protected control
@@ -3322,7 +3262,7 @@ async function runPostRepairReQaPass(args: {
   repairStage: StageAccumulator;
   contextArtifacts: ReadonlyArray<TranslationContextArtifact>;
   speaker?: string | undefined;
-}): Promise<{ findings: QaFinding[]; incomplete: boolean }> {
+}): Promise<{ findings: QaFinding[] }> {
   const {
     input,
     policy,
@@ -3335,7 +3275,6 @@ async function runPostRepairReQaPass(args: {
     speaker,
   } = args;
   let findings: QaFinding[] = [];
-  let incomplete = false;
   for (const entry of [
     { agentLabel: "qa-style-adherence", pair: pairPolicy.qa.styleAdherence },
     { agentLabel: "qa-semantic-drift", pair: pairPolicy.qa.semanticDrift },
@@ -3360,23 +3299,12 @@ async function runPostRepairReQaPass(args: {
         ...(speaker !== undefined ? { speaker } : {}),
       });
     } catch (error) {
-      rethrowOperationalInvocation(error);
-      // Re-QA happens only after both the primary and this repair candidate
-      // exist. Retain the known selection while making the coverage loss
-      // visible to the caller; other focused judges may still contribute
-      // their findings during this bounded pass.
-      markJournalAttemptFailure(
-        input,
-        "qa_findings",
-        entry.agentLabel,
-        error,
-        isQaPartialResultError(error) ? "advance" : "pause",
-      );
-      if (!isQaPartialResultError(error)) {
-        throw error;
-      }
-      incomplete = true;
-      continue;
+      // Re-QA rides the same retry-to-valid + hard-ceiling pause contract as
+      // every other stage. A judge that cannot produce a valid structured
+      // result pauses the run for the operator rather than advancing the unit
+      // with review coverage silently skipped.
+      markJournalAttemptFailure(input, "qa_findings", entry.agentLabel, error, "pause");
+      throw error;
     }
     pushInvocation(
       repairStage,
@@ -3384,24 +3312,7 @@ async function runPostRepairReQaPass(args: {
     );
     findings = findings.concat(result.findings);
   }
-  return { findings, incomplete };
-}
-
-function isQaPartialResultError(error: unknown): error is QaPartialResultError {
-  return error instanceof QaPartialResultError || error instanceof InvocationContentExhaustedError;
-}
-
-function isTranslationPartialResultError(error: unknown): error is TranslationPartialResultError {
-  return (
-    error instanceof TranslationPartialResultError ||
-    error instanceof InvocationContentExhaustedError
-  );
-}
-
-function rethrowOperationalInvocation(error: unknown): void {
-  if (isInvocationOperationalPause(error) || error instanceof InvocationRetryCeilingError) {
-    throw error;
-  }
+  return { findings };
 }
 
 function markJournalAttemptFailure(

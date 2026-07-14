@@ -36,6 +36,7 @@ import {
 import { capturePhysicalProviderAttempts } from "../src/orchestrator/attempt-outcome-journal.js";
 import type { InvocationCostAdmission } from "../src/orchestrator/invocation-supervisor.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
+import { InMemoryContextArtifactRepository } from "../src/orchestrator/context-brain.js";
 import {
   LocalProviderRunArtifactRecorder,
   OpenRouterModelProvider,
@@ -375,6 +376,7 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
         },
       });
 
+    const store = new InMemoryContextArtifactRepository();
     const input: AgenticLoopUnitInput = {
       unit,
       sourceRevisionId: REVISION_ID,
@@ -389,20 +391,40 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
       protectedSpans: [],
       knownCharacters: [],
       actor: ACTOR,
+      contextArtifactRepository: store,
     };
 
     const bundle = await runAgenticLoopForUnit(input, DEV_POLICY, makePolicy(), factory);
 
-    // The conflict surfaced synchronously as a dropped enrichment (the
-    // best-effort loop catches ExistingGlossaryConflictError) rather than
-    // creating a parallel terminology-candidate record.
-    const contextStage = bundle.stages.find((s) => s.stageName === "context");
-    const dropped = contextStage?.droppedEnrichments ?? [];
-    const terminologyDrop = dropped.find((d) => d.agentLabel === "terminology-candidate");
-    expect(terminologyDrop).toBeDefined();
-    expect(terminologyDrop?.reason).toContain("ExistingGlossaryConflictError");
+    // A glossary conflict is a LEGITIMATE dedup, not a mechanical failure: the
+    // proposed surface form already exists in the authoritative glossary, so
+    // the terminology enrichment resolves to an explicit no-content record
+    // rather than creating a parallel terminology-candidate CONTENT record —
+    // and the unit completes without a swallow, a drop, or a run pause.
+    const semanticResultKind = (artifact: { data: { semanticResult?: unknown } }): unknown => {
+      const semanticResult = artifact.data.semanticResult;
+      return typeof semanticResult === "object" &&
+        semanticResult !== null &&
+        !Array.isArray(semanticResult)
+        ? (semanticResult as { kind?: unknown }).kind
+        : undefined;
+    };
+    const terminologyRecords = store
+      .listAll()
+      .filter((artifact) => artifact.category === "terminology_candidate");
+    expect(terminologyRecords).not.toHaveLength(0);
+    // No parallel terminology-candidate CONTENT record was created for the
+    // duplicate; the conflict resolved to an explicit no-content dedup record.
+    for (const record of terminologyRecords) {
+      expect(semanticResultKind(record)).not.toBe("content");
+    }
+    const noContentTerminology = terminologyRecords.find(
+      (artifact) => semanticResultKind(artifact) === "no_content",
+    );
+    expect(noContentTerminology).toBeDefined();
+    expect(noContentTerminology?.body).toContain("ハル");
 
-    // The loop still completes end-to-end (per-agent best-effort isolation).
+    // The loop still completes end-to-end.
     expect(selectedWrittenCandidateBody(bundle)).toBe("Good morning.");
   });
 });
