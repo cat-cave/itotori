@@ -55,6 +55,13 @@ export type NarrativeChoice = {
   edgeResolution?: EdgeResolution;
   unresolvedEdgeDiagnostic?: string | null;
   bridgeRef?: NarrativeBridgeRef | null;
+  /** Authoritative source-asset + byte coordinates for a bridge-linked choice
+   * option. Required whenever `bridgeRef` is present so the join can prove the
+   * choice binding on asset + byte range + hash (a bridge-linked choice with
+   * no coordinates is rejected, never bound blind). */
+  sourceAsset?: SourceAssetRef;
+  byteOffsetInScene?: number | null;
+  byteLength?: number | null;
   branchMessages: NarrativeMessage[];
 };
 
