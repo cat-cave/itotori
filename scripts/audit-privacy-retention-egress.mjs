@@ -7,6 +7,9 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
 const manifestPath = "apps/itotori/src/contracts/privacy.ts";
+const contentAccessPath = "packages/itotori-db/src/llm-content-access.ts";
+const memoRepositoryPath = "packages/itotori-db/src/repositories/llm-call-memo-repository.ts";
+const retentionRepositoryPath = "packages/itotori-db/src/repositories/llm-retention-repository.ts";
 const rebuildSourcePrefix = "apps/itotori/src/llm/";
 const rebuildMigrationPrefix = "packages/itotori-db/migrations/";
 const manifestRequirements = [
@@ -24,6 +27,13 @@ const manifestRequirements = [
   'z.literal("A7")',
   "QualifyingRunEgressSchema",
 ];
+const contentAccessRequirements = [
+  "permissionValues.contentRead",
+  "requirePermission",
+  "LlmContentReadAuthorizer",
+];
+const memoAccessRequirements = ["requireContentRead", 'purpose: "memo-replay"', "cipher.open"];
+const retentionRequirements = ["retention_deadline", "destroyKey", "deletion_state", "deleted_at"];
 
 const contentColumnName =
   /(?:source|target|prompt|response|message|content|output|argument|result|excerpt|ocr|body|payload)/iu;
@@ -43,6 +53,14 @@ export function findManifestViolations(source, path = manifestPath) {
   return manifestRequirements
     .filter((requirement) => !source.includes(requirement))
     .map((requirement) => `${path}: missing privacy contract requirement ${requirement}`);
+}
+
+export function findLocalBoundaryViolations(files) {
+  return [
+    ...requiredSourceViolations(files, contentAccessPath, contentAccessRequirements),
+    ...requiredSourceViolations(files, memoRepositoryPath, memoAccessRequirements),
+    ...requiredSourceViolations(files, retentionRepositoryPath, retentionRequirements),
+  ];
 }
 
 export function findPlaintextRebuildColumns(source, path) {
@@ -101,11 +119,20 @@ export function findViolations(files) {
   } else {
     violations.push(...findManifestViolations(manifest));
   }
+  violations.push(...findLocalBoundaryViolations(files));
   for (const [path, source] of files) {
     violations.push(...findPlaintextRebuildColumns(source, path));
     violations.push(...findContentBearingLogs(source, path));
   }
   return violations;
+}
+
+function requiredSourceViolations(files, path, requirements) {
+  const source = files.get(path);
+  if (source === undefined) return [`${path}: required local privacy boundary is missing`];
+  return requirements
+    .filter((requirement) => !source.includes(requirement))
+    .map((requirement) => `${path}: missing local privacy boundary requirement ${requirement}`);
 }
 
 function trackedFiles() {
@@ -118,6 +145,9 @@ function trackedFiles() {
     .filter(
       (path) =>
         path === manifestPath ||
+        path === contentAccessPath ||
+        path === memoRepositoryPath ||
+        path === retentionRepositoryPath ||
         path.startsWith(rebuildSourcePrefix) ||
         path.startsWith(rebuildMigrationPrefix),
     );

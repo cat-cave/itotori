@@ -27,24 +27,33 @@ export const TEST_MODEL_PROFILE: MeasuredModelProfile = {
 };
 
 export class TestMemoCipher implements LlmMemoCipher {
-  readonly #key = randomBytes(32);
+  readonly #keys = new Map<string, Buffer>();
+  #keyOrdinal = 0;
 
   async seal(plaintext: string): Promise<{ ciphertext: Uint8Array; keyRef: string }> {
+    const key = randomBytes(32);
+    const keyRef = `test-envelope-key:${(this.#keyOrdinal += 1)}`;
+    this.#keys.set(keyRef, key);
     const nonce = randomBytes(12);
-    const cipher = createCipheriv("aes-256-gcm", this.#key, nonce);
+    const cipher = createCipheriv("aes-256-gcm", key, nonce);
     const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
     return {
       ciphertext: Buffer.concat([nonce, cipher.getAuthTag(), ciphertext]),
-      keyRef: "test-envelope-key:v1",
+      keyRef,
     };
   }
 
   async open(ciphertext: Uint8Array, keyRef: string): Promise<string> {
-    if (keyRef !== "test-envelope-key:v1") throw new Error("unknown test envelope key");
+    const key = this.#keys.get(keyRef);
+    if (!key) throw new Error("unknown test envelope key");
     const bytes = Buffer.from(ciphertext);
-    const decipher = createDecipheriv("aes-256-gcm", this.#key, bytes.subarray(0, 12));
+    const decipher = createDecipheriv("aes-256-gcm", key, bytes.subarray(0, 12));
     decipher.setAuthTag(bytes.subarray(12, 28));
     return Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString("utf8");
+  }
+
+  async destroyKey(keyRef: string): Promise<void> {
+    this.#keys.delete(keyRef);
   }
 }
 
@@ -71,9 +80,12 @@ export function dispatchHarness(input: {
         OPENROUTER_ZDR_GUARDRAIL_ASSERTED: "1",
       },
       tools: input.tools ?? [],
+      contentAccess: { requireContentRead: async () => undefined },
       readPayload: async () => input.prompt,
       memo: {
-        store: new ItotoriLlmCallMemoRepository(input.pool, input.cipher),
+        store: new ItotoriLlmCallMemoRepository(input.pool, input.cipher, {
+          requireContentRead: async () => undefined,
+        }),
         profile: input.profile ?? TEST_MODEL_PROFILE,
         admission: input.admission ?? {
           scope: "test:llm-step",

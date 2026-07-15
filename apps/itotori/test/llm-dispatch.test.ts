@@ -218,6 +218,7 @@ function runtime(
       OPENROUTER_ZDR_GUARDRAIL_ASSERTED: "1",
     },
     tools,
+    contentAccess: { requireContentRead: async () => undefined },
     memo: {
       store: new MemoryMemoStore(),
       profile: TEST_MODEL_PROFILE,
@@ -453,6 +454,7 @@ const liveEnabled =
     const result = await dispatch(spec, {
       env: process.env,
       tools: [],
+      contentAccess: { requireContentRead: async () => undefined },
       memo: {
         store: new MemoryMemoStore(),
         profile: TEST_MODEL_PROFILE,

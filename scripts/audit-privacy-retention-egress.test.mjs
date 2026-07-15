@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   findContentBearingLogs,
+  findLocalBoundaryViolations,
   findManifestViolations,
   findPlaintextRebuildColumns,
   findViolations,
@@ -22,6 +23,20 @@ const manifest = [
   'z.literal("A7")',
   "QualifyingRunEgressSchema",
 ].join("\n");
+const localBoundaryFiles = new Map([
+  [
+    "packages/itotori-db/src/llm-content-access.ts",
+    "permissionValues.contentRead requirePermission LlmContentReadAuthorizer",
+  ],
+  [
+    "packages/itotori-db/src/repositories/llm-call-memo-repository.ts",
+    'requireContentRead purpose: "memo-replay" cipher.open',
+  ],
+  [
+    "packages/itotori-db/src/repositories/llm-retention-repository.ts",
+    "retention_deadline destroyKey deletion_state deleted_at",
+  ],
+]);
 
 test("rejects a weakened privacy manifest", () => {
   assert.deepEqual(findManifestViolations(manifest), []);
@@ -51,6 +66,18 @@ test("rejects plaintext content fields in rebuilt LLM migrations", () => {
   );
 });
 
+test("rejects a missing permission check or retention tombstone operation", () => {
+  assert.deepEqual(findLocalBoundaryViolations(localBoundaryFiles), []);
+  const weakened = new Map(localBoundaryFiles);
+  weakened.set(
+    "packages/itotori-db/src/llm-content-access.ts",
+    "permissionValues.contentRead LlmContentReadAuthorizer",
+  );
+  assert.deepEqual(findLocalBoundaryViolations(weakened), [
+    "packages/itotori-db/src/llm-content-access.ts: missing local privacy boundary requirement requirePermission",
+  ]);
+});
+
 test("rejects content values in rebuilt LLM observability", () => {
   const unsafe = "logger.info({ event: 'completed', sourceText });";
   assert.deepEqual(findContentBearingLogs(unsafe, "apps/itotori/src/llm/dispatch.ts"), [
@@ -67,6 +94,7 @@ test("rejects content values in rebuilt LLM observability", () => {
 
 test("combines manifest, migration, and logging violations", () => {
   const files = new Map([
+    ...localBoundaryFiles,
     ["apps/itotori/src/contracts/privacy.ts", manifest],
     [
       "packages/itotori-db/migrations/9999_llm.sql",

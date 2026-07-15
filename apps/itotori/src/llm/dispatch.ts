@@ -3,6 +3,7 @@ import {
   LlmPhysicalStepFailedError,
   LlmRetriesExhaustedError,
   LlmSpendAdmissionDeniedError,
+  type LlmContentReadAuthorizer,
 } from "@itotori/db";
 import {
   EventType,
@@ -61,6 +62,7 @@ export interface DispatchRuntime {
   readonly readPayload: (reference: EncryptedPayloadRef) => Promise<string>;
   readonly tools: readonly DispatchTool[];
   readonly memo: PhysicalStepMemoRuntime;
+  readonly contentAccess: LlmContentReadAuthorizer;
   readonly fetcher?: Fetcher;
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
@@ -130,6 +132,10 @@ async function readPayload(
   runtime: DispatchRuntime,
   reference: EncryptedPayloadRef,
 ): Promise<string> {
+  await runtime.contentAccess.requireContentRead({
+    contentRef: reference.storageRef,
+    purpose: "dispatch-input",
+  });
   const content = await runtime.readPayload(reference);
   if (sha256(content) !== reference.contentHash) {
     throw new Error("encrypted payload content hash mismatch");

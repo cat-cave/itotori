@@ -518,6 +518,10 @@ export const migrations = [
     id: "0103_llm_attempt_admission_exposure",
     file: "0103_llm_attempt_admission_exposure.sql",
   },
+  {
+    id: "0104_content_read_permission",
+    file: "0104_content_read_permission.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
