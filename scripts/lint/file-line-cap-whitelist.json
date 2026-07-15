@@ -130,7 +130,7 @@
     "crates/utsushi-reallive/src/engine_port.rs": 812,
     "crates/utsushi-reallive/src/expression.rs": 1090,
     "crates/utsushi-reallive/src/expression_eval.rs": 556,
-    "crates/utsushi-reallive/src/g00.rs": 1904,
+    "crates/utsushi-reallive/src/g00.rs": 1714,
     "crates/utsushi-reallive/src/gameexe.rs": 1292,
     "crates/utsushi-reallive/src/graphics_objects.rs": 1260,
     "crates/utsushi-reallive/src/input_bridge.rs": 720,
