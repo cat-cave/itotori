@@ -1,7 +1,7 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/audit-no-node-ids.mjs --update\". Each entry is a grandfathered\nnode-id token (the matched reference text, lower-cased); the multiset per file\nmay only shrink. When empty/deleted the guard is absolute (zero node ids).",
-  "generatedAt": "2026-07-14T22:33:29.670Z",
-  "total": 2314,
+  "generatedAt": "2026-07-15T01:15:05.112Z",
+  "total": 1514,
   "files": {
     "crates/kaifuu-cli/src/binary_patch_smoke.rs": [
       "kaifuu-010",
@@ -1365,251 +1365,20 @@
     "crates/kaifuu-vault-source/tests/extraction_test.rs": [
       "kaifuu-236"
     ],
-    "crates/utsushi-cli/src/coverage_export.rs": [
-      "utsushi-009",
-      "utsushi-070"
-    ],
-    "crates/utsushi-cli/src/main.rs": [
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-008",
-      "utsushi-009",
-      "utsushi-010",
-      "utsushi-010",
-      "utsushi-033",
-      "utsushi-033",
-      "utsushi-065",
-      "utsushi-065",
-      "utsushi-065",
-      "utsushi-069",
-      "utsushi-070",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-119",
-      "utsushi-227"
-    ],
     "crates/utsushi-cli/src/mvmz_patched_runtime_proof.rs": [
       "utsushi-006",
       "utsushi-006",
-      "utsushi-006",
       "utsushi-065",
       "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-119",
       "utsushi-119"
     ],
     "crates/utsushi-cli/src/mvmz_runtime_proof.rs": [
       "utsushi-006",
       "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
       "utsushi-065",
-      "utsushi-065",
-      "utsushi-102",
       "utsushi-102"
     ],
-    "crates/utsushi-cli/src/replay.rs": [
-      "utsushi-220"
-    ],
-    "crates/utsushi-cli/src/replay_validate.rs": [
-      "utsushi-227"
-    ],
-    "crates/utsushi-cli/src/trace_kag.rs": [
-      "kaifuu-009",
-      "utsushi-008"
-    ],
-    "crates/utsushi-cli/tests/review_package_manifest.rs": [
-      "utsushi-010"
-    ],
-    "crates/utsushi-cli/tests/trace_kag_command.rs": [
-      "utsushi-008"
-    ],
-    "crates/utsushi-cli/tests/unsupported_input_shape.rs": [
-      "utsushi-177"
-    ],
-    "crates/utsushi-core/src/clock.rs": [
-      "utsushi-023"
-    ],
-    "crates/utsushi-core/src/conformance/branch_coverage.rs": [
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-009",
-      "utsushi-033",
-      "utsushi-033"
-    ],
-    "crates/utsushi-core/src/conformance/branch_coverage_export.rs": [
-      "utsushi-009",
-      "utsushi-009",
-      "utsushi-069",
-      "utsushi-069",
-      "utsushi-069",
-      "utsushi-069",
-      "utsushi-069",
-      "utsushi-070"
-    ],
-    "crates/utsushi-core/src/conformance/branch_coverage_gaps.rs": [
-      "utsushi-009",
-      "utsushi-067",
-      "utsushi-067",
-      "utsushi-067",
-      "utsushi-069"
-    ],
-    "crates/utsushi-core/src/conformance/capture_recording/codes.rs": [
-      "utsushi-029"
-    ],
-    "crates/utsushi-core/src/conformance/capture_recording/frame_check.rs": [
-      "utsushi-021",
-      "utsushi-026"
-    ],
-    "crates/utsushi-core/src/conformance/capture_recording/mod.rs": [
-      "utsushi-029"
-    ],
-    "crates/utsushi-core/src/conformance/capture_recording/recording_check.rs": [
-      "utsushi-021",
-      "utsushi-022",
-      "utsushi-022"
-    ],
-    "crates/utsushi-core/src/conformance/diagnostics.rs": [
-      "utsushi-022",
-      "utsushi-026",
-      "utsushi-027",
-      "utsushi-027",
-      "utsushi-028",
-      "utsushi-028",
-      "utsushi-028",
-      "utsushi-029",
-      "utsushi-029",
-      "utsushi-029"
-    ],
-    "crates/utsushi-core/src/conformance/fixtures.rs": [
-      "utsushi-027",
-      "utsushi-028",
-      "utsushi-028",
-      "utsushi-029",
-      "utsushi-029"
-    ],
-    "crates/utsushi-core/src/conformance/manifest.rs": [
-      "utsushi-020",
-      "utsushi-021",
-      "utsushi-021",
-      "utsushi-021",
-      "utsushi-022",
-      "utsushi-022",
-      "utsushi-022",
-      "utsushi-023"
-    ],
-    "crates/utsushi-core/src/conformance/mod.rs": [
-      "utsushi-021",
-      "utsushi-026",
-      "utsushi-027",
-      "utsushi-027",
-      "utsushi-028",
-      "utsushi-028",
-      "utsushi-029",
-      "utsushi-029"
-    ],
-    "crates/utsushi-core/src/conformance/result.rs": [
-      "utsushi-021",
-      "utsushi-023",
-      "utsushi-025",
-      "utsushi-028",
-      "utsushi-028",
-      "utsushi-030"
-    ],
-    "crates/utsushi-core/src/conformance/runtime_target_profile.rs": [
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-133"
-    ],
-    "crates/utsushi-core/src/conformance/snapshot_check/check.rs": [
-      "utsushi-023",
-      "utsushi-026",
-      "utsushi-026",
-      "utsushi-028"
-    ],
-    "crates/utsushi-core/src/conformance/snapshot_check/codes.rs": [
-      "utsushi-028",
-      "utsushi-028"
-    ],
-    "crates/utsushi-core/src/conformance/snapshot_check/mod.rs": [
-      "utsushi-027",
-      "utsushi-028",
-      "utsushi-029"
-    ],
-    "crates/utsushi-core/src/conformance/trace_branch/branch.rs": [
-      "utsushi-027",
-      "utsushi-028"
-    ],
-    "crates/utsushi-core/src/conformance/trace_branch/mod.rs": [
-      "utsushi-026",
-      "utsushi-027"
-    ],
-    "crates/utsushi-core/src/conformance/trace_branch/trace.rs": [
-      "utsushi-027",
-      "utsushi-028"
-    ],
-    "crates/utsushi-core/src/embed/mod.rs": [
-      "utsushi-024"
-    ],
-    "crates/utsushi-core/src/input.rs": [
-      "utsushi-021"
-    ],
-    "crates/utsushi-core/src/lib.rs": [
-      "utsushi-009",
-      "utsushi-009",
-      "utsushi-009",
-      "utsushi-020",
-      "utsushi-021",
-      "utsushi-021",
-      "utsushi-022",
-      "utsushi-023",
-      "utsushi-028",
-      "utsushi-069",
-      "utsushi-069",
-      "utsushi-070",
-      "utsushi-093",
-      "utsushi-093",
-      "utsushi-093",
-      "utsushi-093",
-      "utsushi-093",
-      "utsushi-096",
-      "utsushi-096",
-      "utsushi-096",
-      "utsushi-096",
-      "utsushi-096",
-      "utsushi-096",
-      "utsushi-096",
-      "utsushi-096",
-      "utsushi-096",
-      "utsushi-096",
-      "utsushi-103",
-      "utsushi-151",
-      "utsushi-151",
-      "utsushi-162",
-      "utsushi-224",
-      "utsushi-224",
-      "utsushi-224",
-      "utsushi-224",
-      "utsushi-224",
-      "utsushi-224",
-      "utsushi-224"
-    ],
     "crates/utsushi-core/src/port/impl_map/json_schema.rs": [
-      "utsushi-025"
-    ],
-    "crates/utsushi-core/src/port/impl_map/mod.rs": [
-      "utsushi-025"
-    ],
-    "crates/utsushi-core/src/port/impl_map/schema.rs": [
-      "utsushi-025",
-      "utsushi-025",
-      "utsushi-025",
-      "utsushi-031"
-    ],
-    "crates/utsushi-core/src/port/impl_map/store.rs": [
       "utsushi-025"
     ],
     "crates/utsushi-core/src/port/impl_map/tests.rs": [
@@ -1618,750 +1387,75 @@
       "utsushi-146"
     ],
     "crates/utsushi-core/src/port/impl_map/validator.rs": [
-      "utsushi-027",
       "utsushi-031",
       "utsushi-146"
-    ],
-    "crates/utsushi-core/src/port/manifest.rs": [
-      "utsushi-021",
-      "utsushi-023",
-      "utsushi-104"
-    ],
-    "crates/utsushi-core/src/port/mod.rs": [
-      "utsushi-103",
-      "utsushi-103"
-    ],
-    "crates/utsushi-core/src/port/trait_.rs": [
-      "utsushi-020",
-      "utsushi-104",
-      "utsushi-224"
-    ],
-    "crates/utsushi-core/src/recorder/builder.rs": [
-      "utsushi-061"
-    ],
-    "crates/utsushi-core/src/recorder/mod.rs": [
-      "utsushi-022",
-      "utsushi-023",
-      "utsushi-024",
-      "utsushi-060",
-      "utsushi-061"
-    ],
-    "crates/utsushi-core/src/recorder/trace.rs": [
-      "utsushi-021",
-      "utsushi-021",
-      "utsushi-027",
-      "utsushi-060"
-    ],
-    "crates/utsushi-core/src/sink/audio.rs": [
-      "utsushi-020"
-    ],
-    "crates/utsushi-core/src/sink/errors.rs": [
-      "utsushi-020"
-    ],
-    "crates/utsushi-core/src/sink/frame.rs": [
-      "utsushi-021",
-      "utsushi-029"
-    ],
-    "crates/utsushi-core/src/sink/mod.rs": [
-      "utsushi-020",
-      "utsushi-022"
-    ],
-    "crates/utsushi-core/src/sink/text.rs": [
-      "utsushi-020",
-      "utsushi-027"
-    ],
-    "crates/utsushi-core/src/snapshot/diagnostics.rs": [
-      "utsushi-028",
-      "utsushi-028"
-    ],
-    "crates/utsushi-core/src/snapshot/diff.rs": [
-      "utsushi-028"
-    ],
-    "crates/utsushi-core/src/snapshot/envelope.rs": [
-      "utsushi-223"
-    ],
-    "crates/utsushi-core/src/snapshot/mod.rs": [
-      "utsushi-021",
-      "utsushi-023"
-    ],
-    "crates/utsushi-core/src/snapshot/snapshot.rs": [
-      "utsushi-223",
-      "utsushi-223"
-    ],
-    "crates/utsushi-core/src/snapshot/state.rs": [
-      "utsushi-223"
-    ],
-    "crates/utsushi-core/src/snapshot/store.rs": [
-      "utsushi-028",
-      "utsushi-028"
-    ],
-    "crates/utsushi-core/src/substrate.rs": [
-      "utsushi-020",
-      "utsushi-021",
-      "utsushi-021",
-      "utsushi-022",
-      "utsushi-023",
-      "utsushi-023",
-      "utsushi-024",
-      "utsushi-025",
-      "utsushi-025",
-      "utsushi-026",
-      "utsushi-056",
-      "utsushi-060",
-      "utsushi-060",
-      "utsushi-120",
-      "utsushi-223",
-      "utsushi-224"
-    ],
-    "crates/utsushi-core/src/vfs/archive.rs": [
-      "utsushi-146",
-      "utsushi-222"
-    ],
-    "crates/utsushi-core/src/vfs/composite.rs": [
-      "utsushi-020",
-      "utsushi-222"
-    ],
-    "crates/utsushi-core/src/vfs/diagnostics.rs": [
-      "follow-up node"
-    ],
-    "crates/utsushi-core/src/vfs/mod.rs": [
-      "utsushi-020",
-      "utsushi-222"
-    ],
-    "crates/utsushi-core/src/vfs/runtime.rs": [
-      "utsushi-020",
-      "utsushi-222"
-    ],
-    "crates/utsushi-core/src/vfs/xp3_handoff.rs": [
-      "utsushi-035",
-      "utsushi-035",
-      "utsushi-039"
-    ],
-    "crates/utsushi-core/tests/branch_coverage_export.rs": [
-      "utsushi-009",
-      "utsushi-070"
-    ],
-    "crates/utsushi-core/tests/branch_coverage_read_model.rs": [
-      "utsushi-009"
-    ],
-    "crates/utsushi-core/tests/composite_asset_package.rs": [
-      "utsushi-222"
-    ],
-    "crates/utsushi-core/tests/composite_asset_package_real_bytes.rs": [
-      "utsushi-222",
-      "utsushi-222",
-      "utsushi-222"
-    ],
-    "crates/utsushi-core/tests/conformance_capture_recording.rs": [
-      "utsushi-029"
-    ],
-    "crates/utsushi-core/tests/conformance_snapshot.rs": [
-      "utsushi-028"
-    ],
-    "crates/utsushi-core/tests/engine_port.rs": [
-      "utsushi-103",
-      "utsushi-224",
-      "utsushi-224",
-      "utsushi-224"
-    ],
-    "crates/utsushi-core/tests/engine_port_sinks_bridge.rs": [
-      "utsushi-224"
-    ],
-    "crates/utsushi-core/tests/fixture_snapshot_restore.rs": [
-      "utsushi-021",
-      "utsushi-028",
-      "utsushi-063"
-    ],
-    "crates/utsushi-core/tests/recording_metadata.rs": [
-      "utsushi-026",
-      "utsushi-060",
-      "utsushi-064"
-    ],
-    "crates/utsushi-core/tests/replay_log_jump_target.rs": [
-      "utsushi-021",
-      "utsushi-021",
-      "utsushi-021",
-      "utsushi-021",
-      "utsushi-060",
-      "utsushi-062"
-    ],
-    "crates/utsushi-core/tests/replay_round_trip.rs": [
-      "utsushi-020",
-      "utsushi-021",
-      "utsushi-103"
-    ],
-    "crates/utsushi-core/tests/runtime_target_profile.rs": [
-      "utsushi-133"
-    ],
-    "crates/utsushi-core/tests/sink_contracts.rs": [
-      "utsushi-022"
-    ],
-    "crates/utsushi-core/tests/snapshot_envelope.rs": [
-      "utsushi-223"
-    ],
-    "crates/utsushi-core/tests/snapshot_redaction.rs": [
-      "utsushi-023"
-    ],
-    "crates/utsushi-core/tests/snapshot_round_trip.rs": [
-      "utsushi-021",
-      "utsushi-023"
-    ],
-    "crates/utsushi-core/tests/snapshot_state_drift.rs": [
-      "utsushi-023",
-      "utsushi-028"
-    ],
-    "crates/utsushi-core/tests/substrate_conformance.rs": [
-      "utsushi-120",
-      "utsushi-120",
-      "utsushi-120",
-      "utsushi-223"
-    ],
-    "crates/utsushi-core/tests/substrate_no_internal_leakage.rs": [
-      "utsushi-020",
-      "utsushi-025",
-      "utsushi-120",
-      "utsushi-120"
-    ],
-    "crates/utsushi-core/tests/vfs_synthetic_package.rs": [
-      "utsushi-020",
-      "utsushi-020",
-      "utsushi-224"
-    ],
-    "crates/utsushi-fixture/src/engine_port.rs": [
-      "utsushi-224",
-      "utsushi-224"
-    ],
-    "crates/utsushi-fixture/src/jump_targets.rs": [
-      "utsushi-060",
-      "utsushi-062"
-    ],
-    "crates/utsushi-fixture/src/launch_adapters.rs": [
-      "utsushi-006",
-      "utsushi-102",
-      "utsushi-148",
-      "utsushi-148",
-      "utsushi-148",
-      "utsushi-148",
-      "utsushi-148",
-      "utsushi-148",
-      "utsushi-162",
-      "utsushi-162",
-      "utsushi-162",
-      "utsushi-162",
-      "utsushi-162"
-    ],
-    "crates/utsushi-fixture/src/lib.rs": [
-      "utsushi-224"
     ],
     "crates/utsushi-fixture/src/mv_mz_review_package.rs": [
       "utsushi-006",
       "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-010",
       "utsushi-033",
       "utsushi-033",
       "utsushi-033",
-      "utsushi-033",
-      "utsushi-033",
-      "utsushi-033",
-      "utsushi-033",
-      "utsushi-033",
-      "utsushi-033",
-      "utsushi-033",
-      "utsushi-033",
-      "utsushi-065",
-      "utsushi-065",
-      "utsushi-065",
-      "utsushi-065",
-      "utsushi-065",
-      "utsushi-065"
+      "utsushi-033"
     ],
     "crates/utsushi-fixture/src/mv_mz_screenshot_evidence.rs": [
-      "kaifuu-109",
-      "kaifuu-109",
-      "kaifuu-109",
-      "kaifuu-109",
-      "kaifuu-109",
-      "kaifuu-109",
-      "kaifuu-109",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-065"
+      "kaifuu-109"
     ],
     "crates/utsushi-fixture/src/mvmz_demo_bundle.rs": [
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-010",
-      "utsushi-010",
-      "utsushi-010",
       "utsushi-010",
       "utsushi-065",
-      "utsushi-065",
-      "utsushi-065",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
       "utsushi-102",
       "utsushi-102",
       "utsushi-119",
       "utsushi-119",
-      "utsushi-119",
-      "utsushi-119",
-      "utsushi-119",
-      "utsushi-119",
-      "utsushi-134"
+      "utsushi-119"
     ],
     "crates/utsushi-fixture/src/mvmz_patched_runtime_proof.rs": [
       "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-065",
       "utsushi-102",
       "utsushi-102",
       "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-119"
+      "utsushi-102"
     ],
     "crates/utsushi-fixture/src/mvmz_runtime_proof.rs": [
       "utsushi-006",
       "utsushi-006",
       "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
       "utsushi-065",
       "utsushi-065",
       "utsushi-065",
-      "utsushi-065",
-      "utsushi-065",
-      "utsushi-065",
-      "utsushi-065",
-      "utsushi-065",
-      "utsushi-065",
-      "utsushi-065",
-      "utsushi-065",
-      "utsushi-065",
-      "utsushi-102",
-      "utsushi-102"
-    ],
-    "crates/utsushi-fixture/src/reference_corpus.rs": [
-      "utsushi-224"
-    ],
-    "crates/utsushi-fixture/tests/engine_port_sinks_bridge.rs": [
-      "utsushi-224"
-    ],
-    "crates/utsushi-fixture/tests/jump_target_round_trip.rs": [
-      "utsushi-062"
+      "utsushi-065"
     ],
     "crates/utsushi-fixture/tests/mv_mz_review_package.rs": [
       "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-010",
-      "utsushi-033",
-      "utsushi-033",
-      "utsushi-033",
-      "utsushi-065"
-    ],
-    "crates/utsushi-fixture/tests/mv_mz_screenshot_evidence.rs": [
-      "kaifuu-109",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-065"
+      "utsushi-033"
     ],
     "crates/utsushi-fixture/tests/mvmz_demo_bundle.rs": [
-      "utsushi-006",
-      "utsushi-010",
       "utsushi-010",
       "utsushi-065",
-      "utsushi-065",
       "utsushi-102",
-      "utsushi-102",
-      "utsushi-119",
-      "utsushi-119",
-      "utsushi-119",
-      "utsushi-134",
-      "utsushi-134"
-    ],
-    "crates/utsushi-fixture/tests/mvmz_patched_runtime_proof.rs": [
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-119",
-      "utsushi-119",
       "utsushi-119"
     ],
-    "crates/utsushi-fixture/tests/mvmz_runtime_proof.rs": [
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-031",
-      "utsushi-031",
-      "utsushi-065",
-      "utsushi-102",
-      "utsushi-102",
-      "utsushi-102"
-    ],
-    "crates/utsushi-kirikiri-xp3/src/conformance.rs": [
-      "utsushi-181"
-    ],
-    "crates/utsushi-kirikiri-xp3/src/lib.rs": [
-      "utsushi-181"
-    ],
-    "crates/utsushi-kirikiri-xp3/tests/substrate_conformance.rs": [
-      "utsushi-181"
-    ],
-    "crates/utsushi-kirikiri/src/encoding.rs": [
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009"
-    ],
-    "crates/utsushi-kirikiri/src/ids.rs": [
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009",
-      "utsushi-008"
-    ],
-    "crates/utsushi-kirikiri/src/lib.rs": [
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009",
-      "utsushi-037"
-    ],
-    "crates/utsushi-kirikiri/src/parse.rs": [
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009",
-      "utsushi-038"
-    ],
-    "crates/utsushi-kirikiri/src/replay.rs": [
-      "kaifuu-009",
-      "utsushi-038",
-      "utsushi-038",
-      "utsushi-038"
-    ],
-    "crates/utsushi-kirikiri/src/trace.rs": [
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009",
-      "utsushi-006",
-      "utsushi-008",
-      "utsushi-037",
-      "utsushi-037"
-    ],
     "crates/utsushi-kirikiri/src/xp3_vfs_replay.rs": [
-      "utsushi-039",
       "utsushi-039"
     ],
-    "crates/utsushi-kirikiri/tests/choice_jump_trace.rs": [
-      "utsushi-037"
-    ],
     "crates/utsushi-kirikiri/tests/command_trace_bridge.rs": [
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009",
-      "utsushi-008"
-    ],
-    "crates/utsushi-kirikiri/tests/macro_expansion_trace.rs": [
-      "utsushi-038"
-    ],
-    "crates/utsushi-kirikiri/tests/storage_variable_trace.rs": [
-      "utsushi-038"
+      "kaifuu-009"
     ],
     "crates/utsushi-kirikiri/tests/text_name_trace.rs": [
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009",
-      "kaifuu-009",
-      "utsushi-037"
-    ],
-    "crates/utsushi-kirikiri/tests/unsupported_diagnostics.rs": [
-      "utsushi-037",
-      "utsushi-038"
+      "kaifuu-009"
     ],
     "crates/utsushi-kirikiri/tests/xp3_vfs_handoff_smoke.rs": [
       "utsushi-039",
-      "utsushi-039",
       "utsushi-039"
     ],
-    "crates/utsushi-reallive/src/audio.rs": [
-      "utsushi-214",
-      "utsushi-214",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217"
-    ],
-    "crates/utsushi-reallive/src/bytecode_element.rs": [
-      "follow-up node",
-      "follow-up node",
-      "utsushi-203",
-      "utsushi-204",
-      "utsushi-205",
-      "utsushi-205",
-      "utsushi-208"
-    ],
-    "crates/utsushi-reallive/src/decompressor.rs": [
-      "utsushi-203"
-    ],
-    "crates/utsushi-reallive/src/engine_port.rs": [
-      "utsushi-200"
-    ],
-    "crates/utsushi-reallive/src/expression.rs": [
-      "utsushi-204",
-      "utsushi-205",
-      "utsushi-205"
-    ],
-    "crates/utsushi-reallive/src/expression_eval.rs": [
-      "utsushi-205",
-      "utsushi-205",
-      "utsushi-205",
-      "utsushi-205",
-      "utsushi-206",
-      "utsushi-206"
-    ],
-    "crates/utsushi-reallive/src/g00.rs": [
-      "utsushi-214",
-      "utsushi-214",
-      "utsushi-214",
-      "utsushi-216",
-      "utsushi-216"
-    ],
-    "crates/utsushi-reallive/src/gameexe.rs": [
-      "utsushi-207"
-    ],
-    "crates/utsushi-reallive/src/graphics_objects.rs": [
-      "utsushi-214",
-      "utsushi-215",
-      "utsushi-216"
-    ],
-    "crates/utsushi-reallive/src/lib.rs": [
-      "utsushi-022",
-      "utsushi-200",
-      "utsushi-201",
-      "utsushi-201",
-      "utsushi-201",
-      "utsushi-202",
-      "utsushi-202",
-      "utsushi-203",
-      "utsushi-204",
-      "utsushi-204",
-      "utsushi-205",
-      "utsushi-205",
-      "utsushi-206",
-      "utsushi-208",
-      "utsushi-208",
-      "utsushi-209",
-      "utsushi-210",
-      "utsushi-210",
-      "utsushi-211",
-      "utsushi-213",
-      "utsushi-214",
-      "utsushi-214",
-      "utsushi-214",
-      "utsushi-216",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-218",
-      "utsushi-220",
-      "utsushi-221"
-    ],
-    "crates/utsushi-reallive/src/nwa.rs": [
-      "follow-up node",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217"
-    ],
-    "crates/utsushi-reallive/src/ovk.rs": [
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217"
-    ],
-    "crates/utsushi-reallive/src/render_pipeline.rs": [
-      "utsushi-214",
-      "utsushi-216"
-    ],
-    "crates/utsushi-reallive/src/replay.rs": [
-      "utsushi-201",
-      "utsushi-209",
-      "utsushi-210",
-      "utsushi-220"
-    ],
-    "crates/utsushi-reallive/src/rlop/longops.rs": [
-      "utsushi-208",
-      "utsushi-208",
-      "utsushi-209"
-    ],
-    "crates/utsushi-reallive/src/rlop/mod.rs": [
-      "utsushi-205",
-      "utsushi-208",
-      "utsushi-208",
-      "utsushi-209",
-      "utsushi-209",
-      "utsushi-209",
-      "utsushi-209",
-      "utsushi-209",
-      "utsushi-210",
-      "utsushi-210",
-      "utsushi-210",
-      "utsushi-210",
-      "utsushi-210",
-      "utsushi-211",
-      "utsushi-212",
-      "utsushi-212"
-    ],
-    "crates/utsushi-reallive/src/rlop/module_audio.rs": [
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217"
-    ],
-    "crates/utsushi-reallive/src/rlop/module_ctrl.rs": [
-      "follow-up node",
-      "utsushi-208",
-      "utsushi-210",
-      "utsushi-210",
-      "utsushi-210",
-      "utsushi-210",
-      "utsushi-210",
-      "utsushi-210",
-      "utsushi-210",
-      "utsushi-211",
-      "utsushi-211"
-    ],
-    "crates/utsushi-reallive/src/rlop/module_mem.rs": [
-      "utsushi-209",
-      "utsushi-212",
-      "utsushi-212"
-    ],
     "crates/utsushi-reallive/src/rlop/module_msg.rs": [
-      "utsushi-209",
-      "utsushi-209",
-      "utsushi-209",
-      "utsushi-211",
       "utsushi-211"
-    ],
-    "crates/utsushi-reallive/src/rlop/module_obj.rs": [
-      "utsushi-214",
-      "utsushi-215",
-      "utsushi-215",
-      "utsushi-215"
-    ],
-    "crates/utsushi-reallive/src/rlop/module_sel.rs": [
-      "utsushi-211",
-      "utsushi-211"
-    ],
-    "crates/utsushi-reallive/src/rlop/module_str.rs": [
-      "utsushi-205",
-      "utsushi-208",
-      "utsushi-212",
-      "utsushi-212",
-      "utsushi-212",
-      "utsushi-212",
-      "utsushi-212",
-      "utsushi-212",
-      "utsushi-212",
-      "utsushi-212",
-      "utsushi-212",
-      "utsushi-212",
-      "utsushi-212",
-      "utsushi-212"
     ],
     "crates/utsushi-reallive/src/rlop/module_sys.rs": [
-      "utsushi-212",
-      "utsushi-212",
-      "utsushi-212",
       "utsushi-212"
     ],
-    "crates/utsushi-reallive/src/save.rs": [
-      "utsushi-218"
-    ],
-    "crates/utsushi-reallive/src/scene_header.rs": [
-      "utsushi-202",
-      "utsushi-203",
-      "utsushi-203",
-      "utsushi-203"
-    ],
-    "crates/utsushi-reallive/src/scene_index.rs": [
-      "utsushi-201",
-      "utsushi-201"
-    ],
-    "crates/utsushi-reallive/src/syscall.rs": [
-      "utsushi-211",
-      "utsushi-211",
-      "utsushi-211",
-      "utsushi-213"
-    ],
-    "crates/utsushi-reallive/src/var_banks.rs": [
-      "utsushi-205",
-      "utsushi-205",
-      "utsushi-205",
-      "utsushi-205",
-      "utsushi-205",
-      "utsushi-205",
-      "utsushi-206"
-    ],
-    "crates/utsushi-reallive/src/vm.rs": [
-      "follow-up node",
-      "utsushi-204",
-      "utsushi-208",
-      "utsushi-208",
-      "utsushi-209",
-      "utsushi-209",
-      "utsushi-209",
-      "utsushi-210",
-      "utsushi-210",
-      "utsushi-211",
-      "utsushi-211",
-      "utsushi-220"
-    ],
     "crates/utsushi-reallive/tests/audio_rlop_real_bytes.rs": [
-      "utsushi-217",
-      "utsushi-217",
       "utsushi-217",
       "utsushi-217",
       "utsushi-217",
@@ -2370,96 +1464,40 @@
     "crates/utsushi-reallive/tests/bytecode_element_real_bytes.rs": [
       "kaifuu-173",
       "utsushi-201",
-      "utsushi-201",
-      "utsushi-201",
-      "utsushi-201",
-      "utsushi-202",
-      "utsushi-202",
       "utsushi-202",
       "utsushi-203",
-      "utsushi-203",
-      "utsushi-203",
-      "utsushi-203",
       "utsushi-204",
       "utsushi-204",
       "utsushi-204",
-      "utsushi-204",
-      "utsushi-204",
-      "utsushi-204",
-      "utsushi-204",
-      "utsushi-204",
-      "utsushi-204",
-      "utsushi-204",
-      "utsushi-205"
+      "utsushi-204"
     ],
     "crates/utsushi-reallive/tests/decompressor_real_bytes.rs": [
       "utsushi-201",
-      "utsushi-201",
-      "utsushi-201",
-      "utsushi-202",
-      "utsushi-202",
-      "utsushi-203",
-      "utsushi-203",
-      "utsushi-203"
+      "utsushi-202"
     ],
     "crates/utsushi-reallive/tests/expression_real_bytes.rs": [
       "utsushi-201",
-      "utsushi-201",
-      "utsushi-201",
       "utsushi-202",
       "utsushi-203",
       "utsushi-204",
       "utsushi-204",
-      "utsushi-204",
       "utsushi-205",
       "utsushi-205",
       "utsushi-205",
       "utsushi-205",
       "utsushi-205",
-      "utsushi-205",
-      "utsushi-205",
-      "utsushi-205"
-    ],
-    "crates/utsushi-reallive/tests/expression_synthetic.rs": [
       "utsushi-205"
     ],
     "crates/utsushi-reallive/tests/g00_real_bytes.rs": [
-      "utsushi-201",
-      "utsushi-214",
-      "utsushi-214",
       "utsushi-216",
-      "utsushi-216",
-      "utsushi-216",
-      "utsushi-216",
-      "utsushi-216",
-      "utsushi-217"
-    ],
-    "crates/utsushi-reallive/tests/g00_synthetic_fixture.rs": [
       "utsushi-216"
     ],
-    "crates/utsushi-reallive/tests/gameexe_real_bytes.rs": [
-      "utsushi-207",
-      "utsushi-207",
-      "utsushi-207"
-    ],
-    "crates/utsushi-reallive/tests/graphics_object_stack.rs": [
-      "utsushi-214",
-      "utsushi-214"
-    ],
     "crates/utsushi-reallive/tests/graphics_rlop.rs": [
-      "utsushi-201",
-      "utsushi-215",
       "utsushi-215",
       "utsushi-215",
       "utsushi-215"
     ],
     "crates/utsushi-reallive/tests/nwa_real_bytes.rs": [
-      "utsushi-201",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
       "utsushi-217",
       "utsushi-217",
       "utsushi-217",
@@ -2467,25 +1505,12 @@
       "utsushi-217"
     ],
     "crates/utsushi-reallive/tests/ovk_real_bytes.rs": [
-      "utsushi-216",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
       "utsushi-217",
       "utsushi-217",
       "utsushi-217",
       "utsushi-217"
     ],
-    "crates/utsushi-reallive/tests/png_external_smoke.rs": [
-      "utsushi-214"
-    ],
     "crates/utsushi-reallive/tests/replay_scene_real_bytes.rs": [
-      "utsushi-201",
-      "utsushi-201",
-      "utsushi-209",
-      "utsushi-210",
-      "utsushi-220",
       "utsushi-220",
       "utsushi-220",
       "utsushi-220",
@@ -2494,31 +1519,11 @@
       "utsushi-220"
     ],
     "crates/utsushi-reallive/tests/replay_scene_synthetic.rs": [
-      "utsushi-202",
-      "utsushi-220",
       "utsushi-220"
-    ],
-    "crates/utsushi-reallive/tests/rlop_control_flow.rs": [
-      "utsushi-208",
-      "utsushi-210",
-      "utsushi-210",
-      "utsushi-211"
-    ],
-    "crates/utsushi-reallive/tests/rlop_sel.rs": [
-      "utsushi-205",
-      "utsushi-211"
     ],
     "crates/utsushi-reallive/tests/rlop_str_mem_sys_real_bytes.rs": [
       "utsushi-201",
       "utsushi-201",
-      "utsushi-201",
-      "utsushi-201",
-      "utsushi-201",
-      "utsushi-204",
-      "utsushi-208",
-      "utsushi-208",
-      "utsushi-212",
-      "utsushi-212",
       "utsushi-212",
       "utsushi-212",
       "utsushi-212",
@@ -2526,24 +1531,10 @@
       "utsushi-212"
     ],
     "crates/utsushi-reallive/tests/rlop_text.rs": [
-      "utsushi-208",
-      "utsushi-209",
-      "utsushi-210",
-      "utsushi-211",
       "utsushi-211"
     ],
     "crates/utsushi-reallive/tests/rlop_text_real_bytes.rs": [
       "utsushi-201",
-      "utsushi-201",
-      "utsushi-201",
-      "utsushi-202",
-      "utsushi-203",
-      "utsushi-204",
-      "utsushi-204",
-      "utsushi-204",
-      "utsushi-208",
-      "utsushi-209",
-      "utsushi-209",
       "utsushi-209",
       "utsushi-209",
       "utsushi-209",
@@ -2553,126 +1544,47 @@
       "utsushi-209",
       "utsushi-209"
     ],
-    "crates/utsushi-reallive/tests/save_real_bytes.rs": [
-      "utsushi-218"
-    ],
     "crates/utsushi-reallive/tests/save_synthetic.rs": [
-      "utsushi-218",
       "utsushi-218"
-    ],
-    "crates/utsushi-reallive/tests/scaffold.rs": [
-      "utsushi-200"
     ],
     "crates/utsushi-reallive/tests/scene_header_real_bytes.rs": [
-      "kaifuu-188",
-      "kaifuu-188",
       "utsushi-201",
       "utsushi-201",
       "utsushi-201",
-      "utsushi-201",
-      "utsushi-201",
-      "utsushi-201",
-      "utsushi-201",
-      "utsushi-201",
-      "utsushi-201",
-      "utsushi-201",
-      "utsushi-202",
-      "utsushi-202",
       "utsushi-202",
       "utsushi-202",
       "utsushi-202"
     ],
     "crates/utsushi-reallive/tests/scene_index_real_bytes.rs": [
-      "kaifuu-188",
-      "kaifuu-188",
-      "utsushi-201",
-      "utsushi-201",
       "utsushi-201"
     ],
-    "crates/utsushi-reallive/tests/syscall_routes_real_bytes.rs": [
-      "utsushi-213",
-      "utsushi-213"
-    ],
     "crates/utsushi-reallive/tests/var_banks.rs": [
-      "utsushi-206",
       "utsushi-206",
       "utsushi-206"
     ],
     "crates/utsushi-reallive/tests/vm_synthetic.rs": [
-      "utsushi-204",
-      "utsushi-208",
       "utsushi-208",
       "utsushi-208"
     ],
-    "crates/utsushi-rpgmaker-mv-mz/src/conformance.rs": [
-      "utsushi-179"
-    ],
-    "crates/utsushi-rpgmaker-mv-mz/src/lib.rs": [
-      "utsushi-179"
-    ],
-    "crates/utsushi-rpgmaker-mv-mz/tests/substrate_conformance.rs": [
-      "utsushi-179"
-    ],
-    "crates/utsushi-rpgmaker-mv/src/pack.rs": [
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-006",
-      "utsushi-032",
-      "utsushi-032",
-      "utsushi-032",
-      "utsushi-032",
-      "utsushi-032",
-      "utsushi-032"
-    ],
-    "crates/utsushi-rpgmaker-mv/src/replay.rs": [
-      "utsushi-006",
-      "utsushi-006"
-    ],
-    "crates/utsushi-rpgmaker-mv/tests/pack_traces.rs": [
-      "utsushi-033"
-    ],
-    "crates/utsushi-rpgmaker-mv/tests/replay_traces.rs": [
-      "utsushi-032"
-    ],
     "crates/utsushi-siglus/src/lib.rs": [
-      "utsushi-120",
-      "utsushi-147",
       "utsushi-147"
     ],
     "crates/utsushi-siglus/src/opcode_profile.rs": [
-      "utsushi-034",
-      "utsushi-035",
-      "utsushi-036",
       "utsushi-036",
       "utsushi-036"
     ],
     "crates/utsushi-siglus/src/runtime_profile.rs": [
-      "utsushi-035",
       "utsushi-035"
     ],
     "crates/utsushi-siglus/src/vm.rs": [
-      "utsushi-034",
-      "utsushi-034",
-      "utsushi-035",
-      "utsushi-035",
-      "utsushi-035",
-      "utsushi-035",
-      "utsushi-035",
-      "utsushi-035"
+      "utsushi-034"
     ],
     "crates/utsushi-siglus/src/vm_impl_map.rs": [
-      "utsushi-034",
       "utsushi-035"
     ],
     "crates/utsushi-siglus/tests/cross_engine_substrate_alignment.rs": [
       "utsushi-147",
       "utsushi-147",
-      "utsushi-147",
-      "utsushi-147",
-      "utsushi-147",
-      "utsushi-147",
-      "utsushi-147",
-      "utsushi-201",
       "utsushi-201",
       "utsushi-203",
       "utsushi-207",
@@ -2680,28 +1592,14 @@
       "utsushi-211",
       "utsushi-216",
       "utsushi-217",
-      "utsushi-218",
-      "utsushi-220",
-      "utsushi-221",
-      "utsushi-221"
+      "utsushi-218"
     ],
     "crates/utsushi-siglus/tests/opcode_profile_conformance.rs": [
       "utsushi-036",
-      "utsushi-036",
       "utsushi-036"
     ],
-    "crates/utsushi-siglus/tests/runtime_profile_boundary.rs": [
-      "utsushi-035"
-    ],
     "crates/utsushi-siglus/tests/scaffold.rs": [
-      "utsushi-147",
       "utsushi-147"
-    ],
-    "crates/utsushi-siglus/tests/substrate_conformance.rs": [
-      "utsushi-147"
-    ],
-    "crates/utsushi-siglus/tests/vm_smoke.rs": [
-      "utsushi-034"
     ],
     "packages/itotori-db/src/channel-feedback/github-issues-importer.ts": [
       "itotori-037"
