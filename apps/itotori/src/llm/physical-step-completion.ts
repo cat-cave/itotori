@@ -1,4 +1,9 @@
-import type { CompletedLlmStep, LlmStepAttemptContext, LlmStepBilling } from "@itotori/db";
+import {
+  conversationEventId,
+  type CompletedLlmStep,
+  type LlmStepAttemptContext,
+  type LlmStepBilling,
+} from "@itotori/db";
 import type { AnyTextAdapter, StreamChunk, TokenUsage } from "@tanstack/ai";
 import {
   CONVERSATION_EVENT_SCHEMA_VERSION,
@@ -103,9 +108,21 @@ function completedStep(
   completedAt: string,
   metadata: GenerationReconciliation,
 ): CompletedLlmStep {
-  const responseEventId = sha256({
+  const responseEventBody = {
+    kind: "physical-model-response",
     memoKey: identity.key.memoKey,
     responseHash: sha256(responseJson),
+    outcomeKind: outcome.kind,
+  } as const;
+  const snapshotId = spec.localizationSnapshotId ?? spec.contextSnapshotId;
+  const parentEventIds = [parentResponseEventId];
+  const responseEventId = conversationEventId({
+    parentIds: parentEventIds,
+    kind: "assistant",
+    snapshotId,
+    role: spec.roleId,
+    body: responseEventBody,
+    memoKey: identity.key.memoKey,
   });
   const memoBilling = contractBilling(metadata.billing);
   const normalizedUsage = usage
@@ -169,16 +186,11 @@ function completedStep(
     responseEvent: {
       eventId: responseEventId,
       schemaVersion: CONVERSATION_EVENT_SCHEMA_VERSION,
-      parentEventIds: [parentResponseEventId],
+      parentEventIds,
       snapshotKind: spec.localizationSnapshotId ? "localization" : "context",
-      snapshotId: spec.localizationSnapshotId ?? spec.contextSnapshotId,
+      snapshotId,
       actorRole: spec.roleId,
-      bodyJson: canonicalJson({
-        kind: "physical-model-response",
-        memoKey: identity.key.memoKey,
-        responseHash: sha256(responseJson),
-        outcomeKind: outcome.kind,
-      }),
+      bodyJson: canonicalJson(responseEventBody),
     },
   };
 }

@@ -40,7 +40,7 @@ const revision = (name: string, contentHash = H1) => ({ revisionId: name, conten
 
 export const contextSnapshotExample = {
   schemaVersion: CONTEXT_SNAPSHOT_SCHEMA_VERSION,
-  snapshotId: "snapshot:context:1",
+  snapshotId: H1,
   contentHash: H1,
   sourceLanguage: "ja",
   decode: revision("decode:1"),
@@ -57,7 +57,7 @@ export const contextSnapshotExample = {
 
 export const localizationSnapshotExample = {
   schemaVersion: LOCALIZATION_SNAPSHOT_SCHEMA_VERSION,
-  snapshotId: "snapshot:localization:1",
+  snapshotId: H2,
   contentHash: H2,
   contextSnapshot: { id: contextSnapshotExample.snapshotId, hash: H1 },
   targetLanguage: "en-US",

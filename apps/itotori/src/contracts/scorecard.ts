@@ -94,7 +94,7 @@ const CitationCheckSchema = z
     outputId: IdentifierSchema,
     evidenceId: IdentifierSchema,
     evidenceHash: Sha256Schema,
-    snapshotId: IdentifierSchema,
+    snapshotId: Sha256Schema,
     exists: z.boolean(),
     visibleInSnapshot: z.boolean(),
     scopeMatches: z.boolean(),

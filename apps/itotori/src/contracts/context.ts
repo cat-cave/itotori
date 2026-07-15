@@ -6,7 +6,6 @@ import {
   ContextScopeValueSchema,
   EncryptedPayloadRefSchema,
   EntityRefSchema,
-  HashRefSchema,
   IdentifierSchema,
   IsoDateTimeSchema,
   LanguageTagSchema,
@@ -47,7 +46,7 @@ const RevealHorizonSchema = z.discriminatedUnion("kind", [
 export const ContextSnapshotSchema = z
   .object({
     schemaVersion: z.literal(CONTEXT_SNAPSHOT_SCHEMA_VERSION),
-    snapshotId: IdentifierSchema,
+    snapshotId: Sha256Schema,
     contentHash: Sha256Schema,
     sourceLanguage: LanguageTagSchema,
     decode: RevisionRefSchema,
@@ -63,6 +62,9 @@ export const ContextSnapshotSchema = z
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.snapshotId !== value.contentHash) {
+      context.addIssue({ code: "custom", message: "snapshot ID must equal its content hash" });
+    }
     const unitIds = new Set(value.sourceUnits.map((unit) => unit.unitId));
     if (unitIds.size !== value.sourceUnits.length) {
       context.addIssue({ code: "custom", message: "source unit IDs must be unique" });
@@ -78,15 +80,23 @@ export const ContextSnapshotSchema = z
 export const LocalizationSnapshotSchema = z
   .object({
     schemaVersion: z.literal(LOCALIZATION_SNAPSHOT_SCHEMA_VERSION),
-    snapshotId: IdentifierSchema,
+    snapshotId: Sha256Schema,
     contentHash: Sha256Schema,
-    contextSnapshot: HashRefSchema,
+    contextSnapshot: z.object({ id: Sha256Schema, hash: Sha256Schema }).strict(),
     targetLanguage: LanguageTagSchema,
     localeBranchId: IdentifierSchema,
     acceptedBibleHead: AcceptedHeadSchema.nullable(),
     acceptedTargetOutputHead: AcceptedHeadSchema.nullable(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.snapshotId !== value.contentHash) {
+      context.addIssue({ code: "custom", message: "snapshot ID must equal its content hash" });
+    }
+    if (value.contextSnapshot.id !== value.contextSnapshot.hash) {
+      context.addIssue({ code: "custom", message: "context snapshot ID must equal its hash" });
+    }
+  });
 
 export const ConversationEventKindSchema = z.enum([
   "instruction",
@@ -154,7 +164,7 @@ export const ConversationEventSchema = z
     snapshot: z
       .object({
         kind: z.enum(["context", "localization"]),
-        snapshotId: IdentifierSchema,
+        snapshotId: Sha256Schema,
       })
       .strict(),
     role: z.union([RoleIdSchema, z.literal("application"), z.literal("human")]),
@@ -353,7 +363,7 @@ export const HumanNoteFactValueSchema = z
 const FactBaseShape = {
   schemaVersion: z.literal(FACT_SCHEMA_VERSION),
   factId: IdentifierSchema,
-  snapshotId: IdentifierSchema,
+  snapshotId: Sha256Schema,
   hash: Sha256Schema,
   visibility: VisibilitySchema,
 } as const;

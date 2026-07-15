@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { localUserId, permissionValues, type AuthorizationActor } from "../src/authorization.js";
 import type { DatabaseContext } from "../src/connection.js";
 import { permissionBasedLlmContentRead as createContentAccess } from "../src/llm-content-access.js";
+import { conversationEventId } from "../src/llm-content-address.js";
 import {
   ItotoriLlmCallMemoRepository,
   type LlmMemoCipher,
@@ -206,6 +207,8 @@ type RegisteredCiphertextColumn = {
 
 function memoInput(digit: string, content: string) {
   const memoKey = hash(`memo:${digit}`);
+  const snapshotId = hash(`snapshot:${digit}`);
+  const body = { content };
   return {
     memoKey,
     semanticHash: hash(`semantic:${digit}`),
@@ -232,13 +235,20 @@ function memoInput(digit: string, content: string) {
       reportedCostUsd: null,
       completedAt: new Date().toISOString(),
       responseEvent: {
-        eventId: hash(`event:${digit}`),
-        schemaVersion: "event:v1",
+        eventId: conversationEventId({
+          parentIds: [],
+          kind: "assistant",
+          snapshotId,
+          role: "Q1",
+          body,
+          memoKey,
+        }),
+        schemaVersion: "itotori.conversation-event.v1",
         parentEventIds: [] as const,
         snapshotKind: "context" as const,
-        snapshotId: `snapshot:${digit}`,
+        snapshotId,
         actorRole: "Q1",
-        bodyJson: JSON.stringify({ content }),
+        bodyJson: JSON.stringify(body),
       },
     }),
   };

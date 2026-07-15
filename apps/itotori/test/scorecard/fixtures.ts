@@ -75,7 +75,7 @@ export function passingEvidence(pinned: PinnedAcceptanceArtifacts): AcceptanceEv
     },
     subjectType: "unit" as const,
     subjectId: unit.bridgeUnitId,
-    localizationSnapshotId: "snapshot:localization:qualifying",
+    localizationSnapshotId: fixtureHash(900),
     stage: "final" as const,
     sourceHash: unit.sourceHash,
     value: {

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  conversationEventId,
   ItotoriLlmAcceptedOutputRepository,
   ItotoriLlmCallMemoRepository,
   ItotoriLlmRetentionRepository,
@@ -490,6 +491,9 @@ async function persistFinishedMetadata(
     },
     async execute() {
       const completedAt = new Date().toISOString();
+      const snapshotId = hash(`snapshot:${identity}`);
+      const parentEventIds = [hash(`parent:${identity}`)];
+      const body = { identity };
       return {
         kind: "completed",
         responseJson: JSON.stringify({ type: EventType.RUN_FINISHED, ...routeMetadata }),
@@ -505,13 +509,20 @@ async function persistFinishedMetadata(
         reportedCostUsd: metadata.reportedCostUsd,
         completedAt,
         responseEvent: {
-          eventId: hash(`event:${identity}`),
+          eventId: conversationEventId({
+            parentIds: parentEventIds,
+            kind: "assistant",
+            snapshotId,
+            role: "Q1",
+            body,
+            memoKey,
+          }),
           schemaVersion: "itotori.conversation-event.v1",
-          parentEventIds: [hash(`parent:${identity}`)],
+          parentEventIds,
           snapshotKind: "localization",
-          snapshotId: `snapshot:${identity}`,
+          snapshotId,
           actorRole: "Q1",
-          bodyJson: JSON.stringify({ identity }),
+          bodyJson: JSON.stringify(body),
         },
       };
     },
@@ -581,7 +592,7 @@ function acceptedCandidate(memoKey: string, identity = "quarantine-proof") {
     parentOutputIds: [],
     memoKeys: [memoKey],
     snapshotKind: "localization" as const,
-    snapshotId: `snapshot:localization:${identity}`,
+    snapshotId: hash(`snapshot:localization:${identity}`),
     subjectType: "unit" as const,
     subjectId: `unit:${identity}`,
     stage: "final",
