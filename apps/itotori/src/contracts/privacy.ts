@@ -5,7 +5,7 @@ export const PRIVACY_RETENTION_EGRESS_CONTRACT_VERSION =
   "itotori.privacy-retention-egress.v1" as const;
 
 const ExactModelSchema = IdentifierSchema.superRefine((value, context) => {
-  if (/(?:^|[/:_-])(?:auto|latest)(?:$|[/:_-])/iu.test(value)) {
+  if (/(?:^|[/:_-])(?:auto|latest|router)(?:$|[/:_-])/iu.test(value)) {
     context.addIssue({ code: "custom", message: "model must be an exact versioned slug" });
   }
 });

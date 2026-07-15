@@ -126,13 +126,14 @@ function structuredResponse(
   ]);
 }
 
-function toolCallResponse(callIndex: number): Response {
+function toolCallResponse(callIndex: number, reasoningDetails: readonly unknown[] = []): Response {
   const id = `generation:tool:${callIndex}`;
   return sse([
     streamChunk({
       id,
       delta: {
         role: "assistant",
+        ...(reasoningDetails.length > 0 ? { reasoning_details: reasoningDetails } : {}),
         tool_calls: [
           {
             index: 0,
@@ -295,7 +296,7 @@ describe("the rebuilt LLM dispatcher", () => {
       },
       plugins: [],
       reasoning: { effort: "none" },
-      max_completion_tokens: 2_048,
+      max_tokens: 2_048,
       response_format: {
         type: "json_schema",
         json_schema: { name: "structured_output", strict: true },
@@ -303,6 +304,9 @@ describe("the rebuilt LLM dispatcher", () => {
     });
     expect(captured[0]?.body).not.toHaveProperty("provider.allowFallbacks");
     expect(captured[0]?.body).not.toHaveProperty("provider.dataCollection");
+    expect(captured[0]?.body).not.toHaveProperty("parallel_tool_calls");
+    expect(captured[0]?.body).not.toHaveProperty("seed");
+    expect(captured[0]?.body).not.toHaveProperty("max_completion_tokens");
 
     expect(result).toMatchObject({
       status: "failure",
@@ -370,7 +374,7 @@ describe("the rebuilt LLM dispatcher", () => {
     expect(result).not.toHaveProperty("value");
   });
 
-  it("bounds repeated tool use by maxSteps and records strict tool results", async () => {
+  it("runs the recorded conformance path with strict tools, reasoning, usage, cost, and unknown route evidence", async () => {
     const prompt = "Use the local unit tool, then return the review verdict.";
     const captured: CapturedRequest[] = [];
     let executions = 0;
@@ -419,24 +423,77 @@ describe("the rebuilt LLM dispatcher", () => {
         timeoutClass: "normal",
       },
     });
-    const result = await dispatch(
-      spec,
-      runtime(
-        prompt,
-        [
-          toolCallResponse(1),
-          toolCallResponse(2),
-          structuredResponse(JSON.stringify(reviewVerdictExample), "generation:terminal"),
-        ],
-        captured,
-        [decodeTool],
-      ),
+    const firstReasoningDetails = [
+      {
+        type: "reasoning.text",
+        text: "synthetic opaque reasoning detail one",
+        format: "unknown",
+        signature: "synthetic-signature-one",
+      },
+    ];
+    const secondReasoningDetails = [
+      {
+        type: "reasoning.text",
+        text: "synthetic opaque reasoning detail two",
+        format: "unknown",
+        signature: "synthetic-signature-two",
+      },
+    ];
+    const continuityEvidence: Array<{
+      receivedBatchCount: number;
+      forwardedBatchCount: number;
+      exactForwardCount: number;
+    }> = [];
+    const configuredRuntime = runtime(
+      prompt,
+      [
+        toolCallResponse(1, firstReasoningDetails),
+        toolCallResponse(2, secondReasoningDetails),
+        structuredResponse(JSON.stringify(reviewVerdictExample), "generation:terminal"),
+      ],
+      captured,
+      [decodeTool],
+      null,
     );
+    const result = await dispatch(spec, {
+      ...configuredRuntime,
+      onReasoningDetailsContinuity: (evidence) => continuityEvidence.push(evidence),
+    });
 
     expect(captured).toHaveLength(3);
+    expect(captured[1]?.body).toMatchObject({
+      messages: [
+        { role: "user" },
+        { role: "assistant", reasoning_details: firstReasoningDetails },
+        { role: "tool" },
+      ],
+    });
+    expect(captured[2]?.body).toMatchObject({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          role: "assistant",
+          reasoning_details: secondReasoningDetails,
+        }),
+      ]),
+    });
     expect(executions).toBe(2);
-    expect(result.status).toBe("success");
+    expect(result).toMatchObject({
+      status: "failure",
+      failureKind: "quarantined",
+      verification: "quarantined",
+      generationId: null,
+      served: { status: "unknown" },
+      usage: { promptTokens: 11, completionTokens: 7, reasoningTokens: 3, cachedTokens: 2 },
+      billing: { status: "confirmed", costUsd: "0.00000125" },
+    });
     expect(result.events.filter((event) => event.kind === "tool-step-finished")).toHaveLength(2);
+    expect(continuityEvidence).toEqual([
+      expect.objectContaining({
+        receivedBatchCount: 2,
+        forwardedBatchCount: 2,
+        exactForwardCount: 2,
+      }),
+    ]);
   });
 });
 
