@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "itotori.acceptance-scorecard-definition.v1",
+  "contentAddress": {
+    "algorithm": "sha256",
+    "canonicalization": "json-key-sort-v1",
+    "sha256": "sha256:c63f9d4473f27c3f101c5fc723b1264862e704bf95b58824a8466c32e9d78530"
+  },
+  "corpus": {
+    "manifestSha256": "sha256:7b12ea456383c55f06e668c2d9a481e9abaf8b74ba30419c932ed3d4a28ad531",
+    "unitsProjectionSha256": "sha256:302dc692db2a9c5d0fae1ddf61ce1b84b04161870c770a7d420090870113d031"
+  },
+  "dimensions": {
+    "completion": {
+      "requiredUnitCount": 129,
+      "acceptedStages": ["final", "build-lqa"],
+      "releaseEligibility": "shippable",
+      "requireExactUnitAndSourceHashSet": true
+    },
+    "efficiency": {
+      "lineage": "cold",
+      "baselinePhysicalAttempts": 762,
+      "reductionDivisor": 5,
+      "maximumPhysicalAttempts": 152
+    },
+    "zdr": {
+      "requireAccountAttestation": true,
+      "requireGuardrailAttestation": true,
+      "requirePerPhysicalCallWireProof": true,
+      "requireRequestedAndServedPair": true,
+      "requireGenerationId": true,
+      "requireMetadata": true,
+      "requireCacheDisabled": true,
+      "requireNoPlugins": true
+    },
+    "sys1": {
+      "requiredRestartKinds": ["unit-restart", "pipeline-restart"],
+      "requireMemoMonotonicity": true,
+      "requireAcceptedOutputMonotonicity": true,
+      "maximumRedispatchedMemoizedCalls": 0,
+      "maximumDiscardedAcceptedOutputs": 0
+    },
+    "grounding": {
+      "requireStrictTerminalSchemas": true,
+      "rawJsonSalvageAllowed": false,
+      "requireEvidenceExistence": true,
+      "requireSnapshotVisibility": true,
+      "requireScopeMatch": true,
+      "requireHashMatch": true
+    },
+    "bibleConsistency": {
+      "requireEveryUnit": true,
+      "requirePinnedRenderingIds": true,
+      "requirePinnedBibleHead": true
+    },
+    "patchCoverage": {
+      "requiredUnitCount": 129,
+      "allowPartialPatch": false,
+      "requireProtectedSpanPass": true,
+      "requireShiftJisPass": true
+    },
+    "translatedByteReplay": {
+      "requiredUnitCount": 129,
+      "requirePatchedTargetBytes": true,
+      "allowSourceByteReplay": false,
+      "requireAcceptedTargetHashMatch": true
+    },
+    "zeroCallReplay": {
+      "maximumNewPhysicalAttempts": 0,
+      "identicalArtifacts": ["wiki", "bible", "accepted-outputs", "patch", "replay"]
+    }
+  },
+  "humanCalibration": {
+    "labelsSha256": "sha256:3b7687eebed775e0eff3604694e55ed9f5b7fb36e5f07ac1655e8dce9e365f21",
+    "requiredRubrics": ["meaning", "voice", "terminology", "continuity"],
+    "minimumHighRiskLabels": 4,
+    "minimumRepresentativeCleanUnits": 4
+  }
+}

@@ -3,6 +3,8 @@ export * from "./calls.js";
 export * from "./context.js";
 export * from "./outputs.js";
 export * from "./privacy.js";
+export * from "./scorecard-definition.js";
+export * from "./scorecard.js";
 export * from "./shared.js";
 export * from "./terminal-contracts.js";
 export * from "./tools.js";
