@@ -59,7 +59,7 @@ pub const XP3_PRIVATE_LOCAL_VALIDATION_MANIFEST_COMMAND: &str =
     "kaifuu xp3 private-local-validation --manifest <private-local-xp3-validation-manifest>";
 
 /// The blunt support boundary carried in every report.
-pub const XP3_PRIVATE_LOCAL_VALIDATION_SUPPORT_BOUNDARY: &str = "Kaifuu KiriKiri XP3 private-local validation consumes an operator-authored, already-redacted manifest of owned XP3 validation outcomes and composes it with the KAIFUU-057 claimed-profile production runner. A claimed support tuple must record detect, key/profile resolution, extract, trivial patch, verify, and delta-apply proof hashes/stage outcomes, and the claimed tuple must be backed by a passing synthetic production regression run. Missing private inputs produce a deterministic skipped artifact whose alpha proof posture is not_private_validated. Claimed-tuple failures are compatibility bugs/regressions. Out-of-profile inputs are semantic diagnostics. The report carries only logical ids, counts, states, and sha256 proof hashes; it never carries raw keys, helper dumps, retail filenames, decrypted text, local paths, screenshots, or assets.";
+pub const XP3_PRIVATE_LOCAL_VALIDATION_SUPPORT_BOUNDARY: &str = "Kaifuu KiriKiri XP3 private-local validation consumes an operator-authored, already-redacted manifest of owned XP3 validation outcomes and composes it with the claimed-profile production runner. A claimed support tuple must record detect, key/profile resolution, extract, trivial patch, verify, and delta-apply proof hashes/stage outcomes, and the claimed tuple must be backed by a passing synthetic production regression run. Missing private inputs produce a deterministic skipped artifact whose alpha proof posture is not_private_validated. Claimed-tuple failures are compatibility bugs/regressions. Out-of-profile inputs are semantic diagnostics. The report carries only logical ids, counts, states, and sha256 proof hashes; it never carries raw keys, helper dumps, retail filenames, decrypted text, local paths, screenshots, or assets.";
 
 /// Semantic code: the report failed the fail-loud deep scan.
 pub const SEMANTIC_XP3_PRIVATE_LOCAL_VALIDATION_SECRET_LEAK: &str =
@@ -572,7 +572,8 @@ pub fn run_xp3_private_local_validation(
                 code: "production_regression_failed".to_string(),
                 severity: PartialDiagnosticSeverity::P0,
                 field: "regression".to_string(),
-                message: "claimed XP3 support tuple is blocked by the KAIFUU-057 production regression runner".to_string(),
+                message: "claimed XP3 support tuple is blocked by the production regression runner"
+                    .to_string(),
                 semantic_code: SEMANTIC_XP3_PRIVATE_LOCAL_VALIDATION_REGRESSION_FAILED.to_string(),
             });
             Xp3PrivateLocalValidationState::Failed
@@ -681,7 +682,7 @@ fn base_report(
     Xp3PrivateLocalValidationReport {
         schema_version: XP3_PRIVATE_LOCAL_VALIDATION_SCHEMA_VERSION.to_string(),
         validation_id: validation_id.to_string(),
-        source_node_id: "KAIFUU-144".to_string(),
+        source_node_id: "xp3-private-local-validation".to_string(),
         command: command.to_string(),
         support_boundary: XP3_PRIVATE_LOCAL_VALIDATION_SUPPORT_BOUNDARY.to_string(),
         status,
@@ -731,7 +732,7 @@ fn run_regression(
     Xp3PrivateLocalRegressionSummary,
     Option<Xp3ProductionReport>,
 ) {
-    match run_xp3_production(registry, "KAIFUU-144") {
+    match run_xp3_production(registry, "xp3-private-local-validation") {
         Ok(report) => {
             let production_report_hash = report
                 .stable_json()
@@ -756,7 +757,7 @@ fn run_regression(
             };
             let summary = Xp3PrivateLocalRegressionSummary {
                 runner: "kaifuu.kirikiri.xp3_production".to_string(),
-                source_node_id: "KAIFUU-057".to_string(),
+                source_node_id: "xp3-production".to_string(),
                 claimed_support_tuple_ids: claimed_tuple_ids.to_vec(),
                 production_report_hash,
                 status: status.clone(),
@@ -774,7 +775,7 @@ fn run_regression(
         Err(error) => (
             Xp3PrivateLocalRegressionSummary {
                 runner: "kaifuu.kirikiri.xp3_production".to_string(),
-                source_node_id: "KAIFUU-057".to_string(),
+                source_node_id: "xp3-production".to_string(),
                 claimed_support_tuple_ids: claimed_tuple_ids.to_vec(),
                 production_report_hash: None,
                 status: OperationStatus::Failed,
@@ -807,7 +808,7 @@ fn honor_round_trip_proof(
             severity: PartialDiagnosticSeverity::P0,
             field: "regression".to_string(),
             message: format!(
-                "claimed XP3 support tuple {} cannot be patch-proven: the KAIFUU-057 extract-patch-verify workflow did not produce a passing round-trip to bind the proof to",
+                "claimed XP3 support tuple {} cannot be patch-proven: the extract-patch-verify workflow did not produce a passing round-trip to bind the proof to",
                 entry.claimed_support_tuple_id
             ),
             semantic_code: SEMANTIC_XP3_PRIVATE_LOCAL_VALIDATION_WORKFLOW_UNPROVEN.to_string(),
@@ -823,7 +824,7 @@ fn honor_round_trip_proof(
             severity: PartialDiagnosticSeverity::P0,
             field: format!("entries[{index}].claimedSupportTupleId"),
             message: format!(
-                "the KAIFUU-057 workflow round-tripped no output for claimed tuple {}, so no verified round-trip proof can back it",
+                "the workflow round-tripped no output for claimed tuple {}, so no verified round-trip proof can back it",
                 entry.claimed_support_tuple_id
             ),
             semantic_code: SEMANTIC_XP3_PRIVATE_LOCAL_VALIDATION_WORKFLOW_UNPROVEN.to_string(),
@@ -1062,8 +1063,8 @@ mod tests {
     /// from a real production round-trip over `registry`. An entry
     /// declaring this exact value is honored; anything else is a label-only proof.
     fn workflow_bound_proof(registry: &Xp3ProductionRegistry, tuple_id: &str) -> ProofHash {
-        let workflow =
-            run_xp3_production(registry, "KAIFUU-144").expect("production workflow runs");
+        let workflow = run_xp3_production(registry, "xp3-private-local-validation")
+            .expect("production workflow runs");
         canonical_xp3_round_trip_proof_hash_from_workflow(&workflow, tuple_id)
             .expect("workflow round-trips the claimed tuple")
     }
@@ -1370,8 +1371,8 @@ mod tests {
         // workflow yields no canonical proof for a tuple it did not round-trip,
         // so honor_round_trip_proof refuses it loud.
         let registry = synthetic::production_registry();
-        let workflow =
-            run_xp3_production(&registry, "KAIFUU-144").expect("production workflow runs");
+        let workflow = run_xp3_production(&registry, "xp3-private-local-validation")
+            .expect("production workflow runs");
         assert!(
             canonical_xp3_round_trip_proof_hash_from_workflow(&workflow, "not-a-real-tuple")
                 .is_none()
