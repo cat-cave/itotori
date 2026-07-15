@@ -135,7 +135,7 @@
     "crates/utsushi-reallive/src/graphics_objects.rs": 1260,
     "crates/utsushi-reallive/src/input_bridge.rs": 720,
     "crates/utsushi-reallive/src/nwa.rs": 575,
-    "crates/utsushi-reallive/src/render_pipeline.rs": 2242,
+    "crates/utsushi-reallive/src/render_pipeline.rs": 2117,
     "crates/utsushi-reallive/src/rlop/longops.rs": 1032,
     "crates/utsushi-reallive/src/rlop/mod.rs": 615,
     "crates/utsushi-reallive/src/rlop/module_audio.rs": 1239,
