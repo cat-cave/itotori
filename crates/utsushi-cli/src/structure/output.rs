@@ -81,9 +81,7 @@ pub(super) fn runtime_only_message_value(
 pub(super) fn unit_value(unit: &BridgeUnit, messages: &[Value]) -> Value {
     let observed: Vec<&Value> = messages
         .iter()
-        .filter(|message| {
-            message["bridgeRef"]["bridgeUnitId"].as_str() == Some(unit.bridge_unit_id.as_str())
-        })
+        .filter(|message| message["bridgeRef"]["bridgeUnitId"].as_str() == Some(unit.id.as_str()))
         .collect();
     let line_ids: Vec<&str> = observed
         .iter()
@@ -94,16 +92,15 @@ pub(super) fn unit_value(unit: &BridgeUnit, messages: &[Value]) -> Value {
         .and_then(|message| message["playOrder"].as_u64());
     let evidence_tier = observed
         .first()
-        .map(|message| message["evidenceTier"].clone())
-        .unwrap_or(Value::Null);
+        .map_or(Value::Null, |message| message["evidenceTier"].clone());
     json!({
-        "unitId": unit.bridge_unit_id,
+        "unitId": unit.id,
         "bridgeRef": unit.bridge_ref(),
         "surfaceKind": unit.surface_kind,
         "sourceText": unit.source_text,
         "characterId": unit.character_id,
         "evidenceTier": evidence_tier,
-        "color": observed.first().map(|message| message["color"].clone()).unwrap_or(Value::Null),
+        "color": observed.first().map_or(Value::Null, |message| message["color"].clone()),
         "bridgeDeclaredColor": unit.color,
         "sourceAsset": unit.source_asset,
         "byteOffsetInScene": unit.byte_start,

@@ -15,7 +15,7 @@ pub(super) struct ChoiceRef {
 
 #[derive(Clone, Debug)]
 pub(super) struct BridgeUnit {
-    pub bridge_unit_id: String,
+    pub id: String,
     pub source_unit_key: String,
     pub surface_kind: String,
     pub source_text: String,
@@ -31,7 +31,7 @@ pub(super) struct BridgeUnit {
 impl BridgeUnit {
     pub fn bridge_ref(&self) -> Value {
         json!({
-            "bridgeUnitId": self.bridge_unit_id,
+            "bridgeUnitId": self.id,
             "sourceUnitKey": self.source_unit_key,
         })
     }
@@ -155,7 +155,7 @@ fn parse_unit(value: &Value) -> Result<BridgeUnit, String> {
         .transpose()?;
     let byte_start = unsigned_map(range, "startByte")?;
     Ok(BridgeUnit {
-        bridge_unit_id: string(value, "bridgeUnitId")?.to_string(),
+        id: string(value, "bridgeUnitId")?.to_string(),
         source_unit_key: string(value, "sourceUnitKey")?.to_string(),
         surface_kind: string(value, "surfaceKind")?.to_string(),
         source_text: string(value, "sourceText")?.to_string(),

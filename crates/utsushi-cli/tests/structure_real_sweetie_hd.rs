@@ -307,7 +307,13 @@ fn utsushi_structure_real_sweetie_v2_matches_bridge_and_graph() {
                 );
             }
         }
-        for field in ["sceneRef", "predecessors", "successors", "reachable", "routeMembership"] {
+        for field in [
+            "sceneRef",
+            "predecessors",
+            "successors",
+            "reachable",
+            "routeMembership",
+        ] {
             assert!(scene.get(field).is_some(), "scene is missing {field}");
         }
     }

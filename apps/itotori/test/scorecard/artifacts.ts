@@ -18,11 +18,11 @@ import {
 import { parseCorpusManifestJson } from "../../src/corpus-manifest/validate.js";
 
 export const PINNED_SCORECARD_SHA256 =
-  "sha256:c63f9d4473f27c3f101c5fc723b1264862e704bf95b58824a8466c32e9d78530";
+  "sha256:a730da7885f77eacdce144722b028dc10a1e7307ff37516f14afd7c580c9cf88";
 export const PINNED_HUMAN_CALIBRATION_SHA256 =
-  "sha256:3b7687eebed775e0eff3604694e55ed9f5b7fb36e5f07ac1655e8dce9e365f21";
+  "sha256:f4d2c3ba635ed049e7552542254e01505c9e702b0fc140c59e97ebf22ba6cbc4";
 export const PINNED_CORPUS_MANIFEST_SHA256 =
-  "sha256:7b12ea456383c55f06e668c2d9a481e9abaf8b74ba30419c932ed3d4a28ad531";
+  "sha256:6b44e40f88652c00e81e1bcbae00117adce602ead139a998075dcef6f4e9744a";
 
 const SCORECARD_PATH = fileURLToPath(new URL("./acceptance-scorecard.v1.json", import.meta.url));
 const LABELS_PATH = fileURLToPath(new URL("./human-calibration-labels.v1.json", import.meta.url));

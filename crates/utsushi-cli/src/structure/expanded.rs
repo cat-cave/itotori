@@ -71,7 +71,7 @@ pub(super) fn build(input: ExpandedInput<'_>) -> Result<Value, String> {
         let mut messages = Vec::with_capacity(observation.lines.len());
         for (order, line) in observation.lines.iter().enumerate() {
             if let Some(unit) = links.unit_for(line) {
-                observed_unit_ids.insert(unit.bridge_unit_id.clone());
+                observed_unit_ids.insert(unit.id.clone());
                 messages.push(message_value(order, line, unit)?);
             } else {
                 let asset = input.bridge.asset(observation.scene_id).ok_or_else(|| {
@@ -129,7 +129,7 @@ pub(super) fn build(input: ExpandedInput<'_>) -> Result<Value, String> {
                 choices.push(json!({
                     "choiceId": choice.choice_id,
                     "choiceGroupId": choice.group_id,
-                    "edgeId": edge.edge_id,
+                    "edgeId": edge.id,
                     "edgeResolution": edge.resolution,
                     "unresolvedEdgeDiagnostic": diagnostic,
                     "optionIndex": choice.option_index,
@@ -176,7 +176,7 @@ pub(super) fn build(input: ExpandedInput<'_>) -> Result<Value, String> {
                         "choice-group:runtime:scene-{:04}:prompt-{}",
                         observation.scene_id, prompt.byte_offset_in_scene
                     ),
-                    "edgeId": edge.edge_id,
+                    "edgeId": edge.id,
                     "edgeResolution": edge.resolution,
                     "unresolvedEdgeDiagnostic": diagnostic,
                     "optionIndex": option_index,
@@ -216,7 +216,7 @@ pub(super) fn build(input: ExpandedInput<'_>) -> Result<Value, String> {
         let units = scene_units
             .iter()
             .map(|unit| {
-                emitted_unit_ids.insert(unit.bridge_unit_id.clone());
+                emitted_unit_ids.insert(unit.id.clone());
                 unit_value(unit, &messages)
             })
             .collect::<Vec<_>>();
@@ -270,10 +270,9 @@ pub(super) fn build(input: ExpandedInput<'_>) -> Result<Value, String> {
         .units_by_scene
         .values()
         .flatten()
-        .map(|unit| unit.bridge_unit_id.as_str())
+        .map(|unit| unit.id.as_str())
         .collect();
-    let emitted_unit_ids: BTreeSet<&str> =
-        emitted_unit_ids.iter().map(String::as_str).collect();
+    let emitted_unit_ids: BTreeSet<&str> = emitted_unit_ids.iter().map(String::as_str).collect();
     if emitted_unit_ids != bridge_unit_ids {
         return Err(format!(
             "utsushi.structure.incomplete_unit_identity_coverage: bridge={} emitted={}",
@@ -413,11 +412,14 @@ fn choice_units_by_command<'a>(
             let mut group = choices_by_command.remove(&cursor).unwrap_or_default();
             group.sort_by_key(|unit| unit.choice.as_ref().map(|choice| choice.option_index));
             for unit in &group {
-                let choice = unit.choice.as_ref().ok_or("choice unit lost choice context")?;
+                let choice = unit
+                    .choice
+                    .as_ref()
+                    .ok_or("choice unit lost choice context")?;
                 if usize::from(choice.option_index) >= choices.len() {
                     return Err(format!(
                         "BridgeUnit {} option {} exceeds decoded choice count {} at byte {cursor}",
-                        unit.bridge_unit_id,
+                        unit.id,
                         choice.option_index,
                         choices.len()
                     ));
@@ -440,36 +442,35 @@ fn reconcile_choice_locations(bytecode: &[u8], units: &mut [BridgeUnit]) -> Resu
     let mut cursor = 0u64;
     for (opcode, width) in parse_real_bytecode_spans(bytecode).map_err(|err| err.to_string())? {
         if let RealLiveOpcode::Choice { choices } = opcode {
-            for unit in units
-                .iter_mut()
-                .filter(|unit| {
-                    unit.surface_kind == "choice_label"
-                        && unit.choice_command_offset == Some(cursor)
-                })
-            {
-                let choice = unit.choice.as_ref().ok_or("choice unit lost choice context")?;
+            for unit in units.iter_mut().filter(|unit| {
+                unit.surface_kind == "choice_label" && unit.choice_command_offset == Some(cursor)
+            }) {
+                let choice = unit
+                    .choice
+                    .as_ref()
+                    .ok_or("choice unit lost choice context")?;
                 let decoded = choices.get(usize::from(choice.option_index)).ok_or_else(|| {
                     format!(
                         "BridgeUnit {} option {} exceeds decoded choice count {} at byte {cursor}",
-                        unit.bridge_unit_id,
+                        unit.id,
                         choice.option_index,
                         choices.len()
                     )
                 })?;
                 unit.byte_start = decoded.byte_offset;
                 unit.byte_end = decoded.byte_offset + decoded.bytes.len() as u64;
-                matched.insert(unit.bridge_unit_id.clone());
+                matched.insert(unit.id.clone());
             }
         }
         cursor = cursor.saturating_add(width as u64);
     }
     if let Some(unit) = units
         .iter()
-        .find(|unit| unit.surface_kind == "choice_label" && !matched.contains(&unit.bridge_unit_id))
+        .find(|unit| unit.surface_kind == "choice_label" && !matched.contains(&unit.id))
     {
         return Err(format!(
             "BridgeUnit {} has no matching decoded choice command",
-            unit.bridge_unit_id
+            unit.id
         ));
     }
     Ok(())

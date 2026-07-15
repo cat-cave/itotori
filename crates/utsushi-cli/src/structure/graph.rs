@@ -6,7 +6,8 @@ use utsushi_reallive::{BytecodeElement, SceneId, decode_bytecode_stream};
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Edge {
-    pub edge_id: String,
+    #[serde(rename = "edgeId")]
+    pub id: String,
     pub kind: &'static str,
     pub from_scene_id: SceneId,
     pub to_scene_id: Option<SceneId>,
@@ -29,7 +30,7 @@ impl Edge {
             "unknown"
         };
         Self {
-            edge_id: format!("edge:scene-{from:04}:observed-next"),
+            id: format!("edge:scene-{from:04}:observed-next"),
             kind: "dispatch",
             from_scene_id: from,
             to_scene_id: if authoritative { to } else { None },
@@ -49,7 +50,7 @@ impl Edge {
         diagnostic: Option<String>,
     ) -> Self {
         Self {
-            edge_id: format!("edge:choice:{choice_id}"),
+            id: format!("edge:choice:{choice_id}"),
             kind: "choice",
             from_scene_id: from,
             to_scene_id: if authoritative { target } else { None },
@@ -90,7 +91,7 @@ pub(super) fn static_edges(scene_id: SceneId, bytecode: &[u8]) -> Result<Vec<Edg
             for (arm, target) in goto_targets.iter().enumerate() {
                 let resolved = resolve_arm_cross_scene(*target as usize, &by_offset);
                 edges.push(Edge {
-                    edge_id: format!("edge:scene-{scene_id:04}:table-{byte_offset}-{arm}"),
+                    id: format!("edge:scene-{scene_id:04}:table-{byte_offset}-{arm}"),
                     kind: "dispatch",
                     from_scene_id: scene_id,
                     to_scene_id: resolved,
@@ -107,7 +108,7 @@ pub(super) fn static_edges(scene_id: SceneId, bytecode: &[u8]) -> Result<Vec<Edg
         } else if is_cross_scene_command(*module_type, *module_id, *opcode) {
             let resolved = literal_first_scene_arg(raw_bytes);
             edges.push(Edge {
-                edge_id: format!("edge:scene-{scene_id:04}:command-{byte_offset}"),
+                id: format!("edge:scene-{scene_id:04}:command-{byte_offset}"),
                 kind: "dispatch",
                 from_scene_id: scene_id,
                 to_scene_id: resolved,
@@ -132,7 +133,7 @@ pub(super) fn static_edges(scene_id: SceneId, bytecode: &[u8]) -> Result<Vec<Edg
 pub(super) fn merge_edges(edges: Vec<Edge>) -> Vec<Edge> {
     let mut by_id = BTreeMap::new();
     for edge in edges {
-        by_id.entry(edge.edge_id.clone()).or_insert(edge);
+        by_id.entry(edge.id.clone()).or_insert(edge);
     }
     by_id.into_values().collect()
 }
@@ -163,7 +164,8 @@ pub(super) struct GraphFacts {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct Route {
-    pub route_id: String,
+    #[serde(rename = "routeId")]
+    pub id: String,
     pub entry_scene_id: SceneId,
     pub via_edge_id: Option<String>,
     pub scene_ids: Vec<SceneId>,
@@ -210,7 +212,7 @@ pub(super) fn graph_facts(
         })
         .collect();
     let mut routes = vec![Route {
-        route_id: "route:entry".to_string(),
+        id: "route:entry".to_string(),
         entry_scene_id: entry,
         via_edge_id: None,
         scene_ids: if entry_choices.is_empty() {
@@ -223,12 +225,12 @@ pub(super) fn graph_facts(
         for edge in entry_choices {
             let target = edge.to_scene_id.expect("resolved choice has a target");
             routes.push(Route {
-                route_id: format!(
+                id: format!(
                     "route:{}",
-                    edge.choice_id.as_deref().unwrap_or(edge.edge_id.as_str())
+                    edge.choice_id.as_deref().unwrap_or(edge.id.as_str())
                 ),
                 entry_scene_id: target,
-                via_edge_id: Some(edge.edge_id.clone()),
+                via_edge_id: Some(edge.id.clone()),
                 scene_ids: walk(target, &adjacency).into_iter().collect(),
             });
         }
@@ -239,7 +241,7 @@ pub(super) fn graph_facts(
             route_membership
                 .entry(*scene_id)
                 .or_default()
-                .push(route.route_id.clone());
+                .push(route.id.clone());
         }
     }
     for memberships in route_membership.values_mut() {
