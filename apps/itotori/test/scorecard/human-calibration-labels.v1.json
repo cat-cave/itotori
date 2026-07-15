@@ -1,0 +1,188 @@
+{
+  "schemaVersion": "itotori.human-calibration-label-set.v1",
+  "contentAddress": {
+    "algorithm": "sha256",
+    "canonicalization": "json-key-sort-v1",
+    "sha256": "sha256:3b7687eebed775e0eff3604694e55ed9f5b7fb36e5f07ac1655e8dce9e365f21"
+  },
+  "corpusManifestSha256": "sha256:7b12ea456383c55f06e668c2d9a481e9abaf8b74ba30419c932ed3d4a28ad531",
+  "policy": {
+    "usage": "reviewer-calibration-and-release-audit-only",
+    "modelTuningAllowed": false,
+    "candidateProvenanceBlind": true
+  },
+  "labels": [
+    {
+      "labelId": "calibration:meaning:risk:001",
+      "unit": {
+        "id": "edec401e-84b4-70b8-b2c8-567b30548cd2",
+        "hash": "sha256:4aba6594b9e0858bb7579112377def577431b18ca1cda96a600f4d13f0070ada"
+      },
+      "candidate": {
+        "id": "candidate:meaning:risk:001",
+        "hash": "sha256:3d912061f1902cdf7a2bc6f5ba3f7459d03617d80abfebe73e88e2a5919aa683"
+      },
+      "rubric": "meaning",
+      "stratum": "high-risk",
+      "expected": { "verdict": "FAIL", "severity": "critical", "category": "omission" },
+      "adjudication": {
+        "kind": "human",
+        "raterCount": 2,
+        "dissentCount": 0,
+        "blindToCandidateProvenance": true
+      },
+      "basis": "meaning-preservation"
+    },
+    {
+      "labelId": "calibration:voice:risk:001",
+      "unit": {
+        "id": "2ea162f3-132a-7ee7-b22c-6a2bfad62d2d",
+        "hash": "sha256:9b53cc64ea790bac97c9f60b0d101bdb4322cde2d86537ccc3d320911eae0421"
+      },
+      "candidate": {
+        "id": "candidate:voice:risk:001",
+        "hash": "sha256:bc2dcd045152e7dd928d70c5b39d016413b2970d146d40e44dbd8337014617c7"
+      },
+      "rubric": "voice",
+      "stratum": "high-risk",
+      "expected": {
+        "verdict": "FAIL",
+        "severity": "major",
+        "category": "character-voice"
+      },
+      "adjudication": {
+        "kind": "human",
+        "raterCount": 2,
+        "dissentCount": 0,
+        "blindToCandidateProvenance": true
+      },
+      "basis": "speaker-voice-history"
+    },
+    {
+      "labelId": "calibration:terminology:risk:001",
+      "unit": {
+        "id": "8c2cf93c-f797-734e-aad3-7d6ff3335056",
+        "hash": "sha256:6b31665f31c7bad6010411a9c6c3cafdcb160479a4c16dee1d27b0c7462f25b1"
+      },
+      "candidate": {
+        "id": "candidate:terminology:risk:001",
+        "hash": "sha256:5be843a08d636e50ce913effb39ee9eff0cc4d5a149e2e7c16a06a2be508b4df"
+      },
+      "rubric": "terminology",
+      "stratum": "high-risk",
+      "expected": { "verdict": "FAIL", "severity": "major", "category": "term-sense" },
+      "adjudication": {
+        "kind": "human",
+        "raterCount": 2,
+        "dissentCount": 0,
+        "blindToCandidateProvenance": true
+      },
+      "basis": "localized-terminology-ruling"
+    },
+    {
+      "labelId": "calibration:continuity:risk:001",
+      "unit": {
+        "id": "c5c3ddcc-274a-786d-a96f-1ed6bf548719",
+        "hash": "sha256:c2f4b743bff25aabf8559965ab893660e7327e5071a70c5fa3a15722a6e81784"
+      },
+      "candidate": {
+        "id": "candidate:continuity:risk:001",
+        "hash": "sha256:2ca9c91840485d286903c0e9c73ef70f7b973e232b0339cdad9bd59d9af6e146"
+      },
+      "rubric": "continuity",
+      "stratum": "high-risk",
+      "expected": { "verdict": "FAIL", "severity": "major", "category": "callback" },
+      "adjudication": {
+        "kind": "human",
+        "raterCount": 2,
+        "dissentCount": 0,
+        "blindToCandidateProvenance": true
+      },
+      "basis": "route-continuity"
+    },
+    {
+      "labelId": "calibration:meaning:clean:001",
+      "unit": {
+        "id": "0d4dc2b5-5a0b-7f58-8005-85f29df2ad76",
+        "hash": "sha256:03e789f2dc5b718c561cba8b8bf24a007e525440eaa62bb7688794d0764c30ab"
+      },
+      "candidate": {
+        "id": "candidate:meaning:clean:001",
+        "hash": "sha256:9fc4350fcfe4baf984fbcf04539eb0d8e190f95d30152bf0b135d09c628d9de9"
+      },
+      "rubric": "meaning",
+      "stratum": "representative-clean",
+      "expected": { "verdict": "PASS", "severity": "none", "category": null },
+      "adjudication": {
+        "kind": "human",
+        "raterCount": 2,
+        "dissentCount": 0,
+        "blindToCandidateProvenance": true
+      },
+      "basis": "clean-reference"
+    },
+    {
+      "labelId": "calibration:voice:clean:001",
+      "unit": {
+        "id": "9e8af68e-aa66-7ef0-938b-eba0c2a3ad76",
+        "hash": "sha256:ed68472229536e7e109c320f87adc468165b0f8129ee23cc689e61bcfe0cfa83"
+      },
+      "candidate": {
+        "id": "candidate:voice:clean:001",
+        "hash": "sha256:f293dad84487a9c060a2d82fa5eda41e9e191547dc34639dab8b3f35eab5c9e0"
+      },
+      "rubric": "voice",
+      "stratum": "representative-clean",
+      "expected": { "verdict": "PASS", "severity": "none", "category": null },
+      "adjudication": {
+        "kind": "human",
+        "raterCount": 2,
+        "dissentCount": 0,
+        "blindToCandidateProvenance": true
+      },
+      "basis": "clean-reference"
+    },
+    {
+      "labelId": "calibration:terminology:clean:001",
+      "unit": {
+        "id": "91542876-0aa8-7bb4-b278-d74154c28190",
+        "hash": "sha256:5437266fd805fd7fe215a874f10d90aa0352313323419decc7118acd31b4904d"
+      },
+      "candidate": {
+        "id": "candidate:terminology:clean:001",
+        "hash": "sha256:81c200f794091ec6c6eb871ada50a7feed40099b8d771e846fb0373903878af8"
+      },
+      "rubric": "terminology",
+      "stratum": "representative-clean",
+      "expected": { "verdict": "PASS", "severity": "none", "category": null },
+      "adjudication": {
+        "kind": "human",
+        "raterCount": 2,
+        "dissentCount": 0,
+        "blindToCandidateProvenance": true
+      },
+      "basis": "clean-reference"
+    },
+    {
+      "labelId": "calibration:continuity:clean:001",
+      "unit": {
+        "id": "0ab532f7-a550-77a4-9d23-83b2a963bdaa",
+        "hash": "sha256:a9e97dafe465d5ad8ed99b535fa56e74eed73bb058771360c201d9af602f4295"
+      },
+      "candidate": {
+        "id": "candidate:continuity:clean:001",
+        "hash": "sha256:9a9e3aa3f31a6a00e16381b51bdebc190ed6fe242f5072688dd905ef1d524257"
+      },
+      "rubric": "continuity",
+      "stratum": "representative-clean",
+      "expected": { "verdict": "PASS", "severity": "none", "category": null },
+      "adjudication": {
+        "kind": "human",
+        "raterCount": 2,
+        "dissentCount": 0,
+        "blindToCandidateProvenance": true
+      },
+      "basis": "clean-reference"
+    }
+  ]
+}
