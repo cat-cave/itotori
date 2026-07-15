@@ -149,6 +149,11 @@ pub mod vm;
 // a Seen.txt envelope through the full.. chain
 // and produces a typed `ReplayLog` containing the alpha-defining
 // `TextLine` events.
+// Multi-scene store construction extracted from `replay` (Seen.txt
+// decompress/decode → InMemorySceneStore). Private crate module;
+// public surface re-exported through `replay`.
+mod scene_store;
+
 pub mod replay;
 
 // utsushi-reallive-interactive-input-bridge: human-driven advance
