@@ -32,7 +32,7 @@
     "crates/kaifuu-core/src/rgss3_smoke.rs": 1338,
     "crates/kaifuu-core/src/siglus_profile_proof.rs": 694,
     "crates/kaifuu-core/src/siglus_static_key.rs": 1398,
-    "crates/kaifuu-core/src/tests.rs": 8734,
+    "crates/kaifuu-core/src/tests.rs": 8545,
     "crates/kaifuu-core/src/wine_proton_helper.rs": 659,
     "crates/kaifuu-core/src/wolf_adapter.rs": 1690,
     "crates/kaifuu-core/src/wolf_encrypted_smoke.rs": 1104,
