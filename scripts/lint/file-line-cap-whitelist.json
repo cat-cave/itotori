@@ -2,7 +2,7 @@
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/file-line-cap-guard.mjs --update\". Each entry maps an over-cap\nfile to its grandfathered line count; counts and entries may only shrink. When\nempty/deleted the cap is absolute (no file may exceed the threshold).",
   "threshold": 500,
   "generatedAt": "2026-07-14T23:44:34.527Z",
-  "total": 168,
+  "total": 169,
   "files": {
     "crates/kaifuu-cli/src/main.rs": 13011,
     "crates/kaifuu-cli/tests/patch_real_sweetie_hd.rs": 579,
@@ -53,7 +53,7 @@
     "crates/kaifuu-nexas/src/archive.rs": 844,
     "crates/kaifuu-reallive/src/bridge.rs": 1599,
     "crates/kaifuu-reallive/src/gameexe.rs": 1801,
-    "crates/kaifuu-reallive/src/opcode.rs": 3715,
+    "crates/kaifuu-reallive/src/opcode.rs": 2698,
     "crates/kaifuu-reallive/src/patchback/bundle_driven.rs": 2255,
     "crates/kaifuu-reallive/src/protected_spans.rs": 751,
     "crates/kaifuu-reallive/src/xor2.rs": 796,
@@ -171,6 +171,7 @@
     "crates/utsushi-siglus/src/opcode_profile.rs": 704,
     "crates/utsushi-siglus/src/runtime_profile.rs": 1113,
     "crates/utsushi-siglus/src/vm.rs": 869,
-    "crates/utsushi-siglus/tests/cross_engine_substrate_alignment.rs": 962
+    "crates/utsushi-siglus/tests/cross_engine_substrate_alignment.rs": 962,
+    "total": 171
   }
 }
