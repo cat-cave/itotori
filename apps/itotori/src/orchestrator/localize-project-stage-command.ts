@@ -95,7 +95,10 @@ import {
   groupBySceneBoundary,
   projectLocalizationUnitV02,
 } from "../batch-planner/scene-grouping.js";
-import { parseNarrativeStructure } from "../agents/structure-informed-context/index.js";
+import {
+  parseNarrativeStructure,
+  SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
+} from "../structure/index.js";
 import type { TranslationGlossaryEntry } from "../agents/translation/shapes.js";
 import { DEFAULT_COST_CAP_USD, OpenRouterModelProvider } from "../providers/openrouter.js";
 import { LocalProviderRunArtifactRecorder } from "../providers/artifacts.js";
@@ -498,7 +501,10 @@ export async function runLocalizeProjectStageCommand(
   // and injects the DETERMINISTIC structure-informed context slice.
   const narrativeStructure =
     args.structureJsonPath !== undefined
-      ? parseNarrativeStructure(args.io.readJson(args.structureJsonPath))
+      ? parseNarrativeStructure(
+          args.io.readJson(args.structureJsonPath),
+          SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
+        )
       : undefined;
   if (narrativeStructure !== undefined) {
     log(`localize-project-stage: structure-informed context enabled (scene ${sceneId})`);

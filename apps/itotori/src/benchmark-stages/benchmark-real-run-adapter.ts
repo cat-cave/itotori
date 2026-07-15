@@ -103,7 +103,7 @@ import {
   type StrongCaliberReadinessThresholds,
   type StrongCaliberReadinessVerdict,
 } from "./strong-caliber-readiness-gate.js";
-import type { NarrativeStructure } from "../agents/structure-informed-context/index.js";
+import type { NarrativeStructure } from "../structure/index.js";
 import { deterministicUuid7 } from "./ids.js";
 
 export class RealRunBenchmarkAdapterError extends Error {

@@ -18,7 +18,7 @@
 // a hardcoded list. A WorkScope INHERITS the shared scope's glossary +
 // characters and may OVERRIDE them (a fandisk may deliberately diverge).
 
-import type { NarrativeStructure } from "../structure-informed-context/index.js";
+import type { NarrativeStructure } from "../../structure/index.js";
 
 // ---------------------------------------------------------------------------
 // The archive→works carve (derived from the decoded game-select).

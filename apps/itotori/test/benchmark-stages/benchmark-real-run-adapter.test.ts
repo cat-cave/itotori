@@ -53,7 +53,7 @@ import { FakeModelProvider } from "../../src/providers/fake.js";
 import { usageCostToDecimalString, usageCostToMicros } from "../../src/providers/cost.js";
 import type { ProviderRunRecord } from "../../src/providers/types.js";
 import { localOnlyRoutingPosture } from "../../src/providers/types.js";
-import type { NarrativeStructure } from "../../src/agents/structure-informed-context/index.js";
+import type { NarrativeStructure } from "../../src/structure/index.js";
 
 // ── A real-ish, GAME-AGNOSTIC run fixture ────────────────────────────────────
 // No game/engine/title fields: only generic unitId/label/sourceText + the run's

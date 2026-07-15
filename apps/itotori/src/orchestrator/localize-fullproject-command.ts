@@ -35,8 +35,9 @@ import type {
 import type { BridgeBundleV02, StyleGuidePolicyV0Draft } from "@itotori/localization-bridge-schema";
 import {
   parseNarrativeStructure,
+  SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
   type NarrativeStructure,
-} from "../agents/structure-informed-context/index.js";
+} from "../structure/index.js";
 import type { PriorPassFeedback, TranslationGlossaryEntry } from "../agents/translation/shapes.js";
 import type { AgenticLoopProviderFactory } from "./agentic-loop.js";
 import { parseLocalizeProjectPairPolicy } from "./localize-project-stage-command.js";
@@ -459,7 +460,7 @@ export async function runLocalizeFullProjectCommand(
       inputs: { ...baseInputs, structureJsonPath },
       actor: deps.actor,
       now: deps.now,
-      run: () => parseNarrativeStructure(structureJson),
+      run: () => parseNarrativeStructure(structureJson, SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS),
     });
   }
   const structureUnitContext =

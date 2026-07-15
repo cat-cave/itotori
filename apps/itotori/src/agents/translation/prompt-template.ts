@@ -106,26 +106,29 @@ export function buildTranslationPrompt(
     }
   }
 
-  // itotori-structure-informed-context-building — inject the structurally-
-  // grounded context (from the Kaifuu/Utsushi decode) when present. STRICTLY
-  // ADDITIVE: when `structuredContext` is undefined nothing is emitted, so the
-  // no-structure baseline prompt (and every recorded fixture keyed by its
-  // hash) is byte-identical to the pre-feature template.
   if (input.structuredContext !== undefined) {
     const ctx = input.structuredContext;
     lines.push("");
+    lines.push("Decoded structure (authoritative facts):");
     lines.push(
-      "Structure-informed context (decoded from the game's real scene graph, " +
-        "choice/branch subsystem, and speaker table — authoritative, not guesswork):",
+      `- sceneId=${ctx.scene.sceneId} messageCount=${ctx.scene.messageCount} choiceCount=${ctx.scene.choiceCount}`,
     );
-    lines.push(`- Scene summary: ${ctx.sceneSummaryText}`);
-    lines.push(`- Route/branch position: ${ctx.routePositionText}`);
-    for (const arcLine of ctx.characterArcsText.split("\n")) {
-      lines.push(`- ${arcLine}`);
+    lines.push(`- characterIds=${ctx.scene.characterIds.join(",") || "(none)"}`);
+    lines.push(`- dispatchTargets=${ctx.scene.dispatchTargetSceneIds.join(",") || "(none)"}`);
+    lines.push(`- choiceTargets=${ctx.scene.choiceTargetSceneIds.join(",") || "(none)"}`);
+    for (const edge of [...ctx.incomingEdges, ...ctx.outgoingEdges]) {
+      lines.push(
+        `- routeEdge kind=${edge.kind} fromSceneId=${edge.fromSceneId} toSceneId=${edge.toSceneId}` +
+          (edge.choiceIndex === undefined ? "" : ` choiceIndex=${edge.choiceIndex}`),
+      );
+    }
+    for (const character of ctx.characters) {
+      lines.push(
+        `- characterId=${character.characterId} totalLines=${character.totalLines} sceneIds=${character.sceneIds.join(",")}`,
+      );
     }
     lines.push(
-      "Use this to keep speaker voice consistent, resolve referents from the " +
-        "scene, and stay branch-aware. Cite the artifact refs you rely on: " +
+      "Use only these decoded facts for scene and branch context. Cite the artifact refs you rely on: " +
         `${[...ctx.artifactRefs].sort().join(", ")}.`,
     );
   }

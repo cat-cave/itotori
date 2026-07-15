@@ -1,7 +1,7 @@
 {
   "description": "Frozen deletion ledger + LLM-layer boundary for the core rebuild.\nDo not hand-edit; update only when a spec-DAG node deletes or rehomes a path.\nEach delete/rehome entry records an expected state ('present' during freeze,\n'absent' after cutover) so the guard can assert the ledger matches reality.",
   "version": 1,
-  "contractualTotalLines": 50066,
+  "contractualTotalLines": 49402,
 
   "delete": {
     "appSurface": [
@@ -10,7 +10,7 @@
         "kind": "glob",
         "root": "apps/itotori/src/agents/",
         "extensions": [".ts", ".tsx"],
-        "lines": 15890,
+        "lines": 15225,
         "expected": "present",
         "reason": "Agent hierarchy, registry, prompt parsers, CLIs, adapters, work-scope, prose context injection."
       },
@@ -41,7 +41,7 @@
           "apps/itotori/src/orchestrator/repair/repair-job-service.ts",
           "apps/itotori/src/orchestrator/repair/types.ts"
         ],
-        "lines": 15800,
+        "lines": 15805,
         "expected": "present",
         "reason": "Per-unit agentic loop, supervisor, run scheduler, lease/reservation/finalizer, repair, context brain/correction."
       },
@@ -66,7 +66,7 @@
           "apps/itotori/src/raw-mtl-baseline-proof/"
         ],
         "extensions": [".ts", ".tsx"],
-        "lines": 16219,
+        "lines": 16215,
         "expected": "present",
         "reason": "Old benchmark/experiment/provider-proof/raw-MTL/QA directories tied to the old loop."
       }
@@ -128,14 +128,6 @@
   },
 
   "rehome": [
-    {
-      "from": "apps/itotori/src/agents/structure-informed-context/shapes.ts",
-      "reason": "NarrativeStructure parser/types: move to decode/structure module."
-    },
-    {
-      "from": "apps/itotori/src/agents/structure-informed-context/build.ts",
-      "reason": "Pure scene/route/character reductions: move to decode/structure module."
-    },
     {
       "from": "apps/itotori/src/agents/runtime-evidence/deterministic-checks.ts",
       "reason": "Pure deterministic checks: move outside agents."

@@ -49,8 +49,9 @@ import type {
 } from "../src/providers/types.js";
 import {
   parseNarrativeStructure,
+  SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
   type NarrativeStructure,
-} from "../src/agents/structure-informed-context/index.js";
+} from "../src/structure/index.js";
 
 const ACTOR: AuthorizationActor = { userId: "itotori-realctx-test-actor" };
 
@@ -64,42 +65,45 @@ const SPEAKER_NAME = "和人";
 
 /** A small but structurally-real decoded structure: two scenes, a speaker, a choice. */
 function makeStructure(): NarrativeStructure {
-  return parseNarrativeStructure({
-    schemaVersion: "utsushi.narrative-structure.v1",
-    entryScene: SCENE_ID,
-    sceneDispatchOrder: [SCENE_ID, 6020],
-    scenes: [
-      {
-        sceneId: SCENE_ID,
-        nextScene: 6020,
-        messages: [
-          { order: 0, speaker: SPEAKER_NAME, text: "おはよう。", textSurface: null },
-          { order: 1, speaker: SPEAKER_NAME, text: "今日はいい天気だね。", textSurface: null },
-          { order: 2, speaker: null, text: "窓の外には青空が広がっていた。", textSurface: null },
-        ],
-        choices: [],
-      },
-      {
-        sceneId: 6020,
-        nextScene: null,
-        messages: [{ order: 0, speaker: "ステラ", text: "そうね。", textSurface: null }],
-        choices: [
-          {
-            optionIndex: 0,
-            label: "散歩に行く",
-            branchEntryScene: null,
-            branchMessages: [],
-          },
-          {
-            optionIndex: 1,
-            label: "家にいる",
-            branchEntryScene: null,
-            branchMessages: [],
-          },
-        ],
-      },
-    ],
-  });
+  return parseNarrativeStructure(
+    {
+      schemaVersion: "utsushi.narrative-structure.v1",
+      entryScene: SCENE_ID,
+      sceneDispatchOrder: [SCENE_ID, 6020],
+      scenes: [
+        {
+          sceneId: SCENE_ID,
+          nextScene: 6020,
+          messages: [
+            { order: 0, speaker: SPEAKER_NAME, text: "おはよう。", textSurface: null },
+            { order: 1, speaker: SPEAKER_NAME, text: "今日はいい天気だね。", textSurface: null },
+            { order: 2, speaker: null, text: "窓の外には青空が広がっていた。", textSurface: null },
+          ],
+          choices: [],
+        },
+        {
+          sceneId: 6020,
+          nextScene: null,
+          messages: [{ order: 0, speaker: "ステラ", text: "そうね。", textSurface: null }],
+          choices: [
+            {
+              optionIndex: 0,
+              label: "散歩に行く",
+              branchEntryScene: null,
+              branchMessages: [],
+            },
+            {
+              optionIndex: 1,
+              label: "家にいる",
+              branchEntryScene: null,
+              branchMessages: [],
+            },
+          ],
+        },
+      ],
+    },
+    SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
+  );
 }
 
 function makeUnit(sourceText: string): LocalizationUnitV02 {
@@ -482,6 +486,7 @@ describe("itotori-agentic-loop-real-context-stage (live)", () => {
     if (typeof structurePath === "string" && structurePath.length > 0) {
       structure = parseNarrativeStructure(
         JSON.parse(readFileSync(structurePath, "utf8")) as unknown,
+        SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
       );
       sceneId = Number(process.env.ITOTORI_REALCTX_SCENE ?? String(structure.entryScene));
       const scene = structure.scenes.find((s) => s.sceneId === sceneId);

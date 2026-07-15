@@ -16,10 +16,7 @@ import {
   type DecodedContextFeedInput,
   type JudgeUnitInput,
 } from "../../src/benchmark-stages/index.js";
-import {
-  buildStructureContextArtifacts,
-  type NarrativeStructure,
-} from "../../src/agents/structure-informed-context/index.js";
+import type { NarrativeStructure } from "../../src/structure/index.js";
 
 const U_MAIN = "019ed010-0000-7000-8000-0000000000a1";
 const U_BRANCH = "019ed010-0000-7000-8000-0000000000a2";
@@ -129,23 +126,10 @@ describe("anti-circularity boundary — no Itotori-interpretive leakage (§5)", 
     const structure = syntheticStructure();
     const feed = buildDecodedContextFeed(baseInput());
 
-    // The interpretive artifacts DO exist for this same structure...
-    const artifacts = buildStructureContextArtifacts(structure);
-    const interpretiveStrings: string[] = [
-      ...artifacts.sceneSummaries.map((s) => s.summaryText),
-      ...artifacts.sceneSummaries.map((s) => s.artifactRef),
-      artifacts.routeBranchMap.artifactRef,
-      ...artifacts.characterArcs.map((a) => a.summaryText),
-      ...artifacts.characterArcs.map((a) => a.artifactRef),
-    ];
-    // sanity: the interpretive artifacts really were produced (non-empty).
-    expect(interpretiveStrings.some((s) => s.length > 0)).toBe(true);
-
     const serializedFeed = JSON.stringify(feed);
-    // ...but NONE of them appear anywhere in the judge feed.
-    for (const interpretive of interpretiveStrings) {
-      expect(serializedFeed).not.toContain(interpretive);
-    }
+    expect(structure.scenes).toHaveLength(2);
+    expect(serializedFeed).not.toContain("structure:route-graph");
+    expect(serializedFeed).not.toContain("structure:character:");
     // And the ground truth IS present.
     expect(serializedFeed).toContain("おはよう、りん。"); // source line
     expect(serializedFeed).toContain("和人"); // speaker

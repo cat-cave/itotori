@@ -37,7 +37,7 @@ import {
   type MetaValidityScenario,
   type RobustnessSwap,
 } from "../../src/benchmark-stages/index.js";
-import type { NarrativeStructure } from "../../src/agents/structure-informed-context/index.js";
+import type { NarrativeStructure } from "../../src/structure/index.js";
 
 // ── contestants ──────────────────────────────────────────────────────────────
 const OFFICIAL = "official-localization";

@@ -24,7 +24,7 @@ import type {
   ProviderRunRecord,
 } from "../../providers/types.js";
 import type { Bcp47Locale, Uuid7 } from "../../batch-planner/shapes.js";
-import type { StructuredContextInjection } from "../structure-informed-context/shapes.js";
+import type { StructuredTranslationContext } from "./structure-context.js";
 
 export const TRANSLATION_PROMPT_TEMPLATE_VERSION_V1 = "itotori-translation-agent-v1";
 export const TRANSLATION_DEFAULT_STRUCTURED_OUTPUT_NAME =
@@ -195,19 +195,8 @@ export type TranslationInvocationInput = {
    * omitted means no enrichment content for this unit.
    */
   contextArtifacts?: ReadonlyArray<TranslationContextArtifact>;
-  /**
-   * itotori-structure-informed-context-building — the structurally-grounded
-   * context injected from the Kaifuu/Utsushi decode: the scene summary, the
-   * slice's position in the route/branch map, and the speakers' character
-   * arcs. Built by
-   * `agents/structure-informed-context` (a deterministic reduction of the
-   * decode, NOT an LLM guess). When present the prompt template renders a
-   * dedicated "Structure-informed context" block; when ABSENT the prompt is
-   * byte-identical to the pre-feature template (the no-structure baseline).
-   * Structure artifact ids should also appear in `contextArtifacts` so the
-   * agent may cite them with their resolved content.
-   */
-  structuredContext?: StructuredContextInjection | undefined;
+  /** Selected decoded facts for this unit's scene. */
+  structuredContext?: StructuredTranslationContext | undefined;
   /**
    * itotori-crosswork-context-injection — the effective multi-work scope for
    * this unit: shared glossary/characters/style continuity inherited from the

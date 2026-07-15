@@ -36,7 +36,7 @@
 // panel plugs into the identical seam), and the metric suite is a pure function.
 
 import { type BenchmarkQualityRubric } from "@itotori/localization-bridge-schema";
-import type { NarrativeStructure } from "../agents/structure-informed-context/index.js";
+import type { NarrativeStructure } from "../structure/index.js";
 import {
   runBlindJudgePanel,
   type BlindJudgeAdapter,

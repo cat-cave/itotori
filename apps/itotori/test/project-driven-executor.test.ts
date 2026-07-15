@@ -60,8 +60,9 @@ import type {
 } from "../src/providers/types.js";
 import {
   parseNarrativeStructure,
+  SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
   type NarrativeStructure,
-} from "../src/agents/structure-informed-context/index.js";
+} from "../src/structure/index.js";
 import {
   DEFAULT_DRIVEN_CONCURRENCY,
   runProjectDrivenExecutor,
@@ -161,22 +162,25 @@ class RecordingContextArtifactRepository extends InMemoryContextArtifactReposito
 // --- Fixtures ---------------------------------------------------------------
 
 function makeStructure(): NarrativeStructure {
-  return parseNarrativeStructure({
-    schemaVersion: "utsushi.narrative-structure.v1",
-    entryScene: SCENE_ID,
-    sceneDispatchOrder: [SCENE_ID],
-    scenes: [
-      {
-        sceneId: SCENE_ID,
-        nextScene: null,
-        messages: [
-          { order: 0, speaker: SPEAKER_NAME, text: "おはよう。", textSurface: null },
-          { order: 1, speaker: null, text: "青空が広がっていた。", textSurface: null },
-        ],
-        choices: [],
-      },
-    ],
-  });
+  return parseNarrativeStructure(
+    {
+      schemaVersion: "utsushi.narrative-structure.v1",
+      entryScene: SCENE_ID,
+      sceneDispatchOrder: [SCENE_ID],
+      scenes: [
+        {
+          sceneId: SCENE_ID,
+          nextScene: null,
+          messages: [
+            { order: 0, speaker: SPEAKER_NAME, text: "おはよう。", textSurface: null },
+            { order: 1, speaker: null, text: "青空が広がっていた。", textSurface: null },
+          ],
+          choices: [],
+        },
+      ],
+    },
+    SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
+  );
 }
 
 function makeUnit(
@@ -1591,6 +1595,7 @@ describe("runProjectDrivenExecutor (live bounded-slice pilot, real DB + fs)", ()
       const structurePath = process.env.ITOTORI_DRIVEN_STRUCTURE_JSON as string;
       const structure = parseNarrativeStructure(
         JSON.parse(readFileSync(structurePath, "utf8")) as unknown,
+        SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
       );
       const sceneId = Number(process.env.ITOTORI_DRIVEN_SCENE ?? String(structure.entryScene));
       const scene = structure.scenes.find((s) => s.sceneId === sceneId);

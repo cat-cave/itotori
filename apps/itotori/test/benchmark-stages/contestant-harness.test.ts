@@ -27,7 +27,7 @@ import {
   type GeneratedContestantOutput,
 } from "../../src/benchmark-stages/index.js";
 import { FakeModelProvider } from "../../src/providers/fake.js";
-import type { NarrativeStructure } from "../../src/agents/structure-informed-context/index.js";
+import type { NarrativeStructure } from "../../src/structure/index.js";
 
 const U1 = "019ed010-0000-7000-8000-0000000000b1";
 const U2 = "019ed010-0000-7000-8000-0000000000b2";

@@ -49,7 +49,10 @@ import {
   type LocalizeFullProjectConfig,
   type LocalizeFullProjectIo,
 } from "../src/orchestrator/localize-fullproject-command.js";
-import { parseNarrativeStructure } from "../src/agents/structure-informed-context/index.js";
+import {
+  parseNarrativeStructure,
+  SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
+} from "../src/structure/index.js";
 import type { WholeGameRenderValidationResult } from "../src/orchestrator/wholegame-render-validation-seam.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 
@@ -147,6 +150,7 @@ describe("whole-game driver joins the REAL bridge + REAL structure by sceneKey",
     JSON.parse(
       readFileSync(new URL("./fixtures/whole-seen-structure.json", import.meta.url), "utf8"),
     ),
+    SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
   );
 
   it("resolves every unit whose scene the structure's real dispatch order crossed", () => {

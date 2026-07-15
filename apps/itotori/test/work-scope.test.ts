@@ -19,7 +19,7 @@ import type {
   NarrativeScene,
   NarrativeStructure,
   SelectionControlSignal,
-} from "../src/agents/structure-informed-context/index.js";
+} from "../src/structure/index.js";
 import {
   buildScopeGraph,
   buildWorkScopedContext,
@@ -837,7 +837,7 @@ describe("WORK-SCOPED context building (per-work structure + shared scope)", () 
     };
   }
 
-  it("each WorkScope builds its OWN structure-informed context (distinct scene graphs)", () => {
+  it("each WorkScope reduces its own decoded structure (distinct scene graphs)", () => {
     const { graph } = fullGraph();
     const [baseWorkId, fandiskWorkId] = graph.titleToWorks[ARCHIVE]!;
 
@@ -845,15 +845,15 @@ describe("WORK-SCOPED context building (per-work structure + shared scope)", () 
     const fandiskCtx = buildWorkScopedContext(graph, fandiskWorkId!);
 
     // The base work's context is built from ITS scenes (100, 101).
-    expect(baseCtx.artifacts.sceneSummaries.map((s) => s.sceneId)).toEqual([100, 101]);
-    expect(baseCtx.artifacts.routeBranchMap.entryScene).toBe(100);
+    expect(baseCtx.structure.scenes.map((scene) => scene.sceneId)).toEqual([100, 101]);
+    expect(baseCtx.structure.routeGraph.entryScene).toBe(100);
     // The fandisk work's context is built from ITS scene (500) — DISTINCT.
-    expect(fandiskCtx.artifacts.sceneSummaries.map((s) => s.sceneId)).toEqual([500]);
-    expect(fandiskCtx.artifacts.routeBranchMap.entryScene).toBe(500);
+    expect(fandiskCtx.structure.scenes.map((scene) => scene.sceneId)).toEqual([500]);
+    expect(fandiskCtx.structure.routeGraph.entryScene).toBe(500);
     // The two works do not share scenes (disjoint subtrees).
-    const baseScenes = new Set(baseCtx.artifacts.sceneSummaries.map((s) => s.sceneId));
-    for (const s of fandiskCtx.artifacts.sceneSummaries) {
-      expect(baseScenes.has(s.sceneId)).toBe(false);
+    const baseScenes = new Set(baseCtx.structure.scenes.map((scene) => scene.sceneId));
+    for (const scene of fandiskCtx.structure.scenes) {
+      expect(baseScenes.has(scene.sceneId)).toBe(false);
     }
   });
 
@@ -865,8 +865,8 @@ describe("WORK-SCOPED context building (per-work structure + shared scope)", () 
 
     // DISTINCT: different work ids, different structure-informed context.
     expect(baseCtx.workId).not.toBe(fandiskCtx.workId);
-    expect(baseCtx.artifacts.routeBranchMap.entryScene).not.toBe(
-      fandiskCtx.artifacts.routeBranchMap.entryScene,
+    expect(baseCtx.structure.routeGraph.entryScene).not.toBe(
+      fandiskCtx.structure.routeGraph.entryScene,
     );
     // SHARED: both inherit the same brand character `Rin` (same voice note in
     // the base; the fandisk here did not override Rin, only added Sae).
@@ -884,13 +884,13 @@ describe("WORK-SCOPED context building (per-work structure + shared scope)", () 
     ).toBe("Hoshimi Academy");
   });
 
-  it("a work-scoped SLICE carries the scene injection + the work's effective scope", () => {
+  it("a work-scoped slice carries scene facts and the work's effective scope", () => {
     const { graph } = fullGraph();
     const baseWorkId = graph.titleToWorks[ARCHIVE]![0]!;
     const ctx = buildWorkScopedContext(graph, baseWorkId);
     const slice = buildWorkScopedSliceContext(ctx, 100);
     expect(slice.sceneId).toBe(100);
-    expect(slice.structured.sceneId).toBe(100);
+    expect(slice.scene.sceneId).toBe(100);
     // The slice's terminology is the WORK's effective (inherited) scope.
     expect(slice.effectiveScope.characters.some((c) => c.characterId === "rin")).toBe(true);
   });

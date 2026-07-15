@@ -37,8 +37,9 @@ import { FakeModelProvider } from "../src/providers/fake.js";
 import type { ModelInvocationRequest } from "../src/providers/types.js";
 import {
   parseNarrativeStructure,
+  SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
   type NarrativeStructure,
-} from "../src/agents/structure-informed-context/index.js";
+} from "../src/structure/index.js";
 
 const ACTOR: AuthorizationActor = { userId: "itotori-semrobust-test-actor" };
 
@@ -60,28 +61,31 @@ type SemanticAgent = (typeof SEMANTIC_AGENTS)[number];
 
 /** Small but structurally-real decoded structure: a scene, a speaker, a dispatch. */
 function makeStructure(): NarrativeStructure {
-  return parseNarrativeStructure({
-    schemaVersion: "utsushi.narrative-structure.v1",
-    entryScene: SCENE_ID,
-    sceneDispatchOrder: [SCENE_ID, 7020],
-    scenes: [
-      {
-        sceneId: SCENE_ID,
-        nextScene: 7020,
-        messages: [
-          { order: 0, speaker: SPEAKER_NAME, text: "おはよう。", textSurface: null },
-          { order: 1, speaker: null, text: "窓の外には青空が広がっていた。", textSurface: null },
-        ],
-        choices: [],
-      },
-      {
-        sceneId: 7020,
-        nextScene: null,
-        messages: [{ order: 0, speaker: "ステラ", text: "そうね。", textSurface: null }],
-        choices: [],
-      },
-    ],
-  });
+  return parseNarrativeStructure(
+    {
+      schemaVersion: "utsushi.narrative-structure.v1",
+      entryScene: SCENE_ID,
+      sceneDispatchOrder: [SCENE_ID, 7020],
+      scenes: [
+        {
+          sceneId: SCENE_ID,
+          nextScene: 7020,
+          messages: [
+            { order: 0, speaker: SPEAKER_NAME, text: "おはよう。", textSurface: null },
+            { order: 1, speaker: null, text: "窓の外には青空が広がっていた。", textSurface: null },
+          ],
+          choices: [],
+        },
+        {
+          sceneId: 7020,
+          nextScene: null,
+          messages: [{ order: 0, speaker: "ステラ", text: "そうね。", textSurface: null }],
+          choices: [],
+        },
+      ],
+    },
+    SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
+  );
 }
 
 function makeUnit(sourceText: string): LocalizationUnitV02 {
