@@ -1329,13 +1329,21 @@ export {
   LlmMemoConflictError,
 } from "./repositories/llm-call-memo-repository.js";
 export type {
+  LlmAttemptFailure,
   CompletedLlmStep,
   IncompleteLlmStep,
   LlmCallMemoStore,
   LlmMemoCipher,
   LlmMemoSingleflightInput,
   LlmMemoSingleflightResult,
+  LlmSpendAdmission,
   LlmStepAttemptContext,
   LlmStepBilling,
   LlmStepExecution,
 } from "./repositories/llm-call-memo-repository.js";
+export {
+  LlmPhysicalStepFailedError,
+  LlmRetriesExhaustedError,
+  LlmSpendAdmissionDeniedError,
+} from "./repositories/llm-http-attempt-repository.js";
+export type { LlmSpendExposureReport } from "./repositories/llm-http-attempt-repository.js";

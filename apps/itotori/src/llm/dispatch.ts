@@ -1,5 +1,10 @@
 import { HTTPClient, type Fetcher } from "@openrouter/sdk";
 import {
+  LlmPhysicalStepFailedError,
+  LlmRetriesExhaustedError,
+  LlmSpendAdmissionDeniedError,
+} from "@itotori/db";
+import {
   EventType,
   StandardSchemaValidationError,
   chat,
@@ -35,6 +40,11 @@ import {
   memoizePhysicalSteps,
   type PhysicalStepMemoRuntime,
 } from "./physical-step-memo.js";
+import {
+  LlmPhysicalAttemptError,
+  createTransportObserver,
+  resolveAttemptDeadlineMs,
+} from "./physical-attempt-policy.js";
 import { providerTerminalSchema } from "./terminal-output.js";
 
 export interface DispatchTool {
@@ -287,6 +297,15 @@ function runtimeTools(
 }
 
 function failureKind(error: unknown, state: DispatchState): FailureKind {
+  if (error instanceof LlmRetriesExhaustedError) return "retries-exhausted";
+  if (error instanceof LlmSpendAdmissionDeniedError) return "spend-admission";
+  if (error instanceof LlmPhysicalStepFailedError) {
+    return error.attemptStatus === "http-error" ? "http" : "transport";
+  }
+  if (error instanceof LlmPhysicalAttemptError) {
+    if (error.failure.classification === "cancelled") return "cancelled";
+    return error.failure.kind === "http" ? "http" : "transport";
+  }
   if (state.stepLimitReached) return "step-limit";
   if (state.lastFinishReason === "length") return "truncation";
   if (state.lastFinishReason === "content-filter") return "refusal";
@@ -340,7 +359,8 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     const semaphore = new Semaphore(spec.limits.maxParallelTools);
     const configuredTools = runtimeTools(spec, runtime, state, semaphore);
     const converted = await modelMessages(spec, runtime, configuredTools.toolsByName);
-    const httpClient = new HTTPClient(runtime.fetcher ? { fetcher: runtime.fetcher } : undefined);
+    const observer = createTransportObserver(runtime.fetcher ?? globalThis.fetch);
+    const httpClient = new HTTPClient({ fetcher: observer.fetcher });
     httpClient.addHook("beforeRequest", (request) => {
       const headers = new Headers(request.headers);
       headers.set("X-OpenRouter-Metadata", "enabled");
@@ -351,11 +371,12 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
       createOpenRouterText(spec.requestedModel as OpenRouterModel, apiKey, {
         httpClient,
         retryConfig: { strategy: "none" },
-        timeoutMs: spec.limits.timeoutClass === "deep" ? 600_000 : 300_000,
+        timeoutMs: resolveAttemptDeadlineMs(spec, runtime.memo.profile),
       }),
       spec,
       runtime.memo,
       memoState,
+      observer,
     );
 
     const value = await chat({
@@ -411,7 +432,12 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     const finalStep = memoState.receipts.at(-1);
     const memoKey = memoState.lastMemoKey ?? sha256(spec);
     const completedLastStep = finalStep?.memoKey === memoKey;
-    const kind = completedLastStep ? failureKind(error, state) : "transport";
+    const policyFailure =
+      error instanceof LlmRetriesExhaustedError ||
+      error instanceof LlmSpendAdmissionDeniedError ||
+      error instanceof LlmPhysicalStepFailedError ||
+      error instanceof LlmPhysicalAttemptError;
+    const kind = completedLastStep || policyFailure ? failureKind(error, state) : "transport";
     const defectCode =
       kind === "invalid-json"
         ? "invalid-json"
@@ -440,7 +466,12 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
         : null,
       billing: { status: "billing-unknown" },
       defects:
-        kind === "step-limit" || kind === "transport"
+        kind === "step-limit" ||
+        kind === "transport" ||
+        kind === "http" ||
+        kind === "cancelled" ||
+        kind === "retries-exhausted" ||
+        kind === "spend-admission"
           ? []
           : [{ path: [], code: defectCode, message: `terminal ${kind}` }],
       events: state.events,

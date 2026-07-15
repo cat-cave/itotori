@@ -514,6 +514,10 @@ export const migrations = [
     id: "0102_rebuilt_llm_history_truncate_guard",
     file: "0102_rebuilt_llm_history_truncate_guard.sql",
   },
+  {
+    id: "0103_llm_attempt_admission_exposure",
+    file: "0103_llm_attempt_admission_exposure.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

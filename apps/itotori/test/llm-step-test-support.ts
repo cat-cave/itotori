@@ -12,11 +12,19 @@ import {
   type CallSpec,
 } from "../src/contracts/index.js";
 import type { DispatchRuntime, DispatchTool } from "../src/llm/dispatch.js";
+import type { MeasuredModelProfile, RetryRuntime } from "../src/llm/physical-attempt-policy.js";
 
 export const STEP_HASH_A = `sha256:${"a".repeat(64)}` as const;
 export const STEP_HASH_B = `sha256:${"b".repeat(64)}` as const;
 export const STEP_HASH_C = `sha256:${"c".repeat(64)}` as const;
 export const STEP_HASH_D = `sha256:${"d".repeat(64)}` as const;
+
+export const TEST_MODEL_PROFILE: MeasuredModelProfile = {
+  name: "reviewer",
+  version: "reviewer:v1",
+  deadlines: { normalMs: 300_000, deepMs: 600_000 },
+  maxAttemptExposureUsd: "1", // itotori-225-audit-allow: synthetic per-attempt ceiling for mock transport tests, not a billed model cost
+};
 
 export class TestMemoCipher implements LlmMemoCipher {
   readonly #key = randomBytes(32);
@@ -40,7 +48,7 @@ export class TestMemoCipher implements LlmMemoCipher {
   }
 }
 
-type ProviderResponse = Response | Error | (() => Promise<Response>);
+type ProviderResponse = Response | Error | ((signal: AbortSignal) => Promise<Response>);
 
 export function dispatchHarness(input: {
   pool: DatabaseContext["pool"];
@@ -48,6 +56,10 @@ export function dispatchHarness(input: {
   prompt: string;
   responses: readonly ProviderResponse[];
   tools?: readonly DispatchTool[];
+  signal?: AbortSignal;
+  profile?: MeasuredModelProfile;
+  retry?: Partial<RetryRuntime>;
+  admission?: { scope: string; confirmedCostCapUsd: string };
 }): { runtime: DispatchRuntime; transportCalls: () => number } {
   const responses = [...input.responses];
   let transportCalls = 0;
@@ -62,6 +74,13 @@ export function dispatchHarness(input: {
       readPayload: async () => input.prompt,
       memo: {
         store: new ItotoriLlmCallMemoRepository(input.pool, input.cipher),
+        profile: input.profile ?? TEST_MODEL_PROFILE,
+        admission: input.admission ?? {
+          scope: "test:llm-step",
+          confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic admission cap for mock transport tests, not a billed model cost
+        },
+        ...(input.signal ? { signal: input.signal } : {}),
+        ...(input.retry ? { retry: input.retry } : {}),
         snapshots: {
           decodeRevisionHash: STEP_HASH_A,
           glossaryRevisionHash: STEP_HASH_B,
@@ -69,12 +88,13 @@ export function dispatchHarness(input: {
           acceptedOutputHeadHash: STEP_HASH_D,
         },
       },
-      fetcher: async () => {
+      fetcher: async (requestInput, init) => {
         transportCalls += 1;
         const response = responses.shift();
         if (!response) throw new Error("unexpected extra provider request");
         if (response instanceof Error) throw response;
-        return typeof response === "function" ? response() : response;
+        const request = new Request(requestInput, init);
+        return typeof response === "function" ? response(request.signal) : response;
       },
     },
     transportCalls: () => transportCalls,
@@ -215,6 +235,16 @@ export function rawStructuredProviderResponse(content: string): Response {
       usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
     }),
   ]);
+}
+
+export function httpProviderResponse(status: number, retryAfter?: string): Response {
+  return new Response(JSON.stringify({ error: { message: "synthetic provider failure" } }), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...(retryAfter === undefined ? {} : { "Retry-After": retryAfter }),
+    },
+  });
 }
 
 export function toolProviderResponse(index: number): Response {

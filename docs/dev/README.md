@@ -24,6 +24,8 @@ concern.
 - [`architecture.md`](architecture.md) — what the three subprojects own, how
   they share the bridge/patch/delta schemas, and where the package + crate
   boundaries live.
+- [`llm-attempt-policy.md`](llm-attempt-policy.md) — physical retry and
+  deadline ownership, cancellation semantics, and spend-exposure admission.
 - [`frontend.md`](../frontend.md) — the Studio SPA, `@itotori/ds` design
   system, and the typed API client (developer notes; lives at the top level
   because the Studio is part of the user-visible surface too).

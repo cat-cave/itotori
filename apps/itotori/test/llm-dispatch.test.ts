@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   LlmMemoConflictError,
+  LlmRetriesExhaustedError,
   type LlmCallMemoStore,
   type LlmMemoSingleflightInput,
   type LlmMemoSingleflightResult,
@@ -15,6 +16,7 @@ import {
 } from "../src/contracts/index.js";
 import { dispatch, type DispatchRuntime, type DispatchTool } from "../src/llm/dispatch.js";
 import { reviewVerdictExample } from "./contract-fixtures-core.js";
+import { TEST_MODEL_PROFILE } from "./llm-step-test-support.js";
 
 const HASH_A = `sha256:${"a".repeat(64)}` as const;
 const HASH_B = `sha256:${"b".repeat(64)}` as const;
@@ -23,6 +25,7 @@ type CapturedRequest = { headers: Headers; body: Record<string, unknown> };
 
 class MemoryMemoStore implements LlmCallMemoStore {
   readonly #memos = new Map<string, Extract<LlmMemoSingleflightResult, { kind: "completed" }>>();
+  readonly #attemptCounts = new Map<string, number>();
 
   async singleflight(input: LlmMemoSingleflightInput): Promise<LlmMemoSingleflightResult> {
     const existing = this.#memos.get(input.memoKey);
@@ -32,7 +35,10 @@ class MemoryMemoStore implements LlmCallMemoStore {
       }
       return { ...existing, memoHit: true };
     }
-    const execution = await input.execute({ ordinal: 1, startedAt: new Date().toISOString() });
+    const ordinal = (this.#attemptCounts.get(input.memoKey) ?? 0) + 1;
+    if (ordinal > 3) throw new LlmRetriesExhaustedError(input.memoKey);
+    this.#attemptCounts.set(input.memoKey, ordinal);
+    const execution = await input.execute({ ordinal, startedAt: new Date().toISOString() });
     if (execution.kind === "incomplete") {
       return {
         kind: "incomplete",
@@ -40,6 +46,8 @@ class MemoryMemoStore implements LlmCallMemoStore {
         memoKey: input.memoKey,
         semanticHash: input.semanticHash,
         responseJson: execution.responseJson,
+        attemptOrdinal: ordinal,
+        failure: execution.failure,
       };
     }
     const completed = {
@@ -98,7 +106,7 @@ function sse(chunks: ReadonlyArray<Record<string, unknown>>): Response {
 function structuredResponse(
   content: string,
   id = "generation:test",
-  cost: number | null = 0.00000125,
+  cost: number | null = 0.00000125, // itotori-225-audit-allow: deterministic mock-wire cost in a fake stream chunk, not a production cost source
 ): Response {
   return sse([
     streamChunk({ id, delta: { role: "assistant", content } }),
@@ -212,6 +220,11 @@ function runtime(
     tools,
     memo: {
       store: new MemoryMemoStore(),
+      profile: TEST_MODEL_PROFILE,
+      admission: {
+        scope: "test:llm-dispatch",
+        confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic admission cap for mock transport tests, not a billed model cost
+      },
       snapshots: {
         decodeRevisionHash: HASH_A,
         glossaryRevisionHash: HASH_B,
@@ -442,6 +455,11 @@ const liveEnabled =
       tools: [],
       memo: {
         store: new MemoryMemoStore(),
+        profile: TEST_MODEL_PROFILE,
+        admission: {
+          scope: "test:llm-dispatch-live",
+          confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic live-test cap, not a billed model cost
+        },
         snapshots: {
           decodeRevisionHash: HASH_A,
           glossaryRevisionHash: HASH_B,
