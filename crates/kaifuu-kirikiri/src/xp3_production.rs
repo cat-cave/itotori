@@ -78,7 +78,7 @@ pub const XP3_PRODUCTION_ENGINE_FAMILY: &str = "kirikiri";
 pub const XP3_PRODUCTION_CONTAINER: &str = "xp3";
 
 /// The blunt support boundary carried in every report.
-pub const XP3_PRODUCTION_SUPPORT_BOUNDARY: &str = "Kaifuu KiriKiri XP3 production extract+patch drives PROFILED crypt-scheme + helper-workflow variants on SYNTHETIC encrypted XP3 fixtures. A variant is DATA: a declared crypt-scheme profile (byte transform is a pure function of public scheme data) plus the required key/helper evidence (a secret REF, never a raw key, and a KAIFUU-085 helper result for helper-gated variants). A profiled variant WITH its required evidence extracts its text surfaces and patches them back through the declared crypt + container (identity rebuild byte-identical; patched member carries the new text, every other member byte-identical). A CLAIMED variant that cannot extract+patch fails LOUD (typed ClaimedVariantFailed), never a silent skip; an unclaimed variant is an explicit out-of-scope row. The crypt scheme is DATA (engine-general, no per-game branch). Keys stay ref-only + zeroized; the report carries only requirement ids, refs, one-way hashes, and counts, and is deep no-leak-guarded before return. This is NOT commercial encrypted-XP3 coverage and the fixture crypt schemes are NOT real per-title CxDec/TVP filters.";
+pub const XP3_PRODUCTION_SUPPORT_BOUNDARY: &str = "Kaifuu KiriKiri XP3 production extract+patch drives PROFILED crypt-scheme + helper-workflow variants on SYNTHETIC encrypted XP3 fixtures. A variant is DATA: a declared crypt-scheme profile (byte transform is a pure function of public scheme data) plus the required key/helper evidence (a secret REF, never a raw key, and a helper result for helper-gated variants). A profiled variant WITH its required evidence extracts its text surfaces and patches them back through the declared crypt + container (identity rebuild byte-identical; patched member carries the new text, every other member byte-identical). A CLAIMED variant that cannot extract+patch fails LOUD (typed ClaimedVariantFailed), never a silent skip; an unclaimed variant is an explicit out-of-scope row. The crypt scheme is DATA (engine-general, no per-game branch). Keys stay ref-only + zeroized; the report carries only requirement ids, refs, one-way hashes, and counts, and is deep no-leak-guarded before return. This is NOT commercial encrypted-XP3 coverage and the fixture crypt schemes are NOT real per-title CxDec/TVP filters.";
 
 /// The key/helper workflow a profiled variant's key evidence must come through.
 /// This is the *required evidence class* the variant declares — DATA, not a code
@@ -853,7 +853,7 @@ fn check_helper_evidence(variant: &Xp3ProductionVariant) -> Result<(), String> {
     let validation = helper.validate();
     if validation.status == OperationStatus::Failed {
         return Err(format!(
-            "helper result failed KAIFUU-085 validation ({} failure(s))",
+            "helper result failed validation ({} failure(s))",
             validation.failures.len()
         ));
     }
@@ -909,7 +909,7 @@ fn patch_manifest(variant: &Xp3ProductionVariant) -> crate::xp3_patch::Xp3PatchM
     crate::xp3_patch::Xp3PatchManifest {
         schema_version: crate::xp3_patch::XP3_PATCH_SCHEMA_VERSION.to_string(),
         manifest_id: format!("{}-production-patch", variant.variant_id),
-        source_node_id: "KAIFUU-057".to_string(),
+        source_node_id: "xp3-production".to_string(),
         replacements: variant.replacements.clone(),
     }
 }
@@ -1179,7 +1179,8 @@ mod tests {
 
     #[test]
     fn profiled_variants_extract_and_patch_round_trip() {
-        let report = run_xp3_production(&registry(), "KAIFUU-057").expect("production run passes");
+        let report =
+            run_xp3_production(&registry(), "xp3-production").expect("production run passes");
         assert!(report.is_ok());
         assert_eq!(report.claimed_count, 2);
         assert_eq!(report.not_claimed_count, 1);
@@ -1235,7 +1236,8 @@ mod tests {
 
     #[test]
     fn unclaimed_variant_is_explicit_out_of_scope_not_a_silent_skip() {
-        let report = run_xp3_production(&registry(), "KAIFUU-057").expect("production run passes");
+        let report =
+            run_xp3_production(&registry(), "xp3-production").expect("production run passes");
         let not_claimed: Vec<&Xp3ProductionNotClaimedReport> = report
             .outcomes
             .iter()
@@ -1255,8 +1257,8 @@ mod tests {
         // not a silent skip.
         let mut registry = registry();
         registry.variants[0].set_resolved_key_evidence(None);
-        let err =
-            run_xp3_production(&registry, "KAIFUU-057").expect_err("missing key evidence is a bug");
+        let err = run_xp3_production(&registry, "xp3-production")
+            .expect_err("missing key evidence is a bug");
         match err {
             Xp3ProductionError::ClaimedVariantFailed {
                 variant_id, stage, ..
@@ -1275,7 +1277,7 @@ mod tests {
         // A helper-gated claimed variant whose helper result is absent is a bug.
         let mut registry = registry();
         registry.variants[1].helper_evidence = None;
-        let err = run_xp3_production(&registry, "KAIFUU-057")
+        let err = run_xp3_production(&registry, "xp3-production")
             .expect_err("missing helper evidence is a bug");
         match err {
             Xp3ProductionError::ClaimedVariantFailed {
@@ -1301,8 +1303,8 @@ mod tests {
             &secret_ref,
             b"K057-XP3-WRONGKEY0000".to_vec(),
         )));
-        let err =
-            run_xp3_production(&registry, "KAIFUU-057").expect_err("wrong key evidence is a bug");
+        let err = run_xp3_production(&registry, "xp3-production")
+            .expect_err("wrong key evidence is a bug");
         match err {
             Xp3ProductionError::ClaimedVariantFailed {
                 variant_id, stage, ..
@@ -1324,7 +1326,7 @@ mod tests {
         if let Some(helper) = registry.variants[1].helper_evidence.as_mut() {
             helper.diagnostic.code = HelperDiagnosticCode::MissingKey;
         }
-        let err = run_xp3_production(&registry, "KAIFUU-057")
+        let err = run_xp3_production(&registry, "xp3-production")
             .expect_err("unsatisfied helper evidence is a bug");
         assert!(matches!(
             err,
@@ -1334,7 +1336,8 @@ mod tests {
 
     #[test]
     fn report_carries_no_raw_key_and_no_plaintext() {
-        let report = run_xp3_production(&registry(), "KAIFUU-057").expect("production run passes");
+        let report =
+            run_xp3_production(&registry(), "xp3-production").expect("production run passes");
         let json = report.stable_json().expect("stable json");
 
         // No resolved/archive raw key material appears (any variant).
@@ -1364,11 +1367,11 @@ mod tests {
 
     #[test]
     fn run_is_reproducible() {
-        let a = run_xp3_production(&registry(), "KAIFUU-057")
+        let a = run_xp3_production(&registry(), "xp3-production")
             .unwrap()
             .stable_json()
             .unwrap();
-        let b = run_xp3_production(&registry(), "KAIFUU-057")
+        let b = run_xp3_production(&registry(), "xp3-production")
             .unwrap()
             .stable_json()
             .unwrap();
@@ -1459,7 +1462,8 @@ mod tests {
         // report, and the runtime no-leak guard scans the resolver-held holders
         // (not just the report). A passing run means the guard saw the resolved
         // key material and confirmed it is absent from the JSON.
-        let report = run_xp3_production(&registry(), "KAIFUU-057").expect("production run passes");
+        let report =
+            run_xp3_production(&registry(), "xp3-production").expect("production run passes");
         let json = report.stable_json().expect("stable json");
         for key in RAW_KEYS {
             assert!(
@@ -1548,7 +1552,7 @@ mod tests {
 
         // The runtime guard must refuse loud because the registry-held key byte
         // now appears in the serialized report.
-        let err = run_xp3_production(&registry, "KAIFUU-057")
+        let err = run_xp3_production(&registry, "xp3-production")
             .expect_err("the guard must refuse a report that carries a registry-held key byte");
         match err {
             Xp3ProductionError::Internal { message } => {
@@ -1583,7 +1587,7 @@ mod tests {
             Xp3ProductionReport {
                 schema_version: XP3_PRODUCTION_SCHEMA_VERSION.to_string(),
                 capability_id: XP3_PRODUCTION_CAPABILITY_ID.to_string(),
-                source_node_id: "KAIFUU-057".to_string(),
+                source_node_id: "xp3-production".to_string(),
                 support_boundary: XP3_PRODUCTION_SUPPORT_BOUNDARY.to_string(),
                 registry_id: registry.registry_id.clone(),
                 engine_family: XP3_PRODUCTION_ENGINE_FAMILY.to_string(),
@@ -1623,7 +1627,7 @@ mod tests {
             &wrong_ref,
         ));
 
-        let err = run_xp3_production(&registry, "KAIFUU-057")
+        let err = run_xp3_production(&registry, "xp3-production")
             .expect_err("a helper result bound to the wrong secret ref must be rejected");
         match err {
             Xp3ProductionError::ClaimedVariantFailed {
@@ -1644,7 +1648,8 @@ mod tests {
         // bound to the variant's exact secret ref, so the helper-gated variant
         // passes. (Guards against the wrong-ref test passing for the wrong
         // reason, e.g. helper evidence being ignored entirely.)
-        let report = run_xp3_production(&registry(), "KAIFUU-057").expect("production run passes");
+        let report =
+            run_xp3_production(&registry(), "xp3-production").expect("production run passes");
         let position = report
             .outcomes
             .iter()
