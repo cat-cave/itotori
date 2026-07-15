@@ -17,6 +17,7 @@ import {
   type ItotoriReadOnlyServiceFactory,
 } from "./services/database-services.js";
 import { parseItotoriSessionCookie } from "./auth-session-cookie.js";
+import { assertPrivacyRetentionEgressContract } from "./contracts/privacy.js";
 
 export type DashboardServerOptions = {
   databaseUrl?: string;
@@ -33,6 +34,7 @@ const dashboardListenHost = "127.0.0.1";
 const managedRuntimeArtifactUriRoot = "artifacts/utsushi/runtime/";
 
 export function createItotoriServer(options: DashboardServerOptions = {}) {
+  assertPrivacyRetentionEgressContract();
   const webRoot = options.webRoot ?? new URL("../web-dist/", import.meta.url);
   const runtimeWebRoot =
     options.runtimeWebRoot ?? new URL("../../runtime-web-review/dist/", import.meta.url);
