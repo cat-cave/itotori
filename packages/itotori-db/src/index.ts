@@ -1324,3 +1324,18 @@ export type {
   CatalogResolverFixtureSourceRegistryEntry,
   CatalogResolverFixtureStatus,
 } from "./services/catalog-resolver-fixture.js";
+export {
+  ItotoriLlmCallMemoRepository,
+  LlmMemoConflictError,
+} from "./repositories/llm-call-memo-repository.js";
+export type {
+  CompletedLlmStep,
+  IncompleteLlmStep,
+  LlmCallMemoStore,
+  LlmMemoCipher,
+  LlmMemoSingleflightInput,
+  LlmMemoSingleflightResult,
+  LlmStepAttemptContext,
+  LlmStepBilling,
+  LlmStepExecution,
+} from "./repositories/llm-call-memo-repository.js";

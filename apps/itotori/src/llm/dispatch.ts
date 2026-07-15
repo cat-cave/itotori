@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { HTTPClient, type Fetcher } from "@openrouter/sdk";
 import {
   EventType,
@@ -20,22 +19,23 @@ import {
   CALL_RESULT_SCHEMA_VERSION,
   CallResultSchema,
   CallSpecSchema,
-  DefectBundleSchema,
-  DraftBatchSchema,
-  LocalizedRenderingSchema,
   RebuildCallWirePolicySchema,
-  ReviewVerdictSchema,
   ToolResultSchema,
-  WikiObjectSchema,
   assertRebuildLlmStartupPolicy,
   type CallResult,
   type CallSpec,
   type DispatchEvent,
   type EncryptedPayloadRef,
-  type TerminalOutput,
   type ToolName,
   type ToolResult,
 } from "../contracts/index.js";
+import { sha256 } from "./canonical-json.js";
+import {
+  createPhysicalStepMemoState,
+  memoizePhysicalSteps,
+  type PhysicalStepMemoRuntime,
+} from "./physical-step-memo.js";
+import { providerTerminalSchema } from "./terminal-output.js";
 
 export interface DispatchTool {
   readonly name: ToolName;
@@ -50,6 +50,7 @@ export interface DispatchTool {
 export interface DispatchRuntime {
   readonly readPayload: (reference: EncryptedPayloadRef) => Promise<string>;
   readonly tools: readonly DispatchTool[];
+  readonly memo: PhysicalStepMemoRuntime;
   readonly fetcher?: Fetcher;
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
@@ -110,66 +111,9 @@ class Semaphore {
   }
 }
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value === null || typeof value !== "object") return value;
-  return Object.fromEntries(
-    Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, child]) => [key, canonicalize(child)]),
-  );
-}
-
-function hash(value: unknown): `sha256:${string}` {
-  const bytes = typeof value === "string" ? value : JSON.stringify(canonicalize(value));
-  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
-}
-
 function decimalCost(value: number): string | null {
   if (!Number.isFinite(value) || value < 0) return null;
   return value.toFixed(12).replace(/(?:\.0+|(?<fraction>\.\d*?)0+)$/u, "$<fraction>");
-}
-
-function terminalSchema(output: CallSpec["output"]): z.ZodType<TerminalOutput> {
-  switch (output.name) {
-    case "wiki-object":
-      return WikiObjectSchema;
-    case "localized-rendering":
-      return LocalizedRenderingSchema;
-    case "draft-batch":
-      return DraftBatchSchema;
-    case "review-verdict":
-      return ReviewVerdictSchema;
-    case "defect-bundle":
-      return DefectBundleSchema;
-  }
-}
-
-function replaceExclusiveUnions(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(replaceExclusiveUnions);
-  if (value === null || typeof value !== "object") return value;
-  const entries = Object.entries(value).map(([key, child]) => [
-    key === "oneOf" ? "anyOf" : key,
-    replaceExclusiveUnions(child),
-  ]);
-  return Object.fromEntries(entries);
-}
-
-function providerTerminalSchema(output: CallSpec["output"]): z.ZodType<TerminalOutput> {
-  const schema = terminalSchema(output);
-  const standard = schema["~standard"];
-  // The adapter rejects oneOf before sending; Zod still performs exact local validation.
-  return {
-    "~standard": {
-      ...standard,
-      jsonSchema: {
-        input: (options) =>
-          replaceExclusiveUnions(standard.jsonSchema.input(options)) as Record<string, unknown>,
-        output: (options) =>
-          replaceExclusiveUnions(standard.jsonSchema.output(options)) as Record<string, unknown>,
-      },
-    },
-  } as z.ZodType<TerminalOutput>;
 }
 
 async function readPayload(
@@ -177,7 +121,7 @@ async function readPayload(
   reference: EncryptedPayloadRef,
 ): Promise<string> {
   const content = await runtime.readPayload(reference);
-  if (hash(content) !== reference.contentHash) {
+  if (sha256(content) !== reference.contentHash) {
     throw new Error("encrypted payload content hash mismatch");
   }
   return content;
@@ -333,7 +277,7 @@ function runtimeTools(
         iteration: state.modelStepCount,
         toolCallId: context?.toolCallId ?? "unknown",
         tool: tool.name,
-        argumentsHash: hash(input),
+        argumentsHash: sha256(input),
         result: parsed,
       });
       return parsed;
@@ -362,7 +306,6 @@ function failureKind(error: unknown, state: DispatchState): FailureKind {
 /** The only production boundary that constructs an OpenRouter-backed model adapter. */
 export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): Promise<CallResult> {
   const spec = CallSpecSchema.parse(specInput);
-  const memoKey = hash(spec);
   const requested = { model: spec.requestedModel, providerOrder: spec.providerPolicy.order };
   const env = runtime.env ?? process.env;
   assertRebuildLlmStartupPolicy(env);
@@ -386,6 +329,7 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     stepLimitReached: false,
     lastFinishReason: "unknown",
   };
+  const memoState = createPhysicalStepMemoState();
 
   try {
     if (spec.tools.length > 0 && spec.limits.maxSteps < 2) {
@@ -403,11 +347,16 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
       headers.set("X-OpenRouter-Cache", "false");
       return new Request(request, { headers });
     });
-    const adapter = createOpenRouterText(spec.requestedModel as OpenRouterModel, apiKey, {
-      httpClient,
-      retryConfig: { strategy: "none" },
-      timeoutMs: spec.limits.timeoutClass === "deep" ? 600_000 : 300_000,
-    });
+    const adapter = memoizePhysicalSteps(
+      createOpenRouterText(spec.requestedModel as OpenRouterModel, apiKey, {
+        httpClient,
+        retryConfig: { strategy: "none" },
+        timeoutMs: spec.limits.timeoutClass === "deep" ? 600_000 : 300_000,
+      }),
+      spec,
+      runtime.memo,
+      memoState,
+    );
 
     const value = await chat({
       adapter,
@@ -431,14 +380,16 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     });
 
     if (!state.usage.sawUsage) throw new Error("provider response omitted usage");
+    const finalStep = memoState.receipts.at(-1);
+    if (!finalStep) throw new Error("provider response was not durably memoized");
     const result = {
       schemaVersion: CALL_RESULT_SCHEMA_VERSION,
-      memoKey,
+      memoKey: finalStep.memoKey,
       requested,
-      memoHit: false,
+      memoHit: finalStep.memoHit,
       status: "success",
       value,
-      responseEventId: hash({ memoKey, value }),
+      responseEventId: finalStep.responseEventId,
       served: { model: state.servedModel, provider: "unknown" },
       generationId: null,
       verification: "explicit-unknown",
@@ -456,7 +407,11 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     } as const;
     return CallResultSchema.parse(result);
   } catch (error: unknown) {
-    const kind = failureKind(error, state);
+    if (memoState.conflict) throw memoState.conflict;
+    const finalStep = memoState.receipts.at(-1);
+    const memoKey = memoState.lastMemoKey ?? sha256(spec);
+    const completedLastStep = finalStep?.memoKey === memoKey;
+    const kind = completedLastStep ? failureKind(error, state) : "transport";
     const defectCode =
       kind === "invalid-json"
         ? "invalid-json"
@@ -467,11 +422,11 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
       schemaVersion: CALL_RESULT_SCHEMA_VERSION,
       memoKey,
       requested,
-      memoHit: false,
+      memoHit: completedLastStep ? (finalStep?.memoHit ?? false) : false,
       status: "failure",
       failureKind: kind,
-      responseEventId: state.responseSeen ? hash({ memoKey, failureKind: kind }) : null,
-      responseEncrypted: null,
+      responseEventId: completedLastStep ? (finalStep?.responseEventId ?? null) : null,
+      responseEncrypted: completedLastStep ? (finalStep?.responseEncrypted ?? null) : null,
       served: state.responseSeen ? { model: state.servedModel, provider: "unknown" } : null,
       generationId: null,
       verification: "unverified",
