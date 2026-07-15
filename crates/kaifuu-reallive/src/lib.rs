@@ -110,6 +110,7 @@ pub mod encoding;
 pub mod framing;
 pub mod gameexe;
 pub mod opcode;
+mod opcode_expression;
 mod opcodes;
 mod parser;
 pub mod patchback;
