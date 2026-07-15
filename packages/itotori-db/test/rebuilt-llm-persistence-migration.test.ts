@@ -39,11 +39,11 @@ const expectedColumnsByTable = {
       " ",
     ),
   itotori_llm_call_memos:
-    "memo_key semantic_hash schema_version request_ciphertext request_key_ref request_content_hash response_ciphertext response_key_ref response_content_hash outcome_ciphertext outcome_key_ref outcome_content_hash outcome_kind verification_status generation_id requested_model provider_policy served_model served_provider prompt_token_count completion_token_count reasoning_token_count cached_token_count billing_state cost_usd completed_at retention_deadline deletion_state deleted_at".split(
+    "memo_key semantic_hash schema_version request_ciphertext request_key_ref request_content_hash response_ciphertext response_key_ref response_content_hash outcome_ciphertext outcome_key_ref outcome_content_hash outcome_kind verification_status generation_id requested_model provider_policy served_model served_provider prompt_token_count completion_token_count reasoning_token_count cached_token_count billing_state cost_usd completed_at retention_deadline deletion_state deleted_at served_pair_status".split(
       " ",
     ),
   itotori_llm_http_attempts:
-    "attempt_id memo_key attempt_ordinal request_ciphertext request_key_ref request_content_hash response_ciphertext response_key_ref response_content_hash request_hash attempt_status http_status generation_id billing_state cost_usd started_at completed_at retention_deadline deletion_state deleted_at admission_scope failure_class max_exposure_usd deadline_at".split(
+    "attempt_id memo_key attempt_ordinal request_ciphertext request_key_ref request_content_hash response_ciphertext response_key_ref response_content_hash request_hash attempt_status http_status generation_id billing_state cost_usd started_at completed_at retention_deadline deletion_state deleted_at admission_scope failure_class max_exposure_usd deadline_at served_pair_status served_model served_provider verification_status router_attempts prompt_token_count completion_token_count reasoning_token_count cached_token_count reported_cost_usd".split(
       " ",
     ),
   itotori_llm_conversation_events:
@@ -77,6 +77,7 @@ const migrationSql = [
   "0101_rebuilt_llm_persistence.sql",
   "0102_rebuilt_llm_history_truncate_guard.sql",
   "0103_llm_attempt_admission_exposure.sql",
+  "0105_llm_served_pair_quarantine.sql",
 ]
   .map((file) => readFileSync(join(here, "..", "migrations", file), "utf8"))
   .join("\n");
@@ -227,8 +228,61 @@ describe("rebuilt LLM persistence migration", () => {
     await expect(insertHead(pool)).rejects.toMatchObject({ code: "23505" });
   });
 
+  it("rejects confirmed served-pair columns without a generation id", async () => {
+    const pool = context!.pool;
+    await expect(
+      pool.query(
+        `
+          insert into itotori_llm_call_memos (
+            memo_key, semantic_hash, schema_version,
+            request_ciphertext, request_key_ref, request_content_hash,
+            response_ciphertext, response_key_ref, response_content_hash,
+            outcome_ciphertext, outcome_key_ref, outcome_content_hash,
+            outcome_kind, verification_status, generation_id, requested_model,
+            provider_policy, served_model, served_provider, served_pair_status,
+            billing_state, cost_usd, completed_at, retention_deadline
+          ) values (
+            $1, $2, 'itotori.physical-step-memo.v2',
+            decode('11', 'hex'), 'key/illegal-memo-request', $3,
+            decode('12', 'hex'), 'key/illegal-memo-response', $4,
+            decode('13', 'hex'), 'key/illegal-memo-outcome', $5,
+            'terminal', 'quarantined', null, 'requested-model', '{}'::jsonb,
+            'served-model', 'served-provider', 'confirmed',
+            'billing_unknown', null, now(), now() + interval '1 day'
+          )
+        `,
+        [hash("c"), hash("d"), hash("e"), hash("f"), hash("a")],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+
+    await expect(
+      pool.query(
+        `
+          insert into itotori_llm_http_attempts (
+            attempt_id, memo_key, attempt_ordinal, admission_scope,
+            request_ciphertext, request_key_ref, request_content_hash, request_hash,
+            attempt_status, failure_class, generation_id,
+            served_pair_status, served_model, served_provider, verification_status,
+            router_attempts, billing_state, max_exposure_usd,
+            started_at, deadline_at, completed_at, retention_deadline
+          ) values (
+            'attempt-without-generation', $1, 1, 'migration-test',
+            decode('14', 'hex'), 'key/illegal-attempt', $2, $3,
+            'transport-error', 'permanent', null,
+            'confirmed', 'served-model', 'served-provider', 'quarantined',
+            '[]'::jsonb, 'billing_unknown', 0,
+            now(), now(), now(), now() + interval '1 day'
+          )
+        `,
+        [hash("b"), hash("c"), hash("d")],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+  });
+
   it("freezes history while allowing deletion tombstones and monotonic CAS", async () => {
     const pool = context!.pool;
+    const liveMemoKey = hash("e");
+    await insertMemo(pool, liveMemoKey, hash("f"));
     await insertEvent(pool);
     await expect(
       pool.query("update itotori_llm_conversation_events set accepted = true"),
@@ -267,7 +321,7 @@ describe("rebuilt LLM persistence migration", () => {
     );
     expect(tombstone.rows[0]).toEqual({ deletion_state: "deleted", request_ciphertext: null });
 
-    await insertAcceptedOutput(pool, "output-next", hash("8"), 2);
+    await insertAcceptedOutput(pool, "output-next", hash("8"), 2, liveMemoKey);
     const advanced = await pool.query(
       `
         update itotori_llm_cas_heads
@@ -359,16 +413,16 @@ async function insertMemo(pool: Queryable, memoKey: string, semanticHash: string
         response_ciphertext, response_key_ref, response_content_hash,
         outcome_ciphertext, outcome_key_ref, outcome_content_hash,
         outcome_kind, verification_status, generation_id, requested_model,
-        provider_policy, served_model, served_provider,
+        provider_policy, served_model, served_provider, served_pair_status,
         prompt_token_count, completion_token_count, reasoning_token_count, cached_token_count,
         billing_state, cost_usd, completed_at, retention_deadline
       ) values (
-        $1, $2, 'itotori.physical-step-memo.v1',
+        $1, $2, 'itotori.physical-step-memo.v2',
         decode('01', 'hex'), 'key/request', $3,
         decode('02', 'hex'), 'key/response', $4,
         decode('03', 'hex'), 'key/outcome', $5,
         'terminal', 'verified', 'generation-a', 'model-a',
-        '{}'::jsonb, 'served-model-a', 'provider-a', 1, 1, 0, 0,
+        '{}'::jsonb, 'served-model-a', 'provider-a', 'confirmed', 1, 1, 0, 0,
         'confirmed', 0, now(), now() + interval '1 day'
       )
     `,
@@ -387,11 +441,13 @@ async function insertAttempt(
       insert into itotori_llm_http_attempts (
         attempt_id, memo_key, attempt_ordinal, admission_scope,
         request_ciphertext, request_key_ref, request_content_hash, request_hash,
-        attempt_status, failure_class, billing_state, max_exposure_usd,
+        attempt_status, failure_class, served_pair_status, verification_status,
+        router_attempts, billing_state, max_exposure_usd,
         started_at, deadline_at, completed_at, retention_deadline
       ) values (
         $1, $2, $3, 'migration-test', decode('04', 'hex'), 'key/attempt', $4, $5,
-        'transport-error', 'transient', 'billing_unknown', 0,
+        'transport-error', 'transient', 'unknown', 'quarantined', '[]'::jsonb,
+        'billing_unknown', 0,
         now(), now(), now(), now() + interval '1 day'
       )
     `,
@@ -404,20 +460,21 @@ async function insertAcceptedOutput(
   outputId: string,
   semanticKey: string,
   version: number,
+  memoKey = hash("1"),
 ): Promise<void> {
   await pool.query(
     `
       insert into itotori_llm_accepted_outputs (
         output_id, semantic_key, schema_version, output_version,
-        snapshot_kind, snapshot_id, subject_type, subject_id, stage, source_hash,
+        memo_keys, snapshot_kind, snapshot_id, subject_type, subject_id, stage, source_hash,
         output_ciphertext, output_key_ref, output_content_hash, accepted_at, retention_deadline
       ) values (
-        $1, $2, 'itotori.accepted-output.v1', $3,
+        $1, $2, 'itotori.accepted-output.v1', $3, array[$6],
         'localization', 'snapshot-a', 'unit', 'unit-a', 'final', $4,
         decode('05', 'hex'), 'key/output', $5, now(), now() + interval '1 day'
       )
     `,
-    [outputId, semanticKey, version, hash("f"), hash("0")],
+    [outputId, semanticKey, version, hash("f"), hash("0"), memoKey],
   );
 }
 

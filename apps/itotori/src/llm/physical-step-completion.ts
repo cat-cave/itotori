@@ -1,4 +1,4 @@
-import type { CompletedLlmStep, LlmStepAttemptContext } from "@itotori/db";
+import type { CompletedLlmStep, LlmStepAttemptContext, LlmStepBilling } from "@itotori/db";
 import type { AnyTextAdapter, StreamChunk, TokenUsage } from "@tanstack/ai";
 import {
   CONVERSATION_EVENT_SCHEMA_VERSION,
@@ -11,13 +11,17 @@ import {
 } from "../contracts/index.js";
 import { canonicalJson, sha256 } from "./canonical-json.js";
 import {
-  emptyUsage,
   invalidMemoOutcome,
   memoEncryptedRef,
   streamMemoOutcome,
   usageFromChunks,
   type PhysicalStepMemoOutcome,
 } from "./physical-step-outcome.js";
+import {
+  reconcileGenerationMetadata,
+  type GenerationMetadataSource,
+  type GenerationReconciliation,
+} from "./generation-metadata.js";
 import { terminalOutputSchema } from "./terminal-output.js";
 
 type StructuredOutputResult = Awaited<ReturnType<AnyTextAdapter["structuredOutput"]>>;
@@ -28,14 +32,16 @@ export interface PhysicalStepIdentity {
   responseRef: (responseJson: string) => EncryptedPayloadRef;
 }
 
-export function completedStreamStep(
+export async function completedStreamStep(
   spec: CallSpec,
   identity: PhysicalStepIdentity,
   chunks: readonly StreamChunk[],
   attempt: LlmStepAttemptContext,
   parentResponseEventId: string,
-): CompletedLlmStep {
+  metadataSource: GenerationMetadataSource,
+): Promise<CompletedLlmStep> {
   const responseJson = canonicalJson(chunks);
+  const metadata = await reconcileGenerationMetadata(chunks, metadataSource);
   return completedStep(
     spec,
     identity,
@@ -45,16 +51,18 @@ export function completedStreamStep(
     attempt,
     parentResponseEventId,
     new Date().toISOString(),
+    metadata,
   );
 }
 
-export function completedStructuredStep(
+export async function completedStructuredStep(
   spec: CallSpec,
   identity: PhysicalStepIdentity,
   result: StructuredOutputResult,
   attempt: LlmStepAttemptContext,
   parentResponseEventId: string,
-): CompletedLlmStep {
+  metadataSource: GenerationMetadataSource,
+): Promise<CompletedLlmStep> {
   const responseJson = canonicalJson(result);
   const parsed = terminalOutputSchema(spec.output).safeParse(result.data);
   const outcome = parsed.success
@@ -63,15 +71,24 @@ export function completedStructuredStep(
         "schema-failure",
         parsed.error.issues.map((issue) => issue.message),
       );
+  const metadata = await reconcileGenerationMetadata([], metadataSource);
+  const usageBilling = billingFromUsage(result.usage);
   return completedStep(
     spec,
     identity,
     responseJson,
     outcome,
-    result.usage ?? emptyUsage(),
+    result.usage,
     attempt,
     parentResponseEventId,
     new Date().toISOString(),
+    metadata.billing.status === "confirmed"
+      ? metadata
+      : {
+          ...metadata,
+          billing: usageBilling.billing,
+          reportedCostUsd: usageBilling.reportedCostUsd,
+        },
   );
 }
 
@@ -80,22 +97,25 @@ function completedStep(
   identity: PhysicalStepIdentity,
   responseJson: string,
   outcome: PhysicalStepMemoOutcome,
-  usage: TokenUsage,
+  usage: TokenUsage | undefined | null,
   attempt: LlmStepAttemptContext,
   parentResponseEventId: string,
   completedAt: string,
+  metadata: GenerationReconciliation,
 ): CompletedLlmStep {
   const responseEventId = sha256({
     memoKey: identity.key.memoKey,
     responseHash: sha256(responseJson),
   });
-  const memoBilling = { status: "billing-unknown" as const };
-  const normalizedUsage = {
-    promptTokens: usage.promptTokens,
-    completionTokens: usage.completionTokens,
-    reasoningTokens: usage.completionTokensDetails?.reasoningTokens ?? 0,
-    cachedTokens: usage.promptTokensDetails?.cachedTokens ?? 0,
-  };
+  const memoBilling = contractBilling(metadata.billing);
+  const normalizedUsage = usage
+    ? {
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+        reasoningTokens: usage.completionTokensDetails?.reasoningTokens ?? 0,
+        cachedTokens: usage.promptTokensDetails?.cachedTokens ?? 0,
+      }
+    : null;
   const memo = PhysicalStepMemoSchema.parse({
     schemaVersion: PHYSICAL_STEP_MEMO_SCHEMA_VERSION,
     key: identity.key,
@@ -105,26 +125,29 @@ function completedStep(
       requestEncrypted: memoEncryptedRef(identity.key.memoKey, "request", identity.requestJson),
       responseEncrypted: identity.responseRef(responseJson),
       outcome,
-      verification: {
-        status: "quarantined",
-        generationId: null,
-        served: null,
-        reason: "served route verification pending",
-      },
+      verification:
+        metadata.generationId !== null && metadata.served.status === "confirmed"
+          ? {
+              status: "verified",
+              generationId: metadata.generationId,
+              served: metadata.served,
+            }
+          : {
+              status: "quarantined",
+              generationId: metadata.generationId,
+              served: metadata.served,
+              reason: "generation ID and schema-valid served route were not both present",
+            },
       requestedModel: spec.requestedModel,
       providerPolicy: spec.providerPolicy,
-      routerAttempts: [
-        {
-          ordinal: attempt.ordinal,
-          provider: null,
-          startedAt: attempt.startedAt,
-          completedAt,
-          httpStatus: 200,
-          generationId: null,
-          billing: memoBilling,
-        },
-      ],
-      usage: normalizedUsage,
+      routerAttempts: metadata.routerAttempts.map((routerAttempt) => ({
+        ...routerAttempt,
+        startedAt: attempt.startedAt,
+        completedAt,
+        generationId: metadata.generationId,
+        billing: memoBilling,
+      })),
+      usage: metadata.usage ?? normalizedUsage,
       billing: memoBilling,
       completedAt,
     },
@@ -134,14 +157,14 @@ function completedStep(
     responseJson,
     outcomeJson: canonicalJson(memo),
     outcomeKind: outcome.kind,
-    verificationStatus: "quarantined",
-    generationId: null,
+    generationId: metadata.generationId,
     requestedModel: spec.requestedModel,
     providerPolicy: spec.providerPolicy,
-    servedModel: null,
-    servedProvider: null,
-    usage: normalizedUsage,
-    billing: { status: "billing_unknown" },
+    served: metadata.served,
+    routerAttempts: metadata.routerAttempts,
+    usage: metadata.usage ?? normalizedUsage,
+    billing: metadata.billing,
+    reportedCostUsd: metadata.reportedCostUsd,
     completedAt,
     responseEvent: {
       eventId: responseEventId,
@@ -157,5 +180,30 @@ function completedStep(
         outcomeKind: outcome.kind,
       }),
     },
+  };
+}
+
+function contractBilling(billing: LlmStepBilling) {
+  return billing.status === "confirmed"
+    ? ({ status: "confirmed", costUsd: billing.costUsd } as const)
+    : ({ status: "billing-unknown" } as const);
+}
+
+function billingFromUsage(usage: TokenUsage | undefined): {
+  billing: LlmStepBilling;
+  reportedCostUsd: string | null;
+} {
+  const cost = usage?.cost;
+  if (typeof cost !== "number" || !Number.isFinite(cost) || cost < 0) {
+    return { billing: { status: "billing_unknown" }, reportedCostUsd: null };
+  }
+  const fixed = cost.toFixed(12);
+  if (Number(fixed) !== cost) {
+    return { billing: { status: "billing_unknown" }, reportedCostUsd: null };
+  }
+  const costUsd = fixed.replace(/(?:\.0+|(?<fraction>\.\d*?)0+)$/u, "$<fraction>");
+  return {
+    billing: { status: "confirmed", costUsd },
+    reportedCostUsd: costUsd,
   };
 }

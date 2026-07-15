@@ -75,13 +75,9 @@ export function invalidMemoOutcome(
   };
 }
 
-export function usageFromChunks(chunks: readonly StreamChunk[]): TokenUsage {
+export function usageFromChunks(chunks: readonly StreamChunk[]): TokenUsage | null {
   const finished = chunks.findLast((chunk) => chunk.type === EventType.RUN_FINISHED);
-  return finished?.usage ?? emptyUsage();
-}
-
-export function emptyUsage(): TokenUsage {
-  return { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  return finished?.usage ?? null;
 }
 
 export function memoEncryptedRef(

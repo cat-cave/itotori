@@ -522,6 +522,10 @@ export const migrations = [
     id: "0104_content_read_permission",
     file: "0104_content_read_permission.sql",
   },
+  {
+    id: "0105_llm_served_pair_quarantine",
+    file: "0105_llm_served_pair_quarantine.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

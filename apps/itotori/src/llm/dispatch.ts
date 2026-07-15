@@ -72,18 +72,14 @@ type UsageAccumulator = {
   completionTokens: number;
   reasoningTokens: number;
   cachedTokens: number;
-  reportedCost: number;
   sawUsage: boolean;
-  sawCost: boolean;
 };
 
 type DispatchState = {
   events: DispatchEvent[];
   usage: UsageAccumulator;
-  servedModel: string;
   modelStepCount: number;
   toolCallCount: number;
-  responseSeen: boolean;
   stepLimitReached: boolean;
   lastFinishReason: "stop" | "tool-calls" | "length" | "content-filter" | "unknown";
 };
@@ -95,9 +91,7 @@ const EMPTY_USAGE = {
   completionTokens: 0,
   reasoningTokens: 0,
   cachedTokens: 0,
-  reportedCost: 0,
   sawUsage: false,
-  sawCost: false,
 } as const;
 
 class Semaphore {
@@ -121,11 +115,6 @@ class Semaphore {
       this.#waiters.shift()?.();
     }
   }
-}
-
-function decimalCost(value: number): string | null {
-  if (!Number.isFinite(value) || value < 0) return null;
-  return value.toFixed(12).replace(/(?:\.0+|(?<fraction>\.\d*?)0+)$/u, "$<fraction>");
 }
 
 async function readPayload(
@@ -203,10 +192,6 @@ function addUsage(target: UsageAccumulator, usage: UsageInfo): void {
   target.completionTokens += usage.completionTokens;
   target.reasoningTokens += usage.completionTokensDetails?.reasoningTokens ?? 0;
   target.cachedTokens += usage.promptTokensDetails?.cachedTokens ?? 0;
-  if (typeof usage.cost === "number" && Number.isFinite(usage.cost) && usage.cost >= 0) {
-    target.sawCost = true;
-    target.reportedCost += usage.cost;
-  }
 }
 
 function finishReason(
@@ -224,15 +209,13 @@ function dispatchMiddleware(state: DispatchState, maxToolCalls: number): ChatMid
     },
     onChunk(context, chunk) {
       if (chunk.type !== EventType.RUN_FINISHED) return;
-      state.responseSeen = true;
       state.modelStepCount += 1;
-      state.servedModel = chunk.model || state.servedModel;
       state.lastFinishReason =
         chunk.finishReason === "tool_calls" ? "tool-calls" : finishReason(chunk.finishReason);
       state.events.push({
         kind: "model-step-finished",
         iteration: context.iteration,
-        servedModel: chunk.model || "unknown",
+        reportedModel: chunk.model ?? null,
         finishReason:
           chunk.finishReason === "tool_calls" ? "tool-calls" : finishReason(chunk.finishReason),
       });
@@ -347,10 +330,8 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
   const state: DispatchState = {
     events: [],
     usage: { ...EMPTY_USAGE },
-    servedModel: "unknown",
     modelStepCount: 0,
     toolCallCount: 0,
-    responseSeen: false,
     stepLimitReached: false,
     lastFinishReason: "unknown",
   };
@@ -409,6 +390,30 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     if (!state.usage.sawUsage) throw new Error("provider response omitted usage");
     const finalStep = memoState.receipts.at(-1);
     if (!finalStep) throw new Error("provider response was not durably memoized");
+    if (memoState.receipts.some((receipt) => receipt.verification.status !== "verified")) {
+      return CallResultSchema.parse({
+        schemaVersion: CALL_RESULT_SCHEMA_VERSION,
+        memoKey: finalStep.memoKey,
+        requested,
+        memoHit: finalStep.memoHit,
+        status: "failure",
+        failureKind: "quarantined",
+        responseEventId: finalStep.responseEventId,
+        responseEncrypted: finalStep.responseEncrypted,
+        served: finalStep.verification.served,
+        generationId: finalStep.verification.generationId,
+        verification: "quarantined",
+        usage: finalStep.usage,
+        billing: finalStep.billing,
+        defects: [],
+        events: state.events,
+      });
+    }
+    const verification = finalStep.verification;
+    if (verification.status !== "verified") {
+      throw new Error("verified receipt narrowing failed");
+    }
+    if (finalStep.usage === null) throw new Error("verified response omitted usage");
     const result = {
       schemaVersion: CALL_RESULT_SCHEMA_VERSION,
       memoKey: finalStep.memoKey,
@@ -417,19 +422,11 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
       status: "success",
       value,
       responseEventId: finalStep.responseEventId,
-      served: { model: state.servedModel, provider: "unknown" },
-      generationId: null,
-      verification: "explicit-unknown",
-      usage: {
-        promptTokens: state.usage.promptTokens,
-        completionTokens: state.usage.completionTokens,
-        reasoningTokens: state.usage.reasoningTokens,
-        cachedTokens: state.usage.cachedTokens,
-      },
-      billing: {
-        status: "billing-unknown",
-        reportedCostUsd: state.usage.sawCost ? decimalCost(state.usage.reportedCost) : null,
-      },
+      served: verification.served,
+      generationId: verification.generationId,
+      verification: "verified",
+      usage: finalStep.usage,
+      billing: finalStep.billing,
       events: state.events,
     } as const;
     return CallResultSchema.parse(result);
@@ -459,18 +456,17 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
       failureKind: kind,
       responseEventId: completedLastStep ? (finalStep?.responseEventId ?? null) : null,
       responseEncrypted: completedLastStep ? (finalStep?.responseEncrypted ?? null) : null,
-      served: state.responseSeen ? { model: state.servedModel, provider: "unknown" } : null,
-      generationId: null,
-      verification: "unverified",
-      usage: state.usage.sawUsage
-        ? {
-            promptTokens: state.usage.promptTokens,
-            completionTokens: state.usage.completionTokens,
-            reasoningTokens: state.usage.reasoningTokens,
-            cachedTokens: state.usage.cachedTokens,
-          }
-        : null,
-      billing: { status: "billing-unknown" },
+      served: completedLastStep
+        ? (finalStep?.verification.served ?? { status: "unknown" })
+        : { status: "unknown" },
+      generationId: completedLastStep ? (finalStep?.verification.generationId ?? null) : null,
+      verification: completedLastStep
+        ? (finalStep?.verification.status ?? "unverified")
+        : "unverified",
+      usage: completedLastStep ? (finalStep?.usage ?? null) : null,
+      billing: completedLastStep
+        ? (finalStep?.billing ?? { status: "billing-unknown" })
+        : { status: "billing-unknown" },
       defects:
         kind === "step-limit" ||
         kind === "transport" ||

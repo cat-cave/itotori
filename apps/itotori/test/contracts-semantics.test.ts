@@ -11,6 +11,7 @@ import {
   LocalizedRenderingSchema,
   PhysicalStepMemoSchema,
   ReviewVerdictSchema,
+  ServedPairSchema,
   WIKI_OBJECT_SCHEMA_VERSION,
   WikiObjectSchema,
 } from "../src/contracts/index.js";
@@ -80,7 +81,7 @@ describe("call and memo contracts", () => {
       failureKind: "schema-failure",
       responseEventId: H2,
       responseEncrypted: null,
-      served: null,
+      served: { status: "unknown" },
       generationId: null,
       verification: "quarantined",
       usage: null,
@@ -95,19 +96,23 @@ describe("call and memo contracts", () => {
     );
   });
 
-  it("represents upstream route metadata as explicit-unknown without fabrication", () => {
-    const result = {
-      ...callResultExample,
-      served: { model: "deepseek-v4-flash", provider: "unknown" },
-      generationId: null,
-      verification: "explicit-unknown",
-      billing: { status: "billing-unknown", reportedCostUsd: "0.001" },
-    };
-    expect(CallResultSchema.safeParse(result).success).toBe(true);
+  it("models the served pair as wholly confirmed or wholly unknown", () => {
+    expect(ServedPairSchema.safeParse({ status: "unknown" }).success).toBe(true);
     expect(
-      CallResultSchema.safeParse({
-        ...result,
-        served: { model: "deepseek-v4-flash", provider: "provider:primary" },
+      ServedPairSchema.safeParse({
+        status: "confirmed",
+        model: "served/model",
+        provider: "provider:served",
+      }).success,
+    ).toBe(true);
+    expect(
+      ServedPairSchema.safeParse({ status: "unknown", model: "requested/model" }).success,
+    ).toBe(false);
+    expect(
+      ServedPairSchema.safeParse({
+        status: "confirmed",
+        model: "requested/model",
+        provider: "unknown",
       }).success,
     ).toBe(false);
   });

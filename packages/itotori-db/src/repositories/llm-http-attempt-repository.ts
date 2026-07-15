@@ -170,11 +170,16 @@ export class ItotoriLlmHttpAttemptRepository {
             attempt_id, memo_key, attempt_ordinal, admission_scope,
             request_ciphertext, request_key_ref, request_content_hash, request_hash,
             attempt_status, failure_class, http_status, generation_id,
-            billing_state, cost_usd, max_exposure_usd,
+            served_pair_status, served_model, served_provider, verification_status,
+            router_attempts, prompt_token_count, completion_token_count,
+            reasoning_token_count, cached_token_count,
+            billing_state, cost_usd, reported_cost_usd, max_exposure_usd,
             started_at, deadline_at, completed_at, retention_deadline
           ) values (
             $1, $2, $3, $4, $5, $6, $7, $8,
-            'in-flight', null, null, null, 'billing_unknown', null, $9,
+            'in-flight', null, null, null,
+            'unknown', null, null, 'pending', '[]'::jsonb, null, null, null, null,
+            'billing_unknown', null, null, $9,
             $10::timestamptz, $11::timestamptz, null,
             $10::timestamptz + interval '7 days'
           )
@@ -215,15 +220,25 @@ export class ItotoriLlmHttpAttemptRepository {
       attempt.execution.kind === "completed" ? null : attempt.execution.failure.classification;
     const httpStatus = attempt.execution.kind === "completed" ? 200 : attempt.execution.httpStatus;
     const billing = attempt.execution.billing;
+    const served = attempt.execution.served;
+    const usage = attempt.execution.usage;
+    const confirmedServedPair =
+      attempt.execution.generationId !== null && served.status === "confirmed" ? served : null;
+    const verificationStatus = confirmedServedPair ? "verified" : "quarantined";
     const write = () =>
       client.query(
         `
           update itotori_llm_http_attempts
           set response_ciphertext = $1, response_key_ref = $2, response_content_hash = $3,
               attempt_status = $4, failure_class = $5, http_status = $6,
-              generation_id = $7, billing_state = $8, cost_usd = $9,
-              completed_at = $10::timestamptz
-          where attempt_id = $11 and attempt_status = 'in-flight' and completed_at is null
+              generation_id = $7, served_pair_status = $8,
+              served_model = $9, served_provider = $10, verification_status = $11,
+              router_attempts = $12::jsonb,
+              prompt_token_count = $13, completion_token_count = $14,
+              reasoning_token_count = $15, cached_token_count = $16,
+              billing_state = $17, cost_usd = $18, reported_cost_usd = $19,
+              completed_at = $20::timestamptz
+          where attempt_id = $21 and attempt_status = 'in-flight' and completed_at is null
         `,
         [
           response?.ciphertext ?? null,
@@ -233,8 +248,18 @@ export class ItotoriLlmHttpAttemptRepository {
           failureClass,
           httpStatus,
           attempt.execution.generationId,
+          confirmedServedPair ? "confirmed" : "unknown",
+          confirmedServedPair?.model ?? null,
+          confirmedServedPair?.provider ?? null,
+          verificationStatus,
+          JSON.stringify(attempt.execution.routerAttempts),
+          usage?.promptTokens ?? null,
+          usage?.completionTokens ?? null,
+          usage?.reasoningTokens ?? null,
+          usage?.cachedTokens ?? null,
           billing.status,
           billing.status === "confirmed" ? billing.costUsd : null,
+          attempt.execution.reportedCostUsd,
           attempt.execution.completedAt,
           attemptId(input.memoKey, attempt.ordinal),
         ],
