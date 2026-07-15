@@ -142,7 +142,7 @@
     "crates/utsushi-reallive/src/replay.rs": 3641,
     "crates/utsushi-reallive/src/rlop/longops.rs": 1032,
     "crates/utsushi-reallive/src/rlop/mod.rs": 615,
-    "crates/utsushi-reallive/src/rlop/module_audio.rs": 1491,
+    "crates/utsushi-reallive/src/rlop/module_audio.rs": 1239,
     "crates/utsushi-reallive/src/rlop/module_catalog.rs": 534,
     "crates/utsushi-reallive/src/rlop/module_ctrl.rs": 1170,
     "crates/utsushi-reallive/src/rlop/module_mem.rs": 1108,
