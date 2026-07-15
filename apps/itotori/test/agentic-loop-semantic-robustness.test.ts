@@ -326,9 +326,13 @@ describe("itotori-semantic-agent-uniform-invocation-contract", () => {
       [...SEMANTIC_AGENTS].sort(),
     );
     expect(contextStage?.outcome).toBe("succeeded");
-    // Deterministic context + all semantic refs present.
+    // Decode facts remain available to prompt assembly alongside semantic refs.
     const prompt = captured[0] ?? "";
-    expect(prompt).toContain("Structure-informed context");
+    expect(prompt).toContain("Decoded structure (authoritative facts):");
+    expect(prompt).not.toContain("Structure-informed context");
+    expect(prompt).toContain(`sceneId=${SCENE_ID} messageCount=2 choiceCount=0`);
+    expect(prompt).toContain("dispatchTargets=7020");
+    expect(prompt).toContain(`routeEdge kind=dispatch fromSceneId=${SCENE_ID} toSceneId=7020`);
   });
 
   it("valid EMPTY semantic packs proceed → written outcome + explicit no-content records (valid-empty, never a false failure)", async () => {

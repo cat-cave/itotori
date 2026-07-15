@@ -1,14 +1,12 @@
 // itotori-agentic-loop-real-context-stage — the loop's context stage now
-// delivers REAL structure-informed context to the translator.
+// delivers decoded structure facts to the translator.
 //
 // SUPERSEDES `genaudit1-01-agentic-loop-context-probe-coerces-mis` and
 // `itotori-semantic-agent-clis-no-fake-context-on-real-path`: the old
 // `invokeContextLikeProbe` (which fired a provider call and DISCARDED its
 // output, leaving `contextArtifactIds: []`) is gone. The context stage now
-//   (a) builds the DETERMINISTIC structure-informed context slice from the
-//       decoded `NarrativeStructure` and injects it into the translation
-//       prompt (scene summary + route/branch position + speaker character
-//       arcs), and
+//   (a) reduces decoded `NarrativeStructure` into scene and route facts for
+//       prompt assembly, and
 //   (b) runs the four semantic context agents LIVE for enrichment.
 //
 // Two proofs:
@@ -282,23 +280,17 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
     // (a) The translation stage PROVABLY received the decoded structure.
     expect(captured.length).toBeGreaterThan(0);
     const prompt = captured[0] ?? "";
-    // The dedicated structure-informed context block.
-    expect(prompt).toContain("Structure-informed context");
-    // Scene summary (decoded scene id + speaker).
-    expect(prompt).toContain(`Scene ${SCENE_ID}`);
-    expect(prompt).toContain(SPEAKER_NAME);
-    // Route/branch position (this scene dispatches to 6020).
-    expect(prompt).toContain("route position");
-    expect(prompt).toContain("dispatches to scene 6020");
-    // Speaker character arc.
-    expect(prompt).toContain("speaks");
-    // Resolved context artifacts carry REAL content (not bare ids).
+    expect(prompt).toContain("Decoded structure (authoritative facts):");
+    expect(prompt).not.toContain("Structure-informed context");
+    expect(prompt).toContain(`sceneId=${SCENE_ID} messageCount=3 choiceCount=0`);
+    expect(prompt).toContain("dispatchTargets=6020");
+    expect(prompt).toContain(`routeEdge kind=dispatch fromSceneId=${SCENE_ID} toSceneId=6020`);
+    // Resolved context artifacts carry typed decode facts (not bare ids).
     expect(prompt).toContain("Context artifacts (resolved content):");
-    expect(prompt).toContain(`structure:scene-summary:${SCENE_ID}`);
-    expect(prompt).toContain(`structure:route-branch-map:${SCENE_ID}`);
-    // Structure-informed citation line still names the deterministic refs.
-    expect(prompt).toContain(`scene-summary:${SCENE_ID}`);
-    expect(prompt).toContain("route-branch-map");
+    expect(prompt).toContain(`contextArtifactId=structure:scene:${SCENE_ID}`);
+    expect(prompt).toContain(`contextArtifactId=structure:route-graph:${SCENE_ID}`);
+    expect(prompt).toContain(`structure:scene:${SCENE_ID}`);
+    expect(prompt).toContain("structure:route-graph");
 
     // The loop still completes end-to-end with a real draft.
     expect(selectedWrittenCandidateBody(bundle)).toBe("Good morning.");
@@ -323,7 +315,7 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
       capturingFakeFactory(unit, captured),
     );
     // No deterministic structure → no injected block (baseline prompt).
-    expect(captured[0] ?? "").not.toContain("Structure-informed context");
+    expect(captured[0] ?? "").not.toContain("Decoded structure (authoritative facts):");
     // The semantic agents still ran (character-relationship anchors on the
     // unit's decoded speaker).
     const contextStage = bundle.stages.find((s) => s.stageName === "context");
@@ -564,9 +556,9 @@ describe("itotori-agentic-loop-real-context-stage (live)", () => {
     expect(translationRequest).toBeDefined();
     const userMessage = translationRequest?.messages?.find((m) => m.role === "user");
     const prompt = userMessage?.content ?? "";
-    expect(prompt).toContain("Structure-informed context");
-    expect(prompt).toContain(`Scene ${sceneId}`);
-    expect(prompt).toContain("route position");
+    expect(prompt).toContain("Decoded structure (authoritative facts):");
+    expect(prompt).not.toContain("Structure-informed context");
+    expect(prompt).toContain(`sceneId=${sceneId}`);
     expect(prompt).toContain("Context artifacts (resolved content):");
 
     // ZDR enforced on the wire + real cost recorded; budget cap respected.
