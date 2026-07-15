@@ -1,44 +1,33 @@
-import {
-  LlmMemoConflictError,
-  type CompletedLlmStep,
-  type LlmCallMemoStore,
-  type LlmStepAttemptContext,
-} from "@itotori/db";
-import {
-  EventType,
-  type AnyTextAdapter,
-  type StreamChunk,
-  type TextOptions,
-  type TokenUsage,
-} from "@tanstack/ai";
+import { LlmMemoConflictError, type LlmAttemptFailure, type LlmCallMemoStore } from "@itotori/db";
+import { EventType, type AnyTextAdapter, type StreamChunk, type TextOptions } from "@tanstack/ai";
 import {
   CONTEXT_SNAPSHOT_SCHEMA_VERSION,
-  CONVERSATION_EVENT_SCHEMA_VERSION,
   LOCALIZATION_SNAPSHOT_SCHEMA_VERSION,
   PHYSICAL_STEP_MEMO_KEY_SCHEMA_VERSION,
   PHYSICAL_STEP_MEMO_SCHEMA_VERSION,
-  PHYSICAL_STEP_MEMO_VALUE_SCHEMA_VERSION,
   PhysicalStepMemoKeySchema,
   PhysicalStepMemoSchema,
   type CallSpec,
   type EncryptedPayloadRef,
-  type PhysicalStepMemoKey,
 } from "../contracts/index.js";
 import { canonicalJson, sha256 } from "./canonical-json.js";
+import { memoEncryptedRef } from "./physical-step-outcome.js";
 import {
-  emptyUsage,
-  invalidMemoOutcome,
-  memoEncryptedRef,
-  streamMemoOutcome,
-  usageFromChunks,
-  type PhysicalStepMemoOutcome,
-} from "./physical-step-outcome.js";
-import { terminalOutputSchema } from "./terminal-output.js";
+  LlmPhysicalAttemptError,
+  memoizedPhysicalAttempt,
+  type PhysicalAttemptRuntime,
+  type TransportObserver,
+} from "./physical-attempt-policy.js";
+import {
+  completedStreamStep,
+  completedStructuredStep,
+  type PhysicalStepIdentity,
+} from "./physical-step-completion.js";
 
 const TANSTACK_VERSION = "0.40.0";
 const OPENROUTER_ADAPTER_VERSION = "0.15.8";
 
-export interface PhysicalStepMemoRuntime {
+export interface PhysicalStepMemoRuntime extends PhysicalAttemptRuntime {
   readonly store: LlmCallMemoStore;
   readonly snapshots: {
     decodeRevisionHash: `sha256:${string}`;
@@ -75,12 +64,6 @@ type PhysicalRequest = {
   outputSchema: unknown;
 };
 
-type StepIdentity = {
-  key: PhysicalStepMemoKey;
-  requestJson: string;
-  responseRef: (responseJson: string) => EncryptedPayloadRef;
-};
-
 export function createPhysicalStepMemoState(): PhysicalStepMemoState {
   return { receipts: [], lastMemoKey: null, conflict: null };
 }
@@ -90,11 +73,12 @@ export function memoizePhysicalSteps(
   spec: CallSpec,
   runtime: PhysicalStepMemoRuntime,
   state: PhysicalStepMemoState,
+  observer: TransportObserver,
 ): AnyTextAdapter {
   let stepOrdinal = 0;
   let parentResponseEventId: string = spec.parentEventId;
 
-  const nextIdentity = (boundary: Boundary, request: PhysicalRequest): StepIdentity => {
+  const nextIdentity = (boundary: Boundary, request: PhysicalRequest): PhysicalStepIdentity => {
     const identity = deriveStepIdentity(spec, runtime, boundary, stepOrdinal, request);
     stepOrdinal += 1;
     state.lastMemoKey = asHash(identity.key.memoKey);
@@ -104,32 +88,34 @@ export function memoizePhysicalSteps(
   const replayStream = async function* (
     boundary: Boundary,
     options: TextOptions<Record<string, unknown>>,
-    outbound: () => AsyncIterable<StreamChunk>,
+    outbound: (signal: AbortSignal) => AsyncIterable<StreamChunk>,
   ): AsyncIterable<StreamChunk> {
+    if (runtime.signal?.aborted) throw cancelledPhysicalStep();
     const request = physicalRequest(boundary, options, options.outputSchema);
     const identity = nextIdentity(boundary, request);
     try {
-      const stored = await runtime.store.singleflight({
-        memoKey: identity.key.memoKey,
-        semanticHash: identity.key.semanticHash,
-        schemaVersion: PHYSICAL_STEP_MEMO_SCHEMA_VERSION,
-        requestJson: identity.requestJson,
-        execute: async (attempt) => {
+      const stored = await memoizedPhysicalAttempt({
+        store: runtime.store,
+        spec,
+        runtime,
+        observer,
+        memo: {
+          memoKey: identity.key.memoKey,
+          semanticHash: identity.key.semanticHash,
+          schemaVersion: PHYSICAL_STEP_MEMO_SCHEMA_VERSION,
+          requestJson: identity.requestJson,
+        },
+        execute: async (attempt, control) => {
           const chunks: StreamChunk[] = [];
-          for await (const chunk of outbound()) chunks.push(chunk);
-          const responseJson = canonicalJson(chunks);
-          const runError = chunks.findLast((chunk) => chunk.type === EventType.RUN_ERROR);
-          if (runError && !isCompletedInvalidResponse(runError)) {
-            return {
-              kind: "incomplete",
-              responseJson,
-              attemptStatus: "transport-error",
-              httpStatus: null,
-              generationId: null,
-              billing: { status: "billing_unknown" },
-              completedAt: new Date().toISOString(),
-            };
+          try {
+            for await (const chunk of outbound(control.signal)) chunks.push(chunk);
+          } catch (error: unknown) {
+            const failure = control.failure(error) ?? permanentAttemptFailure();
+            return incompleteStep(chunks, failure);
           }
+          const runError = chunks.findLast((chunk) => chunk.type === EventType.RUN_ERROR);
+          const failure = runError ? control.failure(runError) : null;
+          if (runError && failure) return incompleteStep(chunks, failure);
           return completedStreamStep(spec, identity, chunks, attempt, parentResponseEventId);
         },
       });
@@ -154,17 +140,41 @@ export function memoizePhysicalSteps(
   const replayStructured = async (
     options: StructuredOutputOptions,
   ): Promise<StructuredOutputResult> => {
+    if (runtime.signal?.aborted) throw cancelledPhysicalStep();
     const request = physicalRequest("structured-output", options.chatOptions, options.outputSchema);
     const identity = nextIdentity("structured-output", request);
     try {
-      const stored = await runtime.store.singleflight({
-        memoKey: asHash(identity.key.memoKey),
-        semanticHash: identity.key.semanticHash,
-        schemaVersion: PHYSICAL_STEP_MEMO_SCHEMA_VERSION,
-        requestJson: identity.requestJson,
-        execute: async (attempt) => {
-          const result = await adapter.structuredOutput(options);
-          return completedStructuredStep(spec, identity, result, attempt, parentResponseEventId);
+      const stored = await memoizedPhysicalAttempt({
+        store: runtime.store,
+        spec,
+        runtime,
+        observer,
+        memo: {
+          memoKey: asHash(identity.key.memoKey),
+          semanticHash: identity.key.semanticHash,
+          schemaVersion: PHYSICAL_STEP_MEMO_SCHEMA_VERSION,
+          requestJson: identity.requestJson,
+        },
+        execute: async (attempt, control) => {
+          try {
+            const result = await adapter.structuredOutput({
+              ...options,
+              chatOptions: withSignal(options.chatOptions, control.signal),
+            });
+            return completedStructuredStep(spec, identity, result, attempt, parentResponseEventId);
+          } catch (error: unknown) {
+            const failure = control.failure(error) ?? permanentAttemptFailure();
+            return {
+              kind: "incomplete",
+              responseJson: null,
+              attemptStatus: attemptStatus(failure.kind),
+              httpStatus: failure.httpStatus,
+              generationId: null,
+              billing: { status: "billing_unknown" },
+              failure,
+              completedAt: new Date().toISOString(),
+            };
+          }
         },
       });
       if (stored.kind !== "completed") throw new Error("structured model step was incomplete");
@@ -190,13 +200,17 @@ export function memoizePhysicalSteps(
     model: adapter.model,
     ...(adapter.requires ? { requires: adapter.requires } : {}),
     "~types": adapter["~types"],
-    chatStream: (options) => replayStream("chat", options, () => adapter.chatStream(options)),
+    chatStream: (options) =>
+      replayStream("chat", options, (signal) => adapter.chatStream(withSignal(options, signal))),
     structuredOutput: replayStructured,
     ...(adapter.structuredOutputStream
       ? {
           structuredOutputStream: (options: StructuredOutputOptions) =>
-            replayStream("structured-output", options.chatOptions, () =>
-              adapter.structuredOutputStream!(options),
+            replayStream("structured-output", options.chatOptions, (signal) =>
+              adapter.structuredOutputStream!({
+                ...options,
+                chatOptions: withSignal(options.chatOptions, signal),
+              }),
             ),
         }
       : {}),
@@ -215,7 +229,7 @@ function deriveStepIdentity(
   boundary: Boundary,
   stepOrdinal: number,
   request: PhysicalRequest,
-): StepIdentity {
+): PhysicalStepIdentity {
   const projected = [
     ...asArray(request.systemPrompts).map((message, index) =>
       projectedMessage("system", index, message),
@@ -306,149 +320,61 @@ function physicalRequest(
   };
 }
 
-function completedStreamStep(
-  spec: CallSpec,
-  identity: StepIdentity,
-  chunks: readonly StreamChunk[],
-  attempt: LlmStepAttemptContext,
-  parentResponseEventId: string,
-): CompletedLlmStep {
-  const responseJson = canonicalJson(chunks);
-  const outcome = streamMemoOutcome(spec, identity.key.memoKey, chunks);
-  const completedAt = new Date().toISOString();
-  return completedStep(
-    spec,
-    identity,
-    responseJson,
-    outcome,
-    usageFromChunks(chunks),
-    attempt,
-    parentResponseEventId,
-    completedAt,
-  );
-}
-
-function completedStructuredStep(
-  spec: CallSpec,
-  identity: StepIdentity,
-  result: StructuredOutputResult,
-  attempt: LlmStepAttemptContext,
-  parentResponseEventId: string,
-): CompletedLlmStep {
-  const responseJson = canonicalJson(result);
-  const parsed = terminalOutputSchema(spec.output).safeParse(result.data);
-  const outcome = parsed.success
-    ? ({ kind: "terminal", output: parsed.data } as const)
-    : invalidMemoOutcome(
-        "schema-failure",
-        parsed.error.issues.map((issue) => issue.message),
-      );
-  const completedAt = new Date().toISOString();
-  return completedStep(
-    spec,
-    identity,
-    responseJson,
-    outcome,
-    result.usage ?? emptyUsage(),
-    attempt,
-    parentResponseEventId,
-    completedAt,
-  );
-}
-
-function completedStep(
-  spec: CallSpec,
-  identity: StepIdentity,
-  responseJson: string,
-  outcome: PhysicalStepMemoOutcome,
-  usage: TokenUsage,
-  attempt: LlmStepAttemptContext,
-  parentResponseEventId: string,
-  completedAt: string,
-): CompletedLlmStep {
-  const responseEventId = sha256({
-    memoKey: identity.key.memoKey,
-    responseHash: sha256(responseJson),
-  });
-  const memoBilling = { status: "billing-unknown" as const };
-  const normalizedUsage = {
-    promptTokens: usage.promptTokens,
-    completionTokens: usage.completionTokens,
-    reasoningTokens: usage.completionTokensDetails?.reasoningTokens ?? 0,
-    cachedTokens: usage.promptTokensDetails?.cachedTokens ?? 0,
-  };
-  const memo = PhysicalStepMemoSchema.parse({
-    schemaVersion: PHYSICAL_STEP_MEMO_SCHEMA_VERSION,
-    key: identity.key,
-    value: {
-      schemaVersion: PHYSICAL_STEP_MEMO_VALUE_SCHEMA_VERSION,
-      memoKey: identity.key.memoKey,
-      requestEncrypted: memoEncryptedRef(identity.key.memoKey, "request", identity.requestJson),
-      responseEncrypted: identity.responseRef(responseJson),
-      outcome,
-      verification: {
-        status: "quarantined",
-        generationId: null,
-        served: null,
-        reason: "served route verification pending",
-      },
-      requestedModel: spec.requestedModel,
-      providerPolicy: spec.providerPolicy,
-      routerAttempts: [
-        {
-          ordinal: attempt.ordinal,
-          provider: null,
-          startedAt: attempt.startedAt,
-          completedAt,
-          httpStatus: 200,
-          generationId: null,
-          billing: memoBilling,
-        },
-      ],
-      usage: normalizedUsage,
-      billing: memoBilling,
-      completedAt,
-    },
-  });
-  const outcomeJson = canonicalJson(memo);
-  return {
-    kind: "completed",
-    responseJson,
-    outcomeJson,
-    outcomeKind: outcome.kind,
-    verificationStatus: "quarantined",
-    generationId: null,
-    requestedModel: spec.requestedModel,
-    providerPolicy: spec.providerPolicy,
-    servedModel: null,
-    servedProvider: null,
-    usage: normalizedUsage,
-    billing: { status: "billing_unknown" },
-    completedAt,
-    responseEvent: {
-      eventId: responseEventId,
-      schemaVersion: CONVERSATION_EVENT_SCHEMA_VERSION,
-      parentEventIds: [parentResponseEventId],
-      snapshotKind: spec.localizationSnapshotId ? "localization" : "context",
-      snapshotId: spec.localizationSnapshotId ?? spec.contextSnapshotId,
-      actorRole: spec.roleId,
-      bodyJson: canonicalJson({
-        kind: "physical-model-response",
-        memoKey: identity.key.memoKey,
-        responseHash: sha256(responseJson),
-        outcomeKind: outcome.kind,
-      }),
-    },
-  };
-}
-
 function projectedMessage(kind: string, index: number, message: unknown) {
   const eventHash = sha256(message);
   return { eventId: sha256({ kind, index, eventHash }), eventHash };
 }
 
-function isCompletedInvalidResponse(error: Extract<StreamChunk, { type: EventType.RUN_ERROR }>) {
-  return /parse structured output|valid JSON|schema validation/iu.test(error.message);
+function attemptStatus(
+  kind: "transport" | "http" | "deadline" | "cancelled",
+): "transport-error" | "http-error" | "cancelled" {
+  if (kind === "http") return "http-error";
+  return kind === "cancelled" ? "cancelled" : "transport-error";
+}
+
+function incompleteStep(chunks: StreamChunk[], failure: LlmAttemptFailure) {
+  return {
+    kind: "incomplete" as const,
+    responseJson: canonicalJson(chunks),
+    attemptStatus: attemptStatus(failure.kind),
+    httpStatus: failure.httpStatus,
+    generationId: null,
+    billing: { status: "billing_unknown" as const },
+    failure,
+    completedAt: new Date().toISOString(),
+  };
+}
+
+function permanentAttemptFailure() {
+  return {
+    classification: "permanent" as const,
+    kind: "transport" as const,
+    httpStatus: null,
+    retryAfterMs: null,
+  };
+}
+
+function cancelledPhysicalStep(): LlmPhysicalAttemptError {
+  return new LlmPhysicalAttemptError({
+    classification: "cancelled",
+    kind: "cancelled",
+    httpStatus: null,
+    retryAfterMs: null,
+  });
+}
+
+function withSignal<T extends TextOptions<Record<string, unknown>>>(
+  options: T,
+  signal: AbortSignal,
+): T {
+  const request = options.request;
+  const existingSignal = request instanceof Request ? request.signal : request?.signal;
+  const combined = existingSignal ? AbortSignal.any([existingSignal, signal]) : signal;
+  const headers = request instanceof Request ? request.headers : request?.headers;
+  return {
+    ...options,
+    request: { ...(headers === undefined ? {} : { headers }), signal: combined },
+  } as T;
 }
 
 function asArray(value: unknown): unknown[] {

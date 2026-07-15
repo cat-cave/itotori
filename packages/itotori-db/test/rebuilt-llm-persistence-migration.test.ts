@@ -43,7 +43,7 @@ const expectedColumnsByTable = {
       " ",
     ),
   itotori_llm_http_attempts:
-    "attempt_id memo_key attempt_ordinal request_ciphertext request_key_ref request_content_hash response_ciphertext response_key_ref response_content_hash request_hash attempt_status http_status generation_id billing_state cost_usd started_at completed_at retention_deadline deletion_state deleted_at".split(
+    "attempt_id memo_key attempt_ordinal request_ciphertext request_key_ref request_content_hash response_ciphertext response_key_ref response_content_hash request_hash attempt_status http_status generation_id billing_state cost_usd started_at completed_at retention_deadline deletion_state deleted_at admission_scope failure_class max_exposure_usd deadline_at".split(
       " ",
     ),
   itotori_llm_conversation_events:
@@ -76,6 +76,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const migrationSql = [
   "0101_rebuilt_llm_persistence.sql",
   "0102_rebuilt_llm_history_truncate_guard.sql",
+  "0103_llm_attempt_admission_exposure.sql",
 ]
   .map((file) => readFileSync(join(here, "..", "migrations", file), "utf8"))
   .join("\n");
@@ -384,12 +385,14 @@ async function insertAttempt(
   await pool.query(
     `
       insert into itotori_llm_http_attempts (
-        attempt_id, memo_key, attempt_ordinal,
+        attempt_id, memo_key, attempt_ordinal, admission_scope,
         request_ciphertext, request_key_ref, request_content_hash, request_hash,
-        attempt_status, billing_state, started_at, completed_at, retention_deadline
+        attempt_status, failure_class, billing_state, max_exposure_usd,
+        started_at, deadline_at, completed_at, retention_deadline
       ) values (
-        $1, $2, $3, decode('04', 'hex'), 'key/attempt', $4, $5,
-        'transport-error', 'billing_unknown', now(), now(), now() + interval '1 day'
+        $1, $2, $3, 'migration-test', decode('04', 'hex'), 'key/attempt', $4, $5,
+        'transport-error', 'transient', 'billing_unknown', 0,
+        now(), now(), now(), now() + interval '1 day'
       )
     `,
     [attemptId, memoKey, ordinal, hash("d"), hash("e")],

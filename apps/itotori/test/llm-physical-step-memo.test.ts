@@ -74,16 +74,26 @@ postgresDescribe("physical model step durability", () => {
     const prompt = "Use the decoded-unit tool twice, then return a verdict.";
     const spec = toolLoopSpec(prompt);
     let firstToolExecutions = 0;
+    const interruptedSignal = new AbortController();
     try {
       const interrupted = dispatchHarness({
         pool: context.pool,
         cipher,
         prompt,
-        responses: [toolProviderResponse(1), toolProviderResponse(2), new Error("connection lost")],
+        responses: [
+          toolProviderResponse(1),
+          toolProviderResponse(2),
+          async () => {
+            interruptedSignal.abort();
+            throw new Error("operator cancelled the interrupted run");
+          },
+        ],
         tools: [decodedUnitsTool(() => (firstToolExecutions += 1))],
+        signal: interruptedSignal.signal,
       });
       const interruptedResult = await dispatch(spec, interrupted.runtime);
       expect(interruptedResult.status).toBe("failure");
+      expect(interruptedResult).toMatchObject({ failureKind: "cancelled" });
       expect(interrupted.transportCalls()).toBe(3);
       expect(firstToolExecutions).toBe(2);
 
@@ -117,7 +127,7 @@ postgresDescribe("physical model step durability", () => {
         [after.find((key) => !before.includes(key))],
       );
       expect(missingStepAttempts.rows.map((row) => row.attempt_status)).toEqual([
-        "transport-error",
+        "cancelled",
         "completed",
       ]);
     } finally {

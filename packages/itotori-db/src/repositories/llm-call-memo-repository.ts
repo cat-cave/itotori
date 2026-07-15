@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import type { DatabaseContext } from "../connection.js";
+import {
+  ItotoriLlmHttpAttemptRepository,
+  type LlmSpendExposureReport,
+} from "./llm-http-attempt-repository.js";
 
 export interface LlmMemoCipher {
   seal(plaintext: string): Promise<{ ciphertext: Uint8Array; keyRef: string }>;
@@ -14,6 +18,20 @@ export type LlmStepBilling =
 export interface LlmStepAttemptContext {
   ordinal: number;
   startedAt: string;
+}
+
+export interface LlmAttemptFailure {
+  classification: "transient" | "permanent" | "cancelled";
+  kind: "transport" | "http" | "deadline" | "cancelled";
+  httpStatus: number | null;
+  retryAfterMs: number | null;
+}
+
+export interface LlmSpendAdmission {
+  scope: string;
+  confirmedCostCapUsd: string;
+  maxAttemptExposureUsd: string;
+  deadlineMs: number;
 }
 
 export interface CompletedLlmStep {
@@ -53,6 +71,7 @@ export interface IncompleteLlmStep {
   httpStatus: number | null;
   generationId: string | null;
   billing: LlmStepBilling;
+  failure: LlmAttemptFailure;
   completedAt: string;
 }
 
@@ -63,6 +82,7 @@ export interface LlmMemoSingleflightInput {
   semanticHash: string;
   schemaVersion: string;
   requestJson: string;
+  admission: LlmSpendAdmission;
   execute: (attempt: LlmStepAttemptContext) => Promise<LlmStepExecution>;
 }
 
@@ -82,6 +102,8 @@ export type LlmMemoSingleflightResult =
       memoKey: string;
       semanticHash: string;
       responseJson: string | null;
+      attemptOrdinal: number;
+      failure: LlmAttemptFailure;
     };
 
 export interface LlmCallMemoStore {
@@ -96,10 +118,18 @@ export class LlmMemoConflictError extends Error {
 }
 
 export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
+  readonly #attempts: ItotoriLlmHttpAttemptRepository;
+
   constructor(
     private readonly pool: DatabaseContext["pool"],
     private readonly cipher: LlmMemoCipher,
-  ) {}
+  ) {
+    this.#attempts = new ItotoriLlmHttpAttemptRepository(pool, cipher);
+  }
+
+  readSpendExposure(admissionScope: string): Promise<LlmSpendExposureReport> {
+    return this.#attempts.readSpendExposure(admissionScope);
+  }
 
   async singleflight(input: LlmMemoSingleflightInput): Promise<LlmMemoSingleflightResult> {
     assertHash(input.memoKey, "memo key");
@@ -117,36 +147,41 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
       if (existing) return { ...existing, memoHit: true };
       await this.rejectSemanticAlias(input.memoKey, input.semanticHash, client);
 
-      const ordinal = await nextAttemptOrdinal(input.memoKey, client);
+      const ordinal = await this.#attempts.nextOrdinal(input.memoKey, client);
       const startedAt = new Date().toISOString();
+      await this.#attempts.admitAndStart(client, input, { ordinal, startedAt });
       let execution: LlmStepExecution;
       try {
         execution = await input.execute({ ordinal, startedAt });
-      } catch (error: unknown) {
-        await this.insertAttempt(client, input, {
-          ordinal,
-          startedAt,
-          execution: {
-            kind: "incomplete",
-            responseJson: null,
-            attemptStatus: "transport-error",
+      } catch {
+        execution = {
+          kind: "incomplete",
+          responseJson: null,
+          attemptStatus: "transport-error",
+          httpStatus: null,
+          generationId: null,
+          billing: { status: "billing_unknown" },
+          failure: {
+            // Retry only failures positively classified at the transport boundary.
+            classification: "permanent",
+            kind: "transport",
             httpStatus: null,
-            generationId: null,
-            billing: { status: "billing_unknown" },
-            completedAt: new Date().toISOString(),
+            retryAfterMs: null,
           },
-        });
-        throw error;
+          completedAt: new Date().toISOString(),
+        };
       }
 
       if (execution.kind === "incomplete") {
-        await this.insertAttempt(client, input, { ordinal, startedAt, execution });
+        await this.#attempts.finish(client, input, { ordinal, execution });
         return {
           kind: "incomplete",
           memoHit: false,
           memoKey: input.memoKey,
           semanticHash: input.semanticHash,
           responseJson: execution.responseJson,
+          attemptOrdinal: ordinal,
+          failure: execution.failure,
         };
       }
 
@@ -245,7 +280,7 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
     const eventBody = await this.cipher.seal(execution.responseEvent.bodyJson);
     await client.query("begin");
     try {
-      await this.insertAttempt(client, input, attempt, false);
+      await this.#attempts.finish(client, input, attempt, false);
       await client.query(
         `
           insert into itotori_llm_call_memos (
@@ -325,73 +360,6 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
     }
   }
 
-  private async insertAttempt(
-    client: PoolClient,
-    input: LlmMemoSingleflightInput,
-    attempt: {
-      ordinal: number;
-      startedAt: string;
-      execution: LlmStepExecution;
-    },
-    transactional = true,
-  ): Promise<void> {
-    const request = await this.cipher.seal(input.requestJson);
-    const response = attempt.execution.responseJson
-      ? await this.cipher.seal(attempt.execution.responseJson)
-      : null;
-    const status =
-      attempt.execution.kind === "completed" ? "completed" : attempt.execution.attemptStatus;
-    const httpStatus = attempt.execution.kind === "completed" ? 200 : attempt.execution.httpStatus;
-    const generationId = attempt.execution.generationId;
-    const billing = attempt.execution.billing;
-    const completedAt = attempt.execution.completedAt;
-    const write = async (): Promise<void> => {
-      await client.query(
-        `
-          insert into itotori_llm_http_attempts (
-            attempt_id, memo_key, attempt_ordinal, request_ciphertext, request_key_ref,
-            request_content_hash, response_ciphertext, response_key_ref,
-            response_content_hash, request_hash, attempt_status, http_status,
-            generation_id, billing_state, cost_usd, started_at, completed_at,
-            retention_deadline
-          ) values (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-            $14, $15, $16::timestamptz, $17::timestamptz,
-            $17::timestamptz + interval '7 days'
-          )
-        `,
-        [
-          hash({ memoKey: input.memoKey, ordinal: attempt.ordinal }),
-          input.memoKey,
-          attempt.ordinal,
-          request.ciphertext,
-          request.keyRef,
-          hash(input.requestJson),
-          response?.ciphertext ?? null,
-          response?.keyRef ?? null,
-          attempt.execution.responseJson ? hash(attempt.execution.responseJson) : null,
-          input.semanticHash,
-          status,
-          httpStatus,
-          generationId,
-          billing.status,
-          billing.status === "confirmed" ? billing.costUsd : null,
-          attempt.startedAt,
-          completedAt,
-        ],
-      );
-    };
-    if (!transactional) return write();
-    await client.query("begin");
-    try {
-      await write();
-      await client.query("commit");
-    } catch (error: unknown) {
-      await client.query("rollback");
-      throw error;
-    }
-  }
-
   private async openVerified(
     ciphertext: Uint8Array,
     keyRef: string,
@@ -415,22 +383,6 @@ type MemoRow = {
   deletion_state: string;
   response_event_id: string | null;
 };
-
-async function nextAttemptOrdinal(
-  memoKey: string,
-  queryable: Pick<DatabaseContext["pool"], "query">,
-): Promise<number> {
-  const result = await queryable.query<{ next_ordinal: number }>(
-    `
-      select coalesce(max(attempt_ordinal), 0)::integer + 1 as next_ordinal
-      from itotori_llm_http_attempts where memo_key = $1
-    `,
-    [memoKey],
-  );
-  const ordinal = result.rows[0]?.next_ordinal ?? 1;
-  if (ordinal > 3) throw new Error(`physical model step exhausted attempt limit for ${memoKey}`);
-  return ordinal;
-}
 
 function advisoryLockKey(memoKey: string): string {
   const unsigned = BigInt(`0x${memoKey.slice("sha256:".length, "sha256:".length + 16)}`);
