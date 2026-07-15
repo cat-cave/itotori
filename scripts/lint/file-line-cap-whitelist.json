@@ -72,7 +72,6 @@
     "crates/kaifuu-rpgmaker/src/recognize.rs": 509,
     "crates/kaifuu-rpgmaker/tests/k112_full_surface.rs": 575,
     "crates/kaifuu-siglus/src/adapter.rs": 1201,
-    "crates/kaifuu-siglus/src/known_key_smoke.rs": 1514,
     "crates/kaifuu-softpal/src/archive.rs": 511,
     "crates/kaifuu-softpal/src/opcode.rs": 882,
     "crates/kaifuu-softpal/src/patchback.rs": 745,
