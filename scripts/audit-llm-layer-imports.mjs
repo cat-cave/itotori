@@ -37,6 +37,7 @@ const TS_LIKE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts"];
 // Packages whose import constitutes provider-SDK coupling (dispatcher signal).
 const DISPATCHER_SDK_PATTERNS = [
   /^@openrouter\/sdk/u,
+  /^@tanstack\/ai-openrouter/u,
   /^@ai-sdk\//u,
   /^ai$/u,
   /^openai$/u,
