@@ -339,12 +339,15 @@ async function insertConfirmedAttempt(
         attempt_id, memo_key, attempt_ordinal, admission_scope,
         request_ciphertext, request_key_ref, request_content_hash, request_hash,
         attempt_status, failure_class, http_status, generation_id,
+        served_pair_status, served_model, served_provider, verification_status,
+        router_attempts,
         billing_state, cost_usd, max_exposure_usd,
         started_at, deadline_at, completed_at, retention_deadline
       ) values (
         'attempt:confirmed', $1, 1, $2,
         decode('01', 'hex'), 'test-key', $3, $4,
         'transport-error', 'transient', null, 'generation:reconciled',
+        'unknown', null, null, 'quarantined', '[]'::jsonb,
         'confirmed', $5, 0, now(), now(), now(), now() + interval '1 day'
       )
     `,

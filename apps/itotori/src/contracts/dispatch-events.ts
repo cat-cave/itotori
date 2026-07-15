@@ -13,7 +13,7 @@ export const DispatchEventSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("model-step-finished"),
       iteration: NonNegativeIntegerSchema,
-      servedModel: IdentifierSchema,
+      reportedModel: IdentifierSchema.nullable(),
       finishReason: z.enum(["stop", "tool-calls", "length", "content-filter", "unknown"]),
     })
     .strict(),

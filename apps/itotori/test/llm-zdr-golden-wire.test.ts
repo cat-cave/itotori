@@ -13,6 +13,7 @@ import {
   STEP_HASH_A,
   STEP_HASH_B,
   TEST_MODEL_PROFILE,
+  confirmedGenerationMetadataSource,
   physicalCallSpec,
   structuredProviderResponse,
 } from "./llm-step-test-support.js";
@@ -90,6 +91,7 @@ function goldenRuntime(
         scope: "test:zdr-golden-wire",
         confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic admission cap for a mock-wire test, not a billed model cost
       },
+      generationMetadataSource: confirmedGenerationMetadataSource(),
       snapshots: {
         decodeRevisionHash: STEP_HASH_A,
         glossaryRevisionHash: STEP_HASH_B,

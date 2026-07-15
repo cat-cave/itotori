@@ -9,6 +9,7 @@ import {
   PhysicalStepMemoSchema,
   type CallSpec,
   type EncryptedPayloadRef,
+  type PhysicalStepMemo,
 } from "../contracts/index.js";
 import { canonicalJson, sha256 } from "./canonical-json.js";
 import { memoEncryptedRef } from "./physical-step-outcome.js";
@@ -23,12 +24,18 @@ import {
   completedStructuredStep,
   type PhysicalStepIdentity,
 } from "./physical-step-completion.js";
+import {
+  reconcileGenerationMetadata,
+  unknownGenerationMetadataSource,
+  type GenerationMetadataSource,
+} from "./generation-metadata.js";
 
 const TANSTACK_VERSION = "0.40.0";
 const OPENROUTER_ADAPTER_VERSION = "0.15.8";
 
 export interface PhysicalStepMemoRuntime extends PhysicalAttemptRuntime {
   readonly store: LlmCallMemoStore;
+  readonly generationMetadataSource?: GenerationMetadataSource;
   readonly snapshots: {
     decodeRevisionHash: `sha256:${string}`;
     glossaryRevisionHash: `sha256:${string}`;
@@ -41,6 +48,9 @@ export interface PhysicalStepReceipt {
   memoKey: `sha256:${string}`;
   responseEventId: `sha256:${string}`;
   responseEncrypted: EncryptedPayloadRef;
+  verification: PhysicalStepMemo["value"]["verification"];
+  usage: PhysicalStepMemo["value"]["usage"];
+  billing: PhysicalStepMemo["value"]["billing"];
   memoHit: boolean;
 }
 
@@ -77,6 +87,7 @@ export function memoizePhysicalSteps(
 ): AnyTextAdapter {
   let stepOrdinal = 0;
   let parentResponseEventId: string = spec.parentEventId;
+  const metadataSource = runtime.generationMetadataSource ?? unknownGenerationMetadataSource;
 
   const nextIdentity = (boundary: Boundary, request: PhysicalRequest): PhysicalStepIdentity => {
     const identity = deriveStepIdentity(spec, runtime, boundary, stepOrdinal, request);
@@ -111,22 +122,32 @@ export function memoizePhysicalSteps(
             for await (const chunk of outbound(control.signal)) chunks.push(chunk);
           } catch (error: unknown) {
             const failure = control.failure(error) ?? permanentAttemptFailure();
-            return incompleteStep(chunks, failure);
+            return incompleteStep(chunks, failure, metadataSource);
           }
           const runError = chunks.findLast((chunk) => chunk.type === EventType.RUN_ERROR);
           const failure = runError ? control.failure(runError) : null;
-          if (runError && failure) return incompleteStep(chunks, failure);
-          return completedStreamStep(spec, identity, chunks, attempt, parentResponseEventId);
+          if (runError && failure) return incompleteStep(chunks, failure, metadataSource);
+          return completedStreamStep(
+            spec,
+            identity,
+            chunks,
+            attempt,
+            parentResponseEventId,
+            metadataSource,
+          );
         },
       });
       if (stored.kind === "completed") {
-        PhysicalStepMemoSchema.parse(JSON.parse(stored.outcomeJson));
+        const memo = PhysicalStepMemoSchema.parse(JSON.parse(stored.outcomeJson));
         const responseEventId = asHash(stored.responseEventId);
         parentResponseEventId = responseEventId;
         state.receipts.push({
           memoKey: asHash(identity.key.memoKey),
           responseEventId,
           responseEncrypted: identity.responseRef(stored.responseJson),
+          verification: memo.value.verification,
+          usage: memo.value.usage,
+          billing: memo.value.billing,
           memoHit: stored.memoHit,
         });
       }
@@ -161,7 +182,14 @@ export function memoizePhysicalSteps(
               ...options,
               chatOptions: withSignal(options.chatOptions, control.signal),
             });
-            return completedStructuredStep(spec, identity, result, attempt, parentResponseEventId);
+            return completedStructuredStep(
+              spec,
+              identity,
+              result,
+              attempt,
+              parentResponseEventId,
+              metadataSource,
+            );
           } catch (error: unknown) {
             const failure = control.failure(error) ?? permanentAttemptFailure();
             return {
@@ -170,7 +198,11 @@ export function memoizePhysicalSteps(
               attemptStatus: attemptStatus(failure.kind),
               httpStatus: failure.httpStatus,
               generationId: null,
+              served: { status: "unknown" },
+              routerAttempts: [],
+              usage: null,
               billing: { status: "billing_unknown" },
+              reportedCostUsd: null,
               failure,
               completedAt: new Date().toISOString(),
             };
@@ -178,13 +210,16 @@ export function memoizePhysicalSteps(
         },
       });
       if (stored.kind !== "completed") throw new Error("structured model step was incomplete");
-      PhysicalStepMemoSchema.parse(JSON.parse(stored.outcomeJson));
+      const memo = PhysicalStepMemoSchema.parse(JSON.parse(stored.outcomeJson));
       const responseEventId = asHash(stored.responseEventId);
       parentResponseEventId = responseEventId;
       state.receipts.push({
         memoKey: asHash(identity.key.memoKey),
         responseEventId,
         responseEncrypted: identity.responseRef(stored.responseJson),
+        verification: memo.value.verification,
+        usage: memo.value.usage,
+        billing: memo.value.billing,
         memoHit: stored.memoHit,
       });
       return parseStructuredResult(stored.responseJson);
@@ -332,14 +367,23 @@ function attemptStatus(
   return kind === "cancelled" ? "cancelled" : "transport-error";
 }
 
-function incompleteStep(chunks: StreamChunk[], failure: LlmAttemptFailure) {
+async function incompleteStep(
+  chunks: StreamChunk[],
+  failure: LlmAttemptFailure,
+  metadataSource: GenerationMetadataSource,
+) {
+  const metadata = await reconcileGenerationMetadata(chunks, metadataSource);
   return {
     kind: "incomplete" as const,
     responseJson: canonicalJson(chunks),
     attemptStatus: attemptStatus(failure.kind),
     httpStatus: failure.httpStatus,
-    generationId: null,
+    generationId: metadata.generationId,
+    served: metadata.served,
+    routerAttempts: metadata.routerAttempts,
+    usage: metadata.usage,
     billing: { status: "billing_unknown" as const },
+    reportedCostUsd: metadata.reportedCostUsd,
     failure,
     completedAt: new Date().toISOString(),
   };

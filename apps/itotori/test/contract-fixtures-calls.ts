@@ -76,7 +76,7 @@ export const callResultExample = {
   status: "success",
   value: draftBatchExample,
   responseEventId: H2,
-  served: { model: "deepseek-v4-flash", provider: "provider:primary" },
+  served: { status: "confirmed", model: "deepseek-v4-flash", provider: "provider:primary" },
   generationId: "generation:1",
   verification: "verified",
   usage: { promptTokens: 10, completionTokens: 20, reasoningTokens: 5, cachedTokens: 0 },
@@ -86,7 +86,7 @@ export const callResultExample = {
     {
       kind: "model-step-finished",
       iteration: 0,
-      servedModel: "deepseek-v4-flash",
+      reportedModel: "deepseek-v4-flash",
       finishReason: "stop",
     },
     { kind: "run-finished", iterationCount: 1, toolCallCount: 0, finishReason: "stop" },
@@ -137,13 +137,14 @@ export const memoValueExample = {
   verification: {
     status: "verified",
     generationId: "generation:1",
-    served: { model: "deepseek-v4-flash", provider: "provider:primary" },
+    served: { status: "confirmed", model: "deepseek-v4-flash", provider: "provider:primary" },
   },
   requestedModel: "deepseek-v4-flash",
   providerPolicy,
   routerAttempts: [
     {
       ordinal: 1,
+      model: "deepseek-v4-flash",
       provider: "provider:primary",
       startedAt: NOW,
       completedAt: NOW,

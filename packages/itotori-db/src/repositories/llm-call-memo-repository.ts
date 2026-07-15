@@ -18,6 +18,24 @@ export type LlmStepBilling =
   | { status: "confirmed"; costUsd: string }
   | { status: "billing_unknown" };
 
+export type LlmServedPair =
+  | { status: "confirmed"; model: string; provider: string }
+  | { status: "unknown" };
+
+export interface LlmStepUsage {
+  promptTokens: number;
+  completionTokens: number;
+  reasoningTokens: number;
+  cachedTokens: number;
+}
+
+export interface LlmRouterAttemptEvidence {
+  ordinal: number;
+  model: string;
+  provider: string;
+  httpStatus: number;
+}
+
 export interface LlmStepAttemptContext {
   ordinal: number;
   startedAt: string;
@@ -42,19 +60,14 @@ export interface CompletedLlmStep {
   responseJson: string;
   outcomeJson: string;
   outcomeKind: "terminal" | "tool-calls" | "invalid" | "refusal" | "truncation";
-  verificationStatus: "verified" | "quarantined";
   generationId: string | null;
   requestedModel: string;
   providerPolicy: unknown;
-  servedModel: string | null;
-  servedProvider: string | null;
-  usage: {
-    promptTokens: number;
-    completionTokens: number;
-    reasoningTokens: number;
-    cachedTokens: number;
-  };
+  served: LlmServedPair;
+  routerAttempts: readonly LlmRouterAttemptEvidence[];
+  usage: LlmStepUsage | null;
   billing: LlmStepBilling;
+  reportedCostUsd: string | null;
   completedAt: string;
   responseEvent: {
     eventId: string;
@@ -73,7 +86,11 @@ export interface IncompleteLlmStep {
   attemptStatus: "transport-error" | "http-error" | "cancelled";
   httpStatus: number | null;
   generationId: string | null;
+  served: LlmServedPair;
+  routerAttempts: readonly LlmRouterAttemptEvidence[];
+  usage: LlmStepUsage | null;
   billing: LlmStepBilling;
+  reportedCostUsd: string | null;
   failure: LlmAttemptFailure;
   completedAt: string;
 }
@@ -164,7 +181,11 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
           attemptStatus: "transport-error",
           httpStatus: null,
           generationId: null,
+          served: { status: "unknown" },
+          routerAttempts: [],
+          usage: null,
           billing: { status: "billing_unknown" },
+          reportedCostUsd: null,
           failure: {
             // Retry only failures positively classified at the transport boundary.
             classification: "permanent",
@@ -279,6 +300,10 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
     attempt: { ordinal: number; startedAt: string; execution: CompletedLlmStep },
   ): Promise<void> {
     const { execution } = attempt;
+    const confirmedServedPair =
+      execution.generationId !== null && execution.served.status === "confirmed"
+        ? execution.served
+        : null;
     const request = await this.cipher.seal(input.requestJson);
     const response = await this.cipher.seal(execution.responseJson);
     const outcome = await this.cipher.seal(execution.outcomeJson);
@@ -294,13 +319,13 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
             response_ciphertext, response_key_ref, response_content_hash,
             outcome_ciphertext, outcome_key_ref, outcome_content_hash,
             outcome_kind, verification_status, generation_id, requested_model,
-            provider_policy, served_model, served_provider,
+            provider_policy, served_model, served_provider, served_pair_status,
             prompt_token_count, completion_token_count, reasoning_token_count,
             cached_token_count, billing_state, cost_usd, completed_at, retention_deadline
           ) values (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
             $13, $14, $15, $16, $17::jsonb, $18, $19, $20, $21, $22, $23,
-            $24, $25, $26::timestamptz, $26::timestamptz + interval '30 days'
+            $24, $25, $26, $27::timestamptz, $27::timestamptz + interval '30 days'
           )
         `,
         [
@@ -317,16 +342,17 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
           outcome.keyRef,
           hash(execution.outcomeJson),
           execution.outcomeKind,
-          execution.verificationStatus,
+          confirmedServedPair ? "verified" : "quarantined",
           execution.generationId,
           execution.requestedModel,
           JSON.stringify(execution.providerPolicy),
-          execution.servedModel,
-          execution.servedProvider,
-          execution.usage.promptTokens,
-          execution.usage.completionTokens,
-          execution.usage.reasoningTokens,
-          execution.usage.cachedTokens,
+          confirmedServedPair?.model ?? null,
+          confirmedServedPair?.provider ?? null,
+          confirmedServedPair ? "confirmed" : "unknown",
+          execution.usage?.promptTokens ?? null,
+          execution.usage?.completionTokens ?? null,
+          execution.usage?.reasoningTokens ?? null,
+          execution.usage?.cachedTokens ?? null,
           execution.billing.status,
           execution.billing.status === "confirmed" ? execution.billing.costUsd : null,
           execution.completedAt,

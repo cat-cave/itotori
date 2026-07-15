@@ -38,11 +38,11 @@ import {
 } from "./wiki.js";
 
 export const CALL_SPEC_SCHEMA_VERSION = "itotori.call-spec.v1" as const;
-export const CALL_RESULT_SCHEMA_VERSION = "itotori.call-result.v1" as const;
+export const CALL_RESULT_SCHEMA_VERSION = "itotori.call-result.v2" as const;
 export const PHYSICAL_STEP_MEMO_KEY_SCHEMA_VERSION = "itotori.physical-step-memo-key.v1" as const;
 export const PHYSICAL_STEP_MEMO_VALUE_SCHEMA_VERSION =
-  "itotori.physical-step-memo-value.v1" as const;
-export const PHYSICAL_STEP_MEMO_SCHEMA_VERSION = "itotori.physical-step-memo.v1" as const;
+  "itotori.physical-step-memo-value.v2" as const;
+export const PHYSICAL_STEP_MEMO_SCHEMA_VERSION = "itotori.physical-step-memo.v2" as const;
 
 export const CallPurposeSchema = z.enum(["analysis", "draft", "review", "repair", "judge"]);
 export const ModelProfileSchema = z.enum(["draft", "reasoning", "reviewer", "judge"]);
@@ -234,12 +234,28 @@ const RequestedRouteSchema = z
   })
   .strict();
 
-const ServedRouteSchema = z
+const RouteValueSchema = z
+  .string()
+  .min(1)
+  .max(256)
+  .refine((value) => value.trim() === value, "route value must not have outer whitespace");
+
+const ConfirmedServedPairSchema = z
   .object({
-    model: IdentifierSchema,
-    provider: IdentifierSchema,
+    status: z.literal("confirmed"),
+    model: RouteValueSchema,
+    provider: RouteValueSchema,
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) => value.model !== "unknown" && value.provider !== "unknown",
+    "confirmed served route cannot use an unknown sentinel",
+  );
+
+export const ServedPairSchema = z.discriminatedUnion("status", [
+  ConfirmedServedPairSchema,
+  z.object({ status: z.literal("unknown") }).strict(),
+]);
 
 const BillingSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("confirmed"), costUsd: DecimalUsdSchema }).strict(),
@@ -270,35 +286,11 @@ export const CallResultSchema = z.union([
       status: z.literal("success"),
       value: TerminalOutputSchema,
       responseEventId: Sha256Schema,
-      served: ServedRouteSchema,
+      served: ConfirmedServedPairSchema,
       generationId: IdentifierSchema,
       verification: z.literal("verified"),
       usage: TokenUsageSchema,
-      billing: z.object({ status: z.literal("confirmed"), costUsd: DecimalUsdSchema }).strict(),
-      events: DispatchEventsSchema,
-    })
-    .strict(),
-  z
-    .object({
-      ...CallResultBaseShape,
-      status: z.literal("success"),
-      value: TerminalOutputSchema,
-      responseEventId: Sha256Schema,
-      served: z
-        .object({
-          model: IdentifierSchema,
-          provider: z.literal("unknown"),
-        })
-        .strict(),
-      generationId: z.null(),
-      verification: z.literal("explicit-unknown"),
-      usage: TokenUsageSchema,
-      billing: z
-        .object({
-          status: z.literal("billing-unknown"),
-          reportedCostUsd: DecimalUsdSchema.nullable(),
-        })
-        .strict(),
+      billing: BillingSchema,
       events: DispatchEventsSchema,
     })
     .strict(),
@@ -323,15 +315,26 @@ export const CallResultSchema = z.union([
       ]),
       responseEventId: Sha256Schema.nullable(),
       responseEncrypted: EncryptedPayloadRefSchema.nullable(),
-      served: ServedRouteSchema.nullable(),
+      served: ServedPairSchema,
       generationId: IdentifierSchema.nullable(),
-      verification: z.enum(["unverified", "quarantined"]),
+      verification: z.enum(["unverified", "quarantined", "verified"]),
       usage: TokenUsageSchema.nullable(),
       billing: BillingSchema,
       defects: z.array(ValidationDefectSchema).max(256),
       events: DispatchEventsSchema,
     })
-    .strict(),
+    .strict()
+    .superRefine((value, context) => {
+      if (
+        value.verification === "verified" &&
+        (value.generationId === null || value.served.status !== "confirmed")
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "verified failures still require confirmed generation and served route",
+        });
+      }
+    }),
 ]);
 
 const ProjectedMessageRefSchema = z
@@ -426,14 +429,14 @@ const ResponseVerificationSchema = z.discriminatedUnion("status", [
     .object({
       status: z.literal("verified"),
       generationId: IdentifierSchema,
-      served: ServedRouteSchema,
+      served: ConfirmedServedPairSchema,
     })
     .strict(),
   z
     .object({
       status: z.literal("quarantined"),
       generationId: IdentifierSchema.nullable(),
-      served: ServedRouteSchema.nullable(),
+      served: ServedPairSchema,
       reason: ShortTextSchema,
     })
     .strict(),
@@ -442,7 +445,8 @@ const ResponseVerificationSchema = z.discriminatedUnion("status", [
 const RouterAttemptSchema = z
   .object({
     ordinal: PositiveIntegerSchema,
-    provider: IdentifierSchema.nullable(),
+    model: RouteValueSchema,
+    provider: RouteValueSchema,
     startedAt: IsoDateTimeSchema,
     completedAt: IsoDateTimeSchema,
     httpStatus: z.number().int().min(100).max(599).nullable(),
@@ -461,8 +465,8 @@ export const PhysicalStepMemoValueSchema = z
     verification: ResponseVerificationSchema,
     requestedModel: IdentifierSchema,
     providerPolicy: ProviderPolicySchema,
-    routerAttempts: z.array(RouterAttemptSchema).min(1).max(3),
-    usage: TokenUsageSchema,
+    routerAttempts: z.array(RouterAttemptSchema).max(64),
+    usage: TokenUsageSchema.nullable(),
     billing: BillingSchema,
     completedAt: IsoDateTimeSchema,
   })

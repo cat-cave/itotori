@@ -1342,7 +1342,20 @@ export type {
   LlmStepAttemptContext,
   LlmStepBilling,
   LlmStepExecution,
+  LlmServedPair,
+  LlmRouterAttemptEvidence,
+  LlmStepUsage,
 } from "./repositories/llm-call-memo-repository.js";
+export {
+  ItotoriLlmAcceptedOutputRepository,
+  LlmAcceptedOutputCasError,
+  LlmQuarantinedResponseError,
+} from "./repositories/llm-accepted-output-repository.js";
+export type {
+  AcceptLlmOutputInput,
+  LlmAcceptedOutputHead,
+  LlmAcceptedOutputSubjectType,
+} from "./repositories/llm-accepted-output-repository.js";
 export {
   LlmPhysicalStepFailedError,
   LlmRetriesExhaustedError,

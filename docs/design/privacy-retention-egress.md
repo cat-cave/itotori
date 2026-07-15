@@ -67,9 +67,16 @@ provider-side conversation state, or remote response cache is allowed. A future
 Responses implementation must additionally use `store: false`.
 
 The dispatcher records requested and served model/provider pairs separately.
-It enables router metadata and persists the generation ID. A response whose
-generation ID or served pair cannot be verified after one `/generation` lookup
-is quarantined and cannot contribute to an accepted artifact.
+It enables router metadata and persists the generation ID. The current RB-015
+writer uses `served_pair_status = 'confirmed'` only when the
+whole served pair was present and schema-valid after parsing stream metadata: it
+is stream-attested, not independently verified against OpenRouter. Acceptance
+requires an active source memo whose `generation_id` is present, served pair is
+`confirmed`, and verification status is `verified`; otherwise the response is
+quarantined and cannot contribute to an accepted artifact. Independent
+OpenRouter `/generation` reconciliation is deferred to RB-010, gated on upstream
+issue #941. Until then, the injected lookup seam defaults to unknown and no
+production `/generation` client is implied.
 
 ## Local storage and access
 
@@ -135,7 +142,10 @@ from a backup, or served from a cache. A retention change requires a new
 versioned policy and migration; it cannot be supplied as an ad-hoc runtime
 override.
 
-## Billing truth
+## Billing truth (target contract; RB-010 deferred)
+
+The `/generation`-reconciled billing state below is the target contract for
+RB-010, not a claim that RB-015 independently reconciles stream metadata.
 
 Billing states are deliberately disjoint:
 
@@ -145,10 +155,11 @@ Billing states are deliberately disjoint:
   not yet authoritative, including transport loss, a malformed response, or a
   missing generation record. It is never recorded as zero or as confirmed.
 
-The reconciler makes one OpenRouter-only `/generation` lookup when a generation
-ID is available and stores its evidence. It may transition an unknown entry to
-confirmed, but it does not erase the original uncertainty evidence. Reporting,
-admission, and acceptance must keep confirmed and unknown totals separate.
+The RB-010 reconciler will make one OpenRouter-only `/generation` lookup when a
+generation ID is available and store its evidence. It may transition an unknown
+entry to confirmed, but it will not erase the original uncertainty evidence.
+Reporting, admission, and acceptance must keep confirmed and unknown totals
+separate.
 
 ## Egress
 
@@ -178,7 +189,8 @@ only.
 | Encrypted conversation/call references                                                                                    | Yes, in rebuilt contracts           | Persistence round trip with ciphertext-only inspection         |
 | Plaintext rebuilt-LLM migration fields and obvious content-bearing log calls                                              | Yes, by the privacy audit           | Negative fixture tests plus CI gate                            |
 | Encryption implementation, permission-before-decrypt, deletion worker, backup/volume wipe                                 | Contract and audit registration now | Integration tests against real storage and the deletion worker |
-| Served-pair/generation verification and billing reconciliation                                                            | Contract now                        | Provider conformance and reconciliation tests                  |
+| Stream-attested served pair plus quarantine projection                                                                    | Yes, RB-015                         | Live persistence and independent guard-mutation tests          |
+| Independent `/generation` route and billing reconciliation                                                                | Deferred to RB-010 (upstream #941)  | Provider conformance and reconciliation tests                  |
 
 The audit is intentionally conservative and scoped to the rebuilt LLM tree and
 its `itotori_llm_*` migrations. It does not treat older paths as compliant.
