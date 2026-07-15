@@ -216,3 +216,4 @@ export type RoleId = z.infer<typeof RoleIdSchema>;
 export type ToolName = z.infer<typeof ToolNameSchema>;
 export type ProviderPolicy = z.infer<typeof ProviderPolicySchema>;
 export type TokenUsage = z.infer<typeof TokenUsageSchema>;
+export type EncryptedPayloadRef = z.infer<typeof EncryptedPayloadRefSchema>;

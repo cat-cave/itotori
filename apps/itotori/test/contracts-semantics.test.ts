@@ -95,6 +95,23 @@ describe("call and memo contracts", () => {
     );
   });
 
+  it("represents upstream route metadata as explicit-unknown without fabrication", () => {
+    const result = {
+      ...callResultExample,
+      served: { model: "deepseek-v4-flash", provider: "unknown" },
+      generationId: null,
+      verification: "explicit-unknown",
+      billing: { status: "billing-unknown", reportedCostUsd: "0.001" },
+    };
+    expect(CallResultSchema.safeParse(result).success).toBe(true);
+    expect(
+      CallResultSchema.safeParse({
+        ...result,
+        served: { model: "deepseek-v4-flash", provider: "provider:primary" },
+      }).success,
+    ).toBe(false);
+  });
+
   it("binds a physical memo value to exactly its semantic memo key", () => {
     expect(PhysicalStepMemoSchema.safeParse(memoExample).success).toBe(true);
     expect(

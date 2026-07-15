@@ -23,5 +23,10 @@
     "node": ">=24.14.0",
     "pnpm": ">=10.17.1"
   },
-  "packageManager": "pnpm@10.17.1"
+  "packageManager": "pnpm@10.17.1",
+  "pnpm": {
+    "overrides": {
+      "@openrouter/sdk": "0.13.55"
+    }
+  }
 }

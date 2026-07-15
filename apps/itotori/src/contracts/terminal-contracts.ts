@@ -34,7 +34,7 @@ export const terminalContractSchemas = {
   runMode: RunModeSchema,
   contextScope: ContextScopeSchema,
   callSpec: CallSpecSchema,
-  callResult: CallResultSchema,
+  callResult: CallResultSchema as z.ZodType,
   physicalStepMemoKey: PhysicalStepMemoKeySchema,
   physicalStepMemoValue: PhysicalStepMemoValueSchema,
   physicalStepMemo: PhysicalStepMemoSchema,

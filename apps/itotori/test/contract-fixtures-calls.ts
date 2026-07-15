@@ -81,6 +81,16 @@ export const callResultExample = {
   verification: "verified",
   usage: { promptTokens: 10, completionTokens: 20, reasoningTokens: 5, cachedTokens: 0 },
   billing: { status: "confirmed", costUsd: "0.001" },
+  events: [
+    { kind: "run-started", iteration: 0 },
+    {
+      kind: "model-step-finished",
+      iteration: 0,
+      servedModel: "deepseek-v4-flash",
+      finishReason: "stop",
+    },
+    { kind: "run-finished", iterationCount: 1, toolCallCount: 0, finishReason: "stop" },
+  ],
 } as const;
 
 export const memoKeyExample = {
