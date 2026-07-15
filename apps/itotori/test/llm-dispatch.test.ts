@@ -169,8 +169,8 @@ function callSpec(prompt: string, overrides: Partial<CallSpec> = {}): CallSpec {
       requireParameters: true,
     },
     parentEventId: HASH_A,
-    contextSnapshotId: "snapshot:context:1",
-    localizationSnapshotId: "snapshot:localization:1",
+    contextSnapshotId: HASH_A,
+    localizationSnapshotId: HASH_B,
     messages: [
       {
         kind: "text",
@@ -383,7 +383,7 @@ describe("the rebuilt LLM dispatcher", () => {
         return {
           schemaVersion: DECODE_GET_UNITS_RESULT_SCHEMA_VERSION,
           tool: "decode_get_units",
-          snapshotId: "snapshot:context:1",
+          snapshotId: HASH_A,
           requestHash: HASH_A,
           resultHash: HASH_B,
           page: {
@@ -450,7 +450,7 @@ const liveEnabled =
 (liveEnabled ? it : it.skip)(
   "quarantines a real structured response while generation lookup wiring is deferred",
   async () => {
-    const prompt = `Return exactly one PASS review verdict for synthetic unit unit:1. Use schemaVersion ${REVIEW_VERDICT_SCHEMA_VERSION}, reviewId review:live:1, localizationSnapshotId snapshot:localization:1, roleId Q1, rubric meaning, unitId unit:1, wiki-first basis with bibleRenderingIds [rendering:1], severity none, null span/category/repairConstraint, and evidenceIds [fact:unit:1].`;
+    const prompt = `Return exactly one PASS review verdict for synthetic unit unit:1. Use schemaVersion ${REVIEW_VERDICT_SCHEMA_VERSION}, reviewId review:live:1, localizationSnapshotId ${HASH_B}, roleId Q1, rubric meaning, unitId unit:1, wiki-first basis with bibleRenderingIds [rendering:1], severity none, null span/category/repairConstraint, and evidenceIds [fact:unit:1].`;
     const spec = callSpec(prompt, {
       providerPolicy: {
         order: [liveProvider!],

@@ -53,7 +53,7 @@ export const CitationSchema = z
   .object({
     evidenceId: IdentifierSchema,
     evidenceHash: Sha256Schema,
-    snapshotId: IdentifierSchema,
+    snapshotId: Sha256Schema,
     subject: EntityRefSchema,
     role: z.enum(["establishes", "supports", "contradicts", "first-mention", "reveal"]),
     quotedSpan: ShortTextSchema.optional(),
@@ -208,7 +208,7 @@ const WikiProvenanceBaseShape = {
   editedBy: z.enum(["human", "enhancement", "agent"]).optional(),
   basisVersion: PositiveIntegerSchema.optional(),
   humanInput: HumanInputSchema.optional(),
-  contextSnapshotId: IdentifierSchema,
+  contextSnapshotId: Sha256Schema,
   contextScope: ContextScopeValueSchema,
   runMode: RunModeValueSchema,
 } as const;
@@ -224,7 +224,7 @@ const TranslationWikiProvenanceSchema = z
   .object({
     ...WikiProvenanceBaseShape,
     snapshotKind: z.literal("localization"),
-    localizationSnapshotId: IdentifierSchema,
+    localizationSnapshotId: Sha256Schema,
   })
   .strict();
 
@@ -320,7 +320,7 @@ const LocalizedRenderingProvenanceSchema = z
     authorMemoKey: Sha256Schema.optional(),
     editedBy: z.enum(["human", "enhancement", "agent"]).optional(),
     humanInput: HumanInputSchema.optional(),
-    localizationSnapshotId: IdentifierSchema,
+    localizationSnapshotId: Sha256Schema,
     runMode: RunModeValueSchema,
   })
   .strict();

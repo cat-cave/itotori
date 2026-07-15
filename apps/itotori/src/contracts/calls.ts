@@ -200,8 +200,8 @@ export const CallSpecSchema = z
     requestedModel: IdentifierSchema,
     providerPolicy: ProviderPolicySchema,
     parentEventId: Sha256Schema,
-    contextSnapshotId: IdentifierSchema,
-    localizationSnapshotId: IdentifierSchema.nullable(),
+    contextSnapshotId: Sha256Schema,
+    localizationSnapshotId: Sha256Schema.nullable(),
     messages: z.array(ConversationMessageSchema).min(1).max(1_024),
     tools: z.array(ToolContractRefSchema).max(10),
     output: TerminalSchemaRefSchema,
@@ -346,9 +346,9 @@ const ProjectedMessageRefSchema = z
 
 const SnapshotKeyMaterialSchema = z
   .object({
-    contextSnapshotId: IdentifierSchema,
+    contextSnapshotId: Sha256Schema,
     contextSnapshotSchemaVersion: z.literal(CONTEXT_SNAPSHOT_SCHEMA_VERSION),
-    localizationSnapshotId: IdentifierSchema.nullable(),
+    localizationSnapshotId: Sha256Schema.nullable(),
     localizationSnapshotSchemaVersion: z.literal(LOCALIZATION_SNAPSHOT_SCHEMA_VERSION).nullable(),
     decodeRevisionHash: Sha256Schema,
     glossaryRevisionHash: Sha256Schema,

@@ -212,6 +212,7 @@ export class ItotoriLlmAcceptedOutputRepository {
 
 function assertInput(input: AcceptLlmOutputInput): void {
   assertHash(input.semanticKey, "accepted output semantic key");
+  assertHash(input.snapshotId, "accepted output snapshot ID");
   if (input.memoKeys.length === 0 || new Set(input.memoKeys).size !== input.memoKeys.length) {
     throw new Error("accepted output requires unique source memo keys");
   }

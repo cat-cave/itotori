@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DatabaseContext } from "../src/connection.js";
+import { conversationEventIdFromContentHash } from "../src/llm-content-address.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 const historyTables = [
@@ -19,6 +21,8 @@ const rebuiltTables = [
   "itotori_llm_encrypted_column_registry",
   ...historyTables,
   "itotori_llm_cas_heads",
+  "itotori_llm_context_snapshots",
+  "itotori_llm_localization_snapshots",
 ] as const;
 
 const encryptedColumns = [
@@ -47,7 +51,7 @@ const expectedColumnsByTable = {
       " ",
     ),
   itotori_llm_conversation_events:
-    "event_id schema_version parent_event_ids event_kind snapshot_kind snapshot_id actor_role event_body_ciphertext event_body_key_ref event_body_content_hash memo_key accepted created_at retention_deadline deletion_state deleted_at".split(
+    "event_id schema_version parent_event_ids event_kind snapshot_kind snapshot_id actor_role event_body_ciphertext event_body_key_ref event_body_content_hash memo_key accepted created_at retention_deadline deletion_state deleted_at projection_kind projection_ref projection_auxiliary_ref".split(
       " ",
     ),
   itotori_llm_accepted_outputs:
@@ -70,6 +74,12 @@ const expectedColumnsByTable = {
     "head_namespace snapshot_id subject_type subject_id head_stage head_id head_version head_content_hash updated_at".split(
       " ",
     ),
+  itotori_llm_context_snapshots:
+    "snapshot_id schema_version snapshot_content_hash snapshot_identity created_at".split(" "),
+  itotori_llm_localization_snapshots:
+    "snapshot_id schema_version snapshot_content_hash context_snapshot_id snapshot_identity created_at".split(
+      " ",
+    ),
 } as const satisfies Record<(typeof rebuiltTables)[number], readonly string[]>;
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -78,10 +88,12 @@ const migrationSql = [
   "0102_rebuilt_llm_history_truncate_guard.sql",
   "0103_llm_attempt_admission_exposure.sql",
   "0105_llm_served_pair_quarantine.sql",
+  "0106_llm_transcript_snapshots.sql",
 ]
   .map((file) => readFileSync(join(here, "..", "migrations", file), "utf8"))
   .join("\n");
-const hash = (digit: string) => `sha256:${digit.repeat(64)}`;
+const hash = (value: string) =>
+  `sha256:${createHash("sha256").update(value).digest("hex")}` as const;
 
 describe("rebuilt LLM persistence migration", () => {
   let context: (DatabaseContext & { databaseUrl: string }) | undefined;
@@ -326,11 +338,11 @@ describe("rebuilt LLM persistence migration", () => {
       `
         update itotori_llm_cas_heads
         set head_id = 'output-next', head_version = 2, head_content_hash = $1, updated_at = now()
-        where head_namespace = 'accepted-output' and snapshot_id = 'snapshot-a'
+        where head_namespace = 'accepted-output' and snapshot_id = $2
           and subject_type = 'unit' and subject_id = 'unit-a' and head_stage = 'final'
           and head_version = 1
       `,
-      [hash("0")],
+      [hash("0"), hash("7")],
     );
     expect(advanced.rowCount).toBe(1);
     await expect(pool.query("update itotori_llm_cas_heads set head_version = 4")).rejects.toThrow(
@@ -470,11 +482,11 @@ async function insertAcceptedOutput(
         output_ciphertext, output_key_ref, output_content_hash, accepted_at, retention_deadline
       ) values (
         $1, $2, 'itotori.accepted-output.v1', $3, array[$6],
-        'localization', 'snapshot-a', 'unit', 'unit-a', 'final', $4,
+        'localization', $7, 'unit', 'unit-a', 'final', $4,
         decode('05', 'hex'), 'key/output', $5, now(), now() + interval '1 day'
       )
     `,
-    [outputId, semanticKey, version, hash("f"), hash("0"), memoKey],
+    [outputId, semanticKey, version, hash("f"), hash("0"), memoKey, hash("7")],
   );
 }
 
@@ -487,11 +499,11 @@ async function insertWikiVersion(pool: Queryable, versionId: string, contentHash
         wiki_ciphertext, wiki_key_ref, wiki_content_hash, created_at, retention_deadline
       ) values (
         $1, 'source-object', 'wiki-a', 1,
-        'context', 'context-a', 'style-contract',
+        'context', $3, 'style-contract',
         decode('06', 'hex'), 'key/wiki', $2, now(), now() + interval '1 day'
       )
     `,
-    [versionId, contentHash],
+    [versionId, contentHash, hash("7")],
   );
 }
 
@@ -502,15 +514,24 @@ async function insertHead(pool: Queryable): Promise<void> {
         head_namespace, snapshot_id, subject_type, subject_id, head_stage,
         head_id, head_version, head_content_hash, updated_at
       ) values (
-        'accepted-output', 'snapshot-a', 'unit', 'unit-a', 'final',
+        'accepted-output', $2, 'unit', 'unit-a', 'final',
         'output-a', 1, $1, now()
       )
     `,
-    [hash("0")],
+    [hash("0"), hash("7")],
   );
 }
 
 async function insertEvent(pool: Queryable): Promise<void> {
+  const bodyContentHash = hash("a");
+  const snapshotId = hash("7");
+  const eventId = conversationEventIdFromContentHash({
+    parentIds: [],
+    kind: "input",
+    snapshotId,
+    role: "human",
+    bodyContentHash,
+  });
   await pool.query(
     `
       insert into itotori_llm_conversation_events (
@@ -518,11 +539,11 @@ async function insertEvent(pool: Queryable): Promise<void> {
         event_body_ciphertext, event_body_key_ref, event_body_content_hash,
         accepted, created_at, retention_deadline
       ) values (
-        $1, 'itotori.conversation-event.v1', 'input', 'localization', 'snapshot-a', 'human',
+        $1, 'itotori.conversation-event.v1', 'input', 'localization', $3, 'human',
         decode('07', 'hex'), 'key/event', $2, false, now(), now() + interval '1 day'
       )
     `,
-    [hash("9"), hash("a")],
+    [eventId, bodyContentHash, snapshotId],
   );
 }
 

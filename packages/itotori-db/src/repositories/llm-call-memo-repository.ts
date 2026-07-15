@@ -3,9 +3,16 @@ import type { PoolClient } from "pg";
 import type { DatabaseContext } from "../connection.js";
 import type { LlmContentReadAuthorizer } from "../llm-content-access.js";
 import {
+  canonicalLlmJson,
+  canonicalParentIds,
+  conversationEventId,
+  parseLlmJson,
+} from "../llm-content-address.js";
+import {
   ItotoriLlmHttpAttemptRepository,
   type LlmSpendExposureReport,
 } from "./llm-http-attempt-repository.js";
+import { conversationEventProjectionMetadata } from "./llm-conversation-repository.js";
 
 export interface LlmMemoCipher {
   seal(plaintext: string): Promise<{ ciphertext: Uint8Array; keyRef: string }>;
@@ -300,6 +307,24 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
     attempt: { ordinal: number; startedAt: string; execution: CompletedLlmStep },
   ): Promise<void> {
     const { execution } = attempt;
+    const eventBody = parseLlmJson(execution.responseEvent.bodyJson);
+    const canonicalEventBody = canonicalLlmJson(eventBody);
+    if (canonicalEventBody !== execution.responseEvent.bodyJson) {
+      throw new Error("conversation event body must use canonical JSON");
+    }
+    const parentEventIds = canonicalParentIds(execution.responseEvent.parentEventIds);
+    const projection = conversationEventProjectionMetadata(eventBody);
+    const expectedEventId = conversationEventId({
+      parentIds: parentEventIds,
+      kind: "assistant",
+      snapshotId: execution.responseEvent.snapshotId,
+      role: execution.responseEvent.actorRole,
+      body: eventBody,
+      memoKey: input.memoKey,
+    });
+    if (execution.responseEvent.eventId !== expectedEventId) {
+      throw new Error("conversation event ID does not match its canonical content");
+    }
     const confirmedServedPair =
       execution.generationId !== null && execution.served.status === "confirmed"
         ? execution.served
@@ -307,7 +332,7 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
     const request = await this.cipher.seal(input.requestJson);
     const response = await this.cipher.seal(execution.responseJson);
     const outcome = await this.cipher.seal(execution.outcomeJson);
-    const eventBody = await this.cipher.seal(execution.responseEvent.bodyJson);
+    const sealedEventBody = await this.cipher.seal(execution.responseEvent.bodyJson);
     await client.query("begin");
     try {
       await this.#attempts.finish(client, input, attempt, false);
@@ -363,23 +388,27 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
           insert into itotori_llm_conversation_events (
             event_id, schema_version, parent_event_ids, event_kind, snapshot_kind,
             snapshot_id, actor_role, event_body_ciphertext, event_body_key_ref,
-            event_body_content_hash, memo_key, accepted, created_at, retention_deadline
+            event_body_content_hash, memo_key, projection_kind, projection_ref,
+            projection_auxiliary_ref, accepted, created_at, retention_deadline
           ) values (
-            $1, $2, $3, 'assistant', $4, $5, $6, $7, $8, $9, $10, false,
-            $11::timestamptz, $11::timestamptz + interval '30 days'
+            $1, $2, $3, 'assistant', $4, $5, $6, $7, $8, $9, $10, $11, $12,
+            $13, false, $14::timestamptz, $14::timestamptz + interval '30 days'
           )
         `,
         [
           execution.responseEvent.eventId,
           execution.responseEvent.schemaVersion,
-          execution.responseEvent.parentEventIds,
+          parentEventIds,
           execution.responseEvent.snapshotKind,
           execution.responseEvent.snapshotId,
           execution.responseEvent.actorRole,
-          eventBody.ciphertext,
-          eventBody.keyRef,
+          sealedEventBody.ciphertext,
+          sealedEventBody.keyRef,
           hash(execution.responseEvent.bodyJson),
           input.memoKey,
+          projection?.kind ?? null,
+          projection?.ref ?? null,
+          projection?.auxiliaryRef ?? null,
           execution.completedAt,
         ],
       );

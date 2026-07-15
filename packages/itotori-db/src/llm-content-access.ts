@@ -5,7 +5,7 @@ export const llmContentReadPermission = permissionValues.contentRead;
 
 export type LlmContentReadRequest = {
   contentRef: string;
-  purpose: "dispatch-input" | "memo-replay";
+  purpose: "dispatch-input" | "memo-replay" | "transcript-projection";
 };
 
 /** Mandatory authorization port used immediately before content decryption. */

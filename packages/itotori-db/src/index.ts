@@ -34,6 +34,20 @@ export type {
 } from "./authorization.js";
 export { llmContentReadPermission, permissionBasedLlmContentRead } from "./llm-content-access.js";
 export type { LlmContentReadAuthorizer, LlmContentReadRequest } from "./llm-content-access.js";
+export {
+  assertLlmSha256,
+  canonicalLlmJson,
+  canonicalParentIds,
+  conversationEventId,
+  conversationEventIdFromContentHash,
+  llmSha256,
+  parseLlmJson,
+} from "./llm-content-address.js";
+export type {
+  ConversationEventContentHashIdentityInput,
+  ConversationEventIdentityInput,
+  LlmJsonValue,
+} from "./llm-content-address.js";
 export { migrate } from "./migrations.js";
 export {
   BENCHMARK_MANAGED_ARTIFACT_KINDS,
@@ -1356,6 +1370,45 @@ export type {
   LlmAcceptedOutputHead,
   LlmAcceptedOutputSubjectType,
 } from "./repositories/llm-accepted-output-repository.js";
+export {
+  ItotoriLlmSnapshotRepository,
+  contextSnapshot,
+  localizationSnapshot,
+  namespacedFactId,
+  LLM_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
+  LLM_LOCALIZATION_SNAPSHOT_SCHEMA_VERSION,
+} from "./repositories/llm-snapshot-repository.js";
+export type {
+  LlmAcceptedHeadRef,
+  LlmContextSnapshot,
+  LlmContextSnapshotIdentity,
+  LlmContextSnapshotInput,
+  LlmFactNamespace,
+  LlmLocalizationSnapshot,
+  LlmLocalizationSnapshotIdentity,
+  LlmLocalizationSnapshotInput,
+  LlmRevealHorizon,
+  LlmRevisionRef,
+  LlmSnapshotFact,
+  LlmSnapshotFactRouteScope,
+  LlmSourceUnitRef,
+} from "./repositories/llm-snapshot-repository.js";
+export {
+  ItotoriLlmConversationRepository,
+  LlmConversationEventConflictError,
+  LLM_CONVERSATION_EVENT_SCHEMA_VERSION,
+} from "./repositories/llm-conversation-repository.js";
+export type {
+  AppendLlmConversationEventInput,
+  LlmConversationEvent,
+  LlmConversationEventKind,
+  LlmConversationSnapshotKind,
+  LlmProjectableEventBody,
+  LlmProjectionSelector,
+  LlmProjectionVisibility,
+  LlmThreadProjectionInput,
+  ProjectedLlmConversationEvent,
+} from "./repositories/llm-conversation-repository.js";
 export {
   LlmPhysicalStepFailedError,
   LlmRetriesExhaustedError,

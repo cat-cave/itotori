@@ -168,8 +168,8 @@ export function physicalCallSpec(prompt: string, overrides: Partial<CallSpec> = 
       requireParameters: true,
     },
     parentEventId: STEP_HASH_A,
-    contextSnapshotId: "snapshot:context:1",
-    localizationSnapshotId: "snapshot:localization:1",
+    contextSnapshotId: STEP_HASH_C,
+    localizationSnapshotId: STEP_HASH_D,
     messages: [
       {
         kind: "text",
@@ -243,7 +243,7 @@ export function decodedUnitsTool(onExecute?: () => void): DispatchTool {
       return {
         schemaVersion: DECODE_GET_UNITS_RESULT_SCHEMA_VERSION,
         tool: "decode_get_units",
-        snapshotId: "snapshot:context:1",
+        snapshotId: STEP_HASH_C,
         requestHash: STEP_HASH_A,
         resultHash: STEP_HASH_B,
         page: {

@@ -34,9 +34,7 @@
                 },
                 "localizationSnapshotId": {
                   "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:#/-]*$"
+                  "pattern": "^sha256:[a-f0-9]{64}$"
                 },
                 "roleId": { "type": "string", "enum": ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6"] },
                 "rubric": {
@@ -144,9 +142,7 @@
                 },
                 "localizationSnapshotId": {
                   "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:#/-]*$"
+                  "pattern": "^sha256:[a-f0-9]{64}$"
                 },
                 "roleId": { "type": "string", "enum": ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6"] },
                 "rubric": {
@@ -286,9 +282,7 @@
                 },
                 "localizationSnapshotId": {
                   "type": "string",
-                  "minLength": 1,
-                  "maxLength": 256,
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:#/-]*$"
+                  "pattern": "^sha256:[a-f0-9]{64}$"
                 },
                 "roleId": { "type": "string", "enum": ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6"] },
                 "rubric": {

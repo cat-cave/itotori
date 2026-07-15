@@ -65,7 +65,7 @@ export const ToolResultPageSchema = z.discriminatedUnion("kind", [
 ]);
 
 const ToolResultBaseShape = {
-  snapshotId: IdentifierSchema,
+  snapshotId: Sha256Schema,
   requestHash: Sha256Schema,
   resultHash: Sha256Schema,
   page: ToolResultPageSchema,

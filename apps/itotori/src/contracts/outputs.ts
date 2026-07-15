@@ -102,7 +102,7 @@ const DraftBatchScopeSchema = z.discriminatedUnion("kind", [
 export const DraftBatchSchema = z
   .object({
     schemaVersion: z.literal(DRAFT_BATCH_SCHEMA_VERSION),
-    localizationSnapshotId: IdentifierSchema,
+    localizationSnapshotId: Sha256Schema,
     batchId: IdentifierSchema,
     scope: DraftBatchScopeSchema,
     drafts: z.array(DraftSchema).min(1).max(100_000),
@@ -178,7 +178,7 @@ export const ReviewCategorySchema = z.enum([
 const ReviewBaseShape = {
   schemaVersion: z.literal(REVIEW_VERDICT_SCHEMA_VERSION),
   reviewId: IdentifierSchema,
-  localizationSnapshotId: IdentifierSchema,
+  localizationSnapshotId: Sha256Schema,
   roleId: ReviewerRoleSchema,
   rubric: ReviewRubricSchema,
   unitId: IdentifierSchema,
@@ -307,7 +307,7 @@ export const DefectBundleSchema = z
   .object({
     schemaVersion: z.literal(DEFECT_BUNDLE_SCHEMA_VERSION),
     bundleId: IdentifierSchema,
-    localizationSnapshotId: IdentifierSchema,
+    localizationSnapshotId: Sha256Schema,
     draftBatchId: IdentifierSchema,
     defects: z.array(DefectSchema).max(100_000),
     factDominance: z.array(FactDominanceRecordSchema).max(100_000),
