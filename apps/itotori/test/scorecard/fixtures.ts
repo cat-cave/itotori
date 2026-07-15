@@ -111,16 +111,31 @@ export function passingEvidence(pinned: PinnedAcceptanceArtifacts): AcceptanceEv
     patchHash,
     replayArtifactHash,
   };
-  const restartProof = (kind: "unit-restart" | "pipeline-restart", index: number) => ({
-    kind,
-    faultProofHash: fixtureHash(31_000 + index),
-    acceptedMemoKeysBefore: [memoKey],
-    acceptedMemoKeysAfter: [memoKey],
-    acceptedOutputHashesBefore: acceptedOutputHashes,
-    acceptedOutputHashesAfter: acceptedOutputHashes,
-    redispatchedMemoKeys: [],
-    discardedAcceptedOutputHashes: [],
-  });
+  const restartProof = (kind: "unit-restart" | "pipeline-restart", index: number) => {
+    const unitOutput = acceptedOutputs[0]!;
+    const unitOutputHash = acceptedOutputHashes[0]!;
+    const shared = {
+      faultProofHash: fixtureHash(31_000 + index),
+      acceptedMemoKeysBefore: [memoKey],
+      acceptedMemoKeysAfter: [memoKey],
+      redispatchedMemoKeys: [],
+      discardedAcceptedOutputHashes: [],
+    };
+    return kind === "pipeline-restart"
+      ? {
+          ...shared,
+          kind,
+          acceptedOutputHashesBefore: acceptedOutputHashes,
+          acceptedOutputHashesAfter: acceptedOutputHashes,
+        }
+      : {
+          ...shared,
+          kind,
+          unitId: unitOutput.subjectId,
+          acceptedOutputHashesBefore: [unitOutputHash],
+          acceptedOutputHashesAfter: [unitOutputHash],
+        };
+  };
 
   return AcceptanceEvidenceBundleSchema.parse({
     schemaVersion: ACCEPTANCE_EVIDENCE_BUNDLE_SCHEMA_VERSION,

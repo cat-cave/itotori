@@ -68,18 +68,26 @@ const ZdrWireProofSchema = z
   })
   .strict();
 
-const RestartProofSchema = z
-  .object({
-    kind: z.enum(["unit-restart", "pipeline-restart"]),
-    faultProofHash: Sha256Schema,
-    acceptedMemoKeysBefore: z.array(Sha256Schema).max(100_000),
-    acceptedMemoKeysAfter: z.array(Sha256Schema).max(100_000),
-    acceptedOutputHashesBefore: z.array(Sha256Schema).max(100_000),
-    acceptedOutputHashesAfter: z.array(Sha256Schema).max(100_000),
-    redispatchedMemoKeys: z.array(Sha256Schema).max(100_000),
-    discardedAcceptedOutputHashes: z.array(Sha256Schema).max(100_000),
-  })
-  .strict();
+const RestartProofBaseShape = {
+  faultProofHash: Sha256Schema,
+  acceptedMemoKeysBefore: z.array(Sha256Schema).max(100_000),
+  acceptedMemoKeysAfter: z.array(Sha256Schema).max(100_000),
+  acceptedOutputHashesBefore: z.array(Sha256Schema).max(100_000),
+  acceptedOutputHashesAfter: z.array(Sha256Schema).max(100_000),
+  redispatchedMemoKeys: z.array(Sha256Schema).max(100_000),
+  discardedAcceptedOutputHashes: z.array(Sha256Schema).max(100_000),
+} as const;
+
+const RestartProofSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      ...RestartProofBaseShape,
+      kind: z.literal("unit-restart"),
+      unitId: IdentifierSchema,
+    })
+    .strict(),
+  z.object({ ...RestartProofBaseShape, kind: z.literal("pipeline-restart") }).strict(),
+]);
 
 const CitationCheckSchema = z
   .object({

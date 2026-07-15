@@ -137,6 +137,22 @@ describe("acceptance scoring", () => {
     );
   });
 
+  it("fails a pipeline restart proof that covers only one accepted output", () => {
+    const evidence = passingEvidence(PINNED);
+    const pipelineProof = evidence.sys1.restartProofs.find(
+      (proof) => proof.kind === "pipeline-restart",
+    );
+    if (pipelineProof === undefined) throw new Error("fixture requires a pipeline restart proof");
+    pipelineProof.acceptedOutputHashesBefore = [pipelineProof.acceptedOutputHashesBefore[0]!];
+    pipelineProof.acceptedOutputHashesAfter = [pipelineProof.acceptedOutputHashesAfter[0]!];
+
+    const result = scoreAcceptance(evidence, PINNED);
+    expect(
+      result.dimensions.find((dimension) => dimension.dimension === "sys1-durability")?.status,
+    ).toBe("FAIL");
+    expect(result.status).toBe("FAIL");
+  });
+
   it.each([
     [
       "completion",

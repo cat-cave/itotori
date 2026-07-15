@@ -19,10 +19,6 @@ function hasExactSet(actual: readonly string[], expected: ReadonlySet<string>): 
     : false;
 }
 
-function isSubset(subset: readonly string[], superset: ReadonlySet<string>): boolean {
-  return subset.every((value) => superset.has(value));
-}
-
 function sameOrderedValues(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
@@ -139,6 +135,13 @@ export function scoreAcceptance(
     const afterMemoKeys = new Set(proof.acceptedMemoKeysAfter);
     const beforeOutputHashes = new Set(proof.acceptedOutputHashesBefore);
     const afterOutputHashes = new Set(proof.acceptedOutputHashesAfter);
+    const scopedOutput = proof.kind === "unit-restart" ? outputByUnit.get(proof.unitId) : undefined;
+    const expectedMemoKeys =
+      proof.kind === "pipeline-restart" ? attemptMemoKeySet : new Set(scopedOutput?.memoKeys ?? []);
+    const expectedOutputHashes =
+      proof.kind === "pipeline-restart"
+        ? acceptedOutputHashSet
+        : new Set(scopedOutput === undefined ? [] : [outputHashes.get(scopedOutput.outputId)!]);
     if (
       beforeMemoKeys.size > 0 &&
       beforeOutputHashes.size > 0 &&
@@ -146,10 +149,10 @@ export function scoreAcceptance(
       afterMemoKeys.size === proof.acceptedMemoKeysAfter.length &&
       beforeOutputHashes.size === proof.acceptedOutputHashesBefore.length &&
       afterOutputHashes.size === proof.acceptedOutputHashesAfter.length &&
-      isSubset(proof.acceptedMemoKeysBefore, afterMemoKeys) &&
-      isSubset(proof.acceptedOutputHashesBefore, afterOutputHashes) &&
-      isSubset(proof.acceptedMemoKeysAfter, attemptMemoKeySet) &&
-      isSubset(proof.acceptedOutputHashesAfter, acceptedOutputHashSet) &&
+      hasExactSet(proof.acceptedMemoKeysBefore, expectedMemoKeys) &&
+      hasExactSet(proof.acceptedMemoKeysAfter, expectedMemoKeys) &&
+      hasExactSet(proof.acceptedOutputHashesBefore, expectedOutputHashes) &&
+      hasExactSet(proof.acceptedOutputHashesAfter, expectedOutputHashes) &&
       proof.redispatchedMemoKeys.length <=
         definition.dimensions.sys1.maximumRedispatchedMemoizedCalls &&
       proof.discardedAcceptedOutputHashes.length <=
