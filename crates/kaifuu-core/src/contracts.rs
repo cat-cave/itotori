@@ -81,7 +81,6 @@ pub const PATCH_PARTIAL_WRITE_DISPOSITIONS_V02: &[&str] =
     &["rolled_back", "cleaned_up", "retained_partial"];
 
 /// UNIV-011 — property-test thresholds for `crates/kaifuu-core/tests/property.rs`.
-///
 /// The proptest suite for patch compatibility and protected-span preservation
 /// is pinned to these PUBLIC, reproducible ChaCha seeds and BOUNDED case
 /// counts. Fixing the seed makes each property run deterministic in CI (and any
@@ -816,12 +815,9 @@ pub fn validate_contract_compatibility_report_v02(value: &Value) -> BridgeContra
 }
 
 /// Validate a v0.2 patch-export bundle.
-///
-/// # Duplicate protected-span policy (KAIFUU-170)
-///
-/// A `protectedSpanMappings[]` entry may be one of two shapes, and the two are
+/// # Duplicate protected-span policy
+/// A `protectedSpanMappings` entry may be one of two shapes, and the two are
 /// deliberately governed by different duplicate rules:
-///
 /// - **Legacy (v0.1-shaped) spans** carry only `raw` plus a target byte range
 ///   and no source identity (`sourceSpanId`/`sourceStartByte`/`sourceEndByte`).
 ///   These are **compatibility-preserving**: a duplicate `raw` value is
@@ -838,10 +834,9 @@ pub fn validate_contract_compatibility_report_v02(value: &Value) -> BridgeContra
 ///   with the SAME `raw` but DISTINCT `sourceSpanId`s stay allowed — that is
 ///   exactly the reordered/duplicate-raw case source identity exists to carry
 ///   (see `MIGRATING-0.2.md`).
-///
-/// This keeps legacy v0.1 raw-only exports genuinely distinct from v0.2
-/// identity-carrying exports: the former preserve duplicates, the latter reject
-/// duplicate identities.
+///   This keeps legacy v0.1 raw-only exports genuinely distinct from v0.2
+///   identity-carrying exports: the former preserve duplicates, the latter reject
+///   duplicate identities.
 pub fn validate_patch_export_v02(value: &Value) -> BridgeContractResult<()> {
     let patch = as_record(value, "PatchExportV02")?;
     assert_schema_version(patch, "PatchExportV02")?;
@@ -904,7 +899,7 @@ pub fn validate_patch_export_v02(value: &Value) -> BridgeContractResult<()> {
             "protectedSpanMappings",
             &format!("{label}.protectedSpanMappings"),
         )?;
-        // KAIFUU-170: v0.2 source identities (`sourceSpanId`) must be unique
+        // v0.2 source identities (`sourceSpanId`) must be unique
         // within an entry (strict identity). Legacy raw-only spans carry no
         // identity and are intentionally NOT tracked here, so duplicate `raw`
         // stays compatibility-preserving. See the doc comment above.
@@ -6004,7 +5999,6 @@ fn assert_rfc3339_value<'a>(value: &'a Value, label: &str) -> BridgeContractResu
 /// cross-language acceptance rule shared with the TypeScript contract validator
 /// (`assertRfc3339Instant` in
 /// `packages/localization-bridge-schema/src/index.ts`).
-///
 /// Both validators are locked to the same accept/reject boundary by the shared
 /// parity matrix in
 /// `packages/localization-bridge-schema/test/rfc3339-instant-parity-matrix.v0.2.json`.

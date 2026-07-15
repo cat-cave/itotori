@@ -1,5 +1,4 @@
 //! Byte-preserving patch writer + verification for KAG `.ks` scripts.
-//!
 //! A patch replaces **only** the exact `[start_byte, end_byte)` span of a
 //! translatable [`KsUnit`] with re-encoded translation bytes; every other
 //! byte — tags, `@`-commands, comments, labels, `#`/`/` markers, voice ids,
@@ -79,7 +78,6 @@ fn encode_translation(key: &str, text: &str, enc: KsEncoding) -> Result<Vec<u8>,
 
 /// Apply `translations` (unit key → translated text) to `source`, producing a
 /// byte-preserving patched buffer.
-///
 /// Only spans of units named in `translations` change; untranslated units
 /// keep their source bytes. Every guard below is a hard error — there is no
 /// silent skip:
@@ -165,7 +163,6 @@ pub enum VerifyError {
 
 /// Prove that `patched` differs from `source` **only** inside translatable
 /// spans — i.e. the patch was byte-preserving.
-///
 /// Re-parses both buffers and asserts:
 /// 1. the ordered set of `source_unit_key`s is identical (nothing dropped,
 ///    added, or structurally shifted — catches a dropped unit); and

@@ -1,6 +1,5 @@
-//! KAIFUU-103 — CLI command-contract smoke for the packed-engine readiness
+//! CLI command-contract smoke for the packed-engine readiness
 //! profile validator.
-//!
 //! Spawns `kaifuu readiness validate` against the committed synthetic
 //! profile-fixture tree and asserts the generated report is evidence-driven:
 //! every profile records its id / fixture id / capability levels / helper id /
@@ -22,7 +21,6 @@ fn kaifuu_cli_binary() -> PathBuf {
 }
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
 /// reused from a different (since-removed) worktree would point fixture reads at
 /// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the

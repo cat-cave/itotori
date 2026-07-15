@@ -1,23 +1,16 @@
 //! SEEN.TXT archive envelope decoder.
-//!
 //! This module parses the **real RealLive 10,000-slot fixed-offset-table
 //! envelope** used by every RealLive title since AVG32, as documented at
 //! `docs/research/reallive-engine.md` §C and confirmed against the
 //! Sweetie HD `REALLIVEDATA/Seen.txt` bytes supplied via
 //! `ITOTORI_REAL_GAME_ROOT` per
 //! `docs/audits/real-bytes-validation-2026-06-24.md` §2.8.
-//!
-//! Layout (KAIFUU-188):
-//!
+//! Layout
 //! ```text
-//! +-----------+-----------+----- … -----+-----------+-----------+-----------+
-//! | slot 0    | slot 1    |             | slot 9999 | scene     | scene     |
-//! | u32 off   | u32 off   |             | u32 off   | payload   | payload   |
-//! | u32 size  | u32 size  |             | u32 size  | bytes …   | bytes …   |
-//! +-----------+-----------+----- … -----+-----------+-----------+-----------+
-//! 0x00000000  0x00000008                0x0001_3878  0x0001_3880
-//! ```
-//!
+//! | slot 0 | slot 1 | | slot 9999 | scene | scene |
+//! | u32 off | u32 off | | u32 off | payload | payload |
+//! | u32 size | u32 size | | u32 size | bytes … | bytes … |
+//! 0x00000000 0x00000008 0x0001_3878 0x0001_3880
 //! - Bytes `0..80_000` are the directory: 10,000 slots × 8 bytes each.
 //! - Slot `N` is `(u32_le offset, u32_le length)`.
 //! - A zero-slot (both `offset == 0` and `length == 0`) is reserved; the
@@ -28,9 +21,8 @@
 //! - Scene payloads begin at file offset `10_000 * 8 = 0x0001_3880 =
 //!   80_000` and are referenced by absolute file offsets in the slot
 //!   table.
-//!
-//! No legacy compat: the synthetic "u32 count + (offset, size) entries"
-//! envelope is deleted, not aliased. See KAIFUU-188 in the spec DAG.
+//!   No legacy compat: the synthetic "u32 count + (offset, size) entries"
+//!   envelope is deleted, not aliased. See in the spec DAG.
 
 use serde::{Deserialize, Serialize};
 
@@ -93,7 +85,6 @@ pub(crate) fn scene_id_string(scene_id: u16) -> String {
 /// Parse a SEEN.TXT archive envelope. Returns the [`RealLiveSceneIndex`]
 /// on success, or a single fatal [`ParseDiagnostic`] describing the
 /// envelope failure.
-///
 /// The expected layout is the fixed 10,000-slot directory documented at
 /// the top of this module. A file shorter than the directory itself is a
 /// hard envelope failure. A non-zero slot whose declared

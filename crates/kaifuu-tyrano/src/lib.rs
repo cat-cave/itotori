@@ -1,12 +1,9 @@
 //! Pure-Rust **TyranoScript `.ks` scenario-script** text-extraction and
 //! byte-preserving patch adapter, expressed as a **layered pipeline**:
-//!
-//! | stage      | transform             | why                                   |
-//! |------------|-----------------------|---------------------------------------|
-//! | container  | `identity`            | `.ks` files sit loose on disk under `data/scenario/` — no archive to unpack. |
-//! | crypto     | `null_key`            | TyranoScript scenarios are **plaintext** (UTF-8 / Shift-JIS) — no cipher. |
-//! | codec      | `tyrano_script_markup`| the KAG-style square-bracket markup dialect ([`parse`] / [`patch`]). |
-//!
+//! | stage | transform | why |
+//! | container | `identity` | `.ks` files sit loose on disk under `data/scenario/` — no archive to unpack. |
+//! | crypto | `null_key` | TyranoScript scenarios are **plaintext** (UTF-8 / Shift-JIS) — no cipher. |
+//! | codec | `tyrano_script_markup`| the KAG-style square-bracket markup dialect ([`parse`] / [`patch`]). |
 //! This mirrors the KiriKiri KAG plaintext adapter's *shape* (stable
 //! extraction units + byte-preserving splice-back) but is implemented
 //! **independently** for the TyranoScript markup dialect — it does not depend
@@ -14,9 +11,7 @@
 //! only the scenario **text** (dialogue + choice/link captions + speaker
 //! names) is translatable, while all structure (tags, labels, jumps,
 //! variables) is preserved byte-for-byte.
-//!
 //! # What it does
-//!
 //! - [`parse_ks`] parses the TyranoScript `.ks` dialect (comments `;`, labels
 //!   `*`, `@`-line-commands, `#name` speaker lines, inline `[tag …]` tags,
 //!   `[link]…[endlink]` / `[glink]` / `[button]` choices, `[chara_ptext]`
@@ -25,18 +20,14 @@
 //! - [`apply_patch`] rewrites only the translatable spans (dialogue + choice +
 //!   speaker text), byte-preserving all structure; [`verify_byte_preserving`]
 //!   proves a patch touched nothing but translatable text.
-//!
 //! # Layered-pipeline capability profile
-//!
 //! The claim tuple for this adapter (`engineFamily=tyranoscript`,
 //! `container=identity`, `crypto=null_key`, `codec=tyrano_script_markup`,
 //! `patchBackMode=replace_file`, level `patch`) lives in
 //! `kaifuu_core::compat_profile::fixtures::level_patch_tyranoscript`; see
 //! [`layered_stack`] for the code-queryable token triple and
 //! `docs/kaifuu-adapters/tyranoscript.md` for the capability doc.
-//!
 //! # Determinism / no shell-outs
-//!
 //! Pure in-process parsing; all identifiers are SHA-256-derived
 //! (`bridge_unit_id` uses the shared UUID7-shaped scheme). No `Command::new`,
 //! no network, no helper process. No copyrighted bytes: the fixture corpus is

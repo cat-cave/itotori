@@ -1,13 +1,11 @@
-//! KAIFUU-054 — KiriKiri XP3 capability-profile generator and validator.
-//!
+//! KiriKiri XP3 capability-profile generator and validator.
 //! A *capability profile* is the aggregate, evidence-derived readiness record
 //! for a KiriKiri/XP3 corpus. It is **generated** from the existing kaifuu
-//! evidence surfaces — the KAIFUU-038 detector proof
-//! ([`crate::xp3_profile_proof`]), the KAIFUU-085 key/helper result
+//! evidence surfaces — the detector proof
+//! ([`crate::xp3_profile_proof`]), the key/helper result
 //! ([`crate::HelperResult`]), the crypt-profile routing taxonomy, and the
 //! archive fixture bytes — never hand-authored as readiness prose. Each entry's
 //! capability tuple is a pure function of that evidence.
-//!
 //! THE LINE (mechanical, not prose): only **plain** XP3 can enter the
 //! [`Xp3CapabilitySupportTier::Claimed`] tier (real detect + extract +
 //! patch-back). Encrypted, compressed, helper-required, protected-executable,
@@ -18,7 +16,6 @@
 //! commercial KiriKiri baseline. The single point of truth is
 //! [`derive_support_tier`]; the report's capability tuple is always recomputed
 //! from evidence, so the manifest cannot talk a non-plain variant into a claim.
-//!
 //! The validator (folded into generation) fails — with structured findings,
 //! never a panic — on bad detector evidence, a helper-requirement mismatch, a
 //! keyRef-state mismatch, an archive-hash mismatch, or a patch-capability-tuple
@@ -49,8 +46,6 @@ pub const SEMANTIC_CAPABILITY_EVIDENCE_MISMATCH: &str =
 /// Semantic code: a non-plain variant tried to advertise a patch-back claim.
 pub const SEMANTIC_CAPABILITY_ENCRYPTED_PATCH_OVERCLAIM: &str =
     "kaifuu.capability_profile.encrypted_patch_overclaim";
-
-// --- Taxonomy ---------------------------------------------------------------
 
 /// The mechanical support tier of a capability-profile entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -134,7 +129,6 @@ impl Xp3CapabilityVariant {
 /// archive bytes as `Plain` AND the derived patch capability is `PatchBack`.
 /// Every other classification collapses to `Research`. No classification means
 /// plaintext `.ks` → `NullContainer`.
-///
 /// Total and side-effect-free; the single source of truth, exercised directly
 /// by `encrypted_variant_can_never_be_claimed`.
 pub fn derive_support_tier(
@@ -152,14 +146,12 @@ pub fn derive_support_tier(
     }
 }
 
-// --- Fixture (input manifest) -----------------------------------------------
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Xp3CapabilityProfileFixture {
     pub schema_version: String,
     pub capability_profile_id: String,
-    /// The spec-DAG node id this profile is generated for (e.g. `KAIFUU-054`).
+    /// The spec-DAG node id this profile is generated for (e.g. ``).
     pub source_node_id: String,
     pub engine_family: String,
     pub entries: Vec<Xp3CapabilityProfileFixtureEntry>,
@@ -171,7 +163,7 @@ pub struct Xp3CapabilityProfileFixtureEntry {
     pub entry_id: String,
     pub variant: Xp3CapabilityVariant,
     pub workflow: String,
-    /// Path (relative to the manifest file) to the KAIFUU-038 detector proof
+    /// Path (relative to the manifest file) to the detector proof
     /// fixture supplying detector / archive / crypt-profile evidence. Required
     /// for every variant that carries an archive.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -180,7 +172,7 @@ pub struct Xp3CapabilityProfileFixtureEntry {
     /// the `plaintext_ks` variant uses it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plaintext_source: Option<String>,
-    /// Path (relative to the manifest file) to a KAIFUU-085 helper result
+    /// Path (relative to the manifest file) to a helper result
     /// supplying key/helper-requirement evidence.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub helper_result_fixture: Option<String>,
@@ -203,8 +195,6 @@ pub struct Xp3CapabilityProfileExpected {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry_count: Option<u64>,
 }
-
-// --- Report (generated output) ----------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -323,7 +313,7 @@ pub struct Xp3CapabilityKeyHelperRequirement {
     pub requirement_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secret_ref: Option<SecretRef>,
-    /// `true` once a KAIFUU-085 helper result corroborated the requirement.
+    /// `true` once a helper result corroborated the requirement.
     pub helper_result_present: bool,
 }
 
@@ -372,8 +362,6 @@ impl Xp3CapabilityFinding {
     }
 }
 
-// --- Request + generator ----------------------------------------------------
-
 #[derive(Debug, Clone, Copy)]
 pub struct Xp3CapabilityProfileRequest<'a> {
     pub fixture: &'a Xp3CapabilityProfileFixture,
@@ -386,7 +374,6 @@ pub struct Xp3CapabilityProfileRequest<'a> {
 
 /// Generate (and, inseparably, validate) a KiriKiri XP3 capability profile
 /// from the manifest's evidence inputs.
-///
 /// Every entry's capability tuple is recomputed from evidence via
 /// [`derive_support_tier`]; the manifest's declared `expected` block is used
 /// only to raise structured validation findings on a mismatch. The function
@@ -467,10 +454,8 @@ fn generate_entry(
 
     let mut findings = std::mem::take(&mut evidence.findings);
 
-    // --- Validate evidence against the declared expectation. ---------------
-
     // (1) Bad detector evidence: the routed classification must match the
-    //     variant's required classification.
+    // variant's required classification.
     validate_detector_evidence(entry, &evidence, &mut findings);
 
     // (2) Helper requirement mismatch.
@@ -538,7 +523,6 @@ fn generate_entry(
         ));
     }
 
-    // --- Recompute the capability tuple from evidence. ---------------------
     // This is THE mechanical line: support tier is a pure function of the
     // routed classification + derived patch capability, NOT of the declared
     // expectation. A non-plain variant therefore cannot be generated into a
@@ -557,7 +541,7 @@ fn generate_entry(
     }
 
     // (5) Patch-capability-tuple mismatch: the declared tier / patch capability
-    //     must match the evidence-derived tuple.
+    // must match the evidence-derived tuple.
     if entry.expected.support_tier != tuple.support_tier
         || entry.expected.patch_capability != tuple.patch_capability
     {
@@ -577,8 +561,8 @@ fn generate_entry(
     }
 
     // (6) Mechanical overclaim guard: a non-plain variant that DECLARES a
-    //     claimed tier or patch-back capability is a hard overclaim, even
-    //     though the generated tuple already refused it.
+    // claimed tier or patch-back capability is a hard overclaim, even
+    // though the generated tuple already refused it.
     if entry.variant != Xp3CapabilityVariant::PlainXp3
         && entry.variant != Xp3CapabilityVariant::PlaintextKs
         && (entry.expected.support_tier == Xp3CapabilitySupportTier::Claimed
@@ -967,8 +951,6 @@ fn failed_entry(
     }
 }
 
-// --- Helpers ----------------------------------------------------------------
-
 fn finding(
     code: &str,
     severity: PartialDiagnosticSeverity,
@@ -1050,8 +1032,6 @@ mod tests {
             .is_some_and(|entry| entry.findings.iter().any(|finding| finding.code == code))
     }
 
-    // --- Generation is evidence-driven and the happy path is green. --------
-
     #[test]
     fn capability_profile_generated_from_evidence_passes() {
         let fixture = load_fixture();
@@ -1098,7 +1078,7 @@ mod tests {
             Xp3PatchCapabilityLevel::PatchBack
         );
 
-        // The .ks null container is its OWN tier — never the commercial baseline
+        // The.ks null container is its OWN tier — never the commercial baseline
         // (which is the claimed plain-XP3 tier).
         let ks = report.entry("plaintext-ks-null-container").unwrap();
         assert_eq!(
@@ -1130,8 +1110,6 @@ mod tests {
             );
         }
     }
-
-    // --- THE mechanical line. ----------------------------------------------
 
     #[test]
     fn encrypted_variant_can_never_be_claimed() {
@@ -1206,8 +1184,6 @@ mod tests {
             Xp3PatchCapabilityLevel::PatchBack
         );
     }
-
-    // --- Validator fails on each evidence class. ---------------------------
 
     #[test]
     fn validator_fails_on_bad_detector_evidence() {
@@ -1287,8 +1263,6 @@ mod tests {
         ));
     }
 
-    // --- Redaction: counts / hashes only, never raw bytes. -----------------
-
     #[test]
     fn report_redacts_secrets_and_never_carries_raw_bytes() {
         let mut fixture = load_fixture();
@@ -1302,7 +1276,7 @@ mod tests {
         assert!(json.contains("[REDACTED:"));
         assert!(!json.contains("/home/trevor/private/game/leak.xp3"));
 
-        // The raw .ks source text never appears — only its hash and counts do.
+        // The raw.ks source text never appears — only its hash and counts do.
         let ks_bytes = std::fs::read(manifest_dir().join("plain-script.ks")).unwrap();
         let ks_text = String::from_utf8_lossy(&ks_bytes);
         for line in ks_text.lines().filter(|line| line.len() > 8) {
@@ -1311,7 +1285,7 @@ mod tests {
                 "raw .ks source line leaked into the report: {line}"
             );
         }
-        // The .ks evidence is present as a hash, not bytes.
+        // The.ks evidence is present as a hash, not bytes.
         assert!(json.contains(&sha256_hash_bytes(&ks_bytes)));
     }
 

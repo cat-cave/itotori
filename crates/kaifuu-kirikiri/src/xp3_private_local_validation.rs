@@ -1,34 +1,29 @@
-//! KAIFUU-144 — private-local XP3 validation gate.
-//!
+//! private-local XP3 validation gate.
 //! This module is the alpha gate that consumes an operator's **already-redacted**
 //! private-local XP3 validation manifest and turns it into one aggregate report:
 //! no corpus -> deterministic `skipped`; configured private-local rows -> stage
 //! aggregates plus proof hashes linked to claimed XP3 support tuples.
-//!
-//! The gate composes the KAIFUU-057 production runner instead of reimplementing
+//! The gate composes the production runner instead of reimplementing
 //! XP3 crypt/extract/patch. A configured row for a claimed support tuple is not
 //! allowed to be a label-only assertion: the claimed tuple must also be backed by
 //! a passing synthetic production regression run. If the runner fails for a
 //! claimed tuple, the report is `failed` and the diagnostic is a compatibility
 //! regression. Rows outside the claimed XP3 tuple set are reported as
 //! `out-of-profile` semantic diagnostics, not as support regressions.
-//!
-//! # KAIFUU-144 — readiness BINDS to a verified round-trip (not a label)
-//!
-//! The gate runs the private-local validation workflow (the KAIFUU-057 profiled
+//! # — readiness BINDS to a verified round-trip (not a label)
+//! The gate runs the private-local validation workflow (the profiled
 //! extract-patch-verify driver) ONCE and threads the resulting report. A claimed
 //! row reaches `Passed` — and lifts the retail posture to `PrivateValidated` —
 //! ONLY when its declared `roundTripProofHash` equals the WORKFLOW-BOUND value
 //! recomputed from the real round-trip output for that exact tuple (the source +
 //! rebuilt encrypted-container hashes, the per-member deltas, and the driver's
 //! round-trip proof; see
-//! [`canonical_xp3_round_trip_proof_hash_from_workflow`]). This is the KAIFUU-080
-//! / KAIFUU-145 pattern: the proof hash is NO LONGER a mintable label (which
+//! [`canonical_xp3_round_trip_proof_hash_from_workflow`]). This is the
+//! pattern: the proof hash is NO LONGER a mintable label (which
 //! anyone who knew a kind/id string could forge), so `patch-proven` is
 //! unreachable without a genuinely-passing round-trip. A missing/failed workflow,
 //! or a tuple the workflow never round-tripped, is a LOUD typed diagnostic (never
 //! a silent skip) and the top rungs stay unreached.
-//!
 //! The manifest and report carry only logical ids, stage states, and
 //! [`ProofHash`]es. They never carry raw keys, helper dumps, retail filenames,
 //! decrypted text, local paths, screenshots, or assets. The report body is
@@ -75,7 +70,7 @@ pub const SEMANTIC_XP3_PRIVATE_LOCAL_VALIDATION_SKIPPED: &str =
 /// Semantic code: a claimed tuple's private-local stage failed.
 pub const SEMANTIC_XP3_PRIVATE_LOCAL_VALIDATION_CLAIMED_FAILED: &str =
     "kaifuu.kirikiri.xp3_private_local_validation.claimed_tuple_failed";
-/// Semantic code: the KAIFUU-057 production runner failed for a claimed tuple.
+/// Semantic code: the production runner failed for a claimed tuple.
 pub const SEMANTIC_XP3_PRIVATE_LOCAL_VALIDATION_REGRESSION_FAILED: &str =
     "kaifuu.kirikiri.xp3_private_local_validation.production_regression_failed";
 /// Semantic code: the row names no declared claimed XP3 support tuple.
@@ -86,7 +81,7 @@ pub const SEMANTIC_XP3_PRIVATE_LOCAL_VALIDATION_OUT_OF_PROFILE: &str =
 /// fabricated / mintable proof, refused).
 pub const SEMANTIC_XP3_PRIVATE_LOCAL_VALIDATION_UNVERIFIED_PROOF: &str =
     "kaifuu.kirikiri.xp3_private_local_validation.unverified_round_trip_proof";
-/// Semantic code: the KAIFUU-057 production workflow round-tripped no output for
+/// Semantic code: the production workflow round-tripped no output for
 /// the claimed tuple, so no verified proof can back it (fail-loud, no skip).
 pub const SEMANTIC_XP3_PRIVATE_LOCAL_VALIDATION_WORKFLOW_UNPROVEN: &str =
     "kaifuu.kirikiri.xp3_private_local_validation.workflow_round_trip_unproven";
@@ -185,7 +180,7 @@ pub struct Xp3PrivateLocalValidationManifestEntry {
     pub result: Xp3PrivateLocalValidationState,
     /// The operator's declared proof that the private-local extract-patch-verify
     /// round-trip succeeded for this tuple. It is HONORED only if it equals the
-    /// workflow-bound canonical value recomputed from the genuinely-run KAIFUU-057
+    /// workflow-bound canonical value recomputed from the genuinely-run
     /// production round-trip for the same tuple (see
     /// [`canonical_xp3_round_trip_proof_hash_from_workflow`]). A label-only /
     /// mintable hash is refused, so `Passed` (and thus `PrivateValidated`) is
@@ -341,18 +336,17 @@ pub struct Xp3PrivateLocalAlphaProofs {
 }
 
 /// The canonical WORKFLOW-BOUND round-trip proof hash for a claimed support
-/// tuple, recomputed from the genuinely-run KAIFUU-057 production round-trip
+/// tuple, recomputed from the genuinely-run production round-trip
 /// output for the matching variant. Returns `None` if the workflow round-tripped
 /// no output for that tuple (then no proof can ever be honored for it — the
 /// honest floor holds and readiness cannot reach `patch-proven`).
-///
 /// The value is a sha256 over the ACTUAL round-trip output for the variant — the
 /// source + rebuilt encrypted-container hashes, every per-member delta (id,
 /// operation, source/target plaintext hashes, length delta), and the driver's
 /// own round-trip proof hash. Because it depends on the real extract-patch-verify
 /// output, it CANNOT be reproduced from a bare label/id string — this is exactly
 /// what binds the readiness `patch-proven` rung to a VERIFIED round-trip (the
-/// KAIFUU-080 / KAIFUU-145 mirror).
+/// mirror).
 #[must_use]
 pub fn canonical_xp3_round_trip_proof_hash_from_workflow(
     workflow: &Xp3ProductionReport,
@@ -598,7 +592,7 @@ pub fn run_xp3_private_local_validation(
             // The last, load-bearing gate: `Passed` (and thus PrivateValidated)
             // is reached ONLY when the entry's declared round-trip proof BINDS to
             // the verified round-trip. The honored value is recomputed from the
-            // genuinely-run KAIFUU-057 workflow output for this exact tuple
+            // genuinely-run workflow output for this exact tuple
             // (source + rebuilt container hashes + per-member deltas + round-trip
             // proof) — a label-only / mintable hash is refused, and a workflow
             // that produced no round-trip for this tuple fails loud.
@@ -723,7 +717,7 @@ fn claimed_tuple_ids(registry: &Xp3ProductionRegistry) -> Vec<String> {
     ids
 }
 
-/// Run the KAIFUU-057 production extract-patch-verify workflow ONCE and return
+/// Run the production extract-patch-verify workflow ONCE and return
 /// both the summary and the workflow report (when it ran). The report is the
 /// source of truth every claimed entry's round-trip proof binds to: a claimed
 /// entry can only reach `Passed` when its declared `roundTripProofHash` equals
@@ -795,12 +789,11 @@ fn run_regression(
 /// (the entry reaches `Passed`) ONLY when the workflow genuinely round-tripped
 /// this tuple AND the entry's declared `roundTripProofHash` equals the
 /// workflow-bound canonical value recomputed from that real round-trip output.
-///
 /// - A workflow that produced no round-trip for the tuple is a LOUD failure
 ///   ([`SEMANTIC_XP3_PRIVATE_LOCAL_VALIDATION_WORKFLOW_UNPROVEN`]); never a silent
 ///   skip — the tuple cannot reach `patch-proven` without a verified round-trip.
 /// - A declared hash that does not match the workflow-bound value is a label-only
-///   / mintable / fabricated proof and is refused
+///   mintable / fabricated proof and is refused
 ///   ([`SEMANTIC_XP3_PRIVATE_LOCAL_VALIDATION_UNVERIFIED_PROOF`]).
 fn honor_round_trip_proof(
     entry: &Xp3PrivateLocalValidationManifestEntry,
@@ -1066,7 +1059,7 @@ mod tests {
     }
 
     /// The genuine WORKFLOW-BOUND round-trip proof hash for `tuple_id`, computed
-    /// from a real KAIFUU-057 production round-trip over `registry`. An entry
+    /// from a real production round-trip over `registry`. An entry
     /// declaring this exact value is honored; anything else is a label-only proof.
     fn workflow_bound_proof(registry: &Xp3ProductionRegistry, tuple_id: &str) -> ProofHash {
         let workflow =
@@ -1284,12 +1277,12 @@ mod tests {
         assert!(error.to_string().contains("missing stage deltaApply"));
     }
 
-    // --- KAIFUU-144: readiness BINDS to a VERIFIED round-trip (not a label). --
+    // ---: readiness BINDS to a VERIFIED round-trip (not a label). --
 
     #[test]
     fn passed_row_proof_equals_the_workflow_bound_round_trip_value() {
         // The honored proof is EXACTLY the value recomputed from the real
-        // KAIFUU-057 extract-patch-verify round-trip output for this tuple — not
+        // extract-patch-verify round-trip output for this tuple — not
         // a static label. This is what binds `PrivateValidated` to a verified
         // round-trip.
         let registry = synthetic::production_registry();
@@ -1308,7 +1301,7 @@ mod tests {
     fn a_label_only_proof_does_not_reach_private_validated() {
         // THE missing regression: a claimed row whose declared round-trip proof
         // is a mintable label (derived from a kind/id string, exactly the
-        // KAIFUU-080 anti-pattern) must NOT reach patch-proven. It is refused by
+        // anti-pattern) must NOT reach patch-proven. It is refused by
         // the workflow binding even though every stage/result is authored "passed".
         let registry = synthetic::production_registry();
         let label_hash = ProofHash::new(sha256_hash_bytes(

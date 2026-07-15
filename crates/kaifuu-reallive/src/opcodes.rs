@@ -1,20 +1,17 @@
 //! Named-opcode summary catalogue used by the [`crate::ast::Scene`] tree.
-//!
-//! After KAIFUU-191 the parser produces a [`crate::opcode::RealLiveOpcode`]
+//! After the parser produces a [`crate::opcode::RealLiveOpcode`]
 //! sequence by decoding the **real** RealLive byte stream. The
 //! [`NamedOpcode`] enum here is the **summary** classification used to
 //! decorate the [`crate::ast::Instruction`] kind in the legacy `Scene`
 //! tree consumed by [`crate::inventory`] and [`crate::patchback`]. It is
 //! a small, stable surface — the rich opcode taxonomy lives on
 //! [`crate::opcode::RealLiveOpcode`].
-//!
 //! Provenance: the names below are restated from the RLOperation module
 //! catalogue documented in Haeleth's RLDEV manual and reflected in
 //! rlvm's `src/modules/module_*.cc` listing (research anchor only;
 //! rlvm is GPL-3, not linked or vendored — `crate::opcode` is the
 //! actual decoder, this is just the labelling enum).
-//!
-//! The pre-KAIFUU-191 `INSTRUCTION_OPENER`/operand-tag-byte
+//! The pre- `INSTRUCTION_OPENER`/operand-tag-byte
 //! constants and the `from_byte(byte) -> Option<Self>` synthetic-fixture
 //! mapping are deleted; opcode classification lives in
 //! [`crate::opcode::parse_real_bytecode`] now.
@@ -62,7 +59,7 @@ impl NamedOpcode {
     }
 
     /// Default semantic role for the string slot(s) carried by this
-    /// opcode. KAIFUU-174's heuristic refines this.
+    /// opcode. 's heuristic refines this.
     pub fn default_string_slot_role(self) -> super::ast::StringSlotRole {
         use super::ast::StringSlotRole;
         match self {

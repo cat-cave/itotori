@@ -1,19 +1,17 @@
-//! KAIFUU-073 - bounded Wolf encrypted-archive decrypt -> extract -> patch ->
-//! verify smoke.
-//!
-//! This module proves one narrow, synthetic Wolf-like encrypted archive path:
-//! a deterministic fixture container is built in-process, its text-bearing
-//! member payloads are encrypted with a fixture-only XOR profile, the key is
-//! resolved by [`SecretRef`], the archive is decrypted/extracted, one trivial
-//! replacement is applied, the archive is re-encrypted/repacked, and the rebuilt
-//! container is decrypted again to verify the patched text is present.
-//!
-//! Honest scope: this is NOT commercial Wolf/DXArchive coverage and NOT a real
-//! Wolf cipher. It is a bounded synthetic smoke for the Kaifuu secret-ref and
-//! decrypt/extract/patch/verify contract. Fixture/report data carry only ids,
-//! refs, byte counts, and one-way hashes. Raw key bytes live only inside
-//! [`WolfEncryptedArchiveKey`], whose `Debug` is redacted and whose buffer is
-//! zeroized on drop.
+//! - bounded Wolf encrypted-archive decrypt -> extract -> patch ->
+//!   verify smoke.
+//!   This module proves one narrow, synthetic Wolf-like encrypted archive path:
+//!   a deterministic fixture container is built in-process, its text-bearing
+//!   member payloads are encrypted with a fixture-only XOR profile, the key is
+//!   resolved by [`SecretRef`], the archive is decrypted/extracted, one trivial
+//!   replacement is applied, the archive is re-encrypted/repacked, and the rebuilt
+//!   container is decrypted again to verify the patched text is present.
+//!   Honest scope: this is NOT commercial Wolf/DXArchive coverage and NOT a real
+//!   Wolf cipher. It is a bounded synthetic smoke for the Kaifuu secret-ref and
+//!   decrypt/extract/patch/verify contract. Fixture/report data carry only ids,
+//!   refs, byte counts, and one-way hashes. Raw key bytes live only inside
+//!   [`WolfEncryptedArchiveKey`], whose `Debug` is redacted and whose buffer is
+//!   zeroized on drop.
 
 use std::fmt;
 use std::path::Path;
@@ -38,10 +36,9 @@ pub const WOLF_ENCRYPTED_SMOKE_CAPABILITY_ID: &str = "kaifuu-wolf-encrypted-arch
 /// Synthetic container family label.
 pub const WOLF_ENCRYPTED_SMOKE_CONTAINER: &str = "wolf-like-encrypted-archive";
 /// Stable secret requirement id for the synthetic archive key.
-///
 /// The value is deliberately redaction-SAFE: it must survive
 /// [`redact_for_log_or_report`] unchanged so it can appear in reports and in the
-/// KAIFUU-085 helper-result diagnostic messages (which are validated to be
+/// helper-result diagnostic messages (which are validated to be
 /// redaction-clean). A digit-bearing token like `...-k073-...` reads as
 /// base64url key material to the raw-key heuristic and would be redacted,
 /// silently degrading the evidence — so the node reference is spelled out.
@@ -141,9 +138,7 @@ impl WolfEncryptedSmokeFixture {
 
 /// Resolved archive key. Raw material lives in the shared non-`Clone`,
 /// zeroizing, `Debug`-redacting secret-holder primitive.
-///
 /// # Secret boundary
-///
 /// There is no Wolf-specific raw-key constructor. Every consumer obtains a key
 /// by resolving a [`SecretRef`] through [`WolfEncryptedFixtureSecretResolver`],
 /// which hands the key back BY REF and never copies raw bytes out.
@@ -324,8 +319,8 @@ struct WolfArchiveMember {
 }
 
 /// A decrypted archive member: a member id and its raw plaintext payload
-/// (arbitrary bytes — text for KAIFUU-073, a binary text-table for the
-/// KAIFUU-012 adapter). Shared `pub(crate)` so the Wolf adapter drives the SAME
+/// (arbitrary bytes — text, a binary text-table for the
+/// adapter). Shared `pub(crate)` so the Wolf adapter drives the SAME
 /// container+crypto layer rather than reimplementing it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WolfPlainMember {
@@ -453,7 +448,7 @@ pub struct WolfEncryptedSmokeReport {
 
 impl WolfEncryptedSmokeReport {
     fn redacted_for_report(&self) -> Self {
-        // Mirror KAIFUU-072 (`Xp3CryptReport::redacted_for_report`): every
+        // Mirror (`Xp3CryptReport::redacted_for_report`): every
         // free-text id/label string is scrubbed through
         // `redact_for_log_or_report` at the serialization boundary. Hashes,
         // counts, enums, the reportable `secret_ref`, and the schema version pass

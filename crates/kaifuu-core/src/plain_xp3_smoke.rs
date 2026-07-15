@@ -1,39 +1,33 @@
-//! KAIFUU-071 — Plain XP3 read/write smoke command.
-//!
+//! Plain XP3 read/write smoke command.
 //! The smoke command *composes* the existing shared plain-XP3 surfaces — it
 //! does not reimplement the container format:
-//!
 //! - inventory runs through [`crate::read_plain_xp3_inventory`] (member sizes,
 //!   compression state, per-member payload hashes, stored adler32);
 //! - the deterministic rebuild runs through [`crate::read_plain_xp3_archive`]
 //!   (the source-fidelity reader) followed by [`crate::encode_xp3`] (the
-//!   KAIFUU-098 deterministic writer).
-//!
-//! On a public, synthetic plain-XP3 fixture the command proves the rebuild is
-//! **byte-identical** to the source archive (the determinism guarantee). When a
-//! rebuild is not byte-identical — a future, structurally different writer — the
-//! command falls back to a documented **manifest-equivalence** report comparing
-//! the source and rebuilt inventories member-for-member; it never silently
-//! accepts a divergent rebuild.
-//!
-//! Malformed or unsupported XP3 inputs are rejected **before any rebuild byte is
-//! produced** and surface structured findings that cite the in-archive *member
-//! id* (never a raw local path). Two negative classes are exercised:
-//!
+//!   deterministic writer).
+//!   On a public, synthetic plain-XP3 fixture the command proves the rebuild is
+//!   **byte-identical** to the source archive (the determinism guarantee). When a
+//!   rebuild is not byte-identical — a future, structurally different writer — the
+//!   command falls back to a documented **manifest-equivalence** report comparing
+//!   the source and rebuilt inventories member-for-member; it never silently
+//!   accepts a divergent rebuild.
+//!   Malformed or unsupported XP3 inputs are rejected **before any rebuild byte is
+//!   produced** and surface structured findings that cite the in-archive *member
+//!   id* (never a raw local path). Two negative classes are exercised:
 //! - [`PlainXp3SmokeNegativeKind::MalformedTable`]: the source-fidelity reader
 //!   rejects the archive at parse time (e.g. an overrun file-table index);
 //! - [`PlainXp3SmokeNegativeKind::UnsupportedMemberFlags`]: the archive parses,
 //!   but a member carries a segment flag bit outside the writer's known set
 //!   ({bit 0 = compressed}), so the smoke command refuses to claim a faithful
 //!   plain round-trip for that member and cites it by id.
-//!
-//! Plain XP3 is the only variant in scope. Encrypted / compressed-payload /
-//! helper-required / protected-executable inputs are out of scope (research
-//! tier per KAIFUU-054) and are rejected by the shared reader before this
-//! command ever sees a rebuild surface. The command requires no encryption key
-//! and no private corpus input. Every string surfaced in the report is funnelled
-//! through [`crate::redact_for_log_or_report`]; the report carries only counts,
-//! hashes, offsets, and in-archive member ids.
+//!   Plain XP3 is the only variant in scope. Encrypted / compressed-payload /
+//!   helper-required / protected-executable inputs are out of scope (research
+//!   tier per) and are rejected by the shared reader before this
+//!   command ever sees a rebuild surface. The command requires no encryption key
+//!   and no private corpus input. Every string surfaced in the report is funnelled
+//!   through [`crate::redact_for_log_or_report`]; the report carries only counts,
+//!   hashes, offsets, and in-archive member ids.
 
 use std::path::Path;
 
@@ -75,15 +69,13 @@ pub const SEMANTIC_SMOKE_EXPECTATION_MISMATCH: &str = "kaifuu.plain_xp3_smoke.ex
 pub const SEMANTIC_SMOKE_NEGATIVE_DID_NOT_FAIL: &str =
     "kaifuu.plain_xp3_smoke.negative_did_not_fail";
 
-// --- Fixture (input manifest) -----------------------------------------------
-
 /// Public plain-XP3 smoke fixture descriptor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PlainXp3SmokeFixture {
     pub schema_version: String,
     pub fixture_id: String,
-    /// The spec-DAG node id this fixture is authored for (e.g. `KAIFUU-071`).
+    /// The spec-DAG node id this fixture is authored for (e.g. ``).
     pub source_node_id: String,
     pub engine_family: String,
     pub archive: PlainXp3SmokeArchiveRef,
@@ -169,8 +161,6 @@ pub struct PlainXp3SmokeNegativeFixture {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_member_id: Option<String>,
 }
-
-// --- Report (generated output) ----------------------------------------------
 
 /// Whether the rebuild reproduced the source bytes exactly or only
 /// member-for-member.
@@ -383,8 +373,6 @@ impl PlainXp3SmokeReport {
     }
 }
 
-// --- Request + generator ----------------------------------------------------
-
 /// Inputs to [`generate_plain_xp3_smoke`].
 #[derive(Debug, Clone, Copy)]
 pub struct PlainXp3SmokeRequest<'a> {
@@ -395,7 +383,6 @@ pub struct PlainXp3SmokeRequest<'a> {
 }
 
 /// Run the plain-XP3 read/write smoke against a fixture.
-///
 /// Returns `Err` only on an environmental failure (a fixture-shaped problem the
 /// report cannot represent, e.g. a missing archive file). All inventory /
 /// rebuild / expectation / negative outcomes are folded into the report's
@@ -412,7 +399,6 @@ pub fn generate_plain_xp3_smoke(
     let source_hash = ProofHash::new(sha256_hash_bytes(&source_bytes))
         .map_err(|error| format!("source archive hash: {error}"))?;
 
-    // --- Shared-path read: source-fidelity reader (rebuild side) -------------
     let archive = match read_plain_xp3_archive(&source_bytes) {
         Ok(archive) => archive,
         Err(error) => {
@@ -435,7 +421,6 @@ pub fn generate_plain_xp3_smoke(
         });
     }
 
-    // --- Shared-path read: inventory reader (hash / metadata side) -----------
     let inventory = match read_plain_xp3_inventory(&source_bytes) {
         Ok(inventory) => inventory,
         Err(error) => {
@@ -451,7 +436,6 @@ pub fn generate_plain_xp3_smoke(
         }
     };
 
-    // --- Shared-path write: deterministic rebuild ----------------------------
     let rebuilt = match encode_xp3(&archive) {
         Ok(bytes) => bytes,
         Err(error) => {
@@ -510,7 +494,6 @@ pub fn generate_plain_xp3_smoke(
     let index_offset = read_index_offset(&rebuilt).unwrap_or(data_cursor);
     let member_count = members.len() as u64;
 
-    // --- Determinism: byte-identity or documented manifest equivalence -------
     let equivalence = if byte_identical {
         PlainXp3SmokeEquivalence::ByteIdentical
     } else if rebuild_is_manifest_equivalent(&source_bytes, &rebuilt) {
@@ -530,7 +513,6 @@ pub fn generate_plain_xp3_smoke(
         });
     }
 
-    // --- Validate observed values against the fixture's expectations ---------
     validate_expectations(
         &fixture.expected,
         &source_hash,
@@ -540,7 +522,6 @@ pub fn generate_plain_xp3_smoke(
         &mut findings,
     );
 
-    // --- Negative cases ------------------------------------------------------
     let mut negatives = Vec::with_capacity(fixture.negatives.len());
     for negative in &fixture.negatives {
         negatives.push(evaluate_negative(negative, request.fixture_dir));
@@ -588,8 +569,6 @@ pub fn run_plain_xp3_smoke_from_path(fixture_path: &Path) -> KaifuuResult<PlainX
         fixture_dir,
     })
 }
-
-// --- Helpers ----------------------------------------------------------------
 
 /// Map a shared-reader/writer error onto a malformed-table smoke finding. The
 /// reader/writer error message is structural (it never embeds a local path), so
@@ -946,7 +925,7 @@ mod tests {
     }
 
     // --- In-code reconstruction of the committed negative archives (proves the
-    //     binary fixtures are reproducible byte-for-byte from this source). ---
+    // binary fixtures are reproducible byte-for-byte from this source). ---
 
     fn chunk(name: [u8; 4], content: &[u8]) -> Vec<u8> {
         let mut out = Vec::new();

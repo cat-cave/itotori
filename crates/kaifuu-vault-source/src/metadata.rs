@@ -1,24 +1,20 @@
 //! `_vault/metadata.json` parser and the by-id identity cross-checker.
-//!
 //! The by-id content store embeds the vault-curation *canonical* metadata
 //! document at `<canonical_id>/_vault/metadata.json` (top-level
-//! `canonical_id`, `identifiers`, `engine`, `work`, `release`, ...). This is
+//! `canonical_id`, `identifiers`, `engine`, `work`, `release`,...). This is
 //! the by-id-era shape produced by vault-curation's stage-2 repack. It is
 //! validated against `docs/itotori-vault-by-id-metadata.schema.json` before
 //! any identity fields are consumed.
-//!
 //! Identity is established by:
-//!
 //! 1. **`canonical_id`** — the embedded `canonical_id` must equal the catalog
 //!    `artifacts.canonical_id` the by-id path was resolved from. This is the
 //!    load-bearing identity gate.
 //! 2. **work identifiers** — the embedded `identifiers` must intersect the
 //!    catalog's `identifiers` for the resolved work (at least one external id
 //!    must agree).
-//!
-//! `engine` and `languages` disagreements are surfaced as non-fatal findings
-//! (the catalog is the integrated truth). Byte-fidelity is a per-game-file
-//! concern (e.g. the extracted `Seen.txt` sha256), never the archive sha.
+//!    `engine` and `languages` disagreements are surfaced as non-fatal findings
+//!    (the catalog is the integrated truth). Byte-fidelity is a per-game-file
+//!    concern (e.g. the extracted `Seen.txt` sha256), never the archive sha.
 
 use std::path::Path;
 use std::sync::OnceLock;
@@ -75,9 +71,9 @@ pub struct EmbeddedMetadata {
     pub engine: Option<String>,
     /// `work.canonical_title`.
     pub canonical_title: Option<String>,
-    /// `identifiers[]` as `(source, kind, value)` tuples.
+    /// `identifiers` as `(source, kind, value)` tuples.
     pub identifiers: Vec<(String, String, String)>,
-    /// `languages[].language_code` values.
+    /// `languages.language_code` values.
     pub languages: Vec<String>,
     /// Raw parsed JSON for downstream inspection.
     pub raw: Value,
@@ -85,7 +81,6 @@ pub struct EmbeddedMetadata {
 
 /// Read and parse the `_vault/metadata.json` file at the root of the extracted
 /// by-id tree (the `<canonical_id>/` wrapper directory).
-///
 /// This is the **first** file the adapter reads post-extraction. It must be
 /// present, parse as JSON, and carry a non-empty top-level `canonical_id`.
 pub fn read_embedded_metadata(
@@ -197,7 +192,6 @@ fn validate_by_id_metadata(value: &Value) -> Result<(), Vec<String>> {
 }
 
 /// Cross-check the embedded by-id metadata's identity against the catalog.
-///
 /// Returns either an [`Ok`] outcome (with possibly nonempty `findings`) or an
 /// [`Err`] when an identity gate fails (or a softer disagreement is promoted
 /// to error by `tolerance`).

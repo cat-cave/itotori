@@ -1,5 +1,4 @@
-//! KAIFUU-120 — Wolf RPG Editor archive + protection detector profile fixtures.
-//!
+//! Wolf RPG Editor archive + protection detector profile fixtures.
 //! A *Wolf protection detector profile* records what a Wolf RPG Editor
 //! (`.wolf` / DXArchive-family) container reveals about its **protection
 //! posture** and mechanically classifies it into one of four detector
@@ -7,16 +6,14 @@
 //! [`WolfProtectionProfile::Protected`],
 //! [`WolfProtectionProfile::HelperRequired`], and
 //! [`WolfProtectionProfile::Unknown`]. It is the Wolf-family sibling of the
-//! KAIFUU-054 KiriKiri XP3 capability profile
-//! ([`crate::Xp3CapabilityProfileReport`]) and the KAIFUU-103 packed-engine
+//! KiriKiri XP3 capability profile
+//! ([`crate::Xp3CapabilityProfileReport`]) and the packed-engine
 //! readiness validator ([`crate::PackedReadinessValidationReport`]): it reuses
 //! the shared transform vocabulary ([`ContainerTransform`] /
 //! [`CryptoTransform`] / [`CodecTransform`] / [`SurfaceTransform`]), the shared
 //! capability ladder ([`CapabilityLevel`] / [`CapabilityLevelStatus`]), and the
 //! shared semantic-diagnostic taxonomy ([`SemanticErrorCode`]).
-//!
 //! # Scope (honest boundary — identify-level, synthetic-fixture-driven)
-//!
 //! This node is a DETECTOR, not a Wolf archive parser. It does NOT open a real
 //! `.wolf`/DXA container, walk its file table, or decrypt anything. The
 //! fixtures encode the *publicly observable protection posture* a Wolf archive
@@ -25,34 +22,28 @@
 //! detector [`derive_wolf_protection_profile`] mechanically classifies that
 //! signal into the four profiles with the correct capability tuple and
 //! diagnostics. Real Wolf archive extraction / decryption / patch-back is a
-//! later adapter node (KAIFUU-119 profile-proof command, KAIFUU-121 helper
-//! boundary, KAIFUU-131 encrypted-archive adapter); the dynamic-key helper
-//! itself is the continuous-tier boundary (KAIFUU-065). None of those are
+//! later adapter node (profile-proof command, helper
+//! boundary, encrypted-archive adapter); the dynamic-key helper
+//! itself is the continuous-tier boundary. None of those are
 //! claimed here.
-//!
 //! # The mechanical line (computed, never asserted)
-//!
 //! [`derive_wolf_protection_profile`] is the single source of truth. The
 //! profile is a pure function of the recorded protection signal and whether a
 //! **concrete key requirement** (secret requirement id) exists:
-//!
-//! - `unencrypted`                                    → `plain`
-//! - `dynamic_key_helper_gated`                        → `helper_required`
+//! - `unencrypted` → `plain`
+//! - `dynamic_key_helper_gated` → `helper_required`
 //! - `static_key_protected` WITH a concrete key requirement → `protected`
 //! - `static_key_protected` WITHOUT a concrete key requirement → `unknown`
 //!   (reports `missing_capability.crypto`)
-//! - `unrecognized_protection`                         → `unknown`
+//! - `unrecognized_protection` → `unknown`
 //!   (reports `unknown_engine_variant`)
-//!
-//! The capability tuple the detector advertises separates the *identify* and
-//! *inventory* rungs it can claim from the *extract*, *patch*, *helper*, and
-//! *runtime* rungs it can NEVER claim (those are later Wolf nodes). A protected
-//! / helper-required / unknown archive can therefore never present a resolved
-//! extract, patch, helper, or runtime capability no matter what the fixture
-//! declares.
-//!
+//!   The capability tuple the detector advertises separates the *identify* and
+//!   *inventory* rungs it can claim from the *extract*, *patch*, *helper*, and
+//!   *runtime* rungs it can NEVER claim (those are later Wolf nodes). A protected
+//!   helper-required / unknown archive can therefore never present a resolved
+//!   extract, patch, helper, or runtime capability no matter what the fixture
+//!   declares.
 //! # Evidence is synthetic, redacted, hash-free-of-keys
-//!
 //! Fixtures carry NO retail bytes and NO raw key material: only the structured
 //! protection signal, the shared transform legs, local-scheme [`SecretRef`]
 //! key references, and stable requirement ids. The report is funnelled through
@@ -78,9 +69,7 @@ pub const WOLF_ENGINE_FAMILY: &str = "wolf";
 /// The support boundary surfaced in every Wolf detector report.
 pub const WOLF_PROTECTION_DETECTOR_SUPPORT_BOUNDARY: &str = "Wolf RPG Editor protection detector classifies a `.wolf`/DXArchive-family container into a plain, protected, helper-required, or unknown protection profile at identify level. It advertises identify (and, for a plain unencrypted archive, inventory) support only; extract, patch, dynamic-key helper, and runtime support are later Wolf nodes (KAIFUU-119/KAIFUU-121/KAIFUU-131 and the KAIFUU-065 helper boundary) and are never claimed. Unknown protection reports unknown_engine_variant or missing_capability.crypto unless a concrete key requirement exists.";
 
-// ---------------------------------------------------------------------------
 // The four detector protection profiles
-// ---------------------------------------------------------------------------
 
 /// The mechanically-derived Wolf protection profile — the four detector
 /// classifications this node distinguishes.
@@ -92,7 +81,7 @@ pub enum WolfProtectionProfile {
     /// Encrypted DX archive gated by a concrete (static) key requirement.
     Protected,
     /// Wolf "Pro" per-game key that must be recovered by a dynamic-key helper
-    /// (the KAIFUU-065 continuous-tier boundary) before extraction is possible.
+    /// (the continuous-tier boundary) before extraction is possible.
     HelperRequired,
     /// A Wolf-shaped container whose protection could not be recognized, or a
     /// key-gated container with no concrete key requirement.
@@ -132,9 +121,7 @@ enum WolfUnknownReason {
     MissingCryptoRequirement,
 }
 
-// ---------------------------------------------------------------------------
 // Protection signal (the classifier input)
-// ---------------------------------------------------------------------------
 
 /// The publicly observable protection posture a Wolf archive exposes. This is
 /// the wolf-specific "crypto/protection state" the fixture records; the
@@ -147,7 +134,7 @@ pub enum WolfArchiveProtectionSignal {
     /// Encrypted DX archive gated by a known/static key.
     StaticKeyProtected,
     /// Encrypted DX archive whose key must be recovered by a dynamic-key helper
-    /// (Wolf "Pro" per-game protection, KAIFUU-065 continuous tier).
+    /// (Wolf "Pro" per-game protection, continuous tier).
     DynamicKeyHelperGated,
     /// A `.wolf`/DXA-shaped container whose protection is unrecognized.
     UnrecognizedProtection,
@@ -175,14 +162,11 @@ impl WolfArchiveProtectionSignal {
     }
 }
 
-// ---------------------------------------------------------------------------
 // The mechanical classifier (single source of truth)
-// ---------------------------------------------------------------------------
 
 /// Classify a Wolf archive protection signal into one of the four detector
 /// profiles. Total, pure, side-effect-free — the single source of truth
 /// exercised directly by the regression tests.
-///
 /// `has_concrete_key_requirement` is `true` when the fixture records at least
 /// one secret requirement id. A `static_key_protected` archive is only
 /// `protected` when it names the concrete key it needs; without one it is
@@ -219,9 +203,7 @@ fn unknown_reason(
     }
 }
 
-// ---------------------------------------------------------------------------
 // Capability tuple (identify/inventory vs extract/patch/helper/runtime)
-// ---------------------------------------------------------------------------
 
 /// The six-rung capability tuple the detector advertises for a profile. The
 /// `identify` and `inventory` rungs the detector may claim are kept mechanically
@@ -288,7 +270,6 @@ pub fn derive_wolf_capability_tuple(profile: WolfProtectionProfile) -> WolfCapab
     };
     // The helper rung is always unsupported by the detector: for a
     // helper-required archive the dynamic-key helper boundary is a later node;
-    // for every other profile no helper applies.
     let helper = match profile {
         WolfProtectionProfile::HelperRequired => CapabilityLevelStatus::unsupported(
             "the dynamic-key helper boundary is KAIFUU-121/KAIFUU-065, not this detector",
@@ -313,9 +294,7 @@ pub fn derive_wolf_capability_tuple(profile: WolfProtectionProfile) -> WolfCapab
     }
 }
 
-// ---------------------------------------------------------------------------
 // Diagnostics + the archive/protection diagnostic matrix
-// ---------------------------------------------------------------------------
 
 /// A structured detector diagnostic — never prose, never silent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -443,9 +422,7 @@ pub fn wolf_protection_diagnostic_matrix() -> Vec<WolfProtectionMatrixRow> {
     rows
 }
 
-// ---------------------------------------------------------------------------
 // Fixture (input) schema
-// ---------------------------------------------------------------------------
 
 /// A Wolf protection detector fixture set — a small manifest of synthetic
 /// detector profile records.
@@ -455,7 +432,7 @@ pub struct WolfProtectionDetectorFixture {
     pub schema_version: String,
     /// Stable id for the fixture set (synthetic; no retail names/local paths).
     pub detector_set_id: String,
-    /// The spec-DAG node id this fixture set is authored for (e.g. `KAIFUU-120`).
+    /// The spec-DAG node id this fixture set is authored for (e.g. ``).
     pub source_node_id: String,
     pub engine_family: String,
     pub entries: Vec<WolfProtectionDetectorFixtureEntry>,
@@ -504,9 +481,7 @@ pub struct WolfSecretRequirement {
     pub key_ref: Option<SecretRef>,
 }
 
-// ---------------------------------------------------------------------------
 // Report (generated) schema
-// ---------------------------------------------------------------------------
 
 /// The generated per-record detector report. Echoes every acceptance field and
 /// carries the mechanically-derived profile, capability tuple, and diagnostics.
@@ -621,9 +596,7 @@ impl WolfProtectionDetectorReport {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Detector (generate + validate)
-// ---------------------------------------------------------------------------
 
 /// Run the Wolf protection detector over a fixture set. Every record is
 /// classified into a profile mechanically; the record's declared expectation is
@@ -666,7 +639,6 @@ fn detect_entry(
 ) -> WolfProtectionDetectorEntryReport {
     let mut findings: Vec<WolfProtectionDiagnostic> = Vec::new();
 
-    // --- Field presence + engine-family consistency. -----------------------
     if entry.fixture_id.trim().is_empty() {
         findings.push(diagnostic(
             "wolf.detector.fixture_id_missing",
@@ -729,7 +701,6 @@ fn detect_entry(
     let capability_tuple = derive_wolf_capability_tuple(profile);
     let diagnostics = derive_wolf_protection_diagnostics(profile, reason);
 
-    // --- Validate the declared expectation against the derived evidence. ----
     if entry.expected_profile != profile {
         findings.push(diagnostic(
             "wolf.detector.profile_mismatch",
@@ -880,8 +851,6 @@ mod tests {
         }
     }
 
-    // --- THE crux: the four profiles are DISTINGUISHED. --------------------
-
     #[test]
     fn the_four_profiles_are_distinct() {
         let report = run();
@@ -895,7 +864,7 @@ mod tests {
         assert_eq!(helper.profile, WolfProtectionProfile::HelperRequired);
         assert_eq!(unknown.profile, WolfProtectionProfile::Unknown);
 
-        // plain != protected != helper_required != unknown.
+        // plain!= protected!= helper_required!= unknown.
         let profiles = [
             plain.profile,
             protected.profile,
@@ -961,7 +930,7 @@ mod tests {
     }
 
     // --- Acceptance 4: unknown reports unknown_variant OR
-    //     missing_capability.crypto (unless a concrete key requirement exists).
+    // missing_capability.crypto (unless a concrete key requirement exists).
 
     #[test]
     fn unknown_unrecognized_reports_unknown_variant() {
@@ -1021,8 +990,6 @@ mod tests {
         );
     }
 
-    // --- The validator catches a lying fixture. ----------------------------
-
     #[test]
     fn declared_profile_mismatch_is_a_blocking_finding() {
         let mut fixture = load();
@@ -1068,8 +1035,6 @@ mod tests {
         );
     }
 
-    // --- The diagnostic matrix covers all four profiles + both unknowns. ---
-
     #[test]
     fn diagnostic_matrix_covers_every_profile() {
         let matrix = wolf_protection_diagnostic_matrix();
@@ -1095,8 +1060,6 @@ mod tests {
             assert!(row.capability_tuple.is_detector_only());
         }
     }
-
-    // --- Redaction: no raw key material, scrubs local paths. ---------------
 
     #[test]
     fn report_redacts_paths_and_never_carries_raw_key_material() {

@@ -1,23 +1,20 @@
 //! Pure-Rust RPG Maker MV/MZ `www/data/*.json` text-extraction adapter.
-//!
 //! This is the **real** (non-synthetic) RPG Maker MV/MZ extractor that
 //! unblocks the ALPHA-001 second-engine-family vertical slice. It walks a
 //! game's `www/data/*.json` corpus and emits a localization-bridge v0.2
 //! [`BridgeBundleV02`] of translatable strings, each keyed by a stable
 //! `rpgmaker:<file>#<json-pointer>` surface so re-extraction is
 //! deterministic and patchback can target the same surface.
-//!
 //! # Surfaces handled
-//!
-//! - **Event-command lists** (`Map*.json events[].pages[].list[]`,
-//!   `CommonEvents.json`, `Troops.json pages[].list[]`):
-//!     * `401` Show Text line → `dialogue`
-//!     * `405` Show Scrolling Text line → `narration`
-//!     * `102` Show Choices option array → `choice_label`
-//!     * `101` Show Text setup → message-group + MZ speaker context (the
-//!       MZ 5th param is also emitted as a `speaker_name` unit)
-//!     * `320`/`324`/`325` Change Name/Nickname/Profile literals →
-//!       `database_entry`
+//! - **Event-command lists** (`Map*.json events.pages.list`,
+//!   `CommonEvents.json`, `Troops.json pages.list`):
+//! * `401` Show Text line → `dialogue`
+//! * `405` Show Scrolling Text line → `narration`
+//! * `102` Show Choices option array → `choice_label`
+//! * `101` Show Text setup → message-group + MZ speaker context (the
+//!   MZ 5th param is also emitted as a `speaker_name` unit)
+//! * `320`/`324`/`325` Change Name/Nickname/Profile literals →
+//!   `database_entry`
 //! - **Database name/description/message surfaces** in `Actors.json`,
 //!   `Classes.json`, `Items.json`, `Weapons.json`, `Armors.json`,
 //!   `Skills.json`, `Enemies.json`, `States.json` → `database_entry`.
@@ -28,9 +25,7 @@
 //! - **Inline `\`-control codes** (`\V[n]`, `\C[n]`, `\!`, …) inside every
 //!   text surface → `control_markup` protected spans (`preserveMode =
 //!   exact`).
-//!
 //! # Typed command coverage
-//!
 //! An event-command code that is recognised-but-non-text is skipped
 //! silently (it carries no translatable text). A `Script` (355/655),
 //! `Plugin Command` (356/357), or script-operand `Control Variables`
@@ -39,9 +34,7 @@
 //! census; message-bearing commands become units; only an unrecognised
 //! command becomes a structured [`Finding`]. Findings carry only structural
 //! description (file, JSON-pointer, code) — never retail string content.
-//!
 //! # Determinism / no shell-outs
-//!
 //! Files are read in sorted order; all identifiers are SHA-256-derived.
 //! No `Command::new`, no network, no helper process. Engine identification
 //! reuses [`kaifuu_core::ArchiveDetectionReport::scan`]
@@ -139,10 +132,9 @@ pub use recognize::{
 };
 
 /// Full result of the canonical game-directory extraction.
-///
 /// [`extract_game_dir`] is the only whole-game JSON extraction path consumed
-/// by the CLI and the KAIFUU-112 full-surface integration. The KAIFUU-109 and
-/// KAIFUU-110 APIs are focused, byte-preserving extraction / patch views for
+/// by the CLI and the full-surface integration. The and
+/// APIs are focused, byte-preserving extraction / patch views for
 /// individual files, not alternate game-directory bundle producers. This
 /// keeps bridge-bundle semantics, findings, and directory traversal in one
 /// production path.
@@ -185,7 +177,6 @@ pub enum ExtractError {
 }
 
 /// Walk a game's `www` directory and produce a bridge extraction bundle.
-///
 /// `www_dir` is the directory that contains `data/` (the env var
 /// `ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ` points here for the LustMemory
 /// corpus). Engine identification reuses the shared archive detection; a

@@ -68,7 +68,7 @@ fn run_with_args_and_registry(
             )?;
         }
         Some("extract") => {
-            // KAIFUU-210: --engine reallive --scene <N> --bundle-output <path>
+            // --engine reallive --scene <N> --bundle-output <path>
             // routes through the kaifuu-reallive bridge producer rather
             // than the registry adapter surface. The `game_dir` positional
             // is optional under --engine reallive — if absent we read
@@ -99,7 +99,7 @@ fn run_with_args_and_registry(
                     write_json(&output, &extraction.bridge)?;
                 }
                 DetectOutcome::Partial(detection) => {
-                    // KAIFUU-193 partial path: detect returned false but
+                    // partial path: detect returned false but
                     // accumulated nonzero Matched evidence. Emit a
                     // PartialAdapterReport so the dashboard / downstream
                     // tools can ingest what WAS recovered. Exits 0 unless
@@ -139,7 +139,7 @@ fn run_with_args_and_registry(
             write_stable_asset_inventory(&output, &manifest)?;
         }
         Some("patch") => {
-            // KAIFUU-211 — `patch --engine reallive --source <readonly>
+            // `patch --engine reallive --source <readonly>
             // --target <writable> --bundle <translated.json>` routes
             // through the kaifuu-reallive bundle-driven patchback. The
             // historical registry-adapter path runs when --engine is
@@ -192,8 +192,8 @@ fn run_with_args_and_registry(
             let original = positional(&args, 1)?;
             let patched = positional(&args, 2)?;
             let output = flag(&args, "--output")?;
-            // KAIFUU-238: --source-extract <path> reads the originating
-            // extract envelope (PartialAdapterReport on the KAIFUU-193
+            // --source-extract <path> reads the originating
+            // extract envelope (PartialAdapterReport on the
             // partial path; a regular bridge envelope otherwise) and
             // carries the `partial` provenance forward through the delta
             // package so apply can refuse partial sources.
@@ -234,7 +234,7 @@ fn run_with_args_and_registry(
                     write_json(&PathBuf::from(output), &result)?;
                 }
                 DetectOutcome::Partial(detection) => {
-                    // KAIFUU-193 partial verify: emit a PartialAdapterReport
+                    // partial verify: emit a PartialAdapterReport
                     // and exit 0 unless a P0/P1 diagnostic fires.
                     let report = build_partial_adapter_report(
                         &detection,
@@ -326,8 +326,7 @@ fn run_with_args_and_registry(
     Ok(())
 }
 
-/// KAIFUU-210 / ALPHA-006a — `extract --engine reallive --scene <N> --bundle-output <PATH>`.
-///
+/// ALPHA-006a — `extract --engine reallive --scene <N> --bundle-output <PATH>`.
 /// Sources the RealLive corpus either BY-ID through the read-only vault
 /// (`--vault-canonical-id <ID>`, the alpha production route) or from a raw
 /// game tree (`--game-root <PATH>` / `ITOTORI_REAL_GAME_ROOT`, the env-gated
@@ -352,8 +351,7 @@ enum UnknownOpcodeGate {
 }
 
 /// Decide the decode-honesty gate for a completed `--whole-seen` extract.
-///
-/// `unknown_opcodes` is the authoritative `!is_recognized()` occurrence count;
+/// `unknown_opcodes` is the authoritative `!is_recognized` occurrence count;
 /// `signatures` is the `(module_type, module_id, opcode) -> count` tuple
 /// histogram. When the count is non-zero the SEEN did NOT fully decode: by
 /// default this is a hard failure (the caller returns the `Fail` message as an
@@ -500,7 +498,7 @@ fn run_extract_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error
         let mut total_opcodes = 0usize;
         let mut unknown_opcodes = 0usize;
         // `(module_type, module_id, opcode) -> count` of every opcode that
-        // failed `is_recognized()`, accumulated across the whole SEEN so the
+        // failed `is_recognized`, accumulated across the whole SEEN so the
         // report/gate name the exact un-catalogued tuples rather than a bare
         // aggregate count.
         let mut unknown_signatures: BTreeMap<(u8, u8, u16), usize> = BTreeMap::new();
@@ -782,21 +780,19 @@ fn reallive_scene_slices<'a>(
     ))
 }
 
-/// KAIFUU-211 — `patch --engine reallive --source <readonly> --target <writable>
+/// `patch --engine reallive --source <readonly> --target <writable>
 /// --bundle bridge-bundle-translated.json --scope <dialogue-only|dialogue+choices>
 /// [--delta-output <delta.kaifuu>] [--force]`.
-///
 /// `--scope` is the user's translation-scope config and is REQUIRED: it
 /// drives the config-driven byte-fidelity contract. `dialogue-only`
 /// translates only dialogue Textout bodies and carries every choice /
 /// non-dialogue surface byte-identical; `dialogue+choices` additionally
 /// re-emits `module_sel` choice options NextString-safe.
-///
 /// Reads the translated v0.2 BridgeBundle, patches the source's
 /// `REALLIVEDATA/Seen.txt` via [`kaifuu_reallive::apply_translated_bundle`],
 /// and writes the patched archive to the SAME relative path under the
 /// writable target (per the readonly-source / writable-target discipline
-/// called out in the KAIFUU-211 audit-focus row). Only the target archive
+/// called out in the audit-focus row). Only the target archive
 /// is touched: the multi-GB voice/image siblings of a real game tree are
 /// never read, copied, or written
 /// (`kaifuu-patch-touch-archive-not-copy-game-tree`) — a per-scene patch
@@ -840,8 +836,7 @@ fn run_patch_reallive_bundle(args: &[String]) -> Result<(), Box<dyn std::error::
     )?;
 
     // Refuse to overwrite a non-empty target without --force. The error
-    // code is the documented patchback_target_nonempty Fatal from
-    // KAIFUU-211.
+    // code is the documented patchback_target_nonempty Fatal
     if target_root.exists() && !force {
         let nonempty = fs::read_dir(&target_root).is_ok_and(|mut entries| entries.next().is_some());
         if nonempty {
@@ -1104,7 +1099,6 @@ fn run_extract_rpgmaker_bundle(args: &[String]) -> Result<(), Box<dyn std::error
 /// RPG Maker MV/MZ bundle-driven patchback + `.kaifuu` delta producer
 /// (`patch --engine rpgmaker --source <www> --bundle <translated.json>
 /// --delta-output <delta.kaifuu> --patched-data-output <dir>`).
-///
 /// Reads the translated v0.2 bundle, then calls
 /// [`kaifuu_rpgmaker::produce_delta_package`]: it byte-surgically patches
 /// the source `www/data/*.json` literals into a freshly-materialized
@@ -1248,14 +1242,12 @@ fn resolve_reallive_game_root_via_vault(
     Ok(materialized.tree_root)
 }
 
-/// KAIFUU-177 — `kaifuu vault <capabilities|discover|materialize|materialize-by-sha>`.
-///
+/// `kaifuu vault <capabilities|discover|materialize|materialize-by-sha>`.
 /// Exposes the `kaifuu-vault-source` [`LocalCorpusSource`] trait to operators
 /// without writing Rust. Every subcommand runs against the configured vault
 /// root (`--vault-root <PATH>`, or the adapter's env/default resolution) and a
 /// scratch root (`--scratch-root <PATH>`) and can emit either a human summary
 /// (default) or canonical JSON (`--json`).
-///
 /// Read-only-vault + copyright posture: the command reports only identities,
 /// hashes, counts and redacted catalog/embedded metadata (ids, canonical
 /// ids, sha256, roles, engine, languages, paths). It NEVER reads or prints the
@@ -1629,8 +1621,7 @@ fn retention_policy_label(policy: kaifuu_vault_source::RetentionPolicy) -> &'sta
     }
 }
 
-/// Emit a scratch inventory (KAIFUU-179 `kaifuu vault inventory`).
-///
+/// Emit a scratch inventory (`kaifuu vault inventory`).
 /// Reports per-game id / size / mtime / content-digest ONLY — never raw game
 /// bytes. `--json` yields the canonical deterministic form.
 fn emit_scratch_inventory(
@@ -1658,7 +1649,7 @@ fn emit_scratch_inventory(
     Ok(())
 }
 
-/// Emit a prune plan/report (KAIFUU-179 `kaifuu vault prune`). In `--dry-run`
+/// Emit a prune plan/report (`kaifuu vault prune`). In `--dry-run`
 /// the plan describes what WOULD be pruned; otherwise it describes what was
 /// removed. Scratch-only — the vault is never a prune target.
 fn emit_prune_plan(
@@ -1779,7 +1770,6 @@ fn resolve_reallive_game_root(game_root: &Path) -> Result<PathBuf, Box<dyn std::
 
 /// Read `Gameexe.ini` bytes for the RealLive bridge, surfacing a structured
 /// kaifuu diagnostic instead of silently degrading to an empty inventory.
-///
 /// `Gameexe.ini` is mandatory for a RealLive title, so its absence is a real
 /// extraction failure rather than a legitimate empty-inventory case. A
 /// genuinely-absent file and an unreadable/corrupt one are distinguished so the
@@ -1836,7 +1826,7 @@ fn run_binary_patch_smoke_command(args: &[String]) -> Result<(), Box<dyn std::er
     let fixture_dir = flag_optional(args, "--fixture").map(PathBuf::from);
     let output_dir = PathBuf::from(flag(args, "--output")?);
 
-    // KAIFUU-187: `--inject-failure` is a test/debug-only rollback-testing
+    // `--inject-failure` is a test/debug-only rollback-testing
     // seam. It is only parsed when the failure-injection seam is compiled in
     // (`cfg(any(debug_assertions, feature = "failure-injection"))`). In a
     // release `--no-default-features` build the flag is NOT registered, so a
@@ -1876,15 +1866,13 @@ fn run_binary_patch_smoke_command(args: &[String]) -> Result<(), Box<dyn std::er
     }
 }
 
-/// KAIFUU-039 — `kaifuu rpgmaker encrypted-media-proof
-///                 --fixture <fixture.json> [--output <report.json>]`.
-///
+/// `kaifuu rpgmaker encrypted-media-proof
+/// --fixture <fixture.json> [--output <report.json>]`.
 /// Reads an RPG Maker MV/MZ encrypted-media-proof fixture, classifies each
 /// declared media asset (encrypted image / audio / video, plaintext,
 /// malformed-header, missing-asset, unknown-suffix), validates the
 /// `data/System.json` key-profile evidence, and writes a redacted
 /// readiness report.
-///
 /// Posture: research-only. The command never decrypts encrypted bytes,
 /// never persists decrypted media, never claims dialogue extraction or
 /// script-patch support based on media-key detection, and never
@@ -1978,10 +1966,9 @@ fn run_rpg_maker_command(args: &[String]) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
-/// KAIFUU-040 — `kaifuu wolf readiness --fixture <cases.json> [--output <report.json>]`.
-///
+/// `kaifuu wolf readiness --fixture <cases.json> [--output <report.json>]`.
 /// Produces the Wolf RPG Editor readiness proof: for each synthetic case it runs
-/// the KAIFUU-120 protection detector AND the KAIFUU-121 key/protection helper
+/// the protection detector AND the key/protection helper
 /// boundary over the embedded evidence and COMBINES their derived outputs into
 /// one per-capability-level readiness report. It reports the ACHIEVED level
 /// (identify / inventory / helper-required / extract / patch / unsupported)
@@ -2041,10 +2028,9 @@ fn run_wolf_readiness_command(args: &[String]) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
-/// KAIFUU-041 — `kaifuu bgi readiness --fixture <cases.json> [--output <report.json>]`.
-///
+/// `kaifuu bgi readiness --fixture <cases.json> [--output <report.json>]`.
 /// Produces the BGI/Ethornell readiness proof: for each synthetic case it runs
-/// the KAIFUU-126 archive/container detector AND the KAIFUU-127 scenario-bytecode
+/// the archive/container detector AND the scenario-bytecode
 /// parser over the embedded evidence and COMBINES their derived outputs into one
 /// per-capability-level readiness report. It reports the ACHIEVED level
 /// (unsupported / identify / inventory / extract / patch) mechanically per the
@@ -2147,9 +2133,8 @@ fn run_siglus_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
-/// KAIFUU-069 — `kaifuu siglus static-key --fixture <manifest>
+/// `kaifuu siglus static-key --fixture <manifest>
 /// [--output <report.json>]`.
-///
 /// Runs in-process Siglus static-key discovery for every entry in the manifest:
 /// each synthetic stub (or scoped local executable + `Gameexe.dat`) is
 /// statically analysed in-process — never shelled out — and any recovered
@@ -2203,26 +2188,23 @@ fn run_siglus_static_key(args: &[String]) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
-/// KAIFUU-015 — `kaifuu siglus profile-proof --fixture <synthetic-profile.json>
+/// `kaifuu siglus profile-proof --fixture <synthetic-profile.json>
 /// --out <report.json>`.
-///
 /// COMPOSES the Siglus detector, known-key key-profile, parser-boundary, and
 /// redacted compat-profile validation slices into one honestly-scoped proof
 /// report over a SYNTHETIC profile fixture. It runs each real slice in-process:
-///
 /// 1. the `SiglusProfileDetectorAdapter` over the fixture's `detectorGameDir` →
 ///    detector evidence;
 /// 2. `run_siglus_known_key_parser_boundary_smoke` over the fixture's synthetic
 ///    `Scene.pck` / `Gameexe.dat` / key-request → parser profile id + key-refs;
 /// 3. `validate_claimed_support_tuple` over the fixture's compat tuple →
-///    capability-level honesty (KAIFUU-105).
-///
-/// The composed report records detector evidence, key-profile id, parser-profile
-/// id, capability level, and a redaction summary. Before the artifact is
-/// written it is deep-scanned (KAIFUU-036/094): a seeded raw key, helper dump,
-/// private path, or decrypted private text makes the composition fail loud and
-/// nothing is persisted. The command claims NO broad commercial Siglus
-/// compatibility — the extract/decrypt/repack core is NotImplemented.
+///    capability-level honesty.
+///    The composed report records detector evidence, key-profile id, parser-profile
+///    id, capability level, and a redaction summary. Before the artifact is
+///    written it is deep-scanned: a seeded raw key, helper dump
+///    private path, or decrypted private text makes the composition fail loud and
+///    nothing is persisted. The command claims NO broad commercial Siglus
+///    compatibility — the extract/decrypt/repack core is NotImplemented.
 fn run_siglus_profile_proof(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let fixture_path = PathBuf::from(flag(args, "--fixture")?);
     let out = PathBuf::from(flag(args, "--out")?);
@@ -2231,14 +2213,12 @@ fn run_siglus_profile_proof(args: &[String]) -> Result<(), Box<dyn std::error::E
         .parent()
         .ok_or("fixture path must have a parent directory")?;
 
-    // --- Detector slice -----------------------------------------------------
     let detector_game_dir = fixture_dir.join(&fixture.detector_game_dir);
     let detector = kaifuu_engine_fixture::SiglusProfileDetectorAdapter;
     let detection = detector.detect(kaifuu_core::DetectRequest {
         game_dir: &detector_game_dir,
     })?;
 
-    // --- Parser-boundary slice ---------------------------------------------
     let scene_path = fixture_dir.join(&fixture.parser.scene);
     let gameexe_path = fixture_dir.join(&fixture.parser.gameexe);
     let key_request_path = fixture_dir.join(&fixture.parser.key_request);
@@ -2252,13 +2232,11 @@ fn run_siglus_profile_proof(args: &[String]) -> Result<(), Box<dyn std::error::E
             variant,
         })?;
 
-    // --- Redacted compat-profile validation slice (KAIFUU-105) -------------
     let compat_tuple_path = fixture_dir.join(&fixture.compat_tuple);
     let compat_tuple: kaifuu_core::compat_profile::ClaimedSupportTuple =
         read_json(&compat_tuple_path)?;
     let compat_entry = kaifuu_core::compat_profile::validate_claimed_support_tuple(&compat_tuple);
 
-    // --- Compose (fail-loud deep-scan happens inside) ----------------------
     let report =
         kaifuu_core::compose_siglus_profile_proof(kaifuu_core::SiglusProfileProofComposeInput {
             fixture: &fixture,
@@ -2281,30 +2259,26 @@ fn run_siglus_profile_proof(args: &[String]) -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
-/// KAIFUU-038 / KAIFUU-098 — `kaifuu xp3` subcommands.
-///
-/// `profile-proof` (KAIFUU-038): reads a KiriKiri XP3 profile-proof
+/// `kaifuu xp3` subcommands.
+/// `profile-proof`: reads a KiriKiri XP3 profile-proof
 /// fixture, classifies the referenced archive bytes (plain / encrypted
-/// / helper-required / unsupported-protected-executable), and writes a
+/// helper-required / unsupported-protected-executable), and writes a
 /// redacted proof report. The command never decrypts encrypted bytes,
 /// never extracts payloads, and never claims patch-back on anything
 /// other than plain XP3.
-///
-/// `unpack` / `pack` / `replace` / `writer-capability` (KAIFUU-098):
+/// `unpack` / `pack` / `replace` / `writer-capability`
 /// expose the deterministic plain-XP3 writer surface. `unpack` lays an
 /// archive out under a directory (`manifest.json` + raw segment
 /// payloads), `pack` rebuilds an archive from such a directory, and
 /// `replace` rewrites a single allowed (uncompressed, single-segment)
 /// entry's payload — round-tripping any of these against an unchanged
-/// plain fixture produces byte-identical output (KAIFUU-098 determinism
+/// plain fixture produces byte-identical output (determinism
 /// guarantee). Each non-plain input (encrypted, helper-required,
 /// protected-executable, compressed-replacement) is rejected with a
 /// `kaifuu.*` semantic diagnostic before any write side effect.
-///
 /// `writer-capability` reports the writer's capability tuple
 /// (`patch_back_mode=archive_rebuild_plain`) for orchestrator
 /// inspection.
-///
 /// Exits non-zero on any blocking diagnostic.
 fn run_xp3_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     match positional(args, 1)? {
@@ -2397,7 +2371,7 @@ fn run_xp3_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             );
         }
         "verify" => {
-            // KAIFUU-098 verification surface: read both the source
+            // verification surface: read both the source
             // archive and the rebuilt directory's pack output, then
             // confirm byte-identity. Used by the CI determinism gate.
             let source_path = PathBuf::from(flag(args, "--source")?);
@@ -2466,9 +2440,8 @@ fn run_xp3_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// KAIFUU-072 — `kaifuu xp3 crypt-smoke --fixture <fixture.json>
+/// `kaifuu xp3 crypt-smoke --fixture <fixture.json>
 /// --manifest <manifest.json> [--output <report.json>]`.
-///
 /// Runs the full Kaifuu chain on an encrypted KiriKiri XP3 archive through a
 /// keyRef-bound crypt profile: detect the container by magic-byte signature,
 /// resolve the crypt profile + decrypt key through the keyRef, decrypt +
@@ -2508,9 +2481,8 @@ fn run_xp3_crypt_chain_smoke(args: &[String]) -> Result<(), Box<dyn std::error::
     Ok(())
 }
 
-/// KAIFUU-054 — `kaifuu xp3 capability-profile --fixture <manifest>
+/// `kaifuu xp3 capability-profile --fixture <manifest>
 /// [--output <report.json>]`.
-///
 /// Generates (and inseparably validates) a KiriKiri XP3 capability profile
 /// from the manifest's detector / key-helper / crypt-profile / archive fixture
 /// evidence. The capability tuple of every entry is recomputed from evidence:
@@ -2563,9 +2535,8 @@ fn run_xp3_capability_profile(args: &[String]) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
-/// KAIFUU-103 — `kaifuu readiness validate [--fixtures-dir <dir>]
+/// `kaifuu readiness validate [--fixtures-dir <dir>]
 /// [--output <report.json>]`.
-///
 /// Reads every `*.profile.json` packed-engine readiness profile under
 /// `--fixtures-dir` (default `fixtures/kaifuu/packed-engine`), validates each
 /// against its engine family's transform/capability spec, and writes the
@@ -2631,11 +2602,10 @@ fn run_readiness_validate(args: &[String]) -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-/// KAIFUU-104 — `kaifuu readiness alpha-encrypted [--fixtures-dir <dir>]
+/// `kaifuu readiness alpha-encrypted [--fixtures-dir <dir>]
 /// [--output <report.json>] [--summary-output <summary.json>]`.
-///
 /// Generates public alpha encrypted-readiness EVIDENCE by COMPOSING the
-/// KAIFUU-103 packed-engine readiness validator output over the
+/// packed-engine readiness validator output over the
 /// alpha-encrypted fixture directory (default `fixtures/kaifuu/alpha-encrypted`)
 /// with the synthetic patch artifacts in the same directory. The full report
 /// (profile id, fixture id, engine family, surface ids, helper id, key ref,
@@ -2645,7 +2615,7 @@ fn run_readiness_validate(args: &[String]) -> Result<(), Box<dyn std::error::Err
 /// summary to `--summary-output` (default
 /// `target/kaifuu/alpha-encrypted-readiness.summary.json`). A patch-capable
 /// profile-ready entry without a patch result, a readiness-only entry that
-/// claims one, a KAIFUU-103 validation failure, a dangling patch artifact, or
+/// claims one, a validation failure, a dangling patch artifact, or
 /// an empty fixture directory each exit non-zero with structured finding codes.
 fn run_readiness_alpha_encrypted(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let fixtures_dir = PathBuf::from(
@@ -2702,9 +2672,8 @@ fn run_readiness_alpha_encrypted(args: &[String]) -> Result<(), Box<dyn std::err
     Ok(())
 }
 
-/// KAIFUU-056 — `kaifuu readiness alpha-profile [--fixtures-dir <dir>]
+/// `kaifuu readiness alpha-profile [--fixtures-dir <dir>]
 /// [--output <report.json>] [--summary-output <summary.json>]`.
-///
 /// Validates the alpha packed/encrypted-engine readiness-PROFILE subset (the
 /// Siglus / KiriKiri XP3 / Wolf / RGSS3 / BGI seeds by default) and renders the
 /// alpha capability-level summary. Writes a detailed, redacted validation report
@@ -2774,9 +2743,8 @@ fn run_readiness_alpha_profile(args: &[String]) -> Result<(), Box<dyn std::error
     Ok(())
 }
 
-/// KAIFUU-071 — `kaifuu xp3 plain-smoke --fixture <descriptor> --out
+/// `kaifuu xp3 plain-smoke --fixture <descriptor> --out
 /// <report.json>`.
-///
 /// Inventories a public plain-XP3 archive and deterministically rebuilds it
 /// through the SHARED reader/writer path
 /// ([`kaifuu_core::read_plain_xp3_inventory`] for member hashes,
@@ -2829,9 +2797,8 @@ fn run_xp3_plain_smoke(args: &[String]) -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
-/// KAIFUU-171 — `kaifuu xp3 contract-scaffold --fixture <descriptor>
+/// `kaifuu xp3 contract-scaffold --fixture <descriptor>
 /// [--output <report.json>]`.
-///
 /// Runs the end-to-end encrypted-XP3 contract scaffolding harness
 /// (`kaifuu_delta::run_encrypted_xp3_contract_scaffold`) against the synthetic
 /// public fixture, exercising detect -> key resolution -> extract -> patch ->
@@ -3098,7 +3065,7 @@ fn run_helper_registry_command(args: &[String]) -> Result<(), Box<dyn std::error
                 })
                 .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
             // Bind the validated bytes to execution through a trusted staging
-            // COPY (KAIFUU-164): the helper binary is copied into a fresh
+            // COPY: the helper binary is copied into a fresh
             // Kaifuu-owned staging directory the untrusted source cannot write,
             // the hash is validated against the STAGED bytes, and the staged
             // copy is the execution reference — a swap of `executable_path`
@@ -3243,7 +3210,7 @@ fn run_wine_proton_dry_run_command(args: &[String]) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-/// Resolves a native-Windows dry-run (KAIFUU-129): records the platform adapter
+/// Resolves a native-Windows dry-run: records the platform adapter
 /// (native-windows), helper binary id, command argv + CommandLineToArgvW-quoted
 /// command line, working-directory policy, profile id, and redaction policy
 /// WITHOUT launching untrusted game code. No Windows host is required — the
@@ -3279,7 +3246,7 @@ fn run_native_windows_dry_run_command(args: &[String]) -> Result<(), Box<dyn std
     Ok(())
 }
 
-/// Emits the native-Windows CommandLineToArgvW quoting fixture (KAIFUU-129): a
+/// Emits the native-Windows CommandLineToArgvW quoting fixture: a
 /// resolved descriptor showing correct quoting of args with spaces, quotes, and
 /// backslashes. Every case is proven to round-trip (quote -> command line ->
 /// parse recovers the original argv); the fixture never launches anything.
@@ -3703,9 +3670,8 @@ enum DetectOutcome<'a> {
     Partial(DetectionResult),
 }
 
-/// Implements the KAIFUU-193 partial gate, with optional KAIFUU-156
+/// Implements the partial gate, with optional
 /// diagnostic routing for commands that can faithfully expose AdapterFailure.
-///
 /// Order of precedence:
 /// 1. Any adapter that returns `detected == true` (highest-priority
 ///    Matched evidence wins by registry ordering, like `AdapterRegistry::detect`).
@@ -3774,7 +3740,7 @@ fn matched_evidence_count(detection: &DetectionResult) -> usize {
         .count()
 }
 
-/// Build the KAIFUU-193 PartialAdapterReport for a detection that did not
+/// Build the PartialAdapterReport for a detection that did not
 /// reach `detected == true`. Routes by adapter id to a partial extractor
 /// that knows how to read the surviving bytes (RealLive: parse the
 /// SEEN.TXT envelope and count scene-index entries). Adapter families that
@@ -3821,12 +3787,12 @@ fn build_generic_partial_report(
     )
 }
 
-/// RealLive partial path. Parses the SEEN.TXT envelope (KAIFUU-188)
+/// RealLive partial path. Parses the SEEN.TXT envelope
 /// directly to count populated scene-index entries, classifies the
 /// Gameexe.ini key-catalogue mismatch into a P2 diagnostic, and surfaces
 /// SEEN.TXT envelope failures as P0. Output `inventory.entries` is the
 /// scene-count from `kaifuu_reallive::parse_archive` — non-zero on the
-/// canonical KAIFUU-193 case (envelope OK, Gameexe.ini key mismatch).
+/// canonical case (envelope OK, Gameexe.ini key mismatch).
 fn build_reallive_partial_report(
     detection: &DetectionResult,
     game_dir: &Path,
@@ -3895,7 +3861,7 @@ fn build_reallive_partial_report(
 
     // Gameexe.ini key-catalogue mismatch: emitted whenever the
     // `reallive_gameexe_ini_keys` evidence row is Missing/Invalid. P2 by
-    // design — Gameexe.ini coverage is a KAIFUU-190 follow-up, not a
+    // design — Gameexe.ini coverage is a follow-up, not a
     // contract violation. Apply/verify must still treat the partial
     // bundle as untrusted (downstream gates use `partial: true`), but
     // P2 lets `verify` exit 0 so dashboards ingest the report instead
@@ -4300,26 +4266,23 @@ fn promote_patch_staging_dir(staging_output: &Path, output: &Path) -> KaifuuResu
     promote_staged_directory_no_clobber(staging_output, output, "patch output directory")
 }
 
-/// KAIFUU-060 — `kaifuu compat-evidence` — the claimed-support compatibility
+/// `kaifuu compat-evidence` — the claimed-support compatibility
 /// EVIDENCE integration command.
-///
 /// It produces one suite-readable [`kaifuu_core::compat_evidence::CompatEvidenceReport`]
-/// that INTEGRATES the three existing sources for a KAIFUU-106 reproduction
-/// bundle: the KAIFUU-105 claimed-support tuple validation (engine family,
+/// that INTEGRATES the three existing sources for a reproduction
+/// bundle: the claimed-support tuple validation (engine family
 /// variant, container, crypto, codec, surface, patch-back mode, profile/fixture
 /// id, secret-requirement ids, diagnostics), the redacted repro-bundle index
-/// (KAIFUU-106), and the KAIFUU-107 regression verdict per claim. The written
+/// , and the regression verdict per claim. The written
 /// artifact is always the REDACTED form (ref-only ids/hashes/counts).
-///
 /// Two modes:
-///   `--fixture`                       integrate the committed SYNTHETIC
-///                                     fixtures (no private inputs) — emits the
-///                                     golden shape; and
-///   `--bundle <p> --catalogue <p> --baseline <p>`
-///                                     integrate real inputs read from JSON.
+/// `--fixture` integrate the committed SYNTHETIC
+/// fixtures (no private inputs) — emits the
+/// golden shape; and
+/// `--bundle <p> --catalogue <p> --baseline <p>`
+/// integrate real inputs read from JSON.
 /// Both require `--output <p>`.
-/// KAIFUU-026 — `asset-ocr <asset.png> --output <report.json>`.
-///
+/// `asset-ocr <asset.png> --output <report.json>`.
 /// Reads a PUBLIC image/UI asset (an uncompressed grayscale PNG fixture) and
 /// emits schema-valid text regions with provenance + stable content hashes.
 /// Uncertain / unrecognized regions are surfaced as findings (source =
@@ -4425,7 +4388,6 @@ mod tests {
 
     /// Resolve this crate's manifest directory for locating tracked test
     /// fixtures.
-    ///
     /// `env!("CARGO_MANIFEST_DIR")` is baked into the binary at COMPILE time, so
     /// a test binary reused from a different (since-removed) worktree points
     /// fixture reads at a dead path and fails with an opaque
@@ -4443,11 +4405,9 @@ mod tests {
     /// BY-ID through the read-only vault adapter and yields a `Seen.txt` whose
     /// per-file sha256 equals the known direct-path bytes. Env-gated + ignored;
     /// run against the real vault with:
-    ///
     /// ```text
     /// ITOTORI_VAULT_ROOT=/archive/vault \
-    ///   cargo test -p kaifuu-cli vault_sourced_extract -- --ignored --nocapture
-    /// ```
+    /// cargo test -p kaifuu-cli vault_sourced_extract -- --ignored --nocapture
     #[test]
     #[ignore = "requires ITOTORI_VAULT_ROOT=/archive/vault (live read-only vault)"]
     fn vault_sourced_extract_resolves_sweetie_hd_by_id_to_known_seen_bytes() {
@@ -4700,7 +4660,7 @@ mod tests {
 
     /// One synthetic scene whose bytecode carries an UNCATALOGUED in-space
     /// command (`module_type 1, module_id 99, opcode 999`) — the generic
-    /// `Command` blob that fails `is_recognized()` — alongside ordinary
+    /// `Command` blob that fails `is_recognized` — alongside ordinary
     /// recognised elements. This is the decode-honesty gate's failure fixture.
     fn synthetic_seen_with_unknown_command() -> Vec<u8> {
         fn command_header(module_type: u8, module_id: u8, opcode: u16, argc: u8) -> [u8; 8] {
@@ -4866,8 +4826,8 @@ mod tests {
     /// (`whole-seen-structure.json`) is regenerated on the UTSUSHI side (kaifuu
     /// no longer produces structure), by the `utsushi-cli` structure fixture
     /// generator. Regenerate with:
-    ///   `cargo test -p kaifuu-cli --bin kaifuu-cli \
-    ///      regenerate_whole_seen_ts_driver_fixture -- --ignored`
+    /// `cargo test -p kaifuu-cli --bin kaifuu-cli \
+    /// regenerate_whole_seen_ts_driver_fixture -- --ignored`
     #[test]
     #[ignore = "fixture generator; run manually to regenerate the TS driver bridge fixture"]
     fn regenerate_whole_seen_ts_driver_fixture() {
@@ -5000,7 +4960,7 @@ mod tests {
                     "claimed support must list {field}: {support}"
                 );
             }
-            // KAIFUU-106 index + KAIFUU-107 verdict are wired.
+            // index + verdict are wired.
             assert!(support["reproBundleIndex"]["fixtureId"].is_string());
             assert_eq!(support["latestRegression"]["status"], "passed");
         }
@@ -5013,7 +4973,7 @@ mod tests {
 
     #[test]
     fn asset_ocr_public_fixture_matches_committed_golden() {
-        // KAIFUU-026: the public fixture command emits schema-valid text regions
+        // the public fixture command emits schema-valid text regions
         // with provenance + stable content hashes; the output is byte-pinned to a
         // committed golden. Set KAIFUU_026_REGEN=1 to rewrite the golden.
         let root = temp_dir("asset-ocr-public-fixture");
@@ -5384,7 +5344,7 @@ mod tests {
             resolution["intendedCommand"]["launchesUntrustedCode"],
             false
         );
-        // KAIFUU-085 execution object carries no launch command; no raw secret.
+        // execution object carries no launch command; no raw secret.
         let serialized = fs::read_to_string(&output).unwrap();
         assert!(!serialized.contains("\"command\""));
         assert!(!serialized.contains("\"argv\""));
@@ -5553,7 +5513,7 @@ mod tests {
             resolution["intendedCommand"]["launchesUntrustedCode"],
             false
         );
-        // The KAIFUU-085 execution object carries no launch command; the quoted
+        // The execution object carries no launch command; the quoted
         // descriptor lives under `commandLine`, not `command`/`argv`/`env`.
         let serialized = fs::read_to_string(&output).unwrap();
         assert!(!serialized.contains("\"command\""));
@@ -6189,7 +6149,7 @@ mod tests {
 
     #[test]
     fn key_import_usage_steers_away_from_command_line_hex_key() {
-        // KAIFUU-155: the key-import usage text must not advertise `--key-hex`
+        // the key-import usage text must not advertise `--key-hex`
         // as the primary manual-entry path (a hex key on the command line leaks
         // into shell history + the process list). It must recommend the
         // shell-history-safe `--key-file` path, warn about the hex hazard, and
@@ -6718,7 +6678,7 @@ mod tests {
                 CapabilityReport::supported(Capability::NonTextSurfaceExtraction),
                 CapabilityReport::supported(Capability::ProfileGeneration),
             ],
-            // KAIFUU-053: full-rung matrix mirrors the per-Capability
+            // full-rung matrix mirrors the per-Capability
             // reports above; declared explicitly so the registry gate
             // sees a Supported claim at every rung.
             AdapterCapabilityMatrix::up_to(
@@ -6971,7 +6931,7 @@ mod tests {
                         "synthetic preflight requires crypto support",
                     ),
                 ],
-                // KAIFUU-053: identify-only matrix — this synthetic
+                // identify-only matrix — this synthetic
                 // preflight fixture stops at Identify, so the registry
                 // gate must never bubble it up to Inventory/Extract/Patch.
                 AdapterCapabilityMatrix::identify_only(
@@ -7083,7 +7043,7 @@ mod tests {
                     CapabilityReport::supported(Capability::CodecAccess),
                     CapabilityReport::supported(Capability::PatchBack),
                 ],
-                // KAIFUU-053: identify-only matrix — Patching reports as
+                // identify-only matrix — Patching reports as
                 // Supported but the access-contract `RequiresUserInput`
                 // status keeps the registry gate strict.
                 AdapterCapabilityMatrix::identify_only(
@@ -7205,7 +7165,7 @@ mod tests {
                     CapabilityReport::supported(Capability::Detection),
                     CapabilityReport::supported(Capability::Patching),
                 ],
-                // KAIFUU-053: identify-only matrix — the malicious-preflight
+                // identify-only matrix — the malicious-preflight
                 // fixture intentionally has no real inventory/extract/patch
                 // path despite a Patching capability report.
                 AdapterCapabilityMatrix::identify_only(
@@ -7306,7 +7266,7 @@ mod tests {
                     CapabilityReport::supported(Capability::Detection),
                     CapabilityReport::supported(Capability::Patching),
                 ],
-                // KAIFUU-053: identify-only matrix — this test adapter
+                // identify-only matrix — this test adapter
                 // simulates filesystem failure during patch and never
                 // promotes itself in the registry-side gate.
                 AdapterCapabilityMatrix::identify_only(
@@ -7437,7 +7397,7 @@ mod tests {
                         "requires file=%USERPROFILE%\\Games\\SecretRoute\\patcher.exe",
                     ),
                 ],
-                // KAIFUU-053: this fixture has no Detection report so even
+                // this fixture has no Detection report so even
                 // Identify is Unsupported at the registry gate; the fully
                 // unsupported matrix exercises the redaction pipeline only.
                 AdapterCapabilityMatrix::new(
@@ -7589,7 +7549,7 @@ mod tests {
                     CapabilityReport::supported(Capability::ProfileGeneration),
                     CapabilityReport::supported(Capability::Patching),
                 ],
-                // KAIFUU-053: identify-only matrix — exercises the
+                // identify-only matrix — exercises the
                 // missing-profile-id path; the registry gate must stay
                 // strict despite the per-Capability reports.
                 AdapterCapabilityMatrix::identify_only(
@@ -8222,7 +8182,7 @@ mod tests {
             delta_path.to_str().unwrap(),
         ]);
         let delta: serde_json::Value = read_json(&delta_path).unwrap();
-        // KAIFUU-238 bumped the kaifuu-delta-package schema from 0.2.0 to
+        // bumped the kaifuu-delta-package schema from 0.2.0 to
         // 0.3.0 to add the required `sourceProvenance` envelope. The
         // round-trip diff/apply still works when no --source-extract is
         // passed; the resulting `sourceProvenance.partial` is false.
@@ -8983,7 +8943,6 @@ mod tests {
     /// test seeds a source tree with the real-shape `REALLIVEDATA/Seen.txt`
     /// PLUS two large siblings (`voice/`, `image/`) standing in for the
     /// ~5.7GB of assets a real title carries, runs the patch, and asserts:
-    ///
     /// - the ONLY file materialised under the target is
     ///   `REALLIVEDATA/Seen.txt` (no sibling was copied — the filesystem
     ///   footprint is exactly the target archive, so a per-scene patch is
@@ -9053,7 +9012,6 @@ mod tests {
         )
         .expect("patch must succeed");
 
-        // ---- Only the target archive was materialised. ----
         let target_seen_path = target_root.join("REALLIVEDATA").join("Seen.txt");
         assert!(
             target_seen_path.is_file(),
@@ -9095,7 +9053,6 @@ mod tests {
             "image sibling tree must not be copied to the target"
         );
 
-        // ---- Byte-correct patchback: target == canonical apply output. ----
         let target_seen_bytes = fs::read(&target_seen_path).unwrap();
         let translated =
             kaifuu_reallive::TranslatedBundleV02::from_json(&bundle_value).expect("bundle parses");
@@ -9117,7 +9074,6 @@ mod tests {
         let tgt_index = kaifuu_reallive::parse_archive(&target_seen_bytes).unwrap();
         assert_eq!(tgt_index.entries.len(), src_index.entries.len());
 
-        // ---- Source tree untouched. ----
         assert_eq!(
             sha256_hash_bytes(&fs::read(&source_seen_path).unwrap()),
             source_seen_hash_before,
@@ -10455,7 +10411,7 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
-    /// Build a KAIFUU-015 synthetic profile-proof fixture into `dir`, wiring the
+    /// Build a synthetic profile-proof fixture into `dir`, wiring the
     /// composed slices at absolute paths to the committed synthetic fixtures. The
     /// optional `seed_key_profile_id` overrides `keyProfile.keyProfileId` so the
     /// deep-scan reject tests can inject secret-shaped material; `capability_level`
@@ -10881,9 +10837,9 @@ mod tests {
                 "RealLive adapter missing unsupported {unsupported:?}"
             );
         }
-        // Patching is Limited per KAIFUU-174 (§3.3): length-changing Scene/SEEN
+        // Patching is Limited per (§3.3): length-changing Scene/SEEN
         // text-slot replacement, but limited to one scene-scoped bundle per
-        // call and to the configured text scope (not image-overlaid .g00 text).
+        // call and to the configured text scope (not image-overlaid.g00 text).
         assert!(
             reallive_caps.reports.iter().any(|report| {
                 report.capability == Capability::Patching
@@ -11323,7 +11279,7 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
-    /// KAIFUU-156 P1: variant string without adapter opt-in must stay on the
+    /// P1: variant string without adapter opt-in must stay on the
     /// partial / no-adapter path; profile and inventory must never run.
     #[test]
     fn undetected_variant_without_diagnostic_opt_in_never_invokes_profile_or_inventory() {
@@ -11982,9 +11938,7 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
-    // =========================================================================
-    // KAIFUU-038 — `kaifuu xp3 profile-proof` CLI tests
-    // =========================================================================
+    // `kaifuu xp3 profile-proof` CLI tests
 
     fn kirikiri_fixture_path(relative_path: &str) -> PathBuf {
         test_manifest_dir()
@@ -12026,7 +11980,7 @@ mod tests {
 
     #[test]
     fn xp3_plain_smoke_command_passes_and_writes_report() {
-        // KAIFUU-071: inventory + deterministic rebuild through the shared
+        // inventory + deterministic rebuild through the shared
         // reader/writer path; negatives fail before writes citing member ids.
         let root = temp_dir("xp3-plain-smoke");
         let output = root.join("plain-xp3-smoke.json");
@@ -12242,22 +12196,21 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
-    /// KAIFUU-038 multi-game validation — exercise the proof against real
+    /// multi-game validation — exercise the proof against real
     /// KiriKiri XP3 bytes when optional corpus roots are configured.
     /// Following the "multi-game validation" memory rule and
     /// the spec's `KiriKiri research-only anchor; no vendored decryption
     /// code` load-bearing rule: this test reads, classifies, and emits
     /// the redacted proof; it never decrypts, never extracts, and never
     /// claims patch-back on archives whose index cannot be inventoried by
-    /// the KAIFUU-095 plain reader.
-    ///
+    /// the plain reader.
     /// The test no-ops when `ITOTORI_REAL_GAME_ROOT_KIRIKIRI_PLAIN`
     /// and `ITOTORI_REAL_GAME_ROOT_KIRIKIRI_ENCRYPTED` are unset; public
     /// CI is satisfied by the synthetic fixtures above.
     #[test]
     fn xp3_profile_proof_command_real_bytes_kirikiri_corpus_when_available() {
         // Two optional real KiriKiri game roots. Both wear the XP3 plain
-        // magic, but the KAIFUU-095 plain inventory reader only handles
+        // magic, but the plain inventory reader only handles
         // flag=0 (plain index encoding) and rejects everything else as
         // UnsupportedEncrypted. In practice these games carry compressed
         // or encrypted directories, so the proof routes them to the
@@ -12315,7 +12268,7 @@ mod tests {
 
             let report: serde_json::Value = read_json(&output).unwrap();
             // The proof must never claim patch-back on a real-bytes
-            // archive whose index the KAIFUU-095 reader cannot inventory.
+            // archive whose index the reader cannot inventory.
             assert_ne!(
                 report["patchCapabilityLevel"], "patch_back",
                 "configured real-bytes archive must never claim patch_back"
@@ -12341,14 +12294,12 @@ mod tests {
 
         // Public CI without the optional corpus is fine — the synthetic
         // tests cover correctness; this test only adds *additional* signal
-        // when real bytes are available. Logging via println!() makes the
+        // when real bytes are available. Logging via println! makes the
         // exercised count visible in `cargo test -- --nocapture`.
         println!("KAIFUU-038 real-bytes corpus exercised {exercised} game(s)");
     }
 
-    // =========================================================================
-    // KAIFUU-098 — Plain XP3 deterministic writer CLI tests
-    // =========================================================================
+    // Plain XP3 deterministic writer CLI tests
 
     fn write_real_plain_xp3_fixture(dir: &Path) -> PathBuf {
         let source = kirikiri_fixture_path("plain.xp3");
@@ -12470,7 +12421,7 @@ mod tests {
 
     #[test]
     fn xp3_unpack_refuses_encrypted_fixture_with_semantic_diagnostic() {
-        // Acceptance criterion: "Encrypted ... profiles fail before
+        // Acceptance criterion: "Encrypted... profiles fail before
         // writes with semantic diagnostics."
         let root = temp_dir("xp3-unpack-encrypted-refusal");
         let encrypted = kirikiri_fixture_path("encrypted.xp3");
@@ -12618,7 +12569,6 @@ mod tests {
         assert_eq!(value["adapterId"], kaifuu_core::PLAIN_XP3_WRITER_ADAPTER_ID);
         let _ = fs::remove_dir_all(root);
     }
-    // ----- KAIFUU-039 — RPG Maker MV/MZ encrypted-media readiness CLI -----
 
     fn rpgmaker_fixture_path(relative_path: &str) -> PathBuf {
         test_manifest_dir()
@@ -12823,7 +12773,7 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
-    /// KAIFUU-039 multi-game validation — exercise the proof against
+    /// multi-game validation — exercise the proof against
     /// real RPG Maker MV/MZ media bytes when an optional corpus root is
     /// configured. Following the "multi-game validation"
     /// memory rule and the spec's research-only anchor (commercial
@@ -12831,7 +12781,6 @@ mod tests {
     /// test reads, classifies, and emits the redacted readiness report;
     /// it never decrypts, never extracts, and never claims patch_back
     /// or script capability on real bytes.
-    ///
     /// The test no-ops when `ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ`
     /// is unset; the synthetic fixtures above are the load-bearing
     /// correctness coverage.
@@ -12964,7 +12913,7 @@ mod tests {
     /// `kaifuu.reallive.gameexe_unreadable` diagnostic rather than silently
     /// degrading to an empty inventory, and a genuinely-absent file must be
     /// distinguished as `kaifuu.reallive.gameexe_absent`. Both replace the
-    /// pre-fix `unwrap_or_default()` silent fallback that produced a
+    /// pre-fix `unwrap_or_default` silent fallback that produced a
     /// structurally-valid-but-wrong bundle.
     #[cfg(unix)]
     #[test]

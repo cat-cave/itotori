@@ -1,5 +1,4 @@
 //! Live Siglus corpus proof against the real read-only `/archive/vault`.
-//!
 //! Re-scope note: the parent node (`siglus-01-disc-recon`) originally assumed
 //! Karetoshi + Gamekoi were only available as copy-protected DVD images
 //! (`.mds`/`.mdf`), which are unrealizable under the no-Wine / no-shell-out
@@ -9,15 +8,11 @@
 //! the same materialize path the RealLive corpus uses: resolve each title BY-ID
 //! and extract its plaintext Siglus game tree into scratch, strictly read-only
 //! against the vault.
-//!
 //! `#[ignore]`d by default; run explicitly with the live vault:
-//!
 //! ```text
 //! ITOTORI_VAULT_ROOT=/archive/vault \
-//!   cargo test -p kaifuu-vault-source \
-//!   --test live_vault_siglus_test -- --ignored --nocapture
-//! ```
-//!
+//! cargo test -p kaifuu-vault-source \
+//! --test live_vault_siglus_test -- --ignored --nocapture
 //! Materializes both Siglus portable installs BY-ID, confirms the plaintext
 //! Siglus tree (`Scene.pck` + `Gameexe.dat` + `SiglusEngine.exe`), and records
 //! a sanitized manifest (file counts, sizes, sha256 prefixes only). It NEVER
@@ -36,7 +31,7 @@ use kaifuu_vault_source::{
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-/// "Karetoshi" — Kareshi Inai Reki = Nenrei ... (portable install, VJ007329).
+/// "Karetoshi" — Kareshi Inai Reki = Nenrei... (portable install, VJ007329).
 const KARETOSHI_CANONICAL_ID: &str =
     "kareshi-inai-reki-nenrei-ja-doushite-ikenai-no-yo-sei-torea-gakuen-ren-ai-kinshi-rei.vj007329";
 /// "Gamekoi" — Game ~ Eroge Mitai na Suteki na Koi ga Shitai (portable, VJ015134).

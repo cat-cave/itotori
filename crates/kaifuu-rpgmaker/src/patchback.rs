@@ -1,5 +1,4 @@
 //! RPG Maker MV/MZ patchback + `.kaifuu` delta producer.
-//!
 //! The analogue of `crates/kaifuu-reallive/src/patchback/bundle_driven.rs`
 //! for the JSON-surface engine family. Given a translated v0.2
 //! [`TranslatedBundleV02`] (the extraction bundle augmented with one
@@ -7,23 +6,18 @@
 //! back into `www/data/*.json` at exactly the JSON-pointer surface the
 //! extractor keyed, then emits a `kaifuu-delta` package over the data
 //! tree.
-//!
 //! # Byte-fidelity (PROJECT LAW)
-//!
 //! Files are patched by **byte-surgical splice**, never by re-serializing:
 //! [`crate::json_locate`] walks the raw bytes to the byte span of the
 //! target string literal and only that span is replaced. Consequences:
-//!
 //! - An UNTRANSLATED bundle (`target == source`) produces **zero** byte
 //!   edits — every unit is a no-op — so the file (and the delta) is
 //!   byte-identical to the source. No structural / whitespace / key-order
-//!   / escaping churn.
+//!   escaping churn.
 //! - A translated patch changes only the targeted string literals; every
 //!   other byte (structure, key order, untouched strings) is preserved
 //!   verbatim.
-//!
 //! # No silent corruption
-//!
 //! Before any splice, each edit is gated against the source the bundle was
 //! extracted from: the located literal is decoded and SHA-256-hashed, and
 //! a mismatch with the unit's `sourceHash` is a typed
@@ -140,7 +134,6 @@ impl From<BridgeContractValidationError> for PatchbackError {
 }
 
 /// Named string-escaping choice for the patched JSON bytes.
-///
 /// The RPG Maker MV/MZ editor serializes `www/data/*.json` ASCII-safe:
 /// every non-ASCII codepoint is `\uXXXX`-escaped. Naming the choice in
 /// code (rather than defaulting it silently) is the
@@ -256,8 +249,7 @@ impl TranslatedBundleV02 {
 
 /// One resolved edit: the JSON-pointer tokens, the target text, and the
 /// source-hash gate, all attributed to a single `www/data/*.json` file.
-///
-/// `pub(crate)` so the KAIFUU-109 map/common-event slice
+/// `pub(crate)` so the map/common-event slice
 /// ([`crate::map_common_event`]) reuses the same proven byte-surgical
 /// splice + stale-source gate instead of re-implementing patchback.
 #[derive(Debug, Clone)]
@@ -297,7 +289,6 @@ fn parse_surface_key(key: &str) -> Result<(String, Vec<String>), PatchbackError>
 }
 
 /// Patch one file's raw JSON bytes with the given edits. Pure: no I/O.
-///
 /// Returns bytes byte-identical to `original` outside the targeted string
 /// literals. When every edit is a no-op (`target == source`), the original
 /// bytes are returned verbatim.
@@ -456,7 +447,6 @@ fn collect_edits_by_file(
 
 /// Apply a translated v0.2 BridgeBundle to a game's `www/data/*.json`
 /// files, returning the patched bytes per referenced file.
-///
 /// Reads (read-only) from `<www_dir>/data/<file>`; performs no writes.
 /// Every referenced file appears in the result, byte-identical to its
 /// source for files whose units are all no-ops. Mirrors the RealLive
@@ -494,13 +484,11 @@ pub struct ProducedDelta {
 
 /// Patch a game's `www/data` tree with a translated bundle and produce the
 /// `.kaifuu` delta package over it.
-///
 /// Materializes a full, writable copy of `<www_dir>/data` at
 /// `patched_data_dir` (which must not yet exist), splices the reviewed
 /// translations into the referenced files, then diffs source-vs-patched
 /// via [`kaifuu_delta::create_delta`]. The returned delta + patched tree
 /// are reproduced byte-for-byte by `kaifuu_delta::apply_delta`.
-///
 /// `<www_dir>/data` is treated strictly read-only.
 pub fn produce_delta_package(
     www_dir: &Path,

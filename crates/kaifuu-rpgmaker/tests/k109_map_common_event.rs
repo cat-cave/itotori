@@ -1,9 +1,7 @@
-//! KAIFUU-109 — MV/MZ map + common-event command-text extract & patch.
-//!
-//! Drives the KAIFUU-109 slice against committed **synthetic public**
+//! MV/MZ map + common-event command-text extract & patch.
+//! Drives the slice against committed **synthetic public**
 //! fixtures (`tests/fixtures/k109/{Map001,CommonEvents}.json`; authored
 //! English, no retail bytes) and proves:
-//!
 //! 1. Extraction emits STABLE units carrying every acceptance field
 //!    (source file, event/common-event id, page index, command index, text
 //!    role, fixture-profile id) plus a stable surface key + bridge unit id.
@@ -24,7 +22,6 @@ use kaifuu_rpgmaker::{
 use serde_json::Value;
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
 /// reused from a different (since-removed) worktree would point fixture reads at
 /// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the
@@ -48,9 +45,7 @@ fn translate(source: &str) -> String {
     format!("\u{8a33}:{source}")
 }
 
-// ---------------------------------------------------------------------------
 // 1. Stable units with all acceptance fields
-// ---------------------------------------------------------------------------
 
 #[test]
 fn stable_units_carry_all_acceptance_fields() {
@@ -118,9 +113,7 @@ fn stable_units_carry_all_acceptance_fields() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // 2. Byte-preserving patch (only declared literals change)
-// ---------------------------------------------------------------------------
 
 /// Locate every declared unit's quoted-literal span in `original`, paired
 /// with the ASCII-safe encoding of its translated target, sorted ascending.
@@ -216,7 +209,7 @@ fn trivial_patch_changes_only_declared_text() {
         translate("Halt! Who goes there?"),
         "declared Show Text literal updated"
     );
-    // The 101 speaker-setup command (NOT a KAIFUU-109 declared surface) is
+    // The 101 speaker-setup command (NOT a declared surface) is
     // untouched.
     assert_eq!(
         patched_value["events"][1]["pages"][0]["list"][0]["parameters"][4],
@@ -249,9 +242,7 @@ fn untranslated_patch_is_byte_identical_noop() {
     }
 }
 
-// ---------------------------------------------------------------------------
 // 3. Regressions are DETECTED
-// ---------------------------------------------------------------------------
 
 #[test]
 fn regression_touching_non_text_byte_is_detected() {
@@ -324,9 +315,7 @@ fn regression_dropping_a_declared_unit_is_detected() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // 4. Semantic diagnostics before any write (malformed / missing)
-// ---------------------------------------------------------------------------
 
 #[test]
 fn missing_file_is_a_typed_diagnostic() {

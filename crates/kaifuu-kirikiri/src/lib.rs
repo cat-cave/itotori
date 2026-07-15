@@ -1,9 +1,7 @@
 //! Pure-Rust **KiriKiri KAG `.ks` plaintext scenario-script** text-extraction
 //! and byte-preserving patch adapter — the KiriKiri **null-container special
 //! case**.
-//!
 //! # Honest scope: plaintext KAG `.ks` ≠ commercial KiriKiri (encrypted XP3)
-//!
 //! KiriKiri ships its assets in `.xp3` archives. **Commercial** KiriKiri
 //! titles almost always ship those archives *encrypted* (a per-title cipher /
 //! `.tpm` filter), and the scenario scripts live *inside* the encrypted
@@ -12,7 +10,6 @@
 //! packed-engine readiness profile (`kaifuu_core::packed_engine_readiness`,
 //! `kaifuu_core::xp3_capability_profile`) and is explicitly **out of scope**
 //! here.
-//!
 //! This crate handles the opposite, **null-container** end of the spectrum:
 //! a `.ks` file that is *already* plaintext on disk — either an unencrypted /
 //! `plain` XP3 whose members were extracted, an author's development tree, or
@@ -20,9 +17,7 @@
 //! presented as commercial-KiriKiri coverage.** It is the floor case: no
 //! container, no cipher, just the KAG scenario dialect. See
 //! [`capability_note`] and `docs/kaifuu-adapters/kirikiri-kag.md`.
-//!
 //! # What it does
-//!
 //! - [`parse_ks`] parses the KAG line dialect (comments `;`, labels `*`,
 //!   `@`-line-commands, `#name` speaker lines, and inline `[tag …]` tags
 //!   interspersed with message text) into stable [`KsUnit`]s. Encoding-aware
@@ -34,9 +29,7 @@
 //! - [`apply_patch`] rewrites only the translatable spans, byte-preserving
 //!   all structure; [`verify_byte_preserving`] proves a patch touched nothing
 //!   but translatable text.
-//!
 //! # Determinism / no shell-outs
-//!
 //! Pure in-process parsing; all identifiers are SHA-256-derived
 //! (`bridge_unit_id` uses the shared UUID7-shaped scheme). No `Command::new`,
 //! no network, no helper process. No copyrighted bytes: the fixture corpus is

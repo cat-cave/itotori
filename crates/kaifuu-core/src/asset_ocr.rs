@@ -1,13 +1,10 @@
-//! KAIFUU-026 — prototype OCR + text-region extraction for image / UI assets.
-//!
+//! prototype OCR + text-region extraction for image / UI assets.
 //! Image and UI assets (title cards, buttons, textures) carry TEXT that may
 //! need localization. This node PROTOTYPES the discovery of that text as
 //! **structured evidence**: a public-fixture command reads a grayscale image
 //! and emits schema-valid text regions, each with provenance (where in the
 //! asset) and a stable content hash, plus a per-glyph recognition breakdown.
-//!
 //! # THE LINE — OCR is NOT truth
-//!
 //! The single most important property of this path is that **recognized text is
 //! never asserted as a ground-truth translation source unless it is exact**. A
 //! region is emitted with `recovered_text` **only** when every glyph in it
@@ -19,11 +16,8 @@
 //! labelled as a candidate, never as truth. A downstream consumer therefore
 //! cannot mistake an uncertain read for a confident one: the confident text
 //! lives in `recovered_text`; everything else is a finding.
-//!
 //! # Bounded prototype (honest scope)
-//!
 //! This is a DETERMINISTIC prototype, not a production OCR engine:
-//!
 //! - It decodes **uncompressed (stored-deflate) 8-bit grayscale PNG** fixtures
 //!   in-process. It is not a general PNG decoder and does not decode
 //!   Huffman-compressed retail image bytes. The public fixture is authored in
@@ -33,11 +27,10 @@
 //!   Hamming-matched against a small reference font. This is a genuine, if tiny,
 //!   OCR — enough to exercise the exact / fuzzy / unrecognized boundary — not a
 //!   heavy learned model.
-//!
-//! Everything is pure in-process Rust: there is **no `Command::new`**, no
-//! shell-out to an external OCR binary, and no network. All fixture bytes are
-//! synthetic (rendered in-module by [`render_reference_title_card`]); no
-//! copyrighted asset is vendored.
+//!   Everything is pure in-process Rust: there is **no `Command::new`**, no
+//!   shell-out to an external OCR binary, and no network. All fixture bytes are
+//!   synthetic (rendered in-module by [`render_reference_title_card`]); no
+//!   copyrighted asset is vendored.
 
 use serde::{Deserialize, Serialize};
 
@@ -77,8 +70,6 @@ const GLYPH_BITS: u32 = GLYPH_W * GLYPH_H;
 /// UNCERTAIN candidate character. A larger distance is unrecognized.
 const FUZZY_MATCH_MAX: u32 = 6;
 
-// --- Reference 5x7 font ------------------------------------------------------
-//
 // Each glyph is 7 rows; each row's low 5 bits are the columns left-to-right
 // (bit 4 = leftmost). Every glyph deliberately keeps ink in both edge columns
 // and in the top and bottom rows so that fixed-pitch tiling stays aligned.
@@ -139,8 +130,6 @@ const FONT: &[(char, [u8; 7])] = &[
         ],
     ),
 ];
-
-// --- Public data model -------------------------------------------------------
 
 /// A qualitative confidence bucket derived from the numeric score.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -313,7 +302,6 @@ pub struct AssetOcrRequest<'a> {
 }
 
 /// Run the deterministic text-region extractor over an asset.
-///
 /// Returns `Err` only when the bytes cannot be decoded as a supported (stored
 /// -deflate, 8-bit grayscale) PNG; recognition uncertainty is per-region
 /// evidence, never an error.
@@ -350,8 +338,6 @@ pub fn run_asset_ocr(request: AssetOcrRequest<'_>) -> KaifuuResult<AssetOcrRepor
         findings,
     })
 }
-
-// --- Region detection --------------------------------------------------------
 
 /// A tight bounding box of a detected word region.
 #[derive(Debug, Clone, Copy)]
@@ -425,8 +411,6 @@ fn group_runs(flags: &[bool], min_gap: u32) -> Vec<(u32, u32)> {
     }
     runs
 }
-
-// --- Region recognition ------------------------------------------------------
 
 fn build_region(
     image: &GrayImage,
@@ -587,8 +571,6 @@ fn glyph_pattern(rows: &[u8; 7]) -> u32 {
     pattern
 }
 
-// --- Grayscale image ---------------------------------------------------------
-
 /// A decoded 8-bit grayscale image, row-major.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GrayImage {
@@ -635,8 +617,6 @@ impl GrayImage {
         pattern
     }
 }
-
-// --- Dependency-free grayscale PNG codec (stored-deflate only) ---------------
 
 const PNG_SIGNATURE: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
 
@@ -866,9 +846,7 @@ fn adler32(data: &[u8]) -> u32 {
     (b << 16) | a
 }
 
-// --- Public reference fixture renderer ---------------------------------------
-
-/// Render the KAIFUU-026 reference title-card fixture: an 8-bit grayscale PNG
+/// Render the reference title-card fixture: an 8-bit grayscale PNG
 /// with three confidently-recognizable words, one plausible-but-corrupted word,
 /// and one non-text noise block. The committed public fixture is byte-pinned to
 /// this function's output.

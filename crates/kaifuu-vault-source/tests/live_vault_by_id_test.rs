@@ -1,13 +1,9 @@
 //! Live by-id resolution proof against the real read-only `/archive/vault`.
-//!
 //! `#[ignore]`d by default; run explicitly with the live vault:
-//!
 //! ```text
 //! ITOTORI_VAULT_ROOT=/archive/vault \
-//!   cargo test -p kaifuu-vault-source \
-//!   --test live_vault_by_id_test -- --ignored --nocapture
-//! ```
-//!
+//! cargo test -p kaifuu-vault-source \
+//! --test live_vault_by_id_test -- --ignored --nocapture
 //! Resolves Oshioki Sweetie HD and Kanon BY-ID, materialises their RealLive
 //! trees into a throwaway scratch dir, and asserts the extracted `Seen.txt`
 //! per-file sha256 (NEVER the archive/repack sha). Strictly read-only: a
@@ -194,7 +190,7 @@ fn resolves_kanon_by_id_and_materializes_reallive_tree() {
     // BCJ2 coder (`Method = Delta BCJ2`). sevenz-rust2 <= 0.21.1 could not
     // decode that multi-coder folder: `decompress_file_with_extract_fn`
     // PROPAGATED the decode error (Unsupported method) rather than returning
-    // `Ok(())` with the entries silently skipped, and the extraction worker
+    // `Ok` with the entries silently skipped, and the extraction worker
     // mapped that Err into a typed `ExtractionFailed`.
     // sevenz-rust2 0.21.2 (upstream PR #117) decodes Delta+BCJ2 folders, so a
     // complete materialize is now REQUIRED — a full `Ok(mat)` here *is* the

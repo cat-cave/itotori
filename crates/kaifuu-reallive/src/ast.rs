@@ -1,5 +1,4 @@
-//! AST types for the RealLive Scene/SEEN parser-boundary smoke (KAIFUU-173).
-//!
+//! AST types for the RealLive Scene/SEEN parser-boundary smoke.
 //! See `lib.rs` for the clean-room provenance posture. All structures
 //! serialize as semantic JSON suitable for golden testing; field names use
 //! camelCase to align with the rest of the kaifuu-core surface.
@@ -65,7 +64,6 @@ pub struct Scene {
 }
 
 /// Stable per-scene instruction id derived from byte position only.
-///
 /// Format: `reallive:scene-{scene_id:04}:ins-off-{instr_byte_offset_within_scene:08x}`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -143,7 +141,6 @@ pub enum Operand {
 }
 
 /// Stable string-slot id derived from byte position only.
-///
 /// Format:
 /// `reallive:scene-{scene_id:04}:str-off-{slot_byte_offset_within_scene:08x}-idx{slot_index_within_instruction:02}`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -180,7 +177,7 @@ pub struct StringSlotRef {
 /// Extracted string slot. Raw bytes are preserved verbatim as
 /// uppercase-hex; encoding is set from the surrounding instruction
 /// context (defaults to [`kaifuu_core::SourceEncoding::Binary`] for the
-/// smoke). Decoding to a `String` is KAIFUU-174's responsibility.
+/// smoke). Decoding to a `String` is 's responsibility.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StringSlot {
@@ -208,7 +205,7 @@ impl fmt::Debug for StringSlot {
 }
 
 /// Best-guess semantic role for a [`StringSlot`], derived from the
-/// enclosing instruction. KAIFUU-174 refines this with codec-aware logic.
+/// enclosing instruction. refines this with codec-aware logic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StringSlotRole {

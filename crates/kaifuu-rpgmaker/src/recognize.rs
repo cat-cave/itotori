@@ -1,17 +1,14 @@
 //! Typed recognizers for message-bearing and opaque plugin (356/357) and
 //! script (355/655) commands.
-//!
 //! MV/MZ's event command payloads do not carry a plugin registry. A blind
 //! extraction of `parameters[0]` would therefore turn engine control
-//! (`window.close()`, screen shake, sound-effect filenames, and numeric ids)
+//! (`window.close`, screen shake, sound-effect filenames, and numeric ids)
 //! into dialogue. This module has two deliberately closed paths instead:
 //! `D_TEXT` is a message-bearing command whose display-text argument is
 //! extracted, while every observed control command is named in the exact
 //! opaque tables below. A command outside those tables remains an explicit
 //! unknown finding and is a test failure for the real-byte recognizer lane.
-//!
 //! # The patchback-safe shape
-//!
 //! A recognized unit's text is the WHOLE `parameters[0]` literal, so the
 //! `rpgmaker:<file>#/.../parameters/0` pointer and its `sourceHash` stay
 //! byte-surgical-patchback targetable, exactly like a `Show Text` line. The
@@ -22,9 +19,7 @@
 //! translator therefore sees only the display-text region as editable, and
 //! patchback rewrites the literal in place with the keyword/size preserved
 //! verbatim.
-//!
 //! # Real-byte evidence
-//!
 //! LustMemory contributes 328 plugin-command entries and 22 script entries;
 //! Countryside Life contributes 1,684 plugin-command entries and 4 script
 //! entries. Only `D_TEXT` carries display text (two occurrences in
@@ -292,12 +287,11 @@ fn is_numeric_size(token: &str) -> bool {
 
 /// Recognize a `D_TEXT <display text> [fontSize]` plugin command
 /// (triacontane's DTextPicture).
-///
 /// Mirrors the plugin's own argument parsing: the command splits
 /// `parameters[0]` on single spaces; the trailing token is consumed as the
 /// font size only when it is numeric AND at least one text token precedes it
 /// (`if (isNaN(args[last]) || args.length === 1) args.push(default);
-/// fontSize = args.pop();`), otherwise the whole remainder is display text.
+/// fontSize = args.pop;`), otherwise the whole remainder is display text.
 /// The returned spans protect the `D_TEXT ` keyword prefix and the
 /// ` <size>` suffix so only the display-text region is translatable.
 fn recognize_d_text(param0: &str) -> Option<RecognizedCommand> {

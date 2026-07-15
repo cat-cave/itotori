@@ -1,51 +1,38 @@
 //! Softpal `TEXT.DAT` string-pool codec: 16-byte header parse, flag-gated
 //! **keyless** decrypt / re-encrypt, and the record (index + cp932 text + NUL)
 //! parser that exposes each record's absolute byte offset.
-//!
 //! See the crate-level docs for the container envelope; this module owns the
 //! `TEXT.DAT` **inner file** (extracted from the PAC via [`crate::PacArchive`]).
-//!
 //! # On-disk layout
-//!
 //! ```text
-//! offset 0  : 16-byte header
-//!   byte 0        : encryption flag  ('$' = encrypted, '_' = plaintext)
-//!   bytes 1..12   : magic tail       ("TEXT_LIST__", 11 bytes)
-//!   bytes 12..16  : record count      (u32, little-endian)
-//! offset 16 : record pool (one contiguous run of `count` records)
-//!   record = [ 4-byte index (u32 LE) ][ cp932 text bytes ][ 0x00 terminator ]
-//! ```
-//!
+//! offset 0: 16-byte header
+//! byte 0: encryption flag ('$' = encrypted, '_' = plaintext)
+//! bytes 1..12: magic tail ("TEXT_LIST__", 11 bytes)
+//! bytes 12..16: record count (u32, little-endian)
+//! offset 16: record pool (one contiguous run of `count` records)
+//! record = [ 4-byte index (u32 LE) ][ cp932 text bytes ][ 0x00 terminator ]
 //! A record is addressed by its **absolute byte offset** within the (decrypted)
 //! pool — that is the pointer a `SCRIPT.SRC` string reference resolves to, which
 //! is why [`TextRecord`] carries both [`TextRecord::offset`] (start of the
 //! 4-byte index) and [`TextRecord::text_offset`] (start of the text bytes).
-//!
 //! # Keyless decryption (flag-gated, deterministic)
-//!
 //! When byte 0 is `'$'` the pool is obfuscated by a fixed, keyless scheme that
 //! transforms one little-endian dword at a time, starting at offset 16, stride
 //! 4. For the *k*-th dword (k = 0 at offset 16) with `shift = 4 + k`:
-//!
 //! - decrypt: `b[0] = rol8(b[0], shift)`, then `dword ^= 0x084DF873 ^ 0xFF987DEE`
 //! - encrypt: `dword ^= 0x084DF873 ^ 0xFF987DEE`, then `b[0] = ror8(b[0], shift)`
-//!
-//! The 16-byte header is never transformed, and — matching the Softpal engine /
-//! the SoftPal-Tool `pal_file_decrypt.py` oracle — the trailing bytes at
-//! `file_len - 4 ..` are left untouched (the loop stops before the final dword).
-//! The transform is a pure permutation, so [`encrypt`] is the exact inverse of
-//! [`decrypt`]: `encrypt(decrypt(x)) == x` byte-for-byte (round-trip proof in
-//! the tests).
-//!
+//!   The 16-byte header is never transformed, and — matching the Softpal engine /
+//!   the SoftPal-Tool `pal_file_decrypt.py` oracle — the trailing bytes at
+//!   `file_len - 4..` are left untouched (the loop stops before the final dword).
+//!   The transform is a pure permutation, so [`encrypt`] is the exact inverse of
+//!   [`decrypt`]: `encrypt(decrypt(x)) == x` byte-for-byte (round-trip proof in
+//!   the tests).
 //! # Honest scope
-//!
 //! This is the `TEXT.DAT` **codec only**: header + flag-gated cipher + record
 //! framing + cp932 decode. Resolving which string a line of dialogue uses
 //! (the `SCRIPT.SRC` `Sv`-version disassembler) and writing edited text back
 //! into a repacked pool (patch-back) are **separate Softpal nodes**.
-//!
 //! # Determinism / no shell-outs
-//!
 //! Pure functions of the input `&[u8]`; the oracle is a reference only. No
 //! `Command::new`. Malformed input never panics: every failure is a typed
 //! [`TextDatError`].
@@ -116,7 +103,6 @@ pub struct TextDatHeader {
 }
 
 /// One record recovered from the (decrypted) pool.
-///
 /// [`raw_text`](Self::raw_text) holds the cp932 bytes as stored (terminator
 /// excluded); [`text`](Self::text) is the lossy UTF-8 decoding. Both byte
 /// offsets are absolute within the pool buffer so a `SCRIPT.SRC` pointer can
@@ -143,12 +129,11 @@ pub struct TextRecord {
 pub struct TextDat {
     /// The parsed header.
     pub header: TextDatHeader,
-    /// The records, in pool order. `records.len() == header.record_count`.
+    /// The records, in pool order. `records.len == header.record_count`.
     pub records: Vec<TextRecord>,
 }
 
 /// Fatal errors raised while parsing / transforming a `TEXT.DAT`.
-///
 /// Every display string begins with the `kaifuu.softpal.textdat` namespace
 /// marker (see [`crate::SOFTPAL_TEXTDAT_ERROR_MARKER`]).
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -213,9 +198,7 @@ fn ror8(byte: u8, shift: u32) -> u8 {
 
 impl TextDatHeader {
     /// Parse the 16-byte header from the front of `bytes`.
-    ///
     /// # Errors
-    ///
     /// [`TextDatError::TruncatedHeader`] for a short buffer,
     /// [`TextDatError::BadMagic`] for a wrong magic tail, or
     /// [`TextDatError::InvalidFlag`] for an unrecognised byte 0.
@@ -294,13 +277,10 @@ fn transform_encrypt(buf: &mut [u8]) {
 }
 
 /// Decrypt a `TEXT.DAT` into its plaintext form.
-///
 /// Flag-gated and idempotent: if byte 0 is `'$'` the pool is decrypted and byte
 /// 0 is rewritten to `'_'`; if it is already `'_'` an unchanged copy is
 /// returned. The returned buffer always has a `'_'` (plaintext) header.
-///
 /// # Errors
-///
 /// Propagates [`TextDatHeader::parse`] errors (bad length / magic / flag).
 pub fn decrypt(bytes: &[u8]) -> Result<Vec<u8>, TextDatError> {
     let header = TextDatHeader::parse(bytes)?;
@@ -313,14 +293,11 @@ pub fn decrypt(bytes: &[u8]) -> Result<Vec<u8>, TextDatError> {
 }
 
 /// Encrypt a plaintext `TEXT.DAT` — the exact inverse of [`decrypt`].
-///
 /// Flag-gated and idempotent: if byte 0 is `'_'` the pool is encrypted and byte
 /// 0 is rewritten to `'$'`; if it is already `'$'` an unchanged copy is
 /// returned. Thus `encrypt(decrypt(x)) == x` byte-for-byte for any well-formed
 /// `TEXT.DAT`.
-///
 /// # Errors
-///
 /// Propagates [`TextDatHeader::parse`] errors (bad length / magic / flag).
 pub fn encrypt(bytes: &[u8]) -> Result<Vec<u8>, TextDatError> {
     let header = TextDatHeader::parse(bytes)?;
@@ -333,7 +310,6 @@ pub fn encrypt(bytes: &[u8]) -> Result<Vec<u8>, TextDatError> {
 }
 
 /// Parse the records out of an already-**plaintext** pool.
-///
 /// `plaintext` is a full `TEXT.DAT` buffer whose header/pool are in the clear
 /// (typically the output of [`decrypt`]). The pool (offset 16 onward) is parsed
 /// **greedily to its end** — every byte after the header belongs to exactly one
@@ -341,9 +317,7 @@ pub fn encrypt(bytes: &[u8]) -> Result<Vec<u8>, TextDatError> {
 /// header's declared count. A record that begins but cannot complete (no room
 /// for its 4-byte index, or no `0x00` terminator) is a precise typed error,
 /// distinct from a whole-pool count mismatch.
-///
 /// # Errors
-///
 /// [`TextDatError::TruncatedRecordIndex`] if the trailing bytes are too short
 /// for another record's index, [`TextDatError::UnterminatedRecord`] if a
 /// record's text has no terminator, [`TextDatError::RecordCountMismatch`] if the
@@ -391,7 +365,7 @@ pub fn parse_records(plaintext: &[u8]) -> Result<Vec<TextRecord>, TextDatError> 
         cursor = nul + 1;
     }
 
-    // The pool held exactly `records.len()` records; the header must agree.
+    // The pool held exactly `records.len` records; the header must agree.
     if records.len() as u32 != header.record_count {
         return Err(TextDatError::RecordCountMismatch {
             header_count: header.record_count,
@@ -404,9 +378,7 @@ pub fn parse_records(plaintext: &[u8]) -> Result<Vec<TextRecord>, TextDatError> 
 impl TextDat {
     /// Parse a raw `TEXT.DAT` (as extracted from the PAC) end to end: read the
     /// header, [`decrypt`] the pool if the flag says so, then [`parse_records`].
-    ///
     /// # Errors
-    ///
     /// Any [`TextDatError`] from header parse, decrypt, or record parse.
     pub fn parse(bytes: &[u8]) -> Result<Self, TextDatError> {
         let header = TextDatHeader::parse(bytes)?;

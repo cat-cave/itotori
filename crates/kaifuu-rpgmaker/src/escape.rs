@@ -1,9 +1,7 @@
 //! RPG Maker MV/MZ message-control-code (`\`-escape) scanner.
-//!
 //! Message text in RPG Maker (`Show Text` / `Show Scrolling Text` lines,
 //! choice labels, and many database fields) embeds runtime control codes
 //! introduced by a backslash:
-//!
 //! - Argument-bearing codes: `\V[n]` (variable), `\N[n]` (actor name),
 //!   `\P[n]` (party-member name), `\C[n]` (text colour), `\I[n]` (icon),
 //!   and plugin codes such as `\PX[n]` / `\FS[n]`. The engine matches the
@@ -13,18 +11,16 @@
 //!   `\>` / `\<` (instant on/off), `\^` (no input wait), `\$` (gold
 //!   window), `\{` / `\}` (font bigger/smaller), `\G` (currency unit),
 //!   `\\` (literal backslash).
-//!
-//! Every one of these is a **protected span**: a translate+patchback pass
-//! that drops or rewrites a `\V[22]` would corrupt the runtime
-//! substitution, so each is emitted as a `control_markup` span with
-//! `preserveMode = "exact"`. This scanner is the no-silent-skip guarantee
-//! for inline markup: it never discards a `\`-run, and an
-//! unrecognised-but-well-formed `\X[..]` is still surfaced as a span (its
-//! `parsedName` records the code) rather than being silently flattened
-//! into translatable prose.
+//!   Every one of these is a **protected span**: a translate+patchback pass
+//!   that drops or rewrites a `\V[22]` would corrupt the runtime
+//!   substitution, so each is emitted as a `control_markup` span with
+//!   `preserveMode = "exact"`. This scanner is the no-silent-skip guarantee
+//!   for inline markup: it never discards a `\`-run, and an
+//!   unrecognised-but-well-formed `\X[..]` is still surfaced as a span (its
+//!   `parsedName` records the code) rather than being silently flattened
+//!   into translatable prose.
 
 /// A protected control-code span discovered inside one source string.
-///
 /// `start_byte`/`end_byte` are byte offsets into the **decoded UTF-8
 /// source text** (the raw JSON string value). RPG Maker control codes are
 /// ASCII, so the span always lands on UTF-8 boundaries.
@@ -43,7 +39,6 @@ pub struct EscapeSpan {
 const BARE_SYMBOL_CODES: &[u8] = b".|!><^${}";
 
 /// Scan `text` for every RPG Maker `\`-control code, in source order.
-///
 /// The returned spans are non-overlapping and sorted ascending by
 /// `start_byte` (encounter order is already ascending), so they satisfy
 /// the v0.2 span-ordering / non-overlap contract directly.

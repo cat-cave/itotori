@@ -1,5 +1,4 @@
 //! Typed semantic errors for the vault-source adapter.
-//!
 //! Every variant maps 1:1 to a row in the contract's *Failure Modes* table
 //! (`docs/itotori-vault-source-adapter.md` §Failure Modes). The adapter
 //! never falls back silently — every recoverable disagreement is surfaced
@@ -39,22 +38,19 @@ pub const SEMANTIC_VAULT_SCRATCH_UNWRITABLE: &str = "kaifuu.vault.scratch_unwrit
 
 /// Catalog `schema_version.version` values this adapter has been verified
 /// against and knows how to read.
-///
 /// - **v1** is exercised by the synthetic test fixtures
 ///   (`tests/fixtures/synthetic-vault/seed.sql`), which carry the by-id
 ///   `artifacts.canonical_id` / `vault_path` columns the resolver reads.
 /// - **v3** is the live read-only `/archive/vault/catalog.db`. Every catalog
 ///   query the adapter runs has been confirmed column- and type-compatible
 ///   with the v3 schema (see `README.md` §Catalog schema support).
-///
-/// **v2 is intentionally excluded** — no v2 catalog exists to verify the
-/// adapter's queries against, and the project forbids blind widening. If a v2
-/// catalog ever needs support, inspect its schema and add `2` here only after
-/// confirming compatibility.
+///   **v2 is intentionally excluded** — no v2 catalog exists to verify the
+///   adapter's queries against, and the project forbids blind widening. If a v2
+///   catalog ever needs support, inspect its schema and add `2` here only after
+///   confirming compatibility.
 pub const SUPPORTED_SCHEMA_VERSIONS: &[u32] = &[1, 3];
 
 /// The typed error surface for every vault-source operation.
-///
 /// Mapping to *Failure Modes* table is 1:1 — see `SemanticCode::from`.
 #[derive(Debug, thiserror::Error)]
 pub enum VaultSourceError {
@@ -165,7 +161,6 @@ pub enum VaultSourceError {
     },
 
     /// Cross-check disagreement exceeded the configured tolerance.
-    ///
     /// The default tolerance (per contract) rejects only mismatched
     /// work identity; everything else is a [`crate::findings::CrossCheckFinding`].
     #[error("catalog/embedded disagreement on {field} for {entity_type}:{entity_id}")]
@@ -195,7 +190,6 @@ pub enum VaultSourceError {
 
 impl VaultSourceError {
     /// Stable semantic-code string for this error variant.
-    ///
     /// The string is suitable for telemetry, findings sinks, and operator
     /// dashboards. Each variant has exactly one code.
     pub fn semantic_code(&self) -> &'static str {

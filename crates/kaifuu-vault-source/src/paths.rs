@@ -1,14 +1,11 @@
 //! Game-id derivation per the contract's *Extraction* section.
-//!
 //! Order of preference (deterministic):
-//!
 //! 1. VNDB `v`-id (e.g. `v12345`)
 //! 2. DLsite `RJ`/`VJ`/`BJ` code (lowercased)
 //! 3. EGS numeric id (e.g. `egs-1234`)
 //! 4. Slug of `works.canonical_title` + `-r<release_id>`
-//!
-//! The slug is stable across runs so a cached extraction keyed by `<game-id>`
-//! survives re-runs.
+//!    The slug is stable across runs so a cached extraction keyed by `<game-id>`
+//!    survives re-runs.
 
 use crate::config::GameIdSource;
 
@@ -102,7 +99,6 @@ fn normalize_value(v: &str) -> String {
 }
 
 /// Tiny, dependency-free slugifier: lowercase ASCII alnum + dashes.
-///
 /// Non-ASCII characters are dropped (the contract acknowledges the title
 /// may be JP; the slug is intended as a directory name and the fallback
 /// is anyway the least preferred). The result is bounded to 80 chars.

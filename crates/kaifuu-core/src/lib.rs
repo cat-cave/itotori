@@ -13,7 +13,6 @@ use serde_json::Value;
 pub mod secret_holder;
 
 /// Crate-wide result whose error is intentionally the boxed trait object.
-///
 /// `kaifuu-core` spans detection, extraction, patch-back, profiling and
 /// filesystem staging across every supported engine family; a single call
 /// chain routinely mixes `std::io::Error`, `serde_json::Error`, the many
@@ -27,7 +26,6 @@ pub mod secret_holder;
 pub type KaifuuResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// Tests read read-only fixtures under `<workspace>/fixtures/...` anchored at
 /// this crate's directory. The obvious anchor, `env!("CARGO_MANIFEST_DIR")`, is
 /// baked into the binary at COMPILE time — so when cargo reuses a test binary
@@ -35,7 +33,6 @@ pub type KaifuuResult<T> = Result<T, Box<dyn std::error::Error>>;
 /// baked path no longer exists and EVERY fixture read fails with an opaque
 /// `Os { code: 2, NotFound }`, taking down the whole fixture-reading suite while
 /// in-memory tests stay green.
-///
 /// `cargo test` sets `CARGO_MANIFEST_DIR` in the test binary's RUNTIME
 /// environment (and its CWD) to the LIVE crate directory of the current
 /// invocation, which stays valid regardless of where the binary was built.
@@ -114,7 +111,7 @@ pub const SEMANTIC_HELPER_ALLOWLIST_UNDECLARED_CAPABILITY: &str =
 /// The trusted-staging copy could not be materialized (source symlink, staging
 /// symlink squat, unreadable source, or an unsupported non-Unix platform), so
 /// the validated bytes could not be bound to execution. Fail closed rather than
-/// hashing-then-launching the mutable source path (KAIFUU-164 hash-to-exec
+/// hashing-then-launching the mutable source path (hash-to-exec
 /// TOCTOU).
 pub const SEMANTIC_HELPER_ALLOWLIST_STAGING_FAILED: &str = "kaifuu.helper_allowlist.staging_failed";
 pub const SEMANTIC_MALFORMED_SECRET_REF: &str = "kaifuu.malformed_secret_ref";
@@ -578,11 +575,9 @@ impl AdapterRegistry {
     /// it is an adapter that **opts in** via
     /// [`EngineAdapter::is_diagnostic_candidate`] for an input it recognizes
     /// well enough to explain why profiling or inventory cannot proceed.
-    ///
     /// Eligibility is adapter-owned opt-in (default false). The presence of
     /// `detected_variant` alone is never sufficient — variant strings are
     /// descriptive detection data, not a capability or consent marker.
-    ///
     /// This selection never changes `DetectionResult::detected` or adapter
     /// capability declarations. Callers may use the selected adapter only to
     /// obtain its structured diagnostic; they must not treat it as supported
@@ -701,7 +696,7 @@ pub enum Capability {
 }
 
 impl Capability {
-    /// KAIFUU-142: the container/crypto/codec/patch "transform axes" whose
+    /// the container/crypto/codec/patch "transform axes" whose
     /// `Supported` reports are prone to being over-read as broad transform
     /// support. The identity/null-key-only annotation
     /// ([`CapabilityReport::identity_or_null_key_only`]) is meaningful ONLY for
@@ -727,7 +722,7 @@ pub enum CapabilityStatus {
     RequiresUserInput,
 }
 
-/// KAIFUU-142: canonical limitation note attached to an identity/null-key-only
+/// canonical limitation note attached to an identity/null-key-only
 /// capability report ([`CapabilityReport::identity_or_null_key_only`]). A
 /// consumer reading only the free-text `limitation` still sees the boundary;
 /// the machine-checkable [`CapabilityReport::identity_or_null_key_only`] marker
@@ -747,12 +742,11 @@ pub struct CapabilityReport {
     pub capability: Capability,
     pub status: CapabilityStatus,
     pub limitation: Option<String>,
-    /// KAIFUU-142: guards against OVER-READING a `Supported`
+    /// guards against OVER-READING a `Supported`
     /// container/crypto/codec/patch report as broad transform support. When
     /// `true`, the adapter implements only the identity / null-key rung of the
-    /// layered access contract ([[KAIFUU-032]]) for this capability — no real
+    /// layered access contract for this capability — no real
     /// archive repack, non-null crypto, binary codec, or bytecode patch-back.
-    ///
     /// Skipped in JSON when `false`, so existing payloads round-trip unchanged
     /// and an ABSENT marker means "no identity/null-key-only claim" — the
     /// report is either a genuine broader transform or a non-transform
@@ -799,7 +793,7 @@ impl CapabilityReport {
         }
     }
 
-    /// KAIFUU-142: a container/crypto/codec/patch capability that WORKS
+    /// a container/crypto/codec/patch capability that WORKS
     /// (`Supported`) but only at the identity / null-key rung of the layered
     /// access contract. The report is explicitly annotated
     /// ([`identity_or_null_key_only`](Self::identity_or_null_key_only) = `true`)
@@ -814,7 +808,7 @@ impl CapabilityReport {
         }
     }
 
-    /// KAIFUU-142: annotate an existing report as identity/null-key-only,
+    /// annotate an existing report as identity/null-key-only
     /// stating the canonical limitation when none is present. Use when an
     /// adapter has built a `Supported` transform report but its real behaviour
     /// is only the identity/null-key rung.
@@ -826,7 +820,7 @@ impl CapabilityReport {
         self
     }
 
-    /// KAIFUU-142: `true` iff this report explicitly declares identity/null-key
+    /// `true` iff this report explicitly declares identity/null-key
     /// -only behaviour. Consumers use this to DISTINGUISH a genuine broad
     /// transform report (marker absent) from an identity/null-key-only one.
     pub fn is_identity_or_null_key_only(&self) -> bool {
@@ -848,7 +842,7 @@ impl CapabilityReport {
 pub struct AdapterCapabilities {
     pub adapter_id: String,
     pub reports: Vec<CapabilityReport>,
-    /// KAIFUU-053 capability ladder. Every adapter MUST declare its 4-rung
+    /// capability ladder. Every adapter MUST declare its 4-rung
     /// matrix at construction via [`AdapterCapabilities::new`]; there is no
     /// silent fallback that derives it from `reports`. This keeps identify-only
     /// engines from bubbling up to Extract/Patch on granular report drift.
@@ -865,15 +859,13 @@ pub struct AdapterCapabilities {
 
 impl AdapterCapabilities {
     /// Construct an adapter capability declaration.
-    ///
-    /// KAIFUU-053 acceptance: every adapter MUST declare its 4-rung
+    /// acceptance: every adapter MUST declare its 4-rung
     /// [`AdapterCapabilityMatrix`] at construction. There is no silent
     /// fallback from per-`Capability` reports to a derived matrix — that
-    /// fallback was the audit-flagged risk (KAIFUU-053-F002) of recognised
+    /// fallback was the audit-flagged risk (-F002) of recognised
     /// engines accidentally bubbling up to `Extract`/`Patch` because a
     /// granular report drifted. `derive_from_reports` is now a private
     /// drift-check helper used in `normalize` only.
-    ///
     /// The declared matrix must not claim more than the granular `reports`
     /// support; that constraint is enforced in `normalize` via
     /// `debug_assert!` against `first_overclaim_against`.
@@ -921,7 +913,7 @@ impl AdapterCapabilities {
         self
     }
 
-    /// KAIFUU-142: `true` iff this adapter declares a layered access contract
+    /// `true` iff this adapter declares a layered access contract
     /// that goes BEYOND the identity/null-key rung (a real container/crypto/
     /// codec/patch transform). When `false` — no contract, or a contract that
     /// is itself identity/null-key-only — any `Supported`
@@ -933,7 +925,7 @@ impl AdapterCapabilities {
             .is_some_and(|contract| !contract.is_identity_or_null_key_only())
     }
 
-    /// KAIFUU-142: over-read detector. Returns the transform-bearing
+    /// over-read detector. Returns the transform-bearing
     /// capabilities whose reports are `Supported` but neither annotated
     /// identity/null-key-only NOR backed by a broader transform contract — i.e.
     /// reports a consumer could over-read as broad support. Empty when every
@@ -969,7 +961,7 @@ impl AdapterCapabilities {
         if let Some(access_contract) = &mut self.access_contract {
             access_contract.normalize();
         }
-        // KAIFUU-053 risk: detector report drift. The declared level matrix
+        // risk: detector report drift. The declared level matrix
         // must never claim more than the per-capability reports support.
         // `derive_from_reports` is conservative; `first_overclaim_against`
         // returns the first rung where the declared matrix is strictly more
@@ -1258,7 +1250,7 @@ impl LayeredAccessCapabilityContract {
         }
     }
 
-    /// KAIFUU-142: `true` iff EVERY operation in this contract stays within the
+    /// `true` iff EVERY operation in this contract stays within the
     /// identity / null-key rung. When true, the contract itself declares no
     /// broader transform support, so any `Supported` container/crypto/codec/
     /// patch report backed only by this contract is identity/null-key-only.
@@ -1328,7 +1320,7 @@ impl LayeredAccessOperationContract {
         contract
     }
 
-    /// KAIFUU-142: `true` iff every declared transform stays within the
+    /// `true` iff every declared transform stays within the
     /// identity / null-key rung — only identity/loose-file/directory
     /// containers, null-key crypto, plaintext-text codecs, identity/JSON-pointer
     /// surfaces, and identity/JSON-rewrite patch-back. This is exactly the
@@ -1842,14 +1834,12 @@ enum Xp3StructuralMarker {
 
 /// Classify the XP3 subtype a container header signals, recognizing the
 /// marker ONLY at its structural position.
-///
 /// Synthetic XP3 subtype fixtures share the 5-byte `XP3\r\n` container prefix
 /// with a plain archive, then write the subtype token on the single marker
 /// line that immediately follows the prefix (for example
 /// `XP3\r\nXP3-CRYPT\n…` or `XP3\r\nKAIFUU-XP3-ENCRYPTED`). This function only
 /// inspects that structural marker line, so a marker-like string that appears
 /// deeper in a member payload cannot be mistaken for a subtype signal.
-///
 /// A genuine plain XP3 begins with the full [`XP3_PLAIN_MAGIC`] (byte 5 is a
 /// space, never the `X` of a subtype token) and therefore has no marker line:
 /// it is always classified plain (`None`), regardless of any marker-like text
@@ -1976,7 +1966,7 @@ fn detect_kirikiri_xp3(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
     // Subtype markers are recognized only at their structural position on the
     // container marker line, so a plain XP3 whose member payload contains
     // marker-like text (e.g. an in-scenario "xp3-crypt" string) is never
-    // misclassified as encrypted/compressed/unknown (KAIFUU-163).
+    // misclassified as encrypted/compressed/unknown.
     let encrypted_marker_count = scan.xp3_structural_marker_count(Xp3StructuralMarker::Encrypted);
     let compressed_marker_count = scan.xp3_structural_marker_count(Xp3StructuralMarker::Compressed);
     let unknown_marker_count = scan.xp3_structural_marker_count(Xp3StructuralMarker::Unknown);
@@ -2124,8 +2114,7 @@ fn detect_siglus(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
     })
 }
 
-// RealLive archive-detection matrix row (KAIFUU-172).
-//
+// RealLive archive-detection matrix row.
 // Clean-room provenance: all signal names are derived from publicly archived
 // RealLive format documentation (Haeleth's RLDEV site) and from publicly
 // observable file shape; no rlvm source expression is used. rlvm is a
@@ -3051,7 +3040,7 @@ fn detect_bgi_ethornell(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         // Encrypted BGI/Ethornell (BSE) markers prove the container is
         // encrypted, but Kaifuu claims no decryptor. Emit BOTH the
         // encrypted-variant signal AND the missing-crypto-capability signal so
-        // the live detector agrees with the KAIFUU-128 detector fixtures
+        // the live detector agrees with the detector fixtures
         // (BSE profile => unsupported_variant.encrypted + missing_capability.crypto).
         signals.push(ArchiveDetectionSignal::Encrypted);
         signals.push(ArchiveDetectionSignal::CryptoUnsupported);
@@ -3062,7 +3051,7 @@ fn detect_bgi_ethornell(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
     if layered_marker_count > 0 {
         // CompressedBG is a layered container/codec/surface transform; Kaifuu
         // recognizes it but does not unwrap it. Emit the layered-transform
-        // signal so the live detector agrees with the KAIFUU-128 fixtures
+        // signal so the live detector agrees with the fixtures
         // (CompressedBG profile => unsupported_layered_transform).
         signals.push(ArchiveDetectionSignal::LayeredTransform);
     }
@@ -3501,7 +3490,6 @@ impl GameProfile {
     }
 
     /// Serialize into report-safe, canonical JSON.
-    ///
     /// Public serialization always routes through the centralized report
     /// redaction policy (`redact_report_value`) so library callers cannot
     /// accidentally leak absolute paths, key material, helper dumps, or
@@ -4737,7 +4725,7 @@ fn validate_capability_report(
         &["supported", "limited", "unsupported", "requires_user_input"],
     );
     let limitation = report.get("limitation").and_then(Value::as_str);
-    // KAIFUU-142: the machine-checkable identity/null-key-only marker (see
+    // the machine-checkable identity/null-key-only marker (see
     // `CapabilityReport::identity_or_null_key_only`). Absent → `false`.
     let identity_or_null_key_only = report
         .get("identityOrNullKeyOnly")
@@ -4765,7 +4753,7 @@ fn validate_capability_report(
                 .to_string(),
         });
     }
-    // KAIFUU-142: a `supported` report normally must not carry a limitation,
+    // a `supported` report normally must not carry a limitation
     // EXCEPT the explicit identity/null-key-only annotation, which STATES the
     // layered-access boundary so the report cannot be over-read as broad
     // container/crypto/codec/patch transform support.
@@ -4781,7 +4769,7 @@ fn validate_capability_report(
                     .to_string(),
         });
     }
-    // KAIFUU-142: the identity/null-key-only marker is valid only on a
+    // the identity/null-key-only marker is valid only on a
     // `supported` report and MUST state its boundary via a limitation, so the
     // annotation is never silently empty.
     if identity_or_null_key_only {
@@ -6144,21 +6132,17 @@ fn siglus_parser_boundary_key_refs(
         .collect()
 }
 
-// =============================================================================
-// KAIFUU-038 — KiriKiri XP3 profile proof
-// =============================================================================
-//
+// KiriKiri XP3 profile proof
 // `kaifuu xp3 profile-proof --fixture <path> --output <path>` consumes a
 // fixture JSON file describing a single XP3 archive case (plain, encrypted,
 // helper-required, or unsupported-protected-executable), classifies the
-// archive bytes via the KAIFUU-095 shared header / inventory machinery,
+// archive bytes via the shared header / inventory machinery
 // and emits a redacted proof report. The command never decrypts, extracts,
 // or patches encrypted bytes — plain XP3 is the only variant for which we
 // claim detect / extract / patch_back capability; every other classification
 // fails closed before any extract or patch claim is made (acceptance
 // criterion: "Unsupported cases fail before extract or patch claims are
 // made").
-//
 // The redaction surface follows the SiglusParserBoundaryReport pattern:
 // fixture id, profile id, archive id, support boundary text, diagnostic
 // fields/messages, and any free-form remediation text run through
@@ -6458,12 +6442,10 @@ pub struct Xp3ProfileProofRequest<'a> {
 /// `UnsupportedEncrypted`.
 const XP3_HEADER_MAGIC: &[u8] = b"XP3\r\n";
 
-/// Run the KAIFUU-038 XP3 profile proof against `request.fixture`.
-///
+/// Run the XP3 profile proof against `request.fixture`.
 /// Routing rules (acceptance criterion: "Plain XP3, encrypted XP3,
 /// helper-required XP3, and protected executable cases produce distinct
 /// capability outcomes."):
-///
 /// - `plain`: archive bytes start with [`XP3_PLAIN_MAGIC`] **and** the
 ///   declared classification is `plain` **and** the fixture's
 ///   `patch_capability_level` is `patch_back`. The report carries the
@@ -6471,7 +6453,7 @@ const XP3_HEADER_MAGIC: &[u8] = b"XP3\r\n";
 ///   variant for which `patch_back` is a valid claim.
 /// - `encrypted` / `compressed` / `helper_required`: archive bytes start with the
 ///   `XP3\r\n` magic but [`read_plain_xp3_inventory`] reports
-///   `UnsupportedEncrypted` (the legacy KAIFUU-095 detector marker, used
+///   `UnsupportedEncrypted` (the legacy detector marker, used
 ///   for synthetic fixtures) or the declared classification routes the
 ///   case there. The proof claims **no** `extract` / `patch_back`
 ///   capability — `patch_capability_level` is forced to `Unsupported` in
@@ -6481,10 +6463,8 @@ const XP3_HEADER_MAGIC: &[u8] = b"XP3\r\n";
 ///   the XP3 magic at all (e.g. a protected-executable container). The
 ///   proof refuses with `SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED`
 ///   before any extract claim.
-///
-/// Negative cases (acceptance criterion: "Negative fixtures for missing
-/// crypt profile, unknown encryption plugin, and leaked archive paths"):
-///
+///   Negative cases (acceptance criterion: "Negative fixtures for missing
+///   crypt profile, unknown encryption plugin, and leaked archive paths"):
 /// - Missing crypt profile: `encrypted` / `helper_required` with no
 ///   `crypt_profile` field → diagnostic `xp3.crypt_profile.missing`.
 /// - Unknown encryption plugin: `crypt_profile.crypt_profile_id` is not
@@ -6596,7 +6576,6 @@ pub fn xp3_profile_proof(
     // Plain inventory probe. We probe the inventory only when the bytes
     // classify as plain — the function refuses to decrypt and we never
     // call it on encrypted bytes.
-    //
     // If the plain-magic-prefixed archive fails to parse its index
     // (e.g. encrypted index entries, common in real-bytes KiriKiri
     // games that wear the plain magic but carry an encrypted directory),
@@ -6786,7 +6765,7 @@ pub fn xp3_profile_proof(
         support_boundary: XP3_PROFILE_PROOF_SUPPORT_BOUNDARY.to_string(),
         patch_capability_level,
         helper_requirement,
-        // KAIFUU-038 never attempts an encrypted patch-back; this flag is
+        // never attempts an encrypted patch-back; this flag is
         // always false. We surface it explicitly so downstream auditors
         // can confirm the proof did not write any patched bytes.
         patch_write_attempted: false,
@@ -6810,7 +6789,7 @@ fn classify_xp3_bytes(bytes: &[u8]) -> Option<Xp3ProfileClassification> {
         return Some(Xp3ProfileClassification::Plain);
     }
     if bytes.starts_with(XP3_HEADER_MAGIC) {
-        // KAIFUU-095 synthetic fixtures encode the helper-required vs
+        // synthetic fixtures encode the helper-required vs
         // encrypted distinction in a literal marker inside the header
         // tail. Real-bytes encrypted XP3 (no marker) falls back to
         // `Encrypted` — we never claim the helper-required path for
@@ -6967,16 +6946,12 @@ fn validate_xp3_fixture_archive_path(path: &str) -> Result<&str, String> {
     Ok(path)
 }
 
-// ---------------------------------------------------------------------------
-// KAIFUU-039 — RPG Maker MV/MZ encrypted-media-proof
-// ---------------------------------------------------------------------------
-//
+// RPG Maker MV/MZ encrypted-media-proof
 // `encrypted_media_proof` runs a fixture matrix of RPG Maker MV/MZ media
 // assets (encrypted images / audio / movies, plus plaintext), validates the
 // asset-key profile against `data/System.json`, and emits a readiness report.
-//
 // Posture (load-bearing): RPG Maker MV/MZ is a commercial product.
-// KAIFUU-039 is a **research-only** profile — the proof never decrypts an
+// is a **research-only** profile — the proof never decrypts an
 // encrypted asset, never persists decrypted bytes, never extracts plaintext
 // from an encrypted asset, and never claims a "media-key detection implies
 // dialogue extraction or script patch support" capability. The proof
@@ -6988,8 +6963,8 @@ fn validate_xp3_fixture_archive_path(path: &str) -> Result<&str, String> {
 pub const ENCRYPTED_MEDIA_PROOF_SCHEMA_VERSION: &str = "0.1.0";
 pub const ENCRYPTED_MEDIA_PROOF_SUPPORT_BOUNDARY: &str = "RPG Maker MV/MZ encrypted-media proof; research-only profile scope: detect encrypted asset suffix + signature; validate System.json key profile; readiness only. No decryption capability is claimed; no media bytes are persisted decrypted; dialogue extraction and script patch support are explicitly out of scope.";
 
-/// 16-byte RPGMV header magic that fronts every encrypted .rpgmvp /
-/// .rpgmvo / .rpgmvm / .rpgmvu / .png_ / .ogg_ / .m4a_ asset. Bytes 0..5 are
+/// 16-byte RPGMV header magic that fronts every encrypted.rpgmvp /
+/// .rpgmvo /.rpgmvm /.rpgmvu /.png_ /.ogg_ /.m4a_ asset. Bytes 0..5 are
 /// `RPGMV`, bytes 5..8 are zero, byte 8 is the header version (0x00),
 /// bytes 9..10 carry the format version (0x03 0x01), bytes 10..16 are
 /// reserved. We treat the full 16 bytes as the routing signature so a
@@ -7021,10 +6996,10 @@ impl EncryptedMediaAssetKind {
 #[serde(rename_all = "snake_case")]
 pub enum EncryptedMediaClassification {
     /// Bytes carry the RPGMV header magic and the fixture declared an
-    /// encrypted asset suffix (.rpgmvp / .rpgmvo / .rpgmvm / .rpgmvu /
-    /// .png_ / .ogg_ / .m4a_).
+    /// encrypted asset suffix (.rpgmvp /.rpgmvo /.rpgmvm /.rpgmvu /
+    /// .png_ /.ogg_ /.m4a_).
     Encrypted,
-    /// Asset is declared and present plaintext (e.g. .png, .ogg, .webm) —
+    /// Asset is declared and present plaintext (e.g..png,.ogg,.webm) —
     /// no encryption signature, no key requirement.
     Plaintext,
     /// Asset is declared encrypted but the header magic is missing, the
@@ -7095,7 +7070,7 @@ pub enum EncryptedMediaPatchCapability {
     /// a patchable artifact here.
     NotClaimed,
     /// Asset is routed for diagnostics only; no patch capability is or
-    /// will be claimed by KAIFUU-039 for any encrypted media asset.
+    /// will be claimed by for any encrypted media asset.
     Unsupported,
 }
 
@@ -7370,7 +7345,7 @@ pub struct EncryptedMediaProofRequest<'a> {
     pub fixture_dir: &'a Path,
 }
 
-/// Per-suffix profile for KAIFUU-039 readiness routing. This is a
+/// Per-suffix profile for readiness routing. This is a
 /// research-only table — every encrypted-suffix entry carries
 /// `patch_capability_level = Unsupported` and `decryptability = OutOfScope`
 /// until a key profile resolves it upward to `KeyProfileSatisfied`.
@@ -7625,8 +7600,7 @@ fn classify_encrypted_media_asset(
     }
 }
 
-/// Run the KAIFUU-039 encrypted-media readiness proof.
-///
+/// Run the encrypted-media readiness proof.
 /// Routing rules (acceptance criteria):
 /// - Encrypted image / audio / video media variants are detected with
 ///   exact asset-kind capability levels — per-asset `kind` and
@@ -9514,9 +9488,8 @@ impl HelperRegistryEntry {
 
     /// Stage the registered helper binary into a trusted staging directory and
     /// validate the STAGED bytes against the allowlist entry.
-    ///
     /// This is the hardened replacement for the old hash-then-exec-path launch
-    /// seam (KAIFUU-164): instead of hashing the mutable `executable_path` and
+    /// seam: instead of hashing the mutable `executable_path` and
     /// later launching that same path — a hash-to-exec TOCTOU where an attacker
     /// who can write the path swaps the binary between the hash-check and the
     /// exec — the source bytes are copied ONCE into `staging_dir` (a directory
@@ -9525,7 +9498,6 @@ impl HelperRegistryEntry {
     /// (a held descriptor to the staged copy on Unix). A swap of the original
     /// path after staging has no effect: the bytes that were validated are
     /// exactly the bytes bound to execution.
-    ///
     /// `staging_dir` MUST be a caller-controlled trusted directory (e.g. a
     /// freshly allocated Kaifuu-owned temp dir), never a directory writable by
     /// the untrusted helper source.
@@ -10085,7 +10057,6 @@ impl HelperRegistryDiagnostic {
 /// The outcome of a hardened helper-binary launch: the serializable validation
 /// verdict plus, on success, the trusted staged copy that IS the execution
 /// reference.
-///
 /// `staged` is `Some` only when validation passed. It carries the bytes whose
 /// hash was validated, in a trusted staging directory (held open on Unix), so a
 /// caller launches the staged copy — never the mutable source path — and a swap
@@ -10104,8 +10075,7 @@ impl HelperBinaryLaunchOutcome {
 }
 
 /// A helper binary whose validated bytes have been bound to execution through a
-/// trusted staging COPY (KAIFUU-164).
-///
+/// trusted staging COPY.
 /// The bytes were copied ONCE (no-follow) from the source into a trusted
 /// staging directory, and [`staged_hash`](Self::staged_hash) is the sha256 of
 /// those STAGED bytes. On Unix an open read-only descriptor to the staged copy
@@ -10164,7 +10134,6 @@ impl StagedHelperBinary {
 
 /// Stage a helper binary into the trusted directory and verify the STAGED bytes
 /// against `registered_hash`, binding the validated bytes to execution.
-///
 /// This is the standalone hardened primitive behind the registry launch path:
 /// the source is copied once (no-follow) into `staging_dir`, the hash is
 /// computed from the STAGED copy, and on a match the returned
@@ -10245,7 +10214,6 @@ fn staged_helper_binary_name(allowlist_entry_id: &str) -> String {
 
 /// Copy the source helper binary into the trusted `staging_dir` and bind the
 /// STAGED bytes to execution.
-///
 /// The source is opened and read exactly ONCE (no-follow; a symlink source is
 /// refused). The bytes are written into a FRESH regular file inside the trusted
 /// directory (`O_EXCL | O_NOFOLLOW`, after clearing any stale/squatting entry),
@@ -10269,7 +10237,7 @@ fn stage_helper_binary_no_follow(
     }
 
     // 1. Read the source bytes exactly once, no-follow. A symlink source is
-    //    refused so we never chase a link to attacker-chosen bytes.
+    // refused so we never chase a link to attacker-chosen bytes.
     let source_fd = match rustix::fs::open(
         source_path,
         OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
@@ -10300,8 +10268,8 @@ fn stage_helper_binary_no_follow(
     .map_err(io)?;
 
     // 3. Clear any stale/squatting entry, then create a FRESH regular file
-    //    (`O_EXCL | O_NOFOLLOW`): a symlink can neither pre-exist (unlinked) nor
-    //    be followed, so the write lands on a real file in the trusted dir.
+    // (`O_EXCL | O_NOFOLLOW`): a symlink can neither pre-exist (unlinked) nor
+    // be followed, so the write lands on a real file in the trusted dir.
     let staged_leaf = OsStr::new(staged_name);
     match rustix::fs::unlinkat(dir_fd.as_fd(), staged_leaf, AtFlags::empty()) {
         Ok(()) | Err(Errno::NOENT) => {}
@@ -10323,9 +10291,9 @@ fn stage_helper_binary_no_follow(
     drop(write_file);
 
     // 4. Re-open the staged copy no-follow read-only: this descriptor is the
-    //    execution reference (kept at offset 0), and the validated hash is of
-    //    THESE staged bytes — read through an INDEPENDENT no-follow open so the
-    //    execution descriptor's file offset is not consumed.
+    // execution reference (kept at offset 0), and the validated hash is of
+    // THESE staged bytes — read through an INDEPENDENT no-follow open so the
+    // execution descriptor's file offset is not consumed.
     let open_staged = |flags: OFlags| -> Result<std::os::fd::OwnedFd, HelperBinaryStagingError> {
         match rustix::fs::openat(
             dir_fd.as_fd(),
@@ -10994,50 +10962,35 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
 }
 
 /// Builds the fixture helper registry facade.
-///
 /// Public callers can discover and invoke fixture helpers only through
 /// [`HelperRegistry::entries_for_capability`] and [`HelperRegistry::invoke`].
-///
-/// ```
 /// use kaifuu_core::{
-///     fixture_helper_registry, validate_helper_result_value, HelperCapability,
-///     HelperRegistryInvocationRequest, OperationStatus, FIXTURE_HELPER_ALLOWLIST_REF_ID,
-///     FIXTURE_HELPER_REGISTRY_ID,
-/// };
-///
-/// let registry = fixture_helper_registry().unwrap();
+/// fixture_helper_registry, validate_helper_result_value, HelperCapability,
+/// HelperRegistryInvocationRequest, OperationStatus, FIXTURE_HELPER_ALLOWLIST_REF_ID,
+/// FIXTURE_HELPER_REGISTRY_ID,
+/// let registry = fixture_helper_registry.unwrap;
 /// let input = serde_json::json!({"fixture": true});
 /// let output = registry
-///     .invoke(HelperRegistryInvocationRequest {
-///         helper_id: FIXTURE_HELPER_REGISTRY_ID,
-///         helper_version: "0.1.0",
-///         allowlist_entry_id: FIXTURE_HELPER_ALLOWLIST_REF_ID,
-///         capability: HelperCapability::FixtureInvocation,
-///         input: &input,
-///     })
-///     .unwrap();
-///
+/// .invoke(HelperRegistryInvocationRequest {
+/// helper_id: FIXTURE_HELPER_REGISTRY_ID,
+/// helper_version: "0.1.0",
+/// allowlist_entry_id: FIXTURE_HELPER_ALLOWLIST_REF_ID,
+/// capability: HelperCapability::FixtureInvocation,
+/// input: &input,
+/// .unwrap;
 /// assert_eq!(
-///     validate_helper_result_value(&output).status,
-///     OperationStatus::Passed
-/// );
-/// ```
-///
+/// validate_helper_result_value(&output).status,
+/// OperationStatus::Passed
 /// ```compile_fail
 /// use kaifuu_core::{fixture_helper_registry, FIXTURE_HELPER_REGISTRY_ID};
-///
-/// let mut registry = fixture_helper_registry().unwrap();
-/// let forged_entry = registry.get(FIXTURE_HELPER_REGISTRY_ID).unwrap().clone();
-/// registry.register_entry(forged_entry).unwrap();
-/// ```
-///
+/// let mut registry = fixture_helper_registry.unwrap;
+/// let forged_entry = registry.get(FIXTURE_HELPER_REGISTRY_ID).unwrap.clone;
+/// registry.register_entry(forged_entry).unwrap;
 /// ```compile_fail
 /// use kaifuu_core::{FixtureHelperStubAdapter, HelperExecutableAdapter};
-///
 /// let adapter = FixtureHelperStubAdapter;
-/// let entry = FixtureHelperStubAdapter::registry_entry();
+/// let entry = FixtureHelperStubAdapter::registry_entry;
 /// let _ = adapter.invoke(&entry, &serde_json::json!({"fixture": true}));
-/// ```
 pub fn fixture_helper_registry() -> KaifuuResult<HelperRegistry> {
     let mut registry = HelperRegistry::new();
     registry.register_entry(FixtureHelperStubAdapter::registry_entry())?;
@@ -12780,16 +12733,14 @@ impl KeyResolverPolicy {
 }
 
 /// Segment-aware local-secret allow-prefix match.
-///
 /// An allow-prefix authorizes an id iff the id EQUALS the prefix (exact) or the
 /// id continues past the prefix on a `/`-delimited path SEGMENT boundary
 /// (`prefix + "/"`). A trailing `/` on the configured prefix is normalized away
 /// so `foo/` and `foo` behave identically.
-///
 /// This deliberately rejects raw string-prefix over-matches: an allow-prefix
 /// `private/customer/account` authorizes `private/customer/account` and
 /// `private/customer/account/key`, but NOT the sibling
-/// `private/customer/accounting/key` (segment `accounting` != `account`).
+/// `private/customer/accounting/key` (segment `accounting`!= `account`).
 fn allow_prefix_authorizes_local_secret_id(prefix: &str, local_secret_id: &str) -> bool {
     let boundary = prefix.trim_end_matches('/');
     local_secret_id == boundary
@@ -13557,25 +13508,21 @@ pub fn redact_report_value(value: &Value) -> Value {
 
 /// Whether a string leaf named as a typed diagnostic identifier ALSO carries a
 /// value matching its known-safe shape, so it can be printed verbatim.
-///
 /// The field NAME alone is NOT proof the value is safe: a secret-shaped value
 /// that happened to land in a `diagnosticCode`/`failureId`/etc. field must NOT
 /// ride through just because of the field name. So the exemption is gated on
 /// the VALUE actually matching a vocabulary-token / enum / UUID shape:
-///
 /// * stable error codes and v0.2 failure categories
 ///   (`kaifuu.reallive.patchback_*`, `patch_write_failed`) match a conservative
 ///   identifier grammar `^[A-Za-z][A-Za-z0-9_.:-]*$` — an ASCII-identifier-ish
 ///   token with no whitespace, no `+`/`/`/`=` (so no base64), and a leading
 ///   letter (so no hex/number-leading key material);
 /// * `failureId` must be a UUID.
-///
-/// If the value does NOT match its safe shape (raw-key-shaped, high-entropy,
-/// path-like, base64, …), this returns `false` and the caller falls back to the
-/// normal content redactor, so a secret still redacts.
-///
-/// The field-NAME secret gate (`secret_redaction_reason`) still runs ahead of
-/// this, so a genuinely secret-named field is unaffected either way.
+///   If the value does NOT match its safe shape (raw-key-shaped, high-entropy,
+///   path-like, base64, …), this returns `false` and the caller falls back to the
+///   normal content redactor, so a secret still redacts.
+///   The field-NAME secret gate (`secret_redaction_reason`) still runs ahead of
+///   this, so a genuinely secret-named field is unaffected either way.
 fn is_safe_typed_diagnostic_identifier(key: &str, value: &str) -> bool {
     match normalize_secret_field_name(key).as_str() {
         "code" | "diagnosticcode" | "category" | "rollbackdiagnosticcode" => {
@@ -13591,10 +13538,9 @@ fn is_safe_typed_diagnostic_identifier(key: &str, value: &str) -> bool {
 /// Deliberately excludes whitespace and every base64/base64 symbol
 /// (`+`, `/`, `=`), and requires a leading LETTER so a hex- or number-leading
 /// raw-key string cannot pass. Matches `^[A-Za-z][A-Za-z0-9_.:-]*$`.
-///
 /// The grammar alone still admits `-`/`_`, so a base64url raw key that happens
 /// to lead with a letter could match it. So a value that passes the grammar is
-/// additionally run through the KAIFUU-085 raw-key heuristic and rejected if it
+/// additionally run through the raw-key heuristic and rejected if it
 /// looks like raw key material — a diagnostic code / category never trips that
 /// heuristic, but a high-entropy secret does, and must NOT ride through.
 fn is_safe_vocabulary_token(value: &str) -> bool {
@@ -13626,7 +13572,6 @@ fn is_diagnostic_free_text_field(key: &str) -> bool {
 /// and the human-readable reason visible for triage while still masking any
 /// raw key material, local path, private payload, or sensitive filename that a
 /// message happens to carry.
-///
 /// The per-token predicate is the same one the whole-string redactor uses
 /// (`text_requires_redaction`), so raw-key redaction is NOT weakened: a token
 /// that would have redacted the whole message still redacts — just that token.
@@ -13692,7 +13637,6 @@ fn redact_report_value_at(value: &Value, field: &str) -> Value {
                     // vocabulary-token / enum / UUID shape — so an operator can
                     // triage a patch failure by its typed code (the common case)
                     // even when that code happens to look hex- or base64url-shaped,
-                    // while a secret-shaped value that merely landed in a
                     // code-named field still falls through to the content redactor
                     // and redacts. Free-text diagnostic fields (cause / message /
                     // reason) keep their typed code + human reason visible while
@@ -14078,7 +14022,6 @@ impl AssetInventoryManifest {
     }
 
     /// Serialize into report-safe, canonical JSON.
-    ///
     /// Public serialization always routes through the centralized report
     /// redaction policy (`redact_report_value`) so library callers cannot
     /// accidentally leak absolute paths, key material, helper dumps, or
@@ -14301,7 +14244,7 @@ impl AssetInventoryManifest {
         }
     }
 
-    /// KAIFUU-028: stamp every surface with its stable metadata hash, making the
+    /// stamp every surface with its stable metadata hash, making the
     /// manifest's asset identity + patch capability tamper-evident. Adapters call
     /// this before publishing a manifest; the validator later recomputes and
     /// rejects any drift.
@@ -14313,7 +14256,7 @@ impl AssetInventoryManifest {
         }
     }
 
-    /// KAIFUU-028: run the patch-capability consistency validator, returning the
+    /// run the patch-capability consistency validator, returning the
     /// typed diagnostics that REJECT the manifest (empty = consistent). See
     /// [`validate_asset_inventory_patch_capability`].
     pub fn validate_patch_capability(&self) -> Result<(), Vec<AssetCapabilityDiagnostic>> {
@@ -14521,14 +14464,14 @@ pub struct AssetInventorySurface {
     pub text_source_kind: AssetInventoryTextSourceKind,
     pub patch_mode: AssetInventoryPatchMode,
     pub patching: CapabilityReport,
-    /// KAIFUU-028: the patch payload (a translation/edit) this surface advertises,
+    /// the patch payload (a translation/edit) this surface advertises
     /// if any. A surface that carries a payload is claiming to edit its backing
     /// asset; the patch-capability validator rejects a payload whose `patching`
     /// capability is unsupported (a manifest cannot patch an asset it declares it
     /// cannot edit).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub patch_payload: Option<AssetInventoryPatchPayload>,
-    /// KAIFUU-028: stable, tamper-evident hash over this surface's inventory
+    /// stable, tamper-evident hash over this surface's inventory
     /// IDENTITY + PATCH-DECISION fields (see [`asset_inventory_surface_metadata_hash`]).
     /// When present, the patch-capability validator recomputes the hash and emits
     /// a `metadata_hash_mismatch` diagnostic if the declared hash has drifted.
@@ -14537,7 +14480,7 @@ pub struct AssetInventorySurface {
     pub notes: Vec<String>,
 }
 
-/// KAIFUU-028: a patch payload advertised for an asset surface — the concrete
+/// a patch payload advertised for an asset surface — the concrete
 /// translation/edit the manifest claims it will apply to the surface's backing
 /// asset.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -16298,13 +16241,12 @@ pub struct VerificationResult {
     pub failures: Vec<AdapterFailure>,
 }
 
-/// KAIFUU-193 partial-adapter report envelope. Emitted by `kaifuu extract` /
+/// partial-adapter report envelope. Emitted by `kaifuu extract` /
 /// `kaifuu profile` / `kaifuu verify` when the matched adapter's `detect`
 /// returns `detected == false` but accumulated nonzero Matched evidence.
 /// The envelope surfaces what bytes WERE recovered, which adapter refusals
 /// fired, and at which severity — instead of failing closed with
 /// `"no registered adapter detected"`.
-///
 /// Schema-stability invariants enforced by the CLI:
 /// - `partial` is always `true` (the field is never elided so dashboard
 ///   ingestion can distinguish a partial run from a complete one even when
@@ -16449,7 +16391,7 @@ impl PartialAdapterReport {
     ) -> Self {
         let mut report = Self {
             schema_version: "0.1.0".to_string(),
-            // Placeholder; `normalize()` replaces it with a content-derived id.
+            // Placeholder; `normalize` replaces it with a content-derived id.
             report_id: String::new(),
             adapter_id: adapter_id.into(),
             detected: false,
@@ -16564,7 +16506,7 @@ pub struct GoldenPhaseReport {
     pub expected: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actual: Option<String>,
-    /// KAIFUU-032: the capability an adapter-neutral asset assertion is keyed on.
+    /// the capability an adapter-neutral asset assertion is keyed.
     /// Set for capability-aware asset diagnostics so an unsupported asset carries
     /// a TYPED capability code (not just prose), letting the harness assert on it.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -16623,7 +16565,7 @@ pub struct GoldenFailure {
     pub expected: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actual: Option<String>,
-    /// KAIFUU-032: capability an adapter-neutral asset-preservation failure is
+    /// capability an adapter-neutral asset-preservation failure is
     /// keyed on (e.g. the unsupported-surface capability whose asset mutated).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub required_capability: Option<Capability>,
@@ -16688,7 +16630,7 @@ pub enum GoldenByteEquivalenceMode {
     /// after an unchanged patch. Retained as ONE covered case; it assumes the
     /// fixture `source.json` layout and is NOT adapter-neutral.
     AssertSourceJson,
-    /// KAIFUU-032 adapter-neutral case: assert asset preservation (and emit
+    /// adapter-neutral case: assert asset preservation (and emit
     /// capability-aware unsupported-asset diagnostics) purely from the adapter's
     /// own asset INVENTORY + CAPABILITY reports. Makes no assumption about a
     /// `source.json` file or any on-disk layout, so it works for any adapter.
@@ -16707,10 +16649,9 @@ pub struct GoldenHarnessRequest<'a> {
     pub translated_source_bridge: Option<&'a Value>,
 }
 
-/// KAIFUU-032: an adapter-neutral asset-preservation claim derived from an
+/// an adapter-neutral asset-preservation claim derived from an
 /// adapter's [`AssetInventoryManifest`] (inventory + capability reports) — NOT
 /// from a fixture `source.json` layout.
-///
 /// A claim is raised for every asset backing a surface the adapter reports it
 /// cannot edit (the surface's `patching` capability is `Unsupported`, or its
 /// `patch_mode` is `Unsupported`). Because the adapter declares it cannot patch
@@ -16730,9 +16671,8 @@ pub struct AssetPreservationClaim {
     pub support_boundary: String,
 }
 
-/// KAIFUU-032: derive adapter-neutral asset-preservation claims from an asset
+/// derive adapter-neutral asset-preservation claims from an asset
 /// inventory manifest.
-///
 /// This is a pure function over the manifest's `surfaces` + their `patching`
 /// capability reports. It raises one [`AssetPreservationClaim`] per surface the
 /// adapter reports as capability-unsupported. It reads nothing from disk and
@@ -16786,7 +16726,7 @@ pub fn derive_asset_preservation_claims(
     claims
 }
 
-/// KAIFUU-028: the canonical, order-fixed projection of the inventory IDENTITY +
+/// the canonical, order-fixed projection of the inventory IDENTITY +
 /// PATCH-DECISION fields that a surface's metadata hash commits to. Serialized
 /// under the repo-wide `utf8-lf-json-stable` rule ([`stable_json`]) and hashed
 /// with [`sha256_hash_bytes`], so the hash is deterministic and tamper-evident:
@@ -16808,8 +16748,7 @@ struct AssetMetadataHashInput<'a> {
     capability_status: &'a CapabilityStatus,
 }
 
-/// KAIFUU-028: compute the stable metadata hash for one asset surface.
-///
+/// compute the stable metadata hash for one asset surface.
 /// The hash binds the surface's PATCH-DECISION fields (`patch_mode`, the
 /// `patching` capability + status, the surface kind) to the IDENTITY of the
 /// asset it patches (`asset_id`, `asset_key`, `path`, `source_hash`, resolved
@@ -16847,7 +16786,7 @@ pub fn asset_inventory_surface_metadata_hash(
     sha256_hash_bytes(canonical.as_bytes())
 }
 
-/// KAIFUU-028: a typed diagnostic for a patch-capability inconsistency in an
+/// a typed diagnostic for a patch-capability inconsistency in an
 /// asset inventory manifest. Emitted (never a silent pass or panic) when a
 /// manifest would imply an unsupported asset edit or its identity/patch
 /// metadata hash has drifted.
@@ -16895,7 +16834,7 @@ impl AssetCapabilityDiagnostic {
     }
 }
 
-/// KAIFUU-028: whether a surface's declared patch capability forbids editing its
+/// whether a surface's declared patch capability forbids editing its
 /// backing asset. A surface is unsupported when its `patching` capability status
 /// is `Unsupported` OR its `patch_mode` is `Unsupported`.
 fn asset_surface_patch_unsupported(surface: &AssetInventorySurface) -> bool {
@@ -16903,18 +16842,16 @@ fn asset_surface_patch_unsupported(surface: &AssetInventorySurface) -> bool {
         || surface.patch_mode == AssetInventoryPatchMode::Unsupported
 }
 
-/// KAIFUU-028: the patch-capability consistency validator.
-///
+/// the patch-capability consistency validator.
 /// Returns one typed [`AssetCapabilityDiagnostic`] per inconsistency:
 /// * `unsupported_asset_patched` — a surface advertises a [`AssetInventoryPatchPayload`]
 ///   for an asset whose patch capability is unsupported (a manifest cannot patch
 ///   an asset it declares it cannot edit).
 /// * `metadata_hash_mismatch` — a surface declares a `metadata_hash` that does
 ///   not match the hash recomputed from its identity + patch-decision fields.
-///
-/// A manifest with a non-empty result is REJECTED (see
-/// [`AssetInventoryManifest::validate_patch_capability`]). This is a pure
-/// function of the manifest; diagnostics are returned in a deterministic order.
+///   A manifest with a non-empty result is REJECTED (see
+///   [`AssetInventoryManifest::validate_patch_capability`]). This is a pure
+///   function of the manifest; diagnostics are returned in a deterministic order.
 pub fn validate_asset_inventory_patch_capability(
     manifest: &AssetInventoryManifest,
 ) -> Vec<AssetCapabilityDiagnostic> {
@@ -16971,7 +16908,7 @@ pub fn validate_asset_inventory_patch_capability(
     diagnostics
 }
 
-/// KAIFUU-028: the two synthetic assets the patch-capability fixtures share —
+/// the two synthetic assets the patch-capability fixtures share
 /// a patchable audio asset (a metadata song title) and an unpatchable binary
 /// art asset.
 fn asset_inventory_patch_capability_fixture_assets() -> Vec<AssetInventoryAsset> {
@@ -17065,7 +17002,7 @@ fn asset_inventory_patch_capability_fixture_manifest(
     manifest
 }
 
-/// KAIFUU-028 POSITIVE fixture: a consistent manifest. The supported song-title
+/// POSITIVE fixture: a consistent manifest. The supported song-title
 /// surface advertises a patch payload (allowed — its capability is supported);
 /// the unsupported art surface advertises no payload. Every surface carries a
 /// correct, stamped metadata hash. Passes both base validation and the
@@ -17085,7 +17022,7 @@ pub fn asset_inventory_patch_capability_positive_fixture() -> AssetInventoryMani
     )
 }
 
-/// KAIFUU-028 NEGATIVE fixture (unsupported-asset-patched): the unsupported art
+/// NEGATIVE fixture (unsupported-asset-patched): the unsupported art
 /// surface advertises a patch payload for an asset it declares it cannot edit.
 /// Base validation passes; the patch-capability validator REJECTS it with a
 /// typed `unsupported_asset_patched` diagnostic.
@@ -17104,7 +17041,7 @@ pub fn asset_inventory_patch_capability_unsupported_patched_fixture() -> AssetIn
     )
 }
 
-/// KAIFUU-028 NEGATIVE fixture (metadata-hash mismatch): a structurally valid
+/// NEGATIVE fixture (metadata-hash mismatch): a structurally valid
 /// manifest whose supported surface declares a metadata hash that does not match
 /// its identity + patch-decision fields (tampered/drifted). Base validation
 /// passes; the patch-capability validator REJECTS it with a typed
@@ -18625,20 +18562,16 @@ pub fn read_plain_xp3_inventory(bytes: &[u8]) -> Result<PlainXp3Inventory, Plain
     Ok(inventory)
 }
 
-// =========================================================================
-// KAIFUU-098 — Plain XP3 deterministic writer
-// =========================================================================
-//
-// The KAIFUU-098 writer covers the WRITE side of the plain-XP3 patch-back
-// claim. KAIFUU-038 established the read-side classification (plain /
+// Plain XP3 deterministic writer
+// The writer covers the WRITE side of the plain-XP3 patch-back
+// claim. established the read-side classification (plain /
 // encrypted / compressed / helper-required / unsupported-protected-executable) and
-// scoped patch_back to plain XP3 only. KAIFUU-098 adds the
+// scoped patch_back to plain XP3 only. adds the
 // `archive_rebuild_plain` write surface: take a source-fidelity manifest
 // of a plain XP3 archive (entry order, per-segment metadata, stored
 // adler32, raw segment payloads) and emit a deterministic XP3 byte
 // stream. Rebuilding from an unchanged manifest produces the same bytes
 // as the source archive — round-trip is byte-identical.
-//
 // The writer never decrypts, never re-encrypts, and never recompresses.
 // Compressed segments are passed through verbatim; the writer does not
 // claim a decompression or compression capability. Encrypted,
@@ -18646,8 +18579,7 @@ pub fn read_plain_xp3_inventory(bytes: &[u8]) -> Result<PlainXp3Inventory, Plain
 // [`unpack_plain_xp3_to_directory`] before any write surface is exposed.
 
 /// Patch-back mode declared by a writer capability tuple.
-///
-/// KAIFUU-098 introduces [`PatchBackMode::ArchiveRebuildPlain`] as the
+/// introduces [`PatchBackMode::ArchiveRebuildPlain`] as the
 /// first concrete writer surface: deterministic rebuild of a plain XP3
 /// archive from a source-fidelity manifest. No other variant is claimed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -18667,8 +18599,7 @@ impl PatchBackMode {
     }
 }
 
-/// Writer capability tuple recorded by the KAIFUU-098 plain XP3 writer.
-///
+/// Writer capability tuple recorded by the plain XP3 writer.
 /// Per the spec acceptance criterion: "Writer capability tuple records
 /// patch_back_mode=archive_rebuild_plain". This is a tuple (not a
 /// freeform capability map) so the orchestrator can pattern-match on the
@@ -18681,15 +18612,15 @@ pub struct PlainXp3WriterCapability {
     pub patch_back_mode: PatchBackMode,
 }
 
-/// Adapter id under which the KAIFUU-098 writer registers its capability
-/// tuple. Distinct from the KAIFUU-038 detector adapter id so callers can
+/// Adapter id under which the writer registers its capability
+/// tuple. Distinct from the detector adapter id so callers can
 /// fan capability claims across read and write surfaces independently.
 pub const PLAIN_XP3_WRITER_ADAPTER_ID: &str = "kaifuu.kirikiri-xp3.plain-writer";
 
 /// Plain-XP3 variant string the writer claims patch-back for.
 pub const PLAIN_XP3_WRITER_VARIANT: &str = "plain";
 
-/// Return the writer capability tuple for the KAIFUU-098 plain XP3
+/// Return the writer capability tuple for the plain XP3
 /// writer. Always declares
 /// `patch_back_mode = PatchBackMode::ArchiveRebuildPlain`; no other
 /// variant is claimed.
@@ -18702,7 +18633,6 @@ pub const fn plain_xp3_writer_capability() -> PlainXp3WriterCapability {
 }
 
 /// Source-fidelity archive structure used by the deterministic writer.
-///
 /// Unlike [`PlainXp3Inventory`] (which sorts entries by path and hashes
 /// payloads for reporting), [`PlainXp3Archive`] preserves the **source
 /// order** of entries and the raw bytes of each segment so the writer
@@ -18790,8 +18720,7 @@ mod plain_xp3_payload_serde {
     }
 }
 
-/// Errors emitted by the KAIFUU-098 plain XP3 writer.
-///
+/// Errors emitted by the plain XP3 writer.
 /// Each variant carries enough context for the CLI to surface a
 /// semantic diagnostic without leaking secrets or fixture paths. The
 /// `Unsupported*` variants are routed before any write side effect —
@@ -18821,7 +18750,7 @@ pub enum PlainXp3WriterError {
     UnsupportedVariant(String),
     /// The manifest carries a compressed segment for an entry whose
     /// payload has been replaced (segment archive_size no longer
-    /// matches the payload slice length). KAIFUU-098 does not claim
+    /// matches the payload slice length). does not claim
     /// any recompression capability, so this is rejected with the
     /// `kaifuu.unsupported_variant.packed` semantic code.
     UnsupportedCompressedReplacement(String),
@@ -18921,7 +18850,6 @@ pub const PLAIN_XP3_MANIFEST_SCHEMA_VERSION: &str = "0.1.0";
 
 /// Read a plain XP3 archive into a source-fidelity [`PlainXp3Archive`]
 /// suitable for byte-identical rebuild.
-///
 /// Refuses encrypted / compressed / helper-required / protected-executable inputs
 /// before exposing any write surface — callers can rely on the
 /// `Unsupported*` errors to gate downstream patch-back claims.
@@ -19072,7 +19000,7 @@ pub fn read_plain_xp3_archive(bytes: &[u8]) -> Result<PlainXp3Archive, PlainXp3W
     })
 }
 
-/// Detect the helper-required marker the KAIFUU-038 classifier emits.
+/// Detect the helper-required marker the classifier emits.
 fn has_legacy_xp3_helper_required_marker(bytes: &[u8]) -> bool {
     if !bytes.starts_with(b"XP3\r\n") {
         return false;
@@ -19082,7 +19010,7 @@ fn has_legacy_xp3_helper_required_marker(bytes: &[u8]) -> bool {
         || header_contains_ascii(marker_region, "kaifuu-xp3-helper-required")
 }
 
-/// Detect the compressed/packed marker the KAIFUU-038 classifier emits.
+/// Detect the compressed/packed marker the classifier emits.
 fn has_legacy_xp3_compressed_marker(bytes: &[u8]) -> bool {
     if !bytes.starts_with(b"XP3\r\n") {
         return false;
@@ -19093,9 +19021,7 @@ fn has_legacy_xp3_compressed_marker(bytes: &[u8]) -> bool {
 }
 
 /// Encode a [`PlainXp3Archive`] to a deterministic XP3 byte stream.
-///
 /// Layout (matches the existing fixture-only synthetic builder):
-///
 /// 1. [`XP3_PLAIN_MAGIC`] (11 bytes)
 /// 2. Placeholder u64 for the index offset (filled in at the end).
 /// 3. Each entry's concatenated segment payloads, in entry order, in
@@ -19105,10 +19031,9 @@ fn has_legacy_xp3_compressed_marker(bytes: &[u8]) -> bool {
 /// 5. Index size u64 (the byte length of the File chunks that follow).
 /// 6. One `File` chunk per entry, each containing `info`, `segm`, and
 ///    (when the source had one) `adlr` chunks in that order.
-///
-/// Rebuilding from a manifest produced by [`read_plain_xp3_archive`]
-/// returns the same bytes as the source archive: this is the
-/// determinism guarantee KAIFUU-098 makes.
+///    Rebuilding from a manifest produced by [`read_plain_xp3_archive`]
+///    returns the same bytes as the source archive: this is the
+///    determinism guarantee makes.
 pub fn encode_xp3(archive: &PlainXp3Archive) -> Result<Vec<u8>, PlainXp3WriterError> {
     if archive.variant != PLAIN_XP3_MANIFEST_VARIANT {
         return Err(PlainXp3WriterError::UnsupportedVariant(
@@ -19185,7 +19110,7 @@ pub fn encode_xp3(archive: &PlainXp3Archive) -> Result<Vec<u8>, PlainXp3WriterEr
 
         let path_units: Vec<u16> = entry.path.encode_utf16().collect();
         let mut info = Vec::with_capacity(4 + 8 + 8 + 2 + path_units.len() * 2);
-        // KAIFUU-098 writes the four reserved info-chunk bytes as zero,
+        // writes the four reserved info-chunk bytes as zero
         // matching every fixture-only plain XP3 archive in the repo. The
         // reader ignores these bytes; preserving the value keeps the
         // round-trip byte-identical for every fixture we have.
@@ -19240,7 +19165,6 @@ fn append_plain_xp3_chunk(output: &mut Vec<u8>, name: [u8; 4], content: &[u8]) {
 }
 
 /// Manifest written to disk by [`unpack_plain_xp3_to_directory`].
-///
 /// The on-disk layout mirrors [`PlainXp3Archive`] but stores each entry's
 /// raw payload as a separate file under `payload/` so callers can edit
 /// individual entries without going through hex round-tripping.
@@ -19266,7 +19190,6 @@ pub struct PlainXp3DirectoryManifestEntry {
 
 /// Symlink-safe (`O_NOFOLLOW`, fd-relative) materialization of the unpacked
 /// plain XP3 directory layout.
-///
 /// [`validate_safe_relative_path`] is a string-level first-line check only: it
 /// cannot see the filesystem, so a symlink planted inside the unpack/output
 /// directory (or a directory component that is a symlink pointing outside the
@@ -19278,8 +19201,7 @@ pub struct PlainXp3DirectoryManifestEntry {
 /// (or the leaf) fails the `openat` with `ELOOP` and is reported as
 /// [`PlainXp3WriterError::SymlinkTraversalRefused`] — the read/write is refused
 /// in place and can never follow the link out of the root, even under a
-/// concurrent swap. Mirrors the UTSUSHI-093 runtime-artifact hardening.
-///
+/// concurrent swap. Mirrors the runtime-artifact hardening.
 /// Threat model: the root `dir` is the caller's trust anchor (they explicitly
 /// name it), so the root path itself is resolved normally; every component
 /// BELOW the root — which is influenced by the manifest and/or a prior unpack
@@ -19471,17 +19393,14 @@ mod plain_xp3_no_follow {
 
 /// Unpack a plain XP3 archive into a directory layout suitable for the
 /// deterministic writer.
-///
 /// Layout produced under `dir`:
-///
 /// - `manifest.json`: ordered list of entries with per-segment metadata.
 /// - `payload/<index>-<flat-path>.bin`: raw segment payload for each
 ///   entry, where `<index>` is the entry's zero-padded source-order
 ///   index and `<flat-path>` replaces slashes with `__`.
-///
-/// Refuses non-plain XP3 bytes (encrypted, compressed, helper-required, or unknown
-/// containers) **before** writing any file under `dir`. The directory
-/// is created if missing.
+///   Refuses non-plain XP3 bytes (encrypted, compressed, helper-required, or unknown
+///   containers) **before** writing any file under `dir`. The directory
+///   is created if missing.
 pub fn unpack_plain_xp3_to_directory(
     bytes: &[u8],
     dir: &Path,
@@ -19526,7 +19445,6 @@ pub fn unpack_plain_xp3_to_directory(
 
 /// Rebuild a plain XP3 archive from a directory previously produced by
 /// [`unpack_plain_xp3_to_directory`].
-///
 /// The directory's `manifest.json` is parsed; each entry's payload is
 /// loaded from the manifest-declared relative path. The writer refuses
 /// non-`plain` variants (encrypted / compressed / helper-required / unknown) with the
@@ -19603,13 +19521,11 @@ pub fn pack_plain_xp3_from_directory(dir: &Path) -> Result<Vec<u8>, PlainXp3Writ
 /// directory layout. Updates `manifest.json` (archive_size,
 /// original_size, segment archive_size/original_size) so the next
 /// [`pack_plain_xp3_from_directory`] call emits the rewritten entry.
-///
 /// Acceptance criterion: "Replacing an allowed plain fixture file
 /// updates table metadata and verification output."
-///
 /// The replacement is only allowed when the entry's segments are all
 /// uncompressed (no decompression / recompression is in scope for
-/// KAIFUU-098). Refuses with
+/// ). Refuses with
 /// [`PlainXp3WriterError::UnsupportedCompressedReplacement`] otherwise.
 /// Multi-segment uncompressed entries are also out of scope — the
 /// writer would have no canonical rule for how to split the new payload
@@ -19981,11 +19897,9 @@ pub fn safe_join_relative(root: &Path, relative_path: &str) -> KaifuuResult<Path
 
 /// Validates Kaifuu's portable relative path rule for package-controlled writes
 /// and profile asset paths.
-///
 /// This only validates the caller-provided string. It does not normalize,
 /// canonicalize, or return a safe output path. Use [`safe_join_relative`] when a
 /// validated relative path must be materialized under a trusted root.
-///
 /// The rule uses `/` as the only path separator and rejects empty paths,
 /// absolute paths, empty components, `.` components, `..` components, NUL
 /// bytes, backslashes, and Windows drive-prefix components anywhere in the
@@ -20031,7 +19945,7 @@ fn path_has_windows_drive_prefix_component(path: &str) -> bool {
 fn unsafe_relative_path_error(relative_path: &str) -> io::Error {
     // Typed as `io::Error` with `InvalidInput`: this rejects a caller-supplied
     // relative path that violates the portable path rule. Callers box it into
-    // `KaifuuResult` via `?`/`.into()`, but keeping the concrete `io::Error`
+    // `KaifuuResult` via `?`/`.into`, but keeping the concrete `io::Error`
     // lets consumers match on `ErrorKind::InvalidInput`.
     io::Error::new(
         ErrorKind::InvalidInput,
@@ -20130,7 +20044,7 @@ fn output_already_exists_error(output_label: &str, output_dir: &Path) -> io::Err
     // Typed as `io::Error` with `AlreadyExists`: the no-clobber promotion
     // refuses to replace an existing output path. The concrete kind lets
     // callers distinguish "already present" from other promotion failures;
-    // it is boxed into `KaifuuResult` at the call site via `?`/`.into()`.
+    // it is boxed into `KaifuuResult` at the call site via `?`/`.into`.
     io::Error::new(
         ErrorKind::AlreadyExists,
         format!(
@@ -20969,12 +20883,10 @@ fn byte_content_hash(bytes: &[u8]) -> String {
     format!("{hash:016x}")
 }
 
-/// KAIFUU-032 adapter-neutral asset-preservation phase.
-///
+/// adapter-neutral asset-preservation phase.
 /// Instead of reading a hard-coded `source.json`, this re-runs the adapter's
 /// own `asset_inventory` on both the input and the unchanged-patch output and
 /// drives assertions off the adapter's INVENTORY + CAPABILITY reports:
-///
 /// * For every surface the adapter reports as capability-unsupported
 ///   ([`derive_asset_preservation_claims`]), it records a TYPED capability-aware
 ///   diagnostic (`asset_capability_diagnostic`, carrying the required
@@ -20985,9 +20897,8 @@ fn byte_content_hash(bytes: &[u8]) -> String {
 ///   preservation signature (on-disk bytes when the asset path resolves to a
 ///   file, otherwise the adapter-reported `source_hash`) between input and
 ///   output and fails on any mutation, missing, or unexpected asset.
-///
-/// This makes no assumption about a `source.json` file or on-disk layout, so it
-/// works for an adapter whose inventory names assets under any scheme.
+///   This makes no assumption about a `source.json` file or on-disk layout, so it
+///   works for an adapter whose inventory names assets under any scheme.
 fn report_inventory_asset_preservation(
     adapter: &dyn EngineAdapter,
     report: &mut GoldenRoundTripReport,

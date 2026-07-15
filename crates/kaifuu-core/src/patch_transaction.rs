@@ -1,10 +1,8 @@
-//! Engine-neutral binary patch transaction harness (KAIFUU-084).
-//!
+//! Engine-neutral binary patch transaction harness.
 //! Drives `preflight → stage → verify → promote` with deterministic
 //! rollback. The harness never modifies the final output path until every
 //! preflight check passes and the staged bytes verify. On any failure the
 //! staging file is deleted and the original output bytes are left intact.
-//!
 //! The harness emits a v0.2 PatchResult JSON (see
 //! [`crate::contracts::validate_patch_result_v02`]) on every outcome — including
 //! preflight failures. This v0.2 surface is the sole patch-result
@@ -35,7 +33,6 @@ use crate::{
 };
 
 /// Caller-facing configuration for a single patch transaction.
-///
 /// All references are borrowed; the harness clones the small strings it needs
 /// to persist into the resulting [`PatchTransactionOutcome`].
 pub struct PatchTransactionConfig<'a> {
@@ -77,11 +74,9 @@ pub struct PatchTransactionConfig<'a> {
 }
 
 /// State of a [`PatchTransaction`].
-///
 /// The legal forward transitions are
 /// `Idle → Preflight → Staged → Verified → Promoted`. Any failure routes
 /// to the corresponding `*Failed` terminal state.
-///
 /// A stage-time write failure (the staged bytes never landed, so no atomic
 /// rename was ever attempted) terminates in [`Self::StageFailed`], distinct
 /// from [`Self::PromoteFailed`] which is reserved for a promote-time rename
@@ -232,7 +227,6 @@ impl std::fmt::Display for PatchTransactionError {
 impl std::error::Error for PatchTransactionError {}
 
 /// Engine-neutral binary patch transaction harness.
-///
 /// Construct with [`PatchTransaction::new`] then drive forward via
 /// `run_preflight → stage → verify → promote`. On any failure the staged
 /// file is cleaned up and the harness retains the diagnostics for emission
@@ -265,7 +259,6 @@ impl<'a> PatchTransaction<'a> {
     /// Run all five preflight checks. The harness accumulates every fatal
     /// diagnostic in a single pass so callers see the full list of blockers
     /// before any byte is written.
-    ///
     /// If any check fires the harness transitions to
     /// [`TransactionState::PreflightFailed`] — no file is created or
     /// modified.
@@ -424,7 +417,6 @@ impl<'a> PatchTransaction<'a> {
     /// Stage `payload` into `<output_dir>/.staging/<asset_id>-<run_id>.tmp`
     /// using exclusive-create open. The original output path is **not**
     /// touched.
-    ///
     /// Requires the harness to be in [`TransactionState::Preflight`] with no
     /// recorded fatal diagnostics.
     pub fn stage(&mut self, payload: &[u8]) -> Result<StagedPatchPayload, PatchTransactionError> {
@@ -446,7 +438,7 @@ impl<'a> PatchTransaction<'a> {
         // bytes. run_preflight validated config.expected_payload_len
         // against the byte budget and the identity-relocation invariant
         // and recorded it as preflight_payload_len; the bytes actually
-        // handed to stage() MUST match that length and re-satisfy the
+        // handed to stage MUST match that length and re-satisfy the
         // byte budget, or those invariants would go unenforced on the
         // real content. Fail closed (fatal diagnostic, no write) on any
         // mismatch instead of silently staging an unvalidated payload.
@@ -632,7 +624,6 @@ impl<'a> PatchTransaction<'a> {
     /// Re-read the staged payload and verify its sha256 matches
     /// `expected_output_hash`. Mismatches or read failures roll back the
     /// staged file.
-    ///
     /// Requires the harness to be in [`TransactionState::Staged`].
     pub fn verify(&mut self) -> Result<(), PatchTransactionError> {
         if self.state != TransactionState::Staged {
@@ -687,8 +678,7 @@ impl<'a> PatchTransaction<'a> {
     /// Atomically rename the staged file over `output_path`. On POSIX this is
     /// atomic when both paths are on the same filesystem; the harness
     /// enforces same-filesystem siblings by construction (the staging
-    /// directory is `<output_path>.parent()/.staging`).
-    ///
+    /// directory is `<output_path>.parent/.staging`).
     /// Requires the harness to be in [`TransactionState::Verified`].
     pub fn promote(&mut self) -> Result<(), PatchTransactionError> {
         if self.state != TransactionState::Verified {
@@ -770,7 +760,6 @@ impl<'a> PatchTransaction<'a> {
     }
 
     /// Consume the transaction and produce its final outcome.
-    ///
     /// In debug builds the harness validates `patch_result_v02` against
     /// [`crate::contracts::validate_patch_result_v02`] so callers do not
     /// silently ship a malformed JSON.
@@ -1021,7 +1010,6 @@ fn touched_assets_rollup(config: &PatchTransactionConfig<'_>) -> String {
 }
 
 /// Build a deterministic UUID7-shaped string from the supplied parts.
-///
 /// The UUID variant byte (position 19, i.e. the first hex char of the fourth
 /// group) is forced into `8..=b` and the version nibble (position 14) is
 /// forced to `7`, matching `assert_uuid7` in the contracts validator.
@@ -1068,7 +1056,7 @@ mod tests {
 
     /// Patch-transaction tests run inside `kaifuu-core`'s own crate boundary
     /// and exercise the access-contract machinery directly; the level matrix
-    /// is not the subject of these tests, but KAIFUU-053 requires every
+    /// is not the subject of these tests, but requires every
     /// `AdapterCapabilities` to declare one. Use the explicitly-derived
     /// matrix from an empty report vec (every rung Unsupported) so the
     /// fixture cannot be mistaken for an adapter that supports
@@ -1433,7 +1421,7 @@ mod tests {
         let source = vec![b'A'; 32];
         write_source(&output_path, &source);
         let expected_source_hash = sha256_hash_bytes(&source);
-        // expected_payload_len 24 != source.len() 32 → relocation rejection.
+        // expected_payload_len 24!= source.len 32 → relocation rejection.
         let target = vec![b'B'; 24];
         let expected_output_hash = sha256_hash_bytes(&target);
         let capabilities = capabilities_with_identity_patch();
@@ -1789,7 +1777,7 @@ mod tests {
         assert!(validate_patch_result_v02(&outcome.patch_result_v02).is_ok());
     }
 
-    /// KAIFUU-186: a stage-time write failure (no rename ever attempted) must
+    /// a stage-time write failure (no rename ever attempted) must
     /// terminate in `StageFailed`, distinct from the promote-time rename
     /// failure state (`PromoteFailed`). The two are safe-to-retry vs
     /// verify-passed-but-swap-failed and must be tellable apart via
@@ -1809,7 +1797,6 @@ mod tests {
         let target = vec![b'B'; 32];
         let stage_output_hash = sha256_hash_bytes(&target);
         // Occupy `<output_dir>/.staging` with a regular file so `create_dir_all`
-        // for the staging directory fails at stage time.
         fs::write(stage_dir.path().join(".staging"), b"blocker").unwrap();
         let stage_config = make_config(
             &stage_output,

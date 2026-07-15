@@ -1,5 +1,4 @@
 //! String-slot extraction and stable slot-id derivation.
-//!
 //! The slot id format is documented in `lib.rs` (§ "Stable id derivation
 //! rule"). The role default is provided by [`crate::opcodes::NamedOpcode`]
 //! for known opcodes; unknown contexts default to

@@ -1,5 +1,4 @@
 //! End-to-end adapter tests.
-//!
 //! - A synthetic-JSON test builds a minimal RPG Maker MV/MZ `www` tree in
 //!   a tempdir (no retail bytes), runs the full [`extract_game_dir`]
 //!   pipeline, and asserts unit counts/structure + the

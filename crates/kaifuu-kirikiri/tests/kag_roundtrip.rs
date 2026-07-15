@@ -1,5 +1,4 @@
 //! KAG `.ks` stable-extraction + byte-preserving patch proof.
-//!
 //! Fixtures are synthetic, authored, CC0 (`fixtures/dialogue_basic.ks`); no
 //! retail KiriKiri bytes. The Shift-JIS test builds its bytes in-process to
 //! exercise the trailing-byte hazard without committing a binary blob.
@@ -15,7 +14,6 @@ use kaifuu_kirikiri::{
 const FIXTURE_FILE: &str = "dialogue_basic.ks";
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
 /// reused from a different (since-removed) worktree would point fixture reads at
 /// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the
@@ -416,7 +414,6 @@ fn newline_and_unknown_unit_translations_are_rejected() {
 fn shift_jis_trailing_byte_hazard_is_handled() {
     // Two Shift-JIS double-byte characters whose *trailing* bytes are `[`
     // (0x5B) and `]` (0x5D) — the exact bytes a naive scanner would mistake
-    // for inline-tag delimiters — followed by ASCII text and a real `[p]`
     // tag, then a newline.
     // 0x83 0x5B = ゼ (trailing byte 0x5B = `[`); 0x83 0x5D = ゾ (0x5D = `]`).
     let mut src: Vec<u8> = Vec::new();

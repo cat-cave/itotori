@@ -1,11 +1,9 @@
-//! Synthetic per-opcode tests for the KAIFUU-191 real-RealLive parser.
-//!
+//! Synthetic per-opcode tests for the real-RealLive parser.
 //! Each test constructs a small byte stream in the real-RealLive
 //! opener-byte shape (per `docs/research/reallive-engine.md` §D) and
 //! asserts the decoder produces the documented [`RealLiveOpcode`]
 //! variant. The synthetic bytes here are authored from public RLDEV
 //! documentation plus the in-tree research doc, never from retail bytes.
-//!
 //! These tests pair with the lib-internal unit tests under
 //! `src/opcode.rs` to give the parser per-opcode round-trip coverage at
 //! the public-API boundary.
@@ -14,8 +12,6 @@ use kaifuu_reallive::{
     RealLiveOpcode, RealLiveParseError, is_recognized_opener, is_shift_jis_textout_lead,
     parse_real_bytecode, parse_scene,
 };
-
-// ----- positive per-opcode encode/decode round-trips -----------------------
 
 #[test]
 fn meta_line_marker_round_trips_through_parse_scene() {
@@ -233,8 +229,6 @@ fn shift_jis_textout_run_preserved_byte_equal_until_next_opener() {
     assert!(matches!(opcodes[1], RealLiveOpcode::MetaLine { line: 5 }));
 }
 
-// ----- negative path tests -------------------------------------------------
-
 #[test]
 fn empty_input_surfaces_truncated_bytecode_not_silent_ok() {
     let err = parse_real_bytecode(&[]).expect_err("must error");
@@ -372,8 +366,6 @@ fn out_of_space_module_type_is_preserved_as_unknown_with_command_opener() {
         other => panic!("expected Unknown for out-of-space module_type, got {other:?}"),
     }
 }
-
-// ----- partition / coverage helpers ----------------------------------------
 
 #[test]
 fn recognized_opener_table_matches_documented_research_doc_set() {

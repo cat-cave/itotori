@@ -1,10 +1,8 @@
-//! KAIFUU-112 — MV/MZ JSON full-surface golden integration.
-//!
-//! The KAIFUU-109/110/111 slices each proved a *single* MV/MZ text surface
+//! MV/MZ JSON full-surface golden integration.
+//! The prior slices each proved a *single* MV/MZ text surface
 //! (map + common-event, database + system + terms, plugin-profile). This
 //! module is the **integration** that ties all six declared surfaces
 //! together into one honest, deterministic pipeline over a whole game tree:
-//!
 //! 1. [`extract_full_surface`] walks a game's `www` tree
 //!    ([`crate::extract_game_dir`] for the five `www/data/*.json` surfaces —
 //!    maps, common-events, database, system, terms) **and** its
@@ -19,9 +17,7 @@
 //!    [`FullSurfacePatchManifest`] proving: only the declared JSON text
 //!    changed, every `www/img` / `www/audio` media byte stayed identical, and
 //!    the round-trip re-parses.
-//!
 //! # Honest scope (the capability tuple)
-//!
 //! [`MvMzCapabilityTuple::honest`] declares support for exactly two scopes —
 //! `mv_mz/json_text` (extract + patch the five JSON-text roles) and
 //! `mv_mz/plugin_profile` (extract declared plugin text + diagnose undeclared
@@ -55,7 +51,7 @@ use crate::{ExtractError, Finding, RpgMakerExtraction, extract_game_dir};
 
 /// Full-surface integration manifest schema version.
 pub const K112_FULL_SURFACE_SCHEMA_VERSION: &str = "0.1.0";
-/// KAIFUU-108 fixture-profile id the integration reports under.
+/// fixture-profile id the integration reports under.
 pub const K112_FIXTURE_PROFILE_ID: &str = "KAIFUU-112";
 
 /// Relative path (within a `www` dir) of the plugin-config file.
@@ -63,9 +59,7 @@ const PLUGINS_JS_REL: &str = "js/plugins.js";
 /// Media subtrees the adapter never extracts or patches (out of scope).
 const MEDIA_SUBTREES: [&str; 2] = ["img", "audio"];
 
-// ---------------------------------------------------------------------------
 // Capability tuple — honest scope
-// ---------------------------------------------------------------------------
 
 /// One in-scope capability scope: a named boundary the adapter really
 /// supports, its capability rung, and the surface roles it covers.
@@ -94,7 +88,6 @@ pub struct OutOfScope {
 }
 
 /// The honest MV/MZ capability tuple emitted by the full-surface integration.
-///
 /// Limited to MV/MZ JSON text + plugin-profile diagnostics — it never claims
 /// encrypted-media or plugin-JS support.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -261,9 +254,7 @@ impl MvMzCapabilityTuple {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Per-surface coverage
-// ---------------------------------------------------------------------------
 
 /// Per-role coverage: how many units the integration surfaced for a role,
 /// which files fed it, and a bounded sample of the STRUCTURAL surface keys
@@ -283,7 +274,6 @@ pub struct SurfaceCoverage {
 const SAMPLE_KEY_LIMIT: usize = 4;
 
 /// Assign a `www/data/*.json` surface key to its declared role.
-///
 /// `System.json` splits by pointer: `gameTitle`/`currencyUnit` are the
 /// `System` role, everything else (`terms.*`, the type lists) is `Terms`.
 pub fn role_for_data_key(source_unit_key: &str) -> Option<MvMzSurfaceRole> {
@@ -318,9 +308,7 @@ fn is_map_file(file: &str) -> bool {
     !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
 }
 
-// ---------------------------------------------------------------------------
 // Structural (retail-text-free) diagnostic + finding records
-// ---------------------------------------------------------------------------
 
 /// A structural summary of a [`Finding`] (unknown / script / plugin-command
 /// event code). Carries only structural description — never retail text.
@@ -347,7 +335,7 @@ impl FindingRecord {
 }
 
 /// A structural summary of a [`PluginDiagnostic`] (unsupported plugin profile
-/// / mis-declared pointer). Structural only — never retail text.
+/// mis-declared pointer). Structural only — never retail text.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginDiagnosticRecord {
@@ -380,9 +368,7 @@ impl PluginDiagnosticRecord {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Full-surface extraction
-// ---------------------------------------------------------------------------
 
 /// The combined full-surface extraction: the `www/data` bridge bundle, the
 /// `plugins.js` plugin-profile extraction, the per-role coverage census, and
@@ -423,7 +409,6 @@ pub enum FullSurfaceError {
 }
 
 /// Walk a game's `www` tree across all six declared surfaces.
-///
 /// Runs [`extract_game_dir`] for the five `www/data/*.json` surfaces and
 /// [`extract_plugins_file`] on `www/js/plugins.js` (which must exist) with the
 /// caller-declared plugin `profiles`. Deterministic: identical input yields an
@@ -584,9 +569,7 @@ impl FullSurfaceExtractionManifest {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Trivial full-surface patch round-trip
-// ---------------------------------------------------------------------------
 
 /// Deterministic trivial translation of a source literal. Prepends the CJK
 /// "translate" ideograph so the target is always non-empty, always differs
@@ -672,7 +655,6 @@ pub struct FullSurfacePatch {
 
 /// Apply a trivial per-unit translation across every declared surface and
 /// build the patch manifest.
-///
 /// Reads `www_dir` strictly read-only. `www/data/*.json` are patched via the
 /// proven byte-surgical splice ([`apply_translated_bundle`]); `www/js/plugins.js`
 /// via [`patch_plugins_file`]. Media under `www/img` / `www/audio` is never
@@ -682,12 +664,10 @@ pub fn patch_full_surface_trivial(
     extraction: &FullSurfaceExtraction,
     opts: &PatchbackOpts,
 ) -> Result<FullSurfacePatch, FullSurfaceError> {
-    // --- data surfaces ---
     let translated_json = build_trivial_translated_bundle_json(&extraction.data.bundle.json);
     let bundle = TranslatedBundleV02::from_json(&translated_json)?;
     let patched_data = apply_translated_bundle(www_dir, &bundle, opts)?;
 
-    // --- plugin-profile surface ---
     let plugins_path = www_dir.join(PLUGINS_JS_REL);
     let original_plugins = std::fs::read(&plugins_path).map_err(|source| FullSurfaceError::Io {
         path: plugins_path.display().to_string(),
@@ -705,7 +685,6 @@ pub fn patch_full_surface_trivial(
     let patched_plugins_js =
         patch_plugins_file(PLUGINS_JS_FILE, &original_plugins, &plugin_translations)?;
 
-    // --- changed-file census ---
     let data_dir = www_dir.join("data");
     let mut roles_by_file: BTreeMap<String, BTreeSet<MvMzSurfaceRole>> = BTreeMap::new();
     for unit in &extraction.data.bundle.bundle.units {
@@ -740,7 +719,6 @@ pub fn patch_full_surface_trivial(
     });
     changed_files.sort_by(|a, b| a.file.cmp(&b.file));
 
-    // --- media untouched census ---
     let mut media_untouched: Vec<MediaAsset> = Vec::new();
     for subtree in MEDIA_SUBTREES {
         let dir = www_dir.join(subtree);

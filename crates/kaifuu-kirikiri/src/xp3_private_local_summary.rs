@@ -1,29 +1,23 @@
-//! KAIFUU-102 — the **private-local XP3 helper + patch summary** renderer.
-//!
+//! the **private-local XP3 helper + patch summary** renderer.
 //! # What this is
-//!
 //! A local operator runs the profiled XP3 helper + patch-back flows against
-//! their own private tree (the KAIFUU-100 crypt smoke, the KAIFUU-101 patch-back
+//! their own private tree (the crypt smoke, the patch-back
 //! smoke, and whatever local key helper resolved the archive password). Those
 //! runs produce three already-safe, already-typed artifacts:
-//!
-//! - a **helper-result aggregate** — a set of KAIFUU-085
+//! - a **helper-result aggregate** — a set of
 //!   [`HelperResult`](kaifuu_core::HelperResult)s (ref + hash schema; the raw key
 //!   never leaves the resolving helper), and
-//! - a **support-tuple summary** — a set of KAIFUU-105
+//! - a **support-tuple summary** — a set of
 //!   [`ClaimedSupportTuple`](kaifuu_core::compat_profile::ClaimedSupportTuple)s
 //!   declaring what the operator's XP3 posture actually claims, and
 //! - zero or more **XP3 patch-back summaries**
 //!   ([`Xp3PatchReport`](crate::Xp3PatchReport)).
-//!
-//! This module COMPOSES those into ONE redacted validation summary that exposes
-//! only **safe metadata** — profile ids, secret **requirement** ids, proof
-//! hashes, capability levels, statuses, counts, and typed diagnostics. It
-//! **never** carries a raw key, a private path, decrypted story text, a
-//! screenshot, retail bytes, or a raw helper dump.
-//!
-//! # Redaction toggle + private-local law (mirrors KAIFUU-015 / KAIFUU-094)
-//!
+//!   This module COMPOSES those into ONE redacted validation summary that exposes
+//!   only **safe metadata** — profile ids, secret **requirement** ids, proof
+//!   hashes, capability levels, statuses, counts, and typed diagnostics. It
+//!   **never** carries a raw key, a private path, decrypted story text, a
+//!   screenshot, retail bytes, or a raw helper dump.
+//! # Redaction toggle + private-local law (mirrors /)
 //! - The renderer's inputs are all synthetic-reproducible, already-redacted
 //!   types. It does not read corpus contents, decrypt bytes, or shell out.
 //! - Every private-local row is **optional**: rendering with empty helper /
@@ -66,21 +60,19 @@ pub const XP3_PRIVATE_LOCAL_SUMMARY_SUPPORT_BOUNDARY: &str = "Kaifuu KiriKiri XP
 /// Semantic code: the composed summary failed the fail-loud deep secret scan.
 pub const SEMANTIC_XP3_PRIVATE_LOCAL_SUMMARY_SECRET_LEAK: &str =
     "kaifuu.kirikiri.xp3_private_local_summary.secret_leak";
-/// Semantic code: a helper-result row failed KAIFUU-085 validation.
+/// Semantic code: a helper-result row failed validation.
 pub const SEMANTIC_XP3_PRIVATE_LOCAL_SUMMARY_HELPER_INVALID: &str =
     "kaifuu.kirikiri.xp3_private_local_summary.helper_result_invalid";
-/// Semantic code: a support tuple overclaimed / failed KAIFUU-105 validation.
+/// Semantic code: a support tuple overclaimed / failed validation.
 pub const SEMANTIC_XP3_PRIVATE_LOCAL_SUMMARY_TUPLE_OVERCLAIM: &str =
     "kaifuu.kirikiri.xp3_private_local_summary.support_tuple_overclaim";
 /// Semantic code: an XP3 patch-back summary reported a failed round-trip.
 pub const SEMANTIC_XP3_PRIVATE_LOCAL_SUMMARY_PATCH_FAILED: &str =
     "kaifuu.kirikiri.xp3_private_local_summary.patch_summary_failed";
 
-// ---------------------------------------------------------------------------
 // Input aggregate fixtures (synthetic, deserialized from committed JSON).
-// ---------------------------------------------------------------------------
 
-/// The **helper-result aggregate** fixture: a set of KAIFUU-085 helper results
+/// The **helper-result aggregate** fixture: a set of helper results
 /// an operator's local key-helper runs produced. Carries only ref + hash
 /// [`HelperResult`]s — never raw key material.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,7 +84,7 @@ pub struct Xp3HelperResultAggregate {
     pub helper_results: Vec<HelperResult>,
 }
 
-/// The **support-tuple summary** fixture: a set of KAIFUU-105 claimed-support
+/// The **support-tuple summary** fixture: a set of claimed-support
 /// tuples declaring the operator's XP3 posture.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -103,9 +95,7 @@ pub struct Xp3SupportTupleSummaryFixture {
     pub support_tuples: Vec<ClaimedSupportTuple>,
 }
 
-// ---------------------------------------------------------------------------
 // Render input (borrowed slices; every leg is optional).
-// ---------------------------------------------------------------------------
 
 /// The already-loaded inputs to the renderer. Any slice may be empty — a
 /// private-local row is never required, so an all-empty input renders a valid,
@@ -118,9 +108,7 @@ pub struct Xp3PrivateLocalSummaryInput<'a> {
     pub patch_reports: &'a [Xp3PatchReport],
 }
 
-// ---------------------------------------------------------------------------
 // Rendered rows (safe metadata only).
-// ---------------------------------------------------------------------------
 
 /// One helper-result row: capability level, redaction posture, diagnostic code,
 /// secret **requirement** ids, and proof hashes. Never a raw key.
@@ -135,7 +123,7 @@ pub struct Xp3HelperResultRow {
     pub secret_requirement_ids: Vec<String>,
     pub redacted_log_hash: ProofHash,
     pub proof_hashes: Vec<ProofHash>,
-    /// KAIFUU-085 schema validation status of the underlying helper result.
+    /// schema validation status of the underlying helper result.
     pub validation_status: OperationStatus,
 }
 
@@ -188,7 +176,7 @@ pub struct Xp3PrivateLocalRedactionSummary {
     /// Secret-leak findings. A returned summary always carries `0` (any finding
     /// fails the render before a summary is returned).
     pub secret_leak_findings: u64,
-    /// `true` iff the body is clean against the KAIFUU-036/094 redaction boundary.
+    /// `true` iff the body is clean against the redaction boundary.
     pub redaction_boundary_ok: bool,
     /// The aggregate redaction status across every composed helper / patch row.
     pub aggregate_redaction_status: HelperRedactionStatus,
@@ -217,9 +205,7 @@ impl Xp3PrivateLocalSummaryDiagnostic {
     }
 }
 
-// ---------------------------------------------------------------------------
 // The rendered summary.
-// ---------------------------------------------------------------------------
 
 /// The composed, redacted XP3 private-local validation summary.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -356,19 +342,15 @@ impl Xp3PatchSummaryRow {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Renderer.
-// ---------------------------------------------------------------------------
 
 /// Compose the redacted XP3 private-local summary from the operator's helper +
 /// support-tuple + patch inputs.
-///
 /// The summary carries only safe metadata (profile ids, secret **requirement**
 /// ids, proof hashes, capability levels, statuses, counts, diagnostics). The
-/// status is `Failed` iff any helper result fails KAIFUU-085 validation, any
-/// support tuple overclaims (KAIFUU-105), or any XP3 patch summary reports a
+/// status is `Failed` iff any helper result fails validation, any
+/// support tuple overclaims, or any XP3 patch summary reports a
 /// failed round-trip.
-///
 /// FAIL-LOUD: the composed body is deep-scanned; if any raw key, private path,
 /// decrypted/story text, screenshot filename, retail byte blob, or raw helper
 /// dump is present, this returns `Err` and nothing is returned to persist.
@@ -378,7 +360,6 @@ pub fn render_xp3_private_local_summary(
     let mut diagnostics: Vec<Xp3PrivateLocalSummaryDiagnostic> = Vec::new();
     let mut redaction_statuses: Vec<HelperRedactionStatus> = Vec::new();
 
-    // --- Helper-result rows (KAIFUU-085) -----------------------------------
     let mut helper_rows: Vec<Xp3HelperResultRow> = Vec::with_capacity(input.helper_results.len());
     for helper in input.helper_results {
         let validation = helper.validate();
@@ -417,7 +398,6 @@ pub fn render_xp3_private_local_summary(
         });
     }
 
-    // --- Support-tuple rows (KAIFUU-105) -----------------------------------
     let mut support_rows: Vec<Xp3SupportTupleRow> = Vec::with_capacity(input.support_tuples.len());
     let mut honest_tuple_count = 0u64;
     let mut overclaim_tuple_count = 0u64;
@@ -441,7 +421,6 @@ pub fn render_xp3_private_local_summary(
         support_rows.push(support_tuple_row(&entry));
     }
 
-    // --- XP3 patch-back summary rows (KAIFUU-100 / 101) --------------------
     let mut patch_rows: Vec<Xp3PatchSummaryRow> = Vec::with_capacity(input.patch_reports.len());
     for report in input.patch_reports {
         if report.status == OperationStatus::Failed {
@@ -586,9 +565,7 @@ fn aggregate_redaction_status(statuses: &[HelperRedactionStatus]) -> HelperRedac
     }
 }
 
-// ---------------------------------------------------------------------------
-// Fail-loud deep scan (mirrors the KAIFUU-015 profile-proof scan).
-// ---------------------------------------------------------------------------
+// Fail-loud deep scan (mirrors the profile-proof scan).
 
 struct DeepScanResult {
     strings_scanned: u64,
@@ -643,10 +620,8 @@ fn scan_strings(value: &Value, field: &str, strings_scanned: &mut u64, findings:
     }
 }
 
-// ---------------------------------------------------------------------------
 // Synthetic builders (public, reproducible — the source of truth for the
 // committed fixtures + the public-safe summary).
-// ---------------------------------------------------------------------------
 
 pub mod synthetic {
     //! Deterministic synthetic builders. No corpus bytes, no retail names, no
@@ -673,7 +648,7 @@ pub mod synthetic {
         ProofHash::new(format!("sha256:{hex}")).expect("synthetic proof hash is valid")
     }
 
-    /// The KAIFUU-085 helper-result aggregate an operator's local key helpers
+    /// The helper-result aggregate an operator's local key helpers
     /// produced against a synthetic XP3 tree.
     #[must_use]
     pub fn helper_result_aggregate() -> Xp3HelperResultAggregate {
@@ -766,7 +741,7 @@ pub mod synthetic {
         }
     }
 
-    /// The KAIFUU-105 support-tuple summary declaring the operator's XP3 posture.
+    /// The support-tuple summary declaring the operator's XP3 posture.
     #[must_use]
     pub fn support_tuple_summary() -> Xp3SupportTupleSummaryFixture {
         Xp3SupportTupleSummaryFixture {
@@ -1006,8 +981,6 @@ mod tests {
         }));
     }
 
-    // --- Private-field rejection tests (fail-loud deep scan) ----------------
-    //
     // These poison a field the renderer COPIES into the summary body (the
     // `profileId`, a copied+scanned safe-metadata field). The fail-loud deep
     // scan must reject each of the four private-content categories — nothing is

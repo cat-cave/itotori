@@ -1,6 +1,5 @@
 //! TyranoScript `.ks` scenario-script parser (the `tyrano-script-markup`
 //! codec stage of the layered pipeline).
-//!
 //! TyranoScript is a JavaScript-based VN engine whose scenario files (`.ks`,
 //! typically under `data/scenario/`) use a **KAG-style square-bracket markup**
 //! dialect that is **plaintext** on disk (the layered pipeline's identity
@@ -11,13 +10,10 @@
 //! byte that happens to equal an ASCII delimiter (`[`=0x5B, `]`=0x5D,
 //! `&`=0x26, `#`=0x23, `@`=0x40, all inside the Shift-JIS trailing-byte range
 //! 0x40..=0xFC) is NEVER mistaken for a real markup marker.
-//!
 //! # Which constructs carry translatable text vs structure
-//!
 //! Classification is by the **column-0** byte of a physical line (leading
 //! whitespace is significant text; control markers are only markers in the
 //! first column):
-//!
 //! - `;` → **comment** line — structure, no translatable text.
 //! - `*` → **label** line (`*label|caption`) — structure (a jump target).
 //! - `@` → **line command** (`@jump target=*foo`) — structure. The command
@@ -29,9 +25,7 @@
 //! - anything else → **message/text** line — a run of dialogue text
 //!   interspersed with inline `[tag …]` tags, inline `&expr` **variable
 //!   embeds**, and `[[` literal-bracket escapes.
-//!
-//! Inside a text line:
-//!
+//!   Inside a text line:
 //! - Each maximal run of message text between inline tags / variable embeds
 //!   becomes a `dialogue` [`TsUnit`] (translatable) — unless it falls inside a
 //!   `[link] … [endlink]` block, in which case it is a `choice` unit.
@@ -47,10 +41,9 @@
 //!   preserved byte-identical, and it delimits the surrounding text runs.
 //! - every other tag (`[l]`, `[p]`, `[r]`, `[jump …]`, `[eval …]`, `[if …]`,
 //!   `[endif]`, …) is opaque structure, preserved byte-identical.
-//!
-//! Every [`TsUnit`] carries a stable extraction identity: source file,
-//! physical line index, in-line segment index, text role, an exact
-//! `[start_byte, end_byte)` span, and a deterministic `bridge_unit_id`.
+//!   Every [`TsUnit`] carries a stable extraction identity: source file,
+//!   physical line index, in-line segment index, text role, an exact
+//!   `[start_byte, end_byte)` span, and a deterministic `bridge_unit_id`.
 
 use serde::Serialize;
 
@@ -80,7 +73,6 @@ impl TsEncoding {
     }
 
     /// Byte length of the character starting at `bytes[i]`. Always `>= 1`.
-    ///
     /// This is the single primitive that makes delimiter scanning
     /// encoding-safe: a multi-byte character is skipped whole, so its
     /// trailing byte can never be read as an ASCII delimiter.

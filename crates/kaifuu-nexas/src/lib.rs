@@ -1,6 +1,5 @@
 //! Pure-Rust **NeXAS engine** resource reader: the `PAC\0` archive container
 //! plus the three compression codecs its entries use.
-//!
 //! NeXAS (used by Majikoi / *Maji de Watashi ni Koi Shinasai!* and the wider
 //! ~354-title NeXAS catalogue) ships its assets in category archives —
 //! `Bgm.pac`, `Face.pac`, `Script.pac`, `Stand.pac`, `System.pac`, `Voice*.pac`,
@@ -9,26 +8,20 @@
 //! index (both the tail Huffman-packed "new" layout observed on Majikoi and the
 //! inline "old" layout) and decompresses each entry per the archive-wide
 //! `pack_type` — stored, LZSS, Huffman, or zlib-Deflate.
-//!
 //! # NeXAS `PAC\0` vs Softpal `PAC ` (the `.pac` collision)
-//!
 //! Both engines use the `.pac` extension with **completely different** formats.
 //! The discriminator is the 4th magic byte: NeXAS is `"PAC\0"` (`50 41 43 00`),
 //! Softpal is `"PAC "` (`50 41 43 20`). This crate rejects the Softpal magic
 //! outright ([`PacError::BadMagic`]); detection keys on magic bytes, never the
 //! extension. See `kaifuu-softpal` for the Softpal container.
-//!
 //! # Format (all little-endian)
-//!
 //! - magic `"PAC\0"` @ `0x00`
 //! - file **count** `u32` @ `0x04`
 //! - archive-wide **pack_type** `u32` @ `0x08` ([`Compression`])
 //! - directory index: tail Huffman-packed (bytes inverted, then Huffman-decoded
 //!   to `count * 0x4C`) or inline at `0x0C`; each entry is a name field plus
 //!   `offset` / `unpacked` / `size` `u32`s.
-//!
 //! # Clean-room provenance / no shell-outs
-//!
 //! The `PAC\0` format and its LZSS / Huffman / zlib codecs are ported clean-room
 //! from GARbro (`ArcFormats/Nexas/ArcPAC.cs`, `LzssStream.cs`,
 //! `HuffmanCompression.cs`), MIT-licensed, Copyright (C) 2015-2018 by morkt.
@@ -36,9 +29,7 @@
 //! GARbro is used only as a dev-time format oracle; no GARbro binary is bundled
 //! or invoked. Pure in-process work over an in-memory `&[u8]`; malformed input
 //! never panics — every failure is a typed error.
-//!
 //! # Honest scope: PAC container + entry decompression
-//!
 //! This crate enumerates and extracts archive entries (with decompression). It
 //! does **not** interpret the extracted script bytecode, decode NeXAS images
 //! (`.grp`), or run any engine — those are separate nodes.

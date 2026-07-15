@@ -1,13 +1,11 @@
 //! `Scene.pck` container reader — **skeleton** (siglus-05; real reader is
 //! siglus-06).
-//!
 //! Siglus packs every compiled scene into a single `Scene.pck` archive:
 //! an `0x5C`-byte fixed header, a `SceneList` / `HeaderPair` directory
 //! table, and per-scene payloads that are first constant-256-byte-XOR
 //! masked (see [`crate::decrypt`]) and then Siglus-LZSS compressed (see
 //! [`crate::decompress`]). This module owns the envelope decode; it does
 //! not decrypt or decompress payloads (those are sibling modules).
-//!
 //! Skeleton status: [`parse_scene_pck`] returns
 //! [`SiglusArchiveError::NotImplemented`]. The 0x5C-header + SceneList
 //! walk lands in siglus-06 against real bytes.
@@ -16,7 +14,6 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Byte length of the fixed `Scene.pck` header (documented `0x5C`).
-///
 /// Carried as a `const` anchor for the siglus-06 reader; the skeleton
 /// does not yet read past it.
 pub const SCENE_PCK_HEADER_BYTE_LEN: usize = 0x5C;
@@ -84,7 +81,6 @@ pub enum SiglusArchiveError {
 }
 
 /// Parse a `Scene.pck` archive envelope into a [`SiglusSceneIndex`].
-///
 /// Skeleton: always returns [`SiglusArchiveError::NotImplemented`]. The
 /// real implementation (siglus-06) decodes the `0x5C` header and the
 /// `SceneList` / `HeaderPair` directory table; it never decrypts or

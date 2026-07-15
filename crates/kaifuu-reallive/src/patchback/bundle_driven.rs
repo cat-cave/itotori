@@ -1,5 +1,4 @@
-//! KAIFUU-211 — Real-bytes patchback driver.
-//!
+//! Real-bytes patchback driver.
 //! Consumes a translated v0.2 BridgeBundle ([`TranslatedBundleV02`])
 //! and a writable copy of a RealLive `Seen.txt`, walks each translated
 //! unit, locates its source-side Textout body inside the appropriate
@@ -8,25 +7,23 @@
 //! literal-only encoder ([`crate::compressor::compress_avg32_literal`]),
 //! rewrites the scene header's compressed-size field, and rewrites the
 //! 10,000-slot directory to accommodate the new scene offsets.
-//!
 //! Clean-room provenance:
-//! - The driver consumes the KAIFUU-210 v0.2 BridgeBundle surface
+//! - The driver consumes the v0.2 BridgeBundle surface
 //!   ([`kaifuu_core::BridgeBundleV02`]) and inverts the offsets the
 //!   producer pinned in `sourceLocation.range`. No rlvm source is
 //!   vendored; no Wine; no Windows helper; no external compressor.
 //! - The re-emission pipeline (decompress → splice → recompress → header
 //!   rewrite → directory rewrite) is the literal inverse of the
-//!   KAIFUU-188 / KAIFUU-210 read pipeline.
+//!   read pipeline.
 //! - The translated-bundle schema is the source-side v0.2 BridgeBundle
 //!   augmented with a per-unit `target` object carrying `{locale, text}`.
 //!   The augmentation is local to this crate — itotori populates it via
 //!   `apply_translated_bundle` callers.
-//!
-//! Hard constraints:
+//!   Hard constraints:
 //! - The original `seen_txt_bytes` slice is NOT modified. The function
 //!   returns a fresh `Vec<u8>` carrying the patched archive.
 //! - Every failure mode is a typed [`PatchbackError`] variant. There is
-//!   no silent fallback; no `unwrap()` clusters in production code.
+//!   no silent fallback; no `unwrap` clusters in production code.
 //! - Length-changing edits are supported. The compressor emits
 //!   variable-length output and the directory is rewritten accordingly.
 //!   No length-preserving constraint is imposed on the translated text.
@@ -57,7 +54,7 @@ use crate::xor2::{
     Xor2Cipher, compiler_version_uses_xor2, decompress_archive_scenes, recover_archive_cipher,
 };
 
-/// Stable error codes published per the KAIFUU-211 acceptance criteria.
+/// Stable error codes published per the acceptance criteria.
 pub const PATCHBACK_PROVENANCE_MISMATCH_CODE: &str =
     "kaifuu.reallive.patchback_provenance_mismatch";
 pub const PATCHBACK_SCENE_PACKING_OVERFLOW_CODE: &str =
@@ -70,9 +67,8 @@ pub const PATCHBACK_TARGET_ENCODE_FAILURE_CODE: &str =
 pub const PATCHBACK_CONTROL_MARKUP_ONLY_TARGET_CODE: &str =
     "kaifuu.reallive.patchback_control_markup_only_target";
 
-/// Reserved syntactic form of the KAIFUU-210 producer's OUT-OF-BAND
-/// control-markup marker: `<reallive.kidoku ...>`.
-///
+/// Reserved syntactic form of the producer's OUT-OF-BAND
+/// control-markup marker: `<reallive.kidoku...>`.
 /// RealLive's kidoku (read-flag) state is NOT stored in the Textout body —
 /// it is a separate `MetaKidoku` opcode / the scene-header kidoku table. The
 /// producer surfaces it as a SYNTHETIC readable marker prepended to
@@ -188,9 +184,8 @@ impl From<BridgeContractValidationError> for PatchbackError {
 }
 
 /// Caller-supplied knobs for [`apply_translated_bundle`].
-///
 /// All fields are required; there are no implicit defaults. The
-/// encoding choice is named here in code (per the KAIFUU-211 audit-
+/// encoding choice is named here in code (per the audit-
 /// focus row "Encoding choice (UTF-8 vs Shift-JIS) defaulted instead of
 /// named in code"). The translation scope is likewise declared by the
 /// caller — the byte-fidelity contract is CONFIG-DRIVEN, not hard-coded to
@@ -211,7 +206,7 @@ pub struct PatchbackOpts {
 }
 
 impl PatchbackOpts {
-    /// The canonical KAIFUU-211 emission mode (Shift-JIS target text) with
+    /// The canonical emission mode (Shift-JIS target text) with
     /// an explicitly-declared translation `scope`.
     pub const fn shift_jis(scope: TranslationScope) -> Self {
         Self {
@@ -222,8 +217,7 @@ impl PatchbackOpts {
 }
 
 /// Named encoding choice for the patched Textout bodies.
-///
-/// The KAIFUU-211 spec calls out the choice as audit-focused: the
+/// The spec calls out the choice as audit-focused: the
 /// patchback must NOT default the encoding silently. Today the only
 /// supported variant is [`PatchbackEncoding::ShiftJis`]; a future UTF-8
 /// runtime-decode hook would add a sibling variant.
@@ -261,27 +255,17 @@ impl fmt::Debug for TranslatedUnitTarget {
 }
 
 /// Translated v0.2 BridgeBundle.
-///
 /// Wraps the source-side [`kaifuu_core::BridgeBundleV02`] (which is
 /// validated against the v0.2 schema before being accepted) with one
 /// `target_text` per unit.
-///
 /// JSON shape consumed by [`TranslatedBundleV02::from_json`]:
-///
 /// ```text
-/// {
-///   "schemaVersion": "0.2.0",
-///   ...   // canonical v0.2 BridgeBundle fields
-///   "units": [
-///     {
-///       "bridgeUnitId": "...",
-///       ...   // canonical unit fields
-///       "target": { "locale": "en-US", "text": "Hello!" }
-///     },
-///     ...
-///   ]
-/// }
-/// ```
+/// "schemaVersion": "0.2.0",
+/// ... // canonical v0.2 BridgeBundle fields
+/// "units": [
+/// "bridgeUnitId": "...",
+/// ... // canonical unit fields
+/// "target": { "locale": "en-US", "text": "Hello!" }
 #[derive(Clone)]
 pub struct TranslatedBundleV02 {
     pub source: BridgeBundleV02,
@@ -367,9 +351,7 @@ impl TranslatedBundleV02 {
 
 /// Apply a translated v0.2 BridgeBundle to a writable copy of a
 /// RealLive `Seen.txt`. Returns the patched archive bytes.
-///
 /// Steps (one synchronous pass — no I/O):
-///
 /// 1. Parse the source Seen.txt envelope via [`parse_archive`].
 /// 2. Walk every `bundle.targets[i]` paired with its source `bundle.source.units[i]`.
 ///    Resolve each unit's `(scene_id, occurrence_index)` from its
@@ -379,13 +361,13 @@ impl TranslatedBundleV02 {
 ///    attribution.
 /// 3. Group edits by scene.
 /// 4. For each modified scene:
-///    - Decompress its bytecode via [`decompress_avg32`].
-///    - Apply edits in **highest-offset-first** order so earlier edits
-///      do not shift later ones' offsets.
-///    - Re-compress the modified bytecode via
-///      [`compress_avg32_literal`].
-///    - Rewrite the scene header's `bytecode_compressed_size` field.
-///    - Re-emit the scene blob.
+/// - Decompress its bytecode via [`decompress_avg32`].
+/// - Apply edits in **highest-offset-first** order so earlier edits
+///   do not shift later ones' offsets.
+/// - Re-compress the modified bytecode via
+///   [`compress_avg32_literal`].
+/// - Rewrite the scene header's `bytecode_compressed_size` field.
+/// - Re-emit the scene blob.
 /// 5. Re-pack the archive: rewrite the 10,000-slot directory with new
 ///    `(byte_offset, byte_len)` pairs; scenes after a modified scene
 ///    shift forward to accommodate length changes. Unmodified scenes
@@ -607,9 +589,8 @@ fn recover_xor2_cipher_if_needed(
 /// Edit resolved against the source archive. Carries the indices and
 /// occurrence keys needed to splice the new bytes into the decompressed
 /// bytecode of the owning scene.
-///
 /// The per-unit `decompressed_byte_offset`/`_byte_len` are NOT
-/// authoritative — the KAIFUU-210 bridge producer pinned them
+/// authoritative — the bridge producer pinned them
 /// approximately (Command opcode bodies do not surface their full
 /// byte width on the typed variant, so the cursor under-counts).
 /// [`patch_scene_blob`] re-walks the bytecode with [`parse_real_bytecode`]
@@ -664,7 +645,7 @@ fn resolve_edit(
     }
 
     // Pull (startByte, endByte) from the source-location range. Per the
-    // KAIFUU-210 producer the range is a DECOMPRESSED-bytecode-stream
+    // producer the range is a DECOMPRESSED-bytecode-stream
     // interval — a single coordinate space. It is NOT used to identify
     // the owning scene (a decompressed offset has no meaning across the
     // compressed file layout); we keep it only for a positive-width
@@ -807,8 +788,7 @@ fn parse_scene_and_occurrence(key: &str) -> Option<(u16, usize)> {
 
 /// Remove every OUT-OF-BAND control-markup marker (`<reallive.kidoku …>`)
 /// from a translated body string.
-///
-/// The markers are the KAIFUU-210 producer's synthetic readable
+/// The markers are the producer's synthetic readable
 /// representation of RealLive read-flag (kidoku) state, which is stored as a
 /// separate `MetaKidoku` opcode / the scene-header kidoku table — NOT as bytes
 /// inside the Textout body. The producer prepends them to `sourceText` and the
@@ -816,7 +796,6 @@ fn parse_scene_and_occurrence(key: &str) -> Option<(u16, usize)> {
 /// `target.text` carries the literal. The patchback must NOT splice it into the
 /// Textout body (see [`REALLIVE_OUT_OF_BAND_MARKER_OPEN`]); the kidoku control
 /// bytes are re-emitted byte-identical from the untouched bytecode instead.
-///
 /// The strip keys on the reserved marker SYNTAX rather than a specific unit's
 /// `span.raw`, so it is robust to a translated body that carries any kidoku
 /// index (or several) — every `<reallive.kidoku …>` run, whatever its
@@ -830,7 +809,7 @@ pub fn strip_out_of_band_control_markup(text: &str) -> String {
         out.push_str(&rest[..open]);
         let after_open = &rest[open + REALLIVE_OUT_OF_BAND_MARKER_OPEN.len()..];
         if let Some(close) = after_open.find('>') {
-            // Drop `<reallive.kidoku …>` (open-prefix .. close `>` inclusive).
+            // Drop `<reallive.kidoku …>` (open-prefix.. close `>` inclusive).
             rest = &after_open[close + 1..];
         } else {
             // Unterminated marker: nothing more to strip; keep the remainder
@@ -857,7 +836,6 @@ fn is_source_identical_target(
 }
 
 /// Re-emit a scene blob with the given edits applied.
-///
 /// - Parses the existing scene header.
 /// - Decompresses the existing bytecode.
 /// - Re-walks the decompressed bytecode via [`parse_real_bytecode`] to
@@ -937,7 +915,7 @@ fn patch_scene_blob(
     };
 
     // Re-walk the bytecode to recover the exact byte range of every
-    // text-emitting opcode. The KAIFUU-210 producer cursored
+    // text-emitting opcode. The producer cursored
     // approximate offsets that don't survive Command-with-arglist
     // widths; the authoritative key is `occurrence_index`.
     let text_unit_positions = collect_text_unit_positions(scene_id, &decompressed)?;
@@ -980,7 +958,6 @@ fn patch_scene_blob(
     }
 
     // LENGTH-CHANGING SUPPORT — jump-target recalculation.
-    //
     // A text splice that changes byte length shifts every byte AFTER the
     // edit. RealLive control-flow commands (`goto`/`goto_if`/`goto_on`/
     // `goto_case`/`gosub*`/`farcall*`) carry trailing `i32 LE` pointers whose
@@ -1023,8 +1000,8 @@ fn patch_scene_blob(
     })?;
 
     // Rewrite the header in place:
-    //  - bytecode_uncompressed_size at 0x24
-    //  - bytecode_compressed_size at 0x28
+    // - bytecode_uncompressed_size at 0x24
+    // - bytecode_compressed_size at 0x28
     let mut new_header_bytes = original_blob[..SCENE_HEADER_BYTE_LEN].to_vec();
     let new_uncompressed: u32 =
         decompressed
@@ -1070,12 +1047,10 @@ fn patch_scene_blob(
 /// Re-base every goto-family jump-target pointer in `decompressed` for the
 /// length change the `splices` introduce, writing the corrected `i32 LE`
 /// value in place at each pointer's PRE-splice byte offset.
-///
 /// Coordinate space: pointer offsets and pointer target values, and the
 /// splice `start_byte`/`end_byte`, are all absolute within the same
 /// pre-splice decompressed bytecode stream. A splice replaces `[s, e)` with
 /// `new_bytes` (length `n`), a per-splice delta of `n - (e - s)`.
-///
 /// For a jump target `T`:
 /// - `T <= s` for a splice: that splice is entirely at/after `T`, so it does
 ///   NOT move `T` (a jump to the very start `s` of an edited element still
@@ -1087,14 +1062,13 @@ fn patch_scene_blob(
 ///   recalculable (the interior offset has no stable image), so it is a
 ///   typed [`PatchbackError::GotoTargetUnresolvable`] rather than a silent
 ///   mis-patch.
-///
-/// The corrected value is `T + Σ delta_i` over every splice with `e_i <= T`.
-/// Negative sentinels (`T < 0`) and out-of-splice targets are left unchanged
-/// (no splice satisfies `e_i <= T` for a negative `T`). Pointer bytes never
-/// overlap a splice range (goto pointers live in Command bodies, splices in
-/// Textout / choice bodies — disjoint elements), so writing at the pre-splice
-/// offset and then splicing carries the corrected pointer to its new home
-/// verbatim.
+///   The corrected value is `T + Σ delta_i` over every splice with `e_i <= T`.
+///   Negative sentinels (`T < 0`) and out-of-splice targets are left unchanged
+///   (no splice satisfies `e_i <= T` for a negative `T`). Pointer bytes never
+///   overlap a splice range (goto pointers live in Command bodies, splices in
+///   Textout / choice bodies — disjoint elements), so writing at the pre-splice
+///   offset and then splicing carries the corrected pointer to its new home
+///   verbatim.
 fn rebase_goto_targets(
     scene_id: u16,
     decompressed: &mut [u8],
@@ -1175,7 +1149,7 @@ fn rebase_goto_targets(
 struct TextUnitPosition {
     /// Occurrence sequence within the scene (Textout + Choice options
     /// each consume one occurrence index, in encounter order — matches
-    /// the KAIFUU-210 producer's `occurrence_index`).
+    /// the producer's `occurrence_index`).
     occurrence_index: usize,
     /// Surface kind (`"dialogue"` or `"choice_label"`).
     surface_kind: &'static str,
@@ -1198,7 +1172,6 @@ struct PlannedSplice {
 /// every text-emitting opcode. The walker mirrors the lead-byte switch
 /// in [`parse_real_bytecode`] but tracks cursor positions so we can
 /// pair each Textout / Choice-option with an authoritative byte range.
-///
 /// The walker is intentionally narrow: it tracks only the lead bytes
 /// and element widths needed to advance past non-text opcodes. Any
 /// truncation or unrecognised opener surfaces a typed
@@ -1241,7 +1214,7 @@ fn collect_text_unit_positions(
         if let Some((surface_kind, start_byte, end_byte)) = recorded {
             // A Textout run is only a translatable unit when its bytes are
             // readable Shift-JIS dialogue. Binary / control-byte catch-all
-            // runs are NOT surfaced by the KAIFUU-210 producer
+            // runs are NOT surfaced by the producer
             // (`collect_units` applies the same `decode_dialogue_textout`
             // gate) and must NOT consume an occurrence index here either —
             // otherwise every later unit's occurrence_index would drift and
@@ -1262,7 +1235,7 @@ fn collect_text_unit_positions(
             // Each non-empty Choice option is one `choice_label` unit,
             // anchored at the option's authoritative scene-relative byte
             // offset captured by the decoder (`parse_arg_list` for the
-            // `( … )` form, `decode_select` for the `module_sel`
+            // `(…)` form, `decode_select` for the `module_sel`
             // `SelectElement` `{ … }` block form). Sourcing the positions
             // from the typed `choices` keeps this patch-back re-walk
             // identical to the bridge producer (`bridge.rs`) for BOTH
@@ -1432,7 +1405,7 @@ mod tests {
     #[test]
     fn patch_scene_blob_rejects_bytecode_offset_inside_header_region() {
         // 006 regression: patch_scene_blob guarded only the upper bound
-        // (bytecode_end > blob.len()); a header declaring bytecode_offset
+        // (bytecode_end > blob.len); a header declaring bytecode_offset
         // < SCENE_HEADER_BYTE_LEN slipped through and re-emitted a corrupt
         // scene (compressed payload at 0x1d0 while the preserved offset
         // points inside the header). It must now surface a typed
@@ -1858,7 +1831,6 @@ mod tests {
         // BUG-2 regression: a unit whose decompressed range would land
         // inside a LATER scene's file extent must still resolve to its
         // own scene (by scene id), and patch only that scene.
-        //
         // Two identical scenes; scene 1 owns the edited unit but its
         // range startByte is deliberately set inside scene 2's file
         // range (simulating a deep decompressed offset under the old
@@ -1901,7 +1873,6 @@ mod tests {
         // a trailing dialogue unit. The producer and the patchback
         // re-walk must agree on occurrence_index for every unit, so the
         // trailing unit splices correctly with NO ProvenanceMismatch.
-        //
         // Bytecode: Textout(ハ), select{ "A", <empty>, "B" }, Textout(ニ),
         // MetaLine. The empty middle option is dropped by `decode_select`.
         let mut plaintext: Vec<u8> = Vec::new();

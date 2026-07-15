@@ -1,20 +1,18 @@
 //! Real-bytes validation of the Softpal **patch-back** against two owned titles,
 //! extracting `SCRIPT.SRC` + `TEXT.DAT` from the same `data.pac` via the crate's
 //! own PAC reader.
-//!
 //! `#[ignore]`d and env-gated: set `ITOTORI_SOFTPAL_RESEARCH_ROOT` to the
 //! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
 //! `--ignored`. **No raw copyrighted text lives in this file** — only counts,
 //! offsets, SHA-256 digests, and short ASCII/kana strings *we* inject.
-//!
 //! PROOF BAR (both titles):
-//!   1. IDENTITY round-trip — patch-back with an EMPTY translation map rebuilds a
-//!      `TEXT.DAT` + `SCRIPT.SRC` that are BYTE-IDENTICAL (SHA-256) to the
-//!      originals (lossless rebuild + repoint + re-encrypt).
-//!   2. REAL translation — replace a handful of in-scope dialogue records with
-//!      known strings, then RE-DECODE the patched pair: the translated strings
-//!      appear at those units, 100 % pointer resolution is preserved (0 dangling,
-//!      fully resolved), and out-of-scope units are unchanged.
+//! 1. IDENTITY round-trip — patch-back with an EMPTY translation map rebuilds a
+//!    `TEXT.DAT` + `SCRIPT.SRC` that are BYTE-IDENTICAL (SHA-256) to the
+//!    originals (lossless rebuild + repoint + re-encrypt).
+//! 2. REAL translation — replace a handful of in-scope dialogue records with
+//!    known strings, then RE-DECODE the patched pair: the translated strings
+//!    appear at those units, 100 % pointer resolution is preserved (0 dangling,
+//!    fully resolved), and out-of-scope units are unchanged.
 
 use std::env;
 use std::fs;
@@ -133,7 +131,6 @@ fn patchback_on_two_softpal_titles() {
             game.subdir
         );
 
-        // ---- 1. IDENTITY round-trip: empty map => byte-identical both files. ----
         let td_sha = sha256(&textdat_bytes);
         let sc_sha = sha256(&script_bytes);
         let identity = patchback(&textdat_bytes, &script_bytes, &TranslationMap::new()).unwrap();
@@ -171,7 +168,6 @@ fn patchback_on_two_softpal_titles() {
             &sc_sha[..16],
         );
 
-        // ---- 2. REAL translation: patch a handful of in-scope dialogue units. ----
         // Pick the first few DISTINCT dialogue text records; translate each to a
         // known ASCII marker string. Record their pointers + the untranslated
         // neighbours we will assert stay unchanged.

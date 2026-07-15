@@ -1,8 +1,7 @@
-//! KAIFUU-107 — the committed regression fixtures (the KAIFUU-051 public-fixture
+//! the committed regression fixtures (the public-fixture
 //! catalogue + the recorded diagnostic baseline) load from disk, match the
-//! in-code fixtures, and drive a green regression run against the KAIFUU-106
+//! in-code fixtures, and drive a green regression run against the
 //! clean reproduction bundle.
-//!
 //! The recorded baseline is a COMMITTED artifact: a fresh run must reproduce its
 //! fingerprints. Regenerating it is a deliberate act (the crate's ignored
 //! `emit_committed_fixtures` helper), never a silent side effect of the runner.

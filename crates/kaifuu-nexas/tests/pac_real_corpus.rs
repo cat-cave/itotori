@@ -1,19 +1,14 @@
 //! Real-bytes validation of the NeXAS PAC reader against Majikoi (*Maji de
 //! Watashi ni Koi Shinasai!*), a byte-verified NeXAS title.
-//!
 //! `#[ignore]`d and env-gated: set `ITOTORI_NEXAS_RESEARCH_ROOT` to a READ-ONLY
 //! directory holding the extracted `Config.pac` and `Script.pac` (e.g.
 //! `/scratch/nexas-majikoi`) and run with `--ignored`. No raw copyrighted bytes
 //! live in this file — only entry counts, offsets, sizes, and SHA-256 hashes,
 //! which the reader must reproduce.
-//!
 //! ```text
 //! ITOTORI_NEXAS_RESEARCH_ROOT=/scratch/nexas-majikoi \
-//!   cargo test -p kaifuu-nexas --test pac_real_corpus -- --ignored --nocapture
-//! ```
-//!
+//! cargo test -p kaifuu-nexas --test pac_real_corpus -- --ignored --nocapture
 //! # Oracle
-//!
 //! The format is a clean-room port of GARbro's `ArcFormats/Nexas/ArcPAC.cs`.
 //! Every Majikoi archive is `pack_type=3` (zlib-Deflate) with the tail Huffman
 //! index. Two independent in-band oracles corroborate the extraction on the real
@@ -115,7 +110,7 @@ fn extracts_majikoi_pacs_byte_exact() {
             let payload = arc
                 .extract(&bytes, entry)
                 .unwrap_or_else(|e| panic!("extract {} from {}: {e}", entry.name, expected.file));
-            // The reader already enforces `payload.len() == unpacked_size` and
+            // The reader already enforces `payload.len == unpacked_size` and
             // verifies each zlib Adler-32; re-assert the size for clarity.
             assert_eq!(
                 payload.len() as u32,

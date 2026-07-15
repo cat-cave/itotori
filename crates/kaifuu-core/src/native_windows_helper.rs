@@ -1,6 +1,5 @@
-//! KAIFUU-129 — Native Windows local helper adapter (dry-run only).
-//!
-//! This is the native-Windows analogue of KAIFUU-090's Wine/Proton helper
+//! Native Windows local helper adapter (dry-run only).
+//! This is the native-Windows analogue of 's Wine/Proton helper
 //! dry-run ([`crate::wine_proton_helper`]). It resolves what a *native* Windows
 //! helper binary *would* do — naming the platform adapter (`native-windows`),
 //! the helper binary id, the intended command (both the argv template **and**
@@ -8,9 +7,7 @@
 //! the profile id, and the redaction policy — **without launching untrusted
 //! game code**. It exists to make the native-Windows helper wiring provable in
 //! public CI on a runner that is not Windows and has no private game assets.
-//!
-//! Safety boundary (strict-proof), identical in spirit to KAIFUU-090:
-//!
+//! Safety boundary (strict-proof), identical in spirit
 //! - **Dry-run is resolve + validate + emit, never launch.** There is no
 //!   `std::process` import in this module and no code path that spawns a
 //!   binary. The resolver builds a *descriptor* of the intended command — the
@@ -20,8 +17,8 @@
 //!   always `false`; [`NativeWindowsDryRunResolution::validate`] fails closed if
 //!   either is ever `true`.
 //! - **Never serialize raw secret material.** Every emitted helper result
-//!   conforms to the KAIFUU-085 [`HelperResult`] schema (refs + redacted fields
-//!   only) and the resolution is deep-scanned (KAIFUU-036/094 pattern) for raw
+//!   conforms to the [`HelperResult`] schema (refs + redacted fields
+//!   only) and the resolution is deep-scanned for raw
 //!   key material and local paths in *every* string field, regardless of field
 //!   name. A resolution carrying raw secret material fails validation.
 //! - **Unavailable platform is a typed diagnostic, not a crash.** When the
@@ -30,12 +27,11 @@
 //!   [`HelperDiagnosticCode::HelperUnavailable`] helper result carrying the
 //!   [`SEMANTIC_HELPER_UNAVAILABLE`] semantic code. Availability is an explicit
 //!   *synthetic request field*, never a live Windows probe or shell-out.
-//!
-//! Under the KAIFUU-085 semantic matrix a native local Windows helper is
-//! modelled as [`HelperKind::WineLocalWindowsHelper`] +
-//! [`HelperCapabilityLevel::WindowsLocal`] + [`HelperResultExecutionMode::PlatformHelper`]
-//! (the `WindowsLocal` capability is exactly the native-Windows seam the schema
-//! already blesses). We reuse it rather than inventing a parallel kind.
+//!   Under the semantic matrix a native local Windows helper is
+//!   modelled as [`HelperKind::WineLocalWindowsHelper`] +
+//!   [`HelperCapabilityLevel::WindowsLocal`] + [`HelperResultExecutionMode::PlatformHelper`]
+//!   (the `WindowsLocal` capability is exactly the native-Windows seam the schema
+//!   already blesses). We reuse it rather than inventing a parallel kind.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -56,7 +52,7 @@ pub const NATIVE_WINDOWS_HELPER_SCHEMA_VERSION: &str = "0.1.0";
 /// Stable, non-secret platform-adapter identifier surfaced by the resolver.
 pub const NATIVE_WINDOWS_PLATFORM_ADAPTER_ID: &str = "native-windows";
 
-/// The stable platform id surfaced in the KAIFUU-085 helper result.
+/// The stable platform id surfaced in the helper result.
 pub const NATIVE_WINDOWS_PLATFORM_ID: &str = "native-windows-local";
 
 /// The launcher *reference* (never a path, never executed) the intended command
@@ -78,7 +74,7 @@ pub const SEMANTIC_NATIVE_WINDOWS_DRY_RUN_SECRET_LEAK: &str =
 /// game code, which the dry-run path forbids.
 pub const SEMANTIC_NATIVE_WINDOWS_DRY_RUN_LAUNCH_FORBIDDEN: &str =
     "kaifuu.native_windows.dry_run.launch_forbidden";
-/// Semantic code: the nested helper result failed KAIFUU-085 schema validation.
+/// Semantic code: the nested helper result failed schema validation.
 pub const SEMANTIC_NATIVE_WINDOWS_DRY_RUN_HELPER_RESULT_INVALID: &str =
     "kaifuu.native_windows.dry_run.helper_result_invalid";
 /// Semantic code: the CommandLineToArgvW quoting descriptor did not round-trip
@@ -110,7 +106,7 @@ impl NativeWindowsPlatformAdapter {
         }
     }
 
-    /// The stable platform id surfaced in the KAIFUU-085 helper result.
+    /// The stable platform id surfaced in the helper result.
     pub fn platform_id(self) -> &'static str {
         match self {
             Self::NativeWindowsLocal => NATIVE_WINDOWS_PLATFORM_ID,
@@ -125,25 +121,23 @@ impl NativeWindowsPlatformAdapter {
         }
     }
 
-    /// The KAIFUU-085 helper kind. A native local Windows helper reuses the
+    /// The helper kind. A native local Windows helper reuses the
     /// local Windows helper kind (paired with the `WindowsLocal` capability).
     pub fn helper_kind(self) -> HelperKind {
         HelperKind::WineLocalWindowsHelper
     }
 
-    /// The KAIFUU-085 capability level for a native local Windows helper.
+    /// The capability level for a native local Windows helper.
     pub fn capability_level(self) -> HelperCapabilityLevel {
         HelperCapabilityLevel::WindowsLocal
     }
 }
 
-// ---------------------------------------------------------------------------
 // Windows command-line quoting (CommandLineToArgvW rules) — a RESOLVED
 // descriptor, never an execution. `windows_quote_argument` implements the
 // canonical backslash/quote escaping; `windows_command_line` joins a program
 // reference and its args into a single command line; `windows_command_line_to_argv`
 // is the inverse parser used to *prove* the quoting round-trips.
-// ---------------------------------------------------------------------------
 
 fn argument_needs_quoting(arg: &str) -> bool {
     arg.is_empty()
@@ -156,7 +150,6 @@ fn argument_needs_quoting(arg: &str) -> bool {
 /// survives a Windows process's command-line parsing back to the original
 /// bytes. Backslashes are only special immediately before a `"` or the closing
 /// quote; a `"` is escaped as `\"`.
-///
 /// This is a **pure descriptor**: it produces the string a launcher *would*
 /// pass, and never itself launches anything.
 pub fn windows_quote_argument(arg: &str) -> String {
@@ -403,9 +396,7 @@ pub fn resolve_windows_command_line_quoting_fixture() -> WindowsCommandLineQuoti
     }
 }
 
-// ---------------------------------------------------------------------------
 // Dry-run request / resolution
-// ---------------------------------------------------------------------------
 
 /// A native-Windows dry-run request. Its shape is constrained
 /// (`deny_unknown_fields`) so callers cannot smuggle raw execution config or
@@ -425,7 +416,6 @@ pub struct NativeWindowsDryRunRequest {
 }
 
 /// The resolved shape of the command a native-Windows helper *would* run.
-///
 /// A descriptor, not an execution plan handed to any spawner. `program_ref` is
 /// a launcher *reference* token (never a filesystem path), `argument_template`
 /// holds template tokens only, and `command_line` is the CommandLineToArgvW
@@ -447,7 +437,7 @@ pub struct ResolvedWindowsHelperCommand {
 /// The full native-Windows dry-run resolution. It names the six required
 /// fields — platform-adapter, helper-binary-id, command-argv (with the quoted
 /// command line), working-directory-policy, profile-id, redaction-policy — and
-/// carries a KAIFUU-085-conformant helper result.
+/// carries a -conformant helper result.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NativeWindowsDryRunResolution {
@@ -474,16 +464,15 @@ impl NativeWindowsDryRunResolution {
     }
 
     /// Validates the resolution:
-    ///
     /// 1. `launched` and `intendedCommand.launchesUntrustedCode` must be
     ///    `false` (no launch);
     /// 2. the `commandLine` must be exactly the CommandLineToArgvW quoting of
     ///    `[programRef] ++ argumentTemplate` and must parse back to it
     ///    (the quoting is a reversible descriptor, not an execution);
     /// 3. no string field anywhere may carry raw key material or a local path
-    ///    (deep-scan, KAIFUU-036/094 pattern);
+    ///    (deep-scan)
     /// 4. the standard secret-redaction boundary must find nothing;
-    /// 5. the nested helper result must pass KAIFUU-085 schema validation.
+    /// 5. the nested helper result must pass schema validation.
     pub fn validate(&self) -> NativeWindowsDryRunValidation {
         let mut failures = Vec::new();
 
@@ -647,37 +636,29 @@ impl NativeWindowsDryRunFailure {
 }
 
 /// Resolves a native-Windows dry-run **without launching untrusted game code**.
-///
 /// Given a synthetic request, this names the platform adapter, helper binary
 /// id, intended command (argv template + CommandLineToArgvW-quoted command
 /// line), working-directory policy, profile id, and redaction policy, and emits
-/// a KAIFUU-085 helper result. When the platform is unavailable (e.g. a
+/// a helper result. When the platform is unavailable (e.g. a
 /// non-Windows public CI runner) the helper result carries a typed
 /// [`HelperDiagnosticCode::HelperUnavailable`] diagnostic instead of failing.
-///
-/// ```
 /// use kaifuu_core::{
-///     resolve_native_windows_dry_run, HelperRedactionPolicy, NativeWindowsDryRunRequest,
-///     NativeWindowsPlatformAdapter, PlatformAvailability, NATIVE_WINDOWS_HELPER_SCHEMA_VERSION,
-/// };
-///
+/// resolve_native_windows_dry_run, HelperRedactionPolicy, NativeWindowsDryRunRequest,
+/// NativeWindowsPlatformAdapter, PlatformAvailability, NATIVE_WINDOWS_HELPER_SCHEMA_VERSION,
 /// let request = NativeWindowsDryRunRequest {
-///     schema_version: NATIVE_WINDOWS_HELPER_SCHEMA_VERSION.to_string(),
-///     fixture_id: "kaifuu-native-windows-dry-run".to_string(),
-///     helper_binary_id: "kaifuu.fixture.native-windows-local".to_string(),
-///     allowlist_entry_id: "kaifuu-fixture-native-windows-local-allowlist".to_string(),
-///     platform_adapter: NativeWindowsPlatformAdapter::NativeWindowsLocal,
-///     profile_id: "019ed000-0000-7000-8000-profile00129".to_string(),
-///     redaction_policy: HelperRedactionPolicy::RedactRawLogsAndSecretRefs,
-///     platform_availability: PlatformAvailability::Available,
-///     timeout_ms: 5000,
-/// };
-///
+/// schema_version: NATIVE_WINDOWS_HELPER_SCHEMA_VERSION.to_string,
+/// fixture_id: "kaifuu-native-windows-dry-run".to_string,
+/// helper_binary_id: "kaifuu.fixture.native-windows-local".to_string,
+/// allowlist_entry_id: "kaifuu-fixture-native-windows-local-allowlist".to_string,
+/// platform_adapter: NativeWindowsPlatformAdapter::NativeWindowsLocal,
+/// profile_id: "019ed000-0000-7000-8000-profile00129".to_string,
+/// redaction_policy: HelperRedactionPolicy::RedactRawLogsAndSecretRefs,
+/// platform_availability: PlatformAvailability::Available,
+/// timeout_ms: 5000,
 /// let resolution = resolve_native_windows_dry_run(&request);
 /// assert!(!resolution.launched);
 /// assert!(!resolution.intended_command.launches_untrusted_code);
-/// assert_eq!(resolution.validate().status, kaifuu_core::OperationStatus::Passed);
-/// ```
+/// assert_eq!(resolution.validate.status, kaifuu_core::OperationStatus::Passed);
 pub fn resolve_native_windows_dry_run(
     request: &NativeWindowsDryRunRequest,
 ) -> NativeWindowsDryRunResolution {
@@ -711,7 +692,7 @@ pub fn resolve_native_windows_dry_run(
     // recovers no key material. `helper_required` is the honest diagnostic for a
     // resolvable-but-unrun helper; `helper_unavailable` is the typed diagnostic
     // when the platform is absent (e.g. non-Windows CI). Neither requires a
-    // recovered secretRef/proof under the KAIFUU-085 matrix.
+    // recovered secretRef/proof under the matrix.
     let (diagnostic_code, diagnostic_message) = match request.platform_availability {
         PlatformAvailability::Available => (
             HelperDiagnosticCode::HelperRequired,
@@ -741,7 +722,7 @@ pub fn resolve_native_windows_dry_run(
         },
         capability_level: adapter.capability_level(),
         execution: HelperExecutionSummary {
-            // The result describes the platform-helper path (per the KAIFUU-085
+            // The result describes the platform-helper path (per the
             // Windows matrix); `durationMs: 0` and the `launched: false` proof
             // show the dry-run resolved the plan without ever executing it.
             mode: HelperResultExecutionMode::PlatformHelper,
@@ -901,7 +882,7 @@ mod tests {
             OperationStatus::Passed
         );
         // Native local Windows path: WineLocalWindowsHelper + WindowsLocal +
-        // PlatformHelper (the KAIFUU-085 native-Windows seam).
+        // PlatformHelper (the native-Windows seam).
         assert_eq!(
             resolution.helper_result.helper.helper_kind,
             HelperKind::WineLocalWindowsHelper
@@ -912,7 +893,7 @@ mod tests {
         );
 
         let serialized = resolution.stable_json().unwrap();
-        // The KAIFUU-085 execution object never carries a launch command; the
+        // The execution object never carries a launch command; the
         // quoted descriptor lives under `commandLine`, not `command`/`argv`/`env`.
         assert!(!serialized.contains("\"command\""));
         assert!(!serialized.contains("\"argv\""));

@@ -1,30 +1,26 @@
 //! NeXAS `PAC\0` container: header + directory index parse, entry enumeration,
 //! and per-entry decompression dispatch.
-//!
 //! # Clean-room provenance
-//!
 //! The on-disk format and the two index layouts are ported from GARbro's
 //! `ArcFormats/Nexas/ArcPAC.cs` (`PacOpener` + `IndexReader`), MIT-licensed,
 //! Copyright (C) 2015 by morkt. Independent Rust reimplementation of that
 //! documented format; no GARbro binary is bundled or invoked. See the crate root
 //! for the full attribution note.
-//!
 //! # Format (all little-endian)
-//!
 //! - magic `"PAC\0"` (`50 41 43 00`) @ `0x00` — the trailing byte is **`0x00`**,
 //!   which is exactly what distinguishes a NeXAS archive from a Softpal `"PAC "`
 //!   (`50 41 43 20`) archive.
 //! - file **count** `u32` @ `0x04`
 //! - archive-wide **pack_type** `u32` @ `0x08` ([`Compression`])
 //! - the directory **index** is stored one of two ways:
-//!   - **new layout** (observed on Majikoi): the entry payloads begin right
-//!     after the 12-byte header; the index lives at the *tail*. The last `u32`
-//!     is the packed index size; the preceding `index_size` bytes are the index
-//!     with every byte **bitwise-inverted**, which then Huffman-decodes to
-//!     `count * 0x4C` bytes. Each entry is `name[0x40]` + `offset`/`unpacked`/
-//!     `size` `u32`s.
-//!   - **old layout**: the index sits inline at `0x0C`, entries with a `0x20`-
-//!     or `0x40`-byte name field followed by the same three `u32`s.
+//! - **new layout** (observed on Majikoi): the entry payloads begin right
+//!   after the 12-byte header; the index lives at the *tail*. The last `u32`
+//!   is the packed index size; the preceding `index_size` bytes are the index
+//!   with every byte **bitwise-inverted**, which then Huffman-decodes to
+//!   `count * 0x4C` bytes. Each entry is `name[0x40]` + `offset`/`unpacked`/
+//!   `size` `u32`s.
+//! - **old layout**: the index sits inline at `0x0C`, entries with a `0x20`-
+//!   or `0x40`-byte name field followed by the same three `u32`s.
 //! - each entry's payload is decompressed per the archive `pack_type`: stored,
 //!   LZSS, Huffman, or zlib-Deflate.
 
@@ -61,7 +57,6 @@ pub const NEXAS_OLD_INDEX_NAME_LENGTHS: [usize; 2] = [0x20, 0x40];
 pub const NEXAS_PAC_MAX_ENTRIES: u32 = 1_000_000;
 
 /// Archive-wide compression mode, from the `u32` @ `0x08`.
-///
 /// Mirrors GARbro's `NeXAS.Compression` enum, keeping unrecognised values as
 /// [`Compression::Other`] (which GARbro treats as Deflate in its default arm).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -107,8 +102,7 @@ impl Compression {
     }
 
     /// Whether an entry with `(size, unpacked)` is compressed under this mode.
-    ///
-    /// Matches GARbro: packed iff `pack_type != 0` and (`pack_type != 4` or the
+    /// Matches GARbro: packed iff `pack_type!= 0` and (`pack_type!= 4` or the
     /// on-disk and unpacked sizes differ).
     fn entry_is_packed(self, size: u32, unpacked: u32) -> bool {
         match self {
@@ -157,7 +151,6 @@ pub enum IndexLayout {
 }
 
 /// Fatal errors raised while parsing or extracting from a NeXAS PAC archive.
-///
 /// Every display string begins with the `kaifuu.nexas.pac` namespace marker
 /// (see [`crate::NEXAS_PAC_ERROR_MARKER`]).
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -326,13 +319,10 @@ fn read_tail_index(bytes: &[u8], count: usize, pack_type: Compression) -> Option
 
 impl PacArchive {
     /// Parse a NeXAS PAC archive's header + directory index from `bytes`.
-    ///
     /// Tries the inline index first (GARbro's `ReadOld`), then the tail Huffman
     /// index (`ReadNew`), exactly as GARbro does. Returns a typed [`PacError`]
     /// on malformed input; never panics.
-    ///
     /// # Errors
-    ///
     /// [`PacError::TruncatedHeader`], [`PacError::BadMagic`],
     /// [`PacError::InsaneCount`], or [`PacError::IndexUnreadable`] when no layout
     /// yields a well-formed directory.
@@ -406,9 +396,7 @@ impl PacArchive {
 
     /// Extract and (if packed) decompress an entry's payload from `bytes` — the
     /// same buffer the index was parsed from.
-    ///
     /// # Errors
-    ///
     /// [`PacError::ArchiveLenMismatch`] for a different buffer,
     /// [`PacError::EntryOutOfBounds`] if the payload runs past `bytes`,
     /// [`PacError::DecompressFailed`] on a codec error, and
@@ -471,7 +459,6 @@ impl PacArchive {
 mod tests {
     use super::*;
 
-    // ---- synthetic fixture builders -------------------------------------
     // No real (copyrighted) bytes: every fixture is assembled here so the happy
     // path, both index layouts, and every pack_type variant are exercised
     // deterministically.
@@ -768,8 +755,6 @@ mod tests {
         assert_round_trip(&pac, files, IndexLayout::Inline);
     }
 
-    // ---- magic-byte discrimination: NeXAS vs Softpal --------------------
-
     #[test]
     fn rejects_softpal_pac_space_magic() {
         // Softpal magic is "PAC " (0x20 at byte 3). It must NOT parse as NeXAS.
@@ -786,8 +771,6 @@ mod tests {
         assert_eq!(NEXAS_PAC_MAGIC[3], 0x00);
         assert_ne!(NEXAS_PAC_MAGIC[3], b' '); // 0x20 is Softpal
     }
-
-    // ---- malformed-input typed errors -----------------------------------
 
     #[test]
     fn truncated_header_is_typed_error() {

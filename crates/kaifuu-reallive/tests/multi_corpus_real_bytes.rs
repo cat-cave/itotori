@@ -1,14 +1,11 @@
 //! FIX-4 multi-game-validation real-bytes harness.
-//!
 //! Project law (`docs/dev/orchestration-operating-model.md`,
 //! multi-game-validation): RealLive engine-family behaviour must validate
 //! against **>= 2 real RealLive games**. On main only Oshioki Sweetie HD was
 //! staged; FIX-4 sources a second genuine RealLive title (Kanon, a 1.2.6.8
 //! fan-patched / rlBabel tree) and exposes it to this harness via
 //! [`real_corpus::REAL_GAME_ROOT_2_ENV`] (`ITOTORI_REAL_GAME_ROOT_2`).
-//!
 //! # What this test proves (and what it deliberately does NOT)
-//!
 //! This is the availability + multi-game + **full-archive 100%-decompile**
 //! gate. It asserts:
 //! - each staged corpus resolves, is a real RealLive SEEN archive with >= 1
@@ -22,26 +19,22 @@
 //!   HD (`110002`, second-level `xor_2` decrypted in-process) — decode with
 //!   ZERO unknown commands, ZERO malformed expressions, and ZERO parse
 //!   failures across every populated scene (the alpha 100% bar).
-//!
-//! It then prints a sanitized per-corpus decompiler-coverage report (clean /
-//! parse-failed / unknown-command scene counts, opcode histogram, and the
-//! unrecognised `(module_type, module_id, opcode)` signatures with
-//! frequencies). **No raw copyrighted bytes or text are emitted — counts,
-//! offsets, opcode signatures and sha256 only.**
-//!
+//!   It then prints a sanitized per-corpus decompiler-coverage report (clean /
+//!   parse-failed / unknown-command scene counts, opcode histogram, and the
+//!   unrecognised `(module_type, module_id, opcode)` signatures with
+//!   frequencies). **No raw copyrighted bytes or text are emitted — counts,
+//!   offsets, opcode signatures and sha256 only.**
 //! # Honest 100%-decompilation status (the FIX-4 finding)
-//!
 //! Per the 100%-decompilation law, the bar is ZERO unknown opcodes / ZERO
 //! parse failures on real bytes. This harness records the measured coverage
 //! and does **not** relax any floor. The decompiler layers are now separable
 //! and a FULL real archive is proven 100% decompiled:
-//!
 //! - **Expression grammar (`reallive-expr-eval-bank-refs`) — DONE.** The
 //!   ExpressionPiece evaluator implements the full RealLive reference grammar.
 //! - **Semantic command cataloguing (`reallive-semantic-command-cataloguing`)
 //!   — DONE.** Every in-space `(module_type, module_id, opcode)` maps to a
 //!   SEMANTICALLY-TYPED operation family (keyed on `module_id`), not a generic
-//!   `Command{module,id,opcode,args}` blob: `is_recognized()` is true ONLY for
+//!   `Command{module,id,opcode,args}` blob: `is_recognized` is true ONLY for
 //!   a named family. Both archives are asserted at the SEMANTIC-zero bar —
 //!   ZERO generic `Command`, ZERO `Unknown`, ZERO malformed expressions, ZERO
 //!   parse failures across every populated scene. Supersedes the prior
@@ -65,10 +58,9 @@
 //!   catalogue that decodes Kanon decodes all 198 Sweetie scenes 100% clean
 //!   (was 45/198 clean, 121 parse failures). corpus-1 is now asserted at the
 //!   SAME hard zero bar as corpus-2.
-//!
-//! This test's contract is corpus availability + harness execution + the
-//! full command-catalogue + expression-grammar + second-level-`xor_2` zero
-//! bar on BOTH complete real archives.
+//!   This test's contract is corpus availability + harness execution + the
+//!   full command-catalogue + expression-grammar + second-level-`xor_2` zero
+//!   bar on BOTH complete real archives.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -101,7 +93,7 @@ struct CoverageReport {
     /// expression-reference grammar produces none of these.
     malformed_expression_scenes: usize,
     total_opcodes: usize,
-    /// Count of opcodes that fail `is_recognized()` — i.e. the union of the
+    /// Count of opcodes that fail `is_recognized` — i.e. the union of the
     /// un-catalogued generic `Command` blob and the `module_type > 2`
     /// `Unknown` desync tripwire. The semantic-zero bar is `0`.
     total_unknown: usize,
@@ -179,7 +171,6 @@ fn decompile_corpus(corpus: &RealCorpus) -> CoverageReport {
         per_scene_clean: BTreeMap::new(),
     };
 
-    // --- Stage 1: envelope -> header -> AVG32 decompress (first-level). ---
     // Any failure before the decompressed bytecode exists is a hard parse
     // failure (it can never reach the decoder). The scene id is carried
     // alongside every decompressed scene so the per-scene decode verdict
@@ -218,12 +209,10 @@ fn decompile_corpus(corpus: &RealCorpus) -> CoverageReport {
         scene_ids.push(entry.scene_id);
     }
 
-    // --- Stage 2: second-level xor_2 decryption (per-game key recovered ---
     // in-process from the corpus, validate-before-consume). Scenes whose
     // compiler_version does not set use_xor_2 (Kanon's 10002) are untouched.
     report.xor2 = recover_and_decrypt_archive(&mut scenes);
 
-    // --- Stage 3: decode every (now-decrypted) scene. ---
     for (scene, scene_id) in scenes.iter().zip(scene_ids.iter()) {
         let opcodes = match parse_real_bytecode(&scene.bytecode) {
             Ok(opcodes) => opcodes,
@@ -358,8 +347,6 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
         );
     }
 
-    // ---- reallive-semantic-command-cataloguing: full-archive SEMANTIC zero -
-    //
     // The command catalogue (`opcode.rs`) maps every enumerated real
     // `(module_type, module_id, opcode)` to a **semantically-typed operation
     // family** keyed on its `module_id` (the engine's real semantic key —
@@ -369,13 +356,12 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
     // uncatalogued opcode in a known module becomes generic `Command` and
     // fails this gate, so there is NO `Command{module,id,opcode,args}` blob on
     // the real bytes:
-    // `is_recognized()` is true ONLY for a semantically-typed variant, so the
+    // `is_recognized` is true ONLY for a semantically-typed variant, so the
     // SEMANTIC bar is "zero generic `Command` AND zero `Unknown`". This
     // supersedes the prior `reallive-command-module-catalogue`, which funnelled
     // the long tail into the generic `Command` blob and (wrongly) counted it as
     // recognised — framing, not semantics: Utsushi cannot render a command it
     // cannot semantically identify.
-    //
     // BOTH complete archives are asserted at this hard SEMANTIC-zero bar.
     // corpus-2 (Kanon, 10002) carries no second-level XOR and is decoded by
     // the catalogue alone; corpus-1 (Sweetie HD, 110002) is first decrypted by
@@ -418,7 +404,7 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
             "[{}] opcode histogram still has a `command` bucket — un-catalogued tuples remain",
             report.label
         );
-        // (1)+(2) combined: nothing fails `is_recognized()`.
+        // (1)+(2) combined: nothing fails `is_recognized`.
         assert_eq!(
             report.total_unknown, 0,
             "[{}] {} command(s) fail recognition on the full archive \
@@ -536,7 +522,6 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
 /// (`reallive-expr-eval-bank-refs`), the semantic command catalogue
 /// (`reallive-semantic-command-cataloguing`) and the second-level `xor_2`
 /// decryptor (`reallive-xor2-sukara-decryptor`) landed:
-///
 /// - **9996** — the New-Game routine (`farcall` (0,1,18) target from the title
 ///   menu's `goto_case($store)`). The historical carve trace recorded it FAILING with
 ///   `MalformedExpression @~offset 271`; the completed expression grammar now
@@ -546,20 +531,18 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
 ///   the config / gallery scene, and the extra sub-menu the title dispatch
 ///   `jump`/`farcall`s into.
 /// - **8500 / 8600 / 9999** — further boot / system / menu scenes.
-///
-/// These are the exact "menu/boot/system scenes not strictly needed for
-/// dialogue" the true-100%-coverage directive names: they must NOT be dropped
-/// from the archive index AND must each decode to zero unknown opcodes. The
-/// aggregate `clean_scenes == populated_scenes` gate above already forbids ANY
-/// unclean scene, but this pin makes a regression that DROPS or mis-decodes one
-/// of these specific hard scenes fail by NAME (rather than being masked by the
-/// aggregate count) — closing the "skip the hard scenes" hole strictly.
+///   These are the exact "menu/boot/system scenes not strictly needed for
+///   dialogue" the true-100%-coverage directive names: they must NOT be dropped
+///   from the archive index AND must each decode to zero unknown opcodes. The
+///   aggregate `clean_scenes == populated_scenes` gate above already forbids ANY
+///   unclean scene, but this pin makes a regression that DROPS or mis-decodes one
+///   of these specific hard scenes fail by NAME (rather than being masked by the
+///   aggregate count) — closing the "skip the hard scenes" hole strictly.
 const SWEETIE_HD_HARD_MENU_BOOT_SYSTEM_SCENES: &[u16] = &[2, 3, 10, 8500, 8507, 8600, 9996, 9999];
 
 /// alpha true-100%-coverage: every Sweetie HD menu / boot / system scene the
 /// earlier carve trace flagged as undecodable now decodes to ZERO unknown
 /// opcodes on real bytes — proven by NAME, not just in the aggregate.
-///
 /// The `reallive-boot-menu-system-scene-decode-gap` directive is "true 100%
 /// coverage even for scenes not strictly needed for dialogue" — decode the
 /// menu/boot/system scenes (New-Game 9996, boot 8507, title/menu 2/3/10, …),
@@ -648,7 +631,6 @@ const SWEETIE_HD_SEEN_SHA256: &str =
     "903f538b821a9b1e6cb3d399582915c0bcf73b0a058ecc907caf6017a4fa209f";
 
 /// alpha-006e-multigame-validation: the 2nd-title 100%-decompilation law.
-///
 /// Distinct from
 /// [`multi_game_validation_runs_against_two_distinct_reallive_corpora`] (which
 /// needs BOTH corpora staged), this test gates on `ITOTORI_REAL_GAME_ROOT_2`
@@ -657,12 +639,11 @@ const SWEETIE_HD_SEEN_SHA256: &str =
 /// and expression grammar decode the whole Kanon archive at the hard SEMANTIC
 /// zero bar (zero generic `Command`, zero `Unknown`, zero malformed
 /// expressions, zero parse failures) across every populated scene.
-///
 /// Kanon is a 1.2.6.8 (`10002`) title that carries NO second-level `xor_2`, so
 /// it is decoded by the catalogue alone with no game-specific decrypt path —
 /// which is precisely why it is the generalization witness: nothing
 /// Sweetie-HD-specific is in the loop, and no game-specific special-casing or
-/// generic-`Command` escape may mask an unknown (the `is_recognized()` bar is
+/// generic-`Command` escape may mask an unknown (the `is_recognized` bar is
 /// `false` for the generic blob, so a masked tuple would fail this test, not
 /// pass it). No raw copyrighted bytes/text are emitted — counts, opcode
 /// signatures and sha256 only.
@@ -717,7 +698,7 @@ fn kanon_second_corpus_decompiles_zero_unknown() {
     );
 
     // (2) The hard SEMANTIC zero bar on the FULL 2nd archive (same
-    // `is_recognized()` bar as Sweetie HD). Split by failure mode so a
+    // `is_recognized` bar as Sweetie HD). Split by failure mode so a
     // regression names exactly which generalization gap opened.
     assert_eq!(
         report.total_generic_command, 0,

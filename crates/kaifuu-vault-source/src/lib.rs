@@ -1,9 +1,7 @@
 //! `kaifuu-vault-source` — the read-only itotori vault-source localCorpus
 //! adapter.
-//!
 //! See `docs/itotori-vault-source-adapter.md` (workspace root) for the
 //! authoritative contract. This crate is the Rust implementation. It:
-//!
 //! - opens `<vault-root>/catalog.db` read-only via `rusqlite` (`mode=ro`);
 //! - discovers candidate releases via the catalog;
 //! - resolves artifacts BY-ID via the
@@ -15,9 +13,7 @@
 //!   identity (`canonical_id`, work identifiers) against the catalog;
 //! - never writes to the vault, never touches `artifacts/by-name/`, never
 //!   modifies `catalog.db`.
-//!
 //! ## Public surface
-//!
 //! - [`VaultConfig`], [`ScratchConfig`], [`RetentionPolicy`]
 //! - [`ClaimQuery`], [`ReleaseCandidate`]
 //! - [`ResolvedArtifact`], [`ArtifactSelection`]

@@ -1,5 +1,4 @@
-//! Scratch-inventory + prune helper (KAIFUU-179).
-//!
+//! Scratch-inventory + prune helper.
 //! `RetentionPolicy::KeepExtractedForGame` (and the CLI's `keep-none` default,
 //! which never calls [`crate::source::VaultSource::release`]) leave extracted
 //! game trees behind under `<scratch-root>/<game-id>/`. Over many
@@ -8,14 +7,11 @@
 //! last-modified time, and an optional content digest — never the raw game
 //! bytes) and (b) *prune* trees to enforce a total-size **quota** or an
 //! age/last-access **LRU horizon** — WITHOUT a manual `rm -rf`.
-//!
 //! # Read-only-vault safety invariant
-//!
 //! The vault (`/archive/vault/`) is canonical, read-only game storage. Prune
 //! is **scratch-only** and MUST NEVER remove anything outside the configured
 //! scratch root — not even if a scratch tree contains a symlink that points
 //! into the vault:
-//!
 //! - The walk ([`summarize_tree`]) uses [`std::fs::symlink_metadata`] and
 //!   **never traverses or counts symlinks**, so a symlink into the vault does
 //!   not inflate a tree's size and is never descended into.
@@ -36,7 +32,6 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 /// One materialised game tree under the scratch root.
-///
 /// Reports identity/size/time/hash ONLY — never raw game bytes.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct ScratchGameEntry {
@@ -160,11 +155,9 @@ pub enum ScratchPruneError {
 }
 
 /// Inventory the materialised game trees under `scratch_root`.
-///
 /// Deterministic: entries are sorted by `id`, and the per-tree digest (when
 /// `compute_sha` is set) is order-independent. A missing scratch root yields an
 /// empty inventory (not an error) — nothing has been materialised yet.
-///
 /// `compute_sha` streams every file's bytes through SHA-256; prune passes
 /// `false` since it only needs size + mtime.
 pub fn inventory_scratch_root(
@@ -306,17 +299,15 @@ fn partition_by_ids(
 
 /// Apply a prune plan: remove each pruned tree from disk. Returns the list of
 /// removed paths.
-///
 /// Every target is re-verified before removal (defence-in-depth, independent of
 /// how the plan was produced):
 /// 1. the target must be `scratch_root/<id>` and must exist;
 /// 2. it must NOT be a symlink ([`ScratchPruneError::SymlinkTarget`]);
 /// 3. it must canonicalise to a path under the canonicalised scratch root
 ///    ([`ScratchPruneError::OutsideScratch`]).
-///
-/// Removal uses [`std::fs::remove_dir_all`], which does not follow symlinks, so
-/// any symlink *inside* a tree (e.g. pointing into the vault) is unlinked, never
-/// traversed. The vault is therefore never a removal target.
+///    Removal uses [`std::fs::remove_dir_all`], which does not follow symlinks, so
+///    any symlink *inside* a tree (e.g. pointing into the vault) is unlinked, never
+///    traversed. The vault is therefore never a removal target.
 pub fn execute_prune(
     scratch_root: &Path,
     plan: &PrunePlan,

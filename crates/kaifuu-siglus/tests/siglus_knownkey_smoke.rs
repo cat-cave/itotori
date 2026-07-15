@@ -1,10 +1,8 @@
-//! KAIFUU-070 — known-key Siglus Scene/Gameexe extract-patch-verify smoke.
-//!
+//! known-key Siglus Scene/Gameexe extract-patch-verify smoke.
 //! Drives the committed fixture profile end-to-end through the REAL narrow
 //! known-key implementation: extract profiled Scene/Gameexe text + metadata,
 //! apply + verify a trivial translated patch, and confirm the out-of-profile
 //! (proprietary-LZSS) case is a typed not-implemented — never a silent pass.
-//!
 //! Fixture provenance: the committed profile uses `synthetic-stub` container
 //! sources, so this smoke needs NO retail bytes. It is a *profiled synthetic*
 //! case (noted honestly): the containers are materialised in-process from
@@ -23,7 +21,6 @@ use kaifuu_siglus::{
 };
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
 /// reused from a different (since-removed) worktree would point fixture reads at
 /// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the

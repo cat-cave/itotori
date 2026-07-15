@@ -1,5 +1,4 @@
 //! Retention-policy state machine + per-run / per-game cleanup.
-//!
 //! The contract names four policies; each is implemented as a small function
 //! over [`crate::extraction::ScratchPaths`] and the
 //! [`crate::config::RetentionPolicy`] enum.

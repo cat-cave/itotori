@@ -1,59 +1,49 @@
-//! KAIFUU-040 — Wolf RPG Editor readiness proof.
-//!
+//! Wolf RPG Editor readiness proof.
 //! This node COMBINES the two Wolf evidence sources that already exist as their
 //! own honest, synthetic-fixture-driven subsystems into ONE per-capability-level
 //! readiness report:
-//!
-//! 1. the KAIFUU-120 Wolf **protection detector**
+//! 1. the Wolf **protection detector**
 //!    ([`crate::wolf_protection_detector`]) — magic-byte-signature detector
 //!    evidence that classifies a `.wolf`/DXArchive-family container into a
 //!    plain / protected / helper-required / unknown [`WolfProtectionProfile`]
 //!    and advertises the `identify` (and, for a plain archive, `inventory`)
 //!    rungs it may claim; and
-//! 2. the KAIFUU-121 Wolf **key/protection helper boundary**
-//!    ([`crate::wolf_helper_boundary`]) — the local-only KAIFUU-085
+//! 2. the Wolf **key/protection helper boundary**
+//!    ([`crate::wolf_helper_boundary`]) — the local-only
 //!    [`crate::HelperResult`] for a keyRef-bound profile, whose
 //!    [`WolfHelperBoundaryOutcome`] (`key_resolved` / `key_missing` /
 //!    `helper_required` / `helper_unavailable`) reports whether the key/helper
 //!    gate is cleared.
-//!
 //! # The honest capability-level ladder (never over-claimed)
-//!
 //! The readiness report distinguishes SIX achieved levels
 //! ([`WolfReadinessLevel`]):
-//!
-//! - `identify`        — the detector recognized the Wolf-shaped container.
-//! - `inventory`       — the detector can list the file table (plain archive).
+//! - `identify` — the detector recognized the Wolf-shaped container.
+//! - `inventory` — the detector can list the file table (plain archive).
 //! - `helper_required` — the archive is gated behind the key/helper subsystem;
 //!   the boundary characterized the exact requirement (or resolved the key
 //!   locally by ref) but no extraction parser fixture backs a higher claim.
-//! - `extract`         — an explicit synthetic EXTRACT fixture proves extraction
+//! - `extract` — an explicit synthetic EXTRACT fixture proves extraction
 //!   AND every lower gate is cleared.
-//! - `patch`           — an explicit synthetic PATCH fixture proves patch-back
+//! - `patch` — an explicit synthetic PATCH fixture proves patch-back
 //!   AND extraction is proven AND every lower gate is cleared.
-//! - `unsupported`     — the protection variant is unrecognized; nothing beyond
+//! - `unsupported` — the protection variant is unrecognized; nothing beyond
 //!   a partial identify is proven.
-//!
-//! The single source of truth is [`derive_wolf_readiness_level`]: a pure,
-//! total function of the detector-derived profile, the helper-boundary outcome,
-//! and the presence of explicit extract/patch fixture proofs. It can NEVER lift
-//! an `unknown` profile above `unsupported`, and it NEVER claims `extract` or
-//! `patch` without an explicit synthetic fixture proof — the strict-proof
-//! honesty invariant (no aspirational "supported"). Real Wolf archive
-//! extraction / patch-back is a later adapter node (KAIFUU-131); this readiness
-//! proof reports only what the detector + helper-boundary + explicit synthetic
-//! fixtures prove.
-//!
+//!   The single source of truth is [`derive_wolf_readiness_level`]: a pure,
+//!   total function of the detector-derived profile, the helper-boundary outcome,
+//!   and the presence of explicit extract/patch fixture proofs. It can NEVER lift
+//!   an `unknown` profile above `unsupported`, and it NEVER claims `extract` or
+//!   `patch` without an explicit synthetic fixture proof — the strict-proof
+//!   honesty invariant (no aspirational "supported"). Real Wolf archive
+//!   extraction / patch-back is a later adapter node; this readiness
+//!   proof reports only what the detector + helper-boundary + explicit synthetic
+//!   fixtures prove.
 //! # Engine-general (Wolf = data, no per-game branch)
-//!
 //! Every case is pure DATA: an embedded detector record, an optional embedded
 //! helper-boundary profile, and optional synthetic extract/patch proofs. The
 //! resolver runs the REAL detector and REAL helper-boundary subsystems over the
 //! embedded evidence and combines their derived outputs — there is no per-game
 //! branch.
-//!
 //! # Evidence is synthetic, redacted, ref-only
-//!
 //! Cases carry NO retail bytes and NO raw key material: only synthetic ids,
 //! the detector's structured protection signal, the helper boundary's
 //! local-scheme secret refs, and sha256 proof hashes. Every emitted report is
@@ -86,9 +76,7 @@ pub const WOLF_READINESS_REPORT_SCHEMA_VERSION: &str = "0.1.0";
 /// The support boundary surfaced in every Wolf readiness report.
 pub const WOLF_READINESS_SUPPORT_BOUNDARY: &str = "The Wolf RPG Editor readiness proof COMBINES the KAIFUU-120 protection-detector evidence (identify/inventory) with the KAIFUU-121 key/protection helper-boundary reporting (key_resolved/key_missing/helper_required/helper_unavailable) into ONE per-capability-level readiness report. It reports the ACHIEVED level (identify, inventory, helper-required, extract, patch, or unsupported) mechanically per the fixture evidence and NEVER claims a level beyond it: an unrecognized protection variant is unsupported; extract and patch are claimed ONLY where an explicit synthetic fixture proves them (retail Wolf extraction/patch-back is a later adapter node, KAIFUU-131, and is never claimed here). Evidence is synthetic and redacted — secret refs and sha256 hashes only, never raw keys, paths, or retail bytes.";
 
-// ---------------------------------------------------------------------------
 // The achieved readiness level (the six-rung honest ladder)
-// ---------------------------------------------------------------------------
 
 /// The capability level a Wolf archive achieves, combining detector evidence
 /// with helper-boundary reporting. Ordered from least to most capability, with
@@ -136,9 +124,7 @@ impl WolfReadinessLevel {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Explicit synthetic extract/patch fixture proofs (the honesty gate)
-// ---------------------------------------------------------------------------
 
 /// Which synthetic archive-operation artifact a proof backs. The extract and
 /// patch rungs are claimed ONLY when the matching proof is present and valid.
@@ -172,13 +158,11 @@ pub enum WolfReadinessProvenance {
 /// An explicit synthetic proof that a Wolf archive operation (extract / patch)
 /// succeeded on synthetic bytes. Carries a stable artifact id + a sha256 proof
 /// hash.
-///
-/// # KAIFUU-145 — the proof hash BINDS to a genuinely-run smoke
-///
+/// # — the proof hash BINDS to a genuinely-run smoke
 /// The proof hash is NO LONGER a sha256 over a static label (that was the
-/// KAIFUU-080 anti-pattern: anyone who knew the artifact id could mint it, so
+/// anti-pattern: anyone who knew the artifact id could mint it, so
 /// the rung was a CLAIM). The resolver now recomputes the honored value from a
-/// genuinely-run KAIFUU-145 extract-patch-verify smoke
+/// genuinely-run extract-patch-verify smoke
 /// ([`run_wolf_extract_patch_verify_smoke`]) — the honored hash is the SMOKE's
 /// per-variant proof hash for the matching kind, derived from the ACTUAL
 /// round-trip output. A fixture whose declared hash is a label (or otherwise
@@ -205,14 +189,13 @@ impl WolfReadinessArtifactKind {
 }
 
 /// The canonical SMOKE-BOUND proof hash for a readiness artifact of `kind`,
-/// taken from a genuinely-run KAIFUU-145 extract-patch-verify smoke report.
+/// taken from a genuinely-run extract-patch-verify smoke report.
 /// Returns `None` if the smoke produced no round-tripped variant (then no
 /// extract/patch proof can ever be honored — the honest floor holds).
-///
 /// The value depends on the smoke's ACTUAL round-trip output (archive hashes +
 /// per-member deltas + round-trip proof), so it cannot be reproduced by a bare
 /// label/boolean — this is exactly what binds the readiness `extract`/`patch`
-/// rungs to a VERIFIED smoke (the KAIFUU-080 mirror).
+/// rungs to a VERIFIED smoke (the mirror).
 pub fn canonical_wolf_readiness_artifact_hash_from_smoke(
     smoke: &WolfExtractPatchVerifySmokeReport,
     kind: WolfReadinessArtifactKind,
@@ -239,9 +222,7 @@ impl WolfReadinessArtifactProof {
     }
 }
 
-// ---------------------------------------------------------------------------
 // The mechanical combiner (single source of truth)
-// ---------------------------------------------------------------------------
 
 /// The combined readiness evidence: the detector-derived protection profile,
 /// the helper-boundary outcome (present only for a keyRef-bound profile), and
@@ -256,7 +237,6 @@ pub struct WolfReadinessEvidence {
 
 /// Combine detector evidence + helper-boundary reporting into the achieved
 /// readiness level. Total, pure, side-effect-free — the single source of truth.
-///
 /// The honesty invariants are structural:
 /// - an `unknown` protection profile is always `unsupported` (no proof can lift
 ///   it); and
@@ -312,9 +292,7 @@ fn extract_patch_ceiling(
     }
 }
 
-// ---------------------------------------------------------------------------
 // Fixture (input) schema
-// ---------------------------------------------------------------------------
 
 /// One synthetic readiness case: the embedded detector record + optional
 /// embedded helper-boundary profile + optional synthetic extract/patch proofs,
@@ -350,15 +328,13 @@ pub struct WolfReadinessFixture {
     pub schema_version: String,
     /// Stable id for the fixture set (synthetic; no retail names/local paths).
     pub readiness_set_id: String,
-    /// The spec-DAG node id this fixture set is authored for (e.g. `KAIFUU-040`).
+    /// The spec-DAG node id this fixture set is authored for (e.g. ``).
     pub source_node_id: String,
     pub engine_family: String,
     pub cases: Vec<WolfReadinessCase>,
 }
 
-// ---------------------------------------------------------------------------
 // Report (generated) schema
-// ---------------------------------------------------------------------------
 
 /// One structured finding raised by the resolver.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -493,16 +469,14 @@ impl WolfReadinessReport {
     }
 }
 
-// ---------------------------------------------------------------------------
 // The resolver (the combiner)
-// ---------------------------------------------------------------------------
 
 /// Run the Wolf readiness combiner over a fixture set. Each case runs the REAL
 /// detector and REAL helper-boundary subsystems over its embedded evidence and
 /// combines their derived outputs into the achieved level mechanically; the
 /// declared expectation is used only to raise findings. Never panics.
 pub fn run_wolf_readiness(fixture: &WolfReadinessFixture) -> WolfReadinessReport {
-    // Genuinely run the KAIFUU-145 extract-patch-verify smoke ONCE. Its
+    // Genuinely run the extract-patch-verify smoke ONCE. Its
     // per-variant round-trip output is the source of truth the `extract`/`patch`
     // rungs bind to. If the smoke does not pass (e.g. a broken profiled fixture),
     // NO case can honor an extract/patch proof and the top rungs stay unreached —
@@ -558,7 +532,6 @@ fn resolve_case(
         });
     }
 
-    // --- Run the REAL detector over the embedded record (evidence half 1). ---
     let detector_report = run_wolf_protection_detector(&WolfProtectionDetectorFixture {
         schema_version: crate::wolf_protection_detector::WOLF_PROTECTION_DETECTOR_SCHEMA_VERSION
             .to_string(),
@@ -581,7 +554,6 @@ fn resolve_case(
     }
     let protection_profile = detector_entry.profile;
 
-    // --- Run the REAL helper boundary over the embedded profile (half 2). ----
     let helper_entry: Option<WolfHelperBoundaryEntryReport> = case.helper_boundary.as_ref().map(
         |profile: &WolfHelperBoundaryProfile| {
             let report = run_wolf_helper_boundary(&WolfHelperBoundaryFixture {
@@ -627,9 +599,8 @@ fn resolve_case(
         });
     }
 
-    // --- Validate + honor the explicit synthetic extract/patch proofs. -------
     // A proof is honored ONLY when its declared hash matches the SMOKE-BOUND
-    // canonical value from a genuinely-run KAIFUU-145 round-trip. If the smoke
+    // canonical value from a genuinely-run round-trip. If the smoke
     // itself did not pass, no proof is honored and a declared proof is a loud
     // finding — the readiness `patch` rung cannot be reached without a verified
     // smoke.
@@ -657,7 +628,6 @@ fn resolve_case(
         patch_proven = false;
     }
 
-    // --- Combine the evidence into the achieved level (source of truth). -----
     let evidence = WolfReadinessEvidence {
         protection_profile,
         helper_outcome,
@@ -835,8 +805,6 @@ mod tests {
         run_wolf_readiness(&load())
     }
 
-    // --- The whole fixture set is green + records every acceptance field. -----
-
     #[test]
     fn readiness_fixture_set_passes_and_records_every_field() {
         let report = run();
@@ -861,8 +829,6 @@ mod tests {
             assert!(!entry.claim_basis.is_empty());
         }
     }
-
-    // --- THE crux: the six capability levels are DISTINGUISHED per fixture. ---
 
     #[test]
     fn the_six_levels_are_distinguished_by_fixture_evidence() {
@@ -892,8 +858,6 @@ mod tests {
             Some(WolfReadinessLevel::Patch)
         );
     }
-
-    // --- The combination is REAL: both evidence halves are present. ----------
 
     #[test]
     fn each_case_combines_detector_and_helper_boundary_evidence() {
@@ -964,8 +928,6 @@ mod tests {
         );
     }
 
-    // --- Honesty: an UNKNOWN profile can never be lifted above unsupported. ---
-
     #[test]
     fn unknown_profile_is_never_lifted_by_a_proof() {
         for (extract_proven, patch_proven) in [(false, false), (true, false), (true, true)] {
@@ -981,8 +943,6 @@ mod tests {
             );
         }
     }
-
-    // --- Honesty: a closed key gate refuses extract even with a proof. -------
 
     #[test]
     fn closed_gate_refuses_extraction_even_with_a_proof() {
@@ -1004,8 +964,6 @@ mod tests {
             );
         }
     }
-
-    // --- A fabricated extract proof (wrong hash) is refused. ------------------
 
     #[test]
     fn fabricated_extract_proof_is_refused() {
@@ -1032,13 +990,10 @@ mod tests {
         assert_eq!(entry.readiness_level, WolfReadinessLevel::HelperRequired);
     }
 
-    // --- KAIFUU-145: the `patch` rung BINDS to a genuinely-run smoke. --------
-
     #[test]
     fn readiness_patch_hash_equals_the_smoke_bound_value() {
         // The fixture's honored patch proof hash is exactly the SMOKE-BOUND
-        // canonical value from a genuinely-run KAIFUU-145 round-trip — not a
-        // static label. Proving that the fixture is gated on the real smoke.
+        // canonical value from a genuinely-run round-trip — not a
         let smoke = crate::wolf_extract_patch_verify_smoke::run_wolf_extract_patch_verify_smoke(
             "KAIFUU-040",
         )
@@ -1069,7 +1024,7 @@ mod tests {
 
     #[test]
     fn a_label_only_patch_proof_does_not_reach_patch_proven() {
-        // Reproduce the OLD KAIFUU-080 label hash (sha256 over a static label).
+        // Reproduce the OLD label hash (sha256 over a static label).
         // Because it is NOT the smoke-bound value, the patch rung is refused —
         // a fixture without a passing smoke behind it cannot reach patch-proven.
         let label_hash = ProofHash::new(crate::sha256_hash_bytes(
@@ -1100,8 +1055,6 @@ mod tests {
         assert!(entry.readiness_level < WolfReadinessLevel::Patch);
     }
 
-    // --- The resolver catches a lying declared level. ------------------------
-
     #[test]
     fn declared_level_mismatch_is_a_finding() {
         let mut fixture = load();
@@ -1123,8 +1076,6 @@ mod tests {
         // The DERIVED level still refuses the lie.
         assert_eq!(entry.readiness_level, WolfReadinessLevel::Inventory);
     }
-
-    // --- Redaction-clean: refs + hashes only, no keys/paths/retail bytes. ----
 
     #[test]
     fn report_is_redaction_clean() {
@@ -1157,8 +1108,6 @@ mod tests {
         let round: WolfReadinessReport = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(round, report.redacted_for_report());
     }
-
-    // --- The combiner is total over the level ladder. ------------------------
 
     #[test]
     fn level_ordering_places_unsupported_at_the_floor() {

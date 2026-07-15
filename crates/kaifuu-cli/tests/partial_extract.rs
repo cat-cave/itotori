@@ -1,14 +1,12 @@
-//! KAIFUU-193 — CLI partial-extract regression test.
-//!
+//! CLI partial-extract regression test.
 //! Builds a synthetic fixture that mirrors the canonical failure case from
 //! `docs/audits/real-bytes-validation-2026-06-24.md` §2.8: SEEN.TXT
-//! envelope is parseable (KAIFUU-188 10,000-slot directory with at least
+//! envelope is parseable (10,000-slot directory with at least
 //! one populated slot) but Gameexe.ini lacks the documented
 //! RealLive-specific key prefixes (`#REGNAME`, `#KOE*`, `#SEEN*`,
 //! `#GAMEEXE_VERSION`, `#G00*`). The RealLive detector returns
 //! `detected == false` but the SEEN.TXT envelope row reports Matched,
-//! triggering the KAIFUU-193 partial path.
-//!
+//! triggering the partial path.
 //! Asserts:
 //! - `kaifuu extract <fixture> --output …` exits 0 and writes a
 //!   `PartialAdapterReport` envelope (`partial == true`, nonzero
@@ -18,11 +16,10 @@
 //!   Gameexe.ini key-mismatch diagnostic.
 //! - `kaifuu verify <fixture> --output …` exits 0 (no P0/P1 diagnostics)
 //!   while still reporting `partial == true`.
-//!
-//! No real-bytes dependency: all fixtures are synthetic. The kaifuu-reallive
-//! `parse_archive` is the same code path that consumes the Sweetie HD
-//! Seen.txt in production, so a passing partial smoke here implies the
-//! KAIFUU-193 envelope ingests cleanly for the real game too.
+//!   No real-bytes dependency: all fixtures are synthetic. The kaifuu-reallive
+//!   `parse_archive` is the same code path that consumes the Sweetie HD
+//!   Seen.txt in production, so a passing partial smoke here implies the
+//!   envelope ingests cleanly for the real game too.
 
 use std::fs;
 use std::path::PathBuf;
@@ -40,10 +37,10 @@ fn kaifuu_cli_binary() -> PathBuf {
     path
 }
 
-/// Build a SEEN.TXT byte buffer with the KAIFUU-188 10,000-slot directory
+/// Build a SEEN.TXT byte buffer with the 10,000-slot directory
 /// layout. Slot `scene_id` is populated with `(offset, len)` pointing at a
 /// non-empty payload appended after the directory. All other slots are
-/// zeroed (the "reserved" representation per KAIFUU-188).
+/// zeroed (the "reserved" representation per).
 fn synthetic_real_envelope_seen_txt(populated_scene_ids: &[u16]) -> Vec<u8> {
     const SLOT_COUNT: usize = 10_000;
     const DIRECTORY_BYTE_LEN: usize = SLOT_COUNT * 8;

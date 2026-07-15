@@ -1,7 +1,6 @@
 //! Real-bytes fixtures captured from Sweetie HD's `Seen.txt`, used by the
 //! `decode_dialogue_textout` surface-selection tests in [`crate::bridge`]
 //! and [`crate::patchback`].
-//!
 //! These are verbatim Textout-run bodies recovered by decompressing a real
 //! scene's bytecode ([`crate::decompress_avg32`]) and walking it with
 //! [`crate::parse_real_bytecode`]. Embedding the exact bytes makes the

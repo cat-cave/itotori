@@ -1,6 +1,5 @@
-//! KAIFUU-069 — CLI command-contract smoke for the Siglus static-key helper
+//! CLI command-contract smoke for the Siglus static-key helper
 //! adapter.
-//!
 //! Spawns `kaifuu siglus static-key` against the committed synthetic manifest
 //! and asserts the in-process discovery is evidence-driven: only the validated
 //! entry publishes a consumable secret-ref + proof hash, every failure class
@@ -21,7 +20,6 @@ fn kaifuu_cli_binary() -> PathBuf {
 }
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
 /// reused from a different (since-removed) worktree would point fixture reads at
 /// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the

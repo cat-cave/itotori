@@ -1,5 +1,4 @@
 //! Real-bytes proof for `reallive-adapter-expose-length-changing-patchback`.
-//!
 //! Drives the FULL RealLive adapter surface (`extract` -> `patch`) on the real
 //! Sweetie HD archive at `$ITOTORI_REAL_GAME_ROOT` and proves a LENGTH-CHANGING
 //! adapter patch routes through the bundle-driven driver and round-trips
@@ -9,7 +8,6 @@
 //! and every goto jump pointer is recalculated to land on an element boundary
 //! (at least one re-based by the length delta), never into the middle of a
 //! command.
-//!
 //! Env-gated and STRICT BY DEFAULT: without `ITOTORI_REAL_GAME_ROOT` the test
 //! is a no-op (it is `#[ignore]`d and only runs under `--include-ignored`).
 
@@ -139,7 +137,6 @@ fn reallive_adapter_length_changing_patch_round_trips_on_real_sweetie_hd() {
     let root = PathBuf::from(root);
     let adapter = RealLiveProfileDetectorAdapter;
 
-    // ---- Extract the real archive through the adapter. ----
     let extract = adapter
         .extract(ExtractRequest { game_dir: &root })
         .expect("adapter extracts real Sweetie HD");
@@ -233,7 +230,6 @@ fn reallive_adapter_length_changing_patch_round_trips_on_real_sweetie_hd() {
             continue;
         }
 
-        // ---- The patched archive round-trips byte-correct. ----
         let patched_seen = fs::read(out_dir.join("SEEN.TXT")).expect("read patched SEEN.TXT");
         // Length changed: the offset table + scene body were rewritten (the
         // long sentinel is longer than the source dialogue body).
@@ -316,12 +312,11 @@ fn reallive_adapter_length_changing_patch_round_trips_on_real_sweetie_hd() {
             "scene {scene_id:04}: adapter re-extract must read the translated xor2 text"
         );
 
-        // ---- Jump targets recalculated. A goto-rich scene is required so the
-        //      recalculation is actually exercised; skip scenes with no goto
-        //      pointers. Every patched target must still land on an element
-        //      boundary (never into the middle of a command) and at least one
-        //      target must have moved by the length delta (proving the re-base
-        //      ran, not a silent no-op). ----
+        // recalculation is actually exercised; skip scenes with no goto
+        // pointers. Every patched target must still land on an element
+        // boundary (never into the middle of a command) and at least one
+        // target must have moved by the length delta (proving the re-base
+        // ran, not a silent no-op). ----
         let source_sites =
             collect_goto_pointer_sites(&source_plain).expect("source goto pointers collect");
         if source_sites.is_empty() {

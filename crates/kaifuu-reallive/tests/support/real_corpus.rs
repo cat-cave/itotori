@@ -16,17 +16,15 @@ pub const REAL_GAME_ROOT_2_ENV: &str = "ITOTORI_REAL_GAME_ROOT_2";
 
 /// A resolved real-bytes RealLive corpus: the game root plus the located
 /// SEEN archive.
-///
 /// Supports both observed on-disk layouts:
 /// - **modern** `<root>/REALLIVEDATA/Seen.txt` (Sweetie HD, the newer
 ///   compiler line);
 /// - **flat** `<root>/SEEN.TXT` (older 1.2.6.x titles such as Kanon, which
 ///   keep the archive directly in the game root with no `REALLIVEDATA/`
 ///   subdirectory).
-///
-/// This is the single accessor the multi-game-validation harness uses so a
-/// test can iterate over every staged corpus without caring which layout a
-/// given title ships.
+///   This is the single accessor the multi-game-validation harness uses so a
+///   test can iterate over every staged corpus without caring which layout a
+///   given title ships.
 pub struct RealCorpus {
     /// Human-readable label for diagnostics (e.g. `"corpus-1"`).
     pub label: &'static str,
@@ -149,7 +147,6 @@ pub fn skip_message(test_name: &str) -> String {
 }
 
 /// Resolve the corpus-unavailable branch of an env-gated real-bytes test.
-///
 /// This is the single chokepoint for the "no silent pass" contract: a
 /// real-bytes test must never report a green PASS when it asserted nothing.
 /// Real-bytes coverage is STRICT: an absent corpus is an UNCONDITIONAL HARD
@@ -158,8 +155,7 @@ pub fn skip_message(test_name: &str) -> String {
 /// the real-bytes suites are `#[ignore]`-d and run only in the periodic
 /// ground-truth oracle (`just real-bytes-oracle`), where the corpora are always
 /// staged; per-gate CI is single-mode synthetic and never invokes them.
-///
-/// Returns `()` (rather than `!`) so the existing early-return call sites
+/// Returns `` (rather than `!`) so the existing early-return call sites
 /// (`require_real_bytes(...); return;`) keep their `return` without tripping the
 /// `unreachable_code` lint — the panic always diverges regardless.
 pub fn require_real_bytes(test_name: &str) {

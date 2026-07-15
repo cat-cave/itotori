@@ -1,29 +1,24 @@
-//! KAIFUU-011 — Integration tests for the composed binary patch smoke
+//! Integration tests for the composed binary patch smoke
 //! subcommand.
-//!
 //! The smoke module is exposed as a binary-private module in
 //! `crates/kaifuu-cli/src/binary_patch_smoke.rs`. To exercise it from
 //! the integration tests without restructuring the binary into a lib,
 //! we re-include the module source here via `#[path]` — this is a
 //! small, contained pragma that the Rust book and rustc docs support
 //! for exactly this case.
-//!
-//! # KAIFUU FIX-1 / KAIFUU-211 status
-//!
+//! # KAIFUU FIX-1 / status
 //! `binary_patch_smoke::build_synthetic_seen_txt` emits the
-//! **post-KAIFUU-191** real opener-byte shape (8-byte `CommandElement`
+//! **post-** real opener-byte shape (8-byte `CommandElement`
 //! headers, a Shift-JIS Textout dialogue run, a bracketed `select`
 //! argument list, and a Meta prologue) wrapped in a real 0x1d0-byte scene
 //! header + AVG32 LZSS compression frame. The smoke translates the
 //! editable Textout Dialogue unit through the canonical
 //! `bundle_driven::apply_translated_bundle` patchback (the legacy
 //! slot-edit surface is deleted). The synthetic translation is chosen to
-//! keep the archive byte-length-identical (so the composed KAIFUU-084
+//! keep the archive byte-length-identical (so the composed
 //! identity-relocation transaction promotes), but the dialogue bytes
 //! change and the patched archive still re-parses as a one-scene envelope.
-//!
-//! # KAIFUU-187 — failure-injection gating
-//!
+//! # — failure-injection gating
 //! These tests exercise the `InjectFailure` seam, which is compiled out of a
 //! release `--no-default-features` build. The whole test file is therefore
 //! gated behind the same `cfg(any(debug_assertions, feature =
@@ -157,7 +152,7 @@ fn verify_hash_mismatch_rolls_back_and_emits_v02_failed() {
     let synthetic = binary_patch_smoke::build_synthetic_seen_txt();
     assert_eq!(output_seen, synthetic);
 
-    // Staging directory cleanup — no leftover .tmp files.
+    // Staging directory cleanup — no leftover.tmp files.
     let staging_dir = dir.path().join(".staging");
     if staging_dir.exists() {
         let leftover: Vec<_> = std::fs::read_dir(&staging_dir)
@@ -182,7 +177,7 @@ fn positive_smoke_byte_stable_across_two_runs() {
     let (_outcome_a, value_a) = run_smoke(dir_a.path(), InjectFailure::None);
     let (_outcome_b, value_b) = run_smoke(dir_b.path(), InjectFailure::None);
 
-    // patchResultId is deterministic by KAIFUU-084's deterministic_id,
+    // patchResultId is deterministic by 's deterministic_id
     // so two runs of the same fixture + run-id MUST produce the same
     // value. The whole JSON should compare equal modulo any timestamps
     // (the v0.2 contract has none).

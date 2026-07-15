@@ -1,25 +1,20 @@
-//! KAIFUU-107 — Claimed-profile REGRESSION runner.
-//!
+//! Claimed-profile REGRESSION runner.
 //! The regression runner is the drift gate for kaifuu's compatibility claims. It
-//! takes the KAIFUU-105 [`ClaimedSupportTuple`]s carried by a KAIFUU-106
+//! takes the [`ClaimedSupportTuple`]s carried by a
 //! [`ReproBundle`] and runs each claimed profile against:
-//!
-//! 1. the KAIFUU-051 PUBLIC-fixture catalogue ([`PublicFixtureCatalogue`]) — the
+//! 1. the PUBLIC-fixture catalogue ([`PublicFixtureCatalogue`]) — the
 //!    set of public fixture/profile ids a third party can actually run; and
 //! 2. the bundle's own reproduction proofs (`tupleId` → public `fixtureId` +
 //!    [`ProofHash`]).
-//!
-//! For every tuple it produces a [`RegressionTupleResult`] that RECORDS all the
-//! tuple fields (engine family, variant, container, crypto, codec, surface,
-//! patch-back mode, secret-requirement ids, diagnostics) plus a pass/fail
-//! [`OperationStatus`]. The aggregate [`ClaimedProfileRegressionReport`] rolls
-//! the per-tuple results into one artifact.
-//!
+//!    For every tuple it produces a [`RegressionTupleResult`] that RECORDS all the
+//!    tuple fields (engine family, variant, container, crypto, codec, surface,
+//!    patch-back mode, secret-requirement ids, diagnostics) plus a pass/fail
+//!    [`OperationStatus`]. The aggregate [`ClaimedProfileRegressionReport`] rolls
+//!    the per-tuple results into one artifact.
 //! # The three mechanical guarantees
-//!
 //! 1. **Fail-on-missing-fixture-evidence.** A claim whose tuple has no
 //!    reproduction proof, or whose proof names a fixture id absent from the
-//!    KAIFUU-051 catalogue, FAILS with a typed
+//!    catalogue, FAILS with a typed
 //!    [`RegressionFindingKind::MissingFixtureEvidence`] — never a skip or a
 //!    silent pass.
 //! 2. **Fail-on-missing-secret-metadata.** A claim whose crypto layer requires a
@@ -31,11 +26,10 @@
 //!    baselined — fingerprint is surfaced as a [`DriftFinding`] and FAILS the
 //!    tuple. The baseline is an input the runner NEVER rewrites; re-baselining is
 //!    always a deliberate act (`RegressionBaseline::from_bundle`).
-//!
-//! The result artifact is redaction-clean: it funnels every free-text field
-//! through [`redact_for_log_or_report`] and carries secrets/proofs only as the
-//! strongly-typed [`SecretRef`](crate::SecretRef) / [`ProofHash`] refs the
-//! embedded tuples already use. No raw keys, no private paths, no retail bytes.
+//!    The result artifact is redaction-clean: it funnels every free-text field
+//!    through [`redact_for_log_or_report`] and carries secrets/proofs only as the
+//!    strongly-typed [`SecretRef`](crate::SecretRef) / [`ProofHash`] refs the
+//!    embedded tuples already use. No raw keys, no private paths, no retail bytes.
 
 use serde::{Deserialize, Serialize};
 
@@ -59,12 +53,10 @@ pub const REGRESSION_BASELINE_SCHEMA_VERSION: &str = "0.1.0";
 /// The boundary surfaced in every regression report.
 pub const REGRESSION_BOUNDARY: &str = "The claimed-profile regression runner re-runs the KAIFUU-105 support tuples carried by a KAIFUU-106 reproduction bundle against the KAIFUU-051 public-fixture catalogue and the bundle's reproduction proofs. A claim FAILS when its required public-fixture evidence is missing, when secret-requirement metadata a key-gated crypto layer needs is absent, or when its diagnostics DRIFT from the recorded baseline. Diagnostic drift is a finding, never a silent baseline update. The report carries no raw keys, private paths, or retail bytes.";
 
-// ---------------------------------------------------------------------------
-// KAIFUU-051 public-fixture catalogue (the resolver input)
-// ---------------------------------------------------------------------------
+// public-fixture catalogue (the resolver input)
 
 /// The set of PUBLIC fixture/profile ids a third party can actually run — the
-/// KAIFUU-051 catalogue the resolver checks a tuple's reproduction proof
+/// catalogue the resolver checks a tuple's reproduction proof
 /// against. A fixture id absent here is not reproducible evidence.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -92,9 +84,7 @@ impl PublicFixtureCatalogue {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Recorded diagnostic baseline (drift detection input)
-// ---------------------------------------------------------------------------
 
 /// The typed identity of one diagnostic — layer/status/reason/severity, WITHOUT
 /// the free-text detail. Drift is measured over these identities so a redaction
@@ -177,9 +167,7 @@ impl RegressionBaseline {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Secret-requirement metadata gate
-// ---------------------------------------------------------------------------
 
 /// True iff `crypto` needs a resolved key — and therefore a claim declaring it
 /// MUST carry `secretRequirementIds`. Key-derived transforms (fixed key, key
@@ -207,12 +195,10 @@ pub enum SecretMetadataStatus {
     Missing,
 }
 
-// ---------------------------------------------------------------------------
 // Fixture resolution (the resolver)
-// ---------------------------------------------------------------------------
 
-/// The outcome of resolving a tuple's fixture/profile id against the KAIFUU-106
-/// reproduction proofs + the KAIFUU-051 public-fixture catalogue.
+/// The outcome of resolving a tuple's fixture/profile id against the
+/// reproduction proofs + the public-fixture catalogue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FixtureResolutionStatus {
@@ -221,7 +207,7 @@ pub enum FixtureResolutionStatus {
     /// No reproduction proof in the bundle for this tuple.
     MissingReproductionProof,
     /// A reproduction proof exists but names a fixture id absent from the
-    /// KAIFUU-051 public-fixture catalogue.
+    /// public-fixture catalogue.
     UnknownPublicFixture,
 }
 
@@ -231,9 +217,7 @@ impl FixtureResolutionStatus {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Findings
-// ---------------------------------------------------------------------------
 
 /// Why a claimed profile failed its regression run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -243,7 +227,7 @@ pub enum RegressionFindingKind {
     MissingFixtureEvidence,
     /// A key-gated crypto layer declares no secret-requirement metadata.
     MissingSecretRequirementMetadata,
-    /// The embedded tuple overclaims (rolled up from the KAIFUU-105 gate).
+    /// The embedded tuple overclaims (rolled up from the gate).
     OverclaimTuple,
     /// The tuple's diagnostics drifted from the recorded baseline.
     DiagnosticDrift,
@@ -313,13 +297,11 @@ impl DriftFinding {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Result artifact
-// ---------------------------------------------------------------------------
 
-/// One tuple's regression result. Embeds the KAIFUU-105 entry report (which
+/// One tuple's regression result. Embeds the entry report (which
 /// records engine family, variant, container, crypto, codec, surface,
-/// patch-back mode, secret-requirement ids, and diagnostics), plus the KAIFUU-107
+/// patch-back mode, secret-requirement ids, and diagnostics), plus the
 /// resolution / secret-metadata / drift verdicts and the rolled-up pass/fail.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -427,12 +409,10 @@ impl ClaimedProfileRegressionReport {
     }
 }
 
-// ---------------------------------------------------------------------------
 // The runner
-// ---------------------------------------------------------------------------
 
 /// Resolve a single tuple against the bundle's reproduction proofs + the
-/// KAIFUU-051 catalogue.
+/// catalogue.
 fn resolve_fixture(
     bundle: &ReproBundle,
     catalogue: &PublicFixtureCatalogue,
@@ -462,7 +442,7 @@ fn run_one(
 ) -> RegressionTupleResult {
     let tuple_id = tuple.profile_or_fixture_id.clone();
 
-    // 1. The KAIFUU-105 anti-overclaim gate + recorded tuple fields.
+    // 1. The anti-overclaim gate + recorded tuple fields.
     let entry = validate_claimed_support_tuple(tuple);
     let mut findings: Vec<RegressionFinding> = Vec::new();
 
@@ -557,10 +537,9 @@ fn run_one(
     }
 }
 
-/// Run the claimed-profile regression: re-run every KAIFUU-105 tuple in `bundle`
-/// against the KAIFUU-051 `catalogue`, the bundle's reproduction proofs, and the
+/// Run the claimed-profile regression: re-run every tuple in `bundle`
+/// against the `catalogue`, the bundle's reproduction proofs, and the
 /// recorded `baseline`. Never panics, never returns `Err`.
-///
 /// The report FAILS iff any claim is missing fixture evidence, is missing
 /// required secret metadata, overclaims, or has drifted from the baseline.
 pub fn run_claimed_profile_regression(
@@ -596,12 +575,10 @@ pub fn run_claimed_profile_regression(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Fixtures — the KAIFUU-051 catalogue + recorded baseline for the clean bundle
-// ---------------------------------------------------------------------------
+// Fixtures — the catalogue + recorded baseline for the clean bundle
 
-/// Synthetic regression fixtures over the KAIFUU-106 clean reproduction bundle:
-/// the matching KAIFUU-051 public-fixture catalogue + a recorded baseline that
+/// Synthetic regression fixtures over the clean reproduction bundle
+/// the matching public-fixture catalogue + a recorded baseline that
 /// makes a fresh run validate green.
 pub mod fixtures {
     use super::*;
@@ -713,7 +690,7 @@ mod tests {
     #[test]
     fn unknown_public_fixture_fails_the_claim() {
         // The proof resolves to a tuple, but the fixture id is not in the
-        // KAIFUU-051 catalogue → not reproducible → fail.
+        // catalogue → not reproducible → fail.
         let bundle = bundle_fixtures::clean_bundle();
         let empty_catalogue = PublicFixtureCatalogue::new([]);
         let report = run_claimed_profile_regression(&bundle, &empty_catalogue, &baseline());
@@ -824,7 +801,7 @@ mod tests {
     #[test]
     fn overclaim_tuple_fails_the_regression() {
         // A bundle embedding an overclaiming tuple fails via the rolled-up
-        // KAIFUU-105 gate — even with a resolvable fixture + baseline.
+        // gate — even with a resolvable fixture + baseline.
         let mut bundle = bundle_fixtures::clean_bundle();
         let overclaim = crate::compat_profile::fixtures::overclaim_patch_without_evidence();
         let overclaim_id = overclaim.profile_or_fixture_id.clone();

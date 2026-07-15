@@ -1,19 +1,16 @@
 //! Scene-1 encryption-mechanism probe for an explicit RealLive corpus.
-//!
 //! Reads `Seen.txt` from an explicit CLI path or from
 //! `$ITOTORI_REAL_GAME_ROOT`, isolates scene #0001's compressed bytecode
 //! payload, applies the rlvm-documented AVG32 LZSS+XOR decompression
 //! (no second-level XOR), and reports:
-//!
 //! - redacted summaries of compressed and decompressed byte windows,
 //! - whether byte 0 matches the BytecodeElement opener set,
 //! - Shannon entropy + byte-frequency histogram of the decompressed output,
 //! - known-plaintext XOR-mask candidates for the first opener.
-//!
-//! Read-only on the input bytes. Algorithm restated in our own words from
-//! `rlvm/src/libreallive/compression.cc::Decompress` and
-//! `rlvm/src/libreallive/scenario.cc::Header` (fetched via gh api,
-//! BSD-licensed, no source vendored).
+//!   Read-only on the input bytes. Algorithm restated in our own words from
+//!   `rlvm/src/libreallive/compression.cc::Decompress` and
+//!   `rlvm/src/libreallive/scenario.cc::Header` (fetched via gh api,
+//!   BSD-licensed, no source vendored).
 
 use std::env;
 use std::fs;
@@ -67,7 +64,6 @@ fn opener_name(b: u8) -> &'static str {
 }
 
 /// rlvm-shape LZSS+XOR decompressor restated in our own words.
-///
 /// Mirrors `libreallive::compression::Decompress` (Peter Jolly, BSD 2006).
 /// Does NOT apply the per-game second-level XOR — caller decides.
 fn decompress_avg32(src: &[u8], dst_len: usize) -> Result<Vec<u8>, String> {
@@ -116,7 +112,7 @@ fn decompress_avg32(src: &[u8], dst_len: usize) -> Result<Vec<u8>, String> {
             mask_idx = mask_idx.wrapping_add(1);
             let count = (lo as u32) | ((hi as u32) << 8);
             // repeat = dst - ((count >> 4) - 1) - 1
-            //        = dst - (count >> 4)
+            // = dst - (count >> 4)
             // (rlvm code: `dst - ((count >> 4) - 1) - 1`)
             let back = (count >> 4) as usize;
             let run = ((count & 0x0f) as usize) + 2;

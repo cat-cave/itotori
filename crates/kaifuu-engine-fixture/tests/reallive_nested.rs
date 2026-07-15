@@ -1,27 +1,23 @@
-//! KAIFUU-192 regression: nested `REALLIVEDATA/` resolution surfaced as
+//! regression: nested `REALLIVEDATA/` resolution surfaced as
 //! evidence.
-//!
 //! When a RealLive title ships its engine assets under a nested
 //! `REALLIVEDATA/` subdirectory (the observed Sweetie HD shape,
 //! `<install-root>/<title subdir>/REALLIVEDATA/`) rather than at the game
 //! root, the detector walks past the root to find the SEEN.TXT / Gameexe.ini
-//! markers. KAIFUU-192 makes the resolved data dir *observable* in the
+//! markers. makes the resolved data dir *observable* in the
 //! `kaifuu detect` JSON so downstream `extract` / `profile` / `verify` can
 //! read it instead of re-discovering the nesting:
-//!
 //! - a dedicated evidence row carries the stable code
 //!   `kaifuu.reallive.nested_data_dir_resolved` and the resolved subdir as
 //!   its `path`, and
 //! - every SEEN.TXT / SEEN.GAN / Gameexe.ini evidence row's `path` is
 //!   prefixed with the resolved data-dir path (e.g.
 //!   `game-install/REALLIVEDATA/SEEN.TXT`).
-//!
-//! A flat game whose markers live at the game root must NOT emit the
-//! `nested_data_dir_resolved` row (no false emission).
-//!
-//! Fixtures are fully synthetic (a directory tree with the `REALLIVEDATA/`
-//! nesting plus minimal RealLive marker files); no copyrighted game bytes
-//! are used.
+//!   A flat game whose markers live at the game root must NOT emit the
+//!   `nested_data_dir_resolved` row (no false emission).
+//!   Fixtures are fully synthetic (a directory tree with the `REALLIVEDATA/`
+//!   nesting plus minimal RealLive marker files); no copyrighted game bytes
+//!   are used.
 
 use std::fs;
 use std::path::{Path, PathBuf};

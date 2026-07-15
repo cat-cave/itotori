@@ -1,5 +1,4 @@
-//! KAIFUU-111 — MV/MZ PLUGIN-owned text via declared plugin profiles.
-//!
+//! MV/MZ PLUGIN-owned text via declared plugin profiles.
 //! RPG Maker MV/MZ games load PLUGINS (`js/plugins/*.js` + the `js/plugins.js`
 //! config) that own their own player-facing text through **plugin
 //! parameters** (a message-box plugin's window title, a name-input plugin's
@@ -8,16 +7,14 @@
 //! objects. This slice represents that plugin-owned text — but ONLY through a
 //! **declared plugin profile**: a plugin parameter is extractable *iff* a
 //! profile declares the JSON pointer that holds it.
-//!
 //! This is the honest boundary. A plugin's parameter object mixes translatable
 //! text with configuration, numeric strings, switch/variable ids, colour
 //! codes and file names; without a per-plugin profile we cannot know which
 //! parameters carry player-facing text. So we DO NOT blind-sweep every plugin
 //! string. Instead:
-//!
 //! - A plugin **with a declared profile** → text is extracted at exactly the
 //!   declared parameter pointers as stable units ([`StablePluginTextUnit`]),
-//!   and patched back byte-preservingly (reusing the KAIFUU-109/110 splice).
+//!   and patched back byte-preservingly (reusing the splice).
 //! - A plugin **without a declared profile** that carries string parameters →
 //!   one typed [`PluginDiagnosticKind::UnsupportedPluginProfile`] diagnostic
 //!   (never a silent skip, never a blind all-strings sweep).
@@ -25,9 +22,7 @@
 //!   switch string mistake) or does not resolve → a typed
 //!   [`PluginDiagnosticKind::UnsupportedDeclaredPointer`] diagnostic; it is
 //!   NOT extracted.
-//!
 //! # `js/plugins.js` shape (no JS execution)
-//!
 //! `plugins.js` is a JS assignment wrapping a JSON array:
 //! `var $plugins =\n[ {…}, {…} ];`. We NEVER execute the plugin JS. We split
 //! the file into `(prefix, <JSON array bytes>, suffix)` at the `$plugins`
@@ -35,19 +30,16 @@
 //! — the `var $plugins =` prefix and the trailing `;` suffix are preserved
 //! verbatim, so the whole file stays byte-identical outside the declared
 //! parameter literals.
-//!
-//! # Stable unit + profile output (KAIFUU-111 acceptance)
-//!
+//! # Stable unit + profile output (acceptance)
 //! Every [`StablePluginTextUnit`] carries `source_file`, the plugin name plus
 //! declared id, the plugin array index, the parameter pointer, the text role,
 //! the patchability, and the fixture-profile id. Its stable
 //! `rpgmaker:plugins.js#<json-pointer>` [`source_unit_key`] and deterministic
-//! [`bridge_unit_id`] use the same scheme as the KAIFUU-109/110 slices. Each
+//! [`bridge_unit_id`] use the same scheme as the sibling slices. Each
 //! profiled plugin also emits a [`ProfiledPlugin`] record with the plugin id,
 //! the version-or-fixture-hash (the profile's declared version, plus a content
 //! `fixture_hash` over the plugin entry bytes), and the declared parameter
 //! pointers — acceptance (2).
-//!
 //! [`source_unit_key`]: StablePluginTextUnit::source_unit_key
 //! [`bridge_unit_id`]: StablePluginTextUnit::bridge_unit_id
 
@@ -61,15 +53,13 @@ use kaifuu_core::sha256_hash_bytes;
 use crate::ids::deterministic_uuid7;
 use crate::patchback::{FileEdit, PatchbackError, patch_file_bytes};
 
-/// The KAIFUU-108 fixture-profile id every KAIFUU-111 unit is stamped with.
+/// The fixture-profile id every unit is stamped.
 pub const FIXTURE_PROFILE_ID: &str = "KAIFUU-111";
 
 /// The canonical `js/plugins.js` file name.
 pub const PLUGINS_JS_FILE: &str = "plugins.js";
 
-// ---------------------------------------------------------------------------
 // Declared profile schema
-// ---------------------------------------------------------------------------
 
 /// The role a declared plugin-parameter's text plays for the player.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -154,11 +144,9 @@ fn profile_for<'a>(profiles: &'a [PluginProfile], name: &str) -> Option<&'a Plug
     profiles.iter().find(|p| p.plugin_name == name)
 }
 
-// ---------------------------------------------------------------------------
 // Stable unit
-// ---------------------------------------------------------------------------
 
-/// A stable KAIFUU-111 plugin-parameter text unit.
+/// A stable plugin-parameter text unit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StablePluginTextUnit {
     /// Source file name (always [`PLUGINS_JS_FILE`]).
@@ -176,7 +164,7 @@ pub struct StablePluginTextUnit {
     pub text_role: PluginTextRole,
     /// The declared patchability.
     pub patchability: Patchability,
-    /// The KAIFUU-108 fixture-profile id ([`FIXTURE_PROFILE_ID`]).
+    /// The fixture-profile id ([`FIXTURE_PROFILE_ID`]).
     pub fixture_profile_id: &'static str,
     /// Full RFC6901 pointer tokens locating the string literal in the
     /// `$plugins` array: `[<plugin_index>, "parameters", <param_pointer…>]`.
@@ -198,14 +186,14 @@ impl StablePluginTextUnit {
     }
 
     /// Stable surface id: `rpgmaker:plugins.js#<pointer>` — identical scheme to
-    /// the KAIFUU-109/110 slices, so [`crate::patchback`] resolves all three.
+    /// the sibling slices, so [`crate::patchback`] resolves all three.
     #[must_use]
     pub fn source_unit_key(&self) -> String {
         format!("rpgmaker:{}#{}", self.source_file, self.pointer_string())
     }
 
     /// Deterministic bridge-unit id derived from the fixture profile + surface
-    /// key (UUID7-shaped; identical construction to the KAIFUU-109/110 slices).
+    /// key (UUID7-shaped; identical construction to the sibling slices).
     #[must_use]
     pub fn bridge_unit_id(&self) -> String {
         deterministic_uuid7(
@@ -215,9 +203,7 @@ impl StablePluginTextUnit {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Profiled-plugin output record (acceptance (2))
-// ---------------------------------------------------------------------------
 
 /// The per-plugin profile output: records the plugin id, the
 /// version-or-fixture-hash, and the extracted parameter pointers.
@@ -238,13 +224,11 @@ pub struct ProfiledPlugin {
     /// The declared parameter pointers that yielded extracted units (RFC6901
     /// pointer strings *within* `parameters`, e.g. `/windowTitle`).
     pub extracted_pointers: Vec<String>,
-    /// The KAIFUU-108 fixture-profile id.
+    /// The fixture-profile id.
     pub fixture_profile_id: &'static str,
 }
 
-// ---------------------------------------------------------------------------
 // Diagnostics
-// ---------------------------------------------------------------------------
 
 /// Category of a [`PluginDiagnostic`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -324,9 +308,7 @@ pub enum PluginPatchError {
     Splice(#[from] PatchbackError),
 }
 
-// ---------------------------------------------------------------------------
 // plugins.js splitter (no JS execution)
-// ---------------------------------------------------------------------------
 
 /// The three byte ranges of a `plugins.js` file: the `var $plugins =` prefix,
 /// the JSON `$plugins` array, and the trailing `;`(+ newline) suffix.
@@ -365,7 +347,7 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 }
 
 /// Given the index of an opening `[`, return the index of the matching `]`,
-/// respecting nested `[]`/`{}` and skipping string literals (with escapes).
+/// respecting nested ``/`{}` and skipping string literals (with escapes).
 /// Returns `None` if the bracket is never closed.
 fn match_bracket(bytes: &[u8], open: usize) -> Option<usize> {
     debug_assert_eq!(bytes.get(open), Some(&b'['));
@@ -398,9 +380,7 @@ fn match_bracket(bytes: &[u8], open: usize) -> Option<usize> {
     None
 }
 
-// ---------------------------------------------------------------------------
 // Extraction — pure
-// ---------------------------------------------------------------------------
 
 /// Resolve a pointer's tokens against a JSON value (object keys / array
 /// indices). Returns `None` if any token does not navigate.
@@ -545,7 +525,7 @@ fn extract_profiled_plugin(
                 extracted_pointers.push(pointer_string_within_params(&spec.pointer));
             }
             // Empty declared string: not a translatable surface, not a
-            // diagnostic (matches the KAIFUU-109/110 empty-string handling).
+            // diagnostic (matches the empty-string handling).
             Some(Value::String(_)) => {}
             // Present but non-text (a numeric/switch string mistake), or the
             // pointer did not resolve at all → rejected, never extracted.
@@ -595,9 +575,7 @@ fn fixture_hash_of(entry: &Value) -> String {
     sha256_hash_bytes(&canonical)
 }
 
-// ---------------------------------------------------------------------------
 // File-level extraction
-// ---------------------------------------------------------------------------
 
 /// Read `js/plugins.js`, split off its `$plugins` array, parse it, and extract
 /// the declared plugin-profile text units. `MissingFile` / `MalformedJson` /
@@ -646,9 +624,7 @@ fn read_bytes(path: &Path, file: &str) -> Result<Vec<u8>, PluginExtractError> {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Byte-preserving patch
-// ---------------------------------------------------------------------------
 
 /// One reviewed translation: the stable unit + its target text.
 #[derive(Debug, Clone)]
@@ -659,10 +635,9 @@ pub struct PluginTranslation<'a> {
 
 /// Patch a whole `plugins.js` file's raw bytes with reviewed translations for
 /// its declared plugin-parameter units, preserving every other byte.
-///
 /// The file is split into `(prefix, $plugins array, suffix)`; only the array
 /// bytes are spliced (reusing [`crate::patchback::patch_file_bytes`] — the
-/// same byte-surgical splice + stale-source gate as the KAIFUU-109/110
+/// same byte-surgical splice + stale-source gate as the
 /// slices), then reassembled. The `var $plugins =` prefix and the trailing
 /// `;` suffix are preserved verbatim, so an untranslated patch is a
 /// byte-identical no-op and a translated patch changes only the declared

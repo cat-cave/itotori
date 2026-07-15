@@ -1,12 +1,10 @@
 //! Siglus scene bytecode stack-VM decompiler — **skeleton** (siglus-05).
-//!
 //! Unlike RealLive's opener-byte switch, Siglus scene bytecode is a
 //! **stack-machine** instruction stream: opcodes push/pop operands
 //! (decoded by [`crate::expression`]) and reference interned string /
 //! name tables. This module owns the instruction-stream decode; the
 //! per-instruction operand expressions are decoded by
 //! [`crate::expression::decode_expression`].
-//!
 //! Skeleton status: [`parse_scene_bytecode`] returns
 //! [`SiglusParseError::NotImplemented`], and [`SiglusOpcode`] carries only
 //! the `Unknown` catch-all today. The documented opcode catalogue lands
@@ -17,7 +15,6 @@
 use thiserror::Error;
 
 /// A decoded Siglus scene-bytecode instruction.
-///
 /// Skeleton: only the `Unknown` catch-all exists. The real opcode
 /// catalogue (text-out, name-table push, choice, jump, voice, …) is
 /// populated against real bytes downstream. `Unknown` is retained as the
@@ -43,7 +40,7 @@ pub enum SiglusParseError {
     )]
     NotImplemented,
     /// The bytecode stream ended mid-instruction. Empty input is this
-    /// error, never a silent `Ok(vec![])`.
+    /// error, never a silent `Ok(vec!)`.
     #[error(
         "kaifuu.siglus.opcode.truncated_bytecode: scene bytecode ended at byte {byte_offset} \
          needing {needed} more bytes"
@@ -53,7 +50,6 @@ pub enum SiglusParseError {
 
 /// Decode a **decompressed** Siglus scene-bytecode stream into a typed
 /// [`SiglusOpcode`] sequence.
-///
 /// Skeleton: always returns [`SiglusParseError::NotImplemented`]. The real
 /// implementation walks the stack-VM instruction stream, decodes operand
 /// expressions via [`crate::expression`], and partitions every byte into a

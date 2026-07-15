@@ -1,6 +1,5 @@
 //! Pure-Rust **Softpal / Amuse-Craft ("Pal" engine)** reader: the `PAC `
 //! container envelope plus the inner `TEXT.DAT` string-pool codec.
-//!
 //! Softpal ADV (aka Amuse Craft / "Pal"; used by CRYSTALiA, Hearts, Us:track,
 //! Unison Shift, …) ships its assets in a single flat `PAC ` archive
 //! (`data.pac`, `system.pac`, `csv.pac`, …). This crate owns the **container
@@ -8,9 +7,7 @@
 //! bytes out deterministically — and the **`TEXT.DAT` codec** ([`TextDat`]):
 //! flag-gated keyless decrypt/encrypt plus the record parser that exposes each
 //! string's absolute byte offset.
-//!
 //! # Format (all little-endian)
-//!
 //! - magic `"PAC "` (`50 41 43 20`) @ `0x00`
 //! - file **count** `u32` @ `0x08` (e.g. 417 / 160 on the two profiled titles)
 //! - a fixed **`0x804`-byte reserved header**; the directory **index** begins
@@ -22,14 +19,11 @@
 //!   `offset` (the `u32` @ `0x828`) equals `index_end` = `0x804 + count*40`.
 //!   This invariant is cross-checked ([`PacError::IndexEndMismatch`]).
 //! - **no compression, no index encryption** — an entry's on-disk bytes are its
-//!   payload verbatim (`bytes[offset .. offset+size]`).
-//!
-//! This is GARbro's PAC/AMUSE (`Pac2Opener`) variant. GARbro and the
-//! SoftPal-Tool `pac_unpack.py` are **extraction oracles only** — this reader
-//! is reimplemented deterministically in Rust and never shells out.
-//!
+//!   payload verbatim (`bytes[offset.. offset+size]`).
+//!   This is GARbro's PAC/AMUSE (`Pac2Opener`) variant. GARbro and the
+//!   SoftPal-Tool `pac_unpack.py` are **extraction oracles only** — this reader
+//!   is reimplemented deterministically in Rust and never shells out.
 //! # Honest scope: PAC container + `TEXT.DAT` codec + disassembler + patch-back
-//!
 //! This crate (a) enumerates / extracts **archive entries**, (b) decodes the
 //! **`TEXT.DAT`** string pool (header + flag-gated cipher + record framing +
 //! cp932 decode), (c) disassembles the **dialogue + speaker + choice
@@ -48,9 +42,7 @@
 //! built-in), to a **0-unknown exhaustive** accounting on ≥2 real games. It does
 //! **not** *execute* the stack machine (evaluate expressions, resolve jumps,
 //! drive rendering) — that is the Utsushi Softpal replay runtime, a separate node.
-//!
 //! # Determinism / no shell-outs
-//!
 //! Pure in-process slicing over an in-memory `&[u8]`. No `Command::new`, no
 //! external archiver, no GARbro. Malformed input never panics: every failure is
 //! a typed [`PacError`].

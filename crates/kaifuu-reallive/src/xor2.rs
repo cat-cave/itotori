@@ -1,29 +1,22 @@
 //! `reallive-xor2-sukara-decryptor` — RealLive second-level XOR (`xor_2`)
 //! decryptor plus in-process, clean-room recovery of the per-game 16-byte key.
-//!
 //! # The mechanism (clean-room, restated from rlvm — no source vendored)
-//!
 //! RealLive scene bytecode for compiler versions `110002` / `1110002` carries
 //! a SECOND-LEVEL XOR applied *after* the first-level AVG32 LZSS + 256-byte
 //! XOR pass ([`crate::decompress_avg32`]). The algorithm is restated in our
 //! own words from rlvm's BSD-licensed `libreallive/compression.cc::Decompress`
 //! (the per-game `XorKey` loop) and `scenario.cc` (the `use_xor_2` decision on
 //! `compiler_version`, Peter Jolly / Elliot Glaysher):
-//!
 //! ```text
 //! for each XorKey { key[16], xor_offset, xor_length } until the {-1} sentinel:
-//!     for i in 0 .. xor_length while (xor_offset + i) < dst_len:
-//!         dst[xor_offset + i] ^= key[i % 16]
-//! ```
-//!
+//! for i in 0.. xor_length while (xor_offset + i) < dst_len:
+//! dst[xor_offset + i] ^= key[i % 16]
 //! Every published rlvm Key/Visual-Arts table (Little Busters, Clannad FV,
 //! Snow, Kud Wafter) uses a single segment `xor_offset = 256`,
 //! `xor_length = 257`. Sweetie HD / Sukara (`REGNAME = "HADASHI\OSHIOKIHD"`)
 //! is **absent** from rlvm's table — so its key is recovered here rather than
 //! looked up.
-//!
 //! # Why the key is RECOVERED in-process, not read from the executable
-//!
 //! Forensic finding (this node): the 16-byte key is **not stored as plaintext
 //! anywhere in the shipped game** — a full static scan of `RealLive.exe`
 //! (2,759,168 bytes, no high-entropy / packed regions), `Start.exe`, and every
@@ -37,9 +30,7 @@
 //! if it decrypts EVERY eligible scene to bytecode that decodes with zero
 //! unknown commands and zero parse failures. A candidate that fails to reach
 //! that 100% bar is a structured finding, never a silent or faked success.
-//!
 //! # Secret discipline (mechanical, mirrors `kaifuu_core::siglus_static_key`)
-//!
 //! The raw key lives **only** inside the module-private [`Xor2Key`] (redacting
 //! `Debug`, zeroizing `Drop`). It is never serialized, logged, or returned
 //! across the module boundary. The public [`Xor2Report`] carries only a
@@ -135,14 +126,12 @@ impl DecompressedArchive {
 /// Decompress every populated scene of a RealLive SEEN.TXT archive into the
 /// corpus consumed by the cross-scene `xor_2` key-recovery attack
 /// ([`recover_and_decrypt_archive`] / [`recover_archive_cipher`]).
-///
 /// This is the SINGLE source of truth for the decompress -> [`Xor2DecScene`]
 /// corpus loop shared by the extract path (`kaifuu-cli`) and the patchback
 /// path (`patchback::bundle_driven`). Both MUST build the corpus identically:
 /// a divergence in which scenes feed key recovery — or in the `[256, 513)`
 /// known-plaintext sample they contribute — could silently recover a different
 /// key on one path than the other.
-///
 /// Per-scene guards (a scene failing any guard is skipped, never fatal — the
 /// caller surfaces its own target scene's failure with full context):
 /// - the declared `(byte_offset, byte_len)` blob must lie inside `archive_bytes`;
@@ -274,7 +263,7 @@ impl std::fmt::Debug for Xor2Key {
 }
 
 /// Apply the `xor_2` segment transform in place: `data[256 + i] ^= key[i % 16]`
-/// for `i` in `0 .. 257` while in bounds. Self-inverse (XOR), so the same call
+/// for `i` in `0.. 257` while in bounds. Self-inverse (XOR), so the same call
 /// encrypts or decrypts.
 fn apply_xor2_segment(data: &mut [u8], key: &[u8; XOR2_KEY_LEN]) {
     let mut i = 0usize;
@@ -399,7 +388,6 @@ fn recover_validated_key(scenes: &[Xor2DecScene]) -> (Xor2Report, Option<Xor2Key
 /// **iff** the candidate decrypts every `use_xor_2` scene to a clean decode,
 /// apply it in place to those scenes. Scenes whose `compiler_version` does not
 /// set `use_xor_2` (e.g. Kanon's `10002`) are never touched.
-///
 /// Returns a sanitized [`Xor2Report`]. The raw key never crosses this boundary.
 pub fn recover_and_decrypt_archive(scenes: &mut [Xor2DecScene]) -> Xor2Report {
     let (mut report, key) = recover_validated_key(scenes);
@@ -419,7 +407,6 @@ pub fn recover_and_decrypt_archive(scenes: &mut [Xor2DecScene]) -> Xor2Report {
 /// zeroize-on-drop, `Debug`-redacted [`Xor2Key`] and never crosses this
 /// boundary; the type exposes only in-place segment transforms and the
 /// sanitized recovery [`Xor2Report`].
-///
 /// Unlike [`recover_and_decrypt_archive`] (which decrypts a whole corpus in
 /// place, one direction only), this hands the caller a reusable cipher so a
 /// single scene can be **decrypted for editing and then re-encrypted** before
@@ -461,7 +448,6 @@ impl Xor2Cipher {
 /// decompressed scenes and return a reusable [`Xor2Cipher`], WITHOUT mutating
 /// the scenes. The candidate must decrypt EVERY `use_xor_2` scene to a clean
 /// decode (the same 100% bar as [`recover_and_decrypt_archive`]).
-///
 /// # Errors
 /// Returns the sanitized [`Xor2Report`] when the archive has no `use_xor_2`
 /// scenes, no eligible scene reaches the segment, no key can be sampled, or no

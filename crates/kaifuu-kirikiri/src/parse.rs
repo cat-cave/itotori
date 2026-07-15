@@ -1,5 +1,4 @@
 //! KAG `.ks` plaintext scenario-script parser.
-//!
 //! KAG (KiriKiri Adventure Game system) is KiriKiri's scenario scripting
 //! layer; a `.ks` file is **plaintext** (Shift-JIS, UTF-8, or BOM-marked
 //! UTF-16). This module
@@ -9,13 +8,10 @@
 //! Shift-JIS trailing byte that happens to equal an ASCII delimiter
 //! (`[`=0x5B, `]`=0x5D, `@`=0x40 all fall inside the Shift-JIS trailing-byte
 //! range 0x40..=0x7E) is NEVER mistaken for a real tag/command marker.
-//!
 //! ## The KAG line dialect handled
-//!
 //! Classification is by the **column-0** byte of a physical line (KAG treats
 //! leading whitespace as significant text, and control characters are only
 //! control characters in the first column):
-//!
 //! - `;` → **comment** line — structure, no translatable text.
 //! - `*` → **label** line (`*name|caption`) — structure.
 //! - `@` → **line command** (`@wait time=1000`, `@ch storage="…"`) —
@@ -29,9 +25,7 @@
 //!   interspersed with inline `[tag …]` tags. Each maximal run of text
 //!   between inline tags becomes a `dialogue` [`KsUnit`]; `[[` is the KAG
 //!   escape for a literal `[` and stays inside the text run.
-//!
 //! ## `[iscript]…[endscript]` TJS blocks
-//!
 //! KAG allows raw TJS (KiriKiri's scripting language) to be embedded between
 //! an `[iscript]` open and an `[endscript]` close — or the `@iscript` /
 //! `@endscript` line-command spelling of the same pair. The body is **TJS
@@ -44,7 +38,6 @@
 //! [`KsFindingKind::IScriptBlock`] finding so the construct is visible, never
 //! silently dropped. This mirrors the swallow-until-`endscript` behaviour of
 //! the sibling `utsushi-kirikiri` replay parser.
-//!
 //! Every [`KsUnit`] carries a stable extraction identity: source file,
 //! physical line index, in-line segment index, text role, an exact
 //! `[start_byte, end_byte)` span, and a deterministic `bridge_unit_id`.
@@ -96,7 +89,6 @@ impl KsEncoding {
     }
 
     /// Byte length of the character starting at `bytes[i]`. Always `>= 1`.
-    ///
     /// This is the single primitive that makes delimiter scanning
     /// encoding-safe: a multi-byte character is skipped whole, so its
     /// trailing byte can never be read as an ASCII `[`/`]`/`@`/… delimiter.
@@ -333,8 +325,8 @@ impl Parser<'_> {
     /// `\r`/`\n` already excluded).
     fn parse_line(&mut self, ls: usize, le: usize, line_index: usize) {
         // 1. Inside an open `[iscript]` block: swallow every physical line
-        //    (including blanks) as TJS body — never emit a unit — until the
-        //    closing `[endscript]` / `@endscript` line, which is swallowed too.
+        // (including blanks) as TJS body — never emit a unit — until the
+        // closing `[endscript]` / `@endscript` line, which is swallowed too.
         if self.open_iscript {
             if self.line_closes_iscript(ls, le) {
                 self.open_iscript = false;
@@ -347,9 +339,9 @@ impl Parser<'_> {
         }
 
         // 2. A line that OPENS an `[iscript]` / `@iscript` TJS block. Recorded
-        //    as a finding; body lines are swallowed by branch 1 above. A
-        //    single-line `[iscript]…[endscript]` closes on the same line and
-        //    never opens the swallow state.
+        // as a finding; body lines are swallowed by branch 1 above. A
+        // single-line `[iscript]…[endscript]` closes on the same line and
+        // never opens the swallow state.
         if let Some(closes_same_line) = self.line_opens_iscript(ls, le) {
             self.findings.push(KsFinding {
                 kind: KsFindingKind::IScriptBlock,

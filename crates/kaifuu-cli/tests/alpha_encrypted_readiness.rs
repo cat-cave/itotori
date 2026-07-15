@@ -1,9 +1,8 @@
-//! KAIFUU-104 — CLI command-contract smoke for the alpha public
+//! CLI command-contract smoke for the alpha public
 //! encrypted-readiness evidence generator.
-//!
 //! Spawns `kaifuu readiness alpha-encrypted` against the committed synthetic
 //! alpha-encrypted fixture tree and asserts the generated evidence is
-//! validator-driven (not prose): the report consumes the KAIFUU-103 validation
+//! validator-driven (not prose): the report consumes the validation
 //! report (status + hash), every entry records its profile id / fixture id /
 //! engine family / surface ids / helper id / key ref / capability levels /
 //! patch-result ref / diagnostics / content hash, patch-capable profile-ready
@@ -24,7 +23,6 @@ fn kaifuu_cli_binary() -> PathBuf {
 }
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
 /// reused from a different (since-removed) worktree would point fixture reads at
 /// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the
@@ -72,7 +70,7 @@ fn positive_tree_generates_evidence_and_consumes_validation() {
     assert_eq!(report["status"], "passed");
     assert_eq!(report["sourceNodeId"], "KAIFUU-104");
 
-    // The KAIFUU-103 validation report was consumed (status + hash), not prose.
+    // The validation report was consumed (status + hash), not prose.
     let consumed = &report["consumedValidation"];
     assert_eq!(consumed["status"], "passed");
     assert!(

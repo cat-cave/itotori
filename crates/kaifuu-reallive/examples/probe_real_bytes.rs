@@ -1,7 +1,6 @@
 //! One-shot diagnostic probe: runs the public `kaifuu-reallive` surface
 //! against real bytes pointed at by `KAIFUU_PROBE_SEEN_TXT` /
 //! `KAIFUU_PROBE_GAMEEXE_INI` env vars and prints a compact report.
-//!
 //! Read-only on the input bytes. Used by the
 //! `docs/audits/real-bytes-validation-2026-06-24.md` validation sweep.
 

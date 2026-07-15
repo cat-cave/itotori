@@ -1,5 +1,4 @@
 //! Read-only `catalog.db` access.
-//!
 //! `rusqlite::Connection` is opened with `OPEN_READ_ONLY | OPEN_URI` and a
 //! `mode=ro` URI. No `PRAGMA` writes, no migrations, no inserts. The
 //! connection is created per [`crate::source::VaultSource`] operation and
@@ -13,7 +12,6 @@ use rusqlite::{Connection, OpenFlags};
 use crate::error::{SUPPORTED_SCHEMA_VERSIONS, VaultSourceError};
 
 /// Open the catalog read-only.
-///
 /// Uses a SQLite URI (`file://...?mode=ro&immutable=1`) so the open is
 /// genuinely read-only and never needs write access for journal/WAL sidecars
 /// on the mounted vault.

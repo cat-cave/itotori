@@ -1,6 +1,5 @@
-//! KAIFUU-072 — CLI command-contract smoke for the profiled XP3 **crypt-chain**
+//! CLI command-contract smoke for the profiled XP3 **crypt-chain**
 //! command.
-//!
 //! Spawns `kaifuu xp3 crypt-smoke` against the committed synthetic fixture +
 //! trivial replacement manifest and proves the whole chain runs, in order,
 //! through the keyRef-bound crypt profile: detect (magic-byte) -> profile/key

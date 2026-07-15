@@ -1,4 +1,4 @@
-//! KAIFUU-189 real-bytes integration test for the RealLive `REALLIVEDATA/`
+//! real-bytes integration test for the RealLive `REALLIVEDATA/`
 //! detector. Walks the depth-N descent against the actual Sweetie HD
 //! installation tree under `$ITOTORI_REAL_GAME_ROOT` and confirms
 //! that the resolved path ends with `REALLIVEDATA` on disk. A
@@ -6,13 +6,11 @@
 //! author-controlled bytes (`tmp/parent/REALLIVEDATA/Seen.txt`), and a
 //! negative test confirms the detector does NOT false-positive on an
 //! MV/MZ shape (`tmp/data/System.json`) that lacks the RealLive marker.
-//!
 //! # Multi-game validation status
-//!
 //! Per the itotori operating model
 //! (`docs/dev/orchestration-operating-model.md`), an engine detector that
 //! works on game X may fail on game Y; the rule normally requires a
-//! second corpus before merging-complete. KAIFUU-189 satisfies the rule
+//! second corpus before merging-complete. satisfies the rule
 //! **by the engine's hard-coded `REALLIVEDATA/` marker invariant**: the
 //! directory name is fixed in the RealLive runtime (Haeleth's RLDEV
 //! site, `https://dev.haeleth.net/rldev.shtml`, and every observable
@@ -22,9 +20,7 @@
 //! about Sweetie HD specifically. A second RealLive corpus would
 //! re-confirm the same invariant; no new bug surface is opened by the
 //! single-corpus exercise here.
-//!
 //! # Three-state contract
-//!
 //! The detector under test (`kaifuu_reallive::detect_reallive_data_dir`)
 //! returns:
 //! - `Ok(Some(RealLiveDetectionEvidence))` for a positive identification,
@@ -33,9 +29,8 @@
 //!   no REALLIVEDATA was found within `max_depth`);
 //! - `Err(RealLiveDetectError::*)` for I/O failures (missing root,
 //!   non-directory root, read errors).
-//!
-//! This three-state shape is the KAIFUU-189 "no silent zero-state"
-//! contract; the test enforces all three outcomes.
+//!   This three-state shape is the "no silent zero-state"
+//!   contract; the test enforces all three outcomes.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -66,7 +61,7 @@ fn unique_temp_dir(label: &str) -> PathBuf {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn detects_reallivedata_under_sweetie_hd_root_with_resolved_path() {
     let Some(env_path) = env::var_os(real_corpus::REAL_GAME_ROOT_ENV).map(PathBuf::from) else {
-        // Visible skip — KAIFUU-189 "no silent zero-state" requires the
+        // Visible skip — "no silent zero-state" requires the
         // operator to observe that the real-bytes assertion did not run.
         real_corpus::require_real_bytes(
             "detects_reallivedata_under_sweetie_hd_root_with_resolved_path \
@@ -102,8 +97,8 @@ fn detects_reallivedata_under_sweetie_hd_root_with_resolved_path() {
     );
 
     // Acceptance #2: the reported path is reachable on the filesystem.
-    // KAIFUU-189 "no silent zero-state" forbids returning a positive
-    // evidence whose path can't be stat()ed.
+    // "no silent zero-state" forbids returning a positive
+    // evidence whose path can't be stated.
     let metadata = fs::metadata(&evidence.reallive_data_path).unwrap_or_else(|err| {
         panic!(
             "resolved REALLIVEDATA path {} must be reachable, got {err}",
@@ -176,7 +171,7 @@ fn detects_reallivedata_under_sweetie_hd_root_with_resolved_path() {
 fn detects_reallivedata_in_synthetic_nested_layout() {
     // Mirrors Sweetie HD's `<root>/<title subdir>/REALLIVEDATA/Seen.txt`
     // shape using author-controlled bytes. This is the "supplementary
-    // synthetic positive" test required by KAIFUU-189: it confirms the
+    // synthetic positive" test required: it confirms the
     // depth-N descent contract holds on bytes we constructed, not just
     // on the single real corpus we have access to.
     let root = unique_temp_dir("synthetic-nested-positive");
@@ -205,7 +200,7 @@ fn detects_reallivedata_in_synthetic_nested_layout() {
 
 #[test]
 fn negative_rpg_maker_shape_is_not_misidentified_as_reallive() {
-    // KAIFUU-189 hard constraint #4: an MV/MZ tree (`data/System.json`)
+    // hard constraint #4: an MV/MZ tree (`data/System.json`)
     // must produce `Ok(None)` — NOT a false-positive RealLive
     // detection. This is the "no false-positive on RealLive when
     // there's only an MV/MZ tree" assertion from the spec.
@@ -237,7 +232,7 @@ fn negative_rpg_maker_shape_is_not_misidentified_as_reallive() {
 
 #[test]
 fn root_missing_surfaces_typed_error_not_silent_negative() {
-    // KAIFUU-189 hard constraint #3: the detector must distinguish
+    // hard constraint #3: the detector must distinguish
     // "directory exists without REALLIVEDATA" (negative) from
     // "directory doesn't exist" (error). No silent zero-state.
     let parent = unique_temp_dir("root-missing");
@@ -255,7 +250,7 @@ fn root_missing_surfaces_typed_error_not_silent_negative() {
 
 #[test]
 fn explicit_max_depth_zero_does_not_descend() {
-    // KAIFUU-189 audit-focus: "Recursion bound — the scanner must not
+    // audit-focus: "Recursion bound — the scanner must not
     // descend past depth 2 from the resolved data dir." Generalised
     // here: at max_depth = 0 the walker checks the root itself only.
     let root = unique_temp_dir("explicit-depth-bound");

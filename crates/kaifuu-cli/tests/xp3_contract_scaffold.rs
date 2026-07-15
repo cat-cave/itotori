@@ -1,6 +1,5 @@
-//! KAIFUU-171 — end-to-end CLI smoke for the encrypted-XP3 contract
+//! end-to-end CLI smoke for the encrypted-XP3 contract
 //! scaffolding harness.
-//!
 //! Spawns `kaifuu xp3 contract-scaffold` against the committed synthetic
 //! public fixture and asserts the full contract surface
 //! (detect -> key resolution -> extract -> patch -> verify -> delta-apply)
@@ -19,7 +18,6 @@ fn kaifuu_cli_binary() -> PathBuf {
 }
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
 /// reused from a different (since-removed) worktree would point fixture reads at
 /// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the

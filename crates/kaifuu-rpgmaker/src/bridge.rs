@@ -1,6 +1,5 @@
 //! Assemble [`ProtoUnit`]s into a localization-bridge v0.2
 //! [`BridgeBundleV02`].
-//!
 //! This is the RPG Maker MV/MZ analogue of
 //! `crates/kaifuu-reallive/src/bridge.rs`: it reuses the **shared**
 //! `kaifuu_core::BridgeBundleV02` contract and v0.2 schema (no parallel

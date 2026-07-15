@@ -1,23 +1,20 @@
-//! KAIFUU-059 — profiled MV/MZ **encrypted-media localization surfaces** +
+//! profiled MV/MZ **encrypted-media localization surfaces** +
 //! asset replacement / patch-back policy.
-//!
-//! The KAIFUU-112 full-surface integration ([`crate::integration`]) supports
+//! The full-surface integration ([`crate::integration`]) supports
 //! MV/MZ **JSON text** and declares encrypted media explicitly out-of-scope
-//! (left byte-identical). KAIFUU-068 ([`crate::encrypted_asset_slice`]) proves
+//! (left byte-identical). ([`crate::encrypted_asset_slice`]) proves
 //! the crypto: detect the encrypted suffix, resolve the 16-byte key, decrypt
 //! with the real RPGMV-header XOR scheme, and re-encrypt byte-correctly. THIS
 //! module is the layer that goes *beyond* "media is out of scope": it profiles
 //! each encrypted media asset into a **localization role** and decides, per
 //! asset, whether it is a translatable SURFACE or inventory-only — then hands
 //! the localize decision to Itotori under a documented patch-back policy.
-//!
-//! # What this node adds over KAIFUU-068 crypto
-//!
+//! # What this node adds over crypto
 //! 1. **Detection + decrypt (reused, not re-implemented).** The encrypted
 //!    suffix routing ([`EncryptedAssetSuffix`]), key resolution
 //!    ([`MvMzKeySource`]), and the XOR decrypt / re-encrypt
 //!    ([`kaifuu_core::decrypt_rpgmaker_asset`] /
-//!    [`kaifuu_core::encrypt_rpgmaker_asset`]) are the single canonical KAIFUU-068
+//!    [`kaifuu_core::encrypt_rpgmaker_asset`]) are the single canonical
 //!    paths. A key-absent asset is **represented** as an encrypted asset (state
 //!    [`MediaDecryptState::EncryptedKeyAbsent`]) — never a crash, never a
 //!    silent drop.
@@ -41,9 +38,7 @@
 //!    [`MediaSurfaceError`] (a semantic capability error), never a silent
 //!    patch. Unchanged assets stay byte-identical
 //!    (`re_encrypt(decrypt(x)) == x`).
-//!
 //! # Text-bearing is DECLARED, not inferred from prose
-//!
 //! The single subtlety worth flagging: **how "text-bearing" is determined.**
 //! This node does NOT run OCR or guess from pixels. A profile's subtree → role
 //! mapping is a *declaration* (the default [`MediaSurfaceProfile::rpg_maker`]
@@ -53,9 +48,7 @@
 //! made from the [`MediaAssetDecision`] handoff. This keeps the node honest —
 //! it never asserts a texture contains text; it asserts the profile *classifies
 //! its subtree as text-bearing*, which is a safe, reviewable rule.
-//!
 //! # THE LINE
-//!
 //! Reports carry sha256 commitments / counts / roles / paths only — never the
 //! decrypted media bytes and never the key (the key stays inside
 //! [`kaifuu_core::MvMzAssetKey`], redacting `Debug`, zeroizing `Drop`).
@@ -76,26 +69,22 @@ use kaifuu_core::{
 
 use crate::encrypted_asset_slice::{EncryptedAssetSuffix, MediaCapability, MvMzKeySource};
 
-/// Schema version of the KAIFUU-059 media-surface manifest.
+/// Schema version of the media-surface manifest.
 pub const MEDIA_SURFACE_SCHEMA_VERSION: &str = "0.1.0";
-/// The KAIFUU-059 spec-DAG node id.
+/// The spec-DAG node id.
 pub const MEDIA_SURFACE_SOURCE_NODE_ID: &str = "KAIFUU-059";
 /// Engine family this profile targets.
 pub const MEDIA_SURFACE_ENGINE_FAMILY: &str = "rpg_maker_mv_mz";
 
-/// The declared support boundary of the KAIFUU-059 media-surface profile.
-///
+/// The declared support boundary of the media-surface profile.
 /// A failure *inside* this boundary is a bug / compatibility regression (see
 /// [`FailureClass`]); a rejection *outside* it (unsupported suffix,
 /// inventory-only patch attempt) is an expected semantic capability error.
 pub const MEDIA_SURFACE_SUPPORT_BOUNDARY: &str = "Kaifuu RPG Maker MV/MZ encrypted-media localization surfaces (KAIFUU-059) profile each encrypted image/audio asset (image MV .rpgmvp / MZ .png_, audio MV .rpgmvo|.rpgmvm / MZ .ogg_|.m4a_) into a localization role via its RPG Maker subtree, decrypt it with the shared RPGMV-header XOR-with-System.json-key scheme WHEN a key is available (key-absent is represented, never a crash), and expose a per-asset localize decision to Itotori. Text-bearing patch-back is honored only for a profiled text-bearing/ui-texture/song-metadata surface whose key is available and whose replacement carries the matching media signature; re-encryption uses the same key and re-wraps the header, and an unchanged asset stays byte-identical. Inventory-only assets, key-absent patch attempts, capability mismatches, non-media replacements, and unsupported suffixes are typed semantic errors, never silent. Reports carry sha256 commitments / roles / paths / counts only — never media bytes, never the key.";
 
-// ---------------------------------------------------------------------------
 // Localization role
-// ---------------------------------------------------------------------------
 
 /// The localization role a profiled encrypted media asset carries.
-///
 /// The first three are **candidate localization surfaces** (the asset may need
 /// localization); [`Self::InventoryOnly`] is inventoried but is not a surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -163,9 +152,7 @@ impl std::fmt::Display for MediaLocalizationRole {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Media-surface profile (subtree -> role) — text-bearing is DECLARED here
-// ---------------------------------------------------------------------------
 
 /// One subtree → role rule. The rule matches when the asset's normalized
 /// relative path contains `subtree` as a path segment sequence.
@@ -194,7 +181,6 @@ pub struct MediaSurfaceProfile {
 
 impl MediaSurfaceProfile {
     /// The canonical RPG Maker MV/MZ default profile.
-    ///
     /// Title screens and pictures render arbitrary (often text-bearing) art;
     /// the `system` subtree holds window/UI graphics; `bgm`/`me` are songs whose
     /// Ogg VORBIS comment metadata may be localizable. Sprites, faces,
@@ -268,9 +254,7 @@ fn path_contains_subtree(path: &str, subtree: &str) -> bool {
         .any(|window| window == needle.as_slice())
 }
 
-// ---------------------------------------------------------------------------
 // Decrypt state
-// ---------------------------------------------------------------------------
 
 /// The decrypt outcome for one encrypted media asset. Carries commitments /
 /// lengths only — never the plaintext bytes.
@@ -321,9 +305,7 @@ impl MediaDecryptState {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Patch-back policy
-// ---------------------------------------------------------------------------
 
 /// The patch-back mode the node will honor for an asset — the documented
 /// replacement policy.
@@ -353,9 +335,7 @@ impl PatchBackMode {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Typed errors
-// ---------------------------------------------------------------------------
 
 /// The typed failure vocabulary of the media-surface layer. Every rejection is
 /// a semantic capability error — never a panic, never a silent skip.
@@ -409,7 +389,6 @@ impl MediaSurfaceError {
 
     /// Classify a failure as a declared-profile regression (a bug) vs an
     /// expected out-of-profile capability error — acceptance item 4.
-    ///
     /// `role` is the asset's localization role, `key_available` whether a key
     /// was resolvable. A `WrongKey` / `MalformedAsset` on a profiled surface
     /// WITH a key present is a regression (the declared profile should have
@@ -440,12 +419,9 @@ pub enum FailureClass {
     OutOfProfileCapabilityError,
 }
 
-// ---------------------------------------------------------------------------
 // The media-asset surface + Itotori decision handoff
-// ---------------------------------------------------------------------------
 
 /// One encrypted media asset represented as a (possibly) localization surface.
-///
 /// Report-safe: paths are sanitized, media is committed by sha256, and no key
 /// material is present.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -511,7 +487,6 @@ fn sanitize_relative_path(path: &str) -> String {
 }
 
 /// Build the media-surface representation for one encrypted asset.
-///
 /// Detects the encrypted suffix (typed [`MediaSurfaceError::UnsupportedSuffix`]
 /// for an off-profile suffix), classifies the localization role from
 /// `profile`, and decrypts with `key_source` WHEN a key is available — a
@@ -606,7 +581,7 @@ fn decrypt_state_for(
     }
 }
 
-/// Map a KAIFUU-068 key-resolution error to a media-surface decrypt state.
+/// Map a key-resolution error to a media-surface decrypt state.
 fn key_resolution_state(err: &crate::encrypted_asset_slice::MvMzSliceError) -> MediaDecryptState {
     use crate::encrypted_asset_slice::MvMzSliceError;
     match err {
@@ -632,9 +607,7 @@ fn map_suffix_error(err: crate::encrypted_asset_slice::MvMzSliceError) -> MediaS
     }
 }
 
-// ---------------------------------------------------------------------------
 // Replacement / patch-back
-// ---------------------------------------------------------------------------
 
 /// A byte-correct replacement plan for one profiled text-bearing surface. The
 /// `patched_asset` is the re-encrypted, header-wrapped bytes; the proof fields
@@ -669,7 +642,6 @@ pub struct ReplacementProof {
 }
 
 /// Plan a replacement (patch-back) for a profiled text-bearing surface.
-///
 /// Policy ([`PatchBackMode::ReEncryptSameKey`]): re-encrypt `replacement` with
 /// the SAME key and re-wrap the RPGMV header. Allowed **only** when the asset's
 /// role is a localization surface, the key is available, the replacement's
@@ -762,9 +734,7 @@ pub fn plan_replacement(
     })
 }
 
-// ---------------------------------------------------------------------------
 // Inventory manifest (report)
-// ---------------------------------------------------------------------------
 
 /// A deterministic, report-safe manifest of profiled encrypted media surfaces.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -834,7 +804,7 @@ impl MediaSurfaceManifest {
 #[error("kaifuu.rpgmaker.k059.manifest: {0}")]
 pub struct MediaManifestError(String);
 
-/// A `ProofHash` helper kept for parity with the KAIFUU-068 slice (validates a
+/// A `ProofHash` helper kept for parity with the slice (validates a
 /// sha256 commitment before it is published).
 #[must_use]
 pub fn commitment(bytes: &[u8]) -> Option<ProofHash> {
@@ -1178,7 +1148,7 @@ mod tests {
         let json = manifest.stable_json().unwrap();
         // Report-safe: roles + sha256 commitments present, but NEVER the key
         // hex and NEVER decrypted media bytes. (Structural paths are kept, as in
-        // the KAIFUU-112 media inventory.)
+        // the media inventory.)
         assert!(json.contains("text_bearing_image"));
         assert!(json.contains(&sha256_hash_bytes(&enc_img)));
         assert!(!json.contains(&key_hex()));

@@ -1,4 +1,4 @@
-//! KAIFUU-101 — integration smoke: the profiled XP3 **patch-back** rebuild
+//! integration smoke: the profiled XP3 **patch-back** rebuild
 //! verification command. It runs from the committed fixture + trivial
 //! replacement manifest JSON, extracts the encrypted archive through the
 //! declared secret ref, applies the trivial replacement, repacks, and verifies

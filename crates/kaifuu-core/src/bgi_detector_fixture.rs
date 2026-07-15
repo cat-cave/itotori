@@ -1,11 +1,10 @@
-//! KAIFUU-126 — BGI / Ethornell detector profile fixtures.
-//!
+//! BGI / Ethornell detector profile fixtures.
 //! This is a detector-fixture slice only. It records synthetic BGI/Ethornell
-//! container/profile evidence in the KAIFUU-085 compat-evidence shape: engine
+//! container/profile evidence in the compat-evidence shape: engine
 //! family, variant, container, crypto, codec, surface, fixture id, secret
 //! requirement ids, proof hashes, and diagnostics. It deliberately does not
 //! infer key requirements for BSE/DSC/CompressedBG markers or claim compressed
-//! / layered support; those variants are represented as unknown/unsupported
+//! layered support; those variants are represented as unknown/unsupported
 //! negatives until concrete public profiles prove otherwise.
 
 use std::path::Path;

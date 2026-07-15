@@ -1,22 +1,18 @@
-//! KAIFUU-022 — pure Siglus extraction + patching adapter for profiled
+//! pure Siglus extraction + patching adapter for profiled
 //! `Scene.pck` / `Gameexe.dat` variants.
-//!
 //! This module is the **pure adapter** layer: it EXTRACTS and PATCHES profiled
 //! Siglus containers and it OWNS the filesystem write for patch-back, but it
-//! does **not** discover keys. The distinction from the KAIFUU-070 known-key
+//! does **not** discover keys. The distinction from the known-key
 //! smoke ([`crate::known_key_smoke`]) is the seam:
-//!
 //! - the smoke resolves its own (synthetic) key internally — a self-contained
 //!   demonstration;
 //! - the adapter is *handed* an already-resolved [`ResolvedSiglusKey`]: a
 //!   structured secret-ref + a [`KeyValidationProof`] + the raw material the
-//!   key-discovery layer (KAIFUU-069 static-key / secret store) produced. The
+//!   key-discovery layer (static-key / secret store) produced. The
 //!   adapter **re-validates the proof against the material before consuming it**
 //!   (validate-before-consume) and never persists, logs, or serializes the raw
 //!   bytes.
-//!
 //! # What this adapter proves (all on profiled fixtures)
-//!
 //! - **Extract** profiled `Scene` / `Gameexe` text + metadata with a resolved key.
 //! - **Identity round-trip** — re-emit an unedited container **byte-identical**
 //!   to the input.
@@ -28,9 +24,7 @@
 //!   finding) returns `Err` with **no output file written**.
 //! - **Reject-on-secret** — before any write the output bytes + the redacted
 //!   report are deep-scanned; a raw key or decrypted-text leak fails loud.
-//!
 //! # Honest scope / real-bytes gap
-//!
 //! Like the smoke, the profiled format here is the narrow constant-key-XOR,
 //! UTF-16LE, uncompressed-within-profile container — NOT the real
 //! constant-256-XOR-table + per-game second-layer strip and proprietary-LZSS
@@ -75,15 +69,12 @@ pub const ADAPTER_SOURCE_NODE_ID: &str = "KAIFUU-022";
 /// The blunt support boundary surfaced in every adapter report.
 pub const ADAPTER_SUPPORT_BOUNDARY: &str = "Kaifuu Siglus pure adapter EXTRACTS and PATCHES profiled Scene.pck/Gameexe.dat variants (constant-key-XOR, UTF-16LE, uncompressed-within-profile) using an ALREADY-RESOLVED key it re-validates before consuming — it performs NO key discovery. It proves extract, identity byte-identical round-trip, translated round-trip (in-scope correct + out-of-scope byte-identical), and reject-before-write patch+verify with a reject-on-secret deep scan. It is NOT broad commercial Siglus support: the real constant-256-XOR-table + per-game second-layer strip and proprietary-LZSS codec remain skeleton stubs (siglus-04/siglus-06); out-of-profile compression/magic is a typed capability error. Raw key material and decrypted text are never persisted; the report carries secret-refs + one-way proof hashes + counts only.";
 
-// ---------------------------------------------------------------------------
 // Resolved key (consumed, never discovered)
-// ---------------------------------------------------------------------------
 
 /// A resolved Siglus secondary key the adapter CONSUMES. Carries the structured
 /// secret-ref + the validation proof the key-discovery layer published, plus the
 /// raw material held only inside the crate-private zeroizing [`KnownKeyMaterial`]
 /// holder. Nothing here serializes, logs, or returns the raw bytes.
-///
 /// Construct via [`ResolvedSiglusKey::consume`], which re-validates the proof
 /// against the material (validate-before-consume) and rejects a mismatch.
 pub struct ResolvedSiglusKey {
@@ -108,7 +99,6 @@ impl std::fmt::Debug for ResolvedSiglusKey {
 impl ResolvedSiglusKey {
     /// Consume an already-resolved key: a structured secret-ref, the validation
     /// proof the discovery layer published, and the raw material bytes.
-    ///
     /// Validate-before-consume: the adapter recomputes a one-way commitment over
     /// the material and requires it to equal the supplied proof
     /// ([`KeyValidationMethod::KnownPlaintextProof`], a commitment to the key
@@ -183,9 +173,7 @@ impl ResolvedSiglusKey {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Supported variant (capability gate)
-// ---------------------------------------------------------------------------
 
 /// A declared, supported profiled Siglus variant. The adapter's capability gate
 /// refuses anything outside this envelope BEFORE any read/patch/write.
@@ -247,9 +235,7 @@ impl SiglusSupportedVariant {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Errors
-// ---------------------------------------------------------------------------
 
 /// Fatal errors raised by the pure adapter. Every failure is a typed error that
 /// occurs BEFORE any output is written. A failure *inside* the declared profile
@@ -318,9 +304,7 @@ impl AdapterError {
     }
 }
 
-// ---------------------------------------------------------------------------
 // A translated edit
-// ---------------------------------------------------------------------------
 
 /// A single translated edit: the target unit/config key + the replacement text.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -333,9 +317,7 @@ pub struct SiglusTranslatedEdit {
     pub translated_text: String,
 }
 
-// ---------------------------------------------------------------------------
 // Identity + translated round-trip results (in-memory)
-// ---------------------------------------------------------------------------
 
 /// The result of an identity round-trip: re-emit an unedited container and prove
 /// it is byte-identical to the input.
@@ -389,9 +371,7 @@ impl TranslatedRoundTrip {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Pure Scene operations
-// ---------------------------------------------------------------------------
 
 /// Extract a profiled `Scene` container with the consumed resolved key.
 pub fn extract_scene(
@@ -551,9 +531,7 @@ fn out_of_scope_scene_preserved(
     Ok(true)
 }
 
-// ---------------------------------------------------------------------------
 // Pure Gameexe operations
-// ---------------------------------------------------------------------------
 
 /// Extract a profiled `Gameexe` container with the consumed resolved key.
 pub fn extract_gameexe(
@@ -694,9 +672,7 @@ pub fn apply_gameexe_translation(
     })
 }
 
-// ---------------------------------------------------------------------------
 // Reject-on-secret deep scan
-// ---------------------------------------------------------------------------
 
 /// A reject-on-secret finding (field/where only — never the leaked value).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -712,7 +688,6 @@ pub struct SecretLeakFinding {
 /// secret-shaped material: the raw key bytes, or any decrypted plaintext, must
 /// NOT appear in either artifact. Returns findings (locations/kinds only). A
 /// non-empty result means the write must be refused.
-///
 /// The plaintext probes are the in-memory decoded texts (original + translated);
 /// they are NEVER persisted — only used here to prove they did not leak into the
 /// output bytes (which hold only XOR-masked text) or the report (which holds only
@@ -773,9 +748,7 @@ fn contains_window(haystack: &[u8], needle: &[u8]) -> bool {
         .any(|window| window == needle)
 }
 
-// ---------------------------------------------------------------------------
 // Report
-// ---------------------------------------------------------------------------
 
 /// The adapter capability descriptor: the mechanical facts, including
 /// `does_key_discovery = false` and `broad_siglus_support = false`.
@@ -918,9 +891,7 @@ impl AdapterPatchReport {
     }
 }
 
-// ---------------------------------------------------------------------------
 // FS-owning patch-back driver (reject-before-write)
-// ---------------------------------------------------------------------------
 
 /// Which profiled container a patch targets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -942,7 +913,6 @@ impl SiglusContainerKind {
 /// apply the translated edits, VERIFY the round-trip, deep-scan for secret
 /// leaks, and only then atomically write the patched container to `output_path`
 /// (and the redacted report to `report_path`, if given).
-///
 /// Reject-before-write ordering (nothing is written until all pass):
 /// 1. capability gate (unsupported variant → `Err`, no write),
 /// 2. read input,
@@ -1073,9 +1043,7 @@ pub fn patch_container_file(
     Ok(report)
 }
 
-// ---------------------------------------------------------------------------
 // Profiled fixture builders (encode with a resolved key — no retail bytes)
-// ---------------------------------------------------------------------------
 
 /// Build a profiled `Scene` container by masking each unit's UTF-16LE text with
 /// the resolved key. Fixture support: the bytes it produces round-trip through
@@ -1117,9 +1085,7 @@ pub fn build_profiled_gameexe_container(
     })
 }
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 fn identity_result(input: &[u8], reemitted: &[u8]) -> Result<IdentityRoundTrip, AdapterError> {
     Ok(IdentityRoundTrip {

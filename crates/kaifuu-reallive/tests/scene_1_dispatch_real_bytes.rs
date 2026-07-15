@@ -1,15 +1,12 @@
-//! KAIFUU-191 real-bytes integration test for the RealLive opcode
+//! real-bytes integration test for the RealLive opcode
 //! dispatch.
-//!
 //! Reads scene 1 from Sweetie HD's `REALLIVEDATA/Seen.txt` at
 //! `$ITOTORI_REAL_GAME_ROOT`, runs the AVG32 LZSS + 256-byte XOR
 //! decompression inline (the decompressor is a per-this-node helper —
 //! see `examples/probe_scene_1_encryption.rs` for the full probe), then
 //! dispatches the plaintext bytecode through the new
 //! [`kaifuu_reallive::parse_real_bytecode`].
-//!
 //! # Scope: a SCENE-1 pin, NOT the full-archive 100% gate
-//!
 //! This test pins the decode of **Sweetie HD scene 1 only**. It is an
 //! honest single-scene regression pin — it asserts that scene 1's known
 //! prologue, text/voice structure and byte-framing decode correctly and
@@ -22,9 +19,7 @@
 //! populated scene of BOTH full archives (Sweetie HD + Kanon). A single
 //! scene being clean says nothing about the other 197 Sweetie / 79 Kanon
 //! scenes — only the multi-corpus gate does.
-//!
 //! # Decompressor provenance
-//!
 //! The AVG32 LZSS + 256-byte XOR decompressor below is restated in our
 //! own words from rlvm's BSD-licensed `compression.cc::Decompress`
 //! (Peter Jolly, 2006) and confirmed against Sweetie HD's scene 1 in
@@ -32,12 +27,10 @@
 //! rlvm source is vendored; the 256-byte mask constant and the LZSS
 //! cycle (flag-byte, literal-XOR, back-reference) are documented
 //! behavior of a fixed file format.
-//!
-//! # Scene-1 pin criteria (per KAIFUU-191 deliverable 4)
-//!
+//! # Scene-1 pin criteria (per deliverable 4)
 //! 1. First decoded opcode is in the documented opener set
 //!    (`MetaLine(2)` per research doc §D first bytes
-//!    `0a 02 00 0a 03 00 21 ...`).
+//!    `0a 02 00 0a 03 00 21...`).
 //! 2. The scene contains ≥1 text-display opcode (`TextDisplay` /
 //!    `CharacterTextDisplay` / `Textout`), each resolving to a typed
 //!    variant. Scene 1 carries zero un-recognised elements (see criterion
@@ -49,9 +42,8 @@
 //!    Textout partition resolve every byte of THIS scene to a typed element.
 //!    This is a scene-1 regression pin, not a full-archive completeness
 //!    claim (that is `multi_corpus_real_bytes`' gate).
-//!
-//! The scene-1 recognition count is reported via `eprintln!` so the
-//! orchestration report can quote it directly.
+//!    The scene-1 recognition count is reported via `eprintln!` so the
+//!    orchestration report can quote it directly.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -77,7 +69,7 @@ fn pins_sweetie_hd_scene_1_dispatch_with_zero_unknown_opcodes() {
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
 
     // Resolve scene 1 via the 10,000-slot directory at file offset 0
-    // (KAIFUU-188 envelope). Slot 1 lives at file offset 8.
+    // (envelope). Slot 1 lives at file offset 8.
     assert!(
         bytes.len() as u64 >= REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN,
         "Seen.txt must be at least {REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN} bytes \
@@ -154,7 +146,6 @@ fn pins_sweetie_hd_scene_1_dispatch_with_zero_unknown_opcodes() {
         "real bytecode decoded but produced no opcodes (silent zero-state)"
     );
 
-    // ---- Acceptance 1: first opcode in the documented set. ----
     assert!(
         matches!(opcodes[0], RealLiveOpcode::MetaLine { line: 2 }),
         "first decoded opcode must be MetaLine(2) per research doc §D; got {:?}",
@@ -171,7 +162,6 @@ fn pins_sweetie_hd_scene_1_dispatch_with_zero_unknown_opcodes() {
         opcodes[2]
     );
 
-    // ---- Acceptance 2: ≥1 TextDisplay (or labelled Unknown). ----
     let text_displays = opcodes
         .iter()
         .filter(|op| matches!(op, RealLiveOpcode::TextDisplay { .. }))
@@ -192,7 +182,6 @@ fn pins_sweetie_hd_scene_1_dispatch_with_zero_unknown_opcodes() {
          character_text_displays={character_text_displays}, textouts={textouts})"
     );
 
-    // ---- Acceptance 3: ≥1 voice-line reference (best-effort). ----
     let voice_play_count = opcodes
         .iter()
         .filter(|op| matches!(op, RealLiveOpcode::VoicePlay { .. }))
@@ -209,7 +198,6 @@ fn pins_sweetie_hd_scene_1_dispatch_with_zero_unknown_opcodes() {
         );
     }
 
-    // ---- Scene-1 pin: this scene's own un-recognised-element count. ----
     let total = opcodes.len();
     let unknown = opcodes.iter().filter(|op| !op.is_recognized()).count();
     let recognized = total - unknown;
@@ -229,7 +217,7 @@ fn pins_sweetie_hd_scene_1_dispatch_with_zero_unknown_opcodes() {
         eprintln!("  {label}: {count}");
     }
     // Diagnostic: enumerate Unknown command (module_type, module_id,
-    // opcode_u16) tuples so the follow-up node can widen the
+    // opcode_u16) tuples so the can widen the
     // recognised module catalogue under explicit RLDEV / rlvm
     // citations.
     let mut unknown_command_signatures: std::collections::BTreeMap<(u8, u8, u16), usize> =
@@ -302,9 +290,7 @@ fn decompressed_scene_1(seen_path: &PathBuf) -> Vec<u8> {
 }
 
 /// Pin the exact arg/expression byte-framing of real Sweetie HD scene 1.
-///
 /// # Why this test exists (the regression it guards)
-///
 /// `decode_command` / `parse_arg_list` once treated raw `0x29` (`)`) and
 /// `0x2C` (`,`) bytes as structural arg-list delimiters even when they
 /// were the payload of a `0xFF`-introduced i32 literal or sat inside a
@@ -316,7 +302,6 @@ fn decompressed_scene_1(seen_path: &PathBuf) -> Vec<u8> {
 /// the real [`kaifuu_reallive::parse_expression`] evaluator (the single
 /// source of truth that [`parse_real_bytecode_spans`] exposes), so a
 /// delimiter-valued literal byte is consumed whole.
-///
 /// The mechanism has a synthetic unit pin
 /// (`command_arglist_int_literal_payload_with_delimiter_bytes_does_not_misterminate`
 /// in `opcode.rs`). This test is the **real-bytes** pin the audit asked
@@ -326,7 +311,6 @@ fn decompressed_scene_1(seen_path: &PathBuf) -> Vec<u8> {
 /// scan, a wrong expression width, a dropped goto pointer — shifts these
 /// offsets and turns the test red, instead of silently re-flowing the
 /// stream.
-///
 /// The pinned numbers are structural metadata (offsets / widths / element
 /// labels), not game content; regenerate them only when the decoder's
 /// framing legitimately changes.
@@ -342,7 +326,6 @@ fn scene_1_arg_expression_framing_offsets_are_pinned_byte_exact() {
     let spans = parse_real_bytecode_spans(&decompressed)
         .expect("real scene-1 bytecode must decode under the spans walker");
 
-    // ---- Invariant 1: the spans tile [0, len) exactly, contiguously. ----
     // A desync that double-counts or skips bytes breaks this before any
     // golden comparison.
     let mut offset = 0usize;
@@ -366,14 +349,12 @@ fn scene_1_arg_expression_framing_offsets_are_pinned_byte_exact() {
         "scene-1 must decode to exactly 210 elements; a desync changes this count"
     );
 
-    // ---- Invariant 2: the exact (offset, label, width) of every ----
     // variable-width, arg/expression-framed element. Fixed-width 3-byte
     // meta lines and 1-byte commas are covered by the tiling invariant
     // above; the entries below are the commands (with bracketed arg
     // lists / trailing goto pointers) and Expression elements whose spans
     // are computed by the ExpressionPiece evaluator — i.e. exactly the
     // framing the audit finding is about.
-    //
     // Labels reflect the SEMANTIC command catalogue
     // (`reallive-semantic-command-cataloguing`): every enumerated real command
     // maps to a named operation family keyed on its `module_id`, never a
@@ -479,7 +460,6 @@ fn scene_1_arg_expression_framing_offsets_are_pinned_byte_exact() {
         );
     }
 
-    // ---- Invariant 3: still 100% recognised (no Unknown bucket). ----
     let unknown = spans.iter().filter(|(op, _)| !op.is_recognized()).count();
     assert_eq!(
         unknown, 0,
@@ -488,7 +468,6 @@ fn scene_1_arg_expression_framing_offsets_are_pinned_byte_exact() {
 }
 
 /// AVG32 256-byte XOR mask applied to the LZSS compressed stream.
-///
 /// Restated in our own words from rlvm's BSD-licensed
 /// `compression.cc::xor_mask[256]` constant (Peter Jolly, 2006). The
 /// 256-byte table is a documented constant of the AVG32 format used by

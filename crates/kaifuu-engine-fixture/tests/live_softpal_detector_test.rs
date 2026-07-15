@@ -1,25 +1,19 @@
 //! Live Softpal detector proof against two owned, read-only titles.
-//!
 //! The Softpal ADV (Amuse Craft / "Pal") detector is validated on the real
 //! bytes of two titles confirmed to be the same engine:
-//!   * v21465 — Kizuna Kirameku Koi Iroha (ships `dll/Pal.dll`, `data.pac`,
-//!     `csv.pac`, `system.pac`; TEXT.DAT enc flag `$` = encrypted).
-//!   * v60663 — Dimension Totsu Lovers (ships only `data.pac`; TEXT.DAT enc
-//!     flag `_` = plaintext).
-//!
-//! Together they exercise both TEXT.DAT encryption-flag states and both the
-//! Pal.dll and PAC-only detection paths.
-//!
-//! `#[ignore]`d by default; run explicitly against the read-only corpus:
-//!
-//! ```text
-//! ITOTORI_SOFTPAL_RESEARCH_ROOT=/scratch/softpal-research \
+//! * v21465 — Kizuna Kirameku Koi Iroha (ships `dll/Pal.dll`, `data.pac`,
+//!   `csv.pac`, `system.pac`; TEXT.DAT enc flag `$` = encrypted).
+//! * v60663 — Dimension Totsu Lovers (ships only `data.pac`; TEXT.DAT enc
+//!   flag `_` = plaintext).
+//!   Together they exercise both TEXT.DAT encryption-flag states and both the
+//!   Pal.dll and PAC-only detection paths.
+//!   `#[ignore]`d by default; run explicitly against the read-only corpus:
+//!   ```text
+//!   ITOTORI_SOFTPAL_RESEARCH_ROOT=/scratch/softpal-research \
 //!   cargo test -p kaifuu-engine-fixture \
 //!   --test live_softpal_detector_test -- --ignored --nocapture
-//! ```
-//!
-//! NEVER prints raw copyrighted bytes: file names, counts, sizes, container
-//! magics, and the single-byte TEXT.DAT enc flag (a format field) only.
+//!   NEVER prints raw copyrighted bytes: file names, counts, sizes, container
+//!   magics, and the single-byte TEXT.DAT enc flag (a format field) only.
 
 use std::path::{Path, PathBuf};
 

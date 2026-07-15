@@ -1,11 +1,9 @@
 //! Per-scene patch delta producer — **skeleton** (siglus-05).
-//!
 //! Produces the unit-level edit record (a [`SiglusScenePatchDelta`]) that
 //! [`super::bundle_driven::apply_translated_bundle`] splices into a scene.
 //! Keeping delta production separate from archive re-emit mirrors the
 //! kaifuu split between the bundle-driven driver and the lower-level
 //! per-scene edit math.
-//!
 //! Skeleton status: [`produce_scene_delta`] returns
 //! [`SiglusDeltaError::NotImplemented`].
 
@@ -35,7 +33,6 @@ pub enum SiglusDeltaError {
 
 /// Compute the per-scene patch delta for a single scene's decompiled
 /// bytecode given its translated unit edits.
-///
 /// Skeleton: always returns [`SiglusDeltaError::NotImplemented`].
 pub fn produce_scene_delta(
     _scene_id: u32,

@@ -1,12 +1,11 @@
 //! Gameexe.ini Shift-JIS line walker and key-family classifier.
-//!
-//! Clean-room provenance (KAIFUU-174 / KAIFUU-190):
+//! Clean-room provenance (/)
 //! - The key-family catalogue is derived from publicly archived Haeleth
 //!   RLDEV documentation plus the RealLive key surface inventory at
 //!   `docs/research/reallive-engine.md` §B (which itself was assembled from
 //!   RLDEV plus byte-level counts taken against Sweetie HD's real bytes).
 //!   No expression is copied from rlvm.
-//! - KAIFUU-190 replaces the previous 10-prefix hard-coded subset with a
+//! - replaces the previous 10-prefix hard-coded subset with a
 //!   pattern-based classifier covering the documented RealLive surface.
 //!   Keys that still don't match a documented family are recorded with a
 //!   typed [`UnknownReason`] and paired with a
@@ -65,7 +64,6 @@ impl fmt::Debug for GameexeInventoryEntry {
 }
 
 /// High-level treatment of one Gameexe.ini entry.
-///
 /// This is the bucket consumed by the inventory layer. The richer
 /// per-family classification is in [`GameexeInventoryEntry::family`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,21 +86,18 @@ pub enum GameexeKeyTreatment {
 }
 
 /// Typed key family classification.
-///
 /// Each variant captures the per-key suffix / index data the family
 /// uses, so downstream consumers can route keys by family without
 /// re-parsing the raw key string.
-///
 /// Family naming and grouping is taken from
 /// `docs/research/reallive-engine.md` §B. Where a family has documented
-/// suffix structure (e.g. `#FOLDNAME.G00 = "G00" = 0 : "G00.PAK"`,
+/// suffix structure (e.g. `#FOLDNAME.G00 = "G00" = 0: "G00.PAK"`,
 /// `#WAKU.NNN.MMM.FIELD`, `#KOEONOFF.NNN.(MMM).ON="..."`), the
 /// classifier records the suffix segments here; full parsing of the
 /// triple-equals RHS shape is left to the consumers that need it.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "family")]
 pub enum GameexeKeyFamily {
-    // ---- Engine bootstrap / window ----
     /// `#CAPTION="…"` — window-title text (translatable).
     Caption,
     /// `#SUBTITLE=…` — subtitle config.
@@ -125,7 +120,6 @@ pub enum GameexeKeyFamily {
     /// `#DEBUG_MEMORY_WARNING_SIZE` — debug-build knobs.
     Debug,
 
-    // ---- Scene routing / system-call dispatch ----
     /// `#SEEN_START`, `#SEEN_MENU`, `#SEEN_TEXT_CURENT` — scene-id
     /// entrypoints.
     SeenEntry,
@@ -159,14 +153,12 @@ pub enum GameexeKeyFamily {
         index: String,
     },
 
-    // ---- Asset folder remap ----
-    /// `#FOLDNAME.G00 = "G00" = 0 : "G00.PAK"` — triple-valued.
+    /// `#FOLDNAME.G00 = "G00" = 0: "G00.PAK"` — triple-valued.
     FolderName {
         /// Suffix after `#FOLDNAME.` (e.g. `G00`, `BGM`, `KOE`).
         kind: String,
     },
 
-    // ---- Save spec ----
     /// `#SAVE_USE`, `#SAVE_FORMAT`, `#SAVE_INDEX`, `#SAVE_CNT`,
     /// `#SAVE_TITLE`, `#SAVE_THUMBNAIL`, `#SAVEPOINT_*`,
     /// `#QUICK_SAVEDATA_USE`. Most are config; `#SAVE_TITLE` /
@@ -186,7 +178,6 @@ pub enum GameexeKeyFamily {
         field: String,
     },
 
-    // ---- Speaker / character roster (translatable) ----
     /// `#NAMAE="和人" = "和人" = (1,016, -1)` — speaker registry.
     Namae,
     /// `#NAME.A="可変名前Ａ"`, `#NAME_MAXLEN=…`, `#LOCALNAME.A=…` —
@@ -202,7 +193,6 @@ pub enum GameexeKeyFamily {
         slot: String,
     },
 
-    // ---- Voice on/off menu ----
     /// `#KOEONOFF.005.(000,002,003,004).ON="女の子全て"` — per-character
     /// voice-toggle menu line.
     KoeOnOff {
@@ -223,7 +213,6 @@ pub enum GameexeKeyFamily {
         field: String,
     },
 
-    // ---- System command catalogue ----
     /// `#SYSCOM.005.000="フルスクリーン"` — system-menu entry.
     /// `prefix` is `U:` / `N:` if present.
     Syscom {
@@ -237,7 +226,6 @@ pub enum GameexeKeyFamily {
         field: String,
     },
 
-    // ---- Text-window / WAKU theme ----
     /// `#WAKU.NNN.MMM.FIELD=…` — text-window decoration theme variant.
     Waku {
         /// First-level index (e.g. `000`).
@@ -286,7 +274,6 @@ pub enum GameexeKeyFamily {
         field: String,
     },
 
-    // ---- Choice-button / SEL theme ----
     /// `#SELBTN.NNN.FIELD=…` — choice-button theme.
     SelBtn {
         /// Index after `#SELBTN.`.
@@ -307,7 +294,6 @@ pub enum GameexeKeyFamily {
         field: String,
     },
 
-    // ---- Button-object animation ----
     /// `#BTNOBJ.ACTION.NNN.STATE=…`, `#BTNOBJ.SE.NNN.STATE=…`,
     /// `#BTNOBJ.GROUP.NNN`. The leading sub-namespace is captured as
     /// `kind`.
@@ -318,7 +304,6 @@ pub enum GameexeKeyFamily {
         rest: String,
     },
 
-    // ---- System buttons ----
     /// `#SYSBTN.NNN.FIELD=…`.
     SysBtn {
         /// Index after `#SYSBTN.`.
@@ -333,7 +318,6 @@ pub enum GameexeKeyFamily {
         field: String,
     },
 
-    // ---- Mouse cursor ----
     /// `#MOUSE_CURSOR.NNN.…` — cursor-sprite table.
     MouseCursor {
         /// Remaining suffix after `#MOUSE_CURSOR.`, dotted.
@@ -352,7 +336,6 @@ pub enum GameexeKeyFamily {
         field: String,
     },
 
-    // ---- Object render layers ----
     /// `#OBJECT.NNN=…`.
     Object {
         /// Index after `#OBJECT.`.
@@ -374,7 +357,6 @@ pub enum GameexeKeyFamily {
         field: String,
     },
 
-    // ---- Audio / sound ----
     /// `#BGM_MODE`, `#BGM_KOEFADE_USE`, `#BGM_KOEFADE_VOL` — BGM config.
     BgmConfig {
         /// Suffix after `#BGM_`.
@@ -410,7 +392,6 @@ pub enum GameexeKeyFamily {
         index: String,
     },
 
-    // ---- Shake / motion / cinematic ----
     /// `#SHAKE.NNN=(…)(…)…` — screen-shake offset sequence.
     Shake {
         /// Index after `#SHAKE.`.
@@ -430,7 +411,6 @@ pub enum GameexeKeyFamily {
         field: String,
     },
 
-    // ---- Misc UI / hint icons ----
     /// `#HINT.AUTOMODE.*`, `#HINT.READJUMP.*` — hint-icon graphics.
     Hint {
         /// Sub-namespace (`AUTOMODE`, `READJUMP`).
@@ -495,7 +475,6 @@ pub enum GameexeKeyFamily {
         field: String,
     },
 
-    // ---- Pre-KAIFUU-190 minimal-subset assets (kept as families) ----
     /// `#G00BUF=8` and any other `#G00*` config (image-buffer count etc.).
     G00Family,
     /// `#KOEPAC=koe.ovk` and other `#KOE*` asset / pack declarations
@@ -509,7 +488,6 @@ pub enum GameexeKeyFamily {
     /// `#GAMEEXE_VERSION=…`.
     GameexeVersion,
 
-    // ---- Unknown ----
     /// Catch-all. Carries the raw key and a typed reason.
     Unknown {
         /// Raw key text as parsed (upper-cased, including leading `#`).
@@ -575,7 +553,6 @@ pub struct GameexeInventoryReport {
 }
 
 /// Parse a Gameexe.ini blob into one inventory entry per recognized line.
-///
 /// The parser is forgiving: it splits on `\n` (consuming any preceding
 /// `\r`) and accepts both `#KEY=VALUE` and `#KEY VALUE` shapes. Empty
 /// lines and lines without a leading `#` are ignored.
@@ -721,7 +698,6 @@ fn is_numeric_config_value(value: &str) -> bool {
 
 /// Classify a single upper-cased Gameexe.ini key into its
 /// [`GameexeKeyFamily`] and high-level [`GameexeKeyTreatment`] bucket.
-///
 /// The key includes the leading `#`. Suffixes are passed by reference to
 /// the `helpers` module so the per-family enum payload captures the
 /// per-key suffix data without re-allocating the raw key string.
@@ -747,7 +723,6 @@ fn classify_key(key: &str, value: &str) -> (GameexeKeyFamily, GameexeKeyTreatmen
         );
     }
 
-    // ---- Indexed families: try the longest prefix first ----
     if let Some(rest) = bare.strip_prefix("FOLDNAME.") {
         return (
             GameexeKeyFamily::FolderName {
@@ -1463,13 +1438,12 @@ fn classify_key(key: &str, value: &str) -> (GameexeKeyFamily, GameexeKeyTreatmen
             GameexeKeyTreatment::Config,
         );
     }
-    // Pre-KAIFUU-190 minimal-subset asset prefixes (kept as family
+    // Pre- minimal-subset asset prefixes (kept as family
     // members so the catalogue stays exhaustive for the keys those
     // titles use).
     if bare.starts_with("G00") {
         // `#G00BUF=8` and similar numeric knobs are image-buffer
         // counts/config, not asset paths. Only reserve AssetReference
-        // for actual `#G00*` path/pack declarations. A numeric RHS must
         // never be emitted as a literal asset-path reference.
         let treatment = if is_numeric_config_value(value) {
             GameexeKeyTreatment::Config

@@ -1,20 +1,17 @@
-//! KAIFUU-072 — the profiled XP3 **crypt-chain** smoke command.
-//!
+//! the profiled XP3 **crypt-chain** smoke command.
 //! # What this is (and is not)
-//!
 //! This module runs the **full Kaifuu chain** end-to-end on an encrypted
 //! KiriKiri XP3 archive through a **keyRef-bound crypt profile**, on the same
-//! **synthetic, fixture-safe** archive the KAIFUU-100 [`crate::xp3_crypt`]
-//! decrypt smoke and the KAIFUU-101 [`crate::xp3_patch`] patch-back smoke own.
+//! **synthetic, fixture-safe** archive the [`crate::xp3_crypt`]
+//! decrypt smoke and the [`crate::xp3_patch`] patch-back smoke own.
 //! It composes the two proven capabilities plus the two bookends the chain node
 //! adds — a magic-byte **detect** stage and a redacted **delta** package — into
 //! **one** command with a single ordered stage ledger:
-//!
 //! 1. **detect** — the engine/container is identified by **magic-byte
 //!    signature** ([`kaifuu_core::XP3_PLAIN_MAGIC`]), never by filename. The
 //!    crypt *variant* is a **declared profile** ([`Xp3CryptoProfile`]): the
 //!    synthetic container's XP3 index is plaintext and only member **file data**
-//!    is enciphered (KAIFUU-100 honest scope), so the cipher is bound by the
+//!    is enciphered (honest scope), so the cipher is bound by the
 //!    profile/keyRef **data**, not sniffed from the container. That binding is
 //!    what makes this path **engine-general and game-agnostic** — the profile +
 //!    keyRef are config, not a per-game code branch.
@@ -38,10 +35,8 @@
 //!    fixture id + one-way sha-256 proof hashes (source/rebuilt container, per
 //!    member source/target plaintext commitments) + secret **refs** only. Never
 //!    a raw key, never decrypted plaintext, never a private path or retail byte.
-//!
 //! ## Honest scope
-//!
-//! Everything the KAIFUU-100/101 boundary says still holds: the container is a
+//! Everything the crypt boundary says still holds: the container is a
 //! genuine plain-XP3 archive, only member **file data** is enciphered, the
 //! integrity oracle is KiriKiri's real `adlr` adler-32, and the crypt filter is
 //! a declared **fixture** XOR analogue — NOT a real per-title CxDec/TVP filter.
@@ -93,8 +88,6 @@ pub const XP3_CHAIN_CRYPT_VARIANT_SOURCE: &str =
 
 /// The blunt support boundary carried in every report.
 pub const XP3_CHAIN_SUPPORT_BOUNDARY: &str = "Kaifuu KiriKiri XP3 crypt-chain smoke runs the full chain on a SYNTHETIC encrypted XP3 through a keyRef-bound crypt profile: detect the XP3 container by magic-byte signature (never filename), resolve the decrypt key through the declared secret ref (never a raw key), decrypt+integrity-verify+extract every member, apply one trivial text replacement, re-encipher+repack, re-decrypt+verify against the declared secret requirement id and fixture profile, and emit a REDACTED delta package (public fixture id + one-way sha-256 hashes + secret refs only). The crypt profile + keyRef are DATA (engine-general, game-agnostic), not a per-game code path. This is NOT commercial encrypted-XP3 coverage and the fixture crypt filter is NOT a real per-title CxDec/TVP filter; member integrity is KiriKiri's real adlr adler-32. No retail bytes and no raw key material leave the module.";
-
-// --- Stage ledger -----------------------------------------------------------
 
 /// The ordered stages the chain command runs, in execution order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,8 +152,6 @@ pub struct Xp3ChainStageOutcome {
     pub detail: String,
 }
 
-// --- Errors -----------------------------------------------------------------
-
 /// Fatal errors raised by the XP3 crypt-chain path. Every variant's `Display`
 /// begins with [`XP3_CHAIN_MARKER`].
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -186,8 +177,6 @@ pub enum Xp3ChainError {
         message: String,
     },
 }
-
-// --- Detect stage -----------------------------------------------------------
 
 /// The magic-byte detect result: the container was recognized by signature
 /// (never by filename), and the crypt variant is a declared, keyRef-bound
@@ -236,8 +225,6 @@ pub fn detect_xp3_container(
     })
 }
 
-// --- Profile/key resolve stage ----------------------------------------------
-
 /// The profile/key resolve result: the decrypt key was resolved through the
 /// keyRef. Discloses the requirement id + secret ref + one-way key commitment —
 /// never the raw key.
@@ -259,8 +246,6 @@ pub struct Xp3ChainProfileResolveReport {
     /// The keyRef resolved to material.
     pub resolved: bool,
 }
-
-// --- Delta stage ------------------------------------------------------------
 
 /// The operation a delta member entry records.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -374,8 +359,6 @@ impl Xp3ChainDeltaEvidence {
     }
 }
 
-// --- Report -----------------------------------------------------------------
-
 /// The full XP3 crypt-chain smoke report. Redact before serialization via
 /// [`Xp3CryptChainReport::stable_json`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -407,7 +390,7 @@ pub struct Xp3CryptChainReport {
     pub profile_resolve: Xp3ChainProfileResolveReport,
     /// The extract stage manifest (hash-based; no raw plaintext).
     pub extract_manifest: Vec<Xp3CryptMemberDigest>,
-    /// The patch/rebuild/verify stage output (the proven KAIFUU-101 report).
+    /// The patch/rebuild/verify stage output (the proven report).
     pub patch_back: Xp3PatchReport,
     /// The redacted delta evidence.
     pub delta: Xp3ChainDeltaEvidence,
@@ -486,8 +469,6 @@ impl Xp3CryptChainReport {
     }
 }
 
-// --- Driver -----------------------------------------------------------------
-
 /// Run the full XP3 crypt-chain smoke: detect the container by magic-byte
 /// signature, resolve the crypt profile + key through the keyRef, extract +
 /// integrity-verify every member, apply the trivial replacement manifest,
@@ -534,15 +515,15 @@ pub fn run_xp3_crypt_chain_smoke_from_fixture(
         })
         .collect();
 
-    // (4-6) PATCH -> REBUILD -> VERIFY via the proven KAIFUU-101 patch-back path
-    //       (extract through the declared secret ref, apply the trivial change,
-    //       repack, re-decrypt + verify against the declared profile + secret
-    //       requirement id, and prove the identity rebuild is byte-identical).
+    // (4-6) PATCH -> REBUILD -> VERIFY via the proven patch-back path
+    // (extract through the declared secret ref, apply the trivial change,
+    // repack, re-decrypt + verify against the declared profile + secret
+    // requirement id, and prove the identity rebuild is byte-identical).
     let patch_back = run_xp3_patch_smoke_from_fixture(fixture, manifest, fixture_dir)?;
 
     // (7) DELTA: recompute the source + patched plaintexts and the rebuilt
-    //     container through the SAME deterministic primitives, then emit a
-    //     redacted, hash-based delta package (secret refs only).
+    // container through the SAME deterministic primitives, then emit a
+    // redacted, hash-based delta package (secret refs only).
     let source_pairs: Vec<(String, Vec<u8>)> = decrypt_members(&container, key, scheme)?
         .into_iter()
         .map(|member| (member.member_id, member.plaintext))

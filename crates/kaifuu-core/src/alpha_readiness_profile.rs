@@ -1,17 +1,14 @@
-//! KAIFUU-056 — Alpha packed/encrypted-engine readiness-PROFILE subset.
-//!
+//! Alpha packed/encrypted-engine readiness-PROFILE subset.
 //! This module is the *profile* half of the alpha packed-engine readiness
-//! story. Where KAIFUU-103 ([`crate::packed_engine_readiness`]) is the reusable
-//! per-fixture transform-stack *validator*, and KAIFUU-104
+//! story. Where ([`crate::packed_engine_readiness`]) is the reusable
+//! per-fixture transform-stack *validator*, and
 //! ([`crate::alpha_encrypted_readiness`]) is the *evidence* generator that joins
-//! validated profiles with synthetic patch artifacts, KAIFUU-056 owns the small,
+//! validated profiles with synthetic patch artifacts, owns the small
 //! curated subset of high-value packed/encrypted engines whose prerequisite
 //! proof nodes exist and states — per engine, per operation — the alpha
 //! capability level plus the helper/key gating.
-//!
 //! It ships three deliverables, all built on the SHARED vocabulary (never
 //! reimplemented):
-//!
 //! 1. a **template** ([`alpha_readiness_profile_template`]) — the canonical,
 //!    validation-passing skeleton an author copies to declare a new engine;
 //! 2. **seeds** ([`alpha_readiness_seeds`]) for the five subset engines —
@@ -19,43 +16,33 @@
 //!    BGI / Ethornell; and
 //! 3. an **alpha capability-level summary renderer**
 //!    ([`render_alpha_capability_summary`] + [`AlphaCapabilitySummary`]).
-//!
 //! # The five operations (identify / inventory / extract / patch / helper-key)
-//!
 //! Each profile states, for the four capability rungs
 //! ([`crate::CapabilityLevel`]) via an [`crate::AdapterCapabilityMatrix`], a
 //! per-operation [`crate::CapabilityLevelStatus`] (supported / partial /
 //! unsupported), plus a fifth **helper-key** posture
 //! ([`AlphaHelperKeyStatus`]) that records the key-material and helper gating.
 //! The renderer surfaces all five for every engine.
-//!
 //! # Honest ceilings — BGI / Ethornell is detector/profile-only
-//!
-//! The alpha subset applies a STRICTER ceiling than the KAIFUU-103 engine spec.
+//! The alpha subset applies a STRICTER ceiling than the engine spec.
 //! BGI / Ethornell readiness is limited to detector/profile evidence (from the
-//! KAIFUU-041 detection node): its seed claims `identify` only and marks
+//! detection node): its seed claims `identify` only and marks
 //! inventory / extract / patch `unsupported`. It never claims an archive parser
-//! or patch support — the honest ceiling, below even the KAIFUU-103 family
+//! or patch support — the honest ceiling, below even the family
 //! spec's theoretical ceiling.
-//!
 //! # Unknown / out-of-profile vs. in-profile BUG (the mechanical distinction)
-//!
 //! Validation classifies every finding with a [`ReadinessFailureClass`]:
-//!
 //! - [`ReadinessFailureClass::OutOfProfile`] — a semantic boundary that is NOT a
 //!   defect: an unknown engine family, or a claim that reaches PAST the engine
-//!   family's theoretical KAIFUU-103 ceiling. An honestly-`unsupported` rung is
+//!   family's theoretical ceiling. An honestly-`unsupported` rung is
 //!   the profile's declared boundary and produces NO finding at all.
 //! - [`ReadinessFailureClass::InProfileBug`] — a defect INSIDE claimed support:
 //!   a rung the profile claims (`supported`/`partial`) whose required backing
 //!   field (fixture, key, helper, patch-back, provenance) is missing or
 //!   inconsistent.
-//!
-//! Both classes fail the profile, but the class is recorded so a genuine
-//! not-yet-supported boundary is never confused with a broken claim.
-//!
+//!   Both classes fail the profile, but the class is recorded so a genuine
+//!   not-yet-supported boundary is never confused with a broken claim.
 //! # Evidence is synthetic, redacted, ref-only
-//!
 //! Profiles carry NO raw key material, NO private asset paths, NO decrypted
 //! scripts, NO helper dumps, and NO story filenames: only synthetic
 //! profile/fixture ids, a local-scheme [`crate::SecretRef`] key reference, a
@@ -87,9 +74,7 @@ pub const ALPHA_READINESS_PROFILE_GLOB: &str = "*.profile.json";
 /// The support boundary surfaced in the rendered summary.
 pub const ALPHA_READINESS_SUPPORT_BOUNDARY: &str = "The alpha readiness-profile subset states, per high-value packed/encrypted engine and per operation (identify, inventory, extract, patch, helper-key), the alpha capability level and helper/key gating. A rung is claimed only up to the engine's honest alpha ceiling — BGI / Ethornell is detector/profile-only and never claims an archive parser or patch support. An honestly-unsupported rung is the declared boundary, not a defect; a claimed rung missing its backing field is an in-profile bug. Profiles are generated from public synthetic fixtures and may be supplemented by a hash-only reference to a private-local aggregate report. No raw key material, private asset paths, decrypted scripts, helper dumps, or story filenames are ever serialized.";
 
-// ---------------------------------------------------------------------------
 // Profile input schema
-// ---------------------------------------------------------------------------
 
 /// The helper/key gating posture — the fifth "operation" every profile states.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -187,7 +172,7 @@ pub struct AlphaReadinessProfile {
     pub profile_id: String,
     /// Stable id of the backing public synthetic fixture.
     pub fixture_id: String,
-    /// The spec-DAG node id this profile is authored for (`KAIFUU-056`).
+    /// The spec-DAG node id this profile is authored for (``).
     pub source_node_id: String,
     /// The prerequisite proof-node/artifact this subset entry relies on.
     pub prerequisite_proof: String,
@@ -209,9 +194,7 @@ impl AlphaReadinessProfile {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Findings + failure classification (the mechanical distinction)
-// ---------------------------------------------------------------------------
 
 /// Distinguishes an unknown / out-of-profile semantic boundary from a defect
 /// inside a claimed-support profile.
@@ -277,9 +260,7 @@ fn finding(
     }
 }
 
-// ---------------------------------------------------------------------------
 // Per-profile validation entry
-// ---------------------------------------------------------------------------
 
 /// Per-operation status snapshot as recorded in the entry (the rendered row).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -453,10 +434,9 @@ pub fn validate_alpha_readiness_profile(profile: &AlphaReadinessProfile) -> Alph
     }
 
     // --- Provenance: must be generated from a public synthetic fixture (and
-    //     any private-aggregate supplement is a ref, never a path). ----------
+    // any private-aggregate supplement is a ref, never a path). ----------
     validate_provenance(profile, &mut findings);
 
-    // --- Engine family recognition (unknown => out-of-profile). ------------
     let Some(spec) = profile.engine_family.profile_spec() else {
         findings.push(finding(
             "alpha.readiness.unknown_engine_family",
@@ -469,10 +449,8 @@ pub fn validate_alpha_readiness_profile(profile: &AlphaReadinessProfile) -> Alph
         return build_entry(profile, findings);
     };
 
-    // --- Per-operation claims vs. required backing. ------------------------
     validate_capability_claims(profile, &spec, &mut findings);
 
-    // --- Helper-key posture consistency. -----------------------------------
     validate_helper_key(profile, &mut findings);
 
     build_entry(profile, findings)
@@ -695,9 +673,7 @@ fn build_entry(
     }
 }
 
-// ---------------------------------------------------------------------------
 // Detailed validation report (findings surfaced, redacted)
-// ---------------------------------------------------------------------------
 
 /// The detailed alpha-readiness validation report: every profile's entry with
 /// its full, classified finding list. The rendered [`AlphaCapabilitySummary`]
@@ -858,9 +834,7 @@ fn malformed_entry(file_name: &str, error: &str) -> AlphaReadinessEntry {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Template + seeds (generation from public synthetic fixtures)
-// ---------------------------------------------------------------------------
 
 fn matrix_up_to(
     family: PackedEngineFamily,
@@ -1000,7 +974,7 @@ pub fn alpha_readiness_seed_rgss3() -> AlphaReadinessProfile {
 
 /// BGI / Ethornell seed — the honest detector/profile-only ceiling. Identify
 /// supported; inventory / extract / patch UNSUPPORTED (no archive parser, no
-/// patch support). Backed by the KAIFUU-041 detection node.
+/// patch support). Backed by the detection node.
 pub fn alpha_readiness_seed_bgi() -> AlphaReadinessProfile {
     AlphaReadinessProfile {
         schema_version: ALPHA_READINESS_PROFILE_SCHEMA_VERSION.to_string(),
@@ -1030,9 +1004,7 @@ pub fn alpha_readiness_seeds() -> Vec<AlphaReadinessProfile> {
     ]
 }
 
-// ---------------------------------------------------------------------------
 // Renderer — the alpha capability-level summary
-// ---------------------------------------------------------------------------
 
 /// One rendered row: an engine's five operation statuses + its ceiling.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1174,9 +1146,7 @@ pub fn render_alpha_capability_summary(
     }
 }
 
-// ---------------------------------------------------------------------------
 // Directory validation (generation from a public synthetic fixture tree)
-// ---------------------------------------------------------------------------
 
 /// Read every `*.profile.json` under `dir` (sorted), validate each, and render
 /// the aggregate alpha capability summary. A malformed fixture is a failed row,
@@ -1260,8 +1230,6 @@ mod tests {
         fixtures_dir().join("negative")
     }
 
-    // --- Every seed states all five operations + validates cleanly. --------
-
     #[test]
     fn every_seed_states_all_five_operations_and_passes() {
         for profile in alpha_readiness_seeds() {
@@ -1302,8 +1270,6 @@ mod tests {
         }
     }
 
-    // --- BGI honest ceiling: detector/profile-only. ------------------------
-
     #[test]
     fn bgi_is_detector_profile_only_no_parser_or_patch() {
         let entry = validate_alpha_readiness_profile(&alpha_readiness_seed_bgi());
@@ -1319,8 +1285,6 @@ mod tests {
         assert_eq!(entry.operations.patch, "unsupported");
         assert_eq!(entry.patch_back, PatchBackTransform::Unsupported);
     }
-
-    // --- Generated from public synthetic fixtures. -------------------------
 
     #[test]
     fn seeds_round_trip_through_public_synthetic_json() {
@@ -1374,8 +1338,6 @@ mod tests {
                 .any(|f| f.code == "alpha.readiness.provenance_ref_invalid")
         );
     }
-
-    // --- Validation FAILS on a missing required field. ---------------------
 
     #[test]
     fn missing_fixture_field_fails() {
@@ -1446,8 +1408,6 @@ mod tests {
         );
     }
 
-    // --- Distinguish unknown/out-of-profile from in-profile bug. -----------
-
     #[test]
     fn unknown_engine_is_out_of_profile_not_a_bug() {
         let mut profile = alpha_readiness_seed_bgi();
@@ -1501,8 +1461,6 @@ mod tests {
         assert_eq!(entry.out_of_profile_finding_count, 0);
     }
 
-    // --- Template. ---------------------------------------------------------
-
     #[test]
     fn template_is_valid_and_conservative() {
         let template = alpha_readiness_profile_template();
@@ -1514,8 +1472,6 @@ mod tests {
         );
         assert!(entry.detector_only);
     }
-
-    // --- Renderer + redaction. ---------------------------------------------
 
     #[test]
     fn renderer_covers_all_engines_and_round_trips() {

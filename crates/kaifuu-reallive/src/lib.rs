@@ -1,6 +1,5 @@
-//! Pure-Rust RealLive Scene/SEEN parser (KAIFUU-173 + KAIFUU-188 +
-//! KAIFUU-191) and text inventory adapter (KAIFUU-174).
-//!
+//! Pure-Rust RealLive Scene/SEEN parser (+ +
+//! ) and text inventory adapter.
 //! Clean-room provenance:
 //! - All RealLive format observations are derived from publicly archived
 //!   format documentation (Haeleth's RLDEV site,
@@ -15,7 +14,7 @@
 //!   If a hypothesis about RealLive's format was confirmed by reading
 //!   rlvm, the hypothesis is re-derived and re-tested against the
 //!   synthetic fixture bytes before being encoded here.
-//! - KAIFUU-174 adds Shift-JIS decode/encode via `encoding_rs` (WHATWG-
+//! - adds Shift-JIS decode/encode via `encoding_rs` (WHATWG-
 //!   spec implementation, not a copy of rlvm or RLDEV), a bounded
 //!   protected-span catalogue derived from public RLDEV documentation,
 //!   and slot patch-back.
@@ -29,18 +28,16 @@
 //!   new offset. A jump landing strictly inside an edited body surfaces
 //!   `kaifuu.reallive.patchback_goto_target_unresolvable` Fatal. Proven on
 //!   Sweetie HD scene 8509 (91 goto pointers, longer + shorter bodies).
-//! - KAIFUU-191 replaces the synthetic `0x23 ('#') opener + named opcode
+//! - replaces the synthetic `0x23 ('#') opener + named opcode
 //!   byte` shape with the **real** RealLive bytecode opener-byte switch
 //!   documented in `docs/research/reallive-engine.md` §D and confirmed
 //!   against Sweetie HD's decompressed scene 1 in
 //!   `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4.2.
-//!   The pre-KAIFUU-191 synthetic-opener path is deleted, not aliased.
+//!   The pre- synthetic-opener path is deleted, not aliased.
 //! - No `Command::new`, no Wine, no Windows helper, no remote helper.
 //!   This crate is a pure function over `&[u8]`; the adapter (in
 //!   `kaifuu-engine-fixture`) owns the filesystem I/O.
-//!
 //! # Surface
-//!
 //! - [`parse_archive`] — decode a SEEN.TXT archive envelope into a
 //!   [`RealLiveSceneIndex`]. Out: per-scene `(byte_offset, byte_len)`
 //!   ranges keyed by the 10,000-slot directory index ([`SceneEntry`]).
@@ -49,24 +46,17 @@
 //! - [`parse_scene_into_ast`] — adapter that wraps [`parse_scene`] and
 //!   builds the [`Scene`] tree consumed by the bundle-driven patchback
 //!   driver.
-//!
-//! # SEEN.TXT envelope (real 10,000-slot fixed-offset-table — KAIFUU-188)
-//!
+//! # SEEN.TXT envelope (real 10,000-slot fixed-offset-table —)
 //! The envelope this crate parses is the **real RealLive 10,000-slot
 //! fixed-offset-table** documented at `docs/research/reallive-engine.md`
 //! §C and confirmed against Sweetie HD's
 //! `REALLIVEDATA/Seen.txt` per
 //! `docs/audits/real-bytes-validation-2026-06-24.md` §2.8.
-//!
 //! ```text
-//! +----------+----------+----- … -----+----------+--------- … -----------+
-//! | slot 0   | slot 1   |             | slot 9999| scene payloads        |
-//! | u32 off  | u32 off  |             | u32 off  | (referenced by        |
-//! | u32 size | u32 size |             | u32 size |  absolute u32 offset) |
-//! +----------+----------+----- … -----+----------+--------- … -----------+
-//! 0x0000     0x0008                   0x1_3878    0x1_3880
-//! ```
-//!
+//! | slot 0 | slot 1 | | slot 9999| scene payloads |
+//! | u32 off | u32 off | | u32 off | (referenced by |
+//! | u32 size | u32 size | | u32 size | absolute u32 offset) |
+//! 0x0000 0x0008 0x1_3878 0x1_3880
 //! - 10,000 slots × 8 bytes = 80,000 bytes (`0x0001_3880`) of fixed
 //!   directory at file offset 0.
 //! - Each slot is `(u32_le offset, u32_le length)`. Both zero means the
@@ -74,28 +64,22 @@
 //! - Non-zero slots whose `offset + length` runs past the file end emit
 //!   `kaifuu.reallive.truncated_scene` Fatal.
 //! - Sweetie HD has 198 populated slots, scene-id range 1..=9999.
-//!
-//! # Scene bytecode (real RealLive opcode dispatch — KAIFUU-191)
-//!
+//! # Scene bytecode (real RealLive opcode dispatch —)
 //! Scene payloads encountered in the archive carry the AVG32-compressed
 //! header + bytecode. The caller decompresses the payload (the AVG32
 //! LZSS + 256-byte XOR transform documented in
 //! `docs/research/reallive-sweetie-hd-encryption-mechanism.md`) and
 //! feeds the resulting plaintext bytecode bytes to [`parse_scene`].
-//!
 //! [`parse_scene`] performs the documented opener-byte switch:
-//!
-//! | Lead byte           | BytecodeElement   | Decoded as                                                   |
-//! | ------------------- | ----------------- | ------------------------------------------------------------ |
-//! | `0x00`              | CommaElement      | [`RealLiveOpcode::Comma`]                                    |
-//! | `0x0A`              | MetaLine          | [`RealLiveOpcode::MetaLine`] (u16 LE line)                   |
-//! | `0x21`              | MetaEntrypoint    | [`RealLiveOpcode::MetaEntrypoint`] (u16 LE)                  |
-//! | `0x23`              | CommandElement    | 8-byte header + bracketed args; classified via module table  |
-//! | `0x24`              | ExpressionElement | [`RealLiveOpcode::Expression`] (body preserved verbatim)     |
-//! | `0x2C`              | CommaElement      | [`RealLiveOpcode::Comma`]                                    |
-//! | `0x40`              | MetaKidoku        | [`RealLiveOpcode::MetaKidoku`] (u16 LE)                      |
-//! | any other byte      | Textout           | [`RealLiveOpcode::Textout`] (text run to next opener)        |
-//!
+//! | Lead byte | BytecodeElement | Decoded as |
+//! | `0x00` | CommaElement | [`RealLiveOpcode::Comma`] |
+//! | `0x0A` | MetaLine | [`RealLiveOpcode::MetaLine`] (u16 LE line) |
+//! | `0x21` | MetaEntrypoint | [`RealLiveOpcode::MetaEntrypoint`] (u16 LE) |
+//! | `0x23` | CommandElement | 8-byte header + bracketed args; classified via module table |
+//! | `0x24` | ExpressionElement | [`RealLiveOpcode::Expression`] (body preserved verbatim) |
+//! | `0x2C` | CommaElement | [`RealLiveOpcode::Comma`] |
+//! | `0x40` | MetaKidoku | [`RealLiveOpcode::MetaKidoku`] (u16 LE) |
+//! | any other byte | Textout | [`RealLiveOpcode::Textout`] (text run to next opener) |
 //! Command elements decode the 8-byte header
 //! (`module_type`, `module_id`, `opcode_u16_le`, `argc`, `overload`),
 //! parse their bracketed `ExpressionPiece` argument list with the real
@@ -105,12 +89,11 @@
 //! Commands at an uncatalogued in-space `(module_id, opcode)` tuple surface
 //! as generic [`RealLiveOpcode::Command`]; out-of-space `module_type` values
 //! surface as [`RealLiveOpcode::Unknown`].
-//!
 //! A well-formed scene stream produces **zero** `Unknown` spans: every
 //! byte is partitioned into a typed element (the catch-all being a
 //! Textout run). Empty input is a
 //! [`RealLiveParseError::TruncatedBytecode`] — never a silent
-//! `Ok(vec![])`.
+//! `Ok(vec!)`.
 
 #![forbid(unsafe_code)]
 #![deny(missing_debug_implementations)]

@@ -1,24 +1,19 @@
-//! KAIFUU-171 — end-to-end encrypted-XP3 contract scaffolding harness.
-//!
+//! end-to-end encrypted-XP3 contract scaffolding harness.
 //! This module wires the **existing** kaifuu encrypted-XP3 contract surface
 //! (detect, key resolution, extract, patch, verify, delta-apply) around a
 //! fully synthetic, public-redistributable fixture
 //! (`fixtures/public/kaifuu-encrypted-xp3-contract-scaffold/`). It exists so
 //! the contract surface stays continuously exercised in public CI WITHOUT
 //! being the alpha proof itself.
-//!
 //! It invents **no** engine logic. Every stage delegates to a published
 //! kaifuu-core / kaifuu-delta function:
-//!
-//! | stage         | existing contract entry point                                   |
-//! | ------------- | --------------------------------------------------------------- |
-//! | detect        | `kaifuu_core::xp3_profile_proof`                                |
-//! | key resolution| `kaifuu_core::LocalKeyResolver::resolve_requirements`           |
-//! | extract       | `kaifuu_core::unpack_plain_xp3_to_directory`                    |
-//! | patch         | `kaifuu_core::replace_plain_xp3_entry_payload` + `pack_plain_xp3_from_directory` |
-//! | verify        | `kaifuu_core::read_plain_xp3_archive` + `encode_xp3`           |
-//! | delta apply   | `crate::create_delta` + `crate::apply_delta`                   |
-//!
+//! | stage | existing contract entry point |
+//! | detect | `kaifuu_core::xp3_profile_proof` |
+//! | key resolution| `kaifuu_core::LocalKeyResolver::resolve_requirements` |
+//! | extract | `kaifuu_core::unpack_plain_xp3_to_directory` |
+//! | patch | `kaifuu_core::replace_plain_xp3_entry_payload` + `pack_plain_xp3_from_directory` |
+//! | verify | `kaifuu_core::read_plain_xp3_archive` + `encode_xp3` |
+//! | delta apply | `crate::create_delta` + `crate::apply_delta` |
 //! Contract drift — a missing or changed stage — fails the harness with a
 //! structured SEMANTIC diagnostic, never a panic or opaque error. The report
 //! declares itself contract scaffolding and never claims retail
@@ -177,8 +172,6 @@ impl StageDrift {
 
 type StageResult = Result<String, StageDrift>;
 
-// --- Fixture descriptor ------------------------------------------------------
-
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ScaffoldFixture {
@@ -234,12 +227,9 @@ struct PublicKeyEntry {
     public_key_material: String,
 }
 
-// --- Harness entry point -----------------------------------------------------
-
 /// Run the full encrypted-XP3 contract scaffolding harness against the
 /// synthetic fixture descriptor at `fixture_path`, using `work_dir` (which
 /// must not yet exist or must be empty) as scratch space.
-///
 /// Returns a structured report. Stage failures are surfaced as semantic
 /// diagnostics inside the report; only environmental failures (e.g. the
 /// descriptor cannot be read) return `Err`.
@@ -372,8 +362,6 @@ fn run_stage(stage: ContractStage, body: impl FnOnce() -> StageResult) -> Contra
     }
 }
 
-// --- Stage 1: DETECT ---------------------------------------------------------
-
 fn stage_detect(fixture: &ScaffoldFixture, fixture_dir: &Path) -> StageResult {
     // Encrypted envelope: routes to the encrypted variant with a satisfied
     // crypt profile, and the detector flags the unsupported encrypted variant.
@@ -484,8 +472,6 @@ fn stage_detect(fixture: &ScaffoldFixture, fixture_dir: &Path) -> StageResult {
     ))
 }
 
-// --- Stage 2: KEY RESOLUTION -------------------------------------------------
-
 fn stage_key_resolution(fixture: &ScaffoldFixture, fixture_dir: &Path) -> StageResult {
     let requirement_id = fixture
         .crypt_profile
@@ -551,8 +537,6 @@ fn stage_key_resolution(fixture: &ScaffoldFixture, fixture_dir: &Path) -> StageR
     ))
 }
 
-// --- Stage 3: EXTRACT --------------------------------------------------------
-
 fn stage_extract(inner_bytes: &[u8], original_dir: &Path, patched_dir: &Path) -> StageResult {
     // Unpack twice: an immutable original baseline and a working copy the
     // patch stage mutates. Both go through the published unpacker.
@@ -578,8 +562,6 @@ fn stage_extract(inner_bytes: &[u8], original_dir: &Path, patched_dir: &Path) ->
         }
     ))
 }
-
-// --- Stage 4: PATCH ----------------------------------------------------------
 
 fn stage_patch(fixture: &ScaffoldFixture, inner_bytes: &[u8], patched_dir: &Path) -> StageResult {
     let replacement = fixture.patch.replacement_utf8.as_bytes();
@@ -610,8 +592,6 @@ fn stage_patch(fixture: &ScaffoldFixture, inner_bytes: &[u8], patched_dir: &Path
         patched_archive.len()
     ))
 }
-
-// --- Stage 5: VERIFY ---------------------------------------------------------
 
 fn stage_verify(fixture: &ScaffoldFixture, inner_bytes: &[u8], patched_dir: &Path) -> StageResult {
     // Determinism: the source archive must re-encode byte-identically.
@@ -650,8 +630,6 @@ fn stage_verify(fixture: &ScaffoldFixture, inner_bytes: &[u8], patched_dir: &Pat
     ))
 }
 
-// --- Stage 6: DELTA APPLY ----------------------------------------------------
-
 fn stage_delta_apply(original_dir: &Path, patched_dir: &Path, work_dir: &Path) -> StageResult {
     let delta = create_delta(original_dir, patched_dir, SourceProvenance::complete())
         .map_err(|error| StageDrift::drift(format!("create_delta failed: {error}")))?;
@@ -678,8 +656,6 @@ fn stage_delta_apply(original_dir: &Path, patched_dir: &Path, work_dir: &Path) -
         applied_archive.len()
     ))
 }
-
-// --- Helpers -----------------------------------------------------------------
 
 fn writer_drift(
     context: &'static str,

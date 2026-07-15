@@ -1,4 +1,4 @@
-//! KAIFUU-100 — integration smoke: run the profiled XP3-crypt fixture from the
+//! integration smoke: run the profiled XP3-crypt fixture from the
 //! committed JSON manifest and prove the full decrypt/extract path plus the
 //! wrong-key / missing-key typed-error and no-key-leak guarantees.
 

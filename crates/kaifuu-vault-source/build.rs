@@ -1,5 +1,4 @@
 //! Build script for the synthetic-vault fixture.
-//!
 //! Materializes `tests/fixtures/synthetic-vault/catalog.db` from
 //! `tests/fixtures/synthetic-vault/seed.sql` so the fixture is reviewable
 //! (seed is text + diff-able) but tests still see a real `.db` file.

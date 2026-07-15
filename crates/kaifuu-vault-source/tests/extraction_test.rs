@@ -50,10 +50,9 @@ fn materialize_raises_ExtractionUnsafePath_for_path_traversal_fixture() {
     );
 }
 
-/// Regression guard for the KAIFUU-236 guard-ordering law: the
+/// Regression guard for the guard-ordering law: the
 /// path-traversal check must fire on the archive HEADER (the declared entry
 /// paths) BEFORE — and independent of — the 7z content decoder.
-///
 /// Here the traversal entry `../escape.txt` carries a deliberately-corrupted
 /// (undecodable) content stream: `sevenz_rust2::Archive::open` still parses
 /// the header and reports the entry name, but any attempt to decompress its

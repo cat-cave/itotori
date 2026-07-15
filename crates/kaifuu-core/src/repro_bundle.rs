@@ -1,8 +1,7 @@
-//! KAIFUU-106 — Redacted compatibility REPRODUCTION BUNDLE schema + validator.
-//!
+//! Redacted compatibility REPRODUCTION BUNDLE schema + validator.
 //! A reproduction bundle is the shareable, PUBLIC artifact that lets a third
 //! party re-derive kaifuu's compatibility results WITHOUT any private corpora.
-//! It carries the KAIFUU-105 [`ClaimedSupportTuple`]s (exact shape — engine
+//! It carries the [`ClaimedSupportTuple`]s (exact shape — engine
 //! family, variant, container, crypto, codec, surface, patch-back mode,
 //! fixture/profile id, secret-requirement ids, diagnostics, claim + evidence
 //! chain), plus a set of top-level **reproduction proofs** (fixture id +
@@ -11,9 +10,7 @@
 //! their output against the proof hashes — no retail bytes, no raw keys, no
 //! screenshots, no prompt logs, no story text, no private paths ever cross the
 //! boundary.
-//!
 //! # The two mechanical guarantees
-//!
 //! 1. **Reject-on-private (acceptance 2).** [`validate_repro_bundle`] walks
 //!    every free-text-bearing string field of the bundle and rejects the six
 //!    private-asset classes — [`PrivateAssetClass::RawKey`],
@@ -30,11 +27,10 @@
 //!    every embedded tuple must be backed by at least one reproduction proof.
 //!    Anything less is a typed [`ReproductionGap`] and the bundle is not
 //!    self-sufficient.
-//!
-//! Secret material and proof hashes are carried through the STRONGLY-TYPED
-//! [`SecretRef`] / [`ProofHash`] wrappers (which reject raw material at
-//! deserialize time), so the private-asset scan only needs to police the plain
-//! string fields where smuggling is otherwise possible.
+//!    Secret material and proof hashes are carried through the STRONGLY-TYPED
+//!    [`SecretRef`] / [`ProofHash`] wrappers (which reject raw material at
+//!    deserialize time), so the private-asset scan only needs to police the plain
+//!    string fields where smuggling is otherwise possible.
 
 use serde::{Deserialize, Serialize};
 
@@ -57,9 +53,7 @@ pub const REPRO_BUNDLE_REPORT_SCHEMA_VERSION: &str = "0.1.0";
 /// The boundary surfaced in every report.
 pub const REPRO_BUNDLE_BOUNDARY: &str = "A reproduction bundle carries KAIFUU-105 claimed-support tuples (engine family, variant, container, crypto, codec, surface, patch-back mode, fixture/profile id, secret-requirement ids, diagnostics, claim + evidence chain) plus reproduction proofs (public fixture id + sha256 proof hash). It NEVER carries private assets: raw keys, private paths, retail bytes, screenshots, prompt logs, or story text are rejected with a bundle/tuple/field-named error. The proof hashes + fixture ids are sufficient to reproduce the public-fixture results with no private-corpus reference.";
 
-// ---------------------------------------------------------------------------
 // The six private-asset classes (reject-on-private)
-// ---------------------------------------------------------------------------
 
 /// The six private-asset classes a reproduction bundle must never carry. A
 /// scanned string resolves to at most one class (the scanner returns the first
@@ -125,9 +119,7 @@ impl PrivateAssetClass {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Private-asset scanner
-// ---------------------------------------------------------------------------
 
 const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "bmp", "gif", "webp", "tga", "rpgmvp"];
 const RETAIL_BINARY_EXTENSIONS: &[&str] = &[
@@ -275,9 +267,7 @@ pub fn scan_private_asset(text: &str) -> Option<PrivateAssetClass> {
     None
 }
 
-// ---------------------------------------------------------------------------
 // Bundle schema
-// ---------------------------------------------------------------------------
 
 /// One reproduction proof: the public fixture whose result reproduces a claimed
 /// tuple, pinned by a [`ProofHash`]. No bytes, no secrets, no private paths.
@@ -312,7 +302,7 @@ impl ReproductionProof {
 pub struct ReproBundle {
     pub schema_version: String,
     pub bundle_id: String,
-    /// The embedded KAIFUU-105 support tuples (exact shape). Each carries its
+    /// The embedded support tuples (exact shape). Each carries its
     /// fixture/profile id, secret-requirement ids, diagnostics, and evidence
     /// proof hashes.
     pub support_tuples: Vec<ClaimedSupportTuple>,
@@ -323,9 +313,7 @@ pub struct ReproBundle {
     pub notes: Vec<String>,
 }
 
-// ---------------------------------------------------------------------------
 // Validation findings
-// ---------------------------------------------------------------------------
 
 /// A rejected private-asset finding. Names the bundle id, the tuple id (when the
 /// offending string lives inside an embedded tuple), and the field that failed —
@@ -440,9 +428,7 @@ impl ReproductionGap {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Validation report
-// ---------------------------------------------------------------------------
 
 /// The aggregate reproduction-bundle validation report.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -458,7 +444,7 @@ pub struct ReproBundleValidationReport {
     pub self_sufficient: bool,
     pub violations: Vec<PrivateAssetViolation>,
     pub gaps: Vec<ReproductionGap>,
-    /// The rolled-up KAIFUU-105 tuple validation (anti-overclaim etc.).
+    /// The rolled-up tuple validation (anti-overclaim etc.).
     pub tuple_report: ClaimedSupportValidationReport,
 }
 
@@ -505,9 +491,7 @@ impl ReproBundleValidationReport {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Validator
-// ---------------------------------------------------------------------------
 
 fn scan_field(
     bundle_id: &str,
@@ -662,9 +646,8 @@ fn collect_reproduction_gaps(bundle: &ReproBundle) -> Vec<ReproductionGap> {
 }
 
 /// Validate a redacted reproduction bundle. Never panics, never returns `Err`.
-///
 /// The bundle FAILS iff it carries any private asset, is not self-sufficient for
-/// public reproduction, or embeds an overclaiming tuple (KAIFUU-105 gate).
+/// public reproduction, or embeds an overclaiming tuple (gate).
 pub fn validate_repro_bundle(bundle: &ReproBundle) -> ReproBundleValidationReport {
     let violations = collect_private_asset_violations(bundle);
     let gaps = collect_reproduction_gaps(bundle);
@@ -691,9 +674,7 @@ pub fn validate_repro_bundle(bundle: &ReproBundle) -> ReproBundleValidationRepor
     }
 }
 
-// ---------------------------------------------------------------------------
 // Fixtures — a clean redacted bundle + per-class dirty bundles (synthetic)
-// ---------------------------------------------------------------------------
 
 /// Synthetic, redacted, ref-only reproduction-bundle fixtures. The clean bundle
 /// validates green; the `inject_*` helpers produce a copy carrying exactly ONE
@@ -970,7 +951,7 @@ mod tests {
     #[test]
     fn embedded_overclaim_tuple_fails_the_bundle() {
         // A bundle that embeds an overclaiming tuple (patch without evidence)
-        // fails via the rolled-up KAIFUU-105 gate, even with no private asset.
+        // fails via the rolled-up gate, even with no private asset.
         let mut bundle = clean_bundle();
         let overclaim = tuple_overclaim();
         bundle.reproduction_proofs.push(ReproductionProof::new(

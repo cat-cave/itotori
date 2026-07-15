@@ -1,19 +1,14 @@
 //! Canonical-tree Huffman decoder used by the NeXAS `PAC\0` container.
-//!
 //! Two places need it: the tail-stored directory index (`Compression`-agnostic;
 //! the index is *always* Huffman-packed in the "new" layout) and per-entry
 //! payloads whose archive-wide `pack_type` is [`crate::Compression::Huffman`].
-//!
 //! # Clean-room provenance
-//!
 //! The bit-exact algorithm is ported from GARbro's
 //! `ArcFormats/HuffmanCompression.cs` (`HuffmanDecompressor` + `MsbBitStream`),
 //! MIT-licensed, Copyright (C) 2014-2018 by morkt. This is an independent Rust
 //! reimplementation of that documented format — no GARbro binary is bundled or
 //! invoked. See the crate root for the full attribution note.
-//!
 //! # Format
-//!
 //! Bits are consumed **MSB-first**. The stream opens with a serialized binary
 //! tree written in pre-order: a `1` bit introduces an internal node (its left
 //! then right subtrees follow recursively); a `0` bit introduces a leaf whose
@@ -132,9 +127,7 @@ impl<'a> TreeDecoder<'a> {
 }
 
 /// Decode `packed` into exactly `unpacked_size` bytes.
-///
 /// # Errors
-///
 /// [`HuffmanError::UnexpectedEof`] if the stream is exhausted before the tree or
 /// the full output is decoded; [`HuffmanError::TreeOverflow`] if the serialized
 /// tree exceeds the fixed node bound (a sign the input is not a NeXAS Huffman

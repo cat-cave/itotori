@@ -1,15 +1,11 @@
 //! RPG Maker MV/MZ JSON-text readiness record + public fixture generator
-//! (KAIFUU-108).
-//!
 //! This module is the **declaration substrate** the later MV/MZ slices
-//! (map / database / plugin-profile, KAIFUU-109..112) consume. It pins
+//! (map / database / plugin-profile,..112) consume. It pins
 //! exactly which `www/data/*.json` surfaces the adapter is ready to
 //! *inventory* as JSON text, and — mechanically separate from that — it
 //! records that the engine's encrypted image/audio media is **not**
 //! extractable or patchable by this node.
-//!
 //! # Two mechanically-distinct evidence channels
-//!
 //! 1. [`MvMzJsonTextSurface`] — a JSON-text surface the adapter inventories.
 //!    Every such surface flows through an [`IdentityContainer`]: a plain
 //!    project directory, UTF-8 JSON-text codec, JSON-pointer addressing,
@@ -19,15 +15,12 @@
 //!    `*.rpgmvo` media surface. Each one is hard-pinned `extractable = false`
 //!    and `patchable = false` with a media codec and a non-identity crypto
 //!    leg.
-//!
-//! The distinction is **not prose**. [`MvMzReadinessRecord::validate`]
-//! returns structured [`MvMzReadinessViolation`]s — never `Ok(())` — if a
-//! JSON-text surface ever claims a media codec or a crypto transform, or if
-//! an encrypted-media diagnostic is ever marked extractable or patchable.
-//! Downstream slices and ALPHA-004's capability matrix gate on `validate`.
-//!
+//!    The distinction is **not prose**. [`MvMzReadinessRecord::validate`]
+//!    returns structured [`MvMzReadinessViolation`]s — never `Ok` — if a
+//!    JSON-text surface ever claims a media codec or a crypto transform, or if
+//!    an encrypted-media diagnostic is ever marked extractable or patchable.
+//!    Downstream slices and ALPHA-004's capability matrix gate on `validate`.
 //! # Fixtures are public + deterministic
-//!
 //! [`mv_mz_fixture_manifest`] / [`generate_mv_mz_fixture_tree`] emit only
 //! synthetic public JSON (`System.json`, `Map001.json`, `CommonEvents.json`,
 //! database files) plus a manifest of ids / relative paths / SHA-256 content
@@ -46,7 +39,7 @@ use crate::{
 };
 
 /// Readiness-record schema version. Bumped with any breaking field change
-/// consumed by KAIFUU-109..112.
+/// consumed..112.
 pub const MV_MZ_READINESS_SCHEMA_VERSION: &str = "0.1.0";
 /// Public fixture manifest schema version.
 pub const MV_MZ_FIXTURE_MANIFEST_SCHEMA_VERSION: &str = "0.1.0";
@@ -61,9 +54,7 @@ pub const MV_MZ_FIXTURE_ID: &str = "kaifuu-rpgmaker-mv-mz-json-text-public";
 /// Stable id of the encrypted-media-only negative fixture.
 pub const MV_MZ_NEGATIVE_FIXTURE_ID: &str = "kaifuu-rpgmaker-mv-mz-encrypted-media-only-negative";
 
-// ---------------------------------------------------------------------------
 // Surface roles
-// ---------------------------------------------------------------------------
 
 /// The six JSON-text surface roles the MV/MZ adapter inventories. Each role
 /// owns a stable [`MvMzJsonTextSurface::surface_id`] downstream slices
@@ -132,9 +123,7 @@ impl MvMzSurfaceRole {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Identity container
-// ---------------------------------------------------------------------------
 
 /// The transform stack a JSON-text surface flows through. Every leg is
 /// *identity* with respect to cryptography and media re-encoding: a plain
@@ -182,9 +171,7 @@ pub fn is_media_codec(codec: CodecTransform) -> bool {
     )
 }
 
-// ---------------------------------------------------------------------------
 // JSON-text surface
-// ---------------------------------------------------------------------------
 
 /// One JSON-text surface the MV/MZ adapter is ready to inventory.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -212,9 +199,7 @@ impl MvMzJsonTextSurface {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Encrypted-media diagnostic
-// ---------------------------------------------------------------------------
 
 /// Kind of encrypted MV/MZ media surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -290,9 +275,7 @@ impl EncryptedMediaDiagnostic {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Fixture profiles (downstream consumers)
-// ---------------------------------------------------------------------------
 
 /// Maps a downstream consumer node to the exact JSON-text surface ids it
 /// reads from this readiness record.
@@ -313,7 +296,7 @@ impl MvMzFixtureProfile {
         }
     }
 
-    /// The canonical KAIFUU-109..112 consumer profiles.
+    /// The canonical..112 consumer profiles.
     pub fn canonical() -> Vec<Self> {
         use MvMzSurfaceRole::{
             CommonEvents, Database, Maps, PluginProfileDiagnostics, System, Terms,
@@ -343,9 +326,7 @@ impl MvMzFixtureProfile {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Readiness record
-// ---------------------------------------------------------------------------
 
 /// A structured violation of the JSON-text-vs-encrypted-media boundary.
 /// `validate` returns one per offending surface/diagnostic so failures are
@@ -394,7 +375,7 @@ pub enum MvMzReadinessViolation {
     },
 }
 
-/// The MV/MZ JSON-text readiness record consumed by KAIFUU-109..112 and
+/// The MV/MZ JSON-text readiness record consumed..112 and
 /// ALPHA-004's capability matrix.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -435,7 +416,7 @@ impl MvMzReadinessRecord {
     }
 
     /// Mechanically enforce the JSON-text-vs-encrypted-media boundary.
-    /// Returns every violation found; `Ok(())` only when the record is
+    /// Returns every violation found; `Ok` only when the record is
     /// fully consistent.
     pub fn validate(&self) -> Result<(), Vec<MvMzReadinessViolation>> {
         let mut violations = Vec::new();
@@ -530,9 +511,7 @@ impl MvMzReadinessRecord {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Negative fixture: encrypted-media-only evidence stays outside JSON text
-// ---------------------------------------------------------------------------
 
 /// The encrypted-media-only negative fixture: a project whose *only*
 /// evidence is encrypted media. It carries the encrypted-media diagnostics
@@ -593,9 +572,7 @@ impl MvMzNegativeFixture {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Public fixture generator
-// ---------------------------------------------------------------------------
 
 /// One file in the public MV/MZ fixture tree.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -755,7 +732,6 @@ pub fn mv_mz_fixture_manifest() -> MvMzFixtureManifest {
 }
 
 /// Write the public MV/MZ fixture tree under `root` and return the manifest.
-///
 /// Only deterministic public JSON (and the project-root marker) is written;
 /// no retail bytes, private paths, screenshots, or encrypted assets. Files
 /// are written atomically. The returned manifest is byte-identical to

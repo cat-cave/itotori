@@ -304,8 +304,7 @@ pub fn walk_troops(acc: &mut ExtractAcc, file: &str, troops: &Value) {
     }
 }
 
-/// Walk one top-level event-command `list[]` array.
-///
+/// Walk one top-level event-command `list` array.
 /// State carried across the list: the active `Show Text` speaker (MZ 101
 /// param 4) and message-group counter, plus a choice-group counter. Each
 /// entry's code is classified; text codes extract, structural codes skip
@@ -755,8 +754,8 @@ mod tests {
     #[test]
     fn dialogue_choice_scroll_and_unknown_code_are_handled() {
         // Synthetic event list (authored here, not retail bytes):
-        //   101 setup (MZ speaker) | 401 line | 102 choices | 405 scroll |
-        //   356 plugin | 122 script-operand | 70 unknown.
+        // 101 setup (MZ speaker) | 401 line | 102 choices | 405 scroll |
+        // 356 plugin | 122 script-operand | 70 unknown.
         let list = json!([
             {"code": 101, "indent": 0, "parameters": ["Face", 0, 0, 2, "Hero"]},
             {"code": 401, "indent": 0, "parameters": ["Hello \\v[1]!"]},

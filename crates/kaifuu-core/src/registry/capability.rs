@@ -1,10 +1,8 @@
-//! Capability-level ladder for engine adapters (KAIFUU-053).
-//!
+//! Capability-level ladder for engine adapters.
 //! Sits above the granular `Capability` / `CapabilityReport` surface as a
 //! 4-rung ladder consumers query against. Identifying that an engine exists
 //! (`CapabilityLevel::Identify`) does NOT imply the adapter can extract or
 //! patch it; consumers must opt in to the specific rung they need.
-//!
 //! The ladder is intentionally closed (versioned with
 //! `BRIDGE_SCHEMA_VERSION_V02`). Adding a fifth rung later requires a
 //! coordinated Rust + TS + DB schema bump; the next-rung policy is captured
@@ -15,7 +13,6 @@ use serde::{Deserialize, Serialize};
 use crate::{Capability, CapabilityReport, CapabilityStatus};
 
 /// One of the four detector-ladder rungs.
-///
 /// Ordered from least to most capability: `Identify < Inventory < Extract <
 /// Patch`. The `Ord` derivation matches the natural ladder ordering — useful
 /// for `adapters_at_least(level)` and "at least Extract" gates.
@@ -46,7 +43,6 @@ impl CapabilityLevel {
 }
 
 /// Per-rung status. Mirrors the Postgres `capability_level_status_kind` enum:
-///
 /// - `Supported` — adapter implements this rung without caveats.
 /// - `Partial` — adapter implements with caveats; `limitations` lists them
 ///   (must be non-empty).
@@ -107,7 +103,6 @@ impl CapabilityLevelStatus {
 }
 
 /// 4-rung capability matrix for one adapter.
-///
 /// `derive_from_reports` provides a conservative derivation from existing
 /// granular `CapabilityReport`s, but adapters MUST declare their matrix
 /// explicitly so identify-only engines can never accidentally bubble up to
@@ -187,7 +182,7 @@ impl AdapterCapabilityMatrix {
         }
     }
 
-    /// True iff `get(level).is_supported()`. Partial does NOT count — that
+    /// True iff `get(level).is_supported`. Partial does NOT count — that
     /// is the whole point of the strict gate (acceptance criterion 2).
     pub fn supports(&self, level: CapabilityLevel) -> bool {
         self.get(level).is_supported()
@@ -205,19 +200,16 @@ impl AdapterCapabilityMatrix {
     /// `level_matrix` default when an adapter does not declare one
     /// explicitly, and by the consistency check that prevents a declared
     /// matrix from claiming more than the granular reports support.
-    ///
     /// Mapping (from the plan §"Types (Rust)"):
-    ///
     /// - Identify ← `Capability::Detection`
     /// - Inventory ← `Capability::AssetListing` AND `AssetInventory`
     /// - Extract ← `Capability::Extraction`
     /// - Patch ← `Capability::Patching`
-    ///
-    /// Each rung is `Supported` only when every contributing report is
-    /// `CapabilityStatus::Supported`; if any contributor is `Limited` /
-    /// `RequiresUserInput` the rung becomes `Partial` with the contributor
-    /// limitations; if any contributor is `Unsupported` (or missing
-    /// entirely), the rung becomes `Unsupported`.
+    ///   Each rung is `Supported` only when every contributing report is
+    ///   `CapabilityStatus::Supported`; if any contributor is `Limited` /
+    ///   `RequiresUserInput` the rung becomes `Partial` with the contributor
+    ///   limitations; if any contributor is `Unsupported` (or missing
+    ///   entirely), the rung becomes `Unsupported`.
     pub fn derive_from_reports(
         adapter_id: impl Into<String>,
         reports: &[CapabilityReport],
@@ -236,7 +228,7 @@ impl AdapterCapabilityMatrix {
 
     /// Returns the first level at which `self` claims strictly more than
     /// `derived` (i.e. self says `Supported` where derived says `Partial` or
-    /// `Unsupported`). The consistency check (KAIFUU-053 risk:
+    /// `Unsupported`). The consistency check (risk
     /// "Detector report drift") rejects any adapter whose declared matrix
     /// exceeds what the granular reports would support.
     pub fn first_overclaim_against(

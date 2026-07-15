@@ -1,5 +1,4 @@
 //! Byte-accurate JSON value locator + ASCII-safe string encoder.
-//!
 //! The patchback writes reviewed translations into `www/data/*.json` at
 //! exactly the JSON-pointer surfaces the extractor keyed. To keep the
 //! file **byte-identical outside the targeted string surfaces**, we must
@@ -8,7 +7,6 @@
 //! RPG Maker editor emits). Instead this module navigates the *raw bytes*
 //! to the byte span of the target string literal so the driver can splice
 //! only that span.
-//!
 //! [`Scanner::locate`] takes a sequence of JSON-pointer tokens (object
 //! keys / array indices, already RFC6901-decoded) and returns the
 //! [`QuotedSpan`] of the leaf string value — the byte range covering the

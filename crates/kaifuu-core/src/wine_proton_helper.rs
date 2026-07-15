@@ -1,13 +1,10 @@
-//! KAIFUU-090 — Wine/Proton helper adapter (dry-run only).
-//!
+//! Wine/Proton helper adapter (dry-run only).
 //! This module resolves what a Wine or Proton Windows helper *would* do —
 //! naming the helper binary id, the platform adapter, the intended command,
 //! the profile id, and the redaction policy — **without launching untrusted
 //! game code**. It exists to make the helper wiring provable in public CI on a
 //! runner that has no Wine, no Proton, and no private game assets.
-//!
 //! Safety boundary (strict-proof):
-//!
 //! - **Dry-run is resolve + validate + emit, never launch.** There is no
 //!   `std::process` import in this module and no code path that spawns a
 //!   binary. The resolver builds a *descriptor* of the intended command; it
@@ -16,8 +13,8 @@
 //!   [`WineProtonDryRunResolution::validate`] fails closed if either is ever
 //!   `true`.
 //! - **Never log raw secret material.** Every emitted helper result conforms to
-//!   the KAIFUU-085 [`HelperResult`] schema (refs + redacted fields only) and
-//!   the resolution is deep-scanned (KAIFUU-036/094 pattern) for raw key
+//!   the [`HelperResult`] schema (refs + redacted fields only) and
+//!   the resolution is deep-scanned for raw key
 //!   material and local paths in *every* string field, regardless of field
 //!   name. A resolution carrying raw secret material fails validation.
 //! - **Unavailable platform is a typed diagnostic, not a crash.** When the
@@ -25,12 +22,11 @@
 //!   resolves the intended command and emits a
 //!   [`HelperDiagnosticCode::HelperUnavailable`] helper result carrying the
 //!   [`SEMANTIC_HELPER_UNAVAILABLE`] semantic code.
-//!
-//! The dry-run path is deliberately *separate* from the in-process
-//! [`crate::HelperRegistry`] execution path: that registry actually invokes an
-//! adapter in-process, whereas a Wine/Proton helper must never execute at all
-//! from Kaifuu. Keeping them apart makes "no launch" structurally true rather
-//! than a runtime check.
+//!   The dry-run path is deliberately *separate* from the in-process
+//!   [`crate::HelperRegistry`] execution path: that registry actually invokes an
+//!   adapter in-process, whereas a Wine/Proton helper must never execute at all
+//!   from Kaifuu. Keeping them apart makes "no launch" structurally true rather
+//!   than a runtime check.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -57,7 +53,7 @@ pub const SEMANTIC_WINE_PROTON_DRY_RUN_SECRET_LEAK: &str = "kaifuu.wine_proton.d
 /// game code, which the dry-run path forbids.
 pub const SEMANTIC_WINE_PROTON_DRY_RUN_LAUNCH_FORBIDDEN: &str =
     "kaifuu.wine_proton.dry_run.launch_forbidden";
-/// Semantic code: the nested helper result failed KAIFUU-085 schema validation.
+/// Semantic code: the nested helper result failed schema validation.
 pub const SEMANTIC_WINE_PROTON_DRY_RUN_HELPER_RESULT_INVALID: &str =
     "kaifuu.wine_proton.dry_run.helper_result_invalid";
 
@@ -94,13 +90,13 @@ impl WineProtonPlatformAdapter {
         }
     }
 
-    /// The KAIFUU-085 helper kind. Proton is a Wine derivative, so both resolve
+    /// The helper kind. Proton is a Wine derivative, so both resolve
     /// to the local Windows helper kind.
     pub fn helper_kind(self) -> HelperKind {
         HelperKind::WineLocalWindowsHelper
     }
 
-    /// The KAIFUU-085 capability level for a local Wine/Proton helper.
+    /// The capability level for a local Wine/Proton helper.
     pub fn capability_level(self) -> HelperCapabilityLevel {
         HelperCapabilityLevel::WineLocal
     }
@@ -125,7 +121,6 @@ impl HelperRedactionPolicy {
 }
 
 /// Whether the synthetic runner declares the Wine/Proton platform available.
-///
 /// This is an explicit input on the request rather than a live probe: the
 /// dry-run path never shells out to Wine/Proton, so availability is supplied by
 /// the (synthetic) fixture. Public CI runs the "unavailable" fixture with no
@@ -157,7 +152,6 @@ pub struct WineProtonDryRunRequest {
 }
 
 /// The resolved shape of the command a Wine/Proton helper *would* run.
-///
 /// This is a descriptor, not an execution plan handed to any spawner. The
 /// `program_ref` is a launcher *reference* (`wine` / `proton`), never a
 /// filesystem path, and `argument_template` holds template tokens only — never
@@ -175,7 +169,7 @@ pub struct ResolvedHelperCommand {
 
 /// The full dry-run resolution: it names the five required fields
 /// (helper-binary-id, platform-adapter, intended-command, profile-id,
-/// redaction-policy) and carries a KAIFUU-085-conformant helper result.
+/// redaction-policy) and carries a -conformant helper result.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WineProtonDryRunResolution {
@@ -201,13 +195,12 @@ impl WineProtonDryRunResolution {
     }
 
     /// Validates the resolution:
-    ///
     /// 1. `launched` and `intendedCommand.launchesUntrustedCode` must be
     ///    `false` (no launch);
     /// 2. no string field anywhere may carry raw key material or a local path
-    ///    (deep-scan, KAIFUU-036/094 pattern);
+    ///    (deep-scan)
     /// 3. the standard secret-redaction boundary must find nothing;
-    /// 4. the nested helper result must pass KAIFUU-085 schema validation.
+    /// 4. the nested helper result must pass schema validation.
     pub fn validate(&self) -> WineProtonDryRunValidation {
         let mut failures = Vec::new();
 
@@ -347,36 +340,28 @@ impl WineProtonDryRunFailure {
 }
 
 /// Resolves a Wine/Proton dry-run **without launching untrusted game code**.
-///
 /// Given a synthetic request, this names the helper binary id, platform
 /// adapter, intended command, profile id, and redaction policy, and emits a
-/// KAIFUU-085 helper result. When the platform is unavailable the helper result
+/// helper result. When the platform is unavailable the helper result
 /// carries a typed [`HelperDiagnosticCode::HelperUnavailable`] diagnostic
 /// instead of crashing.
-///
-/// ```
 /// use kaifuu_core::{
-///     resolve_wine_proton_dry_run, HelperRedactionPolicy, PlatformAvailability,
-///     WineProtonDryRunRequest, WineProtonPlatformAdapter, WINE_PROTON_HELPER_SCHEMA_VERSION,
-/// };
-///
+/// resolve_wine_proton_dry_run, HelperRedactionPolicy, PlatformAvailability,
+/// WineProtonDryRunRequest, WineProtonPlatformAdapter, WINE_PROTON_HELPER_SCHEMA_VERSION,
 /// let request = WineProtonDryRunRequest {
-///     schema_version: WINE_PROTON_HELPER_SCHEMA_VERSION.to_string(),
-///     fixture_id: "kaifuu-wine-proton-dry-run".to_string(),
-///     helper_binary_id: "kaifuu.fixture.wine-local-windows".to_string(),
-///     allowlist_entry_id: "kaifuu-fixture-wine-local-allowlist".to_string(),
-///     platform_adapter: WineProtonPlatformAdapter::WineLocal,
-///     profile_id: "019ed000-0000-7000-8000-profile00090".to_string(),
-///     redaction_policy: HelperRedactionPolicy::RedactRawLogsAndSecretRefs,
-///     platform_availability: PlatformAvailability::Available,
-///     timeout_ms: 5000,
-/// };
-///
+/// schema_version: WINE_PROTON_HELPER_SCHEMA_VERSION.to_string,
+/// fixture_id: "kaifuu-wine-proton-dry-run".to_string,
+/// helper_binary_id: "kaifuu.fixture.wine-local-windows".to_string,
+/// allowlist_entry_id: "kaifuu-fixture-wine-local-allowlist".to_string,
+/// platform_adapter: WineProtonPlatformAdapter::WineLocal,
+/// profile_id: "019ed000-0000-7000-8000-profile00090".to_string,
+/// redaction_policy: HelperRedactionPolicy::RedactRawLogsAndSecretRefs,
+/// platform_availability: PlatformAvailability::Available,
+/// timeout_ms: 5000,
 /// let resolution = resolve_wine_proton_dry_run(&request);
 /// assert!(!resolution.launched);
 /// assert!(!resolution.intended_command.launches_untrusted_code);
-/// assert_eq!(resolution.validate().status, kaifuu_core::OperationStatus::Passed);
-/// ```
+/// assert_eq!(resolution.validate.status, kaifuu_core::OperationStatus::Passed);
 pub fn resolve_wine_proton_dry_run(
     request: &WineProtonDryRunRequest,
 ) -> WineProtonDryRunResolution {
@@ -405,7 +390,7 @@ pub fn resolve_wine_proton_dry_run(
     // recovers no key material. `helper_required` (not `success`) is the honest
     // diagnostic for a resolvable-but-unrun helper; `helper_unavailable` is the
     // typed diagnostic when the platform is absent. Neither requires a recovered
-    // secretRef/proof under the KAIFUU-085 matrix.
+    // secretRef/proof under the matrix.
     let (diagnostic_code, diagnostic_message) = match request.platform_availability {
         PlatformAvailability::Available => (
             HelperDiagnosticCode::HelperRequired,
@@ -435,7 +420,7 @@ pub fn resolve_wine_proton_dry_run(
         },
         capability_level: adapter.capability_level(),
         execution: HelperExecutionSummary {
-            // The result describes the platform-helper path (per the KAIFUU-085
+            // The result describes the platform-helper path (per the
             // Wine matrix); `durationMs: 0` and the `launched: false` proof show
             // the dry-run resolved the plan without ever executing it.
             mode: HelperResultExecutionMode::PlatformHelper,
@@ -601,7 +586,7 @@ mod tests {
         );
 
         let serialized = resolution.stable_json().unwrap();
-        // The KAIFUU-085 execution object never carries a launch command.
+        // The execution object never carries a launch command.
         assert!(!serialized.contains("\"command\""));
         assert!(!serialized.contains("\"argv\""));
         assert!(!serialized.contains("\"env\""));

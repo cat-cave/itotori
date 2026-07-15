@@ -1,7 +1,6 @@
 //! TyranoScript `.ks` stable-extraction + byte-preserving patch proof (the
 //! layered-pipeline round-trip: identity container + null-key crypto +
 //! tyrano-script-markup codec).
-//!
 //! Fixtures are synthetic, authored, CC0 (`fixtures/scenario_basic.ks`); no
 //! retail TyranoScript bytes. The Shift-JIS test builds its bytes in-process to
 //! exercise the trailing-byte hazard without committing a binary blob.

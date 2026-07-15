@@ -1,12 +1,10 @@
 //! Proprietary Siglus LZSS compressor — **skeleton** (siglus-05; real
 //! codec lands with patchback in the siglus-2x range).
-//!
 //! The inverse of [`crate::decompress`]. Patchback re-emits an edited
 //! scene by re-compressing the patched bytecode with the same proprietary
 //! LZSS the engine expects, so a round-trip
 //! (decompress → edit → compress → decompress) reproduces the edit
 //! byte-for-byte.
-//!
 //! Skeleton status: [`compress_siglus_lzss`] returns
 //! [`SiglusCompressError::NotImplemented`]. No synthetic "store-only"
 //! encoder is provided — that would be a fake-success stub that the
@@ -29,7 +27,6 @@ pub enum SiglusCompressError {
 
 /// Compress a plaintext scene bytecode blob into the proprietary Siglus
 /// LZSS form the engine expects.
-///
 /// Skeleton: always returns [`SiglusCompressError::NotImplemented`]. The
 /// real implementation must be round-trip-exact with
 /// [`crate::decompress::decompress_siglus_lzss`].

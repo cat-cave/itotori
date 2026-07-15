@@ -1,5 +1,4 @@
 //! Catalog-discovery layer.
-//!
 //! All queries are parameter-bound; no string interpolation reaches the
 //! SQLite query planner.
 
@@ -122,7 +121,6 @@ pub struct ReleaseCandidate {
 }
 
 /// Run discovery for a claim against a read-only catalog connection.
-///
 /// Returns one or more candidates, never zero — zero is reported as
 /// [`VaultSourceError::ReleaseNotResolved`].
 pub fn discover(
@@ -568,7 +566,7 @@ mod tests {
         // Regression guard: a real query/decode error on the engine fact
         // (here an integer value that fails to decode as String) must
         // PROPAGATE as a typed error, not be silently swallowed to None via
-        // `.ok()`. Same guarantee as the ByEngineClaim path.
+        // `.ok`. Same guarantee as the ByEngineClaim path.
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE releases (\
@@ -599,7 +597,7 @@ mod tests {
         // Regression guard: if the needs-review lookup errors for a reason
         // other than "no row" (here the view/table is missing -> schema
         // drift), the loader must surface a typed error rather than defaulting
-        // engine_needs_review to false via `.is_ok()`.
+        // engine_needs_review to false via `.is_ok`.
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE releases (\

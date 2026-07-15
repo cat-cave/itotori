@@ -1,12 +1,10 @@
 //! Real-bytes validation of the Softpal PAC reader against two owned titles.
-//!
 //! `#[ignore]`d and env-gated: set `ITOTORI_SOFTPAL_RESEARCH_ROOT` to the
 //! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
 //! `--ignored`. No raw copyrighted bytes live in this file — only entry
 //! counts, offsets, sizes, and SHA-256 hashes, which the reader must
 //! reproduce. The extracted `SCRIPT.SRC` / `TEXT.DAT` hashes were verified
 //! byte-for-byte against the GARbro / SoftPal-Tool `pac_unpack.py` oracle.
-//!
 //! Deliberately NOT named `*_real_bytes.rs` and NOT gated on
 //! `ITOTORI_REAL_GAME_ROOT` / `ITOTORI_VAULT_ROOT`: this crate's corpus is the
 //! standalone Softpal research tree, not the RealLive/vault periodic-oracle
