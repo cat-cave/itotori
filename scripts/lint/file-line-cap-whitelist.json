@@ -40,7 +40,7 @@
     "crates/kaifuu-core/src/wolf_profiled_production.rs": 1263,
     "crates/kaifuu-core/src/wolf_protection_detector.rs": 1113,
     "crates/kaifuu-core/src/wolf_readiness.rs": 1171,
-    "crates/kaifuu-core/src/xp3_capability_profile.rs": 1331,
+    "crates/kaifuu-core/src/xp3_capability_profile.rs": 993,
     "crates/kaifuu-delta/src/contract_scaffold.rs": 871,
     "crates/kaifuu-delta/src/lib.rs": 2211,
     "crates/kaifuu-engine-fixture/src/lib.rs": 10055,
