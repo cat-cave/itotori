@@ -199,7 +199,11 @@ pub mod graphics_objects;
 // writes it to a managed [`utsushi_core::RuntimeArtifactRoot`], and
 // announces it through the substrate
 // [`utsushi_core::substrate::FrameArtifactSink`] at `EvidenceTier::E2`.
+//
+// Deterministic PNG encoder + checksum helpers (bodies); public items
+// re-exported through [`render_pipeline`] so the crate API is unchanged.
 pub mod render_pipeline;
+mod render_png;
 
 // AVG-derived save format (`SAVE_FORMAT=3`). Typed
 // reader/writer for `REALLIVE.sav` (per-slot system save)
