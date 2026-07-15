@@ -32,6 +32,8 @@ export type {
   ExternalIdentityProviderClaim,
   Permission,
 } from "./authorization.js";
+export { llmContentReadPermission, permissionBasedLlmContentRead } from "./llm-content-access.js";
+export type { LlmContentReadAuthorizer, LlmContentReadRequest } from "./llm-content-access.js";
 export { migrate } from "./migrations.js";
 export {
   BENCHMARK_MANAGED_ARTIFACT_KINDS,
@@ -1347,3 +1349,5 @@ export {
   LlmSpendAdmissionDeniedError,
 } from "./repositories/llm-http-attempt-repository.js";
 export type { LlmSpendExposureReport } from "./repositories/llm-http-attempt-repository.js";
+export { ItotoriLlmRetentionRepository } from "./repositories/llm-retention-repository.js";
+export type { LlmRetentionDeletionReport } from "./repositories/llm-retention-repository.js";

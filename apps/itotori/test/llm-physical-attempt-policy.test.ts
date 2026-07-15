@@ -93,9 +93,9 @@ postgresDescribe("physical attempt policy", () => {
         ),
       ).toMatchObject({ status: "failure", failureKind: "retries-exhausted" });
       expect(restarted.transportCalls()).toBe(0);
-      const report = await new ItotoriLlmCallMemoRepository(context.pool, cipher).readSpendExposure(
-        "test:llm-step",
-      );
+      const report = await new ItotoriLlmCallMemoRepository(context.pool, cipher, {
+        requireContentRead: async () => undefined,
+      }).readSpendExposure("test:llm-step");
       expect(report).toMatchObject({
         billingUnknownAttemptCount: 3,
         boundedInFlightExposureUsd: "0",
@@ -218,7 +218,9 @@ postgresDescribe("physical attempt policy", () => {
   it("reports confirmed, unknown, and bounded in-flight exposure without reservation rows", async () => {
     const context = await isolatedMigratedContext();
     const cipher = new TestMemoCipher();
-    const repository = new ItotoriLlmCallMemoRepository(context.pool, cipher);
+    const repository = new ItotoriLlmCallMemoRepository(context.pool, cipher, {
+      requireContentRead: async () => undefined,
+    });
     const scope = "test:exposure";
     const confirmedCostUsd = "0.25"; // itotori-225-audit-allow: synthetic reconciled-cost fact for the admission report test
     let announceStarted!: () => void;

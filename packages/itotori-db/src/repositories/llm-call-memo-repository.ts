@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import type { DatabaseContext } from "../connection.js";
+import type { LlmContentReadAuthorizer } from "../llm-content-access.js";
 import {
   ItotoriLlmHttpAttemptRepository,
   type LlmSpendExposureReport,
@@ -9,6 +10,8 @@ import {
 export interface LlmMemoCipher {
   seal(plaintext: string): Promise<{ ciphertext: Uint8Array; keyRef: string }>;
   open(ciphertext: Uint8Array, keyRef: string): Promise<string>;
+  /** Must be idempotent so interrupted retention passes can resume safely. */
+  destroyKey(keyRef: string): Promise<void>;
 }
 
 export type LlmStepBilling =
@@ -123,6 +126,7 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
   constructor(
     private readonly pool: DatabaseContext["pool"],
     private readonly cipher: LlmMemoCipher,
+    private readonly contentAccess: LlmContentReadAuthorizer,
   ) {
     this.#attempts = new ItotoriLlmHttpAttemptRepository(pool, cipher);
   }
@@ -235,6 +239,7 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
     if (!row.response_ciphertext || !row.outcome_ciphertext || !row.response_event_id) {
       throw new Error(`immutable memo ${memoKey} is incomplete`);
     }
+    await this.contentAccess.requireContentRead({ contentRef: memoKey, purpose: "memo-replay" });
     const responseJson = await this.openVerified(
       row.response_ciphertext,
       row.response_key_ref,
