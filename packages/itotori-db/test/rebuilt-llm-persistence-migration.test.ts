@@ -33,11 +33,52 @@ const encryptedColumns = [
   ["itotori_llm_wiki_versions", "wiki_ciphertext"],
 ] as const;
 
+const expectedColumnsByTable = {
+  itotori_llm_encrypted_column_registry:
+    "table_name ciphertext_column key_ref_column hash_column retention_class deletion_state_column encryption_method".split(
+      " ",
+    ),
+  itotori_llm_call_memos:
+    "memo_key semantic_hash schema_version request_ciphertext request_key_ref request_content_hash response_ciphertext response_key_ref response_content_hash outcome_ciphertext outcome_key_ref outcome_content_hash outcome_kind verification_status generation_id requested_model provider_policy served_model served_provider prompt_token_count completion_token_count reasoning_token_count cached_token_count billing_state cost_usd completed_at retention_deadline deletion_state deleted_at".split(
+      " ",
+    ),
+  itotori_llm_http_attempts:
+    "attempt_id memo_key attempt_ordinal request_ciphertext request_key_ref request_content_hash response_ciphertext response_key_ref response_content_hash request_hash attempt_status http_status generation_id billing_state cost_usd started_at completed_at retention_deadline deletion_state deleted_at".split(
+      " ",
+    ),
+  itotori_llm_conversation_events:
+    "event_id schema_version parent_event_ids event_kind snapshot_kind snapshot_id actor_role event_body_ciphertext event_body_key_ref event_body_content_hash memo_key accepted created_at retention_deadline deletion_state deleted_at".split(
+      " ",
+    ),
+  itotori_llm_accepted_outputs:
+    "output_id semantic_key schema_version output_version supersedes_output_id parent_output_ids memo_keys snapshot_kind snapshot_id subject_type subject_id stage source_hash output_ciphertext output_key_ref output_content_hash accepted_at retention_deadline deletion_state deleted_at".split(
+      " ",
+    ),
+  itotori_llm_wiki_versions:
+    "wiki_version_id wiki_kind object_id object_version supersedes_version snapshot_kind snapshot_id object_kind wiki_ciphertext wiki_key_ref wiki_content_hash created_at retention_deadline deletion_state deleted_at".split(
+      " ",
+    ),
+  itotori_llm_dependency_edges:
+    "edge_id downstream_wiki_version_id dependency_hash upstream_object_id upstream_version claim_id field_path rendering_id scope_ref from_play_order through_play_order created_at".split(
+      " ",
+    ),
+  itotori_llm_human_inputs:
+    "input_id input_kind subject_ref human_input_ciphertext human_input_key_ref human_input_content_hash created_at retention_deadline deletion_state deleted_at".split(
+      " ",
+    ),
+  itotori_llm_cas_heads:
+    "head_namespace snapshot_id subject_type subject_id head_stage head_id head_version head_content_hash updated_at".split(
+      " ",
+    ),
+} as const satisfies Record<(typeof rebuiltTables)[number], readonly string[]>;
+
 const here = dirname(fileURLToPath(import.meta.url));
-const migrationSql = readFileSync(
-  join(here, "..", "migrations", "0101_rebuilt_llm_persistence.sql"),
-  "utf8",
-);
+const migrationSql = [
+  "0101_rebuilt_llm_persistence.sql",
+  "0102_rebuilt_llm_history_truncate_guard.sql",
+]
+  .map((file) => readFileSync(join(here, "..", "migrations", file), "utf8"))
+  .join("\n");
 const hash = (digit: string) => `sha256:${digit.repeat(64)}`;
 
 describe("rebuilt LLM persistence migration", () => {
@@ -120,20 +161,45 @@ describe("rebuilt LLM persistence migration", () => {
     );
     expect(lifecycleColumns.rows).toHaveLength(12);
     expect(lifecycleColumns.rows.every((column) => column.is_nullable === "NO")).toBe(true);
+
+    const truncateTriggers = await pool.query<{ table_name: string }>(
+      `
+        select relation.relname as table_name
+        from pg_trigger trigger
+        join pg_class relation on relation.oid = trigger.tgrelid
+        join pg_namespace namespace on namespace.oid = relation.relnamespace
+        where namespace.nspname = current_schema()
+          and relation.relname = any($1::text[])
+          and not trigger.tgisinternal
+          and (trigger.tgtype & 32) <> 0
+        order by relation.relname
+      `,
+      [[...historyTables]],
+    );
+    expect(truncateTriggers.rows.map((row) => row.table_name)).toEqual([...historyTables].sort());
   });
 
-  it("keeps forbidden orchestration columns out of every rebuilt table", async () => {
-    const columns = await context!.pool.query<{ table_name: string; column_name: string }>(
-      `
-        select table_name, column_name
-        from information_schema.columns
-        where table_schema = current_schema()
-          and table_name = any($1::text[])
-          and column_name ~ '(reservation|lease|fence|run_owner|whole_unit_restart)'
-      `,
-      [[...rebuiltTables]],
-    );
-    expect(columns.rows).toEqual([]);
+  it("allows only the exact rebuilt-table column contract", async () => {
+    await expect(assertExactRebuiltColumns(context!.pool)).resolves.toBeUndefined();
+  });
+
+  it("rejects unexpected ownership-shaped columns regardless of their names", async () => {
+    const client = await context!.pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(`
+        alter table itotori_llm_call_memos
+          add column claimed_by_worker text,
+          add column owner_run_id text,
+          add column locked_until timestamptz
+      `);
+      await expect(assertExactRebuiltColumns(client)).rejects.toThrow(
+        /unexpected rebuilt LLM columns/u,
+      );
+    } finally {
+      await client.query("rollback").catch(() => undefined);
+      client.release();
+    }
   });
 
   it("rejects duplicate memo, attempt, output, wiki, and head identities", async () => {
@@ -217,6 +283,12 @@ describe("rebuilt LLM persistence migration", () => {
     );
   });
 
+  it("rejects truncation of immutable history", async () => {
+    await expect(context!.pool.query("truncate itotori_llm_call_memos")).rejects.toThrow(
+      /history is immutable/u,
+    );
+  });
+
   it("is idempotent on upgrade and rolls back interrupted application", async () => {
     await expect(context!.pool.query(migrationSql)).resolves.toBeDefined();
 
@@ -246,7 +318,36 @@ describe("rebuilt LLM persistence migration", () => {
   });
 });
 
-type Queryable = DatabaseContext["pool"];
+type Queryable = Pick<DatabaseContext["pool"], "query">;
+
+async function assertExactRebuiltColumns(pool: Queryable): Promise<void> {
+  const columns = await pool.query<{ table_name: string; column_name: string }>(
+    `
+      select table_name, column_name
+      from information_schema.columns
+      where table_schema = current_schema() and table_name = any($1::text[])
+      order by table_name, column_name
+    `,
+    [[...rebuiltTables]],
+  );
+  const actual = new Map(rebuiltTables.map((table) => [table, new Set<string>()]));
+  for (const column of columns.rows)
+    actual.get(column.table_name as (typeof rebuiltTables)[number])?.add(column.column_name);
+  const differences = rebuiltTables.flatMap((table) => {
+    const expected = new Set(expectedColumnsByTable[table]);
+    const columnsForTable = actual.get(table)!;
+    return [
+      ...[...columnsForTable]
+        .filter((column) => !expected.has(column))
+        .map((column) => `+${table}.${column}`),
+      ...[...expected]
+        .filter((column) => !columnsForTable.has(column))
+        .map((column) => `-${table}.${column}`),
+    ];
+  });
+  if (differences.length > 0)
+    throw new Error(`unexpected rebuilt LLM columns: ${differences.join(", ")}`);
+}
 
 async function insertMemo(pool: Queryable, memoKey: string, semanticHash: string): Promise<void> {
   await pool.query(
