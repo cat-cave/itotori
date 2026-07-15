@@ -3713,11 +3713,25 @@ describe("Itotori API handlers", () => {
     },
   );
 
-  it("keeps the API mutation permission matrix aligned with handler gates", () => {
+  it("keeps API mutation gate declarations aligned with the permission matrix", () => {
     const sourcePermissionGateIds = sourceApiPermissionGateIds();
-    const sourceMutationRoutes = sourceApiMutationRoutes();
-    assertNoUndeclaredAppPermissionCalls();
+    expect(apiMutationPermissionMatrix.map(({ gateId }) => gateId).sort()).toEqual(
+      sourcePermissionGateIds.sort(),
+    );
+    expect(apiMutationPermissionMatrix.map(({ gateId }) => gateId).sort()).toEqual(
+      Object.keys(apiMutationPermissionGates).sort(),
+    );
+  });
 
+  it("keeps API mutation routes aligned with the permission matrix", () => {
+    expect(matrixMutationRoutes()).toEqual(sourceApiMutationRoutes());
+  });
+
+  it("finds no undeclared permission calls in application source", () => {
+    assertNoUndeclaredAppPermissionCalls();
+  });
+
+  it("keeps every project workflow mutation behind an API permission gate", () => {
     // SHARED-026 — shape-robust coverage: every mutating projectWorkflow call,
     // regardless of routing shape (route-table / switch / helper-predicate),
     // must be preceded by a requireApiPermission gate. See
@@ -3729,14 +3743,9 @@ describe("Itotori API handlers", () => {
         apiHandlersSourceUrl.pathname,
       ),
     ).toEqual([]);
+  });
 
-    expect(apiMutationPermissionMatrix.map(({ gateId }) => gateId).sort()).toEqual(
-      sourcePermissionGateIds.sort(),
-    );
-    expect(apiMutationPermissionMatrix.map(({ gateId }) => gateId).sort()).toEqual(
-      Object.keys(apiMutationPermissionGates).sort(),
-    );
-    expect(matrixMutationRoutes()).toEqual(sourceMutationRoutes);
+  it("pins the API mutation permission matrix contract", () => {
     expect(
       apiMutationPermissionMatrix.map(
         ({ name, route, permission, successFixture, denialFixture }) => ({

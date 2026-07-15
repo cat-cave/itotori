@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, before, test } from "node:test";
 
 import {
   chromiumCandidates,
@@ -337,50 +341,68 @@ test("provisionPlan degrades to a manual note when toolchains are absent", () =>
 });
 
 // ---------------------------------------------------------------------------
-// REAL-BINARY contract probe (anti-drift): spawn the ACTUAL freshly-built bin
-// and run its real contract probe through the real `defaultProbe`, so the test
-// can never silently drift from the binary (the earlier hand-copied banner
-// could). This proves a CURRENT bin PASSES the strengthened handshake. It is
-// SKIPPED when the bin is not built (e.g. a docs-only CI lane); the synthetic
-// tests above still cover the decision logic.
-function resolveRealBinPath(bin) {
-  const probe = defaultProbe();
-  for (const c of rustBinCandidates(bin, process.env)) {
-    if (c.source === "path") {
-      const abs = probe.which(c.path);
-      if (abs) return abs;
-      continue;
-    }
-    if (probe.exists(c.path)) return c.path;
-  }
-  return null;
+// REAL-BINARY contract probe (anti-drift): build the current source into a
+// test-private target before probing it. Merely resolving an existing binary
+// from CARGO_TARGET_DIR is racy: another worktree can replace that shared path
+// between discovery and spawn, and existence says nothing about freshness.
+// A private build both removes that race and makes a broken current contract
+// fail loudly instead of green-skipping when no prebuilt binary happens to be
+// present.
+const realBinTarget = mkdtempSync(join(tmpdir(), "itotori-native-deps-contract-"));
+
+function realBinPath(bin) {
+  const executableName = process.platform === "win32" ? `${bin.name}.exe` : bin.name;
+  return join(realBinTarget, "debug", executableName);
 }
 
-for (const bin of RUST_BINS) {
-  const realPath = resolveRealBinPath(bin);
-  test(
-    `REAL ${bin.name}: freshly-built bin HONORS its subcommand contract probe`,
-    { skip: realPath === null ? `${bin.name} not built` : false },
-    () => {
-      const probe = defaultProbe();
-      const probeResult = probe.probeOf(realPath, bin.contractProbe.args);
-      assert.ok(
-        probeResult.ok,
-        `${bin.name} contract probe could not spawn ${realPath}: ${probeResult.error}`,
-      );
-      assert.ok(
-        contractProbeHonored(bin.contractProbe, probeResult),
-        `current ${bin.name} at ${realPath} must PASS the contract handshake ` +
-          `(${bin.contractProbe.description}); real probe output was:\n${probeResult.text}`,
-      );
-      // And the full doctor rust-bin check reports OK for this real bin.
-      const report = runDoctor({
-        env: { ...process.env, DATABASE_URL: "postgres://x@127.0.0.1:1/x" },
-        profile: "core",
-        probe,
-      });
-      const dep = report.deps.find((d) => d.id === `rust:${bin.name}`);
-      assert.equal(dep.status, "ok", `real ${bin.name} doctor status: ${JSON.stringify(dep)}`);
+before(() => {
+  const build = spawnSync(
+    "cargo",
+    ["build", "--quiet", ...RUST_BINS.flatMap((bin) => ["-p", bin.name])],
+    {
+      cwd: new URL("..", import.meta.url),
+      encoding: "utf8",
+      env: { ...process.env, CARGO_TARGET_DIR: realBinTarget },
     },
   );
+  assert.equal(
+    build.status,
+    0,
+    `could not build private native-deps contract fixtures:\n${build.stdout}${build.stderr}`,
+  );
+});
+
+after(() => rmSync(realBinTarget, { recursive: true, force: true }));
+
+for (const bin of RUST_BINS) {
+  test(`REAL ${bin.name}: freshly-built bin HONORS its subcommand contract probe`, () => {
+    const realPath = realBinPath(bin);
+    const probe = defaultProbe();
+    const probeResult = probe.probeOf(realPath, bin.contractProbe.args);
+    assert.ok(
+      probeResult.ok,
+      `${bin.name} contract probe could not spawn ${realPath}: ${probeResult.error}`,
+    );
+    assert.ok(
+      contractProbeHonored(bin.contractProbe, probeResult),
+      `current ${bin.name} at ${realPath} must PASS the contract handshake ` +
+        `(${bin.contractProbe.description}); real probe output was:\n${probeResult.text}`,
+    );
+    // And the full doctor rust-bin check reports OK for this real bin.
+    const fixtureEnv = {
+      ...process.env,
+      CARGO_TARGET_DIR: realBinTarget,
+      DATABASE_URL: "postgres://x@127.0.0.1:1/x",
+    };
+    for (const fixtureBin of RUST_BINS) {
+      fixtureEnv[fixtureBin.envVar] = realBinPath(fixtureBin);
+    }
+    const report = runDoctor({
+      env: fixtureEnv,
+      profile: "core",
+      probe,
+    });
+    const dep = report.deps.find((d) => d.id === `rust:${bin.name}`);
+    assert.equal(dep.status, "ok", `real ${bin.name} doctor status: ${JSON.stringify(dep)}`);
+  });
 }
