@@ -506,6 +506,10 @@ export const migrations = [
     id: "0100_backfill_terminal_cost_reservations",
     file: "0100_backfill_terminal_cost_reservations.sql",
   },
+  {
+    id: "0101_rebuilt_llm_persistence",
+    file: "0101_rebuilt_llm_persistence.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
