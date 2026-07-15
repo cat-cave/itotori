@@ -7,6 +7,28 @@ use std::path::{Path, PathBuf};
 
 pub const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
 
+/// Inner text of the FIRST inline `【…】` name token in a decoded sourceText —
+/// the display key the runtime would look up. `None` for a tokenless body.
+/// Used to independently cross-check that a claimed speaker identity came from
+/// THIS line's own token, not a fabricated substring / carried-forward guess.
+pub fn extract_inline_name_token(source_text: &str) -> Option<String> {
+    let open = source_text.find('\u{3010}')?;
+    let after_open = open + '\u{3010}'.len_utf8();
+    let close_rel = source_text[after_open..].find('\u{3011}')?;
+    Some(source_text[after_open..after_open + close_rel].to_string())
+}
+
+/// Parse the first two quoted fields of a `#NAMAE` RHS
+/// (`"display" = "box" = (…)`) → `(display_key, box_name)`. A deliberately
+/// INDEPENDENT re-parse of Gameexe (not the bridge's own resolver) so an
+/// identity oracle can check a produced name against the real row.
+pub fn namae_display_and_box(value: &str) -> Option<(String, String)> {
+    let mut fields = value.split('"').skip(1).step_by(2);
+    let display = fields.next()?.to_string();
+    let box_name = fields.next()?.to_string();
+    Some((display, box_name))
+}
+
 /// Second RealLive corpus root, used for multi-game validation (project
 /// law: engine-family behaviour must validate against >=2 real RealLive
 /// games). Points at a *different* RealLive title than [`REAL_GAME_ROOT_ENV`]

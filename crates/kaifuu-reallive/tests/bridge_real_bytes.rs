@@ -1,25 +1,16 @@
-//! real-bytes integration test for the v0.2 BridgeBundle
-//! producer, including the binary-vs-dialogue surface-selection split.
-//! Reads Sweetie HD from `ITOTORI_REAL_GAME_ROOT` and exercises two
-//! scenes:
-//! - **Scene 1** is a system/boundary scene: every one of its Textout
-//!   runs is embedded binary data (the catch-all decoder returns them as
-//!   `Textout`, but they do not decode as Shift-JIS). The producer must
-//!   surface ZERO translatable units and return `NoTextUnits` — surfacing
-//!   any of them (e.g. the 214-byte op[72] data block) would let patchback
-//!   overwrite the table and corrupt the scene.
-//! - **Scene 1018** is a dialogue scene that decodes 100% clean under the
-//!   reference-complete command catalogue (real `module_sel` select-block
-//!   Choice units included). The producer must surface exactly the readable
-//!   Shift-JIS Textout runs plus choice options as translatable units — no
-//!   false negatives — with decoded text, a `reallive.kidoku` span, and
-//!   NAMAE-resolved speakers. (The previously-used scene 2011 contains a
-//!   second-level-XOR'd `module_sel` block — a `compiler_version=110002`
-//!   `xor_2` segment, owned by the decompressor — so it can
-//!   no longer be decoded end-to-end and is not a valid clean fixture.)
-//!   The test is env-gated and STRICT; without `ITOTORI_REAL_GAME_ROOT` an
-//!   absent corpus is an unconditional HARD FAILURE (no opt-out). This
-//!   `#[ignore]`-d suite runs only in the periodic ground-truth oracle
+//! real-bytes integration test for the v0.2 BridgeBundle producer (the
+//! binary-vs-dialogue surface split + the speaker-identity oracle). Reads
+//! Sweetie HD from `ITOTORI_REAL_GAME_ROOT` and exercises two scenes:
+//! - **Scene 1** — system/boundary: every Textout run is embedded binary
+//!   data, so the producer must surface ZERO translatable units and return
+//!   `NoTextUnits` (surfacing e.g. the 214-byte op[72] block would let
+//!   patchback corrupt the scene).
+//! - **Scene 1018** — a 100%-clean dialogue scene (real `module_sel` Choice
+//!   options included): the producer must surface exactly the readable
+//!   Shift-JIS Textout runs + choice options, with a `reallive.kidoku` span
+//!   and NAMAE-resolved speakers whose identity is cross-checked against
+//!   Gameexe. Env-gated + STRICT: an absent corpus is a HARD FAILURE. This
+//!   `#[ignore]`-d suite runs only in the periodic oracle
 //!   (`just real-bytes-oracle`), where the corpus is staged.
 
 #[path = "support/real_corpus.rs"]
@@ -31,8 +22,9 @@ use std::path::PathBuf;
 use kaifuu_core::RedactedContentSummary;
 use kaifuu_reallive::{
     BridgeOpts, BridgeProduceError, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, RealLiveOpcode,
-    SceneHeader, decode_dialogue_textout, decompress_avg32, gameexe::parse_gameexe_inventory,
-    parse_archive, parse_real_bytecode, produce_bundle,
+    SceneHeader, decode_dialogue_textout, decompress_avg32, deterministic_speaker_id,
+    gameexe::parse_gameexe_inventory, parse_archive, parse_real_bytecode, produce_bundle,
+    scene_bundle_namespace,
 };
 
 const SWEETIE_HD_GAME_ID: &str = "sweetie-hd";
@@ -198,9 +190,14 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
 
     let scene = scene_bytecode(&seen_bytes, DIALOGUE_SCENE_ID);
 
-    let gameexe_bytes = real_gameexe_ini_path()
-        .and_then(|path| fs::read(path).ok())
-        .unwrap_or_default();
+    // A staged corpus MUST carry a readable Gameexe.ini. Silently defaulting
+    // to an empty inventory here (the prior `unwrap_or_default`) let a
+    // staged-but-unreadable corpus skip every speaker assertion behind
+    // `if namae_entries > 0` — a green-on-broken hole. Read it or fail loud.
+    let gameexe_path =
+        real_gameexe_ini_path().expect("staged Sweetie HD corpus must carry a Gameexe.ini");
+    let gameexe_bytes = fs::read(&gameexe_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", gameexe_path.display()));
     let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
     let namae_entries = gameexe_inventory
         .entries
@@ -213,6 +210,13 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
         })
         .count();
     eprintln!("Gameexe NAMAE entries observed: {namae_entries}");
+    // Sweetie HD's Gameexe.ini declares exactly 11 `#NAMAE` speaker rows
+    // (including the `？？？／<name>` censored rows). Pin it so an empty /
+    // truncated inventory can never masquerade as "no speakers to check".
+    assert_eq!(
+        namae_entries, 11,
+        "Sweetie HD Gameexe.ini must expose its 11 real #NAMAE rows; got {namae_entries}"
+    );
 
     let opts = bridge_opts(scene.header.kidoku_count);
     let produced = produce_bundle(
@@ -251,11 +255,9 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
     let choice_unit_count: usize = opcodes
         .iter()
         .filter_map(|op| match op {
-            // Only choice options whose bytes decode as readable Shift-JIS
-            // dialogue become translatable units; non-dialogue options (empty
-            // interior slots, or rlBabel `###PRINT(<expr>)` runtime
-            // interpolations) are excluded by the same gate the producer
-            // applies.
+            // Only choice options that decode as readable Shift-JIS become
+            // translatable units; non-dialogue options (empty slots, rlBabel
+            // `###PRINT(<expr>)` interpolations) are excluded by the same gate.
             RealLiveOpcode::Choice { choices } => Some(
                 choices
                     .iter()
@@ -310,21 +312,148 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
     let mut emitted_parsed_names: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
 
-    if namae_entries > 0 {
-        let resolved = units_array
+    {
+        let state_of = |unit: &serde_json::Value| {
+            unit["speaker"]["knowledgeState"]
+                .as_str()
+                .unwrap_or("")
+                .to_string()
+        };
+        let count_state = |state: &str| {
+            units_array
+                .iter()
+                .filter(|unit| state_of(unit) == state)
+                .count()
+        };
+        let known = count_state("known");
+        let reader_unknown = count_state("reader_unknown");
+        let parser_unknown = count_state("parser_unknown");
+        let not_applicable = count_state("not_applicable");
+        eprintln!(
+            "speaker knowledge states on real bytes: known={known} reader_unknown={reader_unknown} parser_unknown={parser_unknown} not_applicable={not_applicable}"
+        );
+
+        // EXACT, honestly re-measured Sweetie HD scene 1018 outcome (the prior
+        // "known=100" claim was inflated by the removed fabrication paths).
+        // Pinning the vector makes a 1-true/103-false producer FAIL.
+        assert_eq!(
+            produced.bundle.units.len(),
+            104,
+            "scene 1018 must surface exactly 104 translatable units"
+        );
+        assert_eq!(
+            known, 25,
+            "scene 1018 must resolve exactly 25 `known` speakers"
+        );
+        assert_eq!(reader_unknown, 0, "scene 1018 has no censored speakers");
+        assert_eq!(
+            parser_unknown, 0,
+            "no genuinely-unresolved speaker remains on scene 1018"
+        );
+        assert_eq!(
+            known + reader_unknown + parser_unknown + not_applicable,
+            104,
+            "every unit must carry exactly one knowledge state"
+        );
+
+        // Independently re-resolve every Gameexe `#NAMAE` row (display key ->
+        // box-shown name) WITHOUT the bridge's own resolver, so the oracle
+        // checks each identity against the REAL row + DETERMINISTIC id.
+        let namae_rows: std::collections::BTreeMap<String, String> = gameexe_inventory
+            .entries
             .iter()
-            .filter_map(|unit| unit["speaker"].as_object())
-            .filter(|speaker| {
-                let state = speaker.get("knowledgeState").and_then(|v| v.as_str());
-                matches!(state, Some("known"))
-                    || (matches!(state, Some("parser_unknown"))
-                        && speaker.contains_key("rawSpeakerText"))
+            .filter(|entry| {
+                matches!(
+                    entry.family,
+                    kaifuu_reallive::gameexe::GameexeKeyFamily::Namae
+                )
             })
-            .count();
-        eprintln!("units with NAMAE-resolved speaker: {resolved}");
-        assert!(
-            resolved >= 1,
-            "at least one unit must carry a NAMAE-resolved speaker when the NAMAE table is populated ({namae_entries} entries); got {resolved}"
+            .filter_map(|entry| real_corpus::namae_display_and_box(&entry.value))
+            .collect();
+        let namespace = scene_bundle_namespace(
+            SWEETIE_HD_GAME_ID,
+            SWEETIE_HD_SOURCE_PROFILE_ID,
+            DIALOGUE_SCENE_ID,
+        );
+
+        // Full-identity cross-check: EACH resolved identity must (a) come from
+        // this line's OWN `【…】` token, (b) resolve to a REAL Gameexe row, (c)
+        // carry that row's `displayName`/`readerLabel`, and (d) carry the
+        // `speakerId` DERIVED from its canonical ref. Fabricated name / forged
+        // id / substring / carry-forward each fail one of these.
+        let mut cross_checked = 0usize;
+        for unit in units_array {
+            let state = state_of(unit);
+            let source_text = unit["sourceText"].as_str().unwrap_or("");
+            let inline_token = real_corpus::extract_inline_name_token(source_text);
+            let speaker = &unit["speaker"];
+            if state == "known" || state == "reader_unknown" {
+                let token = inline_token.unwrap_or_else(|| {
+                    panic!(
+                        "a resolved speaker must carry its own inline 【…】 token; \
+                         unit sourceText {} had none",
+                        RedactedContentSummary::from_text(source_text)
+                    )
+                });
+                // (b) token must be a REAL Gameexe display key.
+                let box_name = namae_rows.get(&token).unwrap_or_else(|| {
+                    panic!("resolved token {token:?} is not a real Gameexe #NAMAE display key")
+                });
+                // (a) canonical ref is this line's own display key.
+                let canonical = speaker["canonicalNameRef"].as_str().unwrap_or("");
+                assert_eq!(
+                    canonical,
+                    format!("reallive:namae:{token}"),
+                    "resolved identity must equal this line's own inline display key"
+                );
+                // (c) displayName is the Gameexe display key, NOT a fabrication.
+                assert_eq!(
+                    speaker["displayName"].as_str(),
+                    Some(token.as_str()),
+                    "displayName must be the Gameexe display key, not a fabricated name; got {speaker}"
+                );
+                // (d) speakerId is the DETERMINISTIC id (same production helper).
+                let expected_speaker_id = deterministic_speaker_id(&namespace, canonical);
+                assert_eq!(
+                    speaker["speakerId"].as_str(),
+                    Some(expected_speaker_id.as_str()),
+                    "speakerId must be the deterministic id derived from the canonical ref; got {speaker}"
+                );
+                // Reveal state must match the REAL row: revealed iff box == key.
+                let reveal = speaker["revealState"].as_str();
+                if *box_name == token {
+                    assert_eq!(state, "known", "a revealed Gameexe row must be `known`");
+                    assert_eq!(reveal, Some("revealed"));
+                } else {
+                    assert_eq!(
+                        state, "reader_unknown",
+                        "a censored Gameexe row (display != box) must be `reader_unknown`"
+                    );
+                    assert_eq!(reveal, Some("concealed"));
+                    assert_eq!(
+                        speaker["readerLabel"].as_str(),
+                        Some(box_name.as_str()),
+                        "readerLabel must be the Gameexe box-shown mask; got {speaker}"
+                    );
+                }
+                cross_checked += 1;
+            } else if state == "not_applicable" {
+                assert!(
+                    inline_token.is_none(),
+                    "a not_applicable (narration) line must not carry an unresolved 【…】 token; \
+                     sourceText {}",
+                    RedactedContentSummary::from_text(source_text)
+                );
+                assert!(
+                    speaker.get("displayName").is_none(),
+                    "a not_applicable speaker must not fabricate a displayName"
+                );
+            }
+        }
+        assert_eq!(
+            cross_checked,
+            known + reader_unknown,
+            "every resolved speaker must have been cross-checked against its inline token"
         );
     }
 

@@ -775,6 +775,8 @@ export const SPEAKER_KNOWLEDGE_STATES = [
 ] as const;
 export type SpeakerKnowledgeStateV02 = (typeof SPEAKER_KNOWLEDGE_STATES)[number];
 
+export const SPEAKER_REVEAL_STATES = ["revealed", "concealed"] as const;
+
 export const UI_AREAS = [
   "dialogue_window",
   "menu",
@@ -902,12 +904,26 @@ export type RouteContextV02 = {
   position?: string;
 };
 
+/** RGB dialogue-text colour resolved from a `#NAMAE` row's `#COLOR_TABLE`
+ * index. Each channel is an 8-bit value (`0..=255`); the producer omits the
+ * field rather than clamp an out-of-range Gameexe row, so a present triple is
+ * always a real palette colour. */
+export type SpeakerTextColorV02 = [number, number, number];
+
+/** Whether the reader is shown the speaker's real name (`revealed`) or a
+ * censored box mask (`concealed`). Derived from the matched `#NAMAE` row's
+ * display-key-vs-box-shown fields, never fabricated. */
+export type SpeakerRevealStateV02 = "revealed" | "concealed";
+
 export type SpeakerContextV02 =
   | {
       knowledgeState: "known";
       speakerId: Uuid7;
       displayName: string;
       canonicalNameRef?: string;
+      /** Always `"revealed"` for a `known` speaker (box shows the real name). */
+      revealState?: SpeakerRevealStateV02;
+      textColor?: SpeakerTextColorV02;
     }
   | {
       knowledgeState: "parser_unknown";
@@ -920,6 +936,9 @@ export type SpeakerContextV02 =
       displayName: string;
       readerLabel: string;
       canonicalNameRef?: string;
+      /** Always `"concealed"` for a `reader_unknown` speaker (box shows a mask). */
+      revealState?: SpeakerRevealStateV02;
+      textColor?: SpeakerTextColorV02;
     }
   | {
       knowledgeState: "not_applicable";
@@ -5544,6 +5563,8 @@ function assertSpeakerContextV02(
       assertUuid7(speaker.speakerId, `${label}.speakerId`);
       assertString(speaker.displayName, `${label}.displayName`);
       assertOptionalString(speaker.canonicalNameRef, `${label}.canonicalNameRef`);
+      assertOptionalSpeakerRevealState(speaker.revealState, `${label}.revealState`);
+      assertOptionalSpeakerTextColor(speaker.textColor, `${label}.textColor`);
       break;
     case "parser_unknown":
       assertOptionalString(speaker.rawSpeakerText, `${label}.rawSpeakerText`);
@@ -5554,10 +5575,46 @@ function assertSpeakerContextV02(
       assertString(speaker.displayName, `${label}.displayName`);
       assertString(speaker.readerLabel, `${label}.readerLabel`);
       assertOptionalString(speaker.canonicalNameRef, `${label}.canonicalNameRef`);
+      assertOptionalSpeakerRevealState(speaker.revealState, `${label}.revealState`);
+      assertOptionalSpeakerTextColor(speaker.textColor, `${label}.textColor`);
       break;
     case "not_applicable":
       break;
   }
+}
+
+/** Validate the additive `revealState` extension when present: it must be one
+ * of the reveal enum values. A wrong value now fails the contract (it is no
+ * longer silently tolerated as an unknown property). */
+function assertOptionalSpeakerRevealState(
+  value: unknown,
+  label: string,
+): asserts value is SpeakerRevealStateV02 | undefined {
+  if (value === undefined) {
+    return;
+  }
+  assertEnum(value, SPEAKER_REVEAL_STATES, label);
+}
+
+/** Validate the additive `textColor` extension when present: exactly three
+ * 8-bit RGB channels. A malformed triple now fails the contract rather than
+ * surviving as an ignored unknown property, so the field round-trips through
+ * a typed consumer. */
+function assertOptionalSpeakerTextColor(
+  value: unknown,
+  label: string,
+): asserts value is SpeakerTextColorV02 | undefined {
+  if (value === undefined) {
+    return;
+  }
+  if (!Array.isArray(value) || value.length !== 3) {
+    throw new Error(`${label} must be an [r, g, b] triple`);
+  }
+  value.forEach((channel, index) => {
+    if (typeof channel !== "number" || !Number.isInteger(channel) || channel < 0 || channel > 255) {
+      throw new Error(`${label}[${index}] must be an integer in 0..=255`);
+    }
+  });
 }
 
 function assertLocalizationPolicyV02(

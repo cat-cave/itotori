@@ -118,11 +118,19 @@ struct SpanReport {
     /// Detection errors (`DecodedRangeNotCharBoundary`) over readable runs.
     /// MUST stay 0 on real dialogue.
     catalogue_errors: usize,
+    /// Speaker `knowledgeState` -> count across every produced unit. Used to
+    /// prove NO fabricated speaker on a corpus that does not inline-bracket
+    /// speaker names (Kanon): `known` + `reader_unknown` must be ZERO there.
+    speaker_states: BTreeMap<String, usize>,
 }
 
 impl SpanReport {
     fn bridge_count(&self, kind: &str) -> usize {
         self.bridge_span_kinds.get(kind).copied().unwrap_or(0)
+    }
+
+    fn speaker_count(&self, state: &str) -> usize {
+        self.speaker_states.get(state).copied().unwrap_or(0)
     }
 }
 
@@ -201,6 +209,7 @@ fn span_report_for_corpus(corpus: &RealCorpus) -> SpanReport {
         catalogue_kinds: BTreeMap::new(),
         catalogue_unknown_warnings: 0,
         catalogue_errors: 0,
+        speaker_states: BTreeMap::new(),
     };
 
     let opts_for = |kidoku_count: u32| BridgeOpts {
@@ -262,6 +271,9 @@ fn span_report_for_corpus(corpus: &RealCorpus) -> SpanReport {
             .expect("bundle units must be an array");
         for unit in units {
             report.total_units += 1;
+            if let Some(state) = unit["speaker"]["knowledgeState"].as_str() {
+                *report.speaker_states.entry(state.to_string()).or_insert(0) += 1;
+            }
             if let Some(spans) = unit["spans"].as_array() {
                 for span in spans {
                     if let Some(name) = span["parsedName"].as_str() {
@@ -318,6 +330,10 @@ fn print_report(report: &SpanReport) {
         report.catalogue_kinds,
         report.catalogue_unknown_warnings,
         report.catalogue_errors,
+    );
+    eprintln!(
+        "[{}] speaker knowledgeState -> count: {:?}",
+        report.label, report.speaker_states,
     );
 }
 
@@ -415,6 +431,33 @@ fn protected_span_extraction_generalizes_to_second_corpus_real_bytes() {
     assert!(
         kanon.bridge_count("reallive.kidoku") > 0,
         "[corpus-2] Kanon must exercise the engine-general reallive.kidoku surface"
+    );
+
+    // (a2) ZERO FABRICATED SPEAKERS on Kanon. Kanon authors no inline `【】`
+    // speaker brackets (name_token == 0 above), so there is NO authoritative
+    // display-key evidence anywhere in the archive — the producer must
+    // therefore resolve ZERO `known` and ZERO `reader_unknown` speakers. A
+    // non-zero here is a fabricated identity (a substring / carried-forward
+    // attribution the hardening removed). The bounded first-line fallback may
+    // still mark a `parser_unknown` guess — that is not a fabricated identity.
+    assert_eq!(
+        kanon.bridge_count("reallive.name_token"),
+        0,
+        "[corpus-2] Kanon must author no inline 【】 tokens (precondition for the no-fabrication check)"
+    );
+    assert_eq!(
+        kanon.speaker_count("known"),
+        0,
+        "[corpus-2] Kanon has no inline display-key evidence — ZERO `known` speakers may be \
+         fabricated; got {}",
+        kanon.speaker_count("known"),
+    );
+    assert_eq!(
+        kanon.speaker_count("reader_unknown"),
+        0,
+        "[corpus-2] Kanon has no inline display-key evidence — ZERO `reader_unknown` speakers may \
+         be fabricated; got {}",
+        kanon.speaker_count("reader_unknown"),
     );
 
     // (b) The `reallive.name_token` (`【】`) rule is CALIBRATED, not general:

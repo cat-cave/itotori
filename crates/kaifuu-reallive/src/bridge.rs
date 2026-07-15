@@ -40,7 +40,6 @@
 use std::fmt;
 
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use kaifuu_core::{
@@ -48,6 +47,9 @@ use kaifuu_core::{
     RedactedContentSummary,
 };
 
+use crate::bridge_ids::{
+    deterministic_speaker_id, deterministic_uuid7, scene_bundle_namespace, sha256_canonical,
+};
 use crate::gameexe::{GameexeInventoryReport, GameexeKeyFamily};
 use crate::opcode::{
     RealLiveOpcode, RealLiveParseError, decode_dialogue_textout, parse_real_bytecode_spans,
@@ -288,6 +290,91 @@ pub fn produce_whole_seen_bundle(
 
 // Unit collection
 
+/// Typed per-line speaker resolution outcome.
+/// The v0.2 bridge speaker object is emitted directly from this. Refining
+/// the producer away from its old "every resolved name is `parser_unknown`"
+/// emission is the point of this pass: a name that resolved through the
+/// NAMAE registry keeps its resolved identity (`known` when the reader is
+/// shown the character's real name, `reader_unknown` when the box shows a
+/// mask the reader has not yet seen through), and ONLY a genuinely
+/// unresolved speaker is `parser_unknown`. The reveal state is carried by
+/// which arm is chosen — `Revealed` vs `Concealed` — never fabricated.
+#[derive(Clone)]
+enum SpeakerResolution {
+    /// Resolved to a NAMAE row whose box-shown name equals the registry
+    /// identity: the reader sees the character's real name.
+    Revealed {
+        display_name: String,
+        canonical_ref: String,
+        color: Option<[u8; 3]>,
+    },
+    /// Resolved to a NAMAE row whose box-shown name differs from the
+    /// registry identity (a censored / alias row): the parser knows who
+    /// this is, but the reader is shown a mask and does not yet.
+    Concealed {
+        display_name: String,
+        reader_label: String,
+        canonical_ref: String,
+        color: Option<[u8; 3]>,
+    },
+    /// A speaker box was observed but did not resolve to exactly one NAMAE
+    /// row (no match, an ambiguous match, or a bounded best-effort guess):
+    /// genuinely unresolved.
+    ParserUnknown { raw: String, evidence: &'static str },
+    /// No speaker applies (non-dialogue surface, or no speaker box at all).
+    NotApplicable,
+}
+
+impl fmt::Debug for SpeakerResolution {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Speaker names are source content — redact them in diagnostics.
+        let redact = RedactedContentSummary::from_text;
+        match self {
+            Self::Revealed {
+                display_name,
+                canonical_ref,
+                color,
+            } => formatter
+                .debug_struct("Revealed")
+                .field("display_name", &redact(display_name))
+                .field("canonical_ref", &redact(canonical_ref))
+                .field("color", color)
+                .finish(),
+            Self::Concealed {
+                display_name,
+                reader_label,
+                canonical_ref,
+                color,
+            } => formatter
+                .debug_struct("Concealed")
+                .field("display_name", &redact(display_name))
+                .field("reader_label", &redact(reader_label))
+                .field("canonical_ref", &redact(canonical_ref))
+                .field("color", color)
+                .finish(),
+            Self::ParserUnknown { raw, evidence } => formatter
+                .debug_struct("ParserUnknown")
+                .field("raw", &redact(raw))
+                .field("evidence", evidence)
+                .finish(),
+            Self::NotApplicable => formatter.write_str("NotApplicable"),
+        }
+    }
+}
+
+/// One parsed `#NAMAE` registry row.
+struct NamaeRow {
+    /// First quoted field — the registry display key (the character's
+    /// canonical identity token, the `【…】` lookup key).
+    display_key: String,
+    /// Second quoted field — the box-shown name the reader actually sees
+    /// (equal to `display_key` for a plain named speaker; a mask such as a
+    /// censored placeholder for a not-yet-revealed character).
+    box_name: String,
+    /// Resolved dialogue text colour from the row's `#COLOR_TABLE` index.
+    color: Option<[u8; 3]>,
+}
+
 #[derive(Clone)]
 struct ProtoUnit {
     /// `dialogue` | `choice_label`.
@@ -300,11 +387,19 @@ struct ProtoUnit {
     /// Computed protected spans (anchored against the wrapped
     /// `sourceText` UTF-8 bytes).
     spans: Vec<ProtoSpan>,
-    /// Resolved speaker text, if any (raw nametoken contents).
+    /// Raw speaker box text observed for this line (inline `【…】` token
+    /// contents or a carried-forward prior speaker). Input to the typed
+    /// [`SpeakerResolution`]; never emitted verbatim once resolved.
     raw_speaker: Option<String>,
-    /// Resolved per-speaker dialogue text colour (RGB) from the matching
-    /// `#NAMAE` row's `#COLOR_TABLE` index. `None` when unresolved.
-    text_color: Option<[u8; 3]>,
+    /// True when `raw_speaker` was assigned by the bounded best-effort
+    /// first-line fallback (a guess), not by a real NAMAE / inline-token
+    /// match. A guess stays `parser_unknown` — it must never be promoted
+    /// to a resolved identity.
+    speaker_from_fallback: bool,
+    /// Typed speaker resolution for this line, computed after the NAMAE
+    /// passes. A name that resolved keeps its resolved identity; only a
+    /// genuinely-unresolved speaker is `parser_unknown`.
+    resolution: SpeakerResolution,
     /// Scene-blob-relative byte offset of the text-display body.
     decompressed_byte_offset: u64,
     /// Length of the text-display body bytes (in the decompressed
@@ -351,7 +446,8 @@ impl fmt::Debug for ProtoUnit {
             .field("control_prefix", &control_prefix)
             .field("spans", &self.spans)
             .field("raw_speaker", &raw_speaker)
-            .field("text_color", &self.text_color)
+            .field("speaker_from_fallback", &self.speaker_from_fallback)
+            .field("resolution", &self.resolution)
             .field("decompressed_byte_offset", &self.decompressed_byte_offset)
             .field("decompressed_byte_len", &self.decompressed_byte_len)
             .field("voice_archive_id", &self.voice_archive_id)
@@ -448,7 +544,8 @@ fn collect_units(
                         control_prefix,
                         spans,
                         raw_speaker: raw_speaker.or_else(|| last_speaker.clone()),
-                        text_color: None,
+                        speaker_from_fallback: false,
+                        resolution: SpeakerResolution::NotApplicable,
                         decompressed_byte_offset: cursor,
                         decompressed_byte_len: raw_bytes.len() as u64,
                         voice_archive_id: None,
@@ -500,7 +597,8 @@ fn collect_units(
                         control_prefix,
                         spans,
                         raw_speaker: None,
-                        text_color: None,
+                        speaker_from_fallback: false,
+                        resolution: SpeakerResolution::NotApplicable,
                         decompressed_byte_offset: cursor,
                         decompressed_byte_len: choice_bytes.len() as u64,
                         voice_archive_id: None,
@@ -527,30 +625,55 @@ fn collect_units(
                     unit.voice_sample_id = Some(sample_id);
                 }
             }
-            // Non-emitting opcodes (no translatable unit). Notably
-            // `TextDisplay` / `CharacterTextDisplay` carry no raw text body in
-            // the parsed opcode — they serve as markers and the inline
-            // Shift-JIS run that follows lands as `Textout`, which emits the
-            // unit — so they, like every other opcode here, are a no-op.
             _ => {}
         }
         cursor = cursor.saturating_add(width as u64);
         let _ = idx; // kept for future per-opcode diagnostics
+
+        // Carry the attributed speaker forward ONLY across a genuine within-
+        // line continuation: another raw `Textout` fragment of the SAME
+        // already-open visible run (consecutive `Textout`s with no intervening
+        // boundary). This is an ALLOWLIST, not a denylist: EVERY other opcode
+        // clears `last_speaker` — a line/page/scene boundary
+        // (`MetaLine`/`MetaEntrypoint`), a display command
+        // (`TextDisplay`/`CharacterTextDisplay`), a `module_sel` `Choice` or a
+        // `VoicePlay` (all of which END the open run), AND any unhandled opcode
+        // (the `_` arm above). So a tokenless narration run can never inherit a
+        // prior line's speaker, and a newly-added or unrecognised opcode can
+        // never silently preserve it — the structural robustness a per-opcode
+        // denylist lacked. The `Textout` arm itself SETS `last_speaker` from a
+        // line's own inline `【…】` token; that assignment survives precisely
+        // because `Textout` is the one arm on this allowlist.
+        if !matches!(op, RealLiveOpcode::Textout { .. }) {
+            last_speaker = None;
+        }
     }
 
     // Resolve speakers through NAMAE.
-    // Pass 1: per-unit scan — every dialogue unit's decoded text is
-    // checked for an inline NAMAE display-name occurrence. When the
-    // walker has already pinned a raw_speaker from a `【...】`
-    // name-token bracket, normalise it through the NAMAE table.
-    // Pass 2 (best-effort fallback): when the per-unit scan finds no
-    // the first dialogue unit to the first NAMAE display name. This
-    // surfaces NAMAE resolution as `parser_unknown` carrying
-    // `rawSpeakerText` — the v0.2 schema's documented shape for
-    // "speaker is known to exist but the per-line attribution is
-    // uncertain" — so the runtime/QA loop can refine the attribution
-    // later. The fallback is bounded to **one** unit per scene so the
-    // bundle never claims a speaker for lines that aren't dialogue.
+    //
+    // Attribution uses ONLY authoritative display-key evidence: the inline
+    // `【…】` name token captured during the walk (`raw_speaker` set on the
+    // Textout arm), optionally carried across a single displayed line's
+    // Textout fragments and CLEARED at every line/page/scene boundary and
+    // after voice attachment (so tokenless narration is never attributed).
+    // There is deliberately NO `decoded_text.contains(namae)` substring scan:
+    // that fabricated a speaker for any narration whose body merely embedded
+    // a registered name (`"I saw Ren & Ken leave."` → known Ren), which the
+    // real runtime — an EXACT `【…】`-key lookup (`NamaeResolver::resolve`) —
+    // never does.
+    //
+    // Bounded best-effort fallback: when NO dialogue unit carries an inline
+    // token anywhere in the scene, the first tokenless dialogue unit is
+    // pinned to the first NAMAE display key AND flagged
+    // `speaker_from_fallback`. A flagged guess is emitted as `parser_unknown`
+    // (never promoted to a resolved identity) — the honest shape for "a
+    // speaker exists but the per-line attribution is uncertain", which the
+    // runtime/QA loop can refine.
+    //
+    // Resolution: each pinned raw speaker is resolved to a typed
+    // [`SpeakerResolution`] via the NAMAE registry (see
+    // `resolve_unit_speaker`). A name that resolves keeps its resolved
+    // identity; only genuinely-unresolved speakers stay `parser_unknown`.
     let namae_values: Vec<String> = gameexe_inventory
         .entries
         .iter()
@@ -564,31 +687,20 @@ fn collect_units(
         })
         .filter(|value| !value.is_empty())
         .collect();
-    let mut per_unit_match = false;
-    for unit in &mut units {
-        if unit.raw_speaker.is_none()
-            && unit.surface_kind == "dialogue"
-            && let Some(matched) = namae_values
-                .iter()
-                .find(|value| !value.is_empty() && unit.decoded_text.contains(value.as_str()))
-        {
-            unit.raw_speaker = Some(matched.clone());
-            per_unit_match = true;
-        }
-    }
-    if !per_unit_match
+    let any_inline_speaker = units
+        .iter()
+        .any(|unit| unit.surface_kind == "dialogue" && unit.raw_speaker.is_some());
+    if !any_inline_speaker
         && let Some(first_namae) = namae_values.first()
         && let Some(unit) = units
             .iter_mut()
-            .find(|unit| unit.surface_kind == "dialogue")
+            .find(|unit| unit.surface_kind == "dialogue" && unit.raw_speaker.is_none())
     {
         unit.raw_speaker = Some(first_namae.clone());
+        unit.speaker_from_fallback = true;
     }
     for unit in &mut units {
-        if let Some(speaker) = unit.raw_speaker.clone() {
-            unit.text_color = resolve_speaker_color(&speaker, gameexe_inventory);
-            unit.raw_speaker = Some(normalize_speaker(&speaker, gameexe_inventory));
-        }
+        unit.resolution = resolve_unit_speaker(unit, gameexe_inventory);
     }
 
     // Synthesise a reallive.kidoku span when the scene header declares
@@ -792,20 +904,99 @@ fn extract_choice_marker_spans(
     spans
 }
 
-fn normalize_speaker(raw: &str, gameexe_inventory: &GameexeInventoryReport) -> String {
-    // Walk the NAMAE entries; if any entry's value contains the raw
-    // speaker text, surface the entry's DISPLAY name (the first
-    // `"…"` field) — NOT the whole `"display" = "canonical" = (…)`
-    // line, which is engine config, not a reader-facing name.
+/// Compute the typed speaker resolution for one collected unit.
+/// Only a `dialogue` line with a pinned speaker box can carry a speaker.
+/// A box flagged `speaker_from_fallback` is a bounded guess and stays
+/// `parser_unknown`. Otherwise the box is resolved against the NAMAE
+/// registry: a UNIQUE row match keeps the resolved identity (`Revealed`
+/// when the box name is the character's real name, `Concealed` when the
+/// box shows a mask); no match — or an ambiguous match — is
+/// `parser_unknown` (never a fabricated identity).
+fn resolve_unit_speaker(
+    unit: &ProtoUnit,
+    gameexe_inventory: &GameexeInventoryReport,
+) -> SpeakerResolution {
+    if unit.surface_kind != "dialogue" {
+        return SpeakerResolution::NotApplicable;
+    }
+    let Some(raw) = unit.raw_speaker.as_deref() else {
+        return SpeakerResolution::NotApplicable;
+    };
+    if unit.speaker_from_fallback {
+        return SpeakerResolution::ParserUnknown {
+            raw: raw.to_string(),
+            evidence: "namae_first_line_fallback",
+        };
+    }
+    match resolve_namae_row(raw, gameexe_inventory) {
+        Some(row) => {
+            let canonical_ref = format!("reallive:namae:{}", row.display_key);
+            if row.display_key == row.box_name {
+                SpeakerResolution::Revealed {
+                    display_name: row.display_key,
+                    canonical_ref,
+                    color: row.color,
+                }
+            } else {
+                SpeakerResolution::Concealed {
+                    display_name: row.display_key,
+                    reader_label: row.box_name,
+                    canonical_ref,
+                    color: row.color,
+                }
+            }
+        }
+        None => SpeakerResolution::ParserUnknown {
+            raw: raw.to_string(),
+            evidence: "inline_name_token_unresolved",
+        },
+    }
+}
+
+/// Resolve a raw `【…】` speaker token to a UNIQUE `#NAMAE` row.
+/// Matches on EXACT equality against a row's DISPLAY KEY (the first quoted
+/// field) ONLY — never the second/box-shown field, and never a substring
+/// `contains`. This is the exact lookup the runtime performs
+/// (`utsushi-reallive`'s `NamaeResolver::resolve` keys `by_key` on the
+/// display string an authored `【…】` prefix carries), so the Bridge cannot
+/// invent an identity the engine would not resolve:
+/// - A token that equals only a censored box label (e.g. `【？？？】` against
+///   `#NAMAE="？？？／凛"="？？？"`) has NO display key `？？？` and stays
+///   unresolved, exactly as the runtime leaves it.
+/// - With rows `A="???"` and `B="A"`, the token `【A】` uniquely matches row
+///   A's display key; row B's box-shown `A` is NOT a second match, so this is
+///   a clean single resolution, not spurious `parser_unknown` ambiguity.
+///
+/// Reveal state is then derived from the matched row's REAL fields (display
+/// key vs box-shown name) by the caller, never fabricated. A token that
+/// still matches two or more rows on the display key is ambiguous and
+/// returns `None`: the producer must not guess which row a duplicated key
+/// belongs to.
+fn resolve_namae_row(raw: &str, gameexe_inventory: &GameexeInventoryReport) -> Option<NamaeRow> {
+    let mut matched: Option<NamaeRow> = None;
     for entry in &gameexe_inventory.entries {
-        if matches!(entry.family, GameexeKeyFamily::Namae)
-            && entry.value.contains(raw)
-            && let Some(display) = namae_display(&entry.value)
-        {
-            return display;
+        if !matches!(entry.family, GameexeKeyFamily::Namae) {
+            continue;
+        }
+        let Some(display_key) = namae_display(&entry.value) else {
+            continue;
+        };
+        if display_key == raw {
+            if matched.is_some() {
+                // Ambiguous exact display-key match — do not guess an identity.
+                return None;
+            }
+            let box_name = namae_second_field(&entry.value).unwrap_or_else(|| display_key.clone());
+            let color = namae_color_index(&entry.value)
+                .and_then(|index| color_table_rgb(index, gameexe_inventory));
+            matched = Some(NamaeRow {
+                display_key,
+                box_name,
+                color,
+            });
         }
     }
-    raw.to_string()
+    matched
 }
 
 /// The first `"…"` quoted field of a `#NAMAE` RHS
@@ -814,6 +1005,18 @@ fn namae_display(value: &str) -> Option<String> {
     let start = value.find('"')? + 1;
     let end = value[start..].find('"')? + start;
     Some(value[start..end].to_string())
+}
+
+/// The second `"…"` quoted field of a `#NAMAE` RHS — the box-shown
+/// (reader-facing) name. Absent on a single-quote row, in which case the
+/// caller falls back to the display key.
+fn namae_second_field(value: &str) -> Option<String> {
+    let first_open = value.find('"')? + 1;
+    let first_close = value[first_open..].find('"')? + first_open;
+    let rest = &value[first_close + 1..];
+    let second_open = rest.find('"')? + 1;
+    let second_close = rest[second_open..].find('"')? + second_open;
+    Some(rest[second_open..second_close].to_string())
 }
 
 /// The middle tuple field of a `#NAMAE` RHS — the `#COLOR_TABLE` row
@@ -825,18 +1028,6 @@ fn namae_color_index(value: &str) -> Option<i32> {
     let mut parts = inner.split(',');
     let _mode = parts.next()?;
     parts.next()?.trim().parse::<i32>().ok()
-}
-
-/// Resolve a raw speaker label to its `#COLOR_TABLE` RGB colour via the
-/// matching `#NAMAE` row's middle field. `None` when no NAMAE row
-/// matches, the row has no colour index, or the palette lacks that row.
-fn resolve_speaker_color(raw: &str, gameexe_inventory: &GameexeInventoryReport) -> Option<[u8; 3]> {
-    let color_index = gameexe_inventory
-        .entries
-        .iter()
-        .find(|entry| matches!(entry.family, GameexeKeyFamily::Namae) && entry.value.contains(raw))
-        .and_then(|entry| namae_color_index(&entry.value))?;
-    color_table_rgb(color_index, gameexe_inventory)
 }
 
 /// Look up `#COLOR_TABLE.<index>` in the inventory and parse its
@@ -858,8 +1049,13 @@ fn color_table_rgb(index: i32, gameexe_inventory: &GameexeInventoryReport) -> Op
     let r = parts.next()?.ok()?;
     let g = parts.next()?.ok()?;
     let b = parts.next()?.ok()?;
-    let clamp = |v: i32| v.clamp(0, 255) as u8;
-    Some([clamp(r), clamp(g), clamp(b)])
+    // Reject an out-of-range row instead of clamping it: a clamped triple
+    // (`300,-1,17` → `[255,0,17]`) is a colour that is NOT present in
+    // Gameexe, i.e. a fabricated RGB. An 8-bit channel is `0..=255`; any
+    // authored value outside that omits the colour (the speaker still
+    // resolves, just without a fabricated `textColor`).
+    let channel = |v: i32| (0..=255).contains(&v).then_some(v as u8);
+    Some([channel(r)?, channel(g)?, channel(b)?])
 }
 
 // JSON bundle assembly
@@ -876,10 +1072,7 @@ fn build_bundle_json(
     units: &[ProtoUnit],
     opts: &BridgeOpts<'_>,
 ) -> Result<Value, BridgeProduceError> {
-    let bundle_namespace = format!(
-        "reallive-bridge:game-id={}:source-profile-id={}:scene={scene_id:04}",
-        opts.game_id, opts.source_profile_id
-    );
+    let bundle_namespace = scene_bundle_namespace(opts.game_id, opts.source_profile_id, scene_id);
     let scene_blob_hash = sha256_canonical(scene_bytes);
     let revision_id = deterministic_uuid7(&bundle_namespace, "scene-revision");
 
@@ -1205,23 +1398,7 @@ fn build_unit_json(
         },
     });
 
-    let speaker = match (&unit.raw_speaker, unit.surface_kind) {
-        (Some(speaker), "dialogue") => {
-            let mut speaker_json = json!({
-                "knowledgeState": "parser_unknown",
-                "rawSpeakerText": speaker,
-                "displayName": speaker,
-                "evidence": "namae_lookup_or_inline_name_token",
-            });
-            // Emit the resolved per-speaker dialogue text colour (the
-            // `#NAMAE` middle field → `#COLOR_TABLE` row) when known.
-            if let Some([r, g, b]) = unit.text_color {
-                speaker_json["textColor"] = json!([r, g, b]);
-            }
-            speaker_json
-        }
-        _ => json!({"knowledgeState": "not_applicable"}),
-    };
+    let speaker = build_speaker_json(namespace, &unit.resolution);
 
     let context = match unit.surface_kind {
         "choice_label" => {
@@ -1300,489 +1477,66 @@ fn build_unit_json(
     }))
 }
 
-// Deterministic identifiers
-
-fn sha256_canonical(bytes: &[u8]) -> String {
-    use std::fmt::Write as _;
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    let digest = hasher.finalize();
-    let mut hex = String::with_capacity(64);
-    for byte in &digest {
-        let _ = write!(hex, "{byte:02x}");
+/// Build the v0.2 speaker object for one line from its typed resolution.
+/// A resolved name is emitted as `known` (reader sees the real name) or
+/// `reader_unknown` (reader sees a mask) — NEVER mislabelled as
+/// `parser_unknown`, which is reserved for genuinely-unresolved speakers.
+/// The `textColor` (RGB) and `revealState` keys are additive extensions:
+/// both are derived from real Gameexe data (never a default) and are
+/// tolerated by the v0.2 validators (no `deny_unknown_fields`). The
+/// reader-safe label is `displayName` for a revealed speaker and
+/// `readerLabel` for a concealed one, so a reader-facing surface never has
+/// to show a spoiler identity.
+fn build_speaker_json(namespace: &str, resolution: &SpeakerResolution) -> Value {
+    match resolution {
+        SpeakerResolution::Revealed {
+            display_name,
+            canonical_ref,
+            color,
+        } => {
+            let mut speaker = json!({
+                "knowledgeState": "known",
+                "speakerId": deterministic_speaker_id(namespace, canonical_ref),
+                "displayName": display_name,
+                "canonicalNameRef": canonical_ref,
+                "revealState": "revealed",
+            });
+            if let Some([r, g, b]) = color {
+                speaker["textColor"] = json!([r, g, b]);
+            }
+            speaker
+        }
+        SpeakerResolution::Concealed {
+            display_name,
+            reader_label,
+            canonical_ref,
+            color,
+        } => {
+            let mut speaker = json!({
+                "knowledgeState": "reader_unknown",
+                "speakerId": deterministic_speaker_id(namespace, canonical_ref),
+                "displayName": display_name,
+                "readerLabel": reader_label,
+                "canonicalNameRef": canonical_ref,
+                "revealState": "concealed",
+            });
+            if let Some([r, g, b]) = color {
+                speaker["textColor"] = json!([r, g, b]);
+            }
+            speaker
+        }
+        SpeakerResolution::ParserUnknown { raw, evidence } => json!({
+            "knowledgeState": "parser_unknown",
+            "rawSpeakerText": raw,
+            "evidence": evidence,
+        }),
+        SpeakerResolution::NotApplicable => json!({ "knowledgeState": "not_applicable" }),
     }
-    format!("sha256:{hex}")
-}
-
-/// Produce a deterministic UUID7-shaped string from `(namespace, role)`.
-/// UUID7's structural constraints (`version=7` at byte 14,
-/// `variant ∈ {8,9,a,b}` at byte 19) are satisfied by truncating a
-/// SHA-256 digest of `namespace || ':' || role` and overlaying the
-/// version/variant nibbles. The remaining bytes are random-from-hash
-/// hex which is sufficient for our schema-validation needs (UUID7's
-/// time-ordered ms-prefix property is not consumed by this producer).
-fn deterministic_uuid7(namespace: &str, role: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(namespace.as_bytes());
-    hasher.update(b":");
-    hasher.update(role.as_bytes());
-    let digest = hasher.finalize();
-    let mut bytes = [0u8; 16];
-    bytes.copy_from_slice(&digest[..16]);
-    // Force version=7 at byte 6 (UUID layout: nibble at byte 6 high
-    // nibble carries version).
-    bytes[6] = (bytes[6] & 0x0F) | 0x70;
-    // Force variant = 10xx at byte 8 (top two bits).
-    bytes[8] = (bytes[8] & 0x3F) | 0x80;
-    format!(
-        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        bytes[0],
-        bytes[1],
-        bytes[2],
-        bytes[3],
-        bytes[4],
-        bytes[5],
-        bytes[6],
-        bytes[7],
-        bytes[8],
-        bytes[9],
-        bytes[10],
-        bytes[11],
-        bytes[12],
-        bytes[13],
-        bytes[14],
-        bytes[15],
-    )
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::gameexe::parse_gameexe_inventory;
-
-    fn opts_for_test() -> BridgeOpts<'static> {
-        BridgeOpts {
-            game_id: "synthetic-bridge-test",
-            game_version: "test",
-            source_profile_id: "kaifuu-reallive-synthetic-bridge-test",
-            source_locale: "ja-JP",
-            extractor_name: "kaifuu-reallive-bridge",
-            extractor_version: "0.1.0",
-            scene_kidoku_count: 0,
-        }
-    }
-
-    #[test]
-    fn empty_decompressed_bytecode_raises_typed_empty_scene_not_silent_ok() {
-        let report = parse_gameexe_inventory(b"");
-        let err = produce_bundle(1, &[0u8; 32], &[], &report, &opts_for_test())
-            .expect_err("empty decompressed must error");
-        assert!(matches!(
-            err,
-            BridgeProduceError::EmptyScene { scene_id: 1 }
-        ));
-    }
-
-    #[test]
-    fn meta_only_scene_surfaces_no_text_units_not_empty_bundle() {
-        // MetaLine(2), MetaLine(3), MetaEntrypoint(0).
-        let bytecode = &[0x0a, 0x02, 0x00, 0x0a, 0x03, 0x00, 0x21, 0x00, 0x00];
-        let report = parse_gameexe_inventory(b"");
-        let err = produce_bundle(1, &[0u8; 32], bytecode, &report, &opts_for_test())
-            .expect_err("meta-only bytecode produces no text units");
-        assert!(matches!(err, BridgeProduceError::NoTextUnits { .. }));
-    }
-
-    #[test]
-    fn shift_jis_textout_emits_dialogue_unit_with_decoded_source_text() {
-        // Shift-JIS for "ハ" (0x83 0x6E) followed by MetaLine to bound.
-        let bytecode = &[0x83, 0x6E, 0x0a, 0x05, 0x00];
-        let report = parse_gameexe_inventory(b"");
-        let produced = produce_bundle(1, &[0u8; 32], bytecode, &report, &opts_for_test())
-            .expect("textout must produce a dialogue unit");
-        assert_eq!(produced.bundle.units.len(), 1);
-        let unit = &produced.bundle.units[0];
-        assert_eq!(unit.surface_kind, "dialogue");
-        assert!(unit.source_text.contains('ハ'));
-    }
-
-    #[test]
-    fn kidoku_marker_before_textout_emits_protected_span_kind_reallive_kidoku() {
-        // MetaKidoku(42), Shift-JIS textout, MetaLine to bound.
-        let bytecode = &[0x40, 0x2a, 0x00, 0x83, 0x6E, 0x0a, 0x05, 0x00];
-        let report = parse_gameexe_inventory(b"");
-        let produced = produce_bundle(1, &[0u8; 32], bytecode, &report, &opts_for_test())
-            .expect("kidoku+textout must produce a unit");
-        let unit_json = &produced.json["units"][0];
-        let spans = unit_json["spans"].as_array().expect("spans array present");
-        assert!(
-            spans.iter().any(|span| {
-                span["parsedName"] == "reallive.kidoku" && span["outOfBand"] == true
-            }),
-            "at least one span with parsedName=reallive.kidoku must be emitted; got {spans:?}"
-        );
-    }
-
-    #[test]
-    fn table_kidoku_synthesis_marks_span_out_of_band() {
-        // No inline MetaKidoku; the scene header's table count synthesises the
-        // structural marker on the first readable text unit.
-        let bytecode = &[0x83, 0x6E, 0x0a, 0x05, 0x00];
-        let report = parse_gameexe_inventory(b"");
-        let mut opts = opts_for_test();
-        opts.scene_kidoku_count = 3;
-        let produced = produce_bundle(1, &[0u8; 32], bytecode, &report, &opts)
-            .expect("table-driven kidoku synthesis must produce a unit");
-        let unit = &produced.json["units"][0];
-        let spans = unit["spans"].as_array().expect("spans array present");
-        let kidoku = spans
-            .iter()
-            .find(|span| span["parsedName"] == "reallive.kidoku")
-            .expect("synthesised kidoku span present");
-        assert_eq!(kidoku["outOfBand"], true);
-        assert_eq!(unit["sourceText"], "<reallive.kidoku table:3>ハ");
-    }
-
-    #[test]
-    fn provenance_byte_range_is_a_decompressed_stream_interval_not_a_file_offset() {
-        // The first (and only) text unit starts at decompressed offset 0.
-        // The range must be a pure decompressed-stream interval — NOT
-        // anchored at any scene blob file offset (the prior bug added the
-        // file offset, which pushed deep units into a later scene during
-        // patchback).
-        let bytecode = &[0x83, 0x6E, 0x0a, 0x05, 0x00];
-        let report = parse_gameexe_inventory(b"");
-        let produced = produce_bundle(1, &[0u8; 32], bytecode, &report, &opts_for_test())
-            .expect("textout must produce a dialogue unit");
-        let range = &produced.json["units"][0]["sourceLocation"]["range"];
-        let start = range["startByte"].as_u64().expect("startByte u64");
-        let end = range["endByte"].as_u64().expect("endByte u64");
-        assert_eq!(
-            start, 0,
-            "first unit must start at decompressed offset 0, not a file offset; got {start:#x}"
-        );
-        assert!(
-            end > start && end <= bytecode.len() as u64,
-            "range must be a positive-width interval inside the decompressed bytecode; got {start}..{end}"
-        );
-    }
-
-    #[test]
-    fn empty_choice_option_does_not_drift_occurrence_index_of_later_units() {
-        // Bytecode: Textout(ハ), select{ "A", <empty>, "B" }, Textout(ニ).
-        // The empty option must NOT consume an occurrence_index, so every
-        // later unit keeps the same occurrence the patchback re-walk
-        // (collect_text_unit_positions) assigns.
-        // COMMAND header (8 bytes): 0x23, module_type=0, module_id=SEL(2),
-        // opcode=1 (select), argc, overload, reserved; then the
-        // SelectElement `{ … }` block. The middle option is an empty entry
-        // (a bare `\n`+line marker with no text), which `decode_select`
-        // drops — emitting only "A" and "B".
-        let mut bytecode: Vec<u8> = Vec::new();
-        bytecode.extend_from_slice(&[0x83, 0x6E]); // Textout "ハ" -> occ 0
-        bytecode.extend_from_slice(&[0x23, 0x00, 0x02, 0x01, 0x00, 0x02, 0x00, 0x00]);
-        bytecode.push(b'{');
-        bytecode.extend_from_slice(b"A"); // option A -> occ 1
-        bytecode.extend_from_slice(&[0x0a, 0x05, 0x00]);
-        bytecode.extend_from_slice(&[0x0a, 0x06, 0x00]); // empty option -> dropped
-        bytecode.extend_from_slice(b"B"); // option B -> occ 2
-        bytecode.extend_from_slice(&[0x0a, 0x07, 0x00]);
-        bytecode.push(b'}');
-        bytecode.extend_from_slice(&[0x83, 0x70]); // Textout "ニ" -> occ 3
-        bytecode.extend_from_slice(&[0x0a, 0x05, 0x00]); // MetaLine terminator
-
-        let report = parse_gameexe_inventory(b"");
-        let produced = produce_bundle(1, &[0u8; 32], &bytecode, &report, &opts_for_test())
-            .expect("scene with empty choice option must produce units");
-
-        // Producer occurrence indices, in encounter order, parsed from
-        // the canonical sourceUnitKey `reallive:scene-NNNN#OOOO`.
-        let producer: Vec<(usize, String)> = produced
-            .bundle
-            .units
-            .iter()
-            .map(|u| {
-                let occ = u
-                    .source_unit_key
-                    .split('#')
-                    .nth(1)
-                    .and_then(|s| s.parse::<usize>().ok())
-                    .expect("occurrence in sourceUnitKey");
-                (occ, u.surface_kind.clone())
-            })
-            .collect();
-
-        // Exactly four units (the empty option emitted none), and the
-        // trailing dialogue unit sits at occurrence 3 (no drift).
-        assert_eq!(
-            producer,
-            vec![
-                (0, "dialogue".to_string()),
-                (1, "choice_label".to_string()),
-                (2, "choice_label".to_string()),
-                (3, "dialogue".to_string()),
-            ],
-            "empty `,,` option must not consume an occurrence_index"
-        );
-    }
-
-    #[test]
-    fn protected_span_failing_validation_surfaces_typed_error_not_silent_drop() {
-        // 005 regression: build_unit_json bare-`continue`d on a span that
-        // failed its byte-range / raw-bytes equality check, dropping the
-        // protected span (and its preserveMode=exact guard) with no error.
-        // The contract forbids that — a mismatch must surface a typed
-        // BridgeProduceError.
-        let base_unit = |spans: Vec<ProtoSpan>| ProtoUnit {
-            surface_kind: "dialogue",
-            decoded_text: "本文".to_string(),
-            control_prefix: String::new(),
-            spans,
-            raw_speaker: None,
-            text_color: None,
-            decompressed_byte_offset: 0,
-            decompressed_byte_len: 6,
-            voice_archive_id: None,
-            voice_sample_id: None,
-            occurrence_index: 0,
-            choice_group_index: None,
-            choice_option_index: None,
-        };
-
-        // Raw-bytes mismatch: span claims bytes 0..5 are "#FACE" but the
-        // sourceText bytes there are the decoded dialogue.
-        let mismatch = base_unit(vec![ProtoSpan {
-            parsed_name: "reallive.asset_ref",
-            out_of_band: false,
-            start_byte: 0,
-            end_byte: 5,
-            raw: "#FACE".to_string(),
-        }]);
-        let err = build_unit_json(7, "a", "k", "r", "h", "ns", &opts_for_test(), &mismatch)
-            .expect_err("mismatched protected span must error, not be dropped");
-        assert!(
-            matches!(
-                err,
-                BridgeProduceError::ProtectedSpanInvalid {
-                    scene_id: 7,
-                    parsed_name: "reallive.asset_ref",
-                    ..
-                }
-            ),
-            "expected ProtectedSpanInvalid"
-        );
-
-        // Out-of-range: end_byte past sourceText length.
-        let oob = base_unit(vec![ProtoSpan {
-            parsed_name: "reallive.font_tone",
-            out_of_band: false,
-            start_byte: 0,
-            end_byte: 999,
-            raw: "x".to_string(),
-        }]);
-        let err = build_unit_json(7, "a", "k", "r", "h", "ns", &opts_for_test(), &oob)
-            .expect_err("out-of-range protected span must error, not be dropped");
-        assert!(
-            matches!(
-                err,
-                BridgeProduceError::ProtectedSpanInvalid {
-                    parsed_name: "reallive.font_tone",
-                    ..
-                }
-            ),
-            "expected ProtectedSpanInvalid"
-        );
-    }
-
-    #[test]
-    fn protected_span_mismatch_redacts_source_content_from_error_renderings() {
-        const SOURCE_SENTINEL: &str = "RBH_SOURCE_DIALOGUE_SENTINEL";
-        const RAW_SENTINEL: &str = "RBH_PROTECTED_SPAN_SENTINEL";
-
-        let unit = ProtoUnit {
-            surface_kind: "dialogue",
-            decoded_text: SOURCE_SENTINEL.to_string(),
-            control_prefix: String::new(),
-            spans: vec![ProtoSpan {
-                parsed_name: "reallive.asset_ref",
-                out_of_band: false,
-                start_byte: 0,
-                end_byte: SOURCE_SENTINEL.len() as u64,
-                raw: RAW_SENTINEL.to_string(),
-            }],
-            raw_speaker: None,
-            text_color: None,
-            decompressed_byte_offset: 0,
-            decompressed_byte_len: SOURCE_SENTINEL.len() as u64,
-            voice_archive_id: None,
-            voice_sample_id: None,
-            occurrence_index: 0,
-            choice_group_index: None,
-            choice_option_index: None,
-        };
-        let err = build_unit_json(7, "a", "k", "r", "h", "ns", &opts_for_test(), &unit)
-            .expect_err("mismatched protected span must error");
-        let display = err.to_string();
-        let debug = format!("{err:?}");
-        let protected_range = unit.spans[0].start_byte as usize..unit.spans[0].end_byte as usize;
-        let protected_range_len = protected_range.len();
-        let source_summary =
-            RedactedContentSummary::from_bytes(&SOURCE_SENTINEL.as_bytes()[protected_range]);
-        let raw_summary = RedactedContentSummary::from_text(RAW_SENTINEL);
-
-        for rendered in [&display, &debug] {
-            assert!(
-                !rendered.contains(SOURCE_SENTINEL),
-                "protected-span errors must not emit source text"
-            );
-            assert!(
-                !rendered.contains(RAW_SENTINEL),
-                "protected-span errors must not emit protected-span text"
-            );
-            assert!(rendered.contains(&source_summary.to_string()));
-            assert!(rendered.contains(&raw_summary.to_string()));
-            assert!(rendered.contains(source_summary.sha256()));
-            assert!(rendered.contains(raw_summary.sha256()));
-        }
-        assert!(display.contains("scene 7 unit 0 span #0"));
-        assert!(display.contains("parsedName=reallive.asset_ref"));
-        assert!(display.contains(&source_summary.to_string()));
-        assert!(display.contains(&raw_summary.to_string()));
-        assert!(debug.contains("scene_id: 7"));
-        assert!(debug.contains("occurrence_index: 0"));
-        assert!(debug.contains("span_index: 0"));
-        assert!(debug.contains("parsed_name: \"reallive.asset_ref\""));
-        assert_eq!(source_summary.byte_len(), protected_range_len);
-        assert_eq!(raw_summary.byte_len(), unit.spans[0].raw.len());
-    }
-
-    #[test]
-    fn unit_offset_after_choice_command_tracks_authoritative_decode_width_no_drift() {
-        // 004 regression: the unit that follows a Choice command must be
-        // anchored at the REAL width `decode_command` consumed, never a
-        // hand-reconstructed table. The `module_sel` `SelectElement`
-        // `{ … }` block here consumes 18 bytes (8-byte header + `{` + "A" +
-        // `\n`+line + "B" + `\n`+line + `}`), so the trailing dialogue must
-        // anchor at 2 (first Textout) + 18 = 20.
-        // Bytecode: Textout "ハ" (2 bytes) | select{ "A", "B" } (18 bytes)
-        // | Textout "ニ" (occurrence 3) | MetaLine terminator.
-        let mut bytecode: Vec<u8> = Vec::new();
-        bytecode.extend_from_slice(&[0x83, 0x6E]); // Textout "ハ" -> occ 0, offset 0
-        bytecode.extend_from_slice(&[0x23, 0x00, 0x02, 0x01, 0x00, 0x02, 0x00, 0x00]);
-        bytecode.push(b'{');
-        bytecode.extend_from_slice(b"A"); // option A -> occ 1
-        bytecode.extend_from_slice(&[0x0a, 0x05, 0x00]);
-        bytecode.extend_from_slice(b"B"); // option B -> occ 2
-        bytecode.extend_from_slice(&[0x0a, 0x06, 0x00]);
-        bytecode.push(b'}');
-        bytecode.extend_from_slice(&[0x83, 0x70]); // Textout "ニ" -> occ 3
-        bytecode.extend_from_slice(&[0x0a, 0x05, 0x00]); // MetaLine terminator
-
-        let report = parse_gameexe_inventory(b"");
-        let produced = produce_bundle(1, &[0u8; 32], &bytecode, &report, &opts_for_test())
-            .expect("scene with choice must produce units");
-
-        // The trailing dialogue unit (occurrence 3) must start at the real
-        // cursor: 2 (first Textout) + 18 (select header+block) = 20.
-        let trailing = produced
-            .json
-            .get("units")
-            .and_then(|u| u.as_array())
-            .and_then(|units| {
-                units.iter().find(|u| {
-                    u["sourceUnitKey"]
-                        .as_str()
-                        .is_some_and(|k| k.ends_with("#0003"))
-                })
-            })
-            .expect("occurrence-3 dialogue unit present");
-        let start = trailing["sourceLocation"]["range"]["startByte"]
-            .as_u64()
-            .expect("startByte u64");
-        assert_eq!(
-            start, 20,
-            "unit after Choice must anchor at the authoritative decode width (20)"
-        );
-    }
-
-    #[test]
-    fn predicate_classifies_real_binary_block_as_non_translatable_and_real_dialogue_as_translatable()
-     {
-        use crate::test_fixtures::{SCENE1_BINARY_BLOCK_214B, SCENE2011_DIALOGUE_SJIS};
-        // Real bytes: the Sweetie HD scene-1 214-byte binary data block is
-        // NOT translatable; a real scene-2011 Shift-JIS dialogue line IS.
-        assert!(
-            decode_dialogue_textout(SCENE1_BINARY_BLOCK_214B).is_none(),
-            "the 214-byte periodic-binary data block must be excluded from translatable units"
-        );
-        assert!(
-            decode_dialogue_textout(SCENE2011_DIALOGUE_SJIS).is_some(),
-            "a real Shift-JIS dialogue line must remain translatable (no false negative)"
-        );
-    }
-
-    #[test]
-    fn binary_catch_all_textout_is_excluded_while_real_sjis_dialogue_is_surfaced() {
-        use crate::test_fixtures::{
-            SCENE1_BINARY_BLOCK_214B, SCENE2011_DIALOGUE_SJIS, SCENE2011_DIALOGUE_TEXT,
-        };
-        // A scene whose bytecode is [real dialogue Textout][MetaLine]
-        // [214-byte binary Textout][MetaLine]. Both runs parse as a single
-        // Textout each (verified against the live corpus). The bridge must
-        // surface ONLY the dialogue run as a translatable unit and drop the
-        // binary run entirely.
-        let mut bytecode: Vec<u8> = Vec::new();
-        bytecode.extend_from_slice(SCENE2011_DIALOGUE_SJIS);
-        bytecode.extend_from_slice(&[0x0a, 0x05, 0x00]); // MetaLine terminator
-        bytecode.extend_from_slice(SCENE1_BINARY_BLOCK_214B);
-        bytecode.extend_from_slice(&[0x0a, 0x06, 0x00]); // MetaLine terminator
-
-        // Sanity: the raw bytecode does parse as exactly two Textout runs,
-        // so the test is genuinely exercising the surface-selection split
-        // (not an artefact of the binary bytes fragmenting).
-        let opcodes = crate::opcode::parse_real_bytecode(&bytecode).expect("bytecode parses");
-        let textouts: Vec<&[u8]> = opcodes
-            .iter()
-            .filter_map(|op| match op {
-                RealLiveOpcode::Textout { raw_bytes, .. } => Some(raw_bytes.as_slice()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(
-            textouts.len(),
-            2,
-            "fixture must decode to exactly two Textout runs (dialogue + binary)"
-        );
-        assert!(
-            textouts[1] == SCENE1_BINARY_BLOCK_214B,
-            "binary block mismatch: actual {}, expected {}",
-            RedactedContentSummary::from_bytes(textouts[1]),
-            RedactedContentSummary::from_bytes(SCENE1_BINARY_BLOCK_214B),
-        );
-
-        let report = parse_gameexe_inventory(b"");
-        let produced = produce_bundle(1, &[0u8; 32], &bytecode, &report, &opts_for_test())
-            .expect("dialogue run must produce a bundle");
-
-        // Exactly one translatable unit (the dialogue); the binary run is
-        // excluded.
-        assert_eq!(
-            produced.bundle.units.len(),
-            1,
-            "only the readable Shift-JIS dialogue run is surfaced; the binary run is excluded"
-        );
-        let unit = &produced.bundle.units[0];
-        assert_eq!(unit.surface_kind, "dialogue");
-        assert!(
-            unit.source_text.contains(SCENE2011_DIALOGUE_TEXT),
-            "the surfaced unit must carry the decoded dialogue text (sourceText {})",
-            RedactedContentSummary::from_text(&unit.source_text)
-        );
-        // No surfaced unit may carry the binary block's decoded form.
-        let (binary_decoded, _, _) = encoding_rs::SHIFT_JIS.decode(SCENE1_BINARY_BLOCK_214B);
-        assert!(
-            !unit.source_text.contains(binary_decoded.as_ref()),
-            "no translatable unit may carry the binary data block's bytes"
-        );
-    }
-}
+mod test_support;
+#[cfg(test)]
+mod tests_scene;
+#[cfg(test)]
+mod tests_speaker;

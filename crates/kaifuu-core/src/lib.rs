@@ -15200,6 +15200,13 @@ pub struct SpeakerContextV02 {
     pub raw_speaker_text: Option<String>,
     pub evidence: Option<String>,
     pub reader_label: Option<String>,
+    /// Additive: reader-reveal state (`revealed` / `concealed`) derived from
+    /// the matched `#NAMAE` row. Typed so it survives a round-trip through
+    /// this contract rather than being dropped as an unknown field.
+    pub reveal_state: Option<String>,
+    /// Additive: resolved dialogue-text RGB triple. Typed + range-validated
+    /// (`0..=255` per channel) so a fabricated colour cannot slip through.
+    pub text_color: Option<Value>,
 }
 
 impl fmt::Debug for SpeakerContextV02 {
@@ -15237,6 +15244,8 @@ impl fmt::Debug for SpeakerContextV02 {
                     .as_deref()
                     .map(RedactedContentSummary::from_text),
             )
+            .field("reveal_state", &self.reveal_state)
+            .field("text_color", &self.text_color)
             .finish()
     }
 }
@@ -15286,8 +15295,46 @@ impl SpeakerContextV02 {
         if let Some(canonical_name_ref) = &self.canonical_name_ref {
             assert_non_empty(canonical_name_ref, &format!("{label}.canonicalNameRef"))?;
         }
+        if let Some(reveal_state) = &self.reveal_state {
+            assert_one_of(
+                reveal_state,
+                &["revealed", "concealed"],
+                &format!("{label}.revealState"),
+            )?;
+        }
+        if let Some(text_color) = &self.text_color {
+            validate_speaker_text_color(text_color, &format!("{label}.textColor"))?;
+        }
         Ok(())
     }
+}
+
+/// Validate the additive speaker `textColor`: exactly three 8-bit RGB
+/// channels (`0..=255`). Typed + range-checked so a fabricated / out-of-range
+/// colour cannot survive this contract as an ignored unknown field.
+fn validate_speaker_text_color(value: &Value, label: &str) -> BridgeContractResult<()> {
+    let channels = value.as_array().ok_or_else(|| {
+        BridgeContractValidationError::new(format!("{label} must be an [r, g, b] array"))
+    })?;
+    if channels.len() != 3 {
+        return Err(BridgeContractValidationError::new(format!(
+            "{label} must have exactly 3 channels, got {}",
+            channels.len()
+        )));
+    }
+    for (index, channel) in channels.iter().enumerate() {
+        let component = channel.as_u64().ok_or_else(|| {
+            BridgeContractValidationError::new(format!(
+                "{label}[{index}] must be a non-negative integer"
+            ))
+        })?;
+        if component > 255 {
+            return Err(BridgeContractValidationError::new(format!(
+                "{label}[{index}] must be in 0..=255, got {component}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, PartialEq, Eq, Deserialize)]
