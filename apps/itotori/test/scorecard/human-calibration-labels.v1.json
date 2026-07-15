@@ -3,9 +3,9 @@
   "contentAddress": {
     "algorithm": "sha256",
     "canonicalization": "json-key-sort-v1",
-    "sha256": "sha256:f4d2c3ba635ed049e7552542254e01505c9e702b0fc140c59e97ebf22ba6cbc4"
+    "sha256": "sha256:fbdd6082be5046bb038de9dbf4b4161f786f12be2fe09d31e4ddec1d17b5bfeb"
   },
-  "corpusManifestSha256": "sha256:6b44e40f88652c00e81e1bcbae00117adce602ead139a998075dcef6f4e9744a",
+  "corpusManifestSha256": "sha256:61ed4f8abe1327073b39346d72ab6555efc05698c240c84762767740ad24506d",
   "policy": {
     "usage": "reviewer-calibration-and-release-audit-only",
     "modelTuningAllowed": false,

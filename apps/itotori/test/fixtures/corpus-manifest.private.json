@@ -4,7 +4,7 @@
   "contentAddress": {
     "algorithm": "sha256",
     "canonicalization": "json-key-sort-v1",
-    "manifestSha256": "sha256:6b44e40f88652c00e81e1bcbae00117adce602ead139a998075dcef6f4e9744a"
+    "manifestSha256": "sha256:61ed4f8abe1327073b39346d72ab6555efc05698c240c84762767740ad24506d"
   },
   "privacy": {
     "classification": "private-corpus-metadata-only",
@@ -73,7 +73,7 @@
           "choiceCount": 2,
           "nextScene": 8508,
           "selectionControl": "none",
-          "dispatchFanoutScenes": [],
+          "dispatchFanoutScenes": [1018, 8508],
           "dispatchIndex": 38
         }
       }

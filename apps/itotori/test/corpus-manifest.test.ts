@@ -29,7 +29,7 @@ const MANIFEST_PATH = fileURLToPath(
   new URL("./fixtures/corpus-manifest.private.json", import.meta.url),
 );
 const EXPECTED_MANIFEST_SHA256 =
-  "sha256:6b44e40f88652c00e81e1bcbae00117adce602ead139a998075dcef6f4e9744a";
+  "sha256:61ed4f8abe1327073b39346d72ab6555efc05698c240c84762767740ad24506d";
 const EXPECTED_SEEN_SHA256 =
   "sha256:903f538b821a9b1e6cb3d399582915c0bcf73b0a058ecc907caf6017a4fa209f";
 const EXPECTED_GAMEEXE_SHA256 =
