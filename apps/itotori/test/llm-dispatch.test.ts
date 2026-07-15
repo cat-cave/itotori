@@ -1,4 +1,10 @@
 import { createHash } from "node:crypto";
+import {
+  LlmMemoConflictError,
+  type LlmCallMemoStore,
+  type LlmMemoSingleflightInput,
+  type LlmMemoSingleflightResult,
+} from "@itotori/db";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
@@ -14,6 +20,41 @@ const HASH_A = `sha256:${"a".repeat(64)}` as const;
 const HASH_B = `sha256:${"b".repeat(64)}` as const;
 
 type CapturedRequest = { headers: Headers; body: Record<string, unknown> };
+
+class MemoryMemoStore implements LlmCallMemoStore {
+  readonly #memos = new Map<string, Extract<LlmMemoSingleflightResult, { kind: "completed" }>>();
+
+  async singleflight(input: LlmMemoSingleflightInput): Promise<LlmMemoSingleflightResult> {
+    const existing = this.#memos.get(input.memoKey);
+    if (existing) {
+      if (existing.semanticHash !== input.semanticHash) {
+        throw new LlmMemoConflictError(input.memoKey);
+      }
+      return { ...existing, memoHit: true };
+    }
+    const execution = await input.execute({ ordinal: 1, startedAt: new Date().toISOString() });
+    if (execution.kind === "incomplete") {
+      return {
+        kind: "incomplete",
+        memoHit: false,
+        memoKey: input.memoKey,
+        semanticHash: input.semanticHash,
+        responseJson: execution.responseJson,
+      };
+    }
+    const completed = {
+      kind: "completed" as const,
+      memoHit: false,
+      memoKey: input.memoKey,
+      semanticHash: input.semanticHash,
+      responseJson: execution.responseJson,
+      outcomeJson: execution.outcomeJson,
+      responseEventId: execution.responseEvent.eventId,
+    };
+    this.#memos.set(input.memoKey, completed);
+    return completed;
+  }
+}
 
 function contentHash(content: string): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(content).digest("hex")}`;
@@ -169,6 +210,15 @@ function runtime(
       OPENROUTER_ZDR_GUARDRAIL_ASSERTED: "1",
     },
     tools,
+    memo: {
+      store: new MemoryMemoStore(),
+      snapshots: {
+        decodeRevisionHash: HASH_A,
+        glossaryRevisionHash: HASH_B,
+        styleRevisionHash: HASH_A,
+        acceptedOutputHeadHash: HASH_B,
+      },
+    },
     readPayload: async () => prompt,
     fetcher: async (input, init) => {
       const request = new Request(input, init);
@@ -390,6 +440,15 @@ const liveEnabled =
     const result = await dispatch(spec, {
       env: process.env,
       tools: [],
+      memo: {
+        store: new MemoryMemoStore(),
+        snapshots: {
+          decodeRevisionHash: HASH_A,
+          glossaryRevisionHash: HASH_B,
+          styleRevisionHash: HASH_A,
+          acceptedOutputHeadHash: HASH_B,
+        },
+      },
       readPayload: async () => prompt,
     });
 
