@@ -119,7 +119,7 @@
     "crates/utsushi-core/tests/vfs_synthetic_package.rs": 633,
     "crates/utsushi-fixture/src/engine_port.rs": 685,
     "crates/utsushi-fixture/src/jump_targets.rs": 606,
-    "crates/utsushi-fixture/src/launch_adapters.rs": 3063,
+    "crates/utsushi-fixture/src/launch_adapters.rs": 2036,
     "crates/utsushi-fixture/src/lib.rs": 627,
     "crates/utsushi-fixture/src/mv_mz_screenshot_evidence.rs": 632,
     "crates/utsushi-fixture/src/mvmz_demo_bundle.rs": 724,
