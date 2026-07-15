@@ -2,7 +2,7 @@
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/file-line-cap-guard.mjs --update\". Each entry maps an over-cap\nfile to its grandfathered line count; counts and entries may only shrink. When\nempty/deleted the cap is absolute (no file may exceed the threshold).",
   "threshold": 500,
   "generatedAt": "2026-07-14T23:44:34.527Z",
-  "total": 174,
+  "total": 171,
   "files": {
     "crates/kaifuu-cli/src/main.rs": 13011,
     "crates/kaifuu-cli/tests/patch_real_sweetie_hd.rs": 579,
@@ -146,7 +146,7 @@
     "crates/utsushi-reallive/src/rlop/module_mem.rs": 1108,
     "crates/utsushi-reallive/src/rlop/module_msg.rs": 1300,
     "crates/utsushi-reallive/src/rlop/module_obj.rs": 1112,
-    "crates/utsushi-reallive/src/rlop/module_sel.rs": 1779,
+    "crates/utsushi-reallive/src/rlop/module_sel.rs": 1686,
     "crates/utsushi-reallive/src/rlop/module_str.rs": 1399,
     "crates/utsushi-reallive/src/rlop/module_sys.rs": 1003,
     "crates/utsushi-reallive/src/save.rs": 1083,
