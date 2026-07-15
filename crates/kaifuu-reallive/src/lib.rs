@@ -101,6 +101,7 @@
 mod archive;
 mod ast;
 pub mod bridge;
+mod command_catalog;
 pub mod compressor;
 pub mod decompressor;
 pub mod detector;
