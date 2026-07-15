@@ -151,7 +151,7 @@
     "crates/utsushi-reallive/src/scene_header.rs": 618,
     "crates/utsushi-reallive/src/syscall.rs": 1319,
     "crates/utsushi-reallive/src/var_banks.rs": 968,
-    "crates/utsushi-reallive/src/vm.rs": 1744,
+    "crates/utsushi-reallive/src/vm.rs": 1324,
     "crates/utsushi-reallive/tests/avg32_lzss_differential.rs": 592,
     "crates/utsushi-reallive/tests/choice_smoke_all_modalities_real_bytes.rs": 693,
     "crates/utsushi-reallive/tests/expression_synthetic.rs": 586,
