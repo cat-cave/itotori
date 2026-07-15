@@ -7,7 +7,9 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 # utsushi-cli-single-scene-xor2-staging: the top-level binary owns the
 # dev-only `use_xor_2` segment-cipher recovery so the single-scene
 # replay-validate / render-validate surfaces decode REAL text on xor2
@@ -16,6 +18,7 @@ serde_json.workspace = true
 # utsushi-reallive/Cargo.toml); the recovery is staged here in the
 # orchestration layer instead, reusing the proven `recover_and_decrypt_archive`.
 kaifuu-reallive = { path = "../kaifuu-reallive" }
+kaifuu-core = { path = "../kaifuu-core" }
 utsushi-core = { path = "../utsushi-core" }
 utsushi-fixture = { path = "../utsushi-fixture" }
 # the `trace-kag` subcommand drives the KAG command-trace probe

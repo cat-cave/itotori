@@ -1,7 +1,7 @@
 {
   "description": "Frozen deletion ledger + LLM-layer boundary for the core rebuild.\nDo not hand-edit; update only when a spec-DAG node deletes or rehomes a path.\nEach delete/rehome entry records an expected state ('present' during freeze,\n'absent' after cutover) so the guard can assert the ledger matches reality.",
   "version": 1,
-  "contractualTotalLines": 49402,
+  "contractualTotalLines": 49403,
 
   "delete": {
     "appSurface": [
@@ -41,7 +41,7 @@
           "apps/itotori/src/orchestrator/repair/repair-job-service.ts",
           "apps/itotori/src/orchestrator/repair/types.ts"
         ],
-        "lines": 15805,
+        "lines": 15806,
         "expected": "present",
         "reason": "Per-unit agentic loop, supervisor, run scheduler, lease/reservation/finalizer, repair, context brain/correction."
       },

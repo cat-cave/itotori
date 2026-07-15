@@ -8,8 +8,8 @@
 // derives the real scene-dispatch order via `observe_playthrough`, with the
 // `use_xor_2` Sweetie HD compiler-110002 staging + the Gameexe `#NAMAE` /
 // `#COLOR_TABLE` speaker resolver). It emits the
-// `utsushi.narrative-structure.v1` artifact the itotori whole-game localize
-// driver consumes as its structure-informed context. This module is the
+// narrative-structure artifact the itotori whole-game localize driver consumes
+// as its structure-informed context. This module is the
 // user-shaped itotori front-door over that producer: the agent / operator
 // asks `itotori structure-export` and gets the structure JSON, never having
 // to know the utsushi-cli crate name or its flag surface.
@@ -42,8 +42,10 @@ export type RunUtsushiStructureArgs = {
   gameexePath: string;
   /** Path to Seen.txt (the compressed scene archive). */
   seenPath: string;
-  /** Where the producer writes the `utsushi.narrative-structure.v1` JSON. */
+  /** Where the producer writes the narrative-structure JSON. */
   outputPath: string;
+  /** Exact Kaifuu bridge whose unit evidence is joined into the v2 export. */
+  bridgePath?: string;
   /**
    * Override the Gameexe `SEEN_START` entry scene. Pass a scene id to drive
    * the dispatch-order walk from a route-specific entry (e.g. a different
@@ -51,9 +53,8 @@ export type RunUtsushiStructureArgs = {
    */
   entryScene?: number;
   /**
-   * Cap the dispatch-order walk at N crossed scenes. Defaults to the producer's
-   * own ceiling (256) when omitted — exposed here for an operator who wants a
-   * bounded first-N probe of a long game.
+   * Require an archive to contain at most N scenes. A smaller limit fails
+   * without writing an artifact; it never produces a partial export.
    */
   maxScenes?: number;
   env?: NodeJS.ProcessEnv;
@@ -90,7 +91,8 @@ export class UtsushiStructureExportError extends Error {
 
 /**
  * Run `utsushi structure --gameexe <Gameexe.ini> --seen <Seen.txt> --output
- * <PATH> [--entry-scene <N>] [--max-scenes <N>]` and assert it exited 0.
+ * <PATH> [--bridge <PATH>] [--entry-scene <N>] [--max-scenes <N>]` and assert
+ * it exited 0.
  *
  * The producer owns its own JSON write (it writes the structure artifact to
  * `outputPath` directly via `utsushi_core::write_json`); this seam returns the
@@ -139,6 +141,9 @@ export function buildUtsushiStructureArgs(args: RunUtsushiStructureArgs): string
     "--output",
     args.outputPath,
   ];
+  if (args.bridgePath !== undefined) {
+    out.push("--bridge", args.bridgePath);
+  }
   if (args.entryScene !== undefined) {
     out.push("--entry-scene", String(args.entryScene));
   }

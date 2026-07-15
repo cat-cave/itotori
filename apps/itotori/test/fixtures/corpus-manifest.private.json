@@ -4,7 +4,7 @@
   "contentAddress": {
     "algorithm": "sha256",
     "canonicalization": "json-key-sort-v1",
-    "manifestSha256": "sha256:7b12ea456383c55f06e668c2d9a481e9abaf8b74ba30419c932ed3d4a28ad531"
+    "manifestSha256": "sha256:61ed4f8abe1327073b39346d72ab6555efc05698c240c84762767740ad24506d"
   },
   "privacy": {
     "classification": "private-corpus-metadata-only",
@@ -58,8 +58,8 @@
       "utsushiStructure": {
         "schemaVersion": "utsushi.narrative-structure.v1",
         "structureExport": {
-          "sha256": "sha256:6ae7fb5df8f92fbc608120eaed589c07bb2e33900e131ceebe0e753b4098e75c",
-          "byteLength": 13750342
+          "sha256": "sha256:c5f2bfaa88f2f17a8067baa60e83eb6f29c4f30c0f6c4e7ce669a0fdeba271d4",
+          "byteLength": 13758436
         },
         "entryScene": 1,
         "sceneCount": 198,
@@ -73,7 +73,7 @@
           "choiceCount": 2,
           "nextScene": 8508,
           "selectionControl": "none",
-          "dispatchFanoutScenes": [],
+          "dispatchFanoutScenes": [1018, 8508],
           "dispatchIndex": 38
         }
       }

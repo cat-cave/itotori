@@ -1,4 +1,4 @@
-import { IdentifierSchema } from "../contracts/shared.js";
+import { IdentifierSchema, Sha256Schema } from "../contracts/shared.js";
 import { z } from "zod";
 import {
   NARRATIVE_STRUCTURE_V1,
@@ -15,6 +15,29 @@ import {
 
 const SceneIdSchema = z.number().int();
 const SelectionControlSchema = z.enum(["button-object", "text-window", "none"]);
+const EdgeResolutionSchema = z.enum(["resolved", "unknown", "unresolved"]);
+const EvidenceTierSchema = z.enum(["E0", "E1", "E2", "E3"]);
+const RgbSchema = z.tuple([
+  z.number().int().min(0).max(255),
+  z.number().int().min(0).max(255),
+  z.number().int().min(0).max(255),
+]);
+const SourceAssetSchema = z
+  .object({ assetId: IdentifierSchema, assetKey: IdentifierSchema })
+  .strict();
+const BridgeRefSchema = z
+  .object({
+    bridgeUnitId: IdentifierSchema,
+    sourceUnitKey: IdentifierSchema,
+    runtimeObjectId: z.string().min(1).optional(),
+  })
+  .strict();
+const RevealOrderSchema = z
+  .object({
+    sceneOrder: z.number().int().nonnegative(),
+    itemOrder: z.number().int().nonnegative(),
+  })
+  .strict();
 
 const MessageV1Schema = z
   .object({
@@ -32,6 +55,21 @@ const MessageV2Schema = z
     characterId: IdentifierSchema.nullable(),
     text: z.string(),
     textSurface: z.string().nullable(),
+    playOrder: z.number().int().nonnegative().optional(),
+    revealOrder: RevealOrderSchema.nullable().optional(),
+    lineId: z.string().min(1).optional(),
+    evidenceTier: EvidenceTierSchema.optional(),
+    color: RgbSchema.nullable().optional(),
+    bridgeDeclaredColor: RgbSchema.nullable().optional(),
+    sourceAsset: SourceAssetSchema.optional(),
+    byteOffsetInScene: z.number().int().nonnegative().nullable().optional(),
+    byteLength: z.number().int().nonnegative().nullable().optional(),
+    rawByteHandle: z.string().min(1).nullable().optional(),
+    bodyShiftJisHex: z.string().nullable().optional(),
+    bridgeRef: BridgeRefSchema.nullable().optional(),
+    linkageStatus: z.enum(["bridge_linked", "runtime_only"]).optional(),
+    runtimeOnlyReason: z.string().min(1).optional(),
+    routeMembership: z.array(IdentifierSchema).optional(),
   })
   .strict();
 
@@ -50,6 +88,12 @@ const ChoiceV2Schema = z
     label: z.string(),
     branchEntryScene: SceneIdSchema.nullable().optional(),
     branchTargetSceneId: SceneIdSchema.nullable(),
+    choiceId: IdentifierSchema.optional(),
+    choiceGroupId: IdentifierSchema.optional(),
+    edgeId: IdentifierSchema.optional(),
+    edgeResolution: EdgeResolutionSchema.optional(),
+    unresolvedEdgeDiagnostic: z.string().nullable().optional(),
+    bridgeRef: BridgeRefSchema.nullable().optional(),
     branchMessages: z.array(MessageV2Schema),
   })
   .strict()
@@ -84,10 +128,84 @@ const SceneV2Schema = z
     dispatchFanoutScenes: z.array(SceneIdSchema).optional().default([]),
     messages: z.array(MessageV2Schema),
     choices: z.array(ChoiceV2Schema),
+    sceneRef: IdentifierSchema.optional(),
+    units: z
+      .array(
+        z
+          .object({
+            unitId: IdentifierSchema,
+            bridgeRef: BridgeRefSchema,
+            surfaceKind: IdentifierSchema,
+            sourceText: z.string(),
+            characterId: IdentifierSchema.nullable(),
+            evidenceTier: EvidenceTierSchema.nullable(),
+            color: RgbSchema.nullable(),
+            bridgeDeclaredColor: RgbSchema.nullable().optional(),
+            sourceAsset: SourceAssetSchema,
+            byteOffsetInScene: z.number().int().nonnegative(),
+            byteLength: z.number().int().nonnegative(),
+            rawByteHandle: z.string().min(1),
+            choiceId: IdentifierSchema.nullable(),
+            playOrder: z.number().int().nonnegative().nullable(),
+            revealOrder: RevealOrderSchema.nullable(),
+            observedLineIds: z.array(z.string().min(1)),
+            routeMembership: z.array(IdentifierSchema),
+          })
+          .strict(),
+      )
+      .optional(),
+    playOrder: z.number().int().nonnegative().optional(),
+    revealOrder: z.number().int().nonnegative().nullable().optional(),
+    observationMode: z.enum(["entry_reached", "cold_seeded"]).optional(),
+    predecessors: z.array(SceneIdSchema).optional(),
+    successors: z.array(SceneIdSchema).optional(),
+    reachable: z.boolean().optional(),
+    routeMembership: z.array(IdentifierSchema).optional(),
   })
   .strict();
 
-function unique(values: readonly number[]): boolean {
+const EdgeSchema = z
+  .object({
+    edgeId: IdentifierSchema,
+    kind: z.enum(["dispatch", "choice"]),
+    fromSceneId: SceneIdSchema,
+    toSceneId: SceneIdSchema.nullable(),
+    resolution: EdgeResolutionSchema,
+    diagnostic: z.string().nullable(),
+    choiceId: IdentifierSchema.nullable(),
+    optionIndex: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
+
+const RouteSchema = z
+  .object({
+    routeId: IdentifierSchema,
+    entrySceneId: SceneIdSchema,
+    viaEdgeId: IdentifierSchema.nullable(),
+    sceneIds: z.array(SceneIdSchema),
+  })
+  .strict();
+
+const CoverageSchema = z
+  .object({
+    archiveSceneCount: z.number().int().nonnegative(),
+    decodedSceneCount: z.number().int().nonnegative(),
+    loadedSceneCount: z.number().int().nonnegative(),
+    bridgeAssetCount: z.number().int().nonnegative(),
+    emittedSceneCount: z.number().int().nonnegative(),
+    archiveUnitCount: z.number().int().nonnegative(),
+    emittedUnitCount: z.number().int().nonnegative(),
+    observedUnitCount: z.number().int().nonnegative(),
+    archiveEdgeCount: z.number().int().nonnegative(),
+    emittedEdgeCount: z.number().int().nonnegative(),
+    unresolvedEdgeCount: z.number().int().nonnegative(),
+    truncationStatus: z.literal("complete"),
+    truncated: z.literal(false),
+    complete: z.literal(true),
+  })
+  .strict();
+
+function unique<T>(values: readonly T[]): boolean {
   return new Set(values).size === values.length;
 }
 
@@ -98,7 +216,7 @@ function validateStructure(
     scenes: Array<{
       sceneId: number;
       messages: Array<{ order: number }>;
-      choices: Array<{ optionIndex: number }>;
+      choices: Array<{ optionIndex: number; choiceId?: string | undefined }>;
     }>;
   },
   context: z.RefinementCtx,
@@ -123,7 +241,7 @@ function validateStructure(
         message: `scene ${scene.sceneId} repeats a message order`,
       });
     }
-    if (!unique(scene.choices.map((choice) => choice.optionIndex))) {
+    if (!unique(scene.choices.map((choice) => choice.choiceId ?? `option:${choice.optionIndex}`))) {
       context.addIssue({
         code: "custom",
         message: `scene ${scene.sceneId} repeats a choice index`,
@@ -148,6 +266,11 @@ export const NarrativeStructureV2Schema = z
     entryScene: SceneIdSchema,
     sceneDispatchOrder: z.array(SceneIdSchema),
     scenes: z.array(SceneV2Schema),
+    bridgeId: IdentifierSchema.optional(),
+    sourceBundleHash: Sha256Schema.optional(),
+    coverage: CoverageSchema.optional(),
+    routes: z.array(RouteSchema).optional(),
+    edges: z.array(EdgeSchema).optional(),
   })
   .strict()
   .superRefine(validateStructure);
@@ -202,6 +325,7 @@ function normalizeMessage(message: {
   textSurface: string | null;
 }): NarrativeMessage {
   return {
+    ...message,
     order: message.order,
     speaker: message.speaker,
     characterId: message.characterId ?? null,
@@ -237,6 +361,7 @@ function normalizeScene(scene: {
   }>;
 }): NarrativeScene {
   const choices: NarrativeChoice[] = scene.choices.map((choice) => ({
+    ...choice,
     optionIndex: choice.optionIndex,
     label: choice.label,
     branchEntryScene: choice.branchEntryScene ?? null,
@@ -246,6 +371,7 @@ function normalizeScene(scene: {
     branchMessages: choice.branchMessages.map(normalizeMessage),
   }));
   return {
+    ...scene,
     sceneId: scene.sceneId,
     selectionControl: scene.selectionControl,
     nextScene: scene.nextScene,
@@ -266,6 +392,7 @@ export function parseNarrativeStructure(
       ? parseSchema(NarrativeStructureV1Schema, value)
       : parseSchema(NarrativeStructureV2Schema, value);
   return {
+    ...parsed,
     schemaVersion: parsed.schemaVersion,
     entryScene: parsed.entryScene,
     sceneDispatchOrder: [...parsed.sceneDispatchOrder],

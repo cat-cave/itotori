@@ -102,7 +102,11 @@ function memoryIo(seed: Record<string, unknown> = {}): {
 }
 
 type CallLog = string[];
-type Capture = { localize?: unknown; nativeCalls: string[][] };
+type Capture = {
+  localize?: unknown;
+  structure?: { bridgePath?: string; outputPath: string };
+  nativeCalls: string[][];
+};
 
 /** Build fake stage seams that record the call order + capture inputs. */
 function fakeStages(
@@ -128,8 +132,9 @@ function fakeStages(
         mode: "whole-seen",
       };
     },
-    structure: () => {
+    structure: (args) => {
       order.push("structure");
+      capture.structure = args;
       return { command: "utsushi-cli", args: [], status: 0, stdout: "", stderr: "" };
     },
     localize: (args) => {
@@ -192,6 +197,7 @@ describe("runLocalizeGameCommand (orchestration, mocked stages)", () => {
     const effective = io.writes.get(localizeArgs.configPath) as Record<string, unknown>;
     expect(effective.bridgePath).toBe(join(runDir, "bridge-bundle.json"));
     expect(effective.structureJsonPath).toBe(join(runDir, "structure.json"));
+    expect(capture.structure?.bridgePath).toBe(join(runDir, "bridge-bundle.json"));
     // The base config's other fields survive.
     expect(effective.projectId).toBe("sweetie");
     expect(effective.pairPolicyPath).toBe("/x/pair-policy.json");

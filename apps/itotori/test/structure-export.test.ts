@@ -69,14 +69,17 @@ describe("buildUtsushiStructureArgs (flag surface the producer parses)", () => {
     ]);
   });
 
-  it("appends --entry-scene + --max-scenes when supplied", () => {
+  it("appends the evidence bridge before dispatch constraints", () => {
     const args = buildUtsushiStructureArgs({
       gameexePath: "/g/Gameexe.ini",
       seenPath: "/g/Seen.txt",
       outputPath: "/run/structure.json",
+      bridgePath: "/run/bridge.json",
       entryScene: 6010,
       maxScenes: 4,
     });
+    expect(args).toContain("--bridge");
+    expect(args[args.indexOf("--bridge") + 1]).toBe("/run/bridge.json");
     expect(args.slice(-4)).toEqual(["--entry-scene", "6010", "--max-scenes", "4"]);
   });
 });
