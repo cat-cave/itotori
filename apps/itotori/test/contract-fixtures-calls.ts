@@ -23,9 +23,7 @@ import {
 } from "./contract-fixtures-core.js";
 
 const providerPolicy = {
-  order: ["provider:primary"],
-  only: ["provider:primary"],
-  allowFallbacks: false,
+  allowFallbacks: true,
   zdr: true,
   dataCollection: "deny",
   requireParameters: true,
@@ -71,7 +69,7 @@ export const callSpecExample = {
 export const callResultExample = {
   schemaVersion: CALL_RESULT_SCHEMA_VERSION,
   memoKey: H1,
-  requested: { model: "deepseek-v4-flash", providerOrder: ["provider:primary"] },
+  requested: { model: "deepseek-v4-flash" },
   memoHit: false,
   status: "success",
   value: draftBatchExample,

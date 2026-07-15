@@ -46,14 +46,33 @@ export function preserveReasoningDetails(fetcher: TransportFetcher): ReasoningDe
 
       const response = await fetcher(request);
       if (!isEventStream(response)) return response;
-      const body = await response.text();
+      // Buffer the event stream to capture reasoning details, but do NOT let a
+      // transport loss AFTER response bytes were emitted collapse into a fetcher
+      // throw: `response.text()` would reject on the mid-stream error and turn a
+      // completed-response transport loss into a retryable connection failure.
+      // Replay the received bytes and re-emit the error so the model adapter
+      // observes exactly the stream it would have seen unwrapped.
+      const { text: body, errored } = await bufferEventStream(response);
       const captured = reasoningDetailsFromEventStream(body);
       if (captured.length > 0) {
         pending = captured;
         receivedBatchCount += 1;
         receivedDetailCount += captured.length;
       }
-      return new Response(body, {
+      if (!errored) {
+        return new Response(body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        });
+      }
+      const replay = new ReadableStream<Uint8Array>({
+        start(controller) {
+          if (body.length > 0) controller.enqueue(new TextEncoder().encode(body));
+          controller.error(new Error("reasoning-details passthrough: upstream event stream error"));
+        },
+      });
+      return new Response(replay, {
         status: response.status,
         statusText: response.statusText,
         headers: response.headers,
@@ -95,6 +114,37 @@ async function forwardPendingDetails(
     forwarded: true,
     exact,
   };
+}
+
+/**
+ * Read an event-stream body into text. Distinguishes a clean end-of-stream
+ * from a transport loss that occurs AFTER some bytes were emitted: the caller
+ * replays the received bytes and re-signals the error so a completed-response
+ * transport loss keeps its terminal (non-retried) transport semantics.
+ */
+async function bufferEventStream(response: Response): Promise<{ text: string; errored: boolean }> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    try {
+      return { text: await response.text(), errored: false };
+    } catch {
+      return { text: "", errored: true };
+    }
+  }
+  const decoder = new TextDecoder();
+  let text = "";
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    return { text, errored: false };
+  } catch {
+    text += decoder.decode();
+    return { text, errored: true };
+  }
 }
 
 function reasoningDetailsFromEventStream(body: string): unknown[] {

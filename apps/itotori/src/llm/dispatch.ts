@@ -323,7 +323,7 @@ function failureKind(error: unknown, state: DispatchState): FailureKind {
 export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): Promise<CallResult> {
   const spec = CallSpecSchema.parse(specInput);
   assertCallUsesCertifiedRoleModelProfile(spec);
-  const requested = { model: spec.requestedModel, providerOrder: spec.providerPolicy.order };
+  const requested = { model: spec.requestedModel };
   const env = runtime.env ?? process.env;
   assertRebuildLlmStartupPolicy(env);
   const apiKey = env.OPENROUTER_API_KEY;

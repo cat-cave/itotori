@@ -154,28 +154,107 @@ export const TokenUsageSchema = z
   })
   .strict();
 
+// ITOTORI-241 - ZDR is a SETTING (a capability + privacy filter), NOT a
+// provider pin. A provider policy enforces exactly three things: (a) the
+// capabilities every role needs - strict structured/JSON-schema final
+// output and typed tool-calling, gated by `requireParameters: true` so
+// OpenRouter only routes to providers that honor them; (b) the ZDR /
+// data-collection privacy posture (`zdr: true` + `dataCollection: "deny"`),
+// which is also what CONFINES fallback to the account ZDR allow-list; and
+// (c) OpenRouter automatic fallback across every compliant provider
+// (`allowFallbacks: true`).
+//
+// It names NO provider. A single-provider pin - a non-empty `only`, a
+// hardcoded provider `order`, or `allowFallbacks: false` - is what turned a
+// transient upstream HTTP 429 into a total outage; it is structurally
+// impossible here. `.strict()` rejects an `only` or `order` key outright,
+// and `allowFallbacks` must be literally `true`. The actually-served
+// (model, provider) pair is RECORDED per call as telemetry, never pinned as
+// input.
 export const ProviderPolicySchema = z
   .object({
-    order: z.array(IdentifierSchema).min(1).max(8),
-    only: z.array(IdentifierSchema).min(1).max(8),
-    allowFallbacks: z.literal(false),
+    allowFallbacks: z.literal(true),
     zdr: z.literal(true),
     dataCollection: z.literal("deny"),
     requireParameters: z.literal(true),
   })
-  .strict()
-  .superRefine((value, context) => {
-    const only = new Set(value.only);
-    if (only.size !== value.only.length || new Set(value.order).size !== value.order.length) {
-      context.addIssue({ code: "custom", message: "provider lists must be unique" });
-    }
-    if (
-      value.order.length !== value.only.length ||
-      value.order.some((provider) => !only.has(provider))
-    ) {
-      context.addIssue({ code: "custom", message: "provider order and only must match" });
-    }
-  });
+  .strict();
+
+/**
+ * Fail loud, with a domain message, when a raw provider-policy input tries
+ * to pin a single provider. `ProviderPolicySchema` already rejects these
+ * structurally; this guard is the construction seam that explains WHY, so
+ * the ITOTORI-241 anti-pattern can never be reintroduced silently.
+ */
+export function assertNoProviderPin(raw: unknown): void {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return;
+  const record = raw as Record<string, unknown>;
+  const pins: string[] = [];
+  if ("only" in record) pins.push("only");
+  if ("order" in record) pins.push("order");
+  if (record.allowFallbacks === false) pins.push("allowFallbacks:false");
+  if (pins.length > 0) {
+    throw new Error(
+      `provider policy must not pin a provider (found ${pins.join(
+        ", ",
+      )}): ZDR is a setting, not a provider pin - enforce capability + ZDR + automatic fallback (allowFallbacks:true) and name no provider`,
+    );
+  }
+}
+
+// ITOTORI-241 - OpenRouter inference-PROVIDER (routing endpoint) slugs, distinct
+// from model-family/vendor names. A profile identity keyed by model+capability
+// must never embed one of these, or a provider would be smuggled back into the
+// identity (e.g. `deepseek-v4-flash-fireworks`) even when the policy is
+// provider-free. Model-vendor tokens (deepseek, gpt, claude, ...) are NOT here,
+// so a legitimate model-keyed id like `deepseek-v4-flash` is accepted.
+export const KNOWN_OPENROUTER_PROVIDER_TOKENS: ReadonlySet<string> = new Set([
+  "fireworks",
+  "parasail",
+  "deepinfra",
+  "together",
+  "novita",
+  "hyperbolic",
+  "lambda",
+  "nebius",
+  "sambanova",
+  "cerebras",
+  "groq",
+  "avian",
+  "featherless",
+  "inflection",
+  "mancer",
+  "atoma",
+  "phala",
+  "enfer",
+  "gmicloud",
+  "ncompass",
+  "kluster",
+  "friendli",
+  "baseten",
+  "crusoe",
+]);
+
+/**
+ * Fail loud when a profile IDENTITY names an inference provider. Identity is
+ * keyed by model + capability, never by a provider; a provider-bearing id
+ * (e.g. `deepseek-v4-flash-fireworks`) re-smuggles a pin into the identity
+ * even when the policy is provider-free. Matched on hyphen/underscore/dot
+ * delimited tokens so a model-keyed id (`deepseek-v4-flash`) is accepted.
+ */
+export function assertProfileIdNamesNoProvider(profileId: string): void {
+  const named = profileId
+    .toLowerCase()
+    .split(/[^a-z0-9]+/u)
+    .filter((token) => KNOWN_OPENROUTER_PROVIDER_TOKENS.has(token));
+  if (named.length > 0) {
+    throw new Error(
+      `profile identity must not name a provider (found ${named.join(
+        ", ",
+      )}): identity is keyed by model + capability, not by a provider`,
+    );
+  }
+}
 
 export const SourceSpanSchema = z
   .object({

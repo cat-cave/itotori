@@ -17,7 +17,11 @@ import {
 import { dispatch, type DispatchRuntime, type DispatchTool } from "../src/llm/dispatch.js";
 import type { GenerationMetadataSource } from "../src/llm/generation-metadata.js";
 import { reviewVerdictExample } from "./contract-fixtures-core.js";
-import { TEST_MODEL_PROFILE, confirmedGenerationMetadataSource } from "./llm-step-test-support.js";
+import {
+  TEST_MODEL_PROFILE,
+  confirmedGenerationMetadataSource,
+  httpProviderResponse,
+} from "./llm-step-test-support.js";
 
 const HASH_A = `sha256:${"a".repeat(64)}` as const;
 const HASH_B = `sha256:${"b".repeat(64)}` as const;
@@ -162,9 +166,7 @@ function callSpec(prompt: string, overrides: Partial<CallSpec> = {}): CallSpec {
     modelProfileVersion: "reviewer:v1",
     requestedModel: "deepseek/deepseek-v4-flash",
     providerPolicy: {
-      order: ["provider:primary"],
-      only: ["provider:primary"],
-      allowFallbacks: false,
+      allowFallbacks: true,
       zdr: true,
       dataCollection: "deny",
       requireParameters: true,
@@ -287,9 +289,7 @@ describe("the rebuilt LLM dispatcher", () => {
     expect(captured[0]?.body).toMatchObject({
       model: "deepseek/deepseek-v4-flash",
       provider: {
-        order: ["provider:primary"],
-        only: ["provider:primary"],
-        allow_fallbacks: false,
+        allow_fallbacks: true,
         zdr: true,
         data_collection: "deny",
         require_parameters: true,
@@ -304,6 +304,10 @@ describe("the rebuilt LLM dispatcher", () => {
     });
     expect(captured[0]?.body).not.toHaveProperty("provider.allowFallbacks");
     expect(captured[0]?.body).not.toHaveProperty("provider.dataCollection");
+    // ITOTORI-241 - the wire names no provider: automatic fallback (zdr:true)
+    // confines routing to the account ZDR allow-list without an only/order pin.
+    expect(captured[0]?.body).not.toHaveProperty("provider.only");
+    expect(captured[0]?.body).not.toHaveProperty("provider.order");
     expect(captured[0]?.body).not.toHaveProperty("parallel_tool_calls");
     expect(captured[0]?.body).not.toHaveProperty("seed");
     expect(captured[0]?.body).not.toHaveProperty("max_completion_tokens");
@@ -323,6 +327,44 @@ describe("the rebuilt LLM dispatcher", () => {
       "model-step-finished",
       "run-finished",
     ]);
+  });
+
+  it("permits OpenRouter fallback and retries a single-provider 429 without aborting", async () => {
+    // ITOTORI-241 - proves fallback is genuinely ENABLED without a live outage:
+    // inject a 429 on the first upstream, then a valid response. This shows the
+    // wire permits OpenRouter to fall back and the dispatcher does not treat a
+    // single-provider rate limit as a terminal failure. (Server-side alternate
+    // selection is OpenRouter-internal; served-provider stays deferred.)
+    const prompt = "Return the requested synthetic review verdict.";
+    const captured: CapturedRequest[] = [];
+    const base = runtime(
+      prompt,
+      [httpProviderResponse(429, "0"), structuredResponse(JSON.stringify(reviewVerdictExample))],
+      captured,
+    );
+    // Deterministic, instant retry - no real backoff sleep.
+    const configured: DispatchRuntime = {
+      ...base,
+      memo: { ...base.memo, retry: { random: () => 0, sleep: async () => undefined } },
+    };
+
+    const result = await dispatch(callSpec(prompt), configured);
+
+    // (i) The outgoing request PERMITS OpenRouter-side fallback: allow_fallbacks
+    //     is true, ZDR confines it to the allow-list, and there is NO only/order
+    //     pin - so a 429 on one endpoint is allowed to route to another.
+    expect(captured[0]?.body.provider).toEqual({
+      allow_fallbacks: true,
+      zdr: true,
+      data_collection: "deny",
+      require_parameters: true,
+    });
+    expect(captured[0]?.body).not.toHaveProperty("provider.only");
+    expect(captured[0]?.body).not.toHaveProperty("provider.order");
+    // (ii) The dispatcher made a SECOND attempt after the 429 rather than
+    //      aborting on the single-provider rate limit, and recovered.
+    expect(captured).toHaveLength(2);
+    expect(result.status).toBe("success");
   });
 
   it("returns malformed terminal JSON as a typed failure without salvage or retry", async () => {
@@ -497,12 +539,10 @@ describe("the rebuilt LLM dispatcher", () => {
   });
 });
 
-const liveProvider = process.env.ITOTORI_OPENROUTER_ZDR_PROVIDER;
 const liveEnabled =
   Boolean(process.env.OPENROUTER_API_KEY) &&
   process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED === "1" &&
-  process.env.OPENROUTER_ZDR_GUARDRAIL_ASSERTED === "1" &&
-  Boolean(liveProvider);
+  process.env.OPENROUTER_ZDR_GUARDRAIL_ASSERTED === "1";
 
 (liveEnabled ? it : it.skip)(
   "quarantines a real structured response while generation lookup wiring is deferred",
@@ -510,9 +550,7 @@ const liveEnabled =
     const prompt = `Return exactly one PASS review verdict for synthetic unit unit:1. Use schemaVersion ${REVIEW_VERDICT_SCHEMA_VERSION}, reviewId review:live:1, localizationSnapshotId ${HASH_B}, roleId Q1, rubric meaning, unitId unit:1, wiki-first basis with bibleRenderingIds [rendering:1], severity none, null span/category/repairConstraint, and evidenceIds [fact:unit:1].`;
     const spec = callSpec(prompt, {
       providerPolicy: {
-        order: [liveProvider!],
-        only: [liveProvider!],
-        allowFallbacks: false,
+        allowFallbacks: true,
         zdr: true,
         dataCollection: "deny",
         requireParameters: true,

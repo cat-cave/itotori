@@ -27,9 +27,7 @@ describe("privacy, retention, and egress contract", () => {
     const policy = {
       model: "provider:model-v4",
       provider: {
-        order: ["provider:primary", "provider:secondary"],
-        only: ["provider:primary", "provider:secondary"],
-        allowFallbacks: false,
+        allowFallbacks: true,
         zdr: true,
         dataCollection: "deny",
         requireParameters: true,

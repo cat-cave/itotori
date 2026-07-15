@@ -160,9 +160,7 @@ export function physicalCallSpec(prompt: string, overrides: Partial<CallSpec> = 
     modelProfileVersion: "reviewer:v1",
     requestedModel: "deepseek/deepseek-v4-flash",
     providerPolicy: {
-      order: ["provider:primary"],
-      only: ["provider:primary"],
-      allowFallbacks: false,
+      allowFallbacks: true,
       zdr: true,
       dataCollection: "deny",
       requireParameters: true,

@@ -5,7 +5,10 @@ import {
   ProviderPolicySchema,
   RebuildCallWirePolicySchema,
   RoleIdSchema,
+  Sha256Schema,
   TokenUsageSchema,
+  assertNoProviderPin,
+  assertProfileIdNamesNoProvider,
   type CallSpec,
   type RoleId,
 } from "../contracts/index.js";
@@ -33,6 +36,16 @@ export const RoleModelProfileSchema = z
   })
   .strict()
   .superRefine((value, context) => {
+    try {
+      assertProfileIdNamesNoProvider(value.profileId);
+    } catch (error) {
+      context.addIssue({
+        code: "custom",
+        path: ["profileId"],
+        message:
+          error instanceof Error ? error.message : "profile identity must not name a provider",
+      });
+    }
     const exactWire = RebuildCallWirePolicySchema.safeParse({
       model: value.model,
       provider: value.providerPolicy,
@@ -94,6 +107,22 @@ const PositiveBilledUsdSchema = DecimalUsdSchema.refine((value) => Number(value)
   message: "certified provider cost must be positive",
 });
 
+// ITOTORI-241 - binds a certificate to the ACTUAL live run it was minted from.
+// `memoKey` is the request identity (sha256 of the CallSpec) and
+// `transcriptHash` is sha256 of the response transcript (the dispatch events)
+// captured by the certifier from the real result. `evidenceHash` is a
+// recomputable integrity seal over the certified subject/checks/observations +
+// those two run references. A hand-authored certificate that flips the status,
+// inflates usage/cost, or is minted without running the certifier cannot
+// reproduce a matching `evidenceHash`, so selection rejects it.
+const CertificateRunBindingSchema = z
+  .object({
+    memoKey: Sha256Schema,
+    transcriptHash: Sha256Schema,
+    evidenceHash: Sha256Schema,
+  })
+  .strict();
+
 export const ModelProfileCertificateSchema = z
   .object({
     schemaVersion: z.literal(MODEL_PROFILE_CERTIFICATE_VERSION),
@@ -113,11 +142,28 @@ export const ModelProfileCertificateSchema = z
         generationLookupAttempts: z.number().int().positive(),
         generationId: z.null(),
         served: UnknownServedPairSchema,
+        runBinding: CertificateRunBindingSchema,
       })
       .strict(),
   })
   .strict()
   .superRefine((value, context) => {
+    const { runBinding, ...observations } = value.observations;
+    const expected = certificateEvidenceHash({
+      probedAt: value.probedAt,
+      subject: value.subject,
+      checks: value.checks,
+      observations,
+      memoKey: runBinding.memoKey,
+      transcriptHash: runBinding.transcriptHash,
+    });
+    if (expected !== runBinding.evidenceHash) {
+      context.addIssue({
+        code: "custom",
+        path: ["observations", "runBinding", "evidenceHash"],
+        message: "certificate run binding does not match its certified evidence",
+      });
+    }
     if (value.certificateStatus !== "valid") return;
     const requiredPasses = [
       value.checks.strictStructuredFinish,
@@ -152,25 +198,30 @@ export type ResolvedRoleModelProfile = RoleModelProfile & {
   readonly certificate: ModelProfileCertificate;
 };
 
-const approvedProviderPolicy = ProviderPolicySchema.parse({
-  order: ["fireworks"],
-  only: ["fireworks"],
-  allowFallbacks: false,
+// ITOTORI-241 - capability + ZDR + automatic-fallback policy. It names NO
+// provider: `requireParameters` gates strict structured output + typed
+// tool-calling to capable providers, `zdr`/`dataCollection` set the privacy
+// posture and confine fallback to the account ZDR allow-list, and
+// `allowFallbacks: true` lets OpenRouter route across every compliant
+// provider when the preferred upstream returns a transient HTTP 429. There
+// is no known-good provider list to keep in sync.
+const zdrFallbackProviderPolicy = ProviderPolicySchema.parse({
+  allowFallbacks: true,
   zdr: true,
   dataCollection: "deny",
   requireParameters: true,
 });
 
-export const deepSeekV4FlashFireworksProfile = constructRoleModelProfile({
-  profileId: "deepseek-v4-flash-fireworks",
+export const deepSeekV4FlashProfile = constructRoleModelProfile({
+  profileId: "deepseek-v4-flash",
   model: "deepseek/deepseek-v4-flash",
-  providerPolicy: approvedProviderPolicy,
+  providerPolicy: zdrFallbackProviderPolicy,
 });
 
 export const roleModelProfileConfig = RoleModelProfileConfigSchema.parse({
   schemaVersion: ROLE_MODEL_PROFILE_CONFIG_VERSION,
   profiles: {
-    [deepSeekV4FlashFireworksProfile.profileId]: deepSeekV4FlashFireworksProfile,
+    [deepSeekV4FlashProfile.profileId]: deepSeekV4FlashProfile,
   },
   roles: {
     A1: binding("reasoning"),
@@ -200,6 +251,8 @@ export function constructRoleModelProfile(input: {
   readonly model: string;
   readonly providerPolicy: z.input<typeof ProviderPolicySchema>;
 }): RoleModelProfile {
+  assertProfileIdNamesNoProvider(input.profileId);
+  assertNoProviderPin(input.providerPolicy);
   const providerPolicy = ProviderPolicySchema.parse(input.providerPolicy);
   RebuildCallWirePolicySchema.parse({
     model: input.model,
@@ -281,7 +334,34 @@ export function assertCallUsesCertifiedRoleModelProfile(specInput: CallSpec): vo
 }
 
 function binding(modelProfile: z.infer<typeof ModelProfileNameSchema>) {
-  return { profileId: deepSeekV4FlashFireworksProfile.profileId, modelProfile };
+  return { profileId: deepSeekV4FlashProfile.profileId, modelProfile };
+}
+
+/**
+ * Recomputable integrity seal that binds a certificate to its real live run.
+ * Hashed over the certified subject/checks/observations plus the two run
+ * references (`memoKey` = request identity, `transcriptHash` = response
+ * transcript). The certifier computes this from the actual dispatch result;
+ * certificate parse recomputes it and rejects any mismatch, so a hand-authored
+ * or tampered certificate cannot be selected.
+ */
+export function certificateEvidenceHash(input: {
+  readonly probedAt: string;
+  readonly subject: RoleModelProfile;
+  readonly checks: Record<string, string>;
+  readonly observations: Record<string, unknown>;
+  readonly memoKey: string;
+  readonly transcriptHash: string;
+}): `sha256:${string}` {
+  return sha256({
+    version: MODEL_PROFILE_CERTIFICATE_VERSION,
+    probedAt: input.probedAt,
+    subject: input.subject,
+    checks: input.checks,
+    observations: input.observations,
+    memoKey: input.memoKey,
+    transcriptHash: input.transcriptHash,
+  });
 }
 
 function profileVersion(

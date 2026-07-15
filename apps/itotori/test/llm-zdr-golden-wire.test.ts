@@ -134,9 +134,7 @@ function assertSerializedZdrWire(wire: CapturedWire): void {
     throw new Error(`camelCase ZDR fields would be silently dropped: ${camelCase.join(", ")}`);
   }
   const requiredProvider = {
-    order: ["provider:primary"],
-    only: ["provider:primary"],
-    allow_fallbacks: false,
+    allow_fallbacks: true,
     zdr: true,
     data_collection: "deny",
     require_parameters: true,
@@ -195,8 +193,6 @@ describe("the OpenRouter ZDR golden wire", () => {
       body: {
         ...actual.body,
         provider: {
-          order: provider.order,
-          only: provider.only,
           allowFallbacks: provider.allow_fallbacks,
           zdr: provider.zdr,
           dataCollection: provider.data_collection,

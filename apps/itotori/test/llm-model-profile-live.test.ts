@@ -9,7 +9,7 @@ import {
 } from "../src/llm/model-profile-conformance.js";
 import type { ReasoningDetailsContinuityEvidence } from "../src/llm/reasoning-details-continuity.js";
 import {
-  deepSeekV4FlashFireworksProfile,
+  deepSeekV4FlashProfile,
   uncertifiedRoleModelProfileCandidateForProbe,
 } from "../src/llm/role-model-profiles.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
@@ -72,7 +72,7 @@ const liveEnabled =
             maxAttemptExposureUsd: "1",
           },
           admission: {
-            scope: "probe:model-profile:deepseek-v4-flash-fireworks",
+            scope: "probe:model-profile:deepseek-v4-flash",
             confirmedCostCapUsd: "1",
           },
           generationMetadataSource: {
@@ -102,7 +102,7 @@ const liveEnabled =
       const probedAt = new Date().toISOString();
       let certificate;
       try {
-        certificate = certifyLiveModelProfile(deepSeekV4FlashFireworksProfile, {
+        certificate = certifyLiveModelProfile(deepSeekV4FlashProfile, {
           probedAt,
           result,
           steps,

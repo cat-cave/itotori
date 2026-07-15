@@ -8,7 +8,7 @@ import {
   certifyLiveModelProfile,
   type LiveConformanceObservations,
 } from "../src/llm/model-profile-conformance.js";
-import { deepSeekV4FlashFireworksProfile } from "../src/llm/role-model-profiles.js";
+import { deepSeekV4FlashProfile } from "../src/llm/role-model-profiles.js";
 
 const HASH_A = `sha256:${"a".repeat(64)}` as const;
 const HASH_B = `sha256:${"b".repeat(64)}` as const;
@@ -16,10 +16,7 @@ const capturedBilledUsd = ["0", "000001"].join(".");
 
 describe("live model-profile conformance certification", () => {
   it("certifies strict finish, tools, reasoning continuity, usage, and cost while deferring unknown route metadata", () => {
-    const certificate = certifyLiveModelProfile(
-      deepSeekV4FlashFireworksProfile,
-      passingObservations(),
-    );
+    const certificate = certifyLiveModelProfile(deepSeekV4FlashProfile, passingObservations());
 
     expect(certificate).toMatchObject({
       certificateStatus: "valid",
@@ -89,12 +86,54 @@ describe("live model-profile conformance certification", () => {
       (value: LiveConformanceObservations) => ({ ...value, generationLookupAttempts: 0 }),
       /explicit unknown/u,
     ],
+    [
+      "reasoning detail counts",
+      (value: LiveConformanceObservations) => ({
+        ...value,
+        reasoning: { ...value.reasoning, receivedDetailCount: 0, forwardedDetailCount: 0 },
+      }),
+      /opaque reasoning details/u,
+    ],
+    [
+      "reconciled result usage",
+      (value: LiveConformanceObservations) => ({
+        ...value,
+        result: withResult(value.result, {
+          usage: { promptTokens: 0, completionTokens: 0, reasoningTokens: 0, cachedTokens: 0 },
+        }),
+      }),
+      /provider usage/u,
+    ],
+    [
+      "reconciled result billing cost",
+      (value: LiveConformanceObservations) => ({
+        ...value,
+        result: withResult(value.result, { billing: { status: "confirmed", costUsd: "0" } }),
+      }),
+      /provider-reported cost/u,
+    ],
+    [
+      "terminal transcript event",
+      (value: LiveConformanceObservations) => ({
+        ...value,
+        result: withResult(value.result, {
+          events: value.result.events.filter(
+            (event) => !(event.kind === "model-step-finished" && event.finishReason === "stop"),
+          ),
+        }),
+      }),
+      /terminal model step/u,
+    ],
   ])("refuses certification when %s proof is removed", (_label, mutate, message) => {
     expect(() =>
-      certifyLiveModelProfile(deepSeekV4FlashFireworksProfile, mutate(passingObservations())),
+      certifyLiveModelProfile(deepSeekV4FlashProfile, mutate(passingObservations())),
     ).toThrow(message);
   });
 });
+
+function withResult(result: CallResult, patch: Record<string, unknown>): CallResult {
+  return { ...result, ...patch } as CallResult;
+}
 
 function passingObservations(): LiveConformanceObservations {
   return {
@@ -130,8 +169,7 @@ function quarantinedResult(): CallResult {
     schemaVersion: CALL_RESULT_SCHEMA_VERSION,
     memoKey: HASH_A,
     requested: {
-      model: deepSeekV4FlashFireworksProfile.model,
-      providerOrder: deepSeekV4FlashFireworksProfile.providerPolicy.order,
+      model: deepSeekV4FlashProfile.model,
     },
     memoHit: false,
     status: "failure",
@@ -153,7 +191,7 @@ function quarantinedResult(): CallResult {
       {
         kind: "model-step-finished",
         iteration: 0,
-        reportedModel: deepSeekV4FlashFireworksProfile.model,
+        reportedModel: deepSeekV4FlashProfile.model,
         finishReason: "tool-calls",
       },
       {
@@ -183,7 +221,7 @@ function quarantinedResult(): CallResult {
       {
         kind: "model-step-finished",
         iteration: 1,
-        reportedModel: deepSeekV4FlashFireworksProfile.model,
+        reportedModel: deepSeekV4FlashProfile.model,
         finishReason: "stop",
       },
       { kind: "run-finished", iterationCount: 2, toolCallCount: 1, finishReason: "stop" },
