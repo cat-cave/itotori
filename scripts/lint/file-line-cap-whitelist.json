@@ -29,7 +29,7 @@
     "crates/kaifuu-core/src/plain_xp3_smoke.rs": 1122,
     "crates/kaifuu-core/src/repro_bundle.rs": 1043,
     "crates/kaifuu-core/src/rgss3_profile.rs": 1253,
-    "crates/kaifuu-core/src/rgss3_smoke.rs": 1338,
+    "crates/kaifuu-core/src/rgss3_smoke.rs": 857,
     "crates/kaifuu-core/src/siglus_profile_proof.rs": 694,
     "crates/kaifuu-core/src/siglus_static_key.rs": 1398,
     "crates/kaifuu-core/src/tests.rs": 8545,
