@@ -44,7 +44,7 @@
     "crates/kaifuu-core/src/xp3_capability_profile.rs": 1331,
     "crates/kaifuu-delta/src/contract_scaffold.rs": 871,
     "crates/kaifuu-delta/src/lib.rs": 2211,
-    "crates/kaifuu-engine-fixture/src/lib.rs": 11421,
+    "crates/kaifuu-engine-fixture/src/lib.rs": 10055,
     "crates/kaifuu-kirikiri/src/parse.rs": 695,
     "crates/kaifuu-kirikiri/src/xp3_crypt.rs": 1186,
     "crates/kaifuu-kirikiri/src/xp3_crypt_chain.rs": 925,
