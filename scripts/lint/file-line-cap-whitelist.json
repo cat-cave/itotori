@@ -11,7 +11,7 @@
     "crates/kaifuu-core/src/alpha_readiness_profile.rs": 1570,
     "crates/kaifuu-core/src/asset_ocr.rs": 1108,
     "crates/kaifuu-core/src/bgi_bytecode_fixture.rs": 1551,
-    "crates/kaifuu-core/src/bgi_detector_fixture.rs": 684,
+    "crates/kaifuu-core/src/bgi_detector_fixture.rs": 532,
     "crates/kaifuu-core/src/bgi_readiness.rs": 1179,
     "crates/kaifuu-core/src/compat_evidence.rs": 576,
     "crates/kaifuu-core/src/compat_profile.rs": 1362,
