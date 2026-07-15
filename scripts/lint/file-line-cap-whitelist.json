@@ -148,7 +148,6 @@
     "crates/utsushi-reallive/src/rlop/module_mem.rs": 1108,
     "crates/utsushi-reallive/src/rlop/module_msg.rs": 1300,
     "crates/utsushi-reallive/src/rlop/module_obj.rs": 1112,
-    "crates/utsushi-reallive/src/rlop/module_render.rs": 2274,
     "crates/utsushi-reallive/src/rlop/module_sel.rs": 1779,
     "crates/utsushi-reallive/src/rlop/module_str.rs": 1747,
     "crates/utsushi-reallive/src/rlop/module_sys.rs": 1003,
