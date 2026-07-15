@@ -56,7 +56,6 @@ fn selects_primary_role_by_default_and_includes_patch_role_on_request() {
 fn never_reads_from_artifacts_by_name_subtree() {
     // The fixture's by-name/ tree contains a decoy. The adapter must
     // resolve by-id and never touch by-name/.
-    //
     // We can't easily observe "no syscall" from a Rust test, but we can
     // observe: after a successful materialize using by-id, by-name/'s
     // contents are unchanged (modification times preserved).

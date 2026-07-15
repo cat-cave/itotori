@@ -1,14 +1,11 @@
 //! Softpal `SCRIPT.SRC` (`Sv20`) **full opcode catalog**: the semantic-decompile
 //! completion that types *every* command in the plaintext bytecode stream, not
 //! just the two text-bearing shapes ([`crate::ScriptScan`]).
-//!
 //! # The `Sv20` stack machine
-//!
 //! After the 12-byte program header, `SCRIPT.SRC` is a flat stream of **4-byte
 //! tokens** (little-endian, 4-byte aligned). A token is either an **operator**
 //! or an **operand**, disambiguated purely by structure — *not* by a byte
 //! pattern that could collide:
-//!
 //! - An **operator** token has high word `== 0x0001` ([`SV_OPERATOR_TAG`]); its
 //!   low word is the opcode id (all observed ids lie in `0x01..=0x21`, a fixed
 //!   33-entry table, [`SV_MAX_OPCODE`]; id `0x00` is never observed as an
@@ -20,34 +17,27 @@
 //!   script offset / packed call discriminator), `0x4` typed value
 //!   (`0x40000000` nil, `0x4000000N` indexed slot), `0x8` variable reference,
 //!   `0xF` sentinel (`0xFFFFFFFF`), and a handful of other tagged forms.
-//!
-//! Because operators carry a fixed arity, an operand whose bits *happen* to look
-//! like an operator (e.g. the raw immediate `0x0001_09A0`) is never mistaken for
-//! one: the walk is **arity-driven**, so it steps operator→operands→operator and
-//! lands exactly on the next operator every time. This is what makes a
-//! **0-unknown** exhaustive walk reachable where a naive marker scan cannot be.
-//!
+//!   Because operators carry a fixed arity, an operand whose bits *happen* to look
+//!   like an operator (e.g. the raw immediate `0x0001_09A0`) is never mistaken for
+//!   one: the walk is **arity-driven**, so it steps operator→operands→operator and
+//!   lands exactly on the next operator every time. This is what makes a
+//!   **0-unknown** exhaustive walk reachable where a naive marker scan cannot be.
 //! # The command surface: `Call` (opcode `0x17`) dispatch
-//!
 //! The engine's *rendering-relevant* commands (dialogue, choices, graphics,
 //! audio, flow, system) are **not** distinct opcodes — they are all the single
 //! `Call` opcode `0x17` dispatching on its first operand, a packed
 //! [`CallTarget`] `{ category = high word, function = low word }`. The existing
 //! disassembler's two shapes are exactly two `Call` targets:
-//!
 //! - **TEXT-SHOW** = category `0x0002`, function ∈ the text-type set
 //!   ([`TEXT_TYPE_FUNCTIONS`]) — [`CommandFamily::TextShow`].
 //! - **SELECT** = category `0x0006`, function `0x0002` —
 //!   [`CommandFamily::Select`].
-//!
-//! Every other `Call` target ([`CommandFamily::Call`]) is fully *identified* by
-//! its `(category, function)` pair — the exact dispatch key a future Utsushi
-//! Softpal replay consumes — even though naming each built-in individually would
-//! require reversing `Pal.dll` (a separate, larger node; see the honest-scope
-//! note below).
-//!
+//!   Every other `Call` target ([`CommandFamily::Call`]) is fully *identified* by
+//!   its `(category, function)` pair — the exact dispatch key a future Utsushi
+//!   Softpal replay consumes — even though naming each built-in individually would
+//!   require reversing `Pal.dll` (a separate, larger node; see the honest-scope
+//!   note below).
 //! # Honest scope: structural catalog, not a runtime
-//!
 //! This module **types** every command: it recovers the header, walks the token
 //! stream to a 0-unknown exhaustive accounting on ≥2 real games, classifies each
 //! operator by opcode + fixed operand shape, and identifies each `Call` by its
@@ -55,9 +45,7 @@
 //! expressions, resolve jumps, drive rendering) — that is the Utsushi Softpal
 //! replay runtime, a separate future node. The catalog is what such a replay
 //! would consume as its instruction table.
-//!
 //! # Determinism / no shell-outs
-//!
 //! Pure functions of the input `&[u8]`. No `Command::new`; the SoftPal-Tool
 //! `pal_script_tool.py` (which types only the two text shapes) and GARbro are
 //! reference oracles only. Malformed input never panics: a fatal header failure
@@ -120,7 +108,6 @@ macro_rules! sv_opcodes {
         /// The typed `Sv20` opcode table: one variant per observed operator id
         /// (the 33 ids `0x01..=0x21`), plus [`SvOpcode::Unknown`] for any id
         /// outside it (including the unobserved `0x00`).
-        ///
         /// Variant names are the hex id (`Op01`..`Op21`) except the semantically
         /// firm [`SvOpcode::Call`] (`0x17`). Each opcode's **arity** (fixed
         /// operand-token count) is proven by the exhaustive 0-unknown walk on
@@ -208,9 +195,7 @@ pub struct SvProgramHeader {
 
 impl SvProgramHeader {
     /// Parse the 12-byte header from the front of `bytes`.
-    ///
     /// # Errors
-    ///
     /// [`OpcodeError::TruncatedHeader`] for a short buffer, or
     /// [`OpcodeError::BadMagic`] if the first two bytes are not `"Sv"`.
     pub fn parse(bytes: &[u8]) -> Result<Self, OpcodeError> {
@@ -418,19 +403,15 @@ pub struct OpcodeScan {
 
 impl OpcodeScan {
     /// Walk a whole `SCRIPT.SRC` buffer into a typed opcode catalog.
-    ///
     /// The walk is **arity-driven**: it reads the header, then repeatedly reads
     /// an operator token and consumes exactly [`SvOpcode::arity`] operand tokens,
     /// stepping to the next operator. This is what makes the walk exhaustive and
     /// unambiguous — an operand whose bits resemble an operator is consumed as an
     /// operand, never re-read as one.
-    ///
     /// Never panics: a fatal header failure is `Err`; an unrecognized operator
     /// token is recorded in [`Self::unknowns`] (and the walk resyncs on the
     /// 4-byte grid); a truncated final command sets [`Self::truncated_final`].
-    ///
     /// # Errors
-    ///
     /// [`OpcodeError::TruncatedHeader`] / [`OpcodeError::BadMagic`] from the
     /// header parse.
     pub fn parse(bytes: &[u8]) -> Result<Self, OpcodeError> {

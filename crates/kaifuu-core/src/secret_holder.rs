@@ -1,5 +1,4 @@
 //! Shared zeroizing secret-holder primitive for Kaifuu crypt fixtures.
-//!
 //! Raw key bytes enter through [`SecretRefSecretResolver`] entries, are minted
 //! into [`ZeroizingSecretBytes`] only after a [`SecretRef`] binding is present,
 //! and are then exposed only through narrow operations needed by crypt code.
@@ -13,7 +12,6 @@ use crate::{SecretRef, sha256_hash_bytes};
 const REDACTED: &str = "[REDACTED:kaifuu.secret_redacted]";
 
 /// A non-`Clone`, zeroize-on-drop, `Debug`-redacting secret byte holder.
-///
 /// The raw-byte constructor is private to this module. Callers mint holders via
 /// [`SecretRefSecretResolver`] so every holder is tied to a reportable
 /// [`SecretRef`] entry before use.
@@ -45,7 +43,6 @@ impl ZeroizingSecretBytes {
     }
 
     /// Apply the fixture XOR transforms used by the XP3 and Wolf smoke paths.
-    ///
     /// The raw bytes never leave the holder; only transformed output is
     /// returned.
     #[must_use]
@@ -98,7 +95,6 @@ impl fmt::Debug for ZeroizingSecretBytes {
 }
 
 /// Controlled SecretRef-bound resolver for zeroizing secret holders.
-///
 /// This is the single shared entry that accepts raw fixture key bytes. It
 /// stores them immediately in [`ZeroizingSecretBytes`], resolves only by
 /// [`SecretRef`], and exposes no raw-byte accessor.

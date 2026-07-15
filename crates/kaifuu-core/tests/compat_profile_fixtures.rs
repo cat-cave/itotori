@@ -1,6 +1,5 @@
-//! KAIFUU-105 — on-disk claimed-support tuple fixtures validate at their
+//! on-disk claimed-support tuple fixtures validate at their
 //! HONEST levels, and the schema round-trips from disk.
-//!
 //! The committed fixtures live under `fixtures/kaifuu/compat-profile/`; each is
 //! a synthetic, redacted, ref-only claimed-support tuple (no retail bytes, no
 //! raw secrets). The Siglus fixture is honest at `extract` (known-key), the

@@ -1,9 +1,7 @@
-//! KAIFUU-110 — MV/MZ database + `System.json` terms extract & patch.
-//!
-//! Drives the KAIFUU-110 slice against committed **synthetic public**
+//! MV/MZ database + `System.json` terms extract & patch.
+//! Drives the slice against committed **synthetic public**
 //! fixtures (`tests/fixtures/k110/*.json`; authored English, no retail bytes)
 //! and proves:
-//!
 //! 1. Extraction emits STABLE units carrying every acceptance field (source
 //!    file, database entry id + array index or System section, field key,
 //!    text role, fixture-profile id) plus a stable surface key + bridge unit
@@ -29,7 +27,6 @@ use kaifuu_rpgmaker::{
 use serde_json::Value;
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
 /// reused from a different (since-removed) worktree would point fixture reads at
 /// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the
@@ -65,9 +62,7 @@ fn system_units() -> (Vec<u8>, Vec<StableDatabaseUnit>) {
     (bytes, extract_system_units("System.json", &value).units)
 }
 
-// ---------------------------------------------------------------------------
 // 1. Stable units with all acceptance fields
-// ---------------------------------------------------------------------------
 
 #[test]
 fn database_units_carry_all_acceptance_fields() {
@@ -161,9 +156,7 @@ fn system_terms_and_types_are_stable_units() {
     assert_eq!(keys.len(), units.len());
 }
 
-// ---------------------------------------------------------------------------
 // 2. Byte-preserving patch (only declared literals change)
-// ---------------------------------------------------------------------------
 
 fn located_targets(original: &[u8], units: &[StableDatabaseUnit]) -> Vec<(usize, usize, Vec<u8>)> {
     let mut out: Vec<(usize, usize, Vec<u8>)> = units
@@ -259,7 +252,7 @@ fn trivial_patch_changes_only_declared_text_across_all_surfaces() {
 #[test]
 fn non_text_fields_are_preserved_verbatim() {
     // Items.json: patch every declared string, then confirm numeric / boolean
-    // / note fields are byte-identical in the reparsed value.
+    // note fields are byte-identical in the reparsed value.
     let (bytes, units) = db_units("Items.json", "Items.json");
     let translations: Vec<DatabaseTranslation> = units
         .iter()
@@ -307,9 +300,7 @@ fn untranslated_patch_is_byte_identical_noop() {
     }
 }
 
-// ---------------------------------------------------------------------------
 // 3. Regressions are DETECTED
-// ---------------------------------------------------------------------------
 
 #[test]
 fn regression_touching_a_numeric_byte_is_detected() {
@@ -372,9 +363,7 @@ fn regression_dropping_a_declared_unit_is_detected() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // 4. Semantic diagnostics / negative fixtures
-// ---------------------------------------------------------------------------
 
 #[test]
 fn numeric_field_and_script_note_are_never_extracted() {

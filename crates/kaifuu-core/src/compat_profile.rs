@@ -1,30 +1,26 @@
-//! KAIFUU-105 — Claimed-support compatibility profile schema.
-//!
+//! Claimed-support compatibility profile schema.
 //! This module formalizes, HONESTLY, how kaifuu declares its compatibility
 //! claims across *all* engine families in one versioned schema — the
 //! **claimed-support tuple**. Where the per-family readiness validators pin one
-//! engine each (KAIFUU-054 [`crate::xp3_capability_profile`], KAIFUU-108
-//! [`crate::mv_mz_readiness`], KAIFUU-103 [`crate::packed_engine_readiness`],
-//! ALPHA-004 [`crate::alpha_encrypted_readiness`]) and the KAIFUU-053
+//! engine each ([`crate::xp3_capability_profile`]
+//! [`crate::mv_mz_readiness`], [`crate::packed_engine_readiness`]
+//! ALPHA-004 [`crate::alpha_encrypted_readiness`]) and the
 //! [`crate::AdapterCapabilityMatrix`] is the registry-side 4-rung ladder, this
 //! schema is the single, cross-family *declaration* surface: what does kaifuu
 //! CLAIM it can do with a given (family, variant, transform stack), at what
 //! support level, backed by what evidence, gated by which secrets, and where
 //! are the honest gaps.
-//!
 //! It deliberately REUSES the shared transform vocabulary
 //! ([`ContainerTransform`] / [`CryptoTransform`] / [`CodecTransform`] /
 //! [`SurfaceTransform`] / [`PatchBackTransform`]) and the shared
 //! [`SecretRef`] / [`SemanticErrorCode`] / [`ProofHash`] types rather than
 //! inventing a parallel vocabulary. The one thing it adds over the closed
-//! KAIFUU-053 4-rung ladder is the 6-level [`ClaimedSupportLevel`] (adding
+//! 4-rung ladder is the 6-level [`ClaimedSupportLevel`] (adding
 //! `helper` and `runtime`); the 4-rung [`crate::registry::CapabilityLevel`]
 //! stays the registry gate (it is intentionally closed + DB/TS-mirrored), and
 //! folding the two ladders into one is tracked as a follow-up (it needs a
 //! coordinated Rust + TS + DB bump).
-//!
 //! # The honesty guarantees (mechanical, not prose)
-//!
 //! 1. **All 10 identity/transform/reference fields are required.** A tuple
 //!    missing `engineFamily`, `engineVariant`, `container`, `crypto`, `codec`,
 //!    `surface`, `patchBackMode`, `profileOrFixtureId`, `secretRequirementIds`,
@@ -44,9 +40,7 @@
 //!    or a missing capability layer is a structured [`CompatDiagnostic`]
 //!    (`{layer, status, reasonId, severity}`) — never a bare `"unsupported"`
 //!    string.
-//!
 //! # Evidence is synthetic, redacted, ref-only
-//!
 //! Tuples carry NO raw secrets and NO retail bytes: secrets are local-scheme
 //! [`SecretRef`]s behind stable requirement ids, and evidence legs are
 //! `evidenceId` + [`ProofHash`] refs. The report is funnelled through
@@ -70,15 +64,13 @@ pub const CLAIMED_SUPPORT_REPORT_SCHEMA_VERSION: &str = "0.1.0";
 /// The honesty boundary surfaced in every report.
 pub const CLAIMED_SUPPORT_BOUNDARY: &str = "Claimed-support tuples are the single cross-family declaration of what kaifuu claims for a (family, variant, transform stack). A tuple resolves to its declared support level only when its evidence chain backs it: extract needs extraction evidence, and patch/helper/runtime additionally need validation + patch-back evidence and a real patch-back mode. Unknown variants and missing capability layers are explicit typed diagnostics, never broad 'unsupported' strings. Evidence is synthetic, redacted, ref-only — no raw secrets, no retail bytes.";
 
-// ---------------------------------------------------------------------------
 // Engine family taxonomy (unifying, for CLAIMS)
-// ---------------------------------------------------------------------------
 
 /// The engine families a compatibility CLAIM can be authored for. This is the
 /// unifying claim-side taxonomy; the packed-only
 /// [`crate::packed_engine_readiness::PackedEngineFamily`] remains the
 /// readiness-validator taxonomy for archive/encrypted-asset engines. Folding
-/// the two family enums into one is a follow-up (it touches KAIFUU-103's
+/// the two family enums into one is a follow-up (it touches 's
 /// spec + fixtures). `Unknown` always resolves to an explicit diagnostic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -134,13 +126,10 @@ impl CompatEngineFamily {
     }
 }
 
-// ---------------------------------------------------------------------------
 // The 6-level claimed-support ladder
-// ---------------------------------------------------------------------------
 
 /// The six mechanically-distinct support levels a tuple may claim.
-///
-/// `identify` / `inventory` / `extract` / `patch` mirror the closed KAIFUU-053
+/// `identify` / `inventory` / `extract` / `patch` mirror the closed
 /// 4-rung ladder; `helper` marks a capability reachable only with an external
 /// helper present; `runtime` marks runtime-VM execution (Utsushi territory).
 /// The ordering is the natural ladder — `helper` and `runtime` subsume the
@@ -230,9 +219,7 @@ impl EvidenceLeg {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Diagnostics — explicit + typed, never a broad string
-// ---------------------------------------------------------------------------
 
 /// Which layer of the transform stack a diagnostic is about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -361,9 +348,7 @@ impl CompatDiagnostic {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Secret requirement ids + evidence chain
-// ---------------------------------------------------------------------------
 
 /// A secret-requirement id mapping — WHAT secret the tuple needs, by ref, never
 /// a raw key. `requirementId` is the stable cross-reference; `secretRef` is a
@@ -488,13 +473,10 @@ pub fn is_real_patch_back(mode: PatchBackTransform) -> bool {
     )
 }
 
-// ---------------------------------------------------------------------------
 // The claimed-support tuple
-// ---------------------------------------------------------------------------
 
 /// The versioned claimed-support tuple: the single cross-family declaration of
 /// a compatibility claim.
-///
 /// The 10 REQUIRED identity/transform/reference fields are `engineFamily`,
 /// `engineVariant`, `container`, `crypto`, `codec`, `surface`, `patchBackMode`,
 /// `profileOrFixtureId`, `secretRequirementIds`, and `diagnostics`. Two further
@@ -505,7 +487,6 @@ pub fn is_real_patch_back(mode: PatchBackTransform) -> bool {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClaimedSupportTuple {
     pub schema_version: String,
-    // --- the 10 required tuple fields ---
     pub engine_family: CompatEngineFamily,
     pub engine_variant: String,
     pub container: ContainerTransform,
@@ -518,7 +499,6 @@ pub struct ClaimedSupportTuple {
     pub secret_requirement_ids: Vec<SecretRequirementId>,
     /// Author-declared honest gaps (explicit typed diagnostics).
     pub diagnostics: Vec<CompatDiagnostic>,
-    // --- the claim + its evidence chain ---
     pub claimed_level: ClaimedSupportLevel,
     pub evidence: SupportEvidence,
 }
@@ -538,9 +518,7 @@ pub const CLAIMED_SUPPORT_REQUIRED_FIELDS: [&str; 10] = [
     "diagnostics",
 ];
 
-// ---------------------------------------------------------------------------
 // Validator + report
-// ---------------------------------------------------------------------------
 
 /// Per-tuple validation report entry. Carries the claim, the mechanically
 /// merged diagnostics (author-declared + validator findings), and the status.
@@ -640,8 +618,7 @@ impl ClaimedSupportValidationReport {
 /// Validate a single claimed-support tuple, producing one structured report
 /// entry. Every inconsistency is a typed [`CompatDiagnostic`]; this never
 /// panics and never returns `Err`.
-///
-/// The anti-overclaim gate (KAIFUU-105 acceptance 3) lives here: a tuple whose
+/// The anti-overclaim gate (acceptance 3) lives here: a tuple whose
 /// `claimedLevel` claims patch-back but lacks the extraction + validation +
 /// patch-back evidence chain, or whose `patchBackMode` is not a real write
 /// mode, gets a blocking `evidence_missing` / `not_implemented` diagnostic and
@@ -771,9 +748,7 @@ pub fn validate_claimed_support_profile(
     }
 }
 
-// ---------------------------------------------------------------------------
 // Fixtures — 6 capability levels + real-adapter HONEST tuples
-// ---------------------------------------------------------------------------
 
 /// Synthetic, declared example tuples. These are the honest-level fixtures the
 /// acceptance invariants are checked against — no retail bytes, no raw secrets.

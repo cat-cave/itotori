@@ -1,6 +1,5 @@
 //! Kaifuu engine fixture / detector adapters.
-//!
-//! Clean-room provenance for the RealLive detector (KAIFUU-172):
+//! Clean-room provenance for the RealLive detector
 //! - All RealLive format observations are derived from publicly archived
 //!   format documentation (Haeleth's RLDEV site,
 //!   `https://dev.haeleth.net/rldev.shtml`) and from publicly observable file
@@ -16,7 +15,7 @@
 //!   being encoded here.
 //! - The RealLive adapter includes identification/profile, Scene/SEEN
 //!   inventory/extraction, and limited length-changing single-scene patch-back
-//!   (KAIFUU-173/KAIFUU-174). Runtime support remains in Utsushi. All of those
+//!   (/). Runtime support remains in Utsushi. All of those
 //!   slices inherit the same clean-room posture.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -52,7 +51,6 @@ use kaifuu_core::{
 use serde_json::{Value, json};
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked into the binary at COMPILE time, so a
 /// test binary reused from a different (since-removed) worktree points fixture
 /// reads at a dead path and fails with an opaque `Os { code: 2, NotFound }`.
@@ -88,8 +86,7 @@ const SIGLUS_PROFILE_ID: &str = "019ed000-0000-7000-8000-000000091001";
 const SIGLUS_GAME_ID: &str = "kaifuu-siglus-synthetic-scene-pck";
 const SIGLUS_REAL_GAME_ID: &str = "kaifuu-siglus-real-scene-pck";
 const SIGLUS_SUPPORT_BOUNDARY: &str = "Siglus detector profile identifies synthetic Scene.pck/Gameexe.dat fixtures for identify and inventory only; parser, extraction, decryption, patch-back, and runtime support are not claimed.";
-// Real (non-synthetic) Siglus signature recognition (KAIFUU-091).
-//
+// Real (non-synthetic) Siglus signature recognition.
 // Provenance: these constants encode the publicly observable file shape of
 // real Siglus Scene.pck / Gameexe.dat archives, cross-checked against owned
 // Siglus titles (Karetoshi, Gamekoi) and the documented `0x5C` header anchor
@@ -97,7 +94,6 @@ const SIGLUS_SUPPORT_BOUNDARY: &str = "Siglus detector profile identifies synthe
 // copyrighted bytes are embedded — only the structural signature is encoded,
 // and recognition stays at identify/inventory level (the Scene.pck parser,
 // decryptor, and repacker remain NotImplemented in `kaifuu_siglus`).
-//
 // Real Scene.pck opens with a plaintext little-endian header whose first
 // dword is the fixed header size (`0x5C` = 92 bytes) and whose second dword
 // equals that header size (the first index section begins immediately after
@@ -121,13 +117,13 @@ const SIGLUS_GAMEEXE_REAL_MIN_BODY_LEN: usize = 256;
 const SIGLUS_GAMEEXE_REAL_ENTROPY_WINDOW: usize = 4096;
 const SIGLUS_GAMEEXE_REAL_MIN_ENTROPY_BITS: f64 = 6.5;
 
-// RealLive detector constants (KAIFUU-172). See the module-level RealLive
+// RealLive detector constants. See the module-level RealLive
 // provenance block above `RealLiveProfileDetectorAdapter` for clean-room rules.
 const REALLIVE_SEEN_TXT_PATH: &str = "SEEN.TXT";
 const REALLIVE_SEEN_GAN_PATH: &str = "SEEN.GAN";
 const REALLIVE_GAMEEXE_INI_PATH: &str = "Gameexe.ini";
 const REALLIVE_XOR2_VALIDATION_ASSET_REF: &str = "REALLIVEDATA/Seen.txt";
-// KAIFUU-192 nested-data-dir-resolved evidence code. Emitted whenever the
+// nested-data-dir-resolved evidence code. Emitted whenever the
 // detector walks past the game root and locates a nested REALLIVEDATA/
 // subdirectory (e.g. Sweetie HD ships its REALLIVEDATA under a
 // Japanese-named title subdir). The evidence carries the on-disk path
@@ -135,7 +131,7 @@ const REALLIVE_XOR2_VALIDATION_ASSET_REF: &str = "REALLIVEDATA/Seen.txt";
 // `verify` can re-use the resolved data dir without re-walking. The
 // identifier is namespaced under the stable `kaifuu.reallive.*` evidence
 // code namespace so downstream consumers can key off a single stable
-// string (KAIFUU-192 supersedes the KAIFUU-189 `reallive_resolved_data_dir`
+// string (supersedes the `reallive_resolved_data_dir`
 // kind).
 const REALLIVE_NESTED_DATA_DIR_RESOLVED_CODE: &str = "kaifuu.reallive.nested_data_dir_resolved";
 // Synthetic fixture short-circuit signatures. Public CI uses these to assert
@@ -155,7 +151,6 @@ const BGI_BYTECODE_GAME_ID: &str = "kaifuu-bgi-loose-bytecode";
 const BGI_ADAPTER_SUPPORT_BOUNDARY: &str = "BGI/Ethornell adapter support is limited to loose, unencrypted scenario bytecode files already outside BURIKO ARC20/BSE/DSC containers. It detects header and no-header bytecode, extracts Shift-JIS string references, and patches them by rebuilding the string table plus rewriting code-size-relative offsets. It does not unpack archives, decrypt BSE, decompress DSC/CompressedBG, execute opcodes, or rebuild game archives.";
 
 // Softpal ADV (Amuse Craft / "Pal") engine detector (SOFTPAL-DETECTOR).
-//
 // Provenance: these constants encode the publicly observable file shape of the
 // Softpal ADV System, cross-checked against two owned titles (Kizuna Kirameku
 // Koi Iroha / v21465 and Dimension Totsu Lovers / v60663). No copyrighted bytes
@@ -164,17 +159,16 @@ const BGI_ADAPTER_SUPPORT_BOUNDARY: &str = "BGI/Ethornell adapter support is lim
 // extraction, SCRIPT.SRC decompilation, TEXT.DAT decode/decrypt, and repack are
 // intentionally NOT claimed (they are later Softpal nodes; the Softpal core is
 // not implemented yet).
-//
 // Signatures (all observed on both real titles):
-//   * `dll/Pal.dll` present — the definitive Softpal ("Pal" engine) marker.
-//   * `.pac` archives open with magic `PAC ` (`50 41 43 20`) and, in the case
-//     of `data.pac`, list `SCRIPT.SRC` and `TEXT.DAT` entries in the file table.
-//   * The `SCRIPT.SRC` payload opens with `Sv20` (`53 76 32 30`); the `Sv`
-//     followed by a two-digit version tolerates other script-format revisions
-//     (e.g. `Sv10`).
-//   * The `TEXT.DAT` payload opens with a one-byte encryption flag then
-//     `TEXT_LIST__`; the flag is `$` (encrypted — v21465) or `_` (plaintext —
-//     v60663), so BOTH real titles' enc-flag states are recognised.
+// * `dll/Pal.dll` present — the definitive Softpal ("Pal" engine) marker.
+// * `.pac` archives open with magic `PAC ` (`50 41 43 20`) and, in the case
+// of `data.pac`, list `SCRIPT.SRC` and `TEXT.DAT` entries in the file table.
+// * The `SCRIPT.SRC` payload opens with `Sv20` (`53 76 32 30`); the `Sv`
+// followed by a two-digit version tolerates other script-format revisions
+// (e.g. `Sv10`).
+// * The `TEXT.DAT` payload opens with a one-byte encryption flag then
+// `TEXT_LIST__`; the flag is `$` (encrypted — v21465) or `_` (plaintext —
+// v60663), so BOTH real titles' enc-flag states are recognised.
 pub const SOFTPAL_DETECTOR_ADAPTER_ID: &str = "kaifuu.softpal";
 // `PAC ` — trailing space is part of the 4-byte magic.
 const SOFTPAL_PAC_MAGIC: &[u8] = b"PAC ";
@@ -263,26 +257,24 @@ pub struct Xp3ProfileDetectorAdapter;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SiglusProfileDetectorAdapter;
 
-// RealLive engine detector adapter (KAIFUU-172).
-//
+// RealLive engine detector adapter.
 // Clean-room provenance:
 // - All format observations encoded here are derived from publicly archived
-//   format documentation (Haeleth's RLDEV site,
-//   https://dev.haeleth.net/rldev.shtml) and from publicly observable file
-//   shape of owned RealLive titles. No source expression is copied from
-//   RLDEV or rlvm.
+// format documentation (Haeleth's RLDEV site,
+// https://dev.haeleth.net/rldev.shtml) and from publicly observable file
+// shape of owned RealLive titles. No source expression is copied from
+// RLDEV or rlvm.
 // - rlvm (https://github.com/eglaysher/rlvm) is a research anchor only. Its
-//   license is GPLv3+ and is incompatible with itotori's distribution posture
-//   if linked or derived. This crate does NOT depend on rlvm, does NOT
-//   include rlvm headers, does NOT copy rlvm's structure layouts, and does
-//   NOT mechanically translate rlvm code into Rust. If a hypothesis about
-//   RealLive's format was confirmed by reading rlvm, the hypothesis is
-//   re-derived and re-tested against publicly observable bytes before being
-//   encoded here.
+// license is GPLv3+ and is incompatible with itotori's distribution posture
+// include rlvm headers, does NOT copy rlvm's structure layouts, and does
+// NOT mechanically translate rlvm code into Rust. If a hypothesis about
+// RealLive's format was confirmed by reading rlvm, the hypothesis is
+// re-derived and re-tested against publicly observable bytes before being
+// encoded here.
 // - This adapter includes identification/profile, Scene/SEEN inventory and
-//   extraction, and limited length-changing single-scene patch-back
-//   (KAIFUU-173/KAIFUU-174). Runtime support remains in Utsushi. All of those
-//   slices inherit the same clean-room posture.
+// extraction, and limited length-changing single-scene patch-back
+// (/). Runtime support remains in Utsushi. All of those
+// slices inherit the same clean-room posture.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct RealLiveProfileDetectorAdapter;
 
@@ -3491,14 +3483,11 @@ impl EngineAdapter for SiglusProfileDetectorAdapter {
     }
 }
 
-// =====================================================================
-// RealLive detector (KAIFUU-172).
-//
+// RealLive detector.
 // FSM lives in `RealLiveProfileDetectorAdapter::resolve_variant`. The
 // algorithm is a small deterministic state machine over presence/absence
 // and signature-validity counts: no confidence floats, no thresholds beyond
-// what the plan specifies. See KAIFUU-172 §3 for the decision table.
-// =====================================================================
+// what the plan specifies. See §3 for the decision table.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RealLiveFixtureVariant {
@@ -3544,7 +3533,7 @@ struct RealLiveFixtureState {
     seen_gan_hash: Option<String>,
     gameexe_ini_hash: Option<String>,
     variant: RealLiveFixtureVariant,
-    // KAIFUU-189: when the depth-N walk locates a nested REALLIVEDATA/
+    // when the depth-N walk locates a nested REALLIVEDATA/
     // subdirectory, the relative path is recorded here so the detector
     // can surface it as evidence (`kaifuu.reallive.nested_data_dir_resolved`). `None`
     // means the SEEN.TXT/Gameexe.ini lookups fell back to the game root
@@ -3554,7 +3543,7 @@ struct RealLiveFixtureState {
 }
 
 impl RealLiveProfileDetectorAdapter {
-    // KAIFUU-189: depth-N descent that locates the REALLIVEDATA/ engine
+    // depth-N descent that locates the REALLIVEDATA/ engine
     // asset root inside an arbitrary game directory tree. Sweetie HD
     // ships its REALLIVEDATA at
     // `<game_root>/オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/`
@@ -3562,7 +3551,6 @@ impl RealLiveProfileDetectorAdapter {
     // install root must walk the title subdir before reporting any
     // RealLive marker missing. See `docs/audits/real-bytes-validation-2026-06-24.md`
     // §2.1 and `kaifuu_reallive::detector` for the depth bound rationale.
-    //
     // I/O errors are swallowed into `None` here because this helper feeds
     // a detector that already tolerates "directory unreadable" elsewhere
     // (e.g. extract / profile flows). The kaifuu-reallive detector
@@ -3719,7 +3707,7 @@ impl RealLiveProfileDetectorAdapter {
         if seen_txt_synthetic_magic && gameexe_ini_synthetic_magic {
             return RealLiveFixtureVariant::CompleteSyntheticTriple;
         }
-        // AVG32 lineage: SEEN.TXT envelope present, .PDT present, no
+        // AVG32 lineage: SEEN.TXT envelope present,.PDT present, no
         // RealLive-specific Gameexe.ini keys.
         if seen_txt_exists && seen_txt_envelope_ok && avg32_pdt_count > 0 && !gameexe_ini_keys.any()
         {
@@ -3736,7 +3724,7 @@ impl RealLiveProfileDetectorAdapter {
             return RealLiveFixtureVariant::PositiveLiveLayout;
         }
         // Otherwise: a name-shaped RealLive layout (SEEN.TXT, Gameexe.ini,
-        // SEEN.GAN, or .g00/.ovk/.koe/.nwk present) without sufficient
+        // SEEN.GAN, or.g00/.ovk/.koe/.nwk present) without sufficient
         // evidence to identify positively. Mark unknown so the operator
         // sees the diagnostic loudly instead of silently passing.
         let _ = seen_gan_exists; // already accounted for in any_reallive_marker
@@ -4378,7 +4366,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                 ]),
                 // Field PR #2 intent: expose real patch through the typed matrix.
                 // On current main this is length-changing single-scene patch-back
-                // (KAIFUU-174), not merely length-preserving slot edits.
+                // , not merely length-preserving slot edits.
                 CapabilityLevelStatus::partial(vec![
                     "length-changing Scene/SEEN text-slot replacement (offset table rewritten + jump targets recalculated) via the bundle-driven driver; one scene-scoped bundle per call".to_string(),
                     "multi-scene archive-rebuild patch path is not claimed; image-overlaid .g00 and non-text assets are not patched".to_string(),
@@ -4397,7 +4385,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         let state = Self::inspect(request.game_dir);
         let detected = Self::is_detected(state.variant);
         let diagnostic_only = !detected && state.variant != RealLiveFixtureVariant::NotRealLive;
-        // KAIFUU-189: when the depth-N walk found a nested REALLIVEDATA/,
+        // when the depth-N walk found a nested REALLIVEDATA/
         // the SEEN.TXT/SEEN.GAN/Gameexe.ini evidence paths are reported
         // relative to the game root with the REALLIVEDATA/ prefix so
         // downstream tools (and human auditors) see exactly where the
@@ -4692,7 +4680,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         let resolved = Self::resolve_reallive_data_dir(request.game_dir);
         let seen_path = Self::seen_txt_path(request.game_dir);
         let archive_bytes = fs::read(&seen_path)?;
-        // Synthetic-magic-only fixtures (KAIFUU-172 detector smoke) do not
+        // Synthetic-magic-only fixtures (detector smoke) do not
         // present a parseable archive envelope. Return the legacy
         // unsupported-patch result so the detector contract stays observable
         // through `patch`.
@@ -4713,10 +4701,10 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
             failures,
         };
 
-        // Canonical patch-back route (KAIFUU-211 / ALPHA-006c): rebuild
+        // Canonical patch-back route (/ ALPHA-006c): rebuild
         // the v0.2 BridgeBundle per scene via `produce_bundle`, match the
         // PatchExport entries to bridge units by `bridgeUnitId`, enforce the
-        // KAIFUU-174 length-preserving budget, and apply through
+        // length-preserving budget, and apply through
         // `bundle_driven::apply_translated_bundle`. Gameexe.ini feeds the
         // producer's voice/asset inventory (best-effort; absent ->
         // empty).
@@ -4734,7 +4722,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         let mut matched_entry_ids: BTreeSet<String> = BTreeSet::new();
         let mut touched: Vec<(u16, serde_json::Value)> = Vec::new();
         // Length-CHANGING patch-back (reallive-adapter-expose-length-changing-
-        // patchback): the KAIFUU-174 adapter routes every matched edit straight
+        // patchback): the adapter routes every matched edit straight
         // through `bundle_driven::apply_translated_bundle`, which rewrites the
         // archive offset table and recalculates jump targets so a translation
         // that grows or shrinks the Shift-JIS body round-trips byte-correct.
@@ -5175,7 +5163,6 @@ impl RealLiveProfileDetectorAdapter {
 }
 
 // Case-insensitive direct-child lookup.
-//
 // The lookup mirrors the existing `ArchiveDetectionScan.file_name_count`
 // case-insensitive pattern. Returns the resolved path on a hit so callers
 // can read its bytes; returns None if no direct child matches the lowercase
@@ -5194,7 +5181,7 @@ fn case_insensitive_find(dir: &Path, name: &str) -> Option<std::path::PathBuf> {
     None
 }
 
-// KAIFUU-189: walks the effective RealLive data dir (the resolved
+// walks the effective RealLive data dir (the resolved
 // REALLIVEDATA subdir or, when no marker was found, the game root) up
 // to two directory levels deep to count corroborating extensions and
 // the AVG32 disqualifier. The depth-2 bound captures Sweetie HD's
@@ -5267,14 +5254,12 @@ fn walk_reallive_extension_dir(
     }
 }
 
-// Generic real-shape SEEN.TXT envelope check (KAIFUU-188).
-//
+// Generic real-shape SEEN.TXT envelope check.
 // Derivation: every RealLive title since AVG32 stores SEEN.TXT as a fixed
 // 10,000-slot directory of (u32_le offset, u32_le size) pairs at file
 // offset 0. Each slot is 8 bytes; an unused slot is zeroed. See
 // `docs/research/reallive-engine.md` §C and the Sweetie HD verification
 // in `docs/audits/real-bytes-validation-2026-06-24.md` §2.8.
-//
 // We accept any file that is at least 80,000 bytes long (the fixed
 // directory), contains at least one non-zero slot, and whose every
 // non-zero slot resolves to a payload range inside the file. We do not
@@ -5299,7 +5284,7 @@ fn reallive_seen_txt_envelope_ok(path: &Path) -> bool {
 // Read up to 64 KiB of Gameexe.ini and check for the documented
 // RealLive-specific ASCII key prefixes. The detector intentionally only
 // looks at ASCII prefixes; full Gameexe parsing (including Shift-JIS
-// values) is a KAIFUU-174 concern.
+// values) is a concern.
 fn reallive_gameexe_ini_key_hits(path: &Path) -> GameexeIniKeyHits {
     let Ok(bytes) = fs::read(path) else {
         return GameexeIniKeyHits::default();
@@ -5364,18 +5349,15 @@ fn gameexe_ini_detail(exists: bool, keys: GameexeIniKeyHits) -> String {
     format!("Gameexe.ini RealLive keys matched: {}", matched.join(", "))
 }
 
-// =====================================================================
 // Softpal ADV (Amuse Craft / "Pal") engine detector.
-//
 // Detection is a small deterministic decision over three independent,
 // Softpal-specific signals (see the `SOFTPAL_*` constant provenance block):
-//   1. `dll/Pal.dll` present            — definitive Pal-engine marker.
-//   2. a `.pac` (`PAC ` magic) whose file table names both `SCRIPT.SRC`
-//      and `TEXT.DAT`                    — the ADV script/text container.
-//   3. loose `SCRIPT.SRC` (`Sv<nn>`) AND `TEXT.DAT` (`[$_]TEXT_LIST__`)
-//      script magics                     — enc-flag-robust script pair.
+// 1. `dll/Pal.dll` present — definitive Pal-engine marker.
+// 2. a `.pac` (`PAC ` magic) whose file table names both `SCRIPT.SRC`
+// and `TEXT.DAT` — the ADV script/text container.
+// 3. loose `SCRIPT.SRC` (`Sv<nn>`) AND `TEXT.DAT` (`[$_]TEXT_LIST__`)
+// script magics — enc-flag-robust script pair.
 // Any one of (1), (2), or (3) classifies `engine=softpal` at identify level.
-// =====================================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SoftpalVariant {
@@ -6047,8 +6029,6 @@ impl EngineAdapter for SoftpalProfileDetectorAdapter {
     }
 }
 
-// ---- NeXAS engine detector ------------------------------------------------
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NexasVariant {
     // At least one `.pac` opens with the `PAC\0` magic and a sane header
@@ -6668,7 +6648,7 @@ fn shannon_entropy_bits(bytes: &[u8]) -> f64 {
 // expose a monotonically ascending, in-bounds run of offsets. Identify-level
 // only: the archive body is neither parsed nor decrypted here. See the
 // `SIGLUS_SCENE_REAL_*` constants for provenance and the false-positive
-// analysis in the KAIFUU-091 tests.
+// analysis in the tests.
 fn siglus_scene_pck_real_signature_ok(path: &Path) -> bool {
     let Ok(metadata) = fs::metadata(path) else {
         return false;
@@ -6747,7 +6727,7 @@ fn siglus_gameexe_dat_real_signature_ok(path: &Path) -> bool {
     shannon_entropy_bits(&prefix[8..]) >= SIGLUS_GAMEEXE_REAL_MIN_ENTROPY_BITS
 }
 
-// KAIFUU-189: normalises a `Path` to a forward-slash string for the
+// normalises a `Path` to a forward-slash string for the
 // JSON-serialised `DetectionEvidence.path` field. Detector evidence is
 // always reported with `/` separators because the detection report is
 // platform-portable.
@@ -6758,7 +6738,7 @@ fn path_to_forward_slash(path: &Path) -> String {
         .join("/")
 }
 
-// KAIFUU-189: prepends the resolved REALLIVEDATA/ relative path to a
+// prepends the resolved REALLIVEDATA/ relative path to a
 // top-level marker file name so the evidence row points at the actual
 // on-disk location. Falls back to the bare marker name when no nested
 // dir was resolved (synthetic-fixture compatibility).
@@ -7941,7 +7921,7 @@ mod tests {
 
     #[test]
     fn round_trip_golden_harness_asserts_assets_via_inventory_and_capability() {
-        // KAIFUU-032: the real fixture adapter, driven in adapter-neutral
+        // the real fixture adapter, driven in adapter-neutral
         // AssertInventory mode. Even though the public fixture happens to ship a
         // source.json, the harness asserts asset preservation + emits
         // capability-aware unsupported-asset diagnostics purely from the adapter's
@@ -8958,7 +8938,7 @@ mod tests {
         }));
     }
 
-    // KAIFUU-053: detector level-matrix snapshot tests. Each detector must
+    // detector level-matrix snapshot tests. Each detector must
     // emit a stable typed matrix so consumers can rely on the strict gate.
     #[test]
     fn fixture_adapter_level_matrix_is_stable() {
@@ -9012,7 +8992,7 @@ mod tests {
         // Extract is Partial: Scene parser covers text only.
         assert!(!matrix.supports(CapabilityLevel::Extract));
         assert!(matrix.extract.is_partial());
-        // Patch is Partial: KAIFUU-174 length-changing single-scene slot
+        // Patch is Partial: length-changing single-scene slot
         // replacement is real, but multi-scene archive rebuild is not claimed.
         assert!(!matrix.supports(CapabilityLevel::Patch));
         assert!(matrix.patch.is_partial());
@@ -9043,8 +9023,6 @@ mod tests {
         }
     }
 
-    // ---- Softpal detector tests ------------------------------------------
-    //
     // Synthetic fixtures carry only the fixed Softpal FORMAT signatures (the
     // same magics any Softpal title exposes); no copyrighted content bytes are
     // embedded or committed. The real two-title validation lives behind an
@@ -9657,7 +9635,7 @@ mod tests {
 
     #[test]
     fn xp3_extract_and_patch_wording_distinguishes_index_parsing_from_payload_extraction() {
-        // Regression (KAIFUU-162): plain XP3 inventory now parses the index /
+        // Regression: plain XP3 inventory now parses the index /
         // entry metadata, so the extract + patch boundary failures must NOT
         // imply archive entry parsing is entirely absent. They must say the
         // metadata IS parsed, while extraction / decompression / decryption of
@@ -9672,7 +9650,6 @@ mod tests {
             }]),
         );
 
-        // --- extract: the container-boundary failure carries the new wording. ---
         let extract_failure = adapter_failure_from_error(
             Xp3ProfileDetectorAdapter
                 .extract(ExtractRequest {
@@ -9700,7 +9677,7 @@ mod tests {
         }
 
         // --- patch: same container-boundary distinction + a separate
-        //     patch-back (rebuild) failure. ---
+        // patch-back (rebuild) failure. ---
         let output_dir = game_dir.join("patched");
         let patch = Xp3ProfileDetectorAdapter
             .patch(PatchRequest {
@@ -9740,7 +9717,7 @@ mod tests {
         );
 
         // --- inventory support-boundary snapshot: distinguishes index parsing
-        //     from payload extraction / decompression / decryption. ---
+        // from payload extraction / decompression / decryption. ---
         let contract = Xp3ProfileDetectorAdapter
             .capabilities()
             .access_contract
@@ -10161,14 +10138,11 @@ mod tests {
         let _ = fs::remove_dir_all(game_dir);
     }
 
-    // -----------------------------------------------------------------
-    // RealLive detector tests (KAIFUU-172).
-    //
+    // RealLive detector tests.
     // Synthetic fixtures only; no rlvm code is read or linked. The
     // `reallive_fixture_dir` helper writes top-level RealLive marker files
     // into a fresh temp dir per test. Real-game evidence flows in at
     // ALPHA-006.
-    // -----------------------------------------------------------------
 
     fn synthetic_seen_txt(scene_count: u32) -> Vec<u8> {
         // Concrete public-CI envelope shape: magic + LE count + 8-byte
@@ -10242,7 +10216,7 @@ mod tests {
     #[test]
     fn detects_reallive_on_positive_live_layout_with_gameexe_ini_key_hits() {
         // Generic envelope: no synthetic SEEN.TXT magic; just the real
-        // 10,000-slot fixed-offset-table shape (KAIFUU-188) with one
+        // 10,000-slot fixed-offset-table shape with one
         // populated slot at slot 1. Gameexe.ini has #GAMEEXE_VERSION
         // present without the synthetic-magic prefix. Mirrors what a real
         // RealLive title looks like at the SEEN.TXT + Gameexe.ini layer.
@@ -10277,7 +10251,7 @@ mod tests {
 
     #[test]
     fn detects_reallive_when_seen_txt_lives_under_nested_reallivedata_subdir() {
-        // KAIFUU-189 regression: when SEEN.TXT / Gameexe.ini live under
+        // regression: when SEEN.TXT / Gameexe.ini live under
         // a REALLIVEDATA/ subdirectory at depth 2 (Sweetie HD shape:
         // `<root>/<JP title subdir>/REALLIVEDATA/`), the detector must
         // resolve the data dir and treat the files as engine evidence
@@ -10302,7 +10276,7 @@ mod tests {
             b"#GAMEEXE_VERSION=1.0\n#REGNAME=KaifuuFixture\\RealLive\n#KOEPAC=koe.ovk\n",
         )
         .unwrap();
-        // .g00 / .koe in nested asset subdirs (depth 2 inside REALLIVEDATA
+        // .g00 /.koe in nested asset subdirs (depth 2 inside REALLIVEDATA
         // — Sweetie HD ships them as `REALLIVEDATA/g00/*.g00` etc).
         fs::create_dir_all(nested_dir.join("g00")).unwrap();
         fs::write(nested_dir.join("g00/image.g00"), b"\0").unwrap();
@@ -10349,7 +10323,7 @@ mod tests {
             "SEEN.TXT evidence path must include the resolved REALLIVEDATA prefix; got `{}`",
             seen_row.path
         );
-        // .g00 / .koe extension counts must reflect the depth-2 walk
+        // .g00 /.koe extension counts must reflect the depth-2 walk
         // inside REALLIVEDATA (the asset subdirs).
         let g00_row = detection
             .evidence
@@ -10378,7 +10352,7 @@ mod tests {
 
     #[test]
     fn does_not_emit_resolved_data_dir_evidence_when_no_nested_reallivedata_present() {
-        // KAIFUU-189 regression: synthetic fixtures that ship SEEN.TXT
+        // regression: synthetic fixtures that ship SEEN.TXT
         // at the game root (no nested REALLIVEDATA/ marker) must keep
         // emitting the original bare-marker evidence paths so the
         // public-CI golden fixtures stay byte-stable.
@@ -10696,7 +10670,7 @@ mod tests {
             );
         }
         // Patching / AssetTextPatching / LineParityPatching are Limited
-        // because KAIFUU-174 is length-preserving only.
+        // because is length-preserving only.
         for limited in [
             Capability::Patching,
             Capability::AssetTextPatching,
@@ -10796,10 +10770,8 @@ mod tests {
         assert!(adapters.contains(&REALLIVE_DETECTOR_ADAPTER_ID));
     }
 
-    // -----------------------------------------------------------------
-    // KAIFUU-174 — RealLive Scene/SEEN bridge inventory + patch-back
+    // RealLive Scene/SEEN bridge inventory + patch-back
     // adapter tests.
-    // -----------------------------------------------------------------
 
     fn reallive_174_fixture_dir(name: &str) -> PathBuf {
         // Build a writable temp dir containing the bridge-inventory-001

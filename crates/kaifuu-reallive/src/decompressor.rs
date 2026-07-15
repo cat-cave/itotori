@@ -1,6 +1,5 @@
-//! KAIFUU-210 — AVG32 LZSS + 256-byte XOR decompressor for RealLive
+//! AVG32 LZSS + 256-byte XOR decompressor for RealLive
 //! scene bytecode.
-//!
 //! Clean-room provenance:
 //! - Restated in our own words from rlvm's BSD-licensed
 //!   `libreallive/compression.cc::Decompress` (Peter Jolly, 2006). The
@@ -13,17 +12,15 @@
 //!   `decompressor` module; per the workspace "format-identical,
 //!   implementation-separate" rule kaifuu-reallive does not depend on
 //!   utsushi-reallive and this module is an independent re-derivation.
-//!
-//! Sukara-branch titles (Sweetie HD) do NOT apply a second-level XOR
-//! pass after LZSS decompression — outcome A in the encryption-mechanism
-//! research doc. The decompressor below therefore only models the
-//! first-level (256-byte XOR + LZSS) transform. A future node may add a
-//! second-level-XOR variant for Key / Visual Arts titles.
+//!   Sukara-branch titles (Sweetie HD) do NOT apply a second-level XOR
+//!   pass after LZSS decompression — outcome A in the encryption-mechanism
+//!   research doc. The decompressor below therefore only models the
+//!   first-level (256-byte XOR + LZSS) transform. A future node may add a
+//!   second-level-XOR variant for Key / Visual Arts titles.
 
 use thiserror::Error;
 
 /// AVG32 256-byte XOR mask applied to the LZSS compressed stream.
-///
 /// Restated in our own words from rlvm's BSD-licensed
 /// `compression.cc::xor_mask[256]` constant. The 256-byte table is a
 /// documented constant of the AVG32 format.
@@ -91,11 +88,9 @@ pub enum DecompressError {
 
 /// Decompress an AVG32-shape compressed bytecode payload (Sukara
 /// branch — first-level transform only).
-///
 /// `compressed` is the on-disk byte range pointed at by the scene
-/// header's `bytecode_offset .. + bytecode_compressed_size`. `dst_len`
+/// header's `bytecode_offset.. + bytecode_compressed_size`. `dst_len`
 /// is the declared `bytecode_uncompressed_size`.
-///
 /// On a truncated stream, out-of-range back-reference, or
 /// emission-shortfall the function returns a typed [`DecompressError`]
 /// — there is no `Ok(partial)` path.

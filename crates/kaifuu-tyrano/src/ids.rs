@@ -1,5 +1,4 @@
 //! Deterministic identifier helpers.
-//!
 //! Uses the exact SHA-256 → UUID7-shaped construction shared by every other
 //! kaifuu bridge producer (`kaifuu-reallive` / `kaifuu-rpgmaker` /
 //! `kaifuu-kirikiri`) so a TyranoScript unit's `bridgeUnitId` is derived the

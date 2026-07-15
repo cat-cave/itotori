@@ -369,8 +369,7 @@ impl EncodedStringSlot {
         EncodedStringSlotPreflightReport::from_diagnostics(diagnostics)
     }
 
-    /// Multiset protected-token validation (KAIFUU-150).
-    ///
+    /// Multiset protected-token validation.
     /// Source `protected_spans` are grouped by raw token. Each raw is a multiset
     /// entry: N identical source tokens require EXACTLY N distinct valid target
     /// mappings (distinct `(target_start, target_end)` ranges that match
@@ -1483,18 +1482,15 @@ fn encode_string(value: &str, encoding: SourceEncoding) -> Result<Vec<u8>, Strin
 }
 
 /// Encode `value` as Shift-JIS bytes for encoded string-slot preflight.
-///
 /// # Shift-JIS codec contract
-///
 /// This uses the WHATWG Shift_JIS encoder from `encoding_rs` (the same codec
 /// the runtime crates decode/encode with), which is a *complete* Shift-JIS
 /// encoder covering the full mappable repertoire: ASCII, halfwidth katakana
 /// (JIS X 0201), and every JIS X 0208 double-byte character (common kanji,
 /// fullwidth latin/digits, fullwidth punctuation, hiragana, katakana). It
-/// supersedes the KAIFUU-082 hand-coded subset, which only mapped ASCII,
+/// supersedes the hand-coded subset, which only mapped ASCII
 /// halfwidth katakana, hiragana, katakana, and a handful of punctuation marks
 /// and therefore wrongly rejected common kanji and most fullwidth text.
-///
 /// The contract is *predictable*: any character in the Shift-JIS repertoire is
 /// accepted and encoded to its canonical byte sequence; any character outside
 /// it (emoji, rare CJK extension, etc.) is rejected with `Err`. Callers surface
@@ -2978,7 +2974,7 @@ mod tests {
         }
     }
 
-    /// KAIFUU-150: two identical source protected tokens require EXACTLY two
+    /// two identical source protected tokens require EXACTLY two
     /// valid target mappings and occurrences. Under-count (collapsed/missing)
     /// and over-count (extra target occurrence) both fail loud. Distinct-token
     /// fixture still passes.
@@ -3113,7 +3109,7 @@ mod tests {
 
     #[test]
     fn encoded_string_slot_accepts_common_shift_jis_kanji_within_budget() {
-        // Regression for KAIFUU-148: the KAIFUU-082 hand-coded subset had no
+        // Regression: the hand-coded subset had no
         // kanji, so common game text like 日本語 was wrongly rejected. The
         // encoding_rs Shift-JIS codec maps it to 6 bytes, which fits the
         // 12-byte (128..140) sjis-fixed-line budget.
@@ -3557,7 +3553,7 @@ mod tests {
 
     /// Regression: a genuinely EMPTY source (`sourceBytesHex == ""`) parses
     /// to a zero-length byte vector, which previously gated OFF the slot
-    /// bounds check (`source_len != 0`). A positive-offset slot then slipped
+    /// bounds check (`source_len!= 0`). A positive-offset slot then slipped
     /// through validation into `plan_string_table_rebuild`, where the gap
     /// copy `source_bytes[gap_start..gap_end]` indexed the empty slice and
     /// panicked (OOB). It must now fail with a typed bounds diagnostic

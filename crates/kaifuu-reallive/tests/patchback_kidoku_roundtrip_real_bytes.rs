@@ -1,8 +1,7 @@
 //! Control-markup (kidoku / name) protected-span round-trip, on REAL bytes.
-//!
 //! Every real RealLive dialogue Textout carries a `<reallive.kidoku N>`
 //! read-flag control marker (Sweetie HD scene 1017: 129/129 units) and often
-//! an inline `【話者】` speaker name marker. The KAIFUU-210 producer surfaces
+//! an inline `【話者】` speaker name marker. The producer surfaces
 //! the kidoku read-flag as a SYNTHETIC readable marker prepended to
 //! `sourceText`, but that marker has NO byte run inside the Textout body — the
 //! read-flag lives in a separate `MetaKidoku` opcode / the scene-header kidoku
@@ -11,22 +10,20 @@
 //! fix the patchback spliced that literal into the Textout body and the retail
 //! lexer truncated the run at `<reallive.kidoku ` — no translated text was
 //! ever observed.
-//!
 //! This test proves the fix end-to-end on TWO independently-authored RealLive
 //! corpora (Sweetie HD via `ITOTORI_REAL_GAME_ROOT`, Kanon via
 //! `ITOTORI_REAL_GAME_ROOT_2`):
-//!  - a dialogue unit whose `target.text` carries the reproduced
-//!    `<reallive.kidoku N>` marker (+ the `【話者】` name marker where the game
-//!    uses one) round-trips: the translated English body is spliced and
-//!    observed in the patched bytecode;
-//!  - the `<reallive.kidoku ` literal never reaches the patched bytecode;
-//!  - the kidoku control bytes (`MetaKidoku` opcode marks) are byte-identical
-//!    between source and patched;
-//!  - the name marker's Shift-JIS bytes are byte-identical (re-emitted as the
-//!    leading body bytes), where the game carries one;
-//!  - the patched scene re-decompiles with ZERO unknown opcodes.
-//!
-//! Env-gated + STRICT BY DEFAULT (see `support/real_corpus.rs`).
+//! - a dialogue unit whose `target.text` carries the reproduced
+//!   `<reallive.kidoku N>` marker (+ the `【話者】` name marker where the game
+//!   uses one) round-trips: the translated English body is spliced and
+//!   observed in the patched bytecode;
+//! - the `<reallive.kidoku ` literal never reaches the patched bytecode;
+//! - the kidoku control bytes (`MetaKidoku` opcode marks) are byte-identical
+//!   between source and patched;
+//! - the name marker's Shift-JIS bytes are byte-identical (re-emitted as the
+//!   leading body bytes), where the game carries one;
+//! - the patched scene re-decompiles with ZERO unknown opcodes.
+//!   Env-gated + STRICT BY DEFAULT (see `support/real_corpus.rs`).
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -285,7 +282,6 @@ fn run_corpus(corpus: &real_corpus::RealCorpus, preferred_scene: u16) {
         corpus.label
     );
 
-    // ---- Acceptance: patched scene decompiles with ZERO unknown opcodes. ----
     let patched_ops = parse_real_bytecode(&patched_decompressed)
         .unwrap_or_else(|e| panic!("[{}] patched scene must re-decompile: {e}", corpus.label));
     let unknown = patched_ops
@@ -304,7 +300,6 @@ fn run_corpus(corpus: &real_corpus::RealCorpus, preferred_scene: u16) {
         )
     });
 
-    // ---- Acceptance: the `<reallive.kidoku ` literal never reached bytecode. ----
     let marker = REALLIVE_OUT_OF_BAND_MARKER_OPEN.as_bytes();
     assert!(
         !patched_decompressed
@@ -314,7 +309,6 @@ fn run_corpus(corpus: &real_corpus::RealCorpus, preferred_scene: u16) {
         corpus.label
     );
 
-    // ---- Acceptance: kidoku control bytes byte-identical (MetaKidoku marks). ----
     let patched_marks = kidoku_marks(&patched_decompressed);
     assert_eq!(
         patched_marks,
@@ -326,8 +320,7 @@ fn run_corpus(corpus: &real_corpus::RealCorpus, preferred_scene: u16) {
         patched_marks.len()
     );
 
-    // ---- Acceptance: translated English body spliced (name marker byte-identical
-    //      as the leading body bytes, English prose after it). ----
+    // as the leading body bytes, English prose after it). ----
     assert!(
         patched_decompressed
             .windows(expected_body_sjis.len())

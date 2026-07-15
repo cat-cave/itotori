@@ -1,16 +1,12 @@
 //! Live v3 vault open proof.
-//!
 //! This test opens the *real* read-only `/archive/vault/catalog.db`, which is
 //! `schema_version = 3`. It is `#[ignore]`d by default and only meaningful
 //! when `ITOTORI_VAULT_ROOT=/archive/vault` is set, because the live vault is
 //! not available in ordinary CI. Run it explicitly with:
-//!
 //! ```text
 //! ITOTORI_VAULT_ROOT=/archive/vault \
-//!   cargo test -p kaifuu-vault-source \
-//!   --test live_vault_open_test -- --ignored --nocapture
-//! ```
-//!
+//! cargo test -p kaifuu-vault-source \
+//! --test live_vault_open_test -- --ignored --nocapture
 //! It is strictly read-only: it never writes under the vault root. A scratch
 //! override points at a throwaway tempdir so `VaultSource::open`'s
 //! scratch-writability probe cannot touch `/archive` or the platform default.

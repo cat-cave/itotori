@@ -1,19 +1,15 @@
-//! KAIFUU-109 — MV/MZ `Map*.json` + `CommonEvents.json` command-text
+//! MV/MZ `Map*.json` + `CommonEvents.json` command-text
 //! extract & trivial patch.
-//!
 //! This is the beta-tier map / common-event slice declared by the
-//! KAIFUU-108 fixture profile (`MvMzFixtureProfile` consumer `KAIFUU-109`,
+//! fixture profile (`MvMzFixtureProfile` consumer ``
 //! surfaces `www/data/Map*.json` + `www/data/CommonEvents.json`). It emits
 //! **stable command-text units** and writes a **byte-preserving** patch back
 //! into the same JSON.
-//!
 //! # Declared command-text surfaces
-//!
-//! The KAIFUU-108 profile declares these event-command text surfaces for the
+//! The profile declares these event-command text surfaces for the
 //! map / common-event slice; each is cross-checked against the shared
 //! [`classify`] catalogue (`command_text_role` only ever maps codes the
 //! catalogue already recognises — never an [`CodeClass::Unknown`] code):
-//!
 //! - **Show Text** line — code `401` → [`CommandTextRole::ShowText`].
 //! - **Show Choices** options — code `102` (`parameters[0]` string array) →
 //!   one [`CommandTextRole::ChoiceOption`] per option, plus the per-branch
@@ -23,9 +19,7 @@
 //!   [`CommandTextRole::ScrollingText`] (the `105` setup carries no text).
 //! - **Comment** — codes `108` (first line) + `408` (continuation) →
 //!   [`CommandTextRole::Comment`].
-//!
-//! # Stable unit fields (KAIFUU-109 acceptance)
-//!
+//! # Stable unit fields (acceptance)
 //! Every [`StableCommandUnit`] carries `source_file`, the event /
 //! common-event **id**, the **page index** (maps only), the **command
 //! index**, the **text role**, and the **fixture-profile id**
@@ -33,17 +27,13 @@
 //! [`StableCommandUnit::source_unit_key`] and deterministic
 //! [`StableCommandUnit::bridge_unit_id`] make re-extraction and patchback
 //! target the same surface.
-//!
 //! # Byte-preserving patch
-//!
 //! [`patch_file`] reuses the crate's proven byte-surgical splice
 //! ([`crate::patchback`]): only the located string literal for each declared
 //! unit is replaced; every other byte (structure, key order, whitespace,
 //! non-text fields, untouched strings) is preserved verbatim. An untranslated
 //! patch (`target == source`) is a byte-identical no-op.
-//!
 //! # Semantic diagnostics before any write
-//!
 //! Extraction records an [`UnsupportedCommand`](CommandDiagnosticKind) for
 //! every event-command code the shared catalogue does not recognise, and the
 //! file-level [`extract_map_file`] / [`extract_common_events_file`] return a
@@ -61,7 +51,7 @@ use crate::codes::{CodeClass, classify};
 use crate::ids::deterministic_uuid7;
 use crate::patchback::{FileEdit, PatchbackError, patch_file_bytes};
 
-/// The KAIFUU-108 fixture-profile id every KAIFUU-109 unit is stamped with.
+/// The fixture-profile id every unit is stamped.
 pub const FIXTURE_PROFILE_ID: &str = "KAIFUU-109";
 
 /// Where a declared command lives in the source tree.
@@ -83,7 +73,7 @@ pub enum CommandContainer {
     },
 }
 
-/// The declared KAIFUU-109 command-text role.
+/// The declared command-text role.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandTextRole {
     /// `Show Text` body line (code `401`).
@@ -112,12 +102,11 @@ impl CommandTextRole {
     }
 }
 
-/// Map an event-command `code` to its declared KAIFUU-109 command-text role,
-/// or `None` when the code is not a KAIFUU-109 text surface.
-///
+/// Map an event-command `code` to its declared command-text role
+/// or `None` when the code is not a text surface.
 /// Every code returned here is a recognised [`classify`] catalogue code (the
 /// crate test `every_declared_code_is_catalogue_recognised` pins this), so
-/// the KAIFUU-109 surface set never drifts from the shared catalogue.
+/// the surface set never drifts from the shared catalogue.
 fn command_text_role(code: i64) -> Option<CommandTextRole> {
     match code {
         401 => Some(CommandTextRole::ShowText),
@@ -129,21 +118,21 @@ fn command_text_role(code: i64) -> Option<CommandTextRole> {
     }
 }
 
-/// A stable KAIFUU-109 map / common-event command-text unit.
+/// A stable map / common-event command-text unit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StableCommandUnit {
     /// Source file name (e.g. `Map001.json`, `CommonEvents.json`).
     pub source_file: String,
     /// Which event / common-event + page the command belongs to.
     pub container: CommandContainer,
-    /// Index of the command within its `list[]`.
+    /// Index of the command within its `list`.
     pub command_index: usize,
     /// For [`CommandTextRole::ChoiceOption`], the option's index within the
     /// `Show Choices` array; `None` for every other role.
     pub option_index: Option<usize>,
     /// The declared command-text role.
     pub text_role: CommandTextRole,
-    /// The KAIFUU-108 fixture-profile id ([`FIXTURE_PROFILE_ID`]).
+    /// The fixture-profile id ([`FIXTURE_PROFILE_ID`]).
     pub fixture_profile_id: &'static str,
     /// RFC6901 pointer tokens locating the string literal in `source_file`.
     pub pointer: Vec<String>,
@@ -152,7 +141,7 @@ pub struct StableCommandUnit {
 }
 
 impl StableCommandUnit {
-    /// The event id (maps) or common-event id — the KAIFUU-109
+    /// The event id (maps) or common-event id — the
     /// "event/common-event id" acceptance field.
     #[must_use]
     pub const fn container_id(&self) -> i64 {
@@ -232,7 +221,7 @@ pub struct MapExtraction {
 }
 
 /// Typed, semantic errors raised by the file-level extractors *before any
-/// write* — the KAIFUU-109 "malformed JSON / missing file" diagnostics.
+/// write* — the "malformed JSON / missing file" diagnostics.
 #[derive(Debug, Error)]
 pub enum MapExtractError {
     #[error("kaifuu.rpgmaker.k109.missing_file: {file} does not exist")]
@@ -251,11 +240,9 @@ pub enum MapExtractError {
     },
 }
 
-// ---------------------------------------------------------------------------
 // Extraction
-// ---------------------------------------------------------------------------
 
-/// Walk one top-level event-command `list[]`, appending declared units +
+/// Walk one top-level event-command `list`, appending declared units +
 /// diagnostics. `pointer_base` is the RFC6901 token prefix to the `list`
 /// array; `container` labels each unit's owning event / common-event.
 fn walk_list(
@@ -479,9 +466,7 @@ fn read_json(path: &Path) -> Result<(String, Value), MapExtractError> {
     Ok((file, value))
 }
 
-// ---------------------------------------------------------------------------
 // Byte-preserving patch
-// ---------------------------------------------------------------------------
 
 /// One reviewed translation: the stable unit + its target text.
 #[derive(Debug, Clone)]
@@ -492,7 +477,6 @@ pub struct CommandTranslation<'a> {
 
 /// Patch one file's raw JSON bytes with the reviewed translations for its
 /// declared command-text units, preserving every other byte.
-///
 /// Reuses the crate's proven byte-surgical splice + stale-source gate
 /// ([`crate::patchback`]): the located literal for each unit must hash to the
 /// unit's `source_text` (else [`PatchbackError::StaleSource`]), a no-op edit
@@ -523,8 +507,8 @@ mod tests {
 
     #[test]
     fn every_declared_code_is_catalogue_recognised() {
-        // The KAIFUU-109 surface set never drifts from the shared catalogue:
-        // every code `command_text_role` handles is a recognised classify()
+        // The surface set never drifts from the shared catalogue
+        // every code `command_text_role` handles is a recognised classify
         // code (never Unknown).
         for code in [401, 102, 402, 405, 108, 408] {
             assert!(command_text_role(code).is_some());

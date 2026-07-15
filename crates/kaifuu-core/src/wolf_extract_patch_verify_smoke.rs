@@ -1,50 +1,41 @@
-//! KAIFUU-145 — Wolf encrypted-archive first EXTRACT-PATCH-VERIFY smoke (the
+//! Wolf encrypted-archive first EXTRACT-PATCH-VERIFY smoke (the
 //! readiness Patch gate).
-//!
 //! This module turns the Wolf encrypted-archive readiness from an
 //! inventory/claim level into a first bounded EXTRACT-PATCH-VERIFY smoke that
 //! GATES the readiness `patch` rung. It does NOT reimplement any crypto,
 //! container, or patch logic — it COMPOSES the pieces that already exist:
-//!
-//! - the KAIFUU-058 profiled encrypted-archive extract+patch driver
+//! - the profiled encrypted-archive extract+patch driver
 //!   ([`crate::wolf_profiled_production::run_wolf_profiled_production`]), which
-//!   itself composes the KAIFUU-073 crypt substrate
-//!   ([`crate::wolf_encrypted_smoke`]) and the KAIFUU-012 text adapter; and
+//!   itself composes the crypt substrate
+//!   ([`crate::wolf_encrypted_smoke`]) and the text adapter; and
 //! - the module-private zeroize-on-drop key holder + the
 //!   [`crate::wolf_encrypted_smoke::WolfEncryptedFixtureSecretResolver`] boundary,
 //!   which the driver drives — so raw key material never enters this module.
-//!
-//! # Why this exists (the KAIFUU-080 mirror)
-//!
+//! # Why this exists (the mirror)
 //! Before this node, the readiness `patch` rung was unlocked by a
 //! [`crate::wolf_readiness::WolfReadinessArtifactProof`] whose hash was a sha256
 //! over a static LABEL (`wolf-readiness-artifact/<kind>/<artifact_id>`). Anyone
 //! who knew the artifact id could compute the hash — so `patch` was a CLAIM, not
 //! a proof that a round-trip genuinely happened. That is precisely the
-//! KAIFUU-080 anti-pattern (a readiness rung bound to a bare label/boolean).
-//!
+//! anti-pattern (a readiness rung bound to a bare label/boolean).
 //! This module produces a SMOKE-BOUND proof: the honored proof hash is derived
-//! from the ACTUAL round-trip output of a genuinely-run KAIFUU-058 profiled
+//! from the ACTUAL round-trip output of a genuinely-run profiled
 //! variant (its source/rebuilt archive hashes, its per-member deltas, and its
 //! round-trip proof). The only way to mint the honored value is to actually run
 //! the extract-patch-verify round-trip on the synthetic profiled fixture. A
 //! fixture that carries a label-only or fabricated hash — one NOT backed by a
 //! genuinely-passing smoke — does NOT reach `patch-proven`.
-//!
 //! # Fail-loud
-//!
 //! A claimed synthetic profile that cannot extract+patch+verify is a typed loud
 //! failure ([`WolfExtractPatchVerifySmokeError`]), never a silent skip — the
-//! KAIFUU-058 [`crate::wolf_profiled_production::WolfProfiledProductionError`] is
+//! [`crate::wolf_profiled_production::WolfProfiledProductionError`] is
 //! surfaced verbatim, and a variant that does not actually round-trip (no
 //! patched member, non-byte-identical unpatched member, non-verified patched
 //! text) fails loud here too.
-//!
-//! # Secret discipline (preserved from KAIFUU-057/058/073)
-//!
+//! # Secret discipline
 //! This module never touches a raw-key constructor. All key material stays
-//! inside the KAIFUU-073 module-private [`WolfEncryptedFixtureSecretResolver`]
-//! held by the KAIFUU-058 registry; keys are handed back only by ref and never
+//! inside the module-private [`WolfEncryptedFixtureSecretResolver`]
+//! held by the registry; keys are handed back only by ref and never
 //! copied out. The smoke report carries refs, hashes, and counts only, and the
 //! no-leak guard on the composed report is re-asserted here.
 
@@ -93,7 +84,7 @@ impl WolfSmokeArtifactKind {
 /// round-trip is a compatibility bug, never a silent skip.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WolfExtractPatchVerifySmokeError {
-    /// The composed KAIFUU-058 driver failed (surfaced verbatim).
+    /// The composed driver failed (surfaced verbatim).
     ProfiledDriverFailed(WolfProfiledProductionError),
     /// The driver ran but the named variant did not appear as a claimed,
     /// genuinely-round-tripped outcome.
@@ -149,7 +140,7 @@ pub struct WolfSmokeVariantOutcome {
     pub members_total: u32,
     pub members_patched: u32,
     pub members_byte_preserved: u32,
-    /// The KAIFUU-058 round-trip proof hash over the per-member deltas.
+    /// The round-trip proof hash over the per-member deltas.
     pub round_trip_proof_hash: ProofHash,
     /// The smoke-bound extract proof hash — derived from THIS run's output, not
     /// from a static label. The readiness `extract` rung binds to this.
@@ -168,7 +159,7 @@ pub struct WolfExtractPatchVerifySmokeReport {
     pub source_node_id: String,
     pub support_boundary: String,
     pub engine_family: String,
-    /// The KAIFUU-058 capability id this smoke drives (the composition citation).
+    /// The capability id this smoke drives (the composition citation).
     pub driven_profiled_capability_id: String,
     pub variants_round_tripped: u32,
     pub outcomes: Vec<WolfSmokeVariantOutcome>,
@@ -193,9 +184,8 @@ impl WolfExtractPatchVerifySmokeReport {
 }
 
 /// The canonical SMOKE-BOUND proof hash for one artifact of one variant.
-///
 /// Unlike a static-label hash, this binds to the ACTUAL round-trip output of a
-/// genuinely-run KAIFUU-058 variant: its source + rebuilt archive hashes, its
+/// genuinely-run variant: its source + rebuilt archive hashes, its
 /// per-member delta counts, and its round-trip proof hash. The only way to
 /// reproduce this value is to run the extract-patch-verify round-trip and get
 /// the same output — a claim/label alone cannot mint it. This is the mechanism
@@ -225,7 +215,7 @@ pub fn canonical_wolf_smoke_proof_hash(
         .expect("sha256_hash_bytes yields a valid sha256 ref")
 }
 
-/// Run the first Wolf extract-patch-verify smoke by DRIVING the KAIFUU-058
+/// Run the first Wolf extract-patch-verify smoke by DRIVING the
 /// profiled production round-trip over the synthetic profiled registry, then
 /// distilling each genuinely-round-tripped claimed variant into a smoke-bound
 /// outcome. Claimed-profile failures fail loud (typed), never silent skip.
@@ -245,7 +235,7 @@ pub fn run_wolf_extract_patch_verify_smoke_with_registry(
     registry: &WolfProfiledProductionRegistry,
     source_node_id: &str,
 ) -> Result<WolfExtractPatchVerifySmokeReport, WolfExtractPatchVerifySmokeError> {
-    // Genuinely run the KAIFUU-058 extract+patch round-trip. A claimed profile
+    // Genuinely run the extract+patch round-trip. A claimed profile
     // that cannot round-trip surfaces as a loud typed error here.
     let profiled_report = run_wolf_profiled_production(registry, source_node_id)?;
 
@@ -295,7 +285,7 @@ pub fn run_wolf_extract_patch_verify_smoke_with_registry(
     Ok(report)
 }
 
-/// Distill a genuinely-run KAIFUU-058 variant report into a smoke-bound outcome,
+/// Distill a genuinely-run variant report into a smoke-bound outcome
 /// failing loud if the round-trip did not actually extract + patch + verify.
 fn distill_variant(
     variant: &WolfProfiledVariantReport,
@@ -381,7 +371,7 @@ mod tests {
                 outcome.rebuilt_archive_hash.as_str()
             );
             // The smoke-bound proof hashes are the canonical recomputation and
-            // extract != patch (the patch value folds in patched counts).
+            // extract!= patch (the patch value folds in patched counts).
             assert_ne!(
                 outcome.extract_smoke_proof_hash.as_str(),
                 outcome.patch_smoke_proof_hash.as_str()
@@ -410,7 +400,7 @@ mod tests {
 
     #[test]
     fn claimed_but_broken_profile_fails_loud() {
-        // Corrupt the resolved key so the composed KAIFUU-058 extract fails; the
+        // Corrupt the resolved key so the composed extract fails; the
         // smoke must surface that as a loud typed error, never a silent skip.
         let mut registry = profiled_synthetic::production_registry();
         // Rebuild the resolved-keys resolver with a wrong label for the static

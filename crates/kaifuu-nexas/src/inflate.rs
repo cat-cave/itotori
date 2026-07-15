@@ -1,7 +1,6 @@
 //! Self-contained zlib / DEFLATE decoder for NeXAS `PAC\0` entries whose
 //! archive `pack_type` is [`crate::Compression::Deflate`] (or the packed case of
 //! [`crate::Compression::DeflateOrNone`]).
-//!
 //! GARbro decompresses these entries with `System.IO.Compression.ZLibStream`.
 //! Real NeXAS payloads (e.g. Majikoi's `Config.pac` / `Script.pac`) carry a
 //! `78 9C` zlib header, so this module implements the zlib envelope (RFC 1950)
@@ -364,9 +363,7 @@ fn adler32(data: &[u8]) -> u32 {
 
 /// Decode a zlib stream (RFC 1950 envelope around a DEFLATE body), verifying the
 /// trailer Adler-32 when present.
-///
 /// # Errors
-///
 /// [`InflateError::BadZlibHeader`] for a malformed envelope, the [`inflate`]
 /// errors for a bad body, and [`InflateError::AdlerMismatch`] if the trailing
 /// checksum disagrees with the inflated output.

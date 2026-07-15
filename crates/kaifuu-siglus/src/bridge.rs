@@ -1,13 +1,11 @@
 //! Siglus scene bytecode → v0.2 BridgeBundle producer — **skeleton**
 //! (siglus-05).
-//!
 //! Mirrors `kaifuu-reallive`'s `bridge` module: walks a decompiled
 //! [`crate::opcode::SiglusOpcode`] sequence into a
 //! [`kaifuu_core::BridgeBundleV02`], emitting one translatable unit per
 //! dialogue / choice-label surface with provenance anchored in the
 //! **decompressed** scene-bytecode stream and protected spans pinned over
 //! Siglus control markers.
-//!
 //! Skeleton status: [`produce_bundle`] returns
 //! [`BridgeProduceError::NotImplemented`]. The real producer depends on
 //! the (downstream) decompiler and Gameexe.dat inventory.
@@ -72,12 +70,10 @@ pub struct ProducedBundle {
 }
 
 /// Walk a Siglus scene's decompiled bytecode into a v0.2 BridgeBundle.
-///
 /// `scene_id` is the `SceneList` scene index; `scene_bytes` is the raw
 /// packed scene blob; `decompressed_bytecode` is the post-decrypt,
 /// post-LZSS bytecode the caller already produced; `gameexe_inventory` is
 /// the parsed `Gameexe.dat` inventory used for speaker resolution.
-///
 /// Skeleton: always returns [`BridgeProduceError::NotImplemented`].
 pub fn produce_bundle(
     _scene_id: u32,

@@ -1,15 +1,12 @@
-//! KAIFUU-101 — profiled XP3 **patch-back** round-trip on the KAIFUU-100 crypt
+//! profiled XP3 **patch-back** round-trip on the crypt
 //! fixture.
-//!
 //! # What this is (and is not)
-//!
 //! This module proves the **patch-back** capability for a profiled encrypted
 //! KiriKiri XP3 archive end-to-end, on the same **synthetic, fixture-safe**
-//! archive the KAIFUU-100 [`crate::xp3_crypt`] decrypt smoke owns:
-//!
+//! archive the [`crate::xp3_crypt`] decrypt smoke owns
 //! 1. it resolves the decrypt key through the fixture's declared **secret ref**
 //!    (a requirement id resolved to fixture-safe key material — never a raw key)
-//!    and decrypts + integrity-verifies every member (the KAIFUU-100 path);
+//!    and decrypts + integrity-verifies every member (the path)
 //! 2. it proves the **identity** round-trip: rebuild(extract(x)) with **no**
 //!    change is **byte-identical** to the source encrypted container;
 //! 3. it applies one **trivial text replacement** (a length-changing localization
@@ -23,15 +20,12 @@
 //!    integrity check against its recomputed `adlr`, the patched member carries
 //!    the **new** text and not the old, and **every other member is
 //!    byte-identical** to the source plaintext.
-//!
-//! The capability output records the **patch-back mode**
-//! ([`kaifuu_core::PatchBackTransform::RepackArchive`]), the **crypto profile**
-//! ([`Xp3CryptoProfile`]), the surface, and **coverage** (members total /
-//! patched / byte-preserved, replacements applied).
-//!
+//!    The capability output records the **patch-back mode**
+//!    ([`kaifuu_core::PatchBackTransform::RepackArchive`]), the **crypto profile**
+//!    ([`Xp3CryptoProfile`]), the surface, and **coverage** (members total /
+//!    patched / byte-preserved, replacements applied).
 //! ## Honest scope
-//!
-//! Everything the KAIFUU-100 boundary says still holds: the container is a
+//! Everything the crypt boundary says still holds: the container is a
 //! genuine plain-XP3 archive, only member **file data** is enciphered, the
 //! integrity oracle is KiriKiri's real `adlr` adler-32, and the crypt filter is
 //! a declared **fixture** XOR analogue — NOT a real per-title CxDec/TVP filter.
@@ -70,8 +64,6 @@ pub const XP3_PATCH_CAPABILITY_ID: &str = "kaifuu-kirikiri-xp3-patch-back-smoke"
 /// The blunt support boundary carried in every report.
 pub const XP3_PATCH_SUPPORT_BOUNDARY: &str = "Kaifuu KiriKiri XP3 patch-back smoke extends the KAIFUU-100 profiled decrypt fixture: it decrypts a SYNTHETIC encrypted XP3 through the declared fixture secret ref, applies one trivial text replacement to a single member, re-enciphers with the same fixture key, recomputes each member adlr adler-32, and repacks the whole archive (patch-back mode repack_archive). The patched output is re-decrypted through the DECLARED secret requirement id and verified against the declared fixture profile: the patched member carries the new text and every other member is byte-identical. The identity rebuild (no change) is byte-identical to the source. This is NOT commercial encrypted-XP3 coverage and the fixture crypt filter is NOT a real per-title CxDec/TVP filter. No retail bytes and no raw key material leave the module.";
 
-// --- Trivial replacement manifest -------------------------------------------
-
 /// One trivial text replacement: within `member_id`, replace the first
 /// occurrence of `find` with `replace`. Fixture-safe, public synthetic text.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,7 +86,7 @@ pub struct Xp3PatchManifest {
     pub schema_version: String,
     /// Stable manifest id.
     pub manifest_id: String,
-    /// The spec-DAG node id this manifest is authored for (e.g. `KAIFUU-101`).
+    /// The spec-DAG node id this manifest is authored for (e.g. ``).
     pub source_node_id: String,
     /// The trivial replacements to apply (this fixture declares exactly one).
     pub replacements: Vec<Xp3TextReplacement>,
@@ -120,8 +112,6 @@ impl Xp3PatchManifest {
         }
     }
 }
-
-// --- Errors -----------------------------------------------------------------
 
 /// Fatal errors raised by the XP3 patch-back path. Every variant's `Display`
 /// begins with [`XP3_PATCH_MARKER`].
@@ -171,8 +161,6 @@ pub enum Xp3PatchError {
     },
 }
 
-// --- Capability + coverage --------------------------------------------------
-
 /// Patch-back coverage counters: how much of the archive the round-trip
 /// touched vs. preserved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -202,8 +190,6 @@ pub struct Xp3PatchCapability {
     /// Coverage counters.
     pub coverage: Xp3PatchCoverage,
 }
-
-// --- Report -----------------------------------------------------------------
 
 /// The identity round-trip proof: rebuild(extract(x)) with no change == x.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -364,8 +350,6 @@ fn redacted_member_digest(digest: &Xp3CryptMemberDigest) -> Xp3CryptMemberDigest
     }
 }
 
-// --- Driver -----------------------------------------------------------------
-
 /// One decrypted member as `(member id, plaintext bytes)`.
 type MemberPlaintext = (String, Vec<u8>);
 
@@ -426,14 +410,14 @@ pub fn run_xp3_patch_smoke_from_fixture(
     let resolver = FixtureSecretResolver::fixture_default();
     let key = resolver.resolve(&fixture.secret_requirement_id, &fixture.secret_ref)?;
 
-    // (1) Decrypt + integrity-verify the source members (the KAIFUU-100 path).
+    // (1) Decrypt + integrity-verify the source members (the path).
     let source_members: Vec<(String, Vec<u8>)> = decrypt_members(&source, key, scheme)?
         .into_iter()
         .map(|member| (member.member_id, member.plaintext))
         .collect();
 
     // (2) Identity round-trip: re-encipher + repack with NO change must be
-    //     byte-identical to the source encrypted container.
+    // byte-identical to the source encrypted container.
     let identity_rebuilt = encode_encrypted_xp3(&source_members, key, scheme);
     let byte_identical = identity_rebuilt == source;
     if !byte_identical {
@@ -462,8 +446,8 @@ pub fn run_xp3_patch_smoke_from_fixture(
             })?;
 
     // (4) VERIFY against the declared secret requirement id: re-open the rebuilt
-    //     container and decrypt through the DECLARED secret ref. Integrity must
-    //     pass for every member against its recomputed adlr.
+    // container and decrypt through the DECLARED secret ref. Integrity must
+    // pass for every member against its recomputed adlr.
     let rebuilt_key = resolver.resolve(&fixture.secret_requirement_id, &fixture.secret_ref)?;
     let rebuilt_members: Vec<(String, Vec<u8>)> = decrypt_members(&rebuilt, rebuilt_key, scheme)?
         .into_iter()
@@ -471,7 +455,7 @@ pub fn run_xp3_patch_smoke_from_fixture(
         .collect();
 
     // (5) VERIFY against the declared fixture profile: engine/container/crypto/
-    //     surface + the declared expected member set.
+    // surface + the declared expected member set.
     let profile_matched = fixture.engine_family == crate::xp3_crypt::XP3_CRYPT_ENGINE_FAMILY
         && fixture.container == crate::xp3_crypt::XP3_CRYPT_CONTAINER
         && rebuilt_members
@@ -485,8 +469,8 @@ pub fn run_xp3_patch_smoke_from_fixture(
     }
 
     // (6) Trivial-change proof: locate the patched member in source + rebuilt,
-    //     confirm the new text is present, the old text is gone, and every other
-    //     member is byte-identical.
+    // confirm the new text is present, the old text is gone, and every other
+    // member is byte-identical.
     let replacement = manifest
         .replacements
         .iter()
@@ -530,7 +514,7 @@ pub fn run_xp3_patch_smoke_from_fixture(
     }
 
     // (7) The verification manifest (hash-based) + a proof over its member
-    //     commitments.
+    // commitments.
     let patched_manifest: Vec<Xp3CryptMemberDigest> = rebuilt_members
         .iter()
         .map(|(id, plaintext)| member_digest_from_plaintext(id, plaintext))

@@ -1,5 +1,4 @@
-//! KAIFUU-055 — RGSS3 / RGSSAD (RPG Maker VX Ace) layered-transform profile.
-//!
+//! RGSS3 / RGSSAD (RPG Maker VX Ace) layered-transform profile.
 //! This module establishes the *tested transform boundaries* a production
 //! RGSS3 adapter will later be built on. It is deliberately a PROFILE +
 //! FIXTURE scaffold, not a full extraction/patching adapter: it pins the
@@ -8,29 +7,23 @@
 //! Marshal 4.8 blob to their structure (deterministically, no retail bytes),
 //! and represents the binary-patcher patch-back risks as
 //! [checked dependency constraints][`Rgss3PatchBackDependency`].
-//!
 //! RGSS3 / VX Ace is its OWN engine family (`rgss3`) — distinct from RPG Maker
 //! MV/MZ (`rpg_maker_mv_mz*`, JSON text + XOR-masked media). It shares only the
 //! "RPG Maker" brand, not the container/codec/crypto:
-//!
-//! | Layer      | RGSS3 / VX Ace (this module)                    |
-//! |------------|-------------------------------------------------|
-//! | container  | RGSSAD archive (`.rgss3a`, magic `RGSSAD\0` v3) |
-//! | crypto     | per-file XOR keystream seeded from a base key    |
-//! | codec      | Ruby Marshal 4.8 (`.rvdata2`); Scripts +zlib     |
-//! | surface    | archive-entry / string table                     |
-//! | patch-back | repack archive (reproduce keystream + offsets)   |
-//!
+//! | Layer | RGSS3 / VX Ace (this module) |
+//! | container | RGSSAD archive (`.rgss3a`, magic `RGSSAD\0` v3) |
+//! | crypto | per-file XOR keystream seeded from a base key |
+//! | codec | Ruby Marshal 4.8 (`.rvdata2`); Scripts +zlib |
+//! | surface | archive-entry / string table |
+//! | patch-back | repack archive (reproduce keystream + offsets) |
 //! The shared transform vocabulary already carries the tokens this family
 //! needs ([`ContainerTransform::Rgssad`], [`CryptoTransform::Xor`],
 //! [`CodecTransform::RubyMarshal`], [`PatchBackTransform::RepackArchive`]), and
-//! the KAIFUU-103 [`crate::packed_engine_readiness`] validator already checks a
+//! the [`crate::packed_engine_readiness`] validator already checks a
 //! `rgss3` readiness profile against those. This module goes one layer deeper:
 //! it makes the RGSSAD keystream and the Ruby Marshal decode *executable and
 //! tested* so the adapter starts from a real, proven boundary.
-//!
 //! # Fidelity boundary (honest scoping)
-//!
 //! The RGSSAD keystream constants and the Marshal subset modelled here are a
 //! FAITHFUL-SHAPED synthetic scheme: the seed→key derivation, the per-file key,
 //! and the advancing `k = k*7 + 3` keystream match the documented RGSSAD v3
@@ -65,9 +58,7 @@ pub const RGSS3_ARCHIVE_VERSION: u8 = 3;
 /// The Ruby Marshal format version VX Ace `.rvdata2` files carry (major.minor).
 pub const RUBY_MARSHAL_VERSION: (u8, u8) = (4, 8);
 
-// ===========================================================================
 // Deliverable 1 — RGSS3 layered-transform PROFILE fields
-// ===========================================================================
 
 /// The RGSSAD v3 XOR keystream scheme, as profile fields. The base key is
 /// derived from a per-archive `seed` (`key = seed * mul + add`); each file
@@ -191,7 +182,6 @@ pub struct Rgss3LayeredTransformProfile {
     /// Canonical engine family token (`rgss3`).
     pub engine_family: String,
     pub profile_id: String,
-    // --- layered transform stack -----------------------------------------
     pub container: ContainerTransform,
     /// RGSSAD signature bytes (`RGSSAD\0`) — recorded so the detector boundary
     /// is a profile field, not a magic literal buried in code.
@@ -455,9 +445,7 @@ pub fn validate_rgss3_profile(profile: &Rgss3LayeredTransformProfile) -> Rgss3Pr
     }
 }
 
-// ===========================================================================
 // Deliverable 2 — Ruby Marshal 4.8 reader/writer over a bounded subset
-// ===========================================================================
 
 /// A decoded Ruby Marshal value over the bounded subset VX Ace `.rvdata2`
 /// structure needs: nil, booleans, `Fixnum`, byte strings, symbols, arrays,
@@ -779,9 +767,7 @@ pub fn synthetic_rvdata2_value() -> MarshalValue {
     ])
 }
 
-// ===========================================================================
 // Deliverable 1/3 support — SYNTHETIC RGSSAD v3 archive structure
-// ===========================================================================
 
 /// One decoded RGSSAD directory entry + its decrypted payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -951,8 +937,6 @@ pub fn decode_synthetic_rgss3a(
 mod tests {
     use super::*;
 
-    // --- Deliverable 1: profile fields ------------------------------------
-
     #[test]
     fn canonical_profile_validates_green() {
         let profile = Rgss3LayeredTransformProfile::canonical();
@@ -995,8 +979,6 @@ mod tests {
         );
         assert!(finding.severity.is_blocking());
     }
-
-    // --- Deliverable 3: patch-back dependency checks ----------------------
 
     #[test]
     fn every_required_patch_back_dependency_is_declared() {
@@ -1060,8 +1042,6 @@ mod tests {
         assert!(json.ends_with('\n'));
         assert!(!json.contains("/home/trevor/private/leak.rgss3a"));
     }
-
-    // --- Deliverable 2: Ruby Marshal 4.8 decode ---------------------------
 
     #[test]
     fn marshal_long_matches_known_ruby_encodings() {
@@ -1130,7 +1110,7 @@ mod tests {
     #[test]
     fn marshal_reads_ivar_wrapped_string_transparently() {
         // A hand-built IVAR-wrapped string as real VX Ace writes it:
-        //   I "hi" <ivar_count=1> :E T   (encoding = UTF-8)
+        // I "hi" <ivar_count=1>:E T (encoding = UTF-8)
         let mut blob = vec![0x04u8, 0x08];
         blob.push(b'I');
         blob.push(b'"');
@@ -1182,8 +1162,6 @@ mod tests {
             MarshalError::UnsupportedType(b'c')
         );
     }
-
-    // --- Deliverable 1: synthetic RGSSAD v3 archive structure -------------
 
     #[test]
     fn synthetic_rgss3a_round_trips() {

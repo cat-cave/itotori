@@ -1,21 +1,18 @@
-//! KAIFUU-103 — Packed-engine readiness profile validator.
-//!
+//! Packed-engine readiness profile validator.
 //! A *packed-engine readiness profile* is the evidence-first, per-engine
 //! declaration of the transform stack a packed (archive / encrypted-asset)
 //! engine flows through, plus the key / helper gating that stands between a
 //! recognized container and a usable text surface. It is the reusable sibling
-//! of the KAIFUU-108 MV/MZ JSON-text readiness record
-//! ([`crate::MvMzReadinessRecord`]) and the KAIFUU-054 KiriKiri XP3 capability
+//! of the MV/MZ JSON-text readiness record
+//! ([`crate::MvMzReadinessRecord`]) and the KiriKiri XP3 capability
 //! profile ([`crate::Xp3CapabilityProfileReport`]): where those pin one engine
 //! family each, this validator composes the SHARED transform vocabulary
 //! ([`ContainerTransform`] / [`CryptoTransform`] / [`CodecTransform`] /
 //! [`SurfaceTransform`] / [`PatchBackTransform`]) and the SHARED capability
 //! ladder ([`CapabilityLevel`]) into one schema that every packed engine
 //! family is checked against.
-//!
 //! # The mechanical line (not prose)
-//!
-//! Mirroring ALPHA-004's matrix and KAIFUU-054's plain-vs-encrypted line, the
+//! Mirroring ALPHA-004's matrix and 's plain-vs-encrypted line, the
 //! distinction between a **profile-ready** posture and a **readiness-only**
 //! posture is computed, never asserted. [`derive_packed_readiness_outcome`] is
 //! the single source of truth: a profile only resolves to an
@@ -27,9 +24,7 @@
 //! readiness-only posture that can NEVER show a resolved extract/patch
 //! capability. [`PackedReadinessOutcome::is_profile_ready`] is the mechanical
 //! gate the report exposes.
-//!
 //! # Consistency validation (structured findings, never silent)
-//!
 //! [`validate_packed_engine_readiness_profile`] checks every profile against
 //! its engine family's [`EngineProfileSpec`] and emits a structured
 //! [`PackedReadinessFinding`] (with a shared [`SemanticErrorCode`]) whenever a
@@ -40,9 +35,7 @@
 //! content-hash mismatch. A blocking finding flips the entry (and the report)
 //! to [`OperationStatus::Failed`]; a malformed fixture file becomes a failed
 //! entry, never a panic.
-//!
 //! # Evidence is synthetic, redacted, hash-only
-//!
 //! Profiles carry NO raw retail bytes and NO raw key material: only synthetic
 //! content descriptors (`assetId` + byte count + per-asset `sha256` ref),
 //! local-scheme [`SecretRef`] key references, and helper ids. The report is
@@ -70,9 +63,7 @@ pub const PACKED_ENGINE_PROFILE_GLOB: &str = "*.profile.json";
 /// The support boundary surfaced in every report.
 pub const PACKED_ENGINE_READINESS_SUPPORT_BOUNDARY: &str = "Packed-engine readiness profiles compose the shared container, crypto, codec, surface, and patch-back transform vocabulary with the shared capability ladder. A profile resolves to a usable identify, inventory, extract, or patch posture only when its layered transform is supported, its key material is resolved, and its helper is available. A media-asset transform, a missing key, a helper-gated key, or an unavailable helper is a readiness-only posture that never claims extract or patch.";
 
-// ---------------------------------------------------------------------------
 // Engine families + per-family profile spec
-// ---------------------------------------------------------------------------
 
 /// The packed engine families this validator recognizes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -185,7 +176,7 @@ impl PackedEngineFamily {
             },
             // MV/MZ encrypted media: recognized container + asset XOR crypto +
             // a media codec, but the media transform is unsupported for text
-            // extraction (mirrors KAIFUU-108's hard non-extractable pin), so the
+            // extraction (mirrors 's hard non-extractable pin), so the
             // capability ceiling is `identify` only.
             Self::RpgMakerMvMzMedia => EngineProfileSpec {
                 container: ContainerTransform::ProjectAsset,
@@ -229,9 +220,7 @@ pub fn is_media_codec(codec: CodecTransform) -> bool {
     )
 }
 
-// ---------------------------------------------------------------------------
 // Profile input schema
-// ---------------------------------------------------------------------------
 
 /// A reusable packed-engine readiness profile fixture.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -242,7 +231,7 @@ pub struct PackedEngineReadinessProfile {
     pub profile_id: String,
     /// Stable fixture id this profile is derived from.
     pub fixture_id: String,
-    /// The spec-DAG node id this profile is authored for (e.g. `KAIFUU-103`).
+    /// The spec-DAG node id this profile is authored for (e.g. ``).
     pub source_node_id: String,
     pub engine_family: PackedEngineFamily,
     pub container: ContainerTransform,
@@ -302,9 +291,7 @@ pub fn recompute_content_hash(content: &[PackedContentEntry]) -> KaifuuResult<Pr
     ProofHash::new(sha256_hash_bytes(canonical.as_bytes())).map_err(Into::into)
 }
 
-// ---------------------------------------------------------------------------
 // Outcome + posture (the mechanical line)
-// ---------------------------------------------------------------------------
 
 /// The mechanically-derived outcome of a packed-engine readiness profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -373,7 +360,6 @@ impl PackedReadinessPosture {
 }
 
 /// THE single source of truth for the profile-ready-vs-readiness-only line.
-///
 /// A profile resolves to a capability rung (`identify`/`inventory`/`extract`/
 /// `patch`, capped at the engine ceiling) **if and only if** the layered
 /// transform is supported (no media-asset transform), the key material is
@@ -411,9 +397,7 @@ pub fn derive_packed_readiness_outcome(
     }
 }
 
-// ---------------------------------------------------------------------------
 // Findings + report
-// ---------------------------------------------------------------------------
 
 /// A structured validation finding — never prose, never silent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -551,9 +535,7 @@ impl PackedReadinessValidationReport {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Validator
-// ---------------------------------------------------------------------------
 
 fn finding(
     code: &str,
@@ -610,7 +592,6 @@ pub fn validate_packed_engine_readiness_profile(
         ));
     }
 
-    // --- Engine family + per-family transform-stack consistency. -----------
     let Some(spec) = profile.engine_family.profile_spec() else {
         findings.push(finding(
             "packed.readiness.unknown_engine_family",
@@ -698,7 +679,6 @@ pub fn validate_packed_engine_readiness_profile(
         ));
     }
 
-    // --- Capability overclaim past the engine ceiling. ---------------------
     if profile.declared_capability > spec.capability_ceiling {
         findings.push(finding(
             "packed.readiness.capability_overclaim",
@@ -714,13 +694,10 @@ pub fn validate_packed_engine_readiness_profile(
         ));
     }
 
-    // --- Key-material consistency. -----------------------------------------
     validate_key(profile, &spec, &mut findings);
 
-    // --- Helper consistency. -----------------------------------------------
     validate_helper(profile, &mut findings);
 
-    // --- Content + hash consistency. ---------------------------------------
     if profile.content.is_empty() {
         findings.push(finding(
             "packed.readiness.content_missing",
@@ -751,7 +728,6 @@ pub fn validate_packed_engine_readiness_profile(
         )),
     }
 
-    // --- The mechanical outcome (always recomputed from evidence). ---------
     let outcome = derive_packed_readiness_outcome(
         &spec,
         profile.declared_capability,
@@ -1044,8 +1020,6 @@ mod tests {
             .unwrap_or_else(|e| panic!("load negative {name}: {e}"))
     }
 
-    // --- The mechanical line: gated states are never profile-ready. --------
-
     #[test]
     fn gated_states_can_never_be_profile_ready() {
         for family in PackedEngineFamily::recognized() {
@@ -1157,8 +1131,6 @@ mod tests {
         );
     }
 
-    // --- Positive fixtures pass + cover every outcome. ---------------------
-
     #[test]
     fn positive_fixture_dir_is_green_and_covers_all_outcomes() {
         use PackedReadinessOutcome::{
@@ -1221,8 +1193,6 @@ mod tests {
             );
         }
     }
-
-    // --- Negative fixtures fail with the right finding code. ---------------
 
     fn has_code(entry: &PackedReadinessEntryReport, code: &str) -> bool {
         entry.findings.iter().any(|f| f.code == code)
@@ -1300,8 +1270,6 @@ mod tests {
                 .all(|e| e.status == OperationStatus::Failed)
         );
     }
-
-    // --- Report shape + redaction. -----------------------------------------
 
     #[test]
     fn report_round_trips_and_carries_acceptance_tuple() {

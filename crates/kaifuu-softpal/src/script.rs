@@ -3,15 +3,12 @@
 //! stack-machine walk (the single source of truth), recover their `TEXT.DAT`
 //! pointer fields, and resolve those pointers to decoded lines via the
 //! [`crate::TextDat`] codec.
-//!
 //! `SCRIPT.SRC` is **plaintext** (`Sv20` magic, `Sv<nn>` version-tolerant; not
 //! encrypted). Dialogue text is **not** inline — text-bearing commands carry
 //! 4-byte little-endian **pointers into the (decrypted) `TEXT.DAT` record pool**,
 //! where each pointer is the absolute byte offset of a record's 4-byte index
 //! field ([`crate::TextRecord::offset`]).
-//!
 //! # Single source of truth: the opcode-catalog stack walk
-//!
 //! `SCRIPT.SRC` is a typed **stack machine** (12-byte program header, then 4-byte
 //! tokens; see [`crate::opcode`]). Rendering-relevant commands are all the single
 //! `Call` opcode `0x17` dispatching on a packed [`CallTarget`](crate::CallTarget)
@@ -20,7 +17,6 @@
 //! never mistake an operand whose bits *happen* to look like an operator for a
 //! command — and reads the two text-bearing surfaces straight off its typed
 //! instruction stream:
-//!
 //! - **TEXT-SHOW** = [`CommandFamily::TextShow`](crate::CommandFamily) — a `Call`
 //!   with category `0x0002` and a text-type function ∈ {`0x02`, `0x0F`, `0x10`,
 //!   `0x11`, `0x12`, `0x13`, `0x14`}. The engine pushes the text pointer and the
@@ -33,18 +29,14 @@
 //!   operand the operator immediately before the `Call` pushes) is the typed
 //!   operand at `m-4`; the command spans `[m-8, m+8)` (16 bytes). A choice never
 //!   carries a speaker.
-//!
-//! Because the surfaces are read from `Call` operators the *arity walk* produced
-//! (never from a raw `17 00 01 00` byte scan), an operator-looking operand
-//! immediate — e.g. the raw value `0x0001_0017`, whose little-endian bytes are
-//! exactly `17 00 01 00` — is consumed as an operand and is **never** mis-read as
-//! a phantom command.
-//!
+//!   Because the surfaces are read from `Call` operators the *arity walk* produced
+//!   (never from a raw `17 00 01 00` byte scan), an operator-looking operand
+//!   immediate — e.g. the raw value `0x0001_0017`, whose little-endian bytes are
+//!   exactly `17 00 01 00` — is consumed as an operand and is **never** mis-read as
+//!   a phantom command.
 //! # Two SELECT-label variants (both handled)
-//!
 //! The choice **label** for a SELECT is recovered by one of two mechanisms,
 //! keyed off whether the immediate is itself a `TEXT.DAT` pointer:
-//!
 //! - **v21465 (immediate-is-label)** — the operand at `m-4` is a `TEXT.DAT`
 //!   pointer: the operator immediately before the `Call` pushes the label
 //!   directly. Resolves straight to a record (all 11 choices on the profiled
@@ -61,29 +53,22 @@
 //!   remaining **5** (an identical cluster at script start) push no label slot at
 //!   all — genuine system/menu selects that stay
 //!   [`OutOfPool`](PointerResolution::OutOfPool) (honestly *not* force-resolved).
-//!
-//! [`ScriptScan`] enriches each SELECT with the decoupled candidate
-//! ([`RawCommand::Select::decoupled_label`]) at scan time — pure over
-//! `SCRIPT.SRC`, byte-locatable — and [`ScriptScan::resolve`] classifies the
-//! immediate first, then the decoupled candidate, against the pool.
-//!
+//!   [`ScriptScan`] enriches each SELECT with the decoupled candidate
+//!   ([`RawCommand::Select::decoupled_label`]) at scan time — pure over
+//!   `SCRIPT.SRC`, byte-locatable — and [`ScriptScan::resolve`] classifies the
+//!   immediate first, then the decoupled candidate, against the pool.
 //! # Honest scope: TEXT-SHOW + SELECT surfaces only
-//!
 //! This module scopes the two text-extraction surfaces (dialogue + speaker +
 //! choice) and their `TEXT.DAT` pointers. It is **not** the full `Sv20` opcode
 //! table / control-flow decompiler (scene dispatch, branches, voice/animation
 //! commands) — that is the separate replay node; the full command catalog it
 //! *does* build is [`crate::OpcodeScan`]. `Call` targets that are neither
 //! TEXT-SHOW nor SELECT are deliberately not surfaced here.
-//!
 //! # Byte-locatable for patch-back
-//!
 //! Every recovered pointer records the **absolute byte offset of its 4-byte
 //! field within `SCRIPT.SRC`** ([`TextRef::field_offset`]), so a future
 //! patch-back node can repoint it after the `TEXT.DAT` pool is rebuilt.
-//!
 //! # Determinism / no shell-outs
-//!
 //! Pure functions of the input `&[u8]` (and a parsed [`crate::TextDat`]). No
 //! `Command::new`; the SoftPal-Tool `pal_script_tool.py` is a reference oracle
 //! only. Malformed input never panics: every failure is a typed [`ScriptError`].
@@ -188,9 +173,7 @@ impl ScriptHeader {
     }
 
     /// Parse the 4-byte header from the front of `bytes`.
-    ///
     /// # Errors
-    ///
     /// [`ScriptError::TruncatedHeader`] for a short buffer, or
     /// [`ScriptError::BadMagic`] if the first two bytes are not `"Sv"`.
     pub fn parse(bytes: &[u8]) -> Result<Self, ScriptError> {
@@ -213,7 +196,6 @@ impl ScriptHeader {
 }
 
 /// One recovered text-bearing command, before pointers are resolved.
-///
 /// Byte-locatable: every field offset is absolute within `SCRIPT.SRC`, so a
 /// patch-back node can repoint the command without re-scanning.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -277,7 +259,6 @@ pub struct ScriptScan {
 /// Recover the **decoupled** choice-label pointer for each SELECT (v60663
 /// variant) from a typed [`OpcodeScan`]: `Call`-offset → `(label pointer, its
 /// 4-byte field offset)`.
-///
 /// For each SELECT instruction, scan **backward** over the arity-driven token
 /// stream for the nearest instruction whose `operand[0]` is the choice-label slot
 /// tag [`SELECT_LABEL_SLOT_TAG`] and whose `operand[1]` is a **plain** (tag `0x0`)
@@ -318,7 +299,6 @@ fn decoupled_select_labels(scan: &OpcodeScan) -> HashMap<usize, (u32, usize)> {
 impl ScriptScan {
     /// Derive every TEXT-SHOW + SELECT command from the arity-driven opcode-catalog
     /// walk ([`crate::OpcodeScan`]) — the single source of truth.
-    ///
     /// The walk types every token operator→operands→operator, so every `Call`
     /// operator it reports is a genuine command (an operand whose bytes resemble a
     /// `Call` operator is consumed as an operand, never mis-read as one). For each
@@ -328,9 +308,7 @@ impl ScriptScan {
     /// `Call` operator offset as `m`: text at `m-20`, speaker name at `m-12`,
     /// SELECT immediate at `m-4`), preserving the byte-locatable field offsets a
     /// patch-back repoints. Commands are yielded in play (ascending offset) order.
-    ///
     /// # Errors
-    ///
     /// [`ScriptError::TruncatedHeader`] / [`ScriptError::BadMagic`] from the
     /// header parse, or [`ScriptError::TruncatedCommand`] if a `Call` is classified
     /// as a text-bearing command but the buffer/stream lacks the tokens before it
@@ -489,7 +467,6 @@ impl ScriptScan {
 
     /// Resolve every command's pointer(s) against a parsed [`TextDat`], yielding
     /// the dialogue + speaker + choice stream in play order.
-    ///
     /// Each pointer is classified against the record pool (see
     /// [`PointerResolution`]): [`Resolved`](PointerResolution::Resolved) when it
     /// equals some record's byte offset ([`crate::TextRecord::offset`], an exact
@@ -746,7 +723,6 @@ impl Disassembly {
 }
 
 /// Fatal errors raised while scanning a `SCRIPT.SRC`.
-///
 /// Every display string begins with the `kaifuu.softpal.script` namespace marker
 /// (see [`crate::SOFTPAL_SCRIPT_ERROR_MARKER`]).
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -784,8 +760,6 @@ mod tests {
     use super::*;
     use crate::{TEXTDAT_FLAG_PLAINTEXT, TEXTDAT_MAGIC_TAIL};
 
-    // ---- Sv20 token-stream fixtures ------------------------------------------
-    //
     // Every fixture is a real `Sv20` program (12-byte program header + 4-byte
     // arity-aligned tokens) so the arity-driven walk the disassembler now consumes
     // types it exactly as the real bytecode. TEXT-SHOW / SELECT are built as the
@@ -1105,8 +1079,6 @@ mod tests {
         assert_eq!(scan.commands.len(), 0);
         assert_eq!(scan.header.version, *b"20");
     }
-
-    // --- v60663 decoupled-select label mechanism (opcode-aligned tokens) --------
 
     #[test]
     fn decoupled_select_resolves_via_label_slot() {

@@ -1,5 +1,4 @@
-//! KAIFUU-070 — Siglus **known-key** Scene/Gameexe extract-patch-verify smoke.
-//!
+//! Siglus **known-key** Scene/Gameexe extract-patch-verify smoke.
 //! This module lands a **narrow, honestly-scoped** known-key Siglus smoke: for
 //! a single declared [`SiglusKnownKeyProfile`] it extracts profiled `Scene` /
 //! `Gameexe` text + metadata, applies a trivial translated patch, and verifies
@@ -8,11 +7,9 @@
 //! [`crate::decompress`], [`crate::gameexe`], [`crate::patchback`]) stays a
 //! typed skeleton stub; this module does not alias around it or fake success on
 //! its behalf.
-//!
 //! # What "narrow known-key profile" means (the honesty line)
-//!
 //! - The profile declares its crypto as a **constant key XOR** cycled over the
-//!   text payloads — the same profiled transform KAIFUU-069's static-key
+//!   text payloads — the same profiled transform 's static-key
 //!   fixture uses ([`kaifuu_core::build_siglus_static_key_stub`]). It is NOT the
 //!   real Siglus constant-256-byte-XOR-table + per-game second-layer strip
 //!   (that lands in `siglus-04`/`siglus-06` against real bytes). The profile
@@ -56,17 +53,14 @@ pub const KNOWN_KEY_SMOKE_CAPABILITY_ID: &str = "kaifuu-siglus-knownkey-smoke";
 /// Siglus coverage.
 pub const KNOWN_KEY_SMOKE_SUPPORT_BOUNDARY: &str = "Kaifuu Siglus known-key smoke is a NARROW, profiled Scene/Gameexe extract-patch-verify demonstration for a single declared known-key profile: constant-key-XOR text payloads, UTF-16LE, uncompressed-within-profile only. It is NOT broad Siglus Scene.pck/Gameexe.dat support: the real constant-256-XOR-table + per-game second-layer strip and proprietary-LZSS codec remain skeleton stubs (siglus-04/siglus-06). Out-of-profile compression or magic is a typed not_implemented, never a silent pass. Raw key material is never logged, serialized, or written to disk; the report carries secret-refs + one-way proof hashes + counts only.";
 
-// --- Synthetic profiled container format (NO retail bytes) ------------------
-//
 // A narrow, self-describing container. The structural header is plaintext (the
 // analogue of a readable Siglus SceneList); only the text payloads are
 // key-XOR-masked, so the profile can walk the directory before decrypting text.
-//
-//   Scene:   <14B magic><u8 compression><u32 sceneId><u32 unitCount>
-//            unitCount * { <u32 unitIndex><u32 textByteLen><XOR(utf16le text)> }
-//   Gameexe: <14B magic><u8 compression><u32 entryCount>
-//            entryCount * { <u32 keyLen><XOR(utf16le key)>
-//                           <u32 valLen><XOR(utf16le value)> }
+// Scene: <14B magic><u8 compression><u32 sceneId><u32 unitCount>
+// unitCount * { <u32 unitIndex><u32 textByteLen><XOR(utf16le text)> }
+// Gameexe: <14B magic><u8 compression><u32 entryCount>
+// entryCount * { <u32 keyLen><XOR(utf16le key)>
+// <u32 valLen><XOR(utf16le value)> }
 
 const SCENE_SMOKE_MAGIC: &[u8; 14] = b"KSIG-SCN-SMOKE";
 const GAMEEXE_SMOKE_MAGIC: &[u8; 14] = b"KSIG-GXE-SMOKE";
@@ -100,8 +94,6 @@ const FIXTURE_GAMEEXE_ENTRIES: &[(&str, &str)] = &[
     ("#NAMAE.001", "[synthetic-speaker-1]"),
     ("#WINDOW.000.NAME", "[synthetic-window-0]"),
 ];
-
-// --- Profile ----------------------------------------------------------------
 
 /// Text encoding declared by a known-key profile. Siglus text is UTF-16LE; the
 /// profile makes it explicit (no silent default).
@@ -178,13 +170,10 @@ pub struct SiglusKnownKeyProfile {
     pub gameexe_source: SiglusKnownKeyContainerSource,
 }
 
-// --- Module-private key holder ----------------------------------------------
-
 /// The resolved known-key bytes. Raw material is crate-private, never
 /// serialized, redacted in `Debug`, and zeroized on drop. Nothing public
 /// returns or logs these bytes.
-///
-/// The KAIFUU-022 pure adapter ([`crate::adapter`]) reuses this holder as the
+/// The pure adapter ([`crate::adapter`]) reuses this holder as the
 /// single place raw key bytes ever live: it constructs one via
 /// a shared [`ZeroizingSecretBytes`] holder from an *already-resolved* secret
 /// ref (the adapter never does key discovery) and passes it to the key-injected
@@ -243,16 +232,13 @@ fn known_key_material_from_resolved_secret(
 }
 
 /// Resolve the profile's known key to in-process material.
-///
 /// For the narrow smoke this is the synthetic fixture key (never persisted). In
-/// a real scoped run this seam is where the KAIFUU-069 validated key-ref would
+/// a real scoped run this seam is where the validated key-ref would
 /// be consumed; either way the raw bytes never cross this boundary except
 /// inside [`KnownKeyMaterial`].
 fn resolve_known_key(profile: &SiglusKnownKeyProfile) -> KnownKeyMaterial {
     known_key_material_from_resolved_secret(&profile.secret_ref, SYNTHETIC_KNOWN_KEY.to_vec())
 }
-
-// --- Extraction results (in-memory; text never enters the report) -----------
 
 /// A single extracted scene text unit. `text` is decoded UTF-8 held in memory
 /// for the caller/patcher; it is NEVER placed in the serialized report.
@@ -290,8 +276,6 @@ pub struct SiglusGameexeExtraction {
     /// Extracted entries in on-disk order.
     pub entries: Vec<SiglusGameexeEntry>,
 }
-
-// --- Errors -----------------------------------------------------------------
 
 /// Fatal errors raised by the known-key smoke. Every variant's `Display` begins
 /// with the [`crate::SIGLUS_UNIMPLEMENTED_MARKER`] namespace so an audit can pin
@@ -375,11 +359,8 @@ pub enum KnownKeySmokeError {
     },
 }
 
-// --- Extraction -------------------------------------------------------------
-
 /// Extract the profiled `Scene` container's text units + metadata using the
 /// profile's known key.
-///
 /// Returns [`KnownKeySmokeError::OutOfProfileCompression`] (typed
 /// not-implemented) if the container is flagged with an out-of-profile
 /// compression — the smoke does not fabricate a decompressor.
@@ -392,7 +373,7 @@ pub fn extract_scene(
 
 /// Key-injected [`extract_scene`]: identical parse, but the caller supplies the
 /// already-resolved key material instead of the module resolving it. This is the
-/// seam the KAIFUU-022 pure adapter consumes — it separates parsing from key
+/// seam the pure adapter consumes — it separates parsing from key
 /// discovery (the adapter never discovers keys; it is handed a resolved one).
 pub(crate) fn extract_scene_with(
     profile: &SiglusKnownKeyProfile,
@@ -421,7 +402,6 @@ pub(crate) fn extract_scene_with(
 
 /// The byte-exact record layout of a profiled `Scene` container: the header
 /// scalars plus each unit's *still-encrypted* payload slice, in on-disk order.
-///
 /// The adapter uses this to prove identity round-trips (re-emit == input,
 /// byte-identical) and out-of-scope byte-identity (every non-edited unit's
 /// encrypted bytes survive unchanged) WITHOUT ever decrypting.
@@ -522,11 +502,8 @@ fn check_in_profile(
     Ok(())
 }
 
-// --- Trivial patch + verify -------------------------------------------------
-
 /// Apply a trivial translated change to a single scene unit and return the
 /// re-emitted profiled `Scene` container.
-///
 /// Only the target unit's encrypted text payload + its length are rewritten;
 /// every other unit's directory record and encrypted bytes are preserved
 /// byte-identical. The result is self-checked by re-extraction inside
@@ -630,7 +607,7 @@ pub fn patch_and_verify_scene(
 }
 
 /// Key-injected [`patch_and_verify_scene`] (see [`extract_scene_with`]). The
-/// KAIFUU-022 adapter routes translated round-trips through this so the resolved
+/// adapter routes translated round-trips through this so the resolved
 /// key is threaded end-to-end (patch, re-extract, verify) with no hidden
 /// re-resolution.
 pub(crate) fn patch_and_verify_scene_with(
@@ -708,8 +685,6 @@ fn verify_scene_patch(
             .map_err(|error| KnownKeySmokeError::Internal { message: error })?,
     })
 }
-
-// --- Synthetic fixture builders (in-process, clearly fake) ------------------
 
 /// Build the synthetic profiled `Scene` container (uncompressed-within-profile).
 pub fn build_synthetic_scene_fixture() -> Vec<u8> {
@@ -900,8 +875,6 @@ fn build_scene_container(
     bytes
 }
 
-// --- Byte reader ------------------------------------------------------------
-
 struct Reader<'a> {
     bytes: &'a [u8],
     position: usize,
@@ -968,8 +941,6 @@ impl<'a> Reader<'a> {
     }
 }
 
-// --- Text helpers -----------------------------------------------------------
-
 pub(crate) fn utf16le_encode(text: &str) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(text.len() * 2);
     for unit in text.encode_utf16() {
@@ -994,7 +965,7 @@ fn source_unit_key(scene_id: u32, unit_index: u32) -> String {
 }
 
 /// Parse just the unit index out of a canonical `siglus:scene-NNNN#OOOO` key.
-/// Used by the KAIFUU-022 adapter to identify edited units.
+/// Used by the adapter to identify edited units.
 pub(crate) fn parse_source_unit_index(key: &str) -> Result<u32, KnownKeySmokeError> {
     parse_source_unit_key(key).map(|(_, unit_index)| unit_index)
 }
@@ -1009,8 +980,6 @@ fn parse_source_unit_key(key: &str) -> Result<(u32, u32), KnownKeySmokeError> {
     let unit_index = unit.parse::<u32>().map_err(|_| malformed())?;
     Ok((scene_id, unit_index))
 }
-
-// --- Capability descriptor --------------------------------------------------
 
 /// The narrow known-key smoke capability descriptor. Records the mechanical
 /// facts: in-process, no shell-out, redacted, and — crucially —
@@ -1064,8 +1033,6 @@ impl SiglusKnownKeyCapability {
         }
     }
 }
-
-// --- Report -----------------------------------------------------------------
 
 /// Per-scene-unit metadata carried in the report: structural key + byte length +
 /// a one-way sha256 commitment to the text — NEVER the text itself.
@@ -1213,8 +1180,6 @@ impl SiglusKnownKeySmokeReport {
     }
 }
 
-// --- Fixture (input manifest) + driver --------------------------------------
-
 /// The known-key smoke fixture manifest.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1223,7 +1188,7 @@ pub struct SiglusKnownKeySmokeFixture {
     pub schema_version: String,
     /// Capability id.
     pub capability_id: String,
-    /// The spec-DAG node id (e.g. `KAIFUU-070`).
+    /// The spec-DAG node id (e.g. ``).
     pub source_node_id: String,
     /// Engine family.
     pub engine_family: String,
@@ -1290,7 +1255,7 @@ pub fn run_known_key_smoke_from_fixture(
     )?;
 
     // (3) Out-of-profile case must be a typed not-implemented, not a silent
-    //     pass. Feed a proprietary-LZSS-flagged container and require refusal.
+    // pass. Feed a proprietary-LZSS-flagged container and require refusal.
     let out_of_profile = probe_out_of_profile(profile)?;
 
     // (4) Assemble the report (counts + one-way commitments only).

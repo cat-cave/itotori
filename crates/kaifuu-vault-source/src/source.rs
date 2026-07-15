@@ -167,7 +167,6 @@ impl std::fmt::Debug for VaultSource {
 }
 
 /// Reject a scratch root that is equal to, or nested under, the vault root.
-///
 /// The vault is read-only; routing writes into it (via a misconfigured
 /// `ITOTORI_SCRATCH_ROOT`) is a policy violation, surfaced as a typed
 /// [`VaultSourceError::ScratchUnwritable`] rather than silently honoured.
@@ -223,7 +222,6 @@ fn canonicalize_existing_prefix(path: &Path) -> PathBuf {
 
 impl VaultSource {
     /// Open a [`VaultSource`] against the resolved vault + scratch roots.
-    ///
     /// Validates the vault root (`catalog.db` + `artifacts/by-id/`) and probes
     /// the catalog schema version. The embedded by-id metadata is validated
     /// against the repository's compiled-in canonical sidecar schema when it
@@ -342,7 +340,7 @@ impl VaultSource {
             let _ = std::fs::remove_dir_all(&paths.run_root);
             let _tree: ExtractedTree = extract_archive(&primary.on_disk_path, &paths)?;
             // For KeepExtractedForGame, write the marker eagerly so a later
-            // failure that triggers `release()` still leaves the marker.
+            // failure that triggers `release` still leaves the marker.
             if matches!(opts.retention, RetentionPolicy::KeepExtractedForGame)
                 && let Err(e) =
                     write_last_canonical_id(&paths.last_canonical_id_marker, &canonical_id)

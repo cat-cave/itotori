@@ -1,6 +1,5 @@
 //! Real-bytes BridgeBundle **purity** gate (`reallive-bridge-no-binary-
 //! textout-as-dialogue`).
-//!
 //! The decompiler types every command tuple to a semantic `RealLiveOpcode`
 //! family, and the bridge now derives translatability from that TYPED
 //! operation: only a `Textout` run that decodes as readable Shift-JIS
@@ -9,27 +8,23 @@
 //! gate let a low-byte binary block that decodes cleanly into C0 control
 //! characters masquerade as dialogue, and a kidoku-table marker could land on
 //! such a bogus unit.
-//!
 //! This test produces the v0.2 BridgeBundle for **every populated scene of
 //! BOTH staged corpora** (Sweetie HD and Kanon; Sweetie HD is first decrypted
 //! by the in-process second-level `xor_2` decryptor, exactly as the
 //! multi-game decompiler harness does) and asserts a single hard invariant on
 //! every emitted unit's `sourceText`:
-//!
 //! - it carries **no control bytes** (`char::is_control`) and **no `U+FFFD`
 //!   replacement character** — i.e. it is real text, never a binary /
 //!   control-char run; and
 //! - after removing any `reallive.kidoku` control-marker span it is still
 //!   non-empty — i.e. no unit's `sourceText` is merely a kidoku-table marker.
-//!
-//! Per the data rule, the test asserts only on byte-category invariants and
-//! reports counts / categories — never decoded dialogue strings.
-//!
-//! Env-gated like the rest of the real-bytes suite and STRICT: needs
-//! `ITOTORI_REAL_GAME_ROOT` (Sweetie HD) and `ITOTORI_REAL_GAME_ROOT_2`
-//! (Kanon). Without them an absent corpus is an unconditional HARD FAILURE
-//! (no opt-out). These `#[ignore]`-d suites run only in the periodic
-//! ground-truth oracle (`just real-bytes-oracle`), where corpora are staged.
+//!   Per the data rule, the test asserts only on byte-category invariants and
+//!   reports counts / categories — never decoded dialogue strings.
+//!   Env-gated like the rest of the real-bytes suite and STRICT: needs
+//!   `ITOTORI_REAL_GAME_ROOT` (Sweetie HD) and `ITOTORI_REAL_GAME_ROOT_2`
+//!   (Kanon). Without them an absent corpus is an unconditional HARD FAILURE
+//!   (no opt-out). These `#[ignore]`-d suites run only in the periodic
+//!   ground-truth oracle (`just real-bytes-oracle`), where corpora are staged.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;

@@ -1,14 +1,11 @@
 //! `[iscript]…[endscript]` TJS-block recognition proof.
-//!
 //! Two layers:
-//!
 //! 1. A synthetic, authored, CC0 fixture (`fixtures/iscript_block.ks`) covering
 //!    the bracket spelling, the `@iscript`/`@endscript` line-command spelling, a
 //!    single-line `[iscript]…[endscript]`, and adjacent blocks. It asserts the
 //!    TJS body never becomes a `dialogue` unit, ordinary dialogue around the
 //!    blocks still parses, and the swallowed code stays byte-identical in the
 //!    structural (patchback) stream.
-//!
 //! 2. A REAL-BYTES gate (`KAIFUU_KIRIKIRI_REAL_KS_DIR`) that parses every `.ks`
 //!    under a directory of extracted retail KAG scripts and asserts that no
 //!    physical line inside an `[iscript]`/`@iscript` block is emitted as a
@@ -116,9 +113,7 @@ fn swallowed_tjs_is_preserved_byte_identical_in_the_structural_stream() {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Real-bytes gate.
-// ---------------------------------------------------------------------------
 
 /// Decode bytes only for the independent line-set oracle. The bytes passed to
 /// `parse_ks` remain the original retail buffer; this helper deliberately does

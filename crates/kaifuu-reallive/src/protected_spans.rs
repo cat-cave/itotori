@@ -1,6 +1,5 @@
 //! RealLive protected-span detector.
-//!
-//! Clean-room provenance (KAIFUU-174):
+//! Clean-room provenance
 //! - The bounded catalogue of control-code shapes (color, ruby, name
 //!   placeholder, choice token, text size, wait, clear, line break,
 //!   variable placeholder) is derived from publicly archived Haeleth
@@ -9,8 +8,7 @@
 //! - Any control byte (`< 0x20`) not in the catalogue surfaces as an
 //!   `unknown_control` warning and is preserved byte-for-byte in the
 //!   bridge schema and through patch-back. No silent skip is permitted.
-//!
-//! Surface:
+//!   Surface:
 //! - [`ProtectedSpanKind`] — bounded enum of the nine documented kinds
 //!   plus the `UnknownControl` catch-all.
 //! - [`detect_protected_spans`] — walks raw Shift-JIS bytes plus the
@@ -33,7 +31,6 @@ pub const PROTECTED_SPAN_DECODED_RANGE_CODE: &str =
     "kaifuu.reallive.protected_span.decoded_range_not_char_boundary";
 
 /// Error returned by [`detect_protected_spans`].
-///
 /// Protected-span detection aligns raw Shift-JIS byte offsets to byte
 /// offsets inside the *decoded* text by decoding successive prefixes of the
 /// raw bytes (see [`decoded_byte_offset_for_raw_offset`]). That alignment
@@ -61,7 +58,6 @@ pub enum ProtectedSpanError {
 }
 
 /// Char-boundary- and range-checked slice of the decoded text.
-///
 /// Returns [`ProtectedSpanError::DecodedRangeNotCharBoundary`] (never
 /// panics) when `[start, end)` is reversed, out of range, or lands inside a
 /// multi-byte char.
@@ -86,7 +82,6 @@ fn decoded_slice(
 }
 
 /// Bounded RealLive protected-span catalogue.
-///
 /// The serde label (snake_case) is used verbatim as the
 /// `ProtectedSpan.parsed_name` for `control_markup` spans, or as the
 /// `variable_name` shape on `variable_placeholder` spans.
@@ -169,7 +164,6 @@ pub const PROTECTED_SPAN_UNKNOWN_CONTROL_CODE: &str =
     "kaifuu.reallive.protected_span.unknown_control";
 
 /// One detected protected span.
-///
 /// `byte_range` covers the raw bytes within the source slot (Shift-JIS
 /// bytes including the control byte); `decoded_range` covers the
 /// equivalent characters within the decoded `String`. Patch-back uses
@@ -240,7 +234,6 @@ pub struct ProtectedSpanReport {
 }
 
 /// Detect protected spans in a single Shift-JIS `StringSlot`.
-///
 /// `raw_bytes` is the verbatim slot bytes (including control bytes);
 /// `decoded_text` is the result of [`crate::encoding::decode_shift_jis_slot`]
 /// on the same bytes. The caller is responsible for keeping the two
@@ -601,7 +594,6 @@ fn is_identifier_cont(byte: u8) -> bool {
 
 /// Compute the byte offset within the decoded text that corresponds to
 /// the given raw-byte offset.
-///
 /// Implementation: decode the raw bytes up to `raw_offset`, ignoring
 /// control bytes (which encoding_rs maps to single-byte C0 control
 /// characters). Used to align protected-span byte ranges in the decoded

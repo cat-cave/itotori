@@ -1,6 +1,5 @@
 //! `reallive-bridge-second-corpus-protected-span-calibration` — 2nd-corpus
 //! validation of the RealLive protected-span extraction.
-//!
 //! The bridge protected-span scanner (`bridge.rs::collect_units` + the RLDEV
 //! control-byte catalogue in `protected_spans.rs`) feeds the pilot's
 //! deterministic strip/re-inject (patchback-safety): every span it emits is a
@@ -9,10 +8,8 @@
 //! SECOND, independently-authored RealLive title (Kanon, a 1.2.6.8 `10002`
 //! rlBabel tree) and pins WHICH span rules are RealLive-GENERAL (engine-wide
 //! conventions) vs which are Sweetie-title-CALIBRATED vocabulary.
-//!
 //! # Rule provenance (the honest separation — grounded in the measured 2nd
 //! # corpus, NOT assumed from documentation)
-//!
 //! RealLive-GENERAL (engine-wide surfaces — proven to fire on BOTH corpora):
 //! - `reallive.kidoku` — read-tracking markers. Sourced from the `MetaKidoku`
 //!   (`0x40`) opcode AND synthesised from the scene header's `kidoku_count`.
@@ -29,9 +26,8 @@
 //!   Structurally engine-general; over READABLE dialogue runs it emits no
 //!   control-byte spans (the dialogue gate excludes `< 0x20` bytes) and, on
 //!   both corpora, ZERO unknown-control warnings and ZERO decode errors.
-//!
-//! TITLE / ERA-CALIBRATED (NOT engine-universal — the honest 2nd-corpus
-//! finding; must never be claimed as engine-general):
+//!   TITLE / ERA-CALIBRATED (NOT engine-universal — the honest 2nd-corpus
+//!   finding; must never be claimed as engine-general):
 //! - `reallive.name_token` — the full-width lenticular `【話者】` speaker
 //!   prefix. This is the KEY calibration finding: it fires 16,862× on Sweetie
 //!   HD but ZERO times on Kanon. The inline `【】` speaker bracket is an
@@ -46,22 +42,19 @@
 //!   Sweetie HD vocabulary"). Also ZERO on BOTH real corpora.
 //! - `reallive.choice_marker` — the `0x30..0x33` ASCII-digit heuristic. Not an
 //!   RLDEV-documented marker; emits ZERO spans on BOTH real corpora.
-//!
-//! All CALIBRATED rules key on an exact literal (a `【】` bracket, an ASCII tag,
-//! or an ASCII digit), so on a title that does not author that literal they
-//! emit ZERO spans — they cannot MIS-fire (produce a WRONG span) on Kanon,
-//! they simply do not apply. This test proves exactly that: the GENERAL
-//! `reallive.kidoku` surface fires on Kanon, the CALIBRATED rules are proven
-//! on their home title (Sweetie HD) and proven ABSENT on Kanon, and the
-//! absence is pinned as a title-vocabulary fact so a future "generalize the
-//! calibrated vocab" edit is a conscious, reviewed change rather than drift.
-//!
-//! Data rule: span TYPE counts / categories only — never decoded copyrighted
-//! dialogue text.
-//!
-//! Env-gated + STRICT like the rest of the real-bytes suite. Runs only in the
-//! periodic ground-truth oracle (`just real-bytes-oracle`) where both corpora
-//! are staged.
+//!   All CALIBRATED rules key on an exact literal (a `【】` bracket, an ASCII tag,
+//!   or an ASCII digit), so on a title that does not author that literal they
+//!   emit ZERO spans — they cannot MIS-fire (produce a WRONG span) on Kanon,
+//!   they simply do not apply. This test proves exactly that: the GENERAL
+//!   `reallive.kidoku` surface fires on Kanon, the CALIBRATED rules are proven
+//!   on their home title (Sweetie HD) and proven ABSENT on Kanon, and the
+//!   absence is pinned as a title-vocabulary fact so a future "generalize the
+//!   calibrated vocab" edit is a conscious, reviewed change rather than drift.
+//!   Data rule: span TYPE counts / categories only — never decoded copyrighted
+//!   dialogue text.
+//!   Env-gated + STRICT like the rest of the real-bytes suite. Runs only in the
+//!   periodic ground-truth oracle (`just real-bytes-oracle`) where both corpora
+//!   are staged.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -286,7 +279,7 @@ fn span_report_for_corpus(corpus: &RealCorpus) -> SpanReport {
 }
 
 /// Stable label for a catalogue [`ProtectedSpanKind`]; the enum's own
-/// `label()` is `pub`, but re-deriving here keeps the test decoupled from any
+/// `label` is `pub`, but re-deriving here keeps the test decoupled from any
 /// future label rename and reads as documentation of the catalogue surface.
 fn protected_kind_label(kind: &ProtectedSpanKind) -> &'static str {
     match kind {

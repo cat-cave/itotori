@@ -1,6 +1,5 @@
-//! KAIFUU-117 — RPG Maker MV/MZ encrypted-asset **replacement** patch + verify.
-//!
-//! Where KAIFUU-115 ([`crate::mv_mz_encrypted_image`]) and KAIFUU-116
+//! RPG Maker MV/MZ encrypted-asset **replacement** patch + verify.
+//! Where ([`crate::mv_mz_encrypted_image`]) and
 //! ([`crate::mv_mz_encrypted_audio`]) prove a byte-correct *identity*
 //! round-trip (`encrypt(decrypt(enc)) == enc`), THIS node proves an actual
 //! **replacement**: a NEW synthetic media asset is encrypted with the game's
@@ -8,9 +7,7 @@
 //! byte-correct encrypted asset the game would decrypt to the *replacement*
 //! (not the original). It then VERIFIES the patch and REJECTS a wrong-key or
 //! tampered patch.
-//!
 //! # The scheme (shared core, native Rust, NO shell-out)
-//!
 //! The XOR primitive, key type, decrypt, and re-encrypt are the single
 //! canonical [`crate::mv_mz_asset_xor`] implementation — image, audio, and this
 //! replacement path all consume it; none re-implements the crypto. MV/MZ
@@ -18,13 +15,10 @@
 //! [`RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER`] is prepended and the first 16 bytes
 //! of the media are XOR-masked with the 16-byte `System.json` key. Bytes beyond
 //! the 16-byte prefix are stored verbatim.
-//!
 //! MV vs MZ differ only in file extension, not in the scheme:
 //! image MV `.rpgmvp` / MZ `.png_`; audio MV `.rpgmvo` / MZ `.ogg_`. Both route
 //! through this path.
-//!
 //! # The replacement + verify transform (per entry)
-//!
 //! 1. The surface codec must match the media kind (`png_image` for an image
 //!    replacement, `ogg_audio` for an audio replacement); anything else is an
 //!    `unsupported_surface` before any byte is touched.
@@ -45,22 +39,18 @@
 //!    replacement occurred). A tampered patch fails the round-trip and is
 //!    REJECTED. `decrypt(patched)` must also equal the manifest's declared
 //!    `replacementSha256`.
-//!
 //! # THE LINE (mechanical, not prose)
-//!
 //! - Raw key bytes live only inside the shared [`MvMzAssetKey`] (redacting
 //!   `Debug`, zeroizing `Drop`). Reports carry secret-refs + sha256 commitments
-//!   / hashes / counts only — never the key, never the media bytes.
+//!   hashes / counts only — never the key, never the media bytes.
 //! - A consumable replacement proof is produced ONLY after the key commitment
 //!   matches, the replacement is valid media, and every verify check passes.
 //!   Wrong-key, tampered, missing-key, unsupported-surface, and
 //!   non-media-replacement entries fail BEFORE a consumable patch is published —
 //!   each is a structured finding, never a silent skip or panic.
-//!
 //! # Fixtures are synthetic + public
-//!
 //! Every byte is synthesised in-module: the original in-game plaintext reuses
-//! the public synthetic media of KAIFUU-115/116; the replacement is a
+//! the public synthetic media; the replacement is a
 //! clearly-synthetic signature-bearing blob; the key is a clearly-fake 16-byte
 //! test key. No retail media and no real keys are ever vendored.
 
@@ -93,8 +83,6 @@ pub const MV_MZ_ASSET_REPLACEMENT_REQUIREMENT_ID: &str = "rpgmaker-mv-mz-asset-k
 
 pub const MV_MZ_ASSET_REPLACEMENT_SUPPORT_BOUNDARY: &str = "Kaifuu RPG Maker MV/MZ encrypted-asset replacement is in-process Rust (the shared RPGMV-header XOR-with-System.json-key scheme; image MV .rpgmvp / MZ .png_, audio MV .rpgmvo / MZ .ogg_); it never shells out. A new synthetic media asset is encrypted with the resolved key and patched in, then the patch is verified: decrypt(patched)==replacement, the RPGMV header and non-replaced tail bytes are exact, and the patch differs from the original. A consumable patch is published only after the resolved key's sha256 matches the declared key commitment, the replacement is valid media, and every verify check passes; wrong-key, tampered, missing-key, unsupported-surface, and non-media-replacement entries are rejected with typed findings before any consumable patch. Raw key bytes are never logged, serialized, or returned — the manifest and reports carry secret-refs + sha256 commitments only.";
 
-// --- Semantic + finding codes -----------------------------------------------
-
 pub const SEMANTIC_REPLACEMENT_REPLACED: &str = "kaifuu.rpgmaker.asset_replacement.replaced";
 pub const SEMANTIC_REPLACEMENT_WRONG_KEY: &str = "kaifuu.rpgmaker.asset_replacement.wrong_key";
 pub const SEMANTIC_REPLACEMENT_TAMPERED: &str = "kaifuu.rpgmaker.asset_replacement.tampered";
@@ -111,8 +99,6 @@ const FINDING_UNSUPPORTED_SURFACE: &str = "rpgmaker.asset_replacement.unsupporte
 const FINDING_NOT_MEDIA: &str = "rpgmaker.asset_replacement.replacement_not_media";
 const FINDING_OUTCOME_MISMATCH: &str = "rpgmaker.asset_replacement.outcome_mismatch";
 const FINDING_INTERNAL: &str = "rpgmaker.asset_replacement.internal";
-
-// --- Synthetic fixture material (NO retail bytes) ---------------------------
 
 /// The synthetic "correct" 16-byte asset key. Clearly fake fixture material.
 /// Its sha256 is the manifest's declared `keyCommitmentSha256`.
@@ -142,8 +128,6 @@ fn replacement_audio() -> Vec<u8> {
 fn replacement_not_media_blob() -> Vec<u8> {
     b"itotori-not-valid-media-replacement-blob".to_vec()
 }
-
-// --- Media kind --------------------------------------------------------------
 
 /// The media kind an entry replaces. Fixes the codec, the plaintext signature,
 /// and the MV/MZ file extensions.
@@ -187,7 +171,7 @@ impl ReplacementMediaKind {
     }
 
     /// The original in-game synthetic plaintext this kind replaces (reused from
-    /// the KAIFUU-115/116 public synthetic media).
+    /// the public synthetic media).
     fn original_plaintext(self) -> Vec<u8> {
         match self {
             Self::Image => SYNTHETIC_PNG.to_vec(),
@@ -215,8 +199,6 @@ impl ReplacementMediaKind {
         }
     }
 }
-
-// --- Crypto profile ----------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -247,8 +229,6 @@ impl RpgMakerReplacementCryptoProfile {
     }
 }
 
-// --- Media-kind declaration --------------------------------------------------
-
 /// One media kind as declared in the path (codec + MV/MZ extensions).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -269,8 +249,6 @@ impl ReplacementMediaKindDeclaration {
         }
     }
 }
-
-// --- Path descriptor ---------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -449,8 +427,6 @@ impl MvMzAssetReplacementPath {
     }
 }
 
-// --- Fixture (the replacement manifest) -------------------------------------
-
 /// The synthetic scenario a fixture entry materialises in-process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -521,7 +497,7 @@ impl MvMzAssetReplacementOutcome {
 pub struct MvMzAssetReplacementManifest {
     pub schema_version: String,
     pub path_id: String,
-    /// The spec-DAG node id this manifest is authored for (`KAIFUU-117`).
+    /// The spec-DAG node id this manifest is authored for (``).
     pub source_node_id: String,
     pub engine_family: String,
     pub entries: Vec<MvMzAssetReplacementEntry>,
@@ -549,8 +525,6 @@ pub struct MvMzAssetReplacementEntry {
     pub scenario: MvMzAssetReplacementScenario,
     pub expected: MvMzAssetReplacementOutcome,
 }
-
-// --- Report (generated output) ----------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -733,8 +707,6 @@ impl MvMzAssetReplacementFinding {
     }
 }
 
-// --- Stub helper (synthetic, in-process) ------------------------------------
-
 /// The synthetic key the resolver yields for a scenario, or `None` (missing).
 fn resolve_key(scenario: MvMzAssetReplacementScenario) -> Option<MvMzAssetKey> {
     match scenario {
@@ -756,8 +728,6 @@ fn resolve_replacement(
         _ => media_kind.replacement_plaintext(),
     }
 }
-
-// --- Processing (the only public consume gate) ------------------------------
 
 #[derive(Debug, Clone, Copy)]
 pub struct MvMzAssetReplacementRequest<'a> {
@@ -862,7 +832,7 @@ fn process_entry(
     };
 
     // (2) Key-commitment gate (credential posture): the resolved key's sha256
-    //     must match the declared commitment. A mismatch is a wrong key.
+    // must match the declared commitment. A mismatch is a wrong key.
     let key_material_hash = key.material_hash()?;
     if key_material_hash.as_str() != entry.key_commitment_sha256 {
         findings.push(finding(
@@ -910,7 +880,7 @@ fn process_entry(
     let original_encrypted = encrypt_rpgmaker_asset(&entry.media_kind.original_plaintext(), &key);
 
     // (5) Produce the patched asset by encrypting the replacement. For the
-    //     tamper scenario, corrupt one body byte AFTER production.
+    // tamper scenario, corrupt one body byte AFTER production.
     let mut patched = encrypt_rpgmaker_asset(&replacement, &key);
     if entry.scenario == MvMzAssetReplacementScenario::Tampered {
         // Flip a byte beyond the 16-byte XOR prefix so the header stays intact
@@ -1165,8 +1135,6 @@ mod tests {
             .is_some_and(|entry| entry.findings.iter().any(|finding| finding.code == code))
     }
 
-    // --- Path declaration is canonical + self-consistent. -------------------
-
     #[test]
     fn canonical_path_declares_and_validates_every_leg() {
         let path = MvMzAssetReplacementPath::canonical().unwrap();
@@ -1215,8 +1183,6 @@ mod tests {
             MvMzAssetReplacementPathViolation::MediaKindClaimsWrongCodec { .. }
         )));
     }
-
-    // --- The manifest matrix is green + evidence-driven. --------------------
 
     #[test]
     fn manifest_matrix_passes_and_records_path() {
@@ -1277,8 +1243,6 @@ mod tests {
         );
     }
 
-    // --- Audio replacement: same, for the OGG codec. ------------------------
-
     #[test]
     fn audio_replacement_round_trips_and_verifies() {
         let report = run(&load_manifest());
@@ -1295,8 +1259,6 @@ mod tests {
             sha256_hash_bytes(&replacement_audio())
         );
     }
-
-    // --- Wrong-key + tampered + missing + unsupported are REJECTED. ---------
 
     #[test]
     fn wrong_key_and_tamper_and_more_are_rejected_with_no_consumable_patch() {
@@ -1353,8 +1315,6 @@ mod tests {
         }
     }
 
-    // --- The validator catches an author who lies about an outcome. ---------
-
     #[test]
     fn validator_fails_on_outcome_mismatch() {
         let mut manifest = load_manifest();
@@ -1368,8 +1328,6 @@ mod tests {
             FINDING_OUTCOME_MISMATCH
         ));
     }
-
-    // --- Manifest carries secret refs + sha256 commitments, NO raw key. -----
 
     #[test]
     fn manifest_carries_secret_refs_and_commitments_never_raw_key() {
@@ -1396,8 +1354,6 @@ mod tests {
             sha256_hash_bytes(SYNTHETIC_KEY_CORRECT)
         );
     }
-
-    // --- No raw key material ever reaches an emitted artifact. ---------------
 
     #[test]
     fn report_never_carries_raw_key_material() {
@@ -1435,8 +1391,6 @@ mod tests {
         let parsed: MvMzAssetReplacementReport = serde_json::from_str(&json).expect("round trip");
         assert_eq!(parsed, report.redacted_for_report());
     }
-
-    // --- Replacement genuinely differs from the original media. -------------
 
     #[test]
     fn replacement_media_differs_from_the_original() {

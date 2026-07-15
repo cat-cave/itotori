@@ -1,29 +1,25 @@
-//! KAIFUU-238 — apply-side partial-source guard regression test.
-//!
-//! KAIFUU-193 introduced the PartialAdapterReport / `partial: true`
+//! apply-side partial-source guard regression test.
+//! introduced the PartialAdapterReport / `partial: true`
 //! envelope on extract/profile/verify when an adapter accumulated nonzero
-//! evidence but did not reach `detected == true`. The KAIFUU-193 audit
+//! evidence but did not reach `detected == true`. The audit
 //! P1 finding observed that the documented contract — "apply MUST refuse
 //! any envelope whose `partial` field is true" — was documentation-only:
 //! apply received a kaifuu-delta DeltaPackage produced by
 //! extract→translate→diff and the partial provenance was LOST by the time
 //! apply ran.
-//!
-//! KAIFUU-238 plumbs `sourceProvenance.partial` forward through the delta
+//! plumbs `sourceProvenance.partial` forward through the delta
 //! package. This integration test exercises the end-to-end CLI path:
-//!
 //! 1. `kaifuu diff <original> <patched> --output <delta> --source-extract
 //!    <partial-extract-envelope>` writes a delta package whose
 //!    `sourceProvenance.partial` is `true`.
 //! 2. `kaifuu apply <game> --patch <delta> --output <out>` exits
 //!    NON-ZERO with a typed `PartialSourceRefused` error reported on
 //!    stderr, and the output directory is not created.
-//!
-//! Real-bytes preferred: the partial extract envelope is the
-//! schema-stable v0.1.0 PartialAdapterReport shape — same shape the
-//! KAIFUU-193 regression test in `partial_extract.rs` already produces
-//! for the synthetic Sweetie HD fixture, so this test piggy-backs on
-//! that established envelope shape.
+//!    Real-bytes preferred: the partial extract envelope is the
+//!    schema-stable v0.1.0 PartialAdapterReport shape — same shape the
+//!    regression test in `partial_extract.rs` already produces
+//!    for the synthetic Sweetie HD fixture, so this test piggy-backs on
+//!    that established envelope shape.
 
 use std::fs;
 use std::path::PathBuf;
@@ -56,7 +52,7 @@ fn write_file(root: &std::path::Path, relative: &str, bytes: &[u8]) {
 }
 
 /// Build a schema-stable v0.1.0 PartialAdapterReport envelope that mirrors
-/// the canonical KAIFUU-193 RealLive partial-extract output: SEEN.TXT
+/// the canonical RealLive partial-extract output: SEEN.TXT
 /// envelope parses, Gameexe.ini key catalogue mismatches as P2.
 fn write_partial_extract_envelope(path: &std::path::Path) {
     let envelope = serde_json::json!({

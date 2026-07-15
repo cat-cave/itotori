@@ -4,9 +4,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-// ------------------------------------------------------------------
-// KAIFUU-142: identity/null-key-only capability annotation.
-// ------------------------------------------------------------------
+// identity/null-key-only capability annotation.
 
 #[test]
 fn identity_or_null_key_only_report_carries_explicit_limitation_and_marker() {
@@ -154,7 +152,7 @@ fn adapter_overread_detector_clears_when_annotated_or_backed_by_broader_support(
 
 #[test]
 fn validator_permits_supported_limitation_only_with_identity_marker() {
-    // Supported + limitation + marker=true -> valid (the KAIFUU-142 path).
+    // Supported + limitation + marker=true -> valid (the path).
     let ok = serde_json::json!({
         "capability": "crypto_access",
         "status": "supported",
@@ -184,7 +182,7 @@ fn validator_permits_supported_limitation_only_with_identity_marker() {
 
 #[test]
 fn validator_requires_marker_to_be_supported_with_a_limitation() {
-    // marker=true but status != supported -> rejected.
+    // marker=true but status!= supported -> rejected.
     let bad_status = serde_json::json!({
         "capability": "crypto_access",
         "status": "limited",
@@ -240,7 +238,7 @@ fn partial_report_with(adapter_id: &str, message: &str) -> PartialAdapterReport 
 
 #[test]
 fn partial_report_id_is_content_derived_not_a_constant() {
-    // KAIFUU-193 P3 fix: report_id used to be the hardcoded
+    // P3 fix: report_id used to be the hardcoded
     // `deterministic_id("kaifuu-partial-adapter", 193)` — identical for
     // every partial report. It must now vary with the report content so
     // dashboard de-duplication by reportId cannot collapse independent runs.
@@ -261,7 +259,7 @@ fn partial_report_id_is_content_derived_not_a_constant() {
     assert_eq!(a.report_id, a2.report_id);
 }
 
-/// KAIFUU-053 test helper: explicitly request the derived-from-reports
+/// test helper: explicitly request the derived-from-reports
 /// matrix for fixtures that exercise contract / preflight machinery
 /// where the registry-side capability gate is not the subject of the
 /// test. This is an *explicit* request (not a silent fallback) — the
@@ -585,9 +583,7 @@ fn plain_xp3_inventory_rejects_duplicate_file_entries() {
     );
 }
 
-// =========================================================================
-// KAIFUU-098 — Plain XP3 deterministic writer tests
-// =========================================================================
+// Plain XP3 deterministic writer tests
 
 #[test]
 fn plain_xp3_writer_capability_records_archive_rebuild_plain() {
@@ -630,7 +626,7 @@ fn encode_xp3_round_trips_synthetic_fixture_byte_identical() {
 
     let archive = read_plain_xp3_archive(&synthetic).unwrap();
     assert_eq!(archive.entries.len(), 3);
-    // Source order is preserved (KAIFUU-098 specifically does not
+    // Source order is preserved (specifically does not
     // sort like `PlainXp3Inventory::normalize`).
     assert_eq!(archive.entries[0].path, "scenario/intro.ks");
     assert_eq!(archive.entries[1].path, "scenario/compressed.ks");
@@ -659,7 +655,7 @@ fn encode_xp3_round_trips_synthetic_fixture_byte_identical() {
 #[test]
 fn encode_xp3_round_trips_real_plain_xp3_fixture_byte_identical() {
     // Real-bytes round-trip against the canonical plain XP3 fixture
-    // from KAIFUU-038. KAIFUU-098's determinism guarantee is enforced
+    // . 's determinism guarantee is enforced
     // here: bytes -> archive -> bytes is the identity for an unchanged
     // manifest, and the rebuilt archive's sha256 matches the source.
     let fixture_bytes = fs::read(repo_fixture_path("fixtures/kaifuu/kirikiri/plain.xp3"))
@@ -842,17 +838,16 @@ fn replace_plain_xp3_entry_rejects_tampered_payload_path_before_write() {
     let _ = fs::remove_dir_all(&root);
 }
 
-/// SECURITY regression (KAIFUU-098 symlink-traversal hardening): a symlink
+/// SECURITY regression (symlink-traversal hardening): a symlink
 /// planted inside the unpack directory must not let `replace` follow it out
 /// of the root, even when the manifest-declared relative path is
 /// string-safe. We swap the real `payload/` subdir for a symlink pointing
 /// OUTSIDE the root; the string check passes ("payload/..." has no `..`),
 /// but the fd-relative `O_NOFOLLOW` materialization refuses the traversal
 /// and the outside target is never written.
-///
 /// Mutation proof: reverting `write_no_follow` to a plain `dir.join(rel)` +
 /// `fs::write` makes the write follow the symlink and create the escaped
-/// target, flipping the `!escaped_target.exists()` assertion to a failure.
+/// target, flipping the `!escaped_target.exists` assertion to a failure.
 #[cfg(unix)]
 #[test]
 fn replace_plain_xp3_entry_refuses_symlinked_payload_dir() {
@@ -913,7 +908,6 @@ fn replace_plain_xp3_entry_refuses_symlinked_payload_dir() {
 /// exfiltrate a file outside the root. We stage look-alike payload files in
 /// a secret dir outside the root and symlink `payload/` at it; the read is
 /// refused rather than following the link.
-///
 /// Mutation proof: reverting `read_no_follow` to `fs::read(dir.join(rel))`
 /// makes the read follow the symlink and load the outside bytes, so the
 /// error becomes `InconsistentManifest`/`Io` instead of
@@ -958,7 +952,7 @@ fn replace_plain_xp3_entry_refuses_compressed_entry() {
     // Acceptance criterion: "Encrypted, compressed-unknown, or
     // helper-required profiles fail before writes with semantic
     // diagnostics." Compressed-entry replacement is the
-    // compressed-unknown path: KAIFUU-098 does not claim
+    // compressed-unknown path: does not claim
     // recompression, so the writer refuses with the matching
     // semantic diagnostic before mutating the directory.
     let fixture_bytes = fs::read(repo_fixture_path("fixtures/kaifuu/kirikiri/plain.xp3")).unwrap();
@@ -991,7 +985,7 @@ fn replace_plain_xp3_entry_refuses_compressed_entry() {
 
 #[test]
 fn read_plain_xp3_archive_refuses_encrypted_with_semantic_diagnostic() {
-    // Acceptance criterion: "Encrypted ... profiles fail before
+    // Acceptance criterion: "Encrypted... profiles fail before
     // writes with semantic diagnostics."
     let encrypted_bytes = b"XP3\r\nXP3-CRYPT\nkaifuu-xp3-encrypted fixture\n";
     let error = read_plain_xp3_archive(encrypted_bytes).unwrap_err();
@@ -1018,7 +1012,7 @@ fn read_plain_xp3_archive_refuses_encrypted_with_semantic_diagnostic() {
 
 #[test]
 fn read_plain_xp3_archive_refuses_compressed_profile_with_packed_semantic_diagnostic() {
-    // Acceptance criterion: "... compressed-unknown ... profiles
+    // Acceptance criterion: "... compressed-unknown... profiles
     // fail before writes with semantic diagnostics."
     let compressed_bytes = b"XP3\r\nXP3-COMPRESSED\nkaifuu-xp3-compressed fixture\n";
     let error = read_plain_xp3_archive(compressed_bytes).unwrap_err();
@@ -1255,7 +1249,7 @@ fn golden_boundary_patch_export(patch_export_id: impl Into<String>) -> PatchExpo
     }
 }
 
-// KAIFUU-032: test adapters + fixtures proving the golden harness drives asset
+// test adapters + fixtures proving the golden harness drives asset
 // assertions off adapter INVENTORY + CAPABILITY data rather than a fixture
 // `source.json` layout.
 
@@ -1455,7 +1449,7 @@ impl EngineAdapter for InventoryGoldenAdapter {
 }
 
 /// A `source.json`-shaped identity adapter used to keep the fixture
-/// `source.json` byte-equivalence path covered as ONE case (KAIFUU-032).
+/// `source.json` byte-equivalence path covered as ONE case.
 struct SourceJsonGoldenAdapter {
     mutate: bool,
 }
@@ -1814,7 +1808,7 @@ impl EngineAdapter for GoldenPreflightBoundaryAdapter {
     }
 
     fn capabilities(&self) -> AdapterCapabilities {
-        // KAIFUU-053: the golden boundary covers Detection, Extraction,
+        // the golden boundary covers Detection, Extraction
         // Patching, Verification — but not AssetListing/AssetInventory,
         // so derive the matrix explicitly to keep the registry gate
         // honest (Inventory will land at Unsupported).
@@ -2076,7 +2070,7 @@ fn archive_detection_matrix_reports_requested_engine_families() {
 
 #[test]
 fn archive_detection_plain_xp3_with_marker_like_payload_is_not_encrypted_or_compressed() {
-    // KAIFUU-163: a valid plain XP3 whose member payload legitimately
+    // a valid plain XP3 whose member payload legitimately
     // contains marker-like text ("XP3-CRYPT", "xp3-encrypted",
     // "xp3-compressed") must be classified PLAIN. The aggregate detector
     // must not treat an incidental payload substring as a structural
@@ -2180,7 +2174,7 @@ fn archive_detection_bgi_negative_variants_emit_unknown_and_missing_capability_d
         diagnostic.code == SemanticErrorCode::UnsupportedVariantEncrypted
             && diagnostic.required_capability == Some(Capability::EncryptedInput)
     }));
-    // KAIFUU-128 fixture parity: an encrypted (BSE) BGI archive must emit
+    // fixture parity: an encrypted (BSE) BGI archive must emit
     // the missing_capability.crypto diagnostic the detector fixtures claim.
     assert!(bgi.diagnostics.iter().any(|diagnostic| {
         diagnostic.code == SemanticErrorCode::MissingCryptoCapability
@@ -2190,7 +2184,7 @@ fn archive_detection_bgi_negative_variants_emit_unknown_and_missing_capability_d
         diagnostic.code == SemanticErrorCode::MissingCodecCapability
             && diagnostic.required_capability == Some(Capability::CodecAccess)
     }));
-    // KAIFUU-128 fixture parity: a CompressedBG/layered BGI archive must
+    // fixture parity: a CompressedBG/layered BGI archive must
     // emit the unsupported layered-transform diagnostic the fixtures claim.
     assert!(bgi.diagnostics.iter().any(|diagnostic| {
         diagnostic.code == SemanticErrorCode::UnsupportedLayeredTransform
@@ -2229,7 +2223,7 @@ fn archive_detection_bgi_negative_variants_emit_unknown_and_missing_capability_d
     let _ = fs::remove_dir_all(root);
 }
 
-// KAIFUU-128 strict-proof: the KAIFUU-128 detector fixtures
+// strict-proof: the detector fixtures
 // (`fixtures/kaifuu/bgi/detector.profiles.json`) claim, per profile, the
 // semantic diagnostics BGI containers produce (BSE encrypted =>
 // missing_capability.crypto; CompressedBG layered => unsupported_layered_transform,
@@ -2239,7 +2233,7 @@ fn archive_detection_bgi_negative_variants_emit_unknown_and_missing_capability_d
 // detector does not emit (no fixture-vs-detector drift).
 #[test]
 fn archive_detection_bgi_live_detector_agrees_with_kaifuu_128_fixture_claims() {
-    // What the KAIFUU-128 detector fixtures CLAIM, per profile.
+    // What the detector fixtures CLAIM, per profile.
     let fixture = read_bgi_detector_fixture(
         &test_manifest_dir()
             .join("../..")
@@ -2300,7 +2294,7 @@ fn archive_detection_bgi_live_detector_agrees_with_kaifuu_128_fixture_claims() {
 
 #[test]
 fn archive_detection_genuinely_encrypted_and_compressed_xp3_are_still_detected() {
-    // KAIFUU-163 true-positive guard: hardening the marker scan must not
+    // true-positive guard: hardening the marker scan must not
     // break detection of a real synthetic encrypted/compressed XP3, whose
     // subtype token sits on the structural marker line right after the
     // `XP3\r\n` container prefix.
@@ -4789,11 +4783,10 @@ fn helper_result_stable_json_keeps_empty_arrays_in_public_contract() {
     );
 }
 
-// KAIFUU-027: the hash rule is named `utf8-lf-json-stable-v1`. It USED to
+// the hash rule is named `utf8-lf-json-stable-v1`. It USED to
 // claim `nfc`, but no write path NFC-normalizes string contents — and it
 // must not: the bridge (`sourceText`, `spans.raw`) is emitted through
 // `stable_json` and must stay BYTE-EXACT for the "span byte range must
-// match sourceText" contract and byte-identical patchback. NFC-normalizing
 // would compose e.g. a decomposed Japanese voiced kana (か + U+3099 → が)
 // and corrupt that round-trip. These fixtures + test pin the honest
 // behavior: composed and decomposed metadata serialize DISTINCTLY (no
@@ -4806,7 +4799,7 @@ fn nfc_alignment_fixture(name: &str) -> String {
 #[test]
 fn stable_json_metadata_rule_does_not_nfc_normalize_string_contents() {
     // Composed: "café" = U+00E9; "がぎぐ" = U+304C U+304E U+3050.
-    // Decomposed: "cafe" + U+0301; "か"+U+3099 ... = the SAME logical text.
+    // Decomposed: "cafe" + U+0301; "か"+U+3099... = the SAME logical text.
     let composed: Value = serde_json::from_str(&nfc_alignment_fixture("composed-metadata.json"))
         .expect("composed fixture is valid JSON");
     let decomposed: Value =
@@ -5732,7 +5725,7 @@ fn patchback_diagnostic_codes_stay_visible_while_secret_material_redacts() {
     // KAIFUU: exempt typed patchback diagnostic codes/categories/reasons
     // from the free-text secret-redactor so an agent can triage patch
     // failures at scale, WITHOUT weakening raw-key redaction. This is the
-    // v0.2 PatchResult `failures[]` shape emitted by `build_failure_v02` /
+    // v0.2 PatchResult `failures` shape emitted by `build_failure_v02` /
     // `map_patchback_error_to_v02_failure` and redacted through
     // `redact_report_value` on the CLI emit path.
     let raw_key = "sk-Ab3xQ9pLmN7rT2vW8yZ4dK6hJ1cF5gB0nP-eR_uS";
@@ -5772,7 +5765,6 @@ fn patchback_diagnostic_codes_stay_visible_while_secret_material_redacts() {
 
     let redacted = redact_report_value(&value);
 
-    // --- Case 1: typed diagnostic codes/categories/reasons are VISIBLE. ---
     assert_eq!(
         redacted["failures"][0]["diagnosticCode"],
         "kaifuu.reallive.patchback_target_encode_failure",
@@ -5815,7 +5807,6 @@ fn patchback_diagnostic_codes_stay_visible_while_secret_material_redacts() {
         "kaifuu.reallive.patchback_provenance_mismatch: unit u1 byte range 0x1a2b..0x1a3c does not resolve to a scene textout body: offset drift"
     );
 
-    // --- Case 2: real key material embedded in the reason still redacts. ---
     assert!(
         cause0.contains(SEMANTIC_SECRET_REDACTED),
         "the embedded raw-key token must be scrubbed: {cause0}"
@@ -6129,7 +6120,7 @@ fn adapter_key_declarations_serialize_stable_semantic_errors() {
             "requires caller-provided resolved keys",
         ),
     ];
-    // KAIFUU-053: derive explicitly from reports so the registry gate
+    // derive explicitly from reports so the registry gate
     // sees Identify Unsupported (no Detection report) rather than a
     // bubbled-up identify-only claim against missing Detection.
     let matrix = AdapterCapabilityMatrix::derive_from_reports("kaifuu.siglus", &reports);
@@ -6195,7 +6186,7 @@ fn adapter_capabilities_redacts_key_requirement_declaration_strings() {
         Capability::KeyProfile,
         "helper dump source:/home/dev/game/private-route-ending.ks exposed raw key 00112233445566778899aabbccddeeff",
     )];
-    // KAIFUU-053: redaction-pipeline fixture — derive explicitly so
+    // redaction-pipeline fixture — derive explicitly so
     // the matrix matches the (fully unsupported at Identify) reports.
     let matrix = AdapterCapabilityMatrix::derive_from_reports(adapter_id, &reports);
     let capabilities =
@@ -6793,8 +6784,6 @@ fn asset_inventory_rejects_engine_specific_source_location_fields() {
     }));
 }
 
-// --- KAIFUU-028: asset metadata hashing + patch-capability consistency ----
-
 #[test]
 fn asset_metadata_hash_is_deterministic_and_identity_bound() {
     let manifest = asset_inventory_patch_capability_positive_fixture();
@@ -7150,7 +7139,7 @@ fn shared_contract_fixture_suite_accepts_all_manifest_valid_fixtures() {
     }
 }
 
-/// KAIFUU-170 — legacy (raw-only) protected spans are compatibility-
+/// legacy (raw-only) protected spans are compatibility-
 /// preserving: a duplicate `raw` value with no source identity is ALLOWED,
 /// disambiguated by distinct target byte ranges. This locks in the documented
 /// legacy v0.1 policy so it stays distinct from the strict v0.2 identity path.
@@ -7168,7 +7157,7 @@ fn patch_export_v02_allows_duplicate_raw_legacy_spans_without_source_identity() 
         .expect("legacy raw-only duplicate protected spans must stay compatibility-preserving");
 }
 
-/// KAIFUU-170 — v0.2 source-identity spans are strict: a duplicate
+/// v0.2 source-identity spans are strict: a duplicate
 /// `sourceSpanId` within an entry is an identity collision and is rejected
 /// with the typed diagnostic.
 #[test]
@@ -7201,7 +7190,7 @@ fn patch_export_v02_rejects_duplicate_source_span_identity() {
     );
 }
 
-/// KAIFUU-170 — the v0.2 identity path stays distinct from the legacy path:
+/// the v0.2 identity path stays distinct from the legacy path
 /// two spans with the SAME `raw` but DISTINCT `sourceSpanId`s are allowed
 /// (the reordered/duplicate-raw case source identity exists to carry).
 #[test]
@@ -7939,7 +7928,7 @@ fn registry_orders_adapters_by_id() {
     assert_eq!(ids, vec!["a.fixture", "z.fixture"]);
 }
 
-/// KAIFUU-156 P1: an undetected adapter that supplies `detected_variant`
+/// P1: an undetected adapter that supplies `detected_variant`
 /// without overriding [`EngineAdapter::is_diagnostic_candidate`] must not
 /// become a diagnostic candidate, and profile/inventory must never run.
 #[test]
@@ -8050,7 +8039,7 @@ fn diagnostic_candidate_requires_adapter_opt_in_not_variant_presence() {
     assert_eq!(inventory_calls.load(Ordering::SeqCst), 0);
 }
 
-/// KAIFUU-156: adapters that opt in via `is_diagnostic_candidate` are
+/// adapters that opt in via `is_diagnostic_candidate` are
 /// selectable even when `detected` is false.
 #[test]
 fn diagnostic_candidate_selects_opted_in_adapter() {
@@ -8130,9 +8119,7 @@ fn diagnostic_candidate_selects_opted_in_adapter() {
     assert_eq!(candidate.detected_variant.as_deref(), Some("partial-pair"));
 }
 
-// =========================================================================
-// KAIFUU-038 — XP3 profile proof tests
-// =========================================================================
+// XP3 profile proof tests
 
 fn write_xp3_archive(dir: &Path, name: &str, bytes: &[u8]) -> PathBuf {
     let archive = dir.join(name);
@@ -8743,8 +8730,6 @@ fn xp3_profile_proof_byte_classification_mismatch_routes_by_bytes() {
     );
 }
 
-// ----- KAIFUU-039 RPG Maker MV/MZ encrypted-media proof -----
-
 fn write_encrypted_media_system_json(
     game_dir: &Path,
     has_encrypted_images: bool,
@@ -9191,7 +9176,7 @@ fn encrypted_media_proof_byte_classification_overrides_fixture_declaration() {
         fixture_dir: &dir,
     })
     .unwrap();
-    // Suffix is .png (plaintext suffix) so the routing settles at
+    // Suffix is.png (plaintext suffix) so the routing settles at
     // Plaintext — the bytes-classification doesn't override a
     // plaintext-suffix declaration with no encrypted suffix profile;
     // however, since the suffix is plain the resulting classification
@@ -9232,10 +9217,8 @@ fn encrypted_media_proof_redacted_view_strips_secret_substrings() {
     assert!(!redacted.decrypted_bytes_persisted);
 }
 
-// ---------------------------------------------------------------------
-// KAIFUU-164 — hash-to-exec TOCTOU: validated bytes bound to execution
+// hash-to-exec TOCTOU: validated bytes bound to execution
 // through a trusted staging copy.
-// ---------------------------------------------------------------------
 
 /// A registry entry whose single allowlist entry pins `registered_hash` for
 /// a `helper-bin`-named helper (fixture-any platform, version 0.1.0,

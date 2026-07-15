@@ -1,11 +1,9 @@
 //! `Gameexe.dat` → UTF-16LE inventory — **skeleton** (siglus-05).
-//!
 //! Siglus stores its configuration/name tables in `Gameexe.dat`: a
 //! constant-256-byte-XOR-masked, Siglus-LZSS-compressed blob whose
 //! plaintext is **UTF-16LE** key/value lines (the analogue of RealLive's
 //! Shift-JIS `Gameexe.ini`). The recovered known-plaintext header is also
 //! the validation oracle for the siglus-04 second-layer-key recovery.
-//!
 //! Skeleton status: [`parse_gameexe_dat`] returns
 //! [`GameexeDatError::NotImplemented`]. The decrypt → decompress →
 //! UTF-16LE decode → key inventory pipeline lands against real bytes
@@ -52,7 +50,6 @@ pub enum GameexeDatError {
 
 /// Parse a (still-encrypted, still-compressed) `Gameexe.dat` blob into a
 /// [`GameexeDatReport`].
-///
 /// Skeleton: always returns [`GameexeDatError::NotImplemented`]. The real
 /// implementation chains [`crate::decrypt`] → [`crate::decompress`] →
 /// UTF-16LE decode (via `encoding_rs`) before building the inventory.

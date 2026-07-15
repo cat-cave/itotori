@@ -1,6 +1,5 @@
 //! Pure-Rust SiglusEngine (Siglus) format stack — crate **skeleton**
 //! (siglus-05).
-//!
 //! This crate mirrors the proven [`kaifuu-reallive`](../kaifuu_reallive/index.html)
 //! module shape for the Siglus engine family: a container reader
 //! ([`archive`]), the constant 256-byte XOR + per-game second-layer key
@@ -9,13 +8,11 @@
 //! ([`gameexe`]), the scene bytecode stack VM / decompiler ([`opcode`])
 //! and its expression decoder ([`expression`]), the v0.2 BridgeBundle
 //! producer ([`bridge`]), and byte-correct patch-back ([`patchback`]).
-//!
 //! # Skeleton status (siglus-05)
-//!
 //! Every public entry point in the **core format stack** ([`archive`],
 //! [`decrypt`], [`decompress`], [`compress`], [`gameexe`], [`opcode`],
 //! [`expression`], [`bridge`], [`patchback`]) is a **typed stub**. The one
-//! exception is [`known_key_smoke`] (KAIFUU-070): a NARROW, honestly-scoped
+//! exception is [`known_key_smoke`]: a NARROW, honestly-scoped
 //! known-key Scene/Gameexe extract-patch-verify smoke over a single declared
 //! profiled format. It is a real implementation of that narrow profile only —
 //! it does NOT claim broad Siglus support, does NOT alias around the core-stack
@@ -27,7 +24,6 @@
 //! build against yet (the owned karetoshi/gamekoi titles are copy-
 //! protected DVD images, unrealizable under the no-Wine / no-shell-out
 //! laws). So this node lands the crate scaffold ONLY:
-//!
 //! - Every fallible entry point returns a structured, module-local
 //!   `NotImplemented` error whose message carries the
 //!   [`SIGLUS_UNIMPLEMENTED_MARKER`] namespace. Nothing here fabricates a
@@ -36,9 +32,7 @@
 //!   they replace the `Err(NotImplemented)` body with a real
 //!   re-derived-and-retested-on-real-bytes implementation — they do not
 //!   alias around it.
-//!
 //! # Clean-room provenance
-//!
 //! - All Siglus format observations any successor node consumes are
 //!   **re-derived from publicly archived format documentation** and
 //!   **re-tested against bytes from a real Siglus title** before being
@@ -78,7 +72,6 @@ pub mod patchback;
 
 /// Stable namespace prefix carried by every `NotImplemented` diagnostic
 /// raised by this skeleton crate.
-///
 /// The skeleton's honesty contract is grep-pinnable on this marker: a
 /// successor node that lands a real implementation removes the
 /// `NotImplemented` arm it replaces (no aliasing, no dual path). Every
@@ -93,7 +86,6 @@ pub const SIGLUS_UNIMPLEMENTED_MARKER: &str = "kaifuu.siglus";
 /// citation-correctness node) can pin the no-vendoring / no-derivation
 /// posture with the **correct** provenance without parsing the module
 /// doc-comment.
-///
 /// Correctness note: an earlier repo statement mis-attributed the
 /// project to the wrong repository owner under an incorrect license. The
 /// accurate provenance, enforced here and by siglus-25, is

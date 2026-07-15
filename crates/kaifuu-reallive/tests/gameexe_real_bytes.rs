@@ -1,8 +1,7 @@
-//! KAIFUU-190 real-bytes integration test for the Gameexe.ini key-family
+//! real-bytes integration test for the Gameexe.ini key-family
 //! classifier. Exercises the classifier against every staged RealLive
 //! corpus and asserts DETERMINISTIC COMPLETENESS: **zero** lines fall
 //! through to `Unknown` on real bytes.
-//!
 //! **No relaxed floor (substrate law).** An earlier revision permitted up
 //! to 10% (≤135 lines) to remain `Unknown` and still pass — exactly the
 //! numeric-tolerance shape the strict-proof / 100%-decompilation law
@@ -13,14 +12,12 @@
 //! manifest is needed: the staged evidence contains no genuinely opaque
 //! key (the last hold-out, Kanon's `#DLL.NNN` extension-DLL slot binding,
 //! is now a typed `Dll` family).
-//!
 //! **Multi-game validation.** Per project law an engine-family parser
 //! validates against ≥2 real corpora. This test iterates over every
 //! staged corpus (`ITOTORI_REAL_GAME_ROOT` = Sweetie HD 1.6.x, plus
 //! `ITOTORI_REAL_GAME_ROOT_2` = Kanon 1.2.6.x when staged) and enforces
 //! zero-unknown on each. The Sweetie-HD-specific total-count envelope and
 //! per-family floors additionally anchor the dominant families.
-//!
 //! Env-gating, STRICT: this test reads bytes only when
 //! `ITOTORI_REAL_GAME_ROOT` is set; otherwise an absent corpus is an
 //! unconditional HARD FAILURE (no opt-out). It runs only in the periodic

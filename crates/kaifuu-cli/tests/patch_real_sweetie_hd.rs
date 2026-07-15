@@ -1,9 +1,7 @@
-//! KAIFUU-211 — CLI integration test for
+//! CLI integration test for
 //! `kaifuu-cli patch --engine reallive --source <readonly> --target <writable> --bundle <translated.json>`.
-//!
 //! Env-gated on `ITOTORI_REAL_GAME_ROOT`. Runs the kaifuu-cli
 //! binary against the real Sweetie HD extracted root, asserts:
-//!
 //! - The command exits 0.
 //! - The output `<target>/REALLIVEDATA/Seen.txt` exists, is non-empty,
 //!   and starts with the canonical 10,000-slot directory shape (10,000
@@ -23,12 +21,11 @@
 //!   Translating choices is the separate
 //!   `config-driven-translation-scope-and-choice-translation` node — NOT
 //!   this one.
-//!
-//! The bootstrap extract targets dialogue scene **2011** (the scene the
-//! `kaifuu-reallive` `bridge_real_bytes` test uses). Scene 1 is binary-only
-//! — the bridge returns no_text_units for it after the dialogue-surface
-//! filter — so a dialogue scene is required to exercise real
-//! translatable-text extraction plus byte-correct patchback.
+//!   The bootstrap extract targets dialogue scene **2011** (the scene the
+//!   `kaifuu-reallive` `bridge_real_bytes` test uses). Scene 1 is binary-only
+//!   — the bridge returns no_text_units for it after the dialogue-surface
+//!   filter — so a dialogue scene is required to exercise real
+//!   translatable-text extraction plus byte-correct patchback.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -67,7 +64,6 @@ const EN_SENTINEL: &str = "「[EN] hello from kaifuu CLI patch」";
 const HOSTILE_CHOICE: &str = "[EN] Pick me! (really)";
 
 /// Resolve this crate's manifest directory (runtime `CARGO_MANIFEST_DIR`).
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
 /// reused from a different (since-removed) worktree would resolve to a dead
 /// path. `cargo test` sets `CARGO_MANIFEST_DIR` in the RUNTIME environment to
@@ -215,7 +211,6 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
         String::from_utf8_lossy(&patch_output.stderr)
     );
 
-    // ---- Acceptance: target Seen.txt exists and is non-empty. ----
     let target_seen_path = target_root.join("REALLIVEDATA").join("Seen.txt");
     let target_seen_bytes = fs::read(&target_seen_path).expect("read target Seen.txt");
     assert!(
@@ -228,7 +223,6 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
         target_seen_bytes.len()
     );
 
-    // ---- Acceptance: re-parse with the same scene count. ----
     let source_index = kaifuu_reallive::parse_archive(&source_seen_bytes).expect("source parses");
     let target_index = kaifuu_reallive::parse_archive(&target_seen_bytes).expect("target parses");
     assert_eq!(
@@ -237,7 +231,6 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
         "patched archive must preserve the source's populated-slot count"
     );
 
-    // ---- ALPHA-006c byte-fidelity: per-scene byte-identity. ----
     // Every scene EXCEPT the translated dialogue scene must round-trip
     // byte-identical (content compared per scene id — the directory
     // offsets shift because the translated scene changed size, but every
@@ -271,7 +264,6 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
         "expected at least one untranslated scene to verify byte-identity against"
     );
 
-    // ---- ALPHA-006c byte-fidelity: translated scene, headers intact. ----
     // Decompress the source and patched bytecode for the translated scene
     // and compare element-by-element: every NON-translatable element
     // (Meta, Command headers, expressions, Choice, binary catch-all
@@ -365,7 +357,6 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
          patchback untouched"
     );
 
-    // ---- ALPHA-006c byte-fidelity: ZERO NEW unknown opcodes. ----
     // The patch must not introduce a single new unknown span: the patched
     // scene's unknown-opcode count must equal the source's. (Whole-scene
     // 100%-decompile of scene 2011 — driving the source count itself to
@@ -392,7 +383,6 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
         tgt_ops.len()
     );
 
-    // ---- CONFIG-DRIVEN SCOPE: dialogue+choices run. ----
     // Re-patch the SAME source into a second target, this time translating
     // the choice options too under `--scope dialogue+choices`. The choice
     // options must round-trip NextString-safe: the patched select command
@@ -491,7 +481,6 @@ fn cli_patch_engine_reallive_writes_patched_seen_txt_under_writable_target() {
         dc_choices.len()
     );
 
-    // ---- Acceptance: source sha256-unchanged. ----
     let source_seen_hash_after = sha256_hex(&fs::read(&source_seen_path).expect("re-read source"));
     assert_eq!(
         source_seen_hash_after, source_seen_hash_before,
@@ -511,7 +500,6 @@ fn scene_blob_bytes(seen_bytes: &[u8], entry: &SceneEntry) -> Vec<u8> {
 /// Resolve a scene by id from a Seen.txt archive and return its
 /// AVG32-decompressed, `xor_2`-DECRYPTED bytecode (the plaintext layer the
 /// opcode parser consumes).
-///
 /// Sweetie HD (compiler_version 110002) is encrypted-at-rest: both the source
 /// archive and the patchback output carry the second-level `xor_2` cipher over
 /// `[256, 513)` of every `use_xor_2` scene. This helper mirrors the read

@@ -1,6 +1,5 @@
-//! KAIFUU-056 — CLI command-contract smoke for the alpha packed/encrypted-engine
+//! CLI command-contract smoke for the alpha packed/encrypted-engine
 //! readiness-PROFILE subset.
-//!
 //! Spawns `kaifuu readiness alpha-profile` against the committed synthetic seed
 //! fixtures (Siglus / KiriKiri XP3 / Wolf / RGSS3 / BGI) and asserts: every
 //! engine states identify / inventory / extract / patch / helper-key status;
@@ -20,7 +19,6 @@ fn kaifuu_cli_binary() -> PathBuf {
 }
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
 /// reused from a different (since-removed) worktree would point fixture reads at
 /// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the

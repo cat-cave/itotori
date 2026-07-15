@@ -1,17 +1,15 @@
-//! KAIFUU-041 — BGI / Ethornell readiness proof.
-//!
+//! BGI / Ethornell readiness proof.
 //! This node COMBINES the two BGI/Ethornell evidence sources that already exist
 //! as their own honest, synthetic-fixture-driven subsystems into ONE
-//! per-capability-level readiness report — mirroring the KAIFUU-040 Wolf
+//! per-capability-level readiness report — mirroring the Wolf
 //! readiness proof:
-//!
-//! 1. the KAIFUU-126 BGI **archive/container detector**
+//! 1. the BGI **archive/container detector**
 //!    ([`crate::bgi_detector_fixture`]) — magic-byte-signature detector evidence
 //!    that classifies a BGI-shaped container into a Buriko ARC20 / BSE / DSC /
 //!    CompressedBG / no-header / unknown [`BgiDetectorProfile`] and advertises,
 //!    with honest `missing_capability` diagnostics, which encrypted / compressed
-//!    / layered / unknown variants are NOT supported; and
-//! 2. the KAIFUU-127 BGI **scenario-bytecode parser**
+//!    layered / unknown variants are NOT supported; and
+//! 2. the BGI **scenario-bytecode parser**
 //!    ([`crate::bgi_bytecode_fixture`]) — the header / no-header
 //!    [`BgiBytecodeProfile`] parser that enumerates the Shift-JIS
 //!    string-reference surfaces (character name / dialogue / backlog / ruby /
@@ -19,12 +17,9 @@
 //!    the honest `inventory` rung: the parser/profile capability boundary lists
 //!    the translatable string surfaces but claims NO opcode execution, NO
 //!    archive decryption/decompression, and NO patch-back.
-//!
 //! # The honest capability-level ladder (never over-claimed)
-//!
 //! The readiness report distinguishes FIVE achieved levels
 //! ([`BgiReadinessLevel`]):
-//!
 //! - `unsupported` — the outer container variant is encrypted (BSE), compressed
 //!   (DSC), layered (CompressedBG), header-less, or unrecognized: the detector
 //!   reports the honest `missing_capability` boundary and the inner content is
@@ -41,28 +36,23 @@
 //!   extraction is proven AND the outer container gate is open AND the embedded
 //!   bytecode profile carries a verified extract-to-patch round-trip
 //!   (`patch_reports` non-empty and verified).
-//!
-//! The single source of truth is [`derive_bgi_readiness_level`]: a pure, total
-//! function of the detector-derived profile, whether a bytecode profile actually
-//! parsed a string-reference inventory, and the presence of explicit
-//! extract/patch fixture proofs. It can NEVER lift an encrypted / compressed /
-//! layered / unknown container above `unsupported`, and it NEVER claims
-//! `extract` or `patch` without an explicit synthetic fixture proof — the
-//! strict-proof honesty invariant (no aspirational "supported"). Real BGI
-//! archive decryption / decompression / extraction / patch-back is later adapter
-//! work; this readiness proof reports only what the detector + bytecode parser +
-//! explicit synthetic fixtures prove.
-//!
+//!   The single source of truth is [`derive_bgi_readiness_level`]: a pure, total
+//!   function of the detector-derived profile, whether a bytecode profile actually
+//!   parsed a string-reference inventory, and the presence of explicit
+//!   extract/patch fixture proofs. It can NEVER lift an encrypted / compressed /
+//!   layered / unknown container above `unsupported`, and it NEVER claims
+//!   `extract` or `patch` without an explicit synthetic fixture proof — the
+//!   strict-proof honesty invariant (no aspirational "supported"). Real BGI
+//!   archive decryption / decompression / extraction / patch-back is later adapter
+//!   work; this readiness proof reports only what the detector + bytecode parser +
+//!   explicit synthetic fixtures prove.
 //! # Engine-general (BGI = data, no per-game branch)
-//!
 //! Every case is pure DATA: an optional embedded detector record, an optional
 //! embedded bytecode profile, and optional synthetic extract/patch proofs. The
 //! resolver runs the REAL detector and REAL bytecode parser over the embedded
 //! evidence and combines their derived outputs — there is no per-game branch and
 //! no per-brand special case.
-//!
 //! # Evidence is synthetic, redacted, ref-only
-//!
 //! Cases carry NO retail bytes and NO raw key material: only synthetic ids, the
 //! detector's structured profile signal, the bytecode parser's synthetic
 //! Shift-JIS string surfaces, and sha256 proof hashes. Every emitted report is
@@ -91,8 +81,8 @@ pub const BGI_READINESS_SCHEMA_VERSION: &str = "0.1.0";
 pub const BGI_READINESS_REPORT_SCHEMA_VERSION: &str = "0.1.0";
 
 /// The provenance node the embedded detector evidence is validated under. The
-/// KAIFUU-126 detector's tuple proof hash binds the source node, so the embedded
-/// detector record keeps its own KAIFUU-126 provenance (this readiness node
+/// detector's tuple proof hash binds the source node, so the embedded
+/// detector record keeps its own provenance (this readiness node
 /// CONSUMES that evidence, it does not re-mint it).
 pub const BGI_READINESS_DETECTOR_PROVENANCE_NODE: &str = "KAIFUU-126";
 /// The provenance node the embedded bytecode evidence is validated under.
@@ -101,9 +91,7 @@ pub const BGI_READINESS_BYTECODE_PROVENANCE_NODE: &str = "KAIFUU-127";
 /// The support boundary surfaced in every BGI readiness report.
 pub const BGI_READINESS_SUPPORT_BOUNDARY: &str = "The BGI/Ethornell readiness proof COMBINES the KAIFUU-126 archive/container detector evidence (identify + honest missing_capability boundaries for encrypted/compressed/layered/unknown variants) with the KAIFUU-127 scenario-bytecode parser evidence (inventory of Shift-JIS string-reference surfaces plus verified extract-to-patch round-trips) into ONE per-capability-level readiness report. It reports the ACHIEVED level (unsupported, identify, inventory, extract, or patch) mechanically per the fixture evidence and NEVER claims a level beyond it: an encrypted (BSE), compressed (DSC), layered (CompressedBG), header-less, or unrecognized container is unsupported; identify recognizes a Buriko ARC20 container; inventory enumerates the parser/profile string-reference surfaces; extract is claimed ONLY where an explicit synthetic fixture proves it; patch additionally requires a verified bytecode extract-to-patch round-trip (non-empty verified patch_reports) plus an explicit synthetic patch fixture (retail BGI archive decryption/decompression/extraction/patch-back is later adapter work and is never claimed here). Evidence is synthetic and redacted — synthetic ids and sha256 hashes only, never raw keys, paths, or retail bytes.";
 
-// ---------------------------------------------------------------------------
 // The achieved readiness level (the five-rung honest ladder)
-// ---------------------------------------------------------------------------
 
 /// The capability level a BGI/Ethornell input achieves, combining detector
 /// evidence with bytecode-parser evidence. Ordered from least to most
@@ -150,9 +138,7 @@ impl BgiReadinessLevel {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Explicit synthetic extract/patch fixture proofs (the honesty gate)
-// ---------------------------------------------------------------------------
 
 /// Which synthetic archive-operation artifact a proof backs. The extract and
 /// patch rungs are claimed ONLY when the matching proof is present and valid.
@@ -221,9 +207,7 @@ impl BgiReadinessArtifactProof {
     }
 }
 
-// ---------------------------------------------------------------------------
 // The mechanical combiner (single source of truth)
-// ---------------------------------------------------------------------------
 
 /// The combined readiness evidence: the detector-derived container profile
 /// (present only when a container detector record applied), whether a bytecode
@@ -262,7 +246,6 @@ impl BgiReadinessEvidence {
 
 /// Combine detector evidence + bytecode-parser evidence into the achieved
 /// readiness level. Total, pure, side-effect-free — the single source of truth.
-///
 /// The honesty invariants are structural:
 /// - an encrypted / compressed / layered / header-less / unknown container is
 ///   always `unsupported` (no proof lifts it); and
@@ -306,9 +289,7 @@ fn extract_patch_ceiling(
     }
 }
 
-// ---------------------------------------------------------------------------
 // Fixture (input) schema
-// ---------------------------------------------------------------------------
 
 /// One synthetic readiness case: the OPTIONAL embedded detector record
 /// (container identify evidence) + the OPTIONAL embedded bytecode profile
@@ -347,15 +328,13 @@ pub struct BgiReadinessFixture {
     pub schema_version: String,
     /// Stable id for the fixture set (synthetic; no retail names/local paths).
     pub readiness_set_id: String,
-    /// The spec-DAG node id this fixture set is authored for (e.g. `KAIFUU-041`).
+    /// The spec-DAG node id this fixture set is authored for (e.g. ``).
     pub source_node_id: String,
     pub engine_family: String,
     pub cases: Vec<BgiReadinessCase>,
 }
 
-// ---------------------------------------------------------------------------
 // Report (generated) schema
-// ---------------------------------------------------------------------------
 
 /// One structured finding raised by the resolver.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -488,9 +467,7 @@ impl BgiReadinessReport {
     }
 }
 
-// ---------------------------------------------------------------------------
 // The resolver (the combiner)
-// ---------------------------------------------------------------------------
 
 /// Run the BGI readiness combiner over a fixture set. Each case runs the REAL
 /// detector and REAL bytecode parser over its embedded evidence and combines
@@ -545,8 +522,7 @@ fn resolve_case(
         });
     }
 
-    // --- Run the REAL detector over the embedded record (evidence half 1). ---
-    // The embedded record keeps its KAIFUU-126 provenance node (its tuple proof
+    // The embedded record keeps its provenance node (its tuple proof
     // hash binds the source node); this readiness node CONSUMES that evidence.
     let detector_entry: Option<BgiDetectorEntryReport> = case.detector.as_ref().map(|entry| {
         let report = run_bgi_detector_fixture(&BgiDetectorFixture {
@@ -573,7 +549,6 @@ fn resolve_case(
     }
     let container_profile = detector_entry.as_ref().map(|entry| entry.profile);
 
-    // --- Run the REAL bytecode parser over the embedded profile (half 2). ----
     let bytecode_entry: Option<BgiBytecodeEntryReport> = case.bytecode.as_ref().map(|entry| {
         let report = run_bgi_bytecode_fixture(&BgiBytecodeFixture {
             schema_version: BGI_BYTECODE_FIXTURE_SCHEMA_VERSION.to_string(),
@@ -605,7 +580,6 @@ fn resolve_case(
         .map_or(0, |entry| entry.string_references.len());
     let inventory_proven = inventory_surface_count > 0;
 
-    // --- Validate + honor the explicit synthetic extract/patch proofs. -------
     let extract_proven = honor_proof(
         case.extract_proof.as_ref(),
         BgiReadinessArtifactKind::SyntheticExtractFixture,
@@ -647,7 +621,6 @@ fn resolve_case(
         patch_proven = false;
     }
 
-    // --- Combine the evidence into the achieved level (source of truth). -----
     let evidence = BgiReadinessEvidence {
         container_profile,
         inventory_proven,
@@ -813,8 +786,6 @@ mod tests {
     fn run() -> BgiReadinessReport {
         run_bgi_readiness(&load())
     }
-
-    // --- The whole fixture set is green + records every acceptance field. -----
 
     #[test]
     fn readiness_fixture_set_passes_and_records_every_field() {
@@ -1022,8 +993,6 @@ mod tests {
         }
     }
 
-    // --- Patch level requires a verified bytecode extract-to-patch proof. -----
-
     #[test]
     fn patch_level_requires_verified_bytecode_patch_report() {
         let mut fixture = load();
@@ -1083,8 +1052,6 @@ mod tests {
         );
     }
 
-    // --- A fabricated extract proof (wrong hash) is refused. ------------------
-
     #[test]
     fn fabricated_extract_proof_is_refused() {
         let mut fixture = load();
@@ -1110,8 +1077,6 @@ mod tests {
         assert_eq!(entry.readiness_level, BgiReadinessLevel::Inventory);
     }
 
-    // --- The resolver catches a lying declared level. ------------------------
-
     #[test]
     fn declared_level_mismatch_is_a_finding() {
         let mut fixture = load();
@@ -1133,8 +1098,6 @@ mod tests {
         // The DERIVED level still refuses the lie.
         assert_eq!(entry.readiness_level, BgiReadinessLevel::Inventory);
     }
-
-    // --- Redaction-clean: synthetic ids + hashes only, no keys/paths/bytes. ---
 
     #[test]
     fn report_is_redaction_clean() {
@@ -1166,8 +1129,6 @@ mod tests {
         let round: BgiReadinessReport = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(round, report.redacted_for_report());
     }
-
-    // --- The combiner is total over the level ladder. ------------------------
 
     #[test]
     fn level_ordering_places_unsupported_at_the_floor() {

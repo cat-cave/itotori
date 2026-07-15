@@ -1,24 +1,20 @@
-//! KAIFUU-116 — RPG Maker MV/MZ encrypted-AUDIO decrypt + re-encrypt path.
-//!
+//! RPG Maker MV/MZ encrypted-AUDIO decrypt + re-encrypt path.
 //! This is the **encrypted-media** path for RPG Maker MV/MZ named audio
-//! surfaces. It mirrors the just-merged KAIFUU-115 encrypted-image path
+//! surfaces. It mirrors the just-merged encrypted-image path
 //! ([`crate::mv_mz_encrypted_image`]) leg-for-leg for the audio codec, and is
 //! mechanically separate from three neighbouring nodes:
-//!
-//! - KAIFUU-115 ([`crate::mv_mz_encrypted_image`]) owns the encrypted **image**
+//! - ([`crate::mv_mz_encrypted_image`]) owns the encrypted **image**
 //!   surfaces. THIS node never touches an image surface; an image-codec entry is
 //!   rejected as an `unsupported_surface` before any byte is decrypted.
-//! - KAIFUU-108 ([`crate::mv_mz_readiness`]) is JSON-text inventory only and
+//! - ([`crate::mv_mz_readiness`]) is JSON-text inventory only and
 //!   hard-pins encrypted media `extractable = false` / `patchable = false`.
 //!   THIS node never touches a JSON-text surface and never widens that node's
 //!   claims.
-//! - KAIFUU-039 ([`crate::encrypted_media_proof`]) is a research-only
+//! - ([`crate::encrypted_media_proof`]) is a research-only
 //!   *readiness* proof that NEVER decrypts. THIS node is the distinct path
 //!   that genuinely decrypts AND re-encrypts an audio asset, with a
 //!   byte-correct round-trip proof.
-//!
 //! # The scheme (native Rust, NO shell-out)
-//!
 //! RPG Maker MV/MZ encrypted audio is the **same** `RPGMV`-header scheme as the
 //! images: a 16-byte [`RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER`] signature is
 //! prepended to the asset, and the first 16 bytes of the original OGG are
@@ -29,9 +25,7 @@
 //! (`re_encrypt(decrypt(enc)) == enc`). MV ships `.rpgmvo`; MZ ships `.ogg_` —
 //! both route through this path. The implementation is in-process Rust: no
 //! `Command::new`, no helper process, no network.
-//!
 //! # THE LINE (mechanical, not prose)
-//!
 //! - Raw key bytes live **only** inside the module-private [`AudioAssetKey`]
 //!   (redacting `Debug`, zeroizing `Drop`). They are never serialized, logged,
 //!   or returned across the module boundary. Reports carry structured
@@ -45,9 +39,7 @@
 //! - Image and JSON surfaces are explicitly out of scope: an entry whose
 //!   `surface_codec` is not [`CodecTransform::OggAudio`] is rejected with a
 //!   structured `unsupported_surface` finding before any byte is decrypted.
-//!
 //! # Fixtures are synthetic + public
-//!
 //! Every byte is synthesised in-module: a tiny synthetic OGG-ish page
 //! ([`SYNTHETIC_OGG`]) and a clearly-fake 16-byte key. No retail audio bytes and
 //! no real keys are ever vendored; the report carries only hashes / counts /
@@ -73,7 +65,7 @@ pub use crate::mv_mz_asset_xor::MvMzAssetVariantError as MvMzAudioVariantError;
 
 pub const MV_MZ_ENCRYPTED_AUDIO_SCHEMA_VERSION: &str = "0.1.0";
 
-/// Canonical `engine_family` wire value for this path. MUST match KAIFUU-115's
+/// Canonical `engine_family` wire value for this path. MUST match 's
 /// [`crate::MV_MZ_ENCRYPTED_IMAGE_ENGINE_FAMILY`] so the two media paths stay
 /// consistent (the repo-wide canonical MV/MZ token).
 pub const MV_MZ_ENCRYPTED_AUDIO_ENGINE_FAMILY: &str = "rpg_maker_mv_mz";
@@ -99,8 +91,6 @@ pub const OGG_SIGNATURE: &[u8; 4] = b"OggS";
 /// Aliases the shared [`RPGMAKER_ASSET_XOR_PREFIX_LEN`].
 pub const RPGMAKER_AUDIO_XOR_PREFIX_LEN: usize = RPGMAKER_ASSET_XOR_PREFIX_LEN;
 
-// --- Semantic + finding codes -----------------------------------------------
-
 pub const SEMANTIC_MV_MZ_AUDIO_WRONG_KEY: &str = "kaifuu.rpgmaker.encrypted_audio.wrong_key";
 pub const SEMANTIC_MV_MZ_AUDIO_MISSING_KEY: &str = "kaifuu.rpgmaker.encrypted_audio.missing_key";
 pub const SEMANTIC_MV_MZ_AUDIO_UNSUPPORTED_SURFACE: &str =
@@ -114,8 +104,6 @@ const FINDING_UNSUPPORTED_SURFACE: &str = "rpgmaker.encrypted_audio.unsupported_
 const FINDING_UNSUPPORTED_VARIANT: &str = "rpgmaker.encrypted_audio.unsupported_variant";
 const FINDING_OUTCOME_MISMATCH: &str = "rpgmaker.encrypted_audio.outcome_mismatch";
 const FINDING_INTERNAL: &str = "rpgmaker.encrypted_audio.internal";
-
-// --- Synthetic fixture material (NO retail bytes) ---------------------------
 
 /// A tiny, synthetic OGG-ish page (44 bytes). Public + synthetic — it is the
 /// plaintext every fixture entry round-trips. It begins with the real `OggS`
@@ -144,8 +132,6 @@ const SYNTHETIC_KEY_CORRECT: &[u8; 16] = b"ITOTORIFIXTUREK0";
 /// A synthetic key that differs from the correct one within the first 4 bytes,
 /// so a wrong-key decrypt corrupts the OGG capture pattern and is detected.
 const SYNTHETIC_KEY_WRONG: &[u8; 16] = b"XXXXXXXXXXXXXXXX";
-
-// --- Surfaces ----------------------------------------------------------------
 
 /// The named MV/MZ audio surfaces this path handles. Each owns a stable
 /// [`MvMzAudioSurface::surface_id`].
@@ -194,8 +180,6 @@ impl MvMzAudioSurface {
     }
 }
 
-// --- Crypto profile ----------------------------------------------------------
-
 /// The crypto profile this path declares: the MV/MZ asset-XOR scheme. Carries
 /// only public, non-secret facts (a hash of the public header magic, the header
 /// and key lengths, the material kind).
@@ -228,8 +212,6 @@ impl RpgMakerAudioCryptoProfile {
         })
     }
 }
-
-// --- Path descriptor ---------------------------------------------------------
 
 /// One declared diagnostic this path can emit (the failure vocabulary).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -437,8 +419,6 @@ impl MvMzEncryptedAudioPath {
     }
 }
 
-// --- Native crypto (shared core, in-process, no shell-out) ------------------
-//
 // The XOR primitive, key type, decrypt, and re-encrypt all live in the single
 // canonical `crate::mv_mz_asset_xor` module (imported above); this path never
 // re-implements them. `AudioAssetKey` is the historical local name for the
@@ -458,8 +438,6 @@ fn is_ogg(bytes: &[u8]) -> bool {
 pub fn encrypt_synthetic_audio(key_bytes: &[u8]) -> Vec<u8> {
     encrypt_rpgmaker_asset(SYNTHETIC_OGG, &MvMzAssetKey::from_bytes(key_bytes))
 }
-
-// --- Fixture (input manifest) -----------------------------------------------
 
 /// The synthetic scenario a fixture entry materialises in-process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -523,7 +501,7 @@ impl MvMzEncryptedAudioOutcome {
 pub struct MvMzEncryptedAudioFixture {
     pub schema_version: String,
     pub path_id: String,
-    /// The spec-DAG node id this fixture is authored for (e.g. `KAIFUU-116`).
+    /// The spec-DAG node id this fixture is authored for (e.g. ``).
     pub source_node_id: String,
     pub engine_family: String,
     pub entries: Vec<MvMzEncryptedAudioFixtureEntry>,
@@ -544,8 +522,6 @@ pub struct MvMzEncryptedAudioFixtureEntry {
     pub scenario: MvMzEncryptedAudioScenario,
     pub expected: MvMzEncryptedAudioOutcome,
 }
-
-// --- Report (generated output) ----------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -711,8 +687,6 @@ impl MvMzEncryptedAudioFinding {
     }
 }
 
-// --- Stub helper (synthetic, in-process) ------------------------------------
-
 /// The synthetic byte inputs the stub materialises for an entry.
 struct ResolvedEntryInputs {
     /// The encrypted asset bytes (always present — even failing scenarios have
@@ -745,8 +719,6 @@ fn resolve_entry_inputs(scenario: MvMzEncryptedAudioScenario) -> ResolvedEntryIn
         },
     }
 }
-
-// --- Processing (the only public consume gate) ------------------------------
 
 #[derive(Debug, Clone, Copy)]
 pub struct MvMzEncryptedAudioRequest<'a> {
@@ -811,7 +783,7 @@ fn process_entry(
     let mut findings = Vec::new();
 
     // (0) Unsupported surface short-circuits BEFORE any byte is touched: image
-    //     and JSON surfaces are outside this audio-only path.
+    // and JSON surfaces are outside this audio-only path.
     if entry.surface_codec != CodecTransform::OggAudio {
         findings.push(finding(
             FINDING_UNSUPPORTED_SURFACE,
@@ -878,8 +850,8 @@ fn process_entry(
     };
 
     // (3) Wrong-key gate: a correctly-decrypted RPG Maker audio asset is an OGG.
-    //     A decrypt that does not yield the OGG capture pattern is a wrong key —
-    //     fail BEFORE re-encrypting (no patch write).
+    // A decrypt that does not yield the OGG capture pattern is a wrong key —
+    // fail BEFORE re-encrypting (no patch write).
     if !is_ogg(&plaintext) {
         findings.push(finding(
             FINDING_WRONG_KEY,
@@ -1084,8 +1056,6 @@ mod tests {
             .is_some_and(|entry| entry.findings.iter().any(|finding| finding.code == code))
     }
 
-    // --- The path declaration is canonical and self-consistent. -------------
-
     #[test]
     fn canonical_path_declares_and_validates_every_leg() {
         let path = MvMzEncryptedAudioPath::canonical().unwrap();
@@ -1107,8 +1077,6 @@ mod tests {
         assert_eq!(path.fixture_id, MV_MZ_ENCRYPTED_AUDIO_FIXTURE_ID);
         path.validate().expect("canonical path is consistent");
     }
-
-    // --- The engine_family token MUST match the KAIFUU-115 image path. ------
 
     #[test]
     fn engine_family_token_matches_image_path() {
@@ -1152,8 +1120,6 @@ mod tests {
             MvMzEncryptedAudioPathViolation::AudioSurfaceClaimsNonAudioCodec { .. }
         )));
     }
-
-    // --- Native crypto: byte-correct round-trip, no shell-out. --------------
 
     #[test]
     fn decrypt_re_encrypt_is_byte_correct_round_trip() {
@@ -1199,8 +1165,6 @@ mod tests {
         );
     }
 
-    // --- The fixture matrix is green and evidence-driven. -------------------
-
     #[test]
     fn fixture_matrix_passes_and_records_path() {
         let report = run(&load_fixture());
@@ -1223,8 +1187,6 @@ mod tests {
             assert_eq!(entry.redaction_status, "redacted");
         }
     }
-
-    // --- A valid secret-ref decrypts AND re-encrypts byte-correctly. --------
 
     #[test]
     fn valid_entry_round_trips_with_matching_hashes() {
@@ -1252,8 +1214,6 @@ mod tests {
         );
         assert_eq!(proof.key_bytes, RPGMAKER_AUDIO_XOR_PREFIX_LEN as u32);
     }
-
-    // --- Wrong-key / missing-key / unsupported fail BEFORE patch writes. ----
 
     #[test]
     fn failing_entries_publish_no_patch_artifact() {
@@ -1301,8 +1261,6 @@ mod tests {
         }
     }
 
-    // --- The validator catches an author who lies about an outcome. ---------
-
     #[test]
     fn validator_fails_on_outcome_mismatch() {
         let mut fixture = load_fixture();
@@ -1316,8 +1274,6 @@ mod tests {
             FINDING_OUTCOME_MISMATCH
         ));
     }
-
-    // --- No raw key material ever reaches the report. -----------------------
 
     #[test]
     fn report_never_carries_raw_key_material() {

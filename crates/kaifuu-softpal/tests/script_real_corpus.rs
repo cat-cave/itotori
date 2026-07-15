@@ -1,13 +1,11 @@
 //! Real-bytes validation of the Softpal `SCRIPT.SRC` dialogue disassembler
 //! against two owned titles, extracting both `SCRIPT.SRC` and `TEXT.DAT` from
 //! the same `data.pac` via the crate's own PAC reader.
-//!
 //! `#[ignore]`d and env-gated: set `ITOTORI_SOFTPAL_RESEARCH_ROOT` to the
 //! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
 //! `--ignored`. **No raw copyrighted text lives in this file** — only command
 //! counts, the 100 %-pointer-resolution result, and byte offsets, which the
 //! disassembler must reproduce.
-//!
 //! PROOF BAR: every extracted dialogue/choice **text** pointer and every present
 //! **speaker name** pointer must resolve to an *exact* `TEXT.DAT` record
 //! boundary (0 dangling) — full pointer resolution, both titles.
@@ -196,7 +194,6 @@ fn script_disassembler_on_two_softpal_titles() {
         assert!(dis.is_fully_resolved(), "{} fully resolved", game.subdir);
 
         // Every unit's pointer field offset lies within SCRIPT.SRC (byte-locatable
-        // for patch-back); dialogue text + speakers all resolve to records.
         for d in &dis.dialogue {
             assert!(
                 d.text.field_offset + 4 <= script_bytes.len(),

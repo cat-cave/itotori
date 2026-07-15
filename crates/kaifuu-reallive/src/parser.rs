@@ -1,17 +1,14 @@
-//! Real RealLive scene-bytecode parser (KAIFUU-191).
-//!
+//! Real RealLive scene-bytecode parser.
 //! `parse_scene` consumes a decompressed scene-bytecode byte stream
 //! (post-AVG32 LZSS + XOR per
 //! `docs/research/reallive-sweetie-hd-encryption-mechanism.md`) and
 //! decodes it into a sequence of [`RealLiveOpcode`] values via the
 //! opener-byte switch documented in `docs/research/reallive-engine.md`
 //! §D.
-//!
-//! The pre-KAIFUU-191 synthetic `0x23 ('#') opener + named opcode byte +
+//! The pre- synthetic `0x23 ('#') opener + named opcode byte +
 //! operand-count` shape is deleted — not aliased, not flagged, not kept
 //! behind a feature gate. See `lib.rs` for the clean-room provenance
 //! posture.
-//!
 //! Surface:
 //! - [`parse_scene`] — the canonical entry point. Returns the
 //!   `Vec<RealLiveOpcode>` directly so downstream tools can dispatch
@@ -20,10 +17,9 @@
 //!   builds the [`crate::ast::Scene`] tree consumed by
 //!   [`crate::inventory`] and [`crate::patchback`]. Errors surface as
 //!   fatal diagnostics on the [`ParseOutcome`].
-//!
-//! No silent zero-state: an empty input yields
-//! [`crate::opcode::RealLiveParseError::TruncatedBytecode`], never
-//! `Ok(vec![])`.
+//!   No silent zero-state: an empty input yields
+//!   [`crate::opcode::RealLiveParseError::TruncatedBytecode`], never
+//!   `Ok(vec!)`.
 
 use kaifuu_core::SourceEncoding;
 
@@ -42,7 +38,6 @@ use crate::strings::make_slot;
 
 /// Decode a decompressed scene bytecode byte stream into the documented
 /// [`RealLiveOpcode`] sequence.
-///
 /// The byte stream is the **decompressed** scene bytecode — the caller
 /// owns AVG32 LZSS + XOR decompression. This function operates on the
 /// plaintext bytecode bytes documented in
@@ -54,12 +49,10 @@ pub fn parse_scene(scene_bytes: &[u8]) -> Result<Vec<RealLiveOpcode>, RealLivePa
 /// Adapter that wraps [`parse_scene`] and projects the
 /// `Vec<RealLiveOpcode>` into the [`Scene`] tree consumed by the
 /// inventory and patchback walks.
-///
 /// `scene_id` is the 10,000-slot directory slot index for this scene
 /// (matches the historical `seenNNNN` naming); `scene_offset` is the
 /// absolute archive byte offset of the scene blob and is recorded for
-/// downstream tools (KAIFUU-174's offset-table rewriter will use it).
-///
+/// downstream tools ('s offset-table rewriter will use it).
 /// On [`RealLiveParseError`] the adapter emits a single fatal
 /// [`ParseDiagnostic`] and returns a [`ParseOutcome`] with `scene =
 /// None`. Recoverable warnings are emitted for `Unknown` opcodes so the
@@ -194,7 +187,6 @@ fn map_parse_error(err: &RealLiveParseError) -> ParseDiagnostic {
 /// (`InstructionKind`, `operands`, `string_slot_refs`) tuple for the
 /// [`Scene`] tree. The function also pushes any extracted string slots
 /// into the running `strings` vector and bumps `next_global_slot_index`.
-///
 /// The element's byte width is **not** computed here: it is supplied by
 /// the caller from [`parse_real_bytecode_spans`] (the single source of
 /// truth that mirrors `decode_command`). Re-deriving it here would
@@ -216,7 +208,7 @@ fn project_opcode(
         // No NamedOpcode: meta/structural variants, plus the un-catalogued
         // generic `Command` and the desync `Unknown` (the only NOT-recognised
         // command variants) — so the AST marks these `Unrecognized`, agreeing
-        // with `is_recognized()` == false.
+        // with `is_recognized` == false.
         RealLiveOpcode::MetaLine { .. }
         | RealLiveOpcode::MetaEntrypoint { .. }
         | RealLiveOpcode::MetaKidoku { .. }
@@ -240,7 +232,7 @@ fn project_opcode(
         // surface is coarse: these are all non-dialogue state operations, so
         // they project to the neutral `SetVar` named opcode while the rich
         // taxonomy lives on `RealLiveOpcode`. Each is RECOGNISED, so the
-        // parser AST agrees with `is_recognized()` (Named, not Unrecognized).
+        // parser AST agrees with `is_recognized` (Named, not Unrecognized).
         RealLiveOpcode::Background { .. }
         | RealLiveOpcode::VoicePlay { .. }
         | RealLiveOpcode::SetVariable
@@ -290,7 +282,6 @@ fn project_opcode(
     // splice target the length-preserving patch-back keys on. It MUST point
     // at the slot's editable bytes, not the instruction opener. For a
     // Textout run the run starts at the instruction, so the two coincide;
-    // for a Choice option the editable bytes live inside the argument list,
     // so the caller passes the per-option offset captured by the decoder.
     let push_string_slot = |slot_byte_offset: u64,
                             bytes: &[u8],
@@ -322,7 +313,7 @@ fn project_opcode(
         RealLiveOpcode::Textout { raw_bytes, .. } => {
             // A Textout run starts at the instruction byte_offset and the
             // whole run is the editable slot, so offset == byte_offset and
-            // byte_len == raw_bytes.len() — already byte-correct.
+            // byte_len == raw_bytes.len — already byte-correct.
             push_string_slot(
                 byte_offset,
                 raw_bytes,
@@ -401,7 +392,7 @@ mod tests {
         // command to width 8, so the AST `byte_offset` of every element
         // after the first arg/pointer-carrying command drifted. Here a
         // goto_if (module_jmp opcode 2) carries an 8-byte header + an
-        // 8-byte `( $ 0xFF 0 )` arg list + a 4-byte trailing jump pointer
+        // 8-byte `($ 0xFF 0)` arg list + a 4-byte trailing jump pointer
         // = 20 bytes total. The following Textout's byte_offset must equal
         // that real width (20), not the old hardcoded 8.
         let mut bytes = vec![opener::COMMAND, 0, 1, 2, 0, 0, 0, 0];

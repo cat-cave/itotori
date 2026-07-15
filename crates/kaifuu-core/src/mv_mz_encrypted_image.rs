@@ -1,19 +1,15 @@
-//! KAIFUU-115 — RPG Maker MV/MZ encrypted-IMAGE decrypt + re-encrypt path.
-//!
+//! RPG Maker MV/MZ encrypted-IMAGE decrypt + re-encrypt path.
 //! This is the **encrypted-media** path for RPG Maker MV/MZ named image
 //! surfaces. It is mechanically separate from two neighbouring nodes:
-//!
-//! - KAIFUU-108 ([`crate::mv_mz_readiness`]) is JSON-text inventory only and
+//! - ([`crate::mv_mz_readiness`]) is JSON-text inventory only and
 //!   hard-pins encrypted media `extractable = false` / `patchable = false`.
 //!   THIS node never touches a JSON-text surface and never widens that node's
 //!   claims.
-//! - KAIFUU-039 ([`crate::encrypted_media_proof`]) is a research-only
+//! - ([`crate::encrypted_media_proof`]) is a research-only
 //!   *readiness* proof that NEVER decrypts. THIS node is the distinct path
 //!   that genuinely decrypts AND re-encrypts an image asset, with a
 //!   byte-correct round-trip proof.
-//!
 //! # The scheme (native Rust, NO shell-out)
-//!
 //! RPG Maker MV/MZ encrypted images are the standard `RPGMV`-header scheme: a
 //! 16-byte [`RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER`] signature is prepended to
 //! the asset, and the first 16 bytes of the original PNG are XOR-masked with a
@@ -23,9 +19,7 @@
 //! correct key yields a **byte-correct** round-trip
 //! (`re_encrypt(decrypt(enc)) == enc`). The implementation is in-process Rust:
 //! no `Command::new`, no helper process, no network.
-//!
 //! # THE LINE (mechanical, not prose)
-//!
 //! - Raw key bytes live **only** inside the module-private [`ImageAssetKey`]
 //!   (redacting `Debug`, zeroizing `Drop`). They are never serialized, logged,
 //!   or returned across the module boundary. Reports carry structured
@@ -39,9 +33,7 @@
 //! - Audio and JSON surfaces are explicitly out of scope: an entry whose
 //!   `surface_codec` is not [`CodecTransform::PngImage`] is rejected with a
 //!   structured `unsupported_surface` finding before any byte is decrypted.
-//!
 //! # Fixtures are synthetic + public
-//!
 //! Every byte is synthesised in-module: a tiny real 1x1 PNG ([`SYNTHETIC_PNG`])
 //! and a clearly-fake 16-byte key. No retail image bytes and no real keys are
 //! ever vendored; the report carries only hashes / counts / secret-refs.
@@ -89,8 +81,6 @@ pub const PNG_SIGNATURE: &[u8; 8] = &[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 
 /// Aliases the shared [`RPGMAKER_ASSET_XOR_PREFIX_LEN`].
 pub const RPGMAKER_IMAGE_XOR_PREFIX_LEN: usize = RPGMAKER_ASSET_XOR_PREFIX_LEN;
 
-// --- Semantic + finding codes -----------------------------------------------
-
 pub const SEMANTIC_MV_MZ_IMAGE_WRONG_KEY: &str = "kaifuu.rpgmaker.encrypted_image.wrong_key";
 pub const SEMANTIC_MV_MZ_IMAGE_MISSING_KEY: &str = "kaifuu.rpgmaker.encrypted_image.missing_key";
 pub const SEMANTIC_MV_MZ_IMAGE_UNSUPPORTED_SURFACE: &str =
@@ -104,8 +94,6 @@ const FINDING_UNSUPPORTED_SURFACE: &str = "rpgmaker.encrypted_image.unsupported_
 const FINDING_UNSUPPORTED_VARIANT: &str = "rpgmaker.encrypted_image.unsupported_variant";
 const FINDING_OUTCOME_MISMATCH: &str = "rpgmaker.encrypted_image.outcome_mismatch";
 const FINDING_INTERNAL: &str = "rpgmaker.encrypted_image.internal";
-
-// --- Synthetic fixture material (NO retail bytes) ---------------------------
 
 /// A tiny, real, 1x1 RGB PNG (69 bytes). Public + synthetic — it is the
 /// plaintext every fixture entry round-trips.
@@ -122,8 +110,6 @@ const SYNTHETIC_KEY_CORRECT: &[u8; 16] = b"ITOTORIFIXTUREK0";
 /// A synthetic key that differs from the correct one within the first 8 bytes,
 /// so a wrong-key decrypt corrupts the PNG signature and is detected.
 const SYNTHETIC_KEY_WRONG: &[u8; 16] = b"XXXXXXXXXXXXXXXX";
-
-// --- Surfaces ----------------------------------------------------------------
 
 /// The named MV/MZ image surfaces this path handles. Each owns a stable
 /// [`MvMzImageSurface::surface_id`].
@@ -182,8 +168,6 @@ impl MvMzImageSurface {
     }
 }
 
-// --- Crypto profile ----------------------------------------------------------
-
 /// The crypto profile this path declares: the MV/MZ asset-XOR scheme. Carries
 /// only public, non-secret facts (a hash of the public header magic, the header
 /// and key lengths, the material kind).
@@ -216,8 +200,6 @@ impl RpgMakerImageCryptoProfile {
         })
     }
 }
-
-// --- Path descriptor ---------------------------------------------------------
 
 /// One declared diagnostic this path can emit (the failure vocabulary).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -425,8 +407,6 @@ impl MvMzEncryptedImagePath {
     }
 }
 
-// --- Native crypto (shared core, in-process, no shell-out) ------------------
-//
 // The XOR primitive, key type, decrypt, and re-encrypt all live in the single
 // canonical `crate::mv_mz_asset_xor` module (imported above); this path never
 // re-implements them. `ImageAssetKey` is the historical local name for the
@@ -446,8 +426,6 @@ fn is_png(bytes: &[u8]) -> bool {
 pub fn encrypt_synthetic_image(key_bytes: &[u8]) -> Vec<u8> {
     encrypt_rpgmaker_asset(SYNTHETIC_PNG, &MvMzAssetKey::from_bytes(key_bytes))
 }
-
-// --- Fixture (input manifest) -----------------------------------------------
 
 /// The synthetic scenario a fixture entry materialises in-process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -511,7 +489,7 @@ impl MvMzEncryptedImageOutcome {
 pub struct MvMzEncryptedImageFixture {
     pub schema_version: String,
     pub path_id: String,
-    /// The spec-DAG node id this fixture is authored for (e.g. `KAIFUU-115`).
+    /// The spec-DAG node id this fixture is authored for (e.g. ``).
     pub source_node_id: String,
     pub engine_family: String,
     pub entries: Vec<MvMzEncryptedImageFixtureEntry>,
@@ -532,8 +510,6 @@ pub struct MvMzEncryptedImageFixtureEntry {
     pub scenario: MvMzEncryptedImageScenario,
     pub expected: MvMzEncryptedImageOutcome,
 }
-
-// --- Report (generated output) ----------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -699,8 +675,6 @@ impl MvMzEncryptedImageFinding {
     }
 }
 
-// --- Stub helper (synthetic, in-process) ------------------------------------
-
 /// The synthetic byte inputs the stub materialises for an entry.
 struct ResolvedEntryInputs {
     /// The encrypted asset bytes (always present — even failing scenarios have
@@ -733,8 +707,6 @@ fn resolve_entry_inputs(scenario: MvMzEncryptedImageScenario) -> ResolvedEntryIn
         },
     }
 }
-
-// --- Processing (the only public consume gate) ------------------------------
 
 #[derive(Debug, Clone, Copy)]
 pub struct MvMzEncryptedImageRequest<'a> {
@@ -799,7 +771,7 @@ fn process_entry(
     let mut findings = Vec::new();
 
     // (0) Unsupported surface short-circuits BEFORE any byte is touched: audio
-    //     and JSON surfaces are outside this image-only path.
+    // and JSON surfaces are outside this image-only path.
     if entry.surface_codec != CodecTransform::PngImage {
         findings.push(finding(
             FINDING_UNSUPPORTED_SURFACE,
@@ -866,8 +838,8 @@ fn process_entry(
     };
 
     // (3) Wrong-key gate: a correctly-decrypted RPG Maker image is a PNG. A
-    //     decrypt that does not yield the PNG signature is a wrong key — fail
-    //     BEFORE re-encrypting (no patch write).
+    // decrypt that does not yield the PNG signature is a wrong key — fail
+    // BEFORE re-encrypting (no patch write).
     if !is_png(&plaintext) {
         findings.push(finding(
             FINDING_WRONG_KEY,
@@ -1072,8 +1044,6 @@ mod tests {
             .is_some_and(|entry| entry.findings.iter().any(|finding| finding.code == code))
     }
 
-    // --- The path declaration is canonical and self-consistent. -------------
-
     #[test]
     fn canonical_path_declares_and_validates_every_leg() {
         let path = MvMzEncryptedImagePath::canonical().unwrap();
@@ -1117,8 +1087,6 @@ mod tests {
             MvMzEncryptedImagePathViolation::ImageSurfaceClaimsNonImageCodec { .. }
         )));
     }
-
-    // --- Native crypto: byte-correct round-trip, no shell-out. --------------
 
     #[test]
     fn decrypt_re_encrypt_is_byte_correct_round_trip() {
@@ -1164,8 +1132,6 @@ mod tests {
         );
     }
 
-    // --- The fixture matrix is green and evidence-driven. -------------------
-
     #[test]
     fn fixture_matrix_passes_and_records_path() {
         let report = run(&load_fixture());
@@ -1188,8 +1154,6 @@ mod tests {
             assert_eq!(entry.redaction_status, "redacted");
         }
     }
-
-    // --- A valid secret-ref decrypts AND re-encrypts byte-correctly. --------
 
     #[test]
     fn valid_entry_round_trips_with_matching_hashes() {
@@ -1217,8 +1181,6 @@ mod tests {
         );
         assert_eq!(proof.key_bytes, RPGMAKER_IMAGE_XOR_PREFIX_LEN as u32);
     }
-
-    // --- Wrong-key / missing-key / unsupported fail BEFORE patch writes. ----
 
     #[test]
     fn failing_entries_publish_no_patch_artifact() {
@@ -1266,8 +1228,6 @@ mod tests {
         }
     }
 
-    // --- The validator catches an author who lies about an outcome. ---------
-
     #[test]
     fn validator_fails_on_outcome_mismatch() {
         let mut fixture = load_fixture();
@@ -1281,8 +1241,6 @@ mod tests {
             FINDING_OUTCOME_MISMATCH
         ));
     }
-
-    // --- No raw key material ever reaches the report. -----------------------
 
     #[test]
     fn report_never_carries_raw_key_material() {

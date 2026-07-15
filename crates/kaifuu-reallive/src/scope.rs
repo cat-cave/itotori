@@ -1,17 +1,14 @@
 //! Translation-scope configuration.
-//!
 //! itotori translates as MUCH of a game as the USER CONFIGURES. The
 //! translation scope is the config that drives the patchback byte-fidelity
 //! contract: everything OUTSIDE the chosen scope is carried byte-identical;
 //! everything INSIDE round-trips byte-correctly (decompress → [xor_2] →
 //! splice → re-emit).
-//!
 //! The scope is a per-run config the caller declares — it is NOT a hard-coded
 //! "only dialogue Textout may change" rule. `DialogueOnly` reproduces the
 //! conservative dialogue-only behaviour (choices, UI, images all carried
 //! byte-identical); `DialogueAndChoices` additionally makes `module_sel`
 //! choice options translatable (re-encoded NextString-safe).
-//!
 //! Alpha covers these two variants (dialogue + choices). UI-string and image
 //! scopes are beta surfaces: they are added as new variants when those
 //! surfaces are cataloged and exercised on real bytes — never speculatively.
@@ -19,7 +16,6 @@
 use serde::{Deserialize, Serialize};
 
 /// Which translation surfaces the user configured to translate.
-///
 /// Drives the config-driven byte-fidelity contract in
 /// [`crate::apply_translated_bundle`]: a v0.2 unit whose `surfaceKind` is
 /// in scope may change (round-tripping byte-correctly through the patchback

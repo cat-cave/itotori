@@ -1,14 +1,12 @@
-//! KAIFUU-211 — AVG32 LZSS re-compressor (literal-only emission) for
+//! AVG32 LZSS re-compressor (literal-only emission) for
 //! RealLive scene bytecode.
-//!
 //! Pairs with [`crate::decompressor::decompress_avg32`]: emits the
 //! 8-byte preamble (`(compressed_size, uncompressed_size)` as `u32 LE`,
 //! XOR'd by the 256-byte mask), then encodes every input byte as a
 //! literal under a flag-byte of all-ones. This is the simplest legal
 //! AVG32 LZSS payload — it is intentionally larger than a back-reference
 //! encoder would produce, but it round-trips bit-exactly through the
-//! KAIFUU-210 decompressor and avoids the rlvm encoder's complexity.
-//!
+//! decompressor and avoids the rlvm encoder's complexity.
 //! Clean-room provenance:
 //! - The flag-byte / literal-or-backref encoding is the inverse of
 //!   [`crate::decompressor::decompress_avg32`]'s decode loop, restated
@@ -21,11 +19,10 @@
 //! - This module is independent of `utsushi-reallive`'s parallel
 //!   implementation (workspace rule: format-identical, implementation-
 //!   separate).
-//!
-//! The output is **byte-deterministic** for a given input and the
-//! KAIFUU-210 decompressor verifies it round-trips. The literal-only
-//! emission stays inside the AVG32 format's documented control-byte
-//! grammar — no novel opcodes, no engine-specific extensions.
+//!   The output is **byte-deterministic** for a given input and the
+//!   decompressor verifies it round-trips. The literal-only
+//!   emission stays inside the AVG32 format's documented control-byte
+//!   grammar — no novel opcodes, no engine-specific extensions.
 
 use thiserror::Error;
 
@@ -76,7 +73,6 @@ pub enum CompressError {
 
 /// Encode `plaintext` as an AVG32 LZSS payload using literal-only
 /// emission.
-///
 /// Output layout:
 /// - 8-byte preamble: `(compressed_size_u32_le, uncompressed_size_u32_le)`
 ///   XOR'd by the 256-byte mask (mask indices 0..=7).
@@ -84,9 +80,8 @@ pub enum CompressError {
 ///   flag byte (all-ones — every code unit is a literal) followed by the
 ///   8 plaintext bytes. The XOR mask continues across the whole stream;
 ///   indices roll over at 256 by `u8::wrapping_add`.
-///
-/// The result decompresses byte-identically to `plaintext` via
-/// [`crate::decompressor::decompress_avg32`].
+///   The result decompresses byte-identically to `plaintext` via
+///   [`crate::decompressor::decompress_avg32`].
 pub fn compress_avg32_literal(plaintext: &[u8]) -> Result<Vec<u8>, CompressError> {
     if plaintext.len() > u32::MAX as usize {
         return Err(CompressError::InputTooLarge {
@@ -122,7 +117,7 @@ pub fn compress_avg32_literal(plaintext: &[u8]) -> Result<Vec<u8>, CompressError
 
     // Body: for each 8-byte group, emit flag=0xFF (all literals) then up
     // to 8 literal bytes. The decompressor consumes the flag byte first
-    // and walks `bit = 1, 2, 4, ... 128` testing `(flag & bit) != 0`;
+    // and walks `bit = 1, 2, 4,... 128` testing `(flag & bit)!= 0`;
     // 0xFF makes every bit position a literal.
     let mut cursor = 0usize;
     while cursor < plaintext.len() {

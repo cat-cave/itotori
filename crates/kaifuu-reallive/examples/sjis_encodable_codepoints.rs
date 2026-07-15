@@ -1,6 +1,5 @@
 //! Emit the canonical set of Unicode codepoints accepted by the RealLive
 //! patchback Shift-JIS encoder.
-//!
 //! This is intentionally an example binary rather than a production bridge: the
 //! TypeScript patchback-safety path remains dependency-free at runtime, while
 //! tests can audit its WHATWG decode-derived keep-set against the exact Rust

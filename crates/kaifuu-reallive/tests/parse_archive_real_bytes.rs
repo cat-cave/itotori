@@ -1,15 +1,14 @@
-//! KAIFUU-188 real-bytes integration test for the 10,000-slot SEEN.TXT
+//! real-bytes integration test for the 10,000-slot SEEN.TXT
 //! envelope parser. Anchors the parser against the only RealLive corpus
 //! currently staged (Sweetie HD) and exercises the truncation path on
 //! synthetic 10,001-slot bytes.
-//!
 //! **Multi-game validation status.** Per the itotori operating model
 //! (`docs/dev/orchestration-operating-model.md`), a parser that targets a
 //! real engine substrate must be exercised against at least two real
 //! corpora before its node is merged-complete. The MV/MZ and KAG corpora
 //! are different engines and do not contain a `Seen.txt`. Single
 //! RealLive corpus (Sweetie HD) until a second RealLive title is
-//! sourced. Per the multi-game-validation rule, KAIFUU-188's status
+//! sourced. Per the multi-game-validation rule, 's status
 //! remains `planned` until the second RealLive corpus is staged and
 //! exercised by an additional `parse_archive_second_reallive_real_bytes.rs`
 //! test. The orchestrator must not approve completion until that

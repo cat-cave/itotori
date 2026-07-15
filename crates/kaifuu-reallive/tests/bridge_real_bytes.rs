@@ -1,9 +1,7 @@
-//! KAIFUU-210 real-bytes integration test for the v0.2 BridgeBundle
+//! real-bytes integration test for the v0.2 BridgeBundle
 //! producer, including the binary-vs-dialogue surface-selection split.
-//!
 //! Reads Sweetie HD from `ITOTORI_REAL_GAME_ROOT` and exercises two
 //! scenes:
-//!
 //! - **Scene 1** is a system/boundary scene: every one of its Textout
 //!   runs is embedded binary data (the catch-all decoder returns them as
 //!   `Textout`, but they do not decode as Shift-JIS). The producer must
@@ -17,13 +15,12 @@
 //!   false negatives — with decoded text, a `reallive.kidoku` span, and
 //!   NAMAE-resolved speakers. (The previously-used scene 2011 contains a
 //!   second-level-XOR'd `module_sel` block — a `compiler_version=110002`
-//!   `xor_2` segment, owned by the decompressor follow-up node — so it can
+//!   `xor_2` segment, owned by the decompressor — so it can
 //!   no longer be decoded end-to-end and is not a valid clean fixture.)
-//!
-//! The test is env-gated and STRICT; without `ITOTORI_REAL_GAME_ROOT` an
-//! absent corpus is an unconditional HARD FAILURE (no opt-out). This
-//! `#[ignore]`-d suite runs only in the periodic ground-truth oracle
-//! (`just real-bytes-oracle`), where the corpus is staged.
+//!   The test is env-gated and STRICT; without `ITOTORI_REAL_GAME_ROOT` an
+//!   absent corpus is an unconditional HARD FAILURE (no opt-out). This
+//!   `#[ignore]`-d suite runs only in the periodic ground-truth oracle
+//!   (`just real-bytes-oracle`), where the corpus is staged.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -227,10 +224,8 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
     )
     .expect("v0.2 bundle must build from a dialogue scene");
 
-    // ---- Acceptance: schemaVersion. ----
     assert_eq!(produced.bundle.schema_version, "0.2.0");
 
-    // ---- Acceptance: units.len matches READABLE textout + choice count. ----
     // The surface-selection split means only Textout runs that decode as
     // Shift-JIS are surfaced; binary catch-all runs are excluded. The
     // no-false-negative guarantee is that EVERY readable run is surfaced.
@@ -292,7 +287,6 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
          no surfaced binary)"
     );
 
-    // ---- Acceptance: every surfaced dialogue unit decodes to non-empty text. ----
     // (No false-positive binary leaked into the translatable set.)
     for unit in &produced.bundle.units {
         if unit.surface_kind == "dialogue" {
@@ -309,7 +303,6 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
         first_unit.surface_kind,
     );
 
-    // ---- Acceptance: at least one reallive.kidoku span. ----
     let units_array = produced.json["units"]
         .as_array()
         .expect("units must be an array");
@@ -317,7 +310,6 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
     let mut emitted_parsed_names: std::collections::BTreeSet<String> =
         std::collections::BTreeSet::new();
 
-    // ---- Acceptance: at least one unit's speaker resolved via NAMAE. ----
     if namae_entries > 0 {
         let resolved = units_array
             .iter()
@@ -357,7 +349,6 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
         "at least one reallive.kidoku protected span must be emitted; observed kinds: {emitted_parsed_names:?}"
     );
 
-    // ---- Acceptance: provenance byteRange is a decompressed-stream interval. ----
     let range = &produced.json["units"][0]["sourceLocation"]["range"];
     let start_byte = range["startByte"]
         .as_u64()

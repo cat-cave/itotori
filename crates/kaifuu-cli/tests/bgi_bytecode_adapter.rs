@@ -1,5 +1,4 @@
-//! KAIFUU-013 — BGI/Ethornell loose-bytecode adapter integration tests.
-//!
+//! BGI/Ethornell loose-bytecode adapter integration tests.
 //! The byte inputs come from the committed BGI parser fixture
 //! `fixtures/kaifuu/bgi/bytecode.profiles.json`; the test materializes those
 //! bytes into temp game directories and drives the real `kaifuu-cli`

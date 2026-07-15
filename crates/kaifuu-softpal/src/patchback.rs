@@ -3,9 +3,7 @@
 //! the two rebuilt files **loose** beside the game (Softpal loads a loose file
 //! in preference to the PAC entry, so there is **no PAC repack and no archive
 //! re-encryption**).
-//!
 //! # The three steps
-//!
 //! 1. **Rebuild `TEXT.DAT`** ([`rebuild_textdat`]). Softpal stores every string
 //!    in the `TEXT.DAT` record pool (`[4-byte index][cp932 text][0x00]`), each
 //!    record addressed by the absolute byte offset of its 4-byte index field —
@@ -29,9 +27,7 @@
 //! 3. **Loose-file drop** ([`Patchback::write_loose_files`]). The rebuilt
 //!    `TEXT.DAT` + `SCRIPT.SRC` are written as plain files into an output
 //!    directory. No PAC is opened or rewritten.
-//!
 //! # Config-driven scope
-//!
 //! Patch-back is scope-agnostic by construction: the caller decides which
 //! records to translate (dialogue only, or dialogue + choices, …
 //! [`project_config_driven_translation_scope`]) simply by which pointers it puts
@@ -40,18 +36,14 @@
 //! that reference records whose offset moved) change. Because Softpal shares one
 //! pool record across every command that points at it, one translated record
 //! updates every unit that references it — a shared string is a single unit.
-//!
 //! # Identity round-trip
-//!
 //! With an **empty** translation map the rebuilt plaintext pool equals
 //! `decrypt(original)` byte-for-byte, so re-encrypting yields the original
 //! `TEXT.DAT` exactly ([`crate::encrypt`] is the exact inverse of
 //! [`crate::decrypt`]); no offset shifts, so every repointed field is rewritten to
 //! its own value and `SCRIPT.SRC` is byte-identical too. The rebuild is therefore
 //! provably lossless.
-//!
 //! # Determinism / no shell-outs
-//!
 //! Pure functions of the input byte buffers plus the crate's own codec /
 //! disassembler; the only side effect is the optional loose-file write. Malformed
 //! input never panics: every failure is a typed [`PatchbackError`].
@@ -81,7 +73,6 @@ pub const PATCHBACK_SCRIPT_NAME: &str = "SCRIPT.SRC";
 /// absolute byte offset of the record's 4-byte index field
 /// ([`crate::TextRecord::offset`]), which is exactly the value a `SCRIPT.SRC`
 /// pointer field holds and what the disassembler resolves against.
-///
 /// Callers build this from a [`crate::Disassembly`]: for an in-scope dialogue /
 /// choice / speaker unit, use its [`crate::TextRef::pointer`] as the key. Only
 /// the records whose pointer appears here are retranslated; every other record is
@@ -189,9 +180,7 @@ impl Patchback {
     /// (created if absent), using the canonical [`PATCHBACK_TEXTDAT_NAME`] /
     /// [`PATCHBACK_SCRIPT_NAME`] names. Returns the two written paths. No PAC is
     /// touched.
-    ///
     /// # Errors
-    ///
     /// [`PatchbackError::Io`] if the directory cannot be created or either file
     /// cannot be written.
     pub fn write_loose_files(&self, dir: &Path) -> Result<(PathBuf, PathBuf), PatchbackError> {
@@ -210,7 +199,6 @@ impl Patchback {
 }
 
 /// Fatal errors raised during patch-back.
-///
 /// Every display string begins with the `kaifuu.softpal.patchback` namespace
 /// marker (see [`SOFTPAL_PATCHBACK_ERROR_MARKER`]).
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -274,9 +262,7 @@ fn encode_cp932(text: &str, pointer: u32) -> Result<Vec<u8>, PatchbackError> {
 /// leaving all others byte-identical. Returns the rebuilt raw `TEXT.DAT` (encrypted
 /// iff the original was), the old→new offset map, the encryption flag, and the
 /// number of records translated.
-///
 /// # Errors
-///
 /// [`PatchbackError::TextDat`] if the original cannot be decoded,
 /// [`PatchbackError::Unencodable`] if a replacement is not cp932-encodable, or
 /// [`PatchbackError::OffsetOverflow`] if a rebuilt offset exceeds 32 bits.
@@ -335,9 +321,7 @@ pub fn rebuild_textdat(
 /// the map) are left untouched, and every other byte is unchanged. Returns the
 /// rewritten buffer and the number of fields changed to a *different* value plus
 /// the total number repointed.
-///
 /// # Errors
-///
 /// [`PatchbackError::Script`] if the script cannot be scanned, or
 /// [`PatchbackError::FieldOutOfBounds`] (defensive) if a located field is not
 /// wholly within the buffer.
@@ -405,13 +389,10 @@ pub fn repoint_script(
 
 /// Run the full patch-back: [`rebuild_textdat`] then [`repoint_script`], returning
 /// the two rebuilt loose files ready to drop beside the game.
-///
 /// `original_textdat` and `original_script` are the raw entries (as extracted from
 /// the PAC); `translations` selects which records to retranslate (config-driven
 /// scope — see the module docs).
-///
 /// # Errors
-///
 /// Any [`PatchbackError`] from the rebuild or the repoint.
 pub fn patchback(
     original_textdat: &[u8],

@@ -1,5 +1,4 @@
-//! KAIFUU-177 — end-to-end tests for the `kaifuu vault` subcommand group.
-//!
+//! end-to-end tests for the `kaifuu vault` subcommand group.
 //! Each test builds a fresh SYNTHETIC vault under a `tempfile::TempDir` (NEVER
 //! the real `/archive/vault/`) and drives the compiled `kaifuu` binary against
 //! it via `--vault-root` / `--scratch-root`. The synthetic catalog schema is
@@ -7,7 +6,6 @@
 //! ships (`kaifuu-vault-source/tests/fixtures/synthetic-vault/seed.sql`), and a
 //! single real by-id `.7z` archive is built in-test so `materialize` /
 //! `materialize-by-sha` resolve a real artifact end-to-end.
-//!
 //! Copyright posture: the fake game payload embeds a unique sentinel
 //! (`SENTINEL_RAW_GAME_BYTES`); every test asserts that sentinel NEVER appears
 //! in any CLI output — the group reports ids / sha256 / paths / redacted

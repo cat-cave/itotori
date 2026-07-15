@@ -1,5 +1,4 @@
 //! Per-run extraction driver.
-//!
 //! - Uses `sevenz-rust2` (pure-Rust 7z decoder; no system `7z` shell-out).
 //! - Validates every archive entry path **before any byte is written** to
 //!   disk, rejecting parent-dir traversal, absolute paths, drive prefixes,
@@ -120,7 +119,7 @@ pub fn extract_archive(
         archive_path,
         &extracted_root,
         |entry: &ArchiveEntry, reader: &mut dyn Read, _dest: &PathBuf| {
-            // We ignore `dest` (sevenz-rust2 already joined entry.name() to
+            // We ignore `dest` (sevenz-rust2 already joined entry.name to
             // extracted_root) — we re-validate the entry name ourselves.
             let safe_rel = match validate_entry_name(&entry.name) {
                 Ok(p) => p,
@@ -181,7 +180,7 @@ pub fn extract_archive(
             // a folder's codec combination is unsupported, sevenz-rust2 0.21.1's
             // `decompress_file_with_extract_fn` PROPAGATES the decode error
             // (e.g. "Unsupported method") — it lands in the `Err` arm below; it
-            // does NOT return `Ok(())` with the folder silently skipped. This
+            // does NOT return `Ok` with the folder silently skipped. This
             // re-verification is therefore not load-bearing for that path; it is
             // kept as a guard against any FUTURE regression that could surface a
             // partial tree as success. A partial tree must never be surfaced as

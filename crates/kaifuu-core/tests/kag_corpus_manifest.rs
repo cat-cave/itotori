@@ -1,6 +1,5 @@
-//! KAIFUU-203: invariants for the hand-authored CC0 KAG `.ks` corpus under
+//! invariants for the hand-authored CC0 KAG `.ks` corpus under
 //! `fixtures/public/kaifuu-kag-synthetic-corpus/`.
-//!
 //! Proves, on the committed bytes:
 //! - the manifest declares `"SPDX-License-Identifier": "CC0-1.0"` verbatim and
 //!   at the fixture level, and every `.ks` carries a per-file CC0 header;
@@ -20,7 +19,7 @@ use kaifuu_kirikiri::{KsFindingKind, TextRole, parse_ks};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-/// The canonical KAG profile-B tag inventory (KAIFUU-203 spec).
+/// The canonical KAG profile-B tag inventory (spec).
 const PROFILE_B_TAGS: &[&str] = &[
     "r", "l", "p", "cm", "ct", "wait", "jump", "call", "return", "if", "endif", "macro",
     "endmacro", "eval", "image", "playbgm",

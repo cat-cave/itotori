@@ -1,9 +1,7 @@
-//! KAIFUU-111 — MV/MZ PLUGIN-owned text via declared plugin profiles.
-//!
-//! Drives the KAIFUU-111 slice against a committed **synthetic public**
+//! MV/MZ PLUGIN-owned text via declared plugin profiles.
+//! Drives the slice against a committed **synthetic public**
 //! `plugins.js` fixture (`tests/fixtures/k111/plugins.js`; MV/MZ-shaped,
 //! authored English, no copyrighted plugin code/data) and proves:
-//!
 //! 1. Text is extracted ONLY at the DECLARED profile pointers as stable units
 //!    carrying every acceptance field; config/numeric params at undeclared
 //!    pointers are never surfaced.
@@ -31,7 +29,6 @@ use kaifuu_rpgmaker::{
 use serde_json::Value;
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
 /// reused from a different (since-removed) worktree would point fixture reads at
 /// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the
@@ -107,9 +104,7 @@ fn extract() -> kaifuu_rpgmaker::PluginExtraction {
         .expect("extract plugins.js")
 }
 
-// ---------------------------------------------------------------------------
 // 1. Declared-only extraction with all acceptance fields
-// ---------------------------------------------------------------------------
 
 #[test]
 fn only_declared_pointers_extract_with_all_fields() {
@@ -186,9 +181,7 @@ fn profile_output_records_id_version_hash_and_pointers() {
     assert_eq!(ce.declared_version.as_deref(), Some("3.0"));
 }
 
-// ---------------------------------------------------------------------------
 // 2. Byte-preserving patch (only declared literals change)
-// ---------------------------------------------------------------------------
 
 /// Locate each unit's literal span in the FULL plugins.js file by offsetting
 /// the `$plugins` array (which the Scanner navigates from its `[`).
@@ -217,7 +210,7 @@ fn located_targets(
 }
 
 /// Every byte OUTSIDE the declared literals is identical; each declared literal
-/// became exactly its encoded target. (Mirrors the KAIFUU-110 locality proof.)
+/// became exactly its encoded target. (Mirrors the locality proof.)
 fn verify_only_declared_changed(
     original: &[u8],
     patched: &[u8],
@@ -342,9 +335,7 @@ fn dropping_a_declared_unit_is_detectable() {
     assert_ne!(on_disk, translate(&dropped.source_text));
 }
 
-// ---------------------------------------------------------------------------
 // 3. Diagnostics for unprofiled plugin text
-// ---------------------------------------------------------------------------
 
 #[test]
 fn unprofiled_plugin_reports_typed_diagnostic_not_a_sweep() {
@@ -411,9 +402,7 @@ fn declared_pointer_to_nontext_or_missing_is_rejected() {
     );
 }
 
-// ---------------------------------------------------------------------------
 // 4. Typed file-level errors
-// ---------------------------------------------------------------------------
 
 #[test]
 fn missing_plugins_js_is_a_typed_error() {

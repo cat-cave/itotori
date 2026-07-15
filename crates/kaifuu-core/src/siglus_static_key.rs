@@ -1,5 +1,4 @@
-//! KAIFUU-069 — Siglus static-key helper adapter.
-//!
+//! Siglus static-key helper adapter.
 //! Siglus encrypted packages (`Scene.pck` + `Gameexe.dat`) are gated behind a
 //! *secondary key* that, for the static-key family of titles, is embedded in
 //! the game executable. This module ports the `siglus_static_key_tool`-class
@@ -8,7 +7,6 @@
 //! recovers a candidate key, and — crucially — **validates that candidate
 //! against `Gameexe.dat` profile-proof data before any adapter is allowed to
 //! consume it**.
-//!
 //! THE LINE (mechanical, not prose):
 //! - Raw key material lives **only** inside the module-private
 //!   [`StaticKeyCandidate`] (redacting `Debug`, zeroizing `Drop`). It is never
@@ -29,12 +27,11 @@
 //!   the only public entry points are [`discover_siglus_static_key`] (the
 //!   validate-before-consume gate), the synthetic [`build_siglus_static_key_stub`]
 //!   fixture helper, and the [`SiglusStaticKeyCapability`] descriptor.
-//!
-//! No retail bytes are used anywhere: the fixture stub synthesises a clearly
-//! fake executable + `Gameexe.dat` from in-module constants. The optional local
-//! helper path reads scoped private executable / `Gameexe.dat` files in-process
-//! (per the KAIFUU-069 2026-06-28 clarification) but still publishes only secret
-//! refs + proof hashes.
+//!   No retail bytes are used anywhere: the fixture stub synthesises a clearly
+//!   fake executable + `Gameexe.dat` from in-module constants. The optional local
+//!   helper path reads scoped private executable / `Gameexe.dat` files in-process
+//!   (per the 2026-06-28 clarification) but still publishes only secret
+//!   refs + proof hashes.
 
 use std::fmt;
 use std::path::Path;
@@ -53,8 +50,6 @@ pub const SIGLUS_STATIC_KEY_SCHEMA_VERSION: &str = "0.1.0";
 
 /// The support boundary surfaced in every static-key report.
 pub const SIGLUS_STATIC_KEY_SUPPORT_BOUNDARY: &str = "Kaifuu Siglus static-key discovery is in-process Rust static analysis of game executables; it never shells out to SiglusExtract or any external tool. A recovered key is published as a structured secret-ref + proof hash ONLY after it validates against the Gameexe.dat known-plaintext header; unsupported packers, protected executables, helper-provenance mismatches, and validation failures are structured diagnostics. Raw key material is never logged, serialized, or returned.";
-
-// --- Semantic + finding codes -----------------------------------------------
 
 /// Semantic code: the executable is wrapped by a packer kaifuu cannot statically
 /// analyse.
@@ -77,8 +72,6 @@ const FINDING_INPUT_MISSING: &str = "siglus.static_key.input_missing";
 const FINDING_INPUT_UNREADABLE: &str = "siglus.static_key.input_unreadable";
 const FINDING_OUTCOME_MISMATCH: &str = "siglus.static_key.outcome_mismatch";
 
-// --- Synthetic stub format (NO retail bytes) --------------------------------
-//
 // The synthetic executable is `<8-byte tag><filler><SIGLUSKEY marker><len><key>`.
 // The synthetic Gameexe.dat is `<known-plaintext XOR cycled-key><filler>`.
 // Every byte below is a clearly fake in-module constant.
@@ -99,8 +92,6 @@ const STUB_KEY_CORRECT: &[u8] = b"SIGLUSXORKEY0123";
 /// A synthetic key that does NOT match the `Gameexe.dat` ciphertext, used to
 /// exercise the validation-failure path.
 const STUB_KEY_WRONG: &[u8] = b"WRONGKEY99999999";
-
-// --- Taxonomy ---------------------------------------------------------------
 
 /// The mechanical outcome of a static-key discovery entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -153,8 +144,6 @@ pub enum SiglusStaticKeyStubScenario {
     /// Executable carries no static key region.
     KeyRegionMissing,
 }
-
-// --- Capability entry -------------------------------------------------------
 
 /// The Siglus static-key helper capability descriptor. Records the mechanical
 /// facts of the helper: it is an in-process static parser that never shells out
@@ -218,14 +207,12 @@ impl SiglusStaticKeyCapability {
 /// The canonical helper id. Static, in-process, no shell-out.
 pub const SIGLUS_STATIC_KEY_HELPER_ID: &str = "kaifuu-siglus-static-key";
 
-// --- Fixture (input manifest) -----------------------------------------------
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SiglusStaticKeyFixture {
     pub schema_version: String,
     pub capability_id: String,
-    /// The spec-DAG node id this fixture is authored for (e.g. `KAIFUU-069`).
+    /// The spec-DAG node id this fixture is authored for (e.g. ``).
     pub source_node_id: String,
     pub engine_family: String,
     pub entries: Vec<SiglusStaticKeyFixtureEntry>,
@@ -271,8 +258,6 @@ pub struct SiglusStaticKeyDeclaredHelper {
     pub helper_kind: HelperKind,
     pub execution_mode: HelperResultExecutionMode,
 }
-
-// --- Report (generated output) ----------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -435,8 +420,6 @@ impl SiglusStaticKeyFinding {
     }
 }
 
-// --- Fixture stub helper (synthetic, in-process) ----------------------------
-
 /// The synthetic byte inputs the stub helper materialises for a scenario.
 pub struct SiglusStaticKeyStubInputs {
     pub executable: Vec<u8>,
@@ -495,8 +478,6 @@ fn encrypt_known_plaintext(key: &[u8]) -> Vec<u8> {
     bytes
 }
 
-// --- In-process static analysis (module-private) ----------------------------
-//
 // Pure adapters cannot reach any of the following; the only public gate is
 // `discover_siglus_static_key`.
 
@@ -618,8 +599,6 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
-// --- Discovery (the only public consume gate) -------------------------------
-
 #[derive(Debug, Clone, Copy)]
 pub struct SiglusStaticKeyRequest<'a> {
     pub fixture: &'a SiglusStaticKeyFixture,
@@ -689,7 +668,7 @@ fn discover_entry(
     let mut findings = Vec::new();
 
     // (0) Helper-provenance mismatch short-circuits BEFORE any analysis: kaifuu
-    //     will not consume a key offered by a shelled-out or non-static helper.
+    // will not consume a key offered by a shelled-out or non-static helper.
     if let Some(declared) = entry.declared_helper.as_ref()
         && let Some(finding) = check_helper_provenance(declared)
     {
@@ -727,7 +706,7 @@ fn discover_entry(
     };
 
     // (2) Static analysis: refuse packers / protected binaries; recover the
-    //     candidate. Every failure is a structured finding.
+    // candidate. Every failure is a structured finding.
     let candidate = match analyze_siglus_executable(&executable_bytes) {
         Ok(candidate) => candidate,
         Err(error) => {
@@ -746,7 +725,7 @@ fn discover_entry(
     };
 
     // (3) Validate-before-consume: only a candidate that reproduces the
-    //     `Gameexe.dat` known-plaintext header may be published.
+    // `Gameexe.dat` known-plaintext header may be published.
     let proof = match validate_candidate_against_gameexe(&candidate, &gameexe_bytes) {
         Ok(Some(proof)) => proof,
         Ok(None) => {
@@ -1035,8 +1014,6 @@ fn finalize_entry_with_input(
     }
 }
 
-// --- Helpers ----------------------------------------------------------------
-
 /// Environmental / internal findings that flip an entry red regardless of the
 /// declared expectation. Diagnosis-class findings (the expected semantic
 /// outcomes) are deliberately excluded — a correctly-diagnosed unsupported
@@ -1140,8 +1117,6 @@ mod tests {
             .is_some_and(|entry| entry.findings.iter().any(|finding| finding.code == code))
     }
 
-    // --- The manifest is green and evidence-driven. ------------------------
-
     #[test]
     fn static_key_manifest_passes_and_records_capability() {
         let report = discover(&load_fixture());
@@ -1173,8 +1148,6 @@ mod tests {
             assert_eq!(entry.redaction_status, "redacted");
         }
     }
-
-    // --- Validate-before-consume: only a validated entry publishes a key. ---
 
     #[test]
     fn only_validated_entry_publishes_a_consumable_key_ref() {
@@ -1235,8 +1208,6 @@ mod tests {
         assert!(entry.consumable_key_ref().is_none());
     }
 
-    // --- Each failure class is a STRUCTURED finding, never silent. ----------
-
     #[test]
     fn unsupported_packer_is_structured() {
         let report = discover(&load_fixture());
@@ -1289,8 +1260,6 @@ mod tests {
         ));
     }
 
-    // --- Validator fails on an outcome that disagrees with the evidence. ----
-
     #[test]
     fn validator_fails_on_outcome_mismatch() {
         let mut fixture = load_fixture();
@@ -1305,8 +1274,6 @@ mod tests {
             FINDING_OUTCOME_MISMATCH
         ));
     }
-
-    // --- No raw key material ever reaches the report. -----------------------
 
     #[test]
     fn report_never_carries_raw_key_material() {
@@ -1351,7 +1318,6 @@ mod tests {
         assert!(!rendered.contains(&String::from_utf8_lossy(STUB_KEY_CORRECT).into_owned()));
     }
 
-    // --- Pure static-analysis surface stays module-private. -----------------
     // (Compile-time guarantee: `analyze_siglus_executable`,
     // `validate_candidate_against_gameexe`, and `StaticKeyCandidate` are not
     // `pub`, so pure Siglus parsing / patching cannot reach the helper. These

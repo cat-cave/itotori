@@ -1,13 +1,11 @@
-//! KAIFUU-068 — bounded MV/MZ encrypted-asset decrypt → replace → patch →
+//! bounded MV/MZ encrypted-asset decrypt → replace → patch →
 //! verify **slice** over SYNTHETIC encrypted image/audio fixtures.
-//!
 //! Where the kaifuu-core paths prove each leg in isolation
 //! ([`kaifuu_core::mv_mz_encrypted_image`] decrypt/re-encrypt,
 //! [`kaifuu_core::mv_mz_encrypted_audio`] decrypt/re-encrypt,
 //! [`kaifuu_core::mv_mz_encrypted_asset_replacement`] replace+verify), THIS node
 //! stitches them into one bounded, end-to-end slice and adds the two surfaces
 //! those paths do not carry:
-//!
 //! 1. **Encrypted-suffix routing.** RPG Maker ships encrypted assets under
 //!    engine-specific suffixes — image MV `.rpgmvp` / MZ `.png_`, audio MV
 //!    `.rpgmvo` (Ogg) / MZ `.ogg_`, audio MV `.rpgmvm` / MZ `.m4a_` (M4A). This
@@ -24,18 +22,14 @@
 //!    match the asset suffix's capability (e.g. an image blob patched over an
 //!    `.ogg_` audio asset), or an image-derived key source pointed at an audio
 //!    asset, is a TYPED [`MvMzSliceError::CapabilityDiff`].
-//!
 //! # The crypto (shared core, native Rust, NO shell-out)
-//!
 //! The XOR primitive, key type, decrypt, and re-encrypt are the single canonical
 //! [`kaifuu_core::mv_mz_asset_xor`] implementation; this slice never
 //! re-implements them. A 16-byte
 //! [`kaifuu_core::RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER`] is prepended and the first
 //! 16 media bytes are XOR-masked with the key. XOR is involutive, so a correct
 //! key round-trips byte-for-byte.
-//!
 //! # THE LINE (mechanical, not prose)
-//!
 //! - Raw key bytes live only inside [`kaifuu_core::MvMzAssetKey`] (redacting
 //!   `Debug`, zeroizing `Drop`). Reports carry secret-refs + sha256 commitments /
 //!   hashes / counts only — never the key, never the media bytes.
@@ -45,9 +39,7 @@
 //!   non-media-replacement entries fail BEFORE a consumable proof — each is a
 //!   TYPED [`MvMzSliceError`] surfaced as a structured diagnostic, never a panic
 //!   or silent pass.
-//!
 //! # Fixtures are synthetic + public
-//!
 //! Every byte is synthesised in-module from the public synthetic PNG/OGG media of
 //! the kaifuu-core paths plus a clearly-fake 16-byte test key. No retail media
 //! and no real keys are ever vendored; reports carry only hashes / counts /
@@ -76,8 +68,6 @@ pub const MV_MZ_SLICE_FIXTURE_ID: &str = "kaifuu-rpgmaker-mv-mz-encrypted-asset-
 
 pub const MV_MZ_SLICE_SUPPORT_BOUNDARY: &str = "Kaifuu RPG Maker MV/MZ encrypted-asset slice (KAIFUU-068) is in-process Rust over the shared RPGMV-header XOR-with-System.json-key scheme (image MV .rpgmvp / MZ .png_, audio MV .rpgmvo|.rpgmvm / MZ .ogg_|.m4a_); it never shells out. It parses the encrypted suffix to an image/audio capability, resolves the 16-byte key from a System.json encryptionKey or image-derived metadata, decrypts to the declared media, and either proves a byte-correct identity round-trip or applies + verifies a trivial replacement patch (decrypt(patched)==replacement, header exact, differs-from-original). A consumable verify proof is published only after the key resolves and every hash check passes; no-key, bad-key, wrong-key, unsupported-suffix, capability-diff, and non-media-replacement entries are rejected with typed diagnostics before any consumable proof. Raw key bytes are never logged, serialized, or returned — reports carry secret-refs + sha256 commitments only.";
 
-// --- Media capability --------------------------------------------------------
-
 /// The media capability an encrypted asset carries. RPG Maker's encrypted
 /// suffixes collapse to exactly two decrypt/verify capabilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -102,8 +92,7 @@ impl MediaCapability {
     /// assets are real M4A (`ftyp`), which the synthetic fixtures do not model;
     /// the suffix still routes to [`Self::Audio`], and a real M4A signature check
     /// would be added when M4A fixtures land.
-    ///
-    /// `pub(crate)` so the KAIFUU-059 media-surface layer reuses this single
+    /// `pub(crate)` so the media-surface layer reuses this single
     /// signature oracle (never re-implements it).
     pub(crate) fn signature_matches(self, bytes: &[u8]) -> bool {
         match self {
@@ -122,8 +111,6 @@ impl fmt::Display for MediaCapability {
         formatter.write_str(self.as_str())
     }
 }
-
-// --- Encrypted suffix routing ------------------------------------------------
 
 /// The RPG Maker MV/MZ encrypted-asset suffixes this slice profiles. Each maps to
 /// exactly one [`MediaCapability`]; a suffix outside this set is an
@@ -200,8 +187,6 @@ impl EncryptedAssetSuffix {
     }
 }
 
-// --- Key source --------------------------------------------------------------
-
 /// The known 16-byte PNG plaintext prefix an image-derived key recovery XORs
 /// against the encrypted image's first 16 body bytes. It is exactly the leading
 /// 16 bytes of the public synthetic PNG media (a fixed PNG signature + IHDR
@@ -250,8 +235,7 @@ impl MvMzKeySource {
     /// Resolve the 16-byte asset key. `encrypted` is the encrypted asset bytes
     /// (needed for image-derived recovery); `capability` is the asset suffix's
     /// capability (image-derived is image-only). Every failure is typed.
-    ///
-    /// `pub(crate)` so the KAIFUU-059 media-surface layer reuses this single key
+    /// `pub(crate)` so the media-surface layer reuses this single key
     /// resolution path (System.json hex / image-derived / none).
     pub(crate) fn resolve(
         &self,
@@ -337,8 +321,6 @@ fn recover_image_derived_key(
     }
     Ok(key)
 }
-
-// --- Typed slice error -------------------------------------------------------
 
 /// The typed failure vocabulary of the slice. Every input problem is one of
 /// these — never a panic, never a silent pass.
@@ -435,8 +417,6 @@ fn proof_hash(bytes: &[u8]) -> Result<ProofHash, MvMzSliceInternalError> {
     ProofHash::new(sha256_hash_bytes(bytes)).map_err(MvMzSliceInternalError)
 }
 
-// --- Slice outcome -----------------------------------------------------------
-
 /// The mechanical outcome of one slice op.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -471,8 +451,6 @@ impl MvMzSliceOutcome {
     }
 }
 
-// --- Slice op (input) --------------------------------------------------------
-
 /// A trivial replacement to patch in place of the decrypted asset.
 #[derive(Debug, Clone)]
 pub struct SliceReplacement {
@@ -500,8 +478,6 @@ pub struct MvMzSliceOp {
     pub replacement: Option<SliceReplacement>,
     pub expected: MvMzSliceOutcome,
 }
-
-// --- Report (output) ---------------------------------------------------------
 
 /// A structured diagnostic for a typed slice error.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -702,8 +678,6 @@ impl MvMzSliceReport {
             .map_err(|err| MvMzSliceInternalError(err.to_string()))
     }
 }
-
-// --- Processing --------------------------------------------------------------
 
 fn sanitize_file_name(name: &str) -> String {
     Path::new(name)
@@ -918,9 +892,7 @@ pub fn run_mv_mz_slice(
     })
 }
 
-// --- Synthetic fixture (in-module, public, NO retail bytes) ------------------
-
-/// The synthetic KAIFUU-068 spec-DAG node id.
+/// The synthetic spec-DAG node id.
 pub const MV_MZ_SLICE_SOURCE_NODE_ID: &str = "KAIFUU-068";
 
 /// The clearly-fake 16-byte fixture key. Its hex is the synthetic `System.json`
@@ -987,7 +959,7 @@ pub fn canonical_slice_fixture() -> Vec<MvMzSliceOp> {
             replacement: None,
             expected: MvMzSliceOutcome::DecryptedRoundTripped,
         },
-        // Audio decrypt + identity round-trip (MZ .ogg_ suffix).
+        // Audio decrypt + identity round-trip (MZ.ogg_ suffix).
         MvMzSliceOp {
             entry_id: "audio-round-trip".to_string(),
             asset_file_name: "bgm/theme.ogg_".to_string(),
@@ -1023,7 +995,7 @@ pub fn canonical_slice_fixture() -> Vec<MvMzSliceOp> {
             }),
             expected: MvMzSliceOutcome::Replaced,
         },
-        // Trivial replacement patch (audio, MV .rpgmvo suffix).
+        // Trivial replacement patch (audio, MV.rpgmvo suffix).
         MvMzSliceOp {
             entry_id: "audio-replace".to_string(),
             asset_file_name: "bgm/theme.rpgmvo".to_string(),
@@ -1121,8 +1093,6 @@ mod tests {
             .expect("slice run must not fault internally")
     }
 
-    // --- Suffix routing -----------------------------------------------------
-
     #[test]
     fn suffix_routes_every_profiled_extension_to_a_capability() {
         for (name, suffix, cap) in [
@@ -1180,8 +1150,6 @@ mod tests {
         ));
     }
 
-    // --- Key source ---------------------------------------------------------
-
     #[test]
     fn system_json_hex_key_decrypts_and_image_derived_recovers_the_same_key() {
         let report = report();
@@ -1223,8 +1191,6 @@ mod tests {
         assert_eq!(ok, SLICE_KEY_CORRECT);
     }
 
-    // --- The slice matrix is green + evidence-driven. -----------------------
-
     #[test]
     fn slice_matrix_passes_and_records_the_node() {
         let report = report();
@@ -1248,8 +1214,6 @@ mod tests {
             assert_eq!(entry.redaction_status, "redacted");
         }
     }
-
-    // --- Decrypt path: hash-based verify + byte-correct round-trip. ---------
 
     #[test]
     fn image_and_audio_decrypt_round_trip_with_matching_hashes() {
@@ -1282,8 +1246,6 @@ mod tests {
             assert_eq!(proof.key_bytes, RPGMAKER_ASSET_XOR_PREFIX_LEN as u32);
         }
     }
-
-    // --- Replacement patch path: apply + hash-based verify. -----------------
 
     #[test]
     fn replacement_patch_applies_and_verifies_for_image_and_audio() {
@@ -1318,8 +1280,6 @@ mod tests {
             );
         }
     }
-
-    // --- The four validation cases each produce a TYPED error. --------------
 
     #[test]
     fn no_key_bad_key_unsupported_suffix_and_capability_diff_are_typed() {
@@ -1377,8 +1337,6 @@ mod tests {
         }
     }
 
-    // --- The validator catches an author who lies about an outcome. ---------
-
     #[test]
     fn validator_fails_on_outcome_mismatch() {
         let mut ops = canonical_slice_fixture();
@@ -1394,8 +1352,6 @@ mod tests {
         // The evidence-derived outcome is still the truthful wrong-key.
         assert_eq!(entry.outcome, MvMzSliceOutcome::WrongKey);
     }
-
-    // --- No raw key material ever reaches the report. -----------------------
 
     #[test]
     fn report_never_carries_raw_key_material() {
@@ -1430,8 +1386,6 @@ mod tests {
         let parsed: MvMzSliceReport = serde_json::from_str(&json).expect("round trip");
         assert_eq!(parsed, report.redacted_for_report());
     }
-
-    // --- The crypto is the shared core (no re-implementation). --------------
 
     #[test]
     fn image_derived_recovery_recovers_the_exact_key_bytes() {

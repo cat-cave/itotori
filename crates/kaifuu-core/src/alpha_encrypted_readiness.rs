@@ -1,40 +1,32 @@
-//! KAIFUU-104 — Alpha public encrypted-readiness evidence generator.
-//!
-//! This module COMPOSES the KAIFUU-103 packed-engine readiness validator
+//! Alpha public encrypted-readiness evidence generator.
+//! This module COMPOSES the packed-engine readiness validator
 //! ([`crate::packed_engine_readiness`]) — it does NOT reimplement readiness
 //! logic. The generator reads a single *alpha-encrypted fixture directory*
 //! that holds two synthetic, public input families:
-//!
 //! 1. packed-engine readiness **profile fixtures** (`*.profile.json`, the exact
-//!    KAIFUU-103 [`PackedEngineReadinessProfile`] schema), and
+//!    [`PackedEngineReadinessProfile`] schema), and
 //! 2. synthetic **patch artifacts** (`*.patch.json`, [`AlphaEncryptedPatchArtifact`])
 //!    that pair a `profileId` with a hash-only patch-result reference.
-//!
-//! It runs [`validate_packed_engine_readiness_dir`] over the directory to
-//! obtain the KAIFUU-103 [`PackedReadinessValidationReport`], then joins each
-//! validated profile entry with its patch artifact to emit an
-//! [`AlphaEncryptedReadinessReport`] — readiness EVIDENCE, never a production
-//! patch-support claim.
-//!
+//!    It runs [`validate_packed_engine_readiness_dir`] over the directory to
+//!    obtain the [`PackedReadinessValidationReport`], then joins each
+//!    validated profile entry with its patch artifact to emit an
+//!    [`AlphaEncryptedReadinessReport`] — readiness EVIDENCE, never a production
+//!    patch-support claim.
 //! # The mechanical line (not prose)
-//!
 //! The profile-ready-vs-readiness-only posture is taken VERBATIM from the
-//! KAIFUU-103 validator's mechanically-derived
+//! validator's mechanically-derived
 //! [`PackedReadinessOutcome`]/[`PackedReadinessPosture`]; this layer never
 //! re-derives it. On top of that, the generator enforces three mechanical
 //! join rules, each a structured [`AlphaEncryptedFinding`], never prose:
-//!
 //! - a profile-ready entry whose effective outcome reaches `extract`/`patch`
 //!   MUST carry a patch-result reference (`patch_result_ref_missing` otherwise);
 //! - a readiness-only entry MUST NOT carry a patch-result reference
 //!   (`readiness_only_claims_patch` otherwise — this is the
 //!   "readiness overstated as production support" guard);
-//! - every KAIFUU-103 validation failure for a profile propagates as a blocking
+//! - every validation failure for a profile propagates as a blocking
 //!   `validation_failed` finding (the generator can never bless a profile the
 //!   validator rejected).
-//!
 //! # Evidence is synthetic, redacted, hash-only
-//!
 //! Inputs and outputs carry NO raw retail bytes, NO raw key material, NO
 //! decrypted scripts, NO helper dumps, and NO private paths: only synthetic
 //! profile/fixture/helper ids, local-scheme [`SecretRef`] key references, and
@@ -74,9 +66,7 @@ pub const ALPHA_ENCRYPTED_PATCH_ARTIFACT_GLOB: &str = "*.patch.json";
 /// readiness-evidence-not-production-support line.
 pub const ALPHA_ENCRYPTED_READINESS_SUPPORT_BOUNDARY: &str = "Alpha encrypted-readiness evidence composes the KAIFUU-103 packed-engine readiness validator output with synthetic packed-engine profile fixtures and synthetic patch artifacts. It is readiness EVIDENCE that a transform stack, key/helper gating, and patch-back surface are recognized — it is NOT a production patch-support claim. A readiness-only posture (helper-gated, missing key material, or media transform) never carries a patch result. Every input is synthetic and public; artifacts carry only ids, counts, and sha256 hashes — never key material, plaintext content, helper memory, or local paths.";
 
-// ---------------------------------------------------------------------------
 // Synthetic patch-artifact input
-// ---------------------------------------------------------------------------
 
 /// A synthetic, public patch artifact: a hash-only reference to a patch result
 /// produced for one readiness profile. Carries NO patched bytes and NO
@@ -90,7 +80,7 @@ pub struct AlphaEncryptedPatchArtifact {
     pub patch_result_id: String,
     /// The `profileId` of the readiness profile this patch result is for.
     pub profile_id: String,
-    /// The spec-DAG node id this artifact is authored for (`KAIFUU-104`).
+    /// The spec-DAG node id this artifact is authored for (``).
     pub source_node_id: String,
     /// Outcome of the synthetic patch run.
     pub status: OperationStatus,
@@ -102,9 +92,7 @@ pub struct AlphaEncryptedPatchArtifact {
     pub output_hash: ProofHash,
 }
 
-// ---------------------------------------------------------------------------
 // Findings
-// ---------------------------------------------------------------------------
 
 /// A structured generator finding — never prose, never silent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -145,9 +133,7 @@ fn finding(
     }
 }
 
-// ---------------------------------------------------------------------------
 // Report
-// ---------------------------------------------------------------------------
 
 /// The hash-only patch-result reference carried by a profile-ready entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -196,7 +182,7 @@ pub struct AlphaEncryptedReadinessEntry {
     /// Synthetic in-archive surface (asset) ids drawn from the profile content.
     pub surface_ids: Vec<String>,
     pub declared_capability: CapabilityLevel,
-    /// The KAIFUU-103 mechanically-derived outcome (taken verbatim).
+    /// The mechanically-derived outcome (taken verbatim).
     pub effective_outcome: PackedReadinessOutcome,
     pub posture: PackedReadinessPosture,
     pub key_status: LayeredAccessKeyMaterialStatus,
@@ -209,7 +195,7 @@ pub struct AlphaEncryptedReadinessEntry {
     pub helper_id: Option<String>,
     pub content_hash: ProofHash,
     pub content_entry_count: u64,
-    /// Whether the KAIFUU-103 validator passed this profile.
+    /// Whether the validator passed this profile.
     pub validation_status: OperationStatus,
     /// Hash-only patch-result reference (present only for patch-capable
     /// profile-ready entries).
@@ -260,7 +246,7 @@ impl AlphaEncryptedReadinessEntry {
     }
 }
 
-/// The mechanical proof that the KAIFUU-103 validation report was consumed: its
+/// The mechanical proof that the validation report was consumed: its
 /// status, posture counts, and a `sha256:` hash over its canonical
 /// serialization.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -283,14 +269,14 @@ pub struct AlphaEncryptedReadinessReport {
     pub source_node_id: String,
     pub support_boundary: String,
     pub status: OperationStatus,
-    /// Proof the KAIFUU-103 validator output was consumed (not prose).
+    /// Proof the validator output was consumed (not prose).
     pub consumed_validation: ConsumedValidationReport,
     pub profile_count: u64,
     pub profile_ready_count: u64,
     pub readiness_only_count: u64,
     pub patch_evidence_count: u64,
     pub entries: Vec<AlphaEncryptedReadinessEntry>,
-    /// Report-level findings (dangling patch artifacts, missing inputs, ...).
+    /// Report-level findings (dangling patch artifacts, missing inputs,...).
     pub findings: Vec<AlphaEncryptedFinding>,
     /// `sha256:` hash over the canonical serialization of the entries.
     pub report_hash: ProofHash,
@@ -412,9 +398,7 @@ impl AlphaEncryptedReadinessSummary {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Generator
-// ---------------------------------------------------------------------------
 
 /// True iff the effective outcome is a patch-capable profile-ready rung
 /// (`extract`/`patch`) that therefore REQUIRES a patch-result reference.
@@ -425,7 +409,7 @@ fn requires_patch_evidence(outcome: PackedReadinessOutcome) -> bool {
     )
 }
 
-/// Build one evidence entry by joining a KAIFUU-103 validator entry with its
+/// Build one evidence entry by joining a validator entry with its
 /// (optional) profile fixture and patch artifacts. Pure; every inconsistency is
 /// a structured finding.
 fn build_entry(
@@ -435,7 +419,7 @@ fn build_entry(
 ) -> AlphaEncryptedReadinessEntry {
     let mut findings: Vec<AlphaEncryptedFinding> = Vec::new();
 
-    // --- Propagate any KAIFUU-103 validation failure (never bless a rejected
+    // --- Propagate any validation failure (never bless a rejected
     // profile). ------------------------------------------------------------
     if validation_entry.status == OperationStatus::Failed {
         let codes = validation_entry
@@ -476,7 +460,6 @@ fn build_entry(
         Vec::new()
     };
 
-    // --- Key / helper metadata presence (the report MUST name them). -------
     if validation_entry.key_status == LayeredAccessKeyMaterialStatus::Resolved
         && validation_entry.key_ref.is_none()
     {
@@ -508,7 +491,6 @@ fn build_entry(
         ));
     }
 
-    // --- Patch-artifact join. ----------------------------------------------
     // A patch-capable profile-ready entry MUST carry exactly one patch result;
     // a readiness-only entry MUST NOT (overstating readiness as production
     // patch support is a hard error).
@@ -719,7 +701,7 @@ fn read_patch_artifacts(
 
 /// Read every readiness profile fixture (`*.profile.json`) under `dir`, keyed
 /// by `profileId`, for surface-id extraction. Malformed fixtures are ignored
-/// here — the KAIFUU-103 validator already records them as failed entries.
+/// here — the validator already records them as failed entries.
 fn read_profiles(dir: &Path) -> KaifuuResult<BTreeMap<String, PackedEngineReadinessProfile>> {
     let mut by_id = BTreeMap::new();
     for entry in std::fs::read_dir(dir)? {
@@ -737,13 +719,13 @@ fn read_profiles(dir: &Path) -> KaifuuResult<BTreeMap<String, PackedEngineReadin
 }
 
 /// Generate the alpha-encrypted readiness evidence report by COMPOSING the
-/// KAIFUU-103 validator output over `dir` with the synthetic patch artifacts in
+/// validator output over `dir` with the synthetic patch artifacts in
 /// the same directory. Never panics; every inconsistency is a structured
 /// finding. Returns `Err` only on an environmental I/O / hashing failure.
 pub fn generate_alpha_encrypted_readiness(
     dir: &Path,
 ) -> KaifuuResult<AlphaEncryptedReadinessReport> {
-    // 1. Consume KAIFUU-103's validator output (do not reimplement it).
+    // 1. Consume 's validator output (do not reimplement it).
     let validation = validate_packed_engine_readiness_dir(dir)?;
     let consumed_validation = consumed_validation(&validation)?;
 
@@ -856,7 +838,7 @@ mod tests {
                 .map(|e| (e.profile_id.clone(), e.findings.clone()))
                 .collect::<Vec<_>>(),
         );
-        // The KAIFUU-103 validation report was consumed (status + hash).
+        // The validation report was consumed (status + hash).
         assert_eq!(report.consumed_validation.status, OperationStatus::Passed);
         assert!(
             report
@@ -942,10 +924,8 @@ mod tests {
         }
     }
 
-    // --- Negative join rules (constructed entries; no fixture needed). ------
-
     fn base_validation_entry() -> PackedReadinessEntryReport {
-        // Reuse the KAIFUU-103 validator over a single real profile.
+        // Reuse the validator over a single real profile.
         let dir = fixtures_dir();
         let report = validate_packed_engine_readiness_dir(&dir).unwrap();
         report

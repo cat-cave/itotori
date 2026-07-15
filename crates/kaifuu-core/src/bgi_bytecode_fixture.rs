@@ -1,12 +1,11 @@
-//! KAIFUU-127 - BGI / Ethornell bytecode parser-surface fixtures.
-//!
-//! This slice records synthetic extensionless BGI scenario-bytecode profiles,
-//! separate from the KAIFUU-126 archive detector fixtures. It covers the two
-//! public parser shapes: the `BurikoCompiledScriptVer1.00\0` header variant
-//! and the no-header variant. The parser records code-size-relative
-//! Shift-JIS string references and proves length-preserving patch-back over
-//! those references; it does not claim opcode execution, archive parsing,
-//! encryption, compression, or relocated string storage.
+//! - BGI / Ethornell bytecode parser-surface fixtures.
+//!   This slice records synthetic extensionless BGI scenario-bytecode profiles,
+//!   separate from the archive detector fixtures. It covers the two
+//!   public parser shapes: the `BurikoCompiledScriptVer1.00\0` header variant
+//!   and the no-header variant. The parser records code-size-relative
+//!   Shift-JIS string references and proves length-preserving patch-back over
+//!   those references; it does not claim opcode execution, archive parsing,
+//!   encryption, compression, or relocated string storage.
 
 use std::path::Path;
 

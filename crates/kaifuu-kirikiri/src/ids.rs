@@ -1,5 +1,4 @@
 //! Deterministic identifier helpers.
-//!
 //! Uses the exact SHA-256 → UUID7-shaped construction shared by the RealLive
 //! and RPG Maker bridge producers (`kaifuu-reallive` / `kaifuu-rpgmaker`) so a
 //! KAG unit's `bridgeUnitId` is derived the same way as every other engine

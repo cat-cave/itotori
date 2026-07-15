@@ -1,13 +1,11 @@
-//! Generator for the KAIFUU-173 / KAIFUU-188 synthetic fixtures.
-//!
+//! Generator for the / synthetic fixtures.
 //! Run with `cargo run -p kaifuu-reallive --example regenerate_fixtures`
 //! from inside the nix devshell to refresh the committed bytes under
 //! `crates/kaifuu-reallive/tests/fixtures/`. The committed bytes are the
 //! source of truth for CI; this binary is a developer-facing
 //! regeneration tool only.
-//!
 //! All fixtures use the real RealLive 10,000-slot fixed-offset-table
-//! envelope (KAIFUU-188). The single populated scene sits at slot 1
+//! envelope. The single populated scene sits at slot 1
 //! (`reallive:scene-0001`), mirroring Sweetie HD's first-scene layout.
 
 use std::fs;
@@ -21,7 +19,6 @@ const SLOT: u16 = 1;
 
 /// Resolve this crate's manifest directory for locating the tracked fixtures
 /// tree this generator (re)writes.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so an example binary
 /// reused from a different (since-removed) worktree would target a dead path.
 /// `cargo run --example` sets `CARGO_MANIFEST_DIR` in the RUNTIME environment to
@@ -122,22 +119,20 @@ fn protected_spans_001() -> Vec<u8> {
 }
 
 fn bridge_inventory_001() -> Vec<u8> {
-    // KAIFUU-191 / adapter-unify: the scene bytecode is authored in the REAL
-    // post-KAIFUU-191 byte shape decoded by `parse_real_bytecode` (8-byte
+    // adapter-unify: the scene bytecode is authored in the REAL
+    // post- byte shape decoded by `parse_real_bytecode` (8-byte
     // `CommandElement` headers + inline Shift-JIS Textout runs + a
     // `module_sel` `{ … }` SelectElement block), the same shape
     // `kaifuu-cli::binary_patch_smoke::synthetic_scene_bytecode` uses.
-    //
     // Unified adapter path: `extract` and `patch` BOTH parse a `SceneHeader`,
     // AVG32-decompress the bytecode, and walk it through
     // `bridge::produce_bundle` (deterministic bridgeUnitIds). The slot payload
     // is therefore a real `SceneHeader` (0x1d0 bytes) followed by the
     // AVG32-LZSS-compressed bytecode — NOT the raw decompressed stream.
-    //
     // The scene exercises the two translatable alpha string surfaces the
     // `produce_bundle` walk emits:
     // - Textout (inline "Hello") → dialogue
-    // - Choice  (module_sel opcode 0, `{ "Yes" \n "No" \n }`) → choice_label
+    // - Choice (module_sel opcode 0, `{ "Yes" \n "No" \n }`) → choice_label
     // (SetSpeaker/TextDisplay/End are structural commands carried verbatim;
     // the speaker is embedded on the dialogue unit's speaker field, not a
     // separate surface.) The dialogue run cannot contain a structural-opener

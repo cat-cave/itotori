@@ -1,11 +1,10 @@
 //! `synthetic-fixture-author-feature-complete-archives` (P2) — RPG Maker MV/MZ.
-//!
 //! Authors a MINIMAL, feature-complete SYNTHETIC RPG Maker MV/MZ `www` tree
 //! (no retail bytes) that instantiates EVERY event-command `code` in the
 //! coverage manifest's `event_command_code` group EXACTLY ONCE, then drives it
 //! through the REAL [`extract_game_dir`] pipeline and asserts it extracts /
 //! classifies CLEAN — every manifest code is recognised by the real
-//! `classify()` (zero `UnknownCommandCode` findings) — exactly as the
+//! `classify` (zero `UnknownCommandCode` findings) — exactly as the
 //! LustMemory real-bytes lane does, orders of magnitude faster, with NO
 //! copyrighted bytes (all text is authored synthetic English).
 
@@ -16,7 +15,6 @@ use kaifuu_rpgmaker::{BridgeOpts, FindingKind, extract_game_dir};
 use serde_json::{Value, json};
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
 /// reused from a different (since-removed) worktree would point fixture reads at
 /// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the
@@ -149,7 +147,7 @@ fn synthetic_www_instantiates_every_event_command_code_clean() {
     let result = extract_game_dir(&tmp.path().join("www"), &opts()).expect("extraction succeeds");
 
     // Zero of the manifest codes may surface an UnknownCommandCode finding —
-    // every one is recognised by the real classify() (the no-silent-skip bar).
+    // every one is recognised by the real classify (the no-silent-skip bar).
     let unknown_codes: Vec<i64> = result
         .findings
         .iter()

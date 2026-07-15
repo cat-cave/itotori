@@ -1,5 +1,4 @@
 //! `synthetic-fixture-author-feature-complete-archives` (P2) — Siglus.
-//!
 //! The Siglus scene-bytecode opcode catalogue is a skeleton STUB: only the
 //! `Unknown` catch-all exists and [`parse_scene_bytecode`] returns a typed
 //! `not_implemented`. The coverage manifest reflects exactly that — a single
@@ -14,7 +13,6 @@ use kaifuu_siglus::{SiglusOpcode, parse_scene_bytecode};
 use serde_json::Value;
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
 /// reused from a different (since-removed) worktree would point fixture reads at
 /// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the

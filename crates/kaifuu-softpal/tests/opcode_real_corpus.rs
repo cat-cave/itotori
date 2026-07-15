@@ -1,13 +1,11 @@
 //! Real-bytes validation of the Softpal `SCRIPT.SRC` **full opcode catalog**
 //! against two owned titles, extracting `SCRIPT.SRC` from each `data.pac` via
 //! the crate's own PAC reader.
-//!
 //! `#[ignore]`d and env-gated: set `ITOTORI_SOFTPAL_RESEARCH_ROOT` to the
 //! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
 //! `--ignored`. **No raw copyrighted text/bytes live in this file** — only
 //! opcode/command counts, histograms, and the 0-unknown accounting, which the
 //! catalog must reproduce.
-//!
 //! PROOF BAR: the arity-driven walk is **exhaustive** — it types every command
 //! with **0 unknown** operator tokens, **0** truncated final command, and **0**
 //! trailing bytes (every byte of the token stream accounted for), on both

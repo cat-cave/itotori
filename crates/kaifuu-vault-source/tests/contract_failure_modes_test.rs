@@ -77,7 +77,7 @@ fn catalog_open_failed_when_catalog_db_is_a_directory() {
     // Note: with a directory at catalog.db, validate_vault_root will
     // succeed (catalog.db exists, just isn't a file) — but rusqlite
     // open will fail. The contract distinguishes these but
-    // validate_vault_root specifically checks `is_file()`, so we get
+    // validate_vault_root specifically checks `is_file`, so we get
     // VaultRootIncomplete with missing=catalog.db here. Either
     // VaultRootIncomplete or CatalogOpenFailed is valid for this
     // pathological setup.

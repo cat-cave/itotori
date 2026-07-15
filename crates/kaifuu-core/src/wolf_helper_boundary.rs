@@ -1,49 +1,39 @@
-//! KAIFUU-121 — Wolf RPG Editor key/protection helper BOUNDARY as a local-only
-//! [`HelperResult`] (the KAIFUU-085 helper-result schema).
-//!
-//! The KAIFUU-120 Wolf protection detector
+//! Wolf RPG Editor key/protection helper BOUNDARY as a local-only
+//! [`HelperResult`] (the helper-result schema).
+//! The Wolf protection detector
 //! ([`crate::wolf_protection_detector`]) classifies a `.wolf`/DXArchive-family
 //! container into a plain, protected, helper-required, or unknown protection
 //! profile. Two of those profiles are **keyRef-bound** — they name a concrete
 //! secret the archive is gated by:
-//!
 //! - [`WolfProtectionProfile::Protected`] — an encrypted DX archive gated by a
 //!   known/static archive key that is imported LOCALLY (no untrusted code runs).
 //! - [`WolfProtectionProfile::HelperRequired`] — a Wolf "Pro" per-game dynamic
 //!   key that a LOCAL dynamic-key helper must recover before extraction.
-//!
-//! This node represents the **helper BOUNDARY** for those keyRef-bound profiles:
-//! given a keyRef-bound Wolf protection profile, [`resolve_wolf_helper_boundary`]
-//! produces a LOCAL-ONLY [`HelperResult`] that carries the secret **REFS**
-//! ([`HelperResultSecretRef`] — requirement id + local-scheme [`SecretRef`],
-//! never the key bytes), the proof hashes, and a redacted diagnostic. It NEVER
-//! runs the helper and NEVER emits raw key material — the key is resolved by ref
-//! locally, mirroring the KAIFUU-072 XP3 crypt secret-ref discipline.
-//!
+//!   This node represents the **helper BOUNDARY** for those keyRef-bound profiles:
+//!   given a keyRef-bound Wolf protection profile, [`resolve_wolf_helper_boundary`]
+//!   produces a LOCAL-ONLY [`HelperResult`] that carries the secret **REFS**
+//!   ([`HelperResultSecretRef`] — requirement id + local-scheme [`SecretRef`],
+//!   never the key bytes), the proof hashes, and a redacted diagnostic. It NEVER
+//!   runs the helper and NEVER emits raw key material — the key is resolved by ref
+//!   locally, mirroring the XP3 crypt secret-ref discipline.
 //! # The mechanical line (computed, never asserted)
-//!
 //! [`derive_wolf_helper_boundary_outcome`] is the single source of truth. The
 //! outcome is a pure function of the boundary kind (static-key local import vs
 //! dynamic-key local helper) and whether the secret is locally available:
-//!
-//! - `StaticKeyLocalImport` + available   → `KeyResolved`  (`success`)
-//! - `StaticKeyLocalImport` + unavailable → `KeyMissing`   (`missing_key`)
-//! - `DynamicKeyLocalHelper` + available  → `HelperRequired` (resolvable, unrun)
+//! - `StaticKeyLocalImport` + available → `KeyResolved` (`success`)
+//! - `StaticKeyLocalImport` + unavailable → `KeyMissing` (`missing_key`)
+//! - `DynamicKeyLocalHelper` + available → `HelperRequired` (resolvable, unrun)
 //! - `DynamicKeyLocalHelper` + unavailable → `HelperUnavailable`
-//!
 //! # Engine-general (Wolf = data, no per-game branch)
-//!
 //! A [`WolfHelperBoundaryProfile`] is pure DATA: a boundary kind, a keyRef
 //! binding (requirement id + local-scheme secret ref + material kind), and a
 //! local-availability flag. The resolver has no per-game branch; every Wolf
 //! game is a data-driven profile.
-//!
 //! # Evidence is synthetic, redacted, ref-only
-//!
 //! Fixtures carry NO retail bytes and NO raw key material: only the local-scheme
 //! secret refs, stable requirement ids, and sha256 proof hashes. Every emitted
 //! [`HelperResult`] is funnelled through [`HelperResult::redacted_for_report`]
-//! and validated against the KAIFUU-085 schema via
+//! and validated against the schema via
 //! [`validate_helper_result_value`].
 
 use std::path::Path;
@@ -68,13 +58,11 @@ pub const WOLF_HELPER_BOUNDARY_REPORT_SCHEMA_VERSION: &str = "0.1.0";
 /// The support boundary surfaced in every Wolf helper-boundary report.
 pub const WOLF_HELPER_BOUNDARY_SUPPORT_BOUNDARY: &str = "The Wolf key/protection helper boundary turns a keyRef-bound Wolf protection profile (protected static-key or helper-required Wolf \"Pro\" per-game dynamic-key) into a LOCAL-ONLY KAIFUU-085 helper result. It resolves the key BY REF locally — carrying the secret-requirement ids, local-scheme secret refs, sha256 proof hashes, and a redacted diagnostic — and NEVER runs the helper, launches untrusted code, or emits raw key material. Plain and unknown protection profiles are not keyRef-bound and have no helper boundary.";
 
-// ---------------------------------------------------------------------------
 // The boundary kind (which keyRef-bound Wolf protection profile)
-// ---------------------------------------------------------------------------
 
 /// Which keyRef-bound Wolf protection profile this helper boundary serves. Each
-/// kind maps 1:1 to a KAIFUU-120 [`WolfProtectionProfile`] and fixes the
-/// local-only KAIFUU-085 helper path.
+/// kind maps 1:1 to a [`WolfProtectionProfile`] and fixes the
+/// local-only helper path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WolfHelperBoundaryKind {
@@ -95,7 +83,7 @@ impl WolfHelperBoundaryKind {
         }
     }
 
-    /// The KAIFUU-120 Wolf protection profile this boundary serves.
+    /// The Wolf protection profile this boundary serves.
     pub fn protection_profile(self) -> WolfProtectionProfile {
         match self {
             Self::StaticKeyLocalImport => WolfProtectionProfile::Protected,
@@ -103,7 +91,7 @@ impl WolfHelperBoundaryKind {
         }
     }
 
-    /// The KAIFUU-085 helper kind for this local-only boundary path.
+    /// The helper kind for this local-only boundary path.
     pub fn helper_kind(self) -> HelperKind {
         match self {
             Self::StaticKeyLocalImport => HelperKind::KnownKeyDatabaseImport,
@@ -111,7 +99,7 @@ impl WolfHelperBoundaryKind {
         }
     }
 
-    /// The KAIFUU-085 capability level for this local-only boundary path.
+    /// The capability level for this local-only boundary path.
     pub fn capability_level(self) -> HelperCapabilityLevel {
         match self {
             Self::StaticKeyLocalImport => HelperCapabilityLevel::LocalKeyImport,
@@ -119,7 +107,7 @@ impl WolfHelperBoundaryKind {
         }
     }
 
-    /// The KAIFUU-085 execution mode. Neither path runs at the boundary: the
+    /// The execution mode. Neither path runs at the boundary: the
     /// static import is `not_executed`; the dynamic helper resolves the
     /// `platform_helper` plan with `durationMs: 0` (never launched).
     pub fn execution_mode(self) -> HelperResultExecutionMode {
@@ -153,9 +141,7 @@ impl WolfHelperBoundaryKind {
     }
 }
 
-// ---------------------------------------------------------------------------
 // The boundary outcome (the mechanical classification)
-// ---------------------------------------------------------------------------
 
 /// The mechanically-derived helper-boundary outcome — the four local-only
 /// results this node distinguishes.
@@ -186,7 +172,7 @@ impl WolfHelperBoundaryOutcome {
         }
     }
 
-    /// The KAIFUU-085 diagnostic code for this outcome.
+    /// The diagnostic code for this outcome.
     pub fn diagnostic_code(self) -> HelperDiagnosticCode {
         match self {
             Self::KeyResolved => HelperDiagnosticCode::Success,
@@ -205,7 +191,6 @@ impl WolfHelperBoundaryOutcome {
 
 /// Classify a Wolf helper boundary into its local-only outcome. Total, pure,
 /// side-effect-free — the single source of truth exercised by the tests.
-///
 /// `locally_available` is interpreted per kind: for a static-key local import it
 /// is whether the key material exists in the local store; for a dynamic-key
 /// local helper it is whether the local helper platform is available.
@@ -229,9 +214,7 @@ pub fn derive_wolf_helper_boundary_outcome(
     }
 }
 
-// ---------------------------------------------------------------------------
 // The keyRef binding + the boundary profile (fixture input)
-// ---------------------------------------------------------------------------
 
 /// The keyRef binding a keyRef-bound Wolf protection profile carries: the stable
 /// requirement id, the local-scheme [`SecretRef`] the key is resolved by, and
@@ -274,15 +257,13 @@ pub struct WolfHelperBoundaryFixture {
     pub schema_version: String,
     /// Stable id for the fixture set (synthetic; no retail names/local paths).
     pub boundary_set_id: String,
-    /// The spec-DAG node id this fixture set is authored for (e.g. `KAIFUU-121`).
+    /// The spec-DAG node id this fixture set is authored for (e.g. ``).
     pub source_node_id: String,
     pub engine_family: String,
     pub profiles: Vec<WolfHelperBoundaryProfile>,
 }
 
-// ---------------------------------------------------------------------------
 // The generated report (per-profile local-only helper result)
-// ---------------------------------------------------------------------------
 
 /// One structured finding raised by the resolver (declared-vs-derived mismatch).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -305,7 +286,7 @@ impl WolfHelperBoundaryFinding {
 
 /// The generated per-profile helper-boundary report. Echoes the acceptance
 /// fields (profile id, boundary kind, protection profile, secret requirement
-/// ids, proof hashes) and carries the derived local-only KAIFUU-085
+/// ids, proof hashes) and carries the derived local-only
 /// [`HelperResult`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -321,7 +302,7 @@ pub struct WolfHelperBoundaryEntryReport {
     pub secret_requirement_ids: Vec<String>,
     /// The sha256 validation proofs carried by the local-only helper result.
     pub proof_hashes: Vec<KeyValidationProof>,
-    /// The local-only KAIFUU-085 helper result (refs + redacted diagnostics).
+    /// The local-only helper result (refs + redacted diagnostics).
     pub helper_result: HelperResult,
     pub status: OperationStatus,
     pub findings: Vec<WolfHelperBoundaryFinding>,
@@ -395,14 +376,12 @@ impl WolfHelperBoundaryReport {
     }
 }
 
-// ---------------------------------------------------------------------------
 // The resolver (the local-only helper-boundary builder)
-// ---------------------------------------------------------------------------
 
 const WOLF_HELPER_BOUNDARY_REDACTED_LOG_HASH: &str =
     "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 
-/// Build the local-only KAIFUU-085 [`HelperResult`] for a keyRef-bound Wolf
+/// Build the local-only [`HelperResult`] for a keyRef-bound Wolf
 /// helper-boundary profile. The key is resolved BY REF: the returned result
 /// carries the secret ref (requirement id + local-scheme ref) and — only when
 /// the key resolved — a validation proof hash. It never runs the helper and
@@ -495,7 +474,7 @@ pub fn resolve_wolf_helper_boundary(profile: &WolfHelperBoundaryProfile) -> Help
 }
 
 /// Resolve one profile into its full entry report, validating the derived
-/// helper result against the KAIFUU-085 schema and the declared expectation.
+/// helper result against the schema and the declared expectation.
 fn resolve_entry(
     profile: &WolfHelperBoundaryProfile,
     source_node_id: &str,
@@ -546,7 +525,7 @@ fn resolve_entry(
 
     let helper_result = resolve_wolf_helper_boundary(profile);
 
-    // THE conformance gate: the derived helper result must pass KAIFUU-085
+    // THE conformance gate: the derived helper result must pass
     // schema validation.
     let helper_value =
         serde_json::to_value(&helper_result).expect("helper result serializes to JSON");
@@ -588,7 +567,7 @@ fn resolve_entry(
 }
 
 /// Run the Wolf helper-boundary resolver over a fixture set. Every profile is
-/// resolved into a local-only KAIFUU-085 helper result mechanically; the
+/// resolved into a local-only helper result mechanically; the
 /// declared expectation is used only to raise findings. Never panics.
 pub fn run_wolf_helper_boundary(fixture: &WolfHelperBoundaryFixture) -> WolfHelperBoundaryReport {
     let mut entries = Vec::with_capacity(fixture.profiles.len());
@@ -644,8 +623,6 @@ mod tests {
         run_wolf_helper_boundary(&load())
     }
 
-    // --- The whole fixture set is green + records every acceptance field. ----
-
     #[test]
     fn boundary_fixture_set_passes_and_records_every_field() {
         let report = run();
@@ -678,8 +655,6 @@ mod tests {
         }
     }
 
-    // --- THE crux: each derived helper result conforms to KAIFUU-085. --------
-
     #[test]
     fn every_helper_result_conforms_to_kaifuu_085() {
         let report = run();
@@ -698,8 +673,6 @@ mod tests {
             );
         }
     }
-
-    // --- The four boundary outcomes are DISTINGUISHED. -----------------------
 
     #[test]
     fn the_four_outcomes_are_distinct_and_carry_the_right_shape() {
@@ -767,8 +740,6 @@ mod tests {
         );
     }
 
-    // --- Keys are refs only — no raw key bytes ever emitted (KAIFUU-072). ----
-
     #[test]
     fn keys_are_refs_only_and_report_is_redaction_clean() {
         let report = run();
@@ -805,8 +776,6 @@ mod tests {
         assert!(!json.contains("BEGIN"));
     }
 
-    // --- The mechanical classifier is total. --------------------------------
-
     #[test]
     fn classifier_is_total_over_kind_and_availability() {
         assert_eq!(
@@ -835,8 +804,6 @@ mod tests {
             WolfHelperBoundaryOutcome::HelperUnavailable
         );
     }
-
-    // --- The resolver catches a lying fixture. ------------------------------
 
     #[test]
     fn declared_outcome_mismatch_is_a_finding() {

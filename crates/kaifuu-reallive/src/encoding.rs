@@ -1,6 +1,5 @@
 //! Shift-JIS decode/encode plus RealLive control-byte slicing.
-//!
-//! Clean-room provenance (KAIFUU-174):
+//! Clean-room provenance
 //! - Shift-JIS conversion is performed by `encoding_rs`, the WHATWG-spec
 //!   implementation used elsewhere in the Rust ecosystem. No expression is
 //!   copied from rlvm or RLDEV.
@@ -9,8 +8,7 @@
 //!   documentation that catalogues every byte `< 0x20` as a control
 //!   directive (color/ruby/wait/etc.). The catalogue lives in
 //!   [`crate::protected_spans`].
-//!
-//! Surface:
+//!   Surface:
 //! - [`decode_shift_jis_slot`] — decodes a `&[u8]` slice as Shift-JIS,
 //!   returning the decoded `String`, a `had_replacement` flag, and per-
 //!   range diagnostics that flag bytes the decoder could not map.
@@ -102,7 +100,6 @@ impl std::error::Error for ShiftJisEncodeError {}
 pub const SHIFT_JIS_DECODE_FAILURE_CODE: &str = "kaifuu.reallive.shift_jis_decode_failure";
 
 /// Decode a Shift-JIS byte slice.
-///
 /// Control bytes (`< 0x20`) are decoded by `encoding_rs` to their
 /// equivalent C0 control characters; patch-back never re-encodes them
 /// (see [`slice_control_bytes`] for the splitting rule used at the
@@ -196,7 +193,6 @@ impl fmt::Debug for SliceSegment<'_> {
 }
 
 /// Split a byte slice into alternating text and control-byte segments.
-///
 /// The output preserves byte-for-byte coverage of the input: concatenating
 /// segments in order reproduces the input. Used by
 /// [`crate::protected_spans::detect_protected_spans`] and

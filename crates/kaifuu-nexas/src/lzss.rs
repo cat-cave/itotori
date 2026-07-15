@@ -1,14 +1,10 @@
 //! LZSS decoder for NeXAS `PAC\0` entries whose archive `pack_type` is
 //! [`crate::Compression::Lzss`].
-//!
 //! # Clean-room provenance
-//!
 //! Ported from GARbro's `ArcFormats/LzssStream.cs` (`LzssReader`), MIT-licensed,
 //! Copyright (C) 2014-2015 by morkt. Independent Rust reimplementation of the
 //! documented LZSS variant — no GARbro binary is bundled or invoked.
-//!
 //! # Format
-//!
 //! A classic ring-buffer LZSS: a `0x1000`-byte sliding window pre-filled with
 //! zeroes, write cursor starting at `0xFEE`. Each control byte carries eight
 //! flags consumed **LSB-first**; a set flag copies one literal byte, a clear
@@ -22,7 +18,6 @@ const FRAME_SIZE: usize = 0x1000;
 const FRAME_INIT_POS: usize = 0xFEE;
 
 /// Decode `packed` into at most `unpacked_size` bytes.
-///
 /// Matches GARbro's `LzssReader.Unpack`, which stops emitting once the output
 /// buffer (`unpacked_size` long) is full even if input remains. Never panics:
 /// a truncated back-reference simply ends decoding.

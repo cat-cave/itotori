@@ -1,11 +1,9 @@
-//! KAIFUU-143 — bounded RGSS3 / RPG Maker VX Ace extract→patch→rebuild→verify
+//! bounded RGSS3 / RPG Maker VX Ace extract→patch→rebuild→verify
 //! smoke.
-//!
 //! This module drives one bounded, end-to-end localization round-trip over the
 //! RGSS3 layered transform, on PUBLIC SYNTHETIC fixtures only. It *composes* the
-//! KAIFUU-055 [`crate::rgss3_profile`] primitives — it does not reimplement the
+//! [`crate::rgss3_profile`] primitives — it does not reimplement the
 //! container/codec/crypto:
-//!
 //! - the synthetic RGSSAD v3 archive is built by
 //!   [`crate::rgss3_profile::build_synthetic_rgss3a`] and decoded by
 //!   [`crate::rgss3_profile::decode_synthetic_rgss3a`] (container + XOR crypto);
@@ -14,9 +12,7 @@
 //!   (codec);
 //! - the layered-transform tokens + patch-back dependency constraints come from
 //!   the canonical [`crate::rgss3_profile::Rgss3LayeredTransformProfile`].
-//!
 //! # The bounded path
-//!
 //! 1. **EXTRACT** text-bearing data: decode the RGSSAD archive, then decode each
 //!    `.rvdata2` payload to its Marshal object graph and walk it for the Ruby
 //!    `String` leaves (the text-bearing data — dialogue / titles / speaker names).
@@ -32,9 +28,7 @@
 //!    patched round-trip carries the change and leaves every other entry
 //!    byte-identical, and the patched entry's Marshal object graph differs at
 //!    exactly the one localized path.
-//!
 //! # Text-bearing scope (honest scoping)
-//!
 //! "Text-bearing data" here is the set of Ruby `String` (`MarshalValue::ByteString`)
 //! LEAVES in a `.rvdata2` object graph — this is where VX Ace stores dialogue,
 //! titles, and system/term strings. Symbol tags and non-string scalars are NOT
@@ -43,13 +37,11 @@
 //! this bounded smoke's scope and is surfaced as a typed unsupported diagnostic
 //! (it needs the [`ScriptsZlibRecompressed`] dependency this smoke does not
 //! exercise), never silently dropped.
-//!
 //! Everything here runs on bytes this module itself synthesises from known
-//! values (see the KAIFUU-055 fidelity boundary): before a production adapter
+//! values (see the fidelity boundary): before a production adapter
 //! claims real-title extraction the RGSSAD constants must be validated against an
 //! oracle (GARbro / rlvm) on real bytes — that is the adapter's job, not this
 //! scaffold's.
-//!
 //! [`StringTableRewriteBoundsUpdated`]: crate::rgss3_profile::Rgss3PatchBackDependency::StringTableRewriteBoundsUpdated
 //! [`ArchiveOffsetsRecomputed`]: crate::rgss3_profile::Rgss3PatchBackDependency::ArchiveOffsetsRecomputed
 //! [`XorKeystreamReproduced`]: crate::rgss3_profile::Rgss3PatchBackDependency::XorKeystreamReproduced
@@ -86,12 +78,10 @@ const RVDATA2_EXTENSION: &str = ".rvdata2";
 /// Marshal string; out of this bounded smoke's scope.
 const SCRIPTS_MEMBER_NAME: &str = "Data/Scripts.rvdata2";
 
-// ===========================================================================
 // Marshal object-graph path — a structural, key-type-independent locator into a
 // decoded `.rvdata2` tree. Used both to *report* an extracted string's location
 // and to *navigate* to it for the in-place patch (no string parsing, no silent
 // drop).
-// ===========================================================================
 
 /// One navigation step into a decoded Marshal object graph.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -223,9 +213,7 @@ fn diff_into(
     }
 }
 
-// ===========================================================================
 // Extraction / rebuild
-// ===========================================================================
 
 /// A decoded RGSSAD entry's payload: either a text-bearing Marshal object graph
 /// or opaque bytes carried through byte-exact.
@@ -452,9 +440,7 @@ fn rebuild_rgss3(extraction: &Rgss3Extraction) -> Vec<u8> {
     build_synthetic_rgss3a(extraction.scheme, extraction.seed, &refs)
 }
 
-// ===========================================================================
 // Report types (the layered-transform metadata verification)
-// ===========================================================================
 
 fn proof_hash(bytes: &[u8]) -> KaifuuResult<ProofHash> {
     ProofHash::new(sha256_hash_bytes(bytes)).map_err(Into::into)
@@ -539,7 +525,7 @@ pub struct Rgss3LayerVerification {
     pub entry_count: u64,
     /// crypto=xor
     pub crypto_transform: String,
-    /// The rebuilt archive re-applies the XOR keystream (ciphertext != plaintext)
+    /// The rebuilt archive re-applies the XOR keystream (ciphertext!= plaintext)
     /// yet decrypts back to the intended payloads.
     pub keystream_reproduced: bool,
     /// codec=ruby_marshal
@@ -607,9 +593,7 @@ impl Rgss3SmokeReport {
     }
 }
 
-// ===========================================================================
 // Unsupported (negative) cases — explicit typed diagnostics
-// ===========================================================================
 
 /// The unsupported class a negative case exercises.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -661,9 +645,7 @@ impl Rgss3UnsupportedReport {
     }
 }
 
-// ===========================================================================
 // Synthetic fixture (public, in-module — no retail bytes)
-// ===========================================================================
 
 /// The seed of the canonical synthetic fixture archive.
 const FIXTURE_SEED: u32 = 0x1234_5678;
@@ -710,13 +692,10 @@ fn build_fixture_archive(scheme: Rgss3XorKeystreamScheme) -> Vec<u8> {
     build_synthetic_rgss3a(scheme, FIXTURE_SEED, &entries)
 }
 
-// ===========================================================================
 // The smoke driver
-// ===========================================================================
 
 /// Run the bounded RGSS3 extract→patch→rebuild→verify smoke on the in-module
 /// public synthetic fixture.
-///
 /// Returns `Err` only on an environmental failure (e.g. a hashing failure the
 /// report cannot represent). Extraction / patch / verification / unsupported
 /// outcomes are folded into the report's `status` and typed diagnostics.
@@ -725,7 +704,6 @@ pub fn generate_rgss3_smoke() -> KaifuuResult<Rgss3SmokeReport> {
     let scheme = profile.crypto_scheme;
     let mut findings = Vec::new();
 
-    // --- Fixture + EXTRACT ---------------------------------------------------
     let source = build_fixture_archive(scheme);
     let source_hash = proof_hash(&source)?;
     let extraction = extract_rgss3(scheme, &source)
@@ -751,7 +729,6 @@ pub fn generate_rgss3_smoke() -> KaifuuResult<Rgss3SmokeReport> {
         ));
     }
 
-    // --- IDENTITY round-trip (no change) -------------------------------------
     let identity_rebuilt = rebuild_rgss3(&extraction);
     let identity_byte_identical = identity_rebuilt == source;
     if !identity_byte_identical {
@@ -771,7 +748,6 @@ pub fn generate_rgss3_smoke() -> KaifuuResult<Rgss3SmokeReport> {
         rebuilt_bytes: identity_rebuilt.len() as u64,
     };
 
-    // --- PATCH one string (trivial, length-changing localization) ------------
     // Target the first text-bearing string of the System entry (its title).
     let (target_entry, target_path, old_text) = text_units_raw
         .iter()
@@ -787,10 +763,8 @@ pub fn generate_rgss3_smoke() -> KaifuuResult<Rgss3SmokeReport> {
         .localize(target_entry, &target_path, new_text)
         .map_err(|error| format!("trivial localization must apply: {error}"))?;
 
-    // --- REBUILD the patched archive -----------------------------------------
     let patched_rebuilt = rebuild_rgss3(&patched);
 
-    // --- VERIFY through the layered transform metadata -----------------------
     // Re-extract both archives and compare layer by layer.
     let source_entries = decode_synthetic_rgss3a(scheme, &source)
         .map_err(|error| format!("re-decode source: {error}"))?;
@@ -930,7 +904,6 @@ pub fn generate_rgss3_smoke() -> KaifuuResult<Rgss3SmokeReport> {
         dependencies_exercised,
     };
 
-    // --- Unsupported (negative) cases ----------------------------------------
     let unsupported = evaluate_unsupported_cases(scheme);
     for case in &unsupported {
         if !case.rejected_before_rebuild {
@@ -1004,8 +977,8 @@ fn evaluate_unsupported_cases(scheme: Rgss3XorKeystreamScheme) -> Vec<Rgss3Unsup
     cases.push(report);
 
     // 2. Unsupported Marshal type: a `.rvdata2` payload using a type tag outside
-    //    the bounded subset (`c` = class), which the codec rejects (no silent
-    //    drop of the entry's text).
+    // the bounded subset (`c` = class), which the codec rejects (no silent
+    // drop of the entry's text).
     let bad_marshal = vec![0x04u8, 0x08, b'c'];
     let archive = build_synthetic_rgss3a(scheme, 7, &[("Data/System.rvdata2", &bad_marshal)]);
     let report = match extract_rgss3(scheme, &archive) {
@@ -1122,8 +1095,6 @@ fn finding(
 mod tests {
     use super::*;
 
-    // --- Deliverable 2: the bounded extract→patch→rebuild→verify path --------
-
     #[test]
     fn smoke_passes_and_verifies_all_layers() {
         let report = generate_rgss3_smoke().expect("smoke runs");
@@ -1160,8 +1131,6 @@ mod tests {
         );
     }
 
-    // --- Crux: identity byte-preserving round-trip ---------------------------
-
     #[test]
     fn identity_round_trip_is_byte_preserving() {
         let scheme = Rgss3XorKeystreamScheme::rgss3();
@@ -1180,8 +1149,6 @@ mod tests {
             report.identity.rebuilt_hash.as_str()
         );
     }
-
-    // --- Crux: trivial change applied + everything else byte-identical -------
 
     #[test]
     fn trivial_change_applied_and_isolated() {
@@ -1220,8 +1187,6 @@ mod tests {
         assert_eq!(src[1].payload, pat[1].payload, "opaque entry unchanged");
         assert_ne!(src[0].payload, pat[0].payload, "patched entry changed");
     }
-
-    // --- Deliverable 3: unsupported cases are explicit + typed ---------------
 
     #[test]
     fn unsupported_cases_are_typed_and_rejected() {
@@ -1295,8 +1260,6 @@ mod tests {
         assert!(matches!(error, Rgss3PatchError::NotATextLeaf { .. }));
     }
 
-    // --- Report hygiene ------------------------------------------------------
-
     #[test]
     fn report_stable_json_redacts_and_serializes() {
         let report = generate_rgss3_smoke().expect("smoke runs");
@@ -1308,8 +1271,6 @@ mod tests {
         let back: Rgss3SmokeReport = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back.status, report.status);
     }
-
-    // --- Marshal path navigation unit tests ----------------------------------
 
     #[test]
     fn marshal_path_locator_is_stable() {

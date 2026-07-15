@@ -1,11 +1,9 @@
-//! KAIFUU-022 — pure Siglus extraction + patching adapter round-trip proofs.
-//!
+//! pure Siglus extraction + patching adapter round-trip proofs.
 //! Drives the pure adapter over TWO profiled synthetic "games" (distinct keys +
 //! scene ids), proving: extract, identity byte-identical round-trip, translated
 //! round-trip (in-scope correct + out-of-scope byte-identical), FS patch+verify
 //! with reject-before-write, reject-before-write on unsupported/protected
 //! variants + key-proof mismatch, and reject-on-secret on seeded leak classes.
-//!
 //! Honest scope: the profiled format is the narrow constant-key-XOR / UTF-16LE /
 //! uncompressed-within-profile container, NOT real Siglus Scene.pck/Gameexe.dat.
 //! No real Siglus retail bytes exist in the vault/scratch (see the capability

@@ -1,5 +1,4 @@
 //! Stable identifier helpers shared by every RPG Maker extraction surface.
-//!
 //! The bridge producer and the focused JSON slices intentionally use the same
 //! SHA-256-to-UUID7-shaped construction. Keeping it here prevents a surface
 //! from silently drifting its identity scheme while retaining each caller's
@@ -8,7 +7,6 @@
 use sha2::{Digest, Sha256};
 
 /// Produce a deterministic UUID7-shaped identifier from a namespace and key.
-///
 /// This is an identifier shape, rather than a timestamp-bearing UUIDv7: the
 /// first 16 SHA-256 bytes provide deterministic identity, then the UUID
 /// version and variant bits are set so bridge-contract validation accepts it.

@@ -1,6 +1,5 @@
-//! KAIFUU-054 — CLI command-contract smoke for the KiriKiri XP3
+//! CLI command-contract smoke for the KiriKiri XP3
 //! capability-profile generator and validator.
-//!
 //! Spawns `kaifuu xp3 capability-profile` against the committed synthetic
 //! manifest and asserts the generated report is evidence-driven: only the
 //! plain XP3 entry is `claimed`, every encrypted / helper-required /
@@ -21,7 +20,6 @@ fn kaifuu_cli_binary() -> PathBuf {
 }
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
 /// reused from a different (since-removed) worktree would point fixture reads at
 /// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the
@@ -83,7 +81,7 @@ fn capability_profile_is_generated_from_evidence_and_passes() {
     assert_eq!(plain["capabilityTuple"]["patchCapability"], "patch_back");
     assert_eq!(plain["archiveProfile"]["entryCount"], 3);
 
-    // Plaintext .ks is the null-container special case, not the baseline.
+    // Plaintext.ks is the null-container special case, not the baseline.
     let ks = entry(&report, "plaintext-ks-null-container");
     assert_eq!(ks["capabilityTuple"]["supportTier"], "null_container");
 

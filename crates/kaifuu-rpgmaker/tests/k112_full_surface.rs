@@ -1,9 +1,7 @@
-//! KAIFUU-112 — MV/MZ JSON full-surface golden integration.
-//!
+//! MV/MZ JSON full-surface golden integration.
 //! Drives the full-surface integration against a committed **synthetic public
 //! golden** MV/MZ project tree (`tests/fixtures/k112/www/…`; MV/MZ-shaped,
-//! authored English, no retail bytes) and proves the KAIFUU-112 acceptance:
-//!
+//! authored English, no retail bytes) and proves the acceptance
 //! 1. Extraction covers ALL SIX declared surfaces — maps, common-events,
 //!    database, system, terms, and the plugin-profile — on the golden tree.
 //! 2. A TRIVIAL patch round-trips through every declared JSON surface
@@ -27,7 +25,6 @@ use kaifuu_rpgmaker::{
 };
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked at COMPILE time, so a test binary
 /// reused from a different (since-removed) worktree would point fixture reads at
 /// a dead path (`Os NotFound`). `cargo test` sets `CARGO_MANIFEST_DIR` in the
@@ -140,9 +137,7 @@ fn stage_www_with_media(dest: &Path) -> String {
     media_rel.to_string()
 }
 
-// ---------------------------------------------------------------------------
 // 1. Full-surface extraction covers all six surfaces
-// ---------------------------------------------------------------------------
 
 #[test]
 fn extraction_covers_all_six_surfaces() {
@@ -197,9 +192,7 @@ fn extraction_covers_all_six_surfaces() {
     assert_eq!(extraction.coverage, again.coverage);
 }
 
-// ---------------------------------------------------------------------------
 // 1b. The extraction manifest is deterministic + retail-text-free
-// ---------------------------------------------------------------------------
 
 #[test]
 fn extraction_manifest_is_deterministic_and_covers_all_surfaces() {
@@ -244,9 +237,7 @@ fn extraction_manifest_is_deterministic_and_covers_all_surfaces() {
     }
 }
 
-// ---------------------------------------------------------------------------
 // 2. Trivial patch round-trips through every surface; media untouched
-// ---------------------------------------------------------------------------
 
 #[test]
 fn trivial_patch_round_trips_all_surfaces_with_media_untouched() {
@@ -359,9 +350,7 @@ fn trivial_patch_round_trips_all_surfaces_with_media_untouched() {
     assert_eq!(parsed, manifest);
 }
 
-// ---------------------------------------------------------------------------
 // 3. Unsupported plugin-owned text → profile + surface diagnostic
-// ---------------------------------------------------------------------------
 
 #[test]
 fn unsupported_plugin_text_reports_profile_and_surface_diagnostic() {
@@ -414,9 +403,7 @@ fn unsupported_plugin_text_reports_profile_and_surface_diagnostic() {
     }
 }
 
-// ---------------------------------------------------------------------------
 // 4. Capability tuple limited to MV/MZ JSON text + plugin-profile diagnostics
-// ---------------------------------------------------------------------------
 
 #[test]
 fn capability_tuple_is_honest_and_limited() {
@@ -465,9 +452,7 @@ fn capability_tuple_is_honest_and_limited() {
     assert_eq!(&parsed, tuple);
 }
 
-// ---------------------------------------------------------------------------
 // Real-bytes validation (honest scope note)
-// ---------------------------------------------------------------------------
 
 /// Descend (bounded BFS) from the staged corpus root to the RPG Maker `www`
 /// directory (the one that holds `data/`).

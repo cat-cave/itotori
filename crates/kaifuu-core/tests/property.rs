@@ -1,8 +1,6 @@
 //! UNIV-011 — proptest property tests for the highest-risk kaifuu-core patch
 //! logic: patch compatibility and protected-span preservation.
-//!
 //! # Determinism (fixed PUBLIC seeds + bounded case counts)
-//!
 //! Every property below drives proptest through a `TestRunner` seeded with a
 //! FIXED public ChaCha seed and a BOUNDED case count, both documented as
 //! threshold constants in [`kaifuu_core::contracts::proptest_thresholds`].
@@ -10,14 +8,11 @@
 //! shrinks from the same committed seed rather than a per-run random one, and
 //! `failure_persistence` is disabled so there is no hidden `.proptest-regressions`
 //! side channel — the seed in `contracts.rs` is the single source of truth.
-//!
-//!   * protected-span preservation:
-//!     seed `PROTECTED_SPAN_PRESERVATION_SEED`, `PROTECTED_SPAN_PRESERVATION_CASES` cases.
-//!   * patch compatibility:
-//!     seed `PATCH_COMPATIBILITY_SEED`, `PATCH_COMPATIBILITY_CASES` cases.
-//!
+//! * protected-span preservation:
+//!   seed `PROTECTED_SPAN_PRESERVATION_SEED`, `PROTECTED_SPAN_PRESERVATION_CASES` cases.
+//! * patch compatibility:
+//!   seed `PATCH_COMPATIBILITY_SEED`, `PATCH_COMPATIBILITY_CASES` cases.
 //! # Actionable diagnostics
-//!
 //! Each `prop_assert*` carries a message that names the invariant under test
 //! and the offending generated input, so a failing case reports WHICH property
 //! broke and on WHAT input (proptest additionally prints the minimal shrunk
@@ -123,12 +118,11 @@ fn build_slot_and_mappings(
 
 /// Property (protected-span preservation): a fixed-width slot's preflight
 /// PRESERVES every protected span iff a matching mapping is present.
-///
-///   * With the complete, correct mapping set the preflight passes with NO
-///     protected-span-mutation diagnostic (preservation holds).
-///   * Dropping ANY single mapping is ALWAYS caught: preflight fails with a
-///     protected-span-mutation diagnostic that identifies the dropped token
-///     by safe content metadata (no surviving mutation).
+/// * With the complete, correct mapping set the preflight passes with NO
+///   protected-span-mutation diagnostic (preservation holds).
+/// * Dropping ANY single mapping is ALWAYS caught: preflight fails with a
+///   protected-span-mutation diagnostic that identifies the dropped token
+///   by safe content metadata (no surviving mutation).
 #[test]
 fn property_protected_span_preservation_holds_and_detects_drop() {
     let mut runner = seeded_runner(

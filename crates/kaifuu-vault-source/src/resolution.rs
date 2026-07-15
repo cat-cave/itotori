@@ -1,11 +1,7 @@
 //! Resolve a release id into one or more on-disk artifacts, addressed BY-ID.
-//!
 //! The on-disk path is the content-addressed *by-id* store:
-//!
 //! ```text
 //! <vault-root>/artifacts/by-id/<canonical_id>/<canonical_id>.7z
-//! ```
-//!
 //! `canonical_id` is the catalog's STABLE identity for an artifact
 //! (`artifacts.canonical_id`); the path is reconstructed from it and
 //! cross-checked against the catalog's `artifacts.vault_path`. The legacy
@@ -141,7 +137,6 @@ pub fn resolve_release(
 
 /// Construct the on-disk path for an artifact addressed by `canonical_id`, per
 /// `<vault-root>/artifacts/by-id/<canonical_id>/<canonical_id>.7z`.
-///
 /// The `canonical_id` is validated as a single safe path segment before use
 /// (no separators, no `..`, no NUL, non-empty), so a corrupt
 /// `artifacts.canonical_id` surfaces a typed
@@ -228,7 +223,7 @@ fn load_release_artifact_rows(
     // v3 links an artifact to its release primarily via the direct
     // `artifacts.release_id` column (that artifact IS the release's primary
     // content, role `primary`); the `release_artifacts` junction carries the
-    // supplementary roles (patch / translation / bundle_member / ...). The v1
+    // supplementary roles (patch / translation / bundle_member /...). The v1
     // synthetic fixture leaves `artifacts.release_id` NULL and uses only the
     // junction. We union both and dedupe per artifact, keeping the
     // strongest-precedence role.

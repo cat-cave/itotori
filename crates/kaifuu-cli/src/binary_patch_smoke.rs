@@ -1,25 +1,22 @@
-//! KAIFUU-011 — Binary patcher composed smoke command.
-//!
+//! Binary patcher composed smoke command.
 //! Composes the three patch-back slices end-to-end in one synchronous
 //! flow:
-//!
-//! 1. KAIFUU-211 — `kaifuu_reallive::apply_translated_bundle` (the
+//! 1. — `kaifuu_reallive::apply_translated_bundle` (the
 //!    canonical `bundle_driven` patchback) consumes a translated v0.2
 //!    BridgeBundle over a synthetic real-shape SEEN.TXT envelope and
 //!    produces the patched byte buffer. The legacy length-preserving
 //!    slot-edit surface has been deleted (no-legacy-compat); the
 //!    smoke exercises the same path the alpha `patch --engine reallive`
 //!    command uses.
-//! 2. KAIFUU-084 — `kaifuu_core::patch_transaction::PatchTransaction`
+//! 2. — `kaifuu_core::patch_transaction::PatchTransaction`
 //!    drives preflight → stage → verify → promote and emits the v0.2
 //!    PatchResult shape.
-//! 3. KAIFUU-010 — the emitted JSON is validated through
+//! 3. — the emitted JSON is validated through
 //!    `validate_patch_result_v02` on the Rust side; the TS-side
 //!    validator (`packages/localization-bridge-schema`) consumes the
 //!    same artifact.
-//!
-//! The composition is one synchronous function with no I/O outside the
-//! caller-supplied `--output` directory.
+//!    The composition is one synchronous function with no I/O outside the
+//!    caller-supplied `--output` directory.
 
 use std::fs;
 use std::io::Write;
@@ -44,8 +41,7 @@ use kaifuu_reallive::{
 use serde_json::{Value, json};
 
 /// Test-seam failure injection mode.
-///
-/// This is a TEST/DEBUG affordance (KAIFUU-187): it lets a caller inject
+/// This is a TEST/DEBUG affordance: it lets a caller inject
 /// artificial preflight/verify failures to exercise the rollback paths. It
 /// MUST NOT be reachable from a shipped release binary, so the whole seam is
 /// gated behind `cfg(any(debug_assertions, feature = "failure-injection"))`.
@@ -89,7 +85,7 @@ pub struct BinaryPatchSmokeConfig<'a> {
     /// unit via the canonical `bundle_driven` patchback.
     pub fixture_dir: Option<&'a Path>,
     pub output_dir: &'a Path,
-    /// Test/debug-only failure-injection selector (KAIFUU-187). Gated behind
+    /// Test/debug-only failure-injection selector. Gated behind
     /// `cfg(any(debug_assertions, feature = "failure-injection"))` so it is
     /// absent from a release `--no-default-features` build.
     #[cfg(any(debug_assertions, feature = "failure-injection"))]
@@ -97,7 +93,7 @@ pub struct BinaryPatchSmokeConfig<'a> {
     pub run_id: &'a str,
 }
 
-/// Exit-code categorization. `Ok(())` => exit 0; `Err(StatusFailed)` =>
+/// Exit-code categorization. `Ok` => exit 0; `Err(StatusFailed)` =>
 /// exit 1 (v0.2 failed but smoke completed and wrote
 /// `patch-result.json`); `Err(StatusAborted)` => exit 2 (smoke could
 /// not reach the v0.2 contract emission).
@@ -131,7 +127,7 @@ const SYNTHETIC_DIALOGUE_SOURCE_UNIT_KEY: &str = "reallive:scene-0001#0000";
 /// scene's decompressed length — and (because the AVG32 literal encoder's
 /// output size depends only on its input size) the recompressed blob and
 /// the whole archive stay byte-length-identical. That length-stability is
-/// what lets the composed KAIFUU-084 `PatchTransaction` identity
+/// what lets the composed `PatchTransaction` identity
 /// relocation invariant (`expected_payload_len == source length`) hold.
 /// The leading `0x82` is a Shift-JIS lead byte, so the patched bytes still
 /// re-parse as a Textout run.
@@ -148,23 +144,22 @@ const SYNTHETIC_TARGET_TEXT: &str = "うえ";
 const SYNTHETIC_GAME_ID: &str = "kaifuu-reallive-synthetic";
 
 /// Build the synthetic scene's **decompressed** bytecode: the real
-/// post-KAIFUU-191 opener-byte shape decoded by
+/// post- opener-byte shape decoded by
 /// `kaifuu_reallive::parse_scene`, exercising every alpha string role
 /// through real 8-byte `CommandElement` headers (plus, for the Choice
 /// role, the `module_sel` `SelectElement` `{ … }` block framing):
 /// - Meta prologue (MetaLine / MetaEntrypoint / MetaKidoku).
-/// - `SetSpeaker`   — module_msg (id 3) opcode 3 → `CharacterTextDisplay`.
-/// - `Textout`      — inline Shift-JIS run `"あい"` (the editable Dialogue
+/// - `SetSpeaker` — module_msg (id 3) opcode 3 → `CharacterTextDisplay`.
+/// - `Textout` — inline Shift-JIS run `"あい"` (the editable Dialogue
 ///   unit at occurrence 0).
-/// - `TextDisplay`  — module_msg (id 3) opcode 10 → `TextDisplay`.
-/// - `Choice`       — module_sel (module_type 0, id 2) opcode 0 (`select_w`),
+/// - `TextDisplay` — module_msg (id 3) opcode 10 → `TextDisplay`.
+/// - `Choice` — module_sel (module_type 0, id 2) opcode 0 (`select_w`),
 ///   decoded by `decode_select` as a `{ "あ" \n "い" \n }` select-block (NOT a
 ///   flat `(...)` arg list): the `{`/`}` braces frame two Shift-JIS option
 ///   runs, each closed by a `\n`+i16 line marker.
 /// - scene terminator — module_sys (id 4) opcode 17 → `End`.
-///
-/// The whole body decodes with **0 unknown opcodes**; no retail bytecode
-/// or text is copied — every byte is authored from the documented shape.
+///   The whole body decodes with **0 unknown opcodes**; no retail bytecode
+///   or text is copied — every byte is authored from the documented shape.
 pub fn synthetic_scene_bytecode() -> Vec<u8> {
     // An 8-byte real `CommandElement` header (rlvm `bytecode.h:CommandElement`
     // — research anchor only): `0x23`, module_type, module_id,
@@ -198,7 +193,7 @@ pub fn synthetic_scene_bytecode() -> Vec<u8> {
     // Textout: inline Shift-JIS dialogue run "あい" (82 A0 82 A2). This is
     // the single editable Dialogue unit the bundle translates.
     scene.extend_from_slice(&[0x82, 0xA0, 0x82, 0xA2]);
-    // TextDisplay: module_msg opcode 10 (in 1..=200, != 3) (argc 0).
+    // TextDisplay: module_msg opcode 10 (in 1..=200,!= 3) (argc 0).
     scene.extend_from_slice(&command_header(MODULE_TYPE_KEPAGO, MODULE_MSG, 10, 0));
     // Choice: module_sel (module_type 0, id 2) opcode 0 (`select_w`), decoded
     // by `decode_select` as a `{ "あ" \n "い" \n }` block. The 8-byte header is
@@ -245,21 +240,20 @@ fn synthetic_scene_blob() -> Vec<u8> {
 }
 
 /// Build a deterministic synthetic SEEN.TXT envelope that is structurally
-/// faithful to real RealLive bytes (KAIFUU FIX-1 + KAIFUU-211 framing).
-///
-/// Envelope: the real 10,000-slot fixed-offset directory (KAIFUU-188) —
+/// faithful to real RealLive bytes (KAIFUU FIX-1 + framing).
+/// Envelope: the real 10,000-slot fixed-offset directory
 /// 80,000 bytes of `(u32_le offset, u32_le length)` pairs at file offset
 /// 0. One scene is populated at slot 1 (`reallive:scene-0001`); its blob
-/// (a real 0x1d0-byte scene header + AVG32-compressed bytecode) sits at
-/// file offset `0x0001_3880` (= 80,000, immediately after the directory),
-/// mirroring a real RealLive archive's first-scene layout. Slot 0 stays
-/// zeroed (reserved) so the envelope parser exercises its skip path.
+///    (a real 0x1d0-byte scene header + AVG32-compressed bytecode) sits at
+///    file offset `0x0001_3880` (= 80,000, immediately after the directory),
+///    mirroring a real RealLive archive's first-scene layout. Slot 0 stays
+///    zeroed (reserved) so the envelope parser exercises its skip path.
 pub fn build_synthetic_seen_txt() -> Vec<u8> {
     let blob = synthetic_scene_blob();
     let directory_byte_len = kaifuu_reallive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize;
     let payload_offset = directory_byte_len as u32;
     let mut archive = vec![0u8; directory_byte_len + blob.len()];
-    // Slot 1: (offset = 0x0001_3880, size = blob.len()). Slot N lives at
+    // Slot 1: (offset = 0x0001_3880, size = blob.len). Slot N lives at
     // directory byte offset N × 8; slot 0 stays zeroed (reserved).
     let slot1 = 8usize;
     archive[slot1..slot1 + 4].copy_from_slice(&payload_offset.to_le_bytes());
@@ -511,13 +505,13 @@ const COMMAND: &str = "patch.write_string_slot";
 const REQUIRED_TRANSFORMS: &[&str] = &["identity"];
 
 /// Reallive-flavoured capabilities. Uses the
-/// `LayeredAccessCapabilityContract::plaintext_identity()` factory
+/// `LayeredAccessCapabilityContract::plaintext_identity` factory
 /// because the smoke fixture is a plaintext archive; the patch
 /// transform is identity (length-preserving). Engine ports adopting
 /// the harness later will supply their own capability matrix; this
 /// fixture is the structural defense for the smoke.
 fn reallive_capabilities() -> AdapterCapabilities {
-    // KAIFUU-053: the binary-patch smoke is a plaintext-identity fixture;
+    // the binary-patch smoke is a plaintext-identity fixture
     // it carries no per-Capability reports, so the explicitly-derived
     // matrix declares every rung Unsupported. The registry-side gate
     // must never bubble this smoke up to Identify/Extract/Patch.
@@ -529,18 +523,14 @@ fn reallive_capabilities() -> AdapterCapabilities {
 /// Run the composed smoke. Top-level entry point; the CLI dispatch arm
 /// in `main.rs` calls this with parsed config.
 pub fn run_binary_patch_smoke(config: BinaryPatchSmokeConfig<'_>) -> BinarySmokeOutcome {
-    // ---------------------------------------------------------------
     // Step 0: prepare the output directory.
-    // ---------------------------------------------------------------
     if let Err(error) = fs::create_dir_all(config.output_dir) {
         return BinarySmokeOutcome::Aborted(format!("failed to create output directory: {error}"));
     }
     let output_seen_path = config.output_dir.join("SEEN.TXT");
     let patch_result_path = config.output_dir.join("patch-result.json");
 
-    // ---------------------------------------------------------------
     // Step 1: read or synthesize SEEN.TXT.
-    // ---------------------------------------------------------------
     let archive_bytes = match config.fixture_dir {
         // A caller that supplied `--fixture` asked to exercise REAL bytes.
         // If the fixture cannot be read, propagate the error as Aborted —
@@ -563,10 +553,8 @@ pub fn run_binary_patch_smoke(config: BinaryPatchSmokeConfig<'_>) -> BinarySmoke
         None => build_synthetic_seen_txt(),
     };
 
-    // ---------------------------------------------------------------
     // Step 2: parse the archive and run the canonical bundle_driven
     // patchback (`apply_translated_bundle`).
-    // ---------------------------------------------------------------
     if let Err(diag) = parse_archive(&archive_bytes) {
         return BinarySmokeOutcome::Aborted(format!("synthetic archive failed to parse: {diag:?}"));
     }
@@ -625,10 +613,8 @@ pub fn run_binary_patch_smoke(config: BinaryPatchSmokeConfig<'_>) -> BinarySmoke
         ));
     }
 
-    // ---------------------------------------------------------------
     // Step 3: apply --inject-failure that does NOT change the patchback
     // input shape.
-    // ---------------------------------------------------------------
     #[cfg(any(debug_assertions, feature = "failure-injection"))]
     let payload_to_stage = match config.inject_failure {
         InjectFailure::VerifyHashMismatch => {
@@ -657,9 +643,7 @@ pub fn run_binary_patch_smoke(config: BinaryPatchSmokeConfig<'_>) -> BinarySmoke
     let expected_payload_len = patched_bytes.len() as u64;
     let capabilities = reallive_capabilities();
 
-    // ---------------------------------------------------------------
     // Step 4: drive the PatchTransaction state machine.
-    // ---------------------------------------------------------------
     let txn_config = PatchTransactionConfig {
         adapter_id: ADAPTER_ID,
         patch_export_id: PATCH_EXPORT_ID,
@@ -690,9 +674,7 @@ pub fn run_binary_patch_smoke(config: BinaryPatchSmokeConfig<'_>) -> BinarySmoke
     let final_state = transaction.state();
     let outcome: PatchTransactionOutcome = transaction.into_outcome();
 
-    // ---------------------------------------------------------------
     // Step 5: emit PatchResult v0.2.
-    // ---------------------------------------------------------------
     let result_value = outcome.patch_result_v02.clone();
     if let Err(err) = write_json(&patch_result_path, &result_value) {
         return BinarySmokeOutcome::Aborted(format!("failed to write patch-result.json: {err}"));
@@ -940,7 +922,7 @@ mod tests {
     }
 
     /// FIX-1 acceptance: the synthetic scene's decompressed bytecode parses
-    /// through the CURRENT (post-KAIFUU-191) parser with **0 unknown
+    /// through the CURRENT (post-) parser with **0 unknown
     /// opcodes** and exercises the four target roles — Textout, TextDisplay,
     /// SetSpeaker (`CharacterTextDisplay`), and Choice. This is the
     /// non-tautological guard: it asserts real parser-shape facts, not just

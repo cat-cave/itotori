@@ -1,19 +1,16 @@
-//! KAIFUU-058 - profiled Wolf encrypted archive extract + patch.
-//!
-//! This module composes the existing Wolf pieces into a data-driven profiled
-//! archive/protection-key workflow:
-//!
-//! - container + crypto: KAIFUU-073 [`crate::wolf_encrypted_smoke`]
+//! - profiled Wolf encrypted archive extract + patch.
+//!   This module composes the existing Wolf pieces into a data-driven profiled
+//!   archive/protection-key workflow:
+//! - container + crypto: [`crate::wolf_encrypted_smoke`]
 //!   pack/decrypt using [`crate::wolf_encrypted_smoke::WolfEncryptedArchiveKey`]
 //!   (zeroize-on-drop, `Debug` redacted);
-//! - text surface: KAIFUU-012 [`crate::wolf_adapter`] Shift-JIS text-table
+//! - text surface: [`crate::wolf_adapter`] Shift-JIS text-table
 //!   codec and patch coordinates; and
 //! - key/helper evidence: a concrete [`SecretRef`] and, for helper-gated
-//!   profiles, a KAIFUU-085 [`crate::HelperResult`] bound to that EXACT ref.
-//!
-//! A claimed profile that cannot extract + patch is a compatibility BUG:
-//! [`WolfProfiledProductionError::ClaimedProfileFailed`]. Unclaimed profiles are
-//! explicit out-of-scope rows. All fixtures are synthetic.
+//!   profiles, a [`crate::HelperResult`] bound to that EXACT ref.
+//!   A claimed profile that cannot extract + patch is a compatibility BUG:
+//!   [`WolfProfiledProductionError::ClaimedProfileFailed`]. Unclaimed profiles are
+//!   explicit out-of-scope rows. All fixtures are synthetic.
 
 use std::fmt;
 
@@ -191,7 +188,6 @@ impl WolfProfiledProductionVariant {
 }
 
 /// Build a resolver from `(secret_ref, fixture label)` entries.
-///
 /// Raw fixture material is first confined in shared zeroize-on-drop holders,
 /// then the Wolf resolver binds refs to those holders. The resolver's
 /// crate-visible construction path never accepts raw bytes.
@@ -247,7 +243,7 @@ impl fmt::Debug for WolfProfiledProductionRegistry {
 impl WolfProfiledProductionRegistry {
     /// True iff any raw key material held by this registry's module-private
     /// resolvers appears verbatim in `haystack`. Backs the runtime no-leak guard
-    /// for downstream composers (KAIFUU-145 smoke) without ever handing the raw
+    /// for downstream composers (smoke) without ever handing the raw
     /// bytes out — the check stays inside the owning resolver boundary.
     pub fn archive_keys_leak_into(&self, haystack: &[u8]) -> bool {
         self.archive_keys.any_key_appears_in(haystack)
@@ -1099,7 +1095,7 @@ pub mod synthetic {
 
     /// Test seam: return the registry with its resolved-keys resolver rebuilt
     /// with a WRONG label for the static variant's ref, so the composed extract
-    /// stage fails as a loud KAIFUU-058 compatibility bug. Used by the KAIFUU-145
+    /// stage fails as a loud compatibility bug. Used by the
     /// smoke fail-loud test; the raw bytes still stay inside the module-private
     /// resolver.
     pub fn production_registry_with_wrong_resolved_key(

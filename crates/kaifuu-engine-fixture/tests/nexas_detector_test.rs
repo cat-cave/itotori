@@ -1,11 +1,9 @@
 //! Synthetic NeXAS-vs-Softpal detector discrimination proof.
-//!
 //! The `.pac` extension is shared by two unrelated engines whose container
 //! magics differ only in their 4th byte: NeXAS `"PAC\0"` (`50 41 43 00`) and
 //! Softpal `"PAC "` (`50 41 43 20`). This test builds tiny synthetic game
 //! directories (no copyrighted bytes — just container headers + well-known
 //! file names) and proves, both per-adapter and through the registry, that:
-//!
 //! * a NeXAS `"PAC\0"` layout detects as `kaifuu.nexas` and NOT as
 //!   `kaifuu.softpal`, and
 //! * a Softpal `"PAC "` / Pal.dll layout detects as `kaifuu.softpal` and NOT as

@@ -1,23 +1,20 @@
-//! KAIFUU-210 — Real Sweetie HD scene bytecode → v0.2 BridgeBundle
+//! Real Sweetie HD scene bytecode → v0.2 BridgeBundle
 //! producer.
-//!
 //! Walks a [`Vec<RealLiveOpcode>`] (from [`parse_real_bytecode`]) into a
 //! [`kaifuu_core::BridgeBundleV02`] keyed against the v0.2 schema:
-//!
 //! - Each [`RealLiveOpcode::Textout`] / [`RealLiveOpcode::TextDisplay`] /
 //!   [`RealLiveOpcode::CharacterTextDisplay`] yields one `dialogue` unit.
 //! - Each choice in a [`RealLiveOpcode::Choice`] yields one `choice_label`
 //!   unit.
 //! - Per-unit protected spans are computed from the **surrounding**
 //!   control bytes that the opcode walker saw before the text body:
-//!     * `MetaKidoku` markers → `parsedName = "reallive.kidoku"`.
-//!     * Inline name-token bytes (Shift-JIS bracket-enclosed speaker
-//!       prefix) → `parsedName = "reallive.name_token"`.
-//!     * Choice-marker bytes (`0x30..0x34`) → `parsedName = "reallive.choice_marker"`.
-//!     * Font-tone bytes (`#FONT_*` Shift-JIS tag run) →
-//!       `parsedName = "reallive.font_tone"`.
-//!     * Asset-ref tags (`#FACE`, `#GANBMP`) → `parsedName = "reallive.asset_ref"`.
-//!
+//! * `MetaKidoku` markers → `parsedName = "reallive.kidoku"`.
+//! * Inline name-token bytes (Shift-JIS bracket-enclosed speaker
+//!   prefix) → `parsedName = "reallive.name_token"`.
+//! * Choice-marker bytes (`0x30..0x34`) → `parsedName = "reallive.choice_marker"`.
+//! * Font-tone bytes (`#FONT_*` Shift-JIS tag run) →
+//!   `parsedName = "reallive.font_tone"`.
+//! * Asset-ref tags (`#FACE`, `#GANBMP`) → `parsedName = "reallive.asset_ref"`.
 //!   The control bytes are surfaced as inline `<reallive.kidoku N>`-style
 //!   markers prepended to the Shift-JIS-decoded text body, so the v0.2
 //!   schema's "span byte range must match sourceText" invariant holds.
@@ -31,15 +28,14 @@
 //!   payload as a `z<NNNN>` archive id.
 //! - Provenance: each unit's `sourceLocation.range` is anchored in the
 //!   **decompressed bytecode stream** — the same space
-//!   [`parse_real_bytecode`] and the KAIFUU-211 patchback re-walk
+//!   [`parse_real_bytecode`] and the patchback re-walk
 //!   operate in ("caller owns decompression"). The owning scene is
 //!   identified by its scene id (`containerKey` / `sourceUnitKey`),
 //!   never by adding a decompressed cursor to a compressed file offset:
 //!   that earlier mixing pushed any unit whose decompressed offset
 //!   exceeded its scene's compressed `byte_len` into a *later* scene.
-//!
-//! Empty scene → typed [`BridgeProduceError::EmptyScene`] (no silent
-//! `Ok(empty bundle)`).
+//!   Empty scene → typed [`BridgeProduceError::EmptyScene`] (no silent
+//!   `Ok(empty bundle)`).
 
 use std::fmt;
 
@@ -58,7 +54,6 @@ use crate::opcode::{
 };
 
 /// Caller-supplied knobs for [`produce_bundle`].
-///
 /// All fields are required; there are no silent defaults that would
 /// hide a mis-specified call site.
 #[derive(Debug, Clone)]
@@ -169,7 +164,6 @@ impl From<BridgeContractValidationError> for BridgeProduceError {
 }
 
 /// Output of [`produce_bundle`].
-///
 /// `bundle` is the typed [`BridgeBundleV02`] returned by the v0.2
 /// validator; `json` is the raw `serde_json::Value` payload the
 /// validator accepted. Both are returned because [`BridgeBundleV02`]
@@ -195,7 +189,6 @@ impl fmt::Debug for ProducedBundle {
 }
 
 /// Walk a scene's decompressed bytecode into a v0.2 BridgeBundle.
-///
 /// `scene_id` is the 1-based scene index (matches the SEEN.TXT slot
 /// index); `scene_bytes` is the raw scene blob (header + compressed
 /// bytecode) the archive layer handed us; `decompressed_bytecode` is the
@@ -236,7 +229,6 @@ pub fn produce_bundle(
 
 /// Walk all decoded scenes from one SEEN.TXT archive into one v0.2
 /// BridgeBundle.
-///
 /// The top-level source bundle hash/revision is the whole `Seen.txt`, while
 /// each scene remains a distinct script asset and every unit keeps its
 /// canonical scene-scoped key (`reallive:scene-NNNN#OOOO`). A scene that
@@ -294,9 +286,7 @@ pub fn produce_whole_seen_bundle(
     Ok(ProducedBundle { bundle, json })
 }
 
-// ---------------------------------------------------------------------
 // Unit collection
-// ---------------------------------------------------------------------
 
 #[derive(Clone)]
 struct ProtoUnit {
@@ -549,14 +539,11 @@ fn collect_units(
     }
 
     // Resolve speakers through NAMAE.
-    //
     // Pass 1: per-unit scan — every dialogue unit's decoded text is
     // checked for an inline NAMAE display-name occurrence. When the
     // walker has already pinned a raw_speaker from a `【...】`
     // name-token bracket, normalise it through the NAMAE table.
-    //
     // Pass 2 (best-effort fallback): when the per-unit scan finds no
-    // match for any unit AND the NAMAE table is populated, attribute
     // the first dialogue unit to the first NAMAE display name. This
     // surfaces NAMAE resolution as `parser_unknown` carrying
     // `rawSpeakerText` — the v0.2 schema's documented shape for
@@ -675,7 +662,6 @@ fn extract_name_token_spans(decoded: &str, prefix_offset: u64) -> (Option<String
     // `#NAMAE` lookup key). The `「話者」` corner brackets are the DIALOGUE
     // quote, NOT a name token — matching them here misattributed every
     // quote-only narration line to a speaker, so that fallback is dropped.
-    //
     // PROVENANCE (2nd-corpus calibration,
     // `reallive-bridge-second-corpus-protected-span-calibration`): the inline
     // `【】` speaker bracket is a TITLE / ERA-CALIBRATED convention, NOT
@@ -711,7 +697,6 @@ fn extract_name_token_spans(decoded: &str, prefix_offset: u64) -> (Option<String
 fn extract_asset_ref_spans(decoded: &str, prefix_offset: u64) -> Vec<ProtoSpan> {
     // `#FACE(...)` and `#GANBMP(...)` inline asset-ref tags. Match the
     // tag name and any immediately-following `(...)` arg group.
-    //
     // PROVENANCE (2nd-corpus calibration): TITLE-CALIBRATED, speculative
     // Sweetie-HD vocabulary. These exact tag literals emit ZERO spans on BOTH
     // real corpora (they do not fire even on Sweetie HD's real bytes, and
@@ -746,7 +731,6 @@ fn extract_asset_ref_spans(decoded: &str, prefix_offset: u64) -> Vec<ProtoSpan> 
 fn extract_font_tone_spans(decoded: &str, prefix_offset: u64) -> Vec<ProtoSpan> {
     // Font-tone tags such as `#FONT_BIG` or `#COLOR(123)` — keep the
     // scan narrow to the documented Sweetie HD vocabulary.
-    //
     // PROVENANCE (2nd-corpus calibration): TITLE-CALIBRATED Sweetie-HD
     // vocabulary. These exact tag literals emit ZERO spans on BOTH real corpora
     // (Sweetie HD and Kanon). Keying on an exact literal, they cannot mis-fire
@@ -783,7 +767,6 @@ fn extract_choice_marker_spans(
 ) -> Vec<ProtoSpan> {
     // Choice markers are control bytes `0x30..0x34` per spec — when
     // present they survive Shift-JIS decode as ASCII digits `'0'..'4'`.
-    //
     // PROVENANCE (2nd-corpus calibration): TITLE-CALIBRATED heuristic (not an
     // RLDEV-documented marker). Emits ZERO spans on BOTH real corpora — real
     // RealLive selection is carried by `module_sel` Choice opcodes, not inline
@@ -879,9 +862,7 @@ fn color_table_rgb(index: i32, gameexe_inventory: &GameexeInventoryReport) -> Op
     Some([clamp(r), clamp(g), clamp(b)])
 }
 
-// ---------------------------------------------------------------------
 // JSON bundle assembly
-// ---------------------------------------------------------------------
 
 struct SceneBundleParts<'a> {
     scene_id: u16,
@@ -1319,9 +1300,7 @@ fn build_unit_json(
     }))
 }
 
-// ---------------------------------------------------------------------
 // Deterministic identifiers
-// ---------------------------------------------------------------------
 
 fn sha256_canonical(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
@@ -1336,7 +1315,6 @@ fn sha256_canonical(bytes: &[u8]) -> String {
 }
 
 /// Produce a deterministic UUID7-shaped string from `(namespace, role)`.
-///
 /// UUID7's structural constraints (`version=7` at byte 14,
 /// `variant ∈ {8,9,a,b}` at byte 19) are satisfied by truncating a
 /// SHA-256 digest of `namespace || ':' || role` and overlaying the
@@ -1495,7 +1473,6 @@ mod tests {
         // The empty option must NOT consume an occurrence_index, so every
         // later unit keeps the same occurrence the patchback re-walk
         // (collect_text_unit_positions) assigns.
-        //
         // COMMAND header (8 bytes): 0x23, module_type=0, module_id=SEL(2),
         // opcode=1 (select), argc, overload, reserved; then the
         // SelectElement `{ … }` block. The middle option is an empty entry
@@ -1687,7 +1664,6 @@ mod tests {
         // `{ … }` block here consumes 18 bytes (8-byte header + `{` + "A" +
         // `\n`+line + "B" + `\n`+line + `}`), so the trailing dialogue must
         // anchor at 2 (first Textout) + 18 = 20.
-        //
         // Bytecode: Textout "ハ" (2 bytes) | select{ "A", "B" } (18 bytes)
         // | Textout "ニ" (occurrence 3) | MetaLine terminator.
         let mut bytecode: Vec<u8> = Vec::new();

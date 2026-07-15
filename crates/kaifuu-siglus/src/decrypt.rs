@@ -1,19 +1,17 @@
 //! Siglus payload decryption — **skeleton** (siglus-05; real key recovery
 //! is siglus-04, real strip is siglus-06).
-//!
 //! Siglus applies two layers before LZSS compression:
-//!  1. a **constant 256-byte XOR table** applied byte-periodically, and
-//!  2. a **per-game 16-byte second-layer key** recovered from the packed
-//!     `SiglusEngine` / `game.exe` (the in-process static-key discovery
-//!     seam already lives at `kaifuu_core::siglus_static_key`; siglus-04
-//!     grows it to recover the real key from the packed exe).
-//!
-//! This module owns the table-strip transform. Skeleton status: the
-//! 256-byte table is not vendored here (it is a per-build datum recovered
-//! against real bytes in siglus-06), and [`apply_xor_table`] returns
-//! [`SiglusDecryptError::NotImplemented`]. Raw key material is never
-//! logged, serialized, or returned — [`SiglusSecondLayerKey`] is an
-//! opaque newtype carrying only a structured secret-ref, never bytes.
+//! 1. a **constant 256-byte XOR table** applied byte-periodically, and
+//! 2. a **per-game 16-byte second-layer key** recovered from the packed
+//!    `SiglusEngine` / `game.exe` (the in-process static-key discovery
+//!    seam already lives at `kaifuu_core::siglus_static_key`; siglus-04
+//!    grows it to recover the real key from the packed exe).
+//!    This module owns the table-strip transform. Skeleton status: the
+//!    256-byte table is not vendored here (it is a per-build datum recovered
+//!    against real bytes in siglus-06), and [`apply_xor_table`] returns
+//!    [`SiglusDecryptError::NotImplemented`]. Raw key material is never
+//!    logged, serialized, or returned — [`SiglusSecondLayerKey`] is an
+//!    opaque newtype carrying only a structured secret-ref, never bytes.
 
 use thiserror::Error;
 
@@ -24,7 +22,6 @@ pub const SIGLUS_XOR_TABLE_LEN: usize = 256;
 pub const SIGLUS_SECOND_LAYER_KEY_BYTE_LEN: usize = 16;
 
 /// Opaque handle to a recovered per-game second-layer key.
-///
 /// Honest-by-construction: this newtype carries ONLY a structured
 /// secret-ref string (the same posture as
 /// `kaifuu_core::siglus_static_key`), never raw key bytes. The skeleton
@@ -66,7 +63,6 @@ pub enum SiglusDecryptError {
 
 /// Strip the constant 256-byte XOR table (and, when supplied, the
 /// per-game second-layer key) off an encrypted Siglus payload.
-///
 /// Skeleton: always returns [`SiglusDecryptError::NotImplemented`]. The
 /// real implementation (siglus-06) recovers the table against real bytes
 /// and applies it byte-periodically; the second-layer key comes from

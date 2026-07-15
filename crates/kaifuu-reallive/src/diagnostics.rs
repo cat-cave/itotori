@@ -1,9 +1,8 @@
-//! Semantic diagnostic codes for the KAIFUU-173 parser.
-//!
+//! Semantic diagnostic codes for the parser.
 //! Diagnostics are a parser-local namespace (`kaifuu.reallive.*`) so the
 //! parser can be called from multiple sites with different error-routing
 //! needs. The mapping to `kaifuu_core::SemanticErrorCode` is documented
-//! below and exists as `pub const` strings so KAIFUU-174 (the adapter
+//! below and exists as `pub const` strings so (the adapter
 //! that will call this crate) can hard-code the contract.
 
 use kaifuu_core::{RedactedContentSummary, SemanticErrorCode};
@@ -124,7 +123,7 @@ impl std::fmt::Display for ParseDiagnosticCode {
     }
 }
 
-/// Mapping rule used by the (future) KAIFUU-174 text-inventory adapter to
+/// Mapping rule used by the (future) text-inventory adapter to
 /// route parser diagnostics into the `kaifuu_core::SemanticErrorCode`
 /// namespace at the adapter boundary. Recoverable diagnostics return
 /// `None` (they surface in the inventory output, not the adapter error

@@ -1,5 +1,4 @@
 //! Bundle-driven `Scene.pck` patch-back — **skeleton** (siglus-05).
-//!
 //! Consumes a translated v0.2 BridgeBundle and re-emits the `Scene.pck`
 //! archive byte-correctly. Skeleton status:
 //! [`apply_translated_bundle`] returns [`PatchbackError::NotImplemented`];
@@ -65,7 +64,6 @@ pub struct TranslatedBundleV02 {
 impl TranslatedBundleV02 {
     /// Resolve a translated v0.2 bundle JSON value into Siglus patch-back
     /// targets.
-    ///
     /// Skeleton: always returns [`PatchbackError::NotImplemented`]. The
     /// real resolver maps each bundle unit's `patchRef` to a
     /// `(scene, unit)` target; it does not fabricate an empty target set.
@@ -97,7 +95,6 @@ pub enum PatchbackError {
 
 /// Apply a translated v0.2 bundle to an original `Scene.pck`, returning
 /// the re-emitted archive bytes.
-///
 /// Skeleton: always returns [`PatchbackError::NotImplemented`]. The real
 /// implementation re-walks each edited scene's decompiled bytecode,
 /// splices translated unit bytes, re-compresses with

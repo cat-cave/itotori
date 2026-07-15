@@ -1,17 +1,14 @@
-//! KAIFUU-110 — MV/MZ database + `System.json` terms extract & trivial patch.
-//!
-//! The database / System-terms analogue of the KAIFUU-109 map / common-event
-//! slice ([`crate::map_common_event`]). It consumes the KAIFUU-108 fixture
+//! MV/MZ database + `System.json` terms extract & trivial patch.
+//! The database / System-terms analogue of the map / common-event
+//! slice ([`crate::map_common_event`]). It consumes the fixture
 //! profile's `Database`, `System`, and `Terms` surfaces
-//! (`MvMzFixtureProfile` consumers `KAIFUU-110`/`KAIFUU-111`; surface globs
+//! (`MvMzFixtureProfile` consumers ``/``; surface globs
 //! `www/data/{Actors,Classes,Items,Weapons,Armors,Skills,Enemies,States,Troops}.json`
 //! and `www/data/System.json`). It emits **stable database/term units** and
 //! writes a **byte-preserving** patch back into the same JSON, reusing the
 //! crate's proven byte-surgical splice and stale-source gate.
-//!
 //! # Declared translatable string fields (schema-enumerated, never a blind
 //! all-strings sweep)
-//!
 //! Every field below is a DECLARED player-facing string field of the real
 //! MV/MZ database schema; developer `note` fields, numeric ids, icon/price
 //! numbers, switch/element ids and every other non-text field are left
@@ -19,7 +16,6 @@
 //! MZ database/term string-field schema is identical — no MV-vs-MZ divergence
 //! in this surface set (the MV/MZ speaker difference lives in the 101 command
 //! surface, which is [`crate::map_common_event`], not here).
-//!
 //! - **`Actors.json`** — `name`, `nickname`, `profile`.
 //! - **`Classes.json`** — `name`.
 //! - **`Items.json` / `Weapons.json` / `Armors.json`** — `name`,
@@ -31,24 +27,20 @@
 //!   onset/persist/removal/action battle lines).
 //! - **`Troops.json`** — `name` (the troop label) plus its **battle-event
 //!   messages**: `Show Text` (401) and `Show Scrolling Text` (405) lines in
-//!   `pages[].list[]`.
+//!   `pages.list`.
 //! - **`System.json`** — `gameTitle`, `currencyUnit`, the
 //!   `equipTypes`/`skillTypes`/`weaponTypes`/`armorTypes`/`elements` type
 //!   lists, and `terms.{basic,params,commands,messages}`.
-//!
-//! # Stable unit fields (KAIFUU-110 acceptance)
-//!
+//! # Stable unit fields (acceptance)
 //! Every [`StableDatabaseUnit`] carries `source_file`, the container
 //! (database entry **id** + array **index**, or the System **section**), the
 //! **field key**, the **text role**, and the **fixture-profile id**
 //! ([`FIXTURE_PROFILE_ID`]). Its stable `rpgmaker:<file>#<json-pointer>`
 //! [`StableDatabaseUnit::source_unit_key`] and deterministic
 //! [`StableDatabaseUnit::bridge_unit_id`] (UUID7-shaped) make re-extraction
-//! and patchback target the same surface — the same scheme the KAIFUU-109
+//! and patchback target the same surface — the same scheme the
 //! slice uses.
-//!
 //! # Byte-preserving patch
-//!
 //! [`patch_file`] reuses the crate's byte-surgical splice
 //! ([`crate::patchback::patch_file_bytes`]): only the located string literal
 //! for each declared unit is replaced; every other byte (structure, key
@@ -56,9 +48,7 @@
 //! preserved verbatim. An untranslated patch (`target == source`) is a
 //! byte-identical no-op, and the stale-source hash gate rejects a patch
 //! whose on-disk literal drifted since extraction.
-//!
 //! # Semantic diagnostics before any write
-//!
 //! Extraction records a structural, no-retail-text [`DatabaseDiagnostic`] for
 //! a malformed container (a database file whose top level is not an array, a
 //! System type-list / terms field of the wrong shape), a declared field
@@ -79,14 +69,12 @@ use crate::codes::{CodeClass, classify};
 use crate::ids::deterministic_uuid7;
 use crate::patchback::{FileEdit, PatchbackError, patch_file_bytes};
 
-/// The KAIFUU-108 fixture-profile id every KAIFUU-110 unit is stamped with.
+/// The fixture-profile id every unit is stamped.
 pub const FIXTURE_PROFILE_ID: &str = "KAIFUU-110";
 
-// ---------------------------------------------------------------------------
 // Roles + containers
-// ---------------------------------------------------------------------------
 
-/// The declared KAIFUU-110 database / term text role.
+/// The declared database / term text role.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DatabaseTermRole {
     /// A database entry `name` (Actors/Classes/Items/…/Troops).
@@ -100,7 +88,7 @@ pub enum DatabaseTermRole {
     /// A skill `message1`/`message2` or state `message1`..`message4` battle
     /// line.
     Message,
-    /// A `Troops[].pages[].list[]` `Show Text`/`Show Scrolling Text` battle
+    /// A `Troops.pages.list` `Show Text`/`Show Scrolling Text` battle
     /// message.
     BattleMessage,
     /// `System.json` `gameTitle`.
@@ -146,11 +134,9 @@ pub enum UnitContainer {
     SystemSection { section: &'static str },
 }
 
-// ---------------------------------------------------------------------------
 // Stable unit
-// ---------------------------------------------------------------------------
 
-/// A stable KAIFUU-110 database / System-term text unit.
+/// A stable database / System-term text unit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StableDatabaseUnit {
     /// Source file name (e.g. `Actors.json`, `System.json`).
@@ -166,7 +152,7 @@ pub struct StableDatabaseUnit {
     pub array_index: Option<usize>,
     /// The declared text role.
     pub text_role: DatabaseTermRole,
-    /// The KAIFUU-108 fixture-profile id ([`FIXTURE_PROFILE_ID`]).
+    /// The fixture-profile id ([`FIXTURE_PROFILE_ID`]).
     pub fixture_profile_id: &'static str,
     /// RFC6901 pointer tokens locating the string literal in `source_file`.
     pub pointer: Vec<String>,
@@ -205,7 +191,7 @@ impl StableDatabaseUnit {
     }
 
     /// Stable surface id: `rpgmaker:<file>#<pointer>` — identical scheme to
-    /// the KAIFUU-109 slice, so [`crate::patchback`] resolves both.
+    /// the slice, so [`crate::patchback`] resolves both.
     #[must_use]
     pub fn source_unit_key(&self) -> String {
         format!("rpgmaker:{}#{}", self.source_file, self.pointer_string())
@@ -213,7 +199,7 @@ impl StableDatabaseUnit {
 
     /// Deterministic bridge-unit id derived from the fixture profile +
     /// surface key (UUID7-shaped; identical construction to the crate's
-    /// bridge producer and the KAIFUU-109 slice).
+    /// bridge producer and the slice).
     #[must_use]
     pub fn bridge_unit_id(&self) -> String {
         deterministic_uuid7(
@@ -223,9 +209,7 @@ impl StableDatabaseUnit {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Diagnostics
-// ---------------------------------------------------------------------------
 
 /// Category of a [`DatabaseDiagnostic`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -263,7 +247,7 @@ pub struct DatabaseExtraction {
 }
 
 /// Typed, semantic errors raised by the file-level extractors *before any
-/// write* — the KAIFUU-110 "malformed JSON / missing file" diagnostics.
+/// write* — the "malformed JSON / missing file" diagnostics.
 #[derive(Debug, Error)]
 pub enum DatabaseExtractError {
     #[error("kaifuu.rpgmaker.k110.missing_file: {file} does not exist")]
@@ -282,9 +266,7 @@ pub enum DatabaseExtractError {
     },
 }
 
-// ---------------------------------------------------------------------------
 // Declared field catalogue (schema-enumerated)
-// ---------------------------------------------------------------------------
 
 /// A declared database string field + its role.
 struct DbField {
@@ -380,9 +362,7 @@ pub fn is_database_file(file: &str) -> bool {
     !db_fields_for(file).is_empty()
 }
 
-// ---------------------------------------------------------------------------
 // Extraction — database files
-// ---------------------------------------------------------------------------
 
 /// Read the object's `id` field (fallback to the array `index`).
 fn object_id(entry: &Value, index: usize) -> i64 {
@@ -404,7 +384,7 @@ fn push_unit(
     pointer: Vec<String>,
     text: &str,
 ) {
-    // Empty strings are not translatable surfaces (matches the KAIFUU-109
+    // Empty strings are not translatable surfaces (matches the
     // slice); skipping one is not a silent drop of translatable text.
     if text.is_empty() {
         return;
@@ -484,7 +464,7 @@ pub fn extract_database(source_file: &str, value: &Value) -> DatabaseExtraction 
     acc
 }
 
-/// Walk a troop's `pages[].list[]` battle-event commands, extracting the
+/// Walk a troop's `pages.list` battle-event commands, extracting the
 /// `Show Text` (401) and `Show Scrolling Text` (405) battle messages. An
 /// unrecognised command code is a `MalformedContainer`-free
 /// [`DatabaseDiagnosticKind::UnsupportedCommand`] diagnostic (no silent drop).
@@ -558,9 +538,7 @@ fn walk_troop_battle_messages(
     }
 }
 
-// ---------------------------------------------------------------------------
 // Extraction — System.json
-// ---------------------------------------------------------------------------
 
 /// Extract declared string units from a parsed `System.json` value:
 /// `gameTitle`, `currencyUnit`, the type lists, and the `terms` labels.
@@ -754,9 +732,7 @@ fn push_string_array(
     }
 }
 
-// ---------------------------------------------------------------------------
 // File-level extraction
-// ---------------------------------------------------------------------------
 
 /// Read + parse a database file and extract its units. `MissingFile` /
 /// `MalformedJson` are typed semantic errors surfaced before any write.
@@ -793,9 +769,7 @@ fn read_json(path: &Path) -> Result<(String, Value), DatabaseExtractError> {
     Ok((file, value))
 }
 
-// ---------------------------------------------------------------------------
 // Byte-preserving patch
-// ---------------------------------------------------------------------------
 
 /// One reviewed translation: the stable unit + its target text.
 #[derive(Debug, Clone)]
@@ -806,7 +780,6 @@ pub struct DatabaseTranslation<'a> {
 
 /// Patch one file's raw JSON bytes with the reviewed translations for its
 /// declared database/term units, preserving every other byte.
-///
 /// Reuses the crate's proven byte-surgical splice + stale-source gate
 /// ([`crate::patchback::patch_file_bytes`]): the located literal for each
 /// unit must hash to the unit's `source_text` (else

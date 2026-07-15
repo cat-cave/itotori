@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 /// Resolve this crate's manifest directory for locating tracked test fixtures.
-///
 /// `env!("CARGO_MANIFEST_DIR")` is baked into the binary at COMPILE time, so a
 /// test binary reused from a different (since-removed) worktree points fixture
 /// reads at a dead path and fails with an opaque `Os { code: 2, NotFound }`.
@@ -26,7 +25,7 @@ pub(crate) fn test_manifest_dir() -> PathBuf {
         .map_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")), PathBuf::from)
 }
 
-// KAIFUU-171 — end-to-end encrypted-XP3 contract scaffolding harness. Lives in
+// end-to-end encrypted-XP3 contract scaffolding harness. Lives in
 // this crate because it is the only one that can reach both the kaifuu-core
 // XP3 contract functions and the delta apply contract.
 pub mod contract_scaffold;
@@ -36,8 +35,8 @@ pub use contract_scaffold::{
     SEMANTIC_CONTRACT_SCAFFOLD_STAGE_DRIFT, run_encrypted_xp3_contract_scaffold,
 };
 
-// KAIFUU-238: schema bumped to 0.3.0 to add the required `sourceProvenance`
-// envelope that carries the KAIFUU-193 `partial: true` bit forward from the
+// schema bumped to 0.3.0 to add the required `sourceProvenance`
+// envelope that carries the `partial: true` bit forward from the
 // originating extract envelope. Apply refuses any package whose
 // `sourceProvenance.partial` is true. The 0.2.0 loader is deleted in the
 // same change — there is no compatibility shim for packages without
@@ -64,10 +63,10 @@ struct DeltaPackage {
     changed_entries: Vec<ChangedEntry>,
 }
 
-/// KAIFUU-238: carries the partial provenance bit forward from the source
+/// carries the partial provenance bit forward from the source
 /// extract envelope through diff into apply. `partial` is required — there
 /// is no schema-level fallback to "assume complete" because forgetting the
-/// field is exactly the KAIFUU-193 audit P1 failure mode. Apply refuses any
+/// field is exactly the audit P1 failure mode. Apply refuses any
 /// package with `partial == true`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -97,14 +96,14 @@ impl SourceProvenance {
     }
 
     /// Read an extract envelope JSON file and derive the provenance. If the
-    /// envelope carries `partial: true` (the KAIFUU-193 PartialAdapterReport
+    /// envelope carries `partial: true` (the PartialAdapterReport
     /// shape) the resulting provenance is marked partial and carries the
     /// adapter id / report id / blocking diagnostic count forward for
     /// debugging. A *missing* `partial` field (e.g. a regular bridge
     /// envelope) is treated as complete. A *present-but-non-bool* `partial`
     /// field is a malformed envelope and surfaces a typed
     /// [`MalformedPartialFlag`] error — it must never silently default to
-    /// complete, as that would defeat the KAIFUU-193 "apply MUST refuse any
+    /// complete, as that would defeat the "apply MUST refuse any
     /// envelope whose `partial` field is true" gate (see `apply_delta`).
     pub fn from_extract_envelope_file(path: &Path) -> KaifuuResult<Self> {
         let envelope: Value = read_json(path)?;
@@ -153,7 +152,7 @@ impl SourceProvenance {
 /// that is present but not a JSON boolean (e.g. the string `"true"` or the
 /// number `1`). Such an envelope is malformed: silently coercing it to
 /// `complete` would let a hand-edited or foreign envelope slip past the
-/// KAIFUU-193 partial-source refusal gate, so it fails closed here.
+/// partial-source refusal gate, so it fails closed here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MalformedPartialFlag {
     /// The non-boolean value found at the envelope's `partial` key.
@@ -172,9 +171,9 @@ impl fmt::Display for MalformedPartialFlag {
 
 impl std::error::Error for MalformedPartialFlag {}
 
-/// KAIFUU-238: typed error returned by `apply_delta` when a package's source
+/// typed error returned by `apply_delta` when a package's source
 /// extract carried `partial: true`. Apply must refuse — the documented
-/// KAIFUU-193 contract is "apply MUST refuse any envelope whose `partial`
+/// contract is "apply MUST refuse any envelope whose `partial`
 /// field is true" and the delta is the carrier through which that
 /// provenance reaches apply.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -482,9 +481,9 @@ pub fn create_replacement_delta(
 pub fn apply_delta(game_dir: &Path, delta_path: &Path, output_dir: &Path) -> KaifuuResult<Value> {
     let package: DeltaPackage = read_json(delta_path)?;
     validate_package_shape(&package)?;
-    // KAIFUU-238: refuse the package before touching the source tree or
+    // refuse the package before touching the source tree or
     // allocating staging when the source extract envelope was partial.
-    // KAIFUU-193's documented contract is "apply MUST refuse any envelope
+    // 's documented contract is "apply MUST refuse any envelope
     // whose `partial` field is true"; the delta package carries that bit
     // forward through `sourceProvenance.partial`.
     if package.source_provenance.partial {
@@ -1358,9 +1357,9 @@ mod tests {
 
     #[test]
     fn apply_delta_refuses_partial_source_before_touching_source_or_staging() {
-        // KAIFUU-238: when sourceProvenance.partial is true the apply path
+        // when sourceProvenance.partial is true the apply path
         // must refuse with a typed PartialSourceRefused error before the
-        // source tree is walked or staging is allocated. The KAIFUU-193
+        // source tree is walked or staging is allocated. The
         // contract says apply must refuse any envelope whose `partial`
         // bit is true.
         let root = temp_dir("partial-source-refused");
@@ -1398,7 +1397,7 @@ mod tests {
 
     #[test]
     fn apply_delta_passes_through_explicitly_complete_source_provenance() {
-        // KAIFUU-238: the complete-source path must still succeed end to
+        // the complete-source path must still succeed end to
         // end with the new required `sourceProvenance` field present.
         let root = temp_dir("complete-source-passes");
         let (original, patched) = write_sample_dirs(&root);
@@ -1417,7 +1416,7 @@ mod tests {
 
     #[test]
     fn validate_package_shape_rejects_legacy_v02_schema_version() {
-        // KAIFUU-238: the v0.2.0 loader is deleted in the same change as
+        // the v0.2.0 loader is deleted in the same change as
         // the v0.3.0 introduction. There is no compatibility shim.
         let mut package: Value = serde_json::from_value(
             serde_json::to_value(
@@ -1503,7 +1502,7 @@ mod tests {
     fn source_provenance_from_envelope_value_rejects_non_bool_partial() {
         // A present-but-non-bool `partial` (here the JSON string "true")
         // must fail closed with a typed error, never silently default to
-        // complete and slip past the KAIFUU-193 partial-source gate.
+        // complete and slip past the partial-source gate.
         for malformed in [json!("true"), json!(1), json!(["true"]), json!({})] {
             let envelope = json!({
                 "schemaVersion": "0.1.0",

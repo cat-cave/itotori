@@ -1,5 +1,4 @@
 //! In-memory `v_facts_needs_review`-shaped finding records.
-//!
 //! The adapter never writes to `catalog.db`; findings are returned in
 //! [`crate::source::MaterializeResult::findings`] for the caller (Kaifuu or
 //! the itotori findings sink) to route to vault-curation.

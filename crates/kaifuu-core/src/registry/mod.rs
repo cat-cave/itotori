@@ -1,5 +1,4 @@
-//! Capability-leveled engine detector registry (KAIFUU-053).
-//!
+//! Capability-leveled engine detector registry.
 //! The `capability` submodule defines the typed 4-rung ladder
 //! (`CapabilityLevel`, `CapabilityLevelStatus`, `AdapterCapabilityMatrix`).
 //! This module adds the registry-side query API that layers on top of the
@@ -26,7 +25,7 @@ impl AdapterRegistry {
 
     /// Returns all adapters whose status at `level` is **strictly**
     /// `Supported`. Adapters with `Partial` or `Unsupported` at this rung
-    /// are excluded — that is the whole point of KAIFUU-053.
+    /// are excluded — that is the whole point.
     pub fn adapters_supporting(&self, level: CapabilityLevel) -> Vec<&dyn EngineAdapter> {
         self.adapters()
             .iter()
@@ -232,7 +231,7 @@ mod tests {
         );
     }
 
-    /// KAIFUU-053 follow-up F002: every adapter must declare its
+    /// follow-up F002: every adapter must declare its
     /// `AdapterCapabilityMatrix` at construction. The
     /// `AdapterCapabilities::new` signature requires the matrix as a
     /// non-optional third parameter — there is no silent fallback to
@@ -262,7 +261,7 @@ mod tests {
         assert!(!capabilities.level_matrix.supports(CapabilityLevel::Patch));
     }
 
-    /// KAIFUU-053 follow-up F002: `derive_from_reports` is now a public
+    /// follow-up F002: `derive_from_reports` is now a public
     /// helper that adapter / test authors call explicitly when they want
     /// the conservative derivation. It is not a fallback. This test pins
     /// the conservative mapping so a future change cannot silently

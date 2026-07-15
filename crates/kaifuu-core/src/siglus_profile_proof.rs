@@ -1,32 +1,28 @@
-//! KAIFUU-015 — Siglus key-profile and parser proof composition.
-//!
+//! Siglus key-profile and parser proof composition.
 //! A *Siglus profile proof* COMPOSES the already-built Siglus slices into one
 //! honestly-scoped, redacted proof report over a **synthetic** profile fixture:
-//!
 //! - the **detector** slice ([`crate::DetectionResult`] from
 //!   `kaifuu_engine_fixture::SiglusProfileDetectorAdapter`) — detector evidence;
-//! - the **key-boundary** slice (KAIFUU-070 known-key profile id + secret-ref,
+//! - the **key-boundary** slice (known-key profile id + secret-ref
 //!   surfaced through the parser-boundary key-refs) — key profile id;
 //! - the **parser-boundary** slice
 //!   ([`crate::run_siglus_known_key_parser_boundary_smoke`]) — parser profile id
 //!   and outcome;
-//! - the **redacted validation** slice — the KAIFUU-105 compat-profile validator
+//! - the **redacted validation** slice — the compat-profile validator
 //!   ([`crate::compat_profile::validate_claimed_support_tuple`]) and the
-//!   KAIFUU-036/094 redaction boundary
+//!   094 redaction boundary
 //!   ([`crate::validate_secret_redaction_boundary`]).
-//!
-//! HONEST SCOPE (the whole point): this proves the SYNTHETIC composition. It does
-//! **not** claim broad commercial Siglus compatibility — the real Siglus
-//! extract/decrypt/repack core stays `NotImplemented` in `kaifuu_siglus`. The
-//! [`SiglusProfileCapabilityLevel`] the report records is capped at
-//! `known-key-extract`; `broad_commercial_claim` is always `false`; a fixture
-//! that declares a level above the evidence ceiling is a blocking overclaim
-//! diagnostic, never a silent pass.
-//!
-//! DEEP-SCAN, FAIL-LOUD (acceptance 2): before any persisted artifact is
-//! produced, the fully-composed report is deep-scanned. A seeded raw key, helper
-//! dump, private path, or decrypted private text makes
-//! [`compose_siglus_profile_proof`] return `Err` — nothing is returned to write.
+//!   HONEST SCOPE (the whole point): this proves the SYNTHETIC composition. It does
+//!   **not** claim broad commercial Siglus compatibility — the real Siglus
+//!   extract/decrypt/repack core stays `NotImplemented` in `kaifuu_siglus`. The
+//!   [`SiglusProfileCapabilityLevel`] the report records is capped at
+//!   `known-key-extract`; `broad_commercial_claim` is always `false`; a fixture
+//!   that declares a level above the evidence ceiling is a blocking overclaim
+//!   diagnostic, never a silent pass.
+//!   DEEP-SCAN, FAIL-LOUD (acceptance 2): before any persisted artifact is
+//!   produced, the fully-composed report is deep-scanned. A seeded raw key, helper
+//!   dump, private path, or decrypted private text makes
+//!   [`compose_siglus_profile_proof`] return `Err` — nothing is returned to write.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -59,13 +55,10 @@ pub const SEMANTIC_SIGLUS_PROFILE_PROOF_DETECTOR_MISMATCH: &str =
 pub const SEMANTIC_SIGLUS_PROFILE_PROOF_SLICE_FAILED: &str =
     "kaifuu.siglus.profile_proof.slice_failed";
 
-// ---------------------------------------------------------------------------
-// Honest capability vocabulary (shares the KAIFUU-094 renderer's levels).
-// ---------------------------------------------------------------------------
+// Honest capability vocabulary (shares the renderer's levels).
 
 /// The honestly-scoped capability level a Siglus profile proof may record.
-///
-/// This mirrors the KAIFUU-094 redacted-validation renderer's `CAPABILITY_LEVELS`.
+/// This mirrors the redacted-validation renderer's `CAPABILITY_LEVELS`.
 /// There is deliberately **no** "broad commercial" variant — the type cannot
 /// express an overclaim. The evidence ceiling for THIS node is
 /// [`Self::KnownKeyExtract`]; [`Self::KnownKeyPatchVerify`] requires a real
@@ -101,9 +94,7 @@ impl SiglusProfileCapabilityLevel {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Fixture (synthetic, deserialized from `--fixture <json>`).
-// ---------------------------------------------------------------------------
 
 /// A synthetic Siglus profile-proof fixture. Carries only logical ids, relative
 /// input paths, and the honest capability claim — never raw keys or corpus bytes.
@@ -132,7 +123,7 @@ pub struct SiglusProfileProofFixtureParser {
     pub scene: String,
     /// Gameexe.dat, relative to the fixture dir.
     pub gameexe: String,
-    /// KAIFUU-087 key-ref helper request JSON, relative to the fixture dir.
+    /// key-ref helper request JSON, relative to the fixture dir.
     pub key_request: String,
     pub variant: String,
 }
@@ -144,9 +135,7 @@ pub struct SiglusProfileProofFixtureKeyProfile {
     pub secret_ref: SecretRef,
 }
 
-// ---------------------------------------------------------------------------
 // Composition input (already-run slice outputs).
-// ---------------------------------------------------------------------------
 
 /// The already-computed outputs of the composed slices. The CLI runs each real
 /// slice (detector adapter, parser-boundary smoke, compat validator) and hands
@@ -159,9 +148,7 @@ pub struct SiglusProfileProofComposeInput<'a> {
     pub compat_entry: &'a ClaimedSupportEntryReport,
 }
 
-// ---------------------------------------------------------------------------
 // Report.
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -365,7 +352,7 @@ pub struct SiglusProfileProofRedactionSummary {
     /// Number of secret-leak findings. A persisted report always carries `0`
     /// (any finding fails the composition before a report is returned).
     pub secret_leak_findings: u64,
-    /// `true` iff the report is clean against the KAIFUU-036/094 redaction boundary.
+    /// `true` iff the report is clean against the redaction boundary.
     pub redaction_boundary_ok: bool,
     /// The aggregate redaction status of the composed key-refs.
     pub key_ref_redaction_status: HelperRedactionStatus,
@@ -393,18 +380,14 @@ impl SiglusProfileProofDiagnostic {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Composition.
-// ---------------------------------------------------------------------------
 
 /// Compose the Siglus profile proof from the already-run slice outputs.
-///
 /// Records detector evidence, key-profile id, parser-profile id, capability
 /// level, and a redaction summary. Cross-checks (blocking diagnostics → `Failed`
 /// status): the detector must have identified a Siglus profile; the parser and
 /// compat slices must not themselves be `Failed`; the declared capability level
 /// must not overclaim past the evidence ceiling (`known-key-extract`).
-///
 /// FAIL-LOUD: the fully-composed report is deep-scanned; if any raw key, helper
 /// dump, private path, or decrypted private text is present the function returns
 /// `Err` — no report is returned, so nothing can be persisted.
@@ -418,7 +401,6 @@ pub fn compose_siglus_profile_proof(
 
     let mut diagnostics: Vec<SiglusProfileProofDiagnostic> = Vec::new();
 
-    // --- Detector slice -----------------------------------------------------
     let detector_is_siglus =
         detection.detected && detection.engine_family.as_deref() == Some("siglus");
     if !detector_is_siglus {
@@ -447,7 +429,6 @@ pub fn compose_siglus_profile_proof(
             .collect(),
     };
 
-    // --- Parser-boundary slice ---------------------------------------------
     if parser.status == OperationStatus::Failed {
         diagnostics.push(SiglusProfileProofDiagnostic {
             code: "parser_boundary_failed".to_string(),
@@ -471,7 +452,7 @@ pub fn compose_siglus_profile_proof(
         scene_hash,
     };
 
-    // --- Key-profile slice (KAIFUU-070 known-key, extract core NotImplemented)
+    // --- Key-profile slice (known-key, extract core NotImplemented)
     let key_refs: Vec<SiglusProfileProofKeyRef> = parser
         .key_refs
         .iter()
@@ -490,7 +471,6 @@ pub fn compose_siglus_profile_proof(
         key_refs,
     };
 
-    // --- Redacted-validation slice (KAIFUU-105 compat-profile) -------------
     if compat.status == OperationStatus::Failed {
         diagnostics.push(SiglusProfileProofDiagnostic {
             code: "compat_validation_failed".to_string(),
@@ -509,7 +489,6 @@ pub fn compose_siglus_profile_proof(
         diagnostic_count: compat.diagnostics.len() as u64,
     };
 
-    // --- Honest-scope anti-overclaim gate ----------------------------------
     // The evidence ceiling is derived from the compat entry. Because the Siglus
     // extract/patch core is NotImplemented, patch-back is never a real write mode
     // here, so the ceiling can never exceed `known-key-extract`.
@@ -645,8 +624,7 @@ struct DeepScanResult {
 }
 
 /// Deep-scan a to-be-persisted artifact for secret-shaped material.
-///
-/// Combines two boundaries (KAIFUU-036/094): the canonical field-name-gated
+/// Combines two boundaries: the canonical field-name-gated
 /// [`validate_secret_redaction_boundary`] (catches forbidden field NAMES such as
 /// `helperDump` / `rawKey`) and a full-string value scan (catches any raw key,
 /// local absolute path, forbidden private payload, or private filename in ANY

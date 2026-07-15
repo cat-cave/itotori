@@ -1,17 +1,15 @@
-//! KAIFUU-012 — Wolf RPG Editor ADAPTER: core text tables extract + patch
+//! Wolf RPG Editor ADAPTER: core text tables extract + patch
 //! through the layered container → crypto → codec → patch-back pipeline.
-//!
 //! This node is an ADAPTER built as a COMPOSITION over the existing Wolf
 //! substrate — it reimplements NONE of the crypto or detection:
-//!
-//! - **Container + crypto (layer 1+2)** — reuses the KAIFUU-073 encrypted-archive
+//! - **Container + crypto (layer 1+2)** — reuses the encrypted-archive
 //!   substrate ([`crate::wolf_encrypted_smoke`]): the Wolf-like container is
 //!   packed/unpacked by [`pack_encrypted_archive`] / [`decrypt_archive_members`],
 //!   the fixture-only XOR crypto key is resolved BY REF through
 //!   [`WolfEncryptedFixtureSecretResolver`], and the raw key lives only inside the
 //!   zeroize-on-drop [`WolfEncryptedArchiveKey`]. The adapter drives the SAME
 //!   layer — a decrypted member's payload just carries a binary text table
-//!   instead of a text file. This is the "cite KAIFUU-073 smoke evidence before
+//!   instead of a text file. This is the "cite smoke evidence before
 //!   broad support claims" gate made mechanical.
 //! - **Codec (layer 3)** — this node adds the Wolf text-table codec: a binary
 //!   string-table layout (record/field cells addressed by (offset,len) into a
@@ -24,33 +22,25 @@
 //!   the affected tables, and repacks/re-encrypts through the same container+
 //!   crypto layer. The round-trip verifies the patched text is present and every
 //!   unchanged table is byte-identical.
-//!
 //! # Gating: detector + helper boundary decide support (never a per-game branch)
-//!
-//! Every run first combines the KAIFUU-120 protection detector
-//! ([`run_wolf_protection_detector`]) and the KAIFUU-121 helper boundary
+//! Every run first combines the protection detector
+//! ([`run_wolf_protection_detector`]) and the helper boundary
 //! ([`run_wolf_helper_boundary`]) over the fixture's embedded evidence:
-//!
 //! - the detector must classify the container `protected` (a concrete static-key
 //!   requirement), and
 //! - the helper boundary must report `key_resolved` (the key resolved locally by
 //!   ref).
-//!
-//! Only then does the adapter extract + patch. Any other posture (an unknown or
-//! unsupported protection variant, a missing key, a helper-gated key) is an
-//! UNSUPPORTED outcome that emits a semantic capability diagnostic carrying the
-//! claimed-support tuple context — never a panic, never a silent drop, and never
-//! an extract/patch attempt.
-//!
+//!   Only then does the adapter extract + patch. Any other posture (an unknown or
+//!   unsupported protection variant, a missing key, a helper-gated key) is an
+//!   UNSUPPORTED outcome that emits a semantic capability diagnostic carrying the
+//!   claimed-support tuple context — never a panic, never a silent drop, and never
+//!   an extract/patch attempt.
 //! # Engine-general (Wolf = data, no per-game branch)
-//!
 //! A [`WolfTextTableAdapterFixture`] is pure DATA: the detector record, the
 //! keyRef-bound helper-boundary profile, the synthetic text tables, and the
 //! patch requests. The runner has no per-game branch; every Wolf game is a
 //! data-driven fixture.
-//!
 //! # Evidence is synthetic, redacted, ref-only
-//!
 //! Fixtures carry NO retail bytes and NO raw key material. The key is resolved by
 //! ref and never emitted; every emitted [`WolfTextTableAdapterReport`] carries
 //! only ids, refs, byte counts, coordinates, and one-way sha256 hashes — never
@@ -90,7 +80,7 @@ pub const WOLF_ADAPTER_MARKER: &str = "kaifuu.wolf.adapter";
 pub const WOLF_ADAPTER_SCHEMA_VERSION: &str = "0.1.0";
 /// Capability id surfaced by the adapter.
 pub const WOLF_ADAPTER_CAPABILITY_ID: &str = "kaifuu-wolf-text-table-adapter";
-/// The KAIFUU-073 smoke evidence this adapter's encrypted variant cites.
+/// The smoke evidence this adapter's encrypted variant cites.
 pub const WOLF_ADAPTER_CITED_SMOKE_CAPABILITY_ID: &str = WOLF_ENCRYPTED_SMOKE_CAPABILITY_ID;
 /// Blunt support boundary included in every report.
 pub const WOLF_ADAPTER_SUPPORT_BOUNDARY: &str = "The Kaifuu Wolf RPG Editor adapter is a bounded SYNTHETIC composition: it drives the KAIFUU-073 encrypted-archive container+crypto substrate (key resolved by local SecretRef, raw key zeroized, never emitted), adds a Shift-JIS text-table codec (binary string-table layout), and patches configured text cells back through repack. Support is GATED by the KAIFUU-120 protection detector (must be `protected`) and the KAIFUU-121 helper boundary (must be `key_resolved`); any other posture is an unsupported variant that emits a semantic capability diagnostic with the claimed-support tuple. It is not commercial Wolf/DXArchive coverage and emits no raw keys, decoded table text, local paths, or retail bytes.";
@@ -98,9 +88,7 @@ pub const WOLF_ADAPTER_SUPPORT_BOUNDARY: &str = "The Kaifuu Wolf RPG Editor adap
 /// Magic prefix of the synthetic Wolf text-table binary layout.
 const WOLF_TEXT_TABLE_MAGIC: &[u8; 16] = b"KFWOLFTBL012\0\0\0\0";
 
-// ---------------------------------------------------------------------------
 // The Wolf text-table codec (layer 3): a binary Shift-JIS string table.
-// ---------------------------------------------------------------------------
 
 /// One synthetic Wolf text table: a named table of records, each record a fixed
 /// number of Shift-JIS text cells. This is the plaintext codec view; on disk it
@@ -141,12 +129,10 @@ pub struct WolfTextPatchRequest {
 }
 
 /// Encode a Wolf text table into its synthetic binary string-table layout.
-///
 /// Layout (little-endian):
 /// `magic(16) | name_len(u32) | record_count(u32) | field_count(u32) |
-///  blob_len(u32) | name(shift_jis) | cells[record*field]{offset(u32),len(u32)} |
-///  string_blob(shift_jis)`.
-///
+/// blob_len(u32) | name(shift_jis) | cells[record*field]{offset(u32),len(u32)} |
+/// string_blob(shift_jis)`.
 /// The string blob concatenates every cell's Shift-JIS bytes in row-major order,
 /// so a patched cell rewrites every downstream `(offset,len)` — a genuine binary
 /// layout change, deterministically reconstructed.
@@ -314,9 +300,7 @@ fn decode_shift_jis(bytes: &[u8]) -> Result<String, WolfAdapterError> {
     Ok(text.into_owned())
 }
 
-// ---------------------------------------------------------------------------
 // Errors
-// ---------------------------------------------------------------------------
 
 /// Fatal errors for the adapter. Every free-text detail is redacted at `Display`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -370,7 +354,7 @@ impl std::error::Error for WolfAdapterError {}
 
 impl From<WolfEncryptedSmokeError> for WolfAdapterError {
     fn from(error: WolfEncryptedSmokeError) -> Self {
-        // The container/crypto layer is KAIFUU-073's; surface its typed failure as
+        // The container/crypto layer is 's; surface its typed failure as
         // a redacted container error (its own Display is already redaction-clean).
         Self::Container {
             detail: error.to_string(),
@@ -378,9 +362,7 @@ impl From<WolfEncryptedSmokeError> for WolfAdapterError {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Fixture (input) schema
-// ---------------------------------------------------------------------------
 
 /// One synthetic Wolf text-table adapter fixture — pure data.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -390,9 +372,9 @@ pub struct WolfTextTableAdapterFixture {
     pub fixture_id: String,
     pub source_node_id: String,
     pub engine_family: String,
-    /// The container's protection posture (KAIFUU-120 detector evidence).
+    /// The container's protection posture (detector evidence).
     pub detector: WolfProtectionDetectorFixtureEntry,
-    /// The keyRef-bound container-key binding (KAIFUU-121 helper-boundary
+    /// The keyRef-bound container-key binding (helper-boundary
     /// evidence). Present for every keyRef-bound protected variant.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub helper_boundary: Option<WolfHelperBoundaryProfile>,
@@ -489,7 +471,7 @@ impl WolfTextTableAdapterFixture {
     }
 }
 
-/// Build a synthetic KAIFUU-121 helper-boundary profile bound to `secret_ref`.
+/// Build a synthetic helper-boundary profile bound to `secret_ref`.
 /// `locally_available` toggles the `key_resolved` vs `key_missing` outcome.
 fn synthetic_helper_profile(
     secret_ref: &SecretRef,
@@ -516,9 +498,7 @@ fn synthetic_helper_profile(
     }
 }
 
-// ---------------------------------------------------------------------------
 // Report (generated) schema
-// ---------------------------------------------------------------------------
 
 /// The outcome the adapter mechanically reaches: a full extract+patch round-trip
 /// (`supported`) or an unsupported variant carrying a semantic diagnostic.
@@ -601,7 +581,7 @@ pub struct WolfAdapterTablePatchReport {
     /// `(offset,len)` table differs after repack (a downstream offset shifted or
     /// a cell length changed). A same-length in-place edit leaves the layout
     /// untouched and keeps this false, even though the member bytes differ (which
-    /// is proven separately by `source_member_hash` != `patched_member_hash`).
+    /// is proven separately by `source_member_hash`!= `patched_member_hash`).
     pub layout_changed: bool,
     /// True iff every patched cell decoded to its requested text after repack.
     pub patched_text_verified: bool,
@@ -648,7 +628,7 @@ pub struct WolfTextTableAdapterReport {
     pub capability_id: String,
     pub source_node_id: String,
     pub support_boundary: String,
-    /// The KAIFUU-073 smoke evidence this encrypted variant cites.
+    /// The smoke evidence this encrypted variant cites.
     pub cited_smoke_capability_id: String,
     pub fixture_id: String,
     pub engine_family: String,
@@ -737,9 +717,7 @@ impl WolfTextTableAdapterReport {
     }
 }
 
-// ---------------------------------------------------------------------------
 // The adapter runner (the composition)
-// ---------------------------------------------------------------------------
 
 /// Run the Wolf text-table adapter over a synthetic fixture: gate on the
 /// detector + helper boundary, then extract + patch the text tables through the
@@ -747,7 +725,6 @@ impl WolfTextTableAdapterReport {
 pub fn run_wolf_text_table_adapter(
     fixture: &WolfTextTableAdapterFixture,
 ) -> Result<WolfTextTableAdapterReport, WolfAdapterError> {
-    // --- Gate half 1: the KAIFUU-120 protection detector. --------------------
     let detector_report = run_wolf_protection_detector(&WolfProtectionDetectorFixture {
         schema_version: crate::wolf_protection_detector::WOLF_PROTECTION_DETECTOR_SCHEMA_VERSION
             .to_string(),
@@ -763,7 +740,6 @@ pub fn run_wolf_text_table_adapter(
         .expect("single-entry detector fixture yields exactly one entry");
     let protection_profile = detector_entry.profile;
 
-    // --- Gate half 2: the KAIFUU-121 helper boundary. ------------------------
     // Capture the FULL boundary posture — the derived outcome PLUS the boundary's
     // own validation status and findings. The gate consumes all three, so a
     // failed or finding-bearing posture can never be waved through to
@@ -839,9 +815,9 @@ fn supported_claimed_support() -> WolfCapabilityTuple {
     }
 }
 
-/// The gate-relevant view of the KAIFUU-121 helper boundary: the mechanically
+/// The gate-relevant view of the helper boundary: the mechanically
 /// derived outcome PLUS whether the boundary evidence is itself trustworthy
-/// (it PASSED its own KAIFUU-121 validation and raised no findings). The gate
+/// (it PASSED its own validation and raised no findings). The gate
 /// requires the success posture on ALL of these — a `key_resolved` outcome
 /// carried by a failed/finding-bearing boundary is refused, so the gate cannot
 /// be bypassed by an outcome alone.
@@ -853,7 +829,7 @@ struct HelperBoundaryPosture {
 
 impl HelperBoundaryPosture {
     /// True iff the boundary evidence itself is trustworthy: it passed its own
-    /// KAIFUU-121 validation and raised no findings. Independent of the outcome.
+    /// validation and raised no findings. Independent of the outcome.
     fn evidence_is_trustworthy(&self) -> bool {
         self.status == OperationStatus::Passed && self.finding_count == 0
     }
@@ -929,7 +905,7 @@ fn classify_gate(
 
 /// Classify a `protected` container's helper-boundary posture. The gate is
 /// non-bypassable: BEFORE trusting the derived outcome, the boundary evidence
-/// itself must be trustworthy (it PASSED its own KAIFUU-121 validation with no
+/// itself must be trustworthy (it PASSED its own validation with no
 /// findings). A `key_resolved` outcome carried by a failed/finding-bearing
 /// boundary is refused with a key-validation diagnostic — it never reaches
 /// extract/patch. Only a trustworthy `key_resolved` posture clears the gate.
@@ -1008,14 +984,14 @@ fn run_supported(
     helper_outcome: Option<WolfHelperBoundaryOutcome>,
     claimed_support: WolfCapabilityTuple,
 ) -> Result<WolfTextTableAdapterReport, WolfAdapterError> {
-    // Resolve the container key BY REF (KAIFUU-073 crypto layer). The key never
+    // Resolve the container key BY REF (crypto layer). The key never
     // leaves the resolver's zeroize-on-drop holder.
     let resolver = WolfEncryptedFixtureSecretResolver::fixture_default();
     let key = resolver.resolve(WOLF_ENCRYPTED_SMOKE_REQUIREMENT_ID, &fixture.secret_ref)?;
     let key_material_hash = key.material_hash()?;
     let key_bytes = u32::try_from(key.byte_len()).unwrap_or(u32::MAX);
 
-    // Layer 1+2: build the synthetic encrypted source container (KAIFUU-073
+    // Layer 1+2: build the synthetic encrypted source container (
     // container+crypto), packing each text table's binary layout as a member.
     let source_members = encode_tables_to_members(&fixture.tables)?;
     let source_archive = pack_encrypted_archive(&source_members, key)?;
@@ -1294,7 +1270,7 @@ fn write_u32(out: &mut Vec<u8>, value: usize) -> Result<(), WolfAdapterError> {
     Ok(())
 }
 
-/// Assert the KAIFUU-073 substrate is present (a compile+link-time composition
+/// Assert the substrate is present (a compile+link-time composition
 /// anchor; the adapter drives the same synthetic container builder).
 #[doc(hidden)]
 pub fn cited_smoke_source_archive_len() -> usize {
@@ -1348,8 +1324,6 @@ mod tests {
     fn fixture() -> WolfTextTableAdapterFixture {
         WolfTextTableAdapterFixture::synthetic()
     }
-
-    // --- Codec round-trips, including multi-byte Shift-JIS. ------------------
 
     #[test]
     fn text_table_codec_round_trips_shift_jis() {
@@ -1458,8 +1432,6 @@ mod tests {
         assert!(report.verify_proof.is_some());
     }
 
-    // --- Unchanged tables stay byte-identical when only one is patched. -----
-
     #[test]
     fn unchanged_tables_are_byte_identical() {
         let mut fixture = fixture();
@@ -1473,8 +1445,6 @@ mod tests {
         // byte-identical after repack.
         assert_eq!(report.unchanged_tables_verified, 2);
     }
-
-    // --- Engine-general: a different data-driven fixture round-trips too. ----
 
     #[test]
     fn adapter_is_engine_general_data_driven() {
@@ -1498,8 +1468,6 @@ mod tests {
         assert!(report.patch_reports[0].patched_text_verified);
     }
 
-    // --- Keys stay ref-only + the report is redaction-clean. ----------------
-
     #[test]
     fn report_is_redaction_clean_and_keys_are_ref_only() {
         let report = run_wolf_text_table_adapter(&fixture()).expect("adapter runs");
@@ -1514,7 +1482,7 @@ mod tests {
         // No private paths.
         assert!(!json.contains("/home/"));
         assert!(!json.contains("/scratch/"));
-        // It cites the KAIFUU-073 smoke evidence.
+        // It cites the smoke evidence.
         assert!(json.contains(WOLF_ADAPTER_CITED_SMOKE_CAPABILITY_ID));
     }
 
@@ -1527,8 +1495,6 @@ mod tests {
         assert!(json.contains("[REDACTED:"));
         assert!(!json.contains("/home/trevor/private/wolf/leak.wolf"));
     }
-
-    // --- Unsupported variant: missing key → semantic diagnostic + tuple. ----
 
     #[test]
     fn missing_key_is_unsupported_with_semantic_diagnostic() {
@@ -1557,15 +1523,12 @@ mod tests {
         assert!(report.key_material_hash.is_none());
     }
 
-    // --- The KAIFUU-121 gate is NON-BYPASSABLE: a failed helper posture is -----
-    // --- refused even though its DERIVED outcome is key_resolved. -------------
-
     #[test]
     fn failed_helper_posture_is_unsupported_and_not_bypassable() {
         let mut fixture = fixture();
         // A helper-boundary profile whose derived outcome is `key_resolved`
         // (static-key import, key locally available) but which FAILS its own
-        // KAIFUU-121 validation: the declared expectation lies about the outcome,
+        // validation: the declared expectation lies about the outcome
         // so the boundary raises a finding and reports status=Failed. A gate that
         // only read the outcome would wave this straight through to extract/patch.
         let mut profile = synthetic_helper_profile(&fixture.secret_ref, true);
@@ -1611,8 +1574,6 @@ mod tests {
         assert!(diagnostic.claimed_support.patch.is_unsupported());
     }
 
-    // --- Unsupported variant: an unknown protection variant is refused. ------
-
     #[test]
     fn unknown_protection_variant_is_unsupported() {
         use crate::wolf_protection_detector::WolfArchiveProtectionSignal;
@@ -1635,8 +1596,6 @@ mod tests {
         );
     }
 
-    // --- A malformed patch coordinate is a typed error, not a panic. --------
-
     #[test]
     fn out_of_range_patch_is_typed_error() {
         let mut fixture = fixture();
@@ -1651,8 +1610,6 @@ mod tests {
         assert!(err.to_string().starts_with(WOLF_ADAPTER_MARKER));
     }
 
-    // --- The report round-trips through JSON. -------------------------------
-
     #[test]
     fn report_round_trips_through_json() {
         let report = run_wolf_text_table_adapter(&fixture()).expect("adapter runs");
@@ -1660,8 +1617,6 @@ mod tests {
         let round: WolfTextTableAdapterReport = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(round, report.redacted_for_report());
     }
-
-    // --- The fixture loads from disk + runs (the public path). ---------------
 
     #[test]
     fn fixture_loads_from_disk_and_round_trips() {
@@ -1677,8 +1632,6 @@ mod tests {
         assert_eq!(report.patch_reports.len(), 2);
         assert_eq!(report.unchanged_tables_verified, 1);
     }
-
-    // --- The secret ref must be a local scheme (mirrors the substrate). ------
 
     #[test]
     fn synthetic_fixture_uses_a_local_secret_ref() {

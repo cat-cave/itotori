@@ -1,10 +1,8 @@
-//! KAIFUU-102 — integration smoke for the private-local XP3 helper + patch
+//! integration smoke for the private-local XP3 helper + patch
 //! summary renderer.
-//!
 //! Proves the renderer composes the committed synthetic helper-result aggregate,
-//! support-tuple summary, and a real KAIFUU-101 XP3 patch-back summary into ONE
+//! support-tuple summary, and a real XP3 patch-back summary into ONE
 //! redacted validation summary that:
-//!
 //! - is byte-identical to the committed public-safe summary fixture (reproducible
 //!   from SYNTHETIC inputs only — no private-local assets),
 //! - reproduces identically whether the inputs come from the committed JSON

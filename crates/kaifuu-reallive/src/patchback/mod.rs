@@ -1,5 +1,4 @@
 //! Patch-back for the Scene/SEEN bytecode.
-//!
 //! The canonical Seen.txt patchback path is
 //! [`bundle_driven::apply_translated_bundle`], which consumes a translated
 //! v0.2 BridgeBundle and re-emits the archive with length-changing edits

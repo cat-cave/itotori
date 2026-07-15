@@ -1,14 +1,11 @@
 //! Cross-OS path resolution + retention policy.
-//!
 //! Resolution order is the contract's *Cross-OS Path Resolution*:
-//!
 //! 1. environment variable (`ITOTORI_VAULT_ROOT`, `ITOTORI_SCRATCH_ROOT`)
 //! 2. caller-supplied override
 //! 3. platform default
-//!
-//! Reads only the two listed environment variables via `std::env::var`. The
-//! adapter has no `.env`-file reads or writes per the orchestrator's
-//! architectural constraints.
+//!    Reads only the two listed environment variables via `std::env::var`. The
+//!    adapter has no `.env`-file reads or writes per the orchestrator's
+//!    architectural constraints.
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -62,7 +59,6 @@ pub struct ScratchConfig {
 }
 
 /// Resolve the vault root per the contract's order.
-///
 /// Returns the unvalidated path; callers (the [`crate::source::VaultSource`]
 /// constructor) then assert that `catalog.db` and `artifacts/by-id/` exist.
 pub fn resolve_vault_root(cfg: &VaultConfig) -> Result<PathBuf, VaultSourceError> {
@@ -155,7 +151,6 @@ fn default_scratch_root() -> Result<PathBuf, VaultSourceError> {
 }
 
 /// Validate that the resolved vault root contains the two required entries.
-///
 /// `catalog.db` must be a regular file; `artifacts/by-id/` must be a
 /// directory.
 pub fn validate_vault_root(root: &Path) -> Result<(), VaultSourceError> {

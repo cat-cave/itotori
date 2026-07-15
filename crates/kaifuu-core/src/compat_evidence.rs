@@ -1,35 +1,32 @@
-//! KAIFUU-060 — Claimed-support compatibility EVIDENCE integration.
-//!
+//! Claimed-support compatibility EVIDENCE integration.
 //! This module is a pure INTEGRATION of the three already-built compatibility
 //! evidence sources into ONE suite-readable artifact — it re-owns none of them:
-//!
-//! 1. **Claimed-support tuple validation** (KAIFUU-105
+//! 1. **Claimed-support tuple validation** (
 //!    [`crate::compat_profile`]) — the cross-family declaration surface. Each
 //!    validated [`ClaimedSupportEntryReport`] carries the exact engine family,
 //!    variant, container, crypto, codec, surface, patch-back mode,
 //!    profile/fixture id, secret-requirement ids, and merged diagnostics of a
 //!    claim.
-//! 2. **Redacted reproduction bundles** (KAIFUU-106 [`crate::repro_bundle`]) —
+//! 2. **Redacted reproduction bundles** ([`crate::repro_bundle`])
 //!    the shareable, private-asset-free artifact whose reproduction proofs pin a
 //!    PUBLIC fixture id + [`ProofHash`] per claimed tuple. The integration INDEXES
 //!    each claimed support to its bundle entry (bundle id + fixture id + proof
 //!    hash) so a suite consumer can follow the claim straight to its
 //!    reproduction.
-//! 3. **Regression-runner outputs** (KAIFUU-107 [`crate::compat_regression`]) —
+//! 3. **Regression-runner outputs** ([`crate::compat_regression`])
 //!    the drift gate that re-runs every claimed tuple against the public-fixture
 //!    catalogue + the bundle's proofs + the recorded baseline. The integration
 //!    attaches the LATEST per-claim regression verdict (fixture resolution,
 //!    secret-metadata status, findings, drift, pass/fail).
-//!
-//! The single output — [`CompatEvidenceReport`] — lists, for EACH claimed
-//! support: engine family, variant, container, crypto, codec, surface,
-//! patch-back mode, profile/fixture id, secret-requirement ids, diagnostics, the
-//! redacted repro-bundle index entry (KAIFUU-106), and the latest regression
-//! result (KAIFUU-107). The report is REDACTION-CLEAN: it funnels every
-//! free-text field through [`redact_for_log_or_report`] and carries secrets and
-//! proofs only as the strongly-typed [`SecretRef`](crate::SecretRef) / requirement
-//! ids / [`ProofHash`] refs the embedded sources already use. No raw keys, no
-//! private paths, no retail bytes.
+//!    The single output — [`CompatEvidenceReport`] — lists, for EACH claimed
+//!    support: engine family, variant, container, crypto, codec, surface,
+//!    patch-back mode, profile/fixture id, secret-requirement ids, diagnostics, the
+//!    redacted repro-bundle index entry, and the latest regression
+//!    result. The report is REDACTION-CLEAN: it funnels every
+//!    free-text field through [`redact_for_log_or_report`] and carries secrets and
+//!    proofs only as the strongly-typed [`SecretRef`](crate::SecretRef) / requirement
+//!    ids / [`ProofHash`] refs the embedded sources already use. No raw keys, no
+//!    private paths, no retail bytes.
 
 use serde::{Deserialize, Serialize};
 
@@ -52,17 +49,15 @@ pub const COMPAT_EVIDENCE_REPORT_SCHEMA_VERSION: &str = "0.1.0";
 /// The boundary surfaced in every integrated report.
 pub const COMPAT_EVIDENCE_BOUNDARY: &str = "The claimed-support compatibility evidence report is a suite-readable INTEGRATION of three sources: the KAIFUU-105 claimed-support tuple validation (engine family, variant, container, crypto, codec, surface, patch-back mode, profile/fixture id, secret-requirement ids, diagnostics), the KAIFUU-106 redacted reproduction-bundle index (public fixture id + sha256 proof hash per claim), and the KAIFUU-107 regression-runner verdict (fixture resolution, secret-metadata status, findings, drift, latest pass/fail). It re-owns none of them. The report is redaction-clean: secrets and proofs are ref-only requirement ids / sha256 hashes, never raw keys, private paths, or retail bytes.";
 
-// ---------------------------------------------------------------------------
-// Redacted repro-bundle index entry (KAIFUU-106 link)
-// ---------------------------------------------------------------------------
+// Redacted repro-bundle index entry (link)
 
-/// The link from a claimed support to its redacted KAIFUU-106 reproduction
+/// The link from a claimed support to its redacted reproduction
 /// bundle: the bundle id + the PUBLIC fixture a reproducer runs, pinned by the
 /// bundle's [`ProofHash`]. No bytes, no secrets, no private paths.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReproBundleIndexEntry {
-    /// The KAIFUU-106 bundle this claim's reproduction proof lives in.
+    /// The bundle this claim's reproduction proof lives.
     pub bundle_id: String,
     /// The claimed tuple's `profileOrFixtureId` the proof reproduces.
     pub tuple_id: String,
@@ -83,11 +78,9 @@ impl ReproBundleIndexEntry {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Latest regression result (KAIFUU-107 verdict)
-// ---------------------------------------------------------------------------
+// Latest regression result (verdict)
 
-/// The LATEST regression verdict for one claimed support — the KAIFUU-107
+/// The LATEST regression verdict for one claimed support — the
 /// runner's per-tuple outcome, minus the duplicated tuple identity fields (those
 /// are surfaced once at the [`ClaimedSupportEvidence`] level).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -137,15 +130,13 @@ impl LatestRegressionResult {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Per claimed-support evidence row (the integrated shape)
-// ---------------------------------------------------------------------------
 
-/// One claimed support's fully-integrated evidence row. Lists — per KAIFUU-060
+/// One claimed support's fully-integrated evidence row. Lists — per
 /// acceptance — the engine family, variant, container, crypto, codec, surface,
 /// patch-back mode, profile/fixture id, secret-requirement ids, and diagnostics
-/// (from KAIFUU-105), the redacted repro-bundle index (KAIFUU-106), and the
-/// latest regression result (KAIFUU-107).
+/// (from), the redacted repro-bundle index, and the
+/// latest regression result.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaimedSupportEvidence {
@@ -162,12 +153,12 @@ pub struct ClaimedSupportEvidence {
     pub secret_requirement_ids: Vec<String>,
     /// The merged (author-declared + validator) typed diagnostics.
     pub diagnostics: Vec<CompatDiagnostic>,
-    /// Link to the claim's redacted KAIFUU-106 reproduction bundle. `None` when
+    /// Link to the claim's redacted reproduction bundle. `None` when
     /// the bundle carries no reproduction proof for this claim (the regression
     /// verdict flags that as missing fixture evidence).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repro_bundle_index: Option<ReproBundleIndexEntry>,
-    /// The latest KAIFUU-107 regression verdict for this claim.
+    /// The latest regression verdict for this claim.
     pub latest_regression: LatestRegressionResult,
 }
 
@@ -207,13 +198,11 @@ impl ClaimedSupportEvidence {
     }
 }
 
-// ---------------------------------------------------------------------------
 // The integrated report artifact
-// ---------------------------------------------------------------------------
 
 /// The single suite-readable compatibility-evidence artifact: the integration of
-/// the KAIFUU-105 tuple validation, the KAIFUU-106 reproduction-bundle index, and
-/// the KAIFUU-107 regression outputs for one reproduction bundle.
+/// the tuple validation, the reproduction-bundle index, and
+/// the regression outputs for one reproduction bundle.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompatEvidenceReport {
@@ -223,14 +212,14 @@ pub struct CompatEvidenceReport {
     /// `Passed` iff the bundle validated (no private assets, self-sufficient, no
     /// overclaim) AND the regression run is clean.
     pub status: OperationStatus,
-    /// KAIFUU-106: whether the bundle is self-sufficient for public reproduction.
+    /// whether the bundle is self-sufficient for public reproduction.
     pub bundle_self_sufficient: bool,
-    /// KAIFUU-106: private-asset violations (must be zero for a clean report).
+    /// private-asset violations (must be zero for a clean report).
     pub private_asset_violation_count: u64,
-    /// KAIFUU-106: reproduction-self-sufficiency gaps (must be zero when clean).
+    /// reproduction-self-sufficiency gaps (must be zero when clean).
     pub reproduction_gap_count: u64,
     pub claimed_support_count: u64,
-    /// KAIFUU-107: claims whose latest regression passed / failed / drifted.
+    /// claims whose latest regression passed / failed / drifted.
     pub passed_count: u64,
     pub failed_count: u64,
     pub drift_count: u64,
@@ -276,11 +265,9 @@ impl CompatEvidenceReport {
     }
 }
 
-// ---------------------------------------------------------------------------
 // The integrator
-// ---------------------------------------------------------------------------
 
-/// Find the reproduction proof (KAIFUU-106 index entry) that pins `tuple_id`.
+/// Find the reproduction proof (index entry) that pins `tuple_id`.
 fn repro_index_for(bundle: &ReproBundle, tuple_id: &str) -> Option<ReproBundleIndexEntry> {
     bundle
         .reproduction_proofs
@@ -355,11 +342,10 @@ fn integrate_reports(
 
 /// Integrate the three compatibility-evidence sources for one reproduction
 /// bundle into a single suite-readable [`CompatEvidenceReport`].
-///
-/// It runs the KAIFUU-106 bundle validator and the KAIFUU-107 regression runner
+/// It runs the bundle validator and the regression runner
 /// over the SAME bundle, then joins each claim's validated tuple fields
-/// (KAIFUU-105) with its reproduction-bundle index entry (KAIFUU-106) and its
-/// latest regression verdict (KAIFUU-107). Never panics, never returns `Err`.
+/// with its reproduction-bundle index entry and its
+/// latest regression verdict. Never panics, never returns `Err`.
 pub fn integrate_compat_evidence(
     bundle: &ReproBundle,
     catalogue: &PublicFixtureCatalogue,
@@ -370,12 +356,10 @@ pub fn integrate_compat_evidence(
     integrate_reports(bundle, &bundle_report, &regression)
 }
 
-// ---------------------------------------------------------------------------
-// Fixtures — the integrated report over the KAIFUU-106 clean bundle
-// ---------------------------------------------------------------------------
+// Fixtures — the integrated report over the clean bundle
 
-/// Synthetic integration fixtures over the KAIFUU-106 clean reproduction bundle +
-/// the matching KAIFUU-051 public-fixture catalogue + KAIFUU-107 baseline. The
+/// Synthetic integration fixtures over the clean reproduction bundle +
+/// the matching public-fixture catalogue + baseline. The
 /// integrated report validates green and is redaction-clean.
 pub mod fixtures {
     use super::*;
@@ -440,7 +424,7 @@ mod tests {
                 .support(&tuple.profile_or_fixture_id)
                 .expect("every claimed tuple has an integrated evidence row");
 
-            // KAIFUU-105 tuple fields.
+            // tuple fields.
             assert_eq!(support.engine_family, tuple.engine_family);
             assert_eq!(support.engine_variant, tuple.engine_variant);
             assert_eq!(support.container, tuple.container);
@@ -460,7 +444,7 @@ mod tests {
             // Merged diagnostics are present (author-declared at minimum).
             assert!(!support.diagnostics.is_empty());
 
-            // KAIFUU-106 repro-bundle index entry.
+            // repro-bundle index entry.
             let index = support
                 .repro_bundle_index
                 .as_ref()
@@ -469,7 +453,7 @@ mod tests {
             assert_eq!(index.tuple_id, tuple.profile_or_fixture_id);
             assert!(!index.fixture_id.is_empty());
 
-            // KAIFUU-107 latest regression verdict.
+            // latest regression verdict.
             assert!(support.is_passed());
             assert_eq!(support.latest_regression.status, OperationStatus::Passed);
             assert_eq!(

@@ -1,10 +1,7 @@
-//! KAIFUU-100 — one **profiled XP3 crypt** decrypt/extract fixture.
-//!
+//! one **profiled XP3 crypt** decrypt/extract fixture.
 //! # What this is (and is not)
-//!
 //! This module proves the **secret-ref decrypt path** for an encrypted KiriKiri
 //! XP3 archive end-to-end, on a **synthetic, fixture-safe** archive:
-//!
 //! 1. it builds a synthetic encrypted XP3 (real XP3 container — the shared
 //!    [`kaifuu_core`] plain-XP3 reader/writer owns the bytes — whose member
 //!    **file data** is passed through a declared crypt filter with a
@@ -19,14 +16,11 @@
 //! 4. it proves that a **wrong** secret ref (a resolvable but wrong key) fails
 //!    the integrity check with a typed error, and that a **missing** secret ref
 //!    fails resolution with a typed error — never a panic, never a silent skip.
-//!
-//! The raw key material only ever lives inside the module-private,
-//! zeroize-on-drop, `Debug`-redacting [`Xp3CryptKey`]. The fixture and report
-//! carry only the **secret requirement id + [`SecretRef`] + one-way sha-256
-//! commitments + counts** — never the raw key.
-//!
+//!    The raw key material only ever lives inside the module-private,
+//!    zeroize-on-drop, `Debug`-redacting [`Xp3CryptKey`]. The fixture and report
+//!    carry only the **secret requirement id + [`SecretRef`] + one-way sha-256
+//!    commitments + counts** — never the raw key.
 //! ## Honest scope (assumed vs. verified)
-//!
 //! - **Container (verified):** a genuine plain-XP3 archive built and re-read via
 //!   the shared [`kaifuu_core::encode_xp3`] / [`kaifuu_core::read_plain_xp3_archive`]
 //!   path. Only member **file data** is enciphered; the XP3 index (member paths,
@@ -42,9 +36,8 @@
 //! - **Integrity oracle (verified-faithful):** the `adlr` adler-32 stored in the
 //!   XP3 is computed over the *plaintext*; a correct key reproduces it, a wrong
 //!   key does not. This is KiriKiri's real integrity check, not an invented one.
-//!
-//! No retail bytes, no real key material: the members are clearly-synthetic
-//! authored text and the key is an obviously-fake fixture constant.
+//!   No retail bytes, no real key material: the members are clearly-synthetic
+//!   authored text and the key is an obviously-fake fixture constant.
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -87,8 +80,6 @@ pub const XP3_CRYPT_FIRST_BYTE_XOR: u8 = 0x5A;
 /// NOT part of the secret key.
 pub const XP3_CRYPT_POSITION_FIRST_BYTE_XOR: u8 = 0x3C;
 
-// --- Fixture-safe (clearly-fake) secret material ----------------------------
-//
 // These live ONLY here and inside [`Xp3CryptKey`]. They are fixture constants,
 // never retail keys. The canonical refs below are what the fixture / report
 // disclose; the raw bytes are never serialized or logged.
@@ -96,7 +87,6 @@ pub const XP3_CRYPT_POSITION_FIRST_BYTE_XOR: u8 = 0x3C;
 /// The canonical secret requirement id the fixture declares.
 pub const XP3_CRYPT_REQUIREMENT_ID: &str = "kaifuu-k100-xp3-crypt-key";
 /// The canonical valid fixture secret ref (resolves to the correct key).
-///
 /// The name is digit-free on purpose: the [`SecretRef`] validator treats long,
 /// mixed-class, base64url-shaped names as suspected raw key material.
 pub const XP3_CRYPT_VALID_SECRET_REF: &str = "local-secret:kaifuu-kirikiri-crypt-fixture-key";
@@ -126,8 +116,6 @@ const FIXTURE_MEMBERS: &[(&str, &str)] = &[
         "[synthetic-kirikiri-xp3-crypt-config]\nwindow=default\n",
     ),
 ];
-
-// --- Declared profile enums -------------------------------------------------
 
 /// The **public, data-driven** parameters of a fixture crypt scheme. These are
 /// the *declared algorithm knobs*, NOT the secret key: a profile selects its
@@ -208,8 +196,6 @@ impl KirikiriXp3Surface {
     }
 }
 
-// --- Module-private key holder ----------------------------------------------
-
 /// The resolved crypt key. Raw material lives in the shared non-`Clone`,
 /// zeroizing, `Debug`-redacting secret-holder primitive.
 pub(crate) type Xp3CryptKey = ZeroizingSecretBytes;
@@ -235,19 +221,14 @@ impl Xp3CryptKeyExt for Xp3CryptKey {
     }
 }
 
-// --- Secret-ref resolver ----------------------------------------------------
-
 /// Resolves a [`SecretRef`] to fixture-safe key material.
-///
 /// This is the seam the decrypt path consumes: it is handed a requirement id +
 /// a secret ref and returns a borrowed [`Xp3CryptKey`] (raw bytes confined to
 /// the zeroize-on-drop holder) or a typed [`Xp3CryptError::MissingSecret`]. It
 /// never surfaces raw bytes to the caller. The real scoped run would consume a
 /// validated key-ref here; the fixture maps the canonical refs to obviously-fake
 /// constants.
-///
 /// # Secret discipline
-///
 /// The raw key bytes are never stored bare: each entry holds the material inside
 /// the module-private, zeroize-on-drop, `Debug`-redacting [`Xp3CryptKey`], and
 /// [`Self::resolve`] hands the key back BY REF so no raw key is ever copied out,
@@ -347,8 +328,6 @@ fn module_private_fixture_secret_holder(secret_ref: &SecretRef, bytes: Vec<u8>) 
         .expect("newly inserted XP3 key must resolve by its SecretRef")
 }
 
-// --- Errors -----------------------------------------------------------------
-
 /// Fatal errors raised by the XP3-crypt decrypt/extract path. Every variant's
 /// `Display` begins with [`XP3_CRYPT_MARKER`].
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -404,8 +383,6 @@ pub enum Xp3CryptError {
     },
 }
 
-// --- Synthetic encrypted-XP3 builder ----------------------------------------
-
 /// Build the synthetic encrypted XP3 archive: a real plain-XP3 container whose
 /// member file data is enciphered with the fixture crypt filter + fixture key.
 /// The `adlr` chunk stores the adler-32 of the **plaintext** (KiriKiri
@@ -428,8 +405,7 @@ pub fn build_synthetic_crypt_xp3() -> Vec<u8> {
 /// resolved key: encipher each member's **file data** with the fixture crypt
 /// filter and store the `adlr` adler-32 of the **plaintext** (KiriKiri
 /// semantics), then hand the entries to the shared plain-XP3 encoder.
-///
-/// This is the single encode path the KAIFUU-100 build and the KAIFUU-101
+/// This is the single encode path the build and the
 /// patch-back rebuild both go through, so `encode(decrypt(x))` with no change
 /// is byte-identical and a trivial replacement recomputes member sizes / index
 /// offsets through the same deterministic encoder.
@@ -467,8 +443,6 @@ pub(crate) fn encode_encrypted_xp3(
     })
     .expect("synthetic crypt XP3 encodes")
 }
-
-// --- Decrypt + extract ------------------------------------------------------
 
 /// One decrypted member (hash-based; no raw plaintext).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -564,8 +538,6 @@ pub(crate) fn decrypt_and_extract(
     Ok(Xp3CryptManifest { members })
 }
 
-// --- Fixture manifest -------------------------------------------------------
-
 /// Where the encrypted XP3 container bytes come from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
@@ -591,7 +563,7 @@ pub struct Xp3CryptFixture {
     pub schema_version: String,
     /// Stable fixture id.
     pub fixture_id: String,
-    /// The spec-DAG node id this fixture is authored for (e.g. `KAIFUU-100`).
+    /// The spec-DAG node id this fixture is authored for (e.g. ``).
     pub source_node_id: String,
     /// Engine family (`kirikiri`).
     pub engine_family: String,
@@ -612,8 +584,6 @@ pub struct Xp3CryptFixture {
     /// Declared expected member set (ids, in archive order).
     pub expected_member_ids: Vec<String>,
 }
-
-// --- Report -----------------------------------------------------------------
 
 /// Per-member digest in the report (hash-based; no raw plaintext).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -774,10 +744,8 @@ impl Xp3CryptReport {
     }
 }
 
-// --- Driver -----------------------------------------------------------------
-
 /// Build a hash-based member digest from a member id + its decrypted plaintext.
-/// Shared by the decrypt manifest and the KAIFUU-101 patch-back verification.
+/// Shared by the decrypt manifest and the patch-back verification.
 pub(crate) fn member_digest_from_plaintext(
     member_id: &str,
     plaintext: &[u8],
@@ -858,7 +826,7 @@ pub fn run_xp3_crypt_smoke_from_fixture(
     }
 
     // (2) Wrong-key probe: a resolvable-but-wrong ref must trip the integrity
-    //     check with a typed error citing the first member.
+    // check with a typed error citing the first member.
     let wrong_ref = SecretRef::new(XP3_CRYPT_WRONG_SECRET_REF)
         .map_err(|message| Xp3CryptError::Internal { message })?;
     let wrong_key = resolver.resolve(&fixture.secret_requirement_id, &wrong_ref)?;
@@ -882,7 +850,7 @@ pub fn run_xp3_crypt_smoke_from_fixture(
     };
 
     // (3) Missing-key probe: an unknown ref must fail resolution with a typed
-    //     error, before any decrypt.
+    // error, before any decrypt.
     let missing_ref = SecretRef::new(XP3_CRYPT_MISSING_SECRET_REF)
         .map_err(|message| Xp3CryptError::Internal { message })?;
     let missing_key_report = match resolver.resolve(&fixture.secret_requirement_id, &missing_ref) {

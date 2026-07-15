@@ -1,16 +1,13 @@
 //! Real-bytes validation of the Softpal `TEXT.DAT` codec against two owned
 //! titles, extracting the inner `TEXT.DAT` via the crate's own PAC reader.
-//!
 //! `#[ignore]`d and env-gated: set `ITOTORI_SOFTPAL_RESEARCH_ROOT` to the
 //! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
 //! `--ignored`. **No raw copyrighted bytes live in this file** — only record
 //! counts, byte offsets, SJIS-valid-byte ratios, and SHA-256 hashes, which the
 //! codec must reproduce.
-//!
 //! Mirrors `pac_real_corpus.rs`: gated on `ITOTORI_SOFTPAL_RESEARCH_ROOT` (the
 //! standalone Softpal research tree), NOT `ITOTORI_REAL_GAME_ROOT` /
 //! `ITOTORI_VAULT_ROOT`, and deliberately not named `*_real_bytes.rs`.
-//!
 //! Coverage across the two titles:
 //! - **v21465** — `TEXT.DAT` byte 0 is `'$'` (**encrypted**): decrypt raises the
 //!   SJIS-valid-byte ratio (~0.76 → ~0.91); re-encrypt round-trips byte-identical.
@@ -162,7 +159,6 @@ fn textdat_codec_on_two_softpal_titles() {
             game.subdir
         );
 
-        // --- header: flag byte 0 + record count @0x0C ---
         let header = TextDatHeader::parse(&raw).expect("parse header");
         assert_eq!(header.flag, game.flag, "{} enc flag", game.subdir);
         assert_eq!(
@@ -171,7 +167,6 @@ fn textdat_codec_on_two_softpal_titles() {
             game.subdir
         );
 
-        // --- flag-gated decrypt ---
         let plain = decrypt(&raw).expect("decrypt");
         assert_eq!(
             plain[0],
@@ -214,7 +209,6 @@ fn textdat_codec_on_two_softpal_titles() {
             }
         }
 
-        // --- reversible encrypt: byte-identical round-trip ---
         match game.flag {
             EncFlag::Encrypted => {
                 // encrypt(decrypt(raw)) reproduces the original encrypted bytes.
@@ -249,7 +243,6 @@ fn textdat_codec_on_two_softpal_titles() {
             }
         }
 
-        // --- record parser: count == header, offsets recovered ---
         let records = parse_records(&plain).expect("parse records");
         assert_eq!(
             records.len() as u32,

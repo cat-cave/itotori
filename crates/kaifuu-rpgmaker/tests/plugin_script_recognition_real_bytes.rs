@@ -1,5 +1,4 @@
 //! Multi-title real-byte proof for the closed MV/MZ plugin/script recognizer.
-//!
 //! The test reads only the two staged `www` trees named by the environment
 //! variables below. It reports command names and counts, never command
 //! arguments or player text. Every observed plugin/script command must be
@@ -343,11 +342,9 @@ fn assert_title(name: &str, root: &Path) {
 
 /// Env-gated, two-title proof. Run with `--include-ignored` and both vars
 /// pointing at the `www` trees from the task brief:
-///
 /// ```text
 /// ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ=/scratch/itotori-research/rpg-maker-mv-mz/extracted/LustMemory/www
 /// ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2=/scratch/itotori-research/rpg-maker-mv-mz/countryside-life/inakaraifu.rj390522.v1-0.en/countryside-life-2025/www
-/// ```
 #[test]
 #[ignore = "real-bytes; requires both RPG Maker MV/MZ title roots"]
 fn both_real_titles_have_only_typed_plugin_script_commands() {

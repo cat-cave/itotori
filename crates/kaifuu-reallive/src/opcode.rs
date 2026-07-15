@@ -1,9 +1,7 @@
-//! Real RealLive bytecode opcode dispatch (KAIFUU-191).
-//!
+//! Real RealLive bytecode opcode dispatch.
 //! Decodes the **real** RealLive scene-bytecode stream documented in
 //! `docs/research/reallive-engine.md` §D and confirmed against Sweetie HD's
 //! decompressed scene 1 in `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4.2.
-//!
 //! Clean-room provenance:
 //! - The opener-byte switch (`{0x00, 0x0A, 0x21, 0x23, 0x24, 0x2C, 0x40}`
 //!   plus Shift-JIS lead bytes `0x81..=0x9F` / `0xE0..=0xFC`) and the
@@ -15,9 +13,8 @@
 //! - The RLOperation-family classification keys on the documented module
 //!   catalogue (rlvm `src/modules/module_*.cc` names). No bytes are
 //!   inferred from Sweetie HD alone — opcode handlers are documented
-//!   per RLDEV/rlvm references per the KAIFUU-191 audit-focus row.
-//!
-//! Scope:
+//!   per RLDEV/rlvm references per the audit-focus row.
+//!   Scope:
 //! - This module owns the **opener-byte + Command-header** dispatch and
 //!   the full **ExpressionPiece evaluator** ([`parse_expression`]) that
 //!   decodes `0x24` Expression elements and Command argument lists into
@@ -29,20 +26,19 @@
 //! - Text strings carried in Command argument lists or in Textout elements
 //!   are kept as raw Shift-JIS bytes; decoding is the
 //!   [`crate::encoding`] surface's job.
-//!
-//! The decoder partitions **every** byte of a real Sweetie HD scene
-//! stream into a typed [`RealLiveOpcode`] element — the seven structural
-//! openers decode their element and every other byte begins a Textout
-//! run (the catch-all). Every in-space Command is further classified to a
-//! **semantic operation family** keyed on its `module_id` (control-flow,
-//! selection, message, system, audio, voice, graphics-background,
-//! display-object, screen, variable, memory). A well-formed, fully
-//! catalogued stream therefore yields **zero** [`RealLiveOpcode::Command`]
-//! (un-catalogued) and **zero** [`RealLiveOpcode::Unknown`] (desync
-//! tripwire) spans — the SEMANTIC 100%-decompilation bar (Utsushi cannot
-//! render a command it cannot identify). A scene that produces no opcodes
-//! is an error ([`RealLiveParseError::TruncatedBytecode`]), never a silent
-//! `Ok(vec![])`.
+//!   The decoder partitions **every** byte of a real Sweetie HD scene
+//!   stream into a typed [`RealLiveOpcode`] element — the seven structural
+//!   openers decode their element and every other byte begins a Textout
+//!   run (the catch-all). Every in-space Command is further classified to a
+//!   **semantic operation family** keyed on its `module_id` (control-flow,
+//!   selection, message, system, audio, voice, graphics-background,
+//!   display-object, screen, variable, memory). A well-formed, fully
+//!   catalogued stream therefore yields **zero** [`RealLiveOpcode::Command`]
+//!   (un-catalogued) and **zero** [`RealLiveOpcode::Unknown`] (desync
+//!   tripwire) spans — the SEMANTIC 100%-decompilation bar (Utsushi cannot
+//!   render a command it cannot identify). A scene that produces no opcodes
+//!   is an error ([`RealLiveParseError::TruncatedBytecode`]), never a silent
+//!   `Ok(vec!)`.
 
 use std::{collections::BTreeMap, fmt};
 
@@ -51,7 +47,6 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// BytecodeElement opener bytes (rlvm `bytecode.cc::BytecodeElement::Read`).
-///
 /// These are the seven structural lead bytes that mark the start of a
 /// documented element in a decompressed RealLive scene stream. Any other
 /// lead byte begins a Textout run ([`is_structural_opener`] is the
@@ -71,7 +66,6 @@ pub mod opener {
 pub const COMMAND_HEADER_LEN: usize = 8;
 
 /// Encoding tag carried by [`RealLiveOpcode::TextDisplay`].
-///
 /// The bytes in the operand stream are u16-LE-length-prefixed Shift-JIS;
 /// downstream decode is owned by [`crate::encoding::decode_shift_jis_slot`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -85,13 +79,11 @@ pub enum TextEncoding {
 }
 
 /// One decoded RealLive bytecode opcode.
-///
 /// The variants are a unified view over both BytecodeElement-level
 /// markers (Meta/Comma/Textout/Expression) and recognised RLOperation
-/// Commands (`TextDisplay`, `Choice`, `Jump`, ...). Commands that decode
+/// Commands (`TextDisplay`, `Choice`, `Jump`,...). Commands that decode
 /// structurally but do not match a documented operation family land in
 /// [`RealLiveOpcode::Unknown`] with the original bytes preserved.
-///
 /// Provenance per variant:
 /// - `MetaLine`/`MetaEntrypoint`/`MetaKidoku`/`Comma`/`Textout`/`Expression`
 ///   — opener-byte switch from rlvm `bytecode.cc::BytecodeElement::Read`.
@@ -246,7 +238,6 @@ pub enum RealLiveOpcode {
 /// One argument slot from a Command's bracketed `(...)` argument list,
 /// paired with the **scene-relative byte offset** where the slot's bytes
 /// begin in the decompressed scene bytecode.
-///
 /// The offset is authoritative for length-preserving patch-back: a
 /// `module_sel` Choice option's editable bytes live HERE, inside the
 /// argument list (after the 8-byte Command header and the `(`), never at
@@ -371,7 +362,6 @@ impl RealLiveOpcode {
 
     /// The `(module_type, module_id, opcode)` signature of a single
     /// **un-recognised** opcode, or `None` for a recognised one.
-    ///
     /// This is the exact tuple a decode-honesty consumer (the `extract`
     /// 100%-decode gate, the multi-corpus coverage harness) reports so a
     /// regression names the precise un-catalogued command instead of a bare
@@ -383,8 +373,7 @@ impl RealLiveOpcode {
     ///   reconstructed from the preserved raw command header (`raw_bytes[1]` =
     ///   module_type, `raw_bytes[2]` = module_id, `raw_bytes[3..5]` = the
     ///   little-endian opcode) when the header is intact.
-    ///
-    /// Recognised variants (`is_recognized()` is `true`) return `None`.
+    ///   Recognised variants (`is_recognized` is `true`) return `None`.
     pub fn unrecognized_signature(&self) -> Option<(u8, u8, u16)> {
         match self {
             Self::Command {
@@ -409,7 +398,6 @@ impl RealLiveOpcode {
 
 /// Aggregate the `(module_type, module_id, opcode) -> count` histogram of every
 /// opcode in `opcodes` that fails [`RealLiveOpcode::is_recognized`].
-///
 /// This is the single shared source of the un-recognised-opcode tuple list: the
 /// `kaifuu extract` decode-honesty gate and the multi-corpus coverage harness
 /// both aggregate over [`RealLiveOpcode::unrecognized_signature`] so a green
@@ -426,7 +414,7 @@ pub fn unrecognized_opcode_histogram(opcodes: &[RealLiveOpcode]) -> BTreeMap<(u8
     histogram
 }
 
-/// Decoder error surface. Typed; no `unwrap()` clusters in production.
+/// Decoder error surface. Typed; no `unwrap` clusters in production.
 #[derive(Clone, PartialEq, Eq, Error, Serialize, Deserialize)]
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum RealLiveParseError {
@@ -534,11 +522,10 @@ impl fmt::Debug for RealLiveParseError {
 }
 
 /// Module-id catalogue keys (rlvm `src/modules/module_*.cc` names).
-///
 /// Sub-module ids inside `module_type=1` (Kepago — the primary
 /// RLOperation namespace) follow rlvm's published indexing. The keys
 /// below are the subset needed for the Sweetie HD scene 1 alpha; richer
-/// coverage is a follow-up node.
+/// coverage is.
 mod module_id {
     /// `module_sys.cc` — system control (`end`, `wait`, `pause`, save/load).
     pub const SYS: u8 = 4;
@@ -580,15 +567,12 @@ pub fn is_shift_jis_textout_lead(byte: u8) -> bool {
 /// real, translatable dialogue line — and `None` for a run that is instead
 /// an embedded binary / control-byte data table the catch-all decoder swept
 /// up.
-///
 /// # Why this exists
-///
 /// rlvm's `BytecodeElement::Read` (mirrored by [`decode_element`]) treats
 /// every non-structural lead byte as the start of a Textout run. That is
 /// faithful to the engine, but [`RealLiveOpcode::Textout`] is the decoder's
 /// **catch-all**, not a semantic dialogue opcode: a Textout run can carry
 /// one of two very different payloads:
-///
 /// 1. **Readable dialogue** — a Shift-JIS line the player sees and a
 ///    translator must rewrite. The bridge surfaces it as a translatable
 ///    unit; a translate+patchback run rewrites those bytes.
@@ -596,12 +580,9 @@ pub fn is_shift_jis_textout_lead(byte: u8) -> bool {
 ///    bytes, never as text (e.g. a periodic-record block sitting after a
 ///    second `MetaEntrypoint`). Surfacing it would let patchback overwrite
 ///    the table and corrupt the scene.
-///
 /// # The invariant: valid decode **and** no control bytes
-///
 /// The decision is NOT a byte-ratio guess. A run is dialogue iff it
 /// satisfies BOTH invariants:
-///
 /// - it decodes as Shift-JIS with **zero decode errors** (no `U+FFFD`
 ///   replacement characters) — a packed binary table reliably hits byte
 ///   sequences that are not valid Shift-JIS; and
@@ -611,10 +592,9 @@ pub fn is_shift_jis_textout_lead(byte: u8) -> bool {
 ///   characters; the valid-decode gate alone let those mislabel as dialogue.
 ///   Real dialogue contains none — its line breaks are `MetaLine` opcodes
 ///   (structural openers that terminate the run), never inline bytes.
-///
-/// The bridge producer and the patchback re-walk that must stay
-/// index-aligned with it share this one decision, so both paths surface and
-/// skip the identical set of runs. An empty run is not dialogue.
+///   The bridge producer and the patchback re-walk that must stay
+///   index-aligned with it share this one decision, so both paths surface and
+///   skip the identical set of runs. An empty run is not dialogue.
 pub fn decode_dialogue_textout(raw_bytes: &[u8]) -> Option<String> {
     if raw_bytes.is_empty() {
         return None;
@@ -631,7 +611,6 @@ pub fn decode_dialogue_textout(raw_bytes: &[u8]) -> Option<String> {
 
 /// True if `byte` is one of the seven structural BytecodeElement opener
 /// bytes (`0x00`, `0x0A`, `0x21`, `0x23`, `0x24`, `0x2C`, `0x40`).
-///
 /// These are the only bytes that begin a non-text element; every other
 /// byte is the start (or continuation) of a Textout run. A Textout run
 /// terminates at the first structural opener — Shift-JIS lead bytes are
@@ -650,7 +629,6 @@ pub fn is_structural_opener(byte: u8) -> bool {
 }
 
 /// ExpressionPiece operator-introducer byte (`\`, `0x5C`).
-///
 /// Per `docs/research/reallive-engine.md` §G and rlvm
 /// `libreallive/expression.cc`, every unary and binary operator in a
 /// compiled RealLive expression is introduced by `0x5C` followed by a
@@ -677,14 +655,13 @@ const EXPR_DOLLAR: u8 = 0x24;
 /// `libreallive/expression.cc` `SpecialExpressionPiece`. A special
 /// parameter is `0x61 <tag> <data-item>`, where `<tag>` is a single byte
 /// (or `0xFF`+`i32` when wide) and `<data-item>` is the contained value
-/// (in practice a complex `( … )` group). Used by the variadic
+/// (in practice a complex `(…)` group). Used by the variadic
 /// object/graphics multi-commands (`objBgMulti`, selection-button tables)
 /// to attach a discriminant tag to each grouped parameter set.
 const EXPR_SPECIAL: u8 = 0x61;
 
 /// A fully-decoded RealLive ExpressionPiece (RLDEV / rlvm
 /// `libreallive/expression.cc` grammar, restated in our own words).
-///
 /// This is the typed output of [`parse_expression`]: every byte of a
 /// well-formed expression maps to one of these nodes. The decoder uses
 /// the parse both to evaluate the expression's structure and to compute
@@ -708,9 +685,9 @@ pub enum Expr {
     },
     /// `\<op>` unary operator prefixing one operand.
     Unary { op: u8, operand: Box<Expr> },
-    /// `( <item> <item>* )` complex parameter — a parenthesised **sequence**
+    /// `(<item> <item>*)` complex parameter — a parenthesised **sequence**
     /// of data items (rlvm `ComplexExpressionPiece`). A plain parenthesised
-    /// arithmetic sub-expression `( <expr> )` is the one-item case: its sole
+    /// arithmetic sub-expression `(<expr>)` is the one-item case: its sole
     /// item is the operator-chained expression, so the same node and byte
     /// width cover both grouping and complex-parameter forms.
     Complex { items: Vec<Expr> },
@@ -803,7 +780,6 @@ fn is_nonstring_data_lead(byte: u8) -> bool {
 }
 
 /// `true` if `pos` begins a special parameter (`0x61 <tag> <item>`).
-///
 /// The compiler emits a special parameter as the `0x61` introducer, a tag
 /// (a single byte, or `0xFF`+`i32` in the wide form), and then its contained
 /// data item — across the Sweetie HD and Kanon archives that item is always
@@ -832,15 +808,13 @@ fn is_special_param_lead(bytes: &[u8], pos: usize) -> bool {
 /// Parse a single **data item** at `pos` (rlvm `libreallive/expression.cc`
 /// `GetData`): the unit an argument slot, a complex-parameter element, or a
 /// special-parameter content is composed of. Exactly one of:
-///
 /// - a special parameter (`0x61` …);
-/// - a complex parameter (`( … )`);
+/// - a complex parameter (`(…)`);
 /// - an arithmetic expression (`$`-mem / literal / store / `\`-operator
 ///   chain, including a parenthesised group as its leading term);
 /// - a string constant (any other lead byte → a bare / `"`-quoted run).
-///
-/// Returns the typed node and the exact number of bytes consumed so the
-/// caller keeps the stream byte-aligned.
+///   Returns the typed node and the exact number of bytes consumed so the
+///   caller keeps the stream byte-aligned.
 fn parse_data(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseError> {
     match bytes.get(pos) {
         None => Err(RealLiveParseError::TruncatedExpression { offset: pos as u64 }),
@@ -865,7 +839,7 @@ fn parse_data(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseEr
     }
 }
 
-/// Parse a complex parameter `( <item> <item>* )` at `pos` (which must
+/// Parse a complex parameter `(<item> <item>*)` at `pos` (which must
 /// point at the `(`) — rlvm `ComplexExpressionPiece`. The contained items
 /// are a back-to-back **sequence** of [`parse_data`] values (no comma is
 /// required between them; a stray `,` or inline `\n` line marker is
@@ -1006,7 +980,6 @@ fn parse_term(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseEr
 
 /// Parse a full ExpressionPiece at `pos`, returning the typed [`Expr`]
 /// tree and the exact number of bytes consumed.
-///
 /// Operator precedence is collapsed into a single left-to-right chain:
 /// the byte length of an expression is independent of the precedence
 /// grouping (every binary operator is encoded `\<op>` and joins two
@@ -1110,7 +1083,6 @@ const GOTO_POINTER_LEN: usize = 4;
 
 /// One captured goto-family jump-target pointer inside a scene's
 /// decompressed (and, for `xor_2` titles, decrypted) bytecode.
-///
 /// RealLive control-flow commands (`goto`/`goto_if`/`goto_on`/`goto_case`/
 /// `gosub*`/`farcall*`) carry trailing `i32 LE` pointers whose value is the
 /// **absolute byte offset** of the jump destination within the same scene
@@ -1131,9 +1103,8 @@ pub struct GotoPointerSite {
 
 /// Walk a decompressed (and, for `xor_2` titles, decrypted) scene bytecode
 /// stream and collect every goto-family jump-target pointer site.
-///
 /// Drives off the single-source-of-truth element decoder ([`decode_element`]
-/// / [`decode_command`]) so the pointer offsets can never drift from the
+/// [`decode_command`]) so the pointer offsets can never drift from the
 /// authoritative command framing: for a Command opener the pointer-recording
 /// [`decode_command`] is called; every other element is advanced by
 /// [`decode_element`]. The returned offsets/values are absolute within
@@ -1212,7 +1183,7 @@ const SELECT_BLOCK_CLOSE: u8 = 0x7D;
 
 /// `true` if `command_id` is a `module_sel` selection command that the
 /// compiler emits with the `SelectElement` `{ … }` block framing rather
-/// than a plain `( … )` argument list — `select_w`/`select`/`select_s2`/
+/// than a plain `(…)` argument list — `select_w`/`select`/`select_s2`/
 /// `select_s` (`(0, 2, 0..=3)`) plus the `0x10` selection variant
 /// (`(0, 2, 16)`). Restated from rlvm `libreallive/bytecode.cc`'s
 /// `BytecodeElement::Read` dispatch (the `SelectElement` opcode set), NOT
@@ -1243,7 +1214,6 @@ fn is_next_string_byte(byte: u8) -> bool {
 /// boundary set until the closing quote, and the embedded
 /// `###PRINT(<expr>)` interpolation form. Returns `0` when `pos` does not
 /// begin a string token.
-///
 /// Inside a `"`-quoted span the backslash (`0x5C`) is the general escape
 /// introducer (rlvm `NextString` quoted state): `\<byte>` consumes the
 /// backslash and the following byte verbatim, whatever that byte is
@@ -1311,7 +1281,6 @@ fn next_string_len(bytes: &[u8], pos: usize) -> usize {
 }
 
 /// Encode a translated `module_sel` choice option NextString-SAFE.
-///
 /// A raw Shift-JIS splice of translated choice text corrupts the
 /// `SelectElement` framing: an option is decoded by [`next_string_len`],
 /// whose *unquoted* state ends at the first byte that is not an
@@ -1320,7 +1289,6 @@ fn next_string_len(bytes: &[u8], pos: usize) -> usize {
 /// option and lets the trailing bytes be misread as select structure
 /// (`\n`+line markers, the `}` close, the next option), structurally
 /// corrupting the command.
-///
 /// This encoder wraps the whole option in a `"`-quoted NextString and
 /// escapes every interior single-byte `"` / `\` with a backslash. In the
 /// quoted state [`next_string_len`] consumes ANY byte (arbitrary
@@ -1331,7 +1299,6 @@ fn next_string_len(bytes: &[u8], pos: usize) -> usize {
 /// per Shift-JIS *character* (not per raw byte) so a double-byte glyph
 /// whose trail byte happens to equal `0x22`/`0x5C` is never split by a
 /// spurious escape.
-///
 /// Returns the same [`ShiftJisEncodeError`] as [`encode_shift_jis_slot`]
 /// (with the accurate first-unmappable char index) when the target text
 /// carries a character outside Shift-JIS.
@@ -1352,7 +1319,6 @@ pub fn encode_choice_option_next_string_safe(
         // Only single-byte `"` / `\` need escaping; a Shift-JIS lead byte
         // (or its trail byte) is emitted as part of a whole 2-byte pair and
         // is consumed as a pair by the decoder, so it can never be mistaken
-        // for a close/escape.
         if sjis.len() == 1 && (sjis[0] == b'"' || sjis[0] == b'\\') {
             out.push(b'\\');
         }
@@ -1366,12 +1332,11 @@ pub fn encode_choice_option_next_string_safe(
 /// return each option's text as a [`CommandArg`] (offset + raw bytes) plus
 /// the total bytes the command consumed (8-byte header included). `pos`
 /// points at the `0x23` opener.
-///
 /// Layout (rlvm `libreallive/bytecode.cc::SelectElement::SelectElement`,
-/// restated, not vendored): the 8-byte header, an optional `( … )` window
+/// restated, not vendored): the 8-byte header, an optional `(…)` window
 /// expression, the `{` block open, an optional `\n`+i16 first-line marker,
 /// then one entry per option until the matching `}`. Each option is an
-/// optional `( … )` condition group (whose interior carries `\`-introduced
+/// optional `(…)` condition group (whose interior carries `\`-introduced
 /// effect expressions and the single-byte effect codes the compiler emits,
 /// e.g. `'2'`/`'3'` that take no operand), the option text
 /// ([`next_string_len`]), and a trailing `\n`+i16 line marker. Trailing
@@ -1380,14 +1345,14 @@ pub fn encode_choice_option_next_string_safe(
 /// not a translatable unit) so the produced `choices` length matches the
 /// bridge / patch-back text-unit walk exactly.
 fn decode_select(bytes: &[u8], pos: usize) -> Result<(Vec<CommandArg>, usize), RealLiveParseError> {
-    let argc_offset = pos; // for error reporting only
+    let argc_offset = pos;
     let mut cursor = pos + COMMAND_HEADER_LEN;
     let truncated = |cursor: usize| RealLiveParseError::TruncatedCommandArgs {
         offset: argc_offset as u64,
         argc: (cursor.min(u16::MAX as usize)) as u16,
     };
 
-    // Optional window/parameter expression `( … )`.
+    // Optional window/parameter expression `(…)`.
     if bytes.get(cursor) == Some(&EXPR_PAREN_OPEN) {
         let (_expr, len) = parse_expression(bytes, cursor)?;
         cursor += len;
@@ -1423,7 +1388,7 @@ fn decode_select(bytes: &[u8], pos: usize) -> Result<(Vec<CommandArg>, usize), R
             cursor += 1;
             break;
         }
-        // Optional condition group `( … )`.
+        // Optional condition group `(…)`.
         if bytes.get(cursor) == Some(&EXPR_PAREN_OPEN) {
             cursor += 1; // '('
             loop {
@@ -1485,13 +1450,12 @@ fn decode_select(bytes: &[u8], pos: usize) -> Result<(Vec<CommandArg>, usize), R
 
 /// Parse a bracketed argument list `'(' (arg (',' arg)*)? ')'` beginning
 /// at `pos` (which must point at the `(`).
-///
 /// The list is split into comma-delimited **slots**; each slot's bytes
 /// are the concatenation of its ExpressionPiece / string data items. A
 /// `,` immediately followed by another `,` yields an empty interior
 /// slot — this preserves the one-slot-per-option contract the Choice /
 /// select surface walk relies on. A trailing `,` immediately before
-/// `)` does NOT yield a final empty slot, and an empty `()` yields zero
+/// `)` does NOT yield a final empty slot, and an empty `` yields zero
 /// slots: the close arm only pushes the final slot when it is non-empty
 /// (`cursor > slot_start`). Top-level commas are the only separators;
 /// commas buried inside an integer-literal payload or a parenthesised
@@ -1582,7 +1546,7 @@ fn decode_command(
         (u32::from(module_type) << 24) | (u32::from(module_id) << 16) | u32::from(opcode_u16);
 
     // `module_sel` selection commands carry a `SelectElement` `{ … }`
-    // option block rather than a plain `( … )` argument list, so they are
+    // option block rather than a plain `(…)` argument list, so they are
     // framed by their own decoder before the generic paths below.
     if is_select_command(command_id) {
         let (choices, consumed) = decode_select(bytes, pos)?;
@@ -1661,7 +1625,7 @@ fn decode_command(
             // `goto_case(expr) { (case0) @t0 (case1) @t1 … }` — the
             // discriminant expression, then a `{`-delimited block of `argc`
             // entries, each a bracketed `(case-expr)` (the default case is
-            // the empty `()`) followed by an i32 target (rlvm
+            // the empty ``) followed by an i32 target (rlvm
             // `GotoCaseElement`). The braces wrap the case list.
             parse_optional_args(&mut consumed, &mut args_bytes)?;
             let braced = bytes.get(pos + consumed) == Some(&SELECT_BLOCK_OPEN);
@@ -1711,7 +1675,6 @@ fn decode_command(
 }
 
 /// Classify a fully-framed Command into a typed [`RealLiveOpcode`].
-///
 /// The byte framing (header, argument list, goto pointers, select block)
 /// is already resolved by [`decode_command`]; this is purely the
 /// *labelling* pass. It returns `None` **only** when `module_type` is
@@ -1726,7 +1689,6 @@ fn decode_command(
 /// uncatalogued opcode inside a known module — it is NOT recognised and
 /// FAILS the semantic-zero gate. On the proven Sweetie HD / Kanon corpora
 /// every real tuple is enumerated and lands in a named family.
-///
 /// `module_id` keys are restated from the rlvm `src/modules/module_*.cc`
 /// registrations (`RLModule(name, type, id)`) and `libreallive/bytecode.cc`
 /// dispatch — reference, not vendored.
@@ -1789,7 +1751,7 @@ fn classify_command(
         // every other opcode is selection-button setup / state.
         module_id::SEL => RealLiveOpcode::SelectionControl { opcode: opcode_u16 },
         // module_msg (rlvm `module_msg.cc`, id 3) — opcode 3 is the character
-        // / speaker text op; catalogued opcodes in the text-display range
+        // speaker text op; catalogued opcodes in the text-display range
         // decode to `TextDisplay`; the remaining catalogued opcodes are
         // non-dialogue window directives.
         module_id::MSG => match opcode_u16 {
@@ -1855,8 +1817,7 @@ fn classify_command(
 /// True when `(module_id, opcode)` is in the decompiler's semantic
 /// operation catalogue. This is deliberately narrower than the old
 /// module-family bucket: an unknown opcode inside a known module must
-/// become generic `Command` and fail `is_recognized()`.
-///
+/// become generic `Command` and fail `is_recognized`.
 /// Sources:
 /// - the generated synthetic coverage manifest's `reallive.opcode_tuple`
 ///   group, extracted from `utsushi-reallive::module_catalog::REAL_CATALOG`;
@@ -2562,7 +2523,7 @@ fn is_coverage_manifest_opcode(module_id: u8, opcode_u16: u16) -> bool {
 fn expr_as_i32(expr: &Expr) -> Option<i32> {
     match expr {
         Expr::IntLiteral { value } => Some(*value),
-        // A single-item complex parameter is a parenthesised value `( lit )`.
+        // A single-item complex parameter is a parenthesised value `(lit)`.
         Expr::Complex { items } if items.len() == 1 => expr_as_i32(&items[0]),
         _ => None,
     }
@@ -2591,16 +2552,14 @@ fn first_arg_as_u32(args_bytes: &[CommandArg]) -> u32 {
 }
 
 /// Decode the full real-bytecode stream into a [`RealLiveOpcode`] sequence.
-///
 /// `bytes` is the **decompressed** scene bytecode (post-AVG32 LZSS + XOR
 /// first-level transform per
 /// `docs/research/reallive-sweetie-hd-encryption-mechanism.md`). The
 /// caller owns decompression — this function operates on plaintext
 /// bytecode bytes.
-///
 /// An empty input is rejected with
 /// [`RealLiveParseError::TruncatedBytecode`]; the function never returns
-/// `Ok(vec![])` on a non-empty input either. Every byte is partitioned
+/// `Ok(vec!)` on a non-empty input either. Every byte is partitioned
 /// into a typed [`RealLiveOpcode`] element — a well-formed stream
 /// produces **zero** [`RealLiveOpcode::Unknown`] spans because any byte
 /// outside a structural element is a Textout (the catch-all per rlvm
@@ -2614,7 +2573,6 @@ pub fn parse_real_bytecode(bytes: &[u8]) -> Result<Vec<RealLiveOpcode>, RealLive
 
 /// Decode the full real-bytecode stream into `(opcode, consumed_width)`
 /// pairs — the **authoritative**, width-carrying decode.
-///
 /// Each pair's `consumed_width` is exactly the number of bytes
 /// [`decode_element`] (the single source of truth that `decode_command`
 /// drives) consumed for that element, including any bracketed argument
@@ -2651,7 +2609,6 @@ pub fn parse_real_bytecode_spans(
 
 /// Decode exactly one BytecodeElement at `pos`, returning the typed
 /// [`RealLiveOpcode`] and the number of bytes it consumed.
-///
 /// This is the single source of truth for element boundaries — both
 /// [`parse_real_bytecode`] and the patchback re-walk drive off it so
 /// their cursors never drift. The dispatch is the documented opener-byte
@@ -2709,7 +2666,6 @@ pub(crate) fn decode_element(
 
 /// Scan a Textout run beginning at `pos` (a non-structural lead byte),
 /// returning its raw bytes and the byte width consumed.
-///
 /// This is the catch-all in [`decode_element`]: any byte that is not one
 /// of the seven structural BytecodeElement openers
 /// ([`is_structural_opener`]) begins a displayable-text (or embedded
@@ -2717,7 +2673,6 @@ pub(crate) fn decode_element(
 /// double-byte pairs ([`is_shift_jis_textout_lead`]) are consumed whole,
 /// so a trail byte whose value equals a structural opener never ends the
 /// run early.
-///
 /// The run is treated as an opaque byte span — commas and `"` are part of
 /// the run, and the producer's surface-selection split
 /// ([`decode_dialogue_textout`]) later decides whether a given run is
@@ -2825,7 +2780,7 @@ mod tests {
     fn unrecognized_signature_names_uncatalogued_command_tuple() {
         // 8-byte CommandElement header + MetaLine terminator. module_type 1
         // (in-space) with an UNCATALOGUED (module_id 99, opcode 999) → the
-        // generic `Command` blob that fails `is_recognized()`.
+        // generic `Command` blob that fails `is_recognized`.
         let bytes = &[
             opener::COMMAND,
             1,
@@ -2975,7 +2930,6 @@ mod tests {
     #[test]
     fn unknown_opcode_inside_known_module_is_generic_command_and_fails_recognition() {
         // RealLive command opcodes are u16; 0xffff is the synthetic stand-in
-        // for the spec's out-of-catalogue module-5 example. The important
         // property is that a plausible module id no longer buckets every
         // opcode to SystemControl.
         let bytes = &[opener::COMMAND, 1, module_id::SYS2, 0xFF, 0xFF, 0, 0, 0];
@@ -3122,7 +3076,6 @@ mod tests {
         // delimiter value. The literal must be consumed whole so the
         // arglist closes at the REAL trailing ')', and the following
         // MetaLine decodes aligned with zero unknown opcodes.
-        //
         // module_sys (id=4) opcode 100 == Wait, argc=1; first_arg_as_i32
         // decodes the int literal, so asserting duration_ms proves all 4
         // payload bytes (incl. the delimiter-valued ones) landed in the
@@ -3180,7 +3133,7 @@ mod tests {
     #[test]
     fn wait_and_id_operands_preserve_full_magnitude_and_sign_no_unsigned_abs() {
         // 007 regression: operand literals were narrowed via
-        // `unsigned_abs() as u16/u32`, silently truncating any value above
+        // `unsigned_abs as u16/u32`, silently truncating any value above
         // u16::MAX and flipping the sign of negative literals. The decoded
         // surface must now carry the literal's real range.
 
@@ -3314,7 +3267,7 @@ mod tests {
             0,
             0, // argc=0, overload=0
         ];
-        // arg list: `( $ 0xFF 0 )`
+        // arg list: `($ 0xFF 0)`
         bytes.extend_from_slice(&[b'(', 0x24, 0xFF, 0x00, 0x00, 0x00, 0x00, b')']);
         // trailing i32 jump target = 0x0461
         bytes.extend_from_slice(&[0x61, 0x04, 0x00, 0x00]);
@@ -3349,7 +3302,7 @@ mod tests {
     #[test]
     fn command_string_argument_is_consumed_as_operand() {
         // module_grp open command with a bare string filename followed by
-        // an int param: `( _WHITE $ 0xFF 50 )`. The string operand must
+        // an int param: `(_WHITE $ 0xFF 50)`. The string operand must
         // be consumed (stopping at the `$`), and the int param decoded.
         let mut bytes = vec![opener::COMMAND, 1, module_id::GRP, 0x49, 0, 2, 0, 0];
         bytes.push(b'(');
@@ -3387,7 +3340,7 @@ mod tests {
         fn arg_bytes(args: &[CommandArg]) -> Vec<Vec<u8>> {
             args.iter().map(|a| a.bytes.clone()).collect()
         }
-        // `()` -> zero slots.
+        // `` -> zero slots.
         assert_eq!(
             arg_bytes(
                 &parse_arg_list(&[EXPR_PAREN_OPEN, EXPR_PAREN_CLOSE], 0)
@@ -3428,7 +3381,7 @@ mod tests {
 
     #[test]
     fn parse_arg_list_stamps_scene_relative_offset_per_option() {
-        // `( "あ" , "い" )` starting at byte 0: option 0 begins right after
+        // `("あ", "い")` starting at byte 0: option 0 begins right after
         // the `(` at offset 1; option 1 begins after the comma at offset 4.
         let bytes = [
             EXPR_PAREN_OPEN, // 0: (
@@ -3507,7 +3460,6 @@ mod tests {
         );
     }
 
-    // ---- RealLive expression-reference grammar (reallive-expr-eval-bank-refs)
     // The byte sequences below are SYNTHETIC: they reproduce the structural
     // forms the Kanon + Sweetie HD full-archive recon exposed (integer/string
     // bank references, store register, array index, complex / special params,
@@ -3551,7 +3503,7 @@ mod tests {
 
     #[test]
     fn bracket_leading_quoted_string_arg_is_not_misread_as_bank_reference() {
-        // `( "[X]" )` — a quoted string whose first content byte is `[`. The
+        // `("[X]")` — a quoted string whose first content byte is `[`. The
         // old "any byte followed by `[`" heuristic misread the opening `"` as
         // a memory-bank reference and failed on the next byte (the Sweetie HD
         // `0x83` / Kanon `0x53` recon class). A real bank reference is always
@@ -3573,7 +3525,7 @@ mod tests {
 
     #[test]
     fn bareword_string_then_int_then_special_param_in_arg_list() {
-        // `( "BG" $0 0x61 0x01 ( "FG" $0 ) )` — the Kanon `0x42 'B'` recon
+        // `("BG" $0 0x61 0x01 ("FG" $0))` — the Kanon `0x42 'B'` recon
         // class: a bareword asset-id string, an int literal, and a special
         // parameter (tag 0x01) wrapping a complex group with its own bareword.
         // Every byte must partition with zero residual.
@@ -3611,7 +3563,7 @@ mod tests {
     #[test]
     fn special_param_with_memory_ref_content_no_complex_wrapper() {
         // `0x61 0x00 $0x06[7]` — a special parameter (tag 0x00) whose content
-        // is a `$`-memory reference directly (no `( )` wrapper). The Sweetie HD
+        // is a `$`-memory reference directly (no `` wrapper). The Sweetie HD
         // `objBgMulti`-class `0x61 0x00 $…` form: it must be recognised as a
         // special parameter, not a bare string ending at the `0x00` delimiter.
         let bytes = [
@@ -3656,7 +3608,7 @@ mod tests {
 
     #[test]
     fn complex_param_is_a_sequence_of_data_items_not_a_single_expression() {
-        // `( $0 $0 $1 $0x02[0] )` — a complex parameter is a back-to-back
+        // `($0 $0 $1 $0x02[0])` — a complex parameter is a back-to-back
         // sequence of data items (rlvm `ComplexExpressionPiece`), NOT a single
         // operator-chained expression. The old parenthesised-expression path
         // stopped at the second item and failed on the `$` (the Kanon `0x24`

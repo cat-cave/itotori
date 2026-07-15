@@ -1,5 +1,4 @@
-//! KAIFUU-189 RealLive directory detector.
-//!
+//! RealLive directory detector.
 //! Locates the `REALLIVEDATA/` engine asset root inside an arbitrary
 //! game directory tree, walking subdirectories case-insensitively up to a
 //! bounded depth (default `REALLIVE_DETECTOR_DEFAULT_MAX_DEPTH = 3`). The
@@ -8,7 +7,6 @@
 //! shape `<root>/<Japanese title subdir>/REALLIVEDATA/` (depth 2) and the
 //! plain `<root>/REALLIVEDATA/` shape (depth 1) without descending into
 //! every save / cache directory a player might leave around.
-//!
 //! Subdirectory names with non-ASCII / Japanese characters are traversed
 //! normally — the walker reads `DirEntry::file_name` as raw `OsStr` and
 //! does not apply any encoding-based filter. The case-insensitive match
@@ -16,9 +14,7 @@
 //! token in every RealLive title since AVG32; see
 //! `docs/research/reallive-engine.md` §C and the Sweetie HD verification
 //! in `docs/audits/real-bytes-validation-2026-06-24.md` §2.1).
-//!
 //! # Three-state outcome (no silent zero-state)
-//!
 //! - `Ok(Some(evidence))` — a directory whose ASCII-lowercase name is
 //!   `reallivedata` was found at depth ≤ `max_depth`. The reported path
 //!   is the on-disk path (case preserved from the filesystem).
@@ -30,10 +26,9 @@
 //!   directory.
 //! - `Err(RealLiveDetectError::Io)` — an underlying `std::io` error
 //!   surfaced while reading the directory tree.
-//!
-//! This three-state shape is the KAIFUU-189 "no silent zero-state"
-//! contract: callers can distinguish a clean negative from a read error
-//! without inspecting filesystem state out-of-band.
+//!   This three-state shape is the "no silent zero-state"
+//!   contract: callers can distinguish a clean negative from a read error
+//!   without inspecting filesystem state out-of-band.
 
 use std::fs;
 use std::io;
@@ -51,7 +46,7 @@ pub const REALLIVE_DATA_DIR_NAME: &str = "REALLIVEDATA";
 /// Default bound for the directory descent. Covers the depth-2 Sweetie HD
 /// shape (`<root>/<JP title subdir>/REALLIVEDATA/`) plus a one-level
 /// cushion for installer wrappers that nest the title subdir under
-/// `Setup/` or similar. See KAIFUU-189 §audit-focus for the bound
+/// `Setup/` or similar. See §audit-focus for the bound
 /// rationale.
 pub const REALLIVE_DETECTOR_DEFAULT_MAX_DEPTH: usize = 3;
 
@@ -156,9 +151,8 @@ fn walk_for_reallivedata(
 
     // Two-pass: prefer a direct-child match at this level before
     // recursing into siblings. This ensures the shallowest REALLIVEDATA
-    // wins (KAIFUU-189 audit-focus: "Behaviour when both root and nested
+    // wins (audit-focus: "Behaviour when both root and nested
     // data dir contain SEEN.TXT (prefer nested)" — i.e. the shallowest
-    // match that genuinely contains the engine's marker).
     let mut subdirs: Vec<PathBuf> = Vec::new();
     for entry in entries {
         let entry = match entry {
@@ -248,7 +242,7 @@ mod tests {
     #[test]
     fn detects_reallivedata_under_nonascii_parent() {
         // Mirrors the Sweetie HD shape:
-        //   <root>/オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/
+        // <root>/オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/
         let root = unique_temp_dir("nonascii-parent");
         let title = "オシオキSweetie＋Sweets!! HD_DL版";
         let nested = root.join(title).join("REALLIVEDATA");
@@ -332,7 +326,7 @@ mod tests {
 
     #[test]
     fn unrelated_name_is_not_a_false_positive() {
-        // KAIFUU-189 audit focus: "Case-insensitive directory match must
+        // audit focus: "Case-insensitive directory match must
         // not match unrelated names (`reallive`, `data`)."
         let root = unique_temp_dir("partial-name");
         fs::create_dir_all(root.join("reallive")).unwrap();

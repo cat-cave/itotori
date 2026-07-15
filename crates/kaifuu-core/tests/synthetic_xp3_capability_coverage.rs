@@ -1,5 +1,4 @@
 //! `synthetic-fixture-author-feature-complete-archives` (P2) — KiriKiri XP3.
-//!
 //! XP3 is a CONTAINER-detection surface: it has no translatable scene-bytecode
 //! opcode catalogue, so its unique components (per the coverage manifest) are
 //! the [`Xp3CapabilityVariant`]s. This test instantiates every one of them and
@@ -40,7 +39,6 @@ fn pascal_to_snake(name: &str) -> String {
 #[test]
 fn synthetic_corpus_instantiates_every_xp3_capability_variant() {
     // Every real variant, instantiated. Exhaustive by construction: if the
-    // enum grows, the manifest `--check` fails first, then this list.
     let all = [
         Xp3CapabilityVariant::PlaintextKs,
         Xp3CapabilityVariant::PlainXp3,

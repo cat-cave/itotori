@@ -1,6 +1,5 @@
 //! Byte-preserving patch writer + verification for TyranoScript `.ks` scripts
 //! (the patch-back stage of the layered pipeline).
-//!
 //! A patch replaces **only** the exact `[start_byte, end_byte)` span of a
 //! translatable [`TsUnit`] with re-encoded translation bytes; every other
 //! byte — tags, labels, jumps, variable embeds, comments, `#`/`@` markers,
@@ -88,7 +87,6 @@ fn attr_quote_char(source: &[u8], unit: &TsUnit) -> Option<char> {
 
 /// Apply `translations` (unit key → translated text) to `source`, producing a
 /// byte-preserving patched buffer.
-///
 /// Only spans of units named in `translations` change; untranslated units keep
 /// their source bytes. Every guard below is a hard error — there is no silent
 /// skip:
@@ -180,7 +178,6 @@ pub enum VerifyError {
 
 /// Prove that `patched` differs from `source` **only** inside translatable
 /// spans — i.e. the patch was byte-preserving.
-///
 /// Re-parses both buffers and asserts:
 /// 1. the ordered set of `source_unit_key`s is identical (nothing dropped,
 ///    added, or structurally shifted); and

@@ -1,36 +1,30 @@
-//! KAIFUU-057 — **production encrypted XP3 extract + patch** for PROFILED crypt
+//! **production encrypted XP3 extract + patch** for PROFILED crypt
 //! schemes and helper workflows.
-//!
 //! # What this is (and is not)
-//!
-//! This module composes the proven KAIFUU-072/100/101 XP3 crypt substrate
+//! This module composes the proven XP3 crypt substrate
 //! ([`crate::xp3_crypt`], [`crate::xp3_patch`]) into a **production, data-driven
 //! profiled-variant** extract + patch path. A *profiled variant* is DATA: a
 //! declared crypt-scheme profile ([`Xp3CryptoProfile`], whose byte transform is
 //! itself a pure function of public scheme data) plus the **required key/helper
 //! evidence** the variant needs to be usable — a secret **ref** (never a raw
-//! key) and, for helper-gated variants, a KAIFUU-085
+//! key), for helper-gated variants, a
 //! [`HelperResult`](kaifuu_core::HelperResult) supplying that key.
-//!
 //! Given a profiled variant WITH its required key/helper evidence, the driver:
-//!
 //! 1. builds the synthetic encrypted archive (real plain-XP3 container whose
 //!    member file data is enciphered with the variant's declared crypt scheme +
-//!    the fixture archive key — KAIFUU-100 honest scope);
+//!    the fixture archive key — honest scope)
 //! 2. checks the variant's **required key/helper evidence** is actually present
 //!    and adequate (a resolved key ref; a satisfied helper result when the
 //!    workflow requires one);
 //! 3. resolves the decrypt key through the secret **ref** and decrypts +
-//!    integrity-verifies every member against the XP3 `adlr` (the KAIFUU-100
+//!    integrity-verifies every member against the XP3 `adlr` (the
 //!    path);
 //! 4. proves the **identity** rebuild is byte-identical, applies the variant's
 //!    trivial text replacement(s), re-enciphers + repacks, and re-decrypts the
 //!    rebuilt container through the SAME declared ref to verify the patched text
 //!    is present, the old text is gone, and every other member is byte-identical
-//!    (the KAIFUU-101 patch-back proof).
-//!
+//!    (the patch-back proof).
 //! # Claimed-variant failure is a BUG, not a silent skip
-//!
 //! Every variant declares whether the profile **claims** to support it. A
 //! claimed variant MUST extract + patch. If a claimed variant's required
 //! key/helper evidence is missing/inadequate, or its declared crypt scheme does
@@ -41,9 +35,7 @@
 //! does **not** claim (retail beyond the bounded/profiled evidence) is recorded
 //! as an explicit [`Xp3ProductionOutcome::NotClaimed`] out-of-scope row — also
 //! not a silent skip, and never advanced to a claim.
-//!
 //! # Secret discipline
-//!
 //! The crypt scheme is DATA (engine-general; the same code path drives every
 //! profiled variant with no per-game branch). Raw key material only ever lives
 //! inside the module-private, zeroize-on-drop, `Debug`-redacting
@@ -88,8 +80,6 @@ pub const XP3_PRODUCTION_CONTAINER: &str = "xp3";
 /// The blunt support boundary carried in every report.
 pub const XP3_PRODUCTION_SUPPORT_BOUNDARY: &str = "Kaifuu KiriKiri XP3 production extract+patch drives PROFILED crypt-scheme + helper-workflow variants on SYNTHETIC encrypted XP3 fixtures. A variant is DATA: a declared crypt-scheme profile (byte transform is a pure function of public scheme data) plus the required key/helper evidence (a secret REF, never a raw key, and a KAIFUU-085 helper result for helper-gated variants). A profiled variant WITH its required evidence extracts its text surfaces and patches them back through the declared crypt + container (identity rebuild byte-identical; patched member carries the new text, every other member byte-identical). A CLAIMED variant that cannot extract+patch fails LOUD (typed ClaimedVariantFailed), never a silent skip; an unclaimed variant is an explicit out-of-scope row. The crypt scheme is DATA (engine-general, no per-game branch). Keys stay ref-only + zeroized; the report carries only requirement ids, refs, one-way hashes, and counts, and is deep no-leak-guarded before return. This is NOT commercial encrypted-XP3 coverage and the fixture crypt schemes are NOT real per-title CxDec/TVP filters.";
 
-// --- Helper-workflow taxonomy (DATA) ----------------------------------------
-
 /// The key/helper workflow a profiled variant's key evidence must come through.
 /// This is the *required evidence class* the variant declares — DATA, not a code
 /// branch.
@@ -126,8 +116,6 @@ impl Xp3HelperWorkflow {
     }
 }
 
-// --- The stages a variant round-trip runs through ---------------------------
-
 /// The stage at which a claimed variant failed (so the loud bug points at the
 /// exact seam).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,8 +147,6 @@ impl Xp3ProductionStage {
         }
     }
 }
-
-// --- Errors -----------------------------------------------------------------
 
 /// Fatal errors raised by the production extract+patch driver. Every variant's
 /// `Display` begins with [`XP3_PRODUCTION_MARKER`].
@@ -198,20 +184,15 @@ impl Xp3ProductionError {
     }
 }
 
-// --- The profiled-variant registry (DATA) -----------------------------------
-
 /// One profiled XP3 crypt-scheme + helper-workflow variant. Everything here is
 /// DATA: the driver runs the same code path for every variant.
-///
 /// The archive-key / resolved-key-evidence split models a real run: the
 /// synthetic encrypted archive was enciphered with the fixture archive key
 /// (ground truth), while the resolved key evidence is what the operator's
 /// key/helper workflow actually produced. When they match and the helper
 /// evidence is satisfied, the variant extracts + patches; when the operator's
 /// evidence is missing/wrong, a CLAIMED variant fails loud.
-///
 /// # Secret discipline
-///
 /// The raw key material NEVER lives in a `pub`, `Debug`-deriving field. Both the
 /// ground-truth archive key and the operator's resolved key evidence are held
 /// ONLY inside the module-private, zeroize-on-drop, `Debug`-redacting
@@ -259,7 +240,6 @@ pub struct Xp3ProductionVariant {
 
 impl Xp3ProductionVariant {
     /// Construct a variant from already-confined secret holders.
-    ///
     /// The XP3 production surface deliberately has no public raw-key
     /// constructor: callers must pass zeroize-on-drop [`ZeroizingSecretBytes`]
     /// holders that were minted by a secret-ref resolver. This keeps raw bytes
@@ -354,7 +334,6 @@ impl std::fmt::Debug for Xp3ProductionVariant {
 }
 
 /// A registry of profiled variants the production driver runs.
-///
 /// Not `Clone`: a variant confines its key material to a non-`Clone`
 /// zeroize-on-drop holder, so the registry (and its keys) is never duplicated.
 #[derive(Debug)]
@@ -364,8 +343,6 @@ pub struct Xp3ProductionRegistry {
     /// The profiled variants.
     pub variants: Vec<Xp3ProductionVariant>,
 }
-
-// --- Report -----------------------------------------------------------------
 
 /// The operation a member's delta records across the patch-back rebuild.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -593,10 +570,7 @@ impl Xp3ProductionReport {
     }
 }
 
-// --- Driver -----------------------------------------------------------------
-
 /// Run the production extract+patch over a profiled-variant registry.
-///
 /// Each claimed variant is extracted + patched through its declared crypt scheme
 /// and required key/helper evidence; a claimed variant that cannot do so aborts
 /// the run with a loud [`Xp3ProductionError::ClaimedVariantFailed`]. Unclaimed
@@ -661,7 +635,6 @@ pub fn run_xp3_production(
     // any raw key material. The guard scans EVERY key-holding source — confined
     // to the zeroize-on-drop holders — against the serialized report, not just
     // the report's own fields. A hard refusal, not just a test-time check.
-    //
     // It covers (a) the resolver-held resolved-key copies for each claimed
     // variant, AND (b) every registry-held holder on EVERY variant in the
     // registry — each variant's ground-truth `archive_key` and its
@@ -701,7 +674,7 @@ fn run_claimed_variant(
     let scheme = variant.crypto_profile.scheme();
 
     // (0) Build the synthetic encrypted archive from the fixture ARCHIVE key
-    //     (ground truth: the bytes that actually enciphered the archive).
+    // (ground truth: the bytes that actually enciphered the archive).
     let members: Vec<(String, Vec<u8>)> = variant
         .members
         .iter()
@@ -718,7 +691,7 @@ fn run_claimed_variant(
     let source_container = encode_encrypted_xp3(&members, &variant.archive_key, scheme);
 
     // (1) EVIDENCE CHECK: the required key/helper evidence must be present +
-    //     adequate. A missing/inadequate leg for a CLAIMED variant is a loud bug.
+    // adequate. A missing/inadequate leg for a CLAIMED variant is a loud bug.
     let resolved_key = variant.resolved_key_evidence.as_ref().ok_or_else(|| {
         Xp3ProductionError::claimed(
             id,
@@ -731,10 +704,10 @@ fn run_claimed_variant(
     })?;
 
     // (2) KEY RESOLVE: bind the declared secret ref to the resolved key evidence
-    //     HOLDER and resolve through the ref (proves the ref path; the material
-    //     never leaves an [`Xp3CryptKey`]). The archive key never enters the
-    //     resolver. The resolver owns the resolved-key holder and is returned so
-    //     the caller can run the no-leak guard before it drops/zeroizes.
+    // HOLDER and resolve through the ref (proves the ref path; the material
+    // never leaves an [`Xp3CryptKey`]). The archive key never enters the
+    // resolver. The resolver owns the resolved-key holder and is returned so
+    // the caller can run the no-leak guard before it drops/zeroizes.
     let resolver = FixtureSecretResolver::from_key_refs(vec![(
         variant.secret_ref.as_str().to_string(),
         resolved_key,
@@ -744,7 +717,7 @@ fn run_claimed_variant(
         .map_err(|error| Xp3ProductionError::claimed(id, Xp3ProductionStage::KeyResolve, error))?;
 
     // (3) EXTRACT: decrypt + integrity-verify every member. A wrong resolved key
-    //     trips the adlr integrity check → a loud claimed failure.
+    // trips the adlr integrity check → a loud claimed failure.
     let source_members: Vec<(String, Vec<u8>)> = decrypt_members(&source_container, key, scheme)
         .map_err(|error| Xp3ProductionError::claimed(id, Xp3ProductionStage::Extract, error))?
         .into_iter()
@@ -785,8 +758,8 @@ fn run_claimed_variant(
     let rebuilt_container = encode_encrypted_xp3(&patched_members, key, scheme);
 
     // (6) VERIFY: re-decrypt the rebuilt container through the SAME ref and prove
-    //     the patched text is present, the old text gone, and every other member
-    //     byte-identical.
+    // the patched text is present, the old text gone, and every other member
+    // byte-identical.
     let rebuilt_members: Vec<(String, Vec<u8>)> = decrypt_members(&rebuilt_container, key, scheme)
         .map_err(|error| Xp3ProductionError::claimed(id, Xp3ProductionStage::Verify, error))?
         .into_iter()
@@ -863,7 +836,7 @@ fn run_claimed_variant(
 /// helper-gated workflows require a helper result; when one is required it must
 /// reference the EXACT `variant.secret_ref` (bound to the variant's requirement
 /// id), carry a non-blocking diagnostic (a resolved key, not
-/// `missing_key`/`helper_required`/etc.), pass KAIFUU-085 validation, and meet
+/// `missing_key`/`helper_required`/etc.), pass validation, and meet
 /// the workflow's minimum capability level. A helper result for the right
 /// requirement id but a DIFFERENT secret ref does NOT satisfy the gate.
 fn check_helper_evidence(variant: &Xp3ProductionVariant) -> Result<(), String> {
@@ -1009,8 +982,6 @@ fn private_fixture_secret_holder(secret_ref: &SecretRef, bytes: Vec<u8>) -> Zero
         .into_resolved(secret_ref)
         .expect("newly inserted production fixture key must resolve by its SecretRef")
 }
-
-// --- Synthetic registry (public, reproducible fixture) ----------------------
 
 /// Deterministic synthetic builders. No corpus bytes, no retail names, no real
 /// keys — only clearly-synthetic authored surfaces + obviously-fake fixture
@@ -1458,7 +1429,6 @@ mod tests {
         // P1(b): the FixtureSecretResolver stores each key in the zeroize-on-drop
         // Xp3CryptKey holder and has a manual redacting Debug. Building a resolver
         // over the synthetic keys and formatting it must never emit key bytes,
-        // while the (safe) secret ref is still shown.
         let a_ref = SecretRef::new("local-secret:kaifuu/k057/xp3-simple-crypt-key").unwrap();
         let b_ref = SecretRef::new("prompt:kaifuu/k057/xp3-position-archive-password").unwrap();
         let a_key = private_fixture_secret_holder(&a_ref, b"K057-XP3-SIMPLEKEY01".to_vec());

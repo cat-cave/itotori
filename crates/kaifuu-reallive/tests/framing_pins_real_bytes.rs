@@ -1,8 +1,6 @@
 //! `genaudit2-05` — byte-exact framing pins + round-trip re-emit on real
 //! RealLive bytes.
-//!
 //! # What this proves OVER the bare zero-unknown gate
-//!
 //! The full-archive gate (`multi_corpus_real_bytes.rs`) asserts every
 //! decoded element is a *recognised* opcode — zero generic `Command` blobs,
 //! zero `Unknown` desync tripwires. That is opcode **identity**: "100%" there
@@ -12,9 +10,7 @@
 //! operand span can still land the cursor on a byte that happens to be a
 //! valid opener and keep decoding into perfectly-typed opcodes — a stream
 //! that is "100% recognised" yet silently mis-partitioned.
-//!
 //! This test pins the framing so "100%" reflects **verified byte spans**:
-//!
 //! 1. **Byte-exact framing manifest** ([`kaifuu_reallive::framing_manifest`]):
 //!    for >= 1 real scene of EACH title, the per-element `(offset, width)`
 //!    manifest is asserted to **partition** the scene bytecode — contiguous,
@@ -31,15 +27,13 @@
 //!    input bytecode byte-for-byte, through the real
 //!    decompress -> [`xor_2`] -> decode path. This proves the decoder
 //!    consumed and can reproduce every byte — framing is complete and exact.
-//!
-//! Both proofs run over EVERY populated scene of BOTH corpora (Sweetie HD,
-//! `110002`, second-level `xor_2` decrypted in-process; Kanon, `10002`, no
-//! `xor_2`), far exceeding the ">= 1 scene per title" acceptance floor, and
-//! are STRICT real-bytes tests (a missing corpus is an unconditional hard
-//! failure, no opt-out; they run in the periodic real-bytes oracle).
-//!
-//! No raw copyrighted bytes or text are emitted — counts / offsets / sha-free
-//! structural metadata only.
+//!    Both proofs run over EVERY populated scene of BOTH corpora (Sweetie HD,
+//!    `110002`, second-level `xor_2` decrypted in-process; Kanon, `10002`, no
+//!    `xor_2`), far exceeding the ">= 1 scene per title" acceptance floor, and
+//!    are STRICT real-bytes tests (a missing corpus is an unconditional hard
+//!    failure, no opt-out; they run in the periodic real-bytes oracle).
+//!    No raw copyrighted bytes or text are emitted — counts / offsets / sha-free
+//!    structural metadata only.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -122,7 +116,6 @@ fn framing_is_byte_exact_and_round_trips_on_real_bytes() {
         let mut total_bytes = 0usize;
 
         for (scene_idx, bytecode) in scenes.iter().enumerate() {
-            // ---- Proof 1: byte-exact framing manifest (partition + ----
             // self-framing). Any gap/overlap or self-frame mismatch returns a
             // typed FramingError naming the offending offset.
             let manifest = framing_manifest(bytecode).unwrap_or_else(|err| {
@@ -165,7 +158,6 @@ fn framing_is_byte_exact_and_round_trips_on_real_bytes() {
             total_elements += manifest.len();
             total_bytes += bytecode.len();
 
-            // ---- Proof 2: round-trip re-emit == input, byte-for-byte. ----
             let reemitted = reemit_scene(bytecode).unwrap_or_else(|err| {
                 panic!(
                     "[{}] scene #{scene_idx} re-emit failed: {err}",

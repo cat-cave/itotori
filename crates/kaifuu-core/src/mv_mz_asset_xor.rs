@@ -1,5 +1,4 @@
 //! Shared RPG Maker MV/MZ asset-XOR crypto core.
-//!
 //! RPG Maker MV/MZ encrypts image AND audio assets with one identical scheme:
 //! a 16-byte [`RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER`] signature is prepended to
 //! the asset, and the first 16 bytes of the original media are XOR-masked with
@@ -8,15 +7,12 @@
 //! prepends the header and XORs the first 16 plaintext bytes. XOR is
 //! involutive, so a correct key yields a **byte-correct** round-trip
 //! (`encrypt(decrypt(enc)) == enc`).
-//!
 //! This module is the single canonical implementation. The encrypted-image
-//! path ([`crate::mv_mz_encrypted_image`], KAIFUU-115), the encrypted-audio
-//! path ([`crate::mv_mz_encrypted_audio`], KAIFUU-116), and the asset
+//! path ([`crate::mv_mz_encrypted_image`]), the encrypted-audio
+//! path ([`crate::mv_mz_encrypted_audio`]), and the asset
 //! *replacement* path ([`crate::mv_mz_encrypted_asset_replacement`],
-//! KAIFUU-117) all consume it — none re-implements the XOR primitive.
-//!
+//! ) all consume it — none re-implements the XOR primitive.
 //! # THE LINE (mechanical, not prose)
-//!
 //! Raw key bytes live **only** inside [`MvMzAssetKey`] (redacting `Debug`,
 //! zeroizing `Drop`). They are never serialized, logged, or returned across the
 //! module boundary. Callers commit to a key with [`MvMzAssetKey::material_hash`]

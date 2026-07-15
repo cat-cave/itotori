@@ -1,14 +1,12 @@
-//! KAIFUU-211 real-bytes integration test for the bundle-driven
+//! real-bytes integration test for the bundle-driven
 //! patchback driver (`apply_translated_bundle`).
-//!
 //! Loads a Sweetie HD **dialogue scene** from `ITOTORI_REAL_GAME_ROOT`,
 //! runs `kaifuu_reallive::produce_bundle` to get the canonical
 //! source-side bundle, **synthesises** a translated bundle by replacing
 //! every (dialogue) unit's `target.text` with a known en-US sentinel
 //! string, applies the patchback, re-parses the patched `Seen.txt`, and
-//! asserts the KAIFUU-211 acceptance criteria PLUS the binary-vs-dialogue
+//! asserts the acceptance criteria PLUS the binary-vs-dialogue
 //! surface-selection guarantee:
-//!
 //! - The directory still has 198 entries.
 //! - The patched scene's bytecode decompresses cleanly.
 //! - The Textout opcodes now contain the en-US sentinel bytes (not the
@@ -19,11 +17,10 @@
 //! - The file size is within +/- 50% of the original.
 //! - The original source byte slice is unchanged (returned `Vec<u8>`
 //!   is a fresh allocation).
-//!
-//! Env-gated and STRICT: without `ITOTORI_REAL_GAME_ROOT` an absent corpus is
-//! an unconditional HARD FAILURE (no opt-out). This `#[ignore]`-d suite runs
-//! only in the periodic ground-truth oracle (`just real-bytes-oracle`), where
-//! the corpus is staged.
+//!   Env-gated and STRICT: without `ITOTORI_REAL_GAME_ROOT` an absent corpus is
+//!   an unconditional HARD FAILURE (no opt-out). This `#[ignore]`-d suite runs
+//!   only in the periodic ground-truth oracle (`just real-bytes-oracle`), where
+//!   the corpus is staged.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -49,12 +46,11 @@ const SWEETIE_HD_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
 /// round-trip is exercised against a real dialogue scene instead.
 /// (Scene 2011, previously used here, contains a second-level-XOR'd
 /// `module_sel` block — a `compiler_version=110002` `xor_2` segment owned
-/// by the decompressor follow-up node — and can no longer be decoded
+/// by the decompressor — and can no longer be decoded
 /// end-to-end, so it is not a valid clean round-trip fixture.)
 const DIALOGUE_SCENE_ID: u16 = 1017;
 
 /// English-language sentinel used by the round-trip assertion.
-///
 /// Prefixed with one full-width SJIS punctuation character (`「`,
 /// 0x81 0x75) so the patched bytes still parse as a Textout opcode (the
 /// parser recognises a run by the SJIS lead-byte switch
@@ -85,7 +81,6 @@ fn bridge_opts(scene_kidoku_count: u32) -> BridgeOpts<'static> {
 }
 
 /// `(scene_blob, decompressed_bytecode, header)` for a scene id.
-///
 /// The bytecode is returned as the real PLAINTEXT the interpreter executes:
 /// after AVG32 decompression, Sweetie HD's second-level `xor_2` segment
 /// (`compiler_version=110002`) over `[256, 513)` is decrypted with the
@@ -210,7 +205,7 @@ fn patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_ide
         })
         .expect("dialogue scene must have at least one readable textout");
 
-    // Build the v0.2 source bundle (KAIFUU-210 producer).
+    // Build the v0.2 source bundle (producer).
     let gameexe_bytes = real_gameexe_ini_path()
         .and_then(|path| fs::read(path).ok())
         .unwrap_or_default();
@@ -253,7 +248,6 @@ fn patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_ide
         "apply_translated_bundle must not mutate its input slice"
     );
 
-    // ---- Acceptance: directory still has 198 entries. ----
     let reparsed = parse_archive(&patched).expect("patched Seen.txt must re-parse");
     assert_eq!(
         reparsed.entries.len(),
@@ -261,7 +255,6 @@ fn patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_ide
         "patched archive must preserve the 198-entry directory shape"
     );
 
-    // ---- Acceptance: patched scene bytecode decompresses cleanly. ----
     let new_entry = reparsed
         .entries
         .iter()
@@ -287,7 +280,6 @@ fn patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_ide
             .apply_segment(&mut new_decompressed);
     }
 
-    // ---- Acceptance: EVERY binary run survives byte-identical. ----
     for (i, run) in binary_runs.iter().enumerate() {
         let survives = new_decompressed
             .windows(run.len())
@@ -304,7 +296,6 @@ fn patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_ide
         binary_runs.len()
     );
 
-    // ---- Acceptance: patched bytecode carries the en-US sentinel bytes. ----
     let opcodes = parse_real_bytecode(&new_decompressed).expect("patched bytecode parses");
     let en_sentinel_bytes =
         kaifuu_reallive::encode_shift_jis_slot(EN_SENTINEL).expect("sentinel encodes as SJIS");
@@ -339,7 +330,6 @@ fn patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_ide
          (`「` = 0x81 0x75); got 0/{textout_count}"
     );
 
-    // ---- Acceptance: original ja-JP first dialogue bytes are gone. ----
     let original_present = new_decompressed
         .windows(original_first_dialogue.len())
         .any(|window| window == original_first_dialogue.as_slice());
@@ -348,7 +338,6 @@ fn patches_dialogue_scene_with_en_us_sentinel_and_preserves_binary_runs_byte_ide
         "original ja-JP dialogue body must no longer appear verbatim in the patched bytecode"
     );
 
-    // ---- Acceptance: file size within +/- 50% of original. ----
     let size_ratio = (patched.len() as f64) / (seen_bytes.len() as f64);
     eprintln!(
         "Seen.txt size: source={} patched={} (ratio={size_ratio:.3})",
@@ -766,15 +755,15 @@ fn boundary_ordinals(bytecode: &[u8]) -> std::collections::BTreeMap<usize, (usiz
 /// Exercise the length-changing patchback's jump-target recalculation on a
 /// real, goto-rich Sweetie HD scene, for BOTH a longer and a shorter
 /// translated body. Proves:
-///  - the archive re-parses with the same 198-scene count and a correctly
-///    rewritten scene offset table;
-///  - the patched scene re-decompiles with ZERO new unknown / generic
-///    opcodes and ZERO malformed framing (`parse_real_bytecode_spans` Ok);
-///  - EVERY one of the 91 goto pointers was recalculated to a NEW byte
-///    offset that still lands on an element boundary AND still targets the
-///    SAME logical element (same ordinal + same opcode label) it pointed to
-///    in the source — i.e. a jump that pointed to opcode X still points to
-///    opcode X at its new offset, never into the middle of a command.
+/// - the archive re-parses with the same 198-scene count and a correctly
+///   rewritten scene offset table;
+/// - the patched scene re-decompiles with ZERO new unknown / generic
+///   opcodes and ZERO malformed framing (`parse_real_bytecode_spans` Ok);
+/// - EVERY one of the 91 goto pointers was recalculated to a NEW byte
+///   offset that still lands on an element boundary AND still targets the
+///   SAME logical element (same ordinal + same opcode label) it pointed to
+///   in the source — i.e. a jump that pointed to opcode X still points to
+///   opcode X at its new offset, never into the middle of a command.
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn length_changing_patch_recalculates_goto_targets_on_real_scene() {
@@ -790,7 +779,6 @@ fn length_changing_patch_recalculates_goto_targets_on_real_scene() {
 
     let source_seen_len = seen_bytes.len();
 
-    // ---- Source-side ground truth: element boundaries + goto sites. ----
     let source_bytecode = decrypt_scene(&seen_bytes, GOTO_SCENE_ID, &cipher);
     let source_boundaries = boundary_ordinals(&source_bytecode);
     let source_sites =
@@ -816,7 +804,7 @@ fn length_changing_patch_recalculates_goto_targets_on_real_scene() {
         })
         .collect();
 
-    // The source bundle (KAIFUU-210 producer), reused for both directions.
+    // The source bundle (producer), reused for both directions.
     let (scene_blob, decompressed, header) = scene_bytes(&seen_bytes, GOTO_SCENE_ID);
     let gameexe_bytes = real_gameexe_ini_path()
         .and_then(|path| fs::read(path).ok())
@@ -863,7 +851,6 @@ fn length_changing_patch_recalculates_goto_targets_on_real_scene() {
         )
         .unwrap_or_else(|err| panic!("{label}: length-changing patch must succeed: {err}"));
 
-        // ---- Offset table rewritten; same scene count. ----
         let reparsed = parse_archive(&patched).expect("patched archive re-parses");
         assert_eq!(
             reparsed.entries.len(),
@@ -871,7 +858,6 @@ fn length_changing_patch_recalculates_goto_targets_on_real_scene() {
             "{label}: patched archive must keep the 198-scene directory"
         );
 
-        // ---- Patched scene re-decompiles clean at the plaintext layer. ----
         let patched_bytecode = decrypt_scene(&patched, GOTO_SCENE_ID, &cipher);
         let patched_ops = parse_real_bytecode(&patched_bytecode)
             .unwrap_or_else(|err| panic!("{label}: patched scene must re-decompile: {err}"));
@@ -892,7 +878,6 @@ fn length_changing_patch_recalculates_goto_targets_on_real_scene() {
         parse_real_bytecode_spans(&patched_bytecode)
             .unwrap_or_else(|err| panic!("{label}: patched framing must partition: {err}"));
 
-        // ---- Direction of the length change is as intended. ----
         if expect_longer {
             assert!(
                 patched_bytecode.len() > source_bytecode.len(),
@@ -909,8 +894,7 @@ fn length_changing_patch_recalculates_goto_targets_on_real_scene() {
             );
         }
 
-        // ---- Every goto target recalculated: same count, lands on a
-        //      boundary, targets the SAME logical element. ----
+        // boundary, targets the SAME logical element. ----
         let patched_boundaries = boundary_ordinals(&patched_bytecode);
         let patched_sites = collect_goto_pointer_sites(&patched_bytecode)
             .expect("patched scene goto pointers collect");
@@ -1000,22 +984,21 @@ const SELECT_OPT_1: &str = "[EN] Wait - not yet, hold on...";
 
 /// Real select-block patchback round-trip (choice_label round-trip) on a
 /// genuine multi-option `module_sel` `{ … }` block (Sweetie HD scene 1018).
-///
 /// Extracts the scene, translates ONLY the two choice labels (dialogue is
 /// carried byte-identical via source-identity targets, so the select-block
 /// edit is the SOLE length change — a crisp, attributable proof), patches
 /// under `dialogue+choices` scope, then asserts:
-///  - the patched scene re-decompiles with ZERO new unknown / generic
-///    opcodes and framing that still partitions exactly;
-///  - the `{ … }` select block survives: still exactly one Choice command
-///    with both options re-inserted, each option's bytes equal to the
-///    NextString-safe encoding of its translation (translated label
-///    observed) and decoding cleanly as a Shift-JIS run;
-///  - the scene bytecode grew by EXACTLY the choice-option byte delta
-///    (dialogue untouched — the select-block edit is isolated);
-///  - every goto pointer still lands on an element boundary and still
-///    targets the SAME logical element; the 3 targets after the block are
-///    re-based by exactly the delta, the rest are unchanged.
+/// - the patched scene re-decompiles with ZERO new unknown / generic
+///   opcodes and framing that still partitions exactly;
+/// - the `{ … }` select block survives: still exactly one Choice command
+///   with both options re-inserted, each option's bytes equal to the
+///   NextString-safe encoding of its translation (translated label
+///   observed) and decoding cleanly as a Shift-JIS run;
+/// - the scene bytecode grew by EXACTLY the choice-option byte delta
+///   (dialogue untouched — the select-block edit is isolated);
+/// - every goto pointer still lands on an element boundary and still
+///   targets the SAME logical element; the 3 targets after the block are
+///   re-based by exactly the delta, the rest are unchanged.
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn select_block_patchback_round_trips_byte_correct_on_real_scene_1018() {
@@ -1029,7 +1012,6 @@ fn select_block_patchback_round_trips_byte_correct_on_real_scene_1018() {
     let cipher = recover_archive_xor2_cipher(&seen_bytes)
         .expect("Sweetie HD must yield a validated xor_2 cipher");
 
-    // ---- Source-side ground truth. ----
     let source_bytecode = decrypt_scene(&seen_bytes, SELECT_BLOCK_SCENE_ID, &cipher);
     let source_ops = parse_real_bytecode(&source_bytecode).expect("source scene decompiles clean");
     assert_eq!(
@@ -1112,7 +1094,6 @@ fn select_block_patchback_round_trips_byte_correct_on_real_scene_1018() {
          (so the length-changing choice edit exercises jump recalculation)"
     );
 
-    // ---- Build the translated bundle: choices translated, dialogue identity. ----
     let (scene_blob, decompressed, header) = scene_bytes(&seen_bytes, SELECT_BLOCK_SCENE_ID);
     let gameexe_bytes = real_gameexe_ini_path()
         .and_then(|path| fs::read(path).ok())
@@ -1170,7 +1151,6 @@ fn select_block_patchback_round_trips_byte_correct_on_real_scene_1018() {
     )
     .expect("dialogue+choices patch must succeed on the real select-block scene");
 
-    // ---- Patched scene re-decompiles clean; framing intact. ----
     let patched_bytecode = decrypt_scene(&patched, SELECT_BLOCK_SCENE_ID, &cipher);
     let patched_ops = parse_real_bytecode(&patched_bytecode)
         .expect("patched select-block scene must re-decompile (select framing intact)");
@@ -1193,7 +1173,6 @@ fn select_block_patchback_round_trips_byte_correct_on_real_scene_1018() {
     parse_real_bytecode_spans(&patched_bytecode)
         .expect("patched select-block framing must still partition exactly");
 
-    // ---- The `{ … }` select block survives with both options re-inserted. ----
     let patched_options = patched_ops
         .iter()
         .find_map(|op| match op {
@@ -1235,7 +1214,6 @@ fn select_block_patchback_round_trips_byte_correct_on_real_scene_1018() {
         );
     }
 
-    // ---- The select-block edit is the SOLE length change (dialogue identity). ----
     let expected_delta: isize = translations
         .iter()
         .enumerate()
@@ -1257,7 +1235,6 @@ fn select_block_patchback_round_trips_byte_correct_on_real_scene_1018() {
          (dialogue carried byte-identical; only the select block changed)"
     );
 
-    // ---- Every goto pointer still valid; downstream ones re-based by delta. ----
     let patched_boundaries = boundary_ordinals(&patched_bytecode);
     let patched_sites =
         collect_goto_pointer_sites(&patched_bytecode).expect("patched goto pointers collect");

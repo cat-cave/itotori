@@ -1,13 +1,12 @@
 //! End-to-end patchback + `.kaifuu` delta producer tests.
-//!
 //! - Synthetic-JSON tests build a minimal `www` tree (no retail bytes),
 //!   extract a bundle, turn it into a translated bundle, and assert:
-//!     * an UNTRANSLATED bundle (`target == source`) round-trips
-//!       BYTE-IDENTICAL (zero changed files, zero delta entries), and
-//!       `kaifuu_delta::apply_delta` reproduces the tree;
-//!     * a single-surface translation changes ONLY that file, only that
-//!       string literal, and `apply_delta` reproduces the patched tree;
-//!     * a stale on-disk source is a typed error, never a silent splice.
+//! * an UNTRANSLATED bundle (`target == source`) round-trips
+//!   BYTE-IDENTICAL (zero changed files, zero delta entries), and
+//!   `kaifuu_delta::apply_delta` reproduces the tree;
+//! * a single-surface translation changes ONLY that file, only that
+//!   string literal, and `apply_delta` reproduces the patched tree;
+//! * a stale on-disk source is a typed error, never a silent splice.
 //! - An `#[ignore]`d real-bytes test runs the byte-identical untranslated
 //!   round-trip on the LustMemory corpus. No verbatim text is asserted or
 //!   printed.

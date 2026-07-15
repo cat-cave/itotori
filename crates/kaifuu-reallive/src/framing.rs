@@ -1,7 +1,5 @@
 //! Byte-exact framing pins + round-trip re-emit (`genaudit2-05`).
-//!
 //! # What this adds over the bare zero-unknown gate
-//!
 //! The full-archive gate (`multi_corpus_real_bytes.rs`) asserts that every
 //! decoded element is a *recognised* [`crate::opcode::RealLiveOpcode`] — zero generic
 //! `Command` blobs, zero `Unknown` desync tripwires. That proves opcode
@@ -11,12 +9,10 @@
 //! land on a byte that happens to be a valid opener and continue decoding
 //! into perfectly-typed opcodes. The stream would be "100% recognised" while
 //! silently mis-partitioned.
-//!
 //! This module pins the framing so "100%" reflects **verified byte spans**,
 //! not mere absence-of-tripwire. It provides two stronger proofs, both built
 //! on the single-source-of-truth decoder ([`crate::opcode::decode_element`] /
 //! [`crate::opcode::parse_real_bytecode_spans`]) — no parallel framer:
-//!
 //! 1. [`framing_manifest`] — a per-element offset+width manifest that is
 //!    asserted to **partition** the scene bytecode (contiguous,
 //!    non-overlapping, full-coverage) AND to be **self-framing**: every
@@ -50,7 +46,6 @@ use crate::opcode::{
 /// One entry in a byte-exact framing manifest: the scene-relative byte
 /// offset where a decoded element begins, the byte width it occupies, and
 /// its stable opcode label ([`crate::opcode::RealLiveOpcode::label`]).
-///
 /// The offset+width pin the element's exact byte span in the decompressed
 /// (and, for `xor_2` titles, decrypted) scene bytecode — the framing, not
 /// merely the opcode identity.
@@ -144,7 +139,6 @@ impl From<RealLiveParseError> for FramingError {
 
 /// The framing decomposition of one element — the exact structural fields
 /// needed to re-emit its bytes byte-for-byte.
-///
 /// Structural framing bytes are captured as **decoded fields** (so
 /// [`FramedElement::reemit`] reconstructs them rather than copying the
 /// input); genuinely-opaque operand payloads are captured verbatim.
@@ -257,16 +251,13 @@ impl FramedElement {
 /// Build a byte-exact framing manifest for a decompressed (and, for `xor_2`
 /// titles, decrypted) scene bytecode stream, validating that the element
 /// spans **partition** the stream and that each element is **self-framing**.
-///
 /// Reuses [`parse_real_bytecode_spans`] (the width-carrying authoritative
 /// decode) for the element boundaries and [`decode_element`] for the
 /// isolated per-element re-decode — there is no second framer.
-///
 /// # Errors
-///
 /// - [`FramingError::Decode`] if the stream does not decode.
 /// - [`FramingError::NotPartition`] if the spans are not contiguous / do not
-///   cover exactly `[0, bytes.len())`.
+///   cover exactly `[0, bytes.len)`.
 /// - [`FramingError::SelfFrameWidthMismatch`] / [`FramingError::SelfFrameLabelMismatch`]
 ///   if an element's isolated re-decode disagrees with its declared span.
 pub fn framing_manifest(bytes: &[u8]) -> Result<Vec<FramingSpan>, FramingError> {
@@ -337,14 +328,11 @@ pub fn framing_manifest(bytes: &[u8]) -> Result<Vec<FramingSpan>, FramingError> 
 /// Re-emit a decompressed (and, for `xor_2` titles, decrypted) scene
 /// bytecode stream from its decoded element sequence — the inverse of the
 /// decoder framing.
-///
 /// Structural framing bytes are reconstructed from decoded fields; opaque
 /// operand payload is emitted verbatim. `reemit_scene(bytes)?` equals
 /// `bytes` byte-for-byte iff the decoder partitioned the stream exactly and
 /// captured every byte — the strongest framing-completeness proof.
-///
 /// # Errors
-///
 /// [`FramingError::Decode`] if the stream does not decode.
 pub fn reemit_scene(bytes: &[u8]) -> Result<Vec<u8>, FramingError> {
     let spans = parse_real_bytecode_spans(bytes)?;

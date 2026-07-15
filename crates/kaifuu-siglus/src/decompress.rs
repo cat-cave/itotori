@@ -1,11 +1,9 @@
 //! Proprietary Siglus LZSS decompressor — **skeleton** (siglus-05; real
 //! codec is siglus-06).
-//!
 //! After the constant-256-XOR + second-layer-key strip ([`crate::decrypt`])
 //! a Siglus scene payload is a proprietary-LZSS-compressed bytecode blob.
 //! This module owns the decompress direction; [`crate::compress`] owns the
 //! inverse used by patchback.
-//!
 //! Skeleton status: [`decompress_siglus_lzss`] returns
 //! [`SiglusDecompressError::NotImplemented`]. The control-bit / literal /
 //! back-reference decode lands in siglus-06 against real bytes — there is
@@ -49,7 +47,6 @@ pub enum SiglusDecompressError {
 }
 
 /// Decompress a proprietary-Siglus-LZSS-compressed scene payload.
-///
 /// `compressed` is the post-decrypt payload; `dst_len` is the declared
 /// uncompressed size. Skeleton: always returns
 /// [`SiglusDecompressError::NotImplemented`]. There is no `Ok(partial)`

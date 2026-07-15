@@ -1,6 +1,5 @@
 //! Softpal `PAC ` container envelope: header + directory index parse, entry
 //! enumeration, and deterministic per-entry extraction.
-//!
 //! See the crate-level docs for the on-disk layout. Everything here is a pure
 //! function of the input `&[u8]`; malformed bytes yield a typed [`PacError`],
 //! never a panic.
@@ -42,7 +41,6 @@ pub struct PacEntry {
 }
 
 /// A parsed PAC directory: the validated set of [`PacEntry`] records.
-///
 /// Holds no archive bytes itself — [`PacArchive::extract`] takes the same
 /// `&[u8]` the index was parsed from, so the reader is allocation-light and the
 /// borrow of the archive buffer stays with the caller.
@@ -56,7 +54,6 @@ pub struct PacArchive {
 }
 
 /// Fatal errors raised while parsing or extracting from a PAC archive.
-///
 /// Every display string begins with the `kaifuu.softpal.pac` namespace marker
 /// (see [`crate::SOFTPAL_PAC_ERROR_MARKER`]).
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -178,13 +175,10 @@ fn decode_entry_name(field: &[u8], index: usize) -> Result<String, PacError> {
 
 impl PacArchive {
     /// Parse a PAC archive's header + directory index from `bytes`.
-    ///
     /// Performs magic, count-sanity, index-bounds, per-entry name/payload, and
     /// the entry-0 `index_end` cross-check. Returns a typed [`PacError`] on any
     /// malformed input; never panics.
-    ///
     /// # Errors
-    ///
     /// Returns a [`PacError`] variant for a short buffer, wrong magic, an
     /// out-of-range count, a truncated / inconsistent index, or any entry whose
     /// name is undecodable or whose payload runs out of bounds.
@@ -237,7 +231,7 @@ impl PacArchive {
                     count,
                 });
             }
-            // Payload must sit past the header+index region ...
+            // Payload must sit past the header+index region...
             if (offset as usize) < index_end {
                 return Err(PacError::EntryOverlapsIndex {
                     index,
@@ -291,15 +285,12 @@ impl PacArchive {
 
     /// Slice an entry's payload bytes out of `bytes` — the same buffer the
     /// index was parsed from.
-    ///
     /// No decompression / decryption: the PAC format stores payloads verbatim,
-    /// so this is `bytes[offset .. offset+size]`. The `(offset, size)` bounds
+    /// so this is `bytes[offset.. offset+size]`. The `(offset, size)` bounds
     /// were validated at [`parse`](Self::parse) time; they are re-checked here
     /// against `bytes` so a caller cannot slice out of a different buffer.
-    ///
     /// # Errors
-    ///
-    /// [`PacError::ArchiveLenMismatch`] if `bytes.len()` differs from the length
+    /// [`PacError::ArchiveLenMismatch`] if `bytes.len` differs from the length
     /// the index was validated against; [`PacError::EntryOutOfBounds`] if the
     /// (re-checked) payload runs past `bytes` (defence in depth).
     pub fn extract<'a>(&self, bytes: &'a [u8], entry: &PacEntry) -> Result<&'a [u8], PacError> {
@@ -328,7 +319,6 @@ impl PacArchive {
 mod tests {
     use super::*;
 
-    // ---- synthetic PAC builder ------------------------------------------
     // Build a minimal, well-formed PAC from (name, payload) pairs so the happy
     // path and every malformed-input branch can be exercised without any real
     // (copyrighted) bytes.

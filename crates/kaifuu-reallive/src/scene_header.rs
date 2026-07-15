@@ -1,11 +1,9 @@
-//! KAIFUU-210 — parallel scene-header decoder for kaifuu-reallive.
-//!
+//! parallel scene-header decoder for kaifuu-reallive.
 //! Decodes the fixed `0x1d0`-byte (464-byte) scene header that prefixes
 //! every populated scene blob in a RealLive `Seen.txt` envelope. The
 //! layout is documented in `docs/research/reallive-engine.md` §D and
 //! confirmed against Sweetie HD's scene #1 in
 //! `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4.
-//!
 //! Provenance:
 //! - The same on-disk format is decoded by `utsushi-reallive::scene_header`,
 //!   but kaifuu-reallive does **not** depend on utsushi-reallive (per
@@ -13,14 +11,13 @@
 //!   This module is an independent re-derivation from the same public
 //!   format documentation.
 //! - No rlvm source is vendored or copied.
-//!
-//! The decoder is deliberately narrow: only the fields needed by the
-//! KAIFUU-210 bridge producer (`bytecode_offset`,
-//! `bytecode_uncompressed_size`, `bytecode_compressed_size`,
-//! `compiler_version`, `kidoku_offset`, `kidoku_count`) are surfaced as
-//! named struct fields. Other documented fields are still parsed for
-//! shape correctness but are not exposed as the bridge producer does not
-//! consume them.
+//!   The decoder is deliberately narrow: only the fields needed by the
+//!   bridge producer (`bytecode_offset`
+//!   `bytecode_uncompressed_size`, `bytecode_compressed_size`,
+//!   `compiler_version`, `kidoku_offset`, `kidoku_count`) are surfaced as
+//!   named struct fields. Other documented fields are still parsed for
+//!   shape correctness but are not exposed as the bridge producer does not
+//!   consume them.
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

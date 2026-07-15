@@ -1,7 +1,6 @@
-//! KAIFUU-106 — the committed clean reproduction-bundle fixture loads from
+//! the committed clean reproduction-bundle fixture loads from
 //! disk, matches the in-code fixture, and validates green: no private assets,
 //! self-sufficient for public reproduction, every embedded tuple honest.
-//!
 //! Only the CLEAN redacted bundle is committed (no raw private assets on disk);
 //! the per-private-asset-class REJECTION cases are exercised in the crate's own
 //! `repro_bundle` unit tests, which construct dirty bundles in-code from

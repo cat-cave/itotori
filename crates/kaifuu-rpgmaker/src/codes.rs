@@ -1,11 +1,9 @@
 //! RPG Maker MV/MZ event-command-code classification.
-//!
-//! Every code that can appear in a top-level event `list[]` entry
-//! (`events[].pages[].list[]`, `CommonEvents[].list[]`,
-//! `Troops[].pages[].list[]`) is classified into one of the [`CodeClass`]
+//! Every code that can appear in a top-level event `list` entry
+//! (`events.pages.list`, `CommonEvents.list`,
+//! `Troops.pages.list`) is classified into one of the [`CodeClass`]
 //! variants. The classification is the backbone of the 100% /
 //! no-silent-skip contract:
-//!
 //! - [`CodeClass::Text`] codes carry translatable strings and are
 //!   extracted into bridge units.
 //! - [`CodeClass::Structural`] codes are recognised, carry no translatable
@@ -14,17 +12,16 @@
 //! - [`CodeClass::Script`] / [`CodeClass::Plugin`] codes can carry display
 //!   text via project-specific plugins (e.g. a `D_TEXT` plugin command).
 //!   The adapter has no plugin registry, so it neither drops them
-//!   silently nor blindly extracts engine commands like `window.close()`
+//!   silently nor blindly extracts engine commands like `window.close`
 //!   — it records a STRUCTURED FINDING so a human can review the surface.
 //! - [`CodeClass::ControlVariable`] (code 122) is text-bearing only when
 //!   its operand selects a script string; the walker resolves that at the
 //!   call site and emits a finding for the script case.
 //! - Any code not in this table is [`CodeClass::Unknown`] → structured
 //!   finding.
-//!
-//! The code numbers are public RPG Maker MV/MZ engine constants
-//! (documented across the community wikis); no game-specific bytes inform
-//! this table.
+//!   The code numbers are public RPG Maker MV/MZ engine constants
+//!   (documented across the community wikis); no game-specific bytes inform
+//!   this table.
 
 /// The translatable role a [`CodeClass::Text`] code plays.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,7 +62,6 @@ pub enum CodeClass {
 /// Classify a top-level event-command `code`.
 pub fn classify(code: i64) -> CodeClass {
     match code {
-        // --- text-bearing -------------------------------------------------
         401 => CodeClass::Text(TextRole::DialogueLine),
         405 => CodeClass::Text(TextRole::ScrollingLine),
         102 => CodeClass::Text(TextRole::ChoiceList),
@@ -73,13 +69,11 @@ pub fn classify(code: i64) -> CodeClass {
         324 => CodeClass::Text(TextRole::ChangeNickname),
         325 => CodeClass::Text(TextRole::ChangeProfile),
 
-        // --- text-adjacent context / specials -----------------------------
         101 => CodeClass::ShowTextSetup,
         122 => CodeClass::ControlVariable,
         355 | 655 => CodeClass::Script,
         356 | 357 => CodeClass::Plugin,
 
-        // --- recognised non-text structural codes -------------------------
         0       // end of list
         | 103   // Input Number
         | 104   // Select Item

@@ -1,10 +1,8 @@
 //! Siglus stack-machine expression decoder — **skeleton** (siglus-05).
-//!
 //! Siglus operands are encoded as a postfix expression stream the scene
 //! VM evaluates against an operand stack (integer/string literals,
 //! variable refs, operators, and call forms). [`crate::opcode`] calls
 //! [`decode_expression`] to recover each instruction's operands.
-//!
 //! Skeleton status: [`decode_expression`] returns
 //! [`SiglusExpressionError::NotImplemented`], and [`SiglusExpr`] carries
 //! only the `Unknown` catch-all today.
@@ -12,7 +10,6 @@
 use thiserror::Error;
 
 /// A decoded Siglus operand expression.
-///
 /// Skeleton: only the `Unknown` catch-all exists. The real expression
 /// grammar (int/string literals, variable refs, operators, calls) is
 /// populated against real bytes downstream.
@@ -43,7 +40,6 @@ pub enum SiglusExpressionError {
 }
 
 /// Decode a single Siglus operand expression starting at `pos`.
-///
 /// Returns the decoded [`SiglusExpr`] and the byte position immediately
 /// after it (mirroring the `kaifuu-reallive`
 /// `parse_expression(bytes, pos) -> (Expr, usize)` shape). Skeleton:
