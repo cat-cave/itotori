@@ -15,7 +15,7 @@
     "crates/kaifuu-core/src/compat_evidence.rs": 576,
     "crates/kaifuu-core/src/compat_profile.rs": 1362,
     "crates/kaifuu-core/src/compat_regression.rs": 888,
-    "crates/kaifuu-core/src/contracts.rs": 5753,
+    "crates/kaifuu-core/src/contracts.rs": 5307,
     "crates/kaifuu-core/src/dynamic_key_discovery_helper.rs": 1058,
     "crates/kaifuu-core/src/lib.rs": 22069,
     "crates/kaifuu-core/src/mv_mz_encrypted_asset_replacement.rs": 1449,
