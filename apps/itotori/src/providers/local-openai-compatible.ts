@@ -428,7 +428,9 @@ function buildRun(input: {
       endpointFamily: input.descriptor.endpointFamily,
       providerName: input.descriptor.providerName,
       requestedModelId: input.requestedModelId,
-      requestedProviderId: input.request.providerId,
+      // Non-remote local provider: the request names no upstream, so record
+      // this provider's own local id as the requested identity.
+      requestedProviderId: input.request.providerId ?? input.descriptor.providerName,
       actualModelId: input.actualModelId,
     },
     structuredOutputMode: input.request.structuredOutput?.mode ?? "none",
@@ -451,7 +453,9 @@ function buildRun(input: {
     // ITOTORI-230 — local providers talk to localhost; no data leaves
     // the host, so the canonical ZDR posture trivially holds. Recording
     // the canonical shape keeps the ledger schema uniform.
-    routingPosture: localOnlyRoutingPosture(input.request.providerId),
+    routingPosture: localOnlyRoutingPosture(
+      input.request.providerId ?? input.descriptor.providerName,
+    ),
     // ITOTORI-232 — local providers never bill, so the captured `usage`
     // block carries no `cost` key. The partial-NULL CHECK on the ledger
     // exempts these rows; the typed sentinel here documents WHY no

@@ -834,16 +834,16 @@ describe("OpenRouterProvider", () => {
       apiKey: "test-key",
       fetch: fetchMock,
       capabilities: openRouterCapabilitiesForPrivateInputs(),
-      // ITOTORI-220 — `only` pins provider routing to the request's
-      // providerId at invoke time; no caller-supplied `order` or
-      // `allowFallbacks` is honoured for provider routing.
+      // no-provider-name invariant — production routing names NO provider:
+      // neither a soft `order` preference nor a hard `only` pin. OpenRouter
+      // picks the upstream on capability + ZDR + price with allow_fallbacks.
       routing: {},
       live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
     });
 
     const result = await provider.invoke({
-      // ITOTORI-243 — providerId leads the preference `order`; the mocked
-      // fixture's served provider is recorded as the served pair.
+      // The request carries a providerId HINT ("Anthropic") but it is NEVER
+      // routed; the mocked fixture's served provider is recorded as the output.
       ...jsonSchemaRequest("openai/gpt-4o-mini", "Anthropic"),
       fallbackModels: ["anthropic/claude-3-haiku"],
     });
@@ -853,10 +853,11 @@ describe("OpenRouterProvider", () => {
       provider: { order?: string[]; only?: string[]; allow_fallbacks?: boolean };
     };
     expect(requestBody.models).toEqual(["openai/gpt-4o-mini", "anthropic/claude-3-haiku"]);
+    // No provider named on the wire — no `order`, no `only`.
     expect(requestBody.provider).toMatchObject({
-      order: ["Anthropic"],
       allow_fallbacks: true,
     });
+    expect(requestBody.provider.order).toBeUndefined();
     expect(requestBody.provider.only).toBeUndefined();
     expect(result.providerRun).toMatchObject({
       retryCount: 0,
@@ -874,7 +875,7 @@ describe("OpenRouterProvider", () => {
     });
     expect(recorder.artifacts[0]?.adapterMetadata).toMatchObject({
       providerRouting: expect.objectContaining({
-        order: ["Anthropic"],
+        // no-provider-name invariant — the recorded wire routing names no provider.
         allow_fallbacks: true,
       }),
       openrouterMetadata: expect.objectContaining({
@@ -882,6 +883,10 @@ describe("OpenRouterProvider", () => {
         attempt: 1,
       }),
     });
+    const recordedRouting = recorder.artifacts[0]?.adapterMetadata?.providerRouting as
+      | { order?: string[] }
+      | undefined;
+    expect(recordedRouting?.order).toBeUndefined();
   });
 });
 

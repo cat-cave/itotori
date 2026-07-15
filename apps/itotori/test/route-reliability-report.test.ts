@@ -12,6 +12,7 @@
 //      run id and the field; the strict assertion escalates it.
 //   4. Public fixtures only — no prompt/response text or API keys.
 
+import { REQUESTED_PROVIDER_UNKNOWN } from "../src/providers/types.js";
 import type { LocalizationJournalAttemptRecord } from "@itotori/db";
 import { describe, expect, it } from "vitest";
 import { CapabilityGuard } from "../src/providers/capability-guard.js";
@@ -436,7 +437,7 @@ const PROMPT_HASH = "sha256:1111111111111111111111111111111111111111111111111111
 function cell(overrides: Partial<ExperimentMatrixCell> = {}): ExperimentMatrixCell {
   return {
     cellId: "cell-dev-pair-en",
-    pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+    pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     promptPreset: {
       presetId: "experiment-preset",
       templateVersion: "1.0.0",
@@ -462,7 +463,7 @@ function config(overrides: Partial<ExperimentMatrixConfig> = {}): ExperimentMatr
 
 function devPairGuard(): CapabilityGuard {
   const guard = new CapabilityGuard();
-  guard.register(DEV_PAIR.modelId, DEV_PAIR.providerId, getModelCapabilities(DEV_PAIR));
+  guard.register(DEV_PAIR.modelId, getModelCapabilities(DEV_PAIR.modelId));
   return guard;
 }
 

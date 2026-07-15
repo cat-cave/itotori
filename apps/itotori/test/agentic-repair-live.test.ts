@@ -186,7 +186,7 @@ class CapturingLiveWrapper implements ModelProvider {
     private readonly posture: PairChoice,
     private readonly sink: CapturedInvocation[],
   ) {
-    this.descriptor = inner.descriptorForPair(posture.pair);
+    this.descriptor = inner.descriptorForModel(posture.pair.modelId);
   }
   async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
     const res = await this.inner.invoke({ ...request, maxPriceUsd: this.posture.maxPriceUsd });

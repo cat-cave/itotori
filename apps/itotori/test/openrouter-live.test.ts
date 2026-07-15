@@ -3,13 +3,16 @@
 // Gated on ITOTORI_LIVE_PROVIDER=1 + OPENROUTER_API_KEY. When either is
 // unset, the test prints a visible skip note (no silent pass) and
 // returns. When both are set, it issues a trivial completion against
-// the DEV_PAIR and asserts the response carries:
+// the DEV_PAIR MODEL and asserts the response carries:
 //
 //   - providerRun.runId           (provider-assigned id)
 //   - tokenUsage.promptTokens > 0
 //   - tokenUsage.completionTokens > 0
 //   - cost.amountMicrosUsd > 0
-//   - upstreamProvider === DEV_PAIR.providerId  (pair pin verified)
+//   - upstreamProvider is a non-empty served slug (no-provider-name invariant:
+//     the request names NO provider; OpenRouter picks the upstream and we
+//     record whichever one actually served — never a fixed pin)
+//   - requestedProviderId === REQUESTED_PROVIDER_UNKNOWN (no provider requested)
 //
 // This is the live-LLM proof — running it once per major change
 // confirms the pipeline actually works end-to-end against OpenRouter.
@@ -24,6 +27,7 @@ import {
   DEV_PAIR,
   LocalProviderRunArtifactRecorder,
   OpenRouterModelProvider,
+  REQUESTED_PROVIDER_UNKNOWN,
 } from "../src/providers/index.js";
 import type { ModelInvocationRequest } from "../src/providers/types.js";
 
@@ -53,7 +57,7 @@ describe("ITOTORI-221 — live OpenRouter ModelProvider invocation", () => {
     const request: ModelInvocationRequest = {
       taskKind: "experiment",
       modelId: DEV_PAIR.modelId,
-      providerId: DEV_PAIR.providerId,
+      // no-provider-name invariant — the request names NO provider.
       inputClassification: "synthetic_public",
       prompt: {
         presetId: "itotori-221-live-smoke",
@@ -78,8 +82,10 @@ describe("ITOTORI-221 — live OpenRouter ModelProvider invocation", () => {
     expect(result.providerRun.tokenUsage.promptTokens ?? 0).toBeGreaterThan(0);
     expect(result.providerRun.tokenUsage.completionTokens ?? 0).toBeGreaterThan(0);
     expect(result.providerRun.cost.amountMicrosUsd ?? 0).toBeGreaterThan(0);
-    expect(result.providerRun.provider.upstreamProvider).toBe(DEV_PAIR.providerId);
-    expect(result.providerRun.provider.requestedProviderId).toBe(DEV_PAIR.providerId);
+    // No pin: OpenRouter picked the upstream; we only assert SOME provider
+    // served (recorded output), not a specific slug.
+    expect(result.providerRun.provider.upstreamProvider).toBeTruthy();
+    expect(result.providerRun.provider.requestedProviderId).toBe(REQUESTED_PROVIDER_UNKNOWN);
     expect(result.providerRun.provider.requestedModelId).toBe(DEV_PAIR.modelId);
     expect(result.content).toBeTruthy();
   }, 60_000);

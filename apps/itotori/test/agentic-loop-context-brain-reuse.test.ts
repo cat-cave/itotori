@@ -31,6 +31,7 @@ import {
 } from "../src/orchestrator/project-driven-executor.js";
 import { FsDrivenPatchExportSink } from "../src/orchestrator/project-driven-executor-sinks.js";
 import { DEV_PAIR } from "../src/providers/dev-pair.js";
+import { REQUESTED_PROVIDER_UNKNOWN } from "../src/providers/types.js";
 import {
   createProviderRunId,
   localOnlyRoutingPosture,
@@ -569,7 +570,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           bridge,
           rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
           pairPolicy: DEV_POLICY,
-          pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+          pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
           projectId: PROJECT_ID,
           localeBranchId: LOCALE_BRANCH_ID,
           sourceRevisionId: SOURCE_REVISION_ID,
@@ -644,7 +645,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           bridge,
           rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
           pairPolicy: DEV_POLICY,
-          pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+          pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
           projectId: PROJECT_ID,
           localeBranchId: LOCALE_BRANCH_ID,
           sourceRevisionId: SOURCE_REVISION_ID,
@@ -751,7 +752,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           bridge,
           rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
           pairPolicy: DEV_POLICY,
-          pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+          pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
           projectId: PROJECT_ID,
           localeBranchId: LOCALE_BRANCH_ID,
           sourceRevisionId: SOURCE_REVISION_ID,
@@ -872,7 +873,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           bridge,
           rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
           pairPolicy: DEV_POLICY,
-          pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+          pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
           projectId: PROJECT_ID,
           localeBranchId: LOCALE_BRANCH_ID,
           sourceRevisionId: SOURCE_REVISION_ID,
@@ -1008,7 +1009,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           dataRoot: workDir,
           pairPolicyPath: registeredPairPolicyPath,
           modelId: DEV_PAIR.modelId,
-          providerId: DEV_PAIR.providerId,
+          providerId: REQUESTED_PROVIDER_UNKNOWN,
           runDir: registeredRunDir,
         });
         const prompts = makePromptCaptures();
@@ -1031,7 +1032,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           bridge,
           rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
           pairPolicy: DEV_POLICY,
-          pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+          pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
           projectId: PROJECT_ID,
           localeBranchId: LOCALE_BRANCH_ID,
           sourceRevisionId: SOURCE_REVISION_ID,
@@ -1551,7 +1552,7 @@ function productionOpenRouterResponse(content: string): Response {
     JSON.stringify({
       id: "gen-context-correction-production-transport",
       model: DEV_PAIR.modelId,
-      provider: DEV_PAIR.providerId,
+      provider: "fireworks",
       choices: [{ finish_reason: "stop", message: { role: "assistant", content } }],
       // Synthetic mock-wire usage.cost lets the unmodified live provider,
       // durable admission, and ledger reconciliation path run without a paid

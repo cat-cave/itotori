@@ -39,6 +39,7 @@ import type {
 } from "../src/api-schema.js";
 import { applyKaifuuRpgMakerPatch } from "../src/orchestrator/patch-apply-seam.js";
 import { DEV_PAIR } from "../src/providers/dev-pair.js";
+import { REQUESTED_PROVIDER_UNKNOWN } from "../src/providers/types.js";
 import { assertHttpContractOk, startPostgresHttpContractHarness } from "./http-contract-harness.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 
@@ -400,7 +401,7 @@ async function registerProductionRedraftConfig(input: {
     dataRoot: input.fixture.sourceRoot,
     pairPolicyPath,
     modelId: DEV_PAIR.modelId,
-    providerId: DEV_PAIR.providerId,
+    providerId: REQUESTED_PROVIDER_UNKNOWN,
     runDir: join(input.fixture.root, "registered-live-pass"),
   });
 }
@@ -984,7 +985,7 @@ function productionOpenRouterResponse(content: string): Response {
     JSON.stringify({
       id: "gen-feedback-variants-production-transport",
       model: DEV_PAIR.modelId,
-      provider: DEV_PAIR.providerId,
+      provider: "fireworks",
       choices: [{ finish_reason: "stop", message: { role: "assistant", content } }],
       usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2, cost: 0.000001 }, // itotori-225-audit-allow: deterministic mock-wire cost only, below the real external transport
     }),

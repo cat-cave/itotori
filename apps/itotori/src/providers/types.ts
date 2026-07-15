@@ -72,26 +72,24 @@ export type RoutingCapabilities = {
  * mirrored on `RecordedProviderResponse` so an offline replay or audit
  * can prove the (a)+(b)+(c) ZDR posture without recapturing the wire.
  *
- * The fields here are the canonical shape from
- * docs/openrouter-integration.md §3 (Provider routing) and
- * docs/openrouter-integration-evidence/2026-06-25.json call_1:
+ * The canonical live wire shape (docs/openrouter-integration.md §3):
  *   {
- *     order: [preferredProviderId],  // preference, NOT a hard pin
+ *     // NO `order` / NO `only` — no provider is named (see below)
  *     allow_fallbacks: true,         // tolerate transient upstream errors
  *     data_collection: "deny",
  *     zdr: boolean,                  // true for non-public input
- *     require_parameters: boolean    // typically true; mirrors strict mode
+ *     require_parameters: boolean    // true when a structured mode applies
  *   }
  *
- * ITOTORI-241 — `order` + `allow_fallbacks: true` replaced the old
- * `only: [providerId]` + `allow_fallbacks: false` hard pin. The pin made
- * a 1-second transient upstream 429 on the single pinned provider a
- * TOTAL failure even though the providers were not down. The reliable,
- * live-proven shape treats the requested provider as a PREFERENCE
- * (`order[0]`) and lets OpenRouter fall back across the account ZDR
- * allow-list. `zdr: true` is what CONFINES that fallback to ZDR-only
- * providers, so reliability is gained without weakening the privacy
- * posture.
+ * no-provider-name invariant — production routing NEVER names a provider,
+ * neither as a rigid `only:[...]` pin nor a soft `order:[preferred]`
+ * preference. OpenRouter picks the upstream on capability + ZDR + price;
+ * `require_parameters` enforces the capabilities we need, `zdr:true` +
+ * `data_collection:"deny"` enforce privacy, and `allow_fallbacks:true`
+ * confines fallback to the account ZDR allow-list. The provider that
+ * actually serves a call is a RECORDED OUTPUT (`upstreamProvider`), never a
+ * routing input. `order` is therefore EMPTY for live calls (the wire omits
+ * it); only non-remote test doubles carry a single local id in `order`.
  *
  * `data_collection: "deny"` is the wire-level commitment that the
  * upstream provider will not retain the input for training. Combined
@@ -107,12 +105,13 @@ export type RoutingCapabilities = {
  */
 export type OpenRouterRoutingPosture = {
   /**
-   * ITOTORI-241 — provider PREFERENCE order. `order[0]` is the preferred
-   * upstream; with `allow_fallbacks: true` OpenRouter may route to any
-   * other provider in the ZDR allow-list when the preferred one is
-   * transiently unavailable. Local/fake providers carry their single
-   * provider here (with `allow_fallbacks: false`). Entries are
-   * non-empty provider-slug strings.
+   * no-provider-name invariant — production OpenRouter routing names NO
+   * provider, so `order` is EMPTY (`[]`) for live calls and OpenRouter picks
+   * the upstream on capability + ZDR + price. Non-remote test doubles that
+   * replay a fixed upstream (fake / local-openai-compatible) carry their
+   * single local id here with `allow_fallbacks: false`. When non-empty every
+   * entry is a non-empty provider-slug string. The served upstream is the
+   * recorded OUTPUT, not this input.
    */
   order: string[];
   /**
@@ -288,15 +287,17 @@ export type ModelInvocationRequest = {
   /** Required by ITOTORI-220 — no defaulting at the request seam. */
   modelId: string;
   /**
-   * Required by ITOTORI-220 — the PREFERRED upstream provider id.
-   * ITOTORI-241: for OpenRouter this is passed as `provider.order[0]`
-   * (a preference, not a hard pin) and is the upstream OpenRouter routes
-   * to first; with `allow_fallbacks: true` a transiently-unavailable
-   * preferred provider may be replaced by another ZDR-allow-list
-   * provider. For local/recorded/fake providers this is a stable
-   * identifier like `local`, `recorded`, or `fake-fixture`.
+   * no-provider-name invariant — OPTIONAL and NEVER a routing input. For
+   * OpenRouter this is NOT threaded into `provider.order`/`only`: production
+   * routing names no provider, and OpenRouter picks the upstream on
+   * capability + ZDR + price. Present only as a RECORDED identity hint for
+   * providers that genuinely have a stable non-remote id (local / recorded /
+   * fake test doubles pass `local`, `recorded`, `fake-fixture`). When absent,
+   * the recorded `requestedProviderId` is `REQUESTED_PROVIDER_UNKNOWN`
+   * (explicit-unknown, never fabricated); the served upstream provider is the
+   * recorded OUTPUT (`ProviderRunIdentity.upstreamProvider`).
    */
-  providerId: string;
+  providerId?: string;
   messages: ModelMessage[];
   inputClassification: ProviderInputClassification;
   structuredOutput?: StructuredOutputRequest;
@@ -451,6 +452,14 @@ export type ProviderCost = {
   estimateBasis?: "cost_details" | "endpoint_pricing";
 };
 
+/**
+ * no-provider-name invariant — recorded value of `requestedProviderId` when
+ * the request named no provider (the production case: routing is capability +
+ * ZDR + fallback only). Explicit-unknown, never fabricated (#941 deferral);
+ * the served upstream is the recorded OUTPUT `upstreamProvider`.
+ */
+export const REQUESTED_PROVIDER_UNKNOWN = "unknown";
+
 export type ProviderRunIdentity = {
   providerFamily: ProviderFamily;
   endpointFamily: EndpointFamily;
@@ -458,9 +467,11 @@ export type ProviderRunIdentity = {
   requestedModelId: string;
   actualModelId: string;
   /**
-   * ITOTORI-220 — the providerId the request pinned. Populated for every
-   * invocation; downstream consumers (ledger, audit) read it without
-   * having to mirror request shape.
+   * The provider identity the request declared, or `REQUESTED_PROVIDER_UNKNOWN`
+   * when it named none (the production no-provider-name case). Downstream
+   * consumers (ledger, audit) read it without mirroring request shape. This is
+   * a RECORDED identity, never a routing pin; the served upstream is
+   * `upstreamProvider`.
    */
   requestedProviderId: string;
   upstreamProvider?: string;

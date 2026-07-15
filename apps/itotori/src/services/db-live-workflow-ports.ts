@@ -73,19 +73,21 @@ export type DbBackedDraftProviderOptions = {
 
 /**
  * The DB-backed draft model provider: a DEFERRED wrapper that pins the request
- * to the ZDR `DEV_PAIR` (`deepseek/deepseek-v4-flash` via `fireworks`) and only
+ * to the ZDR `DEV_PAIR` MODEL (`deepseek/deepseek-v4-flash`) and only
  * constructs the real, ZDR-gated `OpenRouterModelProvider` on the first
  * `invoke()`. Deferral is load-bearing: `withDatabaseItotoriServices` opens
  * these services for EVERY route (including read-only ones), and eagerly
  * constructing the live provider would make every route require an
  * `OPENROUTER_API_KEY` + the account-wide ZDR assertion just to serve a read.
  *
- * The descriptor is a concrete pinned pair (never the multi-model `"openrouter"`
- * sentinel), so `draftProject` builds a real request whose `modelId` /
- * `providerId` name a routable, capability-registered pair. On invoke the real
- * provider's constructor asserts the account ZDR posture and refuses on a
- * missing key — so a misconfigured server fails LOUDLY on the real provider, not
- * on a fake draft.
+ * no-provider-name invariant: the descriptor names NO upstream provider. Its
+ * `providerName` is the OpenRouter GATEWAY family (`"openrouter"`) — the
+ * marketplace we POST to, not an upstream pin. `draftProject` builds a request
+ * whose `modelId` = the capability-registered DEV_PAIR model; routing is
+ * capability + ZDR + fallback only, and OpenRouter picks the upstream. On
+ * invoke the real provider's constructor asserts the account ZDR posture and
+ * refuses on a missing key — so a misconfigured server fails LOUDLY on the real
+ * provider, not on a fake draft.
  */
 export class DbBackedDraftModelProvider extends SupervisedModelProviderAdapter {
   readonly descriptor: ProviderDescriptor;
@@ -95,12 +97,11 @@ export class DbBackedDraftModelProvider extends SupervisedModelProviderAdapter {
     this.descriptor = {
       family: "openrouter",
       endpointFamily: "chat-completions",
-      // draftProject pins `request.providerId = descriptor.providerName` and
-      // `request.modelId = descriptor.defaultModelId`; the ZDR DEV_PAIR is the
-      // routable, capability-registered pair the live provider serves.
-      providerName: DEV_PAIR.providerId,
+      // The OpenRouter gateway family — no upstream provider is named. The
+      // served upstream is a recorded output of each call.
+      providerName: "openrouter",
       defaultModelId: DEV_PAIR.modelId,
-      capabilities: getModelCapabilities(DEV_PAIR),
+      capabilities: getModelCapabilities(DEV_PAIR.modelId),
     };
   }
 }

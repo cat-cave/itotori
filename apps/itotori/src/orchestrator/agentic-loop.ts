@@ -179,6 +179,7 @@ export type PairPolicy = {
 };
 
 import { DEV_PAIR } from "../providers/dev-pair.js";
+import { REQUESTED_PROVIDER_UNKNOWN } from "../providers/types.js";
 import { deriveDefaultSeed } from "@itotori/localization-bridge-schema";
 
 /**
@@ -195,7 +196,11 @@ import { deriveDefaultSeed } from "@itotori/localization-bridge-schema";
  */
 function devPosture(leafPath: string): PairChoice {
   return {
-    pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+    // no-provider-name invariant — DEV posture names the MODEL only. The
+    // pair-policy schema still carries a `providerId` slot (owned elsewhere);
+    // we fill it with the explicit-unknown sentinel, never a real upstream, and
+    // it is NEVER threaded into wire routing. The served provider is recorded.
+    pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     zdr: true,
     fallbackModels: [],
     seed: deriveDefaultSeed(leafPath),

@@ -44,6 +44,7 @@ import { speakerLabelArtifactId } from "../src/orchestrator/context-brain.js";
 import { runProjectDrivenExecutor } from "../src/orchestrator/project-driven-executor.js";
 import { DrivenJournalPersistenceAdapter } from "../src/orchestrator/project-driven-executor-sinks.js";
 import { DEV_PAIR } from "../src/providers/dev-pair.js";
+import { REQUESTED_PROVIDER_UNKNOWN } from "../src/providers/types.js";
 import {
   createProviderRunId,
   localOnlyRoutingPosture,
@@ -381,7 +382,7 @@ async function drivePass(args: {
     bridge: args.bridge,
     rawBridge: JSON.parse(JSON.stringify(args.bridge)) as unknown,
     pairPolicy: DEV_POLICY,
-    pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+    pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     projectId: PROJECT_ID,
     localeBranchId: LOCALE_BRANCH_ID,
     sourceRevisionId: SOURCE_REVISION_ID,

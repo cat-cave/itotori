@@ -59,7 +59,7 @@ import {
   type StructuredOutputMode,
   type TokenUsage,
 } from "./types.js";
-import { createProviderRunId } from "./types.js";
+import { createProviderRunId, REQUESTED_PROVIDER_UNKNOWN } from "./types.js";
 
 /**
  * Wire-schema version of the recorded-provider bundle.
@@ -355,7 +355,7 @@ export class RecordedModelProvider implements ModelProvider {
         endpointFamily: this.descriptor.endpointFamily,
         providerName: this.bundle.capturedProviderName,
         requestedModelId,
-        requestedProviderId: request.providerId,
+        requestedProviderId: request.providerId ?? REQUESTED_PROVIDER_UNKNOWN,
         actualModelId: this.bundle.capturedActualModelId,
         upstreamProvider: this.bundle.capturedProviderId,
       },
@@ -419,7 +419,7 @@ export class RecordedModelProvider implements ModelProvider {
 function defaultBundleKey(request: ModelInvocationRequest): string {
   return recordedBundleKey({
     modelId: request.modelId,
-    providerId: request.providerId,
+    providerId: request.providerId ?? REQUESTED_PROVIDER_UNKNOWN,
     promptHash: request.prompt.promptHash,
     inputClassification: request.inputClassification,
   });
@@ -652,9 +652,9 @@ function assertTokenUsageShape(bundleId: string, key: string, tokenUsage: unknow
  * response. The required fields are the canonical posture from
  * docs/openrouter-integration.md §3 and the live evidence at
  * docs/openrouter-integration-evidence/2026-06-25.json. Any deviation
- * (missing field, wrong type, non-boolean `allow_fallbacks`, empty
- * `order`) is a typed `RecordedBundleSchemaMismatchError`, not a
- * synthesis-with-fallback site.
+ * (missing field, wrong type, non-boolean `allow_fallbacks`, a non-string
+ * `order` entry) is a typed `RecordedBundleSchemaMismatchError`, not a
+ * synthesis-with-fallback site. `order` MAY be empty (no provider named).
  */
 function assertRoutingPostureShape(bundleId: string, key: string, posture: unknown): void {
   if (posture === null || typeof posture !== "object" || Array.isArray(posture)) {
@@ -664,16 +664,17 @@ function assertRoutingPostureShape(bundleId: string, key: string, posture: unkno
     );
   }
   const candidate = posture as Partial<OpenRouterRoutingPosture>;
-  // ITOTORI-241 — `order` (provider preference) replaced the old `only`
-  // hard pin. Entries must be non-empty provider-slug strings.
+  // no-provider-name invariant — `order` is EMPTY for live captures (no
+  // provider named); non-remote test doubles may carry a single local id.
+  // The array is required, MAY be empty, and every entry (when present) must
+  // be a non-empty provider-slug string.
   if (
     !Array.isArray(candidate.order) ||
-    candidate.order.length === 0 ||
     candidate.order.some((entry) => typeof entry !== "string" || entry.length === 0)
   ) {
     throw new RecordedBundleSchemaMismatchError(
       bundleId,
-      `response under key '${key}' routingPosture.order must be a non-empty array of non-empty strings (got ${JSON.stringify(candidate.order)})`,
+      `response under key '${key}' routingPosture.order must be an array of non-empty strings (got ${JSON.stringify(candidate.order)})`,
     );
   }
   // ITOTORI-241 — allow_fallbacks is now a real boolean (true for live

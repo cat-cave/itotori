@@ -13,8 +13,9 @@
 //      status — the provenance ITOTORI-039 / ITOTORI-100 attach to — and
 //      cost is sourced only from the replayed (real captured) bundle cost.
 
+import { REQUESTED_PROVIDER_UNKNOWN } from "../src/providers/types.js";
 import { describe, expect, it } from "vitest";
-import { CapabilityGuard, modelProviderPairKey } from "../src/providers/capability-guard.js";
+import { CapabilityGuard } from "../src/providers/capability-guard.js";
 import { DEV_PAIR, getModelCapabilities } from "../src/providers/dev-pair.js";
 import {
   RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
@@ -65,7 +66,7 @@ const ZERO: ProviderCost = {
 function cell(overrides: Partial<ExperimentMatrixCell> = {}): ExperimentMatrixCell {
   return {
     cellId: "cell-dev-pair-en",
-    pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+    pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     promptPreset: {
       presetId: "experiment-preset",
       templateVersion: "1.0.0",
@@ -92,7 +93,7 @@ function config(overrides: Partial<ExperimentMatrixConfig> = {}): ExperimentMatr
 /** A guard pre-loaded with the real DEV_PAIR measured capability sheet. */
 function devPairGuard(): CapabilityGuard {
   const guard = new CapabilityGuard();
-  guard.register(DEV_PAIR.modelId, DEV_PAIR.providerId, getModelCapabilities(DEV_PAIR));
+  guard.register(DEV_PAIR.modelId, getModelCapabilities(DEV_PAIR.modelId));
   return guard;
 }
 
@@ -225,7 +226,10 @@ describe("ITOTORI-099 — guarded experiment runner (recorded replay)", () => {
       experimentLedgerId(cfg.experimentId, cfg.cells[0]!, "corpus-pub-1"),
     );
     expect(artifact.fixtureCorpusId).toBe("corpus-pub-1");
-    expect(artifact.pair).toEqual({ modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId });
+    expect(artifact.pair).toEqual({
+      modelId: DEV_PAIR.modelId,
+      providerId: REQUESTED_PROVIDER_UNKNOWN,
+    });
     expect(artifact.policyVersion).toBe("policy-2026-06-28");
     expect(artifact.targetLocale).toBe("en-US");
     expect(artifact.recordedBundleId).toBe("bundle-cell-dev-pair-en");
@@ -248,14 +252,14 @@ describe("ITOTORI-099 — guarded experiment runner (recorded replay)", () => {
         endpointFamily: "recorded-fixture",
         providerName: "spy",
         defaultModelId: DEV_PAIR.modelId,
-        capabilities: getModelCapabilities(DEV_PAIR),
+        capabilities: getModelCapabilities(DEV_PAIR.modelId),
       },
       invoke: async (): Promise<ModelInvocationResult> => {
         invokeCount += 1;
         throw new Error("spy provider invoke MUST NOT be called when the guard rejects");
       },
     };
-    // Empty guard → the pair is unregistered → CapabilityGuardMissError.
+    // Empty guard → the model is unregistered → CapabilityGuardMissError.
     const manifest = await runExperimentMatrix({
       config: config(),
       guard: new CapabilityGuard(),
@@ -270,9 +274,9 @@ describe("ITOTORI-099 — guarded experiment runner (recorded replay)", () => {
     expect(manifest.artifacts).toHaveLength(0);
     expect(manifest.findings).toHaveLength(1);
     expect(manifest.findings[0]!.kind).toBe("capability_guard_miss");
-    expect(manifest.findings[0]!.message).toContain(
-      modelProviderPairKey(DEV_PAIR.modelId, DEV_PAIR.providerId).split("::")[1]!,
-    );
+    // Model-keyed guard: the miss cites the unregistered MODEL id (no provider
+    // is named — capabilities are keyed by model under the ZDR posture).
+    expect(manifest.findings[0]!.message).toContain(DEV_PAIR.modelId);
     expect(() => assertExperimentRunSucceeded(manifest)).toThrow(/run FAILED/u);
   });
 
@@ -281,7 +285,7 @@ describe("ITOTORI-099 — guarded experiment runner (recorded replay)", () => {
     // invariant (runner.ts GUARD #2). The two capability sources are made
     // to DIFFER so the test can prove which one drove the decision:
     //
-    //   • the MEASURED guard sheet (getModelCapabilities(DEV_PAIR)) marks
+    //   • the MEASURED guard sheet (getModelCapabilities(DEV_PAIR.modelId)) marks
     //     json_schema UNSUPPORTED under ZDR — the real, measured fact;
     //   • the provider's DESCRIPTOR carries a PERMISSIVE sheet that (wrongly)
     //     advertises json_schema as SUPPORTED — the looser fallback the
@@ -293,7 +297,7 @@ describe("ITOTORI-099 — guarded experiment runner (recorded replay)", () => {
     // json_schema would pass, `invoke` would be reached, and this test FAILS.
     // (Before this fix the descriptor also carried the measured sheet, so the
     // two paths were indistinguishable and the guard was vacuous.)
-    const measured = getModelCapabilities(DEV_PAIR);
+    const measured = getModelCapabilities(DEV_PAIR.modelId);
     expect(measured.structuredOutputs.jsonSchema).toBe("unsupported");
     const permissiveDescriptorCapabilities: ModelCapabilities = {
       ...measured,

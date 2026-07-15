@@ -103,11 +103,10 @@ export interface BackTranslator {
 
 /** Options for the real ZDR back-translator. */
 export type ZdrBackTranslatorOptions = {
-  /** The ZDR-routed model provider (an OpenRouter pair on the live path). */
+  /** The ZDR-routed model provider (an OpenRouter model on the live path). */
   provider: ModelProvider;
-  /** The pinned (preferred) upstream provider id sent on the request. */
-  providerId: string;
-  /** The requested model id sent on the request. */
+  /** The requested model id sent on the request. No provider is named — the
+   *  served upstream is a recorded output of each call. */
   modelId: string;
   /** Capability sheet the request is built against (structured-output modes, …). */
   capabilities: ModelCapabilities;
@@ -134,7 +133,6 @@ const BACK_TRANSLATE_PRESET_ID = "itotori-benchmark-back-translate";
  */
 export class ZdrBackTranslator implements BackTranslator {
   private readonly provider: ModelProvider;
-  private readonly providerId: string;
   private readonly modelId: string;
   private readonly capabilities: ModelCapabilities;
   private readonly sourceLanguageName: string;
@@ -143,7 +141,6 @@ export class ZdrBackTranslator implements BackTranslator {
 
   constructor(options: ZdrBackTranslatorOptions) {
     this.provider = options.provider;
-    this.providerId = options.providerId;
     this.modelId = options.modelId;
     this.capabilities = options.capabilities;
     this.sourceLanguageName = options.sourceLanguageName;
@@ -192,7 +189,6 @@ export class ZdrBackTranslator implements BackTranslator {
     return {
       taskKind: "experiment",
       modelId: this.modelId,
-      providerId: this.providerId,
       inputClassification: this.inputClassification,
       messages: [
         {
@@ -352,7 +348,7 @@ export async function runBackTranslateLiveSmoke(
   // Privacy gate: account-wide ZDR must be asserted before any live byte.
   assertOpenRouterZdrAccount(env);
 
-  const capabilities = getModelCapabilities(DEV_PAIR);
+  const capabilities = getModelCapabilities(DEV_PAIR.modelId);
   const providerOptions: ConstructorParameters<typeof OpenRouterProvider>[0] = {
     modelId: DEV_PAIR.modelId,
     apiKey,
@@ -365,7 +361,6 @@ export async function runBackTranslateLiveSmoke(
   }
   const translator = new ZdrBackTranslator({
     provider: new OpenRouterProvider(providerOptions),
-    providerId: DEV_PAIR.providerId,
     modelId: DEV_PAIR.modelId,
     capabilities,
     sourceLanguageName: "Japanese",

@@ -24,7 +24,11 @@ import {
   type SceneSummaryCliDependencies,
 } from "../src/agents/scene-summary/index.js";
 import { InMemoryContextArtifactRepository } from "../src/orchestrator/context-brain.js";
-import { DEV_PAIR, LocalProviderRunArtifactRecorder } from "../src/providers/index.js";
+import {
+  REQUESTED_PROVIDER_UNKNOWN,
+  DEV_PAIR,
+  LocalProviderRunArtifactRecorder,
+} from "../src/providers/index.js";
 import { readProviderRunArtifactsFromDir } from "../src/telemetry/provider-run-artifact-source.js";
 
 const ACTOR: AuthorizationActor = { userId: "local-user" };
@@ -212,7 +216,7 @@ describe("semantic-agent CLI paid-provider boundary", () => {
           modelProfile: {
             providerFamily: "openrouter",
             modelId: DEV_PAIR.modelId,
-            providerId: DEV_PAIR.providerId,
+            providerId: REQUESTED_PROVIDER_UNKNOWN,
             contextWindowTokens: 8000,
             maxOutputTokens: 256,
           },

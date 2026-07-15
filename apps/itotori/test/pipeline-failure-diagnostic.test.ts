@@ -18,6 +18,7 @@
 // All tests run WITHOUT a DB / live provider. The forced-failure path uses the
 // FakeModelProvider + in-memory sinks (mirrors project-driven-executor.test.ts).
 
+import { REQUESTED_PROVIDER_UNKNOWN } from "../src/providers/types.js";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -343,7 +344,7 @@ describe("buildPipelineUnitFailureDiagnostic (itotori-agent-facing-pipeline-fail
         },
       },
       error,
-      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+      pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
       stage: "translation",
       agentLabel: "translation-primary",
       knownGameTextLiterals: [SECRET_SENTENCE],
@@ -746,7 +747,7 @@ describe("runProjectDrivenExecutor (itotori-agent-facing-pipeline-failure-diagno
       bridge,
       rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
       pairPolicy: DEV_POLICY,
-      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+      pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
       projectId: PROJECT_ID,
       localeBranchId: LOCALE_BRANCH_ID,
       sourceRevisionId: REVISION_ID,
@@ -781,7 +782,7 @@ describe("runProjectDrivenExecutor (itotori-agent-facing-pipeline-failure-diagno
       bridge,
       rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
       pairPolicy: DEV_POLICY,
-      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+      pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
       projectId: PROJECT_ID,
       localeBranchId: LOCALE_BRANCH_ID,
       sourceRevisionId: REVISION_ID,

@@ -36,69 +36,58 @@ export function assertProviderInvocationSupported(input: ProviderInvocationGuard
 }
 
 // ---------------------------------------------------------------------------
-// ITOTORI-220 — pair-keyed capability lookup.
+// Model-keyed capability lookup (no-provider-name invariant).
 //
-// The standing rule (feedback-model-provider-pair) is that capability
-// claims like "supportsStructuredOutput" are per (model, provider) pair,
-// not per model alone. `CapabilityGuard` is a small in-memory registry
-// keyed on `${modelId}::${providerId}` so callers can register what they
-// have measured and look it up without ambiguity. A miss throws — never
-// silently degrades to model-only lookup.
+// Under the account-wide ZDR posture we do NOT choose the upstream provider —
+// OpenRouter picks it on capability + ZDR + price, and the served provider is
+// a RECORDED OUTPUT, never a routing input. Capability claims like
+// "supportsStructuredOutput" are therefore the routable floor of a MODEL
+// under our ZDR allow-list, not a per-(model, provider) fact. `CapabilityGuard`
+// is a small in-memory registry keyed on `modelId` so callers can register
+// what they have measured and look it up without naming a provider. A miss
+// throws — never silently degrades.
 // ---------------------------------------------------------------------------
 
-export type ModelProviderPairKey = string & { readonly __brand: "ModelProviderPairKey" };
+export type ModelCapabilityKey = string & { readonly __brand: "ModelCapabilityKey" };
 
-export function modelProviderPairKey(modelId: string, providerId: string): ModelProviderPairKey {
+export function modelCapabilityKey(modelId: string): ModelCapabilityKey {
   if (modelId.length === 0) {
     throw new ModelProviderError(
-      "modelProviderPairKey requires a non-empty modelId",
+      "modelCapabilityKey requires a non-empty modelId",
       "configuration_error",
       false,
     );
   }
-  if (providerId.length === 0) {
-    throw new ModelProviderError(
-      "modelProviderPairKey requires a non-empty providerId",
-      "configuration_error",
-      false,
-    );
-  }
-  return `${modelId}::${providerId}` as ModelProviderPairKey;
+  return modelId as ModelCapabilityKey;
 }
 
 export class CapabilityGuardMissError extends Error {
-  constructor(
-    public readonly modelId: string,
-    public readonly providerId: string,
-  ) {
-    super(
-      `capability guard miss for (modelId=${modelId}, providerId=${providerId}); register the pair before invocation`,
-    );
+  constructor(public readonly modelId: string) {
+    super(`capability guard miss for modelId=${modelId}; register the model before invocation`);
     this.name = "CapabilityGuardMissError";
   }
 }
 
 export class CapabilityGuard {
-  private readonly entries = new Map<ModelProviderPairKey, ModelCapabilities>();
+  private readonly entries = new Map<ModelCapabilityKey, ModelCapabilities>();
 
-  /** Register (or overwrite) the capabilities for a (modelId, providerId) pair. */
-  register(modelId: string, providerId: string, capabilities: ModelCapabilities): void {
-    this.entries.set(modelProviderPairKey(modelId, providerId), capabilities);
+  /** Register (or overwrite) the capabilities for a model. */
+  register(modelId: string, capabilities: ModelCapabilities): void {
+    this.entries.set(modelCapabilityKey(modelId), capabilities);
   }
 
-  /** Lookup; throws CapabilityGuardMissError when the pair has not been registered. */
-  lookup(modelId: string, providerId: string): ModelCapabilities {
-    const key = modelProviderPairKey(modelId, providerId);
-    const entry = this.entries.get(key);
+  /** Lookup; throws CapabilityGuardMissError when the model has not been registered. */
+  lookup(modelId: string): ModelCapabilities {
+    const entry = this.entries.get(modelCapabilityKey(modelId));
     if (entry === undefined) {
-      throw new CapabilityGuardMissError(modelId, providerId);
+      throw new CapabilityGuardMissError(modelId);
     }
     return entry;
   }
 
-  /** True iff the pair is registered. */
-  has(modelId: string, providerId: string): boolean {
-    return this.entries.has(modelProviderPairKey(modelId, providerId));
+  /** True iff the model is registered. */
+  has(modelId: string): boolean {
+    return this.entries.has(modelCapabilityKey(modelId));
   }
 
   /** Clear the registry — test-only escape hatch; never call from app code. */
@@ -106,22 +95,18 @@ export class CapabilityGuard {
     this.entries.clear();
   }
 
-  /** Snapshot of registered (modelId, providerId) keys for diagnostics. */
-  registeredPairs(): { modelId: string; providerId: string }[] {
-    return [...this.entries.keys()].map((key) => {
-      const [modelId, providerId] = key.split("::");
-      return { modelId: modelId ?? "", providerId: providerId ?? "" };
-    });
+  /** Snapshot of registered model ids for diagnostics. */
+  registeredModels(): string[] {
+    return [...this.entries.keys()];
   }
 }
 
-// ITOTORI-221 — process-wide singleton CapabilityGuard. The
-// OpenRouterModelProvider registers the DEV_PAIR (and the rest of the
-// known-pair table) into this guard at construction so the agentic-loop
-// orchestrator can call `globalCapabilityGuard().lookup(modelId,
-// providerId)` without each call site having to wire its own guard. A
-// singleton is the right shape here because capability claims are
-// per-pair facts, not per-provider-instance facts.
+// Process-wide singleton CapabilityGuard. The OpenRouterModelProvider
+// registers every known model into this guard at construction so the
+// agentic-loop orchestrator can call `globalCapabilityGuard().lookup(modelId)`
+// without each call site having to wire its own guard. A singleton is the
+// right shape here because capability claims are per-model facts, not
+// per-provider-instance facts.
 let GLOBAL_CAPABILITY_GUARD: CapabilityGuard | undefined;
 
 export function globalCapabilityGuard(): CapabilityGuard {

@@ -7,7 +7,7 @@ import {
   type CapabilityGuard,
   type ProviderRoutingCapabilityRequirement,
 } from "./capability-guard.js";
-import { knownPairs, type ModelProviderPair } from "./dev-pair.js";
+import { knownModels, type ModelProviderPair } from "./dev-pair.js";
 import {
   addDecimalUsd,
   compareDecimalUsd,
@@ -37,13 +37,15 @@ import {
   type ProviderRunRecord,
   type TokenUsage,
   createProviderRunId,
+  REQUESTED_PROVIDER_UNKNOWN,
 } from "./types.js";
 
 export type OpenRouterProviderRouting = {
-  // ITOTORI-241 — `order` is provider PREFERENCE (not a hard pin). The
-  // old `only` field was removed with the allow_fallbacks=false pin: the
-  // ZDR allow-list (provider.zdr=true) now bounds the routable set, so
-  // there is no itotori-side `only` enumeration to keep in sync.
+  // no-provider-name invariant — production routing names NO provider. This
+  // config-level `order` is honoured ONLY for non-remote test doubles that
+  // replay a fixed upstream; live production routing leaves it undefined (the
+  // wire sends no `order`/`only`, and the ZDR allow-list `provider.zdr=true`
+  // bounds the routable set). There is no itotori-side `only` enumeration.
   order?: string[];
   ignore?: string[];
   quantizations?: string[];
@@ -112,11 +114,12 @@ export class OpenRouterProvider implements ModelProvider {
     }
     const startedAt = new Date();
     const requestedModelId = request.modelId;
-    // ITOTORI-243 — request.providerId leads the provider PREFERENCE
-    // `order` (order[0]); it is NOT a hard pin. With `allow_fallbacks:true`
-    // + `zdr:true` on the wire, OpenRouter may serve ANY ZDR-allow-list
-    // provider, and whichever one actually answers is recorded as the
-    // served (model, providerId) pair below — there is no request-time pin.
+    // no-provider-name invariant — the wire routing NEVER names a provider:
+    // no `order`, no `only`. OpenRouter picks the upstream purely on
+    // capability (`require_parameters`) + ZDR (`zdr:true` +
+    // `data_collection:"deny"`) + price, with `allow_fallbacks:true`. Whichever
+    // provider actually answers is recorded as the served (model, provider)
+    // pair below (an OUTPUT), never a request-time input.
     const providerRouting = buildOpenRouterProviderRouting(this.routing, request);
     // ITOTORI-230 — typed restatement of the same posture for the
     // ledger / recorded-bundle audit trail. Derived from the same
@@ -126,25 +129,22 @@ export class OpenRouterProvider implements ModelProvider {
       providerRouting,
       request.inputClassification,
     );
-    // ITOTORI-243 follow-up — the invoke-time capability guard must consult
-    // the per-(modelId, providerId) sheet registered in the singleton
-    // CapabilityGuard (the same sheet the agentic loop's structured-mode
-    // selector reads via `descriptorForPair`), NOT the class-level
-    // `openRouterDefaultCapabilities` fallback. Without this, a pair whose
-    // sheet advertises `json_object` (e.g. DEV_PAIR via Fireworks) is
-    // refused at invoke time with "structured output mode json_object is
-    // untested for provider", even though the agent legitimately selected
-    // `json_object` from that very sheet. Unknown pairs (guard miss) keep
-    // the default `untested` posture and stay refused — the
+    // The invoke-time capability guard consults the per-MODEL sheet registered
+    // in the singleton CapabilityGuard (the same sheet the agentic loop's
+    // structured-mode selector reads via `descriptorForModel`), NOT the
+    // class-level `openRouterDefaultCapabilities` fallback. Without this, a
+    // model whose sheet advertises a structured mode is refused at invoke time
+    // with "structured output mode ... is untested", even though the agent
+    // legitimately selected it from that very sheet. Unknown models (guard
+    // miss) keep the default `untested` posture and stay refused — the
     // no-silent-fallback invariant is preserved.
-    const pairCapabilities =
-      this.capabilityGuard !== undefined &&
-      this.capabilityGuard.has(requestedModelId, request.providerId)
-        ? this.capabilityGuard.lookup(requestedModelId, request.providerId)
+    const modelCapabilities =
+      this.capabilityGuard !== undefined && this.capabilityGuard.has(requestedModelId)
+        ? this.capabilityGuard.lookup(requestedModelId)
         : this.descriptor.capabilities;
     assertProviderInvocationSupported({
       descriptor: this.descriptor,
-      capabilities: pairCapabilities,
+      capabilities: modelCapabilities,
       request,
       requestedModelId,
       routingRequirements: openRouterRoutingRequirements(this.routing, providerRouting),
@@ -587,13 +587,12 @@ function buildOpenRouterProviderRouting(
     allow_fallbacks: posture.allow_fallbacks,
     data_collection: posture.data_collection,
   };
-  // ITOTORI-241 — emit `order` (provider PREFERENCE), never the old
-  // `only` hard pin. order[0] is the preferred upstream; with
-  // allow_fallbacks:true OpenRouter may route to another ZDR-allow-list
-  // provider when the preferred one is transiently unavailable. We do
-  // NOT enumerate `only`: zdr:true (below) is what enforces the
-  // allow-list, so the membership self-updates as the account ZDR set
-  // changes — no itotori-side provider registry to drift.
+  // no-provider-name invariant — never name a provider. `posture.order` is
+  // EMPTY for live production routing, so the wire omits `order` entirely and
+  // OpenRouter picks the upstream on capability + ZDR + price; `zdr:true`
+  // (below) bounds the routable set to the account ZDR allow-list. Only
+  // non-remote test doubles carry a single local id here. `only` is never
+  // emitted.
   if (posture.order.length > 0) {
     provider.order = posture.order;
   }
@@ -647,13 +646,15 @@ function buildOpenRouterProviderRouting(
  * cannot drift.
  *
  * Why each field's value is what it is:
- *   - order: `[request.providerId, ...routing.order]` (de-duplicated) —
- *     the ITOTORI-241 provider PREFERENCE. order[0] is the preferred
- *     upstream; it is NOT a hard pin. `request.providerId` always leads
- *     so the requested provider is tried first.
- *   - allow_fallbacks: `true` — a transient upstream error on the
- *     preferred provider must not fail the whole call. zdr:true confines
- *     the fallback pool to the account ZDR allow-list.
+ *   - order: no-provider-name invariant — production routing NEVER names a
+ *     provider, so `request.providerId` is NOT threaded here. Live OpenRouter
+ *     calls leave `order` EMPTY and let OpenRouter pick the upstream on
+ *     capability + ZDR + price. `routing.order` (config-level) is honoured
+ *     only for non-remote test doubles that replay a fixed upstream; live
+ *     production routing sets no `order`.
+ *   - allow_fallbacks: `true` — a transient upstream error must not fail the
+ *     whole call. zdr:true confines the fallback pool to the account ZDR
+ *     allow-list.
  *   - data_collection: `"deny"` for any private input; mirrors
  *     `routing.dataCollection` for public input (defaults to `"deny"`).
  *     A caller-explicit `"allow"` for public inputs is honoured so the
@@ -679,10 +680,13 @@ function buildOpenRouterRoutingPosture(
   routing: OpenRouterProviderRouting,
   request: ModelInvocationRequest,
 ): OpenRouterRoutingPosture {
-  // ITOTORI-241 — provider PREFERENCE order. The requested providerId
-  // always leads; any caller-configured routing.order entries follow as
-  // additional preferences. De-duplicated, preserving first-seen order.
-  const order = [...new Set([request.providerId, ...(routing.order ?? [])])];
+  // no-provider-name invariant — production routing NEVER names a provider.
+  // `request.providerId` is NOT threaded into `order`; live OpenRouter calls
+  // send NO `order` and let OpenRouter pick the upstream on capability + ZDR +
+  // price. Only caller-configured `routing.order` (non-remote test doubles
+  // replaying a fixed upstream) contributes here; for live production routing
+  // it is undefined, so `order` is empty. De-duplicated, first-seen order.
+  const order = [...new Set(routing.order ?? [])];
   const dataCollection = dataCollectionForRequest(
     routing.dataCollection,
     request.inputClassification,
@@ -727,16 +731,18 @@ function openRouterRoutingPostureFromBlock(
   block: JsonObject,
   inputClassification: ProviderInputClassification,
 ): OpenRouterRoutingPosture {
-  const order = block.order;
-  // ITOTORI-241 — `order` (provider preference) is the canonical field;
-  // every entry must be a non-empty provider-slug string.
+  // no-provider-name invariant — `order` is OPTIONAL. Live production routing
+  // names no provider, so the wire block omits `order` entirely (recorded as
+  // an empty posture order). When present (non-remote test doubles replaying a
+  // fixed upstream), every entry must be a non-empty provider-slug string.
+  const rawOrder = block.order;
+  const order = rawOrder === undefined ? [] : rawOrder;
   if (
     !Array.isArray(order) ||
-    order.length === 0 ||
     !order.every((entry) => typeof entry === "string" && entry.length > 0)
   ) {
     throw new ModelProviderError(
-      "OpenRouter routing posture 'order' must be a non-empty array of non-empty strings",
+      "OpenRouter routing posture 'order', when present, must be an array of non-empty strings",
       "configuration_error",
       false,
     );
@@ -1446,32 +1452,39 @@ function buildProviderRunRecord(input: {
 }): ProviderRunRecord {
   const completedAt = new Date();
   const fallbackPlan = fallbackPlanForRequest(input.request, input.requestedModelId);
-  // ITOTORI-242 — fallbackUsed must reflect BOTH a model-level fallback
-  // (the served model differs from the requested model within a multi-
-  // entry fallback plan) AND a provider-level ZDR fallback. With OR-side
-  // fallback ON (allow_fallbacks:true), a 429 on the preferred provider
-  // (order[0]) makes OpenRouter serve a DIFFERENT ZDR-allow-list provider
-  // while keeping the same model — a provider swap that the old model-only
-  // check missed entirely. It must read as fallbackUsed:true so recorded
-  // transport provenance remains honest. This is telemetry, NOT application
-  // resilience: the pair_mismatch guard is gone, so this
-  // NEVER rejects a non-preferred ZDR serve. The served provider
-  // (input.upstreamProvider, read verbatim from the response) is compared
-  // to the preferred order[0] under casing/version normalization so a
-  // legit slug↔display-name shape ('fireworks' ↔ 'Fireworks') or a dated
-  // snapshot suffix does NOT read as a false fallback.
+  // fallbackUsed reflects a model-level fallback (the served model differs
+  // from the requested model within a multi-entry fallback plan). The
+  // provider-level check is retained for the non-remote test-double case that
+  // still records a single `order[0]` (a served upstream differing from it
+  // reads as a provider fallback, under casing/version normalization so a
+  // legit slug↔display-name shape 'fireworks' ↔ 'Fireworks' is not a false
+  // positive). no-provider-name invariant — live production routing names NO
+  // provider, so `order` is empty and `order[0]` is undefined:
+  // `servedProviderDiffersFromPreferred` returns false (there is no preferred
+  // provider to differ from — OpenRouter simply picked one, recorded as the
+  // output). This is telemetry, NOT application resilience: it NEVER rejects a
+  // serve.
   const modelFallbackUsed =
     fallbackPlan.length > 1 && input.actualModelId !== input.requestedModelId;
-  const providerFallbackUsed = servedProviderDiffersFromPreferred(
-    input.upstreamProvider,
-    input.routingPosture.order[0],
-  );
+  // no-provider-name invariant — with no provider named, `order` is empty, so
+  // the served-vs-order[0] heuristic can never fire on live routing. The
+  // AUTHORITATIVE provider-fallback signal is OpenRouter's own router metadata
+  // (`openrouter_metadata.attempt` > 1, threaded as `providerAttempt`): the
+  // upstream we were served answered only after OpenRouter advanced past a
+  // transiently-unavailable one. Recording this keeps `fallbackUsed` HONEST for
+  // a real OR-side fallback instead of silently reading false. The order[0]
+  // heuristic is retained for non-remote test doubles that still set a single
+  // `order` entry (casing/version-normalized so 'fireworks' ↔ 'Fireworks' is
+  // not a false positive). This is telemetry, NOT resilience: it NEVER rejects.
+  const providerFallbackUsed =
+    (input.providerAttempt !== undefined && input.providerAttempt > 1) ||
+    servedProviderDiffersFromPreferred(input.upstreamProvider, input.routingPosture.order[0]);
   const provider: ProviderRunRecord["provider"] = {
     providerFamily: input.descriptor.family,
     endpointFamily: input.descriptor.endpointFamily,
     providerName: input.descriptor.providerName,
     requestedModelId: input.requestedModelId,
-    requestedProviderId: input.request.providerId,
+    requestedProviderId: input.request.providerId ?? REQUESTED_PROVIDER_UNKNOWN,
     actualModelId: input.actualModelId,
     routeSettingsHash: input.routeSettingsHash,
   };
@@ -2068,16 +2081,15 @@ export class OpenRouterModelProvider implements ModelProvider {
       sleep,
     });
 
-    // Register every known-pair capability sheet into the singleton
+    // Register every known-model capability sheet into the singleton
     // CapabilityGuard so orchestrator code calling
-    // globalCapabilityGuard().lookup(modelId, providerId) succeeds for
-    // any pair from dev-pair.ts without per-call registration. Resolve +
-    // populate the guard BEFORE constructing the inner provider so the
-    // same registered sheets back the inner's invoke-time capability
-    // check (ITOTORI-243 follow-up).
+    // globalCapabilityGuard().lookup(modelId) succeeds for any model from
+    // dev-pair.ts without per-call registration. Resolve + populate the guard
+    // BEFORE constructing the inner provider so the same registered sheets
+    // back the inner's invoke-time capability check.
     const guard = options.capabilityGuard ?? globalCapabilityGuard();
-    for (const entry of knownPairsForRegistration()) {
-      guard.register(entry.pair.modelId, entry.pair.providerId, entry.modelCapabilities);
+    for (const entry of knownModelsForRegistration()) {
+      guard.register(entry.modelId, entry.modelCapabilities);
     }
     this.capabilityGuard = guard;
 
@@ -2099,25 +2111,26 @@ export class OpenRouterModelProvider implements ModelProvider {
   }
 
   /**
-   * ITOTORI-237 — return a per-pair-aware descriptor whose `capabilities`
-   * field reflects the (modelId, providerId) sheet registered in the
-   * provider's CapabilityGuard at construction.
+   * Return a per-MODEL-aware descriptor whose `capabilities` field reflects
+   * the model's sheet registered in the provider's CapabilityGuard at
+   * construction. No provider is named — capabilities are the model's
+   * ZDR-routable floor (no-provider-name invariant).
    *
    * Why this exists: the agentic-loop structured-mode selection (see
    * `apps/itotori/src/agents/speaker-label/agent.ts`'s
    * `resolveStructuredOutput`, which calls `selectStructuredOutputRequest`)
    * reads `provider.descriptor.capabilities` directly. The class-level
    * `descriptor` falls back to `openRouterDefaultCapabilities` (safe but
-   * `untested` for structured outputs), so without a per-pair lookup the
-   * agent refuses even pairs that DO support structured outputs.
+   * `untested` for structured outputs), so without a per-model lookup the
+   * agent refuses even models that DO support structured outputs.
    *
-   * Unknown pairs (not in dev-pair.ts) intentionally fall back to the
+   * Unknown models (not in dev-pair.ts) intentionally fall back to the
    * default sheet — they keep their `untested` posture and remain
    * refused, preserving the no-silent-fallback invariant.
    */
-  descriptorForPair(pair: ModelProviderPair): ProviderDescriptor {
-    const capabilities = this.capabilityGuard.has(pair.modelId, pair.providerId)
-      ? this.capabilityGuard.lookup(pair.modelId, pair.providerId)
+  descriptorForModel(modelId: string): ProviderDescriptor {
+    const capabilities = this.capabilityGuard.has(modelId)
+      ? this.capabilityGuard.lookup(modelId)
       : this.descriptor.capabilities;
     return { ...this.descriptor, capabilities };
   }
@@ -2149,9 +2162,9 @@ export class OpenRouterModelProvider implements ModelProvider {
 // Indirection so the dev-pair.ts import only resolves when called.
 // (Circularity-safe: dev-pair.ts imports only types +
 // openRouterDefaultCapabilities from this file, both of which are
-// module-top-level by the time knownPairsForRegistration runs.)
-function knownPairsForRegistration(): ReturnType<typeof knownPairs> {
-  return knownPairs();
+// module-top-level by the time knownModelsForRegistration runs.)
+function knownModelsForRegistration(): ReturnType<typeof knownModels> {
+  return knownModels();
 }
 
 export type { ModelProviderPair };

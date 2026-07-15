@@ -7,6 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { REQUESTED_PROVIDER_UNKNOWN } from "../src/providers/types.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -689,7 +690,7 @@ async function runExecutorFixture(input: {
     bridge: input.bridge,
     rawBridge: structuredClone(input.bridge),
     pairPolicy: input.pairPolicy,
-    pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+    pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     ...scope,
     runId: input.runId,
     actor,

@@ -79,7 +79,9 @@ export class FakeModelProvider implements ModelProvider {
         endpointFamily: this.descriptor.endpointFamily,
         providerName: this.descriptor.providerName,
         requestedModelId,
-        requestedProviderId: request.providerId,
+        // Non-remote test double: the request names no upstream, so record
+        // this fake provider's own local id as the requested identity.
+        requestedProviderId: request.providerId ?? this.descriptor.providerName,
         actualModelId: requestedModelId,
       },
       structuredOutputMode: request.structuredOutput?.mode ?? "none",
@@ -100,7 +102,7 @@ export class FakeModelProvider implements ModelProvider {
       // ITOTORI-230 — fake providers never leave the process so the
       // canonical ZDR posture is trivially in force; record it
       // explicitly so the ledger row + telemetry have a uniform shape.
-      routingPosture: localOnlyRoutingPosture(request.providerId),
+      routingPosture: localOnlyRoutingPosture(request.providerId ?? this.descriptor.providerName),
       // ITOTORI-232 — fake providers never bill, so the captured
       // `usage` block carries no `cost` key. The partial-NULL CHECK on
       // the ledger exempts these rows; the typed sentinel here

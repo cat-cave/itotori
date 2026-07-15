@@ -12,6 +12,7 @@ import { compareDecimalUsd } from "../providers/cost.js";
 import {
   ModelProviderError,
   providerRunFromThrownError,
+  REQUESTED_PROVIDER_UNKNOWN,
   type ModelInvocationRequest,
   type ModelInvocationResult,
   type ModelMessage,
@@ -387,7 +388,11 @@ export class InvocationSupervisor {
 
     while (totalAttempts < this.policy.hardAttemptCeiling) {
       const requestedModelId = routes[routeIndex]!;
-      const requestedProviderId = this.context.providerId ?? request.providerId;
+      // no-provider-name invariant — the request may name no provider; record
+      // the explicit-unknown sentinel (never fabricated). It is a recorded
+      // identity only, never threaded into wire routing.
+      const requestedProviderId =
+        this.context.providerId ?? request.providerId ?? REQUESTED_PROVIDER_UNKNOWN;
       const attemptIndex = totalAttempts + 1;
       const attemptId = `llm-attempt-${randomUUID()}`;
       const startedAt = this.now().toISOString();
@@ -872,7 +877,10 @@ export function dispatchProviderAdapter(
     activeDispatch.attemptId !== dispatchCapability.attemptId ||
     activeDispatch.requestRunId !== request.runId ||
     activeDispatch.requestedModelId !== request.modelId ||
-    activeDispatch.requestedProviderId !== request.providerId ||
+    // Coalesce identically to registration (see activeSupervisedDispatch...
+    // .requestedProviderId) so a request that names no provider matches
+    // itself instead of self-mismatching on undefined vs the sentinel.
+    activeDispatch.requestedProviderId !== (request.providerId ?? REQUESTED_PROVIDER_UNKNOWN) ||
     activeDispatch.signal !== request.signal
   ) {
     throw new UnsupervisedProviderAdapterDispatchError();
@@ -941,7 +949,7 @@ function issueSupervisedDispatchCapability(args: {
     attemptId: args.attemptId,
     requestRunId: args.request.runId,
     requestedModelId: args.request.modelId,
-    requestedProviderId: args.request.providerId,
+    requestedProviderId: args.request.providerId ?? REQUESTED_PROVIDER_UNKNOWN,
     signal: args.request.signal,
     visitedAdapters: args.visitedAdapters,
     scope: args.scope,
@@ -1085,10 +1093,14 @@ function applyContextPosture(
   request: ModelInvocationRequest,
   context: InvocationSupervisorContext,
 ): ModelInvocationRequest {
+  const resolvedProviderId = context.providerId ?? request.providerId;
   return {
     ...request,
     modelId: context.modelId ?? request.modelId,
-    providerId: context.providerId ?? request.providerId,
+    // no-provider-name invariant — carry a provider id only when one was
+    // explicitly supplied (a recorded identity, never a routing input); never
+    // synthesize one here.
+    ...(resolvedProviderId !== undefined ? { providerId: resolvedProviderId } : {}),
     ...(context.maximumCostUsd !== undefined ? { maxPriceUsd: context.maximumCostUsd } : {}),
     ...(context.fallbackModels !== undefined
       ? { fallbackModels: [...context.fallbackModels] }

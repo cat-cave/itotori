@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { REQUESTED_PROVIDER_UNKNOWN } from "../src/providers/types.js";
 import {
   ItotoriLocalizationJournalRepository,
   localUserId,
@@ -1401,7 +1402,7 @@ function executorInput(providerFactoryValue: AgenticLoopProviderFactory) {
     bridge,
     rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
     pairPolicy: DEV_POLICY,
-    pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+    pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     projectId: PROJECT_ID,
     localeBranchId: BRANCH_ID,
     sourceRevisionId: REVISION_ID,

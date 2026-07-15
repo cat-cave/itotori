@@ -12,6 +12,7 @@
 // Driven with a FakeModelProvider + in-memory sinks — no live LLM or Postgres.
 // The LIVE (real ZDR OpenRouter) proof is the env-gated pilot.
 
+import { REQUESTED_PROVIDER_UNKNOWN } from "../src/providers/types.js";
 import { readFileSync, mkdtempSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -378,7 +379,7 @@ function baseInput(sinks?: InMemorySinks) {
     bridge,
     rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
     pairPolicy: DEV_POLICY,
-    pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+    pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     projectId: PROJECT_ID,
     localeBranchId: LOCALE_BRANCH_ID,
     sourceRevisionId: REVISION_ID,
@@ -510,7 +511,7 @@ describe("runProjectDrivenExecutor (itotori-project-level-driven-executor)", () 
     for (const attempt of persistedAttempts) {
       expect(attempt.zdr).toBe(true);
       expect(attempt.modelId).toBe(DEV_PAIR.modelId);
-      expect(attempt.providerId).toBe(DEV_PAIR.providerId);
+      expect(attempt.providerId).toBe(REQUESTED_PROVIDER_UNKNOWN);
     }
     const poisonAttempts = sinks.failedUnitAttempts.find(
       (journal) => journal.bridgeUnitId === UNIT_D,
@@ -1022,7 +1023,7 @@ function concurrencyBaseInput(args: {
     bridge: args.bridge,
     rawBridge: JSON.parse(JSON.stringify(args.bridge)) as unknown,
     pairPolicy: DEV_POLICY,
-    pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+    pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     projectId: PROJECT_ID,
     localeBranchId: LOCALE_BRANCH_ID,
     sourceRevisionId: REVISION_ID,
@@ -1659,7 +1660,7 @@ describe("runProjectDrivenExecutor (live bounded-slice pilot, real DB + fs)", ()
         bridge,
         rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
         pairPolicy: DEV_POLICY,
-        pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+        pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
         projectId: LIVE_PROJECT_ID,
         localeBranchId: LIVE_LOCALE_BRANCH_ID,
         sourceRevisionId: LIVE_REVISION_ID,
