@@ -1,6 +1,7 @@
 export * from "./accepted.js";
 export * from "./calls.js";
 export * from "./context.js";
+export * from "./dispatch-events.js";
 export * from "./outputs.js";
 export * from "./privacy.js";
 export * from "./scorecard-definition.js";

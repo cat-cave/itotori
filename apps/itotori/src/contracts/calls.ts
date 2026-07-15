@@ -11,6 +11,7 @@ import {
   CONTEXT_SNAPSHOT_SCHEMA_VERSION,
   LOCALIZATION_SNAPSHOT_SCHEMA_VERSION,
 } from "./context.js";
+import { DispatchEventSchema } from "./dispatch-events.js";
 import {
   ContextScopeValueSchema,
   DecimalUsdSchema,
@@ -253,6 +254,8 @@ const ValidationDefectSchema = z
   })
   .strict();
 
+const DispatchEventsSchema = z.array(DispatchEventSchema).max(32);
+
 const CallResultBaseShape = {
   schemaVersion: z.literal(CALL_RESULT_SCHEMA_VERSION),
   memoKey: Sha256Schema,
@@ -260,7 +263,7 @@ const CallResultBaseShape = {
   memoHit: z.boolean(),
 } as const;
 
-export const CallResultSchema = z.discriminatedUnion("status", [
+export const CallResultSchema = z.union([
   z
     .object({
       ...CallResultBaseShape,
@@ -272,6 +275,31 @@ export const CallResultSchema = z.discriminatedUnion("status", [
       verification: z.literal("verified"),
       usage: TokenUsageSchema,
       billing: z.object({ status: z.literal("confirmed"), costUsd: DecimalUsdSchema }).strict(),
+      events: DispatchEventsSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...CallResultBaseShape,
+      status: z.literal("success"),
+      value: TerminalOutputSchema,
+      responseEventId: Sha256Schema,
+      served: z
+        .object({
+          model: IdentifierSchema,
+          provider: z.literal("unknown"),
+        })
+        .strict(),
+      generationId: z.null(),
+      verification: z.literal("explicit-unknown"),
+      usage: TokenUsageSchema,
+      billing: z
+        .object({
+          status: z.literal("billing-unknown"),
+          reportedCostUsd: DecimalUsdSchema.nullable(),
+        })
+        .strict(),
+      events: DispatchEventsSchema,
     })
     .strict(),
   z
@@ -297,6 +325,7 @@ export const CallResultSchema = z.discriminatedUnion("status", [
       usage: TokenUsageSchema.nullable(),
       billing: BillingSchema,
       defects: z.array(ValidationDefectSchema).max(256),
+      events: DispatchEventsSchema,
     })
     .strict(),
 ]);
@@ -450,6 +479,7 @@ export const PhysicalStepMemoSchema = z
 
 export type CallSpec = z.infer<typeof CallSpecSchema>;
 export type CallResult = z.infer<typeof CallResultSchema>;
+export type TerminalOutput = z.infer<typeof TerminalOutputSchema>;
 export type PhysicalStepMemoKey = z.infer<typeof PhysicalStepMemoKeySchema>;
 export type PhysicalStepMemoValue = z.infer<typeof PhysicalStepMemoValueSchema>;
 export type PhysicalStepMemo = z.infer<typeof PhysicalStepMemoSchema>;
