@@ -4,7 +4,6 @@
   "generatedAt": "2026-07-14T23:44:34.527Z",
   "total": 174,
   "files": {
-    "crates/kaifuu-cli/src/binary_patch_smoke.rs": 1021,
     "crates/kaifuu-cli/src/main.rs": 13011,
     "crates/kaifuu-cli/tests/patch_real_sweetie_hd.rs": 579,
     "crates/kaifuu-core/src/alpha_encrypted_readiness.rs": 1029,
