@@ -28,7 +28,7 @@ import {
   type FixtureJudgeScoreFn,
   type MetricSystemInput,
 } from "../../src/benchmark-stages/index.js";
-import type { NarrativeStructure } from "../../src/agents/structure-informed-context/index.js";
+import type { NarrativeStructure } from "../../src/structure/index.js";
 
 // ── contestant ids ────────────────────────────────────────────────────────────
 const ITOTORI = "itotori-context-on"; // the system under test.

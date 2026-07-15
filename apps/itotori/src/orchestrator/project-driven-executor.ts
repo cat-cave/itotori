@@ -46,7 +46,7 @@ import {
 } from "@itotori/localization-bridge-schema";
 import { planBatches } from "../batch-planner/planner.js";
 import { resolveModelProfile } from "../batch-planner/model-profiles.js";
-import type { NarrativeStructure } from "../agents/structure-informed-context/index.js";
+import type { NarrativeStructure } from "../structure/index.js";
 import type {
   PriorPassFeedback,
   TranslationGlossaryEntry,

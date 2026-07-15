@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "utsushi.narrative-structure.v2",
+  "entryScene": 10,
+  "sceneDispatchOrder": [10, 20, 30],
+  "scenes": [
+    {
+      "sceneId": 10,
+      "selectionControl": "text-window",
+      "nextScene": 20,
+      "dispatchFanoutScenes": [30],
+      "messages": [
+        {
+          "order": 0,
+          "speaker": "???",
+          "characterId": "character:ren",
+          "text": "first line",
+          "textSurface": null
+        }
+      ],
+      "choices": [
+        {
+          "optionIndex": 0,
+          "label": "continue",
+          "branchTargetSceneId": 30,
+          "branchMessages": []
+        }
+      ]
+    },
+    {
+      "sceneId": 20,
+      "selectionControl": "none",
+      "nextScene": null,
+      "messages": [
+        {
+          "order": 0,
+          "speaker": "Ren",
+          "characterId": "character:ren",
+          "text": "second line",
+          "textSurface": null
+        },
+        {
+          "order": 1,
+          "speaker": "Unknown",
+          "characterId": null,
+          "text": "unresolved line",
+          "textSurface": null
+        }
+      ],
+      "choices": []
+    },
+    {
+      "sceneId": 30,
+      "selectionControl": "none",
+      "nextScene": null,
+      "messages": [
+        {
+          "order": 0,
+          "speaker": "Ren",
+          "characterId": "character:ren",
+          "text": "branch line",
+          "textSurface": null
+        }
+      ],
+      "choices": []
+    }
+  ]
+}

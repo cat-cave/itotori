@@ -85,7 +85,7 @@ import {
   type RobustnessSwap,
   type SabotageConfig,
 } from "./meta-validity-harness.js";
-import type { NarrativeStructure } from "../agents/structure-informed-context/index.js";
+import type { NarrativeStructure } from "../structure/index.js";
 
 export class BenchmarkFacilityError extends Error {
   constructor(detail: string) {

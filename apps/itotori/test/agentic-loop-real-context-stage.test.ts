@@ -1,14 +1,12 @@
 // itotori-agentic-loop-real-context-stage — the loop's context stage now
-// delivers REAL structure-informed context to the translator.
+// delivers decoded structure facts to the translator.
 //
 // SUPERSEDES `genaudit1-01-agentic-loop-context-probe-coerces-mis` and
 // `itotori-semantic-agent-clis-no-fake-context-on-real-path`: the old
 // `invokeContextLikeProbe` (which fired a provider call and DISCARDED its
 // output, leaving `contextArtifactIds: []`) is gone. The context stage now
-//   (a) builds the DETERMINISTIC structure-informed context slice from the
-//       decoded `NarrativeStructure` and injects it into the translation
-//       prompt (scene summary + route/branch position + speaker character
-//       arcs), and
+//   (a) reduces decoded `NarrativeStructure` into scene and route facts for
+//       prompt assembly, and
 //   (b) runs the four semantic context agents LIVE for enrichment.
 //
 // Two proofs:
@@ -49,8 +47,9 @@ import type {
 } from "../src/providers/types.js";
 import {
   parseNarrativeStructure,
+  SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
   type NarrativeStructure,
-} from "../src/agents/structure-informed-context/index.js";
+} from "../src/structure/index.js";
 
 const ACTOR: AuthorizationActor = { userId: "itotori-realctx-test-actor" };
 
@@ -64,42 +63,45 @@ const SPEAKER_NAME = "和人";
 
 /** A small but structurally-real decoded structure: two scenes, a speaker, a choice. */
 function makeStructure(): NarrativeStructure {
-  return parseNarrativeStructure({
-    schemaVersion: "utsushi.narrative-structure.v1",
-    entryScene: SCENE_ID,
-    sceneDispatchOrder: [SCENE_ID, 6020],
-    scenes: [
-      {
-        sceneId: SCENE_ID,
-        nextScene: 6020,
-        messages: [
-          { order: 0, speaker: SPEAKER_NAME, text: "おはよう。", textSurface: null },
-          { order: 1, speaker: SPEAKER_NAME, text: "今日はいい天気だね。", textSurface: null },
-          { order: 2, speaker: null, text: "窓の外には青空が広がっていた。", textSurface: null },
-        ],
-        choices: [],
-      },
-      {
-        sceneId: 6020,
-        nextScene: null,
-        messages: [{ order: 0, speaker: "ステラ", text: "そうね。", textSurface: null }],
-        choices: [
-          {
-            optionIndex: 0,
-            label: "散歩に行く",
-            branchEntryScene: null,
-            branchMessages: [],
-          },
-          {
-            optionIndex: 1,
-            label: "家にいる",
-            branchEntryScene: null,
-            branchMessages: [],
-          },
-        ],
-      },
-    ],
-  });
+  return parseNarrativeStructure(
+    {
+      schemaVersion: "utsushi.narrative-structure.v1",
+      entryScene: SCENE_ID,
+      sceneDispatchOrder: [SCENE_ID, 6020],
+      scenes: [
+        {
+          sceneId: SCENE_ID,
+          nextScene: 6020,
+          messages: [
+            { order: 0, speaker: SPEAKER_NAME, text: "おはよう。", textSurface: null },
+            { order: 1, speaker: SPEAKER_NAME, text: "今日はいい天気だね。", textSurface: null },
+            { order: 2, speaker: null, text: "窓の外には青空が広がっていた。", textSurface: null },
+          ],
+          choices: [],
+        },
+        {
+          sceneId: 6020,
+          nextScene: null,
+          messages: [{ order: 0, speaker: "ステラ", text: "そうね。", textSurface: null }],
+          choices: [
+            {
+              optionIndex: 0,
+              label: "散歩に行く",
+              branchEntryScene: null,
+              branchMessages: [],
+            },
+            {
+              optionIndex: 1,
+              label: "家にいる",
+              branchEntryScene: null,
+              branchMessages: [],
+            },
+          ],
+        },
+      ],
+    },
+    SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
+  );
 }
 
 function makeUnit(sourceText: string): LocalizationUnitV02 {
@@ -278,23 +280,17 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
     // (a) The translation stage PROVABLY received the decoded structure.
     expect(captured.length).toBeGreaterThan(0);
     const prompt = captured[0] ?? "";
-    // The dedicated structure-informed context block.
-    expect(prompt).toContain("Structure-informed context");
-    // Scene summary (decoded scene id + speaker).
-    expect(prompt).toContain(`Scene ${SCENE_ID}`);
-    expect(prompt).toContain(SPEAKER_NAME);
-    // Route/branch position (this scene dispatches to 6020).
-    expect(prompt).toContain("route position");
-    expect(prompt).toContain("dispatches to scene 6020");
-    // Speaker character arc.
-    expect(prompt).toContain("speaks");
-    // Resolved context artifacts carry REAL content (not bare ids).
+    expect(prompt).toContain("Decoded structure (authoritative facts):");
+    expect(prompt).not.toContain("Structure-informed context");
+    expect(prompt).toContain(`sceneId=${SCENE_ID} messageCount=3 choiceCount=0`);
+    expect(prompt).toContain("dispatchTargets=6020");
+    expect(prompt).toContain(`routeEdge kind=dispatch fromSceneId=${SCENE_ID} toSceneId=6020`);
+    // Resolved context artifacts carry typed decode facts (not bare ids).
     expect(prompt).toContain("Context artifacts (resolved content):");
-    expect(prompt).toContain(`structure:scene-summary:${SCENE_ID}`);
-    expect(prompt).toContain(`structure:route-branch-map:${SCENE_ID}`);
-    // Structure-informed citation line still names the deterministic refs.
-    expect(prompt).toContain(`scene-summary:${SCENE_ID}`);
-    expect(prompt).toContain("route-branch-map");
+    expect(prompt).toContain(`contextArtifactId=structure:scene:${SCENE_ID}`);
+    expect(prompt).toContain(`contextArtifactId=structure:route-graph:${SCENE_ID}`);
+    expect(prompt).toContain(`structure:scene:${SCENE_ID}`);
+    expect(prompt).toContain("structure:route-graph");
 
     // The loop still completes end-to-end with a real draft.
     expect(selectedWrittenCandidateBody(bundle)).toBe("Good morning.");
@@ -319,7 +315,7 @@ describe("itotori-agentic-loop-real-context-stage (unit/integration)", () => {
       capturingFakeFactory(unit, captured),
     );
     // No deterministic structure → no injected block (baseline prompt).
-    expect(captured[0] ?? "").not.toContain("Structure-informed context");
+    expect(captured[0] ?? "").not.toContain("Decoded structure (authoritative facts):");
     // The semantic agents still ran (character-relationship anchors on the
     // unit's decoded speaker).
     const contextStage = bundle.stages.find((s) => s.stageName === "context");
@@ -482,6 +478,7 @@ describe("itotori-agentic-loop-real-context-stage (live)", () => {
     if (typeof structurePath === "string" && structurePath.length > 0) {
       structure = parseNarrativeStructure(
         JSON.parse(readFileSync(structurePath, "utf8")) as unknown,
+        SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
       );
       sceneId = Number(process.env.ITOTORI_REALCTX_SCENE ?? String(structure.entryScene));
       const scene = structure.scenes.find((s) => s.sceneId === sceneId);
@@ -559,9 +556,9 @@ describe("itotori-agentic-loop-real-context-stage (live)", () => {
     expect(translationRequest).toBeDefined();
     const userMessage = translationRequest?.messages?.find((m) => m.role === "user");
     const prompt = userMessage?.content ?? "";
-    expect(prompt).toContain("Structure-informed context");
-    expect(prompt).toContain(`Scene ${sceneId}`);
-    expect(prompt).toContain("route position");
+    expect(prompt).toContain("Decoded structure (authoritative facts):");
+    expect(prompt).not.toContain("Structure-informed context");
+    expect(prompt).toContain(`sceneId=${sceneId}`);
     expect(prompt).toContain("Context artifacts (resolved content):");
 
     // ZDR enforced on the wire + real cost recorded; budget cap respected.

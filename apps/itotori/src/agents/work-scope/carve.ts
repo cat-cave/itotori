@@ -46,7 +46,7 @@ import type {
   NarrativeMessage,
   NarrativeStructure,
   SelectionControlSignal,
-} from "../structure-informed-context/index.js";
+} from "../../structure/index.js";
 import {
   WorkCarveError,
   type CarvedWork,

@@ -41,8 +41,9 @@ import {
 } from "../src/providers/types.js";
 import {
   parseNarrativeStructure,
+  SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
   type NarrativeStructure,
-} from "../src/agents/structure-informed-context/index.js";
+} from "../src/structure/index.js";
 import type { WikiBrainEditResult } from "../src/wiki/service.js";
 import { assertHttpContractOk, startPostgresHttpContractHarness } from "./http-contract-harness.js";
 
@@ -117,22 +118,25 @@ function revision(revisionId: string, value: string) {
 }
 
 function makeStructure(): NarrativeStructure {
-  return parseNarrativeStructure({
-    schemaVersion: "utsushi.narrative-structure.v1",
-    entryScene: SCENE_ID,
-    sceneDispatchOrder: [SCENE_ID],
-    scenes: [
-      {
-        sceneId: SCENE_ID,
-        nextScene: null,
-        messages: [
-          { order: 0, speaker: SPEAKER_NAME, text: "おはよう。", textSurface: null },
-          { order: 1, speaker: SPEAKER_NAME, text: "今日はいい天気だね。", textSurface: null },
-        ],
-        choices: [],
-      },
-    ],
-  });
+  return parseNarrativeStructure(
+    {
+      schemaVersion: "utsushi.narrative-structure.v1",
+      entryScene: SCENE_ID,
+      sceneDispatchOrder: [SCENE_ID],
+      scenes: [
+        {
+          sceneId: SCENE_ID,
+          nextScene: null,
+          messages: [
+            { order: 0, speaker: SPEAKER_NAME, text: "おはよう。", textSurface: null },
+            { order: 1, speaker: SPEAKER_NAME, text: "今日はいい天気だね。", textSurface: null },
+          ],
+          choices: [],
+        },
+      ],
+    },
+    SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
+  );
 }
 
 function makeUnit(bridgeUnitId: string, line: number, sourceText: string): LocalizationUnitV02 {

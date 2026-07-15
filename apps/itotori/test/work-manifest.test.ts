@@ -24,7 +24,7 @@ import type {
   NarrativeScene,
   NarrativeStructure,
   SelectionControlSignal,
-} from "../src/agents/structure-informed-context/index.js";
+} from "../src/structure/index.js";
 import {
   parseWorkManifest,
   resolveWorkManifest,

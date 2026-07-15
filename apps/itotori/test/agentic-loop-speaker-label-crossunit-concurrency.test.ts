@@ -54,8 +54,9 @@ import {
 } from "../src/providers/types.js";
 import {
   parseNarrativeStructure,
+  SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
   type NarrativeStructure,
-} from "../src/agents/structure-informed-context/index.js";
+} from "../src/structure/index.js";
 
 const ACTOR: AuthorizationActor = { userId: localUserId };
 const PROJECT_ID = "019ed0cb-2000-7000-8000-00000000cc01";
@@ -175,24 +176,27 @@ function makeBridge(): BridgeBundleV02 {
 }
 
 function makeStructure(): NarrativeStructure {
-  return parseNarrativeStructure({
-    schemaVersion: "utsushi.narrative-structure.v1",
-    entryScene: SCENE_ID,
-    sceneDispatchOrder: [SCENE_ID],
-    scenes: [
-      {
-        sceneId: SCENE_ID,
-        nextScene: null,
-        messages: Array.from({ length: UNIT_COUNT }, (_, i) => ({
-          order: i,
-          speaker: SPEAKER_NAME,
-          text: `セリフ${i + 1}。`,
-          textSurface: null,
-        })),
-        choices: [],
-      },
-    ],
-  });
+  return parseNarrativeStructure(
+    {
+      schemaVersion: "utsushi.narrative-structure.v1",
+      entryScene: SCENE_ID,
+      sceneDispatchOrder: [SCENE_ID],
+      scenes: [
+        {
+          sceneId: SCENE_ID,
+          nextScene: null,
+          messages: Array.from({ length: UNIT_COUNT }, (_, i) => ({
+            order: i,
+            speaker: SPEAKER_NAME,
+            text: `セリフ${i + 1}。`,
+            textSurface: null,
+          })),
+          choices: [],
+        },
+      ],
+    },
+    SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
+  );
 }
 
 const providerDescriptor: ProviderDescriptor = {

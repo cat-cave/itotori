@@ -32,7 +32,7 @@ import {
   type HumanRatingRecord,
   type JudgeCitation,
 } from "../../src/benchmark-stages/index.js";
-import type { NarrativeStructure } from "../../src/agents/structure-informed-context/index.js";
+import type { NarrativeStructure } from "../../src/structure/index.js";
 
 // ── synthetic decode + provenance-laden contestants (mirrors the panel test) ──
 const U1 = "019ed010-0000-7000-8000-0000000000c1";

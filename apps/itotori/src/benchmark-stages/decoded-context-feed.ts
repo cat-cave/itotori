@@ -13,16 +13,15 @@
 //
 //   2. NO ITOTORI-INTERPRETIVE LEAKAGE (anti-circularity) — the judge feed is
 //      decoded GROUND TRUTH ONLY. It MUST NOT carry any artifact produced by
-//      Itotori's structure-informed-context stage (scene summaries,
-//      character-arc write-ups, the route/branch map narration, glossaries,
+//      prompt-facing derived context (scene descriptions, character notes,
+//      route narration, glossaries,
 //      style notes). Feeding the judge Itotori's own interpretation would let
 //      Itotori grade itself against its own read of the script — circular and
 //      self-favorable.
 //
 // The boundary is between DECODE (allowed: the `NarrativeStructure` emitted by
 // the deterministic decode) and INTERPRETATION (forbidden in the judge feed:
-// the `StructureContextArtifacts` / `StructuredContextInjection` produced by
-// `apps/itotori/src/agents/structure-informed-context`). It is drawn by
+// any prompt-facing projection). It is drawn by
 // PRODUCER, not by determinism: even though Itotori's summaries are themselves
 // deterministic reductions, §5 forbids anything produced by the context-building
 // stage from entering the judge feed.
@@ -37,7 +36,7 @@ import type {
   NarrativeMessage,
   NarrativeScene,
   NarrativeStructure,
-} from "../agents/structure-informed-context/index.js";
+} from "../structure/index.js";
 
 /** Raised when the decoded-context feed inputs are missing or inconsistent. */
 export class DecodedContextFeedError extends Error {
@@ -143,11 +142,8 @@ export type JudgeUnitInput = {
 // ---------------------------------------------------------------------------
 
 /**
- * Keys produced by Itotori's structure-informed-context (interpretive) stage.
- * None may appear in the judge feed. Kept in sync with
- * `agents/structure-informed-context/shapes.ts`
- * (`SceneSummaryArtifact` / `RouteBranchMap` / `CharacterArc` /
- * `StructuredContextInjection`) plus the glossary/style-note artifacts §5 names.
+ * Keys produced by prompt-facing derived context. None may appear in the judge
+ * feed, alongside glossary/style-note artifacts.
  */
 export type InterpretiveContextKey =
   | "sceneSummaryText"
@@ -267,8 +263,8 @@ export type DecodedContextFeedInput = {
 /**
  * Assemble the judge feed. The narrative source is `NarrativeStructure` — the
  * deterministic decode — and NOTHING ELSE: this signature has NO parameter of
- * type `StructureContextArtifacts` / `StructuredContextInjection`, so Itotori's
- * interpretive context is structurally incapable of entering the feed (the
+ * type from prompt assembly, so derived context is structurally incapable of
+ * entering the feed (the
  * typed boundary). Per unit, the decoded ground truth is resolved ONCE and
  * shared by every candidate (boundary #1 — equal context).
  */

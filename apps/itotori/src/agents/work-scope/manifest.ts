@@ -20,7 +20,7 @@
 // segment) — never game-specific bytes — and the validator reduces only the
 // decoded `NarrativeStructure` (scene-presence + dispatch reachability).
 
-import type { NarrativeStructure } from "../structure-informed-context/index.js";
+import type { NarrativeStructure } from "../../structure/index.js";
 import type { WorkCarve } from "./shapes.js";
 
 /** Schema version of the operator work-manifest (`itotori.work-manifest.v1`). */

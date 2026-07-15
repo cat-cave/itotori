@@ -5,7 +5,7 @@
 // characters and applying the work's own OVERRIDES. Inheritance is the default
 // (cross-work consistency); override is per-work (a fandisk may diverge).
 
-import type { NarrativeStructure } from "../structure-informed-context/index.js";
+import type { NarrativeStructure } from "../../structure/index.js";
 import {
   ScopeGraphError,
   type CarvedWork,

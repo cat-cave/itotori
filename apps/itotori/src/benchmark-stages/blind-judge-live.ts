@@ -21,7 +21,7 @@ import {
 import { buildDecodedContextFeed, type DecodedContextFeedInput } from "./decoded-context-feed.js";
 import { runBlindJudgePanel, type BlindJudgePanelResult } from "./blind-judge-panel.js";
 import { ZdrModelJudge } from "./blind-judge-zdr-adapter.js";
-import type { NarrativeStructure } from "../agents/structure-informed-context/index.js";
+import type { NarrativeStructure } from "../structure/index.js";
 
 export const BLIND_JUDGE_LIVE_FLAG = "ITOTORI_BLIND_JUDGE_LIVE";
 export const BLIND_JUDGE_PANEL_ENV = "ITOTORI_BLIND_JUDGE_PANEL";

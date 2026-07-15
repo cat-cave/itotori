@@ -10,11 +10,10 @@
 // structurally-grounded context.
 
 import {
-  buildSliceStructuredContext,
-  buildStructureContextArtifacts,
-  type StructureContextArtifacts,
-  type StructuredContextInjection,
-} from "../structure-informed-context/index.js";
+  reduceNarrativeStructure,
+  type NarrativeStructureReductions,
+  type SceneStructure,
+} from "../../structure/index.js";
 import { resolveEffectiveScope, requireWorkScope } from "./scope.js";
 import { ScopeGraphError, type EffectiveScope, type ScopeGraph } from "./shapes.js";
 
@@ -29,7 +28,7 @@ export type WorkScopedContext = {
   workId: string;
   archiveRef: string;
   label: string;
-  artifacts: StructureContextArtifacts;
+  structure: NarrativeStructureReductions;
   effectiveScope: EffectiveScope;
 };
 
@@ -46,13 +45,13 @@ export function buildWorkScopedContext(graph: ScopeGraph, workId: string): WorkS
       `work ${workId} has no decoded structure: run its per-work utsushi structure export (rooted at its branchEntryScene) before building work-scoped context`,
     );
   }
-  const artifacts = buildStructureContextArtifacts(work.structure);
+  const structure = reduceNarrativeStructure(work.structure);
   const effectiveScope = resolveEffectiveScope(graph, workId);
   return {
     workId,
     archiveRef: work.archiveRef,
     label: work.label,
-    artifacts,
+    structure,
     effectiveScope,
   };
 }
@@ -67,7 +66,7 @@ export function buildWorkScopedContext(graph: ScopeGraph, workId: string): WorkS
 export type WorkScopedSliceContext = {
   workId: string;
   sceneId: number;
-  structured: StructuredContextInjection;
+  scene: SceneStructure;
   effectiveScope: EffectiveScope;
 };
 
@@ -76,11 +75,14 @@ export function buildWorkScopedSliceContext(
   context: WorkScopedContext,
   sceneId: number,
 ): WorkScopedSliceContext {
-  const structured = buildSliceStructuredContext(context.artifacts, sceneId);
+  const scene = context.structure.scenes.find((candidate) => candidate.sceneId === sceneId);
+  if (scene === undefined) {
+    throw new ScopeGraphError(`work ${context.workId} has no decoded scene ${sceneId}`);
+  }
   return {
     workId: context.workId,
     sceneId,
-    structured,
+    scene,
     effectiveScope: context.effectiveScope,
   };
 }

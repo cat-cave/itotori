@@ -66,12 +66,11 @@ import {
   terminologyCandidateArtifactData,
 } from "../agents/semantic-context-store.js";
 import { generateRouteChoiceMap } from "../agents/route-choice-map/agent.js";
+import { type NarrativeStructure } from "../structure/index.js";
 import {
-  buildSliceStructuredContext,
-  buildStructureContextArtifacts,
-  type NarrativeStructure,
-  type StructuredContextInjection,
-} from "../agents/structure-informed-context/index.js";
+  buildStructuredTranslationContext,
+  type StructuredTranslationContext,
+} from "../agents/translation/structure-context.js";
 import {
   TRANSLATION_PROMPT_TEMPLATE_VERSION_V1,
   type PriorPassFeedback,
@@ -347,7 +346,7 @@ export type OutcomeJournalContextRef = {
  * style, and work-scope provenance frozen with the draft.
  */
 export type ResolvedOutcomeContextPacket = {
-  structuredContext: StructuredContextInjection | null;
+  structuredContext: StructuredTranslationContext | null;
   /** Stable artifact ids (for citation / join), derived from resolved content. */
   artifactRefs: string[];
   /** Resolved content-bearing artifacts (bodies + provenance + revisions). */
@@ -1350,7 +1349,7 @@ function writtenFindingFromQa(
  */
 function outcomeJournalProvenance(args: {
   contextPacket: UnitContextPacket;
-  structuredContext: StructuredContextInjection | undefined;
+  structuredContext: StructuredTranslationContext | undefined;
   glossary: ReadonlyArray<TranslationGlossaryEntry>;
   styleGuide: StyleGuidePolicyV0Draft | undefined;
   workScopeContext: TranslationWorkScopeContext | undefined;
@@ -1577,14 +1576,10 @@ function buildWrittenOutcome(args: {
 // `itotori-semantic-agent-clis-no-fake-context-on-real-path` nodes: the probe
 // is gone and the four semantic agents now run live.
 //
-//   (a) DETERMINISTIC base — `buildStructureContextArtifacts` reduces the
-//       decoded `NarrativeStructure` (scene-dispatch graph + choice/branch
-//       subsystem + `#NAMAE` speakers + per-scene message stream) into the
-//       three context artifacts, and `buildSliceStructuredContext` selects this
-//       unit's scene slice. That slice is injected into the translation prompt
-//       (see `invokeTranslationStage`) so the draft carries the KNOWN structure
-//       rather than re-inferring it from prose. Always available when the
-//       structure is supplied; never an LLM guess.
+//   (a) DETERMINISTIC base — decoded scene, route, and character facts are
+//       reduced before prompt assembly. They carry real graph targets and
+//       stable character IDs, rather than inferred prose. Always available
+//       when the structure is supplied; never an LLM guess.
 //   (b) LIVE enrichment — the four semantic agents (scene-summary,
 //       character-relationship, terminology-candidate, route-choice-map) each
 //       fire ONE real provider call (routed under ZDR via the DEV_PAIR plain-
@@ -1619,7 +1614,7 @@ export function fakeSemanticContextContent(agentLabel: string): string {
 
 type SemanticContextStageResult = {
   telemetry: RawProviderTelemetry[];
-  structuredContext?: StructuredContextInjection | undefined;
+  structuredContext?: StructuredTranslationContext | undefined;
   /** Content-bearing packet resolved for this unit (ids + bodies + versions). */
   contextPacket: UnitContextPacket;
 };
@@ -1903,15 +1898,14 @@ async function invokeSemanticContextStage(args: {
   // (a) DETERMINISTIC base — structure-informed context slice. Always available
   //     when narrative structure is supplied; never an LLM guess. Content is
   //     also projected into the resolved packet so the prompt cites real text.
-  let structuredContext: StructuredContextInjection | undefined;
+  let structuredContext: StructuredTranslationContext | undefined;
   if (input.narrativeStructure !== undefined) {
     if (input.sceneId === undefined) {
       throw new AgenticLoopInvariantError(
         "narrativeStructure supplied without sceneId: cannot select the unit's scene slice",
       );
     }
-    const structureArtifacts = buildStructureContextArtifacts(input.narrativeStructure);
-    structuredContext = buildSliceStructuredContext(structureArtifacts, input.sceneId);
+    structuredContext = buildStructuredTranslationContext(input.narrativeStructure, input.sceneId);
     for (const structureEntry of structuredContextToResolvedArtifacts(
       structuredContext,
       policy.projectId,
@@ -2507,54 +2501,58 @@ function reusableCharacterRelationshipArtifacts(args: {
 }
 
 function structuredContextToResolvedArtifacts(
-  structured: StructuredContextInjection,
+  structured: StructuredTranslationContext,
   projectId: string,
 ): ResolvedContextArtifact[] {
   const entries: ResolvedContextArtifact[] = [];
-  // Project structure-informed texts as citable content entries so the
-  // translation prompt never lists bare structure refs without bodies.
-  const sceneId = String(structured.sceneId);
+  const sceneId = String(structured.scene.sceneId);
+  const sceneBody = JSON.stringify(structured.scene);
+  const routeBody = JSON.stringify({
+    incomingEdges: structured.incomingEdges,
+    outgoingEdges: structured.outgoingEdges,
+  });
+  const charactersBody = JSON.stringify(structured.characters);
   entries.push({
-    contextArtifactId: `structure:scene-summary:${sceneId}`,
-    category: "scene_summary",
-    title: `Structure scene summary ${sceneId}`,
-    body: structured.sceneSummaryText,
-    data: { origin: "structure_informed", sceneId: structured.sceneId },
-    contentHash: `structure:${createHash("sha256").update(structured.sceneSummaryText).digest("hex").slice(0, 16)}`,
+    contextArtifactId: `structure:scene:${sceneId}`,
+    category: "scene",
+    title: `Decoded scene ${sceneId}`,
+    body: sceneBody,
+    data: { origin: "decode_structure", sceneId: structured.scene.sceneId },
+    contentHash: `structure:${createHash("sha256").update(sceneBody).digest("hex").slice(0, 16)}`,
     status: "active",
-    producedByAgent: "structure-informed-context",
-    producerVersion: "utsushi.narrative-structure.v1",
-    provenance: { kind: "structure_informed", projectId },
+    producedByAgent: "decode-structure",
+    producerVersion: structured.schemaVersion,
+    provenance: { kind: "decode_structure", projectId },
     citations: [],
     contextEntryVersionId: null,
     semanticResult: { kind: "content" },
   });
   entries.push({
-    contextArtifactId: `structure:route-branch-map:${sceneId}`,
+    contextArtifactId: `structure:route-graph:${sceneId}`,
     category: "route_map",
-    title: `Structure route position ${sceneId}`,
-    body: structured.routePositionText,
-    data: { origin: "structure_informed", sceneId: structured.sceneId },
-    contentHash: `structure:${createHash("sha256").update(structured.routePositionText).digest("hex").slice(0, 16)}`,
+    title: `Decoded route graph at scene ${sceneId}`,
+    body: routeBody,
+    data: { origin: "decode_structure", sceneId: structured.scene.sceneId },
+    contentHash: `structure:${createHash("sha256").update(routeBody).digest("hex").slice(0, 16)}`,
     status: "active",
-    producedByAgent: "structure-informed-context",
-    producerVersion: "utsushi.narrative-structure.v1",
-    provenance: { kind: "structure_informed", projectId },
+    producedByAgent: "decode-structure",
+    producerVersion: structured.schemaVersion,
+    provenance: { kind: "decode_structure", projectId },
     citations: [],
     contextEntryVersionId: null,
     semanticResult: { kind: "content" },
   });
   entries.push({
-    contextArtifactId: `structure:character-arcs:${sceneId}`,
+    contextArtifactId: `structure:characters:${sceneId}`,
     category: "character_note",
-    title: `Structure character arcs ${sceneId}`,
-    body: structured.characterArcsText,
-    data: { origin: "structure_informed", sceneId: structured.sceneId },
-    contentHash: `structure:${createHash("sha256").update(structured.characterArcsText).digest("hex").slice(0, 16)}`,
+    title: `Decoded character occurrences at scene ${sceneId}`,
+    body: charactersBody,
+    data: { origin: "decode_structure", sceneId: structured.scene.sceneId },
+    contentHash: `structure:${createHash("sha256").update(charactersBody).digest("hex").slice(0, 16)}`,
     status: "active",
-    producedByAgent: "structure-informed-context",
-    producerVersion: "utsushi.narrative-structure.v1",
-    provenance: { kind: "structure_informed", projectId },
+    producedByAgent: "decode-structure",
+    producerVersion: structured.schemaVersion,
+    provenance: { kind: "decode_structure", projectId },
     citations: [],
     contextEntryVersionId: null,
     semanticResult: { kind: "content" },
@@ -2972,7 +2970,7 @@ async function invokeTranslationStage(args: {
    * reduction of the decode). Rendered into the translation prompt so the
    * draft carries the KNOWN scene summary / route position / speaker arcs.
    */
-  structuredContext?: StructuredContextInjection | undefined;
+  structuredContext?: StructuredTranslationContext | undefined;
   /**
    * Resolved content-bearing context artifacts (bodies + ids + versions).
    * The prompt renders the CONTENT; citations use contextArtifactId.
