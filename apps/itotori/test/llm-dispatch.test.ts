@@ -96,7 +96,7 @@ function toolCallResponse(callIndex: number): Response {
     }),
     streamChunk({
       id,
-      usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7, cost: 0.0000005 },
+      usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7, cost: 0.0000005 }, // itotori-225-audit-allow: deterministic mock-wire cost in a fake stream chunk, not a production cost source
     }),
   ]);
 }
