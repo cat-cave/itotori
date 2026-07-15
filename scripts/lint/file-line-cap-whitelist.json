@@ -111,7 +111,6 @@
     "crates/utsushi-core/src/vfs/diagnostics.rs": 702,
     "crates/utsushi-core/src/vfs/runtime.rs": 720,
     "crates/utsushi-core/src/vfs/xp3_handoff.rs": 933,
-    "crates/utsushi-core/tests/engine_port.rs": 1382,
     "crates/utsushi-core/tests/fixture_snapshot_restore.rs": 548,
     "crates/utsushi-core/tests/recording_metadata.rs": 722,
     "crates/utsushi-core/tests/substrate_conformance.rs": 781,
