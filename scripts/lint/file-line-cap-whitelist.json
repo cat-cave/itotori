@@ -124,7 +124,7 @@
     "crates/utsushi-fixture/src/mvmz_demo_bundle.rs": 724,
     "crates/utsushi-fixture/src/mvmz_patched_runtime_proof.rs": 849,
     "crates/utsushi-fixture/src/mvmz_runtime_proof.rs": 817,
-    "crates/utsushi-fixture/src/reference_corpus.rs": 1489,
+    "crates/utsushi-fixture/src/reference_corpus.rs": 1386,
     "crates/utsushi-kirikiri/src/parse.rs": 637,
     "crates/utsushi-kirikiri/src/replay.rs": 880,
     "crates/utsushi-kirikiri/src/trace.rs": 688,
