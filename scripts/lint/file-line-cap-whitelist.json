@@ -20,7 +20,7 @@
     "crates/kaifuu-core/src/lib.rs": 22069,
     "crates/kaifuu-core/src/mv_mz_encrypted_asset_replacement.rs": 1449,
     "crates/kaifuu-core/src/mv_mz_encrypted_audio.rs": 1367,
-    "crates/kaifuu-core/src/mv_mz_encrypted_image.rs": 1332,
+    "crates/kaifuu-core/src/mv_mz_encrypted_image.rs": 967,
     "crates/kaifuu-core/src/mv_mz_readiness.rs": 1052,
     "crates/kaifuu-core/src/native_windows_helper.rs": 1068,
     "crates/kaifuu-core/src/offset_map.rs": 3716,
