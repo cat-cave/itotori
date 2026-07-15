@@ -126,7 +126,7 @@
     "crates/utsushi-kirikiri/src/parse.rs": 637,
     "crates/utsushi-kirikiri/src/replay.rs": 880,
     "crates/utsushi-kirikiri/src/trace.rs": 688,
-    "crates/utsushi-reallive/src/bytecode_element.rs": 2300,
+    "crates/utsushi-reallive/src/bytecode_element.rs": 1990,
     "crates/utsushi-reallive/src/decompressor.rs": 990,
     "crates/utsushi-reallive/src/engine_port.rs": 812,
     "crates/utsushi-reallive/src/expression.rs": 1090,
