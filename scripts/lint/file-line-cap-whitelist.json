@@ -56,7 +56,7 @@
     "crates/kaifuu-reallive/src/bridge.rs": 1812,
     "crates/kaifuu-reallive/src/gameexe.rs": 1944,
     "crates/kaifuu-reallive/src/opcode.rs": 3715,
-    "crates/kaifuu-reallive/src/patchback/bundle_driven.rs": 2255,
+    "crates/kaifuu-reallive/src/patchback/bundle_driven.rs": 1584,
     "crates/kaifuu-reallive/src/protected_spans.rs": 751,
     "crates/kaifuu-reallive/src/xor2.rs": 796,
     "crates/kaifuu-reallive/tests/multi_corpus_real_bytes.rs": 866,
