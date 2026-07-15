@@ -61,7 +61,7 @@ pub mod module_render;
 pub mod module_sel;
 pub mod module_str;
 pub mod module_sys;
-
+mod selection_prompt;
 pub use longops::{
     DEFAULT_PAUSE_POLLS, HeadlessChoicePolicy, HeadlessInputScheduler,
     OBJECT_SELECT_FLAG_CANCELABLE, OBJECT_SELECT_PRIVATE_STATE_MAGIC,
@@ -86,10 +86,10 @@ pub use module_sel::{
     ObjectButtonHitRegionUnavailable, ObjectButtonPromptOption, SEL_MODULE_ID, SEL_MODULE_TYPE,
     SEL_RLOP_COUNT, SelRuntime, SelRuntimeWarning, SelectModality, SelectObjbtnCancelOp,
     SelectObjbtnOp, SelectOp, SelectS3Op, SelectSOp, SelectVariant, SelectWOp,
-    SelectionControlSignal, SelectionPrompt, SelectionPromptKind, register_sel_rlops,
-    select_modality, selection_control_signal,
+    SelectionControlSignal, SelectionPromptKind, register_sel_rlops, select_modality,
+    selection_control_signal,
 };
-
+pub use selection_prompt::SelectionPrompt;
 /// Engine-neutral dispatch argument. The evaluator returns
 /// `i32`, so the integer variant is `i32` for that path; the byte-string
 /// variant carries raw Shift-JIS bytes (no UTF-8 lossy conversion) so a

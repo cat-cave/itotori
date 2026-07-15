@@ -129,6 +129,7 @@ use super::longops::{
     SELECT_PRIVATE_STATE_MAGIC, SelectLongOp,
 };
 use super::module_msg::LongOpIdSequence;
+pub use super::selection_prompt::SelectionPrompt;
 use super::{
     DispatchOutcome, ExprValue, LongOp, LongOpReadiness, LongOpScheduler, RLOperation, RlopKey,
     RlopRegistry,
@@ -471,14 +472,6 @@ pub enum SelectionPromptKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SelectionPrompt {
-    pub longop_id: super::LongOpId,
-    pub kind: SelectionPromptKind,
-    pub cancelable: bool,
-    pub option_line_ids: Vec<String>,
-}
-
 /// Typed warning the [`SelRuntime`] records on a sink failure or a
 /// malformed-arg observation. The VM does not consume this — callers
 /// drain the queue at a cadence of their choosing.
@@ -738,7 +731,7 @@ fn decode_shift_jis(bytes: &[u8]) -> Result<String, ()> {
 fn dispatch_select(
     variant: SelectVariant,
     runtime: &SelRuntime,
-    _vm: &mut Vm,
+    vm: &mut Vm,
     args: &[ExprValue],
 ) -> DispatchOutcome {
     let mut choices: Vec<Vec<u8>> = Vec::with_capacity(args.len());
@@ -801,6 +794,7 @@ fn dispatch_select(
     if option_line_ids.len() == choices.len() {
         runtime.record_prompt(SelectionPrompt {
             longop_id: id,
+            byte_offset_in_scene: vm.pc(),
             kind: SelectionPromptKind::Text,
             cancelable: false,
             option_line_ids,
@@ -874,7 +868,7 @@ impl RLOperation for SelectWOp {
 
 fn dispatch_select_objbtn(
     runtime: &SelRuntime,
-    _vm: &mut Vm,
+    vm: &mut Vm,
     args: &[ExprValue],
 ) -> DispatchOutcome {
     let [ExprValue::Int(group)] = args else {
@@ -883,10 +877,15 @@ fn dispatch_select_objbtn(
         });
         return DispatchOutcome::Advance;
     };
-    dispatch_object_select(runtime, *group, false)
+    dispatch_object_select(runtime, vm.pc(), *group, false)
 }
 
-fn dispatch_object_select(runtime: &SelRuntime, group: i32, cancelable: bool) -> DispatchOutcome {
+fn dispatch_object_select(
+    runtime: &SelRuntime,
+    byte_offset_in_scene: u32,
+    group: i32,
+    cancelable: bool,
+) -> DispatchOutcome {
     let Some(graphics) = runtime.graphics() else {
         runtime.record_warning(SelRuntimeWarning::ObjectButtonRuntimeUnavailable { group });
         return DispatchOutcome::Advance;
@@ -912,6 +911,7 @@ fn dispatch_object_select(runtime: &SelRuntime, group: i32, cancelable: bool) ->
     let LongOp { id, private_state } = select.into_longop();
     runtime.record_prompt(SelectionPrompt {
         longop_id: id,
+        byte_offset_in_scene,
         kind: SelectionPromptKind::ObjectButtons {
             group,
             options: candidates
@@ -1003,8 +1003,7 @@ impl RLOperation for SelectObjbtnCancelOp {
                 return DispatchOutcome::Advance;
             }
         };
-        let _ = vm;
-        dispatch_object_select(&self.runtime, group, true)
+        dispatch_object_select(&self.runtime, vm.pc(), group, true)
     }
 }
 
@@ -1723,6 +1722,7 @@ mod tests {
             runtime.take_prompts(),
             vec![SelectionPrompt {
                 longop_id,
+                byte_offset_in_scene: 0,
                 kind: SelectionPromptKind::Text,
                 cancelable: false,
                 option_line_ids: line_ids,

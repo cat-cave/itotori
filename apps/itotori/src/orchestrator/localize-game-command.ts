@@ -267,6 +267,7 @@ export async function runLocalizeGameCommand(
       gameexePath,
       seenPath,
       outputPath: structureJsonPath,
+      bridgePath,
       ...(args.entryScene !== undefined ? { entryScene: args.entryScene } : {}),
       ...(args.log !== undefined ? { log: args.log } : {}),
     }),

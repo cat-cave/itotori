@@ -43,8 +43,16 @@ use std::path::Path;
 
 use kaifuu_reallive::{Xor2DecScene, Xor2Report, recover_and_decrypt_archive};
 use utsushi_reallive::{
-    RealSceneIndex, ReplayEngine, build_scene_store_from_decompressed, decompress_all_scenes,
+    DecompressedScene, RealSceneIndex, ReplayEngine, SceneStoreStats,
+    build_scene_store_from_decompressed, decompress_all_scenes,
 };
+
+#[derive(Debug)]
+pub(crate) struct StagedArchive {
+    pub engine: ReplayEngine,
+    pub scenes: Vec<DecompressedScene>,
+    pub store_stats: SceneStoreStats,
+}
 
 /// Typed error surfaced when an archive is `use_xor_2`-eligible
 /// (`scenes_eligible > 0`) but the cross-scene key recovery FAILED to
@@ -96,6 +104,12 @@ impl Error for Xor2ValidationFailed {}
 /// fold the recovered plaintext segments back first (and fail typed via
 /// [`Xor2ValidationFailed`] when eligible-but-unvalidated.
 pub fn staged_engine(seen_path: &Path) -> Result<ReplayEngine, Box<dyn Error>> {
+    Ok(staged_archive(seen_path)?.engine)
+}
+
+/// Decode the complete archive once and retain the recovered plaintext scenes
+/// and store coverage diagnostics alongside the replay engine.
+pub(crate) fn staged_archive(seen_path: &Path) -> Result<StagedArchive, Box<dyn Error>> {
     let bytes = fs::read(seen_path).map_err(|err| {
         format!(
             "utsushi.cli.staged_replay.read: {}: {err}",
@@ -128,9 +142,14 @@ pub fn staged_engine(seen_path: &Path) -> Result<ReplayEngine, Box<dyn Error>> {
         .map_err(|err| format!("utsushi.cli.staged_replay.index: {err}"))?
         .entries
         .len();
-    let (store, shift_jis, _stats) = build_scene_store_from_decompressed(&decompressed, index_len)
-        .map_err(|err| format!("utsushi.cli.staged_replay.store: {err}"))?;
-    Ok(ReplayEngine::from_store(store, shift_jis))
+    let (store, shift_jis, store_stats) =
+        build_scene_store_from_decompressed(&decompressed, index_len)
+            .map_err(|err| format!("utsushi.cli.staged_replay.store: {err}"))?;
+    Ok(StagedArchive {
+        engine: ReplayEngine::from_store(store, shift_jis),
+        scenes: decompressed,
+        store_stats,
+    })
 }
 
 /// Guard the staging seam against handing back still-ciphered mojibake.

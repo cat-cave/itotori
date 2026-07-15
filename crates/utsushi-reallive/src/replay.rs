@@ -3045,12 +3045,12 @@ mod tests {
     fn prompt(id: u64, line_id: &str) -> SelectionPrompt {
         SelectionPrompt {
             longop_id: crate::rlop::LongOpId(id),
+            byte_offset_in_scene: 0,
             kind: crate::rlop::SelectionPromptKind::Text,
             cancelable: false,
             option_line_ids: vec![line_id.to_string()],
         }
     }
-
     fn line(line_id: &str) -> TextLine {
         TextLine {
             line_id: line_id.to_string(),

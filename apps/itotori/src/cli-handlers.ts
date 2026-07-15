@@ -1226,8 +1226,8 @@ async function runVisionInspectHandler(
  * itotori-structure-export — the user-shaped front-door over the UTSUSHI-side
  * narrative-structure producer (`utsushi structure`). Wraps the utsushi-cli
  * binary so the structure-informed context the whole-game localize driver
- * (`itotori localize`) consumes as `utsushi.narrative-structure.v1` is a
- * first-class itotori command, not a foreign Rust bin.
+ * (`itotori localize`) consumes is a first-class itotori command, not a
+ * foreign Rust bin.
  *
  * Required flags (no defaulting):
  *   --gameexe <PATH>   Gameexe.ini (resolves `SEEN_START` + `#NAMAE`)
@@ -1235,9 +1235,10 @@ async function runVisionInspectHandler(
  *   --output <PATH>    where the structure JSON is written (outside the repo;
  *                      carries copyrighted script text on real bytes)
  * Optional:
+ *   --bridge <PATH>     exact Kaifuu bridge; enables evidence-complete v2
  *   --entry-scene <N>  override the `SEEN_START` entry scene (a route-specific
  *                      opening, etc.); drives the dispatch-order walk from it
- *   --max-scenes <N>   cap the dispatch-order walk at N crossed scenes
+ *   --max-scenes <N>   fail when the archive exceeds N scenes
  *
  * The producer owns its own JSON write; a non-zero exit surfaces its stderr
  * verbatim (already prefixed `utsushi.structure.<step>:`) through a typed
@@ -1250,6 +1251,7 @@ async function runStructureExportHandler(
   const gameexePath = requiredFlag(args, "--gameexe");
   const seenPath = requiredFlag(args, "--seen");
   const outputPath = requiredFlag(args, "--output");
+  const bridgePath = optionalFlag(args, "--bridge");
   const entrySceneRaw = optionalFlag(args, "--entry-scene");
   const maxScenesRaw = optionalFlag(args, "--max-scenes");
 
@@ -1279,6 +1281,7 @@ async function runStructureExportHandler(
     gameexePath,
     seenPath,
     outputPath,
+    ...(bridgePath !== undefined ? { bridgePath } : {}),
     ...(entryScene !== undefined ? { entryScene } : {}),
     ...(maxScenes !== undefined ? { maxScenes } : {}),
     log: (message) => {
@@ -1288,7 +1291,10 @@ async function runStructureExportHandler(
   process.stdout.write(
     `${JSON.stringify(
       {
-        schemaVersion: "utsushi.narrative-structure.v1",
+        schemaVersion:
+          bridgePath === undefined
+            ? "utsushi.narrative-structure.v1"
+            : "utsushi.narrative-structure.v2",
         outputPath,
         status: result.status,
       },

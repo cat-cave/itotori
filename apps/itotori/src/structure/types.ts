@@ -8,6 +8,15 @@ export const SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS = [
 
 export type NarrativeStructureVersion = (typeof SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS)[number];
 export type SelectionControlSignal = "button-object" | "text-window" | "none";
+export type EdgeResolution = "resolved" | "unknown" | "unresolved";
+export type RgbColor = [number, number, number];
+export type RevealOrder = { sceneOrder: number; itemOrder: number };
+export type SourceAssetRef = { assetId: string; assetKey: string };
+export type NarrativeBridgeRef = {
+  bridgeUnitId: string;
+  sourceUnitKey: string;
+  runtimeObjectId?: string;
+};
 
 export type NarrativeMessage = {
   order: number;
@@ -16,6 +25,21 @@ export type NarrativeMessage = {
   characterId?: string | null;
   text: string;
   textSurface: string | null;
+  playOrder?: number;
+  revealOrder?: RevealOrder | null;
+  lineId?: string;
+  evidenceTier?: "E0" | "E1" | "E2" | "E3";
+  color?: RgbColor | null;
+  bridgeDeclaredColor?: RgbColor | null;
+  sourceAsset?: SourceAssetRef;
+  byteOffsetInScene?: number | null;
+  byteLength?: number | null;
+  rawByteHandle?: string | null;
+  bodyShiftJisHex?: string | null;
+  bridgeRef?: NarrativeBridgeRef | null;
+  linkageStatus?: "bridge_linked" | "runtime_only";
+  runtimeOnlyReason?: string;
+  routeMembership?: string[];
 };
 
 export type NarrativeChoice = {
@@ -25,7 +49,33 @@ export type NarrativeChoice = {
   branchEntryScene: number | null;
   /** v2's authoritative branch target. */
   branchTargetSceneId?: number | null;
+  choiceId?: string;
+  choiceGroupId?: string;
+  edgeId?: string;
+  edgeResolution?: EdgeResolution;
+  unresolvedEdgeDiagnostic?: string | null;
+  bridgeRef?: NarrativeBridgeRef | null;
   branchMessages: NarrativeMessage[];
+};
+
+export type NarrativeUnit = {
+  unitId: string;
+  bridgeRef: NarrativeBridgeRef;
+  surfaceKind: string;
+  sourceText: string;
+  characterId: string | null;
+  evidenceTier: "E0" | "E1" | "E2" | "E3" | null;
+  color: RgbColor | null;
+  bridgeDeclaredColor?: RgbColor | null;
+  sourceAsset: SourceAssetRef;
+  byteOffsetInScene: number;
+  byteLength: number;
+  rawByteHandle: string;
+  choiceId: string | null;
+  playOrder: number | null;
+  revealOrder: RevealOrder | null;
+  observedLineIds: string[];
+  routeMembership: string[];
 };
 
 export type NarrativeScene = {
@@ -35,6 +85,50 @@ export type NarrativeScene = {
   dispatchFanoutScenes?: number[];
   messages: NarrativeMessage[];
   choices: NarrativeChoice[];
+  sceneRef?: string;
+  units?: NarrativeUnit[];
+  playOrder?: number;
+  revealOrder?: number | null;
+  observationMode?: "entry_reached" | "cold_seeded";
+  predecessors?: number[];
+  successors?: number[];
+  reachable?: boolean;
+  routeMembership?: string[];
+};
+
+export type NarrativeEdge = {
+  edgeId: string;
+  kind: "dispatch" | "choice";
+  fromSceneId: number;
+  toSceneId: number | null;
+  resolution: EdgeResolution;
+  diagnostic: string | null;
+  choiceId: string | null;
+  optionIndex: number | null;
+};
+
+export type NarrativeRoute = {
+  routeId: string;
+  entrySceneId: number;
+  viaEdgeId: string | null;
+  sceneIds: number[];
+};
+
+export type NarrativeCoverage = {
+  archiveSceneCount: number;
+  decodedSceneCount: number;
+  loadedSceneCount: number;
+  bridgeAssetCount: number;
+  emittedSceneCount: number;
+  archiveUnitCount: number;
+  emittedUnitCount: number;
+  observedUnitCount: number;
+  archiveEdgeCount: number;
+  emittedEdgeCount: number;
+  unresolvedEdgeCount: number;
+  truncationStatus: "complete";
+  truncated: false;
+  complete: true;
 };
 
 export type NarrativeStructure = {
@@ -42,6 +136,11 @@ export type NarrativeStructure = {
   entryScene: number;
   sceneDispatchOrder: number[];
   scenes: NarrativeScene[];
+  bridgeId?: string | undefined;
+  sourceBundleHash?: string | undefined;
+  coverage?: NarrativeCoverage | undefined;
+  routes?: NarrativeRoute[] | undefined;
+  edges?: NarrativeEdge[] | undefined;
 };
 
 export type SceneStructure = {

@@ -107,8 +107,8 @@ fn run_cli_with_registry(
         }
         Some("structure") => {
             // Narrative-structure exporter — the UTSUSHI-side producer of the
-            // `utsushi.narrative-structure.v1` artifact the itotori whole-game
-            // localize driver consumes. Deriving the real scene-dispatch order
+            // narrative-structure artifact the itotori whole-game localize
+            // driver consumes. Deriving the real scene-dispatch order and
             // per-scene play-order streams needs the replay runtime (utsushi's
             // job); `kaifuu extract --whole-seen` produces the BRIDGE, this
             // produces the STRUCTURE, and the driver consumes them separately.
