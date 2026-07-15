@@ -81,6 +81,8 @@ check:
     node scripts/audit-no-hardcoded-roles.mjs
     node --test scripts/audit-no-direct-provider-invoke.test.mjs
     node scripts/audit-no-direct-provider-invoke.mjs
+    node --test scripts/audit-privacy-retention-egress.test.mjs
+    node scripts/audit-privacy-retention-egress.mjs
     node --test scripts/audit-no-node-ids.test.mjs
     node scripts/audit-no-node-ids.mjs
     node --test scripts/file-line-cap-guard.test.mjs
@@ -779,6 +781,8 @@ ci-tier0-meta:
     node scripts/audit-no-hardcoded-roles.mjs
     node --test scripts/audit-no-direct-provider-invoke.test.mjs
     node scripts/audit-no-direct-provider-invoke.mjs
+    node --test scripts/audit-privacy-retention-egress.test.mjs
+    node scripts/audit-privacy-retention-egress.mjs
     node --test scripts/audit-no-node-ids.test.mjs
     node scripts/audit-no-node-ids.mjs
     node --test scripts/file-line-cap-guard.test.mjs
