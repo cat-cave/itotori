@@ -863,6 +863,7 @@ class InstrumentedProvider implements ModelProvider {
     private readonly inner: FakeModelProvider,
     private readonly meter: ConcurrencyMeter,
     private readonly delayMs: number,
+    private readonly barrier?: InvocationBarrier,
   ) {}
   get descriptor() {
     return this.inner.descriptor;
@@ -870,11 +871,30 @@ class InstrumentedProvider implements ModelProvider {
   async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
     this.meter.enter();
     try {
-      await sleep(this.delayMs);
+      if (this.barrier !== undefined) {
+        await this.barrier.arrive();
+      } else {
+        await sleep(this.delayMs);
+      }
       return await this.inner.invoke(request);
     } finally {
       this.meter.exit();
     }
+  }
+}
+
+/** Holds the first invocation wave until exactly `width` calls have arrived. */
+class InvocationBarrier {
+  private arrivals = 0;
+  readonly full = signal();
+  readonly release = signal();
+
+  constructor(private readonly width: number) {}
+
+  async arrive(): Promise<void> {
+    this.arrivals += 1;
+    if (this.arrivals === this.width) this.full.resolve();
+    await this.release.promise;
   }
 }
 
@@ -941,6 +961,7 @@ function drivenGenerate(agentLabel: string, request: ModelInvocationRequest): st
 function instrumentedFactory(opts: {
   meter: ConcurrencyMeter;
   delayMs: number;
+  barrier?: InvocationBarrier;
   sceneSummaryCalls?: { count: number };
   semanticEnrichmentCalls?: Record<string, { count: number }>;
 }): AgenticLoopProviderFactory {
@@ -960,7 +981,7 @@ function instrumentedFactory(opts: {
         return drivenGenerate(agentLabel, request);
       },
     });
-    return new InstrumentedProvider(inner, opts.meter, opts.delayMs);
+    return new InstrumentedProvider(inner, opts.meter, opts.delayMs, opts.barrier);
   };
 }
 
@@ -1188,42 +1209,45 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
     expect(rebuiltArtifact?.contentHash).toBe(originalContentHash);
   });
 
-  it("runs units CONCURRENTLY up to the bound (counter reaches K) with a wall-clock speedup", async () => {
+  it("runs units CONCURRENTLY up to the bound (counter reaches K)", async () => {
     const UNIT_COUNT = 8;
     const CONCURRENCY = 4;
-    const DELAY_MS = 15;
 
-    // Sequential baseline (concurrency 1) for the wall-clock comparison.
+    // Sequential baseline proves concurrency does not change physical-call
+    // coverage; elapsed wall time is deliberately irrelevant to correctness.
     const seqMeter = new ConcurrencyMeter();
     const seqSinks = new InMemorySinks();
     const { bridge: seqBridge } = makeManyUnitBridge(UNIT_COUNT);
-    const seqStart = Date.now();
     const seqResult = await runProjectDrivenExecutor({
       ...concurrencyBaseInput({
         bridge: seqBridge,
-        factory: instrumentedFactory({ meter: seqMeter, delayMs: DELAY_MS }),
+        factory: instrumentedFactory({ meter: seqMeter, delayMs: 0 }),
         sinks: seqSinks,
       }),
       concurrency: 1,
     });
-    const seqMs = Date.now() - seqStart;
     expect(seqResult.unitsRun).toBe(UNIT_COUNT);
     expect(seqMeter.maxInFlight).toBe(1); // strictly sequential.
 
-    // Concurrent run (concurrency K).
+    // Concurrent run (concurrency K). The first provider wave cannot proceed
+    // until K calls have actually entered, proving scheduler overlap without
+    // a sleep duration or host-load-dependent wall-clock ratio.
     const meter = new ConcurrencyMeter();
+    const barrier = new InvocationBarrier(CONCURRENCY);
     const sinks = new InMemorySinks();
     const { bridge } = makeManyUnitBridge(UNIT_COUNT);
-    const start = Date.now();
-    const result = await runProjectDrivenExecutor({
+    const execution = runProjectDrivenExecutor({
       ...concurrencyBaseInput({
         bridge,
-        factory: instrumentedFactory({ meter, delayMs: DELAY_MS }),
+        factory: instrumentedFactory({ meter, delayMs: 0, barrier }),
         sinks,
       }),
       concurrency: CONCURRENCY,
     });
-    const concMs = Date.now() - start;
+    await barrier.full.promise;
+    expect(meter.inFlight).toBe(CONCURRENCY);
+    barrier.release.resolve();
+    const result = await execution;
 
     // Concurrency counter reached the bound (never exceeds it — only K workers).
     expect(meter.maxInFlight).toBe(CONCURRENCY);
@@ -1251,10 +1275,8 @@ describe("runProjectDrivenExecutor (bounded-concurrent scheduling)", () => {
       // neighbouring unit's body.
       expect(targetById.get(unit.bridgeUnitId)).toBe(`「${selectedBody}」`);
     }
-    // Same number of provider calls, but wall-clock is far below the sequential
-    // sum (bounded speedup ~K). A conservative < 0.6x threshold avoids flake.
+    // Concurrency changes scheduling only, not physical-call coverage.
     expect(meter.totalCalls).toBe(seqMeter.totalCalls);
-    expect(concMs).toBeLessThan(seqMs * 0.6);
   });
 
   it("persists each completed unit journal before a slower worker drains", async () => {

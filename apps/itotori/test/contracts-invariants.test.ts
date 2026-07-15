@@ -147,11 +147,12 @@ describe("terminal contract strictness", () => {
     }
   });
 
-  it("emits closed provider schemas without unconstrained JSON nodes", () => {
-    for (const [name, schema] of Object.entries(terminalContractSchemas)) {
+  it.each(Object.entries(terminalContractSchemas))(
+    "emits a closed %s provider schema without unconstrained JSON nodes",
+    (name, schema) => {
       walkJsonSchema(z.toJSONSchema(schema), name);
-    }
-  });
+    },
+  );
 
   it("contains no raw-JSON or salvage constructors in the contract source", () => {
     const contractDirectory = fileURLToPath(new URL("../src/contracts/", import.meta.url));
