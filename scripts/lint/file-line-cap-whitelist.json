@@ -62,7 +62,7 @@
     "crates/kaifuu-reallive/tests/patchback_real_bytes.rs": 1321,
     "crates/kaifuu-reallive/tests/scene_1_dispatch_real_bytes.rs": 585,
     "crates/kaifuu-rpgmaker/src/database_terms.rs": 1022,
-    "crates/kaifuu-rpgmaker/src/encrypted_asset_slice.rs": 1447,
+    "crates/kaifuu-rpgmaker/src/encrypted_asset_slice.rs": 897,
     "crates/kaifuu-rpgmaker/src/extract.rs": 952,
     "crates/kaifuu-rpgmaker/src/integration.rs": 916,
     "crates/kaifuu-rpgmaker/src/map_common_event.rs": 637,
