@@ -87,6 +87,12 @@ check:
     node scripts/audit-no-node-ids.mjs
     node --test scripts/file-line-cap-guard.test.mjs
     node scripts/file-line-cap-guard.mjs
+    node --test scripts/audit-deletion-ledger.test.mjs
+    node scripts/audit-deletion-ledger.mjs
+    node --test scripts/audit-llm-layer-imports.test.mjs
+    node scripts/audit-llm-layer-imports.mjs
+    node --test scripts/audit-llm-loc-budget.test.mjs
+    node scripts/audit-llm-loc-budget.mjs
     node --test scripts/generate-engine-capability-matrix.test.mjs
     node scripts/generate-engine-capability-matrix.mjs --check
     node --test scripts/synthetic-coverage-manifest.test.mjs
@@ -787,6 +793,12 @@ ci-tier0-meta:
     node scripts/audit-no-node-ids.mjs
     node --test scripts/file-line-cap-guard.test.mjs
     node scripts/file-line-cap-guard.mjs
+    node --test scripts/audit-deletion-ledger.test.mjs
+    node scripts/audit-deletion-ledger.mjs
+    node --test scripts/audit-llm-layer-imports.test.mjs
+    node scripts/audit-llm-layer-imports.mjs
+    node --test scripts/audit-llm-loc-budget.test.mjs
+    node scripts/audit-llm-loc-budget.mjs
     node --test scripts/generate-engine-capability-matrix.test.mjs
     node scripts/generate-engine-capability-matrix.mjs --check
     node --test scripts/synthetic-coverage-manifest.test.mjs

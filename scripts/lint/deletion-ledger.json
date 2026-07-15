@@ -1,0 +1,231 @@
+{
+  "description": "Frozen deletion ledger + LLM-layer boundary for the core rebuild.\nDo not hand-edit; update only when a spec-DAG node deletes or rehomes a path.\nEach delete/rehome entry records an expected state ('present' during freeze,\n'absent' after cutover) so the guard can assert the ledger matches reality.",
+  "version": 1,
+  "contractualTotalLines": 50066,
+
+  "delete": {
+    "appSurface": [
+      {
+        "id": "agents",
+        "kind": "glob",
+        "root": "apps/itotori/src/agents/",
+        "extensions": [".ts", ".tsx"],
+        "lines": 15890,
+        "expected": "present",
+        "reason": "Agent hierarchy, registry, prompt parsers, CLIs, adapters, work-scope, prose context injection."
+      },
+      {
+        "id": "orchestrator-implementation",
+        "kind": "files",
+        "files": [
+          "apps/itotori/src/orchestrator/agentic-loop-smoke-command.ts",
+          "apps/itotori/src/orchestrator/agentic-loop.ts",
+          "apps/itotori/src/orchestrator/attempt-outcome-journal.ts",
+          "apps/itotori/src/orchestrator/context-brain.ts",
+          "apps/itotori/src/orchestrator/context-correction-service.ts",
+          "apps/itotori/src/orchestrator/context-correction-worker.ts",
+          "apps/itotori/src/orchestrator/invocation-supervisor.ts",
+          "apps/itotori/src/orchestrator/localize-fullproject-cli.ts",
+          "apps/itotori/src/orchestrator/localize-fullproject-command.ts",
+          "apps/itotori/src/orchestrator/localize-game-command.ts",
+          "apps/itotori/src/orchestrator/localize-project-stage-command.ts",
+          "apps/itotori/src/orchestrator/localize-project-stage-live.ts",
+          "apps/itotori/src/orchestrator/project-driven-executor-sinks.ts",
+          "apps/itotori/src/orchestrator/project-driven-executor.ts",
+          "apps/itotori/src/orchestrator/terminal-run-cancellation-live.ts",
+          "apps/itotori/src/orchestrator/terminal-run-finalizer-db-adapter.ts",
+          "apps/itotori/src/orchestrator/terminal-run-finalizer.ts",
+          "apps/itotori/src/orchestrator/repair/affected-work-selector.ts",
+          "apps/itotori/src/orchestrator/repair/index.ts",
+          "apps/itotori/src/orchestrator/repair/repair-job-executor.ts",
+          "apps/itotori/src/orchestrator/repair/repair-job-service.ts",
+          "apps/itotori/src/orchestrator/repair/types.ts"
+        ],
+        "lines": 15800,
+        "expected": "present",
+        "reason": "Per-unit agentic loop, supervisor, run scheduler, lease/reservation/finalizer, repair, context brain/correction."
+      },
+      {
+        "id": "openrouter-client",
+        "kind": "files",
+        "files": ["apps/itotori/src/providers/openrouter.ts"],
+        "lines": 2157,
+        "expected": "present",
+        "reason": "Hand-built OpenRouter client; replaced by one TanStack dispatch primitive."
+      },
+      {
+        "id": "benchmark-experiment-proof",
+        "kind": "globs",
+        "roots": [
+          "apps/itotori/src/benchmark-harness/",
+          "apps/itotori/src/benchmark-set/",
+          "apps/itotori/src/benchmark-stages/",
+          "apps/itotori/src/experiment-matrix/",
+          "apps/itotori/src/experiment-report/",
+          "apps/itotori/src/provider-proof/",
+          "apps/itotori/src/raw-mtl-baseline-proof/"
+        ],
+        "extensions": [".ts", ".tsx"],
+        "lines": 16219,
+        "expected": "present",
+        "reason": "Old benchmark/experiment/provider-proof/raw-MTL/QA directories tied to the old loop."
+      }
+    ],
+
+    "providerCollateral": [
+      "apps/itotori/src/providers/types.ts",
+      "apps/itotori/src/providers/index.ts",
+      "apps/itotori/src/providers/capability-guard.ts",
+      "apps/itotori/src/providers/structured-output.ts",
+      "apps/itotori/src/providers/dev-pair.ts",
+      "apps/itotori/src/providers/fake.ts",
+      "apps/itotori/src/providers/recorded.ts",
+      "apps/itotori/src/providers/local-openai-compatible.ts",
+      "apps/itotori/src/providers/local-capability-gaps.ts",
+      "apps/itotori/src/providers/artifacts.ts",
+      "apps/itotori/src/providers/token-accounting.ts",
+      "apps/itotori/src/providers/cost.ts",
+      "apps/itotori/src/providers/openrouter-cost-reconciler.ts",
+      "apps/itotori/src/providers/account-zdr.ts"
+    ],
+
+    "qaCollateral": [
+      "apps/itotori/src/qa/scored-finding-workflow.ts",
+      "apps/itotori/src/qa/regrade-loop.ts",
+      "apps/itotori/src/qa/calibration-fixtures.ts",
+      "apps/itotori/src/render-gate/vision-gate.ts",
+      "apps/itotori/src/render-gate/command.ts"
+    ],
+
+    "dbCollateral": [
+      "packages/itotori-db/src/repositories/localization-journal-repository.ts",
+      "packages/itotori-db/src/repositories/localization-run-finalizer-repository.ts",
+      "packages/itotori-db/src/repositories/context-artifact-repository.ts",
+      "apps/itotori/src/services/context-correction-redrafter.ts"
+    ],
+
+    "schemaCollateral": [
+      "packages/localization-bridge-schema/src/agentic-loop-bundle.ts",
+      "packages/localization-bridge-schema/src/provider-proof-bundle.ts",
+      "packages/localization-bridge-schema/src/pair-policy.v0.3.ts",
+      "packages/localization-bridge-schema/src/raw-mtl-baseline-proof.ts"
+    ],
+
+    "migrationsRetired": [
+      "packages/itotori-db/migrations/0076_localization_attempt_outcome_journal.sql",
+      "packages/itotori-db/migrations/0079_invocation_supervisor_lifecycle.sql",
+      "packages/itotori-db/migrations/0080_localization_run_leases_and_unit_claims.sql",
+      "packages/itotori-db/migrations/0081_atomic_cost_reservations.sql",
+      "packages/itotori-db/migrations/0082_backfill_localization_run_cost_accounts.sql",
+      "packages/itotori-db/migrations/0099_release_interrupted_cost_reservations.sql",
+      "packages/itotori-db/migrations/0100_backfill_terminal_cost_reservations.sql"
+    ],
+
+    "migrationsSurgery": [
+      "packages/itotori-db/migrations/0085_localization_run_finalizer.sql",
+      "packages/itotori-db/migrations/0091_iterative_patch_versioning_and_playtest_feedback.sql"
+    ]
+  },
+
+  "rehome": [
+    {
+      "from": "apps/itotori/src/agents/structure-informed-context/shapes.ts",
+      "reason": "NarrativeStructure parser/types: move to decode/structure module."
+    },
+    {
+      "from": "apps/itotori/src/agents/structure-informed-context/build.ts",
+      "reason": "Pure scene/route/character reductions: move to decode/structure module."
+    },
+    {
+      "from": "apps/itotori/src/agents/runtime-evidence/deterministic-checks.ts",
+      "reason": "Pure deterministic checks: move outside agents."
+    },
+    {
+      "from": "apps/itotori/src/agents/runtime-evidence/tools.ts",
+      "reason": "Pure tool shapes: move outside agents."
+    },
+    {
+      "from": "apps/itotori/src/agents/runtime-evidence/artifact-store.ts",
+      "reason": "Pure artifact store: move outside agents."
+    },
+    {
+      "from": "apps/itotori/src/agents/runtime-evidence/shapes.ts",
+      "reason": "Pure evidence shapes: move outside agents."
+    },
+    {
+      "from": "apps/itotori/src/benchmark-stages/deterministic-qa.ts",
+      "reason": "Deterministic QA kernel: move outside benchmark code."
+    },
+    {
+      "from": "apps/itotori/src/benchmark-stages/deterministic-metrics/glossary-and-names.ts",
+      "reason": "Pure evaluator: move outside benchmark code."
+    },
+    {
+      "from": "apps/itotori/src/benchmark-stages/deterministic-metrics/structural.ts",
+      "reason": "Pure evaluator: move outside benchmark code."
+    },
+    {
+      "from": "apps/itotori/src/benchmark-stages/deterministic-metrics/layout-residue.ts",
+      "reason": "Pure evaluator: move outside benchmark code."
+    },
+    {
+      "from": "apps/itotori/src/benchmark-stages/deterministic-metrics/back-translation-tripwire.ts",
+      "reason": "Pure evaluator: move outside benchmark code."
+    },
+    {
+      "from": "apps/itotori/src/benchmark-stages/deterministic-metrics/text-utils.ts",
+      "reason": "Pure evaluator: move outside benchmark code."
+    },
+    {
+      "from": "apps/itotori/src/orchestrator/patch-apply-seam.ts",
+      "reason": "Pure native apply portion: extract into non-orchestrator module."
+    },
+    {
+      "from": "apps/itotori/src/orchestrator/wholegame-render-validation-seam.ts",
+      "reason": "Translated-byte replay/render seam: rehome outside orchestrator."
+    },
+    {
+      "from": "apps/itotori/src/orchestrator/reallive-source-resolver.ts",
+      "reason": "Deterministic source-resolution seam: rehome outside orchestrator."
+    },
+    {
+      "from": "apps/itotori/src/orchestrator/pipeline-failure-diagnostic.ts",
+      "reason": "Content-free contract: rehome against new event/error types."
+    }
+  ],
+
+  "llmLayer": {
+    "root": "apps/itotori/src/llm/",
+    "dispatcherModule": "apps/itotori/src/llm/dispatch.ts",
+    "locBudget": 5000,
+    "locExcludedSubdirs": ["prompts/", "schemas/"],
+    "forbiddenImportRoots": [
+      "../agents/",
+      "../orchestrator/",
+      "../providers/",
+      "../qa/",
+      "../benchmark-harness/",
+      "../benchmark-set/",
+      "../benchmark-stages/",
+      "../experiment-matrix/",
+      "../experiment-report/",
+      "../provider-proof/",
+      "../raw-mtl-baseline-proof/",
+      "../render-gate/"
+    ],
+    "forbiddenDomainDecodeRoots": [
+      "../extract/",
+      "../structure-export/",
+      "../native-bin/",
+      "../patch-export/",
+      "../localization/",
+      "../play/",
+      "../services/"
+    ],
+    "forbiddenPackageImports": [
+      "localization-journal-repository",
+      "localization-run-finalizer-repository",
+      "context-artifact-repository"
+    ]
+  }
+}
