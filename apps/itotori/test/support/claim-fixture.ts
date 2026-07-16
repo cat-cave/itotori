@@ -210,6 +210,11 @@ export interface ClaimFixtureOptions {
   scene2Routes?: string[];
   /** Canonical characters to seed into the deterministic index + profiles. */
   characters?: readonly FixtureCharacterSpec[];
+  /** Override the decoded bundle the READ MODEL exposes (source text / spans),
+   * while the fact snapshot stays built from the real fixture bytes. The override
+   * must keep the same bridgeUnitIds so snapshot units still bind. Used to stage
+   * decoded source text a source-text-scanning role reasons over. */
+  modelBundle?: (bundle: BridgeBundleV02) => BridgeBundleV02;
 }
 
 /** Build the immutable read model + fact snapshot for the fixture bytes. */
@@ -221,6 +226,7 @@ export function buildClaimFixture(options: ClaimFixtureOptions = {}): {
   const scene2Routes = options.scene2Routes ?? [];
   const characters = options.characters ?? [];
   const snapshot = buildFactSnapshot(structure(scene2Routes, characters), loadBundle());
+  const modelBundle = options.modelBundle ? options.modelBundle(loadBundle()) : loadBundle();
   const characterProfiles = new Map<string, CharacterProfile>(
     characters.map((character) => [
       character.characterId,
@@ -234,7 +240,7 @@ export function buildClaimFixture(options: ClaimFixtureOptions = {}): {
   const model = buildReadModel({
     contextSnapshot: makeContext(snapshot, revealHorizon),
     factSnapshot: snapshot,
-    bundle: loadBundle(),
+    bundle: modelBundle,
     characterProfiles,
   });
   return { model, snapshot };
