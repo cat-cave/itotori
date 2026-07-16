@@ -354,6 +354,7 @@ export const LocalizedRenderingSchema = z
 
 export type Citation = z.infer<typeof CitationSchema>;
 export type Claim = z.infer<typeof ClaimSchema>;
+export type DependencyRef = z.infer<typeof DependencyRefSchema>;
 export type MediaRef = z.infer<typeof MediaRefSchema>;
 export type HumanInput = z.infer<typeof HumanInputSchema>;
 export type WikiObject = z.infer<typeof WikiObjectSchema>;

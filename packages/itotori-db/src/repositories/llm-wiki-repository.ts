@@ -1,6 +1,20 @@
 import type { PoolClient } from "pg";
 import type { DatabaseContext } from "../connection.js";
 import { llmSha256, type LlmJsonValue } from "../llm-content-address.js";
+import {
+  insertDependencyEdges,
+  queryDependents,
+  type LlmDependencyQuery,
+  type LlmDependentEdge,
+  type LlmWikiDependency,
+} from "./llm-wiki-dependency-edges.js";
+import {
+  assertAuthorRole,
+  assertCommon,
+  assertContextScope,
+  assertIdentifier,
+  assertSubject,
+} from "./llm-wiki-version-validation.js";
 import type { LlmMemoCipher } from "./llm-call-memo-repository.js";
 
 // Every context artifact and translation is one strict versioned object. Source
@@ -18,6 +32,12 @@ export interface LlmWikiSubject {
   id: string;
 }
 
+export type {
+  LlmDependencyQuery,
+  LlmDependentEdge,
+  LlmWikiDependency,
+} from "./llm-wiki-dependency-edges.js";
+
 export interface LlmWikiHead {
   wikiVersionId: string;
   objectId: string;
@@ -30,7 +50,7 @@ export interface LlmWikiHeadSelector {
   objectId: string;
 }
 
-interface LlmWikiVersionCommon {
+export interface LlmWikiVersionCommon {
   objectId: string;
   objectVersion: number;
   supersedesVersion: number | null;
@@ -43,6 +63,8 @@ interface LlmWikiVersionCommon {
   editedBy: string | null;
   /** The full canonical object JSON. Its hash addresses the version. */
   objectJson: string;
+  /** The fine-grained upstream dependencies this version consumed. */
+  dependencies: readonly LlmWikiDependency[];
   createdAt: string;
   expectedHead: LlmWikiHead | null;
 }
@@ -266,6 +288,7 @@ export class ItotoriLlmWikiRepository {
           contentHash,
         };
       }
+      await insertDependencyEdges(client, wikiVersionId, row.dependencies, row.createdAt);
       await this.advanceHead(client, row, wikiVersionId, contentHash);
       await client.query("commit");
       return { wikiVersionId, objectId: row.objectId, version: row.objectVersion, contentHash };
@@ -341,6 +364,14 @@ export class ItotoriLlmWikiRepository {
         );
     if (advanced.rowCount !== 1) throw new LlmWikiCasError();
   }
+
+  /** Resolve the EXACT downstream consumers of an upstream claim/field/rendering.
+   * A `claimId`/`fieldPath`/`renderingId` narrows to consumers of that content
+   * only; a bare `upstreamObjectId` returns every consumer (the coarse query the
+   * fine-grained edges replace). See {@link queryDependents}. */
+  async queryDependents(query: LlmDependencyQuery): Promise<LlmDependentEdge[]> {
+    return queryDependents(this.pool, query);
+  }
 }
 
 interface CommonPersist {
@@ -348,6 +379,7 @@ interface CommonPersist {
   objectVersion: number;
   supersedesVersion: number | null;
   objectJson: string;
+  dependencies: readonly LlmWikiDependency[];
   createdAt: string;
   expectedHead: LlmWikiHead | null;
 }
@@ -358,6 +390,7 @@ function common(input: LlmWikiVersionCommon): CommonPersist {
     objectVersion: input.objectVersion,
     supersedesVersion: input.supersedesVersion,
     objectJson: input.objectJson,
+    dependencies: input.dependencies,
     createdAt: input.createdAt,
     expectedHead: input.expectedHead,
   };
@@ -371,119 +404,4 @@ function scopeRouteIds(scope: LlmWikiScope): readonly string[] {
   if (scope.kind === "route") return [scope.routeId];
   if (scope.kind === "route-set") return scope.routeIds;
   return [];
-}
-
-function assertCommon(input: LlmWikiVersionCommon): void {
-  assertIdentifier(input.objectId, "wiki object ID");
-  assertLanguageTag(input.language, "wiki object language");
-  assertObjectKind(input.objectKind);
-  assertScope(input.scope);
-  assertRunMode(input.runMode);
-  if (input.editedBy !== null && !["human", "enhancement", "agent"].includes(input.editedBy)) {
-    throw new Error("wiki provenance editedBy is invalid");
-  }
-  if (!Number.isSafeInteger(input.objectVersion) || input.objectVersion <= 0) {
-    throw new Error("wiki object version must be a positive safe integer");
-  }
-  if (input.expectedHead === null && input.objectVersion !== 1) {
-    throw new Error("the first wiki object version must be one");
-  }
-  if (
-    input.expectedHead !== null &&
-    (input.objectVersion !== input.expectedHead.version + 1 ||
-      input.supersedesVersion !== input.expectedHead.version)
-  ) {
-    throw new Error("wiki object version does not advance its expected head");
-  }
-  if (!Number.isFinite(Date.parse(input.createdAt))) {
-    throw new Error("wiki object timestamp is invalid");
-  }
-}
-
-const OBJECT_KINDS = new Set([
-  "style-contract",
-  "term-ruling",
-  "scene-summary",
-  "story-so-far",
-  "route-arc",
-  "voice-profile",
-  "adaptation-note",
-  "character-bio",
-  "character-background",
-  "character-route-arc",
-  "speaker-hypothesis",
-  "translation",
-]);
-
-const SUBJECT_KINDS = new Set([
-  "game",
-  "route",
-  "scene",
-  "unit",
-  "character",
-  "glossary-term",
-  "choice",
-  "organization",
-  "user",
-  "genre",
-]);
-
-function assertObjectKind(value: string): void {
-  if (!OBJECT_KINDS.has(value)) throw new Error("wiki object kind is invalid");
-}
-
-function assertSubject(subject: LlmWikiSubject): void {
-  if (!SUBJECT_KINDS.has(subject.kind)) throw new Error("wiki subject kind is invalid");
-  assertIdentifier(subject.id, "wiki subject ID");
-}
-
-function assertScope(scope: LlmWikiScope): void {
-  if (scope.kind === "global") return;
-  if (scope.kind === "route") {
-    assertIdentifier(scope.routeId, "wiki scope route ID");
-    return;
-  }
-  if (scope.routeIds.length === 0) throw new Error("wiki route-set scope must not be empty");
-  for (const routeId of scope.routeIds) assertIdentifier(routeId, "wiki scope route ID");
-  if (new Set(scope.routeIds).size !== scope.routeIds.length) {
-    throw new Error("wiki route-set scope routes must be unique");
-  }
-  const sorted = [...scope.routeIds].every(
-    (routeId, index) => index === 0 || routeId > scope.routeIds[index - 1]!,
-  );
-  if (!sorted) throw new Error("wiki route-set scope routes must be sorted");
-}
-
-function assertContextScope(value: string): void {
-  if (
-    value !== "whole-game" &&
-    value !== "external-augmented" &&
-    !/^narrowed:[^\s].{0,127}$/u.test(value)
-  ) {
-    throw new Error("wiki context scope is invalid");
-  }
-}
-
-function assertRunMode(value: string): void {
-  if (!["production", "pilot", "test-dev"].includes(value)) {
-    throw new Error("wiki run mode is invalid");
-  }
-}
-
-function assertAuthorRole(value: string): void {
-  if (!/^(A[1-9]|A10|P[1-3]|Q[1-6])$/u.test(value)) {
-    throw new Error("wiki provenance author role is invalid");
-  }
-}
-
-function assertLanguageTag(value: string, label: string): void {
-  if (!/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/u.test(value)) {
-    throw new Error(`${label} is not a language tag`);
-  }
-}
-
-function assertIdentifier(value: string, label: string): void {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._:#/-]{0,255}$/u.test(value)) {
-    throw new Error(`${label} is not a stable identifier`);
-  }
 }

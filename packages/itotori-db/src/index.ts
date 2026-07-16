@@ -1399,6 +1399,9 @@ export {
   LlmWikiConflictError,
 } from "./repositories/llm-wiki-repository.js";
 export type {
+  LlmDependencyQuery,
+  LlmDependentEdge,
+  LlmWikiDependency,
   LlmWikiHead,
   LlmWikiHeadSelector,
   LlmWikiKind,
