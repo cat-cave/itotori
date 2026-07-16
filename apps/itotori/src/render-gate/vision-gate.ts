@@ -226,7 +226,6 @@ const VISION_GATE_SYSTEM_PROMPT =
 
 export type VisionGateRequestArgs = {
   modelId: string;
-  providerId: string;
   /** `data:image/png;base64,...` URL for the rendered frame. */
   framePngDataUrl: string;
   /** The localized target-language text expected to appear (model input only). */
@@ -257,7 +256,8 @@ export function buildVisionVerdictRequest(args: VisionGateRequestArgs): ModelInv
   return {
     taskKind: "llm_qa",
     modelId: args.modelId,
-    providerId: args.providerId,
+    // no-provider-name invariant — the request names NO provider; OpenRouter
+    // picks the vision upstream on capability + ZDR + price.
     inputClassification: args.inputClassification,
     messages: [
       { role: "system", content: VISION_GATE_SYSTEM_PROMPT },
@@ -333,7 +333,6 @@ export type VisionGateResult = {
 export type RunVisionGateArgs = {
   provider: ModelProvider;
   modelId: string;
-  providerId: string;
   /** Raw PNG bytes of the rendered frame. */
   framePng: Uint8Array;
   expectedText: string;
@@ -354,12 +353,11 @@ export async function runVisionGate(args: RunVisionGateArgs): Promise<VisionGate
   const expectedTextSha256 = sha256Text(args.expectedText);
   const framePngDataUrl = pngDataUrl(args.framePng);
   const promptHash = sha256Text(
-    `vision-gate:${args.modelId}:${args.providerId}:${args.redactionMode}:${frameSha256}:${expectedTextSha256}`,
+    `vision-gate:${args.modelId}:${args.redactionMode}:${frameSha256}:${expectedTextSha256}`,
   );
 
   const request = buildVisionVerdictRequest({
     modelId: args.modelId,
-    providerId: args.providerId,
     framePngDataUrl,
     expectedText: args.expectedText,
     redactionMode: args.redactionMode,

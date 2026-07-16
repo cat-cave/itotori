@@ -22,7 +22,6 @@ export {
   VISION_GATE_LIVE_FLAG,
   VISION_GATE_LIVE_MAX_PRICE_USD,
   VISION_GATE_MODEL_ENV,
-  VISION_GATE_PROVIDER_ID_ENV,
   VISION_PAIR,
   runVisionGateCommand,
   type VisionGateCommandOptions,
