@@ -12,7 +12,7 @@ import {
   type LlmRevealHorizon,
   type LlmRevisionRef,
 } from "@itotori/db";
-import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
+import type { BridgeBundleV02, SpeakerContextV02 } from "@itotori/localization-bridge-schema";
 
 import {
   buildReadModel,
@@ -215,6 +215,25 @@ export interface ClaimFixtureOptions {
    * must keep the same bridgeUnitIds so snapshot units still bind. Used to stage
    * decoded source text a source-text-scanning role reasons over. */
   modelBundle?: (bundle: BridgeBundleV02) => BridgeBundleV02;
+  /** Override a bundle unit's decoded speaker context, keyed by sourceUnitKey.
+   * The default bundle carries `not_applicable` speakers; this lets a proof stage
+   * known / parser-unknown / reader-unknown speakers on specific units. */
+  unitSpeakers?: ReadonlyMap<string, SpeakerContextV02>;
+}
+
+/** Apply per-unit speaker overrides onto a freshly loaded bundle. */
+function patchSpeakers(
+  bundle: BridgeBundleV02,
+  unitSpeakers: ReadonlyMap<string, SpeakerContextV02> | undefined,
+): BridgeBundleV02 {
+  if (!unitSpeakers || unitSpeakers.size === 0) return bundle;
+  return {
+    ...bundle,
+    units: bundle.units.map((unit) => {
+      const speaker = unitSpeakers.get(unit.sourceUnitKey);
+      return speaker ? { ...unit, speaker } : unit;
+    }),
+  };
 }
 
 /** Build the immutable read model + fact snapshot for the fixture bytes. */
@@ -225,8 +244,14 @@ export function buildClaimFixture(options: ClaimFixtureOptions = {}): {
   const revealHorizon = options.revealHorizon ?? { kind: "complete" };
   const scene2Routes = options.scene2Routes ?? [];
   const characters = options.characters ?? [];
-  const snapshot = buildFactSnapshot(structure(scene2Routes, characters), loadBundle());
-  const modelBundle = options.modelBundle ? options.modelBundle(loadBundle()) : loadBundle();
+  // unitSpeakers patch the fact snapshot (A10 reads unknown speakers from it); modelBundle
+  // overrides ONLY the read model's source text, leaving the snapshot on real fixture bytes.
+  const snapshotBundle = patchSpeakers(loadBundle(), options.unitSpeakers);
+  const modelBundle = patchSpeakers(
+    options.modelBundle ? options.modelBundle(loadBundle()) : loadBundle(),
+    options.unitSpeakers,
+  );
+  const snapshot = buildFactSnapshot(structure(scene2Routes, characters), snapshotBundle);
   const characterProfiles = new Map<string, CharacterProfile>(
     characters.map((character) => [
       character.characterId,
