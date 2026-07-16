@@ -1394,6 +1394,20 @@ export type {
   LlmSourceUnitRef,
 } from "./repositories/llm-snapshot-repository.js";
 export {
+  ItotoriLlmWikiRepository,
+  LlmWikiCasError,
+  LlmWikiConflictError,
+} from "./repositories/llm-wiki-repository.js";
+export type {
+  LlmWikiHead,
+  LlmWikiHeadSelector,
+  LlmWikiKind,
+  LlmWikiScope,
+  LlmWikiSubject,
+  PutLlmLocalizedRenderingInput,
+  PutLlmWikiObjectInput,
+} from "./repositories/llm-wiki-repository.js";
+export {
   ItotoriLlmConversationRepository,
   LlmConversationEventConflictError,
   LLM_CONVERSATION_EVENT_SCHEMA_VERSION,

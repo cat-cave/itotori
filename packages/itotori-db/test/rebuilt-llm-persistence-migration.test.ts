@@ -59,7 +59,7 @@ const expectedColumnsByTable = {
       " ",
     ),
   itotori_llm_wiki_versions:
-    "wiki_version_id wiki_kind object_id object_version supersedes_version snapshot_kind snapshot_id object_kind wiki_ciphertext wiki_key_ref wiki_content_hash created_at retention_deadline deletion_state deleted_at".split(
+    "wiki_version_id wiki_kind object_id object_version supersedes_version snapshot_kind snapshot_id object_kind wiki_ciphertext wiki_key_ref wiki_content_hash created_at retention_deadline deletion_state deleted_at object_language subject_kind subject_id scope_kind scope_route_ids provisional context_scope run_mode provenance_edited_by provenance_author_role localization_snapshot_id source_object_id".split(
       " ",
     ),
   itotori_llm_dependency_edges:
@@ -496,11 +496,15 @@ async function insertWikiVersion(pool: Queryable, versionId: string, contentHash
       insert into itotori_llm_wiki_versions (
         wiki_version_id, wiki_kind, object_id, object_version,
         snapshot_kind, snapshot_id, object_kind,
-        wiki_ciphertext, wiki_key_ref, wiki_content_hash, created_at, retention_deadline
+        wiki_ciphertext, wiki_key_ref, wiki_content_hash, created_at, retention_deadline,
+        object_language, subject_kind, subject_id, scope_kind, provisional,
+        context_scope, run_mode
       ) values (
         $1, 'source-object', 'wiki-a', 1,
         'context', $3, 'style-contract',
-        decode('06', 'hex'), 'key/wiki', $2, now(), now() + interval '1 day'
+        decode('06', 'hex'), 'key/wiki', $2, now(), now() + interval '1 day',
+        'ja-JP', 'game', 'project-a', 'global', false,
+        'whole-game', 'production'
       )
     `,
     [versionId, contentHash, hash("7")],
