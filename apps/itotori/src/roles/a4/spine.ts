@@ -1,0 +1,69 @@
+// Adopt the route spine — never reconstruct topology.
+//
+// A4 does not re-derive the route. It ADOPTS the final progressive story-so-far
+// authored by the scene fold and reasons over the deterministic dispatch order
+// the decode already fixed. This module proves the adoption is honest: the
+// spine must be a `story-so-far` object, and the scenes it claims to cover must
+// be EXACTLY the decode's `sceneDispatchOrder`. A spine that reordered or
+// dropped a scene — the signature of a re-derived topology — is a loud failure,
+// so the module can only reason over the authoritative order, never invent one.
+
+import type { ReadModel } from "../../read-tools/index.js";
+import type { RouteScope } from "../../contracts/index.js";
+
+import { A4RoleError, A4_ROUTE_ARC_KIND, type A4RouteSpine } from "./types.js";
+
+/** The route scope, spine object id, and covered order the reconciler adopts,
+ * proven to match the deterministic topology. */
+export interface AdoptedSpine {
+  readonly routeScope: RouteScope;
+  readonly spineObjectId: string;
+  readonly spineVersion: number;
+  readonly coveredSceneIds: readonly number[];
+}
+
+function sameOrder(left: readonly number[], right: readonly number[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+/**
+ * Adopt the spine or throw. The spine must be the final `story-so-far` object,
+ * and its covered scenes must equal the decode's dispatch order verbatim. The
+ * returned scope is the spine's own scope — inherited, not recomputed — so every
+ * route-arc claim carries the route scope the spine was authored under.
+ */
+export function adoptSpine(model: ReadModel, spine: A4RouteSpine): AdoptedSpine {
+  const object = spine.finalStorySoFar;
+  if (object.kind !== "story-so-far") {
+    throw new A4RoleError(
+      "spine-not-story-so-far",
+      `the spine must be a story-so-far object, got ${object.kind}`,
+    );
+  }
+  const dispatchOrder = model.factSnapshot.routeTopology.sceneDispatchOrder;
+  if (!sameOrder(spine.coveredSceneIds, dispatchOrder)) {
+    throw new A4RoleError(
+      "spine-topology-mismatch",
+      `spine covers [${spine.coveredSceneIds.join(", ")}] but the decode dispatches ` +
+        `[${dispatchOrder.join(", ")}] — the authoritative topology is not reconstructed here`,
+    );
+  }
+  return {
+    routeScope: object.scope,
+    spineObjectId: object.objectId,
+    spineVersion: object.version,
+    coveredSceneIds: [...dispatchOrder],
+  };
+}
+
+/** A stable route identifier for a scope — used to key the emitted route-arc and
+ * its claims. Deterministic across runs; never a model value. */
+export function routeIdOf(scope: RouteScope): string {
+  if (scope.kind === "route") return scope.routeId;
+  if (scope.kind === "route-set") return scope.routeIds.join(".");
+  return "global";
+}
+
+/** The kind string every route-arc object carries. */
+export const ROUTE_ARC_KIND = A4_ROUTE_ARC_KIND;
