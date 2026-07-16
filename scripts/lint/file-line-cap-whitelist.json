@@ -48,7 +48,7 @@
     "crates/kaifuu-kirikiri/src/xp3_crypt_chain.rs": 925,
     "crates/kaifuu-kirikiri/src/xp3_patch.rs": 791,
     "crates/kaifuu-kirikiri/src/xp3_private_local_summary.rs": 1151,
-    "crates/kaifuu-kirikiri/src/xp3_private_local_validation.rs": 1387,
+    "crates/kaifuu-kirikiri/src/xp3_private_local_validation.rs": 1031,
     "crates/kaifuu-kirikiri/src/xp3_production.rs": 1692,
     "crates/kaifuu-nexas/src/archive.rs": 844,
     "crates/kaifuu-reallive/src/bridge.rs": 1599,
