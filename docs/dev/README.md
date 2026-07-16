@@ -65,6 +65,11 @@ concern.
 - [`dependency-policy.md`](dependency-policy.md) — `cargo-deny` strictness,
   the duplicate-version skip rules, and the `scripts/verify-deny-strict.mjs`
   guard.
+- [`tanstack-openrouter-fork-governance.md`](tanstack-openrouter-fork-governance.md)
+  — the temporary, coordinated pin of `@tanstack/ai` /
+  `@tanstack/ai-openrouter` / `@openrouter/sdk` (incl. the root
+  `pnpm.overrides` fork-divergence), its provenance + license, and the
+  rebase-onto-upstream / upstream-EXIT procedures.
 
 ### Audit / investigation
 
