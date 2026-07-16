@@ -7,7 +7,7 @@
     "crates/kaifuu-cli/src/main.rs": 13011,
     "crates/kaifuu-cli/tests/patch_real_sweetie_hd.rs": 579,
     "crates/kaifuu-core/src/alpha_encrypted_readiness.rs": 1029,
-    "crates/kaifuu-core/src/alpha_readiness_profile.rs": 1570,
+    "crates/kaifuu-core/src/alpha_readiness_profile.rs": 1032,
     "crates/kaifuu-core/src/asset_ocr.rs": 591,
     "crates/kaifuu-core/src/bgi_bytecode_fixture.rs": 1551,
     "crates/kaifuu-core/src/bgi_detector_fixture.rs": 532,
