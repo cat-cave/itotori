@@ -90,7 +90,7 @@ export const MUTATIONS = [
   {
     id: "opcode_byteswap",
     category: "swapped / mis-typed opcode",
-    file: "crates/kaifuu-reallive/src/opcode.rs",
+    file: "crates/kaifuu-reallive/src/opcode/command.rs",
     find: "let opcode_u16 = u16::from_le_bytes([bytes[pos + 3], bytes[pos + 4]]);",
     replace: "let opcode_u16 = u16::from_le_bytes([bytes[pos + 4], bytes[pos + 3]]);",
     guardCrates: ["kaifuu-reallive", "utsushi-reallive"],
@@ -99,7 +99,7 @@ export const MUTATIONS = [
   {
     id: "framing_off_by_one",
     category: "off-by-one framing (arg_count / overload / header width)",
-    file: "crates/kaifuu-reallive/src/opcode.rs",
+    file: "crates/kaifuu-reallive/src/opcode/command.rs",
     find: "let mut consumed = COMMAND_HEADER_LEN;",
     replace: "let mut consumed = COMMAND_HEADER_LEN + 1;",
     guardCrates: ["kaifuu-reallive", "utsushi-reallive"],
@@ -139,7 +139,7 @@ export const MUTATIONS = [
   {
     id: "choice_drop_option",
     category: "dropped choice option",
-    file: "crates/kaifuu-reallive/src/opcode.rs",
+    file: "crates/kaifuu-reallive/src/opcode/selection.rs",
     // Only ever keep the FIRST select-block option; every later option is
     // silently dropped from the decoded Choice.
     find: "if !text.is_empty() {",
