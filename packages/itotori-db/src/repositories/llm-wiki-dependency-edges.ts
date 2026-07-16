@@ -34,7 +34,10 @@ export interface LlmDependencyQuery {
   renderingId?: string;
 }
 
-/** One resolved downstream consumer of a queried upstream claim/field. */
+/** One resolved downstream consumer of a queried upstream claim/field. Carries
+ * the consumed locator, the route/play scope it was consumed under, and the
+ * consumer version's authorship — everything a scope-aware impact intersection
+ * needs to decide whether an upstream change reaches this exact consumer. */
 export interface LlmDependentEdge {
   edgeId: string;
   downstreamWikiVersionId: string;
@@ -46,6 +49,13 @@ export interface LlmDependentEdge {
   claimId: string | null;
   fieldPath: readonly string[];
   renderingId: string | null;
+  scope: LlmWikiScope;
+  fromPlayOrder: number | null;
+  throughPlayOrder: number | null;
+  /** The consumer version's authorship (`human`/`enhancement`/`agent`/null). A
+   * human-touched consumer is a protected enhance target, never an erase. */
+  downstreamEditedBy: string | null;
+  downstreamProvisional: boolean;
 }
 
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:#/-]{0,255}$/u;
@@ -125,12 +135,18 @@ export async function queryDependents(
     claim_id: string | null;
     field_path: string[];
     rendering_id: string | null;
+    scope_ref: LlmJsonValue;
+    from_play_order: number | null;
+    through_play_order: number | null;
+    provenance_edited_by: string | null;
+    provisional: boolean;
   }>(
     `
       select edge.edge_id, edge.downstream_wiki_version_id, wiki.wiki_kind,
         wiki.object_id as downstream_object_id, wiki.object_version as downstream_version,
         edge.upstream_object_id, edge.upstream_version, edge.claim_id,
-        edge.field_path, edge.rendering_id
+        edge.field_path, edge.rendering_id, edge.scope_ref, edge.from_play_order,
+        edge.through_play_order, wiki.provenance_edited_by, wiki.provisional
       from itotori_llm_dependency_edges edge
       join itotori_llm_wiki_versions wiki
         on wiki.wiki_version_id = edge.downstream_wiki_version_id
@@ -150,7 +166,28 @@ export async function queryDependents(
     claimId: row.claim_id,
     fieldPath: row.field_path,
     renderingId: row.rendering_id,
+    scope: scopeFromJson(row.scope_ref),
+    fromPlayOrder: row.from_play_order,
+    throughPlayOrder: row.through_play_order,
+    downstreamEditedBy: row.provenance_edited_by,
+    downstreamProvisional: row.provisional,
   }));
+}
+
+/** Rehydrate a stored scope ref back into a typed scope. The mirror of
+ * {@link scopeToJson}: an unrecognized shape resolves to global. */
+function scopeFromJson(value: LlmJsonValue): LlmWikiScope {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return { kind: "global" };
+  }
+  const record = value as { readonly [key: string]: LlmJsonValue };
+  if (record.kind === "route" && typeof record.routeId === "string") {
+    return { kind: "route", routeId: record.routeId };
+  }
+  if (record.kind === "route-set" && Array.isArray(record.routeIds)) {
+    return { kind: "route-set", routeIds: record.routeIds.map((id) => String(id)) };
+  }
+  return { kind: "global" };
 }
 
 /** Content-address a dependency by its locator (upstream + claim/field/rendering
