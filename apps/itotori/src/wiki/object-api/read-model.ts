@@ -41,6 +41,22 @@ export interface WikiCitationView {
   readonly subject: EntityRef;
   readonly role: "establishes" | "supports" | "contradicts" | "first-mention" | "reveal";
   readonly playOrderIndex: number;
+  /** The exact source span a citation quotes, when the claim recorded one. */
+  readonly quotedSpan: string | null;
+}
+
+/** One claim view: its statement, the route scope it holds under (canonical vs
+ * route-specific), and the citations that witness it. The scope is surfaced
+ * VERBATIM so a route toggle can hide a claim whose route is not active — the
+ * scope is the enforcement key, never a cosmetic label. */
+export interface WikiClaimView {
+  readonly claimId: string;
+  readonly statement: string;
+  readonly scope: WikiRouteScope;
+  readonly kind: WikiObject["claims"][number]["kind"];
+  readonly confidence: "low" | "medium" | "high";
+  readonly supersedesClaimId: string | null;
+  readonly citations: readonly WikiCitationView[];
 }
 
 /** One immutable history entry: a persisted version never mutates, so this chain
@@ -66,6 +82,7 @@ export interface WikiSourceObjectView {
   readonly subject: EntityRef;
   readonly routeScope: WikiRouteScope;
   readonly badges: WikiBadges;
+  readonly claims: readonly WikiClaimView[];
   readonly citations: readonly WikiCitationView[];
   readonly media: readonly MediaRef[];
 }
@@ -120,8 +137,30 @@ function sourceView(record: LlmWikiObjectRecord, object: WikiObject): WikiSource
       runMode: object.provenance.runMode,
       editedBy: object.provenance.editedBy ?? null,
     },
+    claims: object.claims.map(claimView),
     citations: flattenCitations(object),
     media: object.media,
+  };
+}
+
+function claimView(claim: WikiObject["claims"][number]): WikiClaimView {
+  return {
+    claimId: claim.claimId,
+    statement: claim.statement,
+    scope: claim.scope,
+    kind: claim.kind,
+    confidence: claim.confidence,
+    supersedesClaimId: claim.supersedesClaimId ?? null,
+    citations: claim.citations.map((citation) => ({
+      claimId: claim.claimId,
+      evidenceId: citation.evidenceId,
+      evidenceHash: citation.evidenceHash,
+      snapshotId: citation.snapshotId,
+      subject: citation.subject,
+      role: citation.role,
+      playOrderIndex: citation.playOrderIndex,
+      quotedSpan: citation.quotedSpan ?? null,
+    })),
   };
 }
 
@@ -162,6 +201,7 @@ function flattenCitations(object: WikiObject): WikiCitationView[] {
         subject: citation.subject,
         role: citation.role,
         playOrderIndex: citation.playOrderIndex,
+        quotedSpan: citation.quotedSpan ?? null,
       });
     }
   }

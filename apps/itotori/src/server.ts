@@ -523,6 +523,8 @@ function isItotoriDashboardRoute(pathname: string): boolean {
     pathname.startsWith("/play/") ||
     pathname === "/wiki" ||
     pathname.startsWith("/wiki/") ||
+    pathname === "/bible" ||
+    pathname.startsWith("/bible/") ||
     pathname === "/benchmark" ||
     pathname.startsWith("/benchmark/") ||
     pathname === "/findings" ||
