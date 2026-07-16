@@ -14,13 +14,18 @@ import {
 } from "@itotori/db";
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 
-import { buildReadModel, type ReadModel } from "../../src/read-tools/index.js";
+import {
+  buildReadModel,
+  type CharacterProfile,
+  type ReadModel,
+} from "../../src/read-tools/index.js";
 import {
   buildFactSnapshot,
   contextSnapshotFactsFrom,
   type FactSnapshot,
 } from "../../src/prepass/index.js";
 import type {
+  NarrativeMessage,
   NarrativeScene,
   NarrativeStructure,
   NarrativeUnit,
@@ -117,25 +122,58 @@ function scene(
   specs: Spec[],
   nextScene: number | null,
   routes: string[],
+  messages: NarrativeMessage[] = [],
 ): NarrativeScene {
   return {
     sceneId,
     selectionControl: "none",
     nextScene,
-    messages: [],
+    messages,
     choices: [],
     units: specs.map((spec, index) => unit(spec, index, routes)),
   };
 }
 
-function structure(scene2Routes: string[]): NarrativeStructure {
+/** One canonical character to attribute decode-only scene-1 messages to, so the
+ * fact snapshot materializes a real character occurrence + index entry. */
+export interface FixtureCharacterSpec {
+  characterId: string;
+  decodedLabel: string;
+  /** How many decode-only lines this character speaks in scene 1. */
+  lines: number;
+  /** The play-order index of the ordered unit bound as this character's evidence. */
+  boundUnitPlayOrder: number;
+}
+
+function characterMessages(characters: readonly FixtureCharacterSpec[]): NarrativeMessage[] {
+  const messages: NarrativeMessage[] = [];
+  let order = 0;
+  for (const character of characters) {
+    for (let line = 0; line < character.lines; line += 1) {
+      messages.push({
+        order,
+        speaker: character.decodedLabel,
+        characterId: character.characterId,
+        text: character.decodedLabel,
+        textSurface: character.decodedLabel,
+      });
+      order += 1;
+    }
+  }
+  return messages;
+}
+
+function structure(
+  scene2Routes: string[],
+  characters: readonly FixtureCharacterSpec[],
+): NarrativeStructure {
   return {
     schemaVersion: "utsushi.narrative-structure.v2",
     entryScene: 1,
     sceneDispatchOrder: [1, 2],
     sourceBundleHash: BUNDLE_HASH,
     scenes: [
-      scene(1, [S1_LINE, S1_A, S1_B], 2, []),
+      scene(1, [S1_LINE, S1_A, S1_B], 2, [], characterMessages(characters)),
       scene(2, [S2_LINE, S2_A, S2_B], null, scene2Routes),
       { sceneId: 3, selectionControl: "none", nextScene: null, messages: [], choices: [] },
     ],
@@ -170,6 +208,8 @@ function makeContext(snapshot: FactSnapshot, revealHorizon: LlmRevealHorizon) {
 export interface ClaimFixtureOptions {
   revealHorizon?: LlmRevealHorizon;
   scene2Routes?: string[];
+  /** Canonical characters to seed into the deterministic index + profiles. */
+  characters?: readonly FixtureCharacterSpec[];
 }
 
 /** Build the immutable read model + fact snapshot for the fixture bytes. */
@@ -179,11 +219,23 @@ export function buildClaimFixture(options: ClaimFixtureOptions = {}): {
 } {
   const revealHorizon = options.revealHorizon ?? { kind: "complete" };
   const scene2Routes = options.scene2Routes ?? [];
-  const snapshot = buildFactSnapshot(structure(scene2Routes), loadBundle());
+  const characters = options.characters ?? [];
+  const snapshot = buildFactSnapshot(structure(scene2Routes, characters), loadBundle());
+  const characterProfiles = new Map<string, CharacterProfile>(
+    characters.map((character) => [
+      character.characterId,
+      {
+        decodedLabel: character.decodedLabel,
+        revealStatus: "revealed",
+        unitIds: [unitFactIdAt(snapshot, character.boundUnitPlayOrder)],
+      },
+    ]),
+  );
   const model = buildReadModel({
     contextSnapshot: makeContext(snapshot, revealHorizon),
     factSnapshot: snapshot,
     bundle: loadBundle(),
+    characterProfiles,
   });
   return { model, snapshot };
 }
