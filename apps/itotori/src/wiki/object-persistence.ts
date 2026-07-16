@@ -1,12 +1,14 @@
 import {
   canonicalLlmJson,
   type ItotoriLlmWikiRepository,
+  type LlmWikiDependency,
   type LlmWikiHead,
   type LlmWikiScope,
 } from "@itotori/db";
 import {
   LocalizedRenderingSchema,
   WikiObjectSchema,
+  type DependencyRef,
   type LocalizedRendering,
   type WikiObject,
 } from "../contracts/index.js";
@@ -47,6 +49,7 @@ export async function persistWikiObject(
       editedBy: object.provenance.editedBy ?? null,
       authorRole: object.provenance.authorRoleId ?? null,
       objectJson,
+      dependencies: toDependencies(object.dependencies),
       createdAt: options.createdAt,
       expectedHead: options.expectedHead,
     });
@@ -68,6 +71,7 @@ export async function persistWikiObject(
     editedBy: object.provenance.editedBy ?? null,
     authorRole: object.provenance.authorRoleId ?? null,
     objectJson,
+    dependencies: toDependencies(object.dependencies),
     createdAt: options.createdAt,
     expectedHead: options.expectedHead,
   });
@@ -94,9 +98,26 @@ export async function persistLocalizedRendering(
     editedBy: rendering.provenance.editedBy ?? null,
     sourceObjectId: rendering.sourceObjectId,
     objectJson,
+    dependencies: toDependencies(rendering.dependencies),
     createdAt: options.createdAt,
     expectedHead: options.expectedHead,
   });
+}
+
+/** Project the strict DependencyRefs into the repository's fine-grained edge
+ * inputs. Every consumed upstream claim/field/rendering is carried verbatim, so
+ * the persisted edges are the exact dependency graph — never object-wide. */
+function toDependencies(dependencies: readonly DependencyRef[]): LlmWikiDependency[] {
+  return dependencies.map((dependency) => ({
+    upstreamObjectId: dependency.upstreamObjectId,
+    upstreamVersion: dependency.upstreamVersion,
+    claimId: dependency.claimId,
+    fieldPath: dependency.fieldPath,
+    renderingId: dependency.renderingId,
+    scope: toWikiScope(dependency.scope),
+    fromPlayOrder: dependency.fromPlayOrder,
+    throughPlayOrder: dependency.throughPlayOrder,
+  }));
 }
 
 function toWikiScope(scope: WikiObject["scope"]): LlmWikiScope {

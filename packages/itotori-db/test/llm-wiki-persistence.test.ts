@@ -313,6 +313,7 @@ function sourceObject(
     editedBy: null,
     authorRole: "A3",
     objectJson: JSON.stringify({ beat: "default" }),
+    dependencies: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     expectedHead: null,
     ...overrides,
@@ -337,6 +338,7 @@ function translationObject(localizationSnapshotId: string): PutLlmWikiObjectInpu
     editedBy: "agent",
     authorRole: "P1",
     objectJson: JSON.stringify({ draft: "hello" }),
+    dependencies: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     expectedHead: null,
   };
@@ -357,6 +359,7 @@ function localizedRendering(localizationSnapshotId: string): PutLlmLocalizedRend
     editedBy: "enhancement",
     sourceObjectId: OBJECT_ID,
     objectJson: JSON.stringify({ kind: "scene-summary", sections: [] }),
+    dependencies: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     expectedHead: null,
   };
