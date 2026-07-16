@@ -46,6 +46,13 @@ import {
   createTransportObserver,
   resolveAttemptDeadlineMs,
 } from "./physical-attempt-policy.js";
+import { normalizeOpenRouterParameters } from "./openrouter-parameter-compat.js";
+import {
+  preserveReasoningDetails,
+  type ReasoningDetailsContinuity,
+  type ReasoningDetailsContinuityEvidence,
+} from "./reasoning-details-continuity.js";
+import { assertCallUsesCertifiedRoleModelProfile } from "./role-model-profiles.js";
 import { providerTerminalSchema } from "./terminal-output.js";
 
 export interface DispatchTool {
@@ -65,6 +72,7 @@ export interface DispatchRuntime {
   readonly contentAccess: LlmContentReadAuthorizer;
   readonly fetcher?: Fetcher;
   readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly onReasoningDetailsContinuity?: (evidence: ReasoningDetailsContinuityEvidence) => void;
 }
 
 type UsageAccumulator = {
@@ -314,7 +322,8 @@ function failureKind(error: unknown, state: DispatchState): FailureKind {
 /** The only production boundary that constructs an OpenRouter-backed model adapter. */
 export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): Promise<CallResult> {
   const spec = CallSpecSchema.parse(specInput);
-  const requested = { model: spec.requestedModel, providerOrder: spec.providerPolicy.order };
+  assertCallUsesCertifiedRoleModelProfile(spec);
+  const requested = { model: spec.requestedModel };
   const env = runtime.env ?? process.env;
   assertRebuildLlmStartupPolicy(env);
   const apiKey = env.OPENROUTER_API_KEY;
@@ -336,6 +345,7 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     lastFinishReason: "unknown",
   };
   const memoState = createPhysicalStepMemoState();
+  let reasoningContinuity: ReasoningDetailsContinuity | undefined;
 
   try {
     if (spec.tools.length > 0 && spec.limits.maxSteps < 2) {
@@ -346,7 +356,10 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     const semaphore = new Semaphore(spec.limits.maxParallelTools);
     const configuredTools = runtimeTools(spec, runtime, state, semaphore);
     const converted = await modelMessages(spec, runtime, configuredTools.toolsByName);
-    const observer = createTransportObserver(runtime.fetcher ?? globalThis.fetch);
+    reasoningContinuity = preserveReasoningDetails(
+      normalizeOpenRouterParameters(runtime.fetcher ?? globalThis.fetch),
+    );
+    const observer = createTransportObserver(reasoningContinuity.fetcher);
     const httpClient = new HTTPClient({ fetcher: observer.fetcher });
     httpClient.addHook("beforeRequest", (request) => {
       const headers = new Headers(request.headers);
@@ -379,9 +392,11 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
         reasoning: { effort: spec.reasoning.effort },
         temperature: spec.sampling.temperature,
         topP: spec.sampling.topP,
-        seed: spec.sampling.seed,
+        ...(spec.sampling.seed === null ? {} : { seed: spec.sampling.seed }),
         maxCompletionTokens: spec.limits.maxOutputTokens,
-        parallelToolCalls: spec.limits.maxParallelTools > 1,
+        ...(spec.tools.length > 0 && spec.limits.maxParallelTools > 1
+          ? { parallelToolCalls: true }
+          : {}),
       },
       middleware: [dispatchMiddleware(state, spec.limits.maxToolCalls)],
       debug: false,
@@ -478,5 +493,9 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
           : [{ path: [], code: defectCode, message: `terminal ${kind}` }],
       events: state.events,
     });
+  } finally {
+    if (reasoningContinuity) {
+      runtime.onReasoningDetailsContinuity?.(reasoningContinuity.evidence());
+    }
   }
 }

@@ -58,7 +58,7 @@ postgresDescribe("generation quarantine persistence", () => {
       });
       const persisted = await context.pool.query<{
         requested_model: string;
-        provider_policy: { order: string[] };
+        provider_policy: Record<string, unknown>;
         served_pair_status: string;
         served_model: string | null;
         served_provider: string | null;
@@ -72,7 +72,12 @@ postgresDescribe("generation quarantine persistence", () => {
       expect(persisted.rows).toEqual([
         {
           requested_model: "deepseek/deepseek-v4-flash",
-          provider_policy: expect.objectContaining({ order: ["provider:primary"] }),
+          provider_policy: expect.objectContaining({
+            allowFallbacks: true,
+            zdr: true,
+            dataCollection: "deny",
+            requireParameters: true,
+          }),
           served_pair_status: "unknown",
           served_model: null,
           served_provider: null,
@@ -191,7 +196,7 @@ postgresDescribe("generation quarantine persistence", () => {
       });
       const memo = await context.pool.query<{
         requested_model: string;
-        provider_policy: { order: string[] };
+        provider_policy: Record<string, unknown>;
         served_pair_status: string;
         served_model: string;
         served_provider: string;
@@ -204,7 +209,12 @@ postgresDescribe("generation quarantine persistence", () => {
       `);
       expect(memo.rows[0]).toEqual({
         requested_model: "deepseek/deepseek-v4-flash",
-        provider_policy: expect.objectContaining({ order: ["provider:primary"] }),
+        provider_policy: expect.objectContaining({
+          allowFallbacks: true,
+          zdr: true,
+          dataCollection: "deny",
+          requireParameters: true,
+        }),
         served_pair_status: "confirmed",
         served_model: "served/model:fixture",
         served_provider: "provider:served-fixture",
@@ -212,7 +222,11 @@ postgresDescribe("generation quarantine persistence", () => {
         generation_id: "generation:lookup:1",
       });
       expect(memo.rows[0]?.requested_model).not.toBe(memo.rows[0]?.served_model);
-      expect(memo.rows[0]?.provider_policy.order).not.toContain(memo.rows[0]?.served_provider);
+      // ITOTORI-241 - the requested policy pins no provider (no order/only);
+      // the served provider is recorded as distinct telemetry, not a request input.
+      expect(memo.rows[0]?.provider_policy).not.toHaveProperty("order");
+      expect(memo.rows[0]?.provider_policy).not.toHaveProperty("only");
+      expect(memo.rows[0]?.served_provider).toBe("provider:served-fixture");
 
       const attempt = await context.pool.query<{
         served_pair_status: string;
