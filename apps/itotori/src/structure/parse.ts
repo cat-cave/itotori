@@ -94,6 +94,15 @@ const ChoiceV2Schema = z
     edgeResolution: EdgeResolutionSchema.optional(),
     unresolvedEdgeDiagnostic: z.string().nullable().optional(),
     bridgeRef: BridgeRefSchema.nullable().optional(),
+    // Authoritative source coordinates for a bridge-linked (translatable)
+    // choice option, so the localization join can prove the choice binding on
+    // asset + byte range. A `runtime_only` choice (a displayed runtime prompt
+    // option with no static BridgeUnit) carries no bridgeRef and is skipped.
+    sourceAsset: SourceAssetSchema.optional(),
+    byteOffsetInScene: z.number().int().nonnegative().nullable().optional(),
+    byteLength: z.number().int().nonnegative().nullable().optional(),
+    linkageStatus: z.enum(["bridge_linked", "runtime_only"]).optional(),
+    runtimeOnlyReason: z.string().min(1).optional(),
     branchMessages: z.array(MessageV2Schema),
   })
   .strict()

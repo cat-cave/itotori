@@ -47,6 +47,17 @@ export interface LlmContextSnapshotInput {
   humanCorrections: LlmRevisionRef;
   externalSources: LlmRevisionRef | null;
   contextScope: string;
+  /**
+   * Content hash of the deterministic fact-materialization pre-pass. Its
+   * `contentHash` commits the ENTIRE materialized fact set (ordered units,
+   * route/choice topology + reachability, scene cards, speaker/color identity,
+   * character/terminology occurrences, glossary conflicts, play/reveal order,
+   * protected skeletons, patch/runtime refs) into this snapshot — so the
+   * snapshot is the trust root for those facts. Omitted for a bare context
+   * snapshot; when omitted the committed identity is byte-identical to a
+   * snapshot built without a fact materialization (no field is serialized).
+   */
+  factMaterialization?: LlmRevisionRef;
 }
 
 export interface LlmAcceptedHeadRef {
@@ -87,6 +98,9 @@ export interface LlmContextSnapshotIdentity {
   humanCorrections: LlmRevisionRef;
   externalSources: LlmRevisionRef | null;
   contextScope: string;
+  /** See {@link LlmContextSnapshotInput.factMaterialization}. Present only when
+   * the pre-pass committed a fact materialization into this snapshot. */
+  factMaterialization?: LlmRevisionRef;
 }
 
 export interface LlmLocalizationSnapshotIdentity {
@@ -271,6 +285,9 @@ function normalizeContext(input: LlmContextSnapshotInput): LlmContextSnapshotIde
     throw new Error("context snapshot fact IDs must be unique");
   }
   const revealHorizon = normalizeHorizon(input.revealHorizon);
+  if (input.factMaterialization !== undefined) {
+    assertRevision(input.factMaterialization, "fact-materialization revision");
+  }
   return {
     schemaVersion: LLM_CONTEXT_SNAPSHOT_SCHEMA_VERSION,
     sourceLanguage: input.sourceLanguage,
@@ -285,6 +302,12 @@ function normalizeContext(input: LlmContextSnapshotInput): LlmContextSnapshotIde
     humanCorrections: copyRevision(input.humanCorrections),
     externalSources: input.externalSources ? copyRevision(input.externalSources) : null,
     contextScope: input.contextScope,
+    // Omit entirely when absent so a bare context snapshot's committed identity
+    // (and thus its snapshotId) is byte-identical to a snapshot built without a
+    // fact materialization.
+    ...(input.factMaterialization === undefined
+      ? {}
+      : { factMaterialization: copyRevision(input.factMaterialization) }),
   };
 }
 

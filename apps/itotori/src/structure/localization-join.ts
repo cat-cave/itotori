@@ -200,10 +200,25 @@ function requireSourceAssetId(
 }
 
 /**
+ * A displayed line whose `textSurface` marks it as a select option (RealLive
+ * renders a `select`'s option text as an observed line) is a CHOICE surface,
+ * not a narrative line — the decoder emits `choice:<n>` there. Classifying it
+ * by that authoritative surface makes it agree with the same unit's flat
+ * `units[]`/`choices[]` choice representation instead of colliding as a
+ * spurious `line`. Anything else is a narrated/spoken line.
+ */
+function messageSurfaceLinkKind(textSurface: string | null | undefined): NarrativeLinkKind {
+  return textSurface !== null && textSurface !== undefined && textSurface.startsWith("choice:")
+    ? "choice"
+    : "line";
+}
+
+/**
  * A message contributes a link only when it is not runtime_only. A message
  * flagged `bridge_linked` (or carrying a bridgeRef) with no ref, or missing
  * its byte coordinates / asset, is an incomplete link and FAILS — it is never
- * silently skipped.
+ * silently skipped. Its kind follows the decoded `textSurface` (a `choice:*`
+ * surface is a choice, everything else a line).
  */
 function messageLink(
   message: NarrativeMessage,
@@ -224,7 +239,7 @@ function messageLink(
     return null;
   }
   return {
-    kind: "line",
+    kind: messageSurfaceLinkKind(message.textSurface),
     bridgeUnitId: ref.bridgeUnitId,
     sourceUnitKey: ref.sourceUnitKey,
     sceneId,
@@ -235,11 +250,22 @@ function messageLink(
 }
 
 /**
- * Every narrative choice option is an inherently translatable surface, so a
- * choice with no bridgeRef (or no coordinates / asset) is an incomplete link
- * and FAILS rather than being silently dropped.
+ * A choice option surfaced from the static script (a real BridgeUnit) is an
+ * inherently translatable surface, so it MUST bind: a bridge-linked choice with
+ * no bridgeRef (or no coordinates / asset) is an incomplete link and FAILS. A
+ * `runtime_only` choice (a displayed runtime prompt option with NO static
+ * BridgeUnit — e.g. a system "continue playing / save for later" menu) is not
+ * part of the translatable script; it is skipped like a runtime-only message,
+ * never fabricated a binding.
  */
-function choiceLink(choice: NarrativeChoice, sceneId: number, locator: string): NarrativeLink {
+function choiceLink(
+  choice: NarrativeChoice,
+  sceneId: number,
+  locator: string,
+): NarrativeLink | null {
+  if (choice.linkageStatus === "runtime_only") {
+    return null;
+  }
   const ref = choice.bridgeRef;
   if (!ref) {
     throw new IncompleteNarrativeLinkError(

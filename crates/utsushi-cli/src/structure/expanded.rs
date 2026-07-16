@@ -65,8 +65,11 @@ pub(super) fn build(input: ExpandedInput<'_>) -> Result<Value, String> {
                 observation.scene_id
             )
         })?;
-        let mut scene_units = input.bridge.units(observation.scene_id).to_vec();
-        reconcile_choice_locations(bytecode, &mut scene_units)?;
+        // The bundle already anchors each choice option at its own per-option
+        // scene byte offset (kaifuu's bridge producer stamps `choice.byte_offset`,
+        // the same authoritative offset patchback splices at), so no location
+        // reconciliation is needed here — the units are consumed verbatim.
+        let scene_units = input.bridge.units(observation.scene_id).to_vec();
         let links = link_lines(bytecode, &scene_units, &observation.prompts)?;
         let mut messages = Vec::with_capacity(observation.lines.len());
         for (order, line) in observation.lines.iter().enumerate() {
@@ -135,6 +138,15 @@ pub(super) fn build(input: ExpandedInput<'_>) -> Result<Value, String> {
                     "optionIndex": choice.option_index,
                     "label": unit.source_text,
                     "bridgeRef": unit.bridge_ref(),
+                    // Authoritative source asset + bytes of the choice option,
+                    // matching its flat `units[]` entry — so the localization
+                    // join can prove the choice binding on asset + range + hash
+                    // and recognize the two representations of this one surface
+                    // as the same (rather than a spurious conflict).
+                    "sourceAsset": unit.source_asset,
+                    "byteOffsetInScene": unit.byte_start,
+                    "byteLength": unit.byte_end.saturating_sub(unit.byte_start),
+                    "linkageStatus": "bridge_linked",
                     "branchEntryScene": edge.to_scene_id,
                     "branchTargetSceneId": edge.to_scene_id,
                     "branchMessages": [],
@@ -182,6 +194,14 @@ pub(super) fn build(input: ExpandedInput<'_>) -> Result<Value, String> {
                     "optionIndex": option_index,
                     "label": line.text,
                     "bridgeRef": null,
+                    // This displayed option has NO static BridgeUnit — it is a
+                    // runtime prompt (e.g. a system "continue playing / save for
+                    // later" menu), not part of the translatable script. Mark it
+                    // runtime_only so the localization join skips it exactly as
+                    // it skips a runtime-only message, rather than demanding a
+                    // (non-existent) bridge binding.
+                    "linkageStatus": "runtime_only",
+                    "runtimeOnlyReason": "no BridgeUnit exists for this runtime choice surface",
                     "branchEntryScene": null,
                     "branchTargetSceneId": null,
                     "branchMessages": [],
@@ -395,71 +415,40 @@ fn choice_units_by_command<'a>(
     bytecode: &[u8],
     units: &'a [BridgeUnit],
 ) -> Result<BTreeMap<u32, Vec<&'a BridgeUnit>>, String> {
-    let mut choices_by_command = BTreeMap::new();
+    // The bundle anchors each choice option at its own per-option scene byte
+    // offset — the SAME offset utsushi decodes for that option. Index the choice
+    // units by that offset, then attach each to the Choice command whose decoded
+    // option occupies it, keyed by the command's byte offset so the groups line
+    // up with the replay prompts (a prompt is keyed by its command offset). A
+    // decoded option with no unit is a non-translatable option kaifuu skipped
+    // (e.g. an rlBabel runtime interpolation) and is simply left unmatched.
+    let mut units_by_offset: BTreeMap<u64, &BridgeUnit> = BTreeMap::new();
     for unit in units
         .iter()
         .filter(|unit| unit.surface_kind == "choice_label")
     {
-        choices_by_command
-            .entry(unit.choice_command_offset.unwrap_or(unit.byte_start))
-            .or_insert_with(Vec::new)
-            .push(unit);
+        if units_by_offset.insert(unit.byte_start, unit).is_some() {
+            return Err(format!(
+                "multiple choice BridgeUnits share byte offset {}",
+                unit.byte_start
+            ));
+        }
     }
-    let mut groups = BTreeMap::new();
+    let mut groups: BTreeMap<u32, Vec<&BridgeUnit>> = BTreeMap::new();
+    let mut matched: BTreeSet<String> = BTreeSet::new();
     let mut cursor = 0u64;
     for (opcode, width) in parse_real_bytecode_spans(bytecode).map_err(|err| err.to_string())? {
         if let RealLiveOpcode::Choice { choices } = opcode {
-            let mut group = choices_by_command.remove(&cursor).unwrap_or_default();
-            group.sort_by_key(|unit| unit.choice.as_ref().map(|choice| choice.option_index));
-            for unit in &group {
-                let choice = unit
-                    .choice
-                    .as_ref()
-                    .ok_or("choice unit lost choice context")?;
-                if usize::from(choice.option_index) >= choices.len() {
-                    return Err(format!(
-                        "BridgeUnit {} option {} exceeds decoded choice count {} at byte {cursor}",
-                        unit.id,
-                        choice.option_index,
-                        choices.len()
-                    ));
+            let mut group: Vec<&BridgeUnit> = Vec::new();
+            for decoded in &choices {
+                if let Some(unit) = units_by_offset.get(&decoded.byte_offset) {
+                    group.push(*unit);
+                    matched.insert(unit.id.clone());
                 }
             }
-            groups.insert(cursor as u32, group);
-        }
-        cursor = cursor.saturating_add(width as u64);
-    }
-    if let Some((offset, _)) = choices_by_command.into_iter().next() {
-        return Err(format!(
-            "bridge choice units at byte {offset} have no decoded choice command"
-        ));
-    }
-    Ok(groups)
-}
-
-fn reconcile_choice_locations(bytecode: &[u8], units: &mut [BridgeUnit]) -> Result<(), String> {
-    let mut matched = BTreeSet::new();
-    let mut cursor = 0u64;
-    for (opcode, width) in parse_real_bytecode_spans(bytecode).map_err(|err| err.to_string())? {
-        if let RealLiveOpcode::Choice { choices } = opcode {
-            for unit in units.iter_mut().filter(|unit| {
-                unit.surface_kind == "choice_label" && unit.choice_command_offset == Some(cursor)
-            }) {
-                let choice = unit
-                    .choice
-                    .as_ref()
-                    .ok_or("choice unit lost choice context")?;
-                let decoded = choices.get(usize::from(choice.option_index)).ok_or_else(|| {
-                    format!(
-                        "BridgeUnit {} option {} exceeds decoded choice count {} at byte {cursor}",
-                        unit.id,
-                        choice.option_index,
-                        choices.len()
-                    )
-                })?;
-                unit.byte_start = decoded.byte_offset;
-                unit.byte_end = decoded.byte_offset + decoded.bytes.len() as u64;
-                matched.insert(unit.id.clone());
+            if !group.is_empty() {
+                group.sort_by_key(|unit| unit.choice.as_ref().map(|choice| choice.option_index));
+                groups.insert(cursor as u32, group);
             }
         }
         cursor = cursor.saturating_add(width as u64);
@@ -469,11 +458,11 @@ fn reconcile_choice_locations(bytecode: &[u8], units: &mut [BridgeUnit]) -> Resu
         .find(|unit| unit.surface_kind == "choice_label" && !matched.contains(&unit.id))
     {
         return Err(format!(
-            "BridgeUnit {} has no matching decoded choice command",
-            unit.id
+            "BridgeUnit {} choice option at byte {} matches no decoded choice command",
+            unit.id, unit.byte_start
         ));
     }
-    Ok(())
+    Ok(groups)
 }
 
 fn grouped_choices(units: &[BridgeUnit]) -> Vec<Vec<&BridgeUnit>> {
