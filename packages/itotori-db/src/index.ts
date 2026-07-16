@@ -1394,6 +1394,15 @@ export type {
   LlmSourceUnitRef,
 } from "./repositories/llm-snapshot-repository.js";
 export {
+  ItotoriLlmHumanInputRepository,
+  LlmHumanInputConflictError,
+} from "./repositories/llm-human-input-repository.js";
+export type {
+  AppendLlmHumanInputInput,
+  LlmHumanInputKind,
+  LlmHumanInputRecord,
+} from "./repositories/llm-human-input-repository.js";
+export {
   ItotoriLlmWikiRepository,
   LlmWikiCasError,
   LlmWikiConflictError,
