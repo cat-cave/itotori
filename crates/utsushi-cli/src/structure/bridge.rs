@@ -22,7 +22,6 @@ pub(super) struct BridgeUnit {
     pub source_asset: Value,
     pub byte_start: u64,
     pub byte_end: u64,
-    pub choice_command_offset: Option<u64>,
     pub character_id: Option<String>,
     pub color: Option<[u8; 3]>,
     pub choice: Option<ChoiceRef>,
@@ -165,7 +164,6 @@ fn parse_unit(value: &Value) -> Result<BridgeUnit, String> {
             .ok_or("sourceAssetRef is missing")?,
         byte_start,
         byte_end: unsigned_map(range, "endByte")?,
-        choice_command_offset: choice.as_ref().map(|_| byte_start),
         character_id: speaker
             .and_then(|speaker| speaker.get("speakerId"))
             .and_then(Value::as_str)

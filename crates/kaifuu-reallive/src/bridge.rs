@@ -599,7 +599,16 @@ fn collect_units(
                         raw_speaker: None,
                         speaker_from_fallback: false,
                         resolution: SpeakerResolution::NotApplicable,
-                        decompressed_byte_offset: cursor,
+                        // Anchor the choice unit at the OPTION's own scene-
+                        // relative byte offset — the same authoritative offset
+                        // patchback splices at (`collect_text_unit_positions`
+                        // uses `choice.byte_offset`, never the command opener).
+                        // Using `cursor` (the Choice command opener) made every
+                        // option in a `select` share the command offset, so the
+                        // bundle's `sourceLocation.range` disagreed with both
+                        // the actual option bytes and the narrative structure's
+                        // decoded per-option offset (a byte-range join failure).
+                        decompressed_byte_offset: choice.byte_offset,
                         decompressed_byte_len: choice_bytes.len() as u64,
                         voice_archive_id: None,
                         voice_sample_id: None,
