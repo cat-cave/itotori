@@ -913,11 +913,15 @@ async function insertSemanticNoteHead(context: DatabaseContext, snapshotId: stri
       insert into itotori_llm_wiki_versions (
         wiki_version_id, wiki_kind, object_id, object_version,
         snapshot_kind, snapshot_id, object_kind,
-        wiki_ciphertext, wiki_key_ref, wiki_content_hash, created_at, retention_deadline
+        wiki_ciphertext, wiki_key_ref, wiki_content_hash, created_at, retention_deadline,
+        object_language, subject_kind, subject_id, scope_kind, provisional,
+        context_scope, run_mode
       ) values (
         'wiki:current', 'source-object', 'semantic-note:current', 1,
-        'context', $1, 'semantic-note',
-        decode('04', 'hex'), 'proof/wiki', $2, now(), now() + interval '1 day'
+        'context', $1, 'scene-summary',
+        decode('04', 'hex'), 'proof/wiki', $2, now(), now() + interval '1 day',
+        'ja-JP', 'scene', 'scene:current', 'global', false,
+        'whole-game', 'production'
       )
     `,
     [snapshotId, contentHash],
