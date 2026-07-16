@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { REQUESTED_PROVIDER_UNKNOWN } from "../src/providers/index.js";
 import type {
   ModelInvocationRequest,
   ModelInvocationResult,
@@ -90,7 +91,8 @@ function fakeVisionProvider(
           endpointFamily: "chat-completions",
           providerName: "fake-vision",
           requestedModelId: request.modelId,
-          requestedProviderId: request.providerId,
+          // no-provider-name invariant — the vision request names no provider.
+          requestedProviderId: request.providerId ?? REQUESTED_PROVIDER_UNKNOWN,
           actualModelId: request.modelId,
           ...(options.upstreamProvider === undefined
             ? {}
@@ -108,7 +110,8 @@ function fakeVisionProvider(
         },
         cost,
         routingPosture: {
-          order: [request.providerId],
+          // no-provider-name invariant — the wire names no provider.
+          order: [],
           allow_fallbacks: true,
           data_collection: "deny",
           zdr: options.zdr ?? true,
@@ -244,7 +247,6 @@ describe("evaluateVisionGate", () => {
 describe("runVisionGate (mechanism, fake provider)", () => {
   const baseArgs = {
     modelId: "qwen/qwen3-vl-235b-a22b-instruct",
-    providerId: "parasail",
     framePng: PNG_BYTES,
     expectedText: "Fuu... it's a refreshing morning.",
     redactionMode: "off" as const,

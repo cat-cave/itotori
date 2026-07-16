@@ -31,45 +31,38 @@ import {
 
 export const VISION_GATE_LIVE_FLAG = "ITOTORI_VISION_GATE_LIVE";
 export const VISION_GATE_MODEL_ENV = "ITOTORI_VISION_GATE_MODEL";
-export const VISION_GATE_PROVIDER_ID_ENV = "ITOTORI_VISION_GATE_PROVIDER_ID";
 /** Tight per-request USD cap for the single live vision-inspection call. */
 export const VISION_GATE_LIVE_MAX_PRICE_USD = 0.02;
 
 /**
- * VISION_PAIR — the MODEL for the eyes-on-pixels gate, plus a
- * routing-neutral recorded `providerId` HINT (see the no-provider-name
- * invariant note below). Imported by name; the literal lives here so it is
- * not scattered across the render-node surface (same discipline as DEV_PAIR).
+ * VISION_PAIR — the MODEL-ONLY dev default for the eyes-on-pixels gate. No
+ * provider is named (same discipline as DEV_PAIR under the no-provider-name
+ * invariant): the vision routing policy is capability + ZDR + fallback only
+ * (`{ zdr:true, dataCollection:"deny", allowFallbacks:true }`, no `order` /
+ * `only`), so OpenRouter picks the vision upstream on capability + ZDR + price.
+ * The provider that ACTUALLY served is recorded verbatim as the OUTPUT
+ * (`VisionGateArtifact.servedProviderId`), never a routing input.
  *
  * Why `qwen/qwen3-vl-235b-a22b-instruct` (evidence-grounded, live-verified
  * 2026-07-03):
  *
  *   - Vision + ZDR, PROVEN LIVE. A tiny image posted with
  *     `provider: { zdr:true, data_collection:"deny", allow_fallbacks:true }`
- *     returned HTTP 200 served by Parasail with a real `usage.cost`
- *     (`0.00001976`) — i.e. a ZDR-allow-list provider accepted image input
- *     under the ZDR posture (no 404 ZDR envelope). The candidate Anthropic /
- *     Google vision slugs returned a provider-side 400 "Could not process
- *     image" on the probe image (a Vertex constraint), so qwen3-vl is the
- *     validated ZDR vision model.
- *   - no-provider-name invariant — `providerId` is NEVER a routing input:
- *     the OpenRouter wire names no provider (no `order` / `only`), so
- *     OpenRouter picks the vision upstream on capability + ZDR + price
- *     (DeepInfra and Parasail have both served qwen3-vl live under ZDR). The
- *     `providerId` here is only a recorded hint of the expected server; the
- *     provider that ACTUALLY served is recorded verbatim as the output.
+ *     returned HTTP 200 served by a ZDR-allow-list provider with a real
+ *     `usage.cost` (`0.00001976`) — image input accepted under the ZDR posture
+ *     (no 404 ZDR envelope). DeepInfra and Parasail have both served qwen3-vl
+ *     live under ZDR; the candidate Anthropic / Google vision slugs returned a
+ *     provider-side 400 "Could not process image" on the probe (a Vertex
+ *     constraint), so qwen3-vl is the validated ZDR vision model.
  *   - Strong OCR / scene coherence — the two properties the gate depends on
  *     (is this a real composited scene; is the localized text legible).
  *
- * Overridable per-run via ITOTORI_VISION_GATE_MODEL / _PROVIDER_ID for
- * revalidation; the default lives in code so a swap is commit-visible.
+ * Overridable per-run via ITOTORI_VISION_GATE_MODEL for revalidation; the
+ * default lives in code so a swap is commit-visible.
  */
-export const VISION_PAIR: { readonly modelId: string; readonly providerId: string } = Object.freeze(
-  {
-    modelId: "qwen/qwen3-vl-235b-a22b-instruct",
-    providerId: "parasail",
-  },
-);
+export const VISION_PAIR: { readonly modelId: string } = Object.freeze({
+  modelId: "qwen/qwen3-vl-235b-a22b-instruct",
+});
 
 export type VisionGateCommandOptions = {
   /** Path to the rendered proof-frame PNG. */
@@ -114,12 +107,10 @@ export async function runVisionGateCommand(
 
   let provider: ModelProvider;
   let modelId: string;
-  let providerId: string;
 
   if (options.providerOverride !== undefined) {
     provider = options.providerOverride;
     modelId = env[VISION_GATE_MODEL_ENV] ?? VISION_PAIR.modelId;
-    providerId = env[VISION_GATE_PROVIDER_ID_ENV] ?? VISION_PAIR.providerId;
   } else {
     if (env[VISION_GATE_LIVE_FLAG] !== "1") {
       return { status: "skipped", reason: "missing_opt_in" };
@@ -132,7 +123,6 @@ export async function runVisionGateCommand(
     assertOpenRouterZdrAccount(env);
 
     modelId = env[VISION_GATE_MODEL_ENV] ?? VISION_PAIR.modelId;
-    providerId = env[VISION_GATE_PROVIDER_ID_ENV] ?? VISION_PAIR.providerId;
     const recorder = memoryRecorder();
     const providerOptions: ConstructorParameters<typeof OpenRouterProvider>[0] = {
       modelId,
@@ -150,7 +140,6 @@ export async function runVisionGateCommand(
   const result = await runVisionGate({
     provider,
     modelId,
-    providerId,
     framePng,
     expectedText: options.expectedText,
     redactionMode: options.redactionMode,
