@@ -5,6 +5,7 @@
 // skipped, and nothing is exported. This is the same uniform invocation
 // contract now shared by every phase (see the escape-hatch prune).
 
+import { REQUESTED_PROVIDER_UNKNOWN } from "../src/providers/types.js";
 import { describe, expect, it } from "vitest";
 import type { AuthorizationActor } from "@itotori/db";
 import {
@@ -148,7 +149,7 @@ describe("runProjectDrivenExecutor (unsalvageable QA pauses resumably)", () => {
       bridge,
       rawBridge: JSON.parse(JSON.stringify(bridge)) as unknown,
       pairPolicy: DEV_POLICY,
-      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+      pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
       projectId: PROJECT_ID,
       localeBranchId: LOCALE_BRANCH_ID,
       sourceRevisionId: REVISION_ID,

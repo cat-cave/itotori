@@ -253,14 +253,14 @@ export function buildFocusedRecordedBundle(
     // calibration capture is taken against live OR, this constant must
     // be replaced with the real micros derived from `usage.cost`.
     cost: ZERO_COST,
-    // ITOTORI-230 — synthesised bundle, no real captured posture. We
-    // record the canonical alpha posture as a "what a real capture
-    // would have produced" placeholder. A future LIVE capture against
-    // OR must REPLACE this with the actual wire-level posture.
+    // Synthesised bundle, no real captured posture. We record the canonical
+    // posture as a "what a real capture would have produced" placeholder.
+    // no-provider-name invariant — a live capture names NO provider, so
+    // `order` is EMPTY; the served upstream is carried separately as
+    // `capturedProviderId`. A future LIVE capture must REPLACE this with the
+    // actual wire-level posture.
     routingPosture: {
-      order: [
-        isFresh ? QA_CALIBRATION_FRESH_JUDGE_PROVIDER_ID : QA_CALIBRATION_ORIGINAL_PROVIDER_ID,
-      ],
+      order: [],
       allow_fallbacks: true,
       data_collection: "deny",
       zdr: true,

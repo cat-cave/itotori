@@ -1,116 +1,95 @@
-// ITOTORI-221 — DEV_PAIR constant + minimal known-good capability table.
+// no-provider-name invariant — DEV_PAIR is a MODEL-ONLY dev default.
 //
-// Per the standing feedback-model-provider-pair rule and the alpha gap
-// analysis (docs/proposals/alpha-gap-analysis-2026-06-24.md §3 — ITOTORI-
-// NEW-Bopen), the dev-time (modelId, providerId) pair MUST be a hard-coded
-// constant. Deferring it to `process.env.DEV_PAIR_MODEL_ID` defeats the
-// pin: the env var becomes a silent escape hatch where a caller can swap
-// pairs without a commit-visible change. Therefore: the constant lives in
-// code, the choice is justified in this comment, and changes require a
-// real PR.
+// Trevor's decisive routing ruling (2026-07-15): NO provider is EVER named
+// in production routing — not as a rigid `only:[...]` pin, and not even as a
+// soft `order:[preferredProvider]` preference. A dev-mode call is fully
+// specified by (a) a MODEL id and (b) a capability + ZDR/privacy + fallback
+// POLICY:
+//   - capabilities we need (structured/JSON output, typed tool-calling,
+//     reasoning) enforced via `require_parameters`,
+//   - our privacy contract (`zdr:true` + `data_collection:"deny"`, backed by
+//     the account-wide ZDR allow-list), and
+//   - `allow_fallbacks:true`.
+// OpenRouter then picks the upstream provider PURELY on capability + ZDR +
+// price. The (model, provider) pair that actually served a call is a RECORDED
+// OUTPUT (for honesty / cost / telemetry — see `ProviderRunRecord.provider
+// .upstreamProvider`, read verbatim from the response), NEVER a routing INPUT.
 //
-// Why deepseek/deepseek-v4-flash with `fireworks` as the PREFERRED
-// provider (ITOTORI-241 reframe of the ITOTORI-226 evidence-grounded
-// pair; replaces the prior invented slug that was never in OpenRouter's
-// catalog — see docs/audits/openrouter-wiring-audit-2026-06-25.md §3-A):
+// This is why `DEV_PAIR` carries ONLY a `modelId`. The previous constant
+// pinned `providerId: "fireworks"` as `order[0]`; even with
+// `allow_fallbacks:true` that NAMED a provider in the routing policy, which
+// the invariant forbids. `fireworks` (and every other slug) is now something
+// we may only READ BACK from a response, never write into a request.
 //
-//   ITOTORI-241 — `providerId` is the PREFERRED provider (`order[0]`),
-//   NOT a hard pin. The live request now sends
-//   `provider: { order: ["fireworks"], zdr: true, allow_fallbacks: true,
-//   data_collection: "deny", require_parameters: <strict> }`. OpenRouter
-//   routes to Fireworks first; if Fireworks is transiently unavailable
-//   (e.g. a 1-second upstream 429) OpenRouter falls back across the
-//   account ZDR allow-list rather than failing the whole call. The
-//   fallback set is NOT enumerated here: `zdr: true` confines it to the
-//   account's ZDR-only providers, so it self-updates as that allow-list
-//   changes. `fireworks` is dated 2026-06-25 as the validated preferred
-//   provider (evidence below); revisiting the preference requires a real
-//   commit + fresh live capture.
-//
+// Model choice — `deepseek/deepseek-v4-flash`:
 //   - Catalog match. The OpenRouter catalog lookup at
 //     /api/v1/models/deepseek/deepseek-v4-flash/endpoints (captured at
-//     docs/openrouter-integration-evidence/2026-06-25.json,
-//     alphaPairCatalog) returns 18 endpoints; canonical slug is
-//     `deepseek/deepseek-v4-flash-20260423`. The `fireworks` endpoint IS
-//     in that list (tag='fireworks') AND is in Trevor's ZDR allow-list.
-//     See also docs/openrouter-integration.md §9.3.
-//   - Preferred provider verified live. The evidence file's call_1
-//     (label `call_1_baseline_zdr_alpha_pair`) posted
-//     {model: "deepseek/deepseek-v4-flash", provider: { zdr: true, ... }}
-//     and received HTTP 200 with `body.provider === "Fireworks"` — i.e.
-//     the request routed to and was billed by Fireworks under the
-//     corrected slug. Under the ITOTORI-241 posture Fireworks remains
-//     order[0]; the difference is that a transient Fireworks outage now
-//     yields another ZDR-allow-list provider instead of a total failure.
-//   - Pricing on Fireworks (from the same alphaPairCatalog block):
-//     prompt $0.00000014/token (≈$0.14/Mtok), completion $0.00000028/
-//     token (≈$0.28/Mtok). A 4k-prompt+1k-completion QA call costs
-//     ~$0.00084, so the ITOTORI-231 DEFAULT_COST_CAP_USD ($0.5) admits
-//     ~600 such calls — well above any single agentic-loop run.
-//   - Implicit caching is NOT supported on the Fireworks endpoint
-//     (alphaPairCatalog.fireworks_supports_implicit_caching === false).
-//     The `deepseek` endpoint does advertise it
-//     (deepseek_supports_implicit_caching === true) but is excluded
-//     from Trevor's ZDR allow-list — empirically proven by call_3 in
-//     the same evidence file (HTTP 404, "No endpoints found matching
-//     your data policy"). We forgo implicit caching as the price of
-//     staying within ZDR; the preferred-provider + fallback posture is
-//     orthogonal to caching.
-//   - Structured output under ZDR. ITOTORI-241 live testing proved that
-//     `response_format: { type: "json_schema" }` (strict AND non-strict)
-//     is UNROUTABLE under ZDR for this pair: OpenRouter returns HTTP 404
-//     "No endpoints found that can handle the requested parameters"
-//     because no ZDR-allow-list provider for deepseek/deepseek-v4-flash
-//     advertises json_schema and `require_parameters: true` narrows the
-//     routable pool to empty. Two follow-up live runs (at-scale-v2 +
-//     structure-informed-context) extended the same HTTP 404 to
-//     `response_format: { type: "json_object" }`: the ZDR allow-list
-//     ∩ providers that advertise a structured `response_format` is
-//     EMPTY for deepseek/deepseek-v4-flash, so `require_parameters:
-//     true` empties the routable pool for EITHER response_format. The
-//     capability sheet below therefore marks BOTH `jsonSchema` AND
-//     `jsonObject` `unsupported` for this (ZDR-routed) pair; the only
-//     ZDR-routable deterministic mode is a PLAIN completion
-//     (`plain_json`) — no `response_format` / no `require_parameters`,
-//     so the pool is not narrowed (verified HTTP 200, served by
-//     Fireworks). The agentic loop selects it via
-//     selectStructuredOutputRequest; the schema is enforced by the
-//     caller's bounded-repair + strict post-parse validation. See
+//     docs/openrouter-integration-evidence/2026-06-25.json, alphaPairCatalog)
+//     returns 18 endpoints; canonical slug is
+//     `deepseek/deepseek-v4-flash-20260423`.
+//   - Structured output under ZDR. Live testing proved that
+//     `response_format: { type: "json_schema" }` (strict AND non-strict) AND
+//     `response_format: { type: "json_object" }` are UNROUTABLE under ZDR for
+//     this model: the account ZDR allow-list ∩ providers advertising a
+//     structured `response_format` is EMPTY, so `require_parameters: true`
+//     narrows the routable pool to empty (HTTP 404 "No endpoints found that
+//     can handle the requested parameters"). The only ZDR-routable
+//     deterministic mode is a PLAIN completion (`plain_json`) — no
+//     `response_format` / no `require_parameters`, so the pool is not narrowed
+//     (verified HTTP 200). The agentic loop selects it via
+//     selectStructuredOutputRequest; the schema is enforced by the caller's
+//     bounded-repair + strict post-parse validation. The capability sheet
+//     below therefore marks BOTH `jsonSchema` AND `jsonObject` `unsupported`
+//     for this ZDR-routed model. See
 //     itotori-structured-output-plain-json-fallback-under-zdr and the
 //     ZDR-fallback audit 2026-07-04.
+//   - Implicit caching is forgone as the price of ZDR (the only endpoint that
+//     advertised it is excluded from the account ZDR allow-list — call_3 in
+//     the evidence file returned HTTP 404 "No endpoints found matching your
+//     data policy").
 //
-// Other entries in the table cover the two production-tier pairs we
-// reach for when DEV_PAIR isn't appropriate (e.g. high-stakes manual
-// reruns); they exist so CapabilityGuard registration works for them
-// without each caller having to invent a capability sheet.
+// The capability sheets are keyed by MODEL (not by a (model, provider) pair):
+// under the account-wide ZDR posture we do NOT choose the upstream provider,
+// so the routable capability floor is a property of the model under our ZDR
+// allow-list, not of any single named provider. The other entries cover the
+// two production-tier models we reach for when DEV_PAIR isn't appropriate.
 
 import type { ModelCapabilities } from "./types.js";
 import { openRouterDefaultCapabilities } from "./openrouter.js";
 
 /**
- * The (modelId, providerId) pair used by every itotori dev-mode agent
- * invocation. Imported by name — never typed as a string literal in
- * agent code. The audit check enforced by ITOTORI-221 (`git grep
- * -nE "'fireworks'|\"fireworks\""` outside this file) confirms there
- * are no provider id literals scattered across the agent surface.
- *
- * ITOTORI-241 — `providerId` is the PREFERRED provider (`order[0]` on
- * the wire), not a hard pin. The orchestrator passes it as
- * `request.providerId`; the OpenRouter provider maps it to
- * `provider.order=[providerId]` with `allow_fallbacks: true` + `zdr:
- * true`, so a transient Fireworks outage falls back across the account
- * ZDR allow-list instead of failing the call.
+ * The MODEL used by every itotori dev-mode agent invocation. Imported by
+ * name — never typed as a string literal in agent code. No provider is
+ * named: routing is capability + ZDR + fallback only, and the served
+ * provider is a recorded output of each call.
  */
-export const DEV_PAIR: { readonly modelId: string; readonly providerId: string } = Object.freeze({
+export const DEV_PAIR: { readonly modelId: string } = Object.freeze({
   modelId: "deepseek/deepseek-v4-flash",
-  providerId: "fireworks",
+});
+
+/**
+ * The capability + privacy + fallback POLICY that, together with
+ * `DEV_PAIR.modelId`, fully specifies a dev-mode call — with NO `order` and
+ * NO `only`, so no provider is named. `requireParameters` is decided
+ * per-call (strict for the structured modes the request carries); the wire
+ * sets `provider.require_parameters` from that, which is how we enforce the
+ * capabilities we need WITHOUT naming who must satisfy them.
+ */
+export const DEV_ROUTING_POLICY: {
+  readonly allowFallbacks: true;
+  readonly zdr: true;
+  readonly dataCollection: "deny";
+} = Object.freeze({
+  allowFallbacks: true,
+  zdr: true,
+  dataCollection: "deny",
 });
 
 /**
  * Lightweight capability summary surfaced to the orchestrator when it
  * picks structured-output modes / context budgets at request time. The
  * shape intentionally avoids re-deriving the full ModelCapabilities
- * record: those live in the per-pair capability table below.
+ * record: those live in the per-model capability table below.
  */
 export type DevPairCapabilities = {
   readonly supportsStructuredOutput: boolean;
@@ -119,33 +98,34 @@ export type DevPairCapabilities = {
   readonly maxOutputTokens: number;
 };
 
+/**
+ * A (model, provider) pair as a RECORDED identity — e.g. what a response
+ * reported as the served pair. Never a routing input. Retained for callers
+ * that describe an already-served pair (telemetry, experiment reports).
+ */
 export type ModelProviderPair = {
   readonly modelId: string;
   readonly providerId: string;
 };
 
-type PairCapabilityEntry = {
-  pair: ModelProviderPair;
+type ModelCapabilityEntry = {
+  modelId: string;
   capabilities: DevPairCapabilities;
   modelCapabilities: ModelCapabilities;
 };
 
 // Lazy-initialised to dodge the circular import with openrouter.ts:
-// openrouter.ts imports `knownPairs` from here, and this module imports
+// openrouter.ts imports `knownModels` from here, and this module imports
 // `openRouterDefaultCapabilities` from openrouter.ts. We MUST NOT read
 // the imported binding at module init; instead, build the table on
 // first call.
-let CACHED_TABLE: ReadonlyArray<PairCapabilityEntry> | undefined;
-let CACHED_INDEX: Map<string, PairCapabilityEntry> | undefined;
+let CACHED_TABLE: ReadonlyArray<ModelCapabilityEntry> | undefined;
+let CACHED_INDEX: Map<string, ModelCapabilityEntry> | undefined;
 
-function pairKey(pair: ModelProviderPair): string {
-  return `${pair.modelId}::${pair.providerId}`;
-}
-
-function buildPairCapabilityTable(): ReadonlyArray<PairCapabilityEntry> {
+function buildModelCapabilityTable(): ReadonlyArray<ModelCapabilityEntry> {
   return [
     {
-      pair: DEV_PAIR,
+      modelId: DEV_PAIR.modelId,
       capabilities: {
         supportsStructuredOutput: true,
         supportsToolUse: true,
@@ -155,23 +135,20 @@ function buildPairCapabilityTable(): ReadonlyArray<PairCapabilityEntry> {
       modelCapabilities: {
         ...openRouterDefaultCapabilities,
         structuredOutputs: {
-          // ITOTORI-241 / plain-json-fallback-under-zdr — BOTH `json_schema`
-          // and `json_object` are UNROUTABLE under ZDR for this pair. The
-          // ITOTORI-241 proof already showed json_schema 404s; two later
-          // live runs (at-scale-v2 + structure-informed-context) proved the
-          // SAME HTTP 404 "No endpoints found that can handle the requested
-          // parameters" for `response_format:{type:json_object}`: the
-          // account ZDR allow-list ∩ providers that advertise a structured
+          // plain-json-fallback-under-zdr — BOTH `json_schema` and
+          // `json_object` are UNROUTABLE under ZDR for this model: the account
+          // ZDR allow-list ∩ providers that advertise a structured
           // `response_format` is EMPTY for deepseek/deepseek-v4-flash, so
           // `require_parameters:true` narrows the routable pool to empty for
-          // EITHER response_format. Both are therefore `unsupported` for
-          // THIS (ZDR-routed) pair regardless of what the bare model can do
-          // off-ZDR. The only ZDR-routable mode is a PLAIN completion
-          // (`plain_json`): no response_format / no require_parameters, so
-          // the pool is not narrowed (verified HTTP 200, served by
-          // Fireworks). The agentic loop selects it via
-          // selectStructuredOutputRequest; the schema is enforced by the
-          // caller's bounded-repair + strict post-parse validation.
+          // EITHER response_format (HTTP 404 "No endpoints found that can
+          // handle the requested parameters"). Both are therefore
+          // `unsupported` for THIS (ZDR-routed) model regardless of what the
+          // bare model can do off-ZDR. The only ZDR-routable mode is a PLAIN
+          // completion (`plain_json`): no response_format / no
+          // require_parameters, so the pool is not narrowed (verified HTTP
+          // 200). The agentic loop selects it via selectStructuredOutputRequest;
+          // the schema is enforced by the caller's bounded-repair + strict
+          // post-parse validation.
           jsonSchema: "unsupported",
           jsonObject: "unsupported",
           toolCallArguments: "supported",
@@ -196,23 +173,18 @@ function buildPairCapabilityTable(): ReadonlyArray<PairCapabilityEntry> {
         contextWindowTokens: 128_000,
         maxOutputTokens: 8_192,
         notes: [
-          // ITOTORI-226 (2026-06-25): the slug correction landed; this
-          // capability sheet describes the catalog-correct
-          // deepseek/deepseek-v4-flash pair with Fireworks as the
-          // PREFERRED provider. Live evidence — call_1 in
-          //   docs/openrouter-integration-evidence/2026-06-25.json
-          // — confirms HTTP 200 with body.provider === "Fireworks" under
-          // provider.zdr=true. ITOTORI-241 reframed the wire posture to
-          // provider.order=["fireworks"] + allow_fallbacks=true (no hard
-          // pin); ZDR confines any fallback to the account allow-list.
-          // ITOTORI-224 owns the canonical doc + evidence capture; see
-          // docs/openrouter-integration.md §9.3 for the catalog row.
-          "ITOTORI-226 (2026-06-25): slug correction landed (deepseek/deepseek-v4-flash on fireworks). Live evidence: docs/openrouter-integration-evidence/2026-06-25.json call_1 (HTTP 200, body.provider === 'Fireworks'). Canonical doc: docs/openrouter-integration.md §9.3.",
+          // The capability sheet describes deepseek/deepseek-v4-flash under
+          // the account-wide ZDR allow-list — no provider is named. Live
+          // evidence for the ZDR-routable profile:
+          // docs/openrouter-integration-evidence/2026-06-25.json (HTTP 200 on
+          // plain_json; HTTP 404 on json_schema/json_object under ZDR).
+          // Canonical doc: docs/openrouter-integration.md §9.3.
+          "deepseek/deepseek-v4-flash ZDR-routable profile: plain_json only (json_schema/json_object 404 under ZDR). No provider named; served provider is a recorded output. Doc: docs/openrouter-integration.md §9.3.",
         ],
       },
     },
     {
-      pair: { modelId: "anthropic/claude-sonnet-4", providerId: "anthropic" },
+      modelId: "anthropic/claude-sonnet-4",
       capabilities: {
         supportsStructuredOutput: true,
         supportsToolUse: true,
@@ -248,7 +220,7 @@ function buildPairCapabilityTable(): ReadonlyArray<PairCapabilityEntry> {
       },
     },
     {
-      pair: { modelId: "google/gemini-2.5", providerId: "google-vertex" },
+      modelId: "google/gemini-2.5",
       capabilities: {
         supportsStructuredOutput: true,
         supportsToolUse: true,
@@ -286,76 +258,72 @@ function buildPairCapabilityTable(): ReadonlyArray<PairCapabilityEntry> {
   ];
 }
 
-function getTable(): ReadonlyArray<PairCapabilityEntry> {
+function getTable(): ReadonlyArray<ModelCapabilityEntry> {
   if (CACHED_TABLE === undefined) {
-    CACHED_TABLE = buildPairCapabilityTable();
+    CACHED_TABLE = buildModelCapabilityTable();
   }
   return CACHED_TABLE;
 }
 
-function getIndex(): Map<string, PairCapabilityEntry> {
+function getIndex(): Map<string, ModelCapabilityEntry> {
   if (CACHED_INDEX === undefined) {
-    CACHED_INDEX = new Map(getTable().map((entry) => [pairKey(entry.pair), entry] as const));
+    CACHED_INDEX = new Map(getTable().map((entry) => [entry.modelId, entry] as const));
   }
   return CACHED_INDEX;
 }
 
 /**
- * Thrown when a caller asks for capabilities for a pair that has not
+ * Thrown when a caller asks for capabilities for a model that has not
  * been measured + registered. Falling back to a "best guess" sheet
  * would re-introduce the silent-fallback failure mode ITOTORI-220
  * removed; instead the orchestrator is forced to either register the
- * pair explicitly or fail loudly.
+ * model explicitly or fail loudly.
  */
 export class DevPairUnknownError extends Error {
-  constructor(
-    readonly modelId: string,
-    readonly providerId: string,
-  ) {
+  constructor(readonly modelId: string) {
     super(
-      `no known capability sheet for (modelId=${modelId}, providerId=${providerId}); register the pair in dev-pair.ts before using it`,
+      `no known capability sheet for modelId=${modelId}; register the model in dev-pair.ts before using it`,
     );
     this.name = "DevPairUnknownError";
   }
 }
 
 /**
- * Return the small DevPairCapabilities summary for a known pair.
+ * Return the small DevPairCapabilities summary for a known model.
  * Throws DevPairUnknownError on miss — no silent fallback.
  */
-export function getCapabilities(pair: ModelProviderPair): DevPairCapabilities {
-  const entry = getIndex().get(pairKey(pair));
+export function getCapabilities(modelId: string): DevPairCapabilities {
+  const entry = getIndex().get(modelId);
   if (entry === undefined) {
-    throw new DevPairUnknownError(pair.modelId, pair.providerId);
+    throw new DevPairUnknownError(modelId);
   }
   return entry.capabilities;
 }
 
 /**
- * Return the full ModelCapabilities sheet for a known pair, suitable
+ * Return the full ModelCapabilities sheet for a known model, suitable
  * for CapabilityGuard.register(). Throws on miss.
  */
-export function getModelCapabilities(pair: ModelProviderPair): ModelCapabilities {
-  const entry = getIndex().get(pairKey(pair));
+export function getModelCapabilities(modelId: string): ModelCapabilities {
+  const entry = getIndex().get(modelId);
   if (entry === undefined) {
-    throw new DevPairUnknownError(pair.modelId, pair.providerId);
+    throw new DevPairUnknownError(modelId);
   }
   return entry.modelCapabilities;
 }
 
 /**
- * Iterate the known-pair table — used by OpenRouterModelProvider to
- * register every pair into the global CapabilityGuard at construction
- * time so the orchestrator's CapabilityGuard.lookup(modelId, providerId)
- * returns table data for any production-tier pair without per-call
- * registration.
+ * Iterate the known-model table — used by OpenRouterModelProvider to
+ * register every model into the global CapabilityGuard at construction
+ * time so the orchestrator's CapabilityGuard.lookup(modelId) returns
+ * table data for any production-tier model without per-call registration.
  */
-export function knownPairs(): ReadonlyArray<{
-  pair: ModelProviderPair;
+export function knownModels(): ReadonlyArray<{
+  modelId: string;
   modelCapabilities: ModelCapabilities;
 }> {
   return getTable().map((entry) => ({
-    pair: entry.pair,
+    modelId: entry.modelId,
     modelCapabilities: entry.modelCapabilities,
   }));
 }

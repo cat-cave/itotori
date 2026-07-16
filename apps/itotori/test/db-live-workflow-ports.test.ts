@@ -50,7 +50,9 @@ describe("DB-backed workflow live ports — real constructor wiring", () => {
       });
       expect(provider.descriptor.family).toBe("openrouter");
       expect(provider.descriptor.defaultModelId).toBe(DEV_PAIR.modelId);
-      expect(provider.descriptor.providerName).toBe(DEV_PAIR.providerId);
+      // no-provider-name invariant: the descriptor names the OpenRouter GATEWAY
+      // family, not an upstream provider. The served upstream is recorded output.
+      expect(provider.descriptor.providerName).toBe("openrouter");
     });
 
     it("refuses the unadmitted real provider before lazy OpenRouter construction", async () => {

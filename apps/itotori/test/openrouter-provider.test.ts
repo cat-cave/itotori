@@ -8,7 +8,7 @@
 //   - missing env var raises OpenRouterMissingApiKeyError at construction
 //   - request body sends provider: { order: [providerId],
 //     allow_fallbacks: true } per ITOTORI-241 (preference, not a pin)
-//   - a ZDR-served provider that differs from order[0] is ACCEPTED
+//   - any ZDR-served provider is ACCEPTED (we name none)
 //     (ITOTORI-243: no provider-identity pin) and its served (model,
 //     providerId) pair + real billed cost are recorded
 //   - exact per-request maxPriceUsd comparison never rounds paid sub-micro
@@ -20,6 +20,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+  REQUESTED_PROVIDER_UNKNOWN,
   addDecimalUsd,
   assertBilledCost,
   assertBilledCostDecimal,
@@ -42,7 +43,7 @@ function baseRequest(overrides: Partial<ModelInvocationRequest> = {}): ModelInvo
   return {
     taskKind: "experiment",
     modelId: DEV_PAIR.modelId,
-    providerId: DEV_PAIR.providerId,
+    // no-provider-name invariant — the request names NO provider.
     inputClassification: "synthetic_public",
     prompt: {
       presetId: "itotori-221-test",
@@ -87,7 +88,7 @@ function successResponse(opts: {
   const body = {
     id: "gen-test-" + Math.random().toString(36).slice(2, 10),
     model: opts.modelId ?? DEV_PAIR.modelId,
-    provider: opts.upstreamProvider ?? DEV_PAIR.providerId,
+    provider: opts.upstreamProvider ?? "fireworks",
     choices: [
       {
         finish_reason: "stop",
@@ -160,7 +161,7 @@ describe("OpenRouterModelProvider — env + construction", () => {
     ).toThrow(OpenRouterMissingArtifactRecorderError);
   });
 
-  it("registers DEV_PAIR + known production pairs into the CapabilityGuard at construction", () => {
+  it("registers DEV_PAIR + known production models into the CapabilityGuard at construction", () => {
     const guard = new CapabilityGuard();
     new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
@@ -168,18 +169,16 @@ describe("OpenRouterModelProvider — env + construction", () => {
       httpClient: vi.fn() as unknown as typeof fetch,
       artifactRecorder: memoryRecorder(),
     });
-    expect(guard.has(DEV_PAIR.modelId, DEV_PAIR.providerId)).toBe(true);
-    const registered = guard.registeredPairs();
-    expect(registered).toContainEqual({
-      modelId: DEV_PAIR.modelId,
-      providerId: DEV_PAIR.providerId,
-    });
+    // Model-keyed guard: capabilities are keyed by MODEL (no provider named).
+    expect(guard.has(DEV_PAIR.modelId)).toBe(true);
+    const registered = guard.registeredModels();
+    expect(registered).toContain(DEV_PAIR.modelId);
     expect(registered.length).toBeGreaterThanOrEqual(3);
   });
 });
 
-describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () => {
-  it("ITOTORI-241: sends provider.order=[providerId] (preference) + allow_fallbacks=true, and never emits a hard `only` pin", async () => {
+describe("OpenRouterModelProvider — request shape (no-provider-name invariant)", () => {
+  it("names NO provider on the wire: no provider.order, no provider.only; allow_fallbacks=true", async () => {
     let observedBody:
       | {
           provider: { order?: string[]; only?: string[]; allow_fallbacks: boolean };
@@ -197,9 +196,11 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       artifactRecorder: memoryRecorder(),
     });
     await provider.invoke(baseRequest());
-    expect(observedBody?.provider.order).toEqual([DEV_PAIR.providerId]);
+    // no-provider-name invariant — the wire names NO provider: neither `order`
+    // (soft preference) nor `only` (hard pin) is emitted. OpenRouter picks the
+    // upstream on capability + ZDR + price.
+    expect(observedBody?.provider.order).toBeUndefined();
     expect(observedBody?.provider.allow_fallbacks).toBe(true);
-    // The old hard pin must not survive: no `only` enumeration on the wire.
     expect(observedBody?.provider.only).toBeUndefined();
     expect(observedBody?.model).toBe(DEV_PAIR.modelId);
   });
@@ -253,12 +254,14 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       }),
     );
     expect(observedBody?.provider).toMatchObject({
-      order: [DEV_PAIR.providerId],
       allow_fallbacks: true,
       zdr: true,
       data_collection: "deny",
       require_parameters: true,
     });
+    // no-provider-name invariant — no `order` on the wire even for a
+    // capability-constrained (require_parameters) structured request.
+    expect(observedBody?.provider.order).toBeUndefined();
     expect(observedBody?.response_format?.type).toBe("json_schema");
   });
 
@@ -320,7 +323,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       capabilityGuard: new CapabilityGuard(),
       artifactRecorder: memoryRecorder(),
     });
-    const capabilities = provider.descriptorForPair(DEV_PAIR).capabilities;
+    const capabilities = provider.descriptorForModel(DEV_PAIR.modelId).capabilities;
     expect(capabilities.structuredOutputs.jsonSchema).toBe("unsupported");
     expect(capabilities.structuredOutputs.jsonObject).toBe("unsupported");
     expect(capabilities.structuredOutputs.plainJsonExtraction).toBe("supported");
@@ -477,12 +480,12 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("ITOTORI-243: ACCEPTS a ZDR-served provider that differs from order[0] and records the served pair + real billed cost", async () => {
+  it("ITOTORI-243: ACCEPTS whatever ZDR provider OpenRouter picks (we name none) and records the served pair + real billed cost", async () => {
     // The privacy gate is the REQUEST posture (zdr:true, enforced for the
     // synthetic_public default). With zdr:true on the wire OpenRouter can
     // only serve a ZDR-allow-list provider, so a served upstream
-    // ('deepinfra') that differs from the preferred order[0]
-    // (DEV_PAIR.providerId='fireworks') is a VALID serve — there is no
+    // ('deepinfra') that OpenRouter picked (we name no provider)
+    // is a VALID serve — there is no
     // provider-identity pin and no throw. We record the truth: the served
     // (model, providerId) pair and the real billed cost (usage.cost, NOT
     // zeroed).
@@ -499,7 +502,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     const result = await provider.invoke(baseRequest());
     // Accepted, not thrown: succeeded run served by the ZDR fallback provider.
     expect(result.providerRun.status).toBe("succeeded");
-    expect(result.providerRun.provider.requestedProviderId).toBe(DEV_PAIR.providerId);
+    expect(result.providerRun.provider.requestedProviderId).toBe(REQUESTED_PROVIDER_UNKNOWN);
     expect(result.providerRun.provider.actualModelId).toBe(DEV_PAIR.modelId);
     // Served (model, providerId) pair recorded as the TRUTH.
     expect(result.providerRun.provider.upstreamProvider).toBe("deepinfra");
@@ -529,11 +532,11 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     });
     const result = await provider.invoke(baseRequest());
     expect(result.providerRun.status).toBe("succeeded");
-    expect(result.providerRun.provider.requestedProviderId).toBe(DEV_PAIR.providerId);
+    expect(result.providerRun.provider.requestedProviderId).toBe(REQUESTED_PROVIDER_UNKNOWN);
     expect(result.providerRun.provider.upstreamProvider).toBe("Fireworks");
   });
 
-  it("ITOTORI-243: ACCEPTS any ZDR-served provider that differs from order[0] (request='fireworks' → response='OpenAI') and records the served pair", async () => {
+  it("ITOTORI-243: ACCEPTS whatever ZDR provider OpenRouter picks (we name none; response='OpenAI') and records the served pair", async () => {
     // ITOTORI-243 product decision: strict provider-pinning + a
     // post-response provider-identity throw were a needless formality with
     // no operational security. ZDR (zdr:true on the wire) is the only
@@ -552,7 +555,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     });
     const result = await provider.invoke(baseRequest());
     expect(result.providerRun.status).toBe("succeeded");
-    expect(result.providerRun.provider.requestedProviderId).toBe(DEV_PAIR.providerId);
+    expect(result.providerRun.provider.requestedProviderId).toBe(REQUESTED_PROVIDER_UNKNOWN);
     expect(result.providerRun.provider.upstreamProvider).toBe("OpenAI");
     expect(result.providerRun.cost.costKind).toBe("billed");
     expect(result.providerRun.cost.amountMicrosUsd).toBe(7);
@@ -560,8 +563,8 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
   });
 
   it("ITOTORI-242: ACCEPTS a genuine ZDR fallback (preferred 429s → 2nd ZDR-allow-list provider) and records the swap in adapterMetadata.openrouterRouting", async () => {
-    // Provider-side routing record: the preferred provider (order[0],
-    // DEV_PAIR.providerId='fireworks') 429s, OpenRouter routes to the NEXT
+    // Provider-side routing record: no provider is preferred; an upstream 429s and
+    // OpenRouter advances (attempt>1) to the NEXT
     // ZDR-allow-list provider ('deepinfra'). The privacy gate held (this
     // request enforces zdr:true — synthetic_public input), so the served
     // upstream is a ZDR-allow-list member by construction. The post-response
@@ -605,7 +608,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     // Accepted: no pair_mismatch throw, succeeded run, served by the
     // fallback provider.
     expect(result.providerRun.status).toBe("succeeded");
-    expect(result.providerRun.provider.requestedProviderId).toBe(DEV_PAIR.providerId);
+    expect(result.providerRun.provider.requestedProviderId).toBe(REQUESTED_PROVIDER_UNKNOWN);
     expect(result.providerRun.provider.upstreamProvider).toBe("deepinfra");
     // Auditable, not silent: the fallback is recorded in
     // adapterMetadata.openrouterRouting (attempt>1 / summary names the
@@ -622,16 +625,32 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     });
   });
 
-  it("ITOTORI-242: fallbackUsed is TRUE when the served provider differs from order[0] (a genuine provider-level ZDR fallback), and the served pair is recorded", async () => {
-    // The ITOTORI-242 routing-record path: order[0]
-    // (DEV_PAIR.providerId='fireworks') 429s, OpenRouter serves a DIFFERENT
-    // ZDR-allow-list provider ('deepinfra') with the SAME model. The old
-    // model-only check (actualModelId !== requestedModelId) read this as
-    // fallbackUsed:false; the provider swap must now be first-class
-    // telemetry — fallbackUsed:true — without any rejection.
+  it("fallbackUsed is TRUE when OpenRouter's router metadata reports a provider fallback (attempt>1), and the served pair is recorded", async () => {
+    // no-provider-name invariant — we name NO provider, so there is no
+    // order[0] to differ from; the AUTHORITATIVE provider-fallback signal is
+    // OpenRouter's own `openrouter_metadata.attempt` (>1 means it advanced past
+    // a transiently-unavailable provider to serve 'deepinfra'). fallbackUsed
+    // must be first-class telemetry — TRUE — driven by that signal, without any
+    // rejection.
     const recorder = memoryRecorder();
-    const fetchMock = vi.fn(async () =>
-      successResponse({ upstreamProvider: "deepinfra", usageCost: 0.000042 }),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: "gen-zdr-fallback-flag",
+            model: DEV_PAIR.modelId,
+            provider: "deepinfra",
+            choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 0.000042 }, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+            openrouter_metadata: {
+              requested: DEV_PAIR.modelId,
+              strategy: "fallback",
+              attempt: 2,
+              summary: "served by deepinfra after a transient upstream 429",
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
     ) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
@@ -640,24 +659,25 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
       artifactRecorder: recorder,
     });
     const result = await provider.invoke(baseRequest());
-    // Accepted, not rejected: a non-preferred ZDR serve is valid.
+    // Accepted, not rejected: a ZDR serve reached via fallback is valid.
     expect(result.providerRun.status).toBe("succeeded");
     // The provider-level fallback is reflected in the first-class flag.
     expect(result.providerRun.fallbackUsed).toBe(true);
     // The served pair is recorded as the truth.
     expect(result.providerRun.provider.upstreamProvider).toBe("deepinfra");
-    expect(result.providerRun.provider.requestedProviderId).toBe(DEV_PAIR.providerId);
+    expect(result.providerRun.provider.requestedProviderId).toBe(REQUESTED_PROVIDER_UNKNOWN);
     expect(recorder.artifacts[0]?.run.fallbackUsed).toBe(true);
     expect(recorder.artifacts[0]?.run.provider.upstreamProvider).toBe("deepinfra");
   });
 
-  it("ITOTORI-242: fallbackUsed is FALSE when order[0] serves directly (no provider fallback, same model)", async () => {
-    // The preferred provider (order[0], DEV_PAIR.providerId='fireworks')
-    // answers directly with the requested model — no provider swap and no
-    // model fallback, so fallbackUsed must be false.
+  it("fallbackUsed is FALSE when a single provider serves directly (attempt=1, same model, no fallback)", async () => {
+    // no-provider-name invariant — no provider is preferred; OpenRouter served
+    // a single upstream on the first attempt (no `openrouter_metadata.attempt`
+    // > 1) with the requested model, so there was no provider swap and no model
+    // fallback: fallbackUsed must be false.
     const recorder = memoryRecorder();
     const fetchMock = vi.fn(async () =>
-      successResponse({ upstreamProvider: DEV_PAIR.providerId, usageCost: 0.000011 }),
+      successResponse({ upstreamProvider: "fireworks", usageCost: 0.000011 }),
     ) as unknown as typeof fetch;
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
@@ -668,13 +688,13 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     const result = await provider.invoke(baseRequest());
     expect(result.providerRun.status).toBe("succeeded");
     expect(result.providerRun.fallbackUsed).toBe(false);
-    expect(result.providerRun.provider.upstreamProvider).toBe(DEV_PAIR.providerId);
+    expect(result.providerRun.provider.upstreamProvider).toBe("fireworks");
     expect(recorder.artifacts[0]?.run.fallbackUsed).toBe(false);
   });
 
-  it("ITOTORI-242: a casing/version-only diff (order[0]='fireworks' → served='Fireworks') does NOT falsely read as a provider fallback", async () => {
-    // Live OR echoes the human-readable provider name (TitleCase
-    // 'Fireworks') while order[0] is the lowercase slug ('fireworks').
+  it("ITOTORI-242: a casing/version-only served-slug shape ('fireworks' vs 'Fireworks') does NOT falsely read as a provider fallback", async () => {
+    // Live OR echoes the human-readable provider name (TitleCase 'Fireworks')
+    // while OR routing carries the lowercase slug ('fireworks').
     // That is the SAME provider — a slug↔display-name shape, not a
     // fallback — so provider-id normalization must keep fallbackUsed:false.
     const recorder = memoryRecorder();
@@ -695,7 +715,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     expect(recorder.artifacts[0]?.run.fallbackUsed).toBe(false);
   });
 
-  it("ITOTORI-243: ACCEPTS a public-input serve from a provider differing from order[0] and records the served pair + real cost", async () => {
+  it("ITOTORI-243: ACCEPTS a public-input serve from whatever provider OpenRouter picks (we name none) and records the served pair + real cost", async () => {
     // For `public` input there is no privacy contract (zdr is not enforced
     // on the wire), so any provider OpenRouter routes to is a valid serve.
     // ITOTORI-243 removed the provider-identity throw entirely — we record
@@ -783,7 +803,7 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
           JSON.stringify({
             id: "gen-artifact-redaction",
             model: DEV_PAIR.modelId,
-            provider: DEV_PAIR.providerId,
+            provider: "fireworks",
             choices: [
               {
                 finish_reason: "stop",
@@ -807,7 +827,8 @@ describe("OpenRouterModelProvider — request shape (ITOTORI-220 pair pin)", () 
     expect(recorder.artifacts).toHaveLength(1);
     const artifact = recorder.artifacts[0]!;
     expect(artifact.run.routingPosture).toMatchObject({
-      order: [DEV_PAIR.providerId],
+      // no-provider-name invariant — the recorded posture names no provider.
+      order: [],
       allow_fallbacks: true,
       data_collection: "deny",
     });
@@ -984,7 +1005,7 @@ describe("OpenRouterModelProvider — ITOTORI-225 real-cost contract", () => {
         JSON.stringify({
           id: "gen-missing-cost",
           model: DEV_PAIR.modelId,
-          provider: DEV_PAIR.providerId,
+          provider: "fireworks",
           choices: [
             {
               finish_reason: "stop",
@@ -1017,7 +1038,7 @@ describe("OpenRouterModelProvider — ITOTORI-225 real-cost contract", () => {
         JSON.stringify({
           id: "gen-no-usage",
           model: DEV_PAIR.modelId,
-          provider: DEV_PAIR.providerId,
+          provider: "fireworks",
           choices: [
             {
               finish_reason: "stop",
@@ -1046,7 +1067,7 @@ describe("OpenRouterModelProvider — ITOTORI-225 real-cost contract", () => {
         JSON.stringify({
           id: "gen-bad-cost",
           model: DEV_PAIR.modelId,
-          provider: DEV_PAIR.providerId,
+          provider: "fireworks",
           choices: [
             {
               finish_reason: "stop",
@@ -1097,7 +1118,7 @@ describe("OpenRouterModelProvider — ITOTORI-134 cost-estimate fallback branche
           JSON.stringify({
             id: "gen-cost-details-estimate",
             model: DEV_PAIR.modelId,
-            provider: DEV_PAIR.providerId,
+            provider: "fireworks",
             choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
             usage: {
               prompt_tokens: 10,
@@ -1146,7 +1167,7 @@ describe("OpenRouterModelProvider — ITOTORI-134 cost-estimate fallback branche
           JSON.stringify({
             id: "gen-cost-details-string",
             model: DEV_PAIR.modelId,
-            provider: DEV_PAIR.providerId,
+            provider: "fireworks",
             choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
             usage: {
               prompt_tokens: 10,
@@ -1189,7 +1210,7 @@ describe("OpenRouterModelProvider — ITOTORI-134 cost-estimate fallback branche
           JSON.stringify({
             id: "gen-endpoint-pricing-estimate",
             model: DEV_PAIR.modelId,
-            provider: DEV_PAIR.providerId,
+            provider: "fireworks",
             choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
             usage: {
               prompt_tokens: 11,
@@ -1201,7 +1222,7 @@ describe("OpenRouterModelProvider — ITOTORI-134 cost-estimate fallback branche
                 total: 1,
                 available: [
                   {
-                    provider: DEV_PAIR.providerId,
+                    provider: "fireworks",
                     model: DEV_PAIR.modelId,
                     selected: true,
                     pricing: {
@@ -1249,7 +1270,7 @@ describe("OpenRouterModelProvider — ITOTORI-134 cost-estimate fallback branche
           JSON.stringify({
             id: "gen-precedence",
             model: DEV_PAIR.modelId,
-            provider: DEV_PAIR.providerId,
+            provider: "fireworks",
             choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
             usage: {
               prompt_tokens: 10,
@@ -1264,7 +1285,7 @@ describe("OpenRouterModelProvider — ITOTORI-134 cost-estimate fallback branche
                 total: 1,
                 available: [
                   {
-                    provider: DEV_PAIR.providerId,
+                    provider: "fireworks",
                     model: DEV_PAIR.modelId,
                     selected: true,
                     pricing: { prompt: "0.00000014", completion: "0.00000028" }, // itotori-225-audit-allow: synthetic per-token prices
@@ -1300,7 +1321,7 @@ describe("OpenRouterModelProvider — ITOTORI-134 cost-estimate fallback branche
           JSON.stringify({
             id: "gen-no-pricing",
             model: DEV_PAIR.modelId,
-            provider: DEV_PAIR.providerId,
+            provider: "fireworks",
             choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
             usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
           }),
@@ -1331,7 +1352,7 @@ describe("OpenRouterModelProvider — ITOTORI-134 cost-estimate fallback branche
           JSON.stringify({
             id: "gen-numeric-pricing",
             model: DEV_PAIR.modelId,
-            provider: DEV_PAIR.providerId,
+            provider: "fireworks",
             choices: [{ finish_reason: "stop", message: { role: "assistant", content: "hi" } }],
             usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
             openrouter_metadata: {
@@ -1339,7 +1360,7 @@ describe("OpenRouterModelProvider — ITOTORI-134 cost-estimate fallback branche
                 total: 1,
                 available: [
                   {
-                    provider: DEV_PAIR.providerId,
+                    provider: "fireworks",
                     model: DEV_PAIR.modelId,
                     selected: true,
                     pricing: {
@@ -1562,16 +1583,16 @@ describe("OpenRouterModelProvider — ITOTORI-233 live cache evidence (env-gated
   });
 });
 
-describe("OpenRouterModelProvider — ITOTORI-237 descriptorForPair", () => {
+describe("OpenRouterModelProvider — descriptorForModel", () => {
   // The agentic-loop pre-flight check (e.g. SpeakerLabelAgent's
   // assertProviderSupportsStructuredOutput) reads
   // `provider.descriptor.capabilities` directly. The class-level
   // `descriptor` falls back to `openRouterDefaultCapabilities` (untested
   // for structured outputs), which would refuse DEV_PAIR even though
-  // its registered capability sheet declares jsonSchema='supported'.
-  // `descriptorForPair` synthesises a descriptor whose capabilities
-  // reflect the per-(modelId, providerId) sheet registered in the
-  // provider's CapabilityGuard at construction.
+  // its registered capability sheet declares the routable modes.
+  // `descriptorForModel` synthesises a descriptor whose capabilities
+  // reflect the per-MODEL sheet registered in the provider's
+  // CapabilityGuard at construction (no provider is named).
 
   it("plain-json-fallback-under-zdr: returns a descriptor whose capabilities reflect the registered DEV_PAIR sheet (jsonSchema AND jsonObject 'unsupported' under ZDR, plainJsonExtraction 'supported')", () => {
     const provider = new OpenRouterModelProvider({
@@ -1580,7 +1601,7 @@ describe("OpenRouterModelProvider — ITOTORI-237 descriptorForPair", () => {
       capabilityGuard: new CapabilityGuard(),
       artifactRecorder: memoryRecorder(),
     });
-    const descriptor = provider.descriptorForPair(DEV_PAIR);
+    const descriptor = provider.descriptorForModel(DEV_PAIR.modelId);
     // plain-json-fallback-under-zdr — BOTH json_schema and json_object are
     // unroutable under ZDR for this pair (HTTP 404 on either response_format);
     // the plain completion is the proven-routable mode.
@@ -1595,18 +1616,15 @@ describe("OpenRouterModelProvider — ITOTORI-237 descriptorForPair", () => {
     expect(descriptor.defaultModelId).toBe(provider.descriptor.defaultModelId);
   });
 
-  it("falls back to openRouterDefaultCapabilities for an unknown pair (jsonSchema stays 'untested')", () => {
+  it("falls back to openRouterDefaultCapabilities for an unknown model (jsonSchema stays 'untested')", () => {
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
       httpClient: vi.fn() as unknown as typeof fetch,
       capabilityGuard: new CapabilityGuard(),
       artifactRecorder: memoryRecorder(),
     });
-    const descriptor = provider.descriptorForPair({
-      modelId: "some/random-model",
-      providerId: "some-random-provider",
-    });
-    // Unknown pair falls back to the safe defaults — jsonSchema remains
+    const descriptor = provider.descriptorForModel("some/random-model");
+    // Unknown model falls back to the safe defaults — jsonSchema remains
     // 'untested' so the pre-flight check still refuses, preserving the
     // no-silent-fallback invariant.
     expect(descriptor.capabilities.structuredOutputs.jsonSchema).toBe("untested");
@@ -1618,7 +1636,7 @@ describe("OpenRouterModelProvider — ITOTORI-237 descriptorForPair", () => {
 
   it("leaves the class-level descriptor (request-agnostic) at the safe defaults", () => {
     // Sanity check on the load-bearing invariant: nothing about
-    // descriptorForPair should mutate the class-level descriptor —
+    // descriptorForModel should NOT mutate the class-level descriptor —
     // unknown callers still see 'untested'.
     const provider = new OpenRouterModelProvider({
       env: { OPENROUTER_API_KEY: "abc", OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1" },
@@ -1627,7 +1645,7 @@ describe("OpenRouterModelProvider — ITOTORI-237 descriptorForPair", () => {
       artifactRecorder: memoryRecorder(),
     });
     // Read the per-pair descriptor first — must not mutate class state.
-    provider.descriptorForPair(DEV_PAIR);
+    provider.descriptorForModel(DEV_PAIR.modelId);
     expect(provider.descriptor.capabilities.structuredOutputs.jsonSchema).toBe("untested");
   });
 });

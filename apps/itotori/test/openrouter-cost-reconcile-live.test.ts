@@ -19,6 +19,7 @@
 import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  REQUESTED_PROVIDER_UNKNOWN,
   OpenRouterProvider,
   assertOpenRouterZdrAccount,
   generationIdFromAdapterMetadata,
@@ -50,7 +51,7 @@ describe("itotori-235 cost reconciliation — real /generation re-fetch vs ledge
     assertOpenRouterZdrAccount(env);
 
     const apiKey = env.OPENROUTER_API_KEY as string;
-    const capabilities = getModelCapabilities(DEV_PAIR);
+    const capabilities = getModelCapabilities(DEV_PAIR.modelId);
     const provider = new OpenRouterProvider({
       modelId: DEV_PAIR.modelId,
       apiKey,
@@ -73,7 +74,7 @@ describe("itotori-235 cost reconciliation — real /generation re-fetch vs ledge
     const request: ModelInvocationRequest = {
       taskKind: "experiment",
       modelId: DEV_PAIR.modelId,
-      providerId: DEV_PAIR.providerId,
+      providerId: REQUESTED_PROVIDER_UNKNOWN,
       inputClassification: "synthetic_public",
       messages: [{ role: "user", content: "Reply with the single word: ok." }],
       generation: { maxOutputTokens: 16, temperature: 0 },

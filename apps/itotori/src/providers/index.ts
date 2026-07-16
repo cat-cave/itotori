@@ -5,17 +5,18 @@ export {
   CapabilityGuard,
   CapabilityGuardMissError,
   globalCapabilityGuard,
-  modelProviderPairKey,
-  type ModelProviderPairKey,
+  modelCapabilityKey,
+  type ModelCapabilityKey,
   type ProviderInvocationGuardInput,
   type ProviderRoutingCapabilityRequirement,
 } from "./capability-guard.js";
 export {
   DEV_PAIR,
+  DEV_ROUTING_POLICY,
   DevPairUnknownError,
   getCapabilities,
   getModelCapabilities,
-  knownPairs,
+  knownModels,
   type DevPairCapabilities,
   type ModelProviderPair,
 } from "./dev-pair.js";
@@ -123,7 +124,11 @@ export type {
   TokenUsage,
   ToolCallCapabilities,
 } from "./types.js";
-export { localOnlyRoutingPosture, ModelProviderError } from "./types.js";
+export {
+  localOnlyRoutingPosture,
+  ModelProviderError,
+  REQUESTED_PROVIDER_UNKNOWN,
+} from "./types.js";
 export {
   addDecimalUsd,
   assertBilledCost,

@@ -1,7 +1,7 @@
 {
   "description": "Frozen deletion ledger + LLM-layer boundary for the core rebuild.\nDo not hand-edit; update only when a spec-DAG node deletes or rehomes a path.\nEach delete/rehome entry records an expected state ('present' during freeze,\n'absent' after cutover) so the guard can assert the ledger matches reality.",
   "version": 1,
-  "contractualTotalLines": 49403,
+  "contractualTotalLines": 49427,
 
   "delete": {
     "appSurface": [
@@ -41,7 +41,7 @@
           "apps/itotori/src/orchestrator/repair/repair-job-service.ts",
           "apps/itotori/src/orchestrator/repair/types.ts"
         ],
-        "lines": 15806,
+        "lines": 15822,
         "expected": "present",
         "reason": "Per-unit agentic loop, supervisor, run scheduler, lease/reservation/finalizer, repair, context brain/correction."
       },
@@ -49,7 +49,7 @@
         "id": "openrouter-client",
         "kind": "files",
         "files": ["apps/itotori/src/providers/openrouter.ts"],
-        "lines": 2157,
+        "lines": 2170,
         "expected": "present",
         "reason": "Hand-built OpenRouter client; replaced by one TanStack dispatch primitive."
       },
@@ -66,7 +66,7 @@
           "apps/itotori/src/raw-mtl-baseline-proof/"
         ],
         "extensions": [".ts", ".tsx"],
-        "lines": 16215,
+        "lines": 16210,
         "expected": "present",
         "reason": "Old benchmark/experiment/provider-proof/raw-MTL/QA directories tied to the old loop."
       }

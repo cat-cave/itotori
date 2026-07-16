@@ -20,6 +20,7 @@
 // production agents run on. Invoke explicitly with:
 //   pnpm exec vitest run apps/itotori/test/semantic-agent-live.test.ts
 
+import { REQUESTED_PROVIDER_UNKNOWN } from "../src/providers/types.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -60,7 +61,7 @@ describe("itotori-semantic-agents-live-provider-wiring — live semantic-agent O
     const request: ModelInvocationRequest = {
       taskKind: "experiment",
       modelId: DEV_PAIR.modelId,
-      providerId: DEV_PAIR.providerId,
+      providerId: REQUESTED_PROVIDER_UNKNOWN,
       // The real semantic-agent classification: forces provider.zdr=true on
       // the wire so a non-ZDR serve fails closed (OpenRouter 404 ZDR envelope).
       inputClassification: "private_corpus",

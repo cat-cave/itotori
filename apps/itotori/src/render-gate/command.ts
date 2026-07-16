@@ -36,12 +36,13 @@ export const VISION_GATE_PROVIDER_ID_ENV = "ITOTORI_VISION_GATE_PROVIDER_ID";
 export const VISION_GATE_LIVE_MAX_PRICE_USD = 0.02;
 
 /**
- * VISION_PAIR — the (modelId, providerId) preference for the eyes-on-pixels
- * gate. Imported by name; the provider literal lives here so it is not
- * scattered across the render-node surface (same discipline as DEV_PAIR).
+ * VISION_PAIR — the MODEL for the eyes-on-pixels gate, plus a
+ * routing-neutral recorded `providerId` HINT (see the no-provider-name
+ * invariant note below). Imported by name; the literal lives here so it is
+ * not scattered across the render-node surface (same discipline as DEV_PAIR).
  *
- * Why `qwen/qwen3-vl-235b-a22b-instruct` with `parasail` as the PREFERRED
- * provider (evidence-grounded, live-verified 2026-07-03):
+ * Why `qwen/qwen3-vl-235b-a22b-instruct` (evidence-grounded, live-verified
+ * 2026-07-03):
  *
  *   - Vision + ZDR, PROVEN LIVE. A tiny image posted with
  *     `provider: { zdr:true, data_collection:"deny", allow_fallbacks:true }`
@@ -50,11 +51,13 @@ export const VISION_GATE_LIVE_MAX_PRICE_USD = 0.02;
  *     under the ZDR posture (no 404 ZDR envelope). The candidate Anthropic /
  *     Google vision slugs returned a provider-side 400 "Could not process
  *     image" on the probe image (a Vertex constraint), so qwen3-vl is the
- *     validated ZDR vision pair.
- *   - `providerId` is the PREFERRED provider (`order[0]`), NOT a hard pin:
- *     with `allow_fallbacks:true` OpenRouter may serve another ZDR-allow-list
- *     vision provider (DeepInfra also served qwen3-vl live); `zdr:true`
- *     confines the fallback pool. The served pair is recorded verbatim.
+ *     validated ZDR vision model.
+ *   - no-provider-name invariant — `providerId` is NEVER a routing input:
+ *     the OpenRouter wire names no provider (no `order` / `only`), so
+ *     OpenRouter picks the vision upstream on capability + ZDR + price
+ *     (DeepInfra and Parasail have both served qwen3-vl live under ZDR). The
+ *     `providerId` here is only a recorded hint of the expected server; the
+ *     provider that ACTUALLY served is recorded verbatim as the output.
  *   - Strong OCR / scene coherence — the two properties the gate depends on
  *     (is this a real composited scene; is the localized text legible).
  *

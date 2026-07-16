@@ -23,6 +23,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  REQUESTED_PROVIDER_UNKNOWN,
   OpenRouterProvider,
   assertOpenRouterZdrAccount,
   type JsonObject,
@@ -60,7 +61,7 @@ describe("plain-json-fallback-under-zdr — standalone paid-agent boundary", () 
     // via provider.descriptor.capabilities. json_schema + json_object are
     // 'unsupported' (ZDR 404), plainJsonExtraction 'supported', so the
     // production selector resolves to plain_json.
-    const capabilities = getModelCapabilities(DEV_PAIR);
+    const capabilities = getModelCapabilities(DEV_PAIR.modelId);
     expect(capabilities.structuredOutputs.jsonSchema).toBe("unsupported");
     expect(capabilities.structuredOutputs.jsonObject).toBe("unsupported");
     expect(capabilities.structuredOutputs.plainJsonExtraction).toBe("supported");
@@ -117,7 +118,7 @@ describe("plain-json-fallback-under-zdr — standalone paid-agent boundary", () 
       modelProfile: {
         providerFamily: "openrouter",
         modelId: DEV_PAIR.modelId,
-        providerId: DEV_PAIR.providerId,
+        providerId: REQUESTED_PROVIDER_UNKNOWN,
         contextWindowTokens: 128_000,
         maxOutputTokens: 1_024,
       },

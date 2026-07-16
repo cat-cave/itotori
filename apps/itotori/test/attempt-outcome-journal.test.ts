@@ -3,6 +3,7 @@ import { DEV_POLICY } from "../src/orchestrator/agentic-loop.js";
 import { capturePhysicalProviderAttempts } from "../src/orchestrator/attempt-outcome-journal.js";
 import { DEV_PAIR } from "../src/providers/dev-pair.js";
 import {
+  REQUESTED_PROVIDER_UNKNOWN,
   ModelProviderError,
   OpenRouterProvider,
   openRouterDefaultCapabilities,
@@ -113,7 +114,7 @@ function request(): ModelInvocationRequest {
   return {
     taskKind: "draft_translation",
     modelId: DEV_PAIR.modelId,
-    providerId: DEV_PAIR.providerId,
+    providerId: REQUESTED_PROVIDER_UNKNOWN,
     inputClassification: "private_corpus",
     messages: [{ role: "user", content: "Translate this line." }],
     prompt: {

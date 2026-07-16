@@ -1,24 +1,24 @@
-// ITOTORI-220 — required (modelId, providerId) pair across every agent
-// seam.
+// no-provider-name invariant — provider identity is a RECORDED OUTPUT, never
+// a routing input, across every agent seam.
 //
-// Per docs/proposals/alpha-gap-analysis-2026-06-24.md §3 and the standing
-// feedback-model-provider-pair rule: every model invocation must declare
-// BOTH a model id AND a specific provider id as a pair. This test file
-// is the load-bearing assertion suite for that contract:
+// Per Trevor's decisive routing ruling (2026-07-15): no provider is EVER named
+// in production routing (no `only`, not even a soft `order` preference).
+// OpenRouter picks the upstream on capability + ZDR + price; the (model,
+// provider) pair that actually served is recorded for honesty/cost/telemetry.
+// This file is the load-bearing assertion suite for that contract:
 //
-//   1. ModelInvocationRequest carries providerId as a required field.
-//   2. OpenRouter emits provider: { order: [providerId] } (preference)
-//      with allow_fallbacks:true at request time (ITOTORI-241).
-//   3. ITOTORI-243 — OpenRouter records the served (model, providerId)
-//      pair from the response (any ZDR-allow-list provider OpenRouter
-//      routes to is a valid serve); there is no provider-identity pin and
-//      no `pair_mismatch` throw.
-//   5. Recorded bundle key includes (modelId, providerId, promptHash,
-//      inputClassification).
-//   6. CapabilityGuard keys lookups by (modelId, providerId), not modelId.
-//   7. RecordedModelProvider surfaces the requestedProviderId on its
+//   1. ModelInvocationRequest.providerId is OPTIONAL and is NEVER routed.
+//   2. OpenRouter emits NO provider.order and NO provider.only — even when the
+//      request carries a providerId hint — only capability + ZDR + fallbacks.
+//   3. OpenRouter records the SERVED (model, provider) pair from the response;
+//      whichever ZDR-allow-list provider OpenRouter routes to is a valid serve
+//      (no provider-identity pin, no `pair_mismatch` throw).
+//   4. Recorded bundle key includes (modelId, providerId, promptHash,
+//      inputClassification) — a test-double LOOKUP key, not routing.
+//   5. CapabilityGuard keys lookups by MODEL, not by a (model, provider) pair.
+//   6. RecordedModelProvider surfaces the requestedProviderId on its
 //      ProviderRunIdentity.
-//   8. Fake provider preserves the requestedProviderId end-to-end.
+//   7. Fake provider preserves the requestedProviderId end-to-end.
 
 import { describe, expect, it } from "vitest";
 import { FakeModelProvider } from "../src/providers/fake.js";
@@ -33,15 +33,15 @@ import { OpenRouterProvider, openRouterDefaultCapabilities } from "../src/provid
 import {
   CapabilityGuard,
   CapabilityGuardMissError,
-  modelProviderPairKey,
+  modelCapabilityKey,
 } from "../src/providers/capability-guard.js";
+import { REQUESTED_PROVIDER_UNKNOWN } from "../src/providers/types.js";
 import type { ModelInvocationRequest, ProviderRunArtifact } from "../src/providers/types.js";
 
 function baseRequest(overrides: Partial<ModelInvocationRequest> = {}): ModelInvocationRequest {
   return {
     taskKind: "experiment",
     modelId: "openai/gpt-4o-mini",
-    providerId: "OpenAI",
     inputClassification: "synthetic_public",
     prompt: {
       presetId: "itotori-pair-test",
@@ -60,18 +60,22 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
-  it("ModelInvocationRequest carries providerId as a required field", () => {
+describe("no-provider-name — provider identity is a recorded output, never a routing input", () => {
+  it("ModelInvocationRequest.providerId is OPTIONAL (a recorded hint), not required", () => {
+    // Constructs cleanly with NO providerId — the request names no provider.
     const request = baseRequest();
-    // TypeScript would refuse to construct this without providerId; runtime
-    // assertion mirrors the type-level invariant.
-    expect(request.providerId).toBe("OpenAI");
+    expect(request.providerId).toBeUndefined();
     expect(request.modelId).toBe("openai/gpt-4o-mini");
+    // A providerId MAY be supplied as a recorded hint, but it is never routed.
+    const hinted = baseRequest({ providerId: "OpenAI" });
+    expect(hinted.providerId).toBe("OpenAI");
   });
 
-  it("ITOTORI-241: OpenRouter request body emits provider.order=[providerId] (preference) with allow_fallbacks=true and no `only` pin", async () => {
+  it("OpenRouter request body names NO provider (no order, no only) even when a providerId hint is present", async () => {
     let observedBody:
-      | { provider: { order?: string[]; only?: string[]; allow_fallbacks?: boolean } }
+      | {
+          provider: { order?: string[]; only?: string[]; allow_fallbacks?: boolean; zdr?: boolean };
+        }
       | undefined;
     const recorder = {
       recordProviderRun: async () => undefined,
@@ -102,13 +106,17 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
       capabilities: openRouterDefaultCapabilities,
       live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
     });
-    await provider.invoke(baseRequest({ inputClassification: "synthetic_public" }));
-    expect(observedBody?.provider.order).toEqual(["OpenAI"]);
-    expect(observedBody?.provider.allow_fallbacks).toBe(true);
+    // Even with a providerId HINT on the request, the wire names no provider.
+    await provider.invoke(
+      baseRequest({ providerId: "OpenAI", inputClassification: "private_corpus" }),
+    );
+    expect(observedBody?.provider.order).toBeUndefined();
     expect(observedBody?.provider.only).toBeUndefined();
+    expect(observedBody?.provider.allow_fallbacks).toBe(true);
+    expect(observedBody?.provider.zdr).toBe(true);
   });
 
-  it("ITOTORI-243: OpenRouter records the served (model, providerId) pair when the upstream provider differs from order[0]", async () => {
+  it("OpenRouter records the SERVED (model, provider) pair; the request named none, so requestedProviderId is explicit-unknown", async () => {
     const artifacts: ProviderRunArtifact[] = [];
     const recorder = {
       recordProviderRun: async (artifact: ProviderRunArtifact) => {
@@ -119,6 +127,7 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
       jsonResponse({
         id: "gen-served-pair",
         model: "openai/gpt-4o-mini",
+        provider: "Together",
         choices: [
           {
             finish_reason: "stop",
@@ -139,12 +148,12 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
       capabilities: openRouterDefaultCapabilities,
       live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
     });
-    // order[0] is 'OpenAI', OpenRouter served 'Together' (a ZDR-allow-list
-    // member by construction). ITOTORI-243: accept and record the served
-    // pair + real billed cost, never throw.
-    const result = await provider.invoke(baseRequest({ providerId: "OpenAI" }));
+    // We named no provider; OpenRouter served 'Together' (a ZDR-allow-list
+    // member by construction). Accept and record the served pair + real billed
+    // cost, never throw.
+    const result = await provider.invoke(baseRequest());
     expect(result.providerRun.status).toBe("succeeded");
-    expect(result.providerRun.provider.requestedProviderId).toBe("OpenAI");
+    expect(result.providerRun.provider.requestedProviderId).toBe(REQUESTED_PROVIDER_UNKNOWN);
     expect(result.providerRun.provider.upstreamProvider).toBe("Together");
     expect(result.providerRun.cost.costKind).toBe("billed");
     expect(result.providerRun.cost.amountMicrosUsd).toBe(3);
@@ -170,7 +179,7 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
       promptHash: "sha256:abc",
       inputClassification: "private_corpus",
     });
-    // Different providerId yields a different key.
+    // Different bundle providerId (a lookup key, not routing) yields a different key.
     expect(key1).not.toEqual(key2);
     // Same inputs yield a stable key.
     expect(key1).toEqual(key3);
@@ -178,26 +187,27 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
     expect(key1).toMatch(/^sha256:[0-9a-f]{64}$/u);
   });
 
-  it("CapabilityGuard keys lookups by (modelId, providerId) pair, not modelId alone", () => {
+  it("CapabilityGuard keys lookups by MODEL (no provider named)", () => {
     const guard = new CapabilityGuard();
     const caps = openRouterDefaultCapabilities;
-    guard.register("openai/gpt-4o-mini", "OpenAI", caps);
-    // Same model on a different provider is a separate registration.
-    expect(guard.has("openai/gpt-4o-mini", "OpenAI")).toBe(true);
-    expect(guard.has("openai/gpt-4o-mini", "Together")).toBe(false);
-    // Miss on the wrong provider throws.
-    expect(() => guard.lookup("openai/gpt-4o-mini", "Together")).toThrow(CapabilityGuardMissError);
+    guard.register("openai/gpt-4o-mini", caps);
+    expect(guard.has("openai/gpt-4o-mini")).toBe(true);
+    // A different MODEL is a separate registration.
+    expect(guard.has("anthropic/claude-sonnet-4")).toBe(false);
+    // Miss on an unregistered model throws.
+    expect(() => guard.lookup("anthropic/claude-sonnet-4")).toThrow(CapabilityGuardMissError);
     // Lookup-hit returns the registered capabilities object identity.
-    expect(guard.lookup("openai/gpt-4o-mini", "OpenAI")).toBe(caps);
-    // Pair key includes both components.
-    const pairKey = modelProviderPairKey("openai/gpt-4o-mini", "OpenAI");
-    expect(pairKey).toBe("openai/gpt-4o-mini::OpenAI");
+    expect(guard.lookup("openai/gpt-4o-mini")).toBe(caps);
+    // The capability key is the model id alone — no `::provider` component.
+    expect(modelCapabilityKey("openai/gpt-4o-mini")).toBe("openai/gpt-4o-mini");
   });
 
   it("RecordedModelProvider surfaces requestedProviderId on the ProviderRunIdentity", async () => {
     const bundleKey = recordedBundleKey({
       modelId: "openai/gpt-4o-mini",
-      providerId: "OpenAI",
+      // The replay caller names no provider, so the bundle is keyed under the
+      // explicit-unknown requested identity.
+      providerId: REQUESTED_PROVIDER_UNKNOWN,
       promptHash: "sha256:cafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabe",
       inputClassification: "synthetic_public",
     });
@@ -207,53 +217,47 @@ describe("ITOTORI-220 — (modelId, providerId) pair contract", () => {
       capturedProviderFamily: "openrouter",
       capturedProviderName: "openrouter:pair-test",
       capturedRequestedModelId: "openai/gpt-4o-mini",
+      // The SERVED provider (recorded output) captured for this replay.
       capturedProviderId: "OpenAI",
       capturedActualModelId: "openai/gpt-4o-mini",
       responses: {
-        // ITOTORI-228 — pair-contract test; the assertion is on
-        // providerId routing, not cost. ZERO_COST is the structurally
-        // honest stand-in (no real LIVE call ever produced these bytes).
         [bundleKey]: {
           content: "ok",
           finishReason: "stop",
           cost: ZERO_COST,
-          // genaudit2-01 — pair-contract test; well-formed real counts so
-          // construction passes and the assertion is on providerId routing.
           tokenUsage: {
             tokenCountSource: "provider_reported",
             promptTokens: 3,
             completionTokens: 1,
             totalTokens: 4,
           },
-          // ITOTORI-230 — pair-contract test; canonical alpha posture
-          // stand-in (no real LIVE call ever produced these bytes).
+          // no-provider-name invariant — the captured posture names no provider.
           routingPosture: {
-            order: ["OpenAI"],
+            order: [],
             allow_fallbacks: true,
             data_collection: "deny",
             zdr: true,
             require_parameters: true,
           },
-          // ITOTORI-232 — synthetic pair-contract bundle, no real LIVE
-          // call. ZERO_COST + sentinel-shaped usage (no `cost` key) so
-          // the bundle-construction check accepts the zero-cost
-          // capture and the ledger CHECK exempts the row on persist.
           usageResponseJson: { _synthetic_pair_contract_test: true },
         },
       },
     };
     const provider = new RecordedModelProvider({ bundle });
     const result = await provider.invoke(baseRequest());
-    expect(result.providerRun.provider.requestedProviderId).toBe("OpenAI");
+    // The request named no provider → explicit-unknown requested identity.
+    expect(result.providerRun.provider.requestedProviderId).toBe(REQUESTED_PROVIDER_UNKNOWN);
+    // The served upstream is the recorded output captured in the bundle.
     expect(result.providerRun.provider.upstreamProvider).toBe("OpenAI");
   });
 
-  it("FakeModelProvider preserves the requestedProviderId end-to-end on its ProviderRunIdentity", async () => {
+  it("FakeModelProvider preserves an explicitly-supplied requestedProviderId end-to-end", async () => {
     const provider = new FakeModelProvider({
       modelId: "itotori-fake-pair-v0",
       providerName: "itotori-fixture",
       generate: () => "pair-test",
     });
+    // A fake/local test double MAY carry a stable local id as a recorded hint.
     const result = await provider.invoke(
       baseRequest({
         modelId: "itotori-fake-pair-v0",

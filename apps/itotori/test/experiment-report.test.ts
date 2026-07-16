@@ -14,6 +14,7 @@
 //   4. A MISSING or STALE provider report artifact FAILS with a structured
 //      finding that NAMES the artifact; the strict assertion escalates it.
 
+import { REQUESTED_PROVIDER_UNKNOWN } from "../src/providers/types.js";
 import { readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
@@ -175,7 +176,7 @@ describe("ITOTORI-039 — experiment benchmark report composition (recorded fixt
     expect(cost.experimentTotalMicrosUsd).toBe(BILLED_COST.amountMicrosUsd);
     expect(cost.artifactMicrosUsd).toBe(BILLED_COST.amountMicrosUsd);
     expect(result.attachment!.servedPairs).toEqual([
-      { servedModelId: DEV_PAIR.modelId, servedProviderId: DEV_PAIR.providerId },
+      { servedModelId: DEV_PAIR.modelId, servedProviderId: REQUESTED_PROVIDER_UNKNOWN },
     ]);
   });
 });
@@ -307,14 +308,14 @@ const BILLED_COST: ProviderCost = {
 
 function devPairGuard(): CapabilityGuard {
   const guard = new CapabilityGuard();
-  guard.register(DEV_PAIR.modelId, DEV_PAIR.providerId, getModelCapabilities(DEV_PAIR));
+  guard.register(DEV_PAIR.modelId, getModelCapabilities(DEV_PAIR.modelId));
   return guard;
 }
 
 function recordedConfig(): ExperimentMatrixConfig {
   const cell: ExperimentMatrixCell = {
     cellId: "cell-dev-pair-en",
-    pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+    pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     promptPreset: {
       presetId: "experiment-preset",
       templateVersion: "1.0.0",

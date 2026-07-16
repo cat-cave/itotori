@@ -12,6 +12,7 @@
 // `RepairRerunUnitResolver` port (an in-memory implementation here). No
 // engine / title / game-specific code anywhere.
 
+import { REQUESTED_PROVIDER_UNKNOWN } from "../src/providers/types.js";
 import { describe, expect, it } from "vitest";
 import {
   SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION,
@@ -302,7 +303,7 @@ function makeDeps(
     pairPolicy: DEV_POLICY,
     policy: makePolicy(),
     providerFactory: repairProviderFactory(),
-    pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+    pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     sinks: { writtenOutcome: sinks.writtenOutcome, providerRun: sinks.providerRun },
     ...overrides,
   };
@@ -337,7 +338,7 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
         targetStage: "translation",
         rationale: "QA finding: prior body mistranslated the greeting",
       },
-      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+      pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     });
 
     const result = await runRepairQueue(service, makeDeps(resolver, sinks));
@@ -368,7 +369,7 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
     expect(result.totalCostUsd).toBeGreaterThan(0);
     expect(persistedRun.pair).toEqual({
       modelId: DEV_PAIR.modelId,
-      providerId: DEV_PAIR.providerId,
+      providerId: REQUESTED_PROVIDER_UNKNOWN,
     });
     expect(persistedRun.zdr).toBe(true);
 
@@ -405,7 +406,7 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
         targetStage: "translation",
         rationale: "post-hoc QA finding: stale context term",
       },
-      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+      pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     });
 
     const result = await runRepairQueue(service, makeDeps(resolver, sinks));
@@ -435,7 +436,7 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
         targetStage: "translation",
         rationale: "rerun of a unit that cannot be auto-resolved",
       },
-      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+      pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     });
 
     const result = await runRepairQueue(
@@ -473,7 +474,7 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
         targetStage: "translation",
         rationale: "QA finding whose affected unit is no longer in scope",
       },
-      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+      pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     });
 
     const result = await runRepairQueue(service, makeDeps(emptyResolver, sinks));
@@ -503,7 +504,7 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
         targetStage: "translation",
         rationale: "p1 finding on unit A",
       },
-      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+      pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     });
     const p0 = service.enqueue({
       trigger: {
@@ -514,7 +515,7 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
         targetStage: "translation",
         rationale: "p0 finding on unit B",
       },
-      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+      pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     });
 
     // p0 outranks p1, so it is claimed first.
@@ -550,7 +551,7 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
           targetStage: "translation",
           rationale: "QA rerun determinism check",
         },
-        pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+        pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
       });
       const result = await runRepairQueue(service, makeDeps(resolver, sinks));
       return {
@@ -606,7 +607,7 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
         targetStage: "translation",
         rationale: "QA finding on a unit whose provider pack is malformed",
       },
-      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+      pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     });
 
     // Drive the claimed job directly so the full execution result (incl. the
@@ -681,7 +682,7 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
         targetStage: "translation",
         rationale: "QA finding on the poison unit",
       },
-      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+      pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     });
 
     service.enqueue({
@@ -693,7 +694,7 @@ describe("executeRepairJob / runRepairQueue (itotori-execute-rerun-jobs)", () =>
         targetStage: "translation",
         rationale: "QA finding on the healthy unit",
       },
-      pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+      pair: { modelId: DEV_PAIR.modelId, providerId: REQUESTED_PROVIDER_UNKNOWN },
     });
 
     const result = await runRepairQueue(

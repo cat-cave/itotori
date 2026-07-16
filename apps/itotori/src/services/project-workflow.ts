@@ -56,6 +56,7 @@ import {
   type ProviderRunRecord,
   createProviderRunId,
   localOnlyRoutingPosture,
+  REQUESTED_PROVIDER_UNKNOWN,
 } from "../providers/types.js";
 import {
   composeProjectOverviewReadModel,
@@ -1124,7 +1125,7 @@ function failedProviderRunFromRequest(input: {
       endpointFamily: input.descriptor.endpointFamily,
       providerName: input.descriptor.providerName,
       requestedModelId,
-      requestedProviderId: input.request.providerId,
+      requestedProviderId: input.request.providerId ?? REQUESTED_PROVIDER_UNKNOWN,
       actualModelId: requestedModelId,
     },
     structuredOutputMode: input.request.structuredOutput?.mode ?? "none",
@@ -1146,7 +1147,7 @@ function failedProviderRunFromRequest(input: {
     // failure), so we record the local-only posture as a structurally
     // honest stand-in. A future capture path could carry the
     // already-built routing block for HTTP-level failures.
-    routingPosture: localOnlyRoutingPosture(input.request.providerId),
+    routingPosture: localOnlyRoutingPosture(input.request.providerId ?? REQUESTED_PROVIDER_UNKNOWN),
     // ITOTORI-232 — pre-fetch failures never produced a `usage` block;
     // record the typed sentinel so the ledger row is object-shaped and
     // the partial-NULL CHECK exempts it (no `cost` key).

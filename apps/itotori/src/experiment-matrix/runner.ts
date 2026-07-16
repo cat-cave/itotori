@@ -277,7 +277,7 @@ export async function runExperimentMatrix(
       // unreachable until both guards pass.
       let capabilities;
       try {
-        capabilities = input.guard.lookup(cell.pair.modelId, cell.pair.providerId);
+        capabilities = input.guard.lookup(cell.pair.modelId);
       } catch (error) {
         findings.push(finding("capability_guard_miss", cell, fixtureCorpusId, runId, error));
         log(`experiment-matrix: cell '${cell.cellId}' capability guard MISS for pair`);

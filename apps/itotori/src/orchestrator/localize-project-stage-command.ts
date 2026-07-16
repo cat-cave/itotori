@@ -13,18 +13,20 @@
 // decode of those real translated bytes — there is no injected
 // sentinel substring anywhere in this pipeline.
 //
-// OpenRouter-served routing observation (post-ITOTORI-241):
+// OpenRouter-served routing observation (no-provider-name invariant):
 //
-//   This driver runs the SINGLE pair-policy primary pair for every
+//   This driver runs the SINGLE pair-policy primary MODEL for every
 //   stage. It does NOT carry an app-level 429-failover / alternate-
-//   chaining loop. On the wire the OpenRouter provider sends
-//   `provider.order = [providerId]` + `provider.allow_fallbacks = true`
-//   + `provider.zdr = true` + `provider.data_collection = deny`, so
-//   OpenRouter may select an account ZDR-allow-list upstream when the
-//   preferred provider returns HTTP 429. The app records that provider-side
-//   routing outcome as the served (model, providerId) pair in each
-//   invocation's provider-run record (`provider.upstreamProvider` /
-//   `provider.actualModelId`), without an app-level retry or failover.
+//   chaining loop. On the wire the OpenRouter provider names NO provider
+//   (no `provider.order` / `provider.only`) — only
+//   `provider.allow_fallbacks = true` + `provider.zdr = true` +
+//   `provider.data_collection = deny` (+ `require_parameters` when a
+//   structured mode applies), so OpenRouter selects an account
+//   ZDR-allow-list upstream purely on capability + ZDR + price. The app
+//   records whichever provider actually served as the (model, provider)
+//   pair in each invocation's provider-run record
+//   (`provider.upstreamProvider` / `provider.actualModelId`) — a recorded
+//   OUTPUT, never a routing input — without an app-level retry or failover.
 //
 //   The superseded ITOTORI-238/239/240 approach (an EXPLICIT
 //   `alternateProviders[]` chain advanced by a `failoverPredicate` on a
@@ -526,14 +528,15 @@ export async function runLocalizeProjectStageCommand(
     contextArtifactRepository,
   };
 
-  // Single primary-pair run. On the wire, the provider sends
-  // `provider.order = [providerId]` + `allow_fallbacks = true` +
-  // `zdr = true`; OpenRouter may report a served ZDR-allow-list upstream
-  // different from the requested primary. This provider-side routing outcome
-  // is persisted per invocation. There is NO app-level alternate-chaining
-  // loop or retry: if EVERY ZDR-allow-list provider is at quota, OR returns
-  // the terminal error and `runAgenticLoopForUnit` surfaces it verbatim as a
-  // `ModelProviderError`.
+  // Single primary-MODEL run. no-provider-name invariant — on the wire the
+  // provider names NO provider (no `provider.order` / `only`), only
+  // `allow_fallbacks = true` + `zdr = true` (+ `require_parameters` for
+  // structured modes); OpenRouter selects a served ZDR-allow-list upstream on
+  // capability + ZDR + price and reports it as a recorded output. This
+  // provider-side routing outcome is persisted per invocation. There is NO
+  // app-level alternate-chaining loop or retry: if EVERY ZDR-allow-list
+  // provider is at quota, OR returns the terminal error and
+  // `runAgenticLoopForUnit` surfaces it verbatim as a `ModelProviderError`.
   const factory: AgenticLoopProviderFactory =
     args.liveFactoryOverride !== undefined
       ? withStagePostureInjectionFactory(args.liveFactoryOverride(pair, { artifactRecorder }))
@@ -620,12 +623,12 @@ export async function runLocalizeProjectStageCommand(
   // NOT emit a per-run report; the driver shoulders that artifact so
   // the UTSUSHI-228 artifact contract is satisfied.
   //
-  // The `pair` field carries the SINGLE primary pair the request
-  // preferred (`provider.order[0]`). The actual served upstream
-  // provider — which OpenRouter may have fallen back to within the ZDR
-  // allow-list on a 429 — is recorded per-invocation in the provider-run
-  // records (`provider.upstreamProvider` / `provider.actualModelId`), not
-  // re-summarised here.
+  // The `pair` field carries the SINGLE primary policy pair (its MODEL is
+  // what the request declares; no provider is named in routing per the
+  // no-provider-name invariant). The actual served upstream provider — which
+  // OpenRouter selected on capability + ZDR + price — is recorded
+  // per-invocation in the provider-run records (`provider.upstreamProvider` /
+  // `provider.actualModelId`), not re-summarised here.
   const patchReport = {
     schemaVersion: "itotori.localize-project.patch-report.v0",
     policyId,
@@ -717,13 +720,12 @@ class StagePostureProviderWrapper extends SupervisedModelProviderAdapter {
     },
   ) {
     super(() => opts.inner);
-    // ITOTORI-237 — surface the per-pair capability sheet to agents
-    // reading `provider.descriptor.capabilities` directly (e.g. the
-    // speaker-label pre-flight check). The wrapper knows the
-    // (modelId, providerId) at construction, so the descriptor is
-    // pair-specific from the moment the agent receives it. Unknown
-    // pairs fall back to the safe defaults inside `descriptorForPair`.
-    this.descriptor = descriptorForStagePair(opts.inner, opts.pair.pair);
+    // Surface the per-MODEL capability sheet to agents reading
+    // `provider.descriptor.capabilities` directly (e.g. the speaker-label
+    // pre-flight check). No provider is named — capabilities are the model's
+    // ZDR-routable floor. Unknown models fall back to the safe defaults inside
+    // `descriptorForModel`.
+    this.descriptor = descriptorForStageModel(opts.inner, opts.pair.pair.modelId);
   }
 
   protected override decorateInvocationRequest(
@@ -736,18 +738,15 @@ class StagePostureProviderWrapper extends SupervisedModelProviderAdapter {
   }
 }
 
-function descriptorForStagePair(
+function descriptorForStageModel(
   provider: ModelProvider,
-  pair: { modelId: string; providerId: string },
+  modelId: string,
 ): ModelProvider["descriptor"] {
   const candidate = provider as ModelProvider & {
-    descriptorForPair?: (pair: {
-      modelId: string;
-      providerId: string;
-    }) => ModelProvider["descriptor"];
+    descriptorForModel?: (modelId: string) => ModelProvider["descriptor"];
   };
-  if (typeof candidate.descriptorForPair === "function") {
-    return candidate.descriptorForPair(pair);
+  if (typeof candidate.descriptorForModel === "function") {
+    return candidate.descriptorForModel(modelId);
   }
   return provider.descriptor;
 }
