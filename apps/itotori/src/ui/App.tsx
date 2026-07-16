@@ -58,6 +58,10 @@ import {
   parseWikiRoute,
   wikiRouteFromAddressable,
 } from "./screens/WikiEntryScreen.js";
+import {
+  WikiBibleDashboardScreen,
+  parseWikiBibleRoute,
+} from "./screens/WikiBibleDashboardScreen.js";
 import { matchLegacyRoute, type LegacyRouteRenderer } from "./legacy-routes.js";
 import { RedactionGovernor } from "./redaction-governor.js";
 import { ShellFrame, defaultNavigate } from "./shell-frame.js";
@@ -232,6 +236,14 @@ function RoutedScreen({
   const translationScopeRoute = parseTranslationScopeSettingsRoute(location.pathname);
   if (translationScopeRoute !== null) {
     return <TranslationScopeSettingsScreen />;
+  }
+
+  // `/bible` — the Wiki bible dashboard: the source + localized-bible product
+  // surface read from the wiki object API, with route toggles, redacted media,
+  // history, readiness, and citation deep-links into the Utsushi player.
+  const wikiBibleRoute = parseWikiBibleRoute(location.pathname, location.search);
+  if (wikiBibleRoute !== null) {
+    return <WikiBibleDashboardScreen route={wikiBibleRoute} />;
   }
 
   // `/wiki` — the Wiki entry surface (character + term profiles with CrossRef

@@ -15,6 +15,7 @@ export {
   type ParsedWikiRecord,
   type WikiBadges,
   type WikiCitationView,
+  type WikiClaimView,
   type WikiHistoryEntry,
   type WikiObjectView,
   type WikiRenderingView,
