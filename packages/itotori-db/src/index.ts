@@ -1414,6 +1414,8 @@ export type {
   LlmWikiHead,
   LlmWikiHeadSelector,
   LlmWikiKind,
+  LlmWikiListQuery,
+  LlmWikiObjectRecord,
   LlmWikiScope,
   LlmWikiSubject,
   PutLlmLocalizedRenderingInput,

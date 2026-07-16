@@ -9,6 +9,12 @@ import {
   type LlmWikiDependency,
 } from "./llm-wiki-dependency-edges.js";
 import {
+  listCurrentWikiObjects,
+  readWikiObjectHistory,
+  type LlmWikiListQuery,
+  type LlmWikiObjectRecord,
+} from "./llm-wiki-object-reads.js";
+import {
   assertAuthorRole,
   assertCommon,
   assertContextScope,
@@ -37,6 +43,8 @@ export type {
   LlmDependentEdge,
   LlmWikiDependency,
 } from "./llm-wiki-dependency-edges.js";
+
+export type { LlmWikiListQuery, LlmWikiObjectRecord } from "./llm-wiki-object-reads.js";
 
 export interface LlmWikiHead {
   wikiVersionId: string;
@@ -371,6 +379,17 @@ export class ItotoriLlmWikiRepository {
    * fine-grained edges replace). See {@link queryDependents}. */
   async queryDependents(query: LlmDependencyQuery): Promise<LlmDependentEdge[]> {
     return queryDependents(this.pool, query);
+  }
+
+  /** List the current head object of every active object under a snapshot. The
+   * body of each is decrypted through the same cipher the head projection uses. */
+  async listObjects(query: LlmWikiListQuery): Promise<LlmWikiObjectRecord[]> {
+    return listCurrentWikiObjects(this.pool, this.cipher, query);
+  }
+
+  /** Read the full immutable version chain of one object, oldest version first. */
+  async readObjectHistory(selector: LlmWikiHeadSelector): Promise<LlmWikiObjectRecord[]> {
+    return readWikiObjectHistory(this.pool, this.cipher, selector);
   }
 }
 
