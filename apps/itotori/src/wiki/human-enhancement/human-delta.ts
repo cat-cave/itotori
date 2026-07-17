@@ -63,7 +63,7 @@ export function coalesceHumanDelta(inputs: readonly HumanInput[]): CoalescedHuma
     feedbacks.push(input);
     if (input.targetFieldPath) {
       feedbackTargets.set(pathKey(input.targetFieldPath), input.targetFieldPath);
-    } else if (input.targetClaimId === undefined) {
+    } else if (input.targetClaimId == null) {
       hasGeneralFeedback = true;
     }
   }

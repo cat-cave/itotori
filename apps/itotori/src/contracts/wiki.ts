@@ -57,7 +57,7 @@ export const CitationSchema = z
     snapshotId: Sha256Schema,
     subject: EntityRefSchema,
     role: z.enum(["establishes", "supports", "contradicts", "first-mention", "reveal"]),
-    quotedSpan: ShortTextSchema.optional(),
+    quotedSpan: ShortTextSchema.nullish(),
     playOrderIndex: NonNegativeIntegerSchema,
   })
   .strict();
@@ -87,7 +87,7 @@ export const ClaimSchema = z
     kind: ClaimKindSchema,
     confidence: z.enum(["low", "medium", "high"]),
     citations: z.array(CitationSchema).min(1).max(1_024),
-    supersedesClaimId: IdentifierSchema.optional(),
+    supersedesClaimId: IdentifierSchema.nullish(),
   })
   .strict();
 
@@ -143,7 +143,7 @@ export const MediaRefSchema = z.discriminatedUnion("kind", [
       kind: z.literal("screenshot"),
       mediaId: IdentifierSchema,
       sceneId: IdentifierSchema,
-      unitId: IdentifierSchema.optional(),
+      unitId: IdentifierSchema.nullish(),
       availability: MediaAvailabilitySchema,
     })
     .strict(),
@@ -189,7 +189,7 @@ export const HumanInputSchema = z.discriminatedUnion("kind", [
       kind: z.literal("edit"),
       inputId: IdentifierSchema,
       operations: z.array(HumanEditOperationSchema).min(1).max(256),
-      note: ShortTextSchema.optional(),
+      note: ShortTextSchema.nullish(),
     })
     .strict(),
   z
@@ -197,18 +197,18 @@ export const HumanInputSchema = z.discriminatedUnion("kind", [
       kind: z.literal("feedback"),
       inputId: IdentifierSchema,
       text: NonEmptyTextSchema,
-      targetClaimId: IdentifierSchema.optional(),
-      targetFieldPath: z.array(IdentifierSchema).min(1).max(32).optional(),
+      targetClaimId: IdentifierSchema.nullish(),
+      targetFieldPath: z.array(IdentifierSchema).min(1).max(32).nullish(),
     })
     .strict(),
 ]);
 
 const WikiProvenanceBaseShape = {
-  authorMemoKey: Sha256Schema.optional(),
-  authorRoleId: RoleIdSchema.optional(),
-  editedBy: z.enum(["human", "enhancement", "agent"]).optional(),
-  basisVersion: PositiveIntegerSchema.optional(),
-  humanInput: HumanInputSchema.optional(),
+  authorMemoKey: Sha256Schema.nullish(),
+  authorRoleId: RoleIdSchema.nullish(),
+  editedBy: z.enum(["human", "enhancement", "agent"]).nullish(),
+  basisVersion: PositiveIntegerSchema.nullish(),
+  humanInput: HumanInputSchema.nullish(),
   contextSnapshotId: Sha256Schema,
   contextScope: ContextScopeValueSchema,
   runMode: RunModeValueSchema,
@@ -258,7 +258,7 @@ const WikiObjectBaseShape = {
   schemaVersion: z.literal(WIKI_OBJECT_SCHEMA_VERSION),
   objectId: IdentifierSchema,
   version: PositiveIntegerSchema,
-  supersedesVersion: PositiveIntegerSchema.optional(),
+  supersedesVersion: PositiveIntegerSchema.nullish(),
   lang: LanguageTagSchema,
   subject: EntityRefSchema,
   scope: RouteScopeSchema,
@@ -318,9 +318,9 @@ const ClaimRenderingSchema = z
 const LocalizedRenderingProvenanceSchema = z
   .object({
     basisSourceVersion: PositiveIntegerSchema,
-    authorMemoKey: Sha256Schema.optional(),
-    editedBy: z.enum(["human", "enhancement", "agent"]).optional(),
-    humanInput: HumanInputSchema.optional(),
+    authorMemoKey: Sha256Schema.nullish(),
+    editedBy: z.enum(["human", "enhancement", "agent"]).nullish(),
+    humanInput: HumanInputSchema.nullish(),
     localizationSnapshotId: Sha256Schema,
     runMode: RunModeValueSchema,
   })
@@ -334,7 +334,7 @@ export const LocalizedRenderingSchema = z
     sourceObjectKind: SourceWikiObjectKindSchema,
     targetLanguage: LanguageTagSchema,
     version: PositiveIntegerSchema,
-    supersedesVersion: PositiveIntegerSchema.optional(),
+    supersedesVersion: PositiveIntegerSchema.nullish(),
     scope: RouteScopeSchema,
     body: LocalizedBodySchema,
     claimRenderings: z.array(ClaimRenderingSchema).max(10_000),

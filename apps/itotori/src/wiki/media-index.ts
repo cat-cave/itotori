@@ -44,7 +44,7 @@ export function mediaSubject(ref: MediaRef): MediaSubject {
     case "portrait":
       return { kind: "character", id: ref.characterId };
     case "screenshot":
-      return ref.unitId === undefined
+      return ref.unitId == null
         ? { kind: "scene", id: ref.sceneId }
         : { kind: "scene", id: ref.sceneId, unitId: ref.unitId };
     case "cg":
@@ -134,7 +134,7 @@ export function buildMediaRef(binding: MediaRefBinding, facts: MediaArtifactFact
             kind: "screenshot" as const,
             mediaId: binding.mediaId,
             sceneId: binding.sceneId,
-            ...(binding.unitId === undefined ? {} : { unitId: binding.unitId }),
+            ...(binding.unitId == null ? {} : { unitId: binding.unitId }),
             availability,
           }
         : {
@@ -169,7 +169,7 @@ export function toUnavailableMediaRef(ref: MediaRef, code: MediaResolutionCode):
             kind: "screenshot" as const,
             mediaId: ref.mediaId,
             sceneId: ref.sceneId,
-            ...(ref.unitId === undefined ? {} : { unitId: ref.unitId }),
+            ...(ref.unitId == null ? {} : { unitId: ref.unitId }),
           }
         : { kind: "cg" as const, mediaId: ref.mediaId, assetId: ref.assetId };
   return MediaRefSchema.parse({ ...base, availability });
@@ -216,7 +216,7 @@ function bindingSignature(ref: MediaRef): string {
     ref.availability.status === "available"
       ? ref.availability.contentHash
       : `unavailable:${ref.availability.reason}:${ref.availability.expectedContentHash}`;
-  const unit = ref.kind === "screenshot" && ref.unitId !== undefined ? ref.unitId : "";
+  const unit = ref.kind === "screenshot" && ref.unitId != null ? ref.unitId : "";
   return `${ref.kind}|${subject}|${unit}|${hash}`;
 }
 
