@@ -191,7 +191,7 @@ export async function loadProjectOverviewJournalPage(input: {
   const pageRuns = runs.slice(offset, offset + limit);
   const [rows, latestRow] = await Promise.all([
     Promise.all(
-      pageRuns.map((run) => projectOverviewJournalRow(input.repository!, input.actor, run)),
+      pageRuns.map((run: any) => projectOverviewJournalRow(input.repository!, input.actor, run)),
     ),
     runs.length === 0
       ? Promise.resolve(null)
@@ -246,13 +246,26 @@ async function projectOverviewJournalRow(
     createdAt: run.createdAt.toISOString(),
     physicalCallCount: attempts.length,
     failedPhysicalCallCount: attempts.filter(
-      (attempt) => attempt.failureClass !== null || attempt.validationResult === "provider_failed",
+      (attempt: any) =>
+        attempt.failureClass !== null || attempt.validationResult === "provider_failed",
     ).length,
     writtenOutcomeCount: outcomes.length,
-    candidateCount: outcomes.reduce((total, outcome) => total + outcome.candidates.length, 0),
-    qaFindingCount: outcomes.reduce((total, outcome) => total + outcome.findings.length, 0),
-    contextRefCount: outcomes.reduce((total, outcome) => total + outcome.contextRefs.length, 0),
-    speakerLabelCount: outcomes.reduce((total, outcome) => total + outcome.speakerLabels.length, 0),
+    candidateCount: outcomes.reduce(
+      (total: number, outcome: any) => total + outcome.candidates.length,
+      0,
+    ),
+    qaFindingCount: outcomes.reduce(
+      (total: number, outcome: any) => total + outcome.findings.length,
+      0,
+    ),
+    contextRefCount: outcomes.reduce(
+      (total: number, outcome: any) => total + outcome.contextRefs.length,
+      0,
+    ),
+    speakerLabelCount: outcomes.reduce(
+      (total: number, outcome: any) => total + outcome.speakerLabels.length,
+      0,
+    ),
   };
 }
 

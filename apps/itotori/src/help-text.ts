@@ -26,14 +26,6 @@ export function buildHelpText(allCommands = false): string {
   lines.push("");
 
   lines.push("LOCALIZATION:");
-  lines.push("  localize-game           Localize a whole game end-to-end");
-  lines.push("                          (extract → structure → localize → patch → validate).");
-  lines.push(
-    "                          --allow-partial-patch  Produce a PREVIEW patch from a partial/bounded run (undrafted units pass through byte-identical). Default: refuse partial coverage (release safety).",
-  );
-  lines.push(
-    "                          --resume-run-id <ID>  Resume a paused run from its first pending unit, or finish a durable finalizing commit.",
-  );
   lines.push("  extract                 Extract a bridge bundle from a game.");
   lines.push("  structure-export        Export narrative structure from a game.");
   lines.push("  localize                Run the whole-project localization driver (new pipeline).");
@@ -50,16 +42,9 @@ export function buildHelpText(allCommands = false): string {
   lines.push("  validate                Validate a patched game (replay + render).");
   lines.push("");
 
-  lines.push("PATCH ITERATION:");
-  lines.push(
-    "  patch versions          List durable patch versions and their lineage for a locale branch.",
-  );
+  lines.push("PATCH PLAY:");
   lines.push(
     "  patch play <VERSION>    Launch the exact hash-bound patch through the real replay runtime and return a launch receipt.",
-  );
-  lines.push("  feedback list|batch|add Browse or attach exact-version play-test feedback.");
-  lines.push(
-    "  refine                  Build the next complete patch version from selected feedback.",
   );
   lines.push("");
 
@@ -84,38 +69,16 @@ export function buildHelpText(allCommands = false): string {
   if (allCommands) {
     lines.push("ADVANCED:");
     lines.push("  dashboard-status        Write dashboard status JSON.");
-    lines.push(
-      "  localize-project-stage  Run one durably-accounted agentic-loop stage (live; --cost-cap-usd applies a run cap).",
-    );
-    lines.push("  export-patch-v2         Export a v0.2 patch bundle from drafts.");
     lines.push("  ingest-runtime          Ingest a runtime evidence report.");
     lines.push("  ingest-patch-result     Ingest a patch result.");
     lines.push("  ingest-conformance      Ingest a conformance report.");
-    lines.push("  import-feedback         Import target-scoped feedback as a context correction.");
-    lines.push("  import-channel-feedback Import a target-scoped community-channel export.");
-    lines.push("  import-feedback-batch   Import a target-scoped feedback batch.");
     lines.push("  catalog-link-exact      Link external IDs to catalog works.");
     lines.push("  catalog-fuzzy-candidates  Generate fuzzy catalog candidates.");
     lines.push("  catalog-local-scan      Scan a local corpus root.");
-    lines.push("  plan-batches            Plan translation batches.");
-    lines.push("  generate-scene-summaries  Generate scene summaries (live).");
-    lines.push("  check-scene-summaries   Check scene summary staleness.");
-    lines.push("  generate-character-relationships  Generate character bios (live).");
-    lines.push("  check-character-relationships  Check character relationship staleness.");
     lines.push("  engine-capabilities-record  Record an engine capability matrix.");
     lines.push("  engine-capabilities-list  List engine capability matrices.");
     lines.push("  asset-decisions-list    List asset localization decisions.");
-    lines.push("  telemetry-summary       Summarize provider telemetry.");
-    lines.push("  benchmark-harness-run   Run the benchmark harness.");
-    lines.push("  experiment-report-compose  Compose an experiment report.");
-    lines.push("  alpha-readiness-run     Run the alpha readiness composition.");
-    lines.push("  vision-inspect          Run a vision-gate inspection.");
-    lines.push("  reconcile-ledger-cost   Reconcile ledger cost against OpenRouter.");
     lines.push("  queue-health            Report queue health.");
-    lines.push("  provider-proof          Run a provider proof (recorded or --live).");
-    lines.push("  provider-proof-bundle   Run a sanitized provider-proof bundle.");
-    lines.push("  raw-mtl-baseline-proof  Run the raw-MTL baseline proof.");
-    lines.push("  agentic-loop-smoke      Run an agentic-loop smoke test.");
     lines.push("  catalog-resolve-fixture Run the catalog resolver fixture.");
     lines.push("");
   }
@@ -142,14 +105,6 @@ export function buildHelpText(allCommands = false): string {
   lines.push(
     "  itotori localize --run-mode production --structure <structure.json> --output <run.json>",
   );
-  lines.push("  itotori localize-game \\");
-  lines.push("    --config <config.json> \\");
-  lines.push("    --source <game-root> \\");
-  lines.push("    --target <output-root> \\");
-  lines.push("    --run-dir <run-dir> \\");
-  lines.push("    --game-id <id> --game-version <ver> \\");
-  lines.push("    --source-profile-id <profile> --source-locale ja-JP \\");
-  lines.push("    --scene <N>");
   lines.push("");
 
   lines.push("See docs/install.md for the full install path and");

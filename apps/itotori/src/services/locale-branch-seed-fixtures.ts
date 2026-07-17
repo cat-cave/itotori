@@ -194,7 +194,7 @@ function projectDraftOntoBranch(
   }
   bundle.drafts = bundle.drafts.map((draft) => {
     const selectedCandidate = draft.writtenOutcome.candidates.find(
-      (candidate) => candidate.id === draft.writtenOutcome.selectedCandidateId,
+      (candidate: any) => candidate.id === draft.writtenOutcome.selectedCandidateId,
     );
     if (selectedCandidate === undefined) {
       throw new LocaleBranchSeedConflationError(
@@ -206,7 +206,7 @@ function projectDraftOntoBranch(
       writtenOutcome: {
         ...draft.writtenOutcome,
         targetLocale: spec.targetLocale,
-        candidates: draft.writtenOutcome.candidates.map((candidate) =>
+        candidates: draft.writtenOutcome.candidates.map((candidate: any) =>
           candidate.id === selectedCandidate.id ? { ...candidate, body: selectedBody } : candidate,
         ),
       },

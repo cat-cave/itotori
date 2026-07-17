@@ -88,9 +88,6 @@ import {
   parsePlayFlagAnnotationRequest,
   parsePlayTargetEditRequest,
   parsePatchIterationPlayRequest,
-  parsePatchIterationFeedbackBatchRequest,
-  parsePatchIterationFeedbackRequest,
-  parsePatchIterationRefineRequest,
   parseWikiAddRequest,
   parseWikiEditRequest,
   type ApiAuthCapabilitiesResponse,
@@ -160,10 +157,6 @@ import type {
   SelectedPatchExportResponse,
 } from "./play/result-revision-service.js";
 import type { DeliveredPatchArchive } from "./patch-export/delivery-archive.js";
-import type {
-  PatchIterationRefinementResult,
-  PatchIterationServicePort,
-} from "./iteration/patch-iteration-service.js";
 import { patchIterationDeliveryArchivePath, playDeliveryArchivePath } from "./api-routes.js";
 import { buildPlayFlagFeedbackInput, type PlayFlagSeverity } from "./play/flag-annotation.js";
 import type { ManualFeedbackImportPort } from "./manual-feedback.js";
@@ -172,7 +165,6 @@ import {
   type ProjectOverviewReadModelOptions,
 } from "./project-overview-read-model.js";
 import {
-  DraftProviderNotConfiguredError,
   type BenchmarkRecordResult,
   type FindingRecordResult,
   type ItotoriProjectWorkflowPort,
@@ -184,9 +176,7 @@ import {
   requireOwnedBranchScope,
   resolveProjectMutationScope,
 } from "./services/project-mutation-scope.js";
-import { AccountZdrAssertionError } from "./providers/account-zdr.js";
-import { OpenRouterMissingApiKeyError } from "./providers/openrouter.js";
-import { InvocationOperationalPauseError } from "./orchestrator/invocation-supervisor.js";
+import { AccountZdrAssertionError } from "./zdr-admission/account-zdr.js";
 import type { BmkCockpitReadModel, BmkCockpitRunHistoryPage } from "./bmk-cockpit-read-model.js";
 import type { CatalogContextPanelReadModel } from "./catalog-context-panel.js";
 import {
@@ -415,8 +405,6 @@ export type ItotoriReadOnlyApiServices = {
     PlayTesterResultRevisionApiPort,
     "loadSelectedExport" | "loadSelectedArchive" | "loadExactPatchExport" | "loadExactPatchArchive"
   >;
-  /** Node 11 read projection: versions + exact patch/inbox surface. */
-  patchIteration: Pick<PatchIterationServicePort, "list" | "load">;
 };
 
 /**
@@ -549,8 +537,6 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
   manualFeedback: ManualFeedbackImportPort;
   /** p0-result-revision — actor/artifact-root-bound target edit + delivery read. */
   playTesterResultRevision: PlayTesterResultRevisionApiPort;
-  /** Node 11 mutation + read loop, bound to the authenticated actor. */
-  patchIteration: PatchIterationServicePort;
 };
 
 /**
@@ -644,10 +630,6 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
         services.playTesterResultRevision.loadExactPatchExport(input),
       loadExactPatchArchive: (input) =>
         services.playTesterResultRevision.loadExactPatchArchive(input),
-    },
-    patchIteration: {
-      list: (input) => services.patchIteration.list(input),
-      load: (input) => services.patchIteration.load(input),
     },
   };
 }
@@ -759,13 +741,7 @@ function readOnlyMutationPathResponse(request: ItotoriApiRequest): ApiJsonRespon
   }
   const patchIterationRoute = parsePatchIterationApiRoute(request.pathname);
   if (patchIterationRoute !== null) {
-    return methodNotAllowed(
-      patchIterationRoute.resource === "versions" ||
-        patchIterationRoute.resource === "surface" ||
-        patchIterationRoute.resource === "delivery"
-        ? ["GET"]
-        : ["POST"],
-    );
+    return methodNotAllowed(["POST"]);
   }
   if (parseCatalogContextPanelApiRoute(request.pathname) !== null) {
     return methodNotAllowed(["GET"]);
@@ -894,113 +870,23 @@ async function routeItotoriApiRequest(
 
   const patchIterationRoute = parsePatchIterationApiRoute(request.pathname);
   if (request.method === "POST" && patchIterationRoute !== null) {
-    switch (patchIterationRoute.resource) {
-      case "session": {
-        // New-pipeline path: load the exact hash-bound play surface and launch it
-        // through Utsushi's real replay runtime via composition `runPlaySession`.
-        // NEVER the legacy PatchIterationService.play journal reservation/finalizer.
-        const body = parsePatchIterationPlayRequest(request.body);
-        await requireApiPermission(services, apiMutationPermissionGates.patchIterationPlay);
-        if (services.patchPlay === undefined) {
-          throw new Error(
-            "patch play is not configured in this API build (patchPlay port missing — the new-pipeline surface loader + runtime launcher are not installed)",
-          );
-        }
-        const playDeps = services.patchPlay;
-        const receipt = await runApiPlay(
-          {
-            patchVersionId: patchIterationRoute.patchVersionId,
-            ...(body.launchDescriptor === undefined
-              ? {}
-              : { launchDescriptor: body.launchDescriptor }),
-          },
-          { resolvePlayDeps: () => playDeps },
-        );
-        return ok("patchIteration.play", patchIterationPlayReceiptResponseBody(receipt));
-      }
-      case "feedback-batch": {
-        const body = parsePatchIterationFeedbackBatchRequest(request.body);
-        await requireApiPermission(services, apiMutationPermissionGates.patchIterationFeedback);
-        return ok(
-          "patchIteration.feedbackBatch",
-          patchIterationFeedbackBatchResponseBody(
-            await services.patchIteration.createFeedbackBatch({
-              observedPatchVersionId: patchIterationRoute.patchVersionId,
-              ...(body.feedbackBatchId === undefined
-                ? {}
-                : { feedbackBatchId: body.feedbackBatchId }),
-              ...(body.label === undefined ? {} : { label: body.label }),
-            }),
-          ),
-        );
-      }
-      case "feedback": {
-        const body = parsePatchIterationFeedbackRequest(request.body);
-        await requireApiPermission(services, apiMutationPermissionGates.patchIterationFeedback);
-        return ok(
-          "patchIteration.feedback",
-          patchIterationFeedbackResponseBody(
-            await services.patchIteration.feedback({
-              observedPatchVersionId: patchIterationRoute.patchVersionId,
-              eventKind: body.eventKind,
-              ...(body.feedbackBatchId === undefined
-                ? {}
-                : { feedbackBatchId: body.feedbackBatchId }),
-              ...(body.playSessionId === undefined ? {} : { playSessionId: body.playSessionId }),
-              ...(body.body === undefined ? {} : { body: body.body }),
-              ...(body.metadata === undefined ? {} : { metadata: body.metadata }),
-              ...(body.targetBody === undefined ? {} : { targetBody: body.targetBody }),
-              ...(body.resultRevisionId === undefined
-                ? {}
-                : { resultRevisionId: body.resultRevisionId }),
-              ...(body.contextArtifactId === undefined
-                ? {}
-                : { contextArtifactId: body.contextArtifactId }),
-              ...(body.contextEntryVersionId === undefined
-                ? {}
-                : { contextEntryVersionId: body.contextEntryVersionId }),
-              ...(body.contextFeedback === undefined
-                ? {}
-                : { contextFeedback: body.contextFeedback }),
-              ...(body.affectedBridgeUnitIds === undefined
-                ? {}
-                : { affectedBridgeUnitIds: body.affectedBridgeUnitIds }),
-            }),
-          ),
-        );
-      }
-      case "refine": {
-        const body = parsePatchIterationRefineRequest(request.body);
-        await requireApiPermission(services, apiMutationPermissionGates.patchIterationRefine);
-        return ok(
-          "patchIteration.refine",
-          patchIterationRefineResponseBody(
-            await services.patchIteration.refine({
-              basePatchVersionId: patchIterationRoute.patchVersionId,
-              ...(body.feedbackBatchIds === undefined
-                ? {}
-                : { feedbackBatchIds: body.feedbackBatchIds }),
-              ...(body.feedbackEventIds === undefined
-                ? {}
-                : { feedbackEventIds: body.feedbackEventIds }),
-              ...(body.scopeUnitIds === undefined ? {} : { scopeUnitIds: body.scopeUnitIds }),
-              ...(body.targetBodiesByUnit === undefined
-                ? {}
-                : { targetBodiesByUnit: body.targetBodiesByUnit }),
-              ...(body.wikiHeads === undefined ? {} : { wikiHeads: body.wikiHeads }),
-            }),
-          ),
-        );
-      }
-      case "versions":
-      case "surface":
-      case "delivery":
-        return methodNotAllowed(["GET"]);
-      default: {
-        const exhaustive: never = patchIterationRoute;
-        throw new Error(`unsupported patch iteration route ${String(exhaustive)}`);
-      }
+    // The kept patch-play entry point is backed by the new composition path.
+    const body = parsePatchIterationPlayRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.patchIterationPlay);
+    if (services.patchPlay === undefined) {
+      throw new Error(
+        "patch play is not configured in this API build (patchPlay port missing — the new-pipeline surface loader + runtime launcher are not installed)",
+      );
     }
+    const playDeps = services.patchPlay;
+    const receipt = await runApiPlay(
+      {
+        patchVersionId: patchIterationRoute.patchVersionId,
+        ...(body.launchDescriptor === undefined ? {} : { launchDescriptor: body.launchDescriptor }),
+      },
+      { resolvePlayDeps: () => playDeps },
+    );
+    return ok("patchIteration.play", patchIterationPlayReceiptResponseBody(receipt));
   }
 
   const flagRoute = parsePlayFlagApiRoute(request.pathname);
@@ -1049,13 +935,7 @@ async function routeItotoriApiRequest(
     return methodNotAllowed(["POST"]);
   }
   if (patchIterationRoute !== null) {
-    return methodNotAllowed(
-      patchIterationRoute.resource === "versions" ||
-        patchIterationRoute.resource === "surface" ||
-        patchIterationRoute.resource === "delivery"
-        ? ["GET"]
-        : ["POST"],
-    );
+    return methodNotAllowed(["POST"]);
   }
 
   if (request.method === "POST" && request.pathname === "/api/projects/decode-extract") {
@@ -1730,16 +1610,6 @@ function patchIterationFeedbackResponseBody(
   };
 }
 
-function patchIterationRefineResponseBody(
-  input: PatchIterationRefinementResult,
-): ApiPatchIterationRefineResponse {
-  return {
-    schemaVersion: "itotori.patch-iteration.refine.v0",
-    refinement: patchIterationRefinementResponseBody(input.refinement),
-    patch: patchIterationPatchResponseBody(input.patch),
-  };
-}
-
 function patchIterationPatchResponseBody(input: PatchPlaySurface) {
   return {
     patchVersionId: input.patchVersionId,
@@ -1829,26 +1699,6 @@ function patchIterationQaCalloutResponseBody(input: PlaySessionQaCallout) {
     confidence: input.confidence,
     contested: input.contested,
     informational: true as const,
-  };
-}
-
-function patchIterationRefinementResponseBody(input: LocalizationRefinementRunRecord) {
-  return {
-    runId: input.run.runId,
-    basePatchVersionId: input.basePatchVersionId,
-    feedbackBatchIds: input.feedbackBatches.map((batch) => batch.feedbackBatchId),
-    wikiHeads: input.wikiHeads.map((head) => ({
-      contextArtifactId: head.contextArtifactId,
-      contextEntryVersionId: head.contextEntryVersionId,
-    })),
-    members: input.members.map((member) => ({
-      bridgeUnitId: member.bridgeUnitId,
-      strategy: member.strategy,
-      basePatchVersionId: member.basePatchVersionId,
-      baseSourceRunId: member.baseSourceRunId,
-      baseJournalOutcomeId: member.baseJournalOutcomeId,
-      baseResultRevisionId: member.baseResultRevisionId,
-    })),
   };
 }
 
@@ -2315,46 +2165,7 @@ async function routeReadOnlyItotoriApiRequest(
 
   const patchIterationRoute = parsePatchIterationApiRoute(request.pathname);
   if (request.method === "GET" && patchIterationRoute !== null) {
-    switch (patchIterationRoute.resource) {
-      case "versions":
-        return ok(
-          "patchIteration.versions",
-          patchIterationVersionsResponseBody(
-            await services.patchIteration.list({
-              localeBranchId: patchIterationRoute.localeBranchId,
-            }),
-          ),
-        );
-      case "surface": {
-        const surface = await services.patchIteration.load({
-          patchVersionId: patchIterationRoute.patchVersionId,
-        });
-        return surface === null
-          ? notFound(request.pathname)
-          : ok("patchIteration.surface", patchIterationSurfaceResponseBody(surface));
-      }
-      case "delivery": {
-        const delivery = await services.playTesterResultRevision.loadExactPatchExport({
-          patchVersionId: patchIterationRoute.patchVersionId,
-        });
-        return delivery.export === null
-          ? errorBody(
-              404,
-              "not_found",
-              `playable patch ${patchIterationRoute.patchVersionId} was not found`,
-            )
-          : ok("patchIteration.delivery", patchIterationDeliveryResponseBody(delivery));
-      }
-      case "session":
-      case "feedback-batch":
-      case "feedback":
-      case "refine":
-        return methodNotAllowed(["POST"]);
-      default: {
-        const exhaustive: never = patchIterationRoute;
-        throw new Error(`unsupported patch iteration read route ${String(exhaustive)}`);
-      }
-    }
+    return methodNotAllowed(["POST"]);
   }
 
   const playDeliveryRoute = parsePlayDeliveryApiRoute(request.pathname);
@@ -2401,8 +2212,9 @@ async function routeReadOnlyItotoriApiRequest(
       );
     }
     const localeBranch =
-      dashboard.localeBranches.find((branch) => branch.localeBranchId === scope.localeBranchId) ??
-      null;
+      dashboard.localeBranches.find(
+        (branch: any) => branch.localeBranchId === scope.localeBranchId,
+      ) ?? null;
     if (localeBranch === null) {
       return errorBody(
         404,
@@ -3165,46 +2977,15 @@ function parsePlayTargetEditApiRoute(pathname: string): {
   };
 }
 
-type PatchIterationApiRoute =
-  | { resource: "versions"; localeBranchId: string }
-  | { resource: "surface"; patchVersionId: string }
-  | { resource: "delivery"; patchVersionId: string }
-  | { resource: "session"; patchVersionId: string }
-  | { resource: "feedback-batch"; patchVersionId: string }
-  | { resource: "feedback"; patchVersionId: string }
-  | { resource: "refine"; patchVersionId: string };
+type PatchIterationApiRoute = {
+  patchVersionId: string;
+};
 
 /** Parse the node-11 topology once so GET/POST cannot diverge on path identity. */
 function parsePatchIterationApiRoute(pathname: string): PatchIterationApiRoute | null {
-  const versions = /^\/api\/play\/locale-branches\/([^/]+)\/patch-versions\/?$/u.exec(pathname);
-  if (versions?.[1] !== undefined) {
-    return {
-      resource: "versions",
-      localeBranchId: decodeApiPathSegment(versions[1], "localeBranchId"),
-    };
-  }
-  const match =
-    /^\/api\/play\/patch-versions\/([^/]+)(?:\/(delivery|sessions|feedback-batches|feedback|refine))?\/?$/u.exec(
-      pathname,
-    );
+  const match = /^\/api\/play\/patch-versions\/([^/]+)\/sessions\/?$/u.exec(pathname);
   if (match === null || match[1] === undefined) return null;
-  const patchVersionId = decodeApiPathSegment(match[1], "patchVersionId");
-  switch (match[2]) {
-    case undefined:
-      return { resource: "surface", patchVersionId };
-    case "delivery":
-      return { resource: "delivery", patchVersionId };
-    case "sessions":
-      return { resource: "session", patchVersionId };
-    case "feedback-batches":
-      return { resource: "feedback-batch", patchVersionId };
-    case "feedback":
-      return { resource: "feedback", patchVersionId };
-    case "refine":
-      return { resource: "refine", patchVersionId };
-    default:
-      return null;
-  }
+  return { patchVersionId: decodeApiPathSegment(match[1], "patchVersionId") };
 }
 
 function parsePlayDeliveryApiRoute(pathname: string): { runId: string } | null {
@@ -3890,18 +3671,7 @@ function draftProviderConfigurationResponse(
 }
 
 function draftProviderConfigurationRefusal(error: unknown): string | null {
-  if (
-    error instanceof DraftProviderNotConfiguredError ||
-    error instanceof AccountZdrAssertionError ||
-    error instanceof OpenRouterMissingApiKeyError
-  ) {
-    return error.message;
-  }
-  if (
-    error instanceof InvocationOperationalPauseError &&
-    error.blocker.kind === "budget_cap" &&
-    error.blocker.detail.includes("durable cost-admission")
-  ) {
+  if (error instanceof AccountZdrAssertionError) {
     return error.message;
   }
   // Substrate-missing refusals that surface as thrown errors (e.g. from a

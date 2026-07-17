@@ -166,11 +166,8 @@ export type ItotoriApiRouteId =
   // (canFlag / canSteer / canReveal), resolved from exact
   // permission grants via the auth-002 effective-permission resolver.
   | "auth.capabilities"
-  // ovw-launch-pass-action — the Overview "launch next pass" mutation drives
-  // the next localization pass via the
-  // project-driven-executor / localize-fullproject driver. `canSteer`-gated
-  // (the `draft.write` steer permission). The HTTP surface is a thin adapter;
-  // the driver itself is unchanged.
+  // ovw-launch-pass-action — the Overview "launch next pass" mutation is
+  // `canSteer`-gated (the `draft.write` steer permission).
   | "projects.launchPass"
   | "play.routeMap"
   // play-flag-composer — in-the-moment AnnotationComposer flag → canonical

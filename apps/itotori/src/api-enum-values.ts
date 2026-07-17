@@ -5,8 +5,7 @@
 // `@itotori/db` into the browser bundle drags Node-only repository/pg code.
 
 // itotori-translation-scope-settings — mirrors
-// `translationScopeValues`/`TranslationScope` (packages/itotori-db +
-// apps/itotori/src/orchestrator/project-driven-executor.ts). Cumulative
+// `translationScopeValues`/`TranslationScope` (packages/itotori-db). Cumulative
 // tiers: dialogue-only -> dialogue-and-choices -> dialogue-choices-ui -> all.
 export const translationScopeValues = {
   dialogueOnly: "dialogue-only",

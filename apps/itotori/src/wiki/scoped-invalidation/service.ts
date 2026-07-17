@@ -10,7 +10,7 @@
 // never an erase.
 //
 // Self-contained: it composes the wiki dependency-edge query and its own pure
-// diff/impact modules, and imports nothing from agents/**.
+// diff/impact modules, and imports no legacy execution surface.
 
 import type { ItotoriLlmWikiRepository } from "@itotori/db";
 

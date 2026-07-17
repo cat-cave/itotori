@@ -490,10 +490,7 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     requestSchema: "ApiRevokeAuthSessionRequest",
     responseSchema: "ApiRevokeAuthSessionResponse",
   },
-  // ovw-launch-pass-action — drive the next localization pass via the
-  // project-driven-executor /
-  // localize-fullproject driver. The HTTP surface is a thin, `canSteer`-gated
-  // adapter; the driver itself is unchanged.
+  // ovw-launch-pass-action — the `canSteer`-gated launch-pass HTTP adapter.
   "projects.launchPass": {
     method: "POST",
     pathTemplate: "/api/projects/{projectId}/launch-pass",

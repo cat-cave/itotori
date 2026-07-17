@@ -1,8 +1,0 @@
-{
-  "schemaVersion": "itotori.qa-calibration-recorded-bundle.v2",
-  "fixtureId": "calibration-regrade-trigger",
-  "agentName": "unresolved-terminology",
-  "authority": "fresh-judge",
-  "providerId": "google-vertex",
-  "findings": []
-}

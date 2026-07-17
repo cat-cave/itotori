@@ -33,10 +33,8 @@ import { useOffsetPager } from "../use-offset-pager.js";
 import { decisionGroupSignal, groupedBranchDecisions } from "../format.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
 import { VirtualList } from "../virtual-list.js";
-import { BenchmarkHeadlineTile } from "./BenchmarkHeadlineTile.js";
 import { CostDrilldownPanel } from "./CostDrilldownPanel.js";
 import { QaFindingsBand } from "./DecisionsBand.js";
-import { LoopSpinePanel } from "./LoopSpinePanel.js";
 import { PassLedgerPanel } from "./PassLedgerPanel.js";
 import { ProgressInstrumentPanel } from "./ProgressInstrumentPanel.js";
 
@@ -64,7 +62,6 @@ export function DashboardScreen(): ReactNode {
           (flag → correct → iterate → launch → rescore → confidence) at the
           top of the overview so the whole handoff chain is legible at a
           glance. Read-only legibility; the detailed panels follow. */}
-      <LoopSpinePanel />
 
       <FirstRunPanel projects={projects} />
 
@@ -73,8 +70,6 @@ export function DashboardScreen(): ReactNode {
       <ProgressInstrumentPanel />
 
       <PassLedgerPanel />
-
-      <BenchmarkHeadlineTile />
 
       <section className="itotori-section-grid" aria-label="Dashboard sections">
         <ProjectsPanel projects={projects} />

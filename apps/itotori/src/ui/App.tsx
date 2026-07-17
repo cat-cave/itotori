@@ -23,10 +23,6 @@ import {
   type StudioCapabilityPermissionView,
 } from "./caps-context.js";
 import {
-  BenchmarkCockpitScreen,
-  isBenchmarkCockpitRoute,
-} from "./screens/BenchmarkCockpitScreen.js";
-import {
   CatalogCandidateBrowserScreen,
   isCatalogCandidateBrowserRoute,
 } from "./screens/CatalogCandidateBrowserScreen.js";
@@ -255,9 +251,6 @@ function RoutedScreen({
 
   // `/benchmark` — the benchmark cockpit (contestants + confidence + the
   // actionable backlog diagnostic). Rendered inside the shell frame.
-  if (isBenchmarkCockpitRoute(location.pathname)) {
-    return <BenchmarkCockpitScreen />;
-  }
 
   // `/catalog` - ranked candidate browser backed by catalog.opportunities.
   if (isCatalogCandidateBrowserRoute(location.pathname)) {

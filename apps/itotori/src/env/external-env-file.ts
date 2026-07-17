@@ -22,15 +22,15 @@ import { LIVE_PROVIDER_SECRET_VARS } from "./live-provider-secret-vars.js";
 
 /**
  * The ONLY env vars the external env-file loader will ever apply to the
- * process environment. This is the union of what the live OpenRouter path
+ * process environment. This is the union of what the live dispatch boundary
  * consumes:
  *
  *   - OPENROUTER_API_KEY               — the provider credential
- *     (providers/openrouter.ts `openRouterApiKeyFromEnv`)
+ *     (the pinned LLM dispatch boundary)
  *   - OPENROUTER_ZDR_ACCOUNT_ASSERTED  — the account-wide ZDR posture gate
- *     (providers/account-zdr.ts `assertOpenRouterZdrAccount`)
+ *     (zdr-admission/account-zdr.ts `assertOpenRouterZdrAccount`)
  *   - OPENROUTER_ZDR_DOWNGRADE         — operator-level per-leaf ZDR downgrade
- *     (localize-project-stage-command.ts / pair-policy.v0.3.ts)
+ *     (the active dispatch policy)
  *
  * Any key in the env file NOT in this set is ignored. Backed by the single
  * source of truth in `live-provider-secret-vars.mjs`, shared with the native-CLI
