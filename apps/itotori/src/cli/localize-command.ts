@@ -74,7 +74,12 @@ export function parseLocalizeRunRequest(args: readonly string[]): RunPolicyReque
   const runMode = parseRunMode(requiredFlag(args, "--run-mode"));
   const contextScope = (optionalFlag(args, "--context-scope") ?? "whole-game") as ContextScopeValue;
   const outputScope = parseOutputScope(optionalFlag(args, "--output-scope") ?? "dialogue-only");
-  return { runMode, contextScope, outputScope, roster: FULL_ROSTER };
+  // `--ablation` selects the pure-MTL baseline (null Wiki / direct translation),
+  // bypassing the wiki-first bible. run-policy `resolve.ts` only permits it in
+  // test-dev and rejects it for any mode whose profile requires the wiki-first
+  // bible — the CLI just surfaces the selector; legality is enforced there.
+  const ablation = args.includes("--ablation") ? ({ kind: "pure-mtl" } as const) : null;
+  return { runMode, contextScope, outputScope, roster: FULL_ROSTER, ablation };
 }
 
 /**
@@ -91,6 +96,9 @@ export function parseLocalizeRunRequest(args: readonly string[]): RunPolicyReque
  *   --context-scope <scope>   whole-game (default) | external-augmented | narrowed:<…>
  *   --output-scope <scope>    dialogue-only (default) | dialogue-and-choices | …
  *   --whole-scene-max-units <N>  the whole-scene draft budget
+ *   --ablation                pure-MTL baseline (null Wiki / direct translation,
+ *                             no wiki-first bible). test-dev only; rejected where
+ *                             the mode profile requires the wiki-first bible.
  *   --output <PATH>           write the run summary here (else stdout)
  */
 export async function runLocalizeCommand(
