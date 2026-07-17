@@ -690,7 +690,7 @@
         "rowId": "kirikiri-xp3",
         "engineFamily": "kiri_kiri_xp3",
         "detected": false,
-        "detectedVariant": "xp3-archive",
+        "detectedVariant": "unknown-variant",
         "signals": [],
         "evidence": [
           {
@@ -744,7 +744,7 @@
         "rowId": "siglus-scene-pck",
         "engineFamily": "siglus",
         "detected": false,
-        "detectedVariant": "gameexe-dat-without-scene-pck",
+        "detectedVariant": "unknown-variant",
         "signals": [],
         "evidence": [
           {
@@ -777,7 +777,7 @@
         "rowId": "reallive-seen-txt",
         "engineFamily": "reallive",
         "detected": false,
-        "detectedVariant": "not-reallive",
+        "detectedVariant": "unknown-variant",
         "signals": [],
         "evidence": [
           {
@@ -1190,7 +1190,7 @@
         "rowId": "wolf-rpg-editor-archives",
         "engineFamily": "wolf_rpg_editor",
         "detected": false,
-        "detectedVariant": "wolf-archive",
+        "detectedVariant": "unknown-variant",
         "signals": [],
         "evidence": [
           {
@@ -1230,7 +1230,7 @@
         "rowId": "bgi-ethornell-containers",
         "engineFamily": "bgi_ethornell",
         "detected": false,
-        "detectedVariant": "buriko-arc20-container",
+        "detectedVariant": "unknown-variant",
         "signals": [],
         "evidence": [
           {
@@ -1284,7 +1284,7 @@
         "rowId": "renpy-packed-inputs",
         "engineFamily": "renpy",
         "detected": false,
-        "detectedVariant": "rpyc-compiled-script",
+        "detectedVariant": "unknown-variant",
         "signals": [],
         "evidence": [
           {
@@ -1317,7 +1317,7 @@
         "rowId": "unknown-archive-variant",
         "engineFamily": "unknown",
         "detected": false,
-        "detectedVariant": "unprofiled-archive-like-input",
+        "detectedVariant": "unknown-variant",
         "signals": [],
         "evidence": [
           {

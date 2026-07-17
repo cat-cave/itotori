@@ -2208,10 +2208,7 @@ fn archive_detection_reallive_row_emits_ambiguous_diagnostic_when_siglus_markers
         .find(|row| row.row_id == "reallive-seen-txt")
         .unwrap();
     assert!(!reallive.detected);
-    assert_eq!(
-        reallive.detected_variant,
-        "ambiguous-reallive-siglus-scene-pck"
-    );
+    assert_eq!(reallive.detected_variant, "unknown-variant");
     assert!(
         reallive
             .diagnostics
@@ -2233,7 +2230,7 @@ fn archive_detection_reallive_row_emits_unsupported_engine_variant_for_avg32_lin
         .find(|row| row.row_id == "reallive-seen-txt")
         .unwrap();
     assert!(!reallive.detected);
-    assert_eq!(reallive.detected_variant, "avg32-lineage-seen-txt");
+    assert_eq!(reallive.detected_variant, "unknown-variant");
     assert!(
         reallive
             .diagnostics
@@ -2424,10 +2421,13 @@ fn archive_detection_normalizes_marker_only_subtypes_to_unknown_variant_diagnost
     let report = ArchiveDetectionReport::scan(&root);
 
     assert_eq!(report.status, ArchiveDetectionStatus::Matched);
-    for row_id in [
-        "kirikiri-xp3",
-        "bgi-ethornell-containers",
-        "wolf-rpg-editor-archives",
+    for (row_id, leaked_positive_variant) in [
+        ("kirikiri-xp3", "xp3-encrypted-archive"),
+        (
+            "bgi-ethornell-containers",
+            "buriko-arc20-encrypted-container",
+        ),
+        ("wolf-rpg-editor-archives", "wolf-protected-archive"),
     ] {
         let row = report
             .rows
@@ -2435,22 +2435,56 @@ fn archive_detection_normalizes_marker_only_subtypes_to_unknown_variant_diagnost
             .find(|row| row.row_id == row_id)
             .unwrap_or_else(|| panic!("missing archive row {row_id}"));
         assert!(!row.detected, "{row_id} should not be family-detected");
-        assert!(
-            row.signals.is_empty(),
-            "{row_id} leaked marker-only signals"
+        assert_eq!(
+            row.detected_variant, "unknown-variant",
+            "{row_id} must not serialize a marker-only candidate as a detected variant"
+        );
+        assert_ne!(row.detected_variant, leaked_positive_variant);
+        assert_eq!(
+            row.signals,
+            vec![ArchiveDetectionSignal::UnknownVariant],
+            "{row_id} must retain only the marker-only unknown-variant signal"
         );
         assert!(
             row.requirements.is_empty(),
             "{row_id} leaked marker-only key requirements"
         );
         assert!(
-            row.diagnostics.is_empty(),
-            "{row_id} leaked marker-only diagnostics"
+            row.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == SemanticErrorCode::UnknownEngineVariant
+                    && diagnostic.signal == ArchiveDetectionSignal::UnknownVariant
+                    && diagnostic.required_capability == Some(Capability::Detection)
+            }),
+            "{row_id} must report the marker-only unknown-variant diagnostic"
         );
         assert!(!row.capabilities.iter().any(|capability| {
             capability.capability == Capability::EncryptedInput
                 || capability.capability == Capability::KeyProfile
         }));
+    }
+    assert!(
+        report
+            .rows
+            .iter()
+            .filter(|row| !row.detected)
+            .all(|row| row.detected_variant == "unknown-variant"),
+        "every non-detected archive row must serialize the unknown variant"
+    );
+
+    let serialized = serde_json::to_value(&report).unwrap();
+    for row_id in [
+        "kirikiri-xp3",
+        "bgi-ethornell-containers",
+        "wolf-rpg-editor-archives",
+    ] {
+        let serialized_row = serialized["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["rowId"] == row_id)
+            .unwrap_or_else(|| panic!("missing serialized archive row {row_id}"));
+        assert_eq!(serialized_row["detected"], false);
+        assert_eq!(serialized_row["detectedVariant"], "unknown-variant");
     }
 
     let unknown = detected_archive_row(&report, "unknown-archive-variant");
@@ -2472,31 +2506,68 @@ fn archive_detection_normalizes_marker_only_subtypes_to_unknown_variant_diagnost
 }
 
 #[test]
-fn archive_detection_preserves_wolf_match_with_primary_evidence() {
-    let root = temp_dir("wolf-primary-evidence");
+fn archive_detection_preserves_wolf_matches_with_extension_or_header_primary_evidence() {
+    let extension_only_root = temp_dir("wolf-extension-primary-evidence");
     write_fixture_file(
-        &root,
-        "notes/wolf-header.txt",
-        b"WOLF RPG Editor synthetic wolf-protected protection-key marker",
-    );
-    write_fixture_file(
-        &root,
+        &extension_only_root,
         "Data.wolf",
         b"synthetic protected archive marker without textual header",
     );
 
-    let report = ArchiveDetectionReport::scan(&root);
+    let extension_only_report = ArchiveDetectionReport::scan(&extension_only_root);
 
-    assert_eq!(report.status, ArchiveDetectionStatus::Matched);
-    let wolf = detected_archive_row(&report, "wolf-rpg-editor-archives");
+    assert_eq!(
+        extension_only_report.status,
+        ArchiveDetectionStatus::Matched
+    );
+    let extension_only_wolf =
+        detected_archive_row(&extension_only_report, "wolf-rpg-editor-archives");
+    assert_eq!(extension_only_wolf.detected_variant, "wolf-archive");
+    assert!(
+        extension_only_wolf
+            .signals
+            .contains(&ArchiveDetectionSignal::Packed)
+    );
+    assert!(
+        extension_only_wolf
+            .signals
+            .contains(&ArchiveDetectionSignal::Encrypted)
+    );
+    assert!(
+        !extension_only_wolf
+            .signals
+            .contains(&ArchiveDetectionSignal::Protected)
+    );
+    assert!(extension_only_wolf.evidence.iter().any(|evidence| {
+        evidence.pattern == "*.wolf"
+            && evidence.status == EvidenceStatus::Matched
+            && evidence.count == 1
+    }));
+    assert!(extension_only_wolf.evidence.iter().any(|evidence| {
+        evidence.pattern == "WOLF header"
+            && evidence.status == EvidenceStatus::Missing
+            && evidence.count == 0
+    }));
+
+    let header_only_root = temp_dir("wolf-header-primary-evidence");
+    write_fixture_file(
+        &header_only_root,
+        "notes/wolf-header.txt",
+        b"WOLF RPG Editor synthetic wolf-protected protection-key marker",
+    );
+
+    let header_only_report = ArchiveDetectionReport::scan(&header_only_root);
+
+    assert_eq!(header_only_report.status, ArchiveDetectionStatus::Matched);
+    let wolf = detected_archive_row(&header_only_report, "wolf-rpg-editor-archives");
     assert_eq!(wolf.detected_variant, "wolf-protected-archive");
     assert!(wolf.signals.contains(&ArchiveDetectionSignal::Packed));
     assert!(wolf.signals.contains(&ArchiveDetectionSignal::Encrypted));
     assert!(wolf.signals.contains(&ArchiveDetectionSignal::Protected));
     assert!(wolf.evidence.iter().any(|evidence| {
         evidence.pattern == "*.wolf"
-            && evidence.status == EvidenceStatus::Matched
-            && evidence.count == 1
+            && evidence.status == EvidenceStatus::Missing
+            && evidence.count == 0
     }));
     assert!(wolf.evidence.iter().any(|evidence| {
         evidence.pattern == "WOLF header"
@@ -2511,7 +2582,7 @@ fn archive_detection_preserves_wolf_match_with_primary_evidence() {
     assert_eq!(wolf.requirements.len(), 1);
     assert_eq!(wolf.requirements[0].key, "wolf-rpg-editor-archive-key");
 
-    let unknown = report
+    let unknown = header_only_report
         .rows
         .iter()
         .find(|row| row.row_id == "unknown-archive-variant")
@@ -2523,7 +2594,8 @@ fn archive_detection_preserves_wolf_match_with_primary_evidence() {
             && evidence.count == 0
     }));
 
-    let _ = fs::remove_dir_all(root);
+    let _ = fs::remove_dir_all(extension_only_root);
+    let _ = fs::remove_dir_all(header_only_root);
 }
 
 #[test]
@@ -4075,9 +4147,18 @@ fn public_encrypted_matrix_detector_negative_markers_stay_unknown_only() {
             .find(|row| row.row_id == row_id)
             .unwrap_or_else(|| panic!("missing archive row {row_id}"));
         assert!(!row.detected, "{row_id} should not family-detect");
-        assert!(row.signals.is_empty(), "{row_id} leaked signals");
+        assert_eq!(row.detected_variant, "unknown-variant");
+        assert_eq!(
+            row.signals,
+            vec![ArchiveDetectionSignal::UnknownVariant],
+            "{row_id} should retain only the unknown-variant signal"
+        );
         assert!(row.requirements.is_empty(), "{row_id} leaked requirements");
-        assert!(row.diagnostics.is_empty(), "{row_id} leaked diagnostics");
+        assert!(row.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == SemanticErrorCode::UnknownEngineVariant
+                && diagnostic.signal == ArchiveDetectionSignal::UnknownVariant
+                && diagnostic.required_capability == Some(Capability::Detection)
+        }));
     }
 
     let unknown = detected_archive_row(&report, "unknown-archive-variant");
