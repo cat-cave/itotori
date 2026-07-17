@@ -36,6 +36,17 @@ const API_HANDLER_ENTRYPOINTS = [
   "api/play-route.ts",
 ].map((rel) => join(srcRoot, rel));
 
+// The kept CLI command handlers for `localize` / `wiki` / `patch play` — same cut,
+// proven from the CLI side. They live in their own modules (not the
+// `cli-handlers.ts` monolith, which legitimately imports the legacy graph for
+// out-of-scope commands) so their transitive closure can be proven clean.
+const CLI_HANDLER_ENTRYPOINTS = [
+  "cli/localize-command.ts",
+  "cli/wiki-command.ts",
+  "cli/play-command.ts",
+  "cli/flags.ts",
+].map((rel) => join(srcRoot, rel));
+
 // The legacy modules that MUST be unreachable from any kept entrypoint. Each maps
 // to one acceptance-clause hazard.
 const FORBIDDEN: readonly { readonly needle: string; readonly hazard: string }[] = [
@@ -121,6 +132,26 @@ describe("API mutation-handler reachability — localize/draft / wiki / patch-pl
       // The composition root and the thin API handler modules themselves are the
       // cut, not the old path — everything else must be clean.
       if (rel.includes("/composition/") || rel.includes("/apps/itotori/src/api/")) continue;
+      for (const { needle, hazard } of FORBIDDEN) {
+        if (rel.includes(needle)) violations.push(`${rel} → ${hazard}`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
+describe("CLI command-handler reachability — localize / wiki / patch-play reach zero legacy modules", () => {
+  it("spans the new pipeline from the kept CLI handlers", () => {
+    const closure = importClosure(CLI_HANDLER_ENTRYPOINTS);
+    expect(closure.size).toBeGreaterThan(50);
+  });
+
+  it("has NO import edge to project-workflow / db-live-workflow-ports / providers / orchestrator / agents / raw-mtl", () => {
+    const closure = importClosure(CLI_HANDLER_ENTRYPOINTS);
+    const violations: string[] = [];
+    for (const file of closure) {
+      const rel = file.slice(repoRoot.length).replaceAll("\\", "/");
+      if (rel.includes("/composition/") || rel.includes("/apps/itotori/src/cli/")) continue;
       for (const { needle, hazard } of FORBIDDEN) {
         if (rel.includes(needle)) violations.push(`${rel} → ${hazard}`);
       }

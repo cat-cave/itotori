@@ -92,9 +92,9 @@ describe("itotori --help / help", () => {
     expect(text).toContain("validate");
     expect(text).toContain("db-migrate");
     expect(text).toContain("db-reset");
-    expect(text).toContain("--allow-partial-patch");
-    expect(text).toContain("--resume-run-id <ID>");
-    expect(text).toContain("--cancel --resume-run-id <ID> --run-dir <PATH>");
+    expect(text).toContain("--run-mode production|pilot|test-dev");
+    expect(text).toContain("--structure <PATH>");
+    expect(text).toContain("--wiki-kind");
   });
 
   it("--help takes precedence over --version", async () => {
