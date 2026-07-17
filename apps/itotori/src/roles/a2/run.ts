@@ -13,7 +13,7 @@
 
 import { WikiObjectSchema, type CallResult, type CallSpec } from "../../contracts/index.js";
 import type { dispatch, DispatchRuntime } from "../../llm/dispatch.js";
-import { deepSeekV4FlashProfile } from "../../llm/role-model-profiles.js";
+import { deepSeekV4FlashProfile, servedModelIsCertified } from "../../llm/role-model-profiles.js";
 import type { ReadModel } from "../../read-tools/index.js";
 import { validateWikiObjectClaims } from "../../wiki/claim-validation.js";
 
@@ -115,7 +115,7 @@ export async function runTermAnalyst(
   }
   // The served MODEL must be the certified deepseek-v4-flash; the served PROVIDER
   // is recorded telemetry, whatever compliant provider the routing chose.
-  if (result.served.model !== deepSeekV4FlashProfile.model) {
+  if (!servedModelIsCertified(result.served.model, deepSeekV4FlashProfile.model)) {
     throw new TermAnalystError(
       `terminology analyst was served ${result.served.model}, not ${deepSeekV4FlashProfile.model}`,
     );

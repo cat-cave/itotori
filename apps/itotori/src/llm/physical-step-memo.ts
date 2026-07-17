@@ -17,6 +17,7 @@ import {
   LlmPhysicalAttemptError,
   memoizedPhysicalAttempt,
   type PhysicalAttemptRuntime,
+  type TransportObservation,
   type TransportObserver,
 } from "./physical-attempt-policy.js";
 import {
@@ -28,6 +29,7 @@ import {
   reconcileGenerationMetadata,
   unknownGenerationMetadataSource,
   type GenerationMetadataSource,
+  type ObservedGenerationHeaders,
 } from "./generation-metadata.js";
 
 const TANSTACK_VERSION = "0.40.0";
@@ -134,6 +136,7 @@ export function memoizePhysicalSteps(
             attempt,
             parentResponseEventId,
             metadataSource,
+            observedHeaders(observer.take(), spec.requestedModel),
           );
         },
       });
@@ -189,6 +192,7 @@ export function memoizePhysicalSteps(
               attempt,
               parentResponseEventId,
               metadataSource,
+              observedHeaders(observer.take(), spec.requestedModel),
             );
           } catch (error: unknown) {
             const failure = control.failure(error) ?? permanentAttemptFailure();
@@ -365,6 +369,18 @@ function attemptStatus(
 ): "transport-error" | "http-error" | "cancelled" {
   if (kind === "http") return "http-error";
   return kind === "cancelled" ? "cancelled" : "transport-error";
+}
+
+function observedHeaders(
+  observation: TransportObservation | null,
+  requestedModel: string,
+): ObservedGenerationHeaders | undefined {
+  if (observation?.kind !== "response") return undefined;
+  return {
+    requestedModel,
+    ...(observation.generationId === undefined ? {} : { generationId: observation.generationId }),
+    ...(observation.providerName === undefined ? {} : { providerName: observation.providerName }),
+  };
 }
 
 async function incompleteStep(

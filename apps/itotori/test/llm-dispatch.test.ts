@@ -101,34 +101,40 @@ function streamChunk(input: {
   };
 }
 
-function sse(chunks: ReadonlyArray<Record<string, unknown>>): Response {
+function sse(chunks: ReadonlyArray<Record<string, unknown>>, headers: HeadersInit = {}): Response {
   const body = [
     ...chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`),
     "data: [DONE]\n\n",
   ].join("");
-  return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+  const responseHeaders = new Headers(headers);
+  responseHeaders.set("Content-Type", "text/event-stream");
+  return new Response(body, { status: 200, headers: responseHeaders });
 }
 
 function structuredResponse(
   content: string,
   id = "generation:test",
   cost: number | null = 0.00000125, // itotori-225-audit-allow: deterministic mock-wire cost in a fake stream chunk, not a production cost source
+  headers: HeadersInit = {},
 ): Response {
-  return sse([
-    streamChunk({ id, delta: { role: "assistant", content } }),
-    streamChunk({ id, delta: {}, finishReason: "stop" }),
-    streamChunk({
-      id,
-      usage: {
-        prompt_tokens: 11,
-        completion_tokens: 7,
-        total_tokens: 18,
-        ...(cost === null ? {} : { cost }),
-        prompt_tokens_details: { cached_tokens: 2 },
-        completion_tokens_details: { reasoning_tokens: 3 },
-      },
-    }),
-  ]);
+  return sse(
+    [
+      streamChunk({ id, delta: { role: "assistant", content } }),
+      streamChunk({ id, delta: {}, finishReason: "stop" }),
+      streamChunk({
+        id,
+        usage: {
+          prompt_tokens: 11,
+          completion_tokens: 7,
+          total_tokens: 18,
+          ...(cost === null ? {} : { cost }),
+          prompt_tokens_details: { cached_tokens: 2 },
+          completion_tokens_details: { reasoning_tokens: 3 },
+        },
+      }),
+    ],
+    headers,
+  );
 }
 
 function toolCallResponse(callIndex: number, reasoningDetails: readonly unknown[] = []): Response {
@@ -328,6 +334,55 @@ describe("the rebuilt LLM dispatcher", () => {
       "model-step-finished",
       "run-finished",
     ]);
+  });
+
+  it("verifies response-header provenance and quarantines absent header metadata", async () => {
+    const prompt = "Return the requested synthetic review verdict.";
+    const verified = await dispatch(
+      callSpec(prompt),
+      runtime(
+        prompt,
+        [
+          structuredResponse(JSON.stringify(reviewVerdictExample), undefined, undefined, {
+            "x-generation-id": "gen-header-1",
+            "x-provider-name": "Morph",
+          }),
+        ],
+        [],
+        [],
+        null,
+      ),
+    );
+
+    expect(verified).toMatchObject({
+      status: "success",
+      generationId: "gen-header-1",
+      served: {
+        status: "confirmed",
+        provider: "Morph",
+        model: "deepseek/deepseek-v4-flash",
+      },
+      verification: "verified",
+    });
+
+    const absent = await dispatch(
+      callSpec(`${prompt} No response metadata.`),
+      runtime(
+        `${prompt} No response metadata.`,
+        [structuredResponse(JSON.stringify(reviewVerdictExample))],
+        [],
+        [],
+        null,
+      ),
+    );
+
+    expect(absent).toMatchObject({
+      status: "failure",
+      failureKind: "quarantined",
+      generationId: null,
+      served: { status: "unknown" },
+      verification: "quarantined",
+    });
   });
 
   it("permits OpenRouter fallback and retries a single-provider 429 without aborting", async () => {
