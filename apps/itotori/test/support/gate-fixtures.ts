@@ -1,6 +1,6 @@
 // Shared fixtures for the deterministic-gate proofs.
 //
-// Two roots: (1) `buildRb024Snapshot()` materializes the REAL RB-024 fact
+// Two roots: (1) `buildRb024Snapshot()` materializes the committed fact
 // snapshot from the committed v0.2 bridge bundle + a referencing narrative
 // structure (the same fixture the pre-pass proofs use), so the gates are proven
 // over genuine decoded units; (2) the synthetic `makeSnapshot` / `makeUnit`
@@ -123,7 +123,7 @@ function scene(sceneId: number, specs: UnitSpec[], nextScene: number | null): Na
   };
 }
 
-function wholeGameStructure(): NarrativeStructure {
+export function wholeGameStructure(): NarrativeStructure {
   return {
     schemaVersion: "utsushi.narrative-structure.v2",
     entryScene: 1,
@@ -137,7 +137,7 @@ function wholeGameStructure(): NarrativeStructure {
   };
 }
 
-/** The genuine RB-024 fact snapshot over the committed bridge bytes. */
+/** The genuine fact snapshot over the committed bridge bytes. */
 export function buildRb024Snapshot(): FactSnapshot {
   return buildFactSnapshot(wholeGameStructure(), loadBridgeBundle());
 }
