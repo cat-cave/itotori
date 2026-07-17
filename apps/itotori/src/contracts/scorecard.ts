@@ -2,9 +2,11 @@ import { z } from "zod";
 import { AcceptedOutputSchema } from "./accepted.js";
 import { PhysicalStepMemoSchema } from "./calls.js";
 import {
+  DecimalUsdSchema,
   IdentifierSchema,
   NonNegativeIntegerSchema,
   PositiveIntegerSchema,
+  RoleIdSchema,
   Sha256Schema,
 } from "./shared.js";
 
@@ -35,6 +37,82 @@ export const AcceptanceAttemptStageSchema = z.enum([
   "build-lqa",
   "feedback-enhancement",
 ]);
+
+/**
+ * A content-free identity for the requested or actually served model route.
+ * Identifiers deliberately exclude free-form provider metadata, which could
+ * carry response content into the scorecard projection.
+ */
+const TelemetryModelProviderPairSchema = z
+  .object({
+    model: IdentifierSchema,
+    provider: IdentifierSchema,
+  })
+  .strict();
+
+/** Real settled cost or an explicit unknown settlement. Unknown never carries
+ * an amount, so an aggregate cannot mistake it for a confirmed zero. */
+const QualifyingAttemptCostSchema = z.discriminatedUnion("state", [
+  z.object({ state: z.literal("confirmed"), amountUsd: DecimalUsdSchema }).strict(),
+  z.object({ state: z.literal("unknown") }).strict(),
+]);
+
+/** Provider token facts. Null means the provider did not report that fact; it
+ * is not a fabricated zero. */
+const QualifyingAttemptTokensSchema = z
+  .object({
+    input: NonNegativeIntegerSchema.nullable(),
+    output: NonNegativeIntegerSchema.nullable(),
+    cacheRead: NonNegativeIntegerSchema.nullable(),
+    cacheWrite: NonNegativeIntegerSchema.nullable(),
+  })
+  .strict();
+
+/**
+ * One physical attempt in the qualifying artifact lineage. This is the ONLY
+ * persisted/reportable scorecard row for attempt telemetry: it contains route,
+ * accounting, and workflow facts, but never request, source, or output bodies.
+ *
+ * `memoKey` + `attemptOrdinal` identifies the physical workflow attempt and
+ * `qualifyingArtifactId` ties it to the artifact it served. Both identities are
+ * opaque hashes/identifiers rather than content-bearing values.
+ */
+export const QualifyingArtifactAttemptTelemetrySchema = z
+  .object({
+    qualifyingArtifactId: IdentifierSchema,
+    memoKey: z.string().regex(/^(?:sha256:)?[a-f0-9]{64}$/u),
+    attemptOrdinal: PositiveIntegerSchema,
+    requested: TelemetryModelProviderPairSchema,
+    served: TelemetryModelProviderPairSchema,
+    generationId: IdentifierSchema.nullable(),
+    memoHit: z.boolean(),
+    stage: AcceptanceAttemptStageSchema,
+    role: RoleIdSchema,
+    latencyMs: NonNegativeIntegerSchema.nullable(),
+    tokens: QualifyingAttemptTokensSchema,
+    cost: QualifyingAttemptCostSchema,
+    quarantine: z.boolean(),
+    correction: z.boolean(),
+    retry: z.boolean(),
+  })
+  .strict();
+
+/** The qualifying-only, content-free scorecard telemetry ledger. */
+export const QualifyingScorecardTelemetrySchema = z
+  .object({
+    lineage: z.literal("qualifying"),
+    attempts: z.array(QualifyingArtifactAttemptTelemetrySchema).max(300_000),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const keys = value.attempts.map((attempt) => `${attempt.memoKey}:${attempt.attemptOrdinal}`);
+    if (new Set(keys).size !== keys.length) {
+      context.addIssue({
+        code: "custom",
+        message: "qualifying telemetry must contain one row per physical attempt",
+      });
+    }
+  });
 
 const PhysicalStepEvidenceSchema = z
   .object({
@@ -158,6 +236,7 @@ export const AcceptanceEvidenceBundleSchema = z
         attempts: z.array(PhysicalStepEvidenceSchema).max(100_000),
       })
       .strict(),
+    scorecardTelemetry: QualifyingScorecardTelemetrySchema,
     zdr: z
       .object({
         account: ZdrAttestationSchema,
@@ -316,5 +395,10 @@ export const AcceptanceScoreResultSchema = z
   });
 
 export type AcceptanceEvidenceBundle = z.infer<typeof AcceptanceEvidenceBundleSchema>;
+export type AcceptanceAttemptStage = z.infer<typeof AcceptanceAttemptStageSchema>;
+export type QualifyingArtifactAttemptTelemetry = z.infer<
+  typeof QualifyingArtifactAttemptTelemetrySchema
+>;
+export type QualifyingScorecardTelemetry = z.infer<typeof QualifyingScorecardTelemetrySchema>;
 export type AcceptanceDimensionResult = z.infer<typeof AcceptanceDimensionResultSchema>;
 export type AcceptanceScoreResult = z.infer<typeof AcceptanceScoreResultSchema>;
