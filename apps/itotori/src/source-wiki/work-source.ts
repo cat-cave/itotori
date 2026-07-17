@@ -112,13 +112,15 @@ function sceneScopes(snapshot: FactSnapshot): WorkSource["scenes"] {
     byScene.set(unit.sceneId, previous === undefined ? scope : mergeScopes(previous, scope));
   }
   let storyScope: RouteScope | undefined;
-  return snapshot.routeTopology.sceneDispatchOrder.map((sceneId) => {
+  // A dispatched scene with no ordered units — a title / menu / branch-only /
+  // system scene (47 of Sweetie's dispatched scenes) — carries nothing for the
+  // analysts to author, so skip it rather than fail. The story-so-far spine
+  // folds only through scenes that actually have content.
+  return snapshot.routeTopology.sceneDispatchOrder.flatMap((sceneId) => {
     const sceneScope = byScene.get(sceneId);
-    if (sceneScope === undefined) {
-      throw new Error(`source-Wiki plan has no units for dispatched scene ${sceneId}`);
-    }
+    if (sceneScope === undefined) return [];
     storyScope = storyScope === undefined ? sceneScope : mergeScopes(storyScope, sceneScope);
-    return { sceneId, sceneScope, storyScope };
+    return [{ sceneId, sceneScope, storyScope }];
   });
 }
 
