@@ -122,10 +122,34 @@ pub(crate) fn encode_relocated_slot(
                     "declare the terminator bytes required by this slot layout",
                 )));
             }
-            let start = slot.old_byte_range.start() as usize;
-            let end = slot.old_byte_range.end() as usize;
-            if end <= source_bytes.len() && !contains_bytes(&source_bytes[start..end], &terminator)
-            {
+            let start = usize::try_from(slot.old_byte_range.start()).map_err(|_| {
+                Box::new(relocated_slot_diagnostic(
+                    slot,
+                    STRING_SLOT_TERMINATOR_LOSS,
+                    "slot byte range start is not addressable on this platform",
+                    "repair_slot_range",
+                    "declare slot ranges addressable within the fixture source bytes",
+                ))
+            })?;
+            let end = usize::try_from(slot.old_byte_range.end()).map_err(|_| {
+                Box::new(relocated_slot_diagnostic(
+                    slot,
+                    STRING_SLOT_TERMINATOR_LOSS,
+                    "slot byte range end is not addressable on this platform",
+                    "repair_slot_range",
+                    "declare slot ranges addressable within the fixture source bytes",
+                ))
+            })?;
+            if end > source_bytes.len() {
+                return Err(Box::new(relocated_slot_diagnostic(
+                    slot,
+                    STRING_SLOT_TERMINATOR_LOSS,
+                    "slot byte range exceeds source bytes",
+                    "repair_slot_range",
+                    "declare slot ranges within the fixture source bytes",
+                )));
+            }
+            if !contains_bytes(&source_bytes[start..end], &terminator) {
                 return Err(Box::new(relocated_slot_diagnostic(
                     slot,
                     STRING_SLOT_TERMINATOR_LOSS,
@@ -431,5 +455,36 @@ pub(crate) fn relocation_diagnostic(
         message: message.into(),
         remediation_code: remediation_code.into(),
         remediation: remediation.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::offset_map::{EncodedStringSlotLayout, SourceEncoding};
+
+    #[test]
+    fn encode_relocated_slot_rejects_out_of_range_null_terminated_slot() {
+        let slot = StringRelocationSlot {
+            slot_id: "out-of-range".to_string(),
+            encoding: SourceEncoding::Utf8,
+            old_byte_range: ByteSpan::new(0, 4).expect("valid range"),
+            layout: EncodedStringSlotLayout::NullTerminated {
+                terminator_hex: "00".to_string(),
+            },
+            protected_spans: vec![],
+        };
+        let replacement = StringRelocationTarget {
+            slot_id: slot.slot_id.clone(),
+            target_text: "ok".to_string(),
+            protected_span_mappings: vec![],
+        };
+
+        let error = encode_relocated_slot(&slot, &replacement, b"ok\0")
+            .expect_err("out-of-range slot must be rejected");
+
+        assert_eq!(error.code, STRING_SLOT_TERMINATOR_LOSS);
+        assert_eq!(error.slot_id, "out-of-range");
+        assert_eq!(error.remediation_code, "repair_slot_range");
     }
 }

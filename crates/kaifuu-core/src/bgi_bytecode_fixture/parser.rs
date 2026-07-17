@@ -21,7 +21,13 @@ pub(super) fn parse_bgi_bytecode(
             "BGI code section length must be a multiple of four bytes",
         ));
     }
-    let code_size = code.len();
+    let code_size = u32::try_from(code.len()).map_err(|_| {
+        parse_error(
+            "code_size_overflow",
+            "bytecode",
+            "BGI code section exceeds the 32-bit code-size-relative pointer range",
+        )
+    })?;
     let text_start = code_end;
     let text = &bytes[text_start..];
     let config = variant.config();
@@ -63,7 +69,7 @@ pub(super) fn parse_bgi_bytecode(
                 continue;
             }
         };
-        let Some(text_relative) = pointer.checked_sub(code_size as u32) else {
+        let Some(text_relative) = pointer.checked_sub(code_size) else {
             if candidate_is_contextual {
                 return Err(parse_error(
                     "string_pointer_out_of_bounds",
