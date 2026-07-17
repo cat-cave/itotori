@@ -1427,6 +1427,7 @@ impl ArchiveDetectionReport {
 }
 
 const ARCHIVE_DETECTION_EVIDENCE_POLICY: &str = "aggregate-only; no raw keys, helper dumps, decrypted text, local paths, or private source filenames are serialized";
+const NON_DETECTED_ARCHIVE_VARIANT: &str = "unknown-variant";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1454,6 +1455,9 @@ pub struct ArchiveDetectionRow {
 
 impl ArchiveDetectionRow {
     pub fn normalize(&mut self) {
+        if !self.detected {
+            self.detected_variant = NON_DETECTED_ARCHIVE_VARIANT.to_string();
+        }
         self.signals
             .sort_by_key(|signal| serde_json::to_string(signal).unwrap_or_default());
         self.signals.dedup();
@@ -1821,6 +1825,9 @@ fn system_json_has_encryption_fields(path: &Path) -> bool {
 fn detect_kirikiri_xp3(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
     let xp3_extension_count = scan.extension_count("xp3");
     let xp3_header_count = scan.xp3_header_count();
+    let orphaned_subtype_marker_count = scan.header_count("kaifuu-xp3-encrypted")
+        + scan.header_count("xp3-encrypted")
+        + scan.header_count("xp3-crypt");
     // Subtype markers are recognized only at their structural position on the
     // container marker line, so a plain XP3 whose member payload contains
     // marker-like text (e.g. an in-scenario "xp3-crypt" string) is never
@@ -1860,6 +1867,7 @@ fn detect_kirikiri_xp3(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         } else {
             "xp3-archive"
         },
+        marker_only_unknown_variant: !detected && orphaned_subtype_marker_count > 0,
         signals,
         surfaces: vec![],
         evidence: vec![
@@ -1922,6 +1930,7 @@ fn detect_siglus(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         } else {
             "gameexe-dat-without-scene-pck"
         },
+        marker_only_unknown_variant: false,
         signals: if detected {
             vec![
                 ArchiveDetectionSignal::Packed,
@@ -2024,6 +2033,7 @@ fn detect_reallive(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         engine_family: ArchiveEngineFamily::RealLive,
         detected,
         detected_variant,
+        marker_only_unknown_variant: false,
         signals,
         surfaces: vec![],
         evidence: vec![
@@ -2117,6 +2127,7 @@ fn detect_rpg_maker_mv_mz(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         } else {
             "mv_or_mz"
         },
+        marker_only_unknown_variant: false,
         signals,
         surfaces: rpg_maker_mv_mz_surfaces(scan),
         evidence: vec![
@@ -2839,6 +2850,7 @@ fn detect_wolf_rpg_editor(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         } else {
             "wolf-archive"
         },
+        marker_only_unknown_variant: !detected && protected_marker_count > 0,
         signals,
         surfaces: vec![],
         evidence: vec![
@@ -2927,6 +2939,10 @@ fn detect_bgi_ethornell(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         engine_family: ArchiveEngineFamily::BgiEthornell,
         detected,
         detected_variant,
+        marker_only_unknown_variant: !detected
+            && (encrypted_marker_count > 0
+                || compressed_marker_count > 0
+                || layered_marker_count > 0),
         signals,
         surfaces: vec![],
         evidence: vec![
@@ -2981,6 +2997,7 @@ fn detect_renpy(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         } else {
             "rpyc-compiled-script"
         },
+        marker_only_unknown_variant: false,
         signals: if detected {
             vec![ArchiveDetectionSignal::Packed]
         } else {
@@ -3028,6 +3045,7 @@ fn detect_unknown_archive_variant(scan: &ArchiveDetectionScan) -> ArchiveDetecti
         engine_family: ArchiveEngineFamily::Unknown,
         detected,
         detected_variant: "unprofiled-archive-like-input",
+        marker_only_unknown_variant: false,
         signals: if detected {
             vec![ArchiveDetectionSignal::UnknownVariant]
         } else {
@@ -3058,6 +3076,7 @@ struct ArchiveRowInput {
     engine_family: ArchiveEngineFamily,
     detected: bool,
     detected_variant: &'static str,
+    marker_only_unknown_variant: bool,
     signals: Vec<ArchiveDetectionSignal>,
     surfaces: Vec<ArchiveDetectionSurface>,
     evidence: Vec<ArchiveDetectionEvidence>,
@@ -3068,6 +3087,8 @@ struct ArchiveRowInput {
 fn archive_row(input: ArchiveRowInput) -> ArchiveDetectionRow {
     let signals = if input.detected {
         input.signals
+    } else if input.marker_only_unknown_variant {
+        vec![ArchiveDetectionSignal::UnknownVariant]
     } else {
         vec![]
     };
@@ -3087,7 +3108,11 @@ fn archive_row(input: ArchiveRowInput) -> ArchiveDetectionRow {
         row_id: input.row_id.to_string(),
         engine_family: input.engine_family,
         detected: input.detected,
-        detected_variant: input.detected_variant.to_string(),
+        detected_variant: if input.detected {
+            input.detected_variant.to_string()
+        } else {
+            NON_DETECTED_ARCHIVE_VARIANT.to_string()
+        },
         signals,
         surfaces,
         evidence: input.evidence,
