@@ -1,5 +1,9 @@
 // deterministic fact-snapshot pre-pass — public surface.
 export { buildFactSnapshot, serializeFactSnapshot } from "./build.js";
+export {
+  buildContextSnapshotInput,
+  type BuildContextSnapshotInput,
+} from "./context-snapshot-input.js";
 export { contextSnapshotFactsFrom, factMaterializationRef } from "./context-facts.js";
 export { indexNarrativePositions, type NarrativePosition } from "./positions.js";
 export {
