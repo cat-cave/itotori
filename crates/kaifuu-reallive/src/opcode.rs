@@ -662,6 +662,13 @@ const EXPR_DOLLAR: u8 = 0x24;
 /// to attach a discriminant tag to each grouped parameter set.
 const EXPR_SPECIAL: u8 = 0x61;
 
+/// Maximum recursive ExpressionPiece nesting accepted by the bytecode
+/// decoder. This matches `utsushi-reallive`'s semantic expression parser:
+/// real scenes stay far below this bound, while hostile nested groups,
+/// memory references, or unary forms must return a typed error before they
+/// can overflow the native stack.
+const MAX_EXPRESSION_DEPTH: usize = 256;
+
 /// A fully-decoded RealLive ExpressionPiece (RLDEV / rlvm
 /// `libreallive/expression.cc` grammar, restated in our own words).
 /// This is the typed output of [`parse_expression`]: every byte of a
@@ -817,12 +824,15 @@ fn is_special_param_lead(bytes: &[u8], pos: usize) -> bool {
 /// - a string constant (any other lead byte → a bare / `"`-quoted run).
 ///   Returns the typed node and the exact number of bytes consumed so the
 ///   caller keeps the stream byte-aligned.
-fn parse_data(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseError> {
+fn parse_data(bytes: &[u8], pos: usize, depth: usize) -> Result<(Expr, usize), RealLiveParseError> {
+    ensure_expression_depth(bytes, pos, depth)?;
     match bytes.get(pos) {
         None => Err(RealLiveParseError::TruncatedExpression { offset: pos as u64 }),
-        Some(&EXPR_SPECIAL) if is_special_param_lead(bytes, pos) => parse_special_param(bytes, pos),
-        Some(&EXPR_PAREN_OPEN) => parse_complex(bytes, pos),
-        Some(&b) if is_expr_token_lead(b) => parse_expression(bytes, pos),
+        Some(&EXPR_SPECIAL) if is_special_param_lead(bytes, pos) => {
+            parse_special_param(bytes, pos, depth + 1)
+        }
+        Some(&EXPR_PAREN_OPEN) => parse_complex(bytes, pos, depth + 1),
+        Some(&b) if is_expr_token_lead(b) => parse_expression_at_depth(bytes, pos, depth),
         Some(&b) => {
             let len = string_operand_len(bytes, pos);
             if len == 0 {
@@ -848,7 +858,12 @@ fn parse_data(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseEr
 /// tolerated as a separator). The one-item case is exactly a parenthesised
 /// arithmetic sub-expression, so this single routine covers both grouping
 /// and complex-parameter forms.
-fn parse_complex(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseError> {
+fn parse_complex(
+    bytes: &[u8],
+    pos: usize,
+    depth: usize,
+) -> Result<(Expr, usize), RealLiveParseError> {
+    ensure_expression_depth(bytes, pos, depth)?;
     let mut cursor = pos + 1; // skip '('
     let mut items: Vec<Expr> = Vec::new();
     loop {
@@ -862,7 +877,7 @@ fn parse_complex(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLivePars
             Some(&opener::COMMA) => cursor += 1,
             Some(&opener::META_LINE) => cursor += 3,
             Some(&b) => {
-                let (item, len) = parse_data(bytes, cursor)?;
+                let (item, len) = parse_data(bytes, cursor, depth)?;
                 if len == 0 {
                     return Err(RealLiveParseError::MalformedExpression {
                         offset: cursor as u64,
@@ -881,13 +896,18 @@ fn parse_complex(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLivePars
 /// at the `0x61` introducer) — rlvm `SpecialExpressionPiece`. `<tag>` is a
 /// single discriminant byte, or `0xFF`+`i32` in the wide form; `<item>` is
 /// the contained [`parse_data`] value (in practice a `Complex` group).
-fn parse_special_param(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseError> {
+fn parse_special_param(
+    bytes: &[u8],
+    pos: usize,
+    depth: usize,
+) -> Result<(Expr, usize), RealLiveParseError> {
+    ensure_expression_depth(bytes, pos, depth)?;
     let (tag, tag_len) = match bytes.get(pos + 1) {
         Some(&EXPR_INT_LITERAL) => (read_i32_le(bytes, pos + 2)?, 5),
         Some(&t) => (i32::from(t), 1),
         None => return Err(RealLiveParseError::TruncatedExpression { offset: pos as u64 }),
     };
-    let (content, content_len) = parse_data(bytes, pos + 1 + tag_len)?;
+    let (content, content_len) = parse_data(bytes, pos + 1 + tag_len, depth)?;
     Ok((
         Expr::SpecialParam {
             tag,
@@ -903,7 +923,12 @@ fn parse_special_param(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLi
 /// Any other lead byte is a structurally invalid arithmetic token
 /// ([`RealLiveParseError::MalformedExpression`]) — string constants and
 /// complex / special parameters are handled one level up by [`parse_data`].
-fn parse_token(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseError> {
+fn parse_token(
+    bytes: &[u8],
+    pos: usize,
+    depth: usize,
+) -> Result<(Expr, usize), RealLiveParseError> {
+    ensure_expression_depth(bytes, pos, depth)?;
     let Some(&b) = bytes.get(pos) else {
         return Err(RealLiveParseError::TruncatedExpression { offset: pos as u64 });
     };
@@ -933,7 +958,7 @@ fn parse_token(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseE
                         byte: bytes.get(pos + 2).copied().unwrap_or(0),
                     });
                 }
-                let (index, index_len) = parse_expression(bytes, pos + 3)?;
+                let (index, index_len) = parse_expression_at_depth(bytes, pos + 3, depth + 1)?;
                 let close = pos + 3 + index_len;
                 if bytes.get(close) != Some(&EXPR_INDEX_CLOSE) {
                     return Err(RealLiveParseError::MalformedExpression {
@@ -960,14 +985,15 @@ fn parse_token(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseE
 
 /// Parse an ExpressionPiece **term** at `pos`: a parenthesised group /
 /// complex parameter, a `\<op>` unary-prefixed term, or a bare token.
-fn parse_term(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseError> {
+fn parse_term(bytes: &[u8], pos: usize, depth: usize) -> Result<(Expr, usize), RealLiveParseError> {
+    ensure_expression_depth(bytes, pos, depth)?;
     match bytes.get(pos) {
-        Some(&EXPR_PAREN_OPEN) => parse_complex(bytes, pos),
+        Some(&EXPR_PAREN_OPEN) => parse_complex(bytes, pos, depth + 1),
         Some(&EXPR_OP_PREFIX) => {
             let Some(&op) = bytes.get(pos + 1) else {
                 return Err(RealLiveParseError::TruncatedExpression { offset: pos as u64 });
             };
-            let (operand, operand_len) = parse_term(bytes, pos + 2)?;
+            let (operand, operand_len) = parse_term(bytes, pos + 2, depth + 1)?;
             Ok((
                 Expr::Unary {
                     op,
@@ -976,7 +1002,7 @@ fn parse_term(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseEr
                 operand_len + 2,
             ))
         }
-        _ => parse_token(bytes, pos),
+        _ => parse_token(bytes, pos, depth),
     }
 }
 
@@ -989,7 +1015,19 @@ fn parse_term(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseEr
 /// operator tree. This is the real ExpressionPiece evaluator that drives
 /// the decompiler's byte alignment — there is no heuristic body scan.
 pub fn parse_expression(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealLiveParseError> {
-    let (mut node, mut len) = parse_term(bytes, pos)?;
+    parse_expression_at_depth(bytes, pos, 0)
+}
+
+/// Parse an expression while carrying the current recursive grammar depth.
+/// The public entry point always starts at zero; recursive callers advance it
+/// before re-entering an expression through a nesting construct.
+fn parse_expression_at_depth(
+    bytes: &[u8],
+    pos: usize,
+    depth: usize,
+) -> Result<(Expr, usize), RealLiveParseError> {
+    ensure_expression_depth(bytes, pos, depth)?;
+    let (mut node, mut len) = parse_term(bytes, pos, depth)?;
     loop {
         let cursor = pos + len;
         if bytes.get(cursor) == Some(&EXPR_OP_PREFIX) {
@@ -998,7 +1036,7 @@ pub fn parse_expression(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealL
                     offset: cursor as u64,
                 });
             };
-            let (rhs, rhs_len) = parse_term(bytes, cursor + 2)?;
+            let (rhs, rhs_len) = parse_term(bytes, cursor + 2, depth)?;
             node = Expr::Binary {
                 op,
                 lhs: Box::new(node),
@@ -1010,6 +1048,22 @@ pub fn parse_expression(bytes: &[u8], pos: usize) -> Result<(Expr, usize), RealL
         }
     }
     Ok((node, len))
+}
+
+/// Return the existing malformed-expression error before recursive decoder
+/// descent can consume enough native stack to abort the process.
+fn ensure_expression_depth(
+    bytes: &[u8],
+    pos: usize,
+    depth: usize,
+) -> Result<(), RealLiveParseError> {
+    if depth > MAX_EXPRESSION_DEPTH {
+        return Err(RealLiveParseError::MalformedExpression {
+            offset: pos as u64,
+            byte: bytes.get(pos).copied().unwrap_or(0),
+        });
+    }
+    Ok(())
 }
 
 /// Length of a string operand (bare identifier or `"`-quoted) at `pos`.
@@ -1506,7 +1560,7 @@ fn parse_arg_list(
                 // One data item (rlvm `GetData`): an arithmetic expression,
                 // a string constant, or a complex / special parameter. The
                 // grammar — not a delimiter scan — computes its exact width.
-                let (_item, len) = parse_data(bytes, cursor)?;
+                let (_item, len) = parse_data(bytes, cursor, 0)?;
                 if len == 0 {
                     // No forward progress — a byte that is neither a
                     // valid expression token nor a string char. Surface a
@@ -2801,6 +2855,28 @@ mod tests {
     }
 
     #[test]
+    fn deeply_nested_memory_refs_return_malformed_instead_of_overflowing() {
+        // Each `$bank[ ... ]` recursively re-enters the expression decoder.
+        // The full bytecode-stream boundary must surface the existing typed
+        // malformed-expression error once the shared 256-level limit is
+        // exceeded, not unwind into an uncatchable stack overflow.
+        let depth = MAX_EXPRESSION_DEPTH + 50;
+        let mut bytes = Vec::with_capacity(depth * 4 + 6);
+        for _ in 0..depth {
+            bytes.extend_from_slice(&[EXPR_DOLLAR, 0x01, EXPR_INDEX_OPEN]);
+        }
+        bytes.extend_from_slice(&[EXPR_DOLLAR, EXPR_INT_LITERAL, 0, 0, 0, 0]);
+        bytes.extend(std::iter::repeat_n(EXPR_INDEX_CLOSE, depth));
+
+        let err = parse_real_bytecode(&bytes)
+            .expect_err("over-deep expression bytecode must be rejected");
+        assert!(matches!(
+            err,
+            RealLiveParseError::MalformedExpression { .. }
+        ));
+    }
+
+    #[test]
     fn bracket_leading_quoted_string_arg_is_not_misread_as_bank_reference() {
         // `("[X]")` — a quoted string whose first content byte is `[`. The
         // old "any byte followed by `[`" heuristic misread the opening `"` as
@@ -2878,7 +2954,7 @@ mod tests {
             0x00,
             EXPR_INDEX_CLOSE,
         ];
-        let (expr, len) = parse_data(&bytes, 0).expect("special-with-memref must parse");
+        let (expr, len) = parse_data(&bytes, 0, 0).expect("special-with-memref must parse");
         assert_eq!(len, bytes.len());
         match expr {
             Expr::SpecialParam { tag: 0, content } => {
@@ -2943,7 +3019,7 @@ mod tests {
             EXPR_INDEX_CLOSE, // $intC[0]
             EXPR_PAREN_CLOSE,
         ];
-        let (expr, len) = parse_data(&bytes, 0).expect("complex param must parse");
+        let (expr, len) = parse_data(&bytes, 0, 0).expect("complex param must parse");
         assert_eq!(len, bytes.len());
         match expr {
             Expr::Complex { items } => assert_eq!(items.len(), 4, "four data items"),
@@ -2956,7 +3032,7 @@ mod tests {
         // A bank reference is ONLY `$`-prefixed. A bare `0x02 [ … ]` (no `$`)
         // is not a valid arithmetic token — the evaluator must surface a typed
         // MalformedExpression rather than silently inventing a reference.
-        let err = parse_token(&[0x02, EXPR_INDEX_OPEN, EXPR_INT_LITERAL, 0, 0, 0, 0], 0)
+        let err = parse_token(&[0x02, EXPR_INDEX_OPEN, EXPR_INT_LITERAL, 0, 0, 0, 0], 0, 0)
             .expect_err("bare bank byte must be malformed");
         assert!(matches!(
             err,

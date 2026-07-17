@@ -42,7 +42,7 @@ pub(super) fn walk_select_block(
     // Optional window / parameter expression `( … )` (mirrors kaifuu
     // `parse_expression` over the leading group).
     if bytes.get(cursor) == Some(&b'(') {
-        cursor += next_expression(bytes, cursor)?;
+        cursor += next_expression(bytes, cursor, 0)?;
     }
     // Mandatory `{` block open.
     if bytes.get(cursor) != Some(&SELECT_BLOCK_OPEN) {
@@ -92,7 +92,7 @@ pub(super) fn walk_select_block(
                         break;
                     }
                     Some(&b'(') => {
-                        cursor += next_expression(bytes, cursor)?;
+                        cursor += next_expression(bytes, cursor, 0)?;
                     }
                     Some(&effect) => {
                         cursor += 1; // the single effect-code byte
@@ -105,7 +105,7 @@ pub(super) fn walk_select_block(
                             let stop =
                                 next == Some(b')') || next.is_some_and(|b| b.is_ascii_digit());
                             if !stop && next.is_some() {
-                                cursor += next_expression(bytes, cursor)?;
+                                cursor += next_expression(bytes, cursor, 0)?;
                             }
                         }
                     }
@@ -173,7 +173,7 @@ fn next_select_string_len(bytes: &[u8], pos: usize) -> usize {
         }
         if bytes[end..].starts_with(PRINT_TAG) {
             end += PRINT_TAG.len();
-            match next_expression(bytes, end) {
+            match next_expression(bytes, end, 0) {
                 // `+ 1` consumes the closing `)` of the interpolation.
                 Ok(len) => end += len + 1,
                 Err(_) => break,
@@ -228,7 +228,7 @@ pub fn extract_select_choice_texts(raw_bytes: &[u8]) -> Vec<Vec<u8>> {
     let mut cursor = COMMAND_HEADER_BYTE_LEN;
     // Optional leading `(param)` window / selection expression.
     if bytes.get(cursor) == Some(&b'(') {
-        match next_expression(bytes, cursor) {
+        match next_expression(bytes, cursor, 0) {
             Ok(len) if len > 0 => cursor += len,
             _ => return choices,
         }
@@ -270,7 +270,7 @@ pub fn extract_select_choice_texts(raw_bytes: &[u8]) -> Vec<Vec<u8>> {
                         cursor += 1;
                         break;
                     }
-                    Some(&b'(') => match next_expression(bytes, cursor) {
+                    Some(&b'(') => match next_expression(bytes, cursor, 0) {
                         Ok(len) if len > 0 => cursor += len,
                         _ => return choices,
                     },
@@ -281,7 +281,7 @@ pub fn extract_select_choice_texts(raw_bytes: &[u8]) -> Vec<Vec<u8>> {
                             let stop =
                                 next == Some(b')') || next.is_some_and(|b| b.is_ascii_digit());
                             if !stop && next.is_some() {
-                                match next_expression(bytes, cursor) {
+                                match next_expression(bytes, cursor, 0) {
                                     Ok(len) if len > 0 => cursor += len,
                                     _ => return choices,
                                 }

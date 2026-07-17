@@ -310,7 +310,7 @@ fn walk_command_arg_list(bytes: &[u8], start: usize) -> Result<usize, BytecodeDe
         if bytes[p] == b')' {
             return Ok(p + 1);
         }
-        let consumed = next_data(bytes, p)?;
+        let consumed = next_data(bytes, p, 0)?;
         if consumed == 0 {
             return Err(BytecodeDecodeError::MalformedElement {
                 position: p,
