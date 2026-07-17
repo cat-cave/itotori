@@ -86,13 +86,22 @@ export type CorrectionOutcome =
 
 /** Apply a correction to the implicated units. `lineEdit` is the P2 minor-repair
  * author continuation; `semanticRepair` is the P3 bounded fresh grounded fork
- * (one repair per defect, else it routes to adjudication). */
+ * (one repair per defect, else it routes to adjudication).
+ *
+ * Both carry the run-scoped `scene` — the drafted scene under repair. The P2/P3
+ * role inputs are the CURRENT DRAFT plus the defects, not the defects alone: the
+ * line editor continues the accepted draft and the semantic fork re-grounds the
+ * failing candidate. The driver already holds the `DraftedScene`, so it threads
+ * it explicitly (rather than a hidden shared context) to keep the seam a pure,
+ * deterministic `(scene, unitIds, defects) → input` projection. */
 export interface RepairPort {
   lineEdit(input: {
+    readonly scene: DraftedScene;
     readonly unitIds: readonly string[];
     readonly defects: readonly Defect[];
   }): Promise<CorrectionOutcome>;
   semanticRepair(input: {
+    readonly scene: DraftedScene;
     readonly unitIds: readonly string[];
     readonly defects: readonly Defect[];
     /** Defect ids already repaired once — a second attempt routes out. */
@@ -108,6 +117,11 @@ export interface AdjudicatePort {
   adjudicate(input: {
     readonly unitId: string;
     readonly defects: readonly Defect[];
+    /** The contested lane verdicts for THIS unit — the two blinded A/B positions
+     * the adjudicator weighs live in the review verdicts, not in the defects. The
+     * driver threads exactly the verdicts that judged the contested unit so the
+     * seam can project the `Q6ReviewInput` positions + trigger deterministically. */
+    readonly contested: readonly LaneVerdict[];
   }): Promise<{ readonly disposition: AdjudicationDisposition }>;
 }
 

@@ -75,14 +75,19 @@ export interface ReviewDeps {
 }
 
 /** The correction seam: assemble the P2 line-edit and P3 semantic-repair inputs
- * from the implicated units + defects, plus their ZDR runtimes. */
+ * from the drafted scene + implicated units + defects, plus their ZDR runtimes.
+ * The `scene` carries the CURRENT DRAFT the P2 editor continues and the failing
+ * candidate the P3 fork re-grounds — the assembler cannot build those inputs from
+ * the defects alone, so the driver threads the run-scoped `DraftedScene`. */
 export interface RepairDeps {
   buildEditInput(input: {
+    readonly scene: DraftedScene;
     readonly unitIds: readonly string[];
     readonly defects: readonly Defect[];
   }): EditLineInput;
   readonly editRuntime: EditorRuntimeBase;
   buildRepairRequest(input: {
+    readonly scene: DraftedScene;
     readonly unitIds: readonly string[];
     readonly defects: readonly Defect[];
   }): RepairRequest;
@@ -95,11 +100,14 @@ export interface RepairDeps {
 }
 
 /** The adjudication seam: assemble the Q6 review input + dispatch refs for one
- * contested unit, plus the certified-judge dispatch. */
+ * contested unit, plus the certified-judge dispatch. The two blinded A/B
+ * positions + trigger the adjudicator weighs live in the `contested` lane
+ * verdicts (not the defects), so the driver threads them explicitly. */
 export interface AdjudicateDeps {
   buildInput(input: {
     readonly unitId: string;
     readonly defects: readonly Defect[];
+    readonly contested: readonly LaneVerdict[];
   }): Q6ReviewInput;
   buildRefs(input: { readonly unitId: string }): Q6DispatchRefs;
   readonly dispatch: Q6Dispatch;
