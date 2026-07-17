@@ -25,7 +25,43 @@ type Sha256 = `sha256:${string}`;
  * never re-derives structure the decode already owns. */
 export interface StyleLeadSlice {
   readonly sceneId: string;
-  readonly excerpt: string;
+  /** Citeable decoded units in this scene. The fact id is the real (uuid-based)
+   * evidence id; A1 never copies it — it cites the short label instead. */
+  readonly units: readonly {
+    readonly factId: string;
+    readonly text: string;
+  }[];
+}
+
+/** One citeable unit with a short, copy-reliable label. */
+export interface CiteableUnit {
+  readonly label: string;
+  readonly factId: string;
+  readonly text: string;
+  readonly sceneId: string;
+}
+
+/**
+ * Assign each citeable slice unit a short label (u1, u2, …) A1 can copy verbatim.
+ * A1 puts the LABEL in a citation's evidenceId; `resolveObjectCitations` maps it
+ * back to the real fact id. A flash model cannot reliably transcribe a uuid-based
+ * fact id, but it can copy a two-character label — so the label is what the prompt
+ * shows and what the model must echo. Both the prompt and the resolver derive the
+ * mapping from THIS function, so they never disagree.
+ */
+export function citeableUnits(slice: readonly StyleLeadSlice[]): readonly CiteableUnit[] {
+  const units: CiteableUnit[] = [];
+  for (const scene of slice) {
+    for (const unit of scene.units) {
+      units.push({
+        label: `u${units.length + 1}`,
+        factId: unit.factId,
+        text: unit.text,
+        sceneId: scene.sceneId,
+      });
+    }
+  }
+  return units;
 }
 
 export interface StyleLeadRequest {
@@ -44,6 +80,9 @@ export interface StyleLeadRequest {
 
 /** A complete, schema-valid style-contract for a fictional game. This is rendered
  * directly into A1's prompt, so keep it typed against the terminal schema. */
+const SHA256_ZERO_PLACEHOLDER =
+  "sha256:0000000000000000000000000000000000000000000000000000000000000000" as const;
+
 export const STYLE_LEAD_FEW_SHOT_EXAMPLE = {
   schemaVersion: WIKI_OBJECT_SCHEMA_VERSION,
   objectId: "style-contract:example-vn",
@@ -70,11 +109,12 @@ export const STYLE_LEAD_FEW_SHOT_EXAMPLE = {
       confidence: "high",
       citations: [
         {
-          evidenceId: "unit:example-vn:scene-0001:0001",
-          evidenceHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-          snapshotId: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          evidenceId: "u1",
+          evidenceHash: SHA256_ZERO_PLACEHOLDER,
+          snapshotId: SHA256_ZERO_PLACEHOLDER,
           subject: { kind: "unit", id: "example-vn:scene-0001:0001" },
           role: "establishes",
+          quotedSpan: "そうだね",
           playOrderIndex: 0,
         },
       ],
@@ -102,8 +142,16 @@ export function composeStyleLeadPrompt(request: StyleLeadRequest): {
   readonly user: string;
 } {
   const a1 = specialistFor("A1");
+  const labelled = citeableUnits(request.slice);
   const sliceText = request.slice
-    .map((entry) => `## scene ${entry.sceneId}\n${entry.excerpt}`)
+    .map((entry) =>
+      [
+        `## scene ${entry.sceneId}`,
+        ...labelled
+          .filter((unit) => unit.sceneId === entry.sceneId)
+          .map((unit) => `- [${unit.label}] ${unit.text}`),
+      ].join("\n"),
+    )
     .join("\n\n");
   const user = [
     `Source language: ${request.sourceLanguage}.`,
@@ -113,7 +161,8 @@ export function composeStyleLeadPrompt(request: StyleLeadRequest): {
     sliceText,
     "Output requirements:",
     "Emit EXACTLY one JSON object of this shape. This is an illustrative example for a different game (ExampleVN); produce values for this game only.",
-    "Return valid JSON only: no Markdown, prose, or extra fields. Every claim must cite real unit evidence ids from the provided slice; never reuse ExampleVN ids or hashes.",
+    "Return valid JSON only: no Markdown, prose, or extra fields. Emit at least one claim. Every claim must cite at least one provided unit by putting its EXACT bracketed label (e.g. u1) in evidenceId — copy the label verbatim, never invent an id — and every citation must include quotedSpan as a verbatim substring of that unit's text. Never reuse ExampleVN ids or hashes.",
+    `For every citation, emit ${SHA256_ZERO_PLACEHOLDER} literally for both evidenceHash and snapshotId. Do not compute those fields: the system recomputes them from the cited evidence.`,
     "Complete valid style-contract WikiObject example:",
     STYLE_LEAD_FEW_SHOT_JSON,
   ].join("\n\n");
