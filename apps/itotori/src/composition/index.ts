@@ -37,6 +37,7 @@ export {
 export {
   ANALYST_RUNNER_ROLE_IDS,
   assertAnalystRunnerCoverage,
+  createAnalystDispatchRuntime,
   createAnalystRunner,
   runWikiBuild,
   type WikiBuildDeps,

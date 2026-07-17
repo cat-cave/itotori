@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  AuthorizationError,
   LlmMemoConflictError,
   LlmRetriesExhaustedError,
   type LlmCallMemoStore,
@@ -414,6 +415,35 @@ describe("the rebuilt LLM dispatcher", () => {
     expect(captured).toHaveLength(1);
     expect(result).toMatchObject({ status: "failure", failureKind: "schema-failure" });
     expect(result).not.toHaveProperty("value");
+  });
+
+  it("classifies a measured-profile mismatch before it is mistaken for transport", async () => {
+    const prompt = "Return a review verdict.";
+    const configured = runtime(prompt, [], []);
+    const result = await dispatch(callSpec(prompt), {
+      ...configured,
+      memo: {
+        ...configured.memo,
+        profile: { ...configured.memo.profile, name: "draft" },
+      },
+    });
+
+    expect(result).toMatchObject({ status: "failure", failureKind: "configuration" });
+  });
+
+  it("classifies a content-read denial before it is mistaken for transport", async () => {
+    const prompt = "Return a review verdict.";
+    const configured = runtime(prompt, [], []);
+    const result = await dispatch(callSpec(prompt), {
+      ...configured,
+      contentAccess: {
+        async requireContentRead() {
+          throw new AuthorizationError({ userId: "denied-user" }, "content.read");
+        },
+      },
+    });
+
+    expect(result).toMatchObject({ status: "failure", failureKind: "permission" });
   });
 
   it("runs the recorded conformance path with strict tools, reasoning, usage, cost, and unknown route evidence", async () => {

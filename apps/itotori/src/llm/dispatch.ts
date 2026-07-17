@@ -1,5 +1,6 @@
 import { HTTPClient, type Fetcher } from "@openrouter/sdk";
 import {
+  AuthorizationError,
   LlmPhysicalStepFailedError,
   LlmRetriesExhaustedError,
   LlmSpendAdmissionDeniedError,
@@ -309,7 +310,15 @@ function failureKind(error: unknown, state: DispatchState): FailureKind {
   if (error instanceof StandardSchemaValidationError || error instanceof z.ZodError) {
     return "schema-failure";
   }
+  if (error instanceof AuthorizationError) return "permission";
   const message = error instanceof Error ? error.message : "";
+  if (
+    /measured model profile|call route does not match|role model profile|rebuilt LLM requires|operator assertions/iu.test(
+      message,
+    )
+  ) {
+    return "configuration";
+  }
   if (/parse structured output|not valid JSON/iu.test(message)) return "invalid-json";
   if (/no content|missing structured result/iu.test(message)) return "empty-output";
   if (/tool arguments|tool allowlist|tool returned/iu.test(message)) {
@@ -450,12 +459,7 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     const finalStep = memoState.receipts.at(-1);
     const memoKey = memoState.lastMemoKey ?? sha256(spec);
     const completedLastStep = finalStep?.memoKey === memoKey;
-    const policyFailure =
-      error instanceof LlmRetriesExhaustedError ||
-      error instanceof LlmSpendAdmissionDeniedError ||
-      error instanceof LlmPhysicalStepFailedError ||
-      error instanceof LlmPhysicalAttemptError;
-    const kind = completedLastStep || policyFailure ? failureKind(error, state) : "transport";
+    const kind = failureKind(error, state);
     const defectCode =
       kind === "invalid-json"
         ? "invalid-json"
@@ -488,7 +492,9 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
         kind === "http" ||
         kind === "cancelled" ||
         kind === "retries-exhausted" ||
-        kind === "spend-admission"
+        kind === "spend-admission" ||
+        kind === "configuration" ||
+        kind === "permission"
           ? []
           : [{ path: [], code: defectCode, message: `terminal ${kind}` }],
       events: state.events,
