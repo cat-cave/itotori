@@ -53,22 +53,6 @@
       "redistributable": true
     },
     {
-      "path": "fixtures/hello-game/expected/native-source-hashes-v0.2.json",
-      "role": "metadata",
-      "mediaType": "application/json",
-      "sha256": "10a992c9b0dc87e87fca3b0eb63a2061a7c8d599917811642f0a8c434297419b",
-      "bytes": 1940,
-      "redistributable": true
-    },
-    {
-      "path": "fixtures/hello-game/expected/native-source-hash-mismatch-v0.2.json",
-      "role": "metadata",
-      "mediaType": "application/json",
-      "sha256": "7e589a6bf6ae57c1099b3eb698491d46cb72fa5be46a3f7a0ce6f67b6cc2de30",
-      "bytes": 274,
-      "redistributable": true
-    },
-    {
       "path": "fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json",
       "role": "patch-result",
       "mediaType": "application/json",
@@ -134,7 +118,7 @@
     }
   ],
   "aggregateStats": {
-    "files": 14,
+    "files": 12,
     "textUnits": 11,
     "sourceTextUtf16CodeUnits": 84,
     "protectedSpans": 3,
