@@ -54,7 +54,7 @@ import { runInitCommand, type InitCommandDeps } from "./init-command.js";
 import { runLocalizeCommand } from "./cli/localize-command.js";
 import { runWikiCommand } from "./cli/wiki-command.js";
 import { runPlayCommand } from "./cli/play-command.js";
-import type { LocalizationPortSource } from "./composition/index.js";
+import type { LocalizationPerRunInput, LocalizationPortSource } from "./composition/index.js";
 import type { RunPolicyRequest } from "./run-policy/index.js";
 import type { PlayEntrypointDeps } from "./composition/play-entrypoint.js";
 import type { WikiObjectApiService } from "./wiki/object-api/index.js";
@@ -109,6 +109,7 @@ export type ItotoriCliServices = {
   localizationSubstrate?: {
     resolvePortSource(
       request: RunPolicyRequest,
+      perRun: LocalizationPerRunInput,
     ): LocalizationPortSource | Promise<LocalizationPortSource>;
   };
   /**
@@ -518,7 +519,7 @@ async function runLocalize(args: string[], dependencies: ItotoriCliDependencies)
         readJson: (path) => dependencies.io.readJson(path),
         writeJson: (path, value) => dependencies.io.writeJson(path, value),
       },
-      resolvePortSource: (request) => substrate.resolvePortSource(request),
+      resolvePortSource: (request, perRun) => substrate.resolvePortSource(request, perRun),
     });
   });
 }

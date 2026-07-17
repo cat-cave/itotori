@@ -14,8 +14,13 @@
 // store + decode→scene projection); an offline proof returns `{ ports }` (fake
 // ports) to drive the driver without a live ZDR/Postgres run.
 
-import { runLocalization, type LocalizationPortSource } from "../composition/index.js";
+import {
+  runLocalization,
+  type LocalizationPerRunInput,
+  type LocalizationPortSource,
+} from "../composition/index.js";
 import { projectDecodeStructure } from "../composition/live/index.js";
+import { assertBridgeBundleV02, type BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import {
   FULL_ROSTER,
   OUTPUT_SCOPE_VALUES,
@@ -41,6 +46,7 @@ export interface LocalizeCommandDeps {
   readonly io: LocalizeCommandIo;
   resolvePortSource(
     request: RunPolicyRequest,
+    perRun: LocalizationPerRunInput,
   ): LocalizationPortSource | Promise<LocalizationPortSource>;
   log?(message: string): void;
 }
@@ -80,6 +86,7 @@ export function parseLocalizeRunRequest(args: readonly string[]): RunPolicyReque
  *   --run-mode production|pilot|test-dev   the operational posture (gates legality)
  *   --structure <PATH>                     decoded narrative-structure JSON (the
  *                                          decode→scene projection input)
+ *   --bridge <PATH>                        matching BridgeBundle v0.2
  * Optional flags:
  *   --context-scope <scope>   whole-game (default) | external-augmented | narrowed:<…>
  *   --output-scope <scope>    dialogue-only (default) | dialogue-and-choices | …
@@ -97,6 +104,10 @@ export async function runLocalizeCommand(
 
   const structurePath = requiredFlag(args, "--structure");
   const structureJson = deps.io.readJson(structurePath);
+  const bridgePath = requiredFlag(args, "--bridge");
+  const bridgeJson = deps.io.readJson(bridgePath);
+  assertBridgeBundleV02(bridgeJson);
+  const bridge: BridgeBundleV02 = bridgeJson;
   const { scenes } = projectDecodeStructure(structureJson);
 
   let wholeSceneMaxUnits: number | undefined;
@@ -112,7 +123,7 @@ export async function runLocalizeCommand(
   }
   const options: WorkflowOptions = wholeSceneMaxUnits === undefined ? {} : { wholeSceneMaxUnits };
 
-  const source = await deps.resolvePortSource(request);
+  const source = await deps.resolvePortSource(request, { structureJson, bridge });
   const report = await runLocalization(request, scenes, source, options);
 
   // Project a summary that carries NO source/target script text (copyrighted on

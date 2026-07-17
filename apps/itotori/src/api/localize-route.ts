@@ -10,8 +10,13 @@
 // The live port SUBSTRATE is injected as a `LocalizationPortSource` factory so this
 // module's own transitive import closure stays clean of the legacy graph.
 
-import { runLocalization, type LocalizationPortSource } from "../composition/index.js";
+import {
+  runLocalization,
+  type LocalizationPerRunInput,
+  type LocalizationPortSource,
+} from "../composition/index.js";
 import { projectDecodeStructure } from "../composition/live/index.js";
+import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import {
   FULL_ROSTER,
   OUTPUT_SCOPE_VALUES,
@@ -28,6 +33,7 @@ import type { WorkflowOptions, WorkflowRunReport } from "../workflow/index.js";
 export interface LocalizeRouteDeps {
   resolvePortSource(
     request: RunPolicyRequest,
+    perRun: LocalizationPerRunInput,
   ): LocalizationPortSource | Promise<LocalizationPortSource>;
 }
 
@@ -39,6 +45,7 @@ export interface ApiLocalizeInput {
   readonly contextScope?: ContextScopeValue;
   readonly outputScope?: OutputScope;
   readonly structureJson: unknown;
+  readonly bridge: BridgeBundleV02;
   readonly wholeSceneMaxUnits?: number;
 }
 
@@ -84,6 +91,9 @@ export async function runApiLocalize(
   const options: WorkflowOptions =
     input.wholeSceneMaxUnits === undefined ? {} : { wholeSceneMaxUnits: input.wholeSceneMaxUnits };
 
-  const source = await deps.resolvePortSource(request);
+  const source = await deps.resolvePortSource(request, {
+    structureJson: input.structureJson,
+    bridge: input.bridge,
+  });
   return await runLocalization(request, scenes, source, options);
 }

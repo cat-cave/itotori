@@ -31,7 +31,9 @@ import {
   SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
   parseNarrativeStructure,
 } from "../../structure/index.js";
+import { resolveRoleModelProfile } from "../../llm/role-model-profiles.js";
 import type { RunPolicyRequest } from "../../run-policy/index.js";
+import type { LocalizationPerRunInput } from "../localize-entrypoint.js";
 import {
   createAdjudicateDeps,
   createDraftDeps,
@@ -100,6 +102,34 @@ export interface LiveWorkflowFactoryConfig {
   readonly gateSideInputs?: Omit<GateSideInputs, "glossary">;
   readonly stepCache?: WorkflowStepCache;
   readonly maxStepAttempts?: number;
+}
+
+/** Build the P1-measured dispatch posture used by the long-lived production
+ * substrate. The certified role profile is the model-routing authority; the
+ * operator supplies the bounded spend values and OpenRouter credential at the
+ * environment boundary rather than through a command flag. */
+export function productionLocalizeDispatchConfig(input: {
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly maxAttemptExposureUsd: string;
+  readonly confirmedCostCapUsd: string;
+}): Pick<LiveWorkflowFactoryConfig, "dispatch">["dispatch"] {
+  if (input.env.OPENROUTER_API_KEY === undefined || input.env.OPENROUTER_API_KEY.length === 0) {
+    throw new LiveWorkflowFactoryError("OPENROUTER_API_KEY is required for a live localize run");
+  }
+  const draftProfile = resolveRoleModelProfile("P1");
+  return {
+    profile: {
+      name: draftProfile.modelProfile,
+      version: draftProfile.version,
+      deadlines: { normalMs: 30_000, deepMs: 90_000 },
+      maxAttemptExposureUsd: input.maxAttemptExposureUsd,
+    },
+    admission: {
+      scope: `localize:${draftProfile.profileId}`,
+      confirmedCostCapUsd: input.confirmedCostCapUsd,
+    },
+    env: input.env,
+  };
 }
 
 /** A malformed persisted bible relation is a factory fault. A merely missing
@@ -214,20 +244,31 @@ export async function createLiveWorkflowPortDeps(
   };
 }
 
-/** Adapt a bound factory into the `localizationSubstrate` port used by the thin
- * localize command/route. The run-mode check prevents a production-bound
- * substrate from being reused for a different policy posture. */
-export function createLiveLocalizationSubstrate(config: LiveWorkflowFactoryConfig): {
-  resolvePortSource(request: RunPolicyRequest): Promise<{ readonly deps: WorkflowPortDeps }>;
+/** Adapt a long-lived service substrate into the `localizationSubstrate` port
+ * used by the thin localize command/route. Decode artifacts and the policy
+ * posture belong to one invocation, so they are bound only when that invocation
+ * asks for its ports; the driver remains the policy authority before any call. */
+export function createLiveLocalizationSubstrate(
+  config: Omit<LiveWorkflowFactoryConfig, "structureJson" | "bridge">,
+): {
+  resolvePortSource(
+    request: RunPolicyRequest,
+    perRun: LocalizationPerRunInput,
+  ): Promise<{ readonly deps: WorkflowPortDeps }>;
 } {
   return {
-    async resolvePortSource(request) {
-      if (request.runMode !== config.scope.runMode) {
-        throw new LiveWorkflowFactoryError(
-          `run mode ${request.runMode} does not match bound mode ${config.scope.runMode}`,
-        );
-      }
-      return { deps: await createLiveWorkflowPortDeps(config) };
+    async resolvePortSource(request, perRun) {
+      return {
+        deps: await createLiveWorkflowPortDeps({
+          ...config,
+          ...perRun,
+          scope: {
+            ...config.scope,
+            runMode: request.runMode,
+            contextScope: request.contextScope as RunScopeConfig["contextScope"],
+          },
+        }),
+      };
     },
   };
 }
@@ -247,6 +288,30 @@ export async function createProductionLiveWorkflowPortDeps(
   const contentAccess = permissionBasedLlmContentRead(config.database, config.actor);
   return createLiveWorkflowPortDeps({
     ...config,
+    stores: {
+      memoStore: new ItotoriLlmCallMemoRepository(config.pool, cipher, contentAccess),
+      contentAccess,
+      accepted: new ItotoriLlmAcceptedOutputRepository(config.pool, cipher),
+      wiki: new ItotoriLlmWikiRepository(config.pool, cipher),
+    },
+  });
+}
+
+/** Bind the Postgres-backed stores once for a service lifetime, while leaving
+ * the structure and bridge to the invocation that actually owns them. */
+export function createProductionLiveLocalizationSubstrate(
+  config: Omit<LiveWorkflowFactoryConfig, "structureJson" | "bridge" | "stores"> & {
+    readonly database: ItotoriDatabase;
+    readonly actor: AuthorizationActor;
+    readonly pool: ConstructorParameters<typeof ItotoriLlmWikiRepository>[0];
+    readonly env?: Readonly<Record<string, string | undefined>>;
+  },
+): ReturnType<typeof createLiveLocalizationSubstrate> {
+  const cipher = createFieldMemoCipher(config.env);
+  const contentAccess = permissionBasedLlmContentRead(config.database, config.actor);
+  const { database: _database, actor: _actor, pool: _pool, env: _env, ...liveConfig } = config;
+  return createLiveLocalizationSubstrate({
+    ...liveConfig,
     stores: {
       memoStore: new ItotoriLlmCallMemoRepository(config.pool, cipher, contentAccess),
       contentAccess,

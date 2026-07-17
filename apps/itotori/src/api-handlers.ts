@@ -62,6 +62,7 @@ import {
   type WikiContextEntriesFilter,
   wikiContextEntryKindValues,
 } from "@itotori/db";
+import { assertBridgeBundleV02, type BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import { resolveStudioCapabilityPermissionView, type ItotoriAuthorizationPort } from "./auth.js";
 import {
   ApiValidationError,
@@ -192,7 +193,11 @@ import {
 import { runApiLocalize } from "./api/localize-route.js";
 import { runApiWiki } from "./api/wiki-route.js";
 import { runApiPlay } from "./api/play-route.js";
-import type { LocalizationPortSource, PlayEntrypointDeps } from "./composition/index.js";
+import type {
+  LocalizationPerRunInput,
+  LocalizationPortSource,
+  PlayEntrypointDeps,
+} from "./composition/index.js";
 import type { RunPolicyRequest } from "./run-policy/index.js";
 import type { WikiObjectApiService } from "./wiki/object-api/index.js";
 import type { RunModeValue } from "./contracts/index.js";
@@ -439,6 +444,7 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
   localizationSubstrate?: {
     resolvePortSource(
       request: RunPolicyRequest,
+      perRun: LocalizationPerRunInput,
     ): LocalizationPortSource | Promise<LocalizationPortSource>;
   };
   /**
@@ -1221,8 +1227,8 @@ async function routeItotoriApiRequest(
       // New-pipeline path: draft routes ONLY through composition `runLocalization`.
       // The old `projectWorkflow.draftProject` path is unreachable from this route.
       // The live substrate (WorkflowPortDeps assemblers over decode facts + bible)
-      // is a flagged seam not yet wired into the factory — refuse LOUDLY rather
-      // than fall back to the old service.
+      // is installed by the production DB service. A missing one is still a loud
+      // configuration failure; this route never falls back to the old service.
       if (services.localizationSubstrate === undefined) {
         return ok("branches.draft", {
           outcome: "refused",
@@ -1240,13 +1246,14 @@ async function routeItotoriApiRequest(
           project: null,
           status: null,
           refusalMessage:
-            "draft refused: new-pipeline localize requires runMode + structure on the request body (localizationSubstrate is installed)",
+            "draft refused: new-pipeline localize requires runMode + structure + bridge on the request body (localizationSubstrate is installed)",
         });
       }
       const report = await runApiLocalize(
         {
           runMode: localizeFields.runMode,
           structureJson: localizeFields.structure,
+          bridge: localizeFields.bridge,
           ...(localizeFields.contextScope === undefined
             ? {}
             : { contextScope: localizeFields.contextScope }),
@@ -1254,7 +1261,9 @@ async function routeItotoriApiRequest(
             ? {}
             : { outputScope: localizeFields.outputScope }),
         },
-        { resolvePortSource: (request) => substrate.resolvePortSource(request) },
+        {
+          resolvePortSource: (request, perRun) => substrate.resolvePortSource(request, perRun),
+        },
       );
       const status = await services.projectWorkflow.getDashboardStatus();
       // gate-mutation-route-status-echo — see POST /api/imports/bridge: the
@@ -3622,6 +3631,7 @@ function methodNotAllowed(allowedMethods: string[]): ApiJsonResponse {
 function parseNewPipelineDraftFields(body: unknown): {
   runMode: RunModeValue;
   structure: unknown;
+  bridge: BridgeBundleV02;
   contextScope?: ContextScopeValue;
   outputScope?: OutputScope;
 } | null {
@@ -3629,11 +3639,18 @@ function parseNewPipelineDraftFields(body: unknown): {
   const record = body as Record<string, unknown>;
   if (typeof record.runMode !== "string" || record.runMode.length === 0) return null;
   if (record.structure === undefined) return null;
+  if (record.bridge === undefined) return null;
+  try {
+    assertBridgeBundleV02(record.bridge);
+  } catch {
+    return null;
+  }
   const runModeValues = ["production", "pilot", "test-dev"] as const;
   if (!(runModeValues as readonly string[]).includes(record.runMode)) return null;
   return {
     runMode: record.runMode as RunModeValue,
     structure: record.structure,
+    bridge: record.bridge,
     ...(typeof record.contextScope === "string"
       ? { contextScope: record.contextScope as ContextScopeValue }
       : {}),

@@ -22,6 +22,14 @@ import type {
 } from "../workflow/index.js";
 import { createWorkflowPorts } from "./workflow-ports.js";
 import type { WorkflowPortDeps } from "./deps.js";
+import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
+
+/** Per-invocation decode artifacts. The live service owns DB/auth/dispatch;
+ * callers must provide the matching structure and bridge for each run. */
+export interface LocalizationPerRunInput {
+  readonly structureJson: unknown;
+  readonly bridge: BridgeBundleV02;
+}
 
 /** Build the live workflow ports that wrap the named pipeline entrypoints. This
  * is the production ports factory `runLocalization` composes by default. */

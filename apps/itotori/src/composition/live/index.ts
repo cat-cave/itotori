@@ -36,6 +36,8 @@ export {
 export {
   createLiveLocalizationSubstrate,
   createLiveWorkflowPortDeps,
+  productionLocalizeDispatchConfig,
+  createProductionLiveLocalizationSubstrate,
   createProductionLiveWorkflowPortDeps,
   loadInstalledBible,
   LiveWorkflowFactoryError,
