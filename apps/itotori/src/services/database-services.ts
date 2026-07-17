@@ -188,13 +188,18 @@ function unavailableLiveRoleSeams() {
   };
 }
 
-function unavailableServiceSurface(
+export function unavailableServiceSurface(
   installed: Pick<
     ItotoriApplicationServices,
     "projectWorkflow" | "wikiObjectApi" | "wikiBuild" | "localizationSubstrate"
   >,
 ): ItotoriApplicationServices {
   return new Proxy(installed, {
+    // Presence checks must use the Proxy's `has` capability rather than `get`:
+    // `get` deliberately supplies a loud retired-surface stub for unbound ports.
+    has(target, property) {
+      return Reflect.has(target, property);
+    },
     get(target, property, receiver) {
       if (Reflect.has(target, property)) return Reflect.get(target, property, receiver);
       return () => {

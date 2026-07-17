@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { assertQueueHealthReadModel } from "../src/api-schema.js";
 import { runItotoriCliCommand, type ItotoriCliServices } from "../src/cli-handlers.js";
 import type { QueueHealthCliPort } from "../src/queue/cli.js";
+import {
+  unavailableServiceSurface,
+  type ItotoriApplicationServices,
+} from "../src/services/database-services.js";
 
 function jsonStoreFixture(reads: Map<string, unknown>, writes: Map<string, unknown>) {
   return {
@@ -66,6 +70,15 @@ function servicesFixture(port: QueueHealthCliPort | undefined = undefined): Itot
   return stub as ItotoriCliServices;
 }
 
+function unavailableAfterCutoverSurface(): ItotoriCliServices {
+  return unavailableServiceSurface({
+    projectWorkflow: {} as ItotoriApplicationServices["projectWorkflow"],
+    wikiObjectApi: {} as ItotoriApplicationServices["wikiObjectApi"],
+    wikiBuild: {} as ItotoriApplicationServices["wikiBuild"],
+    localizationSubstrate: {} as ItotoriApplicationServices["localizationSubstrate"],
+  });
+}
+
 describe("queue-health CLI handler", () => {
   it("itotori:queue-health writes a TYPED response that satisfies the queue.health API contract", async () => {
     const fixture = queueHealthPortFixture(queueHealthFixture());
@@ -120,6 +133,24 @@ describe("queue-health CLI handler", () => {
         migrateDatabase: vi.fn(async () => {}),
         resetDatabase: vi.fn(async () => {}),
         withServices: async (callback) => await callback(servicesFixture(undefined)),
+      }),
+    ).rejects.toThrow(/queue-health service is not configured/);
+  });
+
+  it("refuses an unbound queueHealth port before the unavailable-after-cutover fallback runs", async () => {
+    const services = unavailableAfterCutoverSurface();
+    expect(Reflect.has(services, "queueHealth")).toBe(false);
+    expect(Reflect.has(services, "projectWorkflow")).toBe(true);
+    expect(() => (services as unknown as { retiredPort(): void }).retiredPort()).toThrow(
+      /retiredPort is not available after the legacy cutover/,
+    );
+
+    await expect(
+      runItotoriCliCommand(["queue-health", "--output", "queue-health.json"], {
+        io: jsonStoreFixture(new Map(), new Map()),
+        migrateDatabase: vi.fn(async () => {}),
+        resetDatabase: vi.fn(async () => {}),
+        withServices: async (callback) => await callback(services),
       }),
     ).rejects.toThrow(/queue-health service is not configured/);
   });
