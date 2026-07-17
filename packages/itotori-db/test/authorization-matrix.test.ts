@@ -2329,7 +2329,6 @@ function exactSearchGate(
   });
 }
 
-
 function semanticContextReadGate(
   mutation: string,
   permissionKey: PermissionKey,
@@ -2410,7 +2409,6 @@ function engineCapabilityReportGate(
   });
 }
 
-
 function draftJobGate(
   mutation: string,
   permissionKey: PermissionKey,
@@ -2474,7 +2472,6 @@ function auditFindingGate(
     runDeniedMutation: (db) => run(new ItotoriAuditFindingRepository(db)),
   });
 }
-
 
 function principalGate(
   mutation: string,
@@ -2643,8 +2640,8 @@ function sourcePermissionGates(): Pick<
     repositoryPermissionGateMatrix.map(({ sourceFile }) => sourceFile),
   );
 
-  for (const sourceFile of readdirSync(repositorySourceDir).filter((file) =>
-    file.endsWith(".ts") && activeSourceFiles.has(file),
+  for (const sourceFile of readdirSync(repositorySourceDir).filter(
+    (file) => file.endsWith(".ts") && activeSourceFiles.has(file),
   )) {
     const sourceUrl = new URL(sourceFile, repositorySourceDir);
     const source = readFileSync(sourceUrl, "utf8");
