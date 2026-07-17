@@ -920,6 +920,11 @@ function rerunNoticeCopy(receipt: WikiEditReceipt): { title: string; body: strin
         title: "Canonical wiki version saved; redraft failed",
         body: `The redraft is ${receipt.rerun.jobStatus}; the canonical version remains saved, but affected units need a successful rerun before their ContextPackets refresh.`,
       };
+    default:
+      return {
+        title: "Canonical wiki version saved",
+        body: "The retired context-correction rerun state is unavailable in the new workflow.",
+      };
   }
 }
 

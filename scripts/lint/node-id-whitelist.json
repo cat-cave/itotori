@@ -1,7 +1,7 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/audit-no-node-ids.mjs --update\". Each entry is a grandfathered\nnode-id token (the matched reference text, lower-cased); the multiset per file\nmay only shrink. When empty/deleted the guard is absolute (zero node ids).",
   "generatedAt": "2026-07-15T16:03:46.920Z",
-  "total": 599,
+  "total": 595,
   "files": {
     "crates/kaifuu-cli/src/binary_patch_smoke.rs": [
       "kaifuu-011"
@@ -730,18 +730,8 @@
     "packages/itotori-db/test/job-registry.test.ts": [
       "itotori-048"
     ],
-    "packages/itotori-db/test/jobs-run-table-read-model.test.ts": [
-      "itotori-225"
-    ],
     "packages/itotori-db/test/localization-cost-account-backfill-migration.test.ts": [
       "itotori-0100"
-    ],
-    "packages/itotori-db/test/localization-journal-repository.test.ts": [
-      "itotori-225"
-    ],
-    "packages/itotori-db/test/localization-result-revision-repository.test.ts": [
-      "itotori-225",
-      "itotori-225"
     ],
     "packages/itotori-db/test/model-ledger-repository.test.ts": [
       "itotori-053",

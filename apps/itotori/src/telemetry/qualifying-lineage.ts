@@ -13,7 +13,7 @@ import {
   type AcceptanceAttemptStage,
   type RoleId,
 } from "../contracts/index.js";
-import { addDecimalUsd } from "../providers/cost.js";
+import { addDecimalUsd } from "../llm/decimal-usd.js";
 import type { ResolvedRunPolicy } from "../run-policy/index.js";
 import type { AttemptLineageEntry } from "../workflow/index.js";
 import type { z } from "zod";

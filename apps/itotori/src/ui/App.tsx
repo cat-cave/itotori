@@ -23,17 +23,12 @@ import {
   type StudioCapabilityPermissionView,
 } from "./caps-context.js";
 import {
-  BenchmarkCockpitScreen,
-  isBenchmarkCockpitRoute,
-} from "./screens/BenchmarkCockpitScreen.js";
-import {
   CatalogCandidateBrowserScreen,
   isCatalogCandidateBrowserRoute,
 } from "./screens/CatalogCandidateBrowserScreen.js";
 import { AddressableFocusScreen } from "./screens/AddressableFocusScreen.js";
 import { DashboardScreen } from "./screens/DashboardScreen.js";
 import { OnboardingScreen, parseOnboardingRoute } from "./screens/OnboardingScreen.js";
-import { PatchIterationScreen, parsePatchIterationRoute } from "./screens/PatchIterationScreen.js";
 import { PlayRouteMapScreen, parsePlayRouteMapRoute } from "./screens/PlayRouteMapScreen.js";
 import {
   PlayFlagComposerScreen,
@@ -201,13 +196,6 @@ function RoutedScreen({
     return <PlayFlagComposerScreen route={playFlag} />;
   }
 
-  // `/play/patches` — immutable lineage → exact-version play session →
-  // persisted feedback → refinement v2. Keep it before the bare Play route.
-  const patchIteration = parsePatchIterationRoute(location.pathname, location.search);
-  if (patchIteration !== null) {
-    return <PatchIterationScreen route={patchIteration} navigate={navigate} />;
-  }
-
   const onboardingRoute = parseOnboardingRoute(location.pathname);
   if (onboardingRoute !== null) {
     return <OnboardingScreen />;
@@ -255,9 +243,6 @@ function RoutedScreen({
 
   // `/benchmark` — the benchmark cockpit (contestants + confidence + the
   // actionable backlog diagnostic). Rendered inside the shell frame.
-  if (isBenchmarkCockpitRoute(location.pathname)) {
-    return <BenchmarkCockpitScreen />;
-  }
 
   // `/catalog` - ranked candidate browser backed by catalog.opportunities.
   if (isCatalogCandidateBrowserRoute(location.pathname)) {

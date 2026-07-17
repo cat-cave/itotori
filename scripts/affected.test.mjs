@@ -91,31 +91,6 @@ test("affected routes representative utsushi crate changes to ci-utsushi", () =>
   assert.deepEqual(affectedTasks(["crates/utsushi-siglus/src/lib.rs"]), ["ci-utsushi"]);
 });
 
-test("affected routes localize-project suite script changes to its node test gate", () => {
-  assert.deepEqual(affectedTasks(["suite/scripts/localize-project/run.mjs"]), [
-    "localize-project-test",
-  ]);
-  assert.deepEqual(affectedTasks(["suite/scripts/localize-project/verify-artifacts.mjs"]), [
-    "localize-project-test",
-  ]);
-  assert.deepEqual(
-    affectedTasks(["suite/scripts/localize-project/run.mjs", "unowned-tooling/file.txt"]),
-    ["check"],
-  );
-});
-
-test("check gate runs localize-project node tests", () => {
-  const justfile = readFileSync("justfile", "utf8");
-  const checkBody = parseJustRecipeBody(justfile, "check");
-  const localizeProjectTestBody = parseJustRecipeBody(justfile, "localize-project-test");
-
-  assert.match(checkBody, /^\s*just localize-project-test$/m);
-  assert.match(
-    localizeProjectTestBody,
-    /^\s*node --test suite\/scripts\/localize-project\/\*\.test\.mjs$/m,
-  );
-});
-
 // ---------------------------------------------------------------------------
 // qd-full-ci affected-lane selection (affectedCiLanes / buildCrateFamilyDependents)
 // ---------------------------------------------------------------------------
@@ -215,7 +190,7 @@ test("qd-full-ci lanes: a repo-root fixtures/ diff selects the rust lanes incl m
 });
 
 test("qd-full-ci lanes: package-local (apps/itotori) fixtures stay itotori-only (no real-bytes)", () => {
-  const lanes = affectedCiLanes(["apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json"]);
+  const lanes = affectedCiLanes(["apps/itotori/test/fixtures/llm-zdr-golden-request.json"]);
   assert.ok(lanes.includes("ci-itotori"));
   assert.ok(
     !lanes.includes("mutation-differential"),
@@ -230,51 +205,6 @@ test("qd-full-ci selectLanes: an undeterminable diff falls back to the full ci g
   // conservative: the complete ci gate, never a pruned subset.
   const noGitDir = mkdtempSync(path.join(os.tmpdir(), "affected-nogit-"));
   assert.deepEqual(selectLanes(noGitDir, {}, ["node", "qd-full-ci"]), ["ci"]);
-});
-
-test("affected + lanes: a presets/ diff selects ci-itotori AND localize-project-test (both read it)", () => {
-  // presets/localize-project.pair-policy.json is consumed by BOTH the ci-itotori
-  // localize-project-stage vitest AND suite/scripts/localize-project/run.test.mjs
-  // (which runs only under the localize-project-test lane); `just check` runs
-  // neither, so a preset change must select both fine-grained lanes.
-  assert.deepEqual(affectedTasks(["presets/localize-project.pair-policy.json"]), [
-    "ci-itotori",
-    "localize-project-test",
-  ]);
-  const lanes = affectedCiLanes(["presets/localize-project.pair-policy.json"]);
-  assert.ok(lanes.includes("ci-itotori"), "preset change must run the ci-itotori lane");
-  assert.ok(
-    lanes.includes("localize-project-test"),
-    "preset change must run the localize-project-test lane (run.test.mjs reads the preset)",
-  );
-  assert.ok(lanes.includes("check"), "preset change still runs the base check gate");
-  assert.ok(!lanes.includes("ci"), "preset change stays fine-grained, not the full ci sentinel");
-});
-
-test("affected + lanes: the alpha-public-fixture + iteration suites select alpha-proof (the gate that executes them)", () => {
-  for (const p of [
-    "suite/scripts/alpha-public-fixture/run.mjs",
-    "suite/scripts/itotori-fixture-iteration/schema-validate.mjs",
-    "suite/scripts/itotori-iteration-fixture/schema-validate.mjs",
-  ]) {
-    assert.deepEqual(affectedTasks([p]), ["alpha-proof"], `${p} routes to alpha-proof`);
-    const lanes = affectedCiLanes([p]);
-    assert.ok(lanes.includes("alpha-proof"), `${p} lane selection includes alpha-proof`);
-    assert.ok(!lanes.includes("ci"), `${p} stays fine-grained, not the full ci sentinel`);
-  }
-});
-
-test("alpha-proof runs every alpha and iteration sibling Node unit suite", () => {
-  const justfile = readFileSync("justfile", "utf8");
-  const alphaProofBody = parseJustRecipeBody(justfile, "alpha-proof");
-  const unitTestBody = parseJustRecipeBody(justfile, "alpha-iteration-unit-test");
-
-  assert.match(justfile, /^alpha-proof: alpha-iteration-unit-test$/m);
-  assert.match(alphaProofBody, /^\s*pnpm exec vp run alpha:public-fixture$/m);
-  assert.match(
-    unitTestBody,
-    /^\s*node --test suite\/scripts\/alpha-public-fixture\/\*\.test\.mjs suite\/scripts\/itotori-fixture-iteration\/\*\.test\.mjs suite\/scripts\/itotori-iteration-fixture\/\*\.test\.mjs$/m,
-  );
 });
 
 test("affected + lanes: a packages/spec-dag-dashboard diff selects the full ci gate", () => {

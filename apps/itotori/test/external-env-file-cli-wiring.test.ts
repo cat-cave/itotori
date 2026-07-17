@@ -19,6 +19,7 @@ function noopDependencies() {
     io: { readJson: vi.fn(), writeJson: vi.fn(), writeText: vi.fn() },
     // `db-migrate` only calls migrateDatabase, so nothing else is exercised.
     migrateDatabase: vi.fn(async () => {}),
+    resetDatabase: vi.fn(async () => {}),
     withServices: vi.fn(async () => {
       throw new Error("withServices should not be called by db-migrate");
     }),

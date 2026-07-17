@@ -6,7 +6,7 @@ import {
 import { WEB_SEARCH_EGRESS_ROLE, webEgressAllowed } from "../egress/index.js";
 import { canonicalJson } from "../llm/canonical-json.js";
 import { deepSeekV4FlashProfile, resolveRoleModelProfile } from "../llm/role-model-profiles.js";
-import { assertOpenRouterZdrAccount } from "../providers/account-zdr.js";
+import { assertOpenRouterZdrAccount } from "./account-zdr.js";
 import {
   LIVE_CONFORMANCE_MAX_AGE_MS,
   QUALIFYING_ADMISSION_ATTESTATIONS,

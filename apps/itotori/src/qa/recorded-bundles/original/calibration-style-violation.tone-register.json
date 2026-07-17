@@ -1,8 +1,0 @@
-{
-  "schemaVersion": "itotori.qa-calibration-recorded-bundle.v2",
-  "fixtureId": "calibration-style-violation",
-  "agentName": "tone-register",
-  "authority": "original",
-  "providerId": "anthropic",
-  "findings": []
-}

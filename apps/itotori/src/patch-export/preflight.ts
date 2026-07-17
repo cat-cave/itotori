@@ -274,7 +274,7 @@ function blockingFail(check: PatchExportPreflightCheckKind, detail: string): Pre
 
 function selectedTargetBody(draft: DraftArtifactBundle["drafts"][number]): string {
   const selectedCandidate = draft.writtenOutcome.candidates.find(
-    (candidate) => candidate.id === draft.writtenOutcome.selectedCandidateId,
+    (candidate: any) => candidate.id === draft.writtenOutcome.selectedCandidateId,
   );
   if (selectedCandidate === undefined) {
     throw new Error(

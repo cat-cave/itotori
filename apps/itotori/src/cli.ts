@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { runItotoriCliCommand, type JsonFileStore } from "./cli-handlers.js";
 import {
   migrateItotoriDatabase,
+  resetItotoriDatabase,
   withDatabaseItotoriServices,
 } from "./services/database-services.js";
 
@@ -14,6 +15,7 @@ export async function main(cliArgs = args): Promise<void> {
   await runItotoriCliCommand(cliArgs, {
     io: nodeJsonFileStore,
     migrateDatabase: migrateItotoriDatabase,
+    resetDatabase: resetItotoriDatabase,
     withServices: (callback) => withDatabaseItotoriServices({}, callback),
   });
 }

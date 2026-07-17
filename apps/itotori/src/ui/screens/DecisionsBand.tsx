@@ -73,17 +73,11 @@ export function findingScope(decision: DashboardPendingDecision): string {
 }
 
 /**
- * The next real workflow surface for an open finding. Branch-scoped findings
- * open the patch-iteration surface, where feedback creates a result revision;
- * project-scoped findings open the Wiki, which resolves the selected branch
- * and records canonical context without fabricating a line target.
+ * Open findings now resolve through the surviving Wiki/context surface. It
+ * records canonical context without reviving the retired patch-refinement
+ * workflow or fabricating a line target.
  */
-export function findingFollowupPath(decision: DashboardPendingDecision): string {
-  if (decision.localeBranchId !== null) {
-    return `/play/patches?${new URLSearchParams({
-      localeBranchId: decision.localeBranchId,
-    }).toString()}`;
-  }
+export function findingFollowupPath(_decision: DashboardPendingDecision): string {
   return "/wiki";
 }
 
@@ -219,8 +213,7 @@ function QaFindingsTable({
             header: "Finding",
             render: (decision) => {
               const href = findingFollowupPath(decision);
-              const surface =
-                decision.localeBranchId === null ? "context-correction" : "patch-iteration";
+              const surface = "context-correction";
               return (
                 <span>
                   <a href={href} data-jump-to={surface} data-finding-id={decision.findingId}>

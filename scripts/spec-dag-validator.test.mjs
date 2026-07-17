@@ -765,6 +765,18 @@ test("does not reject historical or intentionally absent completed-node path ref
   assert.deepEqual(errors, []);
 });
 
+test("does not reject known no-legacy-cutover paths retained in completed qd evidence", () => {
+  const errors = validateDag(
+    qdExportFixture({
+      status: "done",
+      acceptance: "- apps/itotori/src/providers/recorded.ts was validated before the cutover.",
+      verification: [{ type: "command", value: "just localize-project --dry-run" }],
+    }),
+  ).errors;
+
+  assert.deepEqual(errors, []);
+});
+
 test("rejects qd export placeholder spec, acceptance, and audit-focus text", () => {
   const dag = qdExportFixture({
     spec: "test spec",
@@ -1011,15 +1023,10 @@ test("accepts qd export alpha commands that name existing recipes, tasks, and ex
       milestone: "alpha",
       priority: "P1",
       verification: [
-        { type: "command", value: "just localize-project --dry-run --project sweetie-hd-alpha-1" },
+        { type: "command", value: "just alpha-proof" },
         {
           type: "command",
-          value:
-            "pnpm exec vp run itotori:agentic-loop-smoke --bridge apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json --unit-index 0 --pair-policy apps/itotori/test/fixtures/agentic-loop-smoke-pair-policy.json",
-        },
-        {
-          type: "command",
-          value: "pnpm --filter @itotori/app exec vitest run test/localize-project-stage.test.ts",
+          value: "pnpm --filter @itotori/app exec vitest run test/composition-reachability.test.ts",
         },
         {
           type: "command",

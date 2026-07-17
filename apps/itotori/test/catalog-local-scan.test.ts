@@ -283,6 +283,7 @@ describe("catalog local scanner", () => {
           }),
         },
         migrateDatabase: vi.fn(async () => {}),
+        resetDatabase: vi.fn(async () => {}),
         withServices,
       },
     );

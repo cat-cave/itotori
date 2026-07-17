@@ -10,7 +10,7 @@
 //
 // This module is self-contained: it composes RB-030 wiki persistence and the
 // RB-013 human-input table, and imports nothing from the old context-correction
-// worker or from agents/**.
+// worker or from the retired execution surface.
 
 import {
   ItotoriLlmHumanInputRepository,

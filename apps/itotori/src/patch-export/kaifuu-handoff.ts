@@ -7,9 +7,8 @@
 // header.
 //
 // The actual write goes through `cargo run -p kaifuu-cli -- patch ...`
-// per the `just hello` recipe — this module only assembles JSON. The
-// `just hello-patch` recipe writes the payload to disk; Kaifuu is
-// invoked downstream and is OUT OF SCOPE for ITOTORI-025 (the
+// by a caller that owns the emitted artifact — this module only assembles JSON.
+// Kaifuu invocation remains downstream and out of scope for ITOTORI-025 (the
 // roadmap node is itotori-side).
 
 import type {

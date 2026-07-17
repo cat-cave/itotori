@@ -21,8 +21,13 @@
 // shell. `runProcess` is the injection seam so CI touches NO real bytes; the
 // env-gated real-corpus proof exercises the real `spawnSync` path.
 
-import { resolveKaifuuCli, type KaifuuProcessResult } from "../orchestrator/patch-apply-seam.js";
-import { spawnNativeCliProcess } from "../native-bin/cli-bin-resolver.js";
+import {
+  resolveNativeCli,
+  spawnNativeCliProcess,
+  type NativeCliProcessResult,
+} from "../native-bin/cli-bin-resolver.js";
+
+type KaifuuProcessResult = NativeCliProcessResult;
 
 /**
  * The sourcing + identity inputs every RealLive extract needs. The four
@@ -147,7 +152,7 @@ export function runKaifuuRealliveExtract(args: KaifuuExtractArgs): KaifuuExtract
   const env = args.env ?? process.env;
   validateExtractArgs(args, env);
 
-  const { command, prefixArgs } = resolveKaifuuCli(env);
+  const { command, prefixArgs } = resolveNativeCli("kaifuu-cli", env);
   const extractArgs = [...prefixArgs, ...buildExtractArgs(args)];
   args.log?.(`kaifuu-extract: ${command} ${extractArgs.join(" ")}`);
   const runProcess = args.runProcess ?? ((cmd, a, e) => defaultRunProcess(cmd, a, e));

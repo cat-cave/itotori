@@ -90,13 +90,6 @@ jobs:
 
   db:
     name: Tier 1 / postgres
-    # Decoupled from `native`: the DB lane no longer downloads the native
-    # artifact. The sole app test needing it (wholegame-render-validation-seam)
-    # is excluded in ci-tier1-db and remains covered by the portable TS shards
-    # (where the artifact IS wired). The lane-union guard
-    # (scripts/assert-db-app-exclusion-union.mjs) asserts that exclusion can
-    # never strand the file. This removes up to ~2m58 (the native build) from
-    # the DB lane's critical path without losing coverage.
     runs-on: ubuntu-latest
     # Provisional cold-run budget (build graph + migrate + strict DB gates).
     # Measure on shadow runs, then tighten.

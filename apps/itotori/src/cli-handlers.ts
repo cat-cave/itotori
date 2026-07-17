@@ -5,7 +5,6 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -22,127 +21,24 @@ import {
   type ConformanceManifestV01,
   type ConformanceResultV01,
 } from "@itotori/localization-bridge-schema";
-import {
-  capabilityLevelValues,
-  CommunityFormsImporter,
-  createCatalogResolverFixtureArtifact,
-  GitHubIssuesImporter,
-  parseManualFeedbackImportInput,
-} from "@itotori/db";
+import { capabilityLevelValues, createCatalogResolverFixtureArtifact } from "@itotori/db";
 import type {
   AdapterCapabilityMatrixRecord,
-  AuthorizationActor,
   CapabilityLevel,
   CatalogExactExternalIdLinkRequest,
   CatalogFuzzyCandidateRequest,
   CatalogResolverFixtureInput,
-  ChannelFeedbackImporter,
-  ChannelImportOptions,
   ItotoriCatalogExactExternalIdLinkerPort,
   ItotoriCatalogFuzzyCandidateGeneratorPort,
-  ItotoriContextArtifactRepositoryPort,
-  PatchPlaySurface,
-  PatchVersionIterationRecord,
-  PlayTestFeedbackEventKind,
 } from "@itotori/db";
 import type { EngineCapabilityReportPort } from "./services/engine-capability-report.js";
 import { runAssetDecisionsList, type AssetDecisionsCliPort } from "./asset-decisions/cli.js";
 import { runQueueHealthCli, type QueueHealthCliPort } from "./queue/cli.js";
-import type { ManualFeedbackImportOutcome, ManualFeedbackImportPort } from "./manual-feedback.js";
-import type { DraftFeedbackBatchInput, DraftFeedbackBatchPort } from "./draft-feedback/index.js";
 import type { ItotoriProjectWorkflowPort, ProjectState } from "./services/project-workflow.js";
-import type { PlanBatchesOutput } from "./batch-planner/index.js";
-import {
-  runPlanBatches,
-  type PlanBatchesContextLoader,
-  type PlanBatchesPersister,
-  type PlannedProjectFile,
-} from "./batch-planner/cli.js";
-import type { ProviderFamily } from "./providers/types.js";
-import { assertOpenRouterZdrAccount } from "./providers/account-zdr.js";
+import { assertOpenRouterZdrAccount } from "./zdr-admission/account-zdr.js";
 import { loadExternalEnvFile } from "./env/external-env-file.js";
-import { runReconcileLedgerCostCommand } from "./providers/openrouter-cost-reconciler.js";
-import {
-  resolveSceneSummaryProvider,
-  runCheckSceneSummariesCli,
-  runGenerateSceneSummariesCli,
-  type SceneSummaryCliDependencies,
-} from "./agents/scene-summary/index.js";
-import {
-  resolveCharacterRelationshipProvider,
-  runCheckCharacterRelationshipsCli,
-  runGenerateCharacterRelationshipsCli,
-  type CharacterRelationshipCliDependencies,
-} from "./agents/character-relationship/index.js";
-import { runAgenticLoopSmokeCommand } from "./orchestrator/agentic-loop-smoke-command.js";
-import {
-  buildAlphaProviderProofSummary,
-  providerProofSummary,
-  renderReadmeSafeProviderProofSummary,
-  runProviderProofCommand,
-  runRecordedProviderProof,
-} from "./provider-proof/index.js";
-import {
-  rawMtlBaselineProofSummary,
-  runRawMtlBaselineProofCommand,
-} from "./raw-mtl-baseline-proof/index.js";
-import {
-  runLocalizeProjectStageLive,
-  type RunLocalizeProjectStageLiveArgs,
-} from "./orchestrator/localize-project-stage-live.js";
-import type { LocalizeProjectStageArgs } from "./orchestrator/localize-project-stage-command.js";
-import { runLocalizeFullProjectLive } from "./orchestrator/localize-fullproject-cli.js";
-import { MAX_DRIVEN_CONCURRENCY } from "./orchestrator/project-driven-executor.js";
-import {
-  runLocalizeGameCommand,
-  LocalizeGameStageError,
-  type RunLocalizeGameArgs,
-} from "./orchestrator/localize-game-command.js";
 import { runKaifuuRealliveExtract } from "./extract/kaifuu-extract-seam.js";
-import { runExportPatchV2Command } from "./patch-export/index.js";
-import {
-  parseTelemetrySummaryCliFlags,
-  parseTelemetrySummaryProviderRunFlags,
-  renderTextSummary,
-  runTelemetrySummaryCli,
-  type TelemetrySummaryCliDeps,
-} from "./telemetry/cli.js";
-import {
-  buildTelemetrySummaryFromProviderRunArtifacts,
-  readProviderRunArtifactsFromDir,
-} from "./telemetry/provider-run-artifact-source.js";
-import type { TelemetryQuery } from "./telemetry/queries.js";
-import {
-  DEFAULT_PUBLIC_BENCHMARK_SEEDS_FIXTURE_PATH,
-  DEFAULT_PUBLIC_BENCHMARK_SETS_FIXTURE_PATH,
-  DEFAULT_PUBLIC_BENCHMARK_STAGES_FIXTURE_PATH,
-  DEFAULT_PUBLIC_BENCHMARK_RUN_ID,
-  DEFAULT_PUBLIC_BENCHMARK_GENERATED_AT,
-  benchmarkSetReadModelFromSeedsFixture,
-  benchmarkSetSelectionInputFromSetsFixture,
-  buildPublicBenchmarkHarnessStages,
-  loadBenchmarkStagesFixture,
-  runBenchmarkHarnessCommand,
-} from "./benchmark-harness/index.js";
-import {
-  composeExperimentBenchmarkReport,
-  DEFAULT_PUBLIC_EXPERIMENT_MANIFEST_FIXTURE_PATH,
-  DEFAULT_PUBLIC_PROVIDER_ROUTE_REPORT_FIXTURE_PATH,
-  ExperimentReportCompositionError,
-} from "./experiment-report/index.js";
-import {
-  composeAlphaReadiness,
-  renderReadmeSafeAlphaSummary,
-  type AlphaReadinessCostQualityArtifact,
-  type AlphaReadinessPrivateLocalHandle,
-} from "./alpha-readiness/index.js";
 import { scanCatalogLocalRoot } from "./services/catalog-local-scan.js";
-import {
-  runVisionGateCommand,
-  visionGateSummary,
-  VisionGateRejectedError,
-  type RedactionMode,
-} from "./render-gate/index.js";
 import {
   runUtsushiStructureExport,
   type RunUtsushiStructureResult,
@@ -150,10 +46,6 @@ import {
 import { runNativeCli, type NativeCliRunner } from "./native-bin/cli-bin-resolver.js";
 import { buildHelpText } from "./help-text.js";
 import { runInitCommand, type InitCommandDeps } from "./init-command.js";
-import type {
-  PatchIterationContextFeedbackInput,
-  PatchIterationServicePort,
-} from "./iteration/patch-iteration-service.js";
 // The kept localize / wiki / patch-play commands route ONLY through these thin
 // new-pipeline command handlers. Each has a clean transitive import closure (no
 // edge to the legacy service graph — proven by composition-reachability); the live
@@ -181,67 +73,14 @@ export type JsonFileStore = {
 
 export type ItotoriCliServices = {
   projectWorkflow: ItotoriProjectWorkflowPort;
-  manualFeedback: ManualFeedbackImportPort;
-  draftFeedbackBatch: DraftFeedbackBatchPort;
   catalogExactExternalIdLinker: ItotoriCatalogExactExternalIdLinkerPort;
   catalogFuzzyCandidateGenerator: ItotoriCatalogFuzzyCandidateGeneratorPort;
-  batchPlanner: {
-    loadContext: PlanBatchesContextLoader;
-    persist: PlanBatchesPersister;
-  };
-  sceneSummary?: {
-    /**
-     * Construct the per-invocation dependencies (provider, repositories,
-     * actor). Optional so unit suites can omit it.
-     *
-     * semantic-agent-cli-provider-run-not-reconciled — `providerRunsDir` is the
-     * run-scoped `--provider-runs-dir`. When supplied, the factory builds the
-     * live provider with a `LocalProviderRunArtifactRecorder(providerRunsDir)`
-     * so the run's served pair + billed `usage.cost` + ZDR posture land in the
-     * reconciled telemetry surface (never the global scratch `.tmp/provider-runs`).
-     */
-    cliDependencies(
-      provider: ProviderFamily,
-      providerRunsDir?: string,
-    ): Promise<SceneSummaryCliDependencies>;
-    defaultModelId: string;
-    /** ITOTORI-220 — default providerId for the scene-summary model. */
-    defaultProviderId: string;
-    defaultProviderFamily: ProviderFamily;
-    defaultContextWindowTokens: number;
-  };
-  characterRelationship?: {
-    cliDependencies(
-      provider: ProviderFamily,
-      providerRunsDir?: string,
-    ): Promise<CharacterRelationshipCliDependencies>;
-    defaultModelId: string;
-    /** ITOTORI-220 — default providerId for the character-relationship model. */
-    defaultProviderId: string;
-    defaultProviderFamily: ProviderFamily;
-    defaultContextWindowTokens: number;
-  };
-  /** Live single-unit stage wiring: imported source scope + central context store. */
-  localizeProjectStage?: {
-    contextArtifactRepository: ItotoriContextArtifactRepositoryPort;
-    prepareContextScope: NonNullable<LocalizeProjectStageArgs["prepareContextScope"]>;
-  };
   engineCapabilityReports: EngineCapabilityReportPort;
   /**
    * Optional so unit suites can omit it. The CLI commands
    * `itotori:asset-decisions-list` requires it at runtime.
    */
   assetDecisions?: AssetDecisionsCliPort;
-  /**
-   * ITOTORI-223 — per-(modelId, providerId) telemetry query surface
-   * powering the `itotori:telemetry-summary` command. Optional so
-   * unit suites that don't exercise the telemetry command can omit
-   * it; the CLI handler raises a typed error when missing.
-   */
-  telemetry?: {
-    query: TelemetryQuery;
-    actor: AuthorizationActor;
-  };
   /**
    * ITOTORI-047 — queue-health read-model loader powering the
    * `queue-health` CLI command. Optional so unit suites that don't exercise
@@ -280,17 +119,12 @@ export type ItotoriCliServices = {
    * unit suites can omit it; the handler refuses loudly when it is missing.
    */
   patchPlay?: PlayEntrypointDeps;
-  /**
-   * Node 11's actor-bound version/feedback/refinement surface. Optional
-   * so unrelated CLI unit suites can omit the expensive DB-backed workflow;
-   * iteration commands refuse loudly when it is not installed.
-   */
-  patchIteration?: PatchIterationServicePort;
 };
 
 export type ItotoriCliDependencies = {
   io: JsonFileStore;
   migrateDatabase(): Promise<void>;
+  resetDatabase(): Promise<void>;
   withServices<T>(callback: (services: ItotoriCliServices) => Promise<T>): Promise<T>;
   nativeCli?: NativeCliRunner;
   /**
@@ -334,46 +168,19 @@ export async function runItotoriCliCommand(
       await dependencies.migrateDatabase();
       break;
     case "db-reset":
-      await dependencies.withServices((services) => services.projectWorkflow.reset());
+      await dependencies.resetDatabase();
       break;
     case "dashboard-status":
       await runDashboardStatus(args, dependencies);
       break;
-    case "agentic-loop-smoke":
-      await runAgenticLoopSmoke(args, dependencies);
-      break;
-    case "localize-project-stage":
-      await runLocalizeProjectStage(args, dependencies);
-      break;
     case "localize":
       await runLocalize(args, dependencies);
-      break;
-    case "localize-game":
-      await runLocalizeGame(args, dependencies);
       break;
     case "extract":
       await runExtract(args, dependencies);
       break;
-    case "provider-proof":
-      await runProviderProof(args, dependencies);
-      break;
-    case "provider-proof-bundle":
-      await runProviderProofBundle(args, dependencies);
-      break;
-    case "raw-mtl-baseline-proof":
-      await runRawMtlBaselineProof(args, dependencies);
-      break;
-    case "export-patch-v2":
-      await runExportPatchV2(args, dependencies);
-      break;
     case "patch":
       await runPatchCommand(args, dependencies);
-      break;
-    case "feedback":
-      await runPatchIterationFeedbackCommand(args, dependencies);
-      break;
-    case "refine":
-      await runPatchIterationRefineCommand(args, dependencies);
       break;
     case "validate":
       await runValidateCommand(args, dependencies);
@@ -386,15 +193,6 @@ export async function runItotoriCliCommand(
       break;
     case "ingest-conformance":
       await runIngestConformance(args, dependencies);
-      break;
-    case "import-feedback":
-      await runImportFeedback(args, dependencies);
-      break;
-    case "import-channel-feedback":
-      await runImportChannelFeedback(args, dependencies);
-      break;
-    case "import-feedback-batch":
-      await runImportFeedbackBatch(args, dependencies);
       break;
     case "catalog-link-exact":
       await runCatalogLinkExact(args, dependencies);
@@ -409,21 +207,6 @@ export async function runItotoriCliCommand(
     case "catalog-local-scan":
       await runCatalogLocalScan(args, dependencies);
       break;
-    case "plan-batches":
-      await runPlanBatchesHandler(args, dependencies);
-      break;
-    case "generate-scene-summaries":
-      await runGenerateSceneSummariesHandler(args, dependencies);
-      break;
-    case "check-scene-summaries":
-      await runCheckSceneSummariesHandler(args, dependencies);
-      break;
-    case "generate-character-relationships":
-      await runGenerateCharacterRelationshipsHandler(args, dependencies);
-      break;
-    case "check-character-relationships":
-      await runCheckCharacterRelationshipsHandler(args, dependencies);
-      break;
     case "engine-capabilities-record":
       await runEngineCapabilitiesRecord(args, dependencies);
       break;
@@ -433,26 +216,8 @@ export async function runItotoriCliCommand(
     case "asset-decisions-list":
       await runAssetDecisionsListHandler(args, dependencies);
       break;
-    case "telemetry-summary":
-      await runTelemetrySummaryHandler(args, dependencies);
-      break;
-    case "benchmark-harness-run":
-      await runBenchmarkHarnessHandler(args, dependencies);
-      break;
-    case "experiment-report-compose":
-      await runExperimentReportComposeHandler(args, dependencies);
-      break;
-    case "alpha-readiness-run":
-      await runAlphaReadinessHandler(args, dependencies);
-      break;
-    case "vision-inspect":
-      await runVisionInspectHandler(args, dependencies);
-      break;
     case "structure-export":
       await runStructureExportHandler(args, dependencies);
-      break;
-    case "reconcile-ledger-cost":
-      await runReconcileLedgerCostHandler(args, dependencies);
       break;
     case "queue-health":
       await runQueueHealthHandler(args, dependencies);
@@ -477,12 +242,8 @@ async function runPatchCommand(
 ): Promise<void> {
   // Node 11 keeps the historical native `itotori patch --bundle ...` path
   // intact, while giving versioned patches their own first-class surface.
-  // Branch before parsing legacy flags: `patch versions` and `patch play` do
-  // not have a source/target/bundle and must never fall through to kaifuu.
+  // Branch before parsing patch-play flags so they never fall through to kaifuu.
   switch (args[1]) {
-    case "versions":
-      await runPatchIterationVersionsCommand(args, dependencies);
-      return;
     case "play":
       await runPlay(args, dependencies);
       return;
@@ -516,24 +277,6 @@ async function runPatchCommand(
 }
 
 /**
- * `itotori patch versions --locale-branch <id> [--output <json>]`
- *
- * This is deliberately a read of the same actor-bound service the dashboard
- * uses; it does not reconstruct lineage from patch artifacts on disk.
- */
-async function runPatchIterationVersionsCommand(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const localeBranchId = requiredPatchIterationLocaleBranch(args);
-  const outputPath = optionalFlag(args, "--output");
-  const versions = await dependencies.withServices((services) =>
-    requirePatchIterationPort(services).list({ localeBranchId }),
-  );
-  writePatchIterationOutput(dependencies, outputPath, versions.map(patchIterationVersionCliView));
-}
-
-/**
  * `itotori patch play <version> [--launch-json <object>] [--output <json>]`
  *
  * The new-pipeline path: load the exact hash-bound play surface and launch it
@@ -555,375 +298,6 @@ async function runPlay(args: string[], dependencies: ItotoriCliDependencies): Pr
       resolvePlayDeps: () => playDeps,
     });
   });
-}
-
-/**
- * First-class play-test feedback intake writes a target-scoped canonical
- * context correction. The import commands share that same direct path; they
- * do not create a separate review or deferred-feedback surface.
- *
- *   itotori feedback list --patch-version <version>
- *   itotori feedback batch --patch-version <version> [--batch-id <id>] [--label <text>]
- *   itotori feedback add --patch-version <version> --kind <kind> [...]
- *
- * Context feedback has two intentionally distinct paths:
- *
- *   # Write canonical context through the existing Node 9 -> Node 8 flywheel.
- *   itotori feedback add --patch-version <version> --kind added_context \
- *     --context-operation add --context-kind glossary --context-title <title> \
- *     --context-body <body> --context-reason <reason> --affected-unit <unit>
- *   itotori feedback add --patch-version <version> --kind wiki_edit \
- *     --context-operation edit --context-artifact <artifact> \
- *     --context-body <body> --context-reason <reason>
- *
- *   # Attach an immutable Node 9 head that was already written elsewhere.
- *   itotori feedback add --patch-version <version> --kind wiki_edit \
- *     --context-artifact <artifact> --context-entry-version <version>
- */
-async function runPatchIterationFeedbackCommand(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const subcommand = args[1];
-  if (subcommand !== "list" && subcommand !== "batch" && subcommand !== "add") {
-    throw new Error("itotori feedback requires one of: list, batch, add");
-  }
-  const observedPatchVersionId = requiredObservedPatchVersionId(args);
-  const outputPath = optionalFlag(args, "--output");
-  const result = await dependencies.withServices(async (services) => {
-    const patchIteration = requirePatchIterationPort(services);
-    switch (subcommand) {
-      case "list": {
-        const surface = await patchIteration.load({ patchVersionId: observedPatchVersionId });
-        if (surface === null) {
-          throw new Error(`patch version ${observedPatchVersionId} was not found`);
-        }
-        return surface.feedback;
-      }
-      case "batch":
-        return await patchIteration.createFeedbackBatch({
-          observedPatchVersionId,
-          ...(optionalFlag(args, "--batch-id") === undefined
-            ? {}
-            : { feedbackBatchId: optionalFlag(args, "--batch-id")! }),
-          ...(optionalFlag(args, "--label") === undefined
-            ? {}
-            : { label: optionalFlag(args, "--label")! }),
-        });
-      case "add": {
-        const affectedBridgeUnitIds = repeatedFlag(args, "--affected-unit");
-        const feedbackBatchId = optionalFlag(args, "--batch") ?? optionalFlag(args, "--batch-id");
-        const metadata = optionalJsonObjectFlag(args, "--metadata-json");
-        const eventKind = parsePatchIterationFeedbackKind(requiredFlag(args, "--kind"));
-        const contextFeedback = optionalPatchIterationContextFeedback(
-          args,
-          eventKind,
-          affectedBridgeUnitIds,
-        );
-        const contextArtifactId = optionalFlag(args, "--context-artifact");
-        const contextEntryVersionId = optionalFlag(args, "--context-entry-version");
-        return await patchIteration.feedback({
-          observedPatchVersionId,
-          eventKind,
-          ...(feedbackBatchId === undefined ? {} : { feedbackBatchId }),
-          ...(optionalFlag(args, "--play-session") === undefined
-            ? {}
-            : { playSessionId: optionalFlag(args, "--play-session")! }),
-          ...(optionalFlag(args, "--body") === undefined
-            ? {}
-            : { body: optionalFlag(args, "--body")! }),
-          ...(metadata === undefined ? {} : { metadata }),
-          ...(optionalFlag(args, "--target-body") === undefined
-            ? {}
-            : { targetBody: optionalFlag(args, "--target-body")! }),
-          ...(optionalFlag(args, "--result-revision") === undefined
-            ? {}
-            : { resultRevisionId: optionalFlag(args, "--result-revision")! }),
-          // Direct context feedback carries its mutation target in the nested
-          // canonical payload; only the reference-only route sends a caller
-          // supplied immutable artifact/version pair to the iteration service.
-          ...(contextFeedback !== undefined
-            ? {}
-            : contextArtifactId === undefined
-              ? {}
-              : { contextArtifactId }),
-          ...(contextFeedback !== undefined
-            ? {}
-            : contextEntryVersionId === undefined
-              ? {}
-              : { contextEntryVersionId }),
-          ...(contextFeedback === undefined && affectedBridgeUnitIds.length > 0
-            ? { affectedBridgeUnitIds }
-            : {}),
-          ...(contextFeedback === undefined ? {} : { contextFeedback }),
-        });
-      }
-    }
-  });
-  writePatchIterationOutput(dependencies, outputPath, result);
-}
-
-/**
- * `itotori refine` selects persisted batches/events from a base version and
- * delegates the entire frozen-scope/refinement operation to the shared
- * service. It never creates a CLI-only substitute patch or result revision.
- */
-async function runPatchIterationRefineCommand(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const basePatchVersionId = requiredFlag(args, "--base-patch-version");
-  const outputPath = optionalFlag(args, "--output");
-  const feedbackBatchIds = repeatedFlag(args, "--batch");
-  const feedbackEventIds = repeatedFlag(args, "--event");
-  const scopeUnitIds = repeatedFlag(args, "--unit");
-  const targetBodiesByUnit = optionalJsonStringRecordFlag(args, "--target-bodies-json");
-  const wikiHeads = optionalPatchIterationWikiHeadsFlag(args, "--wiki-heads-json");
-  const result = await dependencies.withServices((services) =>
-    requirePatchIterationPort(services).refine({
-      basePatchVersionId,
-      ...(feedbackBatchIds.length === 0 ? {} : { feedbackBatchIds }),
-      ...(feedbackEventIds.length === 0 ? {} : { feedbackEventIds }),
-      ...(scopeUnitIds.length === 0 ? {} : { scopeUnitIds }),
-      ...(targetBodiesByUnit === undefined ? {} : { targetBodiesByUnit }),
-      ...(wikiHeads === undefined ? {} : { wikiHeads }),
-    }),
-  );
-  writePatchIterationOutput(dependencies, outputPath, {
-    ...result,
-    patch: patchIterationPatchCliView(result.patch),
-  });
-}
-
-function requirePatchIterationPort(services: ItotoriCliServices): PatchIterationServicePort {
-  if (services.patchIteration === undefined) {
-    throw new Error(
-      "patch-iteration service is not configured for this CLI context (patchIteration port missing)",
-    );
-  }
-  return services.patchIteration;
-}
-
-/**
- * CLI is an external surface just like HTTP: durable artifact refs are
- * server-side provenance and must never be serialized into an operator's
- * output file. These mirror the public API projections rather than relying
- * on JSON.stringify to omit private fields incidentally.
- */
-function patchIterationVersionCliView(input: PatchVersionIterationRecord) {
-  return {
-    patchVersionId: input.patchVersionId,
-    runId: input.runId,
-    parentPatchVersionId: input.parentPatchVersionId,
-    origin: input.origin,
-    status: input.status,
-    playableAt: input.playableAt?.toISOString() ?? null,
-    selectedAt: input.selectedAt?.toISOString() ?? null,
-    artifactHashes: { ...input.artifactHashes },
-    basePatchVersionId: input.basePatchVersionId,
-  };
-}
-
-function patchIterationPatchCliView(input: PatchPlaySurface) {
-  return {
-    patchVersionId: input.patchVersionId,
-    runId: input.runId,
-    parentPatchVersionId: input.parentPatchVersionId,
-    origin: input.origin,
-    status: input.status,
-    playableAt: input.playableAt?.toISOString() ?? null,
-    selectedAt: input.selectedAt?.toISOString() ?? null,
-    artifactHashes: { ...input.artifactHashes },
-    units: input.units.map((unit) => ({
-      bridgeUnitId: unit.bridgeUnitId,
-      sourceRunId: unit.sourceRunId,
-      journalOutcomeId: unit.journalOutcomeId,
-      resultRevisionId: unit.resultRevisionId,
-      targetBody: unit.targetBody,
-      memberOrigin: unit.memberOrigin,
-      reusedFromPatchVersionId: unit.reusedFromPatchVersionId,
-      unitOrdinal: unit.unitOrdinal,
-    })),
-    qaCallouts: input.qaCallouts.map((callout) => ({ ...callout })),
-  };
-}
-
-function requiredPatchIterationLocaleBranch(args: string[]): string {
-  return optionalFlag(args, "--locale-branch") ?? requiredFlag(args, "--locale");
-}
-
-function requiredObservedPatchVersionId(args: string[]): string {
-  return optionalFlag(args, "--observed-patch-version") ?? requiredFlag(args, "--patch-version");
-}
-
-function writePatchIterationOutput(
-  dependencies: ItotoriCliDependencies,
-  outputPath: string | undefined,
-  result: unknown,
-): void {
-  if (outputPath !== undefined) {
-    dependencies.io.writeJson(outputPath, result);
-    return;
-  }
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-}
-
-function parsePatchIterationFeedbackKind(value: string): PlayTestFeedbackEventKind {
-  if (
-    value === "result_edit" ||
-    value === "comment" ||
-    value === "added_context" ||
-    value === "wiki_edit"
-  ) {
-    return value;
-  }
-  throw new Error("--kind must be one of: result_edit, comment, added_context, wiki_edit");
-}
-
-/**
- * Decode the explicit mutation form without weakening the older
- * artifact/version attachment form. The service remains the authority for
- * project/branch identity and for the actual Node 9 -> Node 8 write; this
- * parser only turns clear CLI intent into its actor-bound request shape.
- */
-function optionalPatchIterationContextFeedback(
-  args: string[],
-  eventKind: PlayTestFeedbackEventKind,
-  affectedBridgeUnitIds: readonly string[],
-): PatchIterationContextFeedbackInput | undefined {
-  const operation = optionalFlag(args, "--context-operation");
-  if (operation === undefined) {
-    for (const flag of [
-      "--context-kind",
-      "--context-title",
-      "--context-body",
-      "--context-reason",
-    ]) {
-      if (optionalFlag(args, flag) !== undefined) {
-        throw new Error(`${flag} requires --context-operation add or edit`);
-      }
-    }
-    return undefined;
-  }
-
-  if (optionalFlag(args, "--context-entry-version") !== undefined) {
-    throw new Error(
-      "--context-entry-version is only for reference-only context feedback; omit it with --context-operation",
-    );
-  }
-
-  switch (operation) {
-    case "add":
-      if (eventKind !== "added_context") {
-        throw new Error("--context-operation add requires --kind added_context");
-      }
-      if (optionalFlag(args, "--context-artifact") !== undefined) {
-        throw new Error("--context-artifact is not valid with --context-operation add");
-      }
-      if (affectedBridgeUnitIds.length === 0) {
-        throw new Error("--context-operation add requires at least one --affected-unit");
-      }
-      return {
-        operation: "add",
-        kind: parsePatchIterationContextKind(requiredFlag(args, "--context-kind")),
-        title: requiredFlag(args, "--context-title"),
-        body: requiredFlag(args, "--context-body"),
-        reason: requiredFlag(args, "--context-reason"),
-        affectedBridgeUnitIds,
-      };
-    case "edit":
-      if (eventKind !== "wiki_edit") {
-        throw new Error("--context-operation edit requires --kind wiki_edit");
-      }
-      return {
-        operation: "edit",
-        contextArtifactId: requiredFlag(args, "--context-artifact"),
-        body: requiredFlag(args, "--context-body"),
-        reason: requiredFlag(args, "--context-reason"),
-        ...(optionalFlag(args, "--context-title") === undefined
-          ? {}
-          : { title: optionalFlag(args, "--context-title")! }),
-        ...(affectedBridgeUnitIds.length === 0 ? {} : { affectedBridgeUnitIds }),
-      };
-    default:
-      throw new Error("--context-operation must be add or edit");
-  }
-}
-
-function parsePatchIterationContextKind(value: string): "note" | "glossary" | "style" {
-  if (value === "note" || value === "glossary" || value === "style") {
-    return value;
-  }
-  throw new Error("--context-kind must be one of: note, glossary, style");
-}
-
-function optionalJsonObjectFlag(args: string[], name: string): Record<string, unknown> | undefined {
-  const value = optionalFlag(args, name);
-  if (value === undefined) return undefined;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value) as unknown;
-  } catch {
-    throw new Error(`${name} must be valid JSON object text`);
-  }
-  if (!isRecord(parsed)) {
-    throw new Error(`${name} must be a JSON object`);
-  }
-  return parsed;
-}
-
-function optionalJsonStringRecordFlag(
-  args: string[],
-  name: string,
-): Record<string, string> | undefined {
-  const record = optionalJsonObjectFlag(args, name);
-  if (record === undefined) return undefined;
-  const strings: Record<string, string> = {};
-  for (const [key, value] of Object.entries(record)) {
-    if (typeof value !== "string") {
-      throw new Error(`${name}.${key} must be a string`);
-    }
-    strings[key] = value;
-  }
-  return strings;
-}
-
-function optionalPatchIterationWikiHeadsFlag(
-  args: string[],
-  name: string,
-): Array<{ contextArtifactId: string; contextEntryVersionId: string }> | undefined {
-  const value = optionalFlag(args, name);
-  if (value === undefined) return undefined;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value) as unknown;
-  } catch {
-    throw new Error(`${name} must be valid JSON array text`);
-  }
-  if (!Array.isArray(parsed)) {
-    throw new Error(`${name} must be a JSON array`);
-  }
-  return parsed.map((entry, index) => {
-    if (
-      !isRecord(entry) ||
-      typeof entry.contextArtifactId !== "string" ||
-      entry.contextArtifactId.trim().length === 0 ||
-      typeof entry.contextEntryVersionId !== "string" ||
-      entry.contextEntryVersionId.trim().length === 0
-    ) {
-      throw new Error(
-        `${name}[${index}] requires non-empty contextArtifactId and contextEntryVersionId strings`,
-      );
-    }
-    return {
-      contextArtifactId: entry.contextArtifactId,
-      contextEntryVersionId: entry.contextEntryVersionId,
-    };
-  });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function runValidateCommand(
@@ -1011,114 +385,6 @@ function runNativeCommandOrThrow(
   if (result.stderr.length > 0) process.stderr.write(result.stderr);
 }
 
-async function runTelemetrySummaryHandler(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  // UTSUSHI-231 — when `--provider-runs-dir` is supplied, source the
-  // summary from the per-run `provider-run.json` artifacts the
-  // localize-project stage writes (the DB-free path) instead of the
-  // durable journal. The byPair, ZDR, and billed-cost
-  // evidence come verbatim from the real served responses captured in
-  // those artifacts — no DB, no withServices.
-  if (args.includes("--provider-runs-dir")) {
-    const flags = parseTelemetrySummaryProviderRunFlags(args);
-    const artifacts = readProviderRunArtifactsFromDir(flags.providerRunsDir);
-    if (artifacts.length === 0) {
-      throw new Error(
-        `telemetry-summary refused: no provider-run.json artifacts found under ${flags.providerRunsDir}`,
-      );
-    }
-    const output = buildTelemetrySummaryFromProviderRunArtifacts({
-      projectId: flags.projectId,
-      artifacts,
-      ...(flags.from === undefined ? {} : { from: flags.from }),
-      ...(flags.to === undefined ? {} : { to: flags.to }),
-    });
-    dependencies.io.writeJson(flags.outputPath, output);
-    if (flags.format === "text") {
-      for (const line of renderTextSummary(
-        output,
-        {
-          projectId: output.metadata.projectId,
-          from: new Date(output.metadata.window.from),
-          to: new Date(output.metadata.window.to),
-        },
-        output.postRunEvidence,
-      )) {
-        process.stdout.write(`${line}\n`);
-      }
-    }
-    return;
-  }
-  const flags = parseTelemetrySummaryCliFlags(args);
-  await dependencies.withServices(async (services) => {
-    if (services.telemetry === undefined) {
-      throw new Error(
-        "telemetry service is not configured for this CLI context (telemetry port missing)",
-      );
-    }
-    const deps: TelemetrySummaryCliDeps = {
-      telemetry: services.telemetry.query,
-      writeJson: (path, value) => dependencies.io.writeJson(path, value),
-      stdoutWrite: (line) => process.stdout.write(line),
-    };
-    await runTelemetrySummaryCli(
-      {
-        actor: services.telemetry.actor,
-        projectId: flags.projectId,
-        from: flags.from,
-        to: flags.to,
-        outputPath: flags.outputPath,
-        groupByDay: flags.groupByDay,
-        format: flags.format,
-      },
-      deps,
-    );
-  });
-}
-
-/**
- * ITOTORI-235 — reconcile persisted ledger rows against OpenRouter's canonical
- * settled cost (`GET /api/v1/generation?id=`) and exit NON-ZERO if any row's
- * `cost_amount` drifts from the re-fetched `total_cost` beyond 1e-9 USD.
- *
- * `--ledger-rows` is a JSON array of `{ generationId, costAmount|costAmountUsd,
- * rowRef? }` (the generation id is captured at `adapter_metadata.generationId`
- * on the recorded provider-run). Uses the live OPENROUTER_API_KEY and asserts
- * the account-wide ZDR posture before any live byte, mirroring the live suite.
- */
-async function runReconcileLedgerCostHandler(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const ledgerRowsPath = requiredFlag(args, "--ledger-rows");
-  const outputPath = requiredFlag(args, "--output");
-  const baseUrl = optionalFlag(args, "--base-url");
-  const env = process.env;
-  // Privacy gate BEFORE any live byte (mirrors the live OR test suite).
-  assertOpenRouterZdrAccount(env);
-  const apiKey = env.OPENROUTER_API_KEY;
-  if (apiKey === undefined || apiKey.length === 0) {
-    throw new Error(
-      "reconcile-ledger-cost requires OPENROUTER_API_KEY to re-fetch canonical cost from /generation",
-    );
-  }
-  const ledgerRowsInput = dependencies.io.readJson(ledgerRowsPath);
-  await runReconcileLedgerCostCommand({
-    ledgerRowsInput,
-    deps: {
-      apiKey,
-      ...(baseUrl === undefined ? {} : { baseUrl }),
-    },
-    writeReport: (report) => dependencies.io.writeJson(outputPath, report),
-    log: (message) => process.stdout.write(`${message}\n`),
-    exit: (code) => {
-      process.exitCode = code;
-    },
-  });
-}
-
 async function runDashboardStatus(
   args: string[],
   dependencies: ItotoriCliDependencies,
@@ -1128,38 +394,6 @@ async function runDashboardStatus(
     services.projectWorkflow.getDashboardStatus(),
   );
   dependencies.io.writeJson(outputPath, status);
-}
-
-async function runAgenticLoopSmoke(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const bridgePath = requiredFlag(args, "--bridge");
-  const unitIndexRaw = requiredFlag(args, "--unit-index");
-  const unitIndex = Number.parseInt(unitIndexRaw, 10);
-  if (!Number.isFinite(unitIndex) || unitIndex < 0) {
-    throw new Error(
-      `agentic-loop-smoke refused: --unit-index '${unitIndexRaw}' must be a non-negative integer`,
-    );
-  }
-  const pairPolicyPath = requiredFlag(args, "--pair-policy");
-  const outputPath = requiredFlag(args, "--output");
-  const draftArtifactOutputPath = optionalFlag(args, "--draft-artifact-output");
-  await runAgenticLoopSmokeCommand({
-    bridgePath,
-    unitIndex,
-    pairPolicyPath,
-    outputPath,
-    io: {
-      readJson: (path) => dependencies.io.readJson(path),
-      writeJson: (path, value) => dependencies.io.writeJson(path, value),
-    },
-    actor: { userId: "local-user" },
-    log: (message) => {
-      process.stdout.write(`${message}\n`);
-    },
-    ...(draftArtifactOutputPath === undefined ? {} : { draftArtifactOutputPath }),
-  });
 }
 
 /**
@@ -1179,52 +413,6 @@ async function runAgenticLoopSmoke(
  *   --classification <c>       provider input classification (default private_corpus)
  *   --verdict-out <json>       write the verdict artifact here (private/uncommitted)
  */
-async function runVisionInspectHandler(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const framePath = requiredFlag(args, "--frame");
-  const redactionRaw = requiredFlag(args, "--redaction");
-  if (redactionRaw !== "on" && redactionRaw !== "off") {
-    throw new Error(`vision-inspect: --redaction must be 'on' or 'off', got '${redactionRaw}'`);
-  }
-  const redactionMode: RedactionMode = redactionRaw;
-  const expectedTextInline = optionalFlag(args, "--expected-text");
-  const expectedTextFile = optionalFlag(args, "--expected-text-file");
-  const expectedText =
-    expectedTextInline ??
-    (expectedTextFile !== undefined ? readFileSync(expectedTextFile, "utf8") : undefined);
-  if (expectedText === undefined) {
-    throw new Error("vision-inspect: provide --expected-text or --expected-text-file");
-  }
-  const classification = optionalFlag(args, "--classification");
-  const verdictOut = optionalFlag(args, "--verdict-out");
-
-  const outcome = await runVisionGateCommand({
-    framePath,
-    expectedText,
-    redactionMode,
-    ...(classification === undefined ? {} : { inputClassification: classification as never }),
-  });
-
-  if (outcome.status === "skipped") {
-    process.stdout.write(
-      `${JSON.stringify({ status: "skipped", reason: outcome.reason }, null, 2)}\n`,
-    );
-    return;
-  }
-
-  const { artifact } = outcome.result;
-  if (verdictOut !== undefined) {
-    dependencies.io.writeJson(verdictOut, artifact);
-  }
-  process.stdout.write(`${JSON.stringify(visionGateSummary(artifact), null, 2)}\n`);
-
-  // GATE: a rejected frame FAILS the render proof (nonzero exit).
-  if (outcome.status === "rejected") {
-    throw new VisionGateRejectedError(outcome.result.gate.failures);
-  }
-}
 
 /**
  * itotori-structure-export — the user-shaped front-door over the UTSUSHI-side
@@ -1308,239 +496,12 @@ async function runStructureExportHandler(
   );
 }
 
-async function runProviderProof(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  // Recorded mode is the default (no credentials); `--live` opts in to a
-  // bounded real ZDR call. The OpenRouter key is read from the environment
-  // by the command and is NEVER passed on the CLI or printed.
-  const live = args.includes("--live");
-  const fixturePath = optionalFlag(args, "--fixture");
-  const outputPath = optionalFlag(args, "--output");
-  const maxRepairRaw = optionalFlag(args, "--max-repair-attempts");
-  const maxRepairAttempts =
-    maxRepairRaw === undefined ? undefined : Number.parseInt(maxRepairRaw, 10);
-  if (maxRepairAttempts !== undefined && !Number.isInteger(maxRepairAttempts)) {
-    throw new Error(
-      `provider-proof refused: --max-repair-attempts '${String(maxRepairRaw)}' must be an integer`,
-    );
-  }
-  const result = await runProviderProofCommand({
-    mode: live ? "live" : "recorded",
-    ...(fixturePath === undefined ? {} : { fixturePath }),
-    ...(maxRepairAttempts === undefined ? {} : { maxRepairAttempts }),
-  });
-  if (result.status === "skipped") {
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    return;
-  }
-  if (outputPath !== undefined) {
-    dependencies.io.writeJson(outputPath, result.bundle);
-  }
-  process.stdout.write(`${JSON.stringify(providerProofSummary(result.bundle), null, 2)}\n`);
-}
-
-async function runProviderProofBundle(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  // ALPHA-008 — the sanitized provider-proof bundle command. Recorded mode is
-  // the default (no credentials, runs in public CI); `--live` opts in to a
-  // bounded real ZDR call. Emits the README-safe `AlphaProviderProofSummary`
-  // (routed provider/model, fallback chain, retry state, token/cost,
-  // data-policy flags, structured-output support) plus an optional Markdown
-  // render. The OpenRouter key is read from the env by the command, NEVER
-  // passed on the CLI or printed; no raw prompt/response/private text is
-  // emitted (the summary carries ids/hashes/counts/routing/cost only).
-  const live = args.includes("--live");
-  const fixturePath = optionalFlag(args, "--fixture");
-  const outputPath = optionalFlag(args, "--output");
-  const markdownOutputPath = optionalFlag(args, "--markdown-output");
-  const maxRepairRaw = optionalFlag(args, "--max-repair-attempts");
-  const maxRepairAttempts =
-    maxRepairRaw === undefined ? undefined : Number.parseInt(maxRepairRaw, 10);
-  if (maxRepairAttempts !== undefined && !Number.isInteger(maxRepairAttempts)) {
-    throw new Error(
-      `provider-proof-bundle refused: --max-repair-attempts '${String(maxRepairRaw)}' must be an integer`,
-    );
-  }
-  const result = await runProviderProofCommand({
-    mode: live ? "live" : "recorded",
-    ...(fixturePath === undefined ? {} : { fixturePath }),
-    ...(maxRepairAttempts === undefined ? {} : { maxRepairAttempts }),
-  });
-  if (result.status === "skipped") {
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    return;
-  }
-  const summary = buildAlphaProviderProofSummary(result.bundle);
-  if (outputPath !== undefined) {
-    dependencies.io.writeJson(outputPath, summary);
-  }
-  if (markdownOutputPath !== undefined) {
-    if (dependencies.io.writeText === undefined) {
-      throw new Error(
-        `provider-proof-bundle: the CLI file store cannot write the Markdown summary to ${markdownOutputPath}`,
-      );
-    }
-    dependencies.io.writeText(markdownOutputPath, renderReadmeSafeProviderProofSummary(summary));
-  }
-  process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
-}
-
-async function runRawMtlBaselineProof(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  // ITOTORI-117 — run the deliberately-naive raw-MTL degenerate baseline
-  // through the SAME provider-proof path as a structured draft. Recorded mode
-  // is the default (no credentials); `--live` opts in to a bounded real ZDR
-  // call. The OpenRouter key is read from the environment by the command and
-  // is NEVER passed on the CLI or printed.
-  const live = args.includes("--live");
-  const fixturePath = optionalFlag(args, "--fixture");
-  const outputPath = optionalFlag(args, "--output");
-  const maxRepairRaw = optionalFlag(args, "--max-repair-attempts");
-  const maxRepairAttempts =
-    maxRepairRaw === undefined ? undefined : Number.parseInt(maxRepairRaw, 10);
-  if (maxRepairAttempts !== undefined && !Number.isInteger(maxRepairAttempts)) {
-    throw new Error(
-      `raw-mtl-baseline-proof refused: --max-repair-attempts '${String(maxRepairRaw)}' must be an integer`,
-    );
-  }
-  const result = await runRawMtlBaselineProofCommand({
-    mode: live ? "live" : "recorded",
-    ...(fixturePath === undefined ? {} : { fixturePath }),
-    ...(maxRepairAttempts === undefined ? {} : { maxRepairAttempts }),
-  });
-  if (result.status === "skipped") {
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    return;
-  }
-  if (outputPath !== undefined) {
-    dependencies.io.writeJson(outputPath, result.artifact);
-  }
-  process.stdout.write(`${JSON.stringify(rawMtlBaselineProofSummary(result.artifact), null, 2)}\n`);
-}
-
-async function runLocalizeProjectStage(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  // UTSUSHI-228 — live-LLM agentic-loop stage of the localize-project
-  // recipe. Required flags (no defaulting):
-  //   --bridge <PATH>                          bridge-bundle.json (v0.2)
-  //   --pair-policy <PATH>                     pair-policy JSON
-  //   --output <PATH>                          agentic-loop-bundle.v0.json
-  //   --translated-bundle-output <PATH>        translated v0.2 bridge JSON
-  //   --patch-report-output <PATH>             synthesised patch-report.json
-  // Optional:
-  //   --unit-index <N>                         default 0
-  //   --max-repair-attempts <N>                default 1
-  //   --cost-cap-usd <decimal>                 durable run-level exact-decimal cap
-  //   --provider-run-artifacts-dir <PATH>      persist live provider-run artifacts here
-  // The command runs the LIVE OpenRouter path only — there is no fake /
-  // fixture provider option on this production CLI surface.
-  const bridgePath = requiredFlag(args, "--bridge");
-  const pairPolicyPath = requiredFlag(args, "--pair-policy");
-  const outputPath = requiredFlag(args, "--output");
-  const translatedBundleOutputPath = requiredFlag(args, "--translated-bundle-output");
-  const patchReportOutputPath = requiredFlag(args, "--patch-report-output");
-  const unitIndexRaw = optionalFlag(args, "--unit-index");
-  const engineProfileRaw = optionalFlag(args, "--engine-profile");
-  const maxRepairAttemptsRaw = optionalFlag(args, "--max-repair-attempts");
-  const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
-  const providerRunArtifactDirectory = optionalFlag(args, "--provider-run-artifacts-dir");
-  if (providerRunArtifactDirectory === undefined) {
-    throw new Error(
-      "localize-project-stage refused: --provider-run-artifacts-dir is required (the live OpenRouter path persists per-run provider artifacts there)",
-    );
-  }
-
-  const callArgs: RunLocalizeProjectStageLiveArgs = {
-    bridgePath,
-    pairPolicyPath,
-    outputPath,
-    translatedBundleOutputPath,
-    patchReportOutputPath,
-    io: {
-      readJson: (path) => dependencies.io.readJson(path),
-      writeJson: (path, value) => dependencies.io.writeJson(path, value),
-    },
-    log: (message) => {
-      process.stdout.write(`${message}\n`);
-    },
-  };
-  if (unitIndexRaw !== undefined) {
-    const parsed = Number.parseInt(unitIndexRaw, 10);
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      throw new Error(
-        `localize-project-stage refused: --unit-index '${unitIndexRaw}' must be a non-negative integer`,
-      );
-    }
-    callArgs.unitIndex = parsed;
-  }
-  if (engineProfileRaw !== undefined) {
-    if (engineProfileRaw !== "reallive" && engineProfileRaw !== "rpg-maker-mv-mz") {
-      throw new Error(
-        `localize-project-stage refused: --engine-profile '${engineProfileRaw}' must be 'reallive' or 'rpg-maker-mv-mz'`,
-      );
-    }
-    callArgs.engineProfile = engineProfileRaw;
-  }
-  if (maxRepairAttemptsRaw !== undefined) {
-    const parsed = Number.parseInt(maxRepairAttemptsRaw, 10);
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      throw new Error(
-        `localize-project-stage refused: --max-repair-attempts '${maxRepairAttemptsRaw}' must be a non-negative integer`,
-      );
-    }
-    callArgs.maxRepairAttempts = parsed;
-  }
-  if (costCapUsdRaw !== undefined) {
-    const parsed = Number.parseFloat(costCapUsdRaw);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      throw new Error(
-        `localize-project-stage refused: --cost-cap-usd '${costCapUsdRaw}' must be a positive number`,
-      );
-    }
-    callArgs.budgetCapUsd = parsed;
-  }
-  if (providerRunArtifactDirectory !== undefined) {
-    callArgs.providerRunArtifactDirectory = providerRunArtifactDirectory;
-  }
-  await runLocalizeProjectStageLive(callArgs);
-}
-
 /**
- * `itotori localize` — the kept command with two disjoint invocation shapes:
- *
- *   1. FRESH run: `itotori localize --run-mode <mode> --structure <path> [...]`
- *      The new-pipeline path: resolve the run policy, project the decoded
- *      narrative structure into coherence-ordered scenes, and drive the
- *      deterministic workflow driver through the composition `runLocalization`
- *      entrypoint. It reaches ONLY the new pipeline — never
- *      `ProjectWorkflowService.draftProject`, a provider object, the orchestrator
- *      journal reservation/finalizer, the context-correction worker, or a
- *      raw-MTL path. The live `WorkflowPortDeps` are injected through
- *      `services.localizationSubstrate`, so this path opens `withServices`.
- *
- *   2. RESUME: `itotori localize --resume-run-id <ID> --config <PATH> --run-dir <PATH>`
- *      Resume an existing durable run through the DB-DIRECT terminal-run
- *      finalizer / durable-executor (`runLocalizeFullProjectLive`). A
- *      finalizing-commit resume is config/provider/executor-free — it confirms an
- *      already-computed terminal commit from the canonical DB summary — and MUST
- *      NOT open `withServices` (constructing project-workflow services violates
- *      the resume invariant). The resume branch therefore dispatches BEFORE any
- *      `withServices` call.
+ * `itotori localize` drives the new pipeline from a fresh run request. Restart
+ * durability is provided by the workflow's missing-artifact query, rather than
+ * by the retired durable-journal resume path.
  */
 async function runLocalize(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
-  const resumeRunId = optionalFlag(args, "--resume-run-id");
-  if (resumeRunId !== undefined) {
-    await resumeDurableLocalizeRun(args, dependencies, resumeRunId);
-    return;
-  }
   // Validate the required run flags BEFORE opening services — a fresh localize
   // with no `--config` must fail as "missing required flag --config", not as a
   // downstream DATABASE_URL error from `withServices`.
@@ -1560,297 +521,6 @@ async function runLocalize(args: string[], dependencies: ItotoriCliDependencies)
       resolvePortSource: (request) => substrate.resolvePortSource(request),
     });
   });
-}
-
-/**
- * Resume an existing durable localize run WITHOUT opening project-workflow
- * services. This is a DB-direct path into the durable journal + terminal
- * finalizer through `runLocalizeFullProjectLive`; it never constructs the
- * `withServices` graph. A finalizing-commit resume is config/provider/executor-
- * free (the config is read only lazily, and only if a physical patch stage is
- * incomplete), so the finalizer-resume invariant — no config, provider, or
- * executor work to confirm an already-computed terminal commit — is preserved.
- *
- * Required flags:
- *   --config <PATH>       localize-fullproject config JSON (read lazily; a
- *                         commit-only resume never opens it)
- *   --run-dir <PATH>      directory the run summary is mirrored into
- * Optional:
- *   --cost-cap-usd <decimal> / --concurrency <N> / --allow-partial-patch
- *   --source <PATH> + --patch-target <PATH>  (both or neither) reach an
- *                         applyable patch when resuming a run that still owes
- *                         executor + patch-apply work.
- */
-async function resumeDurableLocalizeRun(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-  resumeRunId: string,
-): Promise<void> {
-  const configPath = requiredFlag(args, "--config");
-  const runDir = requiredFlag(args, "--run-dir");
-  const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
-  const concurrency = parseConcurrencyFlag(args);
-  const allowPartialPatch = args.includes("--allow-partial-patch");
-  const sourceRoot = optionalFlag(args, "--source");
-  const patchTargetRoot = optionalFlag(args, "--patch-target");
-  if ((sourceRoot === undefined) !== (patchTargetRoot === undefined)) {
-    throw new Error(
-      "localize refused: --source and --patch-target must be given together (both reach an applyable patch) or both omitted (stop at translated-bridge.json)",
-    );
-  }
-  let costCapUsd: number | undefined;
-  if (costCapUsdRaw !== undefined) {
-    const parsed = Number.parseFloat(costCapUsdRaw);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      throw new Error(
-        `localize refused: --cost-cap-usd '${costCapUsdRaw}' must be a positive number`,
-      );
-    }
-    costCapUsd = parsed;
-  }
-  const liveResult = await runLocalizeFullProjectLive({
-    configPath,
-    runDir,
-    io: {
-      readJson: (path) => dependencies.io.readJson(path),
-      writeJson: (path, value) => dependencies.io.writeJson(path, value),
-    },
-    resumeRunId,
-    ...(costCapUsd !== undefined ? { costCapUsd } : {}),
-    ...(concurrency !== undefined ? { concurrency } : {}),
-    ...(allowPartialPatch ? { allowPartialPatch: true } : {}),
-    ...(sourceRoot !== undefined ? { sourceRoot } : {}),
-    ...(patchTargetRoot !== undefined ? { patchTargetRoot } : {}),
-    ...(dependencies.nativeCli !== undefined ? { nativeCli: dependencies.nativeCli } : {}),
-    log: (message) => {
-      process.stdout.write(`${message}\n`);
-    },
-  });
-  if (liveResult.resumedFinalization === true) {
-    const { result, terminalSummary } = liveResult;
-    process.stdout.write(
-      `${JSON.stringify(
-        {
-          journalRunId: result.journalRunId,
-          runState: result.runState,
-          pausedBlocker: result.pausedBlocker,
-          resumedFinalization: true,
-          plannedUnitCount: terminalSummary.coverage.plannedUnitCount,
-          writtenOutcomeCount: terminalSummary.coverage.writtenOutcomeCount,
-          attemptsPersisted: terminalSummary.attempts.totalCount,
-          patchApplied: terminalSummary.patch.playable,
-        },
-        null,
-        2,
-      )}\n`,
-    );
-    return;
-  }
-  const { result, patchApply } = liveResult;
-  process.stdout.write(
-    `${JSON.stringify(
-      {
-        journalRunId: result.journalRunId,
-        runState: result.runState,
-        pausedBlocker: result.pausedBlocker,
-        unitsRun: result.unitsRun,
-        writtenOutcomeCount: result.writtenOutcomeCount,
-        failureCount: result.failures.length,
-        attemptsPersisted: result.attemptsPersisted,
-        totalUsageCostExactUsd: result.totalUsageCostExactUsd,
-        totalUsageCostUsd: result.totalUsageCostUsd,
-        zdrConfirmed: result.zdrConfirmed,
-        budgetStopped: result.budgetStopped,
-        patchApplied: patchApply !== undefined,
-        ...(patchApply !== undefined
-          ? {
-              patchExportDraftCount: patchApply.patchExportBundle.drafts.length,
-              patchTargetRoot,
-            }
-          : {}),
-      },
-      null,
-      2,
-    )}\n`,
-  );
-}
-
-/**
- * itotori-cli-localize-game-vertical — the M1 CAPSTONE. ONE user-shaped
- * command an agent types to localize the WHOLE game end-to-end. Orchestrates,
- * against a writable target copy, the full vertical by COMPOSING the existing
- * gated subcommands / their in-process seams (it duplicates NONE of their
- * logic):
- *
- *   1. extract   — the whole-Seen bridge (`itotori extract --whole-seen` seam)
- *   2. structure — the narrative structure (`itotori structure-export` seam)
- *   3. localize  — the whole-game driver + M1 patch-apply seam (`itotori
- *      localize --source --patch-target`): drives every unit against live
- *      OpenRouter + real Postgres, then applies the byte-correct patch.
- *   4. validate  — replay + render of the patched target (`itotori validate`).
- *
- * The extract + structure artifacts land in `--run-dir`; the command derives
- * an EFFECTIVE localize config overriding the base config's bridgePath /
- * structureJsonPath with them, so the driver consumes exactly what this run
- * produced. `just localize-project` remains only the four-binary dev/test
- * runner — `itotori localize-game` is the USER surface.
- *
- * Required flags (no defaulting):
- *   --config <PATH>              base localize-fullproject config (v0)
- *   --source <PATH>              read-only source game root (REALLIVEDATA/Seen.txt)
- *   --target <PATH>              writable target the patched game lands under
- *   --run-dir <PATH>             per-run artifact directory
- *   --game-id / --game-version / --source-profile-id / --source-locale
- *                                RealLive identity for the whole-seen extract
- *   --scene <N>                  scene the validate stage replays + renders
- * Optional:
- *   --resume-run-id <ID>        resume an existing paused or finalizing durable run
- *   --vault-canonical-id <ID>    source by-id through the read-only vault
- *   --game-root <PATH>           raw extract source root (defaults to --source)
- *   --gameexe <PATH> / --seen <PATH>  structure inputs (default <source>/REALLIVEDATA/*)
- *   --entry-scene <N>            structure dispatch-order entry scene override
- *   --expect-text <TEXT>         localized text the render frame must contain
- *   --redaction on|off           render-frame redaction posture (default on)
- *   --cost-cap-usd <decimal>     durable run-level exact-decimal budget cap
- *   --concurrency <N>            client-side bounded-concurrency cap (default 8;
- *                                wins over the config's `concurrency`)
- */
-async function runLocalizeGame(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const configPath = requiredFlag(args, "--config");
-  const resumeRunId = optionalFlag(args, "--resume-run-id");
-  const sourceRoot = requiredFlag(args, "--source");
-  const targetRoot = requiredFlag(args, "--target");
-  const runDir = requiredFlag(args, "--run-dir");
-  const validateScene = requiredFlag(args, "--scene");
-  const identity = {
-    gameId: requiredFlag(args, "--game-id"),
-    gameVersion: requiredFlag(args, "--game-version"),
-    sourceProfileId: requiredFlag(args, "--source-profile-id"),
-    sourceLocale: requiredFlag(args, "--source-locale"),
-  };
-  const vaultCanonicalId = optionalFlag(args, "--vault-canonical-id");
-  const gameRoot = optionalFlag(args, "--game-root");
-  const gameexePath = optionalFlag(args, "--gameexe");
-  const seenPath = optionalFlag(args, "--seen");
-  const entrySceneRaw = optionalFlag(args, "--entry-scene");
-  const expectTextContains = optionalFlag(args, "--expect-text");
-  const redactionRaw = optionalFlag(args, "--redaction") ?? "on";
-  const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
-  const concurrency = parseConcurrencyFlag(args);
-  const allowPartialPatch = args.includes("--allow-partial-patch");
-
-  if (redactionRaw !== "on" && redactionRaw !== "off") {
-    throw new Error(`localize-game: --redaction must be 'on' or 'off', got '${redactionRaw}'`);
-  }
-  let entryScene: number | undefined;
-  if (entrySceneRaw !== undefined) {
-    entryScene = parseNonNegativeInteger(entrySceneRaw, "--entry-scene");
-  }
-  let costCapUsd: number | undefined;
-  if (costCapUsdRaw !== undefined) {
-    const parsed = Number.parseFloat(costCapUsdRaw);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      throw new Error(`localize-game: --cost-cap-usd '${costCapUsdRaw}' must be a positive number`);
-    }
-    costCapUsd = parsed;
-  }
-
-  const callArgs: RunLocalizeGameArgs = {
-    configPath,
-    sourceRoot,
-    targetRoot,
-    runDir,
-    identity,
-    validateScene,
-    ...(resumeRunId !== undefined ? { resumeRunId } : {}),
-    redaction: redactionRaw,
-    io: {
-      readJson: (path) => dependencies.io.readJson(path),
-      writeJson: (path, value) => dependencies.io.writeJson(path, value),
-    },
-    log: (message) => {
-      process.stdout.write(`${message}\n`);
-    },
-    ...(vaultCanonicalId !== undefined ? { vaultCanonicalId } : {}),
-    ...(gameRoot !== undefined ? { gameRoot } : {}),
-    ...(gameexePath !== undefined ? { gameexePath } : {}),
-    ...(seenPath !== undefined ? { seenPath } : {}),
-    ...(entryScene !== undefined ? { entryScene } : {}),
-    ...(expectTextContains !== undefined ? { expectTextContains } : {}),
-    ...(costCapUsd !== undefined ? { costCapUsd } : {}),
-    ...(concurrency !== undefined ? { concurrency } : {}),
-    ...(allowPartialPatch ? { allowPartialPatch: true } : {}),
-  };
-  if (dependencies.nativeCli !== undefined) {
-    const nativeCli = dependencies.nativeCli;
-    // Bind the validate stage to the injected native runner (tests supply a
-    // fake); the other three stages resolve their own seams.
-    callArgs.stages = {
-      extract: (extractArgs) => runKaifuuRealliveExtract(extractArgs),
-      structure: (structureArgs) => runUtsushiStructureExport(structureArgs),
-      localize: (localizeArgs) =>
-        runLocalizeFullProjectLive({
-          ...localizeArgs,
-          ...(localizeArgs.allowPartialPatch !== undefined
-            ? { allowPartialPatch: localizeArgs.allowPartialPatch }
-            : {}),
-          nativeCli,
-        }),
-      runNative: (bin, nativeArgs) => runNativeCli(bin, nativeArgs, nativeCli),
-    };
-  }
-
-  try {
-    const result = await runLocalizeGameCommand(callArgs);
-    const localizeProjection =
-      result.localize.resumedFinalization === true
-        ? {
-            resumedFinalization: true,
-            plannedUnitCount: result.localize.terminalSummary.coverage.plannedUnitCount,
-            writtenOutcomeCount: result.localize.terminalSummary.coverage.writtenOutcomeCount,
-            attemptsPersisted: result.localize.terminalSummary.attempts.totalCount,
-            patchApplied: result.localize.terminalSummary.patch.playable,
-          }
-        : {
-            unitsRun: result.localize.result.unitsRun,
-            writtenOutcomeCount: result.localize.result.writtenOutcomeCount,
-            totalUsageCostExactUsd: result.localize.result.totalUsageCostExactUsd,
-            totalUsageCostUsd: result.localize.result.totalUsageCostUsd,
-            zdrConfirmed: result.localize.result.zdrConfirmed,
-            patchApplied: result.localize.patchApply !== undefined,
-          };
-    process.stdout.write(
-      `${JSON.stringify(
-        {
-          runDir: result.runDir,
-          effectiveConfigPath: result.effectiveConfigPath,
-          patchTargetRoot: result.patchTargetRoot,
-          journalRunId: result.localize.result.journalRunId,
-          runState: result.localize.result.runState,
-          pausedBlocker: result.localize.result.pausedBlocker,
-          ...localizeProjection,
-          ...(result.localize.result.runState === "succeeded"
-            ? {
-                replayLogPath: result.replayLogPath,
-                renderEvidencePath: result.renderEvidencePath,
-              }
-            : {}),
-        },
-        null,
-        2,
-      )}\n`,
-    );
-  } catch (error) {
-    if (error instanceof LocalizeGameStageError) {
-      // Surface WHICH stage broke on stderr before rethrowing so the top-level
-      // handler exits non-zero with the failing-stage context visible.
-      process.stderr.write(`[localize-game] STAGE FAILED: stage=${error.stage} ${error.message}\n`);
-    }
-    throw error;
-  }
 }
 
 /**
@@ -1950,42 +620,6 @@ function parseRealliveSceneId(value: string): number {
   return parsed;
 }
 
-async function runExportPatchV2(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const projectPath = requiredFlag(args, "--project");
-  const draftBundlePath = requiredFlag(args, "--draft-bundle");
-  const outputPath = requiredFlag(args, "--output");
-  const locale = requiredFlag(args, "--locale");
-  const requestedBy = optionalFlag(args, "--requested-by") ?? "local-user";
-  const draftSourceBridgeHash = optionalFlag(args, "--draft-source-bridge-hash");
-  await dependencies.withServices(async (services) => {
-    const port = requireAssetDecisionsPort(services);
-    await runExportPatchV2Command({
-      projectPath,
-      draftBundlePath,
-      outputPath,
-      locale,
-      requestedBy,
-      ...(draftSourceBridgeHash === undefined ? {} : { draftSourceBridgeHash }),
-      io: {
-        readJson: (path) => dependencies.io.readJson(path),
-        writeJson: (path, value) => dependencies.io.writeJson(path, value),
-      },
-      actor: { userId: requestedBy },
-      loadActiveDecisions: async (_actor, projectId, localeBranchId) =>
-        port.loadActiveDecisions(projectId, localeBranchId),
-      exit: (code) => {
-        process.exitCode = code;
-      },
-      log: (message) => {
-        process.stdout.write(`${message}\n`);
-      },
-    });
-  });
-}
-
 async function runIngestRuntime(
   args: string[],
   dependencies: ItotoriCliDependencies,
@@ -2057,114 +691,6 @@ async function runIngestConformance(
   }
 }
 
-async function runImportFeedback(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const feedbackPath = requiredFlag(args, "--feedback");
-  const outputPath = requiredFlag(args, "--output");
-  const feedback = dependencies.io.readJson(feedbackPath);
-  const result = await dependencies.withServices((services) =>
-    services.manualFeedback.importManualFeedback(feedback),
-  );
-  dependencies.io.writeJson(outputPath, result);
-}
-
-type ChannelFeedbackImportCliSummary = {
-  schemaVersion: "itotori.channel-feedback-import.v1";
-  channel: string;
-  sourceExportPath: string;
-  importedCount: number;
-  duplicateCount: number;
-  items: {
-    externalRef: {
-      channel: string;
-      externalId: string;
-      url?: string;
-    };
-    result: ManualFeedbackImportOutcome;
-    redactions: {
-      kind: string;
-      count: number;
-      placeholder: string;
-    }[];
-  }[];
-};
-
-async function runImportChannelFeedback(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const channel = requiredFlag(args, "--channel");
-  const sourceExportPath = requiredFlag(args, "--export");
-  const outputPath = requiredFlag(args, "--output");
-  const localeBranchId = requiredFlag(args, "--locale-branch-id");
-  const bridgeUnitId = optionalFlag(args, "--bridge-unit-id");
-  const sourceBundleId = optionalFlag(args, "--source-bundle-id");
-  const privacyClassification = optionalFlag(args, "--privacy-classification");
-  const options: ChannelImportOptions = {
-    projectId: requiredFlag(args, "--project-id"),
-    localeBranchId,
-    ...(bridgeUnitId === undefined ? {} : { bridgeUnitId }),
-    ...(sourceBundleId === undefined ? {} : { sourceBundleId }),
-    ...(privacyClassification === undefined ? {} : { privacyClassification }),
-  };
-  const importer = channelFeedbackImporterFor(channel);
-  const sourceExport = dependencies.io.readJson(sourceExportPath);
-  // Validate every mapped item before service acquisition/persistence so one
-  // targetless channel record cannot leave a partially imported batch.
-  const mappedItems = importer
-    .mapExport(sourceExport, options)
-    .map((item) => ({ ...item, input: parseManualFeedbackImportInput(item.input) }));
-
-  const items: ChannelFeedbackImportCliSummary["items"] = [];
-  await dependencies.withServices(async (services) => {
-    for (const item of mappedItems) {
-      const result = await services.manualFeedback.importManualFeedback(item.input);
-      items.push({
-        externalRef: item.externalRef,
-        result,
-        redactions: item.redactions,
-      });
-    }
-  });
-
-  dependencies.io.writeJson(outputPath, {
-    schemaVersion: "itotori.channel-feedback-import.v1",
-    channel: importer.channel,
-    sourceExportPath,
-    importedCount: items.length,
-    duplicateCount: items.filter((item) => item.result.duplicate).length,
-    items,
-  } satisfies ChannelFeedbackImportCliSummary);
-}
-
-function channelFeedbackImporterFor(channel: string): ChannelFeedbackImporter {
-  switch (channel) {
-    case "github_issues":
-      return new GitHubIssuesImporter();
-    case "community_forms":
-      return new CommunityFormsImporter();
-    default:
-      throw new Error(
-        `unknown channel feedback importer '${channel}' (expected github_issues or community_forms)`,
-      );
-  }
-}
-
-async function runImportFeedbackBatch(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const batchPath = requiredFlag(args, "--batch");
-  const outputPath = requiredFlag(args, "--output");
-  const batch = dependencies.io.readJson(batchPath) as DraftFeedbackBatchInput;
-  const result = await dependencies.withServices((services) =>
-    services.draftFeedbackBatch.submitBatch(batch),
-  );
-  dependencies.io.writeJson(outputPath, result);
-}
-
 async function runCatalogLinkExact(
   args: string[],
   dependencies: ItotoriCliDependencies,
@@ -2223,270 +749,6 @@ async function runCatalogLocalScan(
     ...(hashKey === undefined ? {} : { hashKey }),
   });
   dependencies.io.writeJson(outputPath, report);
-}
-
-async function runBenchmarkHarnessHandler(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  // Public-fixture-only run: every input defaults to a checked-in public
-  // fixture, so the command completes with no private corpora and no live
-  // provider credentials.
-  const seedsPath =
-    optionalFlag(args, "--benchmark-seeds") ?? DEFAULT_PUBLIC_BENCHMARK_SEEDS_FIXTURE_PATH;
-  const setsPath =
-    optionalFlag(args, "--benchmark-sets") ?? DEFAULT_PUBLIC_BENCHMARK_SETS_FIXTURE_PATH;
-  const stagesFixturePath =
-    optionalFlag(args, "--benchmark-stages") ?? DEFAULT_PUBLIC_BENCHMARK_STAGES_FIXTURE_PATH;
-  const outputDir = optionalFlag(args, "--output-dir") ?? "artifacts/itotori/benchmark-harness";
-  // Identity is threaded through args so a REAL run supplies its own values; the
-  // public fixture pins its deterministic, replay-stable defaults when the flags
-  // are omitted — keeping the checked-in fixture output byte-identical.
-  const benchmarkRunId =
-    optionalFlag(args, "--benchmark-run-id") ?? DEFAULT_PUBLIC_BENCHMARK_RUN_ID;
-  const generatedAt = optionalFlag(args, "--generated-at") ?? DEFAULT_PUBLIC_BENCHMARK_GENERATED_AT;
-
-  const benchmarkSetReadModel = benchmarkSetReadModelFromSeedsFixture(
-    dependencies.io.readJson(seedsPath),
-  );
-  const benchmarkSetSelectionInput = benchmarkSetSelectionInputFromSetsFixture(
-    dependencies.io.readJson(setsPath),
-    benchmarkSetReadModel.targetLanguage,
-  );
-  const stages = buildPublicBenchmarkHarnessStages({
-    benchmarkSetReadModel,
-    benchmarkSetSelectionInput,
-    stagesFixture: loadBenchmarkStagesFixture(dependencies.io.readJson(stagesFixturePath)),
-  });
-
-  const manifest = await runBenchmarkHarnessCommand({
-    benchmarkRunId,
-    benchmarkName: "itotori-026 public-fixture benchmark harness run",
-    generatedAt,
-    outputDir,
-    stages,
-    io: { writeJson: (path, value) => dependencies.io.writeJson(path, value) },
-    log: (message) => {
-      process.stdout.write(`${message}\n`);
-    },
-  });
-
-  if (manifest.status === "failed") {
-    // The run manifest is already written with the visible failed stage;
-    // escalate to a non-zero exit so the failure is not masked by exit 0.
-    throw new Error(
-      `benchmark-harness run failed at stage '${manifest.failedStageId ?? "unknown"}'; see ${outputDir}/run-manifest.json`,
-    );
-  }
-}
-
-async function runExperimentReportComposeHandler(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  // ITOTORI-039 — COMPOSE an ITOTORI-099 experiment-matrix run manifest and
-  // an ITOTORI-100 provider route report into a benchmark report attachment.
-  // Every input defaults to a checked-in PUBLIC fixture, so the command
-  // completes with no private corpora and no live provider credentials. A
-  // missing / stale / invalid composed artifact FAILS with a structured
-  // finding that NAMES the artifact and escalates to a non-zero exit.
-  const manifestPath =
-    optionalFlag(args, "--experiment-manifest") ?? DEFAULT_PUBLIC_EXPERIMENT_MANIFEST_FIXTURE_PATH;
-  const routeReportPath =
-    optionalFlag(args, "--provider-route-report") ??
-    DEFAULT_PUBLIC_PROVIDER_ROUTE_REPORT_FIXTURE_PATH;
-  const outputPath =
-    optionalFlag(args, "--output") ?? "artifacts/itotori/experiment-report/attachment.json";
-
-  const composition = composeExperimentBenchmarkReport({
-    experimentManifestRef: {
-      artifactName: "experiment-matrix run manifest",
-      artifactPath: manifestPath,
-    },
-    providerRouteReportRef: {
-      artifactName: "provider route report",
-      artifactPath: routeReportPath,
-    },
-    // The reader throws ENOENT on a missing file; the command catches it and
-    // turns it into a `missing_artifact` finding NAMING the artifact.
-    readArtifact: (ref) => dependencies.io.readJson(ref.artifactPath),
-    generatedAt: "2026-06-30T00:00:00.000Z",
-    log: (message) => {
-      process.stdout.write(`${message}\n`);
-    },
-  });
-
-  if (composition.attachment !== null) {
-    // The attachment (succeeded OR failed, with embedded findings) is written
-    // so the diagnostics stay inspectable on disk.
-    dependencies.io.writeJson(outputPath, composition.attachment);
-  }
-
-  if (composition.status !== "succeeded") {
-    // Escalate so a missing/stale/invalid composed artifact is not masked by
-    // exit 0. The error names every offending artifact + field.
-    throw new ExperimentReportCompositionError(composition.findings);
-  }
-}
-
-async function runAlphaReadinessHandler(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  // ALPHA-003 — COMPOSE the alpha readiness decision from PUBLIC-fixture
-  // benchmark evidence: the ITOTORI-026 harness run (which wires the
-  // ITOTORI-090/091/092 real stages, including the raw-MTL baseline and the
-  // ledger-recomputed cost/quality report) plus the ITOTORI-039/100 provider
-  // experiment-report (served pairs + artifact↔ledger cost reconciliation).
-  //
-  // Every input defaults to a checked-in PUBLIC fixture, so the command runs
-  // WITHOUT any private-local corpus and without live provider credentials. A
-  // private-local aggregate, when supplied, is recorded as supplementary
-  // evidence (presence + content hash only) and never gates the decision.
-  const seedsPath =
-    optionalFlag(args, "--benchmark-seeds") ?? DEFAULT_PUBLIC_BENCHMARK_SEEDS_FIXTURE_PATH;
-  const setsPath =
-    optionalFlag(args, "--benchmark-sets") ?? DEFAULT_PUBLIC_BENCHMARK_SETS_FIXTURE_PATH;
-  const stagesFixturePath =
-    optionalFlag(args, "--benchmark-stages") ?? DEFAULT_PUBLIC_BENCHMARK_STAGES_FIXTURE_PATH;
-  const experimentManifestPath =
-    optionalFlag(args, "--experiment-manifest") ?? DEFAULT_PUBLIC_EXPERIMENT_MANIFEST_FIXTURE_PATH;
-  const routeReportPath =
-    optionalFlag(args, "--provider-route-report") ??
-    DEFAULT_PUBLIC_PROVIDER_ROUTE_REPORT_FIXTURE_PATH;
-  const outputDir = optionalFlag(args, "--output-dir") ?? "artifacts/itotori/alpha-readiness";
-  const generatedAt = optionalFlag(args, "--generated-at") ?? "2026-06-30T00:00:00.000Z";
-  const privateLocalPath = optionalFlag(args, "--private-local-aggregate");
-
-  const log = (message: string): void => {
-    process.stdout.write(`${message}\n`);
-  };
-
-  // ── Run the benchmark harness over the public fixtures, capturing the
-  // cost-quality artifact in-memory while still persisting every stage report. ─
-  const benchmarkDir = `${outputDir}/benchmark`;
-  const benchmarkSetReadModel = benchmarkSetReadModelFromSeedsFixture(
-    dependencies.io.readJson(seedsPath),
-  );
-  const benchmarkSetSelectionInput = benchmarkSetSelectionInputFromSetsFixture(
-    dependencies.io.readJson(setsPath),
-    benchmarkSetReadModel.targetLanguage,
-  );
-  const stages = buildPublicBenchmarkHarnessStages({
-    benchmarkSetReadModel,
-    benchmarkSetSelectionInput,
-    stagesFixture: loadBenchmarkStagesFixture(dependencies.io.readJson(stagesFixturePath)),
-  });
-  const captured = new Map<string, unknown>();
-  const runManifest = await runBenchmarkHarnessCommand({
-    benchmarkRunId: "019ed026-0000-7000-8000-000000000001",
-    benchmarkName: "alpha readiness public-fixture benchmark run",
-    generatedAt,
-    outputDir: benchmarkDir,
-    stages,
-    io: {
-      writeJson: (path, value) => {
-        captured.set(path, value);
-        dependencies.io.writeJson(path, value);
-      },
-    },
-    log,
-  });
-
-  if (runManifest.status !== "succeeded") {
-    // The public-fixture benchmark decides pass/fail; a failed harness run is a
-    // failed alpha readiness. The run manifest is already persisted with the
-    // visible failed stage — escalate so the failure is not masked by exit 0.
-    throw new Error(
-      `alpha-readiness benchmark run failed at stage '${runManifest.failedStageId ?? "unknown"}'; see ${benchmarkDir}/run-manifest.json`,
-    );
-  }
-
-  const costQualityArtifact = captured.get(`${benchmarkDir}/cost-quality-report.json`) as
-    | AlphaReadinessCostQualityArtifact
-    | undefined;
-  if (costQualityArtifact === undefined) {
-    throw new Error(
-      `alpha-readiness: harness did not produce ${benchmarkDir}/cost-quality-report.json`,
-    );
-  }
-
-  // ── Compose the provider experiment-report (served pairs + cost reconcile). ─
-  const providerProofPath = `${outputDir}/provider-proof/attachment.json`;
-  const experimentComposition = composeExperimentBenchmarkReport({
-    experimentManifestRef: {
-      artifactName: "experiment-matrix run manifest",
-      artifactPath: experimentManifestPath,
-    },
-    providerRouteReportRef: {
-      artifactName: "provider route report",
-      artifactPath: routeReportPath,
-    },
-    readArtifact: (ref) => dependencies.io.readJson(ref.artifactPath),
-    generatedAt,
-    log,
-  });
-  if (experimentComposition.attachment !== null) {
-    dependencies.io.writeJson(providerProofPath, experimentComposition.attachment);
-  }
-
-  // ── ALPHA-008 — the real-call sanitized provider-proof bundle, consumed as
-  //    structured provider-support evidence. Recorded mode is credential-free
-  //    and deterministic so this runs in public CI; the summary carries only
-  //    ids/hashes/counts/routing/cost (no raw prompt/response/key/private text).
-  const proofResult = await runRecordedProviderProof();
-  if (proofResult.status !== "passed") {
-    throw new Error(
-      `alpha-readiness: recorded provider-proof did not pass (status='${proofResult.status}')`,
-    );
-  }
-  const providerProofSummaryBundle = buildAlphaProviderProofSummary(proofResult.bundle);
-  const providerProofBundleDir = `${outputDir}/provider-proof-bundle`;
-  dependencies.io.writeJson(`${providerProofBundleDir}/summary.json`, providerProofSummaryBundle);
-
-  // ── Optional supplementary private-local aggregate: hash only, no contents. ─
-  let privateLocalAggregate: AlphaReadinessPrivateLocalHandle | null = null;
-  if (privateLocalPath !== undefined) {
-    const raw = dependencies.io.readJson(privateLocalPath);
-    const sha256 = createHash("sha256").update(JSON.stringify(raw)).digest("hex");
-    privateLocalAggregate = { label: privateLocalPath, sha256: `sha256:${sha256}` };
-  }
-
-  const report = composeAlphaReadiness({
-    runManifest,
-    costQualityArtifact,
-    experimentComposition,
-    providerProofArtifactPath: providerProofPath,
-    providerProofSummary: providerProofSummaryBundle,
-    generatedAt,
-    privateLocalAggregate,
-  });
-
-  // ── Persist the deliverables. ────────────────────────────────────────────
-  dependencies.io.writeJson(`${outputDir}/alpha-readiness-report.json`, report);
-  dependencies.io.writeJson(`${outputDir}/cost-report.json`, report.cost);
-  dependencies.io.writeJson(`${outputDir}/quality-report.json`, report.quality);
-  const summaryPath = `${outputDir}/README-summary.md`;
-  if (dependencies.io.writeText === undefined) {
-    throw new Error(
-      `alpha-readiness: the CLI file store cannot write the README-safe summary to ${summaryPath}`,
-    );
-  }
-  dependencies.io.writeText(summaryPath, renderReadmeSafeAlphaSummary(report));
-  dependencies.io.writeText(
-    `${providerProofBundleDir}/README.md`,
-    renderReadmeSafeProviderProofSummary(providerProofSummaryBundle),
-  );
-  log(
-    `alpha-readiness: decision=${report.decision} gates=${report.gates.length} failedGates=${report.failedGateIds.length}; wrote ${outputDir}/alpha-readiness-report.json`,
-  );
-
-  if (report.decision !== "pass") {
-    // Keep a failed alpha readiness visible at the process level.
-    throw new Error(
-      `alpha-readiness decision='fail'; failing gates: ${report.failedGateIds.join(", ")}; see ${outputDir}/alpha-readiness-report.json`,
-    );
-  }
 }
 
 async function runInitHandler(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
@@ -2819,6 +1081,8 @@ function parseNonNegativeInteger(value: string, name: string): number {
  * Must be an integer in the safe operator range, so invalid requests are refused
  * loudly rather than changing the requested concurrency.
  */
+export const MAX_LOCALIZE_CONCURRENCY = 16;
+
 export class ConcurrencyFlagError extends Error {
   constructor(message: string) {
     super(message);
@@ -2836,7 +1100,7 @@ export function parseConcurrencyFlag(args: string[]): number | undefined {
   if (raw === undefined || raw.length === 0 || raw.startsWith("--")) {
     const receivedValue = raw === undefined ? "<missing>" : `'${raw}'`;
     throw new ConcurrencyFlagError(
-      `--concurrency requires a positive integer value in the valid range [1, ${MAX_DRIVEN_CONCURRENCY}]; got ${receivedValue}`,
+      `--concurrency requires a positive integer value in the valid range [1, ${MAX_LOCALIZE_CONCURRENCY}]; got ${receivedValue}`,
     );
   }
 
@@ -2845,10 +1109,10 @@ export function parseConcurrencyFlag(args: string[]): number | undefined {
     !Number.isInteger(parsed) ||
     String(parsed) !== raw ||
     parsed < 1 ||
-    parsed > MAX_DRIVEN_CONCURRENCY
+    parsed > MAX_LOCALIZE_CONCURRENCY
   ) {
     throw new ConcurrencyFlagError(
-      `--concurrency '${raw}' must be a positive integer in the valid range [1, ${MAX_DRIVEN_CONCURRENCY}]`,
+      `--concurrency '${raw}' must be a positive integer in the valid range [1, ${MAX_LOCALIZE_CONCURRENCY}]`,
     );
   }
   return parsed;
@@ -2858,267 +1122,8 @@ function readProject(io: JsonFileStore, path: string): ProjectState {
   return io.readJson(path) as ProjectState;
 }
 
-async function runPlanBatchesHandler(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const projectPath = requiredFlag(args, "--project");
-  const locale = requiredFlag(args, "--locale");
-  const outputPath = optionalFlag(args, "--output");
-  const modelId = optionalFlag(args, "--model");
-  // ITOTORI-220 — the routing provider of the (modelId, providerId) pair. The
-  // planner refuses to size a named model without it rather than persisting an
-  // unknown-provider sentinel on every batch.
-  const providerId = optionalFlag(args, "--provider-id");
-  const providerFamilyRaw = optionalFlag(args, "--provider");
-  const maxTokensRaw = optionalFlag(args, "--max-tokens");
-  const fillRatioRaw = optionalFlag(args, "--target-fill-ratio");
-  const priorExampleLimitRaw = optionalFlag(args, "--prior-example-limit");
-  const dryRun = args.includes("--dry-run");
-  const providerFamily =
-    providerFamilyRaw === undefined ? undefined : asProviderFamily(providerFamilyRaw);
-  const maxTokens = maxTokensRaw === undefined ? undefined : Number.parseInt(maxTokensRaw, 10);
-  const targetFillRatio = fillRatioRaw === undefined ? undefined : Number.parseFloat(fillRatioRaw);
-  const priorExampleLimit =
-    priorExampleLimitRaw === undefined ? undefined : Number.parseInt(priorExampleLimitRaw, 10);
-
-  await dependencies.withServices(async (services) => {
-    const result: PlanBatchesOutput = await runPlanBatches(
-      {
-        projectPath,
-        outputPath,
-        locale,
-        modelId,
-        providerId,
-        providerFamily,
-        maxTokens,
-        targetFillRatio,
-        priorExampleLimit,
-        dryRun,
-      },
-      {
-        loadProject: (path) => dependencies.io.readJson(path) as PlannedProjectFile,
-        writeJson: (path, value) => dependencies.io.writeJson(path, value),
-        loadContext: (project, planLocale) =>
-          services.batchPlanner.loadContext(project, planLocale),
-        persist: (batches, identity) => services.batchPlanner.persist(batches, identity),
-        log: (message) => {
-          process.stdout.write(`${message}\n`);
-        },
-      },
-    );
-    return result;
-  });
-}
-
-const providerFamilyValues: readonly ProviderFamily[] = [
-  "fake",
-  "recorded",
-  "openrouter",
-  "local-openai-compatible",
-];
-
-function asProviderFamily(value: string): ProviderFamily {
-  if ((providerFamilyValues as readonly string[]).includes(value)) {
-    return value as ProviderFamily;
-  }
-  throw new Error(`unknown provider family: ${value}`);
-}
-
-async function runGenerateSceneSummariesHandler(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const projectId = requiredFlag(args, "--project");
-  const localeBranchId = requiredFlag(args, "--locale-branch");
-  const sourceLocale = requiredFlag(args, "--source-locale");
-  const sourceRevisionId = requiredFlag(args, "--source-revision");
-  const modelId = optionalFlag(args, "--model");
-  const providerRaw = optionalFlag(args, "--provider");
-  const sceneId = optionalFlag(args, "--scene-id");
-  const includeStale = args.includes("--include-stale");
-  const dryRun = args.includes("--dry-run");
-  const contextWindowRaw = optionalFlag(args, "--context-window");
-  const maxOutputRaw = optionalFlag(args, "--max-output-tokens");
-  // semantic-agent-cli-provider-run-not-reconciled — run-scoped provider-run
-  // directory. Threaded into the provider so its served pair + billed cost +
-  // ZDR posture are reconciled (never dropped into the global scratch dir).
-  const providerRunsDir = optionalFlag(args, "--provider-runs-dir");
-
-  await dependencies.withServices(async (services) => {
-    if (!services.sceneSummary) {
-      throw new Error("scene-summary service factory is not configured in this CLI build");
-    }
-    const providerFamily =
-      providerRaw === undefined
-        ? services.sceneSummary.defaultProviderFamily
-        : asProviderFamily(providerRaw);
-    const deps = await services.sceneSummary.cliDependencies(providerFamily, providerRunsDir);
-    const result = await runGenerateSceneSummariesCli(
-      {
-        projectId,
-        localeBranchId,
-        sourceLocale,
-        sourceRevisionId,
-        modelProfile: {
-          providerFamily,
-          modelId: modelId ?? services.sceneSummary.defaultModelId,
-          providerId: services.sceneSummary.defaultProviderId,
-          contextWindowTokens:
-            contextWindowRaw === undefined
-              ? services.sceneSummary.defaultContextWindowTokens
-              : Number.parseInt(contextWindowRaw, 10),
-          ...(maxOutputRaw === undefined
-            ? {}
-            : { maxOutputTokens: Number.parseInt(maxOutputRaw, 10) }),
-        },
-        ...(sceneId === undefined ? {} : { sceneIdFilter: sceneId }),
-        includeStale,
-        dryRun,
-      },
-      deps,
-    );
-    process.stdout.write(
-      `generated=${result.generatedCount} skipped_fresh=${result.skippedFreshCount}\n`,
-    );
-  });
-}
-
-async function runCheckSceneSummariesHandler(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const projectId = requiredFlag(args, "--project");
-  const localeBranchId = requiredFlag(args, "--locale-branch");
-  const sourceRevisionId = requiredFlag(args, "--source-revision");
-  const markStale = args.includes("--mark-stale");
-  const providerRaw = optionalFlag(args, "--provider");
-
-  await dependencies.withServices(async (services) => {
-    if (!services.sceneSummary) {
-      throw new Error("scene-summary service factory is not configured in this CLI build");
-    }
-    const providerFamily =
-      providerRaw === undefined
-        ? services.sceneSummary.defaultProviderFamily
-        : asProviderFamily(providerRaw);
-    const deps = await services.sceneSummary.cliDependencies(providerFamily);
-    const result = await runCheckSceneSummariesCli(
-      {
-        projectId,
-        localeBranchId,
-        sourceRevisionId,
-        markStale,
-      },
-      deps,
-    );
-    process.stdout.write(
-      `scanned=${result.scannedSummaryCount} drifted=${result.driftedSummaries.length} marked_stale=${result.markedStaleCount}\n`,
-    );
-  });
-}
-
 // Helper used internally during the legacy CLI bridging so unused-import lints
 // pass while the resolveSceneSummaryProvider symbol stays public for embedders.
-export const _internalResolveSceneSummaryProviderForCliHandlers = resolveSceneSummaryProvider;
-
-async function runGenerateCharacterRelationshipsHandler(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const projectId = requiredFlag(args, "--project");
-  const localeBranchId = requiredFlag(args, "--locale-branch");
-  const sourceLocale = requiredFlag(args, "--source-locale");
-  const sourceRevisionId = requiredFlag(args, "--source-revision");
-  const modelId = optionalFlag(args, "--model");
-  const providerRaw = optionalFlag(args, "--provider");
-  const characterId = optionalFlag(args, "--character-id");
-  const includeStale = args.includes("--include-stale");
-  const dryRun = args.includes("--dry-run");
-  const contextWindowRaw = optionalFlag(args, "--context-window");
-  const maxOutputRaw = optionalFlag(args, "--max-output-tokens");
-  // semantic-agent-cli-provider-run-not-reconciled — run-scoped provider-run
-  // directory threaded into the provider (see scene-summary handler).
-  const providerRunsDir = optionalFlag(args, "--provider-runs-dir");
-
-  await dependencies.withServices(async (services) => {
-    if (!services.characterRelationship) {
-      throw new Error("character-relationship service factory is not configured in this CLI build");
-    }
-    const providerFamily =
-      providerRaw === undefined
-        ? services.characterRelationship.defaultProviderFamily
-        : asProviderFamily(providerRaw);
-    const deps = await services.characterRelationship.cliDependencies(
-      providerFamily,
-      providerRunsDir,
-    );
-    const result = await runGenerateCharacterRelationshipsCli(
-      {
-        projectId,
-        localeBranchId,
-        sourceLocale,
-        sourceRevisionId,
-        modelProfile: {
-          providerFamily,
-          modelId: modelId ?? services.characterRelationship.defaultModelId,
-          providerId: services.characterRelationship.defaultProviderId,
-          contextWindowTokens:
-            contextWindowRaw === undefined
-              ? services.characterRelationship.defaultContextWindowTokens
-              : Number.parseInt(contextWindowRaw, 10),
-          ...(maxOutputRaw === undefined
-            ? {}
-            : { maxOutputTokens: Number.parseInt(maxOutputRaw, 10) }),
-        },
-        ...(characterId === undefined ? {} : { characterIdFilter: characterId }),
-        includeStale,
-        dryRun,
-      },
-      deps,
-    );
-    process.stdout.write(
-      `bios_generated=${result.generatedBioCount} relationships_generated=${result.generatedRelationshipCount} bios_skipped_fresh=${result.skippedFreshBioCount}\n`,
-    );
-  });
-}
-
-async function runCheckCharacterRelationshipsHandler(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const projectId = requiredFlag(args, "--project");
-  const localeBranchId = requiredFlag(args, "--locale-branch");
-  const sourceRevisionId = requiredFlag(args, "--source-revision");
-  const markStale = args.includes("--mark-stale");
-  const providerRaw = optionalFlag(args, "--provider");
-
-  await dependencies.withServices(async (services) => {
-    if (!services.characterRelationship) {
-      throw new Error("character-relationship service factory is not configured in this CLI build");
-    }
-    const providerFamily =
-      providerRaw === undefined
-        ? services.characterRelationship.defaultProviderFamily
-        : asProviderFamily(providerRaw);
-    const deps = await services.characterRelationship.cliDependencies(providerFamily);
-    const result = await runCheckCharacterRelationshipsCli(
-      {
-        projectId,
-        localeBranchId,
-        sourceRevisionId,
-        markStale,
-      },
-      deps,
-    );
-    process.stdout.write(
-      `scanned_bios=${result.scannedBioCount} scanned_relationships=${result.scannedRelationshipCount} drifted_bios=${result.driftedBios.length} drifted_relationships=${result.driftedRelationships.length} marked_stale_bios=${result.markedStaleBioCount} marked_stale_relationships=${result.markedStaleRelationshipCount}\n`,
-    );
-  });
-}
-
-export const _internalResolveCharacterRelationshipProviderForCliHandlers =
-  resolveCharacterRelationshipProvider;
 
 // KAIFUU-053: CLI commands for the capability-leveled engine detector
 // registry. `engine-capabilities-record` upserts one adapter's matrix
@@ -3292,21 +1297,6 @@ async function runWiki(args: string[], dependencies: ItotoriCliDependencies): Pr
       resolveWikiService: () => service,
     });
   });
-}
-
-function repeatedFlag(args: string[], name: string): string[] {
-  const values: string[] = [];
-  for (let index = 0; index < args.length; index += 1) {
-    if (args[index] !== name) {
-      continue;
-    }
-    const value = args[index + 1];
-    if (value === undefined || value.length === 0 || value.startsWith("--")) {
-      throw new Error(`${name} requires a non-empty value`);
-    }
-    values.push(value);
-  }
-  return values;
 }
 
 function requireQueueHealthPort(services: ItotoriCliServices): QueueHealthCliPort {

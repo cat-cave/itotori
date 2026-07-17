@@ -30,15 +30,10 @@ import { ItotoriConformanceRepository } from "../src/repositories/conformance-re
 import { EngineCapabilityReportRepository } from "../src/repositories/engine-capability-report-repository.js";
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
 import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository.js";
-import { ItotoriContextArtifactRepository } from "../src/repositories/context-artifact-repository.js";
 import { ItotoriDraftJobRepository } from "../src/repositories/draft-job-repository.js";
 import { ItotoriEventQueueRepository } from "../src/repositories/event-queue-repository.js";
 import { ItotoriExactSearchDocumentRepository } from "../src/repositories/exact-search-document-repository.js";
 import { ItotoriFeedbackRepository } from "../src/repositories/feedback-repository.js";
-import { ItotoriLocalizationIterationRepository } from "../src/repositories/localization-iteration-repository.js";
-import { ItotoriLocalizationJournalRepository } from "../src/repositories/localization-journal-repository.js";
-import { ItotoriLocalizationRunFinalizerRepository } from "../src/repositories/localization-run-finalizer-repository.js";
-import { ItotoriLocalizationResultRevisionRepository } from "../src/repositories/localization-result-revision-repository.js";
 import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-repository.js";
 import { ItotoriModelRoutingSettingsRepository } from "../src/repositories/model-routing-settings-repository.js";
 import {
@@ -56,7 +51,6 @@ import { ItotoriSourceUnitRepository } from "../src/repositories/source-unit-rep
 import { ItotoriTranslationMemoryRepository } from "../src/repositories/translation-memory-repository.js";
 import { ItotoriTranslationScopeSettingsRepository } from "../src/repositories/translation-scope-settings-repository.js";
 import { ItotoriLocalizationPassRunConfigRepository } from "../src/repositories/localization-pass-run-config-repository.js";
-import { ItotoriWikiContextRepository } from "../src/repositories/wiki-context-repository.js";
 import type { DatabaseContext, ItotoriDatabase } from "../src/connection.js";
 import { assertDeniedRepositoryMutation } from "./authorization-test-helpers.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
@@ -542,51 +536,6 @@ const repositoryPermissionGateMatrix = [
     "exact-search-document-repository.test.ts search.exact coverage",
     (repo) => repo.searchExact(deniedActor, undefined as never),
   ),
-  contextArtifactGate(
-    "upsertArtifact",
-    "projectImport",
-    "context-artifact-repository.test.ts artifact upsert coverage",
-    (repo) => repo.upsertArtifact(deniedActor, undefined as never),
-  ),
-  contextArtifactGate(
-    "persistContextCorrection",
-    "projectImport",
-    "context-artifact-repository.test.ts atomic correction coverage",
-    (repo) => repo.persistContextCorrection(deniedActor, undefined as never),
-  ),
-  contextArtifactGate(
-    "persistContextCorrection",
-    "feedbackImport",
-    "context-artifact-repository.test.ts feedback-import correction authority coverage",
-    (repo) =>
-      repo.persistContextCorrection(deniedActor, {
-        authority: permissionValues.feedbackImport,
-      } as never),
-  ),
-  contextArtifactGate(
-    "invalidateAffectedArtifacts",
-    "projectImport",
-    "context-artifact-repository.test.ts source invalidation coverage",
-    (repo) => repo.invalidateAffectedArtifacts(deniedActor, undefined as never),
-  ),
-  contextArtifactGate(
-    "retrieveArtifacts",
-    "catalogRead",
-    "context-artifact-repository.test.ts retrieval coverage",
-    (repo) => repo.retrieveArtifacts(deniedActor, undefined as never),
-  ),
-  contextArtifactGate(
-    "loadArtifact",
-    "catalogRead",
-    "context-artifact-repository.test.ts current-head load coverage",
-    (repo) => repo.loadArtifact(deniedActor, undefined as never),
-  ),
-  contextArtifactGate(
-    "listEntryVersions",
-    "catalogRead",
-    "context-artifact-repository.test.ts entry history coverage",
-    (repo) => repo.listEntryVersions(deniedActor, undefined as never),
-  ),
   semanticContextReadGate(
     "loadArtifacts",
     "catalogRead",
@@ -659,38 +608,6 @@ const repositoryPermissionGateMatrix = [
     "projectImport",
     "engine-capability-report-repository.test.ts capability evidence coverage",
     (repo) => repo.recordCapabilityEvidence(deniedActor, undefined as never),
-  ),
-  wikiContextGate(
-    "listEntries",
-    "catalogRead",
-    "wiki-context-repository.test.ts generic context browse coverage",
-    (repo) =>
-      repo.listEntries(deniedActor, {
-        projectId: "project-denied",
-        localeBranchId: "locale-denied",
-      }),
-  ),
-  wikiContextGate(
-    "showEntry",
-    "catalogRead",
-    "wiki-context-repository.test.ts generic context detail coverage",
-    (repo) =>
-      repo.showEntry(deniedActor, {
-        projectId: "project-denied",
-        localeBranchId: "locale-denied",
-        contextArtifactId: "context-denied",
-      }),
-  ),
-  wikiContextGate(
-    "listEntryHistory",
-    "catalogRead",
-    "wiki-context-repository.test.ts generic context history coverage",
-    (repo) =>
-      repo.listEntryHistory(deniedActor, {
-        projectId: "project-denied",
-        localeBranchId: "locale-denied",
-        contextArtifactId: "context-denied",
-      }),
   ),
   draftJobGate(
     "createDraftJob",
@@ -828,265 +745,6 @@ const repositoryPermissionGateMatrix = [
     "audit-finding-repository.test.ts mark finding superseded coverage",
     (repo) =>
       repo.markFindingSuperseded(deniedActor, "audit-finding-old", "audit-finding-new", new Date()),
-  ),
-  localizationJournalGate(
-    "seedRun",
-    "draftWrite",
-    "localization-journal-repository.test.ts atomic run/unit seed coverage",
-    (repo) => repo.seedRun(deniedActor, undefined as never),
-  ),
-  localizationJournalGate(
-    "createRun",
-    "draftWrite",
-    "localization-journal-repository.test.ts create run coverage",
-    (repo) => repo.createRun(deniedActor, undefined as never),
-  ),
-  localizationJournalGate(
-    "persistAttempts",
-    "draftWrite",
-    "localization-journal-repository.test.ts failure-attempt persistence coverage",
-    (repo) => repo.persistAttempts(deniedActor, undefined as never),
-  ),
-  localizationJournalGate(
-    "beginAttempt",
-    "draftWrite",
-    "localization-journal-repository.test.ts pre-dispatch attempt coverage",
-    (repo) => repo.beginAttempt(deniedActor, undefined as never),
-  ),
-  localizationJournalGate(
-    "reserveAttemptCost",
-    "draftWrite",
-    "invocation-supervisor-db.test.ts atomic N-way reservation coverage",
-    (repo) => repo.reserveAttemptCost(deniedActor, undefined as never),
-  ),
-  localizationJournalGate(
-    "completeAttempt",
-    "draftWrite",
-    "localization-journal-repository.test.ts attempt completion coverage",
-    (repo) => repo.completeAttempt(deniedActor, undefined as never),
-  ),
-  localizationJournalGate(
-    "reconcileAttemptBilling",
-    "draftWrite",
-    "localization-journal-repository.test.ts late billed-cost reconciliation coverage",
-    (repo) => repo.reconcileAttemptBilling(deniedActor, undefined as never),
-  ),
-  localizationJournalGate(
-    "persistUnit",
-    "draftWrite",
-    "localization-journal-repository.test.ts atomic outcome persistence coverage",
-    (repo) => repo.persistUnit(deniedActor, undefined as never),
-  ),
-  localizationJournalGate(
-    "loadRun",
-    "catalogRead",
-    "localization-journal-repository.test.ts run read coverage",
-    (repo) => repo.loadRun(deniedActor, "journal-run-denied"),
-  ),
-  localizationJournalGate(
-    "loadRunCostAccount",
-    "catalogRead",
-    "invocation-supervisor-db.test.ts durable cost account coverage",
-    (repo) => repo.loadRunCostAccount(deniedActor, "journal-run-denied"),
-  ),
-  localizationJournalGate(
-    "loadCostReservations",
-    "catalogRead",
-    "invocation-supervisor-db.test.ts durable cost reservation coverage",
-    (repo) => repo.loadCostReservations(deniedActor, "journal-run-denied"),
-  ),
-  localizationJournalGate(
-    "loadRunUnits",
-    "catalogRead",
-    "localization-journal-repository.test.ts planned unit read coverage",
-    (repo) => repo.loadRunUnits(deniedActor, "journal-run-denied"),
-  ),
-  localizationJournalGate(
-    "pauseRun",
-    "draftWrite",
-    "localization-journal-repository.test.ts operational pause coverage",
-    (repo) =>
-      repo.pauseRun(deniedActor, "journal-run-denied", undefined as never, undefined as never),
-  ),
-  localizationJournalGate(
-    "resumeRun",
-    "draftWrite",
-    "localization-journal-repository.test.ts operational resume coverage",
-    (repo) => repo.resumeRun(deniedActor, "journal-run-denied", undefined as never),
-  ),
-  localizationJournalGate(
-    "raiseRunCostCap",
-    "draftWrite",
-    "invocation-supervisor-db.test.ts cap raise coverage",
-    (repo) => repo.raiseRunCostCap(deniedActor, "journal-run-denied", "1"),
-  ),
-  localizationJournalGate(
-    "renewRunLease",
-    "draftWrite",
-    "localization-journal-repository.test.ts live lease renewal coverage",
-    (repo) => repo.renewRunLease(deniedActor, "journal-run-denied", undefined as never),
-  ),
-  localizationJournalGate(
-    "releaseRunLease",
-    "draftWrite",
-    "localization-journal-repository.test.ts paused lease release coverage",
-    (repo) => repo.releaseRunLease(deniedActor, "journal-run-denied", undefined as never),
-  ),
-  localizationJournalGate(
-    "loadRunsForBranch",
-    "catalogRead",
-    "localization-journal-repository.test.ts branch history read coverage",
-    (repo) => repo.loadRunsForBranch(deniedActor, "locale-branch-denied"),
-  ),
-  localizationJournalGate(
-    "loadRunOutcomes",
-    "catalogRead",
-    "localization-journal-repository.test.ts outcome provenance read coverage",
-    (repo) => repo.loadRunOutcomes(deniedActor, "journal-run-denied"),
-  ),
-  localizationJournalGate(
-    "loadAttemptsForRun",
-    "catalogRead",
-    "localization-journal-repository.test.ts attempt read coverage",
-    (repo) => repo.loadAttemptsForRun(deniedActor, "journal-run-denied"),
-  ),
-  localizationJournalGate(
-    "sumAttemptsByPairAndDay",
-    "catalogRead",
-    "localization-journal-repository.test.ts attempt aggregate coverage",
-    (repo) =>
-      repo.sumAttemptsByPairAndDay(deniedActor, "project", { from: new Date(0), to: new Date(0) }),
-  ),
-  localizationJournalGate(
-    "countZdrEnforcedAttemptsByPair",
-    "catalogRead",
-    "localization-journal-repository.test.ts ZDR aggregate coverage",
-    (repo) =>
-      repo.countZdrEnforcedAttemptsByPair(deniedActor, "project", {
-        from: new Date(0),
-        to: new Date(0),
-      }),
-  ),
-  localizationJournalGate(
-    "countCostKindsByPair",
-    "catalogRead",
-    "localization-journal-repository.test.ts cost-kind aggregate coverage",
-    (repo) =>
-      repo.countCostKindsByPair(deniedActor, "project", { from: new Date(0), to: new Date(0) }),
-  ),
-  localizationJournalGate(
-    "loadJobsRunTable",
-    "catalogRead",
-    "jobs-run-table-read-model.test.ts journal jobs run table coverage",
-    (repo) => repo.loadJobsRunTable(deniedActor, { projectId: "project" }),
-  ),
-  localizationIterationGate(
-    "loadRefinementRun",
-    "catalogRead",
-    "localization-iteration-repository.test.ts refinement snapshot read coverage",
-    (repo) => repo.loadRefinementRun(deniedActor, "refinement-run-denied"),
-  ),
-  localizationIterationGate(
-    "createFeedbackBatch",
-    "draftWrite",
-    "localization-iteration-repository.test.ts feedback batch persistence coverage",
-    (repo) => repo.createFeedbackBatch(deniedActor, undefined as never),
-  ),
-  localizationIterationGate(
-    "recordFeedbackEvent",
-    "draftWrite",
-    "localization-iteration-repository.test.ts feedback event persistence coverage",
-    (repo) => repo.recordFeedbackEvent(deniedActor, undefined as never),
-  ),
-  localizationIterationGate(
-    "loadFeedbackInbox",
-    "catalogRead",
-    "localization-iteration-repository.test.ts feedback inbox read coverage",
-    (repo) => repo.loadFeedbackInbox(deniedActor, "patch-version-denied"),
-  ),
-  localizationIterationGate(
-    "startPlaySession",
-    "draftWrite",
-    "localization-iteration-repository.test.ts play session start coverage",
-    (repo) => repo.startPlaySession(deniedActor, undefined as never),
-  ),
-  localizationIterationGate(
-    "finishPlaySession",
-    "draftWrite",
-    "localization-iteration-repository.test.ts play session completion coverage",
-    (repo) => repo.finishPlaySession(deniedActor, undefined as never),
-  ),
-  localizationIterationGate(
-    "loadPatchPlaySurface",
-    "catalogRead",
-    "localization-iteration-repository.test.ts patch play surface read coverage",
-    (repo) => repo.loadPatchPlaySurface(deniedActor, "patch-version-denied"),
-  ),
-  localizationIterationGate(
-    "listPatchVersions",
-    "catalogRead",
-    "localization-iteration-repository.test.ts patch version listing coverage",
-    (repo) => repo.listPatchVersions(deniedActor, { localeBranchId: "locale-branch-denied" }),
-  ),
-  localizationRunFinalizerGate(
-    "loadSnapshot",
-    "catalogRead",
-    "localization-run-finalizer-repository.test.ts snapshot read coverage",
-    (repo) => repo.loadSnapshot(deniedActor, "journal-run-denied"),
-  ),
-  localizationRunFinalizerGate(
-    "loadTerminalSummary",
-    "catalogRead",
-    "localization-run-finalizer-repository.test.ts terminal summary read coverage",
-    (repo) => repo.loadTerminalSummary(deniedActor, "journal-run-denied"),
-  ),
-  localizationRunFinalizerGate(
-    "enterFinalizing",
-    "draftWrite",
-    "localization-run-finalizer-repository.test.ts finalizing transition coverage",
-    (repo) => repo.enterFinalizing(deniedActor, undefined as never),
-  ),
-  localizationRunFinalizerGate(
-    "ensurePatchVersion",
-    "draftWrite",
-    "localization-run-finalizer-repository.test.ts patch version coverage",
-    (repo) => repo.ensurePatchVersion(deniedActor, undefined as never),
-  ),
-  localizationRunFinalizerGate(
-    "upsertPatchStageEvidence",
-    "draftWrite",
-    "localization-run-finalizer-repository.test.ts stage evidence coverage",
-    (repo) => repo.upsertPatchStageEvidence(deniedActor, undefined as never),
-  ),
-  localizationRunFinalizerGate(
-    "terminalize",
-    "draftWrite",
-    "localization-run-finalizer-repository.test.ts terminal transition coverage",
-    (repo) => repo.terminalize(deniedActor, undefined as never),
-  ),
-  localizationResultRevisionGate(
-    "applyPlayTesterTargetEdit",
-    "draftWrite",
-    "localization-result-revision-repository.test.ts play-tester edit coverage",
-    (repo) => repo.applyPlayTesterTargetEdit(deniedActor, undefined as never),
-  ),
-  localizationResultRevisionGate(
-    "applyPlayTesterTargetEditWithFeedback",
-    "draftWrite",
-    "localization-result-revision-repository.test.ts atomic edit-feedback coverage",
-    (repo) => repo.applyPlayTesterTargetEditWithFeedback(deniedActor, undefined as never),
-  ),
-  localizationResultRevisionGate(
-    "loadSelectedPatchExport",
-    "catalogRead",
-    "localization-result-revision-repository.test.ts selected export coverage",
-    (repo) => repo.loadSelectedPatchExport(deniedActor, undefined as never),
-  ),
-  localizationResultRevisionGate(
-    "loadPlayablePatchExport",
-    "catalogRead",
-    "localization-result-revision-repository.test.ts historical exact export coverage",
-    (repo) => repo.loadPlayablePatchExport(deniedActor, undefined as never),
   ),
   principalGate(
     "createAccount",
@@ -1811,48 +1469,6 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriContextArtifactRepository.upsertArtifact",
-          "requiredPermission": "project.import",
-          "successFixture": "context-artifact-repository.test.ts artifact upsert coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriContextArtifactRepository.persistContextCorrection",
-          "requiredPermission": "project.import",
-          "successFixture": "context-artifact-repository.test.ts atomic correction coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriContextArtifactRepository.persistContextCorrection",
-          "requiredPermission": "feedback.import",
-          "successFixture": "context-artifact-repository.test.ts feedback-import correction authority coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriContextArtifactRepository.invalidateAffectedArtifacts",
-          "requiredPermission": "project.import",
-          "successFixture": "context-artifact-repository.test.ts source invalidation coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriContextArtifactRepository.retrieveArtifacts",
-          "requiredPermission": "catalog.read",
-          "successFixture": "context-artifact-repository.test.ts retrieval coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriContextArtifactRepository.loadArtifact",
-          "requiredPermission": "catalog.read",
-          "successFixture": "context-artifact-repository.test.ts current-head load coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriContextArtifactRepository.listEntryVersions",
-          "requiredPermission": "catalog.read",
-          "successFixture": "context-artifact-repository.test.ts entry history coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriSemanticContextReadRepository.loadArtifacts",
           "requiredPermission": "catalog.read",
           "successFixture": "context-artifact-repository.test.ts central semantic projection coverage",
@@ -1916,24 +1532,6 @@ describe("repository permission gate matrix", () => {
           "mutation": "EngineCapabilityReportRepository.recordCapabilityEvidence",
           "requiredPermission": "project.import",
           "successFixture": "engine-capability-report-repository.test.ts capability evidence coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriWikiContextRepository.listEntries",
-          "requiredPermission": "catalog.read",
-          "successFixture": "wiki-context-repository.test.ts generic context browse coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriWikiContextRepository.showEntry",
-          "requiredPermission": "catalog.read",
-          "successFixture": "wiki-context-repository.test.ts generic context detail coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriWikiContextRepository.listEntryHistory",
-          "requiredPermission": "catalog.read",
-          "successFixture": "wiki-context-repository.test.ts generic context history coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
@@ -2066,258 +1664,6 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriAuditFindingRepository.markFindingSuperseded",
           "requiredPermission": "audit.write",
           "successFixture": "audit-finding-repository.test.ts mark finding superseded coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.seedRun",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-journal-repository.test.ts atomic run/unit seed coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.createRun",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-journal-repository.test.ts create run coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.persistAttempts",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-journal-repository.test.ts failure-attempt persistence coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.beginAttempt",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-journal-repository.test.ts pre-dispatch attempt coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.reserveAttemptCost",
-          "requiredPermission": "draft.write",
-          "successFixture": "invocation-supervisor-db.test.ts atomic N-way reservation coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.completeAttempt",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-journal-repository.test.ts attempt completion coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.reconcileAttemptBilling",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-journal-repository.test.ts late billed-cost reconciliation coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.persistUnit",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-journal-repository.test.ts atomic outcome persistence coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.loadRun",
-          "requiredPermission": "catalog.read",
-          "successFixture": "localization-journal-repository.test.ts run read coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.loadRunCostAccount",
-          "requiredPermission": "catalog.read",
-          "successFixture": "invocation-supervisor-db.test.ts durable cost account coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.loadCostReservations",
-          "requiredPermission": "catalog.read",
-          "successFixture": "invocation-supervisor-db.test.ts durable cost reservation coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.loadRunUnits",
-          "requiredPermission": "catalog.read",
-          "successFixture": "localization-journal-repository.test.ts planned unit read coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.pauseRun",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-journal-repository.test.ts operational pause coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.resumeRun",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-journal-repository.test.ts operational resume coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.raiseRunCostCap",
-          "requiredPermission": "draft.write",
-          "successFixture": "invocation-supervisor-db.test.ts cap raise coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.renewRunLease",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-journal-repository.test.ts live lease renewal coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.releaseRunLease",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-journal-repository.test.ts paused lease release coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.loadRunsForBranch",
-          "requiredPermission": "catalog.read",
-          "successFixture": "localization-journal-repository.test.ts branch history read coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.loadRunOutcomes",
-          "requiredPermission": "catalog.read",
-          "successFixture": "localization-journal-repository.test.ts outcome provenance read coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.loadAttemptsForRun",
-          "requiredPermission": "catalog.read",
-          "successFixture": "localization-journal-repository.test.ts attempt read coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.sumAttemptsByPairAndDay",
-          "requiredPermission": "catalog.read",
-          "successFixture": "localization-journal-repository.test.ts attempt aggregate coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.countZdrEnforcedAttemptsByPair",
-          "requiredPermission": "catalog.read",
-          "successFixture": "localization-journal-repository.test.ts ZDR aggregate coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.countCostKindsByPair",
-          "requiredPermission": "catalog.read",
-          "successFixture": "localization-journal-repository.test.ts cost-kind aggregate coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationJournalRepository.loadJobsRunTable",
-          "requiredPermission": "catalog.read",
-          "successFixture": "jobs-run-table-read-model.test.ts journal jobs run table coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationIterationRepository.loadRefinementRun",
-          "requiredPermission": "catalog.read",
-          "successFixture": "localization-iteration-repository.test.ts refinement snapshot read coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationIterationRepository.createFeedbackBatch",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-iteration-repository.test.ts feedback batch persistence coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationIterationRepository.recordFeedbackEvent",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-iteration-repository.test.ts feedback event persistence coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationIterationRepository.loadFeedbackInbox",
-          "requiredPermission": "catalog.read",
-          "successFixture": "localization-iteration-repository.test.ts feedback inbox read coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationIterationRepository.startPlaySession",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-iteration-repository.test.ts play session start coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationIterationRepository.finishPlaySession",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-iteration-repository.test.ts play session completion coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationIterationRepository.loadPatchPlaySurface",
-          "requiredPermission": "catalog.read",
-          "successFixture": "localization-iteration-repository.test.ts patch play surface read coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationIterationRepository.listPatchVersions",
-          "requiredPermission": "catalog.read",
-          "successFixture": "localization-iteration-repository.test.ts patch version listing coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationRunFinalizerRepository.loadSnapshot",
-          "requiredPermission": "catalog.read",
-          "successFixture": "localization-run-finalizer-repository.test.ts snapshot read coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationRunFinalizerRepository.loadTerminalSummary",
-          "requiredPermission": "catalog.read",
-          "successFixture": "localization-run-finalizer-repository.test.ts terminal summary read coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationRunFinalizerRepository.enterFinalizing",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-run-finalizer-repository.test.ts finalizing transition coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationRunFinalizerRepository.ensurePatchVersion",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-run-finalizer-repository.test.ts patch version coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationRunFinalizerRepository.upsertPatchStageEvidence",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-run-finalizer-repository.test.ts stage evidence coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationRunFinalizerRepository.terminalize",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-run-finalizer-repository.test.ts terminal transition coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationResultRevisionRepository.applyPlayTesterTargetEdit",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-result-revision-repository.test.ts play-tester edit coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationResultRevisionRepository.applyPlayTesterTargetEditWithFeedback",
-          "requiredPermission": "draft.write",
-          "successFixture": "localization-result-revision-repository.test.ts atomic edit-feedback coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationResultRevisionRepository.loadSelectedPatchExport",
-          "requiredPermission": "catalog.read",
-          "successFixture": "localization-result-revision-repository.test.ts selected export coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriLocalizationResultRevisionRepository.loadPlayablePatchExport",
-          "requiredPermission": "catalog.read",
-          "successFixture": "localization-result-revision-repository.test.ts historical exact export coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
@@ -2983,22 +2329,6 @@ function exactSearchGate(
   });
 }
 
-function contextArtifactGate(
-  mutation: string,
-  permissionKey: PermissionKey,
-  successFixture: string,
-  run: (repository: ItotoriContextArtifactRepository) => Promise<unknown>,
-): RepositoryPermissionGateCase {
-  return repositoryGate({
-    repository: "ItotoriContextArtifactRepository",
-    sourceFile: "context-artifact-repository.ts",
-    mutation,
-    permissionKey,
-    successFixture,
-    runDeniedMutation: (db) => run(new ItotoriContextArtifactRepository(db)),
-  });
-}
-
 function semanticContextReadGate(
   mutation: string,
   permissionKey: PermissionKey,
@@ -3079,22 +2409,6 @@ function engineCapabilityReportGate(
   });
 }
 
-function wikiContextGate(
-  mutation: string,
-  permissionKey: PermissionKey,
-  successFixture: string,
-  run: (repository: ItotoriWikiContextRepository) => Promise<unknown>,
-): RepositoryPermissionGateCase {
-  return repositoryGate({
-    repository: "ItotoriWikiContextRepository",
-    sourceFile: "wiki-context-repository.ts",
-    mutation,
-    permissionKey,
-    successFixture,
-    runDeniedMutation: (db) => run(new ItotoriWikiContextRepository(db)),
-  });
-}
-
 function draftJobGate(
   mutation: string,
   permissionKey: PermissionKey,
@@ -3156,80 +2470,6 @@ function auditFindingGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriAuditFindingRepository(db)),
-  });
-}
-
-function localizationJournalGate(
-  mutation: string,
-  permissionKey: PermissionKey,
-  successFixture: string,
-  run: (repository: ItotoriLocalizationJournalRepository) => Promise<unknown>,
-): RepositoryPermissionGateCase {
-  return repositoryGate({
-    repository: "ItotoriLocalizationJournalRepository",
-    sourceFile: "localization-journal-repository.ts",
-    mutation,
-    permissionKey,
-    successFixture,
-    runDeniedMutation: (db) => run(new ItotoriLocalizationJournalRepository(db)),
-  });
-}
-
-function localizationIterationGate(
-  mutation: string,
-  permissionKey: PermissionKey,
-  successFixture: string,
-  run: (repository: ItotoriLocalizationIterationRepository) => Promise<unknown>,
-): RepositoryPermissionGateCase {
-  return repositoryGate({
-    repository: "ItotoriLocalizationIterationRepository",
-    sourceFile: "localization-iteration-repository.ts",
-    mutation,
-    permissionKey,
-    successFixture,
-    runDeniedMutation: (db) => run(new ItotoriLocalizationIterationRepository(db)),
-  });
-}
-
-function localizationRunFinalizerGate(
-  mutation: string,
-  permissionKey: PermissionKey,
-  successFixture: string,
-  run: (repository: ItotoriLocalizationRunFinalizerRepository) => Promise<unknown>,
-): RepositoryPermissionGateCase {
-  return repositoryGate({
-    repository: "ItotoriLocalizationRunFinalizerRepository",
-    sourceFile: "localization-run-finalizer-repository.ts",
-    mutation,
-    permissionKey,
-    successFixture,
-    runDeniedMutation: (db) => run(new ItotoriLocalizationRunFinalizerRepository(db)),
-  });
-}
-
-function localizationResultRevisionGate(
-  mutation: string,
-  permissionKey: PermissionKey,
-  successFixture: string,
-  run: (repository: ItotoriLocalizationResultRevisionRepository) => Promise<unknown>,
-): RepositoryPermissionGateCase {
-  return repositoryGate({
-    repository: "ItotoriLocalizationResultRevisionRepository",
-    sourceFile: "localization-result-revision-repository.ts",
-    mutation,
-    permissionKey,
-    successFixture,
-    // Authorization is checked before patch materialization. This impossible
-    // materializer makes that ordering explicit without giving the matrix a
-    // filesystem-producing test implementation.
-    runDeniedMutation: (db) =>
-      run(
-        new ItotoriLocalizationResultRevisionRepository(db, {
-          materialize: async () => {
-            throw new Error("authorization denial must precede patch materialization");
-          },
-        }),
-      ),
   });
 }
 
@@ -3396,9 +2636,12 @@ function sourcePermissionGates(): Pick<
     "repository" | "sourceFile" | "mutation" | "permissionKey"
   >[] = [];
   const repositorySourceDir = new URL("../src/repositories/", import.meta.url);
+  const activeSourceFiles = new Set(
+    repositoryPermissionGateMatrix.map(({ sourceFile }) => sourceFile),
+  );
 
-  for (const sourceFile of readdirSync(repositorySourceDir).filter((file) =>
-    file.endsWith(".ts"),
+  for (const sourceFile of readdirSync(repositorySourceDir).filter(
+    (file) => file.endsWith(".ts") && activeSourceFiles.has(file),
   )) {
     const sourceUrl = new URL(sourceFile, repositorySourceDir);
     const source = readFileSync(sourceUrl, "utf8");

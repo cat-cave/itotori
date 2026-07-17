@@ -373,7 +373,7 @@ function buildDraftEntries(
       );
     }
     const selectedCandidate = entry.writtenOutcome.candidates.find(
-      (candidate) => candidate.id === entry.writtenOutcome.selectedCandidateId,
+      (candidate: any) => candidate.id === entry.writtenOutcome.selectedCandidateId,
     );
     if (selectedCandidate === undefined) {
       throw new Error(

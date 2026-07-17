@@ -2,8 +2,8 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 
 // Playwright smoke for the current Itotori shell served by src/server.ts.
-// The server renders the real built HTML for dashboard/play/patch-iteration
-// deep links; the browser test fulfills only the closed fixture API surface it
+// The server renders the real built HTML for dashboard/play deep links; the
+// browser test fulfills only the closed fixture API surface it
 // needs so this dev-only lane stays deterministic and DB-free.
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 

@@ -1,8 +1,0 @@
-{
-  "schemaVersion": "itotori.qa-calibration-recorded-bundle.v2",
-  "fixtureId": "calibration-tone-shift",
-  "agentName": "unresolved-terminology",
-  "authority": "original",
-  "providerId": "anthropic",
-  "findings": []
-}
