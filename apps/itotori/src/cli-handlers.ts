@@ -46,6 +46,7 @@ import {
 import { runNativeCli, type NativeCliRunner } from "./native-bin/cli-bin-resolver.js";
 import { buildHelpText } from "./help-text.js";
 import { runInitCommand, type InitCommandDeps } from "./init-command.js";
+import { optionalFlag, requiredFlag } from "./cli/flags.js";
 // The kept localize / wiki / patch-play commands route ONLY through these thin
 // new-pipeline command handlers. Each has a clean transitive import closure (no
 // edge to the legacy service graph — proven by composition-reachability); the live
@@ -508,10 +509,6 @@ async function runStructureExportHandler(
  * by the retired durable-journal resume path.
  */
 async function runLocalize(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
-  // Validate the required run flags BEFORE opening services — a fresh localize
-  // with no `--config` must fail as "missing required flag --config", not as a
-  // downstream DATABASE_URL error from `withServices`.
-  requiredFlag(args, "--config");
   await dependencies.withServices(async (services) => {
     if (services.localizationSubstrate === undefined) {
       throw new Error(
@@ -1038,21 +1035,6 @@ function safeContainerSuffix(value: string): string {
     .replace(/[^a-z0-9_.-]/gu, "-")
     .replace(/^[^a-z0-9]+/u, "");
   return safe.length > 0 ? safe : "local";
-}
-
-function requiredFlag(args: string[], name: string): string {
-  const index = args.indexOf(name);
-  const value = args[index + 1];
-  if (index < 0 || !value) {
-    throw new Error(`missing required flag ${name}`);
-  }
-  return value;
-}
-
-function optionalFlag(args: string[], name: string): string | undefined {
-  const index = args.indexOf(name);
-  const value = args[index + 1];
-  return index >= 0 && value ? value : undefined;
 }
 
 function appendOptionalFlag(target: string[], source: string[], name: string): void {

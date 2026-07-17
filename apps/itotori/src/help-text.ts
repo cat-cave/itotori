@@ -109,7 +109,7 @@ export function buildHelpText(allCommands = false): string {
   lines.push("  itotori wiki edit --wiki-kind source-object --object-id <ID> \\");
   lines.push("    --candidate-json '{...}' --created-at <ISO>");
   lines.push(
-    "  itotori localize --run-mode production --structure <structure.json> --output <run.json>",
+    "  itotori localize --run-mode production --structure <structure.json> --bridge <bridge.json> --output <run.json>",
   );
   lines.push("");
 
