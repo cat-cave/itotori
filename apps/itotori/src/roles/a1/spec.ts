@@ -12,6 +12,7 @@ import {
   type CallSpec,
   type EncryptedPayloadRef,
   type RunModeValue,
+  type WikiObject,
 } from "../../contracts/index.js";
 import { sha256 } from "../../llm/canonical-json.js";
 import { deepSeekV4FlashProfile } from "../../llm/role-model-profiles.js";
@@ -41,6 +42,58 @@ export interface StyleLeadRequest {
   readonly parentEventId: Sha256;
 }
 
+/** A complete, schema-valid style-contract for a fictional game. This is rendered
+ * directly into A1's prompt, so keep it typed against the terminal schema. */
+export const STYLE_LEAD_FEW_SHOT_EXAMPLE = {
+  schemaVersion: WIKI_OBJECT_SCHEMA_VERSION,
+  objectId: "style-contract:example-vn",
+  version: 2,
+  supersedesVersion: 1,
+  lang: "ja-JP",
+  subject: { kind: "game", id: "example-vn" },
+  scope: { kind: "global" },
+  kind: "style-contract",
+  body: {
+    registerPolicy: "Keep narration neutral-polite and let peers speak casually.",
+    honorificPolicy: "Retain Japanese honorifics when they mark social distance.",
+    nameOrder: "source-order",
+    profanityCeiling: "mild",
+    punctuationRules: ["Use three periods for an ellipsis.", "Preserve repeated question marks."],
+    audienceNote: "Readers of a contemporary visual novel.",
+  },
+  claims: [
+    {
+      claimId: "claim:example-vn:style-register",
+      statement: "ExampleVN uses neutral-polite narration and casual peer dialogue.",
+      scope: { kind: "global" },
+      kind: "style",
+      confidence: "high",
+      citations: [
+        {
+          evidenceId: "unit:example-vn:scene-0001:0001",
+          evidenceHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          snapshotId: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          subject: { kind: "unit", id: "example-vn:scene-0001:0001" },
+          role: "establishes",
+          playOrderIndex: 0,
+        },
+      ],
+    },
+  ],
+  media: [],
+  dependencies: [],
+  provisional: false,
+  provenance: {
+    authorRoleId: "A1",
+    contextSnapshotId: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    contextScope: "whole-game",
+    runMode: "production",
+    snapshotKind: "context",
+  },
+} satisfies WikiObject;
+
+const STYLE_LEAD_FEW_SHOT_JSON = JSON.stringify(STYLE_LEAD_FEW_SHOT_EXAMPLE, null, 2);
+
 /** Compose the A1 system + user prompt. The system prompt is the specialist's
  * versioned instructions (the single source of A1's charter); the user prompt
  * carries the operator brief and the representative slice. Pure and stable. */
@@ -58,6 +111,11 @@ export function composeStyleLeadPrompt(request: StyleLeadRequest): {
     request.operatorBrief,
     "Representative source slice (cite unit evidence ids you rely on):",
     sliceText,
+    "Output requirements:",
+    "Emit EXACTLY one JSON object of this shape. This is an illustrative example for a different game (ExampleVN); produce values for this game only.",
+    "Return valid JSON only: no Markdown, prose, or extra fields. Every claim must cite real unit evidence ids from the provided slice; never reuse ExampleVN ids or hashes.",
+    "Complete valid style-contract WikiObject example:",
+    STYLE_LEAD_FEW_SHOT_JSON,
   ].join("\n\n");
   return { system: a1.instructions, user };
 }
