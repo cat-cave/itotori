@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "0.1.0",
+  "description": "Canonical v0.2 source hashes recomputed from the fixture adapter source units: sha256 of each UTF-8 sourceText value.",
+  "sourceHashes": [
+    {
+      "sourceUnitKey": "hello.scene.001.line.001",
+      "sourceHash": "sha256:e9dc342af156fbb44983f69d20241b89b73026bd8e13606e6a5d9423690f6d43"
+    },
+    {
+      "sourceUnitKey": "hello.scene.001.name.mira",
+      "sourceHash": "sha256:bb4d6cf2342786b10f142a6adc0a71f91bc6fe615eccc4f3d7b193c04d915209"
+    },
+    {
+      "sourceUnitKey": "hello.scene.001.line.002",
+      "sourceHash": "sha256:e5df9585ff071199a00058614b67844757e183bb6e5c8762a34684cef97018b2"
+    },
+    {
+      "sourceUnitKey": "hello.scene.001.choice.open",
+      "sourceHash": "sha256:226fc5d303aa84d680deef528c21a420fad352f864771c84d0e37ad8e235adaa"
+    },
+    {
+      "sourceUnitKey": "hello.scene.001.choice.wait",
+      "sourceHash": "sha256:6ae04bf6340c862208305d4fd9de82542935106bdbee86168d886baa1f2c2cfe"
+    },
+    {
+      "sourceUnitKey": "ui.menu.inventory",
+      "sourceHash": "sha256:da7cde05a93eadf7843db4388087e0b65cd06e59a8f134ed1f98ff107cf8387d"
+    },
+    {
+      "sourceUnitKey": "tutorial.inspect",
+      "sourceHash": "sha256:ac46204c8462ec65c2709bd70bb16f85544401de2085244f9ff37a82657b4a3a"
+    },
+    {
+      "sourceUnitKey": "database.items.silver-key.name",
+      "sourceHash": "sha256:3ab4eb7944279bcaa87bf0b8bd9b346c67d2af820e1458078126340aec966b64"
+    },
+    {
+      "sourceUnitKey": "database.glossary.yorishiro.term",
+      "sourceHash": "sha256:3ddb7435608e897ab1b14fe91647506b82ae651e6cdd8a795b7c6ff12a726a3b"
+    },
+    {
+      "sourceUnitKey": "image.sign-caution.region-0",
+      "sourceHash": "sha256:4ffef8f3113a3a11ef5d0e07dfc607183d11988b28ef6dd74e11c65eacf5e70d"
+    },
+    {
+      "sourceUnitKey": "metadata.package.tagline",
+      "sourceHash": "sha256:9c5ee479ab109f4e3b4f3ab1d87fee43c4feda85981d49aa7cc92100edca517a"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "0.1.0",
+  "description": "A stale v0.2 patch source hash for the native-source compatibility negative fixture.",
+  "sourceUnitKey": "hello.scene.001.line.001",
+  "sourceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+}
