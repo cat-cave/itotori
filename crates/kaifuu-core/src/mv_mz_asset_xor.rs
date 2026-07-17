@@ -79,6 +79,9 @@ impl fmt::Debug for MvMzAssetKey {
 /// XOR the first [`RPGMAKER_ASSET_XOR_PREFIX_LEN`] bytes of `region` with `key`
 /// (the MV/MZ asset mask). Bytes beyond the prefix are untouched.
 fn xor_asset_prefix(region: &mut [u8], key: &[u8]) {
+    if key.is_empty() {
+        return;
+    }
     let span = region.len().min(RPGMAKER_ASSET_XOR_PREFIX_LEN);
     for (index, byte) in region[..span].iter_mut().enumerate() {
         *byte ^= key[index % key.len()];
@@ -159,6 +162,18 @@ mod tests {
             decrypt_rpgmaker_asset(b"RPGMV", &key).err(),
             Some(MvMzAssetVariantError::TooShort)
         );
+    }
+
+    #[test]
+    fn decrypt_rpgmaker_asset_with_empty_key_leaves_body_unmasked() {
+        let key = MvMzAssetKey::from_bytes(&[]);
+        let body = b"unmasked synthetic media";
+        let mut encrypted = RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER.to_vec();
+        encrypted.extend_from_slice(body);
+
+        let decrypted = decrypt_rpgmaker_asset(&encrypted, &key).expect("empty key is accepted");
+
+        assert_eq!(decrypted, body);
     }
 
     #[test]
