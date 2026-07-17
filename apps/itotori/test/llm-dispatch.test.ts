@@ -3,6 +3,7 @@ import {
   AuthorizationError,
   LlmMemoConflictError,
   LlmRetriesExhaustedError,
+  type LlmAttemptFailure,
   type LlmCallMemoStore,
   type LlmMemoSingleflightInput,
   type LlmMemoSingleflightResult,
@@ -32,6 +33,7 @@ type CapturedRequest = { headers: Headers; body: Record<string, unknown> };
 class MemoryMemoStore implements LlmCallMemoStore {
   readonly #memos = new Map<string, Extract<LlmMemoSingleflightResult, { kind: "completed" }>>();
   readonly #attemptCounts = new Map<string, number>();
+  readonly failures: LlmAttemptFailure[] = [];
 
   async singleflight(input: LlmMemoSingleflightInput): Promise<LlmMemoSingleflightResult> {
     const existing = this.#memos.get(input.memoKey);
@@ -46,6 +48,7 @@ class MemoryMemoStore implements LlmCallMemoStore {
     this.#attemptCounts.set(input.memoKey, ordinal);
     const execution = await input.execute({ ordinal, startedAt: new Date().toISOString() });
     if (execution.kind === "incomplete") {
+      this.failures.push(execution.failure);
       return {
         kind: "incomplete",
         memoHit: false,
@@ -261,6 +264,45 @@ function runtime(
 }
 
 describe("the rebuilt LLM dispatcher", () => {
+  it("hard-cancels a hung stream at each attempt deadline and records transient deadline failures", async () => {
+    const prompt = "Return a review verdict before the synthetic deadline.";
+    const store = new MemoryMemoStore();
+    const profile = {
+      ...TEST_MODEL_PROFILE,
+      deadlines: { normalMs: 10, deepMs: 20 },
+    };
+    const signals: AbortSignal[] = [];
+    const configured = runtime(prompt, [], []);
+    const startedAt = Date.now();
+
+    const result = await dispatch(callSpec(prompt), {
+      ...configured,
+      memo: {
+        ...configured.memo,
+        store,
+        profile,
+        retry: { random: () => 0, sleep: async () => undefined },
+      },
+      fetcher: async (input, init) => {
+        signals.push(new Request(input, init).signal);
+        return new Promise<Response>(() => undefined);
+      },
+    });
+
+    expect(result).toMatchObject({ status: "failure", failureKind: "retries-exhausted" });
+    expect(Date.now() - startedAt).toBeLessThan(500);
+    expect(signals).toHaveLength(3);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+    expect(store.failures).toEqual(
+      Array.from({ length: 3 }, () => ({
+        classification: "transient",
+        kind: "deadline",
+        httpStatus: null,
+        retryAfterMs: null,
+      })),
+    );
+  });
+
   it("fails before transport when the account and guardrail ZDR assertions are absent", async () => {
     const prompt = "Return a review verdict.";
     const captured: CapturedRequest[] = [];

@@ -16,6 +16,7 @@ import { memoEncryptedRef } from "./physical-step-outcome.js";
 import {
   LlmPhysicalAttemptError,
   memoizedPhysicalAttempt,
+  type PhysicalAttemptControl,
   type PhysicalAttemptRuntime,
   type TransportObservation,
   type TransportObserver,
@@ -121,23 +122,23 @@ export function memoizePhysicalSteps(
         execute: async (attempt, control) => {
           const chunks: StreamChunk[] = [];
           try {
-            for await (const chunk of outbound(control.signal)) chunks.push(chunk);
+            await collectStreamChunks(outbound(control.signal), control, chunks);
+            const runError = chunks.findLast((chunk) => chunk.type === EventType.RUN_ERROR);
+            const failure = runError ? control.failure(runError) : null;
+            if (runError && failure) return incompleteStep(chunks, failure, metadataSource);
+            return completedStreamStep(
+              spec,
+              identity,
+              chunks,
+              attempt,
+              parentResponseEventId,
+              metadataSource,
+              observedHeaders(observer.take(), spec.requestedModel),
+            );
           } catch (error: unknown) {
             const failure = control.failure(error) ?? permanentAttemptFailure();
             return incompleteStep(chunks, failure, metadataSource);
           }
-          const runError = chunks.findLast((chunk) => chunk.type === EventType.RUN_ERROR);
-          const failure = runError ? control.failure(runError) : null;
-          if (runError && failure) return incompleteStep(chunks, failure, metadataSource);
-          return completedStreamStep(
-            spec,
-            identity,
-            chunks,
-            attempt,
-            parentResponseEventId,
-            metadataSource,
-            observedHeaders(observer.take(), spec.requestedModel),
-          );
         },
       });
       if (stored.kind === "completed") {
@@ -181,10 +182,12 @@ export function memoizePhysicalSteps(
         },
         execute: async (attempt, control) => {
           try {
-            const result = await adapter.structuredOutput({
-              ...options,
-              chatOptions: withSignal(options.chatOptions, control.signal),
-            });
+            const result = await control.race(
+              adapter.structuredOutput({
+                ...options,
+                chatOptions: withSignal(options.chatOptions, control.signal),
+              }),
+            );
             return completedStructuredStep(
               spec,
               identity,
@@ -381,6 +384,25 @@ function observedHeaders(
     ...(observation.generationId === undefined ? {} : { generationId: observation.generationId }),
     ...(observation.providerName === undefined ? {} : { providerName: observation.providerName }),
   };
+}
+
+async function collectStreamChunks(
+  stream: AsyncIterable<StreamChunk>,
+  control: PhysicalAttemptControl,
+  chunks: StreamChunk[],
+): Promise<void> {
+  const iterator = stream[Symbol.asyncIterator]();
+  try {
+    for (;;) {
+      const next = await control.race(iterator.next());
+      if (next.done) return;
+      chunks.push(next.value);
+    }
+  } finally {
+    // Do not await a non-cooperative iterator's cleanup: the deadline must
+    // settle this physical attempt even when the provider ignores abort.
+    if (control.signal.aborted) void iterator.return?.().catch(() => undefined);
+  }
 }
 
 async function incompleteStep(
