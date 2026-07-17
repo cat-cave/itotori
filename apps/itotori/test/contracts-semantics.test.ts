@@ -176,6 +176,26 @@ describe("snapshot and artifact boundaries", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("accepts null-filled absent WikiObject fields from strict JSON Schema output", () => {
+    expect(
+      WikiObjectSchema.safeParse({
+        ...wikiObjectExample,
+        supersedesVersion: null,
+        claims: wikiObjectExample.claims.map((claim) => ({
+          ...claim,
+          supersedesClaimId: null,
+          citations: claim.citations.map((citation) => ({ ...citation, quotedSpan: null })),
+        })),
+        provenance: {
+          ...wikiObjectExample.provenance,
+          authorMemoKey: null,
+          basisVersion: null,
+          humanInput: null,
+        },
+      }).success,
+    ).toBe(true);
+  });
 });
 
 describe("workflow output policy", () => {
