@@ -21,6 +21,7 @@ import {
 } from "../contracts/index.js";
 import { dispatch, type DispatchRuntime } from "../llm/dispatch.js";
 import { sha256 } from "../llm/canonical-json.js";
+import { resolveRoleModelProfile } from "../llm/role-model-profiles.js";
 import { buildFactSnapshot } from "../prepass/index.js";
 import { buildReadModel, type ReadModel } from "../read-tools/index.js";
 import {
@@ -158,26 +159,10 @@ export async function runWikiBuild(deps: WikiBuildDeps): Promise<SourceWikiRunRe
       `wiki build source locale ${deps.sourceLanguage} does not match context snapshot ${model.sourceLanguage}`,
     );
   }
-  const base = createDispatchRuntime({
-    ...deps.dispatch,
-    memoStore: deps.memoStore,
-    contentAccess: deps.contentAccess,
-    snapshots: deps.dispatchSnapshots,
-  });
   const payloads = new Map<string, string>();
-  const runtime: DispatchRuntime = {
-    ...base,
-    readPayload: async (reference) => {
-      const payload = payloads.get(reference.storageRef);
-      if (payload === undefined) {
-        throw new Error(`source-Wiki dispatch has no payload for ${reference.storageRef}`);
-      }
-      return payload;
-    },
-  };
   const runner = createAnalystRunner({
     model,
-    runtime,
+    runtimeForRole: (role) => createAnalystDispatchRuntime({ deps, payloads, role }),
     payloads,
     repository: deps.repository,
     operatorBrief: deps.operatorBrief ?? "No additional operator brief was supplied.",
@@ -203,11 +188,57 @@ export async function runWikiBuild(deps: WikiBuildDeps): Promise<SourceWikiRunRe
 
 interface AnalystRunnerDeps {
   readonly model: ReadModel;
-  readonly runtime: DispatchRuntime;
+  /** A role gets its own measured profile; the durable dispatch substrate stays shared. */
+  readonly runtimeForRole: (role: RoleId) => DispatchRuntime;
   readonly payloads: Map<string, string>;
   readonly repository: ItotoriLlmWikiRepository;
   readonly operatorBrief: string;
   readonly portraitSources: WikiBuildPortraitSources;
+}
+
+type AnalystRoleDeps = Omit<AnalystRunnerDeps, "runtimeForRole"> & {
+  readonly runtime: DispatchRuntime;
+};
+
+/**
+ * Construct the dispatch runtime for one analyst role. The localization factory
+ * supplies the shared ZDR routing, durable memo, content authorization,
+ * snapshots, and spend cap, but P1's measured profile must never be reused for
+ * an A-role CallSpec. Keep the deadline posture in lockstep with
+ * `productionLocalizeDispatchConfig`: only the certified role profile identity
+ * changes here.
+ */
+export function createAnalystDispatchRuntime(input: {
+  readonly deps: Pick<
+    WikiBuildDeps,
+    "dispatch" | "memoStore" | "contentAccess" | "dispatchSnapshots"
+  >;
+  readonly payloads: ReadonlyMap<string, string>;
+  readonly role: RoleId;
+}): DispatchRuntime {
+  const roleProfile = resolveRoleModelProfile(input.role);
+  const base = createDispatchRuntime({
+    ...input.deps.dispatch,
+    profile: {
+      name: roleProfile.modelProfile,
+      version: roleProfile.version,
+      deadlines: { normalMs: 30_000, deepMs: 90_000 },
+      maxAttemptExposureUsd: input.deps.dispatch.profile.maxAttemptExposureUsd,
+    },
+    memoStore: input.deps.memoStore,
+    contentAccess: input.deps.contentAccess,
+    snapshots: input.deps.dispatchSnapshots,
+  });
+  return {
+    ...base,
+    readPayload: async (reference) => {
+      const payload = input.payloads.get(reference.storageRef);
+      if (payload === undefined) {
+        throw new Error(`source-Wiki dispatch has no payload for ${reference.storageRef}`);
+      }
+      return payload;
+    },
+  };
 }
 
 /** Build the real exhaustive role dispatcher. Each branch enters that role's
@@ -215,7 +246,15 @@ interface AnalystRunnerDeps {
  * re-derive citations and structural facts before the orchestrator accepts it. */
 export function createAnalystRunner(deps: AnalystRunnerDeps): AnalystRunner {
   const returned = new Map<string, WikiObject>();
+  const runtimes = new Map<RoleId, DispatchRuntime>();
   let persisted: readonly WikiObject[] | undefined;
+  const runtimeForRole = (role: RoleId): DispatchRuntime => {
+    const existing = runtimes.get(role);
+    if (existing !== undefined) return existing;
+    const runtime = deps.runtimeForRole(role);
+    runtimes.set(role, runtime);
+    return runtime;
+  };
   const remember = (objects: readonly WikiObject[]): readonly WikiObject[] => {
     for (const object of objects) returned.set(object.objectId, object);
     return objects;
@@ -241,27 +280,28 @@ export function createAnalystRunner(deps: AnalystRunnerDeps): AnalystRunner {
   };
 
   return async (input) => {
+    const roleDeps: AnalystRoleDeps = { ...deps, runtime: runtimeForRole(input.role) };
     switch (input.role) {
       case "A1":
-        return remember(await runA1(input, deps));
+        return remember(await runA1(input, roleDeps));
       case "A2":
-        return remember(await runA2(input, deps));
+        return remember(await runA2(input, roleDeps));
       case "A3":
-        return remember(await runA3(input, deps));
+        return remember(await runA3(input, roleDeps));
       case "A4":
-        return remember(await runA4(input, deps, findObject));
+        return remember(await runA4(input, roleDeps, findObject));
       case "A5":
-        return remember(await runA5(input, deps));
+        return remember(await runA5(input, roleDeps));
       case "A6":
-        return remember(await runA6(input, deps));
+        return remember(await runA6(input, roleDeps));
       case "A7":
-        return remember(await runA7(input, deps));
+        return remember(await runA7(input, roleDeps));
       case "A8":
-        return remember(await runA8(input, deps, findObject));
+        return remember(await runA8(input, roleDeps, findObject));
       case "A9":
-        return remember(await runA9(input, deps));
+        return remember(await runA9(input, roleDeps));
       case "A10":
-        return remember(await runA10(input, deps));
+        return remember(await runA10(input, roleDeps));
       default:
         return assertUnhandledRole(input.role);
     }
@@ -294,7 +334,7 @@ function requiredSubject(
 }
 
 function promptStore(
-  deps: AnalystRunnerDeps,
+  deps: AnalystRoleDeps,
   input: RunStepInput,
   role: string,
 ): StylePromptStore & TermPromptStore & AdaptationPromptStore {
@@ -305,7 +345,7 @@ function promptStore(
   };
 }
 
-async function runA1(input: RunStepInput, deps: AnalystRunnerDeps): Promise<readonly WikiObject[]> {
+async function runA1(input: RunStepInput, deps: AnalystRoleDeps): Promise<readonly WikiObject[]> {
   requiredSubject(input, "game");
   const slice = deps.model.factSnapshot.routeTopology.sceneDispatchOrder
     .slice(0, 3)
@@ -334,7 +374,7 @@ async function runA1(input: RunStepInput, deps: AnalystRunnerDeps): Promise<read
   return [result.styleContract];
 }
 
-async function runA2(input: RunStepInput, deps: AnalystRunnerDeps): Promise<readonly WikiObject[]> {
+async function runA2(input: RunStepInput, deps: AnalystRoleDeps): Promise<readonly WikiObject[]> {
   const termKey = requiredSubject(input, "glossary-term");
   const candidate = ambiguousTermCandidates(deps.model.factSnapshot).find(
     (entry) => entry.termKey === termKey,
@@ -358,7 +398,7 @@ async function runA2(input: RunStepInput, deps: AnalystRunnerDeps): Promise<read
   return [result.termRuling];
 }
 
-async function runA3(input: RunStepInput, deps: AnalystRunnerDeps): Promise<readonly WikiObject[]> {
+async function runA3(input: RunStepInput, deps: AnalystRoleDeps): Promise<readonly WikiObject[]> {
   const sceneId = Number(requiredSubject(input, "scene"));
   if (!Number.isSafeInteger(sceneId))
     throw new Error(`A3 scene id is not an integer: ${input.step.subject.id}`);
@@ -390,7 +430,7 @@ async function runA3(input: RunStepInput, deps: AnalystRunnerDeps): Promise<read
 
 async function runA4(
   input: RunStepInput,
-  deps: AnalystRunnerDeps,
+  deps: AnalystRoleDeps,
   findObject: (objectId: string, kind: WikiObject["kind"]) => Promise<WikiObject>,
 ): Promise<readonly WikiObject[]> {
   requiredSubject(input, "route");
@@ -407,7 +447,7 @@ async function runA4(
   return [result.routeArc];
 }
 
-async function runA5(input: RunStepInput, deps: AnalystRunnerDeps): Promise<readonly WikiObject[]> {
+async function runA5(input: RunStepInput, deps: AnalystRoleDeps): Promise<readonly WikiObject[]> {
   const characterId = requiredSubject(input, "character");
   const character = a5CharacterIndex(deps.model).find((entry) => entry.characterId === characterId);
   if (character === undefined)
@@ -429,7 +469,7 @@ async function runA5(input: RunStepInput, deps: AnalystRunnerDeps): Promise<read
   return [assembleVoiceProfile(deps.model, context, evidence, a5CounterpartIds(deps.model), draft)];
 }
 
-async function runA6(input: RunStepInput, deps: AnalystRunnerDeps): Promise<readonly WikiObject[]> {
+async function runA6(input: RunStepInput, deps: AnalystRoleDeps): Promise<readonly WikiObject[]> {
   const unitId = requiredSubject(input, "unit");
   const candidate = flaggedAdaptationCandidates(deps.model).find(
     (entry) => entry.unitFactId === unitId,
@@ -453,7 +493,7 @@ async function runA6(input: RunStepInput, deps: AnalystRunnerDeps): Promise<read
   return [result.note];
 }
 
-async function runA7(input: RunStepInput, deps: AnalystRunnerDeps): Promise<readonly WikiObject[]> {
+async function runA7(input: RunStepInput, deps: AnalystRoleDeps): Promise<readonly WikiObject[]> {
   const characterId = requiredSubject(input, "character");
   const portraitSource = deps.portraitSources.get(characterId);
   if (portraitSource === undefined) throw new Error(`A7 has no portrait source for ${characterId}`);
@@ -484,7 +524,7 @@ async function runA7(input: RunStepInput, deps: AnalystRunnerDeps): Promise<read
 
 async function runA8(
   input: RunStepInput,
-  deps: AnalystRunnerDeps,
+  deps: AnalystRoleDeps,
   findObject: (objectId: string, kind: WikiObject["kind"]) => Promise<WikiObject>,
 ): Promise<readonly WikiObject[]> {
   const characterId = requiredSubject(input, "character");
@@ -504,7 +544,7 @@ async function runA8(
   return [assembleCharacterBackground(deps.model, context, evidence, request, draft)];
 }
 
-async function runA9(input: RunStepInput, deps: AnalystRunnerDeps): Promise<readonly WikiObject[]> {
+async function runA9(input: RunStepInput, deps: AnalystRoleDeps): Promise<readonly WikiObject[]> {
   const characterId = requiredSubject(input, "character");
   if (input.step.scope.kind !== "route")
     throw new Error(`A9 ${characterId} has no concrete route scope`);
@@ -533,10 +573,7 @@ async function runA9(input: RunStepInput, deps: AnalystRunnerDeps): Promise<read
   return [assembleCharacterRouteArc(deps.model, context, character, evidence, draft)];
 }
 
-async function runA10(
-  input: RunStepInput,
-  deps: AnalystRunnerDeps,
-): Promise<readonly WikiObject[]> {
+async function runA10(input: RunStepInput, deps: AnalystRoleDeps): Promise<readonly WikiObject[]> {
   const unitId = requiredSubject(input, "unit");
   const context = wholeGameContext(input);
   const unit = readUnknownSpeakerUnits(deps.model, context).find(
