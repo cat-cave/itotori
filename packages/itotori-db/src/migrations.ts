@@ -5,6 +5,25 @@ import { fileURLToPath } from "node:url";
 import { bootstrapLocalUser } from "./authorization.js";
 import { withDatabase } from "./connection.js";
 
+/**
+ * Drop the entire application schema and re-apply every migration, leaving a
+ * pristine migrated database. This is the canonical dev/CI reset: it depends on
+ * no per-table truncate list (which drifts as tables are added/removed) and no
+ * application service graph — only the migration registry that owns the schema.
+ */
+export async function resetDatabase(databaseUrl?: string): Promise<void> {
+  await withDatabase(async ({ pool }) => {
+    const client = await pool.connect();
+    try {
+      await client.query("drop schema public cascade");
+      await client.query("create schema public");
+    } finally {
+      client.release();
+    }
+  }, databaseUrl);
+  await migrate(databaseUrl);
+}
+
 export async function migrate(databaseUrl?: string): Promise<void> {
   await withDatabase(async ({ db, pool }) => {
     const client = await pool.connect();

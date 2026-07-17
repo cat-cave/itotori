@@ -52,6 +52,7 @@ function noOpDependencies(): ItotoriCliDependencies {
   return {
     io: { readJson: vi.fn(), writeJson: vi.fn() },
     migrateDatabase: vi.fn(async () => {}),
+    resetDatabase: vi.fn(async () => {}),
     withServices: vi.fn(async (callback: (services: ItotoriCliServices) => Promise<unknown>) =>
       callback({} as ItotoriCliServices),
     ),

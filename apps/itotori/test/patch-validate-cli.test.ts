@@ -33,6 +33,9 @@ function baseDeps(): ItotoriCliDependencies {
     migrateDatabase: async () => {
       throw new Error("migrateDatabase should not be called");
     },
+    resetDatabase: async () => {
+      throw new Error("resetDatabase should not be called");
+    },
     withServices: async () => {
       throw new Error("withServices should not be called");
     },

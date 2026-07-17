@@ -60,6 +60,7 @@ describe("asset-decisions CLI handlers", () => {
       {
         io: jsonStoreFixture(new Map(), writes),
         migrateDatabase: vi.fn(async () => {}),
+        resetDatabase: vi.fn(async () => {}),
         withServices: async (callback) => await callback(servicesFixture(fixture.port)),
       },
     );
@@ -88,6 +89,7 @@ describe("asset-decisions CLI handlers", () => {
         {
           io: jsonStoreFixture(new Map(), new Map()),
           migrateDatabase: vi.fn(async () => {}),
+          resetDatabase: vi.fn(async () => {}),
           withServices: async (callback) => await callback(servicesFixture(undefined)),
         },
       ),

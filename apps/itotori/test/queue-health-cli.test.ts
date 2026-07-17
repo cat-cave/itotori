@@ -73,6 +73,7 @@ describe("queue-health CLI handler", () => {
     await runItotoriCliCommand(["queue-health", "--output", "queue-health.json"], {
       io: jsonStoreFixture(new Map(), writes),
       migrateDatabase: vi.fn(async () => {}),
+      resetDatabase: vi.fn(async () => {}),
       withServices: async (callback) => await callback(servicesFixture(fixture.port)),
     });
 
@@ -101,6 +102,7 @@ describe("queue-health CLI handler", () => {
       {
         io: jsonStoreFixture(new Map(), writes),
         migrateDatabase: vi.fn(async () => {}),
+        resetDatabase: vi.fn(async () => {}),
         withServices: async (callback) => await callback(servicesFixture(fixture.port)),
       },
     );
@@ -116,6 +118,7 @@ describe("queue-health CLI handler", () => {
       runItotoriCliCommand(["queue-health", "--output", "queue-health.json"], {
         io: jsonStoreFixture(new Map(), new Map()),
         migrateDatabase: vi.fn(async () => {}),
+        resetDatabase: vi.fn(async () => {}),
         withServices: async (callback) => await callback(servicesFixture(undefined)),
       }),
     ).rejects.toThrow(/queue-health service is not configured/);
@@ -129,6 +132,7 @@ describe("queue-health CLI handler", () => {
         {
           io: jsonStoreFixture(new Map(), new Map()),
           migrateDatabase: vi.fn(async () => {}),
+          resetDatabase: vi.fn(async () => {}),
           withServices: async (callback) => await callback(servicesFixture(fixture.port)),
         },
       ),

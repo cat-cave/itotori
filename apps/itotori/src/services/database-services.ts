@@ -1,4 +1,4 @@
-import { databaseUrlFromEnv, migrate } from "@itotori/db";
+import { databaseUrlFromEnv, migrate, resetDatabase } from "@itotori/db";
 
 import type { ItotoriApiServices, ItotoriReadOnlyApiServices } from "../api-handlers.js";
 import type { ItotoriCliServices } from "../cli-handlers.js";
@@ -43,6 +43,10 @@ export function toReadOnlyServiceFactory(
 
 export async function migrateItotoriDatabase(databaseUrl = databaseUrlFromEnv()): Promise<void> {
   await migrate(databaseUrl);
+}
+
+export async function resetItotoriDatabase(databaseUrl = databaseUrlFromEnv()): Promise<void> {
+  await resetDatabase(databaseUrl);
 }
 
 export function startDatabaseContextCorrectionWorker(_options?: unknown): { stop(): void } {

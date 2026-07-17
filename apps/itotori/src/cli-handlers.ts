@@ -124,6 +124,7 @@ export type ItotoriCliServices = {
 export type ItotoriCliDependencies = {
   io: JsonFileStore;
   migrateDatabase(): Promise<void>;
+  resetDatabase(): Promise<void>;
   withServices<T>(callback: (services: ItotoriCliServices) => Promise<T>): Promise<T>;
   nativeCli?: NativeCliRunner;
   /**
@@ -167,7 +168,7 @@ export async function runItotoriCliCommand(
       await dependencies.migrateDatabase();
       break;
     case "db-reset":
-      await dependencies.withServices((services) => services.projectWorkflow.reset());
+      await dependencies.resetDatabase();
       break;
     case "dashboard-status":
       await runDashboardStatus(args, dependencies);

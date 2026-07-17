@@ -48,7 +48,7 @@ export type {
   ConversationEventIdentityInput,
   LlmJsonValue,
 } from "./llm-content-address.js";
-export { migrate } from "./migrations.js";
+export { migrate, resetDatabase } from "./migrations.js";
 export {
   BENCHMARK_MANAGED_ARTIFACT_KINDS,
   CORPUS_SIDECAR_ARTIFACT_KINDS,
