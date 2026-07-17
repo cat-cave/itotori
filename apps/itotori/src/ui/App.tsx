@@ -29,6 +29,7 @@ import {
 import { AddressableFocusScreen } from "./screens/AddressableFocusScreen.js";
 import { DashboardScreen } from "./screens/DashboardScreen.js";
 import { OnboardingScreen, parseOnboardingRoute } from "./screens/OnboardingScreen.js";
+import { PlayHubScreen, parsePlayHubRoute } from "./screens/PlayHubScreen.js";
 import { PlayRouteMapScreen, parsePlayRouteMapRoute } from "./screens/PlayRouteMapScreen.js";
 import {
   PlayFlagComposerScreen,
@@ -183,8 +184,14 @@ function RoutedScreen({
     return <AddressableFocusScreen location={addressable} />;
   }
 
-  // `/play/routemap` — canonical route/choice context visualization. Matched
-  // BEFORE bare `/play` so the more specific path wins.
+  // Bare `/play` — durable landing from the shell nav and onboarding. Its
+  // exact-path parser leaves the detailed Play sub-routes below untouched.
+  const playHub = parsePlayHubRoute(location.pathname, location.search);
+  if (playHub !== null) {
+    return <PlayHubScreen route={playHub} />;
+  }
+
+  // `/play/routemap` — canonical route/choice context visualization.
   const playRouteMap = parsePlayRouteMapRoute(location.pathname, location.search);
   if (playRouteMap !== null) {
     return <PlayRouteMapScreen route={playRouteMap} />;
