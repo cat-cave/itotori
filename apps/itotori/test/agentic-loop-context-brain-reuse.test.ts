@@ -1142,10 +1142,10 @@ describe.skipIf(!process.env.DATABASE_URL)(
               }),
             });
 
-            // Dashboard POST add is a canonical node-8 correction, not a
-            // front-end fixture: it must create a version and run a real
-            // scoped production full-project rerun for unit A.
-            const dashboardAdd = await dashboard.httpRequest("wiki.add", {
+            // API wiki mutations are repointed to the new object-API substrate
+            // (wikiObjectApi). That seam is not yet wired into the live factory
+            // and must refuse loudly rather than route to WikiBrainService.
+            const refusedAdd = await dashboard.httpRequest("wiki.add", {
               params: { projectId: PROJECT_ID, localeBranchId: LOCALE_BRANCH_ID },
               body: {
                 sourceRevisionId: SOURCE_REVISION_ID,
@@ -1156,8 +1156,29 @@ describe.skipIf(!process.env.DATABASE_URL)(
                 affectedUnitIds: [UNIT_A_ID],
               },
             });
-            assertHttpContractOk("wiki.add", dashboardAdd);
-            added = dashboardAdd.body as WikiBrainEditResult;
+            expect(refusedAdd.status).toBe(500);
+            expect(String((refusedAdd.body as { error?: string }).error ?? "")).toContain(
+              "wikiObjectApi",
+            );
+
+            // Context-brain flywheel proof continues through the still-present
+            // WikiBrainService port directly (not the cut-over HTTP mutation).
+            const { withDatabaseItotoriServices } =
+              await import("../src/services/database-services.js");
+            added = await withDatabaseItotoriServices(
+              { databaseUrl: context.databaseUrl, bootstrapLocalUser: true },
+              async (services) =>
+                await services.wiki.add({
+                  projectId: PROJECT_ID,
+                  localeBranchId: LOCALE_BRANCH_ID,
+                  sourceRevisionId: SOURCE_REVISION_ID,
+                  kind: "note",
+                  title: PLAY_TESTER_NOTE_TITLE,
+                  body: PLAY_TESTER_NOTE_BODY,
+                  reason: "The dashboard play test added delivery guidance for the follow-up line.",
+                  affectedUnitIds: [UNIT_A_ID],
+                }),
+            );
             expect(added).toMatchObject({
               schemaVersion: "wiki.context.edit.v0.2",
               contextArtifactId: expect.any(String),
@@ -1195,10 +1216,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
               ],
             });
 
-            // Dashboard POST edit server-loads the generated entry and only
-            // accepts human correction fields. The returned receipt must tell
-            // the client that the durable rerun actually succeeded.
-            const dashboardEdit = await dashboard.httpRequest("wiki.edit", {
+            // Same cutover: HTTP edit refuses; the flywheel proof uses the service.
+            const refusedEdit = await dashboard.httpRequest("wiki.edit", {
               params: {
                 projectId: PROJECT_ID,
                 localeBranchId: LOCALE_BRANCH_ID,
@@ -1209,8 +1228,21 @@ describe.skipIf(!process.env.DATABASE_URL)(
                 reason: "The play test corrected the captain's delivery guidance for this scene.",
               },
             });
-            assertHttpContractOk("wiki.edit", dashboardEdit);
-            edited = dashboardEdit.body as WikiBrainEditResult;
+            expect(refusedEdit.status).toBe(500);
+            expect(String((refusedEdit.body as { error?: string }).error ?? "")).toContain(
+              "wikiObjectApi port missing",
+            );
+            edited = await withDatabaseItotoriServices(
+              { databaseUrl: context.databaseUrl, bootstrapLocalUser: true },
+              async (services) =>
+                await services.wiki.edit({
+                  projectId: PROJECT_ID,
+                  localeBranchId: LOCALE_BRANCH_ID,
+                  contextArtifactId: speakerArtifactId,
+                  body: PLAY_TESTER_SPEAKER_BODY,
+                  reason: "The play test corrected the captain's delivery guidance for this scene.",
+                }),
+            );
             expect(edited).toMatchObject({
               schemaVersion: "wiki.context.edit.v0.2",
               contextArtifactId: speakerArtifactId,

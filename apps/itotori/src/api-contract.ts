@@ -1484,10 +1484,22 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       properties: { launchDescriptor: { type: "object", additionalProperties: true } },
       additionalProperties: false,
     }),
-  ApiPatchIterationPlayResponse: (ref) =>
+  ApiPatchIterationPlayResponse: () =>
     object({
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationPlayResponse,
-      properties: { session: ref("ApiPatchIterationSession") },
+      properties: {
+        receipt: object({
+          required: ["runtime", "engine", "scene", "replay", "observedTextLineCount"],
+          properties: {
+            runtime: { const: "utsushi-reallive" },
+            engine: { const: "reallive" },
+            scene: { type: "integer", minimum: 0 },
+            replay: { const: "observed" },
+            observedTextLineCount: { type: "integer", minimum: 0 },
+          },
+          additionalProperties: false,
+        }),
+      },
       additionalProperties: false,
       schemaVersion: "itotori.patch-iteration.play.v0",
     }),

@@ -145,6 +145,7 @@ import {
 } from "../play/result-revision-service.js";
 import { ProductionPlayTesterPatchArtifactMaterializer } from "../play/production-patch-revision-materializer.js";
 import { UtsushiPatchRuntimeLauncher } from "../play/patch-runtime-launcher.js";
+import type { PlayEntrypointDeps } from "../composition/play-entrypoint.js";
 import {
   PatchIterationService,
   type PatchIterationServicePort,
@@ -215,6 +216,10 @@ export type ItotoriApplicationServices = {
   playTesterResultRevision: BoundPlayTesterResultRevisionServicePort;
   /** Node 11's bound versions → play session → feedback → refinement loop. */
   patchIteration: PatchIterationServicePort;
+  /** The kept API/CLI `patch play` mutation's new-pipeline substrate: the exact-
+   * surface loader (a permission-gated surface read — never a journal reservation)
+   * + the real Utsushi runtime launcher the composition `runPlaySession` drives. */
+  patchPlay: PlayEntrypointDeps;
   exactSearch: {
     refreshDocuments(
       input: RefreshExactSearchDocumentsInput,
@@ -870,6 +875,26 @@ export async function withDatabaseItotoriServices<T>(
       playTesterResultRevisionService,
       localUserActor,
     );
+    // The kept `patch play` API/CLI mutation's new-pipeline substrate: a
+    // permission-gated exact-surface read (NOT a journal reservation) plus the
+    // real Utsushi replay launcher. The composition `runPlaySession` drives these
+    // directly, never the legacy `PatchIterationService.play` finalizer path.
+    const playSurfaceIterationRepository = new ItotoriLocalizationIterationRepository(context.db);
+    const patchPlay: PlayEntrypointDeps = {
+      loader: {
+        load: async (patchVersionId) => {
+          const surface = await playSurfaceIterationRepository.loadPatchPlaySurface(
+            localUserActor,
+            patchVersionId,
+          );
+          if (surface === null) {
+            throw new Error(`patch version ${patchVersionId} was not found`);
+          }
+          return surface;
+        },
+      },
+      launcher: new UtsushiPatchRuntimeLauncher(),
+    };
     const patchIterationService = new PatchIterationService({
       actor: localUserActor,
       iteration: new ItotoriLocalizationIterationRepository(context.db),
@@ -959,6 +984,7 @@ export async function withDatabaseItotoriServices<T>(
       contextCorrections: contextCorrectionService,
       playTesterResultRevision: boundPlayTesterResultRevision,
       patchIteration: patchIterationService,
+      patchPlay,
       exactSearch: {
         refreshDocuments: (input) => exactSearchRepository.refreshDocuments(localUserActor, input),
         searchExact: (input) => exactSearchRepository.searchExact(localUserActor, input),

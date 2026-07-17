@@ -236,7 +236,7 @@ describe("fe-http-contract-harness: mutation /api route over real loopback HTTP"
     expect(fixturePlayTesterResultRevision.loadSelectedArchive).not.toHaveBeenCalled();
   });
 
-  it("routes wiki.edit through the typed canonical-correction receipt", async () => {
+  it("refuses wiki.edit loudly when wikiObjectApi substrate is missing (never old service)", async () => {
     const result = await harness.httpRequest("wiki.edit", {
       params: {
         projectId: "project-1",
@@ -246,11 +246,14 @@ describe("fe-http-contract-harness: mutation /api route over real loopback HTTP"
       body: { body: "Corrected scene fact.", reason: "Playtest observation." },
     });
 
-    assertHttpContractOk("wiki.edit", result);
+    assertHttpContractError(result, { status: 500, code: "internal_error" });
+    expect(String((result.body as { error?: string }).error ?? "")).toContain(
+      "wikiObjectApi port missing",
+    );
     expect(fixtureRequirePermission).toHaveBeenCalledWith("project.import" as Permission);
   });
 
-  it("routes wiki.add through the same typed canonical-correction receipt", async () => {
+  it("refuses wiki.add loudly when wikiObjectApi substrate is missing (never old service)", async () => {
     const result = await harness.httpRequest("wiki.add", {
       params: { projectId: "project-1", localeBranchId: "locale-1" },
       body: {
@@ -263,7 +266,8 @@ describe("fe-http-contract-harness: mutation /api route over real loopback HTTP"
       },
     });
 
-    assertHttpContractOk("wiki.add", result);
+    assertHttpContractError(result, { status: 500, code: "internal_error" });
+    expect(String((result.body as { error?: string }).error ?? "")).toContain("wikiObjectApi");
     expect(fixtureRequirePermission).toHaveBeenCalledWith("project.import" as Permission);
   });
 });

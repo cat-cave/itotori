@@ -1681,16 +1681,43 @@
       "ApiPatchIterationPlayResponse": {
         "additionalProperties": false,
         "properties": {
+          "receipt": {
+            "additionalProperties": false,
+            "properties": {
+              "engine": {
+                "const": "reallive"
+              },
+              "observedTextLineCount": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "replay": {
+                "const": "observed"
+              },
+              "runtime": {
+                "const": "utsushi-reallive"
+              },
+              "scene": {
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "engine",
+              "observedTextLineCount",
+              "replay",
+              "runtime",
+              "scene"
+            ],
+            "type": "object"
+          },
           "schemaVersion": {
             "const": "itotori.patch-iteration.play.v0"
-          },
-          "session": {
-            "$ref": "#/components/schemas/ApiPatchIterationSession"
           }
         },
         "required": [
-          "schemaVersion",
-          "session"
+          "receipt",
+          "schemaVersion"
         ],
         "type": "object"
       },

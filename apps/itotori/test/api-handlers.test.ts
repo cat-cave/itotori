@@ -239,6 +239,10 @@ const readOnlyPostApiRoutes = new Set([
   "POST /api/auth/members/membership-api/remove",
   "POST /api/auth/principals/principal-api-member/sessions/session-api/revoke",
   "POST /api/projects/:projectId/locale-branches/:localeBranchId/flags",
+  // branches.draft is repointed to the new-pipeline localize entrypoint (never
+  // projectWorkflow.draftProject). Without localizationSubstrate it refuses
+  // in-band and has no mutating projectWorkflow call to discover.
+  "POST /api/projects/:projectId/branches",
 ]);
 
 const authSsoSettingsRequestFixture = {
@@ -352,13 +356,16 @@ const apiMutationPermissionMatrix = [
     post("/api/projects/decode-extract", decodeExtractRequestFixture),
     "decodeExtract",
   ),
-  apiGate(
+  // branchDraft no longer reaches a projectWorkflow mutation — the new pipeline
+  // refuses in-band when localizationSubstrate is missing. The permission gate
+  // is still exercised; the success-path mock assertion is skipped for this gate.
+  apiGateForService(
     "branchDraft",
     post("/api/projects/project-1/branches", {
       project: projectFixture,
       targetLocale: "fr-FR",
     }),
-    "draftProject",
+    { surface: "branchPolicy", method: "loadSettings" },
   ),
   apiGate(
     "findingRecord",
@@ -2698,7 +2705,7 @@ describe("Itotori API handlers", () => {
     });
   });
 
-  it("routes existing-entry wiki edits and no-entry context additions through the same service", async () => {
+  it("refuses wiki mutations loudly when wikiObjectApi substrate is missing (never the old service)", async () => {
     const services = serviceFixture();
     const listPath = "/api/projects/project-1/locale-branches/locale-1/wiki";
     const entryPath = `${listPath}/context-artifact-hero-scene`;
@@ -2719,29 +2726,22 @@ describe("Itotori API handlers", () => {
       services,
     );
 
-    expect(edit).toEqual({ statusCode: 200, body: wikiEditFixture });
-    expect(add).toEqual({ statusCode: 200, body: wikiEditFixture });
-    expect(services.wiki.edit).toHaveBeenCalledWith({
-      projectId: "project-1",
-      localeBranchId: "locale-1",
-      contextArtifactId: "context-artifact-hero-scene",
-      body: "Corrected fact.",
-      reason: "Playtest observation.",
+    expect(edit.statusCode).toBe(500);
+    expect(edit.body).toMatchObject({
+      code: "internal_error",
+      error: expect.stringContaining("wikiObjectApi port missing"),
     });
-    expect(services.wiki.add).toHaveBeenCalledWith({
-      projectId: "project-1",
-      localeBranchId: "locale-1",
-      sourceRevisionId: "source-revision-1",
-      kind: "note",
-      title: "Playtest note",
-      body: "New shared context.",
-      reason: "Observed while playing.",
-      affectedUnitIds: ["bridge-unit-1"],
+    expect(add.statusCode).toBe(500);
+    expect(add.body).toMatchObject({
+      code: "internal_error",
+      error: expect.stringContaining("wikiObjectApi"),
     });
+    expect(services.wiki.edit).not.toHaveBeenCalled();
+    expect(services.wiki.add).not.toHaveBeenCalled();
     expect(services.authorization.requirePermission).toHaveBeenCalledWith("project.import");
   });
 
-  it("rejects a zero-unit new wiki context before invoking node-8 service", async () => {
+  it("rejects a zero-unit new wiki context before invoking the object-API substrate", async () => {
     const services = serviceFixture();
     const response = await handleItotoriApiRequest(
       post("/api/projects/project-1/locale-branches/locale-1/wiki", {
@@ -2755,6 +2755,7 @@ describe("Itotori API handlers", () => {
       services,
     );
 
+    // Body validation still runs first (zero-unit add is a bad request).
     expect(response).toMatchObject({ statusCode: 400, body: { code: "bad_request" } });
     expect(services.wiki.add).not.toHaveBeenCalled();
   });
@@ -2842,13 +2843,40 @@ describe("Itotori API handlers", () => {
 
   it.each(apiMutationPermissionMatrix)(
     "checks permissions before the $name mutation",
-    async ({ request, permission, service }) => {
+    async ({ request, permission, service, gateId }) => {
       const services = serviceFixture();
 
       const response = await handleItotoriApiRequest(request, services);
 
-      expect(response.statusCode).toBe(200);
       expect(services.authorization.requirePermission).toHaveBeenCalledWith(permission);
+      // New-pipeline cuts: draft refuses in-band without localizationSubstrate;
+      // wiki writes refuse loudly without wikiObjectApi. Neither reaches the
+      // legacy service method the matrix used to mock.
+      if (gateId === "branchDraft") {
+        expect(response.statusCode).toBe(200);
+        expect(response.body).toMatchObject({
+          outcome: "refused",
+          refusalMessage: expect.stringContaining("localizationSubstrate port missing"),
+        });
+        return;
+      }
+      if (gateId === "wikiEdit") {
+        expect(response.statusCode).toBe(500);
+        expect(response.body).toMatchObject({
+          code: "internal_error",
+          error: expect.stringContaining("wikiObjectApi port missing"),
+        });
+        expect(services.wiki.edit).not.toHaveBeenCalled();
+        return;
+      }
+      if (gateId === "patchIterationPlay") {
+        // New-pipeline path: composition runPlaySession over patchPlay substrate.
+        expect(response.statusCode).toBe(200);
+        expect(services.patchPlay.launcher.launch).toHaveBeenCalledTimes(1);
+        expect(services.patchIteration.play).not.toHaveBeenCalled();
+        return;
+      }
+      expect(response.statusCode).toBe(200);
       expect(apiMutationServiceMock(services, service)).toHaveBeenCalledTimes(1);
     },
   );
@@ -3372,7 +3400,7 @@ describe("Itotori API handlers", () => {
     },
   );
 
-  it("passes explicit non-Japanese-to-English draft locale pairs through the API", async () => {
+  it("refuses draft for non-Japanese-to-English pairs in-band when localizationSubstrate is missing", async () => {
     const services = serviceFixture();
 
     const response = await handleItotoriApiRequest(
@@ -3384,14 +3412,17 @@ describe("Itotori API handlers", () => {
     );
 
     expect(response.statusCode).toBe(200);
-    expect(services.projectWorkflow.draftProject).toHaveBeenCalledWith(
-      { ...nonJapaneseTargetProjectFixture, localeBranchId: "locale-de-en-us" },
-      "en-US",
+    expect(response.body).toMatchObject({
+      outcome: "refused",
+      refusalMessage: expect.stringContaining("localizationSubstrate port missing"),
+    });
+    expect(services.projectWorkflow.listLocaleBranchIdentities).toHaveBeenCalledWith(
+      "project-de-en",
     );
   });
 
   describe("ITOTORI-050 server-side project/branch ownership scoping", () => {
-    it("drafts an in-scope branch and writes with the SERVER-SIDE branch id", async () => {
+    it("scopes an in-scope branch draft and refuses loudly without localizationSubstrate (never draftProject)", async () => {
       const services = serviceFixture();
 
       const response = await handleItotoriApiRequest(
@@ -3403,12 +3434,10 @@ describe("Itotori API handlers", () => {
       );
 
       expect(response.statusCode).toBe(200);
-      // The write is keyed on the server-side authoritative branch, not the
-      // client's copy — proving the client cannot smuggle a foreign branch.
-      expect(services.projectWorkflow.draftProject).toHaveBeenCalledWith(
-        expect.objectContaining({ projectId: "project-1", localeBranchId: "locale-1" }),
-        "fr-FR",
-      );
+      expect(response.body).toMatchObject({
+        outcome: "refused",
+        refusalMessage: expect.stringContaining("localizationSubstrate port missing"),
+      });
       expect(services.projectWorkflow.listLocaleBranchIdentities).toHaveBeenCalledWith("project-1");
     });
 
@@ -3427,7 +3456,6 @@ describe("Itotori API handlers", () => {
 
       expect(response.statusCode).toBe(403);
       expect(response.body).toMatchObject({ code: "forbidden" });
-      expect(services.projectWorkflow.draftProject).not.toHaveBeenCalled();
     });
 
     it("refuses a branch draft against an UNKNOWN / out-of-scope project", async () => {
@@ -3447,7 +3475,6 @@ describe("Itotori API handlers", () => {
 
       expect(response.statusCode).toBe(403);
       expect(response.body).toMatchObject({ code: "forbidden" });
-      expect(services.projectWorkflow.draftProject).not.toHaveBeenCalled();
     });
 
     it("refuses runtime-evidence ingest whose ProjectState carries a foreign branch id", async () => {
@@ -3547,7 +3574,6 @@ describe("Itotori API handlers", () => {
       // A missing permission is refused before the scope lookup runs at all.
       expect(response.statusCode).toBe(403);
       expect(services.projectWorkflow.listLocaleBranchIdentities).not.toHaveBeenCalled();
-      expect(services.projectWorkflow.draftProject).not.toHaveBeenCalled();
     });
   });
 
@@ -3616,17 +3642,13 @@ describe("Itotori API handlers", () => {
     // + routing internals) + translation-memory reuse events. A caller without
     // catalog.read — the same gate the sibling read routes enforce — must
     // receive the redacted public summary; a holder still gets the full echo.
+    // branches.draft no longer echoes status on the success path when the
+    // localizationSubstrate is missing (in-band refuse with null status). Only
+    // imports.bridge still exercises the status-echo redaction gate here.
     const mutationStatusEchoRoutes = [
       {
         name: "imports.bridge",
         request: post("/api/imports/bridge", { bridge: bridgeFixture }),
-      },
-      {
-        name: "branches.draft",
-        request: post("/api/projects/project-1/branches", {
-          project: projectFixture,
-          targetLocale: "fr-FR",
-        }),
       },
     ] as const;
 
@@ -3700,7 +3722,7 @@ describe("Itotori API handlers", () => {
 
   it.each(apiMutationPermissionMatrix)(
     "returns forbidden before invoking the $name mutation when authorization rejects",
-    async ({ request, permission, service }) => {
+    async ({ request, permission, service, gateId }) => {
       const services = serviceFixture();
       services.authorization.requirePermission.mockRejectedValueOnce(
         new AuthorizationError(deniedActor, permission),
@@ -3709,6 +3731,17 @@ describe("Itotori API handlers", () => {
       const response = await handleItotoriApiRequest(request, services);
 
       assertForbiddenApiMutation(response, { actor: deniedActor, permission });
+      if (gateId === "branchDraft" || gateId === "wikiEdit") {
+        // No legacy service mock is installed for these repointed routes.
+        expect(services.wiki.edit).not.toHaveBeenCalled();
+        expect(services.wiki.add).not.toHaveBeenCalled();
+        return;
+      }
+      if (gateId === "patchIterationPlay") {
+        expect(services.patchPlay.launcher.launch).not.toHaveBeenCalled();
+        expect(services.patchIteration.play).not.toHaveBeenCalled();
+        return;
+      }
       expect(apiMutationServiceMock(services, service)).not.toHaveBeenCalled();
     },
   );
@@ -5041,7 +5074,6 @@ function serviceFixture(): ItotoriApiServices {
         mode: "whole-seen" as const,
         command: "kaifuu-cli extract --engine reallive --whole-seen",
       })),
-      draftProject: vi.fn(async () => projectFixture),
       recordFinding: vi.fn(async () => ({
         findingId: findingRecordFixture.findingId,
         status: "open" as const,
@@ -5140,6 +5172,31 @@ function serviceFixture(): ItotoriApiServices {
         export: null,
       })),
       loadExactPatchArchive: vi.fn(async () => null),
+    },
+    patchPlay: {
+      loader: {
+        load: vi.fn(async (patchVersionId: string) => ({
+          patchVersionId,
+          runId: "run-api-play",
+          parentPatchVersionId: null,
+          origin: "localization_run" as const,
+          status: "playable" as const,
+          playableAt: new Date("2026-07-13T00:00:00.000Z"),
+          selectedAt: new Date("2026-07-13T00:00:00.000Z"),
+          artifactHashes: {},
+          units: [],
+          qaCallouts: [],
+        })),
+      },
+      launcher: {
+        launch: vi.fn(async () => ({
+          runtime: "utsushi-reallive" as const,
+          engine: "reallive" as const,
+          scene: 1,
+          replay: "observed" as const,
+          observedTextLineCount: 3,
+        })),
+      },
     },
     patchIteration: {
       play: vi.fn(async () => ({
@@ -5627,10 +5684,11 @@ describe("ITOTORI-043 read-only API service factory (least-privilege query surfa
       service: "projectWorkflow",
       methods: [
         "importBridge",
-        "draftProject",
         "recordFinding",
         "recordBenchmarkReport",
         "ingestRuntimeReport",
+        "launchNextLocalizationPass",
+        "decodeExtract",
       ],
     },
   ];
@@ -5676,8 +5734,8 @@ describe("ITOTORI-043 read-only API service factory (least-privilege query surfa
 
   it("excludes mutation methods from the read-only surface at the TYPE level", () => {
     const readOnly = readOnlyApiServices(serviceFixture());
-    // @ts-expect-error draftProject is a mutation excluded from the read-only surface
-    void readOnly.projectWorkflow.draftProject;
+    // @ts-expect-error importBridge is a mutation excluded from the read-only surface
+    void readOnly.projectWorkflow.importBridge;
   });
 
   it.skipIf(!process.env.DATABASE_URL)(

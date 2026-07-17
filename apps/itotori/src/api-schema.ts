@@ -616,7 +616,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   ApiPatchIterationVersionsResponse: ["schemaVersion", "versions"],
   ApiPatchIterationSurfaceResponse: ["schemaVersion", "patch", "versions", "feedback"],
   ApiPatchIterationPlayRequest: ["launchDescriptor"],
-  ApiPatchIterationPlayResponse: ["schemaVersion", "session"],
+  ApiPatchIterationPlayResponse: ["schemaVersion", "receipt"],
   ApiPatchIterationFeedbackBatchRequest: ["feedbackBatchId", "label"],
   ApiPatchIterationFeedbackBatchResponse: ["schemaVersion", "batch"],
   ApiPatchIterationFeedbackRequest: [
@@ -1550,9 +1550,21 @@ export type ApiPatchIterationPlayRequest = {
   launchDescriptor?: Record<string, unknown>;
 };
 
+/**
+ * The kept patch-play mutation's response: the runtime launch receipt from the
+ * composition `runPlaySession` path (Utsushi real replay). It deliberately no
+ * longer embeds a journal play session — that is the legacy
+ * `PatchIterationService.play` reservation/finalizer surface.
+ */
 export type ApiPatchIterationPlayResponse = {
   schemaVersion: "itotori.patch-iteration.play.v0";
-  session: ApiPatchIterationSession;
+  receipt: {
+    runtime: "utsushi-reallive";
+    engine: "reallive";
+    scene: number;
+    replay: "observed";
+    observedTextLineCount: number;
+  };
 };
 
 export type ApiPatchIterationFeedbackBatchRequest = {
@@ -6981,7 +6993,25 @@ function assertPatchIterationPlayResponse(
     "itotori.patch-iteration.play.v0",
     "ApiPatchIterationPlayResponse.schemaVersion",
   );
-  assertPatchIterationSession(response.session, "ApiPatchIterationPlayResponse.session");
+  const receipt = asStrictRecord(response.receipt, "ApiPatchIterationPlayResponse.receipt", [
+    "runtime",
+    "engine",
+    "scene",
+    "replay",
+    "observedTextLineCount",
+  ]);
+  assertLiteral(
+    receipt.runtime,
+    "utsushi-reallive",
+    "ApiPatchIterationPlayResponse.receipt.runtime",
+  );
+  assertLiteral(receipt.engine, "reallive", "ApiPatchIterationPlayResponse.receipt.engine");
+  assertNonNegativeInteger(receipt.scene, "ApiPatchIterationPlayResponse.receipt.scene");
+  assertLiteral(receipt.replay, "observed", "ApiPatchIterationPlayResponse.receipt.replay");
+  assertNonNegativeInteger(
+    receipt.observedTextLineCount,
+    "ApiPatchIterationPlayResponse.receipt.observedTextLineCount",
+  );
 }
 
 function assertPatchIterationFeedbackBatchResponse(
@@ -7218,28 +7248,6 @@ function assertPatchIterationFeedbackEvent(value: unknown, label: string): void 
   assertNullableString(event.contextEntryVersionId, `${label}.contextEntryVersionId`);
   assertStringArray(event.affectedBridgeUnitIds, `${label}.affectedBridgeUnitIds`);
   assertDateLike(event.createdAt, `${label}.createdAt`);
-}
-
-function assertPatchIterationSession(value: unknown, label: string): void {
-  const session = asStrictRecord(value, label, [
-    "playSessionId",
-    "observedPatchVersionId",
-    "actorUserId",
-    "status",
-    "startedAt",
-    "endedAt",
-    "qaCallouts",
-  ]);
-  assertString(session.playSessionId, `${label}.playSessionId`);
-  assertString(session.observedPatchVersionId, `${label}.observedPatchVersionId`);
-  assertString(session.actorUserId, `${label}.actorUserId`);
-  assertEnum(session.status, ["active", "completed", "abandoned"] as const, `${label}.status`);
-  assertDateLike(session.startedAt, `${label}.startedAt`);
-  assertNullableDateLike(session.endedAt, `${label}.endedAt`);
-  const callouts = asArray(session.qaCallouts, `${label}.qaCallouts`);
-  for (const [index, callout] of callouts.entries()) {
-    assertPatchIterationQaCallout(callout, `${label}.qaCallouts[${index}]`);
-  }
 }
 
 function assertPatchIterationRefinement(value: unknown, label: string): void {

@@ -143,16 +143,17 @@ describe("patch iteration /api routes over real loopback HTTP", () => {
       body: { launchDescriptor: { source: "dashboard" } },
     });
     assertHttpContractOk("patchIteration.play", play);
-    expect(fixturePatchIteration.play).toHaveBeenCalledWith({
-      patchVersionId: "patch-iteration-v1",
-      launchDescriptor: { source: "dashboard" },
-    });
+    // New-pipeline path: composition runPlaySession over patchPlay substrate —
+    // never the legacy PatchIterationService.play journal reservation.
+    expect(fixturePatchIteration.play).not.toHaveBeenCalled();
     expect(play.body).toMatchObject({
       schemaVersion: "itotori.patch-iteration.play.v0",
-      session: {
-        playSessionId: "play-session-iteration-v1",
-        observedPatchVersionId: "patch-iteration-v1",
-        qaCallouts: [expect.objectContaining({ informational: true })],
+      receipt: {
+        runtime: "utsushi-reallive",
+        engine: "reallive",
+        scene: 1,
+        replay: "observed",
+        observedTextLineCount: 3,
       },
     });
     expectNoPrivateArtifactReferences(play.body);
