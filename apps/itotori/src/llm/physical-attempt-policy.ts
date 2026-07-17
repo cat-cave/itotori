@@ -51,6 +51,7 @@ export interface TransportObserver {
 
 export interface PhysicalAttemptControl {
   signal: AbortSignal;
+  race<T>(pending: Promise<T>): Promise<T>;
   failure(error?: unknown): LlmAttemptFailure | null;
 }
 
@@ -164,6 +165,9 @@ function attemptDeadline(
     clear: () => clearTimeout(timer),
     control: {
       signal,
+      race(pending) {
+        return raceWithAbort(pending, signal);
+      },
       failure(error?: unknown) {
         const observation = observer.take();
         if (deadlineExpired) {
@@ -214,6 +218,28 @@ function attemptDeadline(
       },
     },
   };
+}
+
+function raceWithAbort<T>(pending: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason ?? new Error("physical attempt aborted"));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      cleanup();
+      reject(signal.reason ?? new Error("physical attempt aborted"));
+    };
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    signal.addEventListener("abort", onAbort, { once: true });
+    pending.then(
+      (value) => {
+        cleanup();
+        resolve(value);
+      },
+      (error: unknown) => {
+        cleanup();
+        reject(error);
+      },
+    );
+  });
 }
 
 function retryableHttpStatus(status: number): boolean {
