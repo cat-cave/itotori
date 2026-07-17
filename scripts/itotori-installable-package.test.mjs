@@ -111,10 +111,10 @@ describe("itotori installable package — built bin", () => {
     assert.equal(r.stdout.trim(), `itotori ${readProductVersion()}`);
   });
 
-  test("itotori localize dispatches (errors on missing --config, not a crash)", () => {
+  test("itotori localize does not require the retired --config flag", () => {
     const r = runCli(distCli, ["localize"]);
-    assert.notEqual(r.status, 0, "localize without --config must exit non-zero");
-    assert.match(r.stderr + r.stdout, /missing required flag --config/u);
+    assert.notEqual(r.status, 0, "localize without its required run flags must exit non-zero");
+    assert.doesNotMatch(r.stderr + r.stdout, /missing required flag --config/u);
   });
 
   test("itotori db-migrate dispatches (errors on missing DATABASE_URL)", () => {
@@ -236,14 +236,14 @@ describe("itotori installable package — npm pack + install (from the install, 
     assert.equal(r.stdout.trim(), `itotori ${readProductVersion()}`);
   });
 
-  test("itotori localize dispatches FROM THE INSTALL", () => {
+  test("itotori localize FROM THE INSTALL does not require --config", () => {
     const r = spawnSync(binPath, ["localize"], {
       encoding: "utf8",
       cwd: tmpdir(),
       timeout: 60_000,
     });
-    assert.notEqual(r.status, 0, "localize without --config must exit non-zero from the install");
-    assert.match(r.stderr + r.stdout, /missing required flag --config/u);
+    assert.notEqual(r.status, 0, "localize without its required run flags must exit non-zero");
+    assert.doesNotMatch(r.stderr + r.stdout, /missing required flag --config/u);
   });
 
   test("itotori init fails closed FROM THE INSTALL when no DB footprint is available", () => {

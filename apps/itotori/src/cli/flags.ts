@@ -7,19 +7,22 @@
 export function requiredFlag(args: readonly string[], name: string): string {
   const value = optionalFlag(args, name);
   if (value === undefined) {
-    throw new Error(`missing required flag ${name}`);
+    throw new Error(`flag ${name} is missing its value`);
   }
   return value;
 }
 
-/** The value of an optional `--flag <value>`, or `undefined` when the flag (or its
- * value) is absent. A value that itself looks like a flag (`--x`) is treated as a
- * missing value. */
+/** The value of an optional `--flag <value>`, or `undefined` when the flag or its
+ * value is absent. A value that itself looks like a flag (`--x`) is rejected so it
+ * cannot be silently mistaken for the value. */
 export function optionalFlag(args: readonly string[], name: string): string | undefined {
   const index = args.indexOf(name);
   if (index === -1) return undefined;
   const value = args[index + 1];
-  if (value === undefined || value.length === 0 || value.startsWith("--")) return undefined;
+  if (value === undefined || value.length === 0) return undefined;
+  if (value.startsWith("--")) {
+    throw new Error(`flag ${name} is missing its value`);
+  }
   return value;
 }
 
