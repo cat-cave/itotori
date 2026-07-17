@@ -7,9 +7,10 @@ package, no clone, no Nix/pnpm). The
 people changing itotori itself.
 
 > Start at the repo [README](../README.md) for the end-to-end user quickstart
-> (install → `itotori init` → `itotori localize-game` → review → patched
-> output). This document is the detailed install reference behind that
-> quickstart.
+> (install → `itotori init` → the multi-command localize flow:
+> `extract` → `structure-export` → `wiki build` → `localize` → `patch` →
+> `validate` → patched output). This document is the detailed install reference
+> behind that quickstart.
 
 ## User install (the package)
 

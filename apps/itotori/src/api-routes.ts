@@ -360,7 +360,7 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
       "/api/projects/{projectId}/locale-branches/{localeBranchId}/settings/translation-scope",
     operationId: "settingsTranslationScopeSave",
     summary:
-      "Save the config-driven translation scope for a locale branch. Read by the localize-fullproject command.",
+      "Save the config-driven translation scope for a locale branch. Read by the localize command.",
     pathParams: ["projectId", "localeBranchId"],
     requestSchema: "ApiSaveTranslationScopeSettingsRequest",
     responseSchema: "ApiTranslationScopeSettingsResponse",

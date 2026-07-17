@@ -37,9 +37,11 @@ Status at time of writing: 8/12 landed; 9 + 10 in flight.
 ### Gate 2 — North-Star on REAL bytes via the real CLI (the readiness gate)
 
 Node 11's synthetic e2e is not sufficient here. A **real-bytes oracle run**:
-`itotori localize-game <sweetie-hd>` end-to-end → a genuine playable RealLive patch, using the new
-legitimate loop + a live LLM + the byte substrate (kaifuu decode/extract → context/draft/QA →
-patchback). Runs on the periodic real-bytes lane, not per-node CI. This answers "does the honest
+the multi-command pipeline (`extract` → `structure-export` → `wiki build` →
+`localize` → `patch` → `validate`) end-to-end on Sweetie HD → a genuine
+playable RealLive patch, using the new legitimate loop + a live LLM + the byte
+substrate (kaifuu decode/extract → context/draft/QA → patchback). Runs on the
+periodic real-bytes lane, not per-node CI. This answers "does the honest
 core actually drive a real game."
 
 ### Gate 3 — Play / validation surface on the real game
@@ -128,7 +130,7 @@ patch") before letting it iterate autonomously.
 ## Readiness checklist before launching the user-agent
 
 - [ ] Spine 12/12 landed (no systemic/mocked-core paths remain — audits confirm).
-- [ ] `itotori localize-game sweetie-hd` → real playable patch on real bytes (Gate 2).
+- [ ] The multi-command pipeline (`extract` → `structure-export` → `wiki build` → `localize` → `patch` → `validate`) on `sweetie-hd` → real playable patch on real bytes (Gate 2).
 - [ ] Dashboard: Play the patch (utsushi renders), submit feedback, refinement run → patch v2 (Gate 3).
 - [ ] CLI + dashboard cover the full loop with no dead/orphaned surfaces (FE/BE unification).
 - [ ] Bug triage buckets (practical / operational / systemic) documented for the agent.

@@ -8,7 +8,7 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 const localActor: AuthorizationActor = { userId: localUserId };
 
 // wholegame-localize-project-provisioning (issue #60) — the whole-game
-// `localize-game` / `localize` driver persists draft jobs (FK -> projects +
+// `localize` driver persists draft jobs (FK -> projects +
 // locale_branches) and pass-ledger rows (FK -> ... + source_revisions) keyed on
 // its config run-identity, but never provisioned those parent rows, so the
 // first live draft-job insert violated the FK. `ensureRunProjectScope` fixes

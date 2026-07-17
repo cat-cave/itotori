@@ -417,7 +417,7 @@ UI. (Condensed from the full audit table.)
 
 | Capability          | Dashboard                                                              | CLI                                                    |
 | ------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------ |
-| Import / decode     | onboarding shell; real source/game registration                        | `extract`, `localize-game`                             |
+| Import / decode     | onboarding shell; real source/game registration                        | `extract`, `structure-export`                          |
 | Configure scope     | run form: whole-game/work/route/explicit + exact count                 | `itotori run start --scope … --dry-run`                |
 | Routing / fallback  | model-routing screen wired to the live resolver                        | `itotori models routes`, `itotori doctor`              |
 | Start / refine run  | "Start run" / "Refine from version"                                    | `itotori run start`, `itotori refine`                  |
