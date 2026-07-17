@@ -28,7 +28,6 @@ import {
   createCatalogResolverFixtureArtifact,
   GitHubIssuesImporter,
   parseManualFeedbackImportInput,
-  wikiContextEntryKindValues,
 } from "@itotori/db";
 import type {
   AdapterCapabilityMatrixRecord,
@@ -49,14 +48,6 @@ import type {
 import type { EngineCapabilityReportPort } from "./services/engine-capability-report.js";
 import { runAssetDecisionsList, type AssetDecisionsCliPort } from "./asset-decisions/cli.js";
 import { runQueueHealthCli, type QueueHealthCliPort } from "./queue/cli.js";
-import {
-  runWikiAddCli,
-  runWikiEditCli,
-  runWikiHistoryCli,
-  runWikiListCli,
-  runWikiShowCli,
-  type WikiCliPort,
-} from "./wiki/cli.js";
 import type { ManualFeedbackImportOutcome, ManualFeedbackImportPort } from "./manual-feedback.js";
 import type { DraftFeedbackBatchInput, DraftFeedbackBatchPort } from "./draft-feedback/index.js";
 import type { ItotoriProjectWorkflowPort, ProjectState } from "./services/project-workflow.js";
@@ -101,7 +92,6 @@ import {
 } from "./orchestrator/localize-project-stage-live.js";
 import type { LocalizeProjectStageArgs } from "./orchestrator/localize-project-stage-command.js";
 import { runLocalizeFullProjectLive } from "./orchestrator/localize-fullproject-cli.js";
-import { cancelTerminalRunLive } from "./orchestrator/terminal-run-cancellation-live.js";
 import { MAX_DRIVEN_CONCURRENCY } from "./orchestrator/project-driven-executor.js";
 import {
   runLocalizeGameCommand,
@@ -163,8 +153,19 @@ import { runInitCommand, type InitCommandDeps } from "./init-command.js";
 import type {
   PatchIterationContextFeedbackInput,
   PatchIterationServicePort,
-  PatchIterationSurface,
 } from "./iteration/patch-iteration-service.js";
+// The kept localize / wiki / patch-play commands route ONLY through these thin
+// new-pipeline command handlers. Each has a clean transitive import closure (no
+// edge to the legacy service graph — proven by composition-reachability); the live
+// substrate they drive is injected through the ports below, never imported here on
+// their behalf.
+import { runLocalizeCommand } from "./cli/localize-command.js";
+import { runWikiCommand } from "./cli/wiki-command.js";
+import { runPlayCommand } from "./cli/play-command.js";
+import type { LocalizationPortSource } from "./composition/index.js";
+import type { RunPolicyRequest } from "./run-policy/index.js";
+import type { PlayEntrypointDeps } from "./composition/play-entrypoint.js";
+import type { WikiObjectApiService } from "./wiki/object-api/index.js";
 
 export type JsonFileStore = {
   readJson(path: string): unknown;
@@ -248,10 +249,39 @@ export type ItotoriCliServices = {
    * missing.
    */
   queueHealth?: QueueHealthCliPort;
-  /** Shared node-6 browse + node-8 edit wiki surface. */
-  wiki?: WikiCliPort;
   /**
-   * Node 11's actor-bound version/play/feedback/refinement surface. Optional
+   * The kept `wiki` command's new-pipeline substrate: the Wiki object-API service
+   * the composition `runWikiObjectCommand` delegates to. Optional so unit suites
+   * that don't exercise the wiki command can omit it; the handler refuses loudly
+   * when it is missing. Populating it in the live factory needs the new
+   * `ItotoriLlmWikiRepository` / `ItotoriLlmHumanInputRepository` behind a
+   * production field-cipher — a substrate seam not yet wired into
+   * `withDatabaseItotoriServices` (flagged; never a fallback to the old service).
+   */
+  wikiObjectApi?: WikiObjectApiService;
+  /**
+   * The kept `localize` command's new-pipeline substrate: resolve the live
+   * `WorkflowPortDeps` (or fake ports for a proof) for one run policy. Production
+   * assembles it from `composition/live`; the remaining role-input assemblers over
+   * the decode facts + installed bible are a substrate seam not yet wired into the
+   * live factory (flagged). Optional so unit suites can omit it; the handler
+   * refuses loudly when it is missing — it never routes to the old service.
+   */
+  localizationSubstrate?: {
+    resolvePortSource(
+      request: RunPolicyRequest,
+    ): LocalizationPortSource | Promise<LocalizationPortSource>;
+  };
+  /**
+   * The kept `patch play` command's new-pipeline substrate: the exact-surface
+   * loader + Utsushi runtime launcher the composition `runPlaySession` drives. The
+   * live factory wires it from the localization-iteration surface read + the real
+   * `UtsushiPatchRuntimeLauncher` (no journal reservation/finalizer). Optional so
+   * unit suites can omit it; the handler refuses loudly when it is missing.
+   */
+  patchPlay?: PlayEntrypointDeps;
+  /**
+   * Node 11's actor-bound version/feedback/refinement surface. Optional
    * so unrelated CLI unit suites can omit the expensive DB-backed workflow;
    * iteration commands refuse loudly when it is not installed.
    */
@@ -316,7 +346,7 @@ export async function runItotoriCliCommand(
       await runLocalizeProjectStage(args, dependencies);
       break;
     case "localize":
-      await runLocalizeFullProject(args, dependencies);
+      await runLocalize(args, dependencies);
       break;
     case "localize-game":
       await runLocalizeGame(args, dependencies);
@@ -428,7 +458,7 @@ export async function runItotoriCliCommand(
       await runQueueHealthHandler(args, dependencies);
       break;
     case "wiki":
-      await runWikiHandler(args, dependencies);
+      await runWiki(args, dependencies);
       break;
     case "help":
       process.stdout.write(`${buildHelpText(args.includes("--all"))}\n`);
@@ -454,7 +484,7 @@ async function runPatchCommand(
       await runPatchIterationVersionsCommand(args, dependencies);
       return;
     case "play":
-      await runPatchIterationPlayCommand(args, dependencies);
+      await runPlay(args, dependencies);
       return;
   }
   const sourceRoot = requiredFlag(args, "--source");
@@ -506,33 +536,25 @@ async function runPatchIterationVersionsCommand(
 /**
  * `itotori patch play <version> [--launch-json <object>] [--output <json>]`
  *
- * The shared service opens the exact hash-bound patch through the real runtime
- * before it creates a session. This command deliberately returns that launch
- * receipt, not a delivery archive masquerading as a play surface.
+ * The new-pipeline path: load the exact hash-bound play surface and launch it
+ * through Utsushi's real replay runtime via the composition `runPlaySession`
+ * entrypoint. It reaches ONLY the new play launcher — never the legacy
+ * `PatchIterationService.play` journal reservation/finalizer path. The live
+ * surface loader + launcher are injected through `services.patchPlay`.
  */
-async function runPatchIterationPlayCommand(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  const patchVersionId = requiredPatchIterationVersionArgument(args);
-  const outputPath = optionalFlag(args, "--output");
-  const launchDescriptor = optionalJsonObjectFlag(args, "--launch-json");
-  const result = await dependencies.withServices(async (services) => {
-    const patchIteration = requirePatchIterationPort(services);
-    const surface = await patchIteration.load({ patchVersionId });
-    if (surface === null) {
-      throw new Error(`patch version ${patchVersionId} was not found`);
+async function runPlay(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
+  await dependencies.withServices(async (services) => {
+    if (services.patchPlay === undefined) {
+      throw new Error(
+        "patch play is not configured in this CLI build (patchPlay port missing — the new-pipeline surface loader + runtime launcher are not installed)",
+      );
     }
-    const session = await patchIteration.play({
-      patchVersionId,
-      ...(launchDescriptor === undefined ? {} : { launchDescriptor }),
+    const playDeps = services.patchPlay;
+    await runPlayCommand(args, {
+      io: { writeJson: (path, value) => dependencies.io.writeJson(path, value) },
+      resolvePlayDeps: () => playDeps,
     });
-    return {
-      surface: patchIterationSurfaceCliView(surface),
-      session,
-    };
   });
-  writePatchIterationOutput(dependencies, outputPath, result);
 }
 
 /**
@@ -726,30 +748,12 @@ function patchIterationPatchCliView(input: PatchPlaySurface) {
   };
 }
 
-function patchIterationSurfaceCliView(input: PatchIterationSurface) {
-  return {
-    patch: patchIterationPatchCliView(input.patch),
-    versions: input.versions.map(patchIterationVersionCliView),
-    feedback: input.feedback,
-  };
-}
-
 function requiredPatchIterationLocaleBranch(args: string[]): string {
   return optionalFlag(args, "--locale-branch") ?? requiredFlag(args, "--locale");
 }
 
 function requiredObservedPatchVersionId(args: string[]): string {
   return optionalFlag(args, "--observed-patch-version") ?? requiredFlag(args, "--patch-version");
-}
-
-function requiredPatchIterationVersionArgument(args: string[]): string {
-  const flag = optionalFlag(args, "--patch-version");
-  if (flag !== undefined) return flag;
-  const positional = args[2];
-  if (positional === undefined || positional.length === 0 || positional.startsWith("--")) {
-    throw new Error("itotori patch play requires <patch-version> or --patch-version <id>");
-  }
-  return positional;
 }
 
 function writePatchIterationOutput(
@@ -1510,72 +1514,83 @@ async function runLocalizeProjectStage(
 }
 
 /**
- * itotori-localize-fullproject-cli — the general `itotori localize <project>`
- * whole-game driver. Runs the FULL configured project (every in-scope unit)
- * through the durable attempt/outcome journal against LIVE OpenRouter + real
- * Postgres: persists every physical call, canonical outcomes, and provenance
- * before exporting a patch. GAME-AGNOSTIC — the only
- * inputs are the config path + a run directory; the project/branch/revision
- * ids + the pinned pair arrive through the config + its pair-policy.
+ * `itotori localize` — the kept command with two disjoint invocation shapes:
  *
- * Required flags (no defaulting):
- *   --config <PATH>       localize-fullproject config JSON
- *   --run-dir <PATH>      directory for the patch export + provider-run
- *                         artifacts + run summary
- * Optional:
- *   --resume-run-id <ID> resume an existing paused or finalizing durable run
- *   --cancel             abort the existing --resume-run-id without running a
- *                        provider or parsing --config
- *   --cost-cap-usd <decimal>   durable run-level exact-decimal cost cap
- *   --concurrency <N>     client-side bounded-concurrency cap (default 8; wins
- *                         over the config's `concurrency`)
- *   --source <PATH>       read-only source game root. RealLive: the game root
- *                         (REALLIVEDATA/Seen.txt). RPG Maker MV/MZ: the `www`
- *                         dir (contains `data/`).
- *   --patch-target <PATH> writable output the patched archive lands under
+ *   1. FRESH run: `itotori localize --run-mode <mode> --structure <path> [...]`
+ *      The new-pipeline path: resolve the run policy, project the decoded
+ *      narrative structure into coherence-ordered scenes, and drive the
+ *      deterministic workflow driver through the composition `runLocalization`
+ *      entrypoint. It reaches ONLY the new pipeline — never
+ *      `ProjectWorkflowService.draftProject`, a provider object, the orchestrator
+ *      journal reservation/finalizer, the context-correction worker, or a
+ *      raw-MTL path. The live `WorkflowPortDeps` are injected through
+ *      `services.localizationSubstrate`, so this path opens `withServices`.
  *
- * m1-wholegame-localize-to-patch-seam: pass BOTH --source and --patch-target to
- * reach an APPLYABLE, byte-correct patch — the run's real journal outcomes pass
- * the export-patch preflight (production loader) then `kaifuu patch`
- * (dispatched on the config engineProfile: `--engine reallive` for Seen.txt,
- * `--engine rpgmaker` for www/data/*.json → `.kaifuu` delta + patched tree)
- * writes the patched output. Omit both to stop at translated-bridge.json.
+ *   2. RESUME: `itotori localize --resume-run-id <ID> --config <PATH> --run-dir <PATH>`
+ *      Resume an existing durable run through the DB-DIRECT terminal-run
+ *      finalizer / durable-executor (`runLocalizeFullProjectLive`). A
+ *      finalizing-commit resume is config/provider/executor-free — it confirms an
+ *      already-computed terminal commit from the canonical DB summary — and MUST
+ *      NOT open `withServices` (constructing project-workflow services violates
+ *      the resume invariant). The resume branch therefore dispatches BEFORE any
+ *      `withServices` call.
  */
-async function runLocalizeFullProject(
-  args: string[],
-  dependencies: ItotoriCliDependencies,
-): Promise<void> {
-  if (args.includes("--cancel")) {
-    const runId = requiredFlag(args, "--resume-run-id");
-    const runDir = requiredFlag(args, "--run-dir");
-    const cancelled = await cancelTerminalRunLive({
-      runId,
-      runDir,
-      io: { writeJson: (path, value) => dependencies.io.writeJson(path, value) },
-    });
-    process.stdout.write(
-      `${JSON.stringify(
-        {
-          journalRunId: cancelled.journalRunId,
-          runState: cancelled.runState,
-          summaryPath: cancelled.summaryPath,
-          rootCause: cancelled.summary.rootCause,
-        },
-        null,
-        2,
-      )}\n`,
-    );
+async function runLocalize(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
+  const resumeRunId = optionalFlag(args, "--resume-run-id");
+  if (resumeRunId !== undefined) {
+    await resumeDurableLocalizeRun(args, dependencies, resumeRunId);
     return;
   }
+  // Validate the required run flags BEFORE opening services — a fresh localize
+  // with no `--config` must fail as "missing required flag --config", not as a
+  // downstream DATABASE_URL error from `withServices`.
+  requiredFlag(args, "--config");
+  await dependencies.withServices(async (services) => {
+    if (services.localizationSubstrate === undefined) {
+      throw new Error(
+        "localize is not configured in this CLI build (localizationSubstrate port missing — the new-pipeline WorkflowPortDeps assemblers are not installed)",
+      );
+    }
+    const substrate = services.localizationSubstrate;
+    await runLocalizeCommand(args, {
+      io: {
+        readJson: (path) => dependencies.io.readJson(path),
+        writeJson: (path, value) => dependencies.io.writeJson(path, value),
+      },
+      resolvePortSource: (request) => substrate.resolvePortSource(request),
+    });
+  });
+}
 
+/**
+ * Resume an existing durable localize run WITHOUT opening project-workflow
+ * services. This is a DB-direct path into the durable journal + terminal
+ * finalizer through `runLocalizeFullProjectLive`; it never constructs the
+ * `withServices` graph. A finalizing-commit resume is config/provider/executor-
+ * free (the config is read only lazily, and only if a physical patch stage is
+ * incomplete), so the finalizer-resume invariant — no config, provider, or
+ * executor work to confirm an already-computed terminal commit — is preserved.
+ *
+ * Required flags:
+ *   --config <PATH>       localize-fullproject config JSON (read lazily; a
+ *                         commit-only resume never opens it)
+ *   --run-dir <PATH>      directory the run summary is mirrored into
+ * Optional:
+ *   --cost-cap-usd <decimal> / --concurrency <N> / --allow-partial-patch
+ *   --source <PATH> + --patch-target <PATH>  (both or neither) reach an
+ *                         applyable patch when resuming a run that still owes
+ *                         executor + patch-apply work.
+ */
+async function resumeDurableLocalizeRun(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+  resumeRunId: string,
+): Promise<void> {
   const configPath = requiredFlag(args, "--config");
   const runDir = requiredFlag(args, "--run-dir");
-  const resumeRunId = optionalFlag(args, "--resume-run-id");
   const costCapUsdRaw = optionalFlag(args, "--cost-cap-usd");
   const concurrency = parseConcurrencyFlag(args);
   const allowPartialPatch = args.includes("--allow-partial-patch");
-  // m1-wholegame-localize-to-patch-seam: --source (read-only game root) +
-  // --patch-target (writable output) reach an APPLYABLE patch. Both or neither.
   const sourceRoot = optionalFlag(args, "--source");
   const patchTargetRoot = optionalFlag(args, "--patch-target");
   if ((sourceRoot === undefined) !== (patchTargetRoot === undefined)) {
@@ -1600,7 +1615,7 @@ async function runLocalizeFullProject(
       readJson: (path) => dependencies.io.readJson(path),
       writeJson: (path, value) => dependencies.io.writeJson(path, value),
     },
-    ...(resumeRunId !== undefined ? { resumeRunId } : {}),
+    resumeRunId,
     ...(costCapUsd !== undefined ? { costCapUsd } : {}),
     ...(concurrency !== undefined ? { concurrency } : {}),
     ...(allowPartialPatch ? { allowPartialPatch: true } : {}),
@@ -3264,164 +3279,19 @@ async function runQueueHealthHandler(
 // Every operation delegates to the same actor-bound WikiBrainService used by
 // the Studio/API. `edit` without --entry-id creates a note/glossary/style
 // entry through node 8; it never writes a separate CLI-only record.
-async function runWikiHandler(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
-  const subcommand = args[1];
-  if (
-    subcommand !== "list" &&
-    subcommand !== "show" &&
-    subcommand !== "history" &&
-    subcommand !== "edit"
-  ) {
-    throw new Error("itotori wiki requires one of: list, show, history, edit");
-  }
-  const projectId = requiredFlag(args, "--project");
-  const localeBranchId = requiredWikiLocaleBranch(args);
-  const outputPath = optionalFlag(args, "--output");
-  const result = await dependencies.withServices(async (services) => {
-    const wiki = requireWikiPort(services);
-    switch (subcommand) {
-      case "list": {
-        const kindRaw = optionalFlag(args, "--kind");
-        const includeStaleRaw = optionalFlag(args, "--include-stale");
-        const limitRaw = optionalFlag(args, "--limit");
-        const offsetRaw = optionalFlag(args, "--offset");
-        return await runWikiListCli(
-          {
-            projectId,
-            localeBranchId,
-            ...(optionalFlag(args, "--source-revision") === undefined
-              ? {}
-              : { sourceRevisionId: optionalFlag(args, "--source-revision")! }),
-            ...(kindRaw === undefined ? {} : { kind: parseWikiContextKind(kindRaw) }),
-            ...(includeStaleRaw === undefined
-              ? {}
-              : { includeStale: parseBooleanFlag(includeStaleRaw, "--include-stale") }),
-            ...(limitRaw === undefined
-              ? {}
-              : { limit: parseWikiPositiveInteger(limitRaw, "--limit") }),
-            ...(offsetRaw === undefined
-              ? {}
-              : { offset: parseNonNegativeInteger(offsetRaw, "--offset") }),
-          },
-          wiki,
-        );
-      }
-      case "show": {
-        const entry = await runWikiShowCli(
-          { projectId, localeBranchId, contextArtifactId: requiredWikiEntryId(args) },
-          wiki,
-        );
-        if (entry === null) {
-          throw new Error("wiki entry was not found");
-        }
-        return entry;
-      }
-      case "history": {
-        const history = await runWikiHistoryCli(
-          { projectId, localeBranchId, contextArtifactId: requiredWikiEntryId(args) },
-          wiki,
-        );
-        if (history === null) {
-          throw new Error("wiki entry was not found");
-        }
-        return history;
-      }
-      case "edit": {
-        const body = requiredFlag(args, "--body");
-        const reason = requiredFlag(args, "--reason");
-        const title = optionalFlag(args, "--title");
-        const affectedUnitIds = repeatedFlag(args, "--affected-unit");
-        const entryId = optionalFlag(args, "--entry-id") ?? optionalFlag(args, "--entry");
-        if (entryId !== undefined) {
-          return await runWikiEditCli(
-            {
-              projectId,
-              localeBranchId,
-              contextArtifactId: entryId,
-              body,
-              reason,
-              ...(title === undefined ? {} : { title }),
-              ...(affectedUnitIds.length === 0 ? {} : { affectedUnitIds }),
-            },
-            wiki,
-          );
-        }
-        const sourceRevisionId = requiredFlag(args, "--source-revision");
-        const kind = parseWikiAddKind(optionalFlag(args, "--kind") ?? "note");
-        if (title === undefined) {
-          throw new Error("itotori wiki edit without --entry-id requires --title");
-        }
-        if (affectedUnitIds.length === 0) {
-          throw new Error(
-            "itotori wiki edit without --entry-id requires at least one --affected-unit",
-          );
-        }
-        return await runWikiAddCli(
-          {
-            projectId,
-            localeBranchId,
-            sourceRevisionId,
-            kind,
-            title,
-            body,
-            reason,
-            affectedUnitIds,
-          },
-          wiki,
-        );
-      }
+async function runWiki(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
+  await dependencies.withServices(async (services) => {
+    if (services.wikiObjectApi === undefined) {
+      throw new Error(
+        "wiki is not configured in this CLI build (wikiObjectApi port missing — the new-pipeline Wiki object-API service is not installed)",
+      );
     }
+    const service = services.wikiObjectApi;
+    await runWikiCommand(args, {
+      io: { writeJson: (path, value) => dependencies.io.writeJson(path, value) },
+      resolveWikiService: () => service,
+    });
   });
-  if (outputPath !== undefined) {
-    dependencies.io.writeJson(outputPath, result);
-    return;
-  }
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-}
-
-function requireWikiPort(services: ItotoriCliServices): WikiCliPort {
-  if (services.wiki === undefined) {
-    throw new Error("wiki service is not configured in this CLI build");
-  }
-  return services.wiki;
-}
-
-function requiredWikiLocaleBranch(args: string[]): string {
-  return optionalFlag(args, "--locale-branch") ?? requiredFlag(args, "--locale");
-}
-
-function requiredWikiEntryId(args: string[]): string {
-  return (
-    optionalFlag(args, "--entry-id") ??
-    optionalFlag(args, "--entry") ??
-    requiredFlag(args, "--entry-id")
-  );
-}
-
-function parseWikiContextKind(
-  value: string,
-): (typeof wikiContextEntryKindValues)[keyof typeof wikiContextEntryKindValues] {
-  if (!(Object.values(wikiContextEntryKindValues) as string[]).includes(value)) {
-    throw new Error(
-      `unknown wiki kind: ${value} (expected one of ${Object.values(wikiContextEntryKindValues).join(", ")})`,
-    );
-  }
-  return value as (typeof wikiContextEntryKindValues)[keyof typeof wikiContextEntryKindValues];
-}
-
-function parseWikiAddKind(value: string): "note" | "glossary" | "style" {
-  if (value === "note" || value === "glossary" || value === "style") {
-    return value;
-  }
-  throw new Error("new wiki context kind must be note, glossary, or style");
-}
-
-function parseWikiPositiveInteger(value: string, name: string): number {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isInteger(parsed) || parsed < 1 || String(parsed) !== value) {
-    throw new Error(`${name} must be a positive integer`);
-  }
-  return parsed;
 }
 
 function repeatedFlag(args: string[], name: string): string[] {

@@ -37,6 +37,10 @@ import { applyKaifuuRealLivePatch } from "../src/orchestrator/patch-apply-seam.j
 import { bracketWrapForRealLive } from "../src/orchestrator/localize-project-stage-command.js";
 import { ProductionPlayTesterPatchArtifactMaterializer } from "../src/play/production-patch-revision-materializer.js";
 import {
+  UtsushiPatchRuntimeLauncher,
+  type PatchRuntimeLaunchReceipt,
+} from "../src/play/patch-runtime-launcher.js";
+import {
   bindPlayTesterResultRevisionService,
   PlayTesterResultRevisionService,
 } from "../src/play/result-revision-service.js";
@@ -85,16 +89,6 @@ type ProductionParentArtifacts = {
   artifactRefs: Record<string, string>;
   artifactHashes: Record<string, string>;
   cleanup(): void;
-};
-
-type LivePatchPlayCliOutput = {
-  surface: { patch: { patchVersionId: string } };
-  session: {
-    playSessionId: string;
-    observedPatchVersionId: string;
-    launchDescriptor: Record<string, unknown>;
-    qaCallouts: unknown[];
-  };
 };
 
 async function canonicalNoopFeedbackHead(
@@ -175,11 +169,10 @@ describe.skipIf(!process.env.DATABASE_URL)("PatchIterationService live Postgres"
         ]),
       });
 
-      // No test launcher or scene override: `itotori patch play` reaches the
-      // same default production service the dashboard uses. The launcher
-      // derives the scene only from the hash-bound translated bridge, then
-      // drives the materialized Kaifuu target through real Utsushi before the
-      // CLI receives a durable session receipt.
+      // `itotori patch play` now drives the NEW-pipeline runtime launcher
+      // (composition `runPlaySession`) over the exact hash-bound surface — never
+      // the legacy journal reservation/finalizer. It returns the launch receipt
+      // directly and persists no play session of its own.
       const cliOutputPath = "patch-iteration-live-play.json";
       const cliWrites = new Map<string, unknown>();
       await runItotoriCliCommand(["patch", "play", v1.patchVersionId, "--output", cliOutputPath], {
@@ -193,28 +186,36 @@ describe.skipIf(!process.env.DATABASE_URL)("PatchIterationService live Postgres"
         },
         migrateDatabase: async () => {},
         withServices: async (callback) =>
-          await callback({ patchIteration: service } as unknown as ItotoriCliServices),
+          await callback({
+            patchPlay: {
+              loader: {
+                load: async (patchVersionId: string) => {
+                  const loaded = await service.load({ patchVersionId });
+                  if (loaded === null) {
+                    throw new Error(`patch version ${patchVersionId} was not found`);
+                  }
+                  return loaded.patch;
+                },
+              },
+              launcher: new UtsushiPatchRuntimeLauncher(),
+            },
+          } as unknown as ItotoriCliServices),
       });
-      const cliOutput = cliWrites.get(cliOutputPath) as LivePatchPlayCliOutput | undefined;
-      expect(cliOutput).toMatchObject({
-        surface: { patch: { patchVersionId: v1.patchVersionId } },
-        session: {
-          observedPatchVersionId: v1.patchVersionId,
-          launchDescriptor: {
-            runtime: "utsushi-reallive",
-            engine: "reallive",
-            scene: 1,
-            replay: "observed",
-            observedTextLineCount: expect.any(Number),
-          },
-        },
+      const cliReceipt = cliWrites.get(cliOutputPath) as PatchRuntimeLaunchReceipt | undefined;
+      expect(cliReceipt).toMatchObject({
+        runtime: "utsushi-reallive",
+        engine: "reallive",
+        scene: 1,
+        replay: "observed",
+        observedTextLineCount: expect.any(Number),
       });
-      expect(cliOutput).not.toHaveProperty("delivery");
-      expect(JSON.stringify(cliOutput)).not.toContain("artifactRefs");
-      if (cliOutput === undefined) {
-        throw new Error("CLI play did not write its requested output receipt");
-      }
-      const session = cliOutput.session;
+      expect(cliReceipt).not.toHaveProperty("delivery");
+      expect(JSON.stringify(cliReceipt)).not.toContain("artifactRefs");
+
+      // The journal-backed play SESSION the feedback/refinement flow binds to is
+      // still produced by the shared PatchIterationService.play (out of scope of
+      // this CLI cutover; exercised directly here to seed the session id).
+      const session = await service.play({ patchVersionId: v1.patchVersionId });
       expect(session.launchDescriptor).toMatchObject({
         runtime: "utsushi-reallive",
         engine: "reallive",

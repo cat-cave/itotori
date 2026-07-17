@@ -36,15 +36,15 @@ export function buildHelpText(allCommands = false): string {
   );
   lines.push("  extract                 Extract a bridge bundle from a game.");
   lines.push("  structure-export        Export narrative structure from a game.");
-  lines.push("  localize                Run the whole-project localization driver.");
+  lines.push("  localize                Run the whole-project localization driver (new pipeline).");
   lines.push(
-    "                          --allow-partial-patch  Produce a PREVIEW patch from a partial/bounded run (undrafted units pass through byte-identical). Default: refuse partial coverage (release safety).",
+    "                          --run-mode production|pilot|test-dev  Operational posture (gates legality).",
   );
   lines.push(
-    "                          --resume-run-id <ID>  Resume a paused run from its first pending unit, or finish a durable finalizing commit.",
+    "                          --structure <PATH>  Decoded narrative-structure JSON (decode→scene projection input).",
   );
   lines.push(
-    "                          --cancel --resume-run-id <ID> --run-dir <PATH>  Abort an existing run without invoking a provider; --config is not required.",
+    "                          [--context-scope <scope>] [--output-scope <scope>] [--whole-scene-max-units <N>] [--output <JSON>].",
   );
   lines.push("  patch                   Apply a translation patch to a game.");
   lines.push("  validate                Validate a patched game (replay + render).");
@@ -55,7 +55,7 @@ export function buildHelpText(allCommands = false): string {
     "  patch versions          List durable patch versions and their lineage for a locale branch.",
   );
   lines.push(
-    "  patch play <VERSION>    Open the exact patch in its runtime and record a play session.",
+    "  patch play <VERSION>    Launch the exact hash-bound patch through the real replay runtime and return a launch receipt.",
   );
   lines.push("  feedback list|batch|add Browse or attach exact-version play-test feedback.");
   lines.push(
@@ -65,17 +65,19 @@ export function buildHelpText(allCommands = false): string {
 
   lines.push("WIKI:");
   lines.push(
-    "  wiki list               Browse run-generated scenes, characters, routes, terms, and context.",
+    "  wiki list               List the current head of every object under a snapshot (--snapshot <ID>).",
   );
   lines.push(
-    "  wiki show               Show canonical content, provenance, citations, impact, and lineage.",
-  );
-  lines.push("  wiki history            Show immutable canonical context versions.");
-  lines.push(
-    "  wiki edit               Correct an entry; without --entry-id, add note/glossary/style context.",
+    "  wiki show               Show one object's view, history, and dependents (--wiki-kind <KIND> --object-id <ID>).",
   );
   lines.push(
-    "                          Common: --project <ID> --locale-branch <ID> [--output <JSON>].",
+    "  wiki history            Show one object's immutable version history (--wiki-kind <KIND> --object-id <ID>).",
+  );
+  lines.push(
+    "  wiki edit               Append a guarded direct edit (--candidate-json <JSON> --created-at <ISO> [--assert-category <C>]).",
+  );
+  lines.push(
+    "                          Common: [--output <JSON>]. --wiki-kind is source-object|translation-object|localized-rendering.",
   );
   lines.push("");
 
@@ -134,9 +136,12 @@ export function buildHelpText(allCommands = false): string {
   lines.push("  itotori --help                    # this help");
   lines.push("  itotori --version                 # version");
   lines.push("  itotori db-migrate                # run database migrations");
-  lines.push("  itotori wiki list --project <ID> --locale-branch <ID>");
-  lines.push("  itotori wiki edit --project <ID> --locale-branch <ID> --entry-id <ID> \\");
-  lines.push("    --body <TEXT> --reason <TEXT>");
+  lines.push("  itotori wiki list --snapshot <ID>");
+  lines.push("  itotori wiki edit --wiki-kind source-object --object-id <ID> \\");
+  lines.push("    --candidate-json '{...}' --created-at <ISO>");
+  lines.push(
+    "  itotori localize --run-mode production --structure <structure.json> --output <run.json>",
+  );
   lines.push("  itotori localize-game \\");
   lines.push("    --config <config.json> \\");
   lines.push("    --source <game-root> \\");

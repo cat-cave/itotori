@@ -144,7 +144,11 @@ function cliFixture(port: PatchIterationServicePort): {
 }
 
 describe("patch iteration CLI", () => {
-  it("maps patch versions and play to the shared version/play service before legacy patch parsing", async () => {
+  it("maps patch versions to the shared version service before legacy patch parsing", async () => {
+    // `patch play` no longer routes here — it drives the new-pipeline runtime
+    // launcher (`services.patchPlay` / composition `runPlaySession`), proven in
+    // cli-command-repoint.test.ts. This asserts the `versions` read still resolves
+    // through the shared version/play service, ahead of the legacy patch parser.
     const service = patchIterationFixture();
     const { dependencies, writes } = cliFixture(service.port);
 
@@ -152,37 +156,12 @@ describe("patch iteration CLI", () => {
       ["patch", "versions", "--locale-branch", "branch-fr", "--output", "versions.json"],
       dependencies,
     );
-    await runItotoriCliCommand(
-      ["patch", "play", "patch-v1", "--launch-json", '{"scene":1}', "--output", "play.json"],
-      dependencies,
-    );
 
     expect(service.list).toHaveBeenCalledWith({ localeBranchId: "branch-fr" });
-    expect(service.load).toHaveBeenCalledWith({ patchVersionId: "patch-v1" });
-    expect(service.play).toHaveBeenCalledWith({
-      patchVersionId: "patch-v1",
-      launchDescriptor: { scene: 1 },
-    });
     expect(writes.get("versions.json")).toEqual([
       expect.objectContaining({ patchVersionId: "patch-v1" }),
     ]);
     expect(JSON.stringify(writes.get("versions.json"))).not.toContain("artifactRefs");
-    expect(writes.get("play.json")).toEqual(
-      expect.objectContaining({
-        surface: expect.objectContaining({
-          patch: expect.objectContaining({ patchVersionId: "patch-v1" }),
-        }),
-        session: expect.objectContaining({
-          playSessionId: "session-1",
-          launchDescriptor: expect.objectContaining({
-            runtime: "utsushi-reallive",
-            scene: 1,
-          }),
-        }),
-      }),
-    );
-    expect(writes.get("play.json")).not.toHaveProperty("delivery");
-    expect(JSON.stringify(writes.get("play.json"))).not.toContain("artifactRefs");
   });
 
   it("persists batch and individual/comment feedback against the exact observed version", async () => {
