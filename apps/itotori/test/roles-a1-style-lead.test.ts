@@ -26,7 +26,7 @@ import {
   type WikiObject,
 } from "../src/contracts/index.js";
 import { deepSeekV4FlashProfile } from "../src/llm/role-model-profiles.js";
-import { ClaimValidationError } from "../src/wiki/claim-validation.js";
+import { CitationResolutionError } from "../src/wiki/citation-resolution.js";
 import { buildEvidenceIndex } from "../src/wiki/evidence-index.js";
 import {
   abstractStyleFromContract,
@@ -139,12 +139,16 @@ function recordedSuccess(object: WikiObject, servedModel = deepSeekV4FlashProfil
   });
 }
 
-function request(snapshotId: `sha256:${string}`): StyleLeadRequest {
+function request(
+  snapshotId: `sha256:${string}`,
+  unit: { factId: string; text: string } = { factId: "unit:sample", text: "…" },
+): StyleLeadRequest {
   return {
     contextSnapshotId: snapshotId,
     sourceLanguage: "ja-JP",
     operatorBrief: "House style for a peer-to-peer romance VN; keep honorifics.",
-    slice: [{ sceneId: "scene-0001", excerpt: "…" }],
+    // The slice's single unit is labelled u1 by citeableUnits; A1 cites that label.
+    slice: [{ sceneId: "scene-0001", units: [unit] }],
     parentEventId: HASH("d"),
   };
 }
@@ -163,21 +167,26 @@ describe("A1 clause 1 — a cited source-language style-contract, claim-validate
     const index = buildEvidenceIndex(model);
     const factId = unitFactIdAt(snapshot, 0);
     const record = index.get(factId)!;
-    const resolving: Citation = {
-      evidenceId: record.factId,
-      evidenceHash: record.hash,
-      snapshotId: record.snapshotId as `sha256:${string}`,
-      subject: record.subject,
+    const unit = snapshot.orderedUnits.find((candidate) => candidate.factId === factId)!;
+    const unitText = model.bundleUnits.get(unit.bridgeUnitId)!.sourceText;
+    const quotedSpan = unitText.slice(0, 1);
+    // The model cites the LABEL (u1) it was shown, never the uuid fact id.
+    const modelAuthored: Citation = {
+      evidenceId: "u1",
+      evidenceHash: HASH("0"),
+      snapshotId: HASH("0"),
+      subject: { kind: "unit", id: "model-invented-subject" },
       role: "establishes",
-      playOrderIndex: record.fromPlayOrder,
+      quotedSpan,
+      playOrderIndex: 999,
     };
     const contract = styleContract({
       objectId: "style:game-a",
       snapshotId: model.snapshotId,
-      citations: [resolving],
+      citations: [modelAuthored],
     });
 
-    const result = await runStyleLead(request(model.snapshotId), {
+    const result = await runStyleLead(request(model.snapshotId, { factId, text: unitText }), {
       model: recordedStyleLeadModel(recordedSuccess(contract)),
       storePrompt: inlineStylePromptStore(),
       validationModel: model,
@@ -188,15 +197,26 @@ describe("A1 clause 1 — a cited source-language style-contract, claim-validate
     expect(result.served.model).toBe(deepSeekV4FlashProfile.model);
     // The served PROVIDER is recorded telemetry, not a pinned input (no provider pin).
     expect(result.served.provider).toBe("fireworks");
+    // Snapshot-owned coordinates are resolved after parsing; model prose, role,
+    // and read-proof remain intact for independent claim validation.
+    expect(result.styleContract.claims[0]!.citations[0]).toMatchObject({
+      evidenceId: record.factId,
+      evidenceHash: record.hash,
+      snapshotId: record.snapshotId,
+      subject: record.subject,
+      role: "establishes",
+      quotedSpan,
+      playOrderIndex: record.fromPlayOrder,
+    });
   });
 
-  it("PROOF: a fabricated citation (hash-mismatch) is rejected by claim validation", async () => {
+  it("PROOF: a fabricated evidence id is rejected during citation resolution", async () => {
     const { model, snapshot } = buildClaimFixture();
     const index = buildEvidenceIndex(model);
     const record = index.get(unitFactIdAt(snapshot, 0))!;
     const forged: Citation = {
-      evidenceId: record.factId,
-      evidenceHash: HASH("f"), // wrong hash → cannot resolve
+      evidenceId: "unit:does-not-exist",
+      evidenceHash: record.hash,
       snapshotId: record.snapshotId as `sha256:${string}`,
       subject: record.subject,
       role: "establishes",
@@ -213,7 +233,7 @@ describe("A1 clause 1 — a cited source-language style-contract, claim-validate
         storePrompt: inlineStylePromptStore(),
         validationModel: model,
       }),
-    ).rejects.toBeInstanceOf(ClaimValidationError);
+    ).rejects.toBeInstanceOf(CitationResolutionError);
   });
 
   it("PROOF: a wrong served model is rejected (certified model)", async () => {
@@ -275,6 +295,8 @@ describe("A1 clause 1 — a cited source-language style-contract, claim-validate
     const prompt = composeStyleLeadPrompt(request(HASH("e")));
     expect(prompt.system.length).toBeGreaterThan(0);
     expect(prompt.user).toContain("Emit EXACTLY one JSON object of this shape.");
+    expect(prompt.user).toContain("[u1] …");
+    expect(prompt.user).toContain("quotedSpan as a verbatim substring");
     expect(prompt.user).toContain(JSON.stringify(STYLE_LEAD_FEW_SHOT_EXAMPLE, null, 2));
   });
 });

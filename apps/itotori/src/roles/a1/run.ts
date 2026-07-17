@@ -17,9 +17,11 @@ import {
 import type { dispatch, DispatchRuntime } from "../../llm/dispatch.js";
 import { deepSeekV4FlashProfile, servedModelIsCertified } from "../../llm/role-model-profiles.js";
 import { validateWikiObjectClaims } from "../../wiki/claim-validation.js";
+import { resolveObjectCitations } from "../../wiki/citation-resolution.js";
 import type { ReadModel } from "../../read-tools/index.js";
 import {
   assembleStyleLeadCallSpec,
+  citeableUnits,
   composeStyleLeadPrompt,
   type StyleLeadRequest,
   type StylePromptStore,
@@ -109,12 +111,19 @@ export async function runStyleLead(
   // before the object is accepted — the model cannot reliably author them (it
   // emits a zero hash). Claims still re-prove against the real snapshot below.
 
-  // Claim validation: every claim must re-prove against the immutable snapshot. A
-  // fabricated citation throws a ClaimValidationError here — A1 never ships one.
-  validateWikiObjectClaims(object, deps.validationModel);
+  // Citation machine fields are resolved only from the immutable snapshot before
+  // the independent claim-validation gate re-proves every claim. A1 cites a short
+  // label (u1, u2, …) it can copy; the same citeableUnits mapping the prompt used
+  // binds each label back to its real fact id. A fabricated label or quote fails
+  // loudly during resolution; A1 never ships one.
+  const labelToFactId = new Map(
+    citeableUnits(request.slice).map((unit) => [unit.label, unit.factId]),
+  );
+  const resolved = resolveObjectCitations(object, deps.validationModel, labelToFactId);
+  validateWikiObjectClaims(resolved, deps.validationModel);
 
   return {
-    styleContract: object,
+    styleContract: resolved,
     spec,
     served: { model: result.served.model, provider: result.served.provider },
   };

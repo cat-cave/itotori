@@ -87,7 +87,8 @@ describe("OpenRouter generation metadata lookup", () => {
       billing: { status: "billing_unknown" },
       reportedCostUsd: null,
     });
-    expect(calls).toBe(5);
+    // Exhausts the full attempt budget (MAX_LOOKUP_ATTEMPTS) before giving up.
+    expect(calls).toBe(12);
 
     const failingSource = openRouterGenerationLookup({
       apiKey: "test-openrouter-key",

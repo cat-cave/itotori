@@ -5,9 +5,14 @@ import {
 } from "./generation-metadata.js";
 
 const GENERATION_LOOKUP_URL = "https://openrouter.ai/api/v1/generation";
-const MAX_LOOKUP_ATTEMPTS = 5;
-const RETRY_DELAY_MS = 2_000;
-const RETRY_WINDOW_MS = 10_000;
+// The /generation stats are eventually consistent — the served route is usually
+// resolvable within ~5-8s of completion but can lag past 10s under load. The
+// lookup returns the instant the route resolves, so a generous ceiling only
+// affects the slow tail; too tight a window quarantines a legitimately-served
+// call (observed: a 10s window missed a route that resolved moments later).
+const MAX_LOOKUP_ATTEMPTS = 12;
+const RETRY_DELAY_MS = 2_500;
+const RETRY_WINDOW_MS = 30_000;
 
 export interface OpenRouterGenerationLookupOptions {
   /** The existing ZDR-scoped OpenRouter credential. */

@@ -399,15 +399,22 @@ function promptStore(
 
 async function runA1(input: RunStepInput, deps: AnalystRoleDeps): Promise<readonly WikiObject[]> {
   requiredSubject(input, "game");
+  // Take the first dispatched scenes that actually CARRY citeable units — a game's
+  // early dispatch order is often unit-less title/menu/system scenes, which would
+  // leave A1 with nothing to cite (and no label to resolve).
   const slice = deps.model.factSnapshot.routeTopology.sceneDispatchOrder
-    .slice(0, 3)
     .map((sceneId) => ({
       sceneId: String(sceneId),
-      excerpt: deps.model.factSnapshot.orderedUnits
+      units: deps.model.factSnapshot.orderedUnits
         .filter((unit) => unit.sceneId === sceneId)
-        .map((unit) => deps.model.bundleUnits.get(unit.bridgeUnitId)?.sourceText ?? "")
-        .join("\n"),
-    }));
+        .map((unit) => ({
+          factId: unit.factId,
+          text: deps.model.bundleUnits.get(unit.bridgeUnitId)?.sourceText ?? "",
+        }))
+        .filter((unit) => unit.text.length > 0),
+    }))
+    .filter((scene) => scene.units.length > 0)
+    .slice(0, 3);
   const result = await runStyleLead(
     {
       contextSnapshotId: deps.model.snapshotId,
