@@ -35,8 +35,9 @@ function dimensionStatus(value: unknown, dimension: string) {
 
 function replaceAttempts(value: ReturnType<typeof passingEvidence>, count: number) {
   const changed = structuredClone(value);
-  const { attempts, wireProofs } = fixtureAttempts(count);
+  const { attempts, wireProofs, scorecardAttempts } = fixtureAttempts(count);
   changed.efficiency.attempts = attempts;
+  changed.scorecardTelemetry.attempts = scorecardAttempts;
   changed.zdr.wireProofs = wireProofs;
   const memoKeys = attempts.map((attempt) => attempt.memo.key.memoKey);
   for (const proof of changed.sys1.restartProofs) {
@@ -205,6 +206,7 @@ describe("acceptance scoring", () => {
     const dimensions = [
       "completion",
       "efficiency",
+      "scorecardTelemetry",
       "zdr",
       "sys1",
       "grounding",
@@ -234,6 +236,13 @@ describe("acceptance scoring", () => {
       ...["acceptedOutputs"].map((key) => ["completion", key]),
       ...["lineage", "attempts"].map((key) => ["efficiency", key]),
       ...["stage", "memo"].map((key) => ["efficiency", "attempts", 0, key]),
+      ...["lineage", "attempts"].map((key) => ["scorecardTelemetry", key]),
+      ...Object.keys(evidence.scorecardTelemetry.attempts[0]!).map((key) => [
+        "scorecardTelemetry",
+        "attempts",
+        0,
+        key,
+      ]),
       ...["account", "guardrail", "wireProofs"].map((key) => ["zdr", key]),
       ...["attestationHash", "verified"].map((key) => ["zdr", "account", key]),
       ...Object.keys(evidence.zdr.wireProofs[0]!).map((key) => ["zdr", "wireProofs", 0, key]),

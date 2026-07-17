@@ -52,12 +52,29 @@ export function fixtureWireProof(attempt: ReturnType<typeof fixtureAttempt>) {
 
 export function fixtureAttempts(count: number) {
   const attempts = Array.from({ length: count }, (_, index) => fixtureAttempt(index));
-  return { attempts, wireProofs: attempts.map(fixtureWireProof) };
+  const scorecardAttempts = attempts.map((attempt, index) => ({
+    qualifyingArtifactId: `artifact:${index + 1}`,
+    memoKey: attempt.memo.key.memoKey,
+    attemptOrdinal: 1,
+    requested: { model: "fixture-model", provider: "fixture-provider" },
+    served: { model: "fixture-model", provider: "fixture-provider" },
+    generationId: `generation:${index + 1}`,
+    memoHit: false,
+    stage: "draft" as const,
+    role: "P1" as const,
+    latencyMs: 1,
+    tokens: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+    cost: { state: "confirmed" as const, amountUsd: "0" },
+    quarantine: false,
+    correction: false,
+    retry: false,
+  }));
+  return { attempts, wireProofs: attempts.map(fixtureWireProof), scorecardAttempts };
 }
 
 export function passingEvidence(pinned: PinnedAcceptanceArtifacts): AcceptanceEvidenceBundle {
   const { definition, labels, corpus } = pinned;
-  const { attempts, wireProofs } = fixtureAttempts(1);
+  const { attempts, wireProofs, scorecardAttempts } = fixtureAttempts(1);
   const memoKey = attempts[0]!.memo.key.memoKey;
   const acceptedOutputs = corpus.outputScope.units.map((unit, index) => ({
     schemaVersion: ACCEPTED_OUTPUT_SCHEMA_VERSION,
@@ -145,6 +162,7 @@ export function passingEvidence(pinned: PinnedAcceptanceArtifacts): AcceptanceEv
     corpusManifestHash: corpus.contentAddress.manifestSha256,
     completion: { acceptedOutputs },
     efficiency: { lineage: "cold", attempts },
+    scorecardTelemetry: { lineage: "qualifying", attempts: scorecardAttempts },
     zdr: {
       account: { attestationHash: fixtureHash(32_001), verified: true },
       guardrail: { attestationHash: fixtureHash(32_002), verified: true },
