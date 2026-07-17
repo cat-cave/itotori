@@ -104,9 +104,10 @@ export async function runStyleLead(
       `A1 must emit a ${request.sourceLanguage} source contract, not ${object.lang}`,
     );
   }
-  if (object.provenance.contextSnapshotId !== request.contextSnapshotId) {
-    throw new StyleLeadError("A1 contract is not pinned to the requested context snapshot");
-  }
+  // NOTE: provenance identifiers (contextSnapshotId, runMode, contextScope,
+  // authorRoleId) are SYSTEM-stamped authoritatively in the wiki-build runner
+  // before the object is accepted — the model cannot reliably author them (it
+  // emits a zero hash). Claims still re-prove against the real snapshot below.
 
   // Claim validation: every claim must re-prove against the immutable snapshot. A
   // fabricated citation throws a ClaimValidationError here — A1 never ships one.

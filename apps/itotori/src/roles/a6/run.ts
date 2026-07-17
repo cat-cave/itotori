@@ -108,9 +108,8 @@ export async function runAdaptationNote(
   // options, and mapped to exactly the flagged unit.
   assertNoteIsFunctionAndOptions(note, request.sourceLanguage);
   assertNoteMapsToFlaggedUnit(note, candidate);
-  if (note.provenance.contextSnapshotId !== request.contextSnapshotId) {
-    throw new AdaptationAnalystError("note is not pinned to the requested context snapshot");
-  }
+  // Provenance identifiers are SYSTEM-stamped in the wiki-build runner before the
+  // object is accepted (the model cannot reliably author the snapshot hash).
 
   // Claim validation: every claim must re-prove against the immutable snapshot. A
   // note citing a unit that does not exist throws here — never shipped.

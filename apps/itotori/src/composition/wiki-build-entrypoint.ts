@@ -15,6 +15,7 @@ import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 
 import {
   WikiObjectSchema,
+  type ContextScopeValue,
   type RoleId,
   type RunModeValue,
   type WikiObject,
@@ -242,6 +243,38 @@ export function createAnalystDispatchRuntime(input: {
   };
 }
 
+/** Stamp the SYSTEM-owned provenance fields on each source-wiki object with the
+ * authoritative run context. The analyst model authors the object CONTENT; the
+ * audit-trail identifiers (which snapshot, which scope, which run mode, which
+ * role) are deterministic system facts the model must NOT own — it cannot echo
+ * the 64-char snapshot hash (it emits zeros) and has authored a wrong runMode.
+ * Analyst outputs are always source objects (snapshotKind "context"). */
+export function stampSourceProvenance(
+  objects: readonly WikiObject[],
+  authority: {
+    readonly contextSnapshotId: `sha256:${string}`;
+    readonly contextScope: ContextScopeValue;
+    readonly runMode: RunModeValue;
+    readonly authorRoleId: RoleId;
+  },
+): readonly WikiObject[] {
+  return objects.map((object) => {
+    // Analyst outputs are always SOURCE objects; a translation object here would
+    // be a contract violation, so leave it untouched rather than stamp it.
+    if (object.kind === "translation") return object;
+    return {
+      ...object,
+      provenance: {
+        ...object.provenance,
+        contextSnapshotId: authority.contextSnapshotId,
+        contextScope: authority.contextScope,
+        runMode: authority.runMode,
+        authorRoleId: authority.authorRoleId,
+      },
+    };
+  });
+}
+
 /** Build the real exhaustive role dispatcher. Each branch enters that role's
  * certified dispatch helper, then lets the role's own fold/assembly code
  * re-derive citations and structural facts before the orchestrator accepts it. */
@@ -280,32 +313,50 @@ export function createAnalystRunner(deps: AnalystRunnerDeps): AnalystRunner {
     return object;
   };
 
-  return async (input) => {
-    const roleDeps: AnalystRoleDeps = { ...deps, runtime: runtimeForRole(input.role) };
+  const dispatchRole = async (
+    input: RunStepInput,
+    roleDeps: AnalystRoleDeps,
+  ): Promise<readonly WikiObject[]> => {
     switch (input.role) {
       case "A1":
-        return remember(await runA1(input, roleDeps));
+        return runA1(input, roleDeps);
       case "A2":
-        return remember(await runA2(input, roleDeps));
+        return runA2(input, roleDeps);
       case "A3":
-        return remember(await runA3(input, roleDeps));
+        return runA3(input, roleDeps);
       case "A4":
-        return remember(await runA4(input, roleDeps, findObject));
+        return runA4(input, roleDeps, findObject);
       case "A5":
-        return remember(await runA5(input, roleDeps));
+        return runA5(input, roleDeps);
       case "A6":
-        return remember(await runA6(input, roleDeps));
+        return runA6(input, roleDeps);
       case "A7":
-        return remember(await runA7(input, roleDeps));
+        return runA7(input, roleDeps);
       case "A8":
-        return remember(await runA8(input, roleDeps, findObject));
+        return runA8(input, roleDeps, findObject);
       case "A9":
-        return remember(await runA9(input, roleDeps));
+        return runA9(input, roleDeps);
       case "A10":
-        return remember(await runA10(input, roleDeps));
+        return runA10(input, roleDeps);
       default:
         return assertUnhandledRole(input.role);
     }
+  };
+  return async (input) => {
+    const roleDeps: AnalystRoleDeps = { ...deps, runtime: runtimeForRole(input.role) };
+    const produced = await dispatchRole(input, roleDeps);
+    // Provenance is a SYSTEM audit fact, not a model judgment: the analyst model
+    // cannot reliably echo the 64-char snapshot hash (it emits zeros) and has been
+    // observed to author a wrong runMode. Stamp the system-owned provenance fields
+    // authoritatively from the run context before the object is accepted/persisted.
+    return remember(
+      stampSourceProvenance(produced, {
+        contextSnapshotId: deps.model.snapshotId,
+        contextScope: input.contextScope,
+        runMode: input.runMode,
+        authorRoleId: input.role,
+      }),
+    );
   };
 }
 
