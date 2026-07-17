@@ -1,0 +1,111 @@
+{
+  "schemaVersion": "utsushi.narrative-structure.v2",
+  "entryScene": 100,
+  "sceneDispatchOrder": [100, 200, 300],
+  "scenes": [
+    {
+      "sceneId": 100,
+      "selectionControl": "none",
+      "nextScene": 200,
+      "routeMembership": ["route:common"],
+      "messages": [
+        {
+          "order": 0,
+          "speaker": "Rin",
+          "characterId": "char:rin",
+          "text": "はじめまして。",
+          "textSurface": "dialogue"
+        },
+        {
+          "order": 1,
+          "speaker": "Kaori",
+          "characterId": "char:kaori",
+          "text": "こんにちは。",
+          "textSurface": "dialogue"
+        }
+      ],
+      "choices": [],
+      "units": [
+        {
+          "unitId": "unit:100:2",
+          "bridgeRef": { "bridgeUnitId": "bridge:100:2", "sourceUnitKey": "seen100/line2" },
+          "surfaceKind": "dialogue",
+          "sourceText": "こんにちは。",
+          "characterId": "char:kaori",
+          "evidenceTier": "E2",
+          "color": null,
+          "sourceAsset": { "assetId": "seen.txt", "assetKey": "scene/100" },
+          "byteOffsetInScene": 40,
+          "byteLength": 18,
+          "rawByteHandle": "bridge:100:2",
+          "choiceId": null,
+          "playOrder": 1,
+          "revealOrder": null,
+          "observedLineIds": ["line:100:2"],
+          "routeMembership": ["route:common"]
+        },
+        {
+          "unitId": "unit:100:1",
+          "bridgeRef": { "bridgeUnitId": "bridge:100:1", "sourceUnitKey": "seen100/line1" },
+          "surfaceKind": "dialogue",
+          "sourceText": "はじめまして。",
+          "characterId": "char:rin",
+          "evidenceTier": "E2",
+          "color": null,
+          "sourceAsset": { "assetId": "seen.txt", "assetKey": "scene/100" },
+          "byteOffsetInScene": 0,
+          "byteLength": 21,
+          "rawByteHandle": "bridge:100:1",
+          "choiceId": null,
+          "playOrder": 0,
+          "revealOrder": null,
+          "observedLineIds": ["line:100:1"],
+          "routeMembership": ["route:common"]
+        }
+      ]
+    },
+    {
+      "sceneId": 200,
+      "selectionControl": "none",
+      "nextScene": 300,
+      "routeMembership": ["route:rin"],
+      "messages": [
+        {
+          "order": 0,
+          "speaker": "Rin",
+          "characterId": "char:rin",
+          "text": "また会えたね。",
+          "textSurface": "dialogue"
+        }
+      ],
+      "choices": [],
+      "units": [
+        {
+          "unitId": "unit:200:1",
+          "bridgeRef": { "bridgeUnitId": "bridge:200:1", "sourceUnitKey": "seen200/line1" },
+          "surfaceKind": "dialogue",
+          "sourceText": "また会えたね。",
+          "characterId": "char:rin",
+          "evidenceTier": "E2",
+          "color": null,
+          "sourceAsset": { "assetId": "seen.txt", "assetKey": "scene/200" },
+          "byteOffsetInScene": 0,
+          "byteLength": 21,
+          "rawByteHandle": "bridge:200:1",
+          "choiceId": null,
+          "playOrder": 0,
+          "revealOrder": null,
+          "observedLineIds": ["line:200:1"],
+          "routeMembership": []
+        }
+      ]
+    },
+    {
+      "sceneId": 300,
+      "selectionControl": "none",
+      "nextScene": null,
+      "messages": [],
+      "choices": []
+    }
+  ]
+}
