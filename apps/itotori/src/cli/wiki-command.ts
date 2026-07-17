@@ -13,7 +13,7 @@ import {
   type SourceWikiRunReport,
 } from "../composition/index.js";
 import { assertBridgeBundleV02, type BridgeBundleV02 } from "@itotori/localization-bridge-schema";
-import type { RunModeValue } from "../contracts/index.js";
+import type { RoleId, RunModeValue } from "../contracts/index.js";
 import type {
   WikiObjectApiService,
   WikiObjectSelector,
@@ -90,12 +90,16 @@ function parseWikiBuildInvocation(args: readonly string[], io: WikiCommandIo): W
   const bridgeJson = io.readJson(requiredFlag(args, "--bridge"));
   assertBridgeBundleV02(bridgeJson);
   const portraitPath = optionalFlag(args, "--portrait-sources");
+  const rolesRaw = optionalFlag(args, "--roles");
+  const roles =
+    rolesRaw === undefined ? undefined : (rolesRaw.split(",").map((r) => r.trim()) as RoleId[]);
   return {
     structureJson,
     bridge: bridgeJson as BridgeBundleV02,
     sourceLanguage: requiredFlag(args, "--source-locale"),
     runMode: parseRunMode(requiredFlag(args, "--run-mode")),
     concurrency: parsePositiveInteger(optionalFlag(args, "--concurrency") ?? "4", "--concurrency"),
+    ...(roles === undefined ? {} : { roles }),
     ...(portraitPath === undefined
       ? {}
       : { portraitSources: parsePortraitSources(io.readJson(portraitPath)) }),
