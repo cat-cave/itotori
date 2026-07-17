@@ -54,7 +54,12 @@ import { runInitCommand, type InitCommandDeps } from "./init-command.js";
 import { runLocalizeCommand } from "./cli/localize-command.js";
 import { runWikiCommand } from "./cli/wiki-command.js";
 import { runPlayCommand } from "./cli/play-command.js";
-import type { LocalizationPerRunInput, LocalizationPortSource } from "./composition/index.js";
+import type {
+  LocalizationPerRunInput,
+  LocalizationPortSource,
+  SourceWikiRunReport,
+  WikiBuildInvocation,
+} from "./composition/index.js";
 import type { RunPolicyRequest } from "./run-policy/index.js";
 import type { PlayEntrypointDeps } from "./composition/play-entrypoint.js";
 import type { WikiObjectApiService } from "./wiki/object-api/index.js";
@@ -89,15 +94,15 @@ export type ItotoriCliServices = {
    */
   queueHealth?: QueueHealthCliPort;
   /**
-   * The kept `wiki` command's new-pipeline substrate: the Wiki object-API service
-   * the composition `runWikiObjectCommand` delegates to. Optional so unit suites
-   * that don't exercise the wiki command can omit it; the handler refuses loudly
-   * when it is missing. Populating it in the live factory needs the new
-   * `ItotoriLlmWikiRepository` / `ItotoriLlmHumanInputRepository` behind a
-   * production field-cipher — a substrate seam not yet wired into
-   * `withDatabaseItotoriServices` (flagged; never a fallback to the old service).
+   * The `wiki` object's installed-bible API. Optional so unit suites that do not
+   * exercise it can omit it; production binds the DB-backed service.
    */
   wikiObjectApi?: WikiObjectApiService;
+  /** The production source-Wiki analyst-wave assembler. It is separate from the
+   * object API: `wiki build` writes source objects through the repository ledger. */
+  wikiBuild?: {
+    run(input: WikiBuildInvocation): Promise<SourceWikiRunReport>;
+  };
   /**
    * The kept `localize` command's new-pipeline substrate: resolve the live
    * `WorkflowPortDeps` (or fake ports for a proof) for one run policy. Production
@@ -1281,21 +1286,34 @@ async function runQueueHealthHandler(
 }
 
 // Wiki commands are intentionally a nested user-facing surface:
-//   itotori wiki list/show/history/edit
-// Every operation delegates to the same actor-bound WikiBrainService used by
-// the Studio/API. `edit` without --entry-id creates a note/glossary/style
-// entry through node 8; it never writes a separate CLI-only record.
+//   itotori wiki build/list/show/history/edit
+// `build` enters the source-Wiki composition; object operations use the
+// actor-bound installed-bible API.
 async function runWiki(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
   await dependencies.withServices(async (services) => {
-    if (services.wikiObjectApi === undefined) {
+    const building = args[1] === "build";
+    if (!building && services.wikiObjectApi === undefined) {
       throw new Error(
         "wiki is not configured in this CLI build (wikiObjectApi port missing — the new-pipeline Wiki object-API service is not installed)",
       );
     }
+    if (building && services.wikiBuild === undefined) {
+      throw new Error(
+        "wiki build is not configured in this CLI build (wikiBuild port missing — the source-Wiki analyst substrate is not installed)",
+      );
+    }
     const service = services.wikiObjectApi;
+    const wikiBuild = services.wikiBuild;
     await runWikiCommand(args, {
-      io: { writeJson: (path, value) => dependencies.io.writeJson(path, value) },
-      resolveWikiService: () => service,
+      io: {
+        readJson: (path) => dependencies.io.readJson(path),
+        writeJson: (path, value) => dependencies.io.writeJson(path, value),
+      },
+      resolveWikiService: () => {
+        if (service === undefined) throw new Error("wiki object API is not configured");
+        return service;
+      },
+      ...(wikiBuild === undefined ? {} : { runBuild: (input) => wikiBuild.run(input) }),
     });
   });
 }

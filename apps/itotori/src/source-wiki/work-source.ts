@@ -7,8 +7,13 @@
 // model — a route a unit never belongs to is never enumerated, and a game with
 // no route tags collapses to a single whole-game route so the fold still runs.
 
+import { ambiguousTermCandidates } from "../roles/a2/index.js";
+import { flaggedAdaptationCandidates } from "../roles/a6/index.js";
+import { characterRouteIntersection } from "../roles/a9/index.js";
+import { readUnknownSpeakerUnits } from "../roles/a10/index.js";
 import type { FactRouteScope, FactSnapshot } from "../prepass/index.js";
 import type { RouteScope } from "../contracts/index.js";
+import type { ReadModel } from "../read-tools/index.js";
 
 /** One route: its id, the scope objects on it carry, and its scenes in play
  * order (the serial A3 fold walks these). */
@@ -26,9 +31,25 @@ export interface WorkSource {
   readonly gameId: string;
   readonly routes: readonly RouteWork[];
   readonly characterIds: readonly string[];
-  readonly pairs: readonly (readonly [string, string])[];
+  /** Characters for which this run has a real portrait source. A7 cannot
+   * fabricate a media hash, so an absent source is deliberately not sharded. */
+  readonly portraitCharacterIds: readonly string[];
+  /** The exact decoded character/route intersections A9 can author. */
+  readonly characterRoutePairs: readonly {
+    readonly characterId: string;
+    readonly routeId: string;
+  }[];
   readonly termKeys: readonly string[];
-  readonly units: readonly { readonly unitId: string; readonly scope: RouteScope }[];
+  /** The exact pre-pass flagged A6 subjects. */
+  readonly adaptationUnits: readonly { readonly unitId: string; readonly scope: RouteScope }[];
+  /** The exact genuinely-unknown-speaker A10 subjects. */
+  readonly unknownSpeakerUnits: readonly { readonly unitId: string; readonly scope: RouteScope }[];
+  /** Complete global A3 fold, with its per-scene summary and cumulative story scopes. */
+  readonly scenes: readonly {
+    readonly sceneId: number;
+    readonly sceneScope: RouteScope;
+    readonly storyScope: RouteScope;
+  }[];
 }
 
 function toRouteScope(scope: FactRouteScope): RouteScope {
@@ -70,30 +91,86 @@ function deriveRoutes(snapshot: FactSnapshot): RouteWork[] {
   }));
 }
 
+function mergeScopes(left: RouteScope, right: RouteScope): RouteScope {
+  if (left.kind === "global" || right.kind === "global") return { kind: "global" };
+  const ids = new Set<string>();
+  for (const scope of [left, right]) {
+    if (scope.kind === "route") ids.add(scope.routeId);
+    else for (const id of scope.routeIds) ids.add(id);
+  }
+  const routeIds = [...ids].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return routeIds.length === 1
+    ? { kind: "route", routeId: routeIds[0]! }
+    : { kind: "route-set", routeIds };
+}
+
+function sceneScopes(snapshot: FactSnapshot): WorkSource["scenes"] {
+  const byScene = new Map<number, RouteScope>();
+  for (const unit of snapshot.orderedUnits) {
+    const scope = toRouteScope(unit.routeScope);
+    const previous = byScene.get(unit.sceneId);
+    byScene.set(unit.sceneId, previous === undefined ? scope : mergeScopes(previous, scope));
+  }
+  let storyScope: RouteScope | undefined;
+  return snapshot.routeTopology.sceneDispatchOrder.map((sceneId) => {
+    const sceneScope = byScene.get(sceneId);
+    if (sceneScope === undefined) {
+      throw new Error(`source-Wiki plan has no units for dispatched scene ${sceneId}`);
+    }
+    storyScope = storyScope === undefined ? sceneScope : mergeScopes(storyScope, sceneScope);
+    return { sceneId, sceneScope, storyScope };
+  });
+}
+
 /** Derive the enumerable work source from a fact snapshot. */
-export function deriveWorkSource(snapshot: FactSnapshot): WorkSource {
+export function deriveWorkSource(
+  snapshot: FactSnapshot,
+  options: {
+    /** A6/A10 derive authorable units through their real read-model functions. */
+    readonly readModel?: ReadModel;
+    /** A7's external render/patch-report portrait sources, keyed by character. */
+    readonly portraitCharacterIds?: readonly string[];
+  } = {},
+): WorkSource {
   const characterIds = [...snapshot.characters]
     .map((c) => c.characterId)
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  const pairs: (readonly [string, string])[] = [];
-  for (let i = 0; i < characterIds.length; i += 1) {
-    for (let j = i + 1; j < characterIds.length; j += 1) {
-      pairs.push([characterIds[i]!, characterIds[j]!]);
-    }
-  }
-  const termKeys = [...snapshot.terminology]
-    .map((t) => t.termKey)
-    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  const units = snapshot.orderedUnits.map((unit) => ({
-    unitId: unit.factId,
-    scope: toRouteScope(unit.routeScope),
-  }));
+  const termKeys = ambiguousTermCandidates(snapshot).map((candidate) => candidate.termKey);
+  const readModel = options.readModel;
+  const adaptationUnits =
+    readModel === undefined
+      ? []
+      : flaggedAdaptationCandidates(readModel).map((candidate) => {
+          if (!snapshot.orderedUnits.some((unit) => unit.factId === candidate.unitFactId)) {
+            throw new Error(
+              `A6 candidate ${candidate.unitFactId} is absent from the fact snapshot`,
+            );
+          }
+          // A6's certified role validates its unit mapping and emits a
+          // whole-game analysis note; it does not carry a route-scope input to
+          // its model/assembly path, so global is the only scope it can author.
+          return { unitId: candidate.unitFactId, scope: { kind: "global" as const } };
+        });
+  const unknownSpeakerUnits =
+    readModel === undefined
+      ? []
+      : readUnknownSpeakerUnits(readModel, {
+          runMode: "production",
+          contextScope: "whole-game",
+          routeVisibility: { kind: "global" },
+          localeBranchId: null,
+        }).map((unit) => ({ unitId: unit.unitId, scope: unit.scope }));
+  const characterRoutePairs = characterRouteIntersection({ factSnapshot: snapshot });
+  const portraitCharacters = new Set(options.portraitCharacterIds ?? []);
   return {
     gameId: snapshot.source.bridgeId,
     routes: deriveRoutes(snapshot),
     characterIds,
-    pairs,
+    portraitCharacterIds: characterIds.filter((characterId) => portraitCharacters.has(characterId)),
+    characterRoutePairs,
     termKeys,
-    units,
+    adaptationUnits,
+    unknownSpeakerUnits,
+    scenes: sceneScopes(snapshot),
   };
 }

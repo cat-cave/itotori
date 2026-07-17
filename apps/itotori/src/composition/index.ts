@@ -35,6 +35,16 @@ export {
   type WikiObjectResponse,
 } from "./wiki-entrypoint.js";
 export {
+  ANALYST_RUNNER_ROLE_IDS,
+  assertAnalystRunnerCoverage,
+  createAnalystRunner,
+  runWikiBuild,
+  type WikiBuildDeps,
+  type WikiBuildInvocation,
+  type WikiBuildPortraitSources,
+} from "./wiki-build-entrypoint.js";
+export type { SourceWikiRunReport } from "../source-wiki/index.js";
+export {
   runPlaySession,
   type PlayEntrypointDeps,
   type PlayRequest,
