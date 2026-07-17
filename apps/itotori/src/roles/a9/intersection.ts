@@ -42,7 +42,7 @@ export function visibleOnRoute(scope: FactRouteScope, routeId: string): boolean 
 
 /** The decoded route universe: every route id any ordered unit is scoped to,
  * sorted. Global-only games carry no routes and thus no character-route arcs. */
-export function routeUniverse(model: ReadModel): readonly string[] {
+export function routeUniverse(model: Pick<ReadModel, "factSnapshot">): readonly string[] {
   const ids = new Set<string>();
   for (const unit of model.factSnapshot.orderedUnits) {
     for (const routeId of scopeRouteIds(unit.routeScope)) ids.add(routeId);
@@ -108,7 +108,9 @@ export function characterRoutes(
 /** The deterministic character-by-route intersection: one pair for every route a
  * character occurs on, in character-index order then sorted-route order. This is
  * the EXACT set A9 must cover — no pair added, no minor character dropped. */
-export function characterRouteIntersection(model: ReadModel): readonly CharacterRoutePair[] {
+export function characterRouteIntersection(
+  model: Pick<ReadModel, "factSnapshot">,
+): readonly CharacterRoutePair[] {
   const universe = routeUniverse(model);
   const scenes = sceneRoutesIndex(model.factSnapshot.orderedUnits);
   const pairs: CharacterRoutePair[] = [];

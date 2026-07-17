@@ -10,7 +10,7 @@
 
 import { orderAnalystLevels } from "./ordering.js";
 import { selectSourceWikiRoles } from "./roster-selection.js";
-import { deriveWorkSource, type RouteWork, type WorkSource } from "./work-source.js";
+import { deriveWorkSource, type WorkSource } from "./work-source.js";
 import { artifactKey } from "./accept.js";
 import {
   WHOLE_GAME_CONTEXT_SCOPE,
@@ -23,6 +23,7 @@ import {
 import { ROSTER, type Specialist } from "../roster/index.js";
 import type { EntityRef, RoleId, RouteScope, WikiObject } from "../contracts/index.js";
 import type { FactSnapshot } from "../prepass/index.js";
+import type { ReadModel } from "../read-tools/index.js";
 
 type WikiObjectKind = WikiObject["kind"];
 
@@ -64,17 +65,27 @@ function singleStepItem(
   return { itemId, role, laneId, steps: [step(role, itemId, subject, scope, kinds)] };
 }
 
-function foldItem(role: RoleId, route: RouteWork, kinds: readonly WikiObjectKind[]): WorkItem {
-  const steps = route.sceneIds.map((sceneId) =>
-    step(
-      role,
-      `${role}:route:${route.routeId}:scene:${sceneId}`,
-      { kind: "scene", id: `${sceneId}` },
-      route.scope,
-      kinds,
-    ),
-  );
-  return { itemId: `${role}:route:${route.routeId}`, role, laneId: route.routeId, steps };
+function a3FoldItem(source: WorkSource): WorkItem {
+  const steps = source.scenes.map((scene) => {
+    const subject = { kind: "scene" as const, id: String(scene.sceneId) };
+    return {
+      stepId: `A3:game:scene:${scene.sceneId}`,
+      role: "A3" as const,
+      subject,
+      scope: scene.storyScope,
+      targets: [
+        ...targetsFor(["scene-summary"], subject, scene.sceneScope),
+        ...targetsFor(["story-so-far"], subject, scene.storyScope),
+      ],
+    };
+  });
+  return { itemId: "A3:game", role: "A3", laneId: "game", steps };
+}
+
+function routeSubjectId(scope: RouteScope): string {
+  if (scope.kind === "route") return scope.routeId;
+  if (scope.kind === "route-set") return scope.routeIds.join(".");
+  return "global";
 }
 
 /** Enumerate the independent work items for one role over the work source. The
@@ -83,8 +94,8 @@ function itemsForRole(specialist: Specialist, source: WorkSource): WorkItem[] {
   const role = specialist.roleId;
   const kinds = authoredKinds(specialist);
   const global: RouteScope = { kind: "global" };
-  switch (specialist.granularity) {
-    case "per-game":
+  switch (role) {
+    case "A1":
       return [
         singleStepItem(
           role,
@@ -95,7 +106,7 @@ function itemsForRole(specialist: Specialist, source: WorkSource): WorkItem[] {
           kinds,
         ),
       ];
-    case "per-term":
+    case "A2":
       return source.termKeys.map((termKey) =>
         singleStepItem(
           role,
@@ -106,20 +117,23 @@ function itemsForRole(specialist: Specialist, source: WorkSource): WorkItem[] {
           kinds,
         ),
       );
-    case "per-scene":
-      return source.routes.map((route) => foldItem(role, route, kinds));
-    case "per-route":
-      return source.routes.map((route) =>
+    case "A3":
+      return source.scenes.length === 0 ? [] : [a3FoldItem(source)];
+    case "A4": {
+      const finalScope = source.scenes.at(-1)?.storyScope;
+      if (finalScope === undefined) return [];
+      return [
         singleStepItem(
           role,
-          `${role}:route:${route.routeId}`,
-          route.routeId,
-          { kind: "route", id: route.routeId },
-          route.scope,
+          `A4:route:${routeSubjectId(finalScope)}`,
+          routeSubjectId(finalScope),
+          { kind: "route", id: routeSubjectId(finalScope) },
+          finalScope,
           kinds,
         ),
-      );
-    case "per-character":
+      ];
+    }
+    case "A5":
       return source.characterIds.map((characterId) =>
         singleStepItem(
           role,
@@ -130,32 +144,52 @@ function itemsForRole(specialist: Specialist, source: WorkSource): WorkItem[] {
           kinds,
         ),
       );
-    case "per-character-pair":
-      return source.pairs.map(([a, b]) =>
+    case "A8":
+      return source.portraitCharacterIds.map((characterId) =>
         singleStepItem(
           role,
-          `${role}:pair:${a}--${b}`,
-          `${a}--${b}`,
-          { kind: "character", id: `${a}--${b}` },
+          `${role}:char:${characterId}`,
+          characterId,
+          { kind: "character", id: characterId },
           global,
           kinds,
         ),
       );
-    case "per-character-route":
-      return source.characterIds.flatMap((characterId) =>
-        source.routes.map((route) =>
-          singleStepItem(
-            role,
-            `${role}:cr:${characterId}:${route.routeId}`,
-            `${characterId}:${route.routeId}`,
-            { kind: "character", id: characterId },
-            route.scope,
-            kinds,
-          ),
+    case "A7":
+      return source.portraitCharacterIds.map((characterId) =>
+        singleStepItem(
+          role,
+          `${role}:char:${characterId}`,
+          characterId,
+          { kind: "character", id: characterId },
+          global,
+          kinds,
         ),
       );
-    case "per-unit":
-      return source.units.map((unit) =>
+    case "A9":
+      return source.characterRoutePairs.map((pair) =>
+        singleStepItem(
+          role,
+          `${role}:cr:${pair.characterId}:${pair.routeId}`,
+          `${pair.characterId}:${pair.routeId}`,
+          { kind: "character", id: pair.characterId },
+          { kind: "route", routeId: pair.routeId },
+          kinds,
+        ),
+      );
+    case "A6":
+      return source.adaptationUnits.map((unit) =>
+        singleStepItem(
+          role,
+          `${role}:unit:${unit.unitId}`,
+          unit.unitId,
+          { kind: "unit", id: unit.unitId },
+          unit.scope,
+          kinds,
+        ),
+      );
+    case "A10":
+      return source.unknownSpeakerUnits.map((unit) =>
         singleStepItem(
           role,
           `${role}:unit:${unit.unitId}`,
@@ -166,8 +200,7 @@ function itemsForRole(specialist: Specialist, source: WorkSource): WorkItem[] {
         ),
       );
     default:
-      // A localizer/reviewer granularity never reaches this analyst-only planner.
-      throw new Error(`role ${role} has non-analyst granularity ${specialist.granularity}`);
+      throw new Error(`source-Wiki planner has no emission mapping for ${role}`);
   }
 }
 
@@ -176,9 +209,13 @@ function itemsForRole(specialist: Specialist, source: WorkSource): WorkItem[] {
 export function buildSourceWikiPlan(
   snapshot: FactSnapshot,
   selection?: readonly RoleId[],
+  options?: {
+    readonly readModel?: ReadModel;
+    readonly portraitCharacterIds?: readonly string[];
+  },
 ): SourceWikiPlan {
   const specialists = selectSourceWikiRoles(selection);
-  const source = deriveWorkSource(snapshot);
+  const source = deriveWorkSource(snapshot, options);
   const levels = orderAnalystLevels(specialists);
   const phases: Phase[] = levels.map((roles, index) => ({
     level: index,

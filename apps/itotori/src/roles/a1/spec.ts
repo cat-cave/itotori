@@ -11,6 +11,7 @@ import {
   WIKI_OBJECT_SCHEMA_VERSION,
   type CallSpec,
   type EncryptedPayloadRef,
+  type RunModeValue,
 } from "../../contracts/index.js";
 import { sha256 } from "../../llm/canonical-json.js";
 import { deepSeekV4FlashProfile } from "../../llm/role-model-profiles.js";
@@ -30,6 +31,9 @@ export interface StyleLeadRequest {
   /** The immutable context snapshot A1 reasons against (the claim-validation evidence root). */
   readonly contextSnapshotId: Sha256;
   readonly sourceLanguage: string;
+  /** Run disposition carried to the certified call. Defaults to production for
+   * existing direct callers; the source-Wiki runner supplies its run scope. */
+  readonly runMode?: RunModeValue;
   /** Operator brief — audience, house policy hints, sign-off intent. */
   readonly operatorBrief: string;
   readonly slice: readonly StyleLeadSlice[];
@@ -129,7 +133,7 @@ export function assembleStyleLeadCallSpec(
     sampling: { temperature: 0, topP: 1, seed: null },
     limits: a1.limits,
     sampleId: null,
-    runMode: "production",
+    runMode: request.runMode ?? "production",
     contextScope: "whole-game",
   };
   return spec;

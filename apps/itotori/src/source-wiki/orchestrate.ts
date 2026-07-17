@@ -31,6 +31,7 @@ import type {
 } from "./types.js";
 import type { RoleId, RunModeValue, WikiObject } from "../contracts/index.js";
 import type { FactSnapshot } from "../prepass/index.js";
+import type { ReadModel } from "../read-tools/index.js";
 
 /** Observability hooks — the concurrency and recovery proofs read these; the
  * control flow does not depend on them. */
@@ -49,6 +50,15 @@ export interface OrchestrateSourceWikiDeps {
   readonly concurrency: number;
   readonly runner: AnalystRunner;
   readonly ledger: ArtifactLedger;
+  /** Production supplies the integrity-checked read model so A6/A10 can plan
+   * exactly their applicable byte-derived subjects. */
+  readonly readModel?: ReadModel;
+  /** A7 sources portraits from an external render/patch-report provider. Only
+   * characters with a supplied source are authorable in this build. */
+  readonly portraitCharacterIds?: readonly string[];
+  /** Best-effort role output may omit an assigned object on a first call. The
+   * executor retries the whole shard but never weakens target completeness. */
+  readonly maxAttempts?: number;
   readonly observer?: SourceWikiObserver;
 }
 
@@ -92,36 +102,43 @@ async function runStep(
     return { accepted: priorObjects, skipped: true };
   }
 
-  const produced = await deps.runner({
-    role: step.role,
-    step,
-    sourceLanguage: deps.sourceLanguage,
-    runMode: deps.runMode,
-    contextScope: WHOLE_GAME_CONTEXT_SCOPE,
-    priorObjects,
-  });
-
   const stamp = { sourceLanguage: deps.sourceLanguage, runMode: deps.runMode };
-  const acceptedKeys = new Set<ArtifactKey>();
-  for (const object of produced) {
-    acceptedKeys.add(acceptObject(object, step.targets, stamp));
+  const maxAttempts = deps.maxAttempts ?? 3;
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+    throw new Error(`source-Wiki maxAttempts must be a positive integer, got ${maxAttempts}`);
   }
-  const unmet = step.targets.filter((target) => !acceptedKeys.has(target.key));
+  const accepted = new Map<ArtifactKey, WikiObject>();
+  let unmet = step.targets;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const produced = await deps.runner({
+      role: step.role,
+      step,
+      sourceLanguage: deps.sourceLanguage,
+      runMode: deps.runMode,
+      contextScope: WHOLE_GAME_CONTEXT_SCOPE,
+      priorObjects,
+    });
+    for (const object of produced) {
+      accepted.set(acceptObject(object, step.targets, stamp), object);
+    }
+    unmet = step.targets.filter((target) => !accepted.has(target.key));
+    if (unmet.length === 0) break;
+  }
   if (unmet.length > 0) {
     throw new Error(
-      `role ${step.role} step ${step.stepId} did not produce its assigned targets: ${unmet
+      `role ${step.role} step ${step.stepId} did not produce its assigned targets after ${maxAttempts} attempts: ${unmet
         .map((target) => target.key)
         .join(", ")}`,
     );
   }
-  await deps.ledger.record(produced);
-  const keys = [...acceptedKeys];
+  await deps.ledger.record([...accepted.values()]);
+  const keys = [...accepted.keys()];
   for (const key of keys) {
     state.existing.add(key);
     state.produced.push(key);
   }
   deps.observer?.onStepProduced?.(step, keys);
-  return { accepted: produced, skipped: false };
+  return { accepted: [...accepted.values()], skipped: false };
 }
 
 /** Run one independent work item: its steps in STRICT serial order, threading the
@@ -170,7 +187,12 @@ async function runPhase(
 export async function orchestrateSourceWiki(
   deps: OrchestrateSourceWikiDeps,
 ): Promise<SourceWikiRunReport> {
-  const plan: SourceWikiPlan = buildSourceWikiPlan(deps.snapshot, deps.roles);
+  const plan: SourceWikiPlan = buildSourceWikiPlan(deps.snapshot, deps.roles, {
+    ...(deps.readModel === undefined ? {} : { readModel: deps.readModel }),
+    ...(deps.portraitCharacterIds === undefined
+      ? {}
+      : { portraitCharacterIds: deps.portraitCharacterIds }),
+  });
   const state: Mutable = {
     existing: new Set(await deps.ledger.existingKeys()),
     produced: [],
@@ -192,6 +214,10 @@ export async function orchestrateSourceWiki(
 
 /** Convenience: build the plan without executing it (selection + ordering +
  * enumeration only). */
-export function planSourceWiki(snapshot: FactSnapshot, roles?: readonly RoleId[]): SourceWikiPlan {
-  return buildSourceWikiPlan(snapshot, roles);
+export function planSourceWiki(
+  snapshot: FactSnapshot,
+  roles?: readonly RoleId[],
+  options?: Parameters<typeof buildSourceWikiPlan>[2],
+): SourceWikiPlan {
+  return buildSourceWikiPlan(snapshot, roles, options);
 }

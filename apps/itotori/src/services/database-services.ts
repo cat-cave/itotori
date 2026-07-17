@@ -2,8 +2,11 @@ import {
   bootstrapLocalUser,
   databaseUrlFromEnv,
   ItotoriLlmHumanInputRepository,
+  ItotoriLlmCallMemoRepository,
+  ItotoriLlmSnapshotRepository,
   ItotoriLlmWikiRepository,
   migrate,
+  permissionBasedLlmContentRead,
   resetDatabase,
   withDatabase,
 } from "@itotori/db";
@@ -15,6 +18,7 @@ import {
   createProductionLiveLocalizationSubstrate,
   productionLocalizeDispatchConfig,
 } from "../composition/live/index.js";
+import { runWikiBuild } from "../composition/index.js";
 import { WikiObjectApiService } from "../wiki/object-api/service.js";
 
 /** The remaining command/API surfaces require a new-pipeline composition
@@ -51,9 +55,40 @@ export async function withDatabaseItotoriServices<T>(
       wiki: new ItotoriLlmWikiRepository(pool, cipher),
       humanInputs: new ItotoriLlmHumanInputRepository(pool, cipher),
     });
+    const contentAccess = permissionBasedLlmContentRead(db, actor);
+    const wikiRepository = new ItotoriLlmWikiRepository(pool, cipher);
+    const memoStore = new ItotoriLlmCallMemoRepository(pool, cipher, contentAccess);
     const services = unavailableServiceSurface({
       projectWorkflow: unavailableProjectWorkflow(),
       wikiObjectApi,
+      wikiBuild: {
+        async run(input) {
+          const contextSnapshot = await new ItotoriLlmSnapshotRepository(pool).readContext(
+            config.contextSnapshotId,
+          );
+          if (contextSnapshot === null) {
+            throw new Error(`wiki build requires context snapshot ${config.contextSnapshotId}`);
+          }
+          return await runWikiBuild({
+            ...input,
+            contextSnapshot,
+            repository: wikiRepository,
+            memoStore,
+            contentAccess,
+            dispatch: productionLocalizeDispatchConfig({
+              env: process.env,
+              maxAttemptExposureUsd: config.maxAttemptExposureUsd,
+              confirmedCostCapUsd: config.confirmedCostCapUsd,
+            }),
+            dispatchSnapshots: {
+              decodeRevisionHash: config.decodeRevisionHash,
+              glossaryRevisionHash: config.glossaryRevisionHash,
+              styleRevisionHash: config.styleRevisionHash,
+              acceptedOutputHeadHash: null,
+            },
+          });
+        },
+      },
       localizationSubstrate: createProductionLiveLocalizationSubstrate({
         database: db,
         actor,
@@ -130,7 +165,7 @@ function unavailableLiveRoleSeams() {
 function unavailableServiceSurface(
   installed: Pick<
     ItotoriApplicationServices,
-    "projectWorkflow" | "wikiObjectApi" | "localizationSubstrate"
+    "projectWorkflow" | "wikiObjectApi" | "wikiBuild" | "localizationSubstrate"
   >,
 ): ItotoriApplicationServices {
   return new Proxy(installed, {

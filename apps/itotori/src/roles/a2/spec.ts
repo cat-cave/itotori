@@ -13,6 +13,7 @@ import {
   WIKI_OBJECT_SCHEMA_VERSION,
   type CallSpec,
   type EncryptedPayloadRef,
+  type RunModeValue,
 } from "../../contracts/index.js";
 import { sha256 } from "../../llm/canonical-json.js";
 import { deepSeekV4FlashProfile } from "../../llm/role-model-profiles.js";
@@ -26,6 +27,9 @@ export interface TermAnalystRequest {
   /** The immutable context snapshot the ruling is proven against. */
   readonly contextSnapshotId: Sha256;
   readonly sourceLanguage: string;
+  /** Run disposition carried to the certified call. Defaults to production for
+   * existing direct callers; the source-Wiki runner supplies its run scope. */
+  readonly runMode?: RunModeValue;
   /** The single ambiguous candidate, with its byte-derived enumeration. */
   readonly candidate: AmbiguousTermCandidate;
   /** Operator brief — house sensitivities, register hints. */
@@ -139,7 +143,7 @@ export function assembleTermAnalystCallSpec(
     sampling: { temperature: 0, topP: 1, seed: null },
     limits: analyst.limits,
     sampleId: null,
-    runMode: "production",
+    runMode: request.runMode ?? "production",
     contextScope: "whole-game",
   };
   return spec;

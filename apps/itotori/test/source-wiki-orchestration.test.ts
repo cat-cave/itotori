@@ -25,6 +25,7 @@ import {
   type AnalystRunner,
   type RunStepInput,
 } from "../src/source-wiki/index.js";
+import { ANALYST_RUNNER_ROLE_IDS, assertAnalystRunnerCoverage } from "../src/composition/index.js";
 
 const SNAP = `sha256:${"a".repeat(64)}` as const;
 const RUN_MODE: RunModeValue = "test-dev";
@@ -65,10 +66,62 @@ function syntheticSnapshot(): FactSnapshot {
       unreachableSceneIds: [],
       reachableUnitKeys: [],
     },
-    characters: [{ characterId: "c1" }, { characterId: "c2" }, { characterId: "c3" }],
-    terminology: [{ termKey: "t-alpha" }, { termKey: "t-beta" }],
+    characters: [
+      {
+        factId: "character:c1",
+        characterId: "c1",
+        totalLines: 1,
+        firstSceneId: 10,
+        lastSceneId: 10,
+        sceneIds: [10],
+        linesByScene: [{ sceneId: 10, lineCount: 1 }],
+      },
+      {
+        factId: "character:c2",
+        characterId: "c2",
+        totalLines: 1,
+        firstSceneId: 11,
+        lastSceneId: 11,
+        sceneIds: [11],
+        linesByScene: [{ sceneId: 11, lineCount: 1 }],
+      },
+      {
+        factId: "character:c3",
+        characterId: "c3",
+        totalLines: 1,
+        firstSceneId: 12,
+        lastSceneId: 12,
+        sceneIds: [12],
+        linesByScene: [{ sceneId: 12, lineCount: 1 }],
+      },
+    ],
+    terminology: [
+      {
+        factId: "term:t-alpha",
+        termKey: "t-alpha",
+        policyAction: "preserve",
+        aliases: ["alpha"],
+        occurrenceCount: 1,
+        occurrenceUnitKeys: ["u-10"],
+      },
+      {
+        factId: "term:t-beta",
+        termKey: "t-beta",
+        policyAction: "preserve",
+        aliases: ["beta"],
+        occurrenceCount: 1,
+        occurrenceUnitKeys: ["u-11"],
+      },
+    ],
     choiceLabels: { totalCount: 0, unitKeys: [] },
-    glossaryConflicts: [],
+    glossaryConflicts: [
+      {
+        factId: "conflict:t-alpha",
+        kind: "policy_action_conflict",
+        termKey: "t-alpha",
+        detail: "synthetic ambiguity",
+      },
+    ],
     snapshotId: SNAP,
     contentHash: SNAP,
     schemaVersion: "itotori.fact-snapshot.v1",
@@ -177,6 +230,12 @@ describe("clause 1 — default roster is ALL A1-A10 + whole-game context", () =>
     expect(() => selectSourceWikiRoles(["A1", "P1"])).toThrow(SourceWikiSelectionError);
     expect(() => selectSourceWikiRoles(["Q6"])).toThrow(/reviewer/);
   });
+
+  it("maps every selected analyst role to a production runner branch", () => {
+    const roles = selectSourceWikiRoles().map((specialist) => specialist.roleId);
+    expect(ANALYST_RUNNER_ROLE_IDS).toEqual(roles);
+    expect(() => assertAnalystRunnerCoverage(roles)).not.toThrow();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -214,10 +273,9 @@ describe("clause 2 — A3 serial fold, bounded fan-out, dependency-ordered prere
       laneActive.set(lk, (laneActive.get(lk) ?? 0) + 1);
       maxLaneActive = Math.max(maxLaneActive, laneActive.get(lk)!);
       if (input.role === "A3") {
-        const routeId = input.step.scope.kind === "route" ? input.step.scope.routeId : "g";
-        const list = a3Order.get(routeId) ?? [];
+        const list = a3Order.get("game") ?? [];
         list.push(Number(input.step.subject.id));
-        a3Order.set(routeId, list);
+        a3Order.set("game", list);
       }
       await new Promise((resolve) => setTimeout(resolve, 5));
       laneActive.set(lk, laneActive.get(lk)! - 1);
@@ -236,9 +294,8 @@ describe("clause 2 — A3 serial fold, bounded fan-out, dependency-ordered prere
     expect(maxActive).toBe(2);
     // Serial fold: no route/item ever had two steps in flight at once.
     expect(maxLaneActive).toBe(1);
-    // Each route's scenes were folded in play order.
-    expect(a3Order.get("r1")).toEqual([10, 11]);
-    expect(a3Order.get("r2")).toEqual([12, 13]);
+    // The one whole-game fold is serial in deterministic play order.
+    expect(a3Order.get("game")).toEqual([10, 11, 12, 13]);
     expect(report.producedKeys.length).toBeGreaterThan(0);
   });
 
@@ -253,7 +310,7 @@ describe("clause 2 — A3 serial fold, bounded fan-out, dependency-ordered prere
       return input.step.targets.map((t) => makeObject(t.kind, t.subject, t.scope, input.role));
     };
     await orchestrateSourceWiki(baseDeps({ concurrency: 5, runner }));
-    expect(maxActive).toBe(5); // 6 per-character-route items in one phase, limit 5
+    expect(maxActive).toBe(3); // the widest exact-emission phase has three items
   });
 });
 
@@ -360,9 +417,10 @@ describe("clause 4 — recoverable by missing-artifact query (only the gaps fill
     // A1 and A2 are COMPLETED phases — their runners are never invoked on restart.
     expect(invokedSteps.some((id) => id.startsWith("A1:"))).toBe(false);
     expect(invokedSteps.some((id) => id.startsWith("A2:"))).toBe(false);
-    // The r1 A3 fold was seeded and is not rerun; the r2 A3 fold still runs.
-    expect(invokedSteps.some((id) => id.startsWith("A3:route:r1"))).toBe(false);
-    expect(invokedSteps.some((id) => id.startsWith("A3:route:r2"))).toBe(true);
+    // The completed prefix of the one A3 fold is skipped; its later scene steps
+    // still run and receive the serial prior object through the fold.
+    expect(invokedSteps.some((id) => id === "A3:game:scene:10")).toBe(false);
+    expect(invokedSteps.some((id) => id === "A3:game:scene:12")).toBe(true);
     // No produced key was already present.
     for (const key of rerunProduced) expect(seededKeys.has(key)).toBe(false);
 
@@ -378,21 +436,49 @@ describe("clause 4 — recoverable by missing-artifact query (only the gaps fill
   });
 });
 
+describe("clause 5 — incomplete best-effort outputs retry without weakening completeness", () => {
+  it("retries an applicable shard until its partial outputs cover every assigned target", async () => {
+    const callsByStep = new Map<string, number>();
+    const runner: AnalystRunner = async (input) => {
+      const attempt = (callsByStep.get(input.step.stepId) ?? 0) + 1;
+      callsByStep.set(input.step.stepId, attempt);
+      const target = input.step.targets[attempt - 1];
+      return target === undefined
+        ? []
+        : [makeObject(target.kind, target.subject, target.scope, input.role)];
+    };
+    const report = await orchestrateSourceWiki(baseDeps({ roles: ["A3"], runner, maxAttempts: 3 }));
+    expect([...callsByStep.values()]).toEqual([2, 2, 2, 2]);
+    expect(report.producedKeys).toHaveLength(8);
+  });
+
+  it("fails loud only after the bounded retry budget is exhausted", async () => {
+    await expect(
+      orchestrateSourceWiki(baseDeps({ roles: ["A1"], runner: async () => [], maxAttempts: 2 })),
+    ).rejects.toThrow(/after 2 attempts/u);
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════════
 describe("work-source derivation wires onto the real fact snapshot", () => {
-  it("derives two routes, three characters, three pairs, two terms, four units", () => {
+  it("derives two routes, three characters, one ambiguous term, and the exact A9 intersections", () => {
     const source = deriveWorkSource(syntheticSnapshot());
     expect(source.routes.map((r) => r.routeId)).toEqual(["r1", "r2"]);
     expect(source.routes[0]!.sceneIds).toEqual([10, 11]);
     expect(source.characterIds).toEqual(["c1", "c2", "c3"]);
-    expect(source.pairs).toHaveLength(3);
-    expect(source.termKeys).toEqual(["t-alpha", "t-beta"]);
-    expect(source.units).toHaveLength(4);
+    expect(source.characterRoutePairs).toEqual([
+      { characterId: "c1", routeId: "r1" },
+      { characterId: "c2", routeId: "r1" },
+      { characterId: "c3", routeId: "r2" },
+    ]);
+    expect(source.termKeys).toEqual(["t-alpha"]);
+    expect(source.adaptationUnits).toEqual([]);
+    expect(source.unknownSpeakerUnits).toEqual([]);
   });
 
-  it("the plan's per-character-route phase fans out over character × route", () => {
+  it("plans A5 over the per-character objects it actually authors", () => {
     const plan = buildSourceWikiPlan(syntheticSnapshot());
     const a5Items = plan.phases.flatMap((p) => p.items).filter((i) => i.role === "A5");
-    expect(a5Items).toHaveLength(6); // 3 characters × 2 routes
+    expect(a5Items).toHaveLength(3);
   });
 });

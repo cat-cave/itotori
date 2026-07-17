@@ -50,6 +50,9 @@ export function buildHelpText(allCommands = false): string {
 
   lines.push("WIKI:");
   lines.push(
+    "  wiki build              Build the source-language bible (A1-A10; --structure <JSON> --bridge <JSON> --source-locale <LOCALE> --run-mode <MODE>).",
+  );
+  lines.push(
     "  wiki list               List the current head of every object under a snapshot (--snapshot <ID>).",
   );
   lines.push(
@@ -99,6 +102,9 @@ export function buildHelpText(allCommands = false): string {
   lines.push("  itotori --help                    # this help");
   lines.push("  itotori --version                 # version");
   lines.push("  itotori db-migrate                # run database migrations");
+  lines.push(
+    "  itotori wiki build --structure <structure.json> --bridge <bridge.json> --source-locale <locale> --run-mode production",
+  );
   lines.push("  itotori wiki list --snapshot <ID>");
   lines.push("  itotori wiki edit --wiki-kind source-object --object-id <ID> \\");
   lines.push("    --candidate-json '{...}' --created-at <ISO>");

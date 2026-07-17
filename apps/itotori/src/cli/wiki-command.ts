@@ -1,13 +1,19 @@
 // The kept `wiki` command's SOLE path into the new pipeline's Wiki object-API.
 //
-// It parses one kept subcommand (list / show / history / edit) into a
-// `WikiObjectRequest` and routes it through the composition-root
-// `runWikiObjectCommand`, which delegates to the new `WikiObjectApiService`. It
-// never touches the legacy `WikiBrainService` + context-correction service the old
-// `wiki` handler dragged in. The live object-API service is injected so this
-// module's own import closure reaches only the wiki object-API.
+// `build` enters the composition-root source-Wiki assembly; the object API
+// subcommands (list / show / history / edit) route through
+// `runWikiObjectCommand`. This module never touches a role or the legacy wiki
+// service directly.
 
-import { runWikiObjectCommand, type WikiObjectRequest } from "../composition/index.js";
+import {
+  runWikiObjectCommand,
+  type WikiBuildInvocation,
+  type WikiBuildPortraitSources,
+  type WikiObjectRequest,
+  type SourceWikiRunReport,
+} from "../composition/index.js";
+import { assertBridgeBundleV02, type BridgeBundleV02 } from "@itotori/localization-bridge-schema";
+import type { RunModeValue } from "../contracts/index.js";
 import type {
   WikiObjectApiService,
   WikiObjectSelector,
@@ -17,6 +23,7 @@ import { optionalFlag, requiredFlag } from "./flags.js";
 
 /** The minimal JSON store the wiki command writes its result to. */
 export interface WikiCommandIo {
+  readJson(path: string): unknown;
   writeJson(path: string, value: unknown): void;
 }
 
@@ -26,7 +33,73 @@ export interface WikiCommandIo {
 export interface WikiCommandDeps {
   readonly io: WikiCommandIo;
   resolveWikiService(): WikiObjectApiService | Promise<WikiObjectApiService>;
+  runBuild?(input: WikiBuildInvocation): Promise<SourceWikiRunReport>;
   log?(message: string): void;
+}
+
+const RUN_MODE_VALUES: readonly RunModeValue[] = ["production", "pilot", "test-dev"];
+
+function parseRunMode(value: string): RunModeValue {
+  if ((RUN_MODE_VALUES as readonly string[]).includes(value)) return value as RunModeValue;
+  throw new Error(`wiki build refused: --run-mode must be one of ${RUN_MODE_VALUES.join(", ")}`);
+}
+
+function parsePositiveInteger(value: string, flag: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || String(parsed) !== value) {
+    throw new Error(`wiki build refused: ${flag} must be a positive integer`);
+  }
+  return parsed;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Portrait producer facts live outside the bridge/snapshot in the render or
+ * patch-report substrate. This parser carries only reference facts; the A7 media
+ * contract validates the full shape again when it builds a bio. */
+function parsePortraitSources(value: unknown): WikiBuildPortraitSources {
+  if (!isRecord(value))
+    throw new Error("wiki build: --portrait-sources must contain a JSON object");
+  const entries: [
+    string,
+    WikiBuildPortraitSources extends ReadonlyMap<string, infer S> ? S : never,
+  ][] = [];
+  for (const [characterId, raw] of Object.entries(value)) {
+    if (!isRecord(raw) || (raw.status !== "available" && raw.status !== "missing")) {
+      throw new Error(
+        `wiki build: portrait source for ${characterId} must declare available or missing status`,
+      );
+    }
+    if (raw.status === "missing" && typeof raw.expectedContentHash !== "string") {
+      throw new Error(
+        `wiki build: missing portrait source for ${characterId} needs expectedContentHash`,
+      );
+    }
+    if (raw.status === "available" && !isRecord(raw.facts)) {
+      throw new Error(`wiki build: available portrait source for ${characterId} needs facts`);
+    }
+    entries.push([characterId, raw as (typeof entries)[number][1]]);
+  }
+  return new Map(entries);
+}
+
+function parseWikiBuildInvocation(args: readonly string[], io: WikiCommandIo): WikiBuildInvocation {
+  const structureJson = io.readJson(requiredFlag(args, "--structure"));
+  const bridgeJson = io.readJson(requiredFlag(args, "--bridge"));
+  assertBridgeBundleV02(bridgeJson);
+  const portraitPath = optionalFlag(args, "--portrait-sources");
+  return {
+    structureJson,
+    bridge: bridgeJson as BridgeBundleV02,
+    sourceLanguage: requiredFlag(args, "--source-locale"),
+    runMode: parseRunMode(requiredFlag(args, "--run-mode")),
+    concurrency: parsePositiveInteger(optionalFlag(args, "--concurrency") ?? "4", "--concurrency"),
+    ...(portraitPath === undefined
+      ? {}
+      : { portraitSources: parsePortraitSources(io.readJson(portraitPath)) }),
+  };
 }
 
 const WIKI_KINDS = ["source-object", "translation-object", "localized-rendering"] as const;
@@ -93,11 +166,41 @@ export function parseWikiObjectRequest(args: readonly string[]): WikiObjectReque
   }
 }
 
-/** Route one kept `itotori wiki` invocation through the new object-API. */
+/** Route an `itotori wiki` invocation through either the build composition or
+ * the installed-object API. */
 export async function runWikiCommand(
   args: readonly string[],
   deps: WikiCommandDeps,
 ): Promise<void> {
+  if (args[1] === "build") {
+    if (deps.runBuild === undefined) {
+      throw new Error("wiki build is not configured in this CLI build (wikiBuild port missing)");
+    }
+    const report = await deps.runBuild(parseWikiBuildInvocation(args, deps.io));
+    const summary = {
+      runMode: requiredFlag(args, "--run-mode"),
+      sourceLanguage: requiredFlag(args, "--source-locale"),
+      phaseCount: report.phases.length,
+      phases: report.phases.map((phase) => ({
+        level: phase.level,
+        roleCount: phase.roles.length,
+        itemCount: phase.itemCount,
+        producedStepCount: phase.producedStepCount,
+        skippedStepCount: phase.skippedStepCount,
+      })),
+      producedKeyCount: report.producedKeys.length,
+      skippedKeyCount: report.skippedKeys.length,
+    };
+    const outputPath = optionalFlag(args, "--output");
+    if (outputPath !== undefined) {
+      deps.io.writeJson(outputPath, summary);
+      return;
+    }
+    (deps.log ?? ((message: string) => process.stdout.write(`${message}\n`)))(
+      JSON.stringify(summary, null, 2),
+    );
+    return;
+  }
   const request = parseWikiObjectRequest(args);
   const service = await deps.resolveWikiService();
   const response = await runWikiObjectCommand(service, request);
