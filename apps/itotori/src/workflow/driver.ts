@@ -154,6 +154,7 @@ async function processScene(
       ? await applyCorrections({
           bundle,
           scene: drafted,
+          verdicts: laneVerdicts,
           repair: ports.repair,
           review: ports.review,
           adjudicate: ports.adjudicate,

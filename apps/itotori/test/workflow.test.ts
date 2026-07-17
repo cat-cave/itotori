@@ -487,6 +487,7 @@ describe("RB workflow — P2/P3 applied to findings (clause 6)", () => {
     await applyCorrections({
       bundle,
       scene: drafted,
+      verdicts: [],
       repair: ports.repair,
       review: ports.review,
       adjudicate: ports.adjudicate,
@@ -523,6 +524,7 @@ describe("RB workflow — rerun only implicated lanes (clause 7)", () => {
     const summary = await applyCorrections({
       bundle,
       scene: drafted,
+      verdicts: [],
       repair: ports.repair,
       review: ports.review,
       adjudicate: ports.adjudicate,
@@ -557,6 +559,7 @@ describe("RB workflow — bounded adjudication (clause 8)", () => {
     const summary = await applyCorrections({
       bundle,
       scene: drafted,
+      verdicts: [],
       repair: ports.repair,
       review: ports.review,
       adjudicate: ports.adjudicate,

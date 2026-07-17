@@ -12,7 +12,7 @@
 import type { Defect, DefectBundle } from "../contracts/index.js";
 import type { AdjudicatePort, RepairPort, ReviewPort } from "./ports.js";
 import { implicatedRerun, type RerunScope } from "./rerun-scope.js";
-import type { DraftedScene } from "./types.js";
+import type { DraftedScene, LaneVerdict } from "./types.js";
 
 /** One correction the driver applied, with its route and (for a repair) the
  * implicated-only rerun scope it triggered. */
@@ -61,11 +61,15 @@ function unitsWith(
 export async function applyCorrections(input: {
   readonly bundle: DefectBundle;
   readonly scene: DraftedScene;
+  /** The lane verdicts that judged this scene — the source of the contested A/B
+   * positions the adjudicator weighs. Threaded from the driver so the correction
+   * step never re-derives a contest from the defects alone. */
+  readonly verdicts: readonly LaneVerdict[];
   readonly repair: RepairPort;
   readonly review: ReviewPort;
   readonly adjudicate: AdjudicatePort;
 }): Promise<CorrectionSummary> {
-  const { bundle, scene } = input;
+  const { bundle, scene, verdicts } = input;
   const corrections: CorrectionRecord[] = [];
   const reruns: RerunScope[] = [];
   const rerunLaneCalls: { lane: string; unitIds: readonly string[] }[] = [];
@@ -91,6 +95,8 @@ export async function applyCorrections(input: {
       await input.adjudicate.adjudicate({
         unitId,
         defects: bundle.defects.filter((defect) => defect.unitId === unitId),
+        // The two blinded positions live in the verdicts that judged THIS unit.
+        contested: verdicts.filter((laneVerdict) => laneVerdict.verdict.unitId === unitId),
       });
       adjudications += 1;
     }
@@ -99,7 +105,11 @@ export async function applyCorrections(input: {
   // P2 line-edit — the minor style/format/voice repairs.
   const edit = unitsWith(bundle.defects, (defect) => !MAJOR_SEVERITIES.has(defect.severity));
   if (edit.unitIds.length > 0) {
-    const outcome = await input.repair.lineEdit({ unitIds: edit.unitIds, defects: edit.defects });
+    const outcome = await input.repair.lineEdit({
+      scene,
+      unitIds: edit.unitIds,
+      defects: edit.defects,
+    });
     if (outcome.route === "repair") {
       const scope = await rerunImplicated(outcome.changedUnitIds);
       corrections.push({
@@ -124,6 +134,7 @@ export async function applyCorrections(input: {
   const repair = unitsWith(bundle.defects, (defect) => MAJOR_SEVERITIES.has(defect.severity));
   if (repair.unitIds.length > 0) {
     const outcome = await input.repair.semanticRepair({
+      scene,
       unitIds: repair.unitIds,
       defects: repair.defects,
       repairedDefectLedger: new Set<string>(),
