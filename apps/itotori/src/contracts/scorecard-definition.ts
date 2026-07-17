@@ -24,6 +24,14 @@ const RequiredRubricsSchema = z
   .array(ReviewRubricSchema.extract(["meaning", "voice", "terminology", "continuity"]))
   .length(4);
 
+const CalibratedRubricSchema = ReviewRubricSchema.extract([
+  "meaning",
+  "voice",
+  "terminology",
+  "continuity",
+  "build-lqa",
+]);
+
 export const AcceptanceScorecardDefinitionSchema = z
   .object({
     schemaVersion: z.literal(ACCEPTANCE_SCORECARD_DEFINITION_SCHEMA_VERSION),
@@ -176,7 +184,7 @@ export const HumanCalibrationLabelSchema = z
     labelId: z.string().min(1).max(256),
     unit: HashRefSchema,
     candidate: HashRefSchema,
-    rubric: ReviewRubricSchema.extract(["meaning", "voice", "terminology", "continuity"]),
+    rubric: CalibratedRubricSchema,
     stratum: z.enum(["high-risk", "representative-clean"]),
     expected: HumanExpectedVerdictSchema,
     adjudication: z
@@ -209,6 +217,7 @@ export const HumanCalibrationLabelSchema = z
       voice: ["register", "character-voice"],
       terminology: ["term-sense", "new-coinage"],
       continuity: ["callback", "foreshadow", "relationship", "route-arc"],
+      "build-lqa": ["onscreen-language"],
     }[value.rubric];
     if (!allowed.includes(value.expected.category)) {
       context.addIssue({ code: "custom", message: "label category is outside its rubric" });
