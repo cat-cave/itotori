@@ -8,8 +8,10 @@ import {
   migrate,
   permissionBasedLlmContentRead,
   resetDatabase,
+  type LlmRevisionRef,
   withDatabase,
 } from "@itotori/db";
+import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 
 import type { ItotoriApiServices, ItotoriReadOnlyApiServices } from "../api-handlers.js";
 import type { ItotoriCliServices } from "../cli-handlers.js";
@@ -19,6 +21,11 @@ import {
   productionLocalizeDispatchConfig,
 } from "../composition/live/index.js";
 import { runWikiBuild } from "../composition/index.js";
+import { buildContextSnapshotInput, buildFactSnapshot } from "../prepass/index.js";
+import {
+  parseNarrativeStructure,
+  SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
+} from "../structure/index.js";
 import { WikiObjectApiService } from "../wiki/object-api/service.js";
 
 /** The remaining command/API surfaces require a new-pipeline composition
@@ -58,17 +65,20 @@ export async function withDatabaseItotoriServices<T>(
     const contentAccess = permissionBasedLlmContentRead(db, actor);
     const wikiRepository = new ItotoriLlmWikiRepository(pool, cipher);
     const memoStore = new ItotoriLlmCallMemoRepository(pool, cipher, contentAccess);
+    const snapshotRepository = new ItotoriLlmSnapshotRepository(pool);
     const services = unavailableServiceSurface({
       projectWorkflow: unavailableProjectWorkflow(),
       wikiObjectApi,
       wikiBuild: {
         async run(input) {
-          const contextSnapshot = await new ItotoriLlmSnapshotRepository(pool).readContext(
-            config.contextSnapshotId,
-          );
-          if (contextSnapshot === null) {
-            throw new Error(`wiki build requires context snapshot ${config.contextSnapshotId}`);
+          if (input.sourceLanguage !== input.bridge.sourceLocale) {
+            throw new Error(
+              `wiki build source locale ${input.sourceLanguage} does not match bridge ${input.bridge.sourceLocale}`,
+            );
           }
+          const contextSnapshot = await snapshotRepository.putContext(
+            contextSnapshotInputForRun(input, config, input.sourceLanguage),
+          );
           return await runWikiBuild({
             ...input,
             contextSnapshot,
@@ -89,36 +99,52 @@ export async function withDatabaseItotoriServices<T>(
           });
         },
       },
-      localizationSubstrate: createProductionLiveLocalizationSubstrate({
-        database: db,
-        actor,
-        pool,
-        env: process.env,
-        targetLocale: config.targetLocale,
-        scope: {
-          contextSnapshotId: config.contextSnapshotId,
-          localizationSnapshotId: config.localizationSnapshotId,
-          schemaHash: config.schemaHash,
-          runMode: "production",
-          contextScope: "whole-game",
+      localizationSubstrate: {
+        async resolvePortSource(request, perRun) {
+          const contextSnapshot = await snapshotRepository.putContext(
+            contextSnapshotInputForRun(perRun, config, perRun.bridge.sourceLocale),
+          );
+          const localizationSnapshot = await snapshotRepository.putLocalization({
+            contextSnapshotId: contextSnapshot.snapshotId,
+            targetLocale: config.targetLocale,
+            // The CLI currently owns one branch per target locale.
+            localeBranchId: config.targetLocale,
+            acceptedBibleHead: null,
+            acceptedTargetOutputHead: null,
+          });
+          const substrate = createProductionLiveLocalizationSubstrate({
+            database: db,
+            actor,
+            pool,
+            env: process.env,
+            targetLocale: config.targetLocale,
+            scope: {
+              contextSnapshotId: contextSnapshot.snapshotId,
+              localizationSnapshotId: localizationSnapshot.snapshotId,
+              schemaHash: config.schemaHash,
+              runMode: "production",
+              contextScope: "whole-game",
+            },
+            dispatchSnapshots: {
+              decodeRevisionHash: config.decodeRevisionHash,
+              glossaryRevisionHash: config.glossaryRevisionHash,
+              styleRevisionHash: config.styleRevisionHash,
+              acceptedOutputHeadHash: null,
+            },
+            dispatch: productionLocalizeDispatchConfig({
+              env: process.env,
+              maxAttemptExposureUsd: config.maxAttemptExposureUsd,
+              confirmedCostCapUsd: config.confirmedCostCapUsd,
+            }),
+            roles: unavailableLiveRoleSeams(),
+            finalizeArtifact() {
+              throw unavailableAfterCutover("accepted-output finalization");
+            },
+            draftBudget: { budgetBytes: 16_384, overlapUnits: 1 },
+          });
+          return await substrate.resolvePortSource(request, perRun);
         },
-        dispatchSnapshots: {
-          decodeRevisionHash: config.decodeRevisionHash,
-          glossaryRevisionHash: config.glossaryRevisionHash,
-          styleRevisionHash: config.styleRevisionHash,
-          acceptedOutputHeadHash: null,
-        },
-        dispatch: productionLocalizeDispatchConfig({
-          env: process.env,
-          maxAttemptExposureUsd: config.maxAttemptExposureUsd,
-          confirmedCostCapUsd: config.confirmedCostCapUsd,
-        }),
-        roles: unavailableLiveRoleSeams(),
-        finalizeArtifact() {
-          throw unavailableAfterCutover("accepted-output finalization");
-        },
-        draftBudget: { budgetBytes: 16_384, overlapUnits: 1 },
-      }),
+      },
     });
     return await callback(services);
   }, options.databaseUrl ?? databaseUrlFromEnv());
@@ -184,8 +210,6 @@ function unavailableAfterCutover(surface: string): Error {
 
 function productionLocalizationConfig(env: Readonly<Record<string, string | undefined>>): {
   readonly targetLocale: string;
-  readonly contextSnapshotId: `sha256:${string}`;
-  readonly localizationSnapshotId: `sha256:${string}`;
   readonly schemaHash: `sha256:${string}`;
   readonly decodeRevisionHash: `sha256:${string}`;
   readonly glossaryRevisionHash: `sha256:${string}`;
@@ -196,8 +220,6 @@ function productionLocalizationConfig(env: Readonly<Record<string, string | unde
   requireEnvironmentValue(env, "OPENROUTER_API_KEY");
   return {
     targetLocale: requireEnvironmentValue(env, "ITOTORI_TARGET_LOCALE"),
-    contextSnapshotId: requireSha256EnvironmentValue(env, "ITOTORI_CONTEXT_SNAPSHOT_ID"),
-    localizationSnapshotId: requireSha256EnvironmentValue(env, "ITOTORI_LOCALIZATION_SNAPSHOT_ID"),
     schemaHash: requireSha256EnvironmentValue(env, "ITOTORI_DRAFT_SCHEMA_HASH"),
     decodeRevisionHash: requireSha256EnvironmentValue(env, "ITOTORI_DECODE_REVISION_HASH"),
     glossaryRevisionHash: requireSha256EnvironmentValue(env, "ITOTORI_GLOSSARY_REVISION_HASH"),
@@ -207,6 +229,35 @@ function productionLocalizationConfig(env: Readonly<Record<string, string | unde
       "ITOTORI_LOCALIZE_MAX_ATTEMPT_EXPOSURE_USD",
     ),
     confirmedCostCapUsd: requireDecimalEnvironmentValue(env, "ITOTORI_LOCALIZE_COST_CAP_USD"),
+  };
+}
+
+function contextSnapshotInputForRun(
+  input: {
+    readonly structureJson: unknown;
+    readonly bridge: BridgeBundleV02;
+  },
+  config: ReturnType<typeof productionLocalizationConfig>,
+  sourceLanguage: string,
+) {
+  const structure = parseNarrativeStructure(
+    input.structureJson,
+    SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
+  );
+  const factSnapshot = buildFactSnapshot(structure, input.bridge);
+  return buildContextSnapshotInput({
+    factSnapshot,
+    sourceLanguage,
+    decodeRef: revisionRef(config.decodeRevisionHash),
+    glossaryRef: revisionRef(config.glossaryRevisionHash),
+    styleRef: revisionRef(config.styleRevisionHash),
+  });
+}
+
+function revisionRef(contentHash: `sha256:${string}`): LlmRevisionRef {
+  return {
+    revisionId: contentHash.slice("sha256:".length),
+    contentHash,
   };
 }
 
