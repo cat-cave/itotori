@@ -42,7 +42,7 @@ const REQUIRED_RESPONSE_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, readonl
   "patchIteration.delivery": ["patchVersionId", "artifactHashes", "downloadUrl", "units"],
   "patchIteration.versions": ["schemaVersion", "versions"],
   "patchIteration.surface": ["schemaVersion", "patch", "versions", "feedback"],
-  "patchIteration.play": ["schemaVersion", "session"],
+  "patchIteration.play": ["schemaVersion", "receipt"],
   "patchIteration.feedbackBatch": ["schemaVersion", "batch"],
   "patchIteration.feedback": ["schemaVersion", "feedback"],
   "patchIteration.refine": ["schemaVersion", "refinement", "patch"],

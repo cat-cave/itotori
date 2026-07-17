@@ -703,7 +703,6 @@ const fixtureServices = {
     getCostDrilldown: vi.fn(async () => costDrilldownFixture),
     getBenchmarkReports: vi.fn(async () => benchmarkReportsFixture),
     importBridge: vi.fn(async () => projectFixture),
-    draftProject: vi.fn(unused),
     ingestRuntimeReport: vi.fn(unused),
     ingestPatchResult: vi.fn(unused),
     ingestConformanceReport: vi.fn(unused),
@@ -744,6 +743,23 @@ const fixtureServices = {
       fileName: "patch-iteration-v1.tar",
       bytes: Buffer.from("fixture-exact-historical-patch-tar", "utf8"),
     })),
+  },
+  patchPlay: {
+    loader: {
+      load: vi.fn(async (patchVersionId: string) => ({
+        ...patchIterationSurfaceV1Fixture,
+        patchVersionId,
+      })),
+    },
+    launcher: {
+      launch: vi.fn(async () => ({
+        runtime: "utsushi-reallive" as const,
+        engine: "reallive" as const,
+        scene: 1,
+        replay: "observed" as const,
+        observedTextLineCount: 3,
+      })),
+    },
   },
   patchIteration: {
     list: vi.fn(async () => [patchIterationVersionV2Fixture, patchIterationVersionV1Fixture]),

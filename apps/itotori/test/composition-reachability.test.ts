@@ -24,6 +24,18 @@ const ENTRYPOINTS = [
   "composition/deps.ts",
 ].map((rel) => join(srcRoot, rel));
 
+// The kept API mutation handlers for localize/draft / wiki write / patch-play. The
+// cut is only real if THESE modules — the code the API dispatch actually
+// delegates each kept mutation to — carry no import edge to the old path either.
+// They live in their own modules (not the `api-handlers.ts` monolith, which
+// legitimately imports the legacy graph for out-of-scope mutations) precisely so
+// their transitive closure can be proven clean.
+const API_HANDLER_ENTRYPOINTS = [
+  "api/localize-route.ts",
+  "api/wiki-route.ts",
+  "api/play-route.ts",
+].map((rel) => join(srcRoot, rel));
+
 // The legacy modules that MUST be unreachable from any kept entrypoint. Each maps
 // to one acceptance-clause hazard.
 const FORBIDDEN: readonly { readonly needle: string; readonly hazard: string }[] = [
@@ -85,6 +97,30 @@ describe("composition reachability — no kept entrypoint reaches the old path",
     for (const file of closure) {
       const rel = file.slice(repoRoot.length).replaceAll("\\", "/");
       if (rel.includes("/composition/")) continue;
+      for (const { needle, hazard } of FORBIDDEN) {
+        if (rel.includes(needle)) violations.push(`${rel} → ${hazard}`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
+describe("API mutation-handler reachability — localize/draft / wiki / patch-play reach zero legacy modules", () => {
+  it("spans the new pipeline from the kept API mutation handlers", () => {
+    const closure = importClosure(API_HANDLER_ENTRYPOINTS);
+    // The kept handlers reach the composition entrypoints, the live substrate
+    // builders, the run policy, and the workflow driver — a non-trivial closure.
+    expect(closure.size).toBeGreaterThan(50);
+  });
+
+  it("has NO import edge to project-workflow / providers / orchestrator / agents / WikiBrainService / raw-mtl", () => {
+    const closure = importClosure(API_HANDLER_ENTRYPOINTS);
+    const violations: string[] = [];
+    for (const file of closure) {
+      const rel = file.slice(repoRoot.length).replaceAll("\\", "/");
+      // The composition root and the thin API handler modules themselves are the
+      // cut, not the old path — everything else must be clean.
+      if (rel.includes("/composition/") || rel.includes("/apps/itotori/src/api/")) continue;
       for (const { needle, hazard } of FORBIDDEN) {
         if (rel.includes(needle)) violations.push(`${rel} → ${hazard}`);
       }

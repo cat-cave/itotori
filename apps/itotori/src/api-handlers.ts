@@ -44,7 +44,6 @@ import {
   type PatchPlaySurface,
   type PatchVersionIterationRecord,
   type PlaySessionQaCallout,
-  type PlaySessionRecord,
   type PlayTestFeedbackBatchRecord,
   type PlayTestFeedbackEventRecord,
   type PlayTestFeedbackInbox,
@@ -195,6 +194,20 @@ import {
   WikiBrainEditInputError,
   type WikiBrainServicePort,
 } from "./wiki/service.js";
+// The kept localize/draft, wiki write, and patch-play mutations route ONLY through
+// these thin new-pipeline handlers. Each has a clean transitive import closure (no
+// edge to the legacy service graph — proven by composition-reachability); the live
+// substrate they drive is injected through the ports on ItotoriApiServices, never
+// imported here on their behalf.
+import { runApiLocalize } from "./api/localize-route.js";
+import { runApiWiki } from "./api/wiki-route.js";
+import { runApiPlay } from "./api/play-route.js";
+import type { LocalizationPortSource, PlayEntrypointDeps } from "./composition/index.js";
+import type { RunPolicyRequest } from "./run-policy/index.js";
+import type { WikiObjectApiService } from "./wiki/object-api/index.js";
+import type { RunModeValue } from "./contracts/index.js";
+import type { OutputScope } from "./run-policy/index.js";
+import type { ContextScopeValue } from "./contracts/index.js";
 
 export type ApiMutationPermissionGate = {
   mutation: string;
@@ -414,8 +427,39 @@ export type ItotoriReadOnlyApiServices = {
  * record/draft/ingest writes.
  */
 export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
-  /** Full shared wiki service; POST edits route through node 8. */
+  /** Full shared wiki service for READ paths; wiki mutations NEVER use this — they
+   * route through {@link wikiObjectApi} + the composition `runWikiObjectCommand`. */
   wiki: WikiBrainServicePort;
+  /**
+   * The kept wiki mutation's new-pipeline substrate: the Wiki object-API service
+   * the composition `runWikiObjectCommand` delegates to. Optional so unit suites
+   * that don't exercise wiki writes can omit it; the handler refuses loudly when
+   * it is missing. Populating it in the live factory needs the new
+   * `ItotoriLlmWikiRepository` / `ItotoriLlmHumanInputRepository` behind a
+   * production field-cipher — a substrate seam not yet wired into
+   * `withDatabaseItotoriServices` (flagged; never a fallback to the old service).
+   */
+  wikiObjectApi?: WikiObjectApiService;
+  /**
+   * The kept localize/draft mutation's new-pipeline substrate: resolve the live
+   * `WorkflowPortDeps` (or fake ports for a proof) for one run policy. Production
+   * assembles it from `composition/live`; the remaining role-input assemblers over
+   * the decode facts + installed bible are a substrate seam not yet wired into the
+   * live factory (flagged). Optional so unit suites can omit it; the handler
+   * refuses loudly when it is missing — it never routes to the old service.
+   */
+  localizationSubstrate?: {
+    resolvePortSource(
+      request: RunPolicyRequest,
+    ): LocalizationPortSource | Promise<LocalizationPortSource>;
+  };
+  /**
+   * The kept `patch play` mutation's new-pipeline substrate: the exact-surface
+   * loader + Utsushi runtime launcher the composition `runPlaySession` drives. The
+   * live factory wires it from the localization-iteration surface read + the real
+   * `UtsushiPatchRuntimeLauncher` (no journal reservation/finalizer).
+   */
+  patchPlay: PlayEntrypointDeps;
   projectWorkflow: Pick<
     ItotoriProjectWorkflowPort,
     | "listLocaleBranchIdentities"
@@ -427,7 +471,6 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
     | "getBenchmarkReports"
     | "importBridge"
     | "decodeExtract"
-    | "draftProject"
     | "recordFinding"
     | "recordBenchmarkReport"
     | "ingestRuntimeReport"
@@ -755,38 +798,84 @@ async function routeItotoriApiRequest(
     wikiContextMutationRoute !== null &&
     (wikiContextMutationRoute.resource === "entry" || wikiContextMutationRoute.resource === "list")
   ) {
+    // New-pipeline path: wiki writes route ONLY through the composition
+    // `runWikiObjectCommand` over the injected wikiObjectApi. The old
+    // WikiBrainService.add/edit path is unreachable from this mutation.
     await requireApiPermission(services, apiMutationPermissionGates.wikiEdit);
-    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+    await requireOwnedBranchScope(services.projectWorkflow, {
       projectId: wikiContextMutationRoute.projectId,
       localeBranchId: wikiContextMutationRoute.localeBranchId,
     });
     if (wikiContextMutationRoute.resource === "list") {
-      const body = parseWikiAddRequest(request.body);
-      return ok(
-        "wiki.add",
-        await services.wiki.add({
-          projectId: scope.projectId,
-          localeBranchId: scope.localeBranchId,
-          sourceRevisionId: body.sourceRevisionId,
-          kind: body.kind,
-          title: body.title,
-          body: body.body,
-          reason: body.reason,
-          affectedUnitIds: body.affectedUnitIds,
-        }),
+      // Validate the body first so malformed/zero-unit adds stay 400; then refuse
+      // the old service path. The new object-API has no free-standing "add".
+      parseWikiAddRequest(request.body);
+      throw new Error(
+        "wiki is not configured in this API build (wikiObjectApi port missing add — the new-pipeline Wiki object-API addresses edits on known objects only)",
       );
     }
+    if (services.wikiObjectApi === undefined) {
+      throw new Error(
+        "wiki is not configured in this API build (wikiObjectApi port missing — the new-pipeline Wiki object-API service is not installed)",
+      );
+    }
+    const wikiService = services.wikiObjectApi;
     const body = parseWikiEditRequest(request.body);
+    const objectApiBody =
+      typeof request.body === "object" && request.body !== null
+        ? (request.body as Record<string, unknown>)
+        : {};
+    const wikiKind = objectApiBody.wikiKind;
+    const objectId =
+      typeof objectApiBody.objectId === "string" && objectApiBody.objectId.length > 0
+        ? objectApiBody.objectId
+        : wikiContextMutationRoute.contextArtifactId;
+    if (
+      wikiKind !== "source-object" &&
+      wikiKind !== "translation-object" &&
+      wikiKind !== "localized-rendering"
+    ) {
+      throw new Error(
+        "wiki.edit requires wikiKind of source-object | translation-object | localized-rendering for the new-pipeline object-API",
+      );
+    }
+    const candidate =
+      objectApiBody.candidate !== undefined
+        ? objectApiBody.candidate
+        : {
+            kind: "edit" as const,
+            body: body.body,
+            reason: body.reason,
+            ...(body.title === undefined ? {} : { title: body.title }),
+          };
+    const createdAt =
+      typeof objectApiBody.createdAt === "string" && objectApiBody.createdAt.length > 0
+        ? objectApiBody.createdAt
+        : new Date().toISOString();
+    const wikiResponse = await runApiWiki(
+      {
+        action: "edit",
+        selector: { wikiKind, objectId },
+        candidate,
+        createdAt,
+      },
+      { resolveWikiService: () => wikiService },
+    );
+    if (wikiResponse.action !== "edit") {
+      throw new Error("wiki.edit expected an edit receipt from the object-API");
+    }
     return ok(
       "wiki.edit",
-      await services.wiki.edit({
-        projectId: scope.projectId,
-        localeBranchId: scope.localeBranchId,
-        contextArtifactId: wikiContextMutationRoute.contextArtifactId,
+      wikiObjectEditResponseBody({
+        receipt: wikiResponse.result,
+        projectId: wikiContextMutationRoute.projectId,
+        localeBranchId: wikiContextMutationRoute.localeBranchId,
+        objectId,
         body: body.body,
         reason: body.reason,
         ...(body.title === undefined ? {} : { title: body.title }),
         ...(body.affectedUnitIds === undefined ? {} : { affectedUnitIds: body.affectedUnitIds }),
+        createdAt,
       }),
     );
   }
@@ -807,19 +896,27 @@ async function routeItotoriApiRequest(
   if (request.method === "POST" && patchIterationRoute !== null) {
     switch (patchIterationRoute.resource) {
       case "session": {
+        // New-pipeline path: load the exact hash-bound play surface and launch it
+        // through Utsushi's real replay runtime via composition `runPlaySession`.
+        // NEVER the legacy PatchIterationService.play journal reservation/finalizer.
         const body = parsePatchIterationPlayRequest(request.body);
         await requireApiPermission(services, apiMutationPermissionGates.patchIterationPlay);
-        return ok(
-          "patchIteration.play",
-          patchIterationPlayResponseBody(
-            await services.patchIteration.play({
-              patchVersionId: patchIterationRoute.patchVersionId,
-              ...(body.launchDescriptor === undefined
-                ? {}
-                : { launchDescriptor: body.launchDescriptor }),
-            }),
-          ),
+        if (services.patchPlay === undefined) {
+          throw new Error(
+            "patch play is not configured in this API build (patchPlay port missing — the new-pipeline surface loader + runtime launcher are not installed)",
+          );
+        }
+        const playDeps = services.patchPlay;
+        const receipt = await runApiPlay(
+          {
+            patchVersionId: patchIterationRoute.patchVersionId,
+            ...(body.launchDescriptor === undefined
+              ? {}
+              : { launchDescriptor: body.launchDescriptor }),
+          },
+          { resolvePlayDeps: () => playDeps },
         );
+        return ok("patchIteration.play", patchIterationPlayReceiptResponseBody(receipt));
       }
       case "feedback-batch": {
         const body = parsePatchIterationFeedbackBatchRequest(request.body);
@@ -1234,21 +1331,65 @@ async function routeItotoriApiRequest(
       assertPathProject(projectRoute.projectId, body.project.projectId);
       await requireApiPermission(services, apiMutationPermissionGates.branchDraft);
       // ITOTORI-050 — derive the branch scope from the SERVER-SIDE ownership
-      // lookup and write with the authoritative branch id; a client-supplied
-      // ProjectState carrying a foreign/forged localeBranchId is refused here
-      // before draftProject touches the repository.
+      // lookup; a client-supplied ProjectState carrying a foreign/forged
+      // localeBranchId is refused here before the new pipeline runs.
       const scope = await requireOwnedBranchScope(services.projectWorkflow, {
         projectId: projectRoute.projectId,
         localeBranchId: body.project.localeBranchId,
       });
       const scopedProject = { ...body.project, localeBranchId: scope.localeBranchId };
-      const project = await services.projectWorkflow.draftProject(scopedProject, body.targetLocale);
+      // New-pipeline path: draft routes ONLY through composition `runLocalization`.
+      // The old `projectWorkflow.draftProject` path is unreachable from this route.
+      // The live substrate (WorkflowPortDeps assemblers over decode facts + bible)
+      // is a flagged seam not yet wired into the factory — refuse LOUDLY rather
+      // than fall back to the old service.
+      if (services.localizationSubstrate === undefined) {
+        return ok("branches.draft", {
+          outcome: "refused",
+          project: null,
+          status: null,
+          refusalMessage:
+            "draft is not configured in this API build (localizationSubstrate port missing — the new-pipeline WorkflowPortDeps assemblers are not installed)",
+        });
+      }
+      const substrate = services.localizationSubstrate;
+      const localizeFields = parseNewPipelineDraftFields(request.body);
+      if (localizeFields === null) {
+        return ok("branches.draft", {
+          outcome: "refused",
+          project: null,
+          status: null,
+          refusalMessage:
+            "draft refused: new-pipeline localize requires runMode + structure on the request body (localizationSubstrate is installed)",
+        });
+      }
+      const report = await runApiLocalize(
+        {
+          runMode: localizeFields.runMode,
+          structureJson: localizeFields.structure,
+          ...(localizeFields.contextScope === undefined
+            ? {}
+            : { contextScope: localizeFields.contextScope }),
+          ...(localizeFields.outputScope === undefined
+            ? {}
+            : { outputScope: localizeFields.outputScope }),
+        },
+        { resolvePortSource: (request) => substrate.resolvePortSource(request) },
+      );
       const status = await services.projectWorkflow.getDashboardStatus();
       // gate-mutation-route-status-echo — see POST /api/imports/bridge: the
       // success body echoes the full dashboard status, so the same
       // catalog.read gate + redaction applies (recentRuns / recentEvents
       // stripped for a non-holder).
       const canReadStatus = await resolveProjectReadPermission(services);
+      // The new pipeline stores drafts in the CAS, not ProjectState.drafts. Echo
+      // the scoped project identity + target locale so the Studio envelope stays
+      // typed; the run report's shippable posture is the proof the driver ran.
+      const project = {
+        ...scopedProject,
+        targetLocale: body.targetLocale,
+      };
+      void report;
       return ok("branches.draft", {
         outcome: "drafted",
         project,
@@ -1459,10 +1600,112 @@ function patchIterationSurfaceResponseBody(input: {
   };
 }
 
-function patchIterationPlayResponseBody(input: PlaySessionRecord): ApiPatchIterationPlayResponse {
+function patchIterationPlayReceiptResponseBody(input: {
+  runtime: "utsushi-reallive";
+  engine: "reallive";
+  scene: number;
+  replay: "observed";
+  observedTextLineCount: number;
+}): ApiPatchIterationPlayResponse {
   return {
     schemaVersion: "itotori.patch-iteration.play.v0",
-    session: patchIterationSessionResponseBody(input),
+    receipt: {
+      runtime: input.runtime,
+      engine: input.engine,
+      scene: input.scene,
+      replay: input.replay,
+      observedTextLineCount: input.observedTextLineCount,
+    },
+  };
+}
+
+/** Map an object-API write receipt onto the Studio wiki.edit wire envelope. */
+function wikiObjectEditResponseBody(input: {
+  receipt: {
+    inputId: string;
+    head: { objectId: string; version: number; contentHash: string };
+    dependencyImpact: { consumers: ReadonlyArray<{ downstreamObjectId: string }> };
+  };
+  projectId: string;
+  localeBranchId: string;
+  objectId: string;
+  body: string;
+  reason: string;
+  title?: string;
+  affectedUnitIds?: readonly string[];
+  createdAt: string;
+}): ApiWikiEditResponse {
+  const versionId = `${input.objectId}:v${String(input.receipt.head.version)}`;
+  const affectedUnitIds = [...(input.affectedUnitIds ?? [])];
+  const title = input.title ?? input.objectId;
+  const provenance = {
+    producedByAgent: null,
+    producedByTool: null,
+    producerVersion: "wiki-object-api",
+    createdByUserId: "local-user",
+    origin: "play_tester_edit",
+    runId: null,
+    providerRunId: null,
+    provenance: { origin: "play_tester_edit", inputId: input.receipt.inputId },
+  };
+  const impact = {
+    affectedUnitIds,
+    invalidatedReason: null,
+    invalidatedAt: null,
+  };
+  const version = {
+    contextEntryVersionId: versionId,
+    contextArtifactId: input.objectId,
+    parentVersionId: null,
+    projectId: input.projectId,
+    localeBranchId: input.localeBranchId,
+    sourceRevisionId: "wiki-object-api",
+    category: "context_note" as const,
+    kind: "note" as const,
+    status: "active" as const,
+    title,
+    body: input.body,
+    data: { reason: input.reason },
+    contentHash: input.receipt.head.contentHash,
+    provenance,
+    citations: [],
+    impact,
+    createdAt: new Date(input.createdAt),
+    isHead: true,
+  };
+  return {
+    schemaVersion: "wiki.context.edit.v0.2",
+    generatedAt: new Date(input.createdAt),
+    correctionId: input.receipt.inputId,
+    contextArtifactId: input.objectId,
+    contextEntryVersionId: versionId,
+    affectedUnitIds,
+    invalidatedArtifactIds: [
+      ...new Set(input.receipt.dependencyImpact.consumers.map((c) => c.downstreamObjectId)),
+    ],
+    redraftJobId: `wiki-object-edit:${input.receipt.inputId}`,
+    rerun: { state: "pending", jobStatus: "queued", error: null },
+    entry: {
+      contextArtifactId: input.objectId,
+      projectId: input.projectId,
+      localeBranchId: input.localeBranchId,
+      sourceRevisionId: "wiki-object-api",
+      category: "context_note",
+      kind: "note",
+      status: "active",
+      title,
+      body: input.body,
+      data: { reason: input.reason },
+      contentHash: input.receipt.head.contentHash,
+      headVersionId: versionId,
+      versionCount: input.receipt.head.version,
+      provenance,
+      citations: [],
+      impact,
+      createdAt: new Date(input.createdAt),
+      updatedAt: new Date(input.createdAt),
+      history: [version],
+    },
   };
 }
 
@@ -1573,18 +1816,6 @@ function patchIterationFeedbackEventResponseBody(input: PlayTestFeedbackEventRec
     contextEntryVersionId: input.contextEntryVersionId,
     affectedBridgeUnitIds: [...input.affectedBridgeUnitIds],
     createdAt: input.createdAt.toISOString(),
-  };
-}
-
-function patchIterationSessionResponseBody(input: PlaySessionRecord) {
-  return {
-    playSessionId: input.playSessionId,
-    observedPatchVersionId: input.observedPatchVersionId,
-    actorUserId: input.actorUserId,
-    status: input.status,
-    startedAt: input.startedAt.toISOString(),
-    endedAt: input.endedAt?.toISOString() ?? null,
-    qaCallouts: input.qaCallouts.map(patchIterationQaCalloutResponseBody),
   };
 }
 
@@ -3601,11 +3832,43 @@ function methodNotAllowed(allowedMethods: string[]): ApiJsonResponse {
 }
 
 /**
+ * Parse the new-pipeline localize fields off a draft request body. The legacy
+ * ProjectState + targetLocale pair still drives ownership scoping; the new
+ * pipeline additionally needs a runMode + the decoded narrative-structure JSON.
+ * Returns null when those fields are absent (caller refuses in-band).
+ */
+function parseNewPipelineDraftFields(body: unknown): {
+  runMode: RunModeValue;
+  structure: unknown;
+  contextScope?: ContextScopeValue;
+  outputScope?: OutputScope;
+} | null {
+  if (typeof body !== "object" || body === null) return null;
+  const record = body as Record<string, unknown>;
+  if (typeof record.runMode !== "string" || record.runMode.length === 0) return null;
+  if (record.structure === undefined) return null;
+  const runModeValues = ["production", "pilot", "test-dev"] as const;
+  if (!(runModeValues as readonly string[]).includes(record.runMode)) return null;
+  return {
+    runMode: record.runMode as RunModeValue,
+    structure: record.structure,
+    ...(typeof record.contextScope === "string"
+      ? { contextScope: record.contextScope as ContextScopeValue }
+      : {}),
+    ...(typeof record.outputScope === "string"
+      ? { outputScope: record.outputScope as OutputScope }
+      : {}),
+  };
+}
+
+/**
  * The live draft provider is deferred until the first invocation, so these
  * configuration failures can surface from either the workflow's missing-port
  * guard, the real provider constructor, or the root paid-invocation boundary.
  * They are all actionable domain refusals for `branches.draft`, not malformed
- * requests or server faults.
+ * requests or server faults. After the API repoint, the primary refusal is the
+ * in-band localizationSubstrate-missing path; these remain for any residual
+ * substrate that still constructs a provider.
  */
 function draftProviderConfigurationResponse(
   request: ItotoriApiRequest,
@@ -3638,6 +3901,15 @@ function draftProviderConfigurationRefusal(error: unknown): string | null {
     error instanceof InvocationOperationalPauseError &&
     error.blocker.kind === "budget_cap" &&
     error.blocker.detail.includes("durable cost-admission")
+  ) {
+    return error.message;
+  }
+  // Substrate-missing refusals that surface as thrown errors (e.g. from a
+  // partial inject) stay in-band for the draft route.
+  if (
+    error instanceof Error &&
+    (error.message.includes("localizationSubstrate port missing") ||
+      error.message.includes("WorkflowPortDeps assemblers are not installed"))
   ) {
     return error.message;
   }

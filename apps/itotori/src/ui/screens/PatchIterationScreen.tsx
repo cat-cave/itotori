@@ -230,7 +230,7 @@ function PatchIterationForBranch({
 }
 
 type MutationOutcome =
-  | { kind: "play"; playSessionId: string }
+  | { kind: "play"; observedTextLineCount: number; scene: number }
   | { kind: "refine"; patchVersionId: string }
   | { kind: "error"; message: string };
 
@@ -270,18 +270,20 @@ function PatchIterationReady({
         body: {},
       });
       if (result.state === "ready") {
-        const startedPlaySessionId = result.data.session.playSessionId;
-        setPlaySessionId(startedPlaySessionId);
-        setOutcome({ kind: "play", playSessionId: startedPlaySessionId });
+        // The new-pipeline play mutation returns the Utsushi launch receipt (no
+        // journal play-session reservation). Feedback may still omit playSessionId.
+        const { observedTextLineCount, scene } = result.data.receipt;
+        setPlaySessionId(null);
+        setOutcome({ kind: "play", observedTextLineCount, scene });
       } else if (result.state === "error") {
         setOutcome({ kind: "error", message: apiErrorMessage(result.error) });
       } else {
-        setOutcome({ kind: "error", message: "The play session returned no durable receipt." });
+        setOutcome({ kind: "error", message: "The play runtime returned no launch receipt." });
       }
     } catch (error) {
       setOutcome({
         kind: "error",
-        message: errorMessage(error, "Could not start the play session."),
+        message: errorMessage(error, "Could not launch the patched runtime."),
       });
     } finally {
       setPending(null);
@@ -363,13 +365,13 @@ function PatchIterationReady({
         />
         {pending !== null && (
           <p role="status" data-patch-iteration-status="pending">
-            {pending === "play" ? "Starting play session…" : "Building refinement patch…"}
+            {pending === "play" ? "Launching patched runtime…" : "Building refinement patch…"}
           </p>
         )}
         {outcome?.kind === "play" && (
           <p role="status" data-patch-iteration-status="play-started">
-            Patched runtime opened; play session <code>{outcome.playSessionId}</code> is linked to
-            this exact patch version.
+            Patched runtime opened (scene {outcome.scene}); observed{" "}
+            <code>{outcome.observedTextLineCount}</code> text lines for this exact patch version.
           </p>
         )}
         {outcome?.kind === "refine" && (

@@ -202,14 +202,12 @@ const versionsResponse: ApiPatchIterationVersionsResponse = {
 
 const playResponse: ApiPatchIterationPlayResponse = {
   schemaVersion: "itotori.patch-iteration.play.v0",
-  session: {
-    playSessionId: "play-session-v1",
-    observedPatchVersionId: PATCH_V1,
-    actorUserId: "local-user",
-    status: "active",
-    startedAt: "2026-07-13T12:10:00.000Z",
-    endedAt: null,
-    qaCallouts: [qaCallout],
+  receipt: {
+    runtime: "utsushi-reallive",
+    engine: "reallive",
+    scene: 1,
+    replay: "observed",
+    observedTextLineCount: 3,
   },
 };
 
@@ -479,7 +477,7 @@ describe("SPA shell — patch iteration dashboard", () => {
         (_content, element) =>
           element?.getAttribute("data-patch-iteration-status") === "play-started",
       ),
-    ).toHaveTextContent(/Patched runtime opened.*play-session-v1.*linked/i);
+    ).toHaveTextContent(/Patched runtime opened \(scene 1\).*observed.*3.*text lines/i);
 
     fireEvent.click(screen.getByLabelText("Select feedback batch Session observations"));
     fireEvent.click(screen.getByText("Optional scope and wiki inputs"));
@@ -523,7 +521,7 @@ describe("SPA shell — patch iteration dashboard", () => {
     ).toHaveLength(1);
   });
 
-  it("records dashboard feedback against the retained exact play session", async () => {
+  it("records dashboard feedback after launching the patched runtime (no journal play session)", async () => {
     render(<App location={ITERATION_ROUTE} navigate={vi.fn()} />);
     await screen.findByLabelText("Patch iteration dashboard");
 
@@ -546,9 +544,10 @@ describe("SPA shell — patch iteration dashboard", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Attach feedback" }));
     await waitFor(() => {
+      // New-pipeline play returns a launch receipt only — feedback no longer
+      // binds a journal playSessionId from the play mutation.
       expect(capturedFeedback).toEqual({
         feedbackBatchId: "feedback-batch-dashboard",
-        playSessionId: "play-session-v1",
         eventKind: "comment",
         body: "The dashboard attached this route observation.",
         affectedBridgeUnitIds: ["bridge-unit-v1-1"],
