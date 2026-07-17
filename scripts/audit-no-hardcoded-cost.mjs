@@ -110,18 +110,6 @@ const COST_LITERAL_ALLOW = new Map([
     "fixtures/itotori-experiment-report/experiment-matrix-run-manifest.json",
     "deterministic experiment-matrix run manifest fixture; synthetic per-cell costs exercise the experiment-report roll-up",
   ],
-  [
-    "fixtures/provider-proof/recorded-fallback-proof-input.json",
-    "deterministic provider-proof replay input (fallback); synthetic per-attempt costs exercise the recorded-fallback proof",
-  ],
-  [
-    "fixtures/provider-proof/recorded-proof-input.json",
-    "deterministic provider-proof replay input; synthetic per-attempt costs exercise the recorded-provider proof",
-  ],
-  [
-    "fixtures/provider-proof/recorded-raw-mtl-baseline-input.json",
-    "deterministic raw-MTL-baseline replay input; synthetic per-attempt costs exercise the raw-MTL baseline proof",
-  ],
   // Bridge-schema benchmark-report fixtures. These carry a synthetic estimated
   // `amountMicrosUsd` under an external-system `costKind: "provider_estimate"`
   // row: the benchmark subsystem compares third-party systems whose per-call

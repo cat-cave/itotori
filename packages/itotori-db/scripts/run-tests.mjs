@@ -19,6 +19,10 @@ const rawArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 const requireDatabase = rawArgs.includes("--require-database");
 const vitestArgs = rawArgs.filter((arg) => arg !== "--require-database");
 
+if (!process.env[requiredEnv]) {
+  await handleMissingDatabase();
+}
+
 runRequiredCommand(
   process.execPath,
   ["--test", path.join(packageRoot, "scripts/verify-permission-constraints.test.mjs")],
@@ -43,7 +47,7 @@ runRequiredCommand(
   "event queue index alignment verifier",
 );
 
-if (!process.env[requiredEnv]) {
+async function handleMissingDatabase() {
   const skippedSuites = await discoverDatabaseBackedSuites();
   const skipReport = {
     status: "skipped",

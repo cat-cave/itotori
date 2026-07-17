@@ -29,7 +29,6 @@ import {
 import { AddressableFocusScreen } from "./screens/AddressableFocusScreen.js";
 import { DashboardScreen } from "./screens/DashboardScreen.js";
 import { OnboardingScreen, parseOnboardingRoute } from "./screens/OnboardingScreen.js";
-import { PatchIterationScreen, parsePatchIterationRoute } from "./screens/PatchIterationScreen.js";
 import { PlayRouteMapScreen, parsePlayRouteMapRoute } from "./screens/PlayRouteMapScreen.js";
 import {
   PlayFlagComposerScreen,
@@ -195,13 +194,6 @@ function RoutedScreen({
   const playFlag = parsePlayFlagComposerRoute(location.pathname, location.search);
   if (playFlag !== null) {
     return <PlayFlagComposerScreen route={playFlag} />;
-  }
-
-  // `/play/patches` — immutable lineage → exact-version play session →
-  // persisted feedback → refinement v2. Keep it before the bare Play route.
-  const patchIteration = parsePatchIterationRoute(location.pathname, location.search);
-  if (patchIteration !== null) {
-    return <PatchIterationScreen route={patchIteration} navigate={navigate} />;
   }
 
   const onboardingRoute = parseOnboardingRoute(location.pathname);

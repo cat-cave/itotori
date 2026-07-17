@@ -109,6 +109,20 @@ const acceptanceVerificationPathPattern = new RegExp(
 );
 const historicalMissingPathContextPattern =
   /\b(?:absent|deleted|does not exist|do not exist|missing\s+(?:artifact|file|path|reference|script|target|test)s?|no longer|no such file|removed|renamed|replaced|retired|stale|successor|superseded|historical|returns 0|returns no hits)\b/iu;
+// `roadmap/spec-dag.json` retains completed qd records as an audit trail. The
+// no-legacy cutover deliberately removed these old-world surfaces, so their
+// historical evidence must not make the current-tree validator fail. Keep this
+// list precise: a newly missing path outside these retired roots remains an
+// error for a completed record.
+const retiredLegacyPathPatterns = [
+  /^apps\/itotori\/src\/(?:agents|batch-planner|draft(?:-feedback)?|experiment-matrix|orchestrator|providers|qa|route-reliability|telemetry)\//u,
+  /^apps\/itotori\/test\/(?:api-handlers|experiment-matrix|localize-project-stage|openrouter-provider|provider-abstraction)\.test\.ts$/u,
+  /^apps\/itotori\/test\/character-relationship[^/]*\.test\.ts$/u,
+  /^apps\/itotori\/test\/fixtures\/agentic-loop-smoke-/u,
+  /^packages\/localization-bridge-schema\/test\/pair-policy\.v0\.3\.test\.ts$/u,
+  /^presets\/localize-project\./u,
+  /^suite\/scripts\/(?:alpha-public-fixture|localize-project)\//u,
+];
 const justfilePath = resolve(root, "justfile");
 const viteConfigPath = resolve(root, "vite.config.ts");
 
@@ -1479,7 +1493,7 @@ function missingAcceptanceVerificationPathReferences(value) {
     if (isIntentionalMissingPathContext(context)) {
       continue;
     }
-    if (!existsSync(resolve(root, repoPath))) {
+    if (!existsSync(resolve(root, repoPath)) && !isRetiredLegacyPath(repoPath)) {
       references.push({ path: repoPath, context });
     }
   }
@@ -1492,6 +1506,10 @@ function cleanAcceptanceVerificationPath(value) {
     .replace(/[),.;:'"]+$/u, "")
     .replace(/#.*$/u, "")
     .replace(/:\d+(?::\d+)?$/u, "");
+}
+
+function isRetiredLegacyPath(repoPath) {
+  return retiredLegacyPathPatterns.some((pattern) => pattern.test(repoPath));
 }
 
 function isCheckableAcceptanceVerificationPath(repoPath) {
@@ -1702,6 +1720,9 @@ function validateAlphaCommandReferences(nodes) {
         continue;
       }
       const command = entry.value;
+      if (isRetiredLegacyCommand(command)) {
+        continue;
+      }
       for (const recipe of referencedJustRecipes(command)) {
         if (!justRecipes.has(recipe)) {
           errors.push(
@@ -1741,6 +1762,13 @@ function validateAlphaCommandReferences(nodes) {
   }
 
   return errors;
+}
+
+function isRetiredLegacyCommand(command) {
+  return (
+    /\bjust\s+localize-project(?:-test)?\b/u.test(command) ||
+    /\bitotori:agentic-loop-smoke\b/u.test(command)
+  );
 }
 
 function loadJustRecipeNames() {

@@ -27,7 +27,7 @@ describe("findingFollowupPath", () => {
     expect(findingFollowupPath(finding({}))).toBe("/wiki");
   });
 
-  it("keeps a branch-scoped finding on patch iteration", () => {
+  it("routes a branch-scoped finding to Wiki after patch iteration retirement", () => {
     expect(
       findingFollowupPath(
         finding({
@@ -36,6 +36,6 @@ describe("findingFollowupPath", () => {
           targetLocale: "fr-FR",
         }),
       ),
-    ).toBe("/play/patches?localeBranchId=branch-fr-fr");
+    ).toBe("/wiki");
   });
 });

@@ -31,7 +31,6 @@ const taskOrder = [
   "ci-kaifuu",
   "ci-utsushi",
   "fixtures-validate",
-  "localize-project-test",
   "alpha-proof",
   "roadmap-validate",
 ];
@@ -93,31 +92,6 @@ export function affectedTasks(changedPaths) {
       add(tasks, "alpha-proof");
     } else if (path.startsWith("fixtures/")) {
       addFixtureGates(tasks);
-    } else if (path.startsWith("presets/")) {
-      // presets/*.json are consumed by the ci-itotori localize-project-stage
-      // vitest (e.g. presets/localize-project.pair-policy.json). `just check`
-      // never runs app vitest, so a preset change must select ci-itotori.
-      add(tasks, "ci-itotori");
-      // The same presets are ALSO read by suite/scripts/localize-project/
-      // run.test.mjs (DEFAULT_PAIR_POLICY_PATH = presets/localize-project.
-      // pair-policy.json and presets/localize-project.alpha-target-data.json),
-      // which runs ONLY under the localize-project-test lane (justfile:
-      // `node --test suite/scripts/localize-project/*.test.mjs`), never under
-      // ci-itotori. A preset change must select that lane too, or it could
-      // break the localize-project test undetected.
-      add(tasks, "localize-project-test");
-    } else if (
-      path.startsWith("suite/scripts/alpha-public-fixture/") ||
-      path.startsWith("suite/scripts/itotori-fixture-iteration/") ||
-      path.startsWith("suite/scripts/itotori-iteration-fixture/")
-    ) {
-      // alpha-proof runs the focused sibling Node unit suites through
-      // `alpha-iteration-unit-test`, then executes the public-fixture
-      // vertical. Route every source or test change in these directories to
-      // that gate; `just check` does not run these suites.
-      add(tasks, "alpha-proof");
-    } else if (path.startsWith("suite/scripts/localize-project/")) {
-      add(tasks, "localize-project-test");
     } else if (path.startsWith("packages/spec-dag-dashboard/")) {
       // spec-dag-dashboard vitest (incl. the db-audit-findings suite that needs
       // ci Postgres) runs in NO fine-grained lane — only the full `ci` gate's
@@ -142,12 +116,10 @@ export function affectedTasks(changedPaths) {
     tasks.delete("ci-itotori");
     tasks.delete("ci-kaifuu");
     tasks.delete("ci-utsushi");
-    tasks.delete("localize-project-test");
     tasks.delete("roadmap-validate");
   }
 
   if (tasks.has("check")) {
-    tasks.delete("localize-project-test");
     tasks.delete("roadmap-validate");
   }
 
@@ -193,7 +165,6 @@ const laneOrder = [
   "ci-utsushi",
   "mutation-differential",
   "fixtures-validate",
-  "localize-project-test",
   "alpha-proof",
   "roadmap-validate",
 ];

@@ -23,7 +23,7 @@ import {
   type QualifyingScorecardTelemetry,
   type RoleId,
 } from "../contracts/index.js";
-import { addDecimalUsd } from "../providers/cost.js";
+import { addDecimalUsd } from "../llm/decimal-usd.js";
 import type { QualifyingAttemptTelemetryStore } from "../telemetry/qualifying-lineage.js";
 
 export const STRICT_SCORECARD_SCHEMA_VERSION = "itotori.strict-scorecard.v1" as const;

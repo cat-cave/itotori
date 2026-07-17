@@ -54,20 +54,16 @@ dashboard:
 check:
     pnpm exec vp check
     node --test scripts/itotori-db-compose-config.test.mjs
-    node --test scripts/db-test-skip-visibility.test.mjs
     node --test scripts/permission-denial-db-gate.test.mjs
     node --test scripts/catalog-replay-db-gate.test.mjs
     node --test scripts/qd-full-ci.test.mjs
     node --test scripts/affected.test.mjs
     node --test scripts/native-deps.test.mjs
     node --test scripts/itotori-installable-package.test.mjs
-    node --test scripts/alpha-proof-gate.test.mjs
     node --test scripts/validate-tracked-artifact-hygiene.test.mjs
     node scripts/validate-tracked-artifact-hygiene.mjs --mode check
     node --test scripts/stale-residue-guard.test.mjs
     node scripts/stale-residue-guard.mjs --mode check
-    node --test scripts/assert-db-app-exclusion-union.test.mjs
-    just localize-project-test
     node scripts/spec-dag-issues.test.mjs
     node scripts/spec-dag-lifecycle.test.mjs
     node scripts/spec-dag-validator.test.mjs
@@ -100,7 +96,6 @@ check:
     node --test scripts/mutation-differential.test.mjs
     node --test scripts/coverage-parity.test.mjs
     node scripts/coverage-parity.mjs
-    node --test scripts/alpha-readiness-checklist.test.mjs
     node scripts/alpha-readiness-checklist.mjs
     node --test scripts/rgt-readiness-checklist.test.mjs
     node scripts/rgt-readiness-checklist.mjs
@@ -135,17 +130,6 @@ test:
 test-ratio:
     node scripts/classify-test-seams.mjs
 
-localize-project-test:
-    node --test suite/scripts/localize-project/*.test.mjs
-
-# The alpha public-fixture vertical and both fixture-iteration composers have
-# focused Node unit suites alongside their end-to-end drivers.  Keep those
-# suites in the alpha-proof gate so a change to their pure composition,
-# validation, or linkage logic cannot pass CI solely because the happy-path
-# vertical still completes.
-alpha-iteration-unit-test:
-    node --test suite/scripts/alpha-public-fixture/*.test.mjs suite/scripts/itotori-fixture-iteration/*.test.mjs suite/scripts/itotori-iteration-fixture/*.test.mjs
-
 # UNIV-011: targeted mutation/property coverage for the highest-risk packages.
 # The TS mutation-survivor guard (localization-bridge-schema) rejects a
 # committed invalid fixture per schema/delta/protected-span/permission
@@ -167,11 +151,6 @@ mutation-property-test:
 # Fixture-only: no DATABASE_URL, no network, no providers.
 dlsite-demand-app-test:
     pnpm exec vitest run apps/itotori/test/dlsite-demand.test.ts --exclude '**/.direnv/**'
-
-# ALPHA-007: public fixture vertical (suite/scripts/alpha-public-fixture).
-# Deterministic; offline (injects a committed ITOTORI-026 harness output).
-alpha-public-fixture-test:
-    node --test suite/scripts/alpha-public-fixture/run.test.mjs suite/scripts/alpha-public-fixture/linkage.test.mjs
 
 build:
     pnpm exec vp run ts:build
@@ -534,18 +513,11 @@ permission-denial-db-strict:
 catalog-replay-db-strict:
     node scripts/catalog-replay-db-gate.mjs
 
-# ALPHA-009: the suite alpha proof / public-fixture vertical is the required
-# integration guardrail (replaces the retired literal Hello World gate).
-# Runs the ALPHA-007 public-fixture vertical and then re-proves cross-artifact
-# linkage from the emitted artifacts independently. Both stages FAIL unless
-# bridge, patch export, PatchResult, provider proof, benchmark report, runtime
-# observation, dashboard/read-model ingestion, and the SHARED-025 manifest agree
-# on the same public fixture id, source revision, locale branch, and content
-# hashes. Public-fixture-only and deterministic: no DB, no creds, no private
-# corpora, no success-string assertion.
-alpha-proof: alpha-iteration-unit-test
-    pnpm exec vp run alpha:public-fixture
-    pnpm exec vp run alpha:public-fixture-validate
+# The retired public-fixture vertical was coupled to the removed LLM/agent
+# workflow. Keep this named Tier-1 lane focused on the surviving composition
+# reachability guard instead.
+alpha-proof:
+    corepack pnpm --dir apps/itotori exec vitest run test/composition-reachability.test.ts --exclude '**/.direnv/**'
 
 # ALPHA-005: fresh-clone public-fixture demo entry point. Public-fixture-only,
 # deterministic, no DB / creds / private corpora / real bytes — it delegates to
@@ -576,63 +548,6 @@ rgt-readiness-checklist:
 # Hello World source of truth and no literal hello-world success string.
 hello: alpha-proof
 
-# ITOTORI-019 / ITOTORI-222: synthetic hello-world loop wired through
-# the agentic-loop orchestrator at the drafting stage. Keeps the
-# regular `hello` recipe unchanged. Produces an `AgenticLoopBundle`
-# AND a derived `DraftArtifactBundle` (via the orchestrator's
-# adapter); verifies well-formedness against the schema asserters in
-# `@itotori/localization-bridge-schema`.
-hello-draft: build
-    rm -rf .tmp/hello-draft
-    mkdir -p .tmp/hello-draft
-    ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1 node apps/itotori/dist/cli.js agentic-loop-smoke --bridge apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json --unit-index 0 --pair-policy apps/itotori/test/fixtures/agentic-loop-smoke-pair-policy.json --output .tmp/hello-draft/agentic-loop-bundle.json --draft-artifact-output .tmp/hello-draft/draft-artifact-bundle.json
-    node scripts/print-agentic-loop-bundle-summary.mjs .tmp/hello-draft/agentic-loop-bundle.json
-    node scripts/print-draft-artifact-bundle-summary.mjs .tmp/hello-draft/draft-artifact-bundle.json
-
-# ITOTORI-025 / ITOTORI-222: synthetic hello-world loop with the v0.2
-# patch-export pipeline spliced in after the orchestrator's drafting
-# stage. Keeps the regular `hello` and `hello-draft` recipes unchanged.
-# Produces a `PatchExportBundle` v0.2 and verifies its well-formedness.
-hello-patch: build
-    rm -rf .tmp/hello-patch
-    mkdir -p .tmp/hello-patch
-    DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" node apps/itotori/dist/cli.js db-migrate
-    DATABASE_URL="$(node scripts/itotori-db-compose-env.mjs --print-database-url)" node apps/itotori/dist/cli.js db-reset
-    ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1 node apps/itotori/dist/cli.js agentic-loop-smoke --bridge apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json --unit-index 0 --pair-policy apps/itotori/test/fixtures/agentic-loop-smoke-pair-policy.json --output .tmp/hello-patch/agentic-loop-bundle.json --draft-artifact-output .tmp/hello-patch/draft-artifact-bundle.json
-    node apps/itotori/dist/cli.js export-patch-v2 --project apps/itotori/test/fixtures/patch-export-v2-project.json --draft-bundle .tmp/hello-patch/draft-artifact-bundle.json --locale en-US --output .tmp/hello-patch/patch-export-bundle.json
-    node scripts/print-patch-export-bundle-summary.mjs .tmp/hello-patch/patch-export-bundle.json
-
-# ITOTORI-222: standalone agentic-loop smoke recipe. Exercises the
-# full orchestrator end-to-end on a single bridge unit using the smoke
-# FakeModelProvider; asserts the resulting AgenticLoopBundle is
-# well-formed via the schema asserter.
-hello-agentic-loop: build
-    rm -rf .tmp/hello-agentic-loop
-    mkdir -p .tmp/hello-agentic-loop
-    ITOTORI_ALLOW_FAKE_SEMANTIC_AGENT=1 node apps/itotori/dist/cli.js agentic-loop-smoke --bridge apps/itotori/test/fixtures/agentic-loop-smoke-bridge.json --unit-index 0 --pair-policy apps/itotori/test/fixtures/agentic-loop-smoke-pair-policy.json --output .tmp/hello-agentic-loop/agentic-loop-bundle.json
-    node scripts/print-agentic-loop-bundle-summary.mjs .tmp/hello-agentic-loop/agentic-loop-bundle.json
-
-# ITOTORI-116: public provider-proof harness in RECORDED mode (no creds).
-# Proves the draft + QA provider path with reject-before-record schema
-# validation, bounded schema-repair, a token/cost/latency ledger that
-# reconciles with the ITOTORI-100 route report, and a seeded QA oracle
-# scoring report. Emits a sanitized ProviderProofBundle (no raw
-# prompts/responses/keys). Opt-in live mode: `node apps/itotori/dist/cli.js
-# provider-proof --live` with ITOTORI_PROVIDER_PROOF_LIVE=1 + an exported
-# OPENROUTER_API_KEY + OPENROUTER_ZDR_ACCOUNT_ASSERTED=1.
-provider-proof: build
-    rm -rf .tmp/provider-proof
-    mkdir -p .tmp/provider-proof
-    node apps/itotori/dist/cli.js provider-proof --output .tmp/provider-proof/recorded-proof-bundle.json
-
-# ITOTORI-117: deliberately-naive raw-MTL degenerate baseline proof, run
-# through the SAME ITOTORI-116 provider-proof path (recorded default; --live
-# opts in to a bounded real ZDR call). Emits systemKind raw_mtl_baseline.
-raw-mtl-baseline-proof: build
-    rm -rf .tmp/raw-mtl-baseline-proof
-    mkdir -p .tmp/raw-mtl-baseline-proof
-    node apps/itotori/dist/cli.js raw-mtl-baseline-proof --output .tmp/raw-mtl-baseline-proof/recorded-baseline-artifact.json
-
 # UTSUSHI-220: alpha-defining e2e Sweetie HD scene-1 text-replay smoke.
 # Runs the synthetic replay_scene acceptance tests through `cargo test`
 # (no real bytes required) so a fresh-clone reviewer can verify the
@@ -650,55 +565,13 @@ hello-replay:
 # `utsushi-cli replay-validate --engine reallive` surface — argv parsing,
 # engine gating, and the observed-output help contract — plus the live
 # `--help` output, without touching the vault. Replay validation of the
-# actual observed engine output now lives on the caller side (the
-# localize-project driver) and in the real-bytes lane
+# actual observed engine output now lives in the application integration and
+# in the real-bytes lane
 # (`crates/utsushi-cli/tests/single_scene_xor2_replay_real_bytes.rs`),
 # run separately with ITOTORI_REAL_GAME_ROOT set per the spec block.
 hello-replay-validate:
     cargo test -p utsushi-cli --bins replay_validate -- --nocapture
     cargo run -p utsushi-cli -- replay-validate --help
-
-# UTSUSHI-228 — the four-binary DEV/TEST runner for the localize vertical
-# (kaifuu extract -> itotori live agentic loop -> kaifuu patch -> utsushi
-# replay/render-validate). NOTE: the USER surface for localizing a whole game
-# end-to-end is now the single `itotori localize-game` command
-# (itotori-cli-localize-game-vertical) — it composes the same extract /
-# structure-export / localize-driver / validate seams into ONE command an agent
-# types. This recipe stays as the per-scene four-binary harness / regression
-# runner, not the user entry point.
-#
-# Wraps every other alpha node into one command. The driver hard-fails if OPENROUTER_API_KEY,
-# a corpus source root, or TARGET is unset (no fallback to the recorded
-# provider). Pass --dry-run to print the per-phase commands without invoking
-# any LLM. The engine is selected by the project's alpha-target-data record:
-# `sweetie-hd-alpha-1` (RealLive Seen.txt) or `lust-memory-alpha-1` (RPG Maker
-# MV/MZ — extract -> live loop -> JSON patchback + .kaifuu delta -> delta-apply
-# -> utsushi-rpgmaker-mv text-trace runtime evidence). The MV/MZ slice is
-# bounded to ONE dialogue surface so a live run bills a single ZDR translation.
-#
-# Required env (unless --dry-run):
-#   OPENROUTER_API_KEY                       live OpenRouter key
-#   OPENROUTER_ZDR_ACCOUNT_ASSERTED=1        account-wide ZDR assertion (fail-closed)
-#   ITOTORI_REAL_CORPUS_MANIFEST             preferred local corpus descriptor
-#   ITOTORI_REAL_GAME_ROOT                   single-corpus fallback (RealLive root)
-#   ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ   single-corpus MV/MZ www/ root
-#   LOCALIZE_PROJECT_SOURCE_PATH             direct readonly source root fallback
-#   TARGET                                  writable patched copy (RealLive only;
-#                                            the MV/MZ path writes under the run dir)
-# These may already be in the process environment, or loaded explicitly with
-# --env-file <PATH> / ITOTORI_LOCAL_ENV_FILE from a local-only ignored file.
-#
-# Usage:
-#   just localize-project --project sweetie-hd-alpha-1
-#   just localize-project --project sweetie-hd-alpha-1 --env-file .env.localize-project
-#   just localize-project --dry-run --project sweetie-hd-alpha-1
-#   just localize-project --dry-run --project lust-memory-alpha-1
-#   just localize-project --project lust-memory-alpha-1 --env-file .env.localize-project
-localize-project *ARGS:
-    pnpm --filter @itotori/localization-bridge-schema build
-    pnpm --filter @itotori/db build
-    pnpm --filter @itotori/app build
-    node suite/scripts/localize-project/run.mjs {{ARGS}}
 
 affected:
     node scripts/affected.mjs
@@ -760,20 +633,16 @@ ci-tier0: ci-tier0-meta ci-tier0-ts ci-tier0-rust ci-tier0-manifest
 # Mirrors the non-Rust, non-TS portion of `just check`.
 ci-tier0-meta:
     node --test scripts/itotori-db-compose-config.test.mjs
-    node --test scripts/db-test-skip-visibility.test.mjs
     node --test scripts/permission-denial-db-gate.test.mjs
     node --test scripts/catalog-replay-db-gate.test.mjs
     node --test scripts/qd-full-ci.test.mjs
     node --test scripts/affected.test.mjs
     node --test scripts/native-deps.test.mjs
     node --test scripts/itotori-installable-package.test.mjs
-    node --test scripts/alpha-proof-gate.test.mjs
     node --test scripts/validate-tracked-artifact-hygiene.test.mjs
     node scripts/validate-tracked-artifact-hygiene.mjs --mode check
     node --test scripts/stale-residue-guard.test.mjs
     node scripts/stale-residue-guard.mjs --mode check
-    node --test scripts/assert-db-app-exclusion-union.test.mjs
-    just localize-project-test
     node scripts/spec-dag-issues.test.mjs
     node scripts/spec-dag-lifecycle.test.mjs
     node scripts/spec-dag-validator.test.mjs
@@ -806,7 +675,6 @@ ci-tier0-meta:
     node --test scripts/mutation-differential.test.mjs
     node --test scripts/coverage-parity.test.mjs
     node scripts/coverage-parity.mjs
-    node --test scripts/alpha-readiness-checklist.test.mjs
     node scripts/alpha-readiness-checklist.mjs
     node --test scripts/rgt-readiness-checklist.test.mjs
     node scripts/rgt-readiness-checklist.mjs
@@ -913,14 +781,7 @@ ci-tier1-db:
     node scripts/permission-denial-db-gate.mjs --results "$DB_RESULTS"
     node scripts/catalog-replay-db-gate.mjs --results "$DB_RESULTS"
     pnpm --filter @itotori/app typecheck
-    # The DB lane no longer downloads the native artifact (decoupled from the
-    # `native` job). The sole real-binary app test — wholegame-render-
-    # validation-seam — is excluded here because it spawns utsushi-cli; it
-    # remains covered by the portable TS shards (ci-tier1-ts-public-1of2 /
-    # 2of2) where the native artifact IS wired. The lane-union guard asserts
-    # that exclusion can never strand the file (no test runs nowhere).
-    node scripts/assert-db-app-exclusion-union.mjs
-    pnpm --filter @itotori/app exec vitest run --exclude '**/wholegame-render-validation-seam.test.ts' --exclude '**/.direnv/**'
+    pnpm --filter @itotori/app exec vitest run --exclude '**/.direnv/**'
 
 # Playwright Chromium for app + runtime-web-review e2e, plus DS visual oracle.
 # Requires PLAYWRIGHT_CHROMIUM_BIN (or UTSUSHI_BROWSER_BIN). Asserts post-run

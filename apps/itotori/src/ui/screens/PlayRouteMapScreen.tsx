@@ -4,7 +4,7 @@
 // state: they could report success without changing a result revision or
 // canonical context. The RouteMap now stays a pure view of the real artifacts;
 // corrections start at the canonical flag,
-// wiki, result-revision, or patch-iteration surfaces instead.
+// wiki or result-revision surfaces instead.
 
 import { useState, type ReactNode } from "react";
 import { Badge, Panel, RouteMap, type RouteMapNode } from "@itotori/ds";

@@ -16,7 +16,6 @@ import type {
   WikiContextEntryHistoryReadModel,
   WikiContextEntryReadModel,
 } from "@itotori/db";
-import { summarizeQaAgents } from "../src/benchmark-report-summary.js";
 import type {
   ApiAuthIdentityResponse,
   ApiWikiEditResponse,
@@ -1349,7 +1348,7 @@ export const benchmarkReportSummaryFixture: BenchmarkReportSummary = {
   systemCount: benchmarkReportFixture.systemsCompared.length,
   findingCount: benchmarkReportFixture.findingRecords.length,
   penaltyTotal: benchmarkReportFixture.penaltySummary.penaltyTotal,
-  qaAgents: summarizeQaAgents(benchmarkReportFixture),
+  qaAgents: [],
 };
 
 export const benchmarkReportsFixture: BenchmarkReportSummary[] = [benchmarkReportSummaryFixture];

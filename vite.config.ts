@@ -181,84 +181,11 @@ export default defineConfig({
         dependsOn: ["ts:build"],
         cache: false,
       },
-      "itotori:agentic-loop-smoke": {
-        // ITOTORI-222: end-to-end agentic-loop smoke command. The
-        // default entry point relies on the FakeModelProvider baked
-        // into the smoke command, so it does NOT need a Postgres
-        // connection. CI invokes the deterministic fake provider per
-        // stage to exercise the orchestrator from context through
-        // final draft.
-        command: "node apps/itotori/dist/cli.js agentic-loop-smoke",
-        dependsOn: ["ts:build"],
-        cache: false,
-      },
       "rust:check": {
         command: "cargo check --workspace",
       },
       "rust:test": {
         command: "cargo test --workspace",
-      },
-      // ALPHA-007: public fixture vertical run. Composes the existing public
-      // fixture artifacts across Itotori + Kaifuu + Utsushi + provider proof +
-      // SHARED-025 manifest and produces a fresh ITOTORI-026 benchmark, then
-      // emits a hash-addressed, schema-valid, linkage-proven manifest under
-      // artifacts/alpha/public-fixture/. Public fixtures only; no DB, no creds.
-      "alpha:public-fixture": {
-        command: "node suite/scripts/alpha-public-fixture/run.mjs",
-        dependsOn: ["ts:build"],
-        cache: false,
-      },
-      // ALPHA-007: independent artifact-linkage validator. Re-proves linkage
-      // from the emitted artifacts (schema + hash-addressing + cross-artifact
-      // agreement) instead of trusting a success string.
-      "alpha:public-fixture-validate": {
-        command: "node suite/scripts/alpha-public-fixture/validate-linkage.mjs",
-        dependsOn: ["alpha:public-fixture"],
-        cache: false,
-      },
-      // ALPHA-007: deterministic unit + integration tests for the vertical.
-      "alpha:public-fixture-test": {
-        command:
-          "node --test suite/scripts/alpha-public-fixture/run.test.mjs suite/scripts/alpha-public-fixture/linkage.test.mjs",
-        cache: false,
-      },
-      // ITOTORI-095: run PUBLIC RECORDED inputs through one full Itotori
-      // iteration (import -> draft -> QA -> export -> feedback import ->
-      // context-correction-driven patch iteration -> final result) and emit a
-      // schema-valid, hash-addressed FixtureIterationResult artifact per
-      // stage. Composes existing seams; recorded/public only, no creds, no DB.
-      "itotori:fixture-iteration": {
-        command: "node suite/scripts/itotori-fixture-iteration/run.mjs",
-        cache: false,
-      },
-      // ITOTORI-095: deterministic unit + integration tests covering the full
-      // iteration + per-stage schema-valid artifacts across all four recorded
-      // paths (success, QA finding, runtime feedback, context-correction rerun).
-      "itotori:fixture-iteration-test": {
-        command:
-          "node --test suite/scripts/itotori-fixture-iteration/run.test.mjs suite/scripts/itotori-fixture-iteration/iteration.test.mjs",
-        cache: false,
-      },
-      // ITOTORI-028: end-to-end draft iteration fixture command. COMPOSES the
-      // ITOTORI-095 Itotori loop (import -> draft -> qa -> export -> feedback ->
-      // context-correction-driven rerun) with the Kaifuu patch result + Utsushi runtime
-      // observation into ONE manifest-bound run, then emits a schema-valid,
-      // hash-addressed FixtureIterationResult artifact per stage and a
-      // SHARED-025 manifest that proves all eight stages belong to the same
-      // fixture id + source revision. Composes existing seams; recorded/public
-      // only, no creds, no DB.
-      "itotori:iteration-fixture": {
-        command: "node suite/scripts/itotori-iteration-fixture/run.mjs",
-        cache: false,
-      },
-      // ITOTORI-028: deterministic unit + integration tests covering the full
-      // cross-tool composition + per-stage schema-valid/hash-addressed
-      // artifacts across all six recorded paths (success, QA finding, runtime
-      // feedback, patch failure, provider fallback, context-correction rerun).
-      "itotori:iteration-fixture-test": {
-        command:
-          "node --test suite/scripts/itotori-iteration-fixture/run.test.mjs suite/scripts/itotori-iteration-fixture/iteration-fixture.test.mjs",
-        cache: false,
       },
       // KAIFUU-036: private-local encrypted corpus triage. A FIRST-CLASS LOCAL
       // workflow that is intentionally ABSENT from per-gate CI — no `just

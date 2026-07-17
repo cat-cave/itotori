@@ -1,3 +1,5 @@
+import { databaseUrlFromEnv, migrate } from "@itotori/db";
+
 import type { ItotoriApiServices, ItotoriReadOnlyApiServices } from "../api-handlers.js";
 import type { ItotoriCliServices } from "../cli-handlers.js";
 
@@ -39,10 +41,8 @@ export function toReadOnlyServiceFactory(
     await factory(async (services) => await callback(services), options);
 }
 
-export async function migrateItotoriDatabase(): Promise<void> {
-  throw new Error(
-    "database migration is unavailable after the legacy cutover: install the new-pipeline composition substrate",
-  );
+export async function migrateItotoriDatabase(databaseUrl = databaseUrlFromEnv()): Promise<void> {
+  await migrate(databaseUrl);
 }
 
 export function startDatabaseContextCorrectionWorker(_options?: unknown): { stop(): void } {
