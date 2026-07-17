@@ -549,6 +549,10 @@ export const migrations = [
     id: "0106_llm_transcript_snapshots",
     file: "0106_llm_transcript_snapshots.sql",
   },
+  {
+    id: "0107_runtime_artifact_uri_parity",
+    file: "0107_runtime_artifact_uri_parity.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

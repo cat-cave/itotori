@@ -46,6 +46,22 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+const invalidManagedRuntimeArtifactUriCases = [
+  [
+    "current-directory dot segment",
+    "artifacts/utsushi/runtime/./runtime-report/screenshots/capture.png",
+  ],
+  [
+    "parent-directory dot segment",
+    "artifacts/utsushi/runtime/runtime-report/../screenshots/capture.png",
+  ],
+  ["empty path segment", "artifacts/utsushi/runtime/runtime-report//capture.png"],
+  ["URI scheme", "https://example.invalid/capture.png"],
+  ["absolute POSIX path", "/tmp/runtime/capture.png"],
+  ["backslash path", "artifacts\\utsushi\\runtime\\capture.png"],
+  ["missing managed runtime prefix", "artifacts/utsushi/schema-fixture/capture.png"],
+] as const;
+
 function v02Sha256(label: string): string {
   return `sha256:${createHash("sha256").update(label).digest("hex")}`;
 }
@@ -3536,6 +3552,7 @@ describe("ItotoriProjectRepository", () => {
       ["current-directory dot segment", "./capture.png"],
       ["parent-directory dot segment", "../capture.png"],
       ["nested parent-directory dot segment", "artifacts/utsushi/../capture.png"],
+      ["empty path segment", "artifacts/utsushi/runtime/runtime-report//capture.png"],
       ["URI scheme", "https://example.invalid/capture.png"],
       ["embedded data URI", "data:image/png;base64,AAAA"],
       ["absolute POSIX path", "/tmp/runtime/frame.png"],
@@ -3595,6 +3612,76 @@ describe("ItotoriProjectRepository", () => {
           ),
         ).rejects.toThrow(new RegExp(`portable relative artifact path.*${escapeRegExp(uri)}`));
       }
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects malformed managed runtime artifact refs through repository and direct SQL", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const project = projectFixture();
+      await repo.importSourceBundle(localActor, project);
+
+      for (const [index, [_label, uri]] of invalidManagedRuntimeArtifactUriCases.entries()) {
+        await expect(
+          repo.linkArtifact(localActor, {
+            artifactId: `runtime-uri-repository-${index}`,
+            projectId: project.projectId,
+            artifactKind: "screenshot",
+            uri,
+          }),
+        ).rejects.toThrow(/runtime artifact uri must be/u);
+      }
+
+      const runtimeReport = runtimeEvidenceReportFixture({
+        runtimeReportId: "019ed003-0000-7000-8000-000000000906",
+      });
+      const capture = runtimeReport.captures[0]!;
+      const runtimeArtifactId = `${runtimeReport.runtimeReportId}:${capture.artifactRef.artifactId}`;
+      const runtimeEvidenceId = `${runtimeReport.runtimeReportId}:${capture.captureId}`;
+      await repo.saveRuntimeReport(
+        localActor,
+        project,
+        runtimeReport,
+        "019ed003-0000-7000-8000-000000000986",
+      );
+
+      for (const [_label, uri] of invalidManagedRuntimeArtifactUriCases) {
+        await expect(
+          context.pool.query("update itotori_artifacts set uri = $1 where artifact_id = $2", [
+            uri,
+            runtimeArtifactId,
+          ]),
+        ).rejects.toThrow(/itotori_runtime_artifact_uri_check/u);
+        await expect(
+          context.pool.query(
+            "update itotori_runtime_evidence_items set portable_artifact_uri = $1 where runtime_evidence_id = $2",
+            [uri, runtimeEvidenceId],
+          ),
+        ).rejects.toThrow(/itotori_runtime_evidence_managed_uri_check/u);
+      }
+
+      const persisted = await context.pool.query<{
+        artifact_uri: string;
+        portable_artifact_uri: string;
+      }>(
+        `
+        select a.uri as artifact_uri, e.portable_artifact_uri
+        from itotori_artifacts a
+        join itotori_runtime_evidence_items e on e.artifact_id = a.artifact_id
+        where a.artifact_id = $1
+        `,
+        [runtimeArtifactId],
+      );
+      expect(persisted.rows).toEqual([
+        {
+          artifact_uri: capture.artifactRef.uri,
+          portable_artifact_uri: capture.artifactRef.uri,
+        },
+      ]);
     } finally {
       await context.close();
     }

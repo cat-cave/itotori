@@ -318,7 +318,7 @@ describe("ItotoriConformanceRepository", () => {
     }
   });
 
-  it("conformance_repository_rejects_evidence_ref_with_absolute_uri", async () => {
+  it("conformance_repository_direct_sql_rejects_malformed_runtime_artifact_refs", async () => {
     const context = await isolatedMigratedContext();
     try {
       const projectRepository = new ItotoriProjectRepository(context.db);
@@ -362,18 +362,51 @@ describe("ItotoriConformanceRepository", () => {
         ),
       ).resolves.toBeDefined();
 
+      const conformanceResultId = "019ed028-0000-7000-8000-000000000006:result:000";
       await expect(
         context.pool.query(
           `insert into itotori_conformance_evidence_refs (
             conformance_evidence_ref_id, conformance_result_id, evidence_kind, uri, ordinal
           ) values ($1, $2, 'runtimeArtifact', $3, 0)`,
           [
-            "019ed028-0000-7000-8000-000000000006:ref:000",
-            "019ed028-0000-7000-8000-000000000006:result:000",
-            "/absolute/path/leak.txt",
+            "019ed028-0000-7000-8000-000000000006:ref:valid",
+            conformanceResultId,
+            "artifacts/utsushi/runtime/synthetic-run/traces/trace-001.json",
           ],
         ),
-      ).rejects.toThrow(/itotori_conformance_evidence_refs_uri_check/);
+      ).resolves.toBeDefined();
+
+      const invalidRuntimeArtifactUris = [
+        [
+          "current-directory dot segment",
+          "artifacts/utsushi/runtime/./synthetic-run/traces/trace-001.json",
+        ],
+        [
+          "parent-directory dot segment",
+          "artifacts/utsushi/runtime/synthetic-run/../traces/trace-001.json",
+        ],
+        ["empty path segment", "artifacts/utsushi/runtime/synthetic-run//trace-001.json"],
+        ["URI scheme", "https://example.invalid/trace-001.json"],
+        ["absolute POSIX path", "/tmp/runtime/trace-001.json"],
+        ["backslash path", "artifacts\\utsushi\\runtime\\trace-001.json"],
+        ["missing managed runtime prefix", "artifacts/utsushi/schema-fixture/trace-001.json"],
+      ] as const;
+
+      for (const [index, [_label, uri]] of invalidRuntimeArtifactUris.entries()) {
+        await expect(
+          context.pool.query(
+            `insert into itotori_conformance_evidence_refs (
+              conformance_evidence_ref_id, conformance_result_id, evidence_kind, uri, ordinal
+            ) values ($1, $2, 'runtimeArtifact', $3, $4)`,
+            [
+              `019ed028-0000-7000-8000-000000000006:ref:invalid-${index}`,
+              conformanceResultId,
+              uri,
+              index + 1,
+            ],
+          ),
+        ).rejects.toThrow(/itotori_conformance_evidence_refs_managed_uri_check/u);
+      }
     } finally {
       await context.close();
     }
