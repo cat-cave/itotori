@@ -27,3 +27,9 @@ export {
   type DecodeSceneProjection,
   type DecodeUnitFact,
 } from "./scene-projection.js";
+export {
+  createFieldMemoCipher,
+  FIELD_CIPHER_KEY_ENV_VAR,
+  FieldCipherKeyError,
+  FieldCipherRefError,
+} from "./field-cipher.js";
