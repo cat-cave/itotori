@@ -8,6 +8,7 @@ import { WikiObjectSchema } from "../src/contracts/index.js";
 const modelAuthored = WikiObjectSchema.parse(STYLE_LEAD_FEW_SHOT_EXAMPLE);
 
 const AUTHORITATIVE_SNAPSHOT = `sha256:${"f".repeat(64)}` as const;
+const AUTHORITATIVE_SUBJECT = { kind: "game", id: "authoritative-game" } as const;
 
 describe("stampSourceProvenance", () => {
   it("overwrites the model's provenance identifiers with the authoritative run context", () => {
@@ -19,6 +20,8 @@ describe("stampSourceProvenance", () => {
       contextScope: "whole-game",
       runMode: "test-dev",
       authorRoleId: "A1",
+      subject: AUTHORITATIVE_SUBJECT,
+      scope: { kind: "global" },
     });
 
     expect(stamped).toBeDefined();
@@ -28,20 +31,27 @@ describe("stampSourceProvenance", () => {
     if (stamped.provenance.snapshotKind === "context") {
       expect(stamped.provenance.contextScope).toBe("whole-game");
     }
+    // Identity + version are system-stamped: the assigned subject overrides the
+    // model's invented game id, and a first-build object is version 1.
+    expect(stamped.subject).toEqual(AUTHORITATIVE_SUBJECT);
+    expect(stamped.version).toBe(1);
+    expect(stamped.supersedesVersion == null).toBe(true);
     // It proves an OVERWRITE, not a pass-through: the source object's own snapshot
-    // id differs from the authoritative one.
+    // id + subject differ from the authoritative ones.
     expect(modelAuthored.provenance.contextSnapshotId).not.toBe(AUTHORITATIVE_SNAPSHOT);
+    expect(modelAuthored.subject).not.toEqual(AUTHORITATIVE_SUBJECT);
   });
 
-  it("preserves the object's content (kind, id, body, claims) — only provenance is stamped", () => {
+  it("preserves the object's CONTENT (kind, body, claims) while stamping identity + provenance", () => {
     const [stamped] = stampSourceProvenance([modelAuthored], {
       contextSnapshotId: AUTHORITATIVE_SNAPSHOT,
       contextScope: "whole-game",
       runMode: "test-dev",
       authorRoleId: "A1",
+      subject: AUTHORITATIVE_SUBJECT,
+      scope: { kind: "global" },
     });
     expect(stamped.kind).toBe(modelAuthored.kind);
-    expect(stamped.objectId).toBe(modelAuthored.objectId);
     expect(stamped.body).toEqual(modelAuthored.body);
     if (stamped.kind !== "translation" && modelAuthored.kind !== "translation") {
       expect(stamped.claims).toEqual(modelAuthored.claims);
