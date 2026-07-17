@@ -9,6 +9,17 @@ export const IdentifierSchema = z
   .max(256)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:#/-]*$/u);
 
+// A source-derived identity id (character / glossary-term). It may embed source
+// text — a Japanese name, a compound name joined by `・`, a source term — so it
+// permits any Unicode character EXCEPT whitespace and control/format characters.
+// It stays token-safe (usable as an opaque Map key, tool-call arg, and in JSON)
+// without the ASCII-only restriction of `IdentifierSchema` (kept for system ids).
+export const SubjectIdSchema = z
+  .string()
+  .min(1)
+  .max(512)
+  .regex(/^[^\s\p{Cc}\p{Cf}]+$/u);
+
 export const Sha256Schema = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 export const NonEmptyTextSchema = z.string().min(1).max(32_768);
 export const ShortTextSchema = z.string().min(1).max(1_024);
@@ -71,8 +82,8 @@ export const EntityRefSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("route"), id: IdentifierSchema }).strict(),
   z.object({ kind: z.literal("scene"), id: IdentifierSchema }).strict(),
   z.object({ kind: z.literal("unit"), id: IdentifierSchema }).strict(),
-  z.object({ kind: z.literal("character"), id: IdentifierSchema }).strict(),
-  z.object({ kind: z.literal("glossary-term"), id: IdentifierSchema }).strict(),
+  z.object({ kind: z.literal("character"), id: SubjectIdSchema }).strict(),
+  z.object({ kind: z.literal("glossary-term"), id: SubjectIdSchema }).strict(),
   z.object({ kind: z.literal("choice"), id: IdentifierSchema }).strict(),
   z.object({ kind: z.literal("organization"), id: IdentifierSchema }).strict(),
   z.object({ kind: z.literal("user"), id: IdentifierSchema }).strict(),

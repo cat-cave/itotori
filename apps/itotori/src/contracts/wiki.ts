@@ -27,6 +27,7 @@ import {
   RunModeValueSchema,
   Sha256Schema,
   ShortTextSchema,
+  SubjectIdSchema,
 } from "./shared.js";
 
 export const WIKI_OBJECT_SCHEMA_VERSION = "itotori.wiki-object.v1" as const;
@@ -133,7 +134,7 @@ export const MediaRefSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("portrait"),
       mediaId: IdentifierSchema,
-      characterId: IdentifierSchema,
+      characterId: SubjectIdSchema,
       availability: MediaAvailabilitySchema,
     })
     .strict(),

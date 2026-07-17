@@ -17,6 +17,7 @@ import {
   RouteScopeSchema,
   Sha256Schema,
   ShortTextSchema,
+  SubjectIdSchema,
   ToolNameSchema,
   VisibilitySchema,
 } from "./shared.js";
@@ -191,7 +192,7 @@ export const SpeakerTruthSchema = z.discriminatedUnion("status", [
       rawName: ShortTextSchema,
       resolvedDisplayName: ShortTextSchema,
       revealSafeLabel: ShortTextSchema,
-      canonicalCharacterId: IdentifierSchema,
+      canonicalCharacterId: SubjectIdSchema,
       color: ColorRgbSchema,
     })
     .strict(),
@@ -257,7 +258,7 @@ export const SceneFactValueSchema = z
     sceneId: IdentifierSchema,
     playOrderIndex: NonNegativeIntegerSchema,
     unitIds: z.array(IdentifierSchema).max(100_000),
-    speakerCharacterIds: z.array(IdentifierSchema).max(10_000),
+    speakerCharacterIds: z.array(SubjectIdSchema).max(10_000),
     choiceIds: z.array(IdentifierSchema).max(10_000),
     predecessorSceneIds: z.array(IdentifierSchema).max(10_000),
     successorSceneIds: z.array(IdentifierSchema).max(10_000),
@@ -295,7 +296,7 @@ export const RouteEdgeFactValueSchema = z
 export const CharacterOccurrenceFactValueSchema = z
   .object({
     kind: z.literal("character-occurrence"),
-    characterId: IdentifierSchema,
+    characterId: SubjectIdSchema,
     decodedLabel: ShortTextSchema,
     revealStatus: z.enum(["revealed", "reader-unknown"]),
     sceneIds: z.array(IdentifierSchema).min(1).max(100_000),
@@ -328,13 +329,13 @@ const GlossaryFormSchema = z
 export const GlossaryFactValueSchema = z
   .object({
     kind: z.literal("glossary-entry"),
-    termId: IdentifierSchema,
+    termId: SubjectIdSchema,
     sourceForm: ShortTextSchema,
     aliases: z.array(ShortTextSchema).max(256),
     forms: z.array(GlossaryFormSchema).max(256),
     scope: RouteScopeSchema,
     occurrenceUnitIds: z.array(IdentifierSchema).max(1_000_000),
-    conflictsWithTermIds: z.array(IdentifierSchema).max(10_000),
+    conflictsWithTermIds: z.array(SubjectIdSchema).max(10_000),
     revision: RevisionRefSchema,
   })
   .strict();

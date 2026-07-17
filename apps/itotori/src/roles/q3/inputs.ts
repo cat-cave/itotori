@@ -21,6 +21,7 @@ import {
   NonEmptyTextSchema,
   Sha256Schema,
   ShortTextSchema,
+  SubjectIdSchema,
 } from "../../contracts/index.js";
 
 /** The deterministic gate that owns exact glossary and name matching. An exact
@@ -32,7 +33,7 @@ export const EXACT_GATE = "glossary-exact" as const;
  * and immutable — it judges the form's contextual sense, it does not re-rule it. */
 export const Q3ApprovedTermSchema = z
   .object({
-    termId: IdentifierSchema,
+    termId: SubjectIdSchema,
     sourceForm: ShortTextSchema,
     approvedTargetForm: ShortTextSchema,
   })
