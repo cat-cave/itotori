@@ -365,10 +365,10 @@ fn link_lines<'a>(
 ) -> Result<LineLinks<'a>, String> {
     let mut dialogue = BTreeMap::new();
     for unit in units.iter().filter(|unit| unit.surface_kind == "dialogue") {
-        if dialogue.insert(unit.byte_start, unit).is_some() {
+        if let Some(prev) = dialogue.insert(unit.byte_start, unit) {
             return Err(format!(
-                "multiple dialogue BridgeUnits share byte offset {}",
-                unit.byte_start
+                "multiple dialogue BridgeUnits share byte offset {} (units {} and {})",
+                unit.byte_start, prev.id, unit.id
             ));
         }
     }
@@ -427,10 +427,10 @@ fn choice_units_by_command<'a>(
         .iter()
         .filter(|unit| unit.surface_kind == "choice_label")
     {
-        if units_by_offset.insert(unit.byte_start, unit).is_some() {
+        if let Some(prev) = units_by_offset.insert(unit.byte_start, unit) {
             return Err(format!(
-                "multiple choice BridgeUnits share byte offset {}",
-                unit.byte_start
+                "multiple choice BridgeUnits share byte offset {} (units {} and {}); a well-formed bridge anchors each select option at its own per-option offset — regenerate with current kaifuu",
+                unit.byte_start, prev.id, unit.id
             ));
         }
     }
@@ -479,3 +479,6 @@ fn grouped_choices(units: &[BridgeUnit]) -> Vec<Vec<&BridgeUnit>> {
     groups.sort_by_key(|group| group.first().map(|unit| unit.byte_start));
     groups
 }
+
+#[cfg(test)]
+mod tests;
