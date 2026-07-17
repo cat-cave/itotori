@@ -33,3 +33,14 @@ export {
   FieldCipherKeyError,
   FieldCipherRefError,
 } from "./field-cipher.js";
+export {
+  createLiveLocalizationSubstrate,
+  createLiveWorkflowPortDeps,
+  createProductionLiveWorkflowPortDeps,
+  loadInstalledBible,
+  LiveWorkflowFactoryError,
+  type InstalledBibleSource,
+  type LiveWorkflowFactoryConfig,
+  type LiveWorkflowRoleSeams,
+  type LiveWorkflowStores,
+} from "./factory.js";
