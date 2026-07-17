@@ -5132,6 +5132,87 @@ mod tests {
         hello_fixture_dir().join("asset-inventory.expected.json")
     }
 
+    fn native_source_hashes_fixture() -> BTreeMap<String, String> {
+        let fixture: Value =
+            read_json(&public_fixture_dir().join("expected/native-source-hashes-v0.2.json"))
+                .unwrap();
+        fixture["sourceHashes"]
+            .as_array()
+            .expect("native source hash fixture sourceHashes")
+            .iter()
+            .map(|entry| {
+                (
+                    entry["sourceUnitKey"]
+                        .as_str()
+                        .expect("native source hash fixture sourceUnitKey")
+                        .to_string(),
+                    entry["sourceHash"]
+                        .as_str()
+                        .expect("native source hash fixture sourceHash")
+                        .to_string(),
+                )
+            })
+            .collect()
+    }
+
+    fn native_source_patch_fixture() -> Value {
+        let fixture_dir = public_fixture_dir();
+        let source_hashes = native_source_hashes_fixture();
+        let mut patch_export: Value =
+            read_json(&fixture_dir.join("expected/patch-export-v0.2.fr-FR.json")).unwrap();
+        for entry in patch_export["entries"]
+            .as_array_mut()
+            .expect("public patch entries")
+        {
+            let source_unit_key = entry["sourceUnitKey"]
+                .as_str()
+                .expect("public patch sourceUnitKey");
+            entry["sourceHash"] = Value::String(
+                source_hashes
+                    .get(source_unit_key)
+                    .expect("native source hash for each patch entry")
+                    .clone(),
+            );
+        }
+        patch_export
+    }
+
+    fn native_source_bridge_fixture() -> Value {
+        let fixture_dir = public_fixture_dir();
+        let source_hashes = native_source_hashes_fixture();
+        let mut bridge: Value = read_json(&fixture_dir.join("expected/bridge-v0.2.json")).unwrap();
+        for unit in bridge["units"].as_array_mut().expect("public bridge units") {
+            let source_unit_key = unit["sourceUnitKey"]
+                .as_str()
+                .expect("public bridge sourceUnitKey");
+            unit["sourceHash"] = Value::String(
+                source_hashes
+                    .get(source_unit_key)
+                    .expect("native source hash for each bridge unit")
+                    .clone(),
+            );
+        }
+        bridge
+    }
+
+    fn native_source_hash_mismatch_patch_fixture() -> Value {
+        let fixture_dir = public_fixture_dir();
+        let mismatch: Value =
+            read_json(&fixture_dir.join("expected/native-source-hash-mismatch-v0.2.json")).unwrap();
+        let source_unit_key = mismatch["sourceUnitKey"]
+            .as_str()
+            .expect("native source hash mismatch sourceUnitKey");
+        let mut patch_export = native_source_patch_fixture();
+        let entry = patch_export["entries"]
+            .as_array_mut()
+            .expect("public patch entries")
+            .iter_mut()
+            .find(|entry| entry["sourceUnitKey"].as_str() == Some(source_unit_key))
+            .expect("mismatched source unit in public patch");
+        entry["sourceHash"] = mismatch["sourceHash"].clone();
+        patch_export
+    }
+
     fn patch_export_for(extraction: &ExtractionResult) -> PatchExport {
         let target_text = "Hello, {player}.".to_string();
         PatchExport {
@@ -5605,6 +5686,113 @@ mod tests {
     }
 
     #[test]
+    fn round_trip_golden_harness_recomputes_native_v02_source_hashes_without_source_bridge() {
+        let fixture_dir = public_fixture_dir();
+        let source_hashes = native_source_hashes_fixture();
+        let extraction = FixtureAdapter
+            .extract(ExtractRequest {
+                game_dir: &fixture_dir,
+            })
+            .unwrap();
+        assert_eq!(source_hashes.len(), extraction.bridge.units.len());
+        for unit in &extraction.bridge.units {
+            assert_eq!(
+                source_hashes
+                    .get(&unit.source_unit_key)
+                    .expect("native source hash for extracted unit"),
+                &sha256_hash_bytes(unit.source_text.as_bytes()),
+                "fixture hash must be canonical native source text hash for {}",
+                unit.source_unit_key
+            );
+        }
+
+        let patch_export = native_source_patch_fixture();
+        let source_bridge = native_source_bridge_fixture();
+        let bridge_hashes: BTreeMap<_, _> = source_bridge["units"]
+            .as_array()
+            .expect("public bridge units")
+            .iter()
+            .map(|unit| {
+                (
+                    unit["sourceUnitKey"]
+                        .as_str()
+                        .expect("public bridge sourceUnitKey"),
+                    unit["sourceHash"]
+                        .as_str()
+                        .expect("public bridge sourceHash"),
+                )
+            })
+            .collect();
+        assert_eq!(
+            bridge_hashes,
+            source_hashes
+                .iter()
+                .map(|(source_unit_key, source_hash)| {
+                    (source_unit_key.as_str(), source_hash.as_str())
+                })
+                .collect()
+        );
+
+        let native_work_dir = temp_dir("golden-native-v02-source-hashes");
+        let native_report = run_round_trip_golden(
+            &registry(),
+            GoldenHarnessRequest {
+                game_dir: &fixture_dir,
+                work_dir: &native_work_dir,
+                adapter_id: Some(FIXTURE_ADAPTER_ID),
+                byte_equivalence: GoldenByteEquivalenceMode::Unsupported {
+                    support_boundary:
+                        "fixture adapter rewrites source.json as pretty JSON and writes targetText fields"
+                            .to_string(),
+                },
+                translated_patch_export: Some(&patch_export),
+                translated_source_bridge: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(native_report.status, OperationStatus::Passed);
+        assert!(native_report.failures.is_empty());
+        assert!(native_report.phases.iter().any(|phase| {
+            phase.phase == "translated_source_compatibility"
+                && phase.status == GoldenAssertionStatus::Passed
+                && phase.details.contains("native adapter extraction")
+        }));
+        assert!(
+            fs::read_to_string(native_work_dir.join("translated-patch/source.json"))
+                .unwrap()
+                .contains("Bonjour, {player}.")
+        );
+
+        let bridge_work_dir = temp_dir("golden-native-v02-source-hashes-bridge");
+        let bridge_report = run_round_trip_golden(
+            &registry(),
+            GoldenHarnessRequest {
+                game_dir: &fixture_dir,
+                work_dir: &bridge_work_dir,
+                adapter_id: Some(FIXTURE_ADAPTER_ID),
+                byte_equivalence: GoldenByteEquivalenceMode::Unsupported {
+                    support_boundary:
+                        "fixture adapter rewrites source.json as pretty JSON and writes targetText fields"
+                            .to_string(),
+                },
+                translated_patch_export: Some(&patch_export),
+                translated_source_bridge: Some(&source_bridge),
+            },
+        )
+        .unwrap();
+        assert_eq!(bridge_report.status, OperationStatus::Passed);
+        assert!(bridge_report.failures.is_empty());
+        assert!(bridge_report.phases.iter().any(|phase| {
+            phase.phase == "translated_source_compatibility"
+                && phase.status == GoldenAssertionStatus::Passed
+                && phase.details.contains("source bridge")
+        }));
+
+        let _ = fs::remove_dir_all(native_work_dir);
+        let _ = fs::remove_dir_all(bridge_work_dir);
+    }
+
+    #[test]
     fn public_fixture_round_trip_report_matches_reviewed_golden_artifact() {
         let fixture_dir = public_fixture_dir();
         let work_dir = temp_dir("golden-public-report-artifact");
@@ -5729,13 +5917,10 @@ mod tests {
     }
 
     #[test]
-    fn round_trip_golden_harness_requires_source_bridge_for_v02_source_hash_compatibility() {
+    fn native_source_hash_mismatch_blocks_translation_before_patch_write() {
         let fixture_dir = public_fixture_dir();
-        let work_dir = temp_dir("golden-public-v02-stale-no-bridge");
-        let mut patch_export: Value =
-            read_json(&fixture_dir.join("expected/patch-export-v0.2.fr-FR.json")).unwrap();
-        patch_export["entries"][0]["sourceHash"] =
-            json!("sha256:0000000000000000000000000000000000000000000000000000000000000000");
+        let work_dir = temp_dir("golden-native-v02-source-hash-mismatch");
+        let patch_export = native_source_hash_mismatch_patch_fixture();
 
         let report = run_round_trip_golden(
             &registry(),
@@ -5758,10 +5943,22 @@ mod tests {
         let failure = report
             .failures
             .iter()
-            .find(|failure| failure.code == "translated_source_bridge_required")
-            .expect("missing source bridge failure");
+            .find(|failure| failure.code == "translated_source_hash_mismatch")
+            .expect("native source hash mismatch failure");
         assert_eq!(failure.phase, "translated_source_compatibility");
-        assert_eq!(failure.actual.as_deref(), Some("missing source bridge"));
+        assert_eq!(
+            failure.source_unit_key.as_deref(),
+            Some("hello.scene.001.line.001")
+        );
+        assert_eq!(
+            failure.asset_ref.as_deref(),
+            Some("source.json#hello.scene.001.line.001")
+        );
+        assert!(failure.message.contains("native adapter extraction"));
+        assert_eq!(
+            failure.actual.as_deref(),
+            Some("sha256:0000000000000000000000000000000000000000000000000000000000000000")
+        );
         assert!(!report.phases.iter().any(|phase| {
             phase.phase == "translated_patch_conversion" || phase.phase == "translated_patch"
         }));

@@ -146,6 +146,22 @@ own apply report outside the patched output tree, defaults that report to the
 inside the source or output tree, including symlink and canonical path aliases
 where the filesystem can prove them.
 
+## Native v0.2 Source-Hash Diagnostics
+
+Golden checks validate a translated v0.2 patch's source identity before patch
+conversion, preflight, or any patch write. When `--translated-source-bridge`
+is provided, the compatibility gate continues to compare the patch against that
+bridge's source unit keys, bridge-unit identifiers, hashes, and protected
+spans. When it is omitted, Kaifuu extracts the current source through the
+selected native adapter and recomputes each canonical v0.2 source hash as
+`sha256:` over the UTF-8 bytes of the extracted `sourceText`.
+
+A native mismatch is reported as `translated_source_hash_mismatch` in the
+`translated_source_compatibility` phase. Its diagnostic identifies the native
+source artifact as `<asset-id>#<source-unit-key>`, reports the recomputed hash
+as `expected` and the patch hash as `actual`, and prevents translated-patch
+conversion, preflight, and output creation.
+
 ## Current Guardrails
 
 The fixture implementation enforces a small subset of this policy:

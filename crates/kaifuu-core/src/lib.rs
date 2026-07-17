@@ -20869,6 +20869,7 @@ fn report_translated_patch(
         report_v02_source_compatibility(
             report,
             adapter.id(),
+            &extraction.bridge,
             patch_export_value,
             translated_source_bridge,
         );
@@ -20882,14 +20883,7 @@ fn report_translated_patch(
         return Ok(());
     }
 
-    let v02_source_compatibility_checked = patch_export_value["schemaVersion"].as_str()
-        != Some(BRIDGE_SCHEMA_VERSION_V02)
-        || translated_source_bridge.is_some();
-    let patch_export = match patch_export_for_adapter(
-        patch_export_value,
-        &extraction.bridge,
-        v02_source_compatibility_checked,
-    ) {
+    let patch_export = match patch_export_for_adapter(patch_export_value, &extraction.bridge) {
         Ok(patch_export) => patch_export,
         Err(error) => {
             record_golden_failure(
@@ -20945,31 +20939,18 @@ fn report_translated_patch(
 fn report_v02_source_compatibility(
     report: &mut GoldenRoundTripReport,
     adapter_id: &str,
+    native_bridge: &BridgeBundle,
     patch_export: &Value,
     source_bridge: Option<&Value>,
 ) {
-    let Some(source_bridge) = source_bridge else {
-        record_golden_failure(report, GoldenFailure {
-            code: "translated_source_bridge_required".to_string(),
-            phase: "translated_source_compatibility".to_string(),
-            adapter_id: adapter_id.to_string(),
-            message:
-                "translated v0.2 patch exports require the source bridge used to create them"
-                    .to_string(),
-            asset_ref: None,
-            source_unit_key: None,
-            support_boundary: Some(
-                "v0.2 translated patch source compatibility cannot be checked without --translated-source-bridge"
-                    .to_string(),
-            ),
-            expected: Some("source bridge artifact".to_string()),
-            actual: Some("missing source bridge".to_string()),
-                    required_capability: None,
-});
-        return;
+    let (bridge_units, source_description) = match source_bridge {
+        Some(source_bridge) => (v02_bridge_units_by_key(source_bridge), "source bridge"),
+        None => (
+            Ok(v02_native_units_by_key(native_bridge)),
+            "native adapter extraction",
+        ),
     };
-
-    let bridge_units = match v02_bridge_units_by_key(source_bridge) {
+    let bridge_units = match bridge_units {
         Ok(units) => units,
         Err(error) => {
             record_golden_failure(
@@ -20982,13 +20963,13 @@ fn report_v02_source_compatibility(
                     asset_ref: None,
                     source_unit_key: None,
                     support_boundary: Some(
-                        "v0.2 source compatibility requires a bridge with units keyed by sourceUnitKey"
+                        "v0.2 source compatibility requires source units keyed by sourceUnitKey"
                             .to_string(),
                     ),
-                    expected: Some("valid source bridge units".to_string()),
-                    actual: Some("invalid source bridge".to_string()),
-                                    required_capability: None,
-},
+                    expected: Some("valid source units".to_string()),
+                    actual: Some(format!("invalid {source_description}")),
+                    required_capability: None,
+                },
             );
             return;
         }
@@ -21031,10 +21012,10 @@ fn report_v02_source_compatibility(
                     asset_ref: Some("source.json".to_string()),
                     source_unit_key: Some(source_unit_key.to_string()),
                     support_boundary: Some(
-                        "translated patch sourceUnitKey values must exist in the source bridge"
+                        "translated patch sourceUnitKey values must exist in the checked source units"
                             .to_string(),
                     ),
-                    expected: Some("source bridge unit".to_string()),
+                    expected: Some("source unit".to_string()),
                     actual: None,
                     required_capability: None,
                 },
@@ -21042,7 +21023,11 @@ fn report_v02_source_compatibility(
             continue;
         };
 
-        if unit.bridge_unit_id != bridge_unit_id {
+        if unit
+            .bridge_unit_id
+            .as_deref()
+            .is_some_and(|expected_bridge_unit_id| expected_bridge_unit_id != bridge_unit_id)
+        {
             record_golden_failure(
                 report,
                 GoldenFailure {
@@ -21057,7 +21042,7 @@ fn report_v02_source_compatibility(
                         "translated patch entries must reference the source bridge unit they were exported from"
                             .to_string(),
                     ),
-                    expected: Some(unit.bridge_unit_id.clone()),
+                    expected: unit.bridge_unit_id.clone(),
                     actual: Some(bridge_unit_id.to_string()),
                                     required_capability: None,
 },
@@ -21072,12 +21057,13 @@ fn report_v02_source_compatibility(
                     code: "translated_source_hash_mismatch".to_string(),
                     phase: "translated_source_compatibility".to_string(),
                     adapter_id: adapter_id.to_string(),
-                    message: "translated patch sourceHash does not match the source bridge"
-                        .to_string(),
+                    message: format!(
+                        "translated patch sourceHash does not match the {source_description}"
+                    ),
                     asset_ref: Some(unit.asset_ref.clone()),
                     source_unit_key: Some(source_unit_key.to_string()),
                     support_boundary: Some(
-                        "translated patch sourceHash must match the source bridge before adapter-specific hash translation"
+                        "translated patch sourceHash must match the checked source before adapter-specific hash translation"
                             .to_string(),
                     ),
                     expected: Some(unit.source_hash.clone()),
@@ -21128,17 +21114,27 @@ fn report_v02_source_compatibility(
     report_passed_phase(
         report,
         "translated_source_compatibility",
-        format!("validated {compatible} translated patch source unit(s) against the source bridge"),
+        format!(
+            "validated {compatible} translated patch source unit(s) against the {source_description}"
+        ),
         None,
     );
 }
 
 #[derive(Debug, Clone)]
 struct V02BridgeUnitSummary {
-    bridge_unit_id: String,
+    bridge_unit_id: Option<String>,
     source_hash: String,
     asset_ref: String,
-    spans: Vec<BridgeSpanV02>,
+    spans: Vec<V02SourceSpanSummary>,
+}
+
+#[derive(Debug, Clone)]
+struct V02SourceSpanSummary {
+    span_id: Option<String>,
+    raw: String,
+    start_byte: u64,
+    end_byte: u64,
 }
 
 fn v02_bridge_units_by_key(
@@ -21156,14 +21152,60 @@ fn v02_bridge_units_by_key(
         units_by_key.insert(
             key.clone(),
             V02BridgeUnitSummary {
-                bridge_unit_id: unit.bridge_unit_id,
+                bridge_unit_id: Some(unit.bridge_unit_id),
                 source_hash: unit.source_hash,
                 asset_ref: format!("{asset_ref}#{key}"),
-                spans: unit.spans,
+                spans: unit
+                    .spans
+                    .into_iter()
+                    .map(|span| V02SourceSpanSummary {
+                        span_id: Some(span.span_id),
+                        raw: span.raw,
+                        start_byte: span.start_byte,
+                        end_byte: span.end_byte,
+                    })
+                    .collect(),
             },
         );
     }
     Ok(units_by_key)
+}
+
+/// Recompute the canonical v0.2 source hash from the text emitted by a native
+/// adapter. This is the same `sha256:` UTF-8 source-text representation native
+/// v0.2 bridge producers place in `LocalizationUnitV02.sourceHash`.
+fn canonical_v02_native_source_hash(source_text: &str) -> String {
+    sha256_hash_bytes(source_text.as_bytes())
+}
+
+fn v02_native_units_by_key(bridge: &BridgeBundle) -> BTreeMap<String, V02BridgeUnitSummary> {
+    let mut units_by_key = BTreeMap::new();
+    for unit in &bridge.units {
+        let key = unit.source_unit_key.clone();
+        units_by_key.insert(
+            key.clone(),
+            V02BridgeUnitSummary {
+                // A native v0.1 adapter may use a local bridge-unit id scheme.
+                // The sourceUnitKey + canonical source hash are the stable v0.2
+                // compatibility identity; patch conversion later remaps to the
+                // fresh native bridge-unit id used by that adapter.
+                bridge_unit_id: None,
+                source_hash: canonical_v02_native_source_hash(&unit.source_text),
+                asset_ref: format!("{}#{key}", unit.patch_ref.asset_id),
+                spans: unit
+                    .protected_spans
+                    .iter()
+                    .map(|span| V02SourceSpanSummary {
+                        span_id: span.span_id.clone(),
+                        raw: span.raw.clone(),
+                        start_byte: span.start,
+                        end_byte: span.end,
+                    })
+                    .collect(),
+            },
+        );
+    }
+    units_by_key
 }
 
 fn v02_patch_entry_span_mappings_compatible(entry: &Value, unit: &V02BridgeUnitSummary) -> bool {
@@ -21176,7 +21218,7 @@ fn v02_patch_entry_span_mappings_compatible(entry: &Value, unit: &V02BridgeUnitS
         return false;
     };
 
-    let mut required_spans = BTreeMap::<&str, Vec<&BridgeSpanV02>>::new();
+    let mut required_spans = BTreeMap::<&str, Vec<&V02SourceSpanSummary>>::new();
     for span in &unit.spans {
         required_spans
             .entry(span.raw.as_str())
@@ -21211,14 +21253,17 @@ fn v02_patch_entry_span_mappings_compatible(entry: &Value, unit: &V02BridgeUnitS
                     &source_span.raw,
                     Some(source_span.start_byte),
                     Some(source_span.end_byte),
-                    Some(&source_span.span_id),
+                    source_span.span_id.as_deref(),
                 )
             }) else {
                 return false;
             };
+            let Some(span_id) = source_span.span_id.as_deref() else {
+                return false;
+            };
             let source_identity_key = format!(
                 "{}:{}:{}",
-                source_span.span_id, source_span.start_byte, source_span.end_byte
+                span_id, source_span.start_byte, source_span.end_byte
             );
             if !matched_source_identities.insert(source_identity_key) {
                 return false;
@@ -21240,18 +21285,9 @@ fn v02_patch_entry_span_mappings_compatible(entry: &Value, unit: &V02BridgeUnitS
     true
 }
 
-fn patch_export_for_adapter(
-    value: &Value,
-    bridge: &BridgeBundle,
-    v02_source_compatibility_checked: bool,
-) -> KaifuuResult<PatchExport> {
+fn patch_export_for_adapter(value: &Value, bridge: &BridgeBundle) -> KaifuuResult<PatchExport> {
     if value["schemaVersion"].as_str() != Some(BRIDGE_SCHEMA_VERSION_V02) {
         return PatchExport::from_value(value);
-    }
-    if !v02_source_compatibility_checked {
-        return Err(
-            "v0.2 translated patch conversion requires checked source bridge compatibility".into(),
-        );
     }
 
     let units_by_key = bridge

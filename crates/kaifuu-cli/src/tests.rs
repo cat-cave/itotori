@@ -807,6 +807,62 @@ fn public_fixture_dir() -> PathBuf {
     test_manifest_dir().join("../../fixtures/hello-game")
 }
 
+fn native_source_patch_export() -> serde_json::Value {
+    let fixture_dir = public_fixture_dir();
+    let native_source_hashes: serde_json::Value =
+        read_json(&fixture_dir.join("expected/native-source-hashes-v0.2.json")).unwrap();
+    let hashes: BTreeMap<_, _> = native_source_hashes["sourceHashes"]
+        .as_array()
+        .expect("native source hash fixture sourceHashes")
+        .iter()
+        .map(|entry| {
+            (
+                entry["sourceUnitKey"]
+                    .as_str()
+                    .expect("native source hash fixture sourceUnitKey"),
+                entry["sourceHash"]
+                    .as_str()
+                    .expect("native source hash fixture sourceHash"),
+            )
+        })
+        .collect();
+    let mut patch_export: serde_json::Value =
+        read_json(&fixture_dir.join("expected/patch-export-v0.2.fr-FR.json")).unwrap();
+    for entry in patch_export["entries"]
+        .as_array_mut()
+        .expect("public patch entries")
+    {
+        let source_unit_key = entry["sourceUnitKey"]
+            .as_str()
+            .expect("public patch sourceUnitKey");
+        entry["sourceHash"] = serde_json::Value::String(
+            hashes
+                .get(source_unit_key)
+                .expect("native source hash for each patch entry")
+                .to_string(),
+        );
+    }
+    patch_export
+}
+
+fn native_source_hash_mismatch_patch_export() -> serde_json::Value {
+    let fixture_dir = public_fixture_dir();
+    let mismatch: serde_json::Value =
+        read_json(&fixture_dir.join("expected/native-source-hash-mismatch-v0.2.json")).unwrap();
+    let source_unit_key = mismatch["sourceUnitKey"]
+        .as_str()
+        .expect("native source hash mismatch sourceUnitKey");
+    let mut patch_export = native_source_patch_export();
+    let entry = patch_export["entries"]
+        .as_array_mut()
+        .expect("public patch entries")
+        .iter_mut()
+        .find(|entry| entry["sourceUnitKey"].as_str() == Some(source_unit_key))
+        .expect("mismatched source unit in public patch");
+    entry["sourceHash"] = mismatch["sourceHash"].clone();
+    patch_export
+}
+
 fn public_fixture_path(relative_path: &str) -> PathBuf {
     test_manifest_dir().join("../..").join(relative_path)
 }
@@ -5333,15 +5389,47 @@ fn golden_command_runs_fixture_round_trip_and_public_translated_patch() {
 }
 
 #[test]
-fn golden_command_returns_error_for_v02_translated_patch_without_source_bridge() {
+fn golden_command_accepts_v02_translated_patch_with_native_source_hashes() {
     let root = temp_dir("golden-public-translated-no-source-bridge");
     let fixture_dir = public_fixture_dir();
-    let mut patch_export: serde_json::Value =
-        read_json(&fixture_dir.join("expected/patch-export-v0.2.fr-FR.json")).unwrap();
-    patch_export["entries"][0]["sourceHash"] = serde_json::json!(
-        "sha256:0000000000000000000000000000000000000000000000000000000000000000"
-    );
-    let patch_path = root.join("stale-patch-export.json");
+    let patch_export = native_source_patch_export();
+    let patch_path = root.join("native-source-patch-export.json");
+    write_json(&patch_path, &patch_export).unwrap();
+    let report_path = root.join("golden-report.json");
+    let work_dir = root.join("golden-work");
+
+    run_cli(&[
+        "golden",
+        fixture_dir.to_str().unwrap(),
+        "--adapter",
+        kaifuu_engine_fixture::FIXTURE_ADAPTER_ID,
+        "--translated-patch",
+        patch_path.to_str().unwrap(),
+        "--work-dir",
+        work_dir.to_str().unwrap(),
+        "--output",
+        report_path.to_str().unwrap(),
+    ]);
+
+    let report: GoldenRoundTripReport = read_json(&report_path).unwrap();
+    assert_eq!(report.status, OperationStatus::Passed);
+    assert!(report.failures.is_empty());
+    assert!(report.phases.iter().any(|phase| {
+        phase.phase == "translated_source_compatibility"
+            && phase.status == GoldenAssertionStatus::Passed
+            && phase.details.contains("native adapter extraction")
+    }));
+    assert!(work_dir.join("translated-patch/source.json").exists());
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn golden_command_rejects_native_v02_source_hash_mismatch_before_patch_write() {
+    let root = temp_dir("golden-public-native-source-hash-mismatch");
+    let fixture_dir = public_fixture_dir();
+    let patch_export = native_source_hash_mismatch_patch_export();
+    let patch_path = root.join("native-source-hash-mismatch-patch-export.json");
     write_json(&patch_path, &patch_export).unwrap();
     let report_path = root.join("golden-report.json");
     let work_dir = root.join("golden-work");
@@ -5367,14 +5455,21 @@ fn golden_command_returns_error_for_v02_translated_patch_without_source_bridge()
     assert!(result.is_err());
     let report: GoldenRoundTripReport = read_json(&report_path).unwrap();
     assert_eq!(report.status, OperationStatus::Failed);
-    assert!(report.failures.iter().any(|failure| {
-        failure.phase == "translated_source_compatibility"
-            && failure.code == "translated_source_bridge_required"
-            && failure.actual.as_deref() == Some("missing source bridge")
-    }));
+    let failure = report
+        .failures
+        .iter()
+        .find(|failure| failure.code == "translated_source_hash_mismatch")
+        .expect("native source hash mismatch failure");
+    assert_eq!(failure.phase, "translated_source_compatibility");
+    assert_eq!(
+        failure.asset_ref.as_deref(),
+        Some("source.json#hello.scene.001.line.001")
+    );
+    assert!(failure.message.contains("native adapter extraction"));
     assert!(!report.phases.iter().any(|phase| {
         phase.phase == "translated_patch_conversion" || phase.phase == "translated_patch"
     }));
+    assert!(!work_dir.join("translated-patch/source.json").exists());
 
     let _ = fs::remove_dir_all(root);
 }
