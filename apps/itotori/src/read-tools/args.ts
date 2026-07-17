@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 
-import { IdentifierSchema } from "../contracts/index.js";
+import { IdentifierSchema, SubjectIdSchema } from "../contracts/index.js";
 
 const PageArgsShape = {
   maxRows: z.number().int().min(1).max(100_000),
@@ -50,7 +50,7 @@ export const DecodeGetNeighborsArgsSchema = z
 export const DecodeGetRouteGraphArgsSchema = z.object({ ...PageArgsShape }).strict();
 
 export const DecodeGetCharacterOccurrencesArgsSchema = z
-  .object({ characterId: IdentifierSchema, ...PageArgsShape })
+  .object({ characterId: SubjectIdSchema, ...PageArgsShape })
   .strict();
 
 export const GlossaryLookupArgsSchema = z
@@ -58,7 +58,7 @@ export const GlossaryLookupArgsSchema = z
     selector: z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("all") }).strict(),
       z
-        .object({ kind: z.literal("term-ids"), termIds: z.array(IdentifierSchema).min(1).max(256) })
+        .object({ kind: z.literal("term-ids"), termIds: z.array(SubjectIdSchema).min(1).max(256) })
         .strict(),
       z
         .object({

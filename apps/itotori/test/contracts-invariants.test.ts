@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   FactSchema,
+  IdentifierSchema,
+  SubjectIdSchema,
   TermRulingBodySchema,
   terminalContractSchemas,
   type TerminalContractName,
@@ -209,5 +211,18 @@ describe("grounded fact boundary", () => {
       TermRulingBodySchema.safeParse({ ...sourceRuling, canonicalTarget: "model replacement" })
         .success,
     ).toBe(false);
+  });
+});
+
+describe("subject identifiers", () => {
+  it("accepts source-language identity text while keeping system identifiers ASCII-only", () => {
+    expect(SubjectIdSchema.parse("reallive:namae:凛")).toBe("reallive:namae:凛");
+    // Compound source names join with `・` (U+30FB) — a legitimate identity id.
+    expect(SubjectIdSchema.parse("reallive:namae:和人・しずね")).toBe(
+      "reallive:namae:和人・しずね",
+    );
+    expect(() => SubjectIdSchema.parse("has space")).toThrow();
+    expect(() => SubjectIdSchema.parse("name\u0000")).toThrow();
+    expect(() => IdentifierSchema.parse("reallive:namae:凛")).toThrow();
   });
 });

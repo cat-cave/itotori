@@ -20,6 +20,7 @@ import {
   NonEmptyTextSchema,
   NonNegativeIntegerSchema,
   Sha256Schema,
+  SubjectIdSchema,
 } from "../../contracts/index.js";
 
 /** The provenance the position MUST carry: it is a decode fact, not a model
@@ -32,7 +33,7 @@ export const VOICE_POSITION_DERIVATION = "decode" as const;
 export const VoicePositionSchema = z
   .object({
     derivation: z.literal(VOICE_POSITION_DERIVATION),
-    counterpartId: IdentifierSchema.nullable(),
+    counterpartId: SubjectIdSchema.nullable(),
     routeId: IdentifierSchema,
     playOrder: NonNegativeIntegerSchema,
   })
@@ -50,7 +51,7 @@ export const VoiceBibleRuleSchema = z
   .object({
     ruleId: IdentifierSchema,
     scope: VoiceRuleScopeSchema,
-    counterpartId: IdentifierSchema.nullable(),
+    counterpartId: SubjectIdSchema.nullable(),
     routeId: IdentifierSchema.nullable(),
     fromPlayOrder: NonNegativeIntegerSchema.nullable(),
     toPlayOrder: NonNegativeIntegerSchema.nullable(),
@@ -65,7 +66,7 @@ export const AcceptedTargetLineSchema = z
   .object({
     historyId: IdentifierSchema,
     unitId: IdentifierSchema,
-    counterpartId: IdentifierSchema.nullable(),
+    counterpartId: SubjectIdSchema.nullable(),
     routeId: IdentifierSchema,
     playOrder: NonNegativeIntegerSchema,
     text: NonEmptyTextSchema,
@@ -86,7 +87,7 @@ export const Q2ReviewInputSchema = z
   .object({
     unitId: IdentifierSchema,
     localizationSnapshotId: Sha256Schema,
-    speakerId: IdentifierSchema,
+    speakerId: SubjectIdSchema,
     candidateTarget: NonEmptyTextSchema,
     position: VoicePositionSchema,
     sampleKind: Q2SampleKindSchema,

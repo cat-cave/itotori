@@ -6,6 +6,7 @@ import {
   NonNegativeIntegerSchema,
   RouteScopeSchema,
   ShortTextSchema,
+  SubjectIdSchema,
 } from "./shared.js";
 
 export const StyleContractBodySchema = z
@@ -21,7 +22,7 @@ export const StyleContractBodySchema = z
 
 export const TermRulingBodySchema = z
   .object({
-    termId: IdentifierSchema,
+    termId: SubjectIdSchema,
     sourceForm: ShortTextSchema,
     meaning: NonEmptyTextSchema,
     register: NonEmptyTextSchema,
@@ -59,7 +60,7 @@ const ArcLinkSchema = z
 
 const RelationshipDeltaSchema = z
   .object({
-    counterpartId: IdentifierSchema,
+    counterpartId: SubjectIdSchema,
     fromPlayOrder: NonNegativeIntegerSchema,
     toPlayOrder: NonNegativeIntegerSchema,
     before: NonEmptyTextSchema,
@@ -80,7 +81,7 @@ export const RouteArcBodySchema = z
 
 const VoiceCounterpartSchema = z
   .object({
-    counterpartId: IdentifierSchema,
+    counterpartId: SubjectIdSchema,
     addressForm: ShortTextSchema,
     registerDelta: NonEmptyTextSchema,
     scope: RouteScopeSchema,
@@ -100,7 +101,7 @@ const VoiceArcPositionSchema = z
 
 export const VoiceProfileBodySchema = z
   .object({
-    characterId: IdentifierSchema,
+    characterId: SubjectIdSchema,
     base: z
       .object({
         pronoun: ShortTextSchema,
@@ -132,7 +133,7 @@ export const AdaptationNoteBodySchema = z
 
 export const CharacterBioBodySchema = z
   .object({
-    characterId: IdentifierSchema,
+    characterId: SubjectIdSchema,
     storyRole: NonEmptyTextSchema,
     definingTraits: z.array(ShortTextSchema).min(1).max(128),
     notableMomentEvidenceIds: z.array(IdentifierSchema).min(1).max(1_024),
@@ -141,7 +142,7 @@ export const CharacterBioBodySchema = z
 
 const RelationshipSchema = z
   .object({
-    counterpartId: IdentifierSchema,
+    counterpartId: SubjectIdSchema,
     relationship: NonEmptyTextSchema,
     scope: RouteScopeSchema,
     establishingEvidenceIds: z.array(IdentifierSchema).min(1).max(1_024),
@@ -150,7 +151,7 @@ const RelationshipSchema = z
 
 export const CharacterBackgroundBodySchema = z
   .object({
-    characterId: IdentifierSchema,
+    characterId: SubjectIdSchema,
     background: NonEmptyTextSchema,
     relationships: z.array(RelationshipSchema).max(10_000),
   })
@@ -168,7 +169,7 @@ const CharacterShiftSchema = z
 
 export const CharacterRouteArcBodySchema = z
   .object({
-    characterId: IdentifierSchema,
+    characterId: SubjectIdSchema,
     routeId: IdentifierSchema,
     shifts: z.array(CharacterShiftSchema).max(10_000),
   })
@@ -177,7 +178,7 @@ export const CharacterRouteArcBodySchema = z
 export const SpeakerHypothesisBodySchema = z
   .object({
     unitId: IdentifierSchema,
-    candidateCharacterId: IdentifierSchema,
+    candidateCharacterId: SubjectIdSchema,
     confidence: z.enum(["low", "medium", "high"]),
     revealSceneId: IdentifierSchema,
   })
@@ -224,7 +225,7 @@ const CanonicalTermFormSchema = z
 const LocalizedTermBodySchema = z
   .object({
     kind: z.literal("term-ruling"),
-    termId: IdentifierSchema,
+    termId: SubjectIdSchema,
     canonicalForms: z.array(CanonicalTermFormSchema).min(1).max(256),
     registerGuidance: NonEmptyTextSchema,
   })
@@ -233,7 +234,7 @@ const LocalizedTermBodySchema = z
 const LocalizedVoiceBodySchema = z
   .object({
     kind: z.literal("voice-profile"),
-    characterId: IdentifierSchema,
+    characterId: SubjectIdSchema,
     baseRegisterGuidance: NonEmptyTextSchema,
     counterpartGuidance: z.array(LocalizedSectionSchema).max(1_024),
     arcGuidance: z.array(LocalizedSectionSchema).max(1_024),

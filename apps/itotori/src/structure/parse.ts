@@ -1,4 +1,4 @@
-import { IdentifierSchema, Sha256Schema } from "../contracts/shared.js";
+import { IdentifierSchema, Sha256Schema, SubjectIdSchema } from "../contracts/shared.js";
 import { z } from "zod";
 import {
   NARRATIVE_STRUCTURE_V1,
@@ -52,7 +52,7 @@ const MessageV2Schema = z
   .object({
     order: z.number().int().nonnegative(),
     speaker: z.string().nullable(),
-    characterId: IdentifierSchema.nullable(),
+    characterId: SubjectIdSchema.nullable(),
     text: z.string(),
     textSurface: z.string().nullable(),
     playOrder: z.number().int().nonnegative().optional(),
@@ -146,7 +146,7 @@ const SceneV2Schema = z
             bridgeRef: BridgeRefSchema,
             surfaceKind: IdentifierSchema,
             sourceText: z.string(),
-            characterId: IdentifierSchema.nullable(),
+            characterId: SubjectIdSchema.nullable(),
             evidenceTier: EvidenceTierSchema.nullable(),
             color: RgbSchema.nullable(),
             bridgeDeclaredColor: RgbSchema.nullable().optional(),
