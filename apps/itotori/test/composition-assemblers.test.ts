@@ -489,3 +489,19 @@ describe("review-lane verdict interpreter → LaneVerdict", () => {
     );
   });
 });
+
+describe("decodeFactSourceFrom key resolution (real bridge id shape)", () => {
+  it("resolves an ordered fact by the BARE bridge unit id when factId is `unit:`-prefixed", () => {
+    // Real bridge data: factId = `unit:<id>` (provenance-prefixed) while the draft
+    // sequence (projectDecodeStructure scene.units) queries by the BARE unit id.
+    // Keying the fact map by factId alone misses every bare-id lookup (regression:
+    // "snapshot has no ordered fact for unit <id>" on real Sweetie bytes).
+    const base = orderedUnit("bare-x", "reallive:scene-0001#0000", 0, HASH1, []);
+    const fact = { ...base, factId: "unit:bare-x", bridgeUnitId: "bare-x" } as typeof base;
+    const snap = { ...snapshot, orderedUnits: [fact] } as typeof snapshot;
+    const bridgeUnit = bridgeUnits.values().next().value;
+    const fs = decodeFactSourceFrom(snap, new Map([["bare-x", bridgeUnit]]));
+    expect(fs.orderedFact("bare-x").factId).toBe("unit:bare-x");
+    expect(fs.orderedFact("unit:bare-x").factId).toBe("unit:bare-x");
+  });
+});
