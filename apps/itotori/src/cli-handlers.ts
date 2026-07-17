@@ -32,6 +32,7 @@ import type {
   ItotoriCatalogFuzzyCandidateGeneratorPort,
 } from "@itotori/db";
 import type { EngineCapabilityReportPort } from "./services/engine-capability-report.js";
+import { configuredServicePort } from "./services/configured-port.js";
 import { runAssetDecisionsList, type AssetDecisionsCliPort } from "./asset-decisions/cli.js";
 import { runQueueHealthCli, type QueueHealthCliPort } from "./queue/cli.js";
 import type { ItotoriProjectWorkflowPort, ProjectState } from "./services/project-workflow.js";
@@ -294,12 +295,12 @@ async function runPatchCommand(
  */
 async function runPlay(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
   await dependencies.withServices(async (services) => {
-    if (services.patchPlay === undefined) {
+    const playDeps = configuredServicePort(services, "patchPlay");
+    if (playDeps === undefined) {
       throw new Error(
         "patch play is not configured in this CLI build (patchPlay port missing — the new-pipeline surface loader + runtime launcher are not installed)",
       );
     }
-    const playDeps = services.patchPlay;
     await runPlayCommand(args, {
       io: { writeJson: (path, value) => dependencies.io.writeJson(path, value) },
       resolvePlayDeps: () => playDeps,
@@ -510,12 +511,12 @@ async function runStructureExportHandler(
  */
 async function runLocalize(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
   await dependencies.withServices(async (services) => {
-    if (services.localizationSubstrate === undefined) {
+    const substrate = configuredServicePort(services, "localizationSubstrate");
+    if (substrate === undefined) {
       throw new Error(
         "localize is not configured in this CLI build (localizationSubstrate port missing — the new-pipeline WorkflowPortDeps assemblers are not installed)",
       );
     }
-    const substrate = services.localizationSubstrate;
     await runLocalizeCommand(args, {
       io: {
         readJson: (path) => dependencies.io.readJson(path),
@@ -1234,12 +1235,13 @@ async function runAssetDecisionsListHandler(
 }
 
 function requireAssetDecisionsPort(services: ItotoriCliServices): AssetDecisionsCliPort {
-  if (services.assetDecisions === undefined) {
+  const port = configuredServicePort(services, "assetDecisions");
+  if (port === undefined) {
     throw new Error(
       "asset-decisions service is not configured for this CLI context (assetDecisions port missing)",
     );
   }
-  return services.assetDecisions;
+  return port;
 }
 
 // ITOTORI-047: queue-health inspection CLI command. Surfaces the typed
@@ -1274,18 +1276,18 @@ async function runQueueHealthHandler(
 async function runWiki(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
   await dependencies.withServices(async (services) => {
     const building = args[1] === "build";
-    if (!building && services.wikiObjectApi === undefined) {
+    const service = configuredServicePort(services, "wikiObjectApi");
+    const wikiBuild = configuredServicePort(services, "wikiBuild");
+    if (!building && service === undefined) {
       throw new Error(
         "wiki is not configured in this CLI build (wikiObjectApi port missing — the new-pipeline Wiki object-API service is not installed)",
       );
     }
-    if (building && services.wikiBuild === undefined) {
+    if (building && wikiBuild === undefined) {
       throw new Error(
         "wiki build is not configured in this CLI build (wikiBuild port missing — the source-Wiki analyst substrate is not installed)",
       );
     }
-    const service = services.wikiObjectApi;
-    const wikiBuild = services.wikiBuild;
     await runWikiCommand(args, {
       io: {
         readJson: (path) => dependencies.io.readJson(path),
@@ -1301,10 +1303,11 @@ async function runWiki(args: string[], dependencies: ItotoriCliDependencies): Pr
 }
 
 function requireQueueHealthPort(services: ItotoriCliServices): QueueHealthCliPort {
-  if (services.queueHealth === undefined) {
+  const port = configuredServicePort(services, "queueHealth");
+  if (port === undefined) {
     throw new Error(
       "queue-health service is not configured for this CLI context (queueHealth port missing)",
     );
   }
-  return services.queueHealth;
+  return port;
 }

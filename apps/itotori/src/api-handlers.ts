@@ -177,6 +177,7 @@ import {
   requireOwnedBranchScope,
   resolveProjectMutationScope,
 } from "./services/project-mutation-scope.js";
+import { configuredServicePort } from "./services/configured-port.js";
 import { AccountZdrAssertionError } from "./zdr-admission/account-zdr.js";
 import type { BmkCockpitReadModel, BmkCockpitRunHistoryPage } from "./bmk-cockpit-read-model.js";
 import type { CatalogContextPanelReadModel } from "./catalog-context-panel.js";
@@ -796,12 +797,12 @@ async function routeItotoriApiRequest(
         "wiki is not configured in this API build (wikiObjectApi port missing add — the new-pipeline Wiki object-API addresses edits on known objects only)",
       );
     }
-    if (services.wikiObjectApi === undefined) {
+    const wikiService = configuredServicePort(services, "wikiObjectApi");
+    if (wikiService === undefined) {
       throw new Error(
         "wiki is not configured in this API build (wikiObjectApi port missing — the new-pipeline Wiki object-API service is not installed)",
       );
     }
-    const wikiService = services.wikiObjectApi;
     const body = parseWikiEditRequest(request.body);
     const objectApiBody =
       typeof request.body === "object" && request.body !== null
@@ -879,12 +880,12 @@ async function routeItotoriApiRequest(
     // The kept patch-play entry point is backed by the new composition path.
     const body = parsePatchIterationPlayRequest(request.body);
     await requireApiPermission(services, apiMutationPermissionGates.patchIterationPlay);
-    if (services.patchPlay === undefined) {
+    const playDeps = configuredServicePort(services, "patchPlay");
+    if (playDeps === undefined) {
       throw new Error(
         "patch play is not configured in this API build (patchPlay port missing — the new-pipeline surface loader + runtime launcher are not installed)",
       );
     }
-    const playDeps = services.patchPlay;
     const receipt = await runApiPlay(
       {
         patchVersionId: patchIterationRoute.patchVersionId,
@@ -1229,7 +1230,8 @@ async function routeItotoriApiRequest(
       // The live substrate (WorkflowPortDeps assemblers over decode facts + bible)
       // is installed by the production DB service. A missing one is still a loud
       // configuration failure; this route never falls back to the old service.
-      if (services.localizationSubstrate === undefined) {
+      const substrate = configuredServicePort(services, "localizationSubstrate");
+      if (substrate === undefined) {
         return ok("branches.draft", {
           outcome: "refused",
           project: null,
@@ -1238,7 +1240,6 @@ async function routeItotoriApiRequest(
             "draft is not configured in this API build (localizationSubstrate port missing — the new-pipeline WorkflowPortDeps assemblers are not installed)",
         });
       }
-      const substrate = services.localizationSubstrate;
       const localizeFields = parseNewPipelineDraftFields(request.body);
       if (localizeFields === null) {
         return ok("branches.draft", {
