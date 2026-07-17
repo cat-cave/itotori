@@ -256,6 +256,8 @@ export function stampSourceProvenance(
     readonly contextScope: ContextScopeValue;
     readonly runMode: RunModeValue;
     readonly authorRoleId: RoleId;
+    readonly subject: WikiObject["subject"];
+    readonly scope: WikiObject["scope"];
   },
 ): readonly WikiObject[] {
   return objects.map((object) => {
@@ -264,6 +266,15 @@ export function stampSourceProvenance(
     if (object.kind === "translation") return object;
     return {
       ...object,
+      // The assigned (subject, scope) identity is system-owned — the model invents
+      // the subject id (a made-up game id) which acceptObject rejects off-target.
+      subject: authority.subject,
+      scope: authority.scope,
+      // Version is system-owned: a source-Wiki build produces the FIRST version of
+      // each object. The model copies the few-shot's v2/supersedes:1 pair and can
+      // emit an inconsistent one that violates the version check constraint.
+      version: 1,
+      supersedesVersion: null,
       provenance: {
         ...object.provenance,
         contextSnapshotId: authority.contextSnapshotId,
@@ -345,16 +356,21 @@ export function createAnalystRunner(deps: AnalystRunnerDeps): AnalystRunner {
   return async (input) => {
     const roleDeps: AnalystRoleDeps = { ...deps, runtime: runtimeForRole(input.role) };
     const produced = await dispatchRole(input, roleDeps);
-    // Provenance is a SYSTEM audit fact, not a model judgment: the analyst model
-    // cannot reliably echo the 64-char snapshot hash (it emits zeros) and has been
-    // observed to author a wrong runMode. Stamp the system-owned provenance fields
-    // authoritatively from the run context before the object is accepted/persisted.
+    // Provenance AND identity are SYSTEM facts, not model judgments: the analyst
+    // model cannot reliably echo the 64-char snapshot hash (it emits zeros), has
+    // authored a wrong runMode, and invents the subject id (e.g. a made-up game
+    // id) — which makes acceptObject reject it off-target. Stamp the system-owned
+    // provenance + the assigned (subject, scope) identity authoritatively from the
+    // step before the object is accepted/persisted. The model still authors the
+    // object CONTENT (body + claims).
     return remember(
       stampSourceProvenance(produced, {
         contextSnapshotId: deps.model.snapshotId,
         contextScope: input.contextScope,
         runMode: input.runMode,
         authorRoleId: input.role,
+        subject: input.step.subject,
+        scope: input.step.scope,
       }),
     );
   };
