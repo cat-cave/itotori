@@ -116,6 +116,7 @@ export interface WikiBuildInvocation {
   readonly sourceLanguage: string;
   readonly runMode: RunModeValue;
   readonly concurrency: number;
+  readonly roles?: readonly RoleId[];
   readonly portraitSources?: WikiBuildPortraitSources;
 }
 
