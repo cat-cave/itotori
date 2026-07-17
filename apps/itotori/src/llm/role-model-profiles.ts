@@ -218,6 +218,23 @@ export const deepSeekV4FlashProfile = constructRoleModelProfile({
   providerPolicy: zdrFallbackProviderPolicy,
 });
 
+/**
+ * True when the OpenRouter-served model is the certified model FAMILY: either the
+ * exact certified slug, or a dated snapshot pin of it (`<slug>-YYYYMMDD`). When a
+ * request for `deepseek/deepseek-v4-flash` resolves against the served-route
+ * lookup, OpenRouter reports the concrete snapshot it billed (e.g.
+ * `deepseek/deepseek-v4-flash-20260423`). That is the certified model, just pinned
+ * to a dated snapshot — NOT a silent fallback to a different model, which this
+ * guard still rejects. The exact served slug is recorded as telemetry regardless.
+ */
+export function servedModelIsCertified(servedModel: string, certifiedModel: string): boolean {
+  if (servedModel === certifiedModel) return true;
+  const suffix = servedModel.startsWith(`${certifiedModel}-`)
+    ? servedModel.slice(certifiedModel.length + 1)
+    : null;
+  return suffix !== null && /^\d{8}$/u.test(suffix);
+}
+
 export const roleModelProfileConfig = RoleModelProfileConfigSchema.parse({
   schemaVersion: ROLE_MODEL_PROFILE_CONFIG_VERSION,
   profiles: {

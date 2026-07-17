@@ -9,6 +9,7 @@ import {
   deepSeekV4FlashProfile,
   resolveRoleModelProfile,
   roleModelProfileConfig,
+  servedModelIsCertified,
   type ModelProfileCertificate,
   type RoleModelProfile,
 } from "../src/llm/role-model-profiles.js";
@@ -215,6 +216,36 @@ describe("certified per-role model profiles", () => {
     const resolved = resolveRoleModelProfile("Q6");
     expect(resolved.certificate.certificateStatus).toBe("valid");
     expect(resolved.providerPolicy).toEqual(zdrFallbackPolicy);
+  });
+});
+
+describe("servedModelIsCertified", () => {
+  const certified = deepSeekV4FlashProfile.model; // "deepseek/deepseek-v4-flash"
+
+  it("accepts the exact certified slug", () => {
+    expect(servedModelIsCertified(certified, certified)).toBe(true);
+  });
+
+  it("accepts a dated snapshot pin of the certified model (OpenRouter served route)", () => {
+    // The /generation lookup reports the concrete snapshot OpenRouter billed.
+    expect(servedModelIsCertified(`${certified}-20260423`, certified)).toBe(true);
+  });
+
+  it("rejects a genuinely different model", () => {
+    expect(servedModelIsCertified("deepseek/deepseek-v3", certified)).toBe(false);
+    expect(servedModelIsCertified("anthropic/claude-opus-4-8", certified)).toBe(false);
+  });
+
+  it("rejects a non-date suffix (only 8-digit snapshot dates are a certified pin)", () => {
+    expect(servedModelIsCertified(`${certified}-turbo`, certified)).toBe(false);
+    expect(servedModelIsCertified(`${certified}-2026`, certified)).toBe(false);
+    expect(servedModelIsCertified(`${certified}-free`, certified)).toBe(false);
+  });
+
+  it("rejects a different family that merely shares the prefix text", () => {
+    expect(servedModelIsCertified("deepseek/deepseek-v4-flash-lite-20260423", certified)).toBe(
+      false,
+    );
   });
 });
 
