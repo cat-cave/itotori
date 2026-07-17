@@ -20,6 +20,7 @@ import {
   CALL_RESULT_SCHEMA_VERSION,
   CallResultSchema,
   WIKI_OBJECT_SCHEMA_VERSION,
+  WikiObjectSchema,
   type Citation,
   type DependencyRef,
   type WikiObject,
@@ -42,6 +43,7 @@ import {
   type AbstractStyleArtifact,
   type StyleLeadRequest,
 } from "../src/roles/a1/index.js";
+import { STYLE_LEAD_FEW_SHOT_EXAMPLE } from "../src/roles/a1/spec.js";
 import { buildClaimFixture, unitFactIdAt } from "./support/claim-fixture.js";
 
 const HASH = (c: string): `sha256:${string}` => `sha256:${c.repeat(64)}` as `sha256:${string}`;
@@ -150,6 +152,12 @@ function request(snapshotId: `sha256:${string}`): StyleLeadRequest {
 const ORG_KEY = { orgId: "org:sweetie-house", userId: null, genre: "genre:romance-vn" };
 
 describe("A1 clause 1 — a cited source-language style-contract, claim-validated", () => {
+  it("PROOF: the prompt's ExampleVN few-shot object parses through the A1 terminal WikiObject schema", () => {
+    expect(WikiObjectSchema.parse(STYLE_LEAD_FEW_SHOT_EXAMPLE)).toEqual(
+      STYLE_LEAD_FEW_SHOT_EXAMPLE,
+    );
+  });
+
   it("PROOF: runStyleLead emits a style-contract whose claims re-prove against the snapshot", async () => {
     const { model, snapshot } = buildClaimFixture();
     const index = buildEvidenceIndex(model);
@@ -266,6 +274,8 @@ describe("A1 clause 1 — a cited source-language style-contract, claim-validate
     expect(JSON.stringify(spec.providerPolicy)).not.toMatch(/only|order/);
     const prompt = composeStyleLeadPrompt(request(HASH("e")));
     expect(prompt.system.length).toBeGreaterThan(0);
+    expect(prompt.user).toContain("Emit EXACTLY one JSON object of this shape.");
+    expect(prompt.user).toContain(JSON.stringify(STYLE_LEAD_FEW_SHOT_EXAMPLE, null, 2));
   });
 });
 
