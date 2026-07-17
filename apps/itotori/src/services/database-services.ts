@@ -1,6 +1,8 @@
 import {
   bootstrapLocalUser,
   databaseUrlFromEnv,
+  ItotoriLlmHumanInputRepository,
+  ItotoriLlmWikiRepository,
   migrate,
   resetDatabase,
   withDatabase,
@@ -9,9 +11,11 @@ import {
 import type { ItotoriApiServices, ItotoriReadOnlyApiServices } from "../api-handlers.js";
 import type { ItotoriCliServices } from "../cli-handlers.js";
 import {
+  createFieldMemoCipher,
   createProductionLiveLocalizationSubstrate,
   productionLocalizeDispatchConfig,
 } from "../composition/live/index.js";
+import { WikiObjectApiService } from "../wiki/object-api/service.js";
 
 /** The remaining command/API surfaces require a new-pipeline composition
  * substrate. The retired DB factory must never silently reconstruct the old
@@ -42,8 +46,14 @@ export async function withDatabaseItotoriServices<T>(
   return await withDatabase(async ({ db, pool }) => {
     const actor = await bootstrapLocalUser(db);
     const config = productionLocalizationConfig(process.env);
+    const cipher = createFieldMemoCipher(process.env);
+    const wikiObjectApi = new WikiObjectApiService({
+      wiki: new ItotoriLlmWikiRepository(pool, cipher),
+      humanInputs: new ItotoriLlmHumanInputRepository(pool, cipher),
+    });
     const services = unavailableServiceSurface({
       projectWorkflow: unavailableProjectWorkflow(),
+      wikiObjectApi,
       localizationSubstrate: createProductionLiveLocalizationSubstrate({
         database: db,
         actor,
@@ -118,7 +128,10 @@ function unavailableLiveRoleSeams() {
 }
 
 function unavailableServiceSurface(
-  installed: Pick<ItotoriApplicationServices, "projectWorkflow" | "localizationSubstrate">,
+  installed: Pick<
+    ItotoriApplicationServices,
+    "projectWorkflow" | "wikiObjectApi" | "localizationSubstrate"
+  >,
 ): ItotoriApplicationServices {
   return new Proxy(installed, {
     get(target, property, receiver) {
