@@ -5,7 +5,7 @@
   "fixture": {
     "fixtureId": "hello-game",
     "publicManifestUri": "fixtures/public/hello-game.manifest.json",
-    "publicManifestHash": "sha256:5ba79e0e2f2b51508a137dc3e398325cc1e253e993d031745e4173a7d196c4ac",
+    "publicManifestHash": "sha256:d101e924da802aef18bdc11cdd0babe7ccf7bc3ea09f3149958167ab57328acd",
     "publicRedistribution": "allowed"
   },
   "engineProfile": {
@@ -35,7 +35,7 @@
       "artifactId": "019ed025-0000-7000-8000-000000000302",
       "artifactKind": "public_fixture_manifest",
       "uri": "fixtures/public/hello-game.manifest.json",
-      "hash": "sha256:5ba79e0e2f2b51508a137dc3e398325cc1e253e993d031745e4173a7d196c4ac",
+      "hash": "sha256:d101e924da802aef18bdc11cdd0babe7ccf7bc3ea09f3149958167ab57328acd",
       "mediaType": "application/json",
       "byteSize": 5060
     },
@@ -106,7 +106,7 @@
     {
       "scope": "public_fixture_manifest",
       "contentId": "fixtures/public/hello-game.manifest.json",
-      "hash": "sha256:5ba79e0e2f2b51508a137dc3e398325cc1e253e993d031745e4173a7d196c4ac"
+      "hash": "sha256:d101e924da802aef18bdc11cdd0babe7ccf7bc3ea09f3149958167ab57328acd"
     },
     {
       "scope": "source_bundle",
