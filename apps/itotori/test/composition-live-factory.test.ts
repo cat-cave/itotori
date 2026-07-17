@@ -143,13 +143,24 @@ describe("live workflow factory", () => {
   });
 
   it("adapts the complete dependency set to the localize substrate port", async () => {
-    const substrate = createLiveLocalizationSubstrate(factoryConfig());
-    const request = { runMode: "production" } as RunPolicyRequest;
-    const source = await substrate.resolvePortSource(request);
+    const config = factoryConfig();
+    const substrate = createLiveLocalizationSubstrate(config);
+    const request = {
+      runMode: "production",
+      contextScope: "whole-game",
+      outputScope: "dialogue-only",
+      roster: [],
+    } as RunPolicyRequest;
+    const source = await substrate.resolvePortSource(request, {
+      structureJson: config.structureJson,
+      bridge: config.bridge,
+    });
 
     expect(Object.keys(createWorkflowPorts(source.deps))).toHaveLength(8);
-    await expect(
-      substrate.resolvePortSource({ runMode: "pilot" } as RunPolicyRequest),
-    ).rejects.toThrow("does not match bound mode");
+    const pilot = await substrate.resolvePortSource(
+      { ...request, runMode: "pilot" },
+      { structureJson: config.structureJson, bridge: config.bridge },
+    );
+    expect(pilot.deps.draft.buildInput).toBeTypeOf("function");
   });
 });

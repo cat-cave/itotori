@@ -15,6 +15,7 @@ export type { WorkflowPortDeps } from "./deps.js";
 export {
   buildLocalizationPorts,
   runLocalization,
+  type LocalizationPerRunInput,
   type LocalizationPortSource,
 } from "./localize-entrypoint.js";
 export {
