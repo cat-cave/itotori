@@ -499,6 +499,12 @@ fn read_meta_u16(bytes: &[u8], pos: usize) -> Result<u16, BytecodeDecodeError> {
 /// Fixed byte length of a goto-family jump-target pointer (`i32 LE`).
 pub const GOTO_POINTER_BYTE_LEN: usize = 4;
 
+/// Maximum recursive expression nesting accepted by this bytecode length
+/// walker. This mirrors the semantic expression parser's bound in
+/// `expression.rs`: real scenes stay far below it, while hostile input must
+/// return a typed decode error instead of overflowing the native stack.
+const MAX_EXPRESSION_DEPTH: usize = 256;
+
 /// SelectElement block open brace (`{`).
 const SELECT_BLOCK_OPEN: u8 = 0x7B;
 /// SelectElement block close brace (`}`).
@@ -529,7 +535,7 @@ fn decode_expression_element(
     bytes: &[u8],
     pos: usize,
 ) -> Result<BytecodeElement, BytecodeDecodeError> {
-    let expr_len = next_expression(bytes, pos)?;
+    let expr_len = next_expression(bytes, pos, 0)?;
     let end = pos
         .checked_add(expr_len)
         .ok_or_else(|| BytecodeDecodeError::MalformedElement {
@@ -687,7 +693,12 @@ fn is_special_param_lead(bytes: &[u8], pos: usize) -> bool {
 /// form; `<item>` is the contained [`next_data_value`] value (in practice
 /// a `Complex` group or a `$`-prefixed reference). Restated from
 /// `kaifuu-reallive` `parse_special_param`.
-fn next_special_param(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
+fn next_special_param(
+    bytes: &[u8],
+    pos: usize,
+    depth: usize,
+) -> Result<usize, BytecodeDecodeError> {
+    ensure_expression_depth(pos, depth)?;
     let tag_len = match bytes.get(pos + 1) {
         Some(&EXPR_INT_LITERAL) => 5,
         Some(_) => 1,
@@ -701,7 +712,7 @@ fn next_special_param(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeE
         }
     };
     let content_pos = pos + 1 + tag_len;
-    let content_len = next_data_value(bytes, content_pos)?;
+    let content_len = next_data_value(bytes, content_pos, depth)?;
     Ok(1 + tag_len + content_len)
 }
 
@@ -710,6 +721,18 @@ fn next_special_param(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeE
 /// can share a single bounds-check helper.
 fn peek(bytes: &[u8], pos: usize) -> Option<u8> {
     bytes.get(pos).copied()
+}
+
+/// Return the existing malformed-element error before recursive expression
+/// descent can consume enough native stack to abort the process.
+fn ensure_expression_depth(pos: usize, depth: usize) -> Result<(), BytecodeDecodeError> {
+    if depth > MAX_EXPRESSION_DEPTH {
+        return Err(BytecodeDecodeError::MalformedElement {
+            position: pos,
+            message: format!("expression nesting exceeded depth limit {MAX_EXPRESSION_DEPTH}"),
+        });
+    }
+    Ok(())
 }
 
 /// Compute the byte length of a single RealLive **token** starting at
@@ -726,7 +749,8 @@ fn peek(bytes: &[u8], pos: usize) -> Option<u8> {
 /// - Any leading byte other than `$` returns 0 (the walker treats
 ///   "not a token" as zero bytes; the caller's grammar layer decides
 ///   what to do with that).
-fn next_token(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
+fn next_token(bytes: &[u8], pos: usize, depth: usize) -> Result<usize, BytecodeDecodeError> {
+    ensure_expression_depth(pos, depth)?;
     let Some(b0) = peek(bytes, pos) else {
         return Ok(0);
     };
@@ -782,7 +806,7 @@ fn next_token(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
         return Ok(2);
     }
     // $ <bank> [ <inner-expression> ]
-    let inner = next_expression(bytes, pos + 3)?;
+    let inner = next_expression(bytes, pos + 3, depth + 1)?;
     let close_pos = pos + 3 + inner;
     if close_pos >= bytes.len() {
         return Err(BytecodeDecodeError::Truncated {
@@ -811,7 +835,8 @@ fn next_token(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
 /// - `\ <byte> <term>` — backslash-prefixed unary form (`2 + inner`)
 ///   covering the no-op (`\0x00`) and unary-minus (`\0x01`) cases.
 /// - Otherwise fall through to [`next_token`].
-fn next_term(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
+fn next_term(bytes: &[u8], pos: usize, depth: usize) -> Result<usize, BytecodeDecodeError> {
+    ensure_expression_depth(pos, depth)?;
     let Some(b0) = peek(bytes, pos) else {
         return Err(BytecodeDecodeError::Truncated {
             observed_len: bytes.len(),
@@ -821,7 +846,7 @@ fn next_term(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
         });
     };
     if b0 == b'(' {
-        let inner = next_expression(bytes, pos + 1)?;
+        let inner = next_expression(bytes, pos + 1, depth + 1)?;
         let close_pos = pos + 1 + inner;
         if close_pos >= bytes.len() {
             return Err(BytecodeDecodeError::Truncated {
@@ -851,10 +876,10 @@ fn next_term(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
                 message: "term: backslash-prefixed term truncated".to_string(),
             });
         }
-        let inner = next_term(bytes, pos + 2)?;
+        let inner = next_term(bytes, pos + 2, depth + 1)?;
         return Ok(2 + inner);
     }
-    next_token(bytes, pos)
+    next_token(bytes, pos, depth)
 }
 
 /// Compute the byte length of a single RealLive **arithmetic
@@ -867,8 +892,9 @@ fn next_term(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
 /// `\` here; the documented set is `0x00..=0x09` plus a handful of
 /// compound-assignment bytes that may bind tighter, but the
 /// byte-length walker does not need to distinguish them.
-fn next_arith(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
-    let lhs = next_term(bytes, pos)?;
+fn next_arith(bytes: &[u8], pos: usize, depth: usize) -> Result<usize, BytecodeDecodeError> {
+    ensure_expression_depth(pos, depth)?;
+    let lhs = next_term(bytes, pos, depth)?;
     if peek(bytes, pos + lhs) == Some(EXPRESSION_BACKSLASH) {
         if pos + lhs + 2 > bytes.len() {
             return Err(BytecodeDecodeError::Truncated {
@@ -878,7 +904,7 @@ fn next_arith(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
                 message: "arithmetic: binary-op continuation truncated".to_string(),
             });
         }
-        let rhs = next_arith(bytes, pos + lhs + 2)?;
+        let rhs = next_arith(bytes, pos + lhs + 2, depth + 1)?;
         Ok(lhs + 2 + rhs)
     } else {
         Ok(lhs)
@@ -892,14 +918,15 @@ fn next_arith(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
 /// Form: `<arith> ( \<op:0x28..=0x2D> <arith> )?` — a left-hand
 /// arithmetic expression optionally extended by a comparison
 /// operator and a right-hand arithmetic expression.
-fn next_condition(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
-    let lhs = next_arith(bytes, pos)?;
+fn next_condition(bytes: &[u8], pos: usize, depth: usize) -> Result<usize, BytecodeDecodeError> {
+    ensure_expression_depth(pos, depth)?;
+    let lhs = next_arith(bytes, pos, depth)?;
     if peek(bytes, pos + lhs) == Some(EXPRESSION_BACKSLASH) {
         let Some(op_byte) = peek(bytes, pos + lhs + 1) else {
             return Ok(lhs);
         };
         if (0x28..=0x2D).contains(&op_byte) {
-            let rhs = next_arith(bytes, pos + lhs + 2)?;
+            let rhs = next_arith(bytes, pos + lhs + 2, depth + 1)?;
             return Ok(lhs + 2 + rhs);
         }
     }
@@ -913,12 +940,13 @@ fn next_condition(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError
 /// Form: `<cond> ( \< <and> )?` — left-hand condition optionally
 /// extended by `\<` (`0x5C 0x3C`) and a recursive `and` right-hand
 /// side.
-fn next_and(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
-    let lhs = next_condition(bytes, pos)?;
+fn next_and(bytes: &[u8], pos: usize, depth: usize) -> Result<usize, BytecodeDecodeError> {
+    ensure_expression_depth(pos, depth)?;
+    let lhs = next_condition(bytes, pos, depth)?;
     if peek(bytes, pos + lhs) == Some(EXPRESSION_BACKSLASH)
         && peek(bytes, pos + lhs + 1) == Some(b'<')
     {
-        let rhs = next_and(bytes, pos + lhs + 2)?;
+        let rhs = next_and(bytes, pos + lhs + 2, depth + 1)?;
         Ok(lhs + 2 + rhs)
     } else {
         Ok(lhs)
@@ -932,12 +960,13 @@ fn next_and(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
 ///
 /// Form: `<and> ( \= <expression> )?` — left-hand `and` optionally
 /// extended by `\=` (`0x5C 0x3D`) for boolean-or.
-fn next_expression(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
-    let lhs = next_and(bytes, pos)?;
+fn next_expression(bytes: &[u8], pos: usize, depth: usize) -> Result<usize, BytecodeDecodeError> {
+    ensure_expression_depth(pos, depth)?;
+    let lhs = next_and(bytes, pos, depth)?;
     if peek(bytes, pos + lhs) == Some(EXPRESSION_BACKSLASH)
         && peek(bytes, pos + lhs + 1) == Some(b'=')
     {
-        let rhs = next_expression(bytes, pos + lhs + 2)?;
+        let rhs = next_expression(bytes, pos + lhs + 2, depth + 1)?;
         Ok(lhs + 2 + rhs)
     } else {
         Ok(lhs)
@@ -959,7 +988,8 @@ fn next_expression(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeErro
 /// - `a` or `(` — complex tag (`a<tag>(<data>...)`) — bracketed
 ///   compound entry with optional trailing `\<expression>`.
 /// - Otherwise — fall through to [`next_expression`].
-fn next_data(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
+fn next_data(bytes: &[u8], pos: usize, depth: usize) -> Result<usize, BytecodeDecodeError> {
+    ensure_expression_depth(pos, depth)?;
     // Leading `,` separators and embedded `\n` MetaLine markers are
     // absorbed *iteratively* (not via self-recursion) so an
     // attacker-controllable run of separator bytes — which is exactly
@@ -968,7 +998,7 @@ fn next_data(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
     // now O(1) stack and either walks through to the value or surfaces a
     // typed [`BytecodeDecodeError`].
     let value_pos = skip_data_separators(bytes, pos)?;
-    let value_len = next_data_value(bytes, value_pos)?;
+    let value_len = next_data_value(bytes, value_pos, depth)?;
     Ok((value_pos - pos) + value_len)
 }
 
@@ -1003,7 +1033,8 @@ fn skip_data_separators(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecod
 /// expression) starting at `bytes[pos]`. Unlike [`next_data`] this does
 /// not absorb leading `,`/MetaLine separators — the caller strips those
 /// via [`skip_data_separators`].
-fn next_data_value(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
+fn next_data_value(bytes: &[u8], pos: usize, depth: usize) -> Result<usize, BytecodeDecodeError> {
+    ensure_expression_depth(pos, depth)?;
     let Some(b0) = peek(bytes, pos) else {
         return Err(BytecodeDecodeError::Truncated {
             observed_len: bytes.len(),
@@ -1021,21 +1052,21 @@ fn next_data_value(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeErro
     //     full expression;
     //  4. every other lead byte is a string constant.
     if is_special_param_lead(bytes, pos) {
-        return next_special_param(bytes, pos);
+        return next_special_param(bytes, pos, depth + 1);
     }
     if b0 == b'(' {
-        return next_complex_data(bytes, pos);
+        return next_complex_data(bytes, pos, depth + 1);
     }
     if is_expr_token_lead(b0) {
-        return next_expression(bytes, pos);
+        return next_expression(bytes, pos, depth);
     }
     if is_data_string_lead(b0) {
-        return next_string(bytes, pos);
+        return next_string(bytes, pos, depth);
     }
     // Fall back to the expression grammar for any residual lead so a
     // genuine (non-string, non-token) data byte still surfaces a typed
     // error via the walker rather than silently stalling.
-    next_expression(bytes, pos)
+    next_expression(bytes, pos, depth)
 }
 
 /// Shape of a single decoded command-argument value, so the VM can pick
@@ -1116,7 +1147,7 @@ pub(crate) fn decode_command_arg_values(
             Some(b')') => return Ok(args),
             Some(_) => {}
         }
-        let value_len = next_data_value(raw_bytes, p)?;
+        let value_len = next_data_value(raw_bytes, p, 0)?;
         if value_len == 0 {
             return Err(BytecodeDecodeError::MalformedElement {
                 position: p,
@@ -1160,7 +1191,8 @@ fn is_data_string_lead(byte: u8) -> bool {
 /// absorbs Shift-JIS pairs atomically, recognises the literal
 /// `###PRINT(<expr>)` escape (`9 + 1 + NextExpression(end)`), and
 /// stops at the first non-string lead byte.
-fn next_string(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
+fn next_string(bytes: &[u8], pos: usize, depth: usize) -> Result<usize, BytecodeDecodeError> {
+    ensure_expression_depth(pos, depth)?;
     let mut quoted = false;
     let mut end = pos;
     loop {
@@ -1187,7 +1219,7 @@ fn next_string(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
                         message: "string ###PRINT( expression truncated".to_string(),
                     });
                 }
-                let inner = next_expression(bytes, end)?;
+                let inner = next_expression(bytes, end, depth + 1)?;
                 end += 1 + inner;
                 continue;
             }
@@ -1250,7 +1282,8 @@ fn matches_print_marker(bytes: &[u8], pos: usize) -> bool {
 /// Walk a complex-tag argument (`a<...>(<data>...)` or
 /// `(<data>...)`) starting at `bytes[pos]`. Mirrors the `a`/`(`
 /// branch in rlvm `expression.cc::NextData`.
-fn next_complex_data(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeError> {
+fn next_complex_data(bytes: &[u8], pos: usize, depth: usize) -> Result<usize, BytecodeDecodeError> {
+    ensure_expression_depth(pos, depth)?;
     let mut end = pos;
     let Some(first) = peek(bytes, end) else {
         return Err(BytecodeDecodeError::Truncated {
@@ -1285,7 +1318,7 @@ fn next_complex_data(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeEr
                 end += 1;
             }
             Some(_) => {
-                let inner = next_data(bytes, end)?;
+                let inner = next_data(bytes, end, depth)?;
                 end += inner;
                 return Ok(end - pos);
             }
@@ -1316,7 +1349,7 @@ fn next_complex_data(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeEr
                 });
             }
             Some(_) => {
-                let inner = next_data(bytes, end)?;
+                let inner = next_data(bytes, end, depth)?;
                 if inner == 0 {
                     return Err(BytecodeDecodeError::MalformedElement {
                         position: end,
@@ -1331,7 +1364,7 @@ fn next_complex_data(bytes: &[u8], pos: usize) -> Result<usize, BytecodeDecodeEr
     }
     // Optional trailing `\<expression>` continuation.
     if peek(bytes, end) == Some(EXPRESSION_BACKSLASH) {
-        let inner = next_expression(bytes, end)?;
+        let inner = next_expression(bytes, end, depth)?;
         end += inner;
     }
     Ok(end - pos)
@@ -1478,7 +1511,7 @@ mod tests {
         // O(1) stack and surface a typed `Truncated` error when the input
         // exhausts mid-separator-run.
         let bytes = vec![b','; 500_000];
-        match next_data(&bytes, 0) {
+        match next_data(&bytes, 0, 0) {
             Err(BytecodeDecodeError::Truncated { .. }) => {}
             other => panic!("expected Truncated on an all-comma buffer, got {other:?}"),
         }
@@ -1494,10 +1527,28 @@ mod tests {
         for _ in 0..200_000 {
             bytes.extend_from_slice(&[META_LINE_LEAD_BYTE, 0x00, 0x00]);
         }
-        match next_data(&bytes, 0) {
+        match next_data(&bytes, 0, 0) {
             Err(BytecodeDecodeError::Truncated { .. }) => {}
             other => panic!("expected Truncated on an all-metaline buffer, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn deeply_nested_memory_refs_return_malformed_instead_of_overflowing() {
+        // Each `$bank[ ... ]` recursively re-enters the expression length
+        // walker. Decode at the public stream boundary so the regression
+        // proves hostile bytecode produces a typed error, never a stack abort.
+        let depth = MAX_EXPRESSION_DEPTH + 50;
+        let mut bytes = Vec::with_capacity(depth * 4 + 6);
+        for _ in 0..depth {
+            bytes.extend_from_slice(&[b'$', 0x01, b'[']);
+        }
+        bytes.extend_from_slice(&[b'$', 0xFF, 0, 0, 0, 0]);
+        bytes.extend(std::iter::repeat_n(b']', depth));
+
+        let err = decode_bytecode_stream(&bytes)
+            .expect_err("over-deep expression bytecode must be rejected");
+        assert!(matches!(err, BytecodeDecodeError::MalformedElement { .. }));
     }
 
     #[test]
