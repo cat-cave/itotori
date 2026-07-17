@@ -482,3 +482,33 @@ describe("work-source derivation wires onto the real fact snapshot", () => {
     expect(a5Items).toHaveLength(3);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+describe("clause — a transient role failure is retried before failing loudly", () => {
+  it("PROOF: a step whose first attempt throws is retried, and its object still lands", async () => {
+    // deepseek-flash returns empty/malformed structured output on some rolls; the
+    // orchestrator must re-roll (up to maxAttempts) rather than kill the whole run.
+    const attemptsByStep = new Map<string, number>();
+    const runner: AnalystRunner = async (input) => {
+      const n = (attemptsByStep.get(input.step.stepId) ?? 0) + 1;
+      attemptsByStep.set(input.step.stepId, n);
+      if (n === 1) throw new Error("A1 dispatch did not succeed: failure/empty-output");
+      return input.step.targets.map((t) => makeObject(t.kind, t.subject, t.scope, input.role));
+    };
+
+    const report = await orchestrateSourceWiki(baseDeps({ runner }));
+
+    expect(report.producedKeys.length).toBeGreaterThan(0);
+    // Every step threw once and then succeeded — the retry, not a first-try pass.
+    expect([...attemptsByStep.values()].every((n) => n >= 2)).toBe(true);
+  });
+
+  it("PROOF: a step that always fails surfaces the real failure verbatim after maxAttempts", async () => {
+    const runner: AnalystRunner = async () => {
+      throw new Error("A1 dispatch did not succeed: failure/empty-output");
+    };
+    await expect(orchestrateSourceWiki(baseDeps({ runner, maxAttempts: 3 }))).rejects.toThrow(
+      /empty-output/,
+    );
+  });
+});

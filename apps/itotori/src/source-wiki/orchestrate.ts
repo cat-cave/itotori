@@ -109,22 +109,32 @@ async function runStep(
   }
   const accepted = new Map<ArtifactKey, WikiObject>();
   let unmet = step.targets;
+  let lastFailure: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const produced = await deps.runner({
-      role: step.role,
-      step,
-      sourceLanguage: deps.sourceLanguage,
-      runMode: deps.runMode,
-      contextScope: WHOLE_GAME_CONTEXT_SCOPE,
-      priorObjects,
-    });
-    for (const object of produced) {
-      accepted.set(acceptObject(object, step.targets, stamp), object);
+    try {
+      const produced = await deps.runner({
+        role: step.role,
+        step,
+        sourceLanguage: deps.sourceLanguage,
+        runMode: deps.runMode,
+        contextScope: WHOLE_GAME_CONTEXT_SCOPE,
+        priorObjects,
+      });
+      for (const object of produced) {
+        accepted.set(acceptObject(object, step.targets, stamp), object);
+      }
+      unmet = step.targets.filter((target) => !accepted.has(target.key));
+      if (unmet.length === 0) break;
+    } catch (error) {
+      // A role's model call can fail transiently — deepseek-flash returns empty or
+      // malformed structured output on some rolls, and a rejected object may not
+      // recur. Retry up to maxAttempts before failing loudly; the final failure is
+      // surfaced verbatim (its failureKind is the real diagnosis).
+      lastFailure = error;
     }
-    unmet = step.targets.filter((target) => !accepted.has(target.key));
-    if (unmet.length === 0) break;
   }
   if (unmet.length > 0) {
+    if (lastFailure !== undefined) throw lastFailure;
     throw new Error(
       `role ${step.role} step ${step.stepId} did not produce its assigned targets after ${maxAttempts} attempts: ${unmet
         .map((target) => target.key)
