@@ -67,6 +67,13 @@ export interface GenerationMetadataSource {
   lookup(input: { generationId: string | null }): Promise<GenerationMetadata>;
 }
 
+/** Response headers captured before the adapter consumes the provider stream. */
+export interface ObservedGenerationHeaders {
+  generationId?: string | null;
+  providerName?: string | null;
+  requestedModel: string;
+}
+
 export type GenerationReconciliation = GenerationMetadata & {
   source: "inline" | "generation-lookup" | "unknown";
 };
@@ -87,15 +94,17 @@ export const unknownGenerationMetadataSource: GenerationMetadataSource = {
 };
 
 /**
- * Consume additive RUN_FINISHED route metadata when the TanStack adapter exposes it.
- * Until that upstream surface lands, one injected generation lookup is attempted and
- * an absent or failed lookup remains explicitly unknown.
+ * Consume additive route metadata exposed by the adapter's RUN_FINISHED event or
+ * captured from the OpenRouter response headers. Until TanStack/ai #941 exposes
+ * the latter on RUN_FINISHED, one injected generation lookup is attempted and an
+ * absent or failed lookup remains explicitly unknown.
  */
 export async function reconcileGenerationMetadata(
   chunks: readonly StreamChunk[],
   source: GenerationMetadataSource = unknownGenerationMetadataSource,
+  observedHeaders?: ObservedGenerationHeaders,
 ): Promise<GenerationReconciliation> {
-  const inline = inlineGenerationMetadata(chunks);
+  const inline = inlineGenerationMetadata(chunks, observedHeaders);
   if (isVerified(inline)) return { ...inline, source: "inline" };
 
   let lookup: GenerationMetadata;
@@ -130,9 +139,13 @@ export async function reconcileGenerationMetadata(
   };
 }
 
-export function inlineGenerationMetadata(chunks: readonly StreamChunk[]): GenerationMetadata {
+export function inlineGenerationMetadata(
+  chunks: readonly StreamChunk[],
+  observedHeaders?: ObservedGenerationHeaders,
+): GenerationMetadata {
   const finished = chunks.findLast((chunk) => chunk.type === EventType.RUN_FINISHED);
-  if (!finished) return UNKNOWN_GENERATION_METADATA;
+  const responseHeaders = responseHeaderMetadata(observedHeaders);
+  if (!finished) return responseHeaders;
 
   const event = asRecord(finished);
   const rawEvent = asRecord(event.rawEvent);
@@ -160,13 +173,48 @@ export function inlineGenerationMetadata(chunks: readonly StreamChunk[]): Genera
     reportedCostUsd === null
       ? { status: "billing_unknown" }
       : { status: "confirmed", costUsd: reportedCostUsd };
-  return {
+  const runFinished: GenerationMetadata = {
     generationId,
     served,
     routerAttempts,
     usage,
     billing,
     reportedCostUsd,
+  };
+  return mergeInlineMetadata(runFinished, responseHeaders);
+}
+
+function responseHeaderMetadata(
+  observedHeaders: ObservedGenerationHeaders | undefined,
+): GenerationMetadata {
+  if (!observedHeaders) return UNKNOWN_GENERATION_METADATA;
+  return {
+    ...UNKNOWN_GENERATION_METADATA,
+    generationId: firstRouteValue(observedHeaders.generationId),
+    served: confirmedServedPair(observedHeaders.requestedModel, observedHeaders.providerName),
+  };
+}
+
+function mergeInlineMetadata(
+  runFinished: GenerationMetadata,
+  responseHeaders: GenerationMetadata,
+): GenerationMetadata {
+  if (
+    runFinished.generationId !== null &&
+    responseHeaders.generationId !== null &&
+    runFinished.generationId !== responseHeaders.generationId
+  ) {
+    // A future RUN_FINISHED payload is authoritative; only use header evidence
+    // to fill its missing route fields when both sources identify the same run.
+    return runFinished;
+  }
+  return {
+    generationId: runFinished.generationId ?? responseHeaders.generationId,
+    served: runFinished.served.status === "confirmed" ? runFinished.served : responseHeaders.served,
+    routerAttempts: runFinished.routerAttempts,
+    usage: runFinished.usage,
+    billing: runFinished.billing,
+    reportedCostUsd: runFinished.reportedCostUsd,
   };
 }
 

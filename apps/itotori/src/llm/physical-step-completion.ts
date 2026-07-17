@@ -26,6 +26,7 @@ import {
   reconcileGenerationMetadata,
   type GenerationMetadataSource,
   type GenerationReconciliation,
+  type ObservedGenerationHeaders,
 } from "./generation-metadata.js";
 import { terminalOutputSchema } from "./terminal-output.js";
 
@@ -44,9 +45,10 @@ export async function completedStreamStep(
   attempt: LlmStepAttemptContext,
   parentResponseEventId: string,
   metadataSource: GenerationMetadataSource,
+  observedHeaders?: ObservedGenerationHeaders,
 ): Promise<CompletedLlmStep> {
   const responseJson = canonicalJson(chunks);
-  const metadata = await reconcileGenerationMetadata(chunks, metadataSource);
+  const metadata = await reconcileGenerationMetadata(chunks, metadataSource, observedHeaders);
   return completedStep(
     spec,
     identity,
@@ -67,6 +69,7 @@ export async function completedStructuredStep(
   attempt: LlmStepAttemptContext,
   parentResponseEventId: string,
   metadataSource: GenerationMetadataSource,
+  observedHeaders?: ObservedGenerationHeaders,
 ): Promise<CompletedLlmStep> {
   const responseJson = canonicalJson(result);
   const parsed = terminalOutputSchema(spec.output).safeParse(result.data);
@@ -76,7 +79,7 @@ export async function completedStructuredStep(
         "schema-failure",
         parsed.error.issues.map((issue) => issue.message),
       );
-  const metadata = await reconcileGenerationMetadata([], metadataSource);
+  const metadata = await reconcileGenerationMetadata([], metadataSource, observedHeaders);
   const usageBilling = billingFromUsage(result.usage);
   return completedStep(
     spec,
