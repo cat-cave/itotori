@@ -53,6 +53,7 @@ import {
   type RunSnapshotRevisions,
 } from "./dispatch-runtime.js";
 import { createFieldMemoCipher } from "./field-cipher.js";
+import { openRouterGenerationLookup } from "../../llm/openrouter-generation-lookup.js";
 import {
   createLiveWorkflowArtifactStore,
   type AcceptedOutputCas,
@@ -113,7 +114,8 @@ export function productionLocalizeDispatchConfig(input: {
   readonly maxAttemptExposureUsd: string;
   readonly confirmedCostCapUsd: string;
 }): Pick<LiveWorkflowFactoryConfig, "dispatch">["dispatch"] {
-  if (input.env.OPENROUTER_API_KEY === undefined || input.env.OPENROUTER_API_KEY.length === 0) {
+  const apiKey = input.env.OPENROUTER_API_KEY;
+  if (apiKey === undefined || apiKey.length === 0) {
     throw new LiveWorkflowFactoryError("OPENROUTER_API_KEY is required for a live localize run");
   }
   const draftProfile = resolveRoleModelProfile("P1");
@@ -129,6 +131,7 @@ export function productionLocalizeDispatchConfig(input: {
       confirmedCostCapUsd: input.confirmedCostCapUsd,
     },
     env: input.env,
+    generationMetadataSource: openRouterGenerationLookup({ apiKey, fetch: globalThis.fetch }),
   };
 }
 
