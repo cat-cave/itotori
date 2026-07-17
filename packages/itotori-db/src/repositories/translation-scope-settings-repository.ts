@@ -5,8 +5,8 @@ import { localeBranches, translationScopeSettings } from "../schema.js";
 
 // itotori-translation-scope-settings — config-driven translation scope
 // persistence. The DEFAULT scope (when no row exists for a locale branch) is
-// "dialogue-only", matching `LocalizeFullProjectConfig.translationScope`'s
-// default in `apps/itotori/src/orchestrator/localize-fullproject-command.ts`.
+// "dialogue-only", matching the localize command's `--output-scope` default
+// (see `apps/itotori/src/cli/localize-command.ts`).
 // The tiers are cumulative: dialogue-only -> dialogue-and-choices ->
 // dialogue-choices-ui -> all.
 export const translationScopeValues = [

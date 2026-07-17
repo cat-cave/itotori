@@ -4,9 +4,9 @@
 // dialogue-and-choices -> dialogue-choices-ui -> all): enabling a surface
 // implies every surface below it stays in scope. Wired to the REAL
 // `settings.translationScope.get`/`.save` typed-client routes — the same
-// backend config `runLocalizeFullProjectCommand`
-// (apps/itotori/src/orchestrator/localize-fullproject-command.ts) consumes
-// when a run's config JSON omits `translationScope`.
+// backend config the kept localize command
+// (`apps/itotori/src/cli/localize-command.ts`, `--output-scope`) consumes
+// when a run's request omits the scope.
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Badge, Panel } from "@itotori/ds";

@@ -1007,8 +1007,8 @@ export type ApiSaveBranchPolicySettingsRequest = {
 
 // itotori-translation-scope-settings — config-driven translation scope
 // (dialogue / +choices / +UI-text / +images) the whole-project localize
-// command reads. See `apps/itotori/src/orchestrator/localize-fullproject-command.ts`
-// (`LocalizeFullProjectConfig.translationScope`) and
+// command reads. See `apps/itotori/src/cli/localize-command.ts`
+// (`parseLocalizeRunRequest` -> `outputScope`) and
 // `crates/kaifuu-reallive/src/scope.rs` for the tiers this mirrors.
 export type ApiTranslationScope =
   (typeof translationScopeValues)[keyof typeof translationScopeValues];

@@ -148,8 +148,9 @@ export async function runInitCommand(args: string[], deps: InitCommandDeps): Pro
     deps.log("       Provision Postgres or set DATABASE_URL, then re-run `itotori init`.");
     deps.log("");
   }
-  deps.log("  3. Localize a game (extract -> structure-export -> localize -> patch):");
-  deps.log("       itotori localize --help");
+  deps.log("  3. Localize a game. The full pipeline is a multi-command flow:");
+  deps.log("       extract -> structure-export -> wiki build -> localize -> patch -> validate");
+  deps.log("       Run `itotori --help` for each command's required flags.");
   deps.log("");
   if (!zdrConfirmed) {
     deps.log("  WARNING: ZDR is not confirmed. Live runs will fail until you");

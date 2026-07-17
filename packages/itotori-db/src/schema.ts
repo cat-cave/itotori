@@ -2500,9 +2500,8 @@ export const modelRoutingSettings = pgTable(
 // itotori-translation-scope-settings — config-driven translation scope
 // (dialogue-only -> dialogue-and-choices -> dialogue-choices-ui -> all), one
 // row per locale branch. This is the DB-backed default the whole-project
-// localize command (`runLocalizeFullProjectCommand`) consults when its run
-// config JSON omits `translationScope` — see
-// `apps/itotori/src/orchestrator/localize-fullproject-command.ts`.
+// localize command consults when its run request omits `--output-scope` — see
+// `apps/itotori/src/cli/localize-command.ts`.
 export const translationScopeSettings = pgTable(
   "itotori_translation_scope_settings",
   {

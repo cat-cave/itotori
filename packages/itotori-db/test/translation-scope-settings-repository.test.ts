@@ -55,9 +55,9 @@ describe("ItotoriTranslationScopeSettingsRepository", () => {
       });
       expect(loaded.scope).toBe("dialogue-choices-ui");
 
-      // This is the exact read path `runLocalizeFullProjectCommand` uses to
-      // resolve the DB-backed default when a run config omits
-      // `translationScope` — proving the persisted value is what the
+      // This is the exact read path the kept `localize` command uses to
+      // resolve the DB-backed default when a run request omits
+      // `--output-scope` — proving the persisted value is what the
       // localize command reads.
       const resolved = await repository.resolveScope("project-test", "locale-en-us");
       expect(resolved).toBe("dialogue-choices-ui");

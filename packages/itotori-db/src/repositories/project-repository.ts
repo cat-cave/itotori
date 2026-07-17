@@ -828,11 +828,11 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
 
   /**
    * Idempotently provision the parent project graph a whole-project localize run
-   * requires before it persists a journal run. The whole-game `localize-game`
-   * driver (and `localize`) writes a journal run with FKs to projects,
-   * locale branches, and source revisions using the run identity from its
-   * config, but never created those parent rows — so the first live persist
-   * violated the FK. This upserts, in FK order, the
+   * requires before it persists a journal run. The whole-game localize
+   * driver (the kept `itotori localize` command) writes a journal run with FKs
+   * to projects, locale branches, and source revisions using the run identity
+   * from its config, but never created those parent rows — so the first live
+   * persist violated the FK. This upserts, in FK order, the
    * workspace -> project -> source_revision -> source_bundle -> locale_branch
    * chain those ids imply.
    *

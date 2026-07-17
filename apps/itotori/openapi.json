@@ -8197,7 +8197,7 @@
             "description": "Internal error (internal_error)."
           }
         },
-        "summary": "Save the config-driven translation scope for a locale branch. Read by the localize-fullproject command.",
+        "summary": "Save the config-driven translation scope for a locale branch. Read by the localize command.",
         "x-itotoriRouteId": "settings.translationScope.save"
       }
     },
