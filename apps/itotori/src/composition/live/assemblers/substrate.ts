@@ -86,9 +86,15 @@ export function decodeFactSourceFrom(
   snapshot: FactSnapshot,
   bridgeUnits: ReadonlyMap<string, LocalizationUnitV02>,
 ): DecodeFactSource {
-  const orderedById = new Map<string, OrderedUnitFact>(
-    snapshot.orderedUnits.map((unit) => [unit.factId, unit]),
-  );
+  // Key by BOTH the provenance factId (`unit:<id>`) and the bare bridgeUnitId:
+  // the draft sequence (projectDecodeStructure scene.units) queries by the bare
+  // unit id, while other callers may hold the factId. Real bridge data prefixes
+  // factId with `unit:`, so keying by factId alone misses every bare-id lookup.
+  const orderedById = new Map<string, OrderedUnitFact>();
+  for (const unit of snapshot.orderedUnits) {
+    orderedById.set(unit.factId, unit);
+    orderedById.set(unit.bridgeUnitId, unit);
+  }
   return {
     snapshot,
     orderedFact(unitId: string): OrderedUnitFact {
