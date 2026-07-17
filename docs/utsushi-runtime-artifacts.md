@@ -50,8 +50,9 @@ The current kind directories are:
 - `conformance-reports` for `reference_comparison` JSON.
 
 Path segments are deterministic identifiers, not user-provided filenames.
-Absolute paths, URI schemes, backslashes, `.` segments, and `..` segments are
-invalid.
+Persisted runtime refs must start with `artifacts/utsushi/runtime/`; absolute
+paths, URI schemes, backslashes, `.` segments, `..` segments, and empty
+segments are invalid.
 
 Shared bridge-schema examples may use logical portable refs such as
 `artifacts/utsushi/hello/frame-0001.png` to test contract compatibility outside
@@ -94,6 +95,7 @@ Postgres rows store only references:
 
 - `itotori_artifacts.uri`
 - `itotori_runtime_evidence_items.portable_artifact_uri`
+- `itotori_conformance_evidence_refs.uri`
 - sanitized `artifactRef` metadata containing only id, kind, URI, hash, media
   type, and byte size
 
@@ -102,6 +104,10 @@ or conformance report bodies are not persisted in runtime metadata.
 For v0.2 runtime evidence, `portable_artifact_uri` and `itotori_artifacts.uri`
 are managed storage refs under `artifacts/utsushi/runtime/...`; the original
 schema ref, when different, is retained as `adapterLocalArtifactRef` metadata.
+Migration `0107_runtime_artifact_uri_parity` applies this same rule to each
+runtime-ref column (including conformance evidence), so direct SQL writes
+cannot bypass repository validation. Schema-portable adapter-local refs remain
+valid only before ingestion normalizes them into a managed storage ref.
 
 ## Re-Ingest Repair Semantics
 

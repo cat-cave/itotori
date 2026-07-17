@@ -7,6 +7,7 @@ import {
   assertBridgeBundleV02,
   BRIDGE_SCHEMA_VERSION_V02,
   evaluatePatchExportCompatibilityV02,
+  RUNTIME_ARTIFACT_KINDS_V02,
   type BridgeAssetV02,
   type BridgeBundle,
   type BridgeBundleV02,
@@ -1501,6 +1502,9 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
 
   async linkArtifact(actor: AuthorizationActor, input: ArtifactInput): Promise<void> {
     await requirePermission(this.db, actor, permissionValues.runtimeIngest);
+    if (input.uri !== undefined && RUNTIME_MANAGED_ARTIFACT_KINDS.has(input.artifactKind)) {
+      assertPortableRelativeArtifactUri(input.uri);
+    }
     await this.db
       .insert(artifacts)
       .values({
@@ -3997,6 +4001,8 @@ function runtimeManagedArtifactHash(ref: {
 
 const RUNTIME_MANAGED_ARTIFACT_URI_ROOT = "artifacts/utsushi/runtime";
 
+const RUNTIME_MANAGED_ARTIFACT_KINDS = new Set<string>(RUNTIME_ARTIFACT_KINDS_V02);
+
 const RUNTIME_ARTIFACT_KIND_DIRECTORIES: Record<RuntimeArtifactKindV02, string> = {
   trace_log: "traces",
   screenshot: "screenshots",
@@ -4154,6 +4160,7 @@ function assertPortableRuntimeArtifactUri(
   const hasScheme = /^[A-Za-z][A-Za-z0-9+.-]*:/.test(uri);
   const allowedFixtureUri = options.allowFixtureUri && uri.startsWith("fixture://");
   const hasTraversalSegment = uri.split("/").some((segment) => segment === "." || segment === "..");
+  const hasEmptyPathSegment = uri.split("/").some((segment) => segment.length === 0);
   if (
     uri.startsWith("data:") ||
     uri.startsWith("blob:") ||
@@ -4161,7 +4168,8 @@ function assertPortableRuntimeArtifactUri(
     (hasScheme && !allowedFixtureUri) ||
     uri.startsWith("/") ||
     uri.includes("\\") ||
-    hasTraversalSegment
+    hasTraversalSegment ||
+    (!allowedFixtureUri && hasEmptyPathSegment)
   ) {
     throw new Error(`runtime artifact uri must be a portable relative artifact path: ${uri}`);
   }
