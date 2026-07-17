@@ -131,9 +131,8 @@ export async function runTermAnalyst(
       `analyst must emit a ${request.sourceLanguage} source ruling, not ${ruling.lang}`,
     );
   }
-  if (ruling.provenance.contextSnapshotId !== request.contextSnapshotId) {
-    throw new TermAnalystError("ruling is not pinned to the requested context snapshot");
-  }
+  // Provenance identifiers are SYSTEM-stamped in the wiki-build runner before the
+  // object is accepted (the model cannot reliably author the snapshot hash).
 
   // The enumeration is byte-derived: an alias re-count or a ghost occurrence is
   // ignored/rejected here, never folded into the ruling as if it were fact.
