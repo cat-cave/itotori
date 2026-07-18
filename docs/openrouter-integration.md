@@ -10,6 +10,26 @@ resolution (or the explicit "deferred" verdict) is cited.
 This doc is the artefact ITOTORI-224 publishes. Subsequent corrective
 nodes (ITOTORI-225..235 + UTSUSHI-231) reference its sections by number.
 
+> **⚠ DOC-DRIFT (2026-07 cutover) — read first.** Every reference of the
+> form `apps/itotori/src/providers/openrouter.ts:NNNN` (and the sibling
+> `apps/itotori/src/providers/dev-pair.ts` / `openrouter-cost-reconciler.ts`
+> paths) is STALE: the entire legacy
+> `apps/itotori/src/providers/**` tree was DELETED by commit
+> `fcbf0e19` ("refactor(itotori): delete the entire old LLM/agent world
+> — no-legacy cutover (RB-071–077)", PR #291), which landed AFTER this
+> doc was authored. The rebuilt LLM substrate lives under
+> `apps/itotori/src/llm/` (`dispatch.ts`, `physical-step-completion.ts`,
+> `openrouter-generation-lookup.ts`, `role-model-profiles.ts`) +
+> `apps/itotori/src/contracts/shared.ts`. References whose behavioural
+> claim is STILL TRUE in the rebuilt world (the metadata header, the
+> `require_parameters: true` posture, non-streaming) have been
+> re-anchored in place to the new symbols. References whose behavioural
+> claim is now WRONG (the 1-rps token-bucket, the endpoint-pricing
+> fallback path, the `order`-emitting routing builder, etc.) are NOT
+> silently rewritten to match the new code; they are left in place with
+> an inline `⚠ DOC-DRIFT` marker and enumerated in the PR body, per the
+> doc-drift task's hard rule.
+
 ---
 
 ## §1 — Authority and dates
@@ -249,7 +269,14 @@ Rationale per knob:
   membership self-updates as the account ZDR set changes — no
   itotori-side provider registry to drift
   (`apps/itotori/src/providers/openrouter.ts` `buildOpenRouterProviderRouting`,
-  which emits `order` and never `only`).
+  which emits `order` and never `only`). **⚠ DOC-DRIFT (2026-07 cutover):**
+  the cited symbol and file were DELETED in commit `fcbf0e19` ("delete
+  the entire old LLM/agent world — no-legacy cutover"); the rebuilt
+  `ProviderPolicySchema` in `apps/itotori/src/contracts/shared.ts` is
+  `.strict()` and emits NEITHER `order` NOR `only` — provider pinning
+  of any kind is structurally rejected. The `order:`-led posture
+  described in this subsection is therefore STALE and is NOT silently
+  rewritten here; see the PR body for the full inventory.
 - `allow_fallbacks: true` — a transient upstream error on the preferred
   provider must not fail the whole call; `zdr: true` confines the
   fallback pool to the account ZDR allow-list. itotori RECORDS the real
@@ -494,8 +521,11 @@ Per `https://openrouter.ai/docs/api/reference/streaming` (fetched
 
 > "Final chunk includes usage stats."
 
-itotori today does not stream (per `openrouter.ts:139` and the agentic
-loop's non-streaming default). When streaming is added (future), the
+itotori today does not stream — the rebuilt dispatch boundary in
+`apps/itotori/src/llm/dispatch.ts` constructs the non-streaming
+`OpenRouterText` adapter via `createOpenRouterText` (the legacy
+`apps/itotori/src/providers/openrouter.ts` was deleted in the no-legacy
+LLM cutover, commit `fcbf0e19`). When streaming is added (future), the
 ledger writer must consume the final chunk's `usage` block; ad-hoc
 mid-stream cost estimates are forbidden by Trevor's standing rule.
 
@@ -523,8 +553,11 @@ Per the same doc:
 > ensure your chosen model supports structured outputs"
 
 itotori sends `provider.require_parameters: true` whenever the request
-opts into `json_schema` / `tool_call_arguments` / tools (the existing
-`openrouter.ts:468` behaviour is correct; preserved post-ITOTORI-227).
+opts into `json_schema` / `tool_call_arguments` / tools — the rebuilt
+`ProviderPolicySchema` in `apps/itotori/src/contracts/shared.ts`
+(`requireParameters: z.literal(true)`, carried on every call as
+`spec.providerPolicy` via `apps/itotori/src/llm/dispatch.ts`) preserves
+this behaviour post-ITOTORI-227.
 
 ### §6.2 — `response_format.json_object`
 
@@ -581,12 +614,30 @@ page as of 2026-06-25 — but EMPIRICALLY proven by comparing call_1
 
 The extra key is `openrouter_metadata`, whose own keys are
 `requested, strategy, region, summary, attempt, is_byok, endpoints`.
-**The header is the gate.** itotori's OR provider today sends this
-header by default (`apps/itotori/src/providers/openrouter.ts:139`);
-this audit confirms that posture is functional, not dead code.
+**The header is the gate.** itotori's rebuilt dispatch boundary sends
+this header by default on every outgoing request via the `beforeRequest`
+hook in `apps/itotori/src/llm/dispatch.ts` that sets
+`X-OpenRouter-Metadata: "enabled"` (the legacy
+`apps/itotori/src/providers/openrouter.ts:139` was deleted in the
+no-legacy LLM cutover, commit `fcbf0e19`); this audit confirms that
+posture is functional, not dead code.
 ITOTORI-233's decision tree: **keep + fix** the
 endpoint-pricing-fallback path (`openrouter.ts:721-738`) because the
 metadata block IS available when itotori asks for it.
+
+> **⚠ DOC-DRIFT (2026-07 cutover).** The
+> endpoint-pricing-fallback path cited above (and the surrounding
+> `apps/itotori/src/providers/openrouter.ts`) was DELETED in commit
+> `fcbf0e19` ("delete the entire old LLM/agent world — no-legacy
+> cutover"). The rebuilt dispatch substrate
+> (`apps/itotori/src/llm/dispatch.ts` +
+> `apps/itotori/src/llm/physical-step-completion.ts`) reads
+> `usage.cost` directly via `billingFromUsage` and has no
+> endpoint-pricing re-derivation branch. The empirical fact that the
+> `X-OpenRouter-Metadata` header surfaces `openrouter_metadata.endpoints`
+> (call_1 vs call_2 in §11) remains true; only the "keep + fix the
+> fallback path" prescription is STALE. NOT silently rewritten here —
+> see the PR body for the full inventory.
 
 ### §7.3 — Idempotency
 
@@ -641,6 +692,18 @@ No silent retries on any of these except the generation-lookup 404
 deeply mirrored on a per-feature page. itotori's existing token-bucket
 at 1 rps (`openrouter.ts:1163, 1190`) is well below documented OR
 limits. No change after this audit.
+
+> **⚠ DOC-DRIFT (2026-07 cutover).** The legacy
+> `apps/itotori/src/providers/openrouter.ts` (including the 1-rps
+> token-bucket at the lines cited above) was DELETED in commit
+> `fcbf0e19` ("delete the entire old LLM/agent world — no-legacy
+> cutover"). The rebuilt dispatch substrate
+> (`apps/itotori/src/llm/dispatch.ts`) has NO request-rate token-bucket;
+> its only concurrency primitive is a `Semaphore` governing
+> `spec.limits.maxParallelTools` (tool-execution parallelism), which is
+> unrelated to outbound HTTP pacing. The original rate-limit posture
+> claim above is therefore STALE as of the cutover and is NOT silently
+> rewritten here — see the PR body for the full inventory.
 
 ---
 
@@ -733,6 +796,22 @@ true`), and as proven by the evidence file's call_3/call_4 404
 ## §10 — Cross-references to itotori code
 
 This doc anchors the corrective-node landing surface. Per-node hooks:
+
+> **⚠ DOC-DRIFT (2026-07 cutover).** Every symbol in the "Hook" column
+> was scoped to the legacy `apps/itotori/src/providers/**` tree that
+> commit `fcbf0e19` ("delete the entire old LLM/agent world — no-legacy
+> cutover") DELETED. The rows below are preserved verbatim as
+> historical node landing markers; they no longer resolve against the
+> current source. Approximate modern homes: `normalizeOpenRouterCost` →
+> `billingFromUsage` in `apps/itotori/src/llm/physical-step-completion.ts`;
+> `openrouter-cost-reconciler.ts` →
+> `apps/itotori/src/llm/openrouter-generation-lookup.ts`;
+> `buildOpenRouterProviderRouting` → `ProviderPolicySchema` in
+> `apps/itotori/src/contracts/shared.ts`; `dev-pair.ts` →
+> `deepSeekV4FlashProfile` in
+> `apps/itotori/src/llm/role-model-profiles.ts`. See the PR body for
+> the full inventory of stale behavioural claims that were NOT silently
+> rewritten.
 
 | Section                         | Node                                  | Hook                                                                                                                                      |
 | ------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
