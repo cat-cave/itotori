@@ -123,7 +123,7 @@ export function productionLocalizeDispatchConfig(input: {
     profile: {
       name: draftProfile.modelProfile,
       version: draftProfile.version,
-      deadlines: { normalMs: 30_000, deepMs: 90_000 },
+      deadlines: { normalMs: 30_000, deepMs: 300_000 },
       maxAttemptExposureUsd: input.maxAttemptExposureUsd,
     },
     admission: {
