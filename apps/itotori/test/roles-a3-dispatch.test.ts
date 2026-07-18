@@ -148,7 +148,7 @@ function recordedSummary(
   model: ReturnType<typeof buildClaimFixture>["model"],
   request: A3SceneRequest,
 ): WikiObject {
-  const anchor = request.scene.units[0]!.factId;
+  const anchor = String(request.scene.units[0]!.value.playOrderIndex);
   const narrative: A3SceneNarrative = {
     beat: "けいこは決断する。",
     subtext: "静かな決意。",
@@ -172,14 +172,23 @@ function recordedSummary(
       },
     ],
   };
-  return assembleSceneSummary(model, CONTEXT, request.scene, narrative);
+  const resolved = assembleSceneSummary(model, CONTEXT, request.scene, narrative);
+  // The provider returns an UNTRUSTED model draft. Its evidenceId is the label
+  // copied from the prompt, before A3 assembly replaces it with the real fact id.
+  return {
+    ...resolved,
+    claims: resolved.claims.map((claim) => ({
+      ...claim,
+      citations: claim.citations.map((citation) => ({ ...citation, evidenceId: anchor })),
+    })),
+  };
 }
 
 function recordedStory(
   model: ReturnType<typeof buildClaimFixture>["model"],
   request: A3SceneRequest,
 ): WikiObject {
-  const anchor = request.scene.units[0]!.factId;
+  const anchor = String(request.scene.units[0]!.value.playOrderIndex);
   const narrative: A3SceneNarrative = {
     beat: "b",
     subtext: "s",
@@ -196,7 +205,21 @@ function recordedStory(
       },
     ],
   };
-  return assembleStorySoFar(model, CONTEXT, request.scene, request.scene.scope, narrative, null);
+  const resolved = assembleStorySoFar(
+    model,
+    CONTEXT,
+    request.scene,
+    request.scene.scope,
+    narrative,
+    null,
+  );
+  return {
+    ...resolved,
+    claims: resolved.claims.map((claim) => ({
+      ...claim,
+      citations: claim.citations.map((citation) => ({ ...citation, evidenceId: anchor })),
+    })),
+  };
 }
 
 describe("A3 dispatches through the sole ZDR boundary", () => {
@@ -214,6 +237,9 @@ describe("A3 dispatches through the sole ZDR boundary", () => {
     // The prompt payload is content-addressed by its own bytes.
     expect(prompts[0]!.ref.contentHash).toBe(
       `sha256:${createHash("sha256").update(prompts[0]!.text).digest("hex")}`,
+    );
+    expect(prompts[0]!.text).toContain(
+      "cite every claim using the bracketed [N] label shown for its unit (the playOrderIndex)",
     );
   });
 
@@ -243,7 +269,9 @@ describe("A3 dispatches through the sole ZDR boundary", () => {
     const narrative = await caller(request);
     expect(narrative.beat).toBe("けいこは決断する。");
     expect(narrative.storySummary).toBe("シーン1までの物語。");
-    expect(narrative.sceneClaims[0]!.evidenceUnitIds).toEqual([request.scene.units[0]!.factId]);
+    expect(narrative.sceneClaims[0]!.evidenceUnitIds).toEqual([
+      String(request.scene.units[0]!.value.playOrderIndex),
+    ]);
   });
 
   it("PROOF: raw dispatch() rejects when the ZDR operator assertions are absent", async () => {

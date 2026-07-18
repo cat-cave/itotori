@@ -40,7 +40,7 @@ const CONTEXT: A3Context = {
 function recordedCaller(seen?: Array<StorySoFarState | null>): A3ModelCaller {
   return async (request) => {
     seen?.push(request.priorStory);
-    const anchor = request.scene.units[0]!.factId;
+    const anchor = String(request.scene.units[0]!.value.playOrderIndex);
     const narrative: A3SceneNarrative = {
       beat: "けいこは教室で小さな決断をする。",
       subtext: "迷いの下に、静かな決意がある。",
@@ -141,10 +141,11 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
     expect(final.kind === "story-so-far" ? final.body.throughSceneId : null).toBe("2");
   });
 
-  it("PROOF: a citation to the visible snapshot resolves with an INDEX-derived hash", () => {
+  it("PROOF: a cited scene play-order label resolves to the fact id and snapshot machine fields", () => {
     const { model } = buildClaimFixture();
     const scene = readCompleteScene(model, CONTEXT, 1);
-    const anchor = scene.units[0]!.factId;
+    const citedUnit = scene.units[0]!;
+    const label = String(citedUnit.value.playOrderIndex);
     const object = assembleSceneSummary(model, CONTEXT, scene, {
       beat: "b",
       subtext: "s",
@@ -154,7 +155,7 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
           statement: "直接的な語り口。",
           kind: "beat",
           confidence: "high",
-          evidenceUnitIds: [anchor],
+          evidenceUnitIds: [label],
         },
       ],
       storySummary: "x",
@@ -162,12 +163,18 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
       storyClaims: [],
     });
     const index = buildEvidenceIndex(model);
-    // The citation's hash is the SNAPSHOT's, proving it is derived from the index
-    // rather than supplied by the model.
-    expect(object.claims[0]!.citations[0]!.evidenceHash).toBe(index.get(anchor)!.hash);
+    // The persisted citation has the real fact id and every machine coordinate
+    // comes from that snapshot record, not from the model's short label.
+    const citation = object.claims[0]!.citations[0]!;
+    const record = index.get(citedUnit.factId)!;
+    expect(citation.evidenceId).toBe(citedUnit.factId);
+    expect(citation.evidenceHash).toBe(record.hash);
+    expect(citation.snapshotId).toBe(record.snapshotId);
+    expect(citation.subject).toEqual(record.subject);
+    expect(citation.playOrderIndex).toBe(record.fromPlayOrder);
   });
 
-  it("PROOF: a citation OUTSIDE the visible snapshot FAILS (RB-031 evidence-unresolvable)", () => {
+  it("PROOF: a label outside the current scene FAILS (RB-031 evidence-unresolvable)", () => {
     const { model } = buildClaimFixture();
     const scene = readCompleteScene(model, CONTEXT, 1);
     try {
@@ -180,7 +187,10 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
             statement: "存在しない証拠を引く主張。",
             kind: "beat",
             confidence: "high",
-            evidenceUnitIds: ["unit:ghost-does-not-exist"],
+            // This is a genuine label in scene 2, but it was not shown in scene 1.
+            evidenceUnitIds: [
+              String(readCompleteScene(model, CONTEXT, 2).units[0]!.value.playOrderIndex),
+            ],
           },
         ],
         storySummary: "x",

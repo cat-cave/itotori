@@ -4,11 +4,12 @@
 // them into strict source-language `scene-summary` and `story-so-far`
 // WikiObjects. Two invariants are enforced HERE, not trusted from the model:
 //
-//   1. Citations are INDEX-DERIVED. For every unit id the model cites, the
-//      citation's hash, subject, and play order are copied from the snapshot
-//      evidence index — never from the model. A cited id outside the visible
-//      snapshot yields an unresolvable citation, and claim validation (the
-//      RB-031 gate) throws. The model cannot forge a passing citation.
+//   1. Citations are INDEX-DERIVED. The model cites a bracketed play-order
+//      label from its prompt; that label is resolved only through THIS scene's
+//      units before the citation's hash, subject, and play order are copied
+//      from the snapshot evidence index. A label outside this scene yields an
+//      unresolvable citation, and claim validation (the RB-031 gate) throws.
+//      The model cannot forge a passing citation.
 //   2. Counts and speakers are NOT authored into the objects. The bodies carry
 //      only prose and the DETERMINISTIC scene/through-scene id; the model's
 //      re-count / re-attribution never reaches a field or a citation subject.
@@ -38,18 +39,32 @@ import {
 
 const UNRESOLVABLE_HASH = `sha256:${"0".repeat(64)}` as `sha256:${string}`;
 
-/** Build one citation for a model-cited unit id. Every dimension a citation is
- * checked on — hash, subject, play order — is copied from the snapshot evidence
- * index when the id resolves. When it does NOT (a hallucinated unit), the
- * citation is deliberately left unresolvable so the RB-031 gate rejects it. */
-function citationFor(index: EvidenceIndex, snapshotId: string, unitId: string): Citation {
-  const record = index.get(unitId);
+/** The model sees each scene unit only as its bracketed play-order label. Keep
+ * this mapping scene-local so a real label from another scene cannot be used as
+ * evidence for the current scene summary or story-so-far claim. */
+function playOrderLabelToFactId(scene: CompleteScene): ReadonlyMap<string, string> {
+  return new Map(scene.units.map((unit) => [String(unit.value.playOrderIndex), unit.factId]));
+}
+
+/** Build one citation for a model-cited play-order label. Every dimension a
+ * citation is checked on — hash, subject, play order — is copied from the
+ * snapshot evidence index when the label resolves to this scene's real fact id.
+ * When it does NOT (a fabricated or out-of-scene label), the citation is
+ * deliberately left unresolvable so the RB-031 gate rejects it. */
+function citationFor(
+  index: EvidenceIndex,
+  snapshotId: string,
+  labelToFactId: ReadonlyMap<string, string>,
+  evidenceLabel: string,
+): Citation {
+  const factId = labelToFactId.get(evidenceLabel);
+  const record = factId === undefined ? undefined : index.get(factId);
   if (!record) {
     return {
-      evidenceId: unitId,
+      evidenceId: evidenceLabel,
       evidenceHash: UNRESOLVABLE_HASH,
       snapshotId: snapshotId as `sha256:${string}`,
-      subject: { kind: "unit", id: unitId },
+      subject: { kind: "unit", id: evidenceLabel },
       role: "supports",
       playOrderIndex: 0,
     };
@@ -67,6 +82,7 @@ function citationFor(index: EvidenceIndex, snapshotId: string, unitId: string): 
 function claimFor(
   index: EvidenceIndex,
   snapshotId: string,
+  labelToFactId: ReadonlyMap<string, string>,
   scope: RouteScope,
   draft: A3ClaimDraft,
   claimId: string,
@@ -77,7 +93,9 @@ function claimFor(
     scope,
     kind: draft.kind,
     confidence: draft.confidence,
-    citations: draft.evidenceUnitIds.map((unitId) => citationFor(index, snapshotId, unitId)),
+    citations: draft.evidenceUnitIds.map((evidenceLabel) =>
+      citationFor(index, snapshotId, labelToFactId, evidenceLabel),
+    ),
   };
 }
 
@@ -112,11 +130,13 @@ export function assembleSceneSummary(
   narrative: A3SceneNarrative,
 ): WikiObject {
   const index = buildEvidenceIndex(model);
+  const labelToFactId = playOrderLabelToFactId(scene);
   const sceneKey = String(scene.sceneId);
   const claims = narrative.sceneClaims.map((draft, ordinal) =>
     claimFor(
       index,
       model.snapshotId,
+      labelToFactId,
       scene.scope,
       draft,
       `scene-summary:${sceneKey}:claim:${ordinal}`,
@@ -162,9 +182,17 @@ export function assembleStorySoFar(
   prior: StorySoFarState | null,
 ): WikiObject {
   const index = buildEvidenceIndex(model);
+  const labelToFactId = playOrderLabelToFactId(scene);
   const sceneKey = String(scene.sceneId);
   const claims = narrative.storyClaims.map((draft, ordinal) =>
-    claimFor(index, model.snapshotId, scope, draft, `story-so-far:${sceneKey}:claim:${ordinal}`),
+    claimFor(
+      index,
+      model.snapshotId,
+      labelToFactId,
+      scope,
+      draft,
+      `story-so-far:${sceneKey}:claim:${ordinal}`,
+    ),
   );
   const dependencies: DependencyRef[] = [
     {

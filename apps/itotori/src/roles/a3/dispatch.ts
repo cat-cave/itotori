@@ -70,7 +70,7 @@ function renderPrompt(request: A3SceneRequest, kind: string): string {
     `Output kind: ${kind}. Source language: ${request.sourceLanguage}. Author in the SOURCE LANGUAGE.`,
     `Scene ${scene.sceneId} — decoded counts are FACTS: ${scene.factCard.messageCount} messages, ` +
       `${scene.factCard.choiceCount} choices, speakers: [${scene.speakerLabels.join(", ")}]. ` +
-      `Do not re-count or re-attribute; cite unit ids for every claim.`,
+      `Do not re-count or re-attribute; cite every claim using the bracketed [N] label shown for its unit (the playOrderIndex), never a unit id.`,
     prior,
     "Complete scene stream:",
     ...lines,
@@ -137,7 +137,7 @@ export async function dispatchA3(
 }
 
 /** Map a returned draft WikiObject's claims back into untrusted claim drafts
- * (statement + cited unit ids); the fold re-resolves the citations. */
+ * (statement + cited bracketed play-order labels); the fold re-resolves them. */
 function claimDrafts(object: WikiObject, kind: A3ClaimDraft["kind"]): A3ClaimDraft[] {
   return object.claims.map((claim) => ({
     statement: claim.statement,

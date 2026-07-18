@@ -78,10 +78,11 @@ export interface StorySoFarState {
   readonly openThreads: readonly string[];
 }
 
-/** One claim the MODEL proposes: a source-language statement plus the unit fact
- * ids it cites. The module resolves each cited id against the snapshot evidence
- * index — the model never supplies a hash, subject, or play order, and a cited
- * id outside the visible snapshot makes the whole object fail claim validation. */
+/** One claim the MODEL proposes: a source-language statement plus the bracketed
+ * play-order labels it cites. The module resolves each label through the current
+ * scene's units to a real fact id, then resolves it against the snapshot evidence
+ * index — the model never supplies a hash, subject, or play order, and a label
+ * outside the current scene makes the whole object fail claim validation. */
 export interface A3ClaimDraft {
   readonly statement: string;
   readonly kind: "beat" | "subtext" | "story-so-far";
