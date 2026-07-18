@@ -53,7 +53,6 @@ import {
   type RunSnapshotRevisions,
 } from "./dispatch-runtime.js";
 import { createFieldMemoCipher } from "./field-cipher.js";
-import { openRouterGenerationLookup } from "../../llm/openrouter-generation-lookup.js";
 import {
   createLiveWorkflowArtifactStore,
   type AcceptedOutputCas,
@@ -131,7 +130,6 @@ export function productionLocalizeDispatchConfig(input: {
       confirmedCostCapUsd: input.confirmedCostCapUsd,
     },
     env: input.env,
-    generationMetadataSource: openRouterGenerationLookup({ apiKey, fetch: globalThis.fetch }),
   };
 }
 

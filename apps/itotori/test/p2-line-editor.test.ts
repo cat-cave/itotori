@@ -33,7 +33,6 @@ import {
   type EditorRuntimeBase,
 } from "../src/roles/p2/index.js";
 import { specialistFor } from "../src/roster/index.js";
-import { confirmedGenerationMetadataSource } from "./llm-step-test-support.js";
 
 const DRAFT_PROFILE: MeasuredModelProfile = {
   name: "draft",
@@ -152,7 +151,6 @@ function recordedRuntime(responses: readonly Response[], captured: Captured[]): 
       store: new MemoryMemoStore(),
       profile: DRAFT_PROFILE,
       admission: { scope: "test:p2", confirmedCostCapUsd: "10" },
-      generationMetadataSource: confirmedGenerationMetadataSource(),
       snapshots: {
         decodeRevisionHash: REV_A,
         glossaryRevisionHash: REV_B,

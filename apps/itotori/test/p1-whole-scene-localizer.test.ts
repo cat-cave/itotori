@@ -29,7 +29,6 @@ import {
   PlanError,
 } from "../src/roles/p1/index.js";
 import { specialistFor } from "../src/roster/index.js";
-import { confirmedGenerationMetadataSource } from "./llm-step-test-support.js";
 
 // The certified P1 draft profile — its name/version must match the P1 call spec.
 const DRAFT_PROFILE: MeasuredModelProfile = {
@@ -150,7 +149,6 @@ function recordedRuntime(
       store: new MemoryMemoStore(),
       profile: DRAFT_PROFILE,
       admission: { scope: "test:p1", confirmedCostCapUsd: "10" },
-      generationMetadataSource: confirmedGenerationMetadataSource(),
       snapshots: {
         decodeRevisionHash: REV_A,
         glossaryRevisionHash: REV_B,

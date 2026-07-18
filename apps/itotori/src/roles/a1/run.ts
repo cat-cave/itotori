@@ -65,7 +65,7 @@ export interface StyleLeadDeps {
 export interface StyleLeadResult {
   readonly styleContract: WikiObject;
   readonly spec: CallSpec;
-  readonly served: { readonly model: string; readonly provider: string };
+  readonly served: CallResult["served"];
 }
 
 /**
@@ -88,9 +88,13 @@ export async function runStyleLead(
   if (result.status !== "success") {
     throw new StyleLeadError(`A1 dispatch did not succeed: ${result.status}/${result.failureKind}`);
   }
-  // The served MODEL must be the certified deepseek-v4-flash; the served
-  // PROVIDER is recorded telemetry, whatever compliant provider OpenRouter used.
-  if (!servedModelIsCertified(result.served.model, deepSeekV4FlashProfile.model)) {
+  // Unknown served metadata is explicitly accepted while the upstream TanStack
+  // event surface is incomplete. If a pair is present, it must still match the
+  // certified model; the account + guardrail ZDR posture gates this interval.
+  if (
+    result.served.status === "confirmed" &&
+    !servedModelIsCertified(result.served.model, deepSeekV4FlashProfile.model)
+  ) {
     throw new StyleLeadError(
       `A1 was served ${result.served.model}, not ${deepSeekV4FlashProfile.model}`,
     );
@@ -125,6 +129,6 @@ export async function runStyleLead(
   return {
     styleContract: resolved,
     spec,
-    served: { model: result.served.model, provider: result.served.provider },
+    served: result.served,
   };
 }

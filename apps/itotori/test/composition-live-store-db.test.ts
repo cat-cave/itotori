@@ -16,19 +16,20 @@ import {
 } from "../src/composition/live/index.js";
 
 // Live-DB round-trip proof for the CAS-backed workflow artifact store. Seeds a
-// VERIFIED physical memo through the real dispatch boundary against a live
+// explicitly-unknown physical memo through the real dispatch boundary against a live
 // Postgres, then finalizes and reads back a real accepted-output CAS head. No
 // live LLM/network: the recorded-transport path only.
 const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
 const SNAPSHOT_ID = `sha256:${"a".repeat(64)}` as const;
 
 postgresDescribe("live workflow artifact store — real CAS round-trip", () => {
-  it("finalizes and re-reads a unit head backed by a verified memo", async () => {
+  it("finalizes and re-reads a unit head backed by an explicit-unknown memo", async () => {
     const ctx = await isolatedMigratedContext();
     const cipher = new TestMemoCipher();
     const prompt = "Return a verdict.";
     try {
-      // Seed a verified memo the accepted-output CAS will admit.
+      // A schema-valid explicit-unknown memo is admissible while upstream
+      // served-pair reconciliation is intentionally gated off.
       const draft = dispatchHarness({
         pool: ctx.pool,
         cipher,
@@ -36,8 +37,8 @@ postgresDescribe("live workflow artifact store — real CAS round-trip", () => {
         responses: [structuredProviderResponse(reviewVerdictExample)],
       });
       const draftResult = await dispatch(physicalCallSpec(prompt), draft.runtime);
-      expect(draftResult).toMatchObject({ status: "success", verification: "verified" });
-      if (draftResult.status !== "success") throw new Error("expected verified success");
+      expect(draftResult).toMatchObject({ status: "success", verification: "explicit-unknown" });
+      if (draftResult.status !== "success") throw new Error("expected accepted success");
 
       const accepted = new ItotoriLlmAcceptedOutputRepository(ctx.pool, cipher);
       const store = createLiveWorkflowArtifactStore({
@@ -73,7 +74,7 @@ postgresDescribe("live workflow artifact store — real CAS round-trip", () => {
     }
   });
 
-  it("rejects a finalize whose memo keys are not verified (quarantine)", async () => {
+  it("rejects a finalize whose memo keys are quarantined", async () => {
     const ctx = await isolatedMigratedContext();
     const cipher = new TestMemoCipher();
     try {
@@ -86,7 +87,7 @@ postgresDescribe("live workflow artifact store — real CAS round-trip", () => {
           semanticKey: sha256(`semantic:${input.unitId}`),
           schemaVersion: "itotori.accepted-output.v1",
           outputJson: JSON.stringify({ unitId: input.unitId }),
-          // A memo key with no verified row — the CAS must refuse to advance.
+          // A memo key with no accepted row — the CAS must refuse to advance.
           memoKeys: [sha256("memo:unverified")],
           sourceHash: null,
         }),

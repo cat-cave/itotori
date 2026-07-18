@@ -1,26 +1,17 @@
 import { EventType, type StreamChunk } from "@tanstack/ai";
 import { describe, expect, it } from "vitest";
 import {
-  UNKNOWN_GENERATION_METADATA,
-  reconcileGenerationMetadata,
-  type GenerationMetadataSource,
+  captureGenerationMetadata,
+  generationReconciliation,
 } from "../src/llm/generation-metadata.js";
 
-describe("generation metadata reconciliation", () => {
-  it("uses complete inline RUN_FINISHED metadata without a lookup", async () => {
-    let lookups = 0;
-    const source: GenerationMetadataSource = {
-      async lookup() {
-        lookups += 1;
-        return UNKNOWN_GENERATION_METADATA;
-      },
-    };
+describe("upstream generation metadata capture", () => {
+  it("keeps generation reconciliation disabled until TanStack exposes the served pair", () => {
+    expect(generationReconciliation).toMatchObject({ enabled: false });
+  });
 
-    const metadata = await reconcileGenerationMetadata([inlineFinishedChunk()], source);
-
-    expect(lookups).toBe(0);
-    expect(metadata).toMatchObject({
-      source: "inline",
+  it("persists a complete inline RUN_FINISHED served pair without a side-channel lookup", () => {
+    expect(captureGenerationMetadata([inlineFinishedChunk()])).toMatchObject({
       generationId: "generation:inline:1",
       served: {
         status: "confirmed",
@@ -39,69 +30,34 @@ describe("generation metadata reconciliation", () => {
     });
   });
 
-  it("invokes a missing-inline lookup exactly once and keeps absence unknown", async () => {
-    let lookups = 0;
-    const source: GenerationMetadataSource = {
-      async lookup() {
-        lookups += 1;
-        return UNKNOWN_GENERATION_METADATA;
-      },
-    };
-
-    const metadata = await reconcileGenerationMetadata([finishedChunkWithoutMetadata()], source);
-
-    expect(lookups).toBe(1);
-    expect(metadata).toMatchObject({
-      source: "unknown",
+  it("keeps missing or incomplete inline metadata explicitly unknown", () => {
+    expect(captureGenerationMetadata([finishedChunkWithoutMetadata()])).toMatchObject({
       generationId: null,
       served: { status: "unknown" },
+      billing: { status: "billing_unknown" },
     });
-  });
-
-  it("does not retry a failed generation lookup", async () => {
-    let lookups = 0;
-    const source: GenerationMetadataSource = {
-      async lookup() {
-        lookups += 1;
-        throw new Error("generation metadata unavailable");
-      },
-    };
-
-    await expect(
-      reconcileGenerationMetadata([finishedChunkWithoutMetadata()], source),
-    ).resolves.toMatchObject({ source: "unknown", served: { status: "unknown" } });
-    expect(lookups).toBe(1);
-  });
-
-  it.each([
-    [
-      "structured pair",
-      { served: { status: "confirmed", model: "unknown", provider: "provider:inline" } },
-    ],
-    ["flat pair", { servedModel: "unknown", servedProvider: "provider:inline" }],
-    ["incomplete flat pair", { servedModel: "served/model:inline" }],
-    [
-      "selected endpoint",
-      {
-        openrouterMetadata: {
-          endpoints: {
-            available: [{ model: "unknown", provider: "provider:inline", selected: true }],
-          },
-        },
-      },
-    ],
-  ])("keeps an invalid %s unknown", async (_label, routeMetadata) => {
-    const metadata = await reconcileGenerationMetadata([finishedChunkWithMetadata(routeMetadata)], {
-      async lookup() {
-        return UNKNOWN_GENERATION_METADATA;
-      },
-    });
-
-    expect(metadata).toMatchObject({
-      generationId: "generation:inline:invalid-route",
+    expect(
+      captureGenerationMetadata([
+        finishedChunkWithMetadata({
+          generationId: "generation:inline:incomplete",
+          servedModel: "served/model:inline",
+        }),
+      ]),
+    ).toMatchObject({
+      generationId: "generation:inline:incomplete",
       served: { status: "unknown" },
-      source: "unknown",
     });
+  });
+
+  it("does not promote an unbound inline pair when the generation ID is absent", () => {
+    expect(
+      captureGenerationMetadata([
+        finishedChunkWithMetadata({
+          servedModel: "served/model:inline",
+          servedProvider: "provider:inline",
+        }),
+      ]),
+    ).toMatchObject({ generationId: null, served: { status: "unknown" } });
   });
 });
 
@@ -147,10 +103,9 @@ function finishedChunkWithoutMetadata(): StreamChunk {
 function finishedChunkWithMetadata(metadata: Readonly<Record<string, unknown>>): StreamChunk {
   return {
     type: EventType.RUN_FINISHED,
-    runId: "run:invalid-route",
-    threadId: "thread:invalid-route",
+    runId: "run:metadata",
+    threadId: "thread:metadata",
     finishReason: "stop",
-    generationId: "generation:inline:invalid-route",
     ...metadata,
   } as StreamChunk;
 }

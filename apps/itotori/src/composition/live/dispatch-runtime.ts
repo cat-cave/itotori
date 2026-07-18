@@ -19,7 +19,6 @@
 import type { LlmCallMemoStore, LlmContentReadAuthorizer } from "@itotori/db";
 import type { CallResult, CallSpec, EncryptedPayloadRef } from "../../contracts/index.js";
 import { dispatch, type DispatchRuntime, type DispatchTool } from "../../llm/dispatch.js";
-import type { GenerationMetadataSource } from "../../llm/generation-metadata.js";
 import type { MeasuredModelProfile, RetryRuntime } from "../../llm/physical-attempt-policy.js";
 import type { PhysicalStepMemoRuntime } from "../../llm/physical-step-memo.js";
 import type { ReasoningDetailsContinuityEvidence } from "../../llm/reasoning-details-continuity.js";
@@ -47,8 +46,6 @@ export interface LiveDispatchRuntimeConfig {
   readonly snapshots: RunSnapshotRevisions;
   /** The tools the role may fan out to; drafting/editing use none. */
   readonly tools?: readonly DispatchTool[];
-  /** The generation-metadata reconciler (served-pair + billing attestation). */
-  readonly generationMetadataSource?: GenerationMetadataSource;
   /** Transport injection — production omits it (real `fetch`); a proof records. */
   readonly fetcher?: DispatchRuntime["fetcher"];
   /** Environment for the ZDR startup policy + API key; defaults to `process.env`. */
@@ -70,9 +67,6 @@ export function createDispatchRuntime(config: LiveDispatchRuntimeConfig): Dispat
     profile: config.profile,
     admission: config.admission,
     snapshots: config.snapshots,
-    ...(config.generationMetadataSource
-      ? { generationMetadataSource: config.generationMetadataSource }
-      : {}),
     ...(config.signal ? { signal: config.signal } : {}),
     ...(config.retry ? { retry: config.retry } : {}),
   };

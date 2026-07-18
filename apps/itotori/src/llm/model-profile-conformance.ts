@@ -85,13 +85,13 @@ export function certifyLiveModelProfile(
     throw new Error("conformance probe did not capture provider-reported cost");
   }
   if (
-    result.status !== "failure" ||
-    result.failureKind !== "quarantined" ||
+    result.status !== "success" ||
+    result.verification !== "explicit-unknown" ||
     result.generationId !== null ||
     result.served.status !== "unknown" ||
-    observations.generationLookupAttempts < 1
+    observations.generationLookupAttempts !== 0
   ) {
-    throw new Error("deferred generation reconciliation was not recorded as explicit unknown");
+    throw new Error("deferred generation reconciliation was not accepted as explicit unknown");
   }
 
   const checks = {

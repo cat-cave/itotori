@@ -78,7 +78,7 @@ export interface TermRulingEnumeration {
 export interface TermAnalystResult {
   readonly termRuling: TermRulingObject;
   readonly spec: CallSpec;
-  readonly served: { readonly model: string; readonly provider: string };
+  readonly served: CallResult["served"];
   readonly enumeration: TermRulingEnumeration;
 }
 
@@ -113,9 +113,12 @@ export async function runTermAnalyst(
       `terminology dispatch did not succeed: ${result.status}/${result.failureKind}`,
     );
   }
-  // The served MODEL must be the certified deepseek-v4-flash; the served PROVIDER
-  // is recorded telemetry, whatever compliant provider the routing chose.
-  if (!servedModelIsCertified(result.served.model, deepSeekV4FlashProfile.model)) {
+  // Unknown served metadata is explicitly accepted while the upstream TanStack
+  // event surface is incomplete. A reported pair must still match the profile.
+  if (
+    result.served.status === "confirmed" &&
+    !servedModelIsCertified(result.served.model, deepSeekV4FlashProfile.model)
+  ) {
     throw new TermAnalystError(
       `terminology analyst was served ${result.served.model}, not ${deepSeekV4FlashProfile.model}`,
     );
@@ -150,7 +153,7 @@ export async function runTermAnalyst(
   return {
     termRuling: ruling,
     spec,
-    served: { model: result.served.model, provider: result.served.provider },
+    served: result.served,
     enumeration: byteDerivedEnumeration(request.candidate),
   };
 }

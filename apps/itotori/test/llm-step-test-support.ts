@@ -12,7 +12,6 @@ import {
   type CallSpec,
 } from "../src/contracts/index.js";
 import type { DispatchRuntime, DispatchTool } from "../src/llm/dispatch.js";
-import type { GenerationMetadataSource } from "../src/llm/generation-metadata.js";
 import type { MeasuredModelProfile, RetryRuntime } from "../src/llm/physical-attempt-policy.js";
 
 export const STEP_HASH_A = `sha256:${"a".repeat(64)}` as const;
@@ -70,14 +69,9 @@ export function dispatchHarness(input: {
   profile?: MeasuredModelProfile;
   retry?: Partial<RetryRuntime>;
   admission?: { scope: string; confirmedCostCapUsd: string };
-  generationMetadataSource?: GenerationMetadataSource | null;
 }): { runtime: DispatchRuntime; transportCalls: () => number } {
   const responses = [...input.responses];
   let transportCalls = 0;
-  const generationMetadataSource =
-    input.generationMetadataSource === undefined
-      ? confirmedGenerationMetadataSource()
-      : input.generationMetadataSource;
   return {
     runtime: {
       env: {
@@ -97,7 +91,6 @@ export function dispatchHarness(input: {
           scope: "test:llm-step",
           confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic admission cap for mock transport tests, not a billed model cost
         },
-        ...(generationMetadataSource ? { generationMetadataSource } : {}),
         ...(input.signal ? { signal: input.signal } : {}),
         ...(input.retry ? { retry: input.retry } : {}),
         snapshots: {
@@ -117,37 +110,6 @@ export function dispatchHarness(input: {
       },
     },
     transportCalls: () => transportCalls,
-  };
-}
-
-export function confirmedGenerationMetadataSource(
-  onLookup?: (count: number) => void,
-): GenerationMetadataSource {
-  let lookupCount = 0;
-  return {
-    async lookup(input) {
-      lookupCount += 1;
-      onLookup?.(lookupCount);
-      return {
-        generationId: input.generationId ?? `generation:lookup:${lookupCount}`,
-        served: {
-          status: "confirmed",
-          model: "served/model:fixture",
-          provider: "provider:served-fixture",
-        },
-        routerAttempts: [
-          {
-            ordinal: 1,
-            model: "served/model:fixture",
-            provider: "provider:served-fixture",
-            httpStatus: 200,
-          },
-        ],
-        usage: null,
-        billing: { status: "billing_unknown" },
-        reportedCostUsd: null,
-      };
-    },
   };
 }
 

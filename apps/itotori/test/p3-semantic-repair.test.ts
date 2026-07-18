@@ -29,7 +29,6 @@ import {
   type RepairRequest,
   type RepairRuntimeBase,
 } from "../src/roles/p3/index.js";
-import { confirmedGenerationMetadataSource } from "./llm-step-test-support.js";
 
 const DRAFT_PROFILE: MeasuredModelProfile = {
   name: "draft",
@@ -148,7 +147,6 @@ function recordedRuntime(responses: readonly Response[], captured: Captured[]): 
       store: new MemoryMemoStore(),
       profile: DRAFT_PROFILE,
       admission: { scope: "test:p3", confirmedCostCapUsd: "10" },
-      generationMetadataSource: confirmedGenerationMetadataSource(),
       snapshots: {
         decodeRevisionHash: REV_A,
         glossaryRevisionHash: REV_B,

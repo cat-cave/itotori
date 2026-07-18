@@ -17,13 +17,8 @@ import {
   type CallSpec,
 } from "../src/contracts/index.js";
 import { dispatch, type DispatchRuntime, type DispatchTool } from "../src/llm/dispatch.js";
-import type { GenerationMetadataSource } from "../src/llm/generation-metadata.js";
 import { reviewVerdictExample } from "./contract-fixtures-core.js";
-import {
-  TEST_MODEL_PROFILE,
-  confirmedGenerationMetadataSource,
-  httpProviderResponse,
-} from "./llm-step-test-support.js";
+import { TEST_MODEL_PROFILE, httpProviderResponse } from "./llm-step-test-support.js";
 
 const HASH_A = `sha256:${"a".repeat(64)}` as const;
 const HASH_B = `sha256:${"b".repeat(64)}` as const;
@@ -224,7 +219,6 @@ function runtime(
   responses: Response[],
   captured: CapturedRequest[],
   tools: readonly DispatchTool[] = [],
-  metadataSource: GenerationMetadataSource | null = confirmedGenerationMetadataSource(),
 ): DispatchRuntime {
   return {
     env: {
@@ -241,7 +235,6 @@ function runtime(
         scope: "test:llm-dispatch",
         confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic admission cap for mock transport tests, not a billed model cost
       },
-      ...(metadataSource ? { generationMetadataSource: metadataSource } : {}),
       snapshots: {
         decodeRevisionHash: HASH_A,
         glossaryRevisionHash: HASH_B,
@@ -318,18 +311,12 @@ describe("the rebuilt LLM dispatcher", () => {
     expect(captured).toHaveLength(0);
   });
 
-  it("sends the mandatory ZDR wire and quarantines an unverified response", async () => {
+  it("sends the mandatory ZDR wire and accepts an unknown served pair explicitly", async () => {
     const prompt = "Return the requested synthetic review verdict.";
     const captured: CapturedRequest[] = [];
     const result = await dispatch(
       callSpec(prompt),
-      runtime(
-        prompt,
-        [structuredResponse(JSON.stringify(reviewVerdictExample))],
-        captured,
-        [],
-        null,
-      ),
+      runtime(prompt, [structuredResponse(JSON.stringify(reviewVerdictExample))], captured),
     );
 
     expect(captured).toHaveLength(1);
@@ -362,15 +349,14 @@ describe("the rebuilt LLM dispatcher", () => {
     expect(captured[0]?.body).not.toHaveProperty("max_completion_tokens");
 
     expect(result).toMatchObject({
-      status: "failure",
-      failureKind: "quarantined",
+      status: "success",
       served: { status: "unknown" },
       generationId: null,
-      verification: "quarantined",
+      verification: "explicit-unknown",
       usage: { promptTokens: 11, completionTokens: 7, reasoningTokens: 3, cachedTokens: 2 },
       billing: { status: "confirmed", costUsd: "0.00000125" },
     });
-    expect(result).not.toHaveProperty("value");
+    expect(result).toHaveProperty("value");
     expect(result.events.map((event) => event.kind)).toEqual([
       "run-started",
       "model-step-finished",
@@ -378,7 +364,7 @@ describe("the rebuilt LLM dispatcher", () => {
     ]);
   });
 
-  it("verifies response-header provenance and quarantines absent header metadata", async () => {
+  it("does not bypass TanStack with response headers while served metadata is unknown", async () => {
     const prompt = "Return the requested synthetic review verdict.";
     const verified = await dispatch(
       callSpec(prompt),
@@ -391,20 +377,14 @@ describe("the rebuilt LLM dispatcher", () => {
           }),
         ],
         [],
-        [],
-        null,
       ),
     );
 
     expect(verified).toMatchObject({
       status: "success",
-      generationId: "gen-header-1",
-      served: {
-        status: "confirmed",
-        provider: "Morph",
-        model: "deepseek/deepseek-v4-flash",
-      },
-      verification: "verified",
+      generationId: null,
+      served: { status: "unknown" },
+      verification: "explicit-unknown",
     });
 
     const absent = await dispatch(
@@ -413,17 +393,14 @@ describe("the rebuilt LLM dispatcher", () => {
         `${prompt} No response metadata.`,
         [structuredResponse(JSON.stringify(reviewVerdictExample))],
         [],
-        [],
-        null,
       ),
     );
 
     expect(absent).toMatchObject({
-      status: "failure",
-      failureKind: "quarantined",
+      status: "success",
       generationId: null,
       served: { status: "unknown" },
-      verification: "quarantined",
+      verification: "explicit-unknown",
     });
   });
 
@@ -478,8 +455,8 @@ describe("the rebuilt LLM dispatcher", () => {
     expect(result).toMatchObject({
       status: "failure",
       failureKind: "invalid-json",
-      generationId: "generation:lookup:1",
-      verification: "verified",
+      generationId: null,
+      verification: "quarantined",
     });
     expect(result).not.toHaveProperty("value");
   });
@@ -622,7 +599,6 @@ describe("the rebuilt LLM dispatcher", () => {
       ],
       captured,
       [decodeTool],
-      null,
     );
     const result = await dispatch(spec, {
       ...configuredRuntime,
@@ -647,9 +623,8 @@ describe("the rebuilt LLM dispatcher", () => {
     });
     expect(executions).toBe(2);
     expect(result).toMatchObject({
-      status: "failure",
-      failureKind: "quarantined",
-      verification: "quarantined",
+      status: "success",
+      verification: "explicit-unknown",
       generationId: null,
       served: { status: "unknown" },
       usage: { promptTokens: 11, completionTokens: 7, reasoningTokens: 3, cachedTokens: 2 },
@@ -672,7 +647,7 @@ const liveEnabled =
   process.env.OPENROUTER_ZDR_GUARDRAIL_ASSERTED === "1";
 
 (liveEnabled ? it : it.skip)(
-  "quarantines a real structured response while generation lookup wiring is deferred",
+  "accepts a real structured response with an explicitly unknown served pair",
   async () => {
     const prompt = `Return exactly one PASS review verdict for synthetic unit unit:1. Use schemaVersion ${REVIEW_VERDICT_SCHEMA_VERSION}, reviewId review:live:1, localizationSnapshotId ${HASH_B}, roleId Q1, rubric meaning, unitId unit:1, wiki-first basis with bibleRenderingIds [rendering:1], severity none, null span/category/repairConstraint, and evidenceIds [fact:unit:1].`;
     const spec = callSpec(prompt, {
@@ -705,9 +680,8 @@ const liveEnabled =
     });
 
     expect(result).toMatchObject({
-      status: "failure",
-      failureKind: "quarantined",
-      verification: "quarantined",
+      status: "success",
+      verification: "explicit-unknown",
       generationId: null,
       served: { status: "unknown" },
     });

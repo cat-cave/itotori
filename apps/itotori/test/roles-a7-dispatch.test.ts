@@ -36,10 +36,7 @@ import {
 import { deepSeekV4FlashProfile } from "../src/llm/role-model-profiles.js";
 import type { MeasuredModelProfile } from "../src/llm/physical-attempt-policy.js";
 import { buildClaimFixture, type FixtureCharacterSpec } from "./support/claim-fixture.js";
-import {
-  confirmedGenerationMetadataSource,
-  structuredProviderResponse,
-} from "./llm-step-test-support.js";
+import { structuredProviderResponse } from "./llm-step-test-support.js";
 
 const A7_PROFILE: MeasuredModelProfile = {
   name: "reasoning",
@@ -130,7 +127,6 @@ function runtime(responses: Response[], onFetch?: () => void): DispatchRuntime {
         scope: "test:roles-a7",
         confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic admission cap for the recorded-transport proof, not a billed cost
       },
-      generationMetadataSource: confirmedGenerationMetadataSource(),
       snapshots: {
         decodeRevisionHash: HASH_A,
         glossaryRevisionHash: HASH_B,

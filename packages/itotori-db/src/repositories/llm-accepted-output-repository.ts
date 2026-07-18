@@ -35,7 +35,7 @@ export interface AcceptLlmOutputInput {
 
 export class LlmQuarantinedResponseError extends Error {
   constructor(readonly memoKeys: readonly string[]) {
-    super("accepted output requires a live memo with a generation ID and stream-attested route");
+    super("accepted output requires a live memo whose content is not quarantined");
     this.name = "LlmQuarantinedResponseError";
   }
 }
@@ -64,9 +64,7 @@ export class ItotoriLlmAcceptedOutputRepository {
           select required.memo_key
           from unnest($1::text[]) required(memo_key)
           left join itotori_llm_call_memos memo on memo.memo_key = required.memo_key
-          where memo.verification_status is distinct from 'verified'
-            or memo.generation_id is null
-            or memo.served_pair_status is distinct from 'confirmed'
+          where memo.verification_status not in ('verified', 'explicit-unknown')
             or memo.deletion_state is distinct from 'active'
         `,
         [input.memoKeys],
@@ -191,9 +189,7 @@ export class ItotoriLlmAcceptedOutputRepository {
             select 1
             from unnest(output.memo_keys) required(memo_key)
             left join itotori_llm_call_memos memo on memo.memo_key = required.memo_key
-            where memo.verification_status is distinct from 'verified'
-              or memo.generation_id is null
-              or memo.served_pair_status is distinct from 'confirmed'
+            where memo.verification_status not in ('verified', 'explicit-unknown')
               or memo.deletion_state is distinct from 'active'
           )
       `,

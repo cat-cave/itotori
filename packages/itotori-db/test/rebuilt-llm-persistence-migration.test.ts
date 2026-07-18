@@ -89,6 +89,7 @@ const migrationSql = [
   "0103_llm_attempt_admission_exposure.sql",
   "0105_llm_served_pair_quarantine.sql",
   "0106_llm_transcript_snapshots.sql",
+  "0108_llm_explicit_unknown_quarantine.sql",
 ]
   .map((file) => readFileSync(join(here, "..", "migrations", file), "utf8"))
   .join("\n");

@@ -329,6 +329,7 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
       execution.generationId !== null && execution.served.status === "confirmed"
         ? execution.served
         : null;
+    const verificationStatus = responseVerificationStatus(execution);
     const request = await this.cipher.seal(input.requestJson);
     const response = await this.cipher.seal(execution.responseJson);
     const outcome = await this.cipher.seal(execution.outcomeJson);
@@ -367,7 +368,7 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
           outcome.keyRef,
           hash(execution.outcomeJson),
           execution.outcomeKind,
-          confirmedServedPair ? "verified" : "quarantined",
+          verificationStatus,
           execution.generationId,
           execution.requestedModel,
           JSON.stringify(execution.providerPolicy),
@@ -429,6 +430,21 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
     if (hash(plaintext) !== expectedHash) throw new Error("encrypted memo content hash mismatch");
     return plaintext;
   }
+}
+
+function responseVerificationStatus(
+  execution: CompletedLlmStep,
+): "verified" | "explicit-unknown" | "quarantined" {
+  if (
+    execution.outcomeKind === "invalid" ||
+    execution.outcomeKind === "refusal" ||
+    execution.outcomeKind === "truncation"
+  ) {
+    return "quarantined";
+  }
+  return execution.generationId !== null && execution.served.status === "confirmed"
+    ? "verified"
+    : "explicit-unknown";
 }
 
 type MemoRow = {
