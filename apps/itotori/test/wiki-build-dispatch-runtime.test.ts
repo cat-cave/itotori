@@ -91,7 +91,7 @@ describe("wiki-build analyst dispatch runtimes", () => {
       expect(runtime.memo.profile).toEqual({
         name: profile.modelProfile,
         version: profile.version,
-        deadlines: { normalMs: 30_000, deepMs: 90_000 },
+        deadlines: { normalMs: 30_000, deepMs: 300_000 },
         maxAttemptExposureUsd: "0.01",
       });
       // `resolveAttemptDeadlineMs` invokes dispatch's profile assertion before

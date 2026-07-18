@@ -224,7 +224,7 @@ export function createAnalystDispatchRuntime(input: {
     profile: {
       name: roleProfile.modelProfile,
       version: roleProfile.version,
-      deadlines: { normalMs: 30_000, deepMs: 90_000 },
+      deadlines: { normalMs: 30_000, deepMs: 300_000 },
       maxAttemptExposureUsd: input.deps.dispatch.profile.maxAttemptExposureUsd,
     },
     memoStore: input.deps.memoStore,
