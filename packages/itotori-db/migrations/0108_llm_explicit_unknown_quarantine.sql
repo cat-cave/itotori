@@ -78,7 +78,7 @@ drop function if exists itotori_llm_require_verified_output_memos();
 -- upgrade for those rows; the trigger below enforces the projection boundary on
 -- every new accepted output.
 
-create function itotori_llm_require_projectable_output_memos()
+create or replace function itotori_llm_require_projectable_output_memos()
 returns trigger
 language plpgsql
 as $$
