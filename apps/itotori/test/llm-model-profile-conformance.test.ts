@@ -9,6 +9,7 @@ import {
   type LiveConformanceObservations,
 } from "../src/llm/model-profile-conformance.js";
 import { deepSeekV4FlashProfile } from "../src/llm/role-model-profiles.js";
+import { reviewVerdictExample } from "./contract-fixtures-core.js";
 
 const HASH_A = `sha256:${"a".repeat(64)}` as const;
 const HASH_B = `sha256:${"b".repeat(64)}` as const;
@@ -31,6 +32,7 @@ describe("live model-profile conformance certification", () => {
         servedPairVerification: "deferred",
       },
       observations: {
+        generationLookupAttempts: 0,
         generationId: null,
         served: { status: "unknown" },
       },
@@ -82,8 +84,8 @@ describe("live model-profile conformance certification", () => {
       /provider-reported cost/u,
     ],
     [
-      "explicit unknown reconciliation",
-      (value: LiveConformanceObservations) => ({ ...value, generationLookupAttempts: 0 }),
+      "unexpected generation lookup",
+      (value: LiveConformanceObservations) => ({ ...value, generationLookupAttempts: 1 }),
       /explicit unknown/u,
     ],
     [
@@ -138,7 +140,7 @@ function withResult(result: CallResult, patch: Record<string, unknown>): CallRes
 function passingObservations(): LiveConformanceObservations {
   return {
     probedAt: "2026-07-15T00:00:00.000Z",
-    result: quarantinedResult(),
+    result: explicitUnknownResult(),
     steps: [step("tool-calls"), step("terminal")],
     toolExecutionCount: 1,
     reasoning: {
@@ -148,7 +150,7 @@ function passingObservations(): LiveConformanceObservations {
       forwardedDetailCount: 1,
       exactForwardCount: 1,
     },
-    generationLookupAttempts: 2,
+    generationLookupAttempts: 0,
   };
 }
 
@@ -164,7 +166,7 @@ function step(outcomeKind: "tool-calls" | "terminal") {
   };
 }
 
-function quarantinedResult(): CallResult {
+function explicitUnknownResult(): CallResult {
   return CallResultSchema.parse({
     schemaVersion: CALL_RESULT_SCHEMA_VERSION,
     memoKey: HASH_A,
@@ -172,20 +174,14 @@ function quarantinedResult(): CallResult {
       model: deepSeekV4FlashProfile.model,
     },
     memoHit: false,
-    status: "failure",
-    failureKind: "quarantined",
+    status: "success",
+    value: reviewVerdictExample,
     responseEventId: HASH_B,
-    responseEncrypted: {
-      storageRef: "encrypted:conformance-response",
-      contentHash: HASH_B,
-      encryption: "operator-managed",
-    },
     served: { status: "unknown" },
     generationId: null,
-    verification: "quarantined",
+    verification: "explicit-unknown",
     usage: { promptTokens: 2, completionTokens: 2, reasoningTokens: 1, cachedTokens: 0 },
     billing: { status: "confirmed", costUsd: capturedBilledUsd },
-    defects: [],
     events: [
       { kind: "run-started", iteration: 0 },
       {
