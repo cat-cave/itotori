@@ -90,7 +90,7 @@ key-posture evidence only, not an end-to-end extract/patch claim.
 <!-- ALPHA-READINESS-CAPABILITY-CLAIMS:START -->
 <!-- generated from apps/itotori/src/engine-capability/engine-capability-matrix.v0.1.json; edit that generator, not this block -->
 
-Engine families in the generated capability matrix: **8**.
+Engine families in the generated capability matrix: **9**.
 
 | engine family       | evidence posture |
 | ------------------- | ---------------- |
@@ -99,6 +99,7 @@ Engine families in the generated capability matrix: **8**.
 | `reallive`          | readiness_only   |
 | `rpg_maker_mv_mz`   | readiness_only   |
 | `siglus`            | readiness_only   |
+| `softpal`           | readiness_only   |
 | `synthetic_fixture` | positive_adapter |
 | `tyranoscript`      | readiness_only   |
 | `wolf_rpg_editor`   | readiness_only   |

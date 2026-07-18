@@ -980,7 +980,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       required: ["bridge", "mode", "command"],
       properties: {
         bridge: obj,
-        mode: { enum: ["per-scene", "whole-seen"] },
+        mode: { enum: ["per-scene", "whole-seen", "whole-game"] },
         command: str,
       },
       additionalProperties: true,
@@ -1053,6 +1053,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
         gameVersion: str,
         sourceProfileId: str,
         sourceLocale: str,
+        engine: { enum: ["reallive", "softpal"] },
         scene: num,
         wholeSeen: bool,
       },

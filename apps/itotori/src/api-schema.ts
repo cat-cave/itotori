@@ -757,8 +757,10 @@ export type ApiProjectImportRequest = {
 /**
  * p3-in-studio-decode-extract-trigger — point the Studio at a game source and
  * run the REAL identify -> inventory -> extract decode pipeline. Sourcing is
- * EITHER a by-id vault handle OR a raw game root; identity is the four RealLive
- * metadata fields; mode is per-scene (`scene`) XOR whole-Seen (`wholeSeen`).
+ * EITHER a by-id vault handle OR a raw game root; identity is the four shared
+ * metadata fields; `engine` selects the kaifuu-cli extract engine (defaults
+ * to RealLive). Mode is engine-policy-driven: RealLive is per-scene (`scene`)
+ * XOR whole-Seen (`wholeSeen`); whole-game engines (Softpal) omit both.
  */
 export type ApiProjectDecodeExtractRequest = {
   vaultCanonicalId?: string;
@@ -767,6 +769,8 @@ export type ApiProjectDecodeExtractRequest = {
   gameVersion: string;
   sourceProfileId: string;
   sourceLocale: string;
+  /** kaifuu-cli extract engine. Defaults to `"reallive"`. */
+  engine?: "reallive" | "softpal";
   scene?: number;
   wholeSeen?: boolean;
 };
@@ -778,7 +782,7 @@ export type ApiProjectDecodeExtractRequest = {
  */
 export type ApiProjectDecodeExtractResponse = {
   bridge: BridgeBundleV02;
-  mode: "per-scene" | "whole-seen";
+  mode: "per-scene" | "whole-seen" | "whole-game";
   command: string;
 };
 
@@ -1717,11 +1721,22 @@ export function parseProjectImportRequest(body: unknown): ApiProjectImportReques
 export function parseProjectDecodeExtractRequest(body: unknown): ApiProjectDecodeExtractRequest {
   return parseRequest("ApiProjectDecodeExtractRequest", () => {
     const request = asRecord(body, "ApiProjectDecodeExtractRequest");
-    // Identity — the four required RealLive metadata fields.
+    // Identity — the four required extract metadata fields.
     assertString(request.gameId, "ApiProjectDecodeExtractRequest.gameId");
     assertString(request.gameVersion, "ApiProjectDecodeExtractRequest.gameVersion");
     assertString(request.sourceProfileId, "ApiProjectDecodeExtractRequest.sourceProfileId");
     assertString(request.sourceLocale, "ApiProjectDecodeExtractRequest.sourceLocale");
+    // Engine — optional; defaults to RealLive at the seam. Softpal (and
+    // future engines) pass the id so the production path dispatches them.
+    let engine: "reallive" | "softpal" | undefined;
+    if (request.engine !== undefined) {
+      assertString(request.engine, "ApiProjectDecodeExtractRequest.engine");
+      if (request.engine !== "reallive" && request.engine !== "softpal") {
+        throw new Error("ApiProjectDecodeExtractRequest.engine must be one of: reallive, softpal");
+      }
+      engine = request.engine;
+    }
+    const resolvedEngine = engine ?? "reallive";
     // Sourcing — exactly one of vaultCanonicalId / gameRoot must be provided.
     if (request.vaultCanonicalId !== undefined) {
       assertString(request.vaultCanonicalId, "ApiProjectDecodeExtractRequest.vaultCanonicalId");
@@ -1737,15 +1752,22 @@ export function parseProjectDecodeExtractRequest(body: unknown): ApiProjectDecod
         "ApiProjectDecodeExtractRequest sourcing requires EXACTLY ONE of vaultCanonicalId or gameRoot",
       );
     }
-    // Mode — exactly one of scene (u16) / wholeSeen must be selected.
+    // Mode — engine-policy-driven. RealLive: scene XOR wholeSeen. Softpal
+    // (whole-game): neither flag.
     const wholeSeen = request.wholeSeen === true;
     const hasScene = request.scene !== undefined;
-    if (wholeSeen === hasScene) {
+    let scene: number | undefined;
+    if (resolvedEngine === "softpal") {
+      if (wholeSeen || hasScene) {
+        throw new Error(
+          "ApiProjectDecodeExtractRequest for engine softpal is whole-game only (omit scene and wholeSeen)",
+        );
+      }
+    } else if (wholeSeen === hasScene) {
       throw new Error(
         "ApiProjectDecodeExtractRequest requires EXACTLY ONE decode mode: scene (u16) or wholeSeen",
       );
     }
-    let scene: number | undefined;
     if (hasScene) {
       const value = request.scene;
       if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 65_535) {
@@ -1758,6 +1780,7 @@ export function parseProjectDecodeExtractRequest(body: unknown): ApiProjectDecod
       gameVersion: request.gameVersion,
       sourceProfileId: request.sourceProfileId,
       sourceLocale: request.sourceLocale,
+      ...(engine !== undefined ? { engine } : {}),
       ...(hasVault ? { vaultCanonicalId: request.vaultCanonicalId as string } : {}),
       ...(hasGameRoot ? { gameRoot: request.gameRoot as string } : {}),
       ...(scene !== undefined ? { scene } : {}),
@@ -5668,7 +5691,7 @@ function assertProjectDecodeExtractResponse(
   assertBridgeInput(response.bridge);
   assertEnum(
     response.mode,
-    ["per-scene", "whole-seen"] as const,
+    ["per-scene", "whole-seen", "whole-game"] as const,
     "ApiProjectDecodeExtractResponse.mode",
   );
   assertString(response.command, "ApiProjectDecodeExtractResponse.command");

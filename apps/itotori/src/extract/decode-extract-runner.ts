@@ -4,10 +4,11 @@
 // The Studio's "decode from game path" trigger no longer requires an operator to
 // hand-produce a bridge JSON on the CLI. This runner drives the SAME real decode
 // path the CLI `itotori extract` command drives — `kaifuu-cli extract --engine
-// reallive` (identify -> inventory -> extract, resolved + spawned through the ONE
+// <engine>` (identify -> inventory -> extract, resolved + spawned through the ONE
 // sanitized native-CLI boundary) — writes the v0.2 BridgeBundle kaifuu produces
 // to a scratch path, reads it back, validates it against the bridge-schema
-// authority, and hands it to the workflow for ingestion.
+// authority, and hands it to the workflow for ingestion. Engine is parametric:
+// RealLive, Softpal, and any future extract engine share this path.
 //
 // This module NEVER fabricates a bridge: the only bytes it returns are the ones
 // kaifuu-cli wrote from real game bytes. Tests that must avoid a real subprocess
@@ -24,7 +25,7 @@ import type {
   DecodeExtractPort,
 } from "../services/project-workflow.js";
 import {
-  runKaifuuRealliveExtract,
+  runKaifuuExtract,
   type KaifuuExtractArgs,
   type KaifuuExtractResult,
 } from "./kaifuu-extract-seam.js";
@@ -33,7 +34,7 @@ import {
  * The extract-seam invocation, isolated as a seam so a test can prove the runner
  * drives the REAL `kaifuu-cli extract` argv WITHOUT spawning a subprocess (the
  * double captures the args and writes a fixture bridge to `bundleOutputPath`).
- * Defaults to the real {@link runKaifuuRealliveExtract}.
+ * Defaults to the real {@link runKaifuuExtract}.
  */
 export type DecodeExtractRunnerOptions = {
   runExtract?: (args: KaifuuExtractArgs) => KaifuuExtractResult;
@@ -46,14 +47,15 @@ export type DecodeExtractRunnerOptions = {
 
 /**
  * Build the real `DecodeExtractPort` the production workflow injects. Each
- * `runDecodeExtract` call drives one real `kaifuu-cli extract --engine reallive`
- * (per-scene OR whole-Seen), reads the produced v0.2 bridge back, and validates
- * it before returning. The scratch bundle path is removed after the read.
+ * `runDecodeExtract` call drives one real `kaifuu-cli extract --engine <engine>`
+ * (per-scene / whole-Seen / whole-game per engine policy), reads the produced
+ * v0.2 bridge back, and validates it before returning. The scratch bundle path
+ * is removed after the read.
  */
 export function createDecodeExtractRunner(
   options: DecodeExtractRunnerOptions = {},
 ): DecodeExtractPort {
-  const runExtract = options.runExtract ?? ((args) => runKaifuuRealliveExtract(args));
+  const runExtract = options.runExtract ?? ((args) => runKaifuuExtract(args));
   const makeScratchDir =
     options.makeScratchDir ?? (() => mkdtempSync(join(tmpdir(), "itotori-decode-extract-")));
   const readBundle = options.readBundle ?? ((path) => readFileSync(path, "utf8"));
@@ -69,6 +71,7 @@ export function createDecodeExtractRunner(
           sourceProfileId: input.sourceProfileId,
           sourceLocale: input.sourceLocale,
           bundleOutputPath,
+          ...(input.engine !== undefined ? { engine: input.engine } : {}),
           ...(input.wholeSeen === true ? { wholeSeen: true } : {}),
           ...(input.scene !== undefined ? { scene: input.scene } : {}),
           ...(input.gameRoot !== undefined ? { gameRoot: input.gameRoot } : {}),

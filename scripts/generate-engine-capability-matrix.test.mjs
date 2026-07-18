@@ -111,6 +111,22 @@ test("BGI is detector/profile readiness evidence with no parser or patch claim",
   assert.equal(bgi.levels.runtime.status, "unsupported");
 });
 
+test("Softpal is a first-class engine family row (parity with RealLive readiness registration)", () => {
+  const softpal = rowsById.get("softpal-pac-detector-readiness");
+  assert.ok(softpal, "Softpal readiness row must exist");
+  assert.equal(softpal.engineFamily, "softpal");
+  assert.equal(softpal.adapterId, "kaifuu.softpal");
+  assert.equal(softpal.evidencePosture, "readiness_only");
+  assert.equal(softpal.levels.identify.status, "supported");
+  assert.equal(softpal.levels.extract.status, "unsupported");
+  assert.equal(softpal.levels.patch.status, "unsupported");
+  assert.equal(softpal.levels.runtime.status, "unsupported");
+  // RealLive remains registered the same way — Softpal is not a one-off island.
+  const reallive = rowsById.get("reallive-seen-txt-detector-readiness");
+  assert.ok(reallive, "RealLive readiness row must still exist");
+  assert.equal(reallive.adapterId, "kaifuu.reallive");
+});
+
 test("the four required encrypted/known-key scenarios are separate capability rows", () => {
   for (const rowId of [
     "rpg-maker-mv-mz-encrypted-media",

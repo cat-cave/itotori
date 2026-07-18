@@ -23,8 +23,8 @@
       "path": "fixtures/public/reallive-detector/capabilities.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "7a42261863fb1e4037c094b75b6079e8ef5e4e0d692172c2a4d7fe2663d05803",
-      "bytes": 19287,
+      "sha256": "e1e7681334395b5af156b2047dff9eac7c6f330558f3b268b659170323be30fd",
+      "bytes": 26170,
       "redistributable": true
     },
     {
@@ -217,8 +217,12 @@
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
-    "sourceLocales": ["ja-JP"],
-    "engineKinds": ["reallive"],
+    "sourceLocales": [
+      "ja-JP"
+    ],
+    "engineKinds": [
+      "reallive"
+    ],
     "notes": "Detector-only fixtures for KAIFUU-172; no text units or protected spans because no Scene/SEEN parsing, extraction, or patching is claimed."
   },
   "benchmarkUse": {

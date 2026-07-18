@@ -96,49 +96,118 @@
     "accessContract": {
       "identify": {
         "status": "supported",
-        "requiredCapabilities": ["detection", "profile_generation"],
-        "supportedSurfaces": ["identity", "json_pointer"],
-        "supportedContainers": ["identity", "loose_file"],
-        "supportedCrypto": ["null_key"],
-        "supportedCodecs": ["identity", "json_text"],
-        "supportedPatchBack": ["identity", "rewrite_json"],
+        "requiredCapabilities": [
+          "detection",
+          "profile_generation"
+        ],
+        "supportedSurfaces": [
+          "identity",
+          "json_pointer"
+        ],
+        "supportedContainers": [
+          "identity",
+          "loose_file"
+        ],
+        "supportedCrypto": [
+          "null_key"
+        ],
+        "supportedCodecs": [
+          "identity",
+          "json_text"
+        ],
+        "supportedPatchBack": [
+          "identity",
+          "rewrite_json"
+        ],
         "supportBoundary": "plaintext identity pipeline only; no archive rebuild, encrypted input, helper, or decompile support claimed"
       },
       "inventory": {
         "status": "supported",
-        "requiredCapabilities": ["asset_inventory", "asset_listing"],
-        "supportedSurfaces": ["identity", "json_pointer"],
-        "supportedContainers": ["identity", "loose_file"],
-        "supportedCrypto": ["null_key"],
-        "supportedCodecs": ["identity", "json_text"],
-        "supportedPatchBack": ["identity", "rewrite_json"],
+        "requiredCapabilities": [
+          "asset_inventory",
+          "asset_listing"
+        ],
+        "supportedSurfaces": [
+          "identity",
+          "json_pointer"
+        ],
+        "supportedContainers": [
+          "identity",
+          "loose_file"
+        ],
+        "supportedCrypto": [
+          "null_key"
+        ],
+        "supportedCodecs": [
+          "identity",
+          "json_text"
+        ],
+        "supportedPatchBack": [
+          "identity",
+          "rewrite_json"
+        ],
         "supportBoundary": "plaintext identity pipeline only; no archive rebuild, encrypted input, helper, or decompile support claimed"
       },
       "extract": {
         "status": "supported",
-        "requiredCapabilities": ["extraction"],
-        "supportedSurfaces": ["identity", "json_pointer"],
-        "supportedContainers": ["identity", "loose_file"],
-        "supportedCrypto": ["null_key"],
-        "supportedCodecs": ["identity", "json_text"],
-        "supportedPatchBack": ["identity", "rewrite_json"],
+        "requiredCapabilities": [
+          "extraction"
+        ],
+        "supportedSurfaces": [
+          "identity",
+          "json_pointer"
+        ],
+        "supportedContainers": [
+          "identity",
+          "loose_file"
+        ],
+        "supportedCrypto": [
+          "null_key"
+        ],
+        "supportedCodecs": [
+          "identity",
+          "json_text"
+        ],
+        "supportedPatchBack": [
+          "identity",
+          "rewrite_json"
+        ],
         "supportBoundary": "plaintext identity pipeline only; no archive rebuild, encrypted input, helper, or decompile support claimed"
       },
       "patch": {
         "status": "supported",
-        "requiredCapabilities": ["line_parity_patching", "patching"],
-        "supportedSurfaces": ["identity", "json_pointer"],
-        "supportedContainers": ["identity", "loose_file"],
-        "supportedCrypto": ["null_key"],
-        "supportedCodecs": ["identity", "json_text"],
-        "supportedPatchBack": ["identity", "rewrite_json"],
+        "requiredCapabilities": [
+          "line_parity_patching",
+          "patching"
+        ],
+        "supportedSurfaces": [
+          "identity",
+          "json_pointer"
+        ],
+        "supportedContainers": [
+          "identity",
+          "loose_file"
+        ],
+        "supportedCrypto": [
+          "null_key"
+        ],
+        "supportedCodecs": [
+          "identity",
+          "json_text"
+        ],
+        "supportedPatchBack": [
+          "identity",
+          "rewrite_json"
+        ],
         "supportBoundary": "plaintext identity pipeline only; no archive rebuild, encrypted input, helper, or decompile support claimed"
       }
     },
     "helperRequirements": [
       {
         "helperRegistryId": "kaifuu.fixture.helper-stub",
-        "capabilities": ["fixture_invocation"],
+        "capabilities": [
+          "fixture_invocation"
+        ],
         "allowlistRefId": "kaifuu-fixture-helper-stub-allowlist"
       }
     ]
@@ -230,27 +299,57 @@
     "accessContract": {
       "identify": {
         "status": "supported",
-        "requiredCapabilities": ["detection", "profile_generation"],
-        "supportedSurfaces": ["archive_entry"],
-        "supportedContainers": ["xp3"],
-        "supportedCrypto": ["null_key", "key_profile"],
-        "supportedCodecs": ["unknown"],
-        "supportedPatchBack": ["unsupported"],
+        "requiredCapabilities": [
+          "detection",
+          "profile_generation"
+        ],
+        "supportedSurfaces": [
+          "archive_entry"
+        ],
+        "supportedContainers": [
+          "xp3"
+        ],
+        "supportedCrypto": [
+          "null_key",
+          "key_profile"
+        ],
+        "supportedCodecs": [
+          "unknown"
+        ],
+        "supportedPatchBack": [
+          "unsupported"
+        ],
         "supportBoundary": "identify/profile generation reads only synthetic XP3 headers, markers, and source hashes"
       },
       "inventory": {
         "status": "supported",
-        "requiredCapabilities": ["asset_inventory", "asset_listing"],
-        "supportedSurfaces": ["archive_entry"],
-        "supportedContainers": ["xp3"],
-        "supportedCrypto": ["null_key", "key_profile"],
-        "supportedCodecs": ["unknown"],
-        "supportedPatchBack": ["unsupported"],
+        "requiredCapabilities": [
+          "asset_inventory",
+          "asset_listing"
+        ],
+        "supportedSurfaces": [
+          "archive_entry"
+        ],
+        "supportedContainers": [
+          "xp3"
+        ],
+        "supportedCrypto": [
+          "null_key",
+          "key_profile"
+        ],
+        "supportedCodecs": [
+          "unknown"
+        ],
+        "supportedPatchBack": [
+          "unsupported"
+        ],
         "supportBoundary": "inventory parses synthetic plain XP3 index metadata and reports archive member rows; payload extraction, decompression, decryption, and patch-back are unsupported"
       },
       "extract": {
         "status": "unsupported",
-        "requiredCapabilities": ["extraction"],
+        "requiredCapabilities": [
+          "extraction"
+        ],
         "supportedSurfaces": [],
         "supportedContainers": [],
         "supportedCrypto": [],
@@ -260,7 +359,10 @@
       },
       "patch": {
         "status": "unsupported",
-        "requiredCapabilities": ["patch_back", "patching"],
+        "requiredCapabilities": [
+          "patch_back",
+          "patching"
+        ],
         "supportedSurfaces": [],
         "supportedContainers": [],
         "supportedCrypto": [],
@@ -357,27 +459,56 @@
     "accessContract": {
       "identify": {
         "status": "supported",
-        "requiredCapabilities": ["detection", "profile_generation"],
-        "supportedSurfaces": ["identity"],
-        "supportedContainers": ["loose_file"],
-        "supportedCrypto": ["unknown"],
-        "supportedCodecs": ["unknown"],
-        "supportedPatchBack": ["unsupported"],
+        "requiredCapabilities": [
+          "detection",
+          "profile_generation"
+        ],
+        "supportedSurfaces": [
+          "identity"
+        ],
+        "supportedContainers": [
+          "loose_file"
+        ],
+        "supportedCrypto": [
+          "unknown"
+        ],
+        "supportedCodecs": [
+          "unknown"
+        ],
+        "supportedPatchBack": [
+          "unsupported"
+        ],
         "supportBoundary": "identify/profile generation reads only SEEN.TXT envelope bytes, Gameexe.ini ASCII prefixes, top-level marker counts, and source hashes"
       },
       "inventory": {
         "status": "supported",
-        "requiredCapabilities": ["asset_inventory", "asset_listing"],
-        "supportedSurfaces": ["identity", "archive_entry"],
-        "supportedContainers": ["loose_file"],
-        "supportedCrypto": ["unknown"],
-        "supportedCodecs": ["unknown"],
-        "supportedPatchBack": ["unsupported"],
+        "requiredCapabilities": [
+          "asset_inventory",
+          "asset_listing"
+        ],
+        "supportedSurfaces": [
+          "identity",
+          "archive_entry"
+        ],
+        "supportedContainers": [
+          "loose_file"
+        ],
+        "supportedCrypto": [
+          "unknown"
+        ],
+        "supportedCodecs": [
+          "unknown"
+        ],
+        "supportedPatchBack": [
+          "unsupported"
+        ],
         "supportBoundary": "inventory reports only top-level SEEN.TXT/SEEN.GAN/Gameexe.ini assets and hashes; no archive entry parser is claimed"
       },
       "extract": {
         "status": "unsupported",
-        "requiredCapabilities": ["extraction"],
+        "requiredCapabilities": [
+          "extraction"
+        ],
         "supportedSurfaces": [],
         "supportedContainers": [],
         "supportedCrypto": [],
@@ -387,7 +518,10 @@
       },
       "patch": {
         "status": "unsupported",
-        "requiredCapabilities": ["patch_back", "patching"],
+        "requiredCapabilities": [
+          "patch_back",
+          "patching"
+        ],
         "supportedSurfaces": [],
         "supportedContainers": [],
         "supportedCrypto": [],
@@ -484,27 +618,59 @@
     "accessContract": {
       "identify": {
         "status": "supported",
-        "requiredCapabilities": ["detection", "profile_generation"],
-        "supportedSurfaces": ["identity"],
-        "supportedContainers": ["loose_file", "siglus_pck"],
-        "supportedCrypto": ["unknown"],
-        "supportedCodecs": ["unknown"],
-        "supportedPatchBack": ["unsupported"],
+        "requiredCapabilities": [
+          "detection",
+          "profile_generation"
+        ],
+        "supportedSurfaces": [
+          "identity"
+        ],
+        "supportedContainers": [
+          "loose_file",
+          "siglus_pck"
+        ],
+        "supportedCrypto": [
+          "unknown"
+        ],
+        "supportedCodecs": [
+          "unknown"
+        ],
+        "supportedPatchBack": [
+          "unsupported"
+        ],
         "supportBoundary": "identify/profile generation reads only synthetic file names, signatures, and source hashes"
       },
       "inventory": {
         "status": "supported",
-        "requiredCapabilities": ["asset_inventory", "asset_listing"],
-        "supportedSurfaces": ["identity", "archive_entry", "binary_offset"],
-        "supportedContainers": ["loose_file", "siglus_pck"],
-        "supportedCrypto": ["unknown"],
-        "supportedCodecs": ["unknown"],
-        "supportedPatchBack": ["unsupported"],
+        "requiredCapabilities": [
+          "asset_inventory",
+          "asset_listing"
+        ],
+        "supportedSurfaces": [
+          "identity",
+          "archive_entry",
+          "binary_offset"
+        ],
+        "supportedContainers": [
+          "loose_file",
+          "siglus_pck"
+        ],
+        "supportedCrypto": [
+          "unknown"
+        ],
+        "supportedCodecs": [
+          "unknown"
+        ],
+        "supportedPatchBack": [
+          "unsupported"
+        ],
         "supportBoundary": "inventory reports only top-level Scene.pck/Gameexe.dat assets and hashes; no archive entry parser is claimed"
       },
       "extract": {
         "status": "unsupported",
-        "requiredCapabilities": ["extraction"],
+        "requiredCapabilities": [
+          "extraction"
+        ],
         "supportedSurfaces": [],
         "supportedContainers": [],
         "supportedCrypto": [],
@@ -514,13 +680,174 @@
       },
       "patch": {
         "status": "unsupported",
-        "requiredCapabilities": ["patch_back", "patching"],
+        "requiredCapabilities": [
+          "patch_back",
+          "patching"
+        ],
         "supportedSurfaces": [],
         "supportedContainers": [],
         "supportedCrypto": [],
         "supportedCodecs": [],
         "supportedPatchBack": [],
         "supportBoundary": "Siglus detector profile identifies synthetic Scene.pck/Gameexe.dat fixtures for identify and inventory only; parser, extraction, decryption, patch-back, and runtime support are not claimed."
+      }
+    }
+  },
+  {
+    "adapterId": "kaifuu.softpal",
+    "reports": [
+      {
+        "capability": "asset_inventory",
+        "status": "unsupported",
+        "limitation": "Softpal asset inventory is a later Softpal node, not the detector"
+      },
+      {
+        "capability": "asset_listing",
+        "status": "unsupported",
+        "limitation": "Softpal PAC entry listing is a later Softpal node, not the detector"
+      },
+      {
+        "capability": "asset_text_patching",
+        "status": "unsupported",
+        "limitation": "no Softpal text surfaces are patched by this detector"
+      },
+      {
+        "capability": "codec_access",
+        "status": "unsupported",
+        "limitation": "SCRIPT.SRC decompilation / TEXT.DAT decode is outside the detector"
+      },
+      {
+        "capability": "container_access",
+        "status": "unsupported",
+        "limitation": "PAC archive parsing is outside the detector"
+      },
+      {
+        "capability": "crypto_access",
+        "status": "unsupported",
+        "limitation": "TEXT.DAT/PAC decryption is outside the detector"
+      },
+      {
+        "capability": "delta_patching",
+        "status": "unsupported",
+        "limitation": ".kaifuu delta packages do not apply to the detector-only Softpal profile"
+      },
+      {
+        "capability": "detection",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "encrypted_input",
+        "status": "unsupported",
+        "limitation": "encrypted TEXT.DAT payloads are identified only, never decrypted"
+      },
+      {
+        "capability": "extraction",
+        "status": "unsupported",
+        "limitation": "the Softpal detector does not extract PAC archives"
+      },
+      {
+        "capability": "key_profile",
+        "status": "unsupported",
+        "limitation": "Softpal detector does not consume user-provided keys"
+      },
+      {
+        "capability": "line_parity_patching",
+        "status": "unsupported",
+        "limitation": "no Softpal text surfaces are patched by this detector"
+      },
+      {
+        "capability": "non_text_surface_extraction",
+        "status": "unsupported",
+        "limitation": "no non-text extraction or OCR is performed by the Softpal detector"
+      },
+      {
+        "capability": "patch_back",
+        "status": "unsupported",
+        "limitation": "Softpal patch-back/repack support is outside the detector"
+      },
+      {
+        "capability": "patching",
+        "status": "unsupported",
+        "limitation": "the Softpal detector does not patch or rebuild Softpal assets"
+      },
+      {
+        "capability": "profile_generation",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "runtime_vm",
+        "status": "unsupported",
+        "limitation": "runtime support belongs to future Utsushi/Softpal work, not this detector"
+      },
+      {
+        "capability": "verification",
+        "status": "unsupported",
+        "limitation": "runtime/parser verification is outside the Softpal detector"
+      }
+    ],
+    "accessContract": {
+      "identify": {
+        "status": "supported",
+        "requiredCapabilities": [
+          "detection",
+          "profile_generation"
+        ],
+        "supportedSurfaces": [
+          "identity"
+        ],
+        "supportedContainers": [
+          "loose_file"
+        ],
+        "supportedCrypto": [
+          "unknown"
+        ],
+        "supportedCodecs": [
+          "unknown"
+        ],
+        "supportedPatchBack": [
+          "unsupported"
+        ],
+        "supportBoundary": "identify/profile reads only file names, container magics, and script signatures"
+      },
+      "inventory": {
+        "status": "unsupported",
+        "requiredCapabilities": [
+          "asset_listing",
+          "asset_inventory"
+        ],
+        "supportedSurfaces": [],
+        "supportedContainers": [],
+        "supportedCrypto": [],
+        "supportedCodecs": [],
+        "supportedPatchBack": [],
+        "supportBoundary": "Softpal detector is identify-only; PAC extraction, SCRIPT.SRC decompilation, TEXT.DAT decode/decryption, and patch-back are unsupported (later Softpal nodes)"
+      },
+      "extract": {
+        "status": "unsupported",
+        "requiredCapabilities": [
+          "extraction"
+        ],
+        "supportedSurfaces": [],
+        "supportedContainers": [],
+        "supportedCrypto": [],
+        "supportedCodecs": [],
+        "supportedPatchBack": [],
+        "supportBoundary": "Softpal detector is identify-only; PAC extraction, SCRIPT.SRC decompilation, TEXT.DAT decode/decryption, and patch-back are unsupported (later Softpal nodes)"
+      },
+      "patch": {
+        "status": "unsupported",
+        "requiredCapabilities": [
+          "patching",
+          "patch_back"
+        ],
+        "supportedSurfaces": [],
+        "supportedContainers": [],
+        "supportedCrypto": [],
+        "supportedCodecs": [],
+        "supportedPatchBack": [],
+        "supportBoundary": "Softpal detector is identify-only; PAC extraction, SCRIPT.SRC decompilation, TEXT.DAT decode/decryption, and patch-back are unsupported (later Softpal nodes)"
       }
     }
   }

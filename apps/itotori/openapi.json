@@ -2593,6 +2593,12 @@
           },
           "wholeSeen": {
             "type": "boolean"
+          },
+          "engine": {
+            "enum": [
+              "reallive",
+              "softpal"
+            ]
           }
         },
         "required": [
@@ -2615,7 +2621,8 @@
           "mode": {
             "enum": [
               "per-scene",
-              "whole-seen"
+              "whole-seen",
+              "whole-game"
             ]
           }
         },
@@ -6937,7 +6944,7 @@
             "description": "Internal error (internal_error)."
           }
         },
-        "summary": "Benchmark cockpit read model — contestants + anchor + confidence + backlog.",
+        "summary": "Benchmark cockpit read model \u2014 contestants + anchor + confidence + backlog.",
         "x-itotoriRouteId": "projects.bmkCockpit"
       }
     },

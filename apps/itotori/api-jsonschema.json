@@ -2594,6 +2594,12 @@
         },
         "wholeSeen": {
           "type": "boolean"
+        },
+        "engine": {
+          "enum": [
+            "reallive",
+            "softpal"
+          ]
         }
       },
       "required": [
@@ -2616,7 +2622,8 @@
         "mode": {
           "enum": [
             "per-scene",
-            "whole-seen"
+            "whole-seen",
+            "whole-game"
           ]
         }
       },

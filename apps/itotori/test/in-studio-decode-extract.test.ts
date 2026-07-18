@@ -2,11 +2,12 @@
 // decode/extract runner behind the `projects.decodeExtract` mutation.
 //
 //   1. REAL-SEAM (no subprocess): the runner drives the REAL
-//      `kaifuu-cli extract --engine reallive` invocation seam (buildExtractArgs
+//      `kaifuu-cli extract --engine <engine>` invocation seam (buildExtractArgs
 //      argv), then reads + validates the v0.2 bridge kaifuu writes. A FAKE spawn
 //      writes the canonical example bundle to the exact `--bundle-output` path
 //      the seam built, so CI touches NO real bytes yet exercises the real argv +
-//      real file read-back + real schema validation.
+//      real file read-back + real schema validation. Softpal is exercised through
+//      the SAME production seam (engine-parametric, not a mock/dual path).
 //   2. WIRE-CONTRACT: parseProjectDecodeExtractRequest enforces the sourcing /
 //      mode exclusivity + scene range the HTTP body must satisfy.
 //   3. ENV-GATED real: when ITOTORI_REAL_SWEETIE_ROOT is exported, the runner
@@ -23,7 +24,7 @@ import { createDecodeExtractRunner } from "../src/extract/decode-extract-runner.
 import {
   buildExtractArgs,
   KaifuuExtractError,
-  runKaifuuRealliveExtract,
+  runKaifuuExtract,
   type KaifuuProcessResult,
 } from "../src/extract/kaifuu-extract-seam.js";
 import { parseProjectDecodeExtractRequest } from "../src/api-schema.js";
@@ -50,8 +51,8 @@ const EXAMPLE_BUNDLE = readFileSync(
  * the exact `--bundle-output` path the seam built, then reports success.
  */
 function realSeamWithFakeSpawn(capture: { argv?: string[] }) {
-  return (args: Parameters<typeof runKaifuuRealliveExtract>[0]) =>
-    runKaifuuRealliveExtract({
+  return (args: Parameters<typeof runKaifuuExtract>[0]) =>
+    runKaifuuExtract({
       ...args,
       env: {},
       runProcess: (_command, argv): KaifuuProcessResult => {
@@ -114,7 +115,7 @@ describe("in-studio decode/extract runner drives the REAL kaifuu extract seam", 
   it("propagates a non-zero kaifuu extract failure as a KaifuuExtractError", async () => {
     const runner = createDecodeExtractRunner({
       runExtract: (args) =>
-        runKaifuuRealliveExtract({
+        runKaifuuExtract({
           ...args,
           env: {},
           runProcess: (): KaifuuProcessResult => ({
@@ -128,6 +129,35 @@ describe("in-studio decode/extract runner drives the REAL kaifuu extract seam", 
     await expect(
       runner.runDecodeExtract({ ...IDENTITY, gameRoot: "/games/sweetie", scene: 1 }),
     ).rejects.toBeInstanceOf(KaifuuExtractError);
+  });
+
+  it("softpal: drives the REAL extract seam with --engine softpal (whole-game)", async () => {
+    const capture: { argv?: string[] } = {};
+    const runner = createDecodeExtractRunner({ runExtract: realSeamWithFakeSpawn(capture) });
+
+    const outcome = await runner.runDecodeExtract({
+      ...IDENTITY,
+      engine: "softpal",
+      gameRoot: "/games/softpal-title",
+    });
+
+    const argv = capture.argv!;
+    const extractIndex = argv.indexOf("extract");
+    const bundleOutput = argv[argv.indexOf("--bundle-output") + 1]!;
+    expect(argv.slice(extractIndex)).toEqual(
+      buildExtractArgs({
+        ...IDENTITY,
+        engine: "softpal",
+        gameRoot: "/games/softpal-title",
+        bundleOutputPath: bundleOutput,
+      }),
+    );
+    expect(argv).toContain("softpal");
+    expect(argv).not.toContain("--scene");
+    expect(argv).not.toContain("--whole-seen");
+    expect(outcome.mode).toBe("whole-game");
+    expect(outcome.bridge.schemaVersion).toBe("0.2.0");
+    expect(outcome.command).toContain("--engine softpal");
   });
 });
 
@@ -176,6 +206,22 @@ describe("parseProjectDecodeExtractRequest (wire contract)", () => {
     expect(() =>
       parseProjectDecodeExtractRequest({ ...IDENTITY, gameRoot: "/g", scene: 70_000 }),
     ).toThrow(/u16/u);
+  });
+
+  it("accepts softpal whole-game (no scene / wholeSeen)", () => {
+    const request = { ...IDENTITY, engine: "softpal" as const, gameRoot: "/games/softpal" };
+    expect(parseProjectDecodeExtractRequest(request)).toEqual(request);
+  });
+
+  it("rejects softpal with RealLive mode flags", () => {
+    expect(() =>
+      parseProjectDecodeExtractRequest({
+        ...IDENTITY,
+        engine: "softpal",
+        gameRoot: "/g",
+        wholeSeen: true,
+      }),
+    ).toThrow(/whole-game only/u);
   });
 });
 

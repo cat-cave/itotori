@@ -711,6 +711,50 @@
       "limitations": [
         "helper: no key/helper handling is claimed"
       ]
+    },
+    {
+      "rowId": "softpal-pac-detector-readiness",
+      "engineFamily": "softpal",
+      "scenario": "detector-profile-readiness",
+      "adapterId": "kaifuu.softpal",
+      "evidencePosture": "readiness_only",
+      "levels": {
+        "identify": {
+          "status": "supported",
+          "derivedFrom": "reallive-detector-capabilities#capability:detection"
+        },
+        "inventory": {
+          "status": "unsupported",
+          "derivedFrom": "reallive-detector-capabilities#capability:asset_inventory+asset_listing"
+        },
+        "extract": {
+          "status": "unsupported",
+          "derivedFrom": "reallive-detector-capabilities#capability:extraction"
+        },
+        "patch": {
+          "status": "unsupported",
+          "derivedFrom": "reallive-detector-capabilities#capability:patching+patch_back"
+        },
+        "helper": {
+          "status": "unsupported",
+          "derivedFrom": "reallive-detector-capabilities#capability:key_profile",
+          "note": "no key/helper handling is claimed"
+        },
+        "runtime": {
+          "status": "unsupported",
+          "derivedFrom": "reallive-detector-capabilities#capability:runtime_vm"
+        }
+      },
+      "evidence": [
+        {
+          "sourceId": "reallive-detector-capabilities",
+          "category": "claimed_support_tuples",
+          "kind": "adapter_registry"
+        }
+      ],
+      "limitations": [
+        "helper: no key/helper handling is claimed"
+      ]
     }
   ],
   "exclusions": [
@@ -761,6 +805,7 @@
     "[bgi-ethornell-container-readiness] helper: an encrypted/keyed surface is detected but no key or helper handling is claimed",
     "[bgi-ethornell-container-readiness] runtime: no runtime evidence is claimed",
     "[reallive-seen-txt-detector-readiness] helper: no key/helper handling is claimed",
+    "[softpal-pac-detector-readiness] helper: no key/helper handling is claimed",
     "[exclusion:renpy] Ren'Py is not an alpha Japanese-localization opportunity driver: it is over-represented in catalog data by Western/English doujin output and already has high existing translation coverage. Per docs/research/japanese-engine-opportunity-analysis.md it is the easy, already-done reference engine, not a greenfield Japanese driver. It surfaces only as a packed-input detector row and is excluded from the capability breadth.",
     "[exclusion:unknown] The unknown-archive-variant row is a non-engine triage bucket, not an engine family, and carries no capability claim."
   ]

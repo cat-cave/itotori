@@ -38,7 +38,13 @@ import { runQueueHealthCli, type QueueHealthCliPort } from "./queue/cli.js";
 import type { ItotoriProjectWorkflowPort, ProjectState } from "./services/project-workflow.js";
 import { assertOpenRouterZdrAccount } from "./zdr-admission/account-zdr.js";
 import { loadExternalEnvFile } from "./env/external-env-file.js";
-import { runKaifuuRealliveExtract } from "./extract/kaifuu-extract-seam.js";
+import {
+  isKaifuuExtractEngine,
+  KAIFUU_EXTRACT_ENGINES,
+  KAIFUU_EXTRACT_MODE_POLICY,
+  runKaifuuExtract,
+  type KaifuuExtractEngine,
+} from "./extract/kaifuu-extract-seam.js";
 import { scanCatalogLocalRoot } from "./services/catalog-local-scan.js";
 import {
   runUtsushiStructureExport,
@@ -529,12 +535,13 @@ async function runLocalize(args: string[], dependencies: ItotoriCliDependencies)
 
 /**
  * itotori-cli-extract-command (P1, user-shaped CLI) — the user-shaped bridge
- * producer. Wraps `kaifuu-cli extract --engine reallive` so a user/agent
+ * producer. Wraps `kaifuu-cli extract --engine <engine>` so a user/agent
  * produces the v0.2 BridgeBundle `itotori localize` consumes WITHOUT knowing
- * about the Rust binary. Both RealLive modes are wired:
+ * about the Rust binary. Engine is parametric (RealLive + Softpal today):
  *
- *   * per-scene:  `itotori extract --scene <N> ...`
- *   * whole-game: `itotori extract --whole-seen ...`
+ *   * RealLive per-scene:  `itotori extract --engine reallive --scene <N> ...`
+ *   * RealLive whole-game: `itotori extract --engine reallive --whole-seen ...`
+ *   * Softpal whole-game:  `itotori extract --engine softpal ...`
  *
  * Flags mirror kaifuu-cli extract (MIRROR the invocation shape). Sourcing is
  * `--vault-canonical-id <ID>` (by-id) OR `--game-root <PATH>` (raw-path helper;
@@ -548,34 +555,39 @@ async function runExtract(args: string[], dependencies: ItotoriCliDependencies):
   // `dependencies` is intentionally unused here.
   void dependencies;
   const engineRaw = optionalFlag(args, "--engine") ?? "reallive";
-  if (engineRaw !== "reallive") {
+  if (!isKaifuuExtractEngine(engineRaw)) {
     throw new Error(
-      `extract refused: --engine '${engineRaw}' is not supported (only 'reallive' is wired)`,
+      `extract refused: --engine '${engineRaw}' is not supported (wired: ${KAIFUU_EXTRACT_ENGINES.join(", ")})`,
     );
   }
+  const engine: KaifuuExtractEngine = engineRaw;
+  const modePolicy = KAIFUU_EXTRACT_MODE_POLICY[engine];
   const wholeSeen = args.includes("--whole-seen");
   const sceneTokenPresent = args.includes("--scene");
   const sceneRaw = optionalFlag(args, "--scene");
   // Resolve the extract mode at the CLI dispatch layer (BEFORE delegating to
   // the seam) so a user-shaped `itotori extract ...` gets a clear, immediate
-  // error. Without this, `--scene --whole-seen` would let `optionalFlag`
-  // swallow `--whole-seen` as the scene value and trip a confusing u16 error
-  // deep in the seam, and a missing mode would only surface at the spawn
-  // boundary. Token presence is tracked separately from the value so an
-  // empty `--scene` is reported as a missing value, not as "no mode given".
-  if (wholeSeen && sceneTokenPresent) {
+  // error. Mode policy is engine-parametric: RealLive requires scene XOR
+  // whole-seen; whole-game engines (Softpal) refuse those flags.
+  if (modePolicy === "scene-or-whole-seen") {
+    if (wholeSeen && sceneTokenPresent) {
+      throw new Error(
+        "extract refused: --whole-seen and --scene are mutually exclusive (choose one extract mode)",
+      );
+    }
+    if (sceneTokenPresent && (sceneRaw === undefined || sceneRaw.startsWith("--"))) {
+      throw new Error(
+        "extract refused: --scene requires a numeric value (0..65535, e.g. --scene 6010)",
+      );
+    }
+    if (!wholeSeen && !sceneTokenPresent) {
+      throw new Error(
+        "extract refused: provide --scene <N> (per-scene) or --whole-seen (whole-game)",
+      );
+    }
+  } else if (wholeSeen || sceneTokenPresent) {
     throw new Error(
-      "extract refused: --whole-seen and --scene are mutually exclusive (choose one extract mode)",
-    );
-  }
-  if (sceneTokenPresent && (sceneRaw === undefined || sceneRaw.startsWith("--"))) {
-    throw new Error(
-      "extract refused: --scene requires a numeric value (0..65535, e.g. --scene 6010)",
-    );
-  }
-  if (!wholeSeen && !sceneTokenPresent) {
-    throw new Error(
-      "extract refused: provide --scene <N> (per-scene) or --whole-seen (whole-game)",
+      `extract refused: --scene / --whole-seen are not valid for engine '${engine}' (whole-game extract is implicit)`,
     );
   }
   const gameRoot = optionalFlag(args, "--game-root");
@@ -587,7 +599,8 @@ async function runExtract(args: string[], dependencies: ItotoriCliDependencies):
   const bundleOutputPath = requiredFlag(args, "--bundle-output");
   const decompileReportOutputPath = optionalFlag(args, "--decompile-report-output");
 
-  const result = runKaifuuRealliveExtract({
+  const result = runKaifuuExtract({
+    engine,
     gameId,
     gameVersion,
     sourceProfileId,
@@ -605,7 +618,7 @@ async function runExtract(args: string[], dependencies: ItotoriCliDependencies):
   process.stdout.write(
     `${JSON.stringify(
       {
-        engine: "reallive",
+        engine: result.engine,
         mode: result.mode,
         bundleOutputPath: result.bundleOutputPath,
         status: result.status,

@@ -7,7 +7,7 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { runKaifuuRealliveExtract } from "../extract/kaifuu-extract-seam.js";
+import { runKaifuuExtract } from "../extract/kaifuu-extract-seam.js";
 import { runUtsushiStructureExport } from "../structure-export/utsushi-structure-seam.js";
 import { parseStrictJson } from "./json.js";
 import {
@@ -181,7 +181,8 @@ export function deriveCorpusEvidence(
 
     try {
       const identity = manifest.corpus;
-      runKaifuuRealliveExtract({
+      runKaifuuExtract({
+        engine: "reallive",
         gameRoot: corpus.gameRoot,
         gameId: identity.gameId,
         gameVersion: identity.gameVersion,
@@ -192,7 +193,8 @@ export function deriveCorpusEvidence(
         decompileReportOutputPath: fullReportPath,
         env: nativeEnv,
       });
-      runKaifuuRealliveExtract({
+      runKaifuuExtract({
+        engine: "reallive",
         gameRoot: corpus.gameRoot,
         gameId: identity.gameId,
         gameVersion: identity.gameVersion,

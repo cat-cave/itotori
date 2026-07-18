@@ -5,7 +5,8 @@
 //   1. FAST (no kaifuu-cli, no real bytes) — the invocation shape mirrors the
 //      suite runner's Phase 1 (`kaifuu extract --engine reallive --game-root
 //      ... --game-id ... --scene <N> --bundle-output ...`) for BOTH per-scene
-//      AND --whole-seen, plus the validation / failure paths. A faked
+//      AND --whole-seen, plus Softpal whole-game (`--engine softpal`) through
+//      the SAME parametric seam, plus the validation / failure paths. A faked
 //      `runProcess` captures the argv so CI touches NO real bytes.
 //   2. Native-output redaction — a simulated protected-span drift cannot put
 //      source dialogue in an error. The generic corpus-manifest suite owns the
@@ -16,7 +17,7 @@ import {
   KaifuuExtractError,
   KAIFUU_NATIVE_OUTPUT_REDACTED,
   REALLIVE_SCENE_ID_MAX,
-  runKaifuuRealliveExtract,
+  runKaifuuExtract,
   type KaifuuProcessResult,
 } from "../src/extract/kaifuu-extract-seam.js";
 
@@ -73,12 +74,40 @@ describe("buildExtractArgs (argv shape)", () => {
     expect(a[a.indexOf("--vault-canonical-id") + 1]).toBe("vault-id");
     expect(a[a.indexOf("--decompile-report-output") + 1]).toBe("/run/decompile.json");
   });
+
+  it("softpal whole-game: dispatches --engine softpal without RealLive mode flags", () => {
+    const a = buildExtractArgs({
+      ...IDENTITY,
+      engine: "softpal",
+      gameRoot: "/games/softpal-title",
+      bundleOutputPath: "/run/softpal-bridge.json",
+    });
+    expect(a).toEqual([
+      "extract",
+      "--engine",
+      "softpal",
+      "--game-root",
+      "/games/softpal-title",
+      "--game-id",
+      "sample-game",
+      "--game-version",
+      "1.0",
+      "--source-profile-id",
+      "profile-1",
+      "--source-locale",
+      "ja-JP",
+      "--bundle-output",
+      "/run/softpal-bridge.json",
+    ]);
+    expect(a).not.toContain("--scene");
+    expect(a).not.toContain("--whole-seen");
+  });
 });
 
-describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", () => {
+describe("runKaifuuExtract (invocation shape mirrors run.mjs Phase 1)", () => {
   it("per-scene: invokes kaifuu-cli extract with the right args + reports status 0", () => {
     let captured: { command: string; args: string[] } | undefined;
-    const res = runKaifuuRealliveExtract({
+    const res = runKaifuuExtract({
       ...IDENTITY,
       gameRoot: "/games/sample-game",
       scene: 6010,
@@ -122,7 +151,7 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
 
   it("whole-seen: invokes with --whole-seen and reports mode=whole-seen", () => {
     let captured: string[] | undefined;
-    const res = runKaifuuRealliveExtract({
+    const res = runKaifuuExtract({
       ...IDENTITY,
       gameRoot: "/games/sample-game",
       wholeSeen: true,
@@ -140,7 +169,7 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
 
   it("resolves --vault-canonical-id sourcing (by-id) without --game-root", () => {
     let captured: string[] | undefined;
-    runKaifuuRealliveExtract({
+    runKaifuuExtract({
       ...IDENTITY,
       vaultCanonicalId: "vault-id",
       scene: 1,
@@ -157,7 +186,7 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
 
   it("falls back to the ITOTORI_REAL_GAME_ROOT env when no sourcing flag is given", () => {
     let spawned = false;
-    runKaifuuRealliveExtract({
+    runKaifuuExtract({
       ...IDENTITY,
       scene: 1,
       bundleOutputPath: "/run/bridge.json",
@@ -176,7 +205,7 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
     const sourceDialogue = "PRIVATE-SOURCE-DIALOGUE-SENTINEL-4e0d4cb3";
     let caught: KaifuuExtractError | undefined;
     try {
-      runKaifuuRealliveExtract({
+      runKaifuuExtract({
         ...IDENTITY,
         gameRoot: "/games/sample-game",
         scene: 1,
@@ -202,7 +231,7 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
 
   it("refuses --whole-seen together with --scene (mutually exclusive)", () => {
     expect(() =>
-      runKaifuuRealliveExtract({
+      runKaifuuExtract({
         ...IDENTITY,
         gameRoot: "/games/sample-game",
         wholeSeen: true,
@@ -216,7 +245,7 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
 
   it("refuses when neither --scene nor --whole-seen is given", () => {
     expect(() =>
-      runKaifuuRealliveExtract({
+      runKaifuuExtract({
         ...IDENTITY,
         gameRoot: "/games/sample-game",
         bundleOutputPath: "/run/bridge.json",
@@ -228,7 +257,7 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
 
   it("refuses an out-of-range scene id", () => {
     expect(() =>
-      runKaifuuRealliveExtract({
+      runKaifuuExtract({
         ...IDENTITY,
         gameRoot: "/games/sample-game",
         scene: REALLIVE_SCENE_ID_MAX + 1,
@@ -241,7 +270,7 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
 
   it("refuses when no sourcing route is resolvable", () => {
     expect(() =>
-      runKaifuuRealliveExtract({
+      runKaifuuExtract({
         ...IDENTITY,
         scene: 1,
         bundleOutputPath: "/run/bridge.json",
@@ -253,7 +282,7 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
 
   it("logs the resolved invocation through the log seam", () => {
     const lines: string[] = [];
-    runKaifuuRealliveExtract({
+    runKaifuuExtract({
       ...IDENTITY,
       gameRoot: "/games/sample-game",
       scene: 7,
@@ -267,5 +296,70 @@ describe("runKaifuuRealliveExtract (invocation shape mirrors run.mjs Phase 1)", 
     expect(
       lines.some((line) => line.startsWith("kaifuu-extract:") && line.includes("--scene 7")),
     ).toBe(true);
+  });
+
+  it("softpal: dispatches the REAL seam with --engine softpal (not a mock path)", () => {
+    let captured: string[] | undefined;
+    const res = runKaifuuExtract({
+      ...IDENTITY,
+      engine: "softpal",
+      gameRoot: "/games/softpal-title",
+      bundleOutputPath: "/run/softpal-bridge.json",
+      env: {},
+      runProcess: (_command, args): KaifuuProcessResult => {
+        captured = args;
+        return { status: 0, stdout: "ok", stderr: "" };
+      },
+    });
+    expect(res.status).toBe(0);
+    expect(res.engine).toBe("softpal");
+    expect(res.mode).toBe("whole-game");
+    expect(res.bundleOutputPath).toBe("/run/softpal-bridge.json");
+    const extractIdx = captured!.indexOf("extract");
+    expect(captured!.slice(extractIdx)).toEqual([
+      "extract",
+      "--engine",
+      "softpal",
+      "--game-root",
+      "/games/softpal-title",
+      "--game-id",
+      "sample-game",
+      "--game-version",
+      "1.0",
+      "--source-profile-id",
+      "profile-1",
+      "--source-locale",
+      "ja-JP",
+      "--bundle-output",
+      "/run/softpal-bridge.json",
+    ]);
+  });
+
+  it("softpal: refuses RealLive --scene (whole-game only)", () => {
+    expect(() =>
+      runKaifuuExtract({
+        ...IDENTITY,
+        engine: "softpal",
+        gameRoot: "/games/softpal-title",
+        scene: 1,
+        bundleOutputPath: "/run/bridge.json",
+        env: {},
+        runProcess: () => ({ status: 0, stdout: "", stderr: "" }),
+      }),
+    ).toThrow(/whole-game extract only/u);
+  });
+
+  it("softpal: refuses RealLive --whole-seen (whole-game is implicit)", () => {
+    expect(() =>
+      runKaifuuExtract({
+        ...IDENTITY,
+        engine: "softpal",
+        gameRoot: "/games/softpal-title",
+        wholeSeen: true,
+        bundleOutputPath: "/run/bridge.json",
+        env: {},
+        runProcess: () => ({ status: 0, stdout: "", stderr: "" }),
+      }),
+    ).toThrow(/whole-game extract is implicit/u);
   });
 });

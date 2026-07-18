@@ -23,6 +23,7 @@
 | wolf-rpg-editor-encrypted-archive-smoke | wolf_rpg_editor | readiness_only | yes | no | no | no | partial | no |
 | bgi-ethornell-container-readiness | bgi_ethornell | readiness_only | yes | no | no | no | no | no |
 | reallive-seen-txt-detector-readiness | reallive | readiness_only | yes | yes | no | no | no | no |
+| softpal-pac-detector-readiness | softpal | readiness_only | yes | no | no | no | no | no |
 
 ## Posture legend
 
@@ -82,5 +83,6 @@
 - [bgi-ethornell-container-readiness] helper: an encrypted/keyed surface is detected but no key or helper handling is claimed
 - [bgi-ethornell-container-readiness] runtime: no runtime evidence is claimed
 - [reallive-seen-txt-detector-readiness] helper: no key/helper handling is claimed
+- [softpal-pac-detector-readiness] helper: no key/helper handling is claimed
 - [exclusion:renpy] Ren'Py is not an alpha Japanese-localization opportunity driver: it is over-represented in catalog data by Western/English doujin output and already has high existing translation coverage. Per docs/research/japanese-engine-opportunity-analysis.md it is the easy, already-done reference engine, not a greenfield Japanese driver. It surfaces only as a packed-input detector row and is excluded from the capability breadth.
 - [exclusion:unknown] The unknown-archive-variant row is a non-engine triage bucket, not an engine family, and carries no capability claim.

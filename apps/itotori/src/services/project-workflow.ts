@@ -1,4 +1,5 @@
 import type { ItotoriProjectRecord } from "@itotori/db";
+import type { KaifuuExtractEngine } from "../extract/kaifuu-extract-seam.js";
 
 /** Retained file-shape for ingestion commands while the production workflow is
  * supplied exclusively through the new composition ports. */
@@ -14,6 +15,11 @@ export type DecodeExtractInput = {
   gameVersion: string;
   sourceProfileId: string;
   sourceLocale: string;
+  /**
+   * kaifuu-cli extract engine (`reallive` | `softpal` | …). Defaults to
+   * RealLive when omitted so existing Studio callers stay shape-compatible.
+   */
+  engine?: KaifuuExtractEngine;
   scene?: number;
   wholeSeen?: boolean;
   gameRoot?: string;

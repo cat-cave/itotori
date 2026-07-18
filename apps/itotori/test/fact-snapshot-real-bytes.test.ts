@@ -18,7 +18,7 @@ import { dirname, join } from "node:path";
 import type { BridgeBundleV02, SpeakerContextV02 } from "@itotori/localization-bridge-schema";
 import { describe, expect, it, vi } from "vitest";
 
-import { runKaifuuRealliveExtract } from "../src/extract/kaifuu-extract-seam.js";
+import { runKaifuuExtract } from "../src/extract/kaifuu-extract-seam.js";
 import {
   buildFactSnapshot,
   serializeFactSnapshot,
@@ -86,7 +86,7 @@ describe("buildFactSnapshot (env-gated real Sweetie byte oracle)", () => {
       const structurePath = join(workDir, "structure.json");
 
       // (1) real bridge over the whole Seen.txt.
-      const extract = runKaifuuRealliveExtract({
+      const extract = runKaifuuExtract({
         gameRoot: corpus!.gameRoot,
         gameId: "reallive-corpus",
         gameVersion: "real",

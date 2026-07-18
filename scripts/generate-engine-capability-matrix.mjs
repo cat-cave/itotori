@@ -418,6 +418,23 @@ function buildRealliveReadinessRow(inputs) {
   });
 }
 
+function buildSoftpalReadinessRow(inputs) {
+  const capabilitiesDoc = requireInput(inputs, "reallive-detector-capabilities");
+  const reports = adapterReports(capabilitiesDoc, "kaifuu.softpal");
+  const levels = levelsFromCapabilities(reports, {
+    sourceId: "reallive-detector-capabilities",
+  });
+  return makeRow({
+    rowId: "softpal-pac-detector-readiness",
+    engineFamily: "softpal",
+    scenario: "detector-profile-readiness",
+    adapterId: "kaifuu.softpal",
+    levels,
+    sourceKind: "claimed_support_tuples",
+    evidenceSourceIds: ["reallive-detector-capabilities"],
+  });
+}
+
 function buildXp3Row(inputs, sourceId, scenario) {
   const profile = requireInput(inputs, sourceId);
   const variant = (profile.archiveParameters ?? []).find((p) => p.kind === "variant")?.value;
@@ -735,6 +752,7 @@ export function generateEngineCapabilityMatrix(inputs) {
       scenario: "detector-profile-readiness",
     }),
     buildRealliveReadinessRow(inputs),
+    buildSoftpalReadinessRow(inputs),
   ];
 
   assertNoExcludedRows(rows);
