@@ -52,7 +52,7 @@ const A4_CONTEXT: A4Context = {
  * final story-so-far object exists for A4 to adopt as the spine. */
 function a3Recorded(): A3ModelCaller {
   return async (request) => {
-    const anchor = request.scene.units[0]!.factId;
+    const anchor = String(request.scene.units[0]!.value.playOrderIndex);
     const narrative: A3SceneNarrative = {
       beat: "けいこは決断する。",
       subtext: "静かな決意。",
