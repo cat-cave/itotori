@@ -553,6 +553,10 @@ export const migrations = [
     id: "0107_runtime_artifact_uri_parity",
     file: "0107_runtime_artifact_uri_parity.sql",
   },
+  {
+    id: "0108_llm_explicit_unknown_quarantine",
+    file: "0108_llm_explicit_unknown_quarantine.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

@@ -73,20 +73,10 @@ drop trigger if exists itotori_llm_accepted_output_quarantine
   on itotori_llm_accepted_outputs;
 drop function if exists itotori_llm_require_verified_output_memos();
 
-do $$
-begin
-  if exists (
-    select 1
-    from itotori_llm_accepted_outputs output
-    cross join lateral unnest(output.memo_keys) required(memo_key)
-    left join itotori_llm_call_memos memo on memo.memo_key = required.memo_key
-    where memo.verification_status not in ('verified', 'explicit-unknown')
-      or memo.deletion_state is distinct from 'active'
-  ) then
-    raise exception 'accepted output contains a quarantined or missing memo';
-  end if;
-end;
-$$;
+-- Existing accepted outputs are immutable historical records, including records
+-- whose memo content was subsequently quarantined or deleted. Do not reject an
+-- upgrade for those rows; the trigger below enforces the projection boundary on
+-- every new accepted output.
 
 create function itotori_llm_require_projectable_output_memos()
 returns trigger
