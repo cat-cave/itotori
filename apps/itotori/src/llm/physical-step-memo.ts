@@ -18,7 +18,6 @@ import {
   memoizedPhysicalAttempt,
   type PhysicalAttemptControl,
   type PhysicalAttemptRuntime,
-  type TransportObservation,
   type TransportObserver,
 } from "./physical-attempt-policy.js";
 import {
@@ -26,19 +25,13 @@ import {
   completedStructuredStep,
   type PhysicalStepIdentity,
 } from "./physical-step-completion.js";
-import {
-  reconcileGenerationMetadata,
-  unknownGenerationMetadataSource,
-  type GenerationMetadataSource,
-  type ObservedGenerationHeaders,
-} from "./generation-metadata.js";
+import { captureGenerationMetadata } from "./generation-metadata.js";
 
 const TANSTACK_VERSION = "0.40.0";
 const OPENROUTER_ADAPTER_VERSION = "0.15.8";
 
 export interface PhysicalStepMemoRuntime extends PhysicalAttemptRuntime {
   readonly store: LlmCallMemoStore;
-  readonly generationMetadataSource?: GenerationMetadataSource;
   readonly snapshots: {
     decodeRevisionHash: `sha256:${string}`;
     glossaryRevisionHash: `sha256:${string}`;
@@ -90,7 +83,6 @@ export function memoizePhysicalSteps(
 ): AnyTextAdapter {
   let stepOrdinal = 0;
   let parentResponseEventId: string = spec.parentEventId;
-  const metadataSource = runtime.generationMetadataSource ?? unknownGenerationMetadataSource;
 
   const nextIdentity = (boundary: Boundary, request: PhysicalRequest): PhysicalStepIdentity => {
     const identity = deriveStepIdentity(spec, runtime, boundary, stepOrdinal, request);
@@ -125,19 +117,11 @@ export function memoizePhysicalSteps(
             await collectStreamChunks(outbound(control.signal), control, chunks);
             const runError = chunks.findLast((chunk) => chunk.type === EventType.RUN_ERROR);
             const failure = runError ? control.failure(runError) : null;
-            if (runError && failure) return incompleteStep(chunks, failure, metadataSource);
-            return completedStreamStep(
-              spec,
-              identity,
-              chunks,
-              attempt,
-              parentResponseEventId,
-              metadataSource,
-              observedHeaders(observer.take(), spec.requestedModel),
-            );
+            if (runError && failure) return incompleteStep(chunks, failure);
+            return completedStreamStep(spec, identity, chunks, attempt, parentResponseEventId);
           } catch (error: unknown) {
             const failure = control.failure(error) ?? permanentAttemptFailure();
-            return incompleteStep(chunks, failure, metadataSource);
+            return incompleteStep(chunks, failure);
           }
         },
       });
@@ -188,15 +172,7 @@ export function memoizePhysicalSteps(
                 chatOptions: withSignal(options.chatOptions, control.signal),
               }),
             );
-            return completedStructuredStep(
-              spec,
-              identity,
-              result,
-              attempt,
-              parentResponseEventId,
-              metadataSource,
-              observedHeaders(observer.take(), spec.requestedModel),
-            );
+            return completedStructuredStep(spec, identity, result, attempt, parentResponseEventId);
           } catch (error: unknown) {
             const failure = control.failure(error) ?? permanentAttemptFailure();
             return {
@@ -374,18 +350,6 @@ function attemptStatus(
   return kind === "cancelled" ? "cancelled" : "transport-error";
 }
 
-function observedHeaders(
-  observation: TransportObservation | null,
-  requestedModel: string,
-): ObservedGenerationHeaders | undefined {
-  if (observation?.kind !== "response") return undefined;
-  return {
-    requestedModel,
-    ...(observation.generationId === undefined ? {} : { generationId: observation.generationId }),
-    ...(observation.providerName === undefined ? {} : { providerName: observation.providerName }),
-  };
-}
-
 async function collectStreamChunks(
   stream: AsyncIterable<StreamChunk>,
   control: PhysicalAttemptControl,
@@ -405,12 +369,8 @@ async function collectStreamChunks(
   }
 }
 
-async function incompleteStep(
-  chunks: StreamChunk[],
-  failure: LlmAttemptFailure,
-  metadataSource: GenerationMetadataSource,
-) {
-  const metadata = await reconcileGenerationMetadata(chunks, metadataSource);
+async function incompleteStep(chunks: StreamChunk[], failure: LlmAttemptFailure) {
+  const metadata = captureGenerationMetadata(chunks);
   return {
     kind: "incomplete" as const,
     responseJson: canonicalJson(chunks),

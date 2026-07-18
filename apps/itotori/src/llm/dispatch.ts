@@ -414,7 +414,7 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     if (!state.usage.sawUsage) throw new Error("provider response omitted usage");
     const finalStep = memoState.receipts.at(-1);
     if (!finalStep) throw new Error("provider response was not durably memoized");
-    if (memoState.receipts.some((receipt) => receipt.verification.status !== "verified")) {
+    if (memoState.receipts.some((receipt) => receipt.verification.status === "quarantined")) {
       return CallResultSchema.parse({
         schemaVersion: CALL_RESULT_SCHEMA_VERSION,
         memoKey: finalStep.memoKey,
@@ -434,10 +434,10 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
       });
     }
     const verification = finalStep.verification;
-    if (verification.status !== "verified") {
-      throw new Error("verified receipt narrowing failed");
+    if (verification.status === "quarantined") {
+      throw new Error("quarantined receipt passed the projection guard");
     }
-    if (finalStep.usage === null) throw new Error("verified response omitted usage");
+    if (finalStep.usage === null) throw new Error("accepted response omitted usage");
     const result = {
       schemaVersion: CALL_RESULT_SCHEMA_VERSION,
       memoKey: finalStep.memoKey,
@@ -448,7 +448,7 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
       responseEventId: finalStep.responseEventId,
       served: verification.served,
       generationId: verification.generationId,
-      verification: "verified",
+      verification: verification.status,
       usage: finalStep.usage,
       billing: finalStep.billing,
       events: state.events,

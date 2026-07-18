@@ -224,7 +224,7 @@ export class ItotoriLlmHttpAttemptRepository {
     const usage = attempt.execution.usage;
     const confirmedServedPair =
       attempt.execution.generationId !== null && served.status === "confirmed" ? served : null;
-    const verificationStatus = confirmedServedPair ? "verified" : "quarantined";
+    const verificationStatus = responseVerificationStatus(attempt.execution);
     const write = () =>
       client.query(
         `
@@ -281,6 +281,22 @@ export class ItotoriLlmHttpAttemptRepository {
       throw error;
     }
   }
+}
+
+function responseVerificationStatus(
+  execution: LlmStepExecution,
+): "pending" | "verified" | "explicit-unknown" | "quarantined" {
+  if (execution.kind === "incomplete") return "quarantined";
+  if (
+    execution.outcomeKind === "invalid" ||
+    execution.outcomeKind === "refusal" ||
+    execution.outcomeKind === "truncation"
+  ) {
+    return "quarantined";
+  }
+  return execution.generationId !== null && execution.served.status === "confirmed"
+    ? "verified"
+    : "explicit-unknown";
 }
 
 type ExposureRow = {

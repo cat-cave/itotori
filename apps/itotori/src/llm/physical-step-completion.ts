@@ -12,6 +12,7 @@ import {
   PhysicalStepMemoSchema,
   type CallSpec,
   type EncryptedPayloadRef,
+  type PhysicalStepMemo,
   type PhysicalStepMemoKey,
 } from "../contracts/index.js";
 import { canonicalJson, sha256 } from "./canonical-json.js";
@@ -22,12 +23,7 @@ import {
   usageFromChunks,
   type PhysicalStepMemoOutcome,
 } from "./physical-step-outcome.js";
-import {
-  reconcileGenerationMetadata,
-  type GenerationMetadataSource,
-  type GenerationReconciliation,
-  type ObservedGenerationHeaders,
-} from "./generation-metadata.js";
+import { captureGenerationMetadata, type GenerationMetadata } from "./generation-metadata.js";
 import { terminalOutputSchema } from "./terminal-output.js";
 
 type StructuredOutputResult = Awaited<ReturnType<AnyTextAdapter["structuredOutput"]>>;
@@ -44,11 +40,9 @@ export async function completedStreamStep(
   chunks: readonly StreamChunk[],
   attempt: LlmStepAttemptContext,
   parentResponseEventId: string,
-  metadataSource: GenerationMetadataSource,
-  observedHeaders?: ObservedGenerationHeaders,
 ): Promise<CompletedLlmStep> {
   const responseJson = canonicalJson(chunks);
-  const metadata = await reconcileGenerationMetadata(chunks, metadataSource, observedHeaders);
+  const metadata = captureGenerationMetadata(chunks);
   return completedStep(
     spec,
     identity,
@@ -68,8 +62,6 @@ export async function completedStructuredStep(
   result: StructuredOutputResult,
   attempt: LlmStepAttemptContext,
   parentResponseEventId: string,
-  metadataSource: GenerationMetadataSource,
-  observedHeaders?: ObservedGenerationHeaders,
 ): Promise<CompletedLlmStep> {
   const responseJson = canonicalJson(result);
   const parsed = terminalOutputSchema(spec.output).safeParse(result.data);
@@ -79,7 +71,10 @@ export async function completedStructuredStep(
         "schema-failure",
         parsed.error.issues.map((issue) => issue.message),
       );
-  const metadata = await reconcileGenerationMetadata([], metadataSource, observedHeaders);
+  // TanStack's structured-output result currently exposes no authoritative
+  // RUN_FINISHED metadata. It is a successful, explicitly-unknown response
+  // when its content validates; reconciliation stays gated off upstream.
+  const metadata = captureGenerationMetadata([]);
   const usageBilling = billingFromUsage(result.usage);
   return completedStep(
     spec,
@@ -109,7 +104,7 @@ function completedStep(
   attempt: LlmStepAttemptContext,
   parentResponseEventId: string,
   completedAt: string,
-  metadata: GenerationReconciliation,
+  metadata: GenerationMetadata,
 ): CompletedLlmStep {
   const responseEventBody = {
     kind: "physical-model-response",
@@ -145,19 +140,7 @@ function completedStep(
       requestEncrypted: memoEncryptedRef(identity.key.memoKey, "request", identity.requestJson),
       responseEncrypted: identity.responseRef(responseJson),
       outcome,
-      verification:
-        metadata.generationId !== null && metadata.served.status === "confirmed"
-          ? {
-              status: "verified",
-              generationId: metadata.generationId,
-              served: metadata.served,
-            }
-          : {
-              status: "quarantined",
-              generationId: metadata.generationId,
-              served: metadata.served,
-              reason: "generation ID and schema-valid served route were not both present",
-            },
+      verification: verificationForOutcome(outcome, metadata),
       requestedModel: spec.requestedModel,
       providerPolicy: spec.providerPolicy,
       routerAttempts: metadata.routerAttempts.map((routerAttempt) => ({
@@ -195,6 +178,32 @@ function completedStep(
       actorRole: spec.roleId,
       bodyJson: canonicalJson(responseEventBody),
     },
+  };
+}
+
+function verificationForOutcome(
+  outcome: PhysicalStepMemoOutcome,
+  metadata: GenerationMetadata,
+): PhysicalStepMemo["value"]["verification"] {
+  if (outcome.kind === "invalid" || outcome.kind === "refusal" || outcome.kind === "truncation") {
+    return {
+      status: "quarantined",
+      generationId: metadata.generationId,
+      served: metadata.served,
+      reason: `response ${outcome.kind} cannot enter accepted projection`,
+    };
+  }
+  if (metadata.generationId !== null && metadata.served.status === "confirmed") {
+    return {
+      status: "verified",
+      generationId: metadata.generationId,
+      served: metadata.served,
+    };
+  }
+  return {
+    status: "explicit-unknown",
+    generationId: metadata.generationId,
+    served: metadata.served,
   };
 }
 

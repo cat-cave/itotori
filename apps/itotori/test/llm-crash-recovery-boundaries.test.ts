@@ -227,10 +227,10 @@ postgresDescribe("substrate crash recovery at every physical call boundary", () 
     const prompt = "Return a verdict.";
     const spec = physicalCallSpec(prompt);
     try {
-      // Draft the unit and durably memoize its verified response.
+      // Draft the unit and durably memoize its explicit-unknown response.
       const draft = dispatchHarness({ pool: ctx.pool, cipher, prompt, responses: [verdict()] });
       const draftResult = await dispatch(spec, draft.runtime);
-      expect(draftResult).toMatchObject({ status: "success", verification: "verified" });
+      expect(draftResult).toMatchObject({ status: "success", verification: "explicit-unknown" });
 
       // Accept the unit output and advance its CAS head. This is the immutable checkpoint.
       const accepted = new ItotoriLlmAcceptedOutputRepository(ctx.pool, cipher);

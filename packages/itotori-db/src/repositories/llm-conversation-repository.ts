@@ -376,9 +376,7 @@ export class ItotoriLlmConversationRepository {
             select 1
             from unnest(output.memo_keys) required(memo_key)
             left join itotori_llm_call_memos memo on memo.memo_key = required.memo_key
-            where memo.verification_status is distinct from 'verified'
-              or memo.generation_id is null
-              or memo.served_pair_status is distinct from 'confirmed'
+            where memo.verification_status not in ('verified', 'explicit-unknown')
               or memo.deletion_state is distinct from 'active'
           )
         union all

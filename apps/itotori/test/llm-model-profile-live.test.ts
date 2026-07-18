@@ -44,7 +44,7 @@ const liveEnabled =
       JSON.stringify(reviewVerdictExample),
     ].join("\n");
     let toolExecutionCount = 0;
-    let generationLookupAttempts = 0;
+    const generationLookupAttempts = 0;
     let reasoning: ReasoningDetailsContinuityEvidence | null = null;
     let providerError: ProviderErrorObservation | null = null;
     try {
@@ -74,19 +74,6 @@ const liveEnabled =
           admission: {
             scope: "probe:model-profile:deepseek-v4-flash",
             confirmedCostCapUsd: "1",
-          },
-          generationMetadataSource: {
-            async lookup() {
-              generationLookupAttempts += 1;
-              return {
-                generationId: null,
-                served: { status: "unknown" },
-                routerAttempts: [],
-                usage: null,
-                billing: { status: "billing_unknown" },
-                reportedCostUsd: null,
-              };
-            },
           },
           snapshots: {
             decodeRevisionHash: STEP_HASH_A,

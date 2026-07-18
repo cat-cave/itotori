@@ -38,8 +38,6 @@ export type TransportObservation =
       kind: "response";
       httpStatus: number;
       retryAfterMs: number | null;
-      generationId?: string | null;
-      providerName?: string | null;
     }
   | { kind: "transport-error" };
 
@@ -89,9 +87,6 @@ export function createTransportObserver(
           kind: "response",
           httpStatus: response.status,
           retryAfterMs: parseRetryAfter(response.headers.get("retry-after")),
-          // Interim workaround pending TanStack/ai #941 exposing these on RUN_FINISHED.
-          generationId: nonEmptyHeader(response.headers.get("x-generation-id")),
-          providerName: nonEmptyHeader(response.headers.get("x-provider-name")),
         };
         return response;
       } catch (error: unknown) {
@@ -297,11 +292,6 @@ function parseRetryAfter(value: string | null): number | null {
   if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1_000);
   const date = Date.parse(value);
   return Number.isFinite(date) ? Math.max(0, date - Date.now()) : null;
-}
-
-function nonEmptyHeader(value: string | null): string | null {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
 }
 
 function assertProfile(spec: CallSpec, profile: MeasuredModelProfile): void {

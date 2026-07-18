@@ -289,14 +289,35 @@ export const CallResultSchema = z.union([
       status: z.literal("success"),
       value: TerminalOutputSchema,
       responseEventId: Sha256Schema,
-      served: ConfirmedServedPairSchema,
-      generationId: IdentifierSchema,
-      verification: z.literal("verified"),
+      served: ServedPairSchema,
+      generationId: IdentifierSchema.nullable(),
+      verification: z.enum(["verified", "explicit-unknown"]),
       usage: TokenUsageSchema,
       billing: BillingSchema,
       events: DispatchEventsSchema,
     })
-    .strict(),
+    .strict()
+    .superRefine((value, context) => {
+      if (
+        value.verification === "verified" &&
+        (value.generationId === null || value.served.status !== "confirmed")
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "verified success requires a generation ID and confirmed served route",
+        });
+      }
+      if (
+        value.verification === "explicit-unknown" &&
+        value.generationId !== null &&
+        value.served.status === "confirmed"
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "complete served metadata must be marked verified",
+        });
+      }
+    }),
   z
     .object({
       ...CallResultBaseShape,
@@ -322,7 +343,7 @@ export const CallResultSchema = z.union([
       responseEncrypted: EncryptedPayloadRefSchema.nullable(),
       served: ServedPairSchema,
       generationId: IdentifierSchema.nullable(),
-      verification: z.enum(["unverified", "quarantined", "verified"]),
+      verification: z.enum(["unverified", "quarantined", "explicit-unknown", "verified"]),
       usage: TokenUsageSchema.nullable(),
       billing: BillingSchema,
       defects: z.array(ValidationDefectSchema).max(256),
@@ -437,6 +458,17 @@ const ResponseVerificationSchema = z.discriminatedUnion("status", [
       served: ConfirmedServedPairSchema,
     })
     .strict(),
+  z
+    .object({
+      status: z.literal("explicit-unknown"),
+      generationId: IdentifierSchema.nullable(),
+      served: ServedPairSchema,
+    })
+    .strict()
+    .refine(
+      (value) => value.generationId === null || value.served.status === "unknown",
+      "complete served metadata must be verified",
+    ),
   z
     .object({
       status: z.literal("quarantined"),

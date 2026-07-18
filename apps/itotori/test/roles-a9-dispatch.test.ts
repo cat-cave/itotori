@@ -40,10 +40,7 @@ import {
   unitFactIdAt,
   type FixtureCharacterSpec,
 } from "./support/claim-fixture.js";
-import {
-  confirmedGenerationMetadataSource,
-  structuredProviderResponse,
-} from "./llm-step-test-support.js";
+import { structuredProviderResponse } from "./llm-step-test-support.js";
 
 const A9_PROFILE: MeasuredModelProfile = {
   name: "reasoning",
@@ -124,7 +121,6 @@ function runtime(responses: Response[], onFetch?: () => void): DispatchRuntime {
         scope: "test:roles-a9",
         confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic admission cap for the recorded-transport proof, not a billed cost
       },
-      generationMetadataSource: confirmedGenerationMetadataSource(),
       snapshots: {
         decodeRevisionHash: HASH_A,
         glossaryRevisionHash: HASH_B,

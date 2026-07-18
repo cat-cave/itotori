@@ -12,7 +12,7 @@
 // replacement translation, a target-language object, a note that maps to the
 // wrong unit, or any unprovable claim is a HARD failure — never a silent pass.
 
-import { WikiObjectSchema, type CallSpec } from "../../contracts/index.js";
+import { WikiObjectSchema, type CallResult, type CallSpec } from "../../contracts/index.js";
 import type { ReadModel } from "../../read-tools/index.js";
 import { deepSeekV4FlashProfile, servedModelIsCertified } from "../../llm/role-model-profiles.js";
 import { validateWikiObjectClaims } from "../../wiki/claim-validation.js";
@@ -53,7 +53,7 @@ export interface AdaptationAnalystDeps {
 export interface AdaptationNoteResult {
   readonly note: AdaptationNoteObject;
   readonly spec: CallSpec;
-  readonly served: { readonly model: string; readonly provider: string };
+  readonly served: CallResult["served"];
   readonly evidence: ReturnType<typeof flagEvidence>;
 }
 
@@ -90,9 +90,12 @@ export async function runAdaptationNote(
       `adaptation dispatch did not succeed: ${result.status}/${result.failureKind}`,
     );
   }
-  // The served MODEL must be the certified deepseek-v4-flash; the served PROVIDER
-  // is recorded telemetry, whatever compliant provider the routing chose.
-  if (!servedModelIsCertified(result.served.model, deepSeekV4FlashProfile.model)) {
+  // Unknown served metadata is explicitly accepted while the upstream TanStack
+  // event surface is incomplete. A reported pair must still match the profile.
+  if (
+    result.served.status === "confirmed" &&
+    !servedModelIsCertified(result.served.model, deepSeekV4FlashProfile.model)
+  ) {
     throw new AdaptationAnalystError(
       `adaptation analyst was served ${result.served.model}, not ${deepSeekV4FlashProfile.model}`,
     );
@@ -118,7 +121,7 @@ export async function runAdaptationNote(
   return {
     note,
     spec,
-    served: { model: result.served.model, provider: result.served.provider },
+    served: result.served,
     evidence: flagEvidence(candidate),
   };
 }

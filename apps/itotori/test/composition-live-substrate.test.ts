@@ -17,6 +17,7 @@ import type { EditorRuntimeBase } from "../src/roles/p2/index.js";
 import type { LocalizerRuntimeBase } from "../src/roles/p1/index.js";
 import type { RepairRuntimeBase } from "../src/roles/p3/index.js";
 import { dispatch } from "../src/llm/dispatch.js";
+import { captureGenerationMetadata } from "../src/llm/generation-metadata.js";
 import { resolveRoleModelProfile } from "../src/llm/role-model-profiles.js";
 import { TransientStepError, type UnitStage, type WorkflowScene } from "../src/workflow/index.js";
 import {
@@ -28,11 +29,7 @@ import {
   type AcceptedUnitOutput,
 } from "../src/composition/live/index.js";
 import { reviewVerdictExample } from "./contract-fixtures-core.js";
-import {
-  confirmedGenerationMetadataSource,
-  physicalCallSpec,
-  structuredProviderResponse,
-} from "./llm-step-test-support.js";
+import { physicalCallSpec, structuredProviderResponse } from "./llm-step-test-support.js";
 import type { MeasuredModelProfile } from "../src/llm/physical-attempt-policy.js";
 
 // ── shared offline substrate ─────────────────────────────────────────────────
@@ -41,6 +38,10 @@ const REV_A = `sha256:${"a".repeat(64)}` as const;
 const REV_B = `sha256:${"b".repeat(64)}` as const;
 const REV_C = `sha256:${"c".repeat(64)}` as const;
 const REV_D = `sha256:${"d".repeat(64)}` as const;
+// The current boundary accepts only the metadata TanStack places in a
+// RUN_FINISHED chunk. This structured-output fixture has none, so it must stay
+// explicit-unknown rather than inventing the removed lookup result.
+const unknownGenerationMetadata = captureGenerationMetadata([]);
 
 // An in-memory `LlmCallMemoStore` — the recorded-transport single-flight, no DB.
 class MemoryMemoStore implements LlmCallMemoStore {
@@ -105,7 +106,6 @@ function recordedDispatchRuntime(captured: Captured[], response: Response): Loca
     contentAccess: { requireContentRead: async () => undefined },
     profile: REVIEWER_MEASURED_PROFILE,
     admission: { scope: "test:composition-live", confirmedCostCapUsd: "10" },
-    generationMetadataSource: confirmedGenerationMetadataSource(),
     snapshots: {
       decodeRevisionHash: REV_A,
       glossaryRevisionHash: REV_B,
@@ -145,7 +145,7 @@ describe("live dispatch runtime — the sole ZDR boundary substrate", () => {
   }
 
   for (const runMode of runModes) {
-    it(`hits dispatch.ts with a certified, provider-free ZDR request and records the served pair (${runMode})`, async () => {
+    it(`hits dispatch.ts with a certified, provider-free ZDR request and records explicit-unknown metadata (${runMode})`, async () => {
       const captured: Captured[] = [];
       const runtime = recordedDispatchRuntime(
         captured,
@@ -160,11 +160,12 @@ describe("live dispatch runtime — the sole ZDR boundary substrate", () => {
 
       expect(result.status).toBe("success");
       if (result.status !== "success") throw new Error("expected success");
-      // The served (model, provider) pair is a recorded OUTPUT, never a routing input.
-      expect(result.served).toEqual({
-        status: "confirmed",
-        model: "served/model:fixture",
-        provider: "provider:served-fixture",
+      // The served pair remains a recorded OUTPUT, never a routing input. No
+      // side-channel lookup is allowed while TanStack has not provided it.
+      expect(result).toMatchObject({
+        verification: "explicit-unknown",
+        generationId: unknownGenerationMetadata.generationId,
+        served: unknownGenerationMetadata.served,
       });
       // The wire request names NO upstream provider — only the certified model +
       // the ZDR fallback POLICY object travel on the request.

@@ -8,7 +8,6 @@ import { EventType, type StreamChunk } from "@tanstack/ai";
 import { z } from "zod";
 
 const RouteValueSchema = z.string().min(1).max(256).refine(isTrimmed, "route value is not trimmed");
-const DecimalUsdSchema = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d{1,12})?$/u);
 const ServedPairSchema = z.discriminatedUnion("status", [
   z
     .object({
@@ -39,21 +38,6 @@ const UsageSchema = z
     cachedTokens: z.number().int().nonnegative(),
   })
   .strict();
-const BillingSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("confirmed"), costUsd: DecimalUsdSchema }).strict(),
-  z.object({ status: z.literal("billing_unknown") }).strict(),
-]);
-const GenerationMetadataSchema = z
-  .object({
-    generationId: RouteValueSchema.nullable(),
-    served: ServedPairSchema,
-    routerAttempts: z.array(RouterAttemptSchema).max(64),
-    usage: UsageSchema.nullable(),
-    billing: BillingSchema,
-    reportedCostUsd: DecimalUsdSchema.nullable(),
-  })
-  .strict();
-
 export interface GenerationMetadata {
   generationId: string | null;
   served: LlmServedPair;
@@ -63,89 +47,21 @@ export interface GenerationMetadata {
   reportedCostUsd: string | null;
 }
 
-export interface GenerationMetadataSource {
-  lookup(input: { generationId: string | null }): Promise<GenerationMetadata>;
-}
-
-/** Response headers captured before the adapter consumes the provider stream. */
-export interface ObservedGenerationHeaders {
-  generationId?: string | null;
-  providerName?: string | null;
-  requestedModel: string;
-}
-
-export type GenerationReconciliation = GenerationMetadata & {
-  source: "inline" | "generation-lookup" | "unknown";
-};
-
-export const UNKNOWN_GENERATION_METADATA: GenerationMetadata = {
-  generationId: null,
-  served: { status: "unknown" },
-  routerAttempts: [],
-  usage: null,
-  billing: { status: "billing_unknown" },
-  reportedCostUsd: null,
-};
-
-export const unknownGenerationMetadataSource: GenerationMetadataSource = {
-  async lookup() {
-    return UNKNOWN_GENERATION_METADATA;
-  },
-};
-
 /**
- * Consume additive route metadata exposed by the adapter's RUN_FINISHED event or
- * captured from the OpenRouter response headers. Until TanStack/ai #941 exposes
- * the latter on RUN_FINISHED, one injected generation lookup is attempted and an
- * absent or failed lookup remains explicitly unknown.
+ * The reconciliation design is intentionally present but disabled. Until the
+ * upstream RUN_FINISHED contract carries a generation ID and authoritative
+ * served pair (TanStack/ai #941), this substrate must not bypass TanStack with
+ * response-header capture or a /generation side channel.
  */
-export async function reconcileGenerationMetadata(
-  chunks: readonly StreamChunk[],
-  source: GenerationMetadataSource = unknownGenerationMetadataSource,
-  observedHeaders?: ObservedGenerationHeaders,
-): Promise<GenerationReconciliation> {
-  const inline = inlineGenerationMetadata(chunks, observedHeaders);
-  if (isVerified(inline)) return { ...inline, source: "inline" };
+export const generationReconciliation = {
+  enabled: false,
+  prerequisite: "TanStack RUN_FINISHED generationId and served provider support",
+} as const;
 
-  let lookup: GenerationMetadata;
-  try {
-    lookup = GenerationMetadataSchema.parse(
-      await source.lookup({ generationId: inline.generationId }),
-    );
-  } catch {
-    return { ...inline, source: "unknown" };
-  }
-
-  if (
-    inline.generationId !== null &&
-    lookup.generationId !== null &&
-    inline.generationId !== lookup.generationId
-  ) {
-    return { ...inline, source: "unknown" };
-  }
-
-  const reconciled: GenerationMetadata = {
-    generationId: lookup.generationId ?? inline.generationId,
-    served: lookup.served.status === "confirmed" ? lookup.served : inline.served,
-    routerAttempts:
-      lookup.routerAttempts.length > 0 ? lookup.routerAttempts : inline.routerAttempts,
-    usage: lookup.usage ?? inline.usage,
-    billing: lookup.billing.status === "confirmed" ? lookup.billing : inline.billing,
-    reportedCostUsd: lookup.reportedCostUsd ?? inline.reportedCostUsd,
-  };
-  return {
-    ...reconciled,
-    source: isVerified(reconciled) ? "generation-lookup" : "unknown",
-  };
-}
-
-export function inlineGenerationMetadata(
-  chunks: readonly StreamChunk[],
-  observedHeaders?: ObservedGenerationHeaders,
-): GenerationMetadata {
+/** Capture only metadata normalized by the upstream TanStack adapter. */
+export function captureGenerationMetadata(chunks: readonly StreamChunk[]): GenerationMetadata {
   const finished = chunks.findLast((chunk) => chunk.type === EventType.RUN_FINISHED);
-  const responseHeaders = responseHeaderMetadata(observedHeaders);
-  if (!finished) return responseHeaders;
+  if (!finished) return unknownGenerationMetadata();
 
   const event = asRecord(finished);
   const rawEvent = asRecord(event.rawEvent);
@@ -165,7 +81,7 @@ export function inlineGenerationMetadata(
     rawEvent.generation_id,
     rawEvent.id,
   );
-  const served = decodeServedPair(event, rawEvent, openRouter);
+  const unverifiedServed = decodeServedPair(event, rawEvent, openRouter);
   const routerAttempts = decodeRouterAttempts(openRouter.attempts);
   const usage = decodeUsage(event.usage);
   const reportedCostUsd = decimalCost(asRecord(event.usage).cost);
@@ -173,48 +89,27 @@ export function inlineGenerationMetadata(
     reportedCostUsd === null
       ? { status: "billing_unknown" }
       : { status: "confirmed", costUsd: reportedCostUsd };
-  const runFinished: GenerationMetadata = {
+  return {
     generationId,
-    served,
+    served:
+      generationId !== null && unverifiedServed.status === "confirmed"
+        ? unverifiedServed
+        : { status: "unknown" },
     routerAttempts,
     usage,
     billing,
     reportedCostUsd,
   };
-  return mergeInlineMetadata(runFinished, responseHeaders);
 }
 
-function responseHeaderMetadata(
-  observedHeaders: ObservedGenerationHeaders | undefined,
-): GenerationMetadata {
-  if (!observedHeaders) return UNKNOWN_GENERATION_METADATA;
+function unknownGenerationMetadata(): GenerationMetadata {
   return {
-    ...UNKNOWN_GENERATION_METADATA,
-    generationId: firstRouteValue(observedHeaders.generationId),
-    served: confirmedServedPair(observedHeaders.requestedModel, observedHeaders.providerName),
-  };
-}
-
-function mergeInlineMetadata(
-  runFinished: GenerationMetadata,
-  responseHeaders: GenerationMetadata,
-): GenerationMetadata {
-  if (
-    runFinished.generationId !== null &&
-    responseHeaders.generationId !== null &&
-    runFinished.generationId !== responseHeaders.generationId
-  ) {
-    // A future RUN_FINISHED payload is authoritative; only use header evidence
-    // to fill its missing route fields when both sources identify the same run.
-    return runFinished;
-  }
-  return {
-    generationId: runFinished.generationId ?? responseHeaders.generationId,
-    served: runFinished.served.status === "confirmed" ? runFinished.served : responseHeaders.served,
-    routerAttempts: runFinished.routerAttempts,
-    usage: runFinished.usage,
-    billing: runFinished.billing,
-    reportedCostUsd: runFinished.reportedCostUsd,
+    generationId: null,
+    served: { status: "unknown" },
+    routerAttempts: [],
+    usage: null,
+    billing: { status: "billing_unknown" },
+    reportedCostUsd: null,
   };
 }
 
@@ -283,10 +178,6 @@ function decimalCost(value: unknown): string | null {
   const fixed = value.toFixed(12);
   if (Number(fixed) !== value) return null;
   return fixed.replace(/(?:\.0+|(?<fraction>\.\d*?)0+)$/u, "$<fraction>");
-}
-
-function isVerified(metadata: GenerationMetadata): boolean {
-  return metadata.generationId !== null && metadata.served.status === "confirmed";
 }
 
 function firstRecord(...values: readonly unknown[]): Readonly<Record<string, unknown>> | null {

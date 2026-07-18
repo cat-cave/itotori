@@ -139,7 +139,10 @@ export const ModelProfileCertificateSchema = z
         forwardedReasoningDetailBatchCount: z.number().int().positive(),
         usage: TokenUsageSchema,
         billedUsdByStep: z.array(PositiveBilledUsdSchema).min(1).max(4),
-        generationLookupAttempts: z.number().int().positive(),
+        // New deferred probes make no lookups; historical certificates may
+        // truthfully retain their earlier count. `certifyLiveModelProfile`
+        // rejects every non-zero count for the current no-lookup path.
+        generationLookupAttempts: z.number().int().nonnegative(),
         generationId: z.null(),
         served: UnknownServedPairSchema,
         runBinding: CertificateRunBindingSchema,
