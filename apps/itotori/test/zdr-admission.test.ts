@@ -211,6 +211,7 @@ function passingCertificate() {
     forwardedReasoningDetailBatchCount: 1,
     usage: { promptTokens: 2, completionTokens: 2, reasoningTokens: 1, cachedTokens: 0 },
     billedUsdByStep: ["0.000001", "0.000001"],
+    generationReconciliation: "enabled",
     generationLookupAttempts: 1,
     generationId: "generation:recorded-admission",
     served: {

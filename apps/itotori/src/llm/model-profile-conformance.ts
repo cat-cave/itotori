@@ -26,7 +26,9 @@ export interface LiveConformanceObservations {
   readonly steps: readonly ConformanceStepObservation[];
   readonly toolExecutionCount: number;
   readonly reasoning: ReasoningDetailsContinuityEvidence;
-  /** Lookup count bound to the terminal result, not prior tool-loop steps. */
+  /** Whether this probe enabled the terminal generation reconciliation lookup. */
+  readonly generationReconciliationEnabled: boolean;
+  /** Lookup count bound to the terminal result's generation ID, not prior tool-loop steps. */
   readonly generationLookupAttempts: number;
 }
 
@@ -140,14 +142,17 @@ function certifyGenerationReconciliation(
 ): {
   readonly checks:
     | { readonly generationLookup: "deferred"; readonly servedPairVerification: "deferred" }
+    | { readonly generationLookup: "passed"; readonly servedPairVerification: "deferred" }
     | { readonly generationLookup: "passed"; readonly servedPairVerification: "passed" };
   readonly observations:
     | {
+        readonly generationReconciliation: "disabled";
         readonly generationLookupAttempts: 0;
         readonly generationId: null;
         readonly served: { readonly status: "unknown" };
       }
     | {
+        readonly generationReconciliation: "enabled";
         readonly generationLookupAttempts: 1;
         readonly generationId: string;
         readonly served: {
@@ -155,12 +160,19 @@ function certifyGenerationReconciliation(
           readonly model: string;
           readonly provider: string;
         };
+      }
+    | {
+        readonly generationReconciliation: "enabled";
+        readonly generationLookupAttempts: 1;
+        readonly generationId: string;
+        readonly served: { readonly status: "unknown" };
       };
 } {
   if (result.status !== "success") {
     throw new Error("conformance probe did not complete successfully");
   }
   if (
+    !observations.generationReconciliationEnabled &&
     result.verification === "explicit-unknown" &&
     result.generationId === null &&
     result.served.status === "unknown" &&
@@ -169,6 +181,7 @@ function certifyGenerationReconciliation(
     return {
       checks: { generationLookup: "deferred", servedPairVerification: "deferred" },
       observations: {
+        generationReconciliation: "disabled",
         generationLookupAttempts: 0,
         generationId: null,
         served: { status: "unknown" },
@@ -176,6 +189,7 @@ function certifyGenerationReconciliation(
     };
   }
   if (
+    observations.generationReconciliationEnabled &&
     result.verification === "verified" &&
     result.generationId !== null &&
     result.served.status === "confirmed" &&
@@ -187,13 +201,33 @@ function certifyGenerationReconciliation(
     return {
       checks: { generationLookup: "passed", servedPairVerification: "passed" },
       observations: {
+        generationReconciliation: "enabled",
         generationLookupAttempts: 1,
         generationId: result.generationId,
         served: result.served,
       },
     };
   }
-  throw new Error("generation reconciliation evidence is neither deferred nor verified");
+  if (
+    observations.generationReconciliationEnabled &&
+    result.verification === "explicit-unknown" &&
+    result.generationId !== null &&
+    result.served.status === "unknown" &&
+    observations.generationLookupAttempts === 1
+  ) {
+    return {
+      checks: { generationLookup: "passed", servedPairVerification: "deferred" },
+      observations: {
+        generationReconciliation: "enabled",
+        generationLookupAttempts: 1,
+        generationId: result.generationId,
+        served: { status: "unknown" },
+      },
+    };
+  }
+  throw new Error(
+    "generation reconciliation evidence is neither disabled, explicitly unknown, nor verified",
+  );
 }
 
 function hasProviderUsage(steps: readonly ConformanceStepObservation[]): boolean {

@@ -140,6 +140,9 @@ const CertificateObservationBaseShape = {
   forwardedReasoningDetailBatchCount: z.number().int().positive(),
   usage: TokenUsageSchema,
   billedUsdByStep: z.array(PositiveBilledUsdSchema).min(1).max(4),
+  // This makes the zero-lookup branch auditable: only a deliberately disabled
+  // reconciliation configuration may certify it as deferred.
+  generationReconciliation: z.enum(["enabled", "disabled"]),
   runBinding: CertificateRunBindingSchema,
 } as const;
 
@@ -147,6 +150,7 @@ const CertificateObservationsSchema = z.union([
   z
     .object({
       ...CertificateObservationBaseShape,
+      generationReconciliation: z.literal("disabled"),
       generationLookupAttempts: z.literal(0),
       generationId: z.null(),
       served: UnknownServedPairSchema,
@@ -155,9 +159,19 @@ const CertificateObservationsSchema = z.union([
   z
     .object({
       ...CertificateObservationBaseShape,
+      generationReconciliation: z.literal("enabled"),
       generationLookupAttempts: z.literal(1),
       generationId: GenerationIdSchema,
       served: ConfirmedServedPairSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...CertificateObservationBaseShape,
+      generationReconciliation: z.literal("enabled"),
+      generationLookupAttempts: z.literal(1),
+      generationId: GenerationIdSchema,
+      served: UnknownServedPairSchema,
     })
     .strict(),
 ]);
@@ -207,23 +221,33 @@ export const ModelProfileCertificateSchema = z
     const deferred =
       value.checks.generationLookup === "deferred" &&
       value.checks.servedPairVerification === "deferred" &&
+      value.observations.generationReconciliation === "disabled" &&
       value.observations.generationLookupAttempts === 0 &&
       value.observations.generationId === null &&
       value.observations.served.status === "unknown";
-    const reconciled =
+    const verified =
       value.checks.generationLookup === "passed" &&
       value.checks.servedPairVerification === "passed" &&
+      value.observations.generationReconciliation === "enabled" &&
       value.observations.generationLookupAttempts === 1 &&
       value.observations.generationId !== null &&
       value.observations.served.status === "confirmed";
-    if (!deferred && !reconciled) {
+    const explicitUnknown =
+      value.checks.generationLookup === "passed" &&
+      value.checks.servedPairVerification === "deferred" &&
+      value.observations.generationReconciliation === "enabled" &&
+      value.observations.generationLookupAttempts === 1 &&
+      value.observations.generationId !== null &&
+      value.observations.served.status === "unknown";
+    if (!deferred && !verified && !explicitUnknown) {
       context.addIssue({
         code: "custom",
-        message: "certificate generation evidence must be exactly deferred or exactly reconciled",
+        message:
+          "certificate generation evidence must be exactly disabled, explicitly unknown, or exactly verified",
       });
     }
     if (
-      reconciled &&
+      verified &&
       value.observations.served.status === "confirmed" &&
       !servedModelIsCertified(value.observations.served.model, value.subject.model)
     ) {

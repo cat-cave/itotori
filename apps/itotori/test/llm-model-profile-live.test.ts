@@ -6,6 +6,7 @@ import type { CallSpec } from "../src/contracts/index.js";
 import { dispatch } from "../src/llm/dispatch.js";
 import {
   createOpenRouterGenerationLookup,
+  generationReconciliation,
   type GenerationLookup,
 } from "../src/llm/generation-metadata.js";
 import {
@@ -49,14 +50,14 @@ const liveEnabled =
       JSON.stringify(reviewVerdictExample),
     ].join("\n");
     let toolExecutionCount = 0;
-    let generationLookupRequests = 0;
+    const generationLookupGenerationIds: (string | null)[] = [];
     let reasoning: ReasoningDetailsContinuityEvidence | null = null;
     let providerError: ProviderErrorObservation | null = null;
     try {
       const observingFetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
         const request = new Request(input, init);
         if (request.method === "GET" && request.url.includes("/generation")) {
-          generationLookupRequests += 1;
+          generationLookupGenerationIds.push(new URL(request.url).searchParams.get("id"));
         }
         // Constructing `request` above consumes the `input` Request's body, so
         // the real call must dispatch the request we built — passing `input`
@@ -111,7 +112,10 @@ const liveEnabled =
       const steps = await readStepObservations(context.pool);
       const attempts = await readAttemptObservations(context.pool);
       if (reasoning === null) throw new Error("dispatcher omitted reasoning continuity evidence");
-      const generationLookupAttempts = terminalGenerationLookupAttempts(generationLookupRequests);
+      const generationLookupAttempts = terminalGenerationLookupAttempts(
+        generationLookupGenerationIds,
+        result.generationId,
+      );
       const probedAt = new Date().toISOString();
       let certificate;
       try {
@@ -121,6 +125,7 @@ const liveEnabled =
           steps,
           toolExecutionCount,
           reasoning,
+          generationReconciliationEnabled: generationReconciliation.enabled,
           generationLookupAttempts,
         });
       } catch (error: unknown) {
@@ -188,15 +193,34 @@ function conformanceSpec(prompt: string): CallSpec {
   };
 }
 
-function terminalGenerationLookupAttempts(generationLookupRequests: number): number {
-  // This is an observation, not an assertion. Certification owns the invariant:
-  // reconciled evidence needs exactly one lookup and deferred evidence needs zero.
-  return generationLookupRequests;
+function terminalGenerationLookupAttempts(
+  lookupGenerationIds: readonly (string | null)[],
+  terminalGenerationId: string | null,
+): number {
+  // The dispatcher reconciles every physical step. This certificate instead
+  // attests only to the accepted terminal response, whose generation ID is
+  // exposed on the final dispatch result.
+  return terminalGenerationId === null
+    ? 0
+    : lookupGenerationIds.filter((generationId) => generationId === terminalGenerationId).length;
 }
 
-it("reports every observed generation lookup without normalizing the count", () => {
-  expect(terminalGenerationLookupAttempts(1)).toBe(1);
-  expect(terminalGenerationLookupAttempts(2)).toBe(2);
+it("counts only lookups for the accepted terminal generation", () => {
+  expect(
+    terminalGenerationLookupAttempts(
+      ["generation:tool-call", "generation:accepted-terminal"],
+      "generation:accepted-terminal",
+    ),
+  ).toBe(1);
+});
+
+it("reports a terminal lookup retry rather than normalizing it", () => {
+  expect(
+    terminalGenerationLookupAttempts(
+      ["generation:tool-call", "generation:accepted-terminal", "generation:accepted-terminal"],
+      "generation:accepted-terminal",
+    ),
+  ).toBe(2);
 });
 
 interface ProviderErrorObservation {

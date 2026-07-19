@@ -177,7 +177,7 @@ describe("certified per-role model profiles", () => {
     ).toThrow(/no valid certificate/u);
   });
 
-  it("accepts the distinct no-lookup certificate shape only with explicit unknown evidence", () => {
+  it("accepts the distinct no-lookup certificate shape only when reconciliation is disabled", () => {
     const certificate = deferredCertificate(deepSeekV4FlashProfile);
 
     expect(certificate.checks).toMatchObject({
@@ -185,12 +185,52 @@ describe("certified per-role model profiles", () => {
       servedPairVerification: "deferred",
     });
     expect(certificate.observations).toMatchObject({
+      generationReconciliation: "disabled",
       generationLookupAttempts: 0,
       generationId: null,
       served: { status: "unknown" },
     });
     expect(certificate.observations).not.toHaveProperty("served.model");
     expect(certificate.observations).not.toHaveProperty("served.provider");
+
+    const { runBinding, ...observations } = certificate.observations;
+    const enabledObservations = { ...observations, generationReconciliation: "enabled" } as const;
+    const reconciliationEnabled = {
+      ...certificate,
+      observations: {
+        ...enabledObservations,
+        runBinding: {
+          ...runBinding,
+          evidenceHash: certificateEvidenceHash({
+            probedAt: certificate.probedAt,
+            subject: certificate.subject,
+            checks: certificate.checks,
+            observations: enabledObservations,
+            memoKey: runBinding.memoKey,
+            transcriptHash: runBinding.transcriptHash,
+          }),
+        },
+      },
+    };
+    expect(ModelProfileCertificateSchema.safeParse(reconciliationEnabled).success).toBe(false);
+  });
+
+  it("accepts a one-shot terminal lookup whose served pair is explicitly unknown", () => {
+    const certificate = explicitUnknownCertificate(deepSeekV4FlashProfile);
+
+    expect(certificate.checks).toMatchObject({
+      generationLookup: "passed",
+      servedPairVerification: "deferred",
+    });
+    expect(certificate.observations).toMatchObject({
+      generationReconciliation: "enabled",
+      generationLookupAttempts: 1,
+      generationId: "generation:recorded-certificate",
+      served: { status: "unknown" },
+    });
+    expect(resolveRoleModelProfile("A1", { certificates: [certificate] }).certificate).toEqual(
+      certificate,
+    );
   });
 
   it("rejects a reconciled observation that is relabeled as deferred", () => {
@@ -277,6 +317,7 @@ function passingObservationsWithoutBinding() {
     forwardedReasoningDetailBatchCount: 1,
     usage: { promptTokens: 2, completionTokens: 2, reasoningTokens: 1, cachedTokens: 0 },
     billedUsdByStep: [simulatedBilledUsd, simulatedBilledUsd],
+    generationReconciliation: "enabled",
     generationLookupAttempts: 1,
     generationId: "generation:recorded-certificate",
     served: {
@@ -323,8 +364,41 @@ function deferredCertificate(profile: RoleModelProfile): ModelProfileCertificate
   } as const;
   const observations = {
     ...passingObservationsWithoutBinding(),
+    generationReconciliation: "disabled",
     generationLookupAttempts: 0,
     generationId: null,
+    served: { status: "unknown" },
+  } as const;
+  const evidenceHash = certificateEvidenceHash({
+    probedAt: PROBED_AT,
+    subject: profile,
+    checks,
+    observations,
+    memoKey: BIND_MEMO_KEY,
+    transcriptHash: BIND_TRANSCRIPT_HASH,
+  });
+  return ModelProfileCertificateSchema.parse({
+    schemaVersion: MODEL_PROFILE_CERTIFICATE_VERSION,
+    certificateStatus: "valid",
+    probeMode: "live",
+    probedAt: PROBED_AT,
+    subject: profile,
+    checks,
+    observations: {
+      ...observations,
+      runBinding: {
+        memoKey: BIND_MEMO_KEY,
+        transcriptHash: BIND_TRANSCRIPT_HASH,
+        evidenceHash,
+      },
+    },
+  });
+}
+
+function explicitUnknownCertificate(profile: RoleModelProfile): ModelProfileCertificate {
+  const checks = { ...PASSING_CHECKS, servedPairVerification: "deferred" } as const;
+  const observations = {
+    ...passingObservationsWithoutBinding(),
     served: { status: "unknown" },
   } as const;
   const evidenceHash = certificateEvidenceHash({
