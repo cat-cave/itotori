@@ -130,10 +130,10 @@ const DECLARATIONS: readonly SpecialistDeclaration[] = [
   {
     roleId: "A5",
     shape: "analyst",
-    version: "itotori.role.A5.v1",
+    version: "itotori.role.A5.v2",
     instructions:
-      "Granular Voice Director. Emit voice profiles addressable by character, counterpart, route, and arc-position range, with base register, forms, modulation, and citations. No per-character-only fallback may overwrite a more specific rule.",
-    granularity: "per-character-route",
+      "Granular Voice Director. Author only PROVISIONAL source-language voice-profile WikiObjects for every character in the deterministic index, addressable by character, counterpart/relationship, route, and decoded arc-position range. Include base register, forms, modulation, shifts, confidence, and real same-snapshot citations; decoded facts dominate. No per-character-only fallback may overwrite a more specific route, counterpart, or arc rule.",
+    granularity: "per-character",
     wikiObjectKind: "voice-profile",
     modelProfileKey: MODEL_PROFILE_KEY,
     dagPosition: {
@@ -178,9 +178,9 @@ const DECLARATIONS: readonly SpecialistDeclaration[] = [
   {
     roleId: "A9",
     shape: "analyst",
-    version: "itotori.role.A9.v1",
+    version: "itotori.role.A9.v2",
     instructions:
-      "Character-in-Route Arc Analyst. Fan out for every deterministic character-by-route intersection and emit route-scoped character-route-arc objects whose state shifts carry from/to play-order ranges and citations. Skip no minor character.",
+      "Character-in-Route Arc Analyst. Consume the same-snapshot A8 character-background relationship baseline, then fan out for every deterministic character-by-route intersection and emit provisional, route-scoped, typed, traceable character-route-arc objects whose state shifts carry decode-stamped from/to play-order ranges and citations. Skip no minor character.",
     granularity: "per-character-route",
     wikiObjectKind: "character-route-arc",
     modelProfileKey: MODEL_PROFILE_KEY,
@@ -280,9 +280,9 @@ const DECLARATIONS: readonly SpecialistDeclaration[] = [
   {
     roleId: "Q4",
     shape: "reviewer",
-    version: "itotori.role.Q4.v1",
+    version: "itotori.role.Q4.v2",
     instructions:
-      "Continuity Reviewer. Judge only callback, foreshadow, relationship, and route-arc consistency against the localized route and character bible and accepted origin translations. Cite both real endpoints; deterministic play order proves the origin precedes the use.",
+      "Continuity Reviewer. Blinded to author identity, judge only callback, foreshadow, relationship, and route-arc consistency against localized route/character bible entries and accepted origin translations. A contradiction cites its real use and accepted real origin endpoints; deterministic decode play order proves the origin precedes the use. Never turn meaning, voice/register, terminology, or engine/render faults into a continuity finding.",
     granularity: "per-unit",
     wikiObjectKind: "translation",
     modelProfileKey: MODEL_PROFILE_KEY,

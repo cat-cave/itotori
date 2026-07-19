@@ -98,6 +98,7 @@ import {
   dispatchingA9Caller,
   readCharacterRouteEvidence,
   routeOccurrenceWindow,
+  verifyA8CharacterBackground,
 } from "../roles/a9/index.js";
 import {
   assembleSpeakerHypothesis,
@@ -351,7 +352,7 @@ export function createAnalystRunner(deps: AnalystRunnerDeps): AnalystRunner {
       case "A8":
         return runA8(input, roleDeps, findObject);
       case "A9":
-        return runA9(input, roleDeps);
+        return runA9(input, roleDeps, findObject);
       case "A10":
         return runA10(input, roleDeps);
       default:
@@ -609,7 +610,11 @@ async function runA8(
   return [assembleCharacterBackground(deps.model, context, evidence, request, draft)];
 }
 
-async function runA9(input: RunStepInput, deps: AnalystRoleDeps): Promise<readonly WikiObject[]> {
+async function runA9(
+  input: RunStepInput,
+  deps: AnalystRoleDeps,
+  findObject: (objectId: string, kind: WikiObject["kind"]) => Promise<WikiObject>,
+): Promise<readonly WikiObject[]> {
   const characterId = requiredSubject(input, "character");
   if (input.step.scope.kind !== "route")
     throw new Error(`A9 ${characterId} has no concrete route scope`);
@@ -626,16 +631,22 @@ async function runA9(input: RunStepInput, deps: AnalystRoleDeps): Promise<readon
   const windowUnitIds = routeOccurrenceWindow(deps.model, evidence.sceneIds, evidence.routeId).map(
     (unit) => unit.factId,
   );
+  const background = verifyA8CharacterBackground(
+    deps.model,
+    characterId,
+    await findObject(`character-background:${characterId}`, "character-background"),
+  );
   const draft = await dispatchingA9Caller(
     deps.model,
     context,
     deps.runtime,
   )({
     evidence,
+    background,
     windowUnitIds,
     sourceLanguage: input.sourceLanguage,
   });
-  return [assembleCharacterRouteArc(deps.model, context, character, evidence, draft)];
+  return [assembleCharacterRouteArc(deps.model, context, character, evidence, background, draft)];
 }
 
 async function runA10(input: RunStepInput, deps: AnalystRoleDeps): Promise<readonly WikiObject[]> {
