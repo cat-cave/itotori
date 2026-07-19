@@ -60,8 +60,21 @@ function fieldDep(fieldPath: string[]): Dependency {
   };
 }
 
+function renderingDep(renderingId: string): Dependency {
+  return {
+    upstreamObjectId: UPSTREAM_ID,
+    upstreamVersion: 1,
+    claimId: null,
+    fieldPath: [],
+    renderingId,
+    scope: { kind: "global" },
+    fromPlayOrder: null,
+    throughPlayOrder: null,
+  };
+}
+
 postgresDescribe("fine-grained dependency edges resolve exact consumers", () => {
-  it("PROOF: querying a claim returns EXACTLY its consumer, not the whole object", async () => {
+  it("PROOF: claim, field, and rendering queries return only their exact consumers", async () => {
     const context = await isolatedMigratedContext();
     const cipher = new TestMemoCipher();
     try {
@@ -71,8 +84,9 @@ postgresDescribe("fine-grained dependency edges resolve exact consumers", () => 
 
       // The upstream object with two distinct claims other objects will consume.
       await persistWikiObject(repository, downstream(contextId, UPSTREAM_ID, []), options);
-      // Three downstream consumers of ONE upstream object, each consuming a
-      // different piece: claim:A, claim:B, and the register-policy field.
+      // Four downstream consumers of ONE upstream object, each consuming a
+      // different piece: claim:A, claim:B, the register-policy field, and a
+      // localized bible rendering.
       const c1 = await persistWikiObject(
         repository,
         downstream(contextId, "wiki:consumer:a", [claimDep("claim:A")]),
@@ -86,6 +100,11 @@ postgresDescribe("fine-grained dependency edges resolve exact consumers", () => 
       const c3 = await persistWikiObject(
         repository,
         downstream(contextId, "wiki:consumer:field", [fieldDep(["body", "registerPolicy"])]),
+        options,
+      );
+      const c4 = await persistWikiObject(
+        repository,
+        downstream(contextId, "wiki:consumer:rendering", [renderingDep("rendering:en-US:1")]),
         options,
       );
 
@@ -117,14 +136,28 @@ postgresDescribe("fine-grained dependency edges resolve exact consumers", () => 
       ]);
       expect(fieldConsumers[0]!.downstreamWikiVersionId).toBe(c3.wikiVersionId);
 
+      // EXACT: a localized-bible rendering is independently addressable, so
+      // consumers of one rendering are never conflated with the source
+      // object's claim or body-field consumers.
+      const renderingConsumers = await repository.queryDependents({
+        upstreamObjectId: UPSTREAM_ID,
+        renderingId: "rendering:en-US:1",
+      });
+      expect(renderingConsumers.map((edge) => edge.downstreamObjectId)).toEqual([
+        "wiki:consumer:rendering",
+      ]);
+      expect(renderingConsumers[0]!.downstreamWikiVersionId).toBe(c4.wikiVersionId);
+      expect(renderingConsumers[0]!.renderingId).toBe("rendering:en-US:1");
+
       // COARSE: the object-wide query (the thing exact edges replace) returns
-      // ALL THREE consumers — proving the claim/field queries above are strictly
+      // ALL FOUR consumers — proving the claim/field/rendering queries above are strictly
       // narrower, not merely reflecting a sparsely-populated table.
       const allConsumers = await repository.queryDependents({ upstreamObjectId: UPSTREAM_ID });
       expect(allConsumers.map((edge) => edge.downstreamObjectId)).toEqual([
         "wiki:consumer:a",
         "wiki:consumer:b",
         "wiki:consumer:field",
+        "wiki:consumer:rendering",
       ]);
 
       // A claim nobody consumed has zero consumers (no fabricated edge).
