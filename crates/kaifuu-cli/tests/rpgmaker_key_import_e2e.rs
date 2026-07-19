@@ -29,9 +29,12 @@ fn fixture_image_asset() -> PathBuf {
 }
 
 fn recorded_fixture_key_hex() -> String {
-    (0_u8..16)
-        .map(|byte| format!("{:02x}", byte.saturating_mul(17)))
-        .collect()
+    use std::fmt::Write;
+    let mut s = String::new();
+    for byte in 0_u8..16 {
+        write!(s, "{:02x}", byte.saturating_mul(17)).unwrap();
+    }
+    s
 }
 
 fn invalid_fixture_key_hex() -> String {

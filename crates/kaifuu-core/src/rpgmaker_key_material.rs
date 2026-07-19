@@ -47,9 +47,14 @@ mod tests {
 
     #[test]
     fn decodes_legacy_hex_text_into_key_bytes() {
-        let key_hex = (0_u8..16)
-            .map(|byte| format!("{byte:02x}"))
-            .collect::<String>();
+        let key_hex = {
+            use std::fmt::Write;
+            let mut s = String::new();
+            for byte in 0_u8..16 {
+                write!(s, "{byte:02x}").unwrap();
+            }
+            s
+        };
 
         assert_eq!(
             normalize_rpg_maker_asset_key_material(key_hex.into_bytes()),
