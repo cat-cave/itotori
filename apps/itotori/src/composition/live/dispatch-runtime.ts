@@ -8,7 +8,8 @@
 // permission-gated content-read authorizer, the measured model profile, the spend
 // admission, and the run's snapshot revision hashes. It NEVER names a provider —
 // the provider policy travels on the certified role `CallSpec`, and the served
-// (model, provider) pair comes back as a recorded OUTPUT on the `CallResult`.
+// (model, provider) pair is recorded post-request from OpenRouter's generation
+// lookup as output telemetry on the `CallResult`.
 //
 // `LocalizerRuntimeBase`, `EditorRuntimeBase`, and `RepairRuntimeBase` are each
 // `Omit<DispatchRuntime, "readPayload">`, so this ONE object satisfies all three
@@ -19,6 +20,10 @@
 import type { LlmCallMemoStore, LlmContentReadAuthorizer } from "@itotori/db";
 import type { CallResult, CallSpec, EncryptedPayloadRef } from "../../contracts/index.js";
 import { dispatch, type DispatchRuntime, type DispatchTool } from "../../llm/dispatch.js";
+import {
+  createOpenRouterGenerationLookup,
+  type GenerationLookup,
+} from "../../llm/generation-metadata.js";
 import type { MeasuredModelProfile, RetryRuntime } from "../../llm/physical-attempt-policy.js";
 import type { PhysicalStepMemoRuntime } from "../../llm/physical-step-memo.js";
 import type { ReasoningDetailsContinuityEvidence } from "../../llm/reasoning-details-continuity.js";
@@ -48,6 +53,8 @@ export interface LiveDispatchRuntimeConfig {
   readonly tools?: readonly DispatchTool[];
   /** Transport injection — production omits it (real `fetch`); a proof records. */
   readonly fetcher?: DispatchRuntime["fetcher"];
+  /** Optional test/integration seam for post-request served-pair reconciliation. */
+  readonly generationLookup?: GenerationLookup;
   /** Environment for the ZDR startup policy + API key; defaults to `process.env`. */
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** Run-scoped cancellation. */
@@ -70,12 +77,23 @@ export function createDispatchRuntime(config: LiveDispatchRuntimeConfig): Dispat
     ...(config.signal ? { signal: config.signal } : {}),
     ...(config.retry ? { retry: config.retry } : {}),
   };
+  const env = config.env ?? process.env;
+  const apiKey = env.OPENROUTER_API_KEY;
+  const generationLookup =
+    config.generationLookup ??
+    (apiKey === undefined || apiKey.length === 0
+      ? undefined
+      : createOpenRouterGenerationLookup({
+          apiKey,
+          ...(config.fetcher ? { fetcher: config.fetcher } : {}),
+        }));
   return {
     tools: config.tools ?? [],
     contentAccess: config.contentAccess,
     memo,
     ...(config.fetcher ? { fetcher: config.fetcher } : {}),
     ...(config.env ? { env: config.env } : {}),
+    ...(generationLookup ? { generationLookup } : {}),
     ...(config.onReasoningDetailsContinuity
       ? { onReasoningDetailsContinuity: config.onReasoningDetailsContinuity }
       : {}),

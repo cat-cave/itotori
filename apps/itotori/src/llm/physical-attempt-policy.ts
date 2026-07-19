@@ -45,6 +45,10 @@ export interface TransportObserver {
   fetcher: TransportFetcher;
   beginAttempt(): void;
   take(): TransportObservation | null;
+  /** The generation id observed from the provider response body, never from a
+   * response header. It is used only for the post-request `/generation`
+   * reconciliation path. */
+  takeGenerationId(): Promise<string | null>;
 }
 
 export interface PhysicalAttemptControl {
@@ -71,14 +75,19 @@ export function createTransportObserver(
   base: TransportFetcher = globalThis.fetch,
 ): TransportObserver {
   let observation: TransportObservation | null = null;
+  let generationId: Promise<string | null> = Promise.resolve(null);
   return {
     beginAttempt() {
       observation = null;
+      generationId = Promise.resolve(null);
     },
     take() {
       const current = observation;
       observation = null;
       return current;
+    },
+    takeGenerationId() {
+      return generationId;
     },
     async fetcher(input, init) {
       try {
@@ -88,6 +97,7 @@ export function createTransportObserver(
           httpStatus: response.status,
           retryAfterMs: parseRetryAfter(response.headers.get("retry-after")),
         };
+        generationId = observeGenerationId(response);
         return response;
       } catch (error: unknown) {
         observation = { kind: "transport-error" };
@@ -95,6 +105,66 @@ export function createTransportObserver(
       }
     },
   };
+}
+
+/**
+ * The TanStack adapter does not currently forward the OpenRouter generation
+ * identifier. Read only that identifier from a cloned response stream so the
+ * original response remains exclusively owned by the adapter. We deliberately
+ * retain no response text and impose a small bound before abandoning an
+ * unrecognised stream.
+ */
+async function observeGenerationId(response: Response): Promise<string | null> {
+  try {
+    const copy = response.clone();
+    const contentType = copy.headers.get("content-type") ?? "";
+    if (/application\/json/iu.test(contentType)) {
+      return routeIdFromRecord(await copy.json());
+    }
+    if (!/text\/event-stream/iu.test(contentType) || copy.body === null) return null;
+    const reader = copy.body.getReader();
+    const decoder = new TextDecoder();
+    let buffered = "";
+    try {
+      for (;;) {
+        const next = await reader.read();
+        if (next.done) return null;
+        buffered += decoder.decode(next.value, { stream: true });
+        if (buffered.length > 65_536) return null;
+        for (;;) {
+          const newline = buffered.indexOf("\n");
+          if (newline < 0) break;
+          const line = buffered.slice(0, newline).replace(/\r$/u, "");
+          buffered = buffered.slice(newline + 1);
+          if (!line.startsWith("data:")) continue;
+          const generationId = routeIdFromJson(line.slice("data:".length).trim());
+          if (generationId !== null) return generationId;
+        }
+      }
+    } finally {
+      void reader.cancel().catch(() => undefined);
+    }
+  } catch {
+    // Metadata capture must never interfere with a successful provider
+    // response. Reconciliation will remain explicit-unknown for this step.
+    return null;
+  }
+}
+
+function routeIdFromJson(value: string): string | null {
+  try {
+    return routeIdFromRecord(JSON.parse(value));
+  } catch {
+    return null;
+  }
+}
+
+function routeIdFromRecord(value: unknown): string | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const id = (value as Record<string, unknown>).id;
+  return typeof id === "string" && id.length > 0 && id.length <= 256 && id.trim() === id
+    ? id
+    : null;
 }
 
 export async function memoizedPhysicalAttempt(input: {

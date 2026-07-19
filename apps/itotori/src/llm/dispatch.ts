@@ -53,6 +53,7 @@ import {
   type ReasoningDetailsContinuity,
   type ReasoningDetailsContinuityEvidence,
 } from "./reasoning-details-continuity.js";
+import type { GenerationLookup } from "./generation-metadata.js";
 import { assertCallUsesCertifiedRoleModelProfile } from "./role-model-profiles.js";
 import { providerTerminalSchema } from "./terminal-output.js";
 
@@ -72,6 +73,8 @@ export interface DispatchRuntime {
   readonly memo: PhysicalStepMemoRuntime;
   readonly contentAccess: LlmContentReadAuthorizer;
   readonly fetcher?: Fetcher;
+  /** Resolves the concrete served route after the model response completes. */
+  readonly generationLookup?: GenerationLookup;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly onReasoningDetailsContinuity?: (evidence: ReasoningDetailsContinuityEvidence) => void;
 }
@@ -354,6 +357,10 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     lastFinishReason: "unknown",
   };
   const memoState = createPhysicalStepMemoState();
+  const memo = {
+    ...runtime.memo,
+    ...(runtime.generationLookup ? { generationLookup: runtime.generationLookup } : {}),
+  };
   let reasoningContinuity: ReasoningDetailsContinuity | undefined;
 
   try {
@@ -383,7 +390,7 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
         timeoutMs: resolveAttemptDeadlineMs(spec, runtime.memo.profile),
       }),
       spec,
-      runtime.memo,
+      memo,
       memoState,
       observer,
     );
