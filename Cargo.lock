@@ -637,6 +637,7 @@ name = "kaifuu-kirikiri"
 version = "0.0.0"
 dependencies = [
  "encoding_rs",
+ "flate2",
  "kaifuu-core",
  "serde",
  "serde_json",

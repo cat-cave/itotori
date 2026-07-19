@@ -9,6 +9,7 @@ description = "Pure-Rust KiriKiri KAG `.ks` plaintext scenario-script text-extra
 
 [dependencies]
 encoding_rs.workspace = true
+flate2.workspace = true
 kaifuu-core = { path = "../kaifuu-core" }
 serde = { workspace = true }
 serde_json.workspace = true

@@ -185,9 +185,12 @@ pub(crate) fn run_xp3_command(args: &[String]) -> Result<(), Box<dyn std::error:
         "smoke" => {
             return crate::xp3_real_bytes_smoke::run_xp3_real_bytes_smoke(args);
         }
+        "readiness-report" => {
+            return run_xp3_readiness_report(args);
+        }
         _ => {
             return Err(
-                "usage: kaifuu xp3 <profile-proof|capability-profile|plain-smoke|smoke|unpack|pack|replace|verify|writer-capability|contract-scaffold|crypt-smoke> ..."
+                "usage: kaifuu xp3 <profile-proof|capability-profile|plain-smoke|smoke|unpack|pack|replace|verify|writer-capability|contract-scaffold|crypt-smoke|readiness-report> ..."
                     .into(),
             );
         }
@@ -233,6 +236,25 @@ fn run_xp3_crypt_chain_smoke(args: &[String]) -> Result<(), Box<dyn std::error::
         report.delta.members_changed,
         report.delta.members_unchanged
     );
+    Ok(())
+}
+
+/// `kaifuu xp3 readiness-report --game <dir> [--output <report.json>]`.
+/// Scans a directory of a private-local owned KiriKiri game's `.xp3` archives
+/// and emits the REDACTED, aggregate-only readiness report: exactly the six
+/// top-level keys `spec`, `xp3VariantHistogram`, `kagTagHistogram`,
+/// `archiveCount`, `kagScenarioCount`, `aggregateKagBodyHashSha256`. The report
+/// carries no filename, no KAG body byte string, and no encrypted-XP3 material —
+/// only histograms, counts, and one aggregate body hash. Safe to commit /
+/// publish even though the scan ran over private, copyrighted owned bytes.
+fn run_xp3_readiness_report(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let game_dir = PathBuf::from(flag(args, "--game")?);
+    let report = kaifuu_kirikiri::scan_xp3_readiness_report(&game_dir)?;
+    let json = report.stable_json()?;
+    match flag_optional(args, "--output") {
+        Some(output) => atomic_write_text(&PathBuf::from(output), &json)?,
+        None => println!("{json}"),
+    }
     Ok(())
 }
 
