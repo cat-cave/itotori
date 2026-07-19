@@ -14,7 +14,11 @@
 
 import type { UnitFact } from "../../../contracts/index.js";
 import type { RouteScope } from "../../../contracts/index.js";
-import type { Q1NeighborWindow, Q1ReviewInput } from "../../../roles/q1/index.js";
+import type {
+  Q1LocalizedBibleEntry,
+  Q1NeighborWindow,
+  Q1ReviewInput,
+} from "../../../roles/q1/index.js";
 import type {
   AcceptedTargetLine,
   Q2ReviewInput,
@@ -56,16 +60,33 @@ export function buildQ1ReviewInput(input: {
   readonly unit: DraftedUnit;
   readonly fact: UnitFact;
   readonly localizationSnapshotId: Sha256Hash;
+  /** Exact rendered bible content, resolved before the reviewer runs. */
+  readonly localizedBible: readonly Q1LocalizedBibleEntry[];
+  readonly targetLanguage: string;
   readonly neighbors?: readonly Q1NeighborWindow[];
 }): Q1ReviewInput {
   return {
     unitId: input.unit.unitId,
+    contextSnapshotId: input.fact.snapshotId,
     localizationSnapshotId: input.localizationSnapshotId,
+    targetLanguage: input.targetLanguage,
+    reviewScope: input.fact.visibility.routeScope,
     sourceFacts: [
-      { factId: input.fact.factId, field: "source", text: input.fact.value.sourceSurface },
+      {
+        factId: input.fact.factId,
+        field: "source",
+        text: input.fact.value.sourceSurface,
+        evidence: {
+          evidenceHash: input.fact.hash,
+          snapshotId: input.fact.snapshotId,
+          subject: { kind: "unit", id: input.fact.value.unitId },
+          playOrderIndex: input.fact.visibility.fromPlayOrder,
+        },
+      },
     ],
     candidateTarget: input.unit.draft.targetSkeleton,
     bibleRenderingIds: [...input.unit.bibleRenderingIds],
+    localizedBible: [...input.localizedBible],
     neighbors: [...(input.neighbors ?? [])],
     // The back-translation is a live tripwire SIGNAL, not part of the deterministic
     // input — the reviewer receives it only when the live signal was produced.

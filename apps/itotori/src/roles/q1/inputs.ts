@@ -11,8 +11,11 @@
 
 import { z } from "zod";
 import {
+  EntityRefSchema,
   IdentifierSchema,
+  LanguageTagSchema,
   NonEmptyTextSchema,
+  RouteScopeSchema,
   Sha256Schema,
   ShortTextSchema,
 } from "../../contracts/index.js";
@@ -22,6 +25,27 @@ export const Q1SourceFactSchema = z
   .object({
     factId: IdentifierSchema,
     field: ShortTextSchema,
+    text: NonEmptyTextSchema,
+    /** Snapshot-owned citation coordinates. The reviewer copies only the
+     * factId; artifact assembly reuses these mechanical coordinates rather
+     * than accepting model-authored hashes, subjects, or play order. */
+    evidence: z
+      .object({
+        evidenceHash: Sha256Schema,
+        snapshotId: Sha256Schema,
+        subject: EntityRefSchema,
+        playOrderIndex: z.number().int().nonnegative(),
+      })
+      .strict(),
+  })
+  .strict();
+
+/** One exact localized-bible rendering. The old id-only input let the reviewer
+ * name a rendering without ever seeing its content; meaning review needs the
+ * rendered rule itself, not a handle it cannot dereference. */
+export const Q1LocalizedBibleEntrySchema = z
+  .object({
+    renderingId: IdentifierSchema,
     text: NonEmptyTextSchema,
   })
   .strict();
@@ -52,16 +76,41 @@ export const Q1BackTranslationSignalSchema = z
 export const Q1ReviewInputSchema = z
   .object({
     unitId: IdentifierSchema,
+    contextSnapshotId: Sha256Schema,
     localizationSnapshotId: Sha256Schema,
+    targetLanguage: LanguageTagSchema,
+    reviewScope: RouteScopeSchema,
     sourceFacts: z.array(Q1SourceFactSchema).min(1).max(1_024),
     candidateTarget: NonEmptyTextSchema,
-    bibleRenderingIds: z.array(IdentifierSchema).max(1_024),
+    bibleRenderingIds: z.array(IdentifierSchema).min(1).max(1_024),
+    localizedBible: z.array(Q1LocalizedBibleEntrySchema).min(1).max(1_024),
     neighbors: z.array(Q1NeighborWindowSchema).max(1_024),
     backTranslationSignal: Q1BackTranslationSignalSchema.nullable(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    const renderedIds = value.localizedBible.map((entry) => entry.renderingId);
+    if (new Set(renderedIds).size !== renderedIds.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["localizedBible"],
+        message: "localized bible rendering ids must be unique",
+      });
+    }
+    if (
+      renderedIds.length !== value.bibleRenderingIds.length ||
+      renderedIds.some((id) => !value.bibleRenderingIds.includes(id))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["localizedBible"],
+        message: "localized bible entries must exactly match the cited rendering ids",
+      });
+    }
+  });
 
 export type Q1SourceFact = z.infer<typeof Q1SourceFactSchema>;
+export type Q1LocalizedBibleEntry = z.infer<typeof Q1LocalizedBibleEntrySchema>;
 export type Q1NeighborWindow = z.infer<typeof Q1NeighborWindowSchema>;
 export type Q1BackTranslationSignal = z.infer<typeof Q1BackTranslationSignalSchema>;
 export type Q1ReviewInput = z.infer<typeof Q1ReviewInputSchema>;

@@ -438,7 +438,16 @@ describe("review-lane input assemblers → Q1..Q4 schema-valid inputs", () => {
   );
 
   it("Q1 meaning input is schema-valid from the drafted unit + source fact", () => {
-    const input = buildQ1ReviewInput({ unit: D1, fact: u1Fact, localizationSnapshotId: SNAP });
+    const input = buildQ1ReviewInput({
+      unit: D1,
+      fact: u1Fact,
+      localizationSnapshotId: SNAP,
+      targetLanguage: "en-US",
+      localizedBible: [
+        { renderingId: "rendering:name", text: "Use Rin for 凛." },
+        { renderingId: "rendering:voice", text: "Keep Rin direct." },
+      ],
+    });
     expect(() => Q1ReviewInputSchema.parse(input)).not.toThrow();
     expect(input.candidateTarget).toBe("Hello <b> world");
     expect(input.sourceFacts[0]?.text).toBe("Hi <b> there");
