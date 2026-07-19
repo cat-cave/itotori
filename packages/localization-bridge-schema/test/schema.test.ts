@@ -1075,6 +1075,142 @@ describe("localization bridge schema guards", () => {
     const speakerStates = units.map((unit) => unit.speaker?.knowledgeState).filter(Boolean);
     expect(speakerStates).toContain("parser_unknown");
     expect(speakerStates).toContain("reader_unknown");
+    expect(speakerStates).toContain("known");
+    expect(speakerStates).toContain("not_applicable");
+  });
+
+  it("types speaker truth across a resolved+unresolved mix without false parser_unknown", () => {
+    // Bridge v0.2 additively carries raw speaker text, resolved display
+    // identity, reader-safe label, canonical ref, reveal state, and RGB. A
+    // resolved name stays `known` / `reader_unknown` — never mislabelled
+    // `parser_unknown` just because the reader is masked or colour is present.
+    const bridge = bridgeV02Example();
+    const units = bridgeV02Units(bridge);
+
+    const known = units.find(
+      (unit) =>
+        (unit.speaker as { knowledgeState?: string } | undefined)?.knowledgeState === "known" &&
+        unit.surfaceKind === "dialogue",
+    );
+    expect(known).toBeDefined();
+    const knownSpeaker = asTestRecord(known!.speaker, "known dialogue speaker");
+    expect(knownSpeaker.knowledgeState).toBe("known");
+    expect(knownSpeaker.displayName).toBe("Mira");
+    expect(knownSpeaker.canonicalNameRef).toBe("character/mira");
+    expect(knownSpeaker.revealState).toBe("revealed");
+    expect(knownSpeaker.textColor).toEqual([204, 204, 255]);
+    expect(knownSpeaker.knowledgeState).not.toBe("parser_unknown");
+
+    const readerUnknown = units.find(
+      (unit) =>
+        (unit.speaker as { knowledgeState?: string } | undefined)?.knowledgeState ===
+        "reader_unknown",
+    );
+    expect(readerUnknown).toBeDefined();
+    const maskedSpeaker = asTestRecord(readerUnknown!.speaker, "reader_unknown speaker");
+    expect(maskedSpeaker.knowledgeState).toBe("reader_unknown");
+    expect(maskedSpeaker.displayName).toBe("Rook");
+    expect(maskedSpeaker.readerLabel).toBe("???");
+    expect(maskedSpeaker.canonicalNameRef).toBe("character/rook");
+    expect(maskedSpeaker.revealState).toBe("concealed");
+    expect(maskedSpeaker.textColor).toEqual([180, 180, 180]);
+    // A resolved-but-concealed identity is NOT parser_unknown.
+    expect(maskedSpeaker.knowledgeState).not.toBe("parser_unknown");
+
+    const parserUnknown = units.find(
+      (unit) =>
+        (unit.speaker as { knowledgeState?: string } | undefined)?.knowledgeState ===
+        "parser_unknown",
+    );
+    expect(parserUnknown).toBeDefined();
+    const unresolvedSpeaker = asTestRecord(parserUnknown!.speaker, "parser_unknown speaker");
+    expect(unresolvedSpeaker.knowledgeState).toBe("parser_unknown");
+    expect(unresolvedSpeaker.rawSpeakerText).toBe("???");
+    expect(unresolvedSpeaker.evidence).toEqual(expect.any(String));
+    // Genuinely unresolved speakers carry no fabricated resolved identity.
+    expect(unresolvedSpeaker.displayName).toBeUndefined();
+    expect(unresolvedSpeaker.speakerId).toBeUndefined();
+    expect(unresolvedSpeaker.readerLabel).toBeUndefined();
+
+    expect(() => assertBridgeBundleV02(bridge)).not.toThrow();
+  });
+
+  it("rejects malformed additive speaker revealState and textColor", () => {
+    const bridge = bridgeV02Example();
+    const units = bridgeV02Units(bridge);
+    const known = units.find(
+      (unit) =>
+        (unit.speaker as { knowledgeState?: string } | undefined)?.knowledgeState === "known" &&
+        unit.surfaceKind === "dialogue",
+    );
+    expect(known).toBeDefined();
+    const speaker = asTestRecord(known!.speaker, "known speaker");
+
+    speaker.revealState = "spoiler";
+    expect(() => assertBridgeBundleV02(bridge)).toThrow(/revealState/);
+
+    speaker.revealState = "revealed";
+    speaker.textColor = [300, 0, 0];
+    expect(() => assertBridgeBundleV02(bridge)).toThrow(/textColor/);
+
+    speaker.textColor = [10, 20];
+    expect(() => assertBridgeBundleV02(bridge)).toThrow(/textColor/);
+  });
+
+  it("rejects known+concealed and parser_unknown carrying resolved-name fields", () => {
+    // Invariant: knowledgeState pins revealState when present.
+    // A `known`+`concealed` speaker would fall into the consumer's concealed
+    // branch and leak `displayName` as a supposedly reader-safe label.
+    const bridge = bridgeV02Example();
+    const units = bridgeV02Units(bridge);
+    const known = units.find(
+      (unit) =>
+        (unit.speaker as { knowledgeState?: string } | undefined)?.knowledgeState === "known" &&
+        unit.surfaceKind === "dialogue",
+    );
+    expect(known).toBeDefined();
+    const knownSpeaker = asTestRecord(known!.speaker, "known speaker");
+    knownSpeaker.revealState = "concealed";
+    expect(() => assertBridgeBundleV02(bridge)).toThrow(/revealState/);
+
+    // Restore and flip a reader_unknown to the wrong reveal value.
+    knownSpeaker.revealState = "revealed";
+    const readerUnknown = units.find(
+      (unit) =>
+        (unit.speaker as { knowledgeState?: string } | undefined)?.knowledgeState ===
+        "reader_unknown",
+    );
+    expect(readerUnknown).toBeDefined();
+    const maskedSpeaker = asTestRecord(readerUnknown!.speaker, "reader_unknown speaker");
+    maskedSpeaker.revealState = "revealed";
+    expect(() => assertBridgeBundleV02(bridge)).toThrow(/revealState/);
+    maskedSpeaker.revealState = "concealed";
+
+    // A genuinely unresolved speaker must not invent a resolved identity.
+    const parserUnknown = units.find(
+      (unit) =>
+        (unit.speaker as { knowledgeState?: string } | undefined)?.knowledgeState ===
+        "parser_unknown",
+    );
+    expect(parserUnknown).toBeDefined();
+    const unresolved = asTestRecord(parserUnknown!.speaker, "parser_unknown speaker");
+    unresolved.displayName = "Leaked Name";
+    expect(() => assertBridgeBundleV02(bridge)).toThrow(/displayName/);
+    delete unresolved.displayName;
+    unresolved.speakerId = "01920000-0000-7000-8000-00000000dead";
+    expect(() => assertBridgeBundleV02(bridge)).toThrow(/speakerId/);
+    delete unresolved.speakerId;
+    unresolved.readerLabel = "???";
+    expect(() => assertBridgeBundleV02(bridge)).toThrow(/readerLabel/);
+    delete unresolved.readerLabel;
+    unresolved.canonicalNameRef = "character/leaked";
+    expect(() => assertBridgeBundleV02(bridge)).toThrow(/canonicalNameRef/);
+    delete unresolved.canonicalNameRef;
+    unresolved.revealState = "revealed";
+    expect(() => assertBridgeBundleV02(bridge)).toThrow(/revealState/);
+    delete unresolved.revealState;
+    unresolved.textColor = [1, 2, 3];
+    expect(() => assertBridgeBundleV02(bridge)).toThrow(/textColor/);
   });
 
   it("rejects duplicate v0.2 bridge unit ids", () => {

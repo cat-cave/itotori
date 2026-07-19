@@ -160,7 +160,9 @@
         "knowledgeState": "known",
         "speakerId": "019ed001-0000-7000-8000-000000000401",
         "displayName": "Mira",
-        "canonicalNameRef": "character/mira"
+        "canonicalNameRef": "character/mira",
+        "revealState": "revealed",
+        "textColor": [204, 204, 255]
       },
       "context": {
         "route": {
@@ -705,7 +707,10 @@
         "knowledgeState": "reader_unknown",
         "speakerId": "019ed001-0000-7000-8000-000000000402",
         "displayName": "Rook",
-        "readerLabel": "???"
+        "readerLabel": "???",
+        "canonicalNameRef": "character/rook",
+        "revealState": "concealed",
+        "textColor": [180, 180, 180]
       },
       "context": {
         "route": {
@@ -756,6 +761,7 @@
       },
       "speaker": {
         "knowledgeState": "parser_unknown",
+        "rawSpeakerText": "???",
         "evidence": "The source command has message text but no nameplate field."
       },
       "context": {

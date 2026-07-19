@@ -922,7 +922,7 @@ export type SpeakerContextV02 =
       displayName: string;
       canonicalNameRef?: string;
       /** Always `"revealed"` for a `known` speaker (box shows the real name). */
-      revealState?: SpeakerRevealStateV02;
+      revealState?: "revealed";
       textColor?: SpeakerTextColorV02;
     }
   | {
@@ -937,7 +937,7 @@ export type SpeakerContextV02 =
       readerLabel: string;
       canonicalNameRef?: string;
       /** Always `"concealed"` for a `reader_unknown` speaker (box shows a mask). */
-      revealState?: SpeakerRevealStateV02;
+      revealState?: "concealed";
       textColor?: SpeakerTextColorV02;
     }
   | {
@@ -5563,19 +5563,30 @@ function assertSpeakerContextV02(
       assertUuid7(speaker.speakerId, `${label}.speakerId`);
       assertString(speaker.displayName, `${label}.displayName`);
       assertOptionalString(speaker.canonicalNameRef, `${label}.canonicalNameRef`);
-      assertOptionalSpeakerRevealState(speaker.revealState, `${label}.revealState`);
+      // `known` ⇒ `revealed` when present: a `concealed` label would leak the
+      // real displayName through consumer fallbacks as a "reader-safe" string.
+      assertOptionalSpeakerRevealState(speaker.revealState, `${label}.revealState`, "revealed");
       assertOptionalSpeakerTextColor(speaker.textColor, `${label}.textColor`);
       break;
     case "parser_unknown":
       assertOptionalString(speaker.rawSpeakerText, `${label}.rawSpeakerText`);
       assertOptionalString(speaker.evidence, `${label}.evidence`);
+      // Genuinely unresolved speakers must not carry resolved-name fields; those
+      // would invent an identity the producer never resolved.
+      assertSpeakerFieldAbsent(speaker, "speakerId", label);
+      assertSpeakerFieldAbsent(speaker, "displayName", label);
+      assertSpeakerFieldAbsent(speaker, "readerLabel", label);
+      assertSpeakerFieldAbsent(speaker, "canonicalNameRef", label);
+      assertSpeakerFieldAbsent(speaker, "revealState", label);
+      assertSpeakerFieldAbsent(speaker, "textColor", label);
       break;
     case "reader_unknown":
       assertUuid7(speaker.speakerId, `${label}.speakerId`);
       assertString(speaker.displayName, `${label}.displayName`);
       assertString(speaker.readerLabel, `${label}.readerLabel`);
       assertOptionalString(speaker.canonicalNameRef, `${label}.canonicalNameRef`);
-      assertOptionalSpeakerRevealState(speaker.revealState, `${label}.revealState`);
+      // `reader_unknown` ⇒ `concealed` when present.
+      assertOptionalSpeakerRevealState(speaker.revealState, `${label}.revealState`, "concealed");
       assertOptionalSpeakerTextColor(speaker.textColor, `${label}.textColor`);
       break;
     case "not_applicable":
@@ -5583,17 +5594,37 @@ function assertSpeakerContextV02(
   }
 }
 
+/** Reject a field that must not appear on this speaker variant. */
+function assertSpeakerFieldAbsent(
+  speaker: Record<string, unknown>,
+  field: string,
+  label: string,
+): void {
+  if (speaker[field] !== undefined) {
+    throw new Error(
+      `${label}.${field} must not be present when knowledgeState is ${String(speaker.knowledgeState)}`,
+    );
+  }
+}
+
 /** Validate the additive `revealState` extension when present: it must be one
- * of the reveal enum values. A wrong value now fails the contract (it is no
- * longer silently tolerated as an unknown property). */
+ * of the reveal enum values AND match the knowledge-state invariant
+ * (`known` ⇒ `revealed`, `reader_unknown` ⇒ `concealed`). A wrong value now
+ * fails the contract rather than silently leaking a real name. */
 function assertOptionalSpeakerRevealState(
   value: unknown,
   label: string,
+  required: SpeakerRevealStateV02,
 ): asserts value is SpeakerRevealStateV02 | undefined {
   if (value === undefined) {
     return;
   }
   assertEnum(value, SPEAKER_REVEAL_STATES, label);
+  if (value !== required) {
+    throw new Error(
+      `${label} must be "${required}" for this knowledgeState, got ${JSON.stringify(value)}`,
+    );
+  }
 }
 
 /** Validate the additive `textColor` extension when present: exactly three

@@ -88,25 +88,24 @@ function projectSpeaker(speaker: SpeakerContextV02 | null): SpeakerTruth | null 
       color: null,
     };
   }
-  if (speaker.knowledgeState === "reader_unknown" || speaker.revealState === "concealed") {
-    const label = "readerLabel" in speaker ? speaker.readerLabel : speaker.displayName;
+  if (speaker.knowledgeState === "reader_unknown") {
     return {
       status: "reader-unknown",
-      rawName: label,
-      revealSafeLabel: label,
+      rawName: speaker.readerLabel,
+      revealSafeLabel: speaker.readerLabel,
       color: speaker.textColor ? colorOf(speaker.textColor) : null,
     };
   }
-  if (!speaker.textColor) {
-    throw new ReadToolError("snapshot-integrity", "a known speaker is missing its text color");
-  }
+  // `known`: textColor is optional — the producer omits it for an out-of-range
+  // `#COLOR_TABLE` row rather than invent a palette colour. Absent colour is a
+  // valid state (null), not a crash.
   return {
     status: "known",
     rawName: speaker.displayName,
     resolvedDisplayName: speaker.displayName,
     revealSafeLabel: speaker.displayName,
     canonicalCharacterId: speaker.canonicalNameRef ?? speaker.speakerId,
-    color: colorOf(speaker.textColor),
+    color: speaker.textColor ? colorOf(speaker.textColor) : null,
   };
 }
 

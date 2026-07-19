@@ -12,14 +12,14 @@ import {
   SourceBindingMismatchError,
   UnreferencedLocalizationUnitError,
   joinNarrativeToLocalization,
-} from "../src/structure/localization-join.js";
+} from "../src/structure/index.js";
 import type {
   NarrativeChoice,
   NarrativeMessage,
   NarrativeScene,
   NarrativeStructure,
   NarrativeUnit,
-} from "../src/structure/types.js";
+} from "../src/structure/index.js";
 
 // The bridge side is a REAL committed bridge bundle (from extraction); the
 // narrative side is built to reference its units so the join is exercised

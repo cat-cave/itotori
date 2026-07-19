@@ -193,7 +193,9 @@ export const SpeakerTruthSchema = z.discriminatedUnion("status", [
       resolvedDisplayName: ShortTextSchema,
       revealSafeLabel: ShortTextSchema,
       canonicalCharacterId: SubjectIdSchema,
-      color: ColorRgbSchema,
+      // Nullable: Bridge producers omit textColor for invalid palette rows
+      // rather than invent a colour; projection carries that absence as null.
+      color: ColorRgbSchema.nullable(),
     })
     .strict(),
   z

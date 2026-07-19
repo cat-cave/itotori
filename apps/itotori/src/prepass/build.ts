@@ -11,7 +11,7 @@
 import { canonicalLlmJson, llmSha256, type LlmJsonValue } from "@itotori/db";
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 
-import { joinNarrativeToLocalization } from "../structure/localization-join.js";
+import { joinNarrativeToLocalization } from "../structure/index.js";
 import type { NarrativeStructure } from "../structure/types.js";
 
 import { indexNarrativePositions } from "./positions.js";
