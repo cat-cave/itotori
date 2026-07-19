@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  MODEL_PROFILE_CERTIFICATE_VERSION,
+  ModelProfileCertificateSchema,
   certificateEvidenceHash,
   constructRoleModelProfile,
 } from "../src/llm/role-model-profiles.js";
-import { modelProfileCertificates } from "../src/llm/model-profiles/certificates.js";
 import {
   LIVE_CONFORMANCE_MAX_AGE_MS,
   admitQualifyingRun,
@@ -49,7 +50,7 @@ function qualifyingRequest(
         providerPolicy: certifiedProfile.providerPolicy,
       },
     ],
-    certificates: modelProfileCertificates,
+    certificates: [passingCertificate()],
     wireCapture: privateWire,
     telemetryCapture: {
       captureKind: "qualifying-content-free",
@@ -166,7 +167,7 @@ describe("qualifying ZDR admission", () => {
 });
 
 function mismatchedCertificate() {
-  const base = modelProfileCertificates[0]!;
+  const base = passingCertificate();
   const otherProfile = constructRoleModelProfile({
     profileId: "different-deepseek-route",
     model: "deepseek/deepseek-v4-flash-2026-07",
@@ -191,4 +192,57 @@ function mismatchedCertificate() {
       },
     },
   };
+}
+
+function passingCertificate() {
+  const checks = {
+    strictStructuredFinish: "passed",
+    typedToolRoundTrip: "passed",
+    reasoningDetailsContinuity: "passed",
+    usageCapture: "passed",
+    costCapture: "passed",
+    generationLookup: "passed",
+    servedPairVerification: "passed",
+  } as const;
+  const observations = {
+    physicalStepCount: 2,
+    toolExecutionCount: 1,
+    reasoningDetailBatchCount: 1,
+    forwardedReasoningDetailBatchCount: 1,
+    usage: { promptTokens: 2, completionTokens: 2, reasoningTokens: 1, cachedTokens: 0 },
+    billedUsdByStep: ["0.000001", "0.000001"],
+    generationLookupAttempts: 1,
+    generationId: "generation:recorded-admission",
+    served: {
+      status: "confirmed",
+      model: "deepseek/deepseek-v4-flash-20260423",
+      provider: "recorded-zdr-provider",
+    },
+  } as const;
+  const probedAt = "2026-07-15T22:55:45.017Z";
+  const memoKey = `sha256:${"a".repeat(64)}` as const;
+  const transcriptHash = `sha256:${"b".repeat(64)}` as const;
+  return ModelProfileCertificateSchema.parse({
+    schemaVersion: MODEL_PROFILE_CERTIFICATE_VERSION,
+    certificateStatus: "valid",
+    probeMode: "live",
+    probedAt,
+    subject: certifiedProfile,
+    checks,
+    observations: {
+      ...observations,
+      runBinding: {
+        memoKey,
+        transcriptHash,
+        evidenceHash: certificateEvidenceHash({
+          probedAt,
+          subject: certifiedProfile,
+          checks,
+          observations,
+          memoKey,
+          transcriptHash,
+        }),
+      },
+    },
+  });
 }

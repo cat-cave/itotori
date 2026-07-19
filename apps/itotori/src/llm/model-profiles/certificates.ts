@@ -1,11 +1,9 @@
 import type { ModelProfileCertificate } from "../role-model-profiles.js";
-import { deepSeekV4FlashCertificate20260715 } from "./2026-07-15-deepseek-v4-flash-probe.js";
 
 /**
- * Dated live certificates, appended only from a passing live conformance
- * probe. Each certifies a (model, capability + ZDR policy, version) triple
- * and pins NO provider; selection is fail-closed on the exact subject.
+ * Dated certificates are appended only after the live probe has emitted a
+ * verified result. Until that evidence is committed, production resolution is
+ * deliberately fail-closed rather than treating an older deferred capture as
+ * proof of the current reconciliation contract.
  */
-export const modelProfileCertificates: readonly ModelProfileCertificate[] = [
-  deepSeekV4FlashCertificate20260715,
-];
+export const modelProfileCertificates: readonly ModelProfileCertificate[] = [];

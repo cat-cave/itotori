@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { ItotoriLlmCallMemoRepository } from "@itotori/db";
 import { expect, it } from "vitest";
+import { createDispatchRuntime } from "../src/composition/live/dispatch-runtime.js";
 import type { CallSpec } from "../src/contracts/index.js";
 import { dispatch } from "../src/llm/dispatch.js";
 import {
@@ -44,48 +45,57 @@ const liveEnabled =
       JSON.stringify(reviewVerdictExample),
     ].join("\n");
     let toolExecutionCount = 0;
-    const generationLookupAttempts = 0;
+    let generationLookupRequests = 0;
     let reasoning: ReasoningDetailsContinuityEvidence | null = null;
     let providerError: ProviderErrorObservation | null = null;
     try {
-      const result = await dispatch(conformanceSpec(prompt), {
+      const baseRuntime = createDispatchRuntime({
         env: process.env,
         fetcher: async (input, init) => {
+          const request = new Request(input, init);
+          if (request.method === "GET" && request.url.includes("/generation")) {
+            generationLookupRequests += 1;
+          }
           const response = await fetch(input, init);
           if (!response.ok) providerError = await observeProviderError(response);
           return response;
         },
         tools: [decodedUnitsTool(() => (toolExecutionCount += 1))],
         contentAccess: { requireContentRead: async () => undefined },
-        readPayload: async () => prompt,
         onReasoningDetailsContinuity: (evidence) => {
           reasoning = evidence;
         },
-        memo: {
-          store: new ItotoriLlmCallMemoRepository(context.pool, cipher, {
-            requireContentRead: async () => undefined,
-          }),
-          profile: {
-            name: candidate.modelProfile,
-            version: candidate.version,
-            deadlines: { normalMs: 300_000, deepMs: 600_000 },
-            maxAttemptExposureUsd: "1",
-          },
-          admission: {
-            scope: "probe:model-profile:deepseek-v4-flash",
-            confirmedCostCapUsd: "1",
-          },
-          snapshots: {
-            decodeRevisionHash: STEP_HASH_A,
-            glossaryRevisionHash: STEP_HASH_B,
-            styleRevisionHash: STEP_HASH_C,
-            acceptedOutputHeadHash: STEP_HASH_D,
-          },
+        memoStore: new ItotoriLlmCallMemoRepository(context.pool, cipher, {
+          requireContentRead: async () => undefined,
+        }),
+        profile: {
+          name: candidate.modelProfile,
+          version: candidate.version,
+          deadlines: { normalMs: 300_000, deepMs: 600_000 },
+          maxAttemptExposureUsd: "1",
         },
+        admission: {
+          scope: "probe:model-profile:deepseek-v4-flash",
+          confirmedCostCapUsd: "1",
+        },
+        snapshots: {
+          decodeRevisionHash: STEP_HASH_A,
+          glossaryRevisionHash: STEP_HASH_B,
+          styleRevisionHash: STEP_HASH_C,
+          acceptedOutputHeadHash: STEP_HASH_D,
+        },
+      });
+      const result = await dispatch(conformanceSpec(prompt), {
+        ...baseRuntime,
+        readPayload: async () => prompt,
       });
       const steps = await readStepObservations(context.pool);
       const attempts = await readAttemptObservations(context.pool);
       if (reasoning === null) throw new Error("dispatcher omitted reasoning continuity evidence");
+      const generationLookupAttempts = terminalGenerationLookupAttempts(
+        result,
+        generationLookupRequests,
+      );
       const probedAt = new Date().toISOString();
       let certificate;
       try {
@@ -151,6 +161,27 @@ function conformanceSpec(prompt: string): CallSpec {
     sampleId: "sample:model-profile-conformance",
     runMode: "test-dev",
   };
+}
+
+function terminalGenerationLookupAttempts(
+  result: Awaited<ReturnType<typeof dispatch>>,
+  generationLookupRequests: number,
+): 0 | 1 {
+  if (
+    result.status === "success" &&
+    result.verification === "verified" &&
+    result.generationId !== null &&
+    result.served.status === "confirmed"
+  ) {
+    if (generationLookupRequests < 1) {
+      throw new Error("verified terminal result was not preceded by a generation lookup");
+    }
+    // The certificate binds the terminal response's one authoritative lookup.
+    // Earlier tool-loop steps retain their own reconciliation evidence in the
+    // physical memo ledger and do not stand in for this terminal proof.
+    return 1;
+  }
+  return 0;
 }
 
 interface ProviderErrorObservation {

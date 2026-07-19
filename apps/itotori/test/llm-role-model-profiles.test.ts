@@ -13,7 +13,6 @@ import {
   type ModelProfileCertificate,
   type RoleModelProfile,
 } from "../src/llm/role-model-profiles.js";
-import { deepSeekV4FlashProbe20260715 } from "../src/llm/model-profiles/2026-07-15-deepseek-v4-flash-probe.js";
 
 const simulatedBilledUsd = ["0", "000001"].join(".");
 const BIND_MEMO_KEY = `sha256:${"1".repeat(64)}` as const;
@@ -31,7 +30,10 @@ const zdrFallbackPolicy = {
 
 describe("certified per-role model profiles", () => {
   it("resolves every A/P/Q role to the DeepSeek Flash capability + ZDR + fallback policy", () => {
-    const resolved = RoleIdSchema.options.map((roleId) => resolveRoleModelProfile(roleId));
+    const certificates = [passingCertificate(deepSeekV4FlashProfile)];
+    const resolved = RoleIdSchema.options.map((roleId) =>
+      resolveRoleModelProfile(roleId, { certificates }),
+    );
 
     expect(roleModelProfileConfig.schemaVersion).toBe(ROLE_MODEL_PROFILE_CONFIG_VERSION);
     expect(resolved).toHaveLength(19);
@@ -43,7 +45,7 @@ describe("certified per-role model profiles", () => {
       expect(profile.providerPolicy).not.toHaveProperty("order");
       expect(profile.certificate.certificateStatus).toBe("valid");
       // The served pair is recorded telemetry, not a selection input.
-      expect(profile.certificate.observations.served).toEqual({ status: "unknown" });
+      expect(profile.certificate.observations.served).toMatchObject({ status: "confirmed" });
     }
     expect(resolved.filter((profile) => profile.roleId.startsWith("A"))).toHaveLength(10);
     expect(resolved.filter((profile) => profile.roleId.startsWith("P"))).toHaveLength(3);
@@ -175,14 +177,15 @@ describe("certified per-role model profiles", () => {
     ).toThrow(/no valid certificate/u);
   });
 
-  it("records unavailable generation and served-pair evidence only as deferred unknown", () => {
-    const certificate = passingCertificate(deepSeekV4FlashProfile);
+  it("accepts the distinct no-lookup certificate shape only with explicit unknown evidence", () => {
+    const certificate = deferredCertificate(deepSeekV4FlashProfile);
 
     expect(certificate.checks).toMatchObject({
       generationLookup: "deferred",
       servedPairVerification: "deferred",
     });
     expect(certificate.observations).toMatchObject({
+      generationLookupAttempts: 0,
       generationId: null,
       served: { status: "unknown" },
     });
@@ -190,32 +193,38 @@ describe("certified per-role model profiles", () => {
     expect(certificate.observations).not.toHaveProperty("served.provider");
   });
 
-  it("un-blocks every role with the passing fallback-enabled dated live probe", () => {
-    const probe = deepSeekV4FlashProbe20260715;
+  it("rejects a reconciled observation that is relabeled as deferred", () => {
+    const certificate = passingCertificate(deepSeekV4FlashProfile);
+    const { runBinding, ...observations } = certificate.observations;
+    const checks = {
+      ...certificate.checks,
+      generationLookup: "deferred",
+      servedPairVerification: "deferred",
+    } as const;
+    const relabeled = {
+      ...certificate,
+      checks,
+      observations: {
+        ...observations,
+        runBinding: {
+          ...runBinding,
+          evidenceHash: certificateEvidenceHash({
+            probedAt: certificate.probedAt,
+            subject: certificate.subject,
+            checks,
+            observations,
+            memoKey: runBinding.memoKey,
+            transcriptHash: runBinding.transcriptHash,
+          }),
+        },
+      },
+    };
 
-    // Provider-agnostic dated artifact: the subject names no provider.
-    expect(probe.subject).toEqual(deepSeekV4FlashProfile);
-    expect(probe.subject.providerPolicy).toEqual(zdrFallbackPolicy);
-    // Fallback across the ZDR allow-list was enabled — the direct fix for the
-    // earlier probe that reported "blocked" on a single-provider HTTP 429.
-    expect(probe.live).toMatchObject({
-      probeStatus: "passed",
-      certificateEligible: true,
-      fallback: { allowFallbacks: true, zdr: true },
-      checks: { generationLookup: "deferred", servedPairVerification: "deferred" },
-    });
-    // The served pair is RECORDED honestly: model known, provider deferred
-    // (RB-010/#941) — never fabricated, never pinned.
-    expect(probe.live.served).toEqual({
-      model: "deepseek/deepseek-v4-flash",
-      provider: { status: "unknown" },
-    });
-    expect(ModelProfileCertificateSchema.safeParse(probe.certificate).success).toBe(true);
+    expect(ModelProfileCertificateSchema.safeParse(relabeled).success).toBe(false);
+  });
 
-    // The committed certificate un-blocks selection with the default set.
-    const resolved = resolveRoleModelProfile("Q6");
-    expect(resolved.certificate.certificateStatus).toBe("valid");
-    expect(resolved.providerPolicy).toEqual(zdrFallbackPolicy);
+  it("fails closed until an actual live certificate is appended", () => {
+    expect(() => resolveRoleModelProfile("Q6")).toThrow(/no valid certificate/u);
   });
 });
 
@@ -256,8 +265,8 @@ const PASSING_CHECKS = {
   reasoningDetailsContinuity: "passed",
   usageCapture: "passed",
   costCapture: "passed",
-  generationLookup: "deferred",
-  servedPairVerification: "deferred",
+  generationLookup: "passed",
+  servedPairVerification: "passed",
 } as const;
 
 function passingObservationsWithoutBinding() {
@@ -268,9 +277,13 @@ function passingObservationsWithoutBinding() {
     forwardedReasoningDetailBatchCount: 1,
     usage: { promptTokens: 2, completionTokens: 2, reasoningTokens: 1, cachedTokens: 0 },
     billedUsdByStep: [simulatedBilledUsd, simulatedBilledUsd],
-    generationLookupAttempts: 2,
-    generationId: null,
-    served: { status: "unknown" },
+    generationLookupAttempts: 1,
+    generationId: "generation:recorded-certificate",
+    served: {
+      status: "confirmed",
+      model: "deepseek/deepseek-v4-flash-20260423",
+      provider: "recorded-zdr-provider",
+    },
   } as const;
 }
 
@@ -291,6 +304,44 @@ function passingCertificate(profile: RoleModelProfile): ModelProfileCertificate 
     probedAt: PROBED_AT,
     subject: profile,
     checks: PASSING_CHECKS,
+    observations: {
+      ...observations,
+      runBinding: {
+        memoKey: BIND_MEMO_KEY,
+        transcriptHash: BIND_TRANSCRIPT_HASH,
+        evidenceHash,
+      },
+    },
+  });
+}
+
+function deferredCertificate(profile: RoleModelProfile): ModelProfileCertificate {
+  const checks = {
+    ...PASSING_CHECKS,
+    generationLookup: "deferred",
+    servedPairVerification: "deferred",
+  } as const;
+  const observations = {
+    ...passingObservationsWithoutBinding(),
+    generationLookupAttempts: 0,
+    generationId: null,
+    served: { status: "unknown" },
+  } as const;
+  const evidenceHash = certificateEvidenceHash({
+    probedAt: PROBED_AT,
+    subject: profile,
+    checks,
+    observations,
+    memoKey: BIND_MEMO_KEY,
+    transcriptHash: BIND_TRANSCRIPT_HASH,
+  });
+  return ModelProfileCertificateSchema.parse({
+    schemaVersion: MODEL_PROFILE_CERTIFICATE_VERSION,
+    certificateStatus: "valid",
+    probeMode: "live",
+    probedAt: PROBED_AT,
+    subject: profile,
+    checks,
     observations: {
       ...observations,
       runBinding: {

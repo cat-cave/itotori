@@ -16,8 +16,11 @@ const HASH_B = `sha256:${"b".repeat(64)}` as const;
 const capturedBilledUsd = ["0", "000001"].join(".");
 
 describe("live model-profile conformance certification", () => {
-  it("certifies strict finish, tools, reasoning continuity, usage, and cost while deferring unknown route metadata", () => {
-    const certificate = certifyLiveModelProfile(deepSeekV4FlashProfile, passingObservations());
+  it("certifies a recorded probe that deliberately made no generation lookup", async () => {
+    const certificate = certifyLiveModelProfile(
+      deepSeekV4FlashProfile,
+      await recordedProbeTransport("deferred").observe(),
+    );
 
     expect(certificate).toMatchObject({
       certificateStatus: "valid",
@@ -35,6 +38,31 @@ describe("live model-profile conformance certification", () => {
         generationLookupAttempts: 0,
         generationId: null,
         served: { status: "unknown" },
+      },
+    });
+  });
+
+  it("certifies a recorded probe with one reconciled and verified served pair", async () => {
+    const certificate = certifyLiveModelProfile(
+      deepSeekV4FlashProfile,
+      await recordedProbeTransport("reconciled").observe(),
+    );
+
+    expect(certificate).toMatchObject({
+      certificateStatus: "valid",
+      probeMode: "live",
+      checks: {
+        generationLookup: "passed",
+        servedPairVerification: "passed",
+      },
+      observations: {
+        generationLookupAttempts: 1,
+        generationId: "generation:recorded-probe",
+        served: {
+          status: "confirmed",
+          model: "deepseek/deepseek-v4-flash-20260423",
+          provider: "recorded-zdr-provider",
+        },
       },
     });
   });
@@ -84,9 +112,37 @@ describe("live model-profile conformance certification", () => {
       /provider-reported cost/u,
     ],
     [
-      "unexpected generation lookup",
-      (value: LiveConformanceObservations) => ({ ...value, generationLookupAttempts: 1 }),
-      /explicit unknown/u,
+      "deferred lookup count",
+      (value: LiveConformanceObservations) => ({
+        ...value,
+        result: explicitUnknownResult(),
+        generationLookupAttempts: 1,
+      }),
+      /neither deferred nor verified/u,
+    ],
+    [
+      "reconciled lookup count",
+      (value: LiveConformanceObservations) => ({ ...value, generationLookupAttempts: 2 }),
+      /neither deferred nor verified/u,
+    ],
+    [
+      "unconfirmed served pair after a lookup",
+      (value: LiveConformanceObservations) => ({
+        ...value,
+        result: explicitUnknownResult(),
+        generationLookupAttempts: 1,
+      }),
+      /neither deferred nor verified/u,
+    ],
+    [
+      "different served model",
+      (value: LiveConformanceObservations) => ({
+        ...value,
+        result: withResult(value.result, {
+          served: { status: "confirmed", model: "other/model", provider: "recorded-zdr-provider" },
+        }),
+      }),
+      /outside the certified model family/u,
     ],
     [
       "reasoning detail counts",
@@ -126,10 +182,9 @@ describe("live model-profile conformance certification", () => {
       }),
       /terminal model step/u,
     ],
-  ])("refuses certification when %s proof is removed", (_label, mutate, message) => {
-    expect(() =>
-      certifyLiveModelProfile(deepSeekV4FlashProfile, mutate(passingObservations())),
-    ).toThrow(message);
+  ])("refuses certification when %s proof is removed", async (_label, mutate, message) => {
+    const observations = mutate(await recordedProbeTransport("reconciled").observe());
+    expect(() => certifyLiveModelProfile(deepSeekV4FlashProfile, observations)).toThrow(message);
   });
 });
 
@@ -137,10 +192,22 @@ function withResult(result: CallResult, patch: Record<string, unknown>): CallRes
   return { ...result, ...patch } as CallResult;
 }
 
-function passingObservations(): LiveConformanceObservations {
+type ReconciliationMode = "deferred" | "reconciled";
+
+function recordedProbeTransport(mode: ReconciliationMode): {
+  readonly observe: () => Promise<LiveConformanceObservations>;
+} {
+  return {
+    async observe() {
+      return passingObservations(mode);
+    },
+  };
+}
+
+function passingObservations(mode: ReconciliationMode): LiveConformanceObservations {
   return {
     probedAt: "2026-07-15T00:00:00.000Z",
-    result: explicitUnknownResult(),
+    result: mode === "deferred" ? explicitUnknownResult() : reconciledResult(),
     steps: [step("tool-calls"), step("terminal")],
     toolExecutionCount: 1,
     reasoning: {
@@ -150,7 +217,7 @@ function passingObservations(): LiveConformanceObservations {
       forwardedDetailCount: 1,
       exactForwardCount: 1,
     },
-    generationLookupAttempts: 0,
+    generationLookupAttempts: mode === "deferred" ? 0 : 1,
   };
 }
 
@@ -222,5 +289,17 @@ function explicitUnknownResult(): CallResult {
       },
       { kind: "run-finished", iterationCount: 2, toolCallCount: 1, finishReason: "stop" },
     ],
+  });
+}
+
+function reconciledResult(): CallResult {
+  return withResult(explicitUnknownResult(), {
+    served: {
+      status: "confirmed",
+      model: "deepseek/deepseek-v4-flash-20260423",
+      provider: "recorded-zdr-provider",
+    },
+    generationId: "generation:recorded-probe",
+    verification: "verified",
   });
 }
