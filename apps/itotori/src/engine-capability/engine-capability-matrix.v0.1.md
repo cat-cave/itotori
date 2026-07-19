@@ -23,6 +23,7 @@
 | wolf-rpg-editor-encrypted-archive-smoke | wolf_rpg_editor | readiness_only | yes | no | no | no | partial | no |
 | bgi-ethornell-container-readiness | bgi_ethornell | readiness_only | yes | no | no | no | no | no |
 | reallive-seen-txt-detector-readiness | reallive | readiness_only | yes | yes | no | no | no | no |
+| reallive-accepted-output-patchback-produce | reallive | readiness_only | yes | n/a | partial | partial | n/a | no |
 | softpal-script-src-text-dat-extract-patch | softpal | positive_adapter | yes | yes | yes | partial | n/a | no |
 
 ## Posture legend
@@ -41,6 +42,7 @@
 - `rpg-maker-mv-mz-key-validation` (validation_artifact/validation_artifact) — fixtures/public/kaifuu-encrypted-matrix/expected/rpg-maker-mv-mz-key-validation-success-v0.1.json
 - `rpg-maker-mv-mz-readiness-merge` (readiness_profile/readiness_profile) — fixtures/public/catalog-capability-evidence-mv-mz-merge/expected/readiness-merge-v0.1.json
 - `rpg-maker-mv-mz-data-text-patchback` (validation_artifact/validation_artifact) — fixtures/public/kaifuu-rpgmaker-data-text-patchback/expected/data-text-patchback-validation-v0.1.json
+- `reallive-patchback-produce` (validation_artifact/validation_artifact) — fixtures/public/itotori-patchback-produce/expected/reallive-patchback-produce-capability-v0.1.json
 - `rpg-maker-mv-mz-encrypted-suffixes-detection` (fixture_output/detection_report) — fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/expected/detection-report-v0.1.json
 - `encrypted-matrix-detection-summary` (readiness_profile/detection_summary) — fixtures/public/kaifuu-encrypted-matrix/expected/detection-summary-v0.1.json
 - `tyranoscript-null-key-readiness` (readiness_profile/detector_profile) — fixtures/kaifuu/tyranoscript/null-key-readiness-profile.json
@@ -83,5 +85,9 @@
 - [bgi-ethornell-container-readiness] helper: an encrypted/keyed surface is detected but no key or helper handling is claimed
 - [bgi-ethornell-container-readiness] runtime: no runtime evidence is claimed
 - [reallive-seen-txt-detector-readiness] helper: no key/helper handling is claimed
+- [reallive-accepted-output-patchback-produce] extract: the two-corpus proof derives the source bridge through real Kaifuu extraction, but production starts from that accepted-output input
+- [reallive-accepted-output-patchback-produce] patch: produceNativePatchbackBuild drives the real kaifuu patch seam and records a hash-bound playable build; validation evidence is not an EngineAdapter registry claim
+- [reallive-accepted-output-patchback-produce] runtime: produce proves patched-build creation and delivery, not a runtime replay claim
+- [reallive-accepted-output-patchback-produce] patchback-produce is gate-enforced only while the strict two-corpus real-byte oracle and both production surfaces remain declared by its capability artifact
 - [exclusion:renpy] Ren'Py is not an alpha Japanese-localization opportunity driver: it is over-represented in catalog data by Western/English doujin output and already has high existing translation coverage. Per docs/research/japanese-engine-opportunity-analysis.md it is the easy, already-done reference engine, not a greenfield Japanese driver. It surfaces only as a packed-input detector row and is excluded from the capability breadth.
 - [exclusion:unknown] The unknown-archive-variant row is a non-engine triage bucket, not an engine family, and carries no capability claim.
