@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 kaifuu-core = { path = "../kaifuu-core" }
 kaifuu-reallive = { path = "../kaifuu-reallive" }
+kaifuu-softpal = { path = "../kaifuu-softpal" }
 serde.workspace = true
 serde_json.workspace = true
 

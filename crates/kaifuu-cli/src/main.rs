@@ -41,6 +41,7 @@ mod readiness_commands;
 mod reallive_commands;
 mod rpgmaker_commands;
 mod siglus_commands;
+mod softpal_commands;
 mod vault;
 mod wolf_commands;
 mod xp3_commands;
@@ -62,6 +63,7 @@ pub(crate) use rpgmaker_commands::{
     run_extract_rpgmaker_bundle, run_patch_rpgmaker_bundle, run_rpg_maker_command,
 };
 pub(crate) use siglus_commands::run_siglus_command;
+pub(crate) use softpal_commands::run_softpal_command;
 pub(crate) use wolf_commands::run_wolf_command;
 pub(crate) use xp3_commands::run_xp3_command;
 
@@ -88,6 +90,17 @@ fn run_with_args_and_registry(
     args: Vec<String>,
     registry: &AdapterRegistry,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Softpal ADV extract/patch/verify route through the kaifuu-softpal-backed
+    // adapter (SCRIPT.SRC/TEXT.DAT decode + dialogue/choice patch-back), sharing
+    // the same command verbs as the RealLive/RPG Maker `--engine` flag paths.
+    if flag_optional(&args, "--engine") == Some("softpal")
+        && matches!(
+            args.first().map(String::as_str),
+            Some("extract" | "patch" | "verify")
+        )
+    {
+        return run_softpal_command(&args);
+    }
     match args.first().map(String::as_str) {
         Some("detect") => {
             let game_dir = PathBuf::from(positional(&args, 1)?);

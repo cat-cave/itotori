@@ -10,12 +10,13 @@ impl EngineAdapter for SoftpalProfileDetectorAdapter {
     }
 
     fn capabilities(&self) -> AdapterCapabilities {
+        const PATCH_LIMITATION: &str = "dialogue + choice text is patched back by rebuilding TEXT.DAT (re-encrypting when the original was) and repointing SCRIPT.SRC as loose files; PAC repack, speaker-name/non-text surfaces, and the full Sv20 opcode table are not claimed";
         let identify = LayeredAccessOperationContract {
             status: CapabilityStatus::Supported,
             required_capabilities: vec![Capability::Detection, Capability::ProfileGeneration],
             supported_surfaces: vec![SurfaceTransform::Identity],
             supported_containers: vec![ContainerTransform::LooseFile],
-            supported_crypto: vec![CryptoTransform::Unknown],
+            supported_crypto: vec![CryptoTransform::NullKey],
             supported_codecs: vec![CodecTransform::Unknown],
             supported_patch_back: vec![PatchBackTransform::Unsupported],
             support_boundary: Some(
@@ -23,84 +24,92 @@ impl EngineAdapter for SoftpalProfileDetectorAdapter {
                     .to_string(),
             ),
         };
-        let unsupported = |required_capabilities| LayeredAccessOperationContract {
-            status: CapabilityStatus::Unsupported,
-            required_capabilities,
-            supported_surfaces: vec![],
-            supported_containers: vec![],
-            supported_crypto: vec![],
-            supported_codecs: vec![],
-            supported_patch_back: vec![],
-            support_boundary: Some(SOFTPAL_SUPPORT_BOUNDARY.to_string()),
+        let inventory = LayeredAccessOperationContract {
+            status: CapabilityStatus::Supported,
+            required_capabilities: vec![Capability::AssetListing, Capability::AssetInventory],
+            supported_surfaces: vec![SurfaceTransform::ArchiveEntry],
+            supported_containers: vec![ContainerTransform::Archive, ContainerTransform::LooseFile],
+            supported_crypto: vec![CryptoTransform::NullKey],
+            supported_codecs: vec![CodecTransform::BinaryTable],
+            supported_patch_back: vec![PatchBackTransform::Unsupported],
+            support_boundary: Some(
+                "enumerates the PAC entry table (or the loose SCRIPT.SRC/TEXT.DAT pair); text extraction is claimed only for the script/text surfaces"
+                    .to_string(),
+            ),
+        };
+        let extract = LayeredAccessOperationContract {
+            status: CapabilityStatus::Supported,
+            required_capabilities: vec![
+                Capability::Extraction,
+                Capability::ContainerAccess,
+                Capability::CryptoAccess,
+                Capability::CodecAccess,
+            ],
+            supported_surfaces: vec![SurfaceTransform::BinaryOffset],
+            supported_containers: vec![ContainerTransform::Archive, ContainerTransform::LooseFile],
+            supported_crypto: vec![CryptoTransform::NullKey],
+            supported_codecs: vec![
+                CodecTransform::BytecodeDecompile,
+                CodecTransform::ShiftJisText,
+                CodecTransform::BinaryTable,
+            ],
+            supported_patch_back: vec![PatchBackTransform::Unsupported],
+            support_boundary: Some(
+                "extracts the TEXT-SHOW (dialogue) + text-bearing SELECT (choice) surfaces of SCRIPT.SRC, resolving 4-byte TEXT.DAT pointers to decoded cp932 lines"
+                    .to_string(),
+            ),
+        };
+        let patch = LayeredAccessOperationContract {
+            status: CapabilityStatus::Limited,
+            required_capabilities: vec![Capability::Patching, Capability::PatchBack],
+            supported_surfaces: vec![SurfaceTransform::BinaryOffset],
+            supported_containers: vec![ContainerTransform::LooseFile],
+            supported_crypto: vec![CryptoTransform::NullKey],
+            supported_codecs: vec![CodecTransform::ShiftJisText, CodecTransform::BinaryTable],
+            supported_patch_back: vec![PatchBackTransform::ReplaceFile],
+            support_boundary: Some(PATCH_LIMITATION.to_string()),
         };
         AdapterCapabilities::new(
             SOFTPAL_DETECTOR_ADAPTER_ID,
             vec![
                 CapabilityReport::supported(Capability::Detection),
                 CapabilityReport::supported(Capability::ProfileGeneration),
-                CapabilityReport::unsupported(
-                    Capability::AssetListing,
-                    "Softpal PAC entry listing is a later Softpal node, not the detector",
-                ),
-                CapabilityReport::unsupported(
-                    Capability::AssetInventory,
-                    "Softpal asset inventory is a later Softpal node, not the detector",
-                ),
-                CapabilityReport::unsupported(
-                    Capability::Extraction,
-                    "the Softpal detector does not extract PAC archives",
-                ),
-                CapabilityReport::unsupported(
-                    Capability::Patching,
-                    "the Softpal detector does not patch or rebuild Softpal assets",
-                ),
-                CapabilityReport::unsupported(
-                    Capability::ContainerAccess,
-                    "PAC archive parsing is outside the detector",
-                ),
-                CapabilityReport::unsupported(
-                    Capability::CryptoAccess,
-                    "TEXT.DAT/PAC decryption is outside the detector",
-                ),
-                CapabilityReport::unsupported(
-                    Capability::CodecAccess,
-                    "SCRIPT.SRC decompilation / TEXT.DAT decode is outside the detector",
-                ),
-                CapabilityReport::unsupported(
-                    Capability::PatchBack,
-                    "Softpal patch-back/repack support is outside the detector",
-                ),
+                CapabilityReport::supported(Capability::AssetListing),
+                CapabilityReport::supported(Capability::AssetInventory),
+                CapabilityReport::supported(Capability::Extraction),
+                CapabilityReport::limited(Capability::Patching, PATCH_LIMITATION),
+                CapabilityReport::supported(Capability::ContainerAccess),
+                CapabilityReport::supported(Capability::CryptoAccess),
+                CapabilityReport::supported(Capability::CodecAccess),
+                CapabilityReport::limited(Capability::PatchBack, PATCH_LIMITATION),
                 CapabilityReport::unsupported(
                     Capability::RuntimeVm,
-                    "runtime support belongs to future Utsushi/Softpal work, not this detector",
+                    "runtime support belongs to future Utsushi/Softpal work, not this adapter",
                 ),
-                CapabilityReport::unsupported(
-                    Capability::EncryptedInput,
-                    "encrypted TEXT.DAT payloads are identified only, never decrypted",
-                ),
-                CapabilityReport::unsupported(
-                    Capability::AssetTextPatching,
-                    "no Softpal text surfaces are patched by this detector",
-                ),
+                CapabilityReport::supported(Capability::EncryptedInput),
+                CapabilityReport::limited(Capability::AssetTextPatching, PATCH_LIMITATION),
                 CapabilityReport::unsupported(
                     Capability::DeltaPatching,
-                    ".kaifuu delta packages do not apply to the detector-only Softpal profile",
+                    "Softpal patch-back emits rebuilt loose files, not a .kaifuu delta package",
                 ),
                 CapabilityReport::unsupported(
                     Capability::NonTextSurfaceExtraction,
-                    "no non-text extraction or OCR is performed by the Softpal detector",
+                    "no non-text extraction or OCR is performed by the Softpal adapter",
                 ),
             ],
-            AdapterCapabilityMatrix::identify_only(
+            AdapterCapabilityMatrix::new(
                 SOFTPAL_DETECTOR_ADAPTER_ID,
-                "Softpal detector is identify-only; PAC extraction, SCRIPT.SRC decompilation, TEXT.DAT decode/decryption, and patch-back are unsupported (later Softpal nodes)",
+                CapabilityLevelStatus::Supported,
+                CapabilityLevelStatus::Supported,
+                CapabilityLevelStatus::Supported,
+                CapabilityLevelStatus::partial([PATCH_LIMITATION.to_string()]),
             ),
         )
         .with_access_contract(LayeredAccessCapabilityContract {
             identify,
-            inventory: unsupported(vec![Capability::AssetListing, Capability::AssetInventory]),
-            extract: unsupported(vec![Capability::Extraction]),
-            patch: unsupported(vec![Capability::Patching, Capability::PatchBack]),
+            inventory,
+            extract,
+            patch,
         })
     }
 
@@ -202,14 +211,17 @@ impl EngineAdapter for SoftpalProfileDetectorAdapter {
 
     fn list_assets(&self, request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
         let state = Self::inspect(request.game_dir);
-        Err(Self::diagnostic_error(Self::unsupported_failure(
-            SemanticErrorCode::MissingContainerCapability,
-            Capability::AssetListing,
-            Self::detected_variant(state.variant),
-            SOFTPAL_DATA_PAC_NAME,
-            "Softpal PAC entry listing is a later Softpal node, not the detector",
-            "use identify (detect/profile) output only",
-        )))
+        if !Self::is_detected(state.variant) {
+            return Err(Self::diagnostic_error(Self::unsupported_failure(
+                SemanticErrorCode::UnknownEngineVariant,
+                Capability::AssetListing,
+                Self::detected_variant(state.variant),
+                SOFTPAL_DATA_PAC_NAME,
+                "list-assets requires a recognised Softpal title (Pal.dll / PAC+scripts / loose scripts)",
+                "run detect against a Softpal title first",
+            )));
+        }
+        self.build_asset_list(request.game_dir)
     }
 
     fn asset_inventory(
@@ -217,50 +229,88 @@ impl EngineAdapter for SoftpalProfileDetectorAdapter {
         request: AssetInventoryRequest<'_>,
     ) -> KaifuuResult<AssetInventoryManifest> {
         let state = Self::inspect(request.game_dir);
-        Err(Self::diagnostic_error(Self::unsupported_failure(
-            SemanticErrorCode::MissingContainerCapability,
-            Capability::AssetInventory,
-            Self::detected_variant(state.variant),
-            SOFTPAL_DATA_PAC_NAME,
-            "Softpal asset inventory is a later Softpal node, not the detector",
-            "use identify (detect/profile) output only",
-        )))
+        if !Self::is_detected(state.variant) {
+            return Err(Self::diagnostic_error(Self::unsupported_failure(
+                SemanticErrorCode::UnknownEngineVariant,
+                Capability::AssetInventory,
+                Self::detected_variant(state.variant),
+                SOFTPAL_DATA_PAC_NAME,
+                "asset-inventory requires a recognised Softpal title (Pal.dll / PAC+scripts / loose scripts)",
+                "run detect against a Softpal title first",
+            )));
+        }
+        self.build_asset_inventory(request.game_dir)
     }
 
     fn extract(&self, request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
         let state = Self::inspect(request.game_dir);
-        Err(Self::diagnostic_error(Self::parser_boundary_failure(
-            Self::detected_variant(state.variant),
-        )))
+        if !Self::is_detected(state.variant) {
+            return Err(Self::diagnostic_error(Self::parser_boundary_failure(
+                Self::detected_variant(state.variant),
+            )));
+        }
+        let scripts = Self::resolve_scripts(request.game_dir)?;
+        let (bridge, warnings) = Self::build_bridge(&scripts)?;
+        let profile = self.profile_from_state(state)?;
+        Ok(ExtractionResult {
+            adapter_id: SOFTPAL_DETECTOR_ADAPTER_ID.to_string(),
+            profile,
+            bridge,
+            warnings,
+        })
     }
 
     fn patch_preflight(&self, request: PatchPreflightRequest<'_>) -> KaifuuResult<PatchResult> {
+        // The dialogue/choice patch-back rebuilds the whole TEXT.DAT pool, so
+        // there is no fixed slot budget to preflight; the only hard constraint
+        // (cp932-encodability) is enforced by the patch itself. Preflight is a
+        // pass unless the title is unrecognised.
         let state = Self::inspect(request.game_dir);
-        Ok(self
-            .unsupported_patch_result(request.patch_export.patch_export_id.clone(), state.variant))
+        if !Self::is_detected(state.variant) {
+            return Ok(self.unsupported_patch_result(
+                request.patch_export.patch_export_id.clone(),
+                state.variant,
+            ));
+        }
+        Ok(PatchResult {
+            schema_version: "0.1.0".to_string(),
+            patch_result_id: deterministic_id("softpal-preflight", 12),
+            patch_export_id: request.patch_export.patch_export_id.clone(),
+            status: OperationStatus::Passed,
+            output_hash: content_hash(SOFTPAL_SUPPORT_BOUNDARY),
+            failures: vec![],
+        })
     }
 
     fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
         let state = Self::inspect(request.game_dir);
-        Ok(self
-            .unsupported_patch_result(request.patch_export.patch_export_id.clone(), state.variant))
+        if !Self::is_detected(state.variant) {
+            return Ok(self.unsupported_patch_result(
+                request.patch_export.patch_export_id.clone(),
+                state.variant,
+            ));
+        }
+        self.run_patch(request)
     }
 
     fn verify(&self, request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
         let state = Self::inspect(request.game_dir);
-        Ok(VerificationResult {
-            schema_version: "0.1.0".to_string(),
-            patch_result_id: deterministic_id("softpal-verify", 12),
-            status: OperationStatus::Failed,
-            output_hash: content_hash(SOFTPAL_SUPPORT_BOUNDARY),
-            failures: vec![Self::unsupported_failure(
-                SemanticErrorCode::UnsupportedLayeredTransform,
-                Capability::RuntimeVm,
-                Self::detected_variant(state.variant),
-                SOFTPAL_DATA_PAC_NAME,
-                "runtime/parser verification is outside the Softpal detector",
-                "use detect or profile only",
-            )],
-        })
+        if !Self::is_detected(state.variant) {
+            return Ok(VerificationResult {
+                schema_version: "0.1.0".to_string(),
+                patch_result_id: deterministic_id("softpal-verify", 12),
+                status: OperationStatus::Failed,
+                output_hash: content_hash(SOFTPAL_SUPPORT_BOUNDARY),
+                failures: vec![Self::unsupported_failure(
+                    SemanticErrorCode::UnknownEngineVariant,
+                    Capability::Verification,
+                    Self::detected_variant(state.variant),
+                    SOFTPAL_DATA_PAC_NAME,
+                    "verify requires a recognised Softpal title",
+                    "run detect against a Softpal title first",
+                )],
+            });
+        }
+        self.run_verify(request)
     }
 }
