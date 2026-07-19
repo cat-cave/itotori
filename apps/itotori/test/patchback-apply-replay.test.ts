@@ -4,6 +4,9 @@
 // containing the target passes while a SOURCE observation (no target) does not.
 
 import { describe, expect, it } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   applyRealLivePatch,
@@ -11,10 +14,14 @@ import {
   parseObservedBodies,
   realLivePatchArgs,
   RealLiveApplyError,
+  replayAcceptedPatch,
   replayObserve,
   replayValidateArgs,
 } from "../src/patchback/index.js";
 import type { NativeCliRunProcess } from "../src/native-bin/cli-bin-resolver.js";
+import { bindScopedTargets, buildPatchExportV02 } from "../src/patchback/index.js";
+import type { NativePatchbackInput } from "../src/patchback/index.js";
+import { buildRb024Snapshot, loadBridgeBundle, makeAccepted } from "./support/gate-fixtures.js";
 
 function runnerReturning(status: number, stdout = "", stderr = ""): NativeCliRunProcess {
   return () => ({ status, stdout, stderr });
@@ -120,5 +127,49 @@ describe("translated-byte replay observation", () => {
     // And the source observation is genuinely the untranslated source line.
     expect(observedTextContains(source, "あい")).toBe(true);
     expect(patched.textLineCount).toBe(1);
+  });
+
+  it("replays every PatchExportV02 scene and rejects a source-byte target replay", () => {
+    const snapshot = buildRb024Snapshot();
+    const bridge = loadBridgeBundle();
+    const fact = snapshot.orderedUnits[0]!;
+    const unit = bridge.units.find((candidate) => candidate.bridgeUnitId === fact.bridgeUnitId)!;
+    const target = `[EN replay]${unit.spans
+      .filter((span) => span.outOfBand !== true)
+      .map((span) => span.raw)
+      .join("")}`;
+    const input: NativePatchbackInput = {
+      snapshot,
+      accepted: [makeAccepted(fact, target)],
+      rawBridge: bridge,
+      workScope: { inScopeUnitFactIds: [fact.factId] },
+      sourceLocale: "ja-JP",
+      targetLocale: "en-US",
+    };
+    const patchExport = buildPatchExportV02(input, bindScopedTargets(input));
+    const patchedStdout = [
+      `textline[0] pc=0x0011 body=${JSON.stringify(target)}`,
+      "utsushi.reallive.replay_observed_textlines_emitted: scene=1017 textline_count=1",
+    ].join("\n");
+    const sourceStdout = [
+      'textline[0] pc=0x0011 body="あい"',
+      "utsushi.reallive.replay_observed_textlines_emitted: scene=1017 textline_count=1",
+    ].join("\n");
+    const outputs = [patchedStdout, sourceStdout];
+    const replay = replayAcceptedPatch({
+      patchExport,
+      patchedSeenPath: "/patched/REALLIVEDATA/Seen.txt",
+      sourceSeenPath: "/source/REALLIVEDATA/Seen.txt",
+      gameexePath: "/source/REALLIVEDATA/Gameexe.ini",
+      g00Dir: "/source/REALLIVEDATA/g00",
+      replayLogDirectory: mkdtempSync(join(tmpdir(), "itotori-patchback-replay-test-")),
+      nativeCli: {
+        runProcess: () => ({ status: 0, stdout: outputs.shift() ?? "", stderr: "" }),
+      },
+    });
+
+    expect(replay.scenes).toHaveLength(1);
+    expect(replay.scenes[0]!.patched.observedBodies).toContain(target);
+    expect(replay.scenes[0]!.source.observedBodies).not.toContain(target);
   });
 });

@@ -2,10 +2,13 @@
 //
 // This is the strict accepted-output <-> snapshot join the patchback stands on.
 // It is the ONLY place the target body is chosen, and it is chosen from the
-// accepted-output CAS (`accepted.value.targetSkeleton`), never a journal outcome.
-// A missing, duplicate, hash-mismatched, or off-snapshot target is fatal — the
-// whole apply fails loud rather than splice a partial or fabricated body.
+// accepted-output CAS (`accepted.value.targetSkeleton`), never a prior attempt
+// record. A runtime schema check stops an untyped caller from smuggling another
+// record shape into this native byte boundary. A missing, duplicate,
+// hash-mismatched, or off-snapshot target is fatal — the whole apply fails loud
+// rather than splice a partial or fabricated body.
 
+import { AcceptedOutputSchema } from "../contracts/index.js";
 import type { FactSnapshot, OrderedUnitFact } from "../prepass/index.js";
 
 import type { AcceptedUnitOutput, BoundScopedTarget, NativePatchbackInput } from "./types.js";
@@ -28,7 +31,19 @@ function indexAcceptedBySubject(
   accepted: readonly AcceptedUnitOutput[],
 ): ReadonlyMap<string, AcceptedUnitOutput> {
   const bySubject = new Map<string, AcceptedUnitOutput>();
-  for (const output of accepted) {
+  for (const supplied of accepted) {
+    const parsed = AcceptedOutputSchema.safeParse(supplied);
+    if (!parsed.success || parsed.data.subjectType !== "unit") {
+      const record = supplied as unknown as { outputId?: unknown; subjectId?: unknown };
+      const suppliedId = typeof record.subjectId === "string" ? record.subjectId : "<unknown>";
+      const outputId = typeof record.outputId === "string" ? record.outputId : "<unknown>";
+      throw new PatchbackBindingError(
+        "invalid-accepted-output",
+        [suppliedId],
+        `supplied accepted output ${outputId} is not a schema-valid unit accepted output`,
+      );
+    }
+    const output = parsed.data;
     if (!unitsByFactId.has(output.subjectId)) {
       throw new PatchbackBindingError(
         "accepted-subject-not-in-snapshot",
@@ -68,6 +83,16 @@ export function bindScopedTargets(input: NativePatchbackInput): readonly BoundSc
       "empty-scope",
       [],
       "work scope declared zero in-scope units; the patchback never applies an empty scope",
+    );
+  }
+  const duplicateScoped = [
+    ...new Set(scopedIds.filter((id, index) => scopedIds.indexOf(id) !== index)),
+  ];
+  if (duplicateScoped.length > 0) {
+    throw new PatchbackBindingError(
+      "duplicate-scoped-unit",
+      duplicateScoped,
+      "work scope names a unit more than once; each scoped unit requires exactly one target",
     );
   }
   const unitsByFactId = indexUnitsByFactId(input.snapshot);
