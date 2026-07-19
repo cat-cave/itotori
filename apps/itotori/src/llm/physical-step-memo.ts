@@ -1,4 +1,9 @@
-import { LlmMemoConflictError, type LlmAttemptFailure, type LlmCallMemoStore } from "@itotori/db";
+import {
+  injectLlmDurabilityFault,
+  LlmMemoConflictError,
+  type LlmAttemptFailure,
+  type LlmCallMemoStore,
+} from "@itotori/db";
 import { EventType, type AnyTextAdapter, type StreamChunk, type TextOptions } from "@tanstack/ai";
 import {
   CONTEXT_SNAPSHOT_SCHEMA_VERSION,
@@ -116,10 +121,12 @@ export function memoizePhysicalSteps(
         execute: async (attempt, control) => {
           const chunks: StreamChunk[] = [];
           try {
+            await injectLlmDurabilityFault(runtime.durabilityFaults, "before-dispatch");
             await collectStreamChunks(outbound(control.signal), control, chunks);
             const runError = chunks.findLast((chunk) => chunk.type === EventType.RUN_ERROR);
             const failure = runError ? control.failure(runError) : null;
             if (runError && failure) return incompleteStep(chunks, failure);
+            await injectLlmDurabilityFault(runtime.durabilityFaults, "after-remote-response");
             return completedStreamStep(spec, identity, chunks, attempt, parentResponseEventId, {
               observedGenerationId: await observer.takeGenerationId(),
               ...(runtime.generationLookup
@@ -176,12 +183,14 @@ export function memoizePhysicalSteps(
         },
         execute: async (attempt, control) => {
           try {
+            await injectLlmDurabilityFault(runtime.durabilityFaults, "before-dispatch");
             const result = await control.race(
               adapter.structuredOutput({
                 ...options,
                 chatOptions: withSignal(options.chatOptions, control.signal),
               }),
             );
+            await injectLlmDurabilityFault(runtime.durabilityFaults, "after-remote-response");
             return completedStructuredStep(spec, identity, result, attempt, parentResponseEventId, {
               observedGenerationId: await observer.takeGenerationId(),
               ...(runtime.generationLookup
@@ -237,7 +246,9 @@ export function memoizePhysicalSteps(
     ...(adapter.requires ? { requires: adapter.requires } : {}),
     "~types": adapter["~types"],
     chatStream: (options) =>
-      replayStream("chat", options, (signal) => adapter.chatStream(withSignal(options, signal))),
+      replayStream("chat", options, (signal) =>
+        adapter.chatStream(withSignal(withCombinedOutputSchema(options), signal)),
+      ),
     structuredOutput: replayStructured,
     ...(adapter.structuredOutputStream
       ? {
@@ -250,12 +261,30 @@ export function memoizePhysicalSteps(
             ),
         }
       : {}),
-    ...(adapter.supportsCombinedToolsAndSchema
-      ? {
-          supportsCombinedToolsAndSchema: (options?: Record<string, unknown>) =>
-            adapter.supportsCombinedToolsAndSchema!(options),
-        }
-      : {}),
+    // OpenRouter accepts response_format alongside tools, but its adapter does
+    // not yet advertise that capability. The proxy adds the already-converted
+    // schema to its model options above, so the terminal turn remains one
+    // schema-constrained physical step rather than an unstructured turn plus
+    // a separate finalization request.
+    supportsCombinedToolsAndSchema: () => true,
+  };
+}
+
+function withCombinedOutputSchema<T extends TextOptions<Record<string, unknown>>>(options: T): T {
+  if (!options.outputSchema) return options;
+  return {
+    ...options,
+    modelOptions: {
+      ...options.modelOptions,
+      responseFormat: {
+        type: "json_schema",
+        jsonSchema: {
+          name: "structured_output",
+          schema: options.outputSchema,
+          strict: true,
+        },
+      },
+    },
   };
 }
 

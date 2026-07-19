@@ -1,9 +1,12 @@
 import { HTTPClient, type Fetcher } from "@openrouter/sdk";
 import {
   AuthorizationError,
+  injectLlmDurabilityFault,
+  LlmDurabilityFaultError,
   LlmPhysicalStepFailedError,
   LlmRetriesExhaustedError,
   LlmSpendAdmissionDeniedError,
+  isLlmDurabilityFault,
   type LlmContentReadAuthorizer,
 } from "@itotori/db";
 import {
@@ -93,6 +96,8 @@ type DispatchState = {
   modelStepCount: number;
   toolCallCount: number;
   stepLimitReached: boolean;
+  /** A tool-loop adapter may discard the original injected fault before rethrowing. */
+  durabilityFaultCaught: boolean;
   lastFinishReason: "stop" | "tool-calls" | "length" | "content-filter" | "unknown";
 };
 
@@ -238,6 +243,11 @@ function dispatchMiddleware(state: DispatchState, maxToolCalls: number): ChatMid
       state.stepLimitReached = true;
       return { type: "abort", reason: "tool-call limit reached" };
     },
+    onAfterToolCall() {
+      if (state.durabilityFaultCaught) {
+        throw new LlmDurabilityFaultError("after-tool-result");
+      }
+    },
     onUsage(_context, usage) {
       addUsage(state.usage, usage);
     },
@@ -291,6 +301,12 @@ function runtimeTools(
         argumentsHash: sha256(input),
         result: parsed,
       });
+      try {
+        await injectLlmDurabilityFault(runtime.memo.durabilityFaults, "after-tool-result");
+      } catch (error: unknown) {
+        if (isLlmDurabilityFault(error)) state.durabilityFaultCaught = true;
+        throw error;
+      }
       return parsed;
     }),
   );
@@ -298,6 +314,7 @@ function runtimeTools(
 }
 
 function failureKind(error: unknown, state: DispatchState): FailureKind {
+  if (state.durabilityFaultCaught || isLlmDurabilityFault(error)) return "cancelled";
   if (error instanceof LlmRetriesExhaustedError) return "retries-exhausted";
   if (error instanceof LlmSpendAdmissionDeniedError) return "spend-admission";
   if (error instanceof LlmPhysicalStepFailedError) {
@@ -354,6 +371,7 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     modelStepCount: 0,
     toolCallCount: 0,
     stepLimitReached: false,
+    durabilityFaultCaught: false,
     lastFinishReason: "unknown",
   };
   const memoState = createPhysicalStepMemoState();
@@ -375,7 +393,10 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     reasoningContinuity = preserveReasoningDetails(
       normalizeOpenRouterParameters(runtime.fetcher ?? globalThis.fetch),
     );
-    const observer = createTransportObserver(reasoningContinuity.fetcher);
+    const observer = createTransportObserver(
+      reasoningContinuity.fetcher,
+      runtime.memo.durabilityFaults,
+    );
     const httpClient = new HTTPClient({ fetcher: observer.fetcher });
     httpClient.addHook("beforeRequest", (request) => {
       const headers = new Headers(request.headers);
@@ -401,7 +422,7 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
       systemPrompts: converted.systemPrompts,
       tools: spec.limits.maxToolCalls === 0 ? [] : configuredTools.tools,
       outputSchema: providerTerminalSchema(spec.output),
-      agentLoopStrategy: maxIterations(Math.max(1, spec.limits.maxSteps - 1)),
+      agentLoopStrategy: maxIterations(spec.limits.maxSteps),
       modelOptions: {
         provider: spec.providerPolicy,
         plugins: [],

@@ -2,12 +2,12 @@ import { createHash } from "node:crypto";
 import {
   ItotoriLlmAcceptedOutputRepository,
   LlmAcceptedOutputCasError,
+  LlmDurabilityFaultError,
   type AcceptLlmOutputInput,
   type DatabaseContext,
   type LlmAcceptedOutputHead,
-  type LlmCallMemoStore,
-  type LlmMemoSingleflightInput,
-  type LlmMemoSingleflightResult,
+  type LlmDurabilityFaultBoundary,
+  type LlmDurabilityFaultInjector,
 } from "@itotori/db";
 import { describe, expect, it } from "vitest";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
@@ -24,13 +24,11 @@ import {
   toolProviderResponse,
 } from "./llm-step-test-support.js";
 
-// Substrate crash-recovery durability proof. Deterministic fault hooks kill at each
-// of the six physical call boundaries; a restart drives the SAME spec over a FRESH transport
-// against the SAME live Postgres, so a re-dispatched durable memo or a lost
-// accepted unit shows up as an extra transport call, a missing memo, or a moved
-// head. No live LLM/network: the recorded/memo path only. The fault hooks are
-// test infrastructure (a pre-aborted signal, an aborting transport, and a store
-// decorator that throws after the response) — not production randomness.
+// Substrate crash-recovery durability proof. Each deterministic hook interrupts
+// the real call/memo/CAS transition over live Postgres. A restart drives the
+// same spec over a fresh transport, so a re-dispatched durable memo or a lost
+// accepted unit shows up as an extra transport call, missing row, or moved head.
+// No live LLM/network: the recorded memo path is the real substrate under test.
 const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
 const verdict = () => structuredProviderResponse(reviewVerdictExample);
 
@@ -41,21 +39,20 @@ postgresDescribe("substrate crash recovery at every physical call boundary", () 
     const prompt = "Return a verdict.";
     const spec = physicalCallSpec(prompt);
     try {
-      const killed = new AbortController();
-      killed.abort();
       const interrupted = dispatchHarness({
         pool: ctx.pool,
         cipher,
         prompt,
         responses: [verdict()],
-        signal: killed.signal,
+        durabilityFaults: crashAt("before-dispatch"),
       });
       const interruptedResult = await dispatch(spec, interrupted.runtime);
       expect(interruptedResult).toMatchObject({ status: "failure", failureKind: "cancelled" });
-      // Killed before the physical step reached the transport or any durable write.
+      // Killed after attempt admission but before the physical step reached the
+      // transport: no response or memo is durable.
       expect(interrupted.transportCalls()).toBe(0);
       expect(await countRows(ctx.pool, "itotori_llm_call_memos")).toBe(0);
-      expect(await countRows(ctx.pool, "itotori_llm_http_attempts")).toBe(0);
+      expect(await attemptStatuses(ctx.pool, interruptedResult.memoKey)).toEqual(["cancelled"]);
 
       const restart = dispatchHarness({ pool: ctx.pool, cipher, prompt, responses: [verdict()] });
       const restartResult = await dispatch(spec, restart.runtime);
@@ -73,20 +70,14 @@ postgresDescribe("substrate crash recovery at every physical call boundary", () 
     const prompt = "Return a verdict.";
     const spec = physicalCallSpec(prompt);
     try {
-      const killed = new AbortController();
       const interrupted = dispatchHarness({
         pool: ctx.pool,
         cipher,
         prompt,
-        // The request leaves for the remote, then the connection is severed before
-        // any response is received: whether the remote billed us is UNKNOWN.
-        responses: [
-          () => {
-            killed.abort();
-            return Promise.reject(new Error("connection severed in flight"));
-          },
-        ],
-        signal: killed.signal,
+        // The request has started when the hook terminates its caller, so whether
+        // the remote billed us remains explicitly unknown.
+        responses: [verdict()],
+        durabilityFaults: crashAt("in-flight"),
       });
       const interruptedResult = await dispatch(spec, interrupted.runtime);
       expect(interruptedResult).toMatchObject({ status: "failure", failureKind: "cancelled" });
@@ -117,15 +108,34 @@ postgresDescribe("substrate crash recovery at every physical call boundary", () 
     const spec = physicalCallSpec(prompt);
     try {
       const ledger = { remoteResponsesProduced: 0 };
-      const base = dispatchHarness({ pool: ctx.pool, cipher, prompt, responses: [verdict()] });
-      const interruptedResult = await dispatch(spec, killAfterResponse(base.runtime, ledger));
+      const interrupted = dispatchHarness({
+        pool: ctx.pool,
+        cipher,
+        prompt,
+        responses: [
+          () => {
+            ledger.remoteResponsesProduced += 1;
+            return Promise.resolve(verdict());
+          },
+        ],
+        durabilityFaults: crashAt("after-remote-response"),
+      });
+      const interruptedResult = await dispatch(spec, interrupted.runtime);
       expect(interruptedResult).toMatchObject({ status: "failure", failureKind: "cancelled" });
-      expect(base.transportCalls()).toBe(1); // the remote WAS contacted...
+      expect(interrupted.transportCalls()).toBe(1); // the remote WAS contacted...
       expect(ledger.remoteResponsesProduced).toBe(1); // ...and produced a billable response...
       expect(await countRows(ctx.pool, "itotori_llm_call_memos")).toBe(0); // ...never committed.
       // Honest ambiguity: the attempt is recorded as an ambiguous interruption — NOT
       // silently assumed to have succeeded (no memo) and NOT erased (the row remains).
       expect(await attemptStatuses(ctx.pool, interruptedResult.memoKey)).toEqual(["cancelled"]);
+      expect(await attemptAmbiguity(ctx.pool, interruptedResult.memoKey)).toEqual([
+        {
+          status: "cancelled",
+          failureClass: "cancelled",
+          billing: "billing_unknown",
+          hasResponse: true,
+        },
+      ]);
 
       const restart = dispatchHarness({ pool: ctx.pool, cipher, prompt, responses: [verdict()] });
       const restartResult = await dispatch(spec, restart.runtime);
@@ -151,9 +161,15 @@ postgresDescribe("substrate crash recovery at every physical call boundary", () 
     const prompt = "Return a verdict.";
     const spec = physicalCallSpec(prompt);
     try {
-      const first = dispatchHarness({ pool: ctx.pool, cipher, prompt, responses: [verdict()] });
+      const first = dispatchHarness({
+        pool: ctx.pool,
+        cipher,
+        prompt,
+        responses: [verdict()],
+        durabilityFaults: crashAt("after-memo-insert"),
+      });
       const firstResult = await dispatch(spec, first.runtime);
-      expect(firstResult).toMatchObject({ status: "success", memoHit: false });
+      expect(firstResult).toMatchObject({ status: "failure", failureKind: "cancelled" });
       expect(first.transportCalls()).toBe(1);
       const before = await memoKeys(ctx.pool);
 
@@ -172,34 +188,27 @@ postgresDescribe("substrate crash recovery at every physical call boundary", () 
   it("BOUNDARY (e) after tool result: the completed model step is reused and only the terminal step re-runs", async () => {
     const ctx = await isolatedMigratedContext();
     const cipher = new TestMemoCipher();
-    const prompt = "Use the decoded-unit tool twice, then return a verdict.";
+    const prompt = "Use the decoded-unit tool, then return a verdict.";
     const spec = toolLoopSpec(prompt);
     try {
-      const killed = new AbortController();
       let interruptedToolRuns = 0;
       const interrupted = dispatchHarness({
         pool: ctx.pool,
         cipher,
         prompt,
-        // Two tool-call model steps commit and their tools run; the process is then
-        // killed after the last tool result, before the terminal model step dispatches.
-        responses: [
-          toolProviderResponse(1),
-          toolProviderResponse(2),
-          () => {
-            killed.abort();
-            return Promise.reject(new Error("killed after tool result, before terminal step"));
-          },
-        ],
+        // The tool-call model step commits, the tool produces its real local
+        // result, and the exact post-result hook kills the caller before a
+        // terminal model step can be dispatched.
+        responses: [toolProviderResponse(1)],
         tools: [decodedUnitsTool(() => (interruptedToolRuns += 1))],
-        signal: killed.signal,
+        durabilityFaults: crashAt("after-tool-result"),
       });
       const interruptedResult = await dispatch(spec, interrupted.runtime);
-      expect(interruptedResult.status).toBe("failure");
-      expect(interrupted.transportCalls()).toBe(3); // two tool steps committed + killed terminal step
-      expect(interruptedToolRuns).toBe(2);
+      expect(interruptedResult).toMatchObject({ status: "failure", failureKind: "cancelled" });
+      expect(interrupted.transportCalls()).toBe(1); // terminal step was never dispatched
+      expect(interruptedToolRuns).toBe(1);
       const before = await memoKeys(ctx.pool);
-      expect(before).toHaveLength(2); // only the two tool-call model steps are durable
+      expect(before).toHaveLength(1); // the tool-call model step is durable
 
       let restartToolRuns = 0;
       const restart = dispatchHarness({
@@ -212,10 +221,10 @@ postgresDescribe("substrate crash recovery at every physical call boundary", () 
       const restartResult = await dispatch(spec, restart.runtime);
       expect(restartResult.status).toBe("success");
       expect(restart.transportCalls()).toBe(1); // ONLY the missing terminal step
-      expect(restartToolRuns).toBe(2); // tool results re-derived locally, not from re-called models
+      expect(restartToolRuns).toBe(1); // tool result is re-derived locally, not from a re-called model
       const after = await memoKeys(ctx.pool);
       expect(before.every((key) => after.includes(key))).toBe(true); // tool-step memos neither lost nor re-dispatched
-      expect(after).toHaveLength(3);
+      expect(after).toHaveLength(2);
     } finally {
       await ctx.close();
     }
@@ -233,29 +242,44 @@ postgresDescribe("substrate crash recovery at every physical call boundary", () 
       expect(draftResult).toMatchObject({ status: "success", verification: "explicit-unknown" });
 
       // Accept the unit output and advance its CAS head. This is the immutable checkpoint.
-      const accepted = new ItotoriLlmAcceptedOutputRepository(ctx.pool, cipher);
       const candidate = unitOutput(draftResult.memoKey, "unit:alpha", 1, null);
-      const head = await accepted.acceptAndAdvance(candidate);
+      const killed = new ItotoriLlmAcceptedOutputRepository(
+        ctx.pool,
+        cipher,
+        crashAt("after-accepted-output-cas"),
+      );
+      await expect(killed.acceptAndAdvance(candidate)).rejects.toBeInstanceOf(
+        LlmDurabilityFaultError,
+      );
+      const accepted = new ItotoriLlmAcceptedOutputRepository(ctx.pool, cipher);
+      const head = await accepted.readHead(headIdentity(candidate));
+      expect(head).not.toBeNull();
+      if (!head) throw new Error("accepted head was lost after committed CAS");
       const outputBefore = await outputRow(ctx.pool, candidate.outputId);
+      expect(await outputPayload(ctx.pool, cipher, candidate.outputId)).toBe(candidate.outputJson);
 
       // The process died right after the CAS commit, before the workflow recorded
       // finalization. A SYS-1-safe bridge re-run consults the accepted head first and
       // carries NO transport responses — an already-final unit must not be re-drafted.
       const rerun = dispatchHarness({ pool: ctx.pool, cipher, prompt, responses: [] });
-      const survivingHead = await accepted.readHead(headIdentity(candidate));
+      const survivingHead = await recoverAcceptedUnit(accepted, candidate, spec, rerun.runtime);
       expect(survivingHead).toEqual(head); // the accepted output SURVIVES the crash
       expect(rerun.transportCalls()).toBe(0); // the re-run does not re-dispatch a final unit
 
       // SYS-1 cannot recur: a recovery acting on a STALE view of the accepted head
       // cannot advance or replace it. The CAS content-hash guard rejects the write and
       // rolls it back, so the billed, accepted output can never be discarded/overwritten.
-      const staleView: LlmAcceptedOutputHead = { ...head, contentHash: hash("stale-view-of-head") };
+      const staleView: LlmAcceptedOutputHead = {
+        ...head,
+        contentHash: hash("stale-view-of-head"),
+      };
       const staleAdvance = unitOutput(draftResult.memoKey, "unit:alpha", 2, staleView, "stale");
       await expect(accepted.acceptAndAdvance(staleAdvance)).rejects.toBeInstanceOf(
         LlmAcceptedOutputCasError,
       );
       expect(await accepted.readHead(headIdentity(candidate))).toEqual(head); // head unchanged
       expect(await outputRow(ctx.pool, candidate.outputId)).toEqual(outputBefore); // byte-identical
+      expect(await outputPayload(ctx.pool, cipher, candidate.outputId)).toBe(candidate.outputJson);
       expect(await outputRow(ctx.pool, staleAdvance.outputId)).toBeNull(); // rolled back, never persisted
     } finally {
       await ctx.close();
@@ -343,50 +367,24 @@ postgresDescribe("substrate crash recovery at every physical call boundary", () 
 
 // --- fault hooks + assertions (deterministic test infrastructure) ---
 
-// Boundary (c): the remote response is fully produced (billable) but the process
-// dies before the memo transaction commits. The decorator runs the real physical
-// attempt (so the remote genuinely responds and bills), records that production,
-// then reports the attempt as an ambiguous interruption instead of committing it.
-// The store persists a non-permanent (re-dispatchable) attempt with no memo —
-// exactly the crash-between-response-and-insert window, and the honest ambiguity
-// that follows: we neither commit the response nor pretend it never happened.
-function killAfterResponse(
-  runtime: DispatchRuntime,
-  ledger: { remoteResponsesProduced: number },
-): DispatchRuntime {
-  const inner = runtime.memo.store;
-  const store: LlmCallMemoStore = {
-    singleflight(input: LlmMemoSingleflightInput): Promise<LlmMemoSingleflightResult> {
-      return inner.singleflight({
-        ...input,
-        execute: async (attempt) => {
-          const execution = await input.execute(attempt);
-          if (execution.kind !== "completed") return execution;
-          ledger.remoteResponsesProduced += 1;
-          return {
-            kind: "incomplete",
-            responseJson: null, // the uncommitted response is lost with the process
-            attemptStatus: "cancelled",
-            httpStatus: null,
-            generationId: null,
-            served: { status: "unknown" },
-            routerAttempts: [],
-            usage: null,
-            billing: { status: "billing_unknown" },
-            reportedCostUsd: null,
-            failure: {
-              classification: "cancelled",
-              kind: "cancelled",
-              httpStatus: null,
-              retryAfterMs: null,
-            },
-            completedAt: new Date().toISOString(),
-          };
-        },
-      });
+function crashAt(boundary: LlmDurabilityFaultBoundary): LlmDurabilityFaultInjector {
+  return {
+    async killAt(actual) {
+      if (actual === boundary) throw new LlmDurabilityFaultError(actual);
     },
   };
-  return { ...runtime, memo: { ...runtime.memo, store } };
+}
+
+async function recoverAcceptedUnit(
+  accepted: ItotoriLlmAcceptedOutputRepository,
+  candidate: AcceptLlmOutputInput,
+  spec: ReturnType<typeof physicalCallSpec>,
+  runtime: DispatchRuntime,
+): Promise<LlmAcceptedOutputHead | null> {
+  const existing = await accepted.readHead(headIdentity(candidate));
+  if (existing) return existing;
+  await dispatch(spec, runtime);
+  return accepted.readHead(headIdentity(candidate));
 }
 
 const ACCEPT_SNAPSHOT_ID = STEP_HASH_D;
@@ -461,6 +459,40 @@ async function attemptStatuses(pool: DatabaseContext["pool"], memoKey: string): 
   return result.rows.map((row) => row.attempt_status);
 }
 
+async function attemptAmbiguity(
+  pool: DatabaseContext["pool"],
+  memoKey: string,
+): Promise<
+  Array<{
+    status: string;
+    failureClass: string | null;
+    billing: string;
+    hasResponse: boolean;
+  }>
+> {
+  const result = await pool.query<{
+    attempt_status: string;
+    failure_class: string | null;
+    billing_state: string;
+    has_response: boolean;
+  }>(
+    `
+      select attempt_status, failure_class, billing_state,
+             response_ciphertext is not null as has_response
+      from itotori_llm_http_attempts
+      where memo_key = $1
+      order by attempt_ordinal
+    `,
+    [memoKey],
+  );
+  return result.rows.map((row) => ({
+    status: row.attempt_status,
+    failureClass: row.failure_class,
+    billing: row.billing_state,
+    hasResponse: row.has_response,
+  }));
+}
+
 async function outputRow(
   pool: DatabaseContext["pool"],
   outputId: string,
@@ -481,6 +513,23 @@ async function outputRow(
         deletionState: row.deletion_state,
       }
     : null;
+}
+
+async function outputPayload(
+  pool: DatabaseContext["pool"],
+  cipher: TestMemoCipher,
+  outputId: string,
+): Promise<string | null> {
+  const result = await pool.query<{ output_ciphertext: Uint8Array; output_key_ref: string }>(
+    `
+      select output_ciphertext, output_key_ref
+      from itotori_llm_accepted_outputs
+      where output_id = $1
+    `,
+    [outputId],
+  );
+  const row = result.rows[0];
+  return row ? cipher.open(row.output_ciphertext, row.output_key_ref) : null;
 }
 
 async function acceptedVersions(

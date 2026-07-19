@@ -1361,6 +1361,16 @@ export type {
   LlmStepUsage,
 } from "./repositories/llm-call-memo-repository.js";
 export {
+  injectLlmDurabilityFault,
+  isLlmDurabilityFault,
+  llmDurabilityFaultBoundaries,
+  LlmDurabilityFaultError,
+} from "./repositories/llm-durability-faults.js";
+export type {
+  LlmDurabilityFaultBoundary,
+  LlmDurabilityFaultInjector,
+} from "./repositories/llm-durability-faults.js";
+export {
   ItotoriLlmAcceptedOutputRepository,
   LlmAcceptedOutputCasError,
   LlmQuarantinedResponseError,

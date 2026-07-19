@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import type { DatabaseContext } from "../connection.js";
 import type { LlmMemoCipher } from "./llm-call-memo-repository.js";
+import {
+  injectLlmDurabilityFault,
+  type LlmDurabilityFaultInjector,
+} from "./llm-durability-faults.js";
 
 export type LlmAcceptedOutputSubjectType =
   | "unit"
@@ -51,12 +55,14 @@ export class ItotoriLlmAcceptedOutputRepository {
   constructor(
     private readonly pool: DatabaseContext["pool"],
     private readonly cipher: LlmMemoCipher,
+    private readonly durabilityFaults?: LlmDurabilityFaultInjector,
   ) {}
 
   async acceptAndAdvance(input: AcceptLlmOutputInput): Promise<LlmAcceptedOutputHead> {
     assertInput(input);
     const client = await this.pool.connect();
     let sealed: Awaited<ReturnType<LlmMemoCipher["seal"]>> | null = null;
+    let head: LlmAcceptedOutputHead;
     try {
       await client.query("begin");
       const invalid = await client.query<{ memo_key: string }>(
@@ -156,7 +162,7 @@ export class ItotoriLlmAcceptedOutputRepository {
           );
       if (advanced.rowCount !== 1) throw new LlmAcceptedOutputCasError();
       await client.query("commit");
-      return { outputId: input.outputId, version: input.outputVersion, contentHash };
+      head = { outputId: input.outputId, version: input.outputVersion, contentHash };
     } catch (error: unknown) {
       await client.query("rollback");
       if (sealed) await this.cipher.destroyKey(sealed.keyRef);
@@ -164,6 +170,11 @@ export class ItotoriLlmAcceptedOutputRepository {
     } finally {
       client.release();
     }
+    // This is deliberately after commit and after client release. A simulated
+    // process death must not roll back the checkpoint or discard its envelope
+    // key, which is exactly the condition recovery needs to prove.
+    await injectLlmDurabilityFault(this.durabilityFaults, "after-accepted-output-cas");
+    return head;
   }
 
   async readHead(input: {

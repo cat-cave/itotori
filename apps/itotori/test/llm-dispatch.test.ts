@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   AuthorizationError,
+  LlmDurabilityFaultError,
   LlmMemoConflictError,
   LlmRetriesExhaustedError,
   type LlmAttemptFailure,
@@ -18,7 +19,13 @@ import {
 } from "../src/contracts/index.js";
 import { dispatch, type DispatchRuntime, type DispatchTool } from "../src/llm/dispatch.js";
 import { reviewVerdictExample } from "./contract-fixtures-core.js";
-import { TEST_MODEL_PROFILE, httpProviderResponse } from "./llm-step-test-support.js";
+import {
+  TEST_MODEL_PROFILE,
+  decodedUnitsTool,
+  httpProviderResponse,
+  toolLoopSpec,
+  toolProviderResponse,
+} from "./llm-step-test-support.js";
 
 const HASH_A = `sha256:${"a".repeat(64)}` as const;
 const HASH_B = `sha256:${"b".repeat(64)}` as const;
@@ -257,6 +264,88 @@ function runtime(
 }
 
 describe("the rebuilt LLM dispatcher", () => {
+  it("classifies an injected in-flight process death as cancelled", async () => {
+    const prompt = "Return a review verdict.";
+    const configured = runtime(
+      prompt,
+      [structuredResponse(JSON.stringify(reviewVerdictExample))],
+      [],
+    );
+
+    const result = await dispatch(callSpec(prompt), {
+      ...configured,
+      memo: {
+        ...configured.memo,
+        durabilityFaults: faultAt("in-flight"),
+      },
+    });
+
+    expect(result).toMatchObject({ status: "failure", failureKind: "cancelled" });
+  });
+
+  it("classifies an injected tool-loop process death as cancelled", async () => {
+    const prompt = "Use the decoded-unit tool, then return a verdict.";
+    const captured: CapturedRequest[] = [];
+    let toolRuns = 0;
+    const configured = runtime(prompt, [toolProviderResponse(1)], captured, [
+      decodedUnitsTool(() => (toolRuns += 1)),
+    ]);
+
+    const result = await dispatch(toolLoopSpec(prompt), {
+      ...configured,
+      memo: {
+        ...configured.memo,
+        durabilityFaults: faultAt("after-tool-result"),
+      },
+    });
+
+    expect(result).toMatchObject({ status: "failure", failureKind: "cancelled" });
+    expect(captured).toHaveLength(1);
+    expect(toolRuns).toBe(1);
+  });
+
+  it("resumes a fresh tool-loop dispatch after a post-result durability fault", async () => {
+    const prompt = "Use the decoded-unit tool, then return a verdict.";
+    const interruptedRequests: CapturedRequest[] = [];
+    let interruptedToolRuns = 0;
+    const interrupted = runtime(prompt, [toolProviderResponse(1)], interruptedRequests, [
+      decodedUnitsTool(() => (interruptedToolRuns += 1)),
+    ]);
+
+    const interruptedResult = await dispatch(toolLoopSpec(prompt), {
+      ...interrupted,
+      memo: {
+        ...interrupted.memo,
+        durabilityFaults: faultAt("after-tool-result"),
+      },
+    });
+
+    expect(interruptedResult).toMatchObject({ status: "failure", failureKind: "cancelled" });
+    expect(interruptedRequests).toHaveLength(1);
+    expect(interruptedToolRuns).toBe(1);
+
+    const restartedRequests: CapturedRequest[] = [];
+    let restartedToolRuns = 0;
+    const restarted = runtime(
+      prompt,
+      [structuredResponse(JSON.stringify(reviewVerdictExample))],
+      restartedRequests,
+      [decodedUnitsTool(() => (restartedToolRuns += 1))],
+    );
+
+    const restartedResult = await dispatch(toolLoopSpec(prompt), {
+      ...restarted,
+      memo: { ...restarted.memo, store: interrupted.memo.store },
+    });
+
+    expect(restartedResult).toMatchObject({ status: "success", memoHit: false });
+    expect(restartedRequests).toHaveLength(1);
+    expect(restartedRequests[0]?.body).toMatchObject({
+      response_format: { type: "json_schema", json_schema: { strict: true } },
+    });
+    expect(restartedToolRuns).toBe(1);
+  });
+
   it("hard-cancels a hung stream at each attempt deadline and records transient deadline failures", async () => {
     const prompt = "Return a review verdict before the synthetic deadline.";
     const store = new MemoryMemoStore();
@@ -640,6 +729,14 @@ describe("the rebuilt LLM dispatcher", () => {
     ]);
   });
 });
+
+function faultAt(boundary: "in-flight" | "after-tool-result") {
+  return {
+    async killAt(actual: "in-flight" | "after-tool-result") {
+      if (actual === boundary) throw new LlmDurabilityFaultError(actual);
+    },
+  };
+}
 
 const liveEnabled =
   Boolean(process.env.OPENROUTER_API_KEY) &&
