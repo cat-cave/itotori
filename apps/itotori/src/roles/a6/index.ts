@@ -25,6 +25,11 @@ export {
   type FlaggedAdaptationCandidate,
 } from "./candidates.js";
 export {
+  AdaptationContextError,
+  readAdaptationContext,
+  type AdaptationReadContext,
+} from "./context.js";
+export {
   adaptationTerminalSchemaHash,
   assembleAdaptationCallSpec,
   candidateAnchor,

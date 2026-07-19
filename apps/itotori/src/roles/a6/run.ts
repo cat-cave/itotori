@@ -26,6 +26,7 @@ import {
   type AdaptationNoteObject,
   type FlaggedAdaptationCandidate,
 } from "./candidates.js";
+import { readAdaptationContext, type AdaptationReadContext } from "./context.js";
 import { dispatchAdaptationAnalyst, type AdaptationModelPort } from "./dispatch.js";
 import {
   assembleAdaptationCallSpec,
@@ -54,6 +55,8 @@ export interface AdaptationNoteResult {
   readonly note: AdaptationNoteObject;
   readonly spec: CallSpec;
   readonly served: CallResult["served"];
+  /** The typed RB-025 pages read before this note was authored. */
+  readonly context: AdaptationReadContext;
   readonly evidence: ReturnType<typeof flagEvidence>;
 }
 
@@ -78,8 +81,11 @@ export async function runAdaptationNote(
   // The flag itself must be byte-derived — a marker the bytes never carried, or a
   // wordplay flag with no ruby span, is refused before a call is spent.
   assertFlagByteDerived(candidate, deps.readModel);
+  // The deterministic pre-pass selects the subject; the role then obtains its
+  // authoring context through RB-025's typed, visibility-checked read tools.
+  const context = readAdaptationContext(deps.readModel, candidate);
 
-  const prompt = composeAdaptationPrompt(request, candidate);
+  const prompt = composeAdaptationPrompt(request, candidate, context);
   const systemRef = await deps.storePrompt(prompt.system, "system");
   const userRef = await deps.storePrompt(prompt.user, "user");
   const spec = assembleAdaptationCallSpec(request, candidate, { systemRef, userRef });
@@ -122,6 +128,7 @@ export async function runAdaptationNote(
     note,
     spec,
     served: result.served,
+    context,
     evidence: flagEvidence(candidate),
   };
 }
