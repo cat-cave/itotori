@@ -209,6 +209,32 @@ postgresDescribe("strict WikiObject and localized-rendering persistence", () => 
     }
   });
 
+  it("PROOF: concurrent retries of one version converge on one immutable CAS head", async () => {
+    const context = await isolatedMigratedContext();
+    const cipher = new ProofCipher();
+    try {
+      const snapshots = await putSnapshots(context);
+      const repository = new ItotoriLlmWikiRepository(context.pool, cipher);
+      const candidate = sourceObject(snapshots.context);
+      const [first, retry] = await Promise.all([
+        repository.putWikiObject(candidate),
+        repository.putWikiObject(candidate),
+      ]);
+
+      expect(retry).toEqual(first);
+      expect(
+        await repository.readHead({ wikiKind: "source-object", objectId: candidate.objectId }),
+      ).toEqual(first);
+      const rows = await context.pool.query(
+        "select count(*)::int as count from itotori_llm_wiki_versions where object_id = $1",
+        [candidate.objectId],
+      );
+      expect(rows.rows[0]?.count).toBe(1);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("PROOF: a superseded version never projects", async () => {
     const context = await isolatedMigratedContext();
     const cipher = new ProofCipher();
@@ -288,6 +314,49 @@ postgresDescribe("strict WikiObject and localized-rendering persistence", () => 
       await context.close();
     }
   });
+
+  it("PROOF: source and target artifacts are bound to their snapshot languages and context", async () => {
+    const context = await isolatedMigratedContext();
+    const cipher = new ProofCipher();
+    try {
+      const snapshots = await putSnapshots(context);
+      const snapshotRepository = new ItotoriLlmSnapshotRepository(context.pool);
+      const otherContext = await snapshotRepository.putContext({
+        ...contextInput(),
+        decode: revision("decode:other"),
+      });
+      const otherLocalization = await snapshotRepository.putLocalization(
+        localizationInput(otherContext.snapshotId),
+      );
+      const frenchLocalization = await snapshotRepository.putLocalization({
+        ...localizationInput(snapshots.context),
+        targetLocale: "fr-FR",
+        localeBranchId: "branch:french",
+      });
+      const repository = new ItotoriLlmWikiRepository(context.pool, cipher);
+      await repository.putWikiObject(sourceObject(snapshots.context));
+
+      await expect(
+        repository.putWikiObject(sourceObject(snapshots.context, { language: "en-US" })),
+      ).rejects.toThrow(/source wiki object language/u);
+      await expect(
+        repository.putWikiObject(translationObject(snapshots.localization, { language: "fr-FR" })),
+      ).rejects.toThrow(/target wiki artifact language/u);
+      await expect(
+        repository.putWikiObject(
+          translationObject(snapshots.localization, { contextScope: "narrowed:one-scene" }),
+        ),
+      ).rejects.toThrow(/translation object context scope/u);
+      await expect(
+        repository.putLocalizedRendering(localizedRendering(frenchLocalization.snapshotId)),
+      ).rejects.toThrow(/target wiki artifact language/u);
+      await expect(
+        repository.putLocalizedRendering(localizedRendering(otherLocalization.snapshotId)),
+      ).rejects.toThrow(/same-context source object/u);
+    } finally {
+      await context.close();
+    }
+  });
 });
 
 const OBJECT_ID = "wiki:scene:current";
@@ -320,7 +389,10 @@ function sourceObject(
   };
 }
 
-function translationObject(localizationSnapshotId: string): PutLlmWikiObjectInput {
+function translationObject(
+  localizationSnapshotId: string,
+  overrides: Partial<PutLlmWikiObjectInput> = {},
+): PutLlmWikiObjectInput {
   return {
     wikiKind: "translation-object",
     objectId: "wiki:translation:batch",
@@ -341,10 +413,14 @@ function translationObject(localizationSnapshotId: string): PutLlmWikiObjectInpu
     dependencies: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     expectedHead: null,
+    ...overrides,
   };
 }
 
-function localizedRendering(localizationSnapshotId: string): PutLlmLocalizedRenderingInput {
+function localizedRendering(
+  localizationSnapshotId: string,
+  overrides: Partial<PutLlmLocalizedRenderingInput> = {},
+): PutLlmLocalizedRenderingInput {
   return {
     objectId: "rendering:scene:current",
     objectVersion: 1,
@@ -362,6 +438,7 @@ function localizedRendering(localizationSnapshotId: string): PutLlmLocalizedRend
     dependencies: [],
     createdAt: "2026-01-01T00:00:00.000Z",
     expectedHead: null,
+    ...overrides,
   };
 }
 

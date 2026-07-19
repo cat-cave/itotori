@@ -557,6 +557,10 @@ export const migrations = [
     id: "0108_llm_explicit_unknown_quarantine",
     file: "0108_llm_explicit_unknown_quarantine.sql",
   },
+  {
+    id: "0109_wiki_snapshot_binding",
+    file: "0109_wiki_snapshot_binding.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

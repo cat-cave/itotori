@@ -90,6 +90,7 @@ const migrationSql = [
   "0105_llm_served_pair_quarantine.sql",
   "0106_llm_transcript_snapshots.sql",
   "0108_llm_explicit_unknown_quarantine.sql",
+  "0109_wiki_snapshot_binding.sql",
 ]
   .map((file) => readFileSync(join(here, "..", "migrations", file), "utf8"))
   .join("\n");
@@ -492,6 +493,17 @@ async function insertAcceptedOutput(
 }
 
 async function insertWikiVersion(pool: Queryable, versionId: string, contentHash: string) {
+  await pool.query(
+    `
+      insert into itotori_llm_context_snapshots (
+        snapshot_id, schema_version, snapshot_content_hash, snapshot_identity, created_at
+      ) values (
+        $1, 'itotori.context-snapshot.v1', $1,
+        '{"sourceLanguage":"ja-JP","contextScope":"whole-game"}'::jsonb, now()
+      ) on conflict (snapshot_id) do nothing
+    `,
+    [hash("7")],
+  );
   await pool.query(
     `
       insert into itotori_llm_wiki_versions (
