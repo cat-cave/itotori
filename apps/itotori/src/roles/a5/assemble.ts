@@ -322,7 +322,10 @@ export function assembleVoiceProfile(
       claims,
       media: [],
       dependencies: [],
-      provisional: false,
+      // A voice profile is a cited analyst interpretation of immutable decode
+      // facts.  It remains revisable until the Wiki acceptance boundary promotes
+      // or supersedes it; the model must not self-promote its voice judgment.
+      provisional: true,
       kind: A5_VOICE_PROFILE_KIND,
       body: {
         characterId: evidence.characterId,
