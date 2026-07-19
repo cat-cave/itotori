@@ -23,6 +23,7 @@
 | wolf-rpg-editor-encrypted-archive-smoke | wolf_rpg_editor | readiness_only | yes | no | no | no | partial | no |
 | bgi-ethornell-container-readiness | bgi_ethornell | readiness_only | yes | no | no | no | no | no |
 | reallive-seen-txt-detector-readiness | reallive | readiness_only | yes | yes | no | no | no | no |
+| softpal-script-src-text-dat-extract-patch | softpal | positive_adapter | yes | yes | yes | partial | n/a | no |
 
 ## Posture legend
 

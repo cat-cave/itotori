@@ -49,7 +49,9 @@ describe("generated engine capability matrix (typed)", () => {
       }
     }
     const positives = matrix.rows.filter((r) => r.evidencePosture === "positive_adapter");
-    expect(positives.map((r) => r.engineFamily)).toEqual(["synthetic_fixture"]);
+    // The synthetic fixture adapter and Softpal are the real extract+patch
+    // adapters; every other engine family is readiness-only.
+    expect(positives.map((r) => r.engineFamily)).toEqual(["synthetic_fixture", "softpal"]);
   });
 
   it("excludes RenPy as a Japanese-opportunity driver", () => {

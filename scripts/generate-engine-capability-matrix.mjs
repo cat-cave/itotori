@@ -401,6 +401,44 @@ function buildFixturePositiveAdapterRow(inputs) {
   });
 }
 
+// Softpal is a first-class positive EngineAdapter (unlike the RealLive registry
+// adapter, which is detector-only): `kaifuu-cli extract/patch/verify --engine
+// softpal` drive the real kaifuu-softpal PAC + TEXT.DAT + SCRIPT.SRC reader over
+// real bytes. The row is derived MECHANICALLY from the adapter's real
+// claimed-support tuples (`kaifuu-cli capabilities` -> kaifuu.softpal), never
+// hand-set: extraction Supported -> extract supported; patching/patch_back
+// Limited -> patch partial. Softpal resolves TEXT.DAT (de)cryption internally
+// (crypto_access + encrypted_input Supported, NO key_profile capability), so the
+// helper rung is not_applicable — again derived from the real crypto tuples.
+function buildSoftpalRow(inputs) {
+  const capabilitiesDoc = requireInput(inputs, "reallive-detector-capabilities");
+  const reports = adapterReports(capabilitiesDoc, "kaifuu.softpal");
+  const levels = levelsFromCapabilities(reports, {
+    sourceId: "reallive-detector-capabilities",
+  });
+  const status = capabilityStatusMap(reports);
+  if (
+    status.crypto_access === "supported" &&
+    status.encrypted_input === "supported" &&
+    status.key_profile === undefined
+  ) {
+    levels.helper = cell(
+      "not_applicable",
+      "reallive-detector-capabilities#capability:crypto_access+encrypted_input",
+      "TEXT.DAT (de)cryption is resolved internally by the adapter; no user-provided key or helper is required",
+    );
+  }
+  return makeRow({
+    rowId: "softpal-script-src-text-dat-extract-patch",
+    engineFamily: "softpal",
+    scenario: "script-src-text-dat-extract-patch",
+    adapterId: "kaifuu.softpal",
+    levels,
+    sourceKind: "claimed_support_tuples",
+    evidenceSourceIds: ["reallive-detector-capabilities"],
+  });
+}
+
 function buildRealliveReadinessRow(inputs) {
   const capabilitiesDoc = requireInput(inputs, "reallive-detector-capabilities");
   const reports = adapterReports(capabilitiesDoc, "kaifuu.reallive");
@@ -735,6 +773,7 @@ export function generateEngineCapabilityMatrix(inputs) {
       scenario: "detector-profile-readiness",
     }),
     buildRealliveReadinessRow(inputs),
+    buildSoftpalRow(inputs),
   ];
 
   assertNoExcludedRows(rows);
