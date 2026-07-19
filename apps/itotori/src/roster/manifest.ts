@@ -130,10 +130,10 @@ const DECLARATIONS: readonly SpecialistDeclaration[] = [
   {
     roleId: "A5",
     shape: "analyst",
-    version: "itotori.role.A5.v1",
+    version: "itotori.role.A5.v2",
     instructions:
-      "Granular Voice Director. Emit voice profiles addressable by character, counterpart, route, and arc-position range, with base register, forms, modulation, and citations. No per-character-only fallback may overwrite a more specific rule.",
-    granularity: "per-character-route",
+      "Granular Voice Director. Author only PROVISIONAL source-language voice-profile WikiObjects for every character in the deterministic index, addressable by character, counterpart/relationship, route, and decoded arc-position range. Include base register, forms, modulation, shifts, confidence, and real same-snapshot citations; decoded facts dominate. No per-character-only fallback may overwrite a more specific route, counterpart, or arc rule.",
+    granularity: "per-character",
     wikiObjectKind: "voice-profile",
     modelProfileKey: MODEL_PROFILE_KEY,
     dagPosition: {

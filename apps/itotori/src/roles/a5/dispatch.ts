@@ -43,7 +43,7 @@ import {
   type A5VoiceRequest,
 } from "./types.js";
 
-const PROMPT_VERSION = "itotori.role.A5.prompt.v1";
+const PROMPT_VERSION = "itotori.role.A5.prompt.v2";
 
 /** A prompt payload paired with its content-addressed reference. */
 interface SealedPrompt {

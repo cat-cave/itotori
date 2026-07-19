@@ -186,6 +186,22 @@ describe("clause 2 — the manifest is exactly the 19 roles", () => {
   });
 });
 
+describe("A5 Granular Voice Director configuration", () => {
+  it("is the immutable analyst profile for one character with granular voice slices", () => {
+    const voiceDirector = ROSTER.A5;
+    expect(voiceDirector.shape).toBe("analyst");
+    expect(voiceDirector.version).toBe("itotori.role.A5.v2");
+    expect(voiceDirector.granularity).toBe("per-character");
+    expect(voiceDirector.wikiObjectKind).toBe("voice-profile");
+    expect(voiceDirector.instructions).toContain("counterpart/relationship");
+    expect(voiceDirector.instructions).toContain("arc-position range");
+    expect(voiceDirector.instructions).toContain("PROVISIONAL");
+    expect(voiceDirector.modelProfileKey).toBe(deepSeekV4FlashProfile.profileId);
+    expect(voiceDirector.tools).toEqual(toolsForRole("A5"));
+    expect(Object.isFrozen(voiceDirector)).toBe(true);
+  });
+});
+
 describe("clause 3 — defaults to all roles", () => {
   it("the default selection is the whole roster", () => {
     expect([...DEFAULT_ROSTER_SELECTION].sort()).toEqual([...EXPECTED_ROLES].sort());
