@@ -18,10 +18,12 @@
 //   (A) GROUND TRUTH — re-run the FULL real-bytes suite (`just ci-real-bytes`)
 //       against the real corpora under /scratch/itotori-research + the live
 //       read-only vault (Sweetie HD + Kanon RealLive, LustMemory + Countryside
-//       Life RPG Maker MV/MZ, the vault-materialized Siglus installs). Read-only;
-//       never copies copyrighted bytes. The ci-real-bytes recipe also runs the
-//       app-level MV/MZ patch/apply byte-round-trip against both titles. This
-//       proves the source-of-truth catalogues
+//       Life RPG Maker MV/MZ, the vault-materialized Siglus installs) + the
+//       standalone Softpal research tree (Kizuna + Dimension under
+//       /scratch/softpal-research, skipped cleanly when that root is absent).
+//       Read-only; never copies copyrighted bytes. The ci-real-bytes recipe
+//       also runs the app-level MV/MZ patch/apply byte-round-trip against
+//       both titles. This proves the source-of-truth catalogues
 //       (REAL_CATALOG, NamedOpcode, classify(), the g00 type matrix, …) still
 //       match the real bytes — the 100%-decompilation / 0-unknown-opcode bar.
 //

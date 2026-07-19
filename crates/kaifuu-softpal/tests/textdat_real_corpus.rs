@@ -5,9 +5,10 @@
 //! `--ignored`. **No raw copyrighted bytes live in this file** — only record
 //! counts, byte offsets, SJIS-valid-byte ratios, and SHA-256 hashes, which the
 //! codec must reproduce.
-//! Mirrors `pac_real_corpus.rs`: gated on `ITOTORI_SOFTPAL_RESEARCH_ROOT` (the
-//! standalone Softpal research tree), NOT `ITOTORI_REAL_GAME_ROOT` /
-//! `ITOTORI_VAULT_ROOT`, and deliberately not named `*_real_bytes.rs`.
+//! Mirrors `pac_real_corpus.rs`: env-gated on `ITOTORI_SOFTPAL_RESEARCH_ROOT`
+//! (the standalone Softpal research tree) and wired into the PERIODIC
+//! `ci-real-bytes` lane; see `pac_real_corpus.rs` for the env-gate /
+//! skip-when-absent contract.
 //! Coverage across the two titles:
 //! - **v21465** — `TEXT.DAT` byte 0 is `'$'` (**encrypted**): decrypt raises the
 //!   SJIS-valid-byte ratio (~0.76 → ~0.91); re-encrypt round-trips byte-identical.

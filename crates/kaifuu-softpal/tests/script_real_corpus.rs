@@ -9,6 +9,8 @@
 //! PROOF BAR: every extracted dialogue/choice **text** pointer and every present
 //! **speaker name** pointer must resolve to an *exact* `TEXT.DAT` record
 //! boundary (0 dangling) — full pointer resolution, both titles.
+//! Wired into the PERIODIC `ci-real-bytes` lane; see `pac_real_corpus.rs` for
+//! the env-gate / skip-when-absent contract.
 
 use std::env;
 use std::fs;

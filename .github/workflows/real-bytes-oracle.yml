@@ -57,11 +57,16 @@ jobs:
   # GROUND TRUTH — the FULL real-bytes suite + drift check against the real
   # corpora. Requires a runner that has the real corpora staged (self-hosted,
   # label `itotori-corpora`), since Sweetie HD / Kanon / LustMemory / the vault
-  # live under /scratch + /archive/vault and are never committed. On a runner
-  # without the corpora, `just ci-real-bytes` pre-checks the roots and FAILS
-  # LOUD (nonzero) rather than passing with zero real bytes — a red run, never a
-  # false green. Corpus roots are overridable via the ITOTORI_REAL_GAME_ROOT*
-  # / ITOTORI_VAULT_ROOT env for machines that stage elsewhere.
+  # live under /scratch + /archive/vault and are never committed. The Softpal
+  # ADV titles (Kizuna + Dimension) live under their own root at
+  # /scratch/softpal-research; when that root is absent the Softpal sub-lane is
+  # skipped CLEANLY (skip-when-absent is legitimate for the periodic lane), so
+  # a runner without the Softpal tree still runs the strict ground-truth suite
+  # for the five other families. On a runner without ANY of the other corpora,
+  # `just ci-real-bytes` pre-checks the roots and FAILS LOUD (nonzero) rather
+  # than passing with zero real bytes — a red run, never a false green. Corpus
+  # roots are overridable via the ITOTORI_REAL_GAME_ROOT* / ITOTORI_VAULT_ROOT
+  # / ITOTORI_SOFTPAL_RESEARCH_ROOT env for machines that stage elsewhere.
   ground-truth:
     if: ${{ github.event_name == 'schedule' || inputs.stage == 'full' || inputs.stage == 'ground-truth-only' }}
     runs-on: [self-hosted, itotori-corpora]

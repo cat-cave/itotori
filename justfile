@@ -233,12 +233,19 @@ ci-full: ci
 # cleanly (non-zero) even if zero ignored tests match. Corpus roots are
 # overridable via env for machines that stage elsewhere.
 #
-# Coverage spans five engine/source families across the corpus roots below:
+# Coverage spans six engine/source families across the corpus roots below:
 #   - RealLive        Sweetie HD + Kanon   ITOTORI_REAL_GAME_ROOT{,_2}
 #   - RPG Maker MV/MZ LustMemory + Countryside Life
 #                                      ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ{,_2}
 #   - vault source    live read-only vault ITOTORI_VAULT_ROOT
 #   - Siglus          Karetoshi + Gamekoi  ITOTORI_VAULT_ROOT (vault-materialized)
+#   - Softpal ADV     Kizuna + Dimension   ITOTORI_SOFTPAL_RESEARCH_ROOT
+#     (v21465 + v60663; standalone Softpal research tree, NOT the
+#     RealLive/vault tree. skip-when-absent is legitimate for this family —
+#     the Softpal corpus lives under its own root and may not be staged on
+#     every runner that has the RealLive/RPG-Maker/vault corpora. When the
+#     root is absent the Softpal sub-lane is skipped CLEANLY with a log
+#     line, and the other families still run their strict pre-checks.)
 #
 # The Siglus corpus is NOT a copied corpus: both titles are vaulted PORTABLE
 # INSTALLS (bare by-id artifacts) that the `live_vault_siglus_test` materializes
@@ -270,6 +277,7 @@ ci-real-bytes:
       export ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2=/scratch/itotori-research/rpg-maker-mv-mz/countryside-life
     fi
     export ITOTORI_VAULT_ROOT="${ITOTORI_VAULT_ROOT:-/archive/vault}"
+    export ITOTORI_SOFTPAL_RESEARCH_ROOT="${ITOTORI_SOFTPAL_RESEARCH_ROOT:-/scratch/softpal-research}"
     for var in ITOTORI_REAL_GAME_ROOT ITOTORI_REAL_GAME_ROOT_2 ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2 ITOTORI_VAULT_ROOT; do
       dir="${!var}"
       if [ ! -d "$dir" ]; then
@@ -278,12 +286,29 @@ ci-real-bytes:
         exit 1
       fi
     done
+    # Softpal corpus lives under its OWN root (separate from the RealLive/RPG-
+    # Maker/vault tree). Skip-when-absent is LEGITIMATE for this family: a
+    # runner that has the other corpora staged but not the Softpal research
+    # tree still runs the strict ground-truth suite for the five families
+    # above; only the Softpal sub-lane is skipped (clean log line, no failure).
+    SOFTPAL_PRESENT=0
+    if [ -d "${ITOTORI_SOFTPAL_RESEARCH_ROOT}/v21465" ] && \
+       [ -d "${ITOTORI_SOFTPAL_RESEARCH_ROOT}/v60663" ]; then
+      SOFTPAL_PRESENT=1
+      export ITOTORI_SOFTPAL_RESEARCH_ROOT
+    else
+      echo "ci-real-bytes: Softpal research root $ITOTORI_SOFTPAL_RESEARCH_ROOT missing v21465/ or v60663/;"
+      echo "  skipping the Softpal sub-lane cleanly (skip-when-absent is legitimate for the periodic lane)."
+    fi
     echo "ci-real-bytes: RealLive corpus-1 (Sweetie HD) = $ITOTORI_REAL_GAME_ROOT"
     echo "ci-real-bytes: RealLive corpus-2 (Kanon)      = $ITOTORI_REAL_GAME_ROOT_2"
     echo "ci-real-bytes: RPG Maker MV/MZ (LustMemory)   = $ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ"
     echo "ci-real-bytes: RPG Maker MV/MZ (Countryside)  = $ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2"
     echo "ci-real-bytes: vault source (live vault)      = $ITOTORI_VAULT_ROOT"
     echo "ci-real-bytes: Siglus (Karetoshi + Gamekoi)   = $ITOTORI_VAULT_ROOT (vault-materialized)"
+    if [ "$SOFTPAL_PRESENT" -eq 1 ]; then
+      echo "ci-real-bytes: Softpal (Kizuna + Dimension)  = $ITOTORI_SOFTPAL_RESEARCH_ROOT"
+    fi
     echo "ci-real-bytes: strict (missing corpus hard-fails, no opt-out); running real-bytes suites"
     # The app-level MV/MZ proof drives the production TS seam plus the real
     # kaifuu apply binary. Build that binary in this lane so the proof cannot
@@ -309,6 +334,17 @@ ci-real-bytes:
     # kaifuu-vault-source: only the live-vault #[ignore] proofs (avoid unrelated KAIFUU-236/237 ignores).
     # live_vault_siglus_test materializes both Siglus portable installs (Karetoshi + Gamekoi) by-id.
     cargo test -p kaifuu-vault-source --test live_vault_open_test --test live_vault_by_id_test --test live_vault_siglus_test -- --ignored
+    # Softpal ADV (kaifuu-softpal): #[ignore]-gated real-corpus proofs (PAC
+    # reader, opcode catalog, TEXT.DAT codec, SCRIPT.SRC disassembler, real
+    # patchback) against the two owned Softpal titles under
+    # ITOTORI_SOFTPAL_RESEARCH_ROOT. The cli/engine-fixture Softpal proofs
+    # already ran above (they soft-skip when the env is unset); the
+    # kaifuu-softpal proofs are env-strict (panic when the env is unset), so
+    # this invocation is GATED on the Softpal corpus being staged — the
+    # skip-when-absent contract lives at the lane level, not the test level.
+    if [ "$SOFTPAL_PRESENT" -eq 1 ]; then
+      cargo test -p kaifuu-softpal -- --ignored
+    fi
 
 # real-bytes-periodic-ground-truth-oracle (P2): the strict-proof ANCHOR for the
 # synthetic-CI collapse. PERIODIC (nightly + on-demand), invoked OUTSIDE per-gate

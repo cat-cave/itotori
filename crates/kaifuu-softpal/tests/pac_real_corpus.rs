@@ -5,10 +5,13 @@
 //! counts, offsets, sizes, and SHA-256 hashes, which the reader must
 //! reproduce. The extracted `SCRIPT.SRC` / `TEXT.DAT` hashes were verified
 //! byte-for-byte against the GARbro / SoftPal-Tool `pac_unpack.py` oracle.
-//! Deliberately NOT named `*_real_bytes.rs` and NOT gated on
-//! `ITOTORI_REAL_GAME_ROOT` / `ITOTORI_VAULT_ROOT`: this crate's corpus is the
-//! standalone Softpal research tree, not the RealLive/vault periodic-oracle
-//! lane. Wiring Softpal into the periodic oracle is a separate follow-up.
+//! Wired into the PERIODIC `ci-real-bytes` real-bytes lane (the
+//! `ITOTORI_SOFTPAL_RESEARCH_ROOT` env-gate is detected by audit-strictness
+//! rule 5 as a live-corpus signal). The Softpal corpus lives under its own
+//! root (separate from the RealLive/RPG-Maker/vault tree), so the lane
+//! recipe skips the Softpal sub-lane CLEANLY when the root is absent — the
+//! env-strictness contract for these `kaifuu-softpal` proofs lives at the
+//! LANE level (skip-when-absent), not at the test level.
 
 use std::env;
 use std::fs;

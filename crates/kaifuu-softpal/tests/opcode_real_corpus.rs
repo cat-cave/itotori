@@ -11,6 +11,8 @@
 //! trailing bytes (every byte of the token stream accounted for), on both
 //! titles. It must also reproduce the disassembler's TEXT-SHOW / SELECT counts
 //! exactly (consistency across the two SCRIPT.SRC surfaces).
+//! Wired into the PERIODIC `ci-real-bytes` lane; see `pac_real_corpus.rs` for
+//! the env-gate / skip-when-absent contract.
 
 use std::collections::BTreeSet;
 use std::env;

@@ -69,7 +69,17 @@ prerequisite; a strict proof lane may not go green-on-skip.
   no live game, no live server.
 - **`real-bytes-oracle`** — the strict-proof ground-truth anchor: re-runs the
   full real-bytes suite (`ci-real-bytes`) against the staged corpora + the
-  synthetic-vs-real drift check. See `docs/real-bytes-periodic-oracle.md`.
+  synthetic-vs-real drift check. The staged corpora span six engine/source
+  families: RealLive (Sweetie HD + Kanon), RPG Maker MV/MZ (LustMemory +
+  Countryside Life), vault source (live read-only vault), Siglus
+  (vault-materialized Karetoshi + Gamekoi), and Softpal ADV (Kizuna +
+  Dimension under the standalone `/scratch/softpal-research` tree). The Softpal
+  sub-lane is the one exception to the missing-corpus hard-fail policy:
+  skip-when-absent is legitimate for that family (the Softpal corpus lives
+  under its own root, separate from the RealLive/RPG-Maker/vault tree), so a
+  runner that has the other corpora but not the Softpal tree still runs the
+  strict ground-truth suite for the five other families. See
+  `docs/real-bytes-periodic-oracle.md`.
 
 ### The browser binary (nix-Chromium)
 

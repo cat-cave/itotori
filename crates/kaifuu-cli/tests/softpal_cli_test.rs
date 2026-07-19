@@ -6,6 +6,10 @@
 //! BridgeBundle carries the exact known dialogue+choice unit count (39848 =
 //! 39832 dialogue + 16 text-bearing choices), matching kaifuu-softpal's
 //! committed real-corpus expectations. Never prints raw copyrighted bytes.
+//! Wired into the PERIODIC `ci-real-bytes` lane (the wider
+//! `-p kaifuu-cli -- --ignored` invocation already picks this up); soft-skips
+//! when `ITOTORI_SOFTPAL_RESEARCH_ROOT` is unset (skip-when-absent is
+//! legitimate for the periodic lane).
 
 use std::path::PathBuf;
 use std::process::Command;
