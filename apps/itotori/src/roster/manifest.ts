@@ -178,9 +178,9 @@ const DECLARATIONS: readonly SpecialistDeclaration[] = [
   {
     roleId: "A9",
     shape: "analyst",
-    version: "itotori.role.A9.v1",
+    version: "itotori.role.A9.v2",
     instructions:
-      "Character-in-Route Arc Analyst. Fan out for every deterministic character-by-route intersection and emit route-scoped character-route-arc objects whose state shifts carry from/to play-order ranges and citations. Skip no minor character.",
+      "Character-in-Route Arc Analyst. Consume the same-snapshot A8 character-background relationship baseline, then fan out for every deterministic character-by-route intersection and emit provisional, route-scoped, typed, traceable character-route-arc objects whose state shifts carry decode-stamped from/to play-order ranges and citations. Skip no minor character.",
     granularity: "per-character-route",
     wikiObjectKind: "character-route-arc",
     modelProfileKey: MODEL_PROFILE_KEY,

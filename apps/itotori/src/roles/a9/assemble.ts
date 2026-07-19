@@ -18,6 +18,7 @@ import {
   WikiObjectSchema,
   type Citation,
   type Claim,
+  type DependencyRef,
   type WikiObject,
 } from "../../contracts/index.js";
 import type { ReadModel } from "../../read-tools/index.js";
@@ -26,6 +27,7 @@ import { buildEvidenceIndex, type EvidenceIndex } from "../../wiki/evidence-inde
 import { validateWikiObjectClaims } from "../../wiki/claim-validation.js";
 
 import { presenceClaimId, routeArcObjectId, shiftClaimId } from "./ids.js";
+import { verifyA8CharacterBackground } from "./background.js";
 import { pairInIntersection, routeOccurrenceWindow } from "./intersection.js";
 import {
   A9RoleError,
@@ -190,6 +192,7 @@ export function assembleCharacterRouteArc(
   context: A9Context,
   character: CharacterOccurrenceFact,
   evidence: CharacterRouteEvidence,
+  backgroundCandidate: unknown,
   draft: A9ArcDraft,
 ): WikiObject {
   if (!pairInIntersection(model, character, evidence.routeId)) {
@@ -206,6 +209,7 @@ export function assembleCharacterRouteArc(
     );
   }
   const window = new Map(windowUnits.map((unit) => [unit.factId, unit]));
+  const background = verifyA8CharacterBackground(model, evidence.characterId, backgroundCandidate);
   const resolved = draft.shifts.map((shift) =>
     resolveShift(evidence.characterId, evidence.routeId, shift, window),
   );
@@ -217,6 +221,18 @@ export function assembleCharacterRouteArc(
       shiftClaim(index, model.snapshotId, evidence, shift, ordinal),
     ),
   ];
+  const dependencies: DependencyRef[] = [
+    {
+      upstreamObjectId: background.objectId,
+      upstreamVersion: background.version,
+      claimId: null,
+      fieldPath: ["relationships"],
+      renderingId: null,
+      scope: evidence.scope,
+      fromPlayOrder: null,
+      throughPlayOrder: null,
+    },
+  ];
   return seal(
     {
       schemaVersion: "itotori.wiki-object.v1",
@@ -227,8 +243,11 @@ export function assembleCharacterRouteArc(
       scope: evidence.scope,
       claims,
       media: [],
-      dependencies: [],
-      provisional: false,
+      dependencies,
+      // An arc is an A9 interpretation over deterministic occurrence facts and
+      // A8's relationship baseline. It must remain revisable until Wiki
+      // acceptance; A9 cannot promote its own narrative analysis to fact.
+      provisional: true,
       kind: A9_CHARACTER_ROUTE_ARC_KIND,
       body: {
         characterId: evidence.characterId,
