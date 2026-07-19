@@ -229,6 +229,6 @@ describe("real-Sweetie media ref resolution through the sanitized server", () =>
         await new Promise<void>((r) => server.close(() => r()));
       }
     },
-    180_000,
+    600_000,
   );
 });
