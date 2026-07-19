@@ -12,7 +12,16 @@
 // install (never committed). When the corpus is not staged it prints a skip note.
 // A deterministic 404-path test (no native op) always runs.
 
-import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -32,6 +41,8 @@ import {
 } from "../src/play/patchback-produce-service.js";
 import { createDeliveredPatchArchive } from "../src/patch-export/delivery-archive.js";
 import type { AuthorizationActor } from "@itotori/db";
+
+const cliEntrypointPath = new URL("../dist/cli.js", import.meta.url);
 
 const SCOPED_SCENE = 1017;
 
@@ -62,8 +73,9 @@ function findRealliveRoot(
   return undefined;
 }
 
-function realCorpus(): { gameRoot: string; gameexe: string; seen: string } | undefined {
-  const root = process.env.ITOTORI_REAL_GAME_ROOT;
+function realCorpus(
+  root: string | undefined,
+): { gameRoot: string; gameexe: string; seen: string } | undefined {
   if (root === undefined || root.length === 0 || !existsSync(root)) return undefined;
   return findRealliveRoot(root);
 }
@@ -80,7 +92,7 @@ function tarEntryPaths(bytes: Buffer): string[] {
     const sizeField = bytes
       .subarray(offset + 124, offset + 136)
       .toString("ascii")
-      .replace(/\0.*$/u, "")
+      .split(String.fromCharCode(0), 1)[0]!
       .trim();
     const size = parseInt(sizeField, 8) || 0;
     paths.push(name);
@@ -89,7 +101,8 @@ function tarEntryPaths(bytes: Buffer): string[] {
   return paths;
 }
 
-const corpus = realCorpus();
+const corpus = realCorpus(process.env.ITOTORI_REAL_GAME_ROOT);
+const secondCorpus = realCorpus(process.env.ITOTORI_REAL_GAME_ROOT_2);
 
 const actor = { userId: "produce-test", permissions: [] } as unknown as AuthorizationActor;
 
@@ -213,6 +226,118 @@ describe("produce playable build (env-gated real Sweetie byte oracle)", () => {
     const service = new PatchbackProduceService({ loader });
     expect(await service.produceArchive(actor, { runId: "missing" })).toBeNull();
   });
+
+  it.skipIf(!corpus || !secondCorpus)(
+    "drives itotori patch produce through the native producer for two distinct RealLive games",
+    async () => {
+      const corpora = [
+        { label: "sweetie", corpus: corpus! },
+        { label: "kanon", corpus: secondCorpus! },
+      ];
+      expect(new Set(corpora.map(({ corpus: current }) => current.gameRoot)).size).toBe(2);
+
+      for (const { label, corpus: current } of corpora) {
+        const workDir = mkdtempSync(join(tmpdir(), `itotori-patch-produce-cli-${label}-`));
+        try {
+          const bridgePath = join(workDir, "bridge.json");
+          const structurePath = join(workDir, "structure.json");
+          expect(
+            runKaifuuExtract({
+              gameRoot: current.gameRoot,
+              gameId: `reallive-${label}`,
+              gameVersion: "real",
+              sourceProfileId: `reallive-${label}`,
+              sourceLocale: "ja-JP",
+              wholeSeen: true,
+              bundleOutputPath: bridgePath,
+            }).status,
+          ).toBe(0);
+          expect(
+            runUtsushiStructureExport({
+              gameexePath: current.gameexe,
+              seenPath: current.seen,
+              outputPath: structurePath,
+              bridgePath,
+            }).status,
+          ).toBe(0);
+
+          const bridge = JSON.parse(readFileSync(bridgePath, "utf8")) as BridgeBundleV02;
+          const structure = JSON.parse(readFileSync(structurePath, "utf8")) as NarrativeStructure;
+          const snapshot = buildFactSnapshot(structure, bridge);
+          const unit = snapshot.orderedUnits[0];
+          expect(unit).toBeDefined();
+          const bridgeUnit = bridge.units.find(
+            (candidate) => candidate.bridgeUnitId === unit!.bridgeUnitId,
+          );
+          expect(bridgeUnit).toBeDefined();
+          const protectedText = (bridgeUnit!.spans ?? [])
+            .filter((span) => span.outOfBand !== true)
+            .map((span) => span.raw)
+            .join("");
+          const input: NativePatchbackInput = {
+            snapshot,
+            accepted: [makeAcceptedUnit(unit!.factId, unit!.sourceHash, `翻訳${protectedText}`)],
+            rawBridge: bridge,
+            workScope: { inScopeUnitFactIds: [unit!.factId] },
+            sourceLocale: "ja-JP",
+            targetLocale: "en-US",
+          };
+          const inputPath = join(workDir, "native-patchback-input.json");
+          const receiptPath = join(workDir, "produce-receipt.json");
+          const buildRoot = join(workDir, "persistent-build");
+          writeFileSync(inputPath, `${JSON.stringify(input)}\n`);
+
+          const cli = spawnSync(
+            process.execPath,
+            [
+              cliEntrypointPath.pathname,
+              "patch",
+              "produce",
+              "--input",
+              inputPath,
+              "--source",
+              current.gameRoot,
+              "--build-root",
+              buildRoot,
+              "--scope",
+              "dialogue+choices",
+              "--run-id",
+              `real-cli-produce-${label}`,
+              "--output",
+              receiptPath,
+            ],
+            { encoding: "utf8", env: process.env },
+          );
+          expect(
+            cli.status,
+            `itotori patch produce failed for ${label}:\nstdout:\n${cli.stdout}\nstderr:\n${cli.stderr}`,
+          ).toBe(0);
+
+          const receipt = JSON.parse(readFileSync(receiptPath, "utf8")) as {
+            capabilityId: string;
+            patch: { artifactRefs: Record<string, string> };
+          };
+          expect(receipt.capabilityId).toBe("itotori.patchback-produce.v1");
+          expect(Object.keys(receipt.patch.artifactRefs).sort()).toEqual([
+            "patchApply",
+            "patchExport",
+            "patchTarget",
+            "translatedBridge",
+          ]);
+          const patchedSeen = join(
+            receipt.patch.artifactRefs.patchTarget!,
+            "REALLIVEDATA",
+            "Seen.txt",
+          );
+          expect(existsSync(patchedSeen)).toBe(true);
+          expect(readFileSync(patchedSeen).equals(readFileSync(current.seen))).toBe(false);
+        } finally {
+          rmSync(workDir, { recursive: true, force: true });
+        }
+      }
+    },
+    1_200_000,
+  );
 });
 
 function fullWidthDigits(n: number): string {

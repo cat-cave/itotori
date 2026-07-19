@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "itotori.patchback-produce-capability.v0.1",
+  "capabilityId": "itotori.patchback-produce.v1",
+  "engineFamily": "reallive",
+  "adapterId": "kaifuu.reallive",
+  "status": "passed",
+  "outcome": "accepted_output_native_patched_build",
+  "nativeSeam": "produceNativePatchbackBuild",
+  "cliCommand": "itotori patch produce",
+  "deliverySurface": "POST /api/patchback/produce",
+  "artifactKeys": ["patchTarget", "translatedBridge", "patchApply", "patchExport"],
+  "realBytes": {
+    "suite": "apps/itotori/test/patchback-produce-build.test.ts",
+    "strictLane": "just ci-real-bytes",
+    "corpusEnvironment": ["ITOTORI_REAL_GAME_ROOT", "ITOTORI_REAL_GAME_ROOT_2"],
+    "minimumDistinctGames": 2,
+    "assertions": [
+      "the CLI persists a patched REALLIVEDATA/Seen.txt tree",
+      "the patched Seen.txt differs from its read-only source",
+      "the receipt exposes all hash-bound production artifact refs"
+    ]
+  },
+  "supportBoundary": "Accepted-output-native RealLive patched-build production is demonstrated through the same Kaifuu apply seam used by the Studio download. This is validation evidence, not a broader kaifuu EngineAdapter registry claim."
+}

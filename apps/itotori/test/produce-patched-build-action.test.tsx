@@ -4,8 +4,7 @@
 // `ProducePatchedBuildAction` component against a mocked `/api/patchback/produce`
 // boundary and pins three states a reviewer actually sees:
 //   - success: the produced tar downloads and a status names the file;
-//   - not-configured (501): an honest "not available yet" note, distinct from a
-//     real error alert (no crash) — the partial-completion state;
+//   - a failed produce is surfaced as an error alert;
 //   - permission-denied: the button is disabled with a clear reason.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -42,11 +41,11 @@ function tarResponse(): Response {
   } as unknown as Response;
 }
 
-function notConfiguredResponse(): Response {
+function failedProduceResponse(): Response {
   return {
     ok: false,
-    status: 501,
-    json: async () => ({ code: "internal_error", error: "patchback produce is not configured" }),
+    status: 500,
+    json: async () => ({ code: "internal_error", error: "patchback produce failed" }),
   } as unknown as Response;
 }
 
@@ -71,10 +70,10 @@ describe("ProducePatchedBuildAction", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("shows an honest 'not available yet' note (not an error) when the produce path returns 501", async () => {
+  it("shows an error when produce fails", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => notConfiguredResponse()),
+      vi.fn(async () => failedProduceResponse()),
     );
 
     render(
@@ -82,11 +81,9 @@ describe("ProducePatchedBuildAction", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Produce patched build" }));
 
-    const note = await screen.findByText(/isn't available yet for this run/u);
-    expect(note).toBeInTheDocument();
-    // It is a status note, NOT an error alert the user should report/retry.
-    expect(note).toHaveAttribute("data-produce-build", "unavailable");
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/patchback produce failed/u);
+    expect(alert).toHaveAttribute("data-produce-build", "error");
   });
 
   it("disables the control with a reason when the user lacks steer permission", () => {

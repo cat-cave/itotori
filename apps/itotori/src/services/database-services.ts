@@ -21,6 +21,11 @@ import {
   productionLocalizeDispatchConfig,
 } from "../composition/live/index.js";
 import { runWikiBuild } from "../composition/index.js";
+import { DatabasePatchbackProduceInputLoader } from "../play/database-patchback-produce-input-loader.js";
+import {
+  bindPatchbackProduceService,
+  PatchbackProduceService,
+} from "../play/patchback-produce-service.js";
 import { buildContextSnapshotInput, buildFactSnapshot } from "../prepass/index.js";
 import {
   parseNarrativeStructure,
@@ -56,8 +61,9 @@ export async function withDatabaseItotoriServices<T>(
 ): Promise<T> {
   return await withDatabase(async ({ db, pool }) => {
     const actor = await bootstrapLocalUser(db);
-    const config = productionLocalizationConfig(process.env);
     const cipher = createFieldMemoCipher(process.env);
+    let config: ReturnType<typeof productionLocalizationConfig> | undefined;
+    const localizationConfig = () => (config ??= productionLocalizationConfig(process.env));
     const wikiObjectApi = new WikiObjectApiService({
       wiki: new ItotoriLlmWikiRepository(pool, cipher),
       humanInputs: new ItotoriLlmHumanInputRepository(pool, cipher),
@@ -69,8 +75,19 @@ export async function withDatabaseItotoriServices<T>(
     const services = unavailableServiceSurface({
       projectWorkflow: unavailableProjectWorkflow(),
       wikiObjectApi,
+      patchbackProduce: bindPatchbackProduceService(
+        new PatchbackProduceService({
+          loader: new DatabasePatchbackProduceInputLoader({
+            database: db,
+            pool,
+            cipher,
+          }),
+        }),
+        actor,
+      ),
       wikiBuild: {
         async run(input) {
+          const config = localizationConfig();
           if (input.sourceLanguage !== input.bridge.sourceLocale) {
             throw new Error(
               `wiki build source locale ${input.sourceLanguage} does not match bridge ${input.bridge.sourceLocale}`,
@@ -101,6 +118,7 @@ export async function withDatabaseItotoriServices<T>(
       },
       localizationSubstrate: {
         async resolvePortSource(request, perRun) {
+          const config = localizationConfig();
           const contextSnapshot = await snapshotRepository.putContext(
             contextSnapshotInputForRun(perRun, config, perRun.bridge.sourceLocale),
           );
@@ -191,7 +209,7 @@ function unavailableLiveRoleSeams() {
 export function unavailableServiceSurface(
   installed: Pick<
     ItotoriApplicationServices,
-    "projectWorkflow" | "wikiObjectApi" | "wikiBuild" | "localizationSubstrate"
+    "projectWorkflow" | "wikiObjectApi" | "wikiBuild" | "localizationSubstrate" | "patchbackProduce"
   >,
 ): ItotoriApplicationServices {
   return new Proxy(installed, {
