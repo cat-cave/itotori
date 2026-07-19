@@ -120,7 +120,7 @@ is genuinely landed and protected by 30+ unit tests), but **add two
 follow-up DAG nodes**:
 
 - `KAIFUU-173b`: Inventory the _real_ Sweetie HD `Seen.txt` and emit a redacted opcode-frequency report. AC: the inventory must encounter at least three unsupported_opcode kinds and the report must list them by RLDEV-style mnemonic. This is the first time the parser meets bytes it didn't author. Depends on KAIFUU-176 (complete).
-- `KAIFUU-174b`: Round-trip a non-trivial slot replacement on a real-game scene and verify byte-for-byte equality of the non-string regions. AC names a specific scene id and a byte budget. This puts pressure on `crates/kaifuu-reallive/src/patchback.rs` (534 LOC) against bytes the author did not control.
+- `KAIFUU-174b`: Round-trip a non-trivial slot replacement on a real-game scene and verify byte-for-byte equality of the non-string regions. AC names a specific scene id and a byte budget. This puts pressure on `crates/kaifuu-reallive/src/patchback/` (directory module; `patchback.rs` was 534 LOC at audit time, since restructured in commit ad50c1da) against bytes the author did not control.
 
 These belong in the continuous tier — not alpha-blocking — but should
 exist so KAIFUU-173/174 are not the load-bearing evidence for the engine

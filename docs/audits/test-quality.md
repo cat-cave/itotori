@@ -41,11 +41,11 @@ Categories per the task brief:
 
 ### Rust: `crates/kaifuu-reallive/tests/`
 
-| File           | Tests | Contract | Impl-mirror | Tautology | Smoke | Notes                                                                                                                                                                                           |
-| -------------- | ----- | -------- | ----------- | --------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `smoke.rs`     | 8     | 1        | 1           | 6         | 0     | All bytes are produced by an in-file `synthetic` module that mirrors the parser's `lib.rs` documented shape. The "parses ... into structured AST" tests are the encoder fed to its own decoder. |
-| `inventory.rs` | 9     | 1        | 1           | 7         | 0     | Same synthetic encoder + tiny Gameexe.ini literals (`#WINTITLE=Test\n#KOEPAC=koe.ovk`); never exposed to real Gameexe.                                                                          |
-| `patchback.rs` | 13    | 4        | 1           | 8         | 0     | Some real contract (stale source hash → fatal; offset overflow → fatal; protected-span loss → fatal) but base round-trip is encoder/decoder symmetry.                                           |
+| File                                       | Tests | Contract | Impl-mirror | Tautology | Smoke | Notes                                                                                                                                                                                           |
+| ------------------------------------------ | ----- | -------- | ----------- | --------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `smoke.rs`                                 | 8     | 1        | 1           | 6         | 0     | All bytes are produced by an in-file `synthetic` module that mirrors the parser's `lib.rs` documented shape. The "parses ... into structured AST" tests are the encoder fed to its own decoder. |
+| `inventory.rs` (deleted — commit 4514c2e6) | 9     | 1        | 1           | 7         | 0     | Same synthetic encoder + tiny Gameexe.ini literals (`#WINTITLE=Test\n#KOEPAC=koe.ovk`); never exposed to real Gameexe.                                                                          |
+| `patchback.rs` (deleted — commit 4514c2e6) | 13    | 4        | 1           | 8         | 0     | Some real contract (stale source hash → fatal; offset overflow → fatal; protected-span loss → fatal) but base round-trip is encoder/decoder symmetry.                                           |
 
 Tautological example names (cite-able):
 
@@ -54,7 +54,7 @@ Tautological example names (cite-able):
   `parser.rs` reads, then asserts the recovered opcode list.
 - `smoke.rs:258 extracts_stable_string_slot_ids_derived_from_byte_offset`
   — computes the expected id from the same formula the parser uses.
-- `inventory.rs:145 extracts_bridge_units_with_kaifuu_173_stable_slot_ids_as_source_unit_keys`
+- `inventory.rs:145 extracts_bridge_units_with_kaifuu_173_stable_slot_ids_as_source_unit_keys` (historical cite — `tests/inventory.rs` deleted in commit 4514c2e6)
   — asserts every bridge unit's `source_unit_key` is in the parsed
   `slot_id` set, which is the parser feeding itself.
 
@@ -62,7 +62,7 @@ Real contract examples (kept honest):
 
 - `smoke.rs:341 rejects_truncated_scene_with_kaifuu_reallive_truncated_scene_diagnostic`
 - `smoke.rs:355 rejects_out_of_profile_input_with_kaifuu_reallive_out_of_profile_input`
-- `patchback.rs` stale-hash / protected-span-loss negative cases.
+- `patchback.rs` (historical cite — `tests/patchback.rs` deleted in commit 4514c2e6) stale-hash / protected-span-loss negative cases.
 
 ### Rust: `crates/utsushi-core/tests/`
 
@@ -169,7 +169,7 @@ Top three most tautological files:
    encoder-fed-to-its-own-decoder. The `synthetic` module re-implements
    the parser shape from `lib.rs`; the parser then decodes back to the
    inputs. Strong refactor resistance, zero real-data confidence.
-2. **`crates/kaifuu-reallive/tests/inventory.rs`** — 7/9 cases use the
+2. **`crates/kaifuu-reallive/tests/inventory.rs`** (deleted in commit 4514c2e6; historical cite) — 7/9 cases use the
    same synthetic encoder. The Gameexe.ini cases use a 2-line literal
    that hits the catalogue's narrow happy path.
 3. **`apps/itotori/test/character-relationship-agent.test.ts`** — ~9/19
