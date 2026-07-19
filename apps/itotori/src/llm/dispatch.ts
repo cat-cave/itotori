@@ -2,6 +2,7 @@ import { HTTPClient, type Fetcher } from "@openrouter/sdk";
 import {
   AuthorizationError,
   injectLlmDurabilityFault,
+  LlmDurabilityFaultError,
   LlmPhysicalStepFailedError,
   LlmRetriesExhaustedError,
   LlmSpendAdmissionDeniedError,
@@ -242,9 +243,9 @@ function dispatchMiddleware(state: DispatchState, maxToolCalls: number): ChatMid
       state.stepLimitReached = true;
       return { type: "abort", reason: "tool-call limit reached" };
     },
-    onAfterToolCall(context) {
+    onAfterToolCall() {
       if (state.durabilityFaultCaught) {
-        context.abort("durability fault injected after tool result");
+        throw new LlmDurabilityFaultError("after-tool-result");
       }
     },
     onUsage(_context, usage) {
@@ -421,7 +422,7 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
       systemPrompts: converted.systemPrompts,
       tools: spec.limits.maxToolCalls === 0 ? [] : configuredTools.tools,
       outputSchema: providerTerminalSchema(spec.output),
-      agentLoopStrategy: maxIterations(Math.max(1, spec.limits.maxSteps - 1)),
+      agentLoopStrategy: maxIterations(spec.limits.maxSteps),
       modelOptions: {
         provider: spec.providerPolicy,
         plugins: [],

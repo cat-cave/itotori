@@ -246,7 +246,9 @@ export function memoizePhysicalSteps(
     ...(adapter.requires ? { requires: adapter.requires } : {}),
     "~types": adapter["~types"],
     chatStream: (options) =>
-      replayStream("chat", options, (signal) => adapter.chatStream(withSignal(options, signal))),
+      replayStream("chat", options, (signal) =>
+        adapter.chatStream(withSignal(withCombinedOutputSchema(options), signal)),
+      ),
     structuredOutput: replayStructured,
     ...(adapter.structuredOutputStream
       ? {
@@ -259,12 +261,30 @@ export function memoizePhysicalSteps(
             ),
         }
       : {}),
-    ...(adapter.supportsCombinedToolsAndSchema
-      ? {
-          supportsCombinedToolsAndSchema: (options?: Record<string, unknown>) =>
-            adapter.supportsCombinedToolsAndSchema!(options),
-        }
-      : {}),
+    // OpenRouter accepts response_format alongside tools, but its adapter does
+    // not yet advertise that capability. The proxy adds the already-converted
+    // schema to its model options above, so the terminal turn remains one
+    // schema-constrained physical step rather than an unstructured turn plus
+    // a separate finalization request.
+    supportsCombinedToolsAndSchema: () => true,
+  };
+}
+
+function withCombinedOutputSchema<T extends TextOptions<Record<string, unknown>>>(options: T): T {
+  if (!options.outputSchema) return options;
+  return {
+    ...options,
+    modelOptions: {
+      ...options.modelOptions,
+      responseFormat: {
+        type: "json_schema",
+        jsonSchema: {
+          name: "structured_output",
+          schema: options.outputSchema,
+          strict: true,
+        },
+      },
+    },
   };
 }
 

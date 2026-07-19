@@ -304,6 +304,48 @@ describe("the rebuilt LLM dispatcher", () => {
     expect(toolRuns).toBe(1);
   });
 
+  it("resumes a fresh tool-loop dispatch after a post-result durability fault", async () => {
+    const prompt = "Use the decoded-unit tool, then return a verdict.";
+    const interruptedRequests: CapturedRequest[] = [];
+    let interruptedToolRuns = 0;
+    const interrupted = runtime(prompt, [toolProviderResponse(1)], interruptedRequests, [
+      decodedUnitsTool(() => (interruptedToolRuns += 1)),
+    ]);
+
+    const interruptedResult = await dispatch(toolLoopSpec(prompt), {
+      ...interrupted,
+      memo: {
+        ...interrupted.memo,
+        durabilityFaults: faultAt("after-tool-result"),
+      },
+    });
+
+    expect(interruptedResult).toMatchObject({ status: "failure", failureKind: "cancelled" });
+    expect(interruptedRequests).toHaveLength(1);
+    expect(interruptedToolRuns).toBe(1);
+
+    const restartedRequests: CapturedRequest[] = [];
+    let restartedToolRuns = 0;
+    const restarted = runtime(
+      prompt,
+      [structuredResponse(JSON.stringify(reviewVerdictExample))],
+      restartedRequests,
+      [decodedUnitsTool(() => (restartedToolRuns += 1))],
+    );
+
+    const restartedResult = await dispatch(toolLoopSpec(prompt), {
+      ...restarted,
+      memo: { ...restarted.memo, store: interrupted.memo.store },
+    });
+
+    expect(restartedResult).toMatchObject({ status: "success", memoHit: false });
+    expect(restartedRequests).toHaveLength(1);
+    expect(restartedRequests[0]?.body).toMatchObject({
+      response_format: { type: "json_schema", json_schema: { strict: true } },
+    });
+    expect(restartedToolRuns).toBe(1);
+  });
+
   it("hard-cancels a hung stream at each attempt deadline and records transient deadline failures", async () => {
     const prompt = "Return a review verdict before the synthetic deadline.";
     const store = new MemoryMemoStore();
