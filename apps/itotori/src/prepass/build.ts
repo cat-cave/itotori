@@ -76,9 +76,9 @@ export function buildFactSnapshot(
 }
 
 /**
- * The canonical serialized bytes of a fact snapshot — the exact string whose
- * SHA-256 is `snapshotId`. Exposed so a byte-identity proof can compare bytes,
- * not just ids.
+ * The canonical serialized bytes of a complete fact snapshot. `snapshotId`
+ * hashes its canonical materialized body (before the self-referential hash
+ * fields are added); this serialization is exposed for byte-identity proofs.
  */
 export function serializeFactSnapshot(snapshot: FactSnapshot): string {
   return canonicalLlmJson(snapshot as unknown as LlmJsonValue);

@@ -225,7 +225,7 @@ describe("buildFactSnapshot (deterministic pre-pass)", () => {
     const second = buildFactSnapshot(wholeGameStructure(), loadBridgeBundle());
     expect(second.snapshotId).toBe(first.snapshotId);
     expect(serializeFactSnapshot(second)).toBe(serializeFactSnapshot(first));
-    // The id IS the SHA-256 of the canonical bytes.
+    // The id is the SHA-256 of the canonical materialized body.
     expect(first.snapshotId).toMatch(/^sha256:[0-9a-f]{64}$/u);
     expect(first.snapshotId).toBe(first.contentHash);
   });

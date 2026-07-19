@@ -1,7 +1,12 @@
 // Assemble the context-snapshot trust-root input from the deterministic fact
 // materialization and the run-scoped revision references.
 
-import { llmSha256, type LlmContextSnapshotInput, type LlmRevisionRef } from "@itotori/db";
+import {
+  llmSha256,
+  type LlmContextSnapshotInput,
+  type LlmJsonValue,
+  type LlmRevisionRef,
+} from "@itotori/db";
 
 import { contextSnapshotFactsFrom } from "./context-facts.js";
 import type { FactSnapshot } from "./types.js";
@@ -9,9 +14,15 @@ import type { FactSnapshot } from "./types.js";
 export interface BuildContextSnapshotInput {
   readonly factSnapshot: FactSnapshot;
   readonly sourceLanguage: string;
+  /** Immutable revision of the decoded structure that was materialized. */
   readonly decodeRef: LlmRevisionRef;
   readonly glossaryRef: LlmRevisionRef;
   readonly styleRef: LlmRevisionRef;
+  /**
+   * Optional immutable human-correction state. Omitting it is an explicit,
+   * content-addressed empty correction set rather than a placeholder ref.
+   */
+  readonly humanCorrectionsRef?: LlmRevisionRef;
 }
 
 /**
@@ -39,24 +50,31 @@ export function buildContextSnapshotInput(
       sourceHash: unit.sourceHash,
     })),
     facts,
-    // FLAG: sentinel ref — real provenance is a follow-up.
-    structure: sentinelRef("structure"),
-    // FLAG: sentinel ref — real provenance is a follow-up.
-    routeGraph: sentinelRef("route-graph"),
+    // The decode revision is the immutable source structure that was joined
+    // into this fact snapshot; topology is independently content-addressed.
+    structure: input.decodeRef,
+    routeGraph: routeGraphRef(input.factSnapshot),
     glossary: input.glossaryRef,
     style: input.styleRef,
     revealHorizon: { kind: "through-play-order", playOrderIndex: finalPlayOrderIndex },
-    // FLAG: sentinel ref — real provenance is a follow-up.
-    humanCorrections: sentinelRef("human-corrections"),
+    humanCorrections: input.humanCorrectionsRef ?? noHumanCorrectionsRef(),
     externalSources: null,
     contextScope: "whole-game",
     factMaterialization,
   };
 }
 
-function sentinelRef(kind: "structure" | "route-graph" | "human-corrections"): LlmRevisionRef {
-  return {
-    revisionId: `sentinel:${kind}`,
-    contentHash: llmSha256(`itotori.context-snapshot.sentinel.${kind}.v1`),
-  };
+/** Content-address the exact materialized topology, independently of other facts. */
+function routeGraphRef(snapshot: FactSnapshot): LlmRevisionRef {
+  const contentHash = llmSha256(snapshot.routeTopology as unknown as LlmJsonValue);
+  return { revisionId: contentHash.slice("sha256:".length), contentHash };
+}
+
+/** The actual immutable state when this build has received no human corrections. */
+function noHumanCorrectionsRef(): LlmRevisionRef {
+  const contentHash = llmSha256({
+    schemaVersion: "itotori.human-corrections.v1",
+    corrections: [],
+  });
+  return { revisionId: contentHash.slice("sha256:".length), contentHash };
 }

@@ -48,10 +48,27 @@ describe("context snapshot input assembly", () => {
       })),
     );
     expect(wikiBuildInput.revealHorizon).toEqual({ kind: "through-play-order", playOrderIndex: 5 });
-    expect(wikiBuildInput.structure.revisionId).toBe("sentinel:structure");
-    expect(wikiBuildInput.routeGraph.revisionId).toBe("sentinel:route-graph");
-    expect(wikiBuildInput.humanCorrections.revisionId).toBe("sentinel:human-corrections");
+    expect(wikiBuildInput.structure).toEqual(REVISIONS.decodeRef);
+    expect(wikiBuildInput.routeGraph.contentHash).not.toBe(factSnapshot.contentHash);
+    expect(wikiBuildInput.routeGraph.revisionId).toBe(
+      wikiBuildInput.routeGraph.contentHash.slice("sha256:".length),
+    );
+    expect(wikiBuildInput.humanCorrections.revisionId).toBe(
+      wikiBuildInput.humanCorrections.contentHash.slice("sha256:".length),
+    );
     expect(wikiBuildInput.externalSources).toBeNull();
+  });
+
+  it("uses an explicit immutable human-correction revision when supplied", () => {
+    const humanCorrectionsRef = revision("human-corrections");
+    const input = buildContextSnapshotInput({
+      factSnapshot: buildRb024Snapshot(),
+      sourceLanguage: loadBridgeBundle().sourceLocale,
+      ...REVISIONS,
+      humanCorrectionsRef,
+    });
+
+    expect(input.humanCorrections).toEqual(humanCorrectionsRef);
   });
 });
 
