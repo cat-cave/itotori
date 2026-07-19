@@ -43,6 +43,7 @@ export interface AmbiguousTermCandidate {
  * code maps to a rejected lie; the proof falsifies each one independently. */
 export type TermEnumerationFailure =
   | "not-a-candidate"
+  | "candidate-enumeration-drift"
   | "off-candidate"
   | "alias-enumeration-drift"
   | "unknown-source-form"
@@ -129,6 +130,51 @@ function arraysEqual(left: readonly string[], right: readonly string[]): boolean
 }
 
 /**
+ * Refuse a hand-built or stale candidate before it reaches A2. The only
+ * dispatchable candidate is the exact item already materialized in the
+ * whole-game terminology/conflict index; this comparison never re-scans bytes
+ * or re-enumerates terms.
+ */
+export function assertAmbiguousCandidateByteDerived(
+  candidate: AmbiguousTermCandidate,
+  index: Pick<FactSnapshot, "terminology" | "glossaryConflicts">,
+): void {
+  const expected = ambiguousTermCandidates(index).find(
+    (entry) => entry.termKey === candidate.termKey,
+  );
+  if (expected === undefined) {
+    throw new TermEnumerationError(
+      "not-a-candidate",
+      candidate.termKey,
+      "term is not in the deterministic ambiguous-candidate set",
+    );
+  }
+  if (
+    candidate.policyAction !== expected.policyAction ||
+    candidate.occurrenceCount !== expected.occurrenceCount ||
+    !arraysEqual(candidate.aliases, expected.aliases) ||
+    !arraysEqual(candidate.occurrenceUnitKeys, expected.occurrenceUnitKeys) ||
+    candidate.conflicts.length !== expected.conflicts.length ||
+    candidate.conflicts.some((conflict, index) => {
+      const expectedConflict = expected.conflicts[index];
+      return (
+        expectedConflict === undefined ||
+        conflict.factId !== expectedConflict.factId ||
+        conflict.kind !== expectedConflict.kind ||
+        conflict.termKey !== expectedConflict.termKey ||
+        conflict.detail !== expectedConflict.detail
+      );
+    })
+  ) {
+    throw new TermEnumerationError(
+      "candidate-enumeration-drift",
+      candidate.termKey,
+      "candidate differs from the byte-derived whole-game index",
+    );
+  }
+}
+
+/**
  * Reject a model output whose ALIAS enumeration is not exactly the byte-derived
  * one. The analyst rules on a fixed enumeration; adding, dropping, or reordering
  * an alias is a re-count the guard refuses. The ruling must also be FOR the
@@ -143,6 +189,13 @@ export function assertByteDerivedTermEnumeration(
       "off-candidate",
       candidate.termKey,
       `ruling names term ${ruling.body.termId}, not the dispatched candidate`,
+    );
+  }
+  if (ruling.subject.kind !== "glossary-term" || ruling.subject.id !== candidate.termKey) {
+    throw new TermEnumerationError(
+      "off-candidate",
+      candidate.termKey,
+      `ruling subject ${ruling.subject.kind}:${ruling.subject.id} is not the dispatched candidate`,
     );
   }
   const bodyAliases = [...ruling.body.aliases].sort(compareCodeUnits);
@@ -179,10 +232,10 @@ export function occurrenceUnitFactIds(
 }
 
 /**
- * Reject a ruling that cites a unit the term never occurs in. Every unit-subject
- * citation must resolve to one of the candidate's byte-derived occurrence units;
- * a citation to any other unit is a GHOST occurrence — a fact the bytes never
- * supported — and is refused. Non-unit citations are left to claim validation.
+ * Reject a ruling that cites anything but a real byte-derived occurrence. A2's
+ * model may cite only the occurrence labels it was shown, which resolve to unit
+ * evidence before this guard runs. A non-unit citation or a unit outside that
+ * fixed set is a GHOST occurrence — a fact the bytes never supported.
  */
 export function assertOccurrenceCitationsByteDerived(
   ruling: TermRulingObject,
@@ -192,8 +245,11 @@ export function assertOccurrenceCitationsByteDerived(
   const occurrences = occurrenceUnitFactIds(index, candidate);
   for (const claim of ruling.claims) {
     for (const citation of claim.citations) {
-      if (citation.subject.kind !== "unit") continue;
-      if (!occurrences.has(citation.subject.id)) {
+      if (
+        citation.subject.kind !== "unit" ||
+        citation.evidenceId !== citation.subject.id ||
+        !occurrences.has(citation.evidenceId)
+      ) {
         throw new TermEnumerationError(
           "ghost-occurrence",
           candidate.termKey,

@@ -80,9 +80,9 @@ const DECLARATIONS: readonly SpecialistDeclaration[] = [
   {
     roleId: "A2",
     shape: "analyst",
-    version: "itotori.role.A2.v1",
+    version: "itotori.role.A2.v2",
     instructions:
-      "Terminology Analyst. Rank and classify only the ambiguous candidates the deterministic extractor surfaces; propose meaning, register, and source scope with real citations. Never enumerate terms and never invent a target form.",
+      "Terminology Analyst. Treat the deterministic whole-game term, alias, occurrence, and conflict index as ground truth. Author only PROVISIONAL source-language term-ruling WikiObjects for its ambiguous candidates, with meaning, register, source scope, confidence, and real same-snapshot occurrence citations. Never enumerate terms, aliases, or occurrences; never invent a target form.",
     granularity: "per-term",
     wikiObjectKind: "term-ruling",
     modelProfileKey: MODEL_PROFILE_KEY,
