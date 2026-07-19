@@ -38,3 +38,24 @@ export {
   type PriorAcceptedTarget,
   type SceneLocalization,
 } from "./localizer.js";
+export {
+  P1_ROLE_ID,
+  P1_TRANSLATION_KIND,
+  P1RoleError,
+  type P1Context,
+  type P1FailureCode,
+  type P1ModelCaller,
+  type P1ReadScene,
+  type P1SceneInput,
+  type P1SegmentRequest,
+} from "./agent-types.js";
+export { p1Caller, readP1Scene } from "./read.js";
+export { assembleP1TranslationObject } from "./assemble.js";
+export {
+  assertP1AgentCertifiedRoute,
+  buildP1AgentCall,
+  dispatchP1Agent,
+  dispatchingP1ModelCaller,
+  type P1AgentCall,
+} from "./agent-call.js";
+export { runP1Scene, type P1SceneResult } from "./run.js";
