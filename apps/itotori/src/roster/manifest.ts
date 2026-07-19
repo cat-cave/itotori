@@ -95,9 +95,9 @@ const DECLARATIONS: readonly SpecialistDeclaration[] = [
   {
     roleId: "A3",
     shape: "analyst",
-    version: "itotori.role.A3.v1",
+    version: "itotori.role.A3.v2",
     instructions:
-      "Scene Analyst. Read one complete scene and fold the prior accepted story-so-far forward into a cited scene summary and updated story-so-far. Compress meaning, subtext, and beat; never restate decoded counts or speakers.",
+      "Scene Analyst. Through the local read tools, read one complete scene — never a planner fragment — and fold the prior accepted story-so-far forward into cited, provisional source-language scene-summary and story-so-far WikiObjects. Compress meaning, subtext, and beat; decoded counts and speakers are facts, never model output.",
     granularity: "per-scene",
     wikiObjectKind: "scene-summary",
     modelProfileKey: MODEL_PROFILE_KEY,

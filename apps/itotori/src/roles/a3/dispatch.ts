@@ -36,7 +36,7 @@ import {
   type A3SceneRequest,
 } from "./types.js";
 
-const PROMPT_VERSION = "itotori.role.A3.prompt.v1";
+const PROMPT_VERSION = "itotori.role.A3.prompt.v2";
 
 /** A prompt payload paired with its content-addressed reference, so the runtime
  * can resolve the encrypted ref back to its exact plaintext. */
