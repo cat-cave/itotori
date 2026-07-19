@@ -1637,6 +1637,11 @@ const ERROR_STATUS_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "500": "Internal error (internal_error).",
 };
 
+/** Extra, route-specific error statuses beyond the shared envelope. */
+const BINARY_ROUTE_EXTRA_STATUS_DESCRIPTIONS: Readonly<Record<number, string>> = {
+  501: "Not configured in this API build (internal_error).",
+};
+
 function openApiErrorResponses(): Record<string, JsonValue> {
   const responses: Record<string, JsonValue> = {};
   for (const [status, description] of Object.entries(ERROR_STATUS_DESCRIPTIONS)) {
@@ -1696,21 +1701,30 @@ export function buildItotoriOpenApiDocument(): JsonValue {
     pathItem[route.method.toLowerCase()] = operation;
   }
   for (const [routeId, route] of Object.entries(ITOTORI_API_BINARY_ROUTES)) {
+    const responses: Record<string, JsonValue> = {
+      "200": {
+        description: "Selected delivered patch archive.",
+        content: {
+          [route.contentType]: {
+            schema: { type: "string", format: "binary" },
+          },
+        },
+      },
+      ...openApiErrorResponses(),
+    };
+    for (const status of route.additionalErrorStatuses ?? []) {
+      responses[String(status)] = {
+        description: BINARY_ROUTE_EXTRA_STATUS_DESCRIPTIONS[status] ?? "Error (internal_error).",
+        content: {
+          "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } },
+        },
+      };
+    }
     const operation: Record<string, JsonValue> = {
       operationId: route.operationId,
       summary: route.summary,
       "x-itotoriBinaryRouteId": routeId,
-      responses: {
-        "200": {
-          description: "Selected delivered patch archive.",
-          content: {
-            [route.contentType]: {
-              schema: { type: "string", format: "binary" },
-            },
-          },
-        },
-        ...openApiErrorResponses(),
-      },
+      responses,
     };
     if (route.pathParams.length > 0) {
       operation.parameters = route.pathParams.map((name) => ({

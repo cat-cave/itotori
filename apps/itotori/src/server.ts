@@ -18,6 +18,7 @@ import {
 } from "./services/database-services.js";
 import { parseItotoriSessionCookie } from "./auth-session-cookie.js";
 import { assertPrivacyRetentionEgressContract } from "./contracts/privacy.js";
+import { configuredServicePort } from "./services/configured-port.js";
 
 export type DashboardServerOptions = {
   databaseUrl?: string;
@@ -256,7 +257,12 @@ async function servePatchbackProduceRequest(input: {
     const sessionId = parseItotoriSessionCookie(input.request.headers.cookie);
     const serviceOptions = sessionId === undefined ? undefined : { sessionId };
     const archive = await input.serviceFactory((services) => {
-      const produce = services.patchbackProduce;
+      // Detect the port with `Reflect.has` (via `configuredServicePort`), never
+      // by truthiness: an absent port on the cutover Proxy resolves to a
+      // throwing fallback function, so a `=== undefined` check would sail past
+      // it and surface a Proxy TypeError (500) instead of this loud, documented
+      // "not configured" (501). See PR #320.
+      const produce = configuredServicePort(services, "patchbackProduce");
       if (produce === undefined) {
         throw new PatchbackProduceNotConfiguredError();
       }
