@@ -106,6 +106,16 @@ export class LlmWikiConflictError extends Error {
   }
 }
 
+/** A provisional automated pass may not silently advance a human-owned head.
+ * The explicit human apply boundary is the only enhancement path that may build
+ * on such a version; ordinary agent work must surface a conflict for review. */
+export class LlmWikiProtectedHumanVersionError extends Error {
+  constructor(readonly wikiVersionId: string) {
+    super(`automated write cannot supersede protected human wiki version ${wikiVersionId}`);
+    this.name = "LlmWikiProtectedHumanVersionError";
+  }
+}
+
 interface WikiVersionRow {
   wikiKind: LlmWikiKind;
   snapshotKind: "context" | "localization";
@@ -296,6 +306,7 @@ export class ItotoriLlmWikiRepository {
           contentHash,
         };
       }
+      await this.assertExpectedHeadIsNotHumanProtected(client, row);
       await insertDependencyEdges(client, wikiVersionId, row.dependencies, row.createdAt);
       await this.advanceHead(client, row, wikiVersionId, contentHash);
       await client.query("commit");
@@ -320,6 +331,28 @@ export class ItotoriLlmWikiRepository {
     );
     if (existing.rows[0]?.wiki_content_hash !== contentHash) {
       throw new LlmWikiConflictError("wiki object version content differs from its committed row");
+    }
+  }
+
+  /** Human edits and their explicit enhancement children are non-provisional
+   * reviewable truth. Do not let a normal automated pass silently replace that
+   * head; it must enter through the explicit enhancement boundary instead. */
+  private async assertExpectedHeadIsNotHumanProtected(
+    client: PoolClient,
+    row: WikiVersionRow & CommonPersist,
+  ): Promise<void> {
+    if (row.editedBy !== "agent" || row.expectedHead === null) return;
+    const protectedHead = await client.query<{ provenance_edited_by: string | null }>(
+      `
+        select provenance_edited_by
+        from itotori_llm_wiki_versions
+        where wiki_version_id = $1 and deletion_state = 'active'
+      `,
+      [row.expectedHead.wikiVersionId],
+    );
+    const editedBy = protectedHead.rows[0]?.provenance_edited_by;
+    if (editedBy === "human" || editedBy === "enhancement") {
+      throw new LlmWikiProtectedHumanVersionError(row.expectedHead.wikiVersionId);
     }
   }
 
