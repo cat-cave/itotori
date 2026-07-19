@@ -126,6 +126,19 @@ describe("clause 2 — serial fold into cited source-language objects", () => {
       expect(scene.storySoFar.lang).toBe(model.sourceLanguage);
     }
   });
+
+  it("PROOF: each analyst-written object stays provisional and traceable", async () => {
+    const { model } = buildClaimFixture();
+    const result = await foldRoute(model, CONTEXT, recordedCaller());
+
+    for (const scene of result.scenes) {
+      for (const object of [scene.sceneSummary, scene.storySoFar]) {
+        expect(object.provisional).toBe(true);
+        expect(object.provenance.authorRoleId).toBe("A3");
+        expect(object.provenance.contextSnapshotId).toBe(model.snapshotId);
+      }
+    }
+  });
 });
 
 describe("clause 3 — citations in-snapshot, full-route coverage, index-derived counts", () => {

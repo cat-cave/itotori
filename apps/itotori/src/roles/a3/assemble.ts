@@ -153,7 +153,10 @@ export function assembleSceneSummary(
       claims,
       media: [],
       dependencies: [],
-      provisional: false,
+      // Analyst prose is a cited, revisable interpretation of the deterministic
+      // snapshot, not an accepted fact. A3 output stays provisional until the
+      // downstream Wiki acceptance workflow promotes or supersedes it.
+      provisional: true,
       kind: A3_SCENE_SUMMARY_KIND,
       body: {
         sceneId: sceneKey,
@@ -229,7 +232,9 @@ export function assembleStorySoFar(
       claims,
       media: [],
       dependencies,
-      provisional: false,
+      // The running route narrative is also an analyst interpretation. Keep the
+      // same revisable posture as its per-scene summary and cite its provenance.
+      provisional: true,
       kind: A3_STORY_SO_FAR_KIND,
       body: {
         throughSceneId: sceneKey,
