@@ -179,7 +179,11 @@ export function assembleCharacterBio(
       claims,
       media: [portrait],
       dependencies: [],
-      provisional: false,
+      // A bio is a cited analyst interpretation of immutable decode facts, not
+      // an accepted fact itself. Keep it revisable until the Wiki acceptance
+      // workflow promotes or supersedes it; a model must never self-promote a
+      // character interpretation by emitting a non-provisional object.
+      provisional: true,
       kind: A7_CHARACTER_BIO_KIND,
       body: {
         characterId: evidence.characterId,
