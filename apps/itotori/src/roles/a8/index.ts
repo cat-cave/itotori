@@ -30,7 +30,13 @@ export {
   relationshipClaimId,
   sceneEvidenceId,
 } from "./ids.js";
-export { a8Caller, characterIndex, counterpartIds, readCharacterEvidence } from "./characters.js";
+export {
+  a8Caller,
+  assertRealCounterpartCharacter,
+  characterIndex,
+  counterpartIds,
+  readCharacterEvidence,
+} from "./characters.js";
 export { verifyBioProvenance } from "./provenance.js";
 export {
   buildSceneReachabilityIndex,

@@ -26,6 +26,7 @@ import type { ReadModel } from "../../read-tools/index.js";
 import { buildEvidenceIndex, type EvidenceIndex } from "../../wiki/evidence-index.js";
 import { validateWikiObjectClaims } from "../../wiki/claim-validation.js";
 
+import { assertRealCounterpartCharacter, a8Caller } from "./characters.js";
 import { backgroundObjectId, presenceClaimId, relationshipClaimId } from "./ids.js";
 import { verifyBioProvenance } from "./provenance.js";
 import {
@@ -160,10 +161,14 @@ export function assembleCharacterBackground(
   }
   const bio = verifyBioProvenance(model, evidence.characterId, request.bio);
   const counterparts = new Set(request.counterpartIds);
-  const sceneIndex = buildSceneReachabilityIndex(model);
-  const routes = reachableRoutes(model);
+  const sceneIndex = buildSceneReachabilityIndex(model, a8Caller(context));
+  const routes = reachableRoutes(sceneIndex);
 
   const resolved: ResolvedRelationship[] = draft.relationships.map((relationship) => {
+    // The request manifest is untrusted input. Resolve the cited id through the
+    // local character-evidence tool before consulting that manifest, so a
+    // poisoned counterpartIds array cannot manufacture a relationship target.
+    assertRealCounterpartCharacter(model, context, relationship.counterpartId);
     if (!counterparts.has(relationship.counterpartId)) {
       throw new A8RoleError(
         "unknown-counterpart",
@@ -215,7 +220,11 @@ export function assembleCharacterBackground(
       claims,
       media: [],
       dependencies,
-      provisional: false,
+      // A background is a cited analyst interpretation of immutable decode
+      // facts and the upstream bio, not an accepted fact itself. Keep it
+      // revisable until Wiki acceptance promotes or supersedes it; a model
+      // must never self-promote a relationship interpretation.
+      provisional: true,
       kind: A8_CHARACTER_BACKGROUND_KIND,
       body: {
         characterId: evidence.characterId,

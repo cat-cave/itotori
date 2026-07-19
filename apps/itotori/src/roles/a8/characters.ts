@@ -9,6 +9,7 @@
 
 import {
   decodeGetCharacterOccurrences,
+  ReadToolError,
   type ReadModel,
   type ReadToolCaller,
 } from "../../read-tools/index.js";
@@ -38,6 +39,41 @@ export function characterIndex(model: ReadModel): readonly CharacterOccurrenceFa
  * character set, exactly. A relationship to any id outside this set is rejected. */
 export function counterpartIds(model: ReadModel): readonly string[] {
   return model.factSnapshot.characters.map((character) => character.characterId);
+}
+
+/**
+ * Re-resolve a cited counterpart through A8's local character-evidence tool.
+ * The request manifest only guides the model; it is never authority for
+ * assembly. A counterpart must resolve to a real, readable decoded character
+ * object before a relationship can name it.
+ */
+export function assertRealCounterpartCharacter(
+  model: ReadModel,
+  context: A8Context,
+  counterpartId: string,
+): void {
+  try {
+    const result = decodeGetCharacterOccurrences(model, a8Caller(context), {
+      characterId: counterpartId,
+      maxRows: MAX_ROWS,
+      maxBytes: MAX_BYTES,
+    });
+    const fact = result.facts[0];
+    if (!fact || fact.value.characterId !== counterpartId) {
+      throw new A8RoleError(
+        "unknown-counterpart",
+        `counterpart ${counterpartId} has no character evidence in this snapshot`,
+      );
+    }
+  } catch (error) {
+    if (error instanceof ReadToolError && error.code === "unknown-subject") {
+      throw new A8RoleError(
+        "unknown-counterpart",
+        `counterpart ${counterpartId} is absent from the decoded character index`,
+      );
+    }
+    throw error;
+  }
 }
 
 /**

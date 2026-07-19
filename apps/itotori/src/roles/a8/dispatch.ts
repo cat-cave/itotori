@@ -31,6 +31,7 @@ import { dispatch, type DispatchRuntime } from "../../llm/dispatch.js";
 import { specialistFor } from "../../roster/index.js";
 import type { ReadModel } from "../../read-tools/index.js";
 
+import { a8Caller } from "./characters.js";
 import { buildSceneReachabilityIndex, type SceneReachability } from "./scenes.js";
 import {
   A8RoleError,
@@ -98,11 +99,11 @@ function sceneLine(scene: SceneReachability): string {
  * the verified bio's story role, the real counterpart ids, and the reachable
  * establishing-scene evidence ids are stated as FACTS; the model compresses
  * meaning and cites scene evidence ids, never re-deriving topology. */
-function renderPrompt(model: ReadModel, request: A8BackgroundRequest): string {
+function renderPrompt(model: ReadModel, context: A8Context, request: A8BackgroundRequest): string {
   const specialist = specialistFor(A8_ROLE_ID);
   const character = request.character;
   const bioStoryRole = request.bio.kind === "character-bio" ? request.bio.body.storyRole : "";
-  const scenes = [...buildSceneReachabilityIndex(model).values()].filter(
+  const scenes = [...buildSceneReachabilityIndex(model, a8Caller(context)).values()].filter(
     (scene) => scene.reachable,
   );
   return [
@@ -128,7 +129,7 @@ export function buildA8CallSpec(
   request: A8BackgroundRequest,
 ): { spec: CallSpec; prompts: readonly SealedPrompt[] } {
   const specialist = specialistFor(A8_ROLE_ID);
-  const promptText = renderPrompt(model, request);
+  const promptText = renderPrompt(model, context, request);
   const prompt = sealPrompt(`a8:background:${request.character.characterId}`, promptText);
   const eventId = sha256(promptText);
   const spec: CallSpec = {
