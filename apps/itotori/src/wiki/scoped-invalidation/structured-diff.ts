@@ -81,13 +81,18 @@ export function diffUpstreamObject(prior: JsonValue, next: JsonValue): UpstreamC
   if (stringField(priorObject, "objectId") !== upstreamObjectId) {
     throw new StructuredDiffError("a structured diff compares two versions of ONE object");
   }
-  const objectScope = scopeOf(nextObject);
+  // A version may narrow or widen an object's route visibility. A changed field
+  // must reach consumers in either visibility, not just consumers visible in
+  // the next version. The union remains route-precise (rather than falling
+  // back to global) when both versions name concrete routes.
+  const priorScope = scopeOf(priorObject);
+  const nextScope = scopeOf(nextObject);
   return {
     upstreamObjectId,
     priorVersion: integerField(priorObject, "version"),
     nextVersion: integerField(nextObject, "version"),
     claimChanges: diffClaims(priorObject, nextObject),
-    fieldChanges: diffFields(priorObject, nextObject, objectScope),
+    fieldChanges: diffFields(priorObject, nextObject, unionScopes(priorScope, nextScope)),
   };
 }
 
@@ -104,12 +109,13 @@ function diffClaims(
     const after = nextClaims.get(claimId);
     const changeKind = classifyClaimChange(before, after);
     if (changeKind === null) continue;
-    const carrier = after ?? before!;
     const window = playWindowOf([before, after]);
     changes.push({
       claimId,
       changeKind,
-      scope: scopeOf(carrier),
+      // A claim that moves route scope affects both its former and its new
+      // readers. `unionScopes` preserves the exact route union where possible.
+      scope: unionScopes(scopeOf(before ?? after!), scopeOf(after ?? before!)),
       fromPlayOrder: window.from,
       throughPlayOrder: window.through,
     });
@@ -187,11 +193,26 @@ export function changedLeafPaths(before: JsonValue, after: JsonValue): FieldPath
     const key = pathKey(path);
     if (seen.has(key)) continue;
     seen.add(key);
-    if (canonical(getAtPath(before, path) ?? null) !== canonical(getAtPath(after, path) ?? null)) {
+    const beforeExists = hasAtPath(before, path);
+    const afterExists = hasAtPath(after, path);
+    if (
+      beforeExists !== afterExists ||
+      (beforeExists &&
+        afterExists &&
+        canonical(getAtPath(before, path)!) !== canonical(getAtPath(after, path)!))
+    ) {
       changed.push(path);
     }
   }
-  return changed;
+  // An empty container is itself a leaf. When one side has children and the
+  // other is empty, the union above sees both the container and its changed
+  // children; retaining the container would broaden a one-field removal into
+  // an entire-object field change. The descendants fully describe that delta,
+  // so keep only the most-specific changed paths.
+  return changed.filter(
+    (path) =>
+      !changed.some((candidate) => candidate.length > path.length && isPathWithin(candidate, path)),
+  );
 }
 
 /** True when `candidate` is `ancestor` itself or nested beneath it. */
@@ -247,12 +268,47 @@ function scopeOf(object: JsonValue): ChangeScope {
   return { kind: "global" };
 }
 
+/** The exact route union of two scopes. Global is necessarily global; otherwise
+ * retain a single route when possible and use a sorted route set for a genuine
+ * multi-route union so the structured diff remains deterministic. */
+function unionScopes(left: ChangeScope, right: ChangeScope): ChangeScope {
+  if (left.kind === "global" || right.kind === "global") return { kind: "global" };
+  const routeIds = [...new Set([...routeIdsOf(left), ...routeIdsOf(right)])].sort(compareStrings);
+  if (routeIds.length === 1) return { kind: "route", routeId: routeIds[0]! };
+  return { kind: "route-set", routeIds };
+}
+
+function routeIdsOf(scope: Exclude<ChangeScope, { kind: "global" }>): readonly string[] {
+  return scope.kind === "route" ? [scope.routeId] : scope.routeIds;
+}
+
 function canonical(value: JsonValue): string {
   return canonicalLlmJson(value as never);
 }
 
 function isRecord(value: JsonValue | undefined): value is { [key: string]: JsonValue } {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Presence differs from JSON `null`: removing a nullable field is still a
+ * structured change and must invalidate consumers that cited that field. */
+function hasAtPath(root: JsonValue, path: FieldPath): boolean {
+  let cursor: JsonValue | undefined = root;
+  for (const segment of path) {
+    if (Array.isArray(cursor)) {
+      const index = arrayIndex(segment);
+      if (index === null || index >= cursor.length) return false;
+      cursor = cursor[index] ?? null;
+      continue;
+    }
+    if (isRecord(cursor)) {
+      if (!Object.prototype.hasOwnProperty.call(cursor, segment)) return false;
+      cursor = cursor[segment] ?? null;
+      continue;
+    }
+    return false;
+  }
+  return true;
 }
 
 function arrayIndex(segment: string): number | null {

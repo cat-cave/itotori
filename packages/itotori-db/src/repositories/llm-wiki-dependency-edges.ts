@@ -24,9 +24,10 @@ export interface LlmWikiDependency {
   throughPlayOrder: number | null;
 }
 
-/** Locate the exact consumers of an upstream claim/field/rendering. Omitting
- * `claimId`/`fieldPath`/`renderingId` widens the query; a bare `upstreamObjectId`
- * is the COARSE object-wide query the fine-grained edges exist to replace. */
+/** Locate live consumers of an upstream claim/field/rendering. Omitting a
+ * locator returns current candidate edges for the upstream object; callers must
+ * still intersect those edges with a structured change set before deciding
+ * work. Historical versions are never candidates for invalidation. */
 export interface LlmDependencyQuery {
   upstreamObjectId: string;
   claimId?: string;
@@ -101,10 +102,10 @@ export async function insertDependencyEdges(
   }
 }
 
-/** Resolve the EXACT downstream consumers of an upstream claim/field/rendering.
+/** Resolve current downstream consumers of an upstream claim/field/rendering.
  * A `claimId`/`fieldPath`/`renderingId` narrows to consumers of that content
- * only; a bare `upstreamObjectId` returns every consumer of the object (the
- * coarse query the fine-grained edges replace). Results are deterministically
+ * only; a bare `upstreamObjectId` yields all live candidate edges for the
+ * planner's deterministic field/claim intersection. Results are deterministically
  * ordered by downstream object/version/edge. */
 export async function queryDependents(
   pool: Pool,
@@ -150,6 +151,13 @@ export async function queryDependents(
       from itotori_llm_dependency_edges edge
       join itotori_llm_wiki_versions wiki
         on wiki.wiki_version_id = edge.downstream_wiki_version_id
+      join itotori_llm_cas_heads head
+        on head.head_namespace = 'wiki-version'
+        and head.snapshot_id = wiki.snapshot_id
+        and head.subject_type = wiki.wiki_kind
+        and head.subject_id = wiki.object_id
+        and head.head_stage = 'current'
+        and head.head_id = wiki.wiki_version_id
       where ${conditions.join(" and ")}
       order by wiki.object_id, wiki.object_version, edge.edge_id
     `,

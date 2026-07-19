@@ -11,10 +11,20 @@
 
 import { createHash } from "node:crypto";
 
-import { ItotoriLlmSnapshotRepository, ItotoriLlmWikiRepository } from "@itotori/db";
+import {
+  ItotoriLlmAcceptedOutputRepository,
+  ItotoriLlmSnapshotRepository,
+  ItotoriLlmWikiRepository,
+} from "@itotori/db";
 import { describe, expect, it } from "vitest";
 
 import type { DependencyRef } from "../src/contracts/index.js";
+import { dispatch } from "../src/llm/dispatch.js";
+import {
+  bindScopedTargets,
+  buildPatchExportV02,
+  type NativePatchbackInput,
+} from "../src/patchback/index.js";
 import { persistLocalizedRendering, persistWikiObject } from "../src/wiki/object-persistence.js";
 import {
   ScopedInvalidationService,
@@ -24,8 +34,18 @@ import {
   type ImpactedConsumer,
 } from "../src/wiki/scoped-invalidation/index.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
-import { localizedRenderingExample, wikiObjectExample } from "./contract-fixtures-core.js";
-import { TestMemoCipher } from "./llm-step-test-support.js";
+import {
+  localizedRenderingExample,
+  reviewVerdictExample,
+  wikiObjectExample,
+} from "./contract-fixtures-core.js";
+import {
+  TestMemoCipher,
+  dispatchHarness,
+  physicalCallSpec,
+  structuredProviderResponse,
+} from "./llm-step-test-support.js";
+import { buildRb024Snapshot, loadBridgeBundle, makeAccepted } from "./support/gate-fixtures.js";
 
 const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
 const CREATED_AT = "2026-07-15T12:00:00.000Z";
@@ -46,8 +66,9 @@ postgresDescribe("field/claim-scoped invalidation", () => {
       });
 
       // EXACTLY the two register-policy consumers, in deterministic order. The
-      // honorific-field consumer, the claim consumer, and the out-of-route
-      // consumer are NOT swept in — this is field/scope-precise, not object-wide.
+      // honorific-field consumer, the claim consumer, out-of-route consumer,
+      // and a superseded historical field consumer are NOT swept in — this is
+      // field/scope/head-precise, not object-wide.
       expect(impact.consumers.map((consumer) => consumer.downstreamObjectId)).toEqual([
         "wiki:consumer:field",
         "wiki:consumer:human",
@@ -59,8 +80,10 @@ postgresDescribe("field/claim-scoped invalidation", () => {
       expect(field.matchedFieldPaths).toEqual([["body", "registerPolicy"]]);
       expect(impact.enhancementWork).toEqual([field.downstreamWikiVersionId]);
 
-      // The excluded consumers really exist as edges (proving exclusion is
-      // selectivity, not an empty table): the coarse object-wide query sees all.
+      // The excluded live consumers really exist as current candidate edges
+      // (proving exclusion is selectivity, not an empty table). The historical
+      // changed-mind v1 edge is deliberately absent: only a current head can
+      // be invalidated.
       const allConsumers = await new ItotoriLlmWikiRepository(context.pool, cipher).queryDependents(
         {
           upstreamObjectId: UPSTREAM_ID,
@@ -85,9 +108,11 @@ postgresDescribe("field/claim-scoped invalidation", () => {
     const cipher = new TestMemoCipher();
     try {
       const { service, contextId } = await seed(context, cipher);
-      await seedUnrelatedArtifacts(context, cipher, contextId);
+      const transportCalls = await seedUnrelatedArtifacts(context, cipher, contextId);
 
       const before = await artifactHashes(context.pool);
+      const beforePatchExport = unrelatedPatchExportHash();
+      expect(transportCalls()).toBe(1);
       await service.planInvalidation({
         priorObjectJson: upstream(contextId, 1, "Use a direct register."),
         nextObjectJson: upstream(contextId, 2, "Use a WARM, direct register."),
@@ -100,7 +125,13 @@ postgresDescribe("field/claim-scoped invalidation", () => {
       expect(after.unrelatedObject).toBe(before.unrelatedObject);
       expect(after.memo).toBe(before.memo);
       expect(after.acceptedUnit).toBe(before.acceptedUnit);
-      expect(after.patch).toBe(before.patch);
+      // RB-028's actual PatchExportV02 is reconstructed only from unaffected
+      // accepted inputs, so its content address must remain byte-identical too.
+      expect(unrelatedPatchExportHash()).toBe(beforePatchExport);
+      // The only recorded provider response was needed to seed an unrelated
+      // memo. Planning impact made NO model/provider call: invalidation is
+      // exclusively structured diff + persisted dependency-edge intersection.
+      expect(transportCalls()).toBe(1);
       // Neither the unrelated nor the human consumer was erased.
       expect(after.deletionStates).toEqual([]);
     } finally {
@@ -193,10 +224,13 @@ function consumer(
   objectId: string,
   dependencies: DependencyRef[],
   editedBy: "human" | "agent",
+  version = 1,
 ): unknown {
   return {
     ...wikiObjectExample,
     objectId,
+    version,
+    ...(version > 1 ? { supersedesVersion: version - 1 } : {}),
     dependencies,
     provenance: { ...wikiObjectExample.provenance, contextSnapshotId: contextId, editedBy },
   };
@@ -237,7 +271,7 @@ async function seed(
   const options = { expectedHead: null, createdAt: CREATED_AT };
 
   await persistWikiObject(wiki, upstream(contextId, 1, "Use a direct register."), options);
-  // Five consumers of ONE upstream object, each consuming a different piece or
+  // Six consumers of ONE upstream object, each consuming a different piece or
   // under a different scope. Only the two in-route register-policy consumers are
   // reached by a register-policy change.
   await persistWikiObject(
@@ -270,6 +304,17 @@ async function seed(
     consumer(contextId, "wiki:consumer:outofscope", [fieldDep(CHANGED_FIELD, R2)], "agent"),
     options,
   );
+  // The OLD version cited registerPolicy, but the current v2 version no longer
+  // does. Historical consumption must not leak into the current work set.
+  const superseded = await persistWikiObject(
+    wiki,
+    consumer(contextId, "wiki:consumer:changed-mind", [fieldDep(CHANGED_FIELD, R1)], "agent"),
+    options,
+  );
+  await persistWikiObject(wiki, consumer(contextId, "wiki:consumer:changed-mind", [], "agent", 2), {
+    expectedHead: superseded,
+    createdAt: CREATED_AT,
+  });
 
   return { service: new ScopedInvalidationService({ wiki }), contextId };
 }
@@ -281,7 +326,7 @@ async function seedUnrelatedArtifacts(
   context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
   cipher: TestMemoCipher,
   contextId: string,
-): Promise<void> {
+): Promise<() => number> {
   const wiki = new ItotoriLlmWikiRepository(context.pool, cipher);
   const options = { expectedHead: null, createdAt: CREATED_AT };
   await persistWikiObject(wiki, consumer(contextId, "wiki:unrelated:src", [], "agent"), options);
@@ -305,46 +350,45 @@ async function seedUnrelatedArtifacts(
     },
     options,
   );
-  const memoKey = hashOf("memo");
-  await context.pool.query(
-    `insert into itotori_llm_call_memos (
-       memo_key, semantic_hash, schema_version,
-       request_ciphertext, request_key_ref, request_content_hash,
-       response_ciphertext, response_key_ref, response_content_hash,
-       outcome_ciphertext, outcome_key_ref, outcome_content_hash,
-       outcome_kind, verification_status, generation_id, requested_model,
-       provider_policy, served_model, served_provider, served_pair_status,
-       billing_state, cost_usd, completed_at, retention_deadline
-     ) values ($1,$2,'schema:1',$3,'k',$4,$3,'k',$5,$3,'k',$6,'terminal','verified',
-       'gen:1','m','{}'::jsonb,'m','p','confirmed','billing_unknown',null,$7::timestamptz,$7::timestamptz)`,
-    [
-      memoKey,
-      hashOf("memo-sem"),
-      Buffer.from([0]),
-      hashOf("req"),
-      hashOf("resp"),
-      hashOf("outcome"),
-      CREATED_AT,
-    ],
-  );
-  await context.pool.query(
-    `insert into itotori_llm_accepted_outputs (
-       output_id, semantic_key, schema_version, output_version, supersedes_output_id,
-       parent_output_ids, memo_keys, snapshot_kind, snapshot_id, subject_type, subject_id,
-       stage, source_hash, output_ciphertext, output_key_ref, output_content_hash,
-       accepted_at, retention_deadline, deletion_state
-     ) values ('accepted:unit:99',$1,'schema:1',1,null,'{}',array[$2],'localization',$3,'unit','unit:99',
-       'final',$4,$5,'k',$6,$7::timestamptz,$7::timestamptz,'active')`,
-    [
-      hashOf("accepted-sem"),
-      memoKey,
-      hashOf("snap"),
-      hashOf("src"),
-      Buffer.from([0]),
-      hashOf("accepted"),
-      CREATED_AT,
-    ],
-  );
+  // Exercise RB-020 through its production dispatch/memo boundary. The
+  // recorded response keeps this test offline; a second identical dispatch
+  // proves the durable memo absorbs a restart/replay without a second call.
+  const prompt = "Return the recorded unrelated review verdict.";
+  const harness = dispatchHarness({
+    pool: context.pool,
+    cipher,
+    prompt,
+    responses: [structuredProviderResponse(reviewVerdictExample)],
+  });
+  const first = await dispatch(physicalCallSpec(prompt), harness.runtime);
+  if (first.status !== "success") throw new Error("expected a persisted unrelated memo");
+  const replayed = await dispatch(physicalCallSpec(prompt), harness.runtime);
+  if (replayed.status !== "success") throw new Error("expected a replayed unrelated memo");
+  expect(replayed.memoKey).toBe(first.memoKey);
+  expect(harness.transportCalls()).toBe(1);
+
+  // The accepted unit is committed through its CAS repository against that
+  // verified durable memo, not planted by SQL. It is unrelated to the changed
+  // wiki object and must remain content-identical after planning impact.
+  await new ItotoriLlmAcceptedOutputRepository(context.pool, cipher).acceptAndAdvance({
+    outputId: "accepted:unit:99",
+    semanticKey: hashOf("accepted-sem"),
+    schemaVersion: "itotori.accepted-output.v1",
+    outputVersion: 1,
+    supersedesOutputId: null,
+    parentOutputIds: [],
+    memoKeys: [first.memoKey],
+    snapshotKind: "localization",
+    snapshotId: localization.snapshotId,
+    subjectType: "unit",
+    subjectId: "unit:99",
+    stage: "final",
+    sourceHash: hashOf("src"),
+    outputJson: JSON.stringify({ target: "unrelated accepted target" }),
+    acceptedAt: CREATED_AT,
+    expectedHead: null,
+  });
+  return harness.transportCalls;
 }
 
 async function artifactHashes(
@@ -354,7 +398,7 @@ async function artifactHashes(
   memos: unknown;
   accepted: unknown;
   unrelatedObject: string;
-  patch: string;
+  localizedRendering: string;
   memo: string;
   acceptedUnit: string;
   deletionStates: unknown[];
@@ -376,11 +420,16 @@ async function artifactHashes(
     memos: memos.rows,
     accepted: accepted.rows,
     unrelatedObject: hashFor(wiki.rows, "object_id", "wiki:unrelated:src", "wiki_content_hash"),
-    patch: hashFor(wiki.rows, "object_id", "rendering:unrelated", "wiki_content_hash"),
-    memo: hashFor(memos.rows, "memo_key", hashOf("memo"), "response_content_hash"),
+    localizedRendering: hashFor(wiki.rows, "object_id", "rendering:unrelated", "wiki_content_hash"),
+    memo: onlyHash(memos.rows, "response_content_hash"),
     acceptedUnit: hashFor(accepted.rows, "output_id", "accepted:unit:99", "output_content_hash"),
     deletionStates: deletionStates.rows,
   };
+}
+
+function onlyHash(rows: readonly Record<string, unknown>[], hashColumn: string): string {
+  if (rows.length !== 1) throw new Error(`expected one row holding ${hashColumn}`);
+  return String(rows[0]![hashColumn]);
 }
 
 function hashFor(
@@ -392,6 +441,31 @@ function hashFor(
   const row = rows.find((candidate) => candidate[keyColumn] === keyValue);
   if (!row) throw new Error(`no row where ${keyColumn}=${keyValue}`);
   return String(row[hashColumn]);
+}
+
+/** Build the strict RB-028 patch export from real accepted-unit fixtures and
+ * return its content address. No patch is materialized or mutated by the
+ * invalidation planner; re-building is the byte-level preservation proof. */
+function unrelatedPatchExportHash(): `sha256:${string}` {
+  const snapshot = buildRb024Snapshot();
+  const bridge = loadBridgeBundle();
+  const bridgeUnitById = new Map(bridge.units.map((unit) => [unit.bridgeUnitId, unit]));
+  const accepted = snapshot.orderedUnits.map((unit, index) => {
+    const protectedBody = (bridgeUnitById.get(unit.bridgeUnitId)?.spans ?? [])
+      .filter((span) => span.outOfBand !== true)
+      .map((span) => span.raw)
+      .join("");
+    return makeAccepted(unit, `[EN ${index}] ${unit.sourceUnitKey}${protectedBody}`);
+  });
+  const input: NativePatchbackInput = {
+    snapshot,
+    accepted,
+    rawBridge: bridge,
+    workScope: { inScopeUnitFactIds: snapshot.orderedUnits.map((unit) => unit.factId) },
+    sourceLocale: "ja-JP",
+    targetLocale: "en-US",
+  };
+  return hashOf(JSON.stringify(buildPatchExportV02(input, bindScopedTargets(input))));
 }
 
 async function consumerRow(
