@@ -45,19 +45,25 @@ import type { z } from "zod";
 type ModelProfileTier = "draft" | "reasoning" | "reviewer" | "judge";
 type WikiObjectKind = z.infer<typeof WikiObjectKindSchema>;
 
-export type Granularity =
-  | "per-game"
-  | "per-route"
-  | "per-scene"
-  | "per-character"
-  | "per-character-pair"
-  | "per-character-route"
-  | "per-unit"
-  | "per-term"
-  | "per-batch"
-  | "per-contested-unit";
+/** The only work-item fan-outs a specialist declaration may name. */
+export const GRANULARITIES = [
+  "per-game",
+  "per-route",
+  "per-scene",
+  "per-character",
+  "per-character-pair",
+  "per-character-route",
+  "per-unit",
+  "per-term",
+  "per-batch",
+  "per-contested-unit",
+] as const;
+export type Granularity = (typeof GRANULARITIES)[number];
 
-export type DagStage = "pre-production" | "production" | "qa";
+/** The fixed workflow stages. Specialists declare a position; they do not own
+ * or choose the workflow itself. */
+export const DAG_STAGES = ["pre-production", "production", "qa"] as const;
+export type DagStage = (typeof DAG_STAGES)[number];
 
 export interface DagPosition {
   readonly stage: DagStage;
@@ -177,8 +183,10 @@ export function defineSpecialist(declaration: SpecialistDeclaration): Specialist
     modelProfileKey: declaration.modelProfileKey,
     modelProfile: resolved.modelProfile,
     resolvedModel: resolved.model,
-    reasoning: declaration.reasoning ?? contract.reasoning,
-    limits: declaration.limits ?? contract.limits,
+    // The outer specialist record is frozen below; freeze these copied nested
+    // data records too so no caller can silently alter a role's call posture.
+    reasoning: Object.freeze({ ...(declaration.reasoning ?? contract.reasoning) }),
+    limits: Object.freeze({ ...(declaration.limits ?? contract.limits) }),
     validate: contract.validate,
   };
   return Object.freeze(specialist);

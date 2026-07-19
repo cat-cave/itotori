@@ -104,6 +104,8 @@ describe("clause 1 — exactly three executable profile shapes", () => {
       expect(typeof specialist.validate).toBe("function");
       // The specialist is immutable data.
       expect(Object.isFrozen(specialist)).toBe(true);
+      expect(Object.isFrozen(specialist.reasoning)).toBe(true);
+      expect(Object.isFrozen(specialist.limits)).toBe(true);
     }
   });
 
@@ -156,6 +158,31 @@ describe("clause 2 — the manifest is exactly the 19 roles", () => {
   it("fails validation on a duplicate role", () => {
     const duplicated: Specialist[] = [...ROSTER_SPECIALISTS, ROSTER.Q6];
     expect(() => validateRosterManifest(duplicated)).toThrow(/duplicate role: Q6/);
+  });
+
+  it("fails validation when an extra role is present", () => {
+    const extra = {
+      ...ROSTER.Q6,
+      roleId: "X1",
+    } as unknown as Specialist;
+    expect(() => validateRosterManifest([...ROSTER_SPECIALISTS, extra])).toThrow(
+      /unexpected role: X1/,
+    );
+  });
+
+  it("fails a forged 19-entry manifest when a specialist is incomplete", () => {
+    const incomplete = ROSTER_SPECIALISTS.map(
+      (specialist) => ({ roleId: specialist.roleId }) as unknown as Specialist,
+    );
+    expect(() => validateRosterManifest(incomplete)).toThrow(/must be immutable data/);
+  });
+
+  it("runs the semantic validator for every declared role", () => {
+    for (const specialist of ROSTER_SPECIALISTS) {
+      const issues = specialist.validate(undefined);
+      expect(issues.length, specialist.roleId).toBeGreaterThan(0);
+      expect(issues.every((issue) => issue.path.length > 0 && issue.message.length > 0)).toBe(true);
+    }
   });
 });
 
