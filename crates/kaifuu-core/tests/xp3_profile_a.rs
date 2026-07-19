@@ -1,4 +1,4 @@
-//! KAIFUU-204 metadata-only licensed plain-XP3 profile A contract.
+//! Metadata-only licensed plain-XP3 profile A intake.
 //!
 //! The committed fixture intentionally carries no game bytes, member paths, or
 //! scenario prose. Set `KAIFUU_XP3_PROFILE_A_ARCHIVE` to the separately
@@ -70,9 +70,9 @@ fn metadata_only_profile_a_declares_honest_inventory_and_kag_coverage() {
         &std::fs::read(
             repo_root().join("fixtures/public/kaifuu-kag-synthetic-corpus.manifest.json"),
         )
-        .expect("KAIFUU-203 manifest"),
+        .expect("kaifuu-kag-synthetic-corpus manifest"),
     )
-    .expect("KAIFUU-203 manifest JSON");
+    .expect("kaifuu-kag-synthetic-corpus manifest JSON");
     let source_tags = string_set(&kaifuu203, "tagInventory");
     let scenario = &manifest["kagScenario"];
     let profile_tags = string_set(scenario, "tagInventory");
@@ -91,7 +91,7 @@ fn metadata_only_profile_a_declares_honest_inventory_and_kag_coverage() {
     );
     assert!(
         expected_ratio >= 0.5,
-        "profile A must cover half of KAIFUU-203 tags"
+        "profile A must cover half of kaifuu-kag-synthetic-corpus tags"
     );
 }
 
