@@ -8,14 +8,20 @@ repository.workspace = true
 description = "UTSUSHI-181 — pure-Rust KiriKiri XP3/KAG engine-port scaffold for the utsushi-core substrate facade. The native KiriKiri2/KirikiriZ (or a browser reimplementation) TJS engine IS the KAG runtime, so this port carries ZERO opcode handlers: it declares the KiriKiri/KAG family through the substrate facade conformance manifest and emits a from-scratch clean-room attestation for the KAG plaintext (.ks) path. Clean-room; no decompiled/copyrighted KiriKiri/TJS engine code, no vendored engine source, no game bytes."
 
 [dependencies]
-# ONLY utsushi-core. This crate consumes the substrate facade
-# (`utsushi_core::substrate::*`) plus the engine-neutral implementation-map
-# schema (`utsushi_core::port::impl_map`). It depends on NO other engine
-# crate (not `utsushi-kirikiri`, not `kaifuu-kirikiri`) and vendors NO engine
-# source: KAG/TJS command dispatch happens in the native KiriKiri (or a
-# browser reimplementation) TJS runtime, so there is nothing here to share
-# with a Rust interpreter.
+# The port consumes the substrate facade (`utsushi_core::substrate::*`) plus
+# the engine-neutral implementation-map schema (`utsushi_core::port::impl_map`).
+# It also composes the separate plaintext replay crate to serialize its
+# deterministic evidence; that crate remains the bounded plaintext replay,
+# not an XP3/TJS implementation or a source of native engine code.
+serde.workspace = true
+serde_json.workspace = true
 utsushi-core = { path = "../utsushi-core" }
+utsushi-kirikiri = { path = "../utsushi-kirikiri" }
+
+[dev-dependencies]
+# Test-only extraction oracle: validates emitted ids against the actual bridge
+# units generated from the manifest-declared plaintext corpus files.
+kaifuu-kirikiri = { path = "../kaifuu-kirikiri" }
 
 [lints]
 workspace = true

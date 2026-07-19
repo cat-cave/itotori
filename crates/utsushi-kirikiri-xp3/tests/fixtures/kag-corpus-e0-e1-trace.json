@@ -1,0 +1,179 @@
+{
+  "engine_family": "kirikiri_xp3",
+  "events": [
+    {
+      "bridge_unit_id": "2feb6a46-2d4a-7155-80e8-a13d8569ed3d",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "01-intro.ks",
+      "source_unit_key": "kirikiri-kag:01-intro.ks#L9#seg0#dialogue",
+      "speaker": "Maren",
+      "text": "Welcome to the little lantern workshop by the river."
+    },
+    {
+      "bridge_unit_id": "0afeae63-168f-7d9d-bc8e-f9fc0e7b4191",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "01-intro.ks",
+      "source_unit_key": "kirikiri-kag:01-intro.ks#L10#seg0#dialogue",
+      "speaker": "Maren",
+      "text": "Every lantern here is folded, glued, and lit entirely by hand."
+    },
+    {
+      "bridge_unit_id": "d419bbec-c185-7f51-935b-0ce82008caaf",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "01-intro.ks",
+      "source_unit_key": "kirikiri-kag:01-intro.ks#L12#seg0#dialogue",
+      "text": "The workbench is quiet, and the paper smells faintly of cedar."
+    },
+    {
+      "bridge_unit_id": "c96c40ce-4472-72b1-b90f-e379420f1525",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "02-choices.ks",
+      "source_unit_key": "kirikiri-kag:02-choices.ks#L8#seg0#dialogue",
+      "speaker": "Maren",
+      "text": "Two lanterns are ready to be lit. Which one should we carry outside?"
+    },
+    {
+      "bridge_unit_id": "254bee59-0851-7ef5-a848-42a4f0a01a17",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "02-choices.ks",
+      "source_unit_key": "kirikiri-kag:02-choices.ks#L14#seg0#dialogue",
+      "speaker": "Maren",
+      "text": "The blue paper glows like the water at dusk."
+    },
+    {
+      "bridge_unit_id": "2da4b164-5d1c-7a5c-991b-260055c0ec2f",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "02-choices.ks",
+      "source_unit_key": "kirikiri-kag:02-choices.ks#L24#seg0#dialogue",
+      "speaker": "Maren",
+      "text": "We step onto the gravel path, lantern held high."
+    },
+    {
+      "bridge_unit_id": "5f7e13f2-9886-70f3-af80-23b42c4bed0b",
+      "event_type": "label_jump_event",
+      "evidence_tier": "E1",
+      "from_label": "crossroads",
+      "source_file": "02-choices.ks",
+      "source_unit_key": "kirikiri-kag:02-choices.ks#L9#seg0#dialogue",
+      "text": "Carry the river-blue lantern",
+      "to_label": "river"
+    },
+    {
+      "bridge_unit_id": "62e924ae-0a59-76bc-876c-b7187d543393",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "03-flow.ks",
+      "source_unit_key": "kirikiri-kag:03-flow.ks#L9#seg0#dialogue",
+      "speaker": "Warden",
+      "text": "Let me see how many times you have passed through here."
+    },
+    {
+      "bridge_unit_id": "73faabeb-e066-7450-8d7b-236df7b0d8d8",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "03-flow.ks",
+      "source_unit_key": "kirikiri-kag:03-flow.ks#L11#seg0#dialogue",
+      "speaker": "Warden",
+      "text": "You have walked this path before. Welcome back."
+    },
+    {
+      "bridge_unit_id": "1bb06a69-c3f7-7d05-9feb-d44da0ff68b8",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "03-flow.ks",
+      "source_unit_key": "kirikiri-kag:03-flow.ks#L15#seg0#dialogue",
+      "speaker": "Warden",
+      "text": "The count is written in the ledger. You may go on."
+    },
+    {
+      "bridge_unit_id": "676ba93f-69b2-7d84-9164-9c98dacfa582",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "03-flow.ks",
+      "source_unit_key": "kirikiri-kag:03-flow.ks#L25#seg0#dialogue",
+      "speaker": "Warden",
+      "text": "The gate closes softly behind you."
+    },
+    {
+      "bridge_unit_id": "97dc80ea-11ac-75d4-9f63-52132bece3c0",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "04-macros.ks",
+      "source_unit_key": "kirikiri-kag:04-macros.ks#L11#seg0#dialogue",
+      "speaker": "Maren",
+      "text": "The workshop has a little song for folding paper."
+    },
+    {
+      "bridge_unit_id": "30142ac8-af3e-7906-b7ce-6b0f7be00dfa",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "04-macros.ks",
+      "source_unit_key": "kirikiri-kag:04-macros.ks#L15#seg0#dialogue",
+      "speaker": "Maren",
+      "text": "By the third verse, the lantern has taken its shape."
+    },
+    {
+      "bridge_unit_id": "9e452818-b4a1-75b2-bf69-5099070e3e84",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "05-stage.ks",
+      "source_unit_key": "kirikiri-kag:05-stage.ks#L10#seg0#dialogue",
+      "speaker": "Maren",
+      "text": "The river turns copper as the sun drops behind the reeds."
+    },
+    {
+      "bridge_unit_id": "014d5a74-3191-7338-93b6-1c44565cb9a1",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "05-stage.ks",
+      "source_unit_key": "kirikiri-kag:05-stage.ks#L12#seg0#dialogue",
+      "speaker": "Maren",
+      "text": "The lantern is the brightest thing on the whole bank now."
+    },
+    {
+      "bridge_unit_id": "b5f7058b-7ef8-7d94-9516-349a60520209",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "05-stage.ks",
+      "source_unit_key": "kirikiri-kag:05-stage.ks#L15#seg0#dialogue",
+      "speaker": "Maren",
+      "text": "Let us hang it from the old willow and watch it sway."
+    },
+    {
+      "bridge_unit_id": "5edb47dd-a4ae-7d60-b9c3-7c052eafdb9c",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "06-epilogue.ks",
+      "source_unit_key": "kirikiri-kag:06-epilogue.ks#L9#seg0#dialogue",
+      "speaker": "Maren",
+      "text": "So that is [one lantern]] finished, and one evening well spent."
+    },
+    {
+      "bridge_unit_id": "41897833-28ee-7d4e-ac99-047e17d016a7",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "06-epilogue.ks",
+      "source_unit_key": "kirikiri-kag:06-epilogue.ks#L11#seg0#dialogue",
+      "speaker": "Maren",
+      "text": "Come back when the paper runs low, and we will fold another."
+    },
+    {
+      "bridge_unit_id": "edf085dc-83f7-75d8-ac40-79ea9e41e096",
+      "event_type": "text_event",
+      "evidence_tier": "E1",
+      "source_file": "06-epilogue.ks",
+      "source_unit_key": "kirikiri-kag:06-epilogue.ks#L13#seg0#dialogue",
+      "text": "The workshop light dims, and the river keeps its slow, bright company."
+    }
+  ],
+  "evidence_tier": "E1",
+  "runtime": "kag-plaintext",
+  "schema_version": "utsushi-kirikiri-xp3-kag-replay-e0-e1/0.1.0",
+  "source_evidence_tier": "E0"
+}
