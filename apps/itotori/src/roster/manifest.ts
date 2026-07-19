@@ -9,9 +9,28 @@
 // machinery: a Style Lead and a Continuity Keeper are both the analyst shape
 // with different instructions, tools, granularity, and DAG position.
 
-import { RoleIdSchema, type RoleId } from "../contracts/index.js";
-import { deepSeekV4FlashProfile } from "../llm/role-model-profiles.js";
-import { defineSpecialist, type Specialist, type SpecialistDeclaration } from "./specialist.js";
+import {
+  CallLimitsSchema,
+  ReasoningPolicySchema,
+  RoleIdSchema,
+  ToolNameSchema,
+  WikiObjectKindSchema,
+  type RoleId,
+} from "../contracts/index.js";
+import {
+  deepSeekV4FlashProfile,
+  uncertifiedRoleModelProfileCandidateForProbe,
+} from "../llm/role-model-profiles.js";
+import {
+  DAG_STAGES,
+  GRANULARITIES,
+  defineSpecialist,
+  expectedShapeForRole,
+  toolsForRole,
+  type Specialist,
+  type SpecialistDeclaration,
+} from "./specialist.js";
+import { shapeContract } from "./shapes.js";
 
 export const ROSTER_MANIFEST_VERSION = "itotori.roster-manifest.v1" as const;
 
@@ -277,10 +296,14 @@ export function validateRosterManifest(
 ): Readonly<Record<RoleId, Specialist>> {
   const byRole = new Map<RoleId, Specialist>();
   for (const specialist of specialists) {
-    if (byRole.has(specialist.roleId)) {
-      throw new Error(`roster manifest has a duplicate role: ${specialist.roleId}`);
+    const parsedRoleId = RoleIdSchema.safeParse(specialist?.roleId);
+    if (!parsedRoleId.success) {
+      throw new Error(`roster manifest has unexpected role: ${String(specialist?.roleId)}`);
     }
-    byRole.set(specialist.roleId, specialist);
+    if (byRole.has(parsedRoleId.data)) {
+      throw new Error(`roster manifest has a duplicate role: ${parsedRoleId.data}`);
+    }
+    byRole.set(parsedRoleId.data, specialist);
   }
   const missing = ROLE_ID_UNIVERSE.filter((roleId) => !byRole.has(roleId));
   if (missing.length > 0) {
@@ -295,8 +318,129 @@ export function validateRosterManifest(
       `roster manifest must contain exactly ${ROLE_ID_UNIVERSE.length} roles, found ${byRole.size}`,
     );
   }
+  for (const roleId of ROLE_ID_UNIVERSE) {
+    validateSpecialistContract(roleId, byRole.get(roleId)!);
+  }
   const entries = ROLE_ID_UNIVERSE.map((roleId) => [roleId, byRole.get(roleId)!] as const);
   return Object.freeze(Object.fromEntries(entries)) as Readonly<Record<RoleId, Specialist>>;
+}
+
+/**
+ * Validate the complete runtime contract of one entry, not only its ID. Types
+ * vanish at the process boundary, so accepting an array cast through `unknown`
+ * must not let an incomplete role manifest reach dispatch. This also executes
+ * each role's semantic validator against malformed output, proving the
+ * validator is live rather than a decorative field.
+ */
+function validateSpecialistContract(roleId: RoleId, specialist: Specialist): void {
+  const candidate = specialist as unknown as Record<string, unknown>;
+  if (typeof specialist !== "object" || specialist === null || !Object.isFrozen(specialist)) {
+    throw new Error(`roster specialist ${roleId} must be immutable data`);
+  }
+  if (candidate.roleId !== roleId) {
+    throw new Error(`roster specialist key ${roleId} does not match its role id`);
+  }
+  if (typeof candidate.version !== "string" || candidate.version.trim().length === 0) {
+    throw new Error(`roster specialist ${roleId} has no version`);
+  }
+  if (typeof candidate.instructions !== "string" || candidate.instructions.trim().length === 0) {
+    throw new Error(`roster specialist ${roleId} has no instructions`);
+  }
+
+  const expectedShape = expectedShapeForRole(roleId);
+  if (candidate.shape !== expectedShape) {
+    throw new Error(`roster specialist ${roleId} must use the ${expectedShape} profile shape`);
+  }
+  const contract = shapeContract(expectedShape);
+  if (candidate.input !== contract.input || candidate.output !== contract.output) {
+    throw new Error(`roster specialist ${roleId} must use its shape's strict input/output schemas`);
+  }
+
+  const expectedTools = toolsForRole(roleId);
+  if (
+    !Array.isArray(candidate.tools) ||
+    !Object.isFrozen(candidate.tools) ||
+    candidate.tools.length !== expectedTools.length ||
+    candidate.tools.some(
+      (tool, index) => !ToolNameSchema.safeParse(tool).success || tool !== expectedTools[index],
+    )
+  ) {
+    throw new Error(`roster specialist ${roleId} tool allowlist does not match RB-025`);
+  }
+
+  if (!GRANULARITIES.includes(candidate.granularity as (typeof GRANULARITIES)[number])) {
+    throw new Error(`roster specialist ${roleId} has an invalid granularity`);
+  }
+  if (!WikiObjectKindSchema.safeParse(candidate.wikiObjectKind).success) {
+    throw new Error(`roster specialist ${roleId} has an invalid WikiObject kind`);
+  }
+
+  const dagPosition = candidate.dagPosition;
+  if (
+    typeof dagPosition !== "object" ||
+    dagPosition === null ||
+    !Object.isFrozen(dagPosition) ||
+    !DAG_STAGES.includes((dagPosition as { stage?: unknown }).stage as (typeof DAG_STAGES)[number])
+  ) {
+    throw new Error(`roster specialist ${roleId} has an invalid DAG position`);
+  }
+  for (const edge of [
+    (dagPosition as { upstream?: unknown }).upstream,
+    (dagPosition as { downstream?: unknown }).downstream,
+  ]) {
+    if (
+      !Array.isArray(edge) ||
+      !Object.isFrozen(edge) ||
+      edge.some((dependency) => !RoleIdSchema.safeParse(dependency).success) ||
+      new Set(edge).size !== edge.length
+    ) {
+      throw new Error(`roster specialist ${roleId} has invalid DAG dependencies`);
+    }
+  }
+
+  const resolved = uncertifiedRoleModelProfileCandidateForProbe(roleId);
+  if (
+    candidate.modelProfileKey !== resolved.profileId ||
+    candidate.modelProfile !== resolved.modelProfile ||
+    candidate.resolvedModel !== resolved.model ||
+    resolved.model !== deepSeekV4FlashProfile.model ||
+    !contract.callProfiles.includes(resolved.modelProfile)
+  ) {
+    throw new Error(
+      `roster specialist ${roleId} does not resolve through its RB-019 model profile`,
+    );
+  }
+  if (
+    !ReasoningPolicySchema.safeParse(candidate.reasoning).success ||
+    !CallLimitsSchema.safeParse(candidate.limits).success ||
+    !Object.isFrozen(candidate.reasoning as object) ||
+    !Object.isFrozen(candidate.limits as object)
+  ) {
+    throw new Error(`roster specialist ${roleId} has invalid immutable call limits`);
+  }
+
+  if (typeof candidate.validate !== "function") {
+    throw new Error(`roster specialist ${roleId} has no semantic validator`);
+  }
+  let semanticIssues: unknown;
+  try {
+    semanticIssues = candidate.validate(undefined);
+  } catch {
+    throw new Error(`roster specialist ${roleId} semantic validator must handle malformed output`);
+  }
+  if (
+    !Array.isArray(semanticIssues) ||
+    semanticIssues.length === 0 ||
+    semanticIssues.some(
+      (issue) =>
+        typeof issue !== "object" ||
+        issue === null ||
+        typeof (issue as { path?: unknown }).path !== "string" ||
+        typeof (issue as { message?: unknown }).message !== "string",
+    )
+  ) {
+    throw new Error(`roster specialist ${roleId} semantic validator is not strict`);
+  }
 }
 
 /** The validated, immutable roster — exactly the 19 specialists. */

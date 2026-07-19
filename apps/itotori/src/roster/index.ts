@@ -14,6 +14,8 @@ export {
   defineSpecialist,
   expectedShapeForRole,
   toolsForRole,
+  DAG_STAGES,
+  GRANULARITIES,
   type DagPosition,
   type DagStage,
   type Granularity,
