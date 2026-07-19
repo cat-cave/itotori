@@ -120,7 +120,7 @@ function sceneObject(): WikiSourceObjectView {
         sceneId: "scene-2031",
         availability: {
           status: "available",
-          artifactUri: "https://media.example/shot-1.png",
+          artifactUri: "artifacts/utsushi/runtime/test-run/screenshots/shot-1.png",
           contentHash: HASH,
           mediaType: "image/png",
           dimensions: { width: 1280, height: 720 },

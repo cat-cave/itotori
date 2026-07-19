@@ -37,7 +37,7 @@ const PORTRAIT_MEDIA = {
   characterId: "character:1",
   availability: {
     status: "available" as const,
-    artifactUri: "https://artifacts.example/portrait.png",
+    artifactUri: "artifacts/utsushi/runtime/test-run/screenshots/portrait.png",
     contentHash: H2,
     mediaType: "image/png" as const,
     dimensions: { width: 128, height: 128 },

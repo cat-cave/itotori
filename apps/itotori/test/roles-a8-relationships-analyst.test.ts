@@ -82,7 +82,7 @@ function fixture() {
 const portraits: A7PortraitProvider = (characterId) => ({
   status: "available",
   facts: {
-    artifactUri: `https://artifacts.example/artifact-store/portrait-${characterId}.png`,
+    artifactUri: `artifacts/utsushi/runtime/test-run/screenshots/portrait-${characterId}.png`,
     contentHash: `sha256:${(characterId === "nam-11" ? "a" : "b").repeat(64)}`,
     mediaType: "image/png",
     dimensions: { width: 256, height: 256 },
