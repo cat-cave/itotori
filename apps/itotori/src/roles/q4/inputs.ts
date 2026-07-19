@@ -41,8 +41,10 @@ export const Q4ReviewInputSchema = z
     reviewScope: RouteScopeSchema,
     /** The localized line of the unit under review (the USE site). */
     currentTarget: NonEmptyTextSchema,
-    /** Localized route + character bible renderings the judgement grounds on. */
-    bibleRenderingIds: z.array(IdentifierSchema).max(1_024),
+    /** Localized route + character bible renderings the judgement grounds on.
+     * Q4 never opens an ungrounded continuity review: at least one accepted
+     * localized-bible entry is required on the wire. */
+    bibleRenderingIds: z.array(IdentifierSchema).min(1).max(1_024),
     /** Accepted origin translations the reviewer judges continuity against. */
     originTranslations: z.array(Q4OriginTranslationSchema).max(1_024),
   })

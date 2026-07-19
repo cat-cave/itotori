@@ -280,9 +280,9 @@ const DECLARATIONS: readonly SpecialistDeclaration[] = [
   {
     roleId: "Q4",
     shape: "reviewer",
-    version: "itotori.role.Q4.v1",
+    version: "itotori.role.Q4.v2",
     instructions:
-      "Continuity Reviewer. Judge only callback, foreshadow, relationship, and route-arc consistency against the localized route and character bible and accepted origin translations. Cite both real endpoints; deterministic play order proves the origin precedes the use.",
+      "Continuity Reviewer. Blinded to author identity, judge only callback, foreshadow, relationship, and route-arc consistency against localized route/character bible entries and accepted origin translations. A contradiction cites its real use and accepted real origin endpoints; deterministic decode play order proves the origin precedes the use. Never turn meaning, voice/register, terminology, or engine/render faults into a continuity finding.",
     granularity: "per-unit",
     wikiObjectKind: "translation",
     modelProfileKey: MODEL_PROFILE_KEY,

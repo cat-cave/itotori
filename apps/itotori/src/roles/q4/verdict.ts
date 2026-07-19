@@ -8,10 +8,12 @@
 //     law) runs over a faithful projection of the verdict;
 //   - a FAIL must name a CONTINUITY category — a meaning/voice/engine category is
 //     out of this lane and is rejected as an invalid verdict;
-//   - a finding cites unit endpoints; EACH must resolve to a REAL ordered unit in
-//     the deterministic ledger (a phantom endpoint is a fabrication), and each
-//     must lie ON the route the review is bound to (a claim that crosses route
-//     scope is rejected — deterministic, not model-asserted);
+//   - a contradiction cites BOTH endpoint ids: the unit under review (USE) plus
+//     at least one accepted origin in `evidenceIds`. EACH must resolve to a REAL
+//     ordered unit in the deterministic ledger (a phantom endpoint is a
+//     fabrication), and each must lie ON the route the review is bound to (a
+//     claim that crosses route scope is rejected — deterministic, not
+//     model-asserted);
 //   - a FAIL is a contradiction between an ORIGIN and the USE unit under review:
 //     the origin must play BEFORE the use in the decode play order (an origin
 //     that does not precede the use is not a valid finding). Precedence is read
@@ -53,6 +55,9 @@ export interface Q4Interpretation {
 export interface Q4ContinuityFacts {
   readonly useUnitId: string;
   readonly reviewScope: RouteScope;
+  /** The accepted target translations supplied to this review as candidate
+   * origins. A FAIL may cite only one of these as its prior endpoint. */
+  readonly acceptedOriginUnitIds: readonly string[];
   readonly ledger: ContinuityLedger;
 }
 
@@ -108,8 +113,9 @@ function reviewerShapeProjection(verdict: ReviewVerdict): unknown {
 }
 
 /** Prove every cited endpoint is a REAL unit, ON the review's route, and — for a
- * contradiction (FAIL) — plays BEFORE the unit under review. All three facts are
- * read from the deterministic ledger, never from the model. */
+ * contradiction (FAIL) — that the USE is cited alongside an accepted origin
+ * which plays BEFORE it. All three facts are read from the deterministic ledger,
+ * never from the model. */
 function endpointIssues(
   verdict: ReviewVerdict,
   facts: Q4ContinuityFacts,
@@ -127,31 +133,60 @@ function endpointIssues(
       message: `unit under review ${facts.useUnitId} is outside the review route scope`,
     });
   }
-  verdict.evidenceIds.forEach((endpointId, index) => {
-    const origin = facts.ledger.resolve(endpointId);
-    if (origin === null) {
+  const endpointIds =
+    verdict.verdict === "FAIL"
+      ? [...new Set([facts.useUnitId, ...verdict.evidenceIds])]
+      : [...new Set(verdict.evidenceIds)];
+  endpointIds.forEach((endpointId) => {
+    const endpoint = facts.ledger.resolve(endpointId);
+    if (endpoint === null) {
       issues.push({
-        path: `evidenceIds[${index}]`,
+        path: endpointId === facts.useUnitId ? "unitId" : "evidenceIds",
         message: `cited endpoint ${endpointId} does not resolve to a real unit`,
       });
       return;
     }
-    if (!endpointVisibleOnReviewScope(origin.routeScope, facts.reviewScope)) {
+    if (!endpointVisibleOnReviewScope(endpoint.routeScope, facts.reviewScope)) {
       issues.push({
-        path: `evidenceIds[${index}]`,
+        path: endpointId === facts.useUnitId ? "unitId" : "evidenceIds",
         message: `cited endpoint ${endpointId} crosses out of the review route scope`,
-      });
-      return;
-    }
-    // Precedence is a property of a contradiction: the origin that established a
-    // fact must play before the use that is judged to contradict it.
-    if (verdict.verdict === "FAIL" && use !== null && !originPrecedesUse(origin, use)) {
-      issues.push({
-        path: `evidenceIds[${index}]`,
-        message: `cited origin ${endpointId} does not play before the unit under review`,
       });
     }
   });
+
+  if (verdict.verdict !== "FAIL") return issues;
+
+  if (!verdict.evidenceIds.includes(facts.useUnitId)) {
+    issues.push({
+      path: "evidenceIds",
+      message: "a continuity contradiction must cite the use endpoint under review",
+    });
+  }
+  const origins = [
+    ...new Set(verdict.evidenceIds.filter((endpointId) => endpointId !== facts.useUnitId)),
+  ];
+  if (origins.length === 0) {
+    issues.push({
+      path: "evidenceIds",
+      message: "a continuity contradiction must cite an origin endpoint as well as the use",
+    });
+  }
+  for (const originId of origins) {
+    if (!facts.acceptedOriginUnitIds.includes(originId)) {
+      issues.push({
+        path: "evidenceIds",
+        message: `cited origin ${originId} is not an accepted origin translation supplied to Q4`,
+      });
+      continue;
+    }
+    const origin = facts.ledger.resolve(originId);
+    if (origin !== null && use !== null && !originPrecedesUse(origin, use)) {
+      issues.push({
+        path: "evidenceIds",
+        message: `cited origin ${originId} does not play before the unit under review`,
+      });
+    }
+  }
   return issues;
 }
 

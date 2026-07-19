@@ -15,7 +15,7 @@
 // time, is that every cited endpoint is real, on-route, and origin-before-use.
 
 import type { CallResult, CallSpec } from "../../contracts/index.js";
-import { buildQ4CallSpec, type Q4DispatchRefs } from "./request.js";
+import { assertCertifiedContinuityRoute, buildQ4CallSpec, type Q4DispatchRefs } from "./request.js";
 import { parseQ4ReviewInput, type Q4ReviewInput } from "./inputs.js";
 import type { ContinuityLedger } from "./ledger.js";
 import { canFinalize, interpretQ4Verdict, type Q4Interpretation } from "./verdict.js";
@@ -57,6 +57,9 @@ export async function runQ4Review(
 ): Promise<Q4RunOutcome> {
   const parsed = parseQ4ReviewInput(input);
   const spec = buildQ4CallSpec(parsed, refs);
+  // Re-assert at the last public boundary before the injected production
+  // dispatcher receives the request. Every mode retains the RB-019 ZDR route.
+  assertCertifiedContinuityRoute(spec);
   const callResult = await deps.dispatch(spec);
   if (callResult.status !== "success") {
     return { outcome: "no-verdict", callResult, canFinalize: false };
@@ -64,6 +67,7 @@ export async function runQ4Review(
   const interpretation = interpretQ4Verdict(callResult.value, {
     useUnitId: parsed.unitId,
     reviewScope: parsed.reviewScope,
+    acceptedOriginUnitIds: parsed.originTranslations.map((origin) => origin.unitId),
     ledger: deps.ledger,
   });
   return {
