@@ -11,7 +11,7 @@
 import { namespacedFactId } from "@itotori/db";
 import type { LocalizationUnitV02 } from "@itotori/localization-bridge-schema";
 
-import type { NarrativeLocalizationBinding } from "../structure/localization-join.js";
+import type { NarrativeLocalizationBinding } from "../structure/index.js";
 
 import { stableSegment } from "./fact-id.js";
 import type { NarrativePosition } from "./positions.js";
