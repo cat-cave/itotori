@@ -1,11 +1,7 @@
 // Route-wiring behavior for POST /api/patchback/produce.
 //
 // These drive the REAL HTTP boundary (`createItotoriServer`) with an injected
-// service factory — no DB, no native op. They pin the produce route's contract:
-//   - an ABSENT `patchbackProduce` port returns a loud, documented 501 even when
-//     the services object is the cutover Proxy (whose `get` yields a throwing
-//     fallback for absent surfaces) — the `Reflect.has` presence-check must win,
-//     never a Proxy TypeError surfaced as 500 (PR #320);
+// service factory — no DB or native bytes. They pin the route's HTTP contract:
 //   - a configured port streams the produced tar (200);
 //   - a null produce plan is a clean 404;
 //   - a non-POST method is 405.
@@ -124,22 +120,6 @@ const cannedArchive: DeliveredPatchArchive = {
 };
 
 describe("POST /api/patchback/produce route wiring", () => {
-  it("returns a loud 501 (not 500) when the produce port is absent on the cutover Proxy", async () => {
-    await withServer({}, async (origin) => {
-      const response = await httpCall(origin, "POST", "/api/patchback/produce", "{}");
-      expect(response.statusCode).toBe(501);
-      const payload = JSON.parse(response.body.toString("utf8")) as {
-        code?: string;
-        error?: string;
-      };
-      expect(payload.code).toBe("internal_error");
-      expect(payload.error ?? "").toContain("not configured");
-      // The Proxy TypeError ("service patchbackProduce is not configured (cutover
-      // fallback)") must NOT be what surfaces — the presence-check caught it first.
-      expect(payload.error ?? "").not.toContain("cutover fallback");
-    });
-  });
-
   it("streams the produced tar (200) when the produce port is configured", async () => {
     const present = {
       patchbackProduce: { produceArchive: async () => cannedArchive },

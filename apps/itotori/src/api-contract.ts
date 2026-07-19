@@ -1637,11 +1637,6 @@ const ERROR_STATUS_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "500": "Internal error (internal_error).",
 };
 
-/** Extra, route-specific error statuses beyond the shared envelope. */
-const BINARY_ROUTE_EXTRA_STATUS_DESCRIPTIONS: Readonly<Record<number, string>> = {
-  501: "Not configured in this API build (internal_error).",
-};
-
 function openApiErrorResponses(): Record<string, JsonValue> {
   const responses: Record<string, JsonValue> = {};
   for (const [status, description] of Object.entries(ERROR_STATUS_DESCRIPTIONS)) {
@@ -1714,7 +1709,7 @@ export function buildItotoriOpenApiDocument(): JsonValue {
     };
     for (const status of route.additionalErrorStatuses ?? []) {
       responses[String(status)] = {
-        description: BINARY_ROUTE_EXTRA_STATUS_DESCRIPTIONS[status] ?? "Error (internal_error).",
+        description: "Error (internal_error).",
         content: {
           "application/json": { schema: { $ref: "#/components/schemas/ApiErrorResponse" } },
         },
