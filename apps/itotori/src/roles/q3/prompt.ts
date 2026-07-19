@@ -12,7 +12,7 @@
 import { specialistFor } from "../../roster/index.js";
 import { assertExactGateCleared, EXACT_GATE, type Q3ReviewInput } from "./inputs.js";
 
-export const Q3_PROMPT_VERSION = "itotori.role.Q3.prompt.v1" as const;
+export const Q3_PROMPT_VERSION = "itotori.role.Q3.prompt.v2" as const;
 
 /** The rubric boundary, stated so a removal of the guarantee is a visible diff:
  * sense and register of approved forms and new coinages only; exact matching is
@@ -24,8 +24,9 @@ const TERMINOLOGY_ONLY_RUBRIC = [
   "Exact matching is NOT yours: a surface that mismatches an approved form is a",
   `deterministic ${EXACT_GATE} defect, never your verdict.`,
   "You may REFER a cited source candidate back to the ruling lane for a decision,",
-  "but you must never invent or approve a target form, and never contradict an",
-  "already-approved glossary form — route it back, do not overwrite it.",
+  "but you must refer ONLY a supplied, cited SOURCE candidate. Never invent or",
+  "approve a target form, and never contradict an already-approved glossary form",
+  "— route it back, do not overwrite it.",
   "Emit exactly one verdict: PASS, FAIL, or CANNOT_ASSESS. A CANNOT_ASSESS names",
   "the evidence you still need; it is never a pass. A FAIL localises the term,",
   "names a terminology category, cites visible evidence, and constrains the repair.",
@@ -45,6 +46,16 @@ function renderApprovedTerms(input: Q3ReviewInput): string {
 
 function renderRulingRefs(input: Q3ReviewInput): string {
   return input.termRulingIds.length === 0 ? "(none)" : input.termRulingIds.join(", ");
+}
+
+function renderAmbiguousCoinages(input: Q3ReviewInput): string {
+  if (input.ambiguousCoinages.length === 0) return "(none)";
+  return input.ambiguousCoinages
+    .map(
+      (candidate) =>
+        `- (${candidate.candidateId}) ${candidate.sourceForm} [source evidence: ${candidate.evidenceIds.join(", ")}]`,
+    )
+    .join("\n");
 }
 
 function renderNeighbors(input: Q3ReviewInput): string {
@@ -69,6 +80,9 @@ export function q3UserPrompt(input: Q3ReviewInput): string {
     "",
     "APPROVED GLOSSARY FORMS (authoritative; judge their sense, do not re-decide them):",
     renderApprovedTerms(input),
+    "",
+    "AMBIGUOUS SOURCE COINAGE CANDIDATES (the only coinages you may refer):",
+    renderAmbiguousCoinages(input),
     "",
     `TERM RULING REFERENCES: ${renderRulingRefs(input)}`,
     "",

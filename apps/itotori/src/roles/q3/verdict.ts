@@ -18,7 +18,7 @@
 
 import { ReviewVerdictSchema, type ReviewVerdict } from "../../contracts/index.js";
 import { specialistFor, type ValidationIssue } from "../../roster/index.js";
-import type { Q3ReviewInput } from "./inputs.js";
+import { assertExactGateCleared, type Q3ApprovedTerm, type Q3ReviewInput } from "./inputs.js";
 
 const Q3_ROLE = "Q3" as const;
 
@@ -27,6 +27,7 @@ const Q3_ROLE = "Q3" as const;
  * FAIL outside this set is another lane's finding, not a terminology verdict. */
 export const Q3_TERMINOLOGY_CATEGORIES: readonly ReviewVerdict["category"][] = [
   "term-sense",
+  "register",
   "new-coinage",
 ];
 
@@ -44,10 +45,19 @@ export type ContradictionResolver = (verdict: ReviewVerdict) => ContradictionRes
 
 /** A cited SOURCE candidate the auditor refers back to the ruling lane. It carries
  * NO target form — the auditor never invents or approves one. */
-export interface Q3Referral {
-  readonly sourceForm: string | null;
-  readonly citedEvidenceIds: readonly string[];
-}
+export type Q3Referral =
+  | {
+      readonly kind: "approved-form-context";
+      readonly termId: string;
+      readonly sourceForm: string;
+      readonly citedEvidenceIds: readonly string[];
+    }
+  | {
+      readonly kind: "ambiguous-source-coinage";
+      readonly candidateId: string;
+      readonly sourceForm: string;
+      readonly citedEvidenceIds: readonly string[];
+    };
 
 /** Where the verdict routes. Only `finalize` accepts the unit. */
 export type Q3Disposition = "finalize" | "refer" | "escalate" | "invalid" | "reject-contradiction";
@@ -153,9 +163,105 @@ function evidenceIssues(
 
 /** The cited source candidate a FAIL refers back to the ruling lane — source form
  * and evidence only, never a target form. */
-function referralOf(verdict: ReviewVerdict): Q3Referral {
-  const sourceForm = verdict.verdict === "FAIL" ? verdict.span.text : null;
-  return { sourceForm, citedEvidenceIds: verdict.evidenceIds };
+function approvedTermForTargetSpan(
+  input: Q3ReviewInput,
+  verdict: Extract<ReviewVerdict, { verdict: "FAIL" }>,
+): Q3ApprovedTerm | undefined {
+  if (verdict.span.surface !== "target") return undefined;
+  return input.approvedTerms.find((term) => term.approvedTargetForm === verdict.span.text);
+}
+
+/** Validate the only two sources from which Q3 may produce a referral. Context
+ * findings refer an already-approved term by its input-derived SOURCE form;
+ * new coinages must be one of the exact, source-evidenced candidates supplied
+ * to the reviewer. A model span can therefore never manufacture either kind. */
+function referralFor(
+  input: Q3ReviewInput,
+  verdict: Extract<ReviewVerdict, { verdict: "FAIL" }>,
+): { readonly referral: Q3Referral | null; readonly issues: readonly ValidationIssue[] } {
+  if (verdict.category === "term-sense" || verdict.category === "register") {
+    const term = approvedTermForTargetSpan(input, verdict);
+    if (term === undefined) {
+      return {
+        referral: null,
+        issues: [
+          {
+            path: "span",
+            message:
+              "a sense/register finding must identify an approved target form in a target span",
+          },
+        ],
+      };
+    }
+    return {
+      referral: {
+        kind: "approved-form-context",
+        termId: term.termId,
+        sourceForm: term.sourceForm,
+        citedEvidenceIds: verdict.evidenceIds,
+      },
+      issues: [],
+    };
+  }
+
+  if (verdict.category === "new-coinage") {
+    const candidate =
+      verdict.span.surface === "source"
+        ? input.ambiguousCoinages.find((entry) => entry.sourceForm === verdict.span.text)
+        : undefined;
+    if (candidate === undefined) {
+      return {
+        referral: null,
+        issues: [
+          {
+            path: "span",
+            message:
+              "a new-coinage finding must identify a supplied ambiguous source candidate in a source span",
+          },
+        ],
+      };
+    }
+    const citedEvidence = new Set(verdict.evidenceIds);
+    if (!candidate.evidenceIds.every((evidenceId) => citedEvidence.has(evidenceId))) {
+      return {
+        referral: null,
+        issues: [
+          {
+            path: "evidenceIds",
+            message: "a new-coinage finding must cite every supplied source-candidate evidence id",
+          },
+        ],
+      };
+    }
+    return {
+      referral: {
+        kind: "ambiguous-source-coinage",
+        candidateId: candidate.candidateId,
+        sourceForm: candidate.sourceForm,
+        citedEvidenceIds: verdict.evidenceIds,
+      },
+      issues: [],
+    };
+  }
+
+  return { referral: null, issues: [] };
+}
+
+function contradictionReferral(input: Q3ReviewInput, verdict: ReviewVerdict): Q3Referral | null {
+  if (verdict.verdict !== "FAIL") return null;
+  const term = input.approvedTerms.find(
+    (approved) =>
+      approved.sourceForm === verdict.span.text ||
+      approved.approvedTargetForm === verdict.span.text,
+  );
+  return term === undefined
+    ? null
+    : {
+        kind: "approved-form-context",
+        termId: term.termId,
+        sourceForm: term.sourceForm,
+        citedEvidenceIds: verdict.evidenceIds,
+      };
 }
 
 /** Interpret and route a terminology verdict. A contradiction of an approved form
@@ -163,9 +269,13 @@ function referralOf(verdict: ReviewVerdict): Q3Referral {
  * clean PASS finalizes. */
 export function interpretQ3Verdict(
   rawVerdict: unknown,
+  input: Q3ReviewInput,
   resolveEvidence: EvidenceResolver,
-  resolveContradiction: ContradictionResolver,
+  resolveContradiction: ContradictionResolver = approvedFormContradictionResolver(input),
 ): Q3Interpretation {
+  // Public interpretation is also downstream-only: callers cannot turn a gate
+  // defect into a model verdict by bypassing the runner.
+  assertExactGateCleared(input);
   const parsed = ReviewVerdictSchema.safeParse(rawVerdict);
   if (!parsed.success) {
     throw new Error("terminology auditor output is not a schema-valid review verdict");
@@ -185,6 +295,8 @@ export function interpretQ3Verdict(
       message: `FAIL category ${verdict.category} is outside the terminology rubric`,
     });
   }
+  const referral = verdict.verdict === "FAIL" ? referralFor(input, verdict) : null;
+  if (referral !== null) issues.push(...referral.issues);
   // Visible evidence: every citation must resolve and be visible.
   issues.push(...evidenceIssues(verdict, resolveEvidence));
 
@@ -197,14 +309,19 @@ export function interpretQ3Verdict(
       message:
         "verdict contradicts an already-approved glossary form; routed back to the ruling lane, never approved",
     });
-    return { disposition: "reject-contradiction", verdict, issues, referral: referralOf(verdict) };
+    return {
+      disposition: "reject-contradiction",
+      verdict,
+      issues,
+      referral: contradictionReferral(input, verdict),
+    };
   }
 
   if (issues.length > 0) return { disposition: "invalid", verdict, issues, referral: null };
   if (verdict.verdict === "PASS")
     return { disposition: "finalize", verdict, issues, referral: null };
   if (verdict.verdict === "FAIL") {
-    return { disposition: "refer", verdict, issues, referral: referralOf(verdict) };
+    return { disposition: "refer", verdict, issues, referral: referral?.referral ?? null };
   }
   return { disposition: "escalate", verdict, issues, referral: null };
 }

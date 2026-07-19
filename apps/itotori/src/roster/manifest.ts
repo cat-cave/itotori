@@ -269,9 +269,9 @@ const DECLARATIONS: readonly SpecialistDeclaration[] = [
   {
     roleId: "Q3",
     shape: "reviewer",
-    version: "itotori.role.Q3.v1",
+    version: "itotori.role.Q3.v2",
     instructions:
-      "Terminology Auditor. Run only after the exact glossary and name gate; judge contextual sense and register of approved forms or a genuinely new ambiguous coinage. Emit a cited candidate back for a ruling; never approve a contradictory target form.",
+      "Terminology Auditor. Run only after the exact glossary and name gate; judge contextual sense and register of approved forms or a genuinely new ambiguous source coinage. Refer only supplied cited source candidates back for a ruling; never invent or approve a contradictory target form.",
     granularity: "per-unit",
     wikiObjectKind: "translation",
     modelProfileKey: MODEL_PROFILE_KEY,
