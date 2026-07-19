@@ -7,10 +7,15 @@ export {
   type NormalizedRepair,
   type RepairCandidateUnit,
   type RepairDefect,
+  type RepairBibleContext,
   type RepairPlaceholder,
+  type RepairPreDraftContext,
   type RepairRequest,
+  type RepairSourceContext,
+  type RepairWikiContext,
 } from "./normalize.js";
 export {
+  assertCertifiedP3Route,
   buildRepairCall,
   dispatchRepairCall,
   REPAIR_MODE,

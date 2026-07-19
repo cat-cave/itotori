@@ -49,6 +49,17 @@ const DEEP_LIMITS: SpecialistDeclaration["limits"] = {
   timeoutClass: "deep",
 };
 
+// P3 gets one bounded fresh-fork response.  Its RB-025 grants are still
+// derived by `defineSpecialist`; this limit only prevents a repair conversation
+// from turning into a second drafting/refinement pass.
+const SEMANTIC_REPAIR_LIMITS: SpecialistDeclaration["limits"] = {
+  maxSteps: 1,
+  maxToolCalls: 0,
+  maxParallelTools: 1,
+  maxOutputTokens: 16_384,
+  timeoutClass: "normal",
+};
+
 const DECLARATIONS: readonly SpecialistDeclaration[] = [
   // ── Pre-production: the analyst castings ──────────────────────────────────
   {
@@ -206,13 +217,18 @@ const DECLARATIONS: readonly SpecialistDeclaration[] = [
   {
     roleId: "P3",
     shape: "localizer",
-    version: "itotori.role.P3.v1",
+    version: "itotori.role.P3.v2",
     instructions:
-      "Semantic Repair. A fresh blinded grounded fork for material meaning defects. Given pre-draft context, the current candidate, and the exact failing spans and constraints, emit minimal patches for the failed ids only. Bounded to one repair before adjudication.",
+      "Semantic Repair Specialist. Open exactly one fresh, blinded, grounded repair fork for material meaning defects: receive the pre-draft source/wiki/localized-bible context, anonymous current candidate, exact failed spans, evidence, constraints, and diagnostic tripwires; never receive or infer prior repair rationale or author identity. Emit only provisional, typed, traceable minimal repair patches for the failed unit ids, each citing resolving evidence. Do not touch passing ids. Preserve protected placeholders, Shift-JIS representability, and choice-label encoding. One repair response is the entire role; any further disagreement goes to adjudication with a human-review artifact.",
     granularity: "per-unit",
     wikiObjectKind: "translation",
     modelProfileKey: MODEL_PROFILE_KEY,
-    dagPosition: { stage: "production", upstream: ["A6", "P1", "Q1"], downstream: ["Q1"] },
+    dagPosition: {
+      stage: "production",
+      upstream: ["A1", "A2", "A3", "A4", "A5", "A6", "P1", "Q1"],
+      downstream: ["Q1", "Q6"],
+    },
+    limits: SEMANTIC_REPAIR_LIMITS,
   },
 
   // ── QA: the reviewer castings ─────────────────────────────────────────────
