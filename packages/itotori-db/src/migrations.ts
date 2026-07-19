@@ -561,6 +561,10 @@ export const migrations = [
     id: "0109_wiki_snapshot_binding",
     file: "0109_wiki_snapshot_binding.sql",
   },
+  {
+    id: "0110_legacy_runtime_artifact_uri_parity",
+    file: "0110_legacy_runtime_artifact_uri_parity.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

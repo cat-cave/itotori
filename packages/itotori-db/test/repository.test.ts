@@ -62,6 +62,10 @@ const invalidManagedRuntimeArtifactUriCases = [
   ["missing managed runtime prefix", "artifacts/utsushi/schema-fixture/capture.png"],
 ] as const;
 
+const invalidLegacyRuntimeArtifactUriCases = invalidManagedRuntimeArtifactUriCases.filter(
+  ([label]) => label !== "missing managed runtime prefix",
+);
+
 function v02Sha256(label: string): string {
   return `sha256:${createHash("sha256").update(label).digest("hex")}`;
 }
@@ -3682,6 +3686,69 @@ describe("ItotoriProjectRepository", () => {
           portable_artifact_uri: capture.artifactRef.uri,
         },
       ]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects legacy runtime capture refs through repository and direct SQL", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const project = projectFixture();
+      await repo.importSourceBundle(localActor, project);
+
+      for (const [index, [_label, uri]] of invalidLegacyRuntimeArtifactUriCases.entries()) {
+        await expect(
+          repo.saveRuntimeReport(
+            localActor,
+            project,
+            {
+              schemaVersion: "0.1.0",
+              runtimeReportId: "legacy-runtime-uri-parity",
+              adapterName: "utsushi-fixture",
+              fidelityTier: "layout_probe",
+              status: "passed",
+              textEvents: [],
+              frameCaptures: [
+                {
+                  frameCaptureId: "legacy-runtime-capture",
+                  bridgeUnitId: "bridge-unit-test",
+                  width: 320,
+                  height: 180,
+                  nonZeroPixels: 57600,
+                  artifactPath: uri,
+                },
+              ],
+              approximations: [],
+            },
+            "legacy-runtime-uri-patch-result",
+          ),
+        ).rejects.toThrow(new RegExp(`portable relative artifact path.*${escapeRegExp(uri)}`));
+
+        await expect(
+          context.pool.query(
+            `insert into itotori_artifacts (
+              artifact_id, project_id, artifact_kind, uri, metadata
+            ) values ($1, $2, 'frame_capture', $3, '{}'::jsonb)`,
+            [`legacy-runtime-uri-direct-${index}`, project.projectId, uri],
+          ),
+        ).rejects.toThrow(/itotori_legacy_runtime_artifact_uri_check/u);
+      }
+
+      await expect(
+        context.pool.query(
+          `insert into itotori_artifacts (
+            artifact_id, project_id, artifact_kind, uri, metadata
+          ) values ($1, $2, 'frame_capture', $3, '{}'::jsonb)`,
+          [
+            "legacy-runtime-uri-direct-valid",
+            project.projectId,
+            "artifacts/utsushi/runtime/legacy-run/frame-captures/capture.png",
+          ],
+        ),
+      ).resolves.toBeDefined();
     } finally {
       await context.close();
     }
