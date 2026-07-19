@@ -49,6 +49,11 @@ use serde_json::{Value, json};
 mod profile_detection_helpers;
 use profile_detection_helpers::*;
 
+mod reallive_detector_fsm;
+pub(crate) use reallive_detector_fsm::{
+    GameexeIniKeyHits, RealLiveFixtureVariant, RealLiveFsmSignals,
+};
+
 mod softpal;
 pub use softpal::*;
 
@@ -3380,31 +3385,6 @@ impl EngineAdapter for SiglusProfileDetectorAdapter {
 // and signature-validity counts: no confidence floats, no thresholds beyond
 // what the plan specifies. See §3 for the decision table.
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RealLiveFixtureVariant {
-    CompleteSyntheticTriple,
-    PositiveLiveLayout,
-    AmbiguousSiglusOverlap,
-    UnsupportedAvg32Lineage,
-    UnknownEngineVariant,
-    NotRealLive,
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-struct GameexeIniKeyHits {
-    gameexe_version: bool,
-    regname: bool,
-    g00_key: bool,
-    koe_key: bool,
-    seen_key: bool,
-}
-
-impl GameexeIniKeyHits {
-    fn any(self) -> bool {
-        self.gameexe_version || self.regname || self.g00_key || self.koe_key || self.seen_key
-    }
-}
-
 #[derive(Debug, Clone)]
 struct RealLiveFixtureState {
     seen_txt_exists: bool,
@@ -3519,7 +3499,7 @@ impl RealLiveProfileDetectorAdapter {
         // RealLive `REALLIVEDATA/` subtree.
         let siglus_scene_pck_present = case_insensitive_find(game_dir, "Scene.pck").is_some();
         let siglus_gameexe_dat_present = case_insensitive_find(game_dir, "Gameexe.dat").is_some();
-        let variant = Self::resolve_variant(
+        let variant = RealLiveFsmSignals {
             seen_txt_exists,
             seen_txt_envelope_ok,
             seen_txt_synthetic_magic,
@@ -3532,7 +3512,8 @@ impl RealLiveProfileDetectorAdapter {
             siglus_scene_pck_present,
             siglus_gameexe_dat_present,
             avg32_pdt_count,
-        );
+        }
+        .resolve();
         let resolved_relative = resolved_reallive_data_dir.as_deref().map(|resolved| {
             resolved
                 .strip_prefix(game_dir)
@@ -3564,62 +3545,6 @@ impl RealLiveProfileDetectorAdapter {
             variant,
             resolved_reallive_data_dir: resolved_relative,
         }
-    }
-
-    // reason: cohesive variant resolver over distinct fixture selectors; splitting into a struct would just move the fields.
-    #[allow(clippy::too_many_arguments)]
-    fn resolve_variant(
-        seen_txt_exists: bool,
-        seen_txt_envelope_ok: bool,
-        seen_txt_synthetic_magic: bool,
-        seen_gan_exists: bool,
-        gameexe_ini_exists: bool,
-        gameexe_ini_synthetic_magic: bool,
-        gameexe_ini_keys: GameexeIniKeyHits,
-        g00_count: u64,
-        voice_archive_count: u64,
-        siglus_scene_pck_present: bool,
-        siglus_gameexe_dat_present: bool,
-        avg32_pdt_count: u64,
-    ) -> RealLiveFixtureVariant {
-        let any_reallive_marker = seen_txt_exists
-            || seen_gan_exists
-            || gameexe_ini_exists
-            || g00_count > 0
-            || voice_archive_count > 0;
-        if !any_reallive_marker {
-            return RealLiveFixtureVariant::NotRealLive;
-        }
-        let siglus_overlap = siglus_scene_pck_present || siglus_gameexe_dat_present;
-        if siglus_overlap {
-            return RealLiveFixtureVariant::AmbiguousSiglusOverlap;
-        }
-        // Public-CI synthetic short-circuit: both magic bytes present.
-        if seen_txt_synthetic_magic && gameexe_ini_synthetic_magic {
-            return RealLiveFixtureVariant::CompleteSyntheticTriple;
-        }
-        // AVG32 lineage: SEEN.TXT envelope present,.PDT present, no
-        // RealLive-specific Gameexe.ini keys.
-        if seen_txt_exists && seen_txt_envelope_ok && avg32_pdt_count > 0 && !gameexe_ini_keys.any()
-        {
-            return RealLiveFixtureVariant::UnsupportedAvg32Lineage;
-        }
-        // Positive live layout: SEEN.TXT envelope OK + Gameexe.ini with
-        // RealLive-specific key + no Siglus markers and no AVG32 PDT.
-        if seen_txt_exists
-            && seen_txt_envelope_ok
-            && gameexe_ini_exists
-            && gameexe_ini_keys.any()
-            && avg32_pdt_count == 0
-        {
-            return RealLiveFixtureVariant::PositiveLiveLayout;
-        }
-        // Otherwise: a name-shaped RealLive layout (SEEN.TXT, Gameexe.ini,
-        // SEEN.GAN, or.g00/.ovk/.koe/.nwk present) without sufficient
-        // evidence to identify positively. Mark unknown so the operator
-        // sees the diagnostic loudly instead of silently passing.
-        let _ = seen_gan_exists; // already accounted for in any_reallive_marker
-        RealLiveFixtureVariant::UnknownEngineVariant
     }
 
     fn detected_variant(variant: RealLiveFixtureVariant) -> &'static str {

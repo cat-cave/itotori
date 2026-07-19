@@ -51,12 +51,18 @@
 #![deny(missing_debug_implementations)]
 
 pub mod conformance;
+mod kag_replay_trace;
 
 use utsushi_core::substrate::{
     CapabilityDeclaration, CapabilityStance, CaptureOutcome as SubstrateCaptureOutcome,
     EngineParityProfile, EnginePort, EnginePortError, EvidenceTier, FidelityTier, LifecycleStage,
     PortCapability, PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES,
     SinkSet,
+};
+
+pub use kag_replay_trace::{
+    KAG_PLAINTEXT_RUNTIME, KAG_REPLAY_E0_E1_ENGINE_FAMILY, KAG_REPLAY_E0_E1_SCHEMA_VERSION,
+    KagReplayE0E1Event, KagReplayE0E1Trace, KagReplayInput, emit_kag_replay_e0_e1_trace,
 };
 
 /// Stable port id. Matches the `EngineFamily::KirikiriKag` manifest prefix

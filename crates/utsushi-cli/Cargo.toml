@@ -24,6 +24,7 @@ utsushi-fixture = { path = "../utsushi-fixture" }
 # the `trace-kag` subcommand drives the KAG command-trace probe
 # for plaintext / already-extracted KiriKiri/KAG `.ks` scripts.
 utsushi-kirikiri = { path = "../utsushi-kirikiri" }
+utsushi-kirikiri-xp3 = { path = "../utsushi-kirikiri-xp3" }
 utsushi-reallive = { path = "../utsushi-reallive" }
 utsushi-rpgmaker-mv = { path = "../utsushi-rpgmaker-mv" }
 
@@ -43,7 +44,6 @@ tempfile = { workspace = true }
 # are not production CLI dependencies; they are pulled in dev-only so the gate
 # can collect all six `PARITY_PROFILE`s and assert feature-parity across them.
 utsushi-siglus = { path = "../utsushi-siglus" }
-utsushi-kirikiri-xp3 = { path = "../utsushi-kirikiri-xp3" }
 utsushi-rpgmaker-mv-mz = { path = "../utsushi-rpgmaker-mv-mz" }
 
 [build-dependencies]

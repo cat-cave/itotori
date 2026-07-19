@@ -2,6 +2,7 @@ mod conform;
 mod coverage_export;
 mod dispatch_gate;
 mod fixture_runtime;
+mod kag_plaintext_replay;
 mod mvmz_patched_runtime_proof;
 mod mvmz_runtime_proof;
 mod patch_render;
@@ -163,13 +164,12 @@ fn run_cli_with_registry(
             conform::run_conform_command(&tail)?;
         }
         Some("trace-kag") => {
-            // KAG command-trace probe for plaintext
-            // already-extracted KiriKiri/KAG `.ks` scripts. Owns its own flag
-            // parsing (single positional script path + `--output`). Skips the
-            // leading `trace-kag` argv slot. Plaintext ONLY — never opens or
-            // decrypts a packed/encrypted XP3 archive.
             let tail: Vec<String> = args.iter().skip(1).cloned().collect();
             trace_kag::run_trace_kag_command(&tail)?;
+        }
+        Some("run") => {
+            let tail: Vec<String> = args.iter().skip(1).cloned().collect();
+            kag_plaintext_replay::run_kag_plaintext_replay_command(&tail)?;
         }
         Some(command) => {
             let operation = operation_from_command(command).ok_or(USAGE)?;
