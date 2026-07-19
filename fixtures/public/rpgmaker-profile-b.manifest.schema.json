@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cat-cave/itotori/fixtures/public/rpgmaker-profile-b.manifest.schema.json",
+  "title": "Kaifuu RPG Maker MV/MZ Profile B Encrypted-Asset External Metadata Manifest",
+  "type": "object",
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "SPDX-License-Identifier",
+    "fixture",
+    "encryption",
+    "assets"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "const": "./rpgmaker-profile-b.manifest.schema.json"
+    },
+    "schemaVersion": {
+      "const": "0.1.0"
+    },
+    "SPDX-License-Identifier": {
+      "const": "LicenseRef-Countryside-Life-Commercial-Proprietary"
+    },
+    "fixture": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "kind",
+        "profile",
+        "summary",
+        "sourceLocale",
+        "license",
+        "provenance"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "const": "kaifuu-rpgmaker-mv-mz-profile-b"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "const": "metadata-only"
+        },
+        "profile": {
+          "const": "B-encrypted"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceLocale": {
+          "const": "ja-JP"
+        },
+        "license": {
+          "type": "object",
+          "required": ["spdx", "evidence"],
+          "additionalProperties": false,
+          "properties": {
+            "spdx": {
+              "const": "LicenseRef-Countryside-Life-Commercial-Proprietary"
+            },
+            "evidence": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "required": ["creationMethod", "rawAssetPolicy", "sourcePath"],
+          "additionalProperties": false,
+          "properties": {
+            "creationMethod": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rawAssetPolicy": {
+              "const": "contains-no-copyrighted-game-assets"
+            },
+            "sourcePath": {
+              "const": "www"
+            }
+          }
+        }
+      }
+    },
+    "encryption": {
+      "type": "object",
+      "required": [
+        "scheme",
+        "mediaHeaderLen",
+        "xorPrefixLen",
+        "keySource",
+        "keyMaterialSha256",
+        "hasEncryptedImages",
+        "hasEncryptedAudio"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "scheme": {
+          "const": "rpgmaker-mv-mz-asset-xor"
+        },
+        "mediaHeaderLen": {
+          "const": 16
+        },
+        "xorPrefixLen": {
+          "const": 16
+        },
+        "keySource": {
+          "const": "www/data/System.json:encryptionKey"
+        },
+        "keyMaterialSha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "hasEncryptedImages": {
+          "const": true
+        },
+        "hasEncryptedAudio": {
+          "const": true
+        }
+      }
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "kind",
+          "mediaType",
+          "mediaMagicHex",
+          "encryptedSha256",
+          "encryptedBytes",
+          "decryptedSha256",
+          "decryptedBytes"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^www/(?:img|audio)/[A-Za-z0-9._/-]+\\.(?:rpgmvp|rpgmvo)$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["image", "audio"]
+          },
+          "mediaType": {
+            "type": "string",
+            "enum": ["image/png", "audio/ogg"]
+          },
+          "mediaMagicHex": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{8}$"
+          },
+          "encryptedSha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "encryptedBytes": {
+            "type": "integer",
+            "minimum": 17
+          },
+          "decryptedSha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "decryptedBytes": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    }
+  }
+}

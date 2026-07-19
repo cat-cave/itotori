@@ -1,0 +1,73 @@
+{
+  "$schema": "./rpgmaker-profile-b.manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "SPDX-License-Identifier": "LicenseRef-Countryside-Life-Commercial-Proprietary",
+  "fixture": {
+    "id": "kaifuu-rpgmaker-mv-mz-profile-b",
+    "title": "Kaifuu RPG Maker MV/MZ Profile B Encrypted-Asset Intake",
+    "kind": "metadata-only",
+    "profile": "B-encrypted",
+    "summary": "Read-only metadata intake from the supplied commercial RPG Maker MV encrypted title (DLsite RJ390522). System.json declares hasEncryptedImages/hasEncryptedAudio with an encryptionKey; image (.rpgmvp) and audio (.rpgmvo) assets carry the RPGMV media header. This repository stores hashes, byte counts, and the key's one-way commitment only; it holds no encrypted or decrypted game bytes and no key material.",
+    "sourceLocale": "ja-JP",
+    "license": {
+      "spdx": "LicenseRef-Countryside-Life-Commercial-Proprietary",
+      "evidence": "Commercial proprietary doujin release used solely as read-only ground truth. This metadata-only intake copies neither game bytes nor license text; only SHA-256 hashes, byte counts, and the key's SHA-256 commitment are recorded."
+    },
+    "provenance": {
+      "creationMethod": "A deterministic scan of the supplied read-only game www tree reads each declared encrypted asset, derives the 16-byte key from www/data/System.json encryptionKey, decrypts via the RPGMV asset-XOR scheme, and emits only encrypted/decrypted SHA-256 hashes, byte counts, media magic, and the key commitment.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets",
+      "sourcePath": "www"
+    }
+  },
+  "encryption": {
+    "scheme": "rpgmaker-mv-mz-asset-xor",
+    "mediaHeaderLen": 16,
+    "xorPrefixLen": 16,
+    "keySource": "www/data/System.json:encryptionKey",
+    "keyMaterialSha256": "sha256:32d2ae03b8b636b73de1709b6cf0c3880ae1b548510d4807fc0ad20fa04db4a4",
+    "hasEncryptedImages": true,
+    "hasEncryptedAudio": true
+  },
+  "assets": [
+    {
+      "path": "www/img/system/Shadow2.rpgmvp",
+      "kind": "image",
+      "mediaType": "image/png",
+      "mediaMagicHex": "89504e47",
+      "encryptedSha256": "3f415675cdae8fd3b069521ac5a79e7c950669a8b372096489f3794ef2d751e7",
+      "encryptedBytes": 448,
+      "decryptedSha256": "e09efefa748fdd9ccf400d47d177ad89754673866428db92226693137c54b18c",
+      "decryptedBytes": 432
+    },
+    {
+      "path": "www/img/characters/fish.rpgmvp",
+      "kind": "image",
+      "mediaType": "image/png",
+      "mediaMagicHex": "89504e47",
+      "encryptedSha256": "10a0e9924359013df3c688df4ef079a18efd14ae5807f673715c0bcd0018e8bb",
+      "encryptedBytes": 1651,
+      "decryptedSha256": "4574982a9abbec62c394987ef48f91190030426021b950615f933b7f27bf9162",
+      "decryptedBytes": 1635
+    },
+    {
+      "path": "www/audio/se/Cursor1.rpgmvo",
+      "kind": "audio",
+      "mediaType": "audio/ogg",
+      "mediaMagicHex": "4f676753",
+      "encryptedSha256": "a36a89b726c297942bf5ee7ec7fc1d227ab551f3464cb82aa5ae011c0afa5271",
+      "encryptedBytes": 3779,
+      "decryptedSha256": "8f4b49a0a5907d830b6ff4467a4132bb9df2cfa78d33f099948ca275ed9d89cf",
+      "decryptedBytes": 3763
+    },
+    {
+      "path": "www/audio/bgs/Clock.rpgmvo",
+      "kind": "audio",
+      "mediaType": "audio/ogg",
+      "mediaMagicHex": "4f676753",
+      "encryptedSha256": "c55d28d84b465999d4e2acb8c011c28847373c09eda0f7b7b9e9f8cd0692abd6",
+      "encryptedBytes": 4540,
+      "decryptedSha256": "9cd9aebfd67d61b412369aa6514b6a540d989b973058e8fd7f08a98d65d80918",
+      "decryptedBytes": 4524
+    }
+  ]
+}
