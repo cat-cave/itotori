@@ -6,8 +6,8 @@ use flate2::read::ZlibDecoder;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    checked_end, has_legacy_xp3_encrypted_marker, hash_xp3_segments, parse_xp3_file_chunk,
-    read_chunk_name, read_le_u64, XP3_PLAIN_MAGIC,
+    XP3_PLAIN_MAGIC, checked_end, has_legacy_xp3_encrypted_marker, hash_xp3_segments,
+    parse_xp3_file_chunk, read_chunk_name, read_le_u64,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
