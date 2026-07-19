@@ -7,6 +7,7 @@ import {
   type LlmMemoSingleflightResult,
 } from "@itotori/db";
 import { describe, expect, it, vi } from "vitest";
+import { createDispatchRuntime } from "../src/composition/live/dispatch-runtime.js";
 import { dispatch, type DispatchRuntime } from "../src/llm/dispatch.js";
 import { reviewVerdictExample } from "./contract-fixtures-core.js";
 import {
@@ -24,8 +25,9 @@ type CapturedWire = {
   headers: {
     "X-OpenRouter-Metadata": string | null;
     "X-OpenRouter-Cache": string | null;
+    Authorization?: string | null;
   };
-  body: JsonObject;
+  body: JsonObject | null;
 };
 
 const goldenWire = JSON.parse(
@@ -74,7 +76,25 @@ function goldenRuntime(
   captured: CapturedWire[],
   providerResponse: Response | Error = structuredProviderResponse(reviewVerdictExample),
 ): DispatchRuntime {
-  return {
+  const fetcher: NonNullable<DispatchRuntime["fetcher"]> = async (input, init) => {
+    const request = new Request(input, init);
+    captured.push({
+      method: request.method,
+      url: request.url,
+      headers: {
+        "X-OpenRouter-Metadata": request.headers.get("X-OpenRouter-Metadata"),
+        "X-OpenRouter-Cache": request.headers.get("X-OpenRouter-Cache"),
+        ...(request.method === "GET"
+          ? { Authorization: request.headers.get("Authorization") }
+          : {}),
+      },
+      body: request.method === "POST" ? ((await request.clone().json()) as JsonObject) : null,
+    });
+    if (request.method === "GET") return generationLookupResponse();
+    if (providerResponse instanceof Error) throw providerResponse;
+    return providerResponse;
+  };
+  const base = createDispatchRuntime({
     env: {
       OPENROUTER_API_KEY: "test-key",
       OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
@@ -82,36 +102,42 @@ function goldenRuntime(
     },
     tools: [],
     contentAccess: { requireContentRead: async () => undefined },
-    readPayload: async () => prompt,
-    memo: {
-      store: new MemoryMemoStore(),
-      profile: TEST_MODEL_PROFILE,
-      admission: {
-        scope: "test:zdr-golden-wire",
-        confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic admission cap for a mock-wire test, not a billed model cost
-      },
-      snapshots: {
-        decodeRevisionHash: STEP_HASH_A,
-        glossaryRevisionHash: STEP_HASH_B,
-        styleRevisionHash: STEP_HASH_A,
-        acceptedOutputHeadHash: STEP_HASH_B,
-      },
+    memoStore: new MemoryMemoStore(),
+    profile: TEST_MODEL_PROFILE,
+    admission: {
+      scope: "test:zdr-golden-wire",
+      confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic admission cap for a mock-wire test, not a billed model cost
     },
-    fetcher: async (input, init) => {
-      const request = new Request(input, init);
-      captured.push({
-        method: request.method,
-        url: request.url,
-        headers: {
-          "X-OpenRouter-Metadata": request.headers.get("X-OpenRouter-Metadata"),
-          "X-OpenRouter-Cache": request.headers.get("X-OpenRouter-Cache"),
-        },
-        body: (await request.clone().json()) as JsonObject,
-      });
-      if (providerResponse instanceof Error) throw providerResponse;
-      return providerResponse;
+    snapshots: {
+      decodeRevisionHash: STEP_HASH_A,
+      glossaryRevisionHash: STEP_HASH_B,
+      styleRevisionHash: STEP_HASH_A,
+      acceptedOutputHeadHash: STEP_HASH_B,
     },
-  };
+    fetcher,
+  });
+  return { ...base, readPayload: async () => prompt };
+}
+
+function generationLookupResponse(): Response {
+  return new Response(
+    JSON.stringify({
+      data: {
+        id: "generation:test",
+        model: "deepseek/deepseek-v4-flash-20260423",
+        provider_name: "DeepSeek",
+        provider_responses: [
+          {
+            model_permaslug: "deepseek/deepseek-v4-flash-20260423",
+            provider_name: "DeepSeek",
+            status: 200,
+          },
+        ],
+        total_cost: 0.00000125,
+      },
+    }),
+    { headers: { "Content-Type": "application/json" } },
+  );
 }
 
 function assertSerializedZdrWire(wire: CapturedWire): void {
@@ -124,12 +150,19 @@ function assertSerializedZdrWire(wire: CapturedWire): void {
   ) {
     throw new Error("OpenRouter metadata must be enabled and cache must be disabled");
   }
-  const provider = asObject(wire.body.provider, "provider");
+  const body = asObject(wire.body, "request body");
+  const provider = asObject(body.provider, "provider");
   const camelCase = ["allowFallbacks", "dataCollection", "requireParameters"].filter(
     (key) => key in provider,
   );
   if (camelCase.length > 0) {
     throw new Error(`camelCase ZDR fields would be silently dropped: ${camelCase.join(", ")}`);
+  }
+  const providerPins = ["only", "order"].filter((key) => key in provider);
+  if (providerPins.length > 0) {
+    throw new Error(
+      `provider pinning is forbidden under the account-wide posture: ${providerPins}`,
+    );
   }
   const requiredProvider = {
     allow_fallbacks: true,
@@ -140,13 +173,13 @@ function assertSerializedZdrWire(wire: CapturedWire): void {
   if (!isDeepStrictEqual(provider, requiredProvider)) {
     throw new Error("provider must contain the exact snake_case ZDR policy");
   }
-  if (wire.body.model !== "deepseek/deepseek-v4-flash") {
+  if (body.model !== "deepseek/deepseek-v4-flash") {
     throw new Error("request model drifted from the exact approved slug");
   }
-  if (!Array.isArray(wire.body.plugins) || wire.body.plugins.length !== 0) {
+  if (!Array.isArray(body.plugins) || body.plugins.length !== 0) {
     throw new Error("OpenRouter plugins must be absent");
   }
-  const retryFields = collectKeyPaths(wire.body).filter((path) => /retry/iu.test(path));
+  const retryFields = collectKeyPaths(body).filter((path) => /retry/iu.test(path));
   if (retryFields.length > 0) throw new Error(`hidden retry fields are forbidden: ${retryFields}`);
 }
 
@@ -166,26 +199,50 @@ function collectKeyPaths(value: unknown, prefix = ""): string[] {
   });
 }
 
-async function captureWire(): Promise<CapturedWire> {
+async function captureWire(): Promise<{
+  readonly request: CapturedWire;
+  readonly result: Awaited<ReturnType<typeof dispatch>>;
+  readonly captured: CapturedWire[];
+}> {
   const prompt = "Return the synthetic golden-wire review verdict.";
   const captured: CapturedWire[] = [];
   const result = await dispatch(physicalCallSpec(prompt), goldenRuntime(prompt, captured));
   expect(result.status).toBe("success");
-  expect(captured).toHaveLength(1);
-  return captured[0]!;
+  return { request: captured[0]!, result, captured };
 }
 
 describe("the OpenRouter ZDR golden wire", () => {
-  it("matches the pinned actual serialized request", async () => {
-    const actual = await captureWire();
+  it("matches the account-wide actual serialized request and records the served pair post-hoc", async () => {
+    const { request: actual, result, captured } = await captureWire();
 
     assertSerializedZdrWire(actual);
     expect(actual).toEqual(goldenWire);
+    // One real SDK POST and one post-request metadata lookup: neither is an
+    // implicit SDK retry, and the lookup does not alter the POST policy.
+    expect(captured.filter((wire) => wire.url.includes("/chat/completions"))).toHaveLength(1);
+    expect(captured.filter((wire) => wire.url.includes("/generation"))).toHaveLength(1);
+    const lookup = captured.find((wire) => wire.url.includes("/generation"));
+    expect(lookup).toMatchObject({
+      method: "GET",
+      headers: { Authorization: "Bearer test-key" },
+      body: null,
+    });
+    expect(new URL(lookup!.url).searchParams.get("id")).toBe("generation:test");
+    expect(result).toMatchObject({
+      status: "success",
+      generationId: "generation:test",
+      served: {
+        status: "confirmed",
+        model: "deepseek/deepseek-v4-flash-20260423",
+        provider: "DeepSeek",
+      },
+      verification: "verified",
+    });
   });
 
   it("detects the camelCase silent-drop footgun", async () => {
-    const actual = await captureWire();
-    const provider = asObject(actual.body.provider, "provider");
+    const { request: actual } = await captureWire();
+    const provider = asObject(asObject(actual.body, "request body").provider, "provider");
     const camelCaseWire: CapturedWire = {
       ...actual,
       body: {

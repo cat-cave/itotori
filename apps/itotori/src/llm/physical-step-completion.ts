@@ -23,7 +23,12 @@ import {
   usageFromChunks,
   type PhysicalStepMemoOutcome,
 } from "./physical-step-outcome.js";
-import { captureGenerationMetadata, type GenerationMetadata } from "./generation-metadata.js";
+import {
+  captureGenerationMetadata,
+  reconcileGenerationMetadata,
+  type GenerationLookup,
+  type GenerationMetadata,
+} from "./generation-metadata.js";
 import { terminalOutputSchema } from "./terminal-output.js";
 
 type StructuredOutputResult = Awaited<ReturnType<AnyTextAdapter["structuredOutput"]>>;
@@ -40,9 +45,17 @@ export async function completedStreamStep(
   chunks: readonly StreamChunk[],
   attempt: LlmStepAttemptContext,
   parentResponseEventId: string,
+  input: {
+    readonly observedGenerationId: string | null;
+    readonly generationLookup?: GenerationLookup;
+  },
 ): Promise<CompletedLlmStep> {
   const responseJson = canonicalJson(chunks);
-  const metadata = captureGenerationMetadata(chunks);
+  const metadata = await reconcileGenerationMetadata(
+    captureGenerationMetadata(chunks),
+    input.observedGenerationId,
+    input.generationLookup,
+  );
   return completedStep(
     spec,
     identity,
@@ -62,6 +75,10 @@ export async function completedStructuredStep(
   result: StructuredOutputResult,
   attempt: LlmStepAttemptContext,
   parentResponseEventId: string,
+  input: {
+    readonly observedGenerationId: string | null;
+    readonly generationLookup?: GenerationLookup;
+  },
 ): Promise<CompletedLlmStep> {
   const responseJson = canonicalJson(result);
   const parsed = terminalOutputSchema(spec.output).safeParse(result.data);
@@ -72,9 +89,14 @@ export async function completedStructuredStep(
         parsed.error.issues.map((issue) => issue.message),
       );
   // TanStack's structured-output result currently exposes no authoritative
-  // RUN_FINISHED metadata. It is a successful, explicitly-unknown response
-  // when its content validates; reconciliation stays gated off upstream.
-  const metadata = captureGenerationMetadata([]);
+  // RUN_FINISHED metadata. The transport observer may still have extracted a
+  // generation id from the raw response, which the configured post-hoc lookup
+  // reconciles without relying on response headers.
+  const metadata = await reconcileGenerationMetadata(
+    captureGenerationMetadata([]),
+    input.observedGenerationId,
+    input.generationLookup,
+  );
   const usageBilling = billingFromUsage(result.usage);
   return completedStep(
     spec,

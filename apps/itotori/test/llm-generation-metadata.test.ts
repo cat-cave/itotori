@@ -6,8 +6,12 @@ import {
 } from "../src/llm/generation-metadata.js";
 
 describe("upstream generation metadata capture", () => {
-  it("keeps generation reconciliation disabled until TanStack exposes the served pair", () => {
-    expect(generationReconciliation).toMatchObject({ enabled: false });
+  it("enables single-shot post-hoc reconciliation instead of provider selection", () => {
+    expect(generationReconciliation).toMatchObject({
+      enabled: true,
+      endpoint: "/generation?id=<generation-id>",
+      retries: "none",
+    });
   });
 
   it("persists a complete inline RUN_FINISHED served pair without a side-channel lookup", () => {

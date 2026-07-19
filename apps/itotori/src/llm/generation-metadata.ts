@@ -7,6 +7,8 @@ import type {
 import { EventType, type StreamChunk } from "@tanstack/ai";
 import { z } from "zod";
 
+type TransportFetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
 const RouteValueSchema = z.string().min(1).max(256).refine(isTrimmed, "route value is not trimmed");
 const ServedPairSchema = z.discriminatedUnion("status", [
   z
@@ -48,15 +50,92 @@ export interface GenerationMetadata {
 }
 
 /**
- * The reconciliation design is intentionally present but disabled. Until the
- * upstream RUN_FINISHED contract carries a generation ID and authoritative
- * served pair (TanStack/ai #941), this substrate must not bypass TanStack with
- * response-header capture or a /generation side channel.
+ * A one-shot, post-request lookup of the generation OpenRouter actually
+ * served. The request policy deliberately chooses no provider; this is the
+ * only point at which a concrete provider is recorded.
  */
+export type GenerationLookup = (
+  generationId: string,
+  signal?: AbortSignal,
+) => Promise<GenerationMetadata>;
+
+/** Post-hoc reconciliation is the authority for the served pair; it never
+ * influences the pre-request provider policy. */
 export const generationReconciliation = {
-  enabled: false,
-  prerequisite: "TanStack RUN_FINISHED generationId and served provider support",
+  enabled: true,
+  endpoint: "/generation?id=<generation-id>",
+  retries: "none",
 } as const;
+
+/**
+ * Build the generation lookup used by the live dispatcher. It makes exactly
+ * one authenticated GET and returns explicit unknown metadata when OpenRouter
+ * has not made a generation available yet. The response body is reduced to
+ * safe routing/accounting metadata and is never logged or persisted here.
+ */
+export function createOpenRouterGenerationLookup(input: {
+  readonly apiKey: string;
+  readonly fetcher?: TransportFetcher;
+}): GenerationLookup {
+  const fetcher = input.fetcher ?? globalThis.fetch;
+  return async (generationId, signal) => {
+    const url = new URL("https://openrouter.ai/api/v1/generation");
+    url.searchParams.set("id", generationId);
+    try {
+      const response = await fetcher(url, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${input.apiKey}`,
+        },
+        ...(signal ? { signal } : {}),
+      });
+      if (!response.ok) return unknownGenerationMetadata(generationId);
+      const data = asRecord(asRecord(await response.json()).data);
+      // Refuse a mismatched response: a provider pair is useful only when it
+      // is bound to the exact generation our request produced.
+      if (firstRouteValue(data.id) !== generationId) return unknownGenerationMetadata(generationId);
+      const served = confirmedServedPair(data.model, data.provider_name ?? data.providerName);
+      return {
+        generationId,
+        served,
+        routerAttempts: decodeLookupRouterAttempts(
+          data.provider_responses ?? data.providerResponses,
+        ),
+        usage: null,
+        billing: lookupBilling(data.total_cost ?? data.totalCost),
+        reportedCostUsd: decimalCost(data.total_cost ?? data.totalCost),
+      };
+    } catch {
+      // A delayed/failed lookup must not turn a completed model response into
+      // a fabricated route or expose provider error content. The durable
+      // record remains explicitly unknown and can be reconciled later.
+      return unknownGenerationMetadata(generationId);
+    }
+  };
+}
+
+/** Combine adapter-normalized metadata with the authoritative post-hoc lookup.
+ * Inline metadata remains a compatibility fallback when the lookup is not
+ * configured or cannot identify the generation. */
+export async function reconcileGenerationMetadata(
+  captured: GenerationMetadata,
+  observedGenerationId: string | null,
+  lookup: GenerationLookup | undefined,
+): Promise<GenerationMetadata> {
+  const generationId = observedGenerationId ?? captured.generationId;
+  if (generationId === null || lookup === undefined) return captured;
+  const reconciled = await lookup(generationId);
+  return {
+    ...reconciled,
+    // Adapter-normalized usage is available before OpenRouter finishes its
+    // accounting projection, so retain it whenever the lookup cannot provide
+    // it. The served pair itself always comes from the lookup above.
+    usage: reconciled.usage ?? captured.usage,
+    billing: reconciled.billing.status === "confirmed" ? reconciled.billing : captured.billing,
+    reportedCostUsd: reconciled.reportedCostUsd ?? captured.reportedCostUsd,
+  };
+}
 
 /** Capture only metadata normalized by the upstream TanStack adapter. */
 export function captureGenerationMetadata(chunks: readonly StreamChunk[]): GenerationMetadata {
@@ -102,15 +181,29 @@ export function captureGenerationMetadata(chunks: readonly StreamChunk[]): Gener
   };
 }
 
-function unknownGenerationMetadata(): GenerationMetadata {
+function unknownGenerationMetadata(generationId: string | null = null): GenerationMetadata {
   return {
-    generationId: null,
+    generationId,
     served: { status: "unknown" },
     routerAttempts: [],
     usage: null,
     billing: { status: "billing_unknown" },
     reportedCostUsd: null,
   };
+}
+
+function decodeLookupRouterAttempts(value: unknown): LlmRouterAttemptEvidence[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((candidate, index) => {
+    const attempt = asRecord(candidate);
+    const parsed = RouterAttemptSchema.safeParse({
+      ordinal: index + 1,
+      model: attempt.model_permaslug ?? attempt.modelPermaslug,
+      provider: attempt.provider_name ?? attempt.providerName,
+      httpStatus: attempt.status,
+    });
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 
 function decodeServedPair(
@@ -178,6 +271,11 @@ function decimalCost(value: unknown): string | null {
   const fixed = value.toFixed(12);
   if (Number(fixed) !== value) return null;
   return fixed.replace(/(?:\.0+|(?<fraction>\.\d*?)0+)$/u, "$<fraction>");
+}
+
+function lookupBilling(value: unknown): LlmStepBilling {
+  const costUsd = decimalCost(value);
+  return costUsd === null ? { status: "billing_unknown" } : { status: "confirmed", costUsd };
 }
 
 function firstRecord(...values: readonly unknown[]): Readonly<Record<string, unknown>> | null {

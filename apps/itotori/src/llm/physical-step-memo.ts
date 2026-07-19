@@ -26,12 +26,14 @@ import {
   type PhysicalStepIdentity,
 } from "./physical-step-completion.js";
 import { captureGenerationMetadata } from "./generation-metadata.js";
+import type { GenerationLookup } from "./generation-metadata.js";
 
 const TANSTACK_VERSION = "0.40.0";
 const OPENROUTER_ADAPTER_VERSION = "0.15.8";
 
 export interface PhysicalStepMemoRuntime extends PhysicalAttemptRuntime {
   readonly store: LlmCallMemoStore;
+  readonly generationLookup?: GenerationLookup;
   readonly snapshots: {
     decodeRevisionHash: `sha256:${string}`;
     glossaryRevisionHash: `sha256:${string}`;
@@ -118,7 +120,15 @@ export function memoizePhysicalSteps(
             const runError = chunks.findLast((chunk) => chunk.type === EventType.RUN_ERROR);
             const failure = runError ? control.failure(runError) : null;
             if (runError && failure) return incompleteStep(chunks, failure);
-            return completedStreamStep(spec, identity, chunks, attempt, parentResponseEventId);
+            return completedStreamStep(spec, identity, chunks, attempt, parentResponseEventId, {
+              observedGenerationId: await observer.takeGenerationId(),
+              ...(runtime.generationLookup
+                ? {
+                    generationLookup: (generationId) =>
+                      runtime.generationLookup!(generationId, control.signal),
+                  }
+                : {}),
+            });
           } catch (error: unknown) {
             const failure = control.failure(error) ?? permanentAttemptFailure();
             return incompleteStep(chunks, failure);
@@ -172,7 +182,15 @@ export function memoizePhysicalSteps(
                 chatOptions: withSignal(options.chatOptions, control.signal),
               }),
             );
-            return completedStructuredStep(spec, identity, result, attempt, parentResponseEventId);
+            return completedStructuredStep(spec, identity, result, attempt, parentResponseEventId, {
+              observedGenerationId: await observer.takeGenerationId(),
+              ...(runtime.generationLookup
+                ? {
+                    generationLookup: (generationId) =>
+                      runtime.generationLookup!(generationId, control.signal),
+                  }
+                : {}),
+            });
           } catch (error: unknown) {
             const failure = control.failure(error) ?? permanentAttemptFailure();
             return {
