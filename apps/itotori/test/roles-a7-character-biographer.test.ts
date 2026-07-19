@@ -135,6 +135,9 @@ describe("clause 1 — one cited, portrait-bearing bio for EVERY indexed charact
       expect(bio.kind).toBe("character-bio");
       expect(bio.lang).toBe(model.sourceLanguage);
       expect(bio.subject).toEqual({ kind: "character", id: characterId });
+      // A7 is an analyst: a cited interpretation remains revisable until the
+      // Wiki acceptance workflow promotes it.
+      expect(bio.provisional).toBe(true);
       // A portrait media reference is always present, bound to this character.
       const portrait = bio.media.find((ref) => ref.kind === "portrait");
       expect(portrait?.kind === "portrait" ? portrait.characterId : null).toBe(characterId);
