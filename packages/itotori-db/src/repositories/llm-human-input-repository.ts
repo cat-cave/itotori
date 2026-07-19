@@ -160,15 +160,24 @@ export class ItotoriLlmHumanInputRepository {
     input: AppendLlmHumanInputInput,
     contentHash: string,
   ): Promise<void> {
-    const existing = await client.query<{ human_input_content_hash: string; input_kind: string }>(
-      "select human_input_content_hash, input_kind from itotori_llm_human_inputs where input_id = $1",
+    const existing = await client.query<{
+      human_input_content_hash: string;
+      input_kind: string;
+      subject_ref: string;
+    }>(
+      `
+        select human_input_content_hash, input_kind, subject_ref
+        from itotori_llm_human_inputs
+        where input_id = $1
+      `,
       [input.inputId],
     );
     const row = existing.rows[0];
     if (
       !row ||
       row.human_input_content_hash !== contentHash ||
-      row.input_kind !== input.inputKind
+      row.input_kind !== input.inputKind ||
+      row.subject_ref !== input.subjectRef
     ) {
       throw new LlmHumanInputConflictError(input.inputId);
     }

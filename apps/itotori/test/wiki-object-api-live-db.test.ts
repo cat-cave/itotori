@@ -5,16 +5,23 @@ import {
   ItotoriLlmWikiRepository,
 } from "@itotori/db";
 import { describe, expect, it } from "vitest";
+import { WIKI_OBJECT_SCHEMA_VERSION } from "../src/contracts/index.js";
+import { canonicalJson, sha256 } from "../src/llm/canonical-json.js";
 import { persistLocalizedRendering, persistWikiObject } from "../src/wiki/object-persistence.js";
 import { ForgedWikiAssertionError, WikiObjectApiService } from "../src/wiki/object-api/index.js";
-import type {
-  EnhancementProposal,
-  EnhancementRequest,
-  EnhancementRunner,
+import {
+  createDispatchEnhancementRunner,
+  type EnhancementRequest,
+  type EnhancementRunner,
 } from "../src/wiki/human-enhancement/index.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import { H2, localizedRenderingExample, wikiObjectExample } from "./contract-fixtures-core.js";
-import { TestMemoCipher } from "./llm-step-test-support.js";
+import {
+  TestMemoCipher,
+  dispatchHarness,
+  physicalCallSpec,
+  structuredProviderResponse,
+} from "./llm-step-test-support.js";
 
 const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
 
@@ -169,17 +176,17 @@ postgresDescribe("wiki object read/write API over the WikiObject substrate", () 
     const context = await isolatedMigratedContext();
     const cipher = new TestMemoCipher();
     try {
-      const { api } = await setup(context, cipher);
-      const spy = { count: 0 };
+      const { api, contextId } = await setup(context, cipher);
+      const enhancement = memoizedApiRunner(context, cipher, sourceObject(contextId));
       const session = await api.openEditSession(SOURCE_SELECTOR);
       await api.edit(session, editInput(), CREATED_AT);
 
       const receipt = await api.apply(session, {
-        runner: recordingRunner(spy),
+        runner: enhancement.runner,
         decodedFacts: [],
         createdAt: CREATED_AT,
       });
-      expect(spy.count).toBe(1);
+      expect(enhancement.transportCalls()).toBe(1);
       expect(receipt.enhancementLaunched).toBe(true);
       expect(receipt.coalescedInputCount).toBe(1);
       expect(receipt.head.version).toBe(3);
@@ -251,13 +258,41 @@ function feedbackInput() {
   };
 }
 
-/** A recorded proposal runner: it preserves the human-applied body so the apply
- * boundary is exercised offline with no live inference. */
-function recordingRunner(spy: { count: number }): EnhancementRunner {
-  return async (request: EnhancementRequest): Promise<EnhancementProposal> => {
-    spy.count += 1;
-    return { objectJson: structuredClone(request.humanAppliedJson) };
-  };
+/** A real RB-012 dispatch runner over the Postgres memo store. The wire response
+ * is recorded, but no service or runner is stubbed. */
+function memoizedApiRunner(
+  context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
+  cipher: TestMemoCipher,
+  proposal: unknown,
+): { readonly runner: EnhancementRunner; readonly transportCalls: () => number } {
+  const harness = dispatchHarness({
+    pool: context.pool,
+    cipher,
+    prompt: "unused: API enhancement planner replaces this payload",
+    responses: [structuredProviderResponse(proposal)],
+  });
+  const runner = createDispatchEnhancementRunner({
+    plan: (request: EnhancementRequest) => {
+      const payload = canonicalJson({
+        priorObjectJson: request.priorObjectJson,
+        humanDelta: request.delta,
+      });
+      return {
+        spec: physicalCallSpec(payload, {
+          output: {
+            name: "wiki-object",
+            schemaVersion: WIKI_OBJECT_SCHEMA_VERSION,
+            schemaHash: sha256(WIKI_OBJECT_SCHEMA_VERSION),
+          },
+        }),
+        runtime: {
+          ...harness.runtime,
+          readPayload: async () => payload,
+        },
+      };
+    },
+  });
+  return { runner, transportCalls: harness.transportCalls };
 }
 
 async function setup(

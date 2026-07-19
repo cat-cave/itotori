@@ -53,6 +53,13 @@ export interface EnhancementSession {
   readonly baseJson: JsonValue;
   currentHead: LlmWikiHead;
   readonly inputs: HumanInput[];
+  /** Once the explicit boundary commits, its receipt is durable and reusable.
+   * A repeated click/retry must not start a second child enhancement for the
+   * same coalesced session. */
+  appliedReceipt?: ApplyReceipt;
+  /** Concurrent apply callers share one bounded child rather than racing to
+   * launch siblings from the same human delta. */
+  applying?: Promise<ApplyReceipt>;
 }
 
 export interface AppendReceipt {
@@ -99,14 +106,18 @@ export class HumanEnhancementService {
     if (input.kind !== "edit") {
       throw new HumanEnhancementError("appendEdit requires an edit HumanInput");
     }
-    await this.persistHumanInput(session, input, createdAt);
+    this.assertSessionIsOpen(session);
     const currentJson = await this.readObject(session.wikiKind, session.objectId);
     const editedJson = applyEdit(currentJson, input);
+    // Validate the exact mechanical edit before appending its immutable receipt:
+    // an invalid/stale edit must not leave a stranded HumanInput with no version.
+    await this.persistHumanInput(session, input, createdAt);
     const stamped = stampProvenance(editedJson, {
       version: session.currentHead.version + 1,
       supersedesVersion: session.currentHead.version,
       editedBy: "human",
       humanInput: input,
+      provisional: false,
     });
     const head = await this.commit(session, stamped, createdAt);
     session.inputs.push(input);
@@ -127,6 +138,7 @@ export class HumanEnhancementService {
     if (input.kind !== "feedback") {
       throw new HumanEnhancementError("appendFeedback requires a feedback HumanInput");
     }
+    this.assertSessionIsOpen(session);
     await this.persistHumanInput(session, input, createdAt);
     const currentJson = await this.readObject(session.wikiKind, session.objectId);
     const stamped = stampProvenance(currentJson, {
@@ -134,6 +146,7 @@ export class HumanEnhancementService {
       supersedesVersion: session.currentHead.version,
       editedBy: "human",
       humanInput: input,
+      provisional: false,
     });
     const head = await this.commit(session, stamped, createdAt);
     session.inputs.push(input);
@@ -147,6 +160,28 @@ export class HumanEnhancementService {
    * non-provisional.
    */
   async apply(
+    session: EnhancementSession,
+    options: {
+      readonly runner: EnhancementRunner;
+      readonly decodedFacts: readonly DecodedFact[];
+      readonly createdAt: string;
+    },
+  ): Promise<ApplyReceipt> {
+    if (session.appliedReceipt) return session.appliedReceipt;
+    if (session.applying) return session.applying;
+
+    const applying = this.applyOnce(session, options);
+    session.applying = applying;
+    try {
+      const receipt = await applying;
+      session.appliedReceipt = receipt;
+      return receipt;
+    } finally {
+      delete session.applying;
+    }
+  }
+
+  private async applyOnce(
     session: EnhancementSession,
     options: {
       readonly runner: EnhancementRunner;
@@ -201,6 +236,12 @@ export class HumanEnhancementService {
       resolvedConflictCount: conflictResolutions.size,
       enhancementLaunched: true,
     };
+  }
+
+  private assertSessionIsOpen(session: EnhancementSession): void {
+    if (session.appliedReceipt || session.applying) {
+      throw new HumanEnhancementError("append requires a new session after apply");
+    }
   }
 
   private async persistHumanInput(

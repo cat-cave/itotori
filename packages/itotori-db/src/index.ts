@@ -1416,6 +1416,7 @@ export {
   ItotoriLlmWikiRepository,
   LlmWikiCasError,
   LlmWikiConflictError,
+  LlmWikiProtectedHumanVersionError,
 } from "./repositories/llm-wiki-repository.js";
 export type {
   LlmDependencyQuery,
