@@ -25,7 +25,7 @@ import type { ReadModel } from "../../read-tools/index.js";
 import { buildEvidenceIndex, type EvidenceIndex } from "../../wiki/evidence-index.js";
 import { validateWikiObjectClaims } from "../../wiki/claim-validation.js";
 
-import { A4_ROLE_ID, A4_ROUTE_ARC_KIND, type A4Context } from "./types.js";
+import { A4_ROLE_ID, A4_ROUTE_ARC_KIND, type A4Context, type A4UnresolvedEdge } from "./types.js";
 import { routeIdOf } from "./spine.js";
 
 const UNRESOLVABLE_HASH = `sha256:${"0".repeat(64)}` as `sha256:${string}`;
@@ -62,6 +62,35 @@ export interface ResolvedArc {
   readonly foreshadows: readonly ResolvedLink[];
   readonly relationshipDeltas: readonly ResolvedDelta[];
   readonly revealHorizon: number;
+}
+
+/** The immutable upstream story dependency: its final cited evidence becomes the
+ * route-level arc claim's anchor rather than a model-invented summary citation. */
+export interface RouteArcSpineDependency {
+  readonly objectId: string;
+  readonly version: number;
+  readonly evidenceIds: readonly string[];
+}
+
+function compare(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/** The persisted cross-kind continuity reveal order. Link arrays stay grouped by
+ * kind for consumers, while this order records how the route exposes them in
+ * deterministic decoded play order rather than model emission order. */
+export function revealOrderFor(
+  callbacks: readonly ResolvedLink[],
+  foreshadows: readonly ResolvedLink[],
+): readonly string[] {
+  return [...callbacks, ...foreshadows]
+    .sort(
+      (left, right) =>
+        left.originPlayOrder - right.originPlayOrder ||
+        left.destinationPlayOrder - right.destinationPlayOrder ||
+        compare(left.linkId, right.linkId),
+    )
+    .map((link) => link.linkId);
 }
 
 /** Build one citation for a resolved endpoint id. Every dimension a citation is
@@ -119,6 +148,29 @@ function linkClaim(
   };
 }
 
+/** The route summary is itself a provisional `arc` claim. Its evidence comes
+ * from the adopted final story-so-far and is resolved again through the current
+ * snapshot, so the summary cannot become uncited prose. */
+function arcClaim(
+  index: EvidenceIndex,
+  snapshotId: string,
+  scope: RouteScope,
+  routeId: string,
+  arc: ResolvedArc,
+  evidenceIds: readonly string[],
+): Claim {
+  return {
+    claimId: `route-arc:${routeId}:arc`,
+    statement: arc.arcSummary,
+    scope,
+    kind: "arc",
+    confidence: "medium",
+    citations: evidenceIds.map((evidenceId) =>
+      citationFor(index, snapshotId, evidenceId, "supports"),
+    ),
+  };
+}
+
 function deltaClaim(
   index: EvidenceIndex,
   snapshotId: string,
@@ -170,11 +222,13 @@ export function assembleRouteArc(
   context: A4Context,
   scope: RouteScope,
   arc: ResolvedArc,
-  spine: { readonly objectId: string; readonly version: number },
+  spine: RouteArcSpineDependency,
+  unresolvedEdges: readonly A4UnresolvedEdge[] = [],
 ): WikiObject {
   const index = buildEvidenceIndex(model);
   const routeId = routeIdOf(scope);
   const claims: Claim[] = [
+    arcClaim(index, model.snapshotId, scope, routeId, arc, spine.evidenceIds),
     ...arc.callbacks.map((link, ordinal) =>
       linkClaim(index, model.snapshotId, scope, routeId, "callback", link, ordinal),
     ),
@@ -208,7 +262,9 @@ export function assembleRouteArc(
       claims,
       media: [],
       dependencies,
-      provisional: false,
+      // This is analyst interpretation over facts, never a replacement fact.
+      // It stays revisable until the Wiki acceptance workflow promotes it.
+      provisional: true,
       kind: A4_ROUTE_ARC_KIND,
       body: {
         routeId,
@@ -232,6 +288,8 @@ export function assembleRouteArc(
           before: delta.before,
           after: delta.after,
         })),
+        revealOrder: revealOrderFor(arc.callbacks, arc.foreshadows),
+        unresolvedEdges: unresolvedEdges.map((edge) => ({ ...edge })),
         revealHorizon: arc.revealHorizon,
       },
       provenance: provenance(model, context),
