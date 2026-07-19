@@ -26,7 +26,11 @@ export {
   type SelectedPatchDeliveryLoaderPort,
 } from "./exporter.js";
 
-export { createDeliveredPatchArchive, type DeliveredPatchArchive } from "./delivery-archive.js";
+export {
+  createDeliveredPatchArchive,
+  type DeliveredPatchArchive,
+  type PatchDeliveryManifest,
+} from "./delivery-archive.js";
 
 export {
   prepareKaifuuPatchPayload,

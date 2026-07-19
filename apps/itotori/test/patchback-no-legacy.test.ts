@@ -1,11 +1,10 @@
 // Structural no-legacy guard: the native patchback path imports NOTHING from the
 // old orchestrator apply/replay home (patch-apply-seam / wholegame-render-
-// validation-seam / attempt-outcome journal). Physical deletion of that home is a
-// separate refactor with live consumers; here we prove the new path is decoupled
-// by extracting every import specifier under src/patchback and asserting none
-// reaches into `orchestrator/` (or the journal it read from).
+// validation-seam / attempt-outcome journal). The old home is physically absent
+// from this source tree; lock that deletion and prove the new path cannot grow a
+// dependency back into it.
 
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -13,6 +12,7 @@ import { describe, expect, it } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const patchbackDir = join(here, "..", "src", "patchback");
+const legacyOrchestratorDir = join(here, "..", "src", "orchestrator");
 
 function tsFiles(dir: string): string[] {
   const out: string[] = [];
@@ -43,11 +43,17 @@ const FORBIDDEN = [
   /wholegame-render-validation/u,
 ];
 
+const FORBIDDEN_LEGACY_FIELDS = ["journalOutcomeId", "resultRevisionId", "memberOrigin"];
+
 describe("native patchback structural no-legacy boundary", () => {
   const files = tsFiles(patchbackDir);
 
   it("finds the patchback module files", () => {
     expect(files.length).toBeGreaterThanOrEqual(7);
+  });
+
+  it("keeps the old orchestrator apply/replay home deleted", () => {
+    expect(existsSync(legacyOrchestratorDir)).toBe(false);
   });
 
   it("imports nothing from the old orchestrator apply/replay home", () => {
@@ -57,6 +63,18 @@ describe("native patchback structural no-legacy boundary", () => {
         if (FORBIDDEN.some((re) => re.test(spec))) {
           violations.push(`${file.slice(patchbackDir.length + 1)} -> ${spec}`);
         }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it("does not project the native accepted-output path through legacy journal fields", () => {
+    const violations: string[] = [];
+    for (const file of files) {
+      const source = readFileSync(file, "utf8");
+      for (const field of FORBIDDEN_LEGACY_FIELDS) {
+        if (source.includes(field))
+          violations.push(`${file.slice(patchbackDir.length + 1)} -> ${field}`);
       }
     }
     expect(violations).toEqual([]);
