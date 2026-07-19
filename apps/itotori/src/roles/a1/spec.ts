@@ -122,7 +122,7 @@ export const STYLE_LEAD_FEW_SHOT_EXAMPLE = {
   ],
   media: [],
   dependencies: [],
-  provisional: false,
+  provisional: true,
   provenance: {
     authorRoleId: "A1",
     contextSnapshotId: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",

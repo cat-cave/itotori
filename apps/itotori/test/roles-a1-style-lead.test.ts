@@ -26,6 +26,7 @@ import {
   type WikiObject,
 } from "../src/contracts/index.js";
 import { deepSeekV4FlashProfile } from "../src/llm/role-model-profiles.js";
+import { decodeGetUnits } from "../src/read-tools/index.js";
 import { CitationResolutionError } from "../src/wiki/citation-resolution.js";
 import { buildEvidenceIndex } from "../src/wiki/evidence-index.js";
 import {
@@ -36,6 +37,7 @@ import {
   foldStyleContract,
   inlineStylePromptStore,
   invalidatedStyleConsumers,
+  readRepresentativeStyleSlice,
   recordedStyleLeadModel,
   runStyleLead,
   snapshotsForField,
@@ -194,6 +196,13 @@ describe("A1 clause 1 — a cited source-language style-contract, claim-validate
 
     expect(result.styleContract.kind).toBe("style-contract");
     expect(result.styleContract.lang).toBe("ja-JP");
+    expect(result.styleContract.provisional).toBe(true);
+    expect(result.styleContract.provenance).toMatchObject({
+      contextSnapshotId: model.snapshotId,
+      contextScope: "whole-game",
+      runMode: "production",
+      snapshotKind: "context",
+    });
     expect(result.served.model).toBe(deepSeekV4FlashProfile.model);
     // The served PROVIDER is recorded telemetry, not a pinned input (no provider pin).
     expect(result.served.provider).toBe("fireworks");
@@ -298,6 +307,24 @@ describe("A1 clause 1 — a cited source-language style-contract, claim-validate
     expect(prompt.user).toContain("[u1] …");
     expect(prompt.user).toContain("quotedSpan as a verbatim substring");
     expect(prompt.user).toContain(JSON.stringify(STYLE_LEAD_FEW_SHOT_EXAMPLE, null, 2));
+  });
+
+  it("PROOF: A1 reads its representative source slice through the snapshot-pinned read tools", () => {
+    const { model } = buildClaimFixture();
+    const slice = readRepresentativeStyleSlice(model);
+    const sourceRead = decodeGetUnits(
+      model,
+      { roleId: "A1", routeVisibility: { kind: "global" }, localeBranchId: null },
+      { selector: { kind: "all" }, maxRows: 100_000, maxBytes: 8_388_608 },
+    );
+
+    expect(slice.map((scene) => scene.sceneId)).toEqual(["1", "2"]);
+    expect(slice.flatMap((scene) => scene.units).map((unit) => unit.factId)).toEqual(
+      sourceRead.facts.map((fact) => fact.factId),
+    );
+    expect(slice.flatMap((scene) => scene.units).map((unit) => unit.text)).toEqual(
+      sourceRead.facts.map((fact) => fact.value.sourceSurface),
+    );
   });
 });
 

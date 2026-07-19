@@ -28,6 +28,7 @@ export {
   type StylePolicyField,
   type StylePolicyValue,
 } from "./abstract-style.js";
+export { a1ReadToolCaller, readRepresentativeStyleSlice } from "./evidence.js";
 export {
   assembleStyleLeadCallSpec,
   composeStyleLeadPrompt,

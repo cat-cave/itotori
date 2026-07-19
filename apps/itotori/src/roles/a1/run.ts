@@ -124,10 +124,14 @@ export async function runStyleLead(
     citeableUnits(request.slice).map((unit) => [unit.label, unit.factId]),
   );
   const resolved = resolveObjectCitations(object, deps.validationModel, labelToFactId);
-  validateWikiObjectClaims(resolved, deps.validationModel);
+  // A1's observation is a reviewable hypothesis even after every citation has
+  // resolved. Provisional status is system-owned, so a model cannot promote its
+  // own policy to an approved house rule by emitting `false`.
+  const styleContract = { ...resolved, provisional: true };
+  validateWikiObjectClaims(styleContract, deps.validationModel);
 
   return {
-    styleContract: resolved,
+    styleContract,
     spec,
     served: result.served,
   };
