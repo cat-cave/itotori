@@ -30,6 +30,11 @@ import type {
 
 import { ReadToolError } from "./access.js";
 
+export type ProjectionVisibility = {
+  routeScope: RouteScope;
+  fromPlayOrder: number;
+};
+
 type Visibility = {
   routeScope: RouteScope;
   fromPlayOrder: number;
@@ -175,6 +180,10 @@ export function projectRouteNodeFact(
   scene: SceneFactCard,
   topology: RouteTopologyFact,
   snapshotId: string,
+  visibility: ProjectionVisibility = {
+    routeScope: { kind: "global" },
+    fromPlayOrder: scene.playOrderIndex ?? 0,
+  },
 ): RouteNodeFact {
   const predecessors = topology.edges
     .filter((edge) => edge.toSceneId === scene.sceneId)
@@ -191,15 +200,22 @@ export function projectRouteNodeFact(
     predecessors: dedupeSorted(predecessors),
     successors: dedupeSorted(successors),
     reachable: scene.reachable,
-    routeScopes: [{ kind: "global" as const }],
+    routeScopes: [visibility.routeScope],
   };
-  return decodeFact(value, `scene:${scene.sceneId}`, snapshotId, scene.playOrderIndex ?? 0);
+  return decodeFact(
+    value,
+    `scene:${scene.sceneId}`,
+    snapshotId,
+    visibility.fromPlayOrder,
+    visibility.routeScope,
+  );
 }
 
 /** Project one topology edge into a route-graph edge fact. */
 export function projectRouteEdgeFact(
   edge: RouteTopologyFact["edges"][number],
   snapshotId: string,
+  visibility: ProjectionVisibility = { routeScope: { kind: "global" }, fromPlayOrder: 0 },
 ): RouteEdgeFact {
   const edgeId = `route-edge:${edge.fromSceneId}:${edge.toSceneId}:${edge.kind}:${edge.choiceIndex ?? "d"}`;
   const value = {
@@ -212,7 +228,7 @@ export function projectRouteEdgeFact(
     evidenceId: edgeId,
     completeness: "complete" as const,
   };
-  return decodeFact(value, edgeId, snapshotId, 0);
+  return decodeFact(value, edgeId, snapshotId, visibility.fromPlayOrder, visibility.routeScope);
 }
 
 function decodeFact<V extends LlmJsonValue>(
@@ -220,6 +236,7 @@ function decodeFact<V extends LlmJsonValue>(
   factId: string,
   snapshotId: string,
   fromPlayOrder: number,
+  routeScope: RouteScope = { kind: "global" },
 ) {
   return {
     schemaVersion: FACT_SCHEMA_VERSION,
@@ -227,7 +244,7 @@ function decodeFact<V extends LlmJsonValue>(
     snapshotId,
     hash: hashValue(value),
     visibility: {
-      routeScope: { kind: "global" as const },
+      routeScope,
       fromPlayOrder,
       throughPlayOrder: null,
     },
@@ -248,6 +265,7 @@ export function projectCharacterOccurrenceFact(
   fact: SnapshotCharacterFact,
   profile: CharacterProfile,
   snapshotId: string,
+  visibility: ProjectionVisibility = { routeScope: { kind: "global" }, fromPlayOrder: 0 },
 ): CharacterOccurrenceFact {
   const value = {
     kind: "character-occurrence" as const,
@@ -264,7 +282,13 @@ export function projectCharacterOccurrenceFact(
     firstSceneId: String(fact.firstSceneId),
     lastSceneId: String(fact.lastSceneId),
   };
-  return decodeFact(value, fact.factId, snapshotId, 0);
+  return decodeFact(
+    value,
+    fact.factId,
+    snapshotId,
+    visibility.fromPlayOrder,
+    visibility.routeScope,
+  );
 }
 
 function dedupeSorted(ids: readonly string[]): string[] {
