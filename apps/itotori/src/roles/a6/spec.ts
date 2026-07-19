@@ -21,6 +21,7 @@ import { deepSeekV4FlashProfile } from "../../llm/role-model-profiles.js";
 import { specialistFor } from "../../roster/index.js";
 
 import type { FlaggedAdaptationCandidate } from "./candidates.js";
+import type { AdaptationReadContext } from "./context.js";
 
 type Sha256 = `sha256:${string}`;
 
@@ -50,8 +51,11 @@ export function candidateAnchor(request: AdaptationRequest, unitFactId: string):
 }
 
 /** Render the byte-derived evidence the model must treat as fixed fact. */
-function candidateEvidence(candidate: FlaggedAdaptationCandidate): string {
-  return [
+function candidateEvidence(
+  candidate: FlaggedAdaptationCandidate,
+  context?: AdaptationReadContext,
+): string {
+  const deterministicEvidence = [
     `Flagged unit: ${candidate.sourceUnitKey} (fact ${candidate.unitFactId}).`,
     `Flagged aspects (fixed; author for exactly these): ${candidate.categories.join(", ")}.`,
     `Byte-derived markers (fixed; cite only these, do not add or drop): ${
@@ -59,6 +63,24 @@ function candidateEvidence(candidate: FlaggedAdaptationCandidate): string {
     }`,
     `Ruby (furigana) wordplay span present: ${candidate.hasRubyWordplay ? "yes" : "no"}.`,
     `Decoded source line (authoritative): ${candidate.sourceText}`,
+  ];
+  if (context === undefined) return deterministicEvidence.join("\n");
+
+  const neighborSkeletons = context.neighborsPage.facts
+    .map((fact) => `- ${fact.factId}: ${fact.value.sourceSkeleton}`)
+    .join("\n");
+  const referenceExcerpts = context.referencesPage.hits
+    .map((hit) => `- ${hit.fact.factId}: ${hit.fact.value.excerpt}`)
+    .join("\n");
+  return [
+    ...deterministicEvidence,
+    `RB-025 exact source fact: ${context.unit.factId} (snapshot ${context.unitPage.snapshotId}).`,
+    `Source skeleton (fixed; preserve its placeholders and protected spans): ${context.unit.value.sourceSkeleton}`,
+    `Protected placeholders (fixed; never rewrite or re-encode SJIS/source bytes): ${JSON.stringify(context.unit.value.protectedPlaceholders)}`,
+    "RB-025 setup/payoff window (fixed source skeletons):",
+    neighborSkeletons,
+    "RB-025 matching operator references (may be empty; never invent one):",
+    referenceExcerpts.length > 0 ? referenceExcerpts : "(none)",
   ].join("\n");
 }
 
@@ -68,6 +90,7 @@ function candidateEvidence(candidate: FlaggedAdaptationCandidate): string {
 export function composeAdaptationPrompt(
   request: AdaptationRequest,
   candidate: FlaggedAdaptationCandidate,
+  context?: AdaptationReadContext,
 ): { readonly system: string; readonly user: string } {
   const analyst = specialistFor(ADAPTATION_ROLE_ID);
   const user = [
@@ -78,7 +101,7 @@ export function composeAdaptationPrompt(
     "the communicative FUNCTION and BOUNDED OPTIONS with tradeoffs in the SOURCE",
     "language. Never write a single replacement translation. The evidence below is",
     "byte-derived and authoritative:",
-    candidateEvidence(candidate),
+    candidateEvidence(candidate, context),
   ].join("\n\n");
   return { system: analyst.instructions, user };
 }

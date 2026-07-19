@@ -275,15 +275,29 @@ describe("A6 clause 2 — function + bounded options, never a replacement transl
       snapshotId: model.snapshotId,
       citations: [citationForUnit(model, candidate.unitFactId)],
     });
+    const storedPrompts: string[] = [];
+    const baseStore = inlineAdaptationPromptStore();
 
     const result = await runAdaptationNote(request(model.snapshotId), candidate, {
       model: recordedAdaptationModel(recordedSuccess(note)),
-      storePrompt: inlineAdaptationPromptStore(),
+      storePrompt: async (text, channel) => {
+        storedPrompts.push(text);
+        return baseStore(text, channel);
+      },
       readModel: model,
     });
 
     expect(result.note.kind).toBe("adaptation-note");
     expect(result.note.lang).toBe("ja-JP");
+    expect(result.note.claims).toHaveLength(1);
+    expect(result.note.claims[0]!.citations[0]!.evidenceId).toBe(candidate.unitFactId);
+    expect(result.note.provenance).toMatchObject({
+      contextSnapshotId: model.snapshotId,
+      contextScope: "whole-game",
+      runMode: "production",
+      snapshotKind: "context",
+    });
+    expect(typeof result.note.provisional).toBe("boolean");
     expect(result.note.body.communicativeFunction.length).toBeGreaterThan(0);
     expect(result.note.body.boundedOptions.length).toBeGreaterThanOrEqual(1);
     for (const option of result.note.body.boundedOptions) {
@@ -291,6 +305,16 @@ describe("A6 clause 2 — function + bounded options, never a replacement transl
     }
     expect(result.served.model).toBe(deepSeekV4FlashProfile.model);
     expect(result.served.provider).toBe("fireworks");
+    // A6 reads its exact source unit and setup/payoff window through RB-025;
+    // this is the context the role actually had before dispatching the note.
+    expect(result.context.unit.factId).toBe(candidate.unitFactId);
+    expect(result.context.neighborsPage.tool).toBe("decode_get_neighbors");
+    expect(result.context.neighborsPage.facts.map((fact) => fact.factId)).toContain(
+      candidate.unitFactId,
+    );
+    expect(result.context.referencesPage.tool).toBe("references_search");
+    expect(storedPrompts.join("\n")).toContain(`RB-025 exact source fact: ${candidate.unitFactId}`);
+    expect(storedPrompts.join("\n")).toContain("RB-025 setup/payoff window");
     // The byte-derived flag is surfaced authoritatively, not the model's guess.
     expect(result.evidence.markers).toEqual(["先輩"]);
     // The body carries NO replacement / target field — it is function + options.

@@ -53,7 +53,10 @@ const REVIEWER_ROLES: readonly RoleId[] = ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6"];
  * is absent from a tool's set is denied that tool. */
 export const TOOL_ROLE_ALLOWLIST: Readonly<Record<ToolName, readonly RoleId[]>> = {
   decode_get_units: ALL_ROLES,
-  decode_get_neighbors: [...LOCALIZER_ROLES, "Q1"],
+  // A6 reads a bounded source setup/payoff window for a deterministically
+  // flagged culture-bound unit before it authors an adaptation note. This is a
+  // source-language analyst read, not a target-language localization grant.
+  decode_get_neighbors: [...LOCALIZER_ROLES, "A6", "Q1"],
   decode_get_route_graph: ANALYST_ROLES,
   decode_get_character_occurrences: [...ANALYST_ROLES, "Q2"],
   glossary_lookup: [...LOCALIZER_ROLES, ...REVIEWER_ROLES],
