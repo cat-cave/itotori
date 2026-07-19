@@ -1080,7 +1080,7 @@ describe("localization bridge schema guards", () => {
   });
 
   it("types speaker truth across a resolved+unresolved mix without false parser_unknown", () => {
-    // RB-023: Bridge v0.2 additively carries raw speaker text, resolved display
+    // Bridge v0.2 additively carries raw speaker text, resolved display
     // identity, reader-safe label, canonical ref, reveal state, and RGB. A
     // resolved name stays `known` / `reader_unknown` — never mislabelled
     // `parser_unknown` just because the reader is masked or colour is present.
@@ -1158,7 +1158,7 @@ describe("localization bridge schema guards", () => {
   });
 
   it("rejects known+concealed and parser_unknown carrying resolved-name fields", () => {
-    // RB-023 invariant: knowledgeState pins revealState when present.
+    // Invariant: knowledgeState pins revealState when present.
     // A `known`+`concealed` speaker would fall into the consumer's concealed
     // branch and leak `displayName` as a supposedly reader-safe label.
     const bridge = bridgeV02Example();
