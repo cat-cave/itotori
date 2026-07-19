@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cat-cave/itotori/fixtures/public/rpgmaker-profile-a.manifest.schema.json",
+  "title": "Kaifuu RPG Maker MV/MZ Profile A External Metadata Manifest",
+  "type": "object",
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "SPDX-License-Identifier",
+    "fixture",
+    "sourceFiles",
+    "extractionSurfaces",
+    "aggregateStats"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "const": "./rpgmaker-profile-a.manifest.schema.json"
+    },
+    "schemaVersion": {
+      "const": "0.1.0"
+    },
+    "SPDX-License-Identifier": {
+      "const": "LicenseRef-LustMemory-English-Public-Release"
+    },
+    "fixture": {
+      "type": "object",
+      "required": ["id", "title", "kind", "summary", "sourceLocale", "license", "provenance"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "const": "kaifuu-rpgmaker-mv-mz-profile-a"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "const": "metadata-only"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceLocale": {
+          "const": "en-US"
+        },
+        "license": {
+          "type": "object",
+          "required": ["spdx", "evidence"],
+          "additionalProperties": false,
+          "properties": {
+            "spdx": {
+              "const": "LicenseRef-LustMemory-English-Public-Release"
+            },
+            "evidence": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "required": ["creationMethod", "rawAssetPolicy", "sourcePath"],
+          "additionalProperties": false,
+          "properties": {
+            "creationMethod": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rawAssetPolicy": {
+              "const": "contains-no-copyrighted-game-assets"
+            },
+            "sourcePath": {
+              "const": "LustMemory/www/data"
+            }
+          }
+        }
+      }
+    },
+    "sourceFiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["path", "role", "mediaType", "sha256", "bytes"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^www/data/[A-Za-z0-9._-]+\\.json$"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["map", "common-events", "system", "database", "other-data"]
+          },
+          "mediaType": {
+            "const": "application/json"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "extractionSurfaces": {
+      "type": "object",
+      "required": [
+        "showText",
+        "showChoices",
+        "commonEventCommands",
+        "systemTermsFields",
+        "samples"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "showText": {
+          "type": "integer",
+          "minimum": 5
+        },
+        "showChoices": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "commonEventCommands": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "systemTermsFields": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "samples": {
+          "type": "object",
+          "required": ["showText", "showChoices", "commonEventCommands", "systemTermsFields"],
+          "additionalProperties": false,
+          "properties": {
+            "showText": {
+              "type": "array",
+              "minItems": 5,
+              "maxItems": 5,
+              "items": { "$ref": "#/$defs/commandSample" }
+            },
+            "showChoices": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 5,
+              "items": { "$ref": "#/$defs/commandSample" }
+            },
+            "commonEventCommands": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 5,
+              "items": { "$ref": "#/$defs/commandSample" }
+            },
+            "systemTermsFields": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 5,
+              "items": {
+                "type": "object",
+                "required": ["path", "pointer"],
+                "additionalProperties": false,
+                "properties": {
+                  "path": {
+                    "const": "www/data/System.json"
+                  },
+                  "pointer": {
+                    "type": "string",
+                    "pattern": "^/terms/[A-Za-z0-9_-]+$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "aggregateStats": {
+      "type": "object",
+      "required": ["sourceFiles", "mapFiles", "notes"],
+      "additionalProperties": false,
+      "properties": {
+        "sourceFiles": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mapFiles": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "commandSample": {
+      "type": "object",
+      "required": ["path", "pointer", "code"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^www/data/(?:Map[0-9]+|CommonEvents)\\.json$"
+        },
+        "pointer": {
+          "type": "string",
+          "pattern": "^/(?:events/[0-9]+/pages/[0-9]+/list|[0-9]+/list)/[0-9]+(?:/parameters/0)?$"
+        },
+        "code": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}
