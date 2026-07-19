@@ -45,6 +45,7 @@ import {
   unitFactIdAt,
   type FixtureCharacterSpec,
 } from "./support/claim-fixture.js";
+import { a8BackgroundFor } from "./support/a9-background-fixture.js";
 
 const CONTEXT: A9Context = {
   runMode: "test-dev",
@@ -92,7 +93,14 @@ function assembleOne(
 ) {
   const character = characterIndex(model).find((c) => c.characterId === characterId)!;
   const evidence = readCharacterRouteEvidence(model, CONTEXT, character, routeId);
-  return assembleCharacterRouteArc(model, CONTEXT, character, evidence, { shifts });
+  return assembleCharacterRouteArc(
+    model,
+    CONTEXT,
+    character,
+    evidence,
+    a8BackgroundFor(model, characterId),
+    { shifts },
+  );
 }
 
 describe("clause 1 — the pair set equals the deterministic character-by-route intersection", () => {
@@ -105,7 +113,9 @@ describe("clause 1 — the pair set equals the deterministic character-by-route 
       { characterId: "nam-22", routeId: "route-a" },
     ]);
     // The roster covers exactly that intersection — no pair added, none dropped.
-    const result = await routeArcRoster(model, CONTEXT, recordedCaller());
+    const result = await routeArcRoster(model, CONTEXT, recordedCaller(), (characterId) =>
+      a8BackgroundFor(model, characterId),
+    );
     expect(result.coveredPairs).toEqual(intersection);
     expect(result.arcs.map((a) => ({ characterId: a.characterId, routeId: a.routeId }))).toEqual(
       intersection,
@@ -116,7 +126,9 @@ describe("clause 1 — the pair set equals the deterministic character-by-route 
 
   it("PROOF: every arc is a route-scoped character-route-arc bound to its subject", async () => {
     const { model } = fixture();
-    const result = await routeArcRoster(model, CONTEXT, recordedCaller());
+    const result = await routeArcRoster(model, CONTEXT, recordedCaller(), (characterId) =>
+      a8BackgroundFor(model, characterId),
+    );
     for (const { characterId, routeId, arc } of result.arcs) {
       expect(arc.kind).toBe("character-route-arc");
       expect(arc.subject).toEqual({ kind: "character", id: characterId });
@@ -125,6 +137,19 @@ describe("clause 1 — the pair set equals the deterministic character-by-route 
       expect(arc.lang).toBe(model.sourceLanguage);
       const body = arc.kind === "character-route-arc" ? arc.body : null;
       expect(body!.routeId).toBe(routeId);
+      expect(arc.provisional).toBe(true);
+      expect(arc.dependencies).toEqual([
+        {
+          upstreamObjectId: `character-background:${characterId}`,
+          upstreamVersion: 1,
+          claimId: null,
+          fieldPath: ["relationships"],
+          renderingId: null,
+          scope: { kind: "route", routeId },
+          fromPlayOrder: null,
+          throughPlayOrder: null,
+        },
+      ]);
       // Every claim on the arc is route-scoped and resolves against the snapshot.
       for (const claim of arc.claims) expect(claim.scope).toEqual({ kind: "route", routeId });
       expect(() => validateWikiObjectClaims(arc, model)).not.toThrow();
@@ -160,6 +185,7 @@ describe("clause 1 — the pair set equals the deterministic character-by-route 
     );
     const { spec } = buildA9CallSpec(model, CONTEXT, {
       evidence,
+      background: a8BackgroundFor(model, character.characterId),
       windowUnitIds,
       sourceLanguage: model.sourceLanguage,
     });
@@ -168,9 +194,38 @@ describe("clause 1 — the pair set equals the deterministic character-by-route 
 
   it("PROOF: an empty character index fails loud (never a silent zero-arc pass)", async () => {
     const { model } = buildClaimFixture();
-    await expect(routeArcRoster(model, CONTEXT, recordedCaller())).rejects.toThrow(
-      /empty-character-index/u,
-    );
+    await expect(
+      routeArcRoster(model, CONTEXT, recordedCaller(), () => {
+        throw new Error("must not resolve a background for an empty character index");
+      }),
+    ).rejects.toThrow(/empty-character-index/u);
+  });
+});
+
+describe("clause 4 — A9 consumes a verified A8 relationship baseline", () => {
+  it("PROOF: a foreign-snapshot A8 background is REJECTED before it can become a dependency", () => {
+    const { model, snapshot } = fixture();
+    const character = characterIndex(model)[0]!;
+    const evidence = readCharacterRouteEvidence(model, CONTEXT, character, "route-a");
+    const foreign = {
+      ...a8BackgroundFor(model, character.characterId),
+      provenance: {
+        ...a8BackgroundFor(model, character.characterId).provenance,
+        contextSnapshotId: `sha256:${"f".repeat(64)}`,
+      },
+    };
+    expect(() =>
+      assembleCharacterRouteArc(model, CONTEXT, character, evidence, foreign, {
+        shifts: [
+          {
+            stateBefore: "a",
+            stateAfter: "b",
+            fromEvidenceId: unitFactIdAt(snapshot, 0),
+            toEvidenceId: unitFactIdAt(snapshot, 2),
+          },
+        ],
+      }),
+    ).toThrow(/unverified-background/u);
   });
 });
 

@@ -149,6 +149,9 @@ describe("clause 1 — voice profiles are addressable by character/counterpart/r
     expect(ai.kind).toBe("voice-profile");
     expect(ai.objectId).toBe(voiceProfileObjectId("nam-11"));
     expect(ai.subject).toEqual({ kind: "character", id: "nam-11" });
+    // Voice is an analyst interpretation over immutable facts, never a
+    // self-accepted fact.  Wiki acceptance may later promote or supersede it.
+    expect(ai.provisional).toBe(true);
     const body = ai.kind === "voice-profile" ? ai.body : null;
     // CHARACTER dimension: base register + pronoun.
     expect(body!.base.register).toBe("だ・である（素）");

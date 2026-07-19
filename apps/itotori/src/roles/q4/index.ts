@@ -30,7 +30,9 @@ export {
   type Q4Messages,
 } from "./prompt.js";
 export {
+  Q4RouteError,
   Q4RubricScopeError,
+  assertCertifiedContinuityRoute,
   assertContinuityOnlyToolGrant,
   buildQ4CallSpec,
   q4ContinuityToolGrant,

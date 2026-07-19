@@ -5,13 +5,20 @@ use serde_json::Value;
 
 use crate::{
     ApproximationTier, EvidenceTier, FidelityTier, ReplayLog, RunnerCancellation,
-    RuntimeCapability, RuntimeCapabilityContract, RuntimeVfs, SnapshotRef, UtsushiResult,
+    RuntimeArtifactRoot, RuntimeCapability, RuntimeCapabilityContract, RuntimeVfs, SnapshotRef,
+    UtsushiResult,
 };
 
 #[derive(Clone)]
 pub struct RuntimeRequest<'a> {
     pub input_root: &'a Path,
+    /// Legacy raw capture-root path. Prefer [`Self::managed_artifact_root`]
+    /// for code that needs the managed-root capability.
     pub artifact_root: Option<&'a Path>,
+    /// Managed artifact root for ports that need runner-enforced capture
+    /// containment. When present, this takes precedence over the legacy raw
+    /// [`Self::artifact_root`] path.
+    pub managed_artifact_root: Option<&'a RuntimeArtifactRoot>,
     /// Optional operation-specific parameters for registry-routed extension
     /// operations. Core trace/capture/smoke paths ignore this field.
     pub parameters: Option<Value>,
@@ -50,6 +57,10 @@ impl std::fmt::Debug for RuntimeRequest<'_> {
             .debug_struct("RuntimeRequest")
             .field("input_root", &self.input_root)
             .field("artifact_root", &self.artifact_root)
+            .field(
+                "managed_artifact_root",
+                &self.managed_artifact_root.map(RuntimeArtifactRoot::path),
+            )
             .field("parameters", &self.parameters)
             .field("vfs", &self.vfs.as_ref().map(|_| "Arc<dyn RuntimeVfs>"))
             .field("replay", &self.replay.as_ref().map(|_| "Arc<ReplayLog>"))
@@ -74,6 +85,7 @@ impl<'a> RuntimeRequest<'a> {
         Self {
             input_root,
             artifact_root: None,
+            managed_artifact_root: None,
             parameters: None,
             vfs: None,
             replay: None,
@@ -84,6 +96,14 @@ impl<'a> RuntimeRequest<'a> {
 
     pub fn with_artifact_root(mut self, artifact_root: &'a Path) -> Self {
         self.artifact_root = Some(artifact_root);
+        self
+    }
+
+    /// Supply the managed artifact-root capability used by an
+    /// [`crate::EnginePortAdapter`]. The legacy raw-path field remains
+    /// available for existing `RuntimeAdapter` callers.
+    pub fn with_managed_artifact_root(mut self, artifact_root: &'a RuntimeArtifactRoot) -> Self {
+        self.managed_artifact_root = Some(artifact_root);
         self
     }
 
