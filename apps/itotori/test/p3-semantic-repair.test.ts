@@ -15,7 +15,7 @@ import {
 import { sha256 } from "../src/llm/canonical-json.js";
 import { deepSeekV4FlashProfile } from "../src/llm/role-model-profiles.js";
 import type { MeasuredModelProfile } from "../src/llm/physical-attempt-policy.js";
-import { specialistFor } from "../src/roster/index.js";
+import { specialistFor, toolsForRole } from "../src/roster/index.js";
 import {
   assertBlindedGroundedFork,
   assertRepairPatchBatch,
@@ -245,6 +245,25 @@ function request(cands: readonly RepairCandidateUnit[]): RepairRequest {
     candidateBatchId: PARENT_BATCH,
     candidates: cands,
     bibleRenderingIds: BIBLE,
+    preDraftContext: {
+      sourceFacts: cands.map((candidate) => ({
+        unitId: candidate.unitId,
+        sourceHash: candidate.sourceHash,
+        sourceSkeleton: candidate.sourceSkeleton,
+        protectedPlaceholders: candidate.protectedPlaceholders,
+        surfaceKind: candidate.surfaceKind ?? null,
+        choiceContext: candidate.choiceContext ?? null,
+      })),
+      wikiFacts: cands.map((candidate) => ({
+        factId: `fact:${candidate.unitId}`,
+        kind: "meaning-evidence",
+        text: `Pinned meaning evidence for ${candidate.unitId}`,
+      })),
+      bible: BIBLE.map((renderingId) => ({
+        renderingId,
+        text: "Use neutral register for the heroine's dialogue.",
+      })),
+    },
     tripwires: ["do not add an honorific the source lacks"],
   };
 }
@@ -280,6 +299,7 @@ describe("P3 semantic repair — fresh blinded grounded fork", () => {
     expect(outcome.kind).toBe("repaired");
     if (outcome.kind !== "repaired") throw new Error("expected repaired");
     expect(outcome.resolution).toBe("repair");
+    expect(outcome.provisional).toBe(true);
     expect(outcome.patches.map((p) => p.unitId)).toEqual(cands.map((c) => c.unitId));
     expect(outcome.repairedDefectIds).toEqual(["defect:0", "defect:1"]);
 
@@ -325,6 +345,8 @@ describe("P3 semantic repair — fresh blinded grounded fork", () => {
     const seedText = call.payloads.get(userRef)!;
     expect(seedText).toContain(cands[0]!.sourceSkeleton);
     expect(seedText).toContain(BIBLE[0]);
+    expect(seedText).toContain("Pinned meaning evidence");
+    expect(seedText).toContain("Use neutral register");
     for (const key of [
       "authoredBy",
       "producedBy",
@@ -362,7 +384,7 @@ describe("P3 semantic repair — fresh blinded grounded fork", () => {
       ...call,
       payloads: new Map(call.payloads).set(
         userRef,
-        `{"authoredBy":"P1","bibleRenderingIds":["rendering:1"],"units":[{"sourceSkeleton":"s0"}]}`,
+        `{"authoredBy":"P1","preDraftContext":{"sourceFacts":[{"sourceSkeleton":"s0"}],"wikiFacts":[{}],"bible":[{}]},"units":[{"sourceSkeleton":"s0"}]}`,
       ),
     };
     expect(() => assertBlindedGroundedFork(leaked)).toThrow(RepairFinalizeError);
@@ -370,9 +392,21 @@ describe("P3 semantic repair — fresh blinded grounded fork", () => {
     // Tamper: drop the grounding (no bible / no source).
     const ungrounded = {
       ...call,
-      payloads: new Map(call.payloads).set(userRef, `{"bibleRenderingIds":[],"units":[]}`),
+      payloads: new Map(call.payloads).set(
+        userRef,
+        `{"preDraftContext":{"sourceFacts":[],"wikiFacts":[],"bible":[]},"units":[]}`,
+      ),
     };
     expect(() => assertBlindedGroundedFork(ungrounded)).toThrow(/not-grounded/u);
+
+    const rationaleLeak = {
+      ...call,
+      payloads: new Map(call.payloads).set(
+        userRef,
+        `{"priorRepairRationale":"try a synonym","preDraftContext":{"sourceFacts":[{"sourceSkeleton":"s0"}],"wikiFacts":[{}],"bible":[{}]},"units":[{"sourceSkeleton":"s0"}]}`,
+      ),
+    };
+    expect(() => assertBlindedGroundedFork(rationaleLeak)).toThrow(/prior repair rationale/u);
   });
 });
 
@@ -428,6 +462,50 @@ describe("P3 semantic repair — minimal patch, failed ids only", () => {
     } as DraftBatch;
     expect(() => assertRepairPatchBatch(normalized, kept)).not.toThrow();
   });
+
+  it("requires resolving finding evidence and preserves Shift-JIS and choice-label encoding", () => {
+    const choice = {
+      ...candidate(0),
+      surfaceKind: "choice_label",
+      choiceContext: {
+        choiceId: "choice:6010",
+        optionIndex: 0,
+        branchTargetSceneId: "scene:6011",
+      },
+    } as const;
+    const normalized = normalizeRepairRequest(request([choice]));
+    const batch = repairPatchBatch([choice], [choice.unitId]);
+    expect(() => assertRepairPatchBatch(normalized, batch)).not.toThrow();
+
+    const ungroundedPatch = {
+      ...batch,
+      drafts: [{ ...batch.drafts[0]!, evidenceIds: ["fact:unrelated"] }],
+    } as DraftBatch;
+    expect(() => assertRepairPatchBatch(normalized, ungroundedPatch)).toThrow(
+      /resolving-evidence/u,
+    );
+
+    const nonSjis = {
+      ...batch,
+      drafts: [{ ...batch.drafts[0]!, targetSkeleton: "🙂" }],
+    } as DraftBatch;
+    expect(() => assertRepairPatchBatch(normalized, nonSjis)).toThrow(/encoding/u);
+
+    const splitChoice = {
+      ...batch,
+      drafts: [{ ...batch.drafts[0]!, targetSkeleton: "First\nSecond" }],
+    } as DraftBatch;
+    expect(() => assertRepairPatchBatch(normalized, splitChoice)).toThrow(/choice-encoding/u);
+  });
+
+  it("uses P3's immutable localizer profile and its live semantic validator", () => {
+    const p3 = specialistFor("P3");
+    expect(p3.shape).toBe("localizer");
+    expect(p3.version).toBe("itotori.role.P3.v2");
+    expect(p3.tools).toEqual(toolsForRole("P3"));
+    expect(p3.limits.maxSteps).toBe(1);
+    expect(p3.validate(undefined)).not.toEqual([]);
+  });
 });
 
 describe("P3 semantic repair — bounded to one repair", () => {
@@ -468,6 +546,11 @@ describe("P3 semantic repair — bounded to one repair", () => {
     expect(second.route).toBe("adjudication");
     expect(second.resolution).toBe("adjudication");
     expect(second.defectIds).toEqual(["defect:0"]);
+    expect(second.humanReviewArtifact).toMatchObject({
+      kind: "semantic-repair-exhausted",
+      defectBundleId: BUNDLE_ID,
+      repairPassLimit: 1,
+    });
     expect(secondCaptured).toHaveLength(0);
   });
 });

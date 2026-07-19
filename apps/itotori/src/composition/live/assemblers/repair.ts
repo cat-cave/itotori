@@ -146,6 +146,8 @@ function repairCandidate(
       kind: placeholder.kind,
       sourceText: placeholder.sourceText,
     })),
+    surfaceKind: fact.surfaceKind,
+    choiceContext: fact.choiceContext,
     currentTargetSkeleton: drafted.draft.targetSkeleton,
   };
 }
@@ -160,11 +162,42 @@ export function buildRepairRequest(input: {
 }): RepairRequest {
   const drafts = draftsByUnit(input.scene);
   const { batchId, localizationSnapshotId } = batchIdentity(input.scene);
+  const candidates = input.unitIds.map((unitId) => repairCandidate(unitId, drafts, input.facts));
+  const bibleRenderingIds = implicatedBibleRenderingIds(input.unitIds, drafts);
+  const wikiFacts = input.defects.flatMap((defect) =>
+    defect.evidenceIds.map((factId) => ({
+      factId,
+      kind: defect.category,
+      // The assembler never manufactures a review rationale. This is the
+      // exact, traceable fact reference; the repair separately receives the
+      // review's span/evidence/constraint bundle.
+      text: `Pinned evidence reference ${factId}`,
+    })),
+  );
   return {
     defectBundle: repairBundle(input.defects, batchId, localizationSnapshotId),
     candidateBatchId: batchId,
-    candidates: input.unitIds.map((unitId) => repairCandidate(unitId, drafts, input.facts)),
-    bibleRenderingIds: implicatedBibleRenderingIds(input.unitIds, drafts),
+    candidates,
+    bibleRenderingIds,
+    preDraftContext: {
+      sourceFacts: candidates.map((candidate) => ({
+        unitId: candidate.unitId,
+        sourceHash: candidate.sourceHash,
+        sourceSkeleton: candidate.sourceSkeleton,
+        protectedPlaceholders: candidate.protectedPlaceholders,
+        surfaceKind: candidate.surfaceKind ?? null,
+        choiceContext: candidate.choiceContext ?? null,
+      })),
+      wikiFacts,
+      // This pure composition projection has immutable localized-Wiki handles
+      // rather than a second mutable author thread. The role receives the
+      // pinned rendering id (and its explicit reference label) as bible ground;
+      // richer rendered text is preserved when a caller supplies it directly.
+      bible: bibleRenderingIds.map((renderingId) => ({
+        renderingId,
+        text: `Pinned localized-bible rendering ${renderingId}`,
+      })),
+    },
     tripwires: [],
   };
 }

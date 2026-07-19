@@ -29,8 +29,48 @@ export interface RepairCandidateUnit {
   readonly sourceHash: string;
   readonly sourceSkeleton: string;
   readonly protectedPlaceholders: readonly RepairPlaceholder[];
+  /** The source surface is a deterministic fact.  A choice label carries its
+   * choice encoding through the repair even though a Draft never authors that
+   * topology itself. */
+  readonly surfaceKind?: string;
+  readonly choiceContext?: {
+    readonly choiceId: string;
+    readonly optionIndex: number;
+    readonly branchTargetSceneId: string | null;
+  } | null;
   /** The current target that failed review — presented without attribution. */
   readonly currentTargetSkeleton: string;
+}
+
+/** A pinned source record handed to the fresh fork before it drafts.  It is a
+ * projection of decode facts, never model-authored context. */
+export interface RepairSourceContext {
+  readonly unitId: string;
+  readonly sourceHash: string;
+  readonly sourceSkeleton: string;
+  readonly protectedPlaceholders: readonly RepairPlaceholder[];
+  readonly surfaceKind: string | null;
+  readonly choiceContext: RepairCandidateUnit["choiceContext"];
+}
+
+/** A readable source/wiki fact selected before drafting.  The repair receives
+ * facts and rendered bible entries, not the earlier repair's private rationale. */
+export interface RepairWikiContext {
+  readonly factId: string;
+  readonly kind: string;
+  readonly text: string;
+}
+
+export interface RepairBibleContext {
+  readonly renderingId: string;
+  readonly text: string;
+}
+
+/** The complete pre-draft ground for the blind fork. */
+export interface RepairPreDraftContext {
+  readonly sourceFacts: readonly RepairSourceContext[];
+  readonly wikiFacts: readonly RepairWikiContext[];
+  readonly bible: readonly RepairBibleContext[];
 }
 
 /** The material-meaning defect the fork must repair, distilled from the bundle. */
@@ -55,6 +95,8 @@ export interface RepairRequest {
   readonly candidates: readonly RepairCandidateUnit[];
   /** Localized-bible rendering ids the patch must cite (the wiki-first ground). */
   readonly bibleRenderingIds: readonly string[];
+  /** Pinned pre-draft source, wiki, and rendered-bible context. */
+  readonly preDraftContext: RepairPreDraftContext;
   /** Diagnostic tripwires the repair must not trip (e.g. deterministic gates). */
   readonly tripwires: readonly string[];
 }
@@ -69,6 +111,8 @@ export interface NormalizedRepair {
   readonly defects: readonly RepairDefect[];
   readonly defectsByUnit: ReadonlyMap<string, readonly RepairDefect[]>;
   readonly bibleRenderingIds: readonly string[];
+  /** The fully materialized, blinded pre-draft source/wiki/bible ground. */
+  readonly preDraftContext: RepairPreDraftContext;
   readonly tripwires: readonly string[];
 }
 
@@ -77,7 +121,9 @@ export type RepairFailureCode =
   | "no-defects"
   | "duplicate-candidate"
   | "candidate-passing-unit"
-  | "defect-without-candidate";
+  | "defect-without-candidate"
+  | "invalid-pre-draft-context"
+  | "blinding-leak";
 
 /** A loud, typed refusal from repair normalization. */
 export class RepairError extends Error {
@@ -90,6 +136,100 @@ export class RepairError extends Error {
   }
 }
 
+/** Keys whose presence would disclose an author identity or a prior repair's
+ * reasoning.  Constraints/evidence are allowed; retrospective rationale is
+ * not.  Keep this local to P3 so the role has no dependency on reviewer code. */
+const FORBIDDEN_BLINDED_KEYS = new Set([
+  "author",
+  "authorid",
+  "authoredby",
+  "producedby",
+  "producingrole",
+  "authorrole",
+  "authormodel",
+  "priormodel",
+  "provider",
+  "providerid",
+  "priorauthor",
+  "priorrepairrationale",
+  "repairrationale",
+  "priorrationale",
+]);
+
+function assertNoBlindingLeak(value: unknown, path = "$"): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertNoBlindingLeak(item, `${path}[${index}]`));
+    return;
+  }
+  if (value === null || typeof value !== "object") return;
+  for (const [key, child] of Object.entries(value)) {
+    if (FORBIDDEN_BLINDED_KEYS.has(key.toLowerCase())) {
+      throw new RepairError("blinding-leak", `forbidden blinded field ${path}.${key}`);
+    }
+    assertNoBlindingLeak(child, `${path}.${key}`);
+  }
+}
+
+function sameIds(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
+function validatePreDraftContext(
+  supplied: RepairPreDraftContext,
+  candidates: readonly RepairCandidateUnit[],
+  bibleRenderingIds: readonly string[],
+): RepairPreDraftContext {
+  assertNoBlindingLeak(supplied);
+  const sourceById = new Map<string, RepairSourceContext>();
+  for (const source of supplied.sourceFacts) {
+    if (sourceById.has(source.unitId)) {
+      throw new RepairError("invalid-pre-draft-context", `duplicate source fact ${source.unitId}`);
+    }
+    sourceById.set(source.unitId, source);
+  }
+  if (
+    !sameIds(
+      supplied.sourceFacts.map((source) => source.unitId),
+      candidates.map((c) => c.unitId),
+    )
+  ) {
+    throw new RepairError(
+      "invalid-pre-draft-context",
+      "pre-draft source facts must be exactly the failed candidates in order",
+    );
+  }
+  for (const candidate of candidates) {
+    const source = sourceById.get(candidate.unitId)!;
+    if (
+      source.sourceHash !== candidate.sourceHash ||
+      source.sourceSkeleton !== candidate.sourceSkeleton
+    ) {
+      throw new RepairError(
+        "invalid-pre-draft-context",
+        `source context for ${candidate.unitId} disagrees with its candidate`,
+      );
+    }
+  }
+  if (supplied.wikiFacts.length === 0) {
+    throw new RepairError("invalid-pre-draft-context", "pre-draft wiki context is empty");
+  }
+  if (
+    !sameIds(
+      supplied.bible.map((entry) => entry.renderingId),
+      bibleRenderingIds,
+    )
+  ) {
+    throw new RepairError(
+      "invalid-pre-draft-context",
+      "rendered bible entries must exactly match the cited rendering ids",
+    );
+  }
+  if (supplied.bible.some((entry) => entry.text.trim().length === 0)) {
+    throw new RepairError("invalid-pre-draft-context", "a rendered bible entry is blank");
+  }
+  return supplied;
+}
+
 /**
  * Normalize a repair request. Fails loud when the bundle does not demand a
  * repair, when it names no defect, when a candidate is duplicated, when a
@@ -97,6 +237,7 @@ export class RepairError extends Error {
  * scope), or when a defect names a unit that has no candidate.
  */
 export function normalizeRepairRequest(request: RepairRequest): NormalizedRepair {
+  assertNoBlindingLeak(request);
   const bundle = request.defectBundle;
   if (bundle.resolution !== "repair") {
     throw new RepairError(
@@ -151,6 +292,11 @@ export function normalizeRepairRequest(request: RepairRequest): NormalizedRepair
 
   // Failed unit ids in candidate order — the exact, ordered scope of the patch.
   const failedUnitIds = request.candidates.map((candidate) => candidate.unitId);
+  const preDraftContext = validatePreDraftContext(
+    request.preDraftContext,
+    request.candidates,
+    request.bibleRenderingIds,
+  );
 
   return {
     defectBundleId: bundle.bundleId,
@@ -161,6 +307,7 @@ export function normalizeRepairRequest(request: RepairRequest): NormalizedRepair
     defects,
     defectsByUnit,
     bibleRenderingIds: [...request.bibleRenderingIds],
+    preDraftContext,
     tripwires: [...request.tripwires],
   };
 }

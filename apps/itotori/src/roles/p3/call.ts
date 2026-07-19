@@ -15,12 +15,16 @@
 // no provider client and performs no network I/O. `dispatchRepairCall` hands the
 // spec to the single ZDR boundary.
 
-import { CALL_SPEC_SCHEMA_VERSION, DRAFT_BATCH_SCHEMA_VERSION } from "../../contracts/index.js";
+import {
+  CALL_SPEC_SCHEMA_VERSION,
+  DRAFT_BATCH_SCHEMA_VERSION,
+  assertNoProviderPin,
+} from "../../contracts/index.js";
 import type { CallResult, CallSpec } from "../../contracts/index.js";
-import { sha256 } from "../../llm/canonical-json.js";
+import { canonicalJson, sha256 } from "../../llm/canonical-json.js";
 import { deepSeekV4FlashProfile } from "../../llm/role-model-profiles.js";
 import { dispatch, type DispatchRuntime } from "../../llm/dispatch.js";
-import type { Specialist } from "../../roster/index.js";
+import { specialistFor, type Specialist } from "../../roster/index.js";
 import type { NormalizedRepair } from "./normalize.js";
 
 type ConversationMessage = CallSpec["messages"][number];
@@ -53,7 +57,9 @@ interface DraftableMessage {
 
 /** The grounded, blinded seed. Each failing unit carries its source skeleton and
  * protected placeholders (the ground), its anonymous current candidate, and the
- * exact defects to repair. There is deliberately no author attribution. */
+ * exact defects to repair. `preDraftContext` carries the source/wiki/bible facts
+ * the original localizer had before drafting. There is deliberately no author
+ * attribution and no previous repair rationale. */
 function buildMessages(input: BuildRepairCallInput): readonly DraftableMessage[] {
   const { normalized } = input;
   const units = normalized.failedUnitIds.map((unitId) => {
@@ -71,6 +77,8 @@ function buildMessages(input: BuildRepairCallInput): readonly DraftableMessage[]
       sourceHash: candidate.sourceHash,
       sourceSkeleton: candidate.sourceSkeleton,
       protectedPlaceholders: candidate.protectedPlaceholders,
+      surfaceKind: candidate.surfaceKind ?? null,
+      choiceContext: candidate.choiceContext ?? null,
       candidate: candidate.currentTargetSkeleton,
       defects,
     };
@@ -82,6 +90,7 @@ function buildMessages(input: BuildRepairCallInput): readonly DraftableMessage[]
     defectBundleId: normalized.defectBundleId,
     failedUnitIds: normalized.failedUnitIds,
     bibleRenderingIds: normalized.bibleRenderingIds,
+    preDraftContext: normalized.preDraftContext,
     localizationSnapshotId: normalized.localizationSnapshotId,
     tripwires: normalized.tripwires,
     units,
@@ -147,7 +156,10 @@ export function buildRepairCall(input: BuildRepairCallInput): RepairCall {
     reasoning: input.specialist.reasoning,
     sampling: { temperature: 0, topP: 1, seed: null },
     limits: {
-      maxSteps: 2,
+      // The fresh fork gets exactly ONE response. A rejected repair does not
+      // become a second prompt/response pair; `repairSemanticDefects` routes it
+      // to adjudication with a human-review artifact instead.
+      maxSteps: 1,
       maxToolCalls: 0,
       maxParallelTools: 1,
       maxOutputTokens: input.specialist.limits.maxOutputTokens,
@@ -162,12 +174,39 @@ export function buildRepairCall(input: BuildRepairCallInput): RepairCall {
 
 export type RepairRuntimeBase = Omit<DispatchRuntime, "readPayload">;
 
+/** Bind P3 to its RB-019 profile and the account-wide ZDR fallback policy in
+ * every run mode. The shared dispatcher deliberately relaxes its route check in
+ * test-dev, so this guard is the role-level proof that a forged P3 call cannot
+ * reach a provider in any mode. */
+export function assertCertifiedP3Route(spec: CallSpec): void {
+  const specialist = specialistFor("P3");
+  const actual = {
+    roleId: spec.roleId,
+    modelProfile: spec.modelProfile,
+    modelProfileVersion: spec.modelProfileVersion,
+    requestedModel: spec.requestedModel,
+    providerPolicy: spec.providerPolicy,
+  };
+  const expected = {
+    roleId: "P3",
+    modelProfile: specialist.modelProfile,
+    modelProfileVersion: deepSeekV4FlashProfile.version,
+    requestedModel: deepSeekV4FlashProfile.model,
+    providerPolicy: deepSeekV4FlashProfile.providerPolicy,
+  };
+  if (canonicalJson(actual) !== canonicalJson(expected)) {
+    throw new Error("p3 dispatch: route is not the certified deepseek-v4-flash profile");
+  }
+  assertNoProviderPin(spec.providerPolicy);
+}
+
 /** Dispatch a built repair call through the SOLE ZDR boundary, resolving the
  * call's plaintext payloads. This is the only place the role reaches the model. */
 export async function dispatchRepairCall(
   call: RepairCall,
   runtime: RepairRuntimeBase,
 ): Promise<CallResult> {
+  assertCertifiedP3Route(call.spec);
   const readPayload: DispatchRuntime["readPayload"] = async (reference) => {
     const content = call.payloads.get(reference.storageRef);
     if (content === undefined) {

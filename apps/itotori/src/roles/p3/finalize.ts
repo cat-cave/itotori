@@ -12,6 +12,7 @@
 // never a repaired or fabricated result.
 
 import type { Draft, DraftBatch } from "../../contracts/index.js";
+import { firstNonSjisCodePoint } from "../../gates/shift-jis.js";
 import { REPAIR_MODE, type RepairCall } from "./call.js";
 import type { NormalizedRepair } from "./normalize.js";
 
@@ -27,7 +28,11 @@ export type RepairFinalizeCode =
   | "passing-id-patch"
   | "patch-order"
   | "source-hash"
-  | "protected-span";
+  | "protected-span"
+  | "encoding"
+  | "choice-encoding"
+  | "basis-mismatch"
+  | "resolving-evidence";
 
 export class RepairFinalizeError extends Error {
   constructor(
@@ -43,10 +48,42 @@ function idsEqual(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-// Keys that would attribute the candidate to its author — a blinded fork must
-// carry none of them. The fork is blinded to prior author identity.
-const AUTHOR_IDENTITY_KEY =
-  /"(?:authoredBy|producedBy|producingRole|authorRole|authorModel|priorAuthor)"/u;
+// Keys that would attribute the candidate to its author or disclose the prior
+// repair's reasoning. The fork is blinded to both. Keys are inspected in parsed
+// JSON rather than by substring so the P3 instructions may state this policy.
+const FORBIDDEN_BLINDED_KEYS = new Set([
+  "author",
+  "authorid",
+  "authoredby",
+  "producedby",
+  "producingrole",
+  "authorrole",
+  "authormodel",
+  "priormodel",
+  "provider",
+  "providerid",
+  "priorauthor",
+  "priorrepairrationale",
+  "repairrationale",
+  "priorrationale",
+]);
+
+function findForbiddenBlindedKey(value: unknown, path = "$"): string | null {
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      const found = findForbiddenBlindedKey(item, `${path}[${index}]`);
+      if (found !== null) return found;
+    }
+    return null;
+  }
+  if (value === null || typeof value !== "object") return null;
+  for (const [key, child] of Object.entries(value)) {
+    if (FORBIDDEN_BLINDED_KEYS.has(key.toLowerCase())) return `${path}.${key}`;
+    const found = findForbiddenBlindedKey(child, `${path}.${key}`);
+    if (found !== null) return found;
+  }
+  return null;
+}
 
 /** Assert the built call is a fresh, blinded, grounded fork: exactly a system
  * turn and one user turn (no author-thread assistant turn), no author-identity
@@ -62,26 +99,40 @@ export function assertBlindedGroundedFork(call: RepairCall): void {
       `a fresh fork is [system, user], not [${roles.join(", ")}]`,
     );
   }
-  for (const content of call.payloads.values()) {
-    if (AUTHOR_IDENTITY_KEY.test(content)) {
-      throw new RepairFinalizeError(
-        "author-identity-leak",
-        "the fork must be blinded to who authored the candidate",
-      );
-    }
-  }
   const userMessage = call.spec.messages.find(
     (message) => message.kind === "text" && message.role === "user",
   );
   const seedRef =
     userMessage?.kind === "text" ? userMessage.contentEncrypted.storageRef : undefined;
   const seedText = seedRef ? call.payloads.get(seedRef) : undefined;
-  const seed = seedText ? (JSON.parse(seedText) as Record<string, unknown>) : undefined;
-  const bible = seed?.["bibleRenderingIds"];
+  let seed: Record<string, unknown> | undefined;
+  try {
+    seed = seedText ? (JSON.parse(seedText) as Record<string, unknown>) : undefined;
+  } catch {
+    throw new RepairFinalizeError("not-grounded", "the grounded seed is not valid JSON");
+  }
+  const leak = findForbiddenBlindedKey(seed);
+  if (leak !== null) {
+    throw new RepairFinalizeError(
+      "author-identity-leak",
+      `the fork must be blinded to author identity and prior repair rationale (${leak})`,
+    );
+  }
+  const preDraft = seed?.["preDraftContext"] as
+    | {
+        sourceFacts?: unknown;
+        wikiFacts?: unknown;
+        bible?: unknown;
+      }
+    | undefined;
   const units = seed?.["units"];
   const grounded =
-    Array.isArray(bible) &&
-    bible.length > 0 &&
+    Array.isArray(preDraft?.sourceFacts) &&
+    preDraft.sourceFacts.length > 0 &&
+    Array.isArray(preDraft.wikiFacts) &&
+    preDraft.wikiFacts.length > 0 &&
+    Array.isArray(preDraft.bible) &&
+    preDraft.bible.length > 0 &&
     Array.isArray(units) &&
     units.length > 0 &&
     units.every(
@@ -90,7 +141,7 @@ export function assertBlindedGroundedFork(call: RepairCall): void {
   if (!grounded) {
     throw new RepairFinalizeError(
       "not-grounded",
-      "the fork must be grounded in source skeletons and the localized bible",
+      "the fork must be grounded in pre-draft source, wiki, and localized-bible context",
     );
   }
 }
@@ -188,6 +239,46 @@ export function assertRepairPatchBatch(
           `unit ${draft.unitId} fabricated placeholder ${id}`,
         );
       }
+    }
+    const offending = firstNonSjisCodePoint(draft.targetSkeleton);
+    if (offending !== null) {
+      throw new RepairFinalizeError(
+        "encoding",
+        `unit ${draft.unitId} target contains ${offending.label} (${offending.reason})`,
+      );
+    }
+    if (
+      candidate.surfaceKind === "choice_label" &&
+      (candidate.choiceContext === undefined || candidate.choiceContext === null)
+    ) {
+      throw new RepairFinalizeError(
+        "choice-encoding",
+        `choice-label unit ${draft.unitId} is missing its deterministic choice context`,
+      );
+    }
+    if (candidate.surfaceKind === "choice_label" && /[\r\n]/u.test(draft.targetSkeleton)) {
+      throw new RepairFinalizeError(
+        "choice-encoding",
+        `choice-label unit ${draft.unitId} must remain one encoded choice label`,
+      );
+    }
+    if (
+      draft.basis.kind !== "wiki-first" ||
+      !idsEqual(draft.basis.bibleRenderingIds, normalized.bibleRenderingIds)
+    ) {
+      throw new RepairFinalizeError(
+        "basis-mismatch",
+        `unit ${draft.unitId} patch basis is not the exact localized-bible ground`,
+      );
+    }
+    const resolvingEvidence = new Set(
+      (normalized.defectsByUnit.get(draft.unitId) ?? []).flatMap((defect) => defect.evidenceIds),
+    );
+    if (!draft.evidenceIds.some((evidenceId) => resolvingEvidence.has(evidenceId))) {
+      throw new RepairFinalizeError(
+        "resolving-evidence",
+        `unit ${draft.unitId} patch cites no evidence from its failed finding`,
+      );
     }
   }
   return batch.drafts;

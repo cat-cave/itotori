@@ -34,6 +34,9 @@ export interface RepairOptions {
 
 export interface RepairedOutcome {
   readonly kind: "repaired";
+  /** P3 patches remain candidates until the implicated gates/Q1 rerun accepts
+   * them; semantic repair never finalizes output on its own. */
+  readonly provisional: true;
   readonly batch: DraftBatch;
   readonly patches: readonly Draft[];
   /** The defect ids this repair consumed — fold them into the ledger. */
@@ -48,6 +51,16 @@ export interface RoutedOutcome {
   readonly route: "adjudication";
   readonly defectIds: readonly string[];
   readonly reason: string;
+  /** Persistable, traceable evidence that the one P3 repair was exhausted. The
+   * workflow can give it to Q6 now or surface it to a human if adjudication
+   * cannot settle the material defect; P3 itself never starts a second pass. */
+  readonly humanReviewArtifact: {
+    readonly kind: "semantic-repair-exhausted";
+    readonly defectBundleId: string;
+    readonly defectIds: readonly string[];
+    readonly repairPassLimit: 1;
+    readonly reason: string;
+  };
   readonly resolution: "adjudication";
 }
 
@@ -86,11 +99,19 @@ export async function repairSemanticDefects(
   if (alreadyRepaired.length > 0) {
     // BOUNDED TO ONE: a second attempt on an already-repaired defect never
     // repairs again — it routes to the adjudicator (or a human) instead.
+    const reason = `defects already repaired once: ${alreadyRepaired.join(", ")}`;
     return {
       kind: "routed",
       route: "adjudication",
       defectIds: targetDefectIds,
-      reason: `defects already repaired once: ${alreadyRepaired.join(", ")}`,
+      reason,
+      humanReviewArtifact: {
+        kind: "semantic-repair-exhausted",
+        defectBundleId: normalized.defectBundleId,
+        defectIds: targetDefectIds,
+        repairPassLimit: 1,
+        reason,
+      },
       resolution: "adjudication",
     };
   }
@@ -114,6 +135,7 @@ export async function repairSemanticDefects(
 
   return {
     kind: "repaired",
+    provisional: true,
     batch,
     patches,
     repairedDefectIds: targetDefectIds,
