@@ -160,11 +160,11 @@ describe("live dispatch runtime — the sole ZDR boundary substrate", () => {
 
       expect(result.status).toBe("success");
       if (result.status !== "success") throw new Error("expected success");
-      // The served pair remains a recorded OUTPUT, never a routing input. No
-      // side-channel lookup is allowed while TanStack has not provided it.
+      // The served pair remains a recorded OUTPUT, never a routing input. The
+      // captured id permits post-hoc reconciliation, but does not confirm it.
       expect(result).toMatchObject({
         verification: "explicit-unknown",
-        generationId: unknownGenerationMetadata.generationId,
+        generationId: "generation:test",
         served: unknownGenerationMetadata.served,
       });
       // The wire request names NO upstream provider — only the certified model +
