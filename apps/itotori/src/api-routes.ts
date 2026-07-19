@@ -26,11 +26,7 @@ export type ItotoriApiBinaryRoute = {
   readonly summary: string;
   readonly pathParams: readonly string[];
   readonly contentType: "application/x-tar";
-  /**
-   * Non-default error statuses this route can return, beyond the shared 4xx/500
-   * envelope. The produce route declares 501 for the loud "not configured" case
-   * (the run-state produce-plan loader is an optional substrate port).
-   */
+  /** Non-default error statuses beyond the shared 4xx/500 envelope. */
   readonly additionalErrorStatuses?: readonly number[];
 };
 
@@ -657,8 +653,6 @@ export const ITOTORI_API_BINARY_ROUTES: Readonly<
     summary: "Produce a playable patched build from a run's accepted outputs and download it.",
     pathParams: [],
     contentType: "application/x-tar",
-    // 501 when the run-state produce-plan loader port is not wired in this build.
-    additionalErrorStatuses: [501],
   },
 };
 
