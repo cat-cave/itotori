@@ -13,7 +13,13 @@
 // grant, imports nothing from the legacy agents tree, and owns a private barrel a
 // sibling role never edits.
 
-import type { ContextScopeValue, RouteScope, RunModeValue } from "../../contracts/index.js";
+import type {
+  ContextScopeValue,
+  RouteScope,
+  RunModeValue,
+  WikiObject,
+} from "../../contracts/index.js";
+import type { A8CharacterBackground } from "./background.js";
 
 /** The A9 role id — the sole role this module configures. */
 export const A9_ROLE_ID = "A9" as const;
@@ -33,6 +39,7 @@ export type A9FailureCode =
   | "reversed-shift"
   | "degenerate-shift"
   | "coverage-gap"
+  | "unverified-background"
   | "route-not-certified"
   | "dispatch-failed";
 
@@ -110,6 +117,10 @@ export interface A9ArcDraft {
  * source language. */
 export interface A9ArcRequest {
   readonly evidence: CharacterRouteEvidence;
+  /** The provenance-verified A8 relationship baseline A9 interprets for this
+   * character on this route. It is recorded as an object/field dependency when
+   * the arc is assembled. */
+  readonly background: A8CharacterBackground;
   /** The occurrence-unit evidence ids the model may cite as shift endpoints, in
    * decoded play order. Real, route-visible units only — never a model list. */
   readonly windowUnitIds: readonly string[];
@@ -120,3 +131,6 @@ export interface A9ArcRequest {
  * through the sole ZDR dispatch boundary; in offline proofs a recorded responder
  * returns a fixed arc so the assembly is deterministic. */
 export type A9ModelCaller = (request: A9ArcRequest) => Promise<A9ArcDraft>;
+
+/** Resolves the accepted A8 relationship object for an indexed character. */
+export type A9BackgroundResolver = (characterId: string) => WikiObject;

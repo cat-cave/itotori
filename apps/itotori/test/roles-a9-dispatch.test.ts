@@ -40,6 +40,7 @@ import {
   unitFactIdAt,
   type FixtureCharacterSpec,
 } from "./support/claim-fixture.js";
+import { a8BackgroundFor } from "./support/a9-background-fixture.js";
 import { structuredProviderResponse } from "./llm-step-test-support.js";
 
 const A9_PROFILE: MeasuredModelProfile = {
@@ -150,7 +151,15 @@ function arcRequest(): {
   const windowUnitIds = routeOccurrenceWindow(model, evidence.sceneIds, "route-a").map(
     (u) => u.factId,
   );
-  return { model, request: { evidence, windowUnitIds, sourceLanguage: model.sourceLanguage } };
+  return {
+    model,
+    request: {
+      evidence,
+      background: a8BackgroundFor(model, character.characterId),
+      windowUnitIds,
+      sourceLanguage: model.sourceLanguage,
+    },
+  };
 }
 
 /** A genuine recorded arc object the "provider" returns — a valid character-route-
@@ -159,16 +168,23 @@ function recordedArc(model: ReturnType<typeof buildClaimFixture>["model"]): Wiki
   const { snapshot } = buildClaimFixture({ characters: CHARACTERS, scene2Routes: ["route-a"] });
   const character = characterIndex(model).find((c) => c.characterId === "nam-11")!;
   const evidence = readCharacterRouteEvidence(model, CONTEXT, character, "route-a");
-  return assembleCharacterRouteArc(model, CONTEXT, character, evidence, {
-    shifts: [
-      {
-        stateBefore: "よそよそしい",
-        stateAfter: "打ち解ける",
-        fromEvidenceId: unitFactIdAt(snapshot, 0),
-        toEvidenceId: unitFactIdAt(snapshot, 2),
-      },
-    ],
-  });
+  return assembleCharacterRouteArc(
+    model,
+    CONTEXT,
+    character,
+    evidence,
+    a8BackgroundFor(model, character.characterId),
+    {
+      shifts: [
+        {
+          stateBefore: "よそよそしい",
+          stateAfter: "打ち解ける",
+          fromEvidenceId: unitFactIdAt(snapshot, 0),
+          toEvidenceId: unitFactIdAt(snapshot, 2),
+        },
+      ],
+    },
+  );
 }
 
 describe("A9 dispatches through the sole ZDR boundary", () => {
@@ -183,6 +199,9 @@ describe("A9 dispatches through the sole ZDR boundary", () => {
     expect(spec.output.name).toBe("wiki-object");
     expect(spec.tools).toHaveLength(0);
     expect(spec.contextSnapshotId).toBe(model.snapshotId);
+    expect(promptsText(buildA9CallSpec(model, CONTEXT, request))).toContain(
+      "A8 relationship baseline",
+    );
     expect(() => CallSpecSchema.parse(spec)).not.toThrow();
   });
 
@@ -248,3 +267,7 @@ describe("A9 dispatches through the sole ZDR boundary", () => {
     );
   });
 });
+
+function promptsText(result: ReturnType<typeof buildA9CallSpec>): string {
+  return result.prompts.map((prompt) => prompt.text).join("\n");
+}

@@ -40,8 +40,9 @@ import {
   type A9Context,
   type A9ShiftDraft,
 } from "./types.js";
+import { verifyA8CharacterBackground } from "./background.js";
 
-const PROMPT_VERSION = "itotori.role.A9.prompt.v1";
+const PROMPT_VERSION = "itotori.role.A9.prompt.v2";
 
 /** A prompt payload paired with its content-addressed reference. */
 interface SealedPrompt {
@@ -94,6 +95,11 @@ function renderPrompt(request: A9ArcRequest): string {
     `Output kind: character-route-arc. Source language: ${request.sourceLanguage}. Author in the SOURCE LANGUAGE.`,
     `Character ${evidence.characterId} — decoded label is a FACT: ${evidence.decodedLabel}.`,
     `Route ${evidence.routeId} — this arc is scoped to this route ONLY.`,
+    `A8 relationship baseline (${request.background.objectId} v${request.background.version}):`,
+    ...request.background.body.relationships.map(
+      (relationship) =>
+        `  ${relationship.counterpartId}: ${relationship.relationship} (${relationship.scope.kind})`,
+    ),
     "Occurrence-unit evidence ids (in play order; bound each state shift by two of these):",
     ...request.windowUnitIds.map((id) => `  ${id}`),
   ].join("\n");
@@ -109,7 +115,8 @@ export function buildA9CallSpec(
 ): { spec: CallSpec; prompts: readonly SealedPrompt[] } {
   const specialist = specialistFor(A9_ROLE_ID);
   const evidence = request.evidence;
-  const promptText = renderPrompt(request);
+  const background = verifyA8CharacterBackground(model, evidence.characterId, request.background);
+  const promptText = renderPrompt({ ...request, background });
   const prompt = sealPrompt(`a9:arc:${evidence.characterId}:${evidence.routeId}`, promptText);
   const eventId = sha256(promptText);
   const spec: CallSpec = {

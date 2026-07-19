@@ -13,11 +13,13 @@ import type { ReadModel } from "../../read-tools/index.js";
 import type { WikiObject } from "../../contracts/index.js";
 
 import { assembleCharacterRouteArc } from "./assemble.js";
+import { verifyA8CharacterBackground } from "./background.js";
 import { characterIndex, readCharacterRouteEvidence } from "./characters.js";
 import { characterRouteIntersection, routeOccurrenceWindow } from "./intersection.js";
 import {
   A9RoleError,
   type A9Context,
+  type A9BackgroundResolver,
   type A9ModelCaller,
   type CharacterRoutePair,
 } from "./types.js";
@@ -47,6 +49,7 @@ export async function routeArcRoster(
   model: ReadModel,
   context: A9Context,
   modelCaller: A9ModelCaller,
+  backgroundFor: A9BackgroundResolver,
 ): Promise<A9RosterResult> {
   if (characterIndex(model).length === 0) {
     throw new A9RoleError("empty-character-index", "the snapshot carries no decoded characters");
@@ -60,15 +63,21 @@ export async function routeArcRoster(
   for (const pair of pairs) {
     const character = byId.get(pair.characterId)!;
     const evidence = readCharacterRouteEvidence(model, context, character, pair.routeId);
+    const background = verifyA8CharacterBackground(
+      model,
+      pair.characterId,
+      backgroundFor(pair.characterId),
+    );
     const windowUnitIds = routeOccurrenceWindow(model, evidence.sceneIds, pair.routeId).map(
       (unit) => unit.factId,
     );
     const draft = await modelCaller({
       evidence,
+      background,
       windowUnitIds,
       sourceLanguage: model.sourceLanguage,
     });
-    const arc = assembleCharacterRouteArc(model, context, character, evidence, draft);
+    const arc = assembleCharacterRouteArc(model, context, character, evidence, background, draft);
     arcs.push({ characterId: pair.characterId, routeId: pair.routeId, arc });
   }
 

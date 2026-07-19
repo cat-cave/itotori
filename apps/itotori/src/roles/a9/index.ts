@@ -18,6 +18,7 @@ export {
   A9_ROLE_ID,
   type A9ArcDraft,
   type A9ArcRequest,
+  type A9BackgroundResolver,
   type A9Context,
   type A9FailureCode,
   type A9ModelCaller,
@@ -25,6 +26,7 @@ export {
   type CharacterRouteEvidence,
   type CharacterRoutePair,
 } from "./types.js";
+export { verifyA8CharacterBackground, type A8CharacterBackground } from "./background.js";
 export { presenceClaimId, routeArcObjectId, shiftClaimId } from "./ids.js";
 export {
   characterRouteIntersection,
