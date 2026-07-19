@@ -1536,7 +1536,11 @@ dependencies = [
 name = "utsushi-kirikiri-xp3"
 version = "0.0.0"
 dependencies = [
+ "kaifuu-kirikiri",
+ "serde",
+ "serde_json",
  "utsushi-core",
+ "utsushi-kirikiri",
 ]
 
 [[package]]
