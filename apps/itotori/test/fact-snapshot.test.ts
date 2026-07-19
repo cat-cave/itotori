@@ -11,11 +11,13 @@ import { contextSnapshot, type LlmContextSnapshotInput, type LlmRevisionRef } fr
 import type { BridgeBundleV02, SpeakerContextV02 } from "@itotori/localization-bridge-schema";
 import { describe, expect, it, vi } from "vitest";
 
+import { UnitFactSchema } from "../src/contracts/index.js";
 import {
   buildFactSnapshot,
   contextSnapshotFactsFrom,
   serializeFactSnapshot,
 } from "../src/prepass/index.js";
+import { projectUnitFact } from "../src/read-tools/projection.js";
 import type { NarrativeScene, NarrativeStructure, NarrativeUnit } from "../src/structure/types.js";
 
 function loadBridgeBundle(): BridgeBundleV02 {
@@ -256,6 +258,41 @@ describe("buildFactSnapshot (deterministic pre-pass)", () => {
       (u) => u.bridgeUnitId === SCENE_1_CHOICE_A.bridgeUnitId,
     );
     expect(choice?.speaker).toEqual({ knowledgeState: "not_applicable" });
+  });
+
+  it("PROOF: known speaker with omitted textColor projects cleanly (no fabricated colour)", () => {
+    // RealLive keeps knowledgeState=known but omits textColor for an
+    // out-of-range #COLOR_TABLE row (contract-valid). Projection must not
+    // throw and must carry color: null — never invent a palette RGB.
+    const noColorSpeaker: SpeakerContextV02 = {
+      knowledgeState: "known",
+      speakerId: "01920000-0000-7000-8000-000000000001",
+      displayName: "Ren",
+      revealState: "revealed",
+      // intentionally no textColor
+    };
+    const bundle = loadBridgeBundle();
+    const units = bundle.units.map((unit) =>
+      unit.bridgeUnitId === SCENE_1_LINE.bridgeUnitId ? { ...unit, speaker: noColorSpeaker } : unit,
+    );
+    const stamped = { ...bundle, units };
+    const snapshot = buildFactSnapshot(wholeGameStructure(), stamped);
+    const ordered = snapshot.orderedUnits.find((u) => u.bridgeUnitId === SCENE_1_LINE.bridgeUnitId);
+    expect(ordered).toBeDefined();
+    expect(ordered!.speaker).toEqual(noColorSpeaker);
+    const bridgeUnit = stamped.units.find((u) => u.bridgeUnitId === SCENE_1_LINE.bridgeUnitId);
+    expect(bridgeUnit).toBeDefined();
+
+    const fact = projectUnitFact(ordered!, bridgeUnit!, snapshot.snapshotId);
+    expect(() => UnitFactSchema.parse(fact)).not.toThrow();
+    expect(fact.value.speaker).toEqual({
+      status: "known",
+      rawName: "Ren",
+      resolvedDisplayName: "Ren",
+      revealSafeLabel: "Ren",
+      canonicalCharacterId: "01920000-0000-7000-8000-000000000001",
+      color: null,
+    });
   });
 
   it("PROOF: changing any decode/bridge input yields a different snapshotId", () => {
