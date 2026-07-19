@@ -89,6 +89,14 @@ pub use xp3_plain::{
 };
 pub(crate) use xp3_plain::{PlainXp3FileChunk, PlainXp3Segment};
 
+mod xp3_real_bytes_roundtrip;
+pub use xp3_real_bytes_roundtrip::{
+    REAL_BYTES_XP3_SCHEMA_VERSION, REAL_BYTES_XP3_VARIANT, RealBytesXp3AdlerProof,
+    RealBytesXp3Archive, RealBytesXp3Entry, RealBytesXp3Segment, XP3_INDEX_ENCODING_RAW,
+    XP3_INDEX_ENCODING_ZLIB, read_real_bytes_xp3_archive, real_bytes_xp3_adler_proof,
+    repack_real_bytes_xp3_archive,
+};
+
 pub mod plain_xp3_smoke;
 pub mod registry;
 pub mod repro_bundle;
