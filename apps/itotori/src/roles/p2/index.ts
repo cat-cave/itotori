@@ -1,29 +1,28 @@
-// The P2 Line Editor role — a self-contained module. It consumes the roster
-// manifest read-only (the P2 line-editor specialist) and dispatches through the
-// single ZDR boundary; it owns no shared roster registry.
+// P2 Line Editor — a bounded author-thread continuation, not a fresh localizer
+// fork. This module exports only the role's typed scope, call, and deterministic
+// patch guards; it owns neither provider selection nor workflow/QA scheduling.
 export {
+  AUTHOR_CONTINUATION_MODE,
   deriveEditScope,
-  ScopeError,
-  type CurrentUnit,
+  EditScopeError,
+  type EditFailureCode,
   type EditScope,
-  type ImplicatedSource,
-  type ScopedDefect,
-  type ScopeFailureCode,
 } from "./scope.js";
 export {
+  assertExactAgainstSource,
+  assertPlaceholdersPreserved,
+  assertRepairPatchMatchesScope,
+  assertSjisPreserved,
+  FinalizeError,
+  mergePatch,
+  type FinalizeFailureCode,
+} from "./finalize.js";
+export {
+  assertCertifiedP2Route,
   buildEditCall,
   dispatchEditCall,
   type BuildEditCallInput,
   type EditCall,
   type EditorRuntimeBase,
 } from "./call.js";
-export {
-  assertExactAgainstSource,
-  assertPlaceholdersPreserved,
-  assertRepairPatchMatchesScope,
-  assertSjisPreserved,
-  mergePatch,
-  FinalizeError,
-  type FinalizeFailureCode,
-} from "./finalize.js";
-export { editLine, EditError, type EditLineInput, type LineEdit } from "./editor.js";
+export { editLine, EditError, type EditLineInput, type LineEditOutcome } from "./editor.js";

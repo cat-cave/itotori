@@ -1,228 +1,179 @@
-// Deriving the P2 Line Editor's EDIT SCOPE from the current draft plus the exact
-// changed basis: a defect bundle the trusted QA workflow raised against that
-// draft. The Line Editor is a MINOR-repair author continuation, so the scope is
-// exactly the IMPLICATED units the defects name — never the whole scene.
+// Normalize the P2 Line Editor's bounded author-continuation scope.
 //
-// Everything here is a pure, deterministic reduction of the current draft and
-// the defect bundle. Nothing calls a model. The inputs come from the cooperative
-// pipeline, so this is a plain typed coherence guard (not an adversarial proof):
-// it fails loud when the bundle does not describe THIS draft, when it is not a
-// repair bundle, or when an implicated unit lacks the source fact whose protected
-// placeholders and hash the OUTPUT patch must preserve. A non-repair bundle is
-// refused HERE, before any dispatch — the editor never blind-retranslates.
+// P2 never receives a whole scene as a drafting prompt.  It receives the
+// current batch only as a trusted parent and projects exactly the draft lines
+// implicated by a minor repair bundle.  This projection makes a blind
+// retranslation structurally unavailable to the call builder.
 
 import type { Defect, DefectBundle, Draft, DraftBatch, UnitFact } from "../../contracts/index.js";
 
-/** The current authored line for one unit, keyed for the author thread + merge. */
-export interface CurrentUnit {
-  readonly unitId: string;
-  readonly draft: Draft;
-}
+export const AUTHOR_CONTINUATION_MODE = "author-continuation" as const;
 
-/** The source fact an implicated patch must preserve (hash + placeholders). */
-export interface ImplicatedSource {
-  readonly unitId: string;
-  readonly sourceHash: string;
-  readonly sourceSkeleton: string;
-  readonly protectedPlaceholders: readonly {
-    readonly placeholderId: string;
-    readonly kind: "control-markup" | "variable" | "ruby";
-    readonly sourceText: string;
-  }[];
-}
-
-/** One defect narrowed to what the editor shows the author: the failing span and
- * the repair constraint, never the reviewer's internal identity. */
-export interface ScopedDefect {
-  readonly defectId: string;
-  readonly unitId: string;
-  readonly severity: Defect["severity"];
-  readonly category: Defect["category"];
-  readonly repairConstraint: string;
-  readonly span: Defect["span"];
-}
-
-export interface EditScope {
-  readonly parentDraftBatchId: string;
-  readonly defectBundleId: string;
-  readonly localizationSnapshotId: string;
-  /** The implicated units, in current-draft play order — the ONLY units patched. */
-  readonly implicatedUnitIds: readonly string[];
-  /** Every current unit, keyed by id (the merge folds patches back over these). */
-  readonly currentByUnit: ReadonlyMap<string, CurrentUnit>;
-  /** Source facts for the implicated units (patch preservation basis). */
-  readonly implicatedSource: ReadonlyMap<string, ImplicatedSource>;
-  /** The scoped defects per implicated unit, in bundle order. */
-  readonly defectsByUnit: ReadonlyMap<string, readonly ScopedDefect[]>;
-}
-
-export type ScopeFailureCode =
+export type EditFailureCode =
   | "not-a-repair-bundle"
   | "empty-defect-bundle"
   | "bundle-batch-mismatch"
-  | "snapshot-mismatch"
-  | "duplicate-current-unit"
+  | "bundle-snapshot-mismatch"
+  | "non-minor-defect"
+  | "meaning-defect"
   | "unknown-implicated-unit"
   | "missing-source-fact"
-  | "source-hash-mismatch"
-  | "malformed-source-skeleton";
+  | "duplicate-source-fact"
+  | "source-hash"
+  | "non-wiki-basis"
+  | "bible-basis-mismatch";
 
-/** A loud, typed refusal from scope derivation. Raised BEFORE any dispatch, so a
- * bundle that is not a genuine per-unit repair never reaches the model. */
-export class ScopeError extends Error {
+/** A loud refusal before a P2 author-continuation can reach dispatch. */
+export class EditScopeError extends Error {
   constructor(
-    readonly code: ScopeFailureCode,
+    readonly code: EditFailureCode,
     detail: string,
   ) {
-    super(`p2 scope ${code}: ${detail}`);
-    this.name = "ScopeError";
+    super(`p2 edit ${code}: ${detail}`);
+    this.name = "EditScopeError";
   }
 }
 
-const PLACEHOLDER_TOKEN = /\{\{([^{}]+)\}\}/gu;
-
-/** Cheap sanity guard that the placeholder manifest describes the skeleton: the
- * masked {{id}} tokens are exactly the manifest ids, one to one. An accurate
- * manifest is what lets the finalize preservation check protect the byte patch. */
-function checkPlaceholderManifest(
-  sourceSkeleton: string,
-  protectedPlaceholders: readonly { readonly placeholderId: string }[],
-): string | null {
-  const manifest = new Set<string>();
-  for (const placeholder of protectedPlaceholders) {
-    if (manifest.has(placeholder.placeholderId)) {
-      return `declares a duplicate placeholder ${placeholder.placeholderId}`;
-    }
-    manifest.add(placeholder.placeholderId);
-  }
-  const seen = new Set<string>();
-  for (const match of sourceSkeleton.matchAll(PLACEHOLDER_TOKEN)) {
-    const id = match[1]!;
-    if (!manifest.has(id)) return `skeleton names an unmanifested placeholder ${id}`;
-    if (seen.has(id)) return `skeleton repeats placeholder ${id}`;
-    seen.add(id);
-  }
-  if (seen.size !== manifest.size) return "a manifest placeholder is absent from the skeleton";
-  return null;
+export interface EditScope {
+  /** The immutable parent batch whose author thread P2 continues. */
+  readonly currentDraft: DraftBatch;
+  readonly defectBundle: DefectBundle;
+  /** Exact P2 patch order: the current author's play order, never defect order. */
+  readonly implicatedUnitIds: readonly string[];
+  readonly implicatedDrafts: readonly Draft[];
+  readonly implicatedUnits: readonly UnitFact[];
+  readonly defectsByUnit: ReadonlyMap<string, readonly Defect[]>;
+  /** Every affected line already cites this exact localized bible basis. */
+  readonly bibleRenderingIds: readonly string[];
 }
 
-function indexCurrentDraft(currentDraft: DraftBatch): Map<string, CurrentUnit> {
-  const byUnit = new Map<string, CurrentUnit>();
-  for (const [position, draft] of currentDraft.drafts.entries()) {
-    if (byUnit.has(draft.unitId)) {
-      throw new ScopeError("duplicate-current-unit", `unit ${draft.unitId} appears twice`);
-    }
-    byUnit.set(draft.unitId, { unitId: draft.unitId, draft });
-    void position;
-  }
-  return byUnit;
+function sameIds(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
 }
 
-function scopeDefect(defect: Defect): ScopedDefect {
-  return {
-    defectId: defect.defectId,
-    unitId: defect.unitId,
-    severity: defect.severity,
-    category: defect.category,
-    repairConstraint: defect.repairConstraint,
-    span: defect.span,
-  };
+function sameBasis(left: readonly string[], right: readonly string[]): boolean {
+  return sameIds(left, right);
+}
+
+function requireMinorNonMeaning(defect: Defect): void {
+  if (defect.severity !== "minor") {
+    throw new EditScopeError(
+      "non-minor-defect",
+      `defect ${defect.defectId} is ${defect.severity}; material repairs belong to P3`,
+    );
+  }
+  if (defect.category === "meaning") {
+    throw new EditScopeError(
+      "meaning-defect",
+      `defect ${defect.defectId} is a meaning defect; P2 cannot retranslate it`,
+    );
+  }
 }
 
 /**
- * Derive the edit scope: exactly the implicated units, their source facts, and
- * their scoped defects. Fails loud when the bundle is not a repair, is empty, or
- * does not describe THIS draft/snapshot, or when an implicated unit is unknown to
- * the draft or lacks a matching source fact.
+ * Derive P2's exact patch scope from a current parent draft, a joined minor
+ * defect bundle, and decode facts.  A malformed or broader request fails
+ * before dispatch; it is never silently narrowed into a different job.
  */
 export function deriveEditScope(
   currentDraft: DraftBatch,
   defectBundle: DefectBundle,
   units: readonly UnitFact[],
 ): EditScope {
-  // The Line Editor acts ONLY on a repair bundle — an adjudication, escalation,
-  // or resolved bundle is not its work and is refused before any dispatch.
   if (defectBundle.resolution !== "repair") {
-    throw new ScopeError(
+    throw new EditScopeError(
       "not-a-repair-bundle",
-      `resolution ${defectBundle.resolution} is not a per-unit repair`,
+      `bundle resolution is '${defectBundle.resolution}', not 'repair'`,
     );
   }
   if (defectBundle.defects.length === 0) {
-    throw new ScopeError("empty-defect-bundle", "a repair bundle names at least one defect");
+    throw new EditScopeError("empty-defect-bundle", "a P2 edit needs at least one exact defect");
   }
   if (defectBundle.draftBatchId !== currentDraft.batchId) {
-    throw new ScopeError(
+    throw new EditScopeError(
       "bundle-batch-mismatch",
-      `bundle targets ${defectBundle.draftBatchId}, current draft is ${currentDraft.batchId}`,
+      `bundle names ${defectBundle.draftBatchId}, current draft is ${currentDraft.batchId}`,
     );
   }
   if (defectBundle.localizationSnapshotId !== currentDraft.localizationSnapshotId) {
-    throw new ScopeError(
-      "snapshot-mismatch",
-      "bundle and current draft disagree on the localization snapshot",
+    throw new EditScopeError(
+      "bundle-snapshot-mismatch",
+      "defect bundle and current draft have different localization snapshots",
     );
   }
 
-  const currentByUnit = indexCurrentDraft(currentDraft);
-  const factByUnit = new Map<string, UnitFact>(units.map((fact) => [fact.value.unitId, fact]));
-
-  // Implicated ids: the defects' units, de-duplicated and ordered by the current
-  // draft's play order so the patch batch and thread are deterministic.
-  const orderOf = new Map<string, number>();
-  currentDraft.drafts.forEach((draft, index) => orderOf.set(draft.unitId, index));
-  const defectsByUnit = new Map<string, ScopedDefect[]>();
-  for (const defect of defectBundle.defects) {
-    if (!currentByUnit.has(defect.unitId)) {
-      throw new ScopeError(
-        "unknown-implicated-unit",
-        `defect ${defect.defectId} names unit ${defect.unitId}, absent from the current draft`,
-      );
+  const currentById = new Map(currentDraft.drafts.map((draft) => [draft.unitId, draft]));
+  const unitsById = new Map<string, UnitFact>();
+  for (const unit of units) {
+    if (unitsById.has(unit.value.unitId)) {
+      throw new EditScopeError("duplicate-source-fact", `unit ${unit.value.unitId} appears twice`);
     }
-    const list = defectsByUnit.get(defect.unitId) ?? [];
-    list.push(scopeDefect(defect));
-    defectsByUnit.set(defect.unitId, list);
+    unitsById.set(unit.value.unitId, unit);
   }
-  const implicatedUnitIds = [...defectsByUnit.keys()].sort(
-    (left, right) => orderOf.get(left)! - orderOf.get(right)!,
-  );
 
-  const implicatedSource = new Map<string, ImplicatedSource>();
-  for (const unitId of implicatedUnitIds) {
-    const fact = factByUnit.get(unitId);
-    if (!fact) {
-      throw new ScopeError("missing-source-fact", `implicated unit ${unitId} has no source fact`);
-    }
-    const value = fact.value;
-    if (value.sourceHash !== currentByUnit.get(unitId)!.draft.sourceHash) {
-      throw new ScopeError(
-        "source-hash-mismatch",
-        `unit ${unitId} source fact hash disagrees with the current draft`,
+  const defectsByUnit = new Map<string, Defect[]>();
+  for (const defect of defectBundle.defects) {
+    requireMinorNonMeaning(defect);
+    if (!currentById.has(defect.unitId)) {
+      throw new EditScopeError(
+        "unknown-implicated-unit",
+        `defect ${defect.defectId} names absent draft ${defect.unitId}`,
       );
     }
-    const detail = checkPlaceholderManifest(value.sourceSkeleton, value.protectedPlaceholders);
-    if (detail !== null) {
-      throw new ScopeError("malformed-source-skeleton", `unit ${unitId} ${detail}`);
+    if (!unitsById.has(defect.unitId)) {
+      throw new EditScopeError(
+        "missing-source-fact",
+        `defect ${defect.defectId} names ${defect.unitId} without a source fact`,
+      );
     }
-    implicatedSource.set(unitId, {
-      unitId,
-      sourceHash: value.sourceHash,
-      sourceSkeleton: value.sourceSkeleton,
-      protectedPlaceholders: value.protectedPlaceholders.map((placeholder) => ({
-        placeholderId: placeholder.placeholderId,
-        kind: placeholder.kind,
-        sourceText: placeholder.sourceText,
-      })),
-    });
+    const byUnit = defectsByUnit.get(defect.unitId) ?? [];
+    byUnit.push(defect);
+    defectsByUnit.set(defect.unitId, byUnit);
+  }
+
+  // The current batch defines stable play order.  Defect arrival order must
+  // never make a continuation reorder an author's lines.
+  const implicatedDrafts = currentDraft.drafts.filter((draft) => defectsByUnit.has(draft.unitId));
+  const implicatedUnitIds = implicatedDrafts.map((draft) => draft.unitId);
+  const implicatedUnits = implicatedUnitIds.map((unitId) => unitsById.get(unitId)!);
+
+  for (const [index, draft] of implicatedDrafts.entries()) {
+    const unit = implicatedUnits[index]!;
+    if (draft.sourceHash !== unit.value.sourceHash) {
+      throw new EditScopeError(
+        "source-hash",
+        `current draft ${draft.unitId} does not match its pinned source fact`,
+      );
+    }
+  }
+
+  const firstDraft = implicatedDrafts[0]!;
+  if (firstDraft.basis.kind !== "wiki-first") {
+    throw new EditScopeError("non-wiki-basis", "P2 requires a localized-bible current draft");
+  }
+  const bibleRenderingIds = firstDraft.basis.bibleRenderingIds;
+  for (const draft of implicatedDrafts) {
+    if (draft.basis.kind !== "wiki-first") {
+      throw new EditScopeError(
+        "non-wiki-basis",
+        `draft ${draft.unitId} bypasses the localized bible`,
+      );
+    }
+    if (!sameBasis(draft.basis.bibleRenderingIds, bibleRenderingIds)) {
+      throw new EditScopeError(
+        "bible-basis-mismatch",
+        "implicated current drafts do not share one exact localized-bible basis",
+      );
+    }
   }
 
   return {
-    parentDraftBatchId: currentDraft.batchId,
-    defectBundleId: defectBundle.bundleId,
-    localizationSnapshotId: currentDraft.localizationSnapshotId,
+    currentDraft,
+    defectBundle,
     implicatedUnitIds,
-    currentByUnit,
-    implicatedSource,
+    implicatedDrafts,
+    implicatedUnits,
     defectsByUnit,
+    bibleRenderingIds: [...bibleRenderingIds],
   };
 }

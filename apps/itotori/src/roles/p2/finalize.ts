@@ -1,35 +1,28 @@
-// Deterministic validation + merge for the P2 Line Editor's output.
+// Deterministic finalization guards for P2 Line Editor patches.
 //
-// The model returns ONE draft batch scoped as a `repair-patch` in
-// `author-continuation` mode. This module ties that patch back to the edit scope
-// and proves the guarantees the schema alone cannot:
-//   - the patch is an AUTHOR-CONTINUATION repair of exactly THIS bundle/draft;
-//   - it patches ONLY the implicated units (its failed ids equal the implicated
-//     ids in order) — no unimplicated unit is touched;
-//   - each patched line preserves its source hash, its protected placeholders,
-//     and Shift-JIS representability on the OUTPUT (the byte-level patch holds);
-//   - merging the patch over the current draft leaves every UNAFFECTED unit
-//     BYTE-IDENTICAL (same target skeleton, same object identity).
-// Any violation throws a typed FinalizeError — a mismatch is a failure, never a
-// repaired or fabricated result.
+// The model may author the replacement target for an implicated line, but it
+// cannot widen the patch, alter source identity, drop a protected span, emit
+// non-SJIS text, or mutate any parent draft outside the exact edit scope.
 
 import type { Draft, DraftBatch } from "../../contracts/index.js";
 import { firstNonSjisCodePoint } from "../../gates/shift-jis.js";
-import type { EditScope, ImplicatedSource } from "./scope.js";
+import { AUTHOR_CONTINUATION_MODE, type EditScope } from "./scope.js";
 
 export type FinalizeFailureCode =
   | "scope-kind-mismatch"
   | "repair-mode-mismatch"
   | "parent-batch-mismatch"
-  | "defect-bundle-mismatch"
-  | "snapshot-mismatch"
-  | "implicated-mismatch"
+  | "bundle-mismatch"
+  | "failed-ids-mismatch"
+  | "unaffected-mutated"
   | "unit-cardinality"
   | "unit-order"
   | "source-hash"
   | "protected-span"
   | "encoding"
-  | "unaffected-mutated";
+  | "choice-encoding"
+  | "basis-mismatch"
+  | "resolving-evidence";
 
 export class FinalizeError extends Error {
   constructor(
@@ -45,67 +38,63 @@ function idsEqual(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-/** Assert the returned batch is the exact repair patch the scope expects: an
- * author-continuation `repair-patch` naming THIS parent draft, THIS bundle, THIS
- * snapshot, and finalizing EXACTLY the implicated units in order. This is what
- * proves the patch is scoped to the implicated ids and is not a fresh fork. */
+/** Bind a returned repair-patch scope to P2's current author-thread scope. */
 export function assertRepairPatchMatchesScope(scope: EditScope, batch: DraftBatch): void {
-  const patchScope = batch.scope;
-  if (patchScope.kind !== "repair-patch") {
+  if (batch.scope.kind !== "repair-patch") {
     throw new FinalizeError(
       "scope-kind-mismatch",
-      `expected a repair-patch, batch scope is ${patchScope.kind}`,
+      `expected repair-patch, got ${batch.scope.kind}`,
     );
   }
-  if (patchScope.repairMode !== "author-continuation") {
+  if (batch.scope.repairMode !== AUTHOR_CONTINUATION_MODE) {
     throw new FinalizeError(
       "repair-mode-mismatch",
-      `repair mode ${patchScope.repairMode} is not the line editor's author continuation`,
+      `P2 requires ${AUTHOR_CONTINUATION_MODE}, got ${batch.scope.repairMode}`,
     );
   }
-  if (patchScope.parentDraftBatchId !== scope.parentDraftBatchId) {
+  if (batch.scope.parentDraftBatchId !== scope.currentDraft.batchId) {
     throw new FinalizeError("parent-batch-mismatch", "patch names another parent draft batch");
   }
-  if (patchScope.defectBundleId !== scope.defectBundleId) {
-    throw new FinalizeError("defect-bundle-mismatch", "patch names another defect bundle");
+  if (batch.scope.defectBundleId !== scope.defectBundle.bundleId) {
+    throw new FinalizeError("bundle-mismatch", "patch names another defect bundle");
   }
-  if (batch.localizationSnapshotId !== scope.localizationSnapshotId) {
-    throw new FinalizeError("snapshot-mismatch", "patch names another localization snapshot");
-  }
-  // PATCHES ONLY THE IMPLICATED IDS: the failed set must equal the implicated set
-  // in order. The batch schema already ties `drafts` to `failedUnitIds`, so this
-  // proves no unimplicated unit is patched and every implicated one is.
-  if (!idsEqual(patchScope.failedUnitIds, scope.implicatedUnitIds)) {
+  if (!idsEqual(batch.scope.failedUnitIds, scope.implicatedUnitIds)) {
     throw new FinalizeError(
-      "implicated-mismatch",
-      "patch failed units are not exactly the implicated units in order",
+      "failed-ids-mismatch",
+      "patch scope is not exactly the current draft's implicated ids in order",
     );
   }
 }
 
-/** Assert the patched drafts match the implicated source EXACTLY: same count,
- * same order, and every source hash preserved. */
-export function assertExactAgainstSource(scope: EditScope, patched: readonly Draft[]): void {
-  const implicated = scope.implicatedUnitIds;
-  if (patched.length !== implicated.length) {
-    throw new FinalizeError(
-      "unit-cardinality",
-      `patched ${patched.length} units for ${implicated.length} implicated units`,
-    );
-  }
-  for (const [index, unitId] of implicated.entries()) {
-    const draft = patched[index]!;
-    if (draft.unitId !== unitId) {
+/** Exact patch cardinality, current play order, and source hash binding. */
+export function assertExactAgainstSource(scope: EditScope, drafts: readonly Draft[]): void {
+  const implicated = new Set(scope.implicatedUnitIds);
+  for (const draft of drafts) {
+    if (!implicated.has(draft.unitId)) {
       throw new FinalizeError(
-        "unit-order",
-        `position ${index} is ${draft.unitId}, implicated set has ${unitId}`,
+        "unaffected-mutated",
+        `patch includes passing/unaffected unit ${draft.unitId}`,
       );
     }
-    const source = scope.implicatedSource.get(unitId)!;
-    if (draft.sourceHash !== source.sourceHash) {
+  }
+  if (drafts.length !== scope.implicatedUnitIds.length) {
+    throw new FinalizeError(
+      "unit-cardinality",
+      `patch has ${drafts.length} drafts for ${scope.implicatedUnitIds.length} implicated units`,
+    );
+  }
+  for (const [index, unit] of scope.implicatedUnits.entries()) {
+    const draft = drafts[index]!;
+    if (draft.unitId !== unit.value.unitId) {
+      throw new FinalizeError(
+        "unit-order",
+        `patch position ${index} is ${draft.unitId}, expected ${unit.value.unitId}`,
+      );
+    }
+    if (draft.sourceHash !== unit.value.sourceHash) {
       throw new FinalizeError(
         "source-hash",
-        `unit ${unitId} patch hash ${draft.sourceHash} != source ${source.sourceHash}`,
+        `unit ${draft.unitId} patch hash does not match its source fact`,
       );
     }
   }
@@ -122,21 +111,18 @@ function placeholderMultiset(text: string): Map<string, number> {
   return counts;
 }
 
-function expectedPlaceholders(source: ImplicatedSource): Map<string, number> {
-  const expected = new Map<string, number>();
-  for (const placeholder of source.protectedPlaceholders) {
-    expected.set(placeholder.placeholderId, (expected.get(placeholder.placeholderId) ?? 0) + 1);
-  }
-  return expected;
-}
-
-/** Assert every patched line preserves its source unit's protected placeholders
- * exactly: each token appears the same number of times, and no unknown token is
- * fabricated. Preserving the placeholders is what preserves the byte-level patch. */
-export function assertPlaceholdersPreserved(scope: EditScope, patched: readonly Draft[]): void {
-  for (const draft of patched) {
-    const source = scope.implicatedSource.get(draft.unitId)!;
-    const expected = expectedPlaceholders(source);
+/** Preserve every protected source placeholder exactly; no additions either. */
+export function assertPlaceholdersPreserved(scope: EditScope, drafts: readonly Draft[]): void {
+  const unitsById = new Map(scope.implicatedUnits.map((unit) => [unit.value.unitId, unit]));
+  for (const draft of drafts) {
+    const unit = unitsById.get(draft.unitId);
+    if (!unit) {
+      throw new FinalizeError("unaffected-mutated", `patch includes ${draft.unitId}`);
+    }
+    const expected = new Map<string, number>();
+    for (const placeholder of unit.value.protectedPlaceholders) {
+      expected.set(placeholder.placeholderId, (expected.get(placeholder.placeholderId) ?? 0) + 1);
+    }
     const actual = placeholderMultiset(draft.targetSkeleton);
     for (const [id, count] of expected) {
       if (actual.get(id) !== count) {
@@ -150,18 +136,16 @@ export function assertPlaceholdersPreserved(scope: EditScope, patched: readonly 
       if (!expected.has(id)) {
         throw new FinalizeError(
           "protected-span",
-          `unit ${draft.unitId} fabricated placeholder ${id}`,
+          `unit ${draft.unitId} fabricated protected placeholder ${id}`,
         );
       }
     }
   }
 }
 
-/** Assert every patched target survives the Shift-JIS patchback on the OUTPUT: a
- * repaired line that introduced an un-encodable codepoint would fail to patch, so
- * it is refused here rather than corrupting the byte stream. */
-export function assertSjisPreserved(patched: readonly Draft[]): void {
-  for (const draft of patched) {
+/** P2 has to stay patchback-safe before its implicated deterministic lane reruns. */
+export function assertSjisPreserved(drafts: readonly Draft[]): void {
+  for (const draft of drafts) {
     const offending = firstNonSjisCodePoint(draft.targetSkeleton);
     if (offending !== null) {
       throw new FinalizeError(
@@ -172,33 +156,69 @@ export function assertSjisPreserved(patched: readonly Draft[]): void {
   }
 }
 
+function assertChoiceEncoding(scope: EditScope, drafts: readonly Draft[]): void {
+  const unitsById = new Map(scope.implicatedUnits.map((unit) => [unit.value.unitId, unit]));
+  for (const draft of drafts) {
+    const unit = unitsById.get(draft.unitId)!;
+    if (unit.value.surfaceKind !== "choice_label") continue;
+    if (unit.value.choiceContext === null) {
+      throw new FinalizeError(
+        "choice-encoding",
+        `choice-label unit ${draft.unitId} is missing deterministic choice context`,
+      );
+    }
+    if (/[\r\n]/u.test(draft.targetSkeleton)) {
+      throw new FinalizeError(
+        "choice-encoding",
+        `choice-label unit ${draft.unitId} must remain one encoded choice label`,
+      );
+    }
+  }
+}
+
+function assertExactBibleBasis(scope: EditScope, drafts: readonly Draft[]): void {
+  for (const draft of drafts) {
+    if (
+      draft.basis.kind !== "wiki-first" ||
+      !idsEqual(draft.basis.bibleRenderingIds, scope.bibleRenderingIds)
+    ) {
+      throw new FinalizeError(
+        "basis-mismatch",
+        `unit ${draft.unitId} patch does not cite the exact localized-bible basis`,
+      );
+    }
+    const resolvingEvidence = new Set(
+      (scope.defectsByUnit.get(draft.unitId) ?? []).flatMap((defect) => defect.evidenceIds),
+    );
+    if (!draft.evidenceIds.some((evidenceId) => resolvingEvidence.has(evidenceId))) {
+      throw new FinalizeError(
+        "resolving-evidence",
+        `unit ${draft.unitId} patch cites none of its exact changed-basis evidence`,
+      );
+    }
+  }
+}
+
 /**
- * Fold the validated patch over the current draft. The implicated units take
- * their patched line; every UNAFFECTED unit keeps the SAME draft object it had —
- * so an unimplicated line is byte-identical by construction, and this asserts it.
- * Returns the merged full draft list in the current draft's order.
+ * Merge a validated P2 patch into its parent.  Untouched drafts are returned by
+ * reference, not cloned: that gives callers a direct byte-and-identity proof
+ * that P2 did not alter unaffected content.
  */
 export function mergePatch(
   currentDraft: DraftBatch,
   scope: EditScope,
-  batch: DraftBatch,
+  patch: DraftBatch,
 ): readonly Draft[] {
-  const patchByUnit = new Map(batch.drafts.map((draft) => [draft.unitId, draft]));
-  const implicated = new Set(scope.implicatedUnitIds);
-  const merged: Draft[] = [];
-  for (const draft of currentDraft.drafts) {
-    if (implicated.has(draft.unitId)) {
-      merged.push(patchByUnit.get(draft.unitId)!);
-      continue;
-    }
-    // UNAFFECTED unit: it must not appear in the patch and stays byte-identical.
-    if (patchByUnit.has(draft.unitId)) {
-      throw new FinalizeError(
-        "unaffected-mutated",
-        `unit ${draft.unitId} is unimplicated but the patch carries it`,
-      );
-    }
-    merged.push(draft);
+  if (currentDraft !== scope.currentDraft) {
+    throw new FinalizeError("parent-batch-mismatch", "merge parent is not the derived edit parent");
   }
-  return merged;
+  assertRepairPatchMatchesScope(scope, patch);
+  assertExactAgainstSource(scope, patch.drafts);
+  assertPlaceholdersPreserved(scope, patch.drafts);
+  assertSjisPreserved(patch.drafts);
+  assertChoiceEncoding(scope, patch.drafts);
+  assertExactBibleBasis(scope, patch.drafts);
+
+  const patchById = new Map(patch.drafts.map((draft) => [draft.unitId, draft]));
+  return currentDraft.drafts.map((draft) => patchById.get(draft.unitId) ?? draft);
 }
