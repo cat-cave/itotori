@@ -442,7 +442,11 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     if (!state.usage.sawUsage) throw new Error("provider response omitted usage");
     const finalStep = memoState.receipts.at(-1);
     if (!finalStep) throw new Error("provider response was not durably memoized");
-    if (memoState.receipts.some((receipt) => receipt.verification.status === "quarantined")) {
+    const verification = finalStep.verification;
+    // RB-015 applies to the terminal response selected for accepted projection.
+    // A repaired intermediate remains quarantined in its own immutable memo but
+    // cannot veto a later valid terminal response.
+    if (verification.status === "quarantined") {
       return CallResultSchema.parse({
         schemaVersion: CALL_RESULT_SCHEMA_VERSION,
         memoKey: finalStep.memoKey,
@@ -452,18 +456,14 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
         failureKind: "quarantined",
         responseEventId: finalStep.responseEventId,
         responseEncrypted: finalStep.responseEncrypted,
-        served: finalStep.verification.served,
-        generationId: finalStep.verification.generationId,
+        served: verification.served,
+        generationId: verification.generationId,
         verification: "quarantined",
         usage: finalStep.usage,
         billing: finalStep.billing,
         defects: [],
         events: state.events,
       });
-    }
-    const verification = finalStep.verification;
-    if (verification.status === "quarantined") {
-      throw new Error("quarantined receipt passed the projection guard");
     }
     if (finalStep.usage === null) throw new Error("accepted response omitted usage");
     const result = {

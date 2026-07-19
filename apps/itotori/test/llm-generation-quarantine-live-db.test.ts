@@ -6,10 +6,13 @@ import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-te
 import { reviewVerdictExample } from "./contract-fixtures-core.js";
 import {
   TestMemoCipher,
+  decodedUnitsTool,
   dispatchHarness,
   physicalCallSpec,
   rawStructuredProviderResponse,
   structuredProviderResponse,
+  toolLoopSpec,
+  toolProviderResponse,
 } from "./llm-step-test-support.js";
 
 const postgresDescribe = process.env.DATABASE_URL ? describe : describe.skip;
@@ -99,6 +102,46 @@ postgresDescribe("response quarantine and explicit-unknown persistence", () => {
     }
   });
 
+  it("certifies and projects a repaired terminal after a quarantined tool-loop intermediate", async () => {
+    const context = await isolatedMigratedContext();
+    const cipher = new TestMemoCipher();
+    try {
+      const prompt =
+        "Use the decoded-unit tool, correct an invalid tool call, then return a verdict.";
+      const harness = dispatchHarness({
+        pool: context.pool,
+        cipher,
+        prompt,
+        responses: [
+          toolProviderResponse(1),
+          toolProviderResponse(2, "not_an_allowed_tool"),
+          structuredProviderResponse(reviewVerdictExample),
+        ],
+        tools: [decodedUnitsTool()],
+      });
+
+      const result = await dispatch(toolLoopSpec(prompt), harness.runtime);
+
+      expect(result).toMatchObject({ status: "success", verification: "explicit-unknown" });
+      expect(harness.transportCalls()).toBe(3);
+      await expectMemoVerification(context.pool, result.memoKey, "explicit-unknown");
+      await expect(expectMemoOutcomes(context.pool)).resolves.toEqual(
+        expect.arrayContaining([
+          { outcomeKind: "tool-calls", verificationStatus: "explicit-unknown" },
+          { outcomeKind: "invalid", verificationStatus: "quarantined" },
+          { outcomeKind: "terminal", verificationStatus: "explicit-unknown" },
+        ]),
+      );
+
+      const accepted = new ItotoriLlmAcceptedOutputRepository(context.pool, cipher);
+      const candidate = acceptedCandidate(result.memoKey, "repaired-terminal");
+      const head = await accepted.acceptAndAdvance(candidate);
+      expect(await accepted.readHead(headIdentity(candidate))).toEqual(head);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("records completed-response transport loss as billing_unknown rather than zero", async () => {
     const context = await isolatedMigratedContext();
     const cipher = new TestMemoCipher();
@@ -149,6 +192,7 @@ postgresDescribe("response quarantine and explicit-unknown persistence", () => {
           responses: [rawStructuredProviderResponse("not JSON")],
         }).runtime,
       );
+      expect(result).toMatchObject({ status: "failure", verification: "quarantined" });
       const candidate = acceptedCandidate(result.memoKey, "quarantined-projection");
       const repository = new ItotoriLlmAcceptedOutputRepository(context.pool, cipher);
 
@@ -186,6 +230,19 @@ async function expectMemoVerification(
       }),
     ],
   });
+}
+
+async function expectMemoOutcomes(
+  pool: Awaited<ReturnType<typeof isolatedMigratedContext>>["pool"],
+) {
+  const result = await pool.query<{ outcome_kind: string; verification_status: string }>(`
+    select outcome_kind, verification_status
+    from itotori_llm_call_memos
+  `);
+  return result.rows.map((row) => ({
+    outcomeKind: row.outcome_kind,
+    verificationStatus: row.verification_status,
+  }));
 }
 
 function acceptedCandidate(memoKey: string, identity: string) {
