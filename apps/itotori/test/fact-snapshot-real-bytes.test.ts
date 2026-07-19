@@ -11,7 +11,14 @@
 // speakers with the decoded known-speaker count. When the corpus is not staged
 // the test prints a visible skip note (no silent pass).
 
-import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -125,7 +132,15 @@ describe("buildFactSnapshot (env-gated real Sweetie byte oracle)", () => {
 
       // (4) byte-identical rebuild.
       expect(rebuilt.snapshotId).toBe(snapshot.snapshotId);
-      expect(serializeFactSnapshot(rebuilt)).toBe(serializeFactSnapshot(snapshot));
+      const firstSnapshotPath = join(workDir, "fact-snapshot-first.json");
+      const secondSnapshotPath = join(workDir, "fact-snapshot-second.json");
+      writeFileSync(firstSnapshotPath, serializeFactSnapshot(snapshot), "utf8");
+      writeFileSync(secondSnapshotPath, serializeFactSnapshot(rebuilt), "utf8");
+      // Compare serialized files, not object identity, so the oracle is a
+      // byte-level diff of the two independently materialized snapshots.
+      expect(
+        Buffer.compare(readFileSync(firstSnapshotPath), readFileSync(secondSnapshotPath)),
+      ).toBe(0);
       expect(snapshot.snapshotId).toMatch(/^sha256:[0-9a-f]{64}$/u);
 
       // (5) speaker/color identity EQUALS the bridge for EVERY unit (cite,
