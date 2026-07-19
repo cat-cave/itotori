@@ -231,6 +231,30 @@ export class WikiObjectApiService {
     };
   }
 
+  /**
+   * Apply an HTTP-addressable edit/feedback batch.  Earlier writes return only
+   * durable input ids, so this rebuilds the session from the persisted input
+   * ledger and immutable wiki history before it launches the one bounded child.
+   */
+  async applyDurable(
+    selector: WikiObjectSelector,
+    inputIds: readonly string[],
+    options: {
+      readonly runner: EnhancementRunner;
+      readonly decodedFacts: readonly DecodedFact[];
+      readonly createdAt: string;
+    },
+    assertion?: WikiWriteAssertion,
+  ): Promise<WikiApplyReceipt> {
+    const session = await this.openEditSession(selector, assertion);
+    const durable = await this.enhancement.resumeSession(
+      session.objectId,
+      session.wikiKind,
+      inputIds,
+    );
+    return await this.apply(durable, options);
+  }
+
   private async writeReceipt(
     session: EnhancementSession,
     inputId: string,

@@ -163,8 +163,6 @@ function RoutedScreen({
           route={wikiRouteFromAddressable({
             kind: "character",
             id: addressable.id,
-            projectId: addressable.projectId,
-            localeBranchId: addressable.localeBranchId,
           })}
         />
       );
@@ -175,8 +173,6 @@ function RoutedScreen({
           route={wikiRouteFromAddressable({
             kind: "term",
             id: addressable.id,
-            projectId: addressable.projectId,
-            localeBranchId: addressable.localeBranchId,
           })}
         />
       );

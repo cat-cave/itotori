@@ -8,7 +8,10 @@
 // object-API, whose closure is clean of the legacy service graph.
 
 import type {
+  DecodedFact,
+  EnhancementRunner,
   WikiHistoryEntry,
+  WikiApplyReceipt,
   WikiListResult,
   WikiObjectApiService,
   WikiObjectSelector,
@@ -28,6 +31,22 @@ export type WikiObjectRequest =
       readonly candidate: unknown;
       readonly createdAt: string;
       readonly assertion?: WikiWriteAssertion;
+    }
+  | {
+      readonly action: "feedback";
+      readonly selector: WikiObjectSelector;
+      readonly candidate: unknown;
+      readonly createdAt: string;
+      readonly assertion?: WikiWriteAssertion;
+    }
+  | {
+      readonly action: "apply";
+      readonly selector: WikiObjectSelector;
+      readonly inputIds: readonly string[];
+      readonly runner: EnhancementRunner;
+      readonly decodedFacts: readonly DecodedFact[];
+      readonly createdAt: string;
+      readonly assertion?: WikiWriteAssertion;
     };
 
 /** The typed union of results a kept wiki subcommand returns. */
@@ -35,7 +54,9 @@ export type WikiObjectResponse =
   | { readonly action: "list"; readonly result: WikiListResult }
   | { readonly action: "show"; readonly result: WikiShowResult | null }
   | { readonly action: "history"; readonly result: readonly WikiHistoryEntry[] | null }
-  | { readonly action: "edit"; readonly result: WikiWriteReceipt };
+  | { readonly action: "edit"; readonly result: WikiWriteReceipt }
+  | { readonly action: "feedback"; readonly result: WikiWriteReceipt }
+  | { readonly action: "apply"; readonly result: WikiApplyReceipt };
 
 /**
  * Route one kept wiki subcommand to the new object-API. An `edit` opens a guarded
@@ -58,5 +79,26 @@ export async function runWikiObjectCommand(
       const receipt = await service.edit(session, request.candidate, request.createdAt);
       return { action: "edit", result: receipt };
     }
+    case "feedback": {
+      const session = await service.openEditSession(request.selector, request.assertion);
+      return {
+        action: "feedback",
+        result: await service.feedback(session, request.candidate, request.createdAt),
+      };
+    }
+    case "apply":
+      return {
+        action: "apply",
+        result: await service.applyDurable(
+          request.selector,
+          request.inputIds,
+          {
+            runner: request.runner,
+            decodedFacts: request.decodedFacts,
+            createdAt: request.createdAt,
+          },
+          request.assertion,
+        ),
+      };
   }
 }

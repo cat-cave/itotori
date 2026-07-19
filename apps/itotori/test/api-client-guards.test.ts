@@ -2,23 +2,22 @@ import { describe, expect, it } from "vitest";
 import { assertBrowserItotoriApiResponse } from "../src/api-client-guards.js";
 
 describe("browser API response guard", () => {
-  it("rejects a wiki edit receipt that omits the rerun outcome", () => {
+  it("rejects a WikiObject edit receipt that omits durable history and impact", () => {
     expect(() =>
       assertBrowserItotoriApiResponse("wiki.edit", {
-        schemaVersion: "wiki.context.edit.v0.2",
-        contextEntryVersionId: "context-version-1",
-        entry: {},
+        schemaVersion: "itotori.wiki.write.v1",
+        receipt: {},
       }),
-    ).toThrow("response for wiki.edit.rerun is required");
+    ).toThrow("response for wiki.edit.history is required");
   });
 
-  it("requires the rerun outcome for newly added wiki context too", () => {
+  it("requires the bounded enhancement receipt on WikiObject apply", () => {
     expect(() =>
-      assertBrowserItotoriApiResponse("wiki.add", {
-        schemaVersion: "wiki.context.edit.v0.2",
-        contextEntryVersionId: "context-version-1",
-        entry: {},
+      assertBrowserItotoriApiResponse("wiki.apply", {
+        schemaVersion: "itotori.wiki.apply.v1",
+        history: [],
+        dependencyImpact: {},
       }),
-    ).toThrow("response for wiki.add.rerun is required");
+    ).toThrow("response for wiki.apply.receipt is required");
   });
 });
