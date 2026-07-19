@@ -290,6 +290,6 @@ command, diagnostic code, cause) so downstream ingestion never silently
 loses context. The harness never emits `retained_partial`; pre-promote
 failures use `rolled_back` and explicit cancellation uses `cleaned_up`.
 
-The harness is engine-neutral; `crates/kaifuu-reallive/src/patchback.rs` is
+The harness is engine-neutral; `crates/kaifuu-reallive/src/patchback/` is
 unchanged. KAIFUU-011 is the first consumer that wires the harness into the
 binary patcher CLI.

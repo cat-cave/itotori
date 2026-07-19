@@ -161,7 +161,7 @@ behavior-only / clean-room. The auditor uses this list verbatim.
 ## KAIFUU-174 text inventory adapter addendum
 
 - Roadmap node: KAIFUU-174.
-- Crate or module: `crates/kaifuu-reallive` (new `encoding.rs`, `protected_spans.rs`, `inventory.rs`, `gameexe.rs`, `patchback.rs` modules) and `crates/kaifuu-engine-fixture` (`RealLiveProfileDetectorAdapter` trait impl extended; adapter id `kaifuu.reallive` unchanged).
+- Crate or module: `crates/kaifuu-reallive` (new `encoding.rs`, `protected_spans.rs`, `bridge.rs` (exposing the `produce_bundle` extract entry point), `gameexe.rs`, and the `patchback/` directory module) and `crates/kaifuu-engine-fixture` (`RealLiveProfileDetectorAdapter` trait impl extended; adapter id `kaifuu.reallive` unchanged).
 - Support boundary: Scene/SEEN dialogue / speaker / choice slot extraction and length-CHANGING patch-back (offset-table rewrite + jump-target recalculation, routed through the bundle-driven `apply_translated_bundle` driver — see `reallive-adapter-expose-length-changing-patchback`), plus Gameexe.ini user-visible key (`#TITLE`, `#WINTITLE`) BridgeUnits and asset-reference catalogue (`#G00*`, `#KOE*`, `#SEEN*`, `#NWK*`, `#OVK*`, `#REGNAME`, `#GAMEEXE_VERSION`).
 - Unsupported / gated boundary: `.g00` image-overlay text patching, `.koe` / `.ovk` / `.nwk` voice extraction, RealLive runtime / VM replay (UTSUSHI-146). Genuinely-unencodable patch edits (a non-Shift-JIS codepoint, a goto target left strictly inside an edited body, a scene-packing overflow) are rejected with the driver's typed `kaifuu.reallive.patchback_*` Fatal. The adapter patch surface applies one scene-scoped bundle per call.
 - Public fixture ids: `bridge-inventory-001`, `protected-spans-001`, `patchback-identity-001`, `patchback-length-preserving-001`, `patchback-overflow-001`, `unsupported-text-shape-001` (crate-local under `crates/kaifuu-reallive/tests/fixtures/`).
@@ -214,7 +214,7 @@ behavior-only / clean-room. The auditor uses this list verbatim.
 
 - [x] No `git submodule`, no Cargo dep on rlvm/RLDEV, no vendored rlvm/RLDEV code in `crates/kaifuu-reallive` or `crates/kaifuu-engine-fixture`.
 - [x] No copied opcode tables, control-byte tables, Gameexe.ini key tables, or struct layouts. The protected-span catalogue and Gameexe key catalogue are authored from public RLDEV documentation plus synthetic-fixture bytes.
-- [x] Crate-level provenance comment in `crates/kaifuu-reallive/src/lib.rs` extended with the KAIFUU-174 paragraph. Per-module preambles updated in `encoding.rs`, `protected_spans.rs`, `inventory.rs`, `gameexe.rs`, `patchback.rs`.
+- [x] Crate-level provenance comment in `crates/kaifuu-reallive/src/lib.rs` extended with the KAIFUU-174 paragraph. Per-module preambles updated in `encoding.rs`, `protected_spans.rs`, `bridge.rs`, `gameexe.rs`, `patchback/mod.rs`.
 - [x] No `Command::new`, no foreign tool invocation, no helper boundary in the new code. The inventory and patch-back planners are pure functions over `&[u8]`; the adapter owns the filesystem I/O.
 - [x] Tests pass on a host with no rlvm installed. New deps are `encoding_rs`, `sha2`, `thiserror`, `uuid` — all permissive.
 - [x] Synthetic fixtures under `crates/kaifuu-reallive/tests/fixtures/` contain no copyrighted bytes. Every byte is reproduced by the in-tree builder; on-disk and builder output are asserted to match.
