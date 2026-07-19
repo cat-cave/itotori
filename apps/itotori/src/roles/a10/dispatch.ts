@@ -33,6 +33,7 @@ import {
   type A10HypothesisDraft,
   type A10HypothesisRequest,
 } from "./types.js";
+import { readAllUnitFacts } from "./units.js";
 
 const PROMPT_VERSION = "itotori.role.A10.prompt.v1";
 
@@ -49,13 +50,35 @@ function sealPrompt(storageRef: string, text: string): SealedPrompt {
   };
 }
 
+/** Render every visible unit as deterministic hindsight evidence. A10 receives
+ * the complete permitted route/game stream, not merely candidate identifiers, so
+ * it can compare the unknown line against later speech and reveal context. The
+ * model sees only reveal-safe speaker labels; authoritative speaker identities
+ * remain on immutable decode facts and are never part of an A10 write path. */
+function hindsightStream(model: ReadModel, context: A10Context): readonly string[] {
+  return readAllUnitFacts(model, context).map((fact) => {
+    const unit = fact.value;
+    const speaker = unit.speaker?.revealSafeLabel ?? "(narration/choice)";
+    return `  [${unit.playOrderIndex}] ${unit.unitId} (scene ${unit.sceneId}) ${speaker}: ${unit.sourceSurface}`;
+  });
+}
+
 /** Render the source-facts prompt the model reasons over. The unknown-speaker
- * unit, its reveal-safe label, and the whole-game candidate + reveal-scene pools
- * are stated as FACTS; the model chooses WITHIN the pools and never invents an
- * id, and is reminded it emits a HYPOTHESIS, never a decoded speaker. */
-function renderPrompt(request: A10HypothesisRequest): string {
+ * unit, its reveal-safe label, and the full permitted route/game stream are
+ * stated as FACTS; the model chooses within the deterministic candidate + reveal
+ * pools and never invents an id. It is reminded it emits a HYPOTHESIS, never a
+ * decoded speaker. */
+function renderPrompt(
+  model: ReadModel,
+  context: A10Context,
+  request: A10HypothesisRequest,
+): string {
   const specialist = specialistFor(A10_ROLE_ID);
   const unit = request.unit;
+  const candidateCharacters = request.candidateCharacterIds.map((id) => {
+    const profile = model.characterProfiles.get(id);
+    return profile ? `  ${id} (${profile.decodedLabel})` : `  ${id}`;
+  });
   return [
     specialist.instructions,
     `Output kind: ${A10_SPEAKER_HYPOTHESIS_KIND}. Source language: ${request.sourceLanguage}. ` +
@@ -65,9 +88,11 @@ function renderPrompt(request: A10HypothesisRequest): string {
     "Emit a HYPOTHESIS only: a candidate speaker, a confidence, and the reveal scene " +
       "where hindsight discloses the identity. You cannot assert the decoded speaker.",
     "Choose the candidate character id from this whole-game pool:",
-    ...request.candidateCharacterIds.map((id) => `  ${id}`),
+    ...candidateCharacters,
     "Choose the reveal scene id from this whole-game pool:",
     ...request.revealSceneIds.map((id) => `  ${id}`),
+    "Complete permitted route/game source stream (play order):",
+    ...hindsightStream(model, context),
   ].join("\n");
 }
 
@@ -80,7 +105,7 @@ export function buildA10CallSpec(
   request: A10HypothesisRequest,
 ): { spec: CallSpec; prompts: readonly SealedPrompt[] } {
   const specialist = specialistFor(A10_ROLE_ID);
-  const promptText = renderPrompt(request);
+  const promptText = renderPrompt(model, context, request);
   const prompt = sealPrompt(`a10:speaker-hypothesis:${request.unit.unitId}`, promptText);
   const eventId = sha256(promptText);
   const spec: CallSpec = {
@@ -145,15 +170,23 @@ export function assertA10CertifiedRoute(spec: CallSpec): void {
     throw new A10RoleError("dispatch-failed", "A10 call route is not ZDR-bound");
   }
   assertNoProviderPin(spec.providerPolicy);
+  if (spec.output.name !== "wiki-object") {
+    throw new A10RoleError("dispatch-failed", "A10 terminal is not a wiki-object");
+  }
+  if (spec.tools.length !== 0) {
+    throw new A10RoleError("dispatch-failed", "A10 carries no dispatch tool grant");
+  }
 }
 
-/** Drive one A10 spec through the sole dispatch boundary, layering the prompt
- * payloads over the runtime's payload reader. */
+/** Drive one A10 spec through the sole dispatch boundary. The public entry
+ * asserts the certified ZDR/no-tool route before it resolves any payload or
+ * reaches transport, then layers the prompt payloads over the runtime reader. */
 export async function dispatchA10(
   spec: CallSpec,
   prompts: readonly SealedPrompt[],
   runtime: DispatchRuntime,
 ): Promise<CallResult> {
+  assertA10CertifiedRoute(spec);
   const byRef = new Map(prompts.map((prompt) => [prompt.ref.storageRef, prompt.text]));
   return dispatch(spec, {
     ...runtime,
@@ -176,7 +209,6 @@ export function dispatchingA10Caller(
 ): (request: A10HypothesisRequest) => Promise<A10HypothesisDraft> {
   return async (request) => {
     const { spec, prompts } = buildA10CallSpec(model, context, request);
-    assertA10CertifiedRoute(spec);
     const result = await dispatchA10(spec, prompts, runtime);
     if (result.status !== "success") {
       throw new A10RoleError(
