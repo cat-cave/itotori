@@ -119,6 +119,13 @@ export const INPUT_SOURCES = [
     role: "RPG Maker MV/MZ www/data text patchback + .kaifuu delta round-trip validation",
   },
   {
+    id: "reallive-patchback-produce",
+    path: "fixtures/public/itotori-patchback-produce/expected/reallive-patchback-produce-capability-v0.1.json",
+    category: "validation_artifact",
+    kind: "validation_artifact",
+    role: "RealLive accepted-output-native patched-build production (Studio download + itotori patch produce)",
+  },
+  {
     id: "rpg-maker-mv-mz-encrypted-suffixes-detection",
     path: "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/expected/detection-report-v0.1.json",
     category: "fixture_output",
@@ -456,6 +463,77 @@ function buildRealliveReadinessRow(inputs) {
   });
 }
 
+// The accepted-output-native patched-build producer is intentionally distinct
+// from the `kaifuu.reallive` detector row above. Its executable surface is
+// `produceNativePatchbackBuild` (called by both POST /api/patchback/produce and
+// `itotori patch produce`) which invokes the same real `kaifuu patch` seam.
+// The evidence is an env-gated, two-corpus real-byte oracle, not an adapter
+// registry tuple, so this remains a readiness/validation row with a PARTIAL
+// patch claim rather than promoting the detector adapter to `positive_adapter`.
+function buildReallivePatchbackProduceRow(inputs) {
+  const v = requireInput(inputs, "reallive-patchback-produce");
+  const sourceId = "reallive-patchback-produce";
+  const exactArtifactKeys = ["patchApply", "patchExport", "patchTarget", "translatedBridge"];
+  const passed =
+    v.status === "passed" &&
+    v.outcome === "accepted_output_native_patched_build" &&
+    v.capabilityId === "itotori.patchback-produce.v1" &&
+    v.nativeSeam === "produceNativePatchbackBuild" &&
+    v.cliCommand === "itotori patch produce" &&
+    v.deliverySurface === "POST /api/patchback/produce" &&
+    v.engineFamily === "reallive" &&
+    v.realBytes?.strictLane === "just ci-real-bytes" &&
+    v.realBytes?.minimumDistinctGames >= 2 &&
+    ["ITOTORI_REAL_GAME_ROOT", "ITOTORI_REAL_GAME_ROOT_2"].every((name) =>
+      (v.realBytes?.corpusEnvironment ?? []).includes(name),
+    ) &&
+    JSON.stringify([...(v.artifactKeys ?? [])].sort()) === JSON.stringify(exactArtifactKeys);
+  const levels = {
+    identify: cell(
+      passed ? "supported" : "unsupported",
+      `${sourceId}#status`,
+      "the accepted-output producer binds one validated RealLive bridge and fact snapshot before patching",
+    ),
+    inventory: cell(
+      "not_applicable",
+      `${sourceId}#outcome`,
+      "patched-build production consumes an already extracted bridge; it is not a separate inventory surface",
+    ),
+    extract: cell(
+      passed ? "partial" : "unsupported",
+      `${sourceId}#outcome`,
+      "the two-corpus proof derives the source bridge through real Kaifuu extraction, but production starts from that accepted-output input",
+    ),
+    patch: cell(
+      passed ? "partial" : "unsupported",
+      `${sourceId}#nativeSeam`,
+      "produceNativePatchbackBuild drives the real kaifuu patch seam and records a hash-bound playable build; validation evidence is not an EngineAdapter registry claim",
+    ),
+    helper: cell(
+      "not_applicable",
+      `${sourceId}#realBytes`,
+      "the demonstrated RealLive plaintext produce path uses no key helper",
+    ),
+    runtime: cell(
+      "unsupported",
+      `${sourceId}#supportBoundary`,
+      "produce proves patched-build creation and delivery, not a runtime replay claim",
+    ),
+  };
+  return makeRow({
+    rowId: "reallive-accepted-output-patchback-produce",
+    engineFamily: "reallive",
+    scenario: "accepted-output-patched-build-produce",
+    adapterId: v.adapterId ?? "kaifuu.reallive",
+    levels,
+    sourceKind: "validation_artifact",
+    evidenceSourceIds: [sourceId],
+    extraLimitations: [
+      "patchback-produce is gate-enforced only while the strict two-corpus real-byte oracle and both production surfaces remain declared by its capability artifact",
+    ],
+  });
+}
+
 function buildXp3Row(inputs, sourceId, scenario) {
   const profile = requireInput(inputs, sourceId);
   const variant = (profile.archiveParameters ?? []).find((p) => p.kind === "variant")?.value;
@@ -773,6 +851,7 @@ export function generateEngineCapabilityMatrix(inputs) {
       scenario: "detector-profile-readiness",
     }),
     buildRealliveReadinessRow(inputs),
+    buildReallivePatchbackProduceRow(inputs),
     buildSoftpalRow(inputs),
   ];
 

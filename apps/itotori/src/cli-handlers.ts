@@ -48,6 +48,7 @@ import { runNativeCli, type NativeCliRunner } from "./native-bin/cli-bin-resolve
 import { buildHelpText } from "./help-text.js";
 import { runInitCommand, type InitCommandDeps } from "./init-command.js";
 import { optionalFlag, requiredFlag } from "./cli/flags.js";
+import { runPatchbackProduceCommand } from "./patchback/produce-cli.js";
 // The kept localize / wiki / patch-play commands route ONLY through these thin
 // new-pipeline command handlers. Each has a clean transitive import closure (no
 // edge to the legacy service graph — proven by composition-reachability); the live
@@ -249,9 +250,13 @@ async function runPatchCommand(
   dependencies: ItotoriCliDependencies,
 ): Promise<void> {
   // Node 11 keeps the historical native `itotori patch --bundle ...` path
-  // intact, while giving versioned patches their own first-class surface.
-  // Branch before parsing patch-play flags so they never fall through to kaifuu.
+  // intact, while giving accepted-output patched builds and versioned patches
+  // their own first-class surfaces. Branch before parsing native-patch flags so
+  // neither command falls through to the historical Kaifuu wrapper.
   switch (args[1]) {
+    case "produce":
+      runPatchProduce(args, dependencies);
+      return;
     case "play":
       await runPlay(args, dependencies);
       return;
@@ -282,6 +287,51 @@ async function runPatchCommand(
     nativeArgs.push("--force");
   }
   runNativeCommandOrThrow("patch", "kaifuu-cli", nativeArgs, dependencies.nativeCli);
+}
+
+/**
+ * `itotori patch produce --input <native-patchback-input.json> --source <ro-game>
+ *   --build-root <owned-rw-dir> --scope dialogue-only|dialogue+choices --output <receipt.json>`
+ *
+ * A persistent-build front door over the exact same accepted-output-native
+ * producer used by POST /api/patchback/produce. `--build-root` deliberately
+ * remains on disk (unlike the HTTP service's temporary root) so the caller owns
+ * the real patched game tree named by the receipt's `patchTarget` artifact.
+ */
+function runPatchProduce(args: string[], dependencies: ItotoriCliDependencies): void {
+  const scope = requiredFlag(args, "--scope");
+  const runId = optionalFlag(args, "--run-id");
+  if (scope !== "dialogue-only" && scope !== "dialogue+choices") {
+    throw new Error(
+      `itotori patch produce: --scope must be 'dialogue-only' or 'dialogue+choices', got '${scope}'`,
+    );
+  }
+  const receipt = runPatchbackProduceCommand({
+    inputPath: requiredFlag(args, "--input"),
+    outputPath: requiredFlag(args, "--output"),
+    sourceRoot: requiredFlag(args, "--source"),
+    buildRoot: requiredFlag(args, "--build-root"),
+    scope,
+    ...(runId === undefined ? {} : { runId }),
+    ...(args.includes("--force") ? { force: true } : {}),
+    ...(dependencies.nativeCli === undefined ? {} : { nativeCli: dependencies.nativeCli }),
+    log: (message) => process.stderr.write(`${message}\n`),
+    io: {
+      readJson: (path) => dependencies.io.readJson(path),
+      writeJson: (path, value) => dependencies.io.writeJson(path, value),
+    },
+  });
+  process.stdout.write(
+    `${JSON.stringify(
+      {
+        capabilityId: receipt.capabilityId,
+        patchVersionId: receipt.patch.patchVersionId,
+        patchTarget: receipt.patch.artifactRefs.patchTarget,
+      },
+      null,
+      2,
+    )}\n`,
+  );
 }
 
 /**

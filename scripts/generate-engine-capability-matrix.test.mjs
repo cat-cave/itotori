@@ -108,6 +108,40 @@ test("Softpal is a positive extract+patch adapter derived from real capability t
   assert.equal(regenerated.levels.extract.status, "unsupported");
 });
 
+test("RealLive accepted-output patched-build produce is declared and gate-enforced", () => {
+  const produce = rowsById.get("reallive-accepted-output-patchback-produce");
+  assert.ok(produce, "patchback-produce capability row must exist");
+  assert.equal(produce.engineFamily, "reallive");
+  assert.equal(produce.scenario, "accepted-output-patched-build-produce");
+  assert.equal(produce.evidencePosture, "readiness_only");
+  assert.equal(produce.levels.extract.status, "partial");
+  assert.equal(produce.levels.patch.status, "partial");
+  assert.deepEqual(produce.evidence, [
+    {
+      sourceId: "reallive-patchback-produce",
+      category: "validation_artifact",
+      kind: "validation_artifact",
+    },
+  ]);
+
+  // This row cannot survive as a hand-written claim: losing either the real
+  // two-corpus proof declaration or the shared native seam demotes patching.
+  for (const [path, value] of [
+    [["status"], "failed"],
+    [["nativeSeam"], "mockPatchback"],
+    [["realBytes", "minimumDistinctGames"], 1],
+  ]) {
+    const tampered = structuredClone(inputs);
+    let target = tampered["reallive-patchback-produce"];
+    for (const key of path.slice(0, -1)) target = target[key];
+    target[path.at(-1)] = value;
+    const regenerated = generateEngineCapabilityMatrix(tampered).rows.find(
+      (row) => row.rowId === "reallive-accepted-output-patchback-produce",
+    );
+    assert.equal(regenerated.levels.patch.status, "unsupported");
+  }
+});
+
 test("RenPy is not presented as an alpha Japanese opportunity driver", () => {
   const renpyRows = matrix.rows.filter((r) => r.engineFamily === "renpy");
   assert.equal(renpyRows.length, 0, "RenPy must not appear as a capability row");
