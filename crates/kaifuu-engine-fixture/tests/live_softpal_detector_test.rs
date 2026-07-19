@@ -116,14 +116,37 @@ fn confirm_softpal(label: &str, title_root: &Path) {
         Some("softpal"),
         "[{label}] engine family must be `softpal`"
     );
-    // Identify-level only: extract must stay unsupported even on real bytes.
+    // First-class extraction on real bytes: the kaifuu-softpal reader must
+    // recover the dialogue + choice text surface into a BridgeBundle with units.
+    let extraction = SoftpalProfileDetectorAdapter
+        .extract(kaifuu_core::ExtractRequest {
+            game_dir: &game_dir,
+        })
+        .unwrap_or_else(|error| panic!("[{label}] real Softpal extract must succeed: {error}"));
+    eprintln!(
+        "[{label}] extract: units={} warnings={}",
+        extraction.bridge.units.len(),
+        extraction.warnings.len()
+    );
     assert!(
-        SoftpalProfileDetectorAdapter
-            .extract(kaifuu_core::ExtractRequest {
-                game_dir: &game_dir
-            })
-            .is_err(),
-        "[{label}] detector must not claim extraction on real bytes"
+        !extraction.bridge.units.is_empty(),
+        "[{label}] real Softpal extract must recover dialogue/choice units"
+    );
+    assert!(
+        extraction.warnings.is_empty(),
+        "[{label}] real Softpal decode must be clean (0 dangling pointers)"
+    );
+
+    // Verify must pass the 0-dangling-pointer decode-integrity bar on real bytes.
+    let verification = SoftpalProfileDetectorAdapter
+        .verify(kaifuu_core::VerifyRequest {
+            game_dir: &game_dir,
+        })
+        .expect("Softpal verify must run against the real tree");
+    assert_eq!(
+        verification.status,
+        kaifuu_core::OperationStatus::Passed,
+        "[{label}] real Softpal decode-integrity verify must pass"
     );
 }
 

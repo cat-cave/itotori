@@ -570,6 +570,7 @@ dependencies = [
  "kaifuu-kirikiri",
  "kaifuu-reallive",
  "kaifuu-rpgmaker",
+ "kaifuu-softpal",
  "kaifuu-vault-source",
  "rusqlite",
  "serde_json",
@@ -609,6 +610,7 @@ version = "0.0.0"
 dependencies = [
  "kaifuu-core",
  "kaifuu-reallive",
+ "kaifuu-softpal",
  "serde",
  "serde_json",
 ]

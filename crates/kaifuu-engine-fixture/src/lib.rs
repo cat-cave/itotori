@@ -6936,38 +6936,35 @@ mod tests {
     }
 
     #[test]
-    fn softpal_detector_level_matrix_is_identify_only() {
+    fn softpal_adapter_level_matrix_extract_supported_patch_partial() {
         use kaifuu_core::CapabilityLevel;
         let matrix = SoftpalProfileDetectorAdapter.capabilities().level_matrix;
         assert_eq!(matrix.adapter_id, SOFTPAL_DETECTOR_ADAPTER_ID);
         assert!(matrix.supports(CapabilityLevel::Identify));
-        assert!(matrix.inventory.is_unsupported());
-        assert!(matrix.extract.is_unsupported());
-        assert!(matrix.patch.is_unsupported());
+        assert!(matrix.supports(CapabilityLevel::Inventory));
+        // Extract is a first-class Supported surface: the kaifuu-softpal PAC +
+        // TEXT.DAT + SCRIPT.SRC reader recovers the dialogue + choice text.
+        assert!(matrix.supports(CapabilityLevel::Extract));
+        // Patch is Partial: real loose-file dialogue/choice patch-back, but PAC
+        // repack + non-text surfaces are not claimed.
+        assert!(!matrix.supports(CapabilityLevel::Patch));
+        assert!(matrix.patch.is_partial());
     }
 
     #[test]
-    fn softpal_extract_list_and_inventory_are_unsupported() {
-        let dir = temp_dir("softpal-unsupported-ops");
+    fn softpal_extract_errors_when_no_scripts_resolvable() {
+        // Detected (Pal.dll) but no data.pac / loose scripts: extract must fail
+        // loudly (no scripts to disassemble), never fabricate an empty bundle.
+        // list_assets/asset_inventory still succeed (empty) for a detected title;
+        // positive real-bytes extract/inventory coverage is in the live test.
+        let dir = temp_dir("softpal-no-scripts");
         fs::create_dir_all(dir.join("dll")).unwrap();
         fs::write(dir.join("dll/Pal.dll"), b"MZ synthetic").unwrap();
-        let adapter = SoftpalProfileDetectorAdapter;
-
         assert!(
-            adapter.extract(ExtractRequest { game_dir: &dir }).is_err(),
-            "extract must be unsupported (no PAC extraction claim)"
-        );
-        assert!(
-            adapter
-                .list_assets(AssetListRequest { game_dir: &dir })
+            SoftpalProfileDetectorAdapter
+                .extract(ExtractRequest { game_dir: &dir })
                 .is_err(),
-            "list_assets must be unsupported"
-        );
-        assert!(
-            adapter
-                .asset_inventory(AssetInventoryRequest { game_dir: &dir })
-                .is_err(),
-            "asset_inventory must be unsupported"
+            "extract must error when no SCRIPT.SRC/TEXT.DAT pair is resolvable"
         );
         let _ = fs::remove_dir_all(&dir);
     }

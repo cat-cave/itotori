@@ -605,38 +605,38 @@
       "capabilities": [
         {
           "capability": "asset_inventory",
-          "status": "unsupported",
-          "limitation": "Softpal asset inventory is a later Softpal node, not the detector"
+          "status": "supported",
+          "limitation": null
         },
         {
           "capability": "asset_listing",
-          "status": "unsupported",
-          "limitation": "Softpal PAC entry listing is a later Softpal node, not the detector"
+          "status": "supported",
+          "limitation": null
         },
         {
           "capability": "asset_text_patching",
-          "status": "unsupported",
-          "limitation": "no Softpal text surfaces are patched by this detector"
+          "status": "limited",
+          "limitation": "dialogue + choice text is patched back by rebuilding TEXT.DAT (re-encrypting when the original was) and repointing SCRIPT.SRC as loose files; PAC repack, speaker-name/non-text surfaces, and the full Sv20 opcode table are not claimed"
         },
         {
           "capability": "codec_access",
-          "status": "unsupported",
-          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+          "status": "supported",
+          "limitation": null
         },
         {
           "capability": "container_access",
-          "status": "unsupported",
-          "limitation": "PAC archive parsing is outside the detector"
+          "status": "supported",
+          "limitation": null
         },
         {
           "capability": "crypto_access",
-          "status": "unsupported",
-          "limitation": "TEXT.DAT/PAC decryption is outside the detector"
+          "status": "supported",
+          "limitation": null
         },
         {
           "capability": "delta_patching",
           "status": "unsupported",
-          "limitation": ".kaifuu delta packages do not apply to the detector-only Softpal profile"
+          "limitation": "Softpal patch-back emits rebuilt loose files, not a .kaifuu delta package"
         },
         {
           "capability": "detection",
@@ -645,13 +645,13 @@
         },
         {
           "capability": "encrypted_input",
-          "status": "unsupported",
-          "limitation": "encrypted TEXT.DAT payloads are identified only, never decrypted"
+          "status": "supported",
+          "limitation": null
         },
         {
           "capability": "extraction",
-          "status": "unsupported",
-          "limitation": "the Softpal detector does not extract PAC archives"
+          "status": "supported",
+          "limitation": null
         },
         {
           "capability": "non_text_surface_extraction",
@@ -660,13 +660,13 @@
         },
         {
           "capability": "patch_back",
-          "status": "unsupported",
-          "limitation": "Softpal patch-back/repack support is outside the detector"
+          "status": "limited",
+          "limitation": "dialogue + choice text is patched back by rebuilding TEXT.DAT (re-encrypting when the original was) and repointing SCRIPT.SRC as loose files; PAC repack, speaker-name/non-text surfaces, and the full Sv20 opcode table are not claimed"
         },
         {
           "capability": "patching",
-          "status": "unsupported",
-          "limitation": "the Softpal detector does not patch or rebuild Softpal assets"
+          "status": "limited",
+          "limitation": "dialogue + choice text is patched back by rebuilding TEXT.DAT (re-encrypting when the original was) and repointing SCRIPT.SRC as loose files; PAC repack, speaker-name/non-text surfaces, and the full Sv20 opcode table are not claimed"
         },
         {
           "capability": "profile_generation",
@@ -676,7 +676,12 @@
         {
           "capability": "runtime_vm",
           "status": "unsupported",
-          "limitation": "runtime support belongs to future Utsushi/Softpal work, not this detector"
+          "limitation": "runtime support belongs to future Utsushi/Softpal work, not this adapter"
+        },
+        {
+          "capability": "verification",
+          "status": "supported",
+          "limitation": null
         }
       ]
     }
