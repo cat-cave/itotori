@@ -25,7 +25,7 @@ import type {
   Q2SampleKind,
   VoiceBibleRule,
 } from "../../../roles/q2/index.js";
-import type { Q3ApprovedTerm, Q3ReviewInput } from "../../../roles/q3/index.js";
+import type { Q3AmbiguousCoinage, Q3ApprovedTerm, Q3ReviewInput } from "../../../roles/q3/index.js";
 import type { Q4OriginTranslation, Q4ReviewInput } from "../../../roles/q4/index.js";
 import type { FactRouteScope, OrderedUnitFact } from "../../../prepass/index.js";
 import type { DraftedUnit } from "../../../workflow/index.js";
@@ -142,6 +142,7 @@ export function buildQ3ReviewInput(input: {
   readonly localizationSnapshotId: Sha256Hash;
   readonly exactGateStatus: "cleared" | "defect";
   readonly approvedTerms?: readonly Q3ApprovedTerm[];
+  readonly ambiguousCoinages?: readonly Q3AmbiguousCoinage[];
   readonly termRulingIds?: readonly string[];
   readonly neighbors?: readonly {
     readonly surface: "source" | "accepted-target";
@@ -155,6 +156,7 @@ export function buildQ3ReviewInput(input: {
     candidateTarget: input.unit.draft.targetSkeleton,
     exactGate: { gate: "glossary-exact", status: input.exactGateStatus },
     approvedTerms: [...(input.approvedTerms ?? [])],
+    ambiguousCoinages: [...(input.ambiguousCoinages ?? [])],
     termRulingIds: [...(input.termRulingIds ?? [])],
     neighbors: [...(input.neighbors ?? [])],
   };

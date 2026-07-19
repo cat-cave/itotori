@@ -82,6 +82,7 @@ export async function runQ3Audit(
     deps.resolveContradiction ?? approvedFormContradictionResolver(input);
   const interpretation = interpretQ3Verdict(
     callResult.value,
+    input,
     deps.resolveEvidence,
     resolveContradiction,
   );

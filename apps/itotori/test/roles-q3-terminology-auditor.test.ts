@@ -54,6 +54,7 @@ const baseInput: Q3ReviewInput = {
   candidateTarget: "The Demon Lord greeted the Hero.",
   exactGate: { gate: "glossary-exact", status: "cleared" },
   approvedTerms: [{ termId: "term:1", sourceForm: "魔王", approvedTargetForm: "Demon Lord" }],
+  ambiguousCoinages: [],
   termRulingIds: ["ruling:1"],
   neighbors: [{ surface: "accepted-target", unitId: "unit:0", text: "Morning came." }],
 };
@@ -210,25 +211,62 @@ describe("Clause 2 — terminology sense/register of approved forms, not exact m
 
   it("rejects a FAIL whose category is outside terminology (a meaning finding)", () => {
     const meaning = failVerdict({ category: "mistranslation" });
-    const interpretation = interpretQ3Verdict(meaning, allVisible, noContradiction);
+    const interpretation = interpretQ3Verdict(meaning, baseInput, allVisible, noContradiction);
     expect(interpretation.disposition).toBe("invalid");
     expect(canFinalize(interpretation)).toBe(false);
-    expect(Q3_TERMINOLOGY_CATEGORIES).toStrictEqual(["term-sense", "new-coinage"]);
+    expect(Q3_TERMINOLOGY_CATEGORIES).toStrictEqual(["term-sense", "register", "new-coinage"]);
   });
 
-  it("refers a term-sense FAIL and a genuinely new coinage to the ruling lane", () => {
+  it("flags a cited register issue on an approved form and refers its input-derived source form", async () => {
+    const outcome = await runQ3Audit(baseInput, refs, {
+      dispatch: recordedDispatch(
+        failVerdict({
+          category: "register",
+          span: { spanId: "s", surface: "target", text: "Demon Lord" },
+        }),
+      ),
+      resolveEvidence: allVisible,
+    });
+    expect(outcome.outcome).toBe("reviewed");
+    if (outcome.outcome !== "reviewed") return;
+    expect(outcome.interpretation.disposition).toBe("refer");
+    expect(outcome.interpretation.referral).toMatchObject({
+      kind: "approved-form-context",
+      termId: "term:1",
+      sourceForm: "魔王",
+      citedEvidenceIds: ["ruling:1"],
+    });
+  });
+
+  it("refers an approved-form sense issue and a cited genuinely new source coinage", () => {
     const sense = interpretQ3Verdict(
       failVerdict({
         category: "term-sense",
-        span: { spanId: "s", surface: "target", text: "Hero" },
+        span: { spanId: "s", surface: "target", text: "Demon Lord" },
       }),
+      baseInput,
       allVisible,
       noContradiction,
     );
     expect(sense.disposition).toBe("refer");
-    expect(sense.referral?.sourceForm).toBe("Hero");
-    const coinage = interpretQ3Verdict(failVerdict(), allVisible, noContradiction);
+    expect(sense.referral?.sourceForm).toBe("魔王");
+    const coinage = interpretQ3Verdict(
+      failVerdict({ span: { spanId: "span:coinage", surface: "source", text: "マナ" } }),
+      {
+        ...baseInput,
+        ambiguousCoinages: [
+          { candidateId: "coinage:mana", sourceForm: "マナ", evidenceIds: ["ruling:1"] },
+        ],
+      },
+      allVisible,
+      noContradiction,
+    );
     expect(coinage.disposition).toBe("refer");
+    expect(coinage.referral).toMatchObject({
+      kind: "ambiguous-source-coinage",
+      candidateId: "coinage:mana",
+      sourceForm: "マナ",
+    });
     expect(coinage.referral?.citedEvidenceIds).toStrictEqual(["ruling:1"]);
     // The referral carries a source candidate only — never a target form.
     expect(coinage.referral).not.toHaveProperty("targetForm");
@@ -265,14 +303,36 @@ describe("Clause 3 — a verdict contradicting an approved form is rejected, rou
       contradictsApprovedForm: true,
       approvedTermId: "term:1",
     });
-    const interpretation = interpretQ3Verdict(failVerdict(), allVisible, contradicts);
+    const interpretation = interpretQ3Verdict(failVerdict(), baseInput, allVisible, contradicts);
     expect(interpretation.disposition).toBe("reject-contradiction");
     expect(canFinalize(interpretation)).toBe(false);
   });
 
   it("a genuinely new coinage that collides with nothing approved is not a contradiction", () => {
-    const interpretation = interpretQ3Verdict(failVerdict(), allVisible, noContradiction);
+    const interpretation = interpretQ3Verdict(
+      failVerdict({ span: { spanId: "span:coinage", surface: "source", text: "マナ" } }),
+      {
+        ...baseInput,
+        ambiguousCoinages: [
+          { candidateId: "coinage:mana", sourceForm: "マナ", evidenceIds: ["ruling:1"] },
+        ],
+      },
+      allVisible,
+      noContradiction,
+    );
     expect(interpretation.disposition).toBe("refer");
+  });
+
+  it("rejects a model-invented new coinage that was not a supplied source candidate", () => {
+    const invented = interpretQ3Verdict(
+      failVerdict({ span: { spanId: "span:invented", surface: "source", text: "幻晶" } }),
+      baseInput,
+      allVisible,
+      noContradiction,
+    );
+    expect(invented.disposition).toBe("invalid");
+    expect(canFinalize(invented)).toBe(false);
+    expect(invented.referral).toBeNull();
   });
 });
 
@@ -280,13 +340,18 @@ describe("Clause 3 — a verdict contradicting an approved form is rejected, rou
 describe("Clause 4 — strict verdict, visible evidence, CANNOT_ASSESS never passes", () => {
   it("a FAIL missing its repair constraint is not a valid verdict", () => {
     expect(() =>
-      interpretQ3Verdict(failVerdict({ repairConstraint: null }), allVisible, noContradiction),
+      interpretQ3Verdict(
+        failVerdict({ repairConstraint: null }),
+        baseInput,
+        allVisible,
+        noContradiction,
+      ),
     ).toThrow();
   });
 
   it("an unresolvable citation invalidates the verdict", () => {
     const missing: EvidenceResolver = () => ({ resolved: false, visible: false });
-    const interpretation = interpretQ3Verdict(passVerdict(), missing, noContradiction);
+    const interpretation = interpretQ3Verdict(passVerdict(), baseInput, missing, noContradiction);
     expect(interpretation.disposition).toBe("invalid");
     expect(canFinalize(interpretation)).toBe(false);
     expect(interpretation.issues.some((issue) => /does not resolve/u.test(issue.message))).toBe(
@@ -295,13 +360,23 @@ describe("Clause 4 — strict verdict, visible evidence, CANNOT_ASSESS never pas
   });
 
   it("a clean PASS with visible evidence finalizes", () => {
-    const interpretation = interpretQ3Verdict(passVerdict(), allVisible, noContradiction);
+    const interpretation = interpretQ3Verdict(
+      passVerdict(),
+      baseInput,
+      allVisible,
+      noContradiction,
+    );
     expect(interpretation.disposition).toBe("finalize");
     expect(canFinalize(interpretation)).toBe(true);
   });
 
   it("a valid CANNOT_ASSESS escalates and never finalizes", () => {
-    const interpretation = interpretQ3Verdict(cannotAssessVerdict(), allVisible, noContradiction);
+    const interpretation = interpretQ3Verdict(
+      cannotAssessVerdict(),
+      baseInput,
+      allVisible,
+      noContradiction,
+    );
     expect(interpretation.disposition).toBe("escalate");
     expect(canFinalize(interpretation)).toBe(false);
   });
@@ -328,7 +403,7 @@ describe("Clause 4 — strict verdict, visible evidence, CANNOT_ASSESS never pas
 
   it("only a PASS disposition ever finalizes", () => {
     for (const raw of [passVerdict(), failVerdict(), cannotAssessVerdict()]) {
-      const interpretation = interpretQ3Verdict(raw, allVisible, noContradiction);
+      const interpretation = interpretQ3Verdict(raw, baseInput, allVisible, noContradiction);
       if (canFinalize(interpretation)) expect(interpretation.verdict.verdict).toBe("PASS");
     }
   });

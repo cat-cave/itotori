@@ -7,6 +7,7 @@
 // roster read-only and shares no barrel a sibling reviewer would also edit.
 export {
   EXACT_GATE,
+  Q3AmbiguousCoinageSchema,
   Q3ApprovedTermSchema,
   Q3ExactGateSchema,
   Q3NeighborWindowSchema,
@@ -16,6 +17,7 @@ export {
   exactGateCleared,
   parseQ3ReviewInput,
   type Q3ApprovedTerm,
+  type Q3AmbiguousCoinage,
   type Q3ExactGate,
   type Q3NeighborWindow,
   type Q3ReviewInput,

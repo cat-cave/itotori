@@ -39,6 +39,18 @@ export const Q3ApprovedTermSchema = z
   })
   .strict();
 
+/** A genuinely new, ambiguous SOURCE coinage from the deterministic candidate
+ * set. The auditor may refer only one of these exact forms, carrying at least
+ * its supplied source evidence, back to A2/bible enhancement. It cannot turn a
+ * model-invented source or target string into a candidate. */
+export const Q3AmbiguousCoinageSchema = z
+  .object({
+    candidateId: IdentifierSchema,
+    sourceForm: ShortTextSchema,
+    evidenceIds: z.array(IdentifierSchema).min(1).max(1_024),
+  })
+  .strict();
+
 /** The outcome of the deterministic exact glossary and name gate for this unit.
  * `cleared` is the ONLY status under which the auditor may judge; `defect` is an
  * exact mismatch the gate owns. */
@@ -67,12 +79,14 @@ export const Q3ReviewInputSchema = z
     candidateTarget: NonEmptyTextSchema,
     exactGate: Q3ExactGateSchema,
     approvedTerms: z.array(Q3ApprovedTermSchema).max(1_024),
+    ambiguousCoinages: z.array(Q3AmbiguousCoinageSchema).max(1_024),
     termRulingIds: z.array(IdentifierSchema).max(1_024),
     neighbors: z.array(Q3NeighborWindowSchema).max(1_024),
   })
   .strict();
 
 export type Q3ApprovedTerm = z.infer<typeof Q3ApprovedTermSchema>;
+export type Q3AmbiguousCoinage = z.infer<typeof Q3AmbiguousCoinageSchema>;
 export type Q3ExactGate = z.infer<typeof Q3ExactGateSchema>;
 export type Q3NeighborWindow = z.infer<typeof Q3NeighborWindowSchema>;
 export type Q3ReviewInput = z.infer<typeof Q3ReviewInputSchema>;
