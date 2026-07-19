@@ -27,7 +27,10 @@ export type ItotoriApiBinaryRoute = {
   readonly contentType: "application/x-tar";
 };
 
-export type ItotoriApiBinaryRouteId = "play.deliveryArchive" | "patchIteration.deliveryArchive";
+export type ItotoriApiBinaryRouteId =
+  | "play.deliveryArchive"
+  | "patchIteration.deliveryArchive"
+  | "projects.patchbackArchive";
 
 /**
  * Every `/api` route, keyed by {@link ItotoriApiRouteId}. The
@@ -262,6 +265,16 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: [],
     requestSchema: "ApiProjectDecodeExtractRequest",
     responseSchema: "ApiProjectDecodeExtractResponse",
+  },
+  "projects.patchback": {
+    method: "POST",
+    pathTemplate: "/api/projects/patchback",
+    operationId: "projectsPatchback",
+    summary:
+      "Trigger RealLive patchback via the real kaifuu-cli apply seam and return a downloadable patched build.",
+    pathParams: [],
+    requestSchema: "ApiProjectPatchbackRequest",
+    responseSchema: "ApiProjectPatchbackResponse",
   },
   "imports.bridge": {
     method: "POST",
@@ -636,6 +649,14 @@ export const ITOTORI_API_BINARY_ROUTES: Readonly<
     pathParams: ["patchVersionId"],
     contentType: "application/x-tar",
   },
+  "projects.patchbackArchive": {
+    method: "GET",
+    pathTemplate: "/api/projects/patchback/{patchBuildId}/archive",
+    operationId: "projectsPatchbackArchive",
+    summary: "Download the patched game archive produced by a Studio patchback trigger.",
+    pathParams: ["patchBuildId"],
+    contentType: "application/x-tar",
+  },
 };
 
 /** Public, encoded URL used by the JSON delivery metadata response. */
@@ -646,6 +667,11 @@ export function playDeliveryArchivePath(runId: string): string {
 /** Public, encoded URL for the immutable historical-version archive endpoint. */
 export function patchIterationDeliveryArchivePath(patchVersionId: string): string {
   return `/api/play/patch-versions/${encodeURIComponent(patchVersionId)}/delivery/archive`;
+}
+
+/** Public, encoded URL for a Studio-triggered patched-build archive. */
+export function projectPatchbackArchivePath(patchBuildId: string): string {
+  return `/api/projects/patchback/${encodeURIComponent(patchBuildId)}/archive`;
 }
 
 /**

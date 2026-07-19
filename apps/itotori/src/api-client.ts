@@ -72,6 +72,8 @@ import type {
   ApiProjectImportResponse,
   ApiProjectDecodeExtractRequest,
   ApiProjectDecodeExtractResponse,
+  ApiProjectPatchbackRequest,
+  ApiProjectPatchbackResponse,
   ApiProjectsResponse,
   ApiJobsRunTableResponse,
   ApiQueueHealthResponse,
@@ -234,6 +236,10 @@ interface ItotoriApiRouteTypeMap {
   "projects.decodeExtract": {
     response: ApiProjectDecodeExtractResponse;
     request: ApiProjectDecodeExtractRequest;
+  };
+  "projects.patchback": {
+    response: ApiProjectPatchbackResponse;
+    request: ApiProjectPatchbackRequest;
   };
   "imports.bridge": {
     response: ApiProjectImportResponse;

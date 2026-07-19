@@ -138,6 +138,11 @@ export type ItotoriApiRouteId =
   // Studio on-ramp). Gated on `project.import` — the same authority `imports.bridge`
   // carries, since it produces the same import artifact.
   | "projects.decodeExtract"
+  // Studio patchback trigger — run the REAL kaifuu-cli patch-apply seam
+  // (`applyRealLivePatch`) and return a downloadable patched-build handle.
+  // Gated on `draft.write` (canSteer): producing a playable build is a
+  // draft-affecting production mutation, same authority as launch-pass.
+  | "projects.patchback"
   | "imports.bridge"
   | "branches.draft"
   | "findings.record"
@@ -545,6 +550,15 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "startedAt",
     "refusalMessage",
   ],
+  // Studio patchback trigger — retained patched-build handle + download URL.
+  ApiProjectPatchbackResponse: [
+    "schemaVersion",
+    "patchBuildId",
+    "scope",
+    "command",
+    "downloadUrl",
+    "artifactHashes",
+  ],
   // play-routemap-ui — route/choice tree envelope.
   ApiPlayRouteMapResponse: [
     "schemaVersion",
@@ -780,6 +794,34 @@ export type ApiProjectDecodeExtractResponse = {
   bridge: BridgeBundleV02;
   mode: "per-scene" | "whole-seen";
   command: string;
+};
+
+/**
+ * Studio patchback trigger — point the Studio at a RealLive game root + a
+ * translated v0.2 bridge and run the REAL `kaifuu-cli patch --engine reallive`
+ * seam (the same path `itotori patch` / `applyRealLivePatch` uses). Provide
+ * EXACTLY ONE of `translatedBundlePath` (server-local) or `translatedBundle`
+ * (inline JSON).
+ */
+export type ApiProjectPatchbackRequest = {
+  gameRoot: string;
+  translatedBundlePath?: string;
+  translatedBundle?: unknown;
+  scope: "dialogue-only" | "dialogue+choices";
+  force?: boolean;
+};
+
+/**
+ * The retained patched-build handle. `downloadUrl` is the authenticated
+ * binary archive endpoint; server filesystem paths never leave this boundary.
+ */
+export type ApiProjectPatchbackResponse = {
+  schemaVersion: "itotori.projects.patchback.v1";
+  patchBuildId: string;
+  scope: "dialogue-only" | "dialogue+choices";
+  command: string;
+  downloadUrl: string;
+  artifactHashes: Record<string, string>;
 };
 
 export type ApiBootstrapCatalogSourceId = {
@@ -1657,6 +1699,7 @@ export type ItotoriApiResponseBody =
   | ApiQueueHealthResponse
   | RuntimeDashboardStatus
   | ApiProjectDecodeExtractResponse
+  | ApiProjectPatchbackResponse
   | ApiProjectImportResponse
   | ApiDraftBranchResponse
   | ApiRecordFindingResponse
@@ -1762,6 +1805,46 @@ export function parseProjectDecodeExtractRequest(body: unknown): ApiProjectDecod
       ...(hasGameRoot ? { gameRoot: request.gameRoot as string } : {}),
       ...(scene !== undefined ? { scene } : {}),
       ...(wholeSeen ? { wholeSeen: true } : {}),
+    };
+  });
+}
+
+export function parseProjectPatchbackRequest(body: unknown): ApiProjectPatchbackRequest {
+  return parseRequest("ApiProjectPatchbackRequest", () => {
+    const request = asRecord(body, "ApiProjectPatchbackRequest");
+    assertString(request.gameRoot, "ApiProjectPatchbackRequest.gameRoot");
+    if (request.gameRoot.trim().length === 0) {
+      throw new Error("ApiProjectPatchbackRequest.gameRoot must be non-blank");
+    }
+    assertEnum(
+      request.scope,
+      ["dialogue-only", "dialogue+choices"] as const,
+      "ApiProjectPatchbackRequest.scope",
+    );
+    if (request.force !== undefined && typeof request.force !== "boolean") {
+      throw new Error("ApiProjectPatchbackRequest.force must be a boolean when supplied");
+    }
+    if (request.translatedBundlePath !== undefined) {
+      assertString(request.translatedBundlePath, "ApiProjectPatchbackRequest.translatedBundlePath");
+      if (request.translatedBundlePath.trim().length === 0) {
+        throw new Error("ApiProjectPatchbackRequest.translatedBundlePath must be non-blank");
+      }
+    }
+    const hasPath =
+      typeof request.translatedBundlePath === "string" &&
+      request.translatedBundlePath.trim().length > 0;
+    const hasInline = request.translatedBundle !== undefined;
+    if (hasPath === hasInline) {
+      throw new Error(
+        "ApiProjectPatchbackRequest requires EXACTLY ONE of translatedBundlePath or translatedBundle",
+      );
+    }
+    return {
+      gameRoot: request.gameRoot,
+      scope: request.scope,
+      ...(hasPath ? { translatedBundlePath: request.translatedBundlePath as string } : {}),
+      ...(hasInline ? { translatedBundle: request.translatedBundle } : {}),
+      ...(request.force === undefined ? {} : { force: request.force }),
     };
   });
 }
@@ -2255,6 +2338,9 @@ export function assertItotoriApiResponse(
       return;
     case "projects.decodeExtract":
       assertProjectDecodeExtractResponse(value);
+      return;
+    case "projects.patchback":
+      assertProjectPatchbackResponse(value);
       return;
     case "imports.bridge":
       assertProjectImportResponse(value);
@@ -5672,6 +5758,33 @@ function assertProjectDecodeExtractResponse(
     "ApiProjectDecodeExtractResponse.mode",
   );
   assertString(response.command, "ApiProjectDecodeExtractResponse.command");
+}
+
+function assertProjectPatchbackResponse(
+  value: unknown,
+): asserts value is ApiProjectPatchbackResponse {
+  const response = asRecord(value, "ApiProjectPatchbackResponse");
+  assertEnum(
+    response.schemaVersion,
+    ["itotori.projects.patchback.v1"] as const,
+    "ApiProjectPatchbackResponse.schemaVersion",
+  );
+  assertString(response.patchBuildId, "ApiProjectPatchbackResponse.patchBuildId");
+  assertEnum(
+    response.scope,
+    ["dialogue-only", "dialogue+choices"] as const,
+    "ApiProjectPatchbackResponse.scope",
+  );
+  assertString(response.command, "ApiProjectPatchbackResponse.command");
+  assertString(response.downloadUrl, "ApiProjectPatchbackResponse.downloadUrl");
+  if (typeof response.artifactHashes !== "object" || response.artifactHashes === null) {
+    throw new Error("ApiProjectPatchbackResponse.artifactHashes must be an object");
+  }
+  for (const [key, hash] of Object.entries(response.artifactHashes as Record<string, unknown>)) {
+    if (typeof hash !== "string") {
+      throw new Error(`ApiProjectPatchbackResponse.artifactHashes.${key} must be a string`);
+    }
+  }
 }
 
 function assertDraftBranchResponse(value: unknown): asserts value is ApiDraftBranchResponse {

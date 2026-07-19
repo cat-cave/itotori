@@ -34,19 +34,38 @@ export async function createDeliveredPatchArchive(
     throw new Error(`selected patch ${selected.patchVersionId} has no patchTarget artifact`);
   }
 
-  const suppliedRoot = resolve(patchTarget);
+  return archiveTrustedDirectory({
+    root: patchTarget,
+    fileName: `${safeDownloadName(selected.patchVersionId)}.tar`,
+    label: `selected patch ${selected.patchVersionId}`,
+  });
+}
+
+/**
+ * Archive a server-trusted directory tree as portable tar.
+ *
+ * Callers must already own the path (selected delivery artifact, studio
+ * patchback build root, …). This never accepts a client-supplied free path
+ * without that prior trust boundary.
+ */
+export async function archiveTrustedDirectory(input: {
+  root: string;
+  fileName: string;
+  label?: string;
+}): Promise<DeliveredPatchArchive> {
+  const label = input.label ?? "trusted directory";
+  const suppliedRoot = resolve(input.root);
   const suppliedStat = await lstat(suppliedRoot);
   if (suppliedStat.isSymbolicLink() || !suppliedStat.isDirectory()) {
-    throw new Error(
-      `selected patch ${selected.patchVersionId} patchTarget must be a real directory`,
-    );
+    throw new Error(`${label} must be a real directory`);
   }
   const root = await realpath(suppliedRoot);
   const entries = await collectArchiveEntries(root, root);
 
+  const baseName = input.fileName.endsWith(".tar") ? input.fileName.slice(0, -4) : input.fileName;
   return {
     contentType: "application/x-tar",
-    fileName: `${safeDownloadName(selected.patchVersionId)}.tar`,
+    fileName: `${safeDownloadName(baseName)}.tar`,
     bytes: encodeTar(entries),
   };
 }

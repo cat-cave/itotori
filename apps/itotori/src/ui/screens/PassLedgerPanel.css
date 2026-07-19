@@ -1,0 +1,132 @@
+/* Studio patchback action strip inside the execution-journal panel. */
+
+.itotori-patchback-action {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--itotori-border-subtle, color-mix(in oklab, currentColor 12%, transparent));
+  border-radius: 0.65rem;
+  background: var(--itotori-surface-raised, color-mix(in oklab, currentColor 4%, transparent));
+}
+
+.itotori-patchback-action__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.itotori-patchback-action__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.itotori-patchback-action__lede {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.82;
+  line-height: 1.4;
+}
+
+.itotori-patchback-action__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.65rem 0.85rem;
+}
+
+.itotori-patchback-action__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.itotori-patchback-action__field input,
+.itotori-patchback-action__field select {
+  min-height: 2.1rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--itotori-border-subtle, color-mix(in oklab, currentColor 16%, transparent));
+  border-radius: 0.4rem;
+  background: var(--itotori-surface-input, transparent);
+  color: inherit;
+  font: inherit;
+}
+
+.itotori-patchback-action__field input:focus,
+.itotori-patchback-action__field select:focus {
+  outline: 2px solid var(--itotori-focus-ring, color-mix(in oklab, currentColor 35%, transparent));
+  outline-offset: 1px;
+}
+
+.itotori-patchback-action__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.itotori-patchback-action button[data-action="build-patched-game"] {
+  min-height: 2.2rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  background: var(--itotori-action-primary, color-mix(in oklab, currentColor 14%, transparent));
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.itotori-patchback-action button[data-action="build-patched-game"]:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.itotori-patchback-action button[data-action="build-patched-game"]:not(:disabled):hover {
+  filter: brightness(1.06);
+}
+
+.itotori-patchback-action[data-busy="true"] button[data-action="build-patched-game"] {
+  cursor: progress;
+}
+
+.itotori-patchback-action__status,
+.itotori-patchback-action__error {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.itotori-patchback-action__status p {
+  margin: 0 0 0.35rem;
+}
+
+.itotori-patchback-action__command {
+  overflow-x: auto;
+  opacity: 0.78;
+  font-size: 0.78rem;
+}
+
+.itotori-patchback-action__status a[data-action="download-patched-build"] {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--itotori-border-subtle, color-mix(in oklab, currentColor 18%, transparent));
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.itotori-patchback-action__status a[data-action="download-patched-build"]:hover {
+  filter: brightness(1.08);
+}
+
+.itotori-patchback-action [data-cap-denial="steer"] {
+  font-size: 0.8rem;
+  opacity: 0.78;
+}

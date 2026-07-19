@@ -81,6 +81,16 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
         });
         return;
       }
+      const patchbackArchiveRoute = parseProjectPatchbackArchiveRoute(url.pathname);
+      if (patchbackArchiveRoute !== null) {
+        await serveProjectPatchbackArchiveRequest({
+          request,
+          response,
+          patchBuildId: patchbackArchiveRoute.patchBuildId,
+          readOnlyServiceFactory,
+        });
+        return;
+      }
       try {
         const body = await readJsonRequestBody(request);
         const method = request.method ?? "GET";
@@ -296,6 +306,63 @@ function parsePlayDeliveryArchiveRoute(pathname: string): { runId: string } | nu
     return { runId };
   } catch {
     return null;
+  }
+}
+
+function parseProjectPatchbackArchiveRoute(pathname: string): { patchBuildId: string } | null {
+  const match = /^\/api\/projects\/patchback\/([^/]+)\/archive\/?$/u.exec(pathname);
+  if (match === null || match[1] === undefined) {
+    return null;
+  }
+  const patchBuildId = decodeSafeDeliveryPathId(match[1]);
+  return patchBuildId === null ? null : { patchBuildId };
+}
+
+async function serveProjectPatchbackArchiveRequest(input: {
+  request: IncomingMessage;
+  response: ServerResponse;
+  patchBuildId: string;
+  readOnlyServiceFactory: ItotoriReadOnlyServiceFactory;
+}): Promise<void> {
+  if (input.request.method !== "GET") {
+    writeApiError(input.response, 405, "method_not_allowed", "method must be GET");
+    return;
+  }
+  try {
+    const sessionId = parseItotoriSessionCookie(input.request.headers.cookie);
+    const serviceOptions = sessionId === undefined ? undefined : { sessionId };
+    const archive = await input.readOnlyServiceFactory(
+      (services) => services.studioPatchback.loadArchive(input.patchBuildId),
+      serviceOptions,
+    );
+    if (archive === null) {
+      writeApiError(
+        input.response,
+        404,
+        "not_found",
+        `patched build ${input.patchBuildId} was not found`,
+      );
+      return;
+    }
+    input.response.writeHead(200, {
+      "content-type": archive.contentType,
+      "content-length": String(archive.bytes.byteLength),
+      "content-disposition": `attachment; filename="${archive.fileName}"`,
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+    });
+    input.response.end(archive.bytes);
+  } catch (error) {
+    if (error instanceof AuthorizationError || error instanceof ItotoriInvalidAuthSessionError) {
+      writeApiError(input.response, 403, "forbidden", error.message);
+      return;
+    }
+    writeApiError(
+      input.response,
+      500,
+      "internal_error",
+      error instanceof Error ? error.message : String(error),
+    );
   }
 }
 

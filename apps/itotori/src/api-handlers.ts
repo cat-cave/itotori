@@ -72,6 +72,7 @@ import {
   parseDraftBranchRequest,
   parseProjectImportRequest,
   parseProjectDecodeExtractRequest,
+  parseProjectPatchbackRequest,
   parseRecordBenchmarkRequest,
   parseRecordFindingRequest,
   parseRuntimeEvidenceRequest,
@@ -121,6 +122,7 @@ import {
   type ApiProjectOverviewResponse,
   type ApiProjectImportResponse,
   type ApiProjectDecodeExtractResponse,
+  type ApiProjectPatchbackResponse,
   type ApiProjectsResponse,
   type ApiJobsRunTableResponse,
   type ApiQueueHealthResponse,
@@ -158,7 +160,12 @@ import type {
   SelectedPatchExportResponse,
 } from "./play/result-revision-service.js";
 import type { DeliveredPatchArchive } from "./patch-export/delivery-archive.js";
-import { patchIterationDeliveryArchivePath, playDeliveryArchivePath } from "./api-routes.js";
+import {
+  patchIterationDeliveryArchivePath,
+  playDeliveryArchivePath,
+  projectPatchbackArchivePath,
+} from "./api-routes.js";
+import type { StudioPatchbackPort } from "./patchback/studio-patchback-runner.js";
 import { buildPlayFlagFeedbackInput, type PlayFlagSeverity } from "./play/flag-annotation.js";
 import type { ManualFeedbackImportPort } from "./manual-feedback.js";
 import {
@@ -217,6 +224,9 @@ export const apiMutationPermissionGates = {
   // the SAME import artifact (a bridge bundle) the manual upload did, so it
   // carries the SAME `project.import` authority as `bridgeImport`.
   decodeExtract: apiMutationGate("decode extract", "projectImport"),
+  // Studio patchback produce a playable patched game; same draft.write / canSteer
+  // authority as launch-pass and other production patch mutations.
+  patchback: apiMutationGate("studio patchback", "draftWrite"),
   branchDraft: apiMutationGate("branch draft", "draftWrite"),
   findingRecord: apiMutationGate("finding record", "runtimeIngest"),
   benchmarkRecord: apiMutationGate("benchmark record", "runtimeIngest"),
@@ -411,6 +421,11 @@ export type ItotoriReadOnlyApiServices = {
     PlayTesterResultRevisionApiPort,
     "loadSelectedExport" | "loadSelectedArchive" | "loadExactPatchExport" | "loadExactPatchArchive"
   >;
+  /**
+   * Studio patchback download — archive load for a retained patched build.
+   * Mutation (`runPatchback`) lives only on the full services surface.
+   */
+  studioPatchback: Pick<StudioPatchbackPort, "loadArchive" | "loadBuild">;
 };
 
 /**
@@ -455,6 +470,11 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
    * `UtsushiPatchRuntimeLauncher` (no journal reservation/finalizer).
    */
   patchPlay: PlayEntrypointDeps;
+  /**
+   * Studio patchback trigger — drives the REAL `applyRealLivePatch` seam and
+   * retains the patched game tree for authenticated archive download.
+   */
+  studioPatchback: StudioPatchbackPort;
   projectWorkflow: Pick<
     ItotoriProjectWorkflowPort,
     | "listLocaleBranchIdentities"
@@ -637,6 +657,10 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
         services.playTesterResultRevision.loadExactPatchExport(input),
       loadExactPatchArchive: (input) =>
         services.playTesterResultRevision.loadExactPatchArchive(input),
+    },
+    studioPatchback: {
+      loadArchive: (patchBuildId) => services.studioPatchback.loadArchive(patchBuildId),
+      loadBuild: (patchBuildId) => services.studioPatchback.loadBuild(patchBuildId),
     },
   };
 }
@@ -959,6 +983,29 @@ async function routeItotoriApiRequest(
       bridge: outcome.bridge,
       mode: outcome.mode,
       command: outcome.command,
+    });
+  }
+
+  if (request.method === "POST" && request.pathname === "/api/projects/patchback") {
+    // Studio patchback trigger — run the REAL kaifuu-cli patch-apply seam
+    // (`applyRealLivePatch`, the same path `itotori patch` uses) and return a
+    // downloadable patched-build handle. No second/mock patchback path.
+    const body = parseProjectPatchbackRequest(request.body);
+    await requireApiPermission(services, apiMutationPermissionGates.patchback);
+    const port = configuredServicePort(services, "studioPatchback");
+    if (port === undefined) {
+      throw new Error(
+        "studio patchback is not configured in this API build (studioPatchback port missing)",
+      );
+    }
+    const outcome = await port.runPatchback(body);
+    return ok("projects.patchback", {
+      schemaVersion: "itotori.projects.patchback.v1",
+      patchBuildId: outcome.patchBuildId,
+      scope: outcome.scope,
+      command: outcome.command,
+      downloadUrl: projectPatchbackArchivePath(outcome.patchBuildId),
+      artifactHashes: { ...outcome.artifactHashes },
     });
   }
 
@@ -3519,6 +3566,7 @@ function ok(
   routeId: "projects.decodeExtract",
   body: ApiProjectDecodeExtractResponse,
 ): ApiJsonResponse;
+function ok(routeId: "projects.patchback", body: ApiProjectPatchbackResponse): ApiJsonResponse;
 function ok(routeId: "imports.bridge", body: ApiProjectImportResponse): ApiJsonResponse;
 function ok(routeId: "branches.draft", body: ApiDraftBranchResponse): ApiJsonResponse;
 function ok(routeId: "findings.record", body: FindingRecordResult): ApiJsonResponse;

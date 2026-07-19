@@ -51,6 +51,15 @@ export {
   type ReplayObserveArgs,
 } from "./replay.js";
 export { deterministicUuid7 } from "./uuid7.js";
+export {
+  createStudioPatchbackRunner,
+  StudioPatchbackError,
+  type StudioPatchbackInput,
+  type StudioPatchbackOutcome,
+  type StudioPatchbackBuildRecord,
+  type StudioPatchbackPort,
+  type StudioPatchbackRunnerOptions,
+} from "./studio-patchback-runner.js";
 
 export type NativePatchbackBuild = {
   bound: readonly BoundScopedTarget[];

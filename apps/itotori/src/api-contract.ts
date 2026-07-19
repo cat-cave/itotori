@@ -985,6 +985,19 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       },
       additionalProperties: true,
     }),
+  ApiProjectPatchbackResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiProjectPatchbackResponse,
+      properties: {
+        patchBuildId: str,
+        scope: { enum: ["dialogue-only", "dialogue+choices"] },
+        command: str,
+        downloadUrl: str,
+        artifactHashes: obj,
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.projects.patchback.v1",
+    }),
   ApiProjectImportResponse: () =>
     object({
       required: ["project", "status"],
@@ -1055,6 +1068,18 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
         sourceLocale: str,
         scene: num,
         wholeSeen: bool,
+      },
+      additionalProperties: true,
+    }),
+  ApiProjectPatchbackRequest: () =>
+    object({
+      required: ["gameRoot", "scope"],
+      properties: {
+        gameRoot: str,
+        translatedBundlePath: str,
+        translatedBundle: obj,
+        scope: { enum: ["dialogue-only", "dialogue+choices"] },
+        force: bool,
       },
       additionalProperties: true,
     }),

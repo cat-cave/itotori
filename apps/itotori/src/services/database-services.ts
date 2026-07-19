@@ -21,6 +21,7 @@ import {
   productionLocalizeDispatchConfig,
 } from "../composition/live/index.js";
 import { runWikiBuild } from "../composition/index.js";
+import { createStudioPatchbackRunner } from "../patchback/studio-patchback-runner.js";
 import { buildContextSnapshotInput, buildFactSnapshot } from "../prepass/index.js";
 import {
   parseNarrativeStructure,
@@ -68,6 +69,8 @@ export async function withDatabaseItotoriServices<T>(
     const snapshotRepository = new ItotoriLlmSnapshotRepository(pool);
     const services = unavailableServiceSurface({
       projectWorkflow: unavailableProjectWorkflow(),
+      // Studio patchback — real applyRealLivePatch seam + retained build download.
+      studioPatchback: createStudioPatchbackRunner(),
       wikiObjectApi,
       wikiBuild: {
         async run(input) {
@@ -191,7 +194,7 @@ function unavailableLiveRoleSeams() {
 export function unavailableServiceSurface(
   installed: Pick<
     ItotoriApplicationServices,
-    "projectWorkflow" | "wikiObjectApi" | "wikiBuild" | "localizationSubstrate"
+    "projectWorkflow" | "wikiObjectApi" | "wikiBuild" | "localizationSubstrate" | "studioPatchback"
   >,
 ): ItotoriApplicationServices {
   return new Proxy(installed, {
