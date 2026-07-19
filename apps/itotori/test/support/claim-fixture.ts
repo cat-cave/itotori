@@ -215,6 +215,10 @@ export interface ClaimFixtureOptions {
    * must keep the same bridgeUnitIds so snapshot units still bind. Used to stage
    * decoded source text a source-text-scanning role reasons over. */
   modelBundle?: (bundle: BridgeBundleV02) => BridgeBundleV02;
+  /** Additive test seam for deterministic pre-pass inputs such as policy
+   * records. The fact snapshot, context snapshot, and read model stay bound to
+   * the same transformed source; this is not a post-build mutation. */
+  snapshotBundle?: (bundle: BridgeBundleV02) => BridgeBundleV02;
   /** Override a bundle unit's decoded speaker context, keyed by sourceUnitKey.
    * The default bundle carries `not_applicable` speakers; this lets a proof stage
    * known / parser-unknown / reader-unknown speakers on specific units. */
@@ -246,7 +250,10 @@ export function buildClaimFixture(options: ClaimFixtureOptions = {}): {
   const characters = options.characters ?? [];
   // unitSpeakers patch the fact snapshot (A10 reads unknown speakers from it); modelBundle
   // overrides ONLY the read model's source text, leaving the snapshot on real fixture bytes.
-  const snapshotBundle = patchSpeakers(loadBundle(), options.unitSpeakers);
+  const snapshotBundle = patchSpeakers(
+    options.snapshotBundle ? options.snapshotBundle(loadBundle()) : loadBundle(),
+    options.unitSpeakers,
+  );
   const modelBundle = patchSpeakers(
     options.modelBundle ? options.modelBundle(loadBundle()) : loadBundle(),
     options.unitSpeakers,

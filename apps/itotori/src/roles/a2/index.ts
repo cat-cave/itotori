@@ -10,6 +10,7 @@
 export {
   TermEnumerationError,
   ambiguousTermCandidates,
+  assertAmbiguousCandidateByteDerived,
   assertByteDerivedTermEnumeration,
   assertOccurrenceCitationsByteDerived,
   isAmbiguousCandidate,
@@ -18,6 +19,12 @@ export {
   type TermEnumerationFailure,
   type TermRulingObject,
 } from "./candidates.js";
+export {
+  TermOccurrenceEvidenceError,
+  readTermOccurrenceEvidence,
+  type CiteableTermOccurrence,
+  type TermOccurrenceEvidence,
+} from "./evidence.js";
 export {
   assembleTermAnalystCallSpec,
   composeTermAnalystPrompt,
@@ -28,11 +35,16 @@ export {
 } from "./spec.js";
 export {
   TermAnalystError,
-  dispatchTermAnalystModel,
-  recordedTermAnalystModel,
   runTermAnalyst,
   type TermAnalystDeps,
-  type TermAnalystModelPort,
   type TermAnalystResult,
   type TermRulingEnumeration,
 } from "./run.js";
+export {
+  TermAnalystRouteError,
+  assertTermAnalystCertifiedRoute,
+  dispatchTermAnalyst,
+  dispatchingTermAnalystModel,
+  recordedTermAnalystModel,
+  type TermAnalystModelPort,
+} from "./dispatch.js";

@@ -12,17 +12,20 @@
 // silent pass.
 
 import { WikiObjectSchema, type CallResult, type CallSpec } from "../../contracts/index.js";
-import type { dispatch, DispatchRuntime } from "../../llm/dispatch.js";
 import { deepSeekV4FlashProfile, servedModelIsCertified } from "../../llm/role-model-profiles.js";
 import type { ReadModel } from "../../read-tools/index.js";
 import { validateWikiObjectClaims } from "../../wiki/claim-validation.js";
+import { resolveObjectCitations } from "../../wiki/citation-resolution.js";
 
 import {
+  assertAmbiguousCandidateByteDerived,
   assertByteDerivedTermEnumeration,
   assertOccurrenceCitationsByteDerived,
   type AmbiguousTermCandidate,
   type TermRulingObject,
 } from "./candidates.js";
+import { dispatchTermAnalyst, type TermAnalystModelPort } from "./dispatch.js";
+import { readTermOccurrenceEvidence } from "./evidence.js";
 import {
   assembleTermAnalystCallSpec,
   composeTermAnalystPrompt,
@@ -35,27 +38,6 @@ export class TermAnalystError extends Error {
     super(message);
     this.name = "TermAnalystError";
   }
-}
-
-/** The model seam: it takes the strict CallSpec and returns the dispatch result.
- * Production binds the real dispatcher; the offline proof binds a recorded
- * result. The port is the ONLY place a model is reached. */
-export type TermAnalystModelPort = (spec: CallSpec) => Promise<CallResult>;
-
-/** Production binding: route the CallSpec through the real dispatcher. No
- * provider is chosen here — the spec's certified profile does the routing. */
-export function dispatchTermAnalystModel(
-  dispatcher: typeof dispatch,
-  runtime: DispatchRuntime,
-): TermAnalystModelPort {
-  return (spec) => dispatcher(spec, runtime);
-}
-
-/** Offline / recorded binding: replay a captured success result. The recorded
- * value must itself be a term-ruling WikiObject — the memo cannot smuggle a
- * different terminal kind past the analyst. */
-export function recordedTermAnalystModel(result: CallResult): TermAnalystModelPort {
-  return async () => result;
 }
 
 export interface TermAnalystDeps {
@@ -102,12 +84,26 @@ export async function runTermAnalyst(
   request: TermAnalystRequest,
   deps: TermAnalystDeps,
 ): Promise<TermAnalystResult> {
-  const prompt = composeTermAnalystPrompt(request);
+  if (request.contextSnapshotId !== deps.validationModel.snapshotId) {
+    throw new TermAnalystError(
+      `terminology request snapshot ${request.contextSnapshotId} does not match ${deps.validationModel.snapshotId}`,
+    );
+  }
+  if (request.sourceLanguage !== deps.validationModel.sourceLanguage) {
+    throw new TermAnalystError(
+      `terminology request source language ${request.sourceLanguage} does not match ${deps.validationModel.sourceLanguage}`,
+    );
+  }
+  // This is an exact comparison against the already materialized index. It is
+  // deliberately not a term scan: the pre-pass's byte-derived index dominates.
+  assertAmbiguousCandidateByteDerived(request.candidate, deps.validationModel.factSnapshot);
+  const evidence = readTermOccurrenceEvidence(deps.validationModel, request.candidate);
+  const prompt = composeTermAnalystPrompt(request, evidence);
   const systemRef = await deps.storePrompt(prompt.system, "system");
   const userRef = await deps.storePrompt(prompt.user, "user");
   const spec = assembleTermAnalystCallSpec(request, { systemRef, userRef });
 
-  const result = await deps.model(spec);
+  const result = await dispatchTermAnalyst(spec, deps.model);
   if (result.status !== "success") {
     throw new TermAnalystError(
       `terminology dispatch did not succeed: ${result.status}/${result.failureKind}`,
@@ -139,19 +135,31 @@ export async function runTermAnalyst(
 
   // The enumeration is byte-derived: an alias re-count or a ghost occurrence is
   // ignored/rejected here, never folded into the ruling as if it were fact.
-  assertByteDerivedTermEnumeration(ruling, request.candidate);
-  assertOccurrenceCitationsByteDerived(
+  // The model sees only short occurrence labels. Resolve those labels through
+  // the same snapshot before checking that every resulting citation is a real
+  // byte-derived occurrence of THIS candidate.
+  const resolved = resolveObjectCitations(
     ruling,
+    deps.validationModel,
+    new Map(evidence.occurrences.map((occurrence) => [occurrence.label, occurrence.factId])),
+  );
+  assertByteDerivedTermEnumeration(resolved, request.candidate);
+  assertOccurrenceCitationsByteDerived(
+    resolved,
     request.candidate,
     deps.validationModel.factSnapshot,
   );
 
   // Claim validation: every claim must re-prove against the immutable snapshot. A
   // fabricated citation throws a ClaimValidationError here — never shipped.
-  validateWikiObjectClaims(ruling, deps.validationModel);
+  // A ruling is analyst evidence, not an approved localized glossary entry. The
+  // system owns provisionality so the model cannot promote itself by emitting
+  // `false`.
+  const termRuling = { ...resolved, provisional: true };
+  validateWikiObjectClaims(termRuling, deps.validationModel);
 
   return {
-    termRuling: ruling,
+    termRuling,
     spec,
     served: result.served,
     enumeration: byteDerivedEnumeration(request.candidate),

@@ -50,7 +50,7 @@ import {
 } from "../roles/a1/index.js";
 import {
   ambiguousTermCandidates,
-  dispatchTermAnalystModel,
+  dispatchingTermAnalystModel,
   runTermAnalyst,
   type TermPromptStore,
 } from "../roles/a2/index.js";
@@ -455,7 +455,7 @@ async function runA2(input: RunStepInput, deps: AnalystRoleDeps): Promise<readon
       parentEventId: sha256({ snapshotId: deps.model.snapshotId, role: "A2", termKey }),
     },
     {
-      model: dispatchTermAnalystModel(dispatch, deps.runtime),
+      model: dispatchingTermAnalystModel(deps.runtime, dispatch),
       storePrompt: promptStore(deps, input, "A2"),
       validationModel: deps.model,
     },

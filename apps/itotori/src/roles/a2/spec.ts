@@ -20,6 +20,7 @@ import { deepSeekV4FlashProfile } from "../../llm/role-model-profiles.js";
 import { specialistFor } from "../../roster/index.js";
 
 import type { AmbiguousTermCandidate } from "./candidates.js";
+import type { TermOccurrenceEvidence } from "./evidence.js";
 
 type Sha256 = `sha256:${string}`;
 
@@ -39,9 +40,12 @@ export interface TermAnalystRequest {
 }
 
 /** Render the byte-derived enumeration the model must treat as fixed fact. */
-function candidateEvidence(candidate: AmbiguousTermCandidate): string {
+function candidateEvidence(
+  candidate: AmbiguousTermCandidate,
+  evidence: TermOccurrenceEvidence,
+): string {
   const conflicts = candidate.conflicts.map((conflict) => `- ${conflict.detail}`).join("\n");
-  return [
+  const index = [
     `Term key: ${candidate.termKey}`,
     `Deterministic policy label: ${candidate.policyAction}`,
     `Byte-derived aliases (fixed; do not add, drop, or re-order): ${candidate.aliases.join(" · ")}`,
@@ -49,13 +53,24 @@ function candidateEvidence(candidate: AmbiguousTermCandidate): string {
     `Byte-derived occurrence unit keys (cite only these): ${candidate.occurrenceUnitKeys.join(", ")}`,
     "Why ambiguous:",
     conflicts,
+  ];
+  return [
+    ...index,
+    "Same-snapshot occurrence evidence (cite ONLY the bracketed label; do not invent an id):",
+    ...evidence.occurrences.map(
+      (occurrence) =>
+        `- [${occurrence.label}] ${occurrence.sourceUnitKey}: ${occurrence.sourceText}`,
+    ),
   ].join("\n");
 }
 
 /** Compose the analyst system + user prompt. The system prompt is the
  * specialist's versioned charter; the user prompt carries the operator brief and
  * the one candidate's byte-derived enumeration. Pure and stable. */
-export function composeTermAnalystPrompt(request: TermAnalystRequest): {
+export function composeTermAnalystPrompt(
+  request: TermAnalystRequest,
+  evidence: TermOccurrenceEvidence,
+): {
   readonly system: string;
   readonly user: string;
 } {
@@ -67,7 +82,10 @@ export function composeTermAnalystPrompt(request: TermAnalystRequest): {
     "Rule on ONLY this ambiguous candidate. Author meaning, register, source scope,",
     "and confidence in the SOURCE language; never invent a target form and never",
     "restate a count. The enumeration below is byte-derived and authoritative:",
-    candidateEvidence(request.candidate),
+    candidateEvidence(request.candidate, evidence),
+    "Return exactly one term-ruling WikiObject as valid JSON only. Every claim must",
+    "cite at least one supplied bracketed occurrence label in evidenceId. Copy the",
+    "label verbatim; the system resolves all citation coordinates from this snapshot.",
   ].join("\n\n");
   return { system: analyst.instructions, user };
 }
