@@ -158,6 +158,7 @@ import type {
   SelectedPatchExportResponse,
 } from "./play/result-revision-service.js";
 import type { DeliveredPatchArchive } from "./patch-export/delivery-archive.js";
+import type { BoundPatchbackProduceServicePort } from "./play/patchback-produce-service.js";
 import { patchIterationDeliveryArchivePath, playDeliveryArchivePath } from "./api-routes.js";
 import { buildPlayFlagFeedbackInput, type PlayFlagSeverity } from "./play/flag-annotation.js";
 import type { ManualFeedbackImportPort } from "./manual-feedback.js";
@@ -455,6 +456,15 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
    * `UtsushiPatchRuntimeLauncher` (no journal reservation/finalizer).
    */
   patchPlay: PlayEntrypointDeps;
+  /**
+   * The produce-a-playable-build mutation's substrate: an actor-bound
+   * {@link BoundPatchbackProduceServicePort} that drives the REAL native
+   * patchback apply over a run's accepted outputs and returns the produced tar.
+   * Optional so unit suites can omit it; the handler refuses loudly when it is
+   * missing. The live factory wires it from the run-state produce-plan loader +
+   * the real `kaifuu patch` seam (never a second/mock patchback path).
+   */
+  patchbackProduce?: BoundPatchbackProduceServicePort;
   projectWorkflow: Pick<
     ItotoriProjectWorkflowPort,
     | "listLocaleBranchIdentities"

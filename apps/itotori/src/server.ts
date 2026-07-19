@@ -81,6 +81,10 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
         });
         return;
       }
+      if (isPatchbackProduceRoute(url.pathname)) {
+        await servePatchbackProduceRequest({ request, response, serviceFactory });
+        return;
+      }
       try {
         const body = await readJsonRequestBody(request);
         const method = request.method ?? "GET";
@@ -224,6 +228,108 @@ async function servePatchIterationDeliveryArchiveRequest(input: {
       error instanceof Error ? error.message : String(error),
     );
   }
+}
+
+function isPatchbackProduceRoute(pathname: string): boolean {
+  return /^\/api\/patchback\/produce\/?$/u.test(pathname);
+}
+
+/**
+ * The produce-and-download patched-build mutation. Unlike the durable delivery
+ * archives (GET, read-only surface), this drives the native `kaifuu patch` apply
+ * over a run's accepted outputs, so it runs through the FULL mutation service
+ * factory and streams the produced tar back in a single response. No bytes are
+ * fabricated — the archive is exactly what the byte-surgical apply wrote.
+ */
+async function servePatchbackProduceRequest(input: {
+  request: IncomingMessage;
+  response: ServerResponse;
+  serviceFactory: ItotoriServiceFactory;
+}): Promise<void> {
+  if (input.request.method !== "POST") {
+    writeApiError(input.response, 405, "method_not_allowed", "method must be POST");
+    return;
+  }
+  try {
+    const body = await readJsonRequestBody(input.request);
+    const request = parsePatchbackProduceRequest(body);
+    const sessionId = parseItotoriSessionCookie(input.request.headers.cookie);
+    const serviceOptions = sessionId === undefined ? undefined : { sessionId };
+    const archive = await input.serviceFactory((services) => {
+      const produce = services.patchbackProduce;
+      if (produce === undefined) {
+        throw new PatchbackProduceNotConfiguredError();
+      }
+      return produce.produceArchive(request);
+    }, serviceOptions);
+    if (archive === null) {
+      writeApiError(
+        input.response,
+        404,
+        "not_found",
+        "no produce-eligible run was found for the requested scope",
+      );
+      return;
+    }
+    input.response.writeHead(200, {
+      "content-type": archive.contentType,
+      "content-length": String(archive.bytes.byteLength),
+      "content-disposition": `attachment; filename="${archive.fileName}"`,
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+    });
+    input.response.end(archive.bytes);
+  } catch (error) {
+    if (error instanceof PatchbackProduceNotConfiguredError) {
+      writeApiError(input.response, 501, "internal_error", error.message);
+      return;
+    }
+    if (error instanceof SyntaxError) {
+      writeApiError(input.response, 400, "bad_request", error.message);
+      return;
+    }
+    if (error instanceof AuthorizationError || error instanceof ItotoriInvalidAuthSessionError) {
+      writeApiError(input.response, 403, "forbidden", error.message);
+      return;
+    }
+    writeApiError(
+      input.response,
+      500,
+      "internal_error",
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+}
+
+class PatchbackProduceNotConfiguredError extends Error {
+  constructor() {
+    super(
+      "patchback produce is not configured in this API build (patchbackProduce port missing — the run-state produce-plan loader is not wired)",
+    );
+    this.name = "PatchbackProduceNotConfiguredError";
+  }
+}
+
+function parsePatchbackProduceRequest(body: unknown): {
+  projectId?: string;
+  localeBranchId?: string;
+  runId?: string;
+} {
+  if (body === undefined) return {};
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new SyntaxError("patchback produce request body must be a JSON object");
+  }
+  const record = body as Record<string, unknown>;
+  const request: { projectId?: string; localeBranchId?: string; runId?: string } = {};
+  for (const key of ["projectId", "localeBranchId", "runId"] as const) {
+    const value = record[key];
+    if (value === undefined) continue;
+    if (typeof value !== "string") {
+      throw new SyntaxError(`patchback produce request '${key}' must be a string`);
+    }
+    request[key] = value;
+  }
+  return request;
 }
 
 async function servePlayDeliveryArchiveRequest(input: {

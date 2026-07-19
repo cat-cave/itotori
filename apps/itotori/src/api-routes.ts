@@ -19,7 +19,8 @@ export type ItotoriApiRoute = {
 
 /** A non-JSON API route published in OpenAPI but intentionally not in the typed JSON client. */
 export type ItotoriApiBinaryRoute = {
-  readonly method: "GET";
+  /** GET for durable downloads; POST for the produce-and-download mutation. */
+  readonly method: "GET" | "POST";
   readonly pathTemplate: string;
   readonly operationId: string;
   readonly summary: string;
@@ -27,7 +28,10 @@ export type ItotoriApiBinaryRoute = {
   readonly contentType: "application/x-tar";
 };
 
-export type ItotoriApiBinaryRouteId = "play.deliveryArchive" | "patchIteration.deliveryArchive";
+export type ItotoriApiBinaryRouteId =
+  | "play.deliveryArchive"
+  | "patchIteration.deliveryArchive"
+  | "patchback.produceArchive";
 
 /**
  * Every `/api` route, keyed by {@link ItotoriApiRouteId}. The
@@ -636,6 +640,18 @@ export const ITOTORI_API_BINARY_ROUTES: Readonly<
     pathParams: ["patchVersionId"],
     contentType: "application/x-tar",
   },
+  // Produce-and-download a playable patched build by driving the native
+  // patchback apply over a run's accepted outputs. The mutation both triggers
+  // the byte-surgical `kaifuu patch` and streams back the produced tar, so a
+  // Studio reviewer gets a playable game out of the app in one action.
+  "patchback.produceArchive": {
+    method: "POST",
+    pathTemplate: "/api/patchback/produce",
+    operationId: "patchbackProduceArchive",
+    summary: "Produce a playable patched build from a run's accepted outputs and download it.",
+    pathParams: [],
+    contentType: "application/x-tar",
+  },
 };
 
 /** Public, encoded URL used by the JSON delivery metadata response. */
@@ -646,6 +662,11 @@ export function playDeliveryArchivePath(runId: string): string {
 /** Public, encoded URL for the immutable historical-version archive endpoint. */
 export function patchIterationDeliveryArchivePath(patchVersionId: string): string {
   return `/api/play/patch-versions/${encodeURIComponent(patchVersionId)}/delivery/archive`;
+}
+
+/** Public URL for the produce-and-download patched-build mutation. */
+export function patchbackProduceArchivePath(): string {
+  return "/api/patchback/produce";
 }
 
 /**

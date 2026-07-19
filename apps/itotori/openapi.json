@@ -5290,6 +5290,76 @@
         "x-itotoriRouteId": "jobs.runTable"
       }
     },
+    "/api/patchback/produce": {
+      "post": {
+        "operationId": "patchbackProduceArchive",
+        "responses": {
+          "200": {
+            "content": {
+              "application/x-tar": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Selected delivered patch archive."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Malformed request (bad_request)."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Permission denied (forbidden)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Route or resource not found (not_found)."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed (method_not_allowed)."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description": "Internal error (internal_error)."
+          }
+        },
+        "summary": "Produce a playable patched build from a run's accepted outputs and download it.",
+        "x-itotoriBinaryRouteId": "patchback.produceArchive"
+      }
+    },
     "/api/play/locale-branches/{localeBranchId}/patch-versions": {
       "get": {
         "operationId": "patchIterationVersions",
