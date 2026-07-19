@@ -3,9 +3,10 @@ use std::path::PathBuf;
 
 use utsushi_core::port::conformance::{JumpOutcome, run_required_abi};
 use utsushi_core::{
-    PortEnv, RuntimeAdapter, RuntimeArtifactRoot, RuntimeCapability, RuntimeFeatureStatus,
+    EnginePortAdapter, PortEnv, RuntimeAdapter, RuntimeArtifactRoot, RuntimeCapability,
+    RuntimeFeatureStatus,
 };
-use utsushi_fixture::{FixtureEnginePort, FixtureRuntimeAdapter};
+use utsushi_fixture::FixtureEnginePort;
 
 const FIXTURE_SOURCE: &str = r#"{
   "gameId": "fixture-abi",
@@ -55,8 +56,9 @@ fn fixture_engine_port_passes_required_abi_conformance() {
 }
 
 #[test]
-fn fixture_runtime_adapter_descriptor_derives_from_manifest() {
-    let adapter = FixtureRuntimeAdapter::new();
+fn fixture_engine_port_adapter_descriptor_derives_from_manifest() {
+    let adapter = EnginePortAdapter::new(FixtureEnginePort::new())
+        .expect("fixture engine port manifest must be valid");
     let descriptor = adapter.descriptor();
     let manifest = FixtureEnginePort::MANIFEST;
 

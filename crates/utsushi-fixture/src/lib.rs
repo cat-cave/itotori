@@ -35,76 +35,37 @@ pub use reference_corpus::{ReferenceCaptureValidationReport, validate_reference_
 /// type that previously held this constant was deleted by.
 pub const FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL: &str = "0.1.0-alpha";
 
-pub struct FixtureRuntimeAdapter {
-    inner: EnginePortAdapter<FixtureEnginePort>,
-}
-
-impl FixtureRuntimeAdapter {
-    pub const NAME: &'static str = "utsushi-fixture";
-
-    pub fn new() -> Self {
-        Self {
-            inner: EnginePortAdapter::new(FixtureEnginePort::new())
-                .expect("fixture engine port manifest must be valid"),
-        }
-    }
-}
-
-impl Default for FixtureRuntimeAdapter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl RuntimeAdapter for FixtureRuntimeAdapter {
-    fn descriptor(&self) -> RuntimeAdapterDescriptor {
-        self.inner.descriptor()
-    }
-
-    fn trace(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
-        read_source(request.input_root)?;
-        self.inner.trace(request)
-    }
-
-    fn capture(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
-        read_source(request.input_root)?;
-        self.inner.capture(request)
-    }
-
-    fn smoke_validate(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
-        read_source(request.input_root)?;
-        self.inner.smoke_validate(request)
-    }
-}
-
 pub fn trace_fixture(input_root: &Path) -> UtsushiResult<Value> {
-    let adapter = FixtureRuntimeAdapter::new();
+    let adapter = EnginePortAdapter::new(FixtureEnginePort::new())
+        .expect("fixture engine port manifest must be valid");
     adapter.trace(&RuntimeRequest::new(input_root))
 }
 
 pub fn capture_fixture(input_root: &Path) -> UtsushiResult<Value> {
-    let adapter = FixtureRuntimeAdapter::new();
+    let adapter = EnginePortAdapter::new(FixtureEnginePort::new())
+        .expect("fixture engine port manifest must be valid");
     let artifact_root = input_root.join("runtime-artifacts");
     adapter.capture(&RuntimeRequest::new(input_root).with_artifact_root(&artifact_root))
 }
 
 pub fn smoke_fixture(input_root: &Path) -> UtsushiResult<Value> {
-    let adapter = FixtureRuntimeAdapter::new();
+    let adapter = EnginePortAdapter::new(FixtureEnginePort::new())
+        .expect("fixture engine port manifest must be valid");
     let artifact_root = input_root.join("runtime-artifacts");
     adapter.smoke_validate(&RuntimeRequest::new(input_root).with_artifact_root(&artifact_root))
 }
 
-/// Engine family the fixture runtime adapter attempts when it reads an
-/// input root. The fixture adapter interprets its input as a synthetic
+/// Engine family the fixture engine port attempts when it reads an input
+/// root. The port interprets its input as a synthetic
 /// deterministic fixture manifest (`source.json`); it never emulates a
 /// commercial engine, so the family it attempts is the fixture family
 /// itself. Carried on the [`UnsupportedInputShape`] diagnostic so a caller
 /// can see which family was being attempted when the input was refused.
 pub const FIXTURE_ENGINE_FAMILY: &str = "fixture";
 
-/// Structured diagnostic emitted when the fixture runtime adapter is handed
+/// Structured diagnostic emitted when the fixture engine port is handed
 /// an input that is not a valid fixture — for example a real game directory
-/// or any directory missing the `source.json` fixture manifest. The adapter
+/// or any directory missing the `source.json` fixture manifest. The port
 /// refuses such input with this typed `utsushi.unsupported_input_shape`
 /// diagnostic (carrying the attempted `engine_family` and a helpful detail)
 /// instead of surfacing an opaque `os::Error::NotFound` from the underlying
@@ -194,6 +155,21 @@ pub(crate) fn read_source(input_root: &Path) -> UtsushiResult<Value> {
         .into());
     }
     Ok(source)
+}
+
+pub(crate) fn read_source_for_engine_port(
+    input_root: &Path,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    match read_source(input_root) {
+        Ok(source) => Ok(source),
+        Err(error) => match error.downcast::<UnsupportedInputShape>() {
+            Ok(error) => Err(error),
+            Err(error) => match error.downcast::<std::io::Error>() {
+                Ok(error) => Err(error),
+                Err(error) => Err(Box::new(std::io::Error::other(error.to_string()))),
+            },
+        },
+    }
 }
 
 pub(crate) fn first_unit(source: &Value) -> UtsushiResult<&Value> {
@@ -450,10 +426,11 @@ mod tests {
 
     #[test]
     fn fixture_descriptor_reports_capabilities_and_limits() {
-        let adapter = FixtureRuntimeAdapter::new();
+        let adapter = EnginePortAdapter::new(FixtureEnginePort::new())
+            .expect("fixture engine port manifest must be valid");
         let descriptor = adapter.descriptor();
 
-        assert_eq!(descriptor.name, FixtureRuntimeAdapter::NAME);
+        assert_eq!(descriptor.name, FixtureEnginePort::MANIFEST.id);
         assert_eq!(descriptor.fidelity_tier, FidelityTier::LayoutProbe);
         assert_eq!(descriptor.evidence_tier_ceiling, EvidenceTier::E2);
         assert!(descriptor.supports(RuntimeCapability::Trace));
@@ -501,19 +478,20 @@ mod tests {
     #[test]
     fn fixture_adapter_runs_through_registry() {
         let game_dir = temp_game("registry");
-        let adapter = FixtureRuntimeAdapter::new();
+        let adapter = EnginePortAdapter::new(FixtureEnginePort::new())
+            .expect("fixture engine port manifest must be valid");
         let mut registry = RuntimeAdapterRegistry::new();
         registry.register(&adapter).unwrap();
 
         let report = registry
             .run(
-                FixtureRuntimeAdapter::NAME,
+                FixtureEnginePort::MANIFEST.id,
                 RuntimeOperation::Trace,
                 &RuntimeRequest::new(&game_dir),
             )
             .unwrap();
 
-        assert_eq!(report["adapterName"], FixtureRuntimeAdapter::NAME);
+        assert_eq!(report["adapterName"], FixtureEnginePort::MANIFEST.id);
         assert_eq!(report["operation"], "trace");
         assert_eq!(report["schemaVersion"], "0.2.0");
         assert_eq!(report["shutdownStatus"], "clean");
@@ -532,13 +510,14 @@ mod tests {
     #[test]
     fn fixture_registry_rejects_unsupported_branch_discovery() {
         let game_dir = temp_game("branch");
-        let adapter = FixtureRuntimeAdapter::new();
+        let adapter = EnginePortAdapter::new(FixtureEnginePort::new())
+            .expect("fixture engine port manifest must be valid");
         let mut registry = RuntimeAdapterRegistry::new();
         registry.register(&adapter).unwrap();
 
         let error = registry
             .run(
-                FixtureRuntimeAdapter::NAME,
+                FixtureEnginePort::MANIFEST.id,
                 RuntimeOperation::BranchDiscovery,
                 &RuntimeRequest::new(&game_dir),
             )
@@ -556,7 +535,7 @@ mod tests {
         let report = smoke_fixture(&game_dir).unwrap();
 
         assert_eq!(report["schemaVersion"], "0.2.0");
-        assert_eq!(report["adapterName"], FixtureRuntimeAdapter::NAME);
+        assert_eq!(report["adapterName"], FixtureEnginePort::MANIFEST.id);
         assert_eq!(report["operation"], "smoke_validation");
         assert_eq!(report["shutdownStatus"], "clean");
         let observations = report["sinkObservations"].as_array().unwrap();
@@ -603,7 +582,8 @@ mod tests {
         fs::rename(root.join("source.json"), game_dir.join("source.json")).unwrap();
         let artifact_root = root.join("runtime-artifacts");
 
-        let adapter = FixtureRuntimeAdapter::new();
+        let adapter = EnginePortAdapter::new(FixtureEnginePort::new())
+            .expect("fixture engine port manifest must be valid");
         let report = adapter
             .capture(&RuntimeRequest::new(&game_dir).with_artifact_root(&artifact_root))
             .unwrap();

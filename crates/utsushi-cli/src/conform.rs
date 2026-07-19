@@ -54,12 +54,11 @@ pub fn run_conform_command(tail: &[String]) -> Result<(), Box<dyn std::error::Er
     validate_exact_flags(tail)?;
 
     let input_root = PathBuf::from(tail.first().ok_or("missing game_dir")?);
-    let adapter_name =
-        optional_flag(tail, "--adapter").unwrap_or(utsushi_fixture::FixtureRuntimeAdapter::NAME);
-    if adapter_name != utsushi_fixture::FixtureRuntimeAdapter::NAME {
+    let adapter_name = optional_flag(tail, "--adapter").unwrap_or(FixtureEnginePort::MANIFEST.id);
+    if adapter_name != FixtureEnginePort::MANIFEST.id {
         return Err(format!(
             "unsupported conform adapter {adapter_name}; only {} is currently wired",
-            utsushi_fixture::FixtureRuntimeAdapter::NAME
+            FixtureEnginePort::MANIFEST.id
         )
         .into());
     }
@@ -150,7 +149,7 @@ fn run_fixture_conformance(
 
     let result = ConformanceResult {
         schema_version: CONFORMANCE_SCHEMA_VERSION.to_string(),
-        adapter_id: utsushi_fixture::FixtureRuntimeAdapter::NAME.to_string(),
+        adapter_id: FixtureEnginePort::MANIFEST.id.to_string(),
         profile_id: ProfileId::SnapshotRestore,
         outcome,
         evidence,
@@ -163,7 +162,7 @@ fn run_fixture_conformance(
 fn fixture_conformance_manifest() -> ConformanceManifest {
     ConformanceManifest {
         schema_version: CONFORMANCE_SCHEMA_VERSION.to_string(),
-        adapter_id: utsushi_fixture::FixtureRuntimeAdapter::NAME.to_string(),
+        adapter_id: FixtureEnginePort::MANIFEST.id.to_string(),
         abi_version: ConformanceAbiVersion(1),
         supported_profiles: vec![ConformanceProfile {
             id: ProfileId::SnapshotRestore,
@@ -444,7 +443,7 @@ mod tests {
         run_conform_command(&[
             game_dir.display().to_string(),
             "--adapter".to_string(),
-            utsushi_fixture::FixtureRuntimeAdapter::NAME.to_string(),
+            FixtureEnginePort::MANIFEST.id.to_string(),
             "--output".to_string(),
             output.display().to_string(),
         ])
@@ -452,10 +451,7 @@ mod tests {
 
         let value: Value = serde_json::from_str(&fs::read_to_string(&output).unwrap()).unwrap();
         assert_eq!(value["schemaVersion"], CONFORMANCE_SCHEMA_VERSION);
-        assert_eq!(
-            value["adapterId"],
-            utsushi_fixture::FixtureRuntimeAdapter::NAME
-        );
+        assert_eq!(value["adapterId"], FixtureEnginePort::MANIFEST.id);
         assert_eq!(value["profileId"], "snapshot-restore");
         assert_eq!(value["outcome"]["kind"], "pass");
         assert_eq!(value["outcome"]["evidenceTier"], "E1");
