@@ -95,6 +95,8 @@ type DispatchState = {
   modelStepCount: number;
   toolCallCount: number;
   stepLimitReached: boolean;
+  /** A tool-loop adapter may discard the original injected fault before rethrowing. */
+  durabilityFaultCaught: boolean;
   lastFinishReason: "stop" | "tool-calls" | "length" | "content-filter" | "unknown";
 };
 
@@ -240,6 +242,11 @@ function dispatchMiddleware(state: DispatchState, maxToolCalls: number): ChatMid
       state.stepLimitReached = true;
       return { type: "abort", reason: "tool-call limit reached" };
     },
+    onAfterToolCall(context) {
+      if (state.durabilityFaultCaught) {
+        context.abort("durability fault injected after tool result");
+      }
+    },
     onUsage(_context, usage) {
       addUsage(state.usage, usage);
     },
@@ -293,7 +300,12 @@ function runtimeTools(
         argumentsHash: sha256(input),
         result: parsed,
       });
-      await injectLlmDurabilityFault(runtime.memo.durabilityFaults, "after-tool-result");
+      try {
+        await injectLlmDurabilityFault(runtime.memo.durabilityFaults, "after-tool-result");
+      } catch (error: unknown) {
+        if (isLlmDurabilityFault(error)) state.durabilityFaultCaught = true;
+        throw error;
+      }
       return parsed;
     }),
   );
@@ -301,7 +313,7 @@ function runtimeTools(
 }
 
 function failureKind(error: unknown, state: DispatchState): FailureKind {
-  if (isLlmDurabilityFault(error)) return "cancelled";
+  if (state.durabilityFaultCaught || isLlmDurabilityFault(error)) return "cancelled";
   if (error instanceof LlmRetriesExhaustedError) return "retries-exhausted";
   if (error instanceof LlmSpendAdmissionDeniedError) return "spend-admission";
   if (error instanceof LlmPhysicalStepFailedError) {
@@ -358,6 +370,7 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     modelStepCount: 0,
     toolCallCount: 0,
     stepLimitReached: false,
+    durabilityFaultCaught: false,
     lastFinishReason: "unknown",
   };
   const memoState = createPhysicalStepMemoState();

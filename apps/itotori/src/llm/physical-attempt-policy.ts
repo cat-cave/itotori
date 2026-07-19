@@ -43,7 +43,11 @@ export type TransportObservation =
       httpStatus: number;
       retryAfterMs: number | null;
     }
-  | { kind: "transport-error" };
+  | { kind: "transport-error" }
+  // The adapter can turn the injected process-death error into a generic
+  // RUN_ERROR chunk. Preserve the provenance at the transport boundary so
+  // the physical-step catch does not misclassify that chunk as transport.
+  | { kind: "durability-fault" };
 
 export interface TransportObserver {
   fetcher: TransportFetcher;
@@ -113,9 +117,9 @@ export function createTransportObserver(
         // A request may settle after its caller is terminated. Consume a late
         // rejection only; it must not overwrite the persisted ambiguity.
         void pending?.catch(() => undefined);
-        if (!isLlmDurabilityFault(error)) {
-          observation = { kind: "transport-error" };
-        }
+        observation = isLlmDurabilityFault(error)
+          ? { kind: "durability-fault" }
+          : { kind: "transport-error" };
         throw error;
       }
     },
@@ -261,6 +265,14 @@ function attemptDeadline(
           };
         }
         const observation = observer.take();
+        if (observation?.kind === "durability-fault") {
+          return {
+            classification: "cancelled",
+            kind: "cancelled",
+            httpStatus: null,
+            retryAfterMs: null,
+          };
+        }
         if (deadlineExpired) {
           return {
             classification: "transient",
