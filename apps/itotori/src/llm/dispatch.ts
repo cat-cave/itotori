@@ -1,9 +1,11 @@
 import { HTTPClient, type Fetcher } from "@openrouter/sdk";
 import {
   AuthorizationError,
+  injectLlmDurabilityFault,
   LlmPhysicalStepFailedError,
   LlmRetriesExhaustedError,
   LlmSpendAdmissionDeniedError,
+  isLlmDurabilityFault,
   type LlmContentReadAuthorizer,
 } from "@itotori/db";
 import {
@@ -291,6 +293,7 @@ function runtimeTools(
         argumentsHash: sha256(input),
         result: parsed,
       });
+      await injectLlmDurabilityFault(runtime.memo.durabilityFaults, "after-tool-result");
       return parsed;
     }),
   );
@@ -298,6 +301,7 @@ function runtimeTools(
 }
 
 function failureKind(error: unknown, state: DispatchState): FailureKind {
+  if (isLlmDurabilityFault(error)) return "cancelled";
   if (error instanceof LlmRetriesExhaustedError) return "retries-exhausted";
   if (error instanceof LlmSpendAdmissionDeniedError) return "spend-admission";
   if (error instanceof LlmPhysicalStepFailedError) {
@@ -375,7 +379,10 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     reasoningContinuity = preserveReasoningDetails(
       normalizeOpenRouterParameters(runtime.fetcher ?? globalThis.fetch),
     );
-    const observer = createTransportObserver(reasoningContinuity.fetcher);
+    const observer = createTransportObserver(
+      reasoningContinuity.fetcher,
+      runtime.memo.durabilityFaults,
+    );
     const httpClient = new HTTPClient({ fetcher: observer.fetcher });
     httpClient.addHook("beforeRequest", (request) => {
       const headers = new Headers(request.headers);

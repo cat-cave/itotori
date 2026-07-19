@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import {
   ItotoriLlmCallMemoRepository,
   type DatabaseContext,
+  type LlmDurabilityFaultInjector,
   type LlmMemoCipher,
 } from "@itotori/db";
 import { z } from "zod";
@@ -69,6 +70,7 @@ export function dispatchHarness(input: {
   profile?: MeasuredModelProfile;
   retry?: Partial<RetryRuntime>;
   admission?: { scope: string; confirmedCostCapUsd: string };
+  durabilityFaults?: LlmDurabilityFaultInjector;
 }): { runtime: DispatchRuntime; transportCalls: () => number } {
   const responses = [...input.responses];
   let transportCalls = 0;
@@ -93,6 +95,7 @@ export function dispatchHarness(input: {
         },
         ...(input.signal ? { signal: input.signal } : {}),
         ...(input.retry ? { retry: input.retry } : {}),
+        ...(input.durabilityFaults ? { durabilityFaults: input.durabilityFaults } : {}),
         snapshots: {
           decodeRevisionHash: STEP_HASH_A,
           glossaryRevisionHash: STEP_HASH_B,

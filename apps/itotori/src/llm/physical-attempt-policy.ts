@@ -1,7 +1,9 @@
 import {
   LlmRetriesExhaustedError,
+  isLlmDurabilityFault,
   type LlmAttemptFailure,
   type LlmCallMemoStore,
+  type LlmDurabilityFaultInjector,
   type LlmMemoSingleflightInput,
   type LlmMemoSingleflightResult,
   type LlmStepAttemptContext,
@@ -31,6 +33,8 @@ export interface PhysicalAttemptRuntime {
   admission: { scope: string; confirmedCostCapUsd: string };
   signal?: AbortSignal;
   retry?: Partial<RetryRuntime>;
+  /** Live-Postgres recovery matrix seam; absent from normal dispatch. */
+  durabilityFaults?: LlmDurabilityFaultInjector;
 }
 
 export type TransportObservation =
@@ -73,6 +77,7 @@ export function resolveAttemptDeadlineMs(spec: CallSpec, profile: MeasuredModelP
 
 export function createTransportObserver(
   base: TransportFetcher = globalThis.fetch,
+  durabilityFaults?: LlmDurabilityFaultInjector,
 ): TransportObserver {
   let observation: TransportObservation | null = null;
   let generationId: Promise<string | null> = Promise.resolve(null);
@@ -90,8 +95,13 @@ export function createTransportObserver(
       return generationId;
     },
     async fetcher(input, init) {
+      let pending: Promise<Response> | undefined;
       try {
-        const response = await base(input, init);
+        // The remote operation is underway before this boundary is exposed.
+        // A fault here models a caller dying while a provider may still bill.
+        pending = base(input, init);
+        await durabilityFaults?.killAt("in-flight");
+        const response = await pending;
         observation = {
           kind: "response",
           httpStatus: response.status,
@@ -100,7 +110,12 @@ export function createTransportObserver(
         generationId = observeGenerationId(response);
         return response;
       } catch (error: unknown) {
-        observation = { kind: "transport-error" };
+        // A request may settle after its caller is terminated. Consume a late
+        // rejection only; it must not overwrite the persisted ambiguity.
+        void pending?.catch(() => undefined);
+        if (!isLlmDurabilityFault(error)) {
+          observation = { kind: "transport-error" };
+        }
         throw error;
       }
     },
@@ -184,6 +199,9 @@ export async function memoizedPhysicalAttempt(input: {
     throwIfCancelled(input.runtime.signal);
     const stored = await input.store.singleflight({
       ...input.memo,
+      ...(input.runtime.durabilityFaults
+        ? { durabilityFaults: input.runtime.durabilityFaults }
+        : {}),
       admission: {
         scope: input.runtime.admission.scope,
         confirmedCostCapUsd: input.runtime.admission.confirmedCostCapUsd,
@@ -234,6 +252,14 @@ function attemptDeadline(
         return raceWithAbort(pending, signal);
       },
       failure(error?: unknown) {
+        if (isLlmDurabilityFault(error)) {
+          return {
+            classification: "cancelled",
+            kind: "cancelled",
+            httpStatus: null,
+            retryAfterMs: null,
+          };
+        }
         const observation = observer.take();
         if (deadlineExpired) {
           return {

@@ -13,6 +13,10 @@ import {
   type LlmSpendExposureReport,
 } from "./llm-http-attempt-repository.js";
 import { conversationEventProjectionMetadata } from "./llm-conversation-repository.js";
+import {
+  injectLlmDurabilityFault,
+  type LlmDurabilityFaultInjector,
+} from "./llm-durability-faults.js";
 
 export interface LlmMemoCipher {
   seal(plaintext: string): Promise<{ ciphertext: Uint8Array; keyRef: string }>;
@@ -110,6 +114,8 @@ export interface LlmMemoSingleflightInput {
   schemaVersion: string;
   requestJson: string;
   admission: LlmSpendAdmission;
+  /** Optional live-Postgres crash-matrix seam; omitted by all production callers. */
+  durabilityFaults?: LlmDurabilityFaultInjector;
   execute: (attempt: LlmStepAttemptContext) => Promise<LlmStepExecution>;
 }
 
@@ -218,6 +224,7 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
       }
 
       await this.insertCompleted(client, input, { ordinal, startedAt, execution });
+      await injectLlmDurabilityFault(input.durabilityFaults, "after-memo-insert");
       return {
         kind: "completed",
         memoHit: false,

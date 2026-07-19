@@ -1,4 +1,9 @@
-import { LlmMemoConflictError, type LlmAttemptFailure, type LlmCallMemoStore } from "@itotori/db";
+import {
+  injectLlmDurabilityFault,
+  LlmMemoConflictError,
+  type LlmAttemptFailure,
+  type LlmCallMemoStore,
+} from "@itotori/db";
 import { EventType, type AnyTextAdapter, type StreamChunk, type TextOptions } from "@tanstack/ai";
 import {
   CONTEXT_SNAPSHOT_SCHEMA_VERSION,
@@ -116,10 +121,12 @@ export function memoizePhysicalSteps(
         execute: async (attempt, control) => {
           const chunks: StreamChunk[] = [];
           try {
+            await injectLlmDurabilityFault(runtime.durabilityFaults, "before-dispatch");
             await collectStreamChunks(outbound(control.signal), control, chunks);
             const runError = chunks.findLast((chunk) => chunk.type === EventType.RUN_ERROR);
             const failure = runError ? control.failure(runError) : null;
             if (runError && failure) return incompleteStep(chunks, failure);
+            await injectLlmDurabilityFault(runtime.durabilityFaults, "after-remote-response");
             return completedStreamStep(spec, identity, chunks, attempt, parentResponseEventId, {
               observedGenerationId: await observer.takeGenerationId(),
               ...(runtime.generationLookup
@@ -176,12 +183,14 @@ export function memoizePhysicalSteps(
         },
         execute: async (attempt, control) => {
           try {
+            await injectLlmDurabilityFault(runtime.durabilityFaults, "before-dispatch");
             const result = await control.race(
               adapter.structuredOutput({
                 ...options,
                 chatOptions: withSignal(options.chatOptions, control.signal),
               }),
             );
+            await injectLlmDurabilityFault(runtime.durabilityFaults, "after-remote-response");
             return completedStructuredStep(spec, identity, result, attempt, parentResponseEventId, {
               observedGenerationId: await observer.takeGenerationId(),
               ...(runtime.generationLookup
