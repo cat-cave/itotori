@@ -60,6 +60,17 @@ const SEMANTIC_REPAIR_LIMITS: SpecialistDeclaration["limits"] = {
   timeoutClass: "normal",
 };
 
+// P2 is deliberately one bounded author-continuation turn.  A line edit is a
+// minimal response to an already-joined minor finding, not another scene draft
+// or a second review pass.
+const LINE_EDITOR_LIMITS: SpecialistDeclaration["limits"] = {
+  maxSteps: 1,
+  maxToolCalls: 0,
+  maxParallelTools: 1,
+  maxOutputTokens: 8_192,
+  timeoutClass: "normal",
+};
+
 const DECLARATIONS: readonly SpecialistDeclaration[] = [
   // ── Pre-production: the analyst castings ──────────────────────────────────
   {
@@ -206,13 +217,14 @@ const DECLARATIONS: readonly SpecialistDeclaration[] = [
   {
     roleId: "P2",
     shape: "localizer",
-    version: "itotori.role.P2.v1",
+    version: "itotori.role.P2.v2",
     instructions:
-      "Line Editor. Continue the author thread for minor style, format, and voice repairs given the current draft and the exact changed basis. Return patches only for implicated ids and spans; preserve meaning and unaffected bytes; never blind-retranslate.",
+      "Line Editor. Continue the existing author thread for one minor style, format, voice, or localized-bible enhancement. Read only the current implicated draft lines, their exact changed basis/defects and spans, and the exact localized-bible renderings. Return one provisional, typed, traceable repair patch for exactly those implicated ids/spans; preserve meaning, protected placeholders, Shift-JIS representability, choice-label encoding, and every unaffected draft byte. Never start a blind retranslation, expand to passing ids, or launch a whole-QA rerun; the deterministic workflow reruns only the failed gates and review lanes named by the defect bundle.",
     granularity: "per-unit",
     wikiObjectKind: "translation",
     modelProfileKey: MODEL_PROFILE_KEY,
     dagPosition: { stage: "production", upstream: ["P1"], downstream: ["Q1", "Q2", "Q3"] },
+    limits: LINE_EDITOR_LIMITS,
   },
   {
     roleId: "P3",
