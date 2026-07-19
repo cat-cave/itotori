@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+mod rpgmaker_encrypted_smoke;
+
 use crate::{
     EncryptedMediaProofFixture, EncryptedMediaProofRequest, LocalSecretDirectoryStore,
     RpgMakerMvMzFixtureKeyValidationRequest, atomic_write_text, encrypted_media_proof, flag,
@@ -164,6 +166,9 @@ pub(crate) fn run_rpg_maker_command(args: &[String]) -> Result<(), Box<dyn std::
         "encrypted-media-proof" => {
             run_rpg_maker_encrypted_media_proof(args)?;
         }
+        "encrypted-smoke" => {
+            rpgmaker_encrypted_smoke::run_rpg_maker_encrypted_smoke(args)?;
+        }
         "validate-fixture-key" => {
             let game_dir = PathBuf::from(flag(args, "--game-dir")?);
             let image_asset = PathBuf::from(flag(args, "--image-asset")?);
@@ -203,7 +208,7 @@ pub(crate) fn run_rpg_maker_command(args: &[String]) -> Result<(), Box<dyn std::
         }
         _ => {
             return Err(
-                "usage: kaifuu rpgmaker <validate-fixture-key|encrypted-media-proof> ...\n  validate-fixture-key --game-dir <dir> --image-asset <asset> --secret-store <dir> --secret-ref <local-secret:id> --output <report.json> [--requirement-id <id>] [--fixture-id <id>]\n  encrypted-media-proof --fixture <fixture.json> [--output <report.json>]\n(alias: kaifuu rpg-maker ...)"
+                "usage: kaifuu rpgmaker <validate-fixture-key|encrypted-media-proof|encrypted-smoke> ...\n  validate-fixture-key --game-dir <dir> --image-asset <asset> --secret-store <dir> --secret-ref <local-secret:id> --output <report.json> [--requirement-id <id>] [--fixture-id <id>]\n  encrypted-media-proof --fixture <fixture.json> [--output <report.json>]\n  encrypted-smoke --fixture <fixture-id>\n(alias: kaifuu rpg-maker ...)"
                     .into(),
             );
         }

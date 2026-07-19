@@ -29,6 +29,13 @@ const xp3ProfileASchema = JSON.parse(readFileSync(xp3ProfileASchemaPath, "utf8")
 const rpgmakerProfileASchemaSuffix = "rpgmaker-profile-a.manifest.schema.json";
 const rpgmakerProfileASchemaPath = resolve(publicFixturesDir, rpgmakerProfileASchemaSuffix);
 const rpgmakerProfileASchema = JSON.parse(readFileSync(rpgmakerProfileASchemaPath, "utf8"));
+// The RPG Maker MV/MZ profile-B intake records a commercial encrypted title as
+// metadata only: encrypted/decrypted hashes, byte counts, and the asset key's
+// one-way commitment. No archive bytes, no decrypted media, and no key material
+// are committed, so it declares its own schema with no `files` list.
+const rpgmakerProfileBSchemaSuffix = "rpgmaker-profile-b.manifest.schema.json";
+const rpgmakerProfileBSchemaPath = resolve(publicFixturesDir, rpgmakerProfileBSchemaSuffix);
+const rpgmakerProfileBSchema = JSON.parse(readFileSync(rpgmakerProfileBSchemaPath, "utf8"));
 const helperResultDir = resolve(publicFixturesDir, "kaifuu-helper-results");
 const helperResultSchemaPath = resolve(helperResultDir, "helper-result.schema.json");
 const helperResultSchema = JSON.parse(readFileSync(helperResultSchemaPath, "utf8"));
@@ -40,6 +47,7 @@ const validate = ajv.compile(schema);
 const validateKagCorpus = ajv.compile(kagCorpusSchema);
 const validateXp3ProfileA = ajv.compile(xp3ProfileASchema);
 const validateRpgmakerProfileA = ajv.compile(rpgmakerProfileASchema);
+const validateRpgmakerProfileB = ajv.compile(rpgmakerProfileBSchema);
 const validateHelperResult = ajv.compile(helperResultSchema);
 const validateHelperRegistry = ajv.compile(helperRegistrySchema);
 const errors = [];
@@ -58,13 +66,16 @@ for (const manifestPath of manifestPaths) {
   const isKagCorpus = declaredSchema.endsWith(kagCorpusSchemaSuffix);
   const isXp3ProfileA = declaredSchema.endsWith(xp3ProfileASchemaSuffix);
   const isRpgmakerProfileA = declaredSchema.endsWith(rpgmakerProfileASchemaSuffix);
+  const isRpgmakerProfileB = declaredSchema.endsWith(rpgmakerProfileBSchemaSuffix);
   const activeValidate = isKagCorpus
     ? validateKagCorpus
     : isXp3ProfileA
       ? validateXp3ProfileA
       : isRpgmakerProfileA
         ? validateRpgmakerProfileA
-        : validate;
+        : isRpgmakerProfileB
+          ? validateRpgmakerProfileB
+          : validate;
 
   if (!activeValidate(manifest)) {
     for (const error of activeValidate.errors ?? []) {
@@ -80,6 +91,10 @@ for (const manifestPath of manifestPaths) {
   }
 
   if (isRpgmakerProfileA) {
+    continue;
+  }
+
+  if (isRpgmakerProfileB) {
     continue;
   }
   for (const file of manifest.files) {
