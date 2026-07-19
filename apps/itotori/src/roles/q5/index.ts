@@ -9,6 +9,7 @@ export {
   Q5_RENDER_FAULT_KINDS,
   Q5DecodedObservationError,
   Q5FrameNotObservedError,
+  Q5LocalizedBibleEntrySchema,
   Q5RenderFaultKindSchema,
   Q5RenderFrameSchema,
   Q5RenderObservationSchema,
@@ -18,6 +19,7 @@ export {
   q5FrameFromRenderResult,
   type Q5RenderFaultKind,
   type Q5RenderFrame,
+  type Q5LocalizedBibleEntry,
   type Q5RenderObservation,
   type Q5ReviewInput,
 } from "./inputs.js";
@@ -36,7 +38,9 @@ export {
   type Q5Messages,
 } from "./prompt.js";
 export {
+  Q5RouteError,
   Q5RubricScopeError,
+  assertCertifiedBuildLqaRoute,
   assertBuildLqaOnlyToolGrant,
   buildQ5CallSpec,
   q5BuildLqaToolGrant,

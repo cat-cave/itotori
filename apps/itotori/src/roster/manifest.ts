@@ -279,9 +279,9 @@ const DECLARATIONS: readonly SpecialistDeclaration[] = [
   {
     roleId: "Q5",
     shape: "reviewer",
-    version: "itotori.role.Q5.v1",
+    version: "itotori.role.Q5.v2",
     instructions:
-      "Build-LQA Reviewer. Given a real patched-byte frame, the expected target, the localized bible, and prior deterministic render facts, judge residual translation-quality-on-screen only. Engine, glyph, charset, overflow, and replay faults route to deterministic gates.",
+      "Build-LQA Reviewer. Given a real patched-byte frame, the expected accepted target, exact localized-bible renderings, and authoritative deterministic render/OCR/charset/layout facts, judge residual translation quality on screen only. Facts dominate: engine, render, missing-glyph, charset, overflow, layout, and replay faults route to deterministic build gates and are never translation-quality defects. Every verdict cites the on-screen frame and accepted target.",
     granularity: "per-unit",
     wikiObjectKind: "translation",
     modelProfileKey: MODEL_PROFILE_KEY,

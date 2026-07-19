@@ -3,8 +3,8 @@
 // The reviewer calls exactly one model — the certified deepseek-v4-flash
 // reviewer profile — through the single ZDR dispatch boundary. This module
 // names NO provider and pins NO model: it RESOLVES the role's certified profile
-// (capability + ZDR + automatic fallback) and stamps the CallSpec from it, so a
-// route that drifts from the certified binding cannot be constructed here.
+// (capability + ZDR + automatic fallback), stamps the CallSpec from it, and
+// re-proves the result in every run mode so route drift cannot be dispatched.
 //
 // The reviewer's build-LQA tool grant is DERIVED from the read-tool permission
 // table (never hardcoded), and is asserted to exclude every egress and render
@@ -19,7 +19,7 @@ import {
   type EncryptedPayloadRef,
   type ToolName,
 } from "../../contracts/index.js";
-import { sha256 } from "../../llm/canonical-json.js";
+import { canonicalJson, sha256 } from "../../llm/canonical-json.js";
 import { resolveRoleModelProfile } from "../../llm/role-model-profiles.js";
 import { specialistFor, toolsForRole } from "../../roster/index.js";
 import { assembleQ5Messages, Q5_PROMPT_VERSION } from "./prompt.js";
@@ -53,6 +53,36 @@ export function assertBuildLqaOnlyToolGrant(): void {
   const grant = new Set(q5BuildLqaToolGrant());
   for (const tool of NON_BUILD_LQA_TOOLS) {
     if (grant.has(tool)) throw new Q5RubricScopeError(tool);
+  }
+}
+
+/** Thrown when a call attempts to leave Q5's RB-019 certified reviewer route. */
+export class Q5RouteError extends Error {
+  constructor() {
+    super("build-LQA dispatch route is not the certified deepseek-v4-flash reviewer profile");
+    this.name = "Q5RouteError";
+  }
+}
+
+/** Re-prove the certified profile at Q5's public request boundary. This is
+ * deliberately unconditional: `test-dev` and pilot runs remain inside the same
+ * account-wide ZDR envelope and cannot introduce a provider-specific escape. */
+export function assertCertifiedBuildLqaRoute(spec: CallSpec): void {
+  const resolved = resolveRoleModelProfile(Q5_ROLE);
+  const selected = {
+    modelProfile: spec.modelProfile,
+    modelProfileVersion: spec.modelProfileVersion,
+    requestedModel: spec.requestedModel,
+    providerPolicy: spec.providerPolicy,
+  };
+  const certified = {
+    modelProfile: resolved.modelProfile,
+    modelProfileVersion: resolved.version,
+    requestedModel: resolved.model,
+    providerPolicy: resolved.providerPolicy,
+  };
+  if (spec.roleId !== Q5_ROLE || canonicalJson(selected) !== canonicalJson(certified)) {
+    throw new Q5RouteError();
   }
 }
 
@@ -138,5 +168,7 @@ export function buildQ5CallSpec(input: Q5ReviewInput, refs: Q5DispatchRefs): Cal
     contextScope: "whole-game",
   };
 
-  return CallSpecSchema.parse(spec);
+  const parsedSpec = CallSpecSchema.parse(spec);
+  assertCertifiedBuildLqaRoute(parsedSpec);
+  return parsedSpec;
 }
