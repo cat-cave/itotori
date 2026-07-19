@@ -219,14 +219,14 @@ fn write_fixture_file(root: &Path, relative_path: &str, bytes: &[u8]) {
 }
 
 #[derive(Clone, Copy)]
-struct Xp3TestEntry<'a> {
-    path: &'a str,
-    payload: &'a [u8],
-    compressed: bool,
-    adler32: u32,
+pub(crate) struct Xp3TestEntry<'a> {
+    pub(crate) path: &'a str,
+    pub(crate) payload: &'a [u8],
+    pub(crate) compressed: bool,
+    pub(crate) adler32: u32,
 }
 
-fn plain_xp3_fixture(entries: &[Xp3TestEntry<'_>]) -> Vec<u8> {
+pub(crate) fn plain_xp3_fixture(entries: &[Xp3TestEntry<'_>]) -> Vec<u8> {
     let mut bytes = Vec::new();
     bytes.extend_from_slice(XP3_PLAIN_MAGIC);
     bytes.extend_from_slice(&0_u64.to_le_bytes());

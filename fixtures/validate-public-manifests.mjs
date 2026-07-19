@@ -16,6 +16,12 @@ const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
 const kagCorpusSchemaSuffix = "kag-corpus.manifest.schema.json";
 const kagCorpusSchemaPath = resolve(publicFixturesDir, kagCorpusSchemaSuffix);
 const kagCorpusSchema = JSON.parse(readFileSync(kagCorpusSchemaPath, "utf8"));
+// KAIFUU-204 records a licensed real-game XP3 as metadata only. Its schema
+// intentionally has no `files` list because archive bytes and member paths
+// must not be committed.
+const xp3ProfileASchemaSuffix = "xp3-profile-a.manifest.schema.json";
+const xp3ProfileASchemaPath = resolve(publicFixturesDir, xp3ProfileASchemaSuffix);
+const xp3ProfileASchema = JSON.parse(readFileSync(xp3ProfileASchemaPath, "utf8"));
 // The real-game profile-A intake contains only external-source metadata
 // (relative paths, hashes, aggregate counts, and JSON pointers), not
 // redistributable game files. It therefore has its own schema and is verified
@@ -32,6 +38,7 @@ const manifestPaths = findManifests(publicFixturesDir);
 const ajv = new Ajv2020({ allErrors: true });
 const validate = ajv.compile(schema);
 const validateKagCorpus = ajv.compile(kagCorpusSchema);
+const validateXp3ProfileA = ajv.compile(xp3ProfileASchema);
 const validateRpgmakerProfileA = ajv.compile(rpgmakerProfileASchema);
 const validateHelperResult = ajv.compile(helperResultSchema);
 const validateHelperRegistry = ajv.compile(helperRegistrySchema);
@@ -49,12 +56,15 @@ for (const manifestPath of manifestPaths) {
 
   const declaredSchema = typeof manifest.$schema === "string" ? manifest.$schema : "";
   const isKagCorpus = declaredSchema.endsWith(kagCorpusSchemaSuffix);
+  const isXp3ProfileA = declaredSchema.endsWith(xp3ProfileASchemaSuffix);
   const isRpgmakerProfileA = declaredSchema.endsWith(rpgmakerProfileASchemaSuffix);
   const activeValidate = isKagCorpus
     ? validateKagCorpus
-    : isRpgmakerProfileA
-      ? validateRpgmakerProfileA
-      : validate;
+    : isXp3ProfileA
+      ? validateXp3ProfileA
+      : isRpgmakerProfileA
+        ? validateRpgmakerProfileA
+        : validate;
 
   if (!activeValidate(manifest)) {
     for (const error of activeValidate.errors ?? []) {
@@ -65,10 +75,13 @@ for (const manifestPath of manifestPaths) {
     continue;
   }
 
-  if (isRpgmakerProfileA) {
+  if (isXp3ProfileA) {
     continue;
   }
 
+  if (isRpgmakerProfileA) {
+    continue;
+  }
   for (const file of manifest.files) {
     validateFixtureFile(manifestPath, file);
     if (isKagCorpus) {

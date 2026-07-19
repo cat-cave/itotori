@@ -78,6 +78,12 @@ pub mod native_windows_helper;
 mod offset_map;
 pub mod packed_engine_readiness;
 pub mod patch_transaction;
+mod xp3_plain;
+pub use xp3_plain::{
+    PlainXp3Entry, PlainXp3Inventory, PlainXp3InventoryError, read_plain_xp3_inventory,
+};
+pub(crate) use xp3_plain::{PlainXp3FileChunk, PlainXp3Segment};
+
 pub mod plain_xp3_smoke;
 pub mod registry;
 pub mod repro_bundle;
@@ -18023,155 +18029,6 @@ impl fmt::Debug for RedactedContentSummary {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PlainXp3Inventory {
-    pub entries: Vec<PlainXp3Entry>,
-}
-
-impl PlainXp3Inventory {
-    pub fn normalize(&mut self) {
-        self.entries.sort_by_key(|entry| entry.path.clone());
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PlainXp3Entry {
-    pub path: String,
-    pub original_size: u64,
-    pub archive_size: u64,
-    pub compressed: bool,
-    pub segment_count: usize,
-    pub payload_hash: Option<String>,
-    pub stored_adler32: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PlainXp3InventoryError {
-    MalformedHeader,
-    Truncated(&'static str),
-    InvalidOffset(&'static str),
-    UnsupportedIndexEncoding(u8),
-    UnsupportedEncrypted,
-    InvalidChunk(String),
-    InvalidUtf16Path,
-    DuplicateEntry(String),
-}
-
-impl fmt::Display for PlainXp3InventoryError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MalformedHeader => formatter.write_str("malformed XP3 header"),
-            Self::Truncated(field) => write!(formatter, "truncated XP3 {field}"),
-            Self::InvalidOffset(field) => write!(formatter, "invalid XP3 {field} offset"),
-            Self::UnsupportedIndexEncoding(flag) => {
-                write!(formatter, "unsupported XP3 index encoding flag {flag}")
-            }
-            Self::UnsupportedEncrypted => {
-                formatter.write_str("encrypted XP3 inventory requires crypto support")
-            }
-            Self::InvalidChunk(message) => write!(formatter, "invalid XP3 chunk: {message}"),
-            Self::InvalidUtf16Path => formatter.write_str("invalid XP3 UTF-16 path"),
-            Self::DuplicateEntry(path) => write!(formatter, "duplicate XP3 file entry {path}"),
-        }
-    }
-}
-
-impl std::error::Error for PlainXp3InventoryError {}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PlainXp3Segment {
-    flags: u32,
-    offset: u64,
-    original_size: u64,
-    archive_size: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PlainXp3FileChunk {
-    path: Option<String>,
-    original_size: Option<u64>,
-    archive_size: Option<u64>,
-    segments: Vec<PlainXp3Segment>,
-    stored_adler32: Option<String>,
-}
-
-pub fn read_plain_xp3_inventory(bytes: &[u8]) -> Result<PlainXp3Inventory, PlainXp3InventoryError> {
-    if !bytes.starts_with(XP3_PLAIN_MAGIC) {
-        if has_legacy_xp3_encrypted_marker(bytes) {
-            return Err(PlainXp3InventoryError::UnsupportedEncrypted);
-        }
-        return Err(PlainXp3InventoryError::MalformedHeader);
-    }
-    let index_offset = read_le_u64(bytes, XP3_PLAIN_MAGIC.len(), "index offset")?;
-    let index_offset = usize::try_from(index_offset)
-        .map_err(|_| PlainXp3InventoryError::InvalidOffset("index"))?;
-    if index_offset >= bytes.len() {
-        return Err(PlainXp3InventoryError::InvalidOffset("index"));
-    }
-
-    let index_encoding = *bytes
-        .get(index_offset)
-        .ok_or(PlainXp3InventoryError::Truncated("index encoding"))?;
-    if index_encoding != 0 {
-        return Err(PlainXp3InventoryError::UnsupportedIndexEncoding(
-            index_encoding,
-        ));
-    }
-    let index_size = read_le_u64(bytes, index_offset + 1, "index size")?;
-    let index_start = index_offset
-        .checked_add(9)
-        .ok_or(PlainXp3InventoryError::InvalidOffset("index start"))?;
-    let index_size = usize::try_from(index_size)
-        .map_err(|_| PlainXp3InventoryError::InvalidOffset("index size"))?;
-    let index_end = checked_end(index_start, index_size, bytes.len(), "index")?;
-
-    let mut cursor = index_start;
-    let mut entries = Vec::new();
-    let mut seen_paths = HashSet::new();
-    while cursor < index_end {
-        let chunk_name = read_chunk_name(bytes, cursor, "index chunk name")?;
-        let chunk_size = read_le_u64(bytes, cursor + 4, "index chunk size")?;
-        let content_start = cursor + 12;
-        let content_size = usize::try_from(chunk_size)
-            .map_err(|_| PlainXp3InventoryError::InvalidOffset("index chunk size"))?;
-        let content_end = checked_end(content_start, content_size, index_end, "index chunk")?;
-        if chunk_name == *b"File" {
-            let entry = parse_xp3_file_chunk(bytes, content_start, content_end)?;
-            let path = entry.path.ok_or_else(|| {
-                PlainXp3InventoryError::InvalidChunk("File chunk missing info path".to_string())
-            })?;
-            if !seen_paths.insert(path.clone()) {
-                return Err(PlainXp3InventoryError::DuplicateEntry(path));
-            }
-            let payload_hash = hash_xp3_segments(bytes, &entry.segments)?;
-            entries.push(PlainXp3Entry {
-                path,
-                original_size: entry.original_size.ok_or_else(|| {
-                    PlainXp3InventoryError::InvalidChunk(
-                        "File chunk missing info original size".to_string(),
-                    )
-                })?,
-                archive_size: entry.archive_size.ok_or_else(|| {
-                    PlainXp3InventoryError::InvalidChunk(
-                        "File chunk missing info archive size".to_string(),
-                    )
-                })?,
-                compressed: entry.segments.iter().any(|segment| segment.flags & 1 != 0),
-                segment_count: entry.segments.len(),
-                payload_hash,
-                stored_adler32: entry.stored_adler32,
-            });
-        }
-        cursor = content_end;
-    }
-
-    let mut inventory = PlainXp3Inventory { entries };
-    inventory.normalize();
-    Ok(inventory)
-}
-
 // Plain XP3 deterministic writer
 // The writer covers the WRITE side of the plain-XP3 patch-back
 // claim. established the read-side classification (plain /
@@ -19201,7 +19058,7 @@ pub fn replace_plain_xp3_entry_payload(
     Ok(manifest)
 }
 
-fn has_legacy_xp3_encrypted_marker(bytes: &[u8]) -> bool {
+pub(crate) fn has_legacy_xp3_encrypted_marker(bytes: &[u8]) -> bool {
     if !bytes.starts_with(b"XP3\r\n") {
         return false;
     }
@@ -19210,7 +19067,7 @@ fn has_legacy_xp3_encrypted_marker(bytes: &[u8]) -> bool {
         || header_contains_ascii(marker_region, "kaifuu-xp3-encrypted")
 }
 
-fn parse_xp3_file_chunk(
+pub(crate) fn parse_xp3_file_chunk(
     bytes: &[u8],
     start: usize,
     end: usize,
@@ -19310,7 +19167,7 @@ fn parse_xp3_segment_chunk(
     Ok(())
 }
 
-fn hash_xp3_segments(
+pub(crate) fn hash_xp3_segments(
     bytes: &[u8],
     segments: &[PlainXp3Segment],
 ) -> Result<Option<String>, PlainXp3InventoryError> {
@@ -19326,7 +19183,7 @@ fn hash_xp3_segments(
     Ok(Some(sha256_hash_bytes(&payload)))
 }
 
-fn read_chunk_name(
+pub(crate) fn read_chunk_name(
     bytes: &[u8],
     offset: usize,
     field: &'static str,
@@ -19359,7 +19216,7 @@ fn read_le_u32(
     Ok(u32::from_le_bytes(raw))
 }
 
-fn read_le_u64(
+pub(crate) fn read_le_u64(
     bytes: &[u8],
     offset: usize,
     field: &'static str,
@@ -19370,7 +19227,7 @@ fn read_le_u64(
     Ok(u64::from_le_bytes(raw))
 }
 
-fn checked_end(
+pub(crate) fn checked_end(
     start: usize,
     size: usize,
     upper_bound: usize,
