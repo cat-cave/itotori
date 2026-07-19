@@ -77,6 +77,7 @@ impl EngineAdapter for SoftpalProfileDetectorAdapter {
                 CapabilityReport::supported(Capability::AssetListing),
                 CapabilityReport::supported(Capability::AssetInventory),
                 CapabilityReport::supported(Capability::Extraction),
+                CapabilityReport::supported(Capability::Verification),
                 CapabilityReport::limited(Capability::Patching, PATCH_LIMITATION),
                 CapabilityReport::supported(Capability::ContainerAccess),
                 CapabilityReport::supported(Capability::CryptoAccess),

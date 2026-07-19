@@ -5,15 +5,16 @@
 //! deterministic `kaifuu-softpal` PAC + TEXT.DAT + SCRIPT.SRC reader and its
 //! patch-back) over real bytes — there is no mock path.
 //!
-//! - `extract --engine softpal --game-dir <root> --bundle-output <bundle.json>`
-//!   resolves SCRIPT.SRC + TEXT.DAT (from `data.pac` or a loose pair),
-//!   disassembles the dialogue + choice surfaces, and writes the v0.1
-//!   BridgeBundle.
-//! - `patch --engine softpal --source <root> --patch <export.json>
-//!   --output <dir>` rebuilds TEXT.DAT + repoints SCRIPT.SRC as loose files in
-//!   `<dir>` and writes `patch-result.json`.
-//! - `verify --engine softpal --game-dir <root> [--output <report.json>]`
-//!   re-decodes and asserts the 0-dangling-pointer integrity bar.
+//! - `extract --engine softpal <root> --bundle-output <bundle.json>` resolves
+//!   SCRIPT.SRC + TEXT.DAT (from `data.pac` or a loose pair), disassembles the
+//!   dialogue + choice surfaces, and writes the v0.1 BridgeBundle. The game root
+//!   is a positional (consistent with the other engines' extract), with
+//!   `--game-dir` / `ITOTORI_REAL_GAME_ROOT_SOFTPAL` as alternates.
+//! - `patch --engine softpal <root> --patch <export.json> --output <dir>`
+//!   rebuilds TEXT.DAT + repoints SCRIPT.SRC as loose files in `<dir>` and writes
+//!   `patch-result.json` (`--source <root>` is an alternate to the positional).
+//! - `verify --engine softpal <root> [--output <report.json>]` re-decodes and
+//!   asserts the 0-dangling-pointer integrity bar.
 
 use std::path::PathBuf;
 
@@ -24,17 +25,36 @@ use kaifuu_engine_fixture::SoftpalProfileDetectorAdapter;
 
 use crate::{flag, flag_optional, read_json, validate_patch_target_root};
 
-/// `--game-dir <root>` (falling back to `ITOTORI_REAL_GAME_ROOT_SOFTPAL`).
+/// The first positional argument after the verb (`args[0]`): the first token
+/// that is neither a `--flag` nor a flag's value. Lets the game root be passed
+/// positionally alongside `--engine softpal` and the output flags.
+fn first_positional(args: &[String]) -> Option<&str> {
+    let mut index = 1;
+    while index < args.len() {
+        if args[index].starts_with("--") {
+            index += 2; // skip the flag and its value
+        } else {
+            return Some(&args[index]);
+        }
+    }
+    None
+}
+
+/// Resolve the Softpal game root for extract/verify: `--game-dir`, else the
+/// positional root, else `ITOTORI_REAL_GAME_ROOT_SOFTPAL`.
 fn softpal_game_dir(args: &[String]) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    match flag_optional(args, "--game-dir") {
+    if let Some(value) = flag_optional(args, "--game-dir") {
+        return Ok(PathBuf::from(value));
+    }
+    if let Some(value) = first_positional(args) {
+        return Ok(PathBuf::from(value));
+    }
+    match std::env::var_os("ITOTORI_REAL_GAME_ROOT_SOFTPAL") {
         Some(value) => Ok(PathBuf::from(value)),
-        None => match std::env::var_os("ITOTORI_REAL_GAME_ROOT_SOFTPAL") {
-            Some(value) => Ok(PathBuf::from(value)),
-            None => Err(
-                "--game-dir <softpal-root> or ITOTORI_REAL_GAME_ROOT_SOFTPAL env var required"
-                    .into(),
-            ),
-        },
+        None => Err(
+            "softpal game root required: pass it positionally, via --game-dir <root>, or ITOTORI_REAL_GAME_ROOT_SOFTPAL"
+                .into(),
+        ),
     }
 }
 
@@ -64,7 +84,12 @@ fn run_extract_softpal_bundle(args: &[String]) -> Result<(), Box<dyn std::error:
 }
 
 fn run_patch_softpal_bundle(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
-    let source = PathBuf::from(flag(args, "--source")?);
+    let source = match flag_optional(args, "--source") {
+        Some(value) => PathBuf::from(value),
+        None => PathBuf::from(first_positional(args).ok_or(
+            "softpal patch source root required: pass it positionally or via --source <root>",
+        )?),
+    };
     let patch = PathBuf::from(flag(args, "--patch")?);
     let output = PathBuf::from(flag(args, "--output")?);
     validate_patch_target_root(&source, &output, "patch output directory")?;
