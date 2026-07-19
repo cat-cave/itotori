@@ -1,0 +1,492 @@
+{
+  "$schema": "./rpgmaker-profile-a.manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "SPDX-License-Identifier": "LicenseRef-LustMemory-English-Public-Release",
+  "fixture": {
+    "id": "kaifuu-rpgmaker-mv-mz-profile-a",
+    "title": "Kaifuu RPG Maker MV/MZ Profile A Metadata Intake",
+    "kind": "metadata-only",
+    "summary": "Read-only metadata intake from the supplied public-licensed LustMemory English RPG Maker MV release. The repository contains hashes, byte counts, event-command counts, and structural samples only; it contains no game text, assets, or license copy.",
+    "sourceLocale": "en-US",
+    "license": {
+      "spdx": "LicenseRef-LustMemory-English-Public-Release",
+      "evidence": "The supplied LustMemory English release is the task-authorized public-licensed source. Its SPDX LicenseRef is preserved verbatim; this metadata-only intake intentionally does not copy the release license or any game bytes."
+    },
+    "provenance": {
+      "creationMethod": "fixtures/generate-kaifuu-rpgmaker-mv-mz-profile-a.mjs deterministically scans the supplied read-only source data JSON in bytewise filename order and emits only hashes, byte counts, counts, and JSON-pointer samples.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets",
+      "sourcePath": "LustMemory/www/data"
+    }
+  },
+  "sourceFiles": [
+    {
+      "path": "www/data/Actors.json",
+      "role": "database",
+      "mediaType": "application/json",
+      "sha256": "1f954814e639311272c0b9b3938e7da4ffd733515e91bccfed6869e0c957e7df",
+      "bytes": 615
+    },
+    {
+      "path": "www/data/Animations.json",
+      "role": "database",
+      "mediaType": "application/json",
+      "sha256": "a8138a8d002df73cf85ea3aeb400b9697917cde450cf08a4887bc8bc0c3836f9",
+      "bytes": 392638
+    },
+    {
+      "path": "www/data/Armors.json",
+      "role": "database",
+      "mediaType": "application/json",
+      "sha256": "fae22b2bcce45638ff3173de962fe970f6774c170cfb8e98735064cb5dbf492c",
+      "bytes": 1657
+    },
+    {
+      "path": "www/data/Classes.json",
+      "role": "database",
+      "mediaType": "application/json",
+      "sha256": "5fcdcceccea3a47013aa75610ec77c7dc9aa933177d4f7f3884c3078f07775d4",
+      "bytes": 7351
+    },
+    {
+      "path": "www/data/CommonEvents.json",
+      "role": "common-events",
+      "mediaType": "application/json",
+      "sha256": "488caac8c6176e2e4fbf13f553638bd752f465e1ca6c98b18488dacdb902b15b",
+      "bytes": 578430
+    },
+    {
+      "path": "www/data/Enemies.json",
+      "role": "database",
+      "mediaType": "application/json",
+      "sha256": "dbcd9ca8252546f77b698342b7b165310736385b8a8253371b92842cc7945041",
+      "bytes": 30702
+    },
+    {
+      "path": "www/data/Items.json",
+      "role": "database",
+      "mediaType": "application/json",
+      "sha256": "5955a75609d01314584557647a983fc94ab255442c5fed32c45c8095677bea07",
+      "bytes": 20857
+    },
+    {
+      "path": "www/data/Map001.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "a00878f6615316fdc622a62d438c3273ec2d19bd94d83c6b93ef36c033fefc56",
+      "bytes": 198090
+    },
+    {
+      "path": "www/data/Map002.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "8dcf012c477d6d87eebfe75a171fb6bbf1c5f31966c57191a1a16644cb45e997",
+      "bytes": 4036
+    },
+    {
+      "path": "www/data/Map003.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "4f2454c592f0914f5117c64fb8127dc2a55cb2b522a3a611bd05ca90938ca344",
+      "bytes": 12004
+    },
+    {
+      "path": "www/data/Map004.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "41237ac74bec1736fcefcdcfb218bb0b1998305e680a12e0bb4c511b9263430f",
+      "bytes": 16033
+    },
+    {
+      "path": "www/data/Map005.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "39d1ebef587e482de9965bc3d1acdd2ea05c6f6d5d000330420cd6d291fe415c",
+      "bytes": 9328
+    },
+    {
+      "path": "www/data/Map021.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "172406dc59ba142b84860170b249f3e461877a0550588845b01d4780c67e336b",
+      "bytes": 30252
+    },
+    {
+      "path": "www/data/Map023.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "3515eceda9a0ba37ff967e853eb186dcb5944f9fe17605cd8aae8c0c20ceea5f",
+      "bytes": 41414
+    },
+    {
+      "path": "www/data/Map024.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "e2c0dbeb82fb98ca209f39c44c19a8cbf1f08aa2ed00d1fd4f13c0ffbbcaad73",
+      "bytes": 34038
+    },
+    {
+      "path": "www/data/Map025.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "869741a0209dbc50eee3366f3bb02d26bfcafb53a8fb68dad4dd4222d2dc5577",
+      "bytes": 47644
+    },
+    {
+      "path": "www/data/Map026.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "cdc09cec0e47a00fea389bdb094a91474206aa0c64c6f5e5e7817cf0b491e827",
+      "bytes": 34705
+    },
+    {
+      "path": "www/data/Map027.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "4cf8ec02345cc258a90d027757eaabce572ee5671a0f17976682244d148ab1d6",
+      "bytes": 13938
+    },
+    {
+      "path": "www/data/Map028.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "d6a9081eaf6657cff6e87811990de9e1a26585da8468f7312a81ed5f3f9a337a",
+      "bytes": 5578
+    },
+    {
+      "path": "www/data/Map029.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "41bb95b0abc48558f9bef192fb03ace9687d9ca5b17669b451f70af17f1613cd",
+      "bytes": 6452
+    },
+    {
+      "path": "www/data/Map031.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "940f602534ecb81cb8ccb48703829ca796826573c248ad1cc063bb406faa4104",
+      "bytes": 8869
+    },
+    {
+      "path": "www/data/Map032.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "0a2af898ce5be68a5ce6792b6a90147d9b4b28626320f6449af892349529f35b",
+      "bytes": 5084
+    },
+    {
+      "path": "www/data/Map034.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "f35cbbc503595cded00112c362cb6404b621877bcd6647ed50932084f9aa2bde",
+      "bytes": 5439
+    },
+    {
+      "path": "www/data/Map035.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "093053264d5990e71ccac8b3c443daa6fe6b65b1e6a80174148ba12009f999d3",
+      "bytes": 33127
+    },
+    {
+      "path": "www/data/Map036.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "c5b193ddb195ff0a0b58924b274888ae7a448cfda0712c215693aff4d697df50",
+      "bytes": 34117
+    },
+    {
+      "path": "www/data/Map037.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "1ddeab07e6d2ed83680988d6320d50c217ed2cca8f3140754436dab0b5d1f8ad",
+      "bytes": 14441
+    },
+    {
+      "path": "www/data/Map038.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "78b243984c3f13ae1f6871447ce3f6f91376a95fec9d6cef561d292b34af7eff",
+      "bytes": 24011
+    },
+    {
+      "path": "www/data/Map039.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "68befc50119a92a864a659172af890bb82918c201754dc0719de94a029c3b96a",
+      "bytes": 62261
+    },
+    {
+      "path": "www/data/Map040.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "58ff554c7855c1f2cc8e43f0f1fca014f2de0e1aa86d80d9f3c9aa9446ee312e",
+      "bytes": 14035
+    },
+    {
+      "path": "www/data/Map041.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "8a2ed5f5f3ed0de1762b34fea2d725f6addbff1a0e9f89d71deadaf65d0ecbbb",
+      "bytes": 22131
+    },
+    {
+      "path": "www/data/Map042.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "431c8baf988a03725848c6aee971df8cbb7fc55bd695f38ca206fbf5ec0d2ed3",
+      "bytes": 40135
+    },
+    {
+      "path": "www/data/Map043.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "56a7de7aab225131ba02bd6691b897711c6589fe77c4506adee014a99d4a6234",
+      "bytes": 14222
+    },
+    {
+      "path": "www/data/Map044.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "07369a9c39016975efdb6b36612e0155d2033d854415aa7ef45d2c51ad326ca1",
+      "bytes": 76519
+    },
+    {
+      "path": "www/data/Map045.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "b66dce9e3d9f9ca2e76a07085ad7b5628640eed9f66ee984db154ff198260542",
+      "bytes": 35406
+    },
+    {
+      "path": "www/data/Map046.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "6986e62997aba08e3b952a0c3aff09f975c85de962503330b79d4746d064f7c5",
+      "bytes": 50336
+    },
+    {
+      "path": "www/data/Map047.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "3b316b10096d50e68e6c0db0f3b19b9150443c6ba7e7aa9daf03a72427148b67",
+      "bytes": 13748
+    },
+    {
+      "path": "www/data/Map048.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "bdeb71fe65c5ebba602c24e524c47f9737612b69cd654189ede15400d4299607",
+      "bytes": 27540
+    },
+    {
+      "path": "www/data/Map049.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "17b0a6e65bf55cd8286ef984e760f6d74606ee5ea3ec391e14ae356315ce5688",
+      "bytes": 61951
+    },
+    {
+      "path": "www/data/Map050.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "637ab4cfd37838d3dc66ca847d391164ee614ad5651b94ac1352c8ab364a2403",
+      "bytes": 13273
+    },
+    {
+      "path": "www/data/Map051.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "98ab0cabd54e52f34ada42e08fc69b6f1be5a0d47315884b09f67533d20a6f09",
+      "bytes": 14339
+    },
+    {
+      "path": "www/data/Map052.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "8ed4ba097d62ab2c20cd6276a8f66fc2c774004ffe86e5f6e28bd80291b45396",
+      "bytes": 47420
+    },
+    {
+      "path": "www/data/Map053.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "53f342b6eef91c76cc99c271399eb26b205472634b68fdf79f51ef786ef39652",
+      "bytes": 11300
+    },
+    {
+      "path": "www/data/Map163.json",
+      "role": "map",
+      "mediaType": "application/json",
+      "sha256": "f12502ceea364f23ff726b755632bf9fa5cfbcedc672820f393da43a43dae9ac",
+      "bytes": 62978
+    },
+    {
+      "path": "www/data/MapInfos.json",
+      "role": "other-data",
+      "mediaType": "application/json",
+      "sha256": "843efa970ecfe4db6c4c80f6b35509a1a0142104fc5a04cf650935f384cf70f6",
+      "bytes": 4912
+    },
+    {
+      "path": "www/data/Skills.json",
+      "role": "database",
+      "mediaType": "application/json",
+      "sha256": "567190a0a2e3a811040398aa755b98795abd23c63a3269dbffcf4816c57143a2",
+      "bytes": 89742
+    },
+    {
+      "path": "www/data/States.json",
+      "role": "database",
+      "mediaType": "application/json",
+      "sha256": "c5a24e0365b3896def1072bdb124071c9ebebbeb99d18ebc7e939f3876a4ba9b",
+      "bytes": 42219
+    },
+    {
+      "path": "www/data/System.json",
+      "role": "system",
+      "mediaType": "application/json",
+      "sha256": "1ffa1645ff72c5b7b242393c82b0875c6379cbf2e9b159a604b0a492adf6adee",
+      "bytes": 10280
+    },
+    {
+      "path": "www/data/Tilesets.json",
+      "role": "database",
+      "mediaType": "application/json",
+      "sha256": "6a5375307dd3cbe49320dd23b36e4f0ac6f26037d91ca2f537bd80a9e03ae0c9",
+      "bytes": 246806
+    },
+    {
+      "path": "www/data/Translations_en.json",
+      "role": "other-data",
+      "mediaType": "application/json",
+      "sha256": "b649f174eba1cd2e86ed4b804cdcb2023c363e7d866d586c908ceaaed007a6e0",
+      "bytes": 1248730
+    },
+    {
+      "path": "www/data/Troops.json",
+      "role": "database",
+      "mediaType": "application/json",
+      "sha256": "95257442a06d6a67c4863730f35fa56dc20be50534ea2a6ee7acde339ecc38a8",
+      "bytes": 265435
+    },
+    {
+      "path": "www/data/Weapons.json",
+      "role": "database",
+      "mediaType": "application/json",
+      "sha256": "b6fcce9dc9c75e76dd2b20ca6b8cf8a71c43e01c5beef23f1dc8ca8ad8dd3f48",
+      "bytes": 2147
+    }
+  ],
+  "extractionSurfaces": {
+    "showText": 1317,
+    "showChoices": 123,
+    "commonEventCommands": 8827,
+    "systemTermsFields": 4,
+    "samples": {
+      "showText": [
+        {
+          "path": "www/data/Map001.json",
+          "pointer": "/events/2/pages/0/list/7/parameters/0",
+          "code": 401
+        },
+        {
+          "path": "www/data/Map001.json",
+          "pointer": "/events/2/pages/0/list/8/parameters/0",
+          "code": 401
+        },
+        {
+          "path": "www/data/Map001.json",
+          "pointer": "/events/2/pages/0/list/9/parameters/0",
+          "code": 401
+        },
+        {
+          "path": "www/data/Map001.json",
+          "pointer": "/events/2/pages/0/list/10/parameters/0",
+          "code": 401
+        },
+        {
+          "path": "www/data/Map001.json",
+          "pointer": "/events/2/pages/0/list/13/parameters/0",
+          "code": 401
+        }
+      ],
+      "showChoices": [
+        {
+          "path": "www/data/Map001.json",
+          "pointer": "/events/5/pages/0/list/7/parameters/0",
+          "code": 102
+        },
+        {
+          "path": "www/data/Map001.json",
+          "pointer": "/events/6/pages/0/list/4/parameters/0",
+          "code": 102
+        },
+        {
+          "path": "www/data/Map001.json",
+          "pointer": "/events/7/pages/0/list/40/parameters/0",
+          "code": 102
+        },
+        {
+          "path": "www/data/Map001.json",
+          "pointer": "/events/8/pages/0/list/10/parameters/0",
+          "code": 102
+        },
+        {
+          "path": "www/data/Map001.json",
+          "pointer": "/events/8/pages/1/list/4/parameters/0",
+          "code": 102
+        }
+      ],
+      "commonEventCommands": [
+        {
+          "path": "www/data/CommonEvents.json",
+          "pointer": "/1/list/0",
+          "code": 0
+        },
+        {
+          "path": "www/data/CommonEvents.json",
+          "pointer": "/2/list/0",
+          "code": 108
+        },
+        {
+          "path": "www/data/CommonEvents.json",
+          "pointer": "/2/list/1",
+          "code": 408
+        },
+        {
+          "path": "www/data/CommonEvents.json",
+          "pointer": "/2/list/2",
+          "code": 408
+        },
+        {
+          "path": "www/data/CommonEvents.json",
+          "pointer": "/2/list/3",
+          "code": 408
+        }
+      ],
+      "systemTermsFields": [
+        {
+          "path": "www/data/System.json",
+          "pointer": "/terms/basic"
+        },
+        {
+          "path": "www/data/System.json",
+          "pointer": "/terms/commands"
+        },
+        {
+          "path": "www/data/System.json",
+          "pointer": "/terms/messages"
+        },
+        {
+          "path": "www/data/System.json",
+          "pointer": "/terms/params"
+        }
+      ]
+    }
+  },
+  "aggregateStats": {
+    "sourceFiles": 51,
+    "mapFiles": 36,
+    "notes": "showText counts non-empty code-401 Show Text parameters in Map*.json; showChoices counts code-102 Show Choices commands with an option array; commonEventCommands counts numeric command records in CommonEvents.json, including code 0 terminators; systemTermsFields counts own fields of System.json terms. Samples are structural JSON pointers and command codes only."
+  }
+}

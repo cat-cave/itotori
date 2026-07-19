@@ -22,6 +22,13 @@ const kagCorpusSchema = JSON.parse(readFileSync(kagCorpusSchemaPath, "utf8"));
 const xp3ProfileASchemaSuffix = "xp3-profile-a.manifest.schema.json";
 const xp3ProfileASchemaPath = resolve(publicFixturesDir, xp3ProfileASchemaSuffix);
 const xp3ProfileASchema = JSON.parse(readFileSync(xp3ProfileASchemaPath, "utf8"));
+// The real-game profile-A intake contains only external-source metadata
+// (relative paths, hashes, aggregate counts, and JSON pointers), not
+// redistributable game files. It therefore has its own schema and is verified
+// against the read-only source by its Rust regression test.
+const rpgmakerProfileASchemaSuffix = "rpgmaker-profile-a.manifest.schema.json";
+const rpgmakerProfileASchemaPath = resolve(publicFixturesDir, rpgmakerProfileASchemaSuffix);
+const rpgmakerProfileASchema = JSON.parse(readFileSync(rpgmakerProfileASchemaPath, "utf8"));
 const helperResultDir = resolve(publicFixturesDir, "kaifuu-helper-results");
 const helperResultSchemaPath = resolve(helperResultDir, "helper-result.schema.json");
 const helperResultSchema = JSON.parse(readFileSync(helperResultSchemaPath, "utf8"));
@@ -32,6 +39,7 @@ const ajv = new Ajv2020({ allErrors: true });
 const validate = ajv.compile(schema);
 const validateKagCorpus = ajv.compile(kagCorpusSchema);
 const validateXp3ProfileA = ajv.compile(xp3ProfileASchema);
+const validateRpgmakerProfileA = ajv.compile(rpgmakerProfileASchema);
 const validateHelperResult = ajv.compile(helperResultSchema);
 const validateHelperRegistry = ajv.compile(helperRegistrySchema);
 const errors = [];
@@ -49,11 +57,14 @@ for (const manifestPath of manifestPaths) {
   const declaredSchema = typeof manifest.$schema === "string" ? manifest.$schema : "";
   const isKagCorpus = declaredSchema.endsWith(kagCorpusSchemaSuffix);
   const isXp3ProfileA = declaredSchema.endsWith(xp3ProfileASchemaSuffix);
+  const isRpgmakerProfileA = declaredSchema.endsWith(rpgmakerProfileASchemaSuffix);
   const activeValidate = isKagCorpus
     ? validateKagCorpus
     : isXp3ProfileA
       ? validateXp3ProfileA
-      : validate;
+      : isRpgmakerProfileA
+        ? validateRpgmakerProfileA
+        : validate;
 
   if (!activeValidate(manifest)) {
     for (const error of activeValidate.errors ?? []) {
@@ -65,6 +76,10 @@ for (const manifestPath of manifestPaths) {
   }
 
   if (isXp3ProfileA) {
+    continue;
+  }
+
+  if (isRpgmakerProfileA) {
     continue;
   }
   for (const file of manifest.files) {
