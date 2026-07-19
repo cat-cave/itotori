@@ -7,7 +7,6 @@ import { dispatch } from "../src/llm/dispatch.js";
 import {
   createOpenRouterGenerationLookup,
   type GenerationLookup,
-  type GenerationMetadata,
 } from "../src/llm/generation-metadata.js";
 import {
   certifyLiveModelProfile,
@@ -73,14 +72,11 @@ const liveEnabled =
       const baseRuntime = createDispatchRuntime({
         env: process.env,
         fetcher: observingFetcher,
-        // OpenRouter publishes a generation's served-route record on the
-        // `/generation` endpoint only after a short (~5-8s) accounting-projection
-        // lag, so the production one-shot lookup deliberately records an explicit
-        // unknown and reconciles the served pair post-hoc. The certification probe
-        // needs the served pair confirmed inline, so it polls that same REAL
-        // lookup until OpenRouter has made the generation queryable. This waits
-        // for real evidence; it never fabricates a route.
-        generationLookup: reconcilingGenerationLookup(
+        // OpenRouter publishes a generation's served-route record only after a
+        // short (~5-8s) accounting-projection lag. Wait before the production
+        // one-shot lookup so this probe certifies the same one-lookup behavior
+        // that dispatch uses, rather than polling until a route appears.
+        generationLookup: settledOneShotGenerationLookup(
           createOpenRouterGenerationLookup({ apiKey, fetcher: observingFetcher }),
         ),
         tools: [decodedUnitsTool(() => (toolExecutionCount += 1))],
@@ -115,10 +111,7 @@ const liveEnabled =
       const steps = await readStepObservations(context.pool);
       const attempts = await readAttemptObservations(context.pool);
       if (reasoning === null) throw new Error("dispatcher omitted reasoning continuity evidence");
-      const generationLookupAttempts = terminalGenerationLookupAttempts(
-        result,
-        generationLookupRequests,
-      );
+      const generationLookupAttempts = terminalGenerationLookupAttempts(generationLookupRequests);
       const probedAt = new Date().toISOString();
       let certificate;
       try {
@@ -164,28 +157,12 @@ const liveEnabled =
   360_000,
 );
 
-/**
- * Poll the REAL generation lookup until OpenRouter has published the served
- * route, then return that authoritative metadata. The served pair, generation
- * id, and billing all come from OpenRouter's own record — the only thing the
- * poll adds is patience for the documented eventual-consistency lag. A lookup
- * that never confirms (e.g. a genuine unknown) falls through to the last real
- * unknown result, so the probe still fails closed rather than inventing a route.
- */
-function reconcilingGenerationLookup(base: GenerationLookup): GenerationLookup {
-  const maxAttempts = 15;
-  const delayMs = 2_000;
+/** Wait for OpenRouter's accounting projection, then make exactly one real lookup. */
+function settledOneShotGenerationLookup(base: GenerationLookup): GenerationLookup {
+  const publicationDelayMs = 8_000;
   return async (generationId, signal) => {
-    let latest: GenerationMetadata = await base(generationId, signal);
-    for (
-      let attempt = 1;
-      attempt < maxAttempts && latest.served.status !== "confirmed";
-      attempt++
-    ) {
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-      latest = await base(generationId, signal);
-    }
-    return latest;
+    await new Promise((resolve) => setTimeout(resolve, publicationDelayMs));
+    return base(generationId, signal);
   };
 }
 
@@ -211,26 +188,16 @@ function conformanceSpec(prompt: string): CallSpec {
   };
 }
 
-function terminalGenerationLookupAttempts(
-  result: Awaited<ReturnType<typeof dispatch>>,
-  generationLookupRequests: number,
-): 0 | 1 {
-  if (
-    result.status === "success" &&
-    result.verification === "verified" &&
-    result.generationId !== null &&
-    result.served.status === "confirmed"
-  ) {
-    if (generationLookupRequests < 1) {
-      throw new Error("verified terminal result was not preceded by a generation lookup");
-    }
-    // The certificate binds the terminal response's one authoritative lookup.
-    // Earlier tool-loop steps retain their own reconciliation evidence in the
-    // physical memo ledger and do not stand in for this terminal proof.
-    return 1;
-  }
-  return 0;
+function terminalGenerationLookupAttempts(generationLookupRequests: number): number {
+  // This is an observation, not an assertion. Certification owns the invariant:
+  // reconciled evidence needs exactly one lookup and deferred evidence needs zero.
+  return generationLookupRequests;
 }
+
+it("reports every observed generation lookup without normalizing the count", () => {
+  expect(terminalGenerationLookupAttempts(1)).toBe(1);
+  expect(terminalGenerationLookupAttempts(2)).toBe(2);
+});
 
 interface ProviderErrorObservation {
   readonly httpStatus: number;

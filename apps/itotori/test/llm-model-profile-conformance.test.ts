@@ -42,7 +42,7 @@ describe("live model-profile conformance certification", () => {
     });
   });
 
-  it("certifies a recorded probe with one reconciled and verified served pair", async () => {
+  it("certifies a recorded probe with exactly one reconciled generation lookup", async () => {
     const certificate = certifyLiveModelProfile(
       deepSeekV4FlashProfile,
       await recordedProbeTransport("reconciled").observe(),
@@ -121,7 +121,7 @@ describe("live model-profile conformance certification", () => {
       /neither deferred nor verified/u,
     ],
     [
-      "reconciled lookup count",
+      "measured reconciled lookup count above one",
       (value: LiveConformanceObservations) => ({ ...value, generationLookupAttempts: 2 }),
       /neither deferred nor verified/u,
     ],

@@ -223,20 +223,8 @@ describe("certified per-role model profiles", () => {
     expect(ModelProfileCertificateSchema.safeParse(relabeled).success).toBe(false);
   });
 
-  it("certifies from the appended live certificate rather than failing closed", () => {
-    const resolved = resolveRoleModelProfile("Q6");
-    expect(resolved.certificate.certificateStatus).toBe("valid");
-    expect(resolved.certificate.probeMode).toBe("live");
-    expect(resolved.certificate.subject.model).toBe("deepseek/deepseek-v4-flash");
-    expect(resolved.certificate.checks).toMatchObject({
-      strictStructuredFinish: "passed",
-      typedToolRoundTrip: "passed",
-      reasoningDetailsContinuity: "passed",
-      usageCapture: "passed",
-      costCapture: "passed",
-      generationLookup: "passed",
-      servedPairVerification: "passed",
-    });
+  it("fails closed until a faithful live certificate is appended", () => {
+    expect(() => resolveRoleModelProfile("Q6")).toThrow(/no valid certificate/u);
   });
 });
 
