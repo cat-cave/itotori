@@ -20,7 +20,7 @@ import {
   type EncryptedPayloadRef,
   type ToolName,
 } from "../../contracts/index.js";
-import { sha256 } from "../../llm/canonical-json.js";
+import { canonicalJson, sha256 } from "../../llm/canonical-json.js";
 import { resolveRoleModelProfile } from "../../llm/role-model-profiles.js";
 import { specialistFor, toolsForRole } from "../../roster/index.js";
 import { assembleQ4Messages, Q4_PROMPT_VERSION } from "./prompt.js";
@@ -60,6 +60,38 @@ export function assertContinuityOnlyToolGrant(): void {
   }
 }
 
+/** Thrown when a Q4 call drifts from its RB-019 reviewer profile. Test-dev is
+ * intentionally not an escape hatch: the certified route is required before
+ * every physical continuity-review call. */
+export class Q4RouteError extends Error {
+  constructor() {
+    super("continuity dispatch route is not the certified deepseek-v4-flash reviewer profile");
+    this.name = "Q4RouteError";
+  }
+}
+
+/** Re-prove Q4's certified model/profile/ZDR policy at the public boundary.
+ * Constructing from the profile is necessary but not sufficient: callers may
+ * invoke this guard around a CallSpec in any run mode before dispatching it. */
+export function assertCertifiedContinuityRoute(spec: CallSpec): void {
+  const resolved = resolveRoleModelProfile(Q4_ROLE);
+  const selected = {
+    modelProfile: spec.modelProfile,
+    modelProfileVersion: spec.modelProfileVersion,
+    requestedModel: spec.requestedModel,
+    providerPolicy: spec.providerPolicy,
+  };
+  const certified = {
+    modelProfile: resolved.modelProfile,
+    modelProfileVersion: resolved.version,
+    requestedModel: resolved.model,
+    providerPolicy: resolved.providerPolicy,
+  };
+  if (spec.roleId !== Q4_ROLE || canonicalJson(selected) !== canonicalJson(certified)) {
+    throw new Q4RouteError();
+  }
+}
+
 /** Everything the orchestrator supplies that the reviewer does not itself own:
  * the snapshot the batch is pinned to, the parent event, and the seam that
  * seals a plaintext into an operator-managed encrypted payload reference. */
@@ -93,7 +125,7 @@ export function buildQ4CallSpec(input: Q4ReviewInput, refs: Q4DispatchRefs): Cal
   const messages = assembleQ4Messages(parsed);
   const runMode = refs.runMode ?? "production";
 
-  const spec = {
+  const spec = CallSpecSchema.parse({
     schemaVersion: CALL_SPEC_SCHEMA_VERSION,
     purpose: "review",
     roleId: Q4_ROLE,
@@ -139,7 +171,9 @@ export function buildQ4CallSpec(input: Q4ReviewInput, refs: Q4DispatchRefs): Cal
     sampleId: refs.sampleId ?? null,
     runMode,
     contextScope: "whole-game",
-  };
-
-  return CallSpecSchema.parse(spec);
+  });
+  // Do not make certified routing an implicit property of construction. The
+  // public request seam proves it explicitly in production, pilot, and test-dev.
+  assertCertifiedContinuityRoute(spec);
+  return spec;
 }

@@ -26,9 +26,10 @@ import {
   type EncryptedPayloadRef,
   type RouteScope,
 } from "../src/contracts/index.js";
-import { specialistFor } from "../src/roster/index.js";
+import { ROSTER_SPECIALISTS, specialistFor, validateRosterManifest } from "../src/roster/index.js";
 import {
   Q4_CONTINUITY_CATEGORIES,
+  assertCertifiedContinuityRoute,
   assertContinuityOnlyToolGrant,
   buildContinuityLedger,
   buildQ4CallSpec,
@@ -71,7 +72,13 @@ const baseInput: Q4ReviewInput = {
 };
 
 function facts(over: Partial<Q4ContinuityFacts> = {}): Q4ContinuityFacts {
-  return { useUnitId: "u-use", reviewScope: ROUTE_A, ledger: synthLedger, ...over };
+  return {
+    useUnitId: "u-use",
+    reviewScope: ROUTE_A,
+    acceptedOriginUnitIds: ["u-origin"],
+    ledger: synthLedger,
+    ...over,
+  };
 }
 
 function passVerdict(over: Record<string, unknown> = {}): Record<string, unknown> {
@@ -106,7 +113,9 @@ function failVerdict(over: Record<string, unknown> = {}): Record<string, unknown
     severity: "major",
     span: { spanId: "span:1", surface: "target", text: "at the shrine" },
     category: "callback",
-    evidenceIds: ["u-origin"],
+    // A contradiction carries BOTH real endpoint citations. `u-origin` is the
+    // accepted prior translation; `u-use` is the candidate under review.
+    evidenceIds: ["u-origin", "u-use"],
     repairConstraint: "Match the callback to the origin promise at the origin location.",
     ...over,
   };
@@ -222,30 +231,44 @@ describe("Clause 2 — contradiction cites both endpoints; play order proves ori
     const early = unitFactIdAt(snapshot, 0);
     const later = unitFactIdAt(snapshot, 2);
 
-    // origin (play order 0) precedes use (play order 2): a valid contradiction.
-    const valid = interpretQ4Verdict(failVerdict({ unitId: later, evidenceIds: [early] }), {
-      useUnitId: later,
-      reviewScope: GLOBAL,
-      ledger,
-    });
-    expect(valid.disposition).toBe("repair");
-    expect(valid.issues).toHaveLength(0);
+    // origin (play order 0) precedes use (play order 2): every continuity
+    // category is a valid, endpoint-cited contradiction over the real fixture.
+    for (const category of ["callback", "foreshadow", "relationship"] as const) {
+      const valid = interpretQ4Verdict(
+        failVerdict({ unitId: later, category, evidenceIds: [early, later] }),
+        {
+          useUnitId: later,
+          reviewScope: GLOBAL,
+          acceptedOriginUnitIds: [early],
+          ledger,
+        },
+      );
+      expect(valid.disposition, category).toBe("repair");
+      expect(valid.issues, category).toHaveLength(0);
+    }
 
     // Swap the roles: cite the LATER unit as the origin of the EARLIER use. The
     // origin no longer plays first, so the finding is invalid — the verdict text
     // is identical; only the deterministic play order flips the outcome.
-    const invalid = interpretQ4Verdict(failVerdict({ unitId: early, evidenceIds: [later] }), {
-      useUnitId: early,
-      reviewScope: GLOBAL,
-      ledger,
-    });
+    const invalid = interpretQ4Verdict(
+      failVerdict({ unitId: early, evidenceIds: [later, early] }),
+      {
+        useUnitId: early,
+        reviewScope: GLOBAL,
+        acceptedOriginUnitIds: [later],
+        ledger,
+      },
+    );
     expect(invalid.disposition).toBe("invalid");
     expect(canFinalize(invalid)).toBe(false);
     expect(invalid.issues.some((i) => /does not play before/u.test(i.message))).toBe(true);
   });
 
   it("a FAIL citing a phantom endpoint (no real unit) is invalid — both endpoints must be real", () => {
-    const interpretation = interpretQ4Verdict(failVerdict({ evidenceIds: ["u-ghost"] }), facts());
+    const interpretation = interpretQ4Verdict(
+      failVerdict({ evidenceIds: ["u-ghost", "u-use"] }),
+      facts(),
+    );
     expect(interpretation.disposition).toBe("invalid");
     expect(
       interpretation.issues.some((i) => /does not resolve to a real unit/u.test(i.message)),
@@ -259,6 +282,25 @@ describe("Clause 2 — contradiction cites both endpoints; play order proves ori
       interpretation.issues.some((i) => /not for the unit under review/u.test(i.message)),
     ).toBe(true);
   });
+
+  it("rejects a contradiction that omits the use endpoint even when its origin is real", () => {
+    const interpretation = interpretQ4Verdict(failVerdict({ evidenceIds: ["u-origin"] }), facts());
+    expect(interpretation.disposition).toBe("invalid");
+    expect(interpretation.issues.some((i) => /must cite the use endpoint/u.test(i.message))).toBe(
+      true,
+    );
+  });
+
+  it("flags callback, foreshadow, and relationship contradictions only when each cites the accepted origin and current use", () => {
+    for (const category of ["callback", "foreshadow", "relationship"] as const) {
+      const interpretation = interpretQ4Verdict(
+        failVerdict({ category, evidenceIds: ["u-origin", "u-use"] }),
+        facts(),
+      );
+      expect(interpretation.disposition, category).toBe("repair");
+      expect(interpretation.issues, category).toHaveLength(0);
+    }
+  });
 });
 
 // ── Clause 3: claims never cross route scope ─────────────────────────────────
@@ -269,10 +311,15 @@ describe("Clause 3 — a continuity claim never crosses route scope", () => {
     const ledger = buildContinuityLedger(snapshot);
     const origin = unitFactIdAt(snapshot, 3);
     const use = unitFactIdAt(snapshot, 5);
-    const finding = failVerdict({ unitId: use, evidenceIds: [origin] });
+    const finding = failVerdict({ unitId: use, evidenceIds: [origin, use] });
 
     // Bound to route-a: both endpoints are on-route, origin precedes use — valid.
-    const inRoute = interpretQ4Verdict(finding, { useUnitId: use, reviewScope: ROUTE_A, ledger });
+    const inRoute = interpretQ4Verdict(finding, {
+      useUnitId: use,
+      reviewScope: ROUTE_A,
+      acceptedOriginUnitIds: [origin],
+      ledger,
+    });
     expect(inRoute.disposition).toBe("repair");
     expect(inRoute.issues).toHaveLength(0);
 
@@ -282,6 +329,7 @@ describe("Clause 3 — a continuity claim never crosses route scope", () => {
     const crossRoute = interpretQ4Verdict(finding, {
       useUnitId: use,
       reviewScope: ROUTE_B,
+      acceptedOriginUnitIds: [origin],
       ledger,
     });
     expect(crossRoute.disposition).toBe("invalid");
@@ -296,9 +344,10 @@ describe("Clause 3 — a continuity claim never crosses route scope", () => {
       { unitId: "u-use", playOrderIndex: 5, routeScope: { kind: "route", routeId: "route-a" } },
       { unitId: "g-origin", playOrderIndex: 0, routeScope: { kind: "global" } },
     ]);
-    const interpretation = interpretQ4Verdict(failVerdict({ evidenceIds: ["g-origin"] }), {
+    const interpretation = interpretQ4Verdict(failVerdict({ evidenceIds: ["g-origin", "u-use"] }), {
       useUnitId: "u-use",
       reviewScope: ROUTE_A,
+      acceptedOriginUnitIds: ["g-origin"],
       ledger,
     });
     expect(interpretation.disposition).toBe("repair");
@@ -368,6 +417,16 @@ describe("Clause 5 — CANNOT_ASSESS never passes", () => {
 
 // ── Clause 6: ZDR dispatch, certified profile, route-bound every mode ─────────
 describe("Clause 6 — ZDR dispatch on the certified reviewer profile, route-bound", () => {
+  it("is immutable reviewer-profile data in the validated 19-role manifest", () => {
+    const manifest = validateRosterManifest(ROSTER_SPECIALISTS);
+    const q4 = manifest.Q4;
+    expect(q4.shape).toBe("reviewer");
+    expect(q4.modelProfile).toBe("reviewer");
+    expect(Object.isFrozen(q4)).toBe(true);
+    expect(Object.isFrozen(q4.tools)).toBe(true);
+    expect(q4.validate(undefined)).not.toHaveLength(0);
+  });
+
   it("routes review to the certified deepseek-v4-flash reviewer profile with no provider pin", () => {
     const spec = buildQ4CallSpec(baseInput, refs);
     expect(spec.purpose).toBe("review");
@@ -398,6 +457,16 @@ describe("Clause 6 — ZDR dispatch on the certified reviewer profile, route-bou
     expect(() => parseQ4ReviewInput({ ...baseInput, reviewScope: undefined })).toThrow();
   });
 
+  it("rejects a CallSpec whose model route is drifted before dispatch", () => {
+    const spec = buildQ4CallSpec(baseInput, refs);
+    expect(() =>
+      assertCertifiedContinuityRoute({
+        ...spec,
+        requestedModel: "other/model",
+      }),
+    ).toThrow(/not the certified/u);
+  });
+
   it("a recorded PASS dispatch finalizes deterministically over real bytes", async () => {
     const { snapshot } = buildClaimFixture({ scene2Routes: ["route-a"] });
     const ledger = buildContinuityLedger(snapshot);
@@ -415,6 +484,30 @@ describe("Clause 6 — ZDR dispatch on the certified reviewer profile, route-bou
     });
     expect(outcome.outcome).toBe("reviewed");
     expect(outcome.canFinalize).toBe(true);
+  });
+
+  it("a recorded callback contradiction over real decoded endpoints routes to repair only with both citations", async () => {
+    const { snapshot } = buildClaimFixture({ scene2Routes: ["route-a"] });
+    const ledger = buildContinuityLedger(snapshot);
+    const origin = unitFactIdAt(snapshot, 0);
+    const use = unitFactIdAt(snapshot, 2);
+    const input: Q4ReviewInput = {
+      ...baseInput,
+      unitId: use,
+      reviewScope: GLOBAL,
+      originTranslations: [{ unitId: origin, acceptedTarget: "I promise I'll come find you." }],
+    };
+    const outcome = await runQ4Review(input, refs, {
+      dispatch: recordedDispatch(
+        failVerdict({ unitId: use, category: "callback", evidenceIds: [origin, use] }),
+      ),
+      ledger,
+    });
+    expect(outcome.outcome).toBe("reviewed");
+    if (outcome.outcome !== "reviewed") throw new Error("expected a reviewed Q4 outcome");
+    expect(outcome.interpretation.disposition).toBe("repair");
+    expect(outcome.interpretation.verdict.evidenceIds).toEqual([origin, use]);
+    expect(outcome.canFinalize).toBe(false);
   });
 
   it("a dispatch failure can never finalize (recorded offline path)", async () => {
