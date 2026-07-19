@@ -271,6 +271,28 @@ fn plain_xp3_fixture(entries: &[Xp3TestEntry<'_>]) -> Vec<u8> {
     bytes
 }
 
+fn zlib_index_xp3_fixture(entries: &[Xp3TestEntry<'_>]) -> Vec<u8> {
+    use flate2::{Compression, write::ZlibEncoder};
+
+    let raw_index_fixture = plain_xp3_fixture(entries);
+    let index_offset = u64::from_le_bytes(
+        raw_index_fixture[XP3_PLAIN_MAGIC.len()..XP3_PLAIN_MAGIC.len() + 8]
+            .try_into()
+            .unwrap(),
+    ) as usize;
+    let raw_index = &raw_index_fixture[index_offset + 9..];
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(raw_index).unwrap();
+    let compressed_index = encoder.finish().unwrap();
+
+    let mut fixture = raw_index_fixture[..index_offset].to_vec();
+    fixture.push(1);
+    fixture.extend_from_slice(&(compressed_index.len() as u64).to_le_bytes());
+    fixture.extend_from_slice(&(raw_index.len() as u64).to_le_bytes());
+    fixture.extend_from_slice(&compressed_index);
+    fixture
+}
+
 fn append_xp3_chunk(output: &mut Vec<u8>, name: [u8; 4], content: &[u8]) {
     output.extend_from_slice(&name);
     output.extend_from_slice(&(content.len() as u64).to_le_bytes());
@@ -330,6 +352,28 @@ fn plain_xp3_inventory_reads_file_table_hashes_and_compression_flags() {
     assert_eq!(
         inventory.entries[1].payload_hash.as_deref(),
         Some(plain_hash.as_str())
+    );
+}
+
+#[test]
+fn plain_xp3_inventory_reads_zlib_encoded_index() {
+    let raw = plain_xp3_fixture(&[Xp3TestEntry {
+        path: "scenario/intro.ks",
+        payload: b"profile A zlib index fixture",
+        compressed: false,
+        adler32: 0x0102_0304,
+    }]);
+    let zlib_index = zlib_index_xp3_fixture(&[Xp3TestEntry {
+        path: "scenario/intro.ks",
+        payload: b"profile A zlib index fixture",
+        compressed: false,
+        adler32: 0x0102_0304,
+    }]);
+
+    assert_eq!(
+        read_plain_xp3_inventory(&zlib_index).unwrap(),
+        read_plain_xp3_inventory(&raw).unwrap(),
+        "zlib is an index encoding only; the inventory still hashes source payload bytes"
     );
 }
 

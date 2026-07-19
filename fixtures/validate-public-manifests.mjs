@@ -16,6 +16,12 @@ const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
 const kagCorpusSchemaSuffix = "kag-corpus.manifest.schema.json";
 const kagCorpusSchemaPath = resolve(publicFixturesDir, kagCorpusSchemaSuffix);
 const kagCorpusSchema = JSON.parse(readFileSync(kagCorpusSchemaPath, "utf8"));
+// KAIFUU-204 records a licensed real-game XP3 as metadata only. Its schema
+// intentionally has no `files` list because archive bytes and member paths
+// must not be committed.
+const xp3ProfileASchemaSuffix = "xp3-profile-a.manifest.schema.json";
+const xp3ProfileASchemaPath = resolve(publicFixturesDir, xp3ProfileASchemaSuffix);
+const xp3ProfileASchema = JSON.parse(readFileSync(xp3ProfileASchemaPath, "utf8"));
 const helperResultDir = resolve(publicFixturesDir, "kaifuu-helper-results");
 const helperResultSchemaPath = resolve(helperResultDir, "helper-result.schema.json");
 const helperResultSchema = JSON.parse(readFileSync(helperResultSchemaPath, "utf8"));
@@ -25,6 +31,7 @@ const manifestPaths = findManifests(publicFixturesDir);
 const ajv = new Ajv2020({ allErrors: true });
 const validate = ajv.compile(schema);
 const validateKagCorpus = ajv.compile(kagCorpusSchema);
+const validateXp3ProfileA = ajv.compile(xp3ProfileASchema);
 const validateHelperResult = ajv.compile(helperResultSchema);
 const validateHelperRegistry = ajv.compile(helperRegistrySchema);
 const errors = [];
@@ -41,7 +48,12 @@ for (const manifestPath of manifestPaths) {
 
   const declaredSchema = typeof manifest.$schema === "string" ? manifest.$schema : "";
   const isKagCorpus = declaredSchema.endsWith(kagCorpusSchemaSuffix);
-  const activeValidate = isKagCorpus ? validateKagCorpus : validate;
+  const isXp3ProfileA = declaredSchema.endsWith(xp3ProfileASchemaSuffix);
+  const activeValidate = isKagCorpus
+    ? validateKagCorpus
+    : isXp3ProfileA
+      ? validateXp3ProfileA
+      : validate;
 
   if (!activeValidate(manifest)) {
     for (const error of activeValidate.errors ?? []) {
@@ -52,6 +64,9 @@ for (const manifestPath of manifestPaths) {
     continue;
   }
 
+  if (isXp3ProfileA) {
+    continue;
+  }
   for (const file of manifest.files) {
     validateFixtureFile(manifestPath, file);
     if (isKagCorpus) {

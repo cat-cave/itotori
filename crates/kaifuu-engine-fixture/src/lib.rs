@@ -1919,12 +1919,13 @@ impl Xp3ProfileDetectorAdapter {
                 SemanticErrorCode::MissingCodecCapability,
                 Capability::CodecAccess,
                 Self::detected_variant(Xp3FixtureVariant::Compressed),
-                format!("plain XP3 inventory supports only uncompressed index tables: {error}"),
-                "use a fixture with an uncompressed XP3 index table or add codec support",
+                format!("plain XP3 inventory supports only raw or zlib index tables: {error}"),
+                "use a fixture with a raw or zlib XP3 index table",
             ),
             PlainXp3InventoryError::MalformedHeader
             | PlainXp3InventoryError::Truncated(_)
             | PlainXp3InventoryError::InvalidOffset(_)
+            | PlainXp3InventoryError::IndexDecompression(_)
             | PlainXp3InventoryError::InvalidChunk(_)
             | PlainXp3InventoryError::InvalidUtf16Path
             | PlainXp3InventoryError::DuplicateEntry(_) => Self::unsupported_failure(

@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cat-cave/itotori/fixtures/public/xp3-profile-a.manifest.schema.json",
+  "title": "Itotori metadata-only licensed plain-XP3 profile A manifest",
+  "type": "object",
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "SPDX-License-Identifier",
+    "fixture",
+    "archive",
+    "kagScenario"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "const": "./xp3-profile-a.manifest.schema.json" },
+    "schemaVersion": { "const": "0.1.0" },
+    "SPDX-License-Identifier": { "const": "LicenseRef-MangaGamer-Commercial-EULA" },
+    "fixture": {
+      "type": "object",
+      "required": ["id", "title", "kind", "summary", "sourceLocale", "license", "provenance"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "const": "kaifuu-xp3-plain-profile-a" },
+        "title": { "type": "string", "minLength": 1 },
+        "kind": { "const": "metadata-only-real-game" },
+        "summary": { "type": "string", "minLength": 1 },
+        "sourceLocale": { "const": "en-US" },
+        "license": {
+          "type": "object",
+          "required": ["spdx", "termsUrl", "evidence"],
+          "additionalProperties": false,
+          "properties": {
+            "spdx": { "const": "LicenseRef-MangaGamer-Commercial-EULA" },
+            "termsUrl": { "const": "https://www.mangagamer.com/terms.php" },
+            "evidence": { "type": "string", "minLength": 1 }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "required": ["creationMethod", "rawAssetPolicy"],
+          "additionalProperties": false,
+          "properties": {
+            "creationMethod": { "type": "string", "minLength": 1 },
+            "rawAssetPolicy": { "const": "contains-no-copyrighted-game-assets" }
+          }
+        }
+      }
+    },
+    "archive": {
+      "type": "object",
+      "required": [
+        "kind",
+        "sha256",
+        "bytes",
+        "indexEncoding",
+        "inventoryReader",
+        "inventoryEntryCount",
+        "inventoryErrors"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "xp3-archive" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "indexEncoding": { "enum": ["raw", "zlib"] },
+        "inventoryReader": { "const": "read_plain_xp3_inventory" },
+        "inventoryEntryCount": { "type": "integer", "minimum": 3 },
+        "inventoryErrors": { "const": 0 }
+      }
+    },
+    "kagScenario": {
+      "type": "object",
+      "required": [
+        "kind",
+        "entryCount",
+        "tagInventory",
+        "tagInventoryIntersectionWithKaifuu203",
+        "tagInventoryIntersectionRatioAgainstKaifuu203"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "kag-scenario" },
+        "entryCount": { "type": "integer", "minimum": 1 },
+        "tagInventory": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
+        },
+        "tagInventoryIntersectionWithKaifuu203": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
+        },
+        "tagInventoryIntersectionRatioAgainstKaifuu203": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 1
+        }
+      }
+    }
+  }
+}

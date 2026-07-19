@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use std::ffi::CString;
 
+use flate2::read::ZlibDecoder;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -18053,6 +18054,7 @@ pub enum PlainXp3InventoryError {
     Truncated(&'static str),
     InvalidOffset(&'static str),
     UnsupportedIndexEncoding(u8),
+    IndexDecompression(String),
     UnsupportedEncrypted,
     InvalidChunk(String),
     InvalidUtf16Path,
@@ -18067,6 +18069,9 @@ impl fmt::Display for PlainXp3InventoryError {
             Self::InvalidOffset(field) => write!(formatter, "invalid XP3 {field} offset"),
             Self::UnsupportedIndexEncoding(flag) => {
                 write!(formatter, "unsupported XP3 index encoding flag {flag}")
+            }
+            Self::IndexDecompression(message) => {
+                write!(formatter, "could not decompress XP3 index: {message}")
             }
             Self::UnsupportedEncrypted => {
                 formatter.write_str("encrypted XP3 inventory requires crypto support")
@@ -18111,34 +18116,20 @@ pub fn read_plain_xp3_inventory(bytes: &[u8]) -> Result<PlainXp3Inventory, Plain
         return Err(PlainXp3InventoryError::InvalidOffset("index"));
     }
 
-    let index_encoding = *bytes
-        .get(index_offset)
-        .ok_or(PlainXp3InventoryError::Truncated("index encoding"))?;
-    if index_encoding != 0 {
-        return Err(PlainXp3InventoryError::UnsupportedIndexEncoding(
-            index_encoding,
-        ));
-    }
-    let index_size = read_le_u64(bytes, index_offset + 1, "index size")?;
-    let index_start = index_offset
-        .checked_add(9)
-        .ok_or(PlainXp3InventoryError::InvalidOffset("index start"))?;
-    let index_size = usize::try_from(index_size)
-        .map_err(|_| PlainXp3InventoryError::InvalidOffset("index size"))?;
-    let index_end = checked_end(index_start, index_size, bytes.len(), "index")?;
+    let index = read_plain_xp3_index(bytes, index_offset)?;
 
-    let mut cursor = index_start;
+    let mut cursor = 0;
     let mut entries = Vec::new();
     let mut seen_paths = HashSet::new();
-    while cursor < index_end {
-        let chunk_name = read_chunk_name(bytes, cursor, "index chunk name")?;
-        let chunk_size = read_le_u64(bytes, cursor + 4, "index chunk size")?;
+    while cursor < index.len() {
+        let chunk_name = read_chunk_name(&index, cursor, "index chunk name")?;
+        let chunk_size = read_le_u64(&index, cursor + 4, "index chunk size")?;
         let content_start = cursor + 12;
         let content_size = usize::try_from(chunk_size)
             .map_err(|_| PlainXp3InventoryError::InvalidOffset("index chunk size"))?;
-        let content_end = checked_end(content_start, content_size, index_end, "index chunk")?;
+        let content_end = checked_end(content_start, content_size, index.len(), "index chunk")?;
         if chunk_name == *b"File" {
-            let entry = parse_xp3_file_chunk(bytes, content_start, content_end)?;
+            let entry = parse_xp3_file_chunk(&index, content_start, content_end)?;
             let path = entry.path.ok_or_else(|| {
                 PlainXp3InventoryError::InvalidChunk("File chunk missing info path".to_string())
             })?;
@@ -18170,6 +18161,62 @@ pub fn read_plain_xp3_inventory(bytes: &[u8]) -> Result<PlainXp3Inventory, Plain
     let mut inventory = PlainXp3Inventory { entries };
     inventory.normalize();
     Ok(inventory)
+}
+
+/// Read the file-table index from a plain XP3 archive. KiriKiri records index
+/// encoding `0` for raw bytes and `1` for a zlib stream; this reader decodes
+/// the index only. Member payload bytes remain untouched and are still hashed
+/// directly from the source archive.
+fn read_plain_xp3_index(
+    bytes: &[u8],
+    index_offset: usize,
+) -> Result<Vec<u8>, PlainXp3InventoryError> {
+    let index_encoding = *bytes
+        .get(index_offset)
+        .ok_or(PlainXp3InventoryError::Truncated("index encoding"))?;
+    let encoded_size = read_le_u64(bytes, index_offset + 1, "index size")?;
+    let encoded_size = usize::try_from(encoded_size)
+        .map_err(|_| PlainXp3InventoryError::InvalidOffset("index size"))?;
+    let encoded_start = index_offset
+        .checked_add(9)
+        .ok_or(PlainXp3InventoryError::InvalidOffset("index start"))?;
+
+    match index_encoding {
+        0 => {
+            let encoded_end = checked_end(encoded_start, encoded_size, bytes.len(), "index")?;
+            Ok(bytes[encoded_start..encoded_end].to_vec())
+        }
+        1 => {
+            let decoded_size = read_le_u64(bytes, encoded_start, "decoded index size")?;
+            let decoded_size = usize::try_from(decoded_size)
+                .map_err(|_| PlainXp3InventoryError::InvalidOffset("decoded index size"))?;
+            let compressed_start =
+                encoded_start
+                    .checked_add(8)
+                    .ok_or(PlainXp3InventoryError::InvalidOffset(
+                        "compressed index start",
+                    ))?;
+            let compressed_end = checked_end(
+                compressed_start,
+                encoded_size,
+                bytes.len(),
+                "compressed index",
+            )?;
+            let mut decoder = ZlibDecoder::new(&bytes[compressed_start..compressed_end]);
+            let mut index = Vec::with_capacity(decoded_size);
+            decoder
+                .read_to_end(&mut index)
+                .map_err(|error| PlainXp3InventoryError::IndexDecompression(error.to_string()))?;
+            if index.len() != decoded_size {
+                return Err(PlainXp3InventoryError::IndexDecompression(format!(
+                    "decoded index size {} did not match declared size {decoded_size}",
+                    index.len()
+                )));
+            }
+            Ok(index)
+        }
+        other => Err(PlainXp3InventoryError::UnsupportedIndexEncoding(other)),
+    }
 }
 
 // Plain XP3 deterministic writer
