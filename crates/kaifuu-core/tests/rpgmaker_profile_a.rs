@@ -137,8 +137,7 @@ fn profile_a_metadata_matches_the_supplied_read_only_game_bytes() {
 
 fn source_data_dir() -> PathBuf {
     let root = env::var_os(SOURCE_ROOT_ENV)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_SOURCE_ROOT));
+        .map_or_else(|| PathBuf::from(DEFAULT_SOURCE_ROOT), PathBuf::from);
     let direct = root.join("data");
     let nested = root.join("www/data");
     if direct.is_dir() {
@@ -206,7 +205,9 @@ fn read_json(data_dir: &Path, name: &str, bytes: &[u8]) -> Value {
 
 fn is_map_file(name: &str) -> bool {
     name.starts_with("Map")
-        && name.ends_with(".json")
+        && Path::new(name)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
         && name
             .strip_prefix("Map")
             .and_then(|suffix| suffix.strip_suffix(".json"))
