@@ -6,6 +6,7 @@ import {
   RebuildCallWirePolicySchema,
   RoleIdSchema,
   Sha256Schema,
+  ServedPairSchema,
   TokenUsageSchema,
   assertNoProviderPin,
   assertProfileIdNamesNoProvider,
@@ -103,6 +104,15 @@ const ProbeChecksSchema = z
   })
   .strict();
 const UnknownServedPairSchema = z.object({ status: z.literal("unknown") }).strict();
+const ConfirmedServedPairSchema = ServedPairSchema.refine(
+  (value) => value.status === "confirmed",
+  "reconciled certificate requires a confirmed served route",
+);
+const GenerationIdSchema = z
+  .string()
+  .min(1)
+  .max(256)
+  .refine((value) => value.trim() === value, "generation ID must not have outer whitespace");
 const PositiveBilledUsdSchema = DecimalUsdSchema.refine((value) => Number(value) > 0, {
   message: "certified provider cost must be positive",
 });
@@ -123,6 +133,49 @@ const CertificateRunBindingSchema = z
   })
   .strict();
 
+const CertificateObservationBaseShape = {
+  physicalStepCount: z.number().int().positive(),
+  toolExecutionCount: z.number().int().positive(),
+  reasoningDetailBatchCount: z.number().int().positive(),
+  forwardedReasoningDetailBatchCount: z.number().int().positive(),
+  usage: TokenUsageSchema,
+  billedUsdByStep: z.array(PositiveBilledUsdSchema).min(1).max(4),
+  // This makes the zero-lookup branch auditable: only a deliberately disabled
+  // reconciliation configuration may certify it as deferred.
+  generationReconciliation: z.enum(["enabled", "disabled"]),
+  runBinding: CertificateRunBindingSchema,
+} as const;
+
+const CertificateObservationsSchema = z.union([
+  z
+    .object({
+      ...CertificateObservationBaseShape,
+      generationReconciliation: z.literal("disabled"),
+      generationLookupAttempts: z.literal(0),
+      generationId: z.null(),
+      served: UnknownServedPairSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...CertificateObservationBaseShape,
+      generationReconciliation: z.literal("enabled"),
+      generationLookupAttempts: z.literal(1),
+      generationId: GenerationIdSchema,
+      served: ConfirmedServedPairSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...CertificateObservationBaseShape,
+      generationReconciliation: z.literal("enabled"),
+      generationLookupAttempts: z.literal(1),
+      generationId: GenerationIdSchema,
+      served: UnknownServedPairSchema,
+    })
+    .strict(),
+]);
+
 export const ModelProfileCertificateSchema = z
   .object({
     schemaVersion: z.literal(MODEL_PROFILE_CERTIFICATE_VERSION),
@@ -131,23 +184,7 @@ export const ModelProfileCertificateSchema = z
     probedAt: z.iso.datetime({ offset: true }),
     subject: RoleModelProfileSchema,
     checks: ProbeChecksSchema,
-    observations: z
-      .object({
-        physicalStepCount: z.number().int().positive(),
-        toolExecutionCount: z.number().int().positive(),
-        reasoningDetailBatchCount: z.number().int().positive(),
-        forwardedReasoningDetailBatchCount: z.number().int().positive(),
-        usage: TokenUsageSchema,
-        billedUsdByStep: z.array(PositiveBilledUsdSchema).min(1).max(4),
-        // New deferred probes make no lookups; historical certificates may
-        // truthfully retain their earlier count. `certifyLiveModelProfile`
-        // rejects every non-zero count for the current no-lookup path.
-        generationLookupAttempts: z.number().int().nonnegative(),
-        generationId: z.null(),
-        served: UnknownServedPairSchema,
-        runBinding: CertificateRunBindingSchema,
-      })
-      .strict(),
+    observations: CertificateObservationsSchema,
   })
   .strict()
   .superRefine((value, context) => {
@@ -181,13 +218,43 @@ export const ModelProfileCertificateSchema = z
         message: "valid certificate requires a live passing probe",
       });
     }
+    const deferred =
+      value.checks.generationLookup === "deferred" &&
+      value.checks.servedPairVerification === "deferred" &&
+      value.observations.generationReconciliation === "disabled" &&
+      value.observations.generationLookupAttempts === 0 &&
+      value.observations.generationId === null &&
+      value.observations.served.status === "unknown";
+    const verified =
+      value.checks.generationLookup === "passed" &&
+      value.checks.servedPairVerification === "passed" &&
+      value.observations.generationReconciliation === "enabled" &&
+      value.observations.generationLookupAttempts === 1 &&
+      value.observations.generationId !== null &&
+      value.observations.served.status === "confirmed";
+    const explicitUnknown =
+      value.checks.generationLookup === "passed" &&
+      value.checks.servedPairVerification === "deferred" &&
+      value.observations.generationReconciliation === "enabled" &&
+      value.observations.generationLookupAttempts === 1 &&
+      value.observations.generationId !== null &&
+      value.observations.served.status === "unknown";
+    if (!deferred && !verified && !explicitUnknown) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "certificate generation evidence must be exactly disabled, explicitly unknown, or exactly verified",
+      });
+    }
     if (
-      value.checks.generationLookup !== "deferred" ||
-      value.checks.servedPairVerification !== "deferred"
+      verified &&
+      value.observations.served.status === "confirmed" &&
+      !servedModelIsCertified(value.observations.served.model, value.subject.model)
     ) {
       context.addIssue({
         code: "custom",
-        message: "unavailable generation reconciliation must remain explicitly deferred",
+        path: ["observations", "served", "model"],
+        message: "reconciled served model is outside the certified model family",
       });
     }
   });

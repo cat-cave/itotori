@@ -1,8 +1,14 @@
 import { writeFileSync } from "node:fs";
 import { ItotoriLlmCallMemoRepository } from "@itotori/db";
 import { expect, it } from "vitest";
+import { createDispatchRuntime } from "../src/composition/live/dispatch-runtime.js";
 import type { CallSpec } from "../src/contracts/index.js";
 import { dispatch } from "../src/llm/dispatch.js";
+import {
+  createOpenRouterGenerationLookup,
+  generationReconciliation,
+  type GenerationLookup,
+} from "../src/llm/generation-metadata.js";
 import {
   certifyLiveModelProfile,
   type ConformanceStepObservation,
@@ -44,48 +50,72 @@ const liveEnabled =
       JSON.stringify(reviewVerdictExample),
     ].join("\n");
     let toolExecutionCount = 0;
-    const generationLookupAttempts = 0;
+    const generationLookupGenerationIds: (string | null)[] = [];
     let reasoning: ReasoningDetailsContinuityEvidence | null = null;
     let providerError: ProviderErrorObservation | null = null;
     try {
-      const result = await dispatch(conformanceSpec(prompt), {
+      const observingFetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init);
+        if (request.method === "GET" && request.url.includes("/generation")) {
+          generationLookupGenerationIds.push(new URL(request.url).searchParams.get("id"));
+        }
+        // Constructing `request` above consumes the `input` Request's body, so
+        // the real call must dispatch the request we built — passing `input`
+        // again throws "Request object that has already been used".
+        const response = await fetch(request);
+        if (!response.ok) providerError = await observeProviderError(response);
+        return response;
+      };
+      const apiKey = process.env.OPENROUTER_API_KEY;
+      if (apiKey === undefined || apiKey.length === 0) {
+        throw new Error("live probe requires OPENROUTER_API_KEY");
+      }
+      const baseRuntime = createDispatchRuntime({
         env: process.env,
-        fetcher: async (input, init) => {
-          const response = await fetch(input, init);
-          if (!response.ok) providerError = await observeProviderError(response);
-          return response;
-        },
+        fetcher: observingFetcher,
+        // OpenRouter publishes a generation's served-route record only after a
+        // short (~5-8s) accounting-projection lag. Wait before the production
+        // one-shot lookup so this probe certifies the same one-lookup behavior
+        // that dispatch uses, rather than polling until a route appears.
+        generationLookup: settledOneShotGenerationLookup(
+          createOpenRouterGenerationLookup({ apiKey, fetcher: observingFetcher }),
+        ),
         tools: [decodedUnitsTool(() => (toolExecutionCount += 1))],
         contentAccess: { requireContentRead: async () => undefined },
-        readPayload: async () => prompt,
         onReasoningDetailsContinuity: (evidence) => {
           reasoning = evidence;
         },
-        memo: {
-          store: new ItotoriLlmCallMemoRepository(context.pool, cipher, {
-            requireContentRead: async () => undefined,
-          }),
-          profile: {
-            name: candidate.modelProfile,
-            version: candidate.version,
-            deadlines: { normalMs: 300_000, deepMs: 600_000 },
-            maxAttemptExposureUsd: "1",
-          },
-          admission: {
-            scope: "probe:model-profile:deepseek-v4-flash",
-            confirmedCostCapUsd: "1",
-          },
-          snapshots: {
-            decodeRevisionHash: STEP_HASH_A,
-            glossaryRevisionHash: STEP_HASH_B,
-            styleRevisionHash: STEP_HASH_C,
-            acceptedOutputHeadHash: STEP_HASH_D,
-          },
+        memoStore: new ItotoriLlmCallMemoRepository(context.pool, cipher, {
+          requireContentRead: async () => undefined,
+        }),
+        profile: {
+          name: candidate.modelProfile,
+          version: candidate.version,
+          deadlines: { normalMs: 300_000, deepMs: 600_000 },
+          maxAttemptExposureUsd: "1",
         },
+        admission: {
+          scope: "probe:model-profile:deepseek-v4-flash",
+          confirmedCostCapUsd: "1",
+        },
+        snapshots: {
+          decodeRevisionHash: STEP_HASH_A,
+          glossaryRevisionHash: STEP_HASH_B,
+          styleRevisionHash: STEP_HASH_C,
+          acceptedOutputHeadHash: STEP_HASH_D,
+        },
+      });
+      const result = await dispatch(conformanceSpec(prompt), {
+        ...baseRuntime,
+        readPayload: async () => prompt,
       });
       const steps = await readStepObservations(context.pool);
       const attempts = await readAttemptObservations(context.pool);
       if (reasoning === null) throw new Error("dispatcher omitted reasoning continuity evidence");
+      const generationLookupAttempts = terminalGenerationLookupAttempts(
+        generationLookupGenerationIds,
+        result.generationId,
+      );
       const probedAt = new Date().toISOString();
       let certificate;
       try {
@@ -95,6 +125,7 @@ const liveEnabled =
           steps,
           toolExecutionCount,
           reasoning,
+          generationReconciliationEnabled: generationReconciliation.enabled,
           generationLookupAttempts,
         });
       } catch (error: unknown) {
@@ -131,6 +162,15 @@ const liveEnabled =
   360_000,
 );
 
+/** Wait for OpenRouter's accounting projection, then make exactly one real lookup. */
+function settledOneShotGenerationLookup(base: GenerationLookup): GenerationLookup {
+  const publicationDelayMs = 8_000;
+  return async (generationId, signal) => {
+    await new Promise((resolve) => setTimeout(resolve, publicationDelayMs));
+    return base(generationId, signal);
+  };
+}
+
 function conformanceSpec(prompt: string): CallSpec {
   const candidate = uncertifiedRoleModelProfileCandidateForProbe("Q1");
   const base = toolLoopSpec(prompt);
@@ -152,6 +192,36 @@ function conformanceSpec(prompt: string): CallSpec {
     runMode: "test-dev",
   };
 }
+
+function terminalGenerationLookupAttempts(
+  lookupGenerationIds: readonly (string | null)[],
+  terminalGenerationId: string | null,
+): number {
+  // The dispatcher reconciles every physical step. This certificate instead
+  // attests only to the accepted terminal response, whose generation ID is
+  // exposed on the final dispatch result.
+  return terminalGenerationId === null
+    ? 0
+    : lookupGenerationIds.filter((generationId) => generationId === terminalGenerationId).length;
+}
+
+it("counts only lookups for the accepted terminal generation", () => {
+  expect(
+    terminalGenerationLookupAttempts(
+      ["generation:tool-call", "generation:accepted-terminal"],
+      "generation:accepted-terminal",
+    ),
+  ).toBe(1);
+});
+
+it("reports a terminal lookup retry rather than normalizing it", () => {
+  expect(
+    terminalGenerationLookupAttempts(
+      ["generation:tool-call", "generation:accepted-terminal", "generation:accepted-terminal"],
+      "generation:accepted-terminal",
+    ),
+  ).toBe(2);
+});
 
 interface ProviderErrorObservation {
   readonly httpStatus: number;

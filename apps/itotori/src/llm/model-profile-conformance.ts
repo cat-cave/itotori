@@ -5,6 +5,7 @@ import {
   MODEL_PROFILE_CERTIFICATE_VERSION,
   ModelProfileCertificateSchema,
   certificateEvidenceHash,
+  servedModelIsCertified,
   type ModelProfileCertificate,
   type RoleModelProfile,
 } from "./role-model-profiles.js";
@@ -25,10 +26,13 @@ export interface LiveConformanceObservations {
   readonly steps: readonly ConformanceStepObservation[];
   readonly toolExecutionCount: number;
   readonly reasoning: ReasoningDetailsContinuityEvidence;
+  /** Whether this probe enabled the terminal generation reconciliation lookup. */
+  readonly generationReconciliationEnabled: boolean;
+  /** Lookup count bound to the terminal result's generation ID, not prior tool-loop steps. */
   readonly generationLookupAttempts: number;
 }
 
-/** Build a certificate only after every non-deferred live dimension is proven. */
+/** Build a certificate only after every live dimension has coherent evidence. */
 export function certifyLiveModelProfile(
   profile: RoleModelProfile,
   observations: LiveConformanceObservations,
@@ -84,24 +88,14 @@ export function certifyLiveModelProfile(
   ) {
     throw new Error("conformance probe did not capture provider-reported cost");
   }
-  if (
-    result.status !== "success" ||
-    result.verification !== "explicit-unknown" ||
-    result.generationId !== null ||
-    result.served.status !== "unknown" ||
-    observations.generationLookupAttempts !== 0
-  ) {
-    throw new Error("deferred generation reconciliation was not accepted as explicit unknown");
-  }
-
+  const reconciliation = certifyGenerationReconciliation(profile, result, observations);
   const checks = {
     strictStructuredFinish: "passed",
     typedToolRoundTrip: "passed",
     reasoningDetailsContinuity: "passed",
     usageCapture: "passed",
     costCapture: "passed",
-    generationLookup: "deferred",
-    servedPairVerification: "deferred",
+    ...reconciliation.checks,
   } as const;
   const boundObservations = {
     physicalStepCount: steps.length,
@@ -110,9 +104,7 @@ export function certifyLiveModelProfile(
     forwardedReasoningDetailBatchCount: reasoning.forwardedBatchCount,
     usage: sumUsage(steps),
     billedUsdByStep,
-    generationLookupAttempts: observations.generationLookupAttempts,
-    generationId: null,
-    served: { status: "unknown" },
+    ...reconciliation.observations,
   } as const;
   // ITOTORI-241 - bind the certificate to THIS live run: memoKey is the request
   // identity and transcriptHash hashes the actual dispatch transcript. Both are
@@ -141,6 +133,101 @@ export function certifyLiveModelProfile(
       runBinding: { memoKey, transcriptHash, evidenceHash },
     },
   });
+}
+
+function certifyGenerationReconciliation(
+  profile: RoleModelProfile,
+  result: CallResult,
+  observations: LiveConformanceObservations,
+): {
+  readonly checks:
+    | { readonly generationLookup: "deferred"; readonly servedPairVerification: "deferred" }
+    | { readonly generationLookup: "passed"; readonly servedPairVerification: "deferred" }
+    | { readonly generationLookup: "passed"; readonly servedPairVerification: "passed" };
+  readonly observations:
+    | {
+        readonly generationReconciliation: "disabled";
+        readonly generationLookupAttempts: 0;
+        readonly generationId: null;
+        readonly served: { readonly status: "unknown" };
+      }
+    | {
+        readonly generationReconciliation: "enabled";
+        readonly generationLookupAttempts: 1;
+        readonly generationId: string;
+        readonly served: {
+          readonly status: "confirmed";
+          readonly model: string;
+          readonly provider: string;
+        };
+      }
+    | {
+        readonly generationReconciliation: "enabled";
+        readonly generationLookupAttempts: 1;
+        readonly generationId: string;
+        readonly served: { readonly status: "unknown" };
+      };
+} {
+  if (result.status !== "success") {
+    throw new Error("conformance probe did not complete successfully");
+  }
+  if (
+    !observations.generationReconciliationEnabled &&
+    result.verification === "explicit-unknown" &&
+    result.generationId === null &&
+    result.served.status === "unknown" &&
+    observations.generationLookupAttempts === 0
+  ) {
+    return {
+      checks: { generationLookup: "deferred", servedPairVerification: "deferred" },
+      observations: {
+        generationReconciliation: "disabled",
+        generationLookupAttempts: 0,
+        generationId: null,
+        served: { status: "unknown" },
+      },
+    };
+  }
+  if (
+    observations.generationReconciliationEnabled &&
+    result.verification === "verified" &&
+    result.generationId !== null &&
+    result.served.status === "confirmed" &&
+    observations.generationLookupAttempts === 1
+  ) {
+    if (!servedModelIsCertified(result.served.model, profile.model)) {
+      throw new Error("generation lookup served a model outside the certified model family");
+    }
+    return {
+      checks: { generationLookup: "passed", servedPairVerification: "passed" },
+      observations: {
+        generationReconciliation: "enabled",
+        generationLookupAttempts: 1,
+        generationId: result.generationId,
+        served: result.served,
+      },
+    };
+  }
+  if (
+    observations.generationReconciliationEnabled &&
+    result.verification === "explicit-unknown" &&
+    result.generationId !== null &&
+    result.served.status === "unknown" &&
+    observations.generationLookupAttempts === 1
+  ) {
+    return {
+      checks: { generationLookup: "passed", servedPairVerification: "deferred" },
+      observations: {
+        generationReconciliation: "enabled",
+        generationLookupAttempts: 1,
+        generationId: result.generationId,
+        served: { status: "unknown" },
+      },
+    };
+  }
+  throw new Error(
+    "generation reconciliation evidence is neither disabled, explicitly unknown, nor verified",
+  );
 }
 
 function hasProviderUsage(steps: readonly ConformanceStepObservation[]): boolean {
