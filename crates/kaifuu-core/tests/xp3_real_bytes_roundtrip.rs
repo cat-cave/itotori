@@ -1,7 +1,7 @@
-//! KAIFUU-205 plain-XP3 real-bytes round-trip smoke.
+//! Plain-XP3 real-bytes round-trip smoke.
 //!
 //! Proves `repack(read(fixture)) == fixture` BYTE-FOR-BYTE for the
-//! metadata-only `kaifuu-xp3-plain-profile-a` fixture (KAIFUU-204) when the
+//! metadata-only `kaifuu-xp3-plain-profile-a` fixture when the
 //! separately licensed source archive is staged via the
 //! `KAIFUU_XP3_PROFILE_A_ARCHIVE` environment variable. The committed
 //! fixture itself records metadata only — no copyrighted archive bytes are
@@ -96,7 +96,7 @@ fn fixture_metadata_records_profile_a_id_and_zlib_index_encoding() {
     assert_eq!(
         manifest["archive"]["inventoryReader"].as_str(),
         Some("read_plain_xp3_inventory"),
-        "the manifest records the KAIFUU-204 reader as its inventory source"
+        "the manifest records the plain-XP3 reader as its inventory source"
     );
 }
 
@@ -169,7 +169,7 @@ fn repack_of_profile_a_source_archive_is_byte_for_byte_identical() {
     );
     assert_eq!(
         rebuilt, source,
-        "repack(read(fixture)) == fixture BYTE-FOR-BYTE for the KAIFUU-204 profile-A archive"
+        "repack(read(fixture)) == fixture BYTE-FOR-BYTE for the profile-A archive"
     );
 
     // Per-entry adler32: the recomputed value over the rebuilt payload

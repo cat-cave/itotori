@@ -1,6 +1,6 @@
 //! Byte-exact plain-XP3 round-trip over real licensed archives.
 //!
-//! The KAIFUU-204 plain-XP3 reader (`read_plain_xp3_inventory`) and the
+//! The plain-XP3 reader (`read_plain_xp3_inventory`) and the
 //! existing source-fidelity writer (`read_plain_xp3_archive` + `encode_xp3`)
 //! cover every public *synthetic* plain-XP3 fixture byte-for-byte. Real
 //! licensed archives — the metadata-only `kaifuu-xp3-plain-profile-a`
