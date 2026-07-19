@@ -45,6 +45,7 @@ mod softpal_commands;
 mod vault;
 mod wolf_commands;
 mod xp3_commands;
+mod xp3_real_bytes_smoke;
 
 pub(crate) use bgi_commands::run_bgi_command;
 pub(crate) use evidence_commands::{run_asset_ocr_command, run_compat_evidence_command};
@@ -66,7 +67,6 @@ pub(crate) use siglus_commands::run_siglus_command;
 pub(crate) use softpal_commands::run_softpal_command;
 pub(crate) use wolf_commands::run_wolf_command;
 pub(crate) use xp3_commands::run_xp3_command;
-
 const APPLY_REPORT_FILE_NAME: &str = "patch-result.json";
 const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
 

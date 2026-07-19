@@ -182,9 +182,12 @@ pub(crate) fn run_xp3_command(args: &[String]) -> Result<(), Box<dyn std::error:
         "crypt-smoke" => {
             return run_xp3_crypt_chain_smoke(args);
         }
+        "smoke" => {
+            return crate::xp3_real_bytes_smoke::run_xp3_real_bytes_smoke(args);
+        }
         _ => {
             return Err(
-                "usage: kaifuu xp3 <profile-proof|capability-profile|plain-smoke|unpack|pack|replace|verify|writer-capability|contract-scaffold|crypt-smoke> ..."
+                "usage: kaifuu xp3 <profile-proof|capability-profile|plain-smoke|smoke|unpack|pack|replace|verify|writer-capability|contract-scaffold|crypt-smoke> ..."
                     .into(),
             );
         }
