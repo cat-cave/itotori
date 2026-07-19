@@ -80,8 +80,8 @@
       "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/expected/detection-report-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "0b4b2b0050c69ab7f921db16ccb50b80909363245e835571dca4afd4255b1d87",
-      "bytes": 48682,
+      "sha256": "0d094f9f5fa00a6fed63aae65d60609332a6f03a5b9a1d3746edc5df460ed2c2",
+      "bytes": 48949,
       "redistributable": true
     },
     {
