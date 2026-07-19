@@ -16,6 +16,13 @@ const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
 const kagCorpusSchemaSuffix = "kag-corpus.manifest.schema.json";
 const kagCorpusSchemaPath = resolve(publicFixturesDir, kagCorpusSchemaSuffix);
 const kagCorpusSchema = JSON.parse(readFileSync(kagCorpusSchemaPath, "utf8"));
+// The real-game profile-A intake contains only external-source metadata
+// (relative paths, hashes, aggregate counts, and JSON pointers), not
+// redistributable game files. It therefore has its own schema and is verified
+// against the read-only source by its Rust regression test.
+const rpgmakerProfileASchemaSuffix = "rpgmaker-profile-a.manifest.schema.json";
+const rpgmakerProfileASchemaPath = resolve(publicFixturesDir, rpgmakerProfileASchemaSuffix);
+const rpgmakerProfileASchema = JSON.parse(readFileSync(rpgmakerProfileASchemaPath, "utf8"));
 const helperResultDir = resolve(publicFixturesDir, "kaifuu-helper-results");
 const helperResultSchemaPath = resolve(helperResultDir, "helper-result.schema.json");
 const helperResultSchema = JSON.parse(readFileSync(helperResultSchemaPath, "utf8"));
@@ -25,6 +32,7 @@ const manifestPaths = findManifests(publicFixturesDir);
 const ajv = new Ajv2020({ allErrors: true });
 const validate = ajv.compile(schema);
 const validateKagCorpus = ajv.compile(kagCorpusSchema);
+const validateRpgmakerProfileA = ajv.compile(rpgmakerProfileASchema);
 const validateHelperResult = ajv.compile(helperResultSchema);
 const validateHelperRegistry = ajv.compile(helperRegistrySchema);
 const errors = [];
@@ -41,7 +49,12 @@ for (const manifestPath of manifestPaths) {
 
   const declaredSchema = typeof manifest.$schema === "string" ? manifest.$schema : "";
   const isKagCorpus = declaredSchema.endsWith(kagCorpusSchemaSuffix);
-  const activeValidate = isKagCorpus ? validateKagCorpus : validate;
+  const isRpgmakerProfileA = declaredSchema.endsWith(rpgmakerProfileASchemaSuffix);
+  const activeValidate = isKagCorpus
+    ? validateKagCorpus
+    : isRpgmakerProfileA
+      ? validateRpgmakerProfileA
+      : validate;
 
   if (!activeValidate(manifest)) {
     for (const error of activeValidate.errors ?? []) {
@@ -49,6 +62,10 @@ for (const manifestPath of manifestPaths) {
         `${relative(repoRoot, manifestPath)} ${error.instancePath || "/"} ${error.message}`,
       );
     }
+    continue;
+  }
+
+  if (isRpgmakerProfileA) {
     continue;
   }
 
