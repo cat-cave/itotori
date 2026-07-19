@@ -8,6 +8,11 @@
 // patched bytes rather than a planted sentinel. Uses the shared native-bin runner
 // only — nothing from the old orchestrator replay home.
 
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+
+import { assertPatchExportV02, type PatchExportV02 } from "@itotori/localization-bridge-schema";
+
 import { runNativeCli, type NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
 
 export type ReplayObserveArgs = {
@@ -31,6 +36,35 @@ export type ObservedReplay = {
   stderr: string;
 };
 
+/** A complete translated-byte observation for one scene addressed by a strict
+ * PatchExportV02. Both artifacts are replayed: the patched bytes must expose
+ * every accepted target for the scene, while the source bytes must expose none
+ * of them. */
+export type AcceptedPatchReplayScene = {
+  sceneId: number;
+  entryIds: readonly string[];
+  patched: ObservedReplay;
+  source: ObservedReplay;
+};
+
+export type AcceptedPatchReplay = {
+  scenes: readonly AcceptedPatchReplayScene[];
+};
+
+export type ReplayAcceptedPatchArgs = {
+  /** Strict export whose target bodies must be observed from the patched bytes. */
+  patchExport: PatchExportV02;
+  /** The Seen.txt emitted by the native Kaifuu apply. */
+  patchedSeenPath: string;
+  /** The pre-apply source Seen.txt; replaying it rules out source-byte replay. */
+  sourceSeenPath: string;
+  gameexePath: string;
+  g00Dir: string;
+  /** Directory for deterministic per-scene source/patched replay logs. */
+  replayLogDirectory: string;
+  nativeCli?: NativeCliRunner;
+};
+
 export class ReplayObserveError extends Error {
   constructor(
     public readonly status: number | null,
@@ -39,6 +73,23 @@ export class ReplayObserveError extends Error {
   ) {
     super(message);
     this.name = "ReplayObserveError";
+  }
+}
+
+export class AcceptedPatchReplayError extends Error {
+  constructor(
+    public readonly code:
+      | "empty-patch-export"
+      | "invalid-source-unit-key"
+      | "target-not-observed"
+      | "target-visible-in-source",
+    public readonly entryIds: readonly string[],
+    message: string,
+  ) {
+    super(
+      `accepted patch replay refused (${code}): ${message}; entries: ${[...entryIds].sort().join(", ")}`,
+    );
+    this.name = "AcceptedPatchReplayError";
   }
 }
 
@@ -128,4 +179,107 @@ export function replayObserve(args: ReplayObserveArgs): ObservedReplay {
 /** True when any observed TextLine body contains `needle`. */
 export function observedTextContains(observed: ObservedReplay, needle: string): boolean {
   return observed.observedBodies.some((body) => body.includes(needle));
+}
+
+/**
+ * Replay every scene addressed by a strict PatchExportV02 and bind the result
+ * back to its accepted target bodies. This is the whole-scope replay boundary:
+ * it cannot silently check only a caller-picked scene, and it proves the text
+ * comes from the patched artifact by rejecting a target visible in the source
+ * artifact too.
+ */
+export function replayAcceptedPatch(args: ReplayAcceptedPatchArgs): AcceptedPatchReplay {
+  assertPatchExportV02(args.patchExport);
+  if (args.patchExport.entries.length === 0) {
+    throw new AcceptedPatchReplayError(
+      "empty-patch-export",
+      [],
+      "PatchExportV02 contains no accepted targets to replay",
+    );
+  }
+
+  const entriesByScene = new Map<number, PatchExportV02["entries"]>();
+  for (const entry of args.patchExport.entries) {
+    const sceneId = sceneIdFromSourceUnitKey(entry.sourceUnitKey);
+    if (sceneId === undefined) {
+      throw new AcceptedPatchReplayError(
+        "invalid-source-unit-key",
+        [entry.entryId],
+        `entry sourceUnitKey ${entry.sourceUnitKey} is not a RealLive scene key`,
+      );
+    }
+    const entries = entriesByScene.get(sceneId) ?? [];
+    entries.push(entry);
+    entriesByScene.set(sceneId, entries);
+  }
+
+  mkdirSync(args.replayLogDirectory, { recursive: true });
+  const scenes: AcceptedPatchReplayScene[] = [];
+  for (const [sceneId, entries] of [...entriesByScene.entries()].sort(([a], [b]) => a - b)) {
+    const patched = replayObserve({
+      seenPath: args.patchedSeenPath,
+      sceneId,
+      gameexePath: args.gameexePath,
+      g00Dir: args.g00Dir,
+      replayLogPath: join(
+        args.replayLogDirectory,
+        `patched-scene-${String(sceneId).padStart(4, "0")}.json`,
+      ),
+      ...(args.nativeCli !== undefined ? { nativeCli: args.nativeCli } : {}),
+    });
+    const source = replayObserve({
+      seenPath: args.sourceSeenPath,
+      sceneId,
+      gameexePath: args.gameexePath,
+      g00Dir: args.g00Dir,
+      replayLogPath: join(
+        args.replayLogDirectory,
+        `source-scene-${String(sceneId).padStart(4, "0")}.json`,
+      ),
+      ...(args.nativeCli !== undefined ? { nativeCli: args.nativeCli } : {}),
+    });
+
+    for (const entry of entries) {
+      const observedTarget = stripOutOfBandControlMarkup(entry.targetText);
+      if (!observedTextContains(patched, observedTarget)) {
+        throw new AcceptedPatchReplayError(
+          "target-not-observed",
+          [entry.entryId],
+          `patched scene ${sceneId} did not emit accepted target ${JSON.stringify(observedTarget)}`,
+        );
+      }
+      if (observedTextContains(source, observedTarget)) {
+        throw new AcceptedPatchReplayError(
+          "target-visible-in-source",
+          [entry.entryId],
+          `source scene ${sceneId} also emitted accepted target ${JSON.stringify(observedTarget)}`,
+        );
+      }
+    }
+    scenes.push({ sceneId, entryIds: entries.map((entry) => entry.entryId), patched, source });
+  }
+  return { scenes };
+}
+
+function sceneIdFromSourceUnitKey(sourceUnitKey: string): number | undefined {
+  const match = /^reallive:scene-(\d{1,5})#\d+$/u.exec(sourceUnitKey);
+  if (match === null) return undefined;
+  const sceneId = Number.parseInt(match[1]!, 10);
+  return Number.isSafeInteger(sceneId) && sceneId >= 0 && sceneId <= 65_535 ? sceneId : undefined;
+}
+
+/** Mirrors Kaifuu's structural handling of the synthetic kidoku marker: it is
+ * preserved in control bytes, not emitted as dialogue text by Utsushi. */
+function stripOutOfBandControlMarkup(text: string): string {
+  const marker = "<reallive.kidoku ";
+  let output = "";
+  let rest = text;
+  while (true) {
+    const start = rest.indexOf(marker);
+    if (start < 0) return output + rest;
+    output += rest.slice(0, start);
+    const end = rest.indexOf(">", start + marker.length);
+    if (end < 0) return output + rest.slice(start);
+    rest = rest.slice(end + 1);
+  }
 }

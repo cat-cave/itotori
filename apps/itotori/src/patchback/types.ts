@@ -2,8 +2,8 @@
 //
 // This module is the rehomed native apply + whole-game replay seam. It consumes
 // the immutable fact snapshot (deterministic pre-pass) and the ACCEPTED OUTPUTS
-// (the content-addressed accepted target per unit) — never a journal/attempt
-// outcome — and drives the byte-surgical Kaifuu apply + the Utsushi replay that
+// (the content-addressed accepted target per unit) — never a prior attempt
+// record — and drives the byte-surgical Kaifuu apply + the Utsushi replay that
 // observes the translated bytes. Every input is data; there is no model call, no
 // network, and no clock. Same inputs => same PatchExportV02 => same patched bytes.
 
@@ -52,12 +52,16 @@ export type PatchbackBindingCode =
   | "no-accepted-target"
   /** Two accepted outputs claim the same unit. */
   | "duplicate-accepted-target"
+  /** The work scope names the same unit more than once. */
+  | "duplicate-scoped-unit"
   /** An accepted output's source hash differs from the snapshot fact's. */
   | "source-hash-mismatch"
   /** An accepted output names a subject absent from the snapshot. */
   | "accepted-subject-not-in-snapshot"
   /** The declared work scope is empty. */
-  | "empty-scope";
+  | "empty-scope"
+  /** A caller supplied a value which is not a valid unit AcceptedOutput. */
+  | "invalid-accepted-output";
 
 /** Raised when accepted outputs and the scoped snapshot units do not reconcile
  * into exactly one source-hash-matched target per scoped unit. */
