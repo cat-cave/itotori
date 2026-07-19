@@ -5,6 +5,11 @@ import { createDispatchRuntime } from "../src/composition/live/dispatch-runtime.
 import type { CallSpec } from "../src/contracts/index.js";
 import { dispatch } from "../src/llm/dispatch.js";
 import {
+  createOpenRouterGenerationLookup,
+  type GenerationLookup,
+  type GenerationMetadata,
+} from "../src/llm/generation-metadata.js";
+import {
   certifyLiveModelProfile,
   type ConformanceStepObservation,
 } from "../src/llm/model-profile-conformance.js";
@@ -49,17 +54,35 @@ const liveEnabled =
     let reasoning: ReasoningDetailsContinuityEvidence | null = null;
     let providerError: ProviderErrorObservation | null = null;
     try {
+      const observingFetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init);
+        if (request.method === "GET" && request.url.includes("/generation")) {
+          generationLookupRequests += 1;
+        }
+        // Constructing `request` above consumes the `input` Request's body, so
+        // the real call must dispatch the request we built — passing `input`
+        // again throws "Request object that has already been used".
+        const response = await fetch(request);
+        if (!response.ok) providerError = await observeProviderError(response);
+        return response;
+      };
+      const apiKey = process.env.OPENROUTER_API_KEY;
+      if (apiKey === undefined || apiKey.length === 0) {
+        throw new Error("live probe requires OPENROUTER_API_KEY");
+      }
       const baseRuntime = createDispatchRuntime({
         env: process.env,
-        fetcher: async (input, init) => {
-          const request = new Request(input, init);
-          if (request.method === "GET" && request.url.includes("/generation")) {
-            generationLookupRequests += 1;
-          }
-          const response = await fetch(input, init);
-          if (!response.ok) providerError = await observeProviderError(response);
-          return response;
-        },
+        fetcher: observingFetcher,
+        // OpenRouter publishes a generation's served-route record on the
+        // `/generation` endpoint only after a short (~5-8s) accounting-projection
+        // lag, so the production one-shot lookup deliberately records an explicit
+        // unknown and reconciles the served pair post-hoc. The certification probe
+        // needs the served pair confirmed inline, so it polls that same REAL
+        // lookup until OpenRouter has made the generation queryable. This waits
+        // for real evidence; it never fabricates a route.
+        generationLookup: reconcilingGenerationLookup(
+          createOpenRouterGenerationLookup({ apiKey, fetcher: observingFetcher }),
+        ),
         tools: [decodedUnitsTool(() => (toolExecutionCount += 1))],
         contentAccess: { requireContentRead: async () => undefined },
         onReasoningDetailsContinuity: (evidence) => {
@@ -140,6 +163,31 @@ const liveEnabled =
   },
   360_000,
 );
+
+/**
+ * Poll the REAL generation lookup until OpenRouter has published the served
+ * route, then return that authoritative metadata. The served pair, generation
+ * id, and billing all come from OpenRouter's own record — the only thing the
+ * poll adds is patience for the documented eventual-consistency lag. A lookup
+ * that never confirms (e.g. a genuine unknown) falls through to the last real
+ * unknown result, so the probe still fails closed rather than inventing a route.
+ */
+function reconcilingGenerationLookup(base: GenerationLookup): GenerationLookup {
+  const maxAttempts = 15;
+  const delayMs = 2_000;
+  return async (generationId, signal) => {
+    let latest: GenerationMetadata = await base(generationId, signal);
+    for (
+      let attempt = 1;
+      attempt < maxAttempts && latest.served.status !== "confirmed";
+      attempt++
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      latest = await base(generationId, signal);
+    }
+    return latest;
+  };
+}
 
 function conformanceSpec(prompt: string): CallSpec {
   const candidate = uncertifiedRoleModelProfileCandidateForProbe("Q1");
