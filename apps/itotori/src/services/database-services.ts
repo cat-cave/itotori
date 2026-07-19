@@ -12,15 +12,25 @@ import {
   withDatabase,
 } from "@itotori/db";
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
+import {
+  CALL_SPEC_SCHEMA_VERSION,
+  WIKI_OBJECT_SCHEMA_VERSION,
+  WikiObjectSchema,
+  type CallSpec,
+} from "../contracts/index.js";
 
 import type { ItotoriApiServices, ItotoriReadOnlyApiServices } from "../api-handlers.js";
 import type { ItotoriCliServices } from "../cli-handlers.js";
 import {
   createFieldMemoCipher,
+  createDispatchRuntime,
   createProductionLiveLocalizationSubstrate,
   productionLocalizeDispatchConfig,
+  type RunSnapshotRevisions,
 } from "../composition/live/index.js";
 import { runWikiBuild } from "../composition/index.js";
+import { canonicalJson, sha256 } from "../llm/canonical-json.js";
+import { resolveRoleModelProfile } from "../llm/role-model-profiles.js";
 import { DatabasePatchbackProduceInputLoader } from "../play/database-patchback-produce-input-loader.js";
 import {
   bindPatchbackProduceService,
@@ -32,6 +42,7 @@ import {
   SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS,
 } from "../structure/index.js";
 import { WikiObjectApiService } from "../wiki/object-api/service.js";
+import { createDispatchEnhancementRunner } from "../wiki/human-enhancement/index.js";
 
 /** The remaining command/API surfaces require a new-pipeline composition
  * substrate. The retired DB factory must never silently reconstruct the old
@@ -75,6 +86,30 @@ export async function withDatabaseItotoriServices<T>(
     const services = unavailableServiceSurface({
       projectWorkflow: unavailableProjectWorkflow(),
       wikiObjectApi,
+      wikiApply: {
+        runner: createLiveWikiEnhancementRunner({
+          dispatchConfig: () => {
+            const config = localizationConfig();
+            return productionLocalizeDispatchConfig({
+              env: process.env,
+              maxAttemptExposureUsd: config.maxAttemptExposureUsd,
+              confirmedCostCapUsd: config.confirmedCostCapUsd,
+            });
+          },
+          memoStore,
+          contentAccess,
+          snapshots: () => {
+            const config = localizationConfig();
+            return {
+              decodeRevisionHash: config.decodeRevisionHash,
+              glossaryRevisionHash: config.glossaryRevisionHash,
+              styleRevisionHash: config.styleRevisionHash,
+              acceptedOutputHeadHash: null,
+            };
+          },
+        }),
+        decodedFacts: [],
+      },
       patchbackProduce: bindPatchbackProduceService(
         new PatchbackProduceService({
           loader: new DatabasePatchbackProduceInputLoader({
@@ -209,7 +244,12 @@ function unavailableLiveRoleSeams() {
 export function unavailableServiceSurface(
   installed: Pick<
     ItotoriApplicationServices,
-    "projectWorkflow" | "wikiObjectApi" | "wikiBuild" | "localizationSubstrate" | "patchbackProduce"
+    | "projectWorkflow"
+    | "wikiObjectApi"
+    | "wikiApply"
+    | "wikiBuild"
+    | "localizationSubstrate"
+    | "patchbackProduce"
   >,
 ): ItotoriApplicationServices {
   return new Proxy(installed, {
@@ -225,6 +265,105 @@ export function unavailableServiceSurface(
       };
     },
   }) as ItotoriApplicationServices;
+}
+
+/** Bind the explicit human-apply boundary to the same live, memoized ZDR
+ * dispatch substrate as the production workflow.  The payload is held only in
+ * this request-local resolver; the persisted physical-step ledger sees the
+ * content hash and durable memo identity, never a provider-specific path. */
+function createLiveWikiEnhancementRunner(input: {
+  readonly dispatchConfig: () => ReturnType<typeof productionLocalizeDispatchConfig>;
+  readonly memoStore: ItotoriLlmCallMemoRepository;
+  readonly contentAccess: ReturnType<typeof permissionBasedLlmContentRead>;
+  readonly snapshots: () => RunSnapshotRevisions;
+}) {
+  return createDispatchEnhancementRunner({
+    async plan(request) {
+      const object = WikiObjectSchema.parse(request.priorObjectJson);
+      const p2 = resolveRoleModelProfile("P2");
+      const payload = canonicalJson({
+        kind: "wiki-human-enhancement",
+        priorObject: request.priorObjectJson,
+        humanAppliedObject: request.humanAppliedJson,
+        humanDelta: request.delta,
+        decodedFactConflicts: request.decodedFactConflicts,
+      });
+      const contentHash = sha256(payload);
+      const storageRef = `wiki-enhancement-${contentHash.slice("sha256:".length, "sha256:".length + 24)}`;
+      const spec: CallSpec = {
+        schemaVersion: CALL_SPEC_SCHEMA_VERSION,
+        purpose: "repair",
+        roleId: "P2",
+        modelProfile: p2.modelProfile,
+        modelProfileVersion: p2.version,
+        requestedModel: p2.model,
+        providerPolicy: p2.providerPolicy,
+        parentEventId: sha256({
+          kind: "wiki-human-enhancement",
+          objectId: object.objectId,
+          baseVersion: object.version,
+          inputIds: request.delta.inputs.map((humanInput) => humanInput.inputId),
+        }),
+        contextSnapshotId: object.provenance.contextSnapshotId,
+        localizationSnapshotId:
+          object.provenance.snapshotKind === "localization"
+            ? object.provenance.localizationSnapshotId
+            : null,
+        messages: [
+          {
+            kind: "text",
+            eventId: sha256({ kind: "wiki-human-enhancement", contentHash }),
+            role: "user",
+            contentEncrypted: { storageRef, contentHash, encryption: "operator-managed" },
+          },
+        ],
+        tools: [],
+        output: {
+          name: "wiki-object",
+          schemaVersion: WIKI_OBJECT_SCHEMA_VERSION,
+          schemaHash: sha256(WIKI_OBJECT_SCHEMA_VERSION),
+        },
+        promptVersion: "wiki-human-enhancement.v1",
+        reasoning: { effort: "none" },
+        sampling: { temperature: 0, topP: 1, seed: null },
+        limits: {
+          maxSteps: 1,
+          maxToolCalls: 0,
+          maxParallelTools: 1,
+          maxOutputTokens: 2_048,
+          timeoutClass: "normal",
+        },
+        sampleId: null,
+        runMode: object.provenance.runMode,
+        contextScope: object.provenance.contextScope,
+      };
+      const dispatchConfig = input.dispatchConfig();
+      const runtime = createDispatchRuntime({
+        ...dispatchConfig,
+        profile: {
+          name: p2.modelProfile,
+          version: p2.version,
+          deadlines: { normalMs: 30_000, deepMs: 300_000 },
+          maxAttemptExposureUsd: dispatchConfig.profile.maxAttemptExposureUsd,
+        },
+        memoStore: input.memoStore,
+        contentAccess: input.contentAccess,
+        snapshots: input.snapshots(),
+      });
+      return {
+        spec,
+        runtime: {
+          ...runtime,
+          async readPayload(reference) {
+            if (reference.storageRef !== storageRef || reference.contentHash !== contentHash) {
+              throw new Error("wiki enhancement received an unknown payload reference");
+            }
+            return payload;
+          },
+        },
+      };
+    },
+  });
 }
 
 function unavailableAfterCutover(surface: string): Error {
@@ -332,8 +471,4 @@ export async function migrateItotoriDatabase(databaseUrl = databaseUrlFromEnv())
 
 export async function resetItotoriDatabase(databaseUrl = databaseUrlFromEnv()): Promise<void> {
   await resetDatabase(databaseUrl);
-}
-
-export function startDatabaseContextCorrectionWorker(_options?: unknown): { stop(): void } {
-  return { stop: () => undefined };
 }

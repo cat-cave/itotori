@@ -59,8 +59,6 @@ import {
   type SaveModelRoutingSettingsInput,
   type TerminologySearchInput,
   type TerminologySearchReadModel,
-  type WikiContextEntriesFilter,
-  wikiContextEntryKindValues,
 } from "@itotori/db";
 import { assertBridgeBundleV02, type BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import { resolveStudioCapabilityPermissionView, type ItotoriAuthorizationPort } from "./auth.js";
@@ -89,8 +87,8 @@ import {
   parsePlayFlagAnnotationRequest,
   parsePlayTargetEditRequest,
   parsePatchIterationPlayRequest,
-  parseWikiAddRequest,
-  parseWikiEditRequest,
+  parseWikiApplyRequest,
+  parseWikiWriteRequest,
   type ApiAuthCapabilitiesResponse,
   type ApiAuthBillingSeatUsageResponse,
   type ApiAuthIdentityResponse,
@@ -144,7 +142,8 @@ import {
   type ApiTranslationScopeSettingsResponse,
   type ApiSaveTranslationScopeSettingsRequest,
   type ApiWikiEditResponse,
-  type ApiWikiAddResponse,
+  type ApiWikiApplyResponse,
+  type ApiWikiFeedbackResponse,
   type ApiWikiHistoryResponse,
   type ApiWikiListResponse,
   type ApiWikiShowResponse,
@@ -182,11 +181,6 @@ import { configuredServicePort } from "./services/configured-port.js";
 import { AccountZdrAssertionError } from "./zdr-admission/account-zdr.js";
 import type { BmkCockpitReadModel, BmkCockpitRunHistoryPage } from "./bmk-cockpit-read-model.js";
 import type { CatalogContextPanelReadModel } from "./catalog-context-panel.js";
-import {
-  WikiBrainEntryNotFoundError,
-  WikiBrainEditInputError,
-  type WikiBrainServicePort,
-} from "./wiki/service.js";
 // The kept localize/draft, wiki write, and patch-play mutations route ONLY through
 // these thin new-pipeline handlers. Each has a clean transitive import closure (no
 // edge to the legacy service graph — proven by composition-reachability); the live
@@ -201,7 +195,17 @@ import type {
   PlayEntrypointDeps,
 } from "./composition/index.js";
 import type { RunPolicyRequest } from "./run-policy/index.js";
-import type { WikiObjectApiService } from "./wiki/object-api/index.js";
+import {
+  ForgedWikiAssertionError,
+  WikiObjectApiError,
+  type DecodedFact,
+  type EnhancementRunner,
+  type WikiObjectApiService,
+  type WikiObjectSelector,
+  type WikiApplyReceipt,
+  type WikiHistoryEntry,
+  type WikiWriteReceipt,
+} from "./wiki/object-api/index.js";
 import type { RunModeValue } from "./contracts/index.js";
 import type { OutputScope } from "./run-policy/index.js";
 import type { ContextScopeValue } from "./contracts/index.js";
@@ -326,8 +330,8 @@ export type ItotoriReadOnlyApiServices = {
   terminologyRepository: {
     searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
   };
-  /** Generic node-6 context wiki reads; mutation is excluded from this surface. */
-  wiki: Pick<WikiBrainServicePort, "list" | "show" | "history">;
+  /** Read-only source WikiObject / localized-bible surface. */
+  wikiObjectApi?: Pick<WikiObjectApiService, "list" | "show" | "history">;
   assetDecisions: {
     loadActiveDecisions(
       projectId: string,
@@ -422,19 +426,16 @@ export type ItotoriReadOnlyApiServices = {
  * record/draft/ingest writes.
  */
 export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
-  /** Full shared wiki service for READ paths; wiki mutations NEVER use this — they
-   * route through {@link wikiObjectApi} + the composition `runWikiObjectCommand`. */
-  wiki: WikiBrainServicePort;
-  /**
-   * The kept wiki mutation's new-pipeline substrate: the Wiki object-API service
-   * the composition `runWikiObjectCommand` delegates to. Optional so unit suites
-   * that don't exercise wiki writes can omit it; the handler refuses loudly when
-   * it is missing. Populating it in the live factory needs the new
-   * `ItotoriLlmWikiRepository` / `ItotoriLlmHumanInputRepository` behind a
-   * production field-cipher — a substrate seam not yet wired into
-   * `withDatabaseItotoriServices` (flagged; never a fallback to the old service).
-   */
+  /** The WikiObject read/write substrate. Optional only for focused unit
+   * suites; the production database factory wires the encrypted repositories
+   * and the handler refuses loudly when a deliberately minimal composition omits it. */
   wikiObjectApi?: WikiObjectApiService;
+  /** The bounded child runner used only by the explicit Wiki apply boundary.
+   * Edits and feedback never invoke it. */
+  wikiApply?: {
+    readonly runner: EnhancementRunner;
+    readonly decodedFacts: readonly DecodedFact[];
+  };
   /**
    * The kept localize/draft mutation's new-pipeline substrate: resolve the live
    * `WorkflowPortDeps` (or fake ports for a proof) for one run policy. Production
@@ -583,11 +584,15 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     terminologyRepository: {
       searchTerms: (input) => services.terminologyRepository.searchTerms(input),
     },
-    wiki: {
-      list: (input) => services.wiki.list(input),
-      show: (input) => services.wiki.show(input),
-      history: (input) => services.wiki.history(input),
-    },
+    ...(services.wikiObjectApi === undefined
+      ? {}
+      : {
+          wikiObjectApi: {
+            list: (input: { snapshotId: string }) => services.wikiObjectApi!.list(input),
+            show: (selector: WikiObjectSelector) => services.wikiObjectApi!.show(selector),
+            history: (selector: WikiObjectSelector) => services.wikiObjectApi!.history(selector),
+          },
+        }),
     assetDecisions: {
       loadActiveDecisions: (projectId, localeBranchId, opts) =>
         services.assetDecisions.loadActiveDecisions(projectId, localeBranchId, opts),
@@ -785,92 +790,94 @@ async function routeItotoriApiRequest(
     return readOnlyResponse;
   }
 
-  const wikiContextMutationRoute = parseWikiContextApiRoute(request.pathname);
+  const wikiObjectRoute = parseWikiObjectApiRoute(request.pathname);
   if (
     request.method === "POST" &&
-    wikiContextMutationRoute !== null &&
-    (wikiContextMutationRoute.resource === "entry" || wikiContextMutationRoute.resource === "list")
+    (wikiObjectRoute?.resource === "edit" ||
+      wikiObjectRoute?.resource === "feedback" ||
+      wikiObjectRoute?.resource === "apply")
   ) {
-    // New-pipeline path: wiki writes route ONLY through the composition
-    // `runWikiObjectCommand` over the injected wikiObjectApi. The old
-    // WikiBrainService.add/edit path is unreachable from this mutation.
     await requireApiPermission(services, apiMutationPermissionGates.wikiEdit);
-    await requireOwnedBranchScope(services.projectWorkflow, {
-      projectId: wikiContextMutationRoute.projectId,
-      localeBranchId: wikiContextMutationRoute.localeBranchId,
-    });
-    if (wikiContextMutationRoute.resource === "list") {
-      // Validate the body first so malformed/zero-unit adds stay 400; then refuse
-      // the old service path. The new object-API has no free-standing "add".
-      parseWikiAddRequest(request.body);
-      throw new Error(
-        "wiki is not configured in this API build (wikiObjectApi port missing add — the new-pipeline Wiki object-API addresses edits on known objects only)",
-      );
-    }
     const wikiService = configuredServicePort(services, "wikiObjectApi");
     if (wikiService === undefined) {
-      throw new Error(
-        "wiki is not configured in this API build (wikiObjectApi port missing — the new-pipeline Wiki object-API service is not installed)",
+      throw new Error("wiki is not configured in this API build (wikiObjectApi port missing)");
+    }
+    const selector = wikiObjectRoute.selector;
+    const createdAt = new Date().toISOString();
+    try {
+      if (wikiObjectRoute.resource === "edit" || wikiObjectRoute.resource === "feedback") {
+        const body = parseWikiWriteRequest(request.body);
+        if (wikiObjectRoute.resource === "edit") {
+          const response = await runApiWiki(
+            {
+              action: "edit",
+              selector,
+              candidate: body.input,
+              createdAt,
+              ...(body.assertion === undefined ? {} : { assertion: body.assertion }),
+            },
+            { resolveWikiService: () => wikiService },
+          );
+          if (response.action !== "edit") throw new Error("wiki.edit returned the wrong receipt");
+          const current = await wikiService.show(selector);
+          if (current === null)
+            throw new WikiObjectApiError(`wiki object ${selector.objectId} has no current head`);
+          return ok(
+            "wiki.edit",
+            wikiObjectWriteResponseBody(response.result, current.history, createdAt),
+          );
+        }
+        const response = await runApiWiki(
+          {
+            action: "feedback",
+            selector,
+            candidate: body.input,
+            createdAt,
+            ...(body.assertion === undefined ? {} : { assertion: body.assertion }),
+          },
+          { resolveWikiService: () => wikiService },
+        );
+        if (response.action !== "feedback")
+          throw new Error("wiki.feedback returned the wrong receipt");
+        const current = await wikiService.show(selector);
+        if (current === null)
+          throw new WikiObjectApiError(`wiki object ${selector.objectId} has no current head`);
+        return ok(
+          "wiki.feedback",
+          wikiObjectWriteResponseBody(response.result, current.history, createdAt),
+        );
+      }
+      const body = parseWikiApplyRequest(request.body);
+      const apply = configuredServicePort(services, "wikiApply");
+      if (apply === undefined) {
+        throw new Error("wiki apply is not configured in this API build (wikiApply port missing)");
+      }
+      const response = await runApiWiki(
+        {
+          action: "apply",
+          selector,
+          inputIds: body.inputIds,
+          runner: apply.runner,
+          decodedFacts: apply.decodedFacts,
+          createdAt,
+          ...(body.assertion === undefined ? {} : { assertion: body.assertion }),
+        },
+        { resolveWikiService: () => wikiService },
       );
-    }
-    const body = parseWikiEditRequest(request.body);
-    const objectApiBody =
-      typeof request.body === "object" && request.body !== null
-        ? (request.body as Record<string, unknown>)
-        : {};
-    const wikiKind = objectApiBody.wikiKind;
-    const objectId =
-      typeof objectApiBody.objectId === "string" && objectApiBody.objectId.length > 0
-        ? objectApiBody.objectId
-        : wikiContextMutationRoute.contextArtifactId;
-    if (
-      wikiKind !== "source-object" &&
-      wikiKind !== "translation-object" &&
-      wikiKind !== "localized-rendering"
-    ) {
-      throw new Error(
-        "wiki.edit requires wikiKind of source-object | translation-object | localized-rendering for the new-pipeline object-API",
+      if (response.action !== "apply") throw new Error("wiki.apply returned the wrong receipt");
+      const shown = await wikiService.show(selector);
+      if (shown === null)
+        throw new WikiObjectApiError(`wiki object ${selector.objectId} has no current head`);
+      return ok(
+        "wiki.apply",
+        wikiObjectApplyResponseBody(response.result, shown.history, createdAt),
       );
+    } catch (error) {
+      if (error instanceof ForgedWikiAssertionError || error instanceof WikiObjectApiError) {
+        throw new ApiValidationError(error.message);
+      }
+      throw error;
     }
-    const candidate =
-      objectApiBody.candidate !== undefined
-        ? objectApiBody.candidate
-        : {
-            kind: "edit" as const,
-            body: body.body,
-            reason: body.reason,
-            ...(body.title === undefined ? {} : { title: body.title }),
-          };
-    const createdAt =
-      typeof objectApiBody.createdAt === "string" && objectApiBody.createdAt.length > 0
-        ? objectApiBody.createdAt
-        : new Date().toISOString();
-    const wikiResponse = await runApiWiki(
-      {
-        action: "edit",
-        selector: { wikiKind, objectId },
-        candidate,
-        createdAt,
-      },
-      { resolveWikiService: () => wikiService },
-    );
-    if (wikiResponse.action !== "edit") {
-      throw new Error("wiki.edit expected an edit receipt from the object-API");
-    }
-    return ok(
-      "wiki.edit",
-      wikiObjectEditResponseBody({
-        receipt: wikiResponse.result,
-        projectId: wikiContextMutationRoute.projectId,
-        localeBranchId: wikiContextMutationRoute.localeBranchId,
-        objectId,
-        body: body.body,
-        reason: body.reason,
-        ...(body.title === undefined ? {} : { title: body.title }),
-        ...(body.affectedUnitIds === undefined ? {} : { affectedUnitIds: body.affectedUnitIds }),
-        createdAt,
-      }),
-    );
   }
 
   const targetEditRoute = parsePlayTargetEditApiRoute(request.pathname);
@@ -1519,93 +1526,31 @@ function patchIterationPlayReceiptResponseBody(input: {
   };
 }
 
-/** Map an object-API write receipt onto the Studio wiki.edit wire envelope. */
-function wikiObjectEditResponseBody(input: {
-  receipt: {
-    inputId: string;
-    head: { objectId: string; version: number; contentHash: string };
-    dependencyImpact: { consumers: ReadonlyArray<{ downstreamObjectId: string }> };
-  };
-  projectId: string;
-  localeBranchId: string;
-  objectId: string;
-  body: string;
-  reason: string;
-  title?: string;
-  affectedUnitIds?: readonly string[];
-  createdAt: string;
-}): ApiWikiEditResponse {
-  const versionId = `${input.objectId}:v${String(input.receipt.head.version)}`;
-  const affectedUnitIds = [...(input.affectedUnitIds ?? [])];
-  const title = input.title ?? input.objectId;
-  const provenance = {
-    producedByAgent: null,
-    producedByTool: null,
-    producerVersion: "wiki-object-api",
-    createdByUserId: "local-user",
-    origin: "play_tester_edit",
-    runId: null,
-    providerRunId: null,
-    provenance: { origin: "play_tester_edit", inputId: input.receipt.inputId },
-  };
-  const impact = {
-    affectedUnitIds,
-    invalidatedReason: null,
-    invalidatedAt: null,
-  };
-  const version = {
-    contextEntryVersionId: versionId,
-    contextArtifactId: input.objectId,
-    parentVersionId: null,
-    projectId: input.projectId,
-    localeBranchId: input.localeBranchId,
-    sourceRevisionId: "wiki-object-api",
-    category: "context_note" as const,
-    kind: "note" as const,
-    status: "active" as const,
-    title,
-    body: input.body,
-    data: { reason: input.reason },
-    contentHash: input.receipt.head.contentHash,
-    provenance,
-    citations: [],
-    impact,
-    createdAt: new Date(input.createdAt),
-    isHead: true,
-  };
+function wikiObjectWriteResponseBody(
+  receipt: WikiWriteReceipt,
+  history: readonly WikiHistoryEntry[],
+  generatedAt: string,
+): ApiWikiEditResponse {
   return {
-    schemaVersion: "wiki.context.edit.v0.2",
-    generatedAt: new Date(input.createdAt),
-    correctionId: input.receipt.inputId,
-    contextArtifactId: input.objectId,
-    contextEntryVersionId: versionId,
-    affectedUnitIds,
-    invalidatedArtifactIds: [
-      ...new Set(input.receipt.dependencyImpact.consumers.map((c) => c.downstreamObjectId)),
-    ],
-    redraftJobId: `wiki-object-edit:${input.receipt.inputId}`,
-    rerun: { state: "pending", jobStatus: "queued", error: null },
-    entry: {
-      contextArtifactId: input.objectId,
-      projectId: input.projectId,
-      localeBranchId: input.localeBranchId,
-      sourceRevisionId: "wiki-object-api",
-      category: "context_note",
-      kind: "note",
-      status: "active",
-      title,
-      body: input.body,
-      data: { reason: input.reason },
-      contentHash: input.receipt.head.contentHash,
-      headVersionId: versionId,
-      versionCount: input.receipt.head.version,
-      provenance,
-      citations: [],
-      impact,
-      createdAt: new Date(input.createdAt),
-      updatedAt: new Date(input.createdAt),
-      history: [version],
-    },
+    schemaVersion: "itotori.wiki.write.v1",
+    generatedAt,
+    receipt,
+    history,
+    dependencyImpact: receipt.dependencyImpact,
+  };
+}
+
+function wikiObjectApplyResponseBody(
+  receipt: WikiApplyReceipt,
+  history: readonly WikiHistoryEntry[],
+  generatedAt: string,
+): ApiWikiApplyResponse {
+  return {
+    schemaVersion: "itotori.wiki.apply.v1",
+    generatedAt,
+    receipt,
+    history,
+    dependencyImpact: receipt.dependencyImpact,
   };
 }
 
@@ -2144,43 +2089,47 @@ async function routeReadOnlyItotoriApiRequest(
     );
   }
 
-  const wikiContextRoute = parseWikiContextApiRoute(request.pathname);
-  if (request.method === "GET" && wikiContextRoute !== null) {
-    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
-      projectId: wikiContextRoute.projectId,
-      localeBranchId: wikiContextRoute.localeBranchId,
-    });
-    switch (wikiContextRoute.resource) {
-      case "list":
-        return ok(
-          "wiki.list",
-          await services.wiki.list({
-            ...parseWikiContextListQuery(request.search),
-            projectId: scope.projectId,
-            localeBranchId: scope.localeBranchId,
-          }),
-        );
-      case "entry": {
-        const entry = await services.wiki.show({
-          projectId: scope.projectId,
-          localeBranchId: scope.localeBranchId,
-          contextArtifactId: wikiContextRoute.contextArtifactId,
-        });
-        return entry === null ? notFound(request.pathname) : ok("wiki.show", entry);
-      }
-      case "history": {
-        const history = await services.wiki.history({
-          projectId: scope.projectId,
-          localeBranchId: scope.localeBranchId,
-          contextArtifactId: wikiContextRoute.contextArtifactId,
-        });
-        return history === null ? notFound(request.pathname) : ok("wiki.history", history);
-      }
-      default: {
-        const exhaustive: never = wikiContextRoute;
-        throw new Error(`unsupported wiki context route ${String(exhaustive)}`);
-      }
+  const wikiObjectRoute = parseWikiObjectApiRoute(request.pathname);
+  if (request.method === "GET" && wikiObjectRoute !== null) {
+    const wiki = services.wikiObjectApi;
+    if (wiki === undefined)
+      throw new Error("wiki is not configured in this API build (wikiObjectApi port missing)");
+    const generatedAt = new Date().toISOString();
+    if (wikiObjectRoute.resource === "list") {
+      const snapshotId = parseWikiObjectSnapshotQuery(request.search);
+      const result = await wiki.list({ snapshotId });
+      return ok("wiki.list", {
+        schemaVersion: "itotori.wiki.objects.v1",
+        generatedAt,
+        snapshotId,
+        sourceObjects: result.sourceObjects,
+        renderings: result.renderings,
+      });
     }
+    if (
+      wikiObjectRoute.resource === "edit" ||
+      wikiObjectRoute.resource === "feedback" ||
+      wikiObjectRoute.resource === "apply"
+    ) {
+      return methodNotAllowed(["POST"]);
+    }
+    const shown = await wiki.show(wikiObjectRoute.selector);
+    if (shown === null) return notFound(request.pathname);
+    if (wikiObjectRoute.resource === "show") {
+      return ok("wiki.show", {
+        schemaVersion: "itotori.wiki.object.v1",
+        generatedAt,
+        view: shown.view,
+        history: shown.history,
+        dependencyImpact: { dependents: shown.dependents },
+      });
+    }
+    return ok("wiki.history", {
+      schemaVersion: "itotori.wiki.history.v1",
+      generatedAt,
+      view: shown.view,
+      history: shown.history,
+    });
   }
 
   const patchIterationRoute = parsePatchIterationApiRoute(request.pathname);
@@ -2317,21 +2266,18 @@ async function routeReadOnlyItotoriApiRequest(
     return methodNotAllowed(["GET"]);
   }
 
-  // A detail entry owns both GET (show) and POST (edit); list/history remain
-  // pure read routes. Keep POST detail unresolved here so the full mutation
-  // router can invoke the shared node-8-backed WikiBrainService.
-  if (wikiContextRoute !== null) {
+  // Explicit write subresources defer to the full mutation handler; every
+  // other WikiObject route is GET-only.
+  if (wikiObjectRoute !== null) {
     if (
-      (wikiContextRoute.resource === "entry" || wikiContextRoute.resource === "list") &&
-      request.method === "POST"
+      request.method === "POST" &&
+      (wikiObjectRoute.resource === "edit" ||
+        wikiObjectRoute.resource === "feedback" ||
+        wikiObjectRoute.resource === "apply")
     ) {
       return null;
     }
-    return methodNotAllowed(
-      wikiContextRoute.resource === "entry" || wikiContextRoute.resource === "list"
-        ? ["GET", "POST"]
-        : ["GET"],
-    );
+    return methodNotAllowed(["GET"]);
   }
 
   // Not a read route this handler owns — defer to the mutation router.
@@ -2787,51 +2733,45 @@ function parseNonNegativeIntParam(raw: string | null, label: string): number | u
   return Number.parseInt(raw.trim(), 10);
 }
 
-type WikiContextApiRoute =
+type WikiObjectApiRoute =
+  | { readonly resource: "list" }
   | {
-      resource: "list";
-      projectId: string;
-      localeBranchId: string;
-    }
-  | {
-      resource: "entry" | "history";
-      projectId: string;
-      localeBranchId: string;
-      contextArtifactId: string;
+      readonly resource: "show" | "history" | "edit" | "feedback" | "apply";
+      readonly selector: WikiObjectSelector;
     };
 
-/** Parse project/branch-scoped generic wiki routes without conflating entry ids. */
-function parseWikiContextApiRoute(pathname: string): WikiContextApiRoute | null {
-  const list = /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/wiki$/.exec(pathname);
-  if (list?.[1] !== undefined && list[2] !== undefined) {
-    return {
-      resource: "list",
-      projectId: decodeApiPathSegment(list[1], "projectId"),
-      localeBranchId: decodeApiPathSegment(list[2], "localeBranchId"),
-    };
-  }
-  const history =
-    /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/wiki\/([^/]+)\/history$/.exec(pathname);
-  if (history?.[1] !== undefined && history[2] !== undefined && history[3] !== undefined) {
-    return {
-      resource: "history",
-      projectId: decodeApiPathSegment(history[1], "projectId"),
-      localeBranchId: decodeApiPathSegment(history[2], "localeBranchId"),
-      contextArtifactId: decodeApiPathSegment(history[3], "contextArtifactId"),
-    };
-  }
-  const entry = /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/wiki\/([^/]+)$/.exec(
+/** Parse the WikiObject API. Source facts are addressed by source snapshot and
+ * object id; no route has a localeBranchId segment. */
+function parseWikiObjectApiRoute(pathname: string): WikiObjectApiRoute | null {
+  if (pathname === "/api/wiki") return { resource: "list" };
+  const matched = /^\/api\/wiki\/([^/]+)\/([^/]+)(?:\/(history|edit|feedback|apply))?$/.exec(
     pathname,
   );
-  if (entry?.[1] === undefined || entry[2] === undefined || entry[3] === undefined) {
-    return null;
+  if (matched?.[1] === undefined || matched[2] === undefined) return null;
+  const wikiKind = decodeApiPathSegment(matched[1], "wikiKind");
+  if (
+    wikiKind !== "source-object" &&
+    wikiKind !== "translation-object" &&
+    wikiKind !== "localized-rendering"
+  ) {
+    throw new ApiValidationError(
+      "wikiKind must be source-object, translation-object, or localized-rendering",
+    );
   }
-  return {
-    resource: "entry",
-    projectId: decodeApiPathSegment(entry[1], "projectId"),
-    localeBranchId: decodeApiPathSegment(entry[2], "localeBranchId"),
-    contextArtifactId: decodeApiPathSegment(entry[3], "contextArtifactId"),
+  const selector: WikiObjectSelector = {
+    wikiKind,
+    objectId: decodeApiPathSegment(matched[2], "objectId"),
   };
+  const resource = matched[3] ?? "show";
+  if (
+    resource === "history" ||
+    resource === "edit" ||
+    resource === "feedback" ||
+    resource === "apply"
+  ) {
+    return { resource, selector };
+  }
+  return { resource: "show", selector };
 }
 
 function parseAuthMemberAcceptRoute(pathname: string): { invitationId: string } | null {
@@ -3401,45 +3341,12 @@ function parseTerminologySearchInput(search = ""): TerminologySearchInput {
   return input;
 }
 
-function parseWikiContextListQuery(
-  search = "",
-): Omit<WikiContextEntriesFilter, "projectId" | "localeBranchId"> {
+function parseWikiObjectSnapshotQuery(search = ""): string {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  assertKnownQueryParams(
-    params,
-    ["sourceRevisionId", "kind", "includeStale", "limit", "offset"],
-    "wiki context list",
-  );
-  const input: Omit<WikiContextEntriesFilter, "projectId" | "localeBranchId"> = {};
-  const sourceRevisionId = params.get("sourceRevisionId");
-  if (sourceRevisionId !== null) {
-    input.sourceRevisionId = nonEmptyParam(sourceRevisionId, "sourceRevisionId");
-  }
-  const kind = params.get("kind");
-  if (kind !== null) {
-    input.kind = enumParam(kind, Object.values(wikiContextEntryKindValues), "kind");
-  }
-  const includeStale = params.get("includeStale");
-  if (includeStale !== null) {
-    input.includeStale = booleanParam(includeStale, "includeStale");
-  }
-  const limit = params.get("limit");
-  if (limit !== null) {
-    const parsedLimit = Number(limit);
-    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
-      throw new ApiValidationError("limit must be an integer from 1 through 100");
-    }
-    input.limit = parsedLimit;
-  }
-  const offset = params.get("offset");
-  if (offset !== null) {
-    const parsedOffset = Number(offset);
-    if (!Number.isInteger(parsedOffset) || parsedOffset < 0) {
-      throw new ApiValidationError("offset must be a non-negative integer");
-    }
-    input.offset = parsedOffset;
-  }
-  return input;
+  assertKnownQueryParams(params, ["snapshotId"], "wiki list");
+  const snapshotId = params.get("snapshotId");
+  if (snapshotId === null) throw new ApiValidationError("wiki list requires snapshotId");
+  return nonEmptyParam(snapshotId, "snapshotId");
 }
 
 function enumParam<T extends string>(value: string, allowed: readonly T[], label: string): T {
@@ -3513,7 +3420,8 @@ function ok(routeId: "wiki.list", body: ApiWikiListResponse): ApiJsonResponse;
 function ok(routeId: "wiki.show", body: ApiWikiShowResponse): ApiJsonResponse;
 function ok(routeId: "wiki.history", body: ApiWikiHistoryResponse): ApiJsonResponse;
 function ok(routeId: "wiki.edit", body: ApiWikiEditResponse): ApiJsonResponse;
-function ok(routeId: "wiki.add", body: ApiWikiAddResponse): ApiJsonResponse;
+function ok(routeId: "wiki.feedback", body: ApiWikiFeedbackResponse): ApiJsonResponse;
+function ok(routeId: "wiki.apply", body: ApiWikiApplyResponse): ApiJsonResponse;
 function ok(routeId: "projects.status", body: ProjectDashboardStatus): ApiJsonResponse;
 function ok(routeId: "projects.overview", body: ApiProjectOverviewResponse): ApiJsonResponse;
 function ok(routeId: "projects.decisions", body: DashboardDecisionReadModel): ApiJsonResponse;
@@ -3736,12 +3644,6 @@ function errorResponse(error: unknown): ApiJsonResponse {
   }
   if (error instanceof RuntimeRunNotFoundError) {
     return errorBody(404, "not_found", error.message);
-  }
-  if (error instanceof WikiBrainEntryNotFoundError) {
-    return errorBody(404, "not_found", error.message);
-  }
-  if (error instanceof WikiBrainEditInputError) {
-    return errorBody(400, "bad_request", error.message);
   }
   return errorBody(500, "internal_error", error instanceof Error ? error.message : String(error));
 }

@@ -93,6 +93,85 @@ export class HumanEnhancementService {
   }
 
   /**
+   * Re-open a durable HTTP session.  The browser does not keep an in-memory
+   * `EnhancementSession` between edit/feedback and apply, so apply addresses
+   * the immutable input ids returned by the earlier receipts.  Their stored
+   * payloads and the version immediately preceding the first input reconstruct
+   * the exact `(base, delta)` boundary; no client supplied object is trusted.
+   */
+  async resumeSession(
+    objectId: string,
+    wikiKind: WikiKind,
+    inputIds: readonly string[],
+  ): Promise<EnhancementSession> {
+    if (inputIds.length === 0) {
+      throw new HumanEnhancementError("apply requires at least one durable human input id");
+    }
+    if (new Set(inputIds).size !== inputIds.length) {
+      throw new HumanEnhancementError("apply input ids must be unique");
+    }
+    const subjectRef = `${wikiKind}:${objectId}`;
+    const persisted = await this.deps.humanInputs.list(subjectRef);
+    const inputsById = new Map(
+      persisted.map((record) => {
+        if (record.inputJson === null) {
+          throw new HumanEnhancementError(
+            `durable human input ${record.inputId} has no readable body`,
+          );
+        }
+        return [record.inputId, HumanInputSchema.parse(JSON.parse(record.inputJson))] as const;
+      }),
+    );
+    const inputs = inputIds.map((inputId) => {
+      const input = inputsById.get(inputId);
+      if (input === undefined) {
+        throw new HumanEnhancementError(
+          `durable human input ${inputId} does not belong to wiki object ${objectId}`,
+        );
+      }
+      return input;
+    });
+    const versions = await this.deps.wiki.readObjectHistory({ wikiKind, objectId });
+    const firstInput = inputs[0];
+    if (firstInput === undefined) {
+      throw new HumanEnhancementError("apply requires at least one durable human input id");
+    }
+    const firstVersionIndex = versions.findIndex((record) => {
+      const value: unknown = JSON.parse(record.objectJson);
+      if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+      const provenance = (value as Record<string, unknown>).provenance;
+      if (typeof provenance !== "object" || provenance === null || Array.isArray(provenance)) {
+        return false;
+      }
+      const humanInput = (provenance as Record<string, unknown>).humanInput;
+      return (
+        typeof humanInput === "object" &&
+        humanInput !== null &&
+        !Array.isArray(humanInput) &&
+        (humanInput as Record<string, unknown>).inputId === firstInput.inputId
+      );
+    });
+    if (firstVersionIndex <= 0) {
+      throw new HumanEnhancementError(
+        `durable human input ${firstInput.inputId} has no reconstructable prior wiki version`,
+      );
+    }
+    const base = versions[firstVersionIndex - 1];
+    const head = await this.deps.wiki.readHead({ wikiKind, objectId });
+    if (base === undefined || head === null) {
+      throw new HumanEnhancementError(`wiki object ${objectId} has no current head`);
+    }
+    return {
+      subjectRef,
+      wikiKind,
+      objectId,
+      baseJson: JSON.parse(base.objectJson) as JsonValue,
+      currentHead: head,
+      inputs,
+    };
+  }
+
+  /**
    * Append a direct edit: persist the immutable HumanInput, apply the exact
    * operations to the current head, and append a human-authored version. Returns
    * WITHOUT launching any enhancement.

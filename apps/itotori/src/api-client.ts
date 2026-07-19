@@ -109,10 +109,11 @@ import type {
   ApiAuthCapabilitiesResponse,
   ApiCatalogContextPanelResponse,
   ApiTerminologySearchResponse,
-  ApiWikiAddRequest,
-  ApiWikiAddResponse,
-  ApiWikiEditRequest,
+  ApiWikiApplyRequest,
+  ApiWikiApplyResponse,
+  ApiWikiWriteRequest,
   ApiWikiEditResponse,
+  ApiWikiFeedbackResponse,
   ApiWikiHistoryResponse,
   ApiWikiListResponse,
   ApiWikiShowResponse,
@@ -166,27 +167,30 @@ interface ItotoriApiRouteTypeMap {
   };
   "wiki.list": {
     response: ApiWikiListResponse;
-    pathParams: { projectId: string; localeBranchId: string };
-    collectionKey: "entries";
-  };
-  "wiki.add": {
-    response: ApiWikiAddResponse;
-    pathParams: { projectId: string; localeBranchId: string };
-    request: ApiWikiAddRequest;
+    collectionKey: "sourceObjects";
   };
   "wiki.show": {
     response: ApiWikiShowResponse;
-    pathParams: { projectId: string; localeBranchId: string; contextArtifactId: string };
+    pathParams: { wikiKind: string; objectId: string };
   };
   "wiki.history": {
     response: ApiWikiHistoryResponse;
-    pathParams: { projectId: string; localeBranchId: string; contextArtifactId: string };
-    collectionKey: "versions";
+    pathParams: { wikiKind: string; objectId: string };
   };
   "wiki.edit": {
     response: ApiWikiEditResponse;
-    pathParams: { projectId: string; localeBranchId: string; contextArtifactId: string };
-    request: ApiWikiEditRequest;
+    pathParams: { wikiKind: string; objectId: string };
+    request: ApiWikiWriteRequest;
+  };
+  "wiki.feedback": {
+    response: ApiWikiFeedbackResponse;
+    pathParams: { wikiKind: string; objectId: string };
+    request: ApiWikiWriteRequest;
+  };
+  "wiki.apply": {
+    response: ApiWikiApplyResponse;
+    pathParams: { wikiKind: string; objectId: string };
+    request: ApiWikiApplyRequest;
   };
   "projects.list": {
     response: ApiProjectsResponse;
@@ -514,8 +518,7 @@ const ITOTORI_API_COLLECTION_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, st
   "catalog.conflicts": "rows",
   "catalog.opportunities": "rows",
   "terminology.search": "results",
-  "wiki.list": "entries",
-  "wiki.history": "versions",
+  "wiki.list": "sourceObjects",
   "projects.list": "projects",
   "projects.decisions": "pendingDecisions",
   "projects.costDrilldown": "rows",

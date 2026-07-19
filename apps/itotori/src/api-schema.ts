@@ -38,9 +38,6 @@ import type {
   MemberRecord,
   RuntimeDashboardStatus,
   TerminologySearchReadModel,
-  WikiContextEntriesReadModel,
-  WikiContextEntryHistoryReadModel,
-  WikiContextEntryReadModel,
 } from "@itotori/db";
 import {
   assetLocalizationDecisionAssetKindList,
@@ -57,7 +54,6 @@ import {
   catalogSourceRecordKindValues,
   catalogSourceValues,
   translationScopeValues,
-  wikiContextEntryKindList,
 } from "./api-enum-values.js";
 import {
   assertBenchmarkReportV02,
@@ -97,7 +93,14 @@ import {
   BMK_COCKPIT_SCHEMA_VERSION,
 } from "./bmk-cockpit-read-model.js";
 import type { CatalogContextPanelReadModel } from "./catalog-context-panel.js";
-import type { WikiBrainEditResult } from "./wiki/service.js";
+import type {
+  WikiApplyReceipt,
+  WikiDependentView,
+  WikiHistoryEntry,
+  WikiObjectView,
+  WikiWriteAssertion,
+  WikiWriteReceipt,
+} from "./wiki/object-api/index.js";
 
 export type ItotoriApiRouteId =
   | "assetDecisions.active"
@@ -112,7 +115,8 @@ export type ItotoriApiRouteId =
   | "wiki.show"
   | "wiki.history"
   | "wiki.edit"
-  | "wiki.add"
+  | "wiki.feedback"
+  | "wiki.apply"
   | "projects.list"
   | "projects.overview"
   | "projects.status"
@@ -224,26 +228,34 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   ApiErrorResponse: ["error", "code"],
   ApiAssetDecisionsResponse: ["decisions"],
   ApiCandidateAssetsResponse: ["candidateAssets"],
-  WikiContextEntriesReadModel: ["schemaVersion", "generatedAt", "filter", "pagination", "entries"],
-  WikiContextEntryReadModel: ["schemaVersion", "generatedAt", "entry"],
-  WikiContextEntryHistoryReadModel: [
+  ApiWikiObjectListResponse: [
     "schemaVersion",
     "generatedAt",
-    "contextArtifactId",
-    "headVersionId",
-    "versions",
+    "snapshotId",
+    "sourceObjects",
+    "renderings",
   ],
-  ApiWikiEditResponse: [
+  ApiWikiObjectShowResponse: [
     "schemaVersion",
     "generatedAt",
-    "correctionId",
-    "contextArtifactId",
-    "contextEntryVersionId",
-    "affectedUnitIds",
-    "invalidatedArtifactIds",
-    "redraftJobId",
-    "rerun",
-    "entry",
+    "view",
+    "history",
+    "dependencyImpact",
+  ],
+  ApiWikiObjectHistoryResponse: ["schemaVersion", "generatedAt", "view", "history"],
+  ApiWikiObjectWriteResponse: [
+    "schemaVersion",
+    "generatedAt",
+    "receipt",
+    "history",
+    "dependencyImpact",
+  ],
+  ApiWikiObjectApplyResponse: [
+    "schemaVersion",
+    "generatedAt",
+    "receipt",
+    "history",
+    "dependencyImpact",
   ],
   CatalogBenchmarkSeedFinderReadModel: ["schemaVersion", "targetLanguage", "generatedAt", "rows"],
   CatalogContextPanelReadModel: [
@@ -703,43 +715,66 @@ export type ApiCatalogOpportunitiesResponse = CatalogOpportunityRankingReadModel
 
 export type ApiTerminologySearchResponse = TerminologySearchReadModel;
 
-/** Generic node-6 context-brain browse surface. */
-export type ApiWikiListResponse = WikiContextEntriesReadModel;
-
-/** One canonical entry with content, provenance, citations, impact, and lineage. */
-export type ApiWikiShowResponse = WikiContextEntryReadModel;
-
-/** Immutable version history for one canonical entry. */
-export type ApiWikiHistoryResponse = WikiContextEntryHistoryReadModel;
-
-/**
- * A human correction body. Identity/scope/category/source revision/data and
- * citations are deliberately absent: the server loads those from the existing
- * canonical entry before calling ContextCorrectionService.
- */
-export type ApiWikiEditRequest = {
-  body: string;
-  reason: string;
-  title?: string;
-  affectedUnitIds?: string[];
+/** Source WikiObjects are selected by their snapshot, never a locale branch.
+ * Per-target bible renderings live under their own localization snapshot. */
+export type ApiWikiListResponse = {
+  schemaVersion: "itotori.wiki.objects.v1";
+  generatedAt: string;
+  snapshotId: string;
+  sourceObjects: readonly WikiObjectView[];
+  renderings: readonly WikiObjectView[];
 };
 
-/** Result of the node-8-backed canonical wiki correction. */
-export type ApiWikiEditResponse = WikiBrainEditResult;
+/** One typed WikiObject plus immutable history and its precise consumers. */
+export type ApiWikiShowResponse = {
+  schemaVersion: "itotori.wiki.object.v1";
+  generatedAt: string;
+  view: WikiObjectView;
+  history: readonly WikiHistoryEntry[];
+  dependencyImpact: { readonly dependents: readonly WikiDependentView[] };
+};
 
+export type ApiWikiHistoryResponse = {
+  schemaVersion: "itotori.wiki.history.v1";
+  generatedAt: string;
+  view: WikiObjectView;
+  history: readonly WikiHistoryEntry[];
+};
+
+/** A direct edit/feedback is always bound to an authoritative head assertion.
+ * The candidate itself is parsed by the strict HumanInput contract at the
+ * object-API boundary. */
+export type ApiWikiWriteRequest = {
+  input: unknown;
+  assertion: WikiWriteAssertion;
+};
+
+/** Retained only for the patch-iteration feedback payload's closed operation
+ * vocabulary; it is not a Wiki HTTP endpoint category. */
 export type ApiWikiAddKind = "note" | "glossary" | "style";
 
-/** New human context is also a node-8 correction; source scope is mandatory. */
-export type ApiWikiAddRequest = {
-  sourceRevisionId: string;
-  kind: ApiWikiAddKind;
-  title: string;
-  body: string;
-  reason: string;
-  affectedUnitIds: string[];
+export type ApiWikiApplyRequest = {
+  inputIds: readonly string[];
+  assertion: WikiWriteAssertion;
 };
 
-export type ApiWikiAddResponse = ApiWikiEditResponse;
+export type ApiWikiEditResponse = {
+  schemaVersion: "itotori.wiki.write.v1";
+  generatedAt: string;
+  receipt: WikiWriteReceipt;
+  history: readonly WikiHistoryEntry[];
+  dependencyImpact: WikiWriteReceipt["dependencyImpact"];
+};
+
+export type ApiWikiFeedbackResponse = ApiWikiEditResponse;
+
+export type ApiWikiApplyResponse = {
+  schemaVersion: "itotori.wiki.apply.v1";
+  generatedAt: string;
+  receipt: WikiApplyReceipt;
+  history: readonly WikiHistoryEntry[];
+  dependencyImpact: WikiApplyReceipt["dependencyImpact"];
+};
 
 export type ApiAssetDecisionsResponse = {
   decisions: AssetDecisionRecord[];
@@ -1643,7 +1678,8 @@ export type ItotoriApiResponseBody =
   | ApiWikiShowResponse
   | ApiWikiHistoryResponse
   | ApiWikiEditResponse
-  | ApiWikiAddResponse
+  | ApiWikiFeedbackResponse
+  | ApiWikiApplyResponse
   | ApiProjectsResponse
   | ApiProjectOverviewResponse
   | ProjectDashboardStatus
@@ -2203,19 +2239,22 @@ export function assertItotoriApiResponse(
       assertTerminologySearchReadModel(value);
       return;
     case "wiki.list":
-      assertWikiListResponse(value);
+      assertWikiObjectListResponse(value);
       return;
     case "wiki.show":
-      assertWikiShowResponse(value);
+      assertWikiObjectShowResponse(value);
       return;
     case "wiki.history":
-      assertWikiHistoryResponse(value);
+      assertWikiObjectHistoryResponse(value);
       return;
     case "wiki.edit":
-      assertWikiEditResponse(value);
+      assertWikiObjectWriteResponse(value);
       return;
-    case "wiki.add":
-      assertWikiEditResponse(value);
+    case "wiki.feedback":
+      assertWikiObjectWriteResponse(value);
+      return;
+    case "wiki.apply":
+      assertWikiApplyResponse(value);
       return;
     case "projects.list":
       assertProjectsResponse(value);
@@ -2449,381 +2488,427 @@ function assertAssetDecisionKind(
   assertEnum(value, assetLocalizationDecisionAssetKindList, label);
 }
 
-const wikiContextArtifactCategoryList = [
-  "scene_summary",
-  "character_note",
-  "route_map",
-  "speaker_label",
-  "terminology_candidate",
-  "glossary",
-  "style",
-  "context_note",
-] as const;
-
-const wikiContextArtifactStatusList = ["active", "stale", "superseded", "rejected"] as const;
-
-/** Assert the generic node-6 context-brain list response used by `wiki.list`. */
-export function assertWikiListResponse(
+/** Strict WikiObject wire guards. These deliberately model the new object
+ * substrate, not the retired context-artifact projection. */
+export function assertWikiObjectListResponse(
   value: unknown,
-  label = "WikiContextEntriesReadModel",
+  label = "ApiWikiObjectListResponse",
 ): asserts value is ApiWikiListResponse {
-  const model = asStrictRecord(
+  const response = asStrictRecord(
     value,
     label,
-    ITOTORI_STRICT_API_BODY_KEYS.WikiContextEntriesReadModel,
+    ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectListResponse,
   );
-  assertLiteral(model.schemaVersion, "wiki.context.entries.v0.1", `${label}.schemaVersion`);
-  assertDateLike(model.generatedAt, `${label}.generatedAt`);
-  const filter = asStrictRecord(model.filter, `${label}.filter`, [
-    "projectId",
-    "localeBranchId",
-    "sourceRevisionId",
-    "kind",
-    "includeStale",
-  ]);
-  assertString(filter.projectId, `${label}.filter.projectId`);
-  assertString(filter.localeBranchId, `${label}.filter.localeBranchId`);
-  assertNullableString(filter.sourceRevisionId, `${label}.filter.sourceRevisionId`);
-  if (filter.kind !== null) {
-    assertEnum(filter.kind, wikiContextEntryKindList, `${label}.filter.kind`);
-  }
-  assertBoolean(filter.includeStale, `${label}.filter.includeStale`);
-  assertWikiContextPagination(model.pagination, `${label}.pagination`);
-  const entries = asArray(model.entries, `${label}.entries`);
-  for (const [index, entry] of entries.entries()) {
-    assertWikiContextEntry(entry, `${label}.entries[${index}]`);
-  }
-}
-
-/** Assert detail/content/provenance/history returned by `wiki.show`. */
-export function assertWikiShowResponse(
-  value: unknown,
-  label = "WikiContextEntryReadModel",
-): asserts value is ApiWikiShowResponse {
-  const model = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.WikiContextEntryReadModel,
-  );
-  assertLiteral(model.schemaVersion, "wiki.context.entry.v0.1", `${label}.schemaVersion`);
-  assertDateLike(model.generatedAt, `${label}.generatedAt`);
-  assertWikiContextEntry(model.entry, `${label}.entry`, { includesHistory: true });
-}
-
-/** Assert immutable context-entry lineage returned by `wiki.history`. */
-export function assertWikiHistoryResponse(
-  value: unknown,
-  label = "WikiContextEntryHistoryReadModel",
-): asserts value is ApiWikiHistoryResponse {
-  const model = asStrictRecord(
-    value,
-    label,
-    ITOTORI_STRICT_API_BODY_KEYS.WikiContextEntryHistoryReadModel,
-  );
-  assertLiteral(model.schemaVersion, "wiki.context.entry-history.v0.1", `${label}.schemaVersion`);
-  assertDateLike(model.generatedAt, `${label}.generatedAt`);
-  assertString(model.contextArtifactId, `${label}.contextArtifactId`);
-  assertNullableString(model.headVersionId, `${label}.headVersionId`);
-  const versions = asArray(model.versions, `${label}.versions`);
-  for (const [index, version] of versions.entries()) {
-    assertWikiContextEntryVersion(version, `${label}.versions[${index}]`);
-  }
-}
-
-/** Assert the durable correction/writeback receipt returned by `wiki.edit`. */
-export function assertWikiEditResponse(
-  value: unknown,
-  label = "ApiWikiEditResponse",
-): asserts value is ApiWikiEditResponse {
-  const response = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.ApiWikiEditResponse);
-  assertLiteral(response.schemaVersion, "wiki.context.edit.v0.2", `${label}.schemaVersion`);
+  assertLiteral(response.schemaVersion, "itotori.wiki.objects.v1", `${label}.schemaVersion`);
   assertDateLike(response.generatedAt, `${label}.generatedAt`);
-  assertString(response.correctionId, `${label}.correctionId`);
-  assertString(response.contextArtifactId, `${label}.contextArtifactId`);
-  assertString(response.contextEntryVersionId, `${label}.contextEntryVersionId`);
-  assertStringArray(response.affectedUnitIds, `${label}.affectedUnitIds`);
-  assertStringArray(response.invalidatedArtifactIds, `${label}.invalidatedArtifactIds`);
-  assertString(response.redraftJobId, `${label}.redraftJobId`);
-  assertContextCorrectionRerunStatus(response.rerun, `${label}.rerun`);
-  assertWikiContextEntry(response.entry, `${label}.entry`, { includesHistory: true });
-}
-
-function assertContextCorrectionRerunStatus(value: unknown, label: string): void {
-  const rerun = asStrictRecord(value, label, ["state", "jobStatus", "error"]);
-  assertEnum(rerun.state, ["succeeded", "pending", "failed"] as const, `${label}.state`);
-  assertNullableString(rerun.error, `${label}.error`);
-  switch (rerun.state) {
-    case "succeeded":
-      assertLiteral(rerun.jobStatus, "succeeded", `${label}.jobStatus`);
-      if (rerun.error !== null) {
-        throw new Error(`${label}.error must be null when rerun.state is succeeded`);
-      }
-      return;
-    case "pending":
-      assertEnum(
-        rerun.jobStatus,
-        ["queued", "running", "retry_waiting"] as const,
-        `${label}.jobStatus`,
-      );
-      return;
-    case "failed":
-      assertEnum(rerun.jobStatus, ["dead_letter", "cancelled"] as const, `${label}.jobStatus`);
-      return;
+  assertString(response.snapshotId, `${label}.snapshotId`);
+  for (const [index, view] of asArray(response.sourceObjects, `${label}.sourceObjects`).entries()) {
+    assertWikiObjectView(view, `${label}.sourceObjects[${index}]`, "source");
+  }
+  for (const [index, view] of asArray(response.renderings, `${label}.renderings`).entries()) {
+    assertWikiObjectView(view, `${label}.renderings[${index}]`, "rendering");
   }
 }
 
-/** Parse the only client-controlled fields of an existing canonical wiki edit. */
-export function parseWikiEditRequest(body: unknown): ApiWikiEditRequest {
-  return parseRequest("ApiWikiEditRequest", () => {
-    const request = asStrictRecord(body, "ApiWikiEditRequest", [
-      "body",
-      "reason",
-      "title",
-      "affectedUnitIds",
-    ]);
-    assertString(request.body, "ApiWikiEditRequest.body");
-    assertString(request.reason, "ApiWikiEditRequest.reason");
-    const parsed: ApiWikiEditRequest = {
-      body: request.body.trim(),
-      reason: request.reason.trim(),
-    };
-    if (parsed.body.length === 0) {
-      throw new Error("ApiWikiEditRequest.body must be non-blank");
-    }
-    if (parsed.reason.length === 0) {
-      throw new Error("ApiWikiEditRequest.reason must be non-blank");
-    }
-    if (request.title !== undefined) {
-      assertString(request.title, "ApiWikiEditRequest.title");
-      const title = request.title.trim();
-      if (title.length === 0) {
-        throw new Error("ApiWikiEditRequest.title must be non-blank");
-      }
-      parsed.title = title;
-    }
-    if (request.affectedUnitIds !== undefined) {
-      const values = asArray(request.affectedUnitIds, "ApiWikiEditRequest.affectedUnitIds");
-      parsed.affectedUnitIds = values.map((value, index) => {
-        assertString(value, `ApiWikiEditRequest.affectedUnitIds[${index}]`);
-        const unitId = value.trim();
-        if (unitId.length === 0) {
-          throw new Error(`ApiWikiEditRequest.affectedUnitIds[${index}] must be non-blank`);
-        }
-        return unitId;
-      });
-    }
-    return parsed;
-  });
-}
-
-/** Parse a new note/glossary/style entry with an explicit source-unit scope. */
-export function parseWikiAddRequest(body: unknown): ApiWikiAddRequest {
-  return parseRequest("ApiWikiAddRequest", () => {
-    const request = asStrictRecord(body, "ApiWikiAddRequest", [
-      "sourceRevisionId",
-      "kind",
-      "title",
-      "body",
-      "reason",
-      "affectedUnitIds",
-    ]);
-    assertString(request.sourceRevisionId, "ApiWikiAddRequest.sourceRevisionId");
-    assertEnum(request.kind, ["note", "glossary", "style"] as const, "ApiWikiAddRequest.kind");
-    assertString(request.title, "ApiWikiAddRequest.title");
-    assertString(request.body, "ApiWikiAddRequest.body");
-    assertString(request.reason, "ApiWikiAddRequest.reason");
-    const affectedUnitIds = asArray(
-      request.affectedUnitIds,
-      "ApiWikiAddRequest.affectedUnitIds",
-    ).map((value, index) => {
-      assertString(value, `ApiWikiAddRequest.affectedUnitIds[${index}]`);
-      const unitId = value.trim();
-      if (unitId.length === 0) {
-        throw new Error(`ApiWikiAddRequest.affectedUnitIds[${index}] must be non-blank`);
-      }
-      return unitId;
-    });
-    if (affectedUnitIds.length === 0) {
-      throw new Error("ApiWikiAddRequest.affectedUnitIds must contain at least one unit");
-    }
-    const parsed = {
-      sourceRevisionId: request.sourceRevisionId.trim(),
-      kind: request.kind,
-      title: request.title.trim(),
-      body: request.body.trim(),
-      reason: request.reason.trim(),
-      affectedUnitIds,
-    };
-    for (const [key, value] of Object.entries(parsed)) {
-      if (typeof value === "string" && value.length === 0) {
-        throw new Error(`ApiWikiAddRequest.${key} must be non-blank`);
-      }
-    }
-    return parsed;
-  });
-}
-
-function assertWikiContextPagination(value: unknown, label: string): void {
-  const pagination = asStrictRecord(value, label, [
-    "total",
-    "limit",
-    "offset",
-    "hasMore",
-    "nextOffset",
+export function assertWikiObjectShowResponse(
+  value: unknown,
+  label = "ApiWikiObjectShowResponse",
+): asserts value is ApiWikiShowResponse {
+  const response = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectShowResponse,
+  );
+  assertLiteral(response.schemaVersion, "itotori.wiki.object.v1", `${label}.schemaVersion`);
+  assertDateLike(response.generatedAt, `${label}.generatedAt`);
+  assertWikiObjectView(response.view, `${label}.view`);
+  assertWikiHistory(response.history, `${label}.history`);
+  const impact = asStrictRecord(response.dependencyImpact, `${label}.dependencyImpact`, [
+    "dependents",
   ]);
-  assertNonNegativeInteger(pagination.total, `${label}.total`);
-  assertPositiveInteger(pagination.limit, `${label}.limit`);
-  assertNonNegativeInteger(pagination.offset, `${label}.offset`);
-  assertBoolean(pagination.hasMore, `${label}.hasMore`);
-  if (pagination.nextOffset !== null) {
-    assertNonNegativeInteger(pagination.nextOffset, `${label}.nextOffset`);
+  for (const [index, dependent] of asArray(
+    impact.dependents,
+    `${label}.dependencyImpact.dependents`,
+  ).entries()) {
+    assertWikiDependent(dependent, `${label}.dependencyImpact.dependents[${index}]`);
   }
 }
 
-function assertWikiContextEntry(
+export function assertWikiObjectHistoryResponse(
+  value: unknown,
+  label = "ApiWikiObjectHistoryResponse",
+): asserts value is ApiWikiHistoryResponse {
+  const response = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectHistoryResponse,
+  );
+  assertLiteral(response.schemaVersion, "itotori.wiki.history.v1", `${label}.schemaVersion`);
+  assertDateLike(response.generatedAt, `${label}.generatedAt`);
+  assertWikiObjectView(response.view, `${label}.view`);
+  assertWikiHistory(response.history, `${label}.history`);
+}
+
+export function assertWikiObjectWriteResponse(
+  value: unknown,
+  label = "ApiWikiObjectWriteResponse",
+): asserts value is ApiWikiEditResponse {
+  const response = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectWriteResponse,
+  );
+  assertLiteral(response.schemaVersion, "itotori.wiki.write.v1", `${label}.schemaVersion`);
+  assertDateLike(response.generatedAt, `${label}.generatedAt`);
+  assertWikiWriteReceipt(response.receipt, `${label}.receipt`);
+  assertWikiHistory(response.history, `${label}.history`);
+  assertImpactSet(response.dependencyImpact, `${label}.dependencyImpact`);
+}
+
+export function assertWikiApplyResponse(
+  value: unknown,
+  label = "ApiWikiObjectApplyResponse",
+): asserts value is ApiWikiApplyResponse {
+  const response = asStrictRecord(
+    value,
+    label,
+    ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectApplyResponse,
+  );
+  assertLiteral(response.schemaVersion, "itotori.wiki.apply.v1", `${label}.schemaVersion`);
+  assertDateLike(response.generatedAt, `${label}.generatedAt`);
+  const receipt = asStrictRecord(response.receipt, `${label}.receipt`, [
+    "enhancementLaunched",
+    "head",
+    "view",
+    "badges",
+    "coalescedInputCount",
+    "resolvedConflictCount",
+    "dependencyImpact",
+  ]);
+  if (receipt.enhancementLaunched !== true) {
+    throw new Error(`${label}.receipt.enhancementLaunched must be true`);
+  }
+  assertWikiHead(receipt.head, `${label}.receipt.head`);
+  assertWikiObjectView(receipt.view, `${label}.receipt.view`);
+  assertWikiBadges(receipt.badges, `${label}.receipt.badges`);
+  assertNonNegativeInteger(receipt.coalescedInputCount, `${label}.receipt.coalescedInputCount`);
+  assertNonNegativeInteger(receipt.resolvedConflictCount, `${label}.receipt.resolvedConflictCount`);
+  assertImpactSet(receipt.dependencyImpact, `${label}.receipt.dependencyImpact`);
+  assertWikiHistory(response.history, `${label}.history`);
+  assertImpactSet(response.dependencyImpact, `${label}.dependencyImpact`);
+}
+
+export function parseWikiWriteRequest(body: unknown): ApiWikiWriteRequest {
+  return parseRequest("ApiWikiWriteRequest", () => {
+    const request = asStrictRecord(body, "ApiWikiWriteRequest", ["input", "assertion"]);
+    asRecord(request.input, "ApiWikiWriteRequest.input");
+    if (request.assertion === undefined)
+      throw new Error("ApiWikiWriteRequest.assertion is required");
+    return {
+      input: request.input,
+      assertion: parseWikiWriteAssertion(request.assertion, "ApiWikiWriteRequest.assertion"),
+    };
+  });
+}
+
+export function parseWikiApplyRequest(body: unknown): ApiWikiApplyRequest {
+  return parseRequest("ApiWikiApplyRequest", () => {
+    const request = asStrictRecord(body, "ApiWikiApplyRequest", ["inputIds", "assertion"]);
+    const inputIds = asArray(request.inputIds, "ApiWikiApplyRequest.inputIds").map(
+      (value, index) => {
+        assertString(value, `ApiWikiApplyRequest.inputIds[${index}]`);
+        if (value.trim().length === 0)
+          throw new Error(`ApiWikiApplyRequest.inputIds[${index}] must be non-blank`);
+        return value;
+      },
+    );
+    if (inputIds.length === 0) throw new Error("ApiWikiApplyRequest.inputIds must be non-empty");
+    if (new Set(inputIds).size !== inputIds.length)
+      throw new Error("ApiWikiApplyRequest.inputIds must be unique");
+    if (request.assertion === undefined)
+      throw new Error("ApiWikiApplyRequest.assertion is required");
+    return {
+      inputIds,
+      assertion: parseWikiWriteAssertion(request.assertion, "ApiWikiApplyRequest.assertion"),
+    };
+  });
+}
+
+function parseWikiWriteAssertion(value: unknown, label: string): WikiWriteAssertion {
+  const assertion = asStrictRecord(value, label, ["category", "contextSnapshotId", "routeScope"]);
+  const result: {
+    category?: string;
+    contextSnapshotId?: string;
+    routeScope?: NonNullable<WikiWriteAssertion["routeScope"]>;
+  } = {};
+  assertString(assertion.category, `${label}.category`);
+  assertEnum(
+    assertion.category,
+    [
+      "style-contract",
+      "term-ruling",
+      "scene-summary",
+      "story-so-far",
+      "route-arc",
+      "voice-profile",
+      "adaptation-note",
+      "character-bio",
+      "character-background",
+      "character-route-arc",
+      "speaker-hypothesis",
+      "translation",
+    ] as const,
+    `${label}.category`,
+  );
+  result.category = assertion.category;
+  assertString(assertion.contextSnapshotId, `${label}.contextSnapshotId`);
+  result.contextSnapshotId = assertion.contextSnapshotId;
+  if (assertion.routeScope !== undefined)
+    result.routeScope = parseWikiRouteScope(assertion.routeScope, `${label}.routeScope`);
+  return result;
+}
+
+function parseWikiRouteScope(
   value: unknown,
   label: string,
-  options: { includesHistory?: boolean } = {},
+): NonNullable<WikiWriteAssertion["routeScope"]> {
+  const scope = asRecord(value, label);
+  assertString(scope.kind, `${label}.kind`);
+  if (scope.kind === "global") {
+    asStrictRecord(scope, label, ["kind"]);
+    return { kind: "global" };
+  }
+  if (scope.kind === "route") {
+    const route = asStrictRecord(scope, label, ["kind", "routeId"]);
+    assertString(route.routeId, `${label}.routeId`);
+    return { kind: "route", routeId: route.routeId };
+  }
+  if (scope.kind === "route-set") {
+    const routes = asStrictRecord(scope, label, ["kind", "routeIds"]);
+    const routeIds = asArray(routes.routeIds, `${label}.routeIds`);
+    if (routeIds.length === 0) throw new Error(`${label}.routeIds must be non-empty`);
+    routeIds.forEach((routeId, index) => assertString(routeId, `${label}.routeIds[${index}]`));
+    return { kind: "route-set", routeIds: routeIds as string[] };
+  }
+  throw new Error(`${label}.kind must be global, route, or route-set`);
+}
+
+function assertWikiObjectView(
+  value: unknown,
+  label: string,
+  expectedKind?: "source" | "rendering",
 ): void {
-  const entry = asStrictRecord(value, label, [
-    "contextArtifactId",
-    "projectId",
-    "localeBranchId",
-    "sourceRevisionId",
-    "category",
-    "kind",
-    "status",
-    "title",
-    "body",
-    "data",
-    "contentHash",
-    "headVersionId",
-    "versionCount",
-    "provenance",
-    "citations",
-    "impact",
-    "createdAt",
-    "updatedAt",
-    ...(options.includesHistory === true ? ["history"] : []),
-  ]);
-  assertString(entry.contextArtifactId, `${label}.contextArtifactId`);
-  assertString(entry.projectId, `${label}.projectId`);
-  assertString(entry.localeBranchId, `${label}.localeBranchId`);
-  assertString(entry.sourceRevisionId, `${label}.sourceRevisionId`);
-  assertEnum(entry.category, wikiContextArtifactCategoryList, `${label}.category`);
-  assertEnum(entry.kind, wikiContextEntryKindList, `${label}.kind`);
-  assertEnum(entry.status, wikiContextArtifactStatusList, `${label}.status`);
-  assertString(entry.title, `${label}.title`);
-  assertString(entry.body, `${label}.body`);
-  asRecord(entry.data, `${label}.data`);
-  assertString(entry.contentHash, `${label}.contentHash`);
-  assertNullableString(entry.headVersionId, `${label}.headVersionId`);
-  assertNonNegativeInteger(entry.versionCount, `${label}.versionCount`);
-  assertWikiContextProvenance(entry.provenance, `${label}.provenance`);
-  const citations = asArray(entry.citations, `${label}.citations`);
-  for (const [index, citation] of citations.entries()) {
-    assertWikiContextCitation(citation, `${label}.citations[${index}]`);
+  const view = asRecord(value, label);
+  assertString(view.kind, `${label}.kind`);
+  if (expectedKind !== undefined) assertLiteral(view.kind, expectedKind, `${label}.kind`);
+  if (view.kind === "source") {
+    const source = asStrictRecord(view, label, [
+      "kind",
+      "objectId",
+      "wikiKind",
+      "category",
+      "version",
+      "lang",
+      "subject",
+      "routeScope",
+      "badges",
+      "claims",
+      "citations",
+      "media",
+    ]);
+    assertString(source.objectId, `${label}.objectId`);
+    assertString(source.wikiKind, `${label}.wikiKind`);
+    assertString(source.category, `${label}.category`);
+    assertPositiveInteger(source.version, `${label}.version`);
+    assertString(source.lang, `${label}.lang`);
+    asRecord(source.subject, `${label}.subject`);
+    assertWikiRouteScope(source.routeScope, `${label}.routeScope`);
+    assertWikiBadges(source.badges, `${label}.badges`);
+    asArray(source.claims, `${label}.claims`).forEach((claim, index) =>
+      assertWikiClaim(claim, `${label}.claims[${index}]`),
+    );
+    asArray(source.citations, `${label}.citations`).forEach((citation, index) =>
+      assertWikiCitation(citation, `${label}.citations[${index}]`),
+    );
+    asArray(source.media, `${label}.media`).forEach((media, index) =>
+      asRecord(media, `${label}.media[${index}]`),
+    );
+    return;
   }
-  assertWikiContextImpact(entry.impact, `${label}.impact`);
-  assertDateLike(entry.createdAt, `${label}.createdAt`);
-  assertDateLike(entry.updatedAt, `${label}.updatedAt`);
-  if (options.includesHistory === true) {
-    const history = asArray(entry.history, `${label}.history`);
-    for (const [index, version] of history.entries()) {
-      assertWikiContextEntryVersion(version, `${label}.history[${index}]`);
-    }
+  if (view.kind === "rendering") {
+    const rendering = asStrictRecord(view, label, [
+      "kind",
+      "renderingId",
+      "sourceObjectId",
+      "category",
+      "version",
+      "targetLanguage",
+      "routeScope",
+      "badges",
+      "claimRenderings",
+    ]);
+    assertString(rendering.renderingId, `${label}.renderingId`);
+    assertString(rendering.sourceObjectId, `${label}.sourceObjectId`);
+    assertString(rendering.category, `${label}.category`);
+    assertPositiveInteger(rendering.version, `${label}.version`);
+    assertString(rendering.targetLanguage, `${label}.targetLanguage`);
+    assertWikiRouteScope(rendering.routeScope, `${label}.routeScope`);
+    assertWikiBadges(rendering.badges, `${label}.badges`);
+    asArray(rendering.claimRenderings, `${label}.claimRenderings`).forEach((claim, index) => {
+      const entry = asStrictRecord(claim, `${label}.claimRenderings[${index}]`, [
+        "claimId",
+        "text",
+      ]);
+      assertString(entry.claimId, `${label}.claimRenderings[${index}].claimId`);
+      assertString(entry.text, `${label}.claimRenderings[${index}].text`);
+    });
+    return;
   }
+  throw new Error(`${label}.kind must be source or rendering`);
 }
 
-function assertWikiContextEntryVersion(value: unknown, label: string): void {
-  const version = asStrictRecord(value, label, [
-    "contextEntryVersionId",
-    "contextArtifactId",
-    "parentVersionId",
-    "projectId",
-    "localeBranchId",
-    "sourceRevisionId",
-    "category",
-    "kind",
-    "status",
-    "title",
-    "body",
-    "data",
-    "contentHash",
-    "provenance",
-    "citations",
-    "impact",
-    "createdAt",
-    "isHead",
-  ]);
-  assertString(version.contextEntryVersionId, `${label}.contextEntryVersionId`);
-  assertString(version.contextArtifactId, `${label}.contextArtifactId`);
-  assertNullableString(version.parentVersionId, `${label}.parentVersionId`);
-  assertString(version.projectId, `${label}.projectId`);
-  assertString(version.localeBranchId, `${label}.localeBranchId`);
-  assertString(version.sourceRevisionId, `${label}.sourceRevisionId`);
-  assertEnum(version.category, wikiContextArtifactCategoryList, `${label}.category`);
-  assertEnum(version.kind, wikiContextEntryKindList, `${label}.kind`);
-  assertEnum(version.status, wikiContextArtifactStatusList, `${label}.status`);
-  assertString(version.title, `${label}.title`);
-  assertString(version.body, `${label}.body`);
-  asRecord(version.data, `${label}.data`);
-  assertString(version.contentHash, `${label}.contentHash`);
-  assertWikiContextProvenance(version.provenance, `${label}.provenance`);
-  const citations = asArray(version.citations, `${label}.citations`);
-  for (const [index, citation] of citations.entries()) {
-    assertWikiContextCitation(citation, `${label}.citations[${index}]`);
-  }
-  assertWikiContextImpact(version.impact, `${label}.impact`);
-  assertDateLike(version.createdAt, `${label}.createdAt`);
-  assertBoolean(version.isHead, `${label}.isHead`);
+function assertWikiRouteScope(value: unknown, label: string): void {
+  parseWikiRouteScope(value, label);
 }
 
-function assertWikiContextCitation(value: unknown, label: string): void {
+function assertWikiBadges(value: unknown, label: string): void {
+  const badges = asStrictRecord(value, label, [
+    "provisional",
+    "contextScope",
+    "runMode",
+    "editedBy",
+  ]);
+  assertBoolean(badges.provisional, `${label}.provisional`);
+  assertNullableString(badges.contextScope, `${label}.contextScope`);
+  assertString(badges.runMode, `${label}.runMode`);
+  assertNullableString(badges.editedBy, `${label}.editedBy`);
+}
+
+function assertWikiClaim(value: unknown, label: string): void {
+  const claim = asStrictRecord(value, label, [
+    "claimId",
+    "statement",
+    "scope",
+    "kind",
+    "confidence",
+    "supersedesClaimId",
+    "citations",
+  ]);
+  assertString(claim.claimId, `${label}.claimId`);
+  assertString(claim.statement, `${label}.statement`);
+  assertWikiRouteScope(claim.scope, `${label}.scope`);
+  assertString(claim.kind, `${label}.kind`);
+  assertString(claim.confidence, `${label}.confidence`);
+  assertNullableString(claim.supersedesClaimId, `${label}.supersedesClaimId`);
+  asArray(claim.citations, `${label}.citations`).forEach((citation, index) =>
+    assertWikiCitation(citation, `${label}.citations[${index}]`),
+  );
+}
+
+function assertWikiCitation(value: unknown, label: string): void {
   const citation = asStrictRecord(value, label, [
-    "bridgeUnitId",
-    "sourceRevisionId",
-    "sourceHash",
-    "citation",
-    "metadata",
+    "claimId",
+    "evidenceId",
+    "evidenceHash",
+    "snapshotId",
+    "subject",
+    "role",
+    "playOrderIndex",
+    "quotedSpan",
   ]);
-  assertString(citation.bridgeUnitId, `${label}.bridgeUnitId`);
-  assertString(citation.sourceRevisionId, `${label}.sourceRevisionId`);
-  assertString(citation.sourceHash, `${label}.sourceHash`);
-  assertString(citation.citation, `${label}.citation`);
-  asRecord(citation.metadata, `${label}.metadata`);
+  assertString(citation.claimId, `${label}.claimId`);
+  assertString(citation.evidenceId, `${label}.evidenceId`);
+  assertString(citation.evidenceHash, `${label}.evidenceHash`);
+  assertString(citation.snapshotId, `${label}.snapshotId`);
+  asRecord(citation.subject, `${label}.subject`);
+  assertString(citation.role, `${label}.role`);
+  assertNonNegativeInteger(citation.playOrderIndex, `${label}.playOrderIndex`);
+  assertNullableString(citation.quotedSpan, `${label}.quotedSpan`);
 }
 
-function assertWikiContextProvenance(value: unknown, label: string): void {
-  const provenance = asStrictRecord(value, label, [
-    "producedByAgent",
-    "producedByTool",
-    "producerVersion",
-    "createdByUserId",
-    "origin",
-    "runId",
-    "providerRunId",
-    "provenance",
-  ]);
-  assertNullableString(provenance.producedByAgent, `${label}.producedByAgent`);
-  assertNullableString(provenance.producedByTool, `${label}.producedByTool`);
-  assertString(provenance.producerVersion, `${label}.producerVersion`);
-  assertNullableString(provenance.createdByUserId, `${label}.createdByUserId`);
-  assertNullableString(provenance.origin, `${label}.origin`);
-  assertNullableString(provenance.runId, `${label}.runId`);
-  assertNullableString(provenance.providerRunId, `${label}.providerRunId`);
-  asRecord(provenance.provenance, `${label}.provenance`);
+function assertWikiHistory(value: unknown, label: string): void {
+  asArray(value, label).forEach((entry, index) => {
+    const history = asStrictRecord(entry, `${label}[${index}]`, [
+      "version",
+      "supersedesVersion",
+      "contentHash",
+      "editedBy",
+      "provisional",
+      "createdAt",
+    ]);
+    assertPositiveInteger(history.version, `${label}[${index}].version`);
+    if (history.supersedesVersion !== null)
+      assertPositiveInteger(history.supersedesVersion, `${label}[${index}].supersedesVersion`);
+    assertString(history.contentHash, `${label}[${index}].contentHash`);
+    assertNullableString(history.editedBy, `${label}[${index}].editedBy`);
+    assertBoolean(history.provisional, `${label}[${index}].provisional`);
+    assertDateLike(history.createdAt, `${label}[${index}].createdAt`);
+  });
 }
 
-function assertWikiContextImpact(value: unknown, label: string): void {
+function assertWikiDependent(value: unknown, label: string): void {
+  const dependent = asStrictRecord(value, label, [
+    "downstreamObjectId",
+    "downstreamWikiKind",
+    "downstreamVersion",
+    "claimId",
+    "fieldPath",
+    "renderingId",
+    "protectedHuman",
+  ]);
+  assertString(dependent.downstreamObjectId, `${label}.downstreamObjectId`);
+  assertString(dependent.downstreamWikiKind, `${label}.downstreamWikiKind`);
+  assertPositiveInteger(dependent.downstreamVersion, `${label}.downstreamVersion`);
+  assertNullableString(dependent.claimId, `${label}.claimId`);
+  assertStringArray(dependent.fieldPath, `${label}.fieldPath`);
+  assertNullableString(dependent.renderingId, `${label}.renderingId`);
+  assertBoolean(dependent.protectedHuman, `${label}.protectedHuman`);
+}
+
+function assertWikiHead(value: unknown, label: string): void {
+  const head = asStrictRecord(value, label, ["objectId", "version", "contentHash"]);
+  assertString(head.objectId, `${label}.objectId`);
+  assertPositiveInteger(head.version, `${label}.version`);
+  assertString(head.contentHash, `${label}.contentHash`);
+}
+
+function assertWikiWriteReceipt(value: unknown, label: string): void {
+  const receipt = asStrictRecord(value, label, [
+    "durable",
+    "inputId",
+    "head",
+    "view",
+    "badges",
+    "dependencyImpact",
+  ]);
+  if (receipt.durable !== true) throw new Error(`${label}.durable must be true`);
+  assertString(receipt.inputId, `${label}.inputId`);
+  assertWikiHead(receipt.head, `${label}.head`);
+  assertWikiObjectView(receipt.view, `${label}.view`);
+  assertWikiBadges(receipt.badges, `${label}.badges`);
+  assertImpactSet(receipt.dependencyImpact, `${label}.dependencyImpact`);
+}
+
+function assertImpactSet(value: unknown, label: string): void {
   const impact = asStrictRecord(value, label, [
-    "affectedUnitIds",
-    "invalidatedReason",
-    "invalidatedAt",
+    "upstreamObjectId",
+    "priorVersion",
+    "nextVersion",
+    "consumers",
+    "enhancementWork",
+    "reviewerWork",
+    "impactSetHash",
   ]);
-  assertStringArray(impact.affectedUnitIds, `${label}.affectedUnitIds`);
-  assertNullableString(impact.invalidatedReason, `${label}.invalidatedReason`);
-  assertNullableDateLike(impact.invalidatedAt, `${label}.invalidatedAt`);
+  assertString(impact.upstreamObjectId, `${label}.upstreamObjectId`);
+  assertPositiveInteger(impact.priorVersion, `${label}.priorVersion`);
+  assertPositiveInteger(impact.nextVersion, `${label}.nextVersion`);
+  asArray(impact.consumers, `${label}.consumers`).forEach((consumer, index) => {
+    const record = asRecord(consumer, `${label}.consumers[${index}]`);
+    assertString(record.downstreamObjectId, `${label}.consumers[${index}].downstreamObjectId`);
+  });
+  assertStringArray(impact.enhancementWork, `${label}.enhancementWork`);
+  assertStringArray(impact.reviewerWork, `${label}.reviewerWork`);
+  assertString(impact.impactSetHash, `${label}.impactSetHash`);
 }
 
 export function assertCatalogOpportunityRankingReadModel(

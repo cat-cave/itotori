@@ -197,87 +197,52 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       properties: { query: str, normalizedQuery: str, localeBranchId: str, results: arr },
       additionalProperties: true,
     }),
-  WikiContextEntriesReadModel: () =>
+  ApiWikiWriteRequest: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.WikiContextEntriesReadModel,
-      properties: {
-        generatedAt: str,
-        filter: obj,
-        pagination: obj,
-        entries: arr,
-      },
-      additionalProperties: false,
-      schemaVersion: "wiki.context.entries.v0.1",
-    }),
-  WikiContextEntryReadModel: () =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.WikiContextEntryReadModel,
-      properties: { generatedAt: str, entry: obj },
-      additionalProperties: false,
-      schemaVersion: "wiki.context.entry.v0.1",
-    }),
-  WikiContextEntryHistoryReadModel: () =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.WikiContextEntryHistoryReadModel,
-      properties: {
-        generatedAt: str,
-        contextArtifactId: str,
-        headVersionId: nullableStr,
-        versions: arr,
-      },
-      additionalProperties: false,
-      schemaVersion: "wiki.context.entry-history.v0.1",
-    }),
-  ApiWikiEditRequest: () =>
-    object({
-      required: ["body", "reason"],
-      properties: {
-        body: str,
-        reason: str,
-        title: str,
-        affectedUnitIds: arr,
-      },
+      required: ["input", "assertion"],
+      properties: { input: obj, assertion: obj },
       additionalProperties: false,
     }),
-  ApiWikiAddRequest: () =>
+  ApiWikiApplyRequest: () =>
     object({
-      required: ["sourceRevisionId", "kind", "title", "body", "reason", "affectedUnitIds"],
-      properties: {
-        sourceRevisionId: str,
-        kind: { enum: ["note", "glossary", "style"] },
-        title: str,
-        body: str,
-        reason: str,
-        affectedUnitIds: arr,
-      },
+      required: ["inputIds", "assertion"],
+      properties: { inputIds: arr, assertion: obj },
       additionalProperties: false,
     }),
-  ApiWikiEditResponse: () =>
+  ApiWikiObjectListResponse: () =>
     object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.ApiWikiEditResponse,
-      properties: {
-        generatedAt: str,
-        correctionId: str,
-        contextArtifactId: str,
-        contextEntryVersionId: str,
-        affectedUnitIds: arr,
-        invalidatedArtifactIds: arr,
-        redraftJobId: str,
-        rerun: object({
-          required: ["state", "jobStatus", "error"],
-          properties: {
-            state: { enum: ["succeeded", "pending", "failed"] },
-            jobStatus: {
-              enum: ["queued", "running", "retry_waiting", "succeeded", "dead_letter", "cancelled"],
-            },
-            error: nullableStr,
-          },
-          additionalProperties: false,
-        }),
-        entry: obj,
-      },
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectListResponse,
+      properties: { generatedAt: str, snapshotId: str, sourceObjects: arr, renderings: arr },
       additionalProperties: false,
-      schemaVersion: "wiki.context.edit.v0.2",
+      schemaVersion: "itotori.wiki.objects.v1",
+    }),
+  ApiWikiObjectShowResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectShowResponse,
+      properties: { generatedAt: str, view: obj, history: arr, dependencyImpact: obj },
+      additionalProperties: false,
+      schemaVersion: "itotori.wiki.object.v1",
+    }),
+  ApiWikiObjectHistoryResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectHistoryResponse,
+      properties: { generatedAt: str, view: obj, history: arr },
+      additionalProperties: false,
+      schemaVersion: "itotori.wiki.history.v1",
+    }),
+  ApiWikiObjectWriteResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectWriteResponse,
+      properties: { generatedAt: str, receipt: obj, history: arr, dependencyImpact: obj },
+      additionalProperties: false,
+      schemaVersion: "itotori.wiki.write.v1",
+    }),
+  ApiWikiObjectApplyResponse: () =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiWikiObjectApplyResponse,
+      properties: { generatedAt: str, receipt: obj, history: arr, dependencyImpact: obj },
+      additionalProperties: false,
+      schemaVersion: "itotori.wiki.apply.v1",
     }),
 
   // Projects / dashboards --------------------------------------------------

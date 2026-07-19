@@ -37,6 +37,7 @@ export type A8FailureCode =
   | "unverified-bio"
   | "unknown-counterpart"
   | "unknown-establishing-scene"
+  | "missing-establishing-scene"
   | "unreachable-scene"
   | "out-of-route-scene"
   | "unreachable-scope"

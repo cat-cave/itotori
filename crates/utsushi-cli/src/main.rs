@@ -1,6 +1,7 @@
 mod conform;
 mod coverage_export;
 mod dispatch_gate;
+mod fixture_runtime;
 mod kag_plaintext_replay;
 mod mvmz_patched_runtime_proof;
 mod mvmz_runtime_proof;
@@ -16,23 +17,16 @@ mod structure;
 mod trace_kag;
 
 use std::path::PathBuf;
-use std::sync::OnceLock;
 
+use fixture_runtime::runtime_registry;
 use serde_json::{Value, json};
 use utsushi_core::{
     RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeOperation, RuntimeRequest, write_json,
 };
+use utsushi_fixture::FixtureEnginePort;
 
 const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine reallive --seen <PATH> --scene <N> --gameexe <PATH> --g00-dir <DIR> --output <PATH>\n       utsushi replay-validate --engine reallive --seen <PATH> --scene <N> --gameexe <PATH> --g00-dir <DIR> --print-replay-log <PATH> [--print-textlines] [--dispatch-report <PATH>] [--require-semantic-reached-path]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--message-index <N>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi structure --gameexe <PATH> --seen <PATH> --output <PATH> [--entry-scene <N>] [--max-scenes <N>]\n       utsushi patch-render --engine reallive --seen <PATH> --translated-bundle <PATH> --scene <N> --gameexe <PATH> --game-dir <DIR> --patched-seen-output <PATH> --artifact-root <DIR> [--scope dialogue|dialogue+choices] [--redaction on|off] [--bg-asset <STEM>] [--expect-text-contains <SUBSTR>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi trace-kag <script.ks> --output <PATH>\n       utsushi coverage-export --read-model <PATH> --generated-at <RFC3339> --output <PATH> [--markdown-output <PATH>] [--include-gap-findings]\n       utsushi mvmz-runtime-proof --runtime-trace <PATH> --fixture-dir <DIR> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi mvmz-patched-runtime-proof --patched-runtime-trace <PATH> --patched-fixture-dir <DIR> --patch-result <PATH> --alpha-proof <PATH> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi conform <game_dir> [--adapter <name>] --output <path>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
-const DEFAULT_ADAPTER_NAME: &str = utsushi_fixture::FixtureRuntimeAdapter::NAME;
-
-static FIXTURE_RUNTIME_ADAPTER: OnceLock<utsushi_fixture::FixtureRuntimeAdapter> = OnceLock::new();
-static BROWSER_LAUNCH_ADAPTER: utsushi_fixture::BrowserLaunchAdapter =
-    utsushi_fixture::BrowserLaunchAdapter::new();
-static NWJS_LAUNCH_ADAPTER: utsushi_fixture::NwjsLaunchAdapter =
-    utsushi_fixture::NwjsLaunchAdapter::new();
-static REALLIVE_REPLAY_ADAPTER: replay_registry::RealLiveReplayAdapter =
-    replay_registry::RealLiveReplayAdapter::new();
+const DEFAULT_ADAPTER_NAME: &str = FixtureEnginePort::MANIFEST.id;
 
 fn main() {
     if let Err(error) = run() {
@@ -45,23 +39,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let registry = runtime_registry();
     run_cli_with_registry(&args, &registry)
-}
-
-fn runtime_registry() -> RuntimeAdapterRegistry<'static> {
-    let mut registry = RuntimeAdapterRegistry::new();
-    registry
-        .register(FIXTURE_RUNTIME_ADAPTER.get_or_init(utsushi_fixture::FixtureRuntimeAdapter::new))
-        .expect("fixture runtime adapter descriptor is valid");
-    registry
-        .register(&BROWSER_LAUNCH_ADAPTER)
-        .expect("browser launch adapter descriptor is valid");
-    registry
-        .register(&NWJS_LAUNCH_ADAPTER)
-        .expect("NW.js capability diagnostic descriptor is valid");
-    registry
-        .register(&REALLIVE_REPLAY_ADAPTER)
-        .expect("RealLive replay adapter descriptor is valid");
-    registry
 }
 
 fn run_cli_with_registry(
@@ -227,9 +204,7 @@ fn run_cli_with_registry(
                     // structured diagnostic envelope as JSON on stdout, then
                     // propagate the error so the process exits non-zero (main
                     // renders the human-readable message on stderr).
-                    if let Some(unsupported) =
-                        error.downcast_ref::<utsushi_fixture::UnsupportedInputShape>()
-                    {
+                    if let Some(unsupported) = unsupported_input_shape(error.as_ref()) {
                         println!(
                             "{}",
                             serde_json::to_string(&unsupported.to_diagnostic_json())?
@@ -242,6 +217,19 @@ fn run_cli_with_registry(
         None => return Err(USAGE.into()),
     }
     Ok(())
+}
+
+fn unsupported_input_shape<'a>(
+    error: &'a (dyn std::error::Error + 'static),
+) -> Option<&'a utsushi_fixture::UnsupportedInputShape> {
+    let mut current = Some(error);
+    while let Some(error) = current {
+        if let Some(unsupported) = error.downcast_ref::<utsushi_fixture::UnsupportedInputShape>() {
+            return Some(unsupported);
+        }
+        current = std::error::Error::source(error);
+    }
+    None
 }
 
 /// review-package manifest export.
@@ -924,10 +912,7 @@ mod tests {
         .unwrap();
 
         let report: Value = serde_json::from_str(&fs::read_to_string(&output).unwrap()).unwrap();
-        assert_eq!(
-            report["adapterName"],
-            utsushi_fixture::FixtureRuntimeAdapter::NAME
-        );
+        assert_eq!(report["adapterName"], FixtureEnginePort::MANIFEST.id);
         assert_eq!(report["operation"], "smoke_validation");
         let observations = report["sinkObservations"].as_array().unwrap();
         assert_eq!(observations.len(), 2);

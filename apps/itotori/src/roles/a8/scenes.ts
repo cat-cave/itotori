@@ -2,15 +2,20 @@
 //
 // A relationship is only admissible when the same-game scene it cites as its
 // establishing evidence is REAL, REACHABLE, and route-compatible with the
-// relationship's declared scope. This module derives, from the immutable
-// snapshot alone, one reachability record per scene: its citeable evidence id,
-// whether the reader can actually reach it (the BFS reachability the decode
-// fixed), and the route scope its units live under. It then validates a
+// relationship's declared scope. This module reads the local route-graph tool
+// to derive one reachability record per scene: its citeable evidence id, whether
+// the reader can actually reach it (the BFS reachability the decode fixed), and
+// the route scope its units live under. It then validates a
 // relationship's scope against that topology — a fabricated scene, an unreachable
 // scene, an out-of-route scene, or a scope naming a route no reachable scene
 // carries is rejected loud, never silently accepted.
 
-import { routeScopeVisible, type ReadModel } from "../../read-tools/index.js";
+import {
+  decodeGetRouteGraph,
+  routeScopeVisible,
+  type ReadModel,
+  type ReadToolCaller,
+} from "../../read-tools/index.js";
 import type { RouteScope } from "../../contracts/index.js";
 
 import { A8RoleError, type A8RelationshipDraft } from "./types.js";
@@ -28,60 +33,57 @@ export interface SceneReachability {
 
 export type SceneReachabilityIndex = ReadonlyMap<string, SceneReachability>;
 
-/** The route scope a scene lives under, folded over its units: a scene with any
- * global unit (or no route-bearing unit) is global — it is reachable on every
- * route; otherwise it is the sorted union of the routes its units carry. */
-function sceneRouteScope(routeIds: ReadonlySet<string>, sawGlobal: boolean): RouteScope {
-  if (sawGlobal || routeIds.size === 0) return { kind: "global" };
-  const sorted = [...routeIds].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  return sorted.length === 1
-    ? { kind: "route", routeId: sorted[0]! }
-    : { kind: "route-set", routeIds: sorted };
+const MAX_ROWS = 100_000;
+const MAX_BYTES = 8_388_608;
+
+type RouteNode = Extract<
+  ReturnType<typeof decodeGetRouteGraph>["facts"][number],
+  { value: { kind: "route-node" } }
+>;
+
+/** Read every visible route-graph scene through the strict local tool surface. */
+function routeNodes(model: ReadModel, caller: ReadToolCaller): readonly RouteNode[] {
+  const nodes: RouteNode[] = [];
+  let cursor: string | undefined;
+  do {
+    const result = decodeGetRouteGraph(model, caller, {
+      maxRows: MAX_ROWS,
+      maxBytes: MAX_BYTES,
+      ...(cursor === undefined ? {} : { cursor }),
+    });
+    for (const fact of result.facts) {
+      if (fact.value.kind === "route-node") nodes.push(fact as RouteNode);
+    }
+    cursor = result.page.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+  return nodes;
 }
 
-/** Build the per-scene reachability index from the snapshot: scene reachability
- * from the route topology, and scene route scope folded from its units. */
-export function buildSceneReachabilityIndex(model: ReadModel): SceneReachabilityIndex {
-  const routeIdsByScene = new Map<number, Set<string>>();
-  const globalByScene = new Map<number, boolean>();
-  for (const unit of model.factSnapshot.orderedUnits) {
-    const scope = unit.routeScope;
-    if (scope.kind === "global") {
-      globalByScene.set(unit.sceneId, true);
-      continue;
-    }
-    const ids = routeIdsByScene.get(unit.sceneId) ?? new Set<string>();
-    const routes = scope.kind === "route" ? [scope.routeId] : scope.routeIds;
-    for (const routeId of routes) ids.add(routeId);
-    routeIdsByScene.set(unit.sceneId, ids);
-  }
+/** Build the per-scene reachability index from local story evidence. */
+export function buildSceneReachabilityIndex(
+  model: ReadModel,
+  caller: ReadToolCaller,
+): SceneReachabilityIndex {
   const index = new Map<string, SceneReachability>();
-  for (const scene of model.factSnapshot.scenes) {
-    const evidenceId = sceneEvidenceId(scene.sceneId);
+  for (const scene of routeNodes(model, caller)) {
+    const evidenceId = sceneEvidenceId(scene.value.sceneId);
     index.set(evidenceId, {
       evidenceId,
-      sceneId: String(scene.sceneId),
-      reachable: scene.reachable,
-      routeScope: sceneRouteScope(
-        routeIdsByScene.get(scene.sceneId) ?? new Set<string>(),
-        globalByScene.get(scene.sceneId) ?? false,
-      ),
+      sceneId: scene.value.sceneId,
+      reachable: scene.value.reachable,
+      routeScope: scene.value.routeScopes[0]!,
     });
   }
   return index;
 }
 
-/** The set of routes the reader can actually reach — every route id carried by a
- * unit whose owning scene is reachable. A scope naming a route absent here is
- * unreachable. */
-export function reachableRoutes(model: ReadModel): ReadonlySet<string> {
-  const reachableScenes = new Set(
-    model.factSnapshot.scenes.filter((scene) => scene.reachable).map((scene) => scene.sceneId),
-  );
+/** The set of routes the reader can actually reach, derived from reachable
+ * route-graph scenes. A scope naming a route absent here is unreachable. */
+export function reachableRoutes(sceneIndex: SceneReachabilityIndex): ReadonlySet<string> {
   const routes = new Set<string>();
-  for (const unit of model.factSnapshot.orderedUnits) {
-    if (!reachableScenes.has(unit.sceneId)) continue;
-    const scope = unit.routeScope;
+  for (const scene of sceneIndex.values()) {
+    if (!scene.reachable) continue;
+    const scope = scene.routeScope;
     if (scope.kind === "route") routes.add(scope.routeId);
     else if (scope.kind === "route-set") for (const id of scope.routeIds) routes.add(id);
   }
@@ -112,6 +114,12 @@ export function resolveRelationshipScope(
   routes: ReadonlySet<string>,
 ): readonly string[] {
   const where = `${characterId}->${relationship.counterpartId}`;
+  if (relationship.establishingSceneIds.length === 0) {
+    throw new A8RoleError(
+      "missing-establishing-scene",
+      `relationship ${where} cites no establishing same-game scene`,
+    );
+  }
   const resolved: string[] = [];
   for (const cited of relationship.establishingSceneIds) {
     const scene = sceneIndex.get(cited);

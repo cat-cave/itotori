@@ -13,7 +13,28 @@
 // The model boundary is a RECORDED responder (no network, no DB): the assembly is
 // deterministic and the guarantees are the module's, not the model's.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const localToolCalls = vi.hoisted(
+  () => [] as Array<{ readonly tool: string; readonly roleId: string }>,
+);
+
+vi.mock("../src/read-tools/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/read-tools/index.js")>();
+  return {
+    ...actual,
+    decodeGetCharacterOccurrences: (
+      ...args: Parameters<typeof actual.decodeGetCharacterOccurrences>
+    ) => {
+      localToolCalls.push({ tool: "decode_get_character_occurrences", roleId: args[1].roleId });
+      return actual.decodeGetCharacterOccurrences(...args);
+    },
+    decodeGetRouteGraph: (...args: Parameters<typeof actual.decodeGetRouteGraph>) => {
+      localToolCalls.push({ tool: "decode_get_route_graph", roleId: args[1].roleId });
+      return actual.decodeGetRouteGraph(...args);
+    },
+  };
+});
 
 import { validateWikiObjectClaims } from "../src/wiki/claim-validation.js";
 import { assertRoleAllowed, ReadToolError } from "../src/read-tools/index.js";
@@ -171,6 +192,8 @@ describe("clause 1 — one cited character-background per indexed character; loc
       expect(background.subject).toEqual({ kind: "character", id: characterId });
       expect(background.lang).toBe(model.sourceLanguage);
       expect(background.objectId).toBe(backgroundObjectId(characterId));
+      // Analyst output stays provisional until Wiki acceptance promotes it.
+      expect(background.provisional).toBe(true);
       // The upstream bio is recorded as a provable dependency edge on its artifact.
       expect(
         background.dependencies.some((d) => d.upstreamObjectId === `character-bio:${characterId}`),
@@ -184,6 +207,29 @@ describe("clause 1 — one cited character-background per indexed character; loc
       // Every claim resolves against the snapshot.
       expect(() => validateWikiObjectClaims(background, model)).not.toThrow();
     }
+  });
+
+  it("PROOF: A7 and story inputs traverse A8's local tools, never an egress surface", async () => {
+    localToolCalls.length = 0;
+    const { model } = fixture();
+    await backgroundRoster(model, CONTEXT, recordedCaller(), bioProvider(model));
+
+    expect(localToolCalls).toEqual([
+      { tool: "decode_get_character_occurrences", roleId: "A7" },
+      { tool: "decode_get_character_occurrences", roleId: "A7" },
+      { tool: "decode_get_character_occurrences", roleId: "A8" },
+      { tool: "decode_get_route_graph", roleId: "A8" },
+      { tool: "decode_get_character_occurrences", roleId: "A8" },
+      { tool: "decode_get_character_occurrences", roleId: "A8" },
+      { tool: "decode_get_route_graph", roleId: "A8" },
+      { tool: "decode_get_character_occurrences", roleId: "A8" },
+    ]);
+    // The only recorded traversal points are local fact tools; egress remains
+    // denied even if an operator opens the general web switch.
+    expect(webEgressAllowed("A8", { operatorEnabled: true, qualifyingRun: false })).toBe(false);
+    expect(() =>
+      assertWebEgressAllowed("A8", { operatorEnabled: true, qualifyingRun: false }),
+    ).toThrow(EgressDeniedError);
   });
 
   it("PROOF: A8 holds NO web_search grant — the tool is uncallable from A8 in every surface", () => {
@@ -237,6 +283,25 @@ describe("clause 2 — every relationship cites an establishing same-game scene"
     expect(citation.role).toBe("establishes");
     expect(citation.subject).toEqual({ kind: "scene", id: "1" });
     expect(() => validateWikiObjectClaims(background, model)).not.toThrow();
+  });
+
+  it("PROOF: a relationship with NO establishing scene is REJECTED", () => {
+    const { model } = fixture();
+    try {
+      assembleOne(model, "nam-11", [
+        {
+          counterpartId: "nam-22",
+          relationship: "根拠のない仲。",
+          confidence: "high",
+          scope: { kind: "global" },
+          establishingSceneIds: [],
+        },
+      ]);
+      throw new Error("expected a missing-establishing-scene failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(A8RoleError);
+      expect((error as A8RoleError).code).toBe("missing-establishing-scene");
+    }
   });
 
   it("PROOF: a fabricated / nonexistent establishing scene is REJECTED", () => {
@@ -296,6 +361,30 @@ describe("clause 3 — route reachability validates the relationship's scope", (
     expect(body!.relationships[0]!.establishingEvidenceIds).toEqual([sceneEvidenceId(2)]);
     const relationshipClaim = background.claims.find((c) => c.kind === "relationship")!;
     expect(relationshipClaim.scope).toEqual({ kind: "route", routeId: "route-a" });
+    expect(() => validateWikiObjectClaims(background, model)).not.toThrow();
+  });
+
+  it("PROOF: a route-set relationship reachable on its routes is accepted", () => {
+    // Scene 2 spans route-a + route-b → claim-level route-set scope is admissible.
+    const { model } = buildClaimFixture({
+      characters: CHARACTERS,
+      scene2Routes: ["route-a", "route-b"],
+    });
+    const background = assembleOne(model, "nam-11", [
+      {
+        counterpartId: "nam-22",
+        relationship: "両ルートで並行する絆。",
+        confidence: "high",
+        scope: { kind: "route-set", routeIds: ["route-a", "route-b"] },
+        establishingSceneIds: [sceneEvidenceId(2)],
+      },
+    ]);
+    const body = background.kind === "character-background" ? background.body : null;
+    expect(body!.relationships[0]!.scope).toEqual({
+      kind: "route-set",
+      routeIds: ["route-a", "route-b"],
+    });
+    expect(body!.relationships[0]!.establishingEvidenceIds).toEqual([sceneEvidenceId(2)]);
     expect(() => validateWikiObjectClaims(background, model)).not.toThrow();
   });
 
@@ -410,6 +499,38 @@ describe("clause 4 — the provenance of every caller-supplied input is verified
         },
       ]);
       throw new Error("expected an unknown-counterpart failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(A8RoleError);
+      expect((error as A8RoleError).code).toBe("unknown-counterpart");
+    }
+  });
+
+  it("PROOF: a counterpart id poisoned into the request is REJECTED against real character evidence", () => {
+    const { model } = fixture();
+    const character = characterIndex(model).find((entry) => entry.characterId === "nam-11")!;
+    const evidence = readCharacterEvidence(model, CONTEXT, character);
+    const request: A8BackgroundRequest = {
+      character: evidence,
+      bio: bioFor(model, evidence.characterId),
+      counterpartIds: [...counterpartIds(model), "ghost-999"],
+      sourceLanguage: model.sourceLanguage,
+    };
+    const draft: A8BackgroundDraft = {
+      background: "生い立ち。",
+      relationships: [
+        {
+          counterpartId: "ghost-999",
+          relationship: "存在しない人物との仲。",
+          confidence: "high",
+          scope: { kind: "global" },
+          establishingSceneIds: [sceneEvidenceId(1)],
+        },
+      ],
+    };
+
+    try {
+      assembleCharacterBackground(model, CONTEXT, evidence, request, draft);
+      throw new Error("expected a poisoned-counterpart failure");
     } catch (error) {
       expect(error).toBeInstanceOf(A8RoleError);
       expect((error as A8RoleError).code).toBe("unknown-counterpart");

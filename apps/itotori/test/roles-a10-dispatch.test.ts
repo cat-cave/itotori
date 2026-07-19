@@ -29,6 +29,7 @@ import {
   dispatchingA10Caller,
   hindsightCandidateIds,
   hindsightRevealSceneIds,
+  readAllUnitFacts,
   readUnknownSpeakerUnits,
   verifyCandidateCharacter,
   verifyRevealScene,
@@ -197,6 +198,10 @@ describe("A10 dispatches through the sole ZDR boundary", () => {
     expect(spec.output.name).toBe("wiki-object");
     expect(spec.tools).toHaveLength(0);
     expect(spec.contextSnapshotId).toBe(model.snapshotId);
+    // Whole-route/game hindsight is actual source evidence, not an id-only pool.
+    const lastUnit = readAllUnitFacts(model, CONTEXT).at(-1)!;
+    expect(prompts[0]!.text).toContain("Complete permitted route/game source stream");
+    expect(prompts[0]!.text).toContain(lastUnit.value.unitId);
     expect(prompts[0]!.ref.contentHash).toBe(
       `sha256:${createHash("sha256").update(prompts[0]!.text).digest("hex")}`,
     );
@@ -213,6 +218,24 @@ describe("A10 dispatches through the sole ZDR boundary", () => {
     // test-dev too (the shared certified-route check would have skipped it).
     const drifted: CallSpec = { ...spec, requestedModel: "deepseek/some-other-model" };
     expect(() => assertA10CertifiedRoute(drifted)).toThrowError(/certified deepseek-v4-flash/u);
+  });
+
+  it("PROOF: the public dispatch entry refuses a route drift before any transport", async () => {
+    const { model, request } = hypothesisRequest();
+    const { spec, prompts } = buildA10CallSpec(model, CONTEXT, request);
+    let fetches = 0;
+    const configured = runtime(
+      [structuredProviderResponse(recordedHypothesis(model, request))],
+      () => {
+        fetches += 1;
+      },
+    );
+    const drifted: CallSpec = { ...spec, requestedModel: "deepseek/some-other-model" };
+
+    await expect(dispatchA10(drifted, prompts, configured)).rejects.toThrowError(
+      /certified deepseek-v4-flash/u,
+    );
+    expect(fetches).toBe(0);
   });
 
   it("PROOF: a recorded speaker-hypothesis draft returns through dispatch()", async () => {

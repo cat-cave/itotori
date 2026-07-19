@@ -449,19 +449,13 @@ impl EnginePort for FixtureEnginePort {
 
     fn launch(&mut self, request: &PortRequest<'_>) -> Result<(), EnginePortError> {
         request.cancellation.check(LifecycleStage::Launch)?;
-        let source_path = request.input_root.join("source.json");
-        let raw =
-            std::fs::read_to_string(&source_path).map_err(|error| EnginePortError::Lifecycle {
+        let source = crate::read_source_for_engine_port(request.input_root).map_err(|error| {
+            EnginePortError::Lifecycle {
                 stage: LifecycleStage::Launch,
-                message: format!("fixture source read failed: {error}"),
-                source: None,
-            })?;
-        let source: Value =
-            serde_json::from_str(&raw).map_err(|error| EnginePortError::Lifecycle {
-                stage: LifecycleStage::Launch,
-                message: format!("fixture source parse failed: {error}"),
-                source: None,
-            })?;
+                message: error.to_string(),
+                source: Some(error),
+            }
+        })?;
 
         let game_id = source["gameId"].as_str().unwrap_or("fixture").to_string();
         let units = source["units"].as_array().cloned().unwrap_or_default();

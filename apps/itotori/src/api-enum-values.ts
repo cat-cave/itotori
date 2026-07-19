@@ -139,17 +139,3 @@ export const feedbackTypeValues = {
   runtimeIssue: "runtime_issue",
   assetIssue: "asset_issue",
 } as const;
-
-/** Browser-safe mirror of the generic node-6 context wiki kinds. */
-export const wikiContextEntryKindValues = {
-  scene: "scene",
-  character: "character",
-  route: "route",
-  term: "term",
-  speaker: "speaker",
-  glossary: "glossary",
-  style: "style",
-  note: "note",
-} as const;
-
-export const wikiContextEntryKindList = Object.values(wikiContextEntryKindValues);
