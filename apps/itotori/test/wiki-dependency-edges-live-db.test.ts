@@ -149,9 +149,9 @@ postgresDescribe("fine-grained dependency edges resolve exact consumers", () => 
       expect(renderingConsumers[0]!.downstreamWikiVersionId).toBe(c4.wikiVersionId);
       expect(renderingConsumers[0]!.renderingId).toBe("rendering:en-US:1");
 
-      // COARSE: the object-wide query (the thing exact edges replace) returns
-      // ALL FOUR consumers — proving the claim/field/rendering queries above are strictly
-      // narrower, not merely reflecting a sparsely-populated table.
+      // The full CURRENT candidate lookup returns all four live consumers. The
+      // planner still requires its field/claim + route/play intersection, while
+      // the locator queries above prove it can start narrower when useful.
       const allConsumers = await repository.queryDependents({ upstreamObjectId: UPSTREAM_ID });
       expect(allConsumers.map((edge) => edge.downstreamObjectId)).toEqual([
         "wiki:consumer:a",

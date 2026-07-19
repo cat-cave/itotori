@@ -406,10 +406,10 @@ export class ItotoriLlmWikiRepository {
     if (advanced.rowCount !== 1) throw new LlmWikiCasError();
   }
 
-  /** Resolve the EXACT downstream consumers of an upstream claim/field/rendering.
-   * A `claimId`/`fieldPath`/`renderingId` narrows to consumers of that content
-   * only; a bare `upstreamObjectId` returns every consumer (the coarse query the
-   * fine-grained edges replace). See {@link queryDependents}. */
+  /** Resolve current downstream consumers of an upstream claim/field/rendering.
+   * A locator narrows the live candidate edges; a bare upstream object returns
+   * every live candidate for the scoped-invalidation intersection. See
+   * {@link queryDependents}. */
   async queryDependents(query: LlmDependencyQuery): Promise<LlmDependentEdge[]> {
     return queryDependents(this.pool, query);
   }
