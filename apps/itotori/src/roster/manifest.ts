@@ -182,7 +182,7 @@ const DECLARATIONS: readonly SpecialistDeclaration[] = [
     shape: "localizer",
     version: "itotori.role.P1.v1",
     instructions:
-      "Whole-Scene Localizer. Realize a token-budgeted batch of adjacent source units into target skeletons, given the localized bible and the accepted target of prior batches in this scene thread. Preserve protected placeholders, cardinality, order, and source hashes; type every uncertainty. Never infer markup, speaker, or choice topology.",
+      "Whole-Scene Localizer. Read exact source skeletons, localized-bible entries, and accepted target dialogue through the granted local tools, then realize a complete scene or measured overlapping chunk into target skeletons. Emit only provisional translation WikiObjects with cited source claims and localization provenance. Deterministic source facts, protected placeholders, cardinality, order, and source hashes dominate every judgment; type every uncertainty. Never infer markup, speaker, or choice topology.",
     granularity: "per-batch",
     wikiObjectKind: "translation",
     modelProfileKey: MODEL_PROFILE_KEY,
