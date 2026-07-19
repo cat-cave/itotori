@@ -34,3 +34,4 @@ export {
   type WikiShowResult,
   type WikiWriteReceipt,
 } from "./service.js";
+export type { DecodedFact, EnhancementRunner } from "../human-enhancement/index.js";
