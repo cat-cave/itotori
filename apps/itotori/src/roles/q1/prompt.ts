@@ -44,8 +44,8 @@ function renderNeighbors(input: Q1ReviewInput): string {
     .join("\n");
 }
 
-function renderBibleRefs(input: Q1ReviewInput): string {
-  return input.bibleRenderingIds.length === 0 ? "(none)" : input.bibleRenderingIds.join(", ");
+function renderLocalizedBible(input: Q1ReviewInput): string {
+  return input.localizedBible.map((entry) => `- (${entry.renderingId}) ${entry.text}`).join("\n");
 }
 
 /** The back-translation section is ALWAYS labelled a signal. When absent the
@@ -76,7 +76,8 @@ export function q1UserPrompt(input: Q1ReviewInput): string {
     "CANDIDATE TARGET (reviewer blinded):",
     input.candidateTarget,
     "",
-    `LOCALIZED BIBLE RENDERINGS: ${renderBibleRefs(input)}`,
+    "LOCALIZED BIBLE RENDERINGS:",
+    renderLocalizedBible(input),
     "",
     "NEIGHBOR WINDOWS:",
     renderNeighbors(input),

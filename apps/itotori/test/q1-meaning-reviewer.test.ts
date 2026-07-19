@@ -47,10 +47,28 @@ const HASH = `sha256:${"b".repeat(64)}` as const;
 
 const baseInput: Q1ReviewInput = {
   unitId: "unit:1",
+  contextSnapshotId: SNAP,
   localizationSnapshotId: SNAP,
-  sourceFacts: [{ factId: "fact:1", field: "text", text: "彼は駅で待っていた。" }],
+  targetLanguage: "en-US",
+  reviewScope: { kind: "global" },
+  sourceFacts: [
+    {
+      factId: "fact:1",
+      field: "text",
+      text: "彼は駅で待っていた。",
+      evidence: {
+        evidenceHash: HASH,
+        snapshotId: SNAP,
+        subject: { kind: "unit", id: "unit:1" },
+        playOrderIndex: 1,
+      },
+    },
+  ],
   candidateTarget: "He was waiting at the station.",
   bibleRenderingIds: ["rendering:1"],
+  localizedBible: [
+    { renderingId: "rendering:1", text: "Use Station for 駅 in this localization." },
+  ],
   neighbors: [{ surface: "accepted-target", unitId: "unit:0", text: "Morning came." }],
   backTranslationSignal: null,
 };

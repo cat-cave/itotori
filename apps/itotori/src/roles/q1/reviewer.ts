@@ -8,7 +8,12 @@
 // derives a verdict from the back-translation signal: the verdict comes only
 // from the model's ReviewVerdict, and the signal cannot flip the outcome.
 
-import type { CallResult, CallSpec } from "../../contracts/index.js";
+import type { CallResult, CallSpec, Defect } from "../../contracts/index.js";
+import {
+  assembleQ1ReviewArtifact,
+  type Q1ArtifactContext,
+  type Q1ReviewArtifact,
+} from "./artifact.js";
 import { buildQ1CallSpec, type Q1DispatchRefs } from "./request.js";
 import {
   interpretQ1Verdict,
@@ -25,6 +30,13 @@ export type Q1Dispatch = (spec: CallSpec) => Promise<CallResult>;
 export interface Q1RunDeps {
   readonly dispatch: Q1Dispatch;
   readonly resolveEvidence: EvidenceResolver;
+  /** When the workflow is persisting reviewer evidence, it supplies the exact
+   * reviewed batch + RB-031 dependency edges. The runner stamps the physical
+   * call memo key and emits the provisional Translation WikiObject. */
+  readonly artifactContext?: Omit<Q1ArtifactContext, "authorMemoKey">;
+  /** Deterministic gates run before reviewers. A defect on this unit remains
+   * authoritative even if the meaning model emits PASS. */
+  readonly deterministicDefects?: readonly Defect[];
 }
 
 /** A dispatch that never produced a usable verdict (transport, refusal, …). */
@@ -40,9 +52,30 @@ export interface Q1Reviewed {
   readonly callResult: CallResult;
   readonly interpretation: Q1Interpretation;
   readonly canFinalize: boolean;
+  readonly artifact: Q1ReviewArtifact | null;
+  readonly dominatingFactIds: readonly string[];
 }
 
 export type Q1RunOutcome = Q1DispatchFailure | Q1Reviewed;
+
+/** Facts are settled before the reviewer runs. A deterministic defect therefore
+ * prevents Q1 from finalizing a unit even when the blinded model passed it. */
+function applyDeterministicDominance(
+  interpretation: Q1Interpretation,
+  unitId: string,
+  defects: readonly Defect[] | undefined,
+): { readonly interpretation: Q1Interpretation; readonly dominatingFactIds: readonly string[] } {
+  const dominatingFactIds = (defects ?? [])
+    .filter((defect) => defect.origin === "deterministic" && defect.unitId === unitId)
+    .map((defect) => defect.defectId);
+  if (dominatingFactIds.length === 0 || interpretation.disposition !== "finalize") {
+    return { interpretation, dominatingFactIds };
+  }
+  return {
+    interpretation: { ...interpretation, disposition: "repair" },
+    dominatingFactIds,
+  };
+}
 
 /** Run one blinded meaning review. A dispatch failure can never finalize. */
 export async function runQ1Review(
@@ -55,11 +88,25 @@ export async function runQ1Review(
   if (callResult.status !== "success") {
     return { outcome: "no-verdict", callResult, canFinalize: false };
   }
-  const interpretation = interpretQ1Verdict(callResult.value, deps.resolveEvidence);
+  const interpreted = interpretQ1Verdict(callResult.value, deps.resolveEvidence);
+  const { interpretation, dominatingFactIds } = applyDeterministicDominance(
+    interpreted,
+    input.unitId,
+    deps.deterministicDefects,
+  );
+  const artifact =
+    deps.artifactContext === undefined
+      ? null
+      : assembleQ1ReviewArtifact(input, interpretation, {
+          ...deps.artifactContext,
+          authorMemoKey: callResult.memoKey,
+        });
   return {
     outcome: "reviewed",
     callResult,
     interpretation,
     canFinalize: canFinalize(interpretation),
+    artifact,
+    dominatingFactIds,
   };
 }

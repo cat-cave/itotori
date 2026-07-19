@@ -289,10 +289,29 @@ describe("clause 1 — a unit RESOLVES the exact bible entries + RECORDS the dep
     const binding = resolveUnitBibleGroundTruth(unitH, snapshot, fullBible());
     const parsed = Q1ReviewInputSchema.parse({
       unitId: unitH.factId,
+      contextSnapshotId: sha("ctx"),
       localizationSnapshotId: LOC_SNAP,
-      sourceFacts: [{ factId: "glossary:hero", field: "meaning", text: "勇者" }],
+      targetLanguage: TARGET_LANG,
+      reviewScope: GLOBAL,
+      sourceFacts: [
+        {
+          factId: "glossary:hero",
+          field: "meaning",
+          text: "勇者",
+          evidence: {
+            evidenceHash: sha("glossary:hero"),
+            snapshotId: sha("ctx"),
+            subject: { kind: "glossary-term", id: "T-hero" },
+            playOrderIndex: 0,
+          },
+        },
+      ],
       candidateTarget: "The Hero appears.",
       bibleRenderingIds: binding.bibleRenderingIds,
+      localizedBible: binding.bibleRenderingIds.map((renderingId) => ({
+        renderingId,
+        text: `resolved ${renderingId}`,
+      })),
       neighbors: [],
       backTranslationSignal: null,
     });
