@@ -110,6 +110,25 @@ describe("generated engine capability matrix (typed)", () => {
     ]);
   });
 
+  it("declares the RealLive accepted-output patched-build produce capability", () => {
+    const row = matrix.rows.find(
+      (candidate) => candidate.rowId === "reallive-accepted-output-patchback-produce",
+    );
+    expect(row).toBeDefined();
+    expect(row?.engineFamily).toBe("reallive");
+    expect(row?.scenario).toBe("accepted-output-patched-build-produce");
+    expect(row?.evidencePosture).toBe("readiness_only");
+    expect(row?.levels.extract.status).toBe("partial");
+    expect(row?.levels.patch.status).toBe("partial");
+    expect(row?.evidence).toEqual([
+      {
+        sourceId: "reallive-patchback-produce",
+        category: "validation_artifact",
+        kind: "validation_artifact",
+      },
+    ]);
+  });
+
   it("rejects a hand-broken document", () => {
     const broken = structuredClone(matrix) as unknown as Record<string, unknown>;
     (broken.rows as EngineCapabilityMatrixDocument["rows"])[0].levels.identify.status =

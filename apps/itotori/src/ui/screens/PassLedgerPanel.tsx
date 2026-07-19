@@ -221,7 +221,6 @@ function LaunchPassActionBody({
 
 type ProduceBuildOutcome =
   | { kind: "produced"; fileName: string }
-  | { kind: "unavailable"; message: string }
   | { kind: "error"; message: string };
 
 /**
@@ -292,18 +291,6 @@ function ProducePatchedBuildActionBody({
         body: JSON.stringify({ projectId, localeBranchId }),
       });
       if (!response.ok) {
-        // 501 = the produce substrate (run-state loader) is not wired yet in
-        // this build. That is a partial-completion state, not a failure of this
-        // run, so surface it as an honest "not available yet" note distinct from
-        // a real error the user might retry or report.
-        if (response.status === 501) {
-          setOutcome({
-            kind: "unavailable",
-            message:
-              "Patched-build produce isn't available yet for this run — the run-state produce path is not wired in this build.",
-          });
-          return;
-        }
         const message = await produceErrorMessage(response);
         setOutcome({ kind: "error", message });
         return;
@@ -346,15 +333,6 @@ function ProducePatchedBuildActionBody({
           className="itotori-produce-build-action__status"
         >
           Downloaded {outcome.fileName}
-        </p>
-      )}
-      {outcome?.kind === "unavailable" && (
-        <p
-          role="status"
-          data-produce-build="unavailable"
-          className="itotori-produce-build-action__note"
-        >
-          <Badge status="pending">not available yet</Badge> {outcome.message}
         </p>
       )}
       {outcome?.kind === "error" && (

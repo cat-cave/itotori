@@ -5354,16 +5354,6 @@
               }
             },
             "description": "Internal error (internal_error)."
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            },
-            "description": "Not configured in this API build (internal_error)."
           }
         },
         "summary": "Produce a playable patched build from a run's accepted outputs and download it.",
