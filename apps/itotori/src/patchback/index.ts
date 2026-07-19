@@ -1,7 +1,7 @@
 // Native patchback + translated-byte replay — the rehomed apply/replay seam.
 //
 // Consumes the immutable fact snapshot + accepted-output CAS through a strict
-// PatchExportV02 (never a journal outcome), splices the accepted target bytes via
+// PatchExportV02 (never a prior attempt record), splices the accepted target bytes via
 // the Kaifuu patchback, and observes the translated bytes back through Utsushi.
 // Deterministic, no model call, no network. The single authoritative home for the
 // accepted-output-driven byte apply; it imports nothing from the old orchestrator
@@ -46,7 +46,12 @@ export {
   replayValidateArgs,
   parseObservedBodies,
   observedTextContains,
+  replayAcceptedPatch,
+  AcceptedPatchReplayError,
   ReplayObserveError,
+  type AcceptedPatchReplay,
+  type AcceptedPatchReplayScene,
+  type ReplayAcceptedPatchArgs,
   type ObservedReplay,
   type ReplayObserveArgs,
 } from "./replay.js";

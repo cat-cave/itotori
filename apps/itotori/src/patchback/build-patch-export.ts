@@ -50,13 +50,23 @@ function indexBridgeUnits(bridge: BridgeBundleV02): ReadonlyMap<string, Localiza
 function protectedSpanMappings(
   spans: readonly BridgeSpanV02[],
   targetText: string,
+  bridgeUnitId: string,
 ): PatchExportEntryV02["protectedSpanMappings"] {
   const mappings: PatchExportEntryV02["protectedSpanMappings"] = [];
+  let searchFrom = 0;
   for (const span of spans) {
     if (span.outOfBand === true) continue;
     if (span.raw.length === 0) continue;
-    const targetStart = targetText.indexOf(span.raw);
-    if (targetStart < 0) continue;
+    // Search in source-span order. This keeps repeated protected strings as
+    // distinct occurrences instead of mapping every source span to the first
+    // occurrence in the accepted target.
+    const targetStart = targetText.indexOf(span.raw, searchFrom);
+    if (targetStart < 0) {
+      throw new PatchExportBuildError(
+        `accepted target for bridge unit ${bridgeUnitId} drops or reorders protected span ${span.spanId}`,
+      );
+    }
+    searchFrom = targetStart + span.raw.length;
     mappings.push({
       raw: span.raw,
       sourceSpanId: span.spanId,
@@ -82,6 +92,11 @@ export function buildPatchExportV02(
   assertBridgeBundleV02(input.rawBridge);
   const bridge = input.rawBridge;
 
+  if (input.sourceLocale !== bridge.sourceLocale) {
+    throw new PatchExportBuildError(
+      `requested sourceLocale ${input.sourceLocale} does not match bridge sourceLocale ${bridge.sourceLocale}`,
+    );
+  }
   if (bridge.sourceBundleHash !== input.snapshot.source.sourceBundleHash) {
     throw new PatchExportBuildError(
       `apply-time bridge sourceBundleHash ${bridge.sourceBundleHash} does not match snapshot ${input.snapshot.source.sourceBundleHash} (stale bridge)`,
@@ -113,7 +128,11 @@ export function buildPatchExportV02(
       sourceHash: unit.sourceHash,
       sourceRevision: unit.sourceRevision,
       targetText: target.targetText,
-      protectedSpanMappings: protectedSpanMappings(unit.spans, target.targetText),
+      protectedSpanMappings: protectedSpanMappings(
+        unit.spans,
+        target.targetText,
+        unit.bridgeUnitId,
+      ),
     });
   }
   entries.sort((a, b) =>

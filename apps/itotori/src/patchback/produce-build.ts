@@ -8,15 +8,14 @@
 // second patchback path and never fabricates a build — the bytes under
 // `patchTarget` are exactly what the byte-surgical Kaifuu apply wrote.
 //
-// The produced record is a strict `PlayablePatchExport`, so the exact same
-// manifest verification + tar archiver used by the immutable-version delivery
-// route serves it. `cleanup()` removes the owned build tree once its bytes have
-// been captured into an in-memory archive.
+// The produced record is an accepted-output-native manifest with the exact
+// fields the shared verifier + tar archiver need. `cleanup()` removes the owned
+// build tree once its bytes have been captured into an in-memory archive.
 
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { hashLocalizationArtifact, type PlayablePatchExport } from "@itotori/db";
+import { hashLocalizationArtifact } from "@itotori/db";
 
 import type { RealLivePatchScope } from "./apply.js";
 import { runNativePatchbackApply, writePatchExportV02 } from "./index.js";
@@ -46,23 +45,51 @@ export type ProducePatchbackBuildOptions = {
   log?: (message: string) => void;
 };
 
+/**
+ * One delivered unit's accepted-output provenance. This is deliberately not a
+ * result-revision / attempt-record projection: the applied bytes are linked
+ * directly to the immutable accepted output that supplied their target text.
+ */
+export type ProducedAcceptedPatchUnit = {
+  bridgeUnitId: string;
+  factId: string;
+  sourceHash: string;
+  acceptedOutputId: string;
+  acceptedTargetHash: string;
+  targetText: string;
+};
+
+/** The self-contained, accepted-output-driven delivery manifest emitted by the
+ * native patchback. It has the small structural surface the archive boundary
+ * needs while preserving strict PatchExportV02 + accepted-output provenance. */
+export type ProducedPatchbackManifest = {
+  patchVersionId: string;
+  patchExportId: string;
+  runId: string;
+  sourceBridgeId: string;
+  sourceBundleHash: string;
+  targetLocale: string;
+  artifactHashes: Record<string, string>;
+  artifactRefs: Record<string, string>;
+  units: ProducedAcceptedPatchUnit[];
+};
+
 export type ProducedPatchbackBuild = {
-  /** A strict, hash-bound playable patch export ready for the delivery archiver. */
-  patch: PlayablePatchExport;
+  /** A strict, hash-bound accepted-output patch ready for the delivery archiver. */
+  patch: ProducedPatchbackManifest;
   /** Remove the owned build tree; safe to call after the archive bytes are captured. */
   cleanup(): void;
 };
 
 /**
  * Splice the accepted targets into a real playable build via the native apply
- * seam and record the hash-bound artifact manifest. The returned
- * {@link PlayablePatchExport} is exactly the shape the immutable-version
- * delivery route serves — no fabricated build, no second apply path.
+ * seam and record the hash-bound artifact manifest. The returned accepted-
+ * output-native manifest is accepted directly by the shared delivery archive —
+ * no fabricated build, no second apply path, and no legacy result projection.
  */
 export function produceNativePatchbackBuild(
   input: NativePatchbackInput,
   options: ProducePatchbackBuildOptions,
-  now: () => Date = () => new Date(),
 ): ProducedPatchbackBuild {
   const buildRoot = options.buildRoot;
   const targetRoot = join(buildRoot, "patch-target");
@@ -118,29 +145,33 @@ export function produceNativePatchbackBuild(
 
   const patchVersionId = `patch-version:${applied.patchExport.patchExportId}`;
   const runId = options.runId ?? patchVersionId;
-  const playableAt = now();
-  const units = applied.patchExport.entries.map((entry, index) => ({
-    bridgeUnitId: entry.bridgeUnitId,
-    sourceRunId: runId,
-    journalOutcomeId: entry.entryId,
-    resultRevisionId: entry.entryId,
-    memberOrigin: "run_written_outcome",
-    reusedFromPatchVersionId: null,
-    unitOrdinal: index,
-    targetBody: entry.targetText,
-    origin: "run_finalizer",
-    actorUserId: null,
-  }));
+  const acceptedByBridgeUnitId = new Map(
+    applied.bound.map((bound) => [bound.fact.bridgeUnitId, bound]),
+  );
+  const units = applied.patchExport.entries.map((entry) => {
+    const bound = acceptedByBridgeUnitId.get(entry.bridgeUnitId);
+    if (bound === undefined) {
+      throw new Error(
+        `native patchback produced export entry ${entry.entryId} without an accepted-output binding`,
+      );
+    }
+    return {
+      bridgeUnitId: entry.bridgeUnitId,
+      factId: bound.fact.factId,
+      sourceHash: entry.sourceHash,
+      acceptedOutputId: bound.accepted.outputId,
+      acceptedTargetHash: bound.accepted.value.targetHash,
+      targetText: entry.targetText,
+    };
+  });
 
-  const patch: PlayablePatchExport = {
+  const patch: ProducedPatchbackManifest = {
     patchVersionId,
+    patchExportId: applied.patchExport.patchExportId,
     runId,
-    parentPatchVersionId: null,
-    origin: "run_finalizer",
-    actorUserId: null,
-    status: "playable",
-    selectedAt: null,
-    playableAt,
+    sourceBridgeId: applied.patchExport.sourceBridgeId,
+    sourceBundleHash: applied.patchExport.sourceBundleHash,
+    targetLocale: applied.patchExport.targetLocale,
     artifactHashes,
     artifactRefs,
     units,

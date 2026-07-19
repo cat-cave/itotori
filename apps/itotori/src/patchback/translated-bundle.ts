@@ -10,7 +10,13 @@
 
 import { writeFileSync } from "node:fs";
 
-import type { PatchExportV02 } from "@itotori/localization-bridge-schema";
+import {
+  assertBridgeBundleV02,
+  assertPatchExportV02,
+  type BridgeBundleV02,
+  type LocalizationUnitV02,
+  type PatchExportV02,
+} from "@itotori/localization-bridge-schema";
 
 /** Raised when the raw bridge JSON is not shaped like a v0.2 bridge, or an
  * export entry references a unit the bridge does not carry. */
@@ -37,6 +43,69 @@ function asRawBridge(rawBridge: unknown): Record<string, unknown> & { units: Raw
   return record as Record<string, unknown> & { units: RawUnit[] };
 }
 
+/** Refuse an export that does not address this exact source bridge. The native
+ * patcher only understands the translated bridge JSON, so this is the final
+ * place to prevent an otherwise-valid export from being paired with another
+ * game's bytes. */
+function assertExportMatchesBridge(
+  bridge: BridgeBundleV02,
+  patchExport: PatchExportV02,
+  targetLocale: string,
+): void {
+  if (patchExport.entries.length === 0) {
+    throw new TranslatedBundleError(
+      "PatchExportV02 must contain at least one scoped accepted target",
+    );
+  }
+  if (patchExport.sourceBridgeId !== bridge.bridgeId) {
+    throw new TranslatedBundleError(
+      `PatchExportV02 sourceBridgeId ${patchExport.sourceBridgeId} does not match bridge ${bridge.bridgeId}`,
+    );
+  }
+  if (patchExport.sourceBundleHash !== bridge.sourceBundleHash) {
+    throw new TranslatedBundleError(
+      `PatchExportV02 sourceBundleHash ${patchExport.sourceBundleHash} does not match bridge ${bridge.sourceBundleHash}`,
+    );
+  }
+  if (patchExport.sourceLocale !== bridge.sourceLocale) {
+    throw new TranslatedBundleError(
+      `PatchExportV02 sourceLocale ${patchExport.sourceLocale} does not match bridge ${bridge.sourceLocale}`,
+    );
+  }
+  if (patchExport.targetLocale !== targetLocale) {
+    throw new TranslatedBundleError(
+      `PatchExportV02 targetLocale ${patchExport.targetLocale} does not match requested ${targetLocale}`,
+    );
+  }
+
+  const bridgeUnits = new Map<string, LocalizationUnitV02>();
+  for (const unit of bridge.units) bridgeUnits.set(unit.bridgeUnitId, unit);
+  const seenBridgeUnitIds = new Set<string>();
+  for (const entry of patchExport.entries) {
+    const unit = bridgeUnits.get(entry.bridgeUnitId);
+    if (unit === undefined) {
+      throw new TranslatedBundleError(
+        `PatchExportV02 names bridge unit ${entry.bridgeUnitId}, absent from the bridge`,
+      );
+    }
+    if (seenBridgeUnitIds.has(entry.bridgeUnitId)) {
+      throw new TranslatedBundleError(
+        `PatchExportV02 contains more than one target for bridge unit ${entry.bridgeUnitId}`,
+      );
+    }
+    seenBridgeUnitIds.add(entry.bridgeUnitId);
+    if (
+      entry.sourceUnitKey !== unit.sourceUnitKey ||
+      entry.sourceHash !== unit.sourceHash ||
+      JSON.stringify(entry.sourceRevision) !== JSON.stringify(unit.sourceRevision)
+    ) {
+      throw new TranslatedBundleError(
+        `PatchExportV02 entry ${entry.entryId} does not source-match bridge unit ${entry.bridgeUnitId}`,
+      );
+    }
+  }
+}
+
 /**
  * Build the translated bridge JSON (the exact shape `TranslatedBundleV02::from_json`
  * consumes). The raw bridge is preserved field-for-field; only a per-unit `target`
@@ -49,6 +118,11 @@ export function materializeTranslatedBundle(
   patchExport: PatchExportV02,
   targetLocale: string,
 ): Record<string, unknown> {
+  // Do not rely on TypeScript declarations at this native boundary: both the
+  // bridge and export can arrive from JSON / a durable artifact store.
+  assertBridgeBundleV02(rawBridge);
+  assertPatchExportV02(patchExport);
+  assertExportMatchesBridge(rawBridge, patchExport, targetLocale);
   const bridge = asRawBridge(rawBridge);
   const targetByBridgeUnitId = new Map<string, string>();
   for (const entry of patchExport.entries) {

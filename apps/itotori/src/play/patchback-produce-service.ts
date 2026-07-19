@@ -63,7 +63,6 @@ export type PatchbackProduceServiceDeps = {
   nativeCli?: NativeCliRunner;
   /** Owned temporary root for produced build trees (defaults to the OS tmpdir). */
   temporaryRoot?: string;
-  now?: () => Date;
   log?: (message: string) => void;
 };
 
@@ -80,11 +79,7 @@ export interface BoundPatchbackProduceServicePort {
 }
 
 export class PatchbackProduceService implements PatchbackProduceServicePort {
-  private readonly now: () => Date;
-
-  constructor(private readonly deps: PatchbackProduceServiceDeps) {
-    this.now = deps.now ?? (() => new Date());
-  }
+  constructor(private readonly deps: PatchbackProduceServiceDeps) {}
 
   async produceArchive(
     actor: AuthorizationActor,
@@ -96,18 +91,14 @@ export class PatchbackProduceService implements PatchbackProduceServicePort {
     const buildRoot = mkdtempSync(
       join(this.deps.temporaryRoot ?? tmpdir(), "itotori-patchback-produce-"),
     );
-    const produced = produceNativePatchbackBuild(
-      plan.input,
-      {
-        sourceRoot: plan.sourceRoot,
-        buildRoot,
-        scope: plan.scope,
-        ...(plan.runId !== undefined ? { runId: plan.runId } : {}),
-        ...(this.deps.nativeCli !== undefined ? { nativeCli: this.deps.nativeCli } : {}),
-        ...(this.deps.log !== undefined ? { log: this.deps.log } : {}),
-      },
-      this.now,
-    );
+    const produced = produceNativePatchbackBuild(plan.input, {
+      sourceRoot: plan.sourceRoot,
+      buildRoot,
+      scope: plan.scope,
+      ...(plan.runId !== undefined ? { runId: plan.runId } : {}),
+      ...(this.deps.nativeCli !== undefined ? { nativeCli: this.deps.nativeCli } : {}),
+      ...(this.deps.log !== undefined ? { log: this.deps.log } : {}),
+    });
     try {
       // Capture the produced bytes into an in-memory tar BEFORE cleanup removes
       // the owned build tree. The archiver re-verifies the hash-bound manifest.

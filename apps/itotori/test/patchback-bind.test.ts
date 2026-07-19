@@ -98,6 +98,25 @@ describe("bindScopedTargets", () => {
     const err = grab(() => bindScopedTargets(input({ workScope: { inScopeUnitFactIds: [] } })));
     expect(err.code).toBe("empty-scope");
   });
+
+  it("rejects a scope that names the same unit twice", () => {
+    const err = grab(() =>
+      bindScopedTargets(input({ workScope: { inScopeUnitFactIds: [unitA.factId, unitA.factId] } })),
+    );
+    expect(err.code).toBe("duplicate-scoped-unit");
+    expect(err.unitFactIds).toEqual([unitA.factId]);
+  });
+
+  it("rejects an untyped record that merely resembles an accepted target", () => {
+    const malformed = {
+      subjectType: "unit",
+      subjectId: unitA.factId,
+      sourceHash: unitA.sourceHash,
+      value: { targetSkeleton: "Hello" },
+    } as unknown as NativePatchbackInput["accepted"][number];
+    const err = grab(() => bindScopedTargets(input({ accepted: [malformed] })));
+    expect(err.code).toBe("invalid-accepted-output");
+  });
 });
 
 function grab(fn: () => unknown): PatchbackBindingError {

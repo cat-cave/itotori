@@ -8,12 +8,24 @@
 
 import { lstat, readdir, readFile, realpath } from "node:fs/promises";
 import { relative, resolve, sep } from "node:path";
-import { verifyLocalizationArtifactManifest, type PlayablePatchExport } from "@itotori/db";
+import { verifyLocalizationArtifactManifest } from "@itotori/db";
 
 export type DeliveredPatchArchive = {
   contentType: "application/x-tar";
   fileName: string;
   bytes: Buffer;
+};
+
+/**
+ * The only metadata the byte-serving boundary needs. Keeping this structural
+ * means a newly produced accepted-output patch can be archived without being
+ * forced through the retired journal/result-revision shape; durable historical
+ * patch versions remain compatible because they provide these same fields.
+ */
+export type PatchDeliveryManifest = {
+  patchVersionId: string;
+  artifactHashes: Readonly<Record<string, string>>;
+  artifactRefs: Readonly<Record<string, string>>;
 };
 
 type ArchiveEntry =
@@ -26,7 +38,7 @@ type ArchiveEntry =
  * this is the final byte-serving boundary, not merely metadata inspection.
  */
 export async function createDeliveredPatchArchive(
-  selected: PlayablePatchExport,
+  selected: PatchDeliveryManifest,
 ): Promise<DeliveredPatchArchive> {
   verifyLocalizationArtifactManifest(selected.artifactRefs, selected.artifactHashes);
   const patchTarget = selected.artifactRefs.patchTarget;
