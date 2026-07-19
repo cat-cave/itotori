@@ -68,6 +68,18 @@ const RelationshipDeltaSchema = z
   })
   .strict();
 
+/** A continuity link A4 could not resolve to a pair. It remains part of the
+ * route-arc record instead of being silently completed or discarded. */
+const UnresolvedArcEdgeSchema = z
+  .object({
+    linkKind: z.enum(["callback", "foreshadow"]),
+    description: NonEmptyTextSchema,
+    originEvidenceId: IdentifierSchema.nullable(),
+    destinationEvidenceId: IdentifierSchema.nullable(),
+    gap: z.enum(["missing-endpoint", "unresolvable-endpoint"]),
+  })
+  .strict();
+
 export const RouteArcBodySchema = z
   .object({
     routeId: IdentifierSchema,
@@ -75,6 +87,11 @@ export const RouteArcBodySchema = z
     callbacks: z.array(ArcLinkSchema).max(10_000),
     foreshadows: z.array(ArcLinkSchema).max(10_000),
     relationshipDeltas: z.array(RelationshipDeltaSchema).max(10_000),
+    /** The cross-link order the route exposes its continuity links in. */
+    revealOrder: z.array(IdentifierSchema).max(10_000).default([]),
+    /** Known partial/unknown links are durable facts about the reconciliation,
+     * not an invitation to infer a missing endpoint. */
+    unresolvedEdges: z.array(UnresolvedArcEdgeSchema).max(10_000).default([]),
     revealHorizon: NonNegativeIntegerSchema,
   })
   .strict();

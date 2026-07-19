@@ -26,6 +26,8 @@ export const A4_ROUTE_ARC_KIND = "route-arc" as const;
 export type A4FailureCode =
   | "spine-not-story-so-far"
   | "spine-topology-mismatch"
+  | "spine-final-scene-mismatch"
+  | "spine-without-evidence"
   | "origin-not-before-callback"
   | "dispatch-failed";
 

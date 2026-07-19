@@ -28,9 +28,11 @@ export {
 export { adoptSpine, routeIdOf, ROUTE_ARC_KIND, type AdoptedSpine } from "./spine.js";
 export {
   assembleRouteArc,
+  revealOrderFor,
   type ResolvedArc,
   type ResolvedDelta,
   type ResolvedLink,
+  type RouteArcSpineDependency,
 } from "./assemble.js";
 export { reconcileRoute, type A4RouteResult } from "./reconcile.js";
 export { buildA4CallSpec, dispatchA4, dispatchingA4Caller } from "./dispatch.js";

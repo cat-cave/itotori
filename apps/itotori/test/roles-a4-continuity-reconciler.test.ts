@@ -32,6 +32,7 @@ import {
   type A4RouteSpine,
   type ResolvedArc,
 } from "../src/roles/a4/index.js";
+import { ROSTER, toolsForRole, validateRosterManifest } from "../src/roster/index.js";
 import { buildClaimFixture, unitFactIdAt } from "./support/claim-fixture.js";
 
 const A3_CONTEXT: A3Context = {
@@ -87,6 +88,15 @@ function a4Recorded(draft: A4ArcDraft): A4ModelCaller {
 }
 
 describe("clause 1 — A4 adopts the spine and never reconstructs topology", () => {
+  it("PROOF: the registered A4 specialist is an immutable analyst with the RB-025 validator/tools", () => {
+    const a4 = validateRosterManifest(Object.values(ROSTER)).A4;
+    expect(a4).toBe(ROSTER.A4);
+    expect(a4.shape).toBe("analyst");
+    expect(Object.isFrozen(a4)).toBe(true);
+    expect([...a4.tools]).toEqual([...toolsForRole("A4")]);
+    expect(a4.validate(undefined)).not.toHaveLength(0);
+  });
+
   it("PROOF: reconciliation adopts the final story-so-far — the arc depends on it", async () => {
     const { model } = buildClaimFixture();
     const spine = await buildSpine(model);
@@ -149,6 +159,28 @@ describe("clause 1 — A4 adopts the spine and never reconstructs topology", () 
       ),
     ).rejects.toThrow(/spine-not-story-so-far/);
   });
+
+  it("PROOF: an intermediate story cannot masquerade as the final route spine", async () => {
+    const { model } = buildClaimFixture();
+    const spine = await buildSpine(model);
+    const stale = {
+      ...spine.finalStorySoFar,
+      body: { ...spine.finalStorySoFar.body, throughSceneId: "1" },
+    } as typeof spine.finalStorySoFar;
+    await expect(
+      reconcileRoute(
+        model,
+        A4_CONTEXT,
+        { ...spine, finalStorySoFar: stale },
+        a4Recorded({
+          arcSummary: "x",
+          callbacks: [],
+          foreshadows: [],
+          relationshipDeltas: [],
+        }),
+      ),
+    ).rejects.toThrow(/spine-final-scene-mismatch/);
+  });
 });
 
 describe("clause 2 — route-scoped claims, paired resolvable endpoints, deterministic order", () => {
@@ -182,6 +214,11 @@ describe("clause 2 — route-scoped claims, paired resolvable endpoints, determi
     const link = result.routeArc.kind === "route-arc" ? result.routeArc.body.callbacks[0]! : null;
     expect(link?.originEvidenceId).toBe(origin);
     expect(link?.destinationEvidenceId).toBe(destination);
+    // Analyst claims are cited hypotheses, not promoted decode facts.
+    expect(result.routeArc.provisional).toBe(true);
+    const routeSummary = result.routeArc.claims.find((candidate) => candidate.kind === "arc")!;
+    expect(routeSummary.scope).toEqual(result.routeScope);
+    expect(routeSummary.citations.length).toBeGreaterThan(0);
   });
 
   it("PROOF: reveal order is DETERMINISTIC by play order, not model emission order", async () => {
@@ -215,6 +252,45 @@ describe("clause 2 — route-scoped claims, paired resolvable endpoints, determi
         : [];
     expect(bodyOrigins).toEqual([early.originEvidenceId, late.originEvidenceId]);
     expect(result.revealOrder).toEqual(["callback:global:0", "callback:global:1"]);
+    const persistedOrder =
+      result.routeArc.kind === "route-arc" ? result.routeArc.body.revealOrder : [];
+    expect(persistedOrder).toEqual(result.revealOrder);
+  });
+
+  it("PROOF: relationship-delta claim order is also derived from decoded play order", async () => {
+    const { model, snapshot } = buildClaimFixture();
+    const spine = await buildSpine(model);
+    const result = await reconcileRoute(
+      model,
+      A4_CONTEXT,
+      spine,
+      a4Recorded({
+        arcSummary: "弧。",
+        callbacks: [],
+        foreshadows: [],
+        // Intentionally reversed relative to their decoded endpoint ranges.
+        relationshipDeltas: [
+          {
+            counterpartId: "late",
+            before: "遠い",
+            after: "近い",
+            fromEvidenceId: unitFactIdAt(snapshot, 1),
+            toEvidenceId: unitFactIdAt(snapshot, 4),
+          },
+          {
+            counterpartId: "early",
+            before: "他人",
+            after: "友人",
+            fromEvidenceId: unitFactIdAt(snapshot, 0),
+            toEvidenceId: unitFactIdAt(snapshot, 3),
+          },
+        ],
+      }),
+    );
+    const deltas =
+      result.routeArc.kind === "route-arc" ? result.routeArc.body.relationshipDeltas : [];
+    expect(deltas.map((delta) => delta.counterpartId)).toEqual(["early", "late"]);
+    expect(result.routeArc.claims.filter((claim) => claim.kind === "relationship")).toHaveLength(2);
   });
 
   it("PROOF: a citation OUTSIDE the visible snapshot FAILS the claim gate", async () => {
@@ -241,6 +317,7 @@ describe("clause 2 — route-scoped claims, paired resolvable endpoints, determi
       assembleRouteArc(model, A4_CONTEXT, spine.finalStorySoFar.scope, arc, {
         objectId: spine.finalStorySoFar.objectId,
         version: spine.finalStorySoFar.version,
+        evidenceIds: [unitFactIdAt(snapshot, 0)],
       });
       throw new Error("expected an unresolvable-citation failure");
     } catch (error) {
@@ -340,6 +417,9 @@ describe("clause 3 — origins precede callbacks, facts dominate, unknown edges 
       result.routeArc.kind === "route-arc" ? result.routeArc.body.callbacks : [];
     expect(bodyCallbacks).toHaveLength(0);
     expect(result.routeArc.claims.filter((c) => c.kind === "callback")).toHaveLength(0);
+    const persistedUnknowns =
+      result.routeArc.kind === "route-arc" ? result.routeArc.body.unresolvedEdges : [];
+    expect(persistedUnknowns).toEqual(result.unresolvedEdges);
   });
 
   it("PROOF: an edge citing an UNRESOLVABLE endpoint stays explicit, never fabricated", async () => {

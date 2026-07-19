@@ -21,6 +21,7 @@ import { buildEvidenceIndex, type EvidenceIndex } from "../../wiki/evidence-inde
 
 import {
   assembleRouteArc,
+  revealOrderFor,
   type ResolvedArc,
   type ResolvedDelta,
   type ResolvedLink,
@@ -176,6 +177,18 @@ function resolveDelta(index: EvidenceIndex, draft: A4DeltaDraft): ResolvedDelta 
   };
 }
 
+/** Relationship deltas are claims too: their body/claim ordinals must not vary
+ * with the order an untrusted model happened to emit them. */
+function byDeltaRevealOrder(left: ResolvedDelta, right: ResolvedDelta): number {
+  return (
+    left.fromPlayOrder - right.fromPlayOrder ||
+    left.toPlayOrder - right.toPlayOrder ||
+    compare(left.counterpartId, right.counterpartId) ||
+    compare(left.fromEvidenceId, right.fromEvidenceId) ||
+    compare(left.toEvidenceId, right.toEvidenceId)
+  );
+}
+
 function revealHorizonOf(
   callbacks: readonly ResolvedLink[],
   foreshadows: readonly ResolvedLink[],
@@ -220,7 +233,9 @@ export async function reconcileRoute(
     routeId,
     unresolvedEdges,
   );
-  const relationshipDeltas = draft.relationshipDeltas.map((delta) => resolveDelta(index, delta));
+  const relationshipDeltas = draft.relationshipDeltas
+    .map((delta) => resolveDelta(index, delta))
+    .sort(byDeltaRevealOrder);
   const arc: ResolvedArc = {
     arcSummary: draft.arcSummary,
     callbacks,
@@ -228,14 +243,19 @@ export async function reconcileRoute(
     relationshipDeltas,
     revealHorizon: revealHorizonOf(callbacks, foreshadows, relationshipDeltas),
   };
-  const routeArc = assembleRouteArc(model, context, adopted.routeScope, arc, {
-    objectId: adopted.spineObjectId,
-    version: adopted.spineVersion,
-  });
-  const revealOrder = [...callbacks, ...foreshadows]
-    .slice()
-    .sort(byRevealOrder)
-    .map((link) => link.linkId);
+  const routeArc = assembleRouteArc(
+    model,
+    context,
+    adopted.routeScope,
+    arc,
+    {
+      objectId: adopted.spineObjectId,
+      version: adopted.spineVersion,
+      evidenceIds: adopted.evidenceIds,
+    },
+    unresolvedEdges,
+  );
+  const revealOrder = revealOrderFor(callbacks, foreshadows);
   return {
     routeArc,
     routeScope: adopted.routeScope,

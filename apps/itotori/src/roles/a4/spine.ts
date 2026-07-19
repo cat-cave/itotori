@@ -3,9 +3,10 @@
 // A4 does not re-derive the route. It ADOPTS the final progressive story-so-far
 // authored by the scene fold and reasons over the deterministic dispatch order
 // the decode already fixed. This module proves the adoption is honest: the
-// spine must be a `story-so-far` object, and the scenes it claims to cover must
-// be EXACTLY the decode's `sceneDispatchOrder`. A spine that reordered or
-// dropped a scene — the signature of a re-derived topology — is a loud failure,
+// spine must be a `story-so-far` object, it must actually run through the final
+// dispatched scene, and the scenes it claims to cover must be EXACTLY the
+// decode's `sceneDispatchOrder`. A spine that reordered, dropped, or stopped
+// before a scene — the signature of a re-derived topology — is a loud failure,
 // so the module can only reason over the authoritative order, never invent one.
 
 import type { ReadModel } from "../../read-tools/index.js";
@@ -19,6 +20,9 @@ export interface AdoptedSpine {
   readonly routeScope: RouteScope;
   readonly spineObjectId: string;
   readonly spineVersion: number;
+  /** Same-snapshot evidence the final story-so-far already cited. A4 re-resolves
+   * it for the route-arc summary claim; it never invents a new route anchor. */
+  readonly evidenceIds: readonly string[];
   readonly coveredSceneIds: readonly number[];
 }
 
@@ -27,9 +31,19 @@ function sameOrder(left: readonly number[], right: readonly number[]): boolean {
   return left.every((value, index) => value === right[index]);
 }
 
+function evidenceIdsOf(spine: A4RouteSpine["finalStorySoFar"]): readonly string[] {
+  return [
+    ...new Set(
+      spine.claims.flatMap((claim) => claim.citations.map((citation) => citation.evidenceId)),
+    ),
+  ].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+}
+
 /**
  * Adopt the spine or throw. The spine must be the final `story-so-far` object,
- * and its covered scenes must equal the decode's dispatch order verbatim. The
+ * and its covered scenes must equal the decode's dispatch order verbatim. Its
+ * deterministic `throughSceneId` must also name the final dispatched scene, so
+ * a stale intermediate story cannot masquerade as the final route spine. The
  * returned scope is the spine's own scope — inherited, not recomputed — so every
  * route-arc claim carries the route scope the spine was authored under.
  */
@@ -49,10 +63,26 @@ export function adoptSpine(model: ReadModel, spine: A4RouteSpine): AdoptedSpine 
         `[${dispatchOrder.join(", ")}] — the authoritative topology is not reconstructed here`,
     );
   }
+  const finalSceneId = dispatchOrder.at(-1);
+  if (finalSceneId === undefined || object.body.throughSceneId !== String(finalSceneId)) {
+    throw new A4RoleError(
+      "spine-final-scene-mismatch",
+      `story through scene ${object.body.throughSceneId} is not the final dispatched scene ` +
+        `${finalSceneId === undefined ? "(none)" : finalSceneId}`,
+    );
+  }
+  const evidenceIds = evidenceIdsOf(object);
+  if (evidenceIds.length === 0) {
+    throw new A4RoleError(
+      "spine-without-evidence",
+      "the final story-so-far has no cited facts for the route-arc summary claim",
+    );
+  }
   return {
     routeScope: object.scope,
     spineObjectId: object.objectId,
     spineVersion: object.version,
+    evidenceIds,
     coveredSceneIds: [...dispatchOrder],
   };
 }
