@@ -98,6 +98,39 @@ const MediaDimensionsSchema = z
   })
   .strict();
 
+// Utsushi runtime artifacts are portable, managed references rather than
+// service URLs. The artifact server is a resolution boundary and may move;
+// this immutable URI is the stable value a WikiObject stores. Keep this in
+// lockstep with `utsushi_core::validate_runtime_artifact_uri`.
+export const UTSUSHI_RUNTIME_ARTIFACT_URI_ROOT = "artifacts/utsushi/runtime/";
+
+export const UtsushiArtifactUriSchema = z.string().superRefine((value, context) => {
+  if (
+    !value.startsWith(UTSUSHI_RUNTIME_ARTIFACT_URI_ROOT) ||
+    value.startsWith("/") ||
+    value.includes("\\") ||
+    /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(value)
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "artifact URI must be a portable Utsushi runtime artifact URI",
+    });
+    return;
+  }
+
+  const relative = value.slice(UTSUSHI_RUNTIME_ARTIFACT_URI_ROOT.length);
+  const segments = relative.split("/");
+  if (
+    segments.length < 3 ||
+    segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "artifact URI must contain managed run, kind, and filename segments",
+    });
+  }
+});
+
 const MediaAccessSchema = z
   .object({
     redaction: z.enum(["default-redacted", "clear"]),
@@ -108,7 +141,7 @@ const MediaAccessSchema = z
 const AvailableMediaSchema = z
   .object({
     status: z.literal("available"),
-    artifactUri: z.url(),
+    artifactUri: UtsushiArtifactUriSchema,
     contentHash: Sha256Schema,
     mediaType: z.enum(["image/png", "image/jpeg", "image/webp"]),
     dimensions: MediaDimensionsSchema,

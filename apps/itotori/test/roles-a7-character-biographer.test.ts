@@ -59,7 +59,7 @@ function fixture() {
 
 function portraitFacts(seed: string): MediaArtifactFacts {
   return {
-    artifactUri: `https://artifacts.example/artifact-store/portrait-${seed}.png`,
+    artifactUri: `artifacts/utsushi/runtime/test-run/screenshots/portrait-${seed}.png`,
     contentHash: `sha256:${seed.repeat(64).slice(0, 64)}`,
     mediaType: "image/png",
     dimensions: { width: 256, height: 256 },

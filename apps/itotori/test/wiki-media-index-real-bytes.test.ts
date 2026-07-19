@@ -35,10 +35,9 @@ import { createItotoriServer } from "../src/server.js";
 import {
   buildMediaIndex,
   buildMediaRef,
-  httpArtifactFetcher,
   mediaForSubject,
   resolveMediaRef,
-  sanitizedArtifactUrl,
+  sanitizedArtifactFetcher,
   MediaResolutionError,
   type MediaRevealGrant,
 } from "../src/wiki/media-index.js";
@@ -159,7 +158,7 @@ describe("real-Sweetie media ref resolution through the sanitized server", () =>
       const baseUrl = `http://127.0.0.1:${port}`;
       try {
         const facts = {
-          artifactUri: sanitizedArtifactUrl(baseUrl, report.artifactUri),
+          artifactUri: report.artifactUri,
           contentHash,
           mediaType: "image/png" as const,
           dimensions: { width: report.width, height: report.height },
@@ -178,7 +177,7 @@ describe("real-Sweetie media ref resolution through the sanitized server", () =>
         // (a) default: resolves through the server, REDACTED (copyrighted frame
         //     stays behind the default-on toggle).
         const resolved = await resolveMediaRef(ref, {
-          fetchArtifactBytes: httpArtifactFetcher,
+          fetchArtifactBytes: sanitizedArtifactFetcher(baseUrl),
           grant: ADMIN_VIEW,
         });
         expect(resolved.redacted).toBe(true);
@@ -187,7 +186,7 @@ describe("real-Sweetie media ref resolution through the sanitized server", () =>
         // (b) reveal without the cap -> explicit unauthorized-reveal (never serves clear).
         await expect(
           resolveMediaRef(ref, {
-            fetchArtifactBytes: httpArtifactFetcher,
+            fetchArtifactBytes: sanitizedArtifactFetcher(baseUrl),
             grant: {
               heldPermission: "project-member",
               revealSensitive: false,
@@ -206,7 +205,10 @@ describe("real-Sweetie media ref resolution through the sanitized server", () =>
           },
         );
         await expect(
-          resolveMediaRef(tampered, { fetchArtifactBytes: httpArtifactFetcher, grant: ADMIN_VIEW }),
+          resolveMediaRef(tampered, {
+            fetchArtifactBytes: sanitizedArtifactFetcher(baseUrl),
+            grant: ADMIN_VIEW,
+          }),
         ).rejects.toMatchObject({ name: "MediaResolutionError", code: "hash-mismatch" });
 
         // (d) missing artifact -> explicit missing.
@@ -214,14 +216,14 @@ describe("real-Sweetie media ref resolution through the sanitized server", () =>
           { kind: "screenshot", mediaId: "real-frame-missing", sceneId: String(sceneId) },
           {
             ...facts,
-            artifactUri: sanitizedArtifactUrl(
-              baseUrl,
-              `artifacts/utsushi/runtime/${runId}/screenshots/absent.png`,
-            ),
+            artifactUri: `artifacts/utsushi/runtime/${runId}/screenshots/absent.png`,
           },
         );
         await expect(
-          resolveMediaRef(missing, { fetchArtifactBytes: httpArtifactFetcher, grant: ADMIN_VIEW }),
+          resolveMediaRef(missing, {
+            fetchArtifactBytes: sanitizedArtifactFetcher(baseUrl),
+            grant: ADMIN_VIEW,
+          }),
         ).rejects.toBeInstanceOf(MediaResolutionError);
       } finally {
         await new Promise<void>((r) => server.close(() => r()));

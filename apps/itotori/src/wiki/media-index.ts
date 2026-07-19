@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 
-import { MediaRefSchema, type MediaRef, type WikiObject } from "../contracts/index.js";
+import {
+  MediaRefSchema,
+  UtsushiArtifactUriSchema,
+  type MediaRef,
+  type WikiObject,
+} from "../contracts/index.js";
 
 // The content-addressed Wiki media index.
 //
@@ -65,14 +70,18 @@ export function mediaSubjectKey(subject: MediaSubject): string {
 const ARTIFACT_STORE_PATH = "/artifact-store/";
 
 /**
- * Build the sanitized-artifact-server URL for a portable-relative managed
+ * Build the sanitized-artifact-server URL for a persisted, portable Utsushi
  * artifact URI (e.g. `artifacts/utsushi/runtime/<run>/screenshots/<id>.png`).
- * The managed URI is portable-relative and scheme-less by construction; the
- * server serves it under `/artifact-store/<encoded-uri>`. This reconciles the
- * portable-relative producer convention with the resolvable-URL the `MediaRef`
- * contract requires, WITHOUT embedding any bytes.
+ * The stable URI stays in the `MediaRef`; this derived URL is only the existing
+ * server's resolution boundary, so changing hosts never changes WikiObject
+ * identity and no bytes are embedded.
  */
 export function sanitizedArtifactUrl(serverBaseUrl: string, managedArtifactUri: string): string {
+  UtsushiArtifactUriSchema.parse(managedArtifactUri);
+  const baseUrl = new URL(serverBaseUrl);
+  if (baseUrl.protocol !== "http:" && baseUrl.protocol !== "https:") {
+    throw new TypeError(`artifact server URL must use http(s): ${serverBaseUrl}`);
+  }
   const base = serverBaseUrl.endsWith("/") ? serverBaseUrl.slice(0, -1) : serverBaseUrl;
   return `${base}${ARTIFACT_STORE_PATH}${encodeURIComponent(managedArtifactUri)}`;
 }
@@ -91,7 +100,7 @@ export type MediaAccessPolicy = {
  * is supplied from a real Utsushi render/patch report — this module never
  * invents a hash, URI, or dimension. */
 export type MediaArtifactFacts = {
-  /** A resolvable sanitized-artifact-server URL (see {@link sanitizedArtifactUrl}). */
+  /** A stable, portable Utsushi artifact URI. Never a server URL or byte payload. */
   artifactUri: string;
   /** The `sha256:<hex>` content hash of the referenced artifact bytes. */
   contentHash: string;
@@ -108,7 +117,7 @@ export type MediaRefBinding =
 
 /**
  * Build a strictly-validated, reference-only `MediaRef` binding a stable
- * subject to a sanitized artifact URI + content hash + type + dimensions +
+ * subject to a stable Utsushi artifact URI + content hash + type + dimensions +
  * access policy. The result carries no bytes and is re-validated through
  * `MediaRefSchema`, so a malformed hash/URI/dimension fails loud here.
  */
@@ -295,8 +304,9 @@ export class MediaResolutionError extends Error {
   }
 }
 
-/** Fetches the bytes for a sanitized artifact URI from the artifact server.
- * Returns `null` when the artifact is absent (a 404 / missing file). */
+/** Fetches bytes by a stable Utsushi artifact URI. The only production adapter
+ * below routes it through the existing sanitized artifact server. Returns
+ * `null` when the artifact is absent (a 404 / missing file). */
 export type MediaArtifactFetcher = (artifactUri: string) => Promise<Uint8Array | null>;
 
 /** The viewer's reveal grant — DATA, permission-not-role. `heldPermission` is
@@ -311,8 +321,9 @@ export type MediaRevealGrant = {
   shareRedaction: boolean;
 };
 
-/** A resolved, reference-only frame handle. It carries the redaction verdict
- * and the served URI for the frame surface to render — never any bytes. */
+/** A resolved, reference-only frame handle. It carries the stable Utsushi URI
+ * and the redaction verdict; the frame surface derives its served URL through
+ * the sanitized artifact server — never any bytes. */
 export type ResolvedMediaFrame = {
   mediaId: string;
   subject: MediaSubject;
@@ -435,17 +446,24 @@ export async function resolveMediaRef(
 }
 
 /**
- * The default sanitized-artifact-server fetcher: an HTTP GET against the
- * running artifact server. A 404 is `null` (missing); any other non-2xx is a
- * hard failure. Returns bytes only — the caller content-addresses them.
+ * Make the production fetcher for the EXISTING sanitized artifact server. The
+ * Wiki stores native Utsushi URIs, while this adapter derives the server URL at
+ * read time. A 404 is `null` (missing); any other non-2xx is a hard failure.
  */
-export async function httpArtifactFetcher(artifactUri: string): Promise<Uint8Array | null> {
-  const response = await fetch(artifactUri);
+export function sanitizedArtifactFetcher(serverBaseUrl: string): MediaArtifactFetcher {
+  return async (artifactUri) =>
+    httpArtifactFetcher(sanitizedArtifactUrl(serverBaseUrl, artifactUri));
+}
+
+/** Fetch a fully-derived sanitized server URL. Kept separate from the native
+ * URI fetcher so no HTTP URL can enter a persisted `MediaRef`. */
+export async function httpArtifactFetcher(artifactServerUrl: string): Promise<Uint8Array | null> {
+  const response = await fetch(artifactServerUrl);
   if (response.status === 404) {
     return null;
   }
   if (!response.ok) {
-    throw new Error(`artifact server returned ${response.status} for ${artifactUri}`);
+    throw new Error(`artifact server returned ${response.status} for ${artifactServerUrl}`);
   }
   return new Uint8Array(await response.arrayBuffer());
 }
