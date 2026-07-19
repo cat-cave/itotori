@@ -711,6 +711,48 @@
       "limitations": [
         "helper: no key/helper handling is claimed"
       ]
+    },
+    {
+      "rowId": "softpal-script-src-text-dat-extract-patch",
+      "engineFamily": "softpal",
+      "scenario": "script-src-text-dat-extract-patch",
+      "adapterId": "kaifuu.softpal",
+      "evidencePosture": "positive_adapter",
+      "levels": {
+        "identify": {
+          "status": "supported",
+          "derivedFrom": "reallive-detector-capabilities#capability:detection"
+        },
+        "inventory": {
+          "status": "supported",
+          "derivedFrom": "reallive-detector-capabilities#capability:asset_inventory+asset_listing"
+        },
+        "extract": {
+          "status": "supported",
+          "derivedFrom": "reallive-detector-capabilities#capability:extraction"
+        },
+        "patch": {
+          "status": "partial",
+          "derivedFrom": "reallive-detector-capabilities#capability:patching+patch_back"
+        },
+        "helper": {
+          "status": "not_applicable",
+          "derivedFrom": "reallive-detector-capabilities#capability:crypto_access+encrypted_input",
+          "note": "TEXT.DAT (de)cryption is resolved internally by the adapter; no user-provided key or helper is required"
+        },
+        "runtime": {
+          "status": "unsupported",
+          "derivedFrom": "reallive-detector-capabilities#capability:runtime_vm"
+        }
+      },
+      "evidence": [
+        {
+          "sourceId": "reallive-detector-capabilities",
+          "category": "claimed_support_tuples",
+          "kind": "adapter_registry"
+        }
+      ],
+      "limitations": []
     }
   ],
   "exclusions": [

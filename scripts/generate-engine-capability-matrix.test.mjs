@@ -44,12 +44,14 @@ test("every row carries all six capability levels with traceable derivation", ()
 });
 
 test("positive extraction/patch adapter and readiness-only profiles are mechanically distinguished", () => {
-  // Exactly the synthetic fixture adapter (a real extract+patch adapter,
-  // evidenced by claimed-support tuples) is a positive adapter.
+  // The synthetic fixture adapter and Softpal are the real extract+patch
+  // adapters (evidenced by claimed-support tuples); every other row is
+  // readiness-only. RealLive's own registry adapter is detector-only, so it
+  // stays readiness_only — Softpal is a first-class positive adapter.
   const positives = matrix.rows.filter((r) => r.evidencePosture === "positive_adapter");
   assert.deepEqual(
     positives.map((r) => r.rowId),
-    ["synthetic-fixture-plaintext-identity"],
+    ["synthetic-fixture-plaintext-identity", "softpal-script-src-text-dat-extract-patch"],
   );
   const fixture = rowsById.get("synthetic-fixture-plaintext-identity");
   assert.equal(fixture.levels.extract.status, "supported");
@@ -70,6 +72,40 @@ test("positive extraction/patch adapter and readiness-only profiles are mechanic
       );
     }
   }
+});
+
+test("Softpal is a positive extract+patch adapter derived from real capability tuples", () => {
+  const softpal = rowsById.get("softpal-script-src-text-dat-extract-patch");
+  assert.ok(softpal, "Softpal capability row must exist");
+  assert.equal(softpal.engineFamily, "softpal");
+  assert.equal(softpal.adapterId, "kaifuu.softpal");
+  assert.equal(softpal.evidencePosture, "positive_adapter");
+  // Level statuses mirror `kaifuu-cli capabilities` -> kaifuu.softpal: extract
+  // Supported, patch Partial (patching/patch_back Limited), runtime Unsupported.
+  assert.equal(softpal.levels.identify.status, "supported");
+  assert.equal(softpal.levels.inventory.status, "supported");
+  assert.equal(softpal.levels.extract.status, "supported");
+  assert.equal(softpal.levels.patch.status, "partial");
+  assert.equal(softpal.levels.runtime.status, "unsupported");
+  // TEXT.DAT crypto is internal (crypto_access + encrypted_input Supported, no
+  // key_profile): the helper rung is not_applicable, not "unknown".
+  assert.equal(softpal.levels.helper.status, "not_applicable");
+
+  // The status is genuinely derived: flipping the real extraction tuple to
+  // Unsupported must demote the extract rung (no silent/hand-set cells).
+  const tampered = structuredClone(inputs);
+  const softpalAdapter = tampered["reallive-detector-capabilities"].find(
+    (a) => a.adapterId === "kaifuu.softpal",
+  );
+  for (const report of softpalAdapter.reports) {
+    if (report.capability === "extraction") {
+      report.status = "unsupported";
+    }
+  }
+  const regenerated = generateEngineCapabilityMatrix(tampered).rows.find(
+    (r) => r.rowId === "softpal-script-src-text-dat-extract-patch",
+  );
+  assert.equal(regenerated.levels.extract.status, "unsupported");
 });
 
 test("RenPy is not presented as an alpha Japanese opportunity driver", () => {

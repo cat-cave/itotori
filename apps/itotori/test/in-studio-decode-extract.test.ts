@@ -23,7 +23,7 @@ import { createDecodeExtractRunner } from "../src/extract/decode-extract-runner.
 import {
   buildExtractArgs,
   KaifuuExtractError,
-  runKaifuuRealliveExtract,
+  runKaifuuExtract,
   type KaifuuProcessResult,
 } from "../src/extract/kaifuu-extract-seam.js";
 import { parseProjectDecodeExtractRequest } from "../src/api-schema.js";
@@ -50,8 +50,8 @@ const EXAMPLE_BUNDLE = readFileSync(
  * the exact `--bundle-output` path the seam built, then reports success.
  */
 function realSeamWithFakeSpawn(capture: { argv?: string[] }) {
-  return (args: Parameters<typeof runKaifuuRealliveExtract>[0]) =>
-    runKaifuuRealliveExtract({
+  return (args: Parameters<typeof runKaifuuExtract>[0]) =>
+    runKaifuuExtract({
       ...args,
       env: {},
       runProcess: (_command, argv): KaifuuProcessResult => {
@@ -114,7 +114,7 @@ describe("in-studio decode/extract runner drives the REAL kaifuu extract seam", 
   it("propagates a non-zero kaifuu extract failure as a KaifuuExtractError", async () => {
     const runner = createDecodeExtractRunner({
       runExtract: (args) =>
-        runKaifuuRealliveExtract({
+        runKaifuuExtract({
           ...args,
           env: {},
           runProcess: (): KaifuuProcessResult => ({

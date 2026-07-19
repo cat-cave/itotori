@@ -24,7 +24,7 @@ import { join } from "node:path";
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import { describe, expect, it } from "vitest";
 
-import { runKaifuuRealliveExtract } from "../src/extract/kaifuu-extract-seam.js";
+import { runKaifuuExtract } from "../src/extract/kaifuu-extract-seam.js";
 import { buildFactSnapshot, type FactSnapshot } from "../src/prepass/index.js";
 import { runUtsushiStructureExport } from "../src/structure-export/utsushi-structure-seam.js";
 import type { NarrativeStructure } from "../src/structure/types.js";
@@ -100,7 +100,7 @@ describe("native patchback + replay (env-gated real Sweetie byte oracle)", () =>
 
       // (1) real bridge + (2) real structure + (3) real snapshot.
       expect(
-        runKaifuuRealliveExtract({
+        runKaifuuExtract({
           gameRoot: corpus!.gameRoot,
           gameId: "reallive-corpus",
           gameVersion: "real",

@@ -523,5 +523,132 @@
         "supportBoundary": "Siglus detector profile identifies synthetic Scene.pck/Gameexe.dat fixtures for identify and inventory only; parser, extraction, decryption, patch-back, and runtime support are not claimed."
       }
     }
+  },
+{
+    "adapterId": "kaifuu.softpal",
+    "reports": [
+      {
+        "capability": "asset_inventory",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "asset_listing",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "asset_text_patching",
+        "status": "limited",
+        "limitation": "dialogue + choice text is patched back by rebuilding TEXT.DAT (re-encrypting when the original was) and repointing SCRIPT.SRC as loose files; PAC repack, speaker-name/non-text surfaces, and the full Sv20 opcode table are not claimed"
+      },
+      {
+        "capability": "codec_access",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "container_access",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "crypto_access",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "delta_patching",
+        "status": "unsupported",
+        "limitation": "Softpal patch-back emits rebuilt loose files, not a .kaifuu delta package"
+      },
+      {
+        "capability": "detection",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "encrypted_input",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "extraction",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "non_text_surface_extraction",
+        "status": "unsupported",
+        "limitation": "[REDACTED:kaifuu.secret_redacted]"
+      },
+      {
+        "capability": "patch_back",
+        "status": "limited",
+        "limitation": "dialogue + choice text is patched back by rebuilding TEXT.DAT (re-encrypting when the original was) and repointing SCRIPT.SRC as loose files; PAC repack, speaker-name/non-text surfaces, and the full Sv20 opcode table are not claimed"
+      },
+      {
+        "capability": "patching",
+        "status": "limited",
+        "limitation": "dialogue + choice text is patched back by rebuilding TEXT.DAT (re-encrypting when the original was) and repointing SCRIPT.SRC as loose files; PAC repack, speaker-name/non-text surfaces, and the full Sv20 opcode table are not claimed"
+      },
+      {
+        "capability": "profile_generation",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "runtime_vm",
+        "status": "unsupported",
+        "limitation": "runtime support belongs to future Utsushi/Softpal work, not this adapter"
+      },
+      {
+        "capability": "verification",
+        "status": "supported",
+        "limitation": null
+      }
+    ],
+    "accessContract": {
+      "identify": {
+        "status": "supported",
+        "requiredCapabilities": ["detection", "profile_generation"],
+        "supportedSurfaces": ["identity"],
+        "supportedContainers": ["loose_file"],
+        "supportedCrypto": ["null_key"],
+        "supportedCodecs": ["unknown"],
+        "supportedPatchBack": ["unsupported"],
+        "supportBoundary": "identify/profile reads only file names, container magics, and script signatures"
+      },
+      "inventory": {
+        "status": "supported",
+        "requiredCapabilities": ["asset_inventory", "asset_listing"],
+        "supportedSurfaces": ["archive_entry"],
+        "supportedContainers": ["loose_file", "archive"],
+        "supportedCrypto": ["null_key"],
+        "supportedCodecs": ["binary_table"],
+        "supportedPatchBack": ["unsupported"],
+        "supportBoundary": "enumerates the PAC entry table (or the loose SCRIPT.SRC/TEXT.DAT pair); text extraction is claimed only for the script/text surfaces"
+      },
+      "extract": {
+        "status": "supported",
+        "requiredCapabilities": ["codec_access", "container_access", "crypto_access", "extraction"],
+        "supportedSurfaces": ["binary_offset"],
+        "supportedContainers": ["loose_file", "archive"],
+        "supportedCrypto": ["null_key"],
+        "supportedCodecs": ["shift_jis_text", "bytecode_decompile", "binary_table"],
+        "supportedPatchBack": ["unsupported"],
+        "supportBoundary": "extracts the TEXT-SHOW (dialogue) + text-bearing SELECT (choice) surfaces of SCRIPT.SRC, resolving 4-byte TEXT.DAT pointers to decoded cp932 lines"
+      },
+      "patch": {
+        "status": "limited",
+        "requiredCapabilities": ["patch_back", "patching"],
+        "supportedSurfaces": ["binary_offset"],
+        "supportedContainers": ["loose_file"],
+        "supportedCrypto": ["null_key"],
+        "supportedCodecs": ["shift_jis_text", "binary_table"],
+        "supportedPatchBack": ["replace_file"],
+        "supportBoundary": "dialogue + choice text is patched back by rebuilding TEXT.DAT (re-encrypting when the original was) and repointing SCRIPT.SRC as loose files; PAC repack, speaker-name/non-text surfaces, and the full Sv20 opcode table are not claimed"
+      }
+    }
   }
 ]

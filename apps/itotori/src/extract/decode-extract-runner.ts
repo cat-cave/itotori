@@ -24,7 +24,7 @@ import type {
   DecodeExtractPort,
 } from "../services/project-workflow.js";
 import {
-  runKaifuuRealliveExtract,
+  runKaifuuExtract,
   type KaifuuExtractArgs,
   type KaifuuExtractResult,
 } from "./kaifuu-extract-seam.js";
@@ -33,7 +33,7 @@ import {
  * The extract-seam invocation, isolated as a seam so a test can prove the runner
  * drives the REAL `kaifuu-cli extract` argv WITHOUT spawning a subprocess (the
  * double captures the args and writes a fixture bridge to `bundleOutputPath`).
- * Defaults to the real {@link runKaifuuRealliveExtract}.
+ * Defaults to the real {@link runKaifuuExtract}.
  */
 export type DecodeExtractRunnerOptions = {
   runExtract?: (args: KaifuuExtractArgs) => KaifuuExtractResult;
@@ -53,7 +53,7 @@ export type DecodeExtractRunnerOptions = {
 export function createDecodeExtractRunner(
   options: DecodeExtractRunnerOptions = {},
 ): DecodeExtractPort {
-  const runExtract = options.runExtract ?? ((args) => runKaifuuRealliveExtract(args));
+  const runExtract = options.runExtract ?? ((args) => runKaifuuExtract(args));
   const makeScratchDir =
     options.makeScratchDir ?? (() => mkdtempSync(join(tmpdir(), "itotori-decode-extract-")));
   const readBundle = options.readBundle ?? ((path) => readFileSync(path, "utf8"));
