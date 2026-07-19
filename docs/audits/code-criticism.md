@@ -162,9 +162,11 @@ vec![] })` — because `count = u32_le(0..4) = 0` matches the
   markup, asset references for AVG32-variant RealLive titles; bridge
   schema with stable ids; patch-back round-trips without corrupting
   non-text bytes; engine-generic across AVG32-variant titles.
-- **Files**: `crates/kaifuu-reallive/src/inventory.rs` (473 LOC),
-  `:gameexe.rs` (229 LOC), `:patchback.rs` (534 LOC),
-  `:protected_spans.rs` (589 LOC), `:encoding.rs` (271 LOC).
+- **Files**: `crates/kaifuu-reallive/src/inventory.rs` (473 LOC,
+  since deleted — extract unified onto the patch path in commit
+  5b7cf2d1), `:gameexe.rs` (229 LOC), `:patchback/` (directory module;
+  `:patchback.rs` was 534 LOC at audit time, since restructured in
+  commit ad50c1da), `:protected_spans.rs` (589 LOC), `:encoding.rs` (271 LOC).
 - **Verdict**: **minimal-pass-test** for inventory and patchback;
   **honest-prototype** for the encoding/protected-spans submodules.
 - **Evidence**:
@@ -172,7 +174,8 @@ vec![] })` — because `count = u32_le(0..4) = 0` matches the
   Inventory walks the AST produced by KAIFUU-173, so it inherits the
   KAIFUU-173 inability to parse real Scene/SEEN bytes. Patch-back is
   declared length-preserving only at
-  `crates/kaifuu-reallive/src/patchback.rs:33` (`FixedBudget` returns
+  `crates/kaifuu-reallive/src/patchback/` (historical line cite from
+  pre-restructure `patchback.rs:33`; `FixedBudget` returns
   `kaifuu.reallive.patchback_unsupported_length_policy` Fatal), which
   rules out any real Japanese-to-English translation since byte counts
   always change. The existing audit
@@ -197,12 +200,13 @@ vec![] })` — because `count = u32_le(0..4) = 0` matches the
   which are catalogued. The "inventory" of a real Gameexe.ini is
   therefore overwhelmingly "unknown."
 
-- **Test sanity check**: tautological + small. `tests/inventory.rs` has
-  11 tests; each calls `synthetic::single_scene_archive(...)`
+- **Test sanity check**: tautological + small. `tests/inventory.rs`
+  (since deleted — suite reorganized into real-bytes files in commit
+  4514c2e6) has 11 tests; each calls `synthetic::single_scene_archive(...)`
   (the same encoder used by the KAIFUU-173 smoke). Example:
   `extracts_bridge_units_with_kaifuu_173_stable_slot_ids_as_source_unit_keys`
-  (`tests/inventory.rs:144`) walks the synthetic AST and asserts the
-  source-unit-keys round-trip. Same for `tests/patchback.rs:46-79` —
+  (`tests/inventory.rs:144`, historical cite) walks the synthetic AST and asserts the
+  source-unit-keys round-trip. Same for `tests/patchback.rs:46-79` (historical cite — file deleted in commit 4514c2e6) —
   re-uses the synthetic byte builder.
 - **What would actually exercise it**: emitting a bridge unit list for
   one real RealLive game's Seen.txt + Gameexe.ini and patching one slot
@@ -543,7 +547,7 @@ load-bearing implementation:
 1. **"Synthetic fixture" as load-bearing input.** A `synthetic` module
    inside a test file builds bytes with the exact encoder the parser
    under test decodes (e.g. `crates/kaifuu-reallive/tests/smoke.rs:19-97`,
-   `crates/kaifuu-reallive/tests/patchback.rs:20-44`,
+   `crates/kaifuu-reallive/tests/patchback.rs:20-44` (historical cite — file deleted in commit 4514c2e6),
    `crates/kaifuu-engine-fixture/src/lib.rs:6859 reallive_fixture_dir`).
    The encoder/decoder is its own oracle; no third-party byte stream
    ever shows up in any test. This pattern is everywhere in the
