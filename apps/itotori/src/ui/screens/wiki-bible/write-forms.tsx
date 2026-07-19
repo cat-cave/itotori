@@ -5,13 +5,15 @@
 // corrected. There is no reviewer or approval control here — a correction is a
 // durable human input the enhancement flywheel resolves later.
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Panel } from "@itotori/ds";
-import { writeWikiBibleInput, type WikiBibleScope } from "./client.js";
+import { writeAssertionFor, writeWikiBibleInput, type WikiBibleScope } from "./client.js";
 import type {
+  WikiClaimView,
   WikiDashboardWriteReceipt,
   WikiSourceObjectView,
 } from "../../../wiki/dashboard/read-model.js";
+import { visibleClaims } from "../../../wiki/dashboard/read-model.js";
 
 type WriteState =
   | { readonly state: "idle" }
@@ -21,44 +23,74 @@ type WriteState =
 export function WikiBibleWriteForms({
   object,
   scope,
+  activeRouteId,
   onWritten,
 }: {
   object: WikiSourceObjectView;
   scope: WikiBibleScope;
+  /** The exact route scope already enforced by the read-side claims panel. */
+  activeRouteId: string | null;
   onWritten: (receipt: WikiDashboardWriteReceipt) => void;
 }): ReactNode {
   const ref = { objectId: object.objectId, wikiKind: object.wikiKind };
+  // Never offer a write control for a claim the current route cannot read.
+  // The forms consume this same projection as ClaimsPanel, not object.claims.
+  const shownClaims = visibleClaims(object.claims, activeRouteId);
   return (
     <div className="wiki-bible__writes">
-      <ClaimEditForm object={object} scope={scope} objectRef={ref} onWritten={onWritten} />
-      <FeedbackForm object={object} scope={scope} objectRef={ref} onWritten={onWritten} />
+      <ClaimEditForm
+        object={object}
+        claims={shownClaims}
+        scope={scope}
+        objectRef={ref}
+        onWritten={onWritten}
+      />
+      <FeedbackForm
+        object={object}
+        claims={shownClaims}
+        scope={scope}
+        objectRef={ref}
+        onWritten={onWritten}
+      />
     </div>
   );
 }
 
 function ClaimEditForm({
   object,
+  claims,
   scope,
   objectRef,
   onWritten,
 }: {
   object: WikiSourceObjectView;
+  claims: readonly WikiClaimView[];
   scope: WikiBibleScope;
   objectRef: { objectId: string; wikiKind: string };
   onWritten: (receipt: WikiDashboardWriteReceipt) => void;
 }): ReactNode {
-  const firstClaim = object.claims[0] ?? null;
+  const firstClaim = claims[0] ?? null;
   const [claimId, setClaimId] = useState(firstClaim?.claimId ?? "");
-  const claimIndex = object.claims.findIndex((claim) => claim.claimId === claimId);
-  const claim = claimIndex >= 0 ? (object.claims[claimIndex] ?? null) : null;
+  const claim = claims.find((entry) => entry.claimId === claimId) ?? null;
+  const claimIndex = claim === null ? -1 : object.claims.findIndex((entry) => entry === claim);
   const [statement, setStatement] = useState(firstClaim?.statement ?? "");
   const [outcome, setOutcome] = useState<WriteState>({ state: "idle" });
   const canSave =
     claim !== null && statement.trim().length > 0 && statement.trim() !== claim.statement;
 
+  // A route change can make a previously selected claim out of scope. Reset to
+  // the first currently visible claim before the tester can submit it.
+  useEffect(() => {
+    if (claim !== null) {
+      return;
+    }
+    setClaimId(firstClaim?.claimId ?? "");
+    setStatement(firstClaim?.statement ?? "");
+  }, [claim, firstClaim]);
+
   function selectClaim(nextClaimId: string): void {
     setClaimId(nextClaimId);
-    const next = object.claims.find((entry) => entry.claimId === nextClaimId);
+    const next = claims.find((entry) => entry.claimId === nextClaimId);
     setStatement(next?.statement ?? "");
   }
 
@@ -81,6 +113,7 @@ function ClaimEditForm({
           },
         ],
       },
+      assertion: writeAssertionFor(object, scope),
     });
     if (result.ok) {
       onWritten(result.data);
@@ -89,7 +122,7 @@ function ClaimEditForm({
     setOutcome({ state: "error", message: result.error.message });
   }
 
-  if (object.claims.length === 0) {
+  if (claims.length === 0) {
     return null;
   }
   return (
@@ -107,7 +140,7 @@ function ClaimEditForm({
             value={claimId}
             onChange={(event) => selectClaim(event.target.value)}
           >
-            {object.claims.map((entry) => (
+            {claims.map((entry) => (
               <option key={entry.claimId} value={entry.claimId}>
                 {entry.claimId}
               </option>
@@ -136,11 +169,13 @@ function ClaimEditForm({
 
 function FeedbackForm({
   object,
+  claims,
   scope,
   objectRef,
   onWritten,
 }: {
   object: WikiSourceObjectView;
+  claims: readonly WikiClaimView[];
   scope: WikiBibleScope;
   objectRef: { objectId: string; wikiKind: string };
   onWritten: (receipt: WikiDashboardWriteReceipt) => void;
@@ -163,6 +198,7 @@ function FeedbackForm({
         text: text.trim(),
         ...(targetClaimId === "" ? {} : { targetClaimId }),
       },
+      assertion: writeAssertionFor(object, scope),
     });
     if (result.ok) {
       onWritten(result.data);
@@ -187,7 +223,7 @@ function FeedbackForm({
             onChange={(event) => setTargetClaimId(event.target.value)}
           >
             <option value="">Whole object</option>
-            {object.claims.map((entry) => (
+            {claims.map((entry) => (
               <option key={entry.claimId} value={entry.claimId}>
                 {entry.claimId}
               </option>

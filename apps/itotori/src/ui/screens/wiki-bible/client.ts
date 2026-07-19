@@ -1,21 +1,19 @@
-// The Wiki bible dashboard data client — the surface's typed reader/writer over
-// the wiki object read/write API. It is a purpose-built data layer (not an
-// ad-hoc component fetch): every request carries the shell's selected-account
-// scope and validates the response envelope through the dashboard guards before
-// the surface trusts it. The three operations mirror the server adapter:
-// overview, object detail, and the non-blocking edit/feedback write.
+// The Wiki bible dashboard data client — a typed reader/writer over the
+// WikiObject API (`/api/wiki`). Every call goes through the shell's
+// ItotoriApiClient so responses are validated by the same browser wire guards
+// the rest of the SPA uses. Pure adapters project the object-API envelopes
+// into the product-surface dashboard read-models (overview with readiness +
+// route facets, object detail, write receipt that addresses the same object).
 
-import {
-  assertWikiDashboardObject,
-  assertWikiDashboardOverview,
-  assertWikiDashboardWriteReceipt,
-} from "../../../wiki/dashboard/guards.js";
+import { apiClient } from "../../client.js";
 import type {
   WikiDashboardObject,
   WikiDashboardOverview,
   WikiDashboardWriteReceipt,
+  WikiRouteScope,
+  WikiSourceObjectView,
 } from "../../../wiki/dashboard/read-model.js";
-import { withSelectedAccountScope } from "../../shell-account-scope.js";
+import { objectFromWikiShow, overviewFromWikiList, writeReceiptFromWikiWrite } from "./adapt.js";
 
 /** A settled dashboard call: the validated body, or a typed transport error the
  * surface can render without crashing. */
@@ -39,33 +37,63 @@ export interface WikiBibleObjectRef {
   readonly wikiKind: string;
 }
 
-/** The edit / feedback envelope the surface posts. `input` is the strict
- * HumanInput the object API validates server-side. */
+/** The edit / feedback payload the surface posts. `input` is the strict
+ * HumanInput; `assertion` is the anti-forgery head claim the object API checks
+ * against the substrate (category + context snapshot + route scope). */
 export interface WikiBibleWriteInput {
-  readonly input: unknown;
-}
-
-function basePath(scope: Pick<WikiBibleScope, "projectId" | "localeBranchId">): string {
-  return `/api/projects/${encodeURIComponent(scope.projectId)}/locale-branches/${encodeURIComponent(
-    scope.localeBranchId,
-  )}/wiki-objects`;
+  readonly input: { readonly kind: "edit" | "feedback"; readonly [key: string]: unknown };
+  readonly assertion: {
+    readonly category: string;
+    readonly contextSnapshotId: string;
+    readonly routeScope: WikiRouteScope;
+  };
 }
 
 export async function fetchWikiBibleOverview(
   scope: WikiBibleScope,
 ): Promise<WikiBibleResult<WikiDashboardOverview>> {
-  const url = `${basePath(scope)}?snapshotId=${encodeURIComponent(scope.snapshotId)}`;
-  return request(url, { method: "GET" }, assertWikiDashboardOverview);
+  // Source truth is snapshot-addressed; locale branch is shell scope only.
+  const result = await apiClient.request("wiki.list", {
+    query: { snapshotId: scope.snapshotId },
+    // An empty source bible is a valid overview (zero readiness), not an empty
+    // surface state — the screen still renders the readiness band.
+    isEmpty: () => false,
+  });
+  if (result.state === "error") {
+    return fromClientError(result.error);
+  }
+  if (result.state === "empty") {
+    return {
+      ok: true,
+      data: overviewFromWikiList({
+        schemaVersion: "itotori.wiki.objects.v1",
+        generatedAt: new Date(0).toISOString(),
+        snapshotId: scope.snapshotId,
+        sourceObjects: [],
+        renderings: [],
+      }),
+    };
+  }
+  return { ok: true, data: overviewFromWikiList(result.data) };
 }
 
 export async function fetchWikiBibleObject(
   scope: WikiBibleScope,
   ref: WikiBibleObjectRef,
 ): Promise<WikiBibleResult<WikiDashboardObject>> {
-  const url = `${basePath(scope)}/${encodeURIComponent(ref.objectId)}?snapshotId=${encodeURIComponent(
-    scope.snapshotId,
-  )}&wikiKind=${encodeURIComponent(ref.wikiKind)}`;
-  return request(url, { method: "GET" }, assertWikiDashboardObject);
+  const result = await apiClient.request("wiki.show", {
+    pathParams: { wikiKind: ref.wikiKind, objectId: ref.objectId },
+  });
+  if (result.state === "error") {
+    return fromClientError(result.error);
+  }
+  if (result.state === "empty") {
+    return {
+      ok: false,
+      error: { status: 404, message: `wiki object ${ref.objectId} was not found` },
+    };
+  }
+  return { ok: true, data: objectFromWikiShow(result.data, scope.snapshotId) };
 }
 
 export async function writeWikiBibleInput(
@@ -73,56 +101,48 @@ export async function writeWikiBibleInput(
   ref: WikiBibleObjectRef,
   payload: WikiBibleWriteInput,
 ): Promise<WikiBibleResult<WikiDashboardWriteReceipt>> {
-  const url = `${basePath(scope)}/${encodeURIComponent(ref.objectId)}?snapshotId=${encodeURIComponent(
-    scope.snapshotId,
-  )}&wikiKind=${encodeURIComponent(ref.wikiKind)}`;
-  return request(
-    url,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
+  const routeId = payload.input.kind === "feedback" ? "wiki.feedback" : "wiki.edit";
+  const result = await apiClient.request(routeId, {
+    pathParams: { wikiKind: ref.wikiKind, objectId: ref.objectId },
+    body: {
+      input: payload.input,
+      assertion: payload.assertion,
     },
-    assertWikiDashboardWriteReceipt,
-  );
-}
-
-async function request<T>(
-  url: string,
-  init: RequestInit,
-  assert: (value: unknown) => asserts value is T,
-): Promise<WikiBibleResult<T>> {
-  let response: Response;
-  try {
-    response = await globalThis.fetch(url, withSelectedAccountScope(init));
-  } catch (error: unknown) {
-    return { ok: false, error: { status: 0, message: transportMessage(error) } };
+  });
+  if (result.state === "error") {
+    return fromClientError(result.error);
   }
-  const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
+  if (result.state === "empty") {
     return {
       ok: false,
-      error: { status: response.status, message: errorMessage(payload, response.status) },
+      error: { status: 500, message: "wiki write returned an empty body" },
     };
   }
-  try {
-    assert(payload);
-  } catch (error: unknown) {
-    return { ok: false, error: { status: response.status, message: transportMessage(error) } };
-  }
-  return { ok: true, data: payload };
+  return { ok: true, data: writeReceiptFromWikiWrite(result.data, ref.wikiKind) };
 }
 
-function errorMessage(payload: unknown, status: number): string {
-  if (typeof payload === "object" && payload !== null) {
-    const error = (payload as { error?: unknown }).error;
-    if (typeof error === "string" && error.length > 0) {
-      return error;
-    }
-  }
-  return `wiki bible request failed with status ${String(status)}`;
+/** Build the anti-forgery assertion a write carries, from the surface's known
+ * object view + the snapshot it is browsing. */
+export function writeAssertionFor(
+  object: Pick<WikiSourceObjectView, "category" | "routeScope">,
+  scope: Pick<WikiBibleScope, "snapshotId">,
+): WikiBibleWriteInput["assertion"] {
+  return {
+    category: object.category,
+    contextSnapshotId: scope.snapshotId,
+    routeScope: object.routeScope,
+  };
 }
 
-function transportMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "wiki bible request failed";
+function fromClientError(error: {
+  status: number;
+  message: string | null;
+}): WikiBibleResult<never> {
+  return {
+    ok: false,
+    error: {
+      status: error.status,
+      message: error.message ?? `wiki bible request failed with status ${String(error.status)}`,
+    },
+  };
 }

@@ -174,7 +174,12 @@ function WikiBibleBody({
             viewMode={viewMode}
             scope={scope}
           />
-          <WikiBibleWriteForms object={selected} scope={scope} onWritten={onWritten} />
+          <WikiBibleWriteForms
+            object={selected}
+            scope={scope}
+            activeRouteId={activeRouteId}
+            onWritten={onWritten}
+          />
         </>
       )}
     </div>

@@ -196,7 +196,7 @@ function RoutedScreen({
   // `/play/flag` — AnnotationComposer flag → context correction (canFlag).
   const playFlag = parsePlayFlagComposerRoute(location.pathname, location.search);
   if (playFlag !== null) {
-    return <PlayFlagComposerScreen route={playFlag} />;
+    return <PlayFlagComposerScreen route={playFlag} onReturnTo={navigate} />;
   }
 
   const onboardingRoute = parseOnboardingRoute(location.pathname);

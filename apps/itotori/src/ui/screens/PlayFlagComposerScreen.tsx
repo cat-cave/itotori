@@ -20,6 +20,7 @@ import { CapGatedButton, useCaps } from "../caps-context.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { useWorkflowHandoffToasts } from "../workflow-handoff-toasts.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
+import { parseReturnTo } from "../return-to.js";
 
 export const playFlagComposerRoutePathRegex = /^\/play\/flag\/?$/u;
 
@@ -29,6 +30,8 @@ export type PlayFlagComposerRouteParams = {
   bridgeUnitId: string | null;
   sceneId: string | null;
   sourceUnitKey: string | null;
+  /** Addressed Studio object to re-open after a durable flag write. */
+  returnTo: string | null;
 };
 
 export function parsePlayFlagComposerRoute(
@@ -45,6 +48,7 @@ export function parsePlayFlagComposerRoute(
     bridgeUnitId: nonEmpty(params.get("bridgeUnitId") ?? params.get("unitId")),
     sceneId: nonEmpty(params.get("sceneId")),
     sourceUnitKey: nonEmpty(params.get("sourceUnitKey")),
+    returnTo: parseReturnTo(search),
   };
 }
 
@@ -57,8 +61,11 @@ function nonEmpty(value: string | null): string | null {
 
 export function PlayFlagComposerScreen({
   route,
+  onReturnTo,
 }: {
   route: PlayFlagComposerRouteParams;
+  /** App navigation that closes an addressed citation loop after persistence. */
+  onReturnTo?: (path: string) => void;
 }): ReactNode {
   if (route.projectId !== null && route.localeBranchId !== null && route.bridgeUnitId !== null) {
     return (
@@ -68,16 +75,29 @@ export function PlayFlagComposerScreen({
         bridgeUnitId={route.bridgeUnitId}
         sceneId={route.sceneId}
         sourceUnitKey={route.sourceUnitKey}
+        returnTo={route.returnTo}
+        {...(onReturnTo !== undefined ? { onReturnTo } : {})}
       />
     );
   }
   if (route.projectId !== null && route.localeBranchId !== null) {
     return <PlayFlagTargetRequired />;
   }
-  return <PlayFlagComposerFromStatus route={route} />;
+  return (
+    <PlayFlagComposerFromStatus
+      route={route}
+      {...(onReturnTo !== undefined ? { onReturnTo } : {})}
+    />
+  );
 }
 
-function PlayFlagComposerFromStatus({ route }: { route: PlayFlagComposerRouteParams }): ReactNode {
+function PlayFlagComposerFromStatus({
+  route,
+  onReturnTo,
+}: {
+  route: PlayFlagComposerRouteParams;
+  onReturnTo?: (path: string) => void;
+}): ReactNode {
   const status = useApiQuery("projects.status", {}, "play-flag:status");
   if (status.state === "loading") {
     return (
@@ -118,6 +138,8 @@ function PlayFlagComposerFromStatus({ route }: { route: PlayFlagComposerRoutePar
       bridgeUnitId={route.bridgeUnitId}
       sceneId={route.sceneId}
       sourceUnitKey={route.sourceUnitKey}
+      returnTo={route.returnTo}
+      {...(onReturnTo !== undefined ? { onReturnTo } : {})}
     />
   );
 }
@@ -144,12 +166,16 @@ function PlayFlagComposerForBranch({
   bridgeUnitId,
   sceneId,
   sourceUnitKey,
+  returnTo,
+  onReturnTo,
 }: {
   projectId: string;
   localeBranchId: string;
   bridgeUnitId: string;
   sceneId: string | null;
   sourceUnitKey: string | null;
+  returnTo: string | null;
+  onReturnTo?: (path: string) => void;
 }): ReactNode {
   const caps = useCaps();
   const flagGate = caps.cap("flag");
@@ -188,6 +214,12 @@ function PlayFlagComposerForBranch({
         severity: result.data.severity,
         category: result.data.category.length > 0 ? result.data.category : "playtest",
       });
+      // A citation supplied this return path. The flag is durable before the
+      // navigation runs, so the addressed object reloads with its receipt/
+      // history context rather than stranding the tester in the composer.
+      if (returnTo !== null && onReturnTo !== undefined) {
+        onReturnTo(returnTo);
+      }
     } else if (result.state === "error") {
       const code = result.error.code ?? "unavailable";
       const detail = result.error.message ?? `status ${result.error.status}`;
@@ -206,6 +238,7 @@ function PlayFlagComposerForBranch({
       data-project-id={projectId}
       data-locale-branch-id={localeBranchId}
       data-can-flag={flagGate.allowed ? "true" : "false"}
+      {...(returnTo !== null ? { "data-return-to": returnTo } : {})}
     >
       <ShellHeader eyebrow="Play" title="Flag a correction">
         <p
@@ -250,6 +283,11 @@ function PlayFlagComposerForBranch({
               Flag sent to correction · {outcome.response.severity}
               {outcome.response.category.length > 0 ? ` · ${outcome.response.category}` : ""}
               {" · correction scheduled"}
+            </p>
+          )}
+          {outcome?.kind === "ok" && returnTo !== null && onReturnTo === undefined && (
+            <p>
+              <a href={returnTo}>Return to addressed wiki object</a>
             </p>
           )}
           {outcome?.kind === "error" && (
