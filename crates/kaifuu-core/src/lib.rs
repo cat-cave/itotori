@@ -53,6 +53,11 @@ pub use hashing::*;
 // Crate-private hashing helpers used by remaining lib.rs items + tests.
 pub(crate) use hashing::{byte_content_hash, is_sha256_ref, sha256_hex};
 
+mod rpgmaker_key_material;
+pub(crate) use rpgmaker_key_material::{
+    decode_hex_material, normalize_rpg_maker_asset_key_material,
+};
+
 mod partial_adapter_report;
 pub use partial_adapter_report::*;
 
@@ -12846,7 +12851,7 @@ fn normalize_key_material(
 ) -> Result<ResolvedKeyMaterial, KeyResolverError> {
     let bytes = match requirement.kind {
         KeyMaterialKind::FixedBytes => raw_material,
-        KeyMaterialKind::HexBytes | KeyMaterialKind::RpgMakerAssetKey => {
+        KeyMaterialKind::HexBytes => {
             let text = std::str::from_utf8(&raw_material).map_err(|_| {
                 KeyResolverError::invalid_material(&requirement.requirement_id, scheme)
             })?;
@@ -12854,6 +12859,7 @@ fn normalize_key_material(
                 KeyResolverError::invalid_material(&requirement.requirement_id, scheme)
             })?
         }
+        KeyMaterialKind::RpgMakerAssetKey => normalize_rpg_maker_asset_key_material(raw_material),
         KeyMaterialKind::Utf8String | KeyMaterialKind::ArchivePassword => {
             std::str::from_utf8(&raw_material).map_err(|_| {
                 KeyResolverError::invalid_material(&requirement.requirement_id, scheme)
@@ -12876,32 +12882,6 @@ fn normalize_key_material(
         ));
     }
     Ok(ResolvedKeyMaterial::new(bytes))
-}
-
-fn decode_hex_material(text: &str) -> Option<Vec<u8>> {
-    let compact = text
-        .chars()
-        .filter(|character| !matches!(character, ' ' | '\t' | '\n' | '\r' | ':' | '-'))
-        .collect::<String>();
-    if compact.is_empty() || compact.len() % 2 != 0 {
-        return None;
-    }
-    let mut bytes = Vec::with_capacity(compact.len() / 2);
-    for pair in compact.as_bytes().chunks_exact(2) {
-        let high = hex_nibble(pair[0])?;
-        let low = hex_nibble(pair[1])?;
-        bytes.push((high << 4) | low);
-    }
-    Some(bytes)
-}
-
-fn hex_nibble(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
