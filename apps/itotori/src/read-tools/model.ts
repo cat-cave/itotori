@@ -95,13 +95,51 @@ export function buildReadModel(input: BuildReadModelInput): ReadModel {
       }
     }
     for (const output of input.localization.acceptedOutputs) {
-      if (
-        "localizationSnapshotId" in output &&
-        output.localizationSnapshotId !== input.localization.localizationSnapshotId
-      ) {
+      if (!("localizationSnapshotId" in output)) {
+        throw new ReadToolError(
+          "snapshot-integrity",
+          `accepted output ${output.outputId} is not bound to this localization snapshot`,
+        );
+      }
+      if (output.localizationSnapshotId !== input.localization.localizationSnapshotId) {
         throw new ReadToolError(
           "snapshot-integrity",
           `accepted output ${output.outputId} is not on this localization snapshot`,
+        );
+      }
+      if (output.subjectType === "unit") {
+        const unit = factSnapshot.orderedUnits.find(
+          (candidate) => candidate.factId === output.subjectId,
+        );
+        if (!unit) {
+          throw new ReadToolError(
+            "snapshot-integrity",
+            `accepted output ${output.outputId} cites unbound unit ${output.subjectId}`,
+          );
+        }
+        if (output.sourceHash !== unit.sourceHash) {
+          throw new ReadToolError(
+            "snapshot-integrity",
+            `accepted output ${output.outputId} has a stale source hash`,
+          );
+        }
+      }
+      if (
+        output.subjectType === "translation-object" &&
+        output.value.provenance.localizationSnapshotId !== input.localization.localizationSnapshotId
+      ) {
+        throw new ReadToolError(
+          "snapshot-integrity",
+          `translation output ${output.outputId} has a mismatched provenance snapshot`,
+        );
+      }
+      if (
+        output.subjectType === "localized-rendering" &&
+        output.value.provenance.localizationSnapshotId !== input.localization.localizationSnapshotId
+      ) {
+        throw new ReadToolError(
+          "snapshot-integrity",
+          `localized rendering ${output.outputId} has a mismatched provenance snapshot`,
         );
       }
     }

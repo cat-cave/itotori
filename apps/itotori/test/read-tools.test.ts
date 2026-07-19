@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 import {
   canonicalLlmJson,
   contextSnapshot,
+  type LlmJsonValue,
   type LlmContextSnapshotInput,
   type LlmRevealHorizon,
   type LlmRevisionRef,
@@ -194,27 +195,35 @@ const LOCALIZER: ReadToolCaller = {
   localeBranchId: "locale-branch:1",
 };
 
-function glossaryEntry(termId: string, occurrenceUnitIds: string[]): GlossaryFactValue {
+function glossaryEntry(
+  termId: string,
+  occurrenceUnitIds: string[],
+  scope: GlossaryFactValue["scope"] = { kind: "global" },
+): GlossaryFactValue {
   return {
     kind: "glossary-entry",
     termId,
     sourceForm: "あい",
     aliases: [],
     forms: [{ language: "en-US", form: termId, status: "preferred" }],
-    scope: { kind: "global" },
+    scope,
     occurrenceUnitIds,
     conflictsWithTermIds: [],
     revision: revision("glossary"),
   };
 }
 
-function note(noteId: string, excerpt: string): HumanNoteFactValue {
+function note(
+  noteId: string,
+  excerpt: string,
+  scope: HumanNoteFactValue["scope"] = { kind: "global" },
+): HumanNoteFactValue {
   return {
     kind: "human-note",
     noteId,
     excerpt,
     revision: revision("notes"),
-    scope: { kind: "global" },
+    scope,
   };
 }
 
@@ -226,9 +235,8 @@ function baseModel(
   snapshot: FactSnapshot;
 } {
   const snapshot = buildFactSnapshot(structure(scene2Routes), loadBundle());
-  const s1LineId = snapshot.orderedUnits.find(
-    (u) => u.bridgeUnitId === S1_LINE.bridgeUnitId,
-  )!.factId;
+  const s1Line = snapshot.orderedUnits.find((u) => u.bridgeUnitId === S1_LINE.bridgeUnitId)!;
+  const s1LineId = s1Line.factId;
   const model = buildReadModel({
     contextSnapshot: makeContext(snapshot, revealHorizon),
     factSnapshot: snapshot,
@@ -244,7 +252,12 @@ function baseModel(
       glossaryRevision: revision("glossary"),
       glossaryEntries: [glossaryEntry("term:z", [s1LineId]), glossaryEntry("term:a", [s1LineId])],
       acceptedOutputs: [
-        { ...acceptedOutputExample, subjectId: s1LineId, localizationSnapshotId: LOCALIZATION_ID },
+        {
+          ...acceptedOutputExample,
+          subjectId: s1LineId,
+          sourceHash: s1Line.sourceHash,
+          localizationSnapshotId: LOCALIZATION_ID,
+        },
       ],
     },
   });
@@ -588,5 +601,377 @@ describe("read tools — character occurrences", () => {
         maxBytes: 8_388_608,
       }),
     ).toThrowError(/unknown-subject/u);
+  });
+});
+
+type PagedToolResult = {
+  snapshotId: string;
+  resultHash: string;
+  page: {
+    maxRows: number;
+    maxBytes: number;
+    kind: "complete" | "more";
+    nextCursor: string | null;
+  };
+};
+
+function resultItems(result: PagedToolResult, key: "facts" | "outputs" | "hits"): LlmJsonValue[] {
+  return (result as Record<string, unknown>)[key] as LlmJsonValue[];
+}
+
+/** The shared contract proof for every local read tool: stable full result,
+ * page envelopes, explicit continuation, byte-identical reassembly, and a
+ * loud error when even its first row cannot fit the byte budget. */
+function assertStrictPagedSurface(input: {
+  unpaged: () => PagedToolResult;
+  paged: (cursor: string | undefined) => PagedToolResult;
+  tooSmall: () => unknown;
+  key: "facts" | "outputs" | "hits";
+  snapshotId: string;
+}): void {
+  const full = input.unpaged();
+  const repeated = input.unpaged();
+  expect(full.snapshotId).toBe(input.snapshotId);
+  expect(full.resultHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
+  expect(full.page.kind).toBe("complete");
+  expect(canonicalLlmJson(resultItems(full, input.key))).toBe(
+    canonicalLlmJson(resultItems(repeated, input.key)),
+  );
+
+  const pages: LlmJsonValue[][] = [];
+  let cursor: string | undefined;
+  let firstPage: PagedToolResult | undefined;
+  do {
+    const page = input.paged(cursor);
+    firstPage ??= page;
+    expect(page.snapshotId).toBe(input.snapshotId);
+    expect(page.resultHash).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(page.page.maxRows).toBe(1);
+    expect(page.page.maxBytes).toBe(8_388_608);
+    pages.push(resultItems(page, input.key));
+    cursor = page.page.nextCursor ?? undefined;
+  } while (cursor !== undefined);
+
+  expect(canonicalLlmJson(pages.flat())).toBe(canonicalLlmJson(resultItems(full, input.key)));
+  if (resultItems(full, input.key).length > 1) {
+    expect(firstPage!.page.kind).toBe("more");
+    expect(firstPage!.page.nextCursor).not.toBeNull();
+  }
+  expect(input.tooSmall).toThrow(/row-exceeds-byte-budget/u);
+}
+
+describe("read tools — seven-tool strict envelope proof", () => {
+  it("proves deterministic envelopes, explicit cursor pages, and byte-identical reassembly per tool", () => {
+    const { model, snapshot } = baseModel();
+    const { model: characterReadModel } = characterModelForStrictProof();
+    const anchor = factIdAtPlayOrder(snapshot, 3);
+    const subject = factIdAtPlayOrder(snapshot, 0);
+
+    assertStrictPagedSurface({
+      snapshotId: model.snapshotId,
+      key: "facts",
+      unpaged: () =>
+        decodeGetUnits(model, ANALYST, {
+          selector: { kind: "all" },
+          maxRows: 100,
+          maxBytes: 8_388_608,
+        }),
+      paged: (cursor) =>
+        decodeGetUnits(model, ANALYST, {
+          selector: { kind: "all" },
+          maxRows: 1,
+          maxBytes: 8_388_608,
+          ...(cursor === undefined ? {} : { cursor }),
+        }),
+      tooSmall: () =>
+        decodeGetUnits(model, ANALYST, { selector: { kind: "all" }, maxRows: 1, maxBytes: 1 }),
+    });
+    assertStrictPagedSurface({
+      snapshotId: model.snapshotId,
+      key: "facts",
+      unpaged: () =>
+        decodeGetNeighbors(model, LOCALIZER, {
+          anchorUnitIds: [anchor],
+          before: 1,
+          after: 1,
+          maxRows: 100,
+          maxBytes: 8_388_608,
+        }),
+      paged: (cursor) =>
+        decodeGetNeighbors(model, LOCALIZER, {
+          anchorUnitIds: [anchor],
+          before: 1,
+          after: 1,
+          maxRows: 1,
+          maxBytes: 8_388_608,
+          ...(cursor === undefined ? {} : { cursor }),
+        }),
+      tooSmall: () =>
+        decodeGetNeighbors(model, LOCALIZER, {
+          anchorUnitIds: [anchor],
+          before: 1,
+          after: 1,
+          maxRows: 1,
+          maxBytes: 1,
+        }),
+    });
+    assertStrictPagedSurface({
+      snapshotId: model.snapshotId,
+      key: "facts",
+      unpaged: () => decodeGetRouteGraph(model, ANALYST, { maxRows: 100, maxBytes: 8_388_608 }),
+      paged: (cursor) =>
+        decodeGetRouteGraph(model, ANALYST, {
+          maxRows: 1,
+          maxBytes: 8_388_608,
+          ...(cursor === undefined ? {} : { cursor }),
+        }),
+      tooSmall: () => decodeGetRouteGraph(model, ANALYST, { maxRows: 1, maxBytes: 1 }),
+    });
+    assertStrictPagedSurface({
+      snapshotId: characterReadModel.snapshotId,
+      key: "facts",
+      unpaged: () =>
+        decodeGetCharacterOccurrences(characterReadModel, ANALYST, {
+          characterId: "nam-17",
+          maxRows: 100,
+          maxBytes: 8_388_608,
+        }),
+      paged: (cursor) =>
+        decodeGetCharacterOccurrences(characterReadModel, ANALYST, {
+          characterId: "nam-17",
+          maxRows: 1,
+          maxBytes: 8_388_608,
+          ...(cursor === undefined ? {} : { cursor }),
+        }),
+      tooSmall: () =>
+        decodeGetCharacterOccurrences(characterReadModel, ANALYST, {
+          characterId: "nam-17",
+          maxRows: 1,
+          maxBytes: 1,
+        }),
+    });
+    assertStrictPagedSurface({
+      snapshotId: model.snapshotId,
+      key: "facts",
+      unpaged: () =>
+        glossaryLookup(model, LOCALIZER, {
+          selector: { kind: "all" },
+          maxRows: 100,
+          maxBytes: 8_388_608,
+        }),
+      paged: (cursor) =>
+        glossaryLookup(model, LOCALIZER, {
+          selector: { kind: "all" },
+          maxRows: 1,
+          maxBytes: 8_388_608,
+          ...(cursor === undefined ? {} : { cursor }),
+        }),
+      tooSmall: () =>
+        glossaryLookup(model, LOCALIZER, {
+          selector: { kind: "all" },
+          maxRows: 1,
+          maxBytes: 1,
+        }),
+    });
+    assertStrictPagedSurface({
+      snapshotId: model.snapshotId,
+      key: "outputs",
+      unpaged: () =>
+        outputsGetAccepted(model, LOCALIZER, {
+          subjectIds: [subject],
+          maxRows: 100,
+          maxBytes: 8_388_608,
+        }),
+      paged: (cursor) =>
+        outputsGetAccepted(model, LOCALIZER, {
+          subjectIds: [subject],
+          maxRows: 1,
+          maxBytes: 8_388_608,
+          ...(cursor === undefined ? {} : { cursor }),
+        }),
+      tooSmall: () =>
+        outputsGetAccepted(model, LOCALIZER, {
+          subjectIds: [subject],
+          maxRows: 1,
+          maxBytes: 1,
+        }),
+    });
+    assertStrictPagedSurface({
+      snapshotId: model.snapshotId,
+      key: "hits",
+      unpaged: () =>
+        referencesSearch(model, LOCALIZER, {
+          query: "register direct",
+          maxRows: 100,
+          maxBytes: 8_388_608,
+        }),
+      paged: (cursor) =>
+        referencesSearch(model, LOCALIZER, {
+          query: "register direct",
+          maxRows: 1,
+          maxBytes: 8_388_608,
+          ...(cursor === undefined ? {} : { cursor }),
+        }),
+      tooSmall: () =>
+        referencesSearch(model, LOCALIZER, {
+          query: "register direct",
+          maxRows: 1,
+          maxBytes: 1,
+        }),
+    });
+  });
+
+  it("rejects extra arguments for every local read tool", () => {
+    const { model, snapshot } = baseModel();
+    const { model: characterReadModel } = characterModelForStrictProof();
+    const anchor = factIdAtPlayOrder(snapshot, 3);
+    const subject = factIdAtPlayOrder(snapshot, 0);
+    const calls = [
+      () =>
+        decodeGetUnits(model, ANALYST, {
+          selector: { kind: "all" },
+          maxRows: 1,
+          maxBytes: 100_000,
+          extra: true,
+        }),
+      () =>
+        decodeGetNeighbors(model, LOCALIZER, {
+          anchorUnitIds: [anchor],
+          before: 0,
+          after: 0,
+          maxRows: 1,
+          maxBytes: 100_000,
+          extra: true,
+        }),
+      () => decodeGetRouteGraph(model, ANALYST, { maxRows: 1, maxBytes: 100_000, extra: true }),
+      () =>
+        decodeGetCharacterOccurrences(characterReadModel, ANALYST, {
+          characterId: "nam-17",
+          maxRows: 1,
+          maxBytes: 100_000,
+          extra: true,
+        }),
+      () =>
+        glossaryLookup(model, LOCALIZER, {
+          selector: { kind: "all" },
+          maxRows: 1,
+          maxBytes: 100_000,
+          extra: true,
+        }),
+      () =>
+        outputsGetAccepted(model, LOCALIZER, {
+          subjectIds: [subject],
+          maxRows: 1,
+          maxBytes: 100_000,
+          extra: true,
+        }),
+      () =>
+        referencesSearch(model, LOCALIZER, {
+          query: "register",
+          maxRows: 1,
+          maxBytes: 100_000,
+          extra: true,
+        }),
+    ];
+    for (const call of calls) expect(call).toThrow(/unknown-argument/u);
+  });
+});
+
+function characterModelForStrictProof(): { model: ReadModel; snapshot: FactSnapshot } {
+  const snapshot = buildFactSnapshot(characterStructure(), loadBundle());
+  const unitId = factIdAtPlayOrder(snapshot, 0);
+  const model = buildReadModel({
+    contextSnapshot: makeContext(snapshot, { kind: "complete" }),
+    factSnapshot: snapshot,
+    bundle: loadBundle(),
+    characterProfiles: new Map([
+      ["nam-17", { decodedLabel: "Ai", revealStatus: "revealed" as const, unitIds: [unitId] }],
+    ]),
+  });
+  return { model, snapshot };
+}
+
+describe("read tools — route, reveal, and branch boundaries beyond unit scans", () => {
+  it("does not leak route-scoped graph, glossary, accepted-unit, or reference data", () => {
+    const { model, snapshot } = baseModel({ kind: "complete" }, ["route-b"]);
+    const routedModel: ReadModel = {
+      ...model,
+      references: [
+        ...model.references,
+        note("note:route-b", "branch secret", { kind: "route", routeId: "route-b" }),
+      ],
+      localization: {
+        ...model.localization!,
+        glossaryEntries: [
+          ...model.localization!.glossaryEntries,
+          glossaryEntry("term:route-b", [factIdAtPlayOrder(snapshot, 3)], {
+            kind: "route",
+            routeId: "route-b",
+          }),
+        ],
+      },
+    };
+    const routeA: ReadToolCaller = {
+      roleId: "P1",
+      routeVisibility: { kind: "route", routeId: "route-a" },
+      localeBranchId: "locale-branch:1",
+    };
+    const routeAGraphCaller: ReadToolCaller = { ...routeA, roleId: "A1" };
+    const hiddenUnit = factIdAtPlayOrder(snapshot, 3);
+
+    const graph = decodeGetRouteGraph(routedModel, routeAGraphCaller, {
+      maxRows: 100,
+      maxBytes: 8_388_608,
+    });
+    expect(graph.facts.some((fact) => fact.factId === "scene:2")).toBe(false);
+    expect(
+      glossaryLookup(routedModel, routeA, {
+        selector: { kind: "all" },
+        maxRows: 100,
+        maxBytes: 8_388_608,
+      }).facts.map((fact) => fact.value.termId),
+    ).not.toContain("term:route-b");
+    expect(() =>
+      glossaryLookup(routedModel, routeA, {
+        selector: { kind: "term-ids", termIds: ["term:route-b"] },
+        maxRows: 1,
+        maxBytes: 8_388_608,
+      }),
+    ).toThrow(/out-of-route/u);
+    expect(() =>
+      outputsGetAccepted(routedModel, routeA, {
+        subjectIds: [hiddenUnit],
+        maxRows: 1,
+        maxBytes: 8_388_608,
+      }),
+    ).toThrow(/out-of-route/u);
+    expect(
+      referencesSearch(routedModel, routeA, {
+        query: "branch secret",
+        maxRows: 100,
+        maxBytes: 8_388_608,
+      }).hits,
+    ).toEqual([]);
+  });
+
+  it("hides future route-graph nodes and rejects future accepted-unit reads", () => {
+    const { model, snapshot } = baseModel({ kind: "through-play-order", playOrderIndex: 0 });
+    const graph = decodeGetRouteGraph(model, ANALYST, { maxRows: 100, maxBytes: 8_388_608 });
+    expect(graph.facts.some((fact) => fact.factId === "scene:2")).toBe(false);
+    expect(() =>
+      outputsGetAccepted(model, LOCALIZER, {
+        subjectIds: [factIdAtPlayOrder(snapshot, 3)],
+        maxRows: 1,
+        maxBytes: 8_388_608,
+      }),
+    ).toThrow(/beyond-reveal-horizon/u);
+    const wrongBranch: ReadToolCaller = { ...LOCALIZER, localeBranchId: "locale-branch:other" };
+    expect(() =>
+      outputsGetAccepted(model, wrongBranch, {
+        subjectIds: [factIdAtPlayOrder(snapshot, 0)],
+        maxRows: 1,
+        maxBytes: 8_388_608,
+      }),
+    ).toThrow(/locale-branch-mismatch/u);
   });
 });
