@@ -12,7 +12,9 @@
 import { specialistFor } from "../../roster/index.js";
 import { assertFrameObserved, type Q5ReviewInput, type Q5RenderFrame } from "./inputs.js";
 
-export const Q5_PROMPT_VERSION = "itotori.role.Q5.prompt.v1" as const;
+/** Bumped with the v2 specialist charter: Q5 now receives actual bible
+ * renderings and must cite both the patched-byte frame and accepted target. */
+export const Q5_PROMPT_VERSION = "itotori.role.Q5.prompt.v2" as const;
 
 /** The rubric boundary, stated so a removal of the guarantee is a visible diff:
  * on-screen translation quality only; every render/build fault is elsewhere. */
@@ -27,9 +29,11 @@ const BUILD_LQA_ONLY_RUBRIC = [
   "layout, and replay faults. Those are deterministic build-gate findings, never",
   "a translation defect. Do not fail a candidate for a render or build fault, and",
   "never charge such a fault to translation quality.",
-  "Emit exactly one verdict: PASS, FAIL, or CANNOT_ASSESS. A CANNOT_ASSESS names",
-  "the evidence you still need; it is never a pass. A FAIL localises the on-screen",
-  "defect, cites the OCR evidence and the bible rule, and constrains the repair.",
+  "Emit exactly one verdict: PASS, FAIL, or CANNOT_ASSESS. Every verdict cites",
+  "both the frame id (on-screen evidence) and the expected accepted-output id.",
+  "A CANNOT_ASSESS names the evidence you still need; it is never a pass. A FAIL",
+  "localises the on-screen defect, cites the applicable bible rule, and constrains",
+  "the repair.",
 ].join(" ");
 
 /** The system prompt = the specialist's own instructions plus the rubric wall. */
@@ -49,7 +53,7 @@ function renderObservations(frame: Q5RenderFrame): string {
 }
 
 function renderBibleRefs(input: Q5ReviewInput): string {
-  return input.bibleRenderingIds.length === 0 ? "(none)" : input.bibleRenderingIds.join(", ");
+  return input.localizedBible.map((entry) => `- (${entry.renderingId}) ${entry.text}`).join("\n");
 }
 
 function renderOcrText(frame: Q5RenderFrame): string {
@@ -64,15 +68,16 @@ export function q5UserPrompt(input: Q5ReviewInput): string {
   const { frame } = input;
   return [
     `UNIT: ${input.unitId}`,
-    `FRAME: ${frame.frameId} (patched-bytes ${frame.patchedBytesHash})`,
+    `FRAME: ${frame.frameId} (patched-bytes ${frame.patchedBytesHash}; artifact ${frame.artifactUri}; ${frame.width}x${frame.height})`,
     "",
-    "EXPECTED ACCEPTED TARGET:",
+    `EXPECTED ACCEPTED TARGET (${frame.expectedAcceptedOutputId}):`,
     input.expectedTarget,
     "",
     "ON-SCREEN ENGLISH (render/OCR of the real patched bytes):",
     renderOcrText(frame),
     "",
-    `LOCALIZED BIBLE RENDERINGS: ${renderBibleRefs(input)}`,
+    "LOCALIZED BIBLE RENDERINGS:",
+    renderBibleRefs(input),
     "",
     "DETERMINISTIC RENDER/OCR FACTS (build-gate owned; not your defect):",
     renderObservations(frame),

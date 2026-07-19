@@ -17,6 +17,7 @@ import { z } from "zod";
 import {
   IdentifierSchema,
   NonEmptyTextSchema,
+  PositiveIntegerSchema,
   RenderAndOcrResultSchema,
   Sha256Schema,
   ShortTextSchema,
@@ -59,12 +60,28 @@ export const Q5RenderObservationSchema = z
 export const Q5RenderFrameSchema = z
   .object({
     frameId: IdentifierSchema,
+    /** The content-addressed rendered image the reviewer is judging, not a
+     * decoded source-line substitute. It remains a reference: deterministic
+     * replay owns its bytes and Q5 never drives the renderer. */
+    artifactUri: z.url(),
     patchedBytesHash: Sha256Schema,
     contentHash: Sha256Schema,
     expectedAcceptedOutputId: IdentifierSchema,
     observedUnitIds: z.array(IdentifierSchema).min(1).max(10_000),
+    width: PositiveIntegerSchema,
+    height: PositiveIntegerSchema,
     ocrText: z.string().max(32_768),
     observations: z.array(Q5RenderObservationSchema).max(10_000),
+  })
+  .strict();
+
+/** One exact localized-bible rendering. Passing only an opaque rendering ID
+ * would let the reviewer name a rule it could not read; Build-LQA receives the
+ * actual localized text that governs its residual on-screen judgement. */
+export const Q5LocalizedBibleEntrySchema = z
+  .object({
+    renderingId: IdentifierSchema,
+    text: NonEmptyTextSchema,
   })
   .strict();
 
@@ -75,12 +92,41 @@ export const Q5ReviewInputSchema = z
     localizationSnapshotId: Sha256Schema,
     frame: Q5RenderFrameSchema,
     expectedTarget: NonEmptyTextSchema,
-    bibleRenderingIds: z.array(IdentifierSchema).max(1_024),
+    bibleRenderingIds: z.array(IdentifierSchema).min(1).max(1_024),
+    localizedBible: z.array(Q5LocalizedBibleEntrySchema).min(1).max(1_024),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    const renderedIds = value.localizedBible.map((entry) => entry.renderingId);
+    if (new Set(renderedIds).size !== renderedIds.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["localizedBible"],
+        message: "localized bible rendering ids must be unique",
+      });
+    }
+    if (
+      renderedIds.length !== value.bibleRenderingIds.length ||
+      renderedIds.some((id) => !value.bibleRenderingIds.includes(id))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["localizedBible"],
+        message: "localized bible entries must exactly match the cited rendering ids",
+      });
+    }
+    if (!value.frame.observedUnitIds.includes(value.unitId)) {
+      context.addIssue({
+        code: "custom",
+        path: ["frame", "observedUnitIds"],
+        message: "patched-byte frame must observe the unit under Build-LQA review",
+      });
+    }
+  });
 
 export type Q5RenderObservation = z.infer<typeof Q5RenderObservationSchema>;
 export type Q5RenderFrame = z.infer<typeof Q5RenderFrameSchema>;
+export type Q5LocalizedBibleEntry = z.infer<typeof Q5LocalizedBibleEntrySchema>;
 export type Q5ReviewInput = z.infer<typeof Q5ReviewInputSchema>;
 
 /** Keys that would smuggle the English target in through the decoded-TextLine
@@ -158,10 +204,13 @@ export function q5FrameFromRenderResult(
   if (!frame) throw new Q5FrameNotObservedError(frameId);
   return Q5RenderFrameSchema.parse({
     frameId: frame.frameId,
+    artifactUri: frame.artifactUri,
     patchedBytesHash: parsed.patchedBytesHash,
     contentHash: frame.contentHash,
     expectedAcceptedOutputId: frame.expectedAcceptedOutputId,
     observedUnitIds: frame.observedUnitIds,
+    width: frame.width,
+    height: frame.height,
     ocrText: frame.ocrText,
     observations: frame.observations.map((observation) => ({
       observationId: observation.observationId,

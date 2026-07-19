@@ -11,8 +11,8 @@
 //           excludes every render/egress surface, and a FAIL outside the
 //           on-screen category is an invalid verdict that cannot finalize.
 // Clause 4: the verdict is strict PASS/FAIL/CANNOT_ASSESS carrying severity,
-//           span, category, VISIBLE evidence, and a repair constraint; a
-//           malformed verdict or an unresolvable citation cannot finalize.
+//           span, category, VISIBLE evidence, and a repair constraint; every
+//           verdict cites BOTH the on-screen frame and accepted target.
 // Clause 5: a CANNOT_ASSESS can NEVER pass — it escalates, and the ONLY
 //           disposition that finalizes is a clean PASS on a clean frame.
 // Clause 6: the call routes through the ZDR boundary on the certified reviewer
@@ -32,6 +32,8 @@ import { specialistFor } from "../src/roster/index.js";
 import {
   Q5DecodedObservationError,
   Q5_ONSCREEN_CATEGORIES,
+  Q5RouteError,
+  assertCertifiedBuildLqaRoute,
   assertBuildLqaOnlyToolGrant,
   buildQ5CallSpec,
   canFinalize,
@@ -44,6 +46,7 @@ import {
   q5FrameFromRenderResult,
   q5SystemPrompt,
   q5UserPrompt,
+  Q5_PROMPT_VERSION,
   runQ5Review,
   type EvidenceResolver,
   type Q5DispatchRefs,
@@ -57,10 +60,13 @@ const BYTES = `sha256:${"c".repeat(64)}` as const;
 
 const cleanFrame: Q5RenderFrame = {
   frameId: "frame:1",
+  artifactUri: "https://frames.example/frame-1.png",
   patchedBytesHash: BYTES,
   contentHash: HASH,
   expectedAcceptedOutputId: "accepted:1",
   observedUnitIds: ["unit:1"],
+  width: 640,
+  height: 480,
   ocrText: "He was waiting at the station.",
   observations: [
     {
@@ -79,6 +85,9 @@ const baseInput: Q5ReviewInput = {
   frame: cleanFrame,
   expectedTarget: "He was waiting at the station.",
   bibleRenderingIds: ["rendering:1"],
+  localizedBible: [
+    { renderingId: "rendering:1", text: "Use clear, neutral past-tense narration." },
+  ],
 };
 
 const allVisible: EvidenceResolver = () => ({ resolved: true, visible: true });
@@ -122,7 +131,7 @@ function passVerdict(overrides: Record<string, unknown> = {}): Record<string, un
     severity: "none",
     span: null,
     category: null,
-    evidenceIds: ["frame:1"],
+    evidenceIds: ["frame:1", "accepted:1"],
     repairConstraint: null,
     ...overrides,
   };
@@ -141,7 +150,7 @@ function failVerdict(overrides: Record<string, unknown> = {}): Record<string, un
     severity: "major",
     span: { spanId: "span:1", surface: "target", text: "statoin" },
     category: "onscreen-language",
-    evidenceIds: ["frame:1"],
+    evidenceIds: ["frame:1", "accepted:1"],
     repairConstraint: "Fix the on-screen spelling to match the accepted target.",
     ...overrides,
   };
@@ -160,7 +169,7 @@ function cannotAssessVerdict(overrides: Record<string, unknown> = {}): Record<st
     severity: "none",
     span: null,
     category: "insufficient-evidence",
-    evidenceIds: [],
+    evidenceIds: ["frame:1", "accepted:1"],
     repairConstraint: null,
     requestedEvidence: ["Need a re-render at a legible scale."],
     ...overrides,
@@ -213,10 +222,14 @@ describe("Clause 1 — English target observed through render/OCR only", () => {
     );
   });
 
-  it("puts the OCR text (not a decoded line) on screen in the prompt", () => {
+  it("puts the real frame, expected accepted target, OCR text, and localized bible on the prompt", () => {
     const user = q5UserPrompt(baseInput);
+    expect(user).toContain("https://frames.example/frame-1.png");
+    expect(user).toContain("640x480");
+    expect(user).toContain("EXPECTED ACCEPTED TARGET (accepted:1)");
     expect(user).toContain("ON-SCREEN ENGLISH (render/OCR of the real patched bytes)");
     expect(user).toContain("He was waiting at the station.");
+    expect(user).toContain("Use clear, neutral past-tense narration.");
     expect(user.toLowerCase()).not.toMatch(/\bdecoded\b/u);
   });
 
@@ -261,10 +274,27 @@ describe("Clause 1 — English target observed through render/OCR only", () => {
     } as unknown as RenderAndOcrResult;
     const frame = q5FrameFromRenderResult(renderResult, "frame:1");
     expect(frame.patchedBytesHash).toBe(BYTES);
+    expect(frame.artifactUri).toBe("https://frames.example/frame-1.png");
+    expect(frame).toMatchObject({ width: 640, height: 480 });
     expect(frame.ocrText).toBe("He was waiting at the station.");
     // The projected frame is a valid Q5 observation channel end to end.
     const input = parseQ5ReviewInput({ ...baseInput, frame });
     expect(input.frame.frameId).toBe("frame:1");
+  });
+
+  it("requires exact localized-bible renderings and a frame that observed the reviewed unit", () => {
+    expect(() =>
+      parseQ5ReviewInput({
+        ...baseInput,
+        localizedBible: [{ renderingId: "rendering:other", text: "Wrong binding." }],
+      }),
+    ).toThrow(/exactly match/u);
+    expect(() =>
+      parseQ5ReviewInput({
+        ...baseInput,
+        frame: { ...cleanFrame, observedUnitIds: ["unit:other"] },
+      }),
+    ).toThrow(/must observe the unit/u);
   });
 });
 
@@ -411,6 +441,29 @@ describe("Clause 4 — strict verdict shape and visible evidence", () => {
     expect(interpretation.issues.some((issue) => /not visible/u.test(issue.message))).toBe(true);
   });
 
+  it("requires every outcome to cite the on-screen frame and expected accepted target", () => {
+    const noFrame = interpretQ5Verdict(
+      passVerdict({ evidenceIds: ["accepted:1"] }),
+      cleanFrame,
+      allVisible,
+    );
+    expect(noFrame.disposition).toBe("invalid");
+    expect(noFrame.issues.some((issue) => /on-screen frame evidence/u.test(issue.message))).toBe(
+      true,
+    );
+
+    const noAcceptedTarget = interpretQ5Verdict(
+      cannotAssessVerdict({ evidenceIds: ["frame:1"] }),
+      cleanFrame,
+      allVisible,
+    );
+    expect(noAcceptedTarget.disposition).toBe("invalid");
+    expect(
+      noAcceptedTarget.issues.some((issue) => /expected accepted target/u.test(issue.message)),
+    ).toBe(true);
+    expect(canFinalize(noAcceptedTarget)).toBe(false);
+  });
+
   it("a clean PASS on a clean frame with visible evidence finalizes", () => {
     const interpretation = interpretQ5Verdict(passVerdict(), cleanFrame, allVisible);
     expect(interpretation.disposition).toBe("finalize");
@@ -473,7 +526,18 @@ describe("Clause 6 — ZDR dispatch on the certified reviewer profile", () => {
       requireParameters: true,
     });
     expect(spec.output.name).toBe("review-verdict");
+    expect(spec.promptVersion).toBe(Q5_PROMPT_VERSION);
     expect(spec.tools).toHaveLength(0);
+  });
+
+  it("re-proves the certified account-wide ZDR route in every run mode", () => {
+    for (const runMode of ["production", "pilot", "test-dev"] as const) {
+      const spec = buildQ5CallSpec(baseInput, { ...refs, runMode });
+      expect(() => assertCertifiedBuildLqaRoute(spec)).not.toThrow();
+      expect(() =>
+        assertCertifiedBuildLqaRoute({ ...spec, requestedModel: "other/model" }),
+      ).toThrow(Q5RouteError);
+    }
   });
 
   it("a dispatch failure can never finalize (recorded offline path)", async () => {
@@ -527,8 +591,25 @@ describe("Clause 6 — ZDR dispatch on the certified reviewer profile", () => {
   });
 });
 
-// ── Clause 7: the render/OCR observation channel stays pure ───────────────────
-describe("Clause 7 — observation channel purity", () => {
+describe("Clause 7 — immutable reviewer-profile registration", () => {
+  it("is the v2 reviewer-profile specialist with the shared semantic validator", () => {
+    const q5 = specialistFor("Q5");
+    expect(q5).toMatchObject({
+      roleId: "Q5",
+      shape: "reviewer",
+      version: "itotori.role.Q5.v2",
+      granularity: "per-unit",
+      wikiObjectKind: "translation",
+      modelProfileKey: "deepseek-v4-flash",
+      modelProfile: "reviewer",
+    });
+    expect(Object.isFrozen(q5)).toBe(true);
+    expect(q5.validate({ snapshotId: SNAP, verdicts: [] }).length).toBeGreaterThan(0);
+  });
+});
+
+// ── Clause 8: the render/OCR observation channel stays pure ───────────────────
+describe("Clause 8 — observation channel purity", () => {
   it("rejects a frame carrying a decoded-text field, before any wire request", async () => {
     // The English target is observed ONLY through the render/OCR channel. A
     // decoded-text field on the frame — the channel that cannot carry an ASCII

@@ -13,8 +13,8 @@
 //     CANNOT_ASSESS is not a pass" law) runs over a faithful projection;
 //   - a FAIL must name the ON-SCREEN translation-quality category — an
 //     engine/render category is out of this lane and is an invalid verdict;
-//   - every cited evidence id must RESOLVE and be VISIBLE (the OCR/frame evidence
-//     and the bible rule); an unresolvable citation is a fabrication;
+//   - every verdict must cite and resolve the on-screen FRAME plus the EXPECTED
+//     ACCEPTED TARGET; a citation can never be a vague or unresolvable claim;
 //   - only a clean PASS on a clean frame may finalize.
 
 import { ReviewVerdictSchema, type ReviewVerdict } from "../../contracts/index.js";
@@ -130,6 +130,30 @@ function evidenceIssues(
   return issues;
 }
 
+/** The Q5-specific evidence floor. A frame ID anchors what the player saw; the
+ * accepted-output ID anchors what that frame was required to show. Both are
+ * mandatory for PASS, FAIL, and CANNOT_ASSESS alike, so no outcome can be
+ * detached from either the real patched-byte observation or its accepted target. */
+function requiredEvidenceIssues(
+  verdict: ReviewVerdict,
+  frame: Q5RenderFrame,
+): readonly ValidationIssue[] {
+  const required = [
+    { id: frame.frameId, label: "on-screen frame evidence" },
+    { id: frame.expectedAcceptedOutputId, label: "expected accepted target" },
+  ];
+  return required.flatMap(({ id, label }) =>
+    verdict.evidenceIds.includes(id)
+      ? []
+      : [
+          {
+            path: "evidenceIds",
+            message: `verdict must cite ${label} ${id}`,
+          },
+        ],
+  );
+}
+
 /** Interpret and route a build-LQA verdict against the frame it was formed over.
  *
  * A blocking render/OCR fault is decided DETERMINISTICALLY off the FRAME ALONE
@@ -178,7 +202,9 @@ export function interpretQ5Verdict(
       message: `FAIL category ${verdict.category} is outside the on-screen translation rubric`,
     });
   }
-  // Visible evidence: every citation must resolve and be visible.
+  // Every outcome must name both what the player saw and the accepted target it
+  // is compared with; then every citation must resolve and be visible.
+  issues.push(...requiredEvidenceIssues(verdict, observedFrame));
   issues.push(...evidenceIssues(verdict, resolve));
 
   if (issues.length > 0) return { disposition: "invalid", verdict, issues, routedFaults: [] };
