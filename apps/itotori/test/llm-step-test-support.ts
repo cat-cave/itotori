@@ -261,7 +261,7 @@ export function httpProviderResponse(status: number, retryAfter?: string): Respo
   });
 }
 
-export function toolProviderResponse(index: number): Response {
+export function toolProviderResponse(index: number, toolName = "decode_get_units"): Response {
   return sse([
     streamChunk({
       delta: {
@@ -271,7 +271,7 @@ export function toolProviderResponse(index: number): Response {
             index: 0,
             id: `tool-call:${index}`,
             type: "function",
-            function: { name: "decode_get_units", arguments: "{}" },
+            function: { name: toolName, arguments: "{}" },
           },
         ],
       },
