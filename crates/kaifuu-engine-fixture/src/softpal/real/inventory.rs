@@ -78,7 +78,7 @@ impl SoftpalProfileDetectorAdapter {
                     source_hash: None,
                     patching: CapabilityReport::limited(
                         Capability::AssetTextPatching,
-                        "dialogue + choice text is patched back by rebuilding TEXT.DAT and repointing SCRIPT.SRC as loose files; PAC repack and non-text surfaces are not claimed",
+                        "dialogue + choice text is patched back by rebuilding TEXT.DAT and repointing SCRIPT.SRC as loose files in the engine's data\\ override directory (preferred over data.pac); PAC repack and non-text surfaces are not claimed",
                     ),
                 }
             })

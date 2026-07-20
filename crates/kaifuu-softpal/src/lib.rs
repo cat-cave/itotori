@@ -34,7 +34,8 @@
 //! decoded lines, and (d) **patches translated dialogue / choices back**
 //! ([`patchback`]): it rebuilds `TEXT.DAT` with new strings (old→new offset map,
 //! re-encrypting when the original was), repoints the `SCRIPT.SRC` pointer fields,
-//! and drops both as **loose files** (no PAC repack), and (e) **catalogs the full
+//! and drops both as **loose files in the engine's `data\` override directory**
+//! (no PAC repack; see [`patchback`] for the validated engine behaviour), and (e) **catalogs the full
 //! `Sv20` opcode table** ([`opcode`] / [`OpcodeScan`]): it walks the whole
 //! plaintext token stream arity-driven and types *every* command (the 33-entry
 //! `0x01..=0x21` opcode table with fixed operand shapes, plus the `Call` engine
@@ -110,7 +111,7 @@ pub const SOFTPAL_PAC_SUPPORT_BOUNDARY: &str = "kaifuu-softpal enumerates and ex
     label pushed to the choice-label slot 0x40000002 and recovered by the same stack walk, genuine \
     system selects left out-of-pool — byte-locatable pointer fields for patch-back), AND patches translated dialogue+choices back \
     (rebuild TEXT.DAT with an old->new offset map + re-encrypt when the original was, repoint the \
-    SCRIPT.SRC pointer fields, drop both as loose files with no PAC repack), AND catalogs the full \
+    SCRIPT.SRC pointer fields, drop both as loose files into the engine's data\\ override directory with no PAC repack), AND catalogs the full \
     Sv20 opcode table (arity-driven walk of the whole plaintext token stream: the 33-entry \
     0x01..=0x21 operator table with fixed operand shapes + operand structural tags + the Call \
     (0x17) engine-dispatch surface keyed by (category, function) incl. TEXT-SHOW/SELECT, to a \
