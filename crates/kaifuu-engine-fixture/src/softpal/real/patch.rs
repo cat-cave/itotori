@@ -1,6 +1,9 @@
 //! Softpal `patch`: map a `PatchExport` back to `TEXT.DAT` record pointers,
 //! rebuild `TEXT.DAT` + repoint `SCRIPT.SRC` via `kaifuu-softpal`, and drop the
-//! two rebuilt files as loose bytes into the output directory.
+//! two rebuilt files as loose bytes into the output directory. That directory is
+//! deployed as the game's `data\` override directory, which the PAL engine
+//! resolves in preference to the `data.pac` archive (validated native-engine
+//! behaviour — see `kaifuu_softpal::patchback`), so no PAC repack is needed.
 
 use std::collections::BTreeSet;
 
@@ -22,7 +25,9 @@ impl SoftpalProfileDetectorAdapter {
     /// Run the real dialogue/choice patch-back: map every `PatchExport` entry
     /// back to its `TEXT.DAT` record pointer, rebuild `TEXT.DAT` + repoint
     /// `SCRIPT.SRC` via `kaifuu-softpal`, and drop both as loose files into
-    /// `output_dir`. Unknown/stale entries are typed failures, never silent.
+    /// `output_dir` (deployed as the engine's `data\` override directory, which
+    /// the PAL engine loads in preference to `data.pac`). Unknown/stale entries
+    /// are typed failures, never silent.
     pub(crate) fn run_patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
         let patch_export_id = request.patch_export.patch_export_id.clone();
         let scripts = Self::resolve_scripts(request.game_dir)?;

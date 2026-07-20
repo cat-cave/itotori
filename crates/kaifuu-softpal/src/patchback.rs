@@ -1,8 +1,8 @@
-//! Softpal patch-back: write translated dialogue / choice strings back into a
-//! game by **rebuilding `TEXT.DAT`**, **repointing `SCRIPT.SRC`**, and dropping
-//! the two rebuilt files **loose** beside the game (Softpal loads a loose file
-//! in preference to the PAC entry, so there is **no PAC repack and no archive
-//! re-encryption**).
+//! Softpal patch-back: **rebuild `TEXT.DAT`**, **repoint `SCRIPT.SRC`**, and drop
+//! both into the game's **`data\` override directory** — which the SoftPal ("PAL")
+//! engine resolves ahead of the `data.pac` entry, so a translation runs against
+//! the **original, unmodified `data.pac`** (**no PAC repack / no re-encryption**;
+//! validated: `docs/dev/softpal-patchback-loose-override.md`).
 //! # The three steps
 //! 1. **Rebuild `TEXT.DAT`** ([`rebuild_textdat`]). Softpal stores every string
 //!    in the `TEXT.DAT` record pool (`[4-byte index][cp932 text][0x00]`), each
@@ -24,9 +24,9 @@
 //!    system/branch SELECT immediates are not pool offsets, are absent from the
 //!    map, and are therefore left untouched — **every other byte of `SCRIPT.SRC`
 //!    is byte-identical**.
-//! 3. **Loose-file drop** ([`Patchback::write_loose_files`]). The rebuilt
-//!    `TEXT.DAT` + `SCRIPT.SRC` are written as plain files into an output
-//!    directory. No PAC is opened or rewritten.
+//! 3. **Loose-file drop** ([`Patchback::write_loose_files`]). The rebuilt files
+//!    are written into the caller's output directory, deployed as the engine's
+//!    `data\` override dir (**not** the game root). No PAC is opened or rewritten.
 //! # Config-driven scope
 //! Patch-back is scope-agnostic by construction: the caller decides which
 //! records to translate (dialogue only, or dialogue + choices, …
