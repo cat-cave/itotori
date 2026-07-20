@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { ROLE_ID_UNIVERSE } from "../src/roster/index.js";
 import {
   FULL_ROSTER,
   MODE_PROFILES,
@@ -32,6 +31,10 @@ function productionRequest(overrides: Partial<RunPolicyRequest> = {}): RunPolicy
 // ── Clause 1: production AND pilot REQUIRE whole-game + full roster + wiki-first;
 //    a narrowed / partial / bypassed production or pilot config is REJECTED. ──
 describe("clause 1 — production and pilot require the full context stack", () => {
+  it("defines the full context roster as exactly A1-A10", () => {
+    expect(FULL_ROSTER).toEqual(["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10"]);
+  });
+
   it("production rejects narrowed context", () => {
     expect(() => resolveRunPolicy(productionRequest({ contextScope: NARROWED }))).toThrow(
       RunPolicyError,
@@ -59,10 +62,25 @@ describe("clause 1 — production and pilot require the full context stack", () 
     ).toThrow(RunPolicyError);
   });
 
+  it("rejects duplicate or non-context roles instead of accepting an almost-full roster", () => {
+    expect(() =>
+      resolveRunPolicy(productionRequest({ roster: [...FULL_ROSTER.slice(0, -1), "A1"] })),
+    ).toThrow(RunPolicyError);
+    expect(() => resolveRunPolicy(productionRequest({ roster: [...FULL_ROSTER, "P1"] }))).toThrow(
+      RunPolicyError,
+    );
+  });
+
   it("production rejects a bypassed (null-Wiki) bible", () => {
     expect(() => resolveRunPolicy(productionRequest({ ablation: { kind: "pure-mtl" } }))).toThrow(
       RunPolicyError,
     );
+  });
+
+  it("pilot rejects a bypassed (null-Wiki) bible", () => {
+    expect(() =>
+      resolveRunPolicy(productionRequest({ runMode: "pilot", ablation: { kind: "pure-mtl" } })),
+    ).toThrow(RunPolicyError);
   });
 
   it("production and pilot differ only in output scope (same context/roster/bible requirements)", () => {
@@ -86,7 +104,7 @@ describe("clause 1 — production and pilot require the full context stack", () 
     const resolved = resolveRunPolicy(productionRequest());
     expect(resolved.localizationPosture).toBe("production");
     expect(resolved.requiresFullBible).toBe(true);
-    expect(resolved.roster).toHaveLength(ROLE_ID_UNIVERSE.length);
+    expect(resolved.roster).toEqual(FULL_ROSTER);
   });
 });
 
@@ -118,6 +136,17 @@ describe("clause 2 — narrowed context forces test-dev and can never ship", () 
     const forged: ResolvedRunPolicy = { ...testDev, shippable: true };
     expect(isShippablePolicy(forged)).toBe(false);
     expect(() => assertMayFinalizeShippable(forged)).toThrow(ShippableFinalizationError);
+    expect(() => finalizeShippable(forged, { text: "hi" })).toThrow(ShippableFinalizationError);
+  });
+
+  it("shippable finalization re-checks a forged production roster", () => {
+    const production = resolveRunPolicy(productionRequest());
+    const forged: ResolvedRunPolicy = {
+      ...production,
+      roster: production.roster.slice(0, -1),
+      shippable: true,
+    };
+    expect(isShippablePolicy(forged)).toBe(false);
     expect(() => finalizeShippable(forged, { text: "hi" })).toThrow(ShippableFinalizationError);
   });
 

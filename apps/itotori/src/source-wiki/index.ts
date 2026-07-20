@@ -10,7 +10,10 @@
 
 export {
   ANALYST_ROLE_IDS,
+  FULL_CONTEXT_ROSTER,
   SourceWikiSelectionError,
+  assertContextRosterForRunMode,
+  contextRosterIsFull,
   selectSourceWikiRoles,
 } from "./roster-selection.js";
 export { SourceWikiOrderingError, orderAnalystLevels } from "./ordering.js";

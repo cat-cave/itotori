@@ -19,6 +19,7 @@
 import { mapWithConcurrency } from "./concurrency.js";
 import { buildSourceWikiPlan } from "./plan.js";
 import { acceptObject } from "./accept.js";
+import { assertContextRosterForRunMode, selectSourceWikiRoles } from "./roster-selection.js";
 import { WHOLE_GAME_CONTEXT_SCOPE } from "./types.js";
 import type {
   AnalystRunner,
@@ -197,7 +198,11 @@ async function runPhase(
 export async function orchestrateSourceWiki(
   deps: OrchestrateSourceWikiDeps,
 ): Promise<SourceWikiRunReport> {
-  const plan: SourceWikiPlan = buildSourceWikiPlan(deps.snapshot, deps.roles, {
+  const selectedRoles = selectSourceWikiRoles(deps.roles).map((specialist) => specialist.roleId);
+  // Re-check the roster at the executor boundary. A production/pilot caller may
+  // not validate a complete run then substitute a partial analyst selection.
+  assertContextRosterForRunMode(deps.runMode, selectedRoles);
+  const plan: SourceWikiPlan = buildSourceWikiPlan(deps.snapshot, selectedRoles, {
     ...(deps.readModel === undefined ? {} : { readModel: deps.readModel }),
     ...(deps.portraitCharacterIds === undefined
       ? {}

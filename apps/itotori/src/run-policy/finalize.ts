@@ -6,8 +6,8 @@
 // there is no parameter, flag, or alternate constructor that reaches a shippable
 // artifact from a run that may not ship.
 
-import { isNarrowedContext } from "./resolve.js";
-import { profileFor } from "./mode-profiles.js";
+import { contextCoversWholeGame } from "./resolve.js";
+import { profileFor, rosterIsFull } from "./mode-profiles.js";
 import {
   ShippableFinalizationError,
   type ResolvedRunPolicy,
@@ -21,7 +21,8 @@ export function isShippablePolicy(policy: ResolvedRunPolicy): boolean {
   const profile = profileFor(policy.runMode);
   return (
     profile.canFinalizeShippable &&
-    !isNarrowedContext(policy.contextScope) &&
+    (!profile.requiresWholeGameContext || contextCoversWholeGame(policy.contextScope)) &&
+    (!profile.requiresFullRoster || rosterIsFull(policy.roster)) &&
     policy.bibleBasis === "wiki-first"
   );
 }
@@ -33,8 +34,11 @@ function unshippableReason(policy: ResolvedRunPolicy): string | null {
   if (!profile.canFinalizeShippable) {
     return `run mode '${policy.runMode}' is not a shippable mode`;
   }
-  if (isNarrowedContext(policy.contextScope)) {
+  if (profile.requiresWholeGameContext && !contextCoversWholeGame(policy.contextScope)) {
     return `context '${policy.contextScope}' is narrowed — below whole-game`;
+  }
+  if (profile.requiresFullRoster && !rosterIsFull(policy.roster)) {
+    return "the context roster is not the complete A1-A10 analyst set";
   }
   if (policy.bibleBasis !== "wiki-first") {
     return `bible basis '${policy.bibleBasis}' bypasses the wiki-first bible`;

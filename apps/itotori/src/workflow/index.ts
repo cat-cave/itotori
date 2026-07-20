@@ -46,6 +46,7 @@ export {
 } from "./ports.js";
 export { resolveWorkflowPolicy, releaseUnit, mayShip, type UnitRelease } from "./policy.js";
 export { resolveSceneReadiness, type SceneReadiness } from "./readiness.js";
+export { projectOutputScope, type OutputScopeProjection } from "./output-scope.js";
 export {
   classifyStratum,
   cleanUnitSampled,

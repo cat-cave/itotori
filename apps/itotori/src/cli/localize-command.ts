@@ -139,7 +139,9 @@ export async function runLocalizeCommand(
   const summary = {
     runMode: report.policy.runMode,
     contextScope: report.policy.contextScope,
+    contextProvenance: report.policy.contextProvenance,
     outputScope: report.policy.outputScope,
+    excludedOutputUnitIds: report.excludedOutputUnitIds,
     shippable: report.policy.shippable,
     sceneCount: report.scenes.length,
     finalizedUnitCount: report.finalized.length,
