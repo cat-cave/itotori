@@ -10,7 +10,7 @@
 // pure-TS draft shape so producers and consumers can agree before the
 // table is fully wired.
 
-import { isLocaleTaggedSourceEcho } from "./agentic-loop-bundle.js";
+import { isLocaleTaggedSourceEcho } from "./target-text.js";
 import type { Uuid7 } from "./index.js";
 
 export const STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION =

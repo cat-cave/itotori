@@ -7,11 +7,11 @@ export * from "./style-guide-policy.js";
 export * from "./conformance.js";
 export * from "./qa-finding.js";
 export * from "./speaker-label.js";
+export * from "./target-text.js";
 export * from "./translation-draft.js";
 export * from "./draft-artifact-bundle.js";
 export * from "./patch-export-bundle.js";
 export * from "./asset-localization-draft.js";
-export * from "./agentic-loop-bundle.js";
 export * from "./pair-policy.v0.3.js";
 export * from "./bridge-surface-normalization.js";
 

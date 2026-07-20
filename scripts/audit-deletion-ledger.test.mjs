@@ -225,5 +225,6 @@ test("the checked-in ledger forbids reviving the retired roots and isolated resi
   assert.ok(
     absentFiles.includes("packages/localization-bridge-schema/src/raw-mtl-baseline-proof.ts"),
   );
+  assert.ok(absentFiles.includes("packages/localization-bridge-schema/src/agentic-loop-bundle.ts"));
   assert.ok(absentFiles.includes("scripts/generate-qa-calibration-bundles.mjs"));
 });
