@@ -4,6 +4,17 @@
   color: var(--ito-color-text);
 }
 
+/* An addressable navigation focuses the actual player unit, rather than a
+   sibling marker. Keep the visual cue on the player chrome + stage itself. */
+.itotori-scene-player--highlighted {
+  outline: 2px solid var(--ito-color-focus-ring);
+  outline-offset: var(--ito-space-4);
+}
+
+.itotori-scene-player--highlighted .itotori-scene-player__chrome {
+  border-color: var(--ito-color-focus-ring);
+}
+
 .itotori-scene-player__chrome {
   display: flex;
   align-items: center;
