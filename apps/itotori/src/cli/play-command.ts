@@ -9,7 +9,11 @@
 // runtime launcher) is injected so this module's own import closure reaches only
 // the play entrypoint + its launcher port.
 
-import { runPlaySession, type PlayEntrypointDeps, type PlayRequest } from "../composition/index.js";
+import {
+  runPlaySession,
+  type PlayEntrypointDeps,
+  type PlayRequest,
+} from "../composition/play-entrypoint.js";
 import { optionalFlag, optionalJsonObjectFlag } from "./flags.js";
 
 /** The minimal JSON store the play command writes its launch receipt to. */

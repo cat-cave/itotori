@@ -14,8 +14,8 @@ import {
   runLocalization,
   type LocalizationPerRunInput,
   type LocalizationPortSource,
-} from "../composition/index.js";
-import { projectDecodeStructure } from "../composition/live/index.js";
+} from "../composition/localize-entrypoint.js";
+import { projectDecodeStructure } from "../composition/live/scene-projection.js";
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import {
   FULL_ROSTER,

@@ -5,13 +5,12 @@
 // `runWikiObjectCommand`. This module never touches a role or the legacy wiki
 // service directly.
 
-import {
-  runWikiObjectCommand,
-  type WikiBuildInvocation,
-  type WikiBuildPortraitSources,
-  type WikiObjectRequest,
-  type SourceWikiRunReport,
-} from "../composition/index.js";
+import { runWikiObjectCommand, type WikiObjectRequest } from "../composition/wiki-entrypoint.js";
+import type {
+  WikiBuildInvocation,
+  WikiBuildPortraitSources,
+} from "../composition/wiki-build-entrypoint.js";
+import type { SourceWikiRunReport } from "../source-wiki/index.js";
 import { assertBridgeBundleV02, type BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import type { RoleId, RunModeValue } from "../contracts/index.js";
 import type {

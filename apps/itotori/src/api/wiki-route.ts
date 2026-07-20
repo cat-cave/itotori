@@ -10,7 +10,7 @@ import {
   runWikiObjectCommand,
   type WikiObjectRequest,
   type WikiObjectResponse,
-} from "../composition/index.js";
+} from "../composition/wiki-entrypoint.js";
 import type { WikiObjectApiService } from "../wiki/object-api/index.js";
 
 export type { WikiObjectRequest, WikiObjectResponse };

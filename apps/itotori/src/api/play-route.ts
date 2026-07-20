@@ -8,7 +8,11 @@
 // runtime launcher) is injected so this module's own import closure reaches only
 // the play entrypoint + its launcher port.
 
-import { runPlaySession, type PlayEntrypointDeps, type PlayRequest } from "../composition/index.js";
+import {
+  runPlaySession,
+  type PlayEntrypointDeps,
+  type PlayRequest,
+} from "../composition/play-entrypoint.js";
 import type { PatchRuntimeLaunchReceipt } from "../play/patch-runtime-launcher.js";
 
 /** The injected play substrate — the surface loader + runtime launcher enter

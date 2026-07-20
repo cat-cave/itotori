@@ -165,12 +165,12 @@ import {
   redactProjectOverviewReadModel,
   type ProjectOverviewReadModelOptions,
 } from "./project-overview-read-model.js";
-import {
-  type BenchmarkRecordResult,
-  type FindingRecordResult,
-  type ItotoriProjectWorkflowPort,
-  type LaunchLocalizationPassResult,
-  type RuntimeIngestResult,
+import type {
+  BenchmarkRecordResult,
+  FindingRecordResult,
+  ItotoriProjectWorkflowPort,
+  LaunchLocalizationPassResult,
+  RuntimeIngestResult,
 } from "./services/project-workflow.js";
 import {
   ProjectMutationScopeError,
@@ -192,8 +192,8 @@ import { runApiPlay } from "./api/play-route.js";
 import type {
   LocalizationPerRunInput,
   LocalizationPortSource,
-  PlayEntrypointDeps,
-} from "./composition/index.js";
+} from "./composition/localize-entrypoint.js";
+import type { PlayEntrypointDeps } from "./composition/play-entrypoint.js";
 import type { RunPolicyRequest } from "./run-policy/index.js";
 import {
   ForgedWikiAssertionError,
