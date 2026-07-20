@@ -4,8 +4,9 @@
 //! module shape for the Siglus engine family: a container reader
 //! ([`archive`]), the constant 256-byte XOR + per-game second-layer key
 //! transform ([`decrypt`]), the proprietary Siglus LZSS codec
-//! ([`decompress`] / [`compress`]), the `Gameexe.dat` → UTF-16LE inventory
-//! ([`gameexe`]), the scene bytecode stack VM / decompiler ([`opcode`])
+//! ([`decompress`] / [`compress`]), the `Gameexe.dat` → UTF-16LE codec
+//! ([`gameexe`]) and its category-indexed reader + sanitized inventory
+//! ([`gameexe_inventory`]), the scene bytecode stack VM / decompiler ([`opcode`])
 //! and its expression decoder ([`expression`]), the v0.2 BridgeBundle
 //! producer ([`bridge`]), and byte-correct patch-back ([`patchback`]).
 //! # Status
@@ -71,6 +72,7 @@ pub mod decrypt;
 pub mod exe_angou;
 pub mod expression;
 pub mod gameexe;
+pub mod gameexe_inventory;
 pub mod known_key_smoke;
 pub mod opcode;
 pub mod patchback;
@@ -137,6 +139,10 @@ pub use expression::{SiglusExpr, SiglusExpressionError, decode_expression};
 pub use gameexe::{
     GameexeDatEntry, GameexeDatError, GameexeDatHeader, GameexeDatReport, decode_gameexe_dat,
     read_gameexe_header,
+};
+pub use gameexe_inventory::{
+    GameexeInventory, GameexeInventorySummary, GameexeReadError, GameexeValueShape, category_of,
+    read_gameexe_inventory,
 };
 pub use known_key_smoke::{
     GameexeEntryDigest, GameexeExtractionReport, KNOWN_KEY_SMOKE_CAPABILITY_ID,
