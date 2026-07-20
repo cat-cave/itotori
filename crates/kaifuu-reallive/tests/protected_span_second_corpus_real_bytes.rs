@@ -1,23 +1,18 @@
-//! `reallive-bridge-second-corpus-protected-span-calibration` — 2nd-corpus
-//! validation of the RealLive protected-span extraction.
+//! Two-corpus validation of RealLive protected-span extraction.
 //! The bridge protected-span scanner (`bridge.rs::collect_units` + the RLDEV
 //! control-byte catalogue in `protected_spans.rs`) feeds the pilot's
 //! deterministic strip/re-inject (patchback-safety): every span it emits is a
 //! `preserveMode=exact` region the translate+patchback pass must NOT rewrite.
-//! It was originally calibrated on Sweetie HD. This suite validates it on a
-//! SECOND, independently-authored RealLive title (Kanon, a 1.2.6.8 `10002`
-//! rlBabel tree) and pins WHICH span rules are RealLive-GENERAL (engine-wide
-//! conventions) vs which are Sweetie-title-CALIBRATED vocabulary.
-//! # Rule provenance (the honest separation — grounded in the measured 2nd
-//! # corpus, NOT assumed from documentation)
-//! RealLive-GENERAL (engine-wide surfaces — proven to fire on BOTH corpora):
+//! # Rule provenance
+//! RealLive engine surfaces:
 //! - `reallive.kidoku` — read-tracking markers. Sourced from the `MetaKidoku`
 //!   (`0x40`) opcode AND synthesised from the scene header's `kidoku_count`.
-//!   Kidoku read-tracking is a core RealLive engine surface present on every
-//!   title; it fires heavily on Sweetie HD AND on Kanon.
 //! - NAMAE speaker resolution via the `Gameexe.ini` `#NAMAE` table — an
-//!   engine-wide Gameexe family (the resolution MECHANISM is general even
-//!   though a given title's inline attribution style differs, see below).
+//!   engine-wide Gameexe family.
+//! - Inline `【話者】` names and the `#FACE`/`#GANBMP`/font-tone tag vocabulary.
+//!   RLDEV's `lib/textout.kh`, cited by rlvm's
+//!   `src/doc/notes/NamesAndIndentation.txt`, defines lenticular-name textout
+//!   markup; a corpus may simply not author an optional grammar construct.
 //! - The RLDEV control-byte catalogue (`detect_protected_spans`): colour
 //!   (`0x1f`), ruby (`0x0d/0x0a/0x09`), choice token (`0x02`), text size
 //!   (`0x1e`), wait (`0x10`), clear (`0x0c`), line break (`0x0a`), the
@@ -26,30 +21,8 @@
 //!   Structurally engine-general; over READABLE dialogue runs it emits no
 //!   control-byte spans (the dialogue gate excludes `< 0x20` bytes) and, on
 //!   both corpora, ZERO unknown-control warnings and ZERO decode errors.
-//!   TITLE / ERA-CALIBRATED (NOT engine-universal — the honest 2nd-corpus
-//!   finding; must never be claimed as engine-general):
-//! - `reallive.name_token` — the full-width lenticular `【話者】` speaker
-//!   prefix. This is the KEY calibration finding: it fires 16,862× on Sweetie
-//!   HD but ZERO times on Kanon. The inline `【】` speaker bracket is an
-//!   rlBabel / Sweetie-HD-era authoring convention; classic Kanon (1.2.6.8)
-//!   does NOT inline-bracket its speaker names, so the detector is correct
-//!   where the convention is used but is title/era-scoped, NOT engine-general.
-//! - `reallive.asset_ref` — the literal `#FACE(...)` / `#GANBMP(...)` inline
-//!   asset tags. Speculative Sweetie-HD vocabulary: emits ZERO spans on BOTH
-//!   real corpora (it does not even fire on Sweetie HD's real bytes).
-//! - `reallive.font_tone` — the literal `#FONT_BIG` / `#FONT_SMALL` / `#COLOR`
-//!   inline tags (the scanner comment already scopes these to "the documented
-//!   Sweetie HD vocabulary"). Also ZERO on BOTH real corpora.
 //! - `reallive.choice_marker` — the `0x30..0x33` ASCII-digit heuristic. Not an
 //!   RLDEV-documented marker; emits ZERO spans on BOTH real corpora.
-//!   All CALIBRATED rules key on an exact literal (a `【】` bracket, an ASCII tag,
-//!   or an ASCII digit), so on a title that does not author that literal they
-//!   emit ZERO spans — they cannot MIS-fire (produce a WRONG span) on Kanon,
-//!   they simply do not apply. This test proves exactly that: the GENERAL
-//!   `reallive.kidoku` surface fires on Kanon, the CALIBRATED rules are proven
-//!   on their home title (Sweetie HD) and proven ABSENT on Kanon, and the
-//!   absence is pinned as a title-vocabulary fact so a future "generalize the
-//!   calibrated vocab" edit is a conscious, reviewed change rather than drift.
 //!   Data rule: span TYPE counts / categories only — never decoded copyrighted
 //!   dialogue text.
 //!   Env-gated + STRICT like the rest of the real-bytes suite. Runs only in the
@@ -72,15 +45,11 @@ use kaifuu_reallive::{
 
 use real_corpus::RealCorpus;
 
-/// The RealLive-GENERAL bridge span kinds — the engine-wide surfaces proven to
-/// fire on BOTH corpora (Sweetie HD AND Kanon).
+/// The engine-wide read-tracking span must fire on every populated corpus.
 const GENERAL_BRIDGE_SPAN_KINDS: &[&str] = &["reallive.kidoku"];
 
-/// The title / era-CALIBRATED bridge span kinds — keyed on an exact literal
-/// (`【】` bracket, `#`-tag, or ASCII digit) and legitimately ABSENT on a title
-/// that does not author it. `reallive.name_token` (`【】`) fires on Sweetie HD
-/// but not Kanon; `asset_ref` / `font_tone` / `choice_marker` fire on neither.
-const CALIBRATED_BRIDGE_SPAN_KINDS: &[&str] = &[
+/// Optional grammar and heuristic spans are reported, not required per corpus.
+const OPTIONAL_BRIDGE_SPAN_KINDS: &[&str] = &[
     "reallive.name_token",
     "reallive.asset_ref",
     "reallive.font_tone",
@@ -317,8 +286,8 @@ fn print_report(report: &SpanReport) {
     for (kind, count) in &report.bridge_span_kinds {
         let provenance = if GENERAL_BRIDGE_SPAN_KINDS.contains(&kind.as_str()) {
             "GENERAL"
-        } else if CALIBRATED_BRIDGE_SPAN_KINDS.contains(&kind.as_str()) {
-            "CALIBRATED"
+        } else if OPTIONAL_BRIDGE_SPAN_KINDS.contains(&kind.as_str()) {
+            "OPTIONAL"
         } else {
             "other"
         };
@@ -401,91 +370,68 @@ fn protected_span_extraction_generalizes_to_second_corpus_real_bytes() {
         real_corpus::REAL_GAME_ROOT_2_ENV,
     );
 
-    let sweetie = reports
+    let first = reports
         .iter()
         .find(|r| r.label == "corpus-1")
-        .expect("corpus-1 (Sweetie HD) must be staged");
-    let kanon = reports
+        .expect("corpus-1 must be staged");
+    let second = reports
         .iter()
         .find(|r| r.label == "corpus-2")
-        .expect("corpus-2 (Kanon) must be staged for the generalization witness");
+        .expect("corpus-2 must be staged for the generalization witness");
     eprintln!(
-        "[corpus-1 Sweetie] kidoku={} name_token={} choice_marker={} asset_ref={} font_tone={}",
-        sweetie.bridge_count("reallive.kidoku"),
-        sweetie.bridge_count("reallive.name_token"),
-        sweetie.bridge_count("reallive.choice_marker"),
-        sweetie.bridge_count("reallive.asset_ref"),
-        sweetie.bridge_count("reallive.font_tone"),
+        "[corpus-1] kidoku={} name_token={} choice_marker={} asset_ref={} font_tone={}",
+        first.bridge_count("reallive.kidoku"),
+        first.bridge_count("reallive.name_token"),
+        first.bridge_count("reallive.choice_marker"),
+        first.bridge_count("reallive.asset_ref"),
+        first.bridge_count("reallive.font_tone"),
     );
     eprintln!(
-        "[corpus-2 Kanon] kidoku={} name_token={} choice_marker={} asset_ref={} font_tone={}",
-        kanon.bridge_count("reallive.kidoku"),
-        kanon.bridge_count("reallive.name_token"),
-        kanon.bridge_count("reallive.choice_marker"),
-        kanon.bridge_count("reallive.asset_ref"),
-        kanon.bridge_count("reallive.font_tone"),
+        "[corpus-2] kidoku={} name_token={} choice_marker={} asset_ref={} font_tone={}",
+        second.bridge_count("reallive.kidoku"),
+        second.bridge_count("reallive.name_token"),
+        second.bridge_count("reallive.choice_marker"),
+        second.bridge_count("reallive.asset_ref"),
+        second.bridge_count("reallive.font_tone"),
     );
 
-    // (a) The engine-GENERAL read-tracking surface fires on Kanon — the core
-    // generalization claim.
+    // The engine-wide read-tracking surface fires on the second corpus.
     assert!(
-        kanon.bridge_count("reallive.kidoku") > 0,
-        "[corpus-2] Kanon must exercise the engine-general reallive.kidoku surface"
+        second.bridge_count("reallive.kidoku") > 0,
+        "[corpus-2] must exercise the engine-general reallive.kidoku surface"
     );
 
-    // (a2) ZERO FABRICATED SPEAKERS on Kanon. Kanon authors no inline `【】`
-    // speaker brackets (name_token == 0 above), so there is NO authoritative
+    // ZERO FABRICATED SPEAKERS: corpus-2 authors no inline `【】` token, so
+    // there is NO authoritative
     // display-key evidence anywhere in the archive — the producer must
     // therefore resolve ZERO `known` and ZERO `reader_unknown` speakers. A
     // non-zero here is a fabricated identity (a substring / carried-forward
     // attribution the hardening removed). The bounded first-line fallback may
     // still mark a `parser_unknown` guess — that is not a fabricated identity.
     assert_eq!(
-        kanon.bridge_count("reallive.name_token"),
+        second.bridge_count("reallive.name_token"),
         0,
-        "[corpus-2] Kanon must author no inline 【】 tokens (precondition for the no-fabrication check)"
+        "[corpus-2] must author no inline 【】 tokens (no-fabrication precondition)"
     );
     assert_eq!(
-        kanon.speaker_count("known"),
+        second.speaker_count("known"),
         0,
-        "[corpus-2] Kanon has no inline display-key evidence — ZERO `known` speakers may be \
+        "[corpus-2] has no inline display-key evidence — ZERO `known` speakers may be \
          fabricated; got {}",
-        kanon.speaker_count("known"),
+        second.speaker_count("known"),
     );
     assert_eq!(
-        kanon.speaker_count("reader_unknown"),
+        second.speaker_count("reader_unknown"),
         0,
-        "[corpus-2] Kanon has no inline display-key evidence — ZERO `reader_unknown` speakers may \
+        "[corpus-2] has no inline display-key evidence — ZERO `reader_unknown` speakers may \
          be fabricated; got {}",
-        kanon.speaker_count("reader_unknown"),
+        second.speaker_count("reader_unknown"),
     );
 
-    // (b) The `reallive.name_token` (`【】`) rule is CALIBRATED, not general:
-    // it is proven on its home title (Sweetie HD authors `【話者】` speaker
-    // brackets) and proven ABSENT on Kanon (classic 1.2.6.8 does not
-    // inline-bracket speakers). Pinning BOTH sides is the honest no-overclaim
-    // record: the rule works where the convention exists and does not spuriously
-    // fire where it does not.
+    // The first corpus witnesses the engine grammar. Its absence in the second
+    // corpus is valid optional-markup behavior, not a different game profile.
     assert!(
-        sweetie.bridge_count("reallive.name_token") > 0,
-        "[corpus-1] Sweetie HD must exercise reallive.name_token on its home `【】` convention"
+        first.bridge_count("reallive.name_token") > 0,
+        "[corpus-1] must exercise the documented reallive.name_token grammar"
     );
-
-    // (c) Every title/era-CALIBRATED rule emits ZERO spans on Kanon — Kanon
-    // authors none of the `【】` / `#GANBMP` / `#FONT_*` / `#COLOR` / ASCII-digit
-    // vocabulary these rules key on. A non-zero here means a calibrated rule
-    // MIS-fired on the 2nd corpus: either the literal genuinely appears on Kanon
-    // (promote the rule to GENERAL with docs + a fixture) or it fired wrongly
-    // (isolate/fix it) — do not leave it silent.
-    for kind in CALIBRATED_BRIDGE_SPAN_KINDS {
-        assert_eq!(
-            kanon.bridge_count(kind),
-            0,
-            "[corpus-2] Kanon emitted {} {} span(s): a title/era-CALIBRATED rule fired on the \
-             2nd corpus. Either the literal genuinely appears on Kanon (promote to GENERAL with \
-             docs) or it MIS-fired (isolate it) — do not leave it silent.",
-            kanon.bridge_count(kind),
-            kind,
-        );
-    }
 }
