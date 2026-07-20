@@ -176,12 +176,12 @@ impl SoftpalProfileDetectorAdapter {
 
     pub(super) fn parser_boundary_failure(variant: impl Into<String>) -> AdapterFailure {
         Self::unsupported_failure(
-            SemanticErrorCode::UnsupportedLayeredTransform,
+            SemanticErrorCode::UnknownEngineVariant,
             Capability::ContainerAccess,
             variant,
             SOFTPAL_DATA_PAC_NAME,
-            "Softpal PAC extraction / SCRIPT.SRC decompilation / TEXT.DAT decode is outside the detector",
-            "use identify (detect/profile) output only; do not request asset-list, extract, or patch for this detector",
+            "no recognised Softpal title here, so there is no PAC/SCRIPT.SRC/TEXT.DAT surface to extract or decode (extraction is supported only for a detected Softpal title)",
+            "run detect against a Softpal title (Pal.dll / PAC+SCRIPT.SRC/TEXT.DAT / loose script magics) first",
         )
     }
 
@@ -206,21 +206,21 @@ impl SoftpalProfileDetectorAdapter {
             output_hash: content_hash(SOFTPAL_SUPPORT_BOUNDARY),
             failures: vec![
                 Self::unsupported_failure(
-                    SemanticErrorCode::MissingContainerCapability,
+                    SemanticErrorCode::UnknownEngineVariant,
                     Capability::ContainerAccess,
                     detected_variant.clone(),
                     SOFTPAL_DATA_PAC_NAME,
-                    "Softpal PAC archive container access is not implemented by the detector",
-                    "use identify output only",
+                    "no recognised Softpal title here, so its PAC/SCRIPT.SRC/TEXT.DAT container cannot be opened (container access is supported only for a detected Softpal title)",
+                    "run detect against a Softpal title first",
                 ),
                 Self::parser_boundary_failure(detected_variant.clone()),
                 Self::unsupported_failure(
-                    SemanticErrorCode::MissingPatchBackCapability,
+                    SemanticErrorCode::UnknownEngineVariant,
                     Capability::PatchBack,
                     detected_variant,
                     SOFTPAL_DATA_PAC_NAME,
-                    "Softpal patch-back/repack support is not implemented by the detector",
-                    "add an explicit Softpal patch-back adapter before writing patched PAC output",
+                    "no recognised Softpal title here to patch; dialogue/choice patch-back (TEXT.DAT rebuild + SCRIPT.SRC repoint) targets a detected Softpal title, and PAC repack remains out of scope",
+                    "run detect against a Softpal title first",
                 ),
             ],
         }

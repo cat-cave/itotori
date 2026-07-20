@@ -23,8 +23,8 @@
       "path": "fixtures/public/reallive-detector/capabilities.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "c5e3e71e0d7afe1bf50791749ff909783c9c28f91d9bf61cf0bbb7ce0a2626b1",
-      "bytes": 24543,
+      "sha256": "e4d325f647836f800ea138a1b76cc0d63f7f20afe1554b532da87cd0617358bd",
+      "bytes": 24588,
       "redistributable": true
     },
     {
@@ -71,8 +71,8 @@
       "path": "fixtures/public/reallive-detector/positive-synthetic-triple/expected/detection-report.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "8a04879a2ccb5633e30fc22cdbe2bad65a999b3c29ffaa0ef88a7a8be5bda550",
-      "bytes": 36658,
+      "sha256": "9e53a07bdfd05afe9d5d09424d3c787cb176dcfaa12c1a409bccf9d4e83f7f11",
+      "bytes": 36703,
       "redistributable": true
     },
     {
