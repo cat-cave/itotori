@@ -21,15 +21,17 @@
 //! [`expression`], [`bridge`], [`patchback`]) are still typed stubs, alongside
 //! the narrow real [`known_key_smoke`] profile.
 //! The exe-angou / second-layer key is the **key-discovery layer's (siglus-04)
-//! deliverable** recovered from the packed `SiglusEngine` executable; it is
-//! consumed here only as resolved material bound to a structured secret-ref,
-//! never a raw literal.
-//! Both owned titles (`karetoshi`, `gamekoi`) set `extra_key_use` /
-//! `exe_angou_mode`, so — until that key is available in-process — their scene
-//! **payloads** and `Gameexe.dat` **body** cannot decode: the decoders record
-//! the typed `second_layer_key_required` / `exe_angou_key_required` diagnostic
-//! before any output rather than fabricating a result. Nothing here masquerades as a
-//! working decode; the constant table and LZSS are validated by a synthetic
+//! deliverable**, now recovered natively in-process from `SiglusEngine.exe`
+//! bytes by [`exe_angou`] (a static PE opcode scan — no Wine, no execution); it
+//! is consumed here only as resolved material bound to a structured secret-ref,
+//! never a raw literal. Both owned titles (`karetoshi`, `gamekoi`) set
+//! `extra_key_use` / `exe_angou_mode`: with the recovered key their
+//! `Gameexe.dat` **body** decodes to a valid UTF-16LE inventory (proven on real
+//! bytes), and without a key the decoders record the typed
+//! `second_layer_key_required` / `exe_angou_key_required` diagnostic before any
+//! output rather than fabricating a result. Wiring the recovered key through the
+//! scene **payload** path is the siglus-06 deliverable. Nothing here masquerades
+//! as a working decode; the constant table and LZSS are validated by a synthetic
 //! known-key round-trip and by the real-bytes container walk.
 //! # Clean-room provenance
 //! - All Siglus format observations any successor node consumes are
@@ -63,6 +65,7 @@ pub mod bridge;
 pub mod compress;
 pub mod decompress;
 pub mod decrypt;
+pub mod exe_angou;
 pub mod expression;
 pub mod gameexe;
 pub mod known_key_smoke;
@@ -122,6 +125,10 @@ pub use decrypt::{
     SIGLUS_CONSTANT_XOR_TABLE, SIGLUS_GAMEEXE_XOR_TABLE, SIGLUS_SECOND_LAYER_KEY_BYTE_LEN,
     SIGLUS_XOR_TABLE_LEN, SiglusDecryptError, SiglusSecondLayerKey, SiglusSecondLayerMaterial,
     apply_gameexe_xor_table, apply_xor_table,
+};
+pub use exe_angou::{
+    EXE_ANGOU_KEY_BYTE_LEN, ExeAngouKeyError, ExeAngouKeyRecovery, ExeAngouKeyReport,
+    recover_exe_angou_key,
 };
 pub use expression::{SiglusExpr, SiglusExpressionError, decode_expression};
 pub use gameexe::{

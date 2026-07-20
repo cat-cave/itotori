@@ -8,12 +8,13 @@
 //! output.
 //!
 //! Both target titles set `exe_angou_mode = 1`: their `Gameexe.dat` body is
-//! masked with a per-game exe-angou key recovered from the packed executable by
-//! the key-discovery layer. That key is not statically locatable in
-//! the executable as a table and is not available in-process here, so — per the
-//! honest "prove or record the expected failure" contract — this test proves the
-//! outer-header read succeeds and the body decode fails with the typed
-//! `exe_angou_key_required` diagnostic (never garbage, never a partial output).
+//! masked with a per-game exe-angou key that is statically recovered from
+//! `SiglusEngine.exe` bytes in-process (see
+//! [`kaifuu_siglus::recover_exe_angou_key`] and the companion
+//! `siglus_exe_angou_key_real_bytes` proof). This test scopes itself to the
+//! **key-absent gate**: with no key supplied, the outer-header read must succeed
+//! and the body decode must fail with the typed `exe_angou_key_required`
+//! diagnostic (never garbage, never a partial output) rather than decoding.
 //! Set the env var to either the game directory or its `Gameexe.dat` file.
 
 use std::path::{Path, PathBuf};
