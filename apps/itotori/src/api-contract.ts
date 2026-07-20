@@ -1411,24 +1411,40 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   ApiPatchIterationPlayRequest: () =>
     object({
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationPlayRequest,
-      properties: { launchDescriptor: { type: "object", additionalProperties: true } },
+      properties: {
+        adapterId: { type: "string", minLength: 1 },
+        operation: { type: "string", minLength: 1 },
+        artifactRoot: str,
+        output: str,
+        launchDescriptor: { type: "object", additionalProperties: true },
+      },
       additionalProperties: false,
     }),
   ApiPatchIterationPlayResponse: () =>
     object({
       required: ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationPlayResponse,
       properties: {
-        receipt: object({
-          required: ["runtime", "engine", "scene", "replay", "observedTextLineCount"],
-          properties: {
-            runtime: { const: "utsushi-reallive" },
-            engine: { const: "reallive" },
-            scene: { type: "integer", minimum: 0 },
-            replay: { const: "observed" },
-            observedTextLineCount: { type: "integer", minimum: 0 },
-          },
-          additionalProperties: false,
-        }),
+        receipt: {
+          oneOf: [
+            object({
+              required: ["adapterId", "operation", "adapterReceipt"],
+              properties: {
+                adapterId: { const: "reallive" },
+                operation: { const: "replay-validate" },
+                adapterReceipt: object({
+                  required: ["replay", "scene", "observedTextLineCount"],
+                  properties: {
+                    replay: { const: "observed" },
+                    scene: { type: "integer", minimum: 0 },
+                    observedTextLineCount: { type: "integer", minimum: 0 },
+                  },
+                  additionalProperties: false,
+                }),
+              },
+              additionalProperties: false,
+            }),
+          ],
+        },
       },
       additionalProperties: false,
       schemaVersion: "itotori.patch-iteration.play.v0",

@@ -264,12 +264,34 @@ describe("gateway entrypoints", () => {
       { action: "list", snapshotId: "snapshot:1" },
       { resolveWikiService: () => ({ list }) as never },
     );
-    await runPlayCommand(["patch", "play", "patch:1", "--output", "play.json"], {
-      io: { writeJson: (path, value) => writes.set(path, value) },
-      resolvePlayDeps: () => ({ loader: { load }, launcher: { launch } }) as never,
-    });
+    const launchRequest = {
+      adapterId: "reallive",
+      operation: "replay-validate",
+      launchDescriptor: {
+        reallive: {
+          scene: 4,
+          gameexePath: "/tmp/gameexe.ini",
+          g00Dir: "/tmp/g00",
+        },
+      },
+    };
+    await runPlayCommand(
+      [
+        "patch",
+        "play",
+        "patch:1",
+        "--launch-json",
+        JSON.stringify(launchRequest),
+        "--output",
+        "play.json",
+      ],
+      {
+        io: { writeJson: (path, value) => writes.set(path, value) },
+        resolvePlayDeps: () => ({ loader: { load }, launcher: { launch } }) as never,
+      },
+    );
     const receipt = await runApiPlay(
-      { patchVersionId: "patch:1" },
+      { patchVersionId: "patch:1", launch: launchRequest },
       { resolvePlayDeps: () => ({ loader: { load }, launcher: { launch } }) as never },
     );
 
@@ -279,7 +301,10 @@ describe("gateway entrypoints", () => {
     expect(list).toHaveBeenCalledWith({ snapshotId: "snapshot:1" });
     expect(listed).toEqual({ action: "list", result: { sourceObjects: [], renderings: [] } });
     expect(load).toHaveBeenCalledWith("patch:1");
-    expect(launch).toHaveBeenCalledWith({ patch: { patchVersionId: "patch:1" } });
+    expect(launch).toHaveBeenCalledWith({
+      patch: { patchVersionId: "patch:1" },
+      request: launchRequest,
+    });
     expect(writes.get("play.json")).toMatchObject({ runtime: "utsushi" });
     expect(receipt).toMatchObject({ runtime: "utsushi" });
   });

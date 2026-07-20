@@ -273,9 +273,17 @@ fn single_scene_replay_validate_decodes_real_text_on_xor2_title() {
         DIALOGUE_SCENE_ID
     ));
     fs::create_dir_all(&work_dir).expect("create work dir");
-    let patched_seen = work_dir.join("Seen.txt");
+    let patched_seen = work_dir.join("REALLIVEDATA").join("Seen.txt");
+    fs::create_dir_all(patched_seen.parent().expect("patched Seen parent"))
+        .expect("create patched dir");
     fs::write(&patched_seen, &patched).expect("write patched Seen.txt");
     let replay_log_path = work_dir.join("replay-log.json");
+    let replay_descriptor = serde_json::json!({
+        "scene": DIALOGUE_SCENE_ID,
+        "gameexePath": gameexe_path,
+        "g00Dir": g00_dir,
+    })
+    .to_string();
 
     // 2. Drive the actual `replay-validate` binary (the CLI single-scene
     //    path that stages xor2 recovery) against the patched envelope.
@@ -284,14 +292,10 @@ fn single_scene_replay_validate_decodes_real_text_on_xor2_title() {
             "replay-validate",
             "--engine",
             "reallive",
-            "--seen",
-            &patched_seen.display().to_string(),
-            "--scene",
-            &DIALOGUE_SCENE_ID.to_string(),
-            "--gameexe",
-            &gameexe_path.display().to_string(),
-            "--g00-dir",
-            &g00_dir.display().to_string(),
+            "--artifact-root",
+            &work_dir.display().to_string(),
+            "--launch-descriptor",
+            &replay_descriptor,
             "--print-replay-log",
             &replay_log_path.display().to_string(),
             "--print-textlines",

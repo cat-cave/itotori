@@ -1,43 +1,25 @@
-//! `utsushi-cli replay --engine <engine>` command.
+//! `utsushi-cli replay --engine <adapter>` command.
 //!
-//! Routes replay through the CLI runtime adapter registry's replay-review
-//! capability and writes the selected engine's deterministic replay-log JSON.
-//! The RealLive port requires Gameexe and a g00 directory even when the
-//! caller only requests text evidence, because those are typed port inputs.
+//! The command parses only the generic adapter id, artifact root, opaque
+//! descriptor, and output path. The selected CLI adapter parses its descriptor
+//! and constructs the typed request passed to the core runtime registry.
 
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 
-use serde_json::json;
-use utsushi_core::{
-    RuntimeAdapter, RuntimeAdapterRegistry, RuntimeCapability, RuntimeOperation, RuntimeRequest,
+use utsushi_core::RuntimeAdapterRegistry;
+
+use crate::replay_cli_registry::{
+    ReplayCliOperation, default_cli_registry, parse_generic_request, run_selected_replay,
 };
+use crate::replay_registry::replay_log_json;
 
-use crate::replay_registry::{replay_log_json, replay_parameters};
-
-/// Execute the `replay` subcommand. The argv layout is:
-///
-/// ```text
-/// utsushi-cli replay --engine reallive --seen <PATH> --scene <N>
-///                    --gameexe <PATH> --g00-dir <DIR> --output <PATH>
-///                    [--snapshot-output <PATH>]
-/// ```
-///
-/// `--snapshot-output` is retained as a parsed compatibility flag, but is
-/// rejected explicitly: the EnginePort replay-review surface self-verifies
-/// snapshots and does not publish a snapshot payload.
 pub fn run_replay_command(
     args: &[String],
     registry: &RuntimeAdapterRegistry<'_>,
 ) -> Result<(), Box<dyn Error>> {
-    let engine = required_flag(args, "--engine")?;
-    let seen_path = PathBuf::from(required_flag(args, "--seen")?);
-    let scene_id: u16 = required_flag(args, "--scene")?
-        .parse()
-        .map_err(|err| format!("utsushi.cli.replay.scene_parse: --scene must be a u16: {err}"))?;
-    let gameexe_path = PathBuf::from(required_flag(args, "--gameexe")?);
-    let g00_dir = PathBuf::from(required_flag(args, "--g00-dir")?);
+    let (adapter_id, request) = parse_generic_request(args, "utsushi.cli.replay")?;
     let output_path = PathBuf::from(required_flag(args, "--output")?);
     if args.iter().any(|arg| arg == "--snapshot-output") {
         return Err(
@@ -46,11 +28,14 @@ pub fn run_replay_command(
         );
     }
 
-    let result = run_registry_replay(
+    let cli_registry = default_cli_registry();
+    let result = run_selected_replay(
         registry,
-        engine,
-        &seen_path,
-        replay_parameters(scene_id, &gameexe_path, &g00_dir),
+        &cli_registry,
+        &adapter_id,
+        &request,
+        ReplayCliOperation::Replay,
+        "utsushi.cli.replay",
     )?;
     let replay_json = replay_log_json(&result, "utsushi.cli.replay")?;
     fs::write(&output_path, replay_json)
@@ -58,73 +43,12 @@ pub fn run_replay_command(
     Ok(())
 }
 
-fn run_registry_replay(
-    registry: &RuntimeAdapterRegistry<'_>,
-    engine: &str,
-    seen_path: &std::path::Path,
-    parameters: serde_json::Value,
-) -> Result<serde_json::Value, Box<dyn Error>> {
-    let descriptor = registry.adapter(engine).map(RuntimeAdapter::descriptor);
-    let Some(descriptor) = descriptor else {
-        return Err(registry_diagnostic(
-            "utsushi.cli.replay.registry_adapter_not_found",
-            engine,
-            "no runtime adapter is registered for the requested replay engine",
-            registry,
-        )
-        .into());
-    };
-    if !descriptor.supports(RuntimeCapability::ReplayReview) {
-        return Err(registry_diagnostic(
-            "utsushi.cli.replay.registry_capability_unsupported",
-            engine,
-            "registered runtime adapter does not support replay_review",
-            registry,
-        )
-        .into());
-    }
-    let request = RuntimeRequest::new(seen_path).with_parameters(parameters);
-    registry.run(engine, RuntimeOperation::ReplayReview, &request)
-}
-
-fn registry_diagnostic(
-    code: &str,
-    engine: &str,
-    message: &str,
-    registry: &RuntimeAdapterRegistry<'_>,
-) -> String {
-    json!({
-        "diagnostic": {
-            "code": code,
-            "engine": engine,
-            "requiredCapability": RuntimeCapability::ReplayReview.as_str(),
-            "message": message,
-            "registeredAdapters": registry.descriptors().into_iter().map(|descriptor| {
-                let capabilities = descriptor
-                    .capabilities
-                    .into_iter()
-                    .map(RuntimeCapability::as_str)
-                    .collect::<Vec<_>>();
-                json!({
-                    "name": descriptor.name,
-                    "capabilities": capabilities,
-                })
-            }).collect::<Vec<_>>(),
-        }
-    })
-    .to_string()
-}
-
 fn required_flag<'a>(args: &'a [String], name: &str) -> Result<&'a str, Box<dyn Error>> {
-    optional_flag(args, name)
-        .ok_or_else(|| format!("utsushi.cli.replay.missing_flag: {name}").into())
-}
-
-fn optional_flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter()
         .position(|arg| arg == name)
         .and_then(|index| args.get(index + 1))
         .map(String::as_str)
+        .ok_or_else(|| format!("utsushi.cli.replay.missing_flag: {name}").into())
 }
 
 #[cfg(test)]
@@ -140,71 +64,64 @@ mod tests {
     }
 
     #[test]
-    fn run_replay_command_rejects_unsupported_engine() {
+    fn unsupported_adapter_fails_before_adapter_descriptor_parsing() {
         let args: Vec<String> = vec![
-            "--engine".to_string(),
-            "siglus".to_string(),
-            "--seen".to_string(),
-            "/tmp/nothing".to_string(),
-            "--scene".to_string(),
-            "1".to_string(),
-            "--gameexe".to_string(),
-            "/tmp/missing-gameexe.ini".to_string(),
-            "--g00-dir".to_string(),
-            "/tmp/missing-g00".to_string(),
-            "--output".to_string(),
-            "/tmp/out.json".to_string(),
+            "--engine".into(),
+            "siglus".into(),
+            "--artifact-root".into(),
+            "/tmp/nothing".into(),
+            "--launch-descriptor".into(),
+            "{}".into(),
+            "--output".into(),
+            "/tmp/out.json".into(),
         ];
         let registry = replay_registry();
-        let err = run_replay_command(&args, &registry).expect_err("siglus is not supported");
+        let err = run_replay_command(&args, &registry).expect_err("adapter must be selected first");
         assert!(err.to_string().contains("registry_adapter_not_found"));
     }
 
     #[test]
-    fn run_replay_command_rejects_missing_required_flag() {
-        let args: Vec<String> = vec![
-            "--engine".to_string(),
-            "reallive".to_string(),
-            "--scene".to_string(),
-            "1".to_string(),
-            "--output".to_string(),
-            "/tmp/out.json".to_string(),
-        ];
-        let registry = replay_registry();
-        let err = run_replay_command(&args, &registry).expect_err("missing --seen");
-        assert!(err.to_string().contains("--seen"));
-    }
-
-    #[test]
-    fn run_replay_command_rejects_unparseable_scene_id() {
-        let args: Vec<String> = vec![
-            "--engine".to_string(),
-            "reallive".to_string(),
-            "--seen".to_string(),
-            "/tmp/nothing".to_string(),
-            "--scene".to_string(),
-            "notanint".to_string(),
-            "--output".to_string(),
-            "/tmp/out.json".to_string(),
-        ];
-        let registry = replay_registry();
-        let err = run_replay_command(&args, &registry).expect_err("scene parse must fail");
-        assert!(err.to_string().contains("scene_parse"));
-    }
-
-    #[test]
-    fn run_replay_command_rejects_unpublished_snapshot_output_explicitly() {
+    fn rejects_missing_generic_artifact_root() {
         let args: Vec<String> = vec![
             "--engine".into(),
             "reallive".into(),
-            "--seen".into(),
+            "--launch-descriptor".into(),
+            "{}".into(),
+            "--output".into(),
+            "/tmp/out.json".into(),
+        ];
+        let registry = replay_registry();
+        let err = run_replay_command(&args, &registry).expect_err("artifact root is generic input");
+        assert!(err.to_string().contains("--artifact-root"));
+    }
+
+    #[test]
+    fn selected_adapter_owns_descriptor_validation() {
+        let args: Vec<String> = vec![
+            "--engine".into(),
+            "reallive".into(),
+            "--artifact-root".into(),
             "/tmp/nothing".into(),
-            "--scene".into(),
-            "1".into(),
-            "--gameexe".into(),
-            "/tmp/missing-gameexe.ini".into(),
-            "--g00-dir".into(),
-            "/tmp/missing-g00".into(),
+            "--launch-descriptor".into(),
+            "{}".into(),
+            "--output".into(),
+            "/tmp/out.json".into(),
+        ];
+        let registry = replay_registry();
+        let err =
+            run_replay_command(&args, &registry).expect_err("selected adapter parses descriptor");
+        assert!(err.to_string().contains("registry.launch_descriptor"));
+    }
+
+    #[test]
+    fn rejects_unpublished_snapshot_output_explicitly() {
+        let args: Vec<String> = vec![
+            "--engine".into(),
+            "reallive".into(),
+            "--artifact-root".into(),
+            "/tmp/nothing".into(),
+            "--launch-descriptor".into(),
+            r#"{"scene":1,"gameexePath":"/tmp/gameexe.ini","g00Dir":"/tmp/g00"}"#.into(),
             "--output".into(),
             "/tmp/out.json".into(),
             "--snapshot-output".into(),
@@ -217,35 +134,29 @@ mod tests {
     }
 
     #[test]
-    fn canonical_invocation_reaches_registry_dispatched_reallive_driver() {
-        let missing_seen_path = std::env::temp_dir().join(format!(
-            "utsushi-cli-replay-missing-seen-{}",
+    fn generic_invocation_reaches_registry_dispatched_driver() {
+        let missing_root = std::env::temp_dir().join(format!(
+            "utsushi-cli-replay-missing-root-{}",
             std::process::id()
         ));
         let args: Vec<String> = vec![
             "--engine".into(),
             "reallive".into(),
-            "--seen".into(),
-            missing_seen_path.display().to_string(),
-            "--scene".into(),
-            "1".into(),
-            "--gameexe".into(),
-            "/tmp/missing-gameexe.ini".into(),
-            "--g00-dir".into(),
-            "/tmp/missing-g00".into(),
+            "--artifact-root".into(),
+            missing_root.display().to_string(),
+            "--launch-descriptor".into(),
+            r#"{"scene":1,"gameexePath":"/tmp/missing-gameexe.ini","g00Dir":"/tmp/missing-g00"}"#
+                .into(),
             "--output".into(),
-            missing_seen_path
-                .with_extension("json")
-                .display()
-                .to_string(),
+            missing_root.with_extension("json").display().to_string(),
         ];
 
         let registry = replay_registry();
         let err = run_replay_command(&args, &registry)
-            .expect_err("missing Seen.txt should fail in the replay driver");
+            .expect_err("missing artifact should fail in the replay driver");
         assert!(
             err.to_string().contains("utsushi.cli.replay.driver"),
-            "canonical invocation should parse and reach the registry-dispatched driver, got: {err}"
+            "generic invocation should reach the registry-dispatched driver, got: {err}"
         );
     }
 }

@@ -641,7 +641,13 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
   ],
   ApiPatchIterationVersionsResponse: ["schemaVersion", "versions"],
   ApiPatchIterationSurfaceResponse: ["schemaVersion", "patch", "versions", "feedback"],
-  ApiPatchIterationPlayRequest: ["launchDescriptor"],
+  ApiPatchIterationPlayRequest: [
+    "adapterId",
+    "operation",
+    "artifactRoot",
+    "output",
+    "launchDescriptor",
+  ],
   ApiPatchIterationPlayResponse: ["schemaVersion", "receipt"],
   ApiPatchIterationFeedbackBatchRequest: ["feedbackBatchId", "label"],
   ApiPatchIterationFeedbackBatchResponse: ["schemaVersion", "batch"],
@@ -1585,7 +1591,11 @@ export type ApiPatchIterationSurfaceResponse = {
 };
 
 export type ApiPatchIterationPlayRequest = {
-  launchDescriptor?: Record<string, unknown>;
+  adapterId: string;
+  operation: string;
+  artifactRoot?: string;
+  output?: string;
+  launchDescriptor: Record<string, unknown>;
 };
 
 /**
@@ -1596,11 +1606,16 @@ export type ApiPatchIterationPlayRequest = {
  */
 export type ApiPatchIterationPlayResponse = {
   schemaVersion: "itotori.patch-iteration.play.v0";
-  receipt: {
-    runtime: "utsushi-reallive";
-    engine: "reallive";
-    scene: number;
+  receipt: ApiPatchIterationPlayReceipt;
+};
+
+/** Adapter-discriminated receipt payload; add another member when registering another adapter. */
+export type ApiPatchIterationPlayReceipt = {
+  adapterId: "reallive";
+  operation: "replay-validate";
+  adapterReceipt: {
     replay: "observed";
+    scene: number;
     observedTextLineCount: number;
   };
 };
@@ -6133,8 +6148,20 @@ export function parsePatchIterationPlayRequest(body: unknown): ApiPatchIteration
       "ApiPatchIterationPlayRequest",
       ITOTORI_STRICT_API_BODY_KEYS.ApiPatchIterationPlayRequest,
     );
-    if (request.launchDescriptor === undefined) return {};
-    return { launchDescriptor: { ...asRecord(request.launchDescriptor, "launchDescriptor") } };
+    assertString(request.adapterId, "ApiPatchIterationPlayRequest.adapterId");
+    assertString(request.operation, "ApiPatchIterationPlayRequest.operation");
+    const artifactRoot = optionalString(
+      request.artifactRoot,
+      "ApiPatchIterationPlayRequest.artifactRoot",
+    );
+    const output = optionalString(request.output, "ApiPatchIterationPlayRequest.output");
+    return {
+      adapterId: request.adapterId,
+      operation: request.operation,
+      ...(artifactRoot === undefined ? {} : { artifactRoot }),
+      ...(output === undefined ? {} : { output }),
+      launchDescriptor: { ...asRecord(request.launchDescriptor, "launchDescriptor") },
+    };
   });
 }
 
@@ -6691,23 +6718,27 @@ function assertPatchIterationPlayResponse(
     "ApiPatchIterationPlayResponse.schemaVersion",
   );
   const receipt = asStrictRecord(response.receipt, "ApiPatchIterationPlayResponse.receipt", [
-    "runtime",
-    "engine",
-    "scene",
-    "replay",
-    "observedTextLineCount",
+    "adapterId",
+    "operation",
+    "adapterReceipt",
   ]);
-  assertLiteral(
-    receipt.runtime,
-    "utsushi-reallive",
-    "ApiPatchIterationPlayResponse.receipt.runtime",
+  assertString(receipt.adapterId, "ApiPatchIterationPlayResponse.receipt.adapterId");
+  assertString(receipt.operation, "ApiPatchIterationPlayResponse.receipt.operation");
+  const adapterReceipt = asRecord(
+    receipt.adapterReceipt,
+    "ApiPatchIterationPlayResponse.receipt.adapterReceipt",
   );
-  assertLiteral(receipt.engine, "reallive", "ApiPatchIterationPlayResponse.receipt.engine");
-  assertNonNegativeInteger(receipt.scene, "ApiPatchIterationPlayResponse.receipt.scene");
-  assertLiteral(receipt.replay, "observed", "ApiPatchIterationPlayResponse.receipt.replay");
+  assertString(
+    adapterReceipt.replay,
+    "ApiPatchIterationPlayResponse.receipt.adapterReceipt.replay",
+  );
   assertNonNegativeInteger(
-    receipt.observedTextLineCount,
-    "ApiPatchIterationPlayResponse.receipt.observedTextLineCount",
+    adapterReceipt.scene,
+    "ApiPatchIterationPlayResponse.receipt.adapterReceipt.scene",
+  );
+  assertNonNegativeInteger(
+    adapterReceipt.observedTextLineCount,
+    "ApiPatchIterationPlayResponse.receipt.adapterReceipt.observedTextLineCount",
   );
 }
 
@@ -7181,6 +7212,12 @@ function assertString(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`${label} must be a non-empty string`);
   }
+}
+
+function optionalString(value: unknown, label: string): string | undefined {
+  if (value === undefined) return undefined;
+  assertString(value, label);
+  return value;
 }
 
 function assertLiteral<T extends string>(

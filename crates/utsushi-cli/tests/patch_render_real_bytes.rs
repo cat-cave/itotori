@@ -230,12 +230,8 @@ fn patch_replay_then_render_single_real_scene_renders_patched_dialogue() {
         return;
     };
     let gameexe_path = real_corpus::gameexe_ini_path().expect("Gameexe.ini path");
-    let game_dir = seen_path
-        .parent()
-        .expect("Seen.txt has a parent directory")
-        .to_path_buf();
+    let game_dir = seen_path.parent().expect("Seen.txt parent").to_path_buf();
     let g00_dir = real_corpus::reallivedata_subdir("g00").expect("g00 directory path");
-
     let seen_bytes = fs::read(&seen_path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
     let gameexe_bytes = fs::read(&gameexe_path).expect("read Gameexe.ini");
@@ -256,7 +252,8 @@ fn patch_replay_then_render_single_real_scene_renders_patched_dialogue() {
     ));
     let _ = fs::remove_dir_all(&work_dir);
     fs::create_dir_all(&work_dir).expect("create work dir");
-    let patched_seen = work_dir.join("patched").join("Seen.txt");
+    let patched_root = work_dir.join("patched");
+    let patched_seen = patched_root.join("REALLIVEDATA").join("Seen.txt");
     fs::create_dir_all(patched_seen.parent().expect("patched Seen parent"))
         .expect("create patched dir");
     fs::write(&patched_seen, &patched_bytes).expect("write patched Seen.txt");
@@ -264,19 +261,21 @@ fn patch_replay_then_render_single_real_scene_renders_patched_dialogue() {
     // 2. Replay the exact patched bytes through the real replay-validate
     //    binary and assert the VM observes the translated dialogue.
     let replay_log_path = work_dir.join("replay-log.json");
+    let replay_descriptor = serde_json::json!({
+        "scene": DIALOGUE_SCENE_ID,
+        "gameexePath": gameexe_path,
+        "g00Dir": g00_dir,
+    })
+    .to_string();
     let replay_output = Command::new(cli_bin())
         .args([
             "replay-validate",
             "--engine",
             "reallive",
-            "--seen",
-            &patched_seen.display().to_string(),
-            "--scene",
-            &DIALOGUE_SCENE_ID.to_string(),
-            "--gameexe",
-            &gameexe_path.display().to_string(),
-            "--g00-dir",
-            &g00_dir.display().to_string(),
+            "--artifact-root",
+            &patched_root.display().to_string(),
+            "--launch-descriptor",
+            &replay_descriptor,
             "--print-replay-log",
             &replay_log_path.display().to_string(),
             "--print-textlines",
@@ -334,6 +333,8 @@ fn patch_replay_then_render_single_real_scene_renders_patched_dialogue() {
             "on",
             "--expect-text-contains",
             EXPECT_CONTAINS,
+            "--message-index",
+            "0",
             "--run-id",
             "patch-replay-render-real-bytes",
             "--output",
@@ -404,10 +405,7 @@ fn patch_render_composes_patchback_and_render_on_real_bytes() {
     let gameexe_path = real_corpus::gameexe_ini_path().expect("Gameexe.ini path");
     // The g00 asset directory lives under REALLIVEDATA next to Seen.txt; the
     // command discovers `g00/` under `--game-dir` on its own.
-    let game_dir = seen_path
-        .parent()
-        .expect("Seen.txt has a parent directory")
-        .to_path_buf();
+    let game_dir = seen_path.parent().expect("Seen.txt parent").to_path_buf();
 
     let seen_bytes = fs::read(&seen_path)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
@@ -464,6 +462,8 @@ fn patch_render_composes_patchback_and_render_on_real_bytes() {
             "on",
             "--expect-text-contains",
             EXPECT_CONTAINS,
+            "--message-index",
+            "0",
             "--run-id",
             "patch-render-real-bytes",
             "--output",

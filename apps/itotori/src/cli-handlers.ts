@@ -37,7 +37,6 @@ import { runAssetDecisionsList, type AssetDecisionsCliPort } from "./asset-decis
 import { runQueueHealthCli, type QueueHealthCliPort } from "./queue/cli.js";
 import type { ItotoriProjectWorkflowPort } from "./services/project-operations-port.js";
 import type { ProjectState } from "./services/project-types.js";
-import { assertOpenRouterZdrAccount } from "./zdr-admission/account-zdr.js";
 import { loadExternalEnvFile } from "./env/external-env-file.js";
 import {
   extractCapabilities,
@@ -65,6 +64,7 @@ import { runPatchbackProduceCommand } from "./patchback/produce-cli.js";
 import { runLocalizeCommand } from "./cli/localize-command.js";
 import { runWikiCommand } from "./cli/wiki-command.js";
 import { runPlayCommand } from "./cli/play-command.js";
+import { createRuntimeLauncherRegistry } from "./play/patch-runtime-launcher.js";
 import type {
   LocalizationPerRunInput,
   LocalizationPortSource,
@@ -369,85 +369,11 @@ async function runValidateCommand(
   args: string[],
   dependencies: ItotoriCliDependencies,
 ): Promise<void> {
-  const seenPath = requiredFlag(args, "--seen");
-  const scene = requiredFlag(args, "--scene");
-  const replayLogPath = requiredFlag(args, "--replay-log");
-  const gameexePath = requiredFlag(args, "--gameexe");
-  const gameDir = requiredFlag(args, "--game-dir");
-  const artifactRoot = requiredFlag(args, "--artifact-root");
-  const renderOutputPath = requiredFlag(args, "--render-output");
-  const redaction = optionalFlag(args, "--redaction") ?? "on";
-  if (redaction !== "on" && redaction !== "off") {
-    throw new Error(`itotori validate: --redaction must be 'on' or 'off', got '${redaction}'`);
-  }
-
-  const replayArgs = [
-    "replay-validate",
-    "--engine",
-    "reallive",
-    "--seen",
-    seenPath,
-    "--scene",
-    scene,
-    "--gameexe",
-    gameexePath,
-    "--g00-dir",
-    join(gameDir, "g00"),
-    "--print-replay-log",
-    replayLogPath,
-    "--dispatch-report",
-    `${replayLogPath}.dispatch.json`,
-    "--require-semantic-reached-path",
-  ];
-  if (args.includes("--print-textlines")) {
-    replayArgs.push("--print-textlines");
-  }
-  runNativeCommandOrThrow("validate replay", "utsushi-cli", replayArgs, dependencies.nativeCli);
-
-  const renderArgs = [
-    "render-validate",
-    "--engine",
-    "reallive",
-    "--seen",
-    seenPath,
-    "--scene",
-    scene,
-    "--gameexe",
-    gameexePath,
-    "--game-dir",
-    gameDir,
-    "--artifact-root",
-    artifactRoot,
-    "--redaction",
-    redaction,
-    "--output",
-    renderOutputPath,
-  ];
-  appendOptionalFlag(renderArgs, args, "--source-seen");
-  appendOptionalFlag(renderArgs, args, "--bg-asset");
-  appendOptionalFlag(renderArgs, args, "--private-artifact-root");
-  appendOptionalFlag(renderArgs, args, "--run-id");
-  appendOptionalFlag(renderArgs, args, "--expect-text-contains");
-  appendOptionalFlag(renderArgs, args, "--width");
-  appendOptionalFlag(renderArgs, args, "--height");
-  runNativeCommandOrThrow("validate render", "utsushi-cli", renderArgs, dependencies.nativeCli);
-}
-
-function runNativeCommandOrThrow(
-  commandName: string,
-  bin: "kaifuu-cli" | "utsushi-cli",
-  args: string[],
-  nativeCli: NativeCliRunner | undefined,
-): void {
-  const result = runNativeCli(bin, args, nativeCli);
-  if (result.status !== 0) {
-    const detail = result.stderr.trim() || result.stdout.trim() || "<no output>";
-    throw new Error(
-      `itotori ${commandName}: ${bin} failed with status ${String(result.status)}: ${detail}`,
-    );
-  }
-  if (result.stdout.length > 0) process.stdout.write(result.stdout);
-  if (result.stderr.length > 0) process.stderr.write(result.stderr);
+  const adapterId = requiredFlag(args, "--engine");
+  const registry = createRuntimeLauncherRegistry(
+    dependencies.nativeCli === undefined ? {} : { nativeCli: dependencies.nativeCli },
+  );
+  registry.validate(adapterId, args);
 }
 
 async function runDashboardStatus(
@@ -1014,13 +940,6 @@ function safeContainerSuffix(value: string): string {
     .replace(/[^a-z0-9_.-]/gu, "-")
     .replace(/^[^a-z0-9]+/u, "");
   return safe.length > 0 ? safe : "local";
-}
-
-function appendOptionalFlag(target: string[], source: string[], name: string): void {
-  const value = optionalFlag(source, name);
-  if (value !== undefined) {
-    target.push(name, value);
-  }
 }
 
 function parseBooleanFlag(value: string, name: string): boolean {

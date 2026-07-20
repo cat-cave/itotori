@@ -14,6 +14,7 @@ import {
   type PlayEntrypointDeps,
   type PlayRequest,
 } from "../composition/play-entrypoint.js";
+import type { RuntimeLaunchRequest } from "../play/patch-runtime-launcher.js";
 import { optionalFlag, optionalJsonObjectFlag } from "./flags.js";
 
 /** The minimal JSON store the play command writes its launch receipt to. */
@@ -42,14 +43,54 @@ function requiredPatchVersionId(args: readonly string[]): string {
   return positional;
 }
 
-/** Parse `itotori patch play <version> [--launch-json <object>]` into a request. */
+/** Parse `itotori patch play <version> --launch-json <engine request>` into a request. */
 export function parsePlayRequest(args: readonly string[]): PlayRequest {
   const patchVersionId = requiredPatchVersionId(args);
   const launchDescriptor = optionalJsonObjectFlag(args, "--launch-json");
+  if (launchDescriptor === undefined) {
+    throw new Error(
+      "itotori patch play requires --launch-json with an adapterId and launchDescriptor",
+    );
+  }
   return {
     patchVersionId,
-    ...(launchDescriptor === undefined ? {} : { launchDescriptor }),
+    launch: parseRuntimeLaunchRequest(launchDescriptor),
   };
+}
+
+/** Validate only the registry-owned envelope; adapters validate their payloads. */
+function parseRuntimeLaunchRequest(value: Record<string, unknown>): RuntimeLaunchRequest {
+  const adapterId = requiredString(value, "adapterId");
+  const operation = requiredString(value, "operation");
+  const launchDescriptor = value.launchDescriptor;
+  if (!isRecord(launchDescriptor)) {
+    throw new Error("itotori patch play: launchDescriptor must be an object");
+  }
+  const artifactRoot = optionalString(value, "artifactRoot");
+  const output = optionalString(value, "output");
+  return {
+    adapterId,
+    operation,
+    ...(artifactRoot === undefined ? {} : { artifactRoot }),
+    ...(output === undefined ? {} : { output }),
+    launchDescriptor: { ...launchDescriptor },
+  };
+}
+
+function requiredString(value: Record<string, unknown>, key: string): string {
+  const candidate = optionalString(value, key);
+  if (candidate === undefined)
+    throw new Error(`itotori patch play: ${key} must be a non-empty string`);
+  return candidate;
+}
+
+function optionalString(value: Record<string, unknown>, key: string): string | undefined {
+  const candidate = value[key];
+  return typeof candidate === "string" && candidate.trim().length > 0 ? candidate : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Drive one `itotori patch play` invocation through the new runtime launcher. */

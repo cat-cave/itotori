@@ -10,6 +10,7 @@
 import type {
   PatchRuntimeLaunchReceipt,
   PatchRuntimeLauncherPort,
+  RuntimeLaunchRequest,
   RuntimePatchSurface,
 } from "../play/patch-runtime-launcher.js";
 
@@ -29,7 +30,7 @@ export interface PlayEntrypointDeps {
 /** A kept play request — launch exactly one patch version's session. */
 export interface PlayRequest {
   readonly patchVersionId: string;
-  readonly launchDescriptor?: Record<string, unknown>;
+  readonly launch: RuntimeLaunchRequest;
 }
 
 /**
@@ -42,10 +43,5 @@ export async function runPlaySession(
   request: PlayRequest,
 ): Promise<PatchRuntimeLaunchReceipt> {
   const patch = await deps.loader.load(request.patchVersionId);
-  return await deps.launcher.launch({
-    patch,
-    ...(request.launchDescriptor === undefined
-      ? {}
-      : { launchDescriptor: request.launchDescriptor }),
-  });
+  return await deps.launcher.launch({ patch, request: request.launch });
 }
