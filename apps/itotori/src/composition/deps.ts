@@ -25,6 +25,7 @@ import type { Q6Dispatch, Q6DispatchRefs, Q6ReviewInput } from "../roles/q6/inde
 import type { DeterministicGateInput } from "../gates/index.js";
 import type { NativePatchbackInput } from "../patchback/index.js";
 import type { Defect } from "../contracts/index.js";
+import type { BibleBasis } from "../run-policy/index.js";
 import type {
   DraftMode,
   DraftedScene,
@@ -52,6 +53,7 @@ export interface DraftDeps {
   buildInput(input: {
     readonly scene: WorkflowScene;
     readonly mode: DraftMode;
+    readonly bibleBasis: BibleBasis;
     readonly bibleRenderingIdsByUnit: ReadonlyMap<string, readonly string[]>;
     readonly bibleBindingsByUnit?: ReadonlyMap<string, UnitBibleBinding>;
   }): LocalizeSceneInput;

@@ -6,6 +6,7 @@
 
 export {
   runLocalizationWorkflow,
+  runLocalizationWorkflowForPolicy,
   type SceneOutcome,
   type WorkflowOptions,
   type WorkflowRunReport,

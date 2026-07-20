@@ -60,6 +60,9 @@ export interface LocalizeSceneInput {
   readonly units: readonly UnitFact[];
   /** Localized-bible rendering ids the drafts must cite (wiki-first basis). */
   readonly bibleRenderingIds: readonly string[];
+  /** Policy-selected draft basis. Omitted only by older direct role callers,
+   * where wiki-first remains the conservative default. */
+  readonly bibleBasis?: Draft["basis"]["kind"];
   /** Exact installed bodies behind the unit-level citations. The live workflow
    * supplies this from ground-truth readiness; the id-only field remains for
    * direct role proofs that do not construct a localized bible. */
@@ -119,15 +122,22 @@ function unitBibleById(
 
 function assertExactBibleBasis(
   drafts: readonly Draft[],
+  bibleBasis: Draft["basis"]["kind"],
   unitBible: ReadonlyMap<string, readonly LocalizedRendering[]> | undefined,
   fallback: readonly string[],
 ): void {
   for (const draft of drafts) {
-    if (draft.basis.kind !== "wiki-first") {
+    if (draft.basis.kind !== bibleBasis) {
       throw new LocalizeError(
         "bible-context",
-        `draft ${draft.unitId} bypassed the localized bible`,
+        `draft ${draft.unitId} has basis '${draft.basis.kind}', expected '${bibleBasis}'`,
       );
+    }
+    if (bibleBasis === "pure-mtl-ablation") {
+      if (draft.basis.bibleRenderingIds.length !== 0) {
+        throw new LocalizeError("bible-context", `direct draft ${draft.unitId} carried bible ids`);
+      }
+      continue;
     }
     const actual = draft.basis.bibleRenderingIds;
     const expected = unitBible?.get(draft.unitId)?.map((rendering) => rendering.renderingId);
@@ -160,6 +170,14 @@ export async function localizeScene(
   runtime: LocalizerRuntimeBase,
 ): Promise<SceneLocalization> {
   const specialist = input.specialist ?? specialistFor("P1");
+  const bibleBasis = input.bibleBasis ?? "wiki-first";
+  if (bibleBasis === "pure-mtl-ablation") {
+    if (input.bibleRenderingIds.length !== 0 || input.unitBible !== undefined) {
+      throw new LocalizeError("bible-context", "direct translation must receive a null Wiki");
+    }
+  } else if (input.bibleRenderingIds.length === 0) {
+    throw new LocalizeError("bible-context", "wiki-first translation needs bible rendering ids");
+  }
   const scene = normalizeScene(input.units);
   const plan = planSceneLocalization(scene, {
     budgetBytes: input.budgetBytes,
@@ -183,6 +201,7 @@ export async function localizeScene(
       segment,
       unitsById,
       bibleRenderingIds: input.bibleRenderingIds,
+      bibleBasis,
       ...(resolvedBible === undefined ? {} : { unitBibleById: resolvedBible }),
       priorAcceptedTarget: threadTarget,
       contextSnapshotId: input.contextSnapshotId,
@@ -194,7 +213,7 @@ export async function localizeScene(
     const result = await dispatchLocalizerCall(call, runtime);
     results.push(result);
     const batch = requireBatch(result);
-    assertExactBibleBasis(batch.drafts, resolvedBible, input.bibleRenderingIds);
+    assertExactBibleBasis(batch.drafts, bibleBasis, resolvedBible, input.bibleRenderingIds);
     // VALIDATE against the plan segment + verified source BEFORE folding into the
     // thread — an invalid batch fails the run without tainting a later dispatch.
     const validated = validateSegmentBatch(segment, batch, unitsById);
