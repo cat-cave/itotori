@@ -3,8 +3,6 @@ import type {
   CostDrilldownFilter,
   CostDrilldownPage,
   DashboardDecisionReadModel,
-  ItotoriLocalizationJournalRepositoryPort,
-  LocalizationJournalRunRecord,
   ProjectCostReport,
   ProjectDashboardStatus,
   ProjectTelemetryTimeseries,
@@ -122,7 +120,6 @@ export type ComposeProjectOverviewInput = {
   telemetry: ProjectTelemetryTimeseries;
   costDrilldown: CostDrilldownPage;
   benchmarkReports: readonly BenchmarkReportSummary[];
-  journalRepository?: ItotoriLocalizationJournalRepositoryPort;
   options?: ProjectOverviewReadModelOptions;
 };
 
@@ -144,7 +141,6 @@ export async function composeProjectOverviewReadModel(
     projectId,
     status: input.status,
     includeJournal: input.options?.includeJournal ?? true,
-    ...(input.journalRepository !== undefined ? { repository: input.journalRepository } : {}),
     ...(input.options?.journal !== undefined ? { options: input.options.journal } : {}),
   });
 
@@ -176,33 +172,17 @@ export async function loadProjectOverviewJournalPage(input: {
   projectId: string;
   status: ProjectDashboardStatus;
   includeJournal?: boolean;
-  repository?: ItotoriLocalizationJournalRepositoryPort;
   options?: ProjectOverviewJournalPageOptions;
 }): Promise<ProjectOverviewJournalPage> {
   const localeBranchId = selectedJournalLocaleBranchId(input.status, input.options);
   const limit = normalizeJournalLimit(input.options?.limit);
   const offset = normalizeJournalOffset(input.options?.offset);
-  const includeJournal = input.includeJournal ?? true;
-  if (!includeJournal || input.repository === undefined || localeBranchId === null) {
-    return emptyJournalPage(input.projectId, localeBranchId, limit, offset);
-  }
-
-  const runs = await input.repository.loadRunsForBranch(input.actor, localeBranchId);
-  const pageRuns = runs.slice(offset, offset + limit);
-  const [rows, latestRow] = await Promise.all([
-    Promise.all(
-      pageRuns.map((run: any) => projectOverviewJournalRow(input.repository!, input.actor, run)),
-    ),
-    runs.length === 0
-      ? Promise.resolve(null)
-      : projectOverviewJournalRow(input.repository, input.actor, runs[runs.length - 1]!),
-  ]);
-  return {
-    filter: { projectId: input.projectId, localeBranchId },
-    pagination: pagination(runs.length, limit, offset),
-    rows,
-    latestRow,
-  };
+  // RB-074 removed the journal persistence substrate. Preserve the stable
+  // overview envelope while making the retired provenance panel explicitly
+  // empty; it must not reach a compatibility repository.
+  void input.actor;
+  void input.includeJournal;
+  return emptyJournalPage(input.projectId, localeBranchId, limit, offset);
 }
 
 export function redactProjectOverviewReadModel(
@@ -225,47 +205,6 @@ export function redactProjectOverviewReadModel(
       rows: [],
       latestRow: null,
     },
-  };
-}
-
-async function projectOverviewJournalRow(
-  repository: ItotoriLocalizationJournalRepositoryPort,
-  actor: AuthorizationActor,
-  run: LocalizationJournalRunRecord,
-): Promise<ProjectOverviewJournalRow> {
-  const [attempts, outcomes] = await Promise.all([
-    repository.loadAttemptsForRun(actor, run.runId),
-    repository.loadRunOutcomes(actor, run.runId),
-  ]);
-  return {
-    journalRunId: run.runId,
-    projectId: run.projectId,
-    localeBranchId: run.localeBranchId,
-    sourceRevisionId: run.sourceRevisionId,
-    targetLocale: run.targetLocale,
-    createdAt: run.createdAt.toISOString(),
-    physicalCallCount: attempts.length,
-    failedPhysicalCallCount: attempts.filter(
-      (attempt: any) =>
-        attempt.failureClass !== null || attempt.validationResult === "provider_failed",
-    ).length,
-    writtenOutcomeCount: outcomes.length,
-    candidateCount: outcomes.reduce(
-      (total: number, outcome: any) => total + outcome.candidates.length,
-      0,
-    ),
-    qaFindingCount: outcomes.reduce(
-      (total: number, outcome: any) => total + outcome.findings.length,
-      0,
-    ),
-    contextRefCount: outcomes.reduce(
-      (total: number, outcome: any) => total + outcome.contextRefs.length,
-      0,
-    ),
-    speakerLabelCount: outcomes.reduce(
-      (total: number, outcome: any) => total + outcome.speakerLabels.length,
-      0,
-    ),
   };
 }
 

@@ -18,6 +18,8 @@ import {
   RuntimeRunNotFoundError,
   type ItotoriProjectRecord,
 } from "../src/repositories/project-repository.js";
+import { createDatabaseContext } from "../src/connection.js";
+import { ItotoriLocalizationResultRevisionRepository } from "../src/repositories/localization-result-revision-repository.js";
 import { migrate, migrations } from "../src/migrations.js";
 import {
   feedbackContextStatusValues,
@@ -5153,7 +5155,7 @@ describe("ItotoriProjectRepository", () => {
     }
   });
 
-  it("upgrades existing context artifact migrations without losing citations on source-unit deletion", async () => {
+  it("preserves selected patches and play feedback while retiring the legacy persistence graph", async () => {
     const databaseUrl = requiredDatabaseUrl();
     const admin = new pg.Pool({ connectionString: databaseUrl });
     const schemaName = `itotori_context_migration_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -5170,11 +5172,11 @@ describe("ItotoriProjectRepository", () => {
         )
       `);
 
-      const contextArtifactsMigrationIndex = migrations.findIndex(
-        (migration) => migration.id === "0025_context_artifacts",
+      const retirementMigrationIndex = migrations.findIndex(
+        (migration) => migration.id === "0111_retire_journal_finalizer_context_artifacts",
       );
-      expect(contextArtifactsMigrationIndex).toBeGreaterThanOrEqual(0);
-      for (const migration of migrations.slice(0, contextArtifactsMigrationIndex + 1)) {
+      expect(retirementMigrationIndex).toBeGreaterThan(0);
+      for (const migration of migrations.slice(0, retirementMigrationIndex)) {
         const body = migrationSql(migration.file);
         await pool.query(body);
         await pool.query(
@@ -5183,34 +5185,83 @@ describe("ItotoriProjectRepository", () => {
         );
       }
 
-      expect(await contextArtifactSourceUnitFkCount(pool)).toBe(1);
-      await seedContextArtifactSourceUnitRetentionState(pool);
+      await seedLegacySelectedPatchForRetirement(pool);
 
       await migrate(schemaUrl);
 
-      expect(await contextArtifactSourceUnitFkCount(pool)).toBe(0);
-      await pool.query("delete from itotori_source_units where bridge_unit_id = $1", [
-        "unit-retained-citation",
-      ]);
+      const upgraded = createDatabaseContext(schemaUrl);
+      try {
+        const repository = new ItotoriLocalizationResultRevisionRepository(upgraded.db, {
+          async materialize() {
+            throw new Error("the upgrade readability proof does not materialize a child patch");
+          },
+        });
+        const selected = await repository.loadSelectedPatchExport(localActor, {
+          patchVersionId: "patch-retirement-selected",
+        });
+        expect(selected).toMatchObject({
+          patchVersionId: "patch-retirement-selected",
+          runId: "run-retirement-selected",
+          status: "playable",
+          units: [
+            {
+              bridgeUnitId: "unit-retained-citation",
+              resultRevisionId: "run-result:run-retirement-selected:unit-retained-citation",
+              targetBody: "Selected target survives the retirement.",
+            },
+          ],
+        });
+      } finally {
+        await upgraded.close();
+      }
 
-      const citations = await pool.query<{
-        context_artifact_id: string;
-        bridge_unit_id: string;
-        source_hash: string;
-        citation: string;
+      const feedback = await pool.query<{
+        output_revision_id: string;
+        subject_ref: string | null;
       }>(`
-        select context_artifact_id, bridge_unit_id, source_hash, citation
-        from itotori_context_artifact_source_units
-        where context_artifact_id = 'context-artifact-retained-citation'
+        select output_revision_id, subject_ref
+        from itotori_play_test_feedback_events
+        where feedback_event_id = 'feedback-retirement-selected'
       `);
-      expect(citations.rows).toEqual([
+      expect(feedback.rows).toEqual([
         {
-          context_artifact_id: "context-artifact-retained-citation",
-          bridge_unit_id: "unit-retained-citation",
-          source_hash: "hash:retained-citation",
-          citation: "scene.010.retained",
+          output_revision_id: "run-result:run-retirement-selected:unit-retained-citation",
+          subject_ref: null,
         },
       ]);
+
+      const feedbackUnits = await pool.query<{ bridge_unit_id: string }>(`
+        select bridge_unit_id
+        from itotori_play_test_feedback_event_units
+        where feedback_event_id = 'feedback-retirement-selected'
+      `);
+      expect(feedbackUnits.rows).toEqual([{ bridge_unit_id: "unit-retained-citation" }]);
+
+      const retiredTables = await pool.query<{ table_name: string }>(`
+        select table_name
+        from information_schema.tables
+        where table_schema = current_schema()
+          and table_name in (
+            'itotori_context_artifacts',
+            'itotori_context_entry_versions',
+            'itotori_context_artifact_source_units',
+            'itotori_localization_journal_runs',
+            'itotori_localization_journal_run_units',
+            'itotori_llm_attempts',
+            'itotori_localization_cost_reservations',
+            'itotori_localization_run_cost_accounts',
+            'itotori_written_unit_outcomes',
+            'itotori_translation_candidates',
+            'itotori_localization_result_revisions',
+            'itotori_written_qa_findings',
+            'itotori_outcome_context_refs',
+            'itotori_outcome_speaker_labels',
+            'itotori_localization_run_terminal_summaries',
+            'itotori_localization_run_finalizer_outbox',
+            'itotori_play_sessions'
+          )
+      `);
+      expect(retiredTables.rows).toEqual([]);
     } finally {
       await pool.end();
       await admin.query(`drop schema ${quoteIdentifier(schemaName)} cascade`);
@@ -5346,25 +5397,7 @@ function migrationSql(file: string): string {
   return readFileSync(join(here, "..", "migrations", file), "utf8");
 }
 
-async function contextArtifactSourceUnitFkCount(pool: pg.Pool): Promise<number> {
-  const result = await pool.query<{ fk_count: number }>(`
-    select count(*)::int as fk_count
-    from pg_constraint con
-    join pg_class rel on rel.oid = con.conrelid
-    join pg_namespace nsp on nsp.oid = rel.relnamespace
-    join pg_attribute attr
-      on attr.attrelid = rel.oid
-      and attr.attnum = any(con.conkey)
-    where nsp.nspname = current_schema()
-      and rel.relname = 'itotori_context_artifact_source_units'
-      and con.contype = 'f'
-      and attr.attname = 'bridge_unit_id'
-      and con.confrelid = 'itotori_source_units'::regclass
-  `);
-  return Number(result.rows[0]?.fk_count ?? 0);
-}
-
-async function seedContextArtifactSourceUnitRetentionState(pool: pg.Pool): Promise<void> {
+async function seedLegacySelectedPatchForRetirement(pool: pg.Pool): Promise<void> {
   await pool.query(`
     insert into itotori_workspaces (workspace_id, name)
     values ('workspace-retained-citation', 'Retained citation workspace')
@@ -5551,6 +5584,179 @@ async function seedContextArtifactSourceUnitRetentionState(pool: pg.Pool): Promi
       'scene.010.retained'
     )
   `);
+
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      begin;
+      set constraints all deferred;
+
+      insert into itotori_localization_journal_runs (
+        run_id, project_id, locale_branch_id, source_revision_id, target_locale, status
+      ) values (
+        'run-retirement-selected',
+        'project-retained-citation',
+        'locale-retained-citation',
+        'revision-retained-citation',
+        'en-US',
+        'succeeded'
+      );
+
+      insert into itotori_localization_journal_run_units (
+        run_id, bridge_unit_id, source_unit_key, unit_ordinal, state, next_action
+      ) values (
+        'run-retirement-selected',
+        'unit-retained-citation',
+        'scene.010.retained',
+        0,
+        'written',
+        null
+      );
+
+      insert into itotori_llm_attempts (
+        attempt_id, run_id, bridge_unit_id, stage, agent_label, logical_call_id,
+        attempt_index, lifecycle_state, model_id, provider_id, provider_run_id,
+        cost_usd, billing_state, zdr, validation_result, retry_decision,
+        started_at, completed_at
+      ) values (
+        'attempt-retirement-selected',
+        'run-retirement-selected',
+        'unit-retained-citation',
+        'translation',
+        'fixture-agent',
+        'logical-retirement-selected',
+        0,
+        'completed',
+        'fixture-model',
+        'fixture-provider',
+        'provider-retirement-selected',
+        0,
+        'known',
+        true,
+        'accepted',
+        'write',
+        now(),
+        now()
+      );
+
+      insert into itotori_written_unit_outcomes (
+        journal_outcome_id, outcome_id, run_id, bridge_unit_id, source_unit_key,
+        target_locale, selected_candidate_id, written_at
+      ) values (
+        'outcome-retirement-selected',
+        'outcome-retirement-selected',
+        'run-retirement-selected',
+        'unit-retained-citation',
+        'scene.010.retained',
+        'en-US',
+        'candidate-retirement-selected',
+        now()
+      );
+
+      insert into itotori_translation_candidates (
+        journal_candidate_id, candidate_id, journal_outcome_id, run_id, bridge_unit_id,
+        candidate_ordinal, body, model_id, provider_id, attempt_id, kind
+      ) values (
+        'journal-candidate-retirement-selected',
+        'candidate-retirement-selected',
+        'outcome-retirement-selected',
+        'run-retirement-selected',
+        'unit-retained-citation',
+        0,
+        'Selected target survives the retirement.',
+        'fixture-model',
+        'fixture-provider',
+        'attempt-retirement-selected',
+        'primary'
+      );
+
+      insert into itotori_localization_result_revisions (
+        result_revision_id, journal_outcome_id, run_id, bridge_unit_id,
+        selected_candidate_id, target_body, origin
+      ) values (
+        'run-result:run-retirement-selected:unit-retained-citation',
+        'outcome-retirement-selected',
+        'run-retirement-selected',
+        'unit-retained-citation',
+        'candidate-retirement-selected',
+        'Selected target survives the retirement.',
+        'run_written_outcome'
+      );
+
+      insert into itotori_localization_run_finalizer_outbox (
+        run_id, stage, status, idempotency_key, payload, evidence
+      ) values
+        ('run-retirement-selected', 'patch_build', 'succeeded', 'localization-finalizer:run-retirement-selected:patch_build', '{}'::jsonb, '{}'::jsonb),
+        ('run-retirement-selected', 'patch_apply', 'succeeded', 'localization-finalizer:run-retirement-selected:patch_apply', '{}'::jsonb, '{}'::jsonb),
+        ('run-retirement-selected', 'validation', 'succeeded', 'localization-finalizer:run-retirement-selected:validation', '{}'::jsonb, '{}'::jsonb);
+
+      insert into itotori_localization_patch_versions (
+        patch_version_id, run_id, status, artifact_hashes, artifact_refs, origin
+      ) values (
+        'patch-retirement-selected',
+        'run-retirement-selected',
+        'building',
+        '{"translatedBridge":"sha256:retirement-selected"}'::jsonb,
+        '{"translatedBridge":"artifacts/retirement-selected.json"}'::jsonb,
+        'run_finalizer'
+      );
+
+      insert into itotori_localization_patch_version_units (
+        patch_version_id, run_id, bridge_unit_id, journal_outcome_id,
+        result_revision_id, source_run_id, member_origin, unit_ordinal
+      ) values (
+        'patch-retirement-selected',
+        'run-retirement-selected',
+        'unit-retained-citation',
+        'outcome-retirement-selected',
+        'run-result:run-retirement-selected:unit-retained-citation',
+        'run-retirement-selected',
+        'run_written_outcome',
+        0
+      );
+
+      update itotori_localization_patch_versions
+      set status = 'playable', playable_at = now(), selected_at = now()
+      where patch_version_id = 'patch-retirement-selected';
+
+      insert into itotori_play_test_feedback_batches (
+        feedback_batch_id, observed_patch_version_id, actor_user_id, selection_kind
+      ) values (
+        'feedback-batch-retirement-selected',
+        'patch-retirement-selected',
+        'local-user',
+        'individual'
+      );
+
+      insert into itotori_play_test_feedback_events (
+        feedback_event_id, feedback_batch_id, observed_patch_version_id, actor_user_id,
+        event_kind, metadata, result_revision_id
+      ) values (
+        'feedback-retirement-selected',
+        'feedback-batch-retirement-selected',
+        'patch-retirement-selected',
+        'local-user',
+        'result_edit',
+        '{}'::jsonb,
+        'run-result:run-retirement-selected:unit-retained-citation'
+      );
+
+      insert into itotori_play_test_feedback_event_units (
+        feedback_event_id, observed_patch_version_id, bridge_unit_id
+      ) values (
+        'feedback-retirement-selected',
+        'patch-retirement-selected',
+        'unit-retained-citation'
+      );
+
+      commit;
+    `);
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function seedLegacyHelloWorldState(pool: pg.Pool): Promise<void> {

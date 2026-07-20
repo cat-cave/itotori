@@ -33,20 +33,11 @@ import {
   type CostDrilldownFilter,
   type CostDrilldownPage,
   type DashboardDecisionReadModel,
-  type JobsRunTableReadModel,
-  type LoadJobsRunTableOptions,
   type ModelRoutingSettingsRecord,
   type Permission,
   type ProjectCostReport,
   type ProjectDashboardStatus,
   type ProjectTelemetryTimeseries,
-  type LocalizationRefinementRunRecord,
-  type PatchPlaySurface,
-  type PatchVersionIterationRecord,
-  type PlaySessionQaCallout,
-  type PlayTestFeedbackBatchRecord,
-  type PlayTestFeedbackEventRecord,
-  type PlayTestFeedbackInbox,
   type QueueHealthReadModel,
   type AuthSessionAdminRecord,
   type AuthAccountSeatUsageRecord,
@@ -108,6 +99,8 @@ import {
   type ApiPatchIterationRefineResponse,
   type ApiPatchIterationSurfaceResponse,
   type ApiPatchIterationVersionsResponse,
+  type JobsRunTableReadModel,
+  type LoadJobsRunTableOptions,
   type ApiConfigureAuthSsoSettingsRequest,
   type ApiConfigureAuthSsoSettingsResponse,
   type ApiAcceptMemberInvitationRequest,
@@ -158,7 +151,7 @@ import type {
 } from "./play/result-revision-service.js";
 import type { DeliveredPatchArchive } from "./patch-export/delivery-archive.js";
 import type { BoundPatchbackProduceServicePort } from "./play/patchback-produce-service.js";
-import { patchIterationDeliveryArchivePath, playDeliveryArchivePath } from "./api-routes.js";
+import { playDeliveryArchivePath } from "./api-routes.js";
 import { buildPlayFlagFeedbackInput, type PlayFlagSeverity } from "./play/flag-annotation.js";
 import type { ManualFeedbackImportPort } from "./manual-feedback.js";
 import {
@@ -1445,68 +1438,6 @@ function playDeliveryResponseBody(input: SelectedPatchExportResponse): ApiPlayDe
   };
 }
 
-/** Immutable historical-version delivery projection; artifact refs stay server-side. */
-function patchIterationDeliveryResponseBody(
-  input: PlayablePatchExportResponse,
-): ApiPatchIterationDeliveryResponse {
-  if (input.export === null) {
-    throw new Error("cannot build exact patch delivery response without a playable export");
-  }
-  const patch = input.export;
-  if (patch.status !== "playable" || patch.playableAt === null) {
-    throw new Error(`exact patch ${patch.patchVersionId} is not playable`);
-  }
-  if (
-    patch.origin !== "run_finalizer" &&
-    patch.origin !== "play_tester_edit" &&
-    patch.origin !== "refinement_run"
-  ) {
-    throw new Error(`exact patch ${patch.patchVersionId} has invalid origin ${patch.origin}`);
-  }
-  return {
-    schemaVersion: "itotori.patch-iteration.delivery.v0",
-    patchVersionId: patch.patchVersionId,
-    runId: patch.runId,
-    parentPatchVersionId: patch.parentPatchVersionId,
-    origin: patch.origin,
-    status: "playable",
-    playableAt: patch.playableAt.toISOString(),
-    artifactHashes: { ...patch.artifactHashes },
-    downloadUrl: patchIterationDeliveryArchivePath(patch.patchVersionId),
-    units: patch.units.map((unit) => ({
-      bridgeUnitId: unit.bridgeUnitId,
-      unitOrdinal: unit.unitOrdinal,
-      targetBody: unit.targetBody,
-    })),
-  };
-}
-
-// p0-core-iterative-patch-versioning-and-playtest-feedback — all public
-// iteration views are explicit projections of durable records. In particular,
-// artifact refs remain server-side provenance: the dashboard gets the exact
-// version identity and integrity hashes, never a filesystem/artifact locator.
-function patchIterationVersionsResponseBody(
-  versions: readonly PatchVersionIterationRecord[],
-): ApiPatchIterationVersionsResponse {
-  return {
-    schemaVersion: "itotori.patch-iteration.versions.v0",
-    versions: versions.map(patchIterationVersionResponseBody),
-  };
-}
-
-function patchIterationSurfaceResponseBody(input: {
-  patch: PatchPlaySurface;
-  versions: readonly PatchVersionIterationRecord[];
-  feedback: PlayTestFeedbackInbox;
-}): ApiPatchIterationSurfaceResponse {
-  return {
-    schemaVersion: "itotori.patch-iteration.surface.v0",
-    patch: patchIterationPatchResponseBody(input.patch),
-    versions: input.versions.map(patchIterationVersionResponseBody),
-    feedback: patchIterationFeedbackInboxResponseBody(input.feedback),
-  };
-}
-
 function patchIterationPlayReceiptResponseBody(input: {
   runtime: "utsushi-reallive";
   engine: "reallive";
@@ -1551,119 +1482,6 @@ function wikiObjectApplyResponseBody(
     receipt,
     history,
     dependencyImpact: receipt.dependencyImpact,
-  };
-}
-
-function patchIterationFeedbackBatchResponseBody(
-  input: PlayTestFeedbackBatchRecord,
-): ApiPatchIterationFeedbackBatchResponse {
-  return {
-    schemaVersion: "itotori.patch-iteration.feedback-batch.v0",
-    // A just-created durable batch has no events yet. Keep the public batch
-    // shape identical to the inbox shape so dashboard code has no special
-    // "new batch" representation to reconcile.
-    batch: patchIterationFeedbackBatchView(input, []),
-  };
-}
-
-function patchIterationFeedbackResponseBody(
-  input: PlayTestFeedbackEventRecord,
-): ApiPatchIterationFeedbackResponse {
-  return {
-    schemaVersion: "itotori.patch-iteration.feedback.v0",
-    feedback: patchIterationFeedbackEventResponseBody(input),
-  };
-}
-
-function patchIterationPatchResponseBody(input: PatchPlaySurface) {
-  return {
-    patchVersionId: input.patchVersionId,
-    runId: input.runId,
-    parentPatchVersionId: input.parentPatchVersionId,
-    origin: input.origin,
-    status: input.status,
-    playableAt: input.playableAt?.toISOString() ?? null,
-    selectedAt: input.selectedAt?.toISOString() ?? null,
-    artifactHashes: { ...input.artifactHashes },
-    units: input.units.map((unit) => ({
-      bridgeUnitId: unit.bridgeUnitId,
-      sourceRunId: unit.sourceRunId,
-      journalOutcomeId: unit.journalOutcomeId,
-      resultRevisionId: unit.resultRevisionId,
-      targetBody: unit.targetBody,
-      memberOrigin: unit.memberOrigin,
-      reusedFromPatchVersionId: unit.reusedFromPatchVersionId,
-      unitOrdinal: unit.unitOrdinal,
-    })),
-    qaCallouts: input.qaCallouts.map(patchIterationQaCalloutResponseBody),
-  };
-}
-
-function patchIterationVersionResponseBody(input: PatchVersionIterationRecord) {
-  return {
-    patchVersionId: input.patchVersionId,
-    runId: input.runId,
-    parentPatchVersionId: input.parentPatchVersionId,
-    origin: input.origin,
-    status: input.status,
-    playableAt: input.playableAt?.toISOString() ?? null,
-    selectedAt: input.selectedAt?.toISOString() ?? null,
-    artifactHashes: { ...input.artifactHashes },
-    basePatchVersionId: input.basePatchVersionId,
-  };
-}
-
-function patchIterationFeedbackInboxResponseBody(input: PlayTestFeedbackInbox) {
-  return {
-    observedPatchVersionId: input.observedPatchVersionId,
-    batches: input.batches.map((batch) => patchIterationFeedbackBatchView(batch, batch.events)),
-  };
-}
-
-function patchIterationFeedbackBatchView(
-  input: PlayTestFeedbackBatchRecord,
-  events: readonly PlayTestFeedbackEventRecord[],
-) {
-  return {
-    feedbackBatchId: input.feedbackBatchId,
-    observedPatchVersionId: input.observedPatchVersionId,
-    actorUserId: input.actorUserId,
-    selectionKind: input.selectionKind,
-    label: input.label,
-    createdAt: input.createdAt.toISOString(),
-    updatedAt: input.updatedAt.toISOString(),
-    events: events.map(patchIterationFeedbackEventResponseBody),
-  };
-}
-
-function patchIterationFeedbackEventResponseBody(input: PlayTestFeedbackEventRecord) {
-  return {
-    feedbackEventId: input.feedbackEventId,
-    feedbackBatchId: input.feedbackBatchId,
-    observedPatchVersionId: input.observedPatchVersionId,
-    playSessionId: input.playSessionId,
-    actorUserId: input.actorUserId,
-    eventKind: input.eventKind,
-    body: input.body,
-    metadata: { ...input.metadata },
-    resultRevisionId: input.resultRevisionId,
-    contextArtifactId: input.contextArtifactId,
-    contextEntryVersionId: input.contextEntryVersionId,
-    affectedBridgeUnitIds: [...input.affectedBridgeUnitIds],
-    createdAt: input.createdAt.toISOString(),
-  };
-}
-
-function patchIterationQaCalloutResponseBody(input: PlaySessionQaCallout) {
-  return {
-    journalFindingId: input.journalFindingId,
-    bridgeUnitId: input.bridgeUnitId,
-    severity: input.severity,
-    category: input.category,
-    note: input.note,
-    confidence: input.confidence,
-    contested: input.contested,
-    informational: true as const,
   };
 }
 

@@ -18,7 +18,6 @@ import type {
   CatalogOpportunityFactor,
   CatalogOpportunityRankingReadModel,
   CatalogOpportunityRow,
-  JobsRunTableRow,
   ProjectDashboardStatus,
 } from "@itotori/db";
 import { Badge, DataTable, Pagination, Panel, StatReadout } from "@itotori/ds";
@@ -27,6 +26,7 @@ import type {
   ApiDashboardDecisionsResponse,
   ApiJobsRunTableResponse,
   ApiProjectsResponse,
+  JobsRunTableRow,
 } from "../../api-schema.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { useOffsetPager } from "../use-offset-pager.js";

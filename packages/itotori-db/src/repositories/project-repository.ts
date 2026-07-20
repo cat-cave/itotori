@@ -43,8 +43,6 @@ import {
   artifacts,
   assets,
   bridgeImports,
-  contextArtifacts,
-  contextArtifactStatusValues,
   costLedgerEntries,
   eventOutbox,
   events,
@@ -730,12 +728,6 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
             updatedAt: sql`now()`,
           },
         });
-
-      await staleContextArtifactsAfterSourceImport(tx, {
-        projectId: project.projectId,
-        localeBranchId: project.localeBranchId,
-        currentSourceBundleRevisionId: importTarget.sourceBundleRevision.revisionId,
-      });
 
       const draftStyleGuideVersionId = await getApprovedStyleGuideVersionIdInTx(
         tx,
@@ -2912,46 +2904,6 @@ function bridgeImportStatusFor(
     sourceRevisions: diff.sourceRevisions,
     futureReferences: emptyFutureReferences(),
   };
-}
-
-async function staleContextArtifactsAfterSourceImport(
-  db: ItotoriDatabase,
-  input: {
-    projectId: string;
-    localeBranchId: string;
-    currentSourceBundleRevisionId: string;
-  },
-): Promise<void> {
-  await db
-    .update(contextArtifacts)
-    .set({
-      status: contextArtifactStatusValues.stale,
-      invalidatedReason: "source_import",
-      invalidatedAt: sql`now()`,
-      updatedAt: sql`now()`,
-    })
-    .where(
-      and(
-        eq(contextArtifacts.projectId, input.projectId),
-        eq(contextArtifacts.localeBranchId, input.localeBranchId),
-        eq(contextArtifacts.status, contextArtifactStatusValues.active),
-        sql`(
-          ${contextArtifacts.sourceRevisionId} <> ${input.currentSourceBundleRevisionId}
-          or exists (
-            select 1
-            from itotori_context_artifact_source_units casu
-            left join itotori_source_units su on su.bridge_unit_id = casu.bridge_unit_id
-            where casu.context_artifact_id = ${contextArtifacts.contextArtifactId}
-              and (
-                su.bridge_unit_id is null
-                or su.removed_at is not null
-                or su.source_revision_id <> casu.source_revision_id
-                or su.source_hash <> casu.source_hash
-              )
-          )
-        )`,
-      ),
-    );
 }
 
 function bridgeImportStatusFromRow(row: Record<string, unknown>): BridgeImportStatus {

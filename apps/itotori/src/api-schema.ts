@@ -25,7 +25,6 @@ import type {
   BenchmarkReportSummary,
   CostDrilldownPage,
   DashboardDecisionReadModel,
-  JobsRunTableReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
   ProjectTelemetryTimeseries,
@@ -102,6 +101,58 @@ import type {
   WikiWriteAssertion,
   WikiWriteReceipt,
 } from "./wiki/object-api/index.js";
+
+/**
+ * The jobs dashboard is an API projection, not a database repository
+ * contract. Keeping the DTO here prevents the retired journal persistence
+ * boundary from leaking back into application composition.
+ */
+export type JobsRunTableTokens = { in: number | null; out: number | null; total: number | null };
+export type JobsRunTableCost = { unit: "usd"; amount: string };
+export type JobsRunTableFallback = {
+  availability: "captured" | "not_captured";
+  used: boolean | null;
+  plan: string[] | null;
+  chain: string[];
+};
+export type JobsRunTableRow = {
+  runId: string;
+  journalRunId: string;
+  attemptId: string;
+  providerRunId: string;
+  bridgeUnitId: string;
+  projectId: string;
+  localeBranchId: string;
+  task: string;
+  status: string;
+  servedModel: string;
+  servedProvider: string;
+  zdr: boolean;
+  cost: JobsRunTableCost;
+  tokens: JobsRunTableTokens;
+  fallback: JobsRunTableFallback;
+  createdAt: string;
+};
+export type JobsRunTableReadModel = {
+  schemaVersion: string;
+  generatedAt: string;
+  filter: { projectId: string | null };
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    page: number;
+    pageCount: number;
+    hasMore: boolean;
+    nextOffset: number | null;
+  };
+  rows: JobsRunTableRow[];
+};
+export type LoadJobsRunTableOptions = {
+  projectId?: string;
+  limit?: number;
+  offset?: number;
+};
 
 export type ItotoriApiRouteId =
   | "assetDecisions.active"

@@ -50,7 +50,7 @@ describe("feedback retirement migration drift", () => {
     }
   });
 
-  it("requires every play-test feedback event to name a canonical outcome", async () => {
+  it("requires every play-test feedback event to name a durable feedback subject", async () => {
     const context = await isolatedMigratedContext();
     try {
       const constraints = await context.db.execute(sql`
@@ -61,26 +61,39 @@ describe("feedback retirement migration drift", () => {
         where ns.nspname = current_schema()
           and rel.relname = 'itotori_play_test_feedback_events'
           and con.conname in (
-            'itotori_play_test_feedback_events_context_version_pair',
-            'itotori_play_test_feedback_events_canonical_outcome',
-            'itotori_play_test_feedback_events_comment_body'
+            'itotori_play_test_feedback_events_result_edit_output_revision',
+            'itotori_play_test_feedback_events_subject_binding',
+            'itotori_play_test_feedback_events_comment_body',
+            'itotori_play_feedback_output_revision_fkey'
           )
         order by con.conname
       `);
       const definitions = new Map(
         constraints.rows.map((row) => [String(row.constraint_name), String(row.definition)]),
       );
-      expect(definitions.get("itotori_play_test_feedback_events_context_version_pair")).toContain(
-        "context_artifact_id IS NULL",
+      expect(
+        definitions.get("itotori_play_test_feedback_events_result_edit_output_revision"),
+      ).toContain("output_revision_id IS NOT NULL");
+      expect(definitions.get("itotori_play_test_feedback_events_subject_binding")).toContain(
+        "output_revision_id IS NOT NULL",
       );
-      expect(definitions.get("itotori_play_test_feedback_events_canonical_outcome")).toContain(
-        "result_revision_id IS NOT NULL",
+      expect(definitions.get("itotori_play_test_feedback_events_subject_binding")).toContain(
+        "subject_ref IS NULL",
       );
-      expect(definitions.get("itotori_play_test_feedback_events_canonical_outcome")).toContain(
-        "context_entry_version_id IS NOT NULL",
+      expect(definitions.get("itotori_play_test_feedback_events_subject_binding")).toContain(
+        "output_revision_id IS NULL",
+      );
+      expect(definitions.get("itotori_play_test_feedback_events_subject_binding")).toContain(
+        "subject_ref IS NOT NULL",
       );
       expect(definitions.get("itotori_play_test_feedback_events_comment_body")).toContain(
         "body IS NOT NULL",
+      );
+      expect(definitions.get("itotori_play_feedback_output_revision_fkey")).toContain(
+        "REFERENCES itotori_patch_output_revisions(output_revision_id)",
+      );
+      expect(definitions.get("itotori_play_feedback_output_revision_fkey")).toContain(
+        "ON DELETE RESTRICT",
       );
     } finally {
       await context.close();

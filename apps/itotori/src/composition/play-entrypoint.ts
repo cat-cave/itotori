@@ -10,13 +10,13 @@
 import type {
   PatchRuntimeLaunchReceipt,
   PatchRuntimeLauncherPort,
+  RuntimePatchSurface,
 } from "../play/patch-runtime-launcher.js";
-import type { PatchPlaySurface } from "@itotori/db";
 
 /** Load exactly one patch version's play surface. Production binds this to the
  * clean surface loader; it never reaches the journal/finalizer path. */
 export interface PlaySurfaceLoader {
-  load(patchVersionId: string): Promise<PatchPlaySurface>;
+  load(patchVersionId: string): Promise<RuntimePatchSurface>;
 }
 
 /** The play substrate the entrypoint composes: the surface loader + the runtime
