@@ -1,6 +1,8 @@
 //! Real-bytes validation of the Softpal `SCRIPT.SRC` dialogue disassembler
-//! against two owned titles, extracting both `SCRIPT.SRC` and `TEXT.DAT` from
-//! the same `data.pac` via the crate's own PAC reader.
+//! against three owned titles, extracting both `SCRIPT.SRC` and `TEXT.DAT` from
+//! the same `data.pac` via the crate's own PAC reader. It also surveys the SELECT
+//! choice-label ENCODING across the corpus (immediate vs decoupled `0x40000002`
+//! slot) — see the `GAMES` note for the four-title finding.
 //! `#[ignore]`d and env-gated: set `ITOTORI_SOFTPAL_RESEARCH_ROOT` to the
 //! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
 //! `--ignored`. **No raw copyrighted text lives in this file** — only command
@@ -8,7 +10,7 @@
 //! disassembler must reproduce.
 //! PROOF BAR: every extracted dialogue/choice **text** pointer and every present
 //! **speaker name** pointer must resolve to an *exact* `TEXT.DAT` record
-//! boundary (0 dangling) — full pointer resolution, both titles.
+//! boundary (0 dangling) — full pointer resolution, all titles.
 //! Wired into the PERIODIC `ci-real-bytes` lane; see `pac_real_corpus.rs` for
 //! the env-gate / skip-when-absent contract.
 
@@ -16,7 +18,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use kaifuu_softpal::{PacArchive, ScriptScan, TextDat};
+use kaifuu_softpal::{PacArchive, RawCommand, ScriptScan, TextDat};
 
 const RESEARCH_ROOT_ENV: &str = "ITOTORI_SOFTPAL_RESEARCH_ROOT";
 
@@ -36,10 +38,40 @@ struct GameExpectation {
     text_bearing_choice_count: usize,
     /// Expected non-text system/branch selects (out-of-pool immediate).
     nontext_select_count: usize,
+    /// Expected number of SELECTs that carry a *decoupled* choice-label candidate
+    /// (a `0x40000002`-slot push recovered by the bounded backward stack walk).
+    /// A *candidate* only means the heuristic matched a 2-arity `0x40000002` slot
+    /// assignment in-block; it may still be a false positive (see
+    /// `decoupled_resolved_count`).
+    decoupled_candidate_count: usize,
+    /// Expected number of decoupled-label candidates that actually land on a
+    /// `TEXT.DAT` record boundary — i.e. are **real, translatable choice labels**.
+    /// THIS is the load-bearing discriminator for the decoupled mechanism: it is
+    /// non-zero for **exactly one** title (v60663). See the module note below.
+    decoupled_resolved_count: usize,
 }
 
-const GAMES: [GameExpectation; 2] = [
-    // v21465 — SELECT immediates are text pointers (all 11 choices resolve).
+// SELECT-ENCODING SURVEY across four CRYSTALiA/Softpal titles — measured on real
+// bytes. The decoupled `0x40000002`-slot choice-label mechanism resolves REAL
+// labels on EXACTLY ONE title (v60663, 16). Every other title carries its choice
+// labels directly on the SELECT immediate (the "immediate" variant):
+//   * v21465 (2024) — 11 choices, all via immediate; ZERO decoupled candidates.
+//   * v60663 (2026) — DECOUPLED variant: 17 candidates, 16 resolve to real labels.
+//   * v57740 CRACK≡TRICK! (2025-10, nearest sibling of v60663) — 5 story choices,
+//     all via immediate; it has the same 0x40000000 decoupled *sentinel* on a
+//     5-select system cluster at script start, but those push no resolving label
+//     (2 false-positive candidates whose operand[1] is the integer 0x1, not a
+//     pointer → decoupled_resolved_count == 0).
+//   * v55293 Suzaku Shijuusou (2025-05) — trial script with ZERO SELECTs; it
+//     cannot exercise the mechanism and is therefore not enrolled below.
+// The `0x40000002` constant is pervasive in every title (~15k–25k operand
+// occurrences) as the generic "typed slot #2", so its mere presence is NOT
+// evidence of the decoupled mechanism — only a *resolving* candidate is. Net:
+// the decoupled mechanism remains confirmed on a SINGLE title (v60663); the
+// resolver handles both encodings and keeps every title's choices translatable.
+const GAMES: [GameExpectation; 3] = [
+    // v21465 — IMMEDIATE-carries-label variant: SELECT immediates are text
+    // pointers (all 11 choices resolve via the immediate). NO decoupled labels.
     GameExpectation {
         subdir: "v21465",
         pac_count: 417,
@@ -48,13 +80,17 @@ const GAMES: [GameExpectation; 2] = [
         select_count: 11,
         text_bearing_choice_count: 11,
         nontext_select_count: 0,
+        decoupled_candidate_count: 0,
+        decoupled_resolved_count: 0,
     },
     // v60663 — DECOUPLED-select variant: the SELECT immediate is the typed-nil
     // 0x40000000; the choice label is pushed earlier in the menu block to the
-    // choice-label slot (0x40000002) and recovered via the Sv20 stack walk. 16 of
-    // the 21 selects carry a decoupled label (real story choices); the remaining 5
-    // (an identical cluster at script start) push no label slot — genuine
-    // system/menu selects that stay out-of-pool (honestly not force-resolved).
+    // choice-label slot (0x40000002) and recovered via the Sv20 stack walk. 17 of
+    // the 21 selects carry a decoupled-label candidate; 16 of those land on a
+    // record (real story choices). The remaining selects (a cluster at script
+    // start + 1 candidate that stays out-of-pool) are genuine system/menu selects,
+    // honestly not force-resolved (nontext_select_count == 5). The ONLY title here
+    // where decoupled labels actually resolve (decoupled_resolved_count == 16).
     GameExpectation {
         subdir: "v60663",
         pac_count: 160,
@@ -63,6 +99,25 @@ const GAMES: [GameExpectation; 2] = [
         select_count: 21,
         text_bearing_choice_count: 16,
         nontext_select_count: 5,
+        decoupled_candidate_count: 17,
+        decoupled_resolved_count: 16,
+    },
+    // v57740 CRACK≡TRICK! — nearest-generation sibling of v60663, yet its 5 real
+    // story choices resolve via the IMMEDIATE (immediate variant). It shows the
+    // 0x40000000 decoupled sentinel on a 5-select system cluster at script start,
+    // but those push no resolving label: 2 decoupled candidates, BOTH false
+    // positives (operand[1] == 0x1) → decoupled_resolved_count == 0. Proof that
+    // the decoupled mechanism does NOT reproduce here.
+    GameExpectation {
+        subdir: "v57740",
+        pac_count: 142,
+        text_show_count: 10098,
+        with_speaker_count: 6471,
+        select_count: 10,
+        text_bearing_choice_count: 5,
+        nontext_select_count: 5,
+        decoupled_candidate_count: 2,
+        decoupled_resolved_count: 0,
     },
 ];
 
@@ -129,6 +184,21 @@ fn script_disassembler_on_two_softpal_titles() {
         let ts = scan.text_show_count();
         let sp = scan.text_show_with_speaker_count();
         let se = scan.select_count();
+        // How many SELECTs carry a *decoupled* (`0x40000002`-slot) label candidate.
+        // The discriminator between the two SELECT encodings (see GAMES note).
+        let decoupled_candidates = scan
+            .commands
+            .iter()
+            .filter(|c| {
+                matches!(
+                    c,
+                    RawCommand::Select {
+                        decoupled_label: Some(_),
+                        ..
+                    }
+                )
+            })
+            .count();
 
         // The stream is in play order: command offsets strictly increasing.
         let mut prev: Option<usize> = None;
@@ -144,6 +214,28 @@ fn script_disassembler_on_two_softpal_titles() {
         let textdat = TextDat::parse(&textdat_bytes)
             .unwrap_or_else(|e| panic!("{} TEXT.DAT parse: {e}", game.subdir));
         let dis = scan.resolve(&textdat);
+
+        // How many decoupled-label candidates actually land on a TEXT.DAT record
+        // boundary — i.e. are REAL choice labels (not false-positive slot pushes).
+        // The load-bearing discriminator: non-zero only for the true decoupled
+        // variant (v60663). Computed straight from the walk-recovered candidates.
+        let record_offsets: std::collections::HashSet<u32> = textdat
+            .records
+            .iter()
+            .filter_map(|r| u32::try_from(r.offset).ok())
+            .collect();
+        let decoupled_resolved = scan
+            .commands
+            .iter()
+            .filter_map(|c| match c {
+                RawCommand::Select {
+                    decoupled_label: Some(dl),
+                    ..
+                } => Some(dl.pointer),
+                _ => None,
+            })
+            .filter(|p| record_offsets.contains(p))
+            .count();
 
         let dangling = dis.dangling_pointer_count();
         let ud = dis.unresolved_dialogue_text_count();
@@ -174,6 +266,20 @@ fn script_disassembler_on_two_softpal_titles() {
         assert_eq!(ts, game.text_show_count, "{} text-show count", game.subdir);
         assert_eq!(sp, game.with_speaker_count, "{} with-speaker", game.subdir);
         assert_eq!(se, game.select_count, "{} select count", game.subdir);
+        // Variant discriminators (see GAMES note). A raw *candidate* count can be
+        // non-zero from false positives (v57740), so the mechanism-confirming
+        // metric is the *resolved* count: real, translatable decoupled labels —
+        // non-zero for EXACTLY ONE title (v60663). Do not let either drift.
+        assert_eq!(
+            decoupled_candidates, game.decoupled_candidate_count,
+            "{} decoupled-label candidate count",
+            game.subdir
+        );
+        assert_eq!(
+            decoupled_resolved, game.decoupled_resolved_count,
+            "{} resolved decoupled-label count",
+            game.subdir
+        );
         assert_eq!(
             tbc, game.text_bearing_choice_count,
             "{} text choices",
