@@ -186,6 +186,7 @@ import type {
   LocalizationPortSource,
 } from "./composition/localize-entrypoint.js";
 import type { PlayEntrypointDeps } from "./composition/play-entrypoint.js";
+import type { PatchRuntimeLaunchReceipt } from "./play/patch-runtime-launcher.js";
 import type { RunPolicyRequest } from "./run-policy/index.js";
 import {
   ForgedWikiAssertionError,
@@ -881,7 +882,7 @@ async function routeItotoriApiRequest(
     const receipt = await runApiPlay(
       {
         patchVersionId: patchIterationRoute.patchVersionId,
-        ...(body.launchDescriptor === undefined ? {} : { launchDescriptor: body.launchDescriptor }),
+        launch: body,
       },
       { resolvePlayDeps: () => playDeps },
     );
@@ -1420,21 +1421,15 @@ function playDeliveryResponseBody(input: SelectedPatchExportResponse): ApiPlayDe
   };
 }
 
-function patchIterationPlayReceiptResponseBody(input: {
-  runtime: "utsushi-reallive";
-  engine: "reallive";
-  scene: number;
-  replay: "observed";
-  observedTextLineCount: number;
-}): ApiPatchIterationPlayResponse {
+function patchIterationPlayReceiptResponseBody(
+  input: PatchRuntimeLaunchReceipt,
+): ApiPatchIterationPlayResponse {
   return {
     schemaVersion: "itotori.patch-iteration.play.v0",
     receipt: {
-      runtime: input.runtime,
-      engine: input.engine,
-      scene: input.scene,
-      replay: input.replay,
-      observedTextLineCount: input.observedTextLineCount,
+      adapterId: input.adapterId,
+      operation: input.operation,
+      adapterReceipt: { ...input.adapterReceipt },
     },
   };
 }

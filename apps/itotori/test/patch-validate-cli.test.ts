@@ -224,6 +224,8 @@ describe("itotori validate", () => {
     await runItotoriCliCommand(
       [
         "validate",
+        "--engine",
+        "reallive",
         "--seen",
         "/tmp/patched/REALLIVEDATA/Seen.txt",
         "--scene",
@@ -256,14 +258,14 @@ describe("itotori validate", () => {
       "replay-validate",
       "--engine",
       "reallive",
-      "--seen",
-      "/tmp/patched/REALLIVEDATA/Seen.txt",
-      "--scene",
-      "1",
-      "--gameexe",
-      "/tmp/patched/REALLIVEDATA/Gameexe.ini",
-      "--g00-dir",
-      "/tmp/patched/REALLIVEDATA/g00",
+      "--artifact-root",
+      "/tmp/patched",
+      "--launch-descriptor",
+      JSON.stringify({
+        scene: 1,
+        gameexePath: "/tmp/patched/REALLIVEDATA/Gameexe.ini",
+        g00Dir: "/tmp/patched/REALLIVEDATA/g00",
+      }),
       "--print-replay-log",
       "/run/replay-log.json",
       "--dispatch-report",
@@ -305,6 +307,8 @@ describe("itotori validate", () => {
       runItotoriCliCommand(
         [
           "validate",
+          "--engine",
+          "reallive",
           "--seen",
           "/tmp/patched/REALLIVEDATA/Seen.txt",
           "--scene",

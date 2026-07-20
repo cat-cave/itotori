@@ -25,8 +25,6 @@ use utsushi_reallive::{
     BranchReplayReport, BranchTerminus, HeadlessChoicePolicy, ReplayEngine, ReplayOpts,
 };
 
-use crate::staged_replay::staged_engine;
-
 /// Stable schema id for the machine-readable dispatch-coverage report.
 pub(crate) const DISPATCH_REPORT_SCHEMA_VERSION: &str = "utsushi.cli.replay-dispatch-report/0.1.0";
 
@@ -94,17 +92,6 @@ pub(crate) fn dispatch_report_from_engine(
 ) -> DispatchReport {
     let report = engine.branch_following_report(scene_id, opts, HeadlessChoicePolicy::AlwaysFirst);
     DispatchReport::from_branch_report(&report)
-}
-
-/// Stage an engine from `seen_path` (with the same `use_xor_2` recovery the
-/// replay/render surfaces use) and compute its [`DispatchReport`].
-pub(crate) fn staged_dispatch_report(
-    seen_path: &Path,
-    scene_id: u16,
-    opts: &ReplayOpts,
-) -> Result<DispatchReport, Box<dyn Error>> {
-    let engine = staged_engine(seen_path)?;
-    Ok(dispatch_report_from_engine(&engine, scene_id, opts))
 }
 
 fn branch_terminus_kind(terminus: &BranchTerminus) -> &'static str {

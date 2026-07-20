@@ -45,6 +45,9 @@ use kaifuu_reallive::{
 use serde_json::{Value, json};
 use utsushi_reallive::sha256_hex;
 
+use crate::patch_render_args::{
+    optional_flag, parse_dimension, parse_message_index, required_flag,
+};
 use crate::render_validate::{self, Params};
 
 /// Only `reallive` is supported (no silent fallback).
@@ -75,7 +78,7 @@ USAGE:
     [--redaction on|off] \
     [--private-artifact-root <DIR>] \
     [--bg-asset <STEM>] \
-    [--expect-text-contains <SUBSTR>] \
+    [--expect-text-contains <SUBSTR>] [--message-index <N>] \
     [--run-id <ID>] [--width <N>] [--height <N>] \
     [--output <PATH>]
 
@@ -99,7 +102,10 @@ FLAGS:
   --bg-asset <STEM>             Real g00 background stem composited when the observed
                                 scene set no graphics of its own.
   --expect-text-contains <S>    Select + assert the rendered message contains <S>
-                                (the real translated draft).
+                                (the real translated draft). If multiple messages match,
+                                pass --message-index.
+  --message-index <N>           Zero-based play-order message index within the scene. Selects
+                                that exact message before applying --expect-text-contains.
   --run-id <ID>                 Run id segment for the artifact URI (default: patch-render).
   --width <N> / --height <N>    Framebuffer size override (default: Gameexe screen size).
   --output <PATH>               Write the redaction-clean JSON evidence report to <PATH>.
@@ -136,6 +142,7 @@ pub fn run_patch_render_command(args: &[String]) -> Result<(), Box<dyn Error>> {
     let private_artifact_root = optional_flag(args, "--private-artifact-root").map(PathBuf::from);
     let bg_asset = optional_flag(args, "--bg-asset").map(str::to_string);
     let expect_text_contains = optional_flag(args, "--expect-text-contains").map(str::to_string);
+    let message_index = parse_message_index(args)?;
     let run_id = optional_flag(args, "--run-id").unwrap_or("patch-render");
     let width = parse_dimension(args, "--width")?;
     let height = parse_dimension(args, "--height")?;
@@ -155,6 +162,7 @@ pub fn run_patch_render_command(args: &[String]) -> Result<(), Box<dyn Error>> {
         private_artifact_root: private_artifact_root.as_deref(),
         bg_asset: bg_asset.as_deref(),
         expect_text_contains: expect_text_contains.as_deref(),
+        message_index,
         width,
         height,
     })?;
@@ -184,6 +192,7 @@ pub(crate) struct Config<'a> {
     pub(crate) private_artifact_root: Option<&'a Path>,
     pub(crate) bg_asset: Option<&'a str>,
     pub(crate) expect_text_contains: Option<&'a str>,
+    pub(crate) message_index: Option<usize>,
     pub(crate) width: Option<u32>,
     pub(crate) height: Option<u32>,
 }
@@ -258,7 +267,7 @@ pub(crate) fn drive(config: Config<'_>) -> Result<Value, Box<dyn Error>> {
         artifact_root: config.artifact_root,
         run_id: config.run_id,
         expect_text_contains: config.expect_text_contains,
-        message_index: None,
+        message_index: config.message_index,
         width: config.width,
         height: config.height,
         gameexe_path: config.gameexe_path,
@@ -364,35 +373,6 @@ fn parse_redaction(value: Option<&str>) -> Result<bool, Box<dyn Error>> {
     }
 }
 
-fn parse_dimension(args: &[String], name: &str) -> Result<Option<u32>, Box<dyn Error>> {
-    match optional_flag(args, name) {
-        None => Ok(None),
-        Some(value) => {
-            let parsed = value.parse::<u32>().map_err(|err| {
-                format!("utsushi.cli.patch_render.dimension_parse: {name} must be a u32: {err}")
-            })?;
-            if parsed == 0 {
-                return Err(
-                    format!("utsushi.cli.patch_render.dimension_zero: {name} must be > 0").into(),
-                );
-            }
-            Ok(Some(parsed))
-        }
-    }
-}
-
-fn required_flag<'a>(args: &'a [String], name: &str) -> Result<&'a str, Box<dyn Error>> {
-    optional_flag(args, name)
-        .ok_or_else(|| format!("utsushi.cli.patch_render.missing_flag: {name}").into())
-}
-
-fn optional_flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
-    args.iter()
-        .position(|arg| arg == name)
-        .and_then(|index| args.get(index + 1))
-        .map(String::as_str)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -482,11 +462,25 @@ mod tests {
     }
 
     #[test]
+    fn parse_message_index_accepts_zero_based_index() {
+        let args: Vec<String> = vec!["--message-index".into(), "1".into()];
+        assert_eq!(parse_message_index(&args).unwrap(), Some(1));
+    }
+
+    #[test]
+    fn parse_message_index_rejects_non_numeric_value() {
+        let args: Vec<String> = vec!["--message-index".into(), "one".into()];
+        let err = parse_message_index(&args).expect_err("non-numeric index must fail");
+        assert!(err.to_string().contains("message_index_parse"));
+    }
+
+    #[test]
     fn help_documents_composed_surface() {
         assert!(HELP.contains("utsushi patch-render"));
         assert!(HELP.contains("--translated-bundle"));
         assert!(HELP.contains("--patched-seen-output"));
         assert!(HELP.contains("--scope dialogue|dialogue+choices"));
+        assert!(HELP.contains("--message-index <N>"));
         assert!(HELP.contains("--redaction on|off"));
         assert!(HELP.contains("REDACTED"));
     }
