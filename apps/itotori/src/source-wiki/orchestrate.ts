@@ -53,6 +53,9 @@ export interface OrchestrateSourceWikiDeps {
   /** Production supplies the integrity-checked read model so A6/A10 can plan
    * exactly their applicable byte-derived subjects. */
   readonly readModel?: ReadModel;
+  /** A7 sources portraits from an external render/patch-report provider. Only
+   * characters with a supplied source are authorable in this build. */
+  readonly portraitCharacterIds?: readonly string[];
   /** Best-effort role output may omit an assigned object on a first call. The
    * executor retries the whole shard but never weakens target completeness. */
   readonly maxAttempts?: number;
@@ -196,6 +199,9 @@ export async function orchestrateSourceWiki(
 ): Promise<SourceWikiRunReport> {
   const plan: SourceWikiPlan = buildSourceWikiPlan(deps.snapshot, deps.roles, {
     ...(deps.readModel === undefined ? {} : { readModel: deps.readModel }),
+    ...(deps.portraitCharacterIds === undefined
+      ? {}
+      : { portraitCharacterIds: deps.portraitCharacterIds }),
   });
   const state: Mutable = {
     existing: new Set(await deps.ledger.existingKeys()),
