@@ -217,6 +217,7 @@ describe("POST /api/patchback/produce — finalized CAS run, real Sweetie bytes"
           bundleOutputPath: bridgePath,
         });
         runUtsushiStructureExport({
+          engine: "reallive",
           gameexePath: join(root!, "REALLIVEDATA", "Gameexe.ini"),
           seenPath: join(root!, "REALLIVEDATA", "Seen.txt"),
           outputPath: structurePath,

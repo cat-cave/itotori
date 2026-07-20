@@ -46,9 +46,11 @@ import {
 } from "./extract/kaifuu-extract-seam.js";
 import { scanCatalogLocalRoot } from "./services/catalog-local-scan.js";
 import {
-  runUtsushiStructureExport,
-  type RunUtsushiStructureResult,
-} from "./structure-export/utsushi-structure-seam.js";
+  resolveStructureProvider,
+  runStructureProvider,
+  structureProviderCapabilities,
+  type StructureProviderResult,
+} from "./structure-export/structure-provider-registry.js";
 import { runNativeCli, type NativeCliRunner } from "./native-bin/cli-bin-resolver.js";
 import { applyEnginePatchback, detectPatchbackEngine } from "./patchback/index.js";
 import { buildHelpText } from "./help-text.js";
@@ -485,15 +487,11 @@ async function runDashboardStatus(
  * foreign Rust bin.
  *
  * Required flags (no defaulting):
- *   --gameexe <PATH>   Gameexe.ini (resolves `SEEN_START` + `#NAMAE`)
- *   --seen <PATH>      Seen.txt compressed scene archive
- *   --output <PATH>    where the structure JSON is written (outside the repo;
- *                      carries copyrighted script text on real bytes)
- * Optional:
- *   --bridge <PATH>     exact Kaifuu bridge; enables evidence-complete v2
- *   --entry-scene <N>  override the `SEEN_START` entry scene (a route-specific
- *                      opening, etc.); drives the dispatch-order walk from it
- *   --max-scenes <N>   fail when the archive exceeds N scenes
+ *   --engine <ID>       registered StructureProvider identity
+ *   --output <PATH>     where the structure JSON is written (outside the repo;
+ *                       carries copyrighted script text on real bytes)
+ *
+ * The selected provider owns every other source flag and its typed validation.
  *
  * The producer owns its own JSON write; a non-zero exit surfaces its stderr
  * verbatim (already prefixed `utsushi.structure.<step>:`) through a typed
@@ -503,54 +501,22 @@ async function runStructureExportHandler(
   args: string[],
   _dependencies: ItotoriCliDependencies,
 ): Promise<void> {
-  const gameexePath = requiredFlag(args, "--gameexe");
-  const seenPath = requiredFlag(args, "--seen");
-  const outputPath = requiredFlag(args, "--output");
-  const bridgePath = optionalFlag(args, "--bridge");
-  const entrySceneRaw = optionalFlag(args, "--entry-scene");
-  const maxScenesRaw = optionalFlag(args, "--max-scenes");
-
-  let entryScene: number | undefined;
-  if (entrySceneRaw !== undefined) {
-    const parsed = Number.parseInt(entrySceneRaw, 10);
-    if (!Number.isFinite(parsed) || parsed < 0 || String(parsed) !== entrySceneRaw) {
-      throw new Error(
-        `structure-export refused: --entry-scene '${entrySceneRaw}' must be a non-negative integer`,
-      );
-    }
-    entryScene = parsed;
+  const engine = optionalFlag(args, "--engine");
+  if (engine === undefined) {
+    throw new Error(
+      `structure-export refused: --engine <engine> is required (registered providers: ${structureProviderCapabilities()
+        .map((capability) => capability.engine)
+        .join(", ")})`,
+    );
   }
-
-  let maxScenes: number | undefined;
-  if (maxScenesRaw !== undefined) {
-    const parsed = Number.parseInt(maxScenesRaw, 10);
-    if (!Number.isFinite(parsed) || parsed <= 0 || String(parsed) !== maxScenesRaw) {
-      throw new Error(
-        `structure-export refused: --max-scenes '${maxScenesRaw}' must be a positive integer`,
-      );
-    }
-    maxScenes = parsed;
-  }
-
-  const result: RunUtsushiStructureResult = runUtsushiStructureExport({
-    gameexePath,
-    seenPath,
-    outputPath,
-    ...(bridgePath !== undefined ? { bridgePath } : {}),
-    ...(entryScene !== undefined ? { entryScene } : {}),
-    ...(maxScenes !== undefined ? { maxScenes } : {}),
-    log: (message) => {
-      process.stdout.write(`${message}\n`);
-    },
-  });
+  const provider = resolveStructureProvider(engine);
+  const source = provider.parseCli(args);
+  const result: StructureProviderResult = runStructureProvider(source);
   process.stdout.write(
     `${JSON.stringify(
       {
-        schemaVersion:
-          bridgePath === undefined
-            ? "utsushi.narrative-structure.v1"
-            : "utsushi.narrative-structure.v2",
-        outputPath,
+        engine: provider.engine,
+        outputPath: source.outputPath,
         status: result.status,
       },
       null,

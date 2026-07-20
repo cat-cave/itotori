@@ -52,7 +52,7 @@ export interface P1Context {
  * needs. P1 resolves the entries itself through `outputs_get_accepted`; it never
  * accepts caller-supplied target-language prose as a substitute. */
 export interface P1SceneInput {
-  readonly sceneId: number;
+  readonly sceneId: string;
   readonly bibleSubjectIds: readonly string[];
   readonly budgetBytes: number;
   readonly overlapUnits: number;

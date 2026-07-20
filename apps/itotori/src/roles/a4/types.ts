@@ -59,12 +59,12 @@ export interface A4RouteSpine {
   /** The final `story-so-far` WikiObject the scene fold threaded to the end. */
   readonly finalStorySoFar: WikiObject;
   /** Every scene the spine covers, in deterministic play order (the full route). */
-  readonly coveredSceneIds: readonly number[];
+  readonly coveredSceneIds: readonly string[];
   /** The deterministic decoded scene order for this route. Older callers that
    * reconcile the one whole-game route may omit it; route fan-out supplies it
    * explicitly so A4 proves a branch spine against the branch, not against an
    * unrelated whole-game linearization. */
-  readonly expectedSceneIds?: readonly number[];
+  readonly expectedSceneIds?: readonly string[];
 }
 
 /** One continuity link the MODEL proposes: a source-language description plus

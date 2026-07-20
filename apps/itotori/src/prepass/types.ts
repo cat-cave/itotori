@@ -62,7 +62,7 @@ export type OrderedUnitFact = {
   factId: string;
   bridgeUnitId: string;
   sourceUnitKey: string;
-  sceneId: number;
+  sceneId: string;
   linkKind: FactLinkKind;
   surfaceKind: SurfaceKindV02;
   sourceHash: string;
@@ -80,33 +80,33 @@ export type OrderedUnitFact = {
 /** A per-scene fact card: decode counts + reachability, never model prose. */
 export type SceneFactCard = {
   factId: string;
-  sceneId: number;
+  sceneId: string;
   playOrderIndex: number | null;
   revealOrder: number | null;
   messageCount: number;
   choiceCount: number;
   unitCount: number;
   characterIds: readonly string[];
-  dispatchTargetSceneIds: readonly number[];
-  choiceTargetSceneIds: readonly number[];
+  dispatchTargetSceneIds: readonly string[];
+  choiceTargetSceneIds: readonly string[];
   reachable: boolean;
 };
 
 /** One scene-to-scene edge of the decoded route/choice topology. */
 export type RouteEdgeFact = {
-  fromSceneId: number;
-  toSceneId: number;
+  fromSceneId: string;
+  toSceneId: string;
   kind: "dispatch" | "choice";
   choiceIndex: number | null;
 };
 
 /** Exact route/choice topology plus reachability from the entry scene. */
 export type RouteTopologyFact = {
-  entryScene: number;
-  sceneDispatchOrder: readonly number[];
+  entryScene: string;
+  sceneDispatchOrder: readonly string[];
   edges: readonly RouteEdgeFact[];
-  reachableSceneIds: readonly number[];
-  unreachableSceneIds: readonly number[];
+  reachableSceneIds: readonly string[];
+  unreachableSceneIds: readonly string[];
   reachableUnitKeys: readonly string[];
 };
 
@@ -115,10 +115,10 @@ export type CharacterOccurrenceFact = {
   factId: string;
   characterId: string;
   totalLines: number;
-  firstSceneId: number;
-  lastSceneId: number;
-  sceneIds: readonly number[];
-  linesByScene: ReadonlyArray<{ sceneId: number; lineCount: number }>;
+  firstSceneId: string;
+  lastSceneId: string;
+  sceneIds: readonly string[];
+  linesByScene: ReadonlyArray<{ sceneId: string; lineCount: number }>;
 };
 
 /** A terminology/alias occurrence: a glossary term's byte-derived occurrences
@@ -151,7 +151,7 @@ export type GlossaryConflictFact = {
 export type FactSnapshotSource = {
   bridgeId: string;
   sourceBundleHash: string;
-  entryScene: number;
+  entryScene: string;
   structureSchemaVersion: string;
 };
 

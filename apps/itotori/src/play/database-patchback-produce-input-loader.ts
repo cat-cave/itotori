@@ -19,7 +19,7 @@ import { runKaifuuExtract } from "../extract/kaifuu-extract-seam.js";
 import { type NativePatchbackInput, type AcceptedUnitOutput } from "../patchback/types.js";
 import { buildFactSnapshot } from "../prepass/index.js";
 import { type NarrativeStructure } from "../structure/index.js";
-import { runUtsushiStructureExport } from "../structure-export/utsushi-structure-seam.js";
+import { runStructureProvider } from "../structure-export/structure-provider-registry.js";
 import type {
   PatchbackProduceInputLoaderPort,
   PatchbackProduceRequest,
@@ -308,7 +308,8 @@ function materializeNativeInputs(input: {
       wholeSeen: true,
       bundleOutputPath: bridgePath,
     });
-    runUtsushiStructureExport({
+    runStructureProvider({
+      engine: "reallive",
       gameexePath: join(input.sourceRoot, "REALLIVEDATA", "Gameexe.ini"),
       seenPath: join(input.sourceRoot, "REALLIVEDATA", "Seen.txt"),
       outputPath: structurePath,

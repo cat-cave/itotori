@@ -14,8 +14,8 @@ import type { NarrativePosition } from "./positions.js";
 import type { RouteEdgeFact, RouteTopologyFact } from "./types.js";
 
 function compareEdges(a: RouteEdgeFact, b: RouteEdgeFact): number {
-  if (a.fromSceneId !== b.fromSceneId) return a.fromSceneId - b.fromSceneId;
-  if (a.toSceneId !== b.toSceneId) return a.toSceneId - b.toSceneId;
+  if (a.fromSceneId !== b.fromSceneId) return a.fromSceneId.localeCompare(b.fromSceneId);
+  if (a.toSceneId !== b.toSceneId) return a.toSceneId.localeCompare(b.toSceneId);
   if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
   return (a.choiceIndex ?? -1) - (b.choiceIndex ?? -1);
 }
@@ -39,15 +39,15 @@ export function materializeRouteTopology(
     }))
     .sort(compareEdges);
 
-  const outgoing = new Map<number, number[]>();
+  const outgoing = new Map<string, string[]>();
   for (const edge of edges) {
     const targets = outgoing.get(edge.fromSceneId) ?? [];
     targets.push(edge.toSceneId);
     outgoing.set(edge.fromSceneId, targets);
   }
 
-  const reachable = new Set<number>();
-  const queue: number[] = [structure.entryScene];
+  const reachable = new Set<string>();
+  const queue: string[] = [structure.entryScene];
   reachable.add(structure.entryScene);
   while (queue.length > 0) {
     const sceneId = queue.shift()!;
@@ -59,8 +59,8 @@ export function materializeRouteTopology(
     }
   }
 
-  const allSceneIds = [...new Set(structure.scenes.map((scene) => scene.sceneId))].sort(
-    (a, b) => a - b,
+  const allSceneIds = [...new Set(structure.scenes.map((scene) => scene.sceneId))].sort((a, b) =>
+    a.localeCompare(b),
   );
   const reachableSceneIds = allSceneIds.filter((sceneId) => reachable.has(sceneId));
   const unreachableSceneIds = allSceneIds.filter((sceneId) => !reachable.has(sceneId));

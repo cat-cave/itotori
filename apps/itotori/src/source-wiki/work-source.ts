@@ -20,7 +20,7 @@ import type { ReadModel } from "../read-tools/index.js";
 export interface RouteWork {
   readonly routeId: string;
   readonly scope: RouteScope;
-  readonly sceneIds: readonly number[];
+  readonly sceneIds: readonly string[];
 }
 
 /** The implicit route id used when the decode carries no route tags at all. */
@@ -46,7 +46,7 @@ export interface WorkSource {
   readonly unknownSpeakerUnits: readonly { readonly unitId: string; readonly scope: RouteScope }[];
   /** Complete global A3 fold, with its per-scene summary and cumulative story scopes. */
   readonly scenes: readonly {
-    readonly sceneId: number;
+    readonly sceneId: string;
     readonly sceneScope: RouteScope;
     readonly storyScope: RouteScope;
   }[];
@@ -70,7 +70,7 @@ function routeIdsOf(scope: FactRouteScope): readonly string[] {
 
 function deriveRoutes(snapshot: FactSnapshot): RouteWork[] {
   const dispatchOrder = snapshot.routeTopology.sceneDispatchOrder;
-  const scenesByRoute = new Map<string, Set<number>>();
+  const scenesByRoute = new Map<string, Set<string>>();
   for (const unit of snapshot.orderedUnits) {
     for (const routeId of routeIdsOf(unit.routeScope)) {
       if (!scenesByRoute.has(routeId)) scenesByRoute.set(routeId, new Set());
@@ -105,7 +105,7 @@ function mergeScopes(left: RouteScope, right: RouteScope): RouteScope {
 }
 
 function sceneScopes(snapshot: FactSnapshot): WorkSource["scenes"] {
-  const byScene = new Map<number, RouteScope>();
+  const byScene = new Map<string, RouteScope>();
   for (const unit of snapshot.orderedUnits) {
     const scope = toRouteScope(unit.routeScope);
     const previous = byScene.get(unit.sceneId);

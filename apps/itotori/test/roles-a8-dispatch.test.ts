@@ -66,6 +66,8 @@ const CONTEXT: A8Context = {
   localeBranchId: null,
 };
 
+const SCENE_1 = "scene:0001";
+
 const A7_CONTEXT: A7Context = {
   runMode: "test-dev",
   contextScope: "whole-game",
@@ -213,7 +215,7 @@ function recordedBackground(
         relationship: "幼なじみ。",
         confidence: "high",
         scope: { kind: "global" },
-        establishingSceneIds: [sceneEvidenceId(1)],
+        establishingSceneIds: [sceneEvidenceId(SCENE_1)],
       },
     ],
   };
@@ -288,7 +290,7 @@ describe("A8 dispatches through the sole ZDR boundary", () => {
     const draft = await caller(request);
     expect(draft.background).toBe("生い立ち。");
     expect(draft.relationships[0]!.counterpartId).toBe("nam-22");
-    expect(draft.relationships[0]!.establishingSceneIds).toEqual([sceneEvidenceId(1)]);
+    expect(draft.relationships[0]!.establishingSceneIds).toEqual([sceneEvidenceId(SCENE_1)]);
   });
 
   it("PROOF: raw dispatch() rejects when the ZDR operator assertions are absent", async () => {

@@ -1,13 +1,14 @@
 {
   "schemaVersion": "utsushi.narrative-structure.v2",
-  "entryScene": 10,
-  "sceneDispatchOrder": [10, 20, 30],
+  "engine": "reallive",
+  "entryScene": "scene:0010",
+  "sceneDispatchOrder": ["scene:0010", "scene:0020", "scene:0030"],
   "scenes": [
     {
-      "sceneId": 10,
+      "sceneId": "scene:0010",
       "selectionControl": "text-window",
-      "nextScene": 20,
-      "dispatchFanoutScenes": [30],
+      "nextScene": "scene:0020",
+      "dispatchFanoutScenes": ["scene:0030"],
       "messages": [
         {
           "order": 0,
@@ -21,13 +22,13 @@
         {
           "optionIndex": 0,
           "label": "continue",
-          "branchTargetSceneId": 30,
+          "branchTargetSceneId": "scene:0030",
           "branchMessages": []
         }
       ]
     },
     {
-      "sceneId": 20,
+      "sceneId": "scene:0020",
       "selectionControl": "none",
       "nextScene": null,
       "messages": [
@@ -49,7 +50,7 @@
       "choices": []
     },
     {
-      "sceneId": 30,
+      "sceneId": "scene:0030",
       "selectionControl": "none",
       "nextScene": null,
       "messages": [

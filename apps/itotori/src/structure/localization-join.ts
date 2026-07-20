@@ -20,10 +20,13 @@ import type {
 
 import type {
   NarrativeChoice,
+  NarrativeEngineEvidence,
   NarrativeMessage,
+  NarrativeSceneId,
   NarrativeStructure,
   NarrativeUnit,
 } from "./types.js";
+import { realliveByteRange } from "./reallive-evidence.js";
 
 /** Whether a bound narrative element is a spoken/narrated line or a choice option. */
 export type NarrativeLinkKind = "line" | "choice";
@@ -40,7 +43,7 @@ export type NarrativeLink = {
   kind: NarrativeLinkKind;
   bridgeUnitId: string;
   sourceUnitKey: string;
-  sceneId: number;
+  sceneId: NarrativeSceneId;
   /** Authoritative narrative byte coordinates (required, verified vs the unit). */
   byteRange: ByteRangeV02;
   /** Owning source asset id (required, verified vs the unit's sourceAssetRef). */
@@ -170,20 +173,17 @@ export class UnreferencedLocalizationUnitError extends Error {
 }
 
 function requireByteRange(
-  byteOffsetInScene: number | null | undefined,
-  byteLength: number | null | undefined,
+  evidence: NarrativeEngineEvidence | undefined,
   locator: string,
 ): ByteRangeV02 {
-  if (typeof byteOffsetInScene !== "number" || typeof byteLength !== "number") {
+  const range = realliveByteRange(evidence);
+  if (range === undefined) {
     throw new IncompleteNarrativeLinkError(
       locator,
-      "bridge-linked element must carry byteOffsetInScene + byteLength",
+      "bridge-linked element must carry its provider byte range in engineEvidence",
     );
   }
-  return {
-    startByte: byteOffsetInScene,
-    endByte: byteOffsetInScene + byteLength,
-  };
+  return range;
 }
 
 function requireSourceAssetId(
@@ -222,7 +222,7 @@ function messageSurfaceLinkKind(textSurface: string | null | undefined): Narrati
  */
 function messageLink(
   message: NarrativeMessage,
-  sceneId: number,
+  sceneId: NarrativeSceneId,
   locator: string,
 ): NarrativeLink | null {
   if (message.linkageStatus === "runtime_only") {
@@ -243,7 +243,7 @@ function messageLink(
     bridgeUnitId: ref.bridgeUnitId,
     sourceUnitKey: ref.sourceUnitKey,
     sceneId,
-    byteRange: requireByteRange(message.byteOffsetInScene, message.byteLength, locator),
+    byteRange: requireByteRange(message.engineEvidence, locator),
     sourceAssetId: requireSourceAssetId(message.sourceAsset, locator),
     locator,
   };
@@ -260,7 +260,7 @@ function messageLink(
  */
 function choiceLink(
   choice: NarrativeChoice,
-  sceneId: number,
+  sceneId: NarrativeSceneId,
   locator: string,
 ): NarrativeLink | null {
   if (choice.linkageStatus === "runtime_only") {
@@ -278,19 +278,19 @@ function choiceLink(
     bridgeUnitId: ref.bridgeUnitId,
     sourceUnitKey: ref.sourceUnitKey,
     sceneId,
-    byteRange: requireByteRange(choice.byteOffsetInScene, choice.byteLength, locator),
+    byteRange: requireByteRange(choice.engineEvidence, locator),
     sourceAssetId: requireSourceAssetId(choice.sourceAsset, locator),
     locator,
   };
 }
 
-function unitLink(unit: NarrativeUnit, sceneId: number, locator: string): NarrativeLink {
+function unitLink(unit: NarrativeUnit, sceneId: NarrativeSceneId, locator: string): NarrativeLink {
   return {
     kind: unit.choiceId != null ? "choice" : "line",
     bridgeUnitId: unit.bridgeRef.bridgeUnitId,
     sourceUnitKey: unit.bridgeRef.sourceUnitKey,
     sceneId,
-    byteRange: requireByteRange(unit.byteOffsetInScene, unit.byteLength, locator),
+    byteRange: requireByteRange(unit.engineEvidence, locator),
     sourceAssetId: requireSourceAssetId(unit.sourceAsset, locator),
     locator,
   };

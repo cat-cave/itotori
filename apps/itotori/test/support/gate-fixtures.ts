@@ -40,6 +40,14 @@ type UnitSpec = {
   isChoice: boolean;
 };
 
+function realliveEvidence(startByte: number, byteLength: number, rawByteHandle: string) {
+  return { reallive: { byteOffsetInScene: startByte, byteLength, rawByteHandle } };
+}
+
+function sceneRef(sceneId: number): string {
+  return `scene:${String(sceneId).padStart(4, "0")}`;
+}
+
 const SPECS: readonly UnitSpec[] = [
   {
     bridgeUnitId: "a06a6efc-b1f0-7483-b225-40f197a3bc83",
@@ -101,9 +109,11 @@ function makeNarrativeUnit(spec: UnitSpec, index: number): NarrativeUnit {
     evidenceTier: "E2",
     color: null,
     sourceAsset: { assetId: spec.assetId, assetKey: "" },
-    byteOffsetInScene: spec.startByte,
-    byteLength: spec.endByte - spec.startByte,
-    rawByteHandle: `handle-${index}`,
+    engineEvidence: realliveEvidence(
+      spec.startByte,
+      spec.endByte - spec.startByte,
+      `handle-${index}`,
+    ),
     choiceId: spec.isChoice ? `choice-${spec.sourceUnitKey}` : null,
     playOrder: index,
     revealOrder: null,
@@ -114,9 +124,9 @@ function makeNarrativeUnit(spec: UnitSpec, index: number): NarrativeUnit {
 
 function scene(sceneId: number, specs: UnitSpec[], nextScene: number | null): NarrativeScene {
   return {
-    sceneId,
+    sceneId: sceneRef(sceneId),
     selectionControl: "none",
-    nextScene,
+    nextScene: nextScene === null ? null : sceneRef(nextScene),
     messages: [],
     choices: [],
     units: specs.map((spec, index) => makeNarrativeUnit(spec, index)),
@@ -126,13 +136,20 @@ function scene(sceneId: number, specs: UnitSpec[], nextScene: number | null): Na
 export function wholeGameStructure(): NarrativeStructure {
   return {
     schemaVersion: "utsushi.narrative-structure.v2",
-    entryScene: 1,
-    sceneDispatchOrder: [1, 2],
+    engine: "reallive",
+    entryScene: sceneRef(1),
+    sceneDispatchOrder: [sceneRef(1), sceneRef(2)],
     sourceBundleHash: BUNDLE_HASH,
     scenes: [
       scene(1, [SPECS[0]!, SPECS[1]!, SPECS[2]!], 2),
       scene(2, [SPECS[3]!, SPECS[4]!, SPECS[5]!], null),
-      { sceneId: 3, selectionControl: "none", nextScene: null, messages: [], choices: [] },
+      {
+        sceneId: sceneRef(3),
+        selectionControl: "none",
+        nextScene: null,
+        messages: [],
+        choices: [],
+      },
     ],
   };
 }

@@ -1,6 +1,7 @@
 import type {
   CharacterOccurrence,
   NarrativeChoice,
+  NarrativeSceneId,
   NarrativeRouteEdge,
   NarrativeScene,
   NarrativeStructure,
@@ -13,11 +14,11 @@ function uniqueInOrder<T>(values: readonly T[]): T[] {
   return [...new Set(values)];
 }
 
-function branchTarget(choice: NarrativeChoice): number | null {
+function branchTarget(choice: NarrativeChoice): NarrativeSceneId | null {
   return choice.branchTargetSceneId ?? choice.branchEntryScene ?? null;
 }
 
-function dispatchTargets(scene: NarrativeScene): number[] {
+function dispatchTargets(scene: NarrativeScene): NarrativeSceneId[] {
   return uniqueInOrder([
     ...(scene.nextScene === null ? [] : [scene.nextScene]),
     ...(scene.dispatchFanoutScenes ?? []),
@@ -96,7 +97,7 @@ function orderedScenes(structure: NarrativeStructure): NarrativeScene[] {
 /** Count occurrences by canonical character ID, never by a mutable label. */
 export function reduceCharacterOccurrences(structure: NarrativeStructure): CharacterOccurrence[] {
   const characterOrder: string[] = [];
-  const counts = new Map<string, Map<number, number>>();
+  const counts = new Map<string, Map<NarrativeSceneId, number>>();
   const scenes = orderedScenes(structure);
   for (const scene of scenes) {
     for (const message of scene.messages) {

@@ -1,5 +1,5 @@
-// itotori-structure-export — the seam that wraps the `utsushi structure`
-// subcommand so the narrative-structure artifact (the real dispatch-order +
+// RealLive StructureProvider implementation — the seam that wraps the `utsushi
+// structure` subcommand so the narrative-structure artifact (the real dispatch-order +
 // per-scene play-order message stream + speaker decode + choice/branch graph)
 // is a FIRST-CLASS itotori command, not a foreign Rust bin.
 //
@@ -9,10 +9,9 @@
 // `use_xor_2` Sweetie HD compiler-110002 staging + the Gameexe `#NAMAE` /
 // `#COLOR_TABLE` speaker resolver). It emits the
 // narrative-structure artifact the itotori whole-game localize driver consumes
-// as its structure-informed context. This module is the
-// user-shaped itotori front-door over that producer: the agent / operator
-// asks `itotori structure-export` and gets the structure JSON, never having
-// to know the utsushi-cli crate name or its flag surface.
+// as its structure-informed context. `structure-provider-registry.ts` is the
+// user-shaped front door; this module is only the registered RealLive provider's
+// native-process implementation.
 //
 // The binary is resolved through the SAME authoritative order the native-deps
 // doctor uses (ITOTORI_UTSUSHI_BIN -> ITOTORI_LIBEXEC_DIR -> CARGO_TARGET_DIR /
@@ -38,6 +37,8 @@ export type UtsushiProcessResult = {
 };
 
 export type RunUtsushiStructureArgs = {
+  /** The provider identity forwarded to the native structure registry. */
+  engine: "reallive";
   /** Path to Gameexe.ini (resolves `SEEN_START` + `#NAMAE`/`#COLOR_TABLE`). */
   gameexePath: string;
   /** Path to Seen.txt (the compressed scene archive). */
@@ -90,7 +91,7 @@ export class UtsushiStructureExportError extends Error {
 }
 
 /**
- * Run `utsushi structure --gameexe <Gameexe.ini> --seen <Seen.txt> --output
+ * Run `utsushi structure --engine reallive --gameexe <Gameexe.ini> --seen <Seen.txt> --output
  * <PATH> [--bridge <PATH>] [--entry-scene <N>] [--max-scenes <N>]` and assert
  * it exited 0.
  *
@@ -134,6 +135,8 @@ export function runUtsushiStructureExport(
 export function buildUtsushiStructureArgs(args: RunUtsushiStructureArgs): string[] {
   const out = [
     "structure",
+    "--engine",
+    args.engine,
     "--gameexe",
     args.gameexePath,
     "--seen",

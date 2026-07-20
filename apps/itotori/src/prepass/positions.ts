@@ -19,7 +19,7 @@ import type {
 export type NarrativePosition = {
   bridgeUnitId: string;
   sourceUnitKey: string;
-  sceneId: number;
+  sceneId: string;
   playOrderIndex: number;
   revealSceneOrder: number | null;
   revealItemOrder: number | null;
@@ -28,7 +28,7 @@ export type NarrativePosition = {
 
 function orderedScenes(structure: NarrativeStructure): NarrativeScene[] {
   const byId = new Map(structure.scenes.map((scene) => [scene.sceneId, scene]));
-  const seen = new Set<number>();
+  const seen = new Set<string>();
   const ordered: NarrativeScene[] = [];
   for (const sceneId of structure.sceneDispatchOrder) {
     const scene = byId.get(sceneId);
@@ -37,7 +37,7 @@ function orderedScenes(structure: NarrativeStructure): NarrativeScene[] {
       ordered.push(scene);
     }
   }
-  for (const scene of [...structure.scenes].sort((a, b) => a.sceneId - b.sceneId)) {
+  for (const scene of [...structure.scenes].sort((a, b) => a.sceneId.localeCompare(b.sceneId))) {
     if (!seen.has(scene.sceneId)) {
       seen.add(scene.sceneId);
       ordered.push(scene);
@@ -110,7 +110,7 @@ export function indexNarrativePositions(
   const positions = new Map<string, NarrativePosition>();
   let playOrderIndex = 0;
   const assign = (
-    sceneId: number,
+    sceneId: string,
     element: {
       bridgeUnitId: string;
       sourceUnitKey: string;

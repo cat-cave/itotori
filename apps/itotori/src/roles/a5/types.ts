@@ -67,7 +67,7 @@ export interface CharacterVoiceEvidence {
   /** The character-occurrence evidence fact id, citeable as whole-game presence. */
   readonly occurrenceFactId: string;
   /** The scenes the character occurs in (decode play-order topology). */
-  readonly sceneIds: readonly number[];
+  readonly sceneIds: readonly string[];
   /** The whole-game scope the base register claim is stamped with (global). */
   readonly scope: RouteScope;
 }

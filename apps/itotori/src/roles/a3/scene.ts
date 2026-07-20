@@ -58,7 +58,7 @@ function speakerLabelsOf(units: readonly UnitFact[]): readonly string[] {
   return labels;
 }
 
-function factCardFor(model: ReadModel, sceneId: number): SceneFactCard {
+function factCardFor(model: ReadModel, sceneId: string): SceneFactCard {
   const card = model.factSnapshot.scenes.find((scene) => scene.sceneId === sceneId);
   if (!card) throw new A3RoleError("unknown-scene", `no scene ${sceneId} in this snapshot`);
   return card;
@@ -73,7 +73,7 @@ function factCardFor(model: ReadModel, sceneId: number): SceneFactCard {
 export function readCompleteScene(
   model: ReadModel,
   context: A3Context,
-  sceneId: number,
+  sceneId: string,
 ): CompleteScene {
   const factCard = factCardFor(model, sceneId);
   if (factCard.unitCount === 0) {
@@ -98,7 +98,7 @@ export function readCompleteScene(
       `scene ${sceneId} returned ${units.length} units, fact card counts ${factCard.unitCount}`,
     );
   }
-  const sceneKey = String(sceneId);
+  const sceneKey = sceneId;
   for (const unit of units) {
     if (unit.value.sceneId !== sceneKey) {
       throw new A3RoleError(
@@ -121,7 +121,7 @@ export function readCompleteScene(
  * fold uses to refuse a pre-sliced planner fragment handed in from outside. */
 export function assertCompleteSceneUnits(
   model: ReadModel,
-  sceneId: number,
+  sceneId: string,
   unitIds: readonly string[],
 ): void {
   const factCard = factCardFor(model, sceneId);

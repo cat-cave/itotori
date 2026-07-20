@@ -61,10 +61,10 @@ interface SceneRoutes {
 /** Fold each scene's units into its route membership: any global unit (or a scene
  * with no route-bearing unit at all) makes the scene global; otherwise it is the
  * union of the routes its units carry. */
-function sceneRoutesIndex(units: readonly OrderedUnitFact[]): ReadonlyMap<number, SceneRoutes> {
-  const routeIdsByScene = new Map<number, Set<string>>();
-  const globalByScene = new Map<number, boolean>();
-  const seenScene = new Set<number>();
+function sceneRoutesIndex(units: readonly OrderedUnitFact[]): ReadonlyMap<string, SceneRoutes> {
+  const routeIdsByScene = new Map<string, Set<string>>();
+  const globalByScene = new Map<string, boolean>();
+  const seenScene = new Set<string>();
   for (const unit of units) {
     seenScene.add(unit.sceneId);
     if (unit.routeScope.kind === "global") {
@@ -75,7 +75,7 @@ function sceneRoutesIndex(units: readonly OrderedUnitFact[]): ReadonlyMap<number
     for (const routeId of scopeRouteIds(unit.routeScope)) ids.add(routeId);
     routeIdsByScene.set(unit.sceneId, ids);
   }
-  const index = new Map<number, SceneRoutes>();
+  const index = new Map<string, SceneRoutes>();
   for (const sceneId of seenScene) {
     const routeIds = routeIdsByScene.get(sceneId) ?? new Set<string>();
     const global = (globalByScene.get(sceneId) ?? false) || routeIds.size === 0;
@@ -89,7 +89,7 @@ function sceneRoutesIndex(units: readonly OrderedUnitFact[]): ReadonlyMap<number
  * present on every route in the universe. Sorted, decode-derived. */
 export function characterRoutes(
   character: CharacterOccurrenceFact,
-  scenes: ReadonlyMap<number, SceneRoutes>,
+  scenes: ReadonlyMap<string, SceneRoutes>,
   universe: readonly string[],
 ): readonly string[] {
   const routes = new Set<string>();
@@ -139,7 +139,7 @@ export function pairInIntersection(
  * may be bounded by; empty only when the pair is not a real intersection. */
 export function routeOccurrenceWindow(
   model: ReadModel,
-  sceneIds: readonly number[],
+  sceneIds: readonly string[],
   routeId: string,
 ): readonly OrderedUnitFact[] {
   const occurrenceScenes = new Set(sceneIds);

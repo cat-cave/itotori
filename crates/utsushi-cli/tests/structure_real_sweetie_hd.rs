@@ -60,6 +60,7 @@ fn utsushi_structure_real_sweetie_writes_real_dispatch_order() {
 
     let output = Command::new(utsushi_cli_binary())
         .arg("structure")
+        .args(["--engine", "reallive"])
         .arg("--gameexe")
         .arg(&gameexe)
         .arg("--seen")
@@ -80,18 +81,18 @@ fn utsushi_structure_real_sweetie_writes_real_dispatch_order() {
     let structure: Value = serde_json::from_slice(&bytes).expect("structure must be valid JSON");
     assert_eq!(structure["schemaVersion"], "utsushi.narrative-structure.v1");
 
-    let entry_scene = structure["entryScene"].as_u64().expect("entryScene");
-    let scene_ids: std::collections::BTreeSet<u64> = structure["scenes"]
+    let entry_scene = structure["entryScene"].as_str().expect("entryScene");
+    let scene_ids: std::collections::BTreeSet<&str> = structure["scenes"]
         .as_array()
         .expect("scenes array")
         .iter()
-        .map(|scene| scene["sceneId"].as_u64().expect("sceneId"))
+        .map(|scene| scene["sceneId"].as_str().expect("sceneId"))
         .collect();
-    let dispatch_order: Vec<u64> = structure["sceneDispatchOrder"]
+    let dispatch_order: Vec<&str> = structure["sceneDispatchOrder"]
         .as_array()
         .expect("sceneDispatchOrder array")
         .iter()
-        .map(|scene| scene.as_u64().expect("scene id"))
+        .map(|scene| scene.as_str().expect("scene id"))
         .collect();
 
     // The structure covers many scenes (entry chain + whole-archive coverage
@@ -146,7 +147,7 @@ fn utsushi_structure_real_sweetie_writes_real_dispatch_order() {
         dispatch_order
             .iter()
             .copied()
-            .collect::<std::collections::BTreeSet<u64>>(),
+            .collect::<std::collections::BTreeSet<&str>>(),
         scene_ids,
         "sceneDispatchOrder must list every crossed scene exactly once"
     );
@@ -179,7 +180,7 @@ fn utsushi_structure_real_sweetie_rejects_truncation_without_an_artifact() {
     let tmp_dir = tempfile::tempdir().expect("tmp dir");
     let structure_out = tmp_dir.path().join("must-not-exist.json");
     let output = Command::new(utsushi_cli_binary())
-        .args(["structure", "--gameexe"])
+        .args(["structure", "--engine", "reallive", "--gameexe"])
         .arg(gameexe)
         .arg("--seen")
         .arg(seen)
@@ -222,7 +223,7 @@ fn utsushi_structure_real_sweetie_v2_matches_bridge_and_graph() {
     let tmp_dir = tempfile::tempdir().expect("tmp dir");
     let structure_out = tmp_dir.path().join("expanded.json");
     let output = Command::new(utsushi_cli_binary())
-        .args(["structure", "--gameexe"])
+        .args(["structure", "--engine", "reallive", "--gameexe"])
         .arg(gameexe)
         .arg("--seen")
         .arg(seen)

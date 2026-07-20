@@ -42,6 +42,24 @@ type UnitSpec = {
   isChoice: boolean;
 };
 
+function realliveEvidence(
+  startByte: number | null,
+  byteLength: number | null,
+  rawByteHandle?: string,
+) {
+  return {
+    reallive: {
+      byteOffsetInScene: startByte,
+      byteLength,
+      ...(rawByteHandle === undefined ? {} : { rawByteHandle }),
+    },
+  };
+}
+
+function sceneRef(sceneId: number): string {
+  return `scene:${String(sceneId).padStart(4, "0")}`;
+}
+
 // Exact join-relevant fields of the committed fixture's six units.
 const SCENE_1_LINE: UnitSpec = {
   bridgeUnitId: "a06a6efc-b1f0-7483-b225-40f197a3bc83",
@@ -105,9 +123,11 @@ function makeNarrativeUnit(spec: UnitSpec, index: number): NarrativeUnit {
     evidenceTier: "E2",
     color: null,
     sourceAsset: { assetId: spec.assetId, assetKey: "" },
-    byteOffsetInScene: spec.startByte,
-    byteLength: spec.endByte - spec.startByte,
-    rawByteHandle: `handle-${index}`,
+    engineEvidence: realliveEvidence(
+      spec.startByte,
+      spec.endByte - spec.startByte,
+      `handle-${index}`,
+    ),
     choiceId: spec.isChoice ? `choice-${spec.sourceUnitKey}` : null,
     playOrder: index,
     revealOrder: null,
@@ -122,8 +142,7 @@ function makeMessage(spec: UnitSpec): NarrativeMessage {
     speaker: null,
     text: "",
     textSurface: null,
-    byteOffsetInScene: spec.startByte,
-    byteLength: spec.endByte - spec.startByte,
+    engineEvidence: realliveEvidence(spec.startByte, spec.endByte - spec.startByte),
     sourceAsset: { assetId: spec.assetId, assetKey: "" },
     bridgeRef: {
       bridgeUnitId: spec.bridgeUnitId,
@@ -144,15 +163,14 @@ function makeChoice(spec: UnitSpec, optionIndex: number): NarrativeChoice {
       sourceUnitKey: spec.sourceUnitKey,
     },
     sourceAsset: { assetId: spec.assetId, assetKey: "" },
-    byteOffsetInScene: spec.startByte,
-    byteLength: spec.endByte - spec.startByte,
+    engineEvidence: realliveEvidence(spec.startByte, spec.endByte - spec.startByte),
     branchMessages: [],
   };
 }
 
 function scene(sceneId: number, specs: UnitSpec[]): NarrativeScene {
   return {
-    sceneId,
+    sceneId: sceneRef(sceneId),
     selectionControl: "none",
     nextScene: null,
     messages: [],
@@ -164,7 +182,8 @@ function scene(sceneId: number, specs: UnitSpec[]): NarrativeScene {
 function structureFor(scenes: NarrativeScene[]): NarrativeStructure {
   return {
     schemaVersion: "utsushi.narrative-structure.v2",
-    entryScene: scenes[0]?.sceneId ?? 1,
+    engine: "reallive",
+    entryScene: scenes[0]?.sceneId ?? "scene:0001",
     sceneDispatchOrder: scenes.map((s) => s.sceneId),
     sourceBundleHash: BUNDLE_HASH,
     scenes,
@@ -188,7 +207,7 @@ function messageChoiceStructure(): NarrativeStructure {
     choiceA: UnitSpec,
     choiceB: UnitSpec,
   ): NarrativeScene => ({
-    sceneId,
+    sceneId: sceneRef(sceneId),
     selectionControl: "none",
     nextScene: null,
     messages: [makeMessage(line)],
@@ -309,20 +328,23 @@ describe("joinNarrativeToLocalization", () => {
   it("fails loud when a bound CHOICE's byte range does not match", () => {
     const bundle = loadBridgeBundle();
     const choiceScene: NarrativeScene = {
-      sceneId: 1,
+      sceneId: sceneRef(1),
       selectionControl: "none",
       nextScene: null,
       messages: [makeMessage(SCENE_1_LINE)],
       choices: [
         // Drift the choice's byte range away from the unit's authoritative range.
-        { ...makeChoice(SCENE_1_CHOICE_A, 0), byteOffsetInScene: 900, byteLength: 99 },
+        {
+          ...makeChoice(SCENE_1_CHOICE_A, 0),
+          engineEvidence: realliveEvidence(900, 99),
+        },
         makeChoice(SCENE_1_CHOICE_B, 1),
       ],
     };
     const structure = structureFor([
       choiceScene,
       {
-        sceneId: 2,
+        sceneId: sceneRef(2),
         selectionControl: "none",
         nextScene: null,
         messages: [makeMessage(SCENE_2_LINE)],
@@ -438,7 +460,7 @@ describe("joinNarrativeToLocalization", () => {
     };
     const structure = structureFor([
       {
-        sceneId: 1,
+        sceneId: sceneRef(1),
         selectionControl: "none",
         nextScene: null,
         messages: [],
@@ -477,14 +499,22 @@ describe("joinNarrativeToLocalization", () => {
       speaker: null,
       text: "",
       textSurface: null,
-      byteOffsetInScene: SCENE_1_LINE.startByte,
-      byteLength: SCENE_1_LINE.endByte - SCENE_1_LINE.startByte,
+      engineEvidence: realliveEvidence(
+        SCENE_1_LINE.startByte,
+        SCENE_1_LINE.endByte - SCENE_1_LINE.startByte,
+      ),
       sourceAsset: { assetId: SCENE_1_LINE.assetId, assetKey: "" },
       bridgeRef: null,
       linkageStatus: "bridge_linked",
     };
     const structure = structureFor([
-      { sceneId: 1, selectionControl: "none", nextScene: null, messages: [refless], choices: [] },
+      {
+        sceneId: sceneRef(1),
+        selectionControl: "none",
+        nextScene: null,
+        messages: [refless],
+        choices: [],
+      },
     ]);
     expect(() => joinNarrativeToLocalization(structure, bundle)).toThrowError(
       IncompleteNarrativeLinkError,
@@ -496,11 +526,16 @@ describe("joinNarrativeToLocalization", () => {
     const bundle = loadBridgeBundle();
     const noCoords: NarrativeMessage = {
       ...makeMessage(SCENE_1_LINE),
-      byteOffsetInScene: null,
-      byteLength: null,
+      engineEvidence: realliveEvidence(null, null),
     };
     const structure = structureFor([
-      { sceneId: 1, selectionControl: "none", nextScene: null, messages: [noCoords], choices: [] },
+      {
+        sceneId: sceneRef(1),
+        selectionControl: "none",
+        nextScene: null,
+        messages: [noCoords],
+        choices: [],
+      },
     ]);
     expect(() => joinNarrativeToLocalization(structure, bundle)).toThrowError(
       IncompleteNarrativeLinkError,
@@ -518,12 +553,11 @@ describe("joinNarrativeToLocalization", () => {
       ...makeNarrativeUnit(SCENE_1_LINE, 1),
       choiceId: "choice-conflict",
       surfaceKind: "choice_label",
-      byteOffsetInScene: 999,
-      byteLength: 1,
+      engineEvidence: realliveEvidence(999, 1),
     };
     const structure = structureFor([
       {
-        sceneId: 1,
+        sceneId: sceneRef(1),
         selectionControl: "none",
         nextScene: null,
         messages: [],

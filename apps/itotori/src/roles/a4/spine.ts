@@ -23,10 +23,10 @@ export interface AdoptedSpine {
   /** Same-snapshot evidence the final story-so-far already cited. A4 re-resolves
    * it for the route-arc summary claim; it never invents a new route anchor. */
   readonly evidenceIds: readonly string[];
-  readonly coveredSceneIds: readonly number[];
+  readonly coveredSceneIds: readonly string[];
 }
 
-function sameOrder(left: readonly number[], right: readonly number[]): boolean {
+function sameOrder(left: readonly string[], right: readonly string[]): boolean {
   if (left.length !== right.length) return false;
   return left.every((value, index) => value === right[index]);
 }

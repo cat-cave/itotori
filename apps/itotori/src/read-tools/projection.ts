@@ -171,7 +171,7 @@ function unitVisibility(unit: OrderedUnitFact, scope: RouteScope): Visibility {
 }
 
 /** Node id for a scene in the route graph. */
-export function routeNodeId(sceneId: number): string {
+export function routeNodeId(sceneId: string): string {
   return `route-node:${sceneId}`;
 }
 

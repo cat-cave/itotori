@@ -18,7 +18,7 @@ import { A3RoleError, type A3Context, type A3ModelCaller, type StorySoFarState }
 /** One folded scene: its cited summary, the story-so-far through it, and the
  * INDEX-DERIVED facts (counts, speakers) downstream roles consume. */
 export interface A3SceneResult {
-  readonly sceneId: number;
+  readonly sceneId: string;
   readonly sceneSummary: WikiObject;
   readonly storySoFar: WikiObject;
   /** The deterministic scene fact card — the sole source of counts. */
@@ -34,7 +34,7 @@ export interface A3RouteResult {
   /** The story-so-far through the last dispatched scene — the route spine. */
   readonly finalStorySoFar: WikiObject;
   /** Every scene the final story-so-far covers, in play order (the full route). */
-  readonly coveredSceneIds: readonly number[];
+  readonly coveredSceneIds: readonly string[];
 }
 
 /** Merge two route scopes into the narrowest scope that contains both. */

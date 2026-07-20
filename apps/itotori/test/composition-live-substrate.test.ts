@@ -347,7 +347,7 @@ describe("decode → WorkflowScene[] adapter", () => {
     const scenes: readonly WorkflowScene[] = projection.scenes;
 
     // The dispatch-only scene 300 (no translatable units) is skipped.
-    expect(scenes.map((scene) => scene.sceneId)).toEqual(["100", "200"]);
+    expect(scenes.map((scene) => scene.sceneId)).toEqual(["scene:0100", "scene:0200"]);
 
     // Units are ordered by play order (the array is deliberately out of order).
     expect(scenes[0]!.units.map((unit) => unit.unitId)).toEqual(["unit:100:1", "unit:100:2"]);
@@ -367,7 +367,7 @@ describe("decode → WorkflowScene[] adapter", () => {
     // The per-unit fact + rendering maps back the draft assembler.
     expect(projection.renderingIdsByUnit.get("unit:100:1")).toEqual(["line:100:1"]);
     expect(projection.factsByUnit.get("unit:200:1")).toMatchObject({
-      sceneId: "200",
+      sceneId: "scene:0200",
       speakerId: "char:rin",
       routeId: "route:rin",
       surfaceKind: "dialogue",

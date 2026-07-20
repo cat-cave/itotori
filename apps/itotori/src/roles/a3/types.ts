@@ -59,7 +59,7 @@ export interface A3Context {
  * planner fragment); `factCard`, `speakerLabels`, and `characterIds` are all
  * INDEX-DERIVED and are the only source of counts/speakers the module trusts. */
 export interface CompleteScene {
-  readonly sceneId: number;
+  readonly sceneId: string;
   readonly units: readonly UnitFact[];
   readonly factCard: SceneFactCard;
   readonly scope: RouteScope;
@@ -93,7 +93,7 @@ export function citeableSceneUnits(scene: CompleteScene): readonly CiteableScene
 /** The story-so-far body the fold threads forward (source-language prose plus
  * the deterministic scene id it runs through). */
 export interface StorySoFarState {
-  readonly throughSceneId: number;
+  readonly throughSceneId: string;
   readonly summary: string;
   readonly openThreads: readonly string[];
 }

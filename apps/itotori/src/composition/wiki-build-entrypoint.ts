@@ -465,16 +465,14 @@ async function runA2(input: RunStepInput, deps: AnalystRoleDeps): Promise<readon
 }
 
 async function runA3(input: RunStepInput, deps: AnalystRoleDeps): Promise<readonly WikiObject[]> {
-  const sceneId = Number(requiredSubject(input, "scene"));
-  if (!Number.isSafeInteger(sceneId))
-    throw new Error(`A3 scene id is not an integer: ${input.step.subject.id}`);
+  const sceneId = requiredSubject(input, "scene");
   const context = wholeGameContext(input);
   const scene = readCompleteScene(deps.model, context, sceneId);
   const priorObject = input.priorObjects.find((object) => object.kind === "story-so-far");
   const prior: StorySoFarState | null =
     priorObject?.kind === "story-so-far"
       ? {
-          throughSceneId: Number(priorObject.body.throughSceneId),
+          throughSceneId: priorObject.body.throughSceneId,
           summary: priorObject.body.summary,
           openThreads: priorObject.body.openThreads,
         }
