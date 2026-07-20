@@ -4,16 +4,17 @@
 // them into strict source-language `scene-summary` and `story-so-far`
 // WikiObjects. Two invariants are enforced HERE, not trusted from the model:
 //
-//   1. Citations are INDEX-DERIVED. The model cites a bracketed play-order
+//   1. Citations are INDEX-DERIVED. The model cites a short, scene-local [uN]
 //      label from its prompt; that label is resolved only through THIS scene's
 //      units before the citation's hash, subject, and play order are copied
 //      from the snapshot evidence index. The model cannot forge a passing
-//      citation: a label outside this scene (the play-order index is a large
-//      global counter a flash model routinely mis-transcribes) resolves to
-//      nothing and is DROPPED — never admitted uncited, never a poison-pill
-//      that hard-fails the whole build. A claim left with no resolvable
-//      citation is discarded, not crashed over; the RB-031 gate still runs over
-//      the surviving, provable citations so nothing unresolved enters the Wiki.
+//      citation: a label outside this scene resolves to nothing and is DROPPED —
+//      never admitted uncited, never a poison-pill that hard-fails the whole
+//      build. A claim left with no resolvable citation is discarded, not crashed
+//      over; the RB-031 gate still runs over the surviving, provable citations
+//      so nothing unresolved enters the Wiki. The short label is what makes
+//      correct citations resolve in the first place — the flash model copies
+//      `u1`, `u2`, … reliably where it fumbled the large GLOBAL play-order index.
 //   2. Counts and speakers are NOT authored into the objects. The bodies carry
 //      only prose and the DETERMINISTIC scene/through-scene id; the model's
 //      re-count / re-attribution never reaches a field or a citation subject.
@@ -34,6 +35,7 @@ import {
   A3_ROLE_ID,
   A3_SCENE_SUMMARY_KIND,
   A3_STORY_SO_FAR_KIND,
+  citeableSceneUnits,
   type A3ClaimDraft,
   type A3Context,
   type A3SceneNarrative,
@@ -41,22 +43,23 @@ import {
   type StorySoFarState,
 } from "./types.js";
 
-/** The model sees each scene unit only as its bracketed play-order label. Keep
- * this mapping scene-local so a real label from another scene cannot be used as
- * evidence for the current scene summary or story-so-far claim. */
-function playOrderLabelToFactId(scene: CompleteScene): ReadonlyMap<string, string> {
-  return new Map(scene.units.map((unit) => [String(unit.value.playOrderIndex), unit.factId]));
+/** The model sees each scene unit only as its short, scene-local citation label
+ * (`u1`, `u2`, …). Keep this mapping scene-local — derived from the SAME
+ * {@link citeableSceneUnits} the prompt rendered — so a label the model echoes
+ * always resolves and a label from another scene cannot be used as evidence for
+ * the current scene summary or story-so-far claim. */
+function citationLabelToFactId(scene: CompleteScene): ReadonlyMap<string, string> {
+  return new Map(citeableSceneUnits(scene).map(({ label, factId }) => [label, factId]));
 }
 
-/** Resolve one model-cited play-order label to a snapshot-owned citation, or
- * `null` when the label names no unit shown in THIS scene. Every dimension a
- * citation is checked on — hash, subject, play order — is copied from the
- * snapshot evidence index; the model supplies only the label. A label the model
- * mis-transcribes or invents (the play-order index is a large global counter a
- * flash model routinely copies wrong) resolves to nothing and is DROPPED, so a
- * single recoverable mis-citation cannot poison the object and hard-fail the
- * whole build. A dropped citation is never admitted and never counts as
- * support — the RB-031 gate still runs over the citations that survive. */
+/** Resolve one model-cited [uN] label to a snapshot-owned citation, or `null`
+ * when the label names no unit shown in THIS scene. Every dimension a citation
+ * is checked on — hash, subject, play order — is copied from the snapshot
+ * evidence index; the model supplies only the label. A label the model
+ * mis-transcribes or invents resolves to nothing and is DROPPED, so a single
+ * recoverable mis-citation cannot poison the object and hard-fail the whole
+ * build. A dropped citation is never admitted and never counts as support — the
+ * RB-031 gate still runs over the citations that survive. */
 function citationFor(
   index: EvidenceIndex,
   labelToFactId: ReadonlyMap<string, string>,
@@ -131,11 +134,17 @@ export function assembleSceneSummary(
   narrative: A3SceneNarrative,
 ): WikiObject {
   const index = buildEvidenceIndex(model);
-  const labelToFactId = playOrderLabelToFactId(scene);
+  const labelToFactId = citationLabelToFactId(scene);
   const sceneKey = String(scene.sceneId);
   const claims = narrative.sceneClaims
     .map((draft, ordinal) =>
-      claimFor(index, labelToFactId, scene.scope, draft, `scene-summary:${sceneKey}:claim:${ordinal}`),
+      claimFor(
+        index,
+        labelToFactId,
+        scene.scope,
+        draft,
+        `scene-summary:${sceneKey}:claim:${ordinal}`,
+      ),
     )
     .filter((claim): claim is Claim => claim !== null);
   return seal(
@@ -181,7 +190,7 @@ export function assembleStorySoFar(
   prior: StorySoFarState | null,
 ): WikiObject {
   const index = buildEvidenceIndex(model);
-  const labelToFactId = playOrderLabelToFactId(scene);
+  const labelToFactId = citationLabelToFactId(scene);
   const sceneKey = String(scene.sceneId);
   const claims = narrative.storyClaims
     .map((draft, ordinal) =>

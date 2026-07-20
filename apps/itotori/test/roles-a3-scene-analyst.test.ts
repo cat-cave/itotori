@@ -13,15 +13,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import {
-  ClaimValidationError,
-  validateWikiObjectClaims,
-} from "../src/wiki/claim-validation.js";
+import { ClaimValidationError, validateWikiObjectClaims } from "../src/wiki/claim-validation.js";
 import { buildEvidenceIndex } from "../src/wiki/evidence-index.js";
 import {
   A3RoleError,
   assembleSceneSummary,
   assertCompleteSceneUnits,
+  citeableSceneUnits,
   foldRoute,
   readCompleteScene,
   type A3Context,
@@ -38,12 +36,13 @@ const CONTEXT: A3Context = {
   localeBranchId: null,
 };
 
-/** A recorded responder that cites the scene's own first unit and deliberately
- * LIES about the message count and speakers — the module must ignore both. */
+/** A recorded responder that cites the scene's own first unit by its short
+ * scene-local label (u1) and deliberately LIES about the message count and
+ * speakers — the module must ignore both. */
 function recordedCaller(seen?: Array<StorySoFarState | null>): A3ModelCaller {
   return async (request) => {
     seen?.push(request.priorStory);
-    const anchor = String(request.scene.units[0]!.value.playOrderIndex);
+    const anchor = citeableSceneUnits(request.scene)[0]!.label;
     const narrative: A3SceneNarrative = {
       beat: "けいこは教室で小さな決断をする。",
       subtext: "迷いの下に、静かな決意がある。",
@@ -157,11 +156,27 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
     expect(final.kind === "story-so-far" ? final.body.throughSceneId : null).toBe("2");
   });
 
-  it("PROOF: a cited scene play-order label resolves to the fact id and snapshot machine fields", () => {
+  it("PROOF: A3 labels each unit u1,u2,… and the model copies [u1] in [uN] order", () => {
+    const { model } = buildClaimFixture();
+    const scene = readCompleteScene(model, CONTEXT, 1);
+    const citeable = citeableSceneUnits(scene);
+    // Small, scene-local labels the flash model can copy verbatim — NOT the large
+    // global play-order index it mis-transcribed.
+    expect(citeable.map((entry) => entry.label)).toEqual(
+      scene.units.map((_, index) => `u${index + 1}`),
+    );
+    // Each label binds back to the real fact id of the unit at that position.
+    expect(citeable[0]!.label).toBe("u1");
+    expect(citeable[0]!.factId).toBe(scene.units[0]!.factId);
+  });
+
+  it("PROOF: a cited scene-local label resolves to the fact id and snapshot machine fields", () => {
     const { model } = buildClaimFixture();
     const scene = readCompleteScene(model, CONTEXT, 1);
     const citedUnit = scene.units[0]!;
-    const label = String(citedUnit.value.playOrderIndex);
+    // The model copies the short label u1 shown for the first unit — no drop is
+    // needed for a correct citation.
+    const label = citeableSceneUnits(scene)[0]!.label;
     const object = assembleSceneSummary(model, CONTEXT, scene, {
       beat: "b",
       subtext: "s",
@@ -190,12 +205,12 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
     expect(citation.playOrderIndex).toBe(record.fromPlayOrder);
   });
 
-  it("PROOF: a claim citing ONLY an out-of-scene label is DROPPED, not crashed over", () => {
+  it("PROOF: a claim citing ONLY an out-of-range label is DROPPED, not crashed over", () => {
     const { model } = buildClaimFixture();
     const scene = readCompleteScene(model, CONTEXT, 1);
-    // A genuine label in scene 2 the model mis-cited into scene 1 — the exact
-    // recoverable mis-citation the live whole-game run hit on the FIRST claim.
-    const outOfScene = String(readCompleteScene(model, CONTEXT, 2).units[0]!.value.playOrderIndex);
+    // The safety net: a label past the scene's unit count (the flash model
+    // mis-copied it) names no unit and is repaired away rather than crashing.
+    const outOfRange = "u999";
     // Assembling does NOT throw: the unprovable claim is repaired away, so one
     // flash-model transcription slip cannot hard-fail the whole build.
     const object = assembleSceneSummary(model, CONTEXT, scene, {
@@ -207,7 +222,7 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
           statement: "存在しない証拠を引く主張。",
           kind: "beat",
           confidence: "high",
-          evidenceUnitIds: [outOfScene],
+          evidenceUnitIds: [outOfRange],
         },
       ],
       storySummary: "x",
@@ -222,8 +237,8 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
   it("PROOF: a MIX of a real and a mis-cited label keeps ONLY the resolvable citation", () => {
     const { model } = buildClaimFixture();
     const scene = readCompleteScene(model, CONTEXT, 1);
-    const good = String(scene.units[0]!.value.playOrderIndex);
-    const bad = String(readCompleteScene(model, CONTEXT, 2).units[0]!.value.playOrderIndex);
+    const good = citeableSceneUnits(scene)[0]!.label;
+    const bad = "u999";
     const object = assembleSceneSummary(model, CONTEXT, scene, {
       beat: "b",
       subtext: "s",
@@ -257,13 +272,18 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
   it("PROOF: the gate the repair feeds still REJECTS a fabricated citation", () => {
     const { model } = buildClaimFixture();
     const scene = readCompleteScene(model, CONTEXT, 1);
-    const good = String(scene.units[0]!.value.playOrderIndex);
+    const good = citeableSceneUnits(scene)[0]!.label;
     const object = assembleSceneSummary(model, CONTEXT, scene, {
       beat: "b",
       subtext: "s",
       sceneOpenThreads: [],
       sceneClaims: [
-        { statement: "直接的な語り口。", kind: "beat", confidence: "high", evidenceUnitIds: [good] },
+        {
+          statement: "直接的な語り口。",
+          kind: "beat",
+          confidence: "high",
+          evidenceUnitIds: [good],
+        },
       ],
       storySummary: "x",
       storyOpenThreads: [],

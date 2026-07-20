@@ -29,6 +29,7 @@ import {
   A7RoleError,
   A7_CHARACTER_BIO_KIND,
   A7_ROLE_ID,
+  citeableCharacterUnits,
   type A7BioDraft,
   type A7CharacterRequest,
   type A7ClaimDraft,
@@ -36,7 +37,9 @@ import {
   type A7ModelCaller,
 } from "./types.js";
 
-const PROMPT_VERSION = "itotori.role.A7.prompt.v1";
+// v2: prompt cites units by a short [uN] label the flash model can copy
+// verbatim, replacing the uuid-based fact ids it could not transcribe.
+const PROMPT_VERSION = "itotori.role.A7.prompt.v2";
 const WEB_SEARCH_IMPLEMENTATION_VERSION = "itotori.role.A7.web-search.v1";
 const WEB_SEARCH_ARGS_SCHEMA_VERSION = "itotori.tool.web-search-args.v1";
 
@@ -72,9 +75,11 @@ function webSearchToolContract(): CallSpec["tools"][number] {
   };
 }
 
-/** Render the source-facts prompt the model reasons over. The character label,
- * the whole-game unit ids, and the label are stated as FACTS; the model is asked
- * to compress meaning and cite unit ids, never to re-derive the character set. */
+/** Render the source-facts prompt the model reasons over. The decoded label and
+ * whole-game unit count are stated as FACTS; each unit is shown by a short [uN]
+ * label the model can copy verbatim. The model is asked to compress meaning and
+ * cite those labels, never to re-derive the character set or transcribe a raw
+ * unit id. */
 function renderPrompt(request: A7CharacterRequest): string {
   const specialist = specialistFor(A7_ROLE_ID);
   const character = request.character;
@@ -85,10 +90,11 @@ function renderPrompt(request: A7CharacterRequest): string {
     specialist.instructions,
     `Output kind: character-bio. Source language: ${request.sourceLanguage}. Author in the SOURCE LANGUAGE.`,
     `Character ${character.characterId} — decoded label is a FACT: ${character.decodedLabel}. ` +
-      `The character speaks in ${character.notableUnitIds.length} whole-game unit(s); cite unit ids for every claim.`,
+      `The character speaks in ${character.notableUnitIds.length} whole-game unit(s); cite every claim and ` +
+      `every notable moment using the short [uN] label shown for its unit, exactly as written — never a unit id.`,
     egress,
-    "Whole-game unit ids:",
-    ...character.notableUnitIds.map((id) => `  ${id}`),
+    "Whole-game units:",
+    ...citeableCharacterUnits(character).map(({ label }) => `  [${label}]`),
   ].join("\n");
 }
 

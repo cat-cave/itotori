@@ -23,6 +23,7 @@ import { dispatch, type DispatchRuntime } from "../src/llm/dispatch.js";
 import {
   assembleCharacterBio,
   buildA7CallSpec,
+  citeableCharacterUnits,
   buildCharacterPortrait,
   characterIndex,
   dispatchA7,
@@ -162,7 +163,8 @@ function recordedBio(
   model: ReturnType<typeof buildClaimFixture>["model"],
   request: A7CharacterRequest,
 ): WikiObject {
-  const anchor = request.character.notableUnitIds[0]!;
+  // The model cites the short label u1 shown for the first whole-game unit.
+  const anchor = citeableCharacterUnits(request.character)[0]!.label;
   const draft: A7BioDraft = {
     storyRole: "物語を動かす。",
     definingTraits: ["まっすぐ"],

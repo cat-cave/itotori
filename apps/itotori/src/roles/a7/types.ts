@@ -66,6 +66,27 @@ export interface CharacterEvidence {
   readonly scope: RouteScope;
 }
 
+/** One of a character's whole-game units paired with the SHORT, copy-reliable
+ * label the model cites it by. */
+export interface CiteableCharacterUnit {
+  /** The short label the prompt shows and the model must echo (`u1`, `u2`, …). */
+  readonly label: string;
+  /** The real snapshot unit fact id the label binds back to. */
+  readonly factId: string;
+}
+
+/** Assign each of a character's whole-game unit fact ids a short, copy-reliable
+ * label (`u1`, `u2`, …). A flash model cannot transcribe a uuid-based fact id,
+ * but it copies a two-character label reliably — so the label is what the prompt
+ * shows and what the model must echo. Both the prompt and the assembly derive
+ * the mapping from THIS function, so they never disagree and a model that echoes
+ * a label always resolves. */
+export function citeableCharacterUnits(
+  evidence: CharacterEvidence,
+): readonly CiteableCharacterUnit[] {
+  return evidence.notableUnitIds.map((factId, index) => ({ label: `u${index + 1}`, factId }));
+}
+
 /** One claim the MODEL proposes: a source-language statement plus the evidence
  * ids it cites. The module resolves each cited id against the snapshot evidence
  * index — the model never supplies a hash, subject, or play order. */

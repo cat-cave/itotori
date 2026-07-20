@@ -12,6 +12,8 @@ export {
   A7RoleError,
   A7_CHARACTER_BIO_KIND,
   A7_ROLE_ID,
+  citeableCharacterUnits,
+  type CiteableCharacterUnit,
   type A7BioDraft,
   type A7CharacterRequest,
   type A7ClaimDraft,
