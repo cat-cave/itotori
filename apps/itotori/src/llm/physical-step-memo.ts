@@ -211,9 +211,9 @@ export function memoizePhysicalSteps(
                 : {}),
             });
           } catch (error: unknown) {
-            // The structured call is a single in-flight remote request, so a
-            // transport failure after a good header is a retryable stream drop.
-            const failure = control.failure(error, "stream") ?? permanentAttemptFailure();
+            // A structured result is delivered only after the response is fully
+            // collected, so a failure after a good header may already be billed.
+            const failure = control.failure(error, "completion") ?? permanentAttemptFailure();
             return {
               kind: "incomplete",
               responseJson: null,
