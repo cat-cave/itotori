@@ -1,0 +1,30 @@
+{
+  "description": "Canonical temporary pin for TanStack AI packages and the transitive @openrouter/sdk. Guarded by scripts/assert-tanstack-openrouter-pin.mjs. Update this file, the four pin sites (apps/itotori deps + root pnpm.overrides), and the lockfile together when re-pinning; never bump one package in isolation.",
+  "appPackagePath": "apps/itotori/package.json",
+  "overridePackage": "@openrouter/sdk",
+  "packages": {
+    "@tanstack/ai": {
+      "version": "0.40.0",
+      "integrity": "sha512-7942RQkjHccHRL9lTuqAjcgt5z+281HJEvWSSEIX9ZDgntSj5Xt9cOK8SL5tXtGrjj2ZpGnzaFdog5lE4QD07A==",
+      "license": "MIT",
+      "sourceRepo": "https://github.com/TanStack/ai",
+      "publishCommit": "e3de949575eac8301c0449afa3a91ef450e9580b"
+    },
+    "@tanstack/ai-openrouter": {
+      "version": "0.15.8",
+      "integrity": "sha512-kSAb6p/j+79z2xLxUwNoPUJia6/3QHnsCajz2BDr04a6EBWJwYPi1fPGg3df433HtXXMHaC+yxzuN8YVcedBxw==",
+      "license": "MIT",
+      "sourceRepo": "https://github.com/TanStack/ai",
+      "publishCommit": "e3de949575eac8301c0449afa3a91ef450e9580b"
+    },
+    "@openrouter/sdk": {
+      "version": "0.13.55",
+      "integrity": "sha512-m7knLzfCJrrBfid01D64u+Xv5yrie8nWGpLLBEH7IQGKKX+MYGzfkMY0W5u7UUqtuZCKUB52F9hTlNXl3wJg9g==",
+      "license": "Apache-2.0",
+      "sourceRepo": "https://github.com/OpenRouterTeam/typescript-sdk",
+      "publishCommit": "36837019ea5bf171a8fd5eb0466807f6ace684bf"
+    }
+  },
+  "adapterDeclaredSdk": "0.13.20",
+  "notes": "The temporary fork is the root pnpm.overrides force of @openrouter/sdk to 0.13.55 while @tanstack/ai-openrouter@0.15.8 still declares exact 0.13.20. Offline install must materialise only the override version."
+}

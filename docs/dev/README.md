@@ -68,8 +68,9 @@ concern.
 - [`tanstack-openrouter-fork-governance.md`](tanstack-openrouter-fork-governance.md)
   — the temporary, coordinated pin of `@tanstack/ai` /
   `@tanstack/ai-openrouter` / `@openrouter/sdk` (incl. the root
-  `pnpm.overrides` fork-divergence), its provenance + license, and the
-  rebase-onto-upstream / upstream-EXIT procedures.
+  `pnpm.overrides` fork-divergence), its provenance + license, the
+  rebase-onto-upstream / upstream-EXIT procedures, the pin JSON + CI guard
+  (`scripts/assert-tanstack-openrouter-pin.mjs`), and the `.changeset` entry.
 
 ### Audit / investigation
 
