@@ -35,7 +35,7 @@
 //!
 //! See [`crate::RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT`]. No rlvm source
 //! is vendored, linked, or mechanically translated. The `use_xor_2`
-//! segment-cipher recovery for encrypted titles (Sweetie HD) is a dev-only
+//! segment-cipher recovery for encrypted titles is a dev-only
 //! `kaifuu-reallive` concern staged by the caller BEFORE constructing the
 //! port (the port consumes a pre-decoded [`ReplayEngine`]); no key material
 //! lives in this crate.
@@ -67,13 +67,6 @@ const PORT_ID: &str = "utsushi-reallive";
 
 /// Crate semantic version, sourced from Cargo metadata.
 const PORT_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// Render canvas dimensions. RealLive Sweetie HD declares
-/// `#SCREENSIZE_MOD=999,1280,720`; the port renders the composited stack
-/// at that native resolution so real-coordinate object rects land
-/// on-screen.
-const PORT_FRAME_WIDTH: u32 = 1280;
-const PORT_FRAME_HEIGHT: u32 = 720;
 
 /// Step budget for the observation drive. Sized so a VN opening reaches
 /// its BGM start + first background load + first dialogue lines; an
@@ -227,9 +220,10 @@ pub struct UtsushiReallivePort {
     /// font-size/insets + the `NAME_MOD` name box. Config-driven, not
     /// hardcoded.
     window_config: MessageWindowConfig,
-    /// The game's declared virtual screen space the `window_config`
-    /// coordinates live in (`Gameexe.screen_size_px`). The renderer scales
-    /// these to [`PORT_FRAME_WIDTH`]×[`PORT_FRAME_HEIGHT`].
+    /// The game's declared framebuffer / virtual screen space the
+    /// `window_config` coordinates live in (`Gameexe.screen_size_px`).
+    /// The render pass is built at THIS size, so every game renders in its
+    /// own declared coordinate space — no baked-in canvas.
     screen_size: (u32, u32),
 
     text_sink: Arc<PortTextSink>,
@@ -483,9 +477,10 @@ impl UtsushiReallivePort {
     ///
     /// ONE message per frame — the current message, NOT the whole scene
     /// concatenated. The box position/colour/alpha/font-size/insets come
-    /// from `self.window_config` (`#WINDOW.000`), scaled from the game's
-    /// `self.screen_size` to the port frame. A speaker + `NAME_MOD=1`
-    /// yields a separate name box; narration renders none.
+    /// from `self.window_config` (`#WINDOW.000`), laid out in the game's
+    /// own `self.screen_size` coordinate space (the render pass is built
+    /// at that size). A speaker + `NAME_MOD=1` yields a separate name box;
+    /// narration renders none.
     ///
     /// - The PRIVATE frame (real decoded g00 + dialogue) is written
     ///   uncommitted and hashable, under `<root>/private-full/`.
@@ -503,7 +498,11 @@ impl UtsushiReallivePort {
         root: &RuntimeArtifactRoot,
         run_id: &str,
     ) -> Result<FrameArtifact, String> {
-        let mut pass = RenderPass::with_dimensions(PORT_FRAME_WIDTH, PORT_FRAME_HEIGHT)
+        // Render at the game's OWN declared framebuffer size, so a
+        // 640x480, 800x600, or HD title each composites in its native
+        // coordinate space and its real object rects land on-screen.
+        let (frame_width, frame_height) = self.screen_size;
+        let mut pass = RenderPass::with_dimensions(frame_width, frame_height)
             .map_err(|error| format!("render pass build failed: {error}"))?
             .with_assets(Arc::clone(&self.assets));
         let text = TextLayer::message_window(
@@ -511,7 +510,7 @@ impl UtsushiReallivePort {
             message.speaker.as_deref(),
             &self.window_config,
             self.screen_size,
-            (PORT_FRAME_WIDTH, PORT_FRAME_HEIGHT),
+            self.screen_size,
         );
         // Full-fidelity private frames live beside the managed public root
         // but are never announced/committed.

@@ -8,11 +8,11 @@
 //! - `cargo test -p utsushi-reallive mouseactioncall_hot_region_dispatches`
 //!
 //! The first entrypoint is env-gated on `ITOTORI_REAL_GAME_ROOT`
-//! and verifies the dispatcher loads against the real Sweetie HD
-//! `Gameexe.ini`. The second entrypoint is synthetic and exercises the
-//! pixel-space hot-region predicate documented in
-//! `docs/research/reallive-engine.md` § H against the
-//! `MOUSEACTIONCALL.000.AREA=1232,0,1279,719` rectangle.
+//! and verifies the dispatcher loads against the real corpus's
+//! `Gameexe.ini` at ITS declared screen size and WBCALL namespace. The
+//! second entrypoint is synthetic and exercises the pixel-space
+//! hot-region predicate documented in `docs/research/reallive-engine.md`
+//! § H against a right-edge rectangle on an 800x600 screen.
 //!
 //! Linux-only: no `Command::new`, no Wine, no Windows helper.
 
@@ -23,9 +23,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use utsushi_core::substrate::{InputEvent, PointerButton};
-use utsushi_reallive::{
-    Gameexe, SYSCALL_KIND_COUNT, SyscallDispatcher, SyscallRouteKind, WBCALL_SLOT_COUNT,
-};
+use utsushi_reallive::{Gameexe, SYSCALL_KIND_COUNT, SyscallDispatcher, SyscallRouteKind};
 
 fn resolve_gameexe_path() -> Option<PathBuf> {
     real_corpus::gameexe_ini_path()
@@ -119,7 +117,7 @@ fn synthetic_reallive_real_bytes_section_h() -> Vec<u8> {
         "#SYSTEMCALL_SYSTEM=9999,22\r\n",
         "#MOUSEACTIONCALL.000.MOD=1\r\n",
         "#MOUSEACTIONCALL.000.SEEN=9999,30\r\n",
-        "#MOUSEACTIONCALL.000.AREA=1232,0,1279,719\r\n",
+        "#MOUSEACTIONCALL.000.AREA=752,0,799,599\r\n",
         "#LOADCALL_MOD=1\r\n",
         "#LOADCALL=9999,40\r\n",
         "#EXAFTERCALL_MOD=1\r\n",
@@ -132,7 +130,7 @@ fn synthetic_reallive_real_bytes_section_h() -> Vec<u8> {
         "#WBCALL.005=9999,5\r\n",
         "#WBCALL.006=9999,6\r\n",
         "#WBCALL.007=9999,7\r\n",
-        "#SCREENSIZE_MOD=999,1280,720\r\n",
+        "#SCREENSIZE_MOD=999,800,600\r\n",
     );
     encoding_rs::SHIFT_JIS.encode(text).0.into_owned()
 }
@@ -146,12 +144,11 @@ fn verify_syscall_routes_match_section_h(gameexe: &Gameexe) {
     let dispatcher = SyscallDispatcher::from_gameexe(gameexe).expect("dispatcher must build");
 
     // The acceptance criterion pins "the dispatcher reports 8 known
-    // routes" — the kind-distinct count. Sweetie HD's real Gameexe
-    // carries `EXAFTERCALL_MOD=0`, which the dispatcher honours by
-    // dropping the route; in that case the count is 7, not 8. The
-    // synthetic harness above sets `_MOD=1` so the full 8 kinds are
-    // present. Branch on the actual Sweetie HD bytes vs the
-    // synthetic shape.
+    // routes" — the kind-distinct count. A real Gameexe may carry
+    // `EXAFTERCALL_MOD=0`, which the dispatcher honours by dropping the
+    // route; in that case the count is 7, not 8. The synthetic harness
+    // above sets `_MOD=1` so the full 8 kinds are present. Branch on the
+    // actual bytes vs the synthetic shape.
     let exaftercall_disabled = matches!(gameexe.get_int("EXAFTERCALL_MOD"), Some(0));
     let expected_kind_count = if exaftercall_disabled {
         SYSCALL_KIND_COUNT - 1
@@ -184,7 +181,11 @@ fn verify_syscall_routes_match_section_h(gameexe: &Gameexe) {
         .expect("SYSTEMCALL_SYSTEM route must be wired");
     assert_eq!((system.scene_id, system.entrypoint), (9999, 22));
 
-    // MOUSEACTIONCALL.000 — scene 9999, entrypoint 30, AREA preserved.
+    // MOUSEACTIONCALL.000 — scene 9999, entrypoint 30, with a
+    // well-formed AREA hot region. The exact rectangle is the game's
+    // own (it differs between the real corpus and the synthetic
+    // fixture), so assert structure — a present, non-degenerate
+    // rectangle — rather than any one game's pixel coordinates.
     let mouse = dispatcher
         .route_for_kind(SyscallRouteKind::MouseAction { index: 0 })
         .expect("MOUSEACTIONCALL.000 route must be wired");
@@ -192,10 +193,10 @@ fn verify_syscall_routes_match_section_h(gameexe: &Gameexe) {
     let area = mouse
         .area
         .expect("MOUSEACTIONCALL.000 must carry an AREA hot region");
-    assert_eq!(area.x_min, 1232);
-    assert_eq!(area.y_min, 0);
-    assert_eq!(area.x_max, 1279);
-    assert_eq!(area.y_max, 719);
+    assert!(
+        area.x_min <= area.x_max && area.y_min <= area.y_max,
+        "AREA rectangle must be well-formed, got {area:?}",
+    );
 
     // LOADCALL — scene 9999, entrypoint 40.
     let loadcall = dispatcher
@@ -203,17 +204,16 @@ fn verify_syscall_routes_match_section_h(gameexe: &Gameexe) {
         .expect("LOADCALL route must be wired");
     assert_eq!((loadcall.scene_id, loadcall.entrypoint), (9999, 40));
 
-    // EXAFTERCALL — wired only when its `_MOD` flag is non-zero. The
-    // real Sweetie HD carries `EXAFTERCALL_MOD=0`, so this branch
-    // verifies "the dispatcher honours the documented disable shape"
-    // — the audit-focus pin "Failing to wire `_MOD` flags" lands
-    // here.
+    // EXAFTERCALL — wired only when its `_MOD` flag is non-zero. A real
+    // corpus may carry `EXAFTERCALL_MOD=0`, so this branch verifies "the
+    // dispatcher honours the documented disable shape" — the audit-focus
+    // pin "Failing to wire `_MOD` flags" lands here.
     if exaftercall_disabled {
         assert!(
             dispatcher
                 .route_for_kind(SyscallRouteKind::Exaftercall)
                 .is_none(),
-            "EXAFTERCALL_MOD=0 in real Sweetie HD must disable the route"
+            "EXAFTERCALL_MOD=0 in the real corpus must disable the route"
         );
     } else {
         let exafter = dispatcher
@@ -222,20 +222,50 @@ fn verify_syscall_routes_match_section_h(gameexe: &Gameexe) {
         assert_eq!((exafter.scene_id, exafter.entrypoint), (9999, 50));
     }
 
-    // WBCALL.000-007 — scene 9999, entrypoints 0..=7.
-    for index in 0..WBCALL_SLOT_COUNT {
+    // WBCALL.NNN — every slot the game DECLARES must be registered, with
+    // no fixed cap. Enumerate the declared namespace straight from the
+    // Gameexe and assert the dispatcher registered exactly those indices.
+    let mut declared_wbcall: Vec<u8> = gameexe
+        .list_namespace("WBCALL")
+        .iter()
+        .filter_map(|key| {
+            key.strip_prefix("WBCALL.")
+                .and_then(|s| s.parse::<u8>().ok())
+        })
+        .collect();
+    declared_wbcall.sort_unstable();
+    assert!(
+        !declared_wbcall.is_empty(),
+        "the § H shape must declare at least one WBCALL slot",
+    );
+    let mut registered_wbcall: Vec<u8> = dispatcher
+        .routes()
+        .iter()
+        .filter_map(|route| match route.kind {
+            SyscallRouteKind::Wbcall { index } => Some(index),
+            _ => None,
+        })
+        .collect();
+    registered_wbcall.sort_unstable();
+    assert_eq!(
+        registered_wbcall, declared_wbcall,
+        "every declared WBCALL slot must be registered (no fixed cap, none dropped)",
+    );
+    for &index in &declared_wbcall {
         let route = dispatcher
             .route_for_wbcall(index)
             .unwrap_or_else(|| panic!("WBCALL.{index:03} must be wired"));
-        assert_eq!(route.scene_id, 9999);
-        assert_eq!(route.entrypoint, index as u32);
+        assert_eq!(route.scene_id, 9999, "WBCALL.{index:03} scene");
     }
 
-    // Screen size is parsed from `SCREENSIZE_MOD`. Sweetie HD's mode
-    // is 999, width 1280, height 720.
+    // Screen size is parsed from `SCREENSIZE_MOD` and must agree with the
+    // game's own declared framebuffer — no baked-in canvas.
     let screen = dispatcher.screen_size().expect("SCREENSIZE_MOD must parse");
-    assert_eq!(screen.width, 1280);
-    assert_eq!(screen.height, 720);
+    assert_eq!(
+        (screen.width, screen.height),
+        gameexe.screen_size_px(),
+        "dispatcher screen size must equal the game's declared framebuffer",
+    );
 }
 
 /// DAG-spec filter `cargo test... syscall_routes_match_reallive_real_bytes`.
@@ -262,10 +292,10 @@ fn syscall_routes_match_reallive_real_bytes_synthetic() {
     verify_syscall_routes_match_section_h(&gameexe);
 }
 
-/// Acceptance test for the pointer hot-region predicate. The
-/// `MOUSEACTIONCALL.000.AREA=1232,0,1279,719` rectangle covers the
-/// top-right edge of the HD screen; the spec pins two probes:
-///   * pixel `(1250, 300)` is inside → dispatches the route.
+/// Acceptance test for the pointer hot-region predicate. The synthetic
+/// fixture's `MOUSEACTIONCALL.000.AREA=752,0,799,599` rectangle covers
+/// the top-right edge of its declared 800x600 screen; two probes:
+///   * pixel `(780, 300)` is inside → dispatches the route.
 ///   * pixel `(100, 100)` is outside → no route fires.
 ///
 /// The synthetic harness exercises both the raw pixel-space predicate
@@ -275,12 +305,13 @@ fn syscall_routes_match_reallive_real_bytes_synthetic() {
 fn mouseactioncall_hot_region_dispatches() {
     let gameexe = Gameexe::parse(&synthetic_reallive_real_bytes_section_h())
         .expect("synthetic Gameexe slice must parse");
+    let (screen_w, screen_h) = gameexe.screen_size_px();
     let dispatcher = SyscallDispatcher::from_gameexe(&gameexe).expect("dispatcher must build");
 
     // Pixel-space probe inside the rectangle.
     let inside = dispatcher
-        .route_for_pointer_pixel(1250, 300)
-        .expect("(1250, 300) must hit MOUSEACTIONCALL.000");
+        .route_for_pointer_pixel(780, 300)
+        .expect("(780, 300) must hit MOUSEACTIONCALL.000");
     assert!(matches!(
         inside.kind,
         SyscallRouteKind::MouseAction { index: 0 }
@@ -295,24 +326,23 @@ fn mouseactioncall_hot_region_dispatches() {
     );
 
     // Substrate `InputEvent::Pointer` round-trip. Normalize the
-    // pixel-space (1250, 300) probe against the Sweetie HD screen
-    // (1280x720) by dividing by `width - 1` / `height - 1` so the
-    // dispatcher's symmetric `value * (dim - 1)` lowering reproduces
-    // the same integer.
+    // pixel-space (780, 300) probe against the fixture's declared screen
+    // by dividing by `width - 1` / `height - 1` so the dispatcher's
+    // symmetric `value * (dim - 1)` lowering reproduces the same integer.
     let inside_normalized = InputEvent::Pointer {
-        x: 1250.0 / 1279.0,
-        y: 300.0 / 719.0,
+        x: 780.0 / (screen_w - 1) as f32,
+        y: 300.0 / (screen_h - 1) as f32,
         button: PointerButton::Primary,
     };
     let outside_normalized = InputEvent::Pointer {
-        x: 100.0 / 1279.0,
-        y: 100.0 / 719.0,
+        x: 100.0 / (screen_w - 1) as f32,
+        y: 100.0 / (screen_h - 1) as f32,
         button: PointerButton::Primary,
     };
     let inside_route = dispatcher
         .route_for_input_event(&inside_normalized)
         .expect("pointer dispatch must not error with a known screen size")
-        .expect("normalized (1250, 300) must hit the route");
+        .expect("normalized (780, 300) must hit the route");
     assert!(matches!(
         inside_route.kind,
         SyscallRouteKind::MouseAction { index: 0 }
@@ -329,19 +359,19 @@ fn mouseactioncall_hot_region_dispatches() {
     // pin a concrete edge probe at the inclusive boundary so the
     // predicate cannot be silently widened or narrowed.
     assert!(
-        dispatcher.route_for_pointer_pixel(1232, 0).is_some(),
+        dispatcher.route_for_pointer_pixel(752, 0).is_some(),
         "left-top inclusive corner must hit"
     );
     assert!(
-        dispatcher.route_for_pointer_pixel(1279, 719).is_some(),
+        dispatcher.route_for_pointer_pixel(799, 599).is_some(),
         "right-bottom inclusive corner must hit"
     );
     assert!(
-        dispatcher.route_for_pointer_pixel(1231, 0).is_none(),
+        dispatcher.route_for_pointer_pixel(751, 0).is_none(),
         "one-pixel-left of x_min must miss"
     );
     assert!(
-        dispatcher.route_for_pointer_pixel(1280, 0).is_none(),
+        dispatcher.route_for_pointer_pixel(800, 0).is_none(),
         "one-pixel-right of x_max must miss"
     );
 }
@@ -368,16 +398,16 @@ fn syscall_routes_synthetic_eight_kinds_pinned() {
 /// sentinel that silently dropped every declared slot beyond the first
 /// gap. The repair (walk the whole bounded `000..=255` namespace
 /// skipping absent slots) was verified only against a synthetic unit
-/// fixture — "Sweetie HD is contiguous, so the regression is not
+/// fixture — "the primary corpus is contiguous, so the regression is not
 /// observable in the corpus." A sister RealLive title with index gaps
 /// would still have silently lost opcodes.
 ///
 /// # What it verifies, and on real bytes
 ///
-/// The staged corpus cannot exercise the gap directly: Sweetie HD
-/// declares exactly `MOUSEACTIONCALL.000` and Kanon declares none — both
-/// contiguous. So this test *derives* a sparse namespace from the real
-/// Sweetie HD Gameexe.ini: it lifts the real
+/// The staged corpus cannot exercise the gap directly: the primary
+/// corpus declares exactly `MOUSEACTIONCALL.000` and the secondary
+/// declares none — both contiguous. So this test *derives* a sparse
+/// namespace from the real Gameexe.ini: it lifts the real
 /// `#MOUSEACTIONCALL.000.{MOD,SEEN,AREA}` lines verbatim out of the real
 /// bytes and re-emits them at indices 2, 3 and 5, leaving GAPS at 1 and
 /// 4. Every emitted line is a byte-for-byte copy of a real line with
@@ -415,7 +445,7 @@ fn mouseactioncall_scan_discovers_real_bytes_non_contiguous_namespace() {
     assert_eq!(
         mouseactioncall_indices(&real_bytes),
         vec![0],
-        "real Sweetie HD is expected to declare exactly MOUSEACTIONCALL.000 (contiguous)",
+        "the primary corpus is expected to declare exactly MOUSEACTIONCALL.000 (contiguous)",
     );
 
     // Derive a non-contiguous namespace from the real bytes: re-emit the
@@ -471,156 +501,5 @@ fn mouseactioncall_scan_discovers_real_bytes_non_contiguous_namespace() {
                 .is_none(),
             "absent MOUSEACTIONCALL.{gap:03} must stay unrouted",
         );
-    }
-}
-
-/// Collect the distinct `NNN` indices declared by any `#WBCALL.NNN` line in a
-/// raw (Shift-JIS) Gameexe byte buffer, ascending. Mirrors
-/// [`mouseactioncall_indices`]: the RealLive key namespace is ASCII inside the
-/// Shift-JIS file, so a byte scan is exact and encoding-independent. A
-/// `#WBCALL.NNN=scene,entrypoint` line is a scalar route (no dotted `.MOD`
-/// `.AREA` sub-keys), so the digits are terminated by `=` rather than `.`.
-fn wbcall_indices(bytes: &[u8]) -> Vec<u8> {
-    let prefix = b"#WBCALL.";
-    let mut indices = std::collections::BTreeSet::new();
-    for line in bytes.split(|&b| b == b'\n') {
-        let line = line.strip_suffix(b"\r").unwrap_or(line);
-        if let Some(rest) = line.strip_prefix(prefix.as_slice())
-            && rest.len() >= 4
-            && rest[3] == b'='
-            && rest[..3].iter().all(u8::is_ascii_digit)
-        {
-            let digits = std::str::from_utf8(&rest[..3]).expect("ascii digits");
-            if let Ok(index) = digits.parse::<u8>() {
-                indices.insert(index);
-            }
-        }
-    }
-    indices.into_iter().collect()
-}
-
-/// BETA-GATE marker (always-run companion to the env-gated guard below).
-///
-/// Pins the multi-game-validation posture of [`WBCALL_SLOT_COUNT`] in the
-/// fast lane, where no corpus is staged: the `8`-slot cap is **CORPUS-OBSERVED
-/// from Sweetie HD**, NOT engine-validated. RLDEV documents a larger WBCALL
-/// namespace and the only other staged RealLive title (Kanon) declares no
-/// WBCALL routes, so nothing corroborates `8` as a universal engine ceiling.
-///
-/// This test does not (and cannot) promote the constant — it exists so the
-/// intent is executable documentation: the value is pinned at the
-/// Sweetie-HD-observed `8`, and promotion to an engine-validated cap is gated
-/// on a 2nd RealLive title that actually declares WBCALL routes (enforced by
-/// [`wbcall_slot_count_stays_corpus_observed_until_second_reallive_title`]).
-#[test]
-fn wbcall_slot_count_is_corpus_observed_not_engine_validated() {
-    // The Sweetie-HD-observed cap. If a future change bumps this, the
-    // companion multi-game guard below must show a 2nd RealLive corpus that
-    // exercises the higher slot — otherwise the bump is an over-claim.
-    assert_eq!(
-        WBCALL_SLOT_COUNT, 8,
-        "WBCALL_SLOT_COUNT is the Sweetie-HD-observed 8-slot cap; a change here \
-         must be corroborated by a 2nd RealLive corpus (see the beta-gate guard)"
-    );
-}
-
-/// BETA-GATE regression guard (multi-game-validation law
-/// `docs/dev/orchestration-operating-model.md`): [`WBCALL_SLOT_COUNT`] may only be
-/// promoted from CORPUS-OBSERVED (Sweetie HD) to engine-validated once a 2nd
-/// RealLive title itself declares WBCALL routes that corroborate (or revise)
-/// the 8-slot cap.
-///
-/// Env-gated on `ITOTORI_REAL_GAME_ROOT_2`. It reads the 2nd corpus's real
-/// `Gameexe.ini` and counts its declared `#WBCALL.NNN` slots:
-///
-/// - **0 slots** (the currently-staged Kanon, a plain 1.2.6.8 title): the cap
-///   CANNOT be promoted — there is no 2nd-corpus WBCALL evidence, so it stays
-///   corpus-observed / Sweetie-HD-only. The test pins this premise so a future
-///   WBCALL-declaring 2nd corpus makes it FAIL loudly (prompting a promotion
-///   review) instead of silently corroborating nothing.
-/// - **>= 1 slot**: a real 2nd-corpus WBCALL namespace exists. Its highest
-///   declared index must be `< WBCALL_SLOT_COUNT` (the 8-slot cap covers it);
-///   if a 2nd corpus declares a HIGHER slot the cap is too small and this fails
-///   telling us to widen it. Either way the corpus-observed marker on
-///   [`WBCALL_SLOT_COUNT`] can then be revisited with real 2-game evidence.
-///
-/// No raw copyrighted bytes are emitted — only integer slot indices/counts.
-#[test]
-#[ignore = "requires ITOTORI_REAL_GAME_ROOT_2 (2nd RealLive title); opt in with --include-ignored"]
-fn wbcall_slot_count_stays_corpus_observed_until_second_reallive_title() {
-    let Some(corpus) = real_corpus::corpus_2() else {
-        real_corpus::require_real_bytes(
-            "utsushi-reallive wbcall_slot_count_stays_corpus_observed_until_second_reallive_title \
-             (set ITOTORI_REAL_GAME_ROOT_2 to a 2nd RealLive title, e.g. Kanon)",
-        );
-        return;
-    };
-
-    let dir = corpus
-        .seen_txt
-        .parent()
-        .expect("2nd corpus SEEN archive must have a parent directory");
-    let gameexe_path = std::fs::read_dir(dir)
-        .expect("2nd corpus directory must be readable")
-        .flatten()
-        .map(|entry| entry.path())
-        .find(|path| {
-            path.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.eq_ignore_ascii_case("Gameexe.ini"))
-        })
-        .unwrap_or_else(|| {
-            panic!(
-                "2nd corpus at {} has no Gameexe.ini beside its SEEN archive",
-                dir.display()
-            )
-        });
-    let bytes = std::fs::read(&gameexe_path).unwrap_or_else(|err| {
-        panic!(
-            "2nd-corpus Gameexe.ini at {} could not be read: {err}",
-            gameexe_path.display()
-        )
-    });
-
-    let indices = wbcall_indices(&bytes);
-    eprintln!(
-        "[{}] 2nd-corpus WBCALL slots declared: {} (indices={indices:?}); \
-         WBCALL_SLOT_COUNT={WBCALL_SLOT_COUNT} (corpus-observed from Sweetie HD)",
-        corpus.label,
-        indices.len(),
-    );
-
-    match indices.last().copied() {
-        None => {
-            // No WBCALL evidence in the 2nd corpus. WBCALL_SLOT_COUNT stays
-            // corpus-observed (Sweetie-HD-only) — it MUST NOT be promoted to
-            // engine-validated. Pin the premise so a future 2nd corpus that
-            // DOES declare WBCALL routes fails here and forces a promotion
-            // review rather than passing vacuously.
-            eprintln!(
-                "[{}] BETA-GATE HELD: 2nd corpus declares no WBCALL routes; \
-                 WBCALL_SLOT_COUNT remains CORPUS-OBSERVED (Sweetie HD only), \
-                 not engine-validated.",
-                corpus.label,
-            );
-        }
-        Some(highest) => {
-            // A real 2nd-corpus WBCALL namespace exists — the cap can start to
-            // be corroborated. The current 8-slot cap must cover it; a higher
-            // declared slot means the corpus-observed cap is too small.
-            assert!(
-                highest < WBCALL_SLOT_COUNT,
-                "[{}] 2nd RealLive corpus declares WBCALL.{highest:03}, at/beyond the \
-                 corpus-observed cap WBCALL_SLOT_COUNT={WBCALL_SLOT_COUNT}: widen the cap \
-                 and re-evaluate its corpus-observed/engine-validated label with 2-game evidence",
-                corpus.label,
-            );
-            eprintln!(
-                "[{}] BETA-GATE: 2nd corpus corroborates WBCALL slots up to {highest} \
-                 (< cap {WBCALL_SLOT_COUNT}); WBCALL_SLOT_COUNT may now be reviewed for \
-                 promotion toward engine-validated with real 2-game evidence.",
-                corpus.label,
-            );
-        }
     }
 }

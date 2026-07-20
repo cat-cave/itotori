@@ -1,29 +1,28 @@
 //! Real-bytes integration tests for the audio RLOperation
 //! family.
 //!
-//! Pins the `koePlay` and `bgmPlay` resolution paths against Sweetie HD's
-//! `Gameexe.ini` (`#FOLDNAME.BGM`, `#NAMAE` entries) and against the
-//! real `bgm/ASA.nwa` / `koe/z0001.ovk` on-disk layout. Mirrors the
-//! `nwa_real_bytes.rs` / `ovk_real_bytes.rs` env-gating pattern.
+//! Pins the `koePlay` and `bgmPlay` resolution paths against the primary
+//! corpus's `Gameexe.ini` (`#FOLDNAME.BGM`) and against its real
+//! `bgm/*.nwa` on-disk layout. Mirrors the `nwa_real_bytes.rs` /
+//! `ovk_real_bytes.rs` env-gating pattern.
 //!
 //! # Acceptance criteria pinned here
 //!
-//! 1. [`koe_play_resolves_through_namae_table`] —
-//!    spec-pinned name. With the Sweetie HD Gameexe.ini's NAMAE table
-//!    populated, `koePlay(46)` dispatched through the rlop emits an
-//!    `AudioEvent { kind: VoicePlay, payload: Voice { archive_id:
-//!    "z0001", sample_id: 46,... } }` — the spec's E1 emission. The
-//!    archive_id resolution path: `koePlay(46)` consults the runtime's
-//!    current-speaker register (defaulted to archive `1` for Sweetie
-//!    HD's `z0001.ovk` system-event archive), formatted as `z<id:04>`.
+//! 1. [`koe_play_archive_selection_is_authoritative_not_defaulted`] — a
+//!    fresh runtime has NO current voice archive, so `koePlay(sample)`
+//!    surfaces a typed unresolved observation rather than a baked-in
+//!    default. Once an archive is established by an authoritative
+//!    operation (`koePlayEx`) or explicit configuration, `koePlay`
+//!    resolves through it to `AudioEvent { kind: VoicePlay, payload:
+//!    Voice { archive_id, sample_id,... } }` formatted as `z<id:04>`.
 //! 2. [`bgm_play_resolves_through_foldname_bgm`] — `bgmPlay("ASA")`
-//!    dispatched after `set_gameexe` with Sweetie HD's
+//!    dispatched after `set_gameexe` with the corpus's
 //!    `#FOLDNAME.BGM = "BGM" = 0: "BGM.PAK"` emits an
 //!    `AudioEvent { kind: BgmStart, payload: Asset { asset_id:
 //!    "bgm/ASA" } }` — the spec's E1 emission.
 //! 3. [`bgm_play_asset_id_resolves_against_real_asa_nwa_path`] — the
 //!    resolved `asset_id = "bgm/ASA"` (when post-pended with the
-//!    `.nwa` extension and routed under Sweetie HD's
+//!    `.nwa` extension and routed under the corpus's
 //!    `REALLIVEDATA/bgm/`) lands on the real `ASA.nwa` file.
 
 #[path = "support/real_corpus.rs"]
@@ -34,8 +33,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use utsushi_reallive::{
-    AudioEventEmitter, AudioEventKind, AudioEventPayload, AudioRuntime, BgmPlayOp, ExprValue,
-    Gameexe, KoePlayOp, RLOperation, Vm,
+    AudioEventEmitter, AudioEventKind, AudioEventPayload, AudioRuntime, AudioRuntimeWarning,
+    BgmPlayOp, ExprValue, Gameexe, KoePlayExOp, KoePlayOp, RLOperation, Vm,
 };
 
 const ASA_NWA: &str = "ASA.nwa";
@@ -56,91 +55,72 @@ fn load_reallive_real_bytes_gameexe() -> Option<Arc<Gameexe>> {
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn koe_play_resolves_through_namae_table() {
+fn koe_play_archive_selection_is_authoritative_not_defaulted() {
     let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
-        real_corpus::require_real_bytes("utsushi-reallive koe_play_resolves_through_namae_table");
+        real_corpus::require_real_bytes(
+            "utsushi-reallive koe_play_archive_selection_is_authoritative_not_defaulted",
+        );
         return;
     };
     let emitter = Arc::new(AudioEventEmitter::new());
     let runtime = Arc::new(AudioRuntime::new(Arc::clone(&emitter)));
     runtime.set_gameexe(Arc::clone(&gameexe));
 
-    // The default speaker archive is `1` (Sweetie HD's `z0001.ovk`
-    // system-event archive). The spec's acceptance criterion uses
-    // koePlay(46) against this default.
+    // A fresh runtime over the REAL gameexe has NO current voice archive:
+    // there is no baked-in default derived from any one game's archive
+    // numbering.
     assert_eq!(
-        runtime.current_speaker_archive_id(),
-        1,
-        "default speaker archive is 1 (system events / z0001.ovk)",
+        runtime.current_speaker_archive(),
+        None,
+        "no baked-in default voice archive — the register starts UNKNOWN",
     );
 
-    // koePlay($intA[0]=46) — the spec's acceptance dispatch.
+    // koePlay(46) with an unresolved archive must NOT emit a guessed
+    // VoicePlay; it surfaces a typed unresolved observation instead.
     let mut vm = Vm::new(0u16, 0);
-    let op = KoePlayOp::new(Arc::clone(&runtime));
-    op.dispatch(&mut vm, &[ExprValue::Int(46)]);
+    KoePlayOp::new(Arc::clone(&runtime)).dispatch(&mut vm, &[ExprValue::Int(46)]);
+    assert!(
+        runtime.emitter().store().in_order_snapshot().is_empty(),
+        "an unresolved koePlay must not emit a VoicePlay",
+    );
+    assert!(
+        runtime
+            .take_warnings()
+            .contains(&AudioRuntimeWarning::NoCurrentSpeaker),
+        "an unresolved koePlay must record the typed observation",
+    );
+
+    // An authoritative operation that names the archive (koePlayEx)
+    // establishes it; a following bare koePlay resolves through it.
+    KoePlayExOp::new(Arc::clone(&runtime))
+        .dispatch(&mut vm, &[ExprValue::Int(15), ExprValue::Int(3)]);
+    assert_eq!(runtime.current_speaker_archive(), Some(15));
+    KoePlayOp::new(Arc::clone(&runtime)).dispatch(&mut vm, &[ExprValue::Int(46)]);
 
     let events = runtime.emitter().store().in_order_snapshot();
-    assert_eq!(events.len(), 1, "exactly one VoicePlay event emitted");
-    let event = &events[0];
+    let voice = events
+        .iter()
+        .rev()
+        .find(|event| event.event_kind == AudioEventKind::VoicePlay)
+        .expect("a VoicePlay must be emitted once an archive is established");
     assert_eq!(
-        event.event_kind,
-        AudioEventKind::VoicePlay,
-        "kind must be VoicePlay per UTSUSHI-217 acceptance criterion",
-    );
-    assert_eq!(
-        event.evidence_tier,
+        voice.evidence_tier,
         utsushi_core::substrate::EvidenceTier::E1,
-        "evidence_tier must be E1 per UTSUSHI-217 spec; see audio.rs module docstring for the \
-         substrate-gap reconciliation against the E0 ceiling on the substrate sink",
+        "evidence_tier must be E1; see audio.rs module docstring for the substrate-gap \
+         reconciliation against the E0 ceiling on the substrate sink",
     );
-    match &event.payload {
+    match &voice.payload {
         AudioEventPayload::Voice {
             archive_id,
             sample_id,
         } => {
             assert_eq!(
-                archive_id, "z0001",
-                "archive_id MUST be 'z0001' (the z<archive:04> formatting of archive_id=1)",
+                archive_id, "z0015",
+                "koePlay resolves through the established archive (z<id:04> of 15)",
             );
-            assert_eq!(*sample_id, 46, "sample_id MUST be 46 (the koePlay int arg)",);
+            assert_eq!(*sample_id, 46, "sample_id MUST be the koePlay int arg (46)");
         }
         other => panic!("expected Voice payload, got {other:?}"),
-    }
-
-    // Cross-validate the NAMAE table is actually populated against
-    // Sweetie HD bytes — pick a speaker named in the corpus. The
-    // Sweetie HD shape:
-    //   #NAMAE="凛" = "凛" = (1, 015, -1)
-    // The parser stores (mode=1, color_table_index=15, reserved=-1); the
-    // best-effort composite voice-archive id (a numbering coincidence in
-    // this title) is `mode * 1000 + color_table_index = 1015`, matching
-    // the on-disk `koe/z1015.ovk` file. (The MIDDLE field is a
-    // #COLOR_TABLE index — the speaker's text colour — not a voice slot;
-    // the authoritative voice cue is koePlay.)
-    if let Some(entry) = gameexe.get_namae("NAMAE.凛") {
-        assert_eq!(
-            entry.mode, 1,
-            "Sweetie HD's NAMAE.凛 row's mode field is literally 1 (the second comma-separated \
-             integer 015 is the color_table_index field)",
-        );
-        assert_eq!(
-            entry.color_table_index, 15,
-            "Sweetie HD's NAMAE.凛 row pins color_table_index=15; composite voice-archive id = \
-             1*1000 + 15 = 1015 ↔ koe/z1015.ovk",
-        );
-        // Switching speaker re-routes the next koePlay through the
-        // composite archive id.
-        assert!(runtime.select_speaker_by_display_name("凛"));
-        assert_eq!(runtime.current_speaker_archive_id(), 1015);
-        let mut vm2 = Vm::new(0u16, 0);
-        KoePlayOp::new(Arc::clone(&runtime)).dispatch(&mut vm2, &[ExprValue::Int(7)]);
-        let events_after = runtime.emitter().store().in_order_snapshot();
-        match &events_after.last().expect("at least one event").payload {
-            AudioEventPayload::Voice { archive_id, .. } => {
-                assert_eq!(archive_id, "z1015", "speaker-switch routed to z1015");
-            }
-            other => panic!("expected Voice, got {other:?}"),
-        }
     }
 }
 
@@ -155,13 +135,13 @@ fn bgm_play_resolves_through_foldname_bgm() {
     let runtime = Arc::new(AudioRuntime::new(Arc::clone(&emitter)));
     runtime.set_gameexe(Arc::clone(&gameexe));
 
-    // The Gameexe MUST carry FOLDNAME.BGM — Sweetie HD's value is
+    // The Gameexe MUST carry FOLDNAME.BGM — a typical value is
     // ("BGM", 0, "BGM.PAK"). The runtime lower-cases the subdir name
     // before assembling the asset id (matches the on-disk
     // case-insensitive convention).
     assert!(
         gameexe.get_tuple3("FOLDNAME.BGM").is_some(),
-        "Sweetie HD Gameexe.ini must declare #FOLDNAME.BGM",
+        "the corpus Gameexe.ini must declare #FOLDNAME.BGM",
     );
 
     let mut vm = Vm::new(0u16, 0);
