@@ -15,6 +15,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ClaimValidationError, validateWikiObjectClaims } from "../src/wiki/claim-validation.js";
+import { buildEvidenceIndex } from "../src/wiki/evidence-index.js";
 import {
   EgressDeniedError,
   type EgressPolicy,
@@ -30,6 +31,7 @@ import {
   buildA7WebSearchTool,
   buildCharacterPortrait,
   characterIndex,
+  citeableCharacterUnits,
   readCharacterEvidence,
   type A7BioDraft,
   type A7Context,
@@ -74,11 +76,12 @@ const portraits: A7PortraitProvider = (characterId) => ({
 });
 
 /** A recorded responder that authors a bio citing the character's own first
- * whole-game unit and LIES with a fabricated trait id the module must ignore. */
+ * whole-game unit by its short label (u1) and LIES with a fabricated trait id
+ * the module must ignore. */
 function recordedCaller(seen?: string[]): A7ModelCaller {
   return async (request) => {
     seen?.push(request.character.characterId);
-    const anchor = request.character.notableUnitIds[0]!;
+    const anchor = citeableCharacterUnits(request.character)[0]!.label;
     const draft: A7BioDraft = {
       storyRole: `${request.character.decodedLabel} は物語を動かす。`,
       definingTraits: ["まっすぐ", "芯が強い"],
@@ -160,29 +163,119 @@ describe("clause 1 — one cited, portrait-bearing bio for EVERY indexed charact
     );
   });
 
-  it("PROOF: a citation OUTSIDE the visible snapshot FAILS (evidence-unresolvable)", () => {
+  it("PROOF: A7 labels each unit u1,u2,… and a copied [uN] label resolves to its fact id", () => {
     const { model } = fixture();
     const evidence = readCharacterEvidence(model, CONTEXT, characterIndex(model)[0]!);
-    try {
-      assembleCharacterBio(
-        model,
-        CONTEXT,
-        evidence,
+    const citeable = citeableCharacterUnits(evidence);
+    // Small labels the flash model can copy — NOT the uuid-based fact ids.
+    expect(citeable.map((entry) => entry.label)).toEqual(
+      evidence.notableUnitIds.map((_, index) => `u${index + 1}`),
+    );
+    // A model that copies u1 resolves to the real first whole-game unit fact id
+    // with NO drop needed.
+    const bio = assembleCharacterBio(
+      model,
+      CONTEXT,
+      evidence,
+      {
+        storyRole: "x",
+        definingTraits: ["y"],
+        notableMomentEvidenceIds: ["u1"],
+        claims: [{ statement: "決断を促す。", confidence: "high", evidenceIds: ["u1"] }],
+      },
+      buildCharacterPortrait(evidence.characterId, portraits(evidence.characterId)),
+    );
+    const modelClaim = bio.claims.find((claim) => claim.claimId.includes(":claim:"))!;
+    expect(modelClaim.citations).toHaveLength(1);
+    expect(modelClaim.citations[0]!.evidenceId).toBe(evidence.notableUnitIds[0]!);
+  });
+
+  it("PROOF: a MODEL claim citing ONLY an out-of-range label is DROPPED, not crashed over", () => {
+    const { model } = fixture();
+    const evidence = readCharacterEvidence(model, CONTEXT, characterIndex(model)[0]!);
+    // A label past the character's unit count (the flash model mis-copied it) —
+    // the recoverable slip the repair path absorbs instead of crashing.
+    const bio = assembleCharacterBio(
+      model,
+      CONTEXT,
+      evidence,
+      {
+        storyRole: "x",
+        definingTraits: ["y"],
+        notableMomentEvidenceIds: ["u1"],
+        claims: [
+          { statement: "存在しない証拠を引く。", confidence: "high", evidenceIds: ["u999"] },
+        ],
+      },
+      buildCharacterPortrait(evidence.characterId, portraits(evidence.characterId)),
+    );
+    // Assembling did NOT throw; the unprovable model claim was repaired away.
+    // The bio still carries its cited whole-game presence claim.
+    expect(() => validateWikiObjectClaims(bio, model)).not.toThrow();
+    const modelClaims = bio.claims.filter((claim) => claim.claimId.includes(":claim:"));
+    expect(modelClaims).toHaveLength(0);
+    expect(bio.claims.length).toBeGreaterThan(0);
+  });
+
+  it("PROOF: a MIX of a real and a mis-cited label keeps ONLY the resolvable citation", () => {
+    const { model } = fixture();
+    const evidence = readCharacterEvidence(model, CONTEXT, characterIndex(model)[0]!);
+    const goodFactId = evidence.notableUnitIds[0]!;
+    const bio = assembleCharacterBio(
+      model,
+      CONTEXT,
+      evidence,
+      {
+        storyRole: "x",
+        definingTraits: ["y"],
+        notableMomentEvidenceIds: ["u1"],
+        claims: [{ statement: "決断を促す。", confidence: "high", evidenceIds: ["u1", "u999"] }],
+      },
+      buildCharacterPortrait(evidence.characterId, portraits(evidence.characterId)),
+    );
+    const index = buildEvidenceIndex(model);
+    const modelClaim = bio.claims.find((claim) => claim.claimId.includes(":claim:"))!;
+    // The claim survives with its real support; the mis-cited label is gone.
+    expect(modelClaim.citations).toHaveLength(1);
+    expect(modelClaim.citations[0]!.evidenceId).toBe(goodFactId);
+    // Gate NOT weakened: every surviving citation resolves against the snapshot.
+    for (const claim of bio.claims) {
+      for (const citation of claim.citations) {
+        expect(index.get(citation.evidenceId)).toBeDefined();
+      }
+    }
+  });
+
+  it("PROOF: the gate the repair feeds still REJECTS a fabricated citation", () => {
+    const { model } = fixture();
+    const evidence = readCharacterEvidence(model, CONTEXT, characterIndex(model)[0]!);
+    const bio = assembleCharacterBio(
+      model,
+      CONTEXT,
+      evidence,
+      {
+        storyRole: "x",
+        definingTraits: ["y"],
+        notableMomentEvidenceIds: ["u1"],
+        claims: [],
+      },
+      buildCharacterPortrait(evidence.characterId, portraits(evidence.characterId)),
+    );
+    // The repair does not soften RB-031: hand a claim a fabricated evidence id
+    // straight to the gate and it still fails loud (the repair only prevents a
+    // fabricated citation from ever reaching the object, it never admits one).
+    const tampered = {
+      ...bio,
+      claims: [
         {
-          storyRole: "x",
-          definingTraits: ["y"],
-          notableMomentEvidenceIds: [evidence.notableUnitIds[0]!],
-          claims: [
-            {
-              statement: "存在しない証拠を引く。",
-              confidence: "high",
-              evidenceIds: ["unit:ghost"],
-            },
-          ],
+          ...bio.claims[0]!,
+          citations: [{ ...bio.claims[0]!.citations[0]!, evidenceId: "unit:fabricated" }],
         },
-        buildCharacterPortrait(evidence.characterId, portraits(evidence.characterId)),
-      );
-      throw new Error("expected an unresolvable-citation failure");
+      ],
+    };
+    try {
+      validateWikiObjectClaims(tampered, model);
+      throw new Error("expected the RB-031 gate to reject the fabricated citation");
     } catch (error) {
       expect(error).toBeInstanceOf(ClaimValidationError);
       expect((error as ClaimValidationError).code).toBe("evidence-unresolvable");

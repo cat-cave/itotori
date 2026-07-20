@@ -29,6 +29,7 @@ import {
   A3_ROLE_ID,
   A3_SCENE_SUMMARY_KIND,
   A3_STORY_SO_FAR_KIND,
+  citeableSceneUnits,
   type A3ClaimDraft,
   type A3Context,
   type A3ModelCaller,
@@ -36,7 +37,9 @@ import {
   type A3SceneRequest,
 } from "./types.js";
 
-const PROMPT_VERSION = "itotori.role.A3.prompt.v2";
+// v3: prompt cites units by a short scene-local [uN] label the flash model can
+// copy verbatim, replacing the large GLOBAL play-order index it mis-transcribed.
+const PROMPT_VERSION = "itotori.role.A3.prompt.v3";
 
 /** A prompt payload paired with its content-addressed reference, so the runtime
  * can resolve the encrypted ref back to its exact plaintext. */
@@ -58,9 +61,9 @@ function sealPrompt(storageRef: string, text: string): SealedPrompt {
 function renderPrompt(request: A3SceneRequest, kind: string): string {
   const specialist = specialistFor(A3_ROLE_ID);
   const scene = request.scene;
-  const lines = scene.units.map(
-    (unit) =>
-      `  [${unit.value.playOrderIndex}] ${unit.value.speaker?.revealSafeLabel ?? "(narration)"}: ${unit.value.sourceSurface}`,
+  const lines = citeableSceneUnits(scene).map(
+    ({ label, unit }) =>
+      `  [${label}] ${unit.value.speaker?.revealSafeLabel ?? "(narration)"}: ${unit.value.sourceSurface}`,
   );
   const prior = request.priorStory
     ? `Prior story-so-far (through scene ${request.priorStory.throughSceneId}): ${request.priorStory.summary}`
@@ -70,7 +73,7 @@ function renderPrompt(request: A3SceneRequest, kind: string): string {
     `Output kind: ${kind}. Source language: ${request.sourceLanguage}. Author in the SOURCE LANGUAGE.`,
     `Scene ${scene.sceneId} — decoded counts are FACTS: ${scene.factCard.messageCount} messages, ` +
       `${scene.factCard.choiceCount} choices, speakers: [${scene.speakerLabels.join(", ")}]. ` +
-      `Do not re-count or re-attribute; cite every claim using the bracketed [N] label shown for its unit (the playOrderIndex), never a unit id.`,
+      `Do not re-count or re-attribute; cite every claim using the short bracketed [uN] label shown for its unit, exactly as written — never a unit id or a play-order number.`,
     prior,
     "Complete scene stream:",
     ...lines,

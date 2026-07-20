@@ -4,11 +4,16 @@
 // turns them into a strict source-language `character-bio` object. Three
 // invariants are enforced HERE, not trusted from the model:
 //
-//   1. Citations are INDEX-DERIVED. For every evidence id the model cites, the
-//      citation's hash, subject, and play order are copied from the snapshot
-//      evidence index — never from the model. A cited id outside the visible
-//      snapshot yields an unresolvable citation, and the claim-validation gate
-//      throws. The model cannot forge a passing citation.
+//   1. Citations are INDEX-DERIVED. The model cites a short [uN] label; the
+//      module binds it back to the real whole-game fact id, then copies the
+//      citation's hash, subject, and play order from the snapshot evidence index
+//      — never from the model. A label the model mis-copies or invents resolves
+//      to nothing and is DROPPED — never admitted uncited, never a poison-pill
+//      that hard-fails the whole build. A model claim left with no resolvable
+//      citation is discarded; the RB-031 gate still runs over the surviving,
+//      provable citations so nothing unresolved enters the Wiki. The structural
+//      presence claim's index-derived fact ids instead REQUIRE resolution: a
+//      miss there is a genuine snapshot-integrity bug and stays loud.
 //   2. Whole-game evidence is GUARANTEED. The module always authors a presence
 //      claim citing the character-occurrence fact plus the whole-game unit set,
 //      so every bio carries cited whole-game evidence regardless of the model.
@@ -32,30 +37,20 @@ import {
   A7RoleError,
   A7_CHARACTER_BIO_KIND,
   A7_ROLE_ID,
+  citeableCharacterUnits,
   type A7BioDraft,
   type A7ClaimDraft,
   type A7Context,
   type CharacterEvidence,
 } from "./types.js";
 
-const UNRESOLVABLE_HASH = `sha256:${"0".repeat(64)}` as `sha256:${string}`;
-
-/** Build one citation for a model-cited evidence id. Every dimension a citation
- * is checked on — hash, subject, play order — is copied from the snapshot
- * evidence index when the id resolves. When it does NOT (a hallucinated id), the
- * citation is left deliberately unresolvable so the claim gate rejects it. */
-function citationFor(index: EvidenceIndex, snapshotId: string, evidenceId: string): Citation {
-  const record = index.get(evidenceId);
-  if (!record) {
-    return {
-      evidenceId,
-      evidenceHash: UNRESOLVABLE_HASH,
-      snapshotId: snapshotId as `sha256:${string}`,
-      subject: { kind: "unit", id: evidenceId },
-      role: "supports",
-      playOrderIndex: 0,
-    };
-  }
+/** Resolve a fact id to a snapshot-owned citation, or `null` when it (or the
+ * label that produced it) names nothing in the visible snapshot. Every dimension
+ * a citation is checked on — hash, subject, play order — is copied from the
+ * snapshot evidence index; the model supplies only a short label. */
+function citationFor(index: EvidenceIndex, factId: string | undefined): Citation | null {
+  const record = factId === undefined ? undefined : index.get(factId);
+  if (!record) return null;
   return {
     evidenceId: record.factId,
     evidenceHash: record.hash as `sha256:${string}`,
@@ -66,30 +61,63 @@ function citationFor(index: EvidenceIndex, snapshotId: string, evidenceId: strin
   };
 }
 
+/** Resolve a REQUIRED index-derived citation (the whole-game presence
+ * evidence). Unlike a model-cited label, these come from the deterministic
+ * character-occurrence fact and the character's real whole-game unit set, so a
+ * miss is a snapshot-integrity bug — never a recoverable model slip — and fails
+ * loud rather than being silently dropped. */
+function requireCitation(index: EvidenceIndex, factId: string): Citation {
+  const citation = citationFor(index, factId);
+  if (!citation) {
+    throw new A7RoleError(
+      "no-evidence",
+      `presence evidence ${factId} does not resolve in this snapshot`,
+    );
+  }
+  return citation;
+}
+
+/** Build one MODEL claim, mapping each cited SHORT label back to its whole-game
+ * fact id and keeping only the citations that resolve. A claim left with NO
+ * resolvable citation is dropped (returns `null`): an unsupported model
+ * hypothesis is discarded, never admitted uncited and never crashed over. The
+ * short label is why a CORRECT citation resolves without a drop — the flash
+ * model copies `u1`, `u2`, … reliably where it fumbled a uuid-based fact id. */
 function claimFor(
   index: EvidenceIndex,
-  snapshotId: string,
+  labelToFactId: ReadonlyMap<string, string>,
   scope: RouteScope,
   draft: A7ClaimDraft,
   claimId: string,
-): Claim {
+): Claim | null {
+  const citations = draft.evidenceIds
+    .map((label) => citationFor(index, labelToFactId.get(label)))
+    .filter((citation): citation is Citation => citation !== null);
+  if (citations.length === 0) return null;
   return {
     claimId,
     statement: draft.statement,
     scope,
     kind: "bio",
     confidence: draft.confidence,
-    citations: draft.evidenceIds.map((id) => citationFor(index, snapshotId, id)),
+    citations,
   };
 }
 
-/** The whole-game unit ids the bio treats as notable moments: the model's
- * selection, intersected with the character's actual whole-game unit set so a
- * fabricated id can never reach a body field. Falls back to the full set when
- * the model selected nothing, so the bio is always grounded in whole-game bytes. */
-function notableUnitIds(evidence: CharacterEvidence, draft: A7BioDraft): readonly string[] {
+/** The whole-game unit ids the bio treats as notable moments: the model's short
+ * label SELECTION mapped back through `labelToFactId` and intersected with the
+ * character's actual whole-game unit set, so a fabricated or mis-copied label
+ * can never reach a body field. Falls back to the full set when the model
+ * selected nothing usable, so the bio is always grounded in whole-game bytes. */
+function notableUnitIds(
+  evidence: CharacterEvidence,
+  labelToFactId: ReadonlyMap<string, string>,
+  draft: A7BioDraft,
+): readonly string[] {
   const whole = new Set(evidence.notableUnitIds);
-  const chosen = draft.notableMomentEvidenceIds.filter((id) => whole.has(id));
+  const chosen = draft.notableMomentEvidenceIds
+    .map((label) => labelToFactId.get(label))
+    .filter((factId): factId is string => factId !== undefined && whole.has(factId));
   return chosen.length > 0 ? chosen : evidence.notableUnitIds;
 }
 
@@ -98,13 +126,12 @@ function notableUnitIds(evidence: CharacterEvidence, draft: A7BioDraft): readonl
  * evidence guarantee — index-derived and independent of the model. */
 function presenceClaim(
   index: EvidenceIndex,
-  snapshotId: string,
   evidence: CharacterEvidence,
   notable: readonly string[],
 ): Claim {
   const citations = [
-    citationFor(index, snapshotId, evidence.occurrenceFactId),
-    ...notable.map((id) => citationFor(index, snapshotId, id)),
+    requireCitation(index, evidence.occurrenceFactId),
+    ...notable.map((id) => requireCitation(index, id)),
   ];
   return {
     claimId: presenceClaimId(evidence.characterId),
@@ -155,18 +182,25 @@ export function assembleCharacterBio(
     );
   }
   const index = buildEvidenceIndex(model);
-  const notable = notableUnitIds(evidence, draft);
+  // The model cited SHORT labels (u1, u2, …); bind each back to its real fact id
+  // through the SAME citeableCharacterUnits the prompt rendered.
+  const labelToFactId = new Map(
+    citeableCharacterUnits(evidence).map(({ label, factId }) => [label, factId]),
+  );
+  const notable = notableUnitIds(evidence, labelToFactId, draft);
   const claims: Claim[] = [
-    presenceClaim(index, model.snapshotId, evidence, notable),
-    ...draft.claims.map((claimDraft, ordinal) =>
-      claimFor(
-        index,
-        model.snapshotId,
-        evidence.scope,
-        claimDraft,
-        modelClaimId(evidence.characterId, ordinal),
-      ),
-    ),
+    presenceClaim(index, evidence, notable),
+    ...draft.claims
+      .map((claimDraft, ordinal) =>
+        claimFor(
+          index,
+          labelToFactId,
+          evidence.scope,
+          claimDraft,
+          modelClaimId(evidence.characterId, ordinal),
+        ),
+      )
+      .filter((claim): claim is Claim => claim !== null),
   ];
   return seal(
     {

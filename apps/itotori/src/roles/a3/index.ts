@@ -13,6 +13,8 @@ export {
   A3_ROLE_ID,
   A3_SCENE_SUMMARY_KIND,
   A3_STORY_SO_FAR_KIND,
+  citeableSceneUnits,
+  type CiteableSceneUnit,
   type A3ClaimDraft,
   type A3Context,
   type A3FailureCode,

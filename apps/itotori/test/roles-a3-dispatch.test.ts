@@ -24,6 +24,7 @@ import {
   assembleSceneSummary,
   assembleStorySoFar,
   buildA3CallSpec,
+  citeableSceneUnits,
   dispatchA3,
   dispatchingA3Caller,
   readCompleteScene,
@@ -144,7 +145,7 @@ function recordedSummary(
   model: ReturnType<typeof buildClaimFixture>["model"],
   request: A3SceneRequest,
 ): WikiObject {
-  const anchor = String(request.scene.units[0]!.value.playOrderIndex);
+  const anchor = citeableSceneUnits(request.scene)[0]!.label;
   const narrative: A3SceneNarrative = {
     beat: "けいこは決断する。",
     subtext: "静かな決意。",
@@ -184,7 +185,7 @@ function recordedStory(
   model: ReturnType<typeof buildClaimFixture>["model"],
   request: A3SceneRequest,
 ): WikiObject {
-  const anchor = String(request.scene.units[0]!.value.playOrderIndex);
+  const anchor = citeableSceneUnits(request.scene)[0]!.label;
   const narrative: A3SceneNarrative = {
     beat: "b",
     subtext: "s",
@@ -235,8 +236,11 @@ describe("A3 dispatches through the sole ZDR boundary", () => {
       `sha256:${createHash("sha256").update(prompts[0]!.text).digest("hex")}`,
     );
     expect(prompts[0]!.text).toContain(
-      "cite every claim using the bracketed [N] label shown for its unit (the playOrderIndex)",
+      "cite every claim using the short bracketed [uN] label shown for its unit",
     );
+    // The prompt shows small scene-local labels the flash model can copy, not the
+    // large global play-order index.
+    expect(prompts[0]!.text).toContain("[u1]");
   });
 
   it("PROOF: a recorded scene-summary draft returns through dispatch()", async () => {
@@ -266,7 +270,7 @@ describe("A3 dispatches through the sole ZDR boundary", () => {
     expect(narrative.beat).toBe("けいこは決断する。");
     expect(narrative.storySummary).toBe("シーン1までの物語。");
     expect(narrative.sceneClaims[0]!.evidenceUnitIds).toEqual([
-      String(request.scene.units[0]!.value.playOrderIndex),
+      citeableSceneUnits(request.scene)[0]!.label,
     ]);
   });
 

@@ -20,6 +20,7 @@ import { describe, expect, it } from "vitest";
 import type { WikiObject } from "../src/contracts/index.js";
 import { dispatch, type DispatchRuntime } from "../src/llm/dispatch.js";
 import {
+  citeableSceneUnits,
   foldRoute,
   type A3Context,
   type A3ModelCaller,
@@ -142,7 +143,7 @@ function runtime(responses: Response[], onFetch?: () => void): DispatchRuntime {
 
 function a3Recorded(): A3ModelCaller {
   return async (request) => {
-    const anchor = String(request.scene.units[0]!.value.playOrderIndex);
+    const anchor = citeableSceneUnits(request.scene)[0]!.label;
     const narrative: A3SceneNarrative = {
       beat: "b",
       subtext: "s",

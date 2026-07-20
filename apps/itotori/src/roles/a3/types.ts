@@ -70,6 +70,26 @@ export interface CompleteScene {
   readonly characterIds: readonly string[];
 }
 
+/** One scene unit paired with the SHORT, copy-reliable citation label the model
+ * cites it by. */
+export interface CiteableSceneUnit {
+  /** The short label the prompt shows and the model must echo (`u1`, `u2`, …). */
+  readonly label: string;
+  /** The real snapshot fact id the label binds back to. */
+  readonly factId: string;
+  /** The decoded unit, for the prompt's per-line rendering. */
+  readonly unit: UnitFact;
+}
+
+/** Assign each unit of a complete scene a short, scene-local label (`u1`, `u2`,
+ * …) the flash model can copy verbatim — never the large GLOBAL play-order index
+ * it routinely mis-transcribes. Both the prompt render and the fold's
+ * label→fact-id map derive from THIS function, so they can never disagree and a
+ * label the model echoes always resolves. */
+export function citeableSceneUnits(scene: CompleteScene): readonly CiteableSceneUnit[] {
+  return scene.units.map((unit, index) => ({ label: `u${index + 1}`, factId: unit.factId, unit }));
+}
+
 /** The story-so-far body the fold threads forward (source-language prose plus
  * the deterministic scene id it runs through). */
 export interface StorySoFarState {
