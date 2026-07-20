@@ -89,6 +89,8 @@ check:
     node scripts/audit-no-legacy-llm-residue.mjs
     node --test scripts/audit-llm-layer-imports.test.mjs
     node scripts/audit-llm-layer-imports.mjs
+    node --test scripts/assert-tanstack-openrouter-pin.test.mjs
+    node scripts/assert-tanstack-openrouter-pin.mjs
     node --test scripts/audit-llm-loc-budget.test.mjs
     node scripts/audit-llm-loc-budget.mjs
     node --test scripts/generate-engine-capability-matrix.test.mjs
@@ -705,6 +707,8 @@ ci-tier0-meta:
     node scripts/audit-deletion-ledger.mjs
     node --test scripts/audit-llm-layer-imports.test.mjs
     node scripts/audit-llm-layer-imports.mjs
+    node --test scripts/assert-tanstack-openrouter-pin.test.mjs
+    node scripts/assert-tanstack-openrouter-pin.mjs
     node --test scripts/audit-llm-loc-budget.test.mjs
     node scripts/audit-llm-loc-budget.mjs
     node --test scripts/generate-engine-capability-matrix.test.mjs
