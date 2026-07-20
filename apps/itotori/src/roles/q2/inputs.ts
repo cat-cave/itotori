@@ -122,26 +122,33 @@ export function assertPositionDecodeDerived(input: Q2ReviewInput): void {
 }
 
 /** The bible rules that APPLY at the decode-derived position. Applicability is
- * computed from the position, never from the model: a character rule always
- * applies; a counterpart rule only when it names this counterpart; a route rule
- * only on this route; an arc rule only when the play order falls in its window. */
+ * computed from the position, never from the model: every populated constraint
+ * (counterpart, route, and arc range) must match. A counterpart or arc rule may
+ * also be route-qualified by the granular A5 bible, so it must not leak from a
+ * sibling route merely because its primary scope matches. */
 export function applicableBibleRules(input: Q2ReviewInput): readonly VoiceBibleRule[] {
   const { counterpartId, routeId, playOrder } = input.position;
   return input.bibleRules.filter((rule) => {
+    const routeMatches = rule.routeId === null || rule.routeId === routeId;
+    const counterpartMatches =
+      rule.counterpartId === null ||
+      (counterpartId !== null && rule.counterpartId === counterpartId);
+    const rangeMatches =
+      (rule.fromPlayOrder === null && rule.toPlayOrder === null) ||
+      (rule.fromPlayOrder !== null &&
+        rule.toPlayOrder !== null &&
+        playOrder >= rule.fromPlayOrder &&
+        playOrder <= rule.toPlayOrder);
+    if (!routeMatches || !counterpartMatches || !rangeMatches) return false;
     switch (rule.scope) {
       case "character":
         return true;
       case "counterpart":
-        return counterpartId !== null && rule.counterpartId === counterpartId;
+        return counterpartId !== null && rule.counterpartId !== null;
       case "route":
-        return rule.routeId === routeId;
+        return rule.routeId !== null;
       case "arc":
-        return (
-          rule.fromPlayOrder !== null &&
-          rule.toPlayOrder !== null &&
-          playOrder >= rule.fromPlayOrder &&
-          playOrder <= rule.toPlayOrder
-        );
+        return rule.fromPlayOrder !== null && rule.toPlayOrder !== null;
       default:
         return false;
     }
@@ -149,15 +156,15 @@ export function applicableBibleRules(input: Q2ReviewInput): readonly VoiceBibleR
 }
 
 /** The accepted history the candidate must stay CONTINUOUS with at this position:
- * strictly-prior lines that either establish the base register (no counterpart,
- * any route) or share this counterpart on this route. Computed from the decode-
- * derived position — a future line, or a different counterpart/route, is not it. */
+ * strictly-prior base-register lines or lines to the same counterpart, all on
+ * this exact route. Computed from the decode-derived position — a future line,
+ * or one from another counterpart or route, is not it. */
 export function historyAtPosition(input: Q2ReviewInput): readonly AcceptedTargetLine[] {
   const { counterpartId, routeId, playOrder } = input.position;
   return input.acceptedHistory.filter((line) => {
-    if (line.playOrder >= playOrder) return false;
+    if (line.playOrder >= playOrder || line.routeId !== routeId) return false;
     if (line.counterpartId === null) return true;
-    return line.routeId === routeId && line.counterpartId === counterpartId;
+    return line.counterpartId === counterpartId;
   });
 }
 
