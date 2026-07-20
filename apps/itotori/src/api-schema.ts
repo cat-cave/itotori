@@ -87,11 +87,6 @@ import type {
   ProjectOverviewReadModel,
 } from "./project-overview-read-model.js";
 import { PROJECT_OVERVIEW_SCHEMA_VERSION } from "./project-overview-read-model.js";
-import type { BmkCockpitReadModel, BmkCockpitRunHistoryPage } from "./bmk-cockpit-read-model.js";
-import {
-  BMK_COCKPIT_CONTESTANT_ROLES,
-  BMK_COCKPIT_SCHEMA_VERSION,
-} from "./bmk-cockpit-read-model.js";
 import type { CatalogContextPanelReadModel } from "./catalog-context-panel.js";
 import type {
   WikiApplyReceipt,
@@ -176,15 +171,6 @@ export type ItotoriApiRouteId =
   | "projects.cost"
   | "projects.costDrilldown"
   | "projects.benchmarks"
-  // itotori-bmk-cockpit-read-model — the benchmark COCKPIT read-model route.
-  // Returns the LATEST benchmark run's composed shape (5 contestants
-  // official/self/self_nocontext/fan/mtl + human anchor + confidence + the
-  // actionable improvement backlog). The benchmark is a DIAGNOSTIC INSTRUMENT,
-  // not a leaderboard — the actionable backlog is the primary output.
-  | "projects.bmkCockpit"
-  // itotori-bmk-cockpit-history — paged run history, so a reviewer can confirm
-  // the actionable backlog is shrinking over time. Same gate as `bmkCockpit`.
-  | "projects.bmkCockpitHistory"
   | "jobs.runTable"
   | "runtime.status"
   | "queue.health"
@@ -347,27 +333,6 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "canSteer",
   ],
   ApiBenchmarkReportsResponse: ["reports"],
-  // itotori-bmk-cockpit-read-model — the benchmark cockpit read-model envelope.
-  BmkCockpitReadModel: [
-    "schemaVersion",
-    "generatedAt",
-    "projectId",
-    "localeBranchId",
-    "runId",
-    "targetLocale",
-    "kind",
-    "status",
-    "unitsScored",
-    "recordedAt",
-    "contestants",
-    "rankedRoles",
-    "humanAnchor",
-    "confidence",
-    "actionableBacklog",
-    "actionableBacklogSize",
-  ],
-  // itotori-bmk-cockpit-history — paged run-history rows envelope.
-  BmkCockpitRunHistoryPage: ["filter", "pagination", "rows"],
   QueueHealthReadModel: ["schemaVersion", "generatedAt", "outbox", "jobs"],
   ApiModelRoutingProvider: [
     "providerId",
@@ -738,17 +703,6 @@ export type ApiJobsRunTableResponse = JobsRunTableReadModel;
 export type ApiBenchmarkReportsResponse = {
   reports: BenchmarkReportSummary[];
 };
-
-/**
- * itotori-bmk-cockpit-read-model — the typed /api/projects/{projectId}/bmk-cockpit
- * response. The cockpit composes the persisted benchmark run body onto the §10
- * framing's vocabulary: 5 contestants (official / self / self_nocontext / fan /
- * mtl) + the §8 human anchor + a confidence rollup + the actionable backlog.
- */
-export type ApiBmkCockpitResponse = BmkCockpitReadModel;
-
-/** itotori-bmk-cockpit-history — paged run-history response. */
-export type ApiBmkCockpitHistoryResponse = BmkCockpitRunHistoryPage;
 
 /** ITOTORI-047 — typed queue-health read-model (outbox lag, job/retry/dead-letter). */
 export type ApiQueueHealthResponse = QueueHealthReadModel;
@@ -1739,8 +1693,6 @@ export type ItotoriApiResponseBody =
   | ApiProjectCostResponse
   | ApiProjectCostDrilldownResponse
   | ApiBenchmarkReportsResponse
-  | ApiBmkCockpitResponse
-  | ApiBmkCockpitHistoryResponse
   | ApiJobsRunTableResponse
   | ApiQueueHealthResponse
   | RuntimeDashboardStatus
@@ -2328,12 +2280,6 @@ export function assertItotoriApiResponse(
       return;
     case "projects.benchmarks":
       assertApiBenchmarkReportsResponse(value);
-      return;
-    case "projects.bmkCockpit":
-      assertBmkCockpitReadModel(value);
-      return;
-    case "projects.bmkCockpitHistory":
-      assertBmkCockpitRunHistoryPage(value);
       return;
     case "jobs.runTable":
       assertJobsRunTableReadModel(value);
@@ -4253,397 +4199,6 @@ function assertApiBenchmarkReportsResponse(
   for (const [index, report] of reports.entries()) {
     assertBenchmarkReportSummary(report, `${label}.reports[${index}]`);
   }
-}
-
-const BMK_COCKPIT_CONTESTANT_KINDS = [
-  "official_localization",
-  "itotori_context_on",
-  "itotori_context_off",
-  "fan_edited_mtl",
-  "raw_mtl_baseline",
-] as const;
-
-const BMK_COCKPIT_RUN_KINDS = ["real_run", "fixture", "replay"] as const;
-
-const BMK_COCKPIT_RUN_STATUSES = ["succeeded", "failed", "partial"] as const;
-
-const BMK_COCKPIT_CONFIDENCE_BASES = ["pearson", "agreement", "none"] as const;
-
-const BMK_COCKPIT_BACKLOG_RANK_TIERS = [
-  "top_priority",
-  "improvement_backlog",
-  "regression_protection",
-] as const;
-
-const BMK_COCKPIT_BACKLOG_SIGNAL_SOURCES = ["blind_judge_panel", "deterministic_metric"] as const;
-
-const BMK_COCKPIT_BACKLOG_SCOPE_KINDS = ["scene", "speaker", "corpus_wide"] as const;
-
-const BMK_COCKPIT_BACKLOG_LADDER_SCALES = ["judge_mean_0_4", "metric_0_1"] as const;
-
-const BMK_COCKPIT_REGRESSION_DIRECTIONS = ["new", "improved", "regressed", "unchanged"] as const;
-
-function assertBmkCockpitReadModel(
-  value: unknown,
-  label = "BmkCockpitReadModel",
-): asserts value is BmkCockpitReadModel {
-  const model = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.BmkCockpitReadModel);
-  assertLiteral(model.schemaVersion, BMK_COCKPIT_SCHEMA_VERSION, `${label}.schemaVersion`);
-  assertDateLike(model.generatedAt, `${label}.generatedAt`);
-  assertString(model.projectId, `${label}.projectId`);
-  assertNullableString(model.localeBranchId, `${label}.localeBranchId`);
-  assertString(model.runId, `${label}.runId`);
-  assertString(model.targetLocale, `${label}.targetLocale`);
-  assertEnum(model.kind, BMK_COCKPIT_RUN_KINDS, `${label}.kind`);
-  assertEnum(model.status, BMK_COCKPIT_RUN_STATUSES, `${label}.status`);
-  assertNonNegativeInteger(model.unitsScored, `${label}.unitsScored`);
-  assertDateLike(model.recordedAt, `${label}.recordedAt`);
-
-  const contestants = asArray(model.contestants, `${label}.contestants`);
-  for (const [index, contestant] of contestants.entries()) {
-    assertBmkCockpitContestant(contestant, `${label}.contestants[${index}]`);
-  }
-
-  const rankedRoles = asArray(model.rankedRoles, `${label}.rankedRoles`);
-  for (const [index, role] of rankedRoles.entries()) {
-    assertEnum(role, BMK_COCKPIT_CONTESTANT_ROLES, `${label}.rankedRoles[${index}]`);
-  }
-
-  assertBmkCockpitHumanAnchor(model.humanAnchor, `${label}.humanAnchor`);
-  assertBmkCockpitConfidence(model.confidence, `${label}.confidence`);
-  const backlogSize = assertBmkCockpitBacklog(
-    model.actionableBacklog,
-    `${label}.actionableBacklog`,
-  );
-  assertNonNegativeInteger(model.actionableBacklogSize, `${label}.actionableBacklogSize`);
-  if (model.actionableBacklogSize !== backlogSize) {
-    throw new Error(`${label}.actionableBacklogSize must match actionableBacklog.items.length`);
-  }
-}
-
-function assertBmkCockpitContestant(value: unknown, label: string): void {
-  const contestant = asStrictRecord(value, label, [
-    "role",
-    "contestantKind",
-    "aggregateScore",
-    "rank",
-    "judgeMean",
-    "metricMean",
-    "coverage",
-  ]);
-  assertEnum(contestant.role, BMK_COCKPIT_CONTESTANT_ROLES, `${label}.role`);
-  assertEnum(contestant.contestantKind, BMK_COCKPIT_CONTESTANT_KINDS, `${label}.contestantKind`);
-  assertNullableNonNegativeNumber(contestant.aggregateScore, `${label}.aggregateScore`);
-  assertNullableNonNegativeInteger(contestant.rank, `${label}.rank`);
-  assertNullableNonNegativeNumber(contestant.judgeMean, `${label}.judgeMean`);
-  assertNullableNonNegativeNumber(contestant.metricMean, `${label}.metricMean`);
-  assertNullableNonNegativeNumber(contestant.coverage, `${label}.coverage`);
-}
-
-function assertBmkCockpitHumanAnchor(value: unknown, label: string): void {
-  const anchor = asStrictRecord(value, label, [
-    "raters",
-    "judgeIds",
-    "byDimensionCount",
-    "divergentDimensionCount",
-    "overall",
-  ]);
-  assertStringArray(anchor.raters, `${label}.raters`);
-  assertStringArray(anchor.judgeIds, `${label}.judgeIds`);
-  assertNonNegativeInteger(anchor.byDimensionCount, `${label}.byDimensionCount`);
-  assertNonNegativeInteger(anchor.divergentDimensionCount, `${label}.divergentDimensionCount`);
-
-  const overall = asStrictRecord(anchor.overall, `${label}.overall`, [
-    "itemsCompared",
-    "normalizedAgreement",
-    "signedMeanDiff",
-    "pearson",
-  ]);
-  assertNonNegativeInteger(overall.itemsCompared, `${label}.overall.itemsCompared`);
-  assertNullableNonNegativeNumber(
-    overall.normalizedAgreement,
-    `${label}.overall.normalizedAgreement`,
-  );
-  assertNullableFiniteNumber(overall.signedMeanDiff, `${label}.overall.signedMeanDiff`);
-  assertNullableFiniteNumber(overall.pearson, `${label}.overall.pearson`);
-}
-
-function assertBmkCockpitConfidence(value: unknown, label: string): void {
-  const confidence = asStrictRecord(value, label, [
-    "pearson",
-    "normalizedAgreement",
-    "value",
-    "basis",
-  ]);
-  assertNullableFiniteNumber(confidence.pearson, `${label}.pearson`);
-  assertNullableNonNegativeNumber(confidence.normalizedAgreement, `${label}.normalizedAgreement`);
-  assertNullableNonNegativeNumber(confidence.value, `${label}.value`);
-  assertEnum(confidence.basis, BMK_COCKPIT_CONFIDENCE_BASES, `${label}.basis`);
-}
-
-function assertBmkCockpitBacklog(value: unknown, label: string): number {
-  const backlog = asStrictRecord(value, label, [
-    "systemUnderTestId",
-    "fanMtlSystemId",
-    "professionalSystemId",
-    "items",
-    "countsByRank",
-    "perDimensionRegression",
-    "perSignalScores",
-    "dag",
-    "adjudicatedFindings",
-  ]);
-  assertString(backlog.systemUnderTestId, `${label}.systemUnderTestId`);
-  assertNullableString(backlog.fanMtlSystemId, `${label}.fanMtlSystemId`);
-  assertNullableString(backlog.professionalSystemId, `${label}.professionalSystemId`);
-  assertBmkCockpitBacklogCounts(backlog.countsByRank, `${label}.countsByRank`);
-
-  const items = asArray(backlog.items, `${label}.items`);
-  for (const [index, item] of items.entries()) {
-    assertBmkCockpitBacklogItem(item, `${label}.items[${index}]`);
-  }
-
-  const regressions = asArray(backlog.perDimensionRegression, `${label}.perDimensionRegression`);
-  for (const [index, regression] of regressions.entries()) {
-    assertBmkCockpitRegressionRef(regression, `${label}.perDimensionRegression[${index}]`, true);
-  }
-
-  const scores = asArray(backlog.perSignalScores, `${label}.perSignalScores`);
-  for (const [index, score] of scores.entries()) {
-    assertBmkCockpitSignalScore(score, `${label}.perSignalScores[${index}]`);
-  }
-
-  assertBmkCockpitBacklogDag(backlog.dag, `${label}.dag`);
-  asArray(backlog.adjudicatedFindings, `${label}.adjudicatedFindings`);
-  return items.length;
-}
-
-function assertBmkCockpitBacklogCounts(value: unknown, label: string): void {
-  const counts = asStrictRecord(value, label, BMK_COCKPIT_BACKLOG_RANK_TIERS);
-  for (const tier of BMK_COCKPIT_BACKLOG_RANK_TIERS) {
-    assertNonNegativeInteger(counts[tier], `${label}.${tier}`);
-  }
-}
-
-function assertBmkCockpitBacklogItem(value: unknown, label: string): void {
-  const item = asStrictRecord(value, label, [
-    "backlogItemId",
-    "failureMode",
-    "dimension",
-    "signalSource",
-    "scope",
-    "evidence",
-    "cause",
-    "causeAdjudicated",
-    "fixCandidate",
-    "rank",
-    "ladder",
-    "regressionRef",
-    "findingIds",
-    "worstSeverity",
-    "priorityOrder",
-  ]);
-  assertString(item.backlogItemId, `${label}.backlogItemId`);
-  assertString(item.failureMode, `${label}.failureMode`);
-  assertString(item.dimension, `${label}.dimension`);
-  assertEnum(item.signalSource, BMK_COCKPIT_BACKLOG_SIGNAL_SOURCES, `${label}.signalSource`);
-  assertBmkCockpitBacklogScope(item.scope, `${label}.scope`);
-  assertBmkCockpitBacklogEvidence(item.evidence, `${label}.evidence`);
-  assertString(item.cause, `${label}.cause`);
-  assertBoolean(item.causeAdjudicated, `${label}.causeAdjudicated`);
-  assertString(item.fixCandidate, `${label}.fixCandidate`);
-  assertEnum(item.rank, BMK_COCKPIT_BACKLOG_RANK_TIERS, `${label}.rank`);
-  assertBmkCockpitBacklogLadder(item.ladder, `${label}.ladder`);
-  if (item.regressionRef !== null) {
-    assertBmkCockpitRegressionRef(item.regressionRef, `${label}.regressionRef`, false);
-  }
-  assertStringArray(item.findingIds, `${label}.findingIds`);
-  assertString(item.worstSeverity, `${label}.worstSeverity`);
-  assertNonNegativeInteger(item.priorityOrder, `${label}.priorityOrder`);
-}
-
-function assertBmkCockpitBacklogScope(value: unknown, label: string): void {
-  const scope = asStrictRecord(value, label, [
-    "scopeKind",
-    "scopeId",
-    "unitCount",
-    "unitIds",
-    "description",
-  ]);
-  assertEnum(scope.scopeKind, BMK_COCKPIT_BACKLOG_SCOPE_KINDS, `${label}.scopeKind`);
-  assertString(scope.scopeId, `${label}.scopeId`);
-  assertNonNegativeInteger(scope.unitCount, `${label}.unitCount`);
-  assertStringArray(scope.unitIds, `${label}.unitIds`);
-  assertString(scope.description, `${label}.description`);
-}
-
-function assertBmkCockpitBacklogEvidence(value: unknown, label: string): void {
-  const rows = asArray(value, label);
-  for (const [index, evidenceValue] of rows.entries()) {
-    const evidence = asStrictRecord(evidenceValue, `${label}[${index}]`, [
-      "unitId",
-      "label",
-      "sourceSpan",
-      "decodedContextUsed",
-      "rationale",
-      "judgeId",
-      "findingId",
-    ]);
-    assertString(evidence.unitId, `${label}[${index}].unitId`);
-    assertString(evidence.label, `${label}[${index}].label`);
-    assertString(evidence.sourceSpan, `${label}[${index}].sourceSpan`);
-    assertString(evidence.decodedContextUsed, `${label}[${index}].decodedContextUsed`);
-    assertString(evidence.rationale, `${label}[${index}].rationale`);
-    if (evidence.judgeId !== undefined) {
-      assertString(evidence.judgeId, `${label}[${index}].judgeId`);
-    }
-    assertString(evidence.findingId, `${label}[${index}].findingId`);
-  }
-}
-
-function assertBmkCockpitBacklogLadder(value: unknown, label: string): void {
-  const ladder = asStrictRecord(value, label, [
-    "scale",
-    "systemUnderTestScore",
-    "fanMtlScore",
-    "professionalScore",
-    "beatsFanMtl",
-    "beatsProfessional",
-  ]);
-  assertEnum(ladder.scale, BMK_COCKPIT_BACKLOG_LADDER_SCALES, `${label}.scale`);
-  assertNullableFiniteNumber(ladder.systemUnderTestScore, `${label}.systemUnderTestScore`);
-  assertNullableFiniteNumber(ladder.fanMtlScore, `${label}.fanMtlScore`);
-  assertNullableFiniteNumber(ladder.professionalScore, `${label}.professionalScore`);
-  assertNullableBoolean(ladder.beatsFanMtl, `${label}.beatsFanMtl`);
-  assertNullableBoolean(ladder.beatsProfessional, `${label}.beatsProfessional`);
-}
-
-function assertBmkCockpitRegressionRef(
-  value: unknown,
-  label: string,
-  includesLabel: boolean,
-): void {
-  const regression = asStrictRecord(value, label, [
-    "signalSource",
-    "key",
-    "currentScore",
-    "priorScore",
-    "delta",
-    "direction",
-    "summary",
-    ...(includesLabel ? ["label"] : []),
-  ]);
-  assertEnum(regression.signalSource, BMK_COCKPIT_BACKLOG_SIGNAL_SOURCES, `${label}.signalSource`);
-  assertString(regression.key, `${label}.key`);
-  assertFiniteNumber(regression.currentScore, `${label}.currentScore`);
-  assertNullableFiniteNumber(regression.priorScore, `${label}.priorScore`);
-  assertNullableFiniteNumber(regression.delta, `${label}.delta`);
-  assertEnum(regression.direction, BMK_COCKPIT_REGRESSION_DIRECTIONS, `${label}.direction`);
-  assertString(regression.summary, `${label}.summary`);
-  if (includesLabel) {
-    assertString(regression.label, `${label}.label`);
-  }
-}
-
-function assertBmkCockpitSignalScore(value: unknown, label: string): void {
-  const score = asStrictRecord(value, label, ["signalSource", "key", "label", "score"]);
-  assertEnum(score.signalSource, BMK_COCKPIT_BACKLOG_SIGNAL_SOURCES, `${label}.signalSource`);
-  assertString(score.key, `${label}.key`);
-  assertString(score.label, `${label}.label`);
-  assertNonNegativeNumber(score.score, `${label}.score`);
-}
-
-function assertBmkCockpitBacklogDag(value: unknown, label: string): void {
-  const dag = asStrictRecord(value, label, ["nodes", "findings"]);
-  const nodes = asArray(dag.nodes, `${label}.nodes`);
-  for (const [index, node] of nodes.entries()) {
-    assertBmkCockpitBacklogDagNode(node, `${label}.nodes[${index}]`);
-  }
-  asArray(dag.findings, `${label}.findings`);
-}
-
-function assertBmkCockpitBacklogDagNode(value: unknown, label: string): void {
-  const node = asStrictRecord(value, label, [
-    "nodeId",
-    "title",
-    "rank",
-    "priorityOrder",
-    "dimension",
-    "cause",
-    "fixCandidate",
-    "findingIds",
-    "scope",
-  ]);
-  assertString(node.nodeId, `${label}.nodeId`);
-  assertString(node.title, `${label}.title`);
-  assertEnum(node.rank, BMK_COCKPIT_BACKLOG_RANK_TIERS, `${label}.rank`);
-  assertNonNegativeInteger(node.priorityOrder, `${label}.priorityOrder`);
-  assertString(node.dimension, `${label}.dimension`);
-  assertString(node.cause, `${label}.cause`);
-  assertString(node.fixCandidate, `${label}.fixCandidate`);
-  assertStringArray(node.findingIds, `${label}.findingIds`);
-  assertBmkCockpitBacklogScope(node.scope, `${label}.scope`);
-}
-
-function assertBmkCockpitRunHistoryPage(
-  value: unknown,
-  label = "BmkCockpitRunHistoryPage",
-): asserts value is BmkCockpitRunHistoryPage {
-  const page = asStrictRecord(value, label, ITOTORI_STRICT_API_BODY_KEYS.BmkCockpitRunHistoryPage);
-  const filter = asStrictRecord(page.filter, `${label}.filter`, ["projectId", "localeBranchId"]);
-  assertString(filter.projectId, `${label}.filter.projectId`);
-  assertNullableString(filter.localeBranchId, `${label}.filter.localeBranchId`);
-
-  const pagination = asStrictRecord(page.pagination, `${label}.pagination`, [
-    "limit",
-    "offset",
-    "hasMore",
-    "nextOffset",
-  ]);
-  assertPositiveInteger(pagination.limit, `${label}.pagination.limit`);
-  assertNonNegativeInteger(pagination.offset, `${label}.pagination.offset`);
-  assertBoolean(pagination.hasMore, `${label}.pagination.hasMore`);
-  if (pagination.nextOffset !== null) {
-    assertNonNegativeInteger(pagination.nextOffset, `${label}.pagination.nextOffset`);
-  }
-  if (pagination.hasMore === (pagination.nextOffset === null)) {
-    throw new Error(`${label}.pagination.hasMore must agree with nextOffset`);
-  }
-
-  const rows = asArray(page.rows, `${label}.rows`);
-  if (rows.length > Number(pagination.limit)) {
-    throw new Error(`${label}.rows must not exceed pagination.limit`);
-  }
-  for (const [index, row] of rows.entries()) {
-    assertBmkCockpitRunHistoryRow(row, `${label}.rows[${index}]`);
-  }
-}
-
-function assertBmkCockpitRunHistoryRow(value: unknown, label: string): void {
-  const row = asStrictRecord(value, label, [
-    "runId",
-    "projectId",
-    "localeBranchId",
-    "targetLocale",
-    "kind",
-    "status",
-    "unitsScored",
-    "recordedAt",
-    "bestRole",
-    "actionableBacklogSize",
-    "confidence",
-  ]);
-  assertString(row.runId, `${label}.runId`);
-  assertString(row.projectId, `${label}.projectId`);
-  assertNullableString(row.localeBranchId, `${label}.localeBranchId`);
-  assertString(row.targetLocale, `${label}.targetLocale`);
-  assertEnum(row.kind, BMK_COCKPIT_RUN_KINDS, `${label}.kind`);
-  assertEnum(row.status, BMK_COCKPIT_RUN_STATUSES, `${label}.status`);
-  assertNonNegativeInteger(row.unitsScored, `${label}.unitsScored`);
-  assertDateLike(row.recordedAt, `${label}.recordedAt`);
-  assertNullableEnum(row.bestRole, BMK_COCKPIT_CONTESTANT_ROLES, `${label}.bestRole`);
-  assertNonNegativeInteger(row.actionableBacklogSize, `${label}.actionableBacklogSize`);
-  assertNullableNonNegativeNumber(row.confidence, `${label}.confidence`);
 }
 
 /** ITOTORI-047 — assert a {@link QueueHealthReadModel} (the queue.health body). */
@@ -7826,21 +7381,9 @@ function assertNullableNonNegativeNumber(
   }
 }
 
-function assertNullableFiniteNumber(value: unknown, label: string): asserts value is number | null {
-  if (value !== null) {
-    assertFiniteNumber(value, label);
-  }
-}
-
 function assertBoolean(value: unknown, label: string): asserts value is boolean {
   if (typeof value !== "boolean") {
     throw new Error(`${label} must be a boolean`);
-  }
-}
-
-function assertNullableBoolean(value: unknown, label: string): asserts value is boolean | null {
-  if (value !== null) {
-    assertBoolean(value, label);
   }
 }
 

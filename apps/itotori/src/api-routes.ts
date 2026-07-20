@@ -101,29 +101,6 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     pathParams: [],
     responseSchema: "ApiBenchmarkReportsResponse",
   },
-  // itotori-bmk-cockpit-read-model — the benchmark COCKPIT read-model for one
-  // project. The benchmark is a DIAGNOSTIC INSTRUMENT (per §10 framing), not a
-  // leaderboard — the actionable backlog is the primary output. Composes the
-  // 5 contestants (official / self / self_nocontext / fan / mtl) + the §8
-  // human anchor + a confidence rollup + the actionable backlog.
-  "projects.bmkCockpit": {
-    method: "GET",
-    pathTemplate: "/api/projects/{projectId}/bmk-cockpit",
-    operationId: "projectsBmkCockpit",
-    summary: "Benchmark cockpit read model — contestants + anchor + confidence + backlog.",
-    pathParams: ["projectId"],
-    responseSchema: "BmkCockpitReadModel",
-  },
-  // itotori-bmk-cockpit-history — paged run history so a reviewer can confirm
-  // the actionable backlog is shrinking over time.
-  "projects.bmkCockpitHistory": {
-    method: "GET",
-    pathTemplate: "/api/projects/{projectId}/bmk-cockpit/history",
-    operationId: "projectsBmkCockpitHistory",
-    summary: "Benchmark cockpit run history.",
-    pathParams: ["projectId"],
-    responseSchema: "BmkCockpitRunHistoryPage",
-  },
   "jobs.runTable": {
     method: "GET",
     pathTemplate: "/api/jobs/run-table",

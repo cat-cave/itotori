@@ -23,7 +23,6 @@ import * as badgeStories from "../src/stories/Badge.stories.js";
 import * as biTextStories from "../src/stories/BiText.stories.js";
 import * as commandPaletteStories from "../src/stories/CommandPalette.stories.js";
 import * as comparisonPaneStories from "../src/stories/ComparisonPane.stories.js";
-import * as contestantSwatchStories from "../src/stories/ContestantSwatch.stories.js";
 import * as dataTableStories from "../src/stories/DataTable.stories.js";
 import * as localizationProgressStories from "../src/stories/LocalizationProgress.stories.js";
 import * as navPillsStories from "../src/stories/NavPills.stories.js";
@@ -53,7 +52,6 @@ const PUBLIC_COMPONENTS = [
   "ComparisonPane",
   "LocalizationProgress",
   "StatReadout",
-  "ContestantSwatch",
   "RedactionFrame",
   "BiText",
   "NavPills",
@@ -73,7 +71,6 @@ const storyModules = {
   ComparisonPane: comparisonPaneStories,
   LocalizationProgress: localizationProgressStories,
   StatReadout: statReadoutStories,
-  ContestantSwatch: contestantSwatchStories,
   RedactionFrame: redactionFrameStories,
   BiText: biTextStories,
   NavPills: navPillsStories,

@@ -20,8 +20,6 @@ export { LocalizationProgress } from "./data/LocalizationProgress.js";
 export type { LocalizationProgressProps, LocalizationStage } from "./data/LocalizationProgress.js";
 export { StatReadout } from "./data/StatReadout.js";
 export type { StatReadoutProps } from "./data/StatReadout.js";
-export { ContestantSwatch } from "./data/ContestantSwatch.js";
-export type { ContestantRole, ContestantSwatchProps } from "./data/ContestantSwatch.js";
 export { RedactionFrame, shouldRedactFrame } from "./data/RedactionFrame.js";
 export type { RedactionFrameProps, RedactionDecision } from "./data/RedactionFrame.js";
 

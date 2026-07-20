@@ -47,22 +47,6 @@
       "sha256": "sha256:3e19a733da7712b2d7e72b40cdc70e9eeed40bfb1fe4c813e52b1b0e14a20e74"
     },
     {
-      "id": "data-contestantswatch--all-roles",
-      "title": "data/ContestantSwatch",
-      "name": "All Roles",
-      "importPath": "./src/stories/ContestantSwatch.stories.tsx",
-      "baseline": "data-contestantswatch--all-roles.png",
-      "sha256": "sha256:0e521faa0e7e964d5a6ca7a7210ad4bf85950236bd53e680b5eb46cf4b08dac8"
-    },
-    {
-      "id": "data-contestantswatch--default",
-      "title": "data/ContestantSwatch",
-      "name": "Default",
-      "importPath": "./src/stories/ContestantSwatch.stories.tsx",
-      "baseline": "data-contestantswatch--default.png",
-      "sha256": "sha256:b981891cb0ffc5ba96542fb48570ddf930dfb5dee068d730a19c7d188351bbe3"
-    },
-    {
       "id": "data-datatable--activatable-rows",
       "title": "data/DataTable",
       "name": "Activatable Rows",

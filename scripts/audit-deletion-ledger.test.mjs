@@ -198,7 +198,7 @@ test("multiple globs entry sums line counts correctly", () => {
   assert.equal(ok, true);
 });
 
-test("the checked-in ledger forbids reviving either retired provider root", () => {
+test("the checked-in ledger forbids reviving the retired roots and isolated residues", () => {
   const ledger = loadLedger(join("scripts", "lint", "deletion-ledger.json"));
   const absentRoots = ledger.delete.appSurface.flatMap((entry) => {
     if (entry.expected !== "absent") return [];
@@ -208,4 +208,22 @@ test("the checked-in ledger forbids reviving either retired provider root", () =
 
   assert.ok(absentRoots.includes("apps/itotori/src/providers/"));
   assert.ok(absentRoots.includes("apps/itotori/src/provider-proof/"));
+
+  const absentFiles = ledger.delete.appSurface.flatMap((entry) =>
+    entry.expected === "absent" && entry.kind === "files" ? entry.files : [],
+  );
+  assert.ok(absentFiles.includes("apps/itotori/src/bmk-cockpit-read-model.ts"));
+  assert.ok(
+    absentFiles.includes("packages/itotori-db/src/repositories/benchmark-run-repository.ts"),
+  );
+  assert.ok(absentFiles.includes("packages/itotori-ds/src/components/data/ContestantSwatch.tsx"));
+  assert.ok(
+    absentFiles.includes(
+      "packages/itotori-ds/test/visual-baselines/data-contestantswatch--all-roles.png",
+    ),
+  );
+  assert.ok(
+    absentFiles.includes("packages/localization-bridge-schema/src/raw-mtl-baseline-proof.ts"),
+  );
+  assert.ok(absentFiles.includes("scripts/generate-qa-calibration-bundles.mjs"));
 });
