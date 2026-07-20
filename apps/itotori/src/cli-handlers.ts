@@ -50,6 +50,7 @@ import {
   type RunUtsushiStructureResult,
 } from "./structure-export/utsushi-structure-seam.js";
 import { runNativeCli, type NativeCliRunner } from "./native-bin/cli-bin-resolver.js";
+import { applyEnginePatchback, detectPatchbackEngine } from "./patchback/index.js";
 import { buildHelpText } from "./help-text.js";
 import { runInitCommand, type InitCommandDeps } from "./init-command.js";
 import { optionalFlag, requiredFlag } from "./cli/flags.js";
@@ -269,29 +270,28 @@ async function runPatchCommand(
   const sourceRoot = requiredFlag(args, "--source");
   const targetRoot = requiredFlag(args, "--target");
   const bundlePath = requiredFlag(args, "--bundle");
+  const patchExportPath = optionalFlag(args, "--patch");
   const scope = requiredFlag(args, "--scope");
   if (scope !== "dialogue-only" && scope !== "dialogue+choices") {
     throw new Error(
       `itotori patch: --scope must be 'dialogue-only' or 'dialogue+choices', got '${scope}'`,
     );
   }
-  const nativeArgs = [
-    "patch",
-    "--engine",
-    "reallive",
-    "--bundle",
-    bundlePath,
-    "--source",
+  // Derive the engine from the source artifacts (never a hard-coded RealLive
+  // insert): the registry selects the adapter whose source is present under
+  // --source, and that adapter builds + spawns its own `kaifuu patch` argv.
+  const engine = detectPatchbackEngine(sourceRoot);
+  applyEnginePatchback({
+    engineId: engine.engineId,
     sourceRoot,
-    "--target",
     targetRoot,
-    "--scope",
+    translatedBundlePath: bundlePath,
+    ...(patchExportPath !== undefined ? { patchExportPath } : {}),
     scope,
-  ];
-  if (args.includes("--force")) {
-    nativeArgs.push("--force");
-  }
-  runNativeCommandOrThrow("patch", "kaifuu-cli", nativeArgs, dependencies.nativeCli);
+    force: args.includes("--force"),
+    ...(dependencies.nativeCli !== undefined ? { nativeCli: dependencies.nativeCli } : {}),
+    log: (message) => process.stderr.write(`${message}\n`),
+  });
 }
 
 /**

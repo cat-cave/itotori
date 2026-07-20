@@ -14,7 +14,7 @@ import { assertBridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import { AcceptedOutputSchema } from "../contracts/index.js";
 import type { NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
 import { produceNativePatchbackBuild, type ProducedPatchbackManifest } from "./produce-build.js";
-import type { RealLivePatchScope } from "./apply.js";
+import type { PatchbackEngineId, PatchbackScope } from "./adapters.js";
 import type { NativePatchbackInput } from "./types.js";
 
 /** Stable capability identity consumed by the CLI receipt and parity gate. */
@@ -30,7 +30,9 @@ export type PatchbackProduceCliArgs = {
   outputPath: string;
   sourceRoot: string;
   buildRoot: string;
-  scope: RealLivePatchScope;
+  scope: PatchbackScope;
+  /** Explicit engine; when omitted the producer discovers it from the source. */
+  engineId?: PatchbackEngineId;
   runId?: string;
   force?: boolean;
   nativeCli?: NativeCliRunner;
@@ -43,7 +45,9 @@ export type PatchbackProduceCliReceipt = {
   capabilityId: typeof PATCHBACK_PRODUCE_CAPABILITY_ID;
   sourceRoot: string;
   buildRoot: string;
-  scope: RealLivePatchScope;
+  scope: PatchbackScope;
+  /** The engine the produced build was patched with (from the manifest). */
+  engineId: PatchbackEngineId;
   patch: ProducedPatchbackManifest;
 };
 
@@ -67,6 +71,7 @@ export function runPatchbackProduceCommand(
     sourceRoot: args.sourceRoot,
     buildRoot: args.buildRoot,
     scope: args.scope,
+    ...(args.engineId === undefined ? {} : { engineId: args.engineId }),
     ...(args.runId === undefined ? {} : { runId: args.runId }),
     ...(args.force === undefined ? {} : { force: args.force }),
     ...(args.nativeCli === undefined ? {} : { nativeCli: args.nativeCli }),
@@ -78,6 +83,7 @@ export function runPatchbackProduceCommand(
     sourceRoot: args.sourceRoot,
     buildRoot: args.buildRoot,
     scope: args.scope,
+    engineId: produced.patch.engineId,
     patch: produced.patch,
   };
   args.io.writeJson(args.outputPath, receipt);

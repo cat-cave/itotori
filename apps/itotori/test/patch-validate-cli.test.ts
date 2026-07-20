@@ -1,4 +1,11 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -93,8 +100,27 @@ function hasG00Assets(gameDir: string): boolean {
   return false;
 }
 
+/** A minimal on-disk RealLive game root so `itotori patch` DERIVES the engine
+ * (reallive) from the source artifacts instead of a hard-coded insert. */
+function makeRealLiveSourceRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), "itotori-patch-cli-source-"));
+  mkdirSync(join(root, "REALLIVEDATA"), { recursive: true });
+  writeFileSync(join(root, "REALLIVEDATA", "Seen.txt"), "");
+  writeFileSync(join(root, "REALLIVEDATA", "Gameexe.ini"), "");
+  return root;
+}
+
+/** A minimal on-disk Softpal game root (loose SCRIPT.SRC + TEXT.DAT). */
+function makeSoftpalSourceRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), "itotori-patch-cli-softpal-"));
+  writeFileSync(join(root, "SCRIPT.SRC"), "");
+  writeFileSync(join(root, "TEXT.DAT"), "");
+  return root;
+}
+
 describe("itotori patch", () => {
-  it("wraps kaifuu patch --engine reallive with translated bundle, source, target, scope, and force", async () => {
+  it("derives the RealLive engine from the source and wraps kaifuu patch --engine reallive", async () => {
+    const source = makeRealLiveSourceRoot();
     const calls: Array<{ command: string; args: string[] }> = [];
     await runItotoriCliCommand(
       [
@@ -102,7 +128,7 @@ describe("itotori patch", () => {
         "--bundle",
         "/run/translated-bridge.json",
         "--source",
-        "/games/sweetie",
+        source,
         "--target",
         "/tmp/patched",
         "--scope",
@@ -119,19 +145,55 @@ describe("itotori patch", () => {
       "patch",
       "--engine",
       "reallive",
-      "--bundle",
-      "/run/translated-bridge.json",
       "--source",
-      "/games/sweetie",
+      source,
       "--target",
       "/tmp/patched",
+      "--bundle",
+      "/run/translated-bridge.json",
       "--scope",
       "dialogue-only",
       "--force",
     ]);
   });
 
+  it("derives the Softpal engine from the source and wraps kaifuu patch --engine softpal", async () => {
+    const source = makeSoftpalSourceRoot();
+    const calls: Array<{ command: string; args: string[] }> = [];
+    await runItotoriCliCommand(
+      [
+        "patch",
+        "--bundle",
+        "/run/translated-bridge.json",
+        "--patch",
+        "/run/patch-export.json",
+        "--source",
+        source,
+        "--target",
+        "/tmp/patched",
+        "--scope",
+        "dialogue-only",
+      ],
+      depsWithNativeRunner(calls),
+    );
+
+    expect(calls).toHaveLength(1);
+    const patchIndex = calls[0]!.args.indexOf("patch");
+    expect(calls[0]!.args.slice(patchIndex)).toEqual([
+      "patch",
+      "--engine",
+      "softpal",
+      "--source",
+      source,
+      "--patch",
+      "/run/patch-export.json",
+      "--output",
+      "/tmp/patched",
+    ]);
+  });
+
   it("surfaces kaifuu stderr on failure", async () => {
+    const source = makeRealLiveSourceRoot();
     const calls: Array<{ command: string; args: string[] }> = [];
     await expect(
       runItotoriCliCommand(
@@ -140,7 +202,7 @@ describe("itotori patch", () => {
           "--bundle",
           "/run/translated-bridge.json",
           "--source",
-          "/games/sweetie",
+          source,
           "--target",
           "/tmp/patched",
           "--scope",
