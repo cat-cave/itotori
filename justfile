@@ -85,6 +85,8 @@ check:
     node scripts/file-line-cap-guard.mjs
     node --test scripts/audit-deletion-ledger.test.mjs
     node scripts/audit-deletion-ledger.mjs
+    node --test scripts/audit-no-legacy-llm-residue.test.mjs
+    node scripts/audit-no-legacy-llm-residue.mjs
     node --test scripts/audit-llm-layer-imports.test.mjs
     node scripts/audit-llm-layer-imports.mjs
     node --test scripts/audit-llm-loc-budget.test.mjs

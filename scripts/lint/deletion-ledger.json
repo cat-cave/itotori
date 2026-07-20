@@ -1,5 +1,5 @@
 {
-  "description": "Post-cutover deletion ledger. The retired application groups, cockpit read model, proof wire contract, calibration generator, and benchmark/experiment fixtures have zero remaining tracked LOC; the retained LLM boundary is checked for legacy imports.",
+  "description": "Post-cutover deletion ledger. The retired application groups, JSON salvage and old-loop schema residue, cockpit read model, proof wire contract, calibration generator, and benchmark/experiment fixtures have zero remaining tracked LOC; the retained LLM boundary is checked for legacy imports.",
   "version": 3,
   "contractualTotalLines": 0,
   "delete": {
@@ -76,6 +76,13 @@
         "id": "raw-mtl-proof-wire-contract",
         "kind": "files",
         "files": ["packages/localization-bridge-schema/src/raw-mtl-baseline-proof.ts"],
+        "lines": 0,
+        "expected": "absent"
+      },
+      {
+        "id": "old-agentic-loop-wire-contract",
+        "kind": "files",
+        "files": ["packages/localization-bridge-schema/src/agentic-loop-bundle.ts"],
         "lines": 0,
         "expected": "absent"
       },

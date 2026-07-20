@@ -23,7 +23,7 @@
 // draft that lost a span (the preflight `protectedSpanCoverage` check
 // catches this).
 
-import { isLocaleTaggedSourceEcho, type NonBlankTargetText } from "./agentic-loop-bundle.js";
+import { isLocaleTaggedSourceEcho, type NonBlankTargetText } from "./target-text.js";
 
 // v3 removes the obsolete all-drafts-accepted gate and tightens emitted target
 // bodies to the same non-blank, non-source-replay invariant as WrittenUnitOutcome.
