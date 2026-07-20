@@ -5,7 +5,7 @@
 // roles into dependency LEVELS from the manifest DAG, and enumerates the
 // independent work each role fans out over — with each work item's SERIAL step
 // chain and each step's assigned target artifacts. A3 (per-scene) is the one
-// progressive fold: its item per route is a serial chain over the route's scenes;
+// progressive fold: its whole-game item is a serial chain over the dispatched scenes;
 // every other analyst is a single-step item. No model runs here.
 
 import { orderAnalystLevels } from "./ordering.js";

@@ -113,9 +113,8 @@ function sceneScopes(snapshot: FactSnapshot): WorkSource["scenes"] {
   }
   let storyScope: RouteScope | undefined;
   // A dispatched scene with no ordered units — a title / menu / branch-only /
-  // system scene (47 of Sweetie's dispatched scenes) — carries nothing for the
-  // analysts to author, so skip it rather than fail. The story-so-far spine
-  // folds only through scenes that actually have content.
+  // system scene — carries nothing for the analysts to author, so skip it. The
+  // story-so-far spine folds only through scenes that actually have content.
   return snapshot.routeTopology.sceneDispatchOrder.flatMap((sceneId) => {
     const sceneScope = byScene.get(sceneId);
     if (sceneScope === undefined) return [];
