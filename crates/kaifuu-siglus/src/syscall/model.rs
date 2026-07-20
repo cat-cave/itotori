@@ -6,8 +6,14 @@ use crate::expression::{SiglusArgForm, SiglusExpr};
 use crate::flow::SceneFlowError;
 use crate::{SiglusExpressionError, SiglusParseError};
 
-/// The `GLOBAL.SELBTN` system-function id used by the title choice syscall.
-pub const SEL_SYSTEM_FUNCTION_ID: i32 = 76;
+/// The Siglus engine ABI's `GLOBAL.SELBTN` built-in system-function id.
+///
+/// Oracle citation: `siglus_rs` defines `ELM_GLOBAL_SELBTN` as
+/// `create_elm_code(0, 0, 76)` and `elm_value::GLOBAL_SELBTN` as `76` in
+/// `crates/siglus_scene_vm/src/runtime/forms/codes.rs`; its
+/// `siglus_ss_decompiler::constants::BUILTIN_ELEMENTS` table also maps
+/// `global.selbtn` to command code `76`.
+pub const GLOBAL_SELBTN_SYSTEM_FUNCTION_ID: i32 = 76;
 
 /// Return the stable system-function name when this decoder has an
 /// authoritative argument-shape entry for an id.
