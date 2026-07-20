@@ -1581,6 +1581,7 @@ dependencies = [
 name = "utsushi-siglus"
 version = "0.0.0"
 dependencies = [
+ "kaifuu-siglus",
  "serde",
  "serde_json",
  "tempfile",

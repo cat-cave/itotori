@@ -9,6 +9,7 @@ use utsushi_core::substrate::{
 };
 use utsushi_core::{RuntimeArtifactKind, RuntimeArtifactRoot, runtime_artifact_uri};
 
+use crate::launch::{RequestAssetPackage, SiglusSceneMomentIndex, hydrate_scene_moment_index};
 use crate::siglus_g00::{SiglusG00Image, decode_siglus_g00};
 use crate::siglus_render::{SiglusCgRedaction, encode_siglus_png, render_siglus_cg};
 
@@ -23,8 +24,10 @@ pub struct UtsushiSiglusPortContext {
 }
 
 impl UtsushiSiglusPortContext {
-    /// An empty context is useful for capability inspection but cannot launch
-    /// a capture; use [`UtsushiSiglusPort::with_g00_asset`] for production.
+    /// An empty context is useful for capability inspection. At launch the
+    /// port hydrates its package from [`PortRequest::vfs`]; callers that also
+    /// need the optional CG capture slice may use
+    /// [`UtsushiSiglusPort::with_g00_asset`].
     pub fn empty() -> Self {
         Self::default()
     }
@@ -62,16 +65,19 @@ impl std::fmt::Debug for UtsushiSiglusPortContext {
 #[derive(Debug)]
 pub struct UtsushiSiglusPort {
     context: UtsushiSiglusPortContext,
+    launch_index: Option<SiglusSceneMomentIndex>,
     decoded: Option<SiglusG00Image>,
     sink_set: SinkSet,
     shut_down: bool,
 }
 
 impl UtsushiSiglusPort {
-    /// Manifest for the implemented G00 decode/capture slice.
+    /// Manifest for the trace-only launch/hydration slice and optional G00
+    /// capture path. Launch retains a decoded scene/moment index; it does not
+    /// execute scene opcodes or claim visual evidence.
     pub const MANIFEST: PortManifest = PortManifest {
         id: PORT_ID,
-        name: "Utsushi Siglus G00/CG Engine Port",
+        name: "Utsushi Siglus Engine Port",
         version: PORT_VERSION,
         abi_version: 1,
         capabilities: &[
@@ -82,12 +88,13 @@ impl UtsushiSiglusPort {
         required_methods: REQUIRED_LIFECYCLE_STAGES,
         optional_methods: &[],
         env_schema: &[],
-        fidelity_tier_max: FidelityTier::LayoutProbe,
-        evidence_tier_max: EvidenceTier::E2,
+        fidelity_tier_max: FidelityTier::TraceOnly,
+        evidence_tier_max: EvidenceTier::E1,
         limitations: &[
+            "Launch decodes Scene.pck and Gameexe.dat into a scene/moment index through the request VFS; it does not execute scene opcodes, text, branches, or choices.",
             "The production slice decodes type-0 compressed and type-2 layered Siglus G00 containers; type-3 is rejected as unsupported rather than guessed.",
             "Capture artifacts are edge-redacted by default; full-fidelity decoded pixels are not persisted by this port.",
-            "Siglus VM, text observation, snapshot, and replay remain outside this CG-focused slice.",
+            "Siglus VM, text observation, snapshot, and replay remain outside this trace-only slice.",
         ],
     };
 
@@ -123,6 +130,7 @@ impl UtsushiSiglusPort {
     pub fn new() -> Self {
         Self {
             context: UtsushiSiglusPortContext::empty(),
+            launch_index: None,
             decoded: None,
             sink_set: SinkSet::new(),
             shut_down: false,
@@ -147,6 +155,46 @@ impl UtsushiSiglusPort {
     /// Borrow the port configuration for audit and embedding setup.
     pub fn context(&self) -> &UtsushiSiglusPortContext {
         &self.context
+    }
+
+    /// Fully decoded scene/moment index, available after a successful launch.
+    pub fn scene_moment_index(&self) -> Option<&SiglusSceneMomentIndex> {
+        self.launch_index.as_ref()
+    }
+
+    /// Number of scenes decoded during launch.
+    pub fn scene_count(&self) -> usize {
+        self.launch_index
+            .as_ref()
+            .map_or(0, SiglusSceneMomentIndex::scene_count)
+    }
+
+    /// Number of indexed review moments exposed by the trace-only launch.
+    pub fn moment_count(&self) -> usize {
+        self.launch_index
+            .as_ref()
+            .map_or(0, SiglusSceneMomentIndex::moment_count)
+    }
+
+    /// Number of parsed `Gameexe.dat` configuration entries from launch.
+    pub fn gameexe_entry_count(&self) -> usize {
+        self.launch_index
+            .as_ref()
+            .map_or(0, SiglusSceneMomentIndex::gameexe_entry_count)
+    }
+
+    fn hydrate_asset_package(&mut self, request: &PortRequest<'_>) -> Result<(), EnginePortError> {
+        if let Some(vfs) = request.vfs.clone() {
+            // The request handoff is the launch authority. An explicit VFS
+            // therefore replaces any embedding-time package configuration.
+            self.context.asset_package = Some(Arc::new(RequestAssetPackage::new(vfs)));
+        } else if self.context.asset_package.is_none() {
+            return Err(Self::lifecycle_error(
+                LifecycleStage::Launch,
+                "a Siglus AssetPackage supplied through PortRequest.vfs is required",
+            ));
+        }
+        Ok(())
     }
 
     fn load_image(&self, stage: LifecycleStage) -> Result<SiglusG00Image, EnginePortError> {
@@ -237,7 +285,18 @@ impl EnginePort for UtsushiSiglusPort {
 
     fn launch(&mut self, request: &PortRequest<'_>) -> Result<(), EnginePortError> {
         request.cancellation.check(LifecycleStage::Launch)?;
-        self.decoded = Some(self.load_image(LifecycleStage::Launch)?);
+        self.hydrate_asset_package(request)?;
+        let package = self.context.asset_package.as_deref().ok_or_else(|| {
+            Self::lifecycle_error(
+                LifecycleStage::Launch,
+                "a Siglus AssetPackage is required for launch hydration",
+            )
+        })?;
+        self.launch_index = Some(hydrate_scene_moment_index(package, request)?);
+        self.decoded = match self.context.g00_logical_path {
+            Some(_) => Some(self.load_image(LifecycleStage::Launch)?),
+            None => None,
+        };
         self.shut_down = false;
         Ok(())
     }
@@ -278,6 +337,7 @@ impl EnginePort for UtsushiSiglusPort {
             return Ok(PortShutdownOutcome::already_shut_down());
         }
         self.decoded = None;
+        self.launch_index = None;
         self.shut_down = true;
         Ok(PortShutdownOutcome::clean())
     }

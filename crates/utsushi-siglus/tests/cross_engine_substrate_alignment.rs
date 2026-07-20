@@ -58,11 +58,11 @@ fn siglus_manifest_declares_only_the_exercised_cg_capabilities() {
     );
     assert_eq!(
         UtsushiSiglusPort::MANIFEST.evidence_tier_max,
-        EvidenceTier::E2
+        EvidenceTier::E1
     );
     assert_eq!(
         UtsushiSiglusPort::MANIFEST.fidelity_tier_max,
-        FidelityTier::LayoutProbe
+        FidelityTier::TraceOnly
     );
 }
 

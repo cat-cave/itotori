@@ -13,6 +13,10 @@ description = "UTSUSHI-147 cross-engine substrate-alignment scaffold: pure-Rust 
 # Sharing through the facade is the load-bearing alignment claim, and is
 # proven by `tests/cross_engine_substrate_alignment.rs`.
 utsushi-core = { path = "../utsushi-core" }
+# Siglus container decoding is owned by Kaifuu. The runtime port consumes the
+# decoded launch inventory through its public, clean-room APIs; it does not
+# duplicate container parsing or reach around the substrate VFS.
+kaifuu-siglus = { path = "../kaifuu-siglus" }
 # runtime-profile boundary fixtures serialize typed admission
 # claims / boundary diagnostics as redacted JSON (secret-refs + one-way
 # proof hashes only — never raw key bytes). No `sha2` dep: the one-way

@@ -25,8 +25,8 @@ fn manifest_honestly_declares_the_real_capture_slice() {
     manifest.validate().expect("valid port manifest");
     assert!(manifest.capabilities.contains(&PortCapability::Launch));
     assert!(manifest.capabilities.contains(&PortCapability::Capture));
-    assert_eq!(manifest.evidence_tier_max, EvidenceTier::E2);
-    assert_eq!(manifest.fidelity_tier_max, FidelityTier::LayoutProbe);
+    assert_eq!(manifest.evidence_tier_max, EvidenceTier::E1);
+    assert_eq!(manifest.fidelity_tier_max, FidelityTier::TraceOnly);
     let profile = UtsushiSiglusPort::PARITY_PROFILE;
     assert_eq!(
         profile.stance(PortCapability::Capture),
