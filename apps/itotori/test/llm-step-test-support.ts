@@ -251,6 +251,12 @@ export function rawStructuredProviderResponse(content: string): Response {
   ]);
 }
 
+/** A connection reset thrown before the adapter can convert it to RUN_ERROR.
+ * This is the retryable raw transport-exception fixture. */
+export function rawTransportDropError(): Error {
+  return new Error("connection reset before the adapter reported a stream error");
+}
+
 export function httpProviderResponse(status: number, retryAfter?: string): Response {
   return new Response(JSON.stringify({ error: { message: "synthetic provider failure" } }), {
     status,

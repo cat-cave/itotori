@@ -23,6 +23,7 @@ import {
   TEST_MODEL_PROFILE,
   decodedUnitsTool,
   httpProviderResponse,
+  rawTransportDropError,
   toolLoopSpec,
   toolProviderResponse,
 } from "./llm-step-test-support.js";
@@ -31,6 +32,7 @@ const HASH_A = `sha256:${"a".repeat(64)}` as const;
 const HASH_B = `sha256:${"b".repeat(64)}` as const;
 
 type CapturedRequest = { headers: Headers; body: Record<string, unknown> };
+type ProviderResponse = Response | Error;
 
 class MemoryMemoStore implements LlmCallMemoStore {
   readonly #memos = new Map<string, Extract<LlmMemoSingleflightResult, { kind: "completed" }>>();
@@ -142,6 +144,42 @@ function structuredResponse(
   );
 }
 
+/** A response that completed its data frames before its connection was lost.
+ * The adapter reports this indistinguishably from a mid-stream body loss as a
+ * RUN_ERROR, so this fixture must remain terminal and billing-unknown. */
+function completedThenLostResponse(): Response {
+  const encoder = new TextEncoder();
+  const frames = [
+    streamChunk({
+      id: "generation:lost-response",
+      delta: { role: "assistant", content: JSON.stringify(reviewVerdictExample) },
+    }),
+    streamChunk({ id: "generation:lost-response", delta: {}, finishReason: "stop" }),
+    streamChunk({
+      id: "generation:lost-response",
+      usage: { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18, cost: 0.00000125 }, // itotori-225-audit-allow: synthetic lost-response evidence, not a production cost source
+    }),
+  ];
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const frame of frames)
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
+      controller.error(new Error("connection reset after the completed response"));
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}
+
+const TRANSIENT_TRANSPORT: LlmAttemptFailure = {
+  classification: "transient",
+  kind: "transport",
+  httpStatus: null,
+  retryAfterMs: null,
+};
+
 function toolCallResponse(callIndex: number, reasoningDetails: readonly unknown[] = []): Response {
   const id = `generation:tool:${callIndex}`;
   return sse([
@@ -223,7 +261,7 @@ function callSpec(prompt: string, overrides: Partial<CallSpec> = {}): CallSpec {
 
 function runtime(
   prompt: string,
-  responses: Response[],
+  responses: ProviderResponse[],
   captured: CapturedRequest[],
   tools: readonly DispatchTool[] = [],
 ): DispatchRuntime {
@@ -258,6 +296,7 @@ function runtime(
       });
       const response = responses.shift();
       if (!response) throw new Error("unexpected extra provider request");
+      if (response instanceof Error) throw response;
       return response;
     },
   };
@@ -529,6 +568,104 @@ describe("the rebuilt LLM dispatcher", () => {
     //      aborting on the single-provider rate limit, and recovered.
     expect(captured).toHaveLength(2);
     expect(result.status).toBe("success");
+  });
+
+  it("retries raw transport exceptions, then succeeds", async () => {
+    // A raw connection reset reaches streaming execute's catch before the
+    // adapter can emit RUN_ERROR. It is therefore safe to retry under the
+    // bounded attempt budget.
+    const prompt = "Return the requested synthetic review verdict.";
+    const captured: CapturedRequest[] = [];
+    const store = new MemoryMemoStore();
+    const base = runtime(
+      prompt,
+      [
+        rawTransportDropError(),
+        rawTransportDropError(),
+        structuredResponse(JSON.stringify(reviewVerdictExample)),
+      ],
+      captured,
+    );
+    const configured: DispatchRuntime = {
+      ...base,
+      memo: { ...base.memo, store, retry: { random: () => 0, sleep: async () => undefined } },
+    };
+
+    const result = await dispatch(callSpec(prompt), configured);
+
+    // Two raw transport failures were retried, and the third attempt succeeded.
+    expect(captured).toHaveLength(3);
+    expect(result.status).toBe("success");
+    // Each retried attempt was recorded as a transient transport failure — the
+    // http_attempts ledger preserves the lineage of the retried physical steps.
+    expect(store.failures).toEqual([TRANSIENT_TRANSPORT, TRANSIENT_TRANSPORT]);
+  });
+
+  it("treats an adapter RUN_ERROR as terminal billing-unknown", async () => {
+    const prompt = "Return the requested synthetic review verdict.";
+    const captured: CapturedRequest[] = [];
+    const store = new MemoryMemoStore();
+    const base = runtime(prompt, [completedThenLostResponse()], captured);
+    const configured: DispatchRuntime = {
+      ...base,
+      memo: { ...base.memo, store, retry: { random: () => 0, sleep: async () => undefined } },
+    };
+
+    const result = await dispatch(callSpec(prompt), configured);
+
+    // The adapter discards completion metadata when it emits RUN_ERROR; retrying
+    // could re-bill an already-completed response, so exactly one attempt stops.
+    expect(captured).toHaveLength(1);
+    expect(result).toMatchObject({
+      status: "failure",
+      failureKind: "transport",
+      billing: { status: "billing-unknown" },
+    });
+    expect(store.failures).toEqual([
+      { classification: "permanent", kind: "transport", httpStatus: null, retryAfterMs: null },
+    ]);
+  });
+
+  it("surfaces a clear retries-exhausted terminal failure when raw transport exceptions persist", async () => {
+    const prompt = "Return the requested synthetic review verdict.";
+    const captured: CapturedRequest[] = [];
+    const store = new MemoryMemoStore();
+    const base = runtime(
+      prompt,
+      [rawTransportDropError(), rawTransportDropError(), rawTransportDropError()],
+      captured,
+    );
+    const configured: DispatchRuntime = {
+      ...base,
+      memo: { ...base.memo, store, retry: { random: () => 0, sleep: async () => undefined } },
+    };
+
+    const result = await dispatch(callSpec(prompt), configured);
+
+    // Exactly the bounded budget of attempts — not a hang, not unbounded retries.
+    expect(captured).toHaveLength(3);
+    expect(result).toMatchObject({ status: "failure", failureKind: "retries-exhausted" });
+    expect(store.failures).toEqual([TRANSIENT_TRANSPORT, TRANSIENT_TRANSPORT, TRANSIENT_TRANSPORT]);
+  });
+
+  it("does not retry a non-transient 4xx transport failure", async () => {
+    // A 400 will not improve on retry: classify permanent and fail once.
+    const prompt = "Return the requested synthetic review verdict.";
+    const captured: CapturedRequest[] = [];
+    const store = new MemoryMemoStore();
+    const base = runtime(prompt, [httpProviderResponse(400)], captured);
+    const configured: DispatchRuntime = {
+      ...base,
+      memo: { ...base.memo, store, retry: { random: () => 0, sleep: async () => undefined } },
+    };
+
+    const result = await dispatch(callSpec(prompt), configured);
+
+    expect(captured).toHaveLength(1);
+    expect(result).toMatchObject({ status: "failure", failureKind: "http" });
+    expect(store.failures).toEqual([
+      { classification: "permanent", kind: "http", httpStatus: 400, retryAfterMs: null },
+    ]);
   });
 
   it("returns malformed terminal JSON as a typed failure without salvage or retry", async () => {

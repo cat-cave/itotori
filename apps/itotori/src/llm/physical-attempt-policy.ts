@@ -59,10 +59,20 @@ export interface TransportObserver {
   takeGenerationId(): Promise<string | null>;
 }
 
+/**
+ * Which phase of a physical attempt raised a failure. `stream` covers the model
+ * request itself being in flight (the transport boundary); `completion` covers
+ * processing an already-collected stream. A transport-shaped failure raised in
+ * the `stream` phase — even after a good (<400) response header — is a transient
+ * mid-flight drop and is safe to retry; the same shape in the `completion` phase
+ * is a deterministic error and must not be retried.
+ */
+export type AttemptPhase = "stream" | "completion";
+
 export interface PhysicalAttemptControl {
   signal: AbortSignal;
   race<T>(pending: Promise<T>): Promise<T>;
-  failure(error?: unknown): LlmAttemptFailure | null;
+  failure(error?: unknown, phase?: AttemptPhase): LlmAttemptFailure | null;
 }
 
 export class LlmPhysicalAttemptError extends Error {
@@ -255,7 +265,7 @@ function attemptDeadline(
       race(pending) {
         return raceWithAbort(pending, signal);
       },
-      failure(error?: unknown) {
+      failure(error?: unknown, phase?: AttemptPhase) {
         if (isLlmDurabilityFault(error)) {
           return {
             classification: "cancelled",
@@ -290,16 +300,31 @@ function attemptDeadline(
           };
         }
         if (observation?.kind === "response") {
-          return observation.httpStatus >= 400
-            ? {
-                classification: retryableHttpStatus(observation.httpStatus)
-                  ? "transient"
-                  : "permanent",
-                kind: "http",
-                httpStatus: observation.httpStatus,
-                retryAfterMs: observation.retryAfterMs,
-              }
-            : null;
+          if (observation.httpStatus >= 400) {
+            return {
+              classification: retryableHttpStatus(observation.httpStatus)
+                ? "transient"
+                : "permanent",
+              kind: "http",
+              httpStatus: observation.httpStatus,
+              retryAfterMs: observation.retryAfterMs,
+            };
+          }
+          // A good (<400) response header whose model stream then failed
+          // mid-flight is a transient transport drop: the completion never
+          // fully arrived, so the request is safe to retry under the bounded
+          // attempt budget. A failure raised while PROCESSING an already
+          // collected stream (`completion` phase) is a deterministic error and
+          // stays out of the retry path.
+          if (error !== undefined && phase === "stream") {
+            return {
+              classification: "transient",
+              kind: "transport",
+              httpStatus: null,
+              retryAfterMs: null,
+            };
+          }
+          return null;
         }
         if (observation?.kind === "transport-error") {
           return {

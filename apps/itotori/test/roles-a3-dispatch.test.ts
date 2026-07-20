@@ -35,7 +35,7 @@ import {
 import { deepSeekV4FlashProfile } from "../src/llm/role-model-profiles.js";
 import type { MeasuredModelProfile } from "../src/llm/physical-attempt-policy.js";
 import { buildClaimFixture } from "./support/claim-fixture.js";
-import { structuredProviderResponse } from "./llm-step-test-support.js";
+import { rawTransportDropError, structuredProviderResponse } from "./llm-step-test-support.js";
 
 /** A measured profile whose identity matches the certified A3 reasoning route,
  * so the memo boundary accepts the A3 call spec. */
@@ -48,6 +48,7 @@ const A3_PROFILE: MeasuredModelProfile = {
 
 const HASH_A = `sha256:${"a".repeat(64)}` as const;
 const HASH_B = `sha256:${"b".repeat(64)}` as const;
+type ProviderResponse = Response | Error;
 
 const CONTEXT: A3Context = {
   runMode: "test-dev",
@@ -99,7 +100,7 @@ class MemoryMemoStore implements LlmCallMemoStore {
   }
 }
 
-function runtime(responses: Response[], onFetch?: () => void): DispatchRuntime {
+function runtime(responses: ProviderResponse[], onFetch?: () => void): DispatchRuntime {
   return {
     env: {
       OPENROUTER_API_KEY: "test-key",
@@ -111,6 +112,8 @@ function runtime(responses: Response[], onFetch?: () => void): DispatchRuntime {
     memo: {
       store: new MemoryMemoStore(),
       profile: A3_PROFILE,
+      // Deterministic, instant backoff so the retry proof carries no real sleep.
+      retry: { random: () => 0, sleep: async () => undefined },
       admission: {
         scope: "test:roles-a3",
         confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic admission cap for the recorded-transport proof, not a billed cost
@@ -129,6 +132,7 @@ function runtime(responses: Response[], onFetch?: () => void): DispatchRuntime {
       onFetch?.();
       const response = responses.shift();
       if (!response) throw new Error("unexpected extra provider request");
+      if (response instanceof Error) throw response;
       return response;
     },
   };
@@ -274,6 +278,31 @@ describe("A3 dispatches through the sole ZDR boundary", () => {
     expect(narrative.sceneClaims[0]!.evidenceUnitIds).toEqual([
       citeableSceneUnits(request.scene)[0]!.label,
     ]);
+  });
+
+  it("PROOF: raw transport exceptions are retried so the A3 caller still gets its narrative", async () => {
+    // A raw connection reset reaches the streaming execute catch before the
+    // adapter can report RUN_ERROR, so retrying the scene-summary dispatch is
+    // safe and the whole-game build proceeds.
+    const { model, request } = sceneRequest();
+    let fetches = 0;
+    const configured = runtime(
+      [
+        rawTransportDropError(),
+        rawTransportDropError(),
+        structuredProviderResponse(recordedSummary(model, request)),
+        structuredProviderResponse(recordedStory(model, request)),
+      ],
+      () => {
+        fetches += 1;
+      },
+    );
+    const caller = dispatchingA3Caller(model, CONTEXT, configured);
+    const narrative = await caller(request);
+    expect(narrative.beat).toBe("けいこは決断する。");
+    expect(narrative.storySummary).toBe("シーン1までの物語。");
+    // Two retried raw transport failures + one summary success + one story success.
+    expect(fetches).toBe(4);
   });
 
   it("PROOF: raw dispatch() rejects when the ZDR operator assertions are absent", async () => {
