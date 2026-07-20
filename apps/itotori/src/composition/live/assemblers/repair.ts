@@ -13,6 +13,7 @@
 // injected and carried through.
 
 import type { Defect, DefectBundle, DraftBatch } from "../../../contracts/index.js";
+import type { LocalizationTargetPolicy } from "../../../gates/index.js";
 import type { EditLineInput, EditorRuntimeBase } from "../../../roles/p2/index.js";
 import type {
   RepairCandidateUnit,
@@ -105,6 +106,7 @@ export function buildEditLineInput(input: {
   readonly defects: readonly Defect[];
   readonly facts: DecodeFactSource;
   readonly config: RunScopeConfig;
+  readonly policy: LocalizationTargetPolicy;
 }): EditLineInput {
   const drafts = draftsByUnit(input.scene);
   const currentDraft = currentDraftBatch(input.scene);
@@ -122,6 +124,7 @@ export function buildEditLineInput(input: {
     schemaHash: input.config.schemaHash,
     runMode: input.config.runMode,
     contextScope: input.config.contextScope,
+    policy: input.policy,
   };
 }
 
@@ -207,6 +210,7 @@ export function buildRepairRequest(input: {
 export function buildRepairOptions(input: {
   readonly repairedDefectLedger: ReadonlySet<string>;
   readonly config: RunScopeConfig;
+  readonly policy: LocalizationTargetPolicy;
 }): RepairOptions {
   return {
     contextSnapshotId: input.config.contextSnapshotId,
@@ -214,6 +218,7 @@ export function buildRepairOptions(input: {
     schemaHash: input.config.schemaHash,
     runMode: input.config.runMode,
     contextScope: input.config.contextScope,
+    policy: input.policy,
     repairedDefectLedger: input.repairedDefectLedger,
   };
 }
@@ -225,6 +230,7 @@ export function createRepairDeps(input: {
   readonly config: RunScopeConfig;
   readonly editRuntime: EditorRuntimeBase;
   readonly repairRuntime: RepairRuntimeBase;
+  readonly policy: LocalizationTargetPolicy;
 }): RepairDeps {
   return {
     buildEditInput: (portInput) =>
@@ -234,6 +240,7 @@ export function createRepairDeps(input: {
         defects: portInput.defects,
         facts: input.facts,
         config: input.config,
+        policy: input.policy,
       }),
     editRuntime: input.editRuntime,
     buildRepairRequest: (portInput) =>
@@ -247,6 +254,7 @@ export function createRepairDeps(input: {
       buildRepairOptions({
         repairedDefectLedger: portInput.repairedDefectLedger,
         config: input.config,
+        policy: input.policy,
       }),
     repairRuntime: input.repairRuntime,
   };

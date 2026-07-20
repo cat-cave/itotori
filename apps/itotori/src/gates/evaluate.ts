@@ -14,6 +14,7 @@ import type { Defect, DefectBundle } from "../contracts/index.js";
 import type { DeterministicGate } from "./contract-types.js";
 import { byteBoxGate } from "./byte-box.js";
 import { cardinalityOrderHashGate } from "./cardinality.js";
+import { encodingGate } from "./encoding.js";
 import {
   assertEvidenceCorpusPresent,
   evidenceScopeGate,
@@ -25,7 +26,6 @@ import { markupControlsGate } from "./markup-controls.js";
 import { patchCoverageGate } from "./patch-coverage.js";
 import { protectedSpansGate } from "./protected-spans.js";
 import { renderOcrGate } from "./render-ocr.js";
-import { shiftJisGate } from "./shift-jis.js";
 import type { DeterministicGateInput } from "./types.js";
 
 export type DeterministicGateReport = {
@@ -34,7 +34,7 @@ export type DeterministicGateReport = {
 };
 
 export function evaluateDeterministicGates(input: DeterministicGateInput): DeterministicGateReport {
-  const { snapshot, accepted } = input;
+  const { snapshot, accepted, policy } = input;
   const defects: Defect[] = [];
   const evaluatedGates: DeterministicGate[] = [];
 
@@ -43,11 +43,13 @@ export function evaluateDeterministicGates(input: DeterministicGateInput): Deter
     defects.push(...produced);
   };
 
+  // Universal semantic gates run for every target regardless of policy.
   run("cardinality-order-hash", cardinalityOrderHashGate(snapshot, accepted));
   run("protected-spans", protectedSpansGate(snapshot, accepted));
-  run("shift-jis", shiftJisGate(snapshot, accepted));
-  run("byte-box", byteBoxGate(snapshot, accepted, input.boxLimits));
-  run("markup-controls", markupControlsGate(snapshot, accepted));
+  // Encoding / layout / control gates are SELECTED from the adapter's policy.
+  run("encoding-policy", encodingGate(snapshot, accepted, policy));
+  run("byte-box", byteBoxGate(snapshot, accepted, policy, input.boxLimits));
+  run("markup-controls", markupControlsGate(snapshot, accepted, policy));
   run("patch-coverage", patchCoverageGate(snapshot, accepted, input.workScope));
 
   if (input.glossary !== undefined) {

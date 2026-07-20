@@ -12,7 +12,7 @@
 // never a repaired or fabricated result.
 
 import type { Draft, DraftBatch } from "../../contracts/index.js";
-import { firstNonSjisCodePoint } from "../../gates/shift-jis.js";
+import type { LocalizationTargetPolicy } from "../../gates/index.js";
 import { REPAIR_MODE, type RepairCall } from "./call.js";
 import type { NormalizedRepair } from "./normalize.js";
 
@@ -167,6 +167,7 @@ function placeholderMultiset(text: string): Map<string, number> {
 export function assertRepairPatchBatch(
   normalized: NormalizedRepair,
   batch: DraftBatch,
+  policy: LocalizationTargetPolicy,
 ): readonly Draft[] {
   const scope = batch.scope;
   if (scope.kind !== "repair-patch") {
@@ -240,11 +241,11 @@ export function assertRepairPatchBatch(
         );
       }
     }
-    const offending = firstNonSjisCodePoint(draft.targetSkeleton);
+    const offending = policy.firstDisallowedCodePoint(draft.targetSkeleton);
     if (offending !== null) {
       throw new RepairFinalizeError(
         "encoding",
-        `unit ${draft.unitId} target contains ${offending.label} (${offending.reason})`,
+        `unit ${draft.unitId} target contains ${offending.label} (${offending.reason}) — not ${policy.codec}-representable`,
       );
     }
     if (

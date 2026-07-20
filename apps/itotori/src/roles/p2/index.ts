@@ -12,7 +12,7 @@ export {
   assertExactAgainstSource,
   assertPlaceholdersPreserved,
   assertRepairPatchMatchesScope,
-  assertSjisPreserved,
+  assertTargetEncodable,
   FinalizeError,
   mergePatch,
   type FinalizeFailureCode,

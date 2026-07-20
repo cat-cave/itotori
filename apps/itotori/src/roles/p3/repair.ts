@@ -15,6 +15,7 @@ import {
   type Draft,
   type DraftBatch,
 } from "../../contracts/index.js";
+import type { LocalizationTargetPolicy } from "../../gates/index.js";
 import { specialistFor, type Specialist } from "../../roster/index.js";
 import { buildRepairCall, dispatchRepairCall, type RepairRuntimeBase } from "./call.js";
 import { assertBlindedGroundedFork, assertRepairPatchBatch } from "./finalize.js";
@@ -27,6 +28,8 @@ export interface RepairOptions {
   readonly schemaHash: `sha256:${string}`;
   readonly runMode: CallSpec["runMode"];
   readonly contextScope: CallSpec["contextScope"];
+  /** The target policy the repaired patch must stay encodable under. */
+  readonly policy: LocalizationTargetPolicy;
   /** Defect ids already repaired once — a second attempt on any routes out. */
   readonly repairedDefectLedger?: ReadonlySet<string>;
   readonly specialist?: Specialist;
@@ -131,7 +134,7 @@ export async function repairSemanticDefects(
 
   const result = await dispatchRepairCall(call, runtime);
   const batch = requireBatch(result);
-  const patches = assertRepairPatchBatch(normalized, batch);
+  const patches = assertRepairPatchBatch(normalized, batch, options.policy);
 
   return {
     kind: "repaired",

@@ -11,6 +11,8 @@ import type { AcceptedOutput, Fact, RenderAndOcrResult } from "../contracts/inde
 import type { SurfaceKindV02 } from "@itotori/localization-bridge-schema";
 import type { FactSnapshot } from "../prepass/index.js";
 
+import type { LocalizationTargetPolicy } from "./policy/types.js";
+
 /** The unit-subject accepted output — the only accepted-output kind the
  * per-unit gates evaluate (a translated target for one ordered unit). */
 export type AcceptedUnitOutput = Extract<AcceptedOutput, { subjectType: "unit" }>;
@@ -48,7 +50,12 @@ export type WorkScope = {
 export type DeterministicGateInput = {
   snapshot: FactSnapshot;
   accepted: readonly AcceptedUnitOutput[];
+  /** The localization target policy supplied by the extract/patch adapter. It
+   * selects the encoding, layout (byte/box), and control-marker gates; the
+   * universal semantic gates ignore it. */
+  policy: LocalizationTargetPolicy;
   glossary?: readonly GlossaryApprovedForm[];
+  /** Optional per-surface budget overrides that TIGHTEN the policy's budgets. */
   boxLimits?: BoxLimitPolicy;
   /** Context facts (each carrying its snapshotId + visibility) that accepted
    * outputs / reviewers cite as evidence — consumed by the evidence-scope gate. */

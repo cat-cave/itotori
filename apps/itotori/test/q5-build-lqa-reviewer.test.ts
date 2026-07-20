@@ -302,7 +302,7 @@ describe("Clause 1 — English target observed through render/OCR only", () => {
 describe("Clause 2 — render/build faults route to deterministic gates", () => {
   it("maps every render fault kind to a real deterministic build gate", () => {
     expect(gateForFaultKind("overflow")).toBe("byte-box");
-    expect(gateForFaultKind("charset")).toBe("shift-jis");
+    expect(gateForFaultKind("charset")).toBe("encoding-policy");
     expect(gateForFaultKind("missing-glyph")).toBe("render-ocr");
     expect(gateForFaultKind("layout")).toBe("render-ocr");
     expect(gateForFaultKind("ocr-mismatch")).toBe("render-ocr");

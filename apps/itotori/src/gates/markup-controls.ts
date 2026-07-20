@@ -3,25 +3,23 @@
 //
 //   * markup           — angle-bracket and square-bracket tags in the target
 //                        must be balanced (no unclosed / stray bracket).
-//   * control-sequence — an out-of-band control marker (the kidoku Textout
-//                        marker) or the interior-quote placeholder must never
-//                        leak into the accepted target.
+//   * control-sequence — an out-of-band control marker leak. The markers are
+//                        SELECTED from the localization target policy (e.g. an
+//                        engine's runtime Textout marker + interior-quote
+//                        placeholder); a policy with no markers skips this check.
 //   * punctuation      — a spoken/narrated target must terminate with sentence
 //                        punctuation or a closing quote/bracket (a truncated
 //                        line is a defect). Minor severity — never a hard fact.
-// All three read only the snapshot surface kind and the accepted target.
+// Bracket balance + punctuation are UNIVERSAL; only the control markers vary.
 
 import type { Defect } from "../contracts/index.js";
 import type { FactSnapshot } from "../prepass/index.js";
 
 import { buildDefect } from "./defect.js";
+import type { LocalizationTargetPolicy } from "./policy/types.js";
 import { bindAccepted } from "./unit-index.js";
 import type { AcceptedUnitOutput } from "./types.js";
 
-const OUT_OF_BAND_MARKER = "<reallive.kidoku ";
-// SOH (U+0001) — the patchback interior-quote placeholder; built from a code
-// point so no raw control char is embedded in source.
-const INTERIOR_QUOTE_PLACEHOLDER = String.fromCharCode(1);
 const TERMINAL_PUNCTUATION = /[.!?…。！？」』）)\]】]\s*$/u;
 const PUNCTUATED_SURFACES = new Set(["dialogue", "narration", "choice_label"]);
 
@@ -50,9 +48,19 @@ function bracketsBalanced(text: string): { ok: true } | { ok: false; detail: str
   return { ok: true };
 }
 
+/** A stable, human-readable label for a control marker (raw control chars are
+ * shown as their code point so no raw control char is embedded in a message). */
+function markerLabel(marker: string): string {
+  if (marker.length === 1 && marker.codePointAt(0)! < 0x20) {
+    return `U+${marker.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}`;
+  }
+  return JSON.stringify(marker);
+}
+
 export function markupControlsGate(
   snapshot: FactSnapshot,
   accepted: readonly AcceptedUnitOutput[],
+  policy: LocalizationTargetPolicy,
 ): Defect[] {
   const bound = bindAccepted(snapshot, accepted);
   const defects: Defect[] = [];
@@ -71,25 +79,17 @@ export function markupControlsGate(
       );
     }
 
-    if (target.includes(OUT_OF_BAND_MARKER)) {
-      defects.push(
-        buildDefect({
-          unitId: fact.factId,
-          category: "control-sequence",
-          detail: `target leaks the out-of-band control marker ${JSON.stringify(OUT_OF_BAND_MARKER)}`,
-          basisFactIds: [fact.factId],
-        }),
-      );
-    }
-    if (target.includes(INTERIOR_QUOTE_PLACEHOLDER)) {
-      defects.push(
-        buildDefect({
-          unitId: fact.factId,
-          category: "control-sequence",
-          detail: "target leaks an unresolved interior-quote placeholder (U+0001)",
-          basisFactIds: [fact.factId],
-        }),
-      );
+    for (const marker of policy.controlMarkers) {
+      if (marker.length > 0 && target.includes(marker)) {
+        defects.push(
+          buildDefect({
+            unitId: fact.factId,
+            category: "control-sequence",
+            detail: `target leaks the out-of-band control marker ${markerLabel(marker)}`,
+            basisFactIds: [fact.factId],
+          }),
+        );
+      }
     }
 
     if (

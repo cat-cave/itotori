@@ -15,6 +15,7 @@ import {
 import { sha256 } from "../src/llm/canonical-json.js";
 import { deepSeekV4FlashProfile } from "../src/llm/role-model-profiles.js";
 import type { MeasuredModelProfile } from "../src/llm/physical-attempt-policy.js";
+import { realliveSjisPolicy } from "../src/gates/index.js";
 import { specialistFor, toolsForRole } from "../src/roster/index.js";
 import {
   assertBlindedGroundedFork,
@@ -274,6 +275,7 @@ const OPTIONS = {
   schemaHash: SCHEMA,
   runMode: "test-dev" as const,
   contextScope: "whole-game" as const,
+  policy: realliveSjisPolicy,
 };
 
 describe("P3 semantic repair — fresh blinded grounded fork", () => {
@@ -418,7 +420,7 @@ describe("P3 semantic repair — minimal patch, failed ids only", () => {
       cands,
       cands.map((c) => c.unitId),
     );
-    expect(() => assertRepairPatchBatch(normalized, batch)).not.toThrow();
+    expect(() => assertRepairPatchBatch(normalized, batch, realliveSjisPolicy)).not.toThrow();
   });
 
   it("rejects a patch that touches a PASSING id (not in the failed set)", () => {
@@ -427,8 +429,12 @@ describe("P3 semantic repair — minimal patch, failed ids only", () => {
     // A schema-valid patch that inflates the scope with a passing unit + its draft.
     const passing = candidate(9);
     const inflated = repairPatchBatch([cands[0]!, passing], [cands[0]!.unitId, passing.unitId]);
-    expect(() => assertRepairPatchBatch(normalized, inflated)).toThrow(RepairFinalizeError);
-    expect(() => assertRepairPatchBatch(normalized, inflated)).toThrow(/failed-ids-mismatch/u);
+    expect(() => assertRepairPatchBatch(normalized, inflated, realliveSjisPolicy)).toThrow(
+      RepairFinalizeError,
+    );
+    expect(() => assertRepairPatchBatch(normalized, inflated, realliveSjisPolicy)).toThrow(
+      /failed-ids-mismatch/u,
+    );
   });
 
   it("rejects a candidate supplied for a passing unit at normalization", () => {
@@ -453,14 +459,16 @@ describe("P3 semantic repair — minimal patch, failed ids only", () => {
       ...batch,
       drafts: [{ ...batch.drafts[0]!, targetSkeleton: "no placeholder here" }],
     } as DraftBatch;
-    expect(() => assertRepairPatchBatch(normalized, dropped)).toThrow(/protected-span/u);
+    expect(() => assertRepairPatchBatch(normalized, dropped, realliveSjisPolicy)).toThrow(
+      /protected-span/u,
+    );
 
     // A patch that keeps the placeholder is accepted.
     const kept = {
       ...batch,
       drafts: [{ ...batch.drafts[0]!, targetSkeleton: "hp {{ph:0}} left" }],
     } as DraftBatch;
-    expect(() => assertRepairPatchBatch(normalized, kept)).not.toThrow();
+    expect(() => assertRepairPatchBatch(normalized, kept, realliveSjisPolicy)).not.toThrow();
   });
 
   it("requires resolving finding evidence and preserves Shift-JIS and choice-label encoding", () => {
@@ -475,13 +483,13 @@ describe("P3 semantic repair — minimal patch, failed ids only", () => {
     } as const;
     const normalized = normalizeRepairRequest(request([choice]));
     const batch = repairPatchBatch([choice], [choice.unitId]);
-    expect(() => assertRepairPatchBatch(normalized, batch)).not.toThrow();
+    expect(() => assertRepairPatchBatch(normalized, batch, realliveSjisPolicy)).not.toThrow();
 
     const ungroundedPatch = {
       ...batch,
       drafts: [{ ...batch.drafts[0]!, evidenceIds: ["fact:unrelated"] }],
     } as DraftBatch;
-    expect(() => assertRepairPatchBatch(normalized, ungroundedPatch)).toThrow(
+    expect(() => assertRepairPatchBatch(normalized, ungroundedPatch, realliveSjisPolicy)).toThrow(
       /resolving-evidence/u,
     );
 
@@ -489,13 +497,17 @@ describe("P3 semantic repair — minimal patch, failed ids only", () => {
       ...batch,
       drafts: [{ ...batch.drafts[0]!, targetSkeleton: "🙂" }],
     } as DraftBatch;
-    expect(() => assertRepairPatchBatch(normalized, nonSjis)).toThrow(/encoding/u);
+    expect(() => assertRepairPatchBatch(normalized, nonSjis, realliveSjisPolicy)).toThrow(
+      /encoding/u,
+    );
 
     const splitChoice = {
       ...batch,
       drafts: [{ ...batch.drafts[0]!, targetSkeleton: "First\nSecond" }],
     } as DraftBatch;
-    expect(() => assertRepairPatchBatch(normalized, splitChoice)).toThrow(/choice-encoding/u);
+    expect(() => assertRepairPatchBatch(normalized, splitChoice, realliveSjisPolicy)).toThrow(
+      /choice-encoding/u,
+    );
   });
 
   it("uses P3's immutable localizer profile and its live semantic validator", () => {

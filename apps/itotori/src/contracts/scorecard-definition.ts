@@ -103,7 +103,10 @@ export const AcceptanceScorecardDefinitionSchema = z
             requiredUnitCount: PositiveIntegerSchema,
             allowPartialPatch: z.literal(false),
             requireProtectedSpanPass: z.literal(true),
-            requireShiftJisPass: z.literal(true),
+            // The release requires the accepted output to pass the adapter's
+            // localization target policy (its encoding-policy gate), not one
+            // hard-coded engine encoding.
+            requireEncodingPolicyPass: z.literal(true),
           })
           .strict(),
         translatedByteReplay: z

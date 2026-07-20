@@ -11,7 +11,6 @@
 import type { BackTranslateResult } from "../contracts/index.js";
 import type { FactSnapshot } from "../prepass/index.js";
 
-import { sjisByteLength } from "./byte-box.js";
 import { stableDigest } from "./defect.js";
 import { bindAccepted } from "./unit-index.js";
 import type { AcceptedUnitOutput } from "./types.js";
@@ -47,11 +46,17 @@ export function backTranslationSignals(result: BackTranslateResult): Signal[] {
   }));
 }
 
+/** Codec-neutral target length for a relative drift metric — the codepoint
+ * count, which the voice CoV compares within a single speaker. */
+function targetLength(text: string): number {
+  return [...text].length;
+}
+
 /**
  * A per-speaker voice-drift fingerprint: the coefficient of variation of the
- * accepted targets' Shift-JIS byte length within a speaker. A speaker whose CoV
- * exceeds `driftThreshold` is flagged as drifting — a triage signal, not a
- * defect. Speakers with fewer than two lines cannot vary and are skipped.
+ * accepted targets' length within a speaker. A speaker whose CoV exceeds
+ * `driftThreshold` is flagged as drifting — a triage signal, not a defect.
+ * Speakers with fewer than two lines cannot vary and are skipped.
  */
 export function voiceFingerprintSignals(
   snapshot: FactSnapshot,
@@ -66,7 +71,7 @@ export function voiceFingerprintSignals(
       continue;
     }
     const lengths = bySpeaker.get(speaker.speakerId) ?? [];
-    lengths.push(sjisByteLength(output.value.targetSkeleton));
+    lengths.push(targetLength(output.value.targetSkeleton));
     bySpeaker.set(speaker.speakerId, lengths);
   }
 

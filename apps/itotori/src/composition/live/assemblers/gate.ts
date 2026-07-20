@@ -17,6 +17,7 @@ import type {
   AcceptedUnitOutput,
   BoxLimitPolicy,
   GlossaryApprovedForm,
+  LocalizationTargetPolicy,
   WorkScope,
 } from "../../../gates/index.js";
 import type { Fact } from "../../../contracts/index.js";
@@ -31,8 +32,11 @@ export interface GateEvidenceCorpus {
   readonly contextSnapshotId: string;
 }
 
-/** The optional deterministic side inputs the gate pass may read. */
+/** The deterministic side inputs the gate pass reads. The target `policy` is
+ * always required — it selects the encoding/layout/control gates; the rest are
+ * optional. */
 export interface GateSideInputs {
+  readonly policy: LocalizationTargetPolicy;
   readonly glossary?: readonly GlossaryApprovedForm[];
   readonly boxLimits?: BoxLimitPolicy;
   readonly workScope?: WorkScope;
@@ -106,6 +110,7 @@ export function buildDeterministicGateInput(input: {
   return {
     snapshot: input.facts.snapshot,
     accepted,
+    policy: input.side.policy,
     ...(input.side.glossary !== undefined ? { glossary: input.side.glossary } : {}),
     ...(input.side.boxLimits !== undefined ? { boxLimits: input.side.boxLimits } : {}),
     ...(input.side.workScope !== undefined ? { workScope: input.side.workScope } : {}),
@@ -122,9 +127,9 @@ export function buildDeterministicGateInput(input: {
  * inputs. The `evaluate` call inside the port runs the pure gates. */
 export function createGateDeps(input: {
   readonly facts: DecodeFactSource;
-  readonly side?: GateSideInputs;
+  readonly side: GateSideInputs;
 }): GateDeps {
-  const side = input.side ?? {};
+  const { side } = input;
   return {
     buildInput: (scene: DraftedScene) =>
       buildDeterministicGateInput({ scene, facts: input.facts, side }),

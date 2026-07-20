@@ -23,7 +23,7 @@ const CATEGORY_GATE: Readonly<Record<DeterministicDefectCategory, DeterministicG
   "unit-order": "cardinality-order-hash",
   "source-hash": "cardinality-order-hash",
   "glossary-exact": "glossary-exact",
-  encoding: "shift-jis",
+  encoding: "encoding-policy",
   "byte-limit": "byte-box",
   markup: "markup-controls",
   "control-sequence": "markup-controls",

@@ -1,11 +1,12 @@
 // Deterministic finalization guards for P2 Line Editor patches.
 //
 // The model may author the replacement target for an implicated line, but it
-// cannot widen the patch, alter source identity, drop a protected span, emit
-// non-SJIS text, or mutate any parent draft outside the exact edit scope.
+// cannot widen the patch, alter source identity, drop a protected span, emit a
+// target the selected policy's codec cannot carry, or mutate any parent draft
+// outside the exact edit scope.
 
 import type { Draft, DraftBatch } from "../../contracts/index.js";
-import { firstNonSjisCodePoint } from "../../gates/shift-jis.js";
+import type { LocalizationTargetPolicy } from "../../gates/index.js";
 import { AUTHOR_CONTINUATION_MODE, type EditScope } from "./scope.js";
 
 export type FinalizeFailureCode =
@@ -143,14 +144,18 @@ export function assertPlaceholdersPreserved(scope: EditScope, drafts: readonly D
   }
 }
 
-/** P2 has to stay patchback-safe before its implicated deterministic lane reruns. */
-export function assertSjisPreserved(drafts: readonly Draft[]): void {
+/** P2 has to stay patchback-safe under the selected target policy before its
+ * implicated deterministic lane reruns. */
+export function assertTargetEncodable(
+  drafts: readonly Draft[],
+  policy: LocalizationTargetPolicy,
+): void {
   for (const draft of drafts) {
-    const offending = firstNonSjisCodePoint(draft.targetSkeleton);
+    const offending = policy.firstDisallowedCodePoint(draft.targetSkeleton);
     if (offending !== null) {
       throw new FinalizeError(
         "encoding",
-        `unit ${draft.unitId} target contains ${offending.label} (${offending.reason})`,
+        `unit ${draft.unitId} target contains ${offending.label} (${offending.reason}) — not ${policy.codec}-representable`,
       );
     }
   }
@@ -208,6 +213,7 @@ export function mergePatch(
   currentDraft: DraftBatch,
   scope: EditScope,
   patch: DraftBatch,
+  policy: LocalizationTargetPolicy,
 ): readonly Draft[] {
   if (currentDraft !== scope.currentDraft) {
     throw new FinalizeError("parent-batch-mismatch", "merge parent is not the derived edit parent");
@@ -215,7 +221,7 @@ export function mergePatch(
   assertRepairPatchMatchesScope(scope, patch);
   assertExactAgainstSource(scope, patch.drafts);
   assertPlaceholdersPreserved(scope, patch.drafts);
-  assertSjisPreserved(patch.drafts);
+  assertTargetEncodable(patch.drafts, policy);
   assertChoiceEncoding(scope, patch.drafts);
   assertExactBibleBasis(scope, patch.drafts);
 

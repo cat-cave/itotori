@@ -18,7 +18,7 @@ import {
 import { parseCorpusManifestJson } from "../../src/corpus-manifest/validate.js";
 
 export const PINNED_SCORECARD_SHA256 =
-  "sha256:fa3c9539e8a96cc44918dc086c6e581e5067866a3d36bd259a6759f318f22275";
+  "sha256:8cdb6ba2a728a32cf65607a2ffe39c590c1ef45cbf68a24bc414f05d352b9c3a";
 export const PINNED_HUMAN_CALIBRATION_SHA256 =
   "sha256:fbdd6082be5046bb038de9dbf4b4161f786f12be2fe09d31e4ddec1d17b5bfeb";
 export const PINNED_CORPUS_MANIFEST_SHA256 =
