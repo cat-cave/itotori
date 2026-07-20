@@ -44,6 +44,7 @@ pub mod xp3_patch;
 pub mod xp3_private_local_summary;
 pub mod xp3_private_local_validation;
 pub mod xp3_production;
+pub mod xp3_readiness_report;
 
 pub use parse::{
     KsDocument, KsEncoding, KsFinding, KsFindingKind, KsUnit, TextRole, parse_ks,
@@ -92,6 +93,9 @@ pub use xp3_production::{
     Xp3ProductionNotClaimedReport, Xp3ProductionOutcome, Xp3ProductionRegistry,
     Xp3ProductionReport, Xp3ProductionStage, Xp3ProductionVariant, Xp3ProductionVariantReport,
     run_xp3_production,
+};
+pub use xp3_readiness_report::{
+    XP3_READINESS_REPORT_SPEC, Xp3ReadinessReport, classify_xp3_variant, scan_xp3_readiness_report,
 };
 
 /// One-line honest-scope statement, embedded so the boundary is queryable
