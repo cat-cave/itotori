@@ -9,6 +9,7 @@ import {
   type DraftBatch,
   type UnitFact,
 } from "../../contracts/index.js";
+import type { LocalizationTargetPolicy } from "../../gates/index.js";
 import { specialistFor, type Specialist } from "../../roster/index.js";
 import { buildEditCall, dispatchEditCall, type EditorRuntimeBase } from "./call.js";
 import { mergePatch } from "./finalize.js";
@@ -25,6 +26,8 @@ export interface EditLineInput {
   readonly schemaHash: `sha256:${string}`;
   readonly runMode: CallSpec["runMode"];
   readonly contextScope: CallSpec["contextScope"];
+  /** The target policy the merged patch must stay encodable under. */
+  readonly policy: LocalizationTargetPolicy;
   readonly specialist?: Specialist;
 }
 
@@ -102,7 +105,7 @@ export async function editLine(
   });
   const result = await dispatchEditCall(call, runtime);
   const patchBatch = requirePatchBatch(result);
-  const patchedDrafts = mergePatch(input.currentDraft, scope, patchBatch);
+  const patchedDrafts = mergePatch(input.currentDraft, scope, patchBatch, input.policy);
   return {
     repairMode: AUTHOR_CONTINUATION_MODE,
     provisional: true,

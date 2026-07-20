@@ -12,9 +12,32 @@ export type { DeterministicDefectCategory, DefectSeverity, DefectDraft } from ".
 
 export { cardinalityOrderHashGate, reachableUnitFactIdsInOrder } from "./cardinality.js";
 export { protectedSpansGate, requiredExactSpanRaws } from "./protected-spans.js";
-export { shiftJisGate, firstNonSjisCodePoint } from "./shift-jis.js";
-export { byteBoxGate, sjisByteLength, DEFAULT_BOX_LIMITS } from "./byte-box.js";
+export { encodingGate } from "./encoding.js";
+export { byteBoxGate } from "./byte-box.js";
 export { markupControlsGate } from "./markup-controls.js";
+export {
+  LocalizationTargetPolicyError,
+  firstNonSjisCodePoint,
+  listLocalizationTargetPolicies,
+  realliveSjisPolicy,
+  registerLocalizationTargetPolicy,
+  resolveLocalizationTargetPolicy,
+  resolveTargetPolicyForAdapter,
+  sjisByteLength,
+  utf8JsonPolicy,
+  REALLIVE_SJIS_ADAPTER_ID,
+  REALLIVE_SJIS_POLICY_ID,
+  UTF8_JSON_ADAPTER_ID,
+  UTF8_JSON_POLICY_ID,
+} from "./policy/index.js";
+export type {
+  EncodingViolation,
+  LocalizationTargetPolicy,
+  LocalizationTargetPolicyId,
+  PolicyBoxLimits,
+  RuntimeEvidenceChannel,
+  TargetCodec,
+} from "./policy/index.js";
 export { glossaryExactGate } from "./glossary-exact.js";
 export {
   evidenceScopeGate,

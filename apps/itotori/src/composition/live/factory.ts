@@ -22,6 +22,7 @@ import {
   type WikiObject,
 } from "../../contracts/index.js";
 import type { AdjudicateDeps, PatchbackDeps, ReviewDeps, WorkflowPortDeps } from "../deps.js";
+import { resolveTargetPolicyForAdapter } from "../../gates/index.js";
 import { buildFactSnapshot } from "../../prepass/index.js";
 import {
   buildInstalledBible,
@@ -99,7 +100,7 @@ export interface LiveWorkflowFactoryConfig {
   readonly roles: LiveWorkflowRoleSeams;
   readonly finalizeArtifact: FinalizeArtifactResolver;
   readonly draftBudget: DraftRealizationConfig;
-  readonly gateSideInputs?: Omit<GateSideInputs, "glossary">;
+  readonly gateSideInputs?: Omit<GateSideInputs, "glossary" | "policy">;
   readonly stepCache?: WorkflowStepCache;
   readonly maxStepAttempts?: number;
 }
@@ -211,9 +212,13 @@ export async function createLiveWorkflowPortDeps(
   });
   const bibleRenderingIds = (unitId: string): readonly string[] =>
     resolveUnitBibleGroundTruth(facts.orderedFact(unitId), facts.snapshot, bible).bibleRenderingIds;
+  // The extract/patch adapter that produced this bridge selects the target
+  // policy (codec, layout, control grammar, evidence channels) via the registry.
+  const policy = resolveTargetPolicyForAdapter(config.bridge.extractor.name);
   const side: GateSideInputs = {
     ...config.gateSideInputs,
     glossary: bible.canonicalForms,
+    policy,
   };
 
   return {
@@ -226,6 +231,7 @@ export async function createLiveWorkflowPortDeps(
       config: config.scope,
       editRuntime: runtime,
       repairRuntime: runtime,
+      policy,
     }),
     adjudicate: createAdjudicateDeps({
       config: config.scope,

@@ -18,11 +18,12 @@ import {
 import { sha256 } from "../src/llm/canonical-json.js";
 import { deepSeekV4FlashProfile } from "../src/llm/role-model-profiles.js";
 import type { MeasuredModelProfile } from "../src/llm/physical-attempt-policy.js";
+import { realliveSjisPolicy } from "../src/gates/index.js";
 import {
   assertExactAgainstSource,
   assertPlaceholdersPreserved,
   assertRepairPatchMatchesScope,
-  assertSjisPreserved,
+  assertTargetEncodable,
   buildEditCall,
   deriveEditScope,
   dispatchEditCall,
@@ -316,6 +317,7 @@ const BASE = {
   runMode: "test-dev" as const,
   contextScope: "whole-game" as const,
   bibleRenderingIds: BIBLE,
+  policy: realliveSjisPolicy,
 };
 
 describe("P2 line editor — author-thread continuation over draft + defects + bible", () => {
@@ -407,7 +409,9 @@ describe("P2 line editor — author-thread continuation over draft + defects + b
       ...repairPatchBatch(units, ["unit:6010:1"]),
       drafts: [patchDraftFor(units, "unit:6010:1"), patchDraftFor(units, "unit:6010:0")],
     } as DraftBatch;
-    expect(() => mergePatch(current, scope, forged)).toThrow(/unaffected-mutated/u);
+    expect(() => mergePatch(current, scope, forged, realliveSjisPolicy)).toThrow(
+      /unaffected-mutated/u,
+    );
   });
 });
 
@@ -437,12 +441,12 @@ describe("P2 line editor — output preserves placeholders, spans, and Shift-JIS
     const good = repairPatchBatch(units, ["unit:6010:1"], {
       targets: { "unit:6010:1": "hp {{ph:0}} left!" },
     });
-    expect(() => assertSjisPreserved(good.drafts)).not.toThrow();
+    expect(() => assertTargetEncodable(good.drafts, realliveSjisPolicy)).not.toThrow();
 
     const emoji = repairPatchBatch(units, ["unit:6010:1"], {
       targets: { "unit:6010:1": "hp {{ph:0}} left \u{1F600}" },
     });
-    expect(() => assertSjisPreserved(emoji.drafts)).toThrow(/encoding/u);
+    expect(() => assertTargetEncodable(emoji.drafts, realliveSjisPolicy)).toThrow(/encoding/u);
   });
 });
 

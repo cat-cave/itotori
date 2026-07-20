@@ -252,7 +252,7 @@ export const DeterministicGateSchema = z.enum([
   "protected-spans",
   "cardinality-order-hash",
   "glossary-exact",
-  "shift-jis",
+  "encoding-policy",
   "byte-box",
   "markup-controls",
   "evidence-scope",

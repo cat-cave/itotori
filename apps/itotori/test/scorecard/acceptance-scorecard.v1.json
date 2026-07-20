@@ -3,7 +3,7 @@
   "contentAddress": {
     "algorithm": "sha256",
     "canonicalization": "json-key-sort-v1",
-    "sha256": "sha256:fa3c9539e8a96cc44918dc086c6e581e5067866a3d36bd259a6759f318f22275"
+    "sha256": "sha256:8cdb6ba2a728a32cf65607a2ffe39c590c1ef45cbf68a24bc414f05d352b9c3a"
   },
   "corpus": {
     "manifestSha256": "sha256:61ed4f8abe1327073b39346d72ab6555efc05698c240c84762767740ad24506d",
@@ -56,7 +56,7 @@
       "requiredUnitCount": 129,
       "allowPartialPatch": false,
       "requireProtectedSpanPass": true,
-      "requireShiftJisPass": true
+      "requireEncodingPolicyPass": true
     },
     "translatedByteReplay": {
       "requiredUnitCount": 129,

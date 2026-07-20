@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import {
   byteBoxGate,
   cardinalityOrderHashGate,
+  encodingGate,
   evaluateDeterministicGates,
   evidenceScopeGate,
   GateEvaluationError,
@@ -21,8 +22,9 @@ import {
   patchCoverageGate,
   protectedSpansGate,
   reachableUnitFactIdsInOrder,
+  realliveSjisPolicy,
   renderOcrGate,
-  shiftJisGate,
+  utf8JsonPolicy,
 } from "../src/gates/index.js";
 import type { RenderAndOcrResult } from "../src/contracts/index.js";
 
@@ -119,18 +121,38 @@ describe("protected-spans gate", () => {
   });
 });
 
-describe("shift-jis gate", () => {
+describe("encoding gate (RealLive Shift-JIS policy)", () => {
   const unit = makeUnit({ factId: "unit:sjis" });
   const snap = makeSnapshot({ units: [unit] });
 
   it("passes an ASCII target", () => {
-    expect(shiftJisGate(snap, [makeAccepted(unit, "Hello.")])).toHaveLength(0);
+    expect(encodingGate(snap, [makeAccepted(unit, "Hello.")], realliveSjisPolicy)).toHaveLength(0);
   });
 
   it("flags a non-Shift-JIS codepoint", () => {
-    const defects = shiftJisGate(snap, [makeAccepted(unit, "smile 😀")]);
+    const defects = encodingGate(snap, [makeAccepted(unit, "smile 😀")], realliveSjisPolicy);
     expect(defects.map((d) => d.category)).toEqual(["encoding"]);
     assertContractValid(defects);
+  });
+});
+
+describe("encoding gate honesty across policies", () => {
+  const unit = makeUnit({ factId: "unit:utf8" });
+  const snap = makeSnapshot({ units: [unit] });
+  // An emoji-bearing target the RealLive Shift-JIS codec cannot carry.
+  const emojiTarget = makeAccepted(unit, "smile 😀");
+
+  it("a UTF-8 policy HONESTLY passes a target the Shift-JIS policy must reject", () => {
+    // RealLive Shift-JIS: the same target is an encoding defect.
+    expect(encodingGate(snap, [emojiTarget], realliveSjisPolicy)).toHaveLength(1);
+    // UTF-8: representable, so the shared encoding gate passes it honestly.
+    expect(encodingGate(snap, [emojiTarget], utf8JsonPolicy)).toHaveLength(0);
+  });
+
+  it("both policies still reject a raw unsupported control code", () => {
+    const control = makeAccepted(unit, `bad${String.fromCharCode(2)}`);
+    expect(encodingGate(snap, [control], realliveSjisPolicy)).toHaveLength(1);
+    expect(encodingGate(snap, [control], utf8JsonPolicy)).toHaveLength(1);
   });
 });
 
@@ -139,11 +161,11 @@ describe("byte-box gate", () => {
   const snap = makeSnapshot({ units: [unit] });
 
   it("passes a short target", () => {
-    expect(byteBoxGate(snap, [makeAccepted(unit, "Aoi")])).toHaveLength(0);
+    expect(byteBoxGate(snap, [makeAccepted(unit, "Aoi")], realliveSjisPolicy)).toHaveLength(0);
   });
 
   it("flags a target over the speaker-name byte budget", () => {
-    const defects = byteBoxGate(snap, [makeAccepted(unit, "X".repeat(80))]);
+    const defects = byteBoxGate(snap, [makeAccepted(unit, "X".repeat(80))], realliveSjisPolicy);
     expect(defects.map((d) => d.category)).toContain("byte-limit");
     assertContractValid(defects);
   });
@@ -154,22 +176,45 @@ describe("markup-controls gate", () => {
   const snap = makeSnapshot({ units: [unit] });
 
   it("passes balanced, terminated markup", () => {
-    expect(markupControlsGate(snap, [makeAccepted(unit, "Hello <b>there</b>.")])).toHaveLength(0);
+    expect(
+      markupControlsGate(snap, [makeAccepted(unit, "Hello <b>there</b>.")], realliveSjisPolicy),
+    ).toHaveLength(0);
   });
 
   it("flags unbalanced markup", () => {
-    const defects = markupControlsGate(snap, [makeAccepted(unit, "Hello <b there.")]);
+    const defects = markupControlsGate(
+      snap,
+      [makeAccepted(unit, "Hello <b there.")],
+      realliveSjisPolicy,
+    );
     expect(defects.map((d) => d.category)).toContain("markup");
     assertContractValid(defects);
   });
 
-  it("flags an out-of-band control marker leak", () => {
-    const defects = markupControlsGate(snap, [makeAccepted(unit, "Hi <reallive.kidoku 3>.")]);
+  it("flags an out-of-band control marker leak from the policy", () => {
+    const defects = markupControlsGate(
+      snap,
+      [makeAccepted(unit, "Hi <reallive.kidoku 3>.")],
+      realliveSjisPolicy,
+    );
     expect(defects.map((d) => d.category)).toContain("control-sequence");
   });
 
+  it("does not flag the RealLive marker under a policy without it", () => {
+    const defects = markupControlsGate(
+      snap,
+      [makeAccepted(unit, "Hi <reallive.kidoku 3>.")],
+      utf8JsonPolicy,
+    );
+    expect(defects.map((d) => d.category)).not.toContain("control-sequence");
+  });
+
   it("flags a missing terminal punctuation", () => {
-    const defects = markupControlsGate(snap, [makeAccepted(unit, "no ending here")]);
+    const defects = markupControlsGate(
+      snap,
+      [makeAccepted(unit, "no ending here")],
+      realliveSjisPolicy,
+    );
     expect(defects.map((d) => d.category)).toContain("punctuation");
   });
 });
@@ -272,9 +317,13 @@ describe("evidence-scope gate", () => {
 
   it("fails loud when evidence is cited but no corpus is supplied", () => {
     const accepted = makeAccepted(unit, "hi.", { evidenceIds: ["human-note:n1"] });
-    expect(() => evaluateDeterministicGates({ snapshot: snap, accepted: [accepted] })).toThrow(
-      GateEvaluationError,
-    );
+    expect(() =>
+      evaluateDeterministicGates({
+        snapshot: snap,
+        accepted: [accepted],
+        policy: realliveSjisPolicy,
+      }),
+    ).toThrow(GateEvaluationError);
   });
 });
 

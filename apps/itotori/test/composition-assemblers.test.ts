@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 
 import { UnitFactSchema, type Defect, type ReviewVerdict } from "../src/contracts/index.js";
-import { buildDefect, evaluateDeterministicGates } from "../src/gates/index.js";
+import { buildDefect, evaluateDeterministicGates, realliveSjisPolicy } from "../src/gates/index.js";
 import {
   MissingBibleEntryError,
   resolveUnitBibleGroundTruth,
@@ -274,14 +274,18 @@ describe("draft assembler → P1 LocalizeSceneInput", () => {
 
 describe("gate assembler → DeterministicGateInput", () => {
   it("synthesizes candidate accepted outputs the gates bind + evaluate cleanly", () => {
-    const input = buildDeterministicGateInput({ scene: draftedScene, facts, side: {} });
+    const input = buildDeterministicGateInput({
+      scene: draftedScene,
+      facts,
+      side: { policy: realliveSjisPolicy },
+    });
     const report = evaluateDeterministicGates(input);
     // The always-run gates all ran, bound by subjectId === factId.
     expect(report.evaluatedGates).toEqual(
       expect.arrayContaining([
         "cardinality-order-hash",
         "protected-spans",
-        "shift-jis",
+        "encoding-policy",
         "byte-box",
         "markup-controls",
         "patch-coverage",

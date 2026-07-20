@@ -18,7 +18,7 @@ import type { Q5RenderFaultKind, Q5RenderFrame, Q5RenderObservation } from "./in
 const FAULT_KIND_GATES = {
   overflow: "byte-box",
   "missing-glyph": "render-ocr",
-  charset: "shift-jis",
+  charset: "encoding-policy",
   layout: "render-ocr",
   "ocr-mismatch": "render-ocr",
   "replay-coverage": "render-ocr",
