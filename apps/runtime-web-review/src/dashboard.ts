@@ -45,6 +45,7 @@ type RuntimeArtifact = {
   artifactKind: string;
   uri: string | null;
   hash: string | null;
+  hashProvenance: string | null;
   mediaType: string | null;
   byteSize: number | null;
   bridgeUnitId: string | null;
@@ -302,7 +303,7 @@ function renderUnsupportedCapabilities(capabilities: RuntimeUnsupportedCapabilit
 function renderArtifactTable(artifacts: RuntimeArtifact[]): string {
   const rows =
     artifacts.length === 0
-      ? `<tr><td colspan="8">No artifact records returned.</td></tr>`
+      ? `<tr><td colspan="9">No artifact records returned.</td></tr>`
       : artifacts
           .map(
             (artifact) => `
@@ -311,6 +312,7 @@ function renderArtifactTable(artifacts: RuntimeArtifact[]): string {
                 <td>${escapeHtml(artifact.artifactKind)}</td>
                 <td>${renderManagedArtifactLink(artifact)}</td>
                 <td>${escapeHtml(artifact.hash ?? "missing")}</td>
+                <td>${renderHashProvenance(artifact)}</td>
                 <td>${escapeHtml(artifact.mediaType ?? "missing")}</td>
                 <td>${artifact.byteSize ?? "missing"}</td>
                 <td>${escapeHtml(artifact.bridgeUnitId ?? "missing")}</td>
@@ -330,6 +332,7 @@ function renderArtifactTable(artifacts: RuntimeArtifact[]): string {
               <th>Kind</th>
               <th>Managed link</th>
               <th>Hash</th>
+              <th>Hash provenance</th>
               <th>MIME type</th>
               <th>Bytes</th>
               <th>Bridge unit</th>
@@ -372,7 +375,40 @@ function renderManagedArtifactLink(artifact: RuntimeArtifact): string {
   if (artifact.hash === null) {
     return diagnostic("managed artifact link missing content hash");
   }
+  // UTSUSHI-136 — a repository-generated placeholder hash is structurally a
+  // valid managed link, but it is NOT authentic content evidence. Render the
+  // link with an inline placeholder badge so the dashboard cannot be mistaken
+  // for content proof. Content-backed hashes render as a plain link.
+  if (artifact.hashProvenance === "repository_fallback") {
+    return `<a href="${escapeHtml(managedArtifactUrl(uri))}" target="_blank" rel="noreferrer">${escapeHtml(uri)}</a> ${placeholderBadge("generated placeholder hash")}`;
+  }
   return `<a href="${escapeHtml(managedArtifactUrl(uri))}" target="_blank" rel="noreferrer">${escapeHtml(uri)}</a>`;
+}
+
+function renderHashProvenance(artifact: RuntimeArtifact): string {
+  if (artifact.hash === null) {
+    return escapeHtml("missing");
+  }
+  // UTSUSHI-136 — surface the provenance discriminator the repository attaches
+  // to every runtime artifact hash. Content-backed hashes are authentic
+  // adapter evidence; repository_fallback hashes are deterministic
+  // placeholders over managed-artifact metadata and must not be presented as
+  // content proof.
+  if (artifact.hashProvenance === "content") {
+    return provenanceBadge("content", "#065f46");
+  }
+  if (artifact.hashProvenance === "repository_fallback") {
+    return provenanceBadge("repository_fallback", "#92400e");
+  }
+  return escapeHtml("unknown");
+}
+
+function placeholderBadge(label: string): string {
+  return `<span role="status" style="color:#92400e; font-weight:600">${escapeHtml(label)}</span>`;
+}
+
+function provenanceBadge(value: string, color: string): string {
+  return `<span data-provenance="${escapeHtml(value)}" style="color:${color}; font-weight:600">${escapeHtml(value)}</span>`;
 }
 
 function renderList(title: string, values: string[]): string {

@@ -244,8 +244,11 @@ export type {
   LocaleBranchStatus,
   LocalizationRunProjectScope,
   ProjectDashboardStatus,
+  RuntimeArtifactHashProvenance,
+  RuntimeDashboardArtifact,
   RuntimeDashboardStatus,
 } from "./repositories/project-repository.js";
+export { RUNTIME_ARTIFACT_HASH_PROVENANCES } from "./repositories/project-repository.js";
 export {
   ItotoriModelLedgerRepository,
   sanitizeAdapterMetadata,

@@ -39,6 +39,7 @@ import type {
   RuntimeDashboardStatus,
   TerminologySearchReadModel,
 } from "@itotori/db";
+import { RUNTIME_ARTIFACT_HASH_PROVENANCES } from "@itotori/db";
 import {
   assetLocalizationDecisionAssetKindList,
   assetLocalizationDecisionPolicyList,
@@ -5671,6 +5672,14 @@ function assertRuntimeDashboardArtifacts(value: unknown, label: string): void {
     assertString(row.artifactKind, `${label}[${index}].artifactKind`);
     assertNullableString(row.uri, `${label}[${index}].uri`);
     assertNullableString(row.hash, `${label}[${index}].hash`);
+    // UTSUSHI-136 — runtime artifact hash provenance discriminator.
+    // `content` = adapter-supplied content hash; `repository_fallback` =
+    // repository-generated deterministic placeholder; null = missing/legacy.
+    assertNullableEnum(
+      row.hashProvenance,
+      RUNTIME_ARTIFACT_HASH_PROVENANCES,
+      `${label}[${index}].hashProvenance`,
+    );
     assertNullableString(row.mediaType, `${label}[${index}].mediaType`);
     assertNullableNonNegativeInteger(row.byteSize, `${label}[${index}].byteSize`);
     assertNullableString(row.bridgeUnitId, `${label}[${index}].bridgeUnitId`);
