@@ -44,6 +44,7 @@ tempfile = { workspace = true }
 # are not production CLI dependencies; they are pulled in dev-only so the gate
 # can collect all six `PARITY_PROFILE`s and assert feature-parity across them.
 utsushi-siglus = { path = "../utsushi-siglus" }
+utsushi-softpal = { path = "../utsushi-softpal" }
 utsushi-rpgmaker-mv-mz = { path = "../utsushi-rpgmaker-mv-mz" }
 
 [build-dependencies]
