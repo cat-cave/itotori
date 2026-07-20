@@ -24,8 +24,10 @@ pub mod vm;
 pub mod vm_impl_map;
 
 mod cg_port;
+mod launch;
 
 pub use cg_port::{UtsushiSiglusPort, UtsushiSiglusPortContext};
+pub use launch::{SiglusSceneMoment, SiglusSceneMomentIndex};
 pub use siglus_g00::{
     SiglusG00Error, SiglusG00Image, SiglusG00Kind, SiglusG00Layer, decode_siglus_g00,
 };
