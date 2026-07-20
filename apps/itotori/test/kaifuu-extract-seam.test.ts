@@ -16,14 +16,19 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildExtractArgs,
+  extractCapabilities,
   KaifuuExtractError,
   KAIFUU_NATIVE_OUTPUT_REDACTED,
   REALLIVE_SCENE_ID_MAX,
+  registeredExtractEngines,
+  resolveExtractAdapter,
   runKaifuuExtract,
+  type KaifuuExtractArgs,
   type KaifuuProcessResult,
 } from "../src/extract/kaifuu-extract-seam.js";
 
 const IDENTITY = {
+  engine: "reallive",
   gameId: "sample-game",
   gameVersion: "1.0",
   sourceProfileId: "profile-1",
@@ -367,6 +372,174 @@ describe("runKaifuuExtract (softpal dispatch)", () => {
     expect(caught?.message).toContain("softpal");
     expect(caught?.message).not.toContain("PRIVATE-SOFTPAL-DIALOGUE");
     expect(caught?.stderr).toBe(KAIFUU_NATIVE_OUTPUT_REDACTED);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// RPG Maker MV/MZ engine — the SAME seam, dispatched through `--engine rpg-maker`.
+// (The kaifuu-cli RPG Maker bundle extract path is now selectable from the app.)
+// ---------------------------------------------------------------------------
+
+const RPG_IDENTITY = {
+  gameId: "sample-rpg",
+  gameVersion: "1.0",
+  sourceProfileId: "profile-1",
+  sourceLocale: "ja-JP",
+} as const;
+
+describe("buildExtractArgs (rpg-maker argv shape)", () => {
+  it("emits --game-dir + identity flags + --bundle-output (matches the CLI arm)", () => {
+    const a = buildExtractArgs({
+      engine: "rpg-maker",
+      ...RPG_IDENTITY,
+      gameDir: "/games/rpg-title/www",
+      bundleOutputPath: "/run/bridge.json",
+      findingsOutputPath: "/run/findings.json",
+    });
+    expect(a).toEqual([
+      "extract",
+      "--engine",
+      "rpg-maker",
+      "--game-dir",
+      "/games/rpg-title/www",
+      "--game-id",
+      "sample-rpg",
+      "--game-version",
+      "1.0",
+      "--source-profile-id",
+      "profile-1",
+      "--source-locale",
+      "ja-JP",
+      "--bundle-output",
+      "/run/bridge.json",
+      "--findings-output",
+      "/run/findings.json",
+    ]);
+    // RPG Maker uses none of the RealLive scene/vault flags.
+    expect(a).not.toContain("--scene");
+    expect(a).not.toContain("--whole-seen");
+    expect(a).not.toContain("--vault-canonical-id");
+  });
+
+  it("omits --game-dir when it falls back to the rpg-maker env var", () => {
+    const a = buildExtractArgs({
+      engine: "rpg-maker",
+      ...RPG_IDENTITY,
+      bundleOutputPath: "/run/bridge.json",
+    });
+    expect(a).not.toContain("--game-dir");
+    expect(a).not.toContain("--findings-output");
+  });
+});
+
+describe("runKaifuuExtract (rpg-maker dispatch)", () => {
+  it("dispatches --engine rpg-maker and reports engine=rpg-maker mode=whole-game", () => {
+    let captured: string[] | undefined;
+    const res = runKaifuuExtract({
+      engine: "rpg-maker",
+      ...RPG_IDENTITY,
+      gameDir: "/games/rpg-title/www",
+      bundleOutputPath: "/run/bridge.json",
+      env: {},
+      runProcess: (_command, args): KaifuuProcessResult => {
+        captured = args;
+        return { status: 0, stdout: "units=100", stderr: "" };
+      },
+    });
+    expect(res.engine).toBe("rpg-maker");
+    expect(res.mode).toBe("whole-game");
+    const extractIdx = captured!.indexOf("extract");
+    expect(captured!.slice(extractIdx, extractIdx + 3)).toEqual([
+      "extract",
+      "--engine",
+      "rpg-maker",
+    ]);
+  });
+
+  it("refuses rpg-maker when no game www/ dir or env var is resolvable", () => {
+    expect(() =>
+      runKaifuuExtract({
+        engine: "rpg-maker",
+        ...RPG_IDENTITY,
+        bundleOutputPath: "/run/bridge.json",
+        env: {},
+        runProcess: () => ({ status: 0, stdout: "", stderr: "" }),
+      }),
+    ).toThrow(/rpg-maker.*sourcing requires/u);
+  });
+
+  it("resolves rpg-maker sourcing from the ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ env", () => {
+    let spawned = false;
+    runKaifuuExtract({
+      engine: "rpg-maker",
+      ...RPG_IDENTITY,
+      bundleOutputPath: "/run/bridge.json",
+      env: { ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ: "/env-www" },
+      runProcess: () => {
+        spawned = true;
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+    expect(spawned).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Registry — engine discrimination, no default, boundary rejection, CLI parse.
+// ---------------------------------------------------------------------------
+
+describe("extract-adapter registry", () => {
+  it("registers reallive, softpal, and rpg-maker adapters", () => {
+    expect(registeredExtractEngines()).toEqual(["reallive", "softpal", "rpg-maker"]);
+    expect(extractCapabilities().map((capability) => capability.engine)).toEqual([
+      "reallive",
+      "softpal",
+      "rpg-maker",
+    ]);
+  });
+
+  it("rejects an unregistered engine at the boundary (no reallive default)", () => {
+    // A caller that bypasses the type union (e.g. a raw CLI string) is refused,
+    // NOT silently routed to RealLive.
+    const rogue = { engine: "kirikiri", bundleOutputPath: "/run/bridge.json" };
+    expect(() => runKaifuuExtract(rogue as unknown as KaifuuExtractArgs)).toThrow(
+      /is not a registered extract adapter/u,
+    );
+    expect(() => resolveExtractAdapter("kirikiri")).toThrow(
+      /registered: reallive, softpal, rpg-maker/u,
+    );
+  });
+
+  it("each adapter parses ONLY its own engine's CLI flags into a typed source", () => {
+    const rpg = resolveExtractAdapter("rpg-maker").parseCli([
+      "extract",
+      "--engine",
+      "rpg-maker",
+      "--game-dir",
+      "/games/rpg/www",
+      "--game-id",
+      "g",
+      "--game-version",
+      "1",
+      "--source-profile-id",
+      "p",
+      "--source-locale",
+      "ja-JP",
+      "--bundle-output",
+      "/run/bridge.json",
+    ]);
+    expect(rpg).toEqual({
+      engine: "rpg-maker",
+      gameId: "g",
+      gameVersion: "1",
+      sourceProfileId: "p",
+      sourceLocale: "ja-JP",
+      gameDir: "/games/rpg/www",
+    });
+    // RealLive-only mode flags are refused on the whole-game rpg-maker arm.
+    expect(() =>
+      resolveExtractAdapter("rpg-maker").parseCli(["--engine", "rpg-maker", "--scene", "1"]),
+    ).toThrow(/rpg-maker is whole-game/u);
   });
 });
 

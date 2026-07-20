@@ -35,6 +35,11 @@ const IDENTITY = {
   sourceLocale: "ja-JP",
 } as const;
 
+// The RealLive engine discriminant the extract-adapter registry now requires on
+// every extract/decode request (the api-schema wire request stays engine-less,
+// so it is applied only to the runner/seam-facing objects below).
+const REALLIVE = { engine: "reallive", ...IDENTITY } as const;
+
 // The canonical v0.2 BridgeBundle example — the same shape kaifuu writes.
 const EXAMPLE_BUNDLE = readFileSync(
   new URL(
@@ -69,7 +74,7 @@ describe("in-studio decode/extract runner drives the REAL kaifuu extract seam", 
     const runner = createDecodeExtractRunner({ runExtract: realSeamWithFakeSpawn(capture) });
 
     const outcome = await runner.runDecodeExtract({
-      ...IDENTITY,
+      ...REALLIVE,
       gameRoot: "/games/sweetie",
       scene: 2031,
     });
@@ -81,7 +86,7 @@ describe("in-studio decode/extract runner drives the REAL kaifuu extract seam", 
     const bundleOutput = argv[argv.indexOf("--bundle-output") + 1]!;
     expect(argv.slice(extractIndex)).toEqual(
       buildExtractArgs({
-        ...IDENTITY,
+        ...REALLIVE,
         gameRoot: "/games/sweetie",
         scene: 2031,
         bundleOutputPath: bundleOutput,
@@ -99,7 +104,7 @@ describe("in-studio decode/extract runner drives the REAL kaifuu extract seam", 
     const runner = createDecodeExtractRunner({ runExtract: realSeamWithFakeSpawn(capture) });
 
     const outcome = await runner.runDecodeExtract({
-      ...IDENTITY,
+      ...REALLIVE,
       vaultCanonicalId: "vault-sweetie",
       wholeSeen: true,
     });
@@ -126,7 +131,7 @@ describe("in-studio decode/extract runner drives the REAL kaifuu extract seam", 
     });
 
     await expect(
-      runner.runDecodeExtract({ ...IDENTITY, gameRoot: "/games/sweetie", scene: 1 }),
+      runner.runDecodeExtract({ ...REALLIVE, gameRoot: "/games/sweetie", scene: 1 }),
     ).rejects.toBeInstanceOf(KaifuuExtractError);
   });
 });
@@ -194,6 +199,7 @@ describe("in-studio decode/extract runner (env-gated real-Sweetie byte proof)", 
       // No injected runExtract -> the REAL kaifuu-cli runs.
       const runner = createDecodeExtractRunner();
       const outcome = await runner.runDecodeExtract({
+        engine: "reallive",
         gameId: "sweetie-real",
         gameVersion: "1.0",
         sourceProfileId: "sweetie-hd-real",

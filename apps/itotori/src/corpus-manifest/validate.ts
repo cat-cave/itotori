@@ -182,6 +182,7 @@ export function deriveCorpusEvidence(
     try {
       const identity = manifest.corpus;
       runKaifuuExtract({
+        engine: "reallive",
         gameRoot: corpus.gameRoot,
         gameId: identity.gameId,
         gameVersion: identity.gameVersion,
@@ -193,6 +194,7 @@ export function deriveCorpusEvidence(
         env: nativeEnv,
       });
       runKaifuuExtract({
+        engine: "reallive",
         gameRoot: corpus.gameRoot,
         gameId: identity.gameId,
         gameVersion: identity.gameVersion,

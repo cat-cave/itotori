@@ -299,6 +299,7 @@ function materializeNativeInputs(input: {
   const structurePath = join(scratchRoot, "structure.json");
   try {
     runKaifuuExtract({
+      engine: "reallive",
       gameRoot: input.sourceRoot,
       gameId: input.gameId,
       gameVersion: input.gameVersion,
