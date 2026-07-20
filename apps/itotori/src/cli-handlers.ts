@@ -39,7 +39,11 @@ import type { ItotoriProjectWorkflowPort } from "./services/project-operations-p
 import type { ProjectState } from "./services/project-types.js";
 import { assertOpenRouterZdrAccount } from "./zdr-admission/account-zdr.js";
 import { loadExternalEnvFile } from "./env/external-env-file.js";
-import { runKaifuuExtract } from "./extract/kaifuu-extract-seam.js";
+import {
+  extractCapabilities,
+  resolveExtractAdapter,
+  runKaifuuExtract,
+} from "./extract/kaifuu-extract-seam.js";
 import { scanCatalogLocalRoot } from "./services/catalog-local-scan.js";
 import {
   runUtsushiStructureExport,
@@ -582,80 +586,38 @@ async function runLocalize(args: string[], dependencies: ItotoriCliDependencies)
  * itotori-cli-extract-command (P1, user-shaped CLI) — the user-shaped bridge
  * producer. Wraps `kaifuu-cli extract --engine <engine>` so a user/agent
  * produces the BridgeBundle `itotori localize` consumes WITHOUT knowing about
- * the Rust binary. The `--engine` flag (default `reallive`) selects the engine;
- * every engine goes through the SAME extract seam. Wired engines:
- *
- *   * reallive: per-scene `itotori extract --scene <N> ...` OR whole-game
- *     `itotori extract --whole-seen ...`. Sourcing is `--vault-canonical-id
- *     <ID>` (by-id) OR `--game-root <PATH>` (raw-path helper; kaifuu-cli also
- *     falls back to ITOTORI_REAL_GAME_ROOT).
- *   * softpal: whole-game `itotori extract --engine softpal --game-root <PATH>
- *     ...` over SCRIPT.SRC + TEXT.DAT. No scene index, vault identity, or key is
- *     required (kaifuu-cli also falls back to ITOTORI_REAL_GAME_ROOT_SOFTPAL).
- *
- * kaifuu writes the bridge directly to `--bundle-output`; this handler does NOT
- * touch bridge bytes.
+ * the Rust binary. The REQUIRED `--engine` flag selects the adapter from the
+ * extract-adapter registry; every engine goes through the SAME extract seam and
+ * the registry owns its per-engine flag parsing, so this handler carries NO
+ * per-engine branch and an unregistered `--engine` is rejected at the boundary.
+ * The wired adapters (their flags + modes) are self-described by the registry's
+ * capabilities. kaifuu writes the bridge directly to `--bundle-output`; this
+ * handler does NOT touch bridge bytes.
  */
 async function runExtract(args: string[], dependencies: ItotoriCliDependencies): Promise<void> {
   // The dispatcher contract is (args, dependencies); extract delegates to a
   // kaifuu-cli subprocess and does not touch the file store or services, so
   // `dependencies` is intentionally unused here.
   void dependencies;
-  const engineRaw = optionalFlag(args, "--engine") ?? "reallive";
-  if (engineRaw === "softpal") {
-    runSoftpalExtract(args);
-    return;
-  }
-  if (engineRaw !== "reallive") {
+  const engineRaw = optionalFlag(args, "--engine");
+  if (engineRaw === undefined) {
+    const available = extractCapabilities()
+      .map((capability) => capability.engine)
+      .join(", ");
     throw new Error(
-      `extract refused: --engine '${engineRaw}' is not supported (wired engines: reallive, softpal)`,
+      `extract refused: --engine <engine> is required (registered adapters: ${available})`,
     );
   }
-  const wholeSeen = args.includes("--whole-seen");
-  const sceneTokenPresent = args.includes("--scene");
-  const sceneRaw = optionalFlag(args, "--scene");
-  // Resolve the extract mode at the CLI dispatch layer (BEFORE delegating to
-  // the seam) so a user-shaped `itotori extract ...` gets a clear, immediate
-  // error. Without this, `--scene --whole-seen` would let `optionalFlag`
-  // swallow `--whole-seen` as the scene value and trip a confusing u16 error
-  // deep in the seam, and a missing mode would only surface at the spawn
-  // boundary. Token presence is tracked separately from the value so an
-  // empty `--scene` is reported as a missing value, not as "no mode given".
-  if (wholeSeen && sceneTokenPresent) {
-    throw new Error(
-      "extract refused: --whole-seen and --scene are mutually exclusive (choose one extract mode)",
-    );
-  }
-  if (sceneTokenPresent && (sceneRaw === undefined || sceneRaw.startsWith("--"))) {
-    throw new Error(
-      "extract refused: --scene requires a numeric value (0..65535, e.g. --scene 6010)",
-    );
-  }
-  if (!wholeSeen && !sceneTokenPresent) {
-    throw new Error(
-      "extract refused: provide --scene <N> (per-scene) or --whole-seen (whole-game)",
-    );
-  }
-  const gameRoot = optionalFlag(args, "--game-root");
-  const vaultCanonicalId = optionalFlag(args, "--vault-canonical-id");
-  const gameId = requiredFlag(args, "--game-id");
-  const gameVersion = requiredFlag(args, "--game-version");
-  const sourceProfileId = requiredFlag(args, "--source-profile-id");
-  const sourceLocale = requiredFlag(args, "--source-locale");
+  // resolveExtractAdapter rejects an unregistered engine at the boundary; the
+  // adapter then parses its OWN flags into a typed source (no per-engine branch
+  // here). The registry guarantees the parsed source matches `--engine`.
+  const adapter = resolveExtractAdapter(engineRaw);
+  const source = adapter.parseCli(args);
   const bundleOutputPath = requiredFlag(args, "--bundle-output");
-  const decompileReportOutputPath = optionalFlag(args, "--decompile-report-output");
 
   const result = runKaifuuExtract({
-    gameId,
-    gameVersion,
-    sourceProfileId,
-    sourceLocale,
+    ...source,
     bundleOutputPath,
-    ...(wholeSeen ? { wholeSeen: true } : {}),
-    ...(sceneRaw !== undefined ? { scene: parseRealliveSceneId(sceneRaw) } : {}),
-    ...(gameRoot !== undefined ? { gameRoot } : {}),
-    ...(vaultCanonicalId !== undefined ? { vaultCanonicalId } : {}),
-    ...(decompileReportOutputPath !== undefined ? { decompileReportOutputPath } : {}),
     log: (message) => {
       process.stdout.write(`${message}\n`);
     },
@@ -672,50 +634,6 @@ async function runExtract(args: string[], dependencies: ItotoriCliDependencies):
       2,
     )}\n`,
   );
-}
-
-/**
- * `itotori extract --engine softpal` — the whole-game Softpal bridge producer.
- * Softpal takes the game root (`--game-root <PATH>`, or ITOTORI_REAL_GAME_ROOT_
- * SOFTPAL) and produces one bridge over SCRIPT.SRC + TEXT.DAT; it uses none of
- * the RealLive scene/vault/identity flags. Routes through the SAME extract seam.
- */
-function runSoftpalExtract(args: string[]): void {
-  if (args.includes("--scene") || args.includes("--whole-seen")) {
-    throw new Error(
-      "extract refused: --engine softpal is whole-game; --scene / --whole-seen are RealLive-only",
-    );
-  }
-  const gameRoot = optionalFlag(args, "--game-root");
-  const bundleOutputPath = requiredFlag(args, "--bundle-output");
-  const result = runKaifuuExtract({
-    engine: "softpal",
-    bundleOutputPath,
-    ...(gameRoot !== undefined ? { gameRoot } : {}),
-    log: (message) => {
-      process.stdout.write(`${message}\n`);
-    },
-  });
-  process.stdout.write(
-    `${JSON.stringify(
-      {
-        engine: result.engine,
-        mode: result.mode,
-        bundleOutputPath: result.bundleOutputPath,
-        status: result.status,
-      },
-      null,
-      2,
-    )}\n`,
-  );
-}
-
-function parseRealliveSceneId(value: string): number {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65_535 || String(parsed) !== value) {
-    throw new Error(`extract refused: --scene '${value}' must be a u16 (0..65535)`);
-  }
-  return parsed;
 }
 
 async function runIngestRuntime(
