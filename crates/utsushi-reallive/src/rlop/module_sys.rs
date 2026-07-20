@@ -10,12 +10,8 @@
 //!
 //! # Module addressing
 //!
-//! `module_sys` is registered at `(module_type=1, module_id=4)` —
-//! confirmed against Sweetie HD bytes (the scene-1 byte histogram
-//! observed `(1, 4,...)` commands at multiple offsets — see the
-//! integration test `rlop_str_mem_sys_real_bytes` for the
-//! observation log). The `(1, X)` convention aligns this family
-//! with [`crate::rlop::module_msg`] / [`crate::rlop::module_sel`].
+//! `module_id=4` is the system-arithmetic semantic key; `module_type` is a
+//! compiler-version artifact, registered across the RealLive lattice `{0, 1, 2}`.
 //!
 //! # Opcode coverage (9)
 //!
@@ -71,12 +67,8 @@ use utsushi_core::substrate::{
 use super::{DispatchOutcome, ExprValue, RLOperation, RlopKey, RlopRegistry};
 use crate::vm::{Vm, VmWarning};
 
-/// `module_sys` module type byte. Pinned at `1` per the Sweetie HD
-/// byte observation — the `(1, 4,...)` commands in the scene-1
-/// histogram are the `module_sys` family.
 pub const SYS_MODULE_TYPE: u8 = 1;
-/// `module_sys` module id byte. Pinned at `4` per the Sweetie HD
-/// byte observation.
+const LATTICE_TYPES: [u8; 3] = [0, 1, 2];
 pub const SYS_MODULE_ID: u8 = 4;
 
 /// `rnd` opcode.
@@ -162,9 +154,12 @@ impl SysOpcode {
         }
     }
 
-    /// Composite registry key the VM uses to dispatch this op.
+    pub fn rlop_key_for(self, module_type: u8) -> RlopKey {
+        RlopKey::new(module_type, SYS_MODULE_ID, self.opcode())
+    }
+
     pub fn rlop_key(self) -> RlopKey {
-        RlopKey::new(SYS_MODULE_TYPE, SYS_MODULE_ID, self.opcode())
+        self.rlop_key_for(SYS_MODULE_TYPE)
     }
 
     /// Stable lowercase tag used by [`VmWarning::RlopArgsInvalid::op`].
@@ -183,8 +178,7 @@ impl SysOpcode {
     }
 }
 
-/// Number of opcodes [`register_sys_rlops`] mounts.
-pub const SYS_RLOP_COUNT: usize = SysOpcode::ALL.len();
+pub const SYS_RLOP_COUNT: usize = SysOpcode::ALL.len() * LATTICE_TYPES.len();
 
 // Deterministic XorShift64 rng — substrate-clock-seeded.
 
@@ -693,18 +687,20 @@ impl RLOperation for ConstrainOp {
 /// `registry`. The runtime is shared so the rng state lives at one
 /// canonical location.
 pub fn register_sys_rlops(registry: &mut RlopRegistry, runtime: Arc<SysRuntime>) -> usize {
-    registry.register(
-        SysOpcode::Rnd.rlop_key(),
-        Arc::new(RndOp::new(Arc::clone(&runtime))),
-    );
-    registry.register(SysOpcode::Pcnt.rlop_key(), Arc::new(PcntOp));
-    registry.register(SysOpcode::Abs.rlop_key(), Arc::new(AbsOp));
-    registry.register(SysOpcode::Power.rlop_key(), Arc::new(PowerOp));
-    registry.register(SysOpcode::Sin.rlop_key(), Arc::new(SinOp));
-    registry.register(SysOpcode::Cos.rlop_key(), Arc::new(CosOp));
-    registry.register(SysOpcode::Min.rlop_key(), Arc::new(MinOp));
-    registry.register(SysOpcode::Max.rlop_key(), Arc::new(MaxOp));
-    registry.register(SysOpcode::Constrain.rlop_key(), Arc::new(ConstrainOp));
+    let mut register = |opcode: SysOpcode, op: Arc<dyn RLOperation>| {
+        for module_type in LATTICE_TYPES {
+            registry.register(opcode.rlop_key_for(module_type), Arc::clone(&op));
+        }
+    };
+    register(SysOpcode::Rnd, Arc::new(RndOp::new(Arc::clone(&runtime))));
+    register(SysOpcode::Pcnt, Arc::new(PcntOp));
+    register(SysOpcode::Abs, Arc::new(AbsOp));
+    register(SysOpcode::Power, Arc::new(PowerOp));
+    register(SysOpcode::Sin, Arc::new(SinOp));
+    register(SysOpcode::Cos, Arc::new(CosOp));
+    register(SysOpcode::Min, Arc::new(MinOp));
+    register(SysOpcode::Max, Arc::new(MaxOp));
+    register(SysOpcode::Constrain, Arc::new(ConstrainOp));
     SYS_RLOP_COUNT
 }
 
@@ -736,11 +732,15 @@ mod tests {
     fn sys_register_helper_populates_expected_count() {
         let mut registry = RlopRegistry::new();
         let runtime = Arc::new(SysRuntime::new(LogicalClockTick(0)));
-        let count = register_sys_rlops(&mut registry, runtime);
-        assert_eq!(count, SYS_RLOP_COUNT);
+        register_sys_rlops(&mut registry, runtime);
         assert_eq!(registry.len(), SYS_RLOP_COUNT);
-        for op in SysOpcode::ALL {
-            assert!(registry.get(op.rlop_key()).is_some(), "{op:?} must resolve",);
+        for module_type in LATTICE_TYPES {
+            for op in SysOpcode::ALL {
+                assert!(
+                    registry.get(op.rlop_key_for(module_type)).is_some(),
+                    "{op:?} must resolve for lattice type {module_type}",
+                );
+            }
         }
     }
 
