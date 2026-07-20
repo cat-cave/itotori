@@ -14,17 +14,21 @@
 //! count + packed plaintext names), [`decrypt`] applies the documented
 //! constant 256-byte table plus the gated per-game second-layer key, and
 //! [`decompress`] is the real proprietary Siglus LZSS; [`scene_decode`] ties
-//! them into a full decode + sanitized report. The remaining core-stack entry
-//! points ([`compress`], [`gameexe`], [`opcode`], [`expression`], [`bridge`],
-//! [`patchback`]) are still typed stubs, alongside the narrow real
-//! [`known_key_smoke`] profile.
-//! The second-layer key is the **key-discovery layer's (siglus-04) deliverable**
-//! recovered from the packed `SiglusEngine` executable; it is consumed here only
-//! as resolved material bound to a structured secret-ref, never a raw literal.
-//! Both owned titles (`karetoshi`, `gamekoi`) set `extra_key_use`, so — until
-//! that key is available in-process — their scene **payloads** cannot decode:
-//! the decoder records the typed `second_layer_key_required` diagnostic before
-//! any output rather than fabricating a result. Nothing here masquerades as a
+//! them into a full decode + sanitized report. The [`gameexe`] `Gameexe.dat`
+//! decode (outer header → optional exe-angou key → constant-256 Gameexe table →
+//! Siglus LZSS → UTF-16LE inventory) is likewise wired against the real format.
+//! The remaining core-stack entry points ([`compress`], [`opcode`],
+//! [`expression`], [`bridge`], [`patchback`]) are still typed stubs, alongside
+//! the narrow real [`known_key_smoke`] profile.
+//! The exe-angou / second-layer key is the **key-discovery layer's (siglus-04)
+//! deliverable** recovered from the packed `SiglusEngine` executable; it is
+//! consumed here only as resolved material bound to a structured secret-ref,
+//! never a raw literal.
+//! Both owned titles (`karetoshi`, `gamekoi`) set `extra_key_use` /
+//! `exe_angou_mode`, so — until that key is available in-process — their scene
+//! **payloads** and `Gameexe.dat` **body** cannot decode: the decoders record
+//! the typed `second_layer_key_required` / `exe_angou_key_required` diagnostic
+//! before any output rather than fabricating a result. Nothing here masquerades as a
 //! working decode; the constant table and LZSS are validated by a synthetic
 //! known-key round-trip and by the real-bytes container walk.
 //! # Clean-room provenance
@@ -115,11 +119,15 @@ pub use bridge::{BridgeOpts, BridgeProduceError, ProducedBundle, produce_bundle}
 pub use compress::{SiglusCompressError, compress_siglus_lzss};
 pub use decompress::{SiglusDecompressError, decompress_siglus_lzss};
 pub use decrypt::{
-    SIGLUS_CONSTANT_XOR_TABLE, SIGLUS_SECOND_LAYER_KEY_BYTE_LEN, SIGLUS_XOR_TABLE_LEN,
-    SiglusDecryptError, SiglusSecondLayerKey, SiglusSecondLayerMaterial, apply_xor_table,
+    SIGLUS_CONSTANT_XOR_TABLE, SIGLUS_GAMEEXE_XOR_TABLE, SIGLUS_SECOND_LAYER_KEY_BYTE_LEN,
+    SIGLUS_XOR_TABLE_LEN, SiglusDecryptError, SiglusSecondLayerKey, SiglusSecondLayerMaterial,
+    apply_gameexe_xor_table, apply_xor_table,
 };
 pub use expression::{SiglusExpr, SiglusExpressionError, decode_expression};
-pub use gameexe::{GameexeDatEntry, GameexeDatError, GameexeDatReport, parse_gameexe_dat};
+pub use gameexe::{
+    GameexeDatEntry, GameexeDatError, GameexeDatHeader, GameexeDatReport, decode_gameexe_dat,
+    read_gameexe_header,
+};
 pub use known_key_smoke::{
     GameexeEntryDigest, GameexeExtractionReport, KNOWN_KEY_SMOKE_CAPABILITY_ID,
     KNOWN_KEY_SMOKE_SCHEMA_VERSION, KNOWN_KEY_SMOKE_SUPPORT_BOUNDARY, KnownKeySmokeError,
