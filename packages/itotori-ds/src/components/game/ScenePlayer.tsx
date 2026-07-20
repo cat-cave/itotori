@@ -21,6 +21,8 @@ export interface ScenePlayerProps {
   frame?: ReactNode;
   /** Status badge vocabulary: running, captured, runtime-faithful, stale, etc. */
   status?: string | null;
+  /** Bring the rendered unit forward after an addressable navigation. */
+  highlighted?: boolean;
   /** Optional review/annotation slot, usually AnnotationComposer. */
   annotation?: ReactNode;
   previousLabel?: string;
@@ -47,6 +49,7 @@ export function ScenePlayer({
   speaker,
   frame,
   status = null,
+  highlighted = false,
   annotation,
   previousLabel = "Previous scene",
   nextLabel = "Next scene",
@@ -60,9 +63,14 @@ export function ScenePlayer({
 
   return (
     <section
-      className={cx("itotori-scene-player", className)}
+      className={cx(
+        "itotori-scene-player",
+        highlighted && "itotori-scene-player--highlighted",
+        className,
+      )}
       data-component="scene-player"
       data-mode={mode}
+      aria-current={highlighted ? "true" : undefined}
       aria-label="Scene player"
     >
       <div className="itotori-scene-player__chrome">

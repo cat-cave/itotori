@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 //
 // Behavior proof for the Wiki bible dashboard product surface. The real screen
-// reads the wiki object read/write API over REAL HTTP (the dashboard data client
-// + a loopback msw transport), renders the source + localized-bible claims,
-// canonical vs route-specific claims under an ENFORCED route toggle, default-
-// redacted media, immutable history, coverage/readiness, and the limited-context
-// / test badges. Every real citation is a deep-link into the Utsushi player at
-// the exact scene/unit; a correction returns the tester to the object addressed.
+// reads the WikiObject API over REAL HTTP (typed client + loopback msw
+// transport), adapts the wire envelopes into the product-surface read-models,
+// and renders source + localized-bible claims, canonical vs route-specific
+// claims under an ENFORCED route toggle, default-redacted media, immutable
+// history, coverage/readiness, and the limited-context / test badges. Every real
+// citation is a deep-link into the Utsushi player at the exact scene/unit with
+// a rendered focus/highlight effect; a correction returns the tester to the
+// object addressed.
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -17,18 +19,19 @@ import {
   WikiBibleDashboardScreen,
   parseWikiBibleRoute,
 } from "../src/ui/screens/WikiBibleDashboardScreen.js";
+import { AddressableFocusScreen } from "../src/ui/screens/AddressableFocusScreen.js";
+import { parsePlayFlagComposerRoute } from "../src/ui/screens/PlayFlagComposerScreen.js";
+import { grantedStudioCapabilityView } from "../src/ui/caps-context.js";
 import { RedactionGovernor } from "../src/ui/redaction-governor.js";
-import { hrefForAddressable, parseAddressableLocation } from "../src/ui/addressable-routing.js";
-import {
-  WIKI_DASHBOARD_OBJECT_SCHEMA,
-  WIKI_DASHBOARD_OVERVIEW_SCHEMA,
-  WIKI_DASHBOARD_WRITE_SCHEMA,
-  type WikiDashboardObject,
-  type WikiDashboardOverview,
-  type WikiDashboardWriteReceipt,
-  type WikiSourceObjectView,
-  type WikiRenderingView,
+import { App } from "../src/ui/App.js";
+import { parseAddressableLocation } from "../src/ui/addressable-routing.js";
+import { parseReturnTo } from "../src/ui/screens/AddressableFocusScreen.js";
+import type {
+  WikiHistoryEntry,
+  WikiRenderingView,
+  WikiSourceObjectView,
 } from "../src/wiki/dashboard/read-model.js";
+import { authIdentityFixture, costReportFixture, dashboardStatusFixture } from "./api-fixtures.js";
 
 const PROJECT_ID = "project-1";
 const LOCALE_BRANCH_ID = "019ed065-0000-7000-8000-000000000110";
@@ -62,6 +65,16 @@ function sceneObject(): WikiSourceObjectView {
     playOrderIndex: 3,
     quotedSpan: "the bell",
   };
+  const sceneCitation = {
+    claimId: "claim-canonical",
+    evidenceId: "ev-scene-2031",
+    evidenceHash: HASH,
+    snapshotId: SNAPSHOT_ID,
+    subject: { kind: "scene" as const, id: "scene-2031" },
+    role: "establishes" as const,
+    playOrderIndex: 3,
+    quotedSpan: null,
+  };
   return {
     kind: "source",
     objectId: "obj-scene-1",
@@ -71,7 +84,11 @@ function sceneObject(): WikiSourceObjectView {
     lang: "ja",
     subject: { kind: "scene", id: "scene-2031" },
     routeScope: { kind: "global" },
-    badges: badges(),
+    badges: badges({
+      // Limited-context + test badges are part of the product surface.
+      contextScope: "route-slice",
+      runMode: "pilot",
+    }),
     claims: [
       {
         claimId: "claim-canonical",
@@ -80,7 +97,7 @@ function sceneObject(): WikiSourceObjectView {
         kind: "beat",
         confidence: "high",
         supersedesClaimId: null,
-        citations: [canonicalCitation],
+        citations: [canonicalCitation, sceneCitation],
       },
       {
         claimId: "claim-akari",
@@ -112,7 +129,7 @@ function sceneObject(): WikiSourceObjectView {
         citations: [],
       },
     ],
-    citations: [canonicalCitation],
+    citations: [canonicalCitation, sceneCitation],
     media: [
       {
         kind: "screenshot",
@@ -131,103 +148,213 @@ function sceneObject(): WikiSourceObjectView {
   };
 }
 
-function renderingFixture(): WikiRenderingView {
+function alternateSceneObject(): WikiSourceObjectView {
+  return {
+    ...sceneObject(),
+    objectId: "obj-scene-2",
+    subject: { kind: "scene", id: "scene-elsewhere" },
+    claims: [
+      {
+        claimId: "claim-other-canonical",
+        statement: "The archive door stays locked until sunset.",
+        scope: { kind: "global" },
+        kind: "beat",
+        confidence: "high",
+        supersedesClaimId: null,
+        citations: [],
+      },
+    ],
+    citations: [],
+    media: [],
+  };
+}
+
+function renderingFixture(sourceObjectId = "obj-scene-1"): WikiRenderingView {
   return {
     kind: "rendering",
-    renderingId: "rendering-scene-1-en",
-    sourceObjectId: "obj-scene-1",
+    renderingId: `rendering-${sourceObjectId}-en`,
+    sourceObjectId,
     category: "scene-summary",
     version: 1,
     targetLanguage: "en",
     routeScope: { kind: "global" },
     badges: badges(),
     claimRenderings: [
-      { claimId: "claim-canonical", text: "The temple bell rings at first light." },
+      {
+        claimId: sourceObjectId === "obj-scene-1" ? "claim-canonical" : "claim-other-canonical",
+        text:
+          sourceObjectId === "obj-scene-1"
+            ? "The temple bell rings at first light."
+            : "The archive door remains shut until sunset.",
+      },
     ],
   };
 }
 
-function overviewFixture(): WikiDashboardOverview {
-  const source = sceneObject();
+function historyFixture(): WikiHistoryEntry[] {
+  return [
+    {
+      version: 1,
+      supersedesVersion: null,
+      contentHash: HASH,
+      editedBy: null,
+      provisional: false,
+      createdAt: "2026-07-15T00:00:00.000Z",
+    },
+  ];
+}
+
+/** Wiki list wire envelope. */
+function wikiListBody() {
   return {
-    schemaVersion: WIKI_DASHBOARD_OVERVIEW_SCHEMA,
+    schemaVersion: "itotori.wiki.objects.v1" as const,
     generatedAt: "2026-07-16T00:00:00.000Z",
     snapshotId: SNAPSHOT_ID,
-    sourceObjects: [source],
-    renderings: [renderingFixture()],
-    routes: [
-      { routeId: "route-akari", claimCount: 1 },
-      { routeId: "route-yuki", claimCount: 1 },
-    ],
-    readiness: {
-      sourceObjectCount: 1,
-      renderingCount: 1,
-      provisionalSourceCount: 0,
-      provisionalRenderingCount: 0,
-      localizedSourceCount: 1,
-      localizationCoveragePercent: 100,
-      limitedContextCount: 0,
-      testModeCount: 0,
+    sourceObjects: [sceneObject(), alternateSceneObject()],
+    renderings: [renderingFixture(), renderingFixture("obj-scene-2")],
+  };
+}
+
+/** Wiki show wire envelope. */
+function wikiShowBody(object: WikiSourceObjectView) {
+  return {
+    schemaVersion: "itotori.wiki.object.v1" as const,
+    generatedAt: "2026-07-16T00:00:00.000Z",
+    view: object,
+    history: historyFixture(),
+    dependencyImpact: {
+      dependents: [
+        {
+          downstreamObjectId: "rendering-scene-1-en",
+          downstreamWikiKind: "localized-rendering",
+          downstreamVersion: 1,
+          claimId: "claim-canonical",
+          fieldPath: [] as string[],
+          renderingId: "rendering-scene-1-en",
+          protectedHuman: false,
+        },
+      ],
     },
   };
 }
 
-function objectDetailFixture(): WikiDashboardObject {
+/** Wiki edit / feedback wire envelope. */
+function wikiWriteBody(inputId: string, object: WikiSourceObjectView) {
   return {
-    schemaVersion: WIKI_DASHBOARD_OBJECT_SCHEMA,
+    schemaVersion: "itotori.wiki.write.v1" as const,
     generatedAt: "2026-07-16T00:00:00.000Z",
-    snapshotId: SNAPSHOT_ID,
-    object: sceneObject(),
+    receipt: {
+      durable: true as const,
+      inputId,
+      head: { objectId: object.objectId, version: 2, contentHash: HASH },
+      view: object,
+      badges: badges({ editedBy: "human" }),
+      dependencyImpact: {
+        upstreamObjectId: object.objectId,
+        priorVersion: 1,
+        nextVersion: 2,
+        consumers: [
+          {
+            downstreamWikiVersionId: "v-rendering-1",
+            downstreamWikiKind: "localized-rendering" as const,
+            downstreamObjectId: "rendering-scene-1-en",
+            downstreamVersion: 1,
+            workKind: "enhancement" as const,
+            protectedHuman: false,
+            matchedClaimIds: ["claim-canonical"],
+            matchedFieldPaths: [] as string[][],
+          },
+        ],
+        enhancementWork: ["v-rendering-1"],
+        reviewerWork: [] as string[],
+        impactSetHash: HASH,
+      },
+    },
     history: [
+      ...historyFixture(),
       {
-        version: 1,
-        supersedesVersion: null,
+        version: 2,
+        supersedesVersion: 1,
         contentHash: HASH,
-        editedBy: null,
+        editedBy: "human",
         provisional: false,
-        createdAt: "2026-07-15T00:00:00.000Z",
+        createdAt: "2026-07-16T00:00:00.000Z",
       },
     ],
-    dependents: [
-      {
-        downstreamObjectId: "rendering-scene-1-en",
-        downstreamWikiKind: "localized-rendering",
-        downstreamVersion: 1,
-        claimId: "claim-canonical",
-        fieldPath: [],
-        renderingId: "rendering-scene-1-en",
-        protectedHuman: false,
-      },
-    ],
+    dependencyImpact: {
+      upstreamObjectId: object.objectId,
+      priorVersion: 1,
+      nextVersion: 2,
+      consumers: [
+        {
+          downstreamWikiVersionId: "v-rendering-1",
+          downstreamWikiKind: "localized-rendering" as const,
+          downstreamObjectId: "rendering-scene-1-en",
+          downstreamVersion: 1,
+          workKind: "enhancement" as const,
+          protectedHuman: false,
+          matchedClaimIds: ["claim-canonical"],
+          matchedFieldPaths: [] as string[][],
+        },
+      ],
+      enhancementWork: ["v-rendering-1"],
+      reviewerWork: [] as string[],
+      impactSetHash: HASH,
+    },
   };
 }
 
-function writeReceiptFixture(): WikiDashboardWriteReceipt {
-  return {
-    schemaVersion: WIKI_DASHBOARD_WRITE_SCHEMA,
-    generatedAt: "2026-07-16T00:00:00.000Z",
-    inputId: "feedback-abc",
-    addressedObjectId: "obj-scene-1",
-    addressedWikiKind: "source-object",
-    head: { objectId: "obj-scene-1", version: 2, contentHash: HASH },
-    object: sceneObject(),
-    badges: badges({ editedBy: "human" }),
-    invalidatedObjectIds: ["rendering-scene-1-en"],
-  };
+function sourceObjectFor(objectId: string): WikiSourceObjectView | null {
+  if (objectId === "obj-scene-1") {
+    return sceneObject();
+  }
+  if (objectId === "obj-scene-2") {
+    return alternateSceneObject();
+  }
+  return null;
 }
 
-const overviewPath = `*/api/projects/${PROJECT_ID}/locale-branches/${LOCALE_BRANCH_ID}/wiki-objects`;
-const objectPath = `${overviewPath}/obj-scene-1`;
+const flagReceipt = {
+  schemaVersion: "itotori.play.flag-annotation.v0" as const,
+  projectId: PROJECT_ID,
+  localeBranchId: LOCALE_BRANCH_ID,
+  feedbackReportId: "feedback-1",
+  feedbackEvidenceId: "feedback-evidence-1",
+  severity: "warning" as const,
+  category: "context",
+  note: "The cited line does not match this route.",
+  triageLabel: "context",
+  contextStatus: "scheduled",
+  contextCorrectionId: "correction-1",
+  duplicate: false,
+};
 
 let capturedWrite: unknown = null;
 
 const server = setupServer(
-  http.get(objectPath, () => HttpResponse.json(objectDetailFixture())),
-  http.post(objectPath, async ({ request }) => {
-    capturedWrite = await request.json();
-    return HttpResponse.json(writeReceiptFixture());
+  http.get("*/api/auth/identity", () => HttpResponse.json(authIdentityFixture)),
+  http.get("*/api/projects/status", () => HttpResponse.json(dashboardStatusFixture)),
+  http.get("*/api/projects/cost", () => HttpResponse.json(costReportFixture)),
+  http.get("*/api/projects", () => HttpResponse.json({ projects: [dashboardStatusFixture] })),
+  http.get("*/api/wiki", () => HttpResponse.json(wikiListBody())),
+  http.get("*/api/wiki/source-object/:objectId", ({ params }) => {
+    const object = sourceObjectFor(String(params.objectId));
+    return object === null
+      ? new HttpResponse(null, { status: 404 })
+      : HttpResponse.json(wikiShowBody(object));
   }),
-  http.get(overviewPath, () => HttpResponse.json(overviewFixture())),
+  http.post("*/api/wiki/source-object/:objectId/:operation", async ({ params, request }) => {
+    capturedWrite = await request.json();
+    const object = sourceObjectFor(String(params.objectId));
+    if (object === null) {
+      return new HttpResponse(null, { status: 404 });
+    }
+    const inputId = params.operation === "edit" ? "edit-abc" : "feedback-abc";
+    return HttpResponse.json(wikiWriteBody(inputId, object));
+  }),
+  http.post(`*/api/projects/${PROJECT_ID}/locale-branches/${LOCALE_BRANCH_ID}/flags`, () =>
+    HttpResponse.json(flagReceipt),
+  ),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -253,7 +380,7 @@ function renderScreen(
 }
 
 describe("Wiki bible dashboard", () => {
-  it("renders source claims, readiness, media, history, and badges from the wiki object API", async () => {
+  it("renders source claims, readiness, media, history, and limited-context/test badges from the WikiObject API", async () => {
     renderScreen();
     expect(await screen.findByText(CANONICAL_STATEMENT, { selector: "p" })).toBeInTheDocument();
 
@@ -271,9 +398,10 @@ describe("Wiki bible dashboard", () => {
     // History from the object-detail read.
     await waitFor(() => expect(screen.getByText("Version history")).toBeInTheDocument());
 
-    // Confirmed (non-provisional) badge on the object header.
+    // Limited-context + test-mode badges from the object header.
     const objectRegion = screen.getByRole("region", { name: "Selected wiki object" });
-    expect(within(objectRegion).getAllByText("confirmed").length).toBeGreaterThan(0);
+    expect(within(objectRegion).getByText("limited context")).toBeInTheDocument();
+    expect(within(objectRegion).getByText("pilot")).toBeInTheDocument();
   });
 
   it("switches to the localized bible and shows the localized rendering", async () => {
@@ -284,28 +412,64 @@ describe("Wiki bible dashboard", () => {
     expect(await screen.findByText("The temple bell rings at first light.")).toBeInTheDocument();
   });
 
-  it("resolves a real citation to the EXACT Utsushi player scene/unit address and highlight", async () => {
-    renderScreen();
+  it("follows citation deep-links into focused, scrolled ScenePlayer units and scenes", async () => {
+    const source = renderScreen();
     await screen.findByText(CANONICAL_STATEMENT, { selector: "p" });
 
-    const expectedHref = hrefForAddressable({
-      kind: "unit",
-      id: "unit-42",
-      projectId: PROJECT_ID,
-      localeBranchId: LOCALE_BRANCH_ID,
+    const citations = [
+      ["open unit unit-42 in play", "unit", "unit-42", "/play/units/unit-42"],
+      ["open scene scene-2031 in play", "scene", "scene-2031", "/play/scenes/scene-2031"],
+    ] as const;
+    const destinations = citations.map(([name, kind, id, pathname]) => {
+      const jump = screen.getByRole("link", { name });
+      const href = jump.getAttribute("href");
+      expect(href).not.toBeNull();
+      const url = new URL(href!, "http://itotori.test");
+      expect(url.pathname).toBe(pathname);
+      expect(url.searchParams.get("projectId")).toBe(PROJECT_ID);
+      expect(url.searchParams.get("localeBranchId")).toBe(LOCALE_BRANCH_ID);
+      const returned = parseReturnTo(url.search);
+      expect(returned).toBe(
+        `/bible?projectId=${PROJECT_ID}&localeBranchId=${LOCALE_BRANCH_ID}&snapshotId=${encodeURIComponent(SNAPSHOT_ID)}&objectId=obj-scene-1`,
+      );
+      return { href, kind, id };
     });
-    const jump = await screen.findByText(/open unit unit-42 in play/u);
-    expect(jump).toHaveAttribute("href", expectedHref);
-    expect(jump).toHaveAttribute("data-citation-player-jump", expectedHref);
+    source.unmount();
 
-    // The address resolves to the player surface, focused on the exact entity.
-    const resolved = parseAddressableLocation(
-      expectedHref.split("?")[0] ?? "",
-      expectedHref.includes("?") ? `?${expectedHref.split("?")[1] ?? ""}` : "",
+    const previousScrollIntoView = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollIntoView",
     );
-    expect(resolved?.surface).toBe("play");
-    expect(resolved?.focus).toEqual({ kind: "unit", id: "unit-42" });
-    expect(jump).toHaveAttribute("data-citation-focus", "unit:unit-42");
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    try {
+      for (const destination of destinations) {
+        const url = new URL(destination.href!, "http://itotori.test");
+        const location = parseAddressableLocation(url.pathname, url.search);
+        expect(location).not.toBeNull();
+
+        const player = render(<AddressableFocusScreen location={location!} />);
+        const target = screen.getByRole("region", {
+          name: `Focused player ${destination.kind} ${destination.id}`,
+        });
+        const scenePlayer = within(target).getByRole("region", { name: "Scene player" });
+        expect(within(scenePlayer).getByText(destination.id)).toBeInTheDocument();
+        expect(scenePlayer).toHaveClass("itotori-scene-player--highlighted");
+        expect(scenePlayer).toHaveAttribute("aria-current", "true");
+        expect(target).toHaveFocus();
+        expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "center" });
+        player.unmount();
+      }
+    } finally {
+      if (previousScrollIntoView === undefined) {
+        delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+      } else {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", previousScrollIntoView);
+      }
+    }
   });
 
   it("ENFORCES the route toggle: an out-of-route claim is not rendered under the wrong route", async () => {
@@ -329,11 +493,25 @@ describe("Wiki bible dashboard", () => {
 
     const claimList = screen.getByRole("list", { name: "Claims" });
     expect(claimList).toHaveAttribute("data-visible-claim-ids", "claim-canonical,claim-akari");
+
+    // The write controls consume the same route-filtered claim projection. A
+    // Yuki-only claim is absent from every edit/feedback target, not merely
+    // hidden in the read panel.
+    const editForm = screen.getByRole("form", { name: "Correct a claim" });
+    const feedbackForm = screen.getByRole("form", { name: "Flag or leave feedback" });
+    expect(within(editForm).getByLabelText("Claim")).not.toHaveTextContent("claim-yuki");
+    expect(within(feedbackForm).getByLabelText("Target claim (optional)")).not.toHaveTextContent(
+      "claim-yuki",
+    );
+    expect(within(editForm).getByRole("button", { name: "Save claim correction" })).toBeDisabled();
   });
 
-  it("closes the loop: feedback returns the tester to the addressed object", async () => {
+  it("returns to the separately addressed object after feedback", async () => {
     renderScreen();
     await screen.findByText(CANONICAL_STATEMENT, { selector: "p" });
+
+    fireEvent.click(screen.getByRole("tab", { name: /scene-elsewhere/u }));
+    await screen.findByText("The archive door stays locked until sunset.", { selector: "p" });
 
     const form = screen.getByRole("form", { name: "Flag or leave feedback" });
     fireEvent.change(within(form).getByLabelText("Feedback"), {
@@ -344,22 +522,33 @@ describe("Wiki bible dashboard", () => {
     await waitFor(() => {
       expect((capturedWrite as { input?: { kind?: string } })?.input?.kind).toBe("feedback");
     });
+    // The assertion is part of the write contract.
+    expect(capturedWrite).toMatchObject({
+      assertion: {
+        category: "scene-summary",
+        contextSnapshotId: SNAPSHOT_ID,
+        routeScope: { kind: "global" },
+      },
+    });
     const receipt = await screen.findByTestId("wiki-bible-receipt");
-    expect(receipt).toHaveAttribute("data-addressed-object-id", "obj-scene-1");
+    expect(receipt).toHaveAttribute("data-addressed-object-id", "obj-scene-2");
     // The surface re-selected the addressed object (loop closed).
     expect(screen.getByRole("region", { name: "Selected wiki object" })).toHaveAttribute(
       "data-object-id",
-      "obj-scene-1",
+      "obj-scene-2",
     );
   });
 
-  it("submits a claim correction as a strict edit HumanInput addressing the object", async () => {
+  it("returns to the separately addressed object after a strict claim edit", async () => {
     renderScreen();
     await screen.findByText(CANONICAL_STATEMENT, { selector: "p" });
 
+    fireEvent.click(screen.getByRole("tab", { name: /scene-elsewhere/u }));
+    await screen.findByText("The archive door stays locked until sunset.", { selector: "p" });
+
     const form = screen.getByRole("form", { name: "Correct a claim" });
     fireEvent.change(within(form).getByLabelText("Statement"), {
-      target: { value: "The shrine bell tolls at dusk." },
+      target: { value: "The archive door unlocks at dusk." },
     });
     fireEvent.click(within(form).getByRole("button", { name: "Save claim correction" }));
 
@@ -369,14 +558,50 @@ describe("Wiki bible dashboard", () => {
       expect(input?.operations?.[0]).toMatchObject({
         kind: "replace-text",
         fieldPath: ["claims", "0", "statement"],
-        before: CANONICAL_STATEMENT,
-        after: "The shrine bell tolls at dusk.",
+        before: "The archive door stays locked until sunset.",
+        after: "The archive door unlocks at dusk.",
       });
     });
     expect(await screen.findByTestId("wiki-bible-receipt")).toHaveAttribute(
       "data-addressed-object-id",
-      "obj-scene-1",
+      "obj-scene-2",
     );
+  });
+
+  it("returns to the citation's addressed object after a durable play flag", async () => {
+    const returnTo = `/bible?projectId=${PROJECT_ID}&localeBranchId=${LOCALE_BRANCH_ID}&snapshotId=${encodeURIComponent(SNAPSHOT_ID)}&objectId=obj-scene-1`;
+    const route = parsePlayFlagComposerRoute(
+      "/play/flag",
+      `?projectId=${PROJECT_ID}&localeBranchId=${LOCALE_BRANCH_ID}&unitId=unit-42&returnTo=${encodeURIComponent(returnTo)}`,
+    );
+    expect(route).toMatchObject({ bridgeUnitId: "unit-42", returnTo });
+    const navigate = vi.fn();
+    render(
+      <App
+        location={{
+          pathname: "/play/flag",
+          search: `?${new URLSearchParams({
+            projectId: PROJECT_ID,
+            localeBranchId: LOCALE_BRANCH_ID,
+            unitId: "unit-42",
+            returnTo,
+          }).toString()}`,
+        }}
+        caps={grantedStudioCapabilityView()}
+        navigate={navigate}
+      />,
+    );
+
+    const composer = document.querySelector("[data-component='annotation-composer']");
+    if (composer === null) {
+      throw new Error("expected the play flag composer");
+    }
+    fireEvent.change(within(composer).getByRole("textbox", { name: "Note" }), {
+      target: { value: flagReceipt.note },
+    });
+    fireEvent.submit(composer);
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith(returnTo));
   });
 
   it("prompts for a snapshot when the scope is incomplete", () => {

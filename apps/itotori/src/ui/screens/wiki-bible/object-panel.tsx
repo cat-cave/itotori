@@ -22,7 +22,7 @@ import {
 } from "../../../wiki/dashboard/read-model.js";
 import { isLimitedContext, isTestMode } from "../../../wiki/dashboard/read-model.js";
 import { RedactedFrame } from "../../redaction-governor.js";
-import { citationDeepLink } from "./player-link.js";
+import { citationDeepLink, citationScopeFor } from "./player-link.js";
 import type { AsyncState } from "./hooks.js";
 import type { WikiBibleScope } from "./client.js";
 
@@ -177,7 +177,7 @@ function ClaimsPanel({
             ) : (
               <p className="wiki-bible__claim-statement">{claim.statement}</p>
             )}
-            <CitationList claim={claim} scope={scope} />
+            <CitationList claim={claim} scope={scope} objectId={object.objectId} />
           </li>
         ))}
       </ul>
@@ -199,17 +199,20 @@ function ClaimScopeBadge({ claim }: { claim: WikiClaimView }): ReactNode {
 function CitationList({
   claim,
   scope,
+  objectId,
 }: {
   claim: WikiClaimView;
   scope: WikiBibleScope;
+  objectId: string;
 }): ReactNode {
   if (claim.citations.length === 0) {
     return null;
   }
+  const linkScope = citationScopeFor(scope, objectId);
   return (
     <ul className="wiki-bible__citations" aria-label={`Citations for ${claim.claimId}`}>
       {claim.citations.map((citation) => {
-        const link = citationDeepLink(citation, scope);
+        const link = citationDeepLink(citation, linkScope);
         const key = `${citation.evidenceId}:${citation.subject.kind}:${citation.subject.id}`;
         if (link === null) {
           return (
@@ -227,6 +230,7 @@ function CitationList({
               href={link.href}
               data-citation-jump={link.href}
               data-citation-focus={link.focus}
+              {...(link.returnHref !== null ? { "data-citation-return": link.returnHref } : {})}
               {...(link.isPlayer ? { "data-citation-player-jump": link.href } : {})}
             >
               open {citation.subject.kind} {citation.subject.id} in {link.surface}

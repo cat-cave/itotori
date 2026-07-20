@@ -171,6 +171,9 @@ export function parseAddressableLocation(
   const projectId = nonEmpty(params.get("projectId"));
   const localeBranchId = nonEmpty(params.get("localeBranchId"));
   const unitQuery = nonEmpty(params.get("unit"));
+  // Citation → player deep-links may carry a return path to the addressed wiki
+  // object; preserve it so play flags / edit / feedback can close the loop.
+  const returnTo = nonEmpty(params.get("returnTo"));
 
   const matchers: ReadonlyArray<{
     re: RegExp;
@@ -216,12 +219,15 @@ export function parseAddressableLocation(
     };
     const href = hrefForAddressable(target);
     const qIndex = href.indexOf("?");
+    const pathnameOut = qIndex === -1 ? href : href.slice(0, qIndex);
+    const baseSearch = qIndex === -1 ? "" : href.slice(qIndex + 1);
+    const searchOut = withReturnTo(baseSearch, returnTo);
     return {
       kind,
       id,
       surface,
-      pathname: qIndex === -1 ? href : href.slice(0, qIndex),
-      search: qIndex === -1 ? "" : href.slice(qIndex),
+      pathname: pathnameOut,
+      search: searchOut,
       projectId,
       localeBranchId,
       unitId: kind === "scene" ? unitId : kind === "unit" ? id : null,
@@ -343,4 +349,14 @@ function nonEmpty(value: string | null | undefined): string | null {
   }
   const trimmed = value.trim();
   return trimmed.length === 0 ? null : trimmed;
+}
+
+/** Merge a preserved `returnTo` query into a canonical addressable search. */
+function withReturnTo(baseSearch: string, returnTo: string | null): string {
+  if (returnTo === null) {
+    return baseSearch.length === 0 ? "" : `?${baseSearch}`;
+  }
+  const params = new URLSearchParams(baseSearch);
+  params.set("returnTo", returnTo);
+  return `?${params.toString()}`;
 }
