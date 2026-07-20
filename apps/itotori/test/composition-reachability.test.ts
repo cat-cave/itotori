@@ -4,17 +4,26 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 // Clause 2 (static half): NO request can reach the old path from a kept
-// entrypoint. This walks the transitive import closure of the composition-root
-// entrypoint modules and asserts NONE of the legacy modules is reachable — there
-// is no import edge from a kept entrypoint to `ProjectWorkflowService`, a provider
-// object, the context-correction worker, the journal reservation/finalizer, or a
-// raw-MTL path. Deleting the cut (re-adding a route to the old service) fails it.
+// entrypoint. This walks each entrypoint's *runtime* import closure and asserts
+// NONE of the legacy modules is reachable — there is no executable import edge to
+// `ProjectWorkflowService`, a provider object, the context-correction worker, the
+// journal reservation/finalizer, or a raw-MTL path. Type-only imports are erased
+// before a request runs and are intentionally not runtime edges. Deleting the cut
+// (or re-adding any old route) fails this test.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = normalize(join(here, "..", "..", ".."));
 const srcRoot = join(repoRoot, "apps", "itotori", "src");
 
 const ENTRYPOINTS = [
+  "cli/localize-command.ts",
+  "cli/wiki-command.ts",
+  "cli/play-command.ts",
+  "cli/flags.ts",
+  "api/localize-route.ts",
+  "api/wiki-route.ts",
+  "api/play-route.ts",
+  "api-handlers.ts",
   "composition/index.ts",
   "composition/localize-entrypoint.ts",
   "composition/workflow-ports.ts",
@@ -22,29 +31,6 @@ const ENTRYPOINTS = [
   "composition/play-entrypoint.ts",
   "composition/provisioning.ts",
   "composition/deps.ts",
-].map((rel) => join(srcRoot, rel));
-
-// The kept API mutation handlers for localize/draft / wiki write / patch-play. The
-// cut is only real if THESE modules — the code the API dispatch actually
-// delegates each kept mutation to — carry no import edge to the old path either.
-// They live in their own modules (not the `api-handlers.ts` monolith, which
-// legitimately imports the legacy graph for out-of-scope mutations) precisely so
-// their transitive closure can be proven clean.
-const API_HANDLER_ENTRYPOINTS = [
-  "api/localize-route.ts",
-  "api/wiki-route.ts",
-  "api/play-route.ts",
-].map((rel) => join(srcRoot, rel));
-
-// The kept CLI command handlers for `localize` / `wiki` / `patch play` — same cut,
-// proven from the CLI side. They live in their own modules (not the
-// `cli-handlers.ts` monolith, which legitimately imports the legacy graph for
-// out-of-scope commands) so their transitive closure can be proven clean.
-const CLI_HANDLER_ENTRYPOINTS = [
-  "cli/localize-command.ts",
-  "cli/wiki-command.ts",
-  "cli/play-command.ts",
-  "cli/flags.ts",
 ].map((rel) => join(srcRoot, rel));
 
 // The legacy modules that MUST be unreachable from any kept entrypoint. Each maps
@@ -75,7 +61,6 @@ function resolveImport(importer: string, specifier: string): string | null {
 function importClosure(entrypoints: readonly string[]): ReadonlySet<string> {
   const seen = new Set<string>();
   const queue = [...entrypoints];
-  const specRe = /(?:from|import)\s+["'](\.\.?\/[^"']+)["']/g;
   while (queue.length > 0) {
     const file = queue.shift()!;
     if (seen.has(file)) continue;
@@ -86,72 +71,43 @@ function importClosure(entrypoints: readonly string[]): ReadonlySet<string> {
     } catch {
       continue;
     }
-    for (const match of contents.matchAll(specRe)) {
-      const resolved = resolveImport(file, match[1]!);
+    for (const specifier of runtimeRelativeImports(contents)) {
+      const resolved = resolveImport(file, specifier);
       if (resolved !== null && !seen.has(resolved)) queue.push(resolved);
     }
   }
   return seen;
 }
 
+/** Return only imports which exist after TypeScript erases types. The separate
+ * `export` pattern matters for the composition barrel: every value it re-exports
+ * is part of the gateway's runtime closure and must be audited as well. */
+function runtimeRelativeImports(contents: string): readonly string[] {
+  const specifiers: string[] = [];
+  const importRe = /\bimport\s+(type\s+)?(?:[^"']*?\s+from\s+)?["'](\.\.?\/[^"']+)["']/g;
+  const exportRe = /\bexport\s+(type\s+)?(?:[^"']*?\s+from\s+)["'](\.\.?\/[^"']+)["']/g;
+  for (const match of contents.matchAll(importRe)) {
+    if (match[1] === undefined) specifiers.push(match[2]!);
+  }
+  for (const match of contents.matchAll(exportRe)) {
+    if (match[1] === undefined) specifiers.push(match[2]!);
+  }
+  return specifiers;
+}
+
 describe("composition reachability — no kept entrypoint reaches the old path", () => {
-  it("resolves a non-trivial closure over the composition entrypoints", () => {
+  it("resolves a non-trivial runtime closure over every kept gateway", () => {
     const closure = importClosure(ENTRYPOINTS);
-    // A meaningful proof: the closure actually spans the new pipeline (roles,
-    // gates, patchback, wiki object-API, play launcher, workflow driver).
+    // A meaningful proof: the closure actually spans the snapshot, roles, gates,
+    // patchback, Wiki object API, play launcher, and workflow driver.
     expect(closure.size).toBeGreaterThan(50);
   });
 
-  it("reaches NONE of the legacy service-graph modules", () => {
+  it("reaches NONE of the severed draft/provider/correction/journal/raw-MTL edges", () => {
     const closure = importClosure(ENTRYPOINTS);
     const violations: string[] = [];
     for (const file of closure) {
       const rel = file.slice(repoRoot.length).replaceAll("\\", "/");
-      if (rel.includes("/composition/")) continue;
-      for (const { needle, hazard } of FORBIDDEN) {
-        if (rel.includes(needle)) violations.push(`${rel} → ${hazard}`);
-      }
-    }
-    expect(violations).toEqual([]);
-  });
-});
-
-describe("API mutation-handler reachability — localize/draft / wiki / patch-play reach zero legacy modules", () => {
-  it("spans the new pipeline from the kept API mutation handlers", () => {
-    const closure = importClosure(API_HANDLER_ENTRYPOINTS);
-    // The kept handlers reach the composition entrypoints, the live substrate
-    // builders, the run policy, and the workflow driver — a non-trivial closure.
-    expect(closure.size).toBeGreaterThan(50);
-  });
-
-  it("has NO import edge to project-workflow / providers / orchestrator / agents / WikiBrainService / raw-mtl", () => {
-    const closure = importClosure(API_HANDLER_ENTRYPOINTS);
-    const violations: string[] = [];
-    for (const file of closure) {
-      const rel = file.slice(repoRoot.length).replaceAll("\\", "/");
-      // The composition root and the thin API handler modules themselves are the
-      // cut, not the old path — everything else must be clean.
-      if (rel.includes("/composition/") || rel.includes("/apps/itotori/src/api/")) continue;
-      for (const { needle, hazard } of FORBIDDEN) {
-        if (rel.includes(needle)) violations.push(`${rel} → ${hazard}`);
-      }
-    }
-    expect(violations).toEqual([]);
-  });
-});
-
-describe("CLI command-handler reachability — localize / wiki / patch-play reach zero legacy modules", () => {
-  it("spans the new pipeline from the kept CLI handlers", () => {
-    const closure = importClosure(CLI_HANDLER_ENTRYPOINTS);
-    expect(closure.size).toBeGreaterThan(50);
-  });
-
-  it("has NO import edge to project-workflow / db-live-workflow-ports / providers / orchestrator / agents / raw-mtl", () => {
-    const closure = importClosure(CLI_HANDLER_ENTRYPOINTS);
-    const violations: string[] = [];
-    for (const file of closure) {
-      const rel = file.slice(repoRoot.length).replaceAll("\\", "/");
-      if (rel.includes("/composition/") || rel.includes("/apps/itotori/src/cli/")) continue;
       for (const { needle, hazard } of FORBIDDEN) {
         if (rel.includes(needle)) violations.push(`${rel} → ${hazard}`);
       }
