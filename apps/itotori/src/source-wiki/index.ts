@@ -30,6 +30,7 @@ export {
   acceptObject,
   artifactKey,
   artifactKeyOf,
+  isRecoverablyUncitable,
   scopeKey,
   type AcceptStamp,
 } from "./accept.js";
@@ -41,6 +42,7 @@ export {
   type PhaseReport,
   type SourceWikiObserver,
   type SourceWikiRunReport,
+  type UncitableObjectReport,
 } from "./orchestrate.js";
 export {
   WHOLE_GAME_CONTEXT_SCOPE,
