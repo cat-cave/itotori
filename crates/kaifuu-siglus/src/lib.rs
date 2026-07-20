@@ -80,6 +80,7 @@ pub mod decompress;
 pub mod decrypt;
 pub mod exe_angou;
 pub mod expression;
+pub mod flow;
 pub mod gameexe;
 pub mod gameexe_inventory;
 pub mod known_key_smoke;
@@ -149,6 +150,10 @@ pub use expression::{
     SiglusBinaryOp, SiglusElementHead, SiglusExpr, SiglusExpressionError, SiglusOperand,
     SiglusOperatorHistogram, SiglusPush, SiglusUnaryOp, UnsupportedOperatorSite, decode_operand,
     decode_operand_stream, decode_scene_expressions,
+};
+pub use flow::{
+    FlowUnderflowReport, SceneFlowDecode, SceneFlowError, SiglusChoiceArm, SiglusChoiceUnit,
+    SiglusJump, SiglusJumpKind, SiglusStatement, SiglusTextSurface, decode_scene_flow,
 };
 pub use gameexe::{
     GameexeDatEntry, GameexeDatError, GameexeDatHeader, GameexeDatReport, decode_gameexe_dat,
