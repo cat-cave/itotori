@@ -41,7 +41,7 @@ function evidenceIdsOf(spine: A4RouteSpine["finalStorySoFar"]): readonly string[
 
 /**
  * Adopt the spine or throw. The spine must be the final `story-so-far` object,
- * and its covered scenes must equal the decode's dispatch order verbatim. Its
+ * and its covered scenes must equal the decoded route order verbatim. Its
  * deterministic `throughSceneId` must also name the final dispatched scene, so
  * a stale intermediate story cannot masquerade as the final route spine. The
  * returned scope is the spine's own scope — inherited, not recomputed — so every
@@ -55,15 +55,16 @@ export function adoptSpine(model: ReadModel, spine: A4RouteSpine): AdoptedSpine 
       `the spine must be a story-so-far object, got ${object.kind}`,
     );
   }
-  const dispatchOrder = model.factSnapshot.routeTopology.sceneDispatchOrder;
-  if (!sameOrder(spine.coveredSceneIds, dispatchOrder)) {
+  const expectedOrder =
+    spine.expectedSceneIds ?? model.factSnapshot.routeTopology.sceneDispatchOrder;
+  if (!sameOrder(spine.coveredSceneIds, expectedOrder)) {
     throw new A4RoleError(
       "spine-topology-mismatch",
       `spine covers [${spine.coveredSceneIds.join(", ")}] but the decode dispatches ` +
-        `[${dispatchOrder.join(", ")}] — the authoritative topology is not reconstructed here`,
+        `[${expectedOrder.join(", ")}] — the authoritative topology is not reconstructed here`,
     );
   }
-  const finalSceneId = dispatchOrder.at(-1);
+  const finalSceneId = expectedOrder.at(-1);
   if (finalSceneId === undefined || object.body.throughSceneId !== String(finalSceneId)) {
     throw new A4RoleError(
       "spine-final-scene-mismatch",
@@ -83,7 +84,7 @@ export function adoptSpine(model: ReadModel, spine: A4RouteSpine): AdoptedSpine 
     spineObjectId: object.objectId,
     spineVersion: object.version,
     evidenceIds,
-    coveredSceneIds: [...dispatchOrder],
+    coveredSceneIds: [...expectedOrder],
   };
 }
 

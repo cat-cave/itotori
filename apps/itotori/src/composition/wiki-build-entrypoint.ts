@@ -36,6 +36,7 @@ import {
 } from "./live/dispatch-runtime.js";
 import {
   createRepositoryArtifactLedger,
+  deriveWorkSource,
   orchestrateSourceWiki,
   type AnalystRunner,
   type OrchestrateSourceWikiDeps,
@@ -189,7 +190,6 @@ export async function runWikiBuild(deps: WikiBuildDeps): Promise<SourceWikiRunRe
       repository: deps.repository,
       snapshotId: deps.contextSnapshot.snapshotId,
     }),
-    portraitCharacterIds: [...(deps.portraitSources?.keys() ?? [])],
   };
   return await orchestrateSourceWiki(orchestratorDeps);
 }
@@ -499,15 +499,24 @@ async function runA4(
   deps: AnalystRoleDeps,
   findObject: (objectId: string, kind: WikiObject["kind"]) => Promise<WikiObject>,
 ): Promise<readonly WikiObject[]> {
-  requiredSubject(input, "route");
-  const lastScene = deps.model.factSnapshot.routeTopology.sceneDispatchOrder.at(-1);
+  const routeId = requiredSubject(input, "route");
+  const route = deriveWorkSource(deps.model.factSnapshot).routes.find(
+    (candidate) => candidate.routeId === routeId,
+  );
+  if (route === undefined)
+    throw new Error(`A4 route ${routeId} is absent from the deterministic route work source`);
+  const lastScene = route.sceneIds.at(-1);
   if (lastScene === undefined)
-    throw new Error("A4 cannot adopt a spine from an empty dispatch order");
+    throw new Error(`A4 route ${routeId} cannot adopt a spine from an empty dispatch order`);
   const finalStorySoFar = await findObject(`story-so-far:${lastScene}`, "story-so-far");
   const result = await reconcileRoute(
     deps.model,
     wholeGameContext(input),
-    { finalStorySoFar, coveredSceneIds: deps.model.factSnapshot.routeTopology.sceneDispatchOrder },
+    {
+      finalStorySoFar,
+      coveredSceneIds: route.sceneIds,
+      expectedSceneIds: route.sceneIds,
+    },
     dispatchingA4Caller(deps.model, wholeGameContext(input), deps.runtime),
   );
   return [result.routeArc];

@@ -65,21 +65,26 @@ function singleStepItem(
   return { itemId, role, laneId, steps: [step(role, itemId, subject, scope, kinds)] };
 }
 
-function a3FoldItem(source: WorkSource): WorkItem {
-  const steps = source.scenes.map((scene) => {
-    const subject = { kind: "scene" as const, id: String(scene.sceneId) };
+function a3FoldItem(route: WorkSource["routes"][number]): WorkItem {
+  const steps = route.sceneIds.map((sceneId) => {
+    const subject = { kind: "scene" as const, id: String(sceneId) };
     return {
-      stepId: `A3:game:scene:${scene.sceneId}`,
+      stepId: `A3:route:${route.routeId}:scene:${sceneId}`,
       role: "A3" as const,
       subject,
-      scope: scene.storyScope,
+      scope: route.scope,
       targets: [
-        ...targetsFor(["scene-summary"], subject, scene.sceneScope),
-        ...targetsFor(["story-so-far"], subject, scene.storyScope),
+        ...targetsFor(["scene-summary"], subject, route.scope),
+        ...targetsFor(["story-so-far"], subject, route.scope),
       ],
     };
   });
-  return { itemId: "A3:game", role: "A3", laneId: "game", steps };
+  return {
+    itemId: `A3:route:${route.routeId}`,
+    role: "A3",
+    laneId: route.routeId,
+    steps,
+  };
 }
 
 function routeSubjectId(scope: RouteScope): string {
@@ -118,21 +123,20 @@ function itemsForRole(specialist: Specialist, source: WorkSource): WorkItem[] {
         ),
       );
     case "A3":
-      return source.scenes.length === 0 ? [] : [a3FoldItem(source)];
-    case "A4": {
-      const finalScope = source.scenes.at(-1)?.storyScope;
-      if (finalScope === undefined) return [];
-      return [
-        singleStepItem(
-          role,
-          `A4:route:${routeSubjectId(finalScope)}`,
-          routeSubjectId(finalScope),
-          { kind: "route", id: routeSubjectId(finalScope) },
-          finalScope,
-          kinds,
-        ),
-      ];
-    }
+      return source.routes.filter((route) => route.sceneIds.length > 0).map(a3FoldItem);
+    case "A4":
+      return source.routes
+        .filter((route) => route.sceneIds.length > 0)
+        .map((route) =>
+          singleStepItem(
+            role,
+            `A4:route:${route.routeId}`,
+            route.routeId,
+            { kind: "route", id: route.routeId },
+            route.scope,
+            kinds,
+          ),
+        );
     case "A5":
       return source.characterIds.map((characterId) =>
         singleStepItem(
@@ -145,7 +149,7 @@ function itemsForRole(specialist: Specialist, source: WorkSource): WorkItem[] {
         ),
       );
     case "A8":
-      return source.portraitCharacterIds.map((characterId) =>
+      return source.characterIds.map((characterId) =>
         singleStepItem(
           role,
           `${role}:char:${characterId}`,
@@ -156,7 +160,7 @@ function itemsForRole(specialist: Specialist, source: WorkSource): WorkItem[] {
         ),
       );
     case "A7":
-      return source.portraitCharacterIds.map((characterId) =>
+      return source.characterIds.map((characterId) =>
         singleStepItem(
           role,
           `${role}:char:${characterId}`,
@@ -211,7 +215,6 @@ export function buildSourceWikiPlan(
   selection?: readonly RoleId[],
   options?: {
     readonly readModel?: ReadModel;
-    readonly portraitCharacterIds?: readonly string[];
   },
 ): SourceWikiPlan {
   const specialists = selectSourceWikiRoles(selection);

@@ -31,9 +31,6 @@ export interface WorkSource {
   readonly gameId: string;
   readonly routes: readonly RouteWork[];
   readonly characterIds: readonly string[];
-  /** Characters for which this run has a real portrait source. A7 cannot
-   * fabricate a media hash, so an absent source is deliberately not sharded. */
-  readonly portraitCharacterIds: readonly string[];
   /** The exact decoded character/route intersections A9 can author. */
   readonly characterRoutePairs: readonly {
     readonly characterId: string;
@@ -44,21 +41,6 @@ export interface WorkSource {
   readonly adaptationUnits: readonly { readonly unitId: string; readonly scope: RouteScope }[];
   /** The exact genuinely-unknown-speaker A10 subjects. */
   readonly unknownSpeakerUnits: readonly { readonly unitId: string; readonly scope: RouteScope }[];
-  /** Complete global A3 fold, with its per-scene summary and cumulative story scopes. */
-  readonly scenes: readonly {
-    readonly sceneId: number;
-    readonly sceneScope: RouteScope;
-    readonly storyScope: RouteScope;
-  }[];
-}
-
-function toRouteScope(scope: FactRouteScope): RouteScope {
-  if (scope.kind === "route") return { kind: "route", routeId: scope.routeId };
-  if (scope.kind === "route-set") {
-    const routeIds = [...new Set(scope.routeIds)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-    return { kind: "route-set", routeIds };
-  }
-  return { kind: "global" };
 }
 
 /** Distinct route ids present on a fact route scope. */
@@ -71,8 +53,14 @@ function routeIdsOf(scope: FactRouteScope): readonly string[] {
 function deriveRoutes(snapshot: FactSnapshot): RouteWork[] {
   const dispatchOrder = snapshot.routeTopology.sceneDispatchOrder;
   const scenesByRoute = new Map<string, Set<number>>();
+  const globalScenes = new Set<number>();
   for (const unit of snapshot.orderedUnits) {
-    for (const routeId of routeIdsOf(unit.routeScope)) {
+    const routeIds = routeIdsOf(unit.routeScope);
+    if (routeIds.length === 0) {
+      globalScenes.add(unit.sceneId);
+      continue;
+    }
+    for (const routeId of routeIds) {
       if (!scenesByRoute.has(routeId)) scenesByRoute.set(routeId, new Set());
       scenesByRoute.get(routeId)!.add(unit.sceneId);
     }
@@ -84,44 +72,24 @@ function deriveRoutes(snapshot: FactSnapshot): RouteWork[] {
     ];
   }
   const routeIds = [...scenesByRoute.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  return routeIds.map((routeId) => ({
+  const routes = routeIds.map((routeId) => ({
     routeId,
     scope: { kind: "route", routeId },
     sceneIds: dispatchOrder.filter((sceneId) => scenesByRoute.get(routeId)!.has(sceneId)),
   }));
-}
-
-function mergeScopes(left: RouteScope, right: RouteScope): RouteScope {
-  if (left.kind === "global" || right.kind === "global") return { kind: "global" };
-  const ids = new Set<string>();
-  for (const scope of [left, right]) {
-    if (scope.kind === "route") ids.add(scope.routeId);
-    else for (const id of scope.routeIds) ids.add(id);
+  // Common-route scenes still need one serial story lane. Do not copy those
+  // scenes into every branch: that would create duplicate scene objects and
+  // rerun the same factual work. A route-set scene remains visible to each
+  // concrete route named by its decoded scope; a global scene has this one
+  // global lane.
+  if (globalScenes.size > 0) {
+    routes.unshift({
+      routeId: WHOLE_GAME_ROUTE_ID,
+      scope: { kind: "global" },
+      sceneIds: dispatchOrder.filter((sceneId) => globalScenes.has(sceneId)),
+    });
   }
-  const routeIds = [...ids].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  return routeIds.length === 1
-    ? { kind: "route", routeId: routeIds[0]! }
-    : { kind: "route-set", routeIds };
-}
-
-function sceneScopes(snapshot: FactSnapshot): WorkSource["scenes"] {
-  const byScene = new Map<number, RouteScope>();
-  for (const unit of snapshot.orderedUnits) {
-    const scope = toRouteScope(unit.routeScope);
-    const previous = byScene.get(unit.sceneId);
-    byScene.set(unit.sceneId, previous === undefined ? scope : mergeScopes(previous, scope));
-  }
-  let storyScope: RouteScope | undefined;
-  // A dispatched scene with no ordered units — a title / menu / branch-only /
-  // system scene (47 of Sweetie's dispatched scenes) — carries nothing for the
-  // analysts to author, so skip it rather than fail. The story-so-far spine
-  // folds only through scenes that actually have content.
-  return snapshot.routeTopology.sceneDispatchOrder.flatMap((sceneId) => {
-    const sceneScope = byScene.get(sceneId);
-    if (sceneScope === undefined) return [];
-    storyScope = storyScope === undefined ? sceneScope : mergeScopes(storyScope, sceneScope);
-    return [{ sceneId, sceneScope, storyScope }];
-  });
+  return routes;
 }
 
 /** Derive the enumerable work source from a fact snapshot. */
@@ -130,8 +98,6 @@ export function deriveWorkSource(
   options: {
     /** A6/A10 derive authorable units through their real read-model functions. */
     readonly readModel?: ReadModel;
-    /** A7's external render/patch-report portrait sources, keyed by character. */
-    readonly portraitCharacterIds?: readonly string[];
   } = {},
 ): WorkSource {
   const characterIds = [...snapshot.characters]
@@ -163,16 +129,13 @@ export function deriveWorkSource(
           localeBranchId: null,
         }).map((unit) => ({ unitId: unit.unitId, scope: unit.scope }));
   const characterRoutePairs = characterRouteIntersection({ factSnapshot: snapshot });
-  const portraitCharacters = new Set(options.portraitCharacterIds ?? []);
   return {
     gameId: snapshot.source.bridgeId,
     routes: deriveRoutes(snapshot),
     characterIds,
-    portraitCharacterIds: characterIds.filter((characterId) => portraitCharacters.has(characterId)),
     characterRoutePairs,
     termKeys,
     adaptationUnits,
     unknownSpeakerUnits,
-    scenes: sceneScopes(snapshot),
   };
 }
