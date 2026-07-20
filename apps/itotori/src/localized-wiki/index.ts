@@ -14,6 +14,8 @@ export {
   LOCALIZER_PROFILE_SHAPE,
   FULL_BIBLE_POSTURES,
   BibleBypassError,
+  CollapsedBibleError,
+  assertBibleIsNotCollapsed,
   bypassBibleForAblation,
   localizerProfileRoles,
   mustBuildFullBible,
@@ -49,8 +51,20 @@ export {
 } from "./install.js";
 export { InMemoryBibleRenderingLedger, createRepositoryBibleRenderingLedger } from "./ledger.js";
 export {
+  LocalizedWikiRouteError,
+  buildLocalizedDecisionReviewCall,
+  buildLocalizedRenderingCall,
+  createCertifiedLocalizedWikiActors,
+  createDispatchDecisionReviewer,
+  createDispatchLocalizerRunner,
+  type CertifiedLocalizedWikiActors,
+  type LocalizedWikiDispatch,
+  type LocalizedWikiDispatchRefs,
+} from "./dispatch.js";
+export {
   orchestrateLocalizedWiki,
   planLocalizedWiki,
+  BibleDecisionValidationError,
   type DecisionOutcome,
   type LocalizedWikiObserver,
   type LocalizedWikiRunReport,

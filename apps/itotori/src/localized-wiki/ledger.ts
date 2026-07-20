@@ -9,7 +9,7 @@
 // persists accepted renderings through the strict LocalizedRendering write gate.
 
 import type { ItotoriLlmWikiRepository } from "@itotori/db";
-import type { LocalizedRendering } from "../contracts/index.js";
+import { LocalizedRenderingSchema, type LocalizedRendering } from "../contracts/index.js";
 import { toView } from "../wiki/object-api/read-model.js";
 import { persistLocalizedRendering } from "../wiki/object-persistence.js";
 import { renderingKey, renderingKeyOf } from "./rendering.js";
@@ -24,8 +24,9 @@ export class InMemoryBibleRenderingLedger implements BibleRenderingLedger {
     for (const rendering of seed) this.add(rendering);
   }
 
-  /** Seed a bare rendering key (a completed rendering whose body is not on hand)
-   * so a recovery run can be proven without reconstructing content. */
+  /** Seed a bare DESCRIPTIVE rendering key so recovery can prove it is skipped
+   * without reconstructing content. Canonical decisions must retain bodies: the
+   * orchestrator needs them to reinstall their deterministic gate forms. */
   seedKey(
     sourceObjectKind: string,
     sourceObjectId: string,
@@ -42,6 +43,10 @@ export class InMemoryBibleRenderingLedger implements BibleRenderingLedger {
 
   async existingKeys(): Promise<ReadonlySet<RenderingKey>> {
     return new Set(this.keys);
+  }
+
+  async existingRenderings(): Promise<readonly LocalizedRendering[]> {
+    return [...this.renderings];
   }
 
   async record(renderings: readonly LocalizedRendering[]): Promise<void> {
@@ -80,6 +85,15 @@ export function createRepositoryBibleRenderingLedger(deps: {
         );
       }
       return keys;
+    },
+    async existingRenderings(): Promise<readonly LocalizedRendering[]> {
+      const records = await deps.repository.listObjects({
+        snapshotId: deps.localizationSnapshotId,
+        wikiKind: "localized-rendering",
+      });
+      return records
+        .map((record) => LocalizedRenderingSchema.parse(JSON.parse(record.objectJson)))
+        .filter((rendering) => rendering.targetLanguage === deps.targetLanguage);
     },
     async record(renderings: readonly LocalizedRendering[]): Promise<void> {
       for (const rendering of renderings) {

@@ -18,11 +18,11 @@
 
 import { mapWithConcurrency } from "../source-wiki/concurrency.js";
 import { buildLocalizedWikiPlan } from "./plan.js";
-import { acceptRendering } from "./rendering.js";
+import { acceptRendering, renderingKeyOf } from "./rendering.js";
 import { reviewDecision, type DecisionReview } from "./review-gate.js";
 import { installCanonicalForms, type ValidatedDecision } from "./install.js";
 import { assertDecisionTierFirst } from "./ordering.js";
-import { localizerProfileRoles } from "./posture.js";
+import { assertBibleIsNotCollapsed, localizerProfileRoles } from "./posture.js";
 import type {
   BibleStep,
   BibleTier,
@@ -84,6 +84,16 @@ export interface LocalizedWikiRunReport {
   readonly skippedKeys: readonly RenderingKey[];
 }
 
+/** A term/name decision did not clear its required reviewer gate. The bible is
+ * incomplete, so the descriptive phase and every later production line must
+ * stop rather than proceed around the missing canonical form. */
+export class BibleDecisionValidationError extends Error {
+  constructor(readonly targetKeys: readonly RenderingKey[]) {
+    super(`localized bible has unvalidated canonical decisions: ${targetKeys.join(", ")}`);
+    this.name = "BibleDecisionValidationError";
+  }
+}
+
 /** A rendering step must yield exactly its one assigned target rendering. */
 function acceptOne(
   produced: readonly LocalizedRendering[],
@@ -102,6 +112,7 @@ function acceptOne(
 
 interface Mutable {
   readonly existing: Set<RenderingKey>;
+  readonly persisted: ReadonlyMap<RenderingKey, LocalizedRendering>;
   readonly rendered: RenderingKey[];
   readonly skipped: RenderingKey[];
 }
@@ -121,11 +132,21 @@ async function runDecisionStep(
 ): Promise<DecisionStepResult> {
   const decisionClass = step.decisionClass!;
   if (state.existing.has(step.target.key)) {
+    const rendering = state.persisted.get(step.target.key);
+    if (rendering === undefined) {
+      throw new Error(
+        `canonical decision ${step.target.key} is marked complete but its accepted rendering is unavailable`,
+      );
+    }
+    // A completed decision was reviewer-validated before it was recorded. On
+    // recovery we still recheck its identity + run stamp, then surface it again
+    // for canonical installation; a key alone would silently drop the gate.
+    acceptRendering(rendering, step.target, stamp);
     state.skipped.push(step.target.key);
     deps.observer?.onStepSkipped?.(step);
     return {
-      outcome: { targetKey: step.target.key, decisionClass, validated: false, skipped: true },
-      validatedDecision: null,
+      outcome: { targetKey: step.target.key, decisionClass, validated: true, skipped: true },
+      validatedDecision: { sourceObject: step.sourceObject, rendering },
     };
   }
   const produced = await deps.runner({
@@ -194,6 +215,7 @@ async function runDescriptiveStep(
 export async function orchestrateLocalizedWiki(
   deps: OrchestrateLocalizedWikiDeps,
 ): Promise<LocalizedWikiRunReport> {
+  assertBibleIsNotCollapsed(deps.posture, deps.sourceObjects.length);
   const plan: LocalizedWikiPlan = buildLocalizedWikiPlan(
     deps.sourceObjects,
     deps.targetLanguage,
@@ -209,8 +231,13 @@ export async function orchestrateLocalizedWiki(
     localizationSnapshotId: deps.localizationSnapshotId,
     runMode: deps.runMode,
   };
+  const persisted = await deps.ledger.existingRenderings();
+  const persistedByKey = new Map(
+    persisted.map((rendering) => [renderingKeyOf(rendering), rendering]),
+  );
   const state: Mutable = {
-    existing: new Set(await deps.ledger.existingKeys()),
+    existing: new Set([...(await deps.ledger.existingKeys()), ...persistedByKey.keys()]),
+    persisted: persistedByKey,
     rendered: [],
     skipped: [],
   };
@@ -222,6 +249,10 @@ export async function orchestrateLocalizedWiki(
   const validatedDecisions = decisionResults
     .map((result) => result.validatedDecision)
     .filter((decision): decision is ValidatedDecision => decision !== null);
+  const rejected = decisionResults
+    .filter((result) => !result.outcome.validated)
+    .map((result) => result.outcome.targetKey);
+  if (rejected.length > 0) throw new BibleDecisionValidationError(rejected);
   const installedForms = installCanonicalForms(validatedDecisions);
   for (const form of installedForms) deps.observer?.onDecisionInstalled?.(form);
 

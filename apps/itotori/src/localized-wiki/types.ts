@@ -128,5 +128,9 @@ export type DecisionReviewer = (input: ReviewDecisionInput) => Promise<DecisionR
  * is the work to do); `record` persists the accepted renderings. */
 export interface BibleRenderingLedger {
   existingKeys(): Promise<ReadonlySet<RenderingKey>>;
+  /** The accepted rendering bodies already persisted for this target language.
+   * Recovery needs decision bodies, not merely their keys, to reinstall their
+   * canonical forms before the descriptive phase may resume. */
+  existingRenderings(): Promise<readonly LocalizedRendering[]>;
   record(renderings: readonly LocalizedRendering[]): Promise<void>;
 }

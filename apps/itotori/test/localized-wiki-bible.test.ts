@@ -10,7 +10,9 @@ import { describe, expect, it } from "vitest";
 import { LocalizedRenderingSchema } from "../src/contracts/index.js";
 import {
   BibleBypassError,
+  BibleDecisionValidationError,
   BibleOrderingError,
+  CollapsedBibleError,
   DECISION_RUBRICS,
   InMemoryBibleRenderingLedger,
   assertDecisionTierFirst,
@@ -138,6 +140,16 @@ describe("clause 3 — a Q3/Q2-style reviewer gate validates the L-Term / L-Name
     expect(DECISION_RUBRICS["L-Name"]).toEqual(["Q3", "Q2"]);
   });
 
+  it("PROOF: the full pass invokes Q3 for a term and Q3 then Q2 for a name", async () => {
+    const calls: string[] = [];
+    const reviewer: DecisionReviewer = async (input) => {
+      calls.push(`${input.decisionClass}:${input.reviewerRole}`);
+      return verdictOutput(input.rendering.renderingId, "PASS");
+    };
+    await orchestrateLocalizedWiki(baseDeps({ reviewer }));
+    expect(calls.sort()).toEqual(["L-Name:Q2", "L-Name:Q3", "L-Term:Q3"]);
+  });
+
   it("PROOF: only a clean PASS validates — a FAIL and a CANNOT_ASSESS never do", async () => {
     const term = sourceWiki()[0]!;
     const rendering = makeRendering(
@@ -175,20 +187,25 @@ describe("clause 3 — a Q3/Q2-style reviewer gate validates the L-Term / L-Name
     expect(forged.rubrics.some((r) => r.issues.length > 0)).toBe(true);
   });
 
-  it("PROOF: a FAILED decision neither installs nor persists; a passed sibling does", async () => {
+  it("PROOF: a FAILED decision blocks the descriptive phase rather than creating a partial bible", async () => {
     const reviewer: DecisionReviewer = async (input) =>
       verdictOutput(
         input.rendering.renderingId,
         input.sourceObject.objectId === "term-ruling:T-mother" ? "FAIL" : "PASS",
       );
     const ledger = new InMemoryBibleRenderingLedger();
-    const report = await orchestrateLocalizedWiki(baseDeps({ ledger, reviewer }));
+    let descriptiveCalls = 0;
+    const runner: LocalizerRunner = async (input) => {
+      if (input.tier === "descriptive") descriptiveCalls += 1;
+      return [makeRendering(stepShim(input), input.stamp)];
+    };
+    await expect(orchestrateLocalizedWiki(baseDeps({ ledger, reviewer, runner }))).rejects.toThrow(
+      BibleDecisionValidationError,
+    );
 
-    const installed = report.installedForms.map((f) => f.termId);
-    expect(installed).not.toContain("T-mother"); // the failed decision did not install
-    expect(installed).toContain("c1"); // the passed NAME decision did install
+    expect(descriptiveCalls).toBe(0);
     expect(ledger.recorded().map((r) => r.sourceObjectId)).not.toContain("term-ruling:T-mother");
-    expect(report.decisions.find((d) => d.targetKey.includes("T-mother"))?.validated).toBe(false);
+    expect(ledger.recorded().map((r) => r.sourceObjectId)).toContain("term-ruling:c1");
   });
 
   it("PROOF: an L-Name needs BOTH terminology AND voice — a Q2 FAIL blocks it", async () => {
@@ -197,9 +214,9 @@ describe("clause 3 — a Q3/Q2-style reviewer gate validates the L-Term / L-Name
         input.rendering.renderingId,
         input.reviewerRole === "Q2" && input.decisionClass === "L-Name" ? "FAIL" : "PASS",
       );
-    const report = await orchestrateLocalizedWiki(baseDeps({ reviewer }));
-    expect(report.installedForms.map((f) => f.termId)).not.toContain("c1");
-    expect(report.installedForms.map((f) => f.termId)).toContain("T-mother");
+    await expect(orchestrateLocalizedWiki(baseDeps({ reviewer }))).rejects.toThrow(
+      BibleDecisionValidationError,
+    );
   });
 });
 
@@ -299,5 +316,17 @@ describe("clause 5 — NO bible bypass in production or pilot (only ablation may
     expect(calls).toBe(0);
     expect(report.renderedKeys.length).toBe(0);
     expect(report.skippedKeys.length).toBe(afterFirst);
+    // Recovered decision bodies are reinstalled; a key-only recovery cannot
+    // silently leave later deterministic gates without their canonical forms.
+    expect(report.installedForms.map((form) => form.termId).sort()).toEqual(["T-mother", "c1"]);
+  });
+
+  it("PROOF: production and pilot reject a collapsed source Wiki instead of skipping the bible", async () => {
+    await expect(
+      orchestrateLocalizedWiki(baseDeps({ sourceObjects: [], posture: "production" })),
+    ).rejects.toThrow(CollapsedBibleError);
+    await expect(
+      orchestrateLocalizedWiki(baseDeps({ sourceObjects: [], posture: "pilot" })),
+    ).rejects.toThrow(CollapsedBibleError);
   });
 });
