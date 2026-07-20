@@ -2,7 +2,9 @@
 //
 // Consumes the persisted qualifying artifact-lineage ledger (one immutable
 // row per physical attempt) and projects a deterministic scorecard: overall
-// totals plus attempts / cost / latency / tokens / memo-hit per stage+role.
+// totals plus attempts / cost / latency / tokens / memo-hit per stage and
+// stage+role. Quarantine, correction, and retry facts remain visible in every
+// aggregate; no attempt kind is silently filtered out.
 //
 // Cost aggregation preserves the tagged unknown settlement: a single
 // unknown-cost attempt flips the bucket (and the overall total) to
@@ -50,9 +52,16 @@ export type StrictScorecardTokenTotal = {
 export type StrictScorecardTotals = {
   readonly attempts: number;
   readonly memoHitCount: number;
+  readonly quarantineCount: number;
+  readonly correctionCount: number;
+  readonly retryCount: number;
   readonly latencyMs: number | null;
   readonly tokens: StrictScorecardTokenTotal;
   readonly cost: StrictScorecardCostTotal;
+};
+
+export type StrictScorecardStageBucket = StrictScorecardTotals & {
+  readonly stage: AcceptanceAttemptStage;
 };
 
 export type StrictScorecardStageRoleBucket = StrictScorecardTotals & {
@@ -68,6 +77,8 @@ export type StrictScorecard = {
   readonly schemaVersion: typeof STRICT_SCORECARD_SCHEMA_VERSION;
   readonly lineage: "qualifying";
   readonly totals: StrictScorecardTotals;
+  /** Every accepted attempt stage, including empty kinds, in fixed enum order. */
+  readonly byStage: readonly StrictScorecardStageBucket[];
   readonly byStageRole: readonly StrictScorecardStageRoleBucket[];
   /** The real terminal-run scorecard is a live-lane follow-up, not this core. */
   readonly liveTerminalRunScorecard: typeof LIVE_TERMINAL_RUN_SCORECARD_FOLLOW_UP;
@@ -92,6 +103,9 @@ type MutableTokens = {
 type MutableBucket = {
   attempts: number;
   memoHitCount: number;
+  quarantineCount: number;
+  correctionCount: number;
+  retryCount: number;
   latencyMs: number;
   latencyComplete: boolean;
   tokens: MutableTokens;
@@ -108,10 +122,14 @@ export function buildStrictScorecardFromLineage(
 ): StrictScorecard {
   const parsed = normalizeLineage(telemetry);
   const overall = emptyBucket();
+  const stages = new Map(
+    AcceptanceAttemptStageSchema.options.map((stage) => [stage, emptyBucket()] as const),
+  );
   const buckets = new Map<string, MutableBucket>();
 
   for (const row of parsed.attempts) {
     accumulate(overall, row);
+    accumulate(stages.get(row.stage)!, row);
     const key = stageRoleKey(row.stage, row.role);
     let bucket = buckets.get(key);
     if (!bucket) {
@@ -136,6 +154,10 @@ export function buildStrictScorecardFromLineage(
     schemaVersion: STRICT_SCORECARD_SCHEMA_VERSION,
     lineage: "qualifying",
     totals: freezeTotals(overall),
+    byStage: AcceptanceAttemptStageSchema.options.map((stage) => ({
+      stage,
+      ...freezeTotals(stages.get(stage)!),
+    })),
     byStageRole,
     liveTerminalRunScorecard: LIVE_TERMINAL_RUN_SCORECARD_FOLLOW_UP,
   };
@@ -171,6 +193,9 @@ function emptyBucket(): MutableBucket {
   return {
     attempts: 0,
     memoHitCount: 0,
+    quarantineCount: 0,
+    correctionCount: 0,
+    retryCount: 0,
     latencyMs: 0,
     latencyComplete: true,
     tokens: {
@@ -190,6 +215,9 @@ function emptyBucket(): MutableBucket {
 function accumulate(bucket: MutableBucket, row: QualifyingArtifactAttemptTelemetry): void {
   bucket.attempts += 1;
   bucket.memoHitCount += row.memoHit ? 1 : 0;
+  bucket.quarantineCount += row.quarantine ? 1 : 0;
+  bucket.correctionCount += row.correction ? 1 : 0;
+  bucket.retryCount += row.retry ? 1 : 0;
   if (row.cost.state === "confirmed") {
     bucket.cost.confirmedAmountUsd = addDecimalUsd(
       bucket.cost.confirmedAmountUsd,
@@ -227,6 +255,9 @@ function freezeTotals(bucket: MutableBucket): StrictScorecardTotals {
   return {
     attempts: bucket.attempts,
     memoHitCount: bucket.memoHitCount,
+    quarantineCount: bucket.quarantineCount,
+    correctionCount: bucket.correctionCount,
+    retryCount: bucket.retryCount,
     latencyMs: bucket.latencyComplete ? bucket.latencyMs : null,
     tokens: {
       input: tokens.inputComplete ? tokens.input : null,

@@ -3,6 +3,7 @@ import { QualifyingArtifactAttemptTelemetrySchema } from "../src/contracts/index
 import {
   InMemoryQualifyingAttemptTelemetryStore,
   persistQualifyingArtifactLineage,
+  persistQualifyingWorkflowLineage,
   projectQualifyingArtifactAttempt,
   reportPersistedQualifyingTelemetry,
   type QualifyingArtifactAttemptInput,
@@ -25,6 +26,7 @@ const STAGE_ROLES = [
   ["retry", "P1"],
   ["repair", "P3"],
   ["build-lqa", "Q5"],
+  ["feedback-enhancement", "A4"],
 ] as const;
 
 function hash(index: number): `sha256:${string}` {
@@ -73,7 +75,17 @@ describe("qualifying artifact-lineage telemetry", () => {
     const store = new InMemoryQualifyingAttemptTelemetryStore();
     const entries = [attempt(1), attempt(2, "retry", "P1")];
 
-    await persistQualifyingArtifactLineage(store, QUALIFYING_POLICY, entries);
+    await persistQualifyingWorkflowLineage(
+      store,
+      QUALIFYING_POLICY,
+      entries.map((entry) => entry.workflowAttempt),
+      entries.map((entry) => ({
+        qualifyingArtifactId: entry.qualifyingArtifactId,
+        memoKey: entry.workflowAttempt.memoKey,
+        attemptOrdinal: entry.workflowAttempt.ordinal,
+        metrics: entry.metrics,
+      })),
+    );
     const dashboard = await reportPersistedQualifyingTelemetry(store);
 
     expect(dashboard.attempts).toHaveLength(entries.length);
@@ -105,15 +117,41 @@ describe("qualifying artifact-lineage telemetry", () => {
     ).toThrow(/ablation/u);
   });
 
-  it("persists and reports only the exact content-free row shape", () => {
-    const row = projectQualifyingArtifactAttempt(QUALIFYING_POLICY, {
+  it("rejects an RB-064 attempt lineage when a physical attempt lacks telemetry", async () => {
+    const store = new InMemoryQualifyingAttemptTelemetryStore();
+    const entries = [attempt(5), attempt(6, "review", "Q1")];
+
+    await expect(
+      persistQualifyingWorkflowLineage(
+        store,
+        QUALIFYING_POLICY,
+        entries.map((entry) => entry.workflowAttempt),
+        [
+          {
+            qualifyingArtifactId: entries[0]!.qualifyingArtifactId,
+            memoKey: entries[0]!.workflowAttempt.memoKey,
+            attemptOrdinal: entries[0]!.workflowAttempt.ordinal,
+            metrics: entries[0]!.metrics,
+          },
+        ],
+      ),
+    ).rejects.toThrow(/missing telemetry/u);
+    expect(await store.list()).toEqual([]);
+  });
+
+  it("persists a row with no prompt, source, or target text", async () => {
+    const input = {
       ...attempt(4, "source-wiki", "A1"),
       // These untyped fields model an accidental caller payload. Projection
       // selects its explicit content-free inputs, so none becomes persisted.
       prompt: "must not persist",
       source: "must not persist",
       target: "must not persist",
-    } as QualifyingArtifactAttemptInput);
+    } as QualifyingArtifactAttemptInput;
+    const store = new InMemoryQualifyingAttemptTelemetryStore();
+    await persistQualifyingArtifactLineage(store, QUALIFYING_POLICY, [input]);
+    const [row] = await store.list();
+    if (row === undefined) throw new Error("expected one persisted telemetry row");
 
     expect(Object.keys(row).sort()).toEqual(
       [
@@ -149,7 +187,7 @@ describe("qualifying artifact-lineage telemetry", () => {
     ).toBe(false);
   });
 
-  it("counts source, bible, P/Q, correction, retry, repair, and build attempts in totals", async () => {
+  it("counts source, bible, P/Q, correction, retry, repair, build, and feedback attempts in totals", async () => {
     const store = new InMemoryQualifyingAttemptTelemetryStore();
     await persistQualifyingArtifactLineage(
       store,
@@ -165,10 +203,10 @@ describe("qualifying artifact-lineage telemetry", () => {
     }
     expect(dashboard.totals.correctionCount).toBe(1);
     expect(dashboard.totals.retryCount).toBe(1);
-    expect(dashboard.totals.latencyMs).toBe(108);
+    expect(dashboard.totals.latencyMs).toBe(126);
     expect(dashboard.totals.tokens).toEqual({
-      input: 108,
-      output: 108,
+      input: 126,
+      output: 126,
       cacheRead: 0,
       cacheWrite: 0,
     });

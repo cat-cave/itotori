@@ -13,6 +13,11 @@ import type {
   WorkflowScene,
 } from "../src/workflow/index.js";
 import { FULL_ROSTER, type RunPolicyRequest } from "../src/run-policy/index.js";
+import {
+  InMemoryQualifyingAttemptTelemetryStore,
+  persistQualifyingWorkflowRunLineage,
+  type QualifyingWorkflowAttemptObservation,
+} from "../src/telemetry/qualifying-lineage.js";
 
 const HASH = `sha256:${"a".repeat(64)}` as const;
 const SOURCE_HASH = `sha256:${"b".repeat(64)}` as const;
@@ -266,6 +271,29 @@ function flowPorts(
   };
 }
 
+function workflowTelemetry(
+  attempts: readonly AttemptLineageEntry[],
+): QualifyingWorkflowAttemptObservation[] {
+  return attempts.map((attempt, index) => ({
+    qualifyingArtifactId: `artifact:workflow-${index + 1}`,
+    memoKey: attempt.memoKey,
+    attemptOrdinal: attempt.ordinal,
+    metrics: {
+      requested: { model: "fixture-model", provider: "fixture-policy" },
+      served: { model: "fixture-model", provider: "fixture-provider" },
+      generationId: `generation:workflow-${index + 1}`,
+      memoHit: false,
+      stage: "draft",
+      role: "P1",
+      latencyMs: index + 1,
+      tokens: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+      cost: { state: "confirmed", amountUsd: "0" },
+      quarantine: false,
+      correction: false,
+    },
+  }));
+}
+
 describe("workflow driver integration", () => {
   it("orders readiness through patched Q5 and records every injected model step", async () => {
     const events: string[] = [];
@@ -286,6 +314,16 @@ describe("workflow driver integration", () => {
     expect(events).not.toContain("q6");
     // P1, four first-pass reviews, P2/P3, two scoped reruns, patch, and Q5.
     expect(report.attemptLineage).toHaveLength(11);
+
+    const telemetry = new InMemoryQualifyingAttemptTelemetryStore();
+    await persistQualifyingWorkflowRunLineage(
+      telemetry,
+      report,
+      workflowTelemetry(report.attemptLineage),
+    );
+    expect((await telemetry.list()).map((row) => [row.memoKey, row.attemptOrdinal])).toEqual(
+      report.attemptLineage.map((attempt) => [attempt.memoKey, attempt.ordinal]),
+    );
   });
 
   it("resumes from absent heads, patches all current finals, and memo-skips completed stages", async () => {

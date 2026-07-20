@@ -94,12 +94,15 @@ function knownLineageAttempts(): QualifyingArtifactAttemptTelemetry[] {
 }
 
 /** Expected strict scorecard for {@link knownLineageAttempts} (pinned totals). */
-const KNOWN_SCORECARD: StrictScorecard = {
+const KNOWN_SCORECARD: Omit<StrictScorecard, "byStage"> = {
   schemaVersion: STRICT_SCORECARD_SCHEMA_VERSION,
   lineage: "qualifying",
   totals: {
     attempts: 3,
     memoHitCount: 1,
+    quarantineCount: 0,
+    correctionCount: 0,
+    retryCount: 1,
     latencyMs: 175,
     tokens: { input: 18, output: 31, cacheRead: 1, cacheWrite: 3 },
     cost: { state: "confirmed", amountUsd: "0.0035" }, // itotori-225-audit-allow: pinned known scorecard total
@@ -110,6 +113,9 @@ const KNOWN_SCORECARD: StrictScorecard = {
       role: "P1",
       attempts: 2,
       memoHitCount: 0,
+      quarantineCount: 0,
+      correctionCount: 0,
+      retryCount: 1,
       latencyMs: 125,
       tokens: { input: 13, output: 24, cacheRead: 1, cacheWrite: 3 },
       cost: { state: "confirmed", amountUsd: "0.0015" }, // itotori-225-audit-allow: pinned known scorecard total
@@ -119,6 +125,9 @@ const KNOWN_SCORECARD: StrictScorecard = {
       role: "Q1",
       attempts: 1,
       memoHitCount: 1,
+      quarantineCount: 0,
+      correctionCount: 0,
+      retryCount: 0,
       latencyMs: 50,
       tokens: { input: 5, output: 7, cacheRead: 0, cacheWrite: 0 },
       cost: { state: "confirmed", amountUsd: "0.002" }, // itotori-225-audit-allow: pinned known scorecard total
@@ -173,7 +182,7 @@ describe("strict scorecard from qualifying lineage", () => {
       lineage: "qualifying",
       attempts: knownLineageAttempts(),
     });
-    expect(scorecard).toEqual(KNOWN_SCORECARD);
+    expect(scorecard).toMatchObject(KNOWN_SCORECARD);
   });
 
   it("is deterministic across array-only and ledger object inputs", () => {
@@ -181,7 +190,7 @@ describe("strict scorecard from qualifying lineage", () => {
     const fromArray = buildStrictScorecardFromLineage(attempts);
     const fromLedger = buildStrictScorecardFromLineage({ lineage: "qualifying", attempts });
     expect(fromArray).toEqual(fromLedger);
-    expect(fromArray).toEqual(KNOWN_SCORECARD);
+    expect(fromArray).toMatchObject(KNOWN_SCORECARD);
   });
 
   it("builds the same scorecard from a persisted qualifying-lineage store", async () => {
@@ -209,6 +218,9 @@ describe("strict scorecard from qualifying lineage", () => {
     expect(scorecard.totals).toEqual({
       attempts: 2,
       memoHitCount: 1,
+      quarantineCount: 0,
+      correctionCount: 0,
+      retryCount: 0,
       latencyMs: 150,
       tokens: { input: 21, output: 21, cacheRead: 0, cacheWrite: 0 },
       cost: { state: "confirmed", amountUsd: "0.003" }, // itotori-225-audit-allow: pinned known scorecard total
@@ -217,6 +229,38 @@ describe("strict scorecard from qualifying lineage", () => {
       "draft:P1",
       "review:Q1",
     ]);
+  });
+
+  it("reports every attempt kind in explicit JSON stage totals", () => {
+    const stages = [
+      ["source-wiki", "A1"],
+      ["localized-bible", "A2"],
+      ["draft", "P1"],
+      ["review", "Q1"],
+      ["correction", "P2"],
+      ["retry", "P1"],
+      ["repair", "P3"],
+      ["build-lqa", "Q5"],
+      ["feedback-enhancement", "A4"],
+    ] as const;
+    const scorecard = buildStrictScorecardFromLineage(
+      stages.map(([stage, role], index) => ({
+        ...knownLineageAttempts()[0]!,
+        qualifyingArtifactId: `artifact:stage-${index}`,
+        memoKey: memoHash(100 + index),
+        stage,
+        role,
+        correction: stage === "correction",
+        retry: stage === "retry",
+      })),
+    );
+
+    expect(scorecard.totals.attempts).toBe(stages.length);
+    expect(scorecard.totals.correctionCount).toBe(1);
+    expect(scorecard.totals.retryCount).toBe(1);
+    expect(scorecard.byStage.map((bucket) => [bucket.stage, bucket.attempts])).toEqual(
+      stages.map(([stage]) => [stage, 1]),
+    );
   });
 
   it("surfaces unknown-cost attempts as unknown totals, never silent zero", async () => {
