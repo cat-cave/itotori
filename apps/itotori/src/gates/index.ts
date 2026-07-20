@@ -3,8 +3,8 @@
 // Each gate is a PURE function of (immutable fact snapshot, accepted output)
 // returning typed pass/defect facts, zero model calls. Facts DOMINATE reviewer
 // findings (see ./join.ts); back-translation and voice are SIGNALS, never
-// verdicts (see ./signals.ts). This module imports no `agents/`, `orchestrator/`,
-// or `benchmark-stages/` code — it is a genuine rehome onto the snapshot inputs,
+// verdicts (see ./signals.ts). This module imports no retired execution,
+// orchestration, or benchmark-stage code — it is a genuine rehome onto the snapshot inputs,
 // not a wrapper over the old loop.
 
 export { buildDefect, gateForCategory, GateEvaluationError, stableDigest } from "./defect.js";

@@ -6,7 +6,7 @@ import {
   shouldScanPath,
 } from "./audit-no-direct-provider-invoke.mjs";
 
-const PRODUCTION_AGENT = "apps/itotori/src/agents/translation/agent.ts";
+const PRODUCTION_SOURCE = "apps/itotori/src/llm/dispatch.ts";
 
 function receivers(path, source) {
   return findViolations(path, source).map((violation) => violation.receiver);
@@ -21,7 +21,7 @@ test("rejects direct provider calls independent of receiver spelling", () => {
     "await delegate.invoke(...requests);",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), [
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), [
     "provider",
     "options.provider",
     "llm",
@@ -37,7 +37,7 @@ test("rejects optional and literal-computed provider invoke calls", () => {
     "await (provider.invoke as (request: Request) => Promise<Result>)(request);",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), [
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), [
     "provider",
     "options.provider",
     "provider",
@@ -50,7 +50,7 @@ test("rejects extracting or binding a provider invoke member", () => {
     "const bound = this.inner.invoke.bind(this.inner);",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["provider", "this.inner"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["provider", "this.inner"]);
 });
 
 test("rejects destructuring provider invoke into local bindings", () => {
@@ -61,7 +61,7 @@ test("rejects destructuring provider invoke into local bindings", () => {
     "await dispatch(request);",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["options.provider", "provider"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["options.provider", "provider"]);
 });
 
 test("rejects destructuring provider invoke from a defaulted parameter", () => {
@@ -71,13 +71,13 @@ test("rejects destructuring provider invoke from a defaulted parameter", () => {
     "}",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["provider"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["provider"]);
 });
 
 test("rejects provider invoke nested in array destructuring", () => {
   const source = ["const [{ invoke: send }] = [provider];", "send(request);"].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["provider"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["provider"]);
 });
 
 test("rejects provider invoke extraction through Object.values", () => {
@@ -85,7 +85,7 @@ test("rejects provider invoke extraction through Object.values", () => {
     "\n",
   );
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["provider"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["provider"]);
 });
 
 test("rejects provider invoke through an object spread copy", () => {
@@ -95,7 +95,7 @@ test("rejects provider invoke through an object spread copy", () => {
     "copy.invoke(request, malformedExtraArgument);",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["copy", "copy"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["copy", "copy"]);
 });
 
 test("rejects provider aliases before invoke extraction", () => {
@@ -106,7 +106,7 @@ test("rejects provider aliases before invoke extraction", () => {
     "await dispatch(request);",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["second"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["second"]);
 });
 
 test("rejects Reflect.get extraction of provider invoke", () => {
@@ -115,7 +115,7 @@ test("rejects Reflect.get extraction of provider invoke", () => {
     "await dispatch(request);",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["options.provider"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["options.provider"]);
 });
 
 test("rejects statically assembled and dynamically computed provider extraction", () => {
@@ -128,7 +128,7 @@ test("rejects statically assembled and dynamically computed provider extraction"
     "await dynamic(request);",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["options.provider", "provider"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["options.provider", "provider"]);
 });
 
 test("rejects destructured invoke through an imported ModelProvider type alias", () => {
@@ -140,7 +140,7 @@ test("rejects destructured invoke through an imported ModelProvider type alias",
     "}",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["backend"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["backend"]);
 });
 
 test("rejects destructured invoke through a typed provider property", () => {
@@ -151,7 +151,7 @@ test("rejects destructured invoke through a typed provider property", () => {
     "}",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["options.backend"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["options.backend"]);
 });
 
 test("rejects dynamic extraction from a neutral receiver with a ModelProvider alias type", () => {
@@ -164,7 +164,7 @@ test("rejects dynamic extraction from a neutral receiver with a ModelProvider al
     "}",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["backend"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["backend"]);
 });
 
 test("rejects provider invoke extraction through an aliased Reflect.get", () => {
@@ -176,7 +176,7 @@ test("rejects provider invoke extraction through an aliased Reflect.get", () => 
     "}",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["provider"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["provider"]);
 });
 
 test("rejects dynamic extraction through a namespace-qualified ModelProvider type", () => {
@@ -193,7 +193,7 @@ test("rejects dynamic extraction through a namespace-qualified ModelProvider typ
     "}",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["backend"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["backend"]);
 });
 
 test("rejects dynamic extraction from a typed provider-returning function", () => {
@@ -207,7 +207,7 @@ test("rejects dynamic extraction from a typed provider-returning function", () =
     "}",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["backend"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["backend"]);
 });
 
 test("rejects provider invoke extraction through destructured Reflect.get", () => {
@@ -219,7 +219,7 @@ test("rejects provider invoke extraction through destructured Reflect.get", () =
     "}",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["provider"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["provider"]);
 });
 
 test("rejects dynamic extraction from a typed provider-returning function value", () => {
@@ -232,7 +232,7 @@ test("rejects dynamic extraction from a typed provider-returning function value"
     "}",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["backend"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["backend"]);
 });
 
 test("rejects Reflect.get aliases reached through a Reflect object alias", () => {
@@ -251,7 +251,7 @@ test("rejects Reflect.get aliases reached through a Reflect object alias", () =>
     "}",
   ].join("\n");
 
-  assert.deepEqual(receivers(PRODUCTION_AGENT, source), ["provider", "provider"]);
+  assert.deepEqual(receivers(PRODUCTION_SOURCE, source), ["provider", "provider"]);
 });
 
 test("allows higher-level two-argument agent invoke calls", () => {
@@ -282,7 +282,7 @@ test("ignores comments, strings, and invoke method declarations", () => {
     "class Agent { invoke(actor: Actor, input: Input): Result { return input; } }",
   ].join("\n");
 
-  assert.deepEqual(findViolations(PRODUCTION_AGENT, source), []);
+  assert.deepEqual(findViolations(PRODUCTION_SOURCE, source), []);
 });
 
 test("exempts only provider adapter source and the canonical supervisor module", () => {
@@ -309,7 +309,7 @@ test("exempts only provider adapter source and the canonical supervisor module",
 });
 
 test("the repository scan is limited to shipped Itotori source", () => {
-  assert.equal(shouldScanPath("apps/itotori/src/agents/translation/agent.ts"), true);
+  assert.equal(shouldScanPath(PRODUCTION_SOURCE), true);
   assert.equal(shouldScanPath("apps/itotori/src/ui/view.tsx"), true);
   assert.equal(shouldScanPath("apps/itotori/test/translation-agent.test.ts"), false);
   assert.equal(shouldScanPath("packages/itotori-db/src/index.ts"), false);

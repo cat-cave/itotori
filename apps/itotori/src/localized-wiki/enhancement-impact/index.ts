@@ -8,7 +8,7 @@
 // root); this module is the offline-provable core that underpins it.
 //
 // Self-contained: it composes sibling modules and imports nothing from
-// agents/**.
+// retired execution internals.
 
 export {
   applyPreciseEnhancement,

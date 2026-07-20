@@ -1,9 +1,7 @@
 // ITOTORI-017 — SpeakerLabelOutput.
 //
-// Strict JSON contract for what an LLM speaker-labeling agent must return.
-// Owned by `SpeakerLabelAgent.invokeSpeakerLabel`
-// (apps/itotori/src/agents/speaker-label). This module owns ONLY the
-// wire-shape contract + parser/asserter. Any shape divergence throws a
+// Strict JSON contract for what an LLM speaker-labeling role must return. This
+// module owns ONLY the wire-shape contract + parser/asserter. Any shape divergence throws a
 // typed `SpeakerLabelResponseValidationError` — never a silent fallback.
 //
 // The shape encodes a four-way distinction:
@@ -21,8 +19,8 @@
 // The split between (2) and (3) is the load-bearing safety invariant:
 // `unknown_to_reader` represents an INTENTIONAL narrative redaction and
 // MUST NOT collapse into `named` even if the agent figures out the
-// internal identity from neighbouring context. See
-// `HiddenIdentityLeakError` in the agent module.
+// internal identity from neighbouring context. The patch-export boundary must
+// reject any resulting identity leak.
 
 export const SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION = "itotori.speaker-label-output.v1" as const;
 
@@ -67,8 +65,8 @@ export type SpeakerIdentityKind = (typeof SPEAKER_IDENTITY_KINDS)[number];
  * separate from `maskedCharacterId` / `maskedDisplayName`. The reader's
  * view of this character only ever uses the masked pair; the internal id
  * lets downstream tools de-duplicate the same hidden speaker across lines
- * without leaking the reveal. `prepareSpeakerLabelForPatchExport` (in the
- * agent module) strips it before any patch payload leaves the system.
+ * without leaking the reveal. The patch-export boundary strips it before any
+ * patch payload leaves the system.
  */
 export type SpeakerIdentity =
   | {

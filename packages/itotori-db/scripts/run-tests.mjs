@@ -7,7 +7,7 @@ import { spawn, spawnSync } from "node:child_process";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const packageRoot = path.join(repoRoot, "packages/itotori-db");
 const testDir = path.join(packageRoot, "test");
-// Machine-readable skip marker. Consumers (agents/CI/honesty gate) parse this
+// Machine-readable skip marker. Consumers (automation/CI/honesty gate) parse this
 // file to distinguish an intentional no-DATABASE_URL skip from a real DB run.
 const skipReportPath = path.join(repoRoot, ".tmp/itotori-db/no-database-skipped.json");
 const packageName = "@itotori/db";

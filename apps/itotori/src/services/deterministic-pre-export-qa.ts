@@ -429,8 +429,8 @@ function deterministicQaErrorMessage(failures: DeterministicPreExportQaFailure[]
 // code, arbitrary shape) passed the boundary silently. The validator below
 // contract-validates every emitted finding fail-closed: exact unit reference,
 // known check code, structured evidence, and a structured repair hint. It is
-// wired into the tool `run` (see agents/examples.ts `deterministicPreExportQa`)
-// and mirrors the strict JSON schema enforced at the registry boundary.
+// wired into the tool `run` and mirrors the strict JSON schema enforced at the
+// execution boundary.
 // ---------------------------------------------------------------------------
 
 export type DeterministicPreExportQaToolOutput = {

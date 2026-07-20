@@ -132,22 +132,6 @@ export const historicalResearchSurfaces = [
     reason: "vault-source substrate keyed by real canonical ids",
   },
 
-  // Structure-decode-informed context agents. These CONSUME the decoded
-  // RealLive structure and reference the primary validation corpus in their
-  // decode diagnostics by design.
-  {
-    id: "structure-informed-context",
-    kind: "prefix",
-    value: "apps/itotori/src/agents/structure-informed-context/",
-    reason: "structure-decode context agent (consumes the RealLive proof)",
-  },
-  {
-    id: "work-scope",
-    kind: "prefix",
-    value: "apps/itotori/src/agents/work-scope/",
-    reason: "game-select carve agent hardened on the real validation corpus",
-  },
-
   // Real-bytes CI / operator harness recipes that name the primary corpus by
   // design (the alpha target preserved as data), consistent with each other.
   {

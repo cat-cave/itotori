@@ -2,7 +2,7 @@
 //
 // Builds on the content-free qualifying artifact lineage and the accepted-
 // output CAS / physical-step memo substrate. Pure projection and replay
-// logic only: no model dispatch, no agents/**, no CLI/API/composition wiring.
+// logic only: no model dispatch, no retired execution path, no CLI/API/composition wiring.
 // The scorecard over a REAL terminal run is a live-lane follow-up.
 
 export {

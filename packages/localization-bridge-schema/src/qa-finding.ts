@@ -1,8 +1,7 @@
 // ITOTORI-078 — StructuredQaFindingOutput.
 //
-// Strict JSON contract for what an LLM QA agent must return. The agent is
-// driven by `QaAgent.invokeQa` (apps/itotori/src/agents/qa); this module
-// owns ONLY the wire-shape contract + assertion. No silent fallbacks: any
+// Strict JSON contract for what an LLM QA role must return. This module owns
+// ONLY the wire-shape contract + assertion. No silent fallbacks: any
 // shape divergence throws a typed `QaResponseValidationError`.
 //
 // Persistence of QA findings (the `qa_findings` table + draft-job FK) is
