@@ -69,11 +69,16 @@ const SOFTPAL_PROFILE_ID: &str = "019ed000-0000-7000-8000-0000000c1001";
 const SOFTPAL_GAME_ID: &str = "kaifuu-softpal-detected-title";
 const SOFTPAL_SUPPORT_BOUNDARY: &str = "Softpal adapter identifies the Amuse Craft/Pal (Softpal ADV) engine by Pal.dll, a PAC archive listing SCRIPT.SRC/TEXT.DAT, and the Sv-version/TEXT_LIST script magics; it supports the layered script/text path (PAC entry -> verbatim SCRIPT.SRC + TEXT.DAT -> `$` keyless ROL+XOR decode or `_` plaintext -> Sv disassembly -> cp932 dialogue + choices), including evidence-backed named Pal.dll Call targets, and patches text back by rebuilding TEXT.DAT and repointing SCRIPT.SRC as loose files. PAC entry compression/encryption, PAC repack, non-text/asset-image surfaces, and runtime execution are not claimed; Call targets without handler evidence remain raw dispatch keys.";
 
-// Softpal ADV (Amuse Craft / "Pal") engine detector. Identify-only: it
-// classifies `engine=softpal` from Pal.dll / PAC+SCRIPT.SRC/TEXT.DAT / script
-// magics; PAC extraction, decompilation, decryption, and patch-back are later
-// Softpal nodes and are reported Unsupported here. See the `SOFTPAL_*`
-// constants above for the signature provenance and false-positive rationale.
+// Softpal ADV (Amuse Craft / "Pal") engine adapter. It classifies
+// `engine=softpal` from Pal.dll / PAC+SCRIPT.SRC/TEXT.DAT / script magics AND
+// drives the real script/text surface: PAC extraction, SCRIPT.SRC dialogue/
+// choice disassembly, TEXT.DAT decode/decrypt, and dialogue/choice patch-back
+// are delegated to the deterministic `kaifuu-softpal` reader (see
+// `softpal/real.rs`) and are reported Supported (patch-back Limited to loose
+// TEXT.DAT rebuild + SCRIPT.SRC repoint). Only PAC entry compression/encryption,
+// PAC repack, non-text/asset-image surfaces, and runtime execution stay
+// Unsupported here. See the `SOFTPAL_*` constants above for the signature
+// provenance and false-positive rationale.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SoftpalProfileDetectorAdapter;
 

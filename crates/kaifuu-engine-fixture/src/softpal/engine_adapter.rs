@@ -85,7 +85,7 @@ impl EngineAdapter for SoftpalProfileDetectorAdapter {
                 CapabilityReport::limited(Capability::PatchBack, PATCH_LIMITATION),
                 CapabilityReport::unsupported(
                     Capability::RuntimeVm,
-                    "runtime support belongs to future Utsushi/Softpal work, not this adapter",
+                    "scene-dispatch replay/render is provided by the separate utsushi-softpal EnginePort, not this kaifuu detector adapter",
                 ),
                 CapabilityReport::supported(Capability::EncryptedInput),
                 CapabilityReport::limited(Capability::AssetTextPatching, PATCH_LIMITATION),
