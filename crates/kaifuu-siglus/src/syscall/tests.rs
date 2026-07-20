@@ -1,5 +1,5 @@
 use crate::{
-    FM_INT, FM_STR, SEL_SYSTEM_FUNCTION_ID, SiglusCallArgumentRole, SiglusCallTarget,
+    FM_INT, FM_STR, GLOBAL_SELBTN_SYSTEM_FUNCTION_ID, SiglusCallArgumentRole, SiglusCallTarget,
     SiglusSyscallDiagnostic, decode_scene_syscalls, system_function_name,
 };
 
@@ -75,7 +75,7 @@ fn payload(bytecode: &[u8], labels: &[i32], strings: &[(i32, i32)]) -> Vec<u8> {
 #[test]
 fn decodes_sel_arguments_tail_and_string_references() {
     let mut bytecode = Vec::new();
-    system_target(&mut bytecode, SEL_SYSTEM_FUNCTION_ID);
+    system_target(&mut bytecode, GLOBAL_SELBTN_SYSTEM_FUNCTION_ID);
     push_str(&mut bytecode, 0);
     push_str(&mut bytecode, 1);
     command(&mut bytecode, &[FM_STR, FM_STR], FM_INT, Some(9));
@@ -87,7 +87,10 @@ fn decodes_sel_arguments_tail_and_string_references() {
     let decode = decode_scene_syscalls(&payload(&bytecode, &[after_command], &[(0, 2), (2, 3)]))
         .expect("syscall decode");
 
-    assert_eq!(system_function_name(SEL_SYSTEM_FUNCTION_ID), Some("selbtn"));
+    assert_eq!(
+        system_function_name(GLOBAL_SELBTN_SYSTEM_FUNCTION_ID),
+        Some("selbtn")
+    );
     assert!(decode.commands_fully_typed());
     assert_eq!(decode.calls.len(), 1);
     assert_eq!(decode.calls[0].read_flag, Some(9));
@@ -97,7 +100,7 @@ fn decodes_sel_arguments_tail_and_string_references() {
     ));
     assert!(matches!(
         decode.calls[0].target,
-        SiglusCallTarget::System { function_id } if function_id == SEL_SYSTEM_FUNCTION_ID
+        SiglusCallTarget::System { function_id } if function_id == GLOBAL_SELBTN_SYSTEM_FUNCTION_ID
     ));
     assert_eq!(decode.selections.len(), 1);
     assert_eq!(decode.selections[0].options.len(), 2);
@@ -109,7 +112,7 @@ fn decodes_sel_arguments_tail_and_string_references() {
 #[test]
 fn selection_options_link_to_the_structural_choice_arms() {
     let mut bytecode = Vec::new();
-    system_target(&mut bytecode, SEL_SYSTEM_FUNCTION_ID);
+    system_target(&mut bytecode, GLOBAL_SELBTN_SYSTEM_FUNCTION_ID);
     push_str(&mut bytecode, 0);
     push_str(&mut bytecode, 1);
     command(&mut bytecode, &[FM_STR, FM_STR], FM_INT, Some(0));
@@ -181,7 +184,7 @@ fn oracle_global_shape_table_is_complete_and_bounded() {
 #[test]
 fn reports_an_invalid_sel_string_reference_without_reading_past_payload() {
     let mut bytecode = Vec::new();
-    system_target(&mut bytecode, SEL_SYSTEM_FUNCTION_ID);
+    system_target(&mut bytecode, GLOBAL_SELBTN_SYSTEM_FUNCTION_ID);
     push_str(&mut bytecode, 9);
     command(&mut bytecode, &[FM_STR], 0, Some(0));
     let after_command = bytecode.len() as i32;

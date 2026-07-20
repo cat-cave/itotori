@@ -13,7 +13,7 @@ mod shapes;
 
 pub use decode::decode_scene_syscalls;
 pub use model::{
-    SEL_SYSTEM_FUNCTION_ID, SceneSyscallDecode, SceneSyscallError, SiglusCallArgument,
+    GLOBAL_SELBTN_SYSTEM_FUNCTION_ID, SceneSyscallDecode, SceneSyscallError, SiglusCallArgument,
     SiglusCallArgumentRole, SiglusCallTarget, SiglusSelChoice, SiglusSelOption, SiglusStringRef,
     SiglusSyscallDiagnostic, SiglusTypedCall, system_function_name,
 };

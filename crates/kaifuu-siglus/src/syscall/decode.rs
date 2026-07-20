@@ -10,7 +10,7 @@ use crate::flow::decode_scene_flow;
 use crate::opcode::{SiglusInstruction, SiglusOpcode, partition_scene};
 
 use super::model::{
-    SEL_SYSTEM_FUNCTION_ID, SceneSyscallDecode, SceneSyscallError, SiglusCallArgument,
+    GLOBAL_SELBTN_SYSTEM_FUNCTION_ID, SceneSyscallDecode, SceneSyscallError, SiglusCallArgument,
     SiglusCallArgumentRole, SiglusCallTarget, SiglusSelChoice, SiglusSelOption, SiglusStringRef,
     SiglusSyscallDiagnostic, SiglusTypedCall,
 };
@@ -389,7 +389,7 @@ pub fn decode_scene_syscalls(payload: &[u8]) -> Result<SceneSyscallDecode, Scene
     let mut unresolved_sel_option_count = 0usize;
 
     for (call_index, call) in calls.iter().enumerate() {
-        if call.target.system_function_id() != Some(SEL_SYSTEM_FUNCTION_ID) {
+        if call.target.system_function_id() != Some(GLOBAL_SELBTN_SYSTEM_FUNCTION_ID) {
             continue;
         }
         let structural_choice_index = flow
