@@ -151,8 +151,6 @@ function failVerdict(overrides: Record<string, unknown> = {}): Record<string, un
     roleId: "Q2",
     rubric: "voice",
     unitId: "unit:1",
-    // A grounded FAIL: cites the applicable counterpart rule AND the prior
-    // accepted line to the same counterpart it breaks continuity with.
     basis: { kind: "wiki-first", bibleRenderingIds: ["rule:cp"] },
     verdict: "FAIL",
     severity: "major",
@@ -231,14 +229,12 @@ describe("Clause 1 — voice/register continuity only, not meaning or engine fau
     expect(system).toContain("voice");
     expect(system).toContain("register");
     expect(system).toContain("continuity");
-    // Meaning and engine/render faults are explicitly OUT of scope.
     expect(system).toContain("meaning");
     expect(system).toContain("render");
     expect(Q2_VOICE_CATEGORIES).toStrictEqual(["register", "character-voice"]);
   });
 
   it("PROOF voice-only-rubric: a FAIL outside the voice categories is invalid", () => {
-    // A meaning finding wearing a voice verdict — rejected, cannot finalize.
     const meaning = failVerdict({ category: "mistranslation" });
     const interpretation = interpretQ2Verdict(
       meaning,
@@ -261,7 +257,6 @@ describe("Clause 2 — every FAIL cites the applicable bible rule + the target h
     const interpretation = interpretQ2Verdict(failVerdict(), allVisible, resolveCitation);
     expect(interpretation.disposition).toBe("repair");
     expect(interpretation.issues).toStrictEqual([]);
-    // Both citations resolve against the DECODE-DERIVED position.
     expect(interpretation.citation).toStrictEqual({
       citedBibleRuleId: "rule:cp",
       citedHistoryId: "hist:cp",
@@ -269,7 +264,6 @@ describe("Clause 2 — every FAIL cites the applicable bible rule + the target h
   });
 
   it("PROOF failure-cites-bible-rule-and-history: a FAIL citing NO applicable bible rule is invalid", () => {
-    // "rule:rival" exists in the input but is NOT applicable at this counterpart.
     const ungrounded = failVerdict({
       basis: { kind: "wiki-first", bibleRenderingIds: ["rule:rival"] },
     });
@@ -285,7 +279,6 @@ describe("Clause 2 — every FAIL cites the applicable bible rule + the target h
   });
 
   it("PROOF failure-cites-bible-rule-and-history: a FAIL citing NO violated history is invalid", () => {
-    // "hist:future" is a LATER accepted line — not history at this position.
     const ungrounded = failVerdict({ evidenceIds: ["hist:future"] });
     const interpretation = interpretQ2Verdict(ungrounded, allVisible, resolveCitation);
     expect(interpretation.disposition).toBe("invalid");
@@ -325,6 +318,32 @@ describe("Clause 3 — position is decode-derived; first appearances, shifts, an
       "hist:base",
       "hist:cp",
     ]);
+  });
+
+  it("excludes sibling-route bible rules and accepted history", () => {
+    const offRoute = {
+      ...baseInput,
+      bibleRules: [
+        ...baseInput.bibleRules,
+        { ...baseInput.bibleRules[1]!, ruleId: "rule:alt", routeId: "route:alt" },
+      ],
+      acceptedHistory: [
+        ...baseInput.acceptedHistory,
+        { ...baseInput.acceptedHistory[0]!, historyId: "hist:alt", routeId: "route:alt" },
+      ],
+    };
+    expect(applicableBibleRules(offRoute).some((rule) => rule.ruleId === "rule:alt")).toBe(false);
+    expect(historyAtPosition(offRoute).some((line) => line.historyId === "hist:alt")).toBe(false);
+    expect(
+      interpretQ2Verdict(
+        failVerdict({
+          basis: { kind: "wiki-first", bibleRenderingIds: ["rule:alt"] },
+          evidenceIds: ["hist:alt"],
+        }),
+        allVisible,
+        positionGroundedCitationResolver(offRoute),
+      ).disposition,
+    ).toBe("invalid");
   });
 
   it("PROOF position-decode-derived: a non-decode position is refused structurally and at the gate", () => {
