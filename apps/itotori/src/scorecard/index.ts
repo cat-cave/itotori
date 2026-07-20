@@ -12,6 +12,7 @@ export {
   buildStrictScorecardFromPersistedLineage,
   type StrictScorecard,
   type StrictScorecardCostTotal,
+  type StrictScorecardStageBucket,
   type StrictScorecardStageRoleBucket,
   type StrictScorecardTokenTotal,
   type StrictScorecardTotals,

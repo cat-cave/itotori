@@ -15,7 +15,7 @@ import {
 } from "../contracts/index.js";
 import { addDecimalUsd } from "../llm/decimal-usd.js";
 import type { ResolvedRunPolicy } from "../run-policy/index.js";
-import type { AttemptLineageEntry } from "../workflow/index.js";
+import type { AttemptLineageEntry, WorkflowRunReport } from "../workflow/index.js";
 import type { z } from "zod";
 
 export type QualifyingAttemptTelemetryRow = z.infer<
@@ -50,6 +50,19 @@ export interface QualifyingAttemptMetrics {
 export interface QualifyingArtifactAttemptInput {
   readonly qualifyingArtifactId: string;
   readonly workflowAttempt: AttemptLineageEntry;
+  readonly metrics: QualifyingAttemptMetrics;
+}
+
+/**
+ * Content-free facts observed for one RB-064 workflow attempt. The physical
+ * attempt identity is repeated here solely to join it to the driver's
+ * authoritative lineage; {@link projectQualifyingWorkflowLineage} rejects a
+ * missing, duplicated, or invented identity before a row can be persisted.
+ */
+export interface QualifyingWorkflowAttemptObservation {
+  readonly qualifyingArtifactId: string;
+  readonly memoKey: string;
+  readonly attemptOrdinal: number;
   readonly metrics: QualifyingAttemptMetrics;
 }
 
@@ -138,6 +151,85 @@ export async function persistQualifyingArtifactLineage(
   }
   for (const row of rows) await store.append(row);
   return rows;
+}
+
+/**
+ * Bind observed, content-free attempt facts to the RB-064 physical-attempt
+ * lineage. This is the sole report projection for a workflow run: it requires
+ * exactly one observation for every driver-recorded physical attempt, so a
+ * retry, correction, repair, or any future workflow step cannot disappear
+ * from scorecard reporting by omission.
+ */
+export function projectQualifyingWorkflowLineage(
+  policy: ResolvedRunPolicy,
+  attemptLineage: readonly AttemptLineageEntry[],
+  observations: readonly QualifyingWorkflowAttemptObservation[],
+): readonly QualifyingAttemptTelemetryRow[] {
+  const lineageByKey = new Map<string, AttemptLineageEntry>();
+  for (const attempt of attemptLineage) {
+    const key = physicalAttemptKey(attempt.memoKey, attempt.ordinal);
+    if (lineageByKey.has(key)) {
+      throw new Error(`workflow attempt lineage repeats ${key}`);
+    }
+    lineageByKey.set(key, attempt);
+  }
+
+  const observationByKey = new Map<string, QualifyingWorkflowAttemptObservation>();
+  for (const observation of observations) {
+    const key = physicalAttemptKey(observation.memoKey, observation.attemptOrdinal);
+    if (!lineageByKey.has(key)) {
+      throw new Error(`telemetry observation is not in workflow attempt lineage: ${key}`);
+    }
+    if (observationByKey.has(key)) {
+      throw new Error(`workflow telemetry repeats physical attempt ${key}`);
+    }
+    observationByKey.set(key, observation);
+  }
+
+  if (observationByKey.size !== lineageByKey.size) {
+    const missing = [...lineageByKey.keys()].find((key) => !observationByKey.has(key));
+    throw new Error(`workflow attempt lineage is missing telemetry for ${missing ?? "an attempt"}`);
+  }
+
+  return attemptLineage.map((workflowAttempt) => {
+    const key = physicalAttemptKey(workflowAttempt.memoKey, workflowAttempt.ordinal);
+    const observation = observationByKey.get(key);
+    if (observation === undefined) throw new Error(`missing telemetry observation for ${key}`);
+    return projectQualifyingArtifactAttempt(policy, {
+      qualifyingArtifactId: observation.qualifyingArtifactId,
+      workflowAttempt,
+      metrics: observation.metrics,
+    });
+  });
+}
+
+/** Persist the complete, coverage-checked RB-064 workflow lineage. */
+export async function persistQualifyingWorkflowLineage(
+  store: QualifyingAttemptTelemetryStore,
+  policy: ResolvedRunPolicy,
+  attemptLineage: readonly AttemptLineageEntry[],
+  observations: readonly QualifyingWorkflowAttemptObservation[],
+): Promise<readonly QualifyingAttemptTelemetryRow[]> {
+  const rows = projectQualifyingWorkflowLineage(policy, attemptLineage, observations);
+  for (const row of rows) await store.append(row);
+  return rows;
+}
+
+/**
+ * Convenience seam for an RB-064 report. The report, rather than a caller's
+ * reconstructed list, remains the authority for which physical attempts ran.
+ */
+export async function persistQualifyingWorkflowRunLineage(
+  store: QualifyingAttemptTelemetryStore,
+  report: WorkflowRunReport,
+  observations: readonly QualifyingWorkflowAttemptObservation[],
+): Promise<readonly QualifyingAttemptTelemetryRow[]> {
+  return await persistQualifyingWorkflowLineage(
+    store,
+    report.policy,
+    report.attemptLineage,
+    observations,
+  );
 }
 
 export type QualifyingTelemetryCostTotal =
@@ -275,7 +367,11 @@ export async function reportPersistedQualifyingTelemetry(
 }
 
 function attemptKey(row: QualifyingAttemptTelemetryRow): string {
-  return `${row.memoKey}:${row.attemptOrdinal}`;
+  return physicalAttemptKey(row.memoKey, row.attemptOrdinal);
+}
+
+function physicalAttemptKey(memoKey: string, attemptOrdinal: number): string {
+  return `${memoKey}:${attemptOrdinal}`;
 }
 
 function addKnownToken(
