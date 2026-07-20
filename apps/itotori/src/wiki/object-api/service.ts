@@ -12,7 +12,7 @@
 // Self-contained: it composes the wiki repository, the human input/enhancement
 // path, and the scoped-invalidation planner. It imports nothing from the old
 // context-correction worker or context-artifact repository, and nothing from
-// agents/**.
+// retired execution internals.
 
 import type {
   ItotoriLlmHumanInputRepository,

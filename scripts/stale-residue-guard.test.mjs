@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderReport, scanStaleResidue } from "./stale-residue-guard.mjs";
 
+const WORKFLOW_SCOPE_SOURCE = "apps/itotori/src/workflow/output-scope.ts";
+
 test("fails on missing markdown link targets", () => {
   const result = scanFixture({
     "docs/README.md": "Read [missing](missing-file.md).\n",
@@ -27,7 +29,7 @@ test("ignores a tracked source file pending deletion", () => {
 
 test("fails on stale New-Game undecoded comments", () => {
   const result = scanFixture({
-    "apps/itotori/src/agents/work-scope/manifest.ts":
+    [WORKFLOW_SCOPE_SOURCE]:
       "// New-Game routine does not decode, so keep reverse engineering scene 9996.\n",
   });
 
@@ -36,13 +38,13 @@ test("fails on stale New-Game undecoded comments", () => {
 
 test("allows resolved MalformedExpression mentions only when explicitly marked historical", () => {
   const unresolved = scanFixture({
-    "apps/itotori/src/agents/work-scope/carve.ts":
+    [WORKFLOW_SCOPE_SOURCE]:
       "// scene 9996 hits MalformedExpression @~offset 271; investigate it next.\n",
   });
   assertViolation(unresolved, "resolved-malformed-expression-offset");
 
   const resolved = scanFixture({
-    "apps/itotori/src/agents/work-scope/carve.ts":
+    [WORKFLOW_SCOPE_SOURCE]:
       "// Historical snapshot: MalformedExpression @~offset 271 was resolved by the current decoder.\n",
   });
   assert.deepEqual(resolved.violations, []);
@@ -50,14 +52,13 @@ test("allows resolved MalformedExpression mentions only when explicitly marked h
 
 test("requires explicit snapshot markers for dated Traced notes", () => {
   const bare = scanFixture({
-    "apps/itotori/src/agents/work-scope/carve.ts":
-      "// Traced 2026-07-04 with boot_dispatch_scan.\n",
+    [WORKFLOW_SCOPE_SOURCE]: "// Traced 2026-07-04 with boot_dispatch_scan.\n",
   });
   assertViolation(bare, "dated-trace-without-snapshot-marker");
 
   for (const marker of ["Snapshot", "Historical", "Observed", "Point-in-time", "Resolved"]) {
     const marked = scanFixture({
-      "apps/itotori/src/agents/work-scope/carve.ts": `// ${marker}: Traced 2026-07-04 with boot_dispatch_scan.\n`,
+      [WORKFLOW_SCOPE_SOURCE]: `// ${marker}: Traced 2026-07-04 with boot_dispatch_scan.\n`,
     });
     assert.deepEqual(marked.violations, [], `expected ${marker} marker to be allowed`);
   }

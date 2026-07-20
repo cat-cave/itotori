@@ -1,9 +1,7 @@
 // ITOTORI-075 — StructuredTranslationDraftOutput.
 //
-// Strict JSON contract for what an LLM translation agent must return.
-// The agent is driven by `TranslationAgent.invokeTranslation`
-// (apps/itotori/src/agents/translation); this module owns ONLY the
-// wire-shape contract + assertion. No silent fallbacks: any shape
+// Strict JSON contract for what an LLM translation role must return. This
+// module owns ONLY the wire-shape contract + assertion. No silent fallbacks: any shape
 // divergence throws a typed `TranslationDraftResponseValidationError`.
 //
 // Persistence of accepted drafts is the responsibility of downstream
@@ -26,9 +24,7 @@ export const STRUCTURED_TRANSLATION_DRAFT_OUTPUT_TOOL_NAME =
  *
  * The taxonomy is intentionally narrow — three buckets that downstream
  * triage policy can branch on. We do NOT accept a numeric confidence
- * score: the agent registry's no-confidence rule (see
- * `assertNoConfidenceFields` in apps/itotori/src/agents/registry.ts)
- * forbids `confidence`-named fields, and a floor expressed as an enum
+ * score: the contract forbids free-form `confidence`-named fields, and a floor expressed as an enum
  * keeps the contract self-describing.
  */
 export const TRANSLATION_DRAFT_CONFIDENCE_FLOORS = ["low", "medium", "high"] as const;

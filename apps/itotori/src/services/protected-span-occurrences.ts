@@ -1,7 +1,6 @@
 // ITOTORI-144 — Shared duplicate protected-span OCCURRENCE logic.
 //
-// The standalone protected-span check tool (tool.protected-span-check, in
-// agents/examples.ts) and the deterministic pre-export QA suite
+// The legacy standalone protected-span check tool and the deterministic pre-export QA suite
 // (runDeterministicPreExportQa) MUST agree on how repeated protected-span
 // tokens are counted against a target draft. Both consume the single
 // implementation below so repeated-token handling cannot drift between the two
