@@ -21,7 +21,7 @@
 //   - The ZDR assertion (`OPENROUTER_ZDR_ACCOUNT_ASSERTED=1`) is written ONLY
 //     after the user explicitly confirms their OpenRouter account is
 //     ZDR-only — it is the operator's fail-closed acknowledgement, not an
-//     auto-set flag (mirrors providers/account-zdr.ts).
+//     auto-set flag (mirrors zdr-admission/account-zdr.ts).
 
 import { homedir } from "node:os";
 import { join } from "node:path";

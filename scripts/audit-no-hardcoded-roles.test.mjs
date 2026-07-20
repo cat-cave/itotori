@@ -438,7 +438,7 @@ test("an inline `authz-guard:allow domain-role` marker exempts the flagged line"
 
 test("a marker in the contiguous comment block ABOVE exempts the code line below", () => {
   const block = [
-    "// authz-guard:allow domain-role — provider-proof stage role",
+    "// authz-guard:allow domain-role — non-auth workflow stage role",
     'if (role === "admin") {',
   ].join("\n");
   assert.deepEqual(labels(TS, block), []);
@@ -472,7 +472,7 @@ test("the marker exempts every shape, not just the comparison (e.g. `isAdmin`, l
 // =========================================================================
 // The two REAL domain-role allowlist sites + the LLM message-role uses pass.
 // =========================================================================
-test('the real provider-proof stage role `role === "draft"` passes (non-auth value)', () => {
+test('a non-auth workflow-stage role `role === "draft"` passes', () => {
   assert.deepEqual(labels(TS, 'if (role === "draft") {'), []);
 });
 

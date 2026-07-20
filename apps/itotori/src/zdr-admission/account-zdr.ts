@@ -17,15 +17,15 @@
 // provider refuses to construct, so the failure is loud and the gate is
 // owned by the operator (not by a CLI flag a stray script could flip).
 //
-// (b) is handled in openrouter.ts (`provider.zdr = true` is the default
-// for every non-public request body); (c) surfaces through the existing
-// HTTP-error path as a 404 envelope.
+// (b) is carried by the certified `CallSpec.providerPolicy` through the
+// current `llm/dispatch.ts` TanStack boundary; (c) surfaces through the
+// existing HTTP-error path as a 404 envelope.
 
 /**
  * Thrown when {@link assertOpenRouterZdrAccount} runs without
- * `OPENROUTER_ZDR_ACCOUNT_ASSERTED=1` in the environment. The
- * OpenRouterModelProvider constructor calls the assertion synchronously
- * at startup, so this error surfaces at process startup — never silently
+ * `OPENROUTER_ZDR_ACCOUNT_ASSERTED=1` in the environment. The current
+ * ZDR-admission gate calls the assertion synchronously before qualifying
+ * work begins, so this error surfaces before dispatch — never silently
  * during an invocation.
  */
 export class AccountZdrAssertionError extends Error {

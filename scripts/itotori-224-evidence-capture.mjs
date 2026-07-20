@@ -368,7 +368,7 @@ docAmbiguous["DOC-AMBIGUOUS-8"] = {
     call_2_openrouter_metadata_keys: c2?.openrouter_metadata
       ? Object.keys(c2.openrouter_metadata).sort()
       : null,
-    note: "EMPIRICALLY CONFIRMED. Call_1 (no header) returned 9 top-level keys; call_2 (with header X-OpenRouter-Metadata: enabled) returned 10 — the additional key is `openrouter_metadata`, which carries the documented `endpoints` echo block (along with requested/strategy/region/summary/attempt/is_byok). The header IS the gate. The OR provider's endpoint-pricing fallback path (openrouter.ts:721-738) is THEREFORE LIVE CODE, and ITOTORI-233 must either keep + fix or delete it consciously based on whether itotori intends to send this header on every request. Itotori today (apps/itotori/src/providers/openrouter.ts:139) DOES send the header by default — verify by reading the source.",
+    note: "EMPIRICALLY CONFIRMED. Call_1 (no header) returned 9 top-level keys; call_2 (with header X-OpenRouter-Metadata: enabled) returned 10 — the additional key is `openrouter_metadata`, which carries the documented `endpoints` echo block (along with requested/strategy/region/summary/attempt/is_byok). The header IS the gate. The current TanStack boundary sets it on every adapter request in apps/itotori/src/llm/dispatch.ts; verify the beforeRequest hook when changing that boundary.",
   },
 };
 

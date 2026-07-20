@@ -10,7 +10,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { collectFiles, countLinesInDir, evaluateLedger } from "./audit-deletion-ledger.mjs";
+import {
+  collectFiles,
+  countLinesInDir,
+  evaluateLedger,
+  loadLedger,
+} from "./audit-deletion-ledger.mjs";
 
 function makeTree() {
   const root = mkdtempSync(join(tmpdir(), "ledger-"));
@@ -191,4 +196,16 @@ test("multiple globs entry sums line counts correctly", () => {
   ];
   const { ok } = evaluateLedger(ledger, root);
   assert.equal(ok, true);
+});
+
+test("the checked-in ledger forbids reviving either retired provider root", () => {
+  const ledger = loadLedger(join("scripts", "lint", "deletion-ledger.json"));
+  const absentRoots = ledger.delete.appSurface.flatMap((entry) => {
+    if (entry.expected !== "absent") return [];
+    if (entry.kind === "glob") return [entry.root];
+    return entry.kind === "globs" ? entry.roots : [];
+  });
+
+  assert.ok(absentRoots.includes("apps/itotori/src/providers/"));
+  assert.ok(absentRoots.includes("apps/itotori/src/provider-proof/"));
 });

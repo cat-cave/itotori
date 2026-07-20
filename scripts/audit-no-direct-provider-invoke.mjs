@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-// p0-core-universal-invocation-supervisor-retry — architecture guard.
+// CI guard: no direct legacy ModelProvider invocation.
 //
-// Every physical ModelProvider call must pass through InvocationSupervisor.
-// Provider adapters may delegate to their underlying transport, and the
-// supervisor is the one orchestration boundary allowed to dispatch them. No
-// other shipped source may call (or capture) a provider's `invoke` member.
+// The rebuilt LLM layer has one physical dispatch boundary:
+// apps/itotori/src/llm/dispatch.ts, which delegates through the pinned TanStack
+// adapter. No shipped source may call (or capture) a legacy provider's
+// `invoke` member. The companion LLM-layer import guard proves that this
+// dispatcher is the only provider-SDK importer.
 //
 // This guard is defense-in-depth against accidental direct calls. The primary
 // control is architectural: providers are constructed and handed only to the
@@ -41,16 +42,18 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
 
 const TS_LIKE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
-const PROVIDER_ADAPTER_PREFIX = "apps/itotori/src/providers/";
-const SUPERVISOR_PATH = "apps/itotori/src/orchestrator/invocation-supervisor.ts";
+const LLM_DISPATCHER_PATH = "apps/itotori/src/llm/dispatch.ts";
 
 function normalizeRepoPath(path) {
   return path.replaceAll("\\", "/").replace(/^\.\//u, "");
 }
 
 export function isExemptPath(path) {
-  const normalized = normalizeRepoPath(path);
-  return normalized.startsWith(PROVIDER_ADAPTER_PREFIX) || normalized === SUPERVISOR_PATH;
+  // There is no remaining direct-invocation adapter or supervisor exemption.
+  // Keep this exported predicate for the regression suite; its false value is
+  // itself the guard against reviving the deleted provider stack.
+  void path;
+  return false;
 }
 
 export function shouldScanPath(path) {
@@ -1060,8 +1063,8 @@ export function runAudit(args = []) {
   if (violations.length > 0) {
     process.stderr.write(
       `no-direct-provider-invoke audit failed: ${violations.length} forbidden provider dispatch${violations.length === 1 ? "" : "es"} found.\n` +
-        "Route every ModelProvider call through InvocationSupervisor. Only source under " +
-        `${PROVIDER_ADAPTER_PREFIX} and ${SUPERVISOR_PATH} may dispatch directly.\n\n`,
+        "Direct provider invocation is retired; route model work through " +
+        `${LLM_DISPATCHER_PATH}.\n\n`,
     );
     for (const violation of violations) {
       process.stderr.write(

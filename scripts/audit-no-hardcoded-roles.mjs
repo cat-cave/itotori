@@ -73,12 +73,10 @@
 //   exemption individually. It is EXPRESSION-NARROW: it exempts only the flagged
 //   line (inline trailing comment) OR the single code line immediately below a
 //   contiguous `//`-comment block — never a whole file or region. It is the ONLY
-//   opt-out; it never disables the check. The two known domain-role sites in the
-//   current tree branch on non-auth values (`role === "draft"` /
-//   `role === "official_translation"`) so they already pass on VALUE; the marker
-//   documents that intent and stays valid should the value ever look auth-like:
-//     - apps/itotori/src/provider-proof/harness.ts (`role === "draft"` — a
-//       proof stage role, not an auth role)
+//   opt-out; it never disables the check. The known current domain-role site
+//   branches on the non-auth value `role === "official_translation"`, so it
+//   already passes on VALUE; the marker documents that intent and stays valid
+//   should the value ever look auth-like:
 //     - packages/itotori-db/src/services/catalog-recorded-importers.ts
 //       (`role === "official_translation"` — a DLsite translation-source
 //       role, not an auth role)

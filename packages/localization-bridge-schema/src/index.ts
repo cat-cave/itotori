@@ -13,8 +13,6 @@ export * from "./patch-export-bundle.js";
 export * from "./asset-localization-draft.js";
 export * from "./agentic-loop-bundle.js";
 export * from "./pair-policy.v0.3.js";
-export * from "./provider-proof-bundle.js";
-export * from "./alpha-provider-proof-summary.js";
 export * from "./raw-mtl-baseline-proof.js";
 export * from "./bridge-surface-normalization.js";
 
