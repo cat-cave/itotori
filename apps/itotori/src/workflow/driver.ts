@@ -25,6 +25,7 @@ import { applyCorrections, type CorrectionSummary } from "./correction.js";
 import { coherenceSchedule, missingStageUnits, type CoherenceSchedule } from "./durability.js";
 import { finalizeUnits } from "./finalize.js";
 import { joinFindings } from "./finding-join.js";
+import { projectOutputScope } from "./output-scope.js";
 import { resolveWorkflowPolicy } from "./policy.js";
 import { resolveSceneReadiness } from "./readiness.js";
 import { planStratifiedReview, type ReviewPlan } from "./risk-routing.js";
@@ -62,6 +63,9 @@ export interface SceneOutcome {
 export interface WorkflowRunReport {
   readonly policy: ResolvedRunPolicy;
   readonly schedule: CoherenceSchedule;
+  /** Units deliberately outside the independently selected output tier. They
+   * remain part of whole-game context; no draft or final head was attempted. */
+  readonly excludedOutputUnitIds: readonly string[];
   readonly scenes: readonly SceneOutcome[];
   readonly finalized: readonly FinalizedUnit[];
   readonly patchId: string | null;
@@ -231,11 +235,12 @@ export async function runLocalizationWorkflow(
 ): Promise<WorkflowRunReport> {
   // Gate: resolve the policy FIRST. An illegal run never reaches a scene.
   const policy = resolveWorkflowPolicy(request);
-  const schedule = coherenceSchedule(scenes);
+  const output = projectOutputScope(scenes, policy.outputScope);
+  const schedule = coherenceSchedule(output.scenes);
 
   // Independent scenes run in parallel; each scene serializes its own units.
   const sceneOutcomes = await Promise.all(
-    scenes.map((scene) => processScene(scene, policy, ports, options)),
+    output.scenes.map((scene) => processScene(scene, policy, ports, options)),
   );
 
   const finalized = sceneOutcomes.flatMap((outcome) => outcome.finalized);
@@ -257,6 +262,7 @@ export async function runLocalizationWorkflow(
   return {
     policy,
     schedule,
+    excludedOutputUnitIds: output.excludedUnitIds,
     scenes: sceneOutcomes,
     finalized,
     patchId,

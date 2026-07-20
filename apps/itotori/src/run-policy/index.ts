@@ -29,6 +29,7 @@ export {
   resolveRunPolicy,
 } from "./resolve.js";
 export { assertMayFinalizeShippable, finalizeShippable, isShippablePolicy } from "./finalize.js";
+export { OUTPUT_SCOPE_SURFACES, outputScopeIncludesSurface } from "./output-scope.js";
 export {
   OUTPUT_SCOPE_VALUES,
   RunPolicyError,

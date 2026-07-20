@@ -12,8 +12,8 @@
 //   - test-dev is the only mode that PERMITS a narrowed context and the ablation
 //     selector, and it may NEVER finalize a shippable artifact.
 
-import { DEFAULT_ROSTER_SELECTION, ROLE_ID_UNIVERSE } from "../roster/index.js";
-import { RoleIdSchema, type RoleId, type RunModeValue } from "../contracts/index.js";
+import { FULL_CONTEXT_ROSTER, contextRosterIsFull } from "../source-wiki/roster-selection.js";
+import type { RoleId, RunModeValue } from "../contracts/index.js";
 import type { LocalizationPosture } from "../localized-wiki/index.js";
 
 /** One run mode's requirements + permissions, as data. Every field is a hard
@@ -102,21 +102,13 @@ export const BASE_POSTURE_BY_RUN_MODE: Readonly<Record<RunModeValue, Localizatio
     Record<RunModeValue, LocalizationPosture | null>
   >;
 
-/** The full roster is exactly the roster universe — the same set the source and
- * localized wikis default to. A selection is "full" iff it names every casting
- * exactly once and nothing else. */
+/** The full roster for this policy is the context roster: exactly the ten
+ * source-Wiki analysts. P/Q roles are fixed workflow stages, not selectable
+ * context castings. */
 export function rosterIsFull(roster: readonly RoleId[]): boolean {
-  const selected = new Set<RoleId>();
-  for (const candidate of roster) {
-    const parsed = RoleIdSchema.safeParse(candidate);
-    if (!parsed.success) return false;
-    selected.add(parsed.data);
-  }
-  if (selected.size !== ROLE_ID_UNIVERSE.length) return false;
-  return ROLE_ID_UNIVERSE.every((castingId) => selected.has(castingId));
+  return contextRosterIsFull(roster);
 }
 
-/** The canonical full roster selection — every casting, in canonical order. The
- * production / pilot default; re-exported so callers need not reach into the
- * roster module for it. */
-export const FULL_ROSTER: readonly RoleId[] = DEFAULT_ROSTER_SELECTION;
+/** The canonical full context roster selection — all A1-A10, in canonical
+ * order. Production and pilot require it. */
+export const FULL_ROSTER: readonly RoleId[] = FULL_CONTEXT_ROSTER;

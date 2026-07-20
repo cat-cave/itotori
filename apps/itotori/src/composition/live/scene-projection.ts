@@ -85,7 +85,14 @@ export function projectDecodeStructure(structureJson: unknown): DecodeSceneProje
         speakerId,
         routeId,
       });
-      return { unitId: unit.unitId, sourceHash, speakerId, routeId, firstAppearance };
+      return {
+        unitId: unit.unitId,
+        sourceHash,
+        surfaceKind: unit.surfaceKind,
+        speakerId,
+        routeId,
+        firstAppearance,
+      };
     });
 
     scenes.push({ sceneId: sceneKey, units });

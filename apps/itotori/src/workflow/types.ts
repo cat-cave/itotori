@@ -35,6 +35,9 @@ export type UnitStage = "draft" | "repair" | "final" | "build-lqa";
 export interface WorkflowUnit {
   readonly unitId: string;
   readonly sourceHash: `sha256:${string}`;
+  /** The decode-declared text surface. Output scope filters this write target;
+   * it never changes the whole-game context the run reads. */
+  readonly surfaceKind?: string;
   /** The speaker whose voice bible + accepted history a voice review needs, or
    * null for an unattributed line. */
   readonly speakerId: string | null;
