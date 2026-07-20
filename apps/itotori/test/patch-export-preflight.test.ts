@@ -50,6 +50,7 @@ function makeSourceBridgeView(
     projectId: PROJECT_ID,
     localeBranchId: LOCALE_BRANCH_ID,
     sourceBridgeHash: SOURCE_BRIDGE_HASH,
+    extractorAdapterId: "utf8-json-bundle",
     targetLocale: TARGET_LOCALE,
     units,
   };

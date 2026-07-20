@@ -39,7 +39,7 @@ import {
   type ResolvedAssetPolicy,
 } from "../asset-decisions/policy-resolver.js";
 import { createDeliveredPatchArchive, type DeliveredPatchArchive } from "./delivery-archive.js";
-import { stripOutOfBandControlMarkup } from "../localization/patchback-safety.js";
+import { resolveTargetPolicyForAdapter, type LocalizationTargetPolicy } from "../gates/index.js";
 import {
   PatchExportPreflight,
   type DraftGlossaryRendering,
@@ -307,7 +307,8 @@ export class PatchExporter {
       };
     }
 
-    const drafts = buildDraftEntries(bundle, view);
+    const targetPolicy = resolveTargetPolicyForAdapter(view.extractorAdapterId);
+    const drafts = buildDraftEntries(bundle, view, targetPolicy);
     const assetDecisions = buildAssetDecisionEntries(view, assetResolutions);
     const exportedAt = (this.deps.now ?? (() => new Date()))().toISOString();
     const provenance: PatchExportBundle["provenance"] = {
@@ -362,6 +363,7 @@ export class PatchExporter {
 function buildDraftEntries(
   bundle: DraftArtifactBundle,
   view: SourceBridgeView,
+  targetPolicy: LocalizationTargetPolicy,
 ): PatchExportDraft[] {
   const drafts: PatchExportDraft[] = [];
   const unitsBySource = new Map(view.units.map((unit) => [unit.sourceUnitId, unit]));
@@ -381,8 +383,8 @@ function buildDraftEntries(
       );
     }
     const draftText = selectedCandidate.body;
-    const engineVisibleSource = stripOutOfBandControlMarkup(unit.sourceText).trim();
-    const engineVisibleDraft = stripOutOfBandControlMarkup(draftText).trim();
+    const engineVisibleSource = targetPolicy.normalizeVisibleText(unit.sourceText).trim();
+    const engineVisibleDraft = targetPolicy.normalizeVisibleText(draftText).trim();
     if (engineVisibleDraft.length === 0) {
       throw new Error(
         `patch exporter: written outcome for ${entry.sourceUnitId} has no engine-visible target text`,

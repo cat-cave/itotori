@@ -101,6 +101,8 @@ export type PatchExportV2ProjectFixture = {
   localeBranchId: string;
   targetLocale: string;
   sourceBridgeHash: string;
+  /** The extractor adapter that produced the source bridge. */
+  extractorAdapterId: string;
   units: PatchExportV2ProjectFixtureUnit[];
 };
 
@@ -126,6 +128,7 @@ export type PatchExportV2ProjectFixtureSpan = {
   sourceText: string;
   kind: string;
   preservationRule: string;
+  outOfBand?: boolean;
   expectedTargetForm?: string;
 };
 
@@ -286,6 +289,9 @@ function projectFixtureToBridgeView(project: PatchExportV2ProjectFixture): Sourc
       if (span.expectedTargetForm !== undefined) {
         out.expectedTargetForm = span.expectedTargetForm;
       }
+      if (span.outOfBand === true) {
+        out.outOfBand = true;
+      }
       return out;
     });
     const sbu: SourceBridgeUnit = {
@@ -304,6 +310,7 @@ function projectFixtureToBridgeView(project: PatchExportV2ProjectFixture): Sourc
     projectId: project.projectId,
     localeBranchId: project.localeBranchId,
     sourceBridgeHash: project.sourceBridgeHash,
+    extractorAdapterId: project.extractorAdapterId,
     targetLocale: project.targetLocale,
     units,
   };

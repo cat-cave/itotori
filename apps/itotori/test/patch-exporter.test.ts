@@ -20,6 +20,7 @@ import {
   type DraftArtifactBundle,
 } from "@itotori/localization-bridge-schema";
 import { AssetDecisionPolicyResolver } from "../src/asset-decisions/policy-resolver.js";
+import { REALLIVE_SJIS_ADAPTER_ID, UTF8_JSON_ADAPTER_ID } from "../src/gates/index.js";
 import {
   PatchExporter,
   type DraftArtifactBundleLoaderPort,
@@ -64,13 +65,18 @@ function makeUnit(overrides: Partial<SourceBridgeUnit> = {}): SourceBridgeUnit {
   };
 }
 
-function makeView(units: SourceBridgeUnit[] = [makeUnit()]): SourceBridgeView {
+function makeView(
+  units: SourceBridgeUnit[] = [makeUnit()],
+  overrides: Partial<SourceBridgeView> = {},
+): SourceBridgeView {
   return {
     projectId: PROJECT_ID,
     localeBranchId: LOCALE_BRANCH_ID,
     sourceBridgeHash: SOURCE_BRIDGE_HASH,
+    extractorAdapterId: UTF8_JSON_ADAPTER_ID,
     targetLocale: TARGET_LOCALE,
     units,
+    ...overrides,
   };
 }
 
@@ -387,13 +393,65 @@ describe("PatchExporter", () => {
     expect(result.failingChecks.map((entry) => entry.check)).toContain("protectedSpanCoverage");
   });
 
-  it("rejects a source replay that only becomes visible after kidoku markup is stripped", async () => {
+  it("keeps the RealLive policy's visible-text export behavior byte-for-byte", async () => {
+    const view = makeView(
+      [
+        makeUnit({
+          sourceText: "<reallive.kidoku 5>こんにちは。",
+          protectedSpans: [],
+        }),
+      ],
+      { extractorAdapterId: REALLIVE_SJIS_ADAPTER_ID },
+    );
+    const bundle = makeBundle({
+      drafts: [makeDraftEntry({ selectedBody: "<reallive.kidoku 9>Hello." })],
+    });
+    const result = await makeExporter({ view, bundle }).export(ACTOR, {
+      projectId: PROJECT_ID,
+      localeBranchId: LOCALE_BRANCH_ID,
+      draftArtifactBundleId: DRAFT_JOB_ID,
+      requestedBy: "exporter-test-actor",
+    });
+    if ("kind" in result && result.kind === "preflight_failure") {
+      throw new Error(`unexpected preflight failure: ${JSON.stringify(result.failingChecks)}`);
+    }
+    expect(JSON.stringify(result.drafts)).toBe(
+      '[{"sourceUnitId":"unit-001","draftId":"draft-001","sourceText":"<reallive.kidoku 5>こんにちは。","draftText":"<reallive.kidoku 9>Hello.","protectedSpanMappings":[],"sourceUnitHash":"sha256:unit-001","draftUnitHash":"sha256:8585759d34358c2226bf9acdbde1bff4ef195b65fee49be719c3776183d33a5f"}]',
+    );
+  });
+
+  it("does not interpret another target policy's literal markup", async () => {
     const view = makeView([
       makeUnit({
-        sourceText: "<reallive.kidoku 5>こんにちは。",
+        sourceText: "こんにちは。",
         protectedSpans: [],
       }),
     ]);
+    const bundle = makeBundle({
+      drafts: [makeDraftEntry({ selectedBody: "<reallive.kidoku 9>" })],
+    });
+    const result = await makeExporter({ view, bundle }).export(ACTOR, {
+      projectId: PROJECT_ID,
+      localeBranchId: LOCALE_BRANCH_ID,
+      draftArtifactBundleId: DRAFT_JOB_ID,
+      requestedBy: "exporter-test-actor",
+    });
+    if ("kind" in result && result.kind === "preflight_failure") {
+      throw new Error(`unexpected preflight failure: ${JSON.stringify(result.failingChecks)}`);
+    }
+    expect(result.drafts[0]?.draftText).toBe("<reallive.kidoku 9>");
+  });
+
+  it("rejects a source replay that becomes visible through the selected target policy", async () => {
+    const view = makeView(
+      [
+        makeUnit({
+          sourceText: "<reallive.kidoku 5>こんにちは。",
+          protectedSpans: [],
+        }),
+      ],
+      { extractorAdapterId: REALLIVE_SJIS_ADAPTER_ID },
+    );
     const bundle = makeBundle({
       drafts: [makeDraftEntry({ selectedBody: "<reallive.kidoku 9>こんにちは。" })],
     });
