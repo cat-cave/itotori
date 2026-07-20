@@ -37,6 +37,12 @@ export {
 } from "./extract-adapter-registry.js";
 export type {
   ExtractCapability,
+  ExtractEngineId,
+  ExtractFormConstraint,
+  ExtractFormField,
+  ExtractModeCapability,
+  ExtractModeForEngine,
+  ExtractOutcome,
   ExtractSource,
   KaifuuEngine,
   KaifuuRealliveExtractArgs,
@@ -48,7 +54,7 @@ export type {
 } from "./extract-adapter-registry.js";
 // Locally-bound (used here) re-exports.
 export { resolveExtractAdapter };
-export type { ExtractEngineId, ExtractMode, KaifuuExtractArgs, KaifuuProcessResult };
+export type { ExtractMode, KaifuuExtractArgs, KaifuuProcessResult };
 
 export type KaifuuExtractResult = {
   command: string;

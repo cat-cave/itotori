@@ -7,8 +7,8 @@
 //      writes the canonical example bundle to the exact `--bundle-output` path
 //      the seam built, so CI touches NO real bytes yet exercises the real argv +
 //      real file read-back + real schema validation.
-//   2. WIRE-CONTRACT: parseProjectDecodeExtractRequest enforces the sourcing /
-//      mode exclusivity + scene range the HTTP body must satisfy.
+//   2. WIRE-CONTRACT: parseProjectDecodeExtractRequest dispatches the required
+//      engine discriminant to the matching adapter-owned source + mode shape.
 //   3. ENV-GATED real: when ITOTORI_REAL_SWEETIE_ROOT is exported, the runner
 //      drives the REAL kaifuu-cli against the operator's game tree and asserts a
 //      real v0.2 BridgeBundle with text units landed. No retail bytes committed.
@@ -26,7 +26,7 @@ import {
   runKaifuuExtract,
   type KaifuuProcessResult,
 } from "../src/extract/kaifuu-extract-seam.js";
-import { parseProjectDecodeExtractRequest } from "../src/api-schema.js";
+import { assertItotoriApiResponse, parseProjectDecodeExtractRequest } from "../src/api-schema.js";
 
 const IDENTITY = {
   gameId: "sweetie",
@@ -35,9 +35,8 @@ const IDENTITY = {
   sourceLocale: "ja-JP",
 } as const;
 
-// The RealLive engine discriminant the extract-adapter registry now requires on
-// every extract/decode request (the api-schema wire request stays engine-less,
-// so it is applied only to the runner/seam-facing objects below).
+// The RealLive engine discriminant the extract-adapter registry requires on
+// every extract/decode request, including the public Studio request.
 const REALLIVE = { engine: "reallive", ...IDENTITY } as const;
 
 // The canonical v0.2 BridgeBundle example — the same shape kaifuu writes.
@@ -116,6 +115,25 @@ describe("in-studio decode/extract runner drives the REAL kaifuu extract seam", 
     expect(outcome.bridge.units.length).toBeGreaterThan(0);
   });
 
+  it("round-trips a Softpal API request through its adapter without RealLive fields", async () => {
+    const capture: { argv?: string[] } = {};
+    const runner = createDecodeExtractRunner({ runExtract: realSeamWithFakeSpawn(capture) });
+    const request = parseProjectDecodeExtractRequest({
+      engine: "softpal",
+      gameRoot: "/games/softpal",
+    });
+
+    const outcome = await runner.runDecodeExtract(request);
+
+    expect(capture.argv).toContain("softpal");
+    expect(capture.argv).toContain("/games/softpal");
+    expect(capture.argv).not.toContain("--scene");
+    expect(capture.argv).not.toContain("--whole-seen");
+    expect(outcome).toMatchObject({ engine: "softpal", mode: "whole-game" });
+    expect(outcome.bridge.units.length).toBeGreaterThan(0);
+    expect(() => assertItotoriApiResponse("projects.decodeExtract", outcome)).not.toThrow();
+  });
+
   it("propagates a non-zero kaifuu extract failure as a KaifuuExtractError", async () => {
     const runner = createDecodeExtractRunner({
       runExtract: (args) =>
@@ -137,50 +155,81 @@ describe("in-studio decode/extract runner drives the REAL kaifuu extract seam", 
 });
 
 describe("parseProjectDecodeExtractRequest (wire contract)", () => {
-  const base = { ...IDENTITY, gameRoot: "/games/sweetie", wholeSeen: true } as const;
+  const base = { ...REALLIVE, gameRoot: "/games/sweetie", wholeSeen: true } as const;
 
   it("accepts a valid whole-seen game-root request", () => {
     expect(parseProjectDecodeExtractRequest(base)).toEqual(base);
   });
 
   it("accepts a valid per-scene vault request", () => {
-    const request = { ...IDENTITY, vaultCanonicalId: "vault-1", scene: 2031 };
+    const request = { ...REALLIVE, vaultCanonicalId: "vault-1", scene: 2031 };
     expect(parseProjectDecodeExtractRequest(request)).toEqual(request);
+  });
+
+  it("accepts adapter-owned Softpal and RPG Maker request variants", () => {
+    const softpal = { engine: "softpal", gameRoot: "/games/softpal" } as const;
+    const rpgMaker = {
+      engine: "rpg-maker",
+      gameDir: "/games/rpg/www",
+      ...IDENTITY,
+    } as const;
+    expect(parseProjectDecodeExtractRequest(softpal)).toEqual(softpal);
+    expect(parseProjectDecodeExtractRequest(rpgMaker)).toEqual(rpgMaker);
   });
 
   it("rejects providing both sourcing routes", () => {
     expect(() =>
       parseProjectDecodeExtractRequest({
-        ...IDENTITY,
+        ...REALLIVE,
         gameRoot: "/g",
         vaultCanonicalId: "v",
         wholeSeen: true,
       }),
-    ).toThrow(/EXACTLY ONE of vaultCanonicalId or gameRoot/u);
+    ).toThrow(/exactly one source/u);
   });
 
   it("rejects providing neither sourcing route", () => {
-    expect(() => parseProjectDecodeExtractRequest({ ...IDENTITY, wholeSeen: true })).toThrow(
-      /EXACTLY ONE of vaultCanonicalId or gameRoot/u,
+    expect(() => parseProjectDecodeExtractRequest({ ...REALLIVE, wholeSeen: true })).toThrow(
+      /exactly one source/u,
     );
   });
 
   it("rejects both decode modes", () => {
     expect(() =>
-      parseProjectDecodeExtractRequest({ ...IDENTITY, gameRoot: "/g", wholeSeen: true, scene: 1 }),
-    ).toThrow(/EXACTLY ONE decode mode/u);
+      parseProjectDecodeExtractRequest({ ...REALLIVE, gameRoot: "/g", wholeSeen: true, scene: 1 }),
+    ).toThrow(/exactly one mode/u);
   });
 
   it("rejects neither decode mode", () => {
-    expect(() => parseProjectDecodeExtractRequest({ ...IDENTITY, gameRoot: "/g" })).toThrow(
-      /EXACTLY ONE decode mode/u,
+    expect(() => parseProjectDecodeExtractRequest({ ...REALLIVE, gameRoot: "/g" })).toThrow(
+      /exactly one mode/u,
     );
+  });
+
+  it("rejects a false wholeSeen flag instead of ignoring it", () => {
+    expect(() =>
+      parseProjectDecodeExtractRequest({
+        ...REALLIVE,
+        gameRoot: "/g",
+        scene: 1,
+        wholeSeen: false,
+      }),
+    ).toThrow(/wholeSeen must be true/u);
   });
 
   it("rejects an out-of-range scene id", () => {
     expect(() =>
-      parseProjectDecodeExtractRequest({ ...IDENTITY, gameRoot: "/g", scene: 70_000 }),
+      parseProjectDecodeExtractRequest({ ...REALLIVE, gameRoot: "/g", scene: 70_000 }),
     ).toThrow(/u16/u);
+  });
+
+  it("requires an engine and refuses RealLive-only fields on another adapter", () => {
+    expect(() => parseProjectDecodeExtractRequest({ gameRoot: "/g" })).toThrow(
+      /engine is required/u,
+    );
+    expect(() =>
+      parseProjectDecodeExtractRequest({ engine: "softpal", gameRoot: "/g", scene: 1 }),
+    ).toThrow(/scene is not supported by the softpal adapter/u);
   });
 });
 

@@ -21,6 +21,7 @@ import { join } from "node:path";
 import { assertBridgeBundleV02, type BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import {
   runKaifuuExtract,
+  type ExtractOutcome,
   type ExtractSource,
   type KaifuuExtractArgs,
   type KaifuuExtractResult,
@@ -35,11 +36,13 @@ import {
  */
 export type DecodeExtractInput = ExtractSource;
 
-export type DecodeExtractOutcome = {
+type DecodeExtractOutcomeEnvelope = {
   bridge: BridgeBundleV02;
-  mode: KaifuuExtractResult["mode"];
   command: string;
 };
+
+/** The adapter-derived result discriminant plus the common bridge output. */
+export type DecodeExtractOutcome = DecodeExtractOutcomeEnvelope & ExtractOutcome;
 
 export type DecodeExtractPort = {
   runDecodeExtract(input: DecodeExtractInput): Promise<DecodeExtractOutcome>;
@@ -98,9 +101,10 @@ export function createDecodeExtractRunner(
         const bridge: BridgeBundleV02 = raw;
         return {
           bridge,
+          engine: result.engine,
           mode: result.mode,
           command: `${result.command} ${result.args.join(" ")}`.trim(),
-        };
+        } as DecodeExtractOutcome;
       } finally {
         // Best-effort scratch cleanup — the returned bridge is fully in memory.
         try {
