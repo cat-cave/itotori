@@ -87,6 +87,7 @@ pub mod known_key_smoke;
 pub mod opcode;
 pub mod patchback;
 pub mod scene_decode;
+pub mod syscall;
 
 /// Stable namespace prefix carried by every `NotImplemented` diagnostic
 /// raised by this skeleton crate.
@@ -188,4 +189,9 @@ pub use patchback::delta::{SiglusDeltaError, SiglusScenePatchDelta, produce_scen
 pub use scene_decode::{
     SceneDecodeError, SiglusSceneDigest, SiglusSceneFailure, SiglusScenePackReport,
     decode_scene_chunk, decode_scene_pack,
+};
+pub use syscall::{
+    SEL_SYSTEM_FUNCTION_ID, SceneSyscallDecode, SceneSyscallError, SiglusCallTarget,
+    SiglusSelChoice, SiglusSelOption, SiglusStringRef, SiglusSyscallDiagnostic, SiglusTypedCall,
+    decode_scene_syscalls, system_function_name,
 };
