@@ -32,11 +32,13 @@ pub enum AudioRuntimeWarning {
     /// A `playSe` slot was not declared in the Gameexe `#SE.<slot>`
     /// table.
     UnknownSeSlot { slot: i32 },
-    /// A `koePlay` was dispatched with a sample id but no current
-    /// speaker was selected. Sweetie HD's system-event archive `z0001`
-    /// is the documented default; this warning fires when even that
-    /// default has not been threaded through
-    /// [`AudioRuntime::set_current_speaker_archive_id`].
+    /// A `koePlay(sample_id)` was dispatched but no voice archive is
+    /// currently known: the runtime starts with an UNKNOWN archive and
+    /// none has been established by an authoritative RealLive operation
+    /// (`koePlayEx`) or explicit per-game configuration
+    /// ([`AudioRuntime::set_current_speaker_archive_id`]). The runtime
+    /// refuses to guess an archive, so it surfaces this typed unresolved
+    /// observation instead of attributing the sample to a default.
     NoCurrentSpeaker,
 }
 
@@ -54,15 +56,15 @@ pub(super) struct AudioRuntimeInner {
     bgm_subdir: String,
     wav_subdir: String,
     koe_subdir: String,
-    /// Sticky archive id the next `koePlay(sample_id)` resolves
-    /// through. Set via [`AudioRuntime::set_current_speaker_archive_id`]
-    /// or via a `NAMAE` lookup through
-    /// [`AudioRuntime::select_speaker_by_display_name`]. Default for
-    /// Sweetie HD is archive `1` (the `z0001.ovk` system-event
-    /// archive); we keep the default in code so a test that exercises
-    /// koePlay against a freshly-built runtime can pin the
-    /// "no Gameexe" path without spelunking.
-    current_speaker_archive_id: i32,
+    /// Sticky voice-archive id the next `koePlay(sample_id)` resolves
+    /// through, or `None` when no archive is known yet. A fresh runtime
+    /// starts UNKNOWN — there is no baked-in default archive. The current
+    /// archive is established by an authoritative RealLive operation that
+    /// names one (`koePlayEx`) or by explicit per-game configuration
+    /// ([`AudioRuntime::set_current_speaker_archive_id`]); a `koePlay`
+    /// dispatched while this is `None` surfaces a typed unresolved
+    /// observation rather than guessing.
+    current_speaker_archive: Option<i32>,
     /// 1 if the BGM channel is currently playing (post-bgmPlay
     /// pre-bgmStop/bgmFadeOut). The bgmStatus opcode reads this.
     pub(super) bgm_playing: bool,
@@ -91,7 +93,7 @@ impl AudioRuntime {
                 bgm_subdir: "bgm".to_string(),
                 wav_subdir: "wav".to_string(),
                 koe_subdir: "koe".to_string(),
-                current_speaker_archive_id: 1,
+                current_speaker_archive: None,
                 bgm_playing: false,
                 koe_playing: false,
                 warnings: Vec::new(),
@@ -123,70 +125,20 @@ impl AudioRuntime {
         guard.gameexe = Some(gameexe);
     }
 
-    /// Set the sticky speaker archive id the `koePlay(sample_id)` path
-    /// consults. Sweetie HD's `z0001.ovk` system-event archive
-    /// corresponds to `archive_id = 1`; the runtime defaults to that.
+    /// Establish the sticky voice archive the `koePlay(sample_id)` path
+    /// consults. This is the explicit, authoritative selector: an
+    /// authoritative RealLive operation that names an archive
+    /// (`koePlayEx`) or explicit per-game configuration calls it. The
+    /// runtime never derives the archive from a different game's
+    /// numbering coincidence or a baked-in default.
     pub fn set_current_speaker_archive_id(&self, archive_id: i32) {
-        self.lock_inner().current_speaker_archive_id = archive_id;
+        self.lock_inner().current_speaker_archive = Some(archive_id);
     }
 
-    /// Look up `display_name` in the Gameexe `NAMAE` table and set the
-    /// current speaker's archive id to the resolved row's composite
-    /// archive id. Returns `true` if the lookup resolved.
-    ///
-    /// # NAMAE → archive id composition
-    ///
-    /// The on-disk Sweetie HD `Gameexe.ini` NAMAE rows look like
-    /// `#NAMAE = "凛" = "凛" = (1, 015, -1)` — three comma-separated
-    /// integers `(mode, color_table_index, reserved)`. The middle field
-    /// is a `#COLOR_TABLE` row index (the speaker's dialogue text
-    /// colour); the AUTHORITATIVE voice cue is carried by `koePlay`
-    /// bytecode arguments, NOT by `#NAMAE`. This helper is a best-effort
-    /// sticky-speaker fallback that exploits a numbering coincidence in
-    /// THIS title: `mode * 1000 + color_table_index` happens to equal
-    /// the `koe/z<NNNN>.ovk` archive number for its character speakers
-    /// (`(1, 015, -1)` ↔ `z1015.ovk`, `(1, 016, -1)` ↔ `z1016.ovk`
-    /// `(0, 011, -1)` ↔ `z0011.ovk`). The last field is reserved
-    /// (unused here).
-    ///
-    /// This composition matches the file listing under Sweetie HD's
-    /// `REALLIVEDATA/koe/` exactly (we observe `z1011`, `z1014`
-    /// `z1015`, `z1016`, `z1018` etc. for the character speakers whose
-    /// NAMAE rows declare `(1, 011)` through `(1, 018)`); see the
-    /// integration test in `tests/audio_rlop_real_bytes.rs` for the
-    /// cross-validation.
-    pub fn select_speaker_by_display_name(&self, display_name: &str) -> bool {
-        let key = format!("NAMAE.{display_name}");
-        let composite_archive_opt = {
-            let guard = self.lock_inner();
-            guard
-                .gameexe
-                .as_ref()
-                .and_then(|gx| gx.get_namae(&key))
-                .map(|entry| Self::namae_to_archive_id(entry.mode, entry.color_table_index))
-        };
-        if let Some(archive_id) = composite_archive_opt {
-            self.lock_inner().current_speaker_archive_id = archive_id;
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Compose the best-effort voice-archive id from a NAMAE row's
-    /// `(mode, color_table_index)` pair. See
-    /// [`Self::select_speaker_by_display_name`] for the numbering
-    /// coincidence this exploits (the authoritative voice cue is
-    /// `koePlay`, not `#NAMAE`).
-    pub fn namae_to_archive_id(mode_field: i32, color_index_field: i32) -> i32 {
-        mode_field
-            .saturating_mul(1000)
-            .saturating_add(color_index_field)
-    }
-
-    /// Current sticky speaker archive id.
-    pub fn current_speaker_archive_id(&self) -> i32 {
-        self.lock_inner().current_speaker_archive_id
+    /// The current sticky voice-archive id, or `None` when no archive has
+    /// been established yet (a fresh runtime starts UNKNOWN).
+    pub fn current_speaker_archive(&self) -> Option<i32> {
+        self.lock_inner().current_speaker_archive
     }
 
     /// Resolve a `bgmPlay` asset name to a stable `bgm/<NAME>` asset
@@ -225,9 +177,8 @@ impl AudioRuntime {
     /// Format a voice archive id as `z<archive:04>` (the on-disk
     /// `koe/z<archive>.ovk` convention).
     pub fn voice_archive_label(archive_id: i32) -> String {
-        // Visual Arts pads voice archive ids to 4 digits with a
-        // leading `z`. Sweetie HD's `z0001.ovk` ↔ `archive_id = 1`
-        // `z1015.ovk` ↔ `archive_id = 1015`.
+        // Visual Arts pads voice archive ids to 4 digits with a leading
+        // `z`: e.g. `archive_id = 1015` ↔ `z1015.ovk`.
         if archive_id < 0 {
             format!("z{:04}", 0)
         } else {

@@ -10,10 +10,14 @@
 //!    ([`AudioRuntime::bgm_asset_id_for`], etc.) so a `bgmPlay("ASA")`
 //!    resolves to `"bgm/ASA"` (the asset id) without dragging a
 //!    full `AssetPackage` through the dispatch boundary.
-//! 2. The Gameexe-derived `NAMAE` speaker registry so a `koePlay(46)`
-//!    can resolve through a "current speaker" register to a typed
-//!    `(archive_id, sample_id)` pair, surfaced as the
-//!    [`crate::audio::AudioEventPayload::Voice`] payload.
+//! 2. The current voice-archive register a `koePlay(sample_id)`
+//!    resolves through to a typed `(archive_id, sample_id)` pair,
+//!    surfaced as the [`crate::audio::AudioEventPayload::Voice`]
+//!    payload. The register starts UNKNOWN and is established only by an
+//!    authoritative RealLive operation that names an archive
+//!    (`koePlayEx`) or by explicit per-game configuration — never a
+//!    baked-in default; an unresolved `koePlay` surfaces a typed
+//!    observation instead of guessing.
 //! 3. The [`crate::audio::AudioEventEmitter`] that retains the typed
 //!    audio events the substrate-gap follow-up will swap into the
 //!    substrate `AudioEventSink` (see `audio.rs` module docstring for
@@ -265,6 +269,8 @@ pub const AUDIO_RLOP_COUNT: usize =
 
 mod runtime;
 pub use runtime::{AudioRuntime, AudioRuntimeWarning};
+mod voice;
+pub use voice::{KoePlayExOp, KoePlayOp};
 
 /// `bgm.bgmPlay(string asset_name)` — emits a typed `BgmStart`
 /// audio event with the engine-resolved asset id.
@@ -471,106 +477,6 @@ impl RLOperation for BgmStatusOp {
     fn dispatch(&self, vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
         let value: u32 = u32::from(self.runtime.bgm_playing());
         vm.banks_mut().set_store(value);
-        DispatchOutcome::Advance
-    }
-}
-
-/// `koe.koePlay(int sample_id)` — resolves the sample through the
-/// current speaker archive and emits a typed `VoicePlay` event.
-#[derive(Debug)]
-pub struct KoePlayOp {
-    runtime: Arc<AudioRuntime>,
-}
-
-impl KoePlayOp {
-    pub fn new(runtime: Arc<AudioRuntime>) -> Self {
-        Self { runtime }
-    }
-}
-
-impl RLOperation for KoePlayOp {
-    fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        let sample_id = match args.first() {
-            Some(ExprValue::Int(n)) => *n,
-            Some(ExprValue::Bytes(_)) => {
-                self.runtime
-                    .record_warning(AudioRuntimeWarning::ArgShapeMismatch {
-                        opcode_tag: KoeOpcode::Play.as_str(),
-                        expected: "int",
-                    });
-                return DispatchOutcome::Advance;
-            }
-            None => {
-                self.runtime
-                    .record_warning(AudioRuntimeWarning::MissingArg {
-                        opcode_tag: KoeOpcode::Play.as_str(),
-                        slot: "sample_id",
-                    });
-                return DispatchOutcome::Advance;
-            }
-        };
-        let archive_id = self.runtime.current_speaker_archive_id();
-        if archive_id <= 0 {
-            self.runtime
-                .record_warning(AudioRuntimeWarning::NoCurrentSpeaker);
-            return DispatchOutcome::Advance;
-        }
-        let archive_label = AudioRuntime::voice_archive_label(archive_id);
-        self.runtime.emit(
-            AudioEventKind::VoicePlay,
-            AudioEventPayload::Voice {
-                archive_id: archive_label,
-                sample_id: sample_id.max(0) as u32,
-            },
-        );
-        self.runtime.lock_inner().koe_playing = true;
-        DispatchOutcome::Advance
-    }
-}
-
-/// `koe.koePlayEx(int archive_id, int sample_id)` — explicit form.
-#[derive(Debug)]
-pub struct KoePlayExOp {
-    runtime: Arc<AudioRuntime>,
-}
-
-impl KoePlayExOp {
-    pub fn new(runtime: Arc<AudioRuntime>) -> Self {
-        Self { runtime }
-    }
-}
-
-impl RLOperation for KoePlayExOp {
-    fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        let archive_id = if let Some(ExprValue::Int(n)) = args.first() {
-            *n
-        } else {
-            self.runtime
-                .record_warning(AudioRuntimeWarning::MissingArg {
-                    opcode_tag: KoeOpcode::PlayEx.as_str(),
-                    slot: "archive_id",
-                });
-            return DispatchOutcome::Advance;
-        };
-        let sample_id = if let Some(ExprValue::Int(n)) = args.get(1) {
-            *n
-        } else {
-            self.runtime
-                .record_warning(AudioRuntimeWarning::MissingArg {
-                    opcode_tag: KoeOpcode::PlayEx.as_str(),
-                    slot: "sample_id",
-                });
-            return DispatchOutcome::Advance;
-        };
-        let archive_label = AudioRuntime::voice_archive_label(archive_id);
-        self.runtime.emit(
-            AudioEventKind::VoicePlay,
-            AudioEventPayload::Voice {
-                archive_id: archive_label,
-                sample_id: sample_id.max(0) as u32,
-            },
-        );
-        self.runtime.lock_inner().koe_playing = true;
         DispatchOutcome::Advance
     }
 }
@@ -988,7 +894,7 @@ mod tests {
 
     #[test]
     fn voice_archive_label_pads_to_four_digits() {
-        assert_eq!(AudioRuntime::voice_archive_label(1), "z0001");
+        assert_eq!(AudioRuntime::voice_archive_label(5), "z0005");
         assert_eq!(AudioRuntime::voice_archive_label(1015), "z1015");
         assert_eq!(AudioRuntime::voice_archive_label(0), "z0000");
         // Negative archive ids clamp to z0000 — never panics.
@@ -1015,7 +921,7 @@ mod tests {
     fn bgm_play_honours_gameexe_foldname_bgm() {
         let runtime = synth_runtime();
         // Synthesise a Gameexe with `FOLDNAME.BGM = "BGM" = 0:
-        // "BGM.PAK"` — same shape as Sweetie HD.
+        // "BGM.PAK"` — the RealLive FOLDNAME tuple shape.
         let gameexe = synth_gameexe("#FOLDNAME.BGM = \"BGM\" = 0 : \"BGM.PAK\"\n");
         runtime.set_gameexe(gameexe);
         let mut vm = Vm::new(0u16, 0);
@@ -1067,9 +973,33 @@ mod tests {
     }
 
     #[test]
-    fn koe_play_resolves_archive_through_current_speaker() {
+    fn koe_play_without_established_archive_is_unresolved_not_defaulted() {
+        // A fresh runtime has NO current archive — koePlay must refuse to
+        // guess a default and surface a typed unresolved observation, not
+        // attribute the sample to a baked-in archive.
         let runtime = synth_runtime();
-        // Default speaker is archive 1 (z0001).
+        assert_eq!(runtime.current_speaker_archive(), None);
+        let mut vm = Vm::new(0u16, 0);
+        KoePlayOp::new(Arc::clone(&runtime)).dispatch(&mut vm, &[ExprValue::Int(46)]);
+        assert!(
+            runtime.emitter().store().in_order_snapshot().is_empty(),
+            "no VoicePlay may be emitted for an unresolved archive",
+        );
+        assert!(
+            runtime
+                .take_warnings()
+                .contains(&AudioRuntimeWarning::NoCurrentSpeaker),
+            "an unresolved koePlay must record the typed observation",
+        );
+    }
+
+    #[test]
+    fn koe_play_resolves_through_explicitly_established_archive() {
+        // Once an archive is established by explicit configuration, a bare
+        // koePlay resolves through it — a different archive would yield a
+        // different label, proving nothing is hardcoded.
+        let runtime = synth_runtime();
+        runtime.set_current_speaker_archive_id(1234);
         let mut vm = Vm::new(0u16, 0);
         KoePlayOp::new(Arc::clone(&runtime)).dispatch(&mut vm, &[ExprValue::Int(46)]);
         let events = runtime.emitter().store().in_order_snapshot();
@@ -1080,7 +1010,7 @@ mod tests {
                 archive_id,
                 sample_id,
             } => {
-                assert_eq!(archive_id, "z0001");
+                assert_eq!(archive_id, "z1234");
                 assert_eq!(*sample_id, 46);
             }
             other => panic!("expected Voice, got {other:?}"),
@@ -1088,7 +1018,7 @@ mod tests {
     }
 
     #[test]
-    fn koe_play_ex_threads_archive_id_directly() {
+    fn koe_play_ex_threads_archive_id_directly_and_establishes_current() {
         let runtime = synth_runtime();
         let mut vm = Vm::new(0u16, 0);
         KoePlayExOp::new(Arc::clone(&runtime))
@@ -1104,11 +1034,27 @@ mod tests {
             }
             other => panic!("expected Voice, got {other:?}"),
         }
+        // koePlayEx is an authoritative selector: it establishes the
+        // current archive so a following bare koePlay resolves through it.
+        assert_eq!(runtime.current_speaker_archive(), Some(1015));
+        KoePlayOp::new(Arc::clone(&runtime)).dispatch(&mut vm, &[ExprValue::Int(9)]);
+        match &runtime
+            .emitter()
+            .store()
+            .in_order_snapshot()
+            .last()
+            .unwrap()
+            .payload
+        {
+            AudioEventPayload::Voice { archive_id, .. } => assert_eq!(archive_id, "z1015"),
+            other => panic!("expected Voice, got {other:?}"),
+        }
     }
 
     #[test]
     fn koe_stop_emits_voice_stop_event() {
         let runtime = synth_runtime();
+        runtime.set_current_speaker_archive_id(7);
         let mut vm = Vm::new(0u16, 0);
         KoePlayOp::new(Arc::clone(&runtime)).dispatch(&mut vm, &[ExprValue::Int(46)]);
         KoeStopOp::new(Arc::clone(&runtime)).dispatch(&mut vm, &[]);
@@ -1116,47 +1062,6 @@ mod tests {
         assert_eq!(events.len(), 2);
         assert_eq!(events[1].event_kind, AudioEventKind::VoiceStop);
         assert!(!runtime.koe_playing());
-    }
-
-    #[test]
-    fn select_speaker_walks_namae_table_and_composes_archive_id() {
-        let runtime = synth_runtime();
-        // Sweetie HD shape: NAMAE = "<speaker>" = "<canonical>" = (mode, color_table_index, reserved).
-        // The composite archive id is `archive * 1000 + pattern` —
-        // (1, 15, -1) ↔ z1015.ovk, (1, 16, -1) ↔ z1016.ovk.
-        let gameexe = synth_gameexe(
-            "#NAMAE = \"和人\" = \"和人\" = (1, 16, -1)\n\
-             #NAMAE = \"凛\" = \"凛\" = (1, 15, -1)\n",
-        );
-        runtime.set_gameexe(gameexe);
-        assert!(runtime.select_speaker_by_display_name("凛"));
-        assert_eq!(runtime.current_speaker_archive_id(), 1015);
-        let mut vm = Vm::new(0u16, 0);
-        KoePlayOp::new(Arc::clone(&runtime)).dispatch(&mut vm, &[ExprValue::Int(7)]);
-        let events = runtime.emitter().store().in_order_snapshot();
-        match &events[0].payload {
-            AudioEventPayload::Voice { archive_id, .. } => assert_eq!(archive_id, "z1015"),
-            other => panic!("expected Voice, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn select_speaker_unknown_returns_false_without_changing_archive_id() {
-        let runtime = synth_runtime();
-        let gameexe = synth_gameexe("#NAMAE = \"凛\" = \"凛\" = (1, 15, -1)\n");
-        runtime.set_gameexe(gameexe);
-        assert!(!runtime.select_speaker_by_display_name("never-declared"));
-        assert_eq!(runtime.current_speaker_archive_id(), 1);
-    }
-
-    #[test]
-    fn namae_to_archive_id_composes_archive_and_pattern_fields() {
-        // Pin the composition formula at the typed-surface layer so a
-        // future change to the parser semantics surfaces here.
-        assert_eq!(AudioRuntime::namae_to_archive_id(1, 15), 1015);
-        assert_eq!(AudioRuntime::namae_to_archive_id(1, 16), 1016);
-        assert_eq!(AudioRuntime::namae_to_archive_id(0, 11), 11);
-        assert_eq!(AudioRuntime::namae_to_archive_id(2, 0), 2000);
     }
 
     #[test]

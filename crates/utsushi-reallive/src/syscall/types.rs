@@ -24,35 +24,10 @@ pub const SYSCALL_MOUSE_AREA_MALFORMED_CODE: &str = "utsushi.reallive.syscall.mo
 /// refuses to guess.
 pub const SYSCALL_MISSING_SCREEN_SIZE_CODE: &str = "utsushi.reallive.syscall.missing_screen_size";
 
-/// WBCALL slot count **CORPUS-OBSERVED from Sweetie HD**
-/// (`WBCALL.000`-`WBCALL.007`) — the only alpha-corpus RealLive title
-/// that declares any WBCALL routes.
-///
-/// **This is NOT an engine-validated universal.** RLDEV documents a
-/// *larger* WBCALL namespace, and the 2nd staged RealLive corpus
-/// (Kanon) declares no WBCALL routes at all, so nothing corroborates
-/// `8` as a RealLive-engine ceiling. Read this as "what Sweetie HD
-/// happens to declare", not "the RealLive WBCALL cap". Promotion from
-/// corpus-observed to engine-validated requires a 2nd RealLive title
-/// that itself exercises WBCALL slots — tracked by the beta-gate guard
-/// `wbcall_slot_count_stays_corpus_observed_until_second_reallive_title`
-/// in `tests/syscall_routes_real_bytes.rs`.
-///
-/// Pinned as a `const` so the dispatcher loop and the acceptance test
-/// share a single source of truth for the Sweetie-HD-observed value.
-pub const WBCALL_SLOT_COUNT: u8 = 8;
-
-/// Stable diagnostic code emitted when a `WBCALL.NNN` key is declared at
-/// or beyond the corpus-observed [`WBCALL_SLOT_COUNT`] cap (Sweetie HD).
-/// RLDEV documents a larger WBCALL namespace, but no staged RealLive
-/// title exercises a higher slot, so the cap stays corpus-observed; the
-/// dispatcher refuses to silently ignore an out-of-range slot.
-pub const SYSCALL_WBCALL_BEYOND_CAP_CODE: &str = "utsushi.reallive.syscall.wbcall_beyond_cap";
-
 /// The fixed kind-distinct route count documented in
 /// `docs/research/reallive-engine.md` § H. Eight kinds:
 /// `Cancel`, `SystemcallSave`, `SystemcallLoad`, `SystemcallSystem`
-/// `MouseAction`, `Loadcall`, `Exaftercall`, `Wbcall`. The Sweetie HD
+/// `MouseAction`, `Loadcall`, `Exaftercall`, `Wbcall`. The real-bytes
 /// acceptance test pins
 /// [`SyscallDispatcher::route_count`] against this value.
 pub const SYSCALL_KIND_COUNT: usize = 8;
@@ -175,7 +150,7 @@ impl HotRegion {
 /// conversion — only `width` / `height` are.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScreenSize {
-    /// `mode` field (`#SCREENSIZE_MOD=999,1280,720` → `999`).
+    /// `mode` field (`#SCREENSIZE_MOD=999,800,600` → `999`).
     pub mode: i32,
     /// Pixel width.
     pub width: u32,
@@ -252,31 +227,6 @@ pub enum SyscallDispatchBuildError {
         code: String,
         /// Dotted-path key (e.g. `MOUSEACTIONCALL.000`).
         route_key: String,
-    },
-    /// A `WBCALL.NNN` key is present with `NNN` at or beyond the
-    /// corpus-observed [`WBCALL_SLOT_COUNT`] cap. Sweetie HD (the only
-    /// alpha-corpus RealLive title that declares WBCALL routes) declares
-    /// exactly `WBCALL.000`-`007`; RLDEV documents a larger namespace but
-    /// no staged corpus game exercises it, so the cap is corpus-observed
-    /// NOT engine-validated. The dispatcher refuses to silently ignore
-    /// the out-of-range slot (the original silent-truncation behaviour)
-    /// rather than register a route no staged corpus has validated. When
-    /// a real ≥2-game beta corpus exercises higher slots, raise the cap
-    /// (promoting it toward engine-validated) and convert this to
-    /// enumeration (mirroring the MOUSEACTIONCALL full-namespace scan).
-    #[error(
-        "wbcall route {route_key} declares slot index {index} at or beyond the corpus-observed cap of {cap} ({code})"
-    )]
-    WbcallSlotBeyondCap {
-        /// Stable diagnostic code (matches
-        /// [`SYSCALL_WBCALL_BEYOND_CAP_CODE`]).
-        code: String,
-        /// Dotted-path key (e.g. `WBCALL.008`).
-        route_key: String,
-        /// The out-of-range slot index that was declared.
-        index: u8,
-        /// The corpus-observed cap ([`WBCALL_SLOT_COUNT`], Sweetie HD).
-        cap: u8,
     },
 }
 

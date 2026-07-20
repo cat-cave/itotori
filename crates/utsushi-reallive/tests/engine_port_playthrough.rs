@@ -30,6 +30,12 @@ use port_support::{NullAssetPackage, managed_temp_dir, synthetic_multi_message_e
 
 const MESSAGE_COUNT: usize = 3;
 
+/// The synthetic game's declared framebuffer. Deliberately NOT an HD
+/// resolution: the port must render in whatever screen space the game
+/// declares, so a non-HD size proves the render pass is driven by
+/// `screen_size` rather than a baked-in canvas.
+const SCREEN_SIZE: (u32, u32) = (800, 600);
+
 /// Build + drive a port over a `MESSAGE_COUNT`-message engine, returning the
 /// announced frames alongside the (now-launched) port for accessor checks.
 fn drive(bound: Option<usize>) -> (Vec<FrameArtifact>, UtsushiReallivePort) {
@@ -40,7 +46,7 @@ fn drive(bound: Option<usize>) -> (Vec<FrameArtifact>, UtsushiReallivePort) {
         assets,
         1,
         MessageWindowConfig::default(),
-        (1280, 720),
+        SCREEN_SIZE,
     );
     if let Some(max) = bound {
         port = port.with_playthrough_max(max);
@@ -89,6 +95,17 @@ fn playthrough_renders_one_frame_per_play_order_message_in_order() {
          (a single-frame regression that renders only message #0 fails here)",
         frames.len(),
     );
+
+    // (1b) Each frame is rendered at the game's OWN declared framebuffer
+    //      (`SCREEN_SIZE`), not a baked-in canvas. A regression that
+    //      hardcoded HD dimensions would report the wrong size here.
+    for frame in &frames {
+        assert_eq!(
+            (frame.width, frame.height),
+            (Some(SCREEN_SIZE.0), Some(SCREEN_SIZE.1)),
+            "each frame must render at the game's declared screen size {SCREEN_SIZE:?}",
+        );
+    }
 
     // (2) Each frame is a DISTINCT render — distinct message ⇒ distinct
     //     rendered pixels ⇒ distinct sha256 frame id. A regression that

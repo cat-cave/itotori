@@ -1,7 +1,7 @@
 //! System-call dispatch wired to Gameexe routes.
 //!
-//! Builds a typed dispatch table from the Sweetie HD-shaped Gameexe
-//! routes documented in `docs/research/reallive-engine.md` § H, then
+//! Builds a typed dispatch table from the RealLive syscall routes
+//! documented in `docs/research/reallive-engine.md` § H, then
 //! lowers a substrate [`InputEvent`] or a pixel-space pointer-move into
 //! a [`SyscallRoute`] that the VM event loop invokes through the
 //! [`FarcallOp`]. No private dispatch path — every route
@@ -11,8 +11,7 @@
 //!
 //! # Route kinds
 //!
-//! The dispatcher recognises **eight** route kinds covering Sweetie HD
-//! § H:
+//! The dispatcher recognises **eight** route kinds covering § H:
 //!
 //! Kind | Gameexe key | `_MOD` key
 //! --------------------------------- | -------------------------------- | --------------------------
@@ -23,14 +22,15 @@
 //! [`SyscallRouteKind::MouseAction`] | `MOUSEACTIONCALL.NNN.SEEN`+`AREA` | `MOUSEACTIONCALL.NNN.MOD`
 //! [`SyscallRouteKind::Loadcall`] | `LOADCALL` | `LOADCALL_MOD`
 //! [`SyscallRouteKind::Exaftercall`] | `EXAFTERCALL` | `EXAFTERCALL_MOD`
-//! [`SyscallRouteKind::Wbcall`] | `WBCALL.000`-`007` | none (always active)
+//! [`SyscallRouteKind::Wbcall`] | `WBCALL.NNN` | none (always active)
 //!
-//! Sweetie HD declares one `MOUSEACTIONCALL.000` and eight
-//! `WBCALL.NNN` instances, so the parsed dispatcher holds **15
-//! entries across 8 kinds**. The route count
-//! ([`SyscallDispatcher::route_count`]) reports the kind-distinct
-//! total — exactly 8 for Sweetie HD — which the acceptance criterion
-//! pins as "the dispatcher reports 8 known routes".
+//! The `MOUSEACTIONCALL.NNN` and `WBCALL.NNN` namespaces are enumerated
+//! straight from the parsed Gameexe tree, so a game may declare any
+//! number of pointer hot-regions and window-button callbacks. The route
+//! count ([`SyscallDispatcher::route_count`]) reports the kind-distinct
+//! total, which the acceptance criterion pins as "the dispatcher reports
+//! its known routes"; the per-instance entry total varies with how many
+//! `MOUSEACTIONCALL`/`WBCALL` slots the game declares.
 //!
 //! # `_MOD` flag semantics
 //!
@@ -66,12 +66,13 @@
 //!   in the table.
 
 mod types;
+mod wbcall;
 pub use types::{
     HotRegion, SYSCALL_KIND_COUNT, SYSCALL_MISSING_SCREEN_SIZE_CODE,
-    SYSCALL_MOUSE_AREA_MALFORMED_CODE, SYSCALL_ROUTE_MALFORMED_PAIR_CODE,
-    SYSCALL_WBCALL_BEYOND_CAP_CODE, ScreenSize, SyscallDispatchBuildError, SyscallDispatchError,
-    SyscallRoute, SyscallRouteKind, WBCALL_SLOT_COUNT,
+    SYSCALL_MOUSE_AREA_MALFORMED_CODE, SYSCALL_ROUTE_MALFORMED_PAIR_CODE, ScreenSize,
+    SyscallDispatchBuildError, SyscallDispatchError, SyscallRoute, SyscallRouteKind,
 };
+use wbcall::{append_wbcall_routes, normalise_pair};
 
 use utsushi_core::substrate::InputEvent;
 
@@ -81,9 +82,9 @@ use crate::rlop::{DispatchOutcome, ExprValue, RLOperation};
 use crate::vm::{SceneId, Vm, VmError};
 
 /// Typed dispatcher built from a parsed [`Gameexe`] tree. Holds the
-/// 15-route Sweetie HD table (6 named scalar routes, 1 MOUSEACTIONCALL
-/// slot, and 8 WBCALL slots = 15) plus the screen size used by the
-/// pointer normalization round-trip.
+/// six named scalar routes plus every declared `MOUSEACTIONCALL.NNN`
+/// pointer hot-region and `WBCALL.NNN` window-button slot, and the
+/// screen size used by the pointer normalization round-trip.
 #[derive(Debug, Clone)]
 pub struct SyscallDispatcher {
     routes: Vec<SyscallRoute>,
@@ -198,45 +199,7 @@ impl SyscallDispatcher {
             });
         }
 
-        // WBCALL.000-007 — the Sweetie-HD-observed 8-slot window-button
-        // table (corpus-observed cap, see [`WBCALL_SLOT_COUNT`]).
-        for index in 0..WBCALL_SLOT_COUNT {
-            let key = format!("WBCALL.{index:03}");
-            if let Some(pair) = gameexe.get_int_pair(&key) {
-                let (scene_id, entrypoint) = normalise_pair(pair, &key)?;
-                routes.push(SyscallRoute {
-                    kind: SyscallRouteKind::Wbcall { index },
-                    scene_id,
-                    entrypoint,
-                    area: None,
-                });
-            } else if gameexe.get(&key).is_some() {
-                return Err(SyscallDispatchBuildError::MalformedRoutePair {
-                    code: SYSCALL_ROUTE_MALFORMED_PAIR_CODE.to_string(),
-                    route_key: key,
-                });
-            }
-        }
-
-        // Guard against silent truncation of the WBCALL namespace. The
-        // loop above only registers `WBCALL.000`-`007` (the
-        // corpus-observed Sweetie HD cap, NOT an engine-validated
-        // ceiling); RealLive's documented namespace is larger. Scan the
-        // rest of the `u8` index space and refuse — with a typed error —
-        // to silently ignore any `WBCALL.NNN` declared at or beyond the
-        // corpus-observed cap, rather than dropping a route no staged
-        // corpus has validated.
-        for index in WBCALL_SLOT_COUNT..=u8::MAX {
-            let key = format!("WBCALL.{index:03}");
-            if gameexe.get(&key).is_some() {
-                return Err(SyscallDispatchBuildError::WbcallSlotBeyondCap {
-                    code: SYSCALL_WBCALL_BEYOND_CAP_CODE.to_string(),
-                    route_key: key,
-                    index,
-                    cap: WBCALL_SLOT_COUNT,
-                });
-            }
-        }
+        append_wbcall_routes(gameexe, &mut routes)?;
 
         let screen_size = parse_screen_size(gameexe);
 
@@ -251,9 +214,9 @@ impl SyscallDispatcher {
         &self.routes
     }
 
-    /// Number of *kind-distinct* routes the dispatcher carries. Pinned
-    /// against [`SYSCALL_KIND_COUNT`] for Sweetie HD by the acceptance
-    /// test (`syscall_routes_match_reallive_real_bytes`).
+    /// Number of *kind-distinct* routes the dispatcher carries, capped by
+    /// [`SYSCALL_KIND_COUNT`]. Pinned by the real-bytes acceptance test
+    /// (`syscall_routes_match_reallive_real_bytes`).
     pub fn route_count(&self) -> usize {
         let mut seen = [false; SYSCALL_KIND_COUNT];
         for route in &self.routes {
@@ -262,9 +225,9 @@ impl SyscallDispatcher {
         seen.iter().filter(|present| **present).count()
     }
 
-    /// Total entry count (15 for Sweetie HD: 6 named scalar routes
-    /// 1 MOUSEACTIONCALL + 8 WBCALL — minus any `_MOD=0`-disabled
-    /// entries).
+    /// Total entry count: the six named scalar routes plus every declared
+    /// `MOUSEACTIONCALL.NNN` and `WBCALL.NNN` slot, minus any `_MOD=0`-
+    /// disabled entries.
     pub fn entry_count(&self) -> usize {
         self.routes.len()
     }
@@ -483,29 +446,6 @@ fn mod_disables(gameexe: &Gameexe, mod_key: &str) -> bool {
     matches!(gameexe.get_int(mod_key), Some(0))
 }
 
-/// Coerce a `(scene, entrypoint)` `(i32, i32)` pair from
-/// [`Gameexe::get_int_pair`] into the typed
-/// `(SceneId, u32)` shape the dispatcher carries. Negative or
-/// over-range values surface a typed
-/// [`SyscallDispatchBuildError::MalformedRoutePair`].
-fn normalise_pair(
-    pair: (i32, i32),
-    key: &str,
-) -> Result<(SceneId, u32), SyscallDispatchBuildError> {
-    let (scene_raw, ep_raw) = pair;
-    let scene = u32::try_from(scene_raw)
-        .ok()
-        .and_then(|value| SceneId::try_from(value).ok());
-    let entrypoint = u32::try_from(ep_raw).ok();
-    match (scene, entrypoint) {
-        (Some(scene), Some(entrypoint)) => Ok((scene, entrypoint)),
-        _ => Err(SyscallDispatchBuildError::MalformedRoutePair {
-            code: SYSCALL_ROUTE_MALFORMED_PAIR_CODE.to_string(),
-            route_key: key.to_string(),
-        }),
-    }
-}
-
 /// Parse `SCREENSIZE_MOD=mode,width,height` if present.
 ///
 /// A degenerate dimension (`width == 0` or `height == 0`) is treated as
@@ -543,11 +483,18 @@ mod tests {
         Gameexe::parse(&bytes).expect("synthetic gameexe must parse")
     }
 
+    // Synthetic § H route shape used by the unit tests. Deliberately
+    // authored at an 800x600 screen (NOT any staged corpus resolution)
+    // with a right-edge hot region, so the pointer round-trip proves the
+    // dispatcher works at whatever screen size the game declares — the
+    // geometry is driven by `SCREENSIZE_MOD`, never a baked-in canvas.
+    const SCREEN_W: u32 = 800;
+    const SCREEN_H: u32 = 600;
+    const SCREENSIZE_LINE: &str = "#SCREENSIZE_MOD=1,800,600\r\n";
+
     fn reallive_real_bytes_lines_14_28() -> &'static str {
-        // Lines 14-28 of Sweetie HD's Gameexe.ini per § H; the
-        // dispatcher must boot against this exact prefix without
-        // an unrelated SCREENSIZE_MOD / SEEN_START / CAPTION
-        // sidecar.
+        // The § H syscall route prefix; the dispatcher must boot against
+        // it without an unrelated SEEN_START / CAPTION sidecar.
         concat!(
             "#CANCELCALL_MOD=1\r\n",
             "#CANCELCALL=9999,10\r\n",
@@ -559,7 +506,7 @@ mod tests {
             "#SYSTEMCALL_SYSTEM=9999,22\r\n",
             "#MOUSEACTIONCALL.000.MOD=1\r\n",
             "#MOUSEACTIONCALL.000.SEEN=9999,30\r\n",
-            "#MOUSEACTIONCALL.000.AREA=1232,0,1279,719\r\n",
+            "#MOUSEACTIONCALL.000.AREA=752,0,799,599\r\n",
             "#LOADCALL_MOD=1\r\n",
             "#LOADCALL=9999,40\r\n",
             "#EXAFTERCALL_MOD=0\r\n",
@@ -572,7 +519,7 @@ mod tests {
             "#WBCALL.005=9999,5\r\n",
             "#WBCALL.006=9999,6\r\n",
             "#WBCALL.007=9999,7\r\n",
-            "#SCREENSIZE_MOD=999,1280,720\r\n",
+            "#SCREENSIZE_MOD=1,800,600\r\n",
         )
     }
 
@@ -587,7 +534,7 @@ mod tests {
         let gx = parse_gameexe(&text);
         let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
         assert_eq!(dispatcher.route_count(), SYSCALL_KIND_COUNT);
-        // Sweetie HD shape: 6 named (cancel/save/load/system/loadcall
+        // § H shape: 6 named (cancel/save/load/system/loadcall/
         // exaftercall) + 1 mouse-action + 8 wbcall = 15 entries.
         assert_eq!(dispatcher.entry_count(), 15);
     }
@@ -687,16 +634,15 @@ mod tests {
 
     #[test]
     fn exaftercall_mod_zero_in_real_bytes_disables_route() {
-        // The Sweetie HD Gameexe.ini carries `EXAFTERCALL_MOD=0`
-        // so by default the dispatcher does NOT include
-        // `exaftercall`.
+        // The § H fixture carries `EXAFTERCALL_MOD=0`, so by default the
+        // dispatcher does NOT include `exaftercall`.
         let gx = parse_gameexe(reallive_real_bytes_lines_14_28());
         let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
         assert!(
             dispatcher
                 .route_for_kind(SyscallRouteKind::Exaftercall)
                 .is_none(),
-            "Real Sweetie HD carries EXAFTERCALL_MOD=0 — route must be absent"
+            "EXAFTERCALL_MOD=0 — route must be absent"
         );
         // Seven kinds present (not 8).
         assert_eq!(dispatcher.route_count(), SYSCALL_KIND_COUNT - 1);
@@ -711,12 +657,12 @@ mod tests {
 
     #[test]
     fn mouseactioncall_hot_region_pixel_dispatches() {
-        // AREA = 1232,0,1279,719. (1250, 300) is inside.
+        // AREA = 752,0,799,599. (780, 300) is inside.
         // (100, 100) is outside.
         let gx = parse_gameexe(reallive_real_bytes_lines_14_28());
         let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
         let inside = dispatcher
-            .route_for_pointer_pixel(1250, 300)
+            .route_for_pointer_pixel(780, 300)
             .expect("inside hits mouse-action route");
         assert!(matches!(
             inside.kind,
@@ -734,11 +680,11 @@ mod tests {
     fn mouseactioncall_input_event_normalized_round_trips_to_pixel() {
         let gx = parse_gameexe(reallive_real_bytes_lines_14_28());
         let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
-        // (x=1250 / 1279, y=300/719) → normalized coords for the
-        // pixel-space (1250, 300) point.
+        // Normalized coords for the pixel-space (780, 300) point on the
+        // fixture's declared 800x600 screen: divide by `dim - 1`.
         let event = InputEvent::Pointer {
-            x: 1250.0 / 1279.0,
-            y: 300.0 / 719.0,
+            x: 780.0 / (SCREEN_W - 1) as f32,
+            y: 300.0 / (SCREEN_H - 1) as f32,
             button: utsushi_core::substrate::PointerButton::Primary,
         };
         let route = dispatcher
@@ -769,8 +715,7 @@ mod tests {
         // A pointer event can no longer be lowered to pixel space, so
         // the dispatcher must surface the typed missing-screen-size
         // diagnostic rather than silently returning `None`.
-        let text =
-            reallive_real_bytes_lines_14_28().replace("#SCREENSIZE_MOD=999,1280,720\r\n", "");
+        let text = reallive_real_bytes_lines_14_28().replace(SCREENSIZE_LINE, "");
         let gx = parse_gameexe(&text);
         let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
         assert!(
@@ -799,12 +744,8 @@ mod tests {
         // that axis to `0` — silently mis-routing every pointer
         // hot-region dispatch. The corrected `parse_screen_size`
         // rejects the degenerate shape so the typed diagnostic fires.
-        for degenerate in [
-            "#SCREENSIZE_MOD=999,0,720\r\n",
-            "#SCREENSIZE_MOD=999,1280,0\r\n",
-        ] {
-            let text = reallive_real_bytes_lines_14_28()
-                .replace("#SCREENSIZE_MOD=999,1280,720\r\n", degenerate);
+        for degenerate in ["#SCREENSIZE_MOD=1,0,600\r\n", "#SCREENSIZE_MOD=1,800,0\r\n"] {
+            let text = reallive_real_bytes_lines_14_28().replace(SCREENSIZE_LINE, degenerate);
             let gx = parse_gameexe(&text);
             let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
             assert!(
@@ -815,8 +756,8 @@ mod tests {
             // axis must now surface the typed missing-screen-size
             // diagnostic instead of silently corrupting dispatch.
             let event = InputEvent::Pointer {
-                x: 1250.0 / 1279.0,
-                y: 300.0 / 719.0,
+                x: 780.0 / (SCREEN_W - 1) as f32,
+                y: 300.0 / (SCREEN_H - 1) as f32,
                 button: utsushi_core::substrate::PointerButton::Primary,
             };
             match dispatcher.route_for_input_event(&event) {
@@ -836,10 +777,10 @@ mod tests {
         // screen size disables no pointer dispatch, so the honest
         // answer is `Ok(None)` rather than a false-positive diagnostic.
         let mut text = reallive_real_bytes_lines_14_28()
-            .replace("#SCREENSIZE_MOD=999,1280,720\r\n", "")
+            .replace(SCREENSIZE_LINE, "")
             .replace("#MOUSEACTIONCALL.000.MOD=1\r\n", "")
             .replace("#MOUSEACTIONCALL.000.SEEN=9999,30\r\n", "")
-            .replace("#MOUSEACTIONCALL.000.AREA=1232,0,1279,719\r\n", "");
+            .replace("#MOUSEACTIONCALL.000.AREA=752,0,799,599\r\n", "");
         text.push_str("");
         let gx = parse_gameexe(&text);
         let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
@@ -868,7 +809,7 @@ mod tests {
     #[test]
     fn missing_mouse_area_surfaces_typed_error() {
         let mut text = reallive_real_bytes_lines_14_28().to_string();
-        text = text.replace("#MOUSEACTIONCALL.000.AREA=1232,0,1279,719\r\n", "");
+        text = text.replace("#MOUSEACTIONCALL.000.AREA=752,0,799,599\r\n", "");
         let gx = parse_gameexe(&text);
         match SyscallDispatcher::from_gameexe(&gx) {
             Err(SyscallDispatchBuildError::MouseAreaMissing { code, route_key }) => {
@@ -900,27 +841,80 @@ mod tests {
     }
 
     #[test]
-    fn wbcall_slot_beyond_cap_is_typed_error_not_silent_ignore() {
-        // Audit-focus pin: a `WBCALL.NNN` declared at or beyond the
-        // corpus-observed 8-slot cap (Sweetie HD) must surface a typed
-        // error, not be silently dropped. Append WBCALL.008 to the
-        // Sweetie HD shape.
+    fn wbcall_namespace_is_enumerated_not_capped_at_a_fixed_count() {
+        // The dispatcher must register EVERY declared WBCALL slot, not a
+        // hardcoded window: appending a 9th and 10th window-button slot
+        // beyond the § H fixture's eight must extend the table, never
+        // trip an artificial cap. This proves a RealLive game with a
+        // different WBCALL count works.
         let mut text = reallive_real_bytes_lines_14_28().to_string();
         text.push_str("#WBCALL.008=9999,8\r\n");
+        text.push_str("#WBCALL.009=9999,9\r\n");
+        let gx = parse_gameexe(&text);
+        let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
+        for index in 0u8..=9 {
+            let route = dispatcher
+                .route_for_wbcall(index)
+                .unwrap_or_else(|| panic!("WBCALL.{index:03} must be registered"));
+            assert_eq!(
+                route.entrypoint, index as u32,
+                "WBCALL.{index:03} entrypoint"
+            );
+        }
+        // Exactly ten WBCALL entries — no phantom slots, none dropped.
+        let wbcall_count = dispatcher
+            .routes()
+            .iter()
+            .filter(|route| matches!(route.kind, SyscallRouteKind::Wbcall { .. }))
+            .count();
+        assert_eq!(wbcall_count, 10, "every declared WBCALL slot is registered");
+    }
+
+    #[test]
+    fn wbcall_sparse_namespace_registers_only_declared_slots() {
+        // A non-contiguous WBCALL namespace (declare 000, 002, 005; leave
+        // 001/003/004 absent) must register exactly the declared slots —
+        // enumeration follows the Gameexe, it neither fills gaps nor
+        // stops at the first hole.
+        let mut text: String = reallive_real_bytes_lines_14_28()
+            .lines()
+            .filter(|line| !line.starts_with("#WBCALL."))
+            .collect::<Vec<_>>()
+            .join("\r\n");
+        text.push_str("\r\n#WBCALL.000=9999,100\r\n");
+        text.push_str("#WBCALL.002=9999,102\r\n");
+        text.push_str("#WBCALL.005=9999,105\r\n");
+        let gx = parse_gameexe(&text);
+        let dispatcher = SyscallDispatcher::from_gameexe(&gx).expect("build");
+        let mut declared: Vec<u8> = dispatcher
+            .routes()
+            .iter()
+            .filter_map(|route| match route.kind {
+                SyscallRouteKind::Wbcall { index } => Some(index),
+                _ => None,
+            })
+            .collect();
+        declared.sort_unstable();
+        assert_eq!(
+            declared,
+            vec![0, 2, 5],
+            "only declared WBCALL slots register"
+        );
+    }
+
+    #[test]
+    fn wbcall_malformed_pair_surfaces_typed_error_not_silent_drop() {
+        // A declared WBCALL slot whose value is not a `(scene, entrypoint)`
+        // pair must surface a typed diagnostic, never be silently dropped.
+        let mut text = reallive_real_bytes_lines_14_28().to_string();
+        text.push_str("#WBCALL.008=garbage\r\n");
         let gx = parse_gameexe(&text);
         match SyscallDispatcher::from_gameexe(&gx) {
-            Err(SyscallDispatchBuildError::WbcallSlotBeyondCap {
-                code,
-                route_key,
-                index,
-                cap,
-            }) => {
-                assert_eq!(code, SYSCALL_WBCALL_BEYOND_CAP_CODE);
+            Err(SyscallDispatchBuildError::MalformedRoutePair { code, route_key }) => {
+                assert_eq!(code, SYSCALL_ROUTE_MALFORMED_PAIR_CODE);
                 assert_eq!(route_key, "WBCALL.008");
-                assert_eq!(index, 8);
-                assert_eq!(cap, WBCALL_SLOT_COUNT);
             }
-            other => panic!("expected WbcallSlotBeyondCap, got: {other:?}"),
+            other => panic!("expected MalformedRoutePair, got: {other:?}"),
         }
     }
 
