@@ -23,8 +23,8 @@
       "path": "fixtures/public/reallive-detector/capabilities.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "2b2f1c32c30239549f5f02dcc8cf468450021b88b06a65433f5eef34587c2f8a",
-      "bytes": 24307,
+      "sha256": "c5e3e71e0d7afe1bf50791749ff909783c9c28f91d9bf61cf0bbb7ce0a2626b1",
+      "bytes": 24543,
       "redistributable": true
     },
     {
