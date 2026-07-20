@@ -14,6 +14,7 @@ use super::model::{
     SiglusCallArgumentRole, SiglusCallTarget, SiglusSelChoice, SiglusSelOption, SiglusStringRef,
     SiglusSyscallDiagnostic, SiglusTypedCall,
 };
+use super::selection_labels;
 use super::shapes::system_function_shape;
 
 /// A compact, total version of the siglus-09 expression stack. It exists here
@@ -360,17 +361,6 @@ fn replay_calls(
     Ok((calls, command_operand_bytes))
 }
 
-/// Return all direct, positional string arguments used as `selbtn` labels.
-fn sel_option_strings(call: &SiglusTypedCall) -> impl Iterator<Item = i32> + '_ {
-    let positional_count = call.args.len().saturating_sub(call.named_arg_ids.len());
-    call.args[..positional_count]
-        .iter()
-        .filter_map(|arg| match arg {
-            SiglusExpr::Str { index } => Some(*index),
-            _ => None,
-        })
-}
-
 /// Decode command sites, then attach the selections to the existing flow
 /// recognizer's branch arms. All byte parsing happens through `decode_operand`,
 /// which validates its exact partition-assigned span.
@@ -397,8 +387,13 @@ pub fn decode_scene_syscalls(payload: &[u8]) -> Result<SceneSyscallDecode, Scene
             .iter()
             .position(|choice| choice.select_offset == call.site_offset);
         let arms = structural_choice_index.map(|index| &flow.choice_units[index].arms);
+        let string_pushes = selection_labels::selection_string_push_offsets(
+            bytecode,
+            &partition.instructions,
+            call.site_offset,
+        );
         let mut options = Vec::new();
-        for (index, string_index) in sel_option_strings(call).enumerate() {
+        for (index, string_index) in selection_labels::sel_option_strings(call).enumerate() {
             let Some(text) = strings.resolve(string_index) else {
                 unresolved_sel_option_count += 1;
                 continue;
@@ -422,6 +417,10 @@ pub fn decode_scene_syscalls(payload: &[u8]) -> Result<SceneSyscallDecode, Scene
             options.push(SiglusSelOption {
                 result_value,
                 text,
+                source_command_offset: string_pushes
+                    .get(index)
+                    .filter(|(pushed_index, _)| pushed_index == &string_index)
+                    .map(|(_, offset)| *offset),
                 structural_arm_index,
                 branch_target_offset,
             });

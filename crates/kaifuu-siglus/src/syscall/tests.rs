@@ -106,6 +106,16 @@ fn decodes_sel_arguments_tail_and_string_references() {
     assert_eq!(decode.selections[0].options.len(), 2);
     assert_eq!(decode.selections[0].options[0].text.index, 0);
     assert_eq!(decode.selections[0].options[1].text.index, 1);
+    assert!(
+        decode.selections[0].options[0]
+            .source_command_offset
+            .is_some()
+    );
+    assert!(
+        decode.selections[0].options[1]
+            .source_command_offset
+            .is_some()
+    );
     assert!(decode.diagnostics.is_empty());
 }
 

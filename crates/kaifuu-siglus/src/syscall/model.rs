@@ -96,6 +96,10 @@ pub struct SiglusSelOption {
     pub result_value: i32,
     /// Text surface as a string-table reference, never decoded text.
     pub text: SiglusStringRef,
+    /// Byte offset of the `CD_PUSH` command that supplied this literal to the
+    /// selection call. This is the distinct command-site coordinate consumers
+    /// use for offset-keyed source identity.
+    pub source_command_offset: Option<usize>,
     /// Index into the corresponding [`crate::SiglusChoiceUnit`] arm list.
     pub structural_arm_index: Option<usize>,
     /// Branch target resolved by the structural arm.
