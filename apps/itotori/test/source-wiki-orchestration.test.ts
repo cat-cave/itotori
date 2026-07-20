@@ -19,6 +19,7 @@ import {
   artifactKey,
   buildSourceWikiPlan,
   deriveWorkSource,
+  isRecoverablyUncitable,
   orchestrateSourceWiki,
   planSourceWiki,
   selectSourceWikiRoles,
@@ -456,6 +457,112 @@ describe("clause 5 — incomplete best-effort outputs retry without weakening co
     await expect(
       orchestrateSourceWiki(baseDeps({ roles: ["A1"], runner: async () => [], maxAttempts: 2 })),
     ).rejects.toThrow(/after 2 attempts/u);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+describe("clause 6 — a persistently-uncitable analyst object is retried then skipped, never fatal", () => {
+  const SCENE_12 = "A3:game:scene:12";
+
+  it("PROOF: a scene whose FIRST A3 draft is all-mis-cited (zero claims) is RETRIED and then commits", async () => {
+    // Attempt 1 for scene 12 returns objects with every claim repaired away (the
+    // flash model mis-cited each label); attempt 2 cites correctly. The retry —
+    // not a first-try pass — lands the object.
+    const attempts = new Map<string, number>();
+    const runner: AnalystRunner = async (input) => {
+      const n = (attempts.get(input.step.stepId) ?? 0) + 1;
+      attempts.set(input.step.stepId, n);
+      const uncited = input.step.stepId === SCENE_12 && n === 1;
+      return input.step.targets.map((t) =>
+        makeObject(t.kind, t.subject, t.scope, input.role, uncited ? { claims: [] } : {}),
+      );
+    };
+    const report = await orchestrateSourceWiki(baseDeps({ roles: ["A3"], runner, maxAttempts: 3 }));
+
+    // Scene 12 was retried; every other scene passed on the first attempt.
+    expect(attempts.get(SCENE_12)).toBe(2);
+    // Every target committed — nothing skipped, no diagnostic needed.
+    expect(report.producedKeys).toHaveLength(8);
+    expect(report.uncitableObjects).toHaveLength(0);
+  });
+
+  it("PROOF: a PERSISTENTLY-uncitable scene is SKIPPED with a diagnostic and the fold COMPLETES", async () => {
+    // Scene 12 returns zero-claim objects on EVERY attempt (an unrecoverable
+    // mis-citation). It must not abort the whole-game fold: skip it, log it, and
+    // finish every other scene.
+    const attempts = new Map<string, number>();
+    const runner: AnalystRunner = async (input) => {
+      attempts.set(input.step.stepId, (attempts.get(input.step.stepId) ?? 0) + 1);
+      const uncited = input.step.stepId === SCENE_12;
+      return input.step.targets.map((t) =>
+        makeObject(t.kind, t.subject, t.scope, input.role, uncited ? { claims: [] } : {}),
+      );
+    };
+    const ledger = new InMemoryArtifactLedger();
+    // The whole run RESOLVES — it does not throw over the one bad scene.
+    const report = await orchestrateSourceWiki(
+      baseDeps({ roles: ["A3"], runner, ledger, maxAttempts: 3 }),
+    );
+
+    // Scene 12 exhausted the retry budget; the other three scenes committed both
+    // objects each (6 keys), and scene 12's two objects (the plan's own target
+    // identities for that step) are the logged gap.
+    const scene12Keys = planSourceWiki(syntheticSnapshot())
+      .phases.flatMap((phase) => phase.items)
+      .flatMap((item) => item.steps)
+      .find((s) => s.stepId === SCENE_12)!
+      .targets.map((t) => t.key)
+      .sort();
+    expect(attempts.get(SCENE_12)).toBe(3);
+    expect(report.producedKeys).toHaveLength(6);
+    expect(report.uncitableObjects).toHaveLength(2);
+    expect(report.uncitableObjects.every((entry) => entry.stepId === SCENE_12)).toBe(true);
+    expect(report.uncitableObjects.every((entry) => entry.attempts === 3)).toBe(true);
+    expect(report.uncitableObjects.map((entry) => entry.key).sort()).toEqual(scene12Keys);
+    // No empty object was committed: every recorded object carries a cited claim.
+    for (const object of ledger.recorded()) expect(object.claims.length).toBeGreaterThan(0);
+    // The bible still contains the other scenes — the fold genuinely completed.
+    expect(report.producedKeys).toContain(
+      artifactKey("scene-summary", { kind: "scene", id: "10" }, { kind: "route", routeId: "r1" }),
+    );
+  });
+
+  it("PROOF: a not-cited STRUCTURAL object stays FATAL (the skip is narrative-only)", async () => {
+    // Only best-effort narrative kinds are skippable. A5's register-baseline is a
+    // structural object whose claims are deterministic; a not-cited there is a
+    // real bug and must still abort loudly — never silently skipped.
+    const runner: AnalystRunner = async (input) =>
+      input.step.targets.map((t) =>
+        makeObject(t.kind, t.subject, t.scope, input.role, { claims: [] }),
+      );
+    await expect(
+      orchestrateSourceWiki(baseDeps({ roles: ["A5"], runner, maxAttempts: 2 })),
+    ).rejects.toThrow(/not-cited/u);
+  });
+
+  it("PROOF: the recoverable-uncitable guard admits ONLY narrative kinds with a not-cited reason", () => {
+    const notCited = new ObjectRejectedError("not-cited", "x");
+    const offTarget = new ObjectRejectedError("off-target", "x");
+    const sceneSummary = makeObject(
+      "scene-summary",
+      { kind: "scene", id: "12" },
+      { kind: "route", routeId: "r2" },
+      "A3",
+      { claims: [] },
+    );
+    const registerBaseline = makeObject(
+      "register-baseline",
+      { kind: "character", id: "c1" },
+      { kind: "global" },
+      "A5",
+      { claims: [] },
+    );
+    // Narrative object + not-cited → recoverable (retry/skip).
+    expect(isRecoverablyUncitable(sceneSummary, notCited)).toBe(true);
+    // Structural object + not-cited → NOT recoverable (stays loud).
+    expect(isRecoverablyUncitable(registerBaseline, notCited)).toBe(false);
+    // Narrative object + a DIFFERENT rejection reason → NOT recoverable.
+    expect(isRecoverablyUncitable(sceneSummary, offTarget)).toBe(false);
   });
 });
 
