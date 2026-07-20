@@ -643,7 +643,7 @@
         {
           "capability": "asset_text_patching",
           "status": "limited",
-          "limitation": "dialogue + choice text is patched back by rebuilding TEXT.DAT (re-encrypting when the original was) and repointing SCRIPT.SRC as loose files; PAC repack, speaker-name/non-text surfaces, and the full Sv20 opcode table are not claimed"
+          "limitation": "dialogue + choice text is patched back by rebuilding TEXT.DAT (including the supported keyless ROL+XOR `$` transform when present) and repointing SCRIPT.SRC as loose files; PAC repack, speaker-name/non-text surfaces, and the full Sv20 opcode table are not claimed"
         },
         {
           "capability": "codec_access",
@@ -688,12 +688,12 @@
         {
           "capability": "patch_back",
           "status": "limited",
-          "limitation": "dialogue + choice text is patched back by rebuilding TEXT.DAT (re-encrypting when the original was) and repointing SCRIPT.SRC as loose files; PAC repack, speaker-name/non-text surfaces, and the full Sv20 opcode table are not claimed"
+          "limitation": "dialogue + choice text is patched back by rebuilding TEXT.DAT (including the supported keyless ROL+XOR `$` transform when present) and repointing SCRIPT.SRC as loose files; PAC repack, speaker-name/non-text surfaces, and the full Sv20 opcode table are not claimed"
         },
         {
           "capability": "patching",
           "status": "limited",
-          "limitation": "dialogue + choice text is patched back by rebuilding TEXT.DAT (re-encrypting when the original was) and repointing SCRIPT.SRC as loose files; PAC repack, speaker-name/non-text surfaces, and the full Sv20 opcode table are not claimed"
+          "limitation": "dialogue + choice text is patched back by rebuilding TEXT.DAT (including the supported keyless ROL+XOR `$` transform when present) and repointing SCRIPT.SRC as loose files; PAC repack, speaker-name/non-text surfaces, and the full Sv20 opcode table are not claimed"
         },
         {
           "capability": "profile_generation",
@@ -810,7 +810,9 @@
         "engineFamily": "reallive",
         "detected": true,
         "detectedVariant": "reallive-seen-txt-archive",
-        "signals": ["packed"],
+        "signals": [
+          "packed"
+        ],
         "evidence": [
           {
             "evidenceType": "file_extension",

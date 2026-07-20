@@ -10,7 +10,7 @@ impl EngineAdapter for SoftpalProfileDetectorAdapter {
     }
 
     fn capabilities(&self) -> AdapterCapabilities {
-        const PATCH_LIMITATION: &str = "dialogue + choice text is patched back by rebuilding TEXT.DAT (re-encrypting when the original was) and repointing SCRIPT.SRC as loose files; PAC repack, speaker-name/non-text surfaces, and the full Sv20 opcode table are not claimed";
+        const PATCH_LIMITATION: &str = "dialogue + choice text is patched back by rebuilding TEXT.DAT (including the supported keyless ROL+XOR `$` transform when present) and repointing SCRIPT.SRC as loose files; PAC repack, speaker-name/non-text surfaces, and the full Sv20 opcode table are not claimed";
         let identify = LayeredAccessOperationContract {
             status: CapabilityStatus::Supported,
             required_capabilities: vec![Capability::Detection, Capability::ProfileGeneration],
@@ -47,7 +47,7 @@ impl EngineAdapter for SoftpalProfileDetectorAdapter {
             ],
             supported_surfaces: vec![SurfaceTransform::BinaryOffset],
             supported_containers: vec![ContainerTransform::Archive, ContainerTransform::LooseFile],
-            supported_crypto: vec![CryptoTransform::NullKey],
+            supported_crypto: vec![CryptoTransform::NullKey, CryptoTransform::Xor],
             supported_codecs: vec![
                 CodecTransform::BytecodeDecompile,
                 CodecTransform::ShiftJisText,
@@ -55,7 +55,7 @@ impl EngineAdapter for SoftpalProfileDetectorAdapter {
             ],
             supported_patch_back: vec![PatchBackTransform::Unsupported],
             support_boundary: Some(
-                "extracts the TEXT-SHOW (dialogue) + text-bearing SELECT (choice) surfaces of SCRIPT.SRC, resolving 4-byte TEXT.DAT pointers to decoded cp932 lines"
+                "supports the layered Softpal script/text path: PAC archive entry -> verbatim SCRIPT.SRC + TEXT.DAT payloads -> `$` keyless ROL+XOR TEXT.DAT decode (or `_` plaintext) -> Sv bytecode disassembly -> cp932 lines. PAC entry compression/encryption, PAC repack, and non-text surfaces are not claimed"
                     .to_string(),
             ),
         };
@@ -64,7 +64,7 @@ impl EngineAdapter for SoftpalProfileDetectorAdapter {
             required_capabilities: vec![Capability::Patching, Capability::PatchBack],
             supported_surfaces: vec![SurfaceTransform::BinaryOffset],
             supported_containers: vec![ContainerTransform::LooseFile],
-            supported_crypto: vec![CryptoTransform::NullKey],
+            supported_crypto: vec![CryptoTransform::NullKey, CryptoTransform::Xor],
             supported_codecs: vec![CodecTransform::ShiftJisText, CodecTransform::BinaryTable],
             supported_patch_back: vec![PatchBackTransform::ReplaceFile],
             support_boundary: Some(PATCH_LIMITATION.to_string()),
