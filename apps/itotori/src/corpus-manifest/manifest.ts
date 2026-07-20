@@ -15,6 +15,15 @@ export type FileFingerprint = {
   byteLength: number;
 };
 
+/**
+ * Adapter-defined source inputs pinned by a private corpus manifest.
+ *
+ * The common manifest contract deliberately does not name a particular
+ * engine's files. A CorpusValidationAdapter declares the exact keys its
+ * manifests carry and resolves those keys to on-disk inputs during a live run.
+ */
+export type CorpusInputMap = Record<string, FileFingerprint>;
+
 export type RedactedTextPart = {
   kind: "redacted_text";
   startByte: number;
@@ -37,7 +46,7 @@ export type ProtectedSpanPart = {
 
 export type ProtectedSkeleton = {
   format: "itotori.redacted-sjis-protected-shell.v1";
-  sourceEncoding: "shift-jis-with-reallive-control-spans";
+  sourceEncoding: string;
   sourceTextUtf8ByteLength: number;
   decompressedSourceByteLength: number;
   shell: string;
@@ -90,10 +99,7 @@ export type CorpusEvidence = {
   sourceProfileId: string;
   engine: string;
   sourceLocale: string;
-  inputs: {
-    seenTxt: FileFingerprint;
-    gameexeIni: FileFingerprint;
-  };
+  inputs: CorpusInputMap;
   fullGame: {
     kaifuuDecode: {
       schemaVersion: string;

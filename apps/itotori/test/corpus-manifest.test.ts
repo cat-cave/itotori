@@ -17,11 +17,17 @@ import {
   fingerprintFile,
   parseCorpusManifestJson,
   registerCorpusManifestJson,
-  resolveRealCorpus,
+  resolveCorpus,
 } from "../src/corpus-manifest/validate.js";
+import {
+  registeredCorpusValidationEngines,
+  resolveCorpusValidationAdapter,
+} from "../src/corpus-manifest/corpus-validation-registry.js";
 import {
   CorpusManifestRegistry,
   readdressCorpusManifest,
+  sha256Bytes,
+  stableJson,
   type CorpusManifest,
 } from "../src/corpus-manifest/manifest.js";
 
@@ -53,7 +59,7 @@ function readRegisteredManifest(): CorpusManifest {
 }
 
 const MANIFEST = readRegisteredManifest();
-const CORPUS_RESOLUTION = resolveRealCorpus(MANIFEST);
+const CORPUS_RESOLUTION = resolveCorpus(MANIFEST);
 
 if (CORPUS_RESOLUTION.kind === "skip") {
   process.stderr.write(`PRIVATE_CORPUS_SKIP: ${CORPUS_RESOLUTION.reason}\n`);
@@ -110,6 +116,51 @@ describe("registered private corpus manifest", () => {
     }
     expect(String(caught)).toMatch(/duplicate JSON object key/iu);
     expect(String(caught)).not.toContain(dialogue);
+  });
+
+  it("validates each registered adapter's owned input map without a RealLive fallback", () => {
+    expect(registeredCorpusValidationEngines()).toEqual(["reallive", "softpal", "rpg-maker"]);
+    expect(resolveCorpusValidationAdapter("softpal").inputNames).toEqual(["scriptSrc", "textDat"]);
+    expect(resolveCorpusValidationAdapter("rpg-maker").inputNames).toEqual(["dataJson"]);
+
+    const softpalManifest = structuredClone(MANIFEST);
+    softpalManifest.corpus.engine = "softpal";
+    softpalManifest.corpus.inputs = {
+      scriptSrc: MANIFEST.corpus.inputs.seenTxt,
+      textDat: MANIFEST.corpus.inputs.gameexeIni,
+    };
+    const conventions = resolveCorpusValidationAdapter("softpal").evidence;
+    for (const unit of softpalManifest.outputScope.units) {
+      const ordinal = unit.sourceUnitKey.slice(unit.sourceUnitKey.lastIndexOf("#") + 1);
+      unit.sourceUnitKey = conventions.sourceUnitKey(unit.sceneMembership.sceneId, ordinal);
+      unit.byteLocation.containerKey = conventions.containerKey(unit.sceneMembership.sceneId);
+      unit.byteLocation.entryPath = conventions.entryPath(unit.sceneMembership.sceneId, ordinal);
+      unit.route = conventions.route(unit.sceneMembership.sceneId, ordinal);
+      unit.protectedSkeleton.sourceEncoding = conventions.sourceEncoding;
+      for (const part of unit.protectedSkeleton.parts) {
+        if (part.kind === "protected_span") {
+          part.parsedName = "softpal.control";
+          part.outOfBand = false;
+        }
+      }
+      unit.protectedSkeleton.shell = unit.protectedSkeleton.parts
+        .map((part) =>
+          part.kind === "redacted_text"
+            ? `<REDACTED_TEXT:utf8=${part.utf8ByteLength}>`
+            : `<PROTECTED:${part.parsedName ?? part.spanKind}:utf8=${part.utf8ByteLength}>`,
+        )
+        .join("");
+    }
+    softpalManifest.outputScope.bridge.unitsProjectionSha256 = sha256Bytes(
+      stableJson(softpalManifest.outputScope.units),
+    );
+
+    const readdressed = readdressCorpusManifest(softpalManifest);
+    expect(() => assertCorpusManifest(readdressed)).not.toThrow();
+    expect(resolveCorpus(readdressed, {})).toEqual({
+      kind: "skip",
+      reason: "ITOTORI_REAL_CORPUS_ROOT is unset; no private corpus bytes were read.",
+    });
   });
 
   it("rejects duplicate, missing, payload-bearing, route-mutated, and incomplete ordinal substitutions", () => {
@@ -173,7 +224,10 @@ describe("registered private corpus manifest", () => {
       writeFileSync(seenPath, "not the corpus");
       writeFileSync(gameexePath, "not the corpus");
       expect(() =>
-        assertPinnedCorpusInputs({ gameRoot: root, seenPath, gameexePath }, MANIFEST),
+        assertPinnedCorpusInputs(
+          { gameRoot: root, inputPaths: { seenTxt: seenPath, gameexeIni: gameexePath } },
+          MANIFEST,
+        ),
       ).toThrow(/content address/iu);
     } finally {
       rmSync(root, { force: true, recursive: true });
@@ -187,7 +241,10 @@ describe("registered private corpus manifest", () => {
     try {
       expect(() =>
         deriveCorpusEvidence(
-          { gameRoot: "/unused", seenPath: "/unused/Seen.txt", gameexePath: "/unused/Gameexe.ini" },
+          {
+            gameRoot: "/unused",
+            inputPaths: { seenTxt: "/unused/Seen.txt", gameexeIni: "/unused/Gameexe.ini" },
+          },
           MANIFEST,
           {},
           {
@@ -210,8 +267,8 @@ describe("registered private corpus manifest", () => {
     () => {
       if (CORPUS_RESOLUTION.kind !== "ready") throw new Error("private corpus was unavailable");
       const corpus = CORPUS_RESOLUTION.corpus;
-      expect(fingerprintFile(corpus.seenPath).sha256).toBe(EXPECTED_SEEN_SHA256);
-      expect(fingerprintFile(corpus.gameexePath).sha256).toBe(EXPECTED_GAMEEXE_SHA256);
+      expect(fingerprintFile(corpus.inputPaths.seenTxt!).sha256).toBe(EXPECTED_SEEN_SHA256);
+      expect(fingerprintFile(corpus.inputPaths.gameexeIni!).sha256).toBe(EXPECTED_GAMEEXE_SHA256);
       const evidence = deriveCorpusEvidence(corpus, MANIFEST);
       assertCorpusEvidenceMatchesManifest(evidence, MANIFEST);
       process.stdout.write(

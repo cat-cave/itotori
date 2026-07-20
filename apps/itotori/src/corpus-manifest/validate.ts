@@ -1,18 +1,26 @@
 // Validation and live derivation for private corpus manifests.
 //
-// Corpus identity belongs in manifest data. This module deliberately owns only
-// the reusable RealLive adapter and never retains decoded dialogue outside the
-// short-lived projection built during an opt-in validation run.
+// Corpus identity belongs in manifest data. Engine-shaped discovery and native
+// extraction live behind the CorpusValidationAdapter registry; this module
+// keeps the common privacy, content-addressing, and evidence checks.
 
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { runKaifuuExtract } from "../extract/kaifuu-extract-seam.js";
-import { runStructureProvider } from "../structure-export/structure-provider-registry.js";
+import { join } from "node:path";
+import {
+  assertPinnedCorpusInputs as assertAdapterPinnedCorpusInputs,
+  extractCorpusValidationArtifacts,
+  fingerprintCorpusInput,
+  resolveCorpus as resolveAdapterCorpus,
+  resolveCorpusValidationAdapter,
+  type AnyCorpusValidationAdapter,
+  type CorpusValidationEvidenceConventions,
+  type CorpusResolution,
+  type ResolvedCorpus,
+} from "./corpus-validation-registry.js";
 import { parseStrictJson } from "./json.js";
 import {
   CORPUS_MANIFEST_SCHEMA_VERSION,
-  REAL_CORPUS_ROOT_ENV,
   corpusManifestContentHash,
   sha256Bytes,
   stableJson,
@@ -42,18 +50,6 @@ const FORBIDDEN_PAYLOADS = [
   "full bridge export",
   "full structure export",
 ] as const;
-const PROTECTED_NAMES = new Set(["reallive.kidoku", "reallive.name_token"]);
-
-export type ResolvedCorpus = {
-  gameRoot: string;
-  gameexePath: string;
-  seenPath: string;
-};
-
-export type CorpusResolution =
-  | { kind: "ready"; corpus: ResolvedCorpus }
-  | { kind: "skip"; reason: string };
-
 export type DeriveCorpusDependencies = {
   /** Test seam for proving cleanup around a source-build failure. */
   makeTempRoot?: () => string;
@@ -87,63 +83,23 @@ export function registerCorpusManifestJson(
  * Resolve the one explicitly opted-in corpus and reject a wrong corpus using
  * the manifest's pinned input fingerprints before any decoder is invoked.
  */
-export function resolveRealCorpus(
+export function resolveCorpus(
   manifest: CorpusManifest,
   env: NodeJS.ProcessEnv = process.env,
 ): CorpusResolution {
   assertCorpusManifest(manifest);
-  const configuredRoot = env[REAL_CORPUS_ROOT_ENV];
-  if (configuredRoot === undefined || configuredRoot.length === 0) {
-    return {
-      kind: "skip",
-      reason: `${REAL_CORPUS_ROOT_ENV} is unset; no private corpus bytes were read.`,
-    };
-  }
-  if (manifest.corpus.engine !== "reallive") {
-    throw new Error("private corpus validation has no adapter for the manifest engine");
-  }
-
-  const root = resolve(configuredRoot);
-  if (!existsSync(root) || !statSync(root).isDirectory()) {
-    throw new Error(`private corpus root ${REAL_CORPUS_ROOT_ENV} is not a directory`);
-  }
-  const candidates = [...new Set(candidateGameRoots(root, 4))];
-  if (candidates.length !== 1) {
-    throw new Error("private corpus root must contain exactly one RealLive game data directory");
-  }
-
-  const gameRoot = candidates[0]!;
-  const dataRoot = join(gameRoot, "REALLIVEDATA");
-  const corpus = {
-    gameRoot,
-    gameexePath: join(dataRoot, "Gameexe.ini"),
-    seenPath: join(dataRoot, "Seen.txt"),
-  };
-  if (!isRegularFile(corpus.gameexePath) || !isRegularFile(corpus.seenPath)) {
-    throw new Error("private corpus root is missing regular RealLive input files");
-  }
-  assertPinnedCorpusInputs(corpus, manifest);
-  return { kind: "ready", corpus };
+  return resolveAdapterCorpus(manifest, env);
 }
 
 /** Build a SHA-256 fingerprint without retaining a content-bearing value. */
 export function fingerprintFile(path: string): FileFingerprint {
-  const bytes = readFileSync(path);
-  return { sha256: sha256Bytes(bytes), byteLength: bytes.byteLength };
+  return fingerprintCorpusInput(path);
 }
 
 /** Reject an input substitution before spending time on a live decode. */
 export function assertPinnedCorpusInputs(corpus: ResolvedCorpus, manifest: CorpusManifest): void {
-  assertSameFingerprint(
-    fingerprintFile(corpus.seenPath),
-    manifest.corpus.inputs.seenTxt,
-    "Seen.txt",
-  );
-  assertSameFingerprint(
-    fingerprintFile(corpus.gameexePath),
-    manifest.corpus.inputs.gameexeIni,
-    "Gameexe.ini",
-  );
+  assertCorpusManifest(manifest);
+  assertAdapterPinnedCorpusInputs(corpus, manifest);
 }
 
 /**
@@ -163,11 +119,6 @@ export function deriveCorpusEvidence(
   )();
   try {
     (dependencies.assertPinnedCorpusInputs ?? assertPinnedCorpusInputs)(corpus, manifest);
-    const fullBridgePath = join(tempRoot, "full.bridge.json");
-    const fullReportPath = join(tempRoot, "full.decompile-report.json");
-    const scopedBridgePath = join(tempRoot, "scoped.bridge.json");
-    const scopedReportPath = join(tempRoot, "scoped.decompile-report.json");
-    const structurePath = join(tempRoot, "full.structure.json");
     const {
       ITOTORI_KAIFUU_BIN: _ignoredKaifuuOverride,
       ITOTORI_UTSUSHI_BIN: _ignoredUtsushiOverride,
@@ -179,58 +130,27 @@ export function deriveCorpusEvidence(
       targetRoot: join(tempRoot, "native-target"),
     });
 
+    let artifacts;
     try {
-      const identity = manifest.corpus;
-      runKaifuuExtract({
-        engine: "reallive",
-        gameRoot: corpus.gameRoot,
-        gameId: identity.gameId,
-        gameVersion: identity.gameVersion,
-        sourceProfileId: identity.sourceProfileId,
-        sourceLocale: identity.sourceLocale,
-        wholeSeen: true,
-        bundleOutputPath: fullBridgePath,
-        decompileReportOutputPath: fullReportPath,
-        env: nativeEnv,
-      });
-      runKaifuuExtract({
-        engine: "reallive",
-        gameRoot: corpus.gameRoot,
-        gameId: identity.gameId,
-        gameVersion: identity.gameVersion,
-        sourceProfileId: identity.sourceProfileId,
-        sourceLocale: identity.sourceLocale,
-        scene: manifest.outputScope.sceneId,
-        bundleOutputPath: scopedBridgePath,
-        decompileReportOutputPath: scopedReportPath,
-        env: nativeEnv,
-      });
-      runStructureProvider({
-        engine: "reallive",
-        gameexePath: corpus.gameexePath,
-        seenPath: corpus.seenPath,
-        outputPath: structurePath,
-        maxScenes: 10_000,
-        env: nativeEnv,
-      });
+      artifacts = extractCorpusValidationArtifacts(manifest, corpus, tempRoot, nativeEnv);
     } catch {
-      // Both native seams are intentionally content-free at this boundary.
+      // Native adapter seams are intentionally content-free at this boundary.
       // In particular, do not rethrow a future producer diagnostic verbatim.
       throw new Error("private corpus native validation failed [native output redacted]");
     }
 
     return deriveEvidenceFromOutputs({
       manifest,
-      seenFingerprint: fingerprintFile(corpus.seenPath),
-      gameexeFingerprint: fingerprintFile(corpus.gameexePath),
-      fullBridgeFingerprint: fingerprintFile(fullBridgePath),
-      scopedBridgeFingerprint: fingerprintFile(scopedBridgePath),
-      structureFingerprint: fingerprintFile(structurePath),
-      fullBridge: readJson(fullBridgePath, "full bridge"),
-      fullReport: readJson(fullReportPath, "full decompile report"),
-      scopedBridge: readJson(scopedBridgePath, "scoped bridge"),
-      scopedReport: readJson(scopedReportPath, "scoped decompile report"),
-      structure: readJson(structurePath, "full structure"),
+      adapter: resolveCorpusValidationAdapter(manifest.corpus.engine),
+      inputs: artifacts.inputs,
+      fullBridgeFingerprint: fingerprintFile(artifacts.fullBridgePath),
+      scopedBridgeFingerprint: fingerprintFile(artifacts.scopedBridgePath),
+      structureFingerprint: fingerprintFile(artifacts.structurePath),
+      fullBridge: readJson(artifacts.fullBridgePath, "full bridge"),
+      fullReport: readJson(artifacts.fullReportPath, "full decompile report"),
+      scopedBridge: readJson(artifacts.scopedBridgePath, "scoped bridge"),
+      scopedReport: readJson(artifacts.scopedReportPath, "scoped decompile report"),
+      structure: readJson(artifacts.structurePath, "full structure"),
     });
   } finally {
     rmSync(tempRoot, { force: true, recursive: true });
@@ -253,8 +173,8 @@ export function assertCorpusEvidenceMatchesManifest(
 
 function deriveEvidenceFromOutputs(input: {
   manifest: CorpusManifest;
-  seenFingerprint: FileFingerprint;
-  gameexeFingerprint: FileFingerprint;
+  adapter: AnyCorpusValidationAdapter;
+  inputs: CorpusEvidence["inputs"];
   fullBridgeFingerprint: FileFingerprint;
   scopedBridgeFingerprint: FileFingerprint;
   structureFingerprint: FileFingerprint;
@@ -285,6 +205,7 @@ function deriveEvidenceFromOutputs(input: {
     scopedBridge,
     input.manifest.outputScope.sceneId,
     scopedScene.dispatchIndex,
+    input.adapter.evidence,
   );
   const unitIds = new Set(units.map((unit) => unit.bridgeUnitId));
   const sourceHashes = new Set(units.map((unit) => unit.sourceHash));
@@ -296,7 +217,7 @@ function deriveEvidenceFromOutputs(input: {
     sourceProfileId: input.manifest.corpus.sourceProfileId,
     engine: input.manifest.corpus.engine,
     sourceLocale: input.manifest.corpus.sourceLocale,
-    inputs: { seenTxt: input.seenFingerprint, gameexeIni: input.gameexeFingerprint },
+    inputs: input.inputs,
     fullGame: {
       kaifuuDecode: {
         schemaVersion: nativeString(fullBridge.schemaVersion, "full bridge.schemaVersion"),
@@ -359,11 +280,15 @@ function deriveEvidenceFromOutputs(input: {
     units,
   };
 
+  const sourceInput = sourceInputFingerprint(
+    corpus.inputs,
+    resolveCorpusValidationAdapter(input.manifest.corpus.engine),
+  );
   if (
     corpus.fullGame.kaifuuDecode.decompile.unknownOpcodes !== 0 ||
     outputScope.bridge.decompile.unknownOpcodes !== 0 ||
-    corpus.inputs.seenTxt.sha256 !== corpus.fullGame.kaifuuDecode.decompile.sourceSeenSha256 ||
-    corpus.inputs.seenTxt.sha256 !== outputScope.bridge.decompile.sourceSeenSha256
+    sourceInput.sha256 !== corpus.fullGame.kaifuuDecode.decompile.sourceSeenSha256 ||
+    sourceInput.sha256 !== outputScope.bridge.decompile.sourceSeenSha256
   ) {
     throw new Error("private corpus decoder report rejected");
   }
@@ -443,6 +368,7 @@ function deriveScopedUnits(
   bridge: JsonRecord,
   sceneId: number,
   structureDispatchIndex: number,
+  evidence: CorpusValidationEvidenceConventions,
 ): CorpusUnit[] {
   return array(bridge.units, "scoped bridge.units").map((rawUnit, index) => {
     const unit = record(rawUnit, `scoped bridge.units[${index}]`);
@@ -490,7 +416,12 @@ function deriveScopedUnits(
         value: sha256(sourceRevision.value, "scoped bridge revision value"),
       },
       byteLocation,
-      protectedSkeleton: buildProtectedSkeleton(sourceText, unit.spans, byteLocation.range),
+      protectedSkeleton: buildProtectedSkeleton(
+        sourceText,
+        unit.spans,
+        byteLocation.range,
+        evidence,
+      ),
       route: {
         sceneKey: nativeString(route.sceneKey, "scoped bridge route scene"),
         position: nativeString(route.position, "scoped bridge route position"),
@@ -511,6 +442,7 @@ function buildProtectedSkeleton(
   sourceText: string,
   spansValue: unknown,
   sourceRange: { startByte: number; endByte: number },
+  evidence: CorpusValidationEvidenceConventions,
 ): ProtectedSkeleton {
   const sourceLength = Buffer.byteLength(sourceText, "utf8");
   const spans = array(spansValue, "scoped bridge spans").map((rawSpan, index) => {
@@ -575,7 +507,7 @@ function buildProtectedSkeleton(
   }
   return {
     format: "itotori.redacted-sjis-protected-shell.v1",
-    sourceEncoding: "shift-jis-with-reallive-control-spans",
+    sourceEncoding: evidence.sourceEncoding,
     sourceTextUtf8ByteLength: sourceLength,
     decompressedSourceByteLength: sourceRange.endByte - sourceRange.startByte,
     shell: parts
@@ -619,9 +551,11 @@ export function assertCorpusManifest(value: unknown): asserts value is CorpusMan
   validateContentAddress(record(manifest.contentAddress, "manifest.contentAddress"));
   validatePrivacy(record(manifest.privacy, "manifest.privacy"));
   const corpus = validateCorpus(record(manifest.corpus, "manifest.corpus"));
+  const adapter = resolveCorpusValidationAdapter(corpus.engine);
   const outputScope = validateOutputScope(
     record(manifest.outputScope, "manifest.outputScope"),
     corpus,
+    adapter,
   );
   validateBaseline(record(manifest.failedRunBaseline, "manifest.failedRunBaseline"), outputScope);
 
@@ -689,25 +623,14 @@ function validateCorpus(value: JsonRecord): CorpusEvidence {
   const sourceProfileId = metadataString(value.sourceProfileId, "manifest.corpus.sourceProfileId");
   const engine = metadataString(value.engine, "manifest.corpus.engine");
   const sourceLocale = metadataString(value.sourceLocale, "manifest.corpus.sourceLocale");
-  if (engine !== "reallive") {
-    throw new Error("private corpus manifest engine has no installed adapter");
-  }
-  const inputs = record(value.inputs, "manifest.corpus.inputs");
-  assertExactKeys(inputs, ["seenTxt", "gameexeIni"], "manifest.corpus.inputs");
-  const seenTxt = validateFingerprint(
-    record(inputs.seenTxt, "manifest.corpus.inputs.seenTxt"),
-    "manifest.corpus.inputs.seenTxt",
-  );
-  const gameexeIni = validateFingerprint(
-    record(inputs.gameexeIni, "manifest.corpus.inputs.gameexeIni"),
-    "manifest.corpus.inputs.gameexeIni",
-  );
+  const adapter = resolveCorpusValidationAdapter(engine);
+  const inputs = adapter.validateManifestInputs(value.inputs);
 
   const fullGame = record(value.fullGame, "manifest.corpus.fullGame");
   assertExactKeys(fullGame, ["kaifuuDecode", "utsushiStructure"], "manifest.corpus.fullGame");
   const kaifuuDecode = validateKaifuuDecode(
     record(fullGame.kaifuuDecode, "manifest.corpus.fullGame.kaifuuDecode"),
-    seenTxt,
+    sourceInputFingerprint(inputs, adapter),
   );
   const utsushiStructure = validateStructure(
     record(fullGame.utsushiStructure, "manifest.corpus.fullGame.utsushiStructure"),
@@ -719,14 +642,14 @@ function validateCorpus(value: JsonRecord): CorpusEvidence {
     sourceProfileId,
     engine,
     sourceLocale,
-    inputs: { seenTxt, gameexeIni },
+    inputs,
     fullGame: { kaifuuDecode, utsushiStructure },
   };
 }
 
 function validateKaifuuDecode(
   value: JsonRecord,
-  seenTxt: FileFingerprint,
+  sourceInput: FileFingerprint,
 ): CorpusEvidence["fullGame"]["kaifuuDecode"] {
   assertExactKeys(
     value,
@@ -812,7 +735,7 @@ function validateKaifuuDecode(
     decoded.decompile.scope !== "whole-seen" ||
     decoded.decompile.unknownOpcodes !== 0 ||
     decoded.decompile.totalOpcodes !== decoded.decompile.recognizedOpcodes ||
-    decoded.decompile.sourceSeenSha256 !== seenTxt.sha256
+    decoded.decompile.sourceSeenSha256 !== sourceInput.sha256
   ) {
     throw new Error("private corpus full-game decoder evidence is inconsistent");
   }
@@ -923,7 +846,11 @@ function validateStructure(value: JsonRecord): CorpusEvidence["fullGame"]["utsus
   };
 }
 
-function validateOutputScope(value: JsonRecord, corpus: CorpusEvidence): CorpusOutputScope {
+function validateOutputScope(
+  value: JsonRecord,
+  corpus: CorpusEvidence,
+  adapter: AnyCorpusValidationAdapter,
+): CorpusOutputScope {
   assertExactKeys(
     value,
     ["scopeId", "sceneId", "ordinalRange", "bridge", "units"],
@@ -1025,7 +952,8 @@ function validateOutputScope(value: JsonRecord, corpus: CorpusEvidence): CorpusO
     decodedBridge.decompile.sceneId !== sceneId ||
     decodedBridge.decompile.unknownOpcodes !== 0 ||
     decodedBridge.decompile.totalOpcodes !== decodedBridge.decompile.recognizedOpcodes ||
-    decodedBridge.decompile.sourceSeenSha256 !== corpus.inputs.seenTxt.sha256
+    decodedBridge.decompile.sourceSeenSha256 !==
+      sourceInputFingerprint(corpus.inputs, adapter).sha256
   ) {
     throw new Error("private corpus scoped decoder evidence is inconsistent");
   }
@@ -1037,6 +965,7 @@ function validateOutputScope(value: JsonRecord, corpus: CorpusEvidence): CorpusO
       sceneId,
       ordinalRange,
       corpus.fullGame.utsushiStructure.scopedScene.dispatchIndex,
+      adapter.evidence,
     ),
   );
   if (units.length !== unitCount) {
@@ -1052,7 +981,7 @@ function validateOutputScope(value: JsonRecord, corpus: CorpusEvidence): CorpusO
   ) {
     throw new Error("private corpus scoped units have duplicate identities");
   }
-  assertExactOrdinals(units, ordinalRange);
+  assertExactOrdinals(units, ordinalRange, adapter.evidence);
   if (units.some((unit) => unit.sourceRevision.value !== decodedBridge.sourceBundleHash)) {
     throw new Error("private corpus unit source revisions are not pinned to the scoped bridge");
   }
@@ -1087,6 +1016,7 @@ function validateUnit(
   sceneId: number,
   ordinalRange: OrdinalRange,
   dispatchIndex: number,
+  evidence: CorpusValidationEvidenceConventions,
 ): CorpusUnit {
   assertExactKeys(
     value,
@@ -1113,9 +1043,10 @@ function validateUnit(
     metadataString(value.sourceUnitKey, `${label}.sourceUnitKey`),
     sceneId,
     ordinalRange,
+    evidence,
   );
   const occurrenceId = metadataString(value.occurrenceId, `${label}.occurrenceId`);
-  if (occurrenceId !== `scene-${sceneId}-occ-${ordinal}`) {
+  if (occurrenceId !== evidence.occurrenceId(sceneId, ordinal)) {
     throw new Error("private corpus unit occurrence does not match its source ordinal");
   }
   if (metadataString(value.surfaceKind, `${label}.surfaceKind`) !== "dialogue") {
@@ -1143,17 +1074,21 @@ function validateUnit(
     label,
     sceneId,
     ordinal,
+    evidence,
   );
   const protectedSkeleton = validateProtectedSkeleton(
     record(value.protectedSkeleton, `${label}.protectedSkeleton`),
     `${label}.protectedSkeleton`,
     byteLocation.range.endByte - byteLocation.range.startByte,
+    evidence,
   );
   const route = record(value.route, `${label}.route`);
   assertExactKeys(route, ["sceneKey", "position"], `${label}.route`);
   if (
-    metadataString(route.sceneKey, `${label}.route.sceneKey`) !== `scene-${sceneId}` ||
-    metadataString(route.position, `${label}.route.position`) !== `line-${ordinal}`
+    stableJson({
+      sceneKey: metadataString(route.sceneKey, `${label}.route.sceneKey`),
+      position: metadataString(route.position, `${label}.route.position`),
+    }) !== stableJson(evidence.route(sceneId, ordinal))
   ) {
     throw new Error("private corpus unit route does not match its source ordinal");
   }
@@ -1180,7 +1115,7 @@ function validateUnit(
   }
   return {
     bridgeUnitId,
-    sourceUnitKey: `reallive:scene-${sceneId}#${ordinal}`,
+    sourceUnitKey: evidence.sourceUnitKey(sceneId, ordinal),
     occurrenceId,
     surfaceKind: "dialogue",
     sourceHash: sha256(value.sourceHash, `${label}.sourceHash`),
@@ -1191,7 +1126,7 @@ function validateUnit(
     },
     byteLocation,
     protectedSkeleton,
-    route: { sceneKey: `scene-${sceneId}`, position: `line-${ordinal}` },
+    route: evidence.route(sceneId, ordinal),
     sceneMembership: { sceneId, structureDispatchIndex: dispatchIndex },
     replayTarget: { expectationKind: "trace_text", traceKey },
   };
@@ -1202,6 +1137,7 @@ function validateByteLocation(
   label: string,
   sceneId: number,
   ordinal: string,
+  evidence: CorpusValidationEvidenceConventions,
 ): CorpusUnit["byteLocation"] {
   assertExactKeys(value, ["containerKey", "entryPath", "range"], `${label}.byteLocation`);
   const entryPath = array(value.entryPath, `${label}.byteLocation.entryPath`).map((entry, index) =>
@@ -1209,8 +1145,8 @@ function validateByteLocation(
   );
   if (
     metadataString(value.containerKey, `${label}.byteLocation.containerKey`) !==
-      `reallive:scene-${sceneId}` ||
-    stableJson(entryPath) !== stableJson(["scene", String(sceneId), "units", ordinal])
+      evidence.containerKey(sceneId) ||
+    stableJson(entryPath) !== stableJson(evidence.entryPath(sceneId, ordinal))
   ) {
     throw new Error("private corpus unit byte location does not match its source ordinal");
   }
@@ -1219,13 +1155,14 @@ function validateByteLocation(
   const startByte = nonNegativeInteger(range.startByte, `${label}.byteLocation.range.startByte`);
   const endByte = nonNegativeInteger(range.endByte, `${label}.byteLocation.range.endByte`);
   if (endByte <= startByte) throw new Error("private corpus unit byte range is invalid");
-  return { containerKey: `reallive:scene-${sceneId}`, entryPath, range: { startByte, endByte } };
+  return { containerKey: evidence.containerKey(sceneId), entryPath, range: { startByte, endByte } };
 }
 
 function validateProtectedSkeleton(
   value: JsonRecord,
   label: string,
   decompressedLength: number,
+  evidence: CorpusValidationEvidenceConventions,
 ): ProtectedSkeleton {
   assertExactKeys(
     value,
@@ -1242,8 +1179,7 @@ function validateProtectedSkeleton(
   if (
     metadataString(value.format, `${label}.format`) !==
       "itotori.redacted-sjis-protected-shell.v1" ||
-    metadataString(value.sourceEncoding, `${label}.sourceEncoding`) !==
-      "shift-jis-with-reallive-control-spans"
+    metadataString(value.sourceEncoding, `${label}.sourceEncoding`) !== evidence.sourceEncoding
   ) {
     throw new Error("private corpus protected skeleton format is unsupported");
   }
@@ -1314,9 +1250,9 @@ function validateProtectedSkeleton(
     const parsedName = metadataString(part.parsedName, `${label}.parts[${index}].parsedName`);
     if (
       metadataString(part.spanKind, `${label}.parts[${index}].spanKind`) !== "control_markup" ||
-      !PROTECTED_NAMES.has(parsedName) ||
+      !evidence.protectedNames.includes(parsedName) ||
       metadataString(part.preserveMode, `${label}.parts[${index}].preserveMode`) !== "exact" ||
-      part.outOfBand !== (parsedName === "reallive.kidoku")
+      part.outOfBand !== (parsedName === evidence.outOfBandProtectedName)
     ) {
       throw new Error("private corpus protected skeleton span metadata is invalid");
     }
@@ -1331,7 +1267,7 @@ function validateProtectedSkeleton(
       utf8ByteLength,
       rawSha256: sha256(part.rawSha256, `${label}.parts[${index}].rawSha256`),
       preserveMode: "exact",
-      outOfBand: parsedName === "reallive.kidoku",
+      outOfBand: parsedName === evidence.outOfBandProtectedName,
     });
   }
   if (cursor !== sourceTextUtf8ByteLength || protectedCount === 0) {
@@ -1349,7 +1285,7 @@ function validateProtectedSkeleton(
   }
   return {
     format: "itotori.redacted-sjis-protected-shell.v1",
-    sourceEncoding: "shift-jis-with-reallive-control-spans",
+    sourceEncoding: evidence.sourceEncoding,
     sourceTextUtf8ByteLength,
     decompressedSourceByteLength,
     shell,
@@ -1357,10 +1293,14 @@ function validateProtectedSkeleton(
   };
 }
 
-function assertExactOrdinals(units: CorpusUnit[], range: OrdinalRange): void {
+function assertExactOrdinals(
+  units: CorpusUnit[],
+  range: OrdinalRange,
+  evidence: CorpusValidationEvidenceConventions,
+): void {
   const actual = new Set(
     units.map((unit) =>
-      ordinalFromUnitKey(unit.sourceUnitKey, unit.sceneMembership.sceneId, range),
+      ordinalFromUnitKey(unit.sourceUnitKey, unit.sceneMembership.sceneId, range, evidence),
     ),
   );
   // Each source key has already passed ordinalFromUnitKey, so it belongs to
@@ -1371,8 +1311,13 @@ function assertExactOrdinals(units: CorpusUnit[], range: OrdinalRange): void {
   }
 }
 
-function ordinalFromUnitKey(key: string, sceneId: number, range: OrdinalRange): string {
-  const prefix = `reallive:scene-${sceneId}#`;
+function ordinalFromUnitKey(
+  key: string,
+  sceneId: number,
+  range: OrdinalRange,
+  evidence: CorpusValidationEvidenceConventions,
+): string {
+  const prefix = evidence.sourceUnitKey(sceneId, "");
   const ordinal = key.startsWith(prefix) ? key.slice(prefix.length) : "";
   if (!new RegExp(`^\\d{${range.width}}$`, "u").test(ordinal)) {
     throw new Error("private corpus source unit key does not carry a canonical ordinal");
@@ -1450,49 +1395,15 @@ function validateFingerprint(value: JsonRecord, label: string): FileFingerprint 
   return { sha256: sha256(value.sha256, `${label}.sha256`), byteLength };
 }
 
-function assertSameFingerprint(
-  actual: FileFingerprint,
-  expected: FileFingerprint,
-  label: string,
-): void {
-  if (actual.sha256 !== expected.sha256 || actual.byteLength !== expected.byteLength) {
-    throw new Error(`private corpus input ${label} does not match the manifest content address`);
+function sourceInputFingerprint(
+  inputs: CorpusEvidence["inputs"],
+  adapter: AnyCorpusValidationAdapter,
+): FileFingerprint {
+  const fingerprint = inputs[adapter.sourceInputName];
+  if (fingerprint === undefined) {
+    throw new Error("private corpus validation adapter source input is missing from the manifest");
   }
-}
-
-function candidateGameRoots(root: string, maxDepth: number): string[] {
-  const candidates: string[] = [];
-  let frontier = [root];
-  for (let depth = 0; depth <= maxDepth; depth += 1) {
-    const next: string[] = [];
-    for (const candidate of frontier) {
-      if (hasRealLiveDataDirectory(candidate)) {
-        candidates.push(candidate);
-      } else if (depth < maxDepth) {
-        next.push(
-          ...readdirSync(candidate, { withFileTypes: true })
-            .filter((entry) => entry.isDirectory())
-            .map((entry) => join(candidate, entry.name)),
-        );
-      }
-    }
-    frontier = next;
-  }
-  return candidates;
-}
-
-function hasRealLiveDataDirectory(root: string): boolean {
-  const dataRoot = join(root, "REALLIVEDATA");
-  return (
-    existsSync(dataRoot) &&
-    statSync(dataRoot).isDirectory() &&
-    isRegularFile(join(dataRoot, "Gameexe.ini")) &&
-    isRegularFile(join(dataRoot, "Seen.txt"))
-  );
-}
-
-function isRegularFile(path: string): boolean {
-  return existsSync(path) && statSync(path).isFile();
+  return fingerprint;
 }
 
 function readJson(path: string, label: string): unknown {
