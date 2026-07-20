@@ -26,13 +26,16 @@
 //! is consumed here only as resolved material bound to a structured secret-ref,
 //! never a raw literal. Both owned titles (`karetoshi`, `gamekoi`) set
 //! `extra_key_use` / `exe_angou_mode`: with the recovered key their
-//! `Gameexe.dat` **body** decodes to a valid UTF-16LE inventory (proven on real
-//! bytes), and without a key the decoders record the typed
+//! `Gameexe.dat` **body** and their `Scene.pck` scene **payloads** both decode
+//! (proven on real bytes — karetoshi's 298 and gamekoi's 278 scenes all decode
+//! to non-empty bytecode via the `exe-key XOR -> constant scene-table XOR ->
+//! LZSS` pipeline), and without a key the decoders record the typed
 //! `second_layer_key_required` / `exe_angou_key_required` diagnostic before any
-//! output rather than fabricating a result. Wiring the recovered key through the
-//! scene **payload** path is the siglus-06 deliverable. Nothing here masquerades
-//! as a working decode; the constant table and LZSS are validated by a synthetic
-//! known-key round-trip and by the real-bytes container walk.
+//! output rather than fabricating a result; a wrong key trips the typed
+//! `compressed_size_mismatch` gate, also before any output. Nothing here
+//! masquerades as a working decode; the constant table and LZSS are validated by
+//! a synthetic known-key round-trip and by the real-bytes container walk + full
+//! payload decode.
 //! # Clean-room provenance
 //! - All Siglus format observations any successor node consumes are
 //!   **re-derived from publicly archived format documentation** and
