@@ -313,10 +313,11 @@ describe("Clause 3 — citations resolve; uncertain paths escalate", () => {
 
 // ── Clause 4: bounded trigger ────────────────────────────────────────────────
 describe("Clause 4 — bounded trigger; non-subjective / low-impact never fire", () => {
-  it("non-subjective and low-impact: zero model calls", async () => {
+  it("non-subjective, low-impact, and facts-not-settled: zero model calls", async () => {
     for (const trigger of [
       { subjectiveConflict: false, impact: "high" as const, factsSettled: true },
       { subjectiveConflict: true, impact: "low" as const, factsSettled: true },
+      { subjectiveConflict: true, impact: "high" as const, factsSettled: false },
     ]) {
       const { outcome, transport } = await run(
         [sideVerdict("A", "PASS"), sideVerdict("A", "PASS")],
@@ -329,7 +330,7 @@ describe("Clause 4 — bounded trigger; non-subjective / low-impact never fire",
     }
   });
 
-  it("facts-not-settled refuses CallSpec assembly", () => {
+  it("facts-not-settled refuses CallSpec assembly before any seal", () => {
     const premature = {
       ...baseInput,
       trigger: { subjectiveConflict: true, impact: "high" as const, factsSettled: false },
@@ -376,10 +377,31 @@ describe("Clause 5 — order-debiasing runs; agreement and winning side recorded
     expect(outcome.interpretation.escalation?.orderDebias.baWinner).toBe("B");
   });
 
-  it("order budget is exactly two presentations", () => {
+  it("one-adjudication bound: dual-order budget is the entire adjudication", async () => {
     const ordered = buildQ6OrderCallSpecs(baseInput, refs);
     expect(ordered.map((item) => item.order)).toEqual(["A-then-B", "B-then-A"]);
     expect(ordered).toHaveLength(2);
+
+    // Agreement path: exactly two dispatches, never a third round-trip.
+    const agree = sequentialDispatch([sideVerdict("A", "PASS"), sideVerdict("A", "PASS")]);
+    const agreeSpy = vi.fn(agree.dispatch);
+    const agreeOutcome = await runQ6Adjudication(baseInput, refs, {
+      dispatch: agreeSpy,
+      resolveEvidence: allVisible,
+    });
+    expect(agreeSpy).toHaveBeenCalledTimes(2);
+    expect(agreeOutcome.outcome).toBe("adjudicated");
+
+    // Order-flip path still ends after the dual-order budget — no retry dispatch.
+    const flip = sequentialDispatch([sideVerdict("A", "PASS"), sideVerdict("B", "PASS")]);
+    const flipSpy = vi.fn(flip.dispatch);
+    const flipOutcome = await runQ6Adjudication(baseInput, refs, {
+      dispatch: flipSpy,
+      resolveEvidence: allVisible,
+    });
+    expect(flipSpy).toHaveBeenCalledTimes(2);
+    if (flipOutcome.outcome !== "adjudicated") throw new Error("expected adjudicated");
+    expect(flipOutcome.interpretation.disposition).toBe("escalate");
   });
 });
 
