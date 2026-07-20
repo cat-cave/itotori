@@ -23,9 +23,13 @@
 //! the `scn` instruction section, and walks it into a fully-covering,
 //! exactly-offset instruction stream + sanitized per-opcode histogram
 //! (structural partition only — operand *semantics* are decoded downstream). The
-//! remaining core-stack entry points ([`compress`], [`expression`], [`bridge`],
-//! [`patchback`]) are still typed stubs, alongside the narrow real
-//! [`known_key_smoke`] profile.
+//! scene [`expression`] decoder is likewise implemented and proven on real
+//! bytes: it folds the partitioned operand stream into typed [`SiglusExpr`]
+//! trees (int/str literals, element/variable refs, unary/binary operators,
+//! gosub/command calls) with zero unparsed operand bytes and a complete,
+//! sanitized operator histogram. The remaining core-stack entry points
+//! ([`compress`], [`bridge`], [`patchback`]) are still typed stubs, alongside
+//! the narrow real [`known_key_smoke`] profile.
 //! The exe-angou / second-layer key is the **key-discovery layer's (siglus-04)
 //! deliverable**, now recovered natively in-process from `SiglusEngine.exe`
 //! bytes by [`exe_angou`] (a static PE opcode scan — no Wine, no execution); it
@@ -140,7 +144,12 @@ pub use exe_angou::{
     EXE_ANGOU_KEY_BYTE_LEN, ExeAngouKeyError, ExeAngouKeyRecovery, ExeAngouKeyReport,
     recover_exe_angou_key,
 };
-pub use expression::{SiglusExpr, SiglusExpressionError, decode_expression};
+pub use expression::{
+    FM_INT, FM_LIST, FM_STR, SceneExpressionDecode, SceneExpressionError, SiglusArgForm,
+    SiglusBinaryOp, SiglusElementHead, SiglusExpr, SiglusExpressionError, SiglusOperand,
+    SiglusOperatorHistogram, SiglusPush, SiglusUnaryOp, UnsupportedOperatorSite, decode_operand,
+    decode_operand_stream, decode_scene_expressions,
+};
 pub use gameexe::{
     GameexeDatEntry, GameexeDatError, GameexeDatHeader, GameexeDatReport, decode_gameexe_dat,
     read_gameexe_header,
