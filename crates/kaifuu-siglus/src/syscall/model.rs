@@ -6,16 +6,13 @@ use crate::expression::{SiglusArgForm, SiglusExpr};
 use crate::flow::SceneFlowError;
 use crate::{SiglusExpressionError, SiglusParseError};
 
-/// The system-function id used by the title choice syscall.
+/// The `GLOBAL.SELBTN` system-function id used by the title choice syscall.
 pub const SEL_SYSTEM_FUNCTION_ID: i32 = 76;
 
 /// Return the stable system-function name when this decoder has an
 /// authoritative argument-shape entry for an id.
 pub fn system_function_name(function_id: i32) -> Option<&'static str> {
-    match function_id {
-        SEL_SYSTEM_FUNCTION_ID => Some("sel"),
-        _ => None,
-    }
+    super::shapes::system_function_name(function_id)
 }
 
 /// A command target recovered from its element frame. A system target is the
@@ -28,6 +25,17 @@ pub enum SiglusCallTarget {
     System {
         /// Stable numeric system-function id.
         function_id: i32,
+    },
+    /// A direct system-function root followed by typed element accessors.
+    ///
+    /// The Siglus VM dispatches these through the same global-system namespace
+    /// as a bare [`System`](Self::System) head; the tail selects a form member
+    /// but is never opaque bytecode.
+    SystemPath {
+        /// Stable numeric system-function id at the root of the path.
+        function_id: i32,
+        /// Typed element accessors in encoded order.
+        tail: Vec<SiglusExpr>,
     },
     /// A direct script function reference.
     Function {
@@ -55,7 +63,8 @@ impl SiglusCallTarget {
     /// Direct system-function id, if this is a `System{...}` target.
     pub fn system_function_id(&self) -> Option<i32> {
         match self {
-            SiglusCallTarget::System { function_id } => Some(*function_id),
+            SiglusCallTarget::System { function_id }
+            | SiglusCallTarget::SystemPath { function_id, .. } => Some(*function_id),
             _ => None,
         }
     }
@@ -73,7 +82,7 @@ pub struct SiglusStringRef {
     pub char_len: i32,
 }
 
-/// One option passed to the `sel` syscall, linked to its structural branch arm
+/// One option passed to the `selbtn` syscall, linked to its structural branch arm
 /// when the siglus-10 select→jump recognizer found one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SiglusSelOption {
@@ -87,7 +96,7 @@ pub struct SiglusSelOption {
     pub branch_target_offset: Option<usize>,
 }
 
-/// The option list attached to one `System{76}` (`sel`) call.
+/// The option list attached to one `System{76}` (`selbtn`) call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SiglusSelChoice {
     /// Byte offset of the `CD_COMMAND` instruction.
@@ -104,6 +113,32 @@ pub struct SiglusSelChoice {
 /// One fully typed `CD_COMMAND` call. Its command operand was decoded by the
 /// siglus-09 decoder and therefore consumed exactly `operand_byte_len` bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SiglusCallArgument {
+    /// ABI role, including its positional index or encoded named id.
+    pub role: SiglusCallArgumentRole,
+    /// One leaf argument form that consumed this value.
+    pub form: SiglusArgForm,
+    /// Fully typed expression value consumed at this role.
+    pub value: SiglusExpr,
+}
+
+/// Semantic identity of one argument in a `CD_COMMAND` argument list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SiglusCallArgumentRole {
+    /// An ordinary ABI positional operand in source order.
+    Positional {
+        /// Zero-based position among positional operands.
+        index: usize,
+    },
+    /// An operand identified by the encoded named-argument id.
+    Named {
+        /// Stable argument id supplied after the command's argument forms.
+        id: i32,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SiglusTypedCall {
     /// Bytecode offset of the `0x30` instruction.
     pub site_offset: usize,
@@ -119,6 +154,8 @@ pub struct SiglusTypedCall {
     pub arg_forms: Vec<SiglusArgForm>,
     /// Fully typed argument values in source order.
     pub args: Vec<SiglusExpr>,
+    /// Argument values paired with their exact leaf form and ABI role.
+    pub semantic_args: Vec<SiglusCallArgument>,
     /// Named argument ids, in their encoded order.
     pub named_arg_ids: Vec<i32>,
     /// Declared return form.
@@ -140,7 +177,11 @@ pub enum SiglusSyscallDiagnostic {
         /// Number of call sites using this unknown shape.
         count: usize,
     },
-    /// A command target was not a direct `System{...}` function id.
+    /// A command target could not be represented as typed data.
+    ///
+    /// This is reserved for a future target encoding that lacks a typed
+    /// [`SiglusCallTarget`] variant; a non-system target is itself typed and
+    /// does not trigger this diagnostic.
     UnknownSyscallTargetShape {
         /// Number of unusual command targets in this scene.
         count: usize,
@@ -160,7 +201,7 @@ pub struct SceneSyscallDecode {
     pub instruction_count: usize,
     /// One typed record for every `0x30` site.
     pub calls: Vec<SiglusTypedCall>,
-    /// Extractable `sel` option lists.
+    /// Extractable `selbtn` option lists.
     pub selections: Vec<SiglusSelChoice>,
     /// Explicit aggregate diagnostics; never a silent unknown-function skip.
     pub diagnostics: Vec<SiglusSyscallDiagnostic>,
@@ -170,6 +211,11 @@ pub struct SceneSyscallDecode {
     pub typed_command_operand_bytes: usize,
     /// Unknown direct system-function argument shapes, keyed by function id.
     pub unknown_arg_shape_counts: BTreeMap<i32, usize>,
+    /// Number of targets whose shape was not recovered as typed data.
+    ///
+    /// Every target representation currently emitted by this decoder is typed,
+    /// including function/global-variable references and computed elements.
+    pub unknown_target_shapes: usize,
 }
 
 impl SceneSyscallDecode {
@@ -187,7 +233,7 @@ impl SceneSyscallDecode {
     }
 }
 
-/// Fatal decoder failures. Unknown targets and function shapes are values in
+/// Fatal decoder failures. Unknown function shapes are values in
 /// [`SceneSyscallDecode::diagnostics`], not fatal failures.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SceneSyscallError {

@@ -1,7 +1,9 @@
 use crate::{
-    FM_INT, FM_STR, SEL_SYSTEM_FUNCTION_ID, SiglusCallTarget, SiglusSyscallDiagnostic,
-    decode_scene_syscalls, system_function_name,
+    FM_INT, FM_STR, SEL_SYSTEM_FUNCTION_ID, SiglusCallArgumentRole, SiglusCallTarget,
+    SiglusSyscallDiagnostic, decode_scene_syscalls, system_function_name,
 };
+
+use super::shapes::system_function_shape;
 
 fn put_i32(bytes: &mut Vec<u8>, value: i32) {
     bytes.extend_from_slice(&value.to_le_bytes());
@@ -85,10 +87,14 @@ fn decodes_sel_arguments_tail_and_string_references() {
     let decode = decode_scene_syscalls(&payload(&bytecode, &[after_command], &[(0, 2), (2, 3)]))
         .expect("syscall decode");
 
-    assert_eq!(system_function_name(SEL_SYSTEM_FUNCTION_ID), Some("sel"));
+    assert_eq!(system_function_name(SEL_SYSTEM_FUNCTION_ID), Some("selbtn"));
     assert!(decode.commands_fully_typed());
     assert_eq!(decode.calls.len(), 1);
     assert_eq!(decode.calls[0].read_flag, Some(9));
+    assert!(matches!(
+        decode.calls[0].semantic_args[0].role,
+        SiglusCallArgumentRole::Positional { index: 0 }
+    ));
     assert!(matches!(
         decode.calls[0].target,
         SiglusCallTarget::System { function_id } if function_id == SEL_SYSTEM_FUNCTION_ID
@@ -144,20 +150,32 @@ fn selection_options_link_to_the_structural_choice_arms() {
 #[test]
 fn reports_unknown_system_argument_shapes_by_function_id() {
     let mut bytecode = Vec::new();
-    system_target(&mut bytecode, 88);
+    system_target(&mut bytecode, 167);
     command(&mut bytecode, &[], 0, None);
     bytecode.push(0x16);
     let decode = decode_scene_syscalls(&payload(&bytecode, &[], &[])).expect("syscall decode");
 
     assert!(decode.commands_fully_typed());
-    assert_eq!(decode.unknown_arg_shape_counts.get(&88), Some(&1));
+    assert_eq!(decode.unknown_arg_shape_counts.get(&167), Some(&1));
     assert_eq!(
         decode.diagnostics,
         vec![SiglusSyscallDiagnostic::UnknownSyscallArgShape {
-            function_id: 88,
+            function_id: 167,
             count: 1,
         }]
     );
+}
+
+#[test]
+fn oracle_global_shape_table_is_complete_and_bounded() {
+    for function_id in 0..=166 {
+        assert!(
+            system_function_shape(function_id).is_some(),
+            "missing oracle shape for global id {function_id}"
+        );
+    }
+    assert_eq!(system_function_shape(167), None);
+    assert_eq!(system_function_shape(-1), None);
 }
 
 #[test]

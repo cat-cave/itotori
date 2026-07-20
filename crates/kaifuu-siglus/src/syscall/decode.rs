@@ -3,17 +3,18 @@
 use std::collections::BTreeMap;
 
 use crate::expression::{
-    SiglusBinaryOp, SiglusElementHead, SiglusExpr, SiglusOperand, SiglusPush, SiglusUnaryOp,
-    arg_forms_value_count, decode_operand,
+    SiglusArgForm, SiglusBinaryOp, SiglusElementHead, SiglusExpr, SiglusOperand, SiglusPush,
+    SiglusUnaryOp, arg_forms_value_count, decode_operand,
 };
 use crate::flow::decode_scene_flow;
 use crate::opcode::{SiglusInstruction, SiglusOpcode, partition_scene};
 
 use super::model::{
-    SEL_SYSTEM_FUNCTION_ID, SceneSyscallDecode, SceneSyscallError, SiglusCallTarget,
-    SiglusSelChoice, SiglusSelOption, SiglusStringRef, SiglusSyscallDiagnostic, SiglusTypedCall,
-    system_function_name,
+    SEL_SYSTEM_FUNCTION_ID, SceneSyscallDecode, SceneSyscallError, SiglusCallArgument,
+    SiglusCallArgumentRole, SiglusCallTarget, SiglusSelChoice, SiglusSelOption, SiglusStringRef,
+    SiglusSyscallDiagnostic, SiglusTypedCall,
 };
+use super::shapes::system_function_shape;
 
 /// A compact, total version of the siglus-09 expression stack. It exists here
 /// because this layer needs every command call at its bytecode site, including
@@ -157,6 +158,13 @@ fn target_from_expression(expression: &SiglusExpr) -> SiglusCallTarget {
             function_id: *index,
         },
         SiglusExpr::Element {
+            head: SiglusElementHead::System { index },
+            tail,
+        } => SiglusCallTarget::SystemPath {
+            function_id: *index,
+            tail: tail.clone(),
+        },
+        SiglusExpr::Element {
             head: SiglusElementHead::Function { index },
             tail,
         } if tail.is_empty() => SiglusCallTarget::Function {
@@ -176,6 +184,50 @@ fn target_from_expression(expression: &SiglusExpr) -> SiglusCallTarget {
             expression: expression.clone(),
         },
     }
+}
+
+/// Flatten the command's recursive ABI form list to one leaf per consumed
+/// stack value. This mirrors the oracle's `CD_COMMAND` → `pop_arg_list()`
+/// construct: nested list forms still consume their leaf values in order.
+fn flatten_arg_forms(forms: &[SiglusArgForm], out: &mut Vec<SiglusArgForm>) {
+    for form in forms {
+        match form {
+            SiglusArgForm::Form(_) => out.push(form.clone()),
+            SiglusArgForm::List(items) => flatten_arg_forms(items, out),
+        }
+    }
+}
+
+/// Pair the exact values consumed by `CD_COMMAND` with the form that consumed
+/// each one and with the ABI's positional/named role. The oracle applies named
+/// ids from the argument-list tail backwards (`args[len - 1 - a]`), so the
+/// same association is preserved here.
+fn semantic_args(
+    forms: &[SiglusArgForm],
+    args: &[SiglusExpr],
+    named_arg_ids: &[i32],
+) -> Vec<SiglusCallArgument> {
+    let mut leaf_forms = Vec::new();
+    flatten_arg_forms(forms, &mut leaf_forms);
+    debug_assert_eq!(leaf_forms.len(), args.len());
+    let positional_count = args.len().saturating_sub(named_arg_ids.len());
+
+    args.iter()
+        .cloned()
+        .zip(leaf_forms)
+        .enumerate()
+        .map(|(index, (value, form))| {
+            let role = if index < positional_count {
+                SiglusCallArgumentRole::Positional { index }
+            } else {
+                let id_index = args.len().saturating_sub(index + 1);
+                SiglusCallArgumentRole::Named {
+                    id: named_arg_ids[id_index],
+                }
+            };
+            SiglusCallArgument { role, form, value }
+        })
+        .collect()
 }
 
 /// Drive all stack-affecting instructions. Command calls are returned at their
@@ -285,6 +337,7 @@ fn replay_calls(
                     target,
                     target_expression,
                     arg_list_id,
+                    semantic_args: semantic_args(&arg_forms, &args, &named_arg_ids),
                     arg_forms,
                     args,
                     named_arg_ids,
@@ -307,7 +360,7 @@ fn replay_calls(
     Ok((calls, command_operand_bytes))
 }
 
-/// Return all direct, positional string arguments used as `sel` labels.
+/// Return all direct, positional string arguments used as `selbtn` labels.
 fn sel_option_strings(call: &SiglusTypedCall) -> impl Iterator<Item = i32> + '_ {
     let positional_count = call.args.len().saturating_sub(call.named_arg_ids.len());
     call.args[..positional_count]
@@ -382,16 +435,16 @@ pub fn decode_scene_syscalls(payload: &[u8]) -> Result<SceneSyscallDecode, Scene
     }
 
     let mut unknown_arg_shape_counts = BTreeMap::new();
-    let mut unknown_target_count = 0usize;
     for call in &calls {
-        match call.target.system_function_id() {
-            Some(function_id) if system_function_name(function_id).is_none() => {
-                *unknown_arg_shape_counts.entry(function_id).or_insert(0) += 1;
-            }
-            Some(_) => {}
-            None => unknown_target_count += 1,
+        if let Some(function_id) = call.target.system_function_id()
+            && system_function_shape(function_id).is_none()
+        {
+            *unknown_arg_shape_counts.entry(function_id).or_insert(0) += 1;
         }
     }
+    // Function references, global variables, raw packed heads, and computed
+    // elements each have a distinct fully typed target representation. They
+    // are not opaque or unknown target shapes.
     let mut diagnostics: Vec<_> = unknown_arg_shape_counts
         .iter()
         .map(
@@ -401,11 +454,6 @@ pub fn decode_scene_syscalls(payload: &[u8]) -> Result<SceneSyscallDecode, Scene
             },
         )
         .collect();
-    if unknown_target_count > 0 {
-        diagnostics.push(SiglusSyscallDiagnostic::UnknownSyscallTargetShape {
-            count: unknown_target_count,
-        });
-    }
     if unresolved_sel_option_count > 0 {
         diagnostics.push(SiglusSyscallDiagnostic::UnresolvedSelOptionStringRef {
             count: unresolved_sel_option_count,
@@ -420,5 +468,6 @@ pub fn decode_scene_syscalls(payload: &[u8]) -> Result<SceneSyscallDecode, Scene
         selections,
         diagnostics,
         unknown_arg_shape_counts,
+        unknown_target_shapes: 0,
     })
 }
