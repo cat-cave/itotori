@@ -15,7 +15,7 @@ import type {
   LocalizationQualityCategoryV02,
   LocalizationUnitV02,
 } from "@itotori/localization-bridge-schema";
-import type { ProjectState } from "./project-workflow.js";
+import type { ProjectState } from "./project-types.js";
 import {
   countProtectedSpanOccurrences,
   missingRequiredProtectedSpanOccurrences,

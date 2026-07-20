@@ -171,7 +171,7 @@ import type {
   ItotoriProjectWorkflowPort,
   LaunchLocalizationPassResult,
   RuntimeIngestResult,
-} from "./services/project-workflow.js";
+} from "./services/project-operations-port.js";
 import {
   ProjectMutationScopeError,
   requireOwnedBranchScope,

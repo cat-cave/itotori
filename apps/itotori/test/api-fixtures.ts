@@ -38,7 +38,8 @@ import type {
   FindingRecordV02,
   RuntimeVerificationReport,
 } from "@itotori/localization-bridge-schema";
-import type { ProjectState, RuntimeIngestResult } from "../src/services/project-workflow.js";
+import type { RuntimeIngestResult } from "../src/services/project-operations-port.js";
+import type { ProjectState } from "../src/services/project-types.js";
 import type { ProjectOverviewReadModel } from "../src/project-overview-read-model.js";
 import type {
   BmkCockpitReadModel,

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 // Clause 2 (static half): NO request can reach the old path from a kept
 // entrypoint. This walks each entrypoint's *runtime* import closure and asserts
 // NONE of the legacy modules is reachable — there is no executable import edge to
-// `ProjectWorkflowService`, a provider object, the context-correction worker, the
+// the retired project-workflow surface, a provider object, the context-correction worker, the
 // journal reservation/finalizer, or a raw-MTL path. Type-only imports are erased
 // before a request runs and are intentionally not runtime edges. Deleting the cut
 // (or re-adding any old route) fails this test.
@@ -36,7 +36,7 @@ const ENTRYPOINTS = [
 // The legacy modules that MUST be unreachable from any kept entrypoint. Each maps
 // to one acceptance-clause hazard.
 const FORBIDDEN: readonly { readonly needle: string; readonly hazard: string }[] = [
-  { needle: "/services/project-workflow", hazard: "ProjectWorkflowService.draftProject" },
+  { needle: "/services/project-workflow", hazard: "retired project-workflow surface" },
   { needle: "/services/db-live-workflow-ports", hazard: "provider object / pass driver" },
   { needle: "/services/database-services", hazard: "legacy service graph factory" },
   { needle: "/services/context-correction-redrafter", hazard: "context-correction worker" },

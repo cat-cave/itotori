@@ -78,9 +78,9 @@ import {
 import type {
   BenchmarkRecordResult,
   FindingRecordResult,
-  ProjectState,
   RuntimeIngestResult,
-} from "./services/project-workflow.js";
+} from "./services/project-operations-port.js";
+import type { ProjectState } from "./services/project-types.js";
 import type {
   ProjectOverviewBenchmarkHeadline,
   ProjectOverviewJournalPage,

@@ -35,7 +35,8 @@ import type { EngineCapabilityReportPort } from "./services/engine-capability-re
 import { configuredServicePort } from "./services/configured-port.js";
 import { runAssetDecisionsList, type AssetDecisionsCliPort } from "./asset-decisions/cli.js";
 import { runQueueHealthCli, type QueueHealthCliPort } from "./queue/cli.js";
-import type { ItotoriProjectWorkflowPort, ProjectState } from "./services/project-workflow.js";
+import type { ItotoriProjectWorkflowPort } from "./services/project-operations-port.js";
+import type { ProjectState } from "./services/project-types.js";
 import { assertOpenRouterZdrAccount } from "./zdr-admission/account-zdr.js";
 import { loadExternalEnvFile } from "./env/external-env-file.js";
 import { runKaifuuExtract } from "./extract/kaifuu-extract-seam.js";
