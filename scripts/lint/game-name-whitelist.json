@@ -1,7 +1,7 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/audit-no-game-names.mjs --update\". Each entry is a grandfathered\ngame-name token (the matched identifier, lower-cased); the multiset per file may\nonly shrink. When empty/deleted the guard is absolute (zero game names in code).",
-  "generatedAt": "2026-07-20T18:19:29.386Z",
-  "total": 287,
+  "generatedAt": "2026-07-20T19:35:46.055Z",
+  "total": 243,
   "files": {
     "apps/itotori/src/extract/decode-extract-runner.ts": ["sweetie"],
     "apps/itotori/src/play/patch-runtime-launcher.ts": ["sweetie", "sweetie"],
@@ -134,7 +134,6 @@
       "sweetie",
       "sweetie"
     ],
-    "crates/utsushi-reallive/src/engine_port.rs": ["sweetie", "sweetie"],
     "crates/utsushi-reallive/src/expression.rs": ["sweetie", "sweetie"],
     "crates/utsushi-reallive/src/expression_eval.rs": ["sweetie"],
     "crates/utsushi-reallive/src/g00.rs": ["sweetie", "sweetie", "sweetie", "sweetie"],
@@ -168,15 +167,6 @@
     "crates/utsushi-reallive/src/replay.rs": ["sweetie", "sweetie"],
     "crates/utsushi-reallive/src/replay/implementation/canonical.rs": ["sweetie"],
     "crates/utsushi-reallive/src/replay/implementation/engine_core.rs": ["sweetie"],
-    "crates/utsushi-reallive/src/rlop/module_audio.rs": ["sweetie", "sweetie"],
-    "crates/utsushi-reallive/src/rlop/module_audio/runtime.rs": [
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie"
-    ],
     "crates/utsushi-reallive/src/rlop/module_catalog.rs": [
       "sweetie",
       "sweetie",
@@ -242,44 +232,6 @@
       "sweetie"
     ],
     "crates/utsushi-reallive/src/scene_store.rs": ["sweetie"],
-    "crates/utsushi-reallive/src/syscall.rs": [
-      "corpus-observed",
-      "corpus-observed",
-      "corpus-observed",
-      "corpus-observed",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie"
-    ],
-    "crates/utsushi-reallive/src/syscall/types.rs": [
-      "corpus-observed",
-      "corpus-observed",
-      "corpus-observed",
-      "corpus-observed",
-      "corpus-observed",
-      "corpus-observed",
-      "corpus-observed",
-      "corpus-observed",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie",
-      "sweetie"
-    ],
     "crates/utsushi-reallive/src/var_banks.rs": ["sweetie"],
     "crates/utsushi-reallive/src/vm.rs": ["sweetie"],
     "crates/utsushi-softpal/src/scene_runtime.rs": ["v21465"],
