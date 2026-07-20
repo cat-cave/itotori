@@ -71,8 +71,8 @@
       "path": "fixtures/public/reallive-detector/positive-synthetic-triple/expected/detection-report.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "0d76e835515bddc3fdeaa6a67bf925ec292bbf4429cfe605ce58bc00e0819142",
-      "bytes": 36545,
+      "sha256": "8a04879a2ccb5633e30fc22cdbe2bad65a999b3c29ffaa0ef88a7a8be5bda550",
+      "bytes": 36658,
       "redistributable": true
     },
     {
@@ -217,8 +217,12 @@
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
-    "sourceLocales": ["ja-JP"],
-    "engineKinds": ["reallive"],
+    "sourceLocales": [
+      "ja-JP"
+    ],
+    "engineKinds": [
+      "reallive"
+    ],
     "notes": "Detector-only fixtures for KAIFUU-172; no text units or protected spans because no Scene/SEEN parsing, extraction, or patching is claimed."
   },
   "benchmarkUse": {
