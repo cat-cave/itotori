@@ -350,6 +350,48 @@ ci-real-bytes:
       cargo test -p kaifuu-softpal -- --ignored
     fi
 
+# OPT-IN PRIVATE real-byte proof lane. NOT a merge-required gate — it needs the
+# content-addressed Sweetie corpus + the exact approved ZDR profile, which the
+# public hosted runners lack (triggered on demand / by label; see
+# .github/workflows/real-bytes-private-proof.yml). Unlike the periodic oracle it
+# may NOT green-skip: the preflight gate FAILS (red) on any missing REQUIRED
+# Sweetie bytes, an unpinned/mismatched content-address, or ZDR profile drift.
+# It exercises extract -> structure -> patch -> replay on the ACTUAL Sweetie
+# bytes and emits a CONTENT-FREE evidence manifest
+# (.tmp/private-proof/evidence.json — counts/hashes/ids only, never source/
+# target/prompt text). The gate + manifest logic are unit-tested in
+# scripts/ci/private-real-byte-proof.test.mjs (fail-not-skip + content-free),
+# wired into ci-tier0-meta so config drift is caught in the public gate.
+ci-real-bytes-private-proof:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export ITOTORI_REAL_GAME_ROOT="${ITOTORI_REAL_GAME_ROOT:-/scratch/itotori-research/sweetie-hd}"
+    RESULTS="$PWD/.tmp/private-proof/stage-results.json"
+    rm -f "$RESULTS"
+    # 1. FAIL-NOT-SKIP preflight: required Sweetie bytes present + content-
+    #    addressed + ZDR profile attested. Missing/mismatched = RED, never skip.
+    node scripts/ci/private-real-byte-proof.mjs --preflight
+    # 2. Build the moat binaries the extract/replay stages drive (never reuse a
+    #    stale bin from the shared CARGO_TARGET_DIR).
+    cargo build --release -p kaifuu-cli -p utsushi-cli
+    export ITOTORI_KAIFUU_BIN="${ITOTORI_KAIFUU_BIN:-${CARGO_TARGET_DIR:-target}/release/kaifuu-cli}"
+    export ITOTORI_UTSUSHI_BIN="${ITOTORI_UTSUSHI_BIN:-${CARGO_TARGET_DIR:-target}/release/utsushi-cli}"
+    pnpm exec vp run ts:build
+    # 3. EXTRACT — decode the real Sweetie RealLive scenario bytes.
+    cargo test -p kaifuu-reallive -p kaifuu-cli -- --ignored
+    node scripts/ci/private-real-byte-proof.mjs --record-stage extract --results "$RESULTS"
+    # 4. STRUCTURE — scene graph / choices / speakers from the real bytes.
+    cargo test -p utsushi-reallive -- --ignored
+    node scripts/ci/private-real-byte-proof.mjs --record-stage structure --results "$RESULTS"
+    # 5. PATCH — produce + apply the real-byte patch through the production seam.
+    pnpm --filter @itotori/app exec vitest run test/patchback-real-bytes.test.ts test/patchback-produce-endpoint-real-bytes.test.ts --exclude '**/.direnv/**'
+    node scripts/ci/private-real-byte-proof.mjs --record-stage patch --results "$RESULTS"
+    # 6. REPLAY — observe the translated bytes back through utsushi.
+    cargo test -p utsushi-cli -- --ignored
+    node scripts/ci/private-real-byte-proof.mjs --record-stage replay --results "$RESULTS"
+    # 7. Emit the CONTENT-FREE evidence manifest (counts/hashes/ids only).
+    node scripts/ci/private-real-byte-proof.mjs --emit-manifest --results "$RESULTS" --out .tmp/private-proof/evidence.json
+
 # real-bytes-periodic-ground-truth-oracle (P2): the strict-proof ANCHOR for the
 # synthetic-CI collapse. PERIODIC (nightly + on-demand), invoked OUTSIDE per-gate
 # CI — it is deliberately NOT in affected.mjs / qd-full-ci (that is the whole
@@ -713,6 +755,9 @@ ci-tier0-meta:
     node scripts/assert-tanstack-openrouter-pin.mjs
     node --test scripts/audit-llm-loc-budget.test.mjs
     node scripts/audit-llm-loc-budget.mjs
+    node --test scripts/ci/public-lane-coverage.test.mjs
+    node scripts/ci/public-lane-coverage.mjs --check
+    node --test scripts/ci/private-real-byte-proof.test.mjs
     pnpm --filter @itotori/db exec vitest run test/migrations-parity.test.ts --exclude '**/.direnv/**'
     node --test scripts/generate-engine-capability-matrix.test.mjs
     node scripts/generate-engine-capability-matrix.mjs --check

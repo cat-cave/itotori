@@ -1,0 +1,68 @@
+name: Real-Bytes Private Proof (opt-in)
+
+# OPT-IN private real-byte proof lane. Deliberately SEPARATE from pr-tiers /
+# _tier0 / _tier1 (the merge-queue-required checks): it needs the content-
+# addressed Sweetie corpus + the exact approved ZDR profile, which the public
+# hosted runners do not have, so it is NOT — and must never become — a required
+# gate. A red run here never stalls the native merge queue.
+#
+# Triggers (opt-in only): manual dispatch, or attaching the `real-byte-proof`
+# label to a PR. Never `push`/`merge_group`, so it cannot gate a merge.
+#
+# THE KEY INVERSION vs. the periodic oracle: this lane FAILS (never green-skips)
+# when a REQUIRED real corpus is missing or the ZDR profile drifts. See
+# `just ci-real-bytes-private-proof` + scripts/ci/private-real-byte-proof.mjs.
+# It emits a CONTENT-FREE evidence manifest (counts/hashes/ids only) and
+# exercises extract -> structure -> patch -> replay on the ACTUAL Sweetie bytes.
+
+on:
+  workflow_dispatch: {}
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  private-proof:
+    # Gate the label trigger so only the opt-in label runs it; manual dispatch
+    # always runs. Runs on the self-hosted runner that stages the real corpora.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.label.name == 'real-byte-proof' }}
+    runs-on: [self-hosted, itotori-corpora]
+    env:
+      # Content-address + approved ZDR profile come from repo VARIABLES (not
+      # secrets — a corpus hash and a model/provider id are not secret, and the
+      # emitted manifest stays content-free). A misconfigured/absent value makes
+      # the preflight gate FAIL rather than skip.
+      ITOTORI_SWEETIE_CONTENT_ADDRESS: ${{ vars.ITOTORI_SWEETIE_CONTENT_ADDRESS }}
+      ITOTORI_ZDR_PROFILE: ${{ vars.ITOTORI_ZDR_PROFILE }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.97.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: sudo snap install just --classic
+
+      # extract -> structure -> patch -> replay on ACTUAL Sweetie bytes, behind
+      # the fail-not-skip preflight gate; emits the content-free manifest.
+      - run: just ci-real-bytes-private-proof
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ always() }}
+        with:
+          name: private-proof-evidence-${{ github.sha }}
+          path: .tmp/private-proof/evidence.json
+          if-no-files-found: warn
+          retention-days: 7

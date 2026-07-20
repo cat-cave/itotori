@@ -108,3 +108,39 @@ This is the strict-lane analogue of the DB skip-honesty gates (`test-db-strict`,
 pre-check. The `playwright.config.ts` also throws if no `PLAYWRIGHT_CHROMIUM_BIN`
 / `UTSUSHI_BROWSER_BIN` is set, so both the recipe and the config refuse to run
 browserless. A missing browser is a RED run, never a false green.
+
+## Public-lane coverage manifest (explicit, not implicit)
+
+The public per-gate lane must PROVABLY run every required public test category
+with no secret/network/real-corpora dependency, so a fork PR or a secretless run
+passes it. That coverage is made EXPLICIT by a checked manifest:
+`scripts/ci/public-lane-coverage.mjs`. It names, per required category — strict
+schema, golden-wire interception, memo/fault, tool, Wiki/invalidation, workflow,
+migration, patch-fixture, no-legacy, and LOC — the concrete secretless test file
+(with a distinguishing marker that must appear in it) and the PUBLIC recipe that
+runs it. `--check` fails (exit 1) if any category is dropped, cites a
+private/secret lane, cites a missing test, has a stale marker, or is not
+actually wired into its recipe. It runs in `just ci-tier0-meta` (a required
+tier-0 merge-queue check), so the assertion gates every PR. Regression suite:
+`scripts/ci/public-lane-coverage.test.mjs`.
+
+## Opt-in private real-byte proof lane
+
+`just ci-real-bytes-private-proof` (workflow:
+`.github/workflows/real-bytes-private-proof.yml`, triggered on demand / by the
+`real-byte-proof` label — NEVER `push`/`merge_group`, so it is not a
+merge-required check) exercises extract -> structure -> patch -> replay on the
+ACTUAL content-addressed Sweetie bytes under the exact approved ZDR profile.
+
+Unlike the periodic oracle (which may skip a legitimately-absent family), this
+lane may NOT green-skip: its preflight gate
+(`scripts/ci/private-real-byte-proof.mjs --preflight`) FAILS (red) on any
+missing REQUIRED Sweetie bytes, an unpinned/mismatched corpus content-address,
+or ZDR profile drift. This is the key inversion — a missing required corpus reds
+the lane rather than silently skipping. It emits a CONTENT-FREE evidence
+manifest (`.tmp/private-proof/evidence.json` — counts/hashes/ids only, never
+copyrighted bytes or prompt/source/target text; `assertContentFree` rejects
+text-bearing keys and long non-hash strings), aligned with the redaction toggle.
+The gate + manifest logic (config parses, fail-not-skip, content-free shape) are
+unit-tested in `scripts/ci/private-real-byte-proof.test.mjs`, which runs in the
+public `ci-tier0-meta` lane so drift is caught without the real corpus.
