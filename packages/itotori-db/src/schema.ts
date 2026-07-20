@@ -542,43 +542,6 @@ export const exactSearchSourceArtifactTypeValues = {
 export type ExactSearchSourceArtifactType =
   (typeof exactSearchSourceArtifactTypeValues)[keyof typeof exactSearchSourceArtifactTypeValues];
 
-export const contextArtifactCategoryValues = {
-  sceneSummary: "scene_summary",
-  characterNote: "character_note",
-  routeMap: "route_map",
-  speakerLabel: "speaker_label",
-  terminologyCandidate: "terminology_candidate",
-  glossary: "glossary",
-  style: "style",
-  contextNote: "context_note",
-} as const;
-
-export type ContextArtifactCategory =
-  (typeof contextArtifactCategoryValues)[keyof typeof contextArtifactCategoryValues];
-
-export const contextArtifactStatusValues = {
-  active: "active",
-  stale: "stale",
-  superseded: "superseded",
-  rejected: "rejected",
-} as const;
-
-export type ContextArtifactStatus =
-  (typeof contextArtifactStatusValues)[keyof typeof contextArtifactStatusValues];
-
-/**
- * Immutable citation snapshot retained on a ContextEntryVersion. Unlike the
- * current artifact-source join, this survives a later upsert that replaces the
- * entry's current citations, so a frozen ContextPacket can be reconstructed.
- */
-export type ContextEntryVersionCitation = {
-  bridgeUnitId: string;
-  sourceRevisionId: string;
-  sourceHash: string;
-  citation: string;
-  metadata: Record<string, unknown>;
-};
-
 export const users = pgTable("itotori_users", {
   userId: text("user_id").primaryKey(),
   displayName: text("display_name").notNull(),
@@ -1946,196 +1909,6 @@ export const exactSearchDocuments = pgTable(
       table.projectId,
       table.localeBranchId,
       table.sourceRevisionId,
-    ),
-  ],
-);
-
-export const contextArtifacts = pgTable(
-  "itotori_context_artifacts",
-  {
-    contextArtifactId: text("context_artifact_id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.projectId, { onDelete: "cascade" }),
-    localeBranchId: text("locale_branch_id")
-      .notNull()
-      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
-    sourceRevisionId: text("source_revision_id")
-      .notNull()
-      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
-    category: text("category").notNull(),
-    status: text("status").notNull().default(contextArtifactStatusValues.active),
-    title: text("title").notNull(),
-    normalizedTitle: text("normalized_title").notNull(),
-    body: text("body").notNull(),
-    data: jsonb("data")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    contentHash: text("content_hash").notNull(),
-    producedByAgent: text("produced_by_agent"),
-    producedByTool: text("produced_by_tool"),
-    producerVersion: text("producer_version").notNull(),
-    provenance: jsonb("provenance")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    // The mutable ContextEntry head. Its database FK to contextEntryVersions
-    // is declared by migration 0083 rather than here because the two tables
-    // are mutually referential.
-    headVersionId: text("head_version_id"),
-    invalidatedReason: text("invalidated_reason"),
-    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
-    createdByUserId: text("created_by_user_id").references(() => users.userId, {
-      onDelete: "set null",
-    }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    index("itotori_context_artifacts_branch_lookup_idx").on(
-      table.projectId,
-      table.localeBranchId,
-      table.sourceRevisionId,
-      table.category,
-      table.status,
-    ),
-    index("itotori_context_artifacts_title_idx").on(table.localeBranchId, table.normalizedTitle),
-    index("itotori_context_artifacts_content_hash_idx").on(
-      table.localeBranchId,
-      table.category,
-      table.contentHash,
-    ),
-    // Target key for the ContextEntryVersion entry-scope and head-pointer
-    // composite foreign keys declared in migration 0083.
-    unique("itotori_context_artifacts_scope_key").on(
-      table.contextArtifactId,
-      table.projectId,
-      table.localeBranchId,
-    ),
-  ],
-);
-
-/**
- * Append-only ContextEntryVersion history. `contextArtifacts` is the mutable
- * entry/head projection used by current retrieval; every upsert writes a full
- * snapshot here so prior ContextPackets remain reconstructable by version id.
- */
-export const contextEntryVersions = pgTable(
-  "itotori_context_entry_versions",
-  {
-    contextEntryVersionId: text("context_entry_version_id").primaryKey(),
-    contextArtifactId: text("context_artifact_id").notNull(),
-    projectId: text("project_id").notNull(),
-    localeBranchId: text("locale_branch_id").notNull(),
-    parentVersionId: text("parent_version_id"),
-    sourceRevisionId: text("source_revision_id")
-      .notNull()
-      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
-    category: text("category").notNull(),
-    status: text("status").notNull(),
-    title: text("title").notNull(),
-    normalizedTitle: text("normalized_title").notNull(),
-    body: text("body").notNull(),
-    data: jsonb("data")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    contentHash: text("content_hash").notNull(),
-    producedByAgent: text("produced_by_agent"),
-    producedByTool: text("produced_by_tool"),
-    producerVersion: text("producer_version").notNull(),
-    provenance: jsonb("provenance")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    citations: jsonb("citations")
-      .$type<ContextEntryVersionCitation[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    affectedUnitIds: jsonb("affected_unit_ids")
-      .$type<string[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    invalidatedReason: text("invalidated_reason"),
-    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
-    createdByUserId: text("created_by_user_id").references(() => users.userId, {
-      onDelete: "set null",
-    }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    unique("itotori_context_entry_versions_scope_key").on(
-      table.contextEntryVersionId,
-      table.contextArtifactId,
-      table.projectId,
-      table.localeBranchId,
-    ),
-    index("itotori_context_entry_versions_entry_created_idx").on(
-      table.contextArtifactId,
-      table.createdAt,
-    ),
-    index("itotori_context_entry_versions_parent_idx").on(table.parentVersionId),
-    index("itotori_context_entry_versions_branch_created_idx").on(
-      table.localeBranchId,
-      table.createdAt,
-    ),
-    // A history row belongs to the same entry/project/branch as its mutable
-    // head projection. The migration owns this constraint too, but retaining
-    // it here makes the Drizzle model describe the durable boundary.
-    foreignKey({
-      columns: [table.contextArtifactId, table.projectId, table.localeBranchId],
-      foreignColumns: [
-        contextArtifacts.contextArtifactId,
-        contextArtifacts.projectId,
-        contextArtifacts.localeBranchId,
-      ],
-      name: "itotori_context_entry_versions_entry_scope_fkey",
-    }).onDelete("cascade"),
-    // A parent can only be an earlier version of this exact entry scope;
-    // version lineage can never cross entries, projects, or locale branches.
-    foreignKey({
-      columns: [
-        table.parentVersionId,
-        table.contextArtifactId,
-        table.projectId,
-        table.localeBranchId,
-      ],
-      foreignColumns: [
-        table.contextEntryVersionId,
-        table.contextArtifactId,
-        table.projectId,
-        table.localeBranchId,
-      ],
-      name: "itotori_context_entry_versions_parent_scope_fkey",
-    }).onDelete("cascade"),
-  ],
-);
-
-export const contextArtifactSourceUnits = pgTable(
-  "itotori_context_artifact_source_units",
-  {
-    contextArtifactId: text("context_artifact_id")
-      .notNull()
-      .references(() => contextArtifacts.contextArtifactId, { onDelete: "cascade" }),
-    bridgeUnitId: text("bridge_unit_id").notNull(),
-    sourceRevisionId: text("source_revision_id")
-      .notNull()
-      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
-    sourceHash: text("source_hash").notNull(),
-    citation: text("citation").notNull(),
-    metadata: jsonb("metadata")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default(sql`'{}'::jsonb`),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.contextArtifactId, table.bridgeUnitId] }),
-    index("itotori_context_artifact_source_units_unit_idx").on(
-      table.bridgeUnitId,
-      table.sourceRevisionId,
-      table.sourceHash,
     ),
   ],
 );
@@ -4439,50 +4212,7 @@ export const authPermissionSetAuditEvents = pgTable(
   ],
 );
 
-// ---------------------------------------------------------------------
-// p0-core-attempt-and-outcome-journal — durable per-run execution journal
-// ---------------------------------------------------------------------
-
-/**
- * Context/version reference resolved into one written unit's immutable input
- * packet. The context store itself is a later node; the journal preserves the
- * references and opaque packet so a read-model never has to fabricate them.
- */
-export type LocalizationJournalOutcomeContextRefDetails = unknown;
-
-/** A source/draft character span supplied by a raw QA finding. */
-export type LocalizationJournalQaSpan = {
-  start: number;
-  end: number;
-};
-
-/** Opaque, versioned supervisor inputs frozen at run launch. */
-export type LocalizationJournalFrozenScopeJson = Record<string, unknown> | unknown[];
-export type LocalizationJournalRoutingPolicyJson = Record<string, unknown>;
-export type LocalizationJournalCostPolicyJson = Record<string, unknown>;
-
-/** Run-level operational blocker persisted while execution is resumably paused. */
-export type LocalizationJournalPausedBlockerJson = {
-  kind: "budget_cap" | "provider_outage" | "itotori_bug";
-  detail: string;
-  evidence: string;
-  raisedAt: string;
-  operatorAction: string;
-};
-
-/** Durable, provider-independent description of the unit work to resume. */
-export type LocalizationJournalNextActionJson = {
-  kind: string;
-  [key: string]: unknown;
-};
-
-/** Whether a completed provider response established a settled bill. */
-export type LocalizationJournalAttemptBillingState = "known" | "unknown";
-
-/** Lifecycle state of a pre-dispatch worst-case cost reservation. */
-export type LocalizationJournalCostReservationState = "reserved" | "released" | "reconciled";
-
-/** Minimal run-scoped patch-version lifecycle owned by the terminal finalizer. */
+/** Delivery lifecycle for retained patch versions. */
 export const localizationRunPatchVersionStatusValues = {
   building: "building",
   playable: "playable",
@@ -4492,7 +4222,7 @@ export const localizationRunPatchVersionStatusValues = {
 export type LocalizationRunPatchVersionStatus =
   (typeof localizationRunPatchVersionStatusValues)[keyof typeof localizationRunPatchVersionStatusValues];
 
-/** How a patch member arrived in this exact delivered version. */
+/** How a patch member arrived in this exact delivery. */
 export const localizationPatchVersionMemberOriginValues = {
   runWrittenOutcome: "run_written_outcome",
   reusedFromBase: "reused_from_base",
@@ -4502,7 +4232,7 @@ export const localizationPatchVersionMemberOriginValues = {
 export type LocalizationPatchVersionMemberOrigin =
   (typeof localizationPatchVersionMemberOriginValues)[keyof typeof localizationPatchVersionMemberOriginValues];
 
-/** Durable play-test feedback event kinds; quality callouts remain annotations. */
+/** Durable play-feedback event kinds. */
 export const playTestFeedbackEventKindValues = {
   resultEdit: "result_edit",
   comment: "comment",
@@ -4521,533 +4251,6 @@ export const playTestFeedbackBatchSelectionKindValues = {
 export type PlayTestFeedbackBatchSelectionKind =
   (typeof playTestFeedbackBatchSelectionKindValues)[keyof typeof playTestFeedbackBatchSelectionKindValues];
 
-export const playSessionStatusValues = {
-  active: "active",
-  completed: "completed",
-  abandoned: "abandoned",
-} as const;
-
-export type PlaySessionStatus =
-  (typeof playSessionStatusValues)[keyof typeof playSessionStatusValues];
-
-export const localizationRefinementMemberStrategyValues = {
-  reuse: "reuse",
-  redraft: "redraft",
-  newScope: "new_scope",
-} as const;
-
-export type LocalizationRefinementMemberStrategy =
-  (typeof localizationRefinementMemberStrategyValues)[keyof typeof localizationRefinementMemberStrategyValues];
-
-/** The only terminal run states that receive a canonical terminal summary. */
-export const localizationRunTerminalStatusValues = {
-  succeeded: "succeeded",
-  failed: "failed",
-  aborted: "aborted",
-  paused: "paused",
-} as const;
-
-export type LocalizationRunTerminalStatus =
-  (typeof localizationRunTerminalStatusValues)[keyof typeof localizationRunTerminalStatusValues];
-
-/**
- * Durable finalizer stages. The build/apply/validation/summary rows are also
- * worker outbox rows; the other stages retain the same shaped evidence so one
- * terminal summary can describe every all-path exit.
- */
-export const localizationRunFinalizerStageValues = {
-  preflight: "preflight",
-  provider: "provider",
-  unit: "unit",
-  persistence: "persistence",
-  patchBuild: "patch_build",
-  patchApply: "patch_apply",
-  validation: "validation",
-  summary: "summary",
-  cleanup: "cleanup",
-} as const;
-
-export type LocalizationRunFinalizerStage =
-  (typeof localizationRunFinalizerStageValues)[keyof typeof localizationRunFinalizerStageValues];
-
-/** Delivery/evidence lifecycle for the run-scoped finalizer outbox. */
-export const localizationRunFinalizerOutboxStatusValues = {
-  pending: "pending",
-  running: "running",
-  retryWaiting: "retry_waiting",
-  succeeded: "succeeded",
-  failed: "failed",
-} as const;
-
-export type LocalizationRunFinalizerOutboxStatus =
-  (typeof localizationRunFinalizerOutboxStatusValues)[keyof typeof localizationRunFinalizerOutboxStatusValues];
-
-/**
- * One localization execution run. It owns the physical provider-call and
- * written-outcome facts needed to rebuild a patch/read model losslessly.
- */
-export const localizationJournalRuns = pgTable(
-  "itotori_localization_journal_runs",
-  {
-    runId: text("run_id").primaryKey(),
-    projectId: text("project_id")
-      .notNull()
-      .references(() => projects.projectId, { onDelete: "cascade" }),
-    localeBranchId: text("locale_branch_id")
-      .notNull()
-      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
-    sourceRevisionId: text("source_revision_id")
-      .notNull()
-      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
-    targetLocale: text("target_locale").notNull(),
-    frozenScope: jsonb("frozen_scope").$type<LocalizationJournalFrozenScopeJson>(),
-    routingPolicy: jsonb("routing_policy").$type<LocalizationJournalRoutingPolicyJson>(),
-    costPolicy: jsonb("cost_policy").$type<LocalizationJournalCostPolicyJson>(),
-    // A non-null base version marks this run as a refinement. The migration
-    // owns the FK because PatchVersion is declared later in this module.
-    basePatchVersionId: text("base_patch_version_id"),
-    status: text("status").notNull().default("running"),
-    pausedBlocker: jsonb("paused_blocker").$type<LocalizationJournalPausedBlockerJson>(),
-    leaseOwnerId: text("lease_owner_id"),
-    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
-    fenceToken: integer("fence_token").notNull().default(0),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    index("itotori_localization_journal_runs_branch_created_idx").on(
-      table.localeBranchId,
-      table.createdAt,
-    ),
-    index("itotori_localization_journal_runs_project_created_idx").on(
-      table.projectId,
-      table.createdAt,
-    ),
-  ],
-);
-
-/**
- * One planned unit execution slot, seeded before dispatch. This table never
- * stores source text, target text, or candidates; those belong only to the
- * canonical terminal WrittenUnitOutcome tables below.
- */
-export const localizationJournalRunUnits = pgTable(
-  "itotori_localization_journal_run_units",
-  {
-    runId: text("run_id")
-      .notNull()
-      .references(() => localizationJournalRuns.runId, { onDelete: "cascade" }),
-    bridgeUnitId: text("bridge_unit_id").notNull(),
-    sourceUnitKey: text("source_unit_key"),
-    unitOrdinal: integer("unit_ordinal").notNull(),
-    state: text("state").notNull().default("pending"),
-    nextAction: jsonb("next_action").$type<LocalizationJournalNextActionJson>(),
-    claimOwnerId: text("claim_owner_id"),
-    claimFenceToken: integer("claim_fence_token"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.runId, table.bridgeUnitId] }),
-    unique("itotori_localization_journal_run_units_run_ordinal_unique").on(
-      table.runId,
-      table.unitOrdinal,
-    ),
-    index("itotori_localization_journal_run_units_run_state_idx").on(
-      table.runId,
-      table.state,
-      table.unitOrdinal,
-    ),
-  ],
-);
-
-/**
- * One physical provider dispatch. `costUsd` intentionally uses an
- * unconstrained PostgreSQL `numeric`: it round-trips through Drizzle as a
- * decimal string and must never be converted to integer micros or a JS number.
- */
-export const localizationJournalLlmAttempts = pgTable(
-  "itotori_llm_attempts",
-  {
-    attemptId: text("attempt_id").primaryKey(),
-    runId: text("run_id")
-      .notNull()
-      .references(() => localizationJournalRuns.runId, { onDelete: "cascade" }),
-    // The whole-project driver journals raw bridge units before (and even
-    // without) source-unit SQL provisioning, so this frozen-scope identity is
-    // intentionally a durable text key rather than a source_units FK.
-    bridgeUnitId: text("bridge_unit_id").notNull(),
-    stage: text("stage").notNull(),
-    agentLabel: text("agent_label").notNull(),
-    logicalCallId: text("logical_call_id").notNull(),
-    attemptIndex: integer("attempt_index").notNull(),
-    lifecycleState: text("lifecycle_state").notNull().default("completed"),
-    fenceToken: integer("fence_token").notNull().default(0),
-    // The requested policy pair and the actual served pair are distinct facts:
-    // OpenRouter may route within the ZDR allow-list after a preference miss.
-    requestedModelId: text("requested_model_id"),
-    requestedProviderId: text("requested_provider_id"),
-    modelId: text("model_id"),
-    providerId: text("provider_id"),
-    providerRunId: text("provider_run_id").notNull(),
-    costUsd: numeric("cost_usd"),
-    costKind: text("cost_kind"),
-    // A confirmed zero is materially different from a malformed/network
-    // response whose bill is not yet known. The latter keeps its reservation.
-    billingState: text("billing_state").$type<LocalizationJournalAttemptBillingState>(),
-    usageResponseJson: jsonb("usage_response_json"),
-    tokensIn: integer("tokens_in"),
-    tokensOut: integer("tokens_out"),
-    tokenCountSource: text("token_count_source"),
-    // Cache fields remain nullable for pre-0078 journal rows: NULL means the
-    // provenance was not captured, never a fabricated non-cache-hit zero.
-    cacheReadTokens: integer("cache_read_tokens"),
-    cacheWriteTokens: integer("cache_write_tokens"),
-    cacheDiscountMicrosUsd: pgBigint("cache_discount_micros_usd", { mode: "number" }),
-    fallbackUsed: boolean("fallback_used"),
-    fallbackPlan: jsonb("fallback_plan").$type<string[]>(),
-    zdr: boolean("zdr").notNull(),
-    finishState: text("finish_state"),
-    refusalState: text("refusal_state"),
-    validationResult: text("validation_result"),
-    failureClass: text("failure_class"),
-    retryDecision: text("retry_decision"),
-    retryDelayMs: integer("retry_delay_ms"),
-    artifactRef: text("artifact_ref"),
-    errorClasses: jsonb("error_classes")
-      .$type<string[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("itotori_llm_attempts_run_logical_attempt_idx").on(
-      table.runId,
-      table.logicalCallId,
-      table.attemptIndex,
-    ),
-    uniqueIndex("itotori_llm_attempts_provider_run_idx").on(table.providerRunId),
-    unique("itotori_llm_attempts_run_attempt_unique").on(table.runId, table.attemptId),
-    index("itotori_llm_attempts_run_unit_idx").on(table.runId, table.bridgeUnitId),
-    index("itotori_llm_attempts_run_stage_idx").on(table.runId, table.stage),
-    index("itotori_llm_attempts_dispatching_idx").on(
-      table.runId,
-      table.lifecycleState,
-      table.startedAt,
-    ),
-    foreignKey({
-      columns: [table.runId, table.bridgeUnitId],
-      foreignColumns: [localizationJournalRunUnits.runId, localizationJournalRunUnits.bridgeUnitId],
-      name: "itotori_llm_attempts_planned_unit_fkey",
-    }).onDelete("cascade"),
-  ],
-);
-
-/**
- * Exact-decimal cost account for one durable localization run. `capUsd: null`
- * means the run has no configured upper bound; spent and reserved remain
- * durable so an operator can later set a cap without recreating history.
- */
-export const localizationJournalRunCostAccounts = pgTable(
-  "itotori_localization_run_cost_accounts",
-  {
-    runId: text("run_id")
-      .primaryKey()
-      .references(() => localizationJournalRuns.runId, { onDelete: "cascade" }),
-    capUsd: numeric("cap_usd"),
-    spentCostUsd: numeric("spent_usd").notNull().default("0"),
-    reservedCostUsd: numeric("reserved_usd").notNull().default("0"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-);
-
-/**
- * One worst-case reservation, coupled to the exact physical attempt that it
- * admitted. A `reserved` row consumes the account until a known bill
- * reconciles it. A `released` row is terminal: a completed interrupted
- * attempt freed its capacity with unknown billing, so it records no cost.
- */
-export const localizationJournalCostReservations = pgTable(
-  "itotori_localization_cost_reservations",
-  {
-    reservationId: text("reservation_id").primaryKey(),
-    runId: text("run_id")
-      .notNull()
-      .references(() => localizationJournalRunCostAccounts.runId, { onDelete: "cascade" }),
-    attemptId: text("attempt_id").notNull(),
-    reservedUsd: numeric("reserved_usd").notNull(),
-    reconciledUsd: numeric("reconciled_usd"),
-    state: text("state").$type<LocalizationJournalCostReservationState>().notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    reconciledAt: timestamp("reconciled_at", { withTimezone: true }),
-  },
-  (table) => [
-    unique("itotori_localization_cost_reservations_run_attempt_unique").on(
-      table.runId,
-      table.attemptId,
-    ),
-    index("itotori_localization_cost_reservations_run_state_idx").on(
-      table.runId,
-      table.state,
-      table.createdAt,
-    ),
-    foreignKey({
-      columns: [table.runId, table.attemptId],
-      foreignColumns: [
-        localizationJournalLlmAttempts.runId,
-        localizationJournalLlmAttempts.attemptId,
-      ],
-      name: "itotori_localization_cost_reservations_attempt_fkey",
-    }).onDelete("cascade"),
-  ],
-);
-
-/**
- * Canonical terminal result for one unit in a run. Migration 0077 declares
- * the selected-candidate composite FK separately because the candidate table
- * is defined below and the relationship is cyclic; PostgreSQL enforces it as
- * `DEFERRABLE INITIALLY DEFERRED` at the atomic unit-write boundary.
- */
-export const writtenUnitOutcomes = pgTable(
-  "itotori_written_unit_outcomes",
-  {
-    // Canonical outcome ids are deterministic per project/branch/unit and can
-    // recur in a later run. Keep a journal-local identity for child FKs.
-    journalOutcomeId: text("journal_outcome_id").primaryKey(),
-    outcomeId: text("outcome_id").notNull(),
-    runId: text("run_id")
-      .notNull()
-      .references(() => localizationJournalRuns.runId, { onDelete: "cascade" }),
-    bridgeUnitId: text("bridge_unit_id").notNull(),
-    sourceUnitKey: text("source_unit_key"),
-    targetLocale: text("target_locale").notNull(),
-    selectedCandidateId: text("selected_candidate_id").notNull(),
-    qualityFlags: text("quality_flags")
-      .array()
-      .notNull()
-      .default(sql`'{}'::text[]`),
-    // `unknown` legitimately includes null: a node that has no resolved
-    // context packet yet records that fact rather than inventing `{}`.
-    provenance: jsonb("provenance").$type<unknown>(),
-    contextPacket: jsonb("context_packet").$type<unknown>(),
-    writtenAt: timestamp("written_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("itotori_written_unit_outcomes_run_outcome_idx").on(table.runId, table.outcomeId),
-    uniqueIndex("itotori_written_unit_outcomes_run_unit_idx").on(table.runId, table.bridgeUnitId),
-    // Declared by migration 0076; retained here because PatchVersion
-    // membership uses the same run/unit-scoped outcome provenance FK.
-    unique("itotori_written_unit_outcomes_journal_scope_unique").on(
-      table.journalOutcomeId,
-      table.runId,
-      table.bridgeUnitId,
-    ),
-    index("itotori_written_unit_outcomes_run_written_idx").on(table.runId, table.writtenAt),
-    foreignKey({
-      columns: [table.runId, table.bridgeUnitId],
-      foreignColumns: [localizationJournalRunUnits.runId, localizationJournalRunUnits.bridgeUnitId],
-      name: "itotori_written_unit_outcomes_planned_unit_fkey",
-    }).onDelete("cascade"),
-  ],
-);
-
-/** Every primary/repair candidate, linked to its physical provider attempt. */
-export const translationCandidates = pgTable(
-  "itotori_translation_candidates",
-  {
-    // Candidate ids are canonical output ids, not globally unique run ids.
-    journalCandidateId: text("journal_candidate_id").primaryKey(),
-    candidateId: text("candidate_id").notNull(),
-    journalOutcomeId: text("journal_outcome_id")
-      .notNull()
-      .references(() => writtenUnitOutcomes.journalOutcomeId, { onDelete: "cascade" }),
-    // These columns are required by the migration's composite provenance FKs:
-    // a candidate must belong to the same immutable run/unit as both its
-    // written outcome and physical provider attempt.
-    runId: text("run_id").notNull(),
-    bridgeUnitId: text("bridge_unit_id").notNull(),
-    candidateOrdinal: integer("candidate_ordinal").notNull(),
-    body: text("body").notNull(),
-    modelId: text("model_id").notNull(),
-    providerId: text("provider_id").notNull(),
-    attemptId: text("attempt_id")
-      .notNull()
-      .references(() => localizationJournalLlmAttempts.attemptId, { onDelete: "cascade" }),
-    kind: text("kind").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("itotori_translation_candidates_outcome_candidate_idx").on(
-      table.journalOutcomeId,
-      table.candidateId,
-    ),
-    uniqueIndex("itotori_translation_candidates_outcome_ordinal_idx").on(
-      table.journalOutcomeId,
-      table.candidateOrdinal,
-    ),
-    index("itotori_translation_candidates_attempt_idx").on(table.attemptId),
-  ],
-);
-
-/**
- * Immutable selected-result revision materialized with a written outcome, or a
- * later play-tester edit of that unit's target body.
- *
- * Patch membership references this row (including its outcome/run/unit scope)
- * instead of carrying a deterministic string that can exist without a
- * persisted revision. Run-origin revisions keep a selected-candidate FK to the
- * exact durable target body chosen by the outcome; play-tester edits retain the
- * same candidate anchor for provenance while storing the edited target body.
- */
-export const localizationResultRevisionOriginValues = {
-  runWrittenOutcome: "run_written_outcome",
-  playTesterEdit: "play_tester_edit",
-} as const;
-export type LocalizationResultRevisionOrigin =
-  (typeof localizationResultRevisionOriginValues)[keyof typeof localizationResultRevisionOriginValues];
-
-export const localizationResultRevisions = pgTable(
-  "itotori_localization_result_revisions",
-  {
-    resultRevisionId: text("result_revision_id").primaryKey(),
-    journalOutcomeId: text("journal_outcome_id").notNull(),
-    runId: text("run_id").notNull(),
-    bridgeUnitId: text("bridge_unit_id").notNull(),
-    selectedCandidateId: text("selected_candidate_id").notNull(),
-    targetBody: text("target_body").notNull(),
-    origin: text("origin").$type<LocalizationResultRevisionOrigin>().notNull(),
-    parentRevisionId: text("parent_revision_id"),
-    actorUserId: text("actor_user_id"),
-    createdForPatchVersionId: text("created_for_patch_version_id"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    unique("itotori_localization_result_revisions_revision_scope_unique").on(
-      table.resultRevisionId,
-      table.journalOutcomeId,
-      table.runId,
-      table.bridgeUnitId,
-    ),
-    index("itotori_localization_result_revisions_run_unit_idx").on(table.runId, table.bridgeUnitId),
-    index("itotori_localization_result_revisions_parent_idx").on(table.parentRevisionId),
-    foreignKey({
-      columns: [table.journalOutcomeId, table.runId, table.bridgeUnitId],
-      foreignColumns: [
-        writtenUnitOutcomes.journalOutcomeId,
-        writtenUnitOutcomes.runId,
-        writtenUnitOutcomes.bridgeUnitId,
-      ],
-      name: "itotori_localization_result_revisions_outcome_fkey",
-    }).onDelete("cascade"),
-    foreignKey({
-      columns: [table.journalOutcomeId, table.selectedCandidateId],
-      foreignColumns: [translationCandidates.journalOutcomeId, translationCandidates.candidateId],
-      name: "itotori_localization_result_revisions_selected_candidate_fkey",
-    }).onDelete("cascade"),
-  ],
-);
-
-/**
- * Candidate-scoped permanent QA annotations. The raw QA detail fields are
- * deliberately normalized alongside the concise written finding so the read
- * surface can render rationale/evidence without parsing a note or an opaque
- * provenance payload.
- */
-export const writtenQaFindings = pgTable(
-  "itotori_written_qa_findings",
-  {
-    journalFindingId: text("journal_finding_id").primaryKey(),
-    findingId: text("finding_id").notNull(),
-    journalOutcomeId: text("journal_outcome_id")
-      .notNull()
-      .references(() => writtenUnitOutcomes.journalOutcomeId, { onDelete: "cascade" }),
-    journalCandidateId: text("journal_candidate_id")
-      .notNull()
-      .references(() => translationCandidates.journalCandidateId, { onDelete: "cascade" }),
-    findingOrdinal: integer("finding_ordinal").notNull(),
-    severity: text("severity").notNull(),
-    category: text("category").notNull(),
-    note: text("note").notNull(),
-    contested: boolean("contested").notNull(),
-    confidence: numeric("confidence").notNull(),
-    recommendation: text("recommendation").notNull(),
-    agentRationale: text("agent_rationale").notNull(),
-    evidenceRefs: jsonb("evidence_refs")
-      .$type<string[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    sourceSpan: jsonb("source_span").$type<LocalizationJournalQaSpan | null>(),
-    draftSpan: jsonb("draft_span").$type<LocalizationJournalQaSpan | null>(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    uniqueIndex("itotori_written_qa_findings_outcome_finding_idx").on(
-      table.journalOutcomeId,
-      table.findingId,
-    ),
-    uniqueIndex("itotori_written_qa_findings_outcome_ordinal_idx").on(
-      table.journalOutcomeId,
-      table.findingOrdinal,
-    ),
-    index("itotori_written_qa_findings_candidate_idx").on(table.journalCandidateId),
-  ],
-);
-
-/** Resolved context packet/version references used by a written outcome. */
-export const outcomeContextRefs = pgTable(
-  "itotori_outcome_context_refs",
-  {
-    journalOutcomeId: text("journal_outcome_id")
-      .notNull()
-      .references(() => writtenUnitOutcomes.journalOutcomeId, { onDelete: "cascade" }),
-    refOrdinal: integer("ref_ordinal").notNull(),
-    refKind: text("ref_kind").notNull(),
-    refId: text("ref_id").notNull(),
-    versionRef: text("version_ref"),
-    details: jsonb("details").$type<LocalizationJournalOutcomeContextRefDetails>(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.journalOutcomeId, table.refOrdinal] }),
-    index("itotori_outcome_context_refs_kind_ref_idx").on(table.refKind, table.refId),
-  ],
-);
-
-/** Speaker labels resolved for the unit and retained with their evidence. */
-export const outcomeSpeakerLabels = pgTable(
-  "itotori_outcome_speaker_labels",
-  {
-    journalOutcomeId: text("journal_outcome_id")
-      .notNull()
-      .references(() => writtenUnitOutcomes.journalOutcomeId, { onDelete: "cascade" }),
-    labelOrdinal: integer("label_ordinal").notNull(),
-    bridgeUnitId: text("bridge_unit_id").notNull(),
-    speakerId: jsonb("speaker_id").$type<unknown>().notNull(),
-    confidence: text("confidence").notNull(),
-    evidenceRefs: jsonb("evidence_refs")
-      .$type<string[]>()
-      .notNull()
-      .default(sql`'[]'::jsonb`),
-    agentRationale: text("agent_rationale").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.journalOutcomeId, table.labelOrdinal] }),
-    index("itotori_outcome_speaker_labels_bridge_unit_idx").on(table.bridgeUnitId),
-  ],
-);
-
-/**
- * One PatchVersion with exact persisted result-revision membership.
- *
- * Run-origin patches (node-5 finalizer) have no parent. Play-tester target
- * edits create child delivered patch revisions under a playable parent; export
- * uses the currently selected row (`selected_at`), never an approval state.
- */
 export const localizationPatchVersionOriginValues = {
   runFinalizer: "run_finalizer",
   playTesterEdit: "play_tester_edit",
@@ -5056,13 +4259,39 @@ export const localizationPatchVersionOriginValues = {
 export type LocalizationPatchVersionOrigin =
   (typeof localizationPatchVersionOriginValues)[keyof typeof localizationPatchVersionOriginValues];
 
+/** Immutable target text retained independently of the retired journal. */
+export const patchOutputRevisions = pgTable(
+  "itotori_patch_output_revisions",
+  {
+    outputRevisionId: text("output_revision_id").primaryKey(),
+    bridgeUnitId: text("bridge_unit_id").notNull(),
+    targetBody: text("target_body").notNull(),
+    origin: text("origin").notNull(),
+    parentOutputRevisionId: text("parent_output_revision_id"),
+    actorUserId: text("actor_user_id"),
+    createdForPatchVersionId: text("created_for_patch_version_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_patch_output_revisions_bridge_unit_idx").on(table.bridgeUnitId),
+    index("itotori_patch_output_revisions_parent_idx").on(table.parentOutputRevisionId),
+  ],
+);
+
 export const localizationPatchVersions = pgTable(
   "itotori_localization_patch_versions",
   {
     patchVersionId: text("patch_version_id").primaryKey(),
-    runId: text("run_id")
+    projectId: text("project_id")
       .notNull()
-      .references(() => localizationJournalRuns.runId, { onDelete: "cascade" }),
+      .references(() => projects.projectId, { onDelete: "restrict" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "restrict" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    deliveryScopeId: text("delivery_scope_id").notNull(),
     status: text("status").$type<LocalizationRunPatchVersionStatus>().notNull(),
     artifactHashes: jsonb("artifact_hashes").$type<Record<string, string>>().notNull(),
     artifactRefs: jsonb("artifact_refs").$type<Record<string, string>>().notNull(),
@@ -5078,11 +4307,18 @@ export const localizationPatchVersions = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    unique("itotori_localization_patch_versions_id_run_unique").on(
+    unique("itotori_localization_patch_versions_id_scope_unique").on(
       table.patchVersionId,
-      table.runId,
+      table.deliveryScopeId,
     ),
-    index("itotori_localization_patch_versions_run_status_idx").on(table.runId, table.status),
+    index("itotori_localization_patch_versions_scope_status_idx").on(
+      table.deliveryScopeId,
+      table.status,
+    ),
+    index("itotori_localization_patch_versions_branch_created_idx").on(
+      table.localeBranchId,
+      table.createdAt,
+    ),
     index("itotori_localization_patch_versions_parent_idx").on(table.parentPatchVersionId),
   ],
 );
@@ -5092,13 +4328,10 @@ export const localizationPatchVersionUnits = pgTable(
   "itotori_localization_patch_version_units",
   {
     patchVersionId: text("patch_version_id").notNull(),
-    /** The patch-owning run; this remains the frozen scope identity. */
-    runId: text("run_id").notNull(),
-    /** The run that owns the immutable outcome/result revision. */
-    sourceRunId: text("source_run_id").notNull(),
     bridgeUnitId: text("bridge_unit_id").notNull(),
-    journalOutcomeId: text("journal_outcome_id").notNull(),
-    resultRevisionId: text("result_revision_id").notNull(),
+    outputRevisionId: text("output_revision_id")
+      .notNull()
+      .references(() => patchOutputRevisions.outputRevisionId, { onDelete: "restrict" }),
     memberOrigin: text("member_origin").$type<LocalizationPatchVersionMemberOrigin>().notNull(),
     reusedFromPatchVersionId: text("reused_from_patch_version_id"),
     unitOrdinal: integer("unit_ordinal").notNull(),
@@ -5110,76 +4343,12 @@ export const localizationPatchVersionUnits = pgTable(
       table.patchVersionId,
       table.unitOrdinal,
     ),
-    index("itotori_localization_patch_version_units_run_idx").on(table.runId, table.bridgeUnitId),
-    index("itotori_localization_patch_version_units_source_run_idx").on(
-      table.sourceRunId,
-      table.bridgeUnitId,
-    ),
-    unique("itotori_localization_patch_version_units_provenance_key").on(
-      table.patchVersionId,
-      table.bridgeUnitId,
-      table.sourceRunId,
-      table.journalOutcomeId,
-      table.resultRevisionId,
-    ),
+    index("itotori_localization_patch_version_units_output_idx").on(table.outputRevisionId),
     foreignKey({
-      columns: [table.patchVersionId, table.runId],
-      foreignColumns: [localizationPatchVersions.patchVersionId, localizationPatchVersions.runId],
-      name: "itotori_localization_patch_version_units_patch_run_fkey",
+      columns: [table.patchVersionId],
+      foreignColumns: [localizationPatchVersions.patchVersionId],
+      name: "itotori_localization_patch_version_units_patch_fkey",
     }).onDelete("cascade"),
-    foreignKey({
-      columns: [table.runId, table.bridgeUnitId],
-      foreignColumns: [localizationJournalRunUnits.runId, localizationJournalRunUnits.bridgeUnitId],
-      name: "itotori_localization_patch_version_units_planned_unit_fkey",
-    }).onDelete("cascade"),
-    foreignKey({
-      columns: [table.journalOutcomeId, table.sourceRunId, table.bridgeUnitId],
-      foreignColumns: [
-        writtenUnitOutcomes.journalOutcomeId,
-        writtenUnitOutcomes.runId,
-        writtenUnitOutcomes.bridgeUnitId,
-      ],
-      name: "itotori_localization_patch_version_units_source_outcome_fkey",
-    }).onDelete("cascade"),
-    foreignKey({
-      columns: [
-        table.resultRevisionId,
-        table.journalOutcomeId,
-        table.sourceRunId,
-        table.bridgeUnitId,
-      ],
-      foreignColumns: [
-        localizationResultRevisions.resultRevisionId,
-        localizationResultRevisions.journalOutcomeId,
-        localizationResultRevisions.runId,
-        localizationResultRevisions.bridgeUnitId,
-      ],
-      name: "itotori_localization_patch_version_units_source_result_revision_fkey",
-    }),
-  ],
-);
-
-/** A persisted open/play/close session bound to the exact patch bytes observed. */
-export const playSessions = pgTable(
-  "itotori_play_sessions",
-  {
-    playSessionId: text("play_session_id").primaryKey(),
-    observedPatchVersionId: text("observed_patch_version_id")
-      .notNull()
-      .references(() => localizationPatchVersions.patchVersionId, { onDelete: "restrict" }),
-    actorUserId: text("actor_user_id").notNull(),
-    status: text("status").$type<PlaySessionStatus>().notNull(),
-    launchDescriptor: jsonb("launch_descriptor").$type<Record<string, unknown>>().notNull(),
-    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
-    endedAt: timestamp("ended_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    index("itotori_play_sessions_patch_started_idx").on(
-      table.observedPatchVersionId,
-      table.startedAt,
-    ),
   ],
 );
 
@@ -5216,25 +4385,16 @@ export const playTestFeedbackEvents = pgTable(
     feedbackEventId: text("feedback_event_id").primaryKey(),
     feedbackBatchId: text("feedback_batch_id").notNull(),
     observedPatchVersionId: text("observed_patch_version_id").notNull(),
-    playSessionId: text("play_session_id").references(() => playSessions.playSessionId, {
-      onDelete: "set null",
-    }),
     actorUserId: text("actor_user_id").notNull(),
     eventKind: text("event_kind").$type<PlayTestFeedbackEventKind>().notNull(),
     body: text("body"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
-    resultRevisionId: text("result_revision_id").references(
-      () => localizationResultRevisions.resultRevisionId,
+    outputRevisionId: text("output_revision_id").references(
+      () => patchOutputRevisions.outputRevisionId,
       { onDelete: "restrict" },
     ),
-    contextArtifactId: text("context_artifact_id").references(
-      () => contextArtifacts.contextArtifactId,
-      { onDelete: "restrict" },
-    ),
-    contextEntryVersionId: text("context_entry_version_id").references(
-      () => contextEntryVersions.contextEntryVersionId,
-      { onDelete: "restrict" },
-    ),
+    /** Immutable pointer to the new wiki/accepted-output substrate. */
+    subjectRef: text("subject_ref"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -5247,25 +4407,17 @@ export const playTestFeedbackEvents = pgTable(
       name: "itotori_play_test_feedback_events_batch_patch_fkey",
     }).onDelete("restrict"),
     check(
-      "itotori_play_test_feedback_events_result_edit_revision",
-      sql`${table.eventKind} <> 'result_edit' or ${table.resultRevisionId} is not null`,
+      "itotori_play_test_feedback_events_result_edit_output_revision",
+      sql`${table.eventKind} <> 'result_edit' or ${table.outputRevisionId} is not null`,
     ),
     check(
-      "itotori_play_test_feedback_events_context_version_pair",
-      sql`(${table.contextArtifactId} is null) = (${table.contextEntryVersionId} is null)`,
-    ),
-    // Every durable play-test feedback fact anchors a real outcome: a target
-    // edit names its immutable result revision; all other feedback names the
-    // canonical ContextEntry version it changed or references. This prevents
-    // an event-only inbox row from becoming a hidden reviewer backlog.
-    check(
-      "itotori_play_test_feedback_events_canonical_outcome",
+      "itotori_play_test_feedback_events_subject_binding",
       sql`(
-        (${table.eventKind} = 'result_edit' and ${table.resultRevisionId} is not null)
+        (${table.eventKind} = 'result_edit' and ${table.outputRevisionId} is not null and ${table.subjectRef} is null)
         or (
           ${table.eventKind} in ('comment', 'added_context', 'wiki_edit')
-          and ${table.contextArtifactId} is not null
-          and ${table.contextEntryVersionId} is not null
+          and ${table.outputRevisionId} is null
+          and ${table.subjectRef} is not null
         )
       )`,
     ),
@@ -5308,208 +4460,6 @@ export const playTestFeedbackEventUnits = pgTable(
     index("itotori_play_test_feedback_event_units_patch_unit_idx").on(
       table.observedPatchVersionId,
       table.bridgeUnitId,
-    ),
-  ],
-);
-
-/** Which informational QA annotations were rendered at the start of a session. */
-export const playSessionQaCallouts = pgTable(
-  "itotori_play_session_qa_callouts",
-  {
-    playSessionId: text("play_session_id")
-      .notNull()
-      .references(() => playSessions.playSessionId, { onDelete: "cascade" }),
-    journalFindingId: text("journal_finding_id")
-      .notNull()
-      .references(() => writtenQaFindings.journalFindingId, { onDelete: "restrict" }),
-    presentedAt: timestamp("presented_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [primaryKey({ columns: [table.playSessionId, table.journalFindingId] })],
-);
-
-/** Exact feedback-batch snapshot selected at refinement launch. */
-export const localizationRefinementRunFeedbackBatches = pgTable(
-  "itotori_localization_refinement_run_feedback_batches",
-  {
-    runId: text("run_id")
-      .notNull()
-      .references(() => localizationJournalRuns.runId, { onDelete: "cascade" }),
-    feedbackBatchId: text("feedback_batch_id")
-      .notNull()
-      .references(() => playTestFeedbackBatches.feedbackBatchId, { onDelete: "restrict" }),
-    observedPatchVersionId: text("observed_patch_version_id")
-      .notNull()
-      .references(() => localizationPatchVersions.patchVersionId, { onDelete: "restrict" }),
-    batchOrdinal: integer("batch_ordinal").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.runId, table.feedbackBatchId] }),
-    unique("itotori_localization_refinement_run_feedback_batches_ordinal_unique").on(
-      table.runId,
-      table.batchOrdinal,
-    ),
-    foreignKey({
-      columns: [table.feedbackBatchId, table.observedPatchVersionId],
-      foreignColumns: [
-        playTestFeedbackBatches.feedbackBatchId,
-        playTestFeedbackBatches.observedPatchVersionId,
-      ],
-      name: "itotori_localization_refinement_run_feedback_batches_batch_patch_fkey",
-    }).onDelete("restrict"),
-  ],
-);
-
-/** Exact feedback-event snapshot, preventing a later batch edit from changing a run. */
-export const localizationRefinementRunFeedbackEvents = pgTable(
-  "itotori_localization_refinement_run_feedback_events",
-  {
-    runId: text("run_id")
-      .notNull()
-      .references(() => localizationJournalRuns.runId, { onDelete: "cascade" }),
-    feedbackEventId: text("feedback_event_id")
-      .notNull()
-      .references(() => playTestFeedbackEvents.feedbackEventId, { onDelete: "restrict" }),
-    feedbackBatchId: text("feedback_batch_id").notNull(),
-    eventOrdinal: integer("event_ordinal").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.runId, table.feedbackEventId] }),
-    unique("itotori_localization_refinement_run_feedback_events_ordinal_unique").on(
-      table.runId,
-      table.eventOrdinal,
-    ),
-    foreignKey({
-      columns: [table.runId, table.feedbackBatchId],
-      foreignColumns: [
-        localizationRefinementRunFeedbackBatches.runId,
-        localizationRefinementRunFeedbackBatches.feedbackBatchId,
-      ],
-      name: "itotori_localization_refinement_run_feedback_events_batch_fkey",
-    }).onDelete("cascade"),
-  ],
-);
-
-/** Current wiki heads resolved and frozen at refinement-run launch. */
-export const localizationRefinementRunWikiHeads = pgTable(
-  "itotori_localization_refinement_run_wiki_heads",
-  {
-    runId: text("run_id")
-      .notNull()
-      .references(() => localizationJournalRuns.runId, { onDelete: "cascade" }),
-    contextArtifactId: text("context_artifact_id")
-      .notNull()
-      .references(() => contextArtifacts.contextArtifactId, { onDelete: "restrict" }),
-    contextEntryVersionId: text("context_entry_version_id")
-      .notNull()
-      .references(() => contextEntryVersions.contextEntryVersionId, { onDelete: "restrict" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.runId, table.contextArtifactId] }),
-    unique("itotori_localization_refinement_run_wiki_heads_version_unique").on(
-      table.runId,
-      table.contextEntryVersionId,
-    ),
-  ],
-);
-
-/** Per-unit frozen choice for a refinement run's complete scope. */
-export const localizationRefinementRunMembers = pgTable(
-  "itotori_localization_refinement_run_members",
-  {
-    runId: text("run_id").notNull(),
-    bridgeUnitId: text("bridge_unit_id").notNull(),
-    strategy: text("strategy").$type<LocalizationRefinementMemberStrategy>().notNull(),
-    basePatchVersionId: text("base_patch_version_id"),
-    baseSourceRunId: text("base_source_run_id"),
-    baseJournalOutcomeId: text("base_journal_outcome_id"),
-    baseResultRevisionId: text("base_result_revision_id"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.runId, table.bridgeUnitId] }),
-    index("itotori_localization_refinement_run_members_strategy_idx").on(
-      table.runId,
-      table.strategy,
-    ),
-    foreignKey({
-      columns: [table.runId, table.bridgeUnitId],
-      foreignColumns: [localizationJournalRunUnits.runId, localizationJournalRunUnits.bridgeUnitId],
-      name: "itotori_localization_refinement_run_members_planned_unit_fkey",
-    }).onDelete("cascade"),
-    foreignKey({
-      columns: [
-        table.basePatchVersionId,
-        table.bridgeUnitId,
-        table.baseSourceRunId,
-        table.baseJournalOutcomeId,
-        table.baseResultRevisionId,
-      ],
-      foreignColumns: [
-        localizationPatchVersionUnits.patchVersionId,
-        localizationPatchVersionUnits.bridgeUnitId,
-        localizationPatchVersionUnits.sourceRunId,
-        localizationPatchVersionUnits.journalOutcomeId,
-        localizationPatchVersionUnits.resultRevisionId,
-      ],
-      name: "itotori_localization_refinement_run_members_base_member_fkey",
-    }).onDelete("restrict"),
-  ],
-);
-
-/** One current canonical terminal summary per run; summaryEpoch changes on resume. */
-export const localizationRunTerminalSummaries = pgTable(
-  "itotori_localization_run_terminal_summaries",
-  {
-    runId: text("run_id")
-      .primaryKey()
-      .references(() => localizationJournalRuns.runId, { onDelete: "cascade" }),
-    terminalStatus: text("terminal_status").$type<LocalizationRunTerminalStatus>().notNull(),
-    summaryEpoch: integer("summary_epoch").notNull(),
-    summaryJson: jsonb("summary_json").$type<Record<string, unknown>>().notNull(),
-    terminalizedAt: timestamp("terminalized_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    index("itotori_localization_run_terminal_summaries_status_idx").on(
-      table.terminalStatus,
-      table.terminalizedAt,
-    ),
-  ],
-);
-
-/** Idempotent finalizer-stage evidence and worker delivery state. */
-export const localizationRunFinalizerOutbox = pgTable(
-  "itotori_localization_run_finalizer_outbox",
-  {
-    runId: text("run_id")
-      .notNull()
-      .references(() => localizationJournalRuns.runId, { onDelete: "cascade" }),
-    stage: text("stage").$type<LocalizationRunFinalizerStage>().notNull(),
-    status: text("status").$type<LocalizationRunFinalizerOutboxStatus>().notNull(),
-    idempotencyKey: text("idempotency_key").notNull(),
-    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
-    evidence: jsonb("evidence").$type<Record<string, unknown> | null>(),
-    attemptCount: integer("attempt_count").notNull(),
-    availableAt: timestamp("available_at", { withTimezone: true }).notNull(),
-    lockedBy: text("locked_by"),
-    lockedAt: timestamp("locked_at", { withTimezone: true }),
-    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-    lastError: text("last_error"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.runId, table.stage] }),
-    uniqueIndex("itotori_localization_run_finalizer_outbox_key_idx").on(table.idempotencyKey),
-    index("itotori_localization_run_finalizer_outbox_ready_idx").on(
-      table.status,
-      table.availableAt,
-      table.createdAt,
     ),
   ],
 );

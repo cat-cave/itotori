@@ -565,6 +565,10 @@ export const migrations = [
     id: "0110_legacy_runtime_artifact_uri_parity",
     file: "0110_legacy_runtime_artifact_uri_parity.sql",
   },
+  {
+    id: "0111_retire_journal_finalizer_context_artifacts",
+    file: "0111_retire_journal_finalizer_context_artifacts.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

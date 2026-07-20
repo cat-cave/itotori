@@ -46,7 +46,6 @@ import { ItotoriProjectRepository } from "../src/repositories/project-repository
 import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
 import { ItotoriTerminologyRepository } from "../src/repositories/terminology-repository.js";
 import { ItotoriTranslationBatchRepository } from "../src/repositories/translation-batch-repository.js";
-import { ItotoriSemanticContextReadRepository } from "../src/repositories/semantic-context-read-repository.js";
 import { ItotoriSourceUnitRepository } from "../src/repositories/source-unit-repository.js";
 import { ItotoriTranslationMemoryRepository } from "../src/repositories/translation-memory-repository.js";
 import { ItotoriTranslationScopeSettingsRepository } from "../src/repositories/translation-scope-settings-repository.js";
@@ -536,28 +535,22 @@ const repositoryPermissionGateMatrix = [
     "exact-search-document-repository.test.ts search.exact coverage",
     (repo) => repo.searchExact(deniedActor, undefined as never),
   ),
-  semanticContextReadGate(
-    "loadArtifacts",
-    "catalogRead",
-    "context-artifact-repository.test.ts central semantic projection coverage",
-    (repo) => repo.loadSceneSummaries(deniedActor, undefined as never),
-  ),
   sourceUnitGate(
     "currentSourceHashes",
     "catalogRead",
-    "context-artifact-repository.test.ts source-unit hash coverage",
+    "source-unit-repository.test.ts source-unit hash coverage",
     (repo) => repo.currentSourceHashes(deniedActor, undefined as never),
   ),
   sourceUnitGate(
     "loadSourceUnits",
     "catalogRead",
-    "context-artifact-repository.test.ts source-unit hydration coverage",
+    "source-unit-repository.test.ts source-unit hydration coverage",
     (repo) => repo.loadSourceUnits(deniedActor, undefined as never),
   ),
   sourceUnitGate(
     "loadSourceUnitsForScope",
     "catalogRead",
-    "context-artifact-repository.test.ts source-unit scope coverage",
+    "source-unit-repository.test.ts source-unit scope coverage",
     (repo) => repo.loadSourceUnitsForScope(deniedActor, undefined as never),
   ),
   translationBatchGate(
@@ -1469,27 +1462,21 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
-          "mutation": "ItotoriSemanticContextReadRepository.loadArtifacts",
-          "requiredPermission": "catalog.read",
-          "successFixture": "context-artifact-repository.test.ts central semantic projection coverage",
-        },
-        {
-          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriSourceUnitRepository.currentSourceHashes",
           "requiredPermission": "catalog.read",
-          "successFixture": "context-artifact-repository.test.ts source-unit hash coverage",
+          "successFixture": "source-unit-repository.test.ts source-unit hash coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriSourceUnitRepository.loadSourceUnits",
           "requiredPermission": "catalog.read",
-          "successFixture": "context-artifact-repository.test.ts source-unit hydration coverage",
+          "successFixture": "source-unit-repository.test.ts source-unit hydration coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriSourceUnitRepository.loadSourceUnitsForScope",
           "requiredPermission": "catalog.read",
-          "successFixture": "context-artifact-repository.test.ts source-unit scope coverage",
+          "successFixture": "source-unit-repository.test.ts source-unit scope coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
@@ -2326,22 +2313,6 @@ function exactSearchGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriExactSearchDocumentRepository(db)),
-  });
-}
-
-function semanticContextReadGate(
-  mutation: string,
-  permissionKey: PermissionKey,
-  successFixture: string,
-  run: (repository: ItotoriSemanticContextReadRepository) => Promise<unknown>,
-): RepositoryPermissionGateCase {
-  return repositoryGate({
-    repository: "ItotoriSemanticContextReadRepository",
-    sourceFile: "semantic-context-read-repository.ts",
-    mutation,
-    permissionKey,
-    successFixture,
-    runDeniedMutation: (db) => run(new ItotoriSemanticContextReadRepository(db)),
   });
 }
 

@@ -592,9 +592,6 @@
     "packages/itotori-db/src/managed-artifact-refs.ts": [
       "utsushi-049"
     ],
-    "packages/itotori-db/src/repositories/context-artifact-repository.ts": [
-      "itotori-060"
-    ],
     "packages/itotori-db/src/repositories/engine-capability-report-repository.ts": [
       "kaifuu-053"
     ],
@@ -611,17 +608,8 @@
       "itotori-047",
       "itotori-047"
     ],
-    "packages/itotori-db/src/repositories/localization-iteration-repository.ts": [
-      "p0-core-iterative-patch-versioning-and-playtest-feedback"
-    ],
-    "packages/itotori-db/src/repositories/localization-journal-repository.ts": [
-      "p0-core-attempt-and-outcome-journal"
-    ],
     "packages/itotori-db/src/repositories/localization-result-revision-repository.ts": [
       "p0-core-result-revision-hitl"
-    ],
-    "packages/itotori-db/src/repositories/localization-run-finalizer-repository.ts": [
-      "p0-core-terminal-run-finalizer"
     ],
     "packages/itotori-db/src/repositories/model-ledger-repository.ts": [
       "itotori-053",

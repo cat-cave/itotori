@@ -5,7 +5,47 @@
 // Fresh/stale coverage is derived directly from canonical route/choice
 // artifact status; no independent human-validation state is maintained.
 
-import type { AuthorizationActor, ContextRouteChoice, ContextRouteMap } from "@itotori/db";
+import type { AuthorizationActor } from "@itotori/db";
+
+export type ContextRouteMap = {
+  contextArtifactId: string;
+  routeKey: string;
+  routeTitle: string;
+  routeSummary: string;
+  status: "Fresh" | "Stale";
+  generatedAt: Date;
+};
+
+export type ContextRouteChoice = {
+  contextArtifactId: string;
+  choiceKey: string;
+  kind: string;
+  fromRouteKey: string | null;
+  promptSummary: string;
+  status: "Fresh" | "Stale";
+  generatedAt: Date;
+  options: ContextRouteChoiceOption[];
+};
+
+export type ContextRouteChoiceOption = {
+  optionId: string;
+  optionIndex: number;
+  optionLabel: string;
+  targetRouteKey: string | null;
+  targetUnitIds: string[];
+  targetUnitHashes: string[];
+};
+
+export type RouteMapContextReader = {
+  loadRouteMaps(
+    actor: AuthorizationActor,
+    query: { projectId: string; localeBranchId: string; includeStale: boolean },
+  ): Promise<ContextRouteMap[]>;
+  loadRouteChoices(
+    actor: AuthorizationActor,
+    query: { projectId: string; localeBranchId: string; includeStale: boolean },
+  ): Promise<ContextRouteChoice[]>;
+};
 
 export const PLAY_ROUTE_MAP_SCHEMA_VERSION = "itotori.play.route-map.v0" as const;
 
@@ -65,10 +105,7 @@ export type RouteMapReadModelPort = {
 export class RouteMapReadModelService implements RouteMapReadModelPort {
   constructor(
     private readonly deps: {
-      contextArtifacts: Pick<
-        import("@itotori/db").ItotoriSemanticContextReadRepository,
-        "loadRouteMaps" | "loadRouteChoices"
-      >;
+      contextArtifacts: RouteMapContextReader;
       now?: () => Date;
     },
   ) {}

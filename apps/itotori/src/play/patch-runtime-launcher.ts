@@ -9,7 +9,7 @@
 import { existsSync, readFileSync, rmSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { verifyLocalizationArtifactManifest, type PatchPlaySurface } from "@itotori/db";
+import { verifyLocalizationArtifactManifest } from "@itotori/db";
 import { runNativeCli, type NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
 
 const REPLAY_OBSERVED_MARKER = "utsushi.reallive.replay_observed_textlines_emitted";
@@ -23,9 +23,20 @@ export type PatchRuntimeLaunchReceipt = {
   observedTextLineCount: number;
 };
 
+/**
+ * Minimal, delivery-owned runtime input. It deliberately contains no journal,
+ * finalizer, or context-artifact provenance fields.
+ */
+export type RuntimePatchSurface = {
+  patchVersionId: string;
+  status: string;
+  artifactHashes: Record<string, string>;
+  artifactRefs: Record<string, string>;
+};
+
 export type PatchRuntimeLauncherPort = {
   launch(input: {
-    patch: PatchPlaySurface;
+    patch: RuntimePatchSurface;
     launchDescriptor?: Record<string, unknown>;
   }): Promise<PatchRuntimeLaunchReceipt>;
 };
@@ -73,7 +84,7 @@ export class UtsushiPatchRuntimeLauncher implements PatchRuntimeLauncherPort {
   constructor(private readonly deps: UtsushiPatchRuntimeLauncherDeps = {}) {}
 
   async launch(input: {
-    patch: PatchPlaySurface;
+    patch: RuntimePatchSurface;
     launchDescriptor?: Record<string, unknown>;
   }): Promise<PatchRuntimeLaunchReceipt> {
     const launch = realLiveLaunchInputs(input);
@@ -138,7 +149,7 @@ type RealLiveLaunchInputs = {
 };
 
 function realLiveLaunchInputs(input: {
-  patch: PatchPlaySurface;
+  patch: RuntimePatchSurface;
   launchDescriptor?: Record<string, unknown>;
 }): RealLiveLaunchInputs {
   if (input.patch.status !== "playable") {
@@ -218,7 +229,7 @@ function parsePatchApplyReceipt(path: string): PatchApplyReceipt {
   }
 }
 
-function requiredArtifact(patch: PatchPlaySurface, key: string): string {
+function requiredArtifact(patch: RuntimePatchSurface, key: string): string {
   const value = patch.artifactRefs[key];
   if (value === undefined || value.trim().length === 0) {
     throw new PatchRuntimeLaunchError(

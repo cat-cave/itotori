@@ -7,7 +7,6 @@ import type {
   CatalogOpportunityRankingReadModel,
   CostDrilldownPage,
   DashboardDecisionReadModel,
-  JobsRunTableReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
   RuntimeDashboardStatus,
@@ -31,6 +30,7 @@ import type {
   ApiModelRoutingSettingsResponse,
   ApiTranslationScopeSettingsResponse,
   ItotoriApiRouteId,
+  JobsRunTableReadModel,
 } from "../src/api-schema.js";
 import type {
   BenchmarkReportV02,
