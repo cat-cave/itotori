@@ -356,11 +356,11 @@ pub fn repoint_script(
                 decoupled_label,
                 ..
             } => {
-                // The immediate carries the label in the v21465 variant; the
-                // out-of-pool sentinel (v60663) is skipped by the map lookup.
+                // A direct immediate carries its label; a typed system-select
+                // immediate is absent from the map and is skipped.
                 fields.push((text_ptr_field_offset, text_pointer));
-                // The v60663 decoupled label lives in a separate field earlier in
-                // the menu block — repoint it too when the choice was translated.
+                // An indirect label lives in a separate earlier field in the menu
+                // block, so repoint it too when the choice was translated.
                 if let Some(dl) = decoupled_label {
                     fields.push((dl.field_offset, dl.pointer));
                 }
