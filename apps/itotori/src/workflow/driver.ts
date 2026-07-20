@@ -18,7 +18,7 @@
 //   3. export the finalized units to a patch;
 //   4. run the downstream Build-LQA review over the patched result.
 
-import type { DefectBundle } from "../contracts/index.js";
+import type { Defect, DefectBundle } from "../contracts/index.js";
 import { stableDigest } from "../gates/index.js";
 import type { ResolvedRunPolicy, RunPolicyRequest } from "../run-policy/index.js";
 import { applyCorrections, type CorrectionSummary } from "./correction.js";
@@ -46,6 +46,54 @@ export interface WorkflowOptions {
 
 const DEFAULT_WHOLE_SCENE_MAX_UNITS = 50;
 
+/** The two legal executions of the one workflow driver. The policy, rather than
+ * a caller switch, selects the execution: only the explicit test-dev ablation
+ * reaches the null-Wiki/direct/zero-QA branch. */
+interface WorkflowExecution {
+  readonly needsBibleReadiness: boolean;
+  readonly runsModelQa: boolean;
+  readonly runsBuildLqa: boolean;
+}
+
+const QUALIFYING_EXECUTION: WorkflowExecution = {
+  needsBibleReadiness: true,
+  runsModelQa: true,
+  runsBuildLqa: true,
+};
+
+const PURE_MTL_EXECUTION: WorkflowExecution = {
+  needsBibleReadiness: false,
+  runsModelQa: false,
+  runsBuildLqa: false,
+};
+
+/** The literal null Wiki passed to direct P1. Keeping this shared frozen map
+ * makes it impossible for an ablation scene to inherit a rendering id. */
+const NULL_WIKI_BIBLE: ReadonlyMap<string, readonly string[]> = new Map();
+const PURE_MTL_ATTEMPT_PREFIX = "pure-mtl:";
+
+function executionFor(policy: ResolvedRunPolicy): WorkflowExecution {
+  return policy.bibleBasis === "pure-mtl-ablation" ? PURE_MTL_EXECUTION : QUALIFYING_EXECUTION;
+}
+
+/** Physical workflow steps for the control arm live under an explicit namespace.
+ * The qualifier's historic keys remain unchanged; it additionally filters this
+ * namespace out when projecting its own lineage report. */
+function memoKeyFor(policy: ResolvedRunPolicy, ...parts: readonly unknown[]): string {
+  const key = stableDigest(...parts);
+  return policy.bibleBasis === "pure-mtl-ablation" ? `${PURE_MTL_ATTEMPT_PREFIX}${key}` : key;
+}
+
+function reportAttemptLineage(
+  policy: ResolvedRunPolicy,
+  ports: WorkflowPorts,
+): readonly AttemptLineageEntry[] {
+  const attempts = ports.store.attemptLineage();
+  return policy.bibleBasis === "pure-mtl-ablation"
+    ? attempts.filter((attempt) => attempt.memoKey.startsWith(PURE_MTL_ATTEMPT_PREFIX))
+    : attempts.filter((attempt) => !attempt.memoKey.startsWith(PURE_MTL_ATTEMPT_PREFIX));
+}
+
 /** The outcome of one scene's pass through the pipeline. */
 export interface SceneOutcome {
   readonly sceneId: string;
@@ -53,6 +101,9 @@ export interface SceneOutcome {
   readonly mode: DraftMode | null;
   readonly draftedUnitIds: readonly string[];
   readonly skippedUnitIds: readonly string[];
+  /** Deterministic findings always run. In the direct control arm they are
+   * reported but deliberately do not trigger model review or repair. */
+  readonly deterministicDefects: readonly Defect[];
   readonly reviewPlan: ReviewPlan | null;
   readonly bundle: DefectBundle | null;
   readonly corrections: CorrectionSummary | null;
@@ -88,6 +139,7 @@ async function processScene(
   ports: WorkflowPorts,
   options: WorkflowOptions,
 ): Promise<SceneOutcome> {
+  const execution = executionFor(policy);
   const allUnitIds = scene.units.map((unit) => unit.unitId);
   // (12a) Restart-queries-missing: produce ONLY the units without a final head.
   const finalHeads = await Promise.all(
@@ -108,6 +160,7 @@ async function processScene(
       mode: null,
       draftedUnitIds: [],
       skippedUnitIds,
+      deterministicDefects: [],
       reviewPlan: null,
       bundle: null,
       corrections: null,
@@ -122,61 +175,74 @@ async function processScene(
     units: scene.units.filter((unit) => missingSet.has(unit.unitId)),
   };
 
-  // (1) Readiness FIRST — a missing required bible entry blocks the draft.
-  const readiness = await resolveSceneReadiness(subScene, ports.readiness);
+  // (1) Wiki-first runs resolve the exact localized bible before drafting. The
+  // policy-selected pure-MTL control is the sole exception: it passes the
+  // concrete null Wiki directly to P1 and does not touch the readiness port.
+  const readiness = execution.needsBibleReadiness
+    ? await resolveSceneReadiness(subScene, ports.readiness)
+    : { bibleRenderingIdsByUnit: NULL_WIKI_BIBLE, bibleBindingsByUnit: undefined };
 
   // (2) Draft — whole-scene OR overlapping-chunk — through a memoized physical
   // step so every attempt is counted and a restart hit is skipped (12c).
   const mode = chooseDraftMode(subScene.units.length, options);
-  const draftKey = stableDigest("draft", scene.sceneId, mode, missing);
+  const draftKey = memoKeyFor(policy, "draft", scene.sceneId, mode, missing);
   const draftStep = await ports.store.runMemoizedStep(draftKey, () =>
     ports.draft.draftScene({
       scene: subScene,
       mode,
       bibleRenderingIdsByUnit: readiness.bibleRenderingIdsByUnit,
-      bibleBindingsByUnit: readiness.bibleBindingsByUnit,
+      ...(readiness.bibleBindingsByUnit === undefined
+        ? {}
+        : { bibleBindingsByUnit: readiness.bibleBindingsByUnit }),
+      bibleBasis: policy.bibleBasis,
     }),
   );
   const drafted: DraftedScene = draftStep.value;
   assertDraftCoverage(drafted, missing);
+  assertDraftBasis(drafted, policy);
 
   // (3) Deterministic gates on each draft — gate defects are deterministic faults.
   const gateReport = await ports.gates.evaluate(drafted);
 
-  // (4) Risk routing + stratified review — the plan selects lanes per stratum.
-  const identity = new Map(
-    subScene.units.map((unit) => [
-      unit.unitId,
-      { speakerId: unit.speakerId, routeId: unit.routeId, firstAppearance: unit.firstAppearance },
-    ]),
-  );
-  const reviewPlan = planStratifiedReview(drafted, gateReport.defects, identity);
+  let reviewPlan: ReviewPlan | null = null;
+  let bundle: DefectBundle | null = null;
+  let corrections: CorrectionSummary | null = null;
+  if (execution.runsModelQa) {
+    // (4) Risk routing + stratified review — the plan selects lanes per stratum.
+    const identity = new Map(
+      subScene.units.map((unit) => [
+        unit.unitId,
+        { speakerId: unit.speakerId, routeId: unit.routeId, firstAppearance: unit.firstAppearance },
+      ]),
+    );
+    reviewPlan = planStratifiedReview(drafted, gateReport.defects, identity);
 
-  // Run the selected lanes in PARALLEL, each through a memoized step.
-  const laneVerdicts = await runStratifiedReview(drafted, reviewPlan, ports);
+    // Run the selected lanes in PARALLEL, each through a memoized step.
+    const laneVerdicts = await runStratifiedReview(drafted, reviewPlan, policy, ports);
 
-  // (5) Deterministic finding join — order-independent, facts dominate.
-  const bundle = joinFindings({
-    localizationSnapshotId: drafted.batches[0]?.localizationSnapshotId ?? draftKey,
-    draftBatchId: drafted.batches[0]?.batchId ?? `${scene.sceneId}:draft`,
-    deterministic: gateReport.defects,
-    evaluatedGates: gateReport.evaluatedGates,
-    reviews: laneVerdicts,
-  });
+    // (5) Deterministic finding join — order-independent, facts dominate.
+    bundle = joinFindings({
+      localizationSnapshotId: drafted.batches[0]?.localizationSnapshotId ?? draftKey,
+      draftBatchId: drafted.batches[0]?.batchId ?? `${scene.sceneId}:draft`,
+      deterministic: gateReport.defects,
+      evaluatedGates: gateReport.evaluatedGates,
+      reviews: laneVerdicts,
+    });
 
-  // (6/7/8) Corrections: P2/P3, rerun-only-implicated, bounded adjudication.
-  const corrections =
-    bundle.defects.length > 0
-      ? await applyCorrections({
-          bundle,
-          scene: drafted,
-          verdicts: laneVerdicts,
-          repair: ports.repair,
-          review: ports.review,
-          adjudicate: ports.adjudicate,
-          store: ports.store,
-        })
-      : null;
+    // (6/7/8) Corrections: P2/P3, rerun-only-implicated, bounded adjudication.
+    corrections =
+      bundle.defects.length > 0
+        ? await applyCorrections({
+            bundle,
+            scene: drafted,
+            verdicts: laneVerdicts,
+            repair: ports.repair,
+            review: ports.review,
+            adjudicate: ports.adjudicate,
+            store: ports.store,
+          })
+        : null;
+  }
 
   // (9) Independent per-unit CAS finalize — gated by the run policy.
   const unresolved = new Set(corrections?.unresolvedUnitIds ?? []);
@@ -196,6 +262,7 @@ async function processScene(
     mode,
     draftedUnitIds: drafted.units.map((unit) => unit.unitId),
     skippedUnitIds,
+    deterministicDefects: gateReport.defects,
     reviewPlan,
     bundle,
     corrections,
@@ -208,10 +275,11 @@ async function processScene(
 async function runStratifiedReview(
   scene: DraftedScene,
   plan: ReviewPlan,
+  policy: ResolvedRunPolicy,
   ports: WorkflowPorts,
 ): Promise<readonly LaneVerdict[]> {
   const laneJobs = [...plan.unitsByLane.entries()].map(async ([lane, unitIds]) => {
-    const key = stableDigest("review", scene.sceneId, lane, unitIds);
+    const key = memoKeyFor(policy, "review", scene.sceneId, lane, unitIds);
     const step = await ports.store.runMemoizedStep(key, () =>
       ports.review.review({ lane, scene, unitIds }),
     );
@@ -237,6 +305,23 @@ function assertDraftCoverage(scene: DraftedScene, missing: readonly string[]): v
   }
 }
 
+/** A policy-selected direct run must not accept a wiki-grounded draft, and a
+ * qualifying run must not silently bypass its bible. This is checked before
+ * deterministic gates/finalize, independent of the P1 adapter. */
+function assertDraftBasis(scene: DraftedScene, policy: ResolvedRunPolicy): void {
+  for (const unit of scene.units) {
+    const basis = unit.draft.basis;
+    if (basis.kind !== policy.bibleBasis) {
+      throw new WorkflowSequenceError(
+        `unit ${unit.unitId} draft basis '${basis.kind}' does not match policy '${policy.bibleBasis}'`,
+      );
+    }
+    if (basis.kind === "pure-mtl-ablation" && basis.bibleRenderingIds.length !== 0) {
+      throw new WorkflowSequenceError(`unit ${unit.unitId} direct draft carried a bible rendering`);
+    }
+  }
+}
+
 /**
  * Run the whole localization workflow for a request over a set of scenes. The
  * policy is resolved first; scenes are driven concurrently (independent work
@@ -251,6 +336,22 @@ export async function runLocalizationWorkflow(
 ): Promise<WorkflowRunReport> {
   // Gate: resolve the policy FIRST. An illegal run never reaches a scene.
   const policy = resolveWorkflowPolicy(request);
+  return await runLocalizationWorkflowForPolicy(policy, scenes, ports, options);
+}
+
+/**
+ * Drive the same artifact workflow from an already-resolved policy. The
+ * ablation entrypoint uses this after it pins and validates the sanctioned
+ * selector; ordinary callers use `runLocalizationWorkflow` above. There is no
+ * second ablation control flow: `executionFor(policy)` configures this driver.
+ */
+export async function runLocalizationWorkflowForPolicy(
+  policy: ResolvedRunPolicy,
+  scenes: readonly WorkflowScene[],
+  ports: WorkflowPorts,
+  options: WorkflowOptions = {},
+): Promise<WorkflowRunReport> {
+  const execution = executionFor(policy);
   const output = projectOutputScope(scenes, policy.outputScope);
   const schedule = coherenceSchedule(output.scenes);
 
@@ -265,7 +366,8 @@ export async function runLocalizationWorkflow(
   let patchId: string | null = null;
   let buildLqa: readonly LaneVerdict[] = [];
   if (finalized.length > 0) {
-    const patchKey = stableDigest(
+    const patchKey = memoKeyFor(
+      policy,
       "patchback",
       ...[...finalized]
         .sort((left, right) => (left.unitId < right.unitId ? -1 : 1))
@@ -276,38 +378,40 @@ export async function runLocalizationWorkflow(
     );
     const currentPatchId = exported.value.patchId;
     patchId = currentPatchId;
-    // (11) Downstream Q5 Build-LQA — strictly AFTER patch export, on the patched
-    // result. Its per-unit stage heads make a restart dispatch only units whose
-    // on-screen assessment is absent; the review result itself is memoized too.
-    const missingBuildLqa = await missingStageUnits(
-      ports.store,
-      finalized.map((unit) => unit.unitId),
-      "build-lqa",
-    );
-    if (missingBuildLqa.length > 0) {
-      const q5Key = stableDigest("build-lqa", currentPatchId, ...missingBuildLqa);
-      const reviewed = await ports.store.runMemoizedStep(q5Key, () =>
-        ports.patchback.buildLqaReview({ patchId: currentPatchId, unitIds: missingBuildLqa }),
+    if (execution.runsBuildLqa) {
+      // (11) Downstream Q5 Build-LQA — strictly AFTER patch export, on the patched
+      // result. Its per-unit stage heads make a restart dispatch only units whose
+      // on-screen assessment is absent; the review result itself is memoized too.
+      const missingBuildLqa = await missingStageUnits(
+        ports.store,
+        finalized.map((unit) => unit.unitId),
+        "build-lqa",
       );
-      buildLqa = reviewed.value;
-      await Promise.all(
-        missingBuildLqa.map((unitId) =>
-          ports.store.finalizeUnit({
-            unitId,
-            stage: "build-lqa",
-            contentHash: stableSha(
-              "build-lqa",
-              currentPatchId,
+      if (missingBuildLqa.length > 0) {
+        const q5Key = memoKeyFor(policy, "build-lqa", currentPatchId, ...missingBuildLqa);
+        const reviewed = await ports.store.runMemoizedStep(q5Key, () =>
+          ports.patchback.buildLqaReview({ patchId: currentPatchId, unitIds: missingBuildLqa }),
+        );
+        buildLqa = reviewed.value;
+        await Promise.all(
+          missingBuildLqa.map((unitId) =>
+            ports.store.finalizeUnit({
               unitId,
-              ...buildLqa
-                .filter((verdict) => verdict.verdict.unitId === unitId)
-                .map((verdict) => verdict.verdict.reviewId)
-                .sort(),
-            ),
-            shippable: mayShip(policy),
-          }),
-        ),
-      );
+              stage: "build-lqa",
+              contentHash: stableSha(
+                "build-lqa",
+                currentPatchId,
+                unitId,
+                ...buildLqa
+                  .filter((verdict) => verdict.verdict.unitId === unitId)
+                  .map((verdict) => verdict.verdict.reviewId)
+                  .sort(),
+              ),
+              shippable: mayShip(policy),
+            }),
+          ),
+        );
+      }
     }
   }
 
@@ -319,6 +423,6 @@ export async function runLocalizationWorkflow(
     finalized,
     patchId,
     buildLqa,
-    attemptLineage: ports.store.attemptLineage(),
+    attemptLineage: reportAttemptLineage(policy, ports),
   };
 }

@@ -14,7 +14,7 @@
 // spec to that one boundary.
 
 import { CALL_SPEC_SCHEMA_VERSION, DRAFT_BATCH_SCHEMA_VERSION } from "../../contracts/index.js";
-import type { CallResult, CallSpec } from "../../contracts/index.js";
+import type { CallResult, CallSpec, Draft } from "../../contracts/index.js";
 import { canonicalJson, sha256 } from "../../llm/canonical-json.js";
 import { deepSeekV4FlashProfile } from "../../llm/role-model-profiles.js";
 import { dispatch, type DispatchRuntime } from "../../llm/dispatch.js";
@@ -36,6 +36,9 @@ export interface BuildLocalizerCallInput {
   readonly unitsById: ReadonlyMap<string, SkeletonUnit>;
   /** Localized-bible rendering ids the drafts cite (wiki-first basis). */
   readonly bibleRenderingIds: readonly string[];
+  /** The policy-derived draft basis. The direct control arm has no bible ids or
+   * bodies but retains the same P1 profile and certified dispatch route. */
+  readonly bibleBasis?: Draft["basis"]["kind"];
   /** Exact installed entries, keyed by unit, supplied by ground-truth readiness. */
   readonly unitBibleById?: ReadonlyMap<string, readonly LocalizedRendering[]>;
   /** Accepted target of prior units in the scene thread, keyed by unit id. */
@@ -108,6 +111,7 @@ function buildMessages(input: BuildLocalizerCallInput): readonly DraftableMessag
     content: JSON.stringify({
       kind: "localizer-seed",
       scope: input.segment,
+      draftBasis: input.bibleBasis ?? "wiki-first",
       bibleRenderingIds: input.bibleRenderingIds,
       ...(input.unitBibleById === undefined
         ? {}

@@ -21,6 +21,7 @@
 import type { Defect } from "../contracts/index.js";
 import type { DeterministicGate } from "../gates/contract-types.js";
 import type { UnitBibleBinding } from "../localized-wiki/ground-truth/index.js";
+import type { BibleBasis } from "../run-policy/index.js";
 import type {
   DraftMode,
   DraftedScene,
@@ -56,6 +57,9 @@ export interface DraftPort {
   draftScene(input: {
     readonly scene: WorkflowScene;
     readonly mode: DraftMode;
+    /** Policy-derived basis. `pure-mtl-ablation` is legal only through the
+     * explicit test-dev selector and carries an empty bible map. */
+    readonly bibleBasis: BibleBasis;
     readonly bibleRenderingIdsByUnit: ReadonlyMap<string, readonly string[]>;
     /** Present on the ground-truth path; retained through draft/review so a
      * later bible edit can reflow only the consumers that cited it. */

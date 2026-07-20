@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { buildDefect } from "../src/gates/index.js";
 import type { Defect } from "../src/contracts/index.js";
-import { FULL_ROSTER, resolveRunPolicy, type RunPolicyRequest } from "../src/run-policy/index.js";
+import {
+  FULL_ROSTER,
+  finalizeShippable,
+  resolveRunPolicy,
+  ShippableFinalizationError,
+  type RunPolicyRequest,
+} from "../src/run-policy/index.js";
 import {
   AblationLineageIsolationError,
   EMPTY_QUALIFYING_METRICS,
@@ -14,6 +20,7 @@ import {
   tagLineage,
   type AblationRunRequest,
 } from "../src/ablation/index.js";
+import { runLocalizationWorkflow } from "../src/workflow/index.js";
 import type {
   AttemptContext,
   AttemptLineageEntry,
@@ -37,6 +44,10 @@ const SNAP = `sha256:${"a".repeat(64)}` as const;
 const SRC = `sha256:${"b".repeat(64)}` as const;
 
 function draftFor(unitId: string, bibleRenderingIds: readonly string[]): DraftedUnit {
+  const basis =
+    bibleRenderingIds.length === 0
+      ? ({ kind: "pure-mtl-ablation", bibleRenderingIds: [] } as const)
+      : ({ kind: "wiki-first", bibleRenderingIds } as const);
   return {
     unitId,
     bibleRenderingIds,
@@ -45,9 +56,7 @@ function draftFor(unitId: string, bibleRenderingIds: readonly string[]): Drafted
       sourceHash: SRC,
       targetSkeleton: `target for ${unitId}`,
       evidenceIds: ["ev.1"],
-      // The ablation drafts with no bible grounding — a null-Wiki basis (the
-      // substrate's own `pure-mtl-ablation` draft basis carries no renderings).
-      basis: { kind: "pure-mtl-ablation", bibleRenderingIds: [] },
+      basis,
       uncertainty: ["none"],
     },
   };
@@ -163,6 +172,7 @@ interface Recorder {
     sceneId: string;
     mode: DraftMode;
     unitIds: readonly string[];
+    bibleBasis: "wiki-first" | "pure-mtl-ablation";
     bibleEntries: number;
   }[];
   gateCalls: number;
@@ -222,6 +232,7 @@ function buildPorts(store: FakeStore, rec: Recorder, opts: FakeOptions = {}): Wo
           sceneId: input.scene.sceneId,
           mode: input.mode,
           unitIds,
+          bibleBasis: input.bibleBasis,
           bibleEntries: input.bibleRenderingIdsByUnit.size,
         });
         return draftedScene(
@@ -318,6 +329,7 @@ describe("pure-MTL ablation — clause 1: same substrate as the real pipeline", 
 
     // The real substrate ports WERE exercised.
     expect(rec.draftCalls).toHaveLength(1);
+    expect(rec.draftCalls[0]?.bibleBasis).toBe("pure-mtl-ablation");
     expect(rec.gateCalls).toBe(1);
     expect(rec.exportCalls).toBe(1);
     expect(report.patchId).toBe("patch.ablation.1");
@@ -360,6 +372,7 @@ describe("pure-MTL ablation — clause 2: null Wiki, direct translation, ~zero m
     // No bible resolution, no source-wiki grounding: the draft got an empty map.
     expect(rec.readinessCalls).toBe(0);
     expect(rec.draftCalls[0]?.bibleEntries).toBe(0);
+    expect(rec.draftCalls[0]?.bibleBasis).toBe("pure-mtl-ablation");
     // Direct translation: a single whole-scene translate call, not chunked review.
     expect(rec.draftCalls).toHaveLength(1);
     expect(rec.draftCalls[0]?.mode).toBe("whole-scene");
@@ -428,5 +441,42 @@ describe("pure-MTL ablation — clause 3: lineage isolated from the qualifying l
     });
     const qualLedger = foldQualifyingLineage(EMPTY_QUALIFYING_METRICS, qualifying);
     expect(qualLedger.contributingClasses).toEqual(["qualifying"]);
+    expect(() => collectAblationLineage(EMPTY_QUALIFYING_METRICS, qualifying)).toThrow(
+      AblationLineageIsolationError,
+    );
+  });
+
+  it("keeps physical attempt namespaces out of both reports when both arms share a store", async () => {
+    const store = new FakeStore();
+    const rec = newRecorder();
+    const ports = buildPorts(store, rec);
+    const ablation = await runPureMtlAblation(ABLATION_REQUEST, [scene("mtl", ["u.mtl"])], ports);
+    const qualifying = await runLocalizationWorkflow(
+      PRODUCTION,
+      [scene("qual", ["u.qual"])],
+      ports,
+    );
+
+    expect(ablation.attemptLineage).not.toHaveLength(0);
+    expect(ablation.attemptLineage.every((entry) => entry.memoKey.startsWith("pure-mtl:"))).toBe(
+      true,
+    );
+    expect(qualifying.attemptLineage).not.toHaveLength(0);
+    expect(qualifying.attemptLineage.every((entry) => !entry.memoKey.startsWith("pure-mtl:"))).toBe(
+      true,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Clause 4 — the run-policy finalization gate, not a runner convention, keeps
+// direct output non-shippable.
+// ---------------------------------------------------------------------------
+
+describe("pure-MTL ablation — non-shippable finalization", () => {
+  it("rejects a shippable finalization even when handed the resolved control policy", () => {
+    expect(() =>
+      finalizeShippable(resolveAblationPolicy(ABLATION_REQUEST), { patchId: "patch.1" }),
+    ).toThrow(ShippableFinalizationError);
   });
 });

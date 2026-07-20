@@ -13,6 +13,7 @@ import type { LocalizeSceneInput, LocalizerRuntimeBase } from "../../../roles/p1
 import type { UnitBibleBinding } from "../../../localized-wiki/ground-truth/index.js";
 import type { DraftDeps } from "../../deps.js";
 import type { DraftMode, WorkflowScene } from "../../../workflow/index.js";
+import type { BibleBasis } from "../../../run-policy/index.js";
 import { projectSceneUnitFacts, type DecodeFactSource, type RunScopeConfig } from "./substrate.js";
 
 /** The measured P1 realization budget: the whole-scene byte budget and the
@@ -39,6 +40,7 @@ function sceneBibleRenderingIds(
 export function buildLocalizeSceneInput(input: {
   readonly scene: WorkflowScene;
   readonly mode: DraftMode;
+  readonly bibleBasis?: BibleBasis;
   readonly bibleRenderingIdsByUnit: ReadonlyMap<string, readonly string[]>;
   readonly bibleBindingsByUnit?: ReadonlyMap<string, UnitBibleBinding>;
   readonly facts: DecodeFactSource;
@@ -48,6 +50,7 @@ export function buildLocalizeSceneInput(input: {
   const unitIds = input.scene.units.map((unit) => unit.unitId);
   return {
     units: projectSceneUnitFacts(unitIds, input.facts),
+    bibleBasis: input.bibleBasis ?? "wiki-first",
     bibleRenderingIds: sceneBibleRenderingIds(input.bibleRenderingIdsByUnit),
     ...(input.bibleBindingsByUnit === undefined
       ? {}
@@ -80,6 +83,7 @@ export function createDraftDeps(input: {
       buildLocalizeSceneInput({
         scene: portInput.scene,
         mode: portInput.mode,
+        bibleBasis: portInput.bibleBasis,
         bibleRenderingIdsByUnit: portInput.bibleRenderingIdsByUnit,
         ...(portInput.bibleBindingsByUnit === undefined
           ? {}
