@@ -76,6 +76,7 @@ export const utf8JsonPolicy: LocalizationTargetPolicy = {
   boxLimits: UTF8_BOX_LIMITS,
   // No engine-specific out-of-band control markers for a plain UTF-8 target.
   controlMarkers: [],
+  normalizeVisibleText: (text) => text,
   choiceMustBeSingleLine: true,
   // An ASCII-leading UTF-8 target is observable through the decoded channel.
   runtimeEvidenceChannels: ["decoded-textline", "render-ocr"],

@@ -11,7 +11,10 @@
 // render/OCR only. All of that behavior is preserved here, re-homed behind the
 // policy seam rather than hard-coded into the shared gate path.
 
-import { listSjisEncodableCodepointsForAudit } from "../../localization/patchback-safety.js";
+import {
+  listSjisEncodableCodepointsForAudit,
+  stripOutOfBandControlMarkup,
+} from "../../localization/patchback-safety.js";
 import type { BoxLimit } from "../types.js";
 
 import type {
@@ -97,6 +100,7 @@ export const realliveSjisPolicy: LocalizationTargetPolicy = {
   measureBytes: sjisByteLength,
   boxLimits: REALLIVE_BOX_LIMITS,
   controlMarkers: [OUT_OF_BAND_MARKER, INTERIOR_QUOTE_PLACEHOLDER],
+  normalizeVisibleText: stripOutOfBandControlMarkup,
   choiceMustBeSingleLine: true,
   // Shift-JIS lead-byte gated: an ASCII-leading English target is observable
   // ONLY through the render/OCR frame, never the decoded-TextLine channel.

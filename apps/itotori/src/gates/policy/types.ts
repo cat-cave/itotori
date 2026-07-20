@@ -69,6 +69,13 @@ export interface LocalizationTargetPolicy {
    * into an accepted target (e.g. an engine's runtime Textout marker). */
   readonly controlMarkers: readonly string[];
 
+  /**
+   * Project source or draft text to what this target engine treats as visible
+   * text before export compares the two. The adapter owns any marker grammar;
+   * shared export code only invokes this declared policy capability.
+   */
+  normalizeVisibleText(text: string): string;
+
   /** A choice label must remain a single encoded line under this policy. */
   readonly choiceMustBeSingleLine: boolean;
 

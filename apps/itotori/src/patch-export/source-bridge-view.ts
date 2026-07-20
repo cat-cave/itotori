@@ -77,6 +77,9 @@ export type SourceBridgeView = {
   projectId: string;
   localeBranchId: string;
   sourceBridgeHash: string;
+  /** The `extractor.name` that produced this bridge. It selects the target
+   * policy that owns engine-visible-text normalization during export. */
+  extractorAdapterId: string;
   targetLocale: string;
   units: ReadonlyArray<SourceBridgeUnit>;
 };
