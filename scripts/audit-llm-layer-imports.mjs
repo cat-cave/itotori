@@ -2,10 +2,10 @@
 // CI guard: LLM-layer import boundary.
 //
 // The new LLM layer (apps/itotori/src/llm/) is the sole production home for
-// model dispatch. Three rules are enforced:
+// model dispatch. Four rules are enforced:
 //
-//   1. At most ONE production dispatcher — only the designated dispatcher
-//      module may import the provider SDK. No other LLM-layer file constructs
+//   1. Exactly ONE production dispatcher — only the designated dispatcher
+//      module may import the provider SDK. No other production file constructs
 //      or calls a provider client directly.
 //   2. The LLM layer MUST NOT import domain/decode modules (extract,
 //      structure-export, patch-export, localization, play, services, etc.).
@@ -13,11 +13,11 @@
 //      into decode internals.
 //   3. NO imports of the old agents/orchestrator/providers/journal surface.
 //      The old surface is frozen for deletion; new code may not couple to it.
+//   4. The complete production dependency graph contains no edge to a retired
+//      root, repository, proof surface, or old-loop schema module.
 //
 // Rules are enforced via AST-based import extraction (comments and strings do
-// not count) plus relative-path resolution. When the LLM-layer directory does
-// not yet exist the guard passes with zero violations — it is proactive, not
-// retroactive.
+// not count) plus relative-path resolution.
 //
 // Exit codes: 0 = clean; 1 = violation.
 // Wired into `just ci-tier0-meta`.
@@ -65,23 +65,41 @@ function resolveRelativeImport(importerRepoPath, specifier) {
   return normalizeSlashes(resolved);
 }
 
-// Extract every import specifier from a parsed AST.
+// Extract every module-loading specifier from a parsed AST. Re-exports,
+// dynamic imports, and CommonJS require calls are dependency edges too.
 export function extractImportSpecifiers(root) {
   const specifiers = [];
+  const addSpecifier = (node, source) => {
+    if (typeof source !== "string") return;
+    specifiers.push({
+      value: source,
+      line: node.loc?.start.line ?? 0,
+    });
+  };
   walk(root, (node) => {
     if (node.type === "ImportDeclaration" && node.source?.value) {
-      specifiers.push({
-        value: node.source.value,
-        line: node.loc?.start.line ?? 0,
-      });
+      addSpecifier(node, node.source.value);
+    }
+    if (
+      (node.type === "ExportNamedDeclaration" || node.type === "ExportAllDeclaration") &&
+      node.source?.value
+    ) {
+      addSpecifier(node, node.source.value);
     }
     if (node.type === "TSImportEqualsDeclaration" && node.moduleReference) {
       const ref = node.moduleReference;
       if (ref.type === "TSExternalModuleReference" && ref.expression?.value) {
-        specifiers.push({
-          value: ref.expression.value,
-          line: node.loc?.start.line ?? 0,
-        });
+        addSpecifier(node, ref.expression.value);
+      }
+    }
+    if (node.type === "ImportExpression" && node.source?.value) {
+      addSpecifier(node, node.source.value);
+    }
+    if (node.type === "CallExpression") {
+      const isDynamicImport = node.callee?.type === "Import";
+      const isRequire = node.callee?.type === "Identifier" && node.callee.name === "require";
+      if ((isDynamicImport || isRequire) && node.arguments?.[0]?.type === "StringLiteral") {
+        addSpecifier(node, node.arguments[0].value);
       }
     }
   });
@@ -173,7 +191,7 @@ export function findImportViolations(repoPath, contents, config) {
 }
 
 /**
- * Identify which files in the LLM layer import a provider SDK.
+ * Identify which production files import a provider SDK.
  */
 export function findDispatcherCandidates(files, config) {
   const dispatcherPath = config.dispatcherModule ?? null;
@@ -189,15 +207,77 @@ export function findDispatcherCandidates(files, config) {
   return { candidates, dispatcherPath };
 }
 
-function listLlmLayerFiles(llmRoot) {
-  const absRoot = join(repoRoot, llmRoot);
-  if (!existsSync(absRoot)) return [];
+export function findDispatcherViolations(candidates, dispatcherPath) {
+  const violations = [];
+  if (dispatcherPath === null) {
+    return [{ file: "<ledger>", rule: "missing-dispatcher-module", detail: "not configured" }];
+  }
+  if (candidates.length === 0) {
+    return [
+      {
+        file: dispatcherPath,
+        rule: "missing-dispatcher",
+        detail: "does not import a provider SDK",
+      },
+    ];
+  }
+  for (const candidate of candidates) {
+    if (candidate !== dispatcherPath) {
+      violations.push({
+        file: candidate,
+        rule: "unauthorized-dispatcher",
+        detail: "imports a provider SDK but is not the designated dispatcher module",
+      });
+    }
+  }
+  if (!candidates.includes(dispatcherPath)) {
+    violations.push({
+      file: dispatcherPath,
+      rule: "missing-dispatcher",
+      detail: "does not import a provider SDK",
+    });
+  }
+  if (candidates.length > 1) {
+    violations.push({
+      file: dispatcherPath,
+      rule: "multiple-dispatchers",
+      detail: `${candidates.length} files import a provider SDK; exactly one is required`,
+    });
+  }
+  return violations;
+}
 
-  const output = execFileSync(
-    "git",
-    ["ls-files", "--cached", "--others", "--exclude-standard", llmRoot],
-    { cwd: repoRoot, encoding: "utf8" },
-  );
+/**
+ * Reject a production dependency edge that reaches a retired surface. The
+ * ledger tokens work for both resolved relative paths and package specifiers.
+ */
+export function findDependencyGraphViolations(files, config) {
+  const tokens = config.forbiddenProductionImportTokens ?? [];
+  const violations = [];
+  for (const { path, contents } of files) {
+    const root = parseTypeScript(contents, path);
+    for (const { value, line } of extractImportSpecifiers(root)) {
+      const resolved = isRelative(value) ? resolveRelativeImport(path, value) : value;
+      const matched = tokens.find((token) => resolved.includes(token));
+      if (matched !== undefined) {
+        violations.push({
+          file: path,
+          line,
+          rule: "retired-dependency-edge",
+          import: value,
+          matched,
+        });
+      }
+    }
+  }
+  return violations;
+}
+
+function listTrackedSourceFiles(sourceRoots) {
+  const output = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
   return output
     .split("\n")
     .map((l) => l.trim())
@@ -205,6 +285,7 @@ function listLlmLayerFiles(llmRoot) {
       (l) =>
         l.length > 0 &&
         existsSync(join(repoRoot, l)) &&
+        sourceRoots.some((root) => l.startsWith(root)) &&
         TS_LIKE_EXTENSIONS.some((ext) => l.endsWith(ext)),
     );
 }
@@ -220,61 +301,47 @@ export function runGuard(ledgerPath) {
     return 1;
   }
 
-  const files = listLlmLayerFiles(llmRoot);
+  const files = listTrackedSourceFiles([llmRoot]);
 
   if (files.length === 0) {
-    process.stdout.write(
-      `llm-layer-imports guard: passed. LLM layer '${llmRoot}' is empty (no code yet).\n`,
-    );
-    return 0;
+    process.stderr.write(`llm-layer-imports guard: FAILED. LLM layer '${llmRoot}' is empty.\n`);
+    return 1;
   }
 
-  // --- Rule 1: at most one dispatcher ---
+  const productionRoots = config.productionSourceRoots ?? [llmRoot];
+  const productionFiles = listTrackedSourceFiles(productionRoots);
+  if (productionFiles.length === 0) {
+    process.stderr.write("llm-layer-imports guard: FAILED. no production source files found.\n");
+    return 1;
+  }
+
+  // --- Rule 1: exactly one dispatcher across the production graph ---
   const fileContents = files.map((f) => ({
     path: f,
     contents: readFileSync(join(repoRoot, f), "utf8"),
   }));
-  const { candidates, dispatcherPath } = findDispatcherCandidates(fileContents, config);
-  const dispatcherViolations = [];
-
-  // Non-dispatcher files that import the SDK are violations.
-  for (const candidate of candidates) {
-    if (candidate !== dispatcherPath) {
-      dispatcherViolations.push({
-        file: candidate,
-        rule: "unauthorized-dispatcher",
-        detail: "imports provider SDK but is not the designated dispatcher module",
-      });
-    }
-  }
-  // More than one file total (even if one is the dispatcher) is a violation
-  // when the count exceeds 1.
-  if (candidates.length > 1) {
-    for (const candidate of candidates) {
-      if (!dispatcherViolations.some((v) => v.file === candidate)) {
-        dispatcherViolations.push({
-          file: candidate,
-          rule: "multiple-dispatchers",
-          detail: `${candidates.length} files import the provider SDK; only one is allowed`,
-        });
-      }
-    }
-  }
+  const productionContents = productionFiles.map((f) => ({
+    path: f,
+    contents: readFileSync(join(repoRoot, f), "utf8"),
+  }));
+  const { candidates, dispatcherPath } = findDispatcherCandidates(productionContents, config);
+  const dispatcherViolations = findDispatcherViolations(candidates, dispatcherPath);
 
   // --- Rules 2 & 3: forbidden imports ---
   const importViolations = [];
   for (const { path: f, contents } of fileContents) {
     importViolations.push(...findImportViolations(f, contents, config));
   }
+  const graphViolations = findDependencyGraphViolations(productionContents, config);
 
-  const allViolations = [...dispatcherViolations, ...importViolations];
+  const allViolations = [...dispatcherViolations, ...importViolations, ...graphViolations];
 
   if (allViolations.length > 0) {
     process.stderr.write(
       `llm-layer-imports guard: FAILED. ${allViolations.length} violation(s).\n\n`,
     );
     for (const v of allViolations) {
-      if (v.rule === "unauthorized-dispatcher" || v.rule === "multiple-dispatchers") {
+      if (v.detail !== undefined) {
         process.stderr.write(`  ${v.file}  [${v.rule}]  ${v.detail}\n`);
       } else {
         process.stderr.write(
@@ -286,8 +353,8 @@ export function runGuard(ledgerPath) {
   }
 
   process.stdout.write(
-    `llm-layer-imports guard: passed. ${files.length} LLM-layer file(s) scanned; ` +
-      `${candidates.length} dispatcher(s), 0 forbidden imports.\n`,
+    `llm-layer-imports guard: passed. ${files.length} LLM-layer and ${productionFiles.length} ` +
+      `production file(s) scanned; exactly ${candidates.length} dispatcher, 0 forbidden imports.\n`,
   );
   return 0;
 }

@@ -1,35 +1,18 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
-const retiredTables = [
-  "itotori_localization_journal_runs",
-  "itotori_localization_journal_run_units",
-  "itotori_llm_attempts",
-  "itotori_localization_cost_reservations",
-  "itotori_localization_run_cost_accounts",
-  "itotori_written_unit_outcomes",
-  "itotori_translation_candidates",
-  "itotori_localization_result_revisions",
-  "itotori_written_qa_findings",
-  "itotori_outcome_context_refs",
-  "itotori_outcome_speaker_labels",
-  "itotori_localization_run_terminal_summaries",
-  "itotori_localization_run_finalizer_outbox",
-  "itotori_play_sessions",
-  "itotori_play_session_qa_callouts",
-  "itotori_localization_refinement_run_feedback_batches",
-  "itotori_localization_refinement_run_feedback_events",
-  "itotori_localization_refinement_run_wiki_heads",
-  "itotori_localization_refinement_run_members",
-  "itotori_context_artifacts",
-  "itotori_context_entry_versions",
-  "itotori_context_artifact_source_units",
-] as const;
+const here = dirname(fileURLToPath(import.meta.url));
+const ledgerPath = join(here, "..", "..", "..", "scripts", "lint", "deletion-ledger.json");
+const { retiredDbTables } = JSON.parse(readFileSync(ledgerPath, "utf8"));
 
 describe("retired localization persistence", () => {
-  it("does not create journal ownership, reservation, finalizer, or context-artifact tables", async () => {
+  it("does not create retired benchmark, journal, reservation, finalizer, or context-artifact tables", async () => {
     const context = await isolatedMigratedContext();
     try {
+      expect(retiredDbTables).toContain("itotori_benchmark_runs");
       const tables = await context.pool.query<{ table_name: string }>(
         `
         select table_name
@@ -37,7 +20,7 @@ describe("retired localization persistence", () => {
         where table_schema = current_schema()
           and table_name = any($1::text[])
       `,
-        [retiredTables],
+        [retiredDbTables],
       );
       expect(tables.rows).toEqual([]);
 

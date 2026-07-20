@@ -1,6 +1,6 @@
 {
-  "description": "Post-cutover deletion ledger. The retired application groups, JSON salvage and old-loop schema residue, cockpit read model, proof wire contract, calibration generator, and benchmark/experiment fixtures have zero remaining tracked LOC; the retained LLM boundary is checked for legacy imports.",
-  "version": 3,
+  "description": "Post-cutover deletion ledger. The retired application groups, persistence graph, JSON salvage and old-loop schema residue, cockpit read model, proof wire contract, calibration generator, and benchmark/experiment fixtures have zero remaining tracked LOC; the retained LLM boundary is checked for legacy imports.",
+  "version": 4,
   "contractualTotalLines": 0,
   "delete": {
     "appSurface": [
@@ -14,8 +14,27 @@
       },
       {
         "id": "orchestrator-implementation",
-        "kind": "files",
-        "files": [],
+        "kind": "glob",
+        "root": "apps/itotori/src/orchestrator/",
+        "extensions": [".ts", ".tsx"],
+        "lines": 0,
+        "expected": "absent"
+      },
+      {
+        "id": "retired-agentic-application-roots",
+        "kind": "globs",
+        "roots": [
+          "apps/itotori/src/alpha-readiness/",
+          "apps/itotori/src/batch-planner/",
+          "apps/itotori/src/draft/",
+          "apps/itotori/src/draft-feedback/",
+          "apps/itotori/src/iteration/",
+          "apps/itotori/src/qa/",
+          "apps/itotori/src/triage/",
+          "apps/itotori/src/render-gate/",
+          "apps/itotori/src/route-reliability/"
+        ],
+        "extensions": [".ts", ".tsx"],
         "lines": 0,
         "expected": "absent"
       },
@@ -28,8 +47,9 @@
       },
       {
         "id": "openrouter-client",
-        "kind": "files",
-        "files": [],
+        "kind": "glob",
+        "root": "apps/itotori/src/providers/",
+        "extensions": [".ts", ".tsx"],
         "lines": 0,
         "expected": "absent"
       },
@@ -38,6 +58,19 @@
         "kind": "glob",
         "root": "apps/itotori/src/providers/",
         "extensions": [".ts", ".tsx"],
+        "lines": 0,
+        "expected": "absent"
+      },
+      {
+        "id": "retired-persistence-repositories",
+        "kind": "files",
+        "files": [
+          "packages/itotori-db/src/repositories/benchmark-run-repository.ts",
+          "packages/itotori-db/src/repositories/context-artifact-repository.ts",
+          "packages/itotori-db/src/repositories/localization-journal-repository.ts",
+          "packages/itotori-db/src/repositories/localization-run-finalizer-repository.ts",
+          "packages/itotori-db/src/repositories/wiki-context-repository.ts"
+        ],
         "lines": 0,
         "expected": "absent"
       },
@@ -110,6 +143,55 @@
     "migrationsSurgery": []
   },
   "rehome": [],
+  "keepSeams": [
+    "apps/itotori/src/structure/index.ts",
+    "apps/itotori/src/runtime-evidence/tools.ts",
+    "apps/itotori/src/gates/glossary-exact.ts",
+    "apps/itotori/src/gates/protected-spans.ts"
+  ],
+  "retiredDbTables": [
+    "itotori_benchmark_runs",
+    "itotori_scene_summary_cited_units",
+    "itotori_scene_summaries",
+    "itotori_character_bio_evidence",
+    "itotori_character_relationship_evidence",
+    "itotori_character_bios",
+    "itotori_character_relationships",
+    "itotori_route_evidence",
+    "itotori_route_choices",
+    "itotori_route_maps",
+    "itotori_terminology_candidate_evidence",
+    "itotori_terminology_candidates",
+    "itotori_reviewer_queue_transitions",
+    "itotori_reviewer_queue_items",
+    "itotori_glossary_review_items",
+    "itotori_workspace_correction_edits",
+    "itotori_scene_localization_coverage",
+    "itotori_localization_journal_runs",
+    "itotori_localization_journal_run_units",
+    "itotori_llm_attempts",
+    "itotori_localization_cost_reservations",
+    "itotori_localization_pass_ledger",
+    "itotori_localization_run_cost_accounts",
+    "itotori_written_unit_outcomes",
+    "itotori_translation_candidates",
+    "itotori_localization_result_revisions",
+    "itotori_written_qa_findings",
+    "itotori_outcome_context_refs",
+    "itotori_outcome_speaker_labels",
+    "itotori_localization_run_terminal_summaries",
+    "itotori_localization_run_finalizer_outbox",
+    "itotori_play_sessions",
+    "itotori_play_session_qa_callouts",
+    "itotori_localization_refinement_run_feedback_batches",
+    "itotori_localization_refinement_run_feedback_events",
+    "itotori_localization_refinement_run_wiki_heads",
+    "itotori_localization_refinement_run_members",
+    "itotori_context_artifacts",
+    "itotori_context_entry_versions",
+    "itotori_context_artifact_source_units",
+    "itotori_draft_attempt_provider_ledger"
+  ],
   "llmLayer": {
     "root": "apps/itotori/src/llm/",
     "dispatcherModule": "apps/itotori/src/llm/dispatch.ts",
@@ -141,7 +223,40 @@
     "forbiddenPackageImports": [
       "localization-journal-repository",
       "localization-run-finalizer-repository",
-      "context-artifact-repository"
+      "context-artifact-repository",
+      "wiki-context-repository",
+      "benchmark-run-repository"
+    ],
+    "productionSourceRoots": [
+      "apps/itotori/src/",
+      "packages/itotori-db/src/",
+      "packages/localization-bridge-schema/src/"
+    ],
+    "forbiddenProductionImportTokens": [
+      "/agents/",
+      "/providers/",
+      "/orchestrator/",
+      "/qa/",
+      "/batch-planner/",
+      "/draft-feedback/",
+      "/draft/",
+      "/iteration/",
+      "/triage/",
+      "/benchmark-harness/",
+      "/benchmark-set/",
+      "/benchmark-stages/",
+      "/experiment-matrix/",
+      "/experiment-report/",
+      "/provider-proof/",
+      "/raw-mtl-baseline-proof/",
+      "/render-gate/",
+      "agentic-loop-bundle",
+      "raw-mtl-baseline-proof",
+      "localization-journal-repository",
+      "localization-run-finalizer-repository",
+      "context-artifact-repository",
+      "wiki-context-repository",
+      "benchmark-run-repository"
     ]
   }
 }

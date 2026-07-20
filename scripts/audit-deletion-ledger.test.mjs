@@ -41,6 +41,8 @@ function baseLedger() {
       migrationsSurgery: [],
     },
     rehome: [],
+    keepSeams: [],
+    retiredDbTables: [],
     llmLayer: {},
   };
 }
@@ -178,6 +180,26 @@ test("contractual total mismatch with parts fails", () => {
   assert.ok(totalViolation, "expected a total-mismatch violation");
 });
 
+test("a malformed or duplicate retired table name fails", () => {
+  const ledger = baseLedger();
+  ledger.retiredDbTables = ["not_itotori", "itotori_retired", "itotori_retired"];
+  const { ok, violations } = evaluateLedger(ledger, makeTree());
+  assert.equal(ok, false);
+  assert.deepEqual(
+    violations.map((violation) => violation.kind),
+    ["invalid-table-name", "duplicate-table-name"],
+  );
+});
+
+test("a missing retained deterministic seam fails", () => {
+  const ledger = baseLedger();
+  ledger.keepSeams = ["apps/itotori/src/gates/protected-spans.ts"];
+  const { ok, violations } = evaluateLedger(ledger, makeTree());
+  assert.equal(ok, false);
+  assert.equal(violations[0].id, "keepSeams");
+  assert.equal(violations[0].kind, "missing");
+});
+
 test("multiple globs entry sums line counts correctly", () => {
   const root = makeTree();
   writeTs(join(root, "bench1"), "a.ts", 20);
@@ -227,4 +249,15 @@ test("the checked-in ledger forbids reviving the retired roots and isolated resi
   );
   assert.ok(absentFiles.includes("packages/localization-bridge-schema/src/agentic-loop-bundle.ts"));
   assert.ok(absentFiles.includes("scripts/generate-qa-calibration-bundles.mjs"));
+
+  assert.deepEqual(ledger.keepSeams, [
+    "apps/itotori/src/structure/index.ts",
+    "apps/itotori/src/runtime-evidence/tools.ts",
+    "apps/itotori/src/gates/glossary-exact.ts",
+    "apps/itotori/src/gates/protected-spans.ts",
+  ]);
+  assert.ok(ledger.retiredDbTables.includes("itotori_benchmark_runs"));
+  assert.ok(ledger.retiredDbTables.includes("itotori_localization_journal_runs"));
+  assert.ok(ledger.retiredDbTables.includes("itotori_localization_cost_reservations"));
+  assert.ok(ledger.retiredDbTables.includes("itotori_context_artifacts"));
 });

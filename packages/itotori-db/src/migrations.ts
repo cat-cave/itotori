@@ -569,6 +569,10 @@ export const migrations = [
     id: "0111_retire_journal_finalizer_context_artifacts",
     file: "0111_retire_journal_finalizer_context_artifacts.sql",
   },
+  {
+    id: "0112_retire_benchmark_runs",
+    file: "0112_retire_benchmark_runs.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

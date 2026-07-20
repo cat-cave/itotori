@@ -175,6 +175,23 @@ export function evaluateLedger(ledger, rootDir) {
     if (!existsSync(abs)) addViolation("rehome", "missing", entry.from);
   }
 
+  // --- retained deterministic seams ---
+  for (const path of ledger.keepSeams ?? []) {
+    if (!existsSync(join(root, path))) addViolation("keepSeams", "missing", path);
+  }
+
+  // --- retired schema inventory ---
+  const retiredTables = ledger.retiredDbTables ?? [];
+  const seenTables = new Set();
+  for (const table of retiredTables) {
+    if (!/^itotori_[a-z0-9_]+$/u.test(table)) {
+      addViolation("retiredDbTables", "invalid-table-name", table);
+    } else if (seenTables.has(table)) {
+      addViolation("retiredDbTables", "duplicate-table-name", table);
+    }
+    seenTables.add(table);
+  }
+
   return { ok: violations.length === 0, violations };
 }
 
@@ -195,6 +212,10 @@ function formatViolation(v) {
       const d = v.detail;
       return `  TOTAL-MISMATCH  contractual=${d.contractual}, sumOfParts=${d.sumOfParts}`;
     }
+    case "invalid-table-name":
+      return `  INVALID-TABLE  ${v.id}: ${v.detail}`;
+    case "duplicate-table-name":
+      return `  DUPLICATE-TABLE  ${v.id}: ${v.detail}`;
     default:
       return `  UNKNOWN      ${v.id}: ${JSON.stringify(v.detail)}`;
   }

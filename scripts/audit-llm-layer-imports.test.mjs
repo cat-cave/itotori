@@ -10,6 +10,8 @@ import test from "node:test";
 import {
   extractImportSpecifiers,
   findDispatcherCandidates,
+  findDispatcherViolations,
+  findDependencyGraphViolations,
   findImportViolations,
 } from "./audit-llm-layer-imports.mjs";
 
@@ -22,20 +24,26 @@ function config() {
     forbiddenImportRoots: ["../agents/", "../orchestrator/", "../providers/"],
     forbiddenDomainDecodeRoots: ["../extract/", "../structure-export/", "../patch-export/"],
     forbiddenPackageImports: ["localization-journal-repository"],
+    forbiddenProductionImportTokens: ["/agents/", "/providers/", "localization-journal-repository"],
   };
 }
 
-test("extractImportSpecifiers collects all import sources", async () => {
+test("extractImportSpecifiers collects every module-loading source", async () => {
   const ast = (await import("./stable-ts-ast.mjs")).parseTypeScript(
-    ['import { x } from "./foo.js";', 'import type { T } from "../types.js";', "const y = 1;"].join(
-      "\n",
-    ),
+    [
+      'import { x } from "./foo.js";',
+      'import type { T } from "../types.js";',
+      'export { x } from "../compat.js";',
+      'export * from "../barrel.js";',
+      'await import("../dynamic.js");',
+      'require("../commonjs.js");',
+    ].join("\n"),
     FILE,
   );
   const specs = extractImportSpecifiers(ast);
   assert.deepEqual(
     specs.map((s) => s.value),
-    ["./foo.js", "../types.js"],
+    ["./foo.js", "../types.js", "../compat.js", "../barrel.js", "../dynamic.js", "../commonjs.js"],
   );
 });
 
@@ -127,6 +135,56 @@ test("findDispatcherCandidates flags multiple SDK importers", () => {
   ];
   const { candidates } = findDispatcherCandidates(files, config());
   assert.equal(candidates.length, 2);
+});
+
+test("requires the designated dispatcher to be the sole SDK importer", () => {
+  assert.deepEqual(
+    findDispatcherViolations([], FILE).map((v) => v.rule),
+    ["missing-dispatcher"],
+  );
+  assert.deepEqual(
+    findDispatcherViolations([FILE, "apps/itotori/src/composition/rogue.ts"], FILE).map(
+      (v) => v.rule,
+    ),
+    ["unauthorized-dispatcher", "multiple-dispatchers"],
+  );
+});
+
+test("catches retired dependency edges outside the LLM layer", () => {
+  const files = [
+    {
+      path: "apps/itotori/src/composition/live.ts",
+      contents: 'import { legacy } from "../agents/registry.js";\n',
+    },
+    {
+      path: "packages/itotori-db/src/service.ts",
+      contents:
+        'import { JournalRepo } from "./repositories/localization-journal-repository.js";\n',
+    },
+  ];
+  const violations = findDependencyGraphViolations(files, config());
+  assert.deepEqual(
+    violations.map((violation) => violation.matched),
+    ["/agents/", "localization-journal-repository"],
+  );
+});
+
+test("catches re-export and dynamic retired dependency edges", () => {
+  const files = [
+    {
+      path: "apps/itotori/src/composition/barrel.ts",
+      contents: 'export * from "../agents/registry.js";\n',
+    },
+    {
+      path: "apps/itotori/src/composition/dynamic.ts",
+      contents: 'await import("../providers/openrouter.js");\n',
+    },
+  ];
+  const violations = findDependencyGraphViolations(files, config());
+  assert.deepEqual(
+    violations.map((violation) => violation.matched),
+    ["/agents/", "/providers/"],
+  );
 });
 
 test("a clean LLM-layer file with no forbidden imports passes", () => {
