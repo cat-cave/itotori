@@ -5,6 +5,8 @@
 //! READ-ONLY research tree (e.g. `/scratch/softpal-research`) and run with
 //! `--ignored`. **No raw copyrighted text lives in this file** — only counts,
 //! offsets, SHA-256 digests, and short ASCII/kana strings *we* inject.
+//! Wired into the PERIODIC `ci-real-bytes` lane; see `pac_real_corpus.rs` for
+//! the env-gate / skip-when-absent contract.
 //! PROOF BAR (both titles):
 //! 1. IDENTITY round-trip — patch-back with an EMPTY translation map rebuilds a
 //!    `TEXT.DAT` + `SCRIPT.SRC` that are BYTE-IDENTICAL (SHA-256) to the

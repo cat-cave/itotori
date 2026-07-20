@@ -14,6 +14,12 @@
 //!   --test live_softpal_detector_test -- --ignored --nocapture
 //!   NEVER prints raw copyrighted bytes: file names, counts, sizes, container
 //!   magics, and the single-byte TEXT.DAT enc flag (a format field) only.
+//!
+//! Wired into the PERIODIC `ci-real-bytes` lane (the wider
+//! `-p kaifuu-engine-fixture -- --ignored` invocation already picks this up);
+//! soft-skips when `ITOTORI_SOFTPAL_RESEARCH_ROOT` is unset (skip-when-absent
+//! is legitimate for the periodic lane — the Softpal corpus lives under its
+//! own root, separate from the RealLive/RPG-Maker/vault tree).
 
 use std::path::{Path, PathBuf};
 

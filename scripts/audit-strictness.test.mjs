@@ -119,7 +119,7 @@ test("rule 5 parses the ci-real-bytes lane and detects real-bytes crates", () =>
   const jf = [
     "ci-real-bytes:",
     "    export X=y",
-    "    cargo test -p kaifuu-reallive -p utsushi-reallive -p kaifuu-cli -p utsushi-cli -- --ignored",
+    "    cargo test -p kaifuu-reallive -p utsushi-reallive -p kaifuu-cli -p utsushi-cli -p kaifuu-softpal -- --ignored",
     "",
     "qd-full-ci:",
     "    node scripts/qd-full-ci.mjs",
@@ -128,6 +128,7 @@ test("rule 5 parses the ci-real-bytes lane and detects real-bytes crates", () =>
   assert.deepEqual([...lane].sort(), [
     "kaifuu-cli",
     "kaifuu-reallive",
+    "kaifuu-softpal",
     "utsushi-cli",
     "utsushi-reallive",
   ]);
@@ -140,6 +141,15 @@ test("rule 5 parses the ci-real-bytes lane and detects real-bytes crates", () =>
   );
   assert.equal(
     crateOwnsRealBytes("crates/foo/tests/x.rs", '#[ignore = "requires ITOTORI_VAULT_ROOT"]'),
+    true,
+  );
+  // Softpal real-corpus tests are wired into the periodic ci-real-bytes lane
+  // (skip-when-absent at the lane level); the env var is a live corpus signal.
+  assert.equal(
+    crateOwnsRealBytes(
+      "crates/foo/tests/x.rs",
+      '#[ignore = "real-bytes; requires ITOTORI_SOFTPAL_RESEARCH_ROOT"]',
+    ),
     true,
   );
   // A plain #[ignore] (bug-tracking, no live corpus) does NOT mark the crate.

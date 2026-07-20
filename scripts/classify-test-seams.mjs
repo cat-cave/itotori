@@ -83,7 +83,8 @@ const repoRoot = join(here, "..");
 // crateOwnsRealBytes). These are the strict ground-truth lanes; the bytes a
 // real decoder/patcher produced are the observable.
 const REAL_BYTES_PATH = /_real_bytes\.rs$/u;
-const IGNORE_REASON_REAL_BYTES = /ITOTORI_REAL_GAME_ROOT|ITOTORI_VAULT_ROOT/u;
+const IGNORE_REASON_REAL_BYTES =
+  /ITOTORI_REAL_GAME_ROOT|ITOTORI_VAULT_ROOT|ITOTORI_SOFTPAL_RESEARCH_ROOT/u;
 
 export function isRealBytes(path, contents) {
   if (REAL_BYTES_PATH.test(path)) return true;

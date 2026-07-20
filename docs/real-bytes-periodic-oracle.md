@@ -24,10 +24,17 @@ whole run (nonzero exit):
 
 - **(A) Ground truth** — re-runs the full real-bytes suite (`just
 ci-real-bytes`) against the configured real corpora (currently Sweetie HD +
-  Kanon RealLive, LustMemory + Countryside Life RPG Maker MV/MZ, and the
-  vault-materialized Siglus installs). This includes the app-level MV/MZ
-  patch/apply byte-round-trip, with both titles required when the lane runs,
-  read-only, never copying copyrighted bytes. Passing proves the
+  Kanon RealLive, LustMemory + Countryside Life RPG Maker MV/MZ, the
+  vault-materialized Siglus installs, and the Softpal ADV titles Kizuna +
+  Dimension under the standalone `/scratch/softpal-research` tree). This
+  includes the app-level MV/MZ patch/apply byte-round-trip, with both titles
+  required when the lane runs, read-only, never copying copyrighted bytes. The
+  Softpal sub-lane is the one exception to the missing-corpus hard-fail policy:
+  because the Softpal research tree lives under its own root (separate from the
+  RealLive/RPG-Maker/vault corpora), a runner that has the other corpora staged
+  but not the Softpal tree still runs the strict ground-truth suite for the
+  five other families and skips the Softpal sub-lane cleanly with a log line
+  (skip-when-absent is legitimate for the periodic lane). Passing proves the
   source-of-truth catalogues (`REAL_CATALOG`, `NamedOpcode`, `classify()`, the
   g00 type matrix, the cipher cases, the decoder-parity counts, …) still match
   the real bytes — the 100%-decompilation / 0-unknown-opcode bar.

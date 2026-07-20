@@ -46,6 +46,11 @@ test("real-bytes: a #[ignore] reason naming the corpus env is real-bytes", () =>
   assert.equal(isRealBytes(RUST_SRC_PATH, contents), true);
   const vaultContents = '#[ignore = "needs ITOTORI_VAULT_ROOT"]\nfn live() {}\n';
   assert.equal(isRealBytes(RUST_SRC_PATH, vaultContents), true);
+  // Softpal real-corpus env is a live corpus signal too (wired into the
+  // periodic ci-real-bytes lane).
+  const softpalContents =
+    '#[ignore = "real-bytes; requires ITOTORI_SOFTPAL_RESEARCH_ROOT"]\nfn live() {}\n';
+  assert.equal(isRealBytes(RUST_SRC_PATH, softpalContents), true);
 });
 
 test("real-bytes: a plain Rust src file with no real-bytes signal is NOT real-bytes", () => {

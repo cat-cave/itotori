@@ -264,9 +264,12 @@ export function parseLaneCrates(justfileText) {
 
 // A crate "owns a real-bytes test" if it contains a `*_real_bytes.rs` file OR
 // a real `#[ignore = "…"]` attribute whose reason names a live external
-// corpus (`ITOTORI_REAL_GAME_ROOT*` or `ITOTORI_VAULT_ROOT`).
+// corpus (`ITOTORI_REAL_GAME_ROOT*`, `ITOTORI_VAULT_ROOT`, or
+// `ITOTORI_SOFTPAL_RESEARCH_ROOT` — the standalone Softpal research tree,
+// wired into the periodic `ci-real-bytes` lane with skip-when-absent at the
+// lane level).
 const IGNORE_REASON = /^#\[\s*ignore\s*=\s*"([^"]*)"/u;
-const LIVE_CORPUS_ENV = /ITOTORI_REAL_GAME_ROOT|ITOTORI_VAULT_ROOT/u;
+const LIVE_CORPUS_ENV = /ITOTORI_REAL_GAME_ROOT|ITOTORI_VAULT_ROOT|ITOTORI_SOFTPAL_RESEARCH_ROOT/u;
 
 export function crateOwnsRealBytes(path, contents) {
   if (isRealBytesTestPath(path)) return true;
