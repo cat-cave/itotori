@@ -13,7 +13,10 @@
 
 import { describe, expect, it } from "vitest";
 
-import { ClaimValidationError } from "../src/wiki/claim-validation.js";
+import {
+  ClaimValidationError,
+  validateWikiObjectClaims,
+} from "../src/wiki/claim-validation.js";
 import { buildEvidenceIndex } from "../src/wiki/evidence-index.js";
 import {
   A3RoleError,
@@ -187,33 +190,147 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
     expect(citation.playOrderIndex).toBe(record.fromPlayOrder);
   });
 
-  it("PROOF: a label outside the current scene FAILS (RB-031 evidence-unresolvable)", () => {
+  it("PROOF: a claim citing ONLY an out-of-scene label is DROPPED, not crashed over", () => {
     const { model } = buildClaimFixture();
     const scene = readCompleteScene(model, CONTEXT, 1);
+    // A genuine label in scene 2 the model mis-cited into scene 1 — the exact
+    // recoverable mis-citation the live whole-game run hit on the FIRST claim.
+    const outOfScene = String(readCompleteScene(model, CONTEXT, 2).units[0]!.value.playOrderIndex);
+    // Assembling does NOT throw: the unprovable claim is repaired away, so one
+    // flash-model transcription slip cannot hard-fail the whole build.
+    const object = assembleSceneSummary(model, CONTEXT, scene, {
+      beat: "b",
+      subtext: "s",
+      sceneOpenThreads: [],
+      sceneClaims: [
+        {
+          statement: "存在しない証拠を引く主張。",
+          kind: "beat",
+          confidence: "high",
+          evidenceUnitIds: [outOfScene],
+        },
+      ],
+      storySummary: "x",
+      storyOpenThreads: [],
+      storyClaims: [],
+    });
+    // The claim carried no resolvable citation, so it was discarded — never
+    // admitted uncited.
+    expect(object.claims).toHaveLength(0);
+  });
+
+  it("PROOF: a MIX of a real and a mis-cited label keeps ONLY the resolvable citation", () => {
+    const { model } = buildClaimFixture();
+    const scene = readCompleteScene(model, CONTEXT, 1);
+    const good = String(scene.units[0]!.value.playOrderIndex);
+    const bad = String(readCompleteScene(model, CONTEXT, 2).units[0]!.value.playOrderIndex);
+    const object = assembleSceneSummary(model, CONTEXT, scene, {
+      beat: "b",
+      subtext: "s",
+      sceneOpenThreads: [],
+      sceneClaims: [
+        {
+          statement: "直接的な語り口。",
+          kind: "beat",
+          confidence: "high",
+          evidenceUnitIds: [good, bad],
+        },
+      ],
+      storySummary: "x",
+      storyOpenThreads: [],
+      storyClaims: [],
+    });
+    const index = buildEvidenceIndex(model);
+    // The claim survives with its real support; the mis-cited label is gone.
+    expect(object.claims).toHaveLength(1);
+    const citations = object.claims[0]!.citations;
+    expect(citations).toHaveLength(1);
+    expect(citations[0]!.evidenceId).toBe(scene.units[0]!.factId);
+    // Gate NOT weakened: every surviving citation resolves against the snapshot.
+    for (const claim of object.claims) {
+      for (const citation of claim.citations) {
+        expect(index.get(citation.evidenceId)).toBeDefined();
+      }
+    }
+  });
+
+  it("PROOF: the gate the repair feeds still REJECTS a fabricated citation", () => {
+    const { model } = buildClaimFixture();
+    const scene = readCompleteScene(model, CONTEXT, 1);
+    const good = String(scene.units[0]!.value.playOrderIndex);
+    const object = assembleSceneSummary(model, CONTEXT, scene, {
+      beat: "b",
+      subtext: "s",
+      sceneOpenThreads: [],
+      sceneClaims: [
+        { statement: "直接的な語り口。", kind: "beat", confidence: "high", evidenceUnitIds: [good] },
+      ],
+      storySummary: "x",
+      storyOpenThreads: [],
+      storyClaims: [],
+    });
+    // The repair does not soften RB-031: hand a claim a fabricated evidence id
+    // straight to the gate and it still fails loud (the repair only prevents a
+    // fabricated citation from ever reaching the object, it never admits one).
+    const tampered = {
+      ...object,
+      claims: [
+        {
+          ...object.claims[0]!,
+          citations: [
+            {
+              ...object.claims[0]!.citations[0]!,
+              evidenceId: "unit:fabricated-does-not-exist",
+            },
+          ],
+        },
+      ],
+    };
     try {
-      assembleSceneSummary(model, CONTEXT, scene, {
-        beat: "b",
-        subtext: "s",
-        sceneOpenThreads: [],
-        sceneClaims: [
-          {
-            statement: "存在しない証拠を引く主張。",
-            kind: "beat",
-            confidence: "high",
-            // This is a genuine label in scene 2, but it was not shown in scene 1.
-            evidenceUnitIds: [
-              String(readCompleteScene(model, CONTEXT, 2).units[0]!.value.playOrderIndex),
-            ],
-          },
-        ],
-        storySummary: "x",
-        storyOpenThreads: [],
-        storyClaims: [],
-      });
-      throw new Error("expected an unresolvable-citation failure");
+      validateWikiObjectClaims(tampered, model);
+      throw new Error("expected the RB-031 gate to reject the fabricated citation");
     } catch (error) {
       expect(error).toBeInstanceOf(ClaimValidationError);
       expect((error as ClaimValidationError).code).toBe("evidence-unresolvable");
+    }
+  });
+
+  it("PROOF: a model that mis-cites every claim does NOT hard-crash the fold", async () => {
+    const { model } = buildClaimFixture();
+    // Every claim cites a play-order label present in NO scene — the whole-game
+    // failure mode. The fold must survive and admit nothing unresolved.
+    const misCiting: A3ModelCaller = async () => ({
+      beat: "b",
+      subtext: "s",
+      sceneOpenThreads: [],
+      sceneClaims: [
+        { statement: "誤引用。", kind: "beat", confidence: "high", evidenceUnitIds: ["999999"] },
+      ],
+      storySummary: "x",
+      storyOpenThreads: [],
+      storyClaims: [
+        {
+          statement: "誤引用（物語）。",
+          kind: "story-so-far",
+          confidence: "low",
+          evidenceUnitIds: ["999999"],
+        },
+      ],
+    });
+    const result = await foldRoute(model, CONTEXT, misCiting);
+    // The full route folded instead of throwing on scene 1's first claim.
+    expect(result.scenes.length).toBe(model.factSnapshot.routeTopology.sceneDispatchOrder.length);
+    const index = buildEvidenceIndex(model);
+    for (const scene of result.scenes) {
+      for (const object of [scene.sceneSummary, scene.storySoFar]) {
+        // Every unprovable claim was dropped; nothing unresolved was admitted.
+        expect(object.claims).toHaveLength(0);
+        for (const claim of object.claims) {
+          for (const citation of claim.citations) {
+            expect(index.get(citation.evidenceId)).toBeDefined();
+          }
+        }
+      }
     }
   });
 
