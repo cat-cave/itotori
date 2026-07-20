@@ -6,9 +6,14 @@
 //
 //   1. Citations are INDEX-DERIVED. For every evidence id the model cites, the
 //      citation's hash, subject, and play order are copied from the snapshot
-//      evidence index — never from the model. A cited id outside the visible
-//      snapshot yields an unresolvable citation, and the claim-validation gate
-//      throws. The model cannot forge a passing citation.
+//      evidence index — never from the model. A model-cited id outside the
+//      visible snapshot (a hallucinated or mis-transcribed id) resolves to
+//      nothing and is DROPPED — never admitted uncited, never a poison-pill that
+//      hard-fails the whole build. A model claim left with no resolvable
+//      citation is discarded; the RB-031 gate still runs over the surviving,
+//      provable citations so nothing unresolved enters the Wiki. The structural
+//      presence claim's index-derived ids instead REQUIRE resolution: a miss
+//      there is a genuine snapshot-integrity bug and stays loud.
 //   2. Whole-game evidence is GUARANTEED. The module always authors a presence
 //      claim citing the character-occurrence fact plus the whole-game unit set,
 //      so every bio carries cited whole-game evidence regardless of the model.
@@ -38,24 +43,18 @@ import {
   type CharacterEvidence,
 } from "./types.js";
 
-const UNRESOLVABLE_HASH = `sha256:${"0".repeat(64)}` as `sha256:${string}`;
-
-/** Build one citation for a model-cited evidence id. Every dimension a citation
+/** Resolve one model-cited evidence id to a snapshot-owned citation, or `null`
+ * when the id names nothing in the visible snapshot. Every dimension a citation
  * is checked on — hash, subject, play order — is copied from the snapshot
- * evidence index when the id resolves. When it does NOT (a hallucinated id), the
- * citation is left deliberately unresolvable so the claim gate rejects it. */
-function citationFor(index: EvidenceIndex, snapshotId: string, evidenceId: string): Citation {
+ * evidence index; the model supplies only the id. A hallucinated or
+ * mis-transcribed id resolves to nothing and is DROPPED by the model-cited path
+ * (see {@link claimFor}), so a single recoverable mis-citation cannot poison a
+ * bio and hard-fail the whole build. A dropped citation is never admitted and
+ * never counts as support — the RB-031 gate still runs over the citations that
+ * survive. */
+function citationFor(index: EvidenceIndex, evidenceId: string): Citation | null {
   const record = index.get(evidenceId);
-  if (!record) {
-    return {
-      evidenceId,
-      evidenceHash: UNRESOLVABLE_HASH,
-      snapshotId: snapshotId as `sha256:${string}`,
-      subject: { kind: "unit", id: evidenceId },
-      role: "supports",
-      playOrderIndex: 0,
-    };
-  }
+  if (!record) return null;
   return {
     evidenceId: record.factId,
     evidenceHash: record.hash as `sha256:${string}`,
@@ -66,20 +65,43 @@ function citationFor(index: EvidenceIndex, snapshotId: string, evidenceId: strin
   };
 }
 
+/** Resolve a REQUIRED index-derived citation (the whole-game presence
+ * evidence). Unlike a model-cited id, these come from the deterministic
+ * character-occurrence fact and the character's real whole-game unit set, so a
+ * miss is a snapshot-integrity bug — never a recoverable model slip — and fails
+ * loud rather than being silently dropped. */
+function requireCitation(index: EvidenceIndex, evidenceId: string): Citation {
+  const citation = citationFor(index, evidenceId);
+  if (!citation) {
+    throw new A7RoleError(
+      "no-evidence",
+      `presence evidence ${evidenceId} does not resolve in this snapshot`,
+    );
+  }
+  return citation;
+}
+
+/** Build one MODEL claim, keeping only the citations that resolve to the visible
+ * snapshot. A claim left with NO resolvable citation is dropped (returns
+ * `null`): an unsupported model hypothesis is discarded, never admitted uncited
+ * and never crashed over. */
 function claimFor(
   index: EvidenceIndex,
-  snapshotId: string,
   scope: RouteScope,
   draft: A7ClaimDraft,
   claimId: string,
-): Claim {
+): Claim | null {
+  const citations = draft.evidenceIds
+    .map((id) => citationFor(index, id))
+    .filter((citation): citation is Citation => citation !== null);
+  if (citations.length === 0) return null;
   return {
     claimId,
     statement: draft.statement,
     scope,
     kind: "bio",
     confidence: draft.confidence,
-    citations: draft.evidenceIds.map((id) => citationFor(index, snapshotId, id)),
+    citations,
   };
 }
 
@@ -98,13 +120,12 @@ function notableUnitIds(evidence: CharacterEvidence, draft: A7BioDraft): readonl
  * evidence guarantee — index-derived and independent of the model. */
 function presenceClaim(
   index: EvidenceIndex,
-  snapshotId: string,
   evidence: CharacterEvidence,
   notable: readonly string[],
 ): Claim {
   const citations = [
-    citationFor(index, snapshotId, evidence.occurrenceFactId),
-    ...notable.map((id) => citationFor(index, snapshotId, id)),
+    requireCitation(index, evidence.occurrenceFactId),
+    ...notable.map((id) => requireCitation(index, id)),
   ];
   return {
     claimId: presenceClaimId(evidence.characterId),
@@ -157,16 +178,12 @@ export function assembleCharacterBio(
   const index = buildEvidenceIndex(model);
   const notable = notableUnitIds(evidence, draft);
   const claims: Claim[] = [
-    presenceClaim(index, model.snapshotId, evidence, notable),
-    ...draft.claims.map((claimDraft, ordinal) =>
-      claimFor(
-        index,
-        model.snapshotId,
-        evidence.scope,
-        claimDraft,
-        modelClaimId(evidence.characterId, ordinal),
-      ),
-    ),
+    presenceClaim(index, evidence, notable),
+    ...draft.claims
+      .map((claimDraft, ordinal) =>
+        claimFor(index, evidence.scope, claimDraft, modelClaimId(evidence.characterId, ordinal)),
+      )
+      .filter((claim): claim is Claim => claim !== null),
   ];
   return seal(
     {
