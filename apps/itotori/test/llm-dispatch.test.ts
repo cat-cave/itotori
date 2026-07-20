@@ -142,6 +142,34 @@ function structuredResponse(
   );
 }
 
+/** A provider response whose headers arrive HTTP 200 but whose SSE body then
+ * drops mid-stream — the exact transient shape a healthy endpoint (direct
+ * generation returns 200) still produces on a flaky connection. The completion
+ * never fully arrives, so the attempt must be retried, not aborted. */
+function midStreamDropResponse(): Response {
+  const encoder = new TextEncoder();
+  const partial = streamChunk({
+    id: "generation:dropped",
+    delta: { role: "assistant", content: "partial" },
+  });
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(partial)}\n\n`));
+      controller.error(new Error("connection reset before the stream completed"));
+    },
+  });
+  const headers = new Headers();
+  headers.set("Content-Type", "text/event-stream");
+  return new Response(stream, { status: 200, headers });
+}
+
+const TRANSIENT_TRANSPORT: LlmAttemptFailure = {
+  classification: "transient",
+  kind: "transport",
+  httpStatus: null,
+  retryAfterMs: null,
+};
+
 function toolCallResponse(callIndex: number, reasoningDetails: readonly unknown[] = []): Response {
   const id = `generation:tool:${callIndex}`;
   return sse([
@@ -529,6 +557,80 @@ describe("the rebuilt LLM dispatcher", () => {
     //      aborting on the single-provider rate limit, and recovered.
     expect(captured).toHaveLength(2);
     expect(result.status).toBe("success");
+  });
+
+  it("retries a transient mid-stream transport drop after a good response header, then succeeds", async () => {
+    // ITOTORI durability: a 200 header followed by a mid-stream connection drop
+    // is a TRANSIENT transport failure. Before the fix it classified permanent
+    // and aborted the whole build on the first blip (A3 dispatch-failed:
+    // transport). It must now retry under the bounded attempt budget.
+    const prompt = "Return the requested synthetic review verdict.";
+    const captured: CapturedRequest[] = [];
+    const store = new MemoryMemoStore();
+    const base = runtime(
+      prompt,
+      [
+        midStreamDropResponse(),
+        midStreamDropResponse(),
+        structuredResponse(JSON.stringify(reviewVerdictExample)),
+      ],
+      captured,
+    );
+    const configured: DispatchRuntime = {
+      ...base,
+      memo: { ...base.memo, store, retry: { random: () => 0, sleep: async () => undefined } },
+    };
+
+    const result = await dispatch(callSpec(prompt), configured);
+
+    // Two transient drops were retried, and the third attempt succeeded.
+    expect(captured).toHaveLength(3);
+    expect(result.status).toBe("success");
+    // Each retried attempt was recorded as a transient transport failure — the
+    // http_attempts ledger preserves the lineage of the retried physical steps.
+    expect(store.failures).toEqual([TRANSIENT_TRANSPORT, TRANSIENT_TRANSPORT]);
+  });
+
+  it("surfaces a clear retries-exhausted terminal failure when a transport drop persists past the budget", async () => {
+    const prompt = "Return the requested synthetic review verdict.";
+    const captured: CapturedRequest[] = [];
+    const store = new MemoryMemoStore();
+    const base = runtime(
+      prompt,
+      [midStreamDropResponse(), midStreamDropResponse(), midStreamDropResponse()],
+      captured,
+    );
+    const configured: DispatchRuntime = {
+      ...base,
+      memo: { ...base.memo, store, retry: { random: () => 0, sleep: async () => undefined } },
+    };
+
+    const result = await dispatch(callSpec(prompt), configured);
+
+    // Exactly the bounded budget of attempts — not a hang, not unbounded retries.
+    expect(captured).toHaveLength(3);
+    expect(result).toMatchObject({ status: "failure", failureKind: "retries-exhausted" });
+    expect(store.failures).toEqual([TRANSIENT_TRANSPORT, TRANSIENT_TRANSPORT, TRANSIENT_TRANSPORT]);
+  });
+
+  it("does not retry a non-transient 4xx transport failure", async () => {
+    // A 400 will not improve on retry: classify permanent and fail once.
+    const prompt = "Return the requested synthetic review verdict.";
+    const captured: CapturedRequest[] = [];
+    const store = new MemoryMemoStore();
+    const base = runtime(prompt, [httpProviderResponse(400)], captured);
+    const configured: DispatchRuntime = {
+      ...base,
+      memo: { ...base.memo, store, retry: { random: () => 0, sleep: async () => undefined } },
+    };
+
+    const result = await dispatch(callSpec(prompt), configured);
+
+    expect(captured).toHaveLength(1);
+    expect(result).toMatchObject({ status: "failure", failureKind: "http" });
+    expect(store.failures).toEqual([
+      { classification: "permanent", kind: "http", httpStatus: 400, retryAfterMs: null },
+    ]);
   });
 
   it("returns malformed terminal JSON as a typed failure without salvage or retry", async () => {

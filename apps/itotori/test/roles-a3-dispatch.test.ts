@@ -35,7 +35,10 @@ import {
 import { deepSeekV4FlashProfile } from "../src/llm/role-model-profiles.js";
 import type { MeasuredModelProfile } from "../src/llm/physical-attempt-policy.js";
 import { buildClaimFixture } from "./support/claim-fixture.js";
-import { structuredProviderResponse } from "./llm-step-test-support.js";
+import {
+  midStreamDropProviderResponse,
+  structuredProviderResponse,
+} from "./llm-step-test-support.js";
 
 /** A measured profile whose identity matches the certified A3 reasoning route,
  * so the memo boundary accepts the A3 call spec. */
@@ -111,6 +114,8 @@ function runtime(responses: Response[], onFetch?: () => void): DispatchRuntime {
     memo: {
       store: new MemoryMemoStore(),
       profile: A3_PROFILE,
+      // Deterministic, instant backoff so the retry proof carries no real sleep.
+      retry: { random: () => 0, sleep: async () => undefined },
       admission: {
         scope: "test:roles-a3",
         confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic admission cap for the recorded-transport proof, not a billed cost
@@ -274,6 +279,32 @@ describe("A3 dispatches through the sole ZDR boundary", () => {
     expect(narrative.sceneClaims[0]!.evidenceUnitIds).toEqual([
       citeableSceneUnits(request.scene)[0]!.label,
     ]);
+  });
+
+  it("PROOF: a transient mid-stream transport drop is retried so the A3 caller still gets its narrative", async () => {
+    // The live whole-game wiki build died on a single transient transport blip
+    // (A3 dispatch-failed: transport). A 200 header followed by a mid-stream
+    // drop must now be retried under the bounded budget rather than aborting the
+    // scene-summary dispatch — the build proceeds.
+    const { model, request } = sceneRequest();
+    let fetches = 0;
+    const configured = runtime(
+      [
+        midStreamDropProviderResponse(),
+        midStreamDropProviderResponse(),
+        structuredProviderResponse(recordedSummary(model, request)),
+        structuredProviderResponse(recordedStory(model, request)),
+      ],
+      () => {
+        fetches += 1;
+      },
+    );
+    const caller = dispatchingA3Caller(model, CONTEXT, configured);
+    const narrative = await caller(request);
+    expect(narrative.beat).toBe("けいこは決断する。");
+    expect(narrative.storySummary).toBe("シーン1までの物語。");
+    // Two retried summary drops + one summary success + one story success.
+    expect(fetches).toBe(4);
   });
 
   it("PROOF: raw dispatch() rejects when the ZDR operator assertions are absent", async () => {

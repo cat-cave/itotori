@@ -251,6 +251,25 @@ export function rawStructuredProviderResponse(content: string): Response {
   ]);
 }
 
+/** A provider response whose headers arrive HTTP 200 but whose SSE body then
+ * drops mid-stream — a transient transport blip that a healthy endpoint still
+ * produces on a flaky connection. The completion never fully arrives, so the
+ * physical attempt must be retried under the bounded budget, not aborted. */
+export function midStreamDropProviderResponse(): Response {
+  const encoder = new TextEncoder();
+  const partial = streamChunk({ delta: { role: "assistant", content: "partial" } });
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(partial)}\n\n`));
+      controller.error(new Error("connection reset before the stream completed"));
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}
+
 export function httpProviderResponse(status: number, retryAfter?: string): Response {
   return new Response(JSON.stringify({ error: { message: "synthetic provider failure" } }), {
     status,
