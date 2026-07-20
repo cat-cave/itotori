@@ -19,6 +19,7 @@ pub mod opcode_profile;
 pub mod runtime_profile;
 pub mod siglus_g00;
 pub mod siglus_render;
+pub mod substrate_conformance_checklist;
 pub mod vm;
 pub mod vm_impl_map;
 
