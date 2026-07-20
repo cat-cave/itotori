@@ -37,6 +37,25 @@ fn shift_jis_textout_emits_dialogue_unit_with_decoded_source_text() {
 }
 
 #[test]
+fn engine_markup_grammar_protects_name_asset_and_font_tokens() {
+    let text = "【Ren】#FACE(pose)#GANBMP(clip)#FONT_BIG#FONT_SMALL#COLOR(7)";
+    let (speaker, name_spans) = extract_name_token_spans(text, 0);
+    let asset_spans = extract_inline_tag_spans(text, 0, RLDEV_ASSET_REF_TAGS, "reallive.asset_ref");
+    let font_spans = extract_inline_tag_spans(text, 0, RLDEV_FONT_TONE_TAGS, "reallive.font_tone");
+
+    assert_eq!(speaker.as_deref(), Some("Ren"));
+    assert_eq!(name_spans[0].raw, "【Ren】");
+    assert_eq!(
+        asset_spans.iter().map(|span| &span.raw).collect::<Vec<_>>(),
+        vec!["#FACE(pose)", "#GANBMP(clip)"]
+    );
+    assert_eq!(
+        font_spans.iter().map(|span| &span.raw).collect::<Vec<_>>(),
+        vec!["#FONT_BIG", "#FONT_SMALL", "#COLOR(7)"]
+    );
+}
+
+#[test]
 fn kidoku_marker_before_textout_emits_protected_span_kind_reallive_kidoku() {
     // MetaKidoku(42), Shift-JIS textout, MetaLine to bound.
     let bytecode = &[0x40, 0x2a, 0x00, 0x83, 0x6E, 0x0a, 0x05, 0x00];
