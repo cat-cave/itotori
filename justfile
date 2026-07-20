@@ -705,12 +705,15 @@ ci-tier0-meta:
     node scripts/file-line-cap-guard.mjs
     node --test scripts/audit-deletion-ledger.test.mjs
     node scripts/audit-deletion-ledger.mjs
+    node --test scripts/audit-no-legacy-llm-residue.test.mjs
+    node scripts/audit-no-legacy-llm-residue.mjs
     node --test scripts/audit-llm-layer-imports.test.mjs
     node scripts/audit-llm-layer-imports.mjs
     node --test scripts/assert-tanstack-openrouter-pin.test.mjs
     node scripts/assert-tanstack-openrouter-pin.mjs
     node --test scripts/audit-llm-loc-budget.test.mjs
     node scripts/audit-llm-loc-budget.mjs
+    pnpm --filter @itotori/db exec vitest run test/migrations-parity.test.ts --exclude '**/.direnv/**'
     node --test scripts/generate-engine-capability-matrix.test.mjs
     node scripts/generate-engine-capability-matrix.mjs --check
     node --test scripts/synthetic-coverage-manifest.test.mjs

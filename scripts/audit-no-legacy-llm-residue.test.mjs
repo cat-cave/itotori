@@ -12,6 +12,15 @@ test("rejects every retired JSON repair and raw drafting surface", () => {
     "const balancedJson = extract(content)",
     "supervisor salvage retries malformed output",
     "raw 128 token draft",
+    "const provider: ModelProvider = createProvider();",
+    "const client = new OpenRouterClient();",
+    "const registry = new AgentRegistry();",
+    "const tools = new DeterministicToolRegistry();",
+    "const loop: AgenticLoop = createLoop();",
+    "const reservation: TerminalRunReservation = acquire();",
+    "const brain = new ContextBrain();",
+    "const judge = new BlindJudge();",
+    "const proof = new ProviderProof();",
   ]) {
     const result = scanFixture({ [SOURCE]: text });
     assert.equal(result.violations.length, 1, text);
