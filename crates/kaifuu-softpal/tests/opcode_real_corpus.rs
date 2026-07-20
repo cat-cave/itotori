@@ -12,6 +12,7 @@
 //! titles. It must also reproduce the disassembler's TEXT-SHOW / SELECT counts
 //! exactly (consistency across the two SCRIPT.SRC surfaces).
 
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -124,6 +125,12 @@ fn opcode_catalog_on_two_softpal_titles() {
         let opcode_hist = scan.opcode_histogram();
         let tag_hist = scan.operand_tag_histogram();
         let cat_hist = scan.call_category_histogram();
+        let semantic_names = scan
+            .instructions
+            .iter()
+            .filter_map(kaifuu_softpal::Instruction::call_target)
+            .filter_map(|target| target.semantic_name())
+            .collect::<BTreeSet<_>>();
 
         eprintln!(
             "[{}] instructions={} tokens={} unknown={} truncated_final={} trailing_bytes={} \
@@ -143,6 +150,10 @@ fn opcode_catalog_on_two_softpal_titles() {
         eprintln!("[{}] opcode histogram: {opcode_hist:?}", game.subdir);
         eprintln!("[{}] operand-tag histogram: {tag_hist:?}", game.subdir);
         eprintln!("[{}] call-category histogram: {cat_hist:?}", game.subdir);
+        eprintln!(
+            "[{}] evidenced call semantics: {semantic_names:?}",
+            game.subdir
+        );
 
         // PROOF BAR: exhaustive, 0-unknown walk — every command typed, every byte
         // of the token stream accounted for.
@@ -217,6 +228,29 @@ fn opcode_catalog_on_two_softpal_titles() {
             "{} call-target count",
             game.subdir
         );
+
+        // These names come from the game executable's `(category, function)`
+        // registration table and the selected handler's named Pal.dll import.
+        // Every one is exercised by both real titles; this guards the actual
+        // decoder catalog, not a synthetic CallTarget fixture.
+        for name in [
+            "message.show",
+            "choice.select",
+            "sprite.set_option",
+            "sound.set_volume",
+            "button.create",
+            "video.play",
+            "fx.set",
+            "random.next",
+            "effect.execute",
+            "input.get_key_ex",
+        ] {
+            assert!(
+                semantic_names.contains(name),
+                "{} must exercise evidenced semantic {name}",
+                game.subdir
+            );
+        }
         assert_eq!(
             opcode_hist.len(),
             game.distinct_opcodes,

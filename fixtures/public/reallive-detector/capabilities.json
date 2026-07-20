@@ -632,12 +632,12 @@
       "extract": {
         "status": "supported",
         "requiredCapabilities": ["codec_access", "container_access", "crypto_access", "extraction"],
-        "supportedSurfaces": ["binary_offset"],
+        "supportedSurfaces": ["binary_offset", "call_target"],
         "supportedContainers": ["loose_file", "archive"],
         "supportedCrypto": ["null_key"],
         "supportedCodecs": ["shift_jis_text", "bytecode_decompile", "binary_table"],
         "supportedPatchBack": ["unsupported"],
-        "supportBoundary": "extracts the TEXT-SHOW (dialogue) + text-bearing SELECT (choice) surfaces of SCRIPT.SRC, resolving 4-byte TEXT.DAT pointers to decoded cp932 lines"
+        "supportBoundary": "extracts the TEXT-SHOW (dialogue) + text-bearing SELECT (choice) surfaces of SCRIPT.SRC, resolving 4-byte TEXT.DAT pointers to decoded cp932 lines; the same production Sv20 decode also reports evidence-backed named Pal.dll call targets (message, choice, sprite/render, sound/video, button/input, and effect operations), while unproven targets remain raw dispatch keys"
       },
       "patch": {
         "status": "limited",

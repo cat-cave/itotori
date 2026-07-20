@@ -60,6 +60,13 @@ use thiserror::Error;
 
 use crate::SCRIPT_MAGIC_PREFIX;
 
+#[path = "pal_dll_call_targets.rs"]
+mod pal_dll_call_targets;
+
+pub use pal_dll_call_targets::{
+    CALL_CATEGORY_SELECT, CALL_CATEGORY_TEXT, CallTarget, SELECT_FUNCTION, TEXT_TYPE_FUNCTIONS,
+};
+
 /// Total length of the `Sv20` program header: `"Sv"` + 2 version bytes + two
 /// 32-bit header fields. The token stream begins immediately after.
 pub const SV_PROGRAM_HEADER_BYTE_LEN: usize = 12;
@@ -75,23 +82,6 @@ pub const SV_OPERATOR_TAG: u16 = 0x0001;
 /// table is the **33 ids `0x01..=0x21`** (id `0x00` is never an operator in
 /// either profiled title — see the table note).
 pub const SV_MAX_OPCODE: u16 = 0x0021;
-
-/// The `Call` ([`SvOpcode::Call`], opcode `0x17`) *category* (target high word)
-/// that dispatches the dialogue message subroutine (TEXT-SHOW).
-pub const CALL_CATEGORY_TEXT: u16 = 0x0002;
-
-/// The `Call` *category* (target high word) that dispatches the choice/select
-/// subroutine.
-pub const CALL_CATEGORY_SELECT: u16 = 0x0006;
-
-/// The `Call` *function* (target low word) under [`CALL_CATEGORY_SELECT`] that is
-/// a choice/select command.
-pub const SELECT_FUNCTION: u16 = 0x0002;
-
-/// The set of `Call` *functions* (target low word) under [`CALL_CATEGORY_TEXT`]
-/// that render a dialogue line. Mirrors the disassembler's
-/// [`crate::TEXT_SHOW_TYPE_WORDS`].
-pub const TEXT_TYPE_FUNCTIONS: [u16; 7] = [0x0002, 0x000f, 0x0010, 0x0011, 0x0012, 0x0013, 0x0014];
 
 /// Grep-pinnable namespace marker every [`OpcodeError`] display string carries.
 pub const SOFTPAL_OPCODE_ERROR_MARKER: &str = "kaifuu.softpal.opcode";
@@ -254,41 +244,6 @@ impl Operand {
     #[must_use]
     pub fn tag(&self) -> OperandTag {
         OperandTag((self.raw >> 28) as u8)
-    }
-}
-
-/// The dispatch key of a [`SvOpcode::Call`] instruction: the engine built-in it
-/// invokes, packed into the call's first operand as
-/// `category = high word`, `function = low word`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CallTarget {
-    /// Subroutine category (the operand's high word) — e.g. `0x0002` message,
-    /// `0x0003`/`0x0005`/`0x0007`/`0x0011`/`0x0016` graphics/audio/system.
-    pub category: u16,
-    /// Function within the category (the operand's low word).
-    pub function: u16,
-}
-
-impl CallTarget {
-    /// Decode a `Call`'s first operand raw value into its `(category, function)`
-    /// dispatch key.
-    #[must_use]
-    pub fn from_operand(raw: u32) -> Self {
-        CallTarget {
-            category: (raw >> 16) as u16,
-            function: (raw & 0xffff) as u16,
-        }
-    }
-    /// Whether this target renders a dialogue line (TEXT-SHOW).
-    #[must_use]
-    pub fn is_text_show(&self) -> bool {
-        self.category == CALL_CATEGORY_TEXT && TEXT_TYPE_FUNCTIONS.contains(&self.function)
-    }
-    /// Whether this target is a choice/select command.
-    #[must_use]
-    pub fn is_select(&self) -> bool {
-        self.category == CALL_CATEGORY_SELECT && self.function == SELECT_FUNCTION
     }
 }
 
@@ -599,13 +554,17 @@ impl OpcodeScan {
 fn classify(opcode: SvOpcode, operands: &[Operand; 2], got: usize) -> CommandFamily {
     if opcode.is_call() && got >= 1 {
         let target = CallTarget::from_operand(operands[0].raw);
-        if target.is_text_show() {
-            return CommandFamily::TextShow {
-                text_type: target.function,
-            };
-        }
-        if target.is_select() {
-            return CommandFamily::Select;
+        // Keep the extraction-bearing families on the same semantic catalog as
+        // every other Call target.  ScriptScan (and therefore the real Softpal
+        // bridge) consumes this classification; this is not a test-only seam.
+        match target.semantic_name() {
+            Some("message.show") => {
+                return CommandFamily::TextShow {
+                    text_type: target.function,
+                };
+            }
+            Some("choice.select") => return CommandFamily::Select,
+            _ => {}
         }
         return CommandFamily::Call { target };
     }

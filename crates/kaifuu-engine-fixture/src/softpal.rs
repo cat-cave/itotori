@@ -67,7 +67,7 @@ const SOFTPAL_PAC_TABLE_SCAN_LEN: usize = 1 << 20;
 const SOFTPAL_PAC_MAX_ENTRIES: u32 = 1_000_000;
 const SOFTPAL_PROFILE_ID: &str = "019ed000-0000-7000-8000-0000000c1001";
 const SOFTPAL_GAME_ID: &str = "kaifuu-softpal-detected-title";
-const SOFTPAL_SUPPORT_BOUNDARY: &str = "Softpal adapter identifies the Amuse Craft/Pal (Softpal ADV) engine by Pal.dll, a PAC archive listing SCRIPT.SRC/TEXT.DAT, and the Sv-version/TEXT_LIST script magics; it extracts the dialogue + choice text surfaces (PAC container + TEXT.DAT decode/decrypt + SCRIPT.SRC disassembly) and patches them back by rebuilding TEXT.DAT and repointing SCRIPT.SRC as loose files. PAC repack, non-text/asset-image surfaces, the full Sv20 opcode table, and runtime support are not claimed.";
+const SOFTPAL_SUPPORT_BOUNDARY: &str = "Softpal adapter identifies the Amuse Craft/Pal (Softpal ADV) engine by Pal.dll, a PAC archive listing SCRIPT.SRC/TEXT.DAT, and the Sv-version/TEXT_LIST script magics; it extracts the dialogue + choice text surfaces (PAC container + TEXT.DAT decode/decrypt + SCRIPT.SRC disassembly), including evidence-backed named Pal.dll Call targets, and patches text back by rebuilding TEXT.DAT and repointing SCRIPT.SRC as loose files. PAC repack, non-text/asset-image surfaces, and runtime execution are not claimed; Call targets without handler evidence remain raw dispatch keys.";
 
 // Softpal ADV (Amuse Craft / "Pal") engine detector. Identify-only: it
 // classifies `engine=softpal` from Pal.dll / PAC+SCRIPT.SRC/TEXT.DAT / script
