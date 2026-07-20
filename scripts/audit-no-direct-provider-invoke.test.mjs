@@ -133,7 +133,7 @@ test("rejects statically assembled and dynamically computed provider extraction"
 
 test("rejects destructured invoke through an imported ModelProvider type alias", () => {
   const source = [
-    'import type { ModelProvider as Backend } from "../providers/types.js";',
+    'import type { ModelProvider as Backend } from "../legacy-model-provider-types.js";',
     "function bypass(backend: Backend, request: Request) {",
     "  const { invoke: send } = backend;",
     "  return send(request);",
@@ -156,7 +156,7 @@ test("rejects destructured invoke through a typed provider property", () => {
 
 test("rejects dynamic extraction from a neutral receiver with a ModelProvider alias type", () => {
   const source = [
-    'import type { ModelProvider as Backend } from "../providers/types.js";',
+    'import type { ModelProvider as Backend } from "../legacy-model-provider-types.js";',
     "type Fn = (request: Request) => Promise<Result>;",
     "function bypass(backend: Backend, method: string, request: Request) {",
     "  const send = backend[method as keyof Backend];",
@@ -181,7 +181,7 @@ test("rejects provider invoke extraction through an aliased Reflect.get", () => 
 
 test("rejects dynamic extraction through a namespace-qualified ModelProvider type", () => {
   const source = [
-    'import type * as Types from "../providers/types.js";',
+    'import type * as Types from "../legacy-model-provider-types.js";',
     "type Fn = (request: Request) => Promise<Result>;",
     "function bypass(",
     "  backend: Types.ModelProvider,",
@@ -269,9 +269,10 @@ test("does not trust decorator filenames to exempt raw provider dispatch", () =>
     "apps/itotori/src/services/db-live-workflow-ports.ts",
   ]) {
     assert.equal(findViolations(path, "return inner.invoke(request);").length, 1);
-    // This helper is allowed by syntax in any module because its runtime
-    // capability check rejects calls outside an active InvocationSupervisor.
-    assert.deepEqual(findViolations(path, "return dispatchProviderAdapter(inner, request);"), []);
+    assert.deepEqual(
+      findViolations(path, "return dispatchThroughLlmBoundary(inner, request);"),
+      [],
+    );
   }
 });
 
@@ -285,27 +286,16 @@ test("ignores comments, strings, and invoke method declarations", () => {
   assert.deepEqual(findViolations(PRODUCTION_SOURCE, source), []);
 });
 
-test("exempts only provider adapter source and the canonical supervisor module", () => {
+test("does not exempt retired provider paths or the current dispatcher", () => {
   const directCall = "await provider.invoke(request);";
 
-  assert.equal(isExemptPath("apps/itotori/src/providers/openrouter.ts"), true);
-  assert.equal(isExemptPath("apps/itotori/src/orchestrator/invocation-supervisor.ts"), true);
-  assert.deepEqual(findViolations("apps/itotori/src/providers/openrouter.ts", directCall), []);
-  assert.deepEqual(
-    findViolations("apps/itotori/src/orchestrator/invocation-supervisor.ts", directCall),
-    [],
-  );
-
-  assert.equal(isExemptPath("apps/itotori/src/orchestrator/attempt-outcome-journal.ts"), false);
-  assert.equal(
-    findViolations("apps/itotori/src/orchestrator/attempt-outcome-journal.ts", directCall).length,
-    1,
-  );
-  assert.equal(
-    findViolations("apps/itotori/src/orchestrator/invocation-supervisor-helper.ts", directCall)
-      .length,
-    1,
-  );
+  for (const path of [
+    "apps/itotori/src/providers/openrouter.ts",
+    "apps/itotori/src/llm/dispatch.ts",
+  ]) {
+    assert.equal(isExemptPath(path), false);
+    assert.equal(findViolations(path, directCall).length, 1);
+  }
 });
 
 test("the repository scan is limited to shipped Itotori source", () => {

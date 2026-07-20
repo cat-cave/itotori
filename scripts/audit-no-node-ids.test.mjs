@@ -146,7 +146,7 @@ test("--update allows reusing an already-grandfathered id at equal total (rename
 test("scope: fixtures, migrations SQL, dist, target, and apps/itotori are excluded", () => {
   assert.equal(isExcludedPath("crates/x/tests/fixtures/seed.rs"), true);
   assert.equal(isExcludedPath("packages/itotori-db/migrations/0035_ledger.sql"), true);
-  assert.equal(isExcludedPath("apps/itotori/src/providers/x.ts"), true);
+  assert.equal(isExcludedPath("apps/itotori/src/llm/dispatch.ts"), true);
   assert.equal(isExcludedPath("packages/x/dist/index.js"), true);
   assert.equal(isExcludedPath("crates/foo/target/debug/x.rs"), true);
   assert.equal(isExcludedPath("docs/research/note.md"), true);

@@ -2593,7 +2593,7 @@ export const providerRuns = pgTable(
     // sentinel `{"_pre_itotori_230": true}` jsonb so they cannot be
     // mistaken for a real captured posture by telemetry queries that
     // filter on `routing_posture->>'zdr' = 'true'`. The corresponding
-    // application type is `OpenRouterRoutingPosture` (providers/types.ts).
+    // current LLM boundary supplies this captured posture as validated JSON.
     routingPosture: jsonb("routing_posture").$type<Record<string, unknown>>().notNull(),
     adapterMetadata: jsonb("adapter_metadata").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -27,6 +27,14 @@
         "expected": "absent"
       },
       {
+        "id": "provider-stack",
+        "kind": "glob",
+        "root": "apps/itotori/src/providers/",
+        "extensions": [".ts", ".tsx"],
+        "lines": 0,
+        "expected": "absent"
+      },
+      {
         "id": "benchmark-experiment-proof",
         "kind": "globs",
         "roots": [

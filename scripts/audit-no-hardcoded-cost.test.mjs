@@ -25,7 +25,7 @@ import { findViolations } from "./audit-no-hardcoded-cost.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const scriptPath = join(here, "audit-no-hardcoded-cost.mjs");
 
-const PROD_PATH = "apps/itotori/src/providers/openrouter.ts";
+const PROD_PATH = "apps/itotori/src/llm/dispatch.ts";
 
 function labels(path, contents) {
   return findViolations(path, contents).map((v) => v.pattern);
@@ -346,14 +346,8 @@ test("ITOTORI-134: provider_estimate costKind is allowed everywhere (production 
   // cost-estimate state. The legacy-enum pattern no longer flags it in any
   // file — production source, test trees, or un-listed fixtures. The forbidden
   // legacy-enum values are now ONLY `unknown` and `local_estimate`.
-  assert.deepEqual(
-    labels("apps/itotori/src/providers/openrouter.ts", '    costKind: "provider_estimate",'),
-    [],
-  );
-  assert.deepEqual(
-    labels("apps/itotori/src/providers/types.ts", '    costKind: "provider_estimate",'),
-    [],
-  );
+  assert.deepEqual(labels(PROD_PATH, '    costKind: "provider_estimate",'), []);
+  assert.deepEqual(labels(PROD_PATH, '    costKind: "provider_estimate",'), []);
   assert.deepEqual(
     labels("apps/itotori/test/some.test.ts", '  costKind: "provider_estimate",'),
     [],
@@ -361,10 +355,7 @@ test("ITOTORI-134: provider_estimate costKind is allowed everywhere (production 
   assert.deepEqual(labels("fixtures/some-new.json", '  "costKind": "provider_estimate",'), []);
   // A hardcoded cost AMOUNT is still caught regardless of costKind.
   assert.deepEqual(
-    labels(
-      "apps/itotori/src/providers/types.ts",
-      '    costKind: "provider_estimate",\n    amountMicrosUsd: 12_500,',
-    ),
+    labels(PROD_PATH, '    costKind: "provider_estimate",\n    amountMicrosUsd: 12_500,'),
     ["hardcoded non-zero amountMicrosUsd literal"],
   );
 });

@@ -1,7 +1,7 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/audit-no-node-ids.mjs --update\". Each entry is a grandfathered\nnode-id token (the matched reference text, lower-cased); the multiset per file\nmay only shrink. When empty/deleted the guard is absolute (zero node ids).",
   "generatedAt": "2026-07-15T16:03:46.920Z",
-  "total": 595,
+  "total": 592,
   "files": {
     "crates/kaifuu-cli/src/binary_patch_smoke.rs": [
       "kaifuu-011"
@@ -799,9 +799,6 @@
       "itotori-234",
       "itotori-234"
     ],
-    "packages/localization-bridge-schema/src/alpha-provider-proof-summary.ts": [
-      "itotori-116"
-    ],
     "packages/localization-bridge-schema/src/asset-localization-draft.ts": [
       "itotori-041",
       "kaifuu-026",
@@ -847,10 +844,6 @@
     "packages/localization-bridge-schema/src/patch-export-bundle.ts": [
       "itotori-019",
       "itotori-025"
-    ],
-    "packages/localization-bridge-schema/src/provider-proof-bundle.ts": [
-      "itotori-100",
-      "itotori-116"
     ],
     "packages/localization-bridge-schema/src/qa-finding.ts": [
       "follow-up node",

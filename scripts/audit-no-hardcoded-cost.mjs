@@ -182,8 +182,8 @@ const LEGACY_ENUM_ALLOW = new Map([
 //
 // The cost-literal patterns deliberately match only NON-ZERO numbers:
 // `amountMicrosUsd: 0` / `cost: 0` / `amount: "0.00000000"` are the
-// canonical ZERO_COST shape (apps/itotori/src/providers/cost.ts) and appear
-// throughout production failure paths, so zero must never be flagged. The
+// canonical zero-cost failure shapes and appear throughout production failure
+// paths, so zero must never be flagged. The
 // key may be optionally quoted so JSON literals (`"amountMicrosUsd": 12`)
 // are caught too. Numeric separators (`12_500`) are tolerated.
 const FORBIDDEN_PATTERNS = [
