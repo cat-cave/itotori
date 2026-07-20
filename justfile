@@ -303,7 +303,7 @@ ci-real-bytes:
     pnpm --filter @itotori/app exec vitest run test/rpgmaker-patch-apply-real-bytes.test.ts --exclude '**/.direnv/**'
     pnpm --filter @itotori/app exec vitest run test/patchback-produce-build.test.ts --exclude '**/.direnv/**'
     # RealLive + RPG Maker MV/MZ: #[ignore]-gated real-bytes suites.
-    cargo test -p kaifuu-reallive -p utsushi-reallive -p kaifuu-cli -p utsushi-cli -p kaifuu-rpgmaker -p kaifuu-engine-fixture -- --ignored
+    cargo test -p kaifuu-reallive -p utsushi-reallive -p utsushi-siglus -p kaifuu-cli -p utsushi-cli -p kaifuu-rpgmaker -p kaifuu-engine-fixture -- --ignored
     # utsushi-core: real-bytes proofs are plain #[test]s (target the files, no --ignored).
     cargo test -p utsushi-core --test composite_asset_package_real_bytes
     # kaifuu-vault-source: only the live-vault #[ignore] proofs (avoid unrelated KAIFUU-236/237 ignores).

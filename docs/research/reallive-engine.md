@@ -894,40 +894,15 @@ Existing itotori code:
 > inline scaffold (the AVG32 → RealLive → Siglus lineage Visual Arts
 > documents). See §M.7 for the inline-to-sibling-crate promotion notes.
 >
-> **Substrate work means ≥2 engine families — at the scaffold-contract
-> level only.** This appendix and the `cross_engine_substrate_alignment`
-> conformance fixture in `crates/utsushi-siglus/tests/` exercise the
-> ≥2-engine-families dimension **only at the scaffold-contract level**.
-> They do **not** satisfy the stronger
-> `feedback_multi_game_validation.md` bar (≥2 real games per family):
-> the `utsushi-siglus` port is an **inert, design-stage scaffold** —
-> every lifecycle method returns a typed `EnginePortError::Lifecycle`
-> with `UNIMPLEMENTED_MESSAGE`, no Siglus real bytes are decoded, and
-> zero Siglus games are validated. The alpha tier is RealLive-only
-> (Sweetie HD); the Siglus VM stays research-only by design. The
-> load-bearing claim this fixture earns is narrow: the substrate facade
-> is engine-**extensible** (a second crate can implement `EnginePort`
-> against the same facade), not that a second engine **works**. With
-> that scope fixed: the fixture co-loads
-> `UtsushiReallivePort` and `UtsushiSiglusPort` through the substrate
-> facade only, and proves the inert `utsushi-siglus` scaffold consumes
-> exactly the same _scaffold-contract baseline_ slice of the
-> `utsushi_core::substrate::*` import surface that `utsushi-reallive`
-> consumes — the twelve leaves `AssetPackage`, `EnginePort`,
-> `EnginePortError`, `EvidenceTier`, `FidelityTier`, `LifecycleStage`,
-> `PortCapability`, `PortManifest`, `PortRequest`, `PortShutdownOutcome`,
-> `REQUIRED_LIFECYCLE_STAGES`, `SinkSet` (the
-> `substrate_facade_leaf_baseline_matches_across_engines` test pins this
-> exactly for Siglus and as a subset of RealLive's superset). It does
-> **not** prove the inert scaffold consumes the deeper carriers named in
-> §M.1 below (`TextSurfaceSink`, `SnapshotStore`, `Inspectable`,
-> `ReplayLog`, etc.) — those are consumed by `utsushi-reallive` only and
-> merely _exist_ on the facade for a future behavioural Siglus port. A
-> full Siglus VM is
-> **research-only** at this point and out of alpha scope (the alpha
-> tier targets a single engine family, RealLive against Sweetie HD);
-> the substrate conformance documented here pins **expectations**
-> without requiring the VM to land.
+> **Current Siglus CG scope.** `utsushi-siglus` now implements a real
+> package-backed G00 capture slice: type-0 compressed BGR and type-2
+> layered BGRA containers decode through `UtsushiSiglusPort`, rasterize in
+> process, and emit a managed default-redacted PNG at E2/LayoutProbe.
+> `siglus_g00_real_bytes.rs` drives that production lifecycle against two
+> real Siglus titles when their env-gated roots are available. The full
+> Siglus VM, text observation, snapshots, and replay remain research-only;
+> the cross-engine fixture consequently proves the shared `EnginePort`
+> contract while the real-byte fixture proves the CG path.
 >
 > **Boundary-aware ("reusable" is not an assertion).** The audit-focus
 > block on UTSUSHI-221 calls out two failure modes the conformance

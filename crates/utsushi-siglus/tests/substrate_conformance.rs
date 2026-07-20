@@ -1,135 +1,60 @@
-//! Substrate-conformance test for the `utsushi-siglus` crate.
-//!
-//! Pins that the `utsushi-siglus` scaffold consumes **only** the public
-//! substrate facade (`utsushi_core::substrate::*`) — no internal
-//! `__internal::*` paths, no `sealed::*` paths, no direct
-//! `utsushi_core::port::*` / `utsushi_core::vfs::*` reaches around the
-//! facade.
-//!
-//! Strategy: this is a compile-time test. The body imports
-//! `UtsushiSiglusPort` and pins the trait bound through the substrate
-//! facade exclusively. If the scaffold ever grows a non-facade
-//! `utsushi_core::*` import, the assertion fixture in this file will
-//! still compile (the test cannot reach into the scaffold's private
-//! imports). The substrate-only guarantee is therefore enforced two
-//! ways:
-//!
-//! 1. **At the import site here**: every `utsushi_core::*` symbol used
-//!    in this file is imported through `utsushi_core::substrate::*`. If
-//!    a future substrate refactor moves one of these symbols out of the
-//!    facade, this test breaks at the import statement.
-//! 2. **At the scaffold's import site**: `src/lib.rs` itself imports
-//!    every substrate symbol through `utsushi_core::substrate::*`. The
-//!    cross-engine substrate-alignment fixture in
-//!    `tests/cross_engine_substrate_alignment.rs` audits the
-//!    `utsushi_core::*` import surface of both scaffolds so neither port
-//!    can quietly grow a non-facade dependency the other lacks.
+//! Substrate conformance for the Siglus G00/CG EnginePort slice.
 
+use utsushi_core::RuntimeOperation;
 use utsushi_core::substrate::{
     AssetPackage, CapabilityStance, EnginePort, EnginePortError, EvidenceTier, FidelityTier,
-    LifecycleStage, PortCapability, PortManifest, PortRequest, PortShutdownOutcome,
-    RunnerCancellation, SinkSet,
+    LifecycleStage, PortCapability, PortRequest, RunnerCancellation, SinkSet,
 };
+use utsushi_siglus::{UtsushiSiglusPort, UtsushiSiglusPortContext};
 
-use utsushi_siglus::{UNIMPLEMENTED_MESSAGE, UtsushiSiglusPort, UtsushiSiglusPortContext};
-
-/// Compile-time witness that `UtsushiSiglusPort` resolves the
-/// `EnginePort` bound through the facade's re-export — not through a
-/// direct `utsushi_core::port::EnginePort` reach-around.
 fn assert_port_resolves_facade_engine_port_bound<P: EnginePort>() {}
 
 #[test]
-fn scaffold_consumes_only_facade_engine_port_trait() {
+fn port_consumes_the_facade_engine_port_contract() {
     assert_port_resolves_facade_engine_port_bound::<UtsushiSiglusPort>();
-}
-
-#[test]
-fn scaffold_constructs_through_facade_only() {
-    // Every type touched on this path is sourced through the substrate
-    // facade. The scaffold's public API (`UtsushiSiglusPort::new`
-    // `UtsushiSiglusPortContext::empty`) round-trips through facade
-    // types only.
     let port = UtsushiSiglusPort::new();
     let context: &UtsushiSiglusPortContext = port.context();
-    let _asset_package_slot: Option<&std::sync::Arc<dyn AssetPackage>> = context.asset_package();
-    let manifest: &PortManifest = &UtsushiSiglusPort::MANIFEST;
-    assert_eq!(manifest.abi_version, 1);
-    assert_eq!(manifest.id, "utsushi-siglus");
-    assert!(
-        manifest.capabilities.is_empty(),
-        "the inert Siglus scaffold must not claim wired runtime capabilities"
-    );
-    assert_eq!(
-        manifest.evidence_tier_max,
-        EvidenceTier::E1,
-        "scaffold pins its evidence tier ceiling at E1 (trace-only baseline)"
-    );
-    assert_eq!(
-        manifest.fidelity_tier_max,
-        FidelityTier::TraceOnly,
-        "scaffold pins its fidelity tier ceiling at TraceOnly"
-    );
-    let sink_set: &SinkSet = EnginePort::sink_set(&port);
-    assert!(sink_set.drain_text().is_empty());
+    let _: Option<&std::sync::Arc<dyn AssetPackage>> = context.asset_package();
+    let sinks: &SinkSet = EnginePort::sink_set(&port);
+    assert!(sinks.drain_frame().is_empty());
 }
 
 #[test]
-fn scaffold_manifest_capability_gaps_are_declared_pending_for_parity() {
+fn manifest_honestly_declares_the_real_capture_slice() {
+    let manifest = UtsushiSiglusPort::MANIFEST;
+    manifest.validate().expect("valid port manifest");
+    assert!(manifest.capabilities.contains(&PortCapability::Launch));
+    assert!(manifest.capabilities.contains(&PortCapability::Capture));
+    assert_eq!(manifest.evidence_tier_max, EvidenceTier::E2);
+    assert_eq!(manifest.fidelity_tier_max, FidelityTier::LayoutProbe);
     let profile = UtsushiSiglusPort::PARITY_PROFILE;
-    profile
-        .validate()
-        .expect("Siglus parity profile is structurally valid");
-    for capability in [
-        PortCapability::Launch,
-        PortCapability::Observe,
-        PortCapability::Capture,
-        PortCapability::Shutdown,
-        PortCapability::Snapshot,
-        PortCapability::DeterministicReplay,
-    ] {
-        assert!(
-            !profile.wires(capability),
-            "inert Siglus scaffold must not wire {capability:?}"
-        );
-        assert_eq!(
-            profile.stance(capability),
-            Some(CapabilityStance::Pending),
-            "inert Siglus scaffold must declare {capability:?} as dev-Pending"
-        );
-    }
+    assert_eq!(
+        profile.stance(PortCapability::Capture),
+        Some(CapabilityStance::Wired)
+    );
+    assert_eq!(
+        profile.stance(PortCapability::Observe),
+        Some(CapabilityStance::Pending)
+    );
 }
 
 #[test]
-fn scaffold_lifecycle_errors_route_through_facade_engine_port_error() {
+fn unconfigured_port_fails_with_configuration_not_scaffold_marker() {
     let mut port = UtsushiSiglusPort::new();
     let request = PortRequest::new(
-        std::path::Path::new("/"),
+        std::path::Path::new("."),
         "facade-conformance",
-        utsushi_core::RuntimeOperation::Trace,
+        RuntimeOperation::Capture,
     )
     .with_cancellation(RunnerCancellation::new());
-
-    let observe_error: EnginePortError = port
-        .observe(&request)
-        .expect_err("observe scaffold returns Err");
-    match observe_error {
+    let error = port
+        .launch(&request)
+        .expect_err("configuration is required");
+    match error {
         EnginePortError::Lifecycle { stage, message, .. } => {
-            assert_eq!(stage, LifecycleStage::Observe);
-            assert_eq!(message, UNIMPLEMENTED_MESSAGE);
+            assert_eq!(stage, LifecycleStage::Launch);
+            assert!(message.contains("AssetPackage"));
         }
-        other => panic!("expected facade EnginePortError::Lifecycle, got {other:?}"),
+        other => panic!("expected configuration lifecycle error, got {other:?}"),
     }
-
-    let shutdown_error: EnginePortError =
-        port.shutdown().expect_err("shutdown scaffold returns Err");
-    let _: PortShutdownOutcome = match shutdown_error {
-        EnginePortError::Lifecycle { stage, .. } => {
-            assert_eq!(stage, LifecycleStage::Shutdown);
-            // We never reach a real PortShutdownOutcome value here, but
-            // the type annotation pins that the substrate facade exports
-            // the type the scaffold's `shutdown` signature references.
-            PortShutdownOutcome::clean()
-        }
-        other => panic!("expected facade EnginePortError::Lifecycle, got {other:?}"),
-    };
 }

@@ -56,6 +56,7 @@ files-referenced = ["README.md", "docs/format-overview.md"]
 # direction (utsushi-reallive depending on utsushi-siglus) would
 # contradict the project's RealLive-only alpha posture.
 utsushi-reallive = { path = "../utsushi-reallive" }
+tempfile = { workspace = true }
 
 [lints]
 workspace = true
