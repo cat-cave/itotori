@@ -119,6 +119,7 @@ async function processScene(
       scene: subScene,
       mode,
       bibleRenderingIdsByUnit: readiness.bibleRenderingIdsByUnit,
+      bibleBindingsByUnit: readiness.bibleBindingsByUnit,
     }),
   );
   const drafted: DraftedScene = draftStep.value;

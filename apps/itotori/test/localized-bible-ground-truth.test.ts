@@ -271,6 +271,14 @@ describe("clause 1 — a unit RESOLVES the exact bible entries + RECORDS the dep
       "rendering:term:hero",
       "rendering:voice:c1",
     ]);
+    // The ids are accompanied by the actual installed bodies P1/review input
+    // assemblers put on the wire; an id is never a substitute for a rule.
+    expect(binding.renderings.map((rendering) => rendering.renderingId)).toEqual(
+      binding.bibleRenderingIds,
+    );
+    expect(
+      binding.renderings.find((rendering) => rendering.renderingId === "rendering:term:hero")?.body,
+    ).toEqual(heroRendV1.body);
     // every resolved rendering is RECORDED as a fine-grained dependency (renderingId
     // + body field-path + the unit's route/play window) — this is what a later
     // bible change intersects to find this unit. Remove the recording and the set

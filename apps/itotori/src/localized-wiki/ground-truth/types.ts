@@ -67,9 +67,13 @@ export interface UnitBibleBinding {
   readonly downstreamVersion: number;
   /** The resolved bible rendering ids, deduped + sorted — the role input basis. */
   readonly bibleRenderingIds: readonly string[];
+  /** The exact installed renderings behind those ids, in the same stable order.
+   * This is the model-readable ground for P1 and the reviewer assemblers; an id
+   * alone is never substituted for the localized rule it names. */
+  readonly renderings: readonly LocalizedRendering[];
   /** The recorded fine-grained dependency edges (one per resolved entry). */
   readonly dependencies: readonly LlmWikiDependency[];
-  /** A content address of the resolved bible id set. */
+  /** A content address of the resolved bible id + version set. */
   readonly boundHash: string;
 }
 

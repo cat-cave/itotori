@@ -59,7 +59,11 @@ function createReadinessPort(deps: WorkflowPortDeps): BibleReadinessPort {
           deps.readiness.bible,
           deps.readiness.requirementOptions ?? {},
         );
-        return { ready: true, bibleRenderingIds: binding.bibleRenderingIds };
+        return {
+          ready: true,
+          bibleRenderingIds: binding.bibleRenderingIds,
+          bibleBinding: binding,
+        };
       } catch (error: unknown) {
         if (error instanceof MissingBibleEntryError) {
           const subject = error.required.subject
@@ -84,10 +88,14 @@ function createDraftPort(deps: WorkflowPortDeps): DraftPort {
       const localizeInput = deps.draft.buildInput(input);
       const localized = await localizeScene(localizeInput, deps.draft.runtime);
       const bibleByUnit = input.bibleRenderingIdsByUnit;
+      const bindingsByUnit = input.bibleBindingsByUnit;
       const units: DraftedUnit[] = localized.finalizedDrafts.map((draft) => ({
         unitId: draft.unitId,
         draft,
         bibleRenderingIds: bibleByUnit.get(draft.unitId) ?? draft.basis.bibleRenderingIds ?? [],
+        ...(bindingsByUnit?.get(draft.unitId) === undefined
+          ? {}
+          : { bibleBinding: bindingsByUnit.get(draft.unitId)! }),
       }));
       return {
         sceneId: input.scene.sceneId,

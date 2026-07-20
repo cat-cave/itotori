@@ -10,6 +10,7 @@
 // `LocalizerRuntimeBase`, carried through untouched. Zero model calls here.
 
 import type { LocalizeSceneInput, LocalizerRuntimeBase } from "../../../roles/p1/index.js";
+import type { UnitBibleBinding } from "../../../localized-wiki/ground-truth/index.js";
 import type { DraftDeps } from "../../deps.js";
 import type { DraftMode, WorkflowScene } from "../../../workflow/index.js";
 import { projectSceneUnitFacts, type DecodeFactSource, type RunScopeConfig } from "./substrate.js";
@@ -39,6 +40,7 @@ export function buildLocalizeSceneInput(input: {
   readonly scene: WorkflowScene;
   readonly mode: DraftMode;
   readonly bibleRenderingIdsByUnit: ReadonlyMap<string, readonly string[]>;
+  readonly bibleBindingsByUnit?: ReadonlyMap<string, UnitBibleBinding>;
   readonly facts: DecodeFactSource;
   readonly config: RunScopeConfig;
   readonly budget: DraftRealizationConfig;
@@ -47,6 +49,14 @@ export function buildLocalizeSceneInput(input: {
   return {
     units: projectSceneUnitFacts(unitIds, input.facts),
     bibleRenderingIds: sceneBibleRenderingIds(input.bibleRenderingIdsByUnit),
+    ...(input.bibleBindingsByUnit === undefined
+      ? {}
+      : {
+          unitBible: unitIds.flatMap((unitId) => {
+            const binding = input.bibleBindingsByUnit!.get(unitId);
+            return binding === undefined ? [] : [{ unitId, renderings: binding.renderings }];
+          }),
+        }),
     contextSnapshotId: input.config.contextSnapshotId,
     localizationSnapshotId: input.config.localizationSnapshotId,
     schemaHash: input.config.schemaHash,
@@ -71,6 +81,9 @@ export function createDraftDeps(input: {
         scene: portInput.scene,
         mode: portInput.mode,
         bibleRenderingIdsByUnit: portInput.bibleRenderingIdsByUnit,
+        ...(portInput.bibleBindingsByUnit === undefined
+          ? {}
+          : { bibleBindingsByUnit: portInput.bibleBindingsByUnit }),
         facts: input.facts,
         config: input.config,
         budget: input.budget,
