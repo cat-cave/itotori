@@ -20,6 +20,13 @@
         "expected": "absent"
       },
       {
+        "id": "project-workflow-residual",
+        "kind": "files",
+        "files": ["apps/itotori/src/services/project-workflow.ts"],
+        "lines": 0,
+        "expected": "absent"
+      },
+      {
         "id": "openrouter-client",
         "kind": "files",
         "files": [],

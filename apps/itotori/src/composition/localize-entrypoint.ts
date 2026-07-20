@@ -4,7 +4,7 @@
 // It does exactly three things, in order: resolve the run policy (via the driver,
 // which gates the whole run on it), build the live `WorkflowPorts` that wrap the
 // named entrypoints, and run the deterministic driver. It constructs NOTHING from
-// the legacy service graph — no `ProjectWorkflowService`, no provider object, no
+// the legacy service graph — no retired project-workflow surface, no provider object, no
 // context-correction worker, no journal reservation/finalizer, no raw-MTL path.
 //
 // The port SUBSTRATE (decode facts, ZDR runtimes, the CAS store) is injected as

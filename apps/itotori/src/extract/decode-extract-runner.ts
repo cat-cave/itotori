@@ -18,16 +18,32 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assertBridgeBundleV02, type BridgeBundleV02 } from "@itotori/localization-bridge-schema";
-import type {
-  DecodeExtractInput,
-  DecodeExtractOutcome,
-  DecodeExtractPort,
-} from "../services/project-workflow.js";
 import {
   runKaifuuExtract,
   type KaifuuExtractArgs,
   type KaifuuExtractResult,
 } from "./kaifuu-extract-seam.js";
+
+export type DecodeExtractInput = {
+  gameId: string;
+  gameVersion: string;
+  sourceProfileId: string;
+  sourceLocale: string;
+  scene?: number;
+  wholeSeen?: boolean;
+  gameRoot?: string;
+  vaultCanonicalId?: string;
+};
+
+export type DecodeExtractOutcome = {
+  bridge: BridgeBundleV02;
+  mode: KaifuuExtractResult["mode"];
+  command: string;
+};
+
+export type DecodeExtractPort = {
+  runDecodeExtract(input: DecodeExtractInput): Promise<DecodeExtractOutcome>;
+};
 
 /**
  * The extract-seam invocation, isolated as a seam so a test can prove the runner

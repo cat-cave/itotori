@@ -4,7 +4,7 @@
 // resolve the run policy, project the decoded narrative structure into coherence-
 // ordered scenes, and drive the deterministic workflow driver through
 // `runLocalization`. It constructs NOTHING from the legacy service graph — no
-// `ProjectWorkflowService.draftProject`, no provider object, no orchestrator
+// retired project-workflow surface, no provider object, no orchestrator
 // journal reservation/finalizer, no context-correction worker, no raw-MTL path.
 //
 // The live port SUBSTRATE is injected as a `LocalizationPortSource` factory so this

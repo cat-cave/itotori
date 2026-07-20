@@ -1350,7 +1350,7 @@ function microsToDecimalUsd(micros: number): string {
 /**
  * ITOTORI-053 (codex-audit-followup, privacy HARD boundary) — the cost
  * drilldown surfaces adapter metadata that was recorded VERBATIM from the
- * provider adapter: project-workflow.ts persists whatever the adapter captured,
+ * provider adapter: the retired workflow persisted whatever the adapter captured,
  * and the OpenRouter adapter mirrors the raw `openrouter_metadata` response
  * fragment into `adapterMetadata.openrouterMetadata`. A KEY-ALLOWLIST — even
  * case-insensitive and applied at every depth — is NOT a privacy boundary: it

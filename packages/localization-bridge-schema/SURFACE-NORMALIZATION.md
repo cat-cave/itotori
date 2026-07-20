@@ -83,11 +83,10 @@ declared.
 
 ## Consumers
 
-- The Itotori draft path
-  (`apps/itotori/src/services/project-workflow.ts`) normalizes each unit via
-  `normalizeBridgeSurface`, carries `surfaceKind` into the draft request
-  (never collapsed), sends `normalizedProtectedSpanRaws` as the protected-span
-  literals, and guards the result with
+- The retired Itotori draft path formerly consumed this normalization. Current
+  app consumers must call `normalizeBridgeSurface` directly at their
+  deterministic boundary, preserve `surfaceKind`, use
+  `normalizedProtectedSpanRaws` for protected-span literals, and validate with
   `assertNormalizedSurfacePreservesIdentity`.
 
 ## Legitimately normalized vs preserved — quick reference

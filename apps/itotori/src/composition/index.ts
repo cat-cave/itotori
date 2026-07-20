@@ -7,7 +7,7 @@
 // the wiki entrypoint delegates to the Wiki object-API; the play entrypoint
 // drives the runtime launcher; provisioning creates a fresh project/branch in
 // place and addresses an exact requested run. Nothing here reaches the legacy
-// `ProjectWorkflowService` / provider objects / context-correction worker /
+// retired project-workflow surface / provider objects / context-correction worker /
 // journal reservation-finalizer / raw-MTL path — the import closure is clean.
 
 export { createWorkflowPorts } from "./workflow-ports.js";
