@@ -44,6 +44,27 @@ export class BibleBypassError extends Error {
   }
 }
 
+/** A production or pilot caller supplied no source-Wiki material at all. That
+ * would be a collapsed bible, not a completed empty category. */
+export class CollapsedBibleError extends Error {
+  constructor(readonly posture: LocalizationPosture) {
+    super(`posture '${posture}' cannot run with an empty source Wiki`);
+    this.name = "CollapsedBibleError";
+  }
+}
+
+/** Refuse the lazy empty-bible path under postures that require the full bible.
+ * Individual categories may be absent when they are not relevant, but the
+ * whole source Wiki itself is mandatory for production and pilot. */
+export function assertBibleIsNotCollapsed(
+  posture: LocalizationPosture,
+  sourceObjectCount: number,
+): void {
+  if (mustBuildFullBible(posture) && sourceObjectCount === 0) {
+    throw new CollapsedBibleError(posture);
+  }
+}
+
 /** The result of the one sanctioned bypass: a collapsed, empty bible under the
  * ablation posture (used by the ablation study only, never by production/pilot). */
 export interface AblationBypass {
