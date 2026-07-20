@@ -1491,6 +1491,7 @@ dependencies = [
  "utsushi-rpgmaker-mv",
  "utsushi-rpgmaker-mv-mz",
  "utsushi-siglus",
+ "utsushi-softpal",
 ]
 
 [[package]]
@@ -1586,6 +1587,17 @@ dependencies = [
  "thiserror",
  "utsushi-core",
  "utsushi-reallive",
+]
+
+[[package]]
+name = "utsushi-softpal"
+version = "0.0.0"
+dependencies = [
+ "kaifuu-softpal",
+ "serde",
+ "tempfile",
+ "thiserror",
+ "utsushi-core",
 ]
 
 [[package]]

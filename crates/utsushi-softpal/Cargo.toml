@@ -1,0 +1,26 @@
+[package]
+name = "utsushi-softpal"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# The Softpal runtime port: it EXECUTES the Sv20 scene-dispatch recovered by
+# the first-party `kaifuu-softpal` disassembler (0-unknown on two real titles)
+# through the shared Utsushi substrate, and CAPTURES an edge-redacted layout
+# frame. Unlike the RealLive / Siglus ports — which re-derive their format
+# decode clean-room away from third-party RE anchors (rlvm, siglus_rs) — the
+# Softpal decode is first-party and proven, so this runtime consumes it
+# directly rather than duplicating a 0-unknown stack walk.
+[dependencies]
+utsushi-core = { path = "../utsushi-core" }
+kaifuu-softpal = { path = "../kaifuu-softpal" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

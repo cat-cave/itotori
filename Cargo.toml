@@ -19,6 +19,7 @@ members = [
   "crates/utsushi-rpgmaker-mv",
   "crates/utsushi-rpgmaker-mv-mz",
   "crates/utsushi-siglus",
+  "crates/utsushi-softpal",
   "crates/utsushi-kirikiri",
   "crates/utsushi-kirikiri-xp3",
   "crates/utsushi-cli",
