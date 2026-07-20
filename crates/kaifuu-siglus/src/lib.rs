@@ -191,7 +191,7 @@ pub use scene_decode::{
     decode_scene_chunk, decode_scene_pack,
 };
 pub use syscall::{
-    SEL_SYSTEM_FUNCTION_ID, SceneSyscallDecode, SceneSyscallError, SiglusCallTarget,
-    SiglusSelChoice, SiglusSelOption, SiglusStringRef, SiglusSyscallDiagnostic, SiglusTypedCall,
-    decode_scene_syscalls, system_function_name,
+    SEL_SYSTEM_FUNCTION_ID, SceneSyscallDecode, SceneSyscallError, SiglusCallArgument,
+    SiglusCallArgumentRole, SiglusCallTarget, SiglusSelChoice, SiglusSelOption, SiglusStringRef,
+    SiglusSyscallDiagnostic, SiglusTypedCall, decode_scene_syscalls, system_function_name,
 };

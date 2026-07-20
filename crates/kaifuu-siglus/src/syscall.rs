@@ -9,12 +9,13 @@
 
 mod decode;
 mod model;
+mod shapes;
 
 pub use decode::decode_scene_syscalls;
 pub use model::{
-    SEL_SYSTEM_FUNCTION_ID, SceneSyscallDecode, SceneSyscallError, SiglusCallTarget,
-    SiglusSelChoice, SiglusSelOption, SiglusStringRef, SiglusSyscallDiagnostic, SiglusTypedCall,
-    system_function_name,
+    SEL_SYSTEM_FUNCTION_ID, SceneSyscallDecode, SceneSyscallError, SiglusCallArgument,
+    SiglusCallArgumentRole, SiglusCallTarget, SiglusSelChoice, SiglusSelOption, SiglusStringRef,
+    SiglusSyscallDiagnostic, SiglusTypedCall, system_function_name,
 };
 
 #[cfg(test)]

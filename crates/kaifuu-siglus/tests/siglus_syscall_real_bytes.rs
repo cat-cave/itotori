@@ -133,15 +133,21 @@ fn exercise_title(exe_path: &Path, scene_path: &Path, label: &str) -> TitleTotal
             "{label}: scene {} has an unreported unknown function shape",
             entry.scene_id
         );
-        let actual_unknown_targets = decode
-            .calls
-            .iter()
-            .filter(|call| call.target.system_function_id().is_none())
-            .count();
         assert_eq!(
             reported_unknown_target_count(&decode),
-            actual_unknown_targets,
-            "{label}: scene {} has an unreported non-system call target",
+            decode.unknown_target_shapes,
+            "{label}: scene {} has an unreported target shape",
+            entry.scene_id
+        );
+        assert!(
+            decode.unknown_arg_shape_counts.is_empty(),
+            "{label}: scene {} has unknown system argument shapes: {:?}",
+            entry.scene_id,
+            decode.unknown_arg_shape_counts
+        );
+        assert_eq!(
+            decode.unknown_target_shapes, 0,
+            "{label}: scene {} has unknown target shapes",
             entry.scene_id
         );
         assert!(
@@ -194,7 +200,7 @@ fn exercise_title(exe_path: &Path, scene_path: &Path, label: &str) -> TitleTotal
             .iter()
             .map(|selection| selection.options.len())
             .sum::<usize>();
-        totals.unknown_target_shapes += actual_unknown_targets;
+        totals.unknown_target_shapes += decode.unknown_target_shapes;
         for (function_id, count) in &decode.unknown_arg_shape_counts {
             *totals.unknown_arg_shapes.entry(*function_id).or_insert(0) += count;
         }
@@ -226,6 +232,15 @@ fn two_real_siglus_scene_packs_decode_all_system_calls() {
         assert!(totals.typed_calls > 0, "{label}: no typed CD_COMMAND calls");
         assert!(totals.selections > 0, "{label}: no System{{76}} sel calls");
         assert!(totals.options > 0, "{label}: no sel option references");
+        assert!(
+            totals.unknown_arg_shapes.is_empty(),
+            "{label}: unknown system argument shapes: {:?}",
+            totals.unknown_arg_shapes
+        );
+        assert_eq!(
+            totals.unknown_target_shapes, 0,
+            "{label}: unknown target shapes"
+        );
     }
     let mut observed = [first.scene_count, second.scene_count];
     let mut expected = EXPECTED_SCENE_COUNTS;
