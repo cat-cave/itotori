@@ -96,6 +96,13 @@ import type {
   WikiWriteAssertion,
   WikiWriteReceipt,
 } from "./wiki/object-api/index.js";
+import {
+  isExtractModeForEngine,
+  parseExtractApiRequest,
+  type ExtractEngineId,
+  type ExtractModeForEngine,
+  type ExtractSource,
+} from "./extract/extract-adapter-registry.js";
 
 /**
  * The jobs dashboard is an API projection, not a database repository
@@ -802,32 +809,29 @@ export type ApiProjectImportRequest = {
 };
 
 /**
- * p3-in-studio-decode-extract-trigger — point the Studio at a game source and
- * run the REAL identify -> inventory -> extract decode pipeline. Sourcing is
- * EITHER a by-id vault handle OR a raw game root; identity is the four RealLive
- * metadata fields; mode is per-scene (`scene`) XOR whole-Seen (`wholeSeen`).
+ * A Studio decode/extract request is the registry's engine-discriminated source
+ * union. There is no default engine and no cross-adapter top-level input: each
+ * variant carries only the source, identity, and mode fields its adapter owns.
  */
-export type ApiProjectDecodeExtractRequest = {
-  vaultCanonicalId?: string;
-  gameRoot?: string;
-  gameId: string;
-  gameVersion: string;
-  sourceProfileId: string;
-  sourceLocale: string;
-  scene?: number;
-  wholeSeen?: boolean;
-};
+export type ApiProjectDecodeExtractRequest = ExtractSource;
 
 /**
  * The produced v0.2 BridgeBundle (read back from the file kaifuu wrote), the
  * resolved decode mode, and the exact kaifuu-cli invocation. The bridge feeds
  * the SAME `imports.bridge` ingestion path the manual upload used.
  */
-export type ApiProjectDecodeExtractResponse = {
+type ApiProjectDecodeExtractResponseEnvelope = {
   bridge: BridgeBundleV02;
-  mode: "per-scene" | "whole-seen";
   command: string;
 };
+
+/** The common bridge output plus the selected adapter's engine/mode variant. */
+export type ApiProjectDecodeExtractResponse = {
+  [E in ExtractEngineId]: ApiProjectDecodeExtractResponseEnvelope & {
+    engine: E;
+    mode: ExtractModeForEngine<E>;
+  };
+}[ExtractEngineId];
 
 export type ApiBootstrapCatalogSourceId = {
   catalogSource: CatalogSource;
@@ -1770,55 +1774,7 @@ export function parseProjectImportRequest(body: unknown): ApiProjectImportReques
 }
 
 export function parseProjectDecodeExtractRequest(body: unknown): ApiProjectDecodeExtractRequest {
-  return parseRequest("ApiProjectDecodeExtractRequest", () => {
-    const request = asRecord(body, "ApiProjectDecodeExtractRequest");
-    // Identity — the four required RealLive metadata fields.
-    assertString(request.gameId, "ApiProjectDecodeExtractRequest.gameId");
-    assertString(request.gameVersion, "ApiProjectDecodeExtractRequest.gameVersion");
-    assertString(request.sourceProfileId, "ApiProjectDecodeExtractRequest.sourceProfileId");
-    assertString(request.sourceLocale, "ApiProjectDecodeExtractRequest.sourceLocale");
-    // Sourcing — exactly one of vaultCanonicalId / gameRoot must be provided.
-    if (request.vaultCanonicalId !== undefined) {
-      assertString(request.vaultCanonicalId, "ApiProjectDecodeExtractRequest.vaultCanonicalId");
-    }
-    if (request.gameRoot !== undefined) {
-      assertString(request.gameRoot, "ApiProjectDecodeExtractRequest.gameRoot");
-    }
-    const hasVault =
-      typeof request.vaultCanonicalId === "string" && request.vaultCanonicalId.length > 0;
-    const hasGameRoot = typeof request.gameRoot === "string" && request.gameRoot.length > 0;
-    if (hasVault === hasGameRoot) {
-      throw new Error(
-        "ApiProjectDecodeExtractRequest sourcing requires EXACTLY ONE of vaultCanonicalId or gameRoot",
-      );
-    }
-    // Mode — exactly one of scene (u16) / wholeSeen must be selected.
-    const wholeSeen = request.wholeSeen === true;
-    const hasScene = request.scene !== undefined;
-    if (wholeSeen === hasScene) {
-      throw new Error(
-        "ApiProjectDecodeExtractRequest requires EXACTLY ONE decode mode: scene (u16) or wholeSeen",
-      );
-    }
-    let scene: number | undefined;
-    if (hasScene) {
-      const value = request.scene;
-      if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 65_535) {
-        throw new Error("ApiProjectDecodeExtractRequest.scene must be a u16 (0..65535)");
-      }
-      scene = value;
-    }
-    return {
-      gameId: request.gameId,
-      gameVersion: request.gameVersion,
-      sourceProfileId: request.sourceProfileId,
-      sourceLocale: request.sourceLocale,
-      ...(hasVault ? { vaultCanonicalId: request.vaultCanonicalId as string } : {}),
-      ...(hasGameRoot ? { gameRoot: request.gameRoot as string } : {}),
-      ...(scene !== undefined ? { scene } : {}),
-      ...(wholeSeen ? { wholeSeen: true } : {}),
-    };
-  });
+  return parseRequest("ApiProjectDecodeExtractRequest", () => parseExtractApiRequest(body));
 }
 
 export function parseDraftBranchRequest(body: unknown): ApiDraftBranchRequest {
@@ -5381,11 +5337,13 @@ function assertProjectDecodeExtractResponse(
   // narrowed it to v0.2 via `assertBridgeBundleV02`), so the wire body cannot
   // fork from the bridge contract.
   assertBridgeInput(response.bridge);
-  assertEnum(
-    response.mode,
-    ["per-scene", "whole-seen"] as const,
-    "ApiProjectDecodeExtractResponse.mode",
-  );
+  assertString(response.engine, "ApiProjectDecodeExtractResponse.engine");
+  assertString(response.mode, "ApiProjectDecodeExtractResponse.mode");
+  if (!isExtractModeForEngine(response.engine, response.mode)) {
+    throw new Error(
+      `ApiProjectDecodeExtractResponse.mode '${response.mode}' is not supported by engine '${response.engine}'`,
+    );
+  }
   assertString(response.command, "ApiProjectDecodeExtractResponse.command");
 }
 

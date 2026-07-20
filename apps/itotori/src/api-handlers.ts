@@ -950,6 +950,7 @@ async function routeItotoriApiRequest(
     const outcome = await services.projectWorkflow.decodeExtract(body);
     return ok("projects.decodeExtract", {
       bridge: outcome.bridge,
+      engine: outcome.engine,
       mode: outcome.mode,
       command: outcome.command,
     });

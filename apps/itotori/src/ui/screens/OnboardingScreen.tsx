@@ -8,6 +8,13 @@ import type {
   ApiProjectDecodeExtractRequest,
   ApiProjectImportRequest,
 } from "../../api-schema.js";
+import {
+  extractCapabilities,
+  type ExtractCapability,
+  type ExtractEngineId,
+  type ExtractFormField,
+  type ExtractModeCapability,
+} from "../../extract/extract-adapter-registry.js";
 import { apiClient } from "../client.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
@@ -27,8 +34,10 @@ type ImportedProject = ApiRouteResponse<"imports.bridge">["project"];
 // pipeline produced, ready to feed the SAME importBridge ingestion path the
 // manual upload used.
 type DecodedBridge = ApiRouteResponse<"projects.decodeExtract">["bridge"];
-type SourcingKind = "gameRoot" | "vaultCanonicalId";
-type DecodeMode = "whole-seen" | "scene";
+
+// The form reads this registry capability descriptor directly; it has no
+// engine default or duplicate field/mode catalogue of its own.
+const STUDIO_EXTRACT_CAPABILITIES = extractCapabilities();
 
 export function parseOnboardingRoute(pathname: string): Record<string, never> | null {
   return onboardingRoutePathRegex.test(pathname) ? {} : null;
@@ -57,14 +66,9 @@ export function OnboardingScreen(): ReactNode {
   // identify -> inventory -> extract pipeline server-side to produce the bridge.
   const [decode, setDecode] = useState<MutationStep>({ state: "idle" });
   const [decodedBridge, setDecodedBridge] = useState<DecodedBridge | null>(null);
-  const [sourcingKind, setSourcingKind] = useState<SourcingKind>("gameRoot");
-  const [gameSource, setGameSource] = useState("");
-  const [gameId, setGameId] = useState("");
-  const [gameVersion, setGameVersion] = useState("1.0");
-  const [sourceProfileId, setSourceProfileId] = useState("");
-  const [sourceLocale, setSourceLocale] = useState("ja-JP");
-  const [decodeMode, setDecodeMode] = useState<DecodeMode>("whole-seen");
-  const [sceneId, setSceneId] = useState("");
+  const [selectedExtractEngine, setSelectedExtractEngine] = useState<ExtractEngineId | "">("");
+  const [selectedExtractMode, setSelectedExtractMode] = useState("");
+  const [extractValues, setExtractValues] = useState<Record<string, string>>({});
 
   const accountId =
     identity.state === "ready" ? (identity.data.accounts[0]?.accountId ?? null) : null;
@@ -77,16 +81,18 @@ export function OnboardingScreen(): ReactNode {
     candidateRows.find((row) => row.workId === selectedWorkId) ?? candidateRows[0] ?? null;
   const candidateReady = selectedCandidate !== null;
   const bridgeReady = decodedBridge !== null;
+  const selectedExtractCapability = STUDIO_EXTRACT_CAPABILITIES.find(
+    (capability) => capability.engine === selectedExtractEngine,
+  );
+  const selectedExtractModeCapability = selectedExtractCapability?.modes.find(
+    (mode) => mode.id === selectedExtractMode,
+  );
 
-  const decodeDisabledReason = decodeDisabledReasonFor({
-    gameSource,
-    gameId,
-    gameVersion,
-    sourceProfileId,
-    sourceLocale,
-    decodeMode,
-    sceneId,
-  });
+  const decodeDisabledReason = decodeDisabledReasonFor(
+    selectedExtractCapability,
+    selectedExtractModeCapability,
+    extractValues,
+  );
   const bootstrapDisabledReason = !candidateReady
     ? "Pick a catalog candidate before bootstrapping."
     : !bridgeReady
@@ -140,16 +146,15 @@ export function OnboardingScreen(): ReactNode {
       setDecode({ state: "error", message: reason });
       return;
     }
-    const request = buildDecodeExtractRequest({
-      sourcingKind,
-      gameSource,
-      gameId,
-      gameVersion,
-      sourceProfileId,
-      sourceLocale,
-      decodeMode,
-      sceneId,
-    });
+    if (selectedExtractCapability === undefined || selectedExtractModeCapability === undefined) {
+      setDecode({ state: "error", message: "Choose an extract adapter and mode." });
+      return;
+    }
+    const request = buildDecodeExtractRequest(
+      selectedExtractCapability,
+      selectedExtractModeCapability,
+      extractValues,
+    );
     setDecode({ state: "loading" });
     setDecodedBridge(null);
     const result = await apiClient.request("projects.decodeExtract", { body: request });
@@ -355,90 +360,77 @@ export function OnboardingScreen(): ReactNode {
               hand-produced bridge JSON required.
             </p>
             <label className="onboarding-screen__field">
-              <span>Sourcing</span>
+              <span>Extract adapter</span>
               <select
-                aria-label="Sourcing kind"
-                value={sourcingKind}
-                onChange={(event) => setSourcingKind(event.currentTarget.value as SourcingKind)}
+                aria-label="Extract adapter"
+                value={selectedExtractEngine}
+                onChange={(event) => {
+                  const capability = STUDIO_EXTRACT_CAPABILITIES.find(
+                    (candidate) => candidate.engine === event.currentTarget.value,
+                  );
+                  if (capability === undefined) {
+                    setSelectedExtractEngine("");
+                    setSelectedExtractMode("");
+                    setExtractValues({});
+                    return;
+                  }
+                  const mode = capability.modes[0];
+                  setSelectedExtractEngine(capability.engine);
+                  setSelectedExtractMode(mode?.id ?? "");
+                  setExtractValues(extractInitialValues(capability, mode));
+                }}
               >
-                <option value="gameRoot">Game root path</option>
-                <option value="vaultCanonicalId">Vault canonical id</option>
+                <option value="">Choose an adapter</option>
+                {STUDIO_EXTRACT_CAPABILITIES.map((capability) => (
+                  <option key={capability.engine} value={capability.engine}>
+                    {capability.label}
+                  </option>
+                ))}
               </select>
             </label>
-            <label className="onboarding-screen__field">
-              <span>{sourcingKind === "gameRoot" ? "Game root path" : "Vault canonical id"}</span>
-              <input
-                aria-label={sourcingKind === "gameRoot" ? "Game root path" : "Vault canonical id"}
-                value={gameSource}
-                onChange={(event) => setGameSource(event.currentTarget.value)}
-                placeholder={
-                  sourcingKind === "gameRoot"
-                    ? "/path/to/game (contains REALLIVEDATA/Seen.txt)"
-                    : "vault canonical id"
-                }
-                required
-              />
-            </label>
-            <label className="onboarding-screen__field">
-              <span>Game id</span>
-              <input
-                aria-label="Game id"
-                value={gameId}
-                onChange={(event) => setGameId(event.currentTarget.value)}
-                required
-              />
-            </label>
-            <label className="onboarding-screen__field">
-              <span>Game version</span>
-              <input
-                aria-label="Game version"
-                value={gameVersion}
-                onChange={(event) => setGameVersion(event.currentTarget.value)}
-                required
-              />
-            </label>
-            <label className="onboarding-screen__field">
-              <span>Source profile id</span>
-              <input
-                aria-label="Source profile id"
-                value={sourceProfileId}
-                onChange={(event) => setSourceProfileId(event.currentTarget.value)}
-                required
-              />
-            </label>
-            <label className="onboarding-screen__field">
-              <span>Source locale</span>
-              <input
-                aria-label="Source locale"
-                value={sourceLocale}
-                onChange={(event) => setSourceLocale(event.currentTarget.value)}
-                required
-              />
-            </label>
-            <label className="onboarding-screen__field">
-              <span>Decode mode</span>
-              <select
-                aria-label="Decode mode"
-                value={decodeMode}
-                onChange={(event) => setDecodeMode(event.currentTarget.value as DecodeMode)}
-              >
-                <option value="whole-seen">Whole Seen (entire game)</option>
-                <option value="scene">Single scene</option>
-              </select>
-            </label>
-            {decodeMode === "scene" && (
-              <label className="onboarding-screen__field">
-                <span>Scene id</span>
-                <input
-                  aria-label="Scene id"
-                  inputMode="numeric"
-                  value={sceneId}
-                  onChange={(event) => setSceneId(event.currentTarget.value)}
-                  placeholder="0..65535"
-                  required
-                />
-              </label>
-            )}
+            {selectedExtractCapability !== undefined &&
+              selectedExtractModeCapability !== undefined && (
+                <>
+                  <p className="onboarding-screen__status">{selectedExtractCapability.summary}</p>
+                  <label className="onboarding-screen__field">
+                    <span>Extract mode</span>
+                    <select
+                      aria-label="Extract mode"
+                      value={selectedExtractMode}
+                      onChange={(event) => setSelectedExtractMode(event.currentTarget.value)}
+                    >
+                      {selectedExtractCapability.modes.map((mode) => (
+                        <option key={mode.id} value={mode.id}>
+                          {mode.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {extractFormFieldsFor(
+                    selectedExtractCapability,
+                    selectedExtractModeCapability,
+                  ).map((field) => (
+                    <label className="onboarding-screen__field" key={field.key}>
+                      <span>{field.label}</span>
+                      <input
+                        aria-label={field.label}
+                        inputMode={field.input === "number" ? "numeric" : undefined}
+                        min={field.min}
+                        max={field.max}
+                        placeholder={field.placeholder}
+                        value={extractValues[field.key] ?? ""}
+                        onChange={(event) =>
+                          setExtractValues((values) => ({
+                            ...values,
+                            [field.key]: event.currentTarget.value,
+                          }))
+                        }
+                        required={field.required}
+                      />
+                    </label>
+                  ))}
+                </>
+              )}
             <StepActions
               submitLabel="Decode & extract"
               loadingLabel="Decoding..."
@@ -618,76 +610,84 @@ function formString(form: FormData, key: string): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/** Fields the selected adapter + mode expose to Studio. */
+export function extractFormFieldsFor(
+  capability: ExtractCapability,
+  mode: ExtractModeCapability,
+): readonly ExtractFormField[] {
+  return [...capability.fields, ...mode.fields];
+}
+
+function extractInitialValues(
+  capability: ExtractCapability,
+  mode: ExtractModeCapability | undefined,
+): Record<string, string> {
+  const fields = mode === undefined ? capability.fields : extractFormFieldsFor(capability, mode);
+  return Object.fromEntries(fields.map((field) => [field.key, field.defaultValue ?? ""]));
+}
+
 /**
- * p3-in-studio-decode-extract-trigger — the disabled reason for the decode
- * trigger. Null means every required input is present; a non-null string is the
- * accessible hint shown next to the disabled submit button.
+ * The disabled reason is evaluated entirely from the adapter-supplied form
+ * descriptor. A non-null value is the accessible hint shown beside submit.
  */
-function decodeDisabledReasonFor(input: {
-  gameSource: string;
-  gameId: string;
-  gameVersion: string;
-  sourceProfileId: string;
-  sourceLocale: string;
-  decodeMode: DecodeMode;
-  sceneId: string;
-}): string | null {
-  if (input.gameSource.trim().length === 0) {
-    return "Provide a game source (game root path or vault canonical id).";
+export function decodeDisabledReasonFor(
+  capability: ExtractCapability | undefined,
+  mode: ExtractModeCapability | undefined,
+  values: Readonly<Record<string, string>>,
+): string | null {
+  if (capability === undefined) {
+    return "Choose an extract adapter.";
   }
-  if (input.gameId.trim().length === 0) {
-    return "Game id is required.";
+  if (mode === undefined) {
+    return "Choose an extract mode.";
   }
-  if (input.gameVersion.trim().length === 0) {
-    return "Game version is required.";
+  for (const field of extractFormFieldsFor(capability, mode)) {
+    const value = values[field.key]?.trim() ?? "";
+    if (field.required && value.length === 0) {
+      return `${field.label} is required.`;
+    }
+    if (field.input === "number" && value.length > 0) {
+      const parsed = Number.parseInt(value, 10);
+      if (
+        !Number.isInteger(parsed) ||
+        String(parsed) !== value ||
+        (field.min !== undefined && parsed < field.min) ||
+        (field.max !== undefined && parsed > field.max)
+      ) {
+        const range =
+          field.min !== undefined && field.max !== undefined
+            ? ` between ${String(field.min)} and ${String(field.max)}`
+            : "";
+        return `${field.label} must be a whole number${range}.`;
+      }
+    }
   }
-  if (input.sourceProfileId.trim().length === 0) {
-    return "Source profile id is required.";
-  }
-  if (input.sourceLocale.trim().length === 0) {
-    return "Source locale is required.";
-  }
-  if (input.decodeMode === "scene") {
-    const scene = Number.parseInt(input.sceneId.trim(), 10);
-    if (
-      input.sceneId.trim().length === 0 ||
-      !Number.isInteger(scene) ||
-      scene < 0 ||
-      scene > 65_535 ||
-      String(scene) !== input.sceneId.trim()
-    ) {
-      return "Scene id must be a whole number 0..65535.";
+  for (const constraint of capability.constraints) {
+    const supplied = constraint.fields.filter((field) => (values[field]?.trim() ?? "").length > 0);
+    if (constraint.kind === "exactly-one" && supplied.length !== 1) {
+      return constraint.message;
     }
   }
   return null;
 }
 
-/**
- * p3-in-studio-decode-extract-trigger — build the typed decode/extract request
- * from the form state. Callers must first confirm {@link decodeDisabledReasonFor}
- * returned null (every required field present + valid).
- */
-function buildDecodeExtractRequest(input: {
-  sourcingKind: SourcingKind;
-  gameSource: string;
-  gameId: string;
-  gameVersion: string;
-  sourceProfileId: string;
-  sourceLocale: string;
-  decodeMode: DecodeMode;
-  sceneId: string;
-}): ApiProjectDecodeExtractRequest {
-  const source = input.gameSource.trim();
-  return {
-    gameId: input.gameId.trim(),
-    gameVersion: input.gameVersion.trim(),
-    sourceProfileId: input.sourceProfileId.trim(),
-    sourceLocale: input.sourceLocale.trim(),
-    ...(input.sourcingKind === "gameRoot" ? { gameRoot: source } : { vaultCanonicalId: source }),
-    ...(input.decodeMode === "whole-seen"
-      ? { wholeSeen: true }
-      : { scene: Number.parseInt(input.sceneId.trim(), 10) }),
+/** Build the engine-discriminated request from selected adapter capabilities. */
+export function buildDecodeExtractRequest(
+  capability: ExtractCapability,
+  mode: ExtractModeCapability,
+  values: Readonly<Record<string, string>>,
+): ApiProjectDecodeExtractRequest {
+  const request: Record<string, string | number | boolean> = {
+    engine: capability.engine,
+    ...mode.fixedValues,
   };
+  for (const field of extractFormFieldsFor(capability, mode)) {
+    const value = values[field.key]?.trim() ?? "";
+    if (value.length > 0) {
+      request[field.key] = field.input === "number" ? Number.parseInt(value, 10) : value;
+    }
+  }
+  return request as ApiProjectDecodeExtractRequest;
 }
 
 function projectStateForBranch(

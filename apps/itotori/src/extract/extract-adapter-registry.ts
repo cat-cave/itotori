@@ -141,12 +141,52 @@ export type ExtractEngineId = keyof ExtractArgsByEngine;
 export type KaifuuEngine = ExtractEngineId;
 
 /** What an engine's extract adapter can do — used to derive CLI/API availability. */
+export type ExtractFormField = {
+  /** The request-payload property this control owns. */
+  key: string;
+  /** The operator-facing label. */
+  label: string;
+  input: "text" | "number";
+  required: boolean;
+  placeholder?: string;
+  defaultValue?: string;
+  min?: number;
+  max?: number;
+};
+
+export type ExtractFormConstraint = {
+  kind: "exactly-one";
+  fields: readonly string[];
+  message: string;
+};
+
+export type ExtractModeCapability = {
+  /** The mode the adapter reports after a successful extraction. */
+  id: ExtractMode;
+  /** The operator-facing mode label. */
+  label: string;
+  /** Values selected by this mode that do not need a control. */
+  fixedValues: Readonly<Record<string, string | number | boolean>>;
+  /** Fields shown only while this mode is selected. */
+  fields: readonly ExtractFormField[];
+};
+
+/**
+ * The registry-owned capability descriptor consumed by CLI help, the HTTP
+ * contract, and Studio. An adapter owns every engine-specific form field and
+ * mode label; callers never infer them from an engine name.
+ */
 export type ExtractCapability = {
   engine: ExtractEngineId;
+  label: string;
   /** Human summary for CLI help + capability reporting. */
   summary: string;
+  /** Fields that apply to every mode of this adapter. */
+  fields: readonly ExtractFormField[];
+  /** Source constraints expressed over the adapter's form fields. */
+  constraints: readonly ExtractFormConstraint[];
   /** The extract modes this adapter can produce. */
-  modes: readonly ExtractMode[];
+  modes: readonly ExtractModeCapability[];
 };
 
 /**
@@ -164,6 +204,8 @@ export interface ExtractAdapter<E extends ExtractEngineId> {
   mode(args: ExtractArgsByEngine[E]): ExtractMode;
   /** Parse the user-shaped `itotori extract --engine <e> ...` flags to a source. */
   parseCli(args: readonly string[]): ExtractSourceByEngine[E];
+  /** Parse the public Studio request payload for this adapter alone. */
+  parseApi(input: ExtractApiPayload): ExtractSourceByEngine[E];
 }
 
 /**
@@ -180,6 +222,7 @@ export type AnyExtractAdapter = {
   validate(args: KaifuuExtractArgs, env: NodeJS.ProcessEnv): void;
   mode(args: KaifuuExtractArgs): ExtractMode;
   parseCli(args: readonly string[]): ExtractSource;
+  parseApi(input: ExtractApiPayload): ExtractSource;
 };
 
 function defineExtractAdapter<E extends ExtractEngineId>(
@@ -188,18 +231,145 @@ function defineExtractAdapter<E extends ExtractEngineId>(
   return adapter as unknown as AnyExtractAdapter;
 }
 
+/** The untyped JSON-object payload received at the Studio HTTP boundary. */
+export type ExtractApiPayload = Readonly<Record<string, unknown>>;
+
+const EXTRACT_CAPABILITIES = {
+  reallive: {
+    engine: "reallive",
+    label: "RealLive",
+    summary:
+      "RealLive Seen.txt: per-scene or whole archive; sourced by a vault canonical id or game root.",
+    fields: [
+      {
+        key: "vaultCanonicalId",
+        label: "Vault canonical id",
+        input: "text",
+        required: false,
+        placeholder: "vault canonical id",
+      },
+      {
+        key: "gameRoot",
+        label: "Game root path",
+        input: "text",
+        required: false,
+        placeholder: "/path/to/game",
+      },
+      { key: "gameId", label: "Game id", input: "text", required: true },
+      {
+        key: "gameVersion",
+        label: "Game version",
+        input: "text",
+        required: true,
+        defaultValue: "1.0",
+      },
+      { key: "sourceProfileId", label: "Source profile id", input: "text", required: true },
+      {
+        key: "sourceLocale",
+        label: "Source locale",
+        input: "text",
+        required: true,
+        defaultValue: "ja-JP",
+      },
+    ],
+    constraints: [
+      {
+        kind: "exactly-one",
+        fields: ["vaultCanonicalId", "gameRoot"],
+        message: "Provide exactly one source: a vault canonical id or game root path.",
+      },
+    ],
+    modes: [
+      {
+        id: "whole-seen",
+        label: "Entire Seen archive",
+        fixedValues: { wholeSeen: true },
+        fields: [],
+      },
+      {
+        id: "per-scene",
+        label: "Single scene",
+        fixedValues: {},
+        fields: [
+          {
+            key: "scene",
+            label: "Scene id",
+            input: "number",
+            required: true,
+            placeholder: "0..65535",
+            min: 0,
+            max: REALLIVE_SCENE_ID_MAX,
+          },
+        ],
+      },
+    ],
+  },
+  softpal: {
+    engine: "softpal",
+    label: "Softpal",
+    summary: "Softpal SCRIPT.SRC + TEXT.DAT: one whole-game bridge from a game root.",
+    fields: [
+      {
+        key: "gameRoot",
+        label: "Game root path",
+        input: "text",
+        required: true,
+        placeholder: "/path/to/game",
+      },
+    ],
+    constraints: [],
+    modes: [{ id: "whole-game", label: "Entire game", fixedValues: {}, fields: [] }],
+  },
+  "rpg-maker": {
+    engine: "rpg-maker",
+    label: "RPG Maker MV/MZ",
+    summary: "RPG Maker MV/MZ JSON: one whole-game bridge from the game's www directory.",
+    fields: [
+      {
+        key: "gameDir",
+        label: "Game www/ directory",
+        input: "text",
+        required: true,
+        placeholder: "/path/to/game/www",
+      },
+      { key: "gameId", label: "Game id", input: "text", required: true },
+      {
+        key: "gameVersion",
+        label: "Game version",
+        input: "text",
+        required: true,
+        defaultValue: "1.0",
+      },
+      { key: "sourceProfileId", label: "Source profile id", input: "text", required: true },
+      {
+        key: "sourceLocale",
+        label: "Source locale",
+        input: "text",
+        required: true,
+        defaultValue: "ja-JP",
+      },
+    ],
+    constraints: [],
+    modes: [{ id: "whole-game", label: "Entire game", fixedValues: {}, fields: [] }],
+  },
+} as const satisfies Readonly<Record<ExtractEngineId, ExtractCapability>>;
+
+/** The extract modes advertised by one registered adapter. */
+export type ExtractModeForEngine<E extends ExtractEngineId> =
+  (typeof EXTRACT_CAPABILITIES)[E]["modes"][number]["id"];
+
+/** The engine/mode response discriminant, derived from registry capabilities. */
+export type ExtractOutcome = {
+  [E in ExtractEngineId]: { engine: E; mode: ExtractModeForEngine<E> };
+}[ExtractEngineId];
+
 // ---------------------------------------------------------------------------
 // RealLive adapter
 // ---------------------------------------------------------------------------
 
 const realliveExtractAdapter: ExtractAdapter<"reallive"> = {
   engine: "reallive",
-  capability: {
-    engine: "reallive",
-    summary:
-      "RealLive Seen.txt: per-scene (--scene <N>) or whole-game (--whole-seen); sourced by --vault-canonical-id or --game-root",
-    modes: ["per-scene", "whole-seen"],
-  },
+  capability: EXTRACT_CAPABILITIES.reallive,
   buildArgs(args) {
     // Ordering mirrors the suite runner's Phase 1 invocation:
     //   extract --engine reallive
@@ -305,6 +475,32 @@ const realliveExtractAdapter: ExtractAdapter<"reallive"> = {
       ...(decompileReportOutputPath !== undefined ? { decompileReportOutputPath } : {}),
     };
   },
+  parseApi(input) {
+    assertCapabilityPayload(EXTRACT_CAPABILITIES.reallive, input);
+    const vaultCanonicalId = optionalApiString(input, "vaultCanonicalId");
+    const gameRoot = optionalApiString(input, "gameRoot");
+    const wholeSeen = input.wholeSeen === true;
+    const scene = optionalApiScene(input, "scene");
+    if (wholeSeen === (scene !== undefined)) {
+      throw new Error(
+        "ApiProjectDecodeExtractRequest for reallive requires exactly one mode: scene or wholeSeen",
+      );
+    }
+    if (input.wholeSeen !== undefined && input.wholeSeen !== true) {
+      throw new Error("ApiProjectDecodeExtractRequest.wholeSeen must be true when supplied");
+    }
+    return {
+      engine: "reallive",
+      gameId: requiredApiString(input, "gameId"),
+      gameVersion: requiredApiString(input, "gameVersion"),
+      sourceProfileId: requiredApiString(input, "sourceProfileId"),
+      sourceLocale: requiredApiString(input, "sourceLocale"),
+      ...(vaultCanonicalId !== undefined ? { vaultCanonicalId } : {}),
+      ...(gameRoot !== undefined ? { gameRoot } : {}),
+      ...(scene !== undefined ? { scene } : {}),
+      ...(wholeSeen ? { wholeSeen: true } : {}),
+    };
+  },
 };
 
 function parseRealliveSceneId(value: string): number {
@@ -328,12 +524,7 @@ function parseRealliveSceneId(value: string): number {
 
 const softpalExtractAdapter: ExtractAdapter<"softpal"> = {
   engine: "softpal",
-  capability: {
-    engine: "softpal",
-    summary:
-      "Softpal SCRIPT.SRC + TEXT.DAT: whole-game; sourced by positional --game-root (no scene/vault/key)",
-    modes: ["whole-game"],
-  },
+  capability: EXTRACT_CAPABILITIES.softpal,
   buildArgs(args) {
     // The game root is POSITIONAL:
     //   extract --engine softpal [<root>] --bundle-output <PATH>
@@ -370,6 +561,10 @@ const softpalExtractAdapter: ExtractAdapter<"softpal"> = {
       ...(gameRoot !== undefined ? { gameRoot } : {}),
     };
   },
+  parseApi(input) {
+    assertCapabilityPayload(EXTRACT_CAPABILITIES.softpal, input);
+    return { engine: "softpal", gameRoot: requiredApiString(input, "gameRoot") };
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -378,12 +573,7 @@ const softpalExtractAdapter: ExtractAdapter<"softpal"> = {
 
 const rpgMakerExtractAdapter: ExtractAdapter<"rpg-maker"> = {
   engine: "rpg-maker",
-  capability: {
-    engine: "rpg-maker",
-    summary:
-      "RPG Maker MV/MZ www/data/*.json: whole-game; sourced by --game-dir <www> plus RealLive-shaped identity flags",
-    modes: ["whole-game"],
-  },
+  capability: EXTRACT_CAPABILITIES["rpg-maker"],
   buildArgs(args) {
     //   extract --engine rpg-maker [--game-dir <www>]
     //     --game-id <ID> --game-version <V> --source-profile-id <ID> --source-locale <L>
@@ -441,7 +631,107 @@ const rpgMakerExtractAdapter: ExtractAdapter<"rpg-maker"> = {
       ...(findingsOutputPath !== undefined ? { findingsOutputPath } : {}),
     };
   },
+  parseApi(input) {
+    assertCapabilityPayload(EXTRACT_CAPABILITIES["rpg-maker"], input);
+    return {
+      engine: "rpg-maker",
+      gameDir: requiredApiString(input, "gameDir"),
+      gameId: requiredApiString(input, "gameId"),
+      gameVersion: requiredApiString(input, "gameVersion"),
+      sourceProfileId: requiredApiString(input, "sourceProfileId"),
+      sourceLocale: requiredApiString(input, "sourceLocale"),
+    };
+  },
 };
+
+function assertCapabilityPayload(capability: ExtractCapability, input: ExtractApiPayload): void {
+  const allowed = new Set<string>(["engine"]);
+  for (const field of capability.fields) {
+    allowed.add(field.key);
+  }
+  for (const mode of capability.modes) {
+    for (const field of mode.fields) {
+      allowed.add(field.key);
+    }
+    for (const key of Object.keys(mode.fixedValues)) {
+      allowed.add(key);
+    }
+  }
+  for (const key of Object.keys(input)) {
+    if (!allowed.has(key)) {
+      throw new Error(
+        `ApiProjectDecodeExtractRequest.${key} is not supported by the ${capability.engine} adapter`,
+      );
+    }
+  }
+  for (const field of capability.fields) {
+    if (field.required) {
+      assertApiFormField(input[field.key], field);
+    }
+  }
+  for (const constraint of capability.constraints) {
+    const supplied = constraint.fields.filter((field) => hasApiValue(input[field]));
+    if (constraint.kind === "exactly-one" && supplied.length !== 1) {
+      throw new Error(`ApiProjectDecodeExtractRequest ${constraint.message}`);
+    }
+  }
+}
+
+function assertApiFormField(value: unknown, field: ExtractFormField): void {
+  if (field.input === "text") {
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new Error(`ApiProjectDecodeExtractRequest.${field.key} is required`);
+    }
+    return;
+  }
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    (field.min !== undefined && value < field.min) ||
+    (field.max !== undefined && value > field.max)
+  ) {
+    throw new Error(`ApiProjectDecodeExtractRequest.${field.key} is invalid`);
+  }
+}
+
+function hasApiValue(value: unknown): boolean {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function requiredApiString(input: ExtractApiPayload, field: string): string {
+  const value = input[field];
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`ApiProjectDecodeExtractRequest.${field} is required`);
+  }
+  return value;
+}
+
+function optionalApiString(input: ExtractApiPayload, field: string): string | undefined {
+  const value = input[field];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`ApiProjectDecodeExtractRequest.${field} must be a non-empty string`);
+  }
+  return value;
+}
+
+function optionalApiScene(input: ExtractApiPayload, field: string): number | undefined {
+  const value = input[field];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > REALLIVE_SCENE_ID_MAX
+  ) {
+    throw new Error(`ApiProjectDecodeExtractRequest.${field} must be a u16 (0..65535)`);
+  }
+  return value;
+}
 
 // ---------------------------------------------------------------------------
 // Registry
@@ -465,7 +755,24 @@ export function isRegisteredExtractEngine(engine: string): engine is ExtractEngi
 
 /** The registered capabilities, in registration order (CLI/API availability). */
 export function extractCapabilities(): ExtractCapability[] {
-  return registeredExtractEngines().map((engine) => EXTRACT_ADAPTERS[engine].capability);
+  return registeredExtractEngines().map((engine) => EXTRACT_CAPABILITIES[engine]);
+}
+
+/** Parse the engine-discriminated Studio HTTP request through its adapter. */
+export function parseExtractApiRequest(body: unknown): ExtractSource {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    throw new Error("ApiProjectDecodeExtractRequest must be an object");
+  }
+  const input = body as ExtractApiPayload;
+  if (typeof input.engine !== "string") {
+    throw new Error("ApiProjectDecodeExtractRequest.engine is required");
+  }
+  return resolveExtractAdapter(input.engine).parseApi(input);
+}
+
+/** Whether a response mode is one the registered engine capability advertises. */
+export function isExtractModeForEngine(engine: string, mode: string): boolean {
+  return resolveExtractAdapter(engine).capability.modes.some((option) => option.id === mode);
 }
 
 /**

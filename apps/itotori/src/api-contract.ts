@@ -41,6 +41,7 @@ import {
   ITOTORI_API_ROUTE_IDS,
   ITOTORI_API_ROUTES,
 } from "./api-routes.js";
+import { extractCapabilities } from "./extract/extract-adapter-registry.js";
 
 // ---------------------------------------------------------------------------
 // JSON value + deterministic sort
@@ -125,6 +126,59 @@ function object(spec: {
     required: [...required].sort(),
     additionalProperties: spec.additionalProperties,
   };
+}
+
+function extractFormFieldSchema(input: "text" | "number"): Schema {
+  return input === "number" ? { type: "integer" } : str;
+}
+
+/** The public decode/extract request variants are generated from the registry. */
+function extractRequestVariants(): Schema[] {
+  return extractCapabilities().flatMap((capability) =>
+    capability.modes.map((mode) => {
+      const fields = [...capability.fields, ...mode.fields];
+      const properties: Record<string, Schema> = {
+        engine: { const: capability.engine },
+      };
+      for (const field of fields) {
+        properties[field.key] = extractFormFieldSchema(field.input);
+      }
+      for (const [key, value] of Object.entries(mode.fixedValues)) {
+        properties[key] = { const: value };
+      }
+      const variant = object({
+        required: [
+          "engine",
+          ...fields.filter((field) => field.required).map((field) => field.key),
+          ...Object.keys(mode.fixedValues),
+        ],
+        properties,
+        additionalProperties: false,
+      });
+      const constraints = capability.constraints.map((constraint) => ({
+        oneOf: constraint.fields.map((field) => ({ required: [field] })),
+      }));
+      return constraints.length === 0 ? variant : { allOf: [variant, ...constraints] };
+    }),
+  );
+}
+
+/** The public decode/extract response variants are generated from the registry. */
+function extractResponseVariants(): Schema[] {
+  return extractCapabilities().flatMap((capability) =>
+    capability.modes.map((mode) =>
+      object({
+        required: ["bridge", "engine", "mode", "command"],
+        properties: {
+          bridge: obj,
+          engine: { const: capability.engine },
+          mode: { const: mode.id },
+          command: str,
+        },
+        additionalProperties: true,
+      }),
+    ),
+  );
 }
 
 /**
@@ -905,16 +959,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
 
   // Mutations --------------------------------------------------------------
-  ApiProjectDecodeExtractResponse: () =>
-    object({
-      required: ["bridge", "mode", "command"],
-      properties: {
-        bridge: obj,
-        mode: { enum: ["per-scene", "whole-seen"] },
-        command: str,
-      },
-      additionalProperties: true,
-    }),
+  ApiProjectDecodeExtractResponse: () => ({ oneOf: extractResponseVariants() }),
   ApiProjectImportResponse: () =>
     object({
       required: ["project", "status"],
@@ -973,21 +1018,7 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
 
   // Request bodies ---------------------------------------------------------
-  ApiProjectDecodeExtractRequest: () =>
-    object({
-      required: ["gameId", "gameVersion", "sourceProfileId", "sourceLocale"],
-      properties: {
-        vaultCanonicalId: str,
-        gameRoot: str,
-        gameId: str,
-        gameVersion: str,
-        sourceProfileId: str,
-        sourceLocale: str,
-        scene: num,
-        wholeSeen: bool,
-      },
-      additionalProperties: true,
-    }),
+  ApiProjectDecodeExtractRequest: () => ({ oneOf: extractRequestVariants() }),
   ApiProjectImportRequest: () =>
     object({
       required: ["bridge"],
