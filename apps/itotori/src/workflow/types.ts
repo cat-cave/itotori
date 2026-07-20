@@ -12,6 +12,7 @@
 // translation quality.
 
 import { ReviewLaneSchema } from "../contracts/index.js";
+import type { UnitBibleBinding } from "../localized-wiki/ground-truth/index.js";
 import type { z } from "zod";
 import type { Draft, DraftBatch, ReviewVerdict } from "../contracts/index.js";
 
@@ -60,6 +61,8 @@ export interface DraftedUnit {
   readonly unitId: string;
   readonly draft: Draft;
   readonly bibleRenderingIds: readonly string[];
+  /** Retains the exact installed entries and the dependencies P1 cited. */
+  readonly bibleBinding?: UnitBibleBinding;
 }
 
 /** How a scene was drafted — the two P1 realization paths. `whole-scene` fits the

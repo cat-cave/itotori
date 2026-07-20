@@ -20,6 +20,7 @@
 
 import type { Defect } from "../contracts/index.js";
 import type { DeterministicGate } from "../gates/contract-types.js";
+import type { UnitBibleBinding } from "../localized-wiki/ground-truth/index.js";
 import type {
   DraftMode,
   DraftedScene,
@@ -33,7 +34,12 @@ import type {
  * drafting and names the missing entries; `ready:true` carries the rendering ids
  * the draft must cite. */
 export type UnitReadiness =
-  | { readonly ready: true; readonly bibleRenderingIds: readonly string[] }
+  | {
+      readonly ready: true;
+      readonly bibleRenderingIds: readonly string[];
+      /** The exact renderings + recorded dependencies behind the cited ids. */
+      readonly bibleBinding?: UnitBibleBinding;
+    }
   | { readonly ready: false; readonly missing: readonly string[] };
 
 /** Resolve whether the source wiki + localized bible are ready for a unit, and
@@ -51,6 +57,9 @@ export interface DraftPort {
     readonly scene: WorkflowScene;
     readonly mode: DraftMode;
     readonly bibleRenderingIdsByUnit: ReadonlyMap<string, readonly string[]>;
+    /** Present on the ground-truth path; retained through draft/review so a
+     * later bible edit can reflow only the consumers that cited it. */
+    readonly bibleBindingsByUnit?: ReadonlyMap<string, UnitBibleBinding>;
   }): Promise<DraftedScene>;
 }
 

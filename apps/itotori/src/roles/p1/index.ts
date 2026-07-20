@@ -35,6 +35,7 @@ export {
   localizeScene,
   LocalizeError,
   type LocalizeSceneInput,
+  type P1UnitBible,
   type PriorAcceptedTarget,
   type SceneLocalization,
 } from "./localizer.js";

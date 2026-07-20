@@ -19,6 +19,7 @@ import { canonicalJson, sha256 } from "../../llm/canonical-json.js";
 import { deepSeekV4FlashProfile } from "../../llm/role-model-profiles.js";
 import { dispatch, type DispatchRuntime } from "../../llm/dispatch.js";
 import type { Specialist } from "../../roster/index.js";
+import type { LocalizedRendering } from "../../contracts/index.js";
 import type { LocalizationSegment, SkeletonUnit } from "./plan.js";
 
 type ConversationMessage = CallSpec["messages"][number];
@@ -35,6 +36,8 @@ export interface BuildLocalizerCallInput {
   readonly unitsById: ReadonlyMap<string, SkeletonUnit>;
   /** Localized-bible rendering ids the drafts cite (wiki-first basis). */
   readonly bibleRenderingIds: readonly string[];
+  /** Exact installed entries, keyed by unit, supplied by ground-truth readiness. */
+  readonly unitBibleById?: ReadonlyMap<string, readonly LocalizedRendering[]>;
   /** Accepted target of prior units in the scene thread, keyed by unit id. */
   readonly priorAcceptedTarget: ReadonlyMap<string, string>;
   readonly contextSnapshotId: `sha256:${string}`;
@@ -106,6 +109,18 @@ function buildMessages(input: BuildLocalizerCallInput): readonly DraftableMessag
       kind: "localizer-seed",
       scope: input.segment,
       bibleRenderingIds: input.bibleRenderingIds,
+      ...(input.unitBibleById === undefined
+        ? {}
+        : {
+            unitBible: promptUnitIds(input.segment).map((unitId) => ({
+              unitId,
+              renderings: input.unitBibleById!.get(unitId)!.map((rendering) => ({
+                renderingId: rendering.renderingId,
+                version: rendering.version,
+                body: rendering.body,
+              })),
+            })),
+          }),
       localizationSnapshotId: input.localizationSnapshotId,
       skeletons,
     }),

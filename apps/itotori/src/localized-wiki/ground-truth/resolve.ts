@@ -14,6 +14,7 @@ import { llmSha256, type LlmWikiDependency, type LlmWikiScope } from "@itotori/d
 import type { FactSnapshot, OrderedUnitFact } from "../../prepass/index.js";
 import { deriveUnitRequirements, type RequirementOptions } from "./requirements.js";
 import { MissingBibleEntryError, type InstalledBible, type UnitBibleBinding } from "./types.js";
+import type { LocalizedRendering } from "../../contracts/index.js";
 
 /** Normalize a unit's decode route scope to the persisted dependency scope. */
 function toWikiScope(scope: OrderedUnitFact["routeScope"]): LlmWikiScope {
@@ -40,6 +41,7 @@ export function resolveUnitBibleGroundTruth(
   const playOrder = unit.playReveal.playOrderIndex;
 
   const dependencyByRendering = new Map<string, LlmWikiDependency>();
+  const renderingById = new Map<string, LocalizedRendering>();
   for (const entry of required) {
     const rendering = bible.lookup(entry);
     if (rendering === undefined) {
@@ -58,9 +60,11 @@ export function resolveUnitBibleGroundTruth(
       fromPlayOrder: playOrder,
       throughPlayOrder: playOrder,
     });
+    renderingById.set(rendering.renderingId, rendering);
   }
 
   const bibleRenderingIds = [...dependencyByRendering.keys()].sort(compareStrings);
+  const renderings = bibleRenderingIds.map((id) => renderingById.get(id)!);
   const dependencies = bibleRenderingIds.map((id) => dependencyByRendering.get(id)!);
 
   return {
@@ -69,8 +73,15 @@ export function resolveUnitBibleGroundTruth(
     downstreamVersionId: `translation:${unit.factId}:v1`,
     downstreamVersion: 1,
     bibleRenderingIds,
+    renderings,
     dependencies,
-    boundHash: llmSha256({ unitId: unit.factId, bibleRenderingIds }),
+    boundHash: llmSha256({
+      unitId: unit.factId,
+      renderings: renderings.map((rendering) => ({
+        renderingId: rendering.renderingId,
+        version: rendering.version,
+      })),
+    }),
   };
 }
 
