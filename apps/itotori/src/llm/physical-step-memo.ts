@@ -128,11 +128,15 @@ export function memoizePhysicalSteps(
             await injectLlmDurabilityFault(runtime.durabilityFaults, "before-dispatch");
             await collectStreamChunks(outbound(control.signal), control, chunks);
             const runError = chunks.findLast((chunk) => chunk.type === EventType.RUN_ERROR);
-            // A RUN_ERROR chunk is the adapter reporting that the model stream
-            // itself failed — classify it in the stream phase so a transient
-            // drop after a good response header is retried, not aborted.
-            const failure = runError ? control.failure(runError, "stream") : null;
-            if (runError && failure) return incompleteStep(chunks, failure);
+            // The adapter discards finish/usage data on its RUN_ERROR path, so
+            // it cannot distinguish a mid-stream drop from a completed response
+            // whose response was lost. Treat that ambiguity as terminal and
+            // billing-unknown; only a raw transport exception reaches the catch
+            // below during the retryable stream phase.
+            const failure = runError
+              ? (control.failure(runError, "completion") ?? permanentAttemptFailure())
+              : null;
+            if (failure) return incompleteStep(chunks, failure);
             streamPhase = false;
             await injectLlmDurabilityFault(runtime.durabilityFaults, "after-remote-response");
             return completedStreamStep(spec, identity, chunks, attempt, parentResponseEventId, {
@@ -211,9 +215,7 @@ export function memoizePhysicalSteps(
                 : {}),
             });
           } catch (error: unknown) {
-            // A structured result is delivered only after the response is fully
-            // collected, so a failure after a good header may already be billed.
-            const failure = control.failure(error, "completion") ?? permanentAttemptFailure();
+            const failure = control.failure(error) ?? permanentAttemptFailure();
             return {
               kind: "incomplete",
               responseJson: null,

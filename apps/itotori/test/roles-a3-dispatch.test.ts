@@ -35,10 +35,7 @@ import {
 import { deepSeekV4FlashProfile } from "../src/llm/role-model-profiles.js";
 import type { MeasuredModelProfile } from "../src/llm/physical-attempt-policy.js";
 import { buildClaimFixture } from "./support/claim-fixture.js";
-import {
-  midStreamDropProviderResponse,
-  structuredProviderResponse,
-} from "./llm-step-test-support.js";
+import { rawTransportDropError, structuredProviderResponse } from "./llm-step-test-support.js";
 
 /** A measured profile whose identity matches the certified A3 reasoning route,
  * so the memo boundary accepts the A3 call spec. */
@@ -51,6 +48,7 @@ const A3_PROFILE: MeasuredModelProfile = {
 
 const HASH_A = `sha256:${"a".repeat(64)}` as const;
 const HASH_B = `sha256:${"b".repeat(64)}` as const;
+type ProviderResponse = Response | Error;
 
 const CONTEXT: A3Context = {
   runMode: "test-dev",
@@ -102,7 +100,7 @@ class MemoryMemoStore implements LlmCallMemoStore {
   }
 }
 
-function runtime(responses: Response[], onFetch?: () => void): DispatchRuntime {
+function runtime(responses: ProviderResponse[], onFetch?: () => void): DispatchRuntime {
   return {
     env: {
       OPENROUTER_API_KEY: "test-key",
@@ -134,6 +132,7 @@ function runtime(responses: Response[], onFetch?: () => void): DispatchRuntime {
       onFetch?.();
       const response = responses.shift();
       if (!response) throw new Error("unexpected extra provider request");
+      if (response instanceof Error) throw response;
       return response;
     },
   };
@@ -281,17 +280,16 @@ describe("A3 dispatches through the sole ZDR boundary", () => {
     ]);
   });
 
-  it("PROOF: a transient mid-stream transport drop is retried so the A3 caller still gets its narrative", async () => {
-    // The live whole-game wiki build died on a single transient transport blip
-    // (A3 dispatch-failed: transport). A 200 header followed by a mid-stream
-    // drop must now be retried under the bounded budget rather than aborting the
-    // scene-summary dispatch — the build proceeds.
+  it("PROOF: raw transport exceptions are retried so the A3 caller still gets its narrative", async () => {
+    // A raw connection reset reaches the streaming execute catch before the
+    // adapter can report RUN_ERROR, so retrying the scene-summary dispatch is
+    // safe and the whole-game build proceeds.
     const { model, request } = sceneRequest();
     let fetches = 0;
     const configured = runtime(
       [
-        midStreamDropProviderResponse(),
-        midStreamDropProviderResponse(),
+        rawTransportDropError(),
+        rawTransportDropError(),
         structuredProviderResponse(recordedSummary(model, request)),
         structuredProviderResponse(recordedStory(model, request)),
       ],
@@ -303,7 +301,7 @@ describe("A3 dispatches through the sole ZDR boundary", () => {
     const narrative = await caller(request);
     expect(narrative.beat).toBe("けいこは決断する。");
     expect(narrative.storySummary).toBe("シーン1までの物語。");
-    // Two retried summary drops + one summary success + one story success.
+    // Two retried raw transport failures + one summary success + one story success.
     expect(fetches).toBe(4);
   });
 
