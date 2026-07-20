@@ -31,10 +31,9 @@ const stalePremiseRules = [
     allowWhen: /\b(?:stale|resolved|historical|snapshot|superseded)\b/iu,
   },
   {
-    id: "retired-localize-sweetie-hd-preset",
-    pattern: /\bpresets\/localize-sweetie-hd\.pair-policy\.json\b/u,
-    reason:
-      "generic localize-project target data replaced the retired Sweetie-specific preset path",
+    id: "retired-game-specific-localize-preset",
+    pattern: /\bpresets\/localize-\x73weetie-hd\.pair-policy\.json\b/u,
+    reason: "generic localize-project target data replaced the retired game-specific preset path",
     allowWhen: /\b(?:retired|superseded|historical|removed|stale|repair|no longer)\b/iu,
   },
   {

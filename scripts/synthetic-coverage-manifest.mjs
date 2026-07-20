@@ -47,7 +47,7 @@ export const SOURCE_FILES = {
   realliveCatalog: {
     path: "crates/utsushi-reallive/src/rlop/module_catalog.rs",
     symbols: ["REAL_CATALOG", "family_for"],
-    role: "utsushi RealLive module_catalog: the union of every (module_id, opcode) observed as an unresolved command across ALL scenes of both proven corpora (Sweetie HD + Kanon), evidence-first (no speculative opcodes).",
+    role: "utsushi RealLive module_catalog: the union of every (module_id, opcode) observed as an unresolved command across ALL scenes of both proven RealLive corpora, evidence-first (no speculative opcodes).",
   },
   realliveOpcode: {
     path: "crates/kaifuu-reallive/src/opcode.rs",
@@ -72,7 +72,7 @@ export const SOURCE_FILES = {
   realliveDecoderParity: {
     path: "crates/utsushi-reallive/tests/decoder_parity_real_bytes.rs",
     symbols: ["expected_populated"],
-    role: "utsushi RealLive decoder-parity set: the populated-scene counts per staged corpus the full-module linear-walk replay must decode (Sweetie HD 198, Kanon 79).",
+    role: "utsushi RealLive decoder-parity set: the populated-scene counts per staged corpus the full-module linear-walk replay must decode (198 for the xor2 corpus, 79 for the plaintext corpus).",
   },
   rpgMakerCodes: {
     path: "crates/kaifuu-rpgmaker/src/codes.rs",
@@ -440,7 +440,7 @@ export function buildManifest(sources) {
     engineFamilies: {
       reallive: {
         description:
-          "RealLive (kaifuu decompiler + utsushi renderer). Proven corpora: Oshioki Sweetie HD (compiler 110002, use_xor_2) + Kanon (10002, plaintext).",
+          "RealLive (kaifuu decompiler + utsushi renderer). Proven corpora: compiler 110002 (use_xor_2) + compiler 10002 (plaintext).",
         componentGroups: {
           opcode_tuple: group("realliveCatalog", "extracted", opcodeTuples),
           element_form: group("realliveOpcode", "extracted", elementForms),

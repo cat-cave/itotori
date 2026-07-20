@@ -20,7 +20,7 @@ function presentProbe(overrides = {}) {
   return {
     corpora: [
       {
-        id: "sweetie-reallive",
+        id: "reallive-alpha-corpus",
         rootPresent: true,
         hashListPresent: true,
         contentAddressExpected: "a".repeat(64),
@@ -46,7 +46,7 @@ test("gate passes only when required bytes are present, content-addressed, and Z
 test("a MISSING required corpus FAILS the gate (fail, not skip)", () => {
   const result = evaluateProofGate(presentProbe({ corpus: { rootPresent: false } }));
   assert.equal(result.ok, false);
-  const f = result.failures.find((x) => x.id === "sweetie-reallive");
+  const f = result.failures.find((x) => x.id === "reallive-alpha-corpus");
   assert.equal(f.kind, "missing-required-bytes");
   assert.match(f.reason, /not skip/);
 });
@@ -119,7 +119,7 @@ test("a well-formed evidence manifest is content-free and correctly shaped", () 
     zdrProfile: APPROVED_ZDR_PROFILE,
     corpora: [
       {
-        id: "sweetie-reallive",
+        id: "reallive-alpha-corpus",
         contentAddress: "a".repeat(64),
         rawFileCount: 129,
         byteCount: 4000000,
@@ -161,7 +161,12 @@ test("buildEvidenceManifest drops any extra stage keys (only counts/hash/exec su
     generatedAt: "2026-07-20T00:00:00.000Z",
     zdrProfile: APPROVED_ZDR_PROFILE,
     corpora: [
-      { id: "sweetie-reallive", contentAddress: "a".repeat(64), rawFileCount: 1, byteCount: 1 },
+      {
+        id: "reallive-alpha-corpus",
+        contentAddress: "a".repeat(64),
+        rawFileCount: 1,
+        byteCount: 1,
+      },
     ],
     stages: {
       extract: {
