@@ -275,9 +275,9 @@ export function affectedCiLanes(changedPaths, options = {}) {
   //     fixtures/kaifuu/kirikiri/plain.xp3, the encrypted-matrix trees, the
   //     hello-game); those assertions run only under `cargo test` (fixtures-
   //     validate + `cargo check` never execute them).
-  //   * ci-itotori: ~18 apps/itotori/test/*.test.ts files byte-assert repo-root
-  //     fixtures/** via ../../../fixtures/ (cli, ingest-conformance, provider-
-  //     proof, benchmark-harness, ...); those run only under `pnpm --filter
+  //   * ci-itotori: app test files byte-assert repo-root fixtures/** via
+  //     ../../../fixtures/ (CLI and ingest conformance, among others); those
+  //     run only under `pnpm --filter
   //     @itotori/app test` (the ci-itotori lane), NOT under `just check`.
   // A fixture-byte change diverging from either expectation would ship UNCAUGHT,
   // so route repo-root fixtures to the rust gates (which drive the synthetic +

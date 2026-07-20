@@ -838,10 +838,6 @@
       "itotori-074",
       "itotori-078"
     ],
-    "packages/localization-bridge-schema/src/raw-mtl-baseline-proof.ts": [
-      "itotori-116",
-      "itotori-117"
-    ],
     "packages/localization-bridge-schema/src/speaker-label.ts": [
       "itotori-017"
     ],

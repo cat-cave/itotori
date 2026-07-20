@@ -17,8 +17,6 @@ const REQUIRED_RESPONSE_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, readonl
   "projects.cost": ["recentRuns"],
   "projects.costDrilldown": ["rows"],
   "projects.benchmarks": ["reports"],
-  "projects.bmkCockpit": ["contestants", "humanAnchor", "confidence"],
-  "projects.bmkCockpitHistory": ["rows"],
   "jobs.runTable": ["rows"],
   "runtime.status": ["runtimeRunId", "traceEvents"],
   "assetDecisions.active": ["decisions"],

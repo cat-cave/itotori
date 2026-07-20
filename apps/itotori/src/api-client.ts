@@ -44,8 +44,6 @@ import type {
   ApiDashboardDecisionsResponse,
   ApiErrorResponse,
   ApiBenchmarkReportsResponse,
-  ApiBmkCockpitResponse,
-  ApiBmkCockpitHistoryResponse,
   ApiLaunchPassRequest,
   ApiLaunchPassResponse,
   ApiPlayRouteMapResponse,
@@ -216,14 +214,6 @@ interface ItotoriApiRouteTypeMap {
   "projects.benchmarks": {
     response: ApiBenchmarkReportsResponse;
     collectionKey: "reports";
-  };
-  "projects.bmkCockpit": {
-    response: ApiBmkCockpitResponse;
-    pathParams: { projectId: string };
-  };
-  "projects.bmkCockpitHistory": {
-    response: ApiBmkCockpitHistoryResponse;
-    pathParams: { projectId: string };
   };
   "jobs.runTable": {
     response: ApiJobsRunTableResponse;

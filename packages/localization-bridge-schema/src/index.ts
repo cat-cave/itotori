@@ -13,7 +13,6 @@ export * from "./patch-export-bundle.js";
 export * from "./asset-localization-draft.js";
 export * from "./agentic-loop-bundle.js";
 export * from "./pair-policy.v0.3.js";
-export * from "./raw-mtl-baseline-proof.js";
 export * from "./bridge-surface-normalization.js";
 
 export type Uuid7 = string;
@@ -1717,8 +1716,8 @@ export type BenchmarkReportV02 = {
 // documented in `docs/itotori-translation-benchmark-methodology.md` §2. This
 // is the human-scored VIEW of the `itotori-lqa-1` taxonomy, NOT a rival
 // vocabulary: every rubric dimension maps onto an itotori-lqa-1 category and
-// every rubric score maps onto an MQM severity, so blind-judge-panel scores,
-// deterministic findings, and QA-agent findings share one vocabulary.
+// every rubric score maps onto an MQM severity, so external quality scores,
+// deterministic findings, and review findings share one vocabulary.
 //
 // Conformance rule (§2): this artifact MIRRORS §2 exactly — dimensions (§2.2),
 // the 0–4 anchored scale (§2.1), and the scale→MQM-severity mapping (§2.1). It

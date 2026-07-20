@@ -1,6 +1,6 @@
 {
-  "description": "Post-cutover deletion ledger. The retired application groups have zero remaining tracked LOC; the retained LLM boundary is checked for legacy imports.",
-  "version": 2,
+  "description": "Post-cutover deletion ledger. The retired application groups, cockpit read model, proof wire contract, calibration generator, and benchmark/experiment fixtures have zero remaining tracked LOC; the retained LLM boundary is checked for legacy imports.",
+  "version": 3,
   "contractualTotalLines": 0,
   "delete": {
     "appSurface": [
@@ -54,6 +54,43 @@
           "apps/itotori/src/raw-mtl-baseline-proof/"
         ],
         "extensions": [".ts", ".tsx"],
+        "lines": 0,
+        "expected": "absent"
+      },
+      {
+        "id": "benchmark-cockpit-read-model",
+        "kind": "files",
+        "files": [
+          "apps/itotori/src/bmk-cockpit-read-model.ts",
+          "packages/itotori-db/src/repositories/benchmark-run-repository.ts",
+          "packages/itotori-ds/src/components/data/ContestantSwatch.tsx",
+          "packages/itotori-ds/src/components/data/ContestantSwatch.css",
+          "packages/itotori-ds/src/stories/ContestantSwatch.stories.tsx",
+          "packages/itotori-ds/test/visual-baselines/data-contestantswatch--all-roles.png",
+          "packages/itotori-ds/test/visual-baselines/data-contestantswatch--default.png"
+        ],
+        "lines": 0,
+        "expected": "absent"
+      },
+      {
+        "id": "raw-mtl-proof-wire-contract",
+        "kind": "files",
+        "files": ["packages/localization-bridge-schema/src/raw-mtl-baseline-proof.ts"],
+        "lines": 0,
+        "expected": "absent"
+      },
+      {
+        "id": "qa-calibration-bundle-generator",
+        "kind": "files",
+        "files": ["scripts/generate-qa-calibration-bundles.mjs"],
+        "lines": 0,
+        "expected": "absent"
+      },
+      {
+        "id": "benchmark-experiment-fixtures",
+        "kind": "globs",
+        "roots": ["fixtures/benchmark-stages/", "fixtures/itotori-experiment-report/"],
+        "extensions": [".json"],
         "lines": 0,
         "expected": "absent"
       }

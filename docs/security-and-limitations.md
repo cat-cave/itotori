@@ -27,8 +27,7 @@ Real game bytes are never copied into the repo or mutated in place.
   `.env.*` with `.env.example` exceptions).
 - Privacy relies on **OpenRouter account-wide Zero-Data-Retention**. A live run
   is fail-closed: the `OpenRouterModelProvider` constructor requires
-  `OPENROUTER_ZDR_ACCOUNT_ASSERTED=1`, and the `localize-project` /
-  `provider-proof --live` paths require an explicit exported
+  `OPENROUTER_ZDR_ACCOUNT_ASSERTED=1`, and live dispatch requires an explicit exported
   `OPENROUTER_API_KEY`. Without both, the driver fails loudly rather than
   downgrading to a recorded provider. Every model invocation declares an
   explicit `(modelId, providerId)` pair — no defaulting.
@@ -92,9 +91,8 @@ localization project**, not a finished product.
   capability breadth ([`alpha-readiness.md`](alpha-readiness.md) §3).
 - **Linux-only runtime.** The `utsushi-reallive` replay path targets Linux; there
   is no Wine or Windows-helper fallback.
-- **Live provider proof is opt-in.** CI proves the recorded path deterministically;
-  real ZDR calls (`--live`, `alpha-006d`, `agentic-repair-live`) run only when a
-  human opts in with credentials.
+- **Live dispatch is opt-in.** CI remains deterministic; real ZDR calls run
+  only when a human opts in with credentials.
 
 ## 5. What the alpha gate does NOT claim
 

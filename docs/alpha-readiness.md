@@ -148,7 +148,7 @@ The SHARED-025 alpha proof manifest
 ([`../fixtures/alpha-vertical-proof/hello-game-alpha-proof-v0.2.fr-FR.json`](../fixtures/alpha-vertical-proof/hello-game-alpha-proof-v0.2.fr-FR.json))
 records, for one source revision, a `patch_result` artifact ref **and** a
 `runtime_report` artifact ref that observes the SAME `sourceBridgeId` /
-`sourceBundleHash`, plus provider-proof and benchmark ids — the patched-output
+`sourceBundleHash`, plus the relevant artifact-lineage ids — the patched-output
 runtime proof consumes a `PatchResult` and the SHARED-025 manifest ids rather
 than a static read. `just alpha-readiness-checklist` re-verifies every one of
 those artifact hashes against the committed fixtures and confirms the runtime
@@ -188,13 +188,11 @@ pnpm exec vp run kaifuu:encrypted-readiness -- --no-corpus
 
 ## 5. Required gates (CI + workflows)
 
-| gate                | command / workflow                                                                                                                                                                       | scope                                                                               |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| CI                  | `.github/workflows/pr-tiers.yml` → `_tier0.yml` / `_tier1.yml` (`just ci-tier*`)                                                                                                         | tiered TS + Rust + DB + browser + alpha + mutation gates.                           |
-| Alpha proof         | `_tier1.yml` `alpha` job → `just ci-tier1-alpha` → `just alpha-proof`                                                                                                                    | public-fixture vertical + independent linkage validator.                            |
-| Benchmark smoke     | ITOTORI-026 `benchmark-harness-run` (invoked inside `just alpha-proof`)                                                                                                                  | fresh benchmark report, cost read verbatim from recorded artifacts.                 |
-| Real-provider proof | `just provider-proof` / `just raw-mtl-baseline-proof` (recorded by default; `--live` + `ITOTORI_PROVIDER_PROOF_LIVE=1` opt-in) and the opt-in `alpha-006d` / `agentic-repair-live` tests | sanitized recorded proof always available; real ZDR calls opt-in only.              |
-| Readiness checklist | `just alpha-readiness-checklist` (in `just check`)                                                                                                                                       | docs-vs-generated-artifact drift + node refs + patched-output proof + demo command. |
+| gate                | command / workflow                                                               | scope                                                                               |
+| ------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| CI                  | `.github/workflows/pr-tiers.yml` → `_tier0.yml` / `_tier1.yml` (`just ci-tier*`) | tiered TS + Rust + DB + browser + alpha + mutation gates.                           |
+| Alpha proof         | `_tier1.yml` `alpha` job → `just ci-tier1-alpha` → `just alpha-proof`            | public-fixture vertical + independent linkage validator.                            |
+| Readiness checklist | `just alpha-readiness-checklist` (in `just check`)                               | docs-vs-generated-artifact drift + node refs + patched-output proof + demo command. |
 
 ## 6. Running the checklist
 

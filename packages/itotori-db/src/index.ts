@@ -812,22 +812,6 @@ export type {
   SelectedPatchExportUnit,
 } from "./repositories/localization-result-revision-repository.js";
 export {
-  BENCHMARK_RUN_DEFAULT_LIMIT,
-  BENCHMARK_RUN_MAX_LIMIT,
-  BenchmarkRunRepositoryError,
-  ItotoriBenchmarkRunRepository,
-  benchmarkRunKindValues,
-  benchmarkRunStatusValues,
-} from "./repositories/benchmark-run-repository.js";
-export type {
-  BenchmarkRunKind,
-  BenchmarkRunRecord,
-  BenchmarkRunStatus,
-  ItotoriBenchmarkRunRepositoryPort,
-  LoadBenchmarkRunsForProjectOptions,
-  RecordBenchmarkRunInput,
-} from "./repositories/benchmark-run-repository.js";
-export {
   authPermissionsManagePermission,
   ItotoriPrincipalRepository,
   ItotoriPrincipalRepositoryError,

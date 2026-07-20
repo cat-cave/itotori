@@ -102,14 +102,6 @@ const ALLOW_LIST = [
 // fabrication, cost-tier) still fires. A `.ts`/`.tsx` fixture is NEVER
 // eligible here — it can and must carry per-line markers instead.
 const COST_LITERAL_ALLOW = new Map([
-  [
-    "fixtures/benchmark-stages/public-fixture.json",
-    "deterministic public benchmark-stages fixture; synthetic recorded-run costs exercise the raw-MTL-vs-draft report",
-  ],
-  [
-    "fixtures/itotori-experiment-report/experiment-matrix-run-manifest.json",
-    "deterministic experiment-matrix run manifest fixture; synthetic per-cell costs exercise the experiment-report roll-up",
-  ],
   // Bridge-schema benchmark-report fixtures. These carry a synthetic estimated
   // `amountMicrosUsd` under an external-system `costKind: "provider_estimate"`
   // row: the benchmark subsystem compares third-party systems whose per-call

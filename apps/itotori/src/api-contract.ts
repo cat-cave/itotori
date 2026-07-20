@@ -353,41 +353,6 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       properties: { reports: arr },
       additionalProperties: false,
     }),
-  // itotori-bmk-cockpit-read-model — the benchmark cockpit read-model wire
-  // envelope. The deep body fields (contestants / humanAnchor / confidence /
-  // actionableBacklog) are typed objects — the schema pins the wire envelope
-  // (the top-level required keys + the schemaVersion const); the guarded
-  // runtime API asserts and re-projects the deep shape on the API boundary.
-  BmkCockpitReadModel: () =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.BmkCockpitReadModel,
-      properties: {
-        generatedAt: str,
-        projectId: str,
-        localeBranchId: { type: ["string", "null"] },
-        runId: str,
-        targetLocale: str,
-        kind: { enum: ["real_run", "fixture", "replay"] },
-        status: { enum: ["succeeded", "failed", "partial"] },
-        unitsScored: num,
-        recordedAt: str,
-        contestants: arr,
-        rankedRoles: arr,
-        humanAnchor: obj,
-        confidence: obj,
-        actionableBacklog: obj,
-        actionableBacklogSize: num,
-      },
-      additionalProperties: false,
-      schemaVersion: "itotori.bmk-cockpit.v0.1",
-    }),
-  // itotori-bmk-cockpit-history — paged run-history wire envelope.
-  BmkCockpitRunHistoryPage: () =>
-    object({
-      required: ITOTORI_STRICT_API_BODY_KEYS.BmkCockpitRunHistoryPage,
-      properties: { filter: obj, pagination: obj, rows: arr },
-      additionalProperties: false,
-    }),
   RuntimeDashboardStatus: () =>
     object({
       required: [

@@ -260,7 +260,7 @@ test("allows higher-level two-argument agent invoke calls", () => {
     "await set.styleAdherence.invoke(actor, withVersion(input));",
   ].join("\n");
 
-  assert.deepEqual(findViolations("apps/itotori/src/qa/regrade-loop.ts", source), []);
+  assert.deepEqual(findViolations("apps/itotori/src/roles/q1/reviewer.ts", source), []);
 });
 
 test("does not trust decorator filenames to exempt raw provider dispatch", () => {

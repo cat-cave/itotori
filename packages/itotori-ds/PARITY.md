@@ -37,7 +37,7 @@ places that need a future live DesignSync audit.
   host owns frames, runtime state, and navigation behavior.
 - `WikiEntry`: reusable profile shell for character/term/scene/source-unit
   wiki entries; host owns read-model content and addressable links.
-- `Toast`, `ContestantSwatch`, and `RedactionFrame`: shipped support primitives
+- `Toast` and `RedactionFrame`: shipped support primitives
   required by current Studio surfaces.
 
 ## Surface consumption

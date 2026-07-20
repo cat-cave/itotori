@@ -85,12 +85,10 @@ The marker requires a non-empty token after `allow` (the convention is the
 literal `domain-role` tag plus a short reason); a bare `// authz-guard:allow`
 does NOT exempt. It is **expression-narrow**: it exempts only the flagged line
 (inline trailing marker) or the single code line immediately below a contiguous
-`//`-comment block — never a whole file or region. The two current domain-role
-exemptions branch on non-auth values (`role === "draft"` /
-`role === "official_translation"`) so they already pass on value; the marker
-documents that intent: a provider-proof stage role
-(`apps/itotori/src/provider-proof/harness.ts`) and a DLsite translation-source
-role (`packages/itotori-db/src/services/catalog-recorded-importers.ts`).
+`//`-comment block — never a whole file or region. The current domain-role
+exemption branches on the non-auth value `role === "official_translation"` and
+already passes on value; the marker documents that translation-source intent
+(`packages/itotori-db/src/services/catalog-recorded-importers.ts`).
 
 The guard runs in `just check` (which `just ci` depends on), next to the
 `audit-no-hardcoded-cost` and `audit-strictness` guards, and has a companion

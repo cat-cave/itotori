@@ -13,7 +13,6 @@ already existed in `tokens/*.css` and was verified by this node.
 | ----------------------------- | ------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | Cost / spend semantics        | added   | `--ito-cost-billed-ink`, `--ito-cost-zero-muted`, `--ito-cost-unknown-*`   | Overview cost band, pass-ledger spend cells, StatReadout cost readouts. |
 | ZDR / privacy posture         | added   | `--ito-privacy-ok-*`                                                       | Persistent status bar and model/provider privacy posture badges.        |
-| Benchmark contestant tiers    | present | `--ito-contestant-{official,self,self-nocontext,fan,mtl}`                  | Benchmark/confidence contestant swatches.                               |
 | Frame / render overlay        | added   | `--ito-render-*`                                                           | ScenePlayer textbox and nameplate over game frames.                     |
 | Redaction state               | present | `--ito-redact-*`                                                           | Runtime-evidence frames and shared screenshots.                         |
 | Annotation severity scale     | present | `--ito-severity-{blocker,critical,warning,note}` plus bg/border companions | AnnotationComposer and QA finding rows.                                 |

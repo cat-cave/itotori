@@ -76,7 +76,7 @@ external credibility (byproduct) honestly.
 
 _(Aligns build-out node: `benchmark-quality-rubric`.)_
 
-The rubric is what the blind judge panel (§4) scores against. Each dimension
+The rubric is what the retired blind-judge proposal (§4) scored against. Each dimension
 has explicit criteria and objective anchors so judges score DEFENSIBLY and so
 runs are comparable over time. Dimensions map onto the existing MQM-derived
 `itotori-lqa-1` taxonomy categories (`docs/localization-quality-taxonomy.json`)
@@ -192,9 +192,11 @@ keep, and only as a tripwire, never as a ranking.
 
 ---
 
-## 4. Blind judge panel protocol
+## 4. Retired blind-judge protocol (historical)
 
-_(Aligns build-out node: `benchmark-blind-judge-panel`.)_
+> Historical design only. The live blind-judge implementation was retired; the
+> current acceptance surface is the deterministic scorecard plus frozen human
+> calibration labels.
 
 The subjective scoring layer: multiple LLM judges, blind, cross-family,
 producing rubric scores WITH cited reasoning.
@@ -538,20 +540,19 @@ Each benchmark build-out node's acceptance criteria must conform to the
 referenced section. Builders align to these; deviation is a methodology change
 (raise it, do not silently implement).
 
-| Build-out node                              | Methodology section(s)                                 |
-| ------------------------------------------- | ------------------------------------------------------ |
-| `benchmark-quality-rubric`                  | §2 (dimensions, anchors, 0–4 scale)                    |
-| `benchmark-deterministic-metric-suite`      | §3 (metric table + computations)                       |
-| `benchmark-blind-judge-panel`               | §4 (composition, blinding, output contract, agreement) |
-| `benchmark-decoded-context-feed`            | §5 (equal context + anti-circularity boundary)         |
-| `benchmark-contestant-harness`              | §6 (contestant set, ablation, pro-as-contestant)       |
-| `benchmark-corpus-kanon-triple-tier`        | §7 (held-out split) + §11.2 (Kanon starter)            |
-| `benchmark-human-calibration-anchors`       | §8 (human anchor + calibration report)                 |
-| `benchmark-meta-validity-harness`           | §9 (sensitivity / robustness / calibration)            |
-| `benchmark-actionable-backlog-output`       | §10 (schema, ranking, DAG emission, telemetry)         |
-| `benchmark-cost-latency-dims`               | §11.1 (real `usage.cost` + latency)                    |
-| `benchmark-fan-corrected-calibration-cases` | §11.2 (Chaos;Head NOAH / Steins;Gate crucible)         |
-| `nexas-engine-support`                      | §11.2 (Majikoi gated on NeXAS; benchmark not blocked)  |
+| Build-out node                              | Methodology section(s)                                |
+| ------------------------------------------- | ----------------------------------------------------- |
+| `benchmark-quality-rubric`                  | §2 (dimensions, anchors, 0–4 scale)                   |
+| `benchmark-deterministic-metric-suite`      | §3 (metric table + computations)                      |
+| `benchmark-decoded-context-feed`            | §5 (equal context + anti-circularity boundary)        |
+| `benchmark-contestant-harness`              | §6 (contestant set, ablation, pro-as-contestant)      |
+| `benchmark-corpus-kanon-triple-tier`        | §7 (held-out split) + §11.2 (Kanon starter)           |
+| `benchmark-human-calibration-anchors`       | §8 (human anchor + calibration report)                |
+| `benchmark-meta-validity-harness`           | §9 (sensitivity / robustness / calibration)           |
+| `benchmark-actionable-backlog-output`       | §10 (schema, ranking, DAG emission, telemetry)        |
+| `benchmark-cost-latency-dims`               | §11.1 (real `usage.cost` + latency)                   |
+| `benchmark-fan-corrected-calibration-cases` | §11.2 (Chaos;Head NOAH / Steins;Gate crucible)        |
+| `nexas-engine-support`                      | §11.2 (Majikoi gated on NeXAS; benchmark not blocked) |
 
 ## Appendix B — related artifacts
 
