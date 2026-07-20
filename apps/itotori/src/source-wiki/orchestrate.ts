@@ -18,7 +18,7 @@
 
 import { mapWithConcurrency } from "./concurrency.js";
 import { buildSourceWikiPlan } from "./plan.js";
-import { acceptObject } from "./accept.js";
+import { acceptObject, artifactKeyOf, isRecoverablyUncitable } from "./accept.js";
 import { assertContextRosterForRunMode, selectSourceWikiRoles } from "./roster-selection.js";
 import { WHOLE_GAME_CONTEXT_SCOPE } from "./types.js";
 import type {
@@ -41,6 +41,11 @@ export interface SourceWikiObserver {
   onItemEnd?(item: WorkItem): void;
   onStepProduced?(step: WorkStep, keys: readonly ArtifactKey[]): void;
   onStepSkipped?(step: WorkStep): void;
+  /** A best-effort analyst object whose model claims were ALL repaired away, so
+   * it carries no cited claim even after the retry budget. It is skipped (never
+   * committed empty) and the fold continues — one uncitable scene does not abort
+   * the whole-game build. */
+  onObjectUncitable?(step: WorkStep, key: ArtifactKey, attempts: number): void;
 }
 
 export interface OrchestrateSourceWikiDeps {
@@ -72,6 +77,16 @@ export interface PhaseReport {
   readonly skippedStepCount: number;
 }
 
+/** One object skipped because it stayed uncitable across the retry budget: its
+ * target key, the role/step that produced it, and how many attempts were made.
+ * The bible simply carries no such object — an acceptable, LOGGED gap. */
+export interface UncitableObjectReport {
+  readonly stepId: string;
+  readonly role: RoleId;
+  readonly key: ArtifactKey;
+  readonly attempts: number;
+}
+
 /** The run report: the selected roster, the whole-game stamp, per-phase tallies,
  * and the produced/skipped key sets (the recovery evidence). */
 export interface SourceWikiRunReport {
@@ -80,12 +95,16 @@ export interface SourceWikiRunReport {
   readonly phases: readonly PhaseReport[];
   readonly producedKeys: readonly ArtifactKey[];
   readonly skippedKeys: readonly ArtifactKey[];
+  /** Objects skipped as persistently uncitable — the structured diagnostic for
+   * scenes/characters the analyst could not cite even after retries. */
+  readonly uncitableObjects: readonly UncitableObjectReport[];
 }
 
 interface Mutable {
   readonly existing: Set<ArtifactKey>;
   readonly produced: ArtifactKey[];
   readonly skipped: ArtifactKey[];
+  readonly uncitable: UncitableObjectReport[];
 }
 
 /** Run one serial step: skip it if all its targets already exist, else invoke the
@@ -109,6 +128,11 @@ async function runStep(
     throw new Error(`source-Wiki maxAttempts must be a positive integer, got ${maxAttempts}`);
   }
   const accepted = new Map<ArtifactKey, WikiObject>();
+  // Targets whose produced object was on-target but carried no cited claim (its
+  // model citations were all repaired away). Retained across attempts so a fresh
+  // draft that DOES cite on a later attempt wins; if none does, these are skipped
+  // — never committed, never fatal.
+  const uncitable = new Set<ArtifactKey>();
   let unmet = step.targets;
   let lastFailure: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -122,7 +146,22 @@ async function runStep(
         priorObjects,
       });
       for (const object of produced) {
-        accepted.set(acceptObject(object, step.targets, stamp), object);
+        try {
+          accepted.set(acceptObject(object, step.targets, stamp), object);
+        } catch (error) {
+          // A best-effort analyst NARRATIVE object whose model claims were all
+          // repaired away is uncitable — a recoverable per-object outcome, not a
+          // control-flow bug. Remember its target and keep processing siblings (a
+          // cited story-so-far in the same step is still accepted); a later attempt
+          // may cite it. Any OTHER rejection (off-target, wrong run-mode, a
+          // structural kind that must carry claims) stays fatal.
+          const key = artifactKeyOf(object);
+          if (isRecoverablyUncitable(object, error) && step.targets.some((t) => t.key === key)) {
+            uncitable.add(key);
+            continue;
+          }
+          throw error;
+        }
       }
       unmet = step.targets.filter((target) => !accepted.has(target.key));
       if (unmet.length === 0) break;
@@ -134,13 +173,30 @@ async function runStep(
       lastFailure = error;
     }
   }
+  unmet = step.targets.filter((target) => !accepted.has(target.key));
   if (unmet.length > 0) {
-    if (lastFailure !== undefined) throw lastFailure;
-    throw new Error(
-      `role ${step.role} step ${step.stepId} did not produce its assigned targets after ${maxAttempts} attempts: ${unmet
-        .map((target) => target.key)
-        .join(", ")}`,
-    );
+    // Split the unmet targets: a target that was PERSISTENTLY uncitable across the
+    // budget is skipped-with-diagnostic; anything else (never produced, or a fatal
+    // rejection captured in lastFailure) still fails loud — target completeness and
+    // every non-`not-cited` invariant are unweakened.
+    const fatal = unmet.filter((target) => !uncitable.has(target.key));
+    if (fatal.length > 0) {
+      if (lastFailure !== undefined) throw lastFailure;
+      throw new Error(
+        `role ${step.role} step ${step.stepId} did not produce its assigned targets after ${maxAttempts} attempts: ${fatal
+          .map((target) => target.key)
+          .join(", ")}`,
+      );
+    }
+    for (const target of unmet) {
+      state.uncitable.push({
+        stepId: step.stepId,
+        role: step.role,
+        key: target.key,
+        attempts: maxAttempts,
+      });
+      deps.observer?.onObjectUncitable?.(step, target.key, maxAttempts);
+    }
   }
   await deps.ledger.record([...accepted.values()]);
   const keys = [...accepted.keys()];
@@ -212,6 +268,7 @@ export async function orchestrateSourceWiki(
     existing: new Set(await deps.ledger.existingKeys()),
     produced: [],
     skipped: [],
+    uncitable: [],
   };
   const phases: PhaseReport[] = [];
   for (const phase of plan.phases) {
@@ -224,6 +281,7 @@ export async function orchestrateSourceWiki(
     phases,
     producedKeys: state.produced,
     skippedKeys: state.skipped,
+    uncitableObjects: state.uncitable,
   };
 }
 

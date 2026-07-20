@@ -229,6 +229,7 @@ describe("gateway entrypoints", () => {
       phases: [],
       producedKeys: ["source:1"],
       skippedKeys: [],
+      uncitableObjects: [],
     });
     const list = vi.fn().mockResolvedValue({ sourceObjects: [], renderings: [] });
     const load = vi.fn().mockResolvedValue({ patchVersionId: "patch:1" });

@@ -193,6 +193,15 @@ export async function runWikiCommand(
       })),
       producedKeyCount: report.producedKeys.length,
       skippedKeyCount: report.skippedKeys.length,
+      // Best-effort objects the analyst could not cite even after retries. The
+      // build completes without them (a logged gap), never aborting the run.
+      uncitableObjectCount: report.uncitableObjects.length,
+      uncitableObjects: report.uncitableObjects.map((entry) => ({
+        role: entry.role,
+        stepId: entry.stepId,
+        key: entry.key,
+        attempts: entry.attempts,
+      })),
     };
     const outputPath = optionalFlag(args, "--output");
     if (outputPath !== undefined) {
