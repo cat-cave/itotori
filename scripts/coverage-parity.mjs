@@ -105,7 +105,7 @@ export const INSTANTIATION_MAP = {
   siglus: {
     opcode: {
       file: "crates/kaifuu-siglus/tests/synthetic_siglus_opcode_coverage.rs",
-      test: "synthetic_corpus_instantiates_the_siglus_stub_opcode",
+      test: "synthetic_corpus_instantiates_every_siglus_opcode",
     },
   },
 };
@@ -154,18 +154,24 @@ export const REAL_ONLY_SURFACES = [
       "real-only.",
   },
   {
-    id: "siglus_real_opcode_catalogue",
+    id: "siglus_real_opcode_operand_semantics",
     family: "siglus",
-    surface: "Real Siglus scene-bytecode opcode semantics.",
+    surface:
+      "Real Siglus scene-bytecode operand SEMANTICS (expression trees, argument " +
+      "values, string references, control flow) and the runtime CD_COMMAND " +
+      "read-flag decision resolved by the stack VM.",
     why_real_only:
-      "The Siglus opcode catalogue is still a skeleton stub (only the Unknown " +
-      "catch-all exists); there is no real opcode catalogue to derive synthetic " +
-      "components from yet.",
+      "The STRUCTURAL opcode catalogue (command-code classification + exact " +
+      "operand-byte spans) is synthetically covered — the synthetic corpus " +
+      "instantiates every catalogued opcode through partition_scene. What only " +
+      "real scenes exercise is the downstream SEMANTIC decode of those operand " +
+      "bytes, which the skeleton partitioner does not yet perform.",
     logic_still_covered_by:
-      "The manifest records this family as status=stub_no_catalogue; the " +
-      "synthetic test instantiates the stub Unknown opcode. When the real " +
-      "catalogue lands, its opcodes must be added to the manifest and this " +
-      "entry removed.",
+      "The partitioner's structural logic (operand-width model, arg-list " +
+      "recursion, label-anchored CD_COMMAND tail disambiguation, Unknown " +
+      "reporting) is covered by the synthetic opcode-catalogue test and the " +
+      "kaifuu-siglus unit tests; only operand SEMANTICS are real-only until the " +
+      "downstream decoder lands.",
   },
 ];
 

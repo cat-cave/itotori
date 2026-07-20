@@ -18,9 +18,14 @@
 //! them into a full decode + sanitized report. The [`gameexe`] `Gameexe.dat`
 //! decode (outer header → optional exe-angou key → constant-256 Gameexe table →
 //! Siglus LZSS → UTF-16LE inventory) is likewise wired against the real format.
-//! The remaining core-stack entry points ([`compress`], [`opcode`],
-//! [`expression`], [`bridge`], [`patchback`]) are still typed stubs, alongside
-//! the narrow real [`known_key_smoke`] profile.
+//! The scene-bytecode [`opcode`] partitioner is likewise implemented and proven
+//! on real bytes: it parses the decompressed scene's `S_tnm_scn_header`, locates
+//! the `scn` instruction section, and walks it into a fully-covering,
+//! exactly-offset instruction stream + sanitized per-opcode histogram
+//! (structural partition only — operand *semantics* are decoded downstream). The
+//! remaining core-stack entry points ([`compress`], [`expression`], [`bridge`],
+//! [`patchback`]) are still typed stubs, alongside the narrow real
+//! [`known_key_smoke`] profile.
 //! The exe-angou / second-layer key is the **key-discovery layer's (siglus-04)
 //! deliverable**, now recovered natively in-process from `SiglusEngine.exe`
 //! bytes by [`exe_angou`] (a static PE opcode scan — no Wine, no execution); it
@@ -156,7 +161,10 @@ pub use known_key_smoke::{
     build_synthetic_scene_fixture, extract_gameexe, extract_scene, patch_and_verify_scene,
     patch_scene_unit, run_known_key_smoke_from_fixture,
 };
-pub use opcode::{SiglusOpcode, SiglusParseError, parse_scene_bytecode};
+pub use opcode::{
+    SCN_HEADER_BYTE_LEN, SCN_HEADER_DECLARED_SIZE, SiglusInstruction, SiglusOpcode,
+    SiglusOpcodeHistogram, SiglusParseError, SiglusScenePartition, partition_scene,
+};
 pub use patchback::bundle_driven::{
     PATCHBACK_ARCHIVE_PARSE_FAILURE_CODE, PATCHBACK_NOT_IMPLEMENTED_CODE,
     PATCHBACK_PROVENANCE_MISMATCH_CODE, PatchbackError, PatchbackOpts, TranslatedBundleV02,

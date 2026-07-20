@@ -87,7 +87,7 @@ export const SOURCE_FILES = {
   siglusOpcode: {
     path: "crates/kaifuu-siglus/src/opcode.rs",
     symbols: ["SiglusOpcode"],
-    role: "kaifuu Siglus scene-bytecode opcode catalogue — currently a siglus-05 SKELETON STUB (only the Unknown catch-all; parse_scene_bytecode returns a typed not_implemented). No real opcode catalogue exists yet.",
+    role: "kaifuu Siglus scene-bytecode command-code catalogue: the classified CD_* opcode set the partitioner (partition_scene) recognizes structurally on real bytes, plus the Unknown catch-all for lead bytes it cannot yet classify. Operand semantics are decoded downstream.",
   },
   realliveCompressor: {
     path: "crates/kaifuu-reallive/src/compressor.rs",
@@ -468,9 +468,9 @@ export function buildManifest(sources) {
         },
       },
       siglus: {
-        description: "Siglus scene-bytecode stack-VM decompiler.",
-        status: "stub_no_catalogue",
-        note: "Siglus opcode catalogue is a siglus-05 SKELETON STUB: only the `Unknown` catch-all exists and parse_scene_bytecode returns a typed not_implemented. There is NO real opcode catalogue to derive components from yet; when the real catalogue lands, its opcodes must be added here and the check will enforce it.",
+        description: "Siglus scene-bytecode stack-VM partitioner.",
+        status: "skeleton_partitioner",
+        note: "Siglus scene bytecode partitions structurally on real bytes: `partition_scene` classifies every CD_* command code and computes exact operand-byte spans, with an `Unknown` catch-all for lead bytes it cannot yet classify. This is the structural skeleton — operand SEMANTICS (expressions, argument values, control flow) are decoded downstream and the `Unknown` count is driven to zero there.",
         componentGroups: {
           opcode: group("siglusOpcode", "extracted", siglusOpcodes),
         },
