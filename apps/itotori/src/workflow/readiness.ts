@@ -29,10 +29,14 @@ export async function resolveSceneReadiness(
   scene: WorkflowScene,
   port: BibleReadinessPort,
 ): Promise<SceneReadiness> {
+  // Bible resolutions are read-only and independent by unit. Retain scene order
+  // when folding the answers, while allowing unrelated lookups to overlap.
+  const resolved = await Promise.all(
+    scene.units.map(async (unit) => ({ unit, readiness: await port.resolve(unit.unitId) })),
+  );
   const bibleRenderingIdsByUnit = new Map<string, readonly string[]>();
   const bibleBindingsByUnit = new Map<string, UnitBibleBinding>();
-  for (const unit of scene.units) {
-    const readiness = await port.resolve(unit.unitId);
+  for (const { unit, readiness } of resolved) {
     if (!readiness.ready) {
       throw new WorkflowReadinessError(unit.unitId, readiness.missing);
     }

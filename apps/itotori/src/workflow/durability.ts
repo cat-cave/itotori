@@ -24,12 +24,10 @@ export async function missingStageUnits(
   unitIds: readonly string[],
   stage: UnitStage,
 ): Promise<readonly string[]> {
-  const missing: string[] = [];
-  for (const unitId of unitIds) {
-    const head = await store.readUnitHead(unitId, stage);
-    if (head === null) missing.push(unitId);
-  }
-  return missing;
+  const heads = await Promise.all(
+    unitIds.map(async (unitId) => ({ unitId, head: await store.readUnitHead(unitId, stage) })),
+  );
+  return heads.flatMap(({ unitId, head }) => (head === null ? [unitId] : []));
 }
 
 /** The coherence partition of a run's work: one serial chain per scene (its

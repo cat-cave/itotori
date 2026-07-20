@@ -50,17 +50,21 @@ export async function finalizeUnits(
   policy: ResolvedRunPolicy,
   units: readonly { readonly unitId: string; readonly contentHash: `sha256:${string}` }[],
 ): Promise<FinalizeBatchResult> {
+  // The CAS key is per unit, so these writes have no coherence dependency.
+  // Let them overlap; `allSettled` keeps a rejected unit from coupling a sibling.
+  const settled = await Promise.allSettled(units.map((unit) => finalizeUnit(store, policy, unit)));
   const finalized: FinalizedUnit[] = [];
   const rejected: { unitId: string; reason: string }[] = [];
-  for (const unit of units) {
-    try {
-      finalized.push(await finalizeUnit(store, policy, unit));
-    } catch (error: unknown) {
-      rejected.push({
-        unitId: unit.unitId,
-        reason: error instanceof Error ? error.message : String(error),
-      });
+  settled.forEach((result, index) => {
+    const unit = units[index]!;
+    if (result.status === "fulfilled") {
+      finalized.push(result.value);
+      return;
     }
-  }
+    rejected.push({
+      unitId: unit.unitId,
+      reason: result.reason instanceof Error ? result.reason.message : String(result.reason),
+    });
+  });
   return { finalized, rejected };
 }

@@ -26,7 +26,7 @@ import { coherenceSchedule, missingStageUnits, type CoherenceSchedule } from "./
 import { finalizeUnits } from "./finalize.js";
 import { joinFindings } from "./finding-join.js";
 import { projectOutputScope } from "./output-scope.js";
-import { resolveWorkflowPolicy } from "./policy.js";
+import { mayShip, resolveWorkflowPolicy } from "./policy.js";
 import { resolveSceneReadiness } from "./readiness.js";
 import { planStratifiedReview, type ReviewPlan } from "./risk-routing.js";
 import type { AttemptLineageEntry, FinalizedUnit, WorkflowPorts } from "./ports.js";
@@ -90,9 +90,18 @@ async function processScene(
 ): Promise<SceneOutcome> {
   const allUnitIds = scene.units.map((unit) => unit.unitId);
   // (12a) Restart-queries-missing: produce ONLY the units without a final head.
-  const missing = await missingStageUnits(ports.store, allUnitIds, "final");
+  const finalHeads = await Promise.all(
+    allUnitIds.map(async (unitId) => ({
+      unitId,
+      head: await ports.store.readUnitHead(unitId, "final"),
+    })),
+  );
+  const missing = finalHeads.flatMap(({ unitId, head }) => (head === null ? [unitId] : []));
   const missingSet = new Set(missing);
   const skippedUnitIds = allUnitIds.filter((unitId) => !missingSet.has(unitId));
+  const alreadyFinalized: FinalizedUnit[] = finalHeads.flatMap(({ unitId, head }) =>
+    head === null ? [] : [{ unitId, ref: head, shippable: mayShip(policy) }],
+  );
   if (missing.length === 0) {
     return {
       sceneId: scene.sceneId,
@@ -102,7 +111,9 @@ async function processScene(
       reviewPlan: null,
       bundle: null,
       corrections: null,
-      finalized: [],
+      // A restart still needs every current head to construct (or memo-hit) the
+      // complete patch; never silently emit a patch containing only new units.
+      finalized: alreadyFinalized,
     };
   }
 
@@ -163,17 +174,21 @@ async function processScene(
           repair: ports.repair,
           review: ports.review,
           adjudicate: ports.adjudicate,
+          store: ports.store,
         })
       : null;
 
   // (9) Independent per-unit CAS finalize — gated by the run policy.
+  const unresolved = new Set(corrections?.unresolvedUnitIds ?? []);
   const { finalized } = await finalizeUnits(
     ports.store,
     policy,
-    drafted.units.map((unit) => ({
-      unitId: unit.unitId,
-      contentHash: stableSha(scene.sceneId, unit.unitId, unit.draft.targetSkeleton),
-    })),
+    drafted.units
+      .filter((unit) => !unresolved.has(unit.unitId))
+      .map((unit) => ({
+        unitId: unit.unitId,
+        contentHash: stableSha(scene.sceneId, unit.unitId, unit.draft.targetSkeleton),
+      })),
   );
 
   return {
@@ -184,7 +199,7 @@ async function processScene(
     reviewPlan,
     bundle,
     corrections,
-    finalized,
+    finalized: [...alreadyFinalized, ...finalized],
   };
 }
 
@@ -250,14 +265,50 @@ export async function runLocalizationWorkflow(
   let patchId: string | null = null;
   let buildLqa: readonly LaneVerdict[] = [];
   if (finalized.length > 0) {
-    const exported = await ports.patchback.exportPatch({ finalized });
-    patchId = exported.patchId;
+    const patchKey = stableDigest(
+      "patchback",
+      ...[...finalized]
+        .sort((left, right) => (left.unitId < right.unitId ? -1 : 1))
+        .map((unit) => `${unit.unitId}:${unit.ref.contentHash}:${unit.ref.version}`),
+    );
+    const exported = await ports.store.runMemoizedStep(patchKey, () =>
+      ports.patchback.exportPatch({ finalized }),
+    );
+    const currentPatchId = exported.value.patchId;
+    patchId = currentPatchId;
     // (11) Downstream Q5 Build-LQA — strictly AFTER patch export, on the patched
-    // result.
-    buildLqa = await ports.patchback.buildLqaReview({
-      patchId,
-      unitIds: finalized.map((unit) => unit.unitId),
-    });
+    // result. Its per-unit stage heads make a restart dispatch only units whose
+    // on-screen assessment is absent; the review result itself is memoized too.
+    const missingBuildLqa = await missingStageUnits(
+      ports.store,
+      finalized.map((unit) => unit.unitId),
+      "build-lqa",
+    );
+    if (missingBuildLqa.length > 0) {
+      const q5Key = stableDigest("build-lqa", currentPatchId, ...missingBuildLqa);
+      const reviewed = await ports.store.runMemoizedStep(q5Key, () =>
+        ports.patchback.buildLqaReview({ patchId: currentPatchId, unitIds: missingBuildLqa }),
+      );
+      buildLqa = reviewed.value;
+      await Promise.all(
+        missingBuildLqa.map((unitId) =>
+          ports.store.finalizeUnit({
+            unitId,
+            stage: "build-lqa",
+            contentHash: stableSha(
+              "build-lqa",
+              currentPatchId,
+              unitId,
+              ...buildLqa
+                .filter((verdict) => verdict.verdict.unitId === unitId)
+                .map((verdict) => verdict.verdict.reviewId)
+                .sort(),
+            ),
+            shippable: mayShip(policy),
+          }),
+        ),
+      );
+    }
   }
 
   return {

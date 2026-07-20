@@ -134,6 +134,24 @@ function terminologyFail(unitId: string): ReviewVerdict {
   };
 }
 
+function meaningFail(unitId: string): ReviewVerdict {
+  return {
+    schemaVersion: "itotori.review-verdict.v1",
+    reviewId: `review.Q1.${unitId}`,
+    localizationSnapshotId: SNAP,
+    roleId: "Q1",
+    rubric: "meaning",
+    unitId,
+    basis: { kind: "wiki-first", bibleRenderingIds: ["bible.rendering.1"] },
+    verdict: "FAIL",
+    severity: "major",
+    span: { spanId: "span.1", surface: "target", text: "wrong meaning" },
+    category: "mistranslation",
+    evidenceIds: ["ev.1"],
+    repairConstraint: "preserve the source meaning",
+  };
+}
+
 function protectedSpanDefect(
   unitId: string,
   lanes: readonly ("Q1" | "Q2" | "Q3" | "Q4" | "Q5" | "Q6")[] = [],
@@ -545,12 +563,16 @@ describe("RB workflow — bounded adjudication (clause 8)", () => {
   it("fires the adjudicator exactly once per contested unit, never twice", async () => {
     const rec = newRecorder();
     const drafted = draftedScene("s1", ["u1"], "whole-scene");
+    const contested: LaneVerdict[] = [
+      { lane: "Q1", verdict: meaningFail("u1") },
+      { lane: "Q4", verdict: passVerdict("Q4", "u1") },
+    ];
     const bundle = joinFindings({
       localizationSnapshotId: SNAP,
       draftBatchId: "batch.1",
-      deterministic: [protectedSpanDefect("u1")],
-      evaluatedGates: ["protected-spans"],
-      reviews: [],
+      deterministic: [],
+      evaluatedGates: [],
+      reviews: contested,
     });
     const ports = buildPorts(new FakeStore(), rec, {
       // The semantic repair spends its one bounded attempt → adjudication.
@@ -559,7 +581,7 @@ describe("RB workflow — bounded adjudication (clause 8)", () => {
     const summary = await applyCorrections({
       bundle,
       scene: drafted,
-      verdicts: [],
+      verdicts: contested,
       repair: ports.repair,
       review: ports.review,
       adjudicate: ports.adjudicate,
@@ -657,18 +679,16 @@ describe("RB workflow — durability: every physical attempt is counted (clause 
     // The draft fails transiently twice, then succeeds on the third attempt.
     const ports = buildPorts(store, rec, { draftTransientFailures: 2 });
     const report = await runLocalizationWorkflow(PRODUCTION, [scene("s1", ["u1"])], ports);
-    const draftAttempts = report.attemptLineage.filter((entry) => entry.memoKey.includes(""));
-    const forDraft = report.attemptLineage.filter(
-      (entry) => entry.outcome === "transient-retry" || entry.outcome === "completed",
-    );
-    expect(forDraft).toHaveLength(3);
-    expect(forDraft.map((entry) => entry.outcome)).toEqual([
+    const draftAttempts = report.attemptLineage.slice(0, 3);
+    expect(draftAttempts).toHaveLength(3);
+    expect(draftAttempts.map((entry) => entry.outcome)).toEqual([
       "transient-retry",
       "transient-retry",
       "completed",
     ]);
-    expect(forDraft.map((entry) => entry.ordinal)).toEqual([1, 2, 3]);
-    expect(draftAttempts.length).toBeGreaterThan(0);
+    expect(draftAttempts.map((entry) => entry.ordinal)).toEqual([1, 2, 3]);
+    // Patch export and Q5 are separately memoized physical steps too.
+    expect(report.attemptLineage).toHaveLength(5);
   });
 });
 

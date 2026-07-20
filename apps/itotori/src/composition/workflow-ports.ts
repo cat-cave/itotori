@@ -99,7 +99,10 @@ function createDraftPort(deps: WorkflowPortDeps): DraftPort {
       }));
       return {
         sceneId: input.scene.sceneId,
-        mode: input.mode,
+        // P1 owns the measured-byte realization plan. Surface its actual
+        // whole-scene/chunked result instead of treating the driver's cheap
+        // preflight hint as the source of truth.
+        mode: localized.mode === "overlapping-chunks" ? "overlapping-chunk" : "whole-scene",
         batches: localized.batches,
         units,
       };
