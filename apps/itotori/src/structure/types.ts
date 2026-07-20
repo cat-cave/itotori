@@ -7,6 +7,13 @@ export const SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS = [
 ] as const;
 
 export type NarrativeStructureVersion = (typeof SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS)[number];
+/**
+ * Provider-owned, stable scene identity.  Consumers may compare or serialize
+ * it, but must never infer an engine's numeric archive address from it.
+ */
+export type NarrativeSceneId = string;
+/** Opaque, provider-owned evidence carried beside the common narrative graph. */
+export type NarrativeEngineEvidence = Record<string, unknown>;
 export type SelectionControlSignal = "button-object" | "text-window" | "none";
 export type EdgeResolution = "resolved" | "unknown" | "unresolved";
 export type RgbColor = [number, number, number];
@@ -32,10 +39,7 @@ export type NarrativeMessage = {
   color?: RgbColor | null;
   bridgeDeclaredColor?: RgbColor | null;
   sourceAsset?: SourceAssetRef;
-  byteOffsetInScene?: number | null;
-  byteLength?: number | null;
-  rawByteHandle?: string | null;
-  bodyShiftJisHex?: string | null;
+  engineEvidence?: NarrativeEngineEvidence | undefined;
   bridgeRef?: NarrativeBridgeRef | null;
   linkageStatus?: "bridge_linked" | "runtime_only";
   runtimeOnlyReason?: string;
@@ -46,22 +50,19 @@ export type NarrativeChoice = {
   optionIndex: number;
   label: string;
   /** v1's observed branch target. */
-  branchEntryScene: number | null;
+  branchEntryScene: NarrativeSceneId | null;
   /** v2's authoritative branch target. */
-  branchTargetSceneId?: number | null;
+  branchTargetSceneId?: NarrativeSceneId | null;
   choiceId?: string;
   choiceGroupId?: string;
   edgeId?: string;
   edgeResolution?: EdgeResolution;
   unresolvedEdgeDiagnostic?: string | null;
   bridgeRef?: NarrativeBridgeRef | null;
-  /** Authoritative source-asset + byte coordinates for a bridge-linked choice
-   * option. Required whenever `bridgeRef` is present so the join can prove the
-   * choice binding on asset + byte range + hash (a bridge-linked choice with
-   * no coordinates is rejected, never bound blind). */
+  /** Generic asset identity for a bridge-linked choice. Provider-specific
+   * coordinates live in `engineEvidence`, never in the common graph. */
   sourceAsset?: SourceAssetRef;
-  byteOffsetInScene?: number | null;
-  byteLength?: number | null;
+  engineEvidence?: NarrativeEngineEvidence | undefined;
   /** `runtime_only` marks a displayed runtime prompt option that has NO static
    * BridgeUnit (a system/flow menu such as "continue playing / save for later")
    * — it is not part of the translatable script and the join skips it, exactly
@@ -82,9 +83,7 @@ export type NarrativeUnit = {
   color: RgbColor | null;
   bridgeDeclaredColor?: RgbColor | null;
   sourceAsset: SourceAssetRef;
-  byteOffsetInScene: number;
-  byteLength: number;
-  rawByteHandle: string;
+  engineEvidence?: NarrativeEngineEvidence | undefined;
   choiceId: string | null;
   playOrder: number | null;
   revealOrder: RevealOrder | null;
@@ -93,10 +92,10 @@ export type NarrativeUnit = {
 };
 
 export type NarrativeScene = {
-  sceneId: number;
+  sceneId: NarrativeSceneId;
   selectionControl: SelectionControlSignal;
-  nextScene: number | null;
-  dispatchFanoutScenes?: number[];
+  nextScene: NarrativeSceneId | null;
+  dispatchFanoutScenes?: NarrativeSceneId[];
   messages: NarrativeMessage[];
   choices: NarrativeChoice[];
   sceneRef?: string;
@@ -104,8 +103,8 @@ export type NarrativeScene = {
   playOrder?: number;
   revealOrder?: number | null;
   observationMode?: "entry_reached" | "cold_seeded";
-  predecessors?: number[];
-  successors?: number[];
+  predecessors?: NarrativeSceneId[];
+  successors?: NarrativeSceneId[];
   reachable?: boolean;
   routeMembership?: string[];
 };
@@ -113,8 +112,8 @@ export type NarrativeScene = {
 export type NarrativeEdge = {
   edgeId: string;
   kind: "dispatch" | "choice";
-  fromSceneId: number;
-  toSceneId: number | null;
+  fromSceneId: NarrativeSceneId;
+  toSceneId: NarrativeSceneId | null;
   resolution: EdgeResolution;
   diagnostic: string | null;
   choiceId: string | null;
@@ -123,9 +122,9 @@ export type NarrativeEdge = {
 
 export type NarrativeRoute = {
   routeId: string;
-  entrySceneId: number;
+  entrySceneId: NarrativeSceneId;
   viaEdgeId: string | null;
-  sceneIds: number[];
+  sceneIds: NarrativeSceneId[];
 };
 
 export type NarrativeCoverage = {
@@ -147,9 +146,13 @@ export type NarrativeCoverage = {
 
 export type NarrativeStructure = {
   schemaVersion: NarrativeStructureVersion;
-  entryScene: number;
-  sceneDispatchOrder: number[];
+  /** Registered provider id that produced this common graph. */
+  engine: string;
+  entryScene: NarrativeSceneId;
+  sceneDispatchOrder: NarrativeSceneId[];
   scenes: NarrativeScene[];
+  /** Provider-owned evidence; the common graph does not interpret its shape. */
+  engineEvidence?: NarrativeEngineEvidence | undefined;
   bridgeId?: string | undefined;
   sourceBundleHash?: string | undefined;
   coverage?: NarrativeCoverage | undefined;
@@ -158,34 +161,34 @@ export type NarrativeStructure = {
 };
 
 export type SceneStructure = {
-  sceneId: number;
+  sceneId: NarrativeSceneId;
   messageCount: number;
   characterIds: string[];
   choiceCount: number;
-  dispatchTargetSceneIds: number[];
-  choiceTargetSceneIds: number[];
+  dispatchTargetSceneIds: NarrativeSceneId[];
+  choiceTargetSceneIds: NarrativeSceneId[];
 };
 
 export type NarrativeRouteEdge = {
-  fromSceneId: number;
-  toSceneId: number;
+  fromSceneId: NarrativeSceneId;
+  toSceneId: NarrativeSceneId;
   kind: "dispatch" | "choice";
   choiceIndex?: number;
 };
 
 export type RouteGraph = {
-  entryScene: number;
-  sceneDispatchOrder: number[];
+  entryScene: NarrativeSceneId;
+  sceneDispatchOrder: NarrativeSceneId[];
   edges: NarrativeRouteEdge[];
 };
 
 export type CharacterOccurrence = {
   characterId: string;
-  sceneIds: number[];
-  linesByScene: Array<{ sceneId: number; lineCount: number }>;
+  sceneIds: NarrativeSceneId[];
+  linesByScene: Array<{ sceneId: NarrativeSceneId; lineCount: number }>;
   totalLines: number;
-  firstSceneId: number;
-  lastSceneId: number;
+  firstSceneId: NarrativeSceneId;
+  lastSceneId: NarrativeSceneId;
 };
 
 export type NarrativeStructureReductions = {

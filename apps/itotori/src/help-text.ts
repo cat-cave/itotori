@@ -27,7 +27,9 @@ export function buildHelpText(allCommands = false): string {
 
   lines.push("LOCALIZATION:");
   lines.push("  extract                 Extract a bridge bundle from a game.");
-  lines.push("  structure-export        Export narrative structure from a game.");
+  lines.push(
+    "  structure-export        Export narrative structure (--engine <provider> required).",
+  );
   lines.push("  localize                Run the whole-project localization driver (new pipeline).");
   lines.push(
     "                          --run-mode production|pilot|test-dev  Operational posture (gates legality).",

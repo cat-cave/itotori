@@ -51,7 +51,7 @@ export interface DecodeSceneProjection {
  * seam writes) into `WorkflowScene[]` + the per-unit fact/rendering maps. */
 export function projectDecodeStructure(structureJson: unknown): DecodeSceneProjection {
   const structure = parseNarrativeStructure(structureJson, SUPPORTED_NARRATIVE_STRUCTURE_VERSIONS);
-  const sceneById = new Map<number, NarrativeScene>(
+  const sceneById = new Map<string, NarrativeScene>(
     structure.scenes.map((scene) => [scene.sceneId, scene]),
   );
 

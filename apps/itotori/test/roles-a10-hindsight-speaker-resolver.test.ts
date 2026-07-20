@@ -48,6 +48,9 @@ const CONTEXT: A10Context = {
   localeBranchId: null,
 };
 
+const SCENE_2 = "scene:0002";
+const SCENE_999 = "scene:0999";
+
 const CHARACTERS: readonly FixtureCharacterSpec[] = [
   { characterId: "nam-11", decodedLabel: "アイ", lines: 2, boundUnitPlayOrder: 0 },
 ];
@@ -97,7 +100,7 @@ function recordedCaller(draft?: Partial<A10HypothesisDraft>): A10ModelCaller {
   return async (request) => ({
     candidateCharacterId: "nam-11",
     confidence: "medium",
-    revealSceneId: "2",
+    revealSceneId: SCENE_2,
     rationale: `${request.unit.revealSafeLabel} の正体はアイだと後の場面から推測できる。`,
     ...draft,
   });
@@ -142,7 +145,7 @@ describe("A10 hypothesizes only genuinely-unknown speakers", () => {
     if (first.kind !== "speaker-hypothesis") throw new Error("unreachable");
     expect(first.body.candidateCharacterId).toBe("nam-11");
     expect(first.body.confidence).toBe("high");
-    expect(first.body.revealSceneId).toBe("2");
+    expect(first.body.revealSceneId).toBe(SCENE_2);
     // Scope is the unit's route scope; the single claim cites unit + candidate +
     // reveal-scene evidence, and it survived the claim-validation gate on assembly.
     expect(first.scope).toEqual({ kind: "global" });
@@ -165,7 +168,7 @@ describe("A10 hypothesizes only genuinely-unknown speakers", () => {
   it("PROOF: a model reveal scene absent from the route graph is rejected", async () => {
     const { model } = fixture();
     await expect(
-      resolveSpeakers(model, CONTEXT, recordedCaller({ revealSceneId: "999" })),
+      resolveSpeakers(model, CONTEXT, recordedCaller({ revealSceneId: SCENE_999 })),
     ).rejects.toThrowError(/unknown-reveal-scene/u);
   });
 });
@@ -190,7 +193,7 @@ describe("A10 is structurally unable to write the decoded speaker fact", () => {
       unitId: "unit-x",
       candidateCharacterId: "nam-11",
       confidence: "high" as const,
-      revealSceneId: "2",
+      revealSceneId: SCENE_2,
     };
     expect(() => SpeakerHypothesisBodySchema.parse(hypothesisBody)).not.toThrow();
     const withDecodedFact = {
@@ -221,7 +224,7 @@ describe("A10: a later decode resolution invalidates the hypothesis (never merge
     const { model } = fixture();
     const unit = readUnknownSpeakerUnits(model, CONTEXT).find((u) => u.speakerStatus === status)!;
     const occ = verifyCandidateCharacter(model, CONTEXT, "nam-11");
-    const node = verifyRevealScene(model, CONTEXT, "2");
+    const node = verifyRevealScene(model, CONTEXT, SCENE_2);
     const hypothesis = assembleSpeakerHypothesis(
       model,
       CONTEXT,
@@ -229,7 +232,7 @@ describe("A10: a later decode resolution invalidates the hypothesis (never merge
       {
         candidateCharacterId: "nam-11",
         confidence: "medium",
-        revealSceneId: "2",
+        revealSceneId: SCENE_2,
         rationale: "推測。",
       },
       occ,

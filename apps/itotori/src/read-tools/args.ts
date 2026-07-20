@@ -15,7 +15,7 @@ const PageArgsShape = {
   cursor: z.string().min(1).max(2_048).optional(),
 } as const;
 
-const SceneIdArg = z.number().int().nonnegative();
+const SceneIdArg = z.string().min(1).max(256);
 
 export const DecodeGetUnitsArgsSchema = z
   .object({

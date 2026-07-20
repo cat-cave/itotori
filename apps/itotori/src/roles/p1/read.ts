@@ -80,7 +80,7 @@ export function readP1Scene(
       `scene ${input.sceneId} returned ${unitResult.facts.length} of ${factCard.unitCount} units`,
     );
   }
-  const sceneId = String(input.sceneId);
+  const sceneId = input.sceneId;
   if (unitResult.facts.some((unit) => unit.value.sceneId !== sceneId)) {
     throw new P1RoleError(
       "incomplete-scene",

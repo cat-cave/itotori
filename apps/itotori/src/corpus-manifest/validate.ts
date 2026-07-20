@@ -8,7 +8,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } 
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { runKaifuuExtract } from "../extract/kaifuu-extract-seam.js";
-import { runUtsushiStructureExport } from "../structure-export/utsushi-structure-seam.js";
+import { runStructureProvider } from "../structure-export/structure-provider-registry.js";
 import { parseStrictJson } from "./json.js";
 import {
   CORPUS_MANIFEST_SCHEMA_VERSION,
@@ -205,7 +205,8 @@ export function deriveCorpusEvidence(
         decompileReportOutputPath: scopedReportPath,
         env: nativeEnv,
       });
-      runUtsushiStructureExport({
+      runStructureProvider({
+        engine: "reallive",
         gameexePath: corpus.gameexePath,
         seenPath: corpus.seenPath,
         outputPath: structurePath,

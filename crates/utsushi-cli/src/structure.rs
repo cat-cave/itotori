@@ -10,6 +10,7 @@ mod expanded;
 mod graph;
 mod legacy;
 mod output;
+mod reallive_extension;
 
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -26,6 +27,7 @@ use self::expanded::ExpandedInput;
 use crate::staged_replay::staged_archive;
 
 pub(crate) fn run_structure_command(args: &[String]) -> Result<(), Box<dyn Error>> {
+    let mut engine = None;
     let mut gameexe = None;
     let mut seen = None;
     let mut output = None;
@@ -40,6 +42,7 @@ pub(crate) fn run_structure_command(args: &[String]) -> Result<(), Box<dyn Error
             .get(index + 1)
             .ok_or_else(|| format!("missing value for {flag}"))?;
         match flag.as_str() {
+            "--engine" => engine = Some(value.clone()),
             "--gameexe" => gameexe = Some(PathBuf::from(value)),
             "--seen" => seen = Some(PathBuf::from(value)),
             "--output" => output = Some(PathBuf::from(value)),
@@ -51,10 +54,18 @@ pub(crate) fn run_structure_command(args: &[String]) -> Result<(), Box<dyn Error
         index += 2;
     }
 
+    let engine = engine.ok_or("missing --engine")?;
+    let provider = structure_provider(&engine)?;
     let gameexe = gameexe.ok_or("missing --gameexe")?;
     let seen = seen.ok_or("missing --seen")?;
     let output = output.ok_or("missing --output")?;
-    let structure = build_structure(&gameexe, &seen, bridge.as_deref(), entry, max_scenes)?;
+    let structure = reallive_extension::common_structure(provider(
+        &gameexe,
+        &seen,
+        bridge.as_deref(),
+        entry,
+        max_scenes,
+    )?)?;
 
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)?;
@@ -63,7 +74,19 @@ pub(crate) fn run_structure_command(args: &[String]) -> Result<(), Box<dyn Error
     Ok(())
 }
 
-fn build_structure(
+type StructureProvider =
+    fn(&Path, &Path, Option<&Path>, Option<u32>, Option<usize>) -> Result<Value, Box<dyn Error>>;
+
+const STRUCTURE_PROVIDERS: &[(&str, StructureProvider)] = &[("reallive", build_reallive_structure)];
+
+fn structure_provider(engine: &str) -> Result<StructureProvider, Box<dyn Error>> {
+    STRUCTURE_PROVIDERS
+        .iter()
+        .find_map(|(id, provider)| (*id == engine).then_some(*provider))
+        .ok_or_else(|| format!("unregistered structure provider: {engine}").into())
+}
+
+fn build_reallive_structure(
     gameexe_path: &Path,
     seen_path: &Path,
     bridge_path: Option<&Path>,

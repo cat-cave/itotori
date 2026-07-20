@@ -117,15 +117,23 @@ function unit(spec: Spec, index: number, routeMembership: string[]): NarrativeUn
     evidenceTier: "E2",
     color: null,
     sourceAsset: { assetId: spec.assetId, assetKey: "" },
-    byteOffsetInScene: spec.s,
-    byteLength: spec.e - spec.s,
-    rawByteHandle: `handle-${index}`,
+    engineEvidence: {
+      reallive: {
+        byteOffsetInScene: spec.s,
+        byteLength: spec.e - spec.s,
+        rawByteHandle: `handle-${index}`,
+      },
+    },
     choiceId: spec.choice ? `choice-${spec.sourceUnitKey}` : null,
     playOrder: index,
     revealOrder: null,
     observedLineIds: [],
     routeMembership,
   };
+}
+
+function sceneRef(sceneId: number): string {
+  return `scene:${String(sceneId).padStart(4, "0")}`;
 }
 
 function scene(
@@ -135,9 +143,9 @@ function scene(
   routes: string[],
 ): NarrativeScene {
   return {
-    sceneId,
+    sceneId: sceneRef(sceneId),
     selectionControl: "none",
-    nextScene,
+    nextScene: nextScene === null ? null : sceneRef(nextScene),
     messages: [],
     choices: [],
     units: specs.map((spec, index) => unit(spec, index, routes)),
@@ -148,13 +156,20 @@ function scene(
 function structure(scene2Routes: string[] = []): NarrativeStructure {
   return {
     schemaVersion: "utsushi.narrative-structure.v2",
-    entryScene: 1,
-    sceneDispatchOrder: [1, 2],
+    engine: "reallive",
+    entryScene: sceneRef(1),
+    sceneDispatchOrder: [sceneRef(1), sceneRef(2)],
     sourceBundleHash: BUNDLE_HASH,
     scenes: [
       scene(1, [S1_LINE, S1_A, S1_B], 2, []),
       scene(2, [S2_LINE, S2_A, S2_B], null, scene2Routes),
-      { sceneId: 3, selectionControl: "none", nextScene: null, messages: [], choices: [] },
+      {
+        sceneId: sceneRef(3),
+        selectionControl: "none",
+        nextScene: null,
+        messages: [],
+        choices: [],
+      },
     ],
   };
 }
@@ -345,7 +360,7 @@ describe("read tools — ordering, bounds, and pagination", () => {
     // Reuse the cursor under a DIFFERENT selector — the request hash no longer matches.
     expect(() =>
       decodeGetUnits(model, ANALYST, {
-        selector: { kind: "scene", sceneId: 1 },
+        selector: { kind: "scene", sceneId: sceneRef(1) },
         maxRows: 2,
         maxBytes: 8_388_608,
         cursor,
@@ -357,7 +372,7 @@ describe("read tools — ordering, bounds, and pagination", () => {
 describe("read tools — content-address binding", () => {
   it("PROOF: resultHash binds the payload to the snapshot; a different snapshot ⇒ different envelope", () => {
     const { model } = baseModel();
-    const other = buildFactSnapshot({ ...structure(), entryScene: 2 }, loadBundle());
+    const other = buildFactSnapshot({ ...structure(), entryScene: sceneRef(2) }, loadBundle());
     const otherModel = buildReadModel({
       contextSnapshot: makeContext(other, { kind: "complete" }),
       factSnapshot: other,
@@ -380,7 +395,7 @@ describe("read tools — content-address binding", () => {
 
   it("rejects a read model whose context did not commit this fact snapshot", () => {
     const snapshot = buildFactSnapshot(structure(), loadBundle());
-    const wrong = buildFactSnapshot({ ...structure(), entryScene: 2 }, loadBundle());
+    const wrong = buildFactSnapshot({ ...structure(), entryScene: sceneRef(2) }, loadBundle());
     expect(() =>
       buildReadModel({
         contextSnapshot: makeContext(wrong, { kind: "complete" }),
@@ -923,7 +938,7 @@ describe("read tools — route, reveal, and branch boundaries beyond unit scans"
       maxRows: 100,
       maxBytes: 8_388_608,
     });
-    expect(graph.facts.some((fact) => fact.factId === "scene:2")).toBe(false);
+    expect(graph.facts.some((fact) => fact.factId === "scene:scene:0002")).toBe(false);
     expect(
       glossaryLookup(routedModel, routeA, {
         selector: { kind: "all" },
@@ -957,7 +972,7 @@ describe("read tools — route, reveal, and branch boundaries beyond unit scans"
   it("hides future route-graph nodes and rejects future accepted-unit reads", () => {
     const { model, snapshot } = baseModel({ kind: "through-play-order", playOrderIndex: 0 });
     const graph = decodeGetRouteGraph(model, ANALYST, { maxRows: 100, maxBytes: 8_388_608 });
-    expect(graph.facts.some((fact) => fact.factId === "scene:2")).toBe(false);
+    expect(graph.facts.some((fact) => fact.factId === "scene:scene:0002")).toBe(false);
     expect(() =>
       outputsGetAccepted(model, LOCALIZER, {
         subjectIds: [factIdAtPlayOrder(snapshot, 3)],

@@ -8,12 +8,14 @@ import {
   type NarrativeChoice,
   type NarrativeMessage,
   type NarrativeScene,
+  type NarrativeSceneId,
   type NarrativeStructure,
   type NarrativeStructureVersion,
   type SelectionControlSignal,
 } from "./types.js";
 
-const SceneIdSchema = z.number().int();
+const SceneIdSchema = z.string().min(1);
+const NarrativeEngineEvidenceSchema = z.record(z.string(), z.unknown());
 const SelectionControlSchema = z.enum(["button-object", "text-window", "none"]);
 const EdgeResolutionSchema = z.enum(["resolved", "unknown", "unresolved"]);
 const EvidenceTierSchema = z.enum(["E0", "E1", "E2", "E3"]);
@@ -62,10 +64,7 @@ const MessageV2Schema = z
     color: RgbSchema.nullable().optional(),
     bridgeDeclaredColor: RgbSchema.nullable().optional(),
     sourceAsset: SourceAssetSchema.optional(),
-    byteOffsetInScene: z.number().int().nonnegative().nullable().optional(),
-    byteLength: z.number().int().nonnegative().nullable().optional(),
-    rawByteHandle: z.string().min(1).nullable().optional(),
-    bodyShiftJisHex: z.string().nullable().optional(),
+    engineEvidence: NarrativeEngineEvidenceSchema.optional(),
     bridgeRef: BridgeRefSchema.nullable().optional(),
     linkageStatus: z.enum(["bridge_linked", "runtime_only"]).optional(),
     runtimeOnlyReason: z.string().min(1).optional(),
@@ -94,13 +93,10 @@ const ChoiceV2Schema = z
     edgeResolution: EdgeResolutionSchema.optional(),
     unresolvedEdgeDiagnostic: z.string().nullable().optional(),
     bridgeRef: BridgeRefSchema.nullable().optional(),
-    // Authoritative source coordinates for a bridge-linked (translatable)
-    // choice option, so the localization join can prove the choice binding on
-    // asset + byte range. A `runtime_only` choice (a displayed runtime prompt
-    // option with no static BridgeUnit) carries no bridgeRef and is skipped.
+    // A runtime-only choice carries no bridgeRef and is skipped. Provider
+    // source coordinates are carried opaquely in engineEvidence.
     sourceAsset: SourceAssetSchema.optional(),
-    byteOffsetInScene: z.number().int().nonnegative().nullable().optional(),
-    byteLength: z.number().int().nonnegative().nullable().optional(),
+    engineEvidence: NarrativeEngineEvidenceSchema.optional(),
     linkageStatus: z.enum(["bridge_linked", "runtime_only"]).optional(),
     runtimeOnlyReason: z.string().min(1).optional(),
     branchMessages: z.array(MessageV2Schema),
@@ -151,9 +147,7 @@ const SceneV2Schema = z
             color: RgbSchema.nullable(),
             bridgeDeclaredColor: RgbSchema.nullable().optional(),
             sourceAsset: SourceAssetSchema,
-            byteOffsetInScene: z.number().int().nonnegative(),
-            byteLength: z.number().int().nonnegative(),
-            rawByteHandle: z.string().min(1),
+            engineEvidence: NarrativeEngineEvidenceSchema.optional(),
             choiceId: IdentifierSchema.nullable(),
             playOrder: z.number().int().nonnegative().nullable(),
             revealOrder: RevealOrderSchema.nullable(),
@@ -220,10 +214,10 @@ function unique<T>(values: readonly T[]): boolean {
 
 function validateStructure(
   value: {
-    entryScene: number;
-    sceneDispatchOrder: number[];
+    entryScene: NarrativeSceneId;
+    sceneDispatchOrder: NarrativeSceneId[];
     scenes: Array<{
-      sceneId: number;
+      sceneId: NarrativeSceneId;
       messages: Array<{ order: number }>;
       choices: Array<{ optionIndex: number; choiceId?: string | undefined }>;
     }>;
@@ -262,9 +256,11 @@ function validateStructure(
 export const NarrativeStructureV1Schema = z
   .object({
     schemaVersion: z.literal(NARRATIVE_STRUCTURE_V1),
+    engine: z.string().min(1),
     entryScene: SceneIdSchema,
     sceneDispatchOrder: z.array(SceneIdSchema),
     scenes: z.array(SceneV1Schema),
+    engineEvidence: NarrativeEngineEvidenceSchema.optional(),
   })
   .strict()
   .superRefine(validateStructure);
@@ -272,11 +268,13 @@ export const NarrativeStructureV1Schema = z
 export const NarrativeStructureV2Schema = z
   .object({
     schemaVersion: z.literal(NARRATIVE_STRUCTURE_V2),
+    engine: z.string().min(1),
     entryScene: SceneIdSchema,
     sceneDispatchOrder: z.array(SceneIdSchema),
     scenes: z.array(SceneV2Schema),
     bridgeId: IdentifierSchema.optional(),
     sourceBundleHash: Sha256Schema.optional(),
+    engineEvidence: NarrativeEngineEvidenceSchema.optional(),
     coverage: CoverageSchema.optional(),
     routes: z.array(RouteSchema).optional(),
     edges: z.array(EdgeSchema).optional(),
@@ -344,10 +342,10 @@ function normalizeMessage(message: {
 }
 
 function normalizeScene(scene: {
-  sceneId: number;
+  sceneId: NarrativeSceneId;
   selectionControl: SelectionControlSignal;
-  nextScene: number | null;
-  dispatchFanoutScenes: number[];
+  nextScene: NarrativeSceneId | null;
+  dispatchFanoutScenes: NarrativeSceneId[];
   messages: Array<{
     order: number;
     speaker: string | null;
@@ -358,8 +356,8 @@ function normalizeScene(scene: {
   choices: Array<{
     optionIndex: number;
     label: string;
-    branchEntryScene?: number | null | undefined;
-    branchTargetSceneId?: number | null;
+    branchEntryScene?: NarrativeSceneId | null | undefined;
+    branchTargetSceneId?: NarrativeSceneId | null;
     branchMessages: Array<{
       order: number;
       speaker: string | null;

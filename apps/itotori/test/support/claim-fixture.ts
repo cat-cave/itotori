@@ -42,6 +42,14 @@ type Spec = {
   choice: boolean;
 };
 
+function realliveEvidence(startByte: number, byteLength: number, rawByteHandle: string) {
+  return { reallive: { byteOffsetInScene: startByte, byteLength, rawByteHandle } };
+}
+
+function sceneRef(sceneId: number): string {
+  return `scene:${String(sceneId).padStart(4, "0")}`;
+}
+
 const S1_LINE: Spec = {
   bridgeUnitId: "a06a6efc-b1f0-7483-b225-40f197a3bc83",
   sourceUnitKey: "reallive:scene-0001#0000",
@@ -106,9 +114,7 @@ function unit(spec: Spec, index: number, routeMembership: string[]): NarrativeUn
     evidenceTier: "E2",
     color: null,
     sourceAsset: { assetId: spec.assetId, assetKey: "" },
-    byteOffsetInScene: spec.s,
-    byteLength: spec.e - spec.s,
-    rawByteHandle: `handle-${index}`,
+    engineEvidence: realliveEvidence(spec.s, spec.e - spec.s, `handle-${index}`),
     choiceId: spec.choice ? `choice-${spec.sourceUnitKey}` : null,
     playOrder: index,
     revealOrder: null,
@@ -125,9 +131,9 @@ function scene(
   messages: NarrativeMessage[] = [],
 ): NarrativeScene {
   return {
-    sceneId,
+    sceneId: sceneRef(sceneId),
     selectionControl: "none",
-    nextScene,
+    nextScene: nextScene === null ? null : sceneRef(nextScene),
     messages,
     choices: [],
     units: specs.map((spec, index) => unit(spec, index, routes)),
@@ -169,13 +175,20 @@ function structure(
 ): NarrativeStructure {
   return {
     schemaVersion: "utsushi.narrative-structure.v2",
-    entryScene: 1,
-    sceneDispatchOrder: [1, 2],
+    engine: "reallive",
+    entryScene: sceneRef(1),
+    sceneDispatchOrder: [sceneRef(1), sceneRef(2)],
     sourceBundleHash: BUNDLE_HASH,
     scenes: [
       scene(1, [S1_LINE, S1_A, S1_B], 2, [], characterMessages(characters)),
       scene(2, [S2_LINE, S2_A, S2_B], null, scene2Routes),
-      { sceneId: 3, selectionControl: "none", nextScene: null, messages: [], choices: [] },
+      {
+        sceneId: sceneRef(3),
+        selectionControl: "none",
+        nextScene: null,
+        messages: [],
+        choices: [],
+      },
     ],
   };
 }

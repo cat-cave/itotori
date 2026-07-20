@@ -36,6 +36,11 @@ const CONTEXT: A3Context = {
   localeBranchId: null,
 };
 
+const SCENE_1 = "scene:0001";
+const SCENE_2 = "scene:0002";
+const SCENE_3 = "scene:0003";
+const SCENE_99 = "scene:0099";
+
 /** A recorded responder that cites the scene's own first unit by its short
  * scene-local label (u1) and deliberately LIES about the message count and
  * speakers — the module must ignore both. */
@@ -75,18 +80,18 @@ function recordedCaller(seen?: Array<StorySoFarState | null>): A3ModelCaller {
 describe("clause 1 — A3 reads each COMPLETE scene, never a fragment", () => {
   it("PROOF: reads the full ordered unit stream, proven complete against the fact card", () => {
     const { model } = buildClaimFixture();
-    const scene = readCompleteScene(model, CONTEXT, 1);
+    const scene = readCompleteScene(model, CONTEXT, SCENE_1);
     expect(scene.units.length).toBe(scene.factCard.unitCount);
-    expect(scene.units.every((unit) => unit.value.sceneId === "1")).toBe(true);
+    expect(scene.units.every((unit) => unit.value.sceneId === SCENE_1)).toBe(true);
   });
 
   it("PROOF: a pre-sliced FRAGMENT of a scene is rejected (fragment-scene)", () => {
     const { model } = buildClaimFixture();
-    const full = readCompleteScene(model, CONTEXT, 1).units.map((unit) => unit.factId);
+    const full = readCompleteScene(model, CONTEXT, SCENE_1).units.map((unit) => unit.factId);
     // The complete set passes; dropping one unit is a fragment and FAILS.
-    expect(() => assertCompleteSceneUnits(model, 1, full)).not.toThrow();
+    expect(() => assertCompleteSceneUnits(model, SCENE_1, full)).not.toThrow();
     try {
-      assertCompleteSceneUnits(model, 1, full.slice(0, full.length - 1));
+      assertCompleteSceneUnits(model, SCENE_1, full.slice(0, full.length - 1));
       throw new Error("expected a fragment-scene failure");
     } catch (error) {
       expect(error).toBeInstanceOf(A3RoleError);
@@ -96,9 +101,9 @@ describe("clause 1 — A3 reads each COMPLETE scene, never a fragment", () => {
 
   it("PROOF: an unknown scene and an empty scene both fail loud", () => {
     const { model } = buildClaimFixture();
-    expect(() => readCompleteScene(model, CONTEXT, 99)).toThrow(/unknown-scene/);
+    expect(() => readCompleteScene(model, CONTEXT, SCENE_99)).toThrow(/unknown-scene/);
     // Scene 3 exists in the snapshot but carries no translatable units.
-    expect(() => readCompleteScene(model, CONTEXT, 3)).toThrow(/empty-scene/);
+    expect(() => readCompleteScene(model, CONTEXT, SCENE_3)).toThrow(/empty-scene/);
   });
 });
 
@@ -108,16 +113,16 @@ describe("clause 2 — serial fold into cited source-language objects", () => {
     const seen: Array<StorySoFarState | null> = [];
     const result = await foldRoute(model, CONTEXT, recordedCaller(seen));
 
-    // Walked in play order (sceneDispatchOrder = [1, 2]).
-    expect(result.scenes.map((scene) => scene.sceneId)).toEqual([1, 2]);
+    // Walked in play order (sceneDispatchOrder = [scene:0001, scene:0002]).
+    expect(result.scenes.map((scene) => scene.sceneId)).toEqual([SCENE_1, SCENE_2]);
     // The first step has no prior; the second consumes the story THROUGH scene 1.
     expect(seen[0]).toBeNull();
-    expect(seen[1]?.throughSceneId).toBe(1);
+    expect(seen[1]?.throughSceneId).toBe(SCENE_1);
     // The story-so-far chain is a provable dependency edge on the prior object.
     const secondStoryDeps = result.scenes[1]!.storySoFar.dependencies.map(
       (d) => d.upstreamObjectId,
     );
-    expect(secondStoryDeps).toContain("story-so-far:1");
+    expect(secondStoryDeps).toContain(`story-so-far:${SCENE_1}`);
   });
 
   it("PROOF: every emitted object is authored in the SOURCE LANGUAGE", async () => {
@@ -153,12 +158,12 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
     // Through the LAST dispatched scene — the route spine A4 adopts.
     const final = result.finalStorySoFar;
     expect(final.kind).toBe("story-so-far");
-    expect(final.kind === "story-so-far" ? final.body.throughSceneId : null).toBe("2");
+    expect(final.kind === "story-so-far" ? final.body.throughSceneId : null).toBe(SCENE_2);
   });
 
   it("PROOF: A3 labels each unit u1,u2,… and the model copies [u1] in [uN] order", () => {
     const { model } = buildClaimFixture();
-    const scene = readCompleteScene(model, CONTEXT, 1);
+    const scene = readCompleteScene(model, CONTEXT, SCENE_1);
     const citeable = citeableSceneUnits(scene);
     // Small, scene-local labels the flash model can copy verbatim — NOT the large
     // global play-order index it mis-transcribed.
@@ -172,7 +177,7 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
 
   it("PROOF: a cited scene-local label resolves to the fact id and snapshot machine fields", () => {
     const { model } = buildClaimFixture();
-    const scene = readCompleteScene(model, CONTEXT, 1);
+    const scene = readCompleteScene(model, CONTEXT, SCENE_1);
     const citedUnit = scene.units[0]!;
     // The model copies the short label u1 shown for the first unit — no drop is
     // needed for a correct citation.
@@ -207,7 +212,7 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
 
   it("PROOF: a claim citing ONLY an out-of-range label is DROPPED, not crashed over", () => {
     const { model } = buildClaimFixture();
-    const scene = readCompleteScene(model, CONTEXT, 1);
+    const scene = readCompleteScene(model, CONTEXT, SCENE_1);
     // The safety net: a label past the scene's unit count (the flash model
     // mis-copied it) names no unit and is repaired away rather than crashing.
     const outOfRange = "u999";
@@ -236,7 +241,7 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
 
   it("PROOF: a MIX of a real and a mis-cited label keeps ONLY the resolvable citation", () => {
     const { model } = buildClaimFixture();
-    const scene = readCompleteScene(model, CONTEXT, 1);
+    const scene = readCompleteScene(model, CONTEXT, SCENE_1);
     const good = citeableSceneUnits(scene)[0]!.label;
     const bad = "u999";
     const object = assembleSceneSummary(model, CONTEXT, scene, {
@@ -271,7 +276,7 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
 
   it("PROOF: the gate the repair feeds still REJECTS a fabricated citation", () => {
     const { model } = buildClaimFixture();
-    const scene = readCompleteScene(model, CONTEXT, 1);
+    const scene = readCompleteScene(model, CONTEXT, SCENE_1);
     const good = citeableSceneUnits(scene)[0]!.label;
     const object = assembleSceneSummary(model, CONTEXT, scene, {
       beat: "b",
@@ -358,7 +363,7 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
     const { model } = buildClaimFixture();
     const result = await foldRoute(model, CONTEXT, recordedCaller());
     const first = result.scenes[0]!;
-    const card = model.factSnapshot.scenes.find((scene) => scene.sceneId === 1)!;
+    const card = model.factSnapshot.scenes.find((scene) => scene.sceneId === SCENE_1)!;
 
     // The emitted count is the decode's, NOT the model's asserted 999.
     expect(first.factCard.messageCount).toBe(card.messageCount);
@@ -374,6 +379,6 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
       "sceneId",
       "subtext",
     ]);
-    expect(summary.kind === "scene-summary" ? summary.body.sceneId : null).toBe("1");
+    expect(summary.kind === "scene-summary" ? summary.body.sceneId : null).toBe(SCENE_1);
   });
 });

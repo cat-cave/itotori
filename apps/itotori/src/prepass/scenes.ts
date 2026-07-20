@@ -17,17 +17,17 @@ import type { CharacterOccurrenceFact, OrderedUnitFact, SceneFactCard } from "./
 export function materializeSceneCards(
   structure: NarrativeStructure,
   orderedUnits: readonly OrderedUnitFact[],
-  reachableSceneIds: readonly number[],
+  reachableSceneIds: readonly string[],
 ): SceneFactCard[] {
   const reachable = new Set(reachableSceneIds);
-  const dispatchPosition = new Map<number, number>();
+  const dispatchPosition = new Map<string, number>();
   structure.sceneDispatchOrder.forEach((sceneId, index) => {
     if (!dispatchPosition.has(sceneId)) dispatchPosition.set(sceneId, index);
   });
-  const revealBySceneId = new Map<number, number | null>(
+  const revealBySceneId = new Map<string, number | null>(
     structure.scenes.map((scene) => [scene.sceneId, scene.revealOrder ?? null]),
   );
-  const unitCountBySceneId = new Map<number, number>();
+  const unitCountBySceneId = new Map<string, number>();
   for (const unit of orderedUnits) {
     unitCountBySceneId.set(unit.sceneId, (unitCountBySceneId.get(unit.sceneId) ?? 0) + 1);
   }
@@ -49,7 +49,7 @@ export function materializeSceneCards(
         reachable: reachable.has(scene.sceneId),
       };
     })
-    .sort((a, b) => a.sceneId - b.sceneId);
+    .sort((a, b) => a.sceneId.localeCompare(b.sceneId));
 }
 
 /** Build character occurrence/count facts, sorted by canonical character id. */

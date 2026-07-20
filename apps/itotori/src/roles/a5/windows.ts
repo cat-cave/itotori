@@ -53,7 +53,7 @@ export function routeUniverse(model: ReadModel): readonly string[] {
  * scenes, in decoded play order. The ONLY units the profile may cite. */
 export function occurrenceWindow(
   model: ReadModel,
-  sceneIds: readonly number[],
+  sceneIds: readonly string[],
 ): readonly OrderedUnitFact[] {
   const scenes = new Set(sceneIds);
   return model.factSnapshot.orderedUnits

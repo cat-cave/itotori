@@ -233,7 +233,7 @@ export function decodeGetRouteGraph(
   const visibleTopology = { ...topology, edges: visibleEdges };
   const nodes = [...model.factSnapshot.scenes]
     .filter((scene) => visibleSceneIds.has(scene.sceneId))
-    .sort((a, b) => a.sceneId - b.sceneId)
+    .sort((a, b) => a.sceneId.localeCompare(b.sceneId))
     .map((scene) =>
       projectRouteNodeFact(
         scene,
@@ -490,7 +490,7 @@ function sealFact(
 /** An occurrence aggregate is all-or-nothing: returning its total counts,
  * scene ids, and unit ids before every covered scene is visible would disclose
  * hidden-route or future content. */
-function characterVisibility(model: ReadModel, sceneIds: readonly number[]): ReadFactVisibility {
+function characterVisibility(model: ReadModel, sceneIds: readonly string[]): ReadFactVisibility {
   const sceneById = new Map(model.factSnapshot.scenes.map((scene) => [scene.sceneId, scene]));
   const boundaries = sceneIds.map((sceneId) => {
     const scene = sceneById.get(sceneId);

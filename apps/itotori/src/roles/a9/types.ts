@@ -81,7 +81,7 @@ export interface CharacterRouteEvidence {
   /** The character-occurrence evidence fact id, citeable as route presence. */
   readonly occurrenceFactId: string;
   /** The scenes the character occurs in (decode play-order topology). */
-  readonly sceneIds: readonly number[];
+  readonly sceneIds: readonly string[];
   /** The concrete route this arc is scoped to. */
   readonly routeId: string;
   /** The route scope every claim on this arc is stamped with. */

@@ -67,9 +67,9 @@ describe("narrative structure reductions", () => {
     const routeGraph = reduceRouteGraph(parseFixture("narrative-structure-v2.json"));
 
     expect(routeGraph.edges).toEqual([
-      { fromSceneId: 10, toSceneId: 20, kind: "dispatch" },
-      { fromSceneId: 10, toSceneId: 30, kind: "dispatch" },
-      { fromSceneId: 10, toSceneId: 30, kind: "choice", choiceIndex: 0 },
+      { fromSceneId: "scene:0010", toSceneId: "scene:0020", kind: "dispatch" },
+      { fromSceneId: "scene:0010", toSceneId: "scene:0030", kind: "dispatch" },
+      { fromSceneId: "scene:0010", toSceneId: "scene:0030", kind: "choice", choiceIndex: 0 },
     ]);
     expect(JSON.stringify(routeGraph)).not.toContain("#choice");
   });
@@ -81,15 +81,15 @@ describe("narrative structure reductions", () => {
     expect(characters).toEqual([
       {
         characterId: "character:ren",
-        sceneIds: [10, 20, 30],
+        sceneIds: ["scene:0010", "scene:0020", "scene:0030"],
         linesByScene: [
-          { sceneId: 10, lineCount: 1 },
-          { sceneId: 20, lineCount: 1 },
-          { sceneId: 30, lineCount: 1 },
+          { sceneId: "scene:0010", lineCount: 1 },
+          { sceneId: "scene:0020", lineCount: 1 },
+          { sceneId: "scene:0030", lineCount: 1 },
         ],
         totalLines: 3,
-        firstSceneId: 10,
-        lastSceneId: 30,
+        firstSceneId: "scene:0010",
+        lastSceneId: "scene:0030",
       },
     ]);
     expect(JSON.stringify(characters)).not.toContain("???");

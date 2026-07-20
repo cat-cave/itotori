@@ -48,6 +48,7 @@ const CONTEXT: P1Context = {
   localeBranchId: "locale:p1-test",
 };
 const BIBLE_SUBJECT = "style:p1-scene";
+const SCENE_1 = "scene:0001";
 const DRAFT_PROFILE: MeasuredModelProfile = {
   name: "draft",
   version: deepSeekV4FlashProfile.version,
@@ -238,7 +239,7 @@ describe("P1 agentic whole-scene localizer", () => {
   it("uses the certified WikiObject route over a recorded ZDR transport", async () => {
     const model = modelWithLocalizedBible();
     const scene = readP1Scene(model, CONTEXT, {
-      sceneId: 1,
+      sceneId: SCENE_1,
       bibleSubjectIds: [BIBLE_SUBJECT],
       budgetBytes: 8_000,
       overlapUnits: 1,
@@ -284,9 +285,9 @@ describe("P1 agentic whole-scene localizer", () => {
       seen.push(request);
       return recordedTranslation(request);
     };
-    const scene = model.factSnapshot.scenes.find((candidate) => candidate.sceneId === 1)!;
+    const scene = model.factSnapshot.scenes.find((candidate) => candidate.sceneId === SCENE_1)!;
     const readScene = readP1Scene(model, CONTEXT, {
-      sceneId: 1,
+      sceneId: SCENE_1,
       bibleSubjectIds: [BIBLE_SUBJECT],
       budgetBytes: 8_000,
       overlapUnits: 1,
@@ -298,7 +299,7 @@ describe("P1 agentic whole-scene localizer", () => {
       model,
       CONTEXT,
       {
-        sceneId: 1,
+        sceneId: SCENE_1,
         bibleSubjectIds: [BIBLE_SUBJECT],
         budgetBytes: largestUnit,
         overlapUnits: 1,
@@ -309,7 +310,7 @@ describe("P1 agentic whole-scene localizer", () => {
     // RB-025 reads supplied the COMPLETE scene, not a pre-sliced prompt bundle.
     expect(seen[0]!.scene.units.map((unit) => unit.factId)).toEqual(
       model.factSnapshot.orderedUnits
-        .filter((unit) => unit.sceneId === 1)
+        .filter((unit) => unit.sceneId === SCENE_1)
         .map((unit) => unit.factId),
     );
     expect(seen[0]!.scene.bibleEntries.map((entry) => entry.renderingId)).toEqual(["rendering:1"]);
@@ -350,7 +351,12 @@ describe("P1 agentic whole-scene localizer", () => {
       runP1Scene(
         model,
         CONTEXT,
-        { sceneId: 1, bibleSubjectIds: [BIBLE_SUBJECT], budgetBytes: 8_000, overlapUnits: 1 },
+        {
+          sceneId: SCENE_1,
+          bibleSubjectIds: [BIBLE_SUBJECT],
+          budgetBytes: 8_000,
+          overlapUnits: 1,
+        },
         recordedCaller,
       ),
     ).rejects.toThrow(/source-hash/u);

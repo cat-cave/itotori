@@ -87,6 +87,11 @@ const A7_CONTEXT: A7Context = {
   localeBranchId: null,
 };
 
+const SCENE_1 = "scene:0001";
+const SCENE_2 = "scene:0002";
+const SCENE_3 = "scene:0003";
+const SCENE_999 = "scene:0999";
+
 /** Two canonical characters seeded into the deterministic index, each bound to a
  * real scene-1 ordered unit as its whole-game evidence. */
 const CHARACTERS: readonly FixtureCharacterSpec[] = [
@@ -147,7 +152,7 @@ function recordedCaller(): A8ModelCaller {
         relationship: "幼なじみ。",
         confidence: "high",
         scope: { kind: "global" },
-        establishingSceneIds: [sceneEvidenceId(1)],
+        establishingSceneIds: [sceneEvidenceId(SCENE_1)],
       },
     ];
     return { background: `${request.character.decodedLabel} の生い立ち。`, relationships };
@@ -271,17 +276,19 @@ describe("clause 2 — every relationship cites an establishing same-game scene"
         relationship: "同じ学校に通う。",
         confidence: "high",
         scope: { kind: "global" },
-        establishingSceneIds: [sceneEvidenceId(1)],
+        establishingSceneIds: [sceneEvidenceId(SCENE_1)],
       },
     ]);
     const body = background.kind === "character-background" ? background.body : null;
     // The body carries the establishing scene evidence id, index-derived.
-    expect(body!.relationships[0]!.establishingEvidenceIds).toEqual([sceneEvidenceId(1)]);
+    expect(body!.relationships[0]!.establishingEvidenceIds).toEqual([sceneEvidenceId(SCENE_1)]);
     // The relationship claim cites that scene with role "establishes", and resolves.
     const relationshipClaim = background.claims.find((c) => c.kind === "relationship")!;
-    const citation = relationshipClaim.citations.find((c) => c.evidenceId === sceneEvidenceId(1))!;
+    const citation = relationshipClaim.citations.find(
+      (c) => c.evidenceId === sceneEvidenceId(SCENE_1),
+    )!;
     expect(citation.role).toBe("establishes");
-    expect(citation.subject).toEqual({ kind: "scene", id: "1" });
+    expect(citation.subject).toEqual({ kind: "scene", id: SCENE_1 });
     expect(() => validateWikiObjectClaims(background, model)).not.toThrow();
   });
 
@@ -313,7 +320,7 @@ describe("clause 2 — every relationship cites an establishing same-game scene"
           relationship: "架空の場面で出会う。",
           confidence: "high",
           scope: { kind: "global" },
-          establishingSceneIds: [sceneEvidenceId(999)],
+          establishingSceneIds: [sceneEvidenceId(SCENE_999)],
         },
       ]);
       throw new Error("expected an unknown-establishing-scene failure");
@@ -332,7 +339,7 @@ describe("clause 2 — every relationship cites an establishing same-game scene"
           relationship: "到達不能な場面で出会う。",
           confidence: "high",
           scope: { kind: "global" },
-          establishingSceneIds: [sceneEvidenceId(3)],
+          establishingSceneIds: [sceneEvidenceId(SCENE_3)],
         },
       ]);
       throw new Error("expected an unreachable-scene failure");
@@ -352,13 +359,13 @@ describe("clause 3 — route reachability validates the relationship's scope", (
         relationship: "route-a でのみ深まる仲。",
         confidence: "high",
         scope: { kind: "route", routeId: "route-a" },
-        establishingSceneIds: [sceneEvidenceId(2)],
+        establishingSceneIds: [sceneEvidenceId(SCENE_2)],
       },
     ]);
     const body = background.kind === "character-background" ? background.body : null;
     // The relationship keeps its route scope, established by the reachable route-a scene.
     expect(body!.relationships[0]!.scope).toEqual({ kind: "route", routeId: "route-a" });
-    expect(body!.relationships[0]!.establishingEvidenceIds).toEqual([sceneEvidenceId(2)]);
+    expect(body!.relationships[0]!.establishingEvidenceIds).toEqual([sceneEvidenceId(SCENE_2)]);
     const relationshipClaim = background.claims.find((c) => c.kind === "relationship")!;
     expect(relationshipClaim.scope).toEqual({ kind: "route", routeId: "route-a" });
     expect(() => validateWikiObjectClaims(background, model)).not.toThrow();
@@ -376,7 +383,7 @@ describe("clause 3 — route reachability validates the relationship's scope", (
         relationship: "両ルートで並行する絆。",
         confidence: "high",
         scope: { kind: "route-set", routeIds: ["route-a", "route-b"] },
-        establishingSceneIds: [sceneEvidenceId(2)],
+        establishingSceneIds: [sceneEvidenceId(SCENE_2)],
       },
     ]);
     const body = background.kind === "character-background" ? background.body : null;
@@ -384,7 +391,7 @@ describe("clause 3 — route reachability validates the relationship's scope", (
       kind: "route-set",
       routeIds: ["route-a", "route-b"],
     });
-    expect(body!.relationships[0]!.establishingEvidenceIds).toEqual([sceneEvidenceId(2)]);
+    expect(body!.relationships[0]!.establishingEvidenceIds).toEqual([sceneEvidenceId(SCENE_2)]);
     expect(() => validateWikiObjectClaims(background, model)).not.toThrow();
   });
 
@@ -398,7 +405,7 @@ describe("clause 3 — route reachability validates the relationship's scope", (
           relationship: "別ルートの場面で確立と偽る。",
           confidence: "high",
           scope: { kind: "route", routeId: "route-b" },
-          establishingSceneIds: [sceneEvidenceId(2)],
+          establishingSceneIds: [sceneEvidenceId(SCENE_2)],
         },
       ]);
       throw new Error("expected an out-of-route-scene failure");
@@ -419,7 +426,7 @@ describe("clause 3 — route reachability validates the relationship's scope", (
           relationship: "到達不能なルート限定の仲。",
           confidence: "high",
           scope: { kind: "route", routeId: "route-b" },
-          establishingSceneIds: [sceneEvidenceId(1)],
+          establishingSceneIds: [sceneEvidenceId(SCENE_1)],
         },
       ]);
       throw new Error("expected an unreachable-scope failure");
@@ -445,7 +452,7 @@ describe("clause 4 — the provenance of every caller-supplied input is verified
             relationship: "幼なじみ。",
             confidence: "high",
             scope: { kind: "global" },
-            establishingSceneIds: [sceneEvidenceId(1)],
+            establishingSceneIds: [sceneEvidenceId(SCENE_1)],
           },
         ],
         forged,
@@ -474,7 +481,7 @@ describe("clause 4 — the provenance of every caller-supplied input is verified
             relationship: "幼なじみ。",
             confidence: "high",
             scope: { kind: "global" },
-            establishingSceneIds: [sceneEvidenceId(1)],
+            establishingSceneIds: [sceneEvidenceId(SCENE_1)],
           },
         ],
         foreignBio,
@@ -495,7 +502,7 @@ describe("clause 4 — the provenance of every caller-supplied input is verified
           relationship: "存在しない人物との仲。",
           confidence: "high",
           scope: { kind: "global" },
-          establishingSceneIds: [sceneEvidenceId(1)],
+          establishingSceneIds: [sceneEvidenceId(SCENE_1)],
         },
       ]);
       throw new Error("expected an unknown-counterpart failure");
@@ -523,7 +530,7 @@ describe("clause 4 — the provenance of every caller-supplied input is verified
           relationship: "存在しない人物との仲。",
           confidence: "high",
           scope: { kind: "global" },
-          establishingSceneIds: [sceneEvidenceId(1)],
+          establishingSceneIds: [sceneEvidenceId(SCENE_1)],
         },
       ],
     };

@@ -36,6 +36,14 @@ type UnitSpec = {
   isChoice: boolean;
 };
 
+function realliveEvidence(startByte: number, byteLength: number, rawByteHandle: string) {
+  return { reallive: { byteOffsetInScene: startByte, byteLength, rawByteHandle } };
+}
+
+function sceneRef(sceneId: number): string {
+  return `scene:${String(sceneId).padStart(4, "0")}`;
+}
+
 const SCENE_1_LINE: UnitSpec = {
   bridgeUnitId: "a06a6efc-b1f0-7483-b225-40f197a3bc83",
   sourceUnitKey: "reallive:scene-0001#0000",
@@ -95,9 +103,11 @@ function makeNarrativeUnit(spec: UnitSpec, index: number): NarrativeUnit {
     evidenceTier: "E2",
     color: null,
     sourceAsset: { assetId: spec.assetId, assetKey: "" },
-    byteOffsetInScene: spec.startByte,
-    byteLength: spec.endByte - spec.startByte,
-    rawByteHandle: `handle-${index}`,
+    engineEvidence: realliveEvidence(
+      spec.startByte,
+      spec.endByte - spec.startByte,
+      `handle-${index}`,
+    ),
     choiceId: spec.isChoice ? `choice-${spec.sourceUnitKey}` : null,
     playOrder: index,
     revealOrder: null,
@@ -108,9 +118,9 @@ function makeNarrativeUnit(spec: UnitSpec, index: number): NarrativeUnit {
 
 function scene(sceneId: number, specs: UnitSpec[], nextScene: number | null): NarrativeScene {
   return {
-    sceneId,
+    sceneId: sceneRef(sceneId),
     selectionControl: "none",
-    nextScene,
+    nextScene: nextScene === null ? null : sceneRef(nextScene),
     messages: [],
     choices: [],
     units: specs.map((spec, index) => makeNarrativeUnit(spec, index)),
@@ -122,13 +132,20 @@ function scene(sceneId: number, specs: UnitSpec[], nextScene: number | null): Na
 function wholeGameStructure(): NarrativeStructure {
   return {
     schemaVersion: "utsushi.narrative-structure.v2",
-    entryScene: 1,
-    sceneDispatchOrder: [1, 2],
+    engine: "reallive",
+    entryScene: sceneRef(1),
+    sceneDispatchOrder: [sceneRef(1), sceneRef(2)],
     sourceBundleHash: BUNDLE_HASH,
     scenes: [
       scene(1, [SCENE_1_LINE, SCENE_1_CHOICE_A, SCENE_1_CHOICE_B], 2),
       scene(2, [SCENE_2_LINE, SCENE_2_CHOICE_A, SCENE_2_CHOICE_B], null),
-      { sceneId: 3, selectionControl: "none", nextScene: null, messages: [], choices: [] },
+      {
+        sceneId: sceneRef(3),
+        selectionControl: "none",
+        nextScene: null,
+        messages: [],
+        choices: [],
+      },
     ],
   };
 }
@@ -184,10 +201,10 @@ describe("buildFactSnapshot (deterministic pre-pass)", () => {
     expect(snapshot.choiceLabels.totalCount).toBe(4);
 
     // Scene cards carry decode counts + unit counts.
-    const sceneOne = snapshot.scenes.find((s) => s.sceneId === 1);
+    const sceneOne = snapshot.scenes.find((s) => s.sceneId === sceneRef(1));
     expect(sceneOne?.unitCount).toBe(3);
     expect(sceneOne?.choiceCount).toBe(0); // choices are flat units here
-    expect(snapshot.scenes.map((s) => s.sceneId)).toEqual([1, 2, 3]);
+    expect(snapshot.scenes.map((s) => s.sceneId)).toEqual([sceneRef(1), sceneRef(2), sceneRef(3)]);
 
     // No policy records / character ids in this bundle => empty by evidence.
     expect(snapshot.terminology).toEqual([]);
@@ -198,12 +215,12 @@ describe("buildFactSnapshot (deterministic pre-pass)", () => {
   it("PROOF: route reachability matches the decoded choice topology", () => {
     const snapshot = buildFactSnapshot(wholeGameStructure(), loadBridgeBundle());
     // Entry scene 1 -> 2 via dispatch; scene 3 is orphaned.
-    expect(snapshot.routeTopology.entryScene).toBe(1);
-    expect(snapshot.routeTopology.reachableSceneIds).toEqual([1, 2]);
-    expect(snapshot.routeTopology.unreachableSceneIds).toEqual([3]);
+    expect(snapshot.routeTopology.entryScene).toBe(sceneRef(1));
+    expect(snapshot.routeTopology.reachableSceneIds).toEqual([sceneRef(1), sceneRef(2)]);
+    expect(snapshot.routeTopology.unreachableSceneIds).toEqual([sceneRef(3)]);
     expect(snapshot.routeTopology.edges).toContainEqual({
-      fromSceneId: 1,
-      toSceneId: 2,
+      fromSceneId: sceneRef(1),
+      toSceneId: sceneRef(2),
       kind: "dispatch",
       choiceIndex: null,
     });
@@ -214,7 +231,7 @@ describe("buildFactSnapshot (deterministic pre-pass)", () => {
     const noDispatch = wholeGameStructure();
     noDispatch.scenes[0]!.nextScene = null;
     const orphaned = buildFactSnapshot(noDispatch, loadBridgeBundle());
-    expect(orphaned.routeTopology.reachableSceneIds).toEqual([1]);
+    expect(orphaned.routeTopology.reachableSceneIds).toEqual([sceneRef(1)]);
     expect(orphaned.routeTopology.reachableUnitKeys).toEqual(
       ["reallive:scene-0001#0000", "reallive:scene-0001#0001", "reallive:scene-0001#0002"].sort(),
     );
@@ -306,7 +323,7 @@ describe("buildFactSnapshot (deterministic pre-pass)", () => {
 
     // (b) a different dispatch order (play order + topology input)
     const reorder = wholeGameStructure();
-    reorder.sceneDispatchOrder = [2, 1];
+    reorder.sceneDispatchOrder = [sceneRef(2), sceneRef(1)];
     ids.add(buildFactSnapshot(reorder, loadBridgeBundle()).snapshotId);
 
     // (c) a cited bridge speaker identity change (folds into the hash)

@@ -56,6 +56,8 @@ const CONTEXT: A3Context = {
   localeBranchId: null,
 };
 
+const SCENE_1 = "scene:0001";
+
 /** In-memory memo store — the durable memoization seam, no Postgres. */
 class MemoryMemoStore implements LlmCallMemoStore {
   readonly #memos = new Map<string, Extract<LlmMemoSingleflightResult, { kind: "completed" }>>();
@@ -137,7 +139,7 @@ function sceneRequest(): {
   request: A3SceneRequest;
 } {
   const { model } = buildClaimFixture();
-  const scene = readCompleteScene(model, CONTEXT, 1);
+  const scene = readCompleteScene(model, CONTEXT, SCENE_1);
   return { model, request: { scene, priorStory: null, sourceLanguage: model.sourceLanguage } };
 }
 

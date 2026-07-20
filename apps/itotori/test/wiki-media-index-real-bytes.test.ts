@@ -103,6 +103,7 @@ describe("real-Sweetie media ref resolution through the sanitized server", () =>
 
       // 1. Entry scene from the real structure export.
       runUtsushiStructureExport({
+        engine: "reallive",
         gameexePath: c.gameexe,
         seenPath: c.seen,
         outputPath: structurePath,

@@ -58,6 +58,8 @@ const CONTEXT: A10Context = {
   localeBranchId: null,
 };
 
+const SCENE_2 = "scene:0002";
+
 const CHARACTERS: readonly FixtureCharacterSpec[] = [
   { characterId: "nam-11", decodedLabel: "アイ", lines: 2, boundUnitPlayOrder: 0 },
 ];
@@ -170,7 +172,7 @@ function recordedHypothesis(
   request: A10HypothesisRequest,
 ): WikiObject {
   const occ = verifyCandidateCharacter(model, CONTEXT, "nam-11");
-  const node = verifyRevealScene(model, CONTEXT, "2");
+  const node = verifyRevealScene(model, CONTEXT, SCENE_2);
   return assembleSpeakerHypothesis(
     model,
     CONTEXT,
@@ -178,7 +180,7 @@ function recordedHypothesis(
     {
       candidateCharacterId: "nam-11",
       confidence: "medium",
-      revealSceneId: "2",
+      revealSceneId: SCENE_2,
       rationale: "推測。",
     },
     occ,
@@ -261,7 +263,7 @@ describe("A10 dispatches through the sole ZDR boundary", () => {
     const draft = await caller(request);
     expect(draft.candidateCharacterId).toBe("nam-11");
     expect(draft.confidence).toBe("medium");
-    expect(draft.revealSceneId).toBe("2");
+    expect(draft.revealSceneId).toBe(SCENE_2);
     expect(draft.rationale.length).toBeGreaterThan(0);
   });
 

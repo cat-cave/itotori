@@ -128,6 +128,7 @@ describe("produce playable build (env-gated real Sweetie byte oracle)", () => {
       ).toBe(0);
       expect(
         runUtsushiStructureExport({
+          engine: "reallive",
           gameexePath: corpus!.gameexe,
           seenPath: corpus!.seen,
           outputPath: structurePath,
@@ -254,6 +255,7 @@ describe("produce playable build (env-gated real Sweetie byte oracle)", () => {
           ).toBe(0);
           expect(
             runUtsushiStructureExport({
+              engine: "reallive",
               gameexePath: current.gameexe,
               seenPath: current.seen,
               outputPath: structurePath,

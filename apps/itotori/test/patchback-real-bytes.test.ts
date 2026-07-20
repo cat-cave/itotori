@@ -112,6 +112,7 @@ describe("native patchback + replay (env-gated real Sweetie byte oracle)", () =>
       ).toBe(0);
       expect(
         runUtsushiStructureExport({
+          engine: "reallive",
           gameexePath: corpus!.gameexe,
           seenPath: corpus!.seen,
           outputPath: structurePath,

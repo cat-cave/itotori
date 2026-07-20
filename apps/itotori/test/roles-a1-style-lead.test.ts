@@ -318,7 +318,7 @@ describe("A1 clause 1 — a cited source-language style-contract, claim-validate
       { selector: { kind: "all" }, maxRows: 100_000, maxBytes: 8_388_608 },
     );
 
-    expect(slice.map((scene) => scene.sceneId)).toEqual(["1", "2"]);
+    expect(slice.map((scene) => scene.sceneId)).toEqual(["scene:0001", "scene:0002"]);
     expect(slice.flatMap((scene) => scene.units).map((unit) => unit.factId)).toEqual(
       sourceRead.facts.map((fact) => fact.factId),
     );
