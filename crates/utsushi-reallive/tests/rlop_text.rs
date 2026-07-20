@@ -137,29 +137,29 @@ fn dispatch_command(
     (outcome, lines, runtime)
 }
 
-// Registry shape
-
 #[test]
-fn register_text_rlops_registers_exactly_twelve_opcodes() {
+fn register_text_rlops_registers_each_opcode_across_the_compiler_lattice() {
     let sink = Arc::new(CollectingSink::new());
     let runtime = Arc::new(MsgRuntime::with_sink(sink));
     let mut registry = RlopRegistry::new();
     let count = register_text_rlops(&mut registry, runtime);
-    assert_eq!(
-        count, 12,
-        "alpha contract: exactly 12 module_msg opcodes covered after UTSUSHI-211 moved the choice family to module_sel, got {count}",
-    );
-    assert_eq!(count, MsgOpcode::ALL.len());
+    assert_eq!(count, MsgOpcode::ALL.len() * 3);
     assert_eq!(registry.len(), count);
 }
 
 #[test]
-fn text_module_msg_keys_all_target_module_one_three() {
-    // msg is the REAL RealLive semantic module_id 3 (an earlier revision
-    // mislabelled it 5, which is SYS2 — that clobbered sel.select_objbtn
-    // and msg.pause onto the same (1, 5, 3) key).
-    for key in text_module_msg_keys() {
-        assert_eq!(key.module_type, MSG_MODULE_TYPE);
+fn text_module_msg_keys_cover_every_compiler_lattice_type() {
+    let keys = text_module_msg_keys();
+    assert_eq!(keys.len(), MsgOpcode::ALL.len() * 3);
+    for module_type in [0, 1, 2] {
+        assert_eq!(
+            keys.iter()
+                .filter(|key| key.module_type == module_type)
+                .count(),
+            MsgOpcode::ALL.len(),
+        );
+    }
+    for key in keys {
         assert_eq!(key.module_id, MSG_MODULE_ID);
         assert_eq!(key.module_id, 3);
     }

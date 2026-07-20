@@ -4,11 +4,11 @@
 use std::sync::Arc;
 
 use crate::rlop::{
-    DispatchOutcome, ExprValue, LongOp, RLOperation, RlopKey, RlopRegistry, longops::PauseLongOp,
+    DispatchOutcome, ExprValue, LongOp, RLOperation, RlopRegistry, longops::PauseLongOp,
 };
 use crate::vm::Vm;
 
-use super::{MsgOpcode, MsgRuntime, MsgRuntimeWarning};
+use super::{LATTICE_TYPES, MsgOpcode, MsgRuntime, MsgRuntimeWarning};
 
 /// `msg.pause` — yield a [`crate::rlop::LongOp`] carrying a
 /// [`crate::rlop::longops::PauseLongOp`] private state. The VM's
@@ -371,62 +371,60 @@ impl RLOperation for MsgTextWindowOp {
 }
 
 /// Mount every text/messaging op this module ships into `registry`.
-/// Returns the number of opcodes registered so a caller can audit
-/// "every opcode in [`MsgOpcode::ALL`] landed" without re-walking the
-/// registry.
+/// Returns the number of lattice-specific entries registered.
 pub fn register_text_rlops(registry: &mut RlopRegistry, runtime: Arc<MsgRuntime>) -> usize {
-    let mut count = 0;
-    let mut register = |key: RlopKey, op: Arc<dyn RLOperation>| {
-        registry.register(key, op);
-        count += 1;
+    let mut register = |opcode: MsgOpcode, op: Arc<dyn RLOperation>| {
+        for module_type in LATTICE_TYPES {
+            registry.register(opcode.rlop_key_for(module_type), Arc::clone(&op));
+        }
     };
     register(
-        MsgOpcode::Pause.rlop_key(),
+        MsgOpcode::Pause,
         Arc::new(MsgPauseOp::new(Arc::clone(&runtime))),
     );
     register(
-        MsgOpcode::ParagraphBreak.rlop_key(),
+        MsgOpcode::ParagraphBreak,
         Arc::new(MsgParagraphBreakOp::new(Arc::clone(&runtime))),
     );
     register(
-        MsgOpcode::LineBreak.rlop_key(),
+        MsgOpcode::LineBreak,
         Arc::new(MsgLineBreakOp::new(Arc::clone(&runtime))),
     );
     register(
-        MsgOpcode::Page.rlop_key(),
+        MsgOpcode::Page,
         Arc::new(MsgPageOp::new(Arc::clone(&runtime))),
     );
     register(
-        MsgOpcode::MsgHide.rlop_key(),
+        MsgOpcode::MsgHide,
         Arc::new(MsgMsgHideOp::new(Arc::clone(&runtime))),
     );
     register(
-        MsgOpcode::MsgClear.rlop_key(),
+        MsgOpcode::MsgClear,
         Arc::new(MsgMsgClearOp::new(Arc::clone(&runtime))),
     );
     register(
-        MsgOpcode::LineNumber.rlop_key(),
+        MsgOpcode::LineNumber,
         Arc::new(MsgLineNumberOp::new(Arc::clone(&runtime))),
     );
     register(
-        MsgOpcode::FontColor.rlop_key(),
+        MsgOpcode::FontColor,
         Arc::new(MsgFontColorOp::new(Arc::clone(&runtime))),
     );
     register(
-        MsgOpcode::FontSize.rlop_key(),
+        MsgOpcode::FontSize,
         Arc::new(MsgFontSizeOp::new(Arc::clone(&runtime))),
     );
     register(
-        MsgOpcode::NameOpen.rlop_key(),
+        MsgOpcode::NameOpen,
         Arc::new(MsgNameOpenOp::new(Arc::clone(&runtime))),
     );
     register(
-        MsgOpcode::NameClose.rlop_key(),
+        MsgOpcode::NameClose,
         Arc::new(MsgNameCloseOp::new(Arc::clone(&runtime))),
     );
     register(
-        MsgOpcode::TextWindow.rlop_key(),
+        MsgOpcode::TextWindow,
         Arc::new(MsgTextWindowOp::new(Arc::clone(&runtime))),
     );
-    count
+    MsgOpcode::ALL.len() * LATTICE_TYPES.len()
 }

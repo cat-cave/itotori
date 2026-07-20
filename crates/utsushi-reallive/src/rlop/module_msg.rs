@@ -11,19 +11,16 @@
 //!
 //! # Module addressing
 //!
-//! The `(module_type, module_id)` pair the Sweetie HD corpus exhibits
-//! for the message-control submodule is `(1, 5)` — verified at byte
-//! offset `0x001e` of scene 1 (see
-//! `RealLive encryption research notes` §4.2
-//! "[10] @0x001e Command type=1 id=5 opcode=120"). That pair is pinned
-//! here as [`MSG_MODULE_TYPE`] / [`MSG_MODULE_ID`].
+//! `module_id=3` is the message-control semantic key. `module_type` is a
+//! compiler-version artifact, so this family registers every operation under
+//! the supported RealLive lattice `{0, 1, 2}`.
 //!
 //! # Opcode coverage
 //!
 //! The numeric opcode values are restated from Haeleth's public RLDEV
 //! documentation (`https://dev.haeleth.net/rldev.shtml`
-//! `bin/Reallive.kfn` opcode table), re-validated against Sweetie HD
-//! bytes where the corpus exercises them. No rlvm source is vendored or
+//! `bin/Reallive.kfn` opcode table), re-validated against real bytes where
+//! the corpus exercises them. No rlvm source is vendored or
 //! mechanically translated — each opcode here is a clean-room re-derive
 //! whose semantics are pinned by:
 //!
@@ -59,22 +56,21 @@ pub use ops::{
     MsgNameCloseOp, MsgNameOpenOp, MsgPageOp, MsgParagraphBreakOp, MsgPauseOp, MsgTextWindowOp,
     register_text_rlops,
 };
-// `msg.select` lived here briefly () as a placeholder for the
-// `(1, 5, 120)` Sweetie-HD-observed byte. moved the
-// four-variant choice family into `module_sel` at its proper
-// `module_id=2` address; the placeholder was deleted in the same change
-// per the no-legacy-compat rule. (The raw `(1, 5, 120)` byte is a `SYS2`
-// op — `id=5` — and is catalogued in `module_catalog`.)
+// `msg.select` lived here briefly as a placeholder for a `SYS2` command.
+// The choice family now lives at its semantic `module_id=2` address in
+// `module_sel`; the old placeholder was deleted rather than retained.
 
-/// `module_type` byte the Sweetie HD corpus exhibits for the
-/// message-control submodule. Pinned at the byte observed at scene 1
-/// offset `0x001e` (research doc §4.2).
+/// Canonical compiler-lattice type retained for callers that build one key.
+/// [`register_text_rlops`] registers every supported lattice type.
 pub const MSG_MODULE_TYPE: u8 = 1;
+
+/// The compiler-version `module_type` lattice accepted by this family.
+const LATTICE_TYPES: [u8; 3] = [0, 1, 2];
 
 /// `module_id` byte of the message-control submodule (`msg`). This is
 /// the REAL RealLive semantic id `3` used by the `kaifuu-reallive`
-/// decompiler (`opcode::module_id::MSG`) and validated on the Sweetie HD
-/// Kanon bytecode. An earlier revision mislabelled it `5` (which is
+/// decompiler (`opcode::module_id::MSG`) and validated on real bytecode.
+/// An earlier revision mislabelled it `5` (which is
 /// actually `SYS2`); that clobbered `sel.select_objbtn` and `msg.pause`
 /// onto the same `(1, 5, 3)` key. Corrected to `3` so `msg` and `sel`
 /// occupy distinct keys.
@@ -85,8 +81,8 @@ pub const MSG_MODULE_ID: u8 = 3;
 // The numeric values below are the opcode bytes RLDEV (and rlvm's
 // derived `module_msg.cc` table) document for the message-control
 // submodule. Each constant carries the RLDEV name in its doc-comment so
-// the audit trail names the source. Where Sweetie HD scene 1 exercises
-// the opcode, the validation site is named alongside.
+// the audit trail names the source. Real-byte validation sites are named
+// alongside the opcodes they exercise.
 
 /// `msg.text_out` virtual opcode — the [`crate::BytecodeElement::Textout`]
 /// element handler. Top-level Textout is not a Command, so the byte does
@@ -195,9 +191,14 @@ impl MsgOpcode {
         }
     }
 
-    /// Composite registry key the VM uses to dispatch this opcode.
+    /// Composite registry key for a compiler-version lattice type.
+    pub fn rlop_key_for(self, module_type: u8) -> RlopKey {
+        RlopKey::new(module_type, MSG_MODULE_ID, self.opcode())
+    }
+
+    /// Canonical registry key retained for callers that use one lattice type.
     pub fn rlop_key(self) -> RlopKey {
-        RlopKey::new(MSG_MODULE_TYPE, MSG_MODULE_ID, self.opcode())
+        self.rlop_key_for(MSG_MODULE_TYPE)
     }
 
     /// Stable lowercase tag for diagnostics.
@@ -219,11 +220,16 @@ impl MsgOpcode {
     }
 }
 
-/// Convenience: the registry keys this module owns. Used by the audit
-/// test that wants to spell out the keys without re-walking the
-/// `MsgOpcode::ALL` list at each call site.
+/// Every registry key this module owns across the compiler-version lattice.
 pub fn text_module_msg_keys() -> Vec<RlopKey> {
-    MsgOpcode::ALL.iter().map(|op| op.rlop_key()).collect()
+    LATTICE_TYPES
+        .into_iter()
+        .flat_map(|module_type| {
+            MsgOpcode::ALL
+                .iter()
+                .map(move |op| op.rlop_key_for(module_type))
+        })
+        .collect()
 }
 
 /// Monotonic generator for [`LongOpId`] values. The runtime allocates
@@ -492,7 +498,7 @@ impl MsgRuntime {
             clean
         } else {
             // The lexer's Textout boundary detection is first-byte-
-            // based; some Sweetie HD runs include non-Shift-JIS bytes
+            // based; some RealLive runs include non-Shift-JIS bytes
             // after a Shift-JIS-shaped prefix. The substrate-honest
             // policy: emit the clean prefix as the observation and
             // record a typed warning for the truncated tail.
@@ -665,7 +671,7 @@ fn decode_shift_jis(bytes: &[u8]) -> Option<String> {
 
 /// Length of the longest prefix of `bytes` that decodes from Shift-JIS
 /// without replacement. The lexer's Textout boundary detection is
-/// first-byte-based; some Sweetie HD runs legitimately include
+/// first-byte-based; some RealLive runs legitimately include
 /// non-Shift-JIS bytes (e.g. `0xFF` `i32` literal introducers) after a
 /// Shift-JIS-shaped prefix. The runtime uses this helper to emit the
 /// clean prefix as a substrate observation while recording a typed
@@ -762,18 +768,20 @@ mod tests {
     }
 
     #[test]
-    fn register_text_rlops_mounts_one_entry_per_opcode() {
+    fn register_text_rlops_mounts_each_opcode_under_every_lattice_type() {
         let sink = Arc::new(CollectingSink::supported());
         let runtime = Arc::new(MsgRuntime::with_sink(sink));
         let mut registry = RlopRegistry::new();
         let count = register_text_rlops(&mut registry, runtime);
-        assert_eq!(count, MsgOpcode::ALL.len());
-        assert_eq!(registry.len(), MsgOpcode::ALL.len());
-        for opcode in MsgOpcode::ALL {
-            assert!(
-                registry.get(opcode.rlop_key()).is_some(),
-                "{opcode:?} must resolve through the registry",
-            );
+        assert_eq!(count, MsgOpcode::ALL.len() * LATTICE_TYPES.len());
+        assert_eq!(registry.len(), MsgOpcode::ALL.len() * LATTICE_TYPES.len());
+        for module_type in LATTICE_TYPES {
+            for opcode in MsgOpcode::ALL {
+                assert!(
+                    registry.get(opcode.rlop_key_for(module_type)).is_some(),
+                    "{opcode:?} must resolve for lattice type {module_type}",
+                );
+            }
         }
     }
 
@@ -785,16 +793,6 @@ mod tests {
                 seen.insert(opcode.opcode()),
                 "duplicate opcode byte for {opcode:?}",
             );
-        }
-    }
-
-    #[test]
-    fn text_module_msg_keys_returns_every_registered_key() {
-        let keys = text_module_msg_keys();
-        assert_eq!(keys.len(), MsgOpcode::ALL.len());
-        for key in keys {
-            assert_eq!(key.module_type, MSG_MODULE_TYPE);
-            assert_eq!(key.module_id, MSG_MODULE_ID);
         }
     }
 
