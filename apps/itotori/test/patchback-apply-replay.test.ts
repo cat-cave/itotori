@@ -4,16 +4,18 @@
 // containing the target passes while a SOURCE observation (no target) does not.
 
 import { describe, expect, it } from "vitest";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  applyRealLivePatch,
+  applyEnginePatchback,
+  enginePatchbackApplyArgs,
+  EnginePatchbackApplyError,
   observedTextContains,
   parseObservedBodies,
-  realLivePatchArgs,
-  RealLiveApplyError,
+  realLivePatchbackAdapter,
+  softpalPatchbackAdapter,
   replayAcceptedPatch,
   replayObserve,
   replayValidateArgs,
@@ -27,16 +29,33 @@ function runnerReturning(status: number, stdout = "", stderr = ""): NativeCliRun
   return () => ({ status, stdout, stderr });
 }
 
-describe("applyRealLivePatch", () => {
-  const base = {
-    sourceRoot: "/src",
-    targetRoot: "/out",
-    translatedBundlePath: "/tmp/translated.json",
-    scope: "dialogue+choices" as const,
-  };
+/** A minimal on-disk RealLive game root so source discovery selects the adapter. */
+function makeRealLiveRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), "itotori-reallive-root-"));
+  mkdirSync(join(root, "REALLIVEDATA"), { recursive: true });
+  writeFileSync(join(root, "REALLIVEDATA", "Seen.txt"), "");
+  writeFileSync(join(root, "REALLIVEDATA", "Gameexe.ini"), "");
+  return root;
+}
 
-  it("builds the canonical kaifuu patch argv", () => {
-    expect(realLivePatchArgs(base)).toEqual([
+/** A minimal on-disk Softpal game root (loose SCRIPT.SRC + TEXT.DAT pair). */
+function makeSoftpalRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), "itotori-softpal-root-"));
+  writeFileSync(join(root, "SCRIPT.SRC"), "");
+  writeFileSync(join(root, "TEXT.DAT"), "");
+  return root;
+}
+
+describe("engine patch-back adapters (RealLive apply re-homed behind the registry)", () => {
+  it("builds the canonical RealLive kaifuu patch argv (pure)", () => {
+    expect(
+      realLivePatchbackAdapter.buildApplyArgs({
+        sourceRoot: "/src",
+        targetRoot: "/out",
+        translatedBundlePath: "/tmp/translated.json",
+        scope: "dialogue+choices",
+      }),
+    ).toEqual([
       "patch",
       "--engine",
       "reallive",
@@ -52,19 +71,81 @@ describe("applyRealLivePatch", () => {
     ]);
   });
 
-  it("returns the apply result on a zero exit", () => {
-    const result = applyRealLivePatch({
-      ...base,
+  it("builds the Softpal kaifuu patch argv from the strict export (pure)", () => {
+    expect(
+      softpalPatchbackAdapter.buildApplyArgs({
+        sourceRoot: "/game",
+        targetRoot: "/out",
+        translatedBundlePath: "/tmp/translated.json",
+        patchExportPath: "/tmp/patch-export.json",
+        scope: "dialogue-only",
+      }),
+    ).toEqual([
+      "patch",
+      "--engine",
+      "softpal",
+      "--source",
+      "/game",
+      "--patch",
+      "/tmp/patch-export.json",
+      "--output",
+      "/out",
+    ]);
+  });
+
+  it("DETECTS RealLive from the source root and returns the reallive argv", () => {
+    const root = makeRealLiveRoot();
+    const { engineId, args } = enginePatchbackApplyArgs({
+      sourceRoot: root,
+      targetRoot: "/out",
+      translatedBundlePath: "/tmp/translated.json",
+      scope: "dialogue+choices",
+    });
+    expect(engineId).toBe("reallive");
+    expect(args).toContain("reallive");
+  });
+
+  it("DETECTS Softpal from the source root and returns the softpal argv", () => {
+    const root = makeSoftpalRoot();
+    const { engineId, args } = enginePatchbackApplyArgs({
+      sourceRoot: root,
+      targetRoot: "/out",
+      translatedBundlePath: "/tmp/translated.json",
+      patchExportPath: "/tmp/patch-export.json",
+      scope: "dialogue-only",
+    });
+    expect(engineId).toBe("softpal");
+    expect(args).toContain("softpal");
+    expect(args).toContain("--patch");
+  });
+
+  it("returns an engine-discriminated apply result on a zero exit", () => {
+    const root = makeRealLiveRoot();
+    const result = applyEnginePatchback({
+      engineId: "reallive",
+      sourceRoot: root,
+      targetRoot: "/out",
+      translatedBundlePath: "/tmp/translated.json",
+      scope: "dialogue+choices",
       nativeCli: { runProcess: runnerReturning(0, "ok") },
     });
     expect(result.status).toBe(0);
+    expect(result.engineId).toBe("reallive");
     expect(result.args).toContain("reallive");
   });
 
-  it("throws RealLiveApplyError on a non-zero exit (no silent fallback)", () => {
+  it("throws EnginePatchbackApplyError on a non-zero exit (no silent fallback)", () => {
+    const root = makeRealLiveRoot();
     expect(() =>
-      applyRealLivePatch({ ...base, nativeCli: { runProcess: runnerReturning(1, "", "boom") } }),
-    ).toThrow(RealLiveApplyError);
+      applyEnginePatchback({
+        engineId: "reallive",
+        sourceRoot: root,
+        targetRoot: "/out",
+        translatedBundlePath: "/tmp/translated.json",
+        scope: "dialogue+choices",
+        nativeCli: { runProcess: runnerReturning(1, "", "boom") },
+      }),
+    ).toThrow(EnginePatchbackApplyError);
   });
 });
 

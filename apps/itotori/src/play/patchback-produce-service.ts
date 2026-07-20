@@ -24,7 +24,7 @@ import {
   createDeliveredPatchArchive,
   type DeliveredPatchArchive,
 } from "../patch-export/delivery-archive.js";
-import type { RealLivePatchScope } from "../patchback/apply.js";
+import type { PatchbackEngineId, PatchbackScope } from "../patchback/adapters.js";
 import type { NativePatchbackInput } from "../patchback/types.js";
 import { produceNativePatchbackBuild } from "../patchback/produce-build.js";
 import type { NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
@@ -44,7 +44,10 @@ export type PatchbackProduceRequest = {
 export type LoadedProducePlan = {
   input: NativePatchbackInput;
   sourceRoot: string;
-  scope: RealLivePatchScope;
+  scope: PatchbackScope;
+  /** The engine this plan's source is patched with. When omitted the producer
+   * discovers it from the source artifacts — never defaulted to RealLive. */
+  engineId?: PatchbackEngineId;
   runId?: string;
 };
 
@@ -95,6 +98,7 @@ export class PatchbackProduceService implements PatchbackProduceServicePort {
       sourceRoot: plan.sourceRoot,
       buildRoot,
       scope: plan.scope,
+      ...(plan.engineId !== undefined ? { engineId: plan.engineId } : {}),
       ...(plan.runId !== undefined ? { runId: plan.runId } : {}),
       ...(this.deps.nativeCli !== undefined ? { nativeCli: this.deps.nativeCli } : {}),
       ...(this.deps.log !== undefined ? { log: this.deps.log } : {}),

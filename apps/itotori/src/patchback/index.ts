@@ -11,7 +11,12 @@ import { writeFileSync } from "node:fs";
 
 import type { PatchExportV02 } from "@itotori/localization-bridge-schema";
 
-import { applyRealLivePatch, type RealLiveApplyResult, type RealLivePatchScope } from "./apply.js";
+import {
+  applyEnginePatchback,
+  type EnginePatchbackApplyResult,
+  type PatchbackEngineId,
+  type PatchbackScope,
+} from "./adapters.js";
 import { bindScopedTargets } from "./bind-scoped-targets.js";
 import { buildPatchExportV02 } from "./build-patch-export.js";
 import { writeTranslatedBundle } from "./translated-bundle.js";
@@ -34,13 +39,27 @@ export {
   TranslatedBundleError,
 } from "./translated-bundle.js";
 export {
-  applyRealLivePatch,
-  realLivePatchArgs,
-  RealLiveApplyError,
-  type RealLiveApplyArgs,
-  type RealLiveApplyResult,
-  type RealLivePatchScope,
-} from "./apply.js";
+  applyEnginePatchback,
+  enginePatchbackApplyArgs,
+  detectPatchbackEngine,
+  resolvePatchbackAdapter,
+  enginePatchbackAdapter,
+  enginePatchbackAdapters,
+  toPatchbackEngineReceipt,
+  EnginePatchbackApplyError,
+  PatchbackEngineSelectionError,
+  isPatchbackScope,
+  PATCHBACK_SCOPES,
+  PATCHBACK_TARGET_ARTIFACT_KEY,
+  realLivePatchbackAdapter,
+  softpalPatchbackAdapter,
+  type EnginePatchbackAdapter,
+  type EnginePatchbackApplyRequest,
+  type EnginePatchbackApplyResult,
+  type PatchbackEngineId,
+  type PatchbackEngineReceipt,
+  type PatchbackScope,
+} from "./adapters.js";
 export {
   replayObserve,
   replayValidateArgs,
@@ -69,14 +88,21 @@ export type NativePatchbackApplyArgs = {
   targetRoot: string;
   /** Where the translated v0.2 bundle JSON is written for `kaifuu patch --bundle`. */
   translatedBundlePath: string;
-  scope: RealLivePatchScope;
+  /** Where the strict PatchExportV02 JSON is written for `kaifuu patch --patch`
+   * (Softpal). When omitted the export is not persisted before apply — an engine
+   * that consumes it (e.g. Softpal) then refuses. */
+  patchExportPath?: string;
+  /** Explicit engine identity. When omitted the engine is DETECTED from the
+   * source root's artifacts — never defaulted to RealLive. */
+  engineId?: PatchbackEngineId;
+  scope: PatchbackScope;
   force?: boolean;
   nativeCli?: NativeCliRunner;
   log?: (message: string) => void;
 };
 
 export type NativePatchbackApplyResult = NativePatchbackBuild & {
-  apply: RealLiveApplyResult;
+  apply: EnginePatchbackApplyResult;
 };
 
 /**
@@ -106,18 +132,26 @@ export function writePatchExportV02(path: string, patchExport: PatchExportV02): 
 
 /**
  * The one shipped native path: build the PatchExportV02 from accepted outputs,
- * materialize the translated bundle, and apply it byte-surgically via Kaifuu. The
+ * materialize the translated bundle (and, when a path is given, persist the
+ * strict export for engines that consume it), then apply the bytes through the
+ * engine adapter the registry selects. No engine is hard-coded — the adapter is
+ * chosen by the explicit `engineId` or discovered from the source artifacts. The
  * translated-byte replay is driven separately (per scene/unit) via `replayObserve`.
  */
 export function runNativePatchbackApply(
   args: NativePatchbackApplyArgs,
 ): NativePatchbackApplyResult {
   const build = buildNativePatchback(args.input, args.translatedBundlePath);
-  const apply = applyRealLivePatch({
+  if (args.patchExportPath !== undefined) {
+    writePatchExportV02(args.patchExportPath, build.patchExport);
+  }
+  const apply = applyEnginePatchback({
     sourceRoot: args.sourceRoot,
     targetRoot: args.targetRoot,
     translatedBundlePath: args.translatedBundlePath,
     scope: args.scope,
+    ...(args.patchExportPath !== undefined ? { patchExportPath: args.patchExportPath } : {}),
+    ...(args.engineId !== undefined ? { engineId: args.engineId } : {}),
     ...(args.force !== undefined ? { force: args.force } : {}),
     ...(args.nativeCli !== undefined ? { nativeCli: args.nativeCli } : {}),
     ...(args.log !== undefined ? { log: args.log } : {}),

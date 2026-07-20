@@ -17,8 +17,13 @@ import { join } from "node:path";
 
 import { hashLocalizationArtifact } from "@itotori/db";
 
-import type { RealLivePatchScope } from "./apply.js";
-import { runNativePatchbackApply, writePatchExportV02 } from "./index.js";
+import {
+  toPatchbackEngineReceipt,
+  type PatchbackEngineId,
+  type PatchbackEngineReceipt,
+  type PatchbackScope,
+} from "./adapters.js";
+import { runNativePatchbackApply } from "./index.js";
 import type { NativePatchbackInput } from "./types.js";
 import type { NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
 
@@ -32,11 +37,14 @@ export const PRODUCED_PATCHBACK_ARTIFACT_KEYS = [
 ] as const;
 
 export type ProducePatchbackBuildOptions = {
-  /** Read-only source game root (contains REALLIVEDATA/Seen.txt). */
+  /** Read-only source game root (the engine's source artifacts live under it). */
   sourceRoot: string;
   /** Owned, writable root the produced build + provenance artifacts live under. */
   buildRoot: string;
-  scope: RealLivePatchScope;
+  scope: PatchbackScope;
+  /** Explicit engine identity. When omitted the engine is DISCOVERED from the
+   * source root's artifacts — never defaulted to RealLive. */
+  engineId?: PatchbackEngineId;
   /** The run whose accepted outputs are being finalized into a build. */
   runId?: string;
   force?: boolean;
@@ -66,6 +74,10 @@ export type ProducedPatchbackManifest = {
   patchVersionId: string;
   patchExportId: string;
   runId: string;
+  /** The engine whose adapter wrote the patched bytes (never assumed). */
+  engineId: PatchbackEngineId;
+  /** The typed, engine-discriminated apply receipt (adapter id + native argv). */
+  patchReceipt: PatchbackEngineReceipt;
   sourceBridgeId: string;
   sourceBundleHash: string;
   targetLocale: string;
@@ -99,35 +111,27 @@ export function produceNativePatchbackBuild(
   mkdirSync(buildRoot, { recursive: true });
 
   // (1) The REAL byte-surgical apply: build the strict PatchExportV02 from the
-  // accepted outputs, materialize the translated bundle, and spawn `kaifuu patch`.
+  // accepted outputs, materialize the translated bundle + strict export (the
+  // export is written before apply so an engine that consumes it — e.g. Softpal
+  // via `--patch` — finds it on disk), then spawn the engine adapter's `kaifuu
+  // patch`. The engine is explicit or discovered from the source; never defaulted.
   const applied = runNativePatchbackApply({
     input,
     sourceRoot: options.sourceRoot,
     targetRoot,
     translatedBundlePath,
+    patchExportPath,
     scope: options.scope,
+    ...(options.engineId !== undefined ? { engineId: options.engineId } : {}),
     ...(options.force !== undefined ? { force: options.force } : {}),
     ...(options.nativeCli !== undefined ? { nativeCli: options.nativeCli } : {}),
     ...(options.log !== undefined ? { log: options.log } : {}),
   });
+  const patchReceipt = toPatchbackEngineReceipt(applied.apply, options.scope);
 
-  // (2) Persist the canonical provenance the delivery + runtime-launch surfaces
-  // read: the strict export JSON and the native apply receipt (argv + status).
-  writePatchExportV02(patchExportPath, applied.patchExport);
-  writeFileSync(
-    patchApplyPath,
-    `${JSON.stringify(
-      {
-        apply: {
-          command: applied.apply.command,
-          args: applied.apply.args,
-          status: applied.apply.status,
-        },
-      },
-      null,
-      2,
-    )}\n`,
-  );
+  // (2) Persist the native apply receipt (engine-discriminated argv + status).
+  // The strict export JSON was already written by the apply above.
+  writeFileSync(patchApplyPath, `${JSON.stringify({ apply: patchReceipt }, null, 2)}\n`);
 
   // (3) The hash-bound manifest. Every ref is recomputed by
   // `verifyLocalizationArtifactManifest` at the delivery boundary, so a produced
@@ -169,6 +173,8 @@ export function produceNativePatchbackBuild(
     patchVersionId,
     patchExportId: applied.patchExport.patchExportId,
     runId,
+    engineId: applied.apply.engineId,
+    patchReceipt,
     sourceBridgeId: applied.patchExport.sourceBridgeId,
     sourceBundleHash: applied.patchExport.sourceBundleHash,
     targetLocale: applied.patchExport.targetLocale,

@@ -31,7 +31,7 @@ import type { NarrativeStructure } from "../src/structure/types.js";
 import type { AcceptedUnitOutput, NativePatchbackInput } from "../src/patchback/index.js";
 import {
   buildNativePatchback,
-  applyRealLivePatch,
+  applyEnginePatchback,
   observedTextContains,
   replayObserve,
 } from "../src/patchback/index.js";
@@ -164,13 +164,15 @@ describe("native patchback + replay (env-gated real Sweetie byte oracle)", () =>
       // (5) PatchExportV02 -> translated bundle -> byte-surgical apply.
       const build = buildNativePatchback(input, bundlePath);
       expect(build.patchExport.entries).toHaveLength(129);
-      const apply = applyRealLivePatch({
+      const apply = applyEnginePatchback({
+        engineId: "reallive",
         sourceRoot: corpus!.gameRoot,
         targetRoot,
         translatedBundlePath: bundlePath,
         scope: "dialogue+choices",
       });
       expect(apply.status).toBe(0);
+      expect(apply.engineId).toBe("reallive");
 
       // --- Proof A: export->apply round-trip is BYTE-EXACT ---------------------
       const sourceSeenPath = join(corpus!.gameRoot, "REALLIVEDATA", "Seen.txt");
