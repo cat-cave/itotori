@@ -8,30 +8,25 @@
 //! ([`gameexe`]), the scene bytecode stack VM / decompiler ([`opcode`])
 //! and its expression decoder ([`expression`]), the v0.2 BridgeBundle
 //! producer ([`bridge`]), and byte-correct patch-back ([`patchback`]).
-//! # Skeleton status (siglus-05)
-//! Every public entry point in the **core format stack** ([`archive`],
-//! [`decrypt`], [`decompress`], [`compress`], [`gameexe`], [`opcode`],
-//! [`expression`], [`bridge`], [`patchback`]) is a **typed stub**. The one
-//! exception is [`known_key_smoke`]: a NARROW, honestly-scoped
-//! known-key Scene/Gameexe extract-patch-verify smoke over a single declared
-//! profiled format. It is a real implementation of that narrow profile only —
-//! it does NOT claim broad Siglus support, does NOT alias around the core-stack
-//! stubs, and returns a typed `not_implemented` for any out-of-profile case.
-//! The bytes-dependent
-//! Siglus work (real Scene.pck reading, key recovery, LZSS, decompilation,
-//! patchback) is gated behind the blocked-external `siglus-01`/`siglus-02`
-//! recon+realization nodes — there is no plaintext Siglus game tree to
-//! build against yet (the owned karetoshi/gamekoi titles are copy-
-//! protected DVD images, unrealizable under the no-Wine / no-shell-out
-//! laws). So this node lands the crate scaffold ONLY:
-//! - Every fallible entry point returns a structured, module-local
-//!   `NotImplemented` error whose message carries the
-//!   [`SIGLUS_UNIMPLEMENTED_MARKER`] namespace. Nothing here fabricates a
-//!   synthetic success: there is no tautological stub that masquerades as
-//!   a working decompiler/patchback. When the downstream bytes nodes land,
-//!   they replace the `Err(NotImplemented)` body with a real
-//!   re-derived-and-retested-on-real-bytes implementation — they do not
-//!   alias around it.
+//! # Status
+//! The `Scene.pck` container path is **implemented and proven on real Siglus
+//! title bytes**: [`archive`] walks the real `0x5C`-header + SceneList (scene
+//! count + packed plaintext names), [`decrypt`] applies the documented
+//! constant 256-byte table plus the gated per-game second-layer key, and
+//! [`decompress`] is the real proprietary Siglus LZSS; [`scene_decode`] ties
+//! them into a full decode + sanitized report. The remaining core-stack entry
+//! points ([`compress`], [`gameexe`], [`opcode`], [`expression`], [`bridge`],
+//! [`patchback`]) are still typed stubs, alongside the narrow real
+//! [`known_key_smoke`] profile.
+//! The second-layer key is the **key-discovery layer's (siglus-04) deliverable**
+//! recovered from the packed `SiglusEngine` executable; it is consumed here only
+//! as resolved material bound to a structured secret-ref, never a raw literal.
+//! Both owned titles (`karetoshi`, `gamekoi`) set `extra_key_use`, so — until
+//! that key is available in-process — their scene **payloads** cannot decode:
+//! the decoder records the typed `second_layer_key_required` diagnostic before
+//! any output rather than fabricating a result. Nothing here masquerades as a
+//! working decode; the constant table and LZSS are validated by a synthetic
+//! known-key round-trip and by the real-bytes container walk.
 //! # Clean-room provenance
 //! - All Siglus format observations any successor node consumes are
 //!   **re-derived from publicly archived format documentation** and
@@ -69,6 +64,7 @@ pub mod gameexe;
 pub mod known_key_smoke;
 pub mod opcode;
 pub mod patchback;
+pub mod scene_decode;
 
 /// Stable namespace prefix carried by every `NotImplemented` diagnostic
 /// raised by this skeleton crate.
@@ -119,8 +115,8 @@ pub use bridge::{BridgeOpts, BridgeProduceError, ProducedBundle, produce_bundle}
 pub use compress::{SiglusCompressError, compress_siglus_lzss};
 pub use decompress::{SiglusDecompressError, decompress_siglus_lzss};
 pub use decrypt::{
-    SIGLUS_SECOND_LAYER_KEY_BYTE_LEN, SIGLUS_XOR_TABLE_LEN, SiglusDecryptError,
-    SiglusSecondLayerKey, apply_xor_table,
+    SIGLUS_CONSTANT_XOR_TABLE, SIGLUS_SECOND_LAYER_KEY_BYTE_LEN, SIGLUS_XOR_TABLE_LEN,
+    SiglusDecryptError, SiglusSecondLayerKey, SiglusSecondLayerMaterial, apply_xor_table,
 };
 pub use expression::{SiglusExpr, SiglusExpressionError, decode_expression};
 pub use gameexe::{GameexeDatEntry, GameexeDatError, GameexeDatReport, parse_gameexe_dat};
@@ -143,3 +139,7 @@ pub use patchback::bundle_driven::{
     TranslatedUnitTarget, apply_translated_bundle,
 };
 pub use patchback::delta::{SiglusDeltaError, SiglusScenePatchDelta, produce_scene_delta};
+pub use scene_decode::{
+    SceneDecodeError, SiglusSceneDigest, SiglusSceneFailure, SiglusScenePackReport,
+    decode_scene_chunk, decode_scene_pack,
+};
