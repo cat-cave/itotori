@@ -97,11 +97,12 @@ impl GrpRenderOp {
                 return DispatchOutcome::Advance;
             }
         };
-        self.runtime.with_stack_mut(|stack| {
-            let mut object = GraphicsObject::image(name.clone());
-            object.visible = visible;
-            let _ = stack.set_layer(GraphicsLayer::DisplayCommand, slot, object);
-        });
+        self.runtime
+            .route_stack_result(self.runtime.with_stack_mut(|stack| {
+                let mut object = GraphicsObject::image(name.clone());
+                object.visible = visible;
+                stack.set_layer(GraphicsLayer::DisplayCommand, slot, object)
+            }));
         // For the on-screen background (DC0), resolve+decode the g00 through
         // the substrate VFS (when bound) so the audit surface pins the real
         // canvas size; fall back to asset-key-only when no package is set.
@@ -134,19 +135,21 @@ impl RLOperation for GrpRenderOp {
                 if let Some(slot) = slot_ok(dc) {
                     self.runtime
                         .set_dc_allocation(slot, w.max(0) as u32, h.max(0) as u32);
-                    self.runtime.with_stack_mut(|stack| {
-                        let mut o = GraphicsObject::wipe(WipeColour::TRANSPARENT);
-                        o.visible = slot == SCREEN_DC_SLOT;
-                        let _ = stack.set_layer(GraphicsLayer::DisplayCommand, slot, o);
-                    });
+                    self.runtime
+                        .route_stack_result(self.runtime.with_stack_mut(|stack| {
+                            let mut o = GraphicsObject::wipe(WipeColour::TRANSPARENT);
+                            o.visible = slot == SCREEN_DC_SLOT;
+                            stack.set_layer(GraphicsLayer::DisplayCommand, slot, o)
+                        }));
                 }
                 DispatchOutcome::Advance
             }
             GrpOp::FreeDc => {
                 if let Some(slot) = arg_int(args, 0).and_then(slot_ok) {
-                    self.runtime.with_stack_mut(|stack| {
-                        stack.clear_layer(GraphicsLayer::DisplayCommand, slot).ok()
-                    });
+                    self.runtime
+                        .route_stack_result(self.runtime.with_stack_mut(|stack| {
+                            stack.clear_layer(GraphicsLayer::DisplayCommand, slot)
+                        }));
                 }
                 DispatchOutcome::Advance
             }
@@ -159,11 +162,12 @@ impl RLOperation for GrpRenderOp {
                 let g = arg_int(args, 2).unwrap_or(0);
                 let b = arg_int(args, 3).unwrap_or(0);
                 let colour = WipeColour::opaque_rgb(clamp_byte(r), clamp_byte(g), clamp_byte(b));
-                self.runtime.with_stack_mut(|stack| {
-                    let mut o = GraphicsObject::wipe(colour);
-                    o.visible = dc == SCREEN_DC_SLOT;
-                    let _ = stack.set_layer(GraphicsLayer::DisplayCommand, dc, o);
-                });
+                self.runtime
+                    .route_stack_result(self.runtime.with_stack_mut(|stack| {
+                        let mut o = GraphicsObject::wipe(colour);
+                        o.visible = dc == SCREEN_DC_SLOT;
+                        stack.set_layer(GraphicsLayer::DisplayCommand, dc, o)
+                    }));
                 DispatchOutcome::Advance
             }
             GrpOp::Shake => {
@@ -190,19 +194,21 @@ impl RLOperation for GrpRenderOp {
                 let Some(dc) = arg_int(args, 0).and_then(slot_ok) else {
                     return DispatchOutcome::Advance;
                 };
-                let copied = self.runtime.with_stack_mut(|stack| {
+                let outcome = self.runtime.with_stack_mut(|stack| {
                     if let Some(src) = stack.get_layer(GraphicsLayer::DisplayCommand, dc).cloned() {
                         let mut shown = src;
                         shown.visible = true;
-                        let _ =
-                            stack.set_layer(GraphicsLayer::DisplayCommand, SCREEN_DC_SLOT, shown);
-                        true
+                        stack
+                            .set_layer(GraphicsLayer::DisplayCommand, SCREEN_DC_SLOT, shown)
+                            .map(|()| true)
                     } else {
-                        false
+                        Ok(false)
                     }
                 });
-                if !copied {
-                    warn(&self.runtime, self.op.tag(), dc);
+                match outcome {
+                    Ok(false) => warn(&self.runtime, self.op.tag(), dc),
+                    Ok(true) => {}
+                    Err(error) => self.runtime.route_stack_error(error),
                 }
                 DispatchOutcome::Advance
             }
@@ -214,19 +220,24 @@ impl RLOperation for GrpRenderOp {
                 ) else {
                     return DispatchOutcome::Advance;
                 };
-                let copied = self.runtime.with_stack_mut(|stack| {
+                let outcome = self.runtime.with_stack_mut(|stack| {
                     if let Some(o) = stack.get_layer(GraphicsLayer::DisplayCommand, src).cloned() {
-                        let _ = stack.set_layer(GraphicsLayer::DisplayCommand, dst, o);
-                        true
+                        stack
+                            .set_layer(GraphicsLayer::DisplayCommand, dst, o)
+                            .map(|()| true)
                     } else {
-                        false
+                        Ok(false)
                     }
                 });
-                if !copied {
-                    self.runtime.push_warning(
-                        GraphicsRuntimeWarning::CopyFromEmptySlot { slot: src }
-                            .with_opcode(self.op.tag()),
-                    );
+                match outcome {
+                    Ok(false) => {
+                        self.runtime.push_warning(
+                            GraphicsRuntimeWarning::CopyFromEmptySlot { slot: src }
+                                .with_opcode(self.op.tag()),
+                        );
+                    }
+                    Ok(true) => {}
+                    Err(error) => self.runtime.route_stack_error(error),
                 }
                 DispatchOutcome::Advance
             }

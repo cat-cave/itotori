@@ -434,5 +434,63 @@ fn child_setters_mutate_only_the_exact_foreground_child() {
 
 // rlvm object setters: Move / Alpha / Show / Layer / PattNo (buf FIRST).
 
+/// Forcing an out-of-range stack slot must land a typed diagnostic — never a
+/// silent `let _ =` discard. Dispatch paths pre-validate via `slot_ok`, so this
+/// pins the routing helper the set/clear call sites share with var_banks-style
+/// fail-soft observation.
+#[test]
+fn stack_slot_out_of_range_routes_to_runtime_diagnostic() {
+    use crate::graphics_objects::{GRAPHICS_OBJECT_SLOT_COUNT, GraphicsObject, GraphicsStackError};
+    use crate::rlop::module_obj::GraphicsRuntimeWarning;
+
+    let runtime = rt();
+    let slot = GRAPHICS_OBJECT_SLOT_COUNT;
+
+    // Success path: no diagnostic.
+    runtime.route_stack_result(runtime.with_stack_mut(|stack| {
+        stack.set_layer(
+            GraphicsLayer::DisplayCommand,
+            0,
+            GraphicsObject::image("ok"),
+        )
+    }));
+    assert!(
+        runtime.warnings().is_empty(),
+        "in-range set must not emit a diagnostic"
+    );
+
+    // Forced out-of-range set → SlotOutOfRange diagnostic.
+    let set_err = runtime
+        .with_stack_mut(|stack| {
+            stack.set_layer(
+                GraphicsLayer::DisplayCommand,
+                slot,
+                GraphicsObject::image("oor"),
+            )
+        })
+        .expect_err("slot >= 256 must fail");
+    assert!(matches!(
+        set_err,
+        GraphicsStackError::SlotOutOfRange { slot: s, .. } if s == slot
+    ));
+    let expected_oor = vec![GraphicsRuntimeWarning::SlotOutOfRange {
+        slot: i32::try_from(slot).expect("slot fits i32"),
+    }];
+    runtime.route_stack_error(set_err);
+    assert_eq!(runtime.take_warnings(), expected_oor);
+
+    // Forced out-of-range clear via the Result helper (same sink).
+    runtime.route_stack_result(
+        runtime.with_stack_mut(|stack| stack.clear_layer(GraphicsLayer::DisplayCommand, slot)),
+    );
+    assert_eq!(runtime.take_warnings(), expected_oor);
+
+    // In-range stack state unchanged by the failed OOR set.
+    assert!(
+        runtime.with_stack(|stack| stack.get_layer(GraphicsLayer::DisplayCommand, 0).is_some()),
+        "success-path object must remain after OOR routing"
+    );
+}
+
 #[path = "tests_more.rs"]
 mod more;

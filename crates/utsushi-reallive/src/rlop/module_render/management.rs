@@ -60,32 +60,38 @@ impl RLOperation for ObjMgmtRenderOp {
             ObjMgmtOp::Allocate => {
                 if let Some(buf) = arg_int(args, 0).and_then(slot_ok) {
                     let layer = self.target_layer();
-                    self.runtime.with_stack_mut(|stack| {
-                        stack
-                            .set_layer(layer, buf, GraphicsObject::image(""))
-                            .expect("slot bounds-checked above");
-                    });
+                    self.runtime
+                        .route_stack_result(self.runtime.with_stack_mut(|stack| {
+                            stack.set_layer(layer, buf, GraphicsObject::image(""))
+                        }));
                 }
             }
             ObjMgmtOp::Free | ObjMgmtOp::Init | ObjMgmtOp::FreeInit => {
                 if let Some(buf) = arg_int(args, 0).and_then(slot_ok) {
                     let layer = self.target_layer();
-                    self.runtime
-                        .with_stack_mut(|stack| stack.clear_layer(layer, buf).ok());
+                    self.runtime.route_stack_result(
+                        self.runtime
+                            .with_stack_mut(|stack| stack.clear_layer(layer, buf)),
+                    );
                 }
             }
             ObjMgmtOp::FreeAll => {
                 let layer = self.target_layer();
-                self.runtime.with_stack_mut(|stack| {
-                    for slot in 0..crate::graphics_objects::GRAPHICS_OBJECT_SLOT_COUNT {
-                        let _ = stack.clear_layer(layer, slot);
-                    }
+                // Clear every in-range slot; route each Result outside the
+                // stack lock so the diagnostic sink is not re-entered.
+                let results = self.runtime.with_stack_mut(|stack| {
+                    (0..crate::graphics_objects::GRAPHICS_OBJECT_SLOT_COUNT)
+                        .map(|slot| stack.clear_layer(layer, slot))
+                        .collect::<Vec<_>>()
                 });
+                for result in results {
+                    self.runtime.route_stack_result(result);
+                }
             }
             ObjMgmtOp::CopyFgToBg => {
                 // Copy foreground objects into the background-object
                 // namespace. Same-number slots coexist across layers.
-                self.runtime.with_stack_mut(|stack| {
+                let results = self.runtime.with_stack_mut(|stack| {
                     let snapshot: Vec<(usize, GraphicsObject)> = (0
                         ..crate::graphics_objects::GRAPHICS_OBJECT_SLOT_COUNT)
                         .filter_map(|slot| {
@@ -94,11 +100,17 @@ impl RLOperation for ObjMgmtRenderOp {
                                 .map(|o| (slot, o.clone()))
                         })
                         .collect();
-                    for (slot, mut o) in snapshot {
-                        o.layer_order = OBJ_BG_LAYER_BASE + slot as i32;
-                        let _ = stack.set_layer(GraphicsLayer::BackgroundObject, slot, o);
-                    }
+                    snapshot
+                        .into_iter()
+                        .map(|(slot, mut o)| {
+                            o.layer_order = OBJ_BG_LAYER_BASE + slot as i32;
+                            stack.set_layer(GraphicsLayer::BackgroundObject, slot, o)
+                        })
+                        .collect::<Vec<_>>()
                 });
+                for result in results {
+                    self.runtime.route_stack_result(result);
+                }
             }
         }
         DispatchOutcome::Advance
