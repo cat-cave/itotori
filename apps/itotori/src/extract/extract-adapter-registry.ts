@@ -94,8 +94,32 @@ export type RpgMakerExtractSource = {
   findingsOutputPath?: string;
 };
 
+/** The only cipher route declared by the generic Siglus engine profile. */
+export const SIGLUS_SUPPORTED_CIPHER_METHODS = ["exe_angou_xor_lzss"] as const;
+export type SiglusCipherMethod = (typeof SIGLUS_SUPPORTED_CIPHER_METHODS)[number];
+
+/**
+ * Whole-game Siglus extraction. Sourcing follows the same vault-claim or
+ * already-materialized-root rule as RealLive; `cipherMethod` identifies a
+ * profile route and never carries key material.
+ */
+export type SiglusExtractSource = {
+  engine: "siglus";
+  vaultCanonicalId?: string;
+  gameRoot?: string;
+  gameId: string;
+  gameVersion: string;
+  sourceProfileId: string;
+  sourceLocale: string;
+  cipherMethod: SiglusCipherMethod;
+};
+
 /** A decode/extract REQUEST — an engine-discriminated source union. */
-export type ExtractSource = RealliveExtractSource | SoftpalExtractSource | RpgMakerExtractSource;
+export type ExtractSource =
+  | RealliveExtractSource
+  | SoftpalExtractSource
+  | RpgMakerExtractSource
+  | SiglusExtractSource;
 
 /** Process-level inputs the seam adds around a source to spawn kaifuu-cli. */
 export type ExtractProcessArgs = {
@@ -113,18 +137,22 @@ export type KaifuuRealliveExtractArgs = RealliveExtractSource & ExtractProcessAr
 export type KaifuuSoftpalExtractArgs = SoftpalExtractSource & ExtractProcessArgs;
 /** An RPG Maker MV/MZ extract invocation (source + process). */
 export type KaifuuRpgMakerExtractArgs = RpgMakerExtractSource & ExtractProcessArgs;
+/** A Siglus extract invocation (source + process). */
+export type KaifuuSiglusExtractArgs = SiglusExtractSource & ExtractProcessArgs;
 
 /** Engine-discriminated extract args — a RealLive, Softpal, OR RPG Maker call. */
 export type KaifuuExtractArgs =
   | KaifuuRealliveExtractArgs
   | KaifuuSoftpalExtractArgs
-  | KaifuuRpgMakerExtractArgs;
+  | KaifuuRpgMakerExtractArgs
+  | KaifuuSiglusExtractArgs;
 
 /** Correlates each engine id to its full (source + process) args type. */
 type ExtractArgsByEngine = {
   reallive: KaifuuRealliveExtractArgs;
   softpal: KaifuuSoftpalExtractArgs;
   "rpg-maker": KaifuuRpgMakerExtractArgs;
+  siglus: KaifuuSiglusExtractArgs;
 };
 
 /** Correlates each engine id to its request source type. */
@@ -132,6 +160,7 @@ type ExtractSourceByEngine = {
   reallive: RealliveExtractSource;
   softpal: SoftpalExtractSource;
   "rpg-maker": RpgMakerExtractSource;
+  siglus: SiglusExtractSource;
 };
 
 /** The engines this registry can extract. */
@@ -187,6 +216,8 @@ export type ExtractCapability = {
   constraints: readonly ExtractFormConstraint[];
   /** The extract modes this adapter can produce. */
   modes: readonly ExtractModeCapability[];
+  /** Cipher methods accepted by a key-bearing profile, when applicable. */
+  supportedCipherMethods?: readonly string[];
 };
 
 /**
@@ -351,6 +382,60 @@ const EXTRACT_CAPABILITIES = {
     ],
     constraints: [],
     modes: [{ id: "whole-game", label: "Entire game", fixedValues: {}, fields: [] }],
+  },
+  siglus: {
+    engine: "siglus",
+    label: "Siglus",
+    summary:
+      "Siglus Scene.pck + Gameexe.dat: one whole-game bridge from a vault claim or game root.",
+    fields: [
+      {
+        key: "vaultCanonicalId",
+        label: "Vault canonical id",
+        input: "text",
+        required: false,
+        placeholder: "vault canonical id",
+      },
+      {
+        key: "gameRoot",
+        label: "Game root path",
+        input: "text",
+        required: false,
+        placeholder: "/path/to/game",
+      },
+      { key: "gameId", label: "Game id", input: "text", required: true },
+      {
+        key: "gameVersion",
+        label: "Game version",
+        input: "text",
+        required: true,
+        defaultValue: "1.0",
+      },
+      { key: "sourceProfileId", label: "Source profile id", input: "text", required: true },
+      {
+        key: "sourceLocale",
+        label: "Source locale",
+        input: "text",
+        required: true,
+        defaultValue: "ja-JP",
+      },
+      {
+        key: "cipherMethod",
+        label: "Cipher method",
+        input: "text",
+        required: true,
+        defaultValue: SIGLUS_SUPPORTED_CIPHER_METHODS[0],
+      },
+    ],
+    constraints: [
+      {
+        kind: "exactly-one",
+        fields: ["vaultCanonicalId", "gameRoot"],
+        message: "Provide exactly one source: a vault canonical id or game root path.",
+      },
+    ],
+    modes: [{ id: "whole-game", label: "Entire game", fixedValues: {}, fields: [] }],
+    supportedCipherMethods: SIGLUS_SUPPORTED_CIPHER_METHODS,
   },
 } as const satisfies Readonly<Record<ExtractEngineId, ExtractCapability>>;
 
@@ -644,6 +729,110 @@ const rpgMakerExtractAdapter: ExtractAdapter<"rpg-maker"> = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Siglus adapter
+// ---------------------------------------------------------------------------
+
+const siglusExtractAdapter: ExtractAdapter<"siglus"> = {
+  engine: "siglus",
+  capability: EXTRACT_CAPABILITIES.siglus,
+  buildArgs(args) {
+    const out: string[] = ["extract", "--engine", "siglus"];
+    if (args.vaultCanonicalId !== undefined && args.vaultCanonicalId.length > 0) {
+      out.push("--vault-canonical-id", args.vaultCanonicalId);
+    }
+    if (args.gameRoot !== undefined && args.gameRoot.length > 0) {
+      out.push("--game-root", args.gameRoot);
+    }
+    out.push(
+      "--game-id",
+      args.gameId,
+      "--game-version",
+      args.gameVersion,
+      "--source-profile-id",
+      args.sourceProfileId,
+      "--source-locale",
+      args.sourceLocale,
+      "--cipher-method",
+      args.cipherMethod,
+      "--bundle-output",
+      args.bundleOutputPath,
+    );
+    return out;
+  },
+  validate(args, env) {
+    if (!SIGLUS_SUPPORTED_CIPHER_METHODS.some((method) => method === args.cipherMethod)) {
+      throw new Error(
+        `kaifuu.siglus.engine_profile.out_of_profile_cipher_method: '${args.cipherMethod}' is not declared by the Siglus engine profile`,
+      );
+    }
+    const hasVault = args.vaultCanonicalId !== undefined && args.vaultCanonicalId.length > 0;
+    const hasGameRoot = args.gameRoot !== undefined && args.gameRoot.length > 0;
+    const hasEnvGameRoot =
+      env.ITOTORI_REAL_GAME_ROOT_SIGLUS !== undefined &&
+      env.ITOTORI_REAL_GAME_ROOT_SIGLUS.length > 0;
+    if (hasVault && hasGameRoot) {
+      throw new Error(
+        "kaifuu extract (siglus) refused: provide either a vault canonical id or game root, not both",
+      );
+    }
+    if (!hasVault && !hasGameRoot && !hasEnvGameRoot) {
+      throw new Error(
+        "kaifuu extract (siglus) refused: sourcing requires --vault-canonical-id <ID>, --game-root <PATH>, or the ITOTORI_REAL_GAME_ROOT_SIGLUS env var",
+      );
+    }
+  },
+  mode() {
+    return "whole-game";
+  },
+  parseCli(args) {
+    if (args.includes("--scene") || args.includes("--whole-seen")) {
+      throw new Error(
+        "extract refused: --engine siglus is whole-game; --scene / --whole-seen are not supported",
+      );
+    }
+    const gameRoot = optionalFlag(args, "--game-root");
+    const vaultCanonicalId = optionalFlag(args, "--vault-canonical-id");
+    const cipherMethod = parseSiglusCipherMethod(requiredFlag(args, "--cipher-method"));
+    return {
+      engine: "siglus",
+      gameId: requiredFlag(args, "--game-id"),
+      gameVersion: requiredFlag(args, "--game-version"),
+      sourceProfileId: requiredFlag(args, "--source-profile-id"),
+      sourceLocale: requiredFlag(args, "--source-locale"),
+      cipherMethod,
+      ...(gameRoot !== undefined ? { gameRoot } : {}),
+      ...(vaultCanonicalId !== undefined ? { vaultCanonicalId } : {}),
+    };
+  },
+  parseApi(input) {
+    assertCapabilityPayload(EXTRACT_CAPABILITIES.siglus, input);
+    const cipherMethod = parseSiglusCipherMethod(requiredApiString(input, "cipherMethod"));
+    const vaultCanonicalId = optionalApiString(input, "vaultCanonicalId");
+    const gameRoot = optionalApiString(input, "gameRoot");
+    return {
+      engine: "siglus",
+      gameId: requiredApiString(input, "gameId"),
+      gameVersion: requiredApiString(input, "gameVersion"),
+      sourceProfileId: requiredApiString(input, "sourceProfileId"),
+      sourceLocale: requiredApiString(input, "sourceLocale"),
+      cipherMethod,
+      ...(vaultCanonicalId !== undefined ? { vaultCanonicalId } : {}),
+      ...(gameRoot !== undefined ? { gameRoot } : {}),
+    };
+  },
+};
+
+function parseSiglusCipherMethod(value: string): SiglusCipherMethod {
+  const method = SIGLUS_SUPPORTED_CIPHER_METHODS.find((candidate) => candidate === value);
+  if (method === undefined) {
+    throw new Error(
+      `kaifuu.siglus.engine_profile.out_of_profile_cipher_method: '${value}' is not declared by the Siglus engine profile`,
+    );
+  }
+  return method;
+}
+
 function assertCapabilityPayload(capability: ExtractCapability, input: ExtractApiPayload): void {
   const allowed = new Set<string>(["engine"]);
   for (const field of capability.fields) {
@@ -741,6 +930,7 @@ const EXTRACT_ADAPTERS: Readonly<Record<ExtractEngineId, AnyExtractAdapter>> = {
   reallive: defineExtractAdapter(realliveExtractAdapter),
   softpal: defineExtractAdapter(softpalExtractAdapter),
   "rpg-maker": defineExtractAdapter(rpgMakerExtractAdapter),
+  siglus: defineExtractAdapter(siglusExtractAdapter),
 };
 
 /** The engines with a registered extract adapter, in registration order. */

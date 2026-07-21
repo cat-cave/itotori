@@ -79,6 +79,7 @@ pub mod bridge;
 pub mod compress;
 pub mod decompress;
 pub mod decrypt;
+pub mod engine_profile;
 pub mod exe_angou;
 pub mod expression;
 pub mod flow;
@@ -145,6 +146,11 @@ pub use decrypt::{
     SIGLUS_CONSTANT_XOR_TABLE, SIGLUS_GAMEEXE_XOR_TABLE, SIGLUS_SECOND_LAYER_KEY_BYTE_LEN,
     SIGLUS_XOR_TABLE_LEN, SiglusDecryptError, SiglusSecondLayerKey, SiglusSecondLayerMaterial,
     apply_gameexe_xor_table, apply_xor_table,
+};
+pub use engine_profile::{
+    SIGLUS_ENGINE_FAMILY, SIGLUS_ENGINE_PROFILE_ADAPTER_ID, SIGLUS_ENGINE_PROFILE_ID,
+    SIGLUS_EXE_ANGOU_KEY_REQUIREMENT_ID, SiglusCipherMethod, SiglusCipherPosture,
+    SiglusEngineProfile, SiglusEngineProfileError,
 };
 pub use exe_angou::{
     EXE_ANGOU_KEY_BYTE_LEN, ExeAngouKeyError, ExeAngouKeyRecovery, ExeAngouKeyReport,

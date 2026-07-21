@@ -90,9 +90,6 @@ fn run_with_args_and_registry(
     args: Vec<String>,
     registry: &AdapterRegistry,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Softpal ADV extract/patch/verify route through the kaifuu-softpal-backed
-    // adapter (SCRIPT.SRC/TEXT.DAT decode + dialogue/choice patch-back), sharing
-    // the same command verbs as the RealLive/RPG Maker `--engine` flag paths.
     if flag_optional(&args, "--engine") == Some("softpal")
         && matches!(
             args.first().map(String::as_str),
@@ -100,6 +97,9 @@ fn run_with_args_and_registry(
         )
     {
         return run_softpal_command(&args);
+    }
+    if siglus_commands::is_siglus_engine_command(&args) {
+        return siglus_commands::run_siglus_engine_command(&args);
     }
     match args.first().map(String::as_str) {
         Some("detect") => {

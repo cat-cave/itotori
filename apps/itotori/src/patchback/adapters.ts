@@ -6,9 +6,11 @@
 
 import "./reallive-adapter.js";
 import "./rpgmaker-adapter.js";
+import "./siglus-adapter.js";
 import "./softpal-adapter.js";
 
 export * from "./engine-adapter.js";
 export { realLivePatchbackAdapter } from "./reallive-adapter.js";
 export { rpgMakerPatchbackAdapter } from "./rpgmaker-adapter.js";
+export { siglusPatchbackAdapter } from "./siglus-adapter.js";
 export { softpalPatchbackAdapter } from "./softpal-adapter.js";

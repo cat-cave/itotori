@@ -6,9 +6,11 @@
 
 import { registerLocalizationTargetPolicy } from "./registry.js";
 import { realliveSjisPolicy } from "./reallive-sjis.js";
+import { siglusUtf16Policy } from "./siglus-utf16.js";
 import { utf8JsonPolicy } from "./utf8-json.js";
 
 registerLocalizationTargetPolicy(realliveSjisPolicy);
+registerLocalizationTargetPolicy(siglusUtf16Policy);
 registerLocalizationTargetPolicy(utf8JsonPolicy);
 
 export type {
@@ -37,3 +39,9 @@ export {
 } from "./reallive-sjis.js";
 
 export { UTF8_JSON_ADAPTER_ID, UTF8_JSON_POLICY_ID, utf8JsonPolicy } from "./utf8-json.js";
+
+export {
+  SIGLUS_UTF16_ADAPTER_ID,
+  SIGLUS_UTF16_POLICY_ID,
+  siglusUtf16Policy,
+} from "./siglus-utf16.js";

@@ -18,7 +18,7 @@ import { runNativeCli, type NativeCliRunner } from "../native-bin/cli-bin-resolv
 
 /** The patch-back engines the app can select. Each maps 1:1 to a kaifuu-cli
  * `patch --engine <id>` implementation and to one registered adapter. */
-export type PatchbackEngineId = "reallive" | "rpg-maker" | "softpal";
+export type PatchbackEngineId = "reallive" | "rpg-maker" | "siglus" | "softpal";
 
 /** The generic byte-fidelity scope vocabulary. Adapters DECLARE which of these
  * they honor (`supportedScopes`); out-of-scope surfaces are carried

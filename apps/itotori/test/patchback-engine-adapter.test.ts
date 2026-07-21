@@ -68,6 +68,13 @@ function makeRpgMakerRoot(): string {
   return root;
 }
 
+function makeSiglusRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), "itotori-eng-siglus-"));
+  writeFileSync(join(root, "Scene.pck"), "");
+  writeFileSync(join(root, "Gameexe.dat"), "");
+  return root;
+}
+
 /** A mock kaifuu spawn that records the argv and materializes the engine's
  * output tree (RealLive `--target`, Softpal `--output`, RPG Maker
  * `--patched-data-output`) so the producer can hash the produced bytes exactly
@@ -88,10 +95,11 @@ function recordingRunner(calls: string[][]): NativeCliRunProcess {
 }
 
 describe("engine patch-back registry", () => {
-  it("registers every shipped patch-back adapter", () => {
+  it("registers every shipped patch-back adapter (RealLive, RPG Maker, Siglus, Softpal)", () => {
     expect(enginePatchbackAdapters().map((adapter) => adapter.engineId)).toEqual([
       "reallive",
       "rpg-maker",
+      "siglus",
       "softpal",
     ]);
   });
@@ -100,6 +108,7 @@ describe("engine patch-back registry", () => {
     expect(detectPatchbackEngine(makeRealLiveRoot()).engineId).toBe("reallive");
     expect(detectPatchbackEngine(makeRpgMakerRoot()).engineId).toBe("rpg-maker");
     expect(detectPatchbackEngine(makeSoftpalRoot()).engineId).toBe("softpal");
+    expect(detectPatchbackEngine(makeSiglusRoot()).engineId).toBe("siglus");
     const empty = mkdtempSync(join(tmpdir(), "itotori-eng-empty-"));
     expect(() => detectPatchbackEngine(empty)).toThrow(PatchbackEngineSelectionError);
   });

@@ -489,12 +489,13 @@ describe("runKaifuuExtract (rpg-maker dispatch)", () => {
 // ---------------------------------------------------------------------------
 
 describe("extract-adapter registry", () => {
-  it("registers reallive, softpal, and rpg-maker adapters", () => {
-    expect(registeredExtractEngines()).toEqual(["reallive", "softpal", "rpg-maker"]);
+  it("registers reallive, softpal, rpg-maker, and siglus adapters", () => {
+    expect(registeredExtractEngines()).toEqual(["reallive", "softpal", "rpg-maker", "siglus"]);
     expect(extractCapabilities().map((capability) => capability.engine)).toEqual([
       "reallive",
       "softpal",
       "rpg-maker",
+      "siglus",
     ]);
   });
 
@@ -506,7 +507,7 @@ describe("extract-adapter registry", () => {
       /is not a registered extract adapter/u,
     );
     expect(() => resolveExtractAdapter("kirikiri")).toThrow(
-      /registered: reallive, softpal, rpg-maker/u,
+      /registered: reallive, softpal, rpg-maker, siglus/u,
     );
   });
 
@@ -540,6 +541,36 @@ describe("extract-adapter registry", () => {
     expect(() =>
       resolveExtractAdapter("rpg-maker").parseCli(["--engine", "rpg-maker", "--scene", "1"]),
     ).toThrow(/rpg-maker is whole-game/u);
+
+    const siglus = resolveExtractAdapter("siglus").parseCli([
+      "extract",
+      "--engine",
+      "siglus",
+      "--game-root",
+      "/games/siglus",
+      "--game-id",
+      "g",
+      "--game-version",
+      "1",
+      "--source-profile-id",
+      "p",
+      "--source-locale",
+      "ja-JP",
+      "--cipher-method",
+      "exe_angou_xor_lzss",
+      "--bundle-output",
+      "/run/bridge.json",
+    ]);
+    expect(siglus).toMatchObject({ engine: "siglus", cipherMethod: "exe_angou_xor_lzss" });
+    expect(() =>
+      resolveExtractAdapter("siglus").parseCli([
+        "extract",
+        "--engine",
+        "siglus",
+        "--cipher-method",
+        "not-declared",
+      ]),
+    ).toThrow(/out_of_profile_cipher_method/u);
   });
 });
 

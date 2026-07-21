@@ -119,9 +119,15 @@ describe("registered private corpus manifest", () => {
   });
 
   it("validates each registered adapter's owned input map without a RealLive fallback", () => {
-    expect(registeredCorpusValidationEngines()).toEqual(["reallive", "softpal", "rpg-maker"]);
+    expect(registeredCorpusValidationEngines()).toEqual([
+      "reallive",
+      "softpal",
+      "rpg-maker",
+      "siglus",
+    ]);
     expect(resolveCorpusValidationAdapter("softpal").inputNames).toEqual(["scriptSrc", "textDat"]);
     expect(resolveCorpusValidationAdapter("rpg-maker").inputNames).toEqual(["dataJson"]);
+    expect(resolveCorpusValidationAdapter("siglus").inputNames).toEqual(["scenePck", "gameexeDat"]);
 
     const softpalManifest = structuredClone(MANIFEST);
     softpalManifest.corpus.engine = "softpal";

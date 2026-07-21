@@ -47,11 +47,15 @@ export type {
   KaifuuEngine,
   KaifuuRealliveExtractArgs,
   KaifuuRpgMakerExtractArgs,
+  KaifuuSiglusExtractArgs,
   KaifuuSoftpalExtractArgs,
   RealliveExtractSource,
   RpgMakerExtractSource,
+  SiglusCipherMethod,
+  SiglusExtractSource,
   SoftpalExtractSource,
 } from "./extract-adapter-registry.js";
+export { SIGLUS_SUPPORTED_CIPHER_METHODS } from "./extract-adapter-registry.js";
 // Locally-bound (used here) re-exports.
 export { resolveExtractAdapter };
 export type { ExtractMode, KaifuuExtractArgs, KaifuuProcessResult };

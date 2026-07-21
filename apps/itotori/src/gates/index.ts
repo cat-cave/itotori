@@ -24,9 +24,12 @@ export {
   resolveLocalizationTargetPolicy,
   resolveTargetPolicyForAdapter,
   sjisByteLength,
+  siglusUtf16Policy,
   utf8JsonPolicy,
   REALLIVE_SJIS_ADAPTER_ID,
   REALLIVE_SJIS_POLICY_ID,
+  SIGLUS_UTF16_ADAPTER_ID,
+  SIGLUS_UTF16_POLICY_ID,
   UTF8_JSON_ADAPTER_ID,
   UTF8_JSON_POLICY_ID,
 } from "./policy/index.js";

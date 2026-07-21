@@ -14,6 +14,7 @@ kaifuu-kirikiri = { path = "../kaifuu-kirikiri" }
 kaifuu-reallive = { path = "../kaifuu-reallive" }
 kaifuu-rpgmaker = { path = "../kaifuu-rpgmaker" }
 kaifuu-softpal = { path = "../kaifuu-softpal" }
+kaifuu-siglus = { path = "../kaifuu-siglus" }
 kaifuu-vault-source = { path = "../kaifuu-vault-source" }
 serde_json.workspace = true
 
