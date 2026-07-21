@@ -108,8 +108,6 @@ impl RLOperation for ObjMgmtRenderOp {
 /// Register EVERY real-numbered render op under all three lattice types.
 /// Returns the number of `(module_type, module_id, opcode)` keys mounted.
 ///
-/// Mounted BEFORE [`crate::rlop::module_catalog::register_catalog_rlops`]
-/// so the catalog's `Advance` gap-fill never shadows a real-semantics op.
 pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsRuntime>) -> usize {
     let mut count = 0usize;
     let mut reg =

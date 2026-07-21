@@ -52,7 +52,6 @@ use crate::vm::{SceneId, Vm};
 // [`module_sys`].
 pub mod longops;
 pub mod module_audio;
-pub mod module_catalog;
 pub mod module_ctrl;
 pub mod module_mem;
 pub mod module_msg;
@@ -287,10 +286,9 @@ impl fmt::Display for RlopKey {
 /// criterion, not the all-opcodes-implemented bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RlopImplementationProvenance {
-    /// A family registrar supplied behavior for this command.
+    /// A family registrar supplied documented, verified behavior for this
+    /// command.
     Semantic,
-    /// The observed-command catalog supplied an `Advance` gap fill only.
-    CatalogFallback,
 }
 
 #[derive(Clone)]
@@ -335,9 +333,6 @@ impl RlopRegistry {
     /// loud failure at registration/test time instead of a silent
     /// mis-dispatch at runtime.
     ///
-    /// Gap-fill callers (e.g. [`crate::rlop::module_catalog`]) must guard
-    /// with [`Self::get`] `.is_none()` before registering; they do.
-    ///
     /// Returns `None` (there is never a displaced op to return); the
     /// return type is retained so callers can still `assert!(….is_none())`.
     pub fn register(
@@ -346,16 +341,6 @@ impl RlopRegistry {
         op: Arc<dyn RLOperation>,
     ) -> Option<Arc<dyn RLOperation>> {
         self.register_with_provenance(key, op, RlopImplementationProvenance::Semantic)
-    }
-
-    /// Register a catalog gap-fill. Only [`module_catalog`] should call this:
-    /// all family registrars use [`Self::register`] and are semantic by default.
-    pub(crate) fn register_catalog(
-        &mut self,
-        key: RlopKey,
-        op: Arc<dyn RLOperation>,
-    ) -> Option<Arc<dyn RLOperation>> {
-        self.register_with_provenance(key, op, RlopImplementationProvenance::CatalogFallback)
     }
 
     fn register_with_provenance(
@@ -545,17 +530,6 @@ mod tests {
         assert_eq!(
             registry.resolve(key).map(|(_, provenance)| provenance),
             Some(RlopImplementationProvenance::Semantic),
-        );
-    }
-
-    #[test]
-    fn registry_catalog_registration_is_marked_as_fallback() {
-        let mut registry = RlopRegistry::new();
-        crate::rlop::module_catalog::register_catalog_rlops(&mut registry);
-        let key = RlopKey::new(0, 5, 0);
-        assert_eq!(
-            registry.resolve(key).map(|(_, provenance)| provenance),
-            Some(RlopImplementationProvenance::CatalogFallback),
         );
     }
 

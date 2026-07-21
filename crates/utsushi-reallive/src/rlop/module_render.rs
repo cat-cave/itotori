@@ -5,12 +5,10 @@
 //!
 //! The earlier `module_grp` / `module_obj` tables implemented graphics
 //! semantics under SYNTHETIC opcode numbers (`grp.allocDC = 1`, …) that
-//! never occur on real bytes. On the proven corpora (Sweetie HD + Kanon)
-//! the real RealLive opcode numbers (rlvm's `module_grp` at `15/16/31/32
+//! never occur on real bytes. The real RealLive opcode numbers (rlvm's `module_grp` at `15/16/31/32
 //! 70/72/73/…` and the object modules at `1000/1003/1004/1026/1039/…`)
-//! were caught by the [`crate::rlop::module_catalog`] `Advance` gap-fill
-//! so they PARSED but never mutated render state — a faithful frame could
-//! not be produced.
+//! are implemented here so they mutate render state instead of surfacing as
+//! unknown commands.
 //!
 //! This module gives those REAL opcode numbers REAL render semantics
 //! re-derived from the rlvm research anchor (`module_grp.cc`
@@ -45,10 +43,8 @@
 //!
 //! # Lattice-type registration
 //!
-//! On the real bytes the SAME semantic op appears under more than one
-//! `module_type` (Sweetie HD's object setters carry `module_type=2`;
-//! Kanon's carry `module_type=1`). Like [`crate::rlop::module_catalog`]
-//! every op here is registered under all three observed lattice types
+//! A semantic op can appear under more than one compiler `module_type`.
+//! Every op here is registered under all three observed lattice types
 //! `{0, 1, 2}` so it fires regardless of the compiler-version artifact.
 //!
 //! # Three-layer render model

@@ -1,78 +1,10 @@
-//! Real-bytes opcode CATALOG completion (`utsushi-reallive-full-module-replay`).
+//! Unresolved RealLive opcode inventory for synthetic coverage diagnostics.
 //!
-//! The per-family RLOperation tables ([`crate::rlop::module_msg`]
-//! [`crate::rlop::module_sys`], …) implement the alpha subset of the
-//! RealLive opcode space with full runtime semantics. This module closes
-//! the remaining coverage gap: it registers EVERY `(module_type
-//! module_id, opcode)` tuple observed on the real bytes of the two proven
-//! corpora (Sweetie HD + Kanon) so a full-scene replay traverses with
-//! ZERO unknown-opcode events.
-//!
-//! # What "catalog" means here
-//!
-//! Completion is **semantic cataloguing**: each tuple is IDENTIFIED — its
-//! semantic family (control-flow / message-window / system / graphics
-//! audio / …) is known and named ([`CatalogOp::family`]) — which is the
-//! prerequisite the rendering engine needs (Utsushi cannot render a
-//! command it cannot identify). The tuples are the exact set the
-//! `kaifuu-reallive` decompiler types on the same real bytes (module_id
-//! is the real semantic key; `module_type` is a compiler-version artifact
-//! so every tuple is registered under all three observed lattice types
-//! `{0, 1, 2}`).
-//!
-//! # Dispatch outcome: exhaustive linear catalog walk
-//!
-//! A [`CatalogOp`] returns [`DispatchOutcome::Advance`]. The full-module
-//! replay is an **exhaustive linear traversal** of a scene's bytecode: it
-//! visits — and thereby catalogues — *every* command element in the
-//! scene, rather than following branches (which would skip the un-taken
-//! arms and catalogue fewer commands). The goto-family jump-target framing
-//! is fully consumed by the decoder ([`crate::bytecode_element`]) so the
-//! walk never desyncs on the trailing pointer bytes; the branch/subroutine
-//! *state-machine execution* (as opposed to cataloguing) is a rendering-
-//! engine concern tracked separately. Ops with real replay-visible effects
-//! (message text, `msg.pause` longops, the `sel` choice runtime) keep
-//! their full-semantics implementations in the per-family tables and are
-//! NOT shadowed here — [`register_catalog_rlops`] only fills tuples that no
-//! per-family table already claims.
-//!
-//! # Gap-fill only
-//!
-//! [`register_catalog_rlops`] registers a tuple ONLY when the registry has
-//! no op for it yet, so it can be mounted after the nine per-family tables
-//! without ever overriding a real-semantics op.
-
-use std::sync::Arc;
-
-use crate::rlop::{DispatchOutcome, ExprValue, RLOperation, RlopKey, RlopRegistry};
-use crate::vm::Vm;
-
-/// The RealLive lattice module-type bytes a command can carry. `module_id`
-/// is the real semantic key; the type byte is a compiler-version artifact
-/// (the same op is observed under more than one), so every catalogued
-/// tuple is registered under all three.
-const LATTICE_TYPES: [u8; 3] = [0, 1, 2];
-
-/// A catalogued opcode: identified by its semantic family + `(module_id
-/// opcode)`, dispatched as a linear-walk [`DispatchOutcome::Advance`].
-///
-/// The `family` string is the semantic identity the rendering engine keys
-/// on; it is derived from `module_id` by [`family_for`].
-#[derive(Debug, Clone, Copy)]
-pub struct CatalogOp {
-    /// Semantic family name (e.g. `"grp"`, `"sys"`, `"jmp"`).
-    pub family: &'static str,
-    /// Real semantic module id (byte 2 of the Command header).
-    pub module_id: u8,
-    /// Opcode (bytes 3..5 of the Command header, `u16 LE`).
-    pub opcode: u16,
-}
-
-impl RLOperation for CatalogOp {
-    fn dispatch(&self, _vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
-        DispatchOutcome::Advance
-    }
-}
+//! This file is intentionally **not** an RLOperation module. It preserves the
+//! decoder-coverage inventory used by the synthetic corpus tooling, but is
+//! never mounted into the runtime registry. A command absent from a verified
+//! per-family implementation therefore follows the VM's `MissingRlop` path
+//! and becomes an explicit replay `UnknownOpcode` diagnostic.
 
 /// Map a real `module_id` to its semantic family name (the rlvm
 /// `module_*.cc` grouping). Restated from the research anchor; not
@@ -101,14 +33,12 @@ fn family_for(module_id: u8) -> &'static str {
     }
 }
 
-/// One `(module_id, opcode)` entry in the real-bytes catalogue. Registered
-/// under every [`LATTICE_TYPES`] value.
+/// One `(module_id, opcode)` entry in the decoder-coverage inventory.
 type CatalogEntry = (u8, u16);
 
-/// The union of every `(module_id, opcode)` observed as an unresolved
-/// command across ALL scenes of both proven corpora (Sweetie HD + Kanon)
-/// harvested by the `dump_all_scene_unknowns` real-bytes enumeration. This
-/// is the evidence-first coverage set — no speculative opcodes.
+/// The union of unresolved `(module_id, opcode)` command observations used by
+/// the synthetic decoder-coverage inventory. This is evidence only, never a
+/// runtime compatibility rule.
 const REAL_CATALOG: &[CatalogEntry] = &[
     // NOTE: module_jmp (control flow, module_id 1) is owned by
     // `module_ctrl::register_control_flow_linear_walk` (the full real
@@ -212,12 +142,8 @@ const REAL_CATALOG: &[CatalogEntry] = &[
     (4, 3502),
     (4, 3503),
     // module_sys2 (system control, real module_id 5). No per-family
-    // table claims id 5 (`module_sys` is id 4), so these real-bytes
-    // tuples are catalogued here. They were previously masked because
-    // the mislabelled `msg`/`sel` tables sat on id 5 and accidentally
-    // resolved them; with the labels corrected (msg=3, sel=2) they are
-    // genuine gaps. `(1, 5, 120)` is Sweetie HD's scene-1 `0x001e` byte;
-    // `(1, 5, 0)` is observed in Kanon.
+    // table claims id 5 (`module_sys` is id 4). These tuples remain in the
+    // decoder inventory as unresolved commands; runtime emits diagnostics.
     (5, 0),
     (5, 120),
     // module_str (string / indexed-variable ops, real module_id 10).
@@ -285,24 +211,11 @@ const REAL_CATALOG: &[CatalogEntry] = &[
     (84, 1000),
     (84, 1100),
     (85, 1000),
-    // === reallive-utsushi-decoder-completeness-real-parity extension ===
-    // With the bytecode decoder brought to true kaifuu parity (198/198 Sweetie
-    // HD + 79/79 Kanon populated scenes decode), the whole-store linear-walk
-    // replay now VISITS every command of the 65 Sweetie + 63 Kanon scenes that
-    // previously failed to decode (and so were skipped by `build_scene_store`).
-    // These `(module_id, opcode)` tuples are the union of the newly-reachable
-    // commands that no per-family table claims — harvested by the whole-store
-    // `unknown_opcode_keys` walk over BOTH proven corpora (evidence-first; no
-    // speculative opcodes). Grouped under their semantic `module_id` family
-    // exactly like the block above.
+    // Decoder-completeness extension: newly reachable unresolved commands are
+    // retained for synthetic coverage, not registered as runtime behavior.
     (2, 1),
-    // NOTE: the sel-family `select_objbtn_cancel` entry (module_id 2, opcode 14)
-    // was removed — it is now a REAL `module_sel` op (`SelectObjbtnCancelOp`
-    // registered at module_type 0 / module_id 2 / opcode 14), not a catalog
-    // `Advance` fallback. On real bytes that opcode occurs ONLY at module_type 0
-    // (Sweetie HD 3×; 0× at types 1/2; 0× in Kanon), which the sel registry now
-    // fully claims, so dropping the defensive lattice-type-1/2 catalog coverage
-    // leaves no unknown-opcode gap (whole-store 0-unknown replay still passes).
+    // `select_objbtn_cancel` (module_id 2, opcode 14) is intentionally absent:
+    // it has a verified `module_sel` implementation.
     (2, 30),
     (2, 31),
     (2, 32),
@@ -440,95 +353,3 @@ const REAL_CATALOG: &[CatalogEntry] = &[
     (90, 1066),
     (90, 2004),
 ];
-
-/// Register every real-bytes-observed opcode tuple that no per-family
-/// table already claims. Returns the number of tuples newly registered.
-///
-/// Gap-fill only: a tuple already resolved by a per-family table (its
-/// full-semantics op) is left untouched, so this can be mounted after the
-/// nine per-family registrars without shadowing any real-semantics op.
-pub fn register_catalog_rlops(registry: &mut RlopRegistry) -> usize {
-    let mut registered = 0usize;
-    for &(module_id, opcode) in REAL_CATALOG {
-        let family = family_for(module_id);
-        for module_type in LATTICE_TYPES {
-            let key = RlopKey::new(module_type, module_id, opcode);
-            if registry.get(key).is_none() {
-                registry.register_catalog(
-                    key,
-                    Arc::new(CatalogOp {
-                        family,
-                        module_id,
-                        opcode,
-                    }),
-                );
-                registered += 1;
-            }
-        }
-    }
-    registered
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn catalog_op_advances() {
-        let mut vm = Vm::new(1, 0);
-        let before_scene = vm.scene();
-        let before_pc = vm.pc();
-        let before_banks = vm.banks().clone();
-        let before_stack = vm.stack().to_vec();
-        let op = CatalogOp {
-            family: "grp",
-            module_id: 33,
-            opcode: 73,
-        };
-        assert_eq!(op.dispatch(&mut vm, &[]), DispatchOutcome::Advance);
-        assert_eq!(vm.scene(), before_scene);
-        assert_eq!(vm.pc(), before_pc);
-        assert_eq!(vm.banks(), &before_banks);
-        assert_eq!(vm.stack(), before_stack.as_slice());
-        assert!(vm.take_warnings().is_empty());
-    }
-
-    #[test]
-    fn register_fills_every_real_tuple_under_all_types() {
-        let mut registry = RlopRegistry::new();
-        let count = register_catalog_rlops(&mut registry);
-        // Every entry registered under all three lattice types.
-        assert_eq!(count, REAL_CATALOG.len() * LATTICE_TYPES.len());
-        for &(module_id, opcode) in REAL_CATALOG {
-            for module_type in LATTICE_TYPES {
-                assert!(
-                    registry
-                        .get(RlopKey::new(module_type, module_id, opcode))
-                        .is_some(),
-                    "missing catalog tuple ({module_type},{module_id},{opcode})",
-                );
-            }
-        }
-    }
-
-    // Pre-claim sentinel used by the gap-fill-only test.
-    struct Sentinel;
-    impl RLOperation for Sentinel {
-        fn dispatch(&self, _vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
-            DispatchOutcome::Halt
-        }
-    }
-
-    #[test]
-    fn register_is_gap_fill_only() {
-        let mut registry = RlopRegistry::new();
-        // Pre-claim one tuple the catalogue WOULD otherwise register.
-        let claimed = RlopKey::new(0, 33, 73);
-        registry.register(claimed, Arc::new(Sentinel));
-        register_catalog_rlops(&mut registry);
-        // The pre-claimed op is preserved (Halt), not overwritten.
-        let mut vm = Vm::new(1, 0);
-        let op = registry.get(claimed).expect("claimed op present");
-        assert_eq!(op.dispatch(&mut vm, &[]), DispatchOutcome::Halt);
-    }
-}
