@@ -56,7 +56,7 @@ export interface MutationCase {
  * disk; the guard loads it, runs `validator`, and requires the throw to match
  * `expectedDiagnostic`. Reuses the already-committed `examples/invalid` corpus
  * where a clean per-invariant mutation already exists, and adds a dedicated
- * protected-span identity-collision fixture (KAIFUU-170).
+ * protected-span identity-collision fixture.
  */
 export const MUTATION_CASES: readonly MutationCase[] = [
   {

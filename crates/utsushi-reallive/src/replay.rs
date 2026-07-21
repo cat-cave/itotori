@@ -107,9 +107,8 @@ impl Default for ReplayOpts {
     }
 }
 
-/// One observation produced during a replay walk. The variants cover
-/// the alpha-gate evidence the spec node lists (TextLine, Pause
-/// UnknownOpcode, Tick).
+/// One observation produced during a replay walk. The variants cover the
+/// alpha-gate evidence surface (TextLine, Pause, UnknownOpcode, Tick).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ReplayEvent {

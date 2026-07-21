@@ -1,22 +1,22 @@
-// ITOTORI-041 — Asset-localization drafting / QA / patch-export wire schema.
+// Asset-localization drafting / QA / patch-export wire schema.
 //
 // The dialogue text loop (draft-artifact-bundle.ts + qa-finding.ts +
 // patch-export-bundle.ts) drafts a source UNIT, annotates it with QA, and
 // exports a patch payload. THIS module is the distinct-but-parallel wire
 // contract for IMAGE / UI text and other asset-localization payloads once
-// OCR (KAIFUU-026 `asset-ocr`) and the asset inventory / media surface
-// (KAIFUU-059 `media_surface`) exist.
+// OCR (the `asset-ocr` layer) and the asset inventory / media surface
+// (the `media_surface` layer) exist.
 //
 // Two invariants are load-bearing and mirror the upstream Kaifuu rules:
 //
 //   1. OCR output is EVIDENCE, never asserted ground-truth translation
-//      source (KAIFUU-026). A draft therefore carries its OCR provenance +
-//      confidence + `sourceUncertain`, so a QA finding can flag an uncertain
-//      source region instead of silently trusting it.
+//      source. A draft therefore carries its OCR provenance + confidence
+//      + `sourceUncertain`, so a QA finding can flag an uncertain source
+//      region instead of silently trusting it.
 //
-//   2. Unsupported engine asset patching stays EXPLICIT (KAIFUU-059
-//      `MediaSurfaceError` / candidate-not-truth). An asset text draft that an
-//      engine cannot patch becomes a TYPED `AssetPatchRefusal`, never
+//   2. Unsupported engine asset patching stays EXPLICIT (a typed
+//      `MediaSurfaceError` / candidate-not-truth). An asset text draft that
+//      an engine cannot patch becomes a TYPED `AssetPatchRefusal`, never
 //      a silently dropped asset. "Asset localization does not pretend every
 //      asset is editable."
 //
@@ -41,7 +41,7 @@ export const ASSET_TEXT_DRAFT_SCHEMA_VERSION = "itotori.asset-text-draft.v1" as 
 export const ASSET_TEXT_DRAFT_POLICIES = ["translate_text", "romanize", "full_localize"] as const;
 export type AssetTextDraftPolicy = (typeof ASSET_TEXT_DRAFT_POLICIES)[number];
 
-/** OCR confidence bucket carried through from the KAIFUU-026 recognition. */
+/** OCR confidence bucket carried through from the asset-OCR recognition. */
 export const ASSET_OCR_CONFIDENCES = ["high", "medium", "low"] as const;
 export type AssetOcrConfidence = (typeof ASSET_OCR_CONFIDENCES)[number];
 
@@ -66,7 +66,7 @@ export type AssetQaFindingCategory = (typeof ASSET_QA_FINDING_CATEGORIES)[number
 
 /**
  * Patch-back modes an engine can honor for a patchable asset text draft.
- * `re_encrypt_same_key` mirrors KAIFUU-059 `PatchBackMode::ReEncryptSameKey`
+ * `re_encrypt_same_key` mirrors the RPG Maker MV/MZ `PatchBackMode::ReEncryptSameKey`
  * (RPG Maker MV/MZ text-bearing surface); the redraw / replacement / metadata
  * modes mirror the `ImageReplacementMode` / `AssetPolicyPatchMode` families.
  */
@@ -85,9 +85,9 @@ export type AssetPatchBackMode = (typeof ASSET_PATCH_BACK_MODES)[number];
  *   - `unsupported_engine`          — the engine's `patch` capability is not
  *                                     supported/partial (engine-capability-matrix).
  *   - `inventory_only`              — the asset is inventoried but not a
- *                                     localization surface (KAIFUU-059).
+ *                                     localization surface.
  *   - `key_absent`                  — encrypted media whose key is absent
- *                                     (KAIFUU-059 `HeldPendingKey`).
+ *                                     (the `HeldPendingKey` state).
  *   - `capability_mismatch`         — surface is patchable in principle but the
  *                                     requested patch-back mode is unavailable.
  *   - `not_a_localization_surface`  — the profiled role is not text-bearing.
@@ -107,8 +107,8 @@ export type AssetPatchRefusalReason = (typeof ASSET_PATCH_REFUSAL_REASONS)[numbe
 
 /**
  * Ties an asset draft back to its asset provenance / inventory ref. Every
- * field is derived from the KAIFUU-026 OCR text region + KAIFUU-059 media
- * surface — the draft is never severed from the region it came from.
+ * field is derived from the asset-OCR text region + the media surface —
+ * the draft is never severed from the region it came from.
  */
 export type AssetTextProvenance = {
   /** Inventory ref of the whole asset (media-surface / bridge asset ref). */
@@ -130,7 +130,7 @@ export type AssetTextProvenance = {
    * A draft off an uncertain region is still allowed — but QA MUST flag it.
    */
   sourceUncertain: boolean;
-  /** Upstream node that produced the provenance (e.g. `KAIFUU-026`). */
+  /** Upstream node id that produced the provenance. */
   ocrSourceNodeId: string;
 };
 

@@ -26,7 +26,7 @@ import type { NativePatchbackInput } from "../src/patchback/index.js";
 import type { NativeCliRunProcess } from "../src/native-bin/cli-bin-resolver.js";
 import { buildRb024Snapshot, loadBridgeBundle, makeAccepted } from "./support/gate-fixtures.js";
 
-/** One scoped-unit patchback input over the committed RB-024 fixture bridge. */
+/** One scoped-unit patchback input over the committed fact-snapshot fixture bridge. */
 function fixtureInput(): NativePatchbackInput {
   const snapshot = buildRb024Snapshot();
   const bridge = loadBridgeBundle();

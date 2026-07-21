@@ -8,8 +8,8 @@
 // mismatch is a CLEAR, typed error with a migration path instead of a silent
 // break.
 //
-// Closing DAG node `[[beta-schema-stability-policy]]`. The human-facing policy
-// (tier definitions, the backward-compatibility rules, the per-format tier
+// The closing policy node anchors this work. The human-facing policy (tier
+// definitions, the backward-compatibility rules, the per-format tier
 // assignments, and the worked migration notes) lives in
 // `docs/format-stability-and-compatibility-policy.md`.
 
@@ -126,11 +126,12 @@ export const BRIDGE_FORMAT_STABILITY: FormatStabilityDeclaration = {
 
 /**
  * The `.kaifuu` engine delta package format (Rust; `crates/kaifuu-delta`).
- * `schemaVersion: "0.3.0"`; the v0.2 loader was deleted in KAIFUU-238
- * (no-legacy-compat — there is no compatibility shim for packages without
- * `sourceProvenance`). The TS metadata record (`DeltaPackageMetadataV02`)
- * is a provenance pointer that rides the bridge v0.2 axis and is negotiated
- * separately via {@link BRIDGE_FORMAT_STABILITY}.
+ * `schemaVersion: "0.3.0"`; the v0.2 loader was deleted under the
+ * no-legacy-compat policy (there is no compatibility shim for packages
+ * without `sourceProvenance`). The TS metadata record
+ * (`DeltaPackageMetadataV02`) is a provenance pointer that rides the
+ * bridge v0.2 axis and is negotiated separately via
+ * {@link BRIDGE_FORMAT_STABILITY}.
  */
 export const KAIFUU_DELTA_FORMAT_STABILITY: FormatStabilityDeclaration = {
   formatId: "kaifuu-delta-package",

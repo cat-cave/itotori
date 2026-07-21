@@ -1,4 +1,4 @@
-// RB-026 — A7-only web egress outside the ZDR envelope, mutation-falsifiable.
+// A7-only web egress outside the ZDR envelope, mutation-falsifiable.
 //
 // Every clause below fails if its guarantee is removed. The disabled-mode proof
 // intercepts the network: the web provider is backed by an injected fetch that

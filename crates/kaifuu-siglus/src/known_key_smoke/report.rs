@@ -148,7 +148,7 @@ pub struct SiglusKnownKeySmokeReport {
     pub schema_version: String,
     /// Capability id.
     pub capability_id: String,
-    /// The spec-DAG node id this smoke is authored for.
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     /// Engine family.
     pub engine_family: String,
@@ -217,7 +217,7 @@ pub struct SiglusKnownKeySmokeFixture {
     pub schema_version: String,
     /// Capability id.
     pub capability_id: String,
-    /// The spec-DAG node id (e.g. ``).
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     /// Engine family.
     pub engine_family: String,

@@ -7,9 +7,10 @@
 //   2. Fields the session did not touch or implicate are preserved verbatim.
 //   3. The reconciled version is NON-PROVISIONAL and authored by "enhancement".
 //
-// The model call itself is RB-012's dispatch; this module is model-agnostic and
-// takes an injected {@link EnhancementRunner}, so the reconciliation guarantees
-// are proven deterministically on a recorded proposal — no live inference.
+// The model call itself is the LLM dispatch primitive; this module is
+// model-agnostic and takes an injected {@link EnhancementRunner}, so the
+// reconciliation guarantees are proven deterministically on a recorded
+// proposal — no live inference.
 
 import {
   changedLeafPaths,
@@ -40,14 +41,15 @@ export interface EnhancementRequest {
 }
 
 /** What the model proposes: a full candidate object plus the memo that produced
- * it (the RB-012 call identity, for provenance). */
+ * it (the LLM dispatch call identity, for provenance). */
 export interface EnhancementProposal {
   readonly objectJson: JsonValue;
   readonly authorMemoKey?: string;
 }
 
-/** The seam over RB-012. Production wraps `dispatch`; the proof injects a
- * recorded proposal so the reconciliation is exercised offline. */
+/** The seam over the LLM dispatch primitive. Production wraps `dispatch`; the
+ * proof injects a recorded proposal so the reconciliation is exercised
+ * offline. */
 export type EnhancementRunner = (request: EnhancementRequest) => Promise<EnhancementProposal>;
 
 /** Human-touched paths whose current value contradicts a decoded fact, mapped

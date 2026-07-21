@@ -1,4 +1,4 @@
-//! Typed `CD_COMMAND` (`0x30`) syscall decoder (siglus-11).
+//! Typed `CD_COMMAND` (`0x30`) syscall decoder.
 //!
 //! The opcode and expression layers already prove the byte layout of every
 //! command operand. This layer replays that typed stack discipline to retain

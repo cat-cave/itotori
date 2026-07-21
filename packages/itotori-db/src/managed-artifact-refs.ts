@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
-// UTSUSHI-049 — managed artifact references for CORPUS SIDECARS and BENCHMARK
-// ARTIFACTS.
+// Managed artifact references for CORPUS SIDECARS and BENCHMARK ARTIFACTS.
 //
 // Runtime evidence artifacts already have a managed reference scheme
 // (`packages/itotori-db/src/repositories/project-repository.ts`): a

@@ -1,8 +1,7 @@
-// UTSUSHI-011 — Runtime-evidence QA shapes.
+// Runtime-evidence QA shapes.
 //
-// A QA agent inspects Utsushi runtime evidence (UTSUSHI-006 observation
-// events, UTSUSHI-065 screenshot captures, UTSUSHI-102 launched-runtime
-// proof) EXCLUSIVELY through the tools in `tools.ts`. It never opens a raw
+// A QA agent inspects Utsushi runtime evidence (runtime observation events,
+// screenshot captures, launched-runtime proof) EXCLUSIVELY through the tools in `tools.ts`. It never opens a raw
 // artifact file. Every tool resolves a MANAGED ARTIFACT REF against the
 // `RuntimeEvidenceArtifactStore` (artifact-store.ts) and every finding it
 // emits CITES the managed refs it read — trace-only, screenshot-backed, or
@@ -114,8 +113,8 @@ export type RuntimeEvidenceFinding = {
 };
 
 /**
- * One OCR text-region hint recognised over a screenshot capture. The managed
- * OCR artifact (UTSUSHI-065 screenshot + an OCR pass) holds these; the
+ * One OCR text-region hint recognised over a screenshot capture. The
+ * managed OCR artifact (screenshot capture + an OCR pass) holds these; the
  * `ocr-hints` and `layout` tools resolve them through the store.
  */
 export type ScreenshotOcrRegion = {

@@ -69,7 +69,7 @@ use driver::{build_fixture_archive, synthetic_text_bearing_value};
 /// Schema version of the RGSS3 smoke fixture + report.
 pub const RGSS3_SMOKE_SCHEMA_VERSION: &str = "0.1.0";
 
-/// The spec-DAG node this smoke is authored for.
+/// Provenance node id stamped into generated reports.
 pub const RGSS3_SMOKE_SOURCE_NODE_ID: &str = "KAIFUU-143";
 
 /// Support boundary surfaced in every smoke report.

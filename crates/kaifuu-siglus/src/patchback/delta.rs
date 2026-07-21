@@ -1,4 +1,4 @@
-//! Per-scene patch delta producer — **skeleton** (siglus-05).
+//! Per-scene patch delta producer — **skeleton**.
 //! Produces the unit-level edit record (a [`SiglusScenePatchDelta`]) that
 //! [`super::bundle_driven::apply_translated_bundle`] splices into a scene.
 //! Keeping delta production separate from archive re-emit mirrors the

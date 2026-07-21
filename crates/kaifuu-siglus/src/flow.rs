@@ -1,12 +1,13 @@
-//! Siglus scene-bytecode **statement / flow decoder** (siglus-10).
+//! Siglus scene-bytecode **statement / flow decoder**.
 //!
-//! [`crate::opcode`] (siglus-08) partitions a scene into a fully-covering
-//! instruction stream and [`crate::expression`] (siglus-09) folds each
-//! instruction's operands into typed [`SiglusExpr`](crate::expression::SiglusExpr)
-//! trees — but siglus-09 walks the stream **straight-line**, leaving ~0.3% of
-//! statement-level operands as typed `StackUnderflow` diagnostics where a value's
-//! producer sits across a control-flow edge. This module lands the statement /
-//! flow layer over that substrate:
+//! [`crate::opcode`] (the opcode partitioner) partitions a scene into a
+//! fully-covering instruction stream and [`crate::expression`] (the
+//! expression-stack evaluator) folds each instruction's operands into typed
+//! [`SiglusExpr`](crate::expression::SiglusExpr) trees — but the evaluator
+//! walks the stream **straight-line**, leaving ~0.3% of statement-level
+//! operands as typed `StackUnderflow` diagnostics where a value's producer
+//! sits across a control-flow edge. This module lands the statement / flow
+//! layer over that substrate:
 //!
 //! 1. **Named statements** ([`SiglusStatement`]): every instruction decodes to a
 //!    named, exact-argument statement — the `text` / `name` / `jump` / `assign`
@@ -15,7 +16,7 @@
 //!    `unknown` on a fully-partitioned scene.
 //! 2. **Text surfaces** ([`SiglusTextSurface`]): every `CD_TEXT` / `CD_NAME`
 //!    carries the string-table **reference** (index) plus the payload byte-span
-//!    (offset + UTF-16 length) that patch-back (siglus-14) rewrites — the
+//!    (offset + UTF-16 length) that the patch-back layer rewrites — the
 //!    load-bearing output. Never the decoded characters.
 //! 3. **Resolved jumps** ([`SiglusJump`]): every `CD_GOTO*` / `CD_GOSUB*` label
 //!    index is resolved to its absolute bytecode target offset.
@@ -24,7 +25,7 @@
 //!    target).
 //! 5. **Underflow resolution** ([`FlowUnderflowReport`]): the intra-scene
 //!    control-flow graph propagates an abstract stack state across every jump +
-//!    fall-through edge, resolving the siglus-09 cross-edge underflows; the
+//!    fall-through edge, resolving the evaluator's cross-edge underflows; the
 //!    residual is a documented inter-procedural (call-frame / indirect-entry)
 //!    non-flow residual.
 //!
@@ -139,7 +140,7 @@ pub struct SceneFlowDecode {
     pub jumps: Vec<SiglusJump>,
     /// Recognized + linked select→conditional-jump choice units.
     pub choice_units: Vec<SiglusChoiceUnit>,
-    /// The flow layer's resolution of the siglus-09 cross-edge underflows.
+    /// The flow layer's resolution of the expression-evaluator cross-edge underflows.
     pub underflow: FlowUnderflowReport,
     /// Per-family statement counts (`family → count`); `unknown` is zero on a
     /// fully-partitioned scene.
@@ -190,10 +191,11 @@ pub enum SceneFlowError {
 
 /// Decode a decompressed Siglus scene payload's statement / flow structure.
 ///
-/// Partitions the scene (siglus-08), then builds named statements + located
-/// text surfaces + the resolved jump table, recognizes choice units, and
-/// resolves the siglus-09 cross-edge underflows via CFG stack-state
-/// propagation. The decode is deterministic and panic-free.
+/// Partitions the scene (via the opcode partitioner), then builds named
+/// statements + located text surfaces + the resolved jump table, recognizes
+/// choice units, and resolves the expression-evaluator cross-edge underflows
+/// via CFG stack-state propagation. The decode is deterministic and
+/// panic-free.
 pub fn decode_scene_flow(payload: &[u8]) -> Result<SceneFlowDecode, SceneFlowError> {
     let partition = partition_scene(payload)?;
     let tables = SceneTables::parse(payload);

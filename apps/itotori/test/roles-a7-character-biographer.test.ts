@@ -261,9 +261,10 @@ describe("clause 1 — one cited, portrait-bearing bio for EVERY indexed charact
       },
       buildCharacterPortrait(evidence.characterId, portraits(evidence.characterId)),
     );
-    // The repair does not soften RB-031: hand a claim a fabricated evidence id
-    // straight to the gate and it still fails loud (the repair only prevents a
-    // fabricated citation from ever reaching the object, it never admits one).
+    // The repair does not soften the citation gate: hand a claim a fabricated
+    // evidence id straight to the gate and it still fails loud (the repair
+    // only prevents a fabricated citation from ever reaching the object, it
+    // never admits one).
     const tampered = {
       ...bio,
       claims: [
@@ -275,7 +276,7 @@ describe("clause 1 — one cited, portrait-bearing bio for EVERY indexed charact
     };
     try {
       validateWikiObjectClaims(tampered, model);
-      throw new Error("expected the RB-031 gate to reject the fabricated citation");
+      throw new Error("expected the citation gate to reject the fabricated citation");
     } catch (error) {
       expect(error).toBeInstanceOf(ClaimValidationError);
       expect((error as ClaimValidationError).code).toBe("evidence-unresolvable");

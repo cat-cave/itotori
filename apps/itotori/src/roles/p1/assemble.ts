@@ -1,10 +1,10 @@
 // Seal P1's untrusted draft batch as a strict translation WikiObject.
 //
 // The model cannot author P1 provenance, scope, object identity, dependencies,
-// or citations. This module derives every one from the exact read context, then
-// validates the result with the same RB-031 claim resolver used by all Wiki
-// objects. P1 outputs remain provisional until deterministic gates/review accept
-// individual units.
+// or citations. This module derives every one from the exact read context,
+// then validates the result with the same citation-gate claim resolver used
+// by all Wiki objects. P1 outputs remain provisional until deterministic
+// gates/review accept individual units.
 
 import {
   TranslationWikiObjectSchema,

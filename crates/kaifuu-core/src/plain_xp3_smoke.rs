@@ -75,7 +75,7 @@ pub const SEMANTIC_SMOKE_NEGATIVE_DID_NOT_FAIL: &str =
 pub struct PlainXp3SmokeFixture {
     pub schema_version: String,
     pub fixture_id: String,
-    /// The spec-DAG node id this fixture is authored for (e.g. ``).
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     pub engine_family: String,
     pub archive: PlainXp3SmokeArchiveRef,

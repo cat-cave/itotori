@@ -4,7 +4,7 @@
 //! registrars mounted into a MULTI-scene store built from every populated
 //! scene of real `Seen.txt` archives across two independently staged corpora.
 //!
-//! Acceptance criteria (see the spec node):
+//! Acceptance criteria:
 //!  1. All 9 registrars mounted into a multi-scene store.
 //!  2. A full dialogue scene drives to its terminus and reports every
 //!     unimplemented opcode as `UnknownOpcode` — ASSERTED.

@@ -493,7 +493,7 @@ impl MvMzAssetReplacementOutcome {
 pub struct MvMzAssetReplacementManifest {
     pub schema_version: String,
     pub path_id: String,
-    /// The spec-DAG node id this manifest is authored for (``).
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     pub engine_family: String,
     pub entries: Vec<MvMzAssetReplacementEntry>,

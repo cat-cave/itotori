@@ -1,12 +1,14 @@
-//! Fuzz-safe CFG stack-state resolver for the siglus-09 cross-edge underflows.
+//! Fuzz-safe CFG stack-state resolver for the expression-evaluator
+//! cross-edge underflows.
 //!
-//! siglus-09 evaluates the operand stream **straight-line**, so a value a
-//! consumer needs whose producer sits across a jump edge underflows (a typed
-//! `StackUnderflow` leaf). This resolver reconstructs the intra-scene
-//! control-flow graph and propagates an **abstract stack state** (the value
-//! depth + element-frame markers, mirroring the siglus-09 `ProgStack`
-//! discipline) along every jump + fall-through edge, seeded at the runtime
-//! entry points (offset 0 + each scene-command entry) with an empty stack.
+//! The expression-stack evaluator walks the operand stream **straight-line**,
+//! so a value a consumer needs whose producer sits across a jump edge
+//! underflows (a typed `StackUnderflow` leaf). This resolver reconstructs the
+//! intra-scene control-flow graph and propagates an **abstract stack state**
+//! (the value depth + element-frame markers, mirroring the evaluator's
+//! `ProgStack` discipline) along every jump + fall-through edge, seeded at the
+//! runtime entry points (offset 0 + each scene-command entry) with an empty
+//! stack.
 //!
 //! A consumer reached with a propagated stack finds the value the straight-line
 //! walk could not — that underflow is **resolved**. What remains is confined to
@@ -25,8 +27,9 @@ use crate::opcode::{SiglusInstruction, SiglusOpcode};
 use super::model::FlowUnderflowReport;
 
 /// Abstract operand-stack state: value depth + element-frame start markers.
-/// Mirrors the siglus-09 `ProgStack` net effect exactly (proven to reproduce
-/// its underflow count on real bytes), tracking only depths — never values.
+/// Mirrors the expression-stack evaluator's `ProgStack` net effect exactly
+/// (proven to reproduce its underflow count on real bytes), tracking only
+/// depths — never values.
 #[derive(Clone, Default)]
 struct AbstractStack {
     depth: i64,
@@ -96,7 +99,7 @@ fn arg_value_count(forms: &[SiglusArgForm]) -> i64 {
         .sum()
 }
 
-/// Apply one instruction's net stack effect, mirroring the siglus-09 evaluator.
+/// Apply one instruction's net stack effect, mirroring the expression-stack evaluator.
 fn apply(bytecode: &[u8], instruction: &SiglusInstruction, stack: &mut AbstractStack) {
     let operand =
         decode_operand(bytecode, instruction).unwrap_or(SiglusOperand::Unknown(instruction.lead));
@@ -166,7 +169,7 @@ fn apply(bytecode: &[u8], instruction: &SiglusInstruction, stack: &mut AbstractS
     }
 }
 
-/// The straight-line underflow count — reproduces siglus-09 exactly.
+/// The straight-line underflow count — reproduces the expression-stack evaluator exactly.
 fn linear_underflow(bytecode: &[u8], instructions: &[SiglusInstruction]) -> u64 {
     let mut stack = AbstractStack::default();
     for instruction in instructions {

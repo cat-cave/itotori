@@ -417,11 +417,10 @@ export interface ItotoriModelLedgerRepositoryPort {
     window: ProviderRunZdrCountWindow,
   ): Promise<ProviderRunZdrCountRow[]>;
   /**
-   * UTSUSHI-231 — count provider runs per (modelId, providerId,
-   * costKind) over the same post-run telemetry window. The alpha
-   * closer must prove every live invocation was billed, so the
-   * telemetry-summary artifact needs the raw cost-kind split rather
-   * than only the rolled-up USD total.
+   * Count provider runs per (modelId, providerId, costKind) over the same
+   * post-run telemetry window. The alpha closer must prove every live
+   * invocation was billed, so the telemetry-summary artifact needs the raw
+   * cost-kind split rather than only the rolled-up USD total.
    */
   countCostKindsByPair(
     actor: AuthorizationActor,

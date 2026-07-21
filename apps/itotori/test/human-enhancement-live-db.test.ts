@@ -107,8 +107,9 @@ postgresDescribe("RB-033 non-blocking human edit + bounded feedback enhancement"
         delta: { inputs: [expect.anything(), expect.anything()] },
       });
 
-      // Replaying the same child after a crash reads the durable memo instead of
-      // sending another physical request. This is RB-020's real idempotent seam.
+      // Replaying the same child after a crash reads the durable memo instead
+      // of sending another physical request. This is the dispatch primitive's
+      // real idempotent seam.
       const request = enhancement.request;
       if (request === null) throw new Error("expected the bounded child request");
       await enhancement.runner(request);
@@ -248,7 +249,7 @@ postgresDescribe("RB-033 non-blocking human edit + bounded feedback enhancement"
   });
 });
 
-/** The production dispatch runner wired to the real RB-020 memo store. Its
+/** The production dispatch runner wired to the real dispatch/memo store. Its
  * planner seals the exact prior-object + delta payload into the physical call
  * identity, while the recorded provider response keeps the proof offline. */
 function memoizedEnhancementRunner(

@@ -20,11 +20,10 @@
 //! Per the itotori operating model, a parser that targets a real
 //! engine substrate must be exercised against at least two real corpora
 //! before its node is merged-complete. Sweetie HD is the only RealLive
-//! title currently staged. This
-//! crate's sibling parsers landed under the
-//! same single-corpus posture, and the spec node explicitly accepts
-//! the multi-game gap. The commit message records the single-corpus
-//! posture explicitly.
+//! title currently staged. This crate's sibling parsers landed under
+//! the same single-corpus posture, and this module's acceptance
+//! contract explicitly accepts the multi-game gap. The commit message
+//! records the single-corpus posture explicitly.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;

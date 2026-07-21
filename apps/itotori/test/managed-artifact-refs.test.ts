@@ -11,9 +11,9 @@ import {
 } from "@itotori/db";
 import { describe, expect, it } from "vitest";
 
-// UTSUSHI-049 — corpus sidecars + benchmark artifacts use MANAGED artifact
-// references without reusing the runtime-only assumptions, and cleanup of
-// those managed artifacts can never target read-only source. Synthetic
+// corpus sidecars + benchmark artifacts use MANAGED artifact references
+// without reusing the runtime-only assumptions, and cleanup of those
+// managed artifacts can never target read-only source. Synthetic
 // fixtures only.
 
 const RUNTIME_MOUNT = "artifacts/utsushi/runtime";

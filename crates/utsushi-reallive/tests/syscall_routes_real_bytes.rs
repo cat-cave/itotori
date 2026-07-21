@@ -1,8 +1,7 @@
 //! Real-bytes + synthetic integration tests for
 //! [`utsushi_reallive::SyscallDispatcher`].
 //!
-//! Two named entrypoints match the verification commands pinned in the
-//! spec node:
+//! Two named entrypoints match the verification commands for this module:
 //!
 //! - `cargo test -p utsushi-reallive syscall_routes_match_reallive_real_bytes`
 //! - `cargo test -p utsushi-reallive mouseactioncall_hot_region_dispatches`

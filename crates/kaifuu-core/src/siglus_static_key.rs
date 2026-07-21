@@ -214,7 +214,7 @@ pub const SIGLUS_STATIC_KEY_HELPER_ID: &str = "kaifuu-siglus-static-key";
 pub struct SiglusStaticKeyFixture {
     pub schema_version: String,
     pub capability_id: String,
-    /// The spec-DAG node id this fixture is authored for (e.g. ``).
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     pub engine_family: String,
     pub entries: Vec<SiglusStaticKeyFixtureEntry>,

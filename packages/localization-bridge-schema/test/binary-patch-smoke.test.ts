@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { assertPatchResultV02, computePatchResultOutputHashRollupV02 } from "../src/index.js";
 
 /**
- * KAIFUU-011 — TS-side validator coverage for the v0.2 PatchResult
- * emitted by the composed binary patch smoke command. The Rust side
+ * TS-side validator coverage for the v0.2 PatchResult emitted by the
+ * composed binary patch smoke command. The Rust side
  * (`crates/kaifuu-cli/tests/binary_patch_smoke.rs`) covers the same
  * fixtures via `validate_patch_result_v02`; this test mirrors the
  * shape contract on the TypeScript validator so a future drift in
@@ -22,7 +22,7 @@ const BRIDGE_UNIT_ID = "019ed011-0000-7000-8000-000000000020";
 const FAILURE_ID = "deadbeef-0000-7000-8000-000000000001";
 const PATCH_RESULT_ID = "0deadbef-0000-7000-8000-000000000002";
 
-describe("KAIFUU-011 binary-patch-smoke v0.2 contract surface", () => {
+describe("binary-patch-smoke v0.2 contract surface", () => {
   it("accepts a passed result shape mirroring the smoke promote path", () => {
     const touchedAssets = [
       {

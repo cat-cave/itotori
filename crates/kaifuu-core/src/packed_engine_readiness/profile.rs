@@ -28,7 +28,7 @@ pub struct PackedEngineReadinessProfile {
     pub profile_id: String,
     /// Stable fixture id this profile is derived from.
     pub fixture_id: String,
-    /// The spec-DAG node id this profile is authored for (e.g. ``).
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     pub engine_family: PackedEngineFamily,
     pub container: ContainerTransform,

@@ -1,4 +1,4 @@
-// UTSUSHI-011 — Runtime-evidence inspection tools.
+// Runtime-evidence inspection tools.
 //
 // Five deterministic tools a QA agent calls to INSPECT runtime evidence. Each
 // reads MANAGED ARTIFACT REFS through the `RuntimeEvidenceArtifactStore` (never

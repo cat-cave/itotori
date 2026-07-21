@@ -1,6 +1,6 @@
 //! Sparse `VarBanks` substrate integration tests.
 //!
-//! Pins the four acceptance criteria from the spec node:
+//! Pins the four `VarBanks` acceptance criteria:
 //!
 //! 0. `intA[0] = 42; snapshot; intA[0] = 99; restore; assert intA[0] == 42`
 //!    round-trips through `SnapshotStore`.

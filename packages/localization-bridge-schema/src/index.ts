@@ -178,7 +178,7 @@ export type RuntimePlaybackFeatureV02 = (typeof RUNTIME_PLAYBACK_FEATURES_V02)[n
 export const RUNTIME_FEATURE_STATUSES_V02 = ["supported", "partial", "unsupported"] as const;
 export type RuntimeFeatureStatusV02 = (typeof RUNTIME_FEATURE_STATUSES_V02)[number];
 
-// KAIFUU-053: capability-leveled engine detector registry.
+// Capability-leveled engine detector registry.
 //
 // The 4-rung ladder consumers gate against. Identifying that an adapter
 // exists (`identify`) does NOT imply usability for inventory / extract /
@@ -209,7 +209,7 @@ export type AdapterCapabilityMatrixV02 = {
 
 /**
  * True iff the matrix declares `Supported` at `level`. Partial does NOT
- * count — that is the whole point of KAIFUU-053's strict gate.
+ * count — that is the whole point of the capability-ladder strict gate.
  */
 export function adapterMatrixSupports(
   matrix: AdapterCapabilityMatrixV02,
@@ -3884,7 +3884,7 @@ export function assertContractCompatibilityReportV02(
 }
 
 /**
- * KAIFUU-053: validate a per-rung {@link CapabilityLevelStatusV02}.
+ * Validate a per-rung {@link CapabilityLevelStatusV02}.
  *
  * Enforces the same shape the Postgres CHECK constraint guards in
  * migration `0028_engine_capability_reports.sql`:
@@ -3935,7 +3935,7 @@ export function assertCapabilityLevelStatusV02(
 }
 
 /**
- * KAIFUU-053: validate an {@link AdapterCapabilityMatrixV02} fixture.
+ * Validate an {@link AdapterCapabilityMatrixV02} fixture.
  */
 export function assertAdapterCapabilityMatrixV02(
   value: unknown,
@@ -5892,7 +5892,7 @@ function assertPatchExportEntryV02(
   assertSourceRevisionV02(entry.sourceRevision, `${label}.sourceRevision`);
   assertString(entry.targetText, `${label}.targetText`);
   const mappings = asArray(entry.protectedSpanMappings, `${label}.protectedSpanMappings`);
-  // KAIFUU-170: v0.2 source identities (`sourceSpanId`) must be unique within an
+  // v0.2 source identities (`sourceSpanId`) must be unique within an
   // entry (strict identity). Legacy raw-only spans carry no identity and are
   // intentionally NOT tracked, so duplicate `raw` stays compatibility-preserving.
   const seenSourceSpanIds = new Set<string>();

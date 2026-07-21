@@ -153,7 +153,7 @@ fn collect_scene_parts<'a>(
             .enumerate()
             // `GLOBAL.SELBTN` is a callable surface, not by itself proof that
             // every string argument is player-visible text.  Only the
-            // siglus-10-recognized select -> conditional-jump shape is a
+            // flow-recognized select -> conditional-jump shape is a
             // Bridge choice surface; control arguments remain raw bytes.
             .filter(|(_, selection)| selection.structural_choice_index.is_some())
             .map(|(index, selection)| (selection.call_offset, 1_u8, index)),
@@ -254,7 +254,7 @@ fn collect_selection(
     for (option_index, option) in selection.options.iter().enumerate() {
         // A selection call can carry string-valued control arguments.  The
         // syscall decoder categorizes a player-visible label by matching its
-        // result value to a siglus-10 dispatch arm.  Do not decode arbitrary
+        // result value to a flow-layer dispatch arm.  Do not decode arbitrary
         // string-table entries merely because they were arguments to SELBTN.
         if option.structural_arm_index.is_none() {
             continue;

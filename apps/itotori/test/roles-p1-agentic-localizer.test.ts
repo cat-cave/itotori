@@ -1,9 +1,9 @@
 // P1 Whole-Scene Localizer — grounded, provisional translation-object proofs.
 //
-// The responder below is a recorded offline model boundary. P1 still makes the
-// authoritative reads through RB-025 and re-seals the responder's untrusted
-// object, so the test covers the role's actual public agent entrypoint without a
-// live model call.
+// The responder below is a recorded offline model boundary. P1 still makes
+// the authoritative reads through the specialist read surface and re-seals
+// the responder's untrusted object, so the test covers the role's actual
+// public agent entrypoint without a live model call.
 
 import {
   LlmMemoConflictError,
@@ -307,7 +307,8 @@ describe("P1 agentic whole-scene localizer", () => {
       recordedCaller,
     );
 
-    // RB-025 reads supplied the COMPLETE scene, not a pre-sliced prompt bundle.
+    // The specialist read surface supplied the COMPLETE scene, not a pre-sliced
+    // prompt bundle.
     expect(seen[0]!.scene.units.map((unit) => unit.factId)).toEqual(
       model.factSnapshot.orderedUnits
         .filter((unit) => unit.sceneId === SCENE_1)

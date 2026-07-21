@@ -1011,7 +1011,7 @@ function readProject(io: JsonFileStore, path: string): ProjectState {
 // Helper used internally during the legacy CLI bridging so unused-import lints
 // pass while the resolveSceneSummaryProvider symbol stays public for embedders.
 
-// KAIFUU-053: CLI commands for the capability-leveled engine detector
+// CLI commands for the capability-leveled engine detector registry.
 // registry. `engine-capabilities-record` upserts one adapter's matrix
 // from a JSON file (used to import what `EngineAdapter::capabilities()`
 // produced upstream); `engine-capabilities-list` writes a JSON report

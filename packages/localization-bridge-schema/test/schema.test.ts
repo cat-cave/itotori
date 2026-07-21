@@ -1863,7 +1863,7 @@ describe("localization bridge schema guards", () => {
     );
   });
 
-  it("rejects duplicate source-identity protected spans (KAIFUU-170 strict v0.2 identity)", () => {
+  it("rejects duplicate source-identity protected spans (strict v0.2 identity)", () => {
     const bridge = bridgeV02Example();
     const patchExport = patchExportV02Example(bridge, 1);
     const entry = asTestRecord(
@@ -1895,7 +1895,7 @@ describe("localization bridge schema guards", () => {
     );
   });
 
-  it("accepts legacy raw-only duplicate protected spans (KAIFUU-170 compatibility-preserving)", () => {
+  it("accepts legacy raw-only duplicate protected spans (compatibility-preserving)", () => {
     const bridge = bridgeV02Example();
     const patchExport = patchExportV02Example(bridge, 1);
     const entry = asTestRecord(
@@ -1944,8 +1944,9 @@ describe("localization bridge schema guards", () => {
     entry.targetText = "{name} and {name}";
     // Collapsed duplicates: both mappings resolve to the SAME source span (851,
     // bytes 0..6) via explicit byte-range identity. This stays schema-valid
-    // (KAIFUU-170 only rejects duplicate `sourceSpanId`, which is absent here),
-    // so it reaches the compatibility evaluator, which flags the collapse.
+    // (the strict identity check only rejects duplicate `sourceSpanId`, which
+    // is absent here), so it reaches the compatibility evaluator, which flags
+    // the collapse.
     entry.protectedSpanMappings = [
       {
         raw: "{name}",
@@ -3029,11 +3030,10 @@ describe("localization bridge schema guards", () => {
     expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(/selectedOptionId/);
   });
 
-  it("accepts a runtime evidence report referencing a conformance fixture via the existing reference comparison kind (UTSUSHI-026 smoke)", () => {
-    // UTSUSHI-026 introduces the Rust-side ConformanceManifest/Result
-    // contract but defers the TypeScript schema mirror to UTSUSHI-030.
-    // This smoke test proves the existing bridge schema already
-    // accommodates conformance reports through the
+  it("accepts a runtime evidence report referencing a conformance fixture via the existing reference comparison kind", () => {
+    // The Rust-side ConformanceManifest/Result contract exists; this smoke
+    // test proves the existing bridge schema already accommodates
+    // conformance reports through the
     // `conformance_fixture` reference comparison kind without any
     // schema change.
     const report = traceOnlyReferenceFidelityReport();
@@ -3082,8 +3082,8 @@ describe("localization bridge schema guards", () => {
     ).not.toThrow();
   });
 
-  // KAIFUU-053 capability ladder coverage. Mirrors the Rust round-trip and
-  // strict-gate tests in `crates/kaifuu-core/src/registry/capability.rs`.
+  // Capability ladder coverage. Mirrors the Rust round-trip and strict-gate
+  // tests in `crates/kaifuu-core/src/registry/capability.rs`.
   it("accepts capability matrices that exercise supported / partial / unsupported branches", () => {
     const matrix: AdapterCapabilityMatrixV02 = {
       adapterId: "kaifuu.example",

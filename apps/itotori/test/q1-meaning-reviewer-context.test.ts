@@ -1,9 +1,10 @@
 // Q1's grounded context + persistable review artifact proof.
 //
-// This suite deliberately uses the real RB-025 implementations over the
-// committed bridge fixture.  The only recorded seam is the model transport;
-// source facts, neighbor windows, glossary facts, and accepted-target history
-// are all read from the snapshot-pinned local surface.
+// This suite deliberately uses the real specialist-read-surface
+// implementations over the committed bridge fixture.  The only recorded
+// seam is the model transport; source facts, neighbor windows, glossary
+// facts, and accepted-target history are all read from the
+// snapshot-pinned local surface.
 
 import type { LlmRevisionRef } from "@itotori/db";
 import { describe, expect, it } from "vitest";
@@ -159,9 +160,9 @@ describe("Q1 uses snapshot-pinned local reads and emits a provisional review art
       contextScope: "whole-game",
     });
 
-    // The source fact and citation coordinates came from decode_get_units, not
-    // the caller's candidate record; the context has also consumed every other
-    // RB-025 surface Q1 is granted for this line.
+    // The source fact and citation coordinates came from decode_get_units,
+    // not the caller's candidate record; the context has also consumed every
+    // other read surface Q1 is granted for this line.
     expect(input.sourceFacts[0]?.factId).toBe(unit.factId);
     expect(input.sourceFacts[0]?.evidence.snapshotId).toBe(model.snapshotId);
     expect(input.sourceFacts.some((fact) => fact.factId === "glossary:term:station")).toBe(true);

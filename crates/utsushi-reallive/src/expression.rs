@@ -25,7 +25,7 @@
 //!
 //! # Operator byte table
 //!
-//! Pinned from the spec node:
+//! Pinned operator byte table:
 //!
 //! Byte (after `\`) | Operator | Variant
 //! ---------------- | ------------ | ------------------
@@ -73,12 +73,12 @@
 //!
 //! # Partial-result recovery
 //!
-//! Per the spec node's third acceptance criterion: an unknown operator
-//! byte in the continuation slot does not abort the parse. The parser
-//! emits an [`ExpressionWarning::UnknownOperator`] in the returned
-//! warning vector (see [`ParsedExpression`]) and treats the byte as a
-//! single-byte literal so the partial AST built so far is still
-//! returned to the caller.
+//! Acceptance rule for unknown operators: an unknown operator byte in
+//! the continuation slot does not abort the parse. The parser emits an
+//! [`ExpressionWarning::UnknownOperator`] in the returned warning vector
+//! (see [`ParsedExpression`]) and treats the byte as a single-byte
+//! literal so the partial AST built so far is still returned to the
+//! caller.
 //!
 //! # Empty input
 //!
@@ -101,7 +101,7 @@ pub const EXPRESSION_STORE_REGISTER_TAG: u8 = 0xC8;
 /// Bank byte for the `intB` bank (per `docs/research/reallive-engine.md`
 /// §G — bank letter encoded as a single byte; zero-indexed against
 /// `intA`). Pinned as a constant so the synthetic-suite fixtures and
-/// the spec-node acceptance criteria can share one symbol.
+/// the acceptance criteria share one symbol.
 pub const BANK_BYTE_INT_B: u8 = 0x01;
 /// Bank byte for the `intA` bank.
 pub const BANK_BYTE_INT_A: u8 = 0x00;
@@ -168,8 +168,7 @@ impl ExprOp {
     /// Map a raw operator byte (the byte that follows `\` in the
     /// encoding) to the typed [`ExprOp`] variant. Returns `None` if the
     /// byte is outside the documented operator table — the caller's
-    /// recovery path (per the spec node's partial-result rule) handles
-    /// the unknown byte explicitly.
+    /// partial-result recovery path handles the unknown byte explicitly.
     pub fn from_byte(byte: u8) -> Option<Self> {
         Some(match byte {
             0x02 => Self::Add,
@@ -702,8 +701,7 @@ fn parse_arith(state: &mut ParserState<'_>) -> Result<ExprNode, ExpressionParseE
         // (we are past the term so `\x00` / `\x01` would be unary
         // continuation which is structurally invalid here), emit a
         // warning and treat the unknown byte as an int-literal. This
-        // is the partial-result rule from the spec node's third
-        // acceptance criterion.
+        // is the partial-result acceptance rule.
         if peek_unknown_binary_op_slot(state) {
             let offset = state.pos;
             let unknown_byte = state.peek(1).unwrap_or(0);
@@ -727,8 +725,8 @@ fn parse_arith(state: &mut ParserState<'_>) -> Result<ExprNode, ExpressionParseE
 /// Detect a `\<op>` slot whose op byte is not in any documented
 /// continuation table. Returns true only when the bytes after the
 /// backslash are clearly meant as an op continuation but the byte is
-/// outside the union of [`ExprOp`] / [`AssignOp`] tables — covering
-/// the "unknown operator byte" case from the spec node.
+/// outside the union of [`ExprOp`] / [`AssignOp`] tables — covering the
+/// unknown-operator-byte case.
 fn peek_unknown_binary_op_slot(state: &ParserState<'_>) -> bool {
     if state.current() != Some(EXPRESSION_BACKSLASH) {
         return false;

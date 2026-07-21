@@ -528,7 +528,7 @@ pub struct VmTraceEvidence {
     pub schema_version: String,
     /// Capability id.
     pub capability_id: String,
-    /// The spec-DAG node id this claim is authored for.
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     /// The profile id.
     pub profile_id: String,
@@ -552,7 +552,7 @@ pub struct VmTraceEvidence {
 }
 
 impl VmTraceEvidence {
-    /// The spec-DAG node id stamped on every VM trace claim.
+    /// Provenance node id stamped on every VM trace claim.
     pub const SOURCE_NODE_ID: &'static str = "UTSUSHI-034";
 
     /// Serialize to stable, redaction-swept JSON (secret-refs only, no key

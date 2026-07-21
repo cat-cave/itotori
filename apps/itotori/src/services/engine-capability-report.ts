@@ -6,7 +6,7 @@ import {
   capabilityLevelValues,
 } from "@itotori/db";
 
-// KAIFUU-053: itotori-side consumer for the capability-leveled engine
+// itotori-side consumer for the capability-leveled engine detector
 // detector registry. Wraps the repository with a typed API that the
 // dashboard and CLI surfaces consume so they can distinguish "identified
 // only" engines from engines that actually support extract/patch.

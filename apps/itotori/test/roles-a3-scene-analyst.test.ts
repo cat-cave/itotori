@@ -4,8 +4,8 @@
 //   Clause 1 — A3 reads each COMPLETE scene, never a planner fragment.
 //   Clause 2 — it serially FOLDS the prior accepted story-so-far into a cited
 //              scene-summary + updated story-so-far, in the SOURCE LANGUAGE.
-//   Clause 3 — every citation belongs to the visible snapshot (RB-031), the
-//              final story-so-far covers the full route history, and decoded
+//   Clause 3 — every citation belongs to the visible snapshot (the citation
+//              gate), the final story-so-far covers the full route history, and decoded
 //              counts/speakers are index-derived, never model outputs.
 //
 // The model boundary is a RECORDED responder (no network, no DB): the fold is
@@ -294,9 +294,10 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
       storyOpenThreads: [],
       storyClaims: [],
     });
-    // The repair does not soften RB-031: hand a claim a fabricated evidence id
-    // straight to the gate and it still fails loud (the repair only prevents a
-    // fabricated citation from ever reaching the object, it never admits one).
+    // The repair does not soften the citation gate: hand a claim a fabricated
+    // evidence id straight to the gate and it still fails loud (the repair
+    // only prevents a fabricated citation from ever reaching the object, it
+    // never admits one).
     const tampered = {
       ...object,
       claims: [
@@ -313,7 +314,7 @@ describe("clause 3 — citations in-snapshot, full-route coverage, index-derived
     };
     try {
       validateWikiObjectClaims(tampered, model);
-      throw new Error("expected the RB-031 gate to reject the fabricated citation");
+      throw new Error("expected the citation gate to reject the fabricated citation");
     } catch (error) {
       expect(error).toBeInstanceOf(ClaimValidationError);
       expect((error as ClaimValidationError).code).toBe("evidence-unresolvable");

@@ -323,7 +323,7 @@ function projectForBridge(
 ): ProjectState {
   const projectId = bridge.schemaVersion === "0.2.0" ? bridge.sourceGame.gameId : bridge.bridgeId;
   const localeBranchId = `${projectId}:${targetLocale}`;
-  // The bridge import API predates mp-01's explicit engine-binding fields.
+  // The bridge import API predates explicit engine-binding fields.
   // Preserve its real source-bundle write; engine-aware onboarding supplies a
   // complete binding through ensureRunProjectScope before creating a run.
   return {

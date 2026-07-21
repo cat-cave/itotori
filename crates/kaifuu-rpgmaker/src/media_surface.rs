@@ -71,7 +71,7 @@ use crate::encrypted_asset_slice::{EncryptedAssetSuffix, MediaCapability, MvMzKe
 
 /// Schema version of the media-surface manifest.
 pub const MEDIA_SURFACE_SCHEMA_VERSION: &str = "0.1.0";
-/// The spec-DAG node id.
+/// Provenance node id stamped into generated reports.
 pub const MEDIA_SURFACE_SOURCE_NODE_ID: &str = "KAIFUU-059";
 /// Engine family this profile targets.
 pub const MEDIA_SURFACE_ENGINE_FAMILY: &str = "rpg_maker_mv_mz";

@@ -17,9 +17,10 @@ use super::model::{
 use super::selection_labels;
 use super::shapes::system_function_shape;
 
-/// A compact, total version of the siglus-09 expression stack. It exists here
-/// because this layer needs every command call at its bytecode site, including
-/// value-returning calls that siglus-09 leaves on the stack for a later use.
+/// A compact, total version of the expression-stack evaluator's stack. It
+/// exists here because this layer needs every command call at its bytecode
+/// site, including value-returning calls the evaluator leaves on the stack
+/// for a later use.
 #[derive(Default)]
 struct CallStack {
     values: Vec<SiglusExpr>,

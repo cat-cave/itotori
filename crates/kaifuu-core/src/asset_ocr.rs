@@ -45,7 +45,7 @@ pub use self::recognize::run_asset_ocr;
 /// Schema version of the emitted [`AssetOcrReport`].
 pub const ASSET_OCR_SCHEMA_VERSION: &str = "0.1.0";
 
-/// The spec-DAG node id this path is authored for.
+/// Provenance node id stamped into generated reports.
 pub const ASSET_OCR_SOURCE_NODE_ID: &str = "KAIFUU-026";
 
 /// Canonical id of this path / its public fixture.

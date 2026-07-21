@@ -114,7 +114,7 @@ pub enum PatchbackError {
         "{PATCHBACK_PROVENANCE_MISMATCH_CODE}: units {first:?} and {second:?} target the same string-table entry with different text"
     )]
     ConflictingStringTargets { first: String, second: String },
-    /// The patched scene did not survive the siglus-08/10 structural check.
+    /// The patched scene did not survive the opcode-partition / flow structural check.
     #[error("{PATCHBACK_SELF_CHECK_CODE}: scene {scene_id}: {message}")]
     SelfCheck { scene_id: u32, message: String },
 }

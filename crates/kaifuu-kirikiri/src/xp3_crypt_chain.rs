@@ -368,7 +368,7 @@ pub struct Xp3CryptChainReport {
     pub schema_version: String,
     /// Capability id.
     pub capability_id: String,
-    /// The spec-DAG node id.
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     /// The blunt support boundary.
     pub support_boundary: String,

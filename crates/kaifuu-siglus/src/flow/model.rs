@@ -1,4 +1,4 @@
-//! Typed data model for the Siglus **statement / flow** layer (siglus-10).
+//! Typed data model for the Siglus **statement / flow** layer.
 //!
 //! Everything here carries only counts, offsets, forms, string-table indices,
 //! and named operators — never raw scene text. A `str` surface travels as its
@@ -78,7 +78,7 @@ pub struct SiglusTextSurface {
 
 impl SiglusTextSurface {
     /// True when the surface resolved to a concrete string-table entry with a
-    /// located byte-span — the shape patch-back (siglus-14) consumes.
+    /// located byte-span — the shape the patch-back layer consumes.
     pub fn is_patchable(&self) -> bool {
         self.str_index.is_some() && self.str_byte_offset.is_some() && self.str_char_len.is_some()
     }
@@ -100,7 +100,7 @@ pub struct SiglusChoiceArm {
 /// selection command linked to the dispatch ladder that branches on its
 /// result. Structural recognition — the arms link a choice constant to its
 /// branch target. (Naming *which* selection command is a player-facing menu vs
-/// an internal switch is refined by the syscall decoder, siglus-11.)
+/// an internal switch is refined by the syscall decoder.)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SiglusChoiceUnit {
     /// Byte offset of the selection command whose result the ladder dispatches.
@@ -111,18 +111,18 @@ pub struct SiglusChoiceUnit {
     pub arms: Vec<SiglusChoiceArm>,
 }
 
-/// Sanitized report of the flow layer's resolution of the siglus-09
-/// cross-control-flow-edge stack underflows.
+/// Sanitized report of the flow layer's resolution of the
+/// expression-evaluator cross-control-flow-edge stack underflows.
 ///
-/// `linear_underflow` reproduces siglus-09's straight-line count exactly (a
-/// regression cross-check). `flow_underflow` is what remains after CFG
-/// stack-state propagation across every jump + fall-through edge. The residual
-/// is a **documented non-flow residual**: it is attributed to inter-procedural
-/// entry, not to any unresolved intra-scene flow edge — see the two split
-/// counters.
+/// `linear_underflow` reproduces the expression-stack evaluator's
+/// straight-line count exactly (a regression cross-check). `flow_underflow`
+/// is what remains after CFG stack-state propagation across every jump +
+/// fall-through edge. The residual is a **documented non-flow residual**: it
+/// is attributed to inter-procedural entry, not to any unresolved intra-scene
+/// flow edge — see the two split counters.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FlowUnderflowReport {
-    /// Underflows under a straight-line walk (equals siglus-09's count).
+    /// Underflows under a straight-line walk (equals the expression-stack evaluator's count).
     pub linear_underflow: usize,
     /// Underflows remaining after CFG stack-state propagation.
     pub flow_underflow: usize,

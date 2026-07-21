@@ -1,7 +1,7 @@
-// MV/MZ branch explorer dashboard API (UTSUSHI-067).
+// MV/MZ branch explorer dashboard API.
 //
-// Exposes the UTSUSHI-009 `BranchCoverageReadModel` (see ./branch-coverage.ts)
-// as a paginated, filterable dashboard API. Like the runtime status dashboard
+// Exposes the `BranchCoverageReadModel` (see ./branch-coverage.ts) as a
+// paginated, filterable dashboard API. Like the runtime status dashboard
 // (./dashboard.ts), this app ships NO live HTTP server: the "API route" is a
 // pure server-side page builder (`buildBranchCoveragePage`) plus a client
 // fetch function (`fetchBranchCoveragePage`) that a host serves and that the

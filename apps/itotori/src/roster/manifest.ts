@@ -49,7 +49,7 @@ const DEEP_LIMITS: SpecialistDeclaration["limits"] = {
   timeoutClass: "deep",
 };
 
-// P3 gets one bounded fresh-fork response.  Its RB-025 grants are still
+// P3 gets one bounded fresh-fork response.  Its tool grants are still
 // derived by `defineSpecialist`; this limit only prevents a repair conversation
 // from turning into a second drafting/refinement pass.
 const SEMANTIC_REPAIR_LIMITS: SpecialistDeclaration["limits"] = {

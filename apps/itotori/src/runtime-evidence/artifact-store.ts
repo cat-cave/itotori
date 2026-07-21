@@ -1,4 +1,4 @@
-// UTSUSHI-011 — Managed artifact store for runtime evidence.
+// Managed artifact store for runtime evidence.
 //
 // The tools NEVER touch raw files. They ask this store to resolve a managed
 // artifact ref into the runtime evidence report or the OCR artifact derived

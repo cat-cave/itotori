@@ -1,7 +1,6 @@
 // fnd-api-client — the typed DATA LAYER the Studio screens consume.
 //
-// This is a UI-FOUNDATION leaf (DAG node fnd-api-client): a TYPED API client
-// generated from `api-schema.ts` (the ItotoriApiRouteId union + the route /
+// This is a UI-FOUNDATION leaf: a TYPED API client generated from `api-schema.ts` (the ItotoriApiRouteId union + the route /
 // response / error types) and `api-contract.ts` (the ITOTORI_API_ROUTES
 // registry — the SINGLE authority for method / path / path-params). It does
 // NOT re-implement the contract: every call's request + response types come

@@ -15,7 +15,8 @@ import {
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
-// KAIFUU-053 db-side coverage. The CHECK constraint declared in
+// db-side capability-leveled engine detector coverage. The CHECK
+// constraint declared in
 // `migrations/0028_engine_capability_reports.sql` is asserted to reject
 // each mismatched shape; the repository acts as the application-side
 // guard before SQL is reached. `bootstrapLocalUser` (run by `migrate`)

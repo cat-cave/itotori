@@ -30,9 +30,10 @@ export type Q1Dispatch = (spec: CallSpec) => Promise<CallResult>;
 export interface Q1RunDeps {
   readonly dispatch: Q1Dispatch;
   readonly resolveEvidence: EvidenceResolver;
-  /** When the workflow is persisting reviewer evidence, it supplies the exact
-   * reviewed batch + RB-031 dependency edges. The runner stamps the physical
-   * call memo key and emits the provisional Translation WikiObject. */
+  /** When the workflow is persisting reviewer evidence, it supplies the
+   * exact reviewed batch + the citation-gate dependency edges. The runner
+   * stamps the physical call memo key and emits the provisional Translation
+   * WikiObject. */
   readonly artifactContext?: Omit<Q1ArtifactContext, "authorMemoKey">;
   /** Deterministic gates run before reviewers. A defect on this unit remains
    * authoritative even if the meaning model emits PASS. */

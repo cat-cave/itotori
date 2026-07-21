@@ -35,7 +35,7 @@ const LZSS_SIZE_HEADER_LEN: usize = 8;
 pub enum SceneDecodeError {
     /// The container marks the payloads as second-layer masked (`extra_key_use`)
     /// but no key material was supplied. The per-game key is the key-discovery
-    /// layer's (siglus-04) deliverable; without it these scenes cannot decode.
+    /// layer's deliverable; without it these scenes cannot decode.
     #[error(
         "kaifuu.siglus.scene.second_layer_key_required: scene {scene_id} payload is masked with \
          the per-game second-layer key (extra_key_use set) but no resolved key material was \

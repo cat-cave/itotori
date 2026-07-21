@@ -1,10 +1,11 @@
 // The production {@link EnhancementRunner}: it launches the one bounded child
-// enhancement through RB-012's `dispatch` on the deepseek-v4-flash profile with
-// NO provider pin. Building the exact call (encrypted prior-object + human
-// delta payload, terminal WikiObject schema, role binding) is the caller's
-// planner seam — that plumbing belongs to the line-editor role node that
-// consumes RB-033. This adapter enforces the "bounded" contract (tool-free,
-// deepseek-v4-flash) and maps a verified terminal into a proposal.
+// enhancement through the LLM `dispatch` primitive on the deepseek-v4-flash
+// profile with NO provider pin. Building the exact call (encrypted
+// prior-object + human delta payload, terminal WikiObject schema, role
+// binding) is the caller's planner seam — that plumbing belongs to the
+// line-editor role node that consumes the human-enhancement service. This
+// adapter enforces the "bounded" contract (tool-free, deepseek-v4-flash) and
+// maps a verified terminal into a proposal.
 
 import { deepSeekV4FlashProfile } from "../../llm/role-model-profiles.js";
 import { dispatch as defaultDispatch, type DispatchRuntime } from "../../llm/dispatch.js";
@@ -23,7 +24,7 @@ export type EnhancementCallPlanner = (
 
 export interface DispatchEnhancementRunnerDeps {
   readonly plan: EnhancementCallPlanner;
-  /** Override the RB-012 primitive (recorded/memo path for offline proof). */
+  /** Override the LLM dispatch primitive (recorded/memo path for offline proof). */
   readonly dispatch?: (spec: CallSpec, runtime: DispatchRuntime) => Promise<CallResult>;
 }
 
