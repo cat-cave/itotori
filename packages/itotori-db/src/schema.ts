@@ -39,6 +39,28 @@ export const localeBranchStatusValues = {
 export type LocaleBranchStatus =
   (typeof localeBranchStatusValues)[keyof typeof localeBranchStatusValues];
 
+export const projectRunStatusValues = {
+  queued: "queued",
+  running: "running",
+  paused: "paused",
+  completed: "completed",
+  failed: "failed",
+  cancelled: "cancelled",
+} as const;
+
+export type ProjectRunStatus = (typeof projectRunStatusValues)[keyof typeof projectRunStatusValues];
+
+export const projectRunProgressStatusValues = {
+  decoded: "decoded",
+  drafted: "drafted",
+  QA: "QA",
+  accepted: "accepted",
+  patched: "patched",
+} as const;
+
+export type ProjectRunProgressStatus =
+  (typeof projectRunProgressStatusValues)[keyof typeof projectRunProgressStatusValues];
+
 export const wikiBrandContextRoleValues = {
   base: "base",
   sequel: "sequel",
@@ -2317,6 +2339,153 @@ export const localizationPassRunConfigs = pgTable(
   (table) => [
     primaryKey({ columns: [table.projectId, table.localeBranchId] }),
     index("itotori_localization_pass_run_configs_branch_idx").on(table.localeBranchId),
+  ],
+);
+
+/** Immutable CAS snapshots bound to every durable project run. */
+export const llmContextSnapshots = pgTable("itotori_llm_context_snapshots", {
+  snapshotId: text("snapshot_id").primaryKey(),
+  schemaVersion: text("schema_version").notNull(),
+  snapshotContentHash: text("snapshot_content_hash").notNull(),
+  snapshotIdentity: jsonb("snapshot_identity").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+});
+
+/** Immutable localization CAS snapshots bound to every durable project run. */
+export const llmLocalizationSnapshots = pgTable("itotori_llm_localization_snapshots", {
+  snapshotId: text("snapshot_id").primaryKey(),
+  schemaVersion: text("schema_version").notNull(),
+  snapshotContentHash: text("snapshot_content_hash").notNull(),
+  contextSnapshotId: text("context_snapshot_id")
+    .notNull()
+    .references(() => llmContextSnapshots.snapshotId, { onDelete: "restrict" }),
+  snapshotIdentity: jsonb("snapshot_identity").$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+});
+
+export const projectRuns = pgTable(
+  "itotori_project_runs",
+  {
+    runId: text("run_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    contextSnapshotId: text("context_snapshot_id")
+      .notNull()
+      .references(() => llmContextSnapshots.snapshotId, { onDelete: "restrict" }),
+    localizationSnapshotId: text("localization_snapshot_id")
+      .notNull()
+      .references(() => llmLocalizationSnapshots.snapshotId, { onDelete: "restrict" }),
+    status: text("status").notNull(),
+    leaseOwnerId: text("lease_owner_id"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    fenceToken: pgBigint("fence_token", { mode: "number" }).notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("itotori_project_runs_scope_key").on(table.runId, table.projectId),
+    index("itotori_project_runs_project_status_idx").on(
+      table.projectId,
+      table.status,
+      table.updatedAt,
+    ),
+    index("itotori_project_runs_lease_idx").on(table.status, table.leaseExpiresAt),
+    foreignKey({
+      columns: [table.projectId, table.localeBranchId],
+      foreignColumns: [localeBranches.projectId, localeBranches.localeBranchId],
+      name: "itotori_project_runs_branch_scope_fkey",
+    }).onDelete("cascade"),
+  ],
+);
+
+export const projectRunCostAccounts = pgTable(
+  "itotori_project_run_cost_accounts",
+  {
+    runId: text("run_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    capMicrosUsd: pgBigint("cap_micros_usd", { mode: "number" }),
+    spentMicrosUsd: pgBigint("spent_micros_usd", { mode: "number" }).notNull().default(0),
+    reservedMicrosUsd: pgBigint("reserved_micros_usd", { mode: "number" }).notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("itotori_project_run_cost_accounts_scope_key").on(table.runId, table.projectId),
+    foreignKey({
+      columns: [table.runId, table.projectId],
+      foreignColumns: [projectRuns.runId, projectRuns.projectId],
+      name: "itotori_project_run_cost_accounts_run_scope_fkey",
+    }).onDelete("cascade"),
+  ],
+);
+
+export const projectRunCostReservations = pgTable(
+  "itotori_project_run_cost_reservations",
+  {
+    reservationId: text("reservation_id").notNull(),
+    runId: text("run_id").notNull(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    reservedMicrosUsd: pgBigint("reserved_micros_usd", { mode: "number" }).notNull(),
+    settledMicrosUsd: pgBigint("settled_micros_usd", { mode: "number" }),
+    state: text("state").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.runId, table.reservationId] }),
+    index("itotori_project_run_cost_reservations_scope_state_idx").on(
+      table.runId,
+      table.projectId,
+      table.state,
+      table.createdAt,
+    ),
+    foreignKey({
+      columns: [table.runId, table.projectId],
+      foreignColumns: [projectRunCostAccounts.runId, projectRunCostAccounts.projectId],
+      name: "itotori_project_run_cost_reservations_account_fkey",
+    }).onDelete("cascade"),
+  ],
+);
+
+export const projectRunProgress = pgTable(
+  "itotori_project_run_progress",
+  {
+    runId: text("run_id").notNull(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    bridgeUnitId: text("bridge_unit_id").notNull(),
+    role: text("role").notNull(),
+    status: text("status").notNull(),
+    costMicrosUsd: pgBigint("cost_micros_usd", { mode: "number" }).notNull().default(0),
+    coveragePercent: integer("coverage_percent").notNull().default(0),
+    blockers: jsonb("blockers")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.runId, table.bridgeUnitId, table.role] }),
+    index("itotori_project_run_progress_scope_status_idx").on(
+      table.runId,
+      table.projectId,
+      table.status,
+    ),
+    foreignKey({
+      columns: [table.runId, table.projectId],
+      foreignColumns: [projectRuns.runId, projectRuns.projectId],
+      name: "itotori_project_run_progress_run_scope_fkey",
+    }).onDelete("cascade"),
   ],
 );
 

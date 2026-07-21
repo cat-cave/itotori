@@ -577,6 +577,10 @@ export const migrations = [
     id: "0113_project_engine_binding",
     file: "0113_project_engine_binding.sql",
   },
+  {
+    id: "0114_project_run_progress_cost_leases",
+    file: "0114_project_run_progress_cost_leases.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
