@@ -93,10 +93,9 @@ commit message), then continue. A notification failure does not justify reading
 
 ## DAG Anti-Patterns The Orchestrator And Audit Workers Must Reject
 
-The 2026-06-23 audit batch (see `docs/audits/dag-critique.md` for the full
-findings) surfaced recurring patterns that produce "complete" specs the
-codebase cannot honestly support. These patterns must be rejected by the
-orchestrator at claim time and by audit workers at completion time.
+These recurring patterns produce "complete" specs the codebase cannot
+honestly support. They must be rejected by the orchestrator at claim time
+and by audit workers at completion time.
 
 ### Single-node engine ports
 
