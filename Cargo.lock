@@ -586,6 +586,7 @@ dependencies = [
  "kaifuu-kirikiri",
  "kaifuu-reallive",
  "kaifuu-rpgmaker",
+ "kaifuu-siglus",
  "kaifuu-softpal",
  "kaifuu-vault-source",
  "rusqlite",

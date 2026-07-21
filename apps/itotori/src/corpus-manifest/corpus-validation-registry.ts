@@ -37,10 +37,16 @@ export type RpgMakerCorpusValidationSource = CorpusValidationSource & {
   inputPaths: { dataJson: string };
 };
 
+/** The generic Siglus corpus pair; no title-specific input layout is assumed. */
+export type SiglusCorpusValidationSource = CorpusValidationSource & {
+  inputPaths: { scenePck: string; gameexeDat: string };
+};
+
 export type CorpusValidationSourceByEngine = {
   reallive: RealliveCorpusValidationSource;
   softpal: SoftpalCorpusValidationSource;
   "rpg-maker": RpgMakerCorpusValidationSource;
+  siglus: SiglusCorpusValidationSource;
 };
 
 export type CorpusValidationEngineId = keyof CorpusValidationSourceByEngine;
@@ -273,12 +279,20 @@ const rpgMakerCorpusValidationAdapter = unavailableCorpusValidationAdapter(
   scopedEvidence("rpg-maker", "utf8-with-rpg-maker-control-spans", ["rpg-maker.control"], ""),
 );
 
+const siglusCorpusValidationAdapter = unavailableCorpusValidationAdapter(
+  "siglus",
+  ["scenePck", "gameexeDat"],
+  "scenePck",
+  scopedEvidence("siglus", "utf16le-with-siglus-control-spans", ["siglus.control"], ""),
+);
+
 const CORPUS_VALIDATION_ADAPTERS: Readonly<
   Record<CorpusValidationEngineId, AnyCorpusValidationAdapter>
 > = {
   reallive: defineCorpusValidationAdapter(realliveCorpusValidationAdapter),
   softpal: defineCorpusValidationAdapter(softpalCorpusValidationAdapter),
   "rpg-maker": defineCorpusValidationAdapter(rpgMakerCorpusValidationAdapter),
+  siglus: defineCorpusValidationAdapter(siglusCorpusValidationAdapter),
 };
 
 export function registeredCorpusValidationEngines(): CorpusValidationEngineId[] {
