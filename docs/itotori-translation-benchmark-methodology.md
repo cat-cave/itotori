@@ -346,6 +346,26 @@ aligned PER SOURCE UNIT (scene + line) so contestants are comparable
 line-for-line. Only hashes/metadata/alignment are committed; copyrighted tiers
 stay private (§ copyright boundary).
 
+### 7.1 Triple-tier corpus admission
+
+`apps/itotori/src/benchmark-corpus/` is the metadata-only admission boundary.
+Its private builder accepts a Kaifuu decode record plus aligned source, fan, and
+official text from a local read-only payload, then emits a reviewable manifest
+containing only unit identities, scene keys, source hashes, tier hashes,
+aggregate character counts, Kaifuu artifact fingerprints, and the two locked
+unit-id lists. The builder never places source or translation text in that
+manifest.
+
+Before a runner receives text, it verifies every per-unit tier hash, every tier
+projection hash, the complete one-to-one source-unit alignment, the zero-unknown
+Kaifuu decode evidence, and the manifest content address. There are only two
+selection modes: `tuning` and `held_out_evaluation`. The former returns no
+held-out unit; the latter returns only the held-out units. No all-units mode is
+provided, and the manifest rejects a policy that permits held-out model tuning
+or rubric calibration. The resulting in-memory projections give a contestant
+runner the source and fixed fan/official candidates and give deterministic
+metrics the same source-unit identities and candidate text.
+
 ---
 
 ## 8. Human calibration anchors
