@@ -4,6 +4,7 @@
     "rootDir": "src",
     "outDir": "dist",
     "declaration": true,
+    "resolveJsonModule": true,
     "jsx": "react-jsx",
     "types": ["node", "react", "react-dom"]
   },
