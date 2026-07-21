@@ -364,7 +364,7 @@ mod tests {
     }
 
     /// A synthetic scene: two dialogue lines (one with speaker) then a two-option
-    /// choice menu, both options text-bearing — the v21465 immediate-label idiom.
+    /// choice menu, both options text-bearing — the direct-immediate label idiom.
     fn synthetic() -> (Vec<u8>, Vec<u8>) {
         let no_speaker = 0x0FFF_FFFFu32; // NO_SPEAKER_POINTER
         let (textdat, recs) = build_textdat(&[

@@ -34,29 +34,22 @@
 //!   immediate — e.g. the raw value `0x0001_0017`, whose little-endian bytes are
 //!   exactly `17 00 01 00` — is consumed as an operand and is **never** mis-read as
 //!   a phantom command.
-//! # Two SELECT-label variants (both handled)
-//! The choice **label** for a SELECT is recovered by one of two mechanisms,
-//! keyed off whether the immediate is itself a `TEXT.DAT` pointer:
-//! - **v21465 (immediate-is-label)** — the operand at `m-4` is a `TEXT.DAT`
-//!   pointer: the operator immediately before the `Call` pushes the label
-//!   directly. Resolves straight to a record (all 11 choices on the profiled
-//!   title).
-//! - **v60663 (decoupled label)** — the immediate is the non-pointer typed-nil
-//!   `0x40000000`; the label is **decoupled** from the `Call` and pushed earlier
-//!   in the menu setup block as an assignment to the choice-label typed slot
-//!   [`SELECT_LABEL_SLOT_TAG`] (`0x40000002`): the nearest preceding instruction
-//!   with `operand[0] == 0x40000002` and a **plain** (tag `0x0`) `operand[1]` is
-//!   the label pointer. The backward search — over the same [`crate::opcode`]
-//!   arity-driven stack walk — is bounded by the previous SELECT / TEXT-SHOW so it
-//!   never crosses out of the current menu block. On the profiled v60663 title
-//!   **16 of 21** SELECTs resolve this way to real story-choice labels; the
-//!   remaining **5** (an identical cluster at script start) push no label slot at
-//!   all — genuine system/menu selects that stay
-//!   [`OutOfPool`](PointerResolution::OutOfPool) (honestly *not* force-resolved).
-//!   [`ScriptScan`] enriches each SELECT with the decoupled candidate
+//! # Two SELECT-label encodings (both handled)
+//! The choice **label** is inferred from the SELECT's typed operands, not from a
+//! game/build identity or a fixed slot number:
+//! - **direct** — the operand at `m-4` has the plain (`0x0`) tag, so its value is
+//!   the `TEXT.DAT` pointer pushed directly by the operator before the `Call`.
+//! - **indirect** — that operand has the typed (`0x4`) tag. Within the current
+//!   menu block, the parser follows the exact typed destination through preceding
+//!   `Move` assignments until it reaches a plain source; that source is the
+//!   byte-locatable label pointer. The trace is bounded by the prior SELECT or
+//!   TEXT-SHOW, so it cannot borrow a value from another menu block.
+//!   A typed chain which does not end in a plain source is not guessed at: it
+//!   stays [`OutOfPool`](PointerResolution::OutOfPool) as a genuine system/menu
+//!   select. [`ScriptScan`] enriches an indirect SELECT with that candidate
 //!   ([`RawCommand::Select::decoupled_label`]) at scan time — pure over
-//!   `SCRIPT.SRC`, byte-locatable — and [`ScriptScan::resolve`] classifies the
-//!   immediate first, then the decoupled candidate, against the pool.
+//!   `SCRIPT.SRC` — and [`ScriptScan::resolve`] accepts it only when it lands on
+//!   a `TEXT.DAT` record boundary.
 //! # Honest scope: TEXT-SHOW + SELECT surfaces only
 //! This module scopes the two text-extraction surfaces (dialogue + speaker +
 //! choice) and their `TEXT.DAT` pointers. It is **not** the full `Sv20` opcode
@@ -80,8 +73,8 @@ use thiserror::Error;
 
 use crate::TextDat;
 use crate::opcode::{
-    CALL_CATEGORY_SELECT, CALL_CATEGORY_TEXT, CommandFamily, OpcodeScan, SELECT_FUNCTION,
-    TEXT_TYPE_FUNCTIONS,
+    CALL_CATEGORY_SELECT, CALL_CATEGORY_TEXT, CommandFamily, OpcodeScan, OperandTag,
+    SELECT_FUNCTION, SvOpcode, TEXT_TYPE_FUNCTIONS,
 };
 
 /// The 2-byte magic prefix every `SCRIPT.SRC` opens with (`"Sv"`); the two
@@ -137,17 +130,9 @@ pub const COMMAND_NAME_PTR_OFFSET: usize = 12;
 /// little-endian bytes are `FF FF FF 0F`.
 pub const NO_SPEAKER_POINTER: u32 = 0x0FFF_FFFF;
 
-/// The typed-value operand (`operand[0]`) that marks the **decoupled choice-label
-/// push** in the v60663 SELECT variant: an assignment to typed slot `2`
-/// (`0x40000000` typed tag `|` index `2`). The instruction carrying it has a
-/// **plain** (tag `0x0`) `operand[1]` that is the `TEXT.DAT` pointer of the
-/// choice label. See the module docs (“Two SELECT-label variants”).
-pub const SELECT_LABEL_SLOT_TAG: u32 = 0x4000_0002;
-
-/// A choice **label** pointer recovered by the v60663 *decoupled* mechanism —
-/// pushed to the choice-label slot ([`SELECT_LABEL_SLOT_TAG`]) earlier in the
-/// menu block, not carried by the SELECT immediate. Byte-locatable for
-/// patch-back exactly like the immediate.
+/// A choice **label** pointer recovered through a typed-assignment chain earlier
+/// in the menu block, rather than carried by the SELECT immediate. Byte-locatable
+/// for patch-back exactly like a direct label.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DecoupledLabel {
@@ -219,15 +204,15 @@ pub enum RawCommand {
         /// Absolute byte offset of the 16-byte command's first byte.
         command_offset: usize,
         /// The SELECT **immediate** — the operand the operator immediately before
-        /// the `Call` pushes. In the v21465 variant this *is* the choice-label
-        /// `TEXT.DAT` pointer; in the v60663 variant it is the typed-nil
-        /// `0x40000000` and the real label is in [`Self::Select::decoupled_label`].
+        /// the `Call` pushes. A plain immediate is the direct choice-label
+        /// `TEXT.DAT` pointer; a typed immediate may resolve through
+        /// [`Self::Select::decoupled_label`].
         text_pointer: u32,
         /// Absolute byte offset of the immediate's 4-byte field.
         text_ptr_field_offset: usize,
-        /// The decoupled choice-label candidate recovered via the `Sv20` stack
-        /// walk (v60663 variant), or `None` when the immediate already carries the
-        /// label (v21465) or no label slot is pushed (system/menu select).
+        /// The indirect choice-label candidate recovered through a typed
+        /// assignment chain in the `Sv20` walk, or `None` when the immediate
+        /// already carries the label or the typed chain has no plain source.
         decoupled_label: Option<DecoupledLabel>,
     },
 }
@@ -256,18 +241,16 @@ pub struct ScriptScan {
     pub commands: Vec<RawCommand>,
 }
 
-/// Recover the **decoupled** choice-label pointer for each SELECT (v60663
-/// variant) from a typed [`OpcodeScan`]: `Call`-offset → `(label pointer, its
-/// 4-byte field offset)`.
-/// For each SELECT instruction, scan **backward** over the arity-driven token
-/// stream for the nearest instruction whose `operand[0]` is the choice-label slot
-/// tag [`SELECT_LABEL_SLOT_TAG`] and whose `operand[1]` is a **plain** (tag `0x0`)
-/// word — that word is the label's `TEXT.DAT` pointer. The search is **bounded**
-/// by the previous SELECT or TEXT-SHOW (dialogue never sits between a label push
-/// and its select) so it stays inside the current menu block and cannot pick a
-/// far-away spurious assignment. Whether the recovered pointer actually lands on
-/// a record is left to [`ScriptScan::resolve`] (which owns the `TEXT.DAT` pool):
-/// a system/menu select that pushes no plain label slot simply gets no entry.
+/// Recover an **indirect** choice-label pointer for each SELECT from a typed
+/// [`OpcodeScan`]: `Call` offset → `(label pointer, its 4-byte field offset)`.
+/// For a SELECT whose immediate is typed, trace that typed value through the
+/// preceding `Move` assignments in its menu block. Every step must be a typed
+/// destination; the first plain (`0x0`) source is the candidate `TEXT.DAT`
+/// pointer. This is value flow, not a slot-name convention: any typed slot can
+/// carry the label, and unrelated typed assignments are ignored unless the
+/// SELECT's immediate actually reaches them. A non-plain terminal is left
+/// unresolved so [`ScriptScan::resolve`] reports the original immediate as
+/// [`OutOfPool`](PointerResolution::OutOfPool).
 fn decoupled_select_labels(scan: &OpcodeScan) -> HashMap<usize, (u32, usize)> {
     let ins = &scan.instructions;
     let mut map = HashMap::new();
@@ -275,22 +258,62 @@ fn decoupled_select_labels(scan: &OpcodeScan) -> HashMap<usize, (u32, usize)> {
         if !matches!(sel.family, CommandFamily::Select) {
             continue;
         }
-        let mut j = i;
-        while j > 0 {
-            j -= 1;
-            let prev = &ins[j];
-            // Stay within the current menu block.
-            if matches!(
-                prev.family,
-                CommandFamily::Select | CommandFamily::TextShow { .. }
-            ) {
+        let block_start = ins[..i]
+            .iter()
+            .rposition(|previous| {
+                matches!(
+                    previous.family,
+                    CommandFamily::Select | CommandFamily::TextShow { .. }
+                )
+            })
+            .map_or(0, |boundary| boundary + 1);
+
+        // `m - 4` is the final operand before this SELECT's `Call`. Find it
+        // structurally, rather than indexing raw bytes, so it remains tied to the
+        // arity-driven walk.
+        let Some(immediate) = ins[..i]
+            .iter()
+            .rev()
+            .flat_map(|instruction| instruction.operands().iter().rev())
+            .find(|operand| operand.field_offset + 4 == sel.offset)
+        else {
+            continue;
+        };
+        if immediate.tag() != OperandTag::TYPED {
+            continue;
+        }
+
+        let mut source = *immediate;
+        let mut search_end = i;
+        let mut seen_slots = Vec::new();
+        while source.tag() == OperandTag::TYPED {
+            if seen_slots.contains(&source.raw) {
                 break;
             }
-            let ops = prev.operands();
-            if ops.len() == 2 && ops[0].raw == SELECT_LABEL_SLOT_TAG && (ops[1].raw >> 28) == 0 {
-                map.insert(sel.offset, (ops[1].raw, ops[1].field_offset));
+            seen_slots.push(source.raw);
+            let Some((assignment_index, assignment_value)) = ins[block_start..search_end]
+                .iter()
+                .enumerate()
+                .rev()
+                .find_map(|(relative_index, instruction)| {
+                    let [destination, value] = instruction.operands() else {
+                        return None;
+                    };
+                    (instruction.opcode == SvOpcode::Move
+                        && destination.tag() == OperandTag::TYPED
+                        && destination.raw == source.raw)
+                        .then_some((block_start + relative_index, *value))
+                })
+            else {
                 break;
-            }
+            };
+            source = assignment_value;
+            // A value read by an assignment must have been written before that
+            // assignment; do not let a later write overwrite its provenance.
+            search_end = assignment_index;
+        }
+        if source.tag() == OperandTag::PLAIN {
+            map.insert(sel.offset, (source.raw, source.field_offset));
         }
     }
     map
@@ -327,8 +350,8 @@ impl ScriptScan {
             });
         };
 
-        // Decoupled-select labels (v60663 variant), keyed by the SELECT `Call`
-        // operator offset, via the same walk (bounded backward stack scan).
+        // Indirect SELECT labels, keyed by the SELECT `Call` operator offset,
+        // derived from typed assignment flow in the same walk.
         let decoupled = decoupled_select_labels(&walk);
 
         // The typed operand values the walk recovered, indexed by their absolute
@@ -473,7 +496,7 @@ impl ScriptScan {
     /// boundary), [`Dangling`](PointerResolution::Dangling) when it falls *inside*
     /// the pool but misses a boundary (a genuine integrity failure), or
     /// [`OutOfPool`](PointerResolution::OutOfPool) when it cannot be a pool
-    /// offset at all — e.g. the v60663 SELECT immediate `0x40000000`, a
+    /// offset at all — e.g. a typed SELECT immediate `0x40000000`, a
     /// system/branch select with no inline text. Never panics; the proof bar is
     /// 0 dangling on real bytes.
     #[must_use]
@@ -530,10 +553,9 @@ impl ScriptScan {
                     text_ptr_field_offset,
                     decoupled_label,
                 } => {
-                    // Classify the immediate first (v21465: the immediate *is* the
-                    // label). If it does not resolve, try the decoupled candidate
-                    // (v60663). If neither resolves, keep the immediate ref so a
-                    // genuine system/menu select is reported OutOfPool, not forced.
+                    // A direct plain immediate resolves first. If it does not,
+                    // try the typed-flow candidate; otherwise retain the immediate
+                    // so a genuine system/menu select remains OutOfPool.
                     let immediate = make_ref(text_pointer, text_ptr_field_offset);
                     let text = if immediate.is_resolved() {
                         immediate
@@ -693,15 +715,15 @@ impl Disassembly {
             .count()
     }
 
-    /// Count of SELECT commands whose immediate resolves to a record boundary —
-    /// i.e. genuine **text-bearing** choices (v21465-style).
+    /// Count of SELECT commands whose label resolves to a record boundary —
+    /// i.e. genuine **text-bearing** choices.
     #[must_use]
     pub fn text_bearing_choice_count(&self) -> usize {
         self.choices.iter().filter(|c| c.text.is_resolved()).count()
     }
 
-    /// Count of SELECT commands whose immediate lies outside the pool — non-text
-    /// **system / branch** selects (v60663-style `0x40000000`).
+    /// Count of SELECT commands whose label lies outside the pool — non-text
+    /// **system / branch** selects (for example, typed `0x40000000`).
     #[must_use]
     pub fn nontext_select_count(&self) -> usize {
         self.choices
@@ -835,10 +857,9 @@ mod tests {
         ]
     }
 
-    /// A decoupled choice-label push: assign a `TEXT.DAT` label pointer to the
-    /// choice-label typed slot `0x40000002` (the v60663 mechanism).
-    fn label_push_tokens(label_ptr: u32) -> Vec<[u8; 4]> {
-        vec![opc(0x01), word(SELECT_LABEL_SLOT_TAG), word(label_ptr)]
+    /// A generic typed `Move` assignment.
+    fn move_tokens(destination: u32, source: u32) -> Vec<[u8; 4]> {
+        vec![opc(0x01), word(destination), word(source)]
     }
 
     /// A 12-byte `Sv20` program header (`"Sv20"` + two header dwords) + tokens.
@@ -1009,8 +1030,8 @@ mod tests {
 
     #[test]
     fn out_of_pool_select_immediate_is_not_dangling() {
-        // Mirrors v60663: a SELECT whose immediate (0x40000000) lies far past the
-        // pool => OutOfPool (a system/branch select), NOT a dangling failure.
+        // A SELECT whose typed immediate lies far past the pool is a system/branch
+        // select: OutOfPool, not a dangling failure.
         let (textdat_bytes, _recs) = build_textdat(&[(0, b"only record")]);
         let tokens = select_tokens(0x4000_0000);
         let script = sv_program(&tokens);
@@ -1081,57 +1102,9 @@ mod tests {
     }
 
     #[test]
-    fn decoupled_select_resolves_via_label_slot() {
-        // Two records so the label pointer resolves to an exact boundary.
-        let (td_bytes, recs) = build_textdat(&[(0, b"Attack"), (1, b"Defend")]);
-        let label = recs[0] as u32; // small offset => plain tag 0x0
-        assert_eq!(label >> 28, 0, "label pointer is a plain word");
-
-        let mut tokens = Vec::new();
-        // Decoupled label push: assign the label text ptr to slot 0x40000002.
-        tokens.extend(label_push_tokens(label));
-        // The SELECT (immediate is the nil sentinel, not the label in this variant).
-        tokens.extend(select_tokens(0x4000_0000));
-        let s = sv_program(&tokens);
-        let scan = ScriptScan::parse(&s).unwrap();
-        assert_eq!(scan.select_count(), 1);
-
-        // The SELECT immediate is the nil sentinel; the decoupled label is captured
-        // with a byte-locatable field (for patch-back). The label operand sits at
-        // the 3rd token (offset 20).
-        match &scan.commands[0] {
-            RawCommand::Select {
-                text_pointer,
-                decoupled_label,
-                ..
-            } => {
-                assert_eq!(*text_pointer, 0x4000_0000);
-                let dl = decoupled_label.expect("decoupled label recovered");
-                assert_eq!(dl.pointer, label);
-                assert_eq!(dl.field_offset, 20);
-                assert!(dl.field_offset + 4 <= s.len());
-                assert_eq!(read_u32_le(&s, dl.field_offset), label);
-            }
-            other @ RawCommand::TextShow { .. } => panic!("expected Select, got {other:?}"),
-        }
-
-        let dis = scan.resolve(&TextDat::parse(&td_bytes).unwrap());
-        assert_eq!(dis.choices.len(), 1);
-        assert_eq!(dis.choices[0].text.resolved_text(), Some("Attack"));
-        // The resolved choice points at the DECOUPLED label field (token 3, byte
-        // 20), NOT at the SELECT immediate field.
-        assert_eq!(dis.choices[0].text.field_offset, 20);
-        assert_eq!(dis.choices[0].text.pointer, label);
-        assert_eq!(dis.text_bearing_choice_count(), 1);
-        assert_eq!(dis.nontext_select_count(), 0);
-        assert_eq!(dis.dangling_pointer_count(), 0);
-        assert!(dis.is_fully_resolved());
-    }
-
-    #[test]
     fn genuine_system_select_without_label_stays_out_of_pool() {
-        // A SELECT with a nil immediate and NO label-slot push before it => a
-        // system/menu select that must remain OutOfPool (never force-resolved).
+        // A SELECT with a typed immediate and no assignment chain is a system/menu
+        // select that must remain OutOfPool (never force-resolved).
         let (td_bytes, _recs) = build_textdat(&[(0, b"only record")]);
         let mut tokens = vec![opc(0x18)]; // nullary control filler (no operands)
         tokens.extend(select_tokens(0x4000_0000));
@@ -1141,7 +1114,7 @@ mod tests {
         match &scan.commands[0] {
             RawCommand::Select {
                 decoupled_label, ..
-            } => assert!(decoupled_label.is_none(), "no label slot pushed"),
+            } => assert!(decoupled_label.is_none(), "no typed label flow"),
             other @ RawCommand::TextShow { .. } => panic!("expected Select, got {other:?}"),
         }
         let dis = scan.resolve(&TextDat::parse(&td_bytes).unwrap());
@@ -1153,15 +1126,18 @@ mod tests {
 
     #[test]
     fn decoupled_scan_is_bounded_by_intervening_text_show() {
-        // A label-slot push, then a full TEXT-SHOW idiom, then the SELECT: the
-        // backward scan must STOP at the TEXT-SHOW (dialogue never sits between a
-        // label push and its select), so the far label is NOT picked up.
+        // A full indirect chain, then a TEXT-SHOW, then its SELECT: the backwards
+        // dataflow must stop at the TEXT-SHOW boundary, so it cannot borrow the
+        // far label.
         let (td_bytes, recs) = build_textdat(&[(0, b"FarLabel"), (1, b"a line")]);
         let far_label = recs[0] as u32;
         let mut tokens = Vec::new();
-        tokens.extend(label_push_tokens(far_label));
+        let label_slot = 0x4000_000a;
+        let select_slot = 0x4000_000c;
+        tokens.extend(move_tokens(label_slot, far_label));
+        tokens.extend(move_tokens(select_slot, label_slot));
         tokens.extend(text_show_tokens(recs[1] as u32, NO_SPEAKER_POINTER, 0x0002));
-        tokens.extend(select_tokens(0x4000_0000));
+        tokens.extend(select_tokens(select_slot));
         let s = sv_program(&tokens);
         let scan = ScriptScan::parse(&s).unwrap();
         let sel = scan
@@ -1174,7 +1150,7 @@ mod tests {
                 decoupled_label, ..
             } => assert!(
                 decoupled_label.is_none(),
-                "label beyond the text-show boundary must not be picked"
+                "label beyond the text-show boundary must not be followed"
             ),
             RawCommand::TextShow { .. } => unreachable!(),
         }
@@ -1185,15 +1161,16 @@ mod tests {
     }
 
     #[test]
-    fn v21465_immediate_label_wins_even_with_a_decoupled_slot_present() {
-        // Guards BOTH variants coexisting: when the SELECT immediate itself
-        // resolves (v21465), it is used directly and any decoupled slot is ignored.
+    fn direct_immediate_label_wins_when_an_indirect_chain_is_present() {
+        // Guards both encodings coexisting: a resolving immediate always wins over
+        // an indirect chain in the same menu block.
         let (td_bytes, recs) = build_textdat(&[(0, b"ImmChoice"), (1, b"SlotChoice")]);
         let immediate = recs[0] as u32;
         let slot_label = recs[1] as u32;
         let mut tokens = Vec::new();
-        // A decoupled slot push (would resolve) BUT the immediate also resolves.
-        tokens.extend(label_push_tokens(slot_label));
+        // An indirect chain would resolve, but so does the direct immediate.
+        tokens.extend(move_tokens(0x4000_000a, slot_label));
+        tokens.extend(move_tokens(0x4000_000c, 0x4000_000a));
         tokens.extend(select_tokens(immediate));
         let s = sv_program(&tokens);
         let scan = ScriptScan::parse(&s).unwrap();

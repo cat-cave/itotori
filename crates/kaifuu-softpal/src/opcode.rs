@@ -98,11 +98,11 @@ macro_rules! sv_opcodes {
         /// The typed `Sv20` opcode table: one variant per observed operator id
         /// (the 33 ids `0x01..=0x21`), plus [`SvOpcode::Unknown`] for any id
         /// outside it (including the unobserved `0x00`).
-        /// Variant names are the hex id (`Op01`..`Op21`) except the semantically
-        /// firm [`SvOpcode::Call`] (`0x17`). Each opcode's **arity** (fixed
-        /// operand-token count) is proven by the exhaustive 0-unknown walk on
-        /// two real games; individual per-opcode *semantics* beyond `Call`
-        /// dispatch are a separate `Pal.dll` RE effort (honest scope).
+        /// Variant names are the hex id (`Op02`..`Op21`) except the semantically
+        /// firm [`SvOpcode::Move`] (`0x01`) and [`SvOpcode::Call`] (`0x17`). Each
+        /// opcode's **arity** (fixed operand-token count) is proven by the
+        /// exhaustive 0-unknown walk; individual per-opcode *semantics* beyond
+        /// `Move` and `Call` dispatch remain intentionally conservative.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
         #[serde(rename_all = "camelCase")]
         pub enum SvOpcode {
@@ -136,14 +136,17 @@ macro_rules! sv_opcodes {
 }
 
 // Opcode → arity table, measured by the arity-driven walk landing *exactly* on
-// EOF with zero desync on both v21465 and v60663 (any wrong arity would desync).
+// EOF with zero desync on two independently staged scripts (any wrong arity
+// would desync).
 // The 33 ids `0x01..=0x21` are all *observed* operators on both titles; id
 // `0x00` is deliberately **absent** — it is never an operator in either corpus,
 // so its arity is unproven and it is treated as [`SvOpcode::Unknown`] (it would
 // surface as an explicit unknown rather than a fabricated-arity walk if a future
 // title used it — no faked coverage).
 sv_opcodes! {
-    0x01 => Op01: 2, 0x02 => Op02: 2, 0x03 => Op03: 2,
+    // `Move` assigns its second operand to the typed destination in its first
+    // operand. This is the generic typed-value flow used by SELECT labels.
+    0x01 => Move: 2, 0x02 => Op02: 2, 0x03 => Op03: 2,
     0x04 => Op04: 2, 0x05 => Op05: 2, 0x06 => Op06: 2, 0x07 => Op07: 2,
     0x08 => Op08: 2, 0x09 => Op09: 1, 0x0a => Op0A: 2, 0x0b => Op0B: 1,
     0x0c => Op0C: 2, 0x0d => Op0D: 2, 0x0e => Op0E: 2, 0x0f => Op0F: 2,
@@ -179,7 +182,7 @@ pub struct SvProgramHeader {
     /// catalog).
     pub field1: u32,
     /// Second 32-bit header field (a small count/size word; opaque to the
-    /// catalog — e.g. 668 on v21465, 820 on v60663).
+    /// catalog — observed values include 668 and 820).
     pub field2: u32,
 }
 
@@ -681,11 +684,11 @@ mod tests {
 
     #[test]
     fn walks_each_command_family_exhaustively() {
-        // A nullary control op, an Expr binary op with a var-ref + typed-nil,
+        // A nullary control op, a Move with a var-ref + typed-nil,
         // a TEXT-SHOW call, a SELECT call, and another engine Call.
         let tokens = [
             op(0x18),         // Control (arity 0)
-            op(0x01),         // Expr binary
+            op(0x01),         // Move
             val(0x8000_0002), // var-ref operand
             val(0x4000_0000), // typed-nil operand
             op(0x17),         // Call -> TEXT-SHOW

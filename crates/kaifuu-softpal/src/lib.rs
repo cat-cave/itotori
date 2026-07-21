@@ -71,8 +71,8 @@ pub use patchback::{
 pub use script::{
     COMMAND_NAME_PTR_OFFSET, COMMAND_TEXT_PTR_OFFSET, ChoiceUnit, DecoupledLabel, DialogueUnit,
     Disassembly, NO_SPEAKER_POINTER, PointerResolution, RawCommand, SCRIPT_COMMAND_MARKER,
-    SCRIPT_HEADER_BYTE_LEN, SCRIPT_MAGIC_PREFIX, SELECT_COMMAND_BYTE_LEN, SELECT_LABEL_SLOT_TAG,
-    SELECT_MARKER_OFFSET, SELECT_WORD_HI, SELECT_WORD_LO, ScriptError, ScriptHeader, ScriptScan,
+    SCRIPT_HEADER_BYTE_LEN, SCRIPT_MAGIC_PREFIX, SELECT_COMMAND_BYTE_LEN, SELECT_MARKER_OFFSET,
+    SELECT_WORD_HI, SELECT_WORD_LO, ScriptError, ScriptHeader, ScriptScan,
     TEXT_SHOW_COMMAND_BYTE_LEN, TEXT_SHOW_MARKER_OFFSET, TEXT_SHOW_TYPE_WORDS, TEXT_SHOW_WORD_HI,
     TextRef,
 };
@@ -107,9 +107,9 @@ pub const SOFTPAL_PAC_SUPPORT_BOUNDARY: &str = "kaifuu-softpal enumerates and ex
     surfaces (Sv-version plaintext bytecode: TEXT-SHOW 32-byte + SELECT 16-byte commands DERIVED \
     from the Sv20 arity-driven stack walk (the Call 0x17 dispatch stream, single source of truth), \
     their 4-byte TEXT.DAT pointers read from the walk's typed operands and resolved to record \
-    boundaries — SELECT labels via BOTH variants: v21465 immediate-is-label and v60663 decoupled \
-    label pushed to the choice-label slot 0x40000002 and recovered by the same stack walk, genuine \
-    system selects left out-of-pool — byte-locatable pointer fields for patch-back), AND patches translated dialogue+choices back \
+    boundaries — SELECT labels via both encodings: direct plain immediates and indirect typed-value \
+    assignment chains recovered by the same stack walk, with genuine system selects left out-of-pool \
+    — byte-locatable pointer fields for patch-back), AND patches translated dialogue+choices back \
     (rebuild TEXT.DAT with an old->new offset map + re-encrypt when the original was, repoint the \
     SCRIPT.SRC pointer fields, drop both as loose files into the engine's data\\ override directory with no PAC repack), AND catalogs the full \
     Sv20 opcode table (arity-driven walk of the whole plaintext token stream: the 33-entry \
