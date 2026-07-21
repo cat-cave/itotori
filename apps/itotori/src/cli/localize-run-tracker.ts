@@ -344,7 +344,7 @@ export class LocalizeRunTracker {
     // example, a cost settlement followed by its progress update). Snapshot and
     // repeat until the run owns no durable progress/cost work.
     while (this.#pendingWrites.size > 0) {
-      await Promise.all([...this.#pendingWrites]);
+      await Promise.all(this.#pendingWrites);
     }
   }
 
