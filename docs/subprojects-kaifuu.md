@@ -146,9 +146,10 @@ adapters (`kaifuu.reallive`, `kaifuu.tyranoscript`, `kaifuu.kirikiri-kag`,
 etc.) are what downstream ingestion keys on.
 
 `profile init` writes stable JSON profiles. The legacy `profile <game-dir>` form
-is compatibility-only and delegates to the same validation, redaction, and atomic
-write gate. Profiles include assets, capability reports, and explicit
-requirements for files, platform constraints, and secret keys.
+is compatibility-only (emits a stderr warning; prefer `profile init`) and
+delegates to the same validation, redaction, and atomic write gate. Profiles
+include assets, capability reports, and explicit requirements for files,
+platform constraints, and secret keys.
 
 ### Partial extract / profile / verify (KAIFUU-193)
 

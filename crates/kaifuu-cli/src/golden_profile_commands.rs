@@ -8,6 +8,11 @@ use crate::{
     write_validated_stable_profile,
 };
 
+/// Emitted on stderr when the legacy `kaifuu profile <game-dir>` spelling is
+/// used. Compatibility-only: same write gate as `profile init`, but the
+/// explicit form is preferred.
+pub(crate) const LEGACY_PROFILE_COMPAT_WARNING: &str = "warning: `kaifuu profile <game-dir>` is a compatibility spelling; prefer `kaifuu profile init <game-dir>`";
+
 pub(crate) fn run_golden_command(
     args: &[String],
     registry: &AdapterRegistry,
@@ -94,6 +99,9 @@ pub(crate) fn run_profile_command(
             )?;
         }
         _ => {
+            // Compatibility spelling: same validate/redact/write gate as
+            // `profile init`, but operators should migrate to the explicit form.
+            eprintln!("{LEGACY_PROFILE_COMPAT_WARNING}");
             let game_dir = PathBuf::from(positional(args, 1)?);
             let output = PathBuf::from(flag(args, "--output")?);
             match detect_or_partial(registry, &game_dir, true)? {

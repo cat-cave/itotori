@@ -1,5 +1,5 @@
 use super::*;
-
+mod profile_init_redaction;
 /// Resolve this crate's manifest directory for locating tracked test
 /// fixtures.
 /// `env!("CARGO_MANIFEST_DIR")` is baked into the binary at COMPILE time, so
