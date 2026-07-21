@@ -4127,11 +4127,11 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         // through `bundle_driven::apply_translated_bundle`, which rewrites the
         // archive offset table and recalculates jump targets so a translation
         // that grows or shrinks the Shift-JIS body round-trips byte-correct.
-        // There is NO length-preserving budget gate here — a plain length change
-        // is a supported edit, not a failure. Genuinely-unencodable edits (a
-        // non-Shift-JIS codepoint, a goto target left strictly inside an edited
-        // body, a scene-packing overflow) are rejected by the driver itself with
-        // its typed `kaifuu.reallive.patchback_*` Fatal, surfaced below.
+        // A plain length change is supported, not a failure: the Shift-JIS body may
+        // grow or shrink freely within scene-packing limits. Genuinely-unencodable
+        // edits (a non-Shift-JIS codepoint, a goto target left strictly inside an
+        // edited body, or a scene-packing overflow) are rejected with a typed
+        // `kaifuu.reallive.patchback_*` Fatal, surfaced below.
         for (scene_id, produced) in &produced_scenes {
             let mut translated_json = produced.json.clone();
             let mut scene_matched = 0usize;
@@ -8413,8 +8413,8 @@ mod tests {
     fn reallive_adapter_patch_applies_length_changing_translation_through_bundle_driver() {
         // reallive-adapter-expose-length-changing-patchback: the adapter routes
         // a LENGTH-CHANGING edit straight through the bundle-driven driver
-        // (offset table rewritten + jump targets recalculated) instead of the
-        // old length-preserving budget gate. "Hello" (5 Shift-JIS bytes) ->
+        // (offset table rewritten + jump targets recalculated), which is the
+        // sole patch-back path. "Hello" (5 Shift-JIS bytes) ->
         // "Hello there" (11 bytes) grows the body; the patch must SUCCEED and
         // round-trip byte-correct.
         let dir = reallive_174_fixture_dir("kaifuu-174-patch-length-changing");
