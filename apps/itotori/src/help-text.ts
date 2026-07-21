@@ -40,6 +40,12 @@ export function buildHelpText(allCommands = false): string {
   lines.push(
     "                          [--context-scope <scope>] [--output-scope <scope>] [--whole-scene-max-units <N>] [--output <JSON>].",
   );
+  lines.push(
+    "  localize-portfolio      Run independent localization drivers from a JSON portfolio.",
+  );
+  lines.push(
+    "                          --portfolio <JSON> [--max-in-flight <N>] [--output <JSON>] (each run supplies identity, paths, mode, output scope, and costCapMicrosUsd).",
+  );
   lines.push("  patch                   Apply a translation patch to a game.");
   lines.push(
     "  patch produce           Produce a persistent patched build from accepted outputs (same native seam as Studio download).",
@@ -118,6 +124,9 @@ export function buildHelpText(allCommands = false): string {
   lines.push("    --candidate-json '{...}' --created-at <ISO>");
   lines.push(
     "  itotori localize --run-mode production --structure <structure.json> --bridge <bridge.json> --output <run.json>",
+  );
+  lines.push(
+    "  itotori localize-portfolio --portfolio <portfolio.json> [--output <portfolio-result.json>]",
   );
   lines.push("");
 
