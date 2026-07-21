@@ -1,18 +1,101 @@
-//! Deterministic E1 text observation over decoded Siglus scenes.
+//! Deterministic E1 text and choice observation over decoded Siglus scenes.
 //!
 //! This is a static scene walk, not a live VM: it consumes Kaifuu's decoded
-//! `CD_TEXT` / `CD_NAME` surfaces in `SceneList` order and prepares one
-//! substrate [`TextLine`] per surface. The string-table transform is applied
-//! only to the referenced UTF-16 range; packed scene bytes and key material
-//! never cross the port boundary or enter a capture artifact.
+//! `CD_TEXT` / `CD_NAME` surfaces plus linked `GLOBAL.SELBTN` choices in
+//! `SceneList` order. Choice branch targets come from Kaifuu's bounded
+//! select-to-conditional-jump recognizer; this remains static observation, not
+//! a Siglus VM. The string-table transform is applied only to the referenced
+//! UTF-16 range; packed scene bytes and key material never cross the port
+//! boundary or enter a capture artifact.
 
 use kaifuu_siglus::{
     SiglusSceneIndex, SiglusSecondLayerMaterial, decode_scene_chunk, decode_scene_flow,
+    decode_scene_syscalls,
 };
+use serde::Serialize;
 use utsushi_core::substrate::{
     AssetId, EnginePortError, EvidenceTier, LifecycleStage, ObservationBridgeRef, PortRequest,
     TextLine,
 };
+
+/// A static, player-facing Siglus selection with its linked branch arms.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiglusChoiceMoment {
+    /// Stable static-observation id for this `GLOBAL.SELBTN` call.
+    pub id: String,
+    /// SceneList position containing the choice.
+    pub scene_id: u32,
+    /// Bytecode offset of the `CD_COMMAND` select call.
+    pub select_offset: usize,
+    /// Player-visible options in their source order.
+    pub options: Vec<SiglusChoiceOption>,
+}
+
+/// One player-visible option in a [`SiglusChoiceMoment`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiglusChoiceOption {
+    /// Zero-based display order in the selection.
+    pub option_index: usize,
+    /// Engine result value returned for this option.
+    pub result_value: i32,
+    /// Decoded UTF-16 label, also emitted through the E1 text sink.
+    pub text: String,
+    /// Stable bridge `choice_label` source-unit key.
+    pub source_unit_key: String,
+    /// E1 text-sink line id for this option.
+    pub line_id: String,
+    /// Resolved conditional-jump bytecode target, when structural decoding
+    /// could determine one.
+    pub branch_target_offset: Option<usize>,
+}
+
+/// An explicit unsupported or incomplete static selection shape.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum SiglusChoiceDiagnostic {
+    /// The select call had no decoded positional string labels.
+    EmptyOptionSet { scene_id: u32, select_offset: usize },
+    /// An option has no recognized select-to-conditional-jump arm.
+    UnlinkedOption {
+        scene_id: u32,
+        select_offset: usize,
+        option_index: usize,
+    },
+    /// A recognized label decodes to the empty string and is not emitted.
+    EmptyOptionLabel {
+        scene_id: u32,
+        select_offset: usize,
+        option_index: usize,
+    },
+    /// A recognized arm's target label did not resolve in the scene.
+    UnresolvedBranchTarget {
+        scene_id: u32,
+        select_offset: usize,
+        option_index: usize,
+    },
+}
+
+/// Static observation data retained across launch and `observe` ticks.
+pub(crate) struct StaticObservationProgram {
+    pub(crate) scenes: Vec<Vec<TextLine>>,
+    pub(crate) choice_moments: Vec<SiglusChoiceMoment>,
+    pub(crate) choice_diagnostics: Vec<SiglusChoiceDiagnostic>,
+}
+
+struct ChoiceScene<'a> {
+    scene_id: u32,
+    scene_name: &'a str,
+    decoded_scene: &'a [u8],
+    source_asset: &'a AssetId,
+}
+
+struct ChoiceOutputs<'a> {
+    lines: &'a mut Vec<TextLine>,
+    moments: &'a mut Vec<SiglusChoiceMoment>,
+    diagnostics: &'a mut Vec<SiglusChoiceDiagnostic>,
+}
 
 /// Build the deterministic, static text program for one decoded scene pack.
 ///
@@ -28,8 +111,10 @@ pub(crate) fn build_static_scene_text_program(
     second_layer: Option<&SiglusSecondLayerMaterial>,
     source_asset: AssetId,
     request: &PortRequest<'_>,
-) -> Result<Vec<Vec<TextLine>>, EnginePortError> {
+) -> Result<StaticObservationProgram, EnginePortError> {
     let mut scenes = Vec::with_capacity(scene_index.entries.len());
+    let mut choice_moments = Vec::new();
+    let mut choice_diagnostics = Vec::new();
 
     for entry in &scene_index.entries {
         request.cancellation.check(LifecycleStage::Launch)?;
@@ -66,6 +151,12 @@ pub(crate) fn build_static_scene_text_program(
         let flow = decode_scene_flow(&decoded).map_err(|error| {
             lifecycle_error(format!(
                 "scene {} text-surface walk failed: {error}",
+                entry.scene_id
+            ))
+        })?;
+        let syscalls = decode_scene_syscalls(&decoded).map_err(|error| {
+            lifecycle_error(format!(
+                "scene {} choice-surface walk failed: {error}",
                 entry.scene_id
             ))
         })?;
@@ -107,10 +198,124 @@ pub(crate) fn build_static_scene_text_program(
                 body_shift_jis: None,
             });
         }
+        append_choice_lines(
+            ChoiceScene {
+                scene_id: entry.scene_id,
+                scene_name: &scene_name,
+                decoded_scene: &decoded,
+                source_asset: &source_asset,
+            },
+            syscalls.selections,
+            ChoiceOutputs {
+                lines: &mut lines,
+                moments: &mut choice_moments,
+                diagnostics: &mut choice_diagnostics,
+            },
+        )?;
         scenes.push(lines);
     }
 
-    Ok(scenes)
+    Ok(StaticObservationProgram {
+        scenes,
+        choice_moments,
+        choice_diagnostics,
+    })
+}
+
+fn append_choice_lines(
+    scene: ChoiceScene<'_>,
+    selections: Vec<kaifuu_siglus::SiglusSelChoice>,
+    outputs: ChoiceOutputs<'_>,
+) -> Result<(), EnginePortError> {
+    for selection in selections {
+        if selection.options.is_empty() {
+            outputs
+                .diagnostics
+                .push(SiglusChoiceDiagnostic::EmptyOptionSet {
+                    scene_id: scene.scene_id,
+                    select_offset: selection.call_offset,
+                });
+            continue;
+        }
+        let moment_id = format!(
+            "siglus:scene-{}:choice:{}",
+            scene.scene_name, selection.call_offset
+        );
+        let mut options = Vec::new();
+        for (option_index, option) in selection.options.into_iter().enumerate() {
+            if option.structural_arm_index.is_none() {
+                outputs
+                    .diagnostics
+                    .push(SiglusChoiceDiagnostic::UnlinkedOption {
+                        scene_id: scene.scene_id,
+                        select_offset: selection.call_offset,
+                        option_index,
+                    });
+                continue;
+            }
+            let text = decode_string_ref(scene.scene_id, scene.decoded_scene, &option.text)?;
+            if text.is_empty() {
+                outputs
+                    .diagnostics
+                    .push(SiglusChoiceDiagnostic::EmptyOptionLabel {
+                        scene_id: scene.scene_id,
+                        select_offset: selection.call_offset,
+                        option_index,
+                    });
+                continue;
+            }
+            if option.branch_target_offset.is_none() {
+                outputs
+                    .diagnostics
+                    .push(SiglusChoiceDiagnostic::UnresolvedBranchTarget {
+                        scene_id: scene.scene_id,
+                        select_offset: selection.call_offset,
+                        option_index,
+                    });
+            }
+            let source_offset = option
+                .source_command_offset
+                .unwrap_or(option.text.byte_offset);
+            let source_unit_key = format!("siglus:scene-{}#{source_offset}", scene.scene_name);
+            let line_id = format!(
+                "siglus:{:04}:{:08x}:choice:{option_index}",
+                scene.scene_id, selection.call_offset
+            );
+            outputs.lines.push(TextLine {
+                line_id: line_id.clone(),
+                evidence_tier: EvidenceTier::E1,
+                text: text.clone(),
+                speaker: None,
+                color: None,
+                text_surface: Some(format!("choice:{option_index}")),
+                bridge_ref: Some(ObservationBridgeRef {
+                    bridge_unit_id: None,
+                    source_unit_key: Some(source_unit_key.clone()),
+                    runtime_object_id: Some(moment_id.clone()),
+                }),
+                source_asset: Some(scene.source_asset.clone()),
+                byte_offset_in_scene: u32::try_from(option.text.byte_offset).ok(),
+                body_shift_jis: None,
+            });
+            options.push(SiglusChoiceOption {
+                option_index,
+                result_value: option.result_value,
+                text,
+                source_unit_key,
+                line_id,
+                branch_target_offset: option.branch_target_offset,
+            });
+        }
+        if !options.is_empty() {
+            outputs.moments.push(SiglusChoiceMoment {
+                id: moment_id,
+                scene_id: scene.scene_id,
+                select_offset: selection.call_offset,
+                options,
+            });
+        }
+    }
+    Ok(())
 }
 
 fn decode_surface_text(
@@ -170,6 +375,22 @@ fn decode_surface_text(
     Ok(String::from_utf16_lossy(&units))
 }
 
+fn decode_string_ref(
+    scene_id: u32,
+    decoded_scene: &[u8],
+    string: &kaifuu_siglus::SiglusStringRef,
+) -> Result<String, EnginePortError> {
+    let surface = kaifuu_siglus::SiglusTextSurface {
+        site_offset: string.byte_offset,
+        is_name: false,
+        read_flag: None,
+        str_index: Some(string.index),
+        str_byte_offset: Some(string.byte_offset),
+        str_char_len: Some(string.char_len),
+    };
+    decode_surface_text(scene_id, decoded_scene, &surface)
+}
+
 fn lifecycle_error(message: String) -> EnginePortError {
     EnginePortError::Lifecycle {
         stage: LifecycleStage::Launch,
@@ -203,6 +424,45 @@ mod tests {
         assert_eq!(
             decode_surface_text(0, &scene, &surface).expect("decode XOR text"),
             "テスト"
+        );
+    }
+
+    #[test]
+    fn records_an_explicit_diagnostic_for_an_optionless_selection() {
+        let mut lines = Vec::new();
+        let mut moments = Vec::new();
+        let mut diagnostics = Vec::new();
+        let source_asset =
+            AssetId::from_parts("fixture", "Scene.pck").expect("valid fixture asset id");
+        append_choice_lines(
+            ChoiceScene {
+                scene_id: 7,
+                scene_name: "opening",
+                decoded_scene: &[],
+                source_asset: &source_asset,
+            },
+            vec![kaifuu_siglus::SiglusSelChoice {
+                call_offset: 42,
+                call_index: 0,
+                structural_choice_index: None,
+                options: Vec::new(),
+            }],
+            ChoiceOutputs {
+                lines: &mut lines,
+                moments: &mut moments,
+                diagnostics: &mut diagnostics,
+            },
+        )
+        .expect("optionless selection is a diagnostic, not a failure");
+
+        assert!(lines.is_empty());
+        assert!(moments.is_empty());
+        assert_eq!(
+            diagnostics,
+            vec![SiglusChoiceDiagnostic::EmptyOptionSet {
+                scene_id: 7,
+                select_offset: 42,
+            }]
         );
     }
 }

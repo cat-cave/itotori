@@ -18,7 +18,7 @@ use utsushi_core::substrate::{
     VfsResult,
 };
 
-use crate::observe::build_static_scene_text_program;
+use crate::observe::{SiglusChoiceDiagnostic, SiglusChoiceMoment, build_static_scene_text_program};
 
 const SCENE_PACK_LOGICAL_PATH: &str = "Scene.pck";
 const GAMEEXE_LOGICAL_PATH: &str = "Gameexe.dat";
@@ -50,12 +50,14 @@ pub struct SiglusSceneMomentIndex {
 /// Fully hydrated launch state retained by the port.
 ///
 /// The index stays text-free for snapshot/review metadata. The separate
-/// program contains only decoded E1 text evidence. Its scene groups let
+/// program contains decoded E1 text and choice evidence. Its scene groups let
 /// `observe` consume every finite decoded scene before moving to the next.
 pub(crate) struct HydratedSiglusLaunch {
     pub(crate) index: SiglusSceneMomentIndex,
     pub(crate) scene_text_program: Vec<Vec<TextLine>>,
     pub(crate) text_program: Vec<TextLine>,
+    pub(crate) choice_moments: Vec<SiglusChoiceMoment>,
+    pub(crate) choice_diagnostics: Vec<SiglusChoiceDiagnostic>,
 }
 
 impl SiglusSceneMomentIndex {
@@ -214,22 +216,29 @@ pub(crate) fn hydrate_siglus_launch(
         });
     }
 
-    let scene_text_program = build_static_scene_text_program(
+    let observation_program = build_static_scene_text_program(
         scene_bytes.as_ref(),
         &scene_index,
         scene_key,
         scene_asset,
         request,
     )?;
-    let text_program = scene_text_program.iter().flatten().cloned().collect();
+    let text_program = observation_program
+        .scenes
+        .iter()
+        .flatten()
+        .cloned()
+        .collect();
 
     Ok(HydratedSiglusLaunch {
         index: SiglusSceneMomentIndex {
             moments,
             gameexe_entry_count: gameexe.entries.len(),
         },
-        scene_text_program,
+        scene_text_program: observation_program.scenes,
         text_program,
+        choice_moments: observation_program.choice_moments,
+        choice_diagnostics: observation_program.choice_diagnostics,
     })
 }
 
