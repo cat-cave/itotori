@@ -22,7 +22,9 @@ coverage/
 # `.envrc` sources this file only if a developer creates it.
 .envrc.local
 # Local-only purchased-game corpora and private benchmark inputs.
-fixtures/private-local/
+# Bodies stay untracked; the path-lane contract README is committed.
+fixtures/private-local/*
+!fixtures/private-local/README.md
 .kaifuu/secrets.local/
 # Local research scratch exports. Curated research notes live under docs/research/.
 /research/

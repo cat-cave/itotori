@@ -79,6 +79,7 @@ pub mod mv_mz_encrypted_asset_replacement;
 pub mod mv_mz_encrypted_audio;
 pub mod mv_mz_encrypted_image;
 pub mod mv_mz_readiness;
+pub mod mv_mz_readiness_report;
 pub mod native_windows_helper;
 mod offset_map;
 pub mod packed_engine_readiness;
@@ -242,6 +243,11 @@ pub use mv_mz_readiness::{
     MvMzFixtureManifest, MvMzFixtureProfile, MvMzJsonTextSurface, MvMzNegativeFixture,
     MvMzReadinessRecord, MvMzReadinessViolation, MvMzSurfaceRole, generate_mv_mz_fixture_tree,
     mv_mz_fixture_manifest,
+};
+
+pub use mv_mz_readiness_report::{
+    HELPER_ASSET_ENCRYPTION_KEY, HELPER_NONE, MV_MZ_READINESS_REPORT_SPEC, MvMzReadinessReport,
+    scan_mv_mz_readiness_report,
 };
 
 pub use xp3_capability_profile::{
