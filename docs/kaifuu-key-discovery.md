@@ -306,17 +306,30 @@ the same shape:
 }
 ```
 
-The diagnostic enum is intentionally closed: `success`, `missing_key`,
-`helper_required`, `helper_unavailable`, `helper_authorization_denied`,
-`helper_timeout`, `validation_failed`, `unsupported_protected_executable`, and
-`redaction_failure`. Validation errors name both the helper-result field and
-the `fixtureId`, so aggregate fixture checks can point to the exact unsafe or
-malformed output. Helper results may persist `secretRef` ids, proof hashes,
-helper id/version/kind, capability level, bounded execution metadata, profile
-id, diagnostic code, and redaction status. They must not persist raw keys, raw
-helper logs, dumps, decrypted private text, local paths, arbitrary command
-fields, environment payloads, or key-looking material outside a validated
-`secretRef`.
+The diagnostic enum is intentionally closed; the accepted public-schema values
+are:
+
+<!-- HELPER-RESULT-DIAGNOSTIC-ENUM:START -->
+
+- `success`
+- `missing_key`
+- `wrong_key`
+- `helper_required`
+- `helper_unavailable`
+- `helper_authorization_denied`
+- `helper_timeout`
+- `validation_failed`
+- `unsupported_protected_executable`
+- `redaction_failure`
+<!-- HELPER-RESULT-DIAGNOSTIC-ENUM:END -->
+
+Validation errors name both the helper-result field and the `fixtureId`, so
+aggregate fixture checks can point to the exact unsafe or malformed output.
+Helper results may persist `secretRef` ids, proof hashes, helper id/version/kind,
+capability level, bounded execution metadata, profile id, diagnostic code, and
+redaction status. They must not persist raw keys, raw helper logs, dumps,
+decrypted private text, local paths, arbitrary command fields, environment
+payloads, or key-looking material outside a validated `secretRef`.
 
 The local contract command validates and normalizes fixture-shaped helper
 outputs into the shared result schema:
@@ -382,39 +395,7 @@ single decryption flag.
 | Wolf RPG Editor | WolfDec describes `.wolf` archive decryption. UberWolf adds GUI/CLI full-game processing, all common archive extensions, automatic decryption-key detection, and Pro Editor Protection Key detection.                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Wolf triage needs helper capability rows for archive decryption, automatic key detection, and Pro protection-key detection before full text patching. Public CI should use synthetic detector fixtures; owned games use private-local redacted readiness reports.                          |
 | BGI/Ethornell   | VNTranslationTools supports Buriko General Interpreter/Ethornell among many VN formats. BGIKit focuses on script decode/encode and requires the original file beside translated text because the encoder needs original-file information. Public evidence found here is more about bytecode/container patching than a universal key-discovery path.                                                                                                                                                                                                                                                                                                         | Treat BGI as profile/container/bytecode-first. If an encrypted/compressed case appears, it must fail as an unknown transform, missing crypto capability, or unsupported layered transform until a concrete variant proves that key/profile material is required.                           |
 
-## Engine Notes
-
-- **KiriKiri/XP3**: tools such as GARbro know many XP3 variants and may prompt
-  for a crypt scheme or game-specific option for encrypted archives. KrkrExtract
-  shows the practical Windows-oriented runtime/patch workflow, including
-  universal dump and patch paths, while warning that protected executables and
-  bypass conflicts are hard. Alpha needs XP3/archive detection, local helper
-  boundaries, and one profiled encrypted XP3 extract/patch/verify vertical.
-  Broader production encrypted-XP3 support remains scoped per declared profile.
-- **SiglusEngine**: Siglus tools center on `Scene.pck`, `Gameexe.dat`, and a
-  game-specific secondary key. Practical paths include static extraction,
-  dynamic extraction, and known-key databases. Alpha needs the key-profile
-  boundary, static helper adapter, known-key Scene/Gameexe smoke, and redaction
-  tests before any broader production Siglus adapter claim.
-- **RPG Maker MV/MZ**: built-in asset encryption commonly exposes key recovery
-  through `System.json` or encrypted image files. Some image restoration can be
-  possible without a key, while audio needs one. Alpha adapter support remains
-  JSON-text-first for the main vertical, but encrypted asset detection,
-  key-profile handling, and a trivial encrypted-asset replacement patch belong
-  in alpha readiness because text-bearing images and media metadata are
-  localization surfaces.
-- **Wolf RPG Editor**: Wolf tools show `.wolf` archive decryption, broad
-  extension handling, automatic key detection, and Pro protection-key
-  detection. Alpha needs archive/protection detection and the `KAIFUU-040`
-  readiness/helper slice; `KAIFUU-073` full encrypted archive patching remains
-  continuous/future and can still wait for binary patching support.
-- **BGI/Ethornell**: public tools emphasize script decoding/encoding,
-  string-table or bytecode handling, and original-file-informed encoding. The
-  immediate alpha readiness need is profile/container triage and
-  encrypted/compressed boundary detection. BGI transformed inputs should stay
-  `unknown_variant`, `kaifuu.missing_capability.crypto`, or
-  `kaifuu.unsupported_layered_transform` until exact variant evidence establishes
-  a key requirement.
+See [per-engine key-discovery notes](kaifuu-key-discovery-engine-notes.md).
 
 ## Detection Matrix Surface
 
