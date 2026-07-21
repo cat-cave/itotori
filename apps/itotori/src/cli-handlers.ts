@@ -62,6 +62,7 @@ import { runPatchbackProduceCommand } from "./patchback/produce-cli.js";
 // substrate they drive is injected through the ports below, never imported here on
 // their behalf.
 import { runLocalizeCommand } from "./cli/localize-command.js";
+import { runLocalizePortfolioCommand } from "./cli/localize-portfolio-command.js";
 import { runWikiCommand } from "./cli/wiki-command.js";
 import { runPlayCommand } from "./cli/play-command.js";
 import { createRuntimeLauncherRegistry } from "./play/patch-runtime-launcher.js";
@@ -192,6 +193,9 @@ export async function runItotoriCliCommand(
       break;
     case "localize":
       await runLocalize(args, dependencies);
+      break;
+    case "localize-portfolio":
+      await runLocalizePortfolio(args, dependencies);
       break;
     case "extract":
       await runExtract(args, dependencies);
@@ -465,6 +469,33 @@ async function runLocalize(args: string[], dependencies: ItotoriCliDependencies)
       );
     }
     await runLocalizeCommand(args, {
+      io: {
+        readJson: (path) => dependencies.io.readJson(path),
+        writeJson: (path, value) => dependencies.io.writeJson(path, value),
+      },
+      projectWorkflow: services.projectWorkflow,
+      resolvePortSource: (request, perRun) => substrate.resolvePortSource(request, perRun),
+    });
+  });
+}
+
+/**
+ * `itotori localize-portfolio` schedules multiple complete localize drivers.
+ * ONE withServices scope (shared pool — all runs drain before it closes).
+ * Same deps shape as runLocalize; the executor owns no workflow mechanics.
+ */
+async function runLocalizePortfolio(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  await dependencies.withServices(async (services) => {
+    const substrate = configuredServicePort(services, "localizationSubstrate");
+    if (substrate === undefined) {
+      throw new Error(
+        "localize-portfolio is not configured in this CLI build (localizationSubstrate port missing — the new-pipeline WorkflowPortDeps assemblers are not installed)",
+      );
+    }
+    await runLocalizePortfolioCommand(args, {
       io: {
         readJson: (path) => dependencies.io.readJson(path),
         writeJson: (path, value) => dependencies.io.writeJson(path, value),
