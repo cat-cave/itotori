@@ -180,7 +180,19 @@ describe("gateway entrypoints", () => {
     const cliStore = new GatewayStore();
     const apiStore = new GatewayStore();
     const cliWrites = new Map<string, unknown>();
-    const resolveCliPorts = vi.fn(() => ({ ports: gatewayPorts(cliStore) }));
+    const cliWorkflow = commandRunWorkflow();
+    const resolveCliPorts = vi.fn(() => ({
+      ports: gatewayPorts(cliStore),
+      runPlane: {
+        projectId: "gateway-project",
+        runId: "gateway-run",
+        localeBranchId: "gateway-branch",
+        contextSnapshotId: "gateway-context",
+        localizationSnapshotId: "gateway-localization",
+        capMicrosUsd: 100,
+        leaseOwnerId: "gateway-driver",
+      },
+    }));
     const resolveApiPorts = vi.fn(() => ({ ports: gatewayPorts(apiStore) }));
 
     await runLocalizeCommand(
@@ -188,6 +200,14 @@ describe("gateway entrypoints", () => {
         "localize",
         "--run-mode",
         "production",
+        "--project-id",
+        "gateway-project",
+        "--run-id",
+        "gateway-run",
+        "--locale-branch-id",
+        "gateway-branch",
+        "--lease-owner-id",
+        "gateway-driver",
         "--structure",
         "structure.json",
         "--bridge",
@@ -200,6 +220,7 @@ describe("gateway entrypoints", () => {
           readJson: (path) => (path === "bridge.json" ? bridge : structure),
           writeJson: (path, value) => cliWrites.set(path, value),
         },
+        projectWorkflow: cliWorkflow as never,
         resolvePortSource: resolveCliPorts,
       },
     );
@@ -214,7 +235,16 @@ describe("gateway entrypoints", () => {
     expect(apiStore.patchCalls).toBe(1);
     expect(resolveCliPorts).toHaveBeenCalledWith(
       expect.objectContaining({ runMode: "production" }),
-      { structureJson: structure, bridge },
+      {
+        structureJson: structure,
+        bridge,
+        projectRun: {
+          projectId: "gateway-project",
+          runId: "gateway-run",
+          localeBranchId: "gateway-branch",
+          leaseOwnerId: "gateway-driver",
+        },
+      },
     );
     expect(resolveApiPorts).toHaveBeenCalledWith(
       expect.objectContaining({ runMode: "production" }),
@@ -309,3 +339,33 @@ describe("gateway entrypoints", () => {
     expect(receipt).toMatchObject({ runtime: "utsushi" });
   });
 });
+
+function commandRunWorkflow() {
+  const lease = {
+    projectId: "gateway-project",
+    runId: "gateway-run",
+    leaseOwnerId: "gateway-driver",
+    fenceToken: 1,
+    leaseExpiresAt: new Date("2026-07-21T00:00:00.000Z"),
+  };
+  return {
+    createRun: vi.fn(),
+    acquireLease: vi.fn().mockResolvedValue(lease),
+    renewLease: vi.fn().mockResolvedValue(lease),
+    releaseLease: vi.fn(),
+    advanceRun: vi.fn(),
+    recordProgress: vi.fn(),
+    reserveCost: vi.fn(),
+    settleCost: vi.fn(),
+    loadLiveReadModel: vi.fn().mockResolvedValue({
+      run: { status: "completed" },
+      progress: {
+        statusCounts: { decoded: 0, drafted: 0, QA: 0, accepted: 0, patched: 1 },
+        totalCostMicrosUsd: 0,
+        averageCoveragePercent: 100,
+        blockers: [],
+        units: [],
+      },
+    }),
+  };
+}

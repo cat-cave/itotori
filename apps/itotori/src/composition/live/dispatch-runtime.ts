@@ -24,7 +24,11 @@ import {
   createOpenRouterGenerationLookup,
   type GenerationLookup,
 } from "../../llm/generation-metadata.js";
-import type { MeasuredModelProfile, RetryRuntime } from "../../llm/physical-attempt-policy.js";
+import type {
+  MeasuredModelProfile,
+  PhysicalAttemptCostObserver,
+  RetryRuntime,
+} from "../../llm/physical-attempt-policy.js";
 import type { PhysicalStepMemoRuntime } from "../../llm/physical-step-memo.js";
 import type { ReasoningDetailsContinuityEvidence } from "../../llm/reasoning-details-continuity.js";
 
@@ -61,6 +65,8 @@ export interface LiveDispatchRuntimeConfig {
   readonly signal?: AbortSignal;
   /** Deterministic retry seam (jitter/sleep) for the physical-attempt policy. */
   readonly retry?: Partial<RetryRuntime>;
+  /** Project-run cost lifecycle hook; omitted for callers outside that plane. */
+  readonly runCostObserver?: PhysicalAttemptCostObserver;
   /** Reasoning-details continuity evidence sink (audit-only). */
   readonly onReasoningDetailsContinuity?: (evidence: ReasoningDetailsContinuityEvidence) => void;
 }
@@ -76,6 +82,7 @@ export function createDispatchRuntime(config: LiveDispatchRuntimeConfig): Dispat
     snapshots: config.snapshots,
     ...(config.signal ? { signal: config.signal } : {}),
     ...(config.retry ? { retry: config.retry } : {}),
+    ...(config.runCostObserver ? { runCostObserver: config.runCostObserver } : {}),
   };
   const env = config.env ?? process.env;
   const apiKey = env.OPENROUTER_API_KEY;

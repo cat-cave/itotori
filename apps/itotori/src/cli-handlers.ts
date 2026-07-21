@@ -469,6 +469,7 @@ async function runLocalize(args: string[], dependencies: ItotoriCliDependencies)
         readJson: (path) => dependencies.io.readJson(path),
         writeJson: (path, value) => dependencies.io.writeJson(path, value),
       },
+      projectWorkflow: services.projectWorkflow,
       resolvePortSource: (request, perRun) => substrate.resolvePortSource(request, perRun),
     });
   });

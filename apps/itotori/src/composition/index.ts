@@ -17,6 +17,7 @@ export {
   runLocalization,
   type LocalizationPerRunInput,
   type LocalizationPortSource,
+  type LocalizationRunPlane,
 } from "./localize-entrypoint.js";
 export {
   addressRequestedRun,

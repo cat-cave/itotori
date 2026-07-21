@@ -15,11 +15,14 @@
 // ports) to drive the driver without a live ZDR/Postgres run.
 
 import {
+  buildLocalizationPorts,
   runLocalization,
   type LocalizationPerRunInput,
   type LocalizationPortSource,
 } from "../composition/localize-entrypoint.js";
 import { projectDecodeStructure } from "../composition/live/scene-projection.js";
+import { withPhysicalAttemptCostObserver } from "../llm/physical-attempt-cost-context.js";
+import { LocalizeRunTracker } from "./localize-run-tracker.js";
 import { assertBridgeBundleV02, type BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import {
   FULL_ROSTER,
@@ -29,6 +32,7 @@ import {
   type RunPolicyRequest,
 } from "../run-policy/index.js";
 import type { ContextScopeValue, RunModeValue } from "../contracts/index.js";
+import type { ItotoriProjectWorkflowPort } from "../services/project-operations-port.js";
 import type { WorkflowOptions } from "../workflow/index.js";
 import { optionalFlag, requiredFlag } from "./flags.js";
 
@@ -44,6 +48,20 @@ export interface LocalizeCommandIo {
  * injects fake ports. The handler never reaches for it any other way. */
 export interface LocalizeCommandDeps {
   readonly io: LocalizeCommandIo;
+  /** The durable run/progress/cost/lease plane. The CLI has no silent no-run
+   * fallback: every invocation owns a project run. */
+  readonly projectWorkflow: Pick<
+    ItotoriProjectWorkflowPort,
+    | "createRun"
+    | "acquireLease"
+    | "renewLease"
+    | "releaseLease"
+    | "advanceRun"
+    | "recordProgress"
+    | "reserveCost"
+    | "settleCost"
+    | "loadLiveReadModel"
+  >;
   resolvePortSource(
     request: RunPolicyRequest,
     perRun: LocalizationPerRunInput,
@@ -89,6 +107,9 @@ export function parseLocalizeRunRequest(args: readonly string[]): RunPolicyReque
  *
  * Required flags:
  *   --run-mode production|pilot|test-dev   the operational posture (gates legality)
+ *   --project-id <ID>                      durable project identity
+ *   --run-id <ID>                          durable localization-run identity
+ *   --locale-branch-id <ID>                target locale branch identity
  *   --structure <PATH>                     decoded narrative-structure JSON (the
  *                                          decode→scene projection input)
  *   --bridge <PATH>                        matching BridgeBundle v0.2
@@ -117,6 +138,13 @@ export async function runLocalizeCommand(
   assertBridgeBundleV02(bridgeJson);
   const bridge: BridgeBundleV02 = bridgeJson;
   const { scenes } = projectDecodeStructure(structureJson);
+  const runId = requiredFlag(args, "--run-id");
+  const projectRun = {
+    projectId: requiredFlag(args, "--project-id"),
+    runId,
+    localeBranchId: requiredFlag(args, "--locale-branch-id"),
+    leaseOwnerId: optionalFlag(args, "--lease-owner-id") ?? `localize:${runId}`,
+  };
 
   let wholeSceneMaxUnits: number | undefined;
   const wholeSceneMaxUnitsRaw = optionalFlag(args, "--whole-scene-max-units");
@@ -131,8 +159,31 @@ export async function runLocalizeCommand(
   }
   const options: WorkflowOptions = wholeSceneMaxUnits === undefined ? {} : { wholeSceneMaxUnits };
 
-  const source = await deps.resolvePortSource(request, { structureJson, bridge });
-  const report = await runLocalization(request, scenes, source, options);
+  const source = await deps.resolvePortSource(request, { structureJson, bridge, projectRun });
+  if (source.runPlane === undefined) {
+    throw new Error("localize run plane is not configured by the localization substrate");
+  }
+  assertRunPlaneIdentity(source, projectRun);
+  const tracker = new LocalizeRunTracker(deps.projectWorkflow, source.runPlane);
+  let report: Awaited<ReturnType<typeof runLocalization>>;
+  let live: Awaited<ReturnType<ItotoriProjectWorkflowPort["loadLiveReadModel"]>>;
+  try {
+    await tracker.start(scenes.flatMap((scene) => scene.units.map((unit) => unit.unitId)));
+    const ports = tracker.wrapPorts(portsWithRunCostObserver(source, tracker));
+    report = await withPhysicalAttemptCostObserver(
+      tracker.costObserver,
+      async () => await runLocalization(request, scenes, { ports }, options),
+    );
+    live = await tracker.complete();
+  } catch (error: unknown) {
+    try {
+      await tracker.fail();
+    } catch {
+      // The original workflow error tells the operator why work stopped. The
+      // run-plane's failed transition/release was still attempted above.
+    }
+    throw error;
+  }
 
   // Project a summary that carries NO source/target script text (copyrighted on
   // real bytes) — only run-shape counts + the resolved policy posture.
@@ -148,6 +199,10 @@ export async function runLocalizeCommand(
     patchId: report.patchId,
     buildLqaVerdictCount: report.buildLqa.length,
     attemptCount: report.attemptLineage.length,
+    projectId: projectRun.projectId,
+    runId: projectRun.runId,
+    runStatus: live?.run.status ?? null,
+    progress: live === null ? null : live.progress,
   };
 
   const outputPath = optionalFlag(args, "--output");
@@ -158,4 +213,25 @@ export async function runLocalizeCommand(
   (deps.log ?? ((message: string) => process.stdout.write(`${message}\n`)))(
     JSON.stringify(summary, null, 2),
   );
+}
+
+function assertRunPlaneIdentity(
+  source: LocalizationPortSource,
+  requested: LocalizationPerRunInput["projectRun"],
+): asserts source is LocalizationPortSource & {
+  readonly runPlane: NonNullable<LocalizationPortSource["runPlane"]>;
+} {
+  if (requested === undefined || source.runPlane === undefined) return;
+  for (const field of ["projectId", "runId", "localeBranchId", "leaseOwnerId"] as const) {
+    if (source.runPlane[field] !== requested[field]) {
+      throw new Error(`localize substrate returned a run plane with a different ${field}`);
+    }
+  }
+}
+
+function portsWithRunCostObserver(source: LocalizationPortSource, tracker: LocalizeRunTracker) {
+  if (source.ports !== undefined) {
+    return source.attachRunCostObserver?.(tracker.costObserver) ?? source.ports;
+  }
+  return buildLocalizationPorts(source.deps);
 }
