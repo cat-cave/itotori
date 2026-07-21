@@ -9,7 +9,10 @@ import {
   MatrixGenerationError,
   OUTPUT_JSON_PATH,
   REQUIRED_INPUT_CATEGORIES,
+  REQUIRED_INPUT_KINDS,
+  assertRequiredCoverage,
   buildArtifacts,
+  collectConsumedNamespaces,
   generateEngineCapabilityMatrix,
   loadInputs,
   renderKnownLimitations,
@@ -20,13 +23,102 @@ const inputs = loadInputs(repoRoot);
 const matrix = generateEngineCapabilityMatrix(inputs);
 const rowsById = new Map(matrix.rows.map((row) => [row.rowId, row]));
 
-test("matrix is generated from every required input category", () => {
+test("matrix is generated from every required input category and kind", () => {
   for (const category of REQUIRED_INPUT_CATEGORIES) {
     assert.ok(
       matrix.inputCategoriesCovered.includes(category),
       `expected input category ${category} to be consumed`,
     );
   }
+  for (const kind of REQUIRED_INPUT_KINDS) {
+    assert.ok(
+      matrix.inputKindsCovered.includes(kind),
+      `expected input kind ${kind} to be consumed`,
+    );
+  }
+  // Category coverage list must not include pure-kind labels like adapter_registry.
+  assert.ok(
+    !matrix.inputCategoriesCovered.includes("adapter_registry"),
+    "adapter_registry is a kind, not a category — must not appear in inputCategoriesCovered",
+  );
+  // Covered namespaces must match a fresh collect (no cross-namespace bleed).
+  const collected = collectConsumedNamespaces(matrix.rows);
+  assert.deepEqual(matrix.inputCategoriesCovered, collected.categories);
+  assert.deepEqual(matrix.inputKindsCovered, collected.kinds);
+});
+
+test("a kind value does not satisfy a required category (and vice versa)", () => {
+  // Evidence whose KIND is "fixture_output" must not cover the CATEGORY
+  // fixture_output. All required kinds are present; one required category is
+  // only present as a kind string.
+  const kindDoesNotCoverCategory = collectConsumedNamespaces([
+    {
+      evidence: [
+        { sourceId: "synth-a", category: "claimed_support_tuples", kind: "adapter_registry" },
+        { sourceId: "synth-b", category: "readiness_profile", kind: "fixture_output" },
+        { sourceId: "synth-c", category: "validation_artifact", kind: "validation_artifact" },
+      ],
+    },
+  ]);
+  assert.deepEqual(kindDoesNotCoverCategory.categories, [
+    "claimed_support_tuples",
+    "readiness_profile",
+    "validation_artifact",
+  ]);
+  assert.ok(kindDoesNotCoverCategory.kinds.includes("fixture_output"));
+  assert.ok(!kindDoesNotCoverCategory.categories.includes("fixture_output"));
+  assert.throws(
+    () => assertRequiredCoverage(kindDoesNotCoverCategory),
+    (error) =>
+      error instanceof MatrixGenerationError &&
+      /required input category/.test(error.message) &&
+      /fixture_output/.test(error.message),
+  );
+
+  // Evidence whose CATEGORY is "adapter_registry" must not cover the KIND
+  // adapter_registry. All required categories are present as categories only.
+  const categoryDoesNotCoverKind = collectConsumedNamespaces([
+    {
+      evidence: [
+        { sourceId: "synth-d", category: "adapter_registry", kind: "detector_profile" },
+        { sourceId: "synth-e", category: "fixture_output", kind: "detector_profile" },
+        { sourceId: "synth-f", category: "readiness_profile", kind: "readiness_profile" },
+        {
+          sourceId: "synth-g",
+          category: "claimed_support_tuples",
+          kind: "production_capability_tuple",
+        },
+        { sourceId: "synth-h", category: "validation_artifact", kind: "validation_artifact" },
+      ],
+    },
+  ]);
+  assert.ok(categoryDoesNotCoverKind.categories.includes("adapter_registry"));
+  assert.ok(!categoryDoesNotCoverKind.kinds.includes("adapter_registry"));
+  assert.throws(
+    () => assertRequiredCoverage(categoryDoesNotCoverKind),
+    (error) =>
+      error instanceof MatrixGenerationError &&
+      /required input kind/.test(error.message) &&
+      /adapter_registry/.test(error.message),
+  );
+
+  // Happy path: distinct namespaces both satisfied.
+  assertRequiredCoverage(
+    collectConsumedNamespaces([
+      {
+        evidence: [
+          { sourceId: "synth-ok", category: "fixture_output", kind: "adapter_registry" },
+          { sourceId: "synth-ok-2", category: "readiness_profile", kind: "readiness_profile" },
+          {
+            sourceId: "synth-ok-3",
+            category: "claimed_support_tuples",
+            kind: "production_capability_tuple",
+          },
+          { sourceId: "synth-ok-4", category: "validation_artifact", kind: "validation_artifact" },
+        ],
+      },
+    ]),
+  );
 });
 
 test("every row carries all six capability levels with traceable derivation", () => {

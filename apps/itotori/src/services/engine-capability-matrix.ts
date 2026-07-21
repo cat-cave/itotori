@@ -78,7 +78,10 @@ export type EngineCapabilityMatrixDocument = {
   capabilityLevels: EngineCapabilityLevel[];
   levelStatuses: EngineCapabilityLevelStatus[];
   evidencePostures: EngineEvidencePosture[];
+  /** Evidence categories consumed (category namespace only — not kinds). */
   inputCategoriesCovered: string[];
+  /** Evidence kinds consumed (kind namespace only — not categories). */
+  inputKindsCovered: string[];
   inputs: EngineCapabilityInputSource[];
   rows: EngineCapabilityRow[];
   exclusions: EngineCapabilityExclusion[];
