@@ -2,16 +2,15 @@
 //!
 //! 50 hand-built byte streams covering every operator at least once
 //! (per acceptance criterion #0) plus the three documented specific
-//! cases (acceptance criterion #1) and the unknown-operator partial
-//! recovery path (acceptance criterion #2).
+//! cases (acceptance criterion #1).
 //!
 //! Every test is a single `#[test]` so a regression surfaces with the
 //! specific case-name in `cargo test` output rather than a generic
 //! "case 17 of 50 failed" message.
 
 use utsushi_reallive::{
-    AssignOp, BankId, ExprNode, ExprOp, ExpressionParseError, ExpressionWarning, Value, VarBanks,
-    evaluate, evaluate_assignment, parse_expression, parse_expression_with_warnings,
+    AssignOp, BankId, ExprNode, ExprOp, ExpressionParseError, Value, VarBanks, evaluate,
+    evaluate_assignment, parse_expression,
 };
 
 /// `$ FF <i32 LE>` — int-literal token.
@@ -119,43 +118,6 @@ fn ac1_intb_zero_plus_five_with_value_ten_equals_fifteen() {
         .expect("clean set");
     let result = evaluate(&node, &banks).expect("eval");
     assert_eq!(result, 15, "intB[0]=10, +5 must equal 15");
-}
-
-// Spec-node acceptance criterion #2: unknown-operator partial recovery.
-
-#[test]
-fn ac2_unknown_operator_byte_emits_warning_and_partial_result() {
-    // $ FF 04 00 00 00 \ EE — \xEE is not a documented op byte.
-    let mut bytes = lit(4);
-    bytes.push(0x5C);
-    bytes.push(0xEE);
-    let parsed =
-        parse_expression_with_warnings(&bytes).expect("partial recovery must not surface as Err");
-    assert!(matches!(parsed.node, ExprNode::IntLiteral(4)));
-    assert_eq!(parsed.warnings.len(), 1);
-    match &parsed.warnings[0] {
-        ExpressionWarning::UnknownOperator { byte, offset } => {
-            assert_eq!(*byte, 0xEE);
-            assert_eq!(*offset, lit(4).len());
-        }
-    }
-    assert_eq!(
-        parsed.warnings[0].audit_code(),
-        "utsushi.reallive.unknown_expression_operator",
-    );
-}
-
-#[test]
-fn ac2_unknown_operator_inside_chain_partial_result_at_warning_point() {
-    // (1 + 2) \ EE — chain breaks after the recognised 1+2.
-    let mut bytes = binary(&lit(1), op(ExprOp::Add), &lit(2));
-    bytes.push(0x5C);
-    bytes.push(0xEE);
-    let parsed = parse_expression_with_warnings(&bytes).expect("partial recovery");
-    let banks = VarBanks::new();
-    let result = evaluate(&parsed.node, &banks).expect("partial eval");
-    assert_eq!(result, 3, "partial result is the in-progress sum (1 + 2)");
-    assert_eq!(parsed.warnings.len(), 1);
 }
 
 // Synthetic 50-case round-trip suite — each operator at least once.

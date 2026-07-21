@@ -261,13 +261,7 @@ impl ReplayEngine {
                         && self.shift_jis.contains(&(scene_before, pc_before))
                     {
                         dispatch_textout_at(&runtime, pc_before, raw_bytes);
-                        if let Some(op) = handles.registry.get(RlopKey::new(
-                            MSG_MODULE_TYPE,
-                            MSG_MODULE_ID,
-                            OPCODE_LINE_BREAK,
-                        )) {
-                            let _ = op.dispatch(&mut vm, &[]);
-                        }
+                        dispatch_cosmetic_line_break(&mut vm, &handles.registry);
                     }
                     // Record the first cross-scene dispatch boundary the pass
                     // followed (a real `jump` / `farcall` / entrypoint

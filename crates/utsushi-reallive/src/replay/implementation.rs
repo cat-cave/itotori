@@ -21,7 +21,10 @@ pub use registry::{
 
 use branch_driver::drive_branch_following;
 use driver::{drive_loop, snapshot_identity_loop, vm_error_semantic_code};
-use registry::{mount_full_registry, mount_registry, mount_registry_handles, stage_replay_context};
+use registry::{
+    dispatch_cosmetic_line_break, mount_full_registry, mount_registry, mount_registry_handles,
+    stage_replay_context,
+};
 
 /// Typed errors raised by [`replay_scene`] and its helpers.
 ///
