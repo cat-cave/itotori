@@ -80,7 +80,7 @@ test("fails active qd text that points at retired paths without a marker", () =>
     }),
   });
 
-  assertViolation(result, "retired-localize-sweetie-hd-preset");
+  assertViolation(result, "retired-game-specific-localize-preset");
 });
 
 test("fails active select_objbtn module_type=1 coordinates", () => {
@@ -105,7 +105,7 @@ test("scopes stale premise allow markers to local match context", () => {
   const bare = scanFixture({
     "docs/README.md": "Load presets/localize-sweetie-hd.pair-policy.json for new runs.\n",
   });
-  assertViolation(bare, "retired-localize-sweetie-hd-preset");
+  assertViolation(bare, "retired-game-specific-localize-preset");
 
   const marked = scanFixture({
     "docs/README.md":
@@ -122,7 +122,7 @@ test("scopes stale premise allow markers to local match context", () => {
       "Load presets/localize-sweetie-hd.pair-policy.json for new runs.",
     ].join("\n"),
   });
-  assertViolation(markerElsewhere, "retired-localize-sweetie-hd-preset");
+  assertViolation(markerElsewhere, "retired-game-specific-localize-preset");
 });
 
 test("allows active qd repair text that marks retired paths as stale", () => {

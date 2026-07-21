@@ -17,8 +17,9 @@
 //
 //   (A) GROUND TRUTH — re-run the FULL real-bytes suite (`just ci-real-bytes`)
 //       against the real corpora under /scratch/itotori-research + the live
-//       read-only vault (Sweetie HD + Kanon RealLive, LustMemory + Countryside
-//       Life RPG Maker MV/MZ, the vault-materialized Siglus installs) + the
+//       read-only vault (the alpha + Kanon RealLive reference corpora,
+//       LustMemory + Countryside Life RPG Maker MV/MZ, the vault-materialized
+//       Siglus installs) + the
 //       standalone Softpal research tree (Kizuna + Dimension under
 //       /scratch/softpal-research, skipped cleanly when that root is absent).
 //       Read-only; never copies copyrighted bytes. The ci-real-bytes recipe

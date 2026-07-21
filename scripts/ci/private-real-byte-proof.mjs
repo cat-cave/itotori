@@ -2,7 +2,7 @@
 // PRIVATE REAL-BYTE PROOF LANE — gate + content-free evidence manifest.
 //
 // This is the OPT-IN counterpart to the public secretless lane. It runs ONLY
-// on a host that stages the content-addressed Sweetie corpus and attests the
+// on a host that stages the content-addressed RealLive alpha corpus and attests the
 // exact approved ZDR profile, and it exercises extract → structure → patch →
 // replay on ACTUAL bytes. It is NOT a merge-required check (public runners have
 // no real bytes); it is triggered on demand / by label. See
@@ -49,12 +49,13 @@ export const APPROVED_ZDR_PROFILE = "deepseek/deepseek-v4-flash:zdr";
 // Its sha256 is the corpus CONTENT-ADDRESS — cited publicly, never the bytes.
 export const HASH_LIST_BASENAME = "private-hash-list.local.jsonl";
 
-// REQUIRED real corpora for this proof. The content-addressed Sweetie corpus is
-// the load-bearing one: extract → structure → patch → replay run on its bytes.
+// REQUIRED real corpora for this proof. The content-addressed RealLive alpha
+// corpus is the load-bearing one: extract → structure → patch → replay run on
+// its bytes.
 export const REQUIRED_CORPORA = [
   {
-    id: "sweetie-reallive",
-    role: "content-addressed Sweetie corpus (RealLive) — extract/structure/patch/replay ground truth",
+    id: "reallive-alpha-corpus",
+    role: "content-addressed RealLive alpha corpus — extract/structure/patch/replay ground truth",
     rootEnv: "ITOTORI_REAL_GAME_ROOT",
     contentAddressEnv: "ITOTORI_SWEETIE_CONTENT_ADDRESS",
   },
@@ -289,7 +290,7 @@ function preflight() {
     process.exit(1);
   }
   process.stdout.write(
-    "gate ok: required Sweetie bytes present + content-addressed, ZDR profile attested.\n",
+    "gate ok: required RealLive alpha-corpus bytes present + content-addressed, ZDR profile attested.\n",
   );
 }
 
@@ -332,7 +333,7 @@ function emitManifest() {
   const rootPath = process.env.ITOTORI_REAL_GAME_ROOT;
   if (!rootPath || !existsSync(join(rootPath, HASH_LIST_BASENAME))) {
     process.stderr.write(
-      "emit-manifest: Sweetie corpus root / hash list absent; run --preflight first.\n",
+      "emit-manifest: RealLive alpha-corpus root / hash list absent; run --preflight first.\n",
     );
     process.exit(1);
   }
@@ -340,7 +341,7 @@ function emitManifest() {
   const manifest = buildEvidenceManifest({
     generatedAt: new Date().toISOString(),
     zdrProfile: APPROVED_ZDR_PROFILE,
-    corpora: [{ id: "sweetie-reallive", ...evidence }],
+    corpora: [{ id: "reallive-alpha-corpus", ...evidence }],
     stages: deriveStages(results),
   });
   mkdirSync(dirname(resolve(outPath)), { recursive: true });

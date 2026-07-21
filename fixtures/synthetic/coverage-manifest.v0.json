@@ -11,7 +11,7 @@
         "REAL_CATALOG",
         "family_for"
       ],
-      "role": "utsushi RealLive module_catalog: the union of every (module_id, opcode) observed as an unresolved command across ALL scenes of both proven corpora (Sweetie HD + Kanon), evidence-first (no speculative opcodes)."
+      "role": "utsushi RealLive module_catalog: the union of every (module_id, opcode) observed as an unresolved command across ALL scenes of both proven RealLive corpora, evidence-first (no speculative opcodes)."
     },
     {
       "id": "realliveOpcode",
@@ -55,7 +55,7 @@
       "symbols": [
         "expected_populated"
       ],
-      "role": "utsushi RealLive decoder-parity set: the populated-scene counts per staged corpus the full-module linear-walk replay must decode (Sweetie HD 198, Kanon 79)."
+      "role": "utsushi RealLive decoder-parity set: the populated-scene counts per staged corpus the full-module linear-walk replay must decode (198 for the xor2 corpus, 79 for the plaintext corpus)."
     },
     {
       "id": "rpgMakerCodes",
@@ -92,7 +92,7 @@
   ],
   "engineFamilies": {
     "reallive": {
-      "description": "RealLive (kaifuu decompiler + utsushi renderer). Proven corpora: Oshioki Sweetie HD (compiler 110002, use_xor_2) + Kanon (10002, plaintext).",
+      "description": "RealLive (kaifuu decompiler + utsushi renderer). Proven corpora: compiler 110002 (use_xor_2) + compiler 10002 (plaintext).",
       "componentGroups": {
         "opcode_tuple": {
           "source": "crates/utsushi-reallive/src/rlop/module_catalog.rs#REAL_CATALOG+family_for",
