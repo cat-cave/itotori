@@ -1,9 +1,7 @@
-// fnd-addressable-routing — focus shell for addressable deep-links whose
-// full surface UI is not yet ported (wiki / runtime run / finding). Play unit
-// and scene links are different: they render the real ScenePlayer target,
-// scroll it into view, and focus/highlight that exact target. The backbone
-// MUST still resolve + focus so cmdk + cross-surface jumps work before other
-// focused surfaces land.
+// fnd-addressable-routing — focus shell for addressable deep-links. Play unit
+// and scene links render the real ScenePlayer target, scroll it into view, and
+// focus/highlight that exact target. The resolver is also the shared backbone
+// for the shipped Wiki entry surface and cross-surface addressable jumps.
 //
 // A citation jump from the wiki bible may carry `?returnTo=` back to the
 // addressed object; play flag / edit / feedback links then close that loop.

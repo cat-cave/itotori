@@ -193,18 +193,20 @@ function runDriftCheck() {
       "real-bytes-exercised components.",
   );
 
-  // Forward-compat hook: when the differential-validation node lands its
-  // synthetic-vs-real archive validator, run it here too (guarded on existence
-  // so this oracle degrades gracefully until then).
-  const diffvalPath = resolve(repoRoot, "scripts/synthetic-differential-validation.mjs");
-  if (existsSync(diffvalPath)) {
-    banner("stage B.3 — synthetic differential validation");
-    const result = spawnSync("node", [diffvalPath, "--check"], { cwd: repoRoot, stdio: "inherit" });
-    if (result.status !== 0) {
-      throw new OracleDriftError(
-        `synthetic differential validation failed (exit ${result.status}). ${REDERIVE_HINT}`,
-      );
-    }
+  banner("stage B.3 — synthetic mutation differential validation");
+  const result = spawnSync("node", ["scripts/mutation-differential.mjs"], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+  if (result.error) {
+    throw new OracleDriftError(
+      `failed to launch synthetic mutation differential validation: ${result.error.message}. ${REDERIVE_HINT}`,
+    );
+  }
+  if (result.status !== 0) {
+    throw new OracleDriftError(
+      `synthetic mutation differential validation failed (exit ${result.status}). ${REDERIVE_HINT}`,
+    );
   }
 }
 

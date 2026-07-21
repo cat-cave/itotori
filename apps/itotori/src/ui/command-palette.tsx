@@ -8,15 +8,14 @@
 // through the same `navigate` the shell nav uses (a full load, the same
 // window.location the shell reads on mount — there is no client router).
 //
-// INDEX SEAM — the palette is sourced from `PaletteEntry[]`. Today the only
-// addressable, always-available targets are the shell SURFACES (the same
-// `SHELL_NAV_ITEMS` the nav renders), surfaced as the "surfaces" group. The
-// unified palette search index (`shell-cmdk-index-api`) + the addressable-id
-// routing scheme (`fnd-addressable-routing`) are not yet implemented; when
-// they land, their entries (scenes / characters / terms / runs / findings /
-// actions) drop in via the `entries` prop — no host change required. This
-// keeps the palette pure UI against a clear seam rather than half-wiring an
-// API. See `docs/dev/` + the spec DAG entries for the two dep nodes.
+// INDEX SEAM — the palette is sourced from `PaletteEntry[]`. The shell always
+// contributes its addressable SURFACES (the same `SHELL_NAV_ITEMS` the nav
+// renders), surfaced as the "surfaces" group. The shipped unified palette
+// search index (`shell-cmdk-index-api`) supplies indexed entities (scenes /
+// characters / terms / runs / findings / actions), and the shipped
+// addressable-routing scheme (`fnd-addressable-routing`) supplies their stable
+// deep-link hrefs. Callers compose those entries through the `entries` prop,
+// keeping this host pure UI against the shared index contract.
 //
 // [[feedback_behavior_first_code_agnostic_testing]] — no game is named; only
 // the open / filter / select / navigate behavior is asserted.
@@ -28,8 +27,8 @@ import { SHELL_NAV_ITEMS } from "./shell-frame.js";
 /**
  * A palette entry is a ds `CommandItem` plus the addressable URL the shell
  * navigates to when the entry is chosen. `href` is the bridge to
- * `fnd-addressable-routing`: today every href is a real surface path; once
- * the routing scheme lands, entity entries carry their stable deep-link href.
+ * `fnd-addressable-routing`: shell entries use surface paths and indexed
+ * entity entries use stable deep-link hrefs.
  */
 export interface PaletteEntry extends CommandItem {
   href: string;
@@ -53,8 +52,8 @@ export function shellNavCommandEntries(): readonly PaletteEntry[] {
 
 /**
  * Merge multiple palette index sources into one stable list. The order is
- * preserved (callers control precedence); this is the seam the future
- * unified index (`shell-cmdk-index-api`) plugs into — e.g.
+ * preserved (callers control precedence); this composes the shipped unified
+ * index (`shell-cmdk-index-api`) with shell entries — e.g.
  * `mergeCommandEntries(shellNavCommandEntries(), useGlobalIndex())`.
  */
 export function mergeCommandEntries(

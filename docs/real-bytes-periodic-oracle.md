@@ -49,9 +49,10 @@ ci-real-bytes`) against the configured real corpora (currently Sweetie HD +
   - the manifest bytes otherwise diverged (metadata/formatting drift).
 
   It first runs the manifest extractor self-test so a silent parser break can't
-  mask a real drift as "no diff", and — once the differential-validation node
-  lands `scripts/synthetic-differential-validation.mjs` — runs that validator
-  too (guarded on existence).
+  mask a real drift as "no diff", then runs the shipped
+  `scripts/mutation-differential.mjs` guardrail. That runner proves the
+  synthetic suite kills the representative source-level regressions exercised
+  by the real-bytes lane.
 
 ### Why the two stages prove the guarantee
 
