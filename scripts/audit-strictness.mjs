@@ -249,14 +249,29 @@ export function parseLaneCrates(justfileText) {
   const lines = justfileText.split(/\r?\n/u);
   let inRecipe = false;
   const crates = new Set();
+  let cargoCommand = "";
   for (const line of lines) {
     if (/^ci-real-bytes\s*:/u.test(line)) {
       inRecipe = true;
       continue;
     }
     if (inRecipe && /^\S/u.test(line)) break; // next top-level recipe
-    if (inRecipe && /cargo\s+test\b/u.test(line)) {
-      for (const m of line.matchAll(/-p\s+(\S+)/gu)) crates.add(m[1]);
+    if (!inRecipe) continue;
+    const trimmed = line.trim();
+    if (
+      !cargoCommand &&
+      !trimmed.startsWith("#") &&
+      /\bcargo\s+(?:test|nextest\s+run)\b/u.test(trimmed)
+    ) {
+      cargoCommand = trimmed;
+    } else if (cargoCommand) {
+      cargoCommand += ` ${trimmed}`;
+    }
+    if (cargoCommand && !trimmed.endsWith("\\")) {
+      for (const match of cargoCommand.matchAll(/(?:^|\s)(?:-p|--package)(?:\s+|=)([^\s\\]+)/gu)) {
+        crates.add(match[1]);
+      }
+      cargoCommand = "";
     }
   }
   return crates;

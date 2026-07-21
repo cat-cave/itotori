@@ -46,9 +46,13 @@ import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
+import { evaluateWorkspaceDelegationExclusion } from "./delegation-coverage-guard.mjs";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
 const MANIFEST_PATH = "fixtures/synthetic/coverage-manifest.v0.json";
+const CAPABILITY_MATRIX_PATH =
+  "apps/itotori/src/engine-capability/engine-capability-matrix.v0.1.json";
 
 // ---------------------------------------------------------------------------
 // INSTANTIATION_MAP — manifest (family -> group) => the synthetic test that
@@ -232,9 +236,18 @@ function fileContainsTest(relFile, testFn, root = repoRoot) {
 
 function run({ json } = {}) {
   const manifest = loadManifest();
+  const capabilityMatrix = JSON.parse(readFileSync(join(repoRoot, CAPABILITY_MATRIX_PATH), "utf8"));
   const families = manifest.engineFamilies || {};
 
   const violations = evaluateParity(families, INSTANTIATION_MAP);
+  const delegationExclusion = evaluateWorkspaceDelegationExclusion({
+    root: repoRoot,
+    manifest,
+    instantiationMap: INSTANTIATION_MAP,
+    capabilityMatrix,
+    justfileText: readFileSync(join(repoRoot, "justfile"), "utf8"),
+  });
+  violations.push(...delegationExclusion.violations);
 
   // Verify every mapped test file exists and contains the named test fn.
   const ledger = [];
@@ -270,6 +283,7 @@ function run({ json } = {}) {
     manifest: MANIFEST_PATH,
     ledger,
     realOnlySurfaces: REAL_ONLY_SURFACES,
+    excludedDelegationPorts: delegationExclusion.ports,
     violations,
   };
 
@@ -289,6 +303,13 @@ function run({ json } = {}) {
     );
     for (const s of REAL_ONLY_SURFACES) {
       process.stdout.write(`  - ${s.id} [${s.family}]\n`);
+    }
+    process.stdout.write(
+      `\ncoverage-parity: ${delegationExclusion.ports.length} delegation-only engine port(s) ` +
+        "excluded from engine-decode and real-game coverage by source markers:\n",
+    );
+    for (const port of delegationExclusion.ports) {
+      process.stdout.write(`  - ${port.root}\n`);
     }
   }
 

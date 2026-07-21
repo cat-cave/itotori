@@ -108,6 +108,17 @@ mismatch:
    real bytes exercise, each with its reason and where its underlying decode
    **logic** is still covered so no correctness regression escapes.
 
+Delegation-only engine ports are outside this accounting boundary. The guard
+discovers them from production Rust metadata—an `EnginePort` implementation
+combined with either `OPCODE_HANDLER_COUNT = 0` or
+`NoReferenceComparison`—rather than from a crate-name allowlist. It rejects a
+detected port if that crate is cited by the engine-decode manifest, classified
+as a real-byte owner, selected as a package in `ci-real-bytes`, or credited with
+a positive decode/runtime capability in the generated engine-capability
+matrix. These ports remain valid substrate-capability conformance participants,
+but that conformance validates zero real games and does not satisfy the
+two-real-game engine-family bar.
+
 All **11 manifest component groups** (across RealLive, RPG Maker MV/MZ,
 KiriKiri XP3, Siglus) map to a synthetic instantiation test → synthetic ⊇ real.
 
