@@ -162,6 +162,8 @@ pub enum EventDataError {
     Read { file: String, reason: String },
     /// A data file did not parse as JSON.
     Parse { file: String, reason: String },
+    /// An event command has no integer `code` field.
+    MalformedCommandCode { file: String, pointer: String },
     /// The data directory has no recognised event-data files
     /// (`CommonEvents.json` or `MapNNN.json`).
     NoEventFiles,
@@ -178,6 +180,10 @@ impl std::fmt::Display for EventDataError {
             }
             Self::Read { file, reason } => write!(formatter, "read {file} failed: {reason}"),
             Self::Parse { file, reason } => write!(formatter, "parse {file} failed: {reason}"),
+            Self::MalformedCommandCode { file, pointer } => write!(
+                formatter,
+                "malformed event command code at {file}#{pointer}: expected an integer"
+            ),
             Self::NoEventFiles => write!(
                 formatter,
                 "data directory has no CommonEvents.json or MapNNN.json event files"
@@ -245,9 +251,9 @@ pub fn load_program(data_dir: &DataDir) -> Result<PlaybackProgram, EventDataErro
         })?;
         let before = program.lines.len();
         if file == "CommonEvents.json" {
-            walk_common_events(&file, &value, &mut program.lines);
+            walk_common_events(&file, &value, &mut program.lines)?;
         } else {
-            walk_map(&file, &value, &mut program.lines);
+            walk_map(&file, &value, &mut program.lines)?;
         }
         // A file "loaded" if it parsed; we count every recognised event
         // file even when it carried no text, so the inventory is honest.
@@ -259,23 +265,28 @@ pub fn load_program(data_dir: &DataDir) -> Result<PlaybackProgram, EventDataErro
 
 /// Walk `CommonEvents.json` — a top-level array whose index 0 is `null`
 /// and whose later entries carry a `list[]`.
-fn walk_common_events(file: &str, value: &Value, out: &mut Vec<MessageLine>) {
+fn walk_common_events(
+    file: &str,
+    value: &Value,
+    out: &mut Vec<MessageLine>,
+) -> Result<(), EventDataError> {
     let Some(events) = value.as_array() else {
-        return;
+        return Ok(());
     };
     for (index, event) in events.iter().enumerate() {
         let Some(list) = event.get("list").and_then(Value::as_array) else {
             continue;
         };
-        walk_command_list(file, &[index.to_string(), "list".to_string()], list, out);
+        walk_command_list(file, &[index.to_string(), "list".to_string()], list, out)?;
     }
+    Ok(())
 }
 
 /// Walk `MapNNN.json` — an object with an `events[]` array (index 0 is
 /// `null`); each event has `pages[]`; each page has a `list[]`.
-fn walk_map(file: &str, value: &Value, out: &mut Vec<MessageLine>) {
+fn walk_map(file: &str, value: &Value, out: &mut Vec<MessageLine>) -> Result<(), EventDataError> {
     let Some(events) = value.get("events").and_then(Value::as_array) else {
-        return;
+        return Ok(());
     };
     for (event_index, event) in events.iter().enumerate() {
         let Some(pages) = event.get("pages").and_then(Value::as_array) else {
@@ -292,18 +303,29 @@ fn walk_map(file: &str, value: &Value, out: &mut Vec<MessageLine>) {
                 page_index.to_string(),
                 "list".to_string(),
             ];
-            walk_command_list(file, &prefix, list, out);
+            walk_command_list(file, &prefix, list, out)?;
         }
     }
+    Ok(())
 }
 
 /// Walk one event-command `list[]` in dispatch order, threading the
 /// `Show Text` setup speaker and message-window grouping.
-fn walk_command_list(file: &str, prefix: &[String], list: &[Value], out: &mut Vec<MessageLine>) {
+fn walk_command_list(
+    file: &str,
+    prefix: &[String],
+    list: &[Value],
+    out: &mut Vec<MessageLine>,
+) -> Result<(), EventDataError> {
     let mut message_group: usize = 0;
     let mut current_speaker: Option<String> = None;
     for (command_index, command) in list.iter().enumerate() {
-        let code = command.get("code").and_then(Value::as_i64).unwrap_or(-1);
+        let code = command.get("code").and_then(Value::as_i64).ok_or_else(|| {
+            EventDataError::MalformedCommandCode {
+                file: file.to_string(),
+                pointer: command_code_pointer(prefix, command_index),
+            }
+        })?;
         let params = command.get("parameters").and_then(Value::as_array);
         match code {
             // `Show Text` setup: opens a new message window. MZ carries the
@@ -375,6 +397,15 @@ fn walk_command_list(file: &str, prefix: &[String], list: &[Value], out: &mut Ve
             _ => {}
         }
     }
+    Ok(())
+}
+
+/// Build the JSON pointer string locating an event command's `code` field.
+fn command_code_pointer(prefix: &[String], command_index: usize) -> String {
+    let mut pointer = prefix.to_vec();
+    pointer.push(command_index.to_string());
+    pointer.push("code".to_string());
+    format!("/{}", pointer.join("/"))
 }
 
 /// Build the JSON-pointer token vector for `prefix/<command_index>/parameters/<param_index>`.
@@ -387,63 +418,5 @@ fn command_pointer(prefix: &[String], command_index: usize, param_index: usize) 
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn classifies_map_files() {
-        assert!(is_map_file("Map001.json"));
-        assert!(is_map_file("Map12.json"));
-        assert!(!is_map_file("CommonEvents.json"));
-        assert!(!is_map_file("MapInfos.json"));
-        assert!(!is_map_file("Map.json"));
-    }
-
-    #[test]
-    fn walks_show_text_window_with_mz_speaker() {
-        let value = json!({
-            "events": [
-                null,
-                { "pages": [ { "list": [
-                    { "code": 101, "indent": 0, "parameters": ["face", 0, 0, 2, "Alice"] },
-                    { "code": 401, "indent": 0, "parameters": ["Hello there."] },
-                    { "code": 401, "indent": 0, "parameters": ["How are you?"] },
-                    { "code": 0, "indent": 0, "parameters": [] }
-                ] } ] }
-            ]
-        });
-        let mut out = Vec::new();
-        walk_map("Map001.json", &value, &mut out);
-        assert_eq!(out.len(), 2);
-        assert_eq!(out[0].text, "Hello there.");
-        assert_eq!(out[0].speaker.as_deref(), Some("Alice"));
-        assert_eq!(out[0].role, TextRole::Dialogue);
-        assert_eq!(out[1].text, "How are you?");
-        assert_eq!(out[0].message_group, out[1].message_group);
-        assert_eq!(
-            out[0].source_unit_key(),
-            "rpgmaker-mv:Map001.json#/events/1/pages/0/list/1/parameters/0"
-        );
-    }
-
-    #[test]
-    fn walks_choices_and_scrolling() {
-        let value = json!([
-            null,
-            { "list": [
-                { "code": 102, "indent": 0, "parameters": [["Yes", "No"], 1] },
-                { "code": 105, "indent": 0, "parameters": [2, false] },
-                { "code": 405, "indent": 0, "parameters": ["Scrolling line."] }
-            ] }
-        ]);
-        let mut out = Vec::new();
-        walk_common_events("CommonEvents.json", &value, &mut out);
-        assert_eq!(out.len(), 3);
-        assert_eq!(out[0].role, TextRole::Choice);
-        assert_eq!(out[0].text, "Yes");
-        assert_eq!(out[1].text, "No");
-        assert_eq!(out[2].role, TextRole::Scrolling);
-        assert_eq!(out[2].text, "Scrolling line.");
-    }
-}
+#[path = "event_data_tests.rs"]
+mod tests;
