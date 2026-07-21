@@ -86,6 +86,8 @@ export {
   authBillingPeriodValues,
   authSsoProviderProtocolValues,
   providerRunStatusValues,
+  projectRunProgressStatusValues,
+  projectRunStatusValues,
   runtimeBridgeUnitRefRoleValues,
   runtimeEvidenceKindValues,
   runtimeRunStatusValues,
@@ -174,6 +176,8 @@ export type {
   ProviderCostKind,
   AuthProviderClaimKind,
   ProviderRunStatus,
+  ProjectRunProgressStatus,
+  ProjectRunStatus,
   RuntimeBridgeUnitRefRole,
   RuntimeEvidenceKind,
   RuntimeRunStatus,
@@ -299,6 +303,28 @@ export type {
   LocalizationPassRunConfigRecord,
   SaveLocalizationPassRunConfigInput,
 } from "./repositories/localization-pass-run-config-repository.js";
+export {
+  ItotoriProjectRunRepository,
+  ItotoriProjectRunRepositoryError,
+  PROJECT_RUN_LIVE_READ_MODEL_SCHEMA_VERSION,
+} from "./repositories/project-run-repository.js";
+export type {
+  AcquireProjectRunLeaseInput,
+  AdvanceProjectRunInput,
+  CreateProjectRunInput,
+  ItotoriProjectRunRepositoryPort,
+  ProjectRunCostAccountRecord,
+  ProjectRunCostReservationRecord,
+  ProjectRunLease,
+  ProjectRunLeaseFence,
+  ProjectRunLiveReadModel,
+  ProjectRunProgressRecord,
+  ProjectRunRecord,
+  RecordProjectRunProgressInput,
+  RenewProjectRunLeaseInput,
+  ReserveProjectRunCostInput,
+  SettleProjectRunCostInput,
+} from "./repositories/project-run-repository.js";
 export {
   deriveFeedbackDedupeKey,
   feedbackContextStatusValues,
