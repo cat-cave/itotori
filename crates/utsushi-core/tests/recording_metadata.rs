@@ -229,8 +229,7 @@ fn baseline_check() -> RecordingConformanceCheck {
 }
 
 /// Walk a serde_json::Value, rebuilding every Object as a BTreeMap so the
-/// emitted key order is sorted (matches the recorder's
-/// `deterministic_json_bytes` canonicalization pattern from ).
+/// emitted key order is sorted.
 fn canonicalize(value: Value) -> Value {
     match value {
         Value::Object(map) => {

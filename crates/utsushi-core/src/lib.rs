@@ -20,7 +20,6 @@ pub mod embed;
 pub mod input;
 mod observation;
 pub mod port;
-pub mod recorder;
 pub mod replay;
 mod runtime_artifact;
 mod runtime_capability;
@@ -29,6 +28,7 @@ mod runtime_process;
 mod runtime_request;
 pub mod sink;
 pub mod snapshot;
+mod source_tag;
 pub mod substrate;
 pub mod vfs;
 
@@ -103,10 +103,6 @@ pub use port::{
     PortManifest, PortRequest, PortShutdownOutcome, PortShutdownStatus, REQUIRED_LIFECYCLE_STAGES,
     Runner, RunnerCancellation, RunnerObservation, RunnerOutcome, evaluate_parity,
 };
-pub use recorder::{
-    InMemoryReferenceRecorder, REFERENCE_TRACE_SCHEMA_VERSION, RecordingTextSink,
-    ReferenceRecorder, ReferenceTrace, SourceTag, deterministic_json_bytes,
-};
 pub use replay::{
     REPLAY_LOG_SCHEMA_VERSION, ReplayCursor, ReplayEntry, ReplayLog, ReplayLogBuilder,
     ReplayMetadata, ReplaySchemaVersion,
@@ -125,6 +121,7 @@ pub use snapshot::{
     StateDiff, StateNamespace, StatePath, StateTree, StateValue, diff_snapshots, restore_snapshot,
     take_snapshot,
 };
+pub use source_tag::SourceTag;
 
 /// Re-exports for the local-path redaction filter. The helper itself is a
 /// crate-private utility used by observation-hook validators and by the sink

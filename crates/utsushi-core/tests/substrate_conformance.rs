@@ -34,17 +34,12 @@ use utsushi_core::substrate::{
     ConformanceAbiVersion,
     ConformanceManifest,
     ConformanceProfile,
-    // Embed capability surface
-    EmbedCapability,
-    EmbedCapabilityId,
     // Evidence / fidelity tiers + observation payload types (re-exported through the facade)
     EvidenceTier,
     FidelityTier,
     FrameArtifact,
     FrameArtifactSink,
     GoldenTextEvent,
-    // Recorder
-    InMemoryReferenceRecorder,
     // Snapshot
     InMemorySnapshotStore,
     InputEvent,
@@ -61,10 +56,8 @@ use utsushi_core::substrate::{
     PortCapability,
     PortManifest,
     ProfileId,
-    REFERENCE_TRACE_SCHEMA_VERSION,
     REPLAY_LOG_SCHEMA_VERSION,
     REQUIRED_LIFECYCLE_STAGES,
-    ReferenceRecorder,
     ReplayLog,
     ReplayLogBuilder,
     ReplayMetadata,
@@ -90,7 +83,6 @@ use utsushi_core::substrate::{
     TraceConformanceCheck,
     VfsError,
     VfsResult,
-    deterministic_json_bytes,
     // Redaction
     reject_unredacted_local_paths,
     take_snapshot,
@@ -464,53 +456,7 @@ fn take_and_restore_a_snapshot_through_the_facade() {
     assert_eq!(resolved.snapshot_id(), snapshot.snapshot_id());
 }
 
-// §7.1 case 5: recorder — byte-stable finalize through the facade.
-
-#[test]
-fn record_a_reference_trace_through_the_facade() {
-    let recorder = InMemoryReferenceRecorder::new(
-        SourceTag::Fixture,
-        "substrate-facade-fixture",
-        "substrate-run-1",
-    );
-
-    for (idx, text) in ["Hello", "World", "!"].iter().enumerate() {
-        recorder.record_text_event(TextLine {
-            line_id: format!("line-{idx}"),
-            evidence_tier: EvidenceTier::E1,
-            text: text.to_string(),
-            speaker: None,
-            color: None,
-            text_surface: Some("ADV".to_string()),
-            bridge_ref: None,
-            source_asset: None,
-            byte_offset_in_scene: None,
-            body_shift_jis: None,
-        });
-    }
-    let capabilities = vec![
-        EmbedCapability::supported(EmbedCapabilityId::State, EvidenceTier::E1),
-        EmbedCapability::supported(EmbedCapabilityId::Trace, EvidenceTier::E1),
-    ];
-    recorder.record_capability_state(&capabilities);
-
-    let bytes_a = recorder.finalize_to_bytes();
-    let bytes_b = recorder.finalize_to_bytes();
-    assert_eq!(bytes_a, bytes_b, "trace finalize is byte-stable");
-
-    let trace = recorder.finalize();
-    assert_eq!(trace.schema_version, REFERENCE_TRACE_SCHEMA_VERSION);
-    assert_eq!(trace.source, SourceTag::Fixture);
-    assert_eq!(trace.text_events.len(), 3);
-
-    // Also exercise the canonical-bytes helper that's re-exported on
-    // the facade — calling it directly on the finalized trace should
-    // match the recorder's finalize_to_bytes output.
-    let canonical = deterministic_json_bytes(&trace);
-    assert_eq!(canonical, bytes_a);
-}
-
-// §7.1 case 6: trace conformance check via the facade.
+// §7.1 case 5: trace conformance check via the facade.
 
 #[test]
 fn run_a_trace_conformance_check_through_the_facade() {
@@ -573,7 +519,7 @@ fn run_a_trace_conformance_check_through_the_facade() {
     );
 }
 
-// §7.1 case 7: port manifest + lifecycle stages via the facade.
+// §7.1 case 6: port manifest + lifecycle stages via the facade.
 
 #[test]
 fn instantiate_a_port_manifest_and_inspect_lifecycle_through_the_facade() {
@@ -608,17 +554,16 @@ fn instantiate_a_port_manifest_and_inspect_lifecycle_through_the_facade() {
     assert_eq!(optional, vec![LifecycleStage::Jump]);
 }
 
-// §7.1 case 8: every facade-re-exported schema version is pinned.
+// §7.1 case 7: every facade-re-exported schema version is pinned.
 
 #[test]
 fn every_facade_exposed_schema_version_is_pinned() {
-    assert_eq!(REFERENCE_TRACE_SCHEMA_VERSION, "0.1.0-alpha");
     assert_eq!(CONFORMANCE_SCHEMA_VERSION, "0.2.0-alpha");
     assert_eq!(SNAPSHOT_SCHEMA_VERSION, "0.2.0-alpha");
     assert_eq!(REPLAY_LOG_SCHEMA_VERSION, "0.1.0-alpha");
 }
 
-// §7.1 case 8b: the schema-authority doc's §3 version table must agree
+// §7.1 case 7b: the schema-authority doc's §3 version table must agree
 // with the pinned constants. This is the drift-guard that keeps
 // docs/utsushi-substrate-facade.md §3 honest — a bump to any pinned
 // constant without revising the doc table trips this test (
@@ -628,10 +573,6 @@ fn every_facade_exposed_schema_version_is_pinned() {
 fn facade_documentation_schema_version_table_matches_pinned_constants() {
     let doc = include_str!("../../../docs/utsushi-substrate-facade.md");
     let pinned = [
-        (
-            "REFERENCE_TRACE_SCHEMA_VERSION",
-            REFERENCE_TRACE_SCHEMA_VERSION,
-        ),
         ("CONFORMANCE_SCHEMA_VERSION", CONFORMANCE_SCHEMA_VERSION),
         ("SNAPSHOT_SCHEMA_VERSION", SNAPSHOT_SCHEMA_VERSION),
         ("REPLAY_LOG_SCHEMA_VERSION", REPLAY_LOG_SCHEMA_VERSION),
@@ -658,7 +599,7 @@ fn facade_documentation_schema_version_table_matches_pinned_constants() {
     }
 }
 
-// §7.1 case 9: SourceTag variant set is engine-neutral.
+// §7.1 case 8: SourceTag variant set is engine-neutral.
 
 #[test]
 fn source_tag_variant_set_is_engine_neutral() {
@@ -757,7 +698,6 @@ fn substrate_conformance_test_imports_only_through_the_facade() {
         "sink",
         "snapshot",
         "embed",
-        "recorder",
         "conformance",
         "port",
         "redaction",

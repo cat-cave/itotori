@@ -242,8 +242,8 @@ pub fn validate_capability_list(capabilities: &[EmbedCapability]) -> Result<(), 
 }
 
 /// Sort a capability vector into the deterministic order asserted by
-/// [`validate_capability_list`]. Re-exported for adapter-side and recorder
-/// callers that build a capability vector incrementally and want to
+/// [`validate_capability_list`]. Re-exported for adapter-side callers that
+/// build a capability vector incrementally and want to
 /// canonicalise before serialization.
 pub fn sort_capabilities(capabilities: &mut [EmbedCapability]) {
     capabilities.sort_by_key(|capability| capability.capability_id.sort_key());

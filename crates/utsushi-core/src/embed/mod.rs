@@ -6,10 +6,6 @@
 //! pre-declared, append-only typed enum ([`EmbedCapabilityId`]) paired with a
 //! support status and an evidence-tier ceiling ([`EmbedCapability`]).
 //!
-//! The capability surface is consumed by the reference recorder
-//! (`crate::recorder`), which records an [`EmbedCapability`] snapshot in
-//! [`sort_capabilities`] order at finalize time.
-//!
 //! Capability ids are an append-only typed enum. New variants are added at
 //! the end of [`EmbedCapabilityId`]; ordering is stable on both
 //! `(EmbedCapabilityId as u8, EmbedCapabilityId::as_str())` so a numeric

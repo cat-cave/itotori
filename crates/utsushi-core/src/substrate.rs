@@ -51,11 +51,8 @@ pub use crate::snapshot::{
 // --- Embed capability surface () ---------------------------
 pub use crate::embed::{EmbedCapability, EmbedCapabilityId, EmbedCapabilityStatus, EmbedError};
 
-// --- Recorder + reference trace () ---------------------
-pub use crate::recorder::{
-    InMemoryReferenceRecorder, REFERENCE_TRACE_SCHEMA_VERSION, RecordingTextSink,
-    ReferenceRecorder, ReferenceTrace, SourceTag, deterministic_json_bytes,
-};
+// --- Source tagging ------------------------------------------------------
+pub use crate::SourceTag;
 
 // --- Conformance manifest + checks (..030) -----------------
 pub use crate::conformance::trace_branch::{
@@ -104,8 +101,8 @@ pub use crate::{EvidenceTier, FidelityTier, ObservationArtifactRef, ObservationB
 // --- Redaction policy () -----------------------------------
 //
 // The redaction filter is exposed through the facade because every
-// substrate-emitted artifact (snapshot, replay log, reference trace
-// conformance result) is required to pass the same filter on the way
+// substrate-emitted artifact (snapshot, replay log, conformance result)
+// is required to pass the same filter on the way
 // out. Engine ports run the filter on adapter-emitted strings before
 // handing them to the substrate.
 pub use crate::redaction::reject_unredacted_local_paths;
@@ -120,8 +117,6 @@ pub use crate::redaction::reject_unredacted_local_paths;
 // `every_facade_exposed_schema_version_is_pinned`.
 
 const _: () = {
-    // Recorder reference-trace schema ().
-    assert!(const_str_eq(REFERENCE_TRACE_SCHEMA_VERSION, "0.1.0-alpha"));
     // Conformance result + manifest schema ().
     assert!(const_str_eq(CONFORMANCE_SCHEMA_VERSION, "0.2.0-alpha"));
     // Snapshot envelope schema (, bumped under ).
