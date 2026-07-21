@@ -1,10 +1,9 @@
-//! Siglus runtime port and real CG/container render surface.
+//! Siglus static-observation port and real CG/container render surface.
 //!
 //! The port consumes assets exclusively through the Utsushi `AssetPackage`
-//! facade.  Its production capture lifecycle decodes a supported Siglus G00,
-//! rasterizes it in-process, and persists a default-redacted PNG under the
-//! managed artifact root.  It intentionally does not claim a VM, text, or
-//! replay implementation.
+//! facade. It statically walks decoded scene text at E1 without claiming a
+//! live VM, and it can rasterize a supported G00 into a default-redacted PNG
+//! when an embedding configures that optional capture surface.
 //!
 //! # Clean-room boundary
 //!
@@ -24,9 +23,12 @@ pub mod vm;
 pub mod vm_impl_map;
 
 mod cg_port;
+mod cg_port_sinks;
 mod launch;
+mod observe;
 
 pub use cg_port::{UtsushiSiglusPort, UtsushiSiglusPortContext};
+pub use cg_port_sinks::{SiglusObservationSinks, SiglusTextSink};
 pub use launch::{SiglusSceneMoment, SiglusSceneMomentIndex};
 pub use siglus_g00::{
     SiglusG00Error, SiglusG00Image, SiglusG00Kind, SiglusG00Layer, decode_siglus_g00,

@@ -9,11 +9,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use kaifuu_siglus::{SCENE_PCK_HEADER_BYTE_LEN, apply_gameexe_xor_table, apply_xor_table};
+use kaifuu_siglus::{
+    SCENE_PCK_HEADER_BYTE_LEN, SCN_HEADER_BYTE_LEN, apply_gameexe_xor_table, apply_xor_table,
+};
 use tempfile::TempDir;
-use utsushi_core::RuntimeOperation;
+use utsushi_core::port::runner::Runner;
 use utsushi_core::substrate::{EnginePort, PortRequest, RuntimeVfs};
 use utsushi_core::{CaseRule, MountedVfs, PackageSource, PlaintextDirPackage};
+use utsushi_core::{RuntimeArtifactRoot, RuntimeOperation};
 use utsushi_siglus::UtsushiSiglusPort;
 
 const FIRST_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
@@ -57,8 +60,95 @@ fn launch_hydrates_the_asset_package_from_request_vfs_and_indexes_scenes() {
     let index = port.scene_moment_index().expect("launch index");
     assert_eq!(index.moments()[0].id.value, "siglus:scene-0000");
     assert_eq!(index.moments()[1].id.value, "siglus:scene-0001");
-    assert_eq!(index.moments()[0].decoded_byte_len, b"first".len());
-    assert_eq!(index.moments()[1].decoded_byte_len, b"second".len());
+    assert!(index.moments()[0].decoded_byte_len > b"first".len());
+    assert!(index.moments()[1].decoded_byte_len > b"second".len());
+
+    let runner = Runner::new();
+    let mut observed = Vec::new();
+    while observed.len() < port.lines_total() {
+        observed.extend(
+            runner
+                .tick(&mut port, &request)
+                .expect("runner drives text observation")
+                .text,
+        );
+    }
+    assert_eq!(port.lines_total(), 4, "name + text for each scene");
+    assert_eq!(port.lines_emitted(), 4);
+    assert_eq!(observed[0].text_surface.as_deref(), Some("speaker_name"));
+    assert_eq!(observed[1].text, "first");
+    assert_eq!(observed[2].text, "speaker-second");
+    assert_eq!(observed[3].text, "second");
+    assert!(observed.iter().all(|line| {
+        line.bridge_ref
+            .as_ref()
+            .and_then(|reference| reference.source_unit_key.as_deref())
+            .is_some_and(|key| key.starts_with("siglus:scene-scene-"))
+    }));
+
+    let artifact_root = RuntimeArtifactRoot::new(temp.path().join("runtime-artifacts"));
+    artifact_root.prepare().expect("prepare artifact root");
+    let capture_request = PortRequest::new(
+        &unmounted_input,
+        "siglus-vfs-launch-trace",
+        RuntimeOperation::Capture,
+    )
+    .with_vfs(mounted_vfs(&mounted_root, "synthetic-siglus-launch"))
+    .with_artifact_root(&artifact_root);
+    let mut capture_port = UtsushiSiglusPort::new();
+    let capture = runner
+        .run_capture(&mut capture_port, &capture_request)
+        .expect("runner captures text trace")
+        .capture
+        .expect("capture outcome");
+    let trace =
+        fs::read_to_string(capture.artifact_path.expect("trace path")).expect("read text trace");
+    assert!(trace.contains("utsushi-siglus-text-trace"));
+    assert!(trace.contains("siglus:scene-scene-0000"));
+    assert!(!trace.contains("bodyShiftJisHex"));
+    assert!(!trace.contains("secret://"));
+}
+
+#[test]
+fn observe_consumes_a_finite_decoded_scene_before_signalling_end_of_stream() {
+    let temp = TempDir::new().expect("temporary fixture directory");
+    let mounted_root = temp.path().join("mounted-assets");
+    fs::create_dir_all(&mounted_root).expect("fixture asset directory");
+    fs::write(
+        mounted_root.join("Scene.pck"),
+        synthetic_scene_pack_from_decoded_scenes(&[synthetic_text_only_scene_payload(4096)]),
+    )
+    .expect("write synthetic scene package");
+    fs::write(
+        mounted_root.join("Gameexe.dat"),
+        synthetic_gameexe("#ENTRY.000=1\r\n"),
+    )
+    .expect("write synthetic configuration");
+
+    let unmounted_input = temp.path().join("not-mounted-into-the-vfs");
+    let request = PortRequest::new(
+        &unmounted_input,
+        "siglus-finite-scene-walk",
+        RuntimeOperation::Trace,
+    )
+    .with_vfs(mounted_vfs(&mounted_root, "siglus-finite-scene-walk"));
+    let mut port = UtsushiSiglusPort::new();
+    let outcome = Runner::new()
+        .run_trace(&mut port, &request)
+        .expect("one finite scene must finish before the runner tick cap");
+    let lines: Vec<_> = outcome
+        .observations
+        .iter()
+        .flat_map(|observation| observation.text.iter())
+        .collect();
+
+    assert_eq!(outcome.observations.len(), 1, "one populated scene tick");
+    assert_eq!(lines.len(), 4096, "one TextLine per CD_TEXT surface");
+    assert!(
+        lines
+            .iter()
+            .all(|line| line.text_surface.as_deref() == Some("dialogue"))
+    );
 }
 
 #[test]
@@ -133,11 +223,16 @@ fn mounted_vfs(root: &Path, package_id: &str) -> Arc<dyn RuntimeVfs> {
 }
 
 fn synthetic_scene_pack(payloads: &[&[u8]]) -> Vec<u8> {
-    let chunks: Vec<Vec<u8>> = payloads
+    let scenes: Vec<_> = payloads
         .iter()
-        .map(|payload| masked_chunk(payload))
+        .map(|payload| synthetic_scene_payload(payload))
         .collect();
-    let names: Vec<String> = (0..chunks.len())
+    synthetic_scene_pack_from_decoded_scenes(&scenes)
+}
+
+fn synthetic_scene_pack_from_decoded_scenes(scenes: &[Vec<u8>]) -> Vec<u8> {
+    let chunks: Vec<Vec<u8>> = scenes.iter().map(|scene| masked_chunk(scene)).collect();
+    let names: Vec<String> = (0..scenes.len())
         .map(|index| format!("scene-{index:04}"))
         .collect();
     let name_index_ofs = SCENE_PCK_HEADER_BYTE_LEN;
@@ -179,6 +274,90 @@ fn synthetic_scene_pack(payloads: &[&[u8]]) -> Vec<u8> {
     }
     archive[name_list_ofs..data_index_ofs].copy_from_slice(&name_bytes);
     archive
+}
+
+/// Build a tiny valid scene with `CD_NAME` then `CD_TEXT`. String #1 exercises
+/// the engine's index-derived UTF-16 XOR transform rather than a zero-key path.
+fn synthetic_scene_payload(text: &[u8]) -> Vec<u8> {
+    let text = std::str::from_utf8(text).expect("synthetic UTF-8 text");
+    let strings = [format!("speaker-{text}"), text.to_string()];
+    let mut bytecode = Vec::new();
+    push_str(&mut bytecode, 0);
+    bytecode.push(0x32); // CD_NAME
+    push_str(&mut bytecode, 1);
+    bytecode.push(0x31); // CD_TEXT
+    bytecode.extend_from_slice(&0_i32.to_le_bytes()); // read flag
+    bytecode.push(0x16); // CD_EOF
+
+    let str_index_ofs = SCN_HEADER_BYTE_LEN + bytecode.len();
+    let str_list_ofs = str_index_ofs + strings.len() * 8;
+    let mut payload = vec![0_u8; SCN_HEADER_BYTE_LEN];
+    put_header_field(&mut payload, 0, SCN_HEADER_BYTE_LEN as u32);
+    put_header_field(&mut payload, 1, SCN_HEADER_BYTE_LEN as u32);
+    put_header_field(&mut payload, 2, bytecode.len() as u32);
+    put_header_field(&mut payload, 3, str_index_ofs as u32);
+    put_header_field(&mut payload, 4, strings.len() as u32);
+    put_header_field(&mut payload, 5, str_list_ofs as u32);
+    put_header_field(&mut payload, 6, strings.len() as u32);
+    payload.extend_from_slice(&bytecode);
+
+    let encoded: Vec<Vec<u8>> = strings
+        .iter()
+        .enumerate()
+        .map(|(index, string)| xor_utf16(string, index as u16))
+        .collect();
+    let mut char_offset = 0_u32;
+    for encoded_string in &encoded {
+        payload.extend_from_slice(&char_offset.to_le_bytes());
+        payload.extend_from_slice(&((encoded_string.len() / 2) as u32).to_le_bytes());
+        char_offset += (encoded_string.len() / 2) as u32;
+    }
+    for encoded_string in encoded {
+        payload.extend_from_slice(&encoded_string);
+    }
+    payload
+}
+
+fn synthetic_text_only_scene_payload(text_runs: usize) -> Vec<u8> {
+    let mut bytecode = Vec::with_capacity(text_runs * 14 + 1);
+    for _ in 0..text_runs {
+        push_str(&mut bytecode, 0);
+        bytecode.push(0x31); // CD_TEXT
+        bytecode.extend_from_slice(&0_i32.to_le_bytes()); // read flag
+    }
+    bytecode.push(0x16); // CD_EOF
+
+    let str_index_ofs = SCN_HEADER_BYTE_LEN + bytecode.len();
+    let str_list_ofs = str_index_ofs + 8;
+    let mut payload = vec![0_u8; SCN_HEADER_BYTE_LEN];
+    put_header_field(&mut payload, 0, SCN_HEADER_BYTE_LEN as u32);
+    put_header_field(&mut payload, 1, SCN_HEADER_BYTE_LEN as u32);
+    put_header_field(&mut payload, 2, bytecode.len() as u32);
+    put_header_field(&mut payload, 3, str_index_ofs as u32);
+    put_header_field(&mut payload, 4, 1);
+    put_header_field(&mut payload, 5, str_list_ofs as u32);
+    put_header_field(&mut payload, 6, 1);
+    payload.extend_from_slice(&bytecode);
+
+    let encoded = xor_utf16("text", 0);
+    payload.extend_from_slice(&0_u32.to_le_bytes());
+    payload.extend_from_slice(&((encoded.len() / 2) as u32).to_le_bytes());
+    payload.extend_from_slice(&encoded);
+    payload
+}
+
+fn push_str(bytes: &mut Vec<u8>, index: i32) {
+    bytes.push(0x02); // CD_PUSH
+    bytes.extend_from_slice(&20_i32.to_le_bytes()); // FM_STR
+    bytes.extend_from_slice(&index.to_le_bytes());
+}
+
+fn xor_utf16(text: &str, index: u16) -> Vec<u8> {
+    let key = 28807_u16.wrapping_mul(index);
+    text.encode_utf16()
+        .chain(std::iter::once(0))
+        .flat_map(|unit| (unit ^ key).to_le_bytes())
+        .collect()
 }
 
 fn masked_chunk(payload: &[u8]) -> Vec<u8> {
