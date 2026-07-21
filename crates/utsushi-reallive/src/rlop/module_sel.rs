@@ -25,19 +25,11 @@
 //!
 //! # Module addressing
 //!
-//! The choice family lives at `(module_type=0, module_id=2)` — the REAL
-//! RealLive `Sel` module (matching rlvm's `RLModule("Sel", 0, 2)` and the
-//! `kaifuu-reallive` decompiler). This was VALIDATED against real bytecode:
-//! surveying all 198 Sweetie HD scenes, every one of the 117 real
-//! selects is `select_w` at `(module_type=0, module_id=2, opcode=2)`, each
-//! framed with a `{ … }` option block. An earlier revision registered the
-//! family at `module_type=1` (a WRONG constant misread from a
-//! `(1, 5, opcode=120)` `SYS2` byte at Sweetie HD scene 1 offset `0x001e`);
-//! that mis-registration meant the real `(0, 2, 2)` selects never
-//! dispatched through this pipeline — they were gap-filled by
-//! [`crate::rlop::module_catalog`] as `Advance` no-ops, leaving the choice
-//! machinery DORMANT on real bytes (recognized 0-unknown, but never
-//! presented, never driving a branch). Corrected to `module_type=0`.
+//! The choice family lives at `(module_type=0, module_id=2)`, matching the
+//! RealLive `Sel` module and the decompiler. Real bytecode validates
+//! `select_w` at `(0,2,2)` and button-object selection at `(0,2,4)`.
+//! Registering this family at `module_type=0` is essential: a wrong module
+//! type leaves recognized selects gap-filled as `Advance` no-ops.
 //!
 //! The registered opcode set is EXACTLY rlvm's `Sel` module `{0,1,2,3,4,14,20}`
 //! (verified against `rlvm/src/src/modules/module_sel.cc` — see below); there
@@ -66,24 +58,12 @@
 //! `14` | `select_objbtn_cancel` | [`SelectVariant::SelectObjbtnCancel`]
 //! `20` | `objbtn_init` | [`ObjbtnInitOp`] (setup, not a select)
 //!
-//! # Choice MODALITY — the graphical / text split (real-bytes-derived)
+//! # Button-object presentation
 //!
-//! WHICH graphical presentation a select renders as is NOT a function of the
-//! option count (the retired heuristic). It is derived from the surrounding
-//! [`SelectionControl`] button-setup ops — see [`SelectionControlSignal`] and
-//! [`select_modality`]. Surveying all 198 real Sweetie HD scenes, the
-//! button-object SelectionControl setup ops are `objbtn_init` (`(0,2,20)`
-//! 43×) and `select_objbtn` (`(0,2,4)`, 33×). A select that sits in a scene
-//! carrying those ops is a GRAPHICAL button-object select; a select with no
-//! such setup is a plain vertical TEXT list. The count-based route-vs-clothing
-//! split had no real-bytes basis (a 2-option and a ≥3-option select are the
-//! same `select_w` opcode) and is removed. NOTE (honest finding): the real
-//! route (character-panel) and clothing (costume-strip) PICK screens are the
-//! `select_objbtn` button-object ops themselves (NO inline option block); the
-//! button-object-context `select_w` selects in the real corpus are
-//! gallery / scene-jump / time-of-day menus. The SelectionControl ops do NOT
-//! carry a route-vs-clothing discriminator, so pair-vs-grid is only a LAYOUT
-//! arrangement of the placed option-buttons, not a semantic claim.
+//! A `select_objbtn` prompt captures each foreground button's image reference,
+//! transform, and hit rectangle from the decoded graphics state. The render
+//! path uses that metadata directly. It never chooses a pair, strip, or grid
+//! from the number of buttons.
 //!
 //! [`SelectionControl`]: crate::rlop::module_catalog
 //!
@@ -129,7 +109,8 @@ use super::module_msg::LongOpIdSequence;
 pub use super::selection_prompt::SelectionPrompt;
 use super::{DispatchOutcome, ExprValue, LongOp, RLOperation, RlopKey, RlopRegistry};
 use crate::gameexe::Gameexe;
-use crate::graphics_objects::GraphicsObject;
+use crate::graphics_objects::{GraphicsObject, GraphicsObjectKind, HitRegion};
+use crate::render_pipeline::{ObjectButtonChoiceOption, ObjectButtonChoiceWindowBuildError};
 use crate::rlop::module_obj::GraphicsRuntime;
 use crate::vm::Vm;
 
@@ -137,20 +118,13 @@ mod scheduler;
 
 pub use self::scheduler::ChoiceInputScheduler;
 
-/// `module_sel` module type byte. The REAL RealLive `Sel` module lives at
-/// `module_type = 0` (matching rlvm's `RLModule("Sel", 0, 2)` and the
-/// Sweetie HD + Kanon bytecode: every real `select_w` is `(0, 2, 2)`). An
-/// earlier revision pinned this at `1` — a WRONG constant misread from a
-/// `(type=1, id=5, opcode=120)` `SYS2` byte — so the real `(0, 2, 2)`
-/// selects never dispatched through the choice pipeline (they were
-/// gap-filled by the opcode catalog as `Advance` no-ops and the choice
-/// machinery was dormant on real bytes). Corrected to `0`.
+/// `module_sel` module type byte. The real RealLive `Sel` module uses
+/// `module_type = 0`; observed `select_w` commands are `(0,2,2)`.
 pub const SEL_MODULE_TYPE: u8 = 0;
 
 /// `module_sel` module id byte. This is the REAL RealLive semantic id
 /// `2` used by the `kaifuu-reallive` decompiler
-/// (`opcode::module_id::SEL`) and validated on the real bytecode (every
-/// real Sweetie HD / Kanon select is `module_id = 2`).
+/// (`opcode::module_id::SEL`) and validated on real bytecode.
 pub const SEL_MODULE_ID: u8 = 2;
 
 /// `module_sel` `select` opcode (basic choice).
@@ -168,35 +142,24 @@ pub const OPCODE_SELECT_W: u16 = 0x0002;
 /// scene's string table and yields a [`SelectLongOp`] like every other text
 /// select. Registering it closes the oracle-coverage gap — rlvm's `Sel` module
 /// registers `{0,1,2,3,4,14,20}` and this opcode `3` was previously unhandled
-/// (no variant at all). It does NOT appear in the two proven corpora (Sweetie
-/// HD 0×, Kanon 0×), so it is an oracle-faithfulness registration, not a
-/// real-bytes-driven one. Distinct from the port's opcode-`1`
+/// (no variant at all). It is an oracle-faithfulness registration rather than
+/// a corpus-driven one. Distinct from the port's opcode-`1`
 /// [`OPCODE_SELECT_S`]; see the module note on the pre-existing `0/1/2` naming.
 pub const OPCODE_SELECT_S3: u16 = 0x0003;
 /// `module_sel` `select_objbtn` opcode (object-button choice). REAL RealLive
-/// value `4` (rlvm `module_sel.cc` — `AddOpcode(4, 0, "select_objbtn")`)
-/// VALIDATED against real Sweetie HD bytes: `(0, 2, 4)` occurs 33× across the
-/// archive (the button-object graphical select — the route love-interest and
-/// clothing/costume picks, driven by on-screen button SPRITES, carrying NO
-/// inline `{ … }` option block). An earlier revision pinned this at `3` — a
-/// FICTIONAL value with ZERO occurrences on real bytes; `select_objbtn` is `4`.
+/// value `4` (rlvm `module_sel.cc` — `AddOpcode(4, 0, "select_objbtn")`). It
+/// selects on-screen button objects and carries no inline option block.
 pub const OPCODE_SELECT_OBJBTN: u16 = 0x0004;
 /// `module_sel` `objbtn_init` opcode (button-object group setup). REAL
-/// RealLive value `20` (rlvm `AddOpcode(20, *, "objbtn_init")`), VALIDATED on
-/// real Sweetie HD bytes: `(0, 2, 20)` occurs 43× — it INITIALISES the
-/// on-screen button-object group a following `select_objbtn` selects over.
-/// This is the load-bearing SelectionControl button-setup op: its presence in
-/// a scene is the real signal that the scene's select is a GRAPHICAL
-/// button-object select rather than a plain text-window select.
+/// RealLive value `20` (rlvm `AddOpcode(20, *, "objbtn_init")`). It
+/// initialises the button-object group a following `select_objbtn` selects.
 pub const OPCODE_OBJBTN_INIT: u16 = 20;
 /// `module_sel` `select_objbtn_cancel` opcode (cancelable button-object
 /// select). REAL RealLive value `14` — rlvm `module_sel.cc` `AddOpcode(14, 0
 /// "select_objbtn_cancel", new Sel_select_objbtn_cancel_0)` (and its
 /// two-arg `_1` overload): it pushes the SAME `ButtonObjectSelectLongOperation`
 /// as `select_objbtn` (`4`) but calls `set_cancelable()` so the user may escape
-/// the prompt. Observed 3× on real Sweetie HD bytes — ALL at `module_type=0`
-/// (0× at types 1/2; 0× in Kanon), so registering `(0,2,14)` fully covers every
-/// real occurrence. [`SelectObjbtnCancelOp`] creates a cancelable A3 carrier
+/// the prompt. [`SelectObjbtnCancelOp`] creates a cancelable A3 carrier
 /// over the same foreground bindings as opcode `4`; only the exact Raw
 /// secondary-release input token cancels it. Other cancel/input affordances
 /// remain outside this opcode path. Previously this opcode was a catalog
@@ -267,15 +230,9 @@ impl SelectVariant {
         }
     }
 
-    /// The canonical [`SelectionControl`] button-object SETUP opcodes — the
-    /// real-bytes signal that a scene presents its select GRAPHICALLY (button
-    /// sprites placed on screen) rather than as a plain text-window list. On
-    /// real Sweetie HD these are `objbtn_init` ([`OPCODE_OBJBTN_INIT`] = 20
-    /// 43×), `select_objbtn` ([`OPCODE_SELECT_OBJBTN`] = 4, 33×), and
-    /// `select_objbtn_cancel` ([`OPCODE_SELECT_OBJBTN_CANCEL`] = 14, 3×). A
-    /// select whose scene carries any of these is a GRAPHICAL button-object
-    /// select; a select with none is a plain text list. This is the signal
-    /// [`selection_control_signal`] tests for.
+    /// The canonical [`SelectionControl`] button-object setup opcodes. They
+    /// identify scenes containing on-screen button groups; the prompt itself
+    /// carries the placement and art metadata used for rendering.
     ///
     /// [`SelectionControl`]: crate::rlop::module_catalog
     pub const BUTTON_OBJECT_SETUP_OPCODES: &'static [u16] = &[
@@ -285,9 +242,8 @@ impl SelectVariant {
     ];
 }
 
-/// The real-bytes modality SIGNAL a select is classified by. Derived NOT from
-/// the option count (the retired heuristic) but from the presence of
-/// [`SelectionControl`] button-object setup ops around the select — see
+/// The real-bytes signal that a scene contains a button-object setup. It is
+/// derived from [`SelectionControl`] setup ops around the select — see
 /// [`SelectVariant::BUTTON_OBJECT_SETUP_OPCODES`] and
 /// [`selection_control_signal`].
 ///
@@ -295,13 +251,11 @@ impl SelectVariant {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectionControlSignal {
     /// No button-object SelectionControl setup ops around the select — a
-    /// plain text-window select (the vast majority of real selects: the
-    /// dialogue yes/no choices). Renders as [`SelectModality::TextList`].
+    /// plain text-window select.
     TextWindow,
     /// Button-object SelectionControl setup ops (`objbtn_init`
     /// `select_objbtn`) are present in the scene — the select is presented
-    /// GRAPHICALLY, with on-screen button sprites. Renders as a graphical
-    /// modality (see [`select_modality`]).
+    /// graphically, with on-screen button sprites.
     ButtonObject,
 }
 
@@ -313,10 +267,8 @@ pub enum SelectionControlSignal {
 /// iff any [`SelectVariant::BUTTON_OBJECT_SETUP_OPCODES`] appears, else
 /// [`SelectionControlSignal::TextWindow`].
 ///
-/// This is the REAL signal that replaces the option-count heuristic: it keys
-/// off the actual SelectionControl button-setup ops the RealLive bytecode
-/// emits to place on-screen selection buttons, exactly as rlvm's
-/// `objbtn_init` / `select_objbtn` do.
+/// This keys off the actual SelectionControl setup ops the RealLive bytecode
+/// emits to place on-screen selection buttons.
 pub fn selection_control_signal(
     sel_opcodes: impl IntoIterator<Item = u16>,
 ) -> SelectionControlSignal {
@@ -327,76 +279,6 @@ pub fn selection_control_signal(
         SelectionControlSignal::ButtonObject
     } else {
         SelectionControlSignal::TextWindow
-    }
-}
-
-/// The RENDER modality the render layer picks a window for. This is pure
-/// INTERPRETATION of an already-recognized (0-unknown) select — it never
-/// changes which opcode was recognized, only how the options are laid out on
-/// screen. The ACT path (chosen index → store register → `goto_on`) is
-/// identical for all forms.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SelectModality {
-    /// Vertical text list — a select with NO button-object SelectionControl
-    /// setup ([`SelectionControlSignal::TextWindow`]), rendered by
-    /// [`crate::ChoiceWindow`]. No render marker.
-    TextList,
-    /// Side-by-side graphical pair — a button-object select
-    /// ([`SelectionControlSignal::ButtonObject`]) whose placed option-buttons
-    /// lay out as ≤2 side-by-side panels, rendered by
-    /// [`crate::SpatialChoiceWindow`]. Marked `;spatial`.
-    SpatialPair,
-    /// Image grid — a button-object select
-    /// ([`SelectionControlSignal::ButtonObject`]) whose placed option-buttons
-    /// lay out as a strip / grid of ≥3 icon boxes, rendered by
-    /// [`crate::ImageGridChoiceWindow`]. Marked `;imagegrid`.
-    ///
-    /// NOTE: pair-vs-grid is a LAYOUT arrangement of the placed buttons, NOT a
-    /// route-vs-clothing semantic — the SelectionControl ops carry no such
-    /// discriminator on real bytes.
-    ImageGrid,
-}
-
-impl SelectModality {
-    /// The `text_surface` render marker appended after the base
-    /// `choice:<idx>` for this modality (`None` for the plain text list).
-    /// The base `choice:<idx>` prefix is preserved regardless, so the
-    /// choice/act filtering is unchanged.
-    pub fn render_marker(self) -> Option<&'static str> {
-        match self {
-            Self::TextList => None,
-            Self::SpatialPair => Some("spatial"),
-            Self::ImageGrid => Some("imagegrid"),
-        }
-    }
-}
-
-/// Interpret which [`SelectModality`] a recognized select renders as, from its
-/// real-bytes [`SelectionControlSignal`] and its placed option/button count.
-///
-/// - [`SelectionControlSignal::TextWindow`] → [`SelectModality::TextList`]
-///   (regardless of count — a plain text-window select).
-/// - [`SelectionControlSignal::ButtonObject`] → a GRAPHICAL modality: the
-///   placed option-buttons are ARRANGED as a side-by-side pair
-///   ([`SelectModality::SpatialPair`], ≤2) or a strip / grid
-///   ([`SelectModality::ImageGrid`], ≥3). This count is a LAYOUT arrangement of
-///   the already-graphical button-object select, NOT the graphical-vs-text
-///   decision (that is the SelectionControl signal) and NOT a route-vs-clothing
-///   semantic (the ops carry no such discriminator).
-///
-/// This REPLACES the retired `select_modality(variant, count)` heuristic that
-/// keyed graphical-vs-text on the option count alone (which had no real-bytes
-/// basis: route, clothing, and text picks are all the same `select_w` opcode).
-pub fn select_modality(signal: SelectionControlSignal, option_count: usize) -> SelectModality {
-    match signal {
-        SelectionControlSignal::TextWindow => SelectModality::TextList,
-        SelectionControlSignal::ButtonObject => {
-            if option_count >= 3 {
-                SelectModality::ImageGrid
-            } else {
-                SelectModality::SpatialPair
-            }
-        }
     }
 }
 
@@ -446,20 +328,46 @@ pub struct ObjectButtonPromptOption {
     pub hit_region: ObjectButtonHitRegion,
 }
 
+impl ObjectButtonPromptOption {
+    /// Convert this prompt snapshot to renderer input. A decoded rectangle and
+    /// image reference are both mandatory; callers must explicitly handle
+    /// unavailable metadata rather than receiving synthesized geometry.
+    pub fn render_choice_option(
+        &self,
+    ) -> Result<ObjectButtonChoiceOption, ObjectButtonChoiceWindowBuildError> {
+        let bounds = match self.hit_region {
+            HitRegion::Known(bounds) => bounds,
+            HitRegion::Unavailable(reason) => {
+                return Err(ObjectButtonChoiceWindowBuildError::GeometryUnavailable {
+                    display_index: self.display_index,
+                    reason,
+                });
+            }
+        };
+        let GraphicsObjectKind::Image { image_ref } = &self.visual_snapshot.kind else {
+            return Err(ObjectButtonChoiceWindowBuildError::NonImageArt {
+                display_index: self.display_index,
+            });
+        };
+        Ok(ObjectButtonChoiceOption {
+            display_index: self.display_index,
+            button_number: self.button_number,
+            fg_slot: self.fg_slot,
+            bounds,
+            art: image_ref.clone(),
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjectButtonCandidateScope {
     TopLevelForegroundOnly,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ObjectButtonHitRegion {
-    Unavailable(ObjectButtonHitRegionUnavailable),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ObjectButtonHitRegionUnavailable {
-    TopLevelObjectDataNotModeled,
-}
+/// Prompt-time button hit geometry.  A known rectangle is derived from the
+/// decoded g00 pattern geometry plus the object transform; unavailable is an
+/// explicit metadata gap, never a request to synthesize a layout.
+pub type ObjectButtonHitRegion = HitRegion;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SelectionPromptKind {
@@ -670,7 +578,7 @@ impl SelRuntime {
         // `SELBTN.NNN.*` styling suffix. The render MODALITY (graphical
         // button-object vs. plain text list) is NOT a per-command property —
         // it is a SCENE-context property derived from the surrounding
-        // [`SelectionControl`] button-setup ops (see [`select_modality`]
+        // [`SelectionControl`] button-setup ops (see
         // [`selection_control_signal`]), applied by the render / analysis
         // layer that has the whole scene, not by this single-command dispatch.
         //
@@ -915,15 +823,16 @@ fn dispatch_object_select(
             options: candidates
                 .into_iter()
                 .enumerate()
-                .map(|(display_index, candidate)| ObjectButtonPromptOption {
-                    display_index: display_index as u16,
-                    button_number: candidate.options.button_number,
-                    fg_slot: candidate.slot,
-                    visual_snapshot: candidate.object,
-                    candidate_scope: ObjectButtonCandidateScope::TopLevelForegroundOnly,
-                    hit_region: ObjectButtonHitRegion::Unavailable(
-                        ObjectButtonHitRegionUnavailable::TopLevelObjectDataNotModeled,
-                    ),
+                .map(|(display_index, candidate)| {
+                    let hit_region = candidate.object.hit_region(None);
+                    ObjectButtonPromptOption {
+                        display_index: display_index as u16,
+                        button_number: candidate.options.button_number,
+                        fg_slot: candidate.slot,
+                        visual_snapshot: candidate.object,
+                        candidate_scope: ObjectButtonCandidateScope::TopLevelForegroundOnly,
+                        hit_region,
+                    }
                 })
                 .collect(),
         },
@@ -1241,9 +1150,8 @@ mod tests {
     #[test]
     fn objbtn_opcode_is_real_rlvm_value_four() {
         // The real RealLive `select_objbtn` opcode is 4 (rlvm
-        // `AddOpcode(4, 0, "select_objbtn")`), VALIDATED on real Sweetie HD
-        // bytes (33 occurrences of `(0,2,4)`). The old fictional value 3 has
-        // ZERO occurrences on real bytes.
+        // `AddOpcode(4, 0, "select_objbtn")`). The old fictional value 3 has
+        // zero observed occurrences.
         assert_eq!(OPCODE_SELECT_OBJBTN, 4);
         assert_eq!(SelectVariant::SelectObjbtn.opcode(), 4);
         assert_eq!(OPCODE_OBJBTN_INIT, 20);
@@ -1265,7 +1173,8 @@ mod tests {
     fn select_objbtn_uses_slot_ordered_foreground_values_without_text() {
         use crate::graphics_objects::{
             ButtonOptions, GraphicsAlpha, GraphicsColourTone, GraphicsLayer, GraphicsObject,
-            GraphicsObjectKind, GraphicsPosition, GraphicsScale, ImageRef, WipeColour,
+            GraphicsObjectKind, GraphicsPosition, GraphicsScale, HitRect, HitRegion,
+            HitRegionUnavailable, ImageRef, SurfaceGeometry, WipeColour,
         };
 
         let sink = Arc::new(CollectingSink::new());
@@ -1290,6 +1199,11 @@ mod tests {
         };
         image_button.layer_order = 41;
         image_button.visible = false;
+        image_button.geometry.surface = Some(SurfaceGeometry {
+            width: 40,
+            height: 30,
+            origin: GraphicsPosition { x: 5, y: 7 },
+        });
         image_button.button_options = Some(ButtonOptions {
             action: 0,
             se: 0,
@@ -1370,17 +1284,38 @@ mod tests {
         assert_eq!(options[1].button_number, 2);
         assert_eq!(options[1].fg_slot, 11);
         assert_eq!(options[1].visual_snapshot, expected_wipe);
+        assert_eq!(
+            options[0].hit_region,
+            HitRegion::Known(HitRect {
+                x: 26,
+                y: -16,
+                width: 40,
+                height: 30,
+            }),
+            "the prompt must snapshot the decoded object geometry"
+        );
+        assert_eq!(
+            options[1].hit_region,
+            HitRegion::Unavailable(HitRegionUnavailable::AssetPatternGeometryUnavailable)
+        );
         assert!(options.iter().all(|option| {
             option.candidate_scope == ObjectButtonCandidateScope::TopLevelForegroundOnly
-                && option.hit_region
-                    == ObjectButtonHitRegion::Unavailable(
-                        ObjectButtonHitRegionUnavailable::TopLevelObjectDataNotModeled,
-                    )
         }));
         assert!(matches!(
             &options[0].visual_snapshot.kind,
             GraphicsObjectKind::Image { image_ref }
                 if image_ref.asset_key == "missing-g00" && image_ref.region_index == Some(12)
+        ));
+        let render_option = options[0]
+            .render_choice_option()
+            .expect("decoded image button must produce renderer metadata");
+        assert_eq!(render_option.fg_slot, 3);
+        assert_eq!(render_option.bounds.x, 26);
+        assert_eq!(render_option.bounds.y, -16);
+        assert_eq!(render_option.art.asset_key, "missing-g00");
+        assert!(matches!(
+            options[1].render_choice_option(),
+            Err(ObjectButtonChoiceWindowBuildError::GeometryUnavailable { .. })
         ));
         assert!(matches!(
             options[1].visual_snapshot.kind,
@@ -1483,42 +1418,6 @@ mod tests {
             selection_control_signal([OPCODE_SELECT_OBJBTN, OPCODE_SELECT_W]),
             SelectionControlSignal::ButtonObject
         );
-    }
-
-    #[test]
-    fn select_modality_keys_on_the_real_signal_not_the_count() {
-        // TextWindow signal → TextList, REGARDLESS of option count (the
-        // count no longer decides graphical-vs-text — the retired heuristic).
-        assert_eq!(
-            select_modality(SelectionControlSignal::TextWindow, 2),
-            SelectModality::TextList
-        );
-        assert_eq!(
-            select_modality(SelectionControlSignal::TextWindow, 5),
-            SelectModality::TextList
-        );
-        // ButtonObject signal → a GRAPHICAL modality; the placed-button count
-        // is only a LAYOUT arrangement (pair vs grid), not the graphical-vs-
-        // text decision and not a route-vs-clothing semantic.
-        assert_eq!(
-            select_modality(SelectionControlSignal::ButtonObject, 2),
-            SelectModality::SpatialPair
-        );
-        assert_eq!(
-            select_modality(SelectionControlSignal::ButtonObject, 3),
-            SelectModality::ImageGrid
-        );
-        assert_eq!(
-            select_modality(SelectionControlSignal::ButtonObject, 6),
-            SelectModality::ImageGrid
-        );
-    }
-
-    #[test]
-    fn render_marker_pins_per_modality() {
-        assert_eq!(SelectModality::TextList.render_marker(), None);
-        assert_eq!(SelectModality::SpatialPair.render_marker(), Some("spatial"));
-        assert_eq!(SelectModality::ImageGrid.render_marker(), Some("imagegrid"));
     }
 
     #[test]

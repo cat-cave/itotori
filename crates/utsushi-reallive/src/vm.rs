@@ -324,8 +324,7 @@ pub struct Vm {
 // selectable on-screen button (0-based `number` + button-group `group`)
 // for a matching `select_objbtn` (`sel (0,2,4)`). Screen coordinates
 // g00 refs come from separate `objSetPos` / `objOfFile` ops; the render
-// layer lays buttons out from that real count (see
-// `SpatialChoiceWindow` / `ImageGridChoiceWindow`).
+// layer uses decoded object-button geometry and art metadata.
 
 impl Vm {
     /// Construct a VM positioned at `(scene, pc)` with empty banks

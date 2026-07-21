@@ -227,7 +227,7 @@ pub use syscall::{
 };
 
 pub use graphics_objects::{
-    DstRectKernelInput, DstRectKernelParent, GRAPHICS_OBJECT_SLOT_COUNT,
+    ButtonOptions, DstRectKernelInput, DstRectKernelParent, GRAPHICS_OBJECT_SLOT_COUNT,
     GRAPHICS_OBJECT_TOTAL_SLOTS, GraphicsAlpha, GraphicsColourTone, GraphicsLayer, GraphicsObject,
     GraphicsObjectKind, GraphicsObjectParent, GraphicsObjectStack, GraphicsObjectTarget,
     GraphicsPercentScale, GraphicsPlane, GraphicsPosition, GraphicsScale, GraphicsStackError,
@@ -235,13 +235,13 @@ pub use graphics_objects::{
     WipeColour, derive_dst_rect,
 };
 pub use render_pipeline::{
-    ChoiceWindow, Framebuffer, ImageGridCell, ImageGridChoiceWindow, ObjectWarning, PNG_BIT_DEPTH,
-    PNG_COLOUR_TYPE_RGBA, PNG_FILE_MAGIC, RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE,
-    RENDER_PIPELINE_OBJECT_SKIPPED_CODE, RENDER_PIPELINE_ZERO_SCREEN_SIZE_CODE,
-    RGBA_BYTES_PER_PIXEL, RecordingFrameArtifactSink, RedactionPolicy, RenderEmitError, RenderPass,
-    RenderPassBuildError, RenderReport, SCREENSHOT_ARTIFACT_KIND, SceneEmit, SceneScreenshots,
-    SkipReason, SkippedObject, SpatialChoiceWindow, SpatialOption, TextBackdrop, TextLayer,
-    adler32, crc32_ieee, encode_png_rgba_deterministic, sha256_hex,
+    ChoiceWindow, Framebuffer, ObjectButtonChoiceOption, ObjectButtonChoiceWindow,
+    ObjectButtonChoiceWindowBuildError, ObjectWarning, PNG_BIT_DEPTH, PNG_COLOUR_TYPE_RGBA,
+    PNG_FILE_MAGIC, RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE, RENDER_PIPELINE_OBJECT_SKIPPED_CODE,
+    RENDER_PIPELINE_ZERO_SCREEN_SIZE_CODE, RGBA_BYTES_PER_PIXEL, RecordingFrameArtifactSink,
+    RedactionPolicy, RenderEmitError, RenderPass, RenderPassBuildError, RenderReport,
+    SCREENSHOT_ARTIFACT_KIND, SceneEmit, SceneScreenshots, SkipReason, SkippedObject, TextBackdrop,
+    TextLayer, adler32, crc32_ieee, encode_png_rgba_deterministic, sha256_hex,
 };
 
 pub use save::{
@@ -321,15 +321,14 @@ pub use rlop::{
     OPCODE_NAME_OPEN, OPCODE_OBJBTN_INIT, OPCODE_PAGE, OPCODE_PARAGRAPH_BREAK, OPCODE_PAUSE,
     OPCODE_SELECT_OBJBTN, OPCODE_SELECT_OBJBTN_CANCEL, OPCODE_SELECT_S, OPCODE_SELECT_S3,
     OPCODE_SELECT_W, OPCODE_TEXT_WINDOW, ObjbtnInitOp, ObjectButtonCandidateScope,
-    ObjectButtonHitRegion, ObjectButtonHitRegionUnavailable, ObjectButtonPromptOption,
-    PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp, PauseLongOpDecodeError, RLOperation, RlopKey,
-    RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE, SEL_OPCODE_SELECT, SEL_RLOP_COUNT,
-    SELECT_PRIVATE_STATE_MAGIC, SelRuntime, SelRuntimeWarning, SelectLongOp,
-    SelectLongOpDecodeError, SelectModality, SelectObjbtnCancelOp, SelectObjbtnOp, SelectOp,
+    ObjectButtonHitRegion, ObjectButtonPromptOption, PAUSE_PRIVATE_STATE_MAGIC, PauseLongOp,
+    PauseLongOpDecodeError, RLOperation, RlopKey, RlopRegistry, SEL_MODULE_ID, SEL_MODULE_TYPE,
+    SEL_OPCODE_SELECT, SEL_RLOP_COUNT, SELECT_PRIVATE_STATE_MAGIC, SelRuntime, SelRuntimeWarning,
+    SelectLongOp, SelectLongOpDecodeError, SelectObjbtnCancelOp, SelectObjbtnOp, SelectOp,
     SelectS3Op, SelectSOp, SelectVariant, SelectWOp, SelectionChoiceCountScheduler,
     SelectionControlSignal, SelectionPrompt, SelectionPromptKind, dispatch_textout,
-    dispatch_textout_at, register_sel_rlops, register_text_rlops, select_modality,
-    selection_control_signal, text_module_msg_keys,
+    dispatch_textout_at, register_sel_rlops, register_text_rlops, selection_control_signal,
+    text_module_msg_keys,
 };
 
 pub use rlop::module_mem::{

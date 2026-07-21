@@ -40,7 +40,7 @@
 //!   the `addObjectFunctions` block (`objShow=1004, objTint=1012
 //!   objColour=1016, objButtonOpts=1064, objEveDisplay=2004`).
 //! - object MANAGEMENT = `module_id 60`/`61`(fg)/`62`(bg):
-//!   `objFree=0, objInit=10, objFreeInit=11, objFreeAll=100
+//!   `objAlloc=1` (on `60`), `objFree=0, objInit=10, objFreeInit=11, objFreeAll=100
 //!   objInitAll=110, objFreeInitAll=111` (+ `objCopyFgToBg=2` on `60`).
 //!
 //! # Lattice-type registration

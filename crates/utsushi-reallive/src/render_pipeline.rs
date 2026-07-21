@@ -153,14 +153,9 @@ impl RedactionPolicy {
     }
 }
 
-/// In-process framebuffer. Body lives in the [`framebuffer`] child module;
-/// re-exported here so the crate public API path is unchanged.
 mod framebuffer;
 pub use framebuffer::Framebuffer;
 
-/// The localized [`TextLayer`] painter and its dialogue [`TextBackdrop`]
-/// backing. Bodies live in the [`text_layer`] child module; re-exported
-/// here so the crate public API path is unchanged.
 mod text_layer;
 pub use text_layer::{TextBackdrop, TextLayer};
 
@@ -271,12 +266,10 @@ fn window_box_geometry(
     }
 }
 
-/// Text-list / spatial / image-grid choice window layout types. Bodies
-/// live in the [`choice_window`] child module; re-exported here so the
-/// crate public API path is unchanged.
 mod choice_window;
 pub use choice_window::{
-    ChoiceWindow, ImageGridCell, ImageGridChoiceWindow, SpatialChoiceWindow, SpatialOption,
+    ChoiceWindow, ObjectButtonChoiceOption, ObjectButtonChoiceWindow,
+    ObjectButtonChoiceWindowBuildError,
 };
 
 /// Real TrueType glyph rasteriser for the localized text layer.
@@ -408,9 +401,6 @@ impl std::fmt::Debug for RenderPass {
 }
 
 impl RenderPass {
-    /// Construct a render pass from a [`ScreenSize`] (e.g. the value
-    /// parsed from Sweetie HD's `Gameexe.ini` `SCREENSIZE_MOD=999,1280,720`
-    /// by [`crate::SyscallDispatcher::screen_size`]).
     pub fn new(screen_size: ScreenSize) -> Result<Self, RenderPassBuildError> {
         Self::with_dimensions(screen_size.width, screen_size.height)
     }
@@ -481,6 +471,17 @@ impl RenderPass {
         policy: RedactionPolicy,
     ) -> Framebuffer {
         self.rasterise_reporting(stack, policy).0
+    }
+
+    pub fn rasterise_object_button_choice(
+        &self,
+        stack: &GraphicsObjectStack,
+        choice: &ObjectButtonChoiceWindow,
+        policy: RedactionPolicy,
+    ) -> Framebuffer {
+        let mut framebuffer = self.rasterise_with_policy(stack, policy);
+        framebuffer.draw_object_button_choice_window(choice);
+        framebuffer
     }
 
     /// Rasterise `stack` under `policy` exactly like
@@ -936,10 +937,8 @@ impl RenderPass {
 mod compositing;
 use compositing::{apply_tone, apply_tone_rgba, redact_edge_map, scale_dimension};
 
-/// A concrete supported [`FrameArtifactSink`] that validates every
-/// announced [`FrameArtifact`] and collects the accepted frames. Body
-/// lives in the [`sink`] child module; re-exported here so the crate
-/// public API path is unchanged.
+/// A concrete [`FrameArtifactSink`] validates every announced [`FrameArtifact`].
+/// Its body lives in the [`sink`] child module; re-exported here unchanged.
 mod sink;
 pub use sink::RecordingFrameArtifactSink;
 

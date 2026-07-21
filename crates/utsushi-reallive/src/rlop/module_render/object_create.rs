@@ -60,10 +60,31 @@ fn created_object(
     Some((buf, object))
 }
 
+/// Populate an image object's hit geometry from its decoded g00 metadata.
+/// The graphics stack keeps this alongside the image reference, so a later
+/// button-object select derives its bounds from the bytecode-selected art
+/// pattern rather than a presentation heuristic.
+fn hydrate_image_geometry(runtime: &GraphicsRuntime, object: &mut GraphicsObject) {
+    let GraphicsObjectKind::Image { image_ref } = &object.kind else {
+        return;
+    };
+    if image_ref.asset_key.is_empty() {
+        return;
+    }
+    let pattern = image_ref.region_index.unwrap_or(0);
+    match runtime.probe_g00_geometry_through_vfs(&image_ref.asset_key, pattern, "obj.objOfFile") {
+        Ok(Some(surface)) => object.geometry.surface = Some(surface),
+        // No package is a normal, observable unavailable-geometry state. Do
+        // not synthesize a rectangle from the framebuffer or option count.
+        Ok(None) => {}
+        Err(warning) => runtime.push_warning(warning),
+    }
+}
+
 impl RLOperation for ObjCreateOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
         // objGeneric_*: (buf, filename[, visible, x, y, pattern, …]).
-        let Some((buf, object)) = created_object(self.plane, args, self.provenance) else {
+        let Some((buf, mut object)) = created_object(self.plane, args, self.provenance) else {
             self.runtime
                 .push_warning(GraphicsRuntimeWarning::MissingArg {
                     opcode_tag: "obj.objOfFile",
@@ -71,6 +92,7 @@ impl RLOperation for ObjCreateOp {
                 });
             return DispatchOutcome::Advance;
         };
+        hydrate_image_geometry(&self.runtime, &mut object);
         let layer = object_layer(self.plane);
         self.runtime.with_stack_mut(|stack| {
             let _ = stack.set_layer(layer, buf, object);
@@ -109,9 +131,11 @@ impl RLOperation for ChildCreateOp {
         let Some(parent) = arg_int(args, 0).and_then(slot_ok) else {
             return DispatchOutcome::Advance;
         };
-        let Some((child, object)) = created_object(self.plane, &args[1..], self.provenance) else {
+        let Some((child, mut object)) = created_object(self.plane, &args[1..], self.provenance)
+        else {
             return DispatchOutcome::Advance;
         };
+        hydrate_image_geometry(&self.runtime, &mut object);
         self.runtime.with_stack_mut(|stack| {
             let _ = stack.set_child(self.plane, parent, child, object);
         });
