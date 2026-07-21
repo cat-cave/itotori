@@ -627,7 +627,9 @@ fn collect_units(
                 }
                 choice_group += 1;
             }
-            RealLiveOpcode::VoicePlay { voice_id } => {
+            RealLiveOpcode::VoicePlay {
+                voice_id: Some(voice_id),
+            } => {
                 // Look-ahead-pin onto the most recent text unit if it
                 // hasn't already been pinned to a different voice.
                 if let Some(unit) = units.last_mut()
