@@ -127,24 +127,24 @@ must include:
 
 The required seed kinds are:
 
-| Seed kind                        | Category              | Expected detectors                             |
-| -------------------------------- | --------------------- | ---------------------------------------------- |
-| `meaning_shift`                  | `accuracy`            | LLM QA and human review                        |
-| `omission`                       | `accuracy`            | deterministic QA when span/count based, LLM QA |
-| `choice_semantics_flip`          | `accuracy`            | LLM QA and human review                        |
-| `wrong_glossary_term`            | `terminology`         | deterministic QA, LLM QA, human review         |
-| `term_inconsistency`             | `terminology`         | deterministic QA and human review              |
-| `style_guide_violation`          | `style`               | deterministic QA when rule-backed, LLM QA      |
-| `speaker_voice_drift`            | `tone_register`       | LLM QA and human review                        |
-| `locale_format_error`            | `locale_convention`   | deterministic QA and human review              |
-| `cultural_reference_mismatch`    | `locale_convention`   | LLM QA and human review                        |
-| `placeholder_dropped`            | `protected_content`   | deterministic QA, patch verify, human review   |
-| `control_markup_corrupted`       | `protected_content`   | deterministic QA and patch verify              |
-| `do_not_translate_violation`     | `protected_content`   | deterministic QA and human review              |
-| `layout_overflow`                | `layout`              | runtime probe, deterministic QA when bounded   |
-| `hidden_or_missing_runtime_text` | `layout`              | runtime probe and human review                 |
-| `encoding_garble`                | `technical_integrity` | deterministic QA, patch verify, runtime probe  |
-| `schema_or_patch_breakage`       | `technical_integrity` | schema guard, patch verify                     |
+| Seed kind                        | Category              | Expected detectors                                                                                    |
+| -------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------- |
+| `meaning_shift`                  | `accuracy`            | LLM QA and human review (judge-dependent; not a §3 metric — see methodology §9 sensitivity honesty)   |
+| `omission`                       | `accuracy`            | deterministic QA when span/count based, LLM QA                                                        |
+| `choice_semantics_flip`          | `accuracy`            | LLM QA and human review                                                                               |
+| `wrong_glossary_term`            | `terminology`         | deterministic QA, LLM QA, human review                                                                |
+| `term_inconsistency`             | `terminology`         | deterministic QA and human review                                                                     |
+| `style_guide_violation`          | `style`               | deterministic QA when rule-backed, LLM QA                                                             |
+| `speaker_voice_drift`            | `tone_register`       | LLM QA and human review (judge-dependent; not a §3 metric — see methodology §9 sensitivity honesty)   |
+| `locale_format_error`            | `locale_convention`   | deterministic QA and human review                                                                     |
+| `cultural_reference_mismatch`    | `locale_convention`   | LLM QA and human review                                                                               |
+| `placeholder_dropped`            | `protected_content`   | deterministic QA, patch verify, human review                                                          |
+| `control_markup_corrupted`       | `protected_content`   | deterministic QA and patch verify                                                                     |
+| `do_not_translate_violation`     | `protected_content`   | deterministic QA and human review                                                                     |
+| `layout_overflow`                | `layout`              | runtime probe, deterministic QA when bounded (metric-caught; judge-independent §9 sensitivity weight) |
+| `hidden_or_missing_runtime_text` | `layout`              | runtime probe and human review                                                                        |
+| `encoding_garble`                | `technical_integrity` | deterministic QA, patch verify, runtime probe                                                         |
+| `schema_or_patch_breakage`       | `technical_integrity` | schema guard, patch verify                                                                            |
 
 Seeded-defect reports must separate:
 

@@ -404,6 +404,40 @@ The benchmark validates ITSELF; a run that fails any meta-validity check is
    the instrument cannot show a degraded Itotori losing where it deserves to,
    it is broken and thrown out. This is the single most important guardrail
    against a self-favorable benchmark.
+
+   **Sensitivity honesty — which sabotage kinds carry judge-independent weight:**
+
+   | Sabotage kind family                                                                                 | Detection surface                                                                                                      | Judge-independent?                                                                                                                  |
+   | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+   | **Residue / overflow** (`untranslated_residue`, `layout_overflow`, and other §3-metric-backed seeds) | Real deterministic metrics (§3): source-script residue scan, text-box / wrap compliance, live gates such as `byte-box` | **Yes.** Demotion is earned by the worse text under a pure metric, with no LLM and no scripted judge.                               |
+   | **Meaning / voice** (`meaning_shift`, `speaker_voice_drift` / `voice_drift`)                         | LLM QA / human review only (taxonomy `expectedDetectorKinds`: `llm_qa`, `human_review` — not `deterministic_qa`)       | **No** under current metrics. There is no real deterministic metric that scores inverted propositions or out-of-character register. |
+
+   A fixture-only sensitivity run that demotes meaning/voice **only** because a
+   hand-scripted fixture `qualityScoreFn` recognizes injected markers
+   (historically `SABOTAGE_MEANING_MARKER` / `SABOTAGE_REGISTER_MARKER`, e.g.
+   `[[NEGATED]]` / `[[FORMAL-DIRECTIVE]]`) is a **test double**: it proves the
+   ranking machinery can respond to a score drop, **not** that a live LLM
+   judge would catch those defects. Treat such a run as **judge-scripted** for
+   meaning/voice. Live sensitivity for those kinds requires a real multi-family
+   LLM judge panel (or human ratings) reading the degraded text.
+
+   Therefore the sensitivity check **must assert the metric-caught kinds
+   (residue / overflow) independently of any scripted judge** — e.g. by
+   re-scoring with metrics alone (or a constant/no-op judge) and still seeing
+   the sabotaged contestant lose standing. Meaning/voice may still appear in a
+   full sabotage set for panel/live runs, but they do **not** carry the
+   judge-independent weight of the meta-validity claim.
+
+   **Machine pins (path b):**
+   - `apps/itotori/src/benchmark-sensitivity/` — pure sabotage injector +
+     `runMetricCaughtSensitivityCheck` (residue codepoint scan + wrap-compliance
+     only; no `qualityScoreFn`). Tests in
+     `apps/itotori/test/benchmark-sensitivity-metric-caught.test.ts` assert
+     residue/overflow sabotage is metric-caught and meaning/voice is not.
+   - `packages/localization-bridge-schema/test/benchmark-sensitivity-honesty.test.ts`
+     freezes the taxonomy `expectedDetectorKinds` split (meaning/voice =
+     judge-only; layout_overflow = metric/runtime).
+
 2. **Robustness (swap tests):** verdicts must be stable under **judge-swap**
    (drop/replace a judge family) and **contestant-order-swap** (re-randomize
    order). A ranking that flips under a benign swap is not trustworthy;
