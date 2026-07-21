@@ -21,6 +21,8 @@
 
 use std::fmt;
 
+use zeroize::Zeroizing;
+
 use crate::{KaifuuResult, ProofHash, RPGMAKER_MV_ENCRYPTED_MEDIA_HEADER, sha256_hash_bytes};
 
 /// The number of leading bytes the RPGMV scheme XOR-masks (the key length).
@@ -38,7 +40,7 @@ pub enum MvMzAssetVariantError {
 /// A recovered/candidate 16-byte asset key. Raw bytes are private, never
 /// serialized, redacted in `Debug`, and zeroized on drop.
 pub struct MvMzAssetKey {
-    bytes: Vec<u8>,
+    bytes: Zeroizing<Vec<u8>>,
 }
 
 impl MvMzAssetKey {
@@ -46,7 +48,7 @@ impl MvMzAssetKey {
     /// type except as a one-way commitment.
     pub fn from_bytes(bytes: &[u8]) -> Self {
         Self {
-            bytes: bytes.to_vec(),
+            bytes: Zeroizing::new(bytes.to_vec()),
         }
     }
 
@@ -57,12 +59,6 @@ impl MvMzAssetKey {
     /// One-way sha256 commitment to the key bytes (never the bytes themselves).
     pub fn material_hash(&self) -> KaifuuResult<ProofHash> {
         Ok(ProofHash::new(sha256_hash_bytes(&self.bytes))?)
-    }
-}
-
-impl Drop for MvMzAssetKey {
-    fn drop(&mut self) {
-        self.bytes.fill(0);
     }
 }
 
