@@ -135,6 +135,43 @@ describe("platform-language-conflicts augmenter", () => {
           catalogPlatformLanguageConflictCompatibilityBasisValues.crossPlatformDeclared,
       }),
     ]);
+
+    // Platform-scoped candidate with no platform cannot be proven incompatible: demote.
+    const samePlatformBase = required(
+      byCase.get("igdb-official-english-pc-vs-pc-same-platform"),
+    ).request;
+    const unspecifiedCandidate = augmentCatalogPlatformLanguageConflicts({
+      ...samePlatformBase,
+      candidateEvidence: [
+        {
+          ...required(samePlatformBase.candidateEvidence[0]),
+          platform: null,
+        },
+      ],
+    });
+    expect(unspecifiedCandidate.status).toBe(catalogPlatformLanguageConflictStatusValues.conflict);
+    expect(unspecifiedCandidate.conflicts[0]?.metadata.candidateGaps).toEqual([
+      expect.objectContaining({
+        compatibilityBasis:
+          catalogPlatformLanguageConflictCompatibilityBasisValues.candidatePlatformUnspecified,
+      }),
+    ]);
+
+    // Official evidence with no platform is platform-agnostic and demotes any gap.
+    const agnosticOfficial = augmentCatalogPlatformLanguageConflicts({
+      ...samePlatformBase,
+      officialEvidence: {
+        ...samePlatformBase.officialEvidence,
+        platform: null,
+      },
+    });
+    expect(agnosticOfficial.status).toBe(catalogPlatformLanguageConflictStatusValues.conflict);
+    expect(agnosticOfficial.conflicts[0]?.metadata.candidateGaps).toEqual([
+      expect.objectContaining({
+        compatibilityBasis:
+          catalogPlatformLanguageConflictCompatibilityBasisValues.officialPlatformAgnostic,
+      }),
+    ]);
   });
 
   it("demotes benchmark opportunities using generated conflict facts without deleting original facts", async () => {
