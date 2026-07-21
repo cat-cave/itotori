@@ -1,3 +1,4 @@
+import { createPrivateKey, sign as signDetached, verify as verifyDetached } from "node:crypto";
 import { z } from "zod";
 import {
   CallSpecSchema,
@@ -18,6 +19,8 @@ import { modelProfileCertificates } from "./model-profiles/certificates.js";
 
 export const ROLE_MODEL_PROFILE_CONFIG_VERSION = "itotori.role-model-profiles.v1" as const;
 export const MODEL_PROFILE_CERTIFICATE_VERSION = "itotori.model-profile-certificate.v1" as const;
+export const MODEL_PROFILE_CERTIFICATE_REGISTRATION_VERSION =
+  "itotori.model-profile-certificate-registration.v1" as const;
 const MODEL_PROFILE_VERSION_PREFIX = "itotori.model-profile.v1";
 
 const ModelProfileNameSchema = z.enum(["draft", "reasoning", "reviewer", "judge"]);
@@ -117,19 +120,10 @@ const PositiveBilledUsdSchema = DecimalUsdSchema.refine((value) => Number(value)
   message: "certified provider cost must be positive",
 });
 
-// ITOTORI-241 - binds a certificate to the ACTUAL live run it was minted from.
-// `memoKey` is the request identity (sha256 of the CallSpec) and
-// `transcriptHash` is sha256 of the response transcript (the dispatch events)
-// captured by the certifier from the real result. `evidenceHash` is a
-// recomputable integrity seal over the certified subject/checks/observations +
-// those two run references. A hand-authored certificate that flips the status,
-// inflates usage/cost, or is minted without running the certifier cannot
-// reproduce a matching `evidenceHash`, so selection rejects it.
 const CertificateRunBindingSchema = z
   .object({
     memoKey: Sha256Schema,
     transcriptHash: Sha256Schema,
-    evidenceHash: Sha256Schema,
   })
   .strict();
 
@@ -188,22 +182,6 @@ export const ModelProfileCertificateSchema = z
   })
   .strict()
   .superRefine((value, context) => {
-    const { runBinding, ...observations } = value.observations;
-    const expected = certificateEvidenceHash({
-      probedAt: value.probedAt,
-      subject: value.subject,
-      checks: value.checks,
-      observations,
-      memoKey: runBinding.memoKey,
-      transcriptHash: runBinding.transcriptHash,
-    });
-    if (expected !== runBinding.evidenceHash) {
-      context.addIssue({
-        code: "custom",
-        path: ["observations", "runBinding", "evidenceHash"],
-        message: "certificate run binding does not match its certified evidence",
-      });
-    }
     if (value.certificateStatus !== "valid") return;
     const requiredPasses = [
       value.checks.strictStructuredFinish,
@@ -259,22 +237,54 @@ export const ModelProfileCertificateSchema = z
     }
   });
 
+const CertificateAttestationSchema = z
+  .object({
+    algorithm: z.literal("ed25519"),
+    keyId: z.literal("itotori-model-profile-certifier-2026-07"),
+    signature: z.string().regex(/^[A-Za-z0-9+/]+={0,2}$/u),
+  })
+  .strict();
+
+const MODEL_PROFILE_CERTIFIER_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAsqqiH/VOaKLxXomim17wfr2kH2oVxvQ95bLjyr/MOUc=
+-----END PUBLIC KEY-----`;
+
+export const RegisteredModelProfileCertificateSchema = z
+  .object({
+    schemaVersion: z.literal(MODEL_PROFILE_CERTIFICATE_REGISTRATION_VERSION),
+    certificate: ModelProfileCertificateSchema,
+    attestation: CertificateAttestationSchema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const signature = Buffer.from(value.attestation.signature, "base64");
+    const verified = verifyDetached(
+      null,
+      Buffer.from(registeredCertificatePayload(value.certificate)),
+      MODEL_PROFILE_CERTIFIER_PUBLIC_KEY,
+      signature,
+    );
+    if (!verified) {
+      context.addIssue({
+        code: "custom",
+        path: ["attestation", "signature"],
+        message: "certificate attestation does not verify against the trusted certifier key",
+      });
+    }
+  });
+
 export type RoleModelProfile = z.infer<typeof RoleModelProfileSchema>;
 export type RoleModelProfileConfig = z.infer<typeof RoleModelProfileConfigSchema>;
 export type ModelProfileCertificate = z.infer<typeof ModelProfileCertificateSchema>;
+export type RegisteredModelProfileCertificate = z.infer<
+  typeof RegisteredModelProfileCertificateSchema
+>;
 export type ResolvedRoleModelProfile = RoleModelProfile & {
   readonly roleId: RoleId;
   readonly modelProfile: z.infer<typeof ModelProfileNameSchema>;
   readonly certificate: ModelProfileCertificate;
 };
 
-// ITOTORI-241 - capability + ZDR + automatic-fallback policy. It names NO
-// provider: `requireParameters` gates strict structured output + typed
-// tool-calling to capable providers, `zdr`/`dataCollection` set the privacy
-// posture and confine fallback to the account ZDR allow-list, and
-// `allowFallbacks: true` lets OpenRouter route across every compliant
-// provider when the preferred upstream returns a transient HTTP 429. There
-// is no known-good provider list to keep in sync.
 const zdrFallbackProviderPolicy = ProviderPolicySchema.parse({
   allowFallbacks: true,
   zdr: true,
@@ -288,15 +298,6 @@ export const deepSeekV4FlashProfile = constructRoleModelProfile({
   providerPolicy: zdrFallbackProviderPolicy,
 });
 
-/**
- * True when the OpenRouter-served model is the certified model FAMILY: either the
- * exact certified slug, or a dated snapshot pin of it (`<slug>-YYYYMMDD`). When a
- * request for `deepseek/deepseek-v4-flash` resolves against the served-route
- * lookup, OpenRouter reports the concrete snapshot it billed (e.g.
- * `deepseek/deepseek-v4-flash-20260423`). That is the certified model, just pinned
- * to a dated snapshot — NOT a silent fallback to a different model, which this
- * guard still rejects. The exact served slug is recorded as telemetry regardless.
- */
 export function servedModelIsCertified(servedModel: string, certifiedModel: string): boolean {
   if (servedModel === certifiedModel) return true;
   const suffix = servedModel.startsWith(`${certifiedModel}-`)
@@ -369,7 +370,6 @@ function roleModelProfileCandidate(
   return { ...profile, roleId, modelProfile: binding.modelProfile };
 }
 
-/** The only uncertified resolution seam; used solely by the dated live probe. */
 export function uncertifiedRoleModelProfileCandidateForProbe(
   roleInput: RoleId,
 ): Omit<ResolvedRoleModelProfile, "certificate"> {
@@ -386,17 +386,17 @@ export function resolveRoleModelProfile(
   const candidate = roleModelProfileCandidate(roleInput, options.config);
   const certificates = options.certificates ?? modelProfileCertificates;
   const certificate = certificates
-    .map((value) => ModelProfileCertificateSchema.safeParse(value))
+    .map((value) => RegisteredModelProfileCertificateSchema.safeParse(value))
     .flatMap((result) => (result.success ? [result.data] : []))
     .find(
       (value) =>
-        value.certificateStatus === "valid" &&
-        canonicalJson(value.subject) === canonicalJson(profileSubject(candidate)),
+        value.certificate.certificateStatus === "valid" &&
+        canonicalJson(value.certificate.subject) === canonicalJson(profileSubject(candidate)),
     );
   if (!certificate) {
-    throw new Error("role model profile has no valid certificate for its exact subject");
+    throw new Error("role model profile has no valid trusted certificate for its exact subject");
   }
-  return { ...candidate, certificate };
+  return { ...candidate, certificate: certificate.certificate };
 }
 
 export function assertCallUsesCertifiedRoleModelProfile(specInput: CallSpec): void {
@@ -424,30 +424,39 @@ function binding(modelProfile: z.infer<typeof ModelProfileNameSchema>) {
   return { profileId: deepSeekV4FlashProfile.profileId, modelProfile };
 }
 
-/**
- * Recomputable integrity seal that binds a certificate to its real live run.
- * Hashed over the certified subject/checks/observations plus the two run
- * references (`memoKey` = request identity, `transcriptHash` = response
- * transcript). The certifier computes this from the actual dispatch result;
- * certificate parse recomputes it and rejects any mismatch, so a hand-authored
- * or tampered certificate cannot be selected.
- */
-export function certificateEvidenceHash(input: {
-  readonly probedAt: string;
-  readonly subject: RoleModelProfile;
-  readonly checks: Record<string, string>;
-  readonly observations: Record<string, unknown>;
-  readonly memoKey: string;
-  readonly transcriptHash: string;
-}): `sha256:${string}` {
-  return sha256({
-    version: MODEL_PROFILE_CERTIFICATE_VERSION,
-    probedAt: input.probedAt,
-    subject: input.subject,
-    checks: input.checks,
-    observations: input.observations,
-    memoKey: input.memoKey,
-    transcriptHash: input.transcriptHash,
+export function registerModelProfileCertificate(
+  certificateInput: unknown,
+  privateKeyPem: string,
+): RegisteredModelProfileCertificate {
+  const certificate = ModelProfileCertificateSchema.parse(certificateInput);
+  let privateKey: ReturnType<typeof createPrivateKey>;
+  try {
+    privateKey = createPrivateKey(privateKeyPem);
+  } catch {
+    throw new Error("model profile certificate registration requires an Ed25519 private key");
+  }
+  if (privateKey.asymmetricKeyType !== "ed25519") {
+    throw new Error("model profile certificate registration requires an Ed25519 private key");
+  }
+  return RegisteredModelProfileCertificateSchema.parse({
+    schemaVersion: MODEL_PROFILE_CERTIFICATE_REGISTRATION_VERSION,
+    certificate,
+    attestation: {
+      algorithm: "ed25519",
+      keyId: "itotori-model-profile-certifier-2026-07",
+      signature: signDetached(
+        null,
+        Buffer.from(registeredCertificatePayload(certificate)),
+        privateKey,
+      ).toString("base64"),
+    },
+  });
+}
+
+function registeredCertificatePayload(certificate: ModelProfileCertificate): string {
+  return canonicalJson({
+    schemaVersion: MODEL_PROFILE_CERTIFICATE_REGISTRATION_VERSION,
+    certificate,
   });
 }
 

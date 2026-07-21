@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  MODEL_PROFILE_CERTIFICATE_VERSION,
-  ModelProfileCertificateSchema,
-  certificateEvidenceHash,
-  constructRoleModelProfile,
-} from "../src/llm/role-model-profiles.js";
+import { modelProfileCertificates } from "../src/llm/model-profiles/certificates.js";
+import { constructRoleModelProfile } from "../src/llm/role-model-profiles.js";
 import {
   LIVE_CONFORMANCE_MAX_AGE_MS,
   admitQualifyingRun,
@@ -12,7 +8,7 @@ import {
   type QualifyingAdmissionRequest,
 } from "../src/zdr-admission/index.js";
 
-const now = new Date("2026-07-16T00:00:00.000Z");
+const now = new Date("2026-07-20T00:00:00.000Z");
 const certifiedProfile = constructRoleModelProfile({
   profileId: "deepseek-v4-flash",
   model: "deepseek/deepseek-v4-flash",
@@ -173,77 +169,15 @@ function mismatchedCertificate() {
     model: "deepseek/deepseek-v4-flash-2026-07",
     providerPolicy: certifiedProfile.providerPolicy,
   });
-  const { runBinding, ...observations } = base.observations;
   return {
     ...base,
-    subject: otherProfile,
-    observations: {
-      ...observations,
-      runBinding: {
-        ...runBinding,
-        evidenceHash: certificateEvidenceHash({
-          probedAt: base.probedAt,
-          subject: otherProfile,
-          checks: base.checks,
-          observations,
-          memoKey: runBinding.memoKey,
-          transcriptHash: runBinding.transcriptHash,
-        }),
-      },
+    certificate: {
+      ...base.certificate,
+      subject: otherProfile,
     },
   };
 }
 
 function passingCertificate() {
-  const checks = {
-    strictStructuredFinish: "passed",
-    typedToolRoundTrip: "passed",
-    reasoningDetailsContinuity: "passed",
-    usageCapture: "passed",
-    costCapture: "passed",
-    generationLookup: "passed",
-    servedPairVerification: "passed",
-  } as const;
-  const observations = {
-    physicalStepCount: 2,
-    toolExecutionCount: 1,
-    reasoningDetailBatchCount: 1,
-    forwardedReasoningDetailBatchCount: 1,
-    usage: { promptTokens: 2, completionTokens: 2, reasoningTokens: 1, cachedTokens: 0 },
-    billedUsdByStep: ["0.000001", "0.000001"],
-    generationReconciliation: "enabled",
-    generationLookupAttempts: 1,
-    generationId: "generation:recorded-admission",
-    served: {
-      status: "confirmed",
-      model: "deepseek/deepseek-v4-flash-20260423",
-      provider: "recorded-zdr-provider",
-    },
-  } as const;
-  const probedAt = "2026-07-15T22:55:45.017Z";
-  const memoKey = `sha256:${"a".repeat(64)}` as const;
-  const transcriptHash = `sha256:${"b".repeat(64)}` as const;
-  return ModelProfileCertificateSchema.parse({
-    schemaVersion: MODEL_PROFILE_CERTIFICATE_VERSION,
-    certificateStatus: "valid",
-    probeMode: "live",
-    probedAt,
-    subject: certifiedProfile,
-    checks,
-    observations: {
-      ...observations,
-      runBinding: {
-        memoKey,
-        transcriptHash,
-        evidenceHash: certificateEvidenceHash({
-          probedAt,
-          subject: certifiedProfile,
-          checks,
-          observations,
-          memoKey,
-          transcriptHash,
-        }),
-      },
-    },
-  });
+  return modelProfileCertificates[0]!;
 }
