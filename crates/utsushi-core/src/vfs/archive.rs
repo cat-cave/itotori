@@ -1,6 +1,6 @@
 //! Sealed archive-reader trait and case-folded directory index.
 //!
-//! Substrate extension M.1 (). The trait lets future PAK / XP3
+//! Substrate extension M.1. The trait lets future PAK / XP3
 //! readers plug into [`super::CompositeAssetPackage`] without rewriting the
 //! resolver. The seal makes the multiplex-policy invariant load-bearing:
 //! only readers defined inside `utsushi-core` can be composed in, so an
@@ -14,8 +14,9 @@
 //! - an [`open_entry`](AssetArchiveReader::open_entry) operation that
 //!   returns the bytes for a previously-resolved entry.
 //!
-//! No concrete archive impls ship in this node — PAK and XP3 land in
-//! later nodes ( series) when their corpora are staged.
+//! [`super::Xp3HandoffArchiveReader`] already serves Kaifuu-extracted XP3
+//! members through this trait. Direct PAK reading and XP3-container parsing
+//! remain outside this substrate.
 
 use std::collections::BTreeMap;
 

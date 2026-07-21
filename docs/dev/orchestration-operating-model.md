@@ -193,7 +193,7 @@ representative import sites):
   `utsushi-rpgmaker-mv/src/port.rs:27`.
 - **VFS** (UTSUSHI-020 — `AssetPackage`, `AssetId`, `RuntimeVfs`):
   `utsushi-reallive/src/engine_port.rs:46`,
-  `utsushi-reallive/src/rlop/module_obj.rs:44`,
+  `crates/utsushi-reallive/src/rlop/module_obj.rs:498`,
   `utsushi-siglus/src/lib.rs:99`, `utsushi-rpgmaker-mv/src/port.rs:28`,
   `utsushi-kirikiri/src/xp3_vfs_replay.rs:42`.
 - **Input** (UTSUSHI-021 — `InputEvent`, `ChoiceIndex`):

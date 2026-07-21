@@ -6,10 +6,9 @@
 //! - `cargo test -p utsushi-reallive graphics_object_stack_256_objects`
 //! - `cargo test -p utsushi-reallive render_wipe_solid_colour_deterministic_png`
 //!
-//! Both tests are synthetic per the spec note that "Synthetic fixture
-//! acceptable for the stack mechanics; the render pass against a real
-//! g00 sprite requires to land first and is gated as a
-//! follow-up test." A third entrypoint
+//! Both tests cover synthetic stack mechanics. The env-gated
+//! `g00_real_bytes.rs` and `render_g00_real_bytes.rs` suites cover real g00
+//! decoding and rendering. A third entrypoint
 //! (`graphics_pipeline_honours_reallive_real_bytes_gameexe_screen_size`) is
 //! env-gated on `ITOTORI_REAL_GAME_ROOT` and pins the real-bytes
 //! `SCREENSIZE_MOD=999,1280,720` round-trip through
