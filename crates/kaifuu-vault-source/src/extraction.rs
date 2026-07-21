@@ -245,8 +245,9 @@ fn classify_unsafe_entry(entry: &ArchiveEntry) -> Option<&'static str> {
     None
 }
 
-/// Confirm the on-disk tree contains every file entry the archive header
-/// declares. Surfaces a silently-incomplete extraction (e.g. an unsupported
+/// Confirm the on-disk tree has a path for every file entry the archive header
+/// declares. This verifies presence only; it does not compare file contents
+/// or sizes. Surfaces a silently-incomplete extraction (e.g. an unsupported
 /// codec folder the decoder skipped) as a typed [`VaultSourceError::ExtractionFailed`]
 /// and removes the partial tree, rather than letting a partial extraction be
 /// observed as success.

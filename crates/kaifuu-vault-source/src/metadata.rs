@@ -100,14 +100,6 @@ pub fn read_embedded_metadata(
             errors: vec![format!("json parse: {e}")],
         })?;
 
-    if let Err(errors) = validate_by_id_metadata(&value) {
-        return Err(VaultSourceError::EmbeddedMetadataInvalid {
-            tree_root: tree_root.to_path_buf(),
-            canonical_id: canonical_id.to_string(),
-            errors,
-        });
-    }
-
     let embedded_canonical_id = value
         .get("canonical_id")
         .and_then(|v| v.as_str())
@@ -120,34 +112,27 @@ pub fn read_embedded_metadata(
         });
     }
 
-    let identifiers = value
-        .get("identifiers")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|item| {
-                    let s = item.get("source").and_then(|v| v.as_str())?.to_string();
-                    let k = item.get("kind").and_then(|v| v.as_str())?.to_string();
-                    let v = item.get("value").and_then(|v| v.as_str())?.to_string();
-                    Some((s, k, v))
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let identifiers =
+        parse_identifiers(&value).map_err(|error| VaultSourceError::EmbeddedMetadataInvalid {
+            tree_root: tree_root.to_path_buf(),
+            canonical_id: canonical_id.to_string(),
+            errors: vec![error],
+        })?;
 
-    let languages = value
-        .get("languages")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|item| {
-                    item.get("language_code")
-                        .and_then(|v| v.as_str())
-                        .map(std::string::ToString::to_string)
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let languages =
+        parse_languages(&value).map_err(|error| VaultSourceError::EmbeddedMetadataInvalid {
+            tree_root: tree_root.to_path_buf(),
+            canonical_id: canonical_id.to_string(),
+            errors: vec![error],
+        })?;
+
+    if let Err(errors) = validate_by_id_metadata(&value) {
+        return Err(VaultSourceError::EmbeddedMetadataInvalid {
+            tree_root: tree_root.to_path_buf(),
+            canonical_id: canonical_id.to_string(),
+            errors,
+        });
+    }
 
     let engine = value
         .get("engine")
@@ -167,6 +152,68 @@ pub fn read_embedded_metadata(
         languages,
         raw: value,
     })
+}
+
+/// Extract identifiers without allowing a malformed array member to bypass
+/// identity gate 2 by being dropped. A missing array is tolerated because the
+/// catalog may be the only side to declare this optional embedded fact.
+fn parse_identifiers(value: &Value) -> Result<Vec<(String, String, String)>, String> {
+    let Some(value) = value.get("identifiers") else {
+        return Ok(Vec::new());
+    };
+    let Some(entries) = value.as_array() else {
+        return Err("identifiers must be an array when present".into());
+    };
+
+    entries
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            let object = item
+                .as_object()
+                .ok_or_else(|| format!("identifiers[{index}] must be an object"))?;
+            let source = object
+                .get("source")
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("identifiers[{index}].source must be a string"))?;
+            let kind = object
+                .get("kind")
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("identifiers[{index}].kind must be a string"))?;
+            let identifier_value = object
+                .get("value")
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("identifiers[{index}].value must be a string"))?;
+            Ok((
+                source.to_string(),
+                kind.to_string(),
+                identifier_value.to_string(),
+            ))
+        })
+        .collect()
+}
+
+/// Extract language codes without silently dropping malformed entries. A
+/// missing array is tolerated for consistency with absent identifiers.
+fn parse_languages(value: &Value) -> Result<Vec<String>, String> {
+    let Some(value) = value.get("languages") else {
+        return Ok(Vec::new());
+    };
+    let Some(entries) = value.as_array() else {
+        return Err("languages must be an array when present".into());
+    };
+
+    entries
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            item.as_object()
+                .and_then(|object| object.get("language_code"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .ok_or_else(|| format!("languages[{index}].language_code must be a string"))
+        })
+        .collect()
 }
 
 fn validate_by_id_metadata(value: &Value) -> Result<(), Vec<String>> {
