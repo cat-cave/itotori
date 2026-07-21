@@ -9,9 +9,10 @@ stay true to it without a live fetch. **The design project's own `readme.md`,
 them directly when porting.
 
 > The `ui_kits/studio/*` screens in the design project are **demos of components in
-> action, NOT agreed-upon layouts.** Do not treat them as target screens. Layout,
-> workflow, cross-surface interaction, and cohesion are the hi-fi agent's job (see
-> `docs/design/hifi-brief.md`). Use them only as "here is a component rendered."
+> action, NOT agreed-upon layouts.** Do not treat them as target screens. Shipped
+> studio UI and the design-language pointer live in-tree (see
+> `docs/design/hifi-brief.md`). Use design-project demos only as "here is a
+> component rendered."
 
 ## Art direction — "Dusk Observatory"
 

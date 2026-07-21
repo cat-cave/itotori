@@ -1,15 +1,14 @@
 # Kaifuu Subproject
 
-> **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
-> of [`project-readiness.md`](project-readiness.md).
-> Alpha-ready means the architecture-proven dogfood point (substrate
-> extensions M.1–M.3, a non-synthetic engine port crate, a real-bytes Sweetie
-> HD smoke, the recorded-LLM bundle, dashboard reachability, repo hygiene) —
-> **not** the full claimed-support chain (detect, extract, decrypt, decompile,
-> patch, verify, delta-apply). The "claimed-support" definition below is
-> Kaifuu's long-term commitment for every engine variant the suite eventually
-> promotes; it remains the bar for promotion out of readiness-tier, not the
-> bar for the first dogfood pass.
+Alpha readiness gates live at the top of
+[`project-readiness.md`](project-readiness.md). Alpha-ready means the
+architecture-proven dogfood point (substrate extensions, a non-synthetic
+engine port crate, a real-bytes smoke, recorded-LLM bundle, dashboard
+reachability, repo hygiene) — **not** the full claimed-support chain
+(detect, extract, decrypt, decompile, patch, verify, delta-apply). The
+"claimed-support" definition below is Kaifuu's long-term commitment for every
+engine variant the suite eventually promotes; it remains the bar for promotion
+out of readiness-tier, not the bar for the first dogfood pass.
 
 Kaifuu owns engine detection, inventory, readiness, extraction, patching,
 verification, and `.kaifuu` delta packages.
@@ -113,39 +112,38 @@ key requirements.
 ### Adapter support claims beyond the detection matrix
 
 The no-patching / no-extraction / no-rebuild scope above applies to the
-detection matrix only. Kaifuu ships **engine-specific adapters** that DO
-prove extract + patch against synthetic fixtures (and, where annotated, real
-bytes) — those claims live on each adapter's own readiness record, not on
-the matrix. As of the 2026-07-08 sweep the shipped adapters with proven
-extract/patch surfaces are:
+detection matrix only. **Engine-specific adapters** that prove extract + patch
+document their claims on each adapter's own readiness record, not on the
+matrix.
+
+**Shipped adapters with proven extract/patch surfaces** (see each readiness
+record):
 
 - **KiriKiri KAG `.ks` plaintext adapter** (`kaifuu-kirikiri`) — null-container
   plaintext only; see [`kaifuu-adapters/kirikiri-kag.md`](kaifuu-adapters/kirikiri-kag.md).
 - **TyranoScript `.ks` adapter** (`kaifuu-tyrano`) — null-key/null-container
   layered-pipeline claim at the `patch` level; see
   [`kaifuu-adapters/tyranoscript.md`](kaifuu-adapters/tyranoscript.md).
-- **RealLive adapter** (`kaifuu-reallive`) — 100% semantic decompiler on
-  real Sweetie HD + Kanon bytes with length-changing patch-back; see
+- **RealLive adapter** (`kaifuu-reallive`) — semantic decompiler on real-bytes
+  corpus with length-changing patch-back; see
   [`kaifuu-adapters/reallive.md`](kaifuu-adapters/reallive.md).
-- **Wolf RPG Editor text-table adapter** (`kaifuu-core/wolf_adapter.rs`,
-  KAIFUU-012) — bounded-synthetic extract + patch + repack composition over
-  the KAIFUU-073 encrypted-archive substrate (key resolved by local
-  SecretRef, never emitted), gated on the KAIFUU-120 protection detector
-  (`protected`) + the KAIFUU-121 helper boundary (`key_resolved`); see
-  [`kaifuu-adapters/wolf.md`](kaifuu-adapters/wolf.md).
-- **BGI/Ethornell** — readiness proof ladder (KAIFUU-041 +
-  KAIFUU-126 detector + KAIFUU-127 bytecode parser); the synthetic fixture
-  reaches the `patch` readiness level with byte-exact round-trip proofs;
-  see [`kaifuu-adapters/bgi.md`](kaifuu-adapters/bgi.md).
+
+**Synthetic readiness ladders only (no real-bytes coverage, no dedicated
+crate):**
+
+- **Wolf RPG Editor** — synthetic extract/patch/repack ladder over the
+  encrypted-archive substrate in `kaifuu-core` (key via local SecretRef, never
+  emitted). Detection-matrix row ≠ adapter support claim.
+- **BGI/Ethornell** — synthetic readiness ladder (detector + bytecode parser
+  smoke) in `kaifuu-core`. Detection-matrix row ≠ adapter support claim.
 
 The matrix's "no extraction / patching / rebuild" sentence above is the
 honest scope of the **detection matrix rows only**; it does NOT mean Kaifuu
 cannot extract or patch any engine — it means a matched row is never, by
-itself, a support claim. Each adapter's record is the source of truth for
-what that specific engine supports, and the adapter capability id
-(`kaifuu-wolf-text-table-adapter` for Wolf, `kaifuu.bgi` / `kaifuu.reallive`
-/ `kaifuu.tyranoscript` / `kaifuu.kirikiri-kag` for the others — see each
-adapter doc's "Adapter id" line) is what downstream ingestion keys on.
+itself, a support claim. Each adapter's readiness record is the source of
+truth for what that specific engine supports; capability ids for shipped
+adapters (`kaifuu.reallive`, `kaifuu.tyranoscript`, `kaifuu.kirikiri-kag`,
+etc.) are what downstream ingestion keys on.
 
 `profile init` writes stable JSON profiles. The legacy `profile <game-dir>` form
 is compatibility-only and delegates to the same validation, redaction, and atomic
@@ -206,7 +204,7 @@ carrying the recovered evidence plus a single P2 diagnostic noting the missing
 partial path. The regression test
 (`crates/kaifuu-cli/tests/partial_extract.rs`) covers extract, profile, and
 both verify exit-code paths against a synthetic SEEN.TXT envelope that mirrors
-Sweetie HD's `parse_archive` success + Gameexe.ini key mismatch.
+a RealLive `parse_archive` success + Gameexe.ini key mismatch.
 
 Secret
 requirements use placeholders only; actual secret values must stay out of

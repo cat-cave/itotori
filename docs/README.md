@@ -38,9 +38,9 @@ Observatory design system at
 [`packages/itotori-ds/`](../packages/itotori-ds/), and the typed API
 client (`fnd-api-client`) at
 [`apps/itotori/src/api-client.ts`](../apps/itotori/src/api-client.ts) — is
-documented in [frontend.md](frontend.md). The design ↔ repo alignment for the
-hi-fi Studio epic lives in
-[`docs/design/hifi/README.md`](design/hifi/README.md).
+documented in [frontend.md](frontend.md). The design-language pointer for
+shipped studio UI lives in
+[`docs/design/hifi-brief.md`](design/hifi-brief.md).
 The product SEMVER, the publishable surface, and the relation between the
 product version and the format-level `schemaVersion` markers are documented in
 [versioning-and-release-policy.md](versioning-and-release-policy.md). The
