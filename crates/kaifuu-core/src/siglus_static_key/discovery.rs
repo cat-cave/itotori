@@ -35,9 +35,6 @@ pub fn discover_siglus_static_key(
         "kaifuu siglus static-key --fixture {}",
         sanitize_file_name(request.fixture_file_name)
     );
-    let capability =
-        SiglusStaticKeyCapability::in_process(&fixture.capability_id, &fixture.engine_family);
-
     let mut entries = Vec::with_capacity(fixture.entries.len());
     for entry in &fixture.entries {
         entries.push(discover_entry(
@@ -48,6 +45,18 @@ pub fn discover_siglus_static_key(
             &validation_command,
         ));
     }
+
+    let validation_ran = entries.iter().any(|entry| {
+        matches!(
+            entry.outcome,
+            SiglusStaticKeyOutcome::Validated | SiglusStaticKeyOutcome::ValidationFailed
+        )
+    });
+    let capability = SiglusStaticKeyCapability::in_process(
+        &fixture.capability_id,
+        &fixture.engine_family,
+        validation_ran,
+    );
 
     let status = if entries
         .iter()
