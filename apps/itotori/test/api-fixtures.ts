@@ -615,19 +615,41 @@ export const dashboardStatusFixture: ProjectDashboardStatus = {
   ],
 };
 
+const emptyRunStatusCounts = {
+  queued: 0,
+  running: 0,
+  paused: 0,
+  completed: 0,
+  failed: 0,
+  cancelled: 0,
+} as const;
+
+const emptyUnitCounts = {
+  decoded: 0,
+  drafted: 0,
+  QA: 0,
+  accepted: 0,
+  patched: 0,
+} as const;
+
+/**
+ * Three concurrent portfolio projects (distinct progress rollups) plus a
+ * run-less project for the empty-state card. Identity is generic fixture data
+ * — no game titles. Consumed by the portfolio progress UI tests + MSW/e2e.
+ */
 export const portfolioProjectsFixture: ApiProjectsResponse = {
   projects: [
     {
       ...dashboardStatusFixture,
+      projectId: "project-1",
+      projectKey: "project-alpha",
+      name: "project-alpha",
       progress: {
+        projectId: "project-1",
         runCount: 1,
         runStatusCounts: {
+          ...emptyRunStatusCounts,
           queued: 1,
-          running: 0,
-          paused: 0,
-          completed: 0,
-          failed: 0,
-          cancelled: 0,
         },
         unitCounts: { decoded: 0, drafted: 1, QA: 0, accepted: 0, patched: 0 },
         roleCounts: {
@@ -645,10 +667,100 @@ export const portfolioProjectsFixture: ApiProjectsResponse = {
         ],
       },
     },
+    {
+      ...dashboardStatusFixture,
+      projectId: "project-2",
+      projectKey: "project-beta",
+      name: "project-beta",
+      status: "drafting",
+      findingCount: 0,
+      progress: {
+        projectId: "project-2",
+        runCount: 2,
+        runStatusCounts: {
+          ...emptyRunStatusCounts,
+          running: 1,
+          completed: 1,
+        },
+        unitCounts: { decoded: 1, drafted: 0, QA: 1, accepted: 2, patched: 0 },
+        roleCounts: {
+          writer: { decoded: 1, drafted: 0, QA: 0, accepted: 1, patched: 0 },
+          reviewer: { decoded: 0, drafted: 0, QA: 1, accepted: 1, patched: 0 },
+        },
+        totalCostMicrosUsd: 42_000,
+        averageCoveragePercent: 55,
+        blockers: [],
+      },
+    },
+    {
+      ...dashboardStatusFixture,
+      projectId: "project-3",
+      projectKey: "project-gamma",
+      name: "project-gamma",
+      status: "runtime_ingested",
+      findingCount: 1,
+      progress: {
+        projectId: "project-3",
+        runCount: 1,
+        runStatusCounts: {
+          ...emptyRunStatusCounts,
+          completed: 1,
+        },
+        unitCounts: { decoded: 0, drafted: 0, QA: 0, accepted: 0, patched: 3 },
+        roleCounts: {
+          patcher: { decoded: 0, drafted: 0, QA: 0, accepted: 0, patched: 3 },
+        },
+        totalCostMicrosUsd: 17,
+        averageCoveragePercent: 100,
+        blockers: [
+          {
+            runId: "portfolio-run-3",
+            bridgeUnitId: "portfolio-unit-3",
+            role: "patcher",
+            blockers: ["awaiting-check"],
+          },
+        ],
+      },
+    },
+    {
+      ...dashboardStatusFixture,
+      projectId: "project-4",
+      projectKey: "project-idle",
+      name: "project-idle",
+      status: "pending",
+      branchCount: 0,
+      unitCount: 0,
+      findingCount: 0,
+      artifactCount: 0,
+      latestEventKind: null,
+      latestEventAt: null,
+      selectedLocaleBranchId: null,
+      localeBranches: [],
+      progress: {
+        projectId: "project-4",
+        runCount: 0,
+        runStatusCounts: { ...emptyRunStatusCounts },
+        unitCounts: { ...emptyUnitCounts },
+        roleCounts: {},
+        totalCostMicrosUsd: 0,
+        averageCoveragePercent: 0,
+        blockers: [],
+      },
+    },
   ],
 };
 
 export const portfolioProjectFixture = portfolioProjectsFixture.projects[0]!;
+
+/** Three concurrent projects only (no run-less row) — pure progress surface. */
+export const portfolioLiveProjectsFixture: ApiProjectsResponse = {
+  projects: portfolioProjectsFixture.projects.slice(0, 3),
+};
+
+/** Single run-less project for the empty progress card path. */
+export const portfolioRunlessProjectsFixture: ApiProjectsResponse = {
+  projects: [portfolioProjectsFixture.projects[3]!],
+};
 
 export const catalogConflictReviewFixture: CatalogConflictReviewReadModel = {
   rows: [

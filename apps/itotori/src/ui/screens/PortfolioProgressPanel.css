@@ -1,0 +1,93 @@
+/* Portfolio live-progress surface — layout only; colour/type from @itotori/ds tokens. */
+
+.itotori-portfolio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--ito-space-12);
+}
+
+.itotori-portfolio-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-12);
+  padding: var(--ito-space-12);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius);
+  background: var(--ito-color-surface);
+  min-width: 0;
+}
+
+.itotori-portfolio-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ito-space-10);
+}
+
+.itotori-portfolio-card__identity {
+  display: grid;
+  gap: var(--ito-space-4);
+  min-width: 0;
+}
+
+.itotori-portfolio-card__title {
+  margin: 0;
+  font-family: var(--ito-font-display);
+  font-weight: var(--ito-weight-display-soft);
+  font-size: var(--ito-text-h2);
+  color: var(--ito-color-text);
+  overflow-wrap: anywhere;
+}
+
+.itotori-portfolio-card__meta {
+  margin: 0;
+  font-size: var(--ito-text-small);
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-portfolio-card__meta code {
+  font-family: var(--ito-font-mono);
+  color: var(--ito-color-text);
+}
+
+.itotori-portfolio-card__lamps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ito-space-6);
+  justify-content: flex-end;
+}
+
+.itotori-portfolio-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-12);
+}
+
+.itotori-portfolio-card__empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-10);
+}
+
+.itotori-portfolio-card__empty .itotori-empty-copy {
+  margin: 0;
+  color: var(--ito-color-text-muted);
+  font-size: var(--ito-text-body);
+}
+
+.itotori-portfolio-card__blockers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-6);
+  font-size: var(--ito-text-small);
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-portfolio-card__blocker-count {
+  font-family: var(--ito-font-mono);
+  color: var(--ito-color-text);
+}
