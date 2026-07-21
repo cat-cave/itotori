@@ -27,9 +27,10 @@
 //! bytes: it folds the partitioned operand stream into typed [`SiglusExpr`]
 //! trees (int/str literals, element/variable refs, unary/binary operators,
 //! gosub/command calls) with zero unparsed operand bytes and a complete,
-//! sanitized operator histogram. The remaining core-stack entry points
-//! ([`compress`], [`bridge`], [`patchback`]) are still typed stubs, alongside
-//! the narrow real [`known_key_smoke`] profile.
+//! sanitized operator histogram. The [`compress`], [`bridge`], and
+//! bundle-driven [`patchback`] paths are implemented; the narrow real
+//! [`known_key_smoke`] profile remains available for its separately-declared
+//! capability boundary.
 //! The exe-angou / second-layer key is the **key-discovery layer's (siglus-04)
 //! deliverable**, now recovered natively in-process from `SiglusEngine.exe`
 //! bytes by [`exe_angou`] (a static PE opcode scan — no Wine, no execution); it
@@ -184,9 +185,10 @@ pub use opcode::{
     SiglusOpcodeHistogram, SiglusParseError, SiglusScenePartition, partition_scene,
 };
 pub use patchback::bundle_driven::{
-    PATCHBACK_ARCHIVE_PARSE_FAILURE_CODE, PATCHBACK_NOT_IMPLEMENTED_CODE,
-    PATCHBACK_PROVENANCE_MISMATCH_CODE, PatchbackError, PatchbackOpts, TranslatedBundleV02,
-    TranslatedUnitTarget, apply_translated_bundle,
+    PATCHBACK_ARCHIVE_PARSE_FAILURE_CODE, PATCHBACK_BUNDLE_SCHEMA_INVALID_CODE,
+    PATCHBACK_PROVENANCE_MISMATCH_CODE, PATCHBACK_SCENE_REENCODE_CODE, PATCHBACK_SELF_CHECK_CODE,
+    PATCHBACK_STALE_SOURCE_CODE, PatchbackEncoding, PatchbackError, PatchbackOpts, PatchedScenePck,
+    TranslatedBundleV02, TranslatedUnitTarget, apply_translated_bundle,
 };
 pub use patchback::delta::{SiglusDeltaError, SiglusScenePatchDelta, produce_scene_delta};
 pub use scene_decode::{
