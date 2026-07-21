@@ -109,6 +109,37 @@ pre-check. The `playwright.config.ts` also throws if no `PLAYWRIGHT_CHROMIUM_BIN
 / `UTSUSHI_BROWSER_BIN` is set, so both the recipe and the config refuse to run
 browserless. A missing browser is a RED run, never a false green.
 
+### Explicit browser-skip recipe for Chromium-less public lanes
+
+The Utsushi CLI provides an operator-controlled escape valve only for recipe
+steps that intentionally do not exercise a browser-backed runtime surface:
+
+```sh
+utsushi capabilities --skip-browser --output capabilities.json
+utsushi smoke <game-dir> --adapter <browser-adapter> --skip-browser --output smoke.json
+```
+
+The flag is explicit; no environment variable enables a skip. The adapter still
+owns browser probing and retains its `browser_host_availability` error severity
+when Chromium is missing. The recipe-level output separately records a typed
+`runtime_skip_acknowledged` diagnostic (`utsushi.runtime.skip_acknowledged`),
+marks capability output `status: browser_runtime_skipped`, and marks smoke
+output `status: skipped` with `alphaEvidence.status: not_established`. A skip
+therefore cannot be consumed as a successful Chromium probe or runtime pass.
+
+| CI lane / recipe                                                                                                                                                               | May pass `--skip-browser`? | Rule                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Tier 0 (`ci-tier0-*`), `just check`                                                                                                                                            | Yes                        | These are browser-free public/static gates; a capabilities report may explicitly acknowledge that a browser was not exercised. |
+| Tier 1 portable, DB, and mutation recipes (`ci-tier1-ts-public-*`, `ci-tier1-rust-*`, `ci-tier1-db`, `ci-tier1-mutation`) and the browser-free `just ci` / `just ci-full` path | Yes                        | Only for a recipe step that is intentionally browserless, and only with the emitted skipped report retained as its evidence.   |
+| Tier 1 browser (`ci-tier1-browser`), `just browser-e2e`, and `just periodic-strict`                                                                                            | **No**                     | These lanes own real-browser execution and must fail loudly if Chromium is unavailable.                                        |
+| `just real-bytes-oracle` and every MV/MZ runtime-evidence or alpha-claim lane                                                                                                  | **No**                     | A Chromium launch is required evidence for an MV/MZ alpha claim; a skip is not an alpha pass.                                  |
+| `ci-tier1-alpha` / `just alpha-proof`                                                                                                                                          | **No**                     | This named alpha recipe must not use a browser skip to imply any runtime-alpha evidence.                                       |
+
+The `--skip-browser` surface is limited to `capabilities` and browser-adapter
+`smoke`; trace, capture, and runtime-proof commands reject it. A lane that
+actually claims browser runtime evidence must run with a supported Chromium
+host instead of passing the flag.
+
 ## Public-lane coverage manifest (explicit, not implicit)
 
 The public per-gate lane must PROVABLY run every required public test category

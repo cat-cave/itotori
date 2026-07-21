@@ -2,6 +2,7 @@ mod conform;
 mod coverage_export;
 mod dispatch_gate;
 mod fixture_runtime;
+mod flag_parse;
 mod kag_plaintext_replay;
 mod mvmz_patched_runtime_proof;
 mod mvmz_runtime_proof;
@@ -14,6 +15,7 @@ mod replay_cli_registry;
 mod replay_registry;
 mod replay_validate;
 mod rpgmaker_mv_capture;
+mod runtime_skip;
 mod staged_replay;
 mod structure;
 mod trace_kag;
@@ -21,13 +23,14 @@ mod trace_kag;
 use std::path::PathBuf;
 
 use fixture_runtime::runtime_registry;
+use flag_parse::{flag, optional_flag, validate_exact_flags};
 use serde_json::{Value, json};
 use utsushi_core::{
     RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeOperation, RuntimeRequest, write_json,
 };
 use utsushi_fixture::FixtureEnginePort;
 
-const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine <adapter> --artifact-root <DIR> --launch-descriptor <JSON> --output <PATH>\n       utsushi replay-validate --engine <adapter> --artifact-root <DIR> --launch-descriptor <JSON> --print-replay-log <PATH> [--print-textlines] [--dispatch-report <PATH>] [--require-semantic-reached-path]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--message-index <N>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi structure --gameexe <PATH> --seen <PATH> --output <PATH> [--entry-scene <N>] [--max-scenes <N>]\n       utsushi patch-render --engine reallive --seen <PATH> --translated-bundle <PATH> --scene <N> --gameexe <PATH> --game-dir <DIR> --patched-seen-output <PATH> --artifact-root <DIR> [--scope dialogue|dialogue+choices] [--redaction on|off] [--bg-asset <STEM>] [--expect-text-contains <SUBSTR>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi trace-kag <script.ks> --output <PATH>\n       utsushi coverage-export --read-model <PATH> --generated-at <RFC3339> --output <PATH> [--markdown-output <PATH>] [--include-gap-findings]\n       utsushi mvmz-runtime-proof --runtime-trace <PATH> --fixture-dir <DIR> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi mvmz-patched-runtime-proof --patched-runtime-trace <PATH> --patched-fixture-dir <DIR> --patch-result <PATH> --alpha-proof <PATH> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi conform <game_dir> [--adapter <name>] --output <path>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
+const USAGE: &str = "usage: utsushi capabilities --output <path> [--skip-browser]\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi replay --engine <adapter> --artifact-root <DIR> --launch-descriptor <JSON> --output <PATH>\n       utsushi replay-validate --engine <adapter> --artifact-root <DIR> --launch-descriptor <JSON> --print-replay-log <PATH> [--print-textlines] [--dispatch-report <PATH>] [--require-semantic-reached-path]\n       utsushi render-validate --engine reallive --seen <PATH> --scene <N> --artifact-root <DIR> [--run-id <ID>] [--expect-text-contains <SUBSTR>] [--message-index <N>] [--width <N>] [--height <N>] [--output <PATH>]\n       utsushi structure --gameexe <PATH> --seen <PATH> --output <PATH> [--entry-scene <N>] [--max-scenes <N>]\n       utsushi patch-render --engine reallive --seen <PATH> --translated-bundle <PATH> --scene <N> --gameexe <PATH> --game-dir <DIR> --patched-seen-output <PATH> --artifact-root <DIR> [--scope dialogue|dialogue+choices] [--redaction on|off] [--bg-asset <STEM>] [--expect-text-contains <SUBSTR>] [--output <PATH>]\n       utsushi rpgmaker-mv-capture --game-dir <DIR> --artifact-root <DIR> --output <PATH> [--run-id <ID>] [--assert-observed-text <TEXT>]\n       utsushi review-package --patch-export <PATH> --runtime-evidence <PATH> [--replay-pack <PATH>] [--no-browser] [--no-screenshot] --output <PATH>\n       utsushi trace-kag <script.ks> --output <PATH>\n       utsushi coverage-export --read-model <PATH> --generated-at <RFC3339> --output <PATH> [--markdown-output <PATH>] [--include-gap-findings]\n       utsushi mvmz-runtime-proof --runtime-trace <PATH> --fixture-dir <DIR> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi mvmz-patched-runtime-proof --patched-runtime-trace <PATH> --patched-fixture-dir <DIR> --patch-result <PATH> --alpha-proof <PATH> [--screenshot-evidence <PATH>] --output <PATH>\n       utsushi conform <game_dir> [--adapter <name>] --output <path>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>\n       utsushi smoke <game_dir> --adapter <browser-adapter> --output <path> [--artifact-root <path>] [--skip-browser]";
 const DEFAULT_ADAPTER_NAME: &str = FixtureEnginePort::MANIFEST.id;
 
 fn main() {
@@ -49,14 +52,23 @@ fn run_cli_with_registry(
 ) -> Result<(), Box<dyn std::error::Error>> {
     match args.first().map(String::as_str) {
         Some("capabilities") => {
-            validate_exact_flags(args, &[], &["--output"])?;
-            let output = flag(args, "--output")?;
-            write_json(&PathBuf::from(output), &capabilities_output(registry))?;
+            validate_exact_flags(
+                args,
+                &[],
+                &["--output"],
+                &[runtime_skip::BROWSER_SKIP_FLAG],
+                USAGE,
+            )?;
+            let output = flag(args, "--output", USAGE)?;
+            let skip_browser = runtime_skip::has_flag(args, runtime_skip::BROWSER_SKIP_FLAG);
+            let skipped = runtime_skip::browser_launch_adapter_names(registry);
+            let report = capabilities_output(registry, skip_browser, skipped)?;
+            write_json(&PathBuf::from(output), &report)?;
         }
         Some("validate-reference-captures") => {
-            validate_exact_flags(args, &["corpus_manifest"], &["--output"])?;
+            validate_exact_flags(args, &["corpus_manifest"], &["--output"], &[], USAGE)?;
             let corpus_path = PathBuf::from(args.get(1).ok_or("missing corpus_manifest")?);
-            let output = flag(args, "--output")?;
+            let output = flag(args, "--output", USAGE)?;
             let report = utsushi_fixture::validate_reference_capture_corpus(&corpus_path)?;
             write_json(&PathBuf::from(output), &report.to_json_value()?)?;
         }
@@ -175,14 +187,25 @@ fn run_cli_with_registry(
         }
         Some(command) => {
             let operation = operation_from_command(command).ok_or(USAGE)?;
+            let bool_flags = runtime_skip::browser_skip_flag_for(operation);
             validate_exact_flags(
                 args,
                 &["game_dir"],
                 &["--adapter", "--artifact-root", "--output"],
+                bool_flags,
+                USAGE,
             )?;
             let input_root = PathBuf::from(args.get(1).ok_or("missing game_dir")?);
-            let output = flag(args, "--output")?;
+            let output = flag(args, "--output", USAGE)?;
             let adapter_name = selected_adapter_name(args, registry)?;
+            if runtime_skip::try_write_runtime_skip_report(
+                args,
+                registry,
+                &adapter_name,
+                &PathBuf::from(output),
+            )? {
+                return Ok(());
+            }
             let artifact_root = if let Some(path) = optional_flag(args, "--artifact-root") {
                 Some(PathBuf::from(path))
             } else if matches!(
@@ -271,10 +294,10 @@ fn run_review_package_command(tail: &[String]) -> Result<(), Box<dyn std::error:
         return Err(format!("unexpected argument {arg}; {USAGE}").into());
     }
 
-    let patch_export = PathBuf::from(flag(tail, "--patch-export")?);
-    let runtime_evidence = PathBuf::from(flag(tail, "--runtime-evidence")?);
+    let patch_export = PathBuf::from(flag(tail, "--patch-export", USAGE)?);
+    let runtime_evidence = PathBuf::from(flag(tail, "--runtime-evidence", USAGE)?);
     let replay_pack = optional_flag(tail, "--replay-pack").map(PathBuf::from);
-    let output = PathBuf::from(flag(tail, "--output")?);
+    let output = PathBuf::from(flag(tail, "--output", USAGE)?);
 
     let browser_available = !tail.iter().any(|arg| arg == "--no-browser");
     // Screenshot capture requires a browser; `--no-browser` implies no
@@ -326,16 +349,18 @@ fn selected_adapter_name(
     }
 }
 
-fn capabilities_output(registry: &RuntimeAdapterRegistry<'_>) -> Value {
+fn capabilities_output(
+    registry: &RuntimeAdapterRegistry<'_>,
+    skip_browser: bool,
+    skipped_adapter_names: Vec<String>,
+) -> Result<Value, Box<dyn std::error::Error>> {
     let runtime_adapters = registry
         .descriptors()
         .into_iter()
         .map(descriptor_output)
         .collect::<Vec<_>>();
-    json!({
-        "schemaVersion": "0.1.0",
-        "runtimeAdapters": runtime_adapters
-    })
+    let base = json!({"schemaVersion": "0.1.0", "runtimeAdapters": runtime_adapters});
+    runtime_skip::augment_capabilities_with_skip(base, skip_browser, skipped_adapter_names)
 }
 
 fn descriptor_output(descriptor: RuntimeAdapterDescriptor) -> Value {
@@ -363,63 +388,6 @@ fn descriptor_output(descriptor: RuntimeAdapterDescriptor) -> Value {
             .collect::<Vec<_>>(),
         "limitations": descriptor.limitations
     })
-}
-
-fn flag<'a>(args: &'a [String], name: &str) -> Result<&'a str, Box<dyn std::error::Error>> {
-    optional_flag(args, name).ok_or_else(|| format!("missing flag {name}").into())
-}
-
-fn optional_flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
-    args.iter()
-        .position(|arg| arg == name)
-        .and_then(|index| args.get(index + 1))
-        .map(String::as_str)
-}
-
-fn validate_exact_flags(
-    args: &[String],
-    positional_labels: &[&str],
-    allowed_flags: &[&str],
-) -> Result<(), Box<dyn std::error::Error>> {
-    let expected_positionals = 1 + positional_labels.len();
-    if args.len() < expected_positionals {
-        let missing = positional_labels[args.len().saturating_sub(1)];
-        return Err(format!("missing {missing}; {USAGE}").into());
-    }
-    for index in 1..expected_positionals {
-        if args[index].starts_with("--") {
-            return Err(format!("missing {}; {USAGE}", positional_labels[index - 1]).into());
-        }
-    }
-
-    let mut seen_flags = std::collections::HashSet::new();
-    let mut index = expected_positionals;
-    while index < args.len() {
-        let flag = args[index].as_str();
-        if !flag.starts_with("--") {
-            return Err(format!("unexpected argument {flag}; {USAGE}").into());
-        }
-        if !allowed_flags.contains(&flag) {
-            return Err(format!("unknown flag {flag}; {USAGE}").into());
-        }
-        if !seen_flags.insert(flag) {
-            return Err(format!("duplicate flag {flag}; {USAGE}").into());
-        }
-        let Some(value) = args.get(index + 1) else {
-            return Err(format!("missing value for flag {flag}; {USAGE}").into());
-        };
-        if value.starts_with("--") {
-            return Err(format!("missing value for flag {flag}; {USAGE}").into());
-        }
-        index += 2;
-    }
-
-    for required_flag in allowed_flags.iter().filter(|flag| **flag == "--output") {
-        if !seen_flags.contains(required_flag) {
-            return Err(format!("missing flag {required_flag}; {USAGE}").into());
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]
