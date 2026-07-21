@@ -12,8 +12,9 @@
 // Positive extraction/patch adapters and readiness-only (packed/encrypted)
 // profiles are mechanically distinguished from the derived level statuses +
 // the source kind, never hand-set. RenPy is NOT an alpha Japanese-opportunity
-// driver; it is recorded as an explicit exclusion. KiriKiri breadth is carried
-// by XP3 detector/profile + readiness evidence, never "plaintext-only".
+// driver; it is recorded as an explicit exclusion. KiriKiri breadth includes
+// XP3 detector/profile readiness plus a separately bounded plain-container
+// production writer proof; it never implies standalone script support.
 //
 // Usage:
 //   node scripts/generate-engine-capability-matrix.mjs           # write artifacts
@@ -112,11 +113,11 @@ export const INPUT_SOURCES = [
     role: "RPG Maker MV/MZ readiness merge matrix",
   },
   {
-    id: "rpg-maker-mv-mz-data-text-patchback",
-    path: "fixtures/public/kaifuu-rpgmaker-data-text-patchback/expected/data-text-patchback-validation-v0.1.json",
-    category: "validation_artifact",
-    kind: "validation_artifact",
-    role: "RPG Maker MV/MZ www/data text patchback + .kaifuu delta round-trip validation",
+    id: "production-extract-patch-proofs",
+    path: "fixtures/kaifuu/production-capabilities/extract-patch-proofs.v0.1.json",
+    category: "claimed_support_tuples",
+    kind: "production_capability_tuple",
+    role: "production extract/patch tuples bound to strict real-byte proof lanes",
   },
   {
     id: "reallive-patchback-produce",
@@ -319,7 +320,8 @@ function levelsFromCapabilities(capabilities, { sourceId, crypto, signals }) {
 
 // A row is a `positive_adapter` ONLY when it extracts or patches (supported or
 // partial) AND that evidence comes from an adapter registry / claimed-support
-// tuple. Detector profiles, readiness profiles, detection summaries, and
+// tuple / production tuple whose strict real-byte proof is validated by its row
+// builder. Detector profiles, readiness profiles, detection summaries, and
 // validation smokes can never become positive adapters here, even if a smoke
 // parsed some text — they stay `readiness_only`. This is the mechanical
 // distinction the acceptance demands; it is never hand-set.
@@ -327,8 +329,11 @@ function classifyPosture(levels, sourceKind) {
   const extractsOrPatches =
     ["supported", "partial"].includes(levels.extract.status) ||
     ["supported", "partial"].includes(levels.patch.status);
-  const fromAdapterRegistry =
-    sourceKind === "adapter_registry" || sourceKind === "claimed_support_tuples";
+  const fromAdapterRegistry = [
+    "adapter_registry",
+    "claimed_support_tuples",
+    "production_capability_tuple",
+  ].includes(sourceKind);
   return extractsOrPatches && fromAdapterRegistry ? "positive_adapter" : "readiness_only";
 }
 
@@ -553,6 +558,128 @@ function buildXp3Row(inputs, sourceId, scenario) {
   });
 }
 
+const PRODUCTION_PROOF_SOURCE_ID = "production-extract-patch-proofs";
+const PRODUCTION_PROOF_SCHEMA = "kaifuu.production_extract_patch_proofs.v0.1";
+
+function sameStringSet(actual, expected) {
+  return (
+    Array.isArray(actual) &&
+    actual.length === expected.length &&
+    [...actual].sort().every((value, index) => value === [...expected].sort()[index])
+  );
+}
+
+/** Load one production claim and reject structural or capability-boundary drift
+ * with the matrix generator's typed error. A claim may record a failed strict
+ * run (which mechanically demotes its row), but it may not silently change the
+ * contract that the row is intended to prove. */
+function requireProductionProofClaim(inputs, claimId, expected) {
+  const document = requireInput(inputs, PRODUCTION_PROOF_SOURCE_ID);
+  if (document.schemaVersion !== PRODUCTION_PROOF_SCHEMA || !Array.isArray(document.claims)) {
+    throw new MatrixGenerationError(
+      `${PRODUCTION_PROOF_SOURCE_ID} must declare ${PRODUCTION_PROOF_SCHEMA} claims`,
+    );
+  }
+  const claim = document.claims.find((candidate) => candidate?.claimId === claimId);
+  if (!claim || typeof claim !== "object") {
+    throw new MatrixGenerationError(`${PRODUCTION_PROOF_SOURCE_ID} is missing claim ${claimId}`);
+  }
+  const realBytes = claim.realBytes;
+  if (
+    claim.engineFamily !== expected.engineFamily ||
+    claim.adapterId !== expected.adapterId ||
+    claim.scenario !== expected.scenario ||
+    claim.capabilityTuple?.kind !== expected.tupleKind ||
+    !realBytes ||
+    typeof realBytes !== "object" ||
+    !["passed", "failed"].includes(realBytes.status) ||
+    realBytes.strictLane !== "just ci-real-bytes" ||
+    typeof realBytes.minimumDistinctCorpora !== "number" ||
+    !Array.isArray(realBytes.corpusEnvironment) ||
+    typeof claim.productionPath !== "object"
+  ) {
+    throw new MatrixGenerationError(
+      `${PRODUCTION_PROOF_SOURCE_ID} claim ${claimId} has an invalid production-proof shape`,
+    );
+  }
+  if (!sameStringSet(realBytes.corpusEnvironment, expected.corpusEnvironment)) {
+    throw new MatrixGenerationError(
+      `${PRODUCTION_PROOF_SOURCE_ID} claim ${claimId} names an unexpected real-byte corpus contract`,
+    );
+  }
+  for (const [field, value] of Object.entries(expected.productionPath)) {
+    if (claim.productionPath[field] !== value) {
+      throw new MatrixGenerationError(
+        `${PRODUCTION_PROOF_SOURCE_ID} claim ${claimId} has an unexpected production path for ${field}`,
+      );
+    }
+  }
+  return claim;
+}
+
+function productionProofPassed(claim, expected) {
+  return (
+    claim.realBytes.status === "passed" &&
+    claim.realBytes.minimumDistinctCorpora >= expected.minimumDistinctCorpora &&
+    claim.realBytes.outcome === expected.outcome
+  );
+}
+
+function levelsFromProductionProof(passed, sourceId, helperNote, runtimeNote) {
+  return {
+    identify: cell(passed ? "supported" : "unsupported", `${sourceId}#realBytes.status`),
+    inventory: cell(passed ? "supported" : "unsupported", `${sourceId}#capabilityTuple`),
+    extract: cell(passed ? "supported" : "unsupported", `${sourceId}#productionPath`),
+    patch: cell(passed ? "supported" : "unsupported", `${sourceId}#realBytes.outcome`),
+    helper: cell("not_applicable", `${sourceId}#capabilityTuple`, helperNote),
+    runtime: cell("unsupported", `${sourceId}#supportBoundary`, runtimeNote),
+  };
+}
+
+function buildProductionPlainXp3Row(inputs) {
+  const sourceId = PRODUCTION_PROOF_SOURCE_ID;
+  const expected = {
+    engineFamily: "kiri_kiri_xp3",
+    adapterId: "kaifuu.kirikiri-xp3.plain-writer",
+    scenario: "xp3-plain-extract-patch",
+    tupleKind: "plain_xp3_writer",
+    corpusEnvironment: ["KAIFUU_XP3_PROFILE_A_ARCHIVE"],
+    minimumDistinctCorpora: 1,
+    outcome: "byte_exact_archive_rebuild",
+    productionPath: {
+      nativeExtractCommand: "kaifuu xp3 unpack",
+      nativePatchCommand: "kaifuu xp3 pack",
+    },
+  };
+  const claim = requireProductionProofClaim(inputs, "kirikiri-xp3-plain-writer", expected);
+  if (
+    claim.capabilityTuple.variant !== "plain" ||
+    claim.capabilityTuple.patchBackMode !== "archive_rebuild_plain"
+  ) {
+    throw new MatrixGenerationError(
+      `${sourceId} claim kirikiri-xp3-plain-writer has an invalid plain XP3 capability tuple`,
+    );
+  }
+  const passed = productionProofPassed(claim, expected);
+  return makeRow({
+    rowId: "kirikiri-xp3-plain-extract-patch",
+    engineFamily: expected.engineFamily,
+    scenario: expected.scenario,
+    adapterId: expected.adapterId,
+    levels: levelsFromProductionProof(
+      passed,
+      sourceId,
+      "plain XP3 archive handling requires no key helper",
+      "archive rebuild proof does not establish runtime compatibility",
+    ),
+    sourceKind: "production_capability_tuple",
+    evidenceSourceIds: [sourceId],
+    extraLimitations: [
+      "positive extract/patch support is limited to plain XP3 archive rebuild; compressed-entry replacement, encrypted/protected variants, and standalone script support are not claimed",
+    ],
+  });
+}
+
 function buildSiglusDetectorReadinessRow(inputs) {
   const profile = requireInput(inputs, "siglus-detector-profile");
   const levels = levelsFromCapabilities(profile.capabilities, {
@@ -676,59 +803,57 @@ function buildRpgMakerEncryptedMediaRow(inputs) {
   });
 }
 
-// The MV/MZ TEXT surface (www/data/*.json script + database literals), distinct
-// from the encrypted-MEDIA row above. `kaifuu patch --engine rpgmaker`
-// (kaifuu-rpgmaker `produce_delta_package`) byte-surgically patches these
-// literals + emits a `.kaifuu` delta that round-trips byte-for-byte — the apply
-// step the `localize-live --engine rpg-maker-mv-mz` pipeline now dispatches to.
-// Evidence is a validation artifact (captured on a synthetic www tree; also
-// exercised on real LustMemory bytes out-of-band), NOT a positive kaifuu
-// EngineAdapter registry claim, so the row stays `readiness_only` and extract/
-// patch are `partial` (demonstrated, not registry-exposed) — never `supported`.
-function buildRpgMakerDataTextPatchbackRow(inputs) {
-  const v = requireInput(inputs, "rpg-maker-mv-mz-data-text-patchback");
-  const sourceId = "rpg-maker-mv-mz-data-text-patchback";
-  const passed = v.status === "passed" && v.outcome === "byte_surgical_patchback_round_trip";
-  const roundTrip = v.deltaRoundTrip === "passed";
-  const surfaced = typeof v.surfacedUnitCount === "number" && v.surfacedUnitCount > 0;
-  const changed = typeof v.changedFileCount === "number" && v.changedFileCount > 0;
-  const registryExposed = v.adapterRegistryExposed === true;
-  const levels = {
-    identify: cell(passed ? "supported" : "unsupported", `${sourceId}#status`),
-    inventory: cell(
-      "unsupported",
-      `${sourceId}#surface`,
-      "www/data text units are surfaced via extract, not a separate asset-inventory parser",
-    ),
-    extract: cell(
-      passed && surfaced ? "partial" : "unsupported",
-      `${sourceId}#surfacedUnitCount`,
-      "www/data text units are surfaced + patch-back-targetable; production extraction is demonstrated via validation artifact, not a positive registry adapter",
-    ),
-    patch: cell(
-      passed && roundTrip && changed ? (registryExposed ? "supported" : "partial") : "unsupported",
-      `${sourceId}#deltaRoundTrip`,
-      "byte-surgical www/data text patchback + `.kaifuu` delta round-trips byte-for-byte; not exposed through the kaifuu EngineAdapter registry",
-    ),
-    helper: cell(
-      "not_applicable",
-      `${sourceId}#corpus`,
-      "plaintext www/data JSON text surface; no key material or helper is required",
-    ),
-    runtime: cell(
-      "unsupported",
-      `${sourceId}#schema`,
-      "MV/MZ is a delegation runtime; runtime replay is not validated by this patchback artifact",
-    ),
-  };
-  return makeRow({
-    rowId: "rpg-maker-mv-mz-data-text-patchback",
+function buildProductionRpgMakerRow(inputs) {
+  const sourceId = PRODUCTION_PROOF_SOURCE_ID;
+  const expected = {
     engineFamily: "rpg_maker_mv_mz",
-    scenario: "data-text-patchback",
-    adapterId: v.adapterId ?? "kaifuu.rpg-maker-mv-mz",
-    levels,
-    sourceKind: "validation_artifact",
-    evidenceSourceIds: ["rpg-maker-mv-mz-data-text-patchback"],
+    adapterId: "kaifuu.rpg-maker-mv-mz",
+    scenario: "json-text-extract-patch",
+    tupleKind: "mv_mz_json_text",
+    corpusEnvironment: [
+      "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ",
+      "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2",
+    ],
+    minimumDistinctCorpora: 2,
+    outcome: "byte_surgical_extract_patch_delta_apply",
+    productionPath: {
+      appExtractRegistry: "itotori extract --engine rpg-maker",
+      appPatchRegistry: "itotori patch",
+      nativePatchCommand: "kaifuu patch --engine rpgmaker",
+    },
+  };
+  const claim = requireProductionProofClaim(inputs, "rpg-maker-mv-mz-json-text", expected);
+  if (
+    claim.capabilityTuple.capability !== "patch" ||
+    !sameStringSet(claim.capabilityTuple.coveredRoles, [
+      "maps",
+      "common_events",
+      "database",
+      "system",
+      "terms",
+    ])
+  ) {
+    throw new MatrixGenerationError(
+      `${sourceId} claim rpg-maker-mv-mz-json-text has an invalid JSON-text capability tuple`,
+    );
+  }
+  const passed = productionProofPassed(claim, expected);
+  return makeRow({
+    rowId: "rpg-maker-mv-mz-json-text-extract-patch",
+    engineFamily: expected.engineFamily,
+    scenario: expected.scenario,
+    adapterId: expected.adapterId,
+    levels: levelsFromProductionProof(
+      passed,
+      sourceId,
+      "JSON text extraction and patchback require no key helper",
+      "JSON text extract/patch proof does not establish runtime compatibility",
+    ),
+    sourceKind: "production_capability_tuple",
+    evidenceSourceIds: [sourceId],
+    extraLimitations: [
+      "positive extract/patch support is limited to JSON text in maps, common events, database, system, and terms; plugin JavaScript and encrypted media are not claimed",
+    ],
   });
 }
 
@@ -836,10 +961,11 @@ export function generateEngineCapabilityMatrix(inputs) {
     buildXp3Row(inputs, "xp3-plain-detector-profile", "readiness"),
     buildXp3Row(inputs, "xp3-compressed-detector-profile", "readiness"),
     buildXp3Row(inputs, "xp3-encrypted-detector-profile", "crypt-smoke"),
+    buildProductionPlainXp3Row(inputs),
     buildSiglusDetectorReadinessRow(inputs),
     buildSiglusKnownKeyRow(inputs),
     buildRpgMakerEncryptedMediaRow(inputs),
-    buildRpgMakerDataTextPatchbackRow(inputs),
+    buildProductionRpgMakerRow(inputs),
     buildDetectionSummaryReadinessRow(inputs, {
       engineFamily: "wolf_rpg_editor",
       rowId: "wolf-rpg-editor-encrypted-archive-smoke",

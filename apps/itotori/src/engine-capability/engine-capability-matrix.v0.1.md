@@ -5,7 +5,7 @@
 - Schema: `itotori.engine_capability_matrix.v0.1`
 - Generator: `scripts/generate-engine-capability-matrix.mjs`
 - Capability levels: identify, inventory, extract, patch, helper, runtime
-- Input categories covered: adapter_registry, claimed_support_tuples, detection_report, detection_summary, detector_profile, fixture_output, readiness_profile, validation_artifact
+- Input categories covered: adapter_registry, claimed_support_tuples, detection_report, detection_summary, detector_profile, fixture_output, production_capability_tuple, readiness_profile, validation_artifact
 
 ## Capability rows
 
@@ -16,10 +16,11 @@
 | kirikiri-xp3-plain-readiness | kiri_kiri_xp3 | readiness_only | yes | yes | no | no | partial | no |
 | kirikiri-xp3-compressed-readiness | kiri_kiri_xp3 | readiness_only | yes | yes | no | no | partial | no |
 | kirikiri-xp3-encrypted-crypt-smoke | kiri_kiri_xp3 | readiness_only | yes | yes | no | no | partial | no |
+| kirikiri-xp3-plain-extract-patch | kiri_kiri_xp3 | positive_adapter | yes | yes | yes | yes | n/a | no |
 | siglus-scene-pck-detector-readiness | siglus | readiness_only | yes | yes | no | no | partial | no |
 | siglus-known-key-scene-gameexe-smoke | siglus | readiness_only | yes | yes | partial | no | partial | no |
 | rpg-maker-mv-mz-encrypted-media | rpg_maker_mv_mz | readiness_only | yes | no | no | no | partial | no |
-| rpg-maker-mv-mz-data-text-patchback | rpg_maker_mv_mz | readiness_only | yes | no | partial | partial | n/a | no |
+| rpg-maker-mv-mz-json-text-extract-patch | rpg_maker_mv_mz | positive_adapter | yes | yes | yes | yes | n/a | no |
 | wolf-rpg-editor-encrypted-archive-smoke | wolf_rpg_editor | readiness_only | yes | no | no | no | partial | no |
 | bgi-ethornell-container-readiness | bgi_ethornell | readiness_only | yes | no | no | no | no | no |
 | reallive-seen-txt-detector-readiness | reallive | readiness_only | yes | yes | no | no | no | no |
@@ -41,7 +42,7 @@
 - `siglus-known-key-parser-boundary-smoke` (validation_artifact/validation_artifact) — fixtures/public/kaifuu-encrypted-matrix/expected/siglus-parser-boundary-smoke-v0.1.json
 - `rpg-maker-mv-mz-key-validation` (validation_artifact/validation_artifact) — fixtures/public/kaifuu-encrypted-matrix/expected/rpg-maker-mv-mz-key-validation-success-v0.1.json
 - `rpg-maker-mv-mz-readiness-merge` (readiness_profile/readiness_profile) — fixtures/public/catalog-capability-evidence-mv-mz-merge/expected/readiness-merge-v0.1.json
-- `rpg-maker-mv-mz-data-text-patchback` (validation_artifact/validation_artifact) — fixtures/public/kaifuu-rpgmaker-data-text-patchback/expected/data-text-patchback-validation-v0.1.json
+- `production-extract-patch-proofs` (claimed_support_tuples/production_capability_tuple) — fixtures/kaifuu/production-capabilities/extract-patch-proofs.v0.1.json
 - `reallive-patchback-produce` (validation_artifact/validation_artifact) — fixtures/public/itotori-patchback-produce/expected/reallive-patchback-produce-capability-v0.1.json
 - `rpg-maker-mv-mz-encrypted-suffixes-detection` (fixture_output/detection_report) — fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/expected/detection-report-v0.1.json
 - `encrypted-matrix-detection-summary` (readiness_profile/detection_summary) — fixtures/public/kaifuu-encrypted-matrix/expected/detection-summary-v0.1.json
@@ -60,6 +61,8 @@
 - [kirikiri-xp3-compressed-readiness] KiriKiri breadth is XP3 container/readiness evidence only; plaintext .ks/.tjs is not claimed as standalone extract/patch support
 - [kirikiri-xp3-encrypted-crypt-smoke] helper: key/helper requirement is named but not resolved by this readiness evidence
 - [kirikiri-xp3-encrypted-crypt-smoke] KiriKiri breadth is XP3 container/readiness evidence only; plaintext .ks/.tjs is not claimed as standalone extract/patch support
+- [kirikiri-xp3-plain-extract-patch] runtime: archive rebuild proof does not establish runtime compatibility
+- [kirikiri-xp3-plain-extract-patch] positive extract/patch support is limited to plain XP3 archive rebuild; compressed-entry replacement, encrypted/protected variants, and standalone script support are not claimed
 - [siglus-scene-pck-detector-readiness] helper: key/helper requirement is named but not resolved by this readiness evidence
 - [siglus-known-key-scene-gameexe-smoke] extract: parser-boundary smoke parses known-key text slots only; production extraction is not claimed
 - [siglus-known-key-scene-gameexe-smoke] patch: patch write was not attempted; Siglus patch-back/repack is not claimed
@@ -70,10 +73,8 @@
 - [rpg-maker-mv-mz-encrypted-media] patch: no decrypt/patch is claimed from media-key detection alone
 - [rpg-maker-mv-mz-encrypted-media] helper: key evidence is validated against System.json; no key material is resolved or decrypted
 - [rpg-maker-mv-mz-encrypted-media] runtime: no runtime evidence is claimed for MV/MZ readiness
-- [rpg-maker-mv-mz-data-text-patchback] inventory: www/data text units are surfaced via extract, not a separate asset-inventory parser
-- [rpg-maker-mv-mz-data-text-patchback] extract: www/data text units are surfaced + patch-back-targetable; production extraction is demonstrated via validation artifact, not a positive registry adapter
-- [rpg-maker-mv-mz-data-text-patchback] patch: byte-surgical www/data text patchback + `.kaifuu` delta round-trips byte-for-byte; not exposed through the kaifuu EngineAdapter registry
-- [rpg-maker-mv-mz-data-text-patchback] runtime: MV/MZ is a delegation runtime; runtime replay is not validated by this patchback artifact
+- [rpg-maker-mv-mz-json-text-extract-patch] runtime: JSON text extract/patch proof does not establish runtime compatibility
+- [rpg-maker-mv-mz-json-text-extract-patch] positive extract/patch support is limited to JSON text in maps, common events, database, system, and terms; plugin JavaScript and encrypted media are not claimed
 - [wolf-rpg-editor-encrypted-archive-smoke] inventory: detection summary provides identify-only readiness; no inventory parser is claimed
 - [wolf-rpg-editor-encrypted-archive-smoke] extract: no extraction is claimed; detector/profile readiness evidence only
 - [wolf-rpg-editor-encrypted-archive-smoke] patch: no parser or patch support is claimed

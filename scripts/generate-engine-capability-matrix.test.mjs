@@ -44,14 +44,19 @@ test("every row carries all six capability levels with traceable derivation", ()
 });
 
 test("positive extraction/patch adapter and readiness-only profiles are mechanically distinguished", () => {
-  // The synthetic fixture adapter and Softpal are the real extract+patch
-  // adapters (evidenced by claimed-support tuples); every other row is
-  // readiness-only. RealLive's own registry adapter is detector-only, so it
-  // stays readiness_only — Softpal is a first-class positive adapter.
+  // The synthetic fixture, bounded plain XP3 writer, JSON-text engine path,
+  // and Softpal are positive extract+patch adapters. The production rows are
+  // admitted only through their strict real-byte proof tuples; every other
+  // row is readiness-only.
   const positives = matrix.rows.filter((r) => r.evidencePosture === "positive_adapter");
   assert.deepEqual(
     positives.map((r) => r.rowId),
-    ["synthetic-fixture-plaintext-identity", "softpal-script-src-text-dat-extract-patch"],
+    [
+      "synthetic-fixture-plaintext-identity",
+      "kirikiri-xp3-plain-extract-patch",
+      "rpg-maker-mv-mz-json-text-extract-patch",
+      "softpal-script-src-text-dat-extract-patch",
+    ],
   );
   const fixture = rowsById.get("synthetic-fixture-plaintext-identity");
   assert.equal(fixture.levels.extract.status, "supported");
@@ -150,16 +155,19 @@ test("RenPy is not presented as an alpha Japanese opportunity driver", () => {
   assert.match(exclusion.reason, /opportunity driver/i);
 });
 
-test("KiriKiri breadth is XP3/readiness evidence, not plaintext-only support", () => {
+test("KiriKiri keeps detector breadth separate from its bounded plain-XP3 writer", () => {
   const kirikiri = matrix.rows.filter((r) => r.engineFamily === "kiri_kiri_xp3");
   // Plain, compressed, and encrypted XP3 variants are all represented.
-  assert.ok(kirikiri.length >= 3, "KiriKiri must span multiple XP3 variants");
+  assert.ok(kirikiri.length >= 4, "KiriKiri must span detector variants plus the writer");
   const scenarios = kirikiri.map((r) => r.scenario).join(",");
   for (const variant of ["plain", "compressed", "encrypted"]) {
     assert.match(scenarios, new RegExp(`xp3-${variant}`), `missing XP3 ${variant} row`);
   }
-  // None claim plaintext-only extract/patch: XP3 readiness extracts/patches none.
-  for (const row of kirikiri) {
+  // The broad detector profiles remain readiness-only and do not claim
+  // extraction or patching merely because they identified a container.
+  const readinessRows = kirikiri.filter((row) => row.evidencePosture === "readiness_only");
+  assert.equal(readinessRows.length, 3);
+  for (const row of readinessRows) {
     assert.equal(row.levels.extract.status, "unsupported");
     assert.equal(row.levels.patch.status, "unsupported");
     assert.ok(
@@ -167,8 +175,54 @@ test("KiriKiri breadth is XP3/readiness evidence, not plaintext-only support", (
       `${row.rowId} must record the XP3-readiness (not plaintext-only) limitation`,
     );
   }
+  const writer = rowsById.get("kirikiri-xp3-plain-extract-patch");
+  assert.ok(writer, "plain XP3 writer production row must exist");
+  assert.equal(writer.evidencePosture, "positive_adapter");
+  assert.equal(writer.levels.extract.status, "supported");
+  assert.equal(writer.levels.patch.status, "supported");
+  assert.ok(
+    writer.limitations.some((limitation) => /compressed-entry replacement/i.test(limitation)),
+    "writer row must retain its compressed/encrypted boundary",
+  );
   // The crypt smoke row is present.
   assert.ok(rowsById.has("kirikiri-xp3-encrypted-crypt-smoke"));
+});
+
+test("production extract/patch rows require their strict real-byte proof", () => {
+  const rpg = rowsById.get("rpg-maker-mv-mz-json-text-extract-patch");
+  assert.ok(rpg, "JSON-text production row must exist");
+  assert.equal(rpg.evidencePosture, "positive_adapter");
+  assert.equal(rpg.levels.extract.status, "supported");
+  assert.equal(rpg.levels.patch.status, "supported");
+  assert.ok(
+    rpg.limitations.some((limitation) => /plugin JavaScript and encrypted media/i.test(limitation)),
+    "JSON-text row must retain its non-text boundary",
+  );
+
+  for (const claimId of ["kirikiri-xp3-plain-writer", "rpg-maker-mv-mz-json-text"]) {
+    const tampered = structuredClone(inputs);
+    const claim = tampered["production-extract-patch-proofs"].claims.find(
+      (candidate) => candidate.claimId === claimId,
+    );
+    claim.realBytes.status = "failed";
+    const regenerated = generateEngineCapabilityMatrix(tampered).rows.find((row) =>
+      claimId === "kirikiri-xp3-plain-writer"
+        ? row.rowId === "kirikiri-xp3-plain-extract-patch"
+        : row.rowId === "rpg-maker-mv-mz-json-text-extract-patch",
+    );
+    assert.equal(regenerated.levels.extract.status, "unsupported");
+    assert.equal(regenerated.levels.patch.status, "unsupported");
+    assert.equal(regenerated.evidencePosture, "readiness_only");
+  }
+
+  const malformed = structuredClone(inputs);
+  malformed["production-extract-patch-proofs"].claims[0].capabilityTuple.kind = "wrong";
+  assert.throws(
+    () => generateEngineCapabilityMatrix(malformed),
+    (error) =>
+      error instanceof MatrixGenerationError &&
+      /invalid production-proof shape/.test(error.message),
+  );
 });
 
 test("BGI is detector/profile readiness evidence with no parser or patch claim", () => {

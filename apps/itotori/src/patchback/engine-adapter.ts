@@ -18,7 +18,7 @@ import { runNativeCli, type NativeCliRunner } from "../native-bin/cli-bin-resolv
 
 /** The patch-back engines the app can select. Each maps 1:1 to a kaifuu-cli
  * `patch --engine <id>` implementation and to one registered adapter. */
-export type PatchbackEngineId = "reallive" | "softpal";
+export type PatchbackEngineId = "reallive" | "rpg-maker" | "softpal";
 
 /** The generic byte-fidelity scope vocabulary. Adapters DECLARE which of these
  * they honor (`supportedScopes`); out-of-scope surfaces are carried
@@ -32,7 +32,7 @@ export function isPatchbackScope(value: unknown): value is PatchbackScope {
 }
 
 /** The artifact key every produced patch build addresses as its patched tree.
- * Both engines write their patched bytes under a single directory the delivery
+ * Each engine writes its patched bytes under a single directory the delivery
  * archiver tars, so the key is shared while the tree's shape is engine-owned. */
 export const PATCHBACK_TARGET_ARTIFACT_KEY = "patchTarget" as const;
 
@@ -44,7 +44,7 @@ export const PATCHBACK_TARGET_ARTIFACT_KEY = "patchTarget" as const;
 export type EnginePatchbackApplyRequest = {
   sourceRoot: string;
   targetRoot: string;
-  /** Generic translated v0.2 bundle JSON (RealLive `kaifuu patch --bundle`). */
+  /** Generic translated v0.2 bundle JSON for engines that consume `--bundle`. */
   translatedBundlePath: string;
   /** Generic strict PatchExportV02 JSON (Softpal `kaifuu patch --patch`). */
   patchExportPath?: string;

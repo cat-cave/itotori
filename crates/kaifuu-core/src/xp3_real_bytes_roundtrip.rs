@@ -37,6 +37,9 @@ use crate::{
     validate_safe_relative_path,
 };
 
+#[path = "xp3_real_bytes_roundtrip_adler.rs"]
+mod xp3_real_bytes_roundtrip_adler;
+
 /// Index encoding byte for an uncompressed (raw) XP3 index segment table.
 pub const XP3_INDEX_ENCODING_RAW: u8 = 0;
 /// Index encoding byte for a zlib-compressed XP3 index segment table.
@@ -400,15 +403,18 @@ fn emit_payloads(
     Ok(())
 }
 
-/// Recompute the per-entry adler32 over the rebuilt payload bytes and pair
-/// each value with the source-stored adler32. Used by the smoke/test
-/// surface to prove the rebuild preserves each member's integrity checksum.
+/// Recompute each entry's Adler-32 over its logical (decompressed when needed)
+/// payload and pair it with the source-stored value. XP3 records `adlr` over
+/// the original member bytes, not the raw bytes stored in a compressed segment.
+/// The identity repack still preserves those stored segment bytes verbatim.
 pub fn real_bytes_xp3_adler_proof(
     archive: &RealBytesXp3Archive,
 ) -> Result<Vec<(String, RealBytesXp3AdlerProof)>, PlainXp3WriterError> {
     let mut out = Vec::with_capacity(archive.entries.len());
     for entry in &archive.entries {
-        let recomputed = crate::compute_adler32(&entry.payload);
+        let recomputed = crate::compute_adler32(
+            &xp3_real_bytes_roundtrip_adler::logical_payload_for_adler(entry)?,
+        );
         out.push((
             entry.path.clone(),
             RealBytesXp3AdlerProof {
