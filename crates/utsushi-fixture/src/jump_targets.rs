@@ -26,9 +26,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utsushi_core::{LogicalClockTick, SourceTag, looks_like_local_path};
 
-/// Schema version pin for the jump target fixture wire form. Co-versioned
-/// with `REFERENCE_TRACE_SCHEMA_VERSION` () so a future schema
-/// bump is a single coordinated event.
+/// Schema version pin for the jump target fixture wire form.
 pub const JUMP_TARGET_SCHEMA_VERSION: &str = "0.1.0-alpha";
 
 /// A single fixture jump target. Every target is bridge-linked.

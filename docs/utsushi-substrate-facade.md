@@ -3,6 +3,8 @@
 Status: alpha (UTSUSHI-120)
 Schema authority: `utsushi_core::substrate`
 
+Decision: recorder deleted; `SourceTag` moved; shipping surfaces = `ReplayLog` + observation-hooks.
+
 ## 1. Contract
 
 `utsushi_core::substrate` is the **single import root** for engine ports
@@ -11,7 +13,7 @@ is the only stable API surface; everything else under `utsushi_core::*`
 is internal substrate detail subject to change.
 
 Consumers MUST reach the substrate through this path. Direct submodule
-imports (`utsushi_core::vfs::*`, `utsushi_core::recorder::*`, etc.) are
+imports (`utsushi_core::vfs::*`, etc.) are
 NOT part of the stable contract and may move when the substrate
 extracts into its own crate.
 
@@ -32,7 +34,6 @@ contract drift loud at build time.
 | Sinks (text / audio / frame)  | UTSUSHI-022      | `SinkSet`, `TextSurfaceSink`, `FrameArtifactSink`, `AudioEventSink`           | You emit observed runtime events.                        |
 | Snapshot primitives           | UTSUSHI-023      | `Inspectable`, `Restorable`, `take_snapshot`                                  | You expose / restore controlled-playback state.          |
 | Embed capability surface      | UTSUSHI-024      | `EmbedCapability`, `EmbedCapabilityId`, `EmbedCapabilityStatus`, `EmbedError` | You declare the observable surface a host embed exposes. |
-| Reference recorder            | UTSUSHI-060      | `ReferenceRecorder`, `InMemoryReferenceRecorder`                              | You produce a reference trace from a fixture run.        |
 | Conformance manifest + checks | UTSUSHI-025..030 | `ConformanceManifest`, `TraceConformanceCheck`, `RecordingConformanceCheck`   | You declare or evaluate conformance.                     |
 | Port + observation hook       | UTSUSHI-025/056  | `PortManifest`, `EnginePort`, `LifecycleStage`, `CaptureOutcome`              | You expose an engine port to the runner.                 |
 | Redaction policy              | UTSUSHI-056      | `reject_unredacted_local_paths`                                               | You sweep an outgoing artifact for host-path leakage.    |
@@ -47,12 +48,11 @@ emits and conformance reader consumes).
 Every facade-re-exported schema version constant is pinned by a
 compile-time const-assertion in `substrate.rs`:
 
-| Schema                           | Value         | Owning spec     |
-| -------------------------------- | ------------- | --------------- |
-| `REPLAY_LOG_SCHEMA_VERSION`      | `0.1.0-alpha` | UTSUSHI-021     |
-| `SNAPSHOT_SCHEMA_VERSION`        | `0.2.0-alpha` | UTSUSHI-023     |
-| `REFERENCE_TRACE_SCHEMA_VERSION` | `0.1.0-alpha` | UTSUSHI-060     |
-| `CONFORMANCE_SCHEMA_VERSION`     | `0.2.0-alpha` | UTSUSHI-026/028 |
+| Schema                       | Value         | Owning spec     |
+| ---------------------------- | ------------- | --------------- |
+| `REPLAY_LOG_SCHEMA_VERSION`  | `0.1.0-alpha` | UTSUSHI-021     |
+| `SNAPSHOT_SCHEMA_VERSION`    | `0.2.0-alpha` | UTSUSHI-023     |
+| `CONFORMANCE_SCHEMA_VERSION` | `0.2.0-alpha` | UTSUSHI-026/028 |
 
 A substrate slice that bumps its schema version constant without
 revising the facade contract trips the const-assertion at build time;
@@ -95,12 +95,10 @@ to reach:
   `unsupported_snapshot_restore_result`.
 - Crate-private helpers: `reject_unredacted_local_paths_public`,
   `looks_like_local_path_public`.
-- Embed capability helpers and bound consumed by the reference
-  recorder at finalize time: `sort_capabilities`,
+- Embed capability helpers and bound: `sort_capabilities`,
   `validate_capability_list`, `EMBED_MAX_CAPABILITIES`. The facade
   re-exports the capability value types (`EmbedCapability` and its
-  id/status enums) instead; the recorder reaches these helpers at
-  their direct submodule path.
+  id/status enums) instead.
 
 When a downstream consumer demonstrates a need for one of these
 symbols, the correct response is to revise the facade — not to reach

@@ -2,8 +2,7 @@
 //! committed jump target fixtures ( §7.1-§7.4, §7.7).
 //!
 //! The determinism gate (§7.5/§7.6) lives in
-//! `crates/utsushi-core/tests/replay_log_jump_target.rs` because it consumes
-//! the heavy `ReferenceRecorder` substrate. This file focuses on the fixture
+//! `crates/utsushi-core/tests/replay_log_jump_target.rs`. This file focuses on the fixture
 //! crate's pure surfaces: loader normalization, schema-version pinning, the
 //! redaction walk, and one negative case per code.
 

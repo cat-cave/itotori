@@ -165,14 +165,7 @@ const REQUIRED_SYMBOLS: &[&str] = &[
     "EmbedCapabilityId",
     "EmbedCapabilityStatus",
     "EmbedError",
-    // Recorder
-    "InMemoryReferenceRecorder",
-    "REFERENCE_TRACE_SCHEMA_VERSION",
-    "RecordingTextSink",
-    "ReferenceRecorder",
-    "ReferenceTrace",
     "SourceTag",
-    "deterministic_json_bytes",
     // Conformance
     "CONFORMANCE_SCHEMA_VERSION",
     "ConformanceAbiVersion",

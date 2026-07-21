@@ -2,9 +2,8 @@
 //!
 //! This single integration test exercises the controlled playback contract
 //! through an inline fixture by performing a full **snapshot save → restore
-//! → re-playback** cycle. The substrate (`InMemorySnapshotStore`
-//! `SnapshotConformanceCheck`, `InMemoryReferenceRecorder`
-//! `deterministic_json_bytes`) already exists; this slice is the structural
+//! → re-playback** cycle. The substrate (`InMemorySnapshotStore`,
+//! `SnapshotConformanceCheck`, `ReplayLogBuilder`) already exists; this slice is the structural
 //! smoke gate that consumes it.
 //!
 //! Headline structural defenses:
@@ -24,15 +23,14 @@
 
 use serde_json::Value;
 use utsushi_core::conformance::result::ResultOutcome;
-use utsushi_core::recorder::deterministic_json_bytes;
 use utsushi_core::snapshot::store::codes as store_codes;
 use utsushi_core::{
-    ClockOrigin, EvidenceRef, EvidenceTier, InMemoryReferenceRecorder, InMemorySnapshotStore,
-    InputEvent, Inspectable, LogicalClockTick, ProfileId, ReferenceRecorder, ReplayEntry,
-    ReplayLogBuilder, ReplayMetadata, SNAPSHOT_SCHEMA_VERSION, Snapshot, SnapshotConformanceCheck,
-    SnapshotError, SnapshotId, SnapshotRef, SnapshotRequest, SnapshotSchemaVersion, SnapshotStore,
-    SnapshotStoreError, SourceTag, StatePath, StateTree, StateValue, diff_snapshots,
-    redaction::reject_unredacted_local_paths, take_snapshot,
+    ClockOrigin, EvidenceRef, EvidenceTier, InMemorySnapshotStore, InputEvent, Inspectable,
+    LogicalClockTick, ProfileId, ReplayEntry, ReplayLogBuilder, ReplayMetadata,
+    SNAPSHOT_SCHEMA_VERSION, Snapshot, SnapshotConformanceCheck, SnapshotError, SnapshotId,
+    SnapshotRef, SnapshotRequest, SnapshotSchemaVersion, SnapshotStore, SnapshotStoreError,
+    StatePath, StateTree, StateValue, diff_snapshots, redaction::reject_unredacted_local_paths,
+    take_snapshot,
 };
 
 const INSPECTABLE_ID: &str = "utsushi-fixture";
@@ -423,9 +421,8 @@ fn fixture_snapshot_store_resolve_returns_mismatched_schema_version_when_payload
 fn fixture_snapshot_clock_tick_aligns_with_replay_log_post_restore_tail() {
     // Audit-focus defense for "deterministic playback gaps": the baseline
     // snapshot's clock tick (BASELINE_TICK) lines up with the first
-    // post-restore ReplayEntry's tick. Recording this through the
-    // `InMemoryReferenceRecorder` and re-asserting the alignment closes the
-    // loop end-to-end.
+    // post-restore ReplayEntry's tick. Replaying the tail through the
+    // ReplayLog keeps the alignment check end-to-end.
     let baseline = baseline_snapshot();
     let store = InMemorySnapshotStore::new();
     store.insert(baseline.clone()).expect("insert baseline");
@@ -434,7 +431,6 @@ fn fixture_snapshot_clock_tick_aligns_with_replay_log_post_restore_tail() {
         .expect("resolve baseline");
     assert_eq!(resolved, baseline);
 
-    let recorder = InMemoryReferenceRecorder::new(SourceTag::Fixture, INSPECTABLE_ID, SMOKE_RUN_ID);
     // Post-restore tail: text-advance at BASELINE_TICK + 1, advance at +2.
     let tail_first = ReplayEntry {
         tick: LogicalClockTick(BASELINE_TICK + 1),
@@ -444,27 +440,6 @@ fn fixture_snapshot_clock_tick_aligns_with_replay_log_post_restore_tail() {
         tick: LogicalClockTick(BASELINE_TICK + 2),
         event: InputEvent::advance(),
     };
-    recorder.record_replay_event(tail_first.clone());
-    recorder.record_replay_event(tail_second.clone());
-
-    let trace = recorder.finalize();
-    assert_eq!(trace.replay_events.len(), 2);
-    assert_eq!(
-        trace.replay_events[0].tick,
-        LogicalClockTick(BASELINE_TICK + 1)
-    );
-    assert_eq!(
-        trace.replay_events[1].tick,
-        LogicalClockTick(BASELINE_TICK + 2)
-    );
-
-    // The recorded trace and the snapshot's tick must be byte-deterministic.
-    let bytes_a = deterministic_json_bytes(&trace);
-    let bytes_b = deterministic_json_bytes(&trace);
-    assert_eq!(bytes_a, bytes_b);
-
-    // Round-trip the tail through `ReplayLogBuilder` so the test exercises
-    // the existing surface end-to-end as well.
     let mut builder = ReplayLogBuilder::new().metadata(ReplayMetadata::new(
         SMOKE_RUN_ID.to_string(),
         INSPECTABLE_ID.to_string(),
@@ -476,7 +451,14 @@ fn fixture_snapshot_clock_tick_aligns_with_replay_log_post_restore_tail() {
     builder.record(tail_first.tick, tail_first.event).unwrap();
     builder.record(tail_second.tick, tail_second.event).unwrap();
     let log = builder.build().expect("replay log builds");
+    assert_eq!(log.events().len(), 2);
     assert_eq!(log.events()[0].tick, LogicalClockTick(BASELINE_TICK + 1));
+    assert_eq!(log.events()[1].tick, LogicalClockTick(BASELINE_TICK + 2));
+
+    // The replay log and the snapshot's tick must be byte-deterministic.
+    let bytes_a = serde_json::to_vec(&log).expect("serialize replay log");
+    let bytes_b = serde_json::to_vec(&log).expect("serialize replay log");
+    assert_eq!(bytes_a, bytes_b);
 }
 
 #[test]
