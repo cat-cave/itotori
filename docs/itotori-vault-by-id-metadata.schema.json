@@ -7,13 +7,11 @@
   "additionalProperties": false,
   "required": [
     "canonical_id",
-    "identifiers",
     "engine",
     "engine_evidence",
     "engine_source",
     "work",
     "release",
-    "languages",
     "install_manifest",
     "containers_json",
     "runnable_from_tree",
@@ -36,7 +34,7 @@
       "items": {
         "$ref": "#/$defs/identifier"
       },
-      "description": "One or more external work identifiers used for the identity cross-check."
+      "description": "One or more external work identifiers used for the identity cross-check when present."
     },
     "engine": {
       "$ref": "#/$defs/nullable_string",
@@ -61,7 +59,7 @@
       "items": {
         "$ref": "#/$defs/language"
       },
-      "description": "Language facts. These are objects, not bare language-code strings."
+      "description": "Language facts when present. These are objects, not bare language-code strings."
     },
     "install_manifest": {
       "type": "null",

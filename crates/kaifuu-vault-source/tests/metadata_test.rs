@@ -118,6 +118,61 @@ fn rejects_synthetic_sidecar_when_languages_are_scalar_values() {
 }
 
 #[test]
+fn rejects_present_but_malformed_identity_entries_as_embedded_metadata_invalid() {
+    for (field, malformed_entry) in [
+        ("identifiers", serde_json::json!({ "source": "vndb" })),
+        ("languages", serde_json::json!({ "kind": "full" })),
+    ] {
+        let mut value: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/by-id-metadata/reallive.json")).unwrap();
+        value[field] = serde_json::json!([malformed_entry]);
+
+        let tree = tempfile::tempdir().unwrap();
+        let metadata_dir = tree.path().join("_vault");
+        std::fs::create_dir_all(&metadata_dir).unwrap();
+        std::fs::write(
+            metadata_dir.join("metadata.json"),
+            serde_json::to_vec(&value).unwrap(),
+        )
+        .unwrap();
+
+        let err = read_embedded_metadata(tree.path(), value["canonical_id"].as_str().unwrap())
+            .expect_err("a malformed present entry must not be silently dropped");
+        match err {
+            VaultSourceError::EmbeddedMetadataInvalid { errors, .. } => {
+                assert!(
+                    errors.iter().any(|error| error.contains(field)),
+                    "error should identify {field}: {errors:?}"
+                );
+            }
+            other => panic!("expected EmbeddedMetadataInvalid, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn accepts_absent_identity_arrays_as_empty_embedded_facts() {
+    let mut value: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/by-id-metadata/reallive.json")).unwrap();
+    value.as_object_mut().unwrap().remove("identifiers");
+    value.as_object_mut().unwrap().remove("languages");
+
+    let tree = tempfile::tempdir().unwrap();
+    let metadata_dir = tree.path().join("_vault");
+    std::fs::create_dir_all(&metadata_dir).unwrap();
+    std::fs::write(
+        metadata_dir.join("metadata.json"),
+        serde_json::to_vec(&value).unwrap(),
+    )
+    .unwrap();
+
+    let metadata = read_embedded_metadata(tree.path(), value["canonical_id"].as_str().unwrap())
+        .expect("absent identity arrays are not malformed");
+    assert!(metadata.identifiers.is_empty());
+    assert!(metadata.languages.is_empty());
+}
+
+#[test]
 fn materialize_returns_findings_for_platform_mismatch_without_raising_error() {
     let v = common::SyntheticVault::build();
     let source = open_source(&v);
