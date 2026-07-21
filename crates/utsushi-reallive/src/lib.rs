@@ -87,9 +87,9 @@ pub use ovk::{
 };
 
 pub use gameexe::{
-    GAMEEXE_SHIFT_JIS_DECODE_FAILURE_CODE, Gameexe, GameexeParseError, GameexeValue,
-    MessageWindowConfig, NamaeEntry, NamaeResolver, ResolvedSpeaker, SyscomLabel, SyscomVisibility,
-    parse_into_arc as parse_gameexe_into_arc,
+    GAMEEXE_SHIFT_JIS_DECODE_FAILURE_CODE, Gameexe, GameexeParseError, GameexeParseWarning,
+    GameexeValue, MessageWindowConfig, NamaeEntry, NamaeResolver, ResolvedSpeaker, SyscomLabel,
+    SyscomVisibility, parse_into_arc as parse_gameexe_into_arc,
 };
 
 // `utsushi-reallive` owns its own `Seen.txt` parser. The
