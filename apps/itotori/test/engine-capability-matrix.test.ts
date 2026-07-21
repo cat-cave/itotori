@@ -49,9 +49,12 @@ describe("generated engine capability matrix (typed)", () => {
       }
     }
     const positives = matrix.rows.filter((r) => r.evidencePosture === "positive_adapter");
-    // The synthetic fixture adapter and Softpal are the real extract+patch
-    // adapters; every other engine family is readiness-only.
-    expect(positives.map((r) => r.engineFamily)).toEqual(["synthetic_fixture", "softpal"]);
+    expect(positives.map((r) => r.engineFamily)).toEqual([
+      "synthetic_fixture",
+      "kiri_kiri_xp3",
+      "rpg_maker_mv_mz",
+      "softpal",
+    ]);
   });
 
   it("excludes RenPy as a Japanese-opportunity driver", () => {
@@ -59,14 +62,20 @@ describe("generated engine capability matrix (typed)", () => {
     expect(matrix.exclusions.some((e) => e.engineFamily === "renpy")).toBe(true);
   });
 
-  it("represents KiriKiri breadth via XP3 readiness, not plaintext-only support", () => {
+  it("keeps KiriKiri detector breadth separate from the plain-XP3 production writer", () => {
     const kirikiri = matrix.rows.filter((r) => r.engineFamily === "kiri_kiri_xp3");
-    expect(kirikiri.length).toBeGreaterThanOrEqual(3);
-    for (const row of kirikiri) {
+    expect(kirikiri.length).toBeGreaterThanOrEqual(4);
+    const readinessRows = kirikiri.filter((row) => row.evidencePosture === "readiness_only");
+    expect(readinessRows).toHaveLength(3);
+    for (const row of readinessRows) {
       expect(row.levels.extract.status).toBe("unsupported");
       expect(row.levels.patch.status).toBe("unsupported");
       expect(row.scenario).toMatch(/xp3-/);
     }
+    const writer = kirikiri.find((row) => row.rowId === "kirikiri-xp3-plain-extract-patch");
+    expect(writer?.evidencePosture).toBe("positive_adapter");
+    expect(writer?.levels.extract.status).toBe("supported");
+    expect(writer?.levels.patch.status).toBe("supported");
   });
 
   it("represents BGI as readiness evidence without parser or patch claims", () => {
@@ -89,24 +98,22 @@ describe("generated engine capability matrix (typed)", () => {
     }
   });
 
-  it("records the MV/MZ www/data text patchback as a demonstrated (readiness) capability", () => {
-    // The localize-live `--engine rpg-maker-mv-mz` pipeline now dispatches to
-    // `kaifuu patch --engine rpgmaker` (byte-surgical www/data patchback +
-    // `.kaifuu` delta round-trip). The matrix reflects this as a validation-
-    // artifact row: extract/patch = partial (demonstrated, not registry-exposed),
-    // never promoted to a positive adapter or patch=supported.
-    const row = matrix.rows.find((r) => r.rowId === "rpg-maker-mv-mz-data-text-patchback");
+  it("records the MV/MZ JSON-text production extract/patch capability", () => {
+    const row = matrix.rows.find((r) => r.rowId === "rpg-maker-mv-mz-json-text-extract-patch");
     expect(row).toBeDefined();
     expect(row?.engineFamily).toBe("rpg_maker_mv_mz");
-    expect(row?.scenario).toBe("data-text-patchback");
-    expect(row?.evidencePosture).toBe("readiness_only");
-    expect(row?.levels.extract.status).toBe("partial");
-    expect(row?.levels.patch.status).toBe("partial");
+    expect(row?.scenario).toBe("json-text-extract-patch");
+    expect(row?.evidencePosture).toBe("positive_adapter");
+    expect(row?.levels.extract.status).toBe("supported");
+    expect(row?.levels.patch.status).toBe("supported");
+    expect(row?.limitations).toEqual(
+      expect.arrayContaining([expect.stringMatching(/plugin JavaScript and encrypted media/i)]),
+    );
     // It is a SEPARATE surface from the encrypted-media row.
     const mvmzRows = matrix.rows.filter((r) => r.engineFamily === "rpg_maker_mv_mz");
     expect(mvmzRows.map((r) => r.scenario).sort()).toEqual([
-      "data-text-patchback",
       "encrypted-media",
+      "json-text-extract-patch",
     ]);
   });
 

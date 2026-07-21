@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "kaifuu.production_extract_patch_proofs.v0.1",
+  "claims": [
+    {
+      "claimId": "rpg-maker-mv-mz-json-text",
+      "adapterId": "kaifuu.rpg-maker-mv-mz",
+      "engineFamily": "rpg_maker_mv_mz",
+      "scenario": "json-text-extract-patch",
+      "capabilityTuple": {
+        "kind": "mv_mz_json_text",
+        "capability": "patch",
+        "coveredRoles": ["maps", "common_events", "database", "system", "terms"]
+      },
+      "productionPath": {
+        "appExtractRegistry": "itotori extract --engine rpg-maker",
+        "appPatchRegistry": "itotori patch",
+        "nativePatchCommand": "kaifuu patch --engine rpgmaker"
+      },
+      "realBytes": {
+        "status": "passed",
+        "strictLane": "just ci-real-bytes",
+        "minimumDistinctCorpora": 2,
+        "corpusEnvironment": [
+          "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ",
+          "ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ_2"
+        ],
+        "outcome": "byte_surgical_extract_patch_delta_apply"
+      }
+    },
+    {
+      "claimId": "kirikiri-xp3-plain-writer",
+      "adapterId": "kaifuu.kirikiri-xp3.plain-writer",
+      "engineFamily": "kiri_kiri_xp3",
+      "scenario": "xp3-plain-extract-patch",
+      "capabilityTuple": {
+        "kind": "plain_xp3_writer",
+        "variant": "plain",
+        "patchBackMode": "archive_rebuild_plain"
+      },
+      "productionPath": {
+        "nativeExtractCommand": "kaifuu xp3 unpack",
+        "nativePatchCommand": "kaifuu xp3 pack"
+      },
+      "realBytes": {
+        "status": "passed",
+        "strictLane": "just ci-real-bytes",
+        "minimumDistinctCorpora": 1,
+        "corpusEnvironment": ["KAIFUU_XP3_PROFILE_A_ARCHIVE"],
+        "outcome": "byte_exact_archive_rebuild"
+      }
+    }
+  ]
+}

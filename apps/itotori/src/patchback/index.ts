@@ -52,6 +52,7 @@ export {
   PATCHBACK_SCOPES,
   PATCHBACK_TARGET_ARTIFACT_KEY,
   realLivePatchbackAdapter,
+  rpgMakerPatchbackAdapter,
   softpalPatchbackAdapter,
   type EnginePatchbackAdapter,
   type EnginePatchbackApplyRequest,

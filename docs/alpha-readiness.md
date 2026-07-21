@@ -95,9 +95,9 @@ Engine families in the generated capability matrix: **9**.
 | engine family       | evidence posture |
 | ------------------- | ---------------- |
 | `bgi_ethornell`     | readiness_only   |
-| `kiri_kiri_xp3`     | readiness_only   |
+| `kiri_kiri_xp3`     | positive_adapter |
 | `reallive`          | readiness_only   |
-| `rpg_maker_mv_mz`   | readiness_only   |
+| `rpg_maker_mv_mz`   | positive_adapter |
 | `siglus`            | readiness_only   |
 | `softpal`           | positive_adapter |
 | `synthetic_fixture` | positive_adapter |

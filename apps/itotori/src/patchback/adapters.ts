@@ -5,8 +5,10 @@
 // the registry is never observed empty — adding an engine is adding one import.
 
 import "./reallive-adapter.js";
+import "./rpgmaker-adapter.js";
 import "./softpal-adapter.js";
 
 export * from "./engine-adapter.js";
 export { realLivePatchbackAdapter } from "./reallive-adapter.js";
+export { rpgMakerPatchbackAdapter } from "./rpgmaker-adapter.js";
 export { softpalPatchbackAdapter } from "./softpal-adapter.js";

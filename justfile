@@ -292,6 +292,12 @@ ci-real-bytes:
         exit 1
       fi
     done
+    if [ -z "${KAIFUU_XP3_PROFILE_A_ARCHIVE:-}" ] || [ ! -f "$KAIFUU_XP3_PROFILE_A_ARCHIVE" ]; then
+      echo "ci-real-bytes: KAIFUU_XP3_PROFILE_A_ARCHIVE must name the required plain XP3 real-byte archive;" >&2
+      echo "  refusing to pass with the plain XP3 production proof unexercised." >&2
+      exit 1
+    fi
+    export KAIFUU_XP3_PROFILE_A_ARCHIVE
     # Softpal corpus lives under its OWN root (separate from the RealLive/RPG-
     # Maker/vault tree). Skip-when-absent is LEGITIMATE for this family: a
     # runner that has the other corpora staged but not the Softpal research
@@ -316,23 +322,25 @@ ci-real-bytes:
       echo "ci-real-bytes: Softpal (Kizuna + Dimension)  = $ITOTORI_SOFTPAL_RESEARCH_ROOT"
     fi
     echo "ci-real-bytes: strict (missing corpus hard-fails, no opt-out); running real-bytes suites"
-    # The app-level MV/MZ proof drives the production TS seam plus the real
-    # kaifuu apply binary. Build that binary in this lane so the proof cannot
-    # accidentally use a stale or absent native dependency.
+    # The app-level JSON-text proof drives the production TS seams plus the
+    # real kaifuu apply binary. Build that binary in this lane so the proof
+    # cannot accidentally use a stale or absent native dependency.
     if [ -z "${ITOTORI_KAIFUU_BIN:-}" ]; then
       cargo build --release -p kaifuu-cli
       export ITOTORI_KAIFUU_BIN="${CARGO_TARGET_DIR:-target}/release/kaifuu-cli"
     fi
     if [ ! -x "$ITOTORI_KAIFUU_BIN" ]; then
-      echo "ci-real-bytes: ITOTORI_KAIFUU_BIN=$ITOTORI_KAIFUU_BIN is not executable; refusing to skip MV/MZ patch-apply proof" >&2
+      echo "ci-real-bytes: ITOTORI_KAIFUU_BIN=$ITOTORI_KAIFUU_BIN is not executable; refusing to skip JSON-text patch-apply proof" >&2
       exit 1
     fi
     # The seam imports workspace packages through their published dist entry
     # points, so provision the normal TypeScript build before invoking Vitest
     # in a fresh checkout.
     pnpm exec vp run ts:build
-    pnpm --filter @itotori/app exec vitest run test/rpgmaker-patch-apply-real-bytes.test.ts --exclude '**/.direnv/**'
+    pnpm --filter @itotori/app exec vitest run test/rpgmaker-production-real-bytes.test.ts --exclude '**/.direnv/**'
     pnpm --filter @itotori/app exec vitest run test/patchback-produce-build.test.ts --exclude '**/.direnv/**'
+    cargo test -p kaifuu-core --test xp3_real_bytes_roundtrip
+    "$ITOTORI_KAIFUU_BIN" xp3 smoke --fixture kaifuu-xp3-plain-profile-a
     # RealLive + RPG Maker MV/MZ: #[ignore]-gated real-bytes suites.
     cargo test -p kaifuu-reallive -p utsushi-reallive -p utsushi-siglus -p kaifuu-siglus -p kaifuu-cli -p utsushi-cli -p kaifuu-rpgmaker -p kaifuu-engine-fixture -- --ignored
     # utsushi-core: real-bytes proofs are plain #[test]s (target the files, no --ignored).

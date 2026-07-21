@@ -120,3 +120,34 @@ fn adler_proof_recomputes_and_pairs_with_stored() {
         assert_eq!(proof.stored, Some(entry.adler32));
     }
 }
+
+#[test]
+fn adler_proof_decompresses_compressed_segments_before_hashing() {
+    let logical = b"compressed member checksum uses original bytes";
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(logical).unwrap();
+    let stored = encoder.finish().unwrap();
+    let archive = RealBytesXp3Archive {
+        schema_version: REAL_BYTES_XP3_SCHEMA_VERSION.to_string(),
+        variant: REAL_BYTES_XP3_VARIANT.to_string(),
+        entries: vec![RealBytesXp3Entry {
+            path: "scenario/compressed.ks".to_string(),
+            original_size: logical.len() as u64,
+            archive_size: stored.len() as u64,
+            stored_adler32: Some(crate::compute_adler32(logical)),
+            segments: vec![RealBytesXp3Segment {
+                flags: 1,
+                original_size: logical.len() as u64,
+                archive_size: stored.len() as u64,
+            }],
+            payload: stored,
+        }],
+        index_encoding: XP3_INDEX_ENCODING_RAW,
+        encoded_index: Vec::new(),
+        decoded_index_size: None,
+    };
+
+    let proofs = real_bytes_xp3_adler_proof(&archive).unwrap();
+    assert_eq!(proofs[0].1.recomputed, crate::compute_adler32(logical));
+    assert_eq!(proofs[0].1.recomputed, proofs[0].1.stored.unwrap());
+}

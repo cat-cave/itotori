@@ -61,14 +61,23 @@ function makeSoftpalRoot(): string {
   return root;
 }
 
+function makeRpgMakerRoot(): string {
+  const root = mkdtempSync(join(tmpdir(), "itotori-eng-rpgmaker-"));
+  mkdirSync(join(root, "www", "data"), { recursive: true });
+  writeFileSync(join(root, "www", "data", "System.json"), "{}");
+  return root;
+}
+
 /** A mock kaifuu spawn that records the argv and materializes the engine's
- * output tree (RealLive `--target`, Softpal `--output`) so the producer can hash
- * the produced bytes exactly as it would for a real apply. */
+ * output tree (RealLive `--target`, Softpal `--output`, RPG Maker
+ * `--patched-data-output`) so the producer can hash the produced bytes exactly
+ * as it would for a real apply. */
 function recordingRunner(calls: string[][]): NativeCliRunProcess {
   return (_command, args) => {
     calls.push(args);
+    const outputFlags = ["--target", "--output", "--patched-data-output"];
     const outIndex =
-      args.indexOf("--target") >= 0 ? args.indexOf("--target") : args.indexOf("--output");
+      outputFlags.map((flag) => args.indexOf(flag)).find((index) => index >= 0) ?? -1;
     if (outIndex >= 0) {
       const outRoot = args[outIndex + 1]!;
       mkdirSync(outRoot, { recursive: true });
@@ -79,15 +88,17 @@ function recordingRunner(calls: string[][]): NativeCliRunProcess {
 }
 
 describe("engine patch-back registry", () => {
-  it("registers both the RealLive and Softpal adapters", () => {
+  it("registers every shipped patch-back adapter", () => {
     expect(enginePatchbackAdapters().map((adapter) => adapter.engineId)).toEqual([
       "reallive",
+      "rpg-maker",
       "softpal",
     ]);
   });
 
   it("detects the engine from the source artifacts (never defaults)", () => {
     expect(detectPatchbackEngine(makeRealLiveRoot()).engineId).toBe("reallive");
+    expect(detectPatchbackEngine(makeRpgMakerRoot()).engineId).toBe("rpg-maker");
     expect(detectPatchbackEngine(makeSoftpalRoot()).engineId).toBe("softpal");
     const empty = mkdtempSync(join(tmpdir(), "itotori-eng-empty-"));
     expect(() => detectPatchbackEngine(empty)).toThrow(PatchbackEngineSelectionError);
@@ -139,6 +150,28 @@ describe("generic producer selects the engine adapter", () => {
     expect(patchArgv).not.toContain("--scope");
     // The produced build still addresses its patched tree under patchTarget.
     expect(produced.patch.artifactRefs.patchTarget).toBeDefined();
+    produced.cleanup();
+  });
+
+  it("produces an RPG Maker JSON-text patch through the SAME generic producer", () => {
+    const buildRoot = join(mkdtempSync(join(tmpdir(), "itotori-eng-build-")), "produced");
+    const calls: string[][] = [];
+    const produced = produceNativePatchbackBuild(fixtureInput(), {
+      sourceRoot: makeRpgMakerRoot(),
+      buildRoot,
+      scope: "dialogue+choices",
+      nativeCli: { runProcess: recordingRunner(calls) },
+    });
+
+    expect(produced.patch.engineId).toBe("rpg-maker");
+    expect(produced.patch.patchReceipt.engineId).toBe("rpg-maker");
+    const argv = calls[0]!;
+    const patchArgv = argv.slice(argv.indexOf("patch"));
+    expect(patchArgv[patchArgv.indexOf("--engine") + 1]).toBe("rpgmaker");
+    expect(patchArgv).toContain("--bundle");
+    expect(patchArgv).toContain("--delta-output");
+    expect(patchArgv).toContain("--patched-data-output");
+    expect(patchArgv).not.toContain("--scope");
     produced.cleanup();
   });
 
