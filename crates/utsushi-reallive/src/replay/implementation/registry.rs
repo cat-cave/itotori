@@ -14,7 +14,7 @@ pub(super) fn mount_full_registry(
     mount_registry(sink, msg_runtime, ControlFlowMount::LinearWalk)
 }
 
-/// Mount all nine opcode families + the catalog gap-fill, choosing the
+/// Mount all nine opcode families, choosing the
 /// `module_jmp` control-flow registrar per `control_flow`. Shared by the
 /// cataloguing ([`ControlFlowMount::LinearWalk`]) and branch-following
 /// ([`ControlFlowMount::BranchFollowing`]) replay paths so every OTHER
@@ -27,7 +27,7 @@ pub(super) fn mount_registry(
     mount_registry_handles(sink, msg_runtime, control_flow).registry
 }
 
-/// Mount all nine opcode families + the catalog gap-fill, returning the
+/// Mount all nine opcode families, returning the
 /// registry ALONGSIDE the shared audio + graphics runtimes. Single source
 /// of truth for the registry composition: [`mount_registry`] delegates
 /// here and drops the handles, so the cataloguing / branch-following
@@ -58,8 +58,7 @@ pub(super) fn mount_registry_handles(
     // backgrounds, object creation/setters/management) all share one
     // GraphicsRuntime. Registered under all three lattice types so it
     // fires on real bytes regardless of the compiler's module_type
-    // artifact; mounted BEFORE the catalog gap-fill so no render op is
-    // shadowed by an `Advance` stub.
+    // artifact.
     let graphics_runtime = Arc::new(GraphicsRuntime::new());
     register_render_rlops(&mut registry, Arc::clone(&graphics_runtime));
 
@@ -86,13 +85,6 @@ pub(super) fn mount_registry_handles(
     // String ops.
     let str_runtime = Arc::new(StrRuntime::new(sink));
     register_str_rlops(&mut registry, str_runtime);
-
-    // Real-bytes opcode-catalog completion: gap-fill every
-    // `(module_type, module_id, opcode)` tuple observed on the proven
-    // corpora that the nine per-family tables above do not already claim
-    // so a full-scene replay traverses with ZERO unknown opcodes. Mounted
-    // LAST and gap-fill-only, so it never shadows a real-semantics op.
-    register_catalog_rlops(&mut registry);
 
     RegistryHandles {
         registry,

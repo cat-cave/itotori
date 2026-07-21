@@ -1118,7 +1118,7 @@ mod tests {
     #[test]
     fn coverage_gate_passes_on_fully_covered_scene() {
         // A single recognised message line-break: dispatches semantically, no
-        // missing opcode, no catalog gap fill, natural terminus.
+        // missing opcode and a natural terminus.
         let engine = engine_with_single_command(MSG_MODULE_TYPE, MSG_MODULE_ID, OPCODE_LINE_BREAK);
         let coverage = dispatch_report_from_engine(&engine, 1, &ReplayOpts::default());
 
@@ -1126,11 +1126,6 @@ mod tests {
             coverage.missing_keys.is_empty(),
             "a fully-covered scene has no missing opcodes: {:?}",
             coverage.missing_keys,
-        );
-        assert!(
-            coverage.catalog_fallback_keys.is_empty(),
-            "a fully-covered scene has no catalog gap fills: {:?}",
-            coverage.catalog_fallback_keys,
         );
         require_semantic_reached_path(&coverage)
             .expect("a fully-covered scene must pass the coverage gate cleanly");

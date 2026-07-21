@@ -65,8 +65,6 @@
 //! path uses that metadata directly. It never chooses a pair, strip, or grid
 //! from the number of buttons.
 //!
-//! [`SelectionControl`]: crate::rlop::module_catalog
-//!
 //! Every variant yields the same [`SelectLongOp`] carrier — the variant
 //! distinction lives in the [`SelectVariant`] enum so audit tooling can
 //! pin which opcode produced the queued longop without scraping the
@@ -162,8 +160,8 @@ pub const OPCODE_OBJBTN_INIT: u16 = 20;
 /// the prompt. [`SelectObjbtnCancelOp`] creates a cancelable A3 carrier
 /// over the same foreground bindings as opcode `4`; only the exact Raw
 /// secondary-release input token cancels it. Other cancel/input affordances
-/// remain outside this opcode path. Previously this opcode was a catalog
-/// `Advance` no-op (`module_catalog` `(2,14)`); it is now a real Sel op.
+/// remain outside this opcode path. This is a real Sel operation, not an
+/// unimplemented-command fallback.
 pub const OPCODE_SELECT_OBJBTN_CANCEL: u16 = 14;
 
 /// Stable enum naming the select-family variants. Used by the typed
@@ -234,7 +232,6 @@ impl SelectVariant {
     /// identify scenes containing on-screen button groups; the prompt itself
     /// carries the placement and art metadata used for rendering.
     ///
-    /// [`SelectionControl`]: crate::rlop::module_catalog
     pub const BUTTON_OBJECT_SETUP_OPCODES: &'static [u16] = &[
         OPCODE_OBJBTN_INIT,
         OPCODE_SELECT_OBJBTN,
@@ -247,7 +244,6 @@ impl SelectVariant {
 /// [`SelectVariant::BUTTON_OBJECT_SETUP_OPCODES`] and
 /// [`selection_control_signal`].
 ///
-/// [`SelectionControl`]: crate::rlop::module_catalog
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectionControlSignal {
     /// No button-object SelectionControl setup ops around the select — a
@@ -582,7 +578,6 @@ impl SelRuntime {
         // [`selection_control_signal`]), applied by the render / analysis
         // layer that has the whole scene, not by this single-command dispatch.
         //
-        // [`SelectionControl`]: crate::rlop::module_catalog
         let mut text_surface = format!("choice:{choice_index}");
         if let Some(suffix) = self.selbtn_style_suffix(choice_index) {
             text_surface.push(';');
@@ -1111,7 +1106,7 @@ mod tests {
                 .is_none(),
             "synthetic opcode 120 must not be registered"
         );
-        // Opcodes 3 and 14 are REAL Sel ops now (not catalog fallbacks).
+        // Opcodes 3 and 14 are real Sel operations.
         assert!(
             registry
                 .get(RlopKey::new(

@@ -4,7 +4,7 @@ use super::*;
 use crate::bytecode_element::{BytecodeElement, TextoutEncoding};
 use crate::vm::Scene;
 
-// Helpers for main's semantic-catalog / missing-engine provenance tests.
+// Helpers for main's semantic / unimplemented-command diagnostics tests.
 fn command_element(
     module_type: u8,
     module_id: u8,
@@ -28,16 +28,21 @@ fn command_element(
     }
 }
 
-fn semantic_catalog_and_missing_engine() -> ReplayEngine {
+fn semantic_and_unimplemented_engine() -> ReplayEngine {
     let semantic = RlopKey::new(MSG_MODULE_TYPE, MSG_MODULE_ID, OPCODE_LINE_BREAK);
-    let catalog = RlopKey::new(0, 5, 0);
-    let missing = RlopKey::new(2, 250, 9);
+    // This was previously an observed-corpus `Advance` fallback. It must now
+    // remain unmatched so replay records an explicit unknown-opcode diagnostic.
+    let unimplemented = RlopKey::new(0, 5, 0);
     let scene = Scene::new(
         1,
         vec![
             command_element(semantic.module_type, semantic.module_id, semantic.opcode, 0),
-            command_element(catalog.module_type, catalog.module_id, catalog.opcode, 8),
-            command_element(missing.module_type, missing.module_id, missing.opcode, 16),
+            command_element(
+                unimplemented.module_type,
+                unimplemented.module_id,
+                unimplemented.opcode,
+                8,
+            ),
         ],
     )
     .expect("synthetic command scene");

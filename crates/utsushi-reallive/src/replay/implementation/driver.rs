@@ -276,18 +276,6 @@ pub(super) fn drive_loop(
                             text_emitted = text_emitted.saturating_add(1);
                         }
                     }
-                    VmEvent::CommandDispatched {
-                        key,
-                        provenance: Some(RlopImplementationProvenance::CatalogFallback),
-                        ..
-                    } => {
-                        events.push(ReplayEvent::CatalogFallback {
-                            byte_offset_in_scene: pc_before,
-                            module_type: key.module_type,
-                            module_id: key.module_id,
-                            opcode: key.opcode,
-                        });
-                    }
                     VmEvent::CommandDispatched { key, outcome, .. }
                         if key.module_type == MSG_MODULE_TYPE
                             && key.module_id == MSG_MODULE_ID

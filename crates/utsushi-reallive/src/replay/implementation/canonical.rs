@@ -70,34 +70,6 @@ impl ReplayLog {
         keys
     }
 
-    /// Number of commands that resolved only through the catalog fallback.
-    pub fn catalog_fallback_count(&self) -> usize {
-        self.events
-            .iter()
-            .filter(|event| matches!(event, ReplayEvent::CatalogFallback { .. }))
-            .count()
-    }
-
-    /// Sorted, de-duplicated catalog fallback tuples observed on this replay.
-    pub fn catalog_fallback_keys(&self) -> Vec<(u8, u8, u16)> {
-        let mut keys: Vec<(u8, u8, u16)> = self
-            .events
-            .iter()
-            .filter_map(|event| match event {
-                ReplayEvent::CatalogFallback {
-                    module_type,
-                    module_id,
-                    opcode,
-                    ..
-                } => Some((*module_type, *module_id, *opcode)),
-                _ => None,
-            })
-            .collect();
-        keys.sort_unstable();
-        keys.dedup();
-        keys
-    }
-
     /// First non-empty Shift-JIS-decoded body, or `None` if no TextLine
     /// produced a non-empty decode. The real-bytes test prints this as
     /// the alpha-defining evidence.
@@ -207,33 +179,6 @@ pub(super) fn event_to_canonical_value(event: &ReplayEvent) -> serde_json::Value
             map.insert(
                 "kind".to_string(),
                 serde_json::Value::String("unknown_opcode".to_string()),
-            );
-            map.insert(
-                "moduleId".to_string(),
-                serde_json::Value::Number((*module_id).into()),
-            );
-            map.insert(
-                "moduleType".to_string(),
-                serde_json::Value::Number((*module_type).into()),
-            );
-            map.insert(
-                "opcode".to_string(),
-                serde_json::Value::Number((*opcode).into()),
-            );
-        }
-        ReplayEvent::CatalogFallback {
-            byte_offset_in_scene,
-            module_type,
-            module_id,
-            opcode,
-        } => {
-            map.insert(
-                "byteOffsetInScene".to_string(),
-                serde_json::Value::Number((*byte_offset_in_scene).into()),
-            );
-            map.insert(
-                "kind".to_string(),
-                serde_json::Value::String("catalog_fallback".to_string()),
             );
             map.insert(
                 "moduleId".to_string(),

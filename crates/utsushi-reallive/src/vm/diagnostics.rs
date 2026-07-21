@@ -85,7 +85,7 @@ pub enum VmEvent {
         /// Composite key (`module_type`, `module_id`, `opcode`).
         key: RlopKey,
         /// Registrar provenance when a concrete operation resolved. `None`
-        /// remains distinct from a catalog fallback for missing-key advances.
+        /// identifies a missing key; its typed warning carries the diagnostic.
         provenance: Option<RlopImplementationProvenance>,
         /// The outcome the op returned.
         outcome: DispatchOutcome,

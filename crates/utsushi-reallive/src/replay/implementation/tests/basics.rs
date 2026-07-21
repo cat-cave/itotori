@@ -102,20 +102,18 @@ fn replay_log_text_line_count_matches_event_count() {
 }
 
 #[test]
-fn semantic_catalog_and_missing_commands_have_distinct_replay_provenance() {
-    let engine = semantic_catalog_and_missing_engine();
+fn unimplemented_commands_are_explicit_unknown_opcode_diagnostics() {
+    let engine = semantic_and_unimplemented_engine();
     let opts = ReplayOpts::default();
     let log = engine.replay_from(1, &opts);
 
-    assert_eq!(log.final_outcome, ReplayOutcome::EndOfScene { events: 6 });
-    assert_eq!(log.catalog_fallback_count(), 1);
-    assert_eq!(log.catalog_fallback_keys(), vec![(0, 5, 0)]);
+    assert_eq!(log.final_outcome, ReplayOutcome::EndOfScene { events: 4 });
     assert_eq!(log.unknown_opcode_count(), 1);
-    assert_eq!(log.unknown_opcode_keys(), vec![(2, 250, 9)]);
+    assert_eq!(log.unknown_opcode_keys(), vec![(0, 5, 0)]);
     assert!(log.events.iter().any(|event| {
         matches!(
             event,
-            ReplayEvent::CatalogFallback {
+            ReplayEvent::UnknownOpcode {
                 byte_offset_in_scene: 8,
                 module_type: 0,
                 module_id: 5,
@@ -125,17 +123,16 @@ fn semantic_catalog_and_missing_commands_have_distinct_replay_provenance() {
     }));
 
     let report = engine.branch_following_report(1, &opts, HeadlessChoicePolicy::AlwaysFirst);
-    assert_eq!(report.catalog_fallback_keys, vec![(0, 5, 0)]);
-    assert_eq!(report.unknown_opcode_keys, vec![(2, 250, 9)]);
+    assert_eq!(report.unknown_opcode_keys, vec![(0, 5, 0)]);
 
     let once = log
         .to_deterministic_json()
-        .expect("serialise catalog event");
+        .expect("serialise unknown opcode event");
     let twice = log
         .to_deterministic_json()
-        .expect("serialise catalog event again");
+        .expect("serialise unknown opcode event again");
     assert_eq!(once, twice);
-    assert!(once.contains("\"kind\": \"catalog_fallback\""));
+    assert!(once.contains("\"kind\": \"unknown_opcode\""));
 }
 
 #[test]

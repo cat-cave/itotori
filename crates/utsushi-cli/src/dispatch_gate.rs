@@ -26,13 +26,12 @@ use utsushi_reallive::{
 };
 
 /// Stable schema id for the machine-readable dispatch-coverage report.
-pub(crate) const DISPATCH_REPORT_SCHEMA_VERSION: &str = "utsushi.cli.replay-dispatch-report/0.1.0";
+pub(crate) const DISPATCH_REPORT_SCHEMA_VERSION: &str = "utsushi.cli.replay-dispatch-report/0.2.0";
 
 /// The branch-following dispatch-coverage evidence for one scene: the
 /// terminus it reached, whether it fell back to a linear walk, and the
-/// sorted `(module_type, module_id, opcode)` tuples that were either
-/// unimplemented (`missing_keys`) or advanced only through the catalog gap
-/// fill (`catalog_fallback_keys`).
+/// sorted `(module_type, module_id, opcode)` tuples that were unimplemented
+/// (`missing_keys`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DispatchReport {
     pub(crate) schema_version: String,
@@ -42,8 +41,6 @@ pub(crate) struct DispatchReport {
     pub(crate) terminus: &'static str,
     pub(crate) missing_count: usize,
     pub(crate) missing_keys: Vec<(u8, u8, u16)>,
-    pub(crate) catalog_fallback_count: usize,
-    pub(crate) catalog_fallback_keys: Vec<(u8, u8, u16)>,
 }
 
 impl DispatchReport {
@@ -56,8 +53,6 @@ impl DispatchReport {
             terminus: branch_terminus_kind(&report.terminus),
             missing_count: report.unknown_opcode_keys.len(),
             missing_keys: report.unknown_opcode_keys.clone(),
-            catalog_fallback_count: report.catalog_fallback_keys.len(),
-            catalog_fallback_keys: report.catalog_fallback_keys.clone(),
         }
     }
 
@@ -74,8 +69,6 @@ impl DispatchReport {
             "terminus": self.terminus,
             "missingCount": self.missing_count,
             "missingKeys": self.missing_keys,
-            "catalogFallbackCount": self.catalog_fallback_count,
-            "catalogFallbackKeys": self.catalog_fallback_keys,
         })
     }
 }
@@ -120,8 +113,8 @@ pub(crate) fn write_dispatch_report(
 }
 
 /// Strict-gate failure: the scene did NOT reach a fully-semantic, natural
-/// terminus (an unimplemented opcode, a catalog gap fill, a linear fallback
-/// or a non-natural terminus). Carries the tuples so the failure is
+/// terminus (an unimplemented opcode, a linear fallback, or a non-natural
+/// terminus). Carries the tuples so the failure is
 /// machine-readable, and — deliberately — never the artifact filesystem
 /// paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,13 +126,11 @@ impl fmt::Display for SemanticPathUnavailable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "utsushi.cli.dispatch_gate.semantic_path_unavailable: terminus={} linear_fallback={} missing_count={} missing_keys={:?} catalog_fallback_count={} catalog_fallback_keys={:?}",
+            "utsushi.cli.dispatch_gate.semantic_path_unavailable: terminus={} linear_fallback={} missing_count={} missing_keys={:?}",
             self.report.terminus,
             self.report.linear_fallback,
             self.report.missing_count,
             self.report.missing_keys,
-            self.report.catalog_fallback_count,
-            self.report.catalog_fallback_keys,
         )
     }
 }
@@ -148,17 +139,13 @@ impl Error for SemanticPathUnavailable {}
 
 /// The strict coverage gate: succeed iff the scene reached a natural terminus
 /// through a fully-semantic, branch-following path with NO missing opcodes
-/// NO catalog gap fills, and NO linear fallback. Otherwise fail with the
+/// and NO linear fallback. Otherwise fail with the
 /// machine-readable [`SemanticPathUnavailable`] (`missingKeys[]` included).
 pub(crate) fn require_semantic_reached_path(
     report: &DispatchReport,
 ) -> Result<(), Box<SemanticPathUnavailable>> {
     let natural = matches!(report.terminus, "end_of_scene" | "returned_to_caller");
-    if natural
-        && !report.linear_fallback
-        && report.missing_keys.is_empty()
-        && report.catalog_fallback_keys.is_empty()
-    {
+    if natural && !report.linear_fallback && report.missing_keys.is_empty() {
         return Ok(());
     }
     Err(Box::new(SemanticPathUnavailable {
@@ -172,7 +159,6 @@ mod tests {
 
     pub(crate) fn synthetic_dispatch_report(
         missing_keys: Vec<(u8, u8, u16)>,
-        catalog_fallback_keys: Vec<(u8, u8, u16)>,
         linear_fallback: bool,
     ) -> DispatchReport {
         DispatchReport {
@@ -183,32 +169,29 @@ mod tests {
             terminus: "end_of_scene",
             missing_count: missing_keys.len(),
             missing_keys,
-            catalog_fallback_count: catalog_fallback_keys.len(),
-            catalog_fallback_keys,
         }
     }
 
     #[test]
     fn strict_gate_reports_tuples_not_artifact_paths_on_missing_opcode() {
-        let report = synthetic_dispatch_report(vec![(2, 3, 4)], vec![(5, 6, 7)], false);
+        let report = synthetic_dispatch_report(vec![(2, 3, 4)], false);
         let error = require_semantic_reached_path(&report).expect_err("missing opcode is a gap");
         let message = error.to_string();
         assert!(message.contains("missing_keys=[(2, 3, 4)]"));
-        assert!(message.contains("catalog_fallback_keys=[(5, 6, 7)]"));
         // The gate error is tuple-only: no artifact filesystem path leaks.
         assert!(!message.contains(".json"));
     }
 
     #[test]
     fn strict_gate_rejects_linear_fallback_without_missing_tuples() {
-        let report = synthetic_dispatch_report(Vec::new(), Vec::new(), true);
+        let report = synthetic_dispatch_report(Vec::new(), true);
         let error = require_semantic_reached_path(&report).expect_err("linear-only is unavailable");
         assert!(error.to_string().contains("linear_fallback=true"));
     }
 
     #[test]
     fn strict_gate_passes_on_fully_semantic_natural_terminus() {
-        let report = synthetic_dispatch_report(Vec::new(), Vec::new(), false);
+        let report = synthetic_dispatch_report(Vec::new(), false);
         assert!(
             require_semantic_reached_path(&report).is_ok(),
             "a natural terminus with no missing/catalog tuples must pass",
@@ -217,7 +200,7 @@ mod tests {
 
     #[test]
     fn dispatch_report_json_carries_missing_keys() {
-        let report = synthetic_dispatch_report(vec![(2, 250, 9)], Vec::new(), false);
+        let report = synthetic_dispatch_report(vec![(2, 250, 9)], false);
         let json = report.to_json();
         assert_eq!(json["missingCount"], 1);
         assert_eq!(json["missingKeys"][0][0], 2);

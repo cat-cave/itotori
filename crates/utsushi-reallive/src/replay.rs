@@ -50,7 +50,6 @@ use utsushi_core::clock::LogicalClockTick;
 use crate::audio::AudioEventEmitter;
 use crate::jump::{JumpError, JumpLanding, JumpTarget};
 use crate::rlop::module_audio::{AudioRuntime, register_audio_rlops};
-use crate::rlop::module_catalog::register_catalog_rlops;
 use crate::rlop::module_ctrl::{
     register_control_flow_branch_following, register_control_flow_linear_walk,
 };
@@ -65,8 +64,8 @@ use crate::rlop::module_sel::{SelRuntime, register_sel_rlops};
 use crate::rlop::module_str::{StrRuntime, register_str_rlops};
 use crate::rlop::module_sys::{SysRuntime, register_sys_rlops};
 use crate::rlop::{
-    AlwaysReadyScheduler, DispatchOutcome, HeadlessChoicePolicy, HeadlessInputScheduler,
-    RlopImplementationProvenance, RlopKey, RlopRegistry,
+    AlwaysReadyScheduler, DispatchOutcome, HeadlessChoicePolicy, HeadlessInputScheduler, RlopKey,
+    RlopRegistry,
 };
 use crate::vm::{InMemorySceneStore, SceneId, SceneStore, StepOutcome, Vm, VmEvent};
 
@@ -79,7 +78,7 @@ use branch::{PassObservation, PassTermination, select_port_pass};
 
 /// Stable schema version for [`ReplayLog`]. Pinned so a future bump is
 /// detected at restore time by any consumer that deserialises the JSON.
-pub const REPLAY_LOG_SCHEMA_VERSION: &str = "utsushi-reallive-replay-log/0.2.0-alpha";
+pub const REPLAY_LOG_SCHEMA_VERSION: &str = "utsushi-reallive-replay-log/0.3.0-alpha";
 
 /// Default step budget for [`replay_scene`]. Sized so the Sweetie HD
 /// scene-1 walk reaches the first Shift-JIS textout run plus its
@@ -156,18 +155,6 @@ pub enum ReplayEvent {
     /// names the key so the alpha audit trail records the unknown
     /// opcode density without halting the run.
     UnknownOpcode {
-        /// pc where the command sits.
-        byte_offset_in_scene: u32,
-        /// Module type byte from the Command header.
-        module_type: u8,
-        /// Module id byte from the Command header.
-        module_id: u8,
-        /// Opcode (`u16 LE` from the Command header).
-        opcode: u16,
-    },
-    /// A command resolved only through the observed-command catalog gap fill.
-    /// The VM advanced, but no semantic implementation claimed the tuple.
-    CatalogFallback {
         /// pc where the command sits.
         byte_offset_in_scene: u32,
         /// Module type byte from the Command header.

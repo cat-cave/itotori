@@ -10,14 +10,14 @@
 /// become generic `Command` and fail `is_recognized`.
 /// Sources:
 /// - the generated synthetic coverage manifest's `reallive.opcode_tuple`
-///   group, extracted from `utsushi-reallive::module_catalog::REAL_CATALOG`;
+///   group, extracted from Utsushi's diagnostics-only decoder inventory;
 /// - the existing first-class per-family opcode tables in
 ///   `utsushi-reallive::rlop` for operations that no longer live in the
 ///   gap-fill catalog (`module_jmp`, select-block framing, msg/sys/str/audio
 ///   basics, and render opcodes).
 /// - `docs/research/reallive-semantic-worklist/summary.json` for legacy
 ///   real-byte tuples that predate the generated manifest's current
-///   extraction boundary, notably Kanon's `(module_id=60, opcode=1)`.
+///   extraction boundary, including `(module_id=60, opcode=1)`.
 pub(crate) fn is_catalogued_command_opcode(module_id: u8, opcode_u16: u16) -> bool {
     match module_id {
         1 => matches!(

@@ -134,9 +134,6 @@ pub struct BranchReplayReport {
     /// walk could not dispatch on the EXECUTED path. The acceptance
     /// asserts this is EMPTY.
     pub unknown_opcode_keys: Vec<(u8, u8, u16)>,
-    /// Sorted, de-duplicated command tuples that advanced only through the
-    /// catalog gap fill on the executed path. Distinct from missing opcodes.
-    pub catalog_fallback_keys: Vec<(u8, u8, u16)>,
     /// `Some(scene)` iff the walk terminated because a cross-scene
     /// transfer targeted a scene absent from the store. The acceptance
     /// asserts this is `None`.

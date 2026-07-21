@@ -25,7 +25,6 @@ pub(super) fn drive_branch_following(
     // loses this). Drives cross-scene play-loop chaining.
     let mut first_cross_scene: Option<SceneId> = None;
     let mut unknown: Vec<(u8, u8, u16)> = Vec::new();
-    let mut catalog_fallback: Vec<(u8, u8, u16)> = Vec::new();
     let mut text_lines: usize = 0;
 
     // --- Deterministic event-flag modeling (provable-spin break) ---
@@ -126,13 +125,6 @@ pub(super) fn drive_branch_following(
                             let _ = op.dispatch(vm, &[]);
                         }
                         text_lines += refs.sink.drain().len();
-                    }
-                    VmEvent::CommandDispatched {
-                        key,
-                        provenance: Some(RlopImplementationProvenance::CatalogFallback),
-                        ..
-                    } => {
-                        catalog_fallback.push((key.module_type, key.module_id, key.opcode));
                     }
                     VmEvent::CommandDispatched { key, outcome, .. } if key.module_id == 1 => {
                         // Count the real control transfer this jmp op
@@ -238,9 +230,6 @@ pub(super) fn drive_branch_following(
 
     unknown.sort_unstable();
     unknown.dedup();
-    catalog_fallback.sort_unstable();
-    catalog_fallback.dedup();
-
     let scene_not_found = if let BranchTerminus::SceneNotFound(scene) = &terminus {
         Some(*scene)
     } else {
@@ -254,7 +243,6 @@ pub(super) fn drive_branch_following(
         transfers,
         scenes_visited,
         unknown_opcode_keys: unknown,
-        catalog_fallback_keys: catalog_fallback,
         scene_not_found,
         text_lines,
         pauses_advanced: scheduler.pauses_advanced(),
