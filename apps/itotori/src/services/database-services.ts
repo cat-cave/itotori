@@ -1,10 +1,15 @@
 import {
   bootstrapLocalUser,
   databaseUrlFromEnv,
+  ItotoriConformanceRepository,
   ItotoriLlmHumanInputRepository,
   ItotoriLlmCallMemoRepository,
   ItotoriLlmSnapshotRepository,
   ItotoriLlmWikiRepository,
+  ItotoriLocalizationPassRunConfigRepository,
+  ItotoriModelLedgerRepository,
+  ItotoriProjectRepository,
+  ItotoriProjectRunRepository,
   migrate,
   permissionBasedLlmContentRead,
   resetDatabase,
@@ -43,6 +48,12 @@ import {
 } from "../structure/index.js";
 import { WikiObjectApiService } from "../wiki/object-api/service.js";
 import { createDispatchEnhancementRunner } from "../wiki/human-enhancement/index.js";
+import engineCapabilityMatrixJson from "../engine-capability/engine-capability-matrix.v0.1.json" with { type: "json" };
+import {
+  assertEngineCapabilityMatrixDocument,
+  createProjectEngineFamilyRegistry,
+} from "./engine-capability-matrix.js";
+import { ItotoriProjectWorkflowService } from "./project-workflow-service.js";
 
 /** The remaining command/API surfaces require a new-pipeline composition
  * substrate. The retired DB factory must never silently reconstruct the old
@@ -83,8 +94,18 @@ export async function withDatabaseItotoriServices<T>(
     const wikiRepository = new ItotoriLlmWikiRepository(pool, cipher);
     const memoStore = new ItotoriLlmCallMemoRepository(pool, cipher, contentAccess);
     const snapshotRepository = new ItotoriLlmSnapshotRepository(pool);
+    const engineFamilyRegistry = projectEngineRegistry();
     const services = unavailableServiceSurface({
-      projectWorkflow: unavailableProjectWorkflow(),
+      projectWorkflow: new ItotoriProjectWorkflowService({
+        actor,
+        projects: new ItotoriProjectRepository(db, engineFamilyRegistry),
+        runs: new ItotoriProjectRunRepository(db),
+        snapshots: snapshotRepository,
+        ledger: new ItotoriModelLedgerRepository(db),
+        passRunConfig: new ItotoriLocalizationPassRunConfigRepository(db),
+        conformance: new ItotoriConformanceRepository(db),
+        defaultTargetLocale: process.env.ITOTORI_TARGET_LOCALE ?? "en-US",
+      }),
       wikiObjectApi,
       wikiApply: {
         runner: createLiveWikiEnhancementRunner({
@@ -203,14 +224,6 @@ export async function withDatabaseItotoriServices<T>(
   }, options.databaseUrl ?? databaseUrlFromEnv());
 }
 
-function unavailableProjectWorkflow(): ItotoriApplicationServices["projectWorkflow"] {
-  return new Proxy({} as ItotoriApplicationServices["projectWorkflow"], {
-    get: () => () => {
-      throw unavailableAfterCutover("project workflow");
-    },
-  });
-}
-
 function unavailableLiveRoleSeams() {
   return {
     review: {
@@ -239,6 +252,11 @@ function unavailableLiveRoleSeams() {
       resolveEvidence: () => null,
     },
   };
+}
+
+function projectEngineRegistry() {
+  assertEngineCapabilityMatrixDocument(engineCapabilityMatrixJson);
+  return createProjectEngineFamilyRegistry(engineCapabilityMatrixJson);
 }
 
 export function unavailableServiceSurface(

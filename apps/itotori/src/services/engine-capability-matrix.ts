@@ -224,18 +224,32 @@ export function createProjectEngineFamilyRegistry(
   document: EngineCapabilityMatrixDocument,
 ): ProjectEngineFamilyRegistry {
   assertEngineCapabilityMatrixDocument(document);
+  // A project binds to the adapter that actually EXTRACTS/PATCHES its engine. An
+  // engine family may legitimately expose more than one adapter across capability
+  // rows (e.g. a detector/readiness adapter plus a functional extract/patch
+  // writer). The registration keys each family to its FUNCTIONAL adapter,
+  // preferring an extract/patch-capable row over a readiness-only one. Two
+  // distinct *functional* adapters for one family remains a hard shape error.
   const byFamily = new Map<string, string>();
+  const functionalByFamily = new Map<string, string>();
   for (const row of document.rows) {
     if (row.adapterId === null) {
       continue;
     }
-    const existing = byFamily.get(row.engineFamily);
-    if (existing !== undefined && existing !== row.adapterId) {
-      throw new EngineCapabilityMatrixShapeError(
-        `engine family '${row.engineFamily}' maps to multiple adapter ids`,
-      );
+    if (rowExtractsOrPatches(row)) {
+      const existingFunctional = functionalByFamily.get(row.engineFamily);
+      if (existingFunctional !== undefined && existingFunctional !== row.adapterId) {
+        throw new EngineCapabilityMatrixShapeError(
+          `engine family '${row.engineFamily}' maps to multiple extract/patch adapter ids`,
+        );
+      }
+      functionalByFamily.set(row.engineFamily, row.adapterId);
+    } else if (!byFamily.has(row.engineFamily)) {
+      byFamily.set(row.engineFamily, row.adapterId);
     }
-    byFamily.set(row.engineFamily, row.adapterId);
+  }
+  for (const [engineFamily, adapterId] of functionalByFamily) {
+    byFamily.set(engineFamily, adapterId);
   }
   const registrations = [...byFamily.entries()]
     .map(([engineFamily, adapterId]) => ({ engineFamily, adapterId }))
