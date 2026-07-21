@@ -25,6 +25,7 @@ import {
   dashboardDecisionsFixture,
   dashboardStatusFixture,
   jobsRunTableFixture,
+  portfolioProjectsFixture,
   projectOverviewFixture,
   draftBranchRequestFixture,
   draftBranchResponseFixture,
@@ -167,7 +168,7 @@ export const itotoriApiMswHandlers = [
     apiJson("jobs.runTable", jobsRunTableFixture),
   ),
   http.get("http://itotori.test/api/projects", () =>
-    apiJson("projects.list", { projects: [dashboardStatusFixture] }),
+    apiJson("projects.list", portfolioProjectsFixture),
   ),
   http.get("http://itotori.test/api/hello/status", () =>
     apiJson("runtime.status", runtimeStatusFixture),

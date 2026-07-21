@@ -340,6 +340,7 @@ export type ItotoriReadOnlyApiServices = {
   projectWorkflow: Pick<
     ItotoriProjectWorkflowPort,
     | "listLocaleBranchIdentities"
+    | "listPortfolio"
     | "getDashboardStatus"
     | "getDashboardDecisions"
     | "getProjectOverview"
@@ -449,6 +450,7 @@ export type ItotoriApiServices = ItotoriReadOnlyApiServices & {
   projectWorkflow: Pick<
     ItotoriProjectWorkflowPort,
     | "listLocaleBranchIdentities"
+    | "listPortfolio"
     | "getDashboardStatus"
     | "getDashboardDecisions"
     | "getRuntimeStatus"
@@ -582,6 +584,7 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     projectWorkflow: {
       listLocaleBranchIdentities: (projectId) =>
         services.projectWorkflow.listLocaleBranchIdentities(projectId),
+      listPortfolio: () => services.projectWorkflow.listPortfolio(),
       getDashboardStatus: () => services.projectWorkflow.getDashboardStatus(),
       getProjectOverview: (options) => services.projectWorkflow.getProjectOverview(options),
       getDashboardDecisions: (projectId) =>
@@ -1639,9 +1642,10 @@ async function routeReadOnlyItotoriApiRequest(
 ): Promise<ApiJsonResponse | null> {
   if (request.method === "GET" && request.pathname === "/api/projects") {
     const canRead = await resolveProjectReadPermission(services);
-    const status = await services.projectWorkflow.getDashboardStatus();
-    const view = canRead ? status : redactProjectDashboardStatus(status);
-    return ok("projects.list", { projects: [view] });
+    const projects = await services.projectWorkflow.listPortfolio();
+    return ok("projects.list", {
+      projects: canRead ? projects : projects.map(redactProjectPortfolioEntry),
+    });
   }
 
   if (request.method === "GET" && request.pathname === "/api/projects/status") {
@@ -2216,6 +2220,18 @@ function redactProjectDashboardStatus(status: ProjectDashboardStatus): ProjectDa
   return {
     ...status,
     cost: redactProjectCostReport(status.cost),
+  };
+}
+
+function redactProjectPortfolioEntry(
+  project: ApiProjectsResponse["projects"][number],
+): ApiProjectsResponse["projects"][number] {
+  return {
+    ...redactProjectDashboardStatus(project),
+    progress: {
+      ...project.progress,
+      blockers: [],
+    },
   };
 }
 

@@ -300,8 +300,73 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
     }),
 
   // Projects / dashboards --------------------------------------------------
-  ApiProjectsResponse: () =>
-    object({ required: ["projects"], properties: { projects: arr }, additionalProperties: true }),
+  ApiProjectsResponse: (ref) =>
+    object({
+      required: ["projects"],
+      properties: { projects: { type: "array", items: ref("ProjectPortfolioEntry") } },
+      additionalProperties: true,
+    }),
+  ProjectPortfolioEntry: (ref) => ({
+    allOf: [
+      ref("ProjectDashboardStatus"),
+      object({
+        required: ["progress"],
+        properties: { progress: ref("ProjectPortfolioProgressSummary") },
+        additionalProperties: true,
+      }),
+    ],
+  }),
+  ProjectPortfolioProgressSummary: (ref) =>
+    object({
+      required: [
+        "runCount",
+        "runStatusCounts",
+        "unitCounts",
+        "roleCounts",
+        "totalCostMicrosUsd",
+        "averageCoveragePercent",
+        "blockers",
+      ],
+      properties: {
+        runCount: num,
+        runStatusCounts: ref("ProjectRunStatusCounts"),
+        unitCounts: ref("ProjectRunProgressStatusCounts"),
+        roleCounts: {
+          type: "object",
+          additionalProperties: ref("ProjectRunProgressStatusCounts"),
+        },
+        totalCostMicrosUsd: num,
+        averageCoveragePercent: num,
+        blockers: {
+          type: "array",
+          items: object({
+            required: ["runId", "bridgeUnitId", "role", "blockers"],
+            properties: { runId: str, bridgeUnitId: str, role: str, blockers: arr },
+            additionalProperties: false,
+          }),
+        },
+      },
+      additionalProperties: false,
+    }),
+  ProjectRunStatusCounts: () =>
+    object({
+      required: ["queued", "running", "paused", "completed", "failed", "cancelled"],
+      properties: {
+        queued: num,
+        running: num,
+        paused: num,
+        completed: num,
+        failed: num,
+        cancelled: num,
+      },
+      additionalProperties: false,
+    }),
+  ProjectRunProgressStatusCounts: () =>
+    object({
+      required: ["decoded", "drafted", "QA", "accepted", "patched"],
+      properties: { decoded: num, drafted: num, QA: num, accepted: num, patched: num },
+      additionalProperties: false,
+    }),
   ProjectDashboardStatus: () =>
     object({
       required: [

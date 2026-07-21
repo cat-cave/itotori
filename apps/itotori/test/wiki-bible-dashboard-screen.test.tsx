@@ -31,7 +31,12 @@ import type {
   WikiRenderingView,
   WikiSourceObjectView,
 } from "../src/wiki/dashboard/read-model.js";
-import { authIdentityFixture, costReportFixture, dashboardStatusFixture } from "./api-fixtures.js";
+import {
+  authIdentityFixture,
+  costReportFixture,
+  dashboardStatusFixture,
+  portfolioProjectsFixture,
+} from "./api-fixtures.js";
 
 const PROJECT_ID = "project-1";
 const LOCALE_BRANCH_ID = "019ed065-0000-7000-8000-000000000110";
@@ -335,7 +340,7 @@ const server = setupServer(
   http.get("*/api/auth/identity", () => HttpResponse.json(authIdentityFixture)),
   http.get("*/api/projects/status", () => HttpResponse.json(dashboardStatusFixture)),
   http.get("*/api/projects/cost", () => HttpResponse.json(costReportFixture)),
-  http.get("*/api/projects", () => HttpResponse.json({ projects: [dashboardStatusFixture] })),
+  http.get("*/api/projects", () => HttpResponse.json(portfolioProjectsFixture)),
   http.get("*/api/wiki", () => HttpResponse.json(wikiListBody())),
   http.get("*/api/wiki/source-object/:objectId", ({ params }) => {
     const object = sourceObjectFor(String(params.objectId));

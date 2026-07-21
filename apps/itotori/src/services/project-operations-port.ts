@@ -27,6 +27,7 @@ export type LaunchLocalizationPassResult =
 export type ItotoriProjectWorkflowPort = {
   reset(): Promise<any>;
   listLocaleBranchIdentities(...args: any[]): Promise<any>;
+  listPortfolio(...args: any[]): Promise<any>;
   getDashboardStatus(...args: any[]): Promise<any>;
   getRuntimeStatus(...args: any[]): Promise<any>;
   getDashboardDecisions(...args: any[]): Promise<any>;

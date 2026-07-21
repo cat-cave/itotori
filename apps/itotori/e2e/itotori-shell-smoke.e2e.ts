@@ -11,6 +11,7 @@ import {
   authIdentityFixture,
   costReportFixture,
   dashboardStatusFixture,
+  portfolioProjectsFixture,
 } from "../test/api-fixtures.js";
 
 const projectId = "project-1";
@@ -100,7 +101,7 @@ async function fulfillApi(route: Route, url: URL): Promise<void> {
     return;
   }
   if (url.pathname === "/api/projects") {
-    await fulfillJson(route, "projects.list", { projects: [dashboardStatusFixture] });
+    await fulfillJson(route, "projects.list", portfolioProjectsFixture);
     return;
   }
   if (url.pathname === "/api/projects/status") {

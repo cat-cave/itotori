@@ -14,7 +14,12 @@ import type {
 import { App } from "../src/ui/App.js";
 import { grantedStudioCapabilityView } from "../src/ui/caps-context.js";
 import { parsePlayHubRoute } from "../src/ui/screens/PlayHubScreen.js";
-import { authIdentityFixture, costReportFixture, dashboardStatusFixture } from "./api-fixtures.js";
+import {
+  authIdentityFixture,
+  costReportFixture,
+  dashboardStatusFixture,
+  portfolioProjectsFixture,
+} from "./api-fixtures.js";
 
 const PROJECT_ID = dashboardStatusFixture.projectId;
 const LOCALE_BRANCH_ID = dashboardStatusFixture.selectedLocaleBranchId;
@@ -90,7 +95,7 @@ function responseForPath(pathname: string): unknown {
     return costReportFixture;
   }
   if (pathname === "/api/projects") {
-    return { projects: [dashboardStatusFixture] };
+    return portfolioProjectsFixture;
   }
   if (pathname === `/api/play/locale-branches/${LOCALE_BRANCH_ID}/patch-versions`) {
     return versionsFixture;
