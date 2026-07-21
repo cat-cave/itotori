@@ -1,31 +1,8 @@
 # Localization Engine Overhaul — Foundation Design
 
-Status: **canonical foundation** (supersedes the cosplay orchestration loop). Grounds the
-fresh DAG. Consolidates four harsh architecture audits (sol + terra), the philosophy audit
-(`docs/audits/localization-philosophy-alignment.md`), the FE/BE coherence audit, and the
-DAG triage — as corrected by the product decisions recorded in §2.
-
----
-
-## 1. What this replaces and why
-
-Four independent audits concluded the localization **orchestration loop** is _cosplay_: it
-withholds, defers, discards, and fakes completeness. Concretely, on real bytes:
-
-- The RealLive synthesizer fills every bridge unit with one selected unit's `「[en-US] <source>」`.
-- `agentic-loop.ts` clears `finalDraftText`; `project-driven-executor.ts` synthesizes a
-  source-echo; QA can erase a draft to nothing.
-- The "reviewer queue" is a **deferral sink**: created records are dead on arrival (no
-  `contextRefs`), no action revises a result, no rerun worker exists.
-- `RetryPolicy` is a classifier-only façade; `fallbackModels` never reach OpenRouter.
-- Enrichment is reduced to ID refs; the central context store is disconnected; glossary
-  writeback is fiction (no `rerun.*` handler → the claimed job throws).
-
-The **byte substrate is genuine and stays** (kaifuu decode/extract/patchback, utsushi
-VM/render/replay/engine-ports, catalog/vault ingest, auth, CI/proof infra). This overhaul
-rebuilds only the loop, from core principles, and unifies it with the interface.
-
----
+Status: **canonical foundation** (governing product model for the localization
+loop). Supersedes the cosplay orchestration loop. Consolidates architecture and
+philosophy audits as corrected by the product decisions in §2.
 
 ## 2. The product model (RESOLVED decisions)
 
@@ -112,7 +89,7 @@ to zero.
   low-confidence / high-contest QA callouts so the play tester can weigh in — but that is
   play-testing input on an _already-written_ result, never a per-line approval gate.
 - **There is no reviewer.** No per-line approval, no per-action HITL, no human as part of a
-  localization wave. All approve/reject/defer/escalate machinery is deleted (§7 capstone).
+  localization wave. All approve/reject/defer/escalate machinery is deleted.
 
 ### 2.8 Decision C — existing UI: rebuild domain, reuse presentation
 
@@ -434,89 +411,3 @@ UI. (Condensed from the full audit table.)
 | Feedback            | comment/edit/context/runtime forms; inbox; "Refine selected"           | `itotori feedback add/batch`, `itotori refine --batch` |
 
 ---
-
-## 7. Fresh DAG — keep / discard / reclassify + the P0 spine
-
-### 7.1 Triage (from the DAG-triage audit; ~1482 nodes today)
-
-- **KEEP (~324) — the byte substrate that genuinely stands.** kaifuu decode/extract/patchback
-  (~80), utsushi VM/render/replay/engine-ports (~67), catalog/vault ingest (~67), auth (18),
-  CI/tiered-CI/proof infra (~72), ITOTORI-001–018 durable primitives.
-- **DISCARD (~320).** 226 secondary-engine (non-RealLive) breadth nodes (other games are not
-  worth our time until the core loop is genuine); 29 reviewer-queue/approval/deferral nodes;
-  7 old-loop "proof" nodes validating cosplay; ~60 sentinel/stub/"for-now" scaffolds. Plus the
-  ~11 DONE-but-illusory nodes (e.g. ITOTORI-222 encodes `deferred_to_human`) whose code this
-  overhaul deletes — they are not trustworthy foundation.
-- **RECLASSIFY (~169).** App-layer draft/QA/export, play-test UI, and context nodes whose
-  capability is real but whose acceptance encoded a broken assumption (deferral tolerated, no
-  interface representation, single-run/non-iterative). They carry forward re-scoped to
-  every-unit-written + iterative + play-tester + interface-cohesive, folded under the spine.
-
-### 7.2 The P0 spine (12 nodes, 4 phases — no shims; each PR deletes its toxic path)
-
-**Phase 1 — written outcomes + durable execution**
-
-1. `p0-core-canonical-written-unit-outcome` — `WrittenUnitOutcome`, non-blank candidates,
-   annotation-only findings, exact scope totality. Deletes the deferred/blank/source-echo XOR.
-2. `p0-core-attempt-and-outcome-journal` — durable run/unit/call/attempt/candidate/finding
-   repos + read models. Deletes the pseudo-attempt sink + accepted/deferred JSON as truth.
-3. `p0-core-universal-invocation-supervisor-retry` — the supervisor + retry matrix + bounded
-   advancement + **resume**; content/transient → written; cost/outage → resumable pause;
-   hard-ceiling error (bug). Deletes the classifier façade + direct `provider.invoke()`.
-4. `p0-core-atomic-cost-reservation-and-resumable-pause` _(retitled from
-   `…-and-fallback`)_ — exact-decimal reservation, billed-cost recovery, **cap-reached →
-   graceful pause + operator resume** (no local-fallback requirement). Deletes process-local
-   `spentUsd` check + the "provider-side fallback is resilience" claim.
-5. `p0-core-terminal-run-finalizer` — one all-path finalizer, coverage-only success predicate,
-   `paused`/`failed`/`aborted` states, minimal patch-version foundation, idempotent
-   build/apply/validate/summary outbox. Deletes split success/abort schemas + hard-coded pass
-   rows.
-
-**Phase 2 — persistent context + wiki brain** 6. `p0-core-persistent-context-brain-primary-loop` — versioned central context + source/sink/
-invalidation wiring; persisted speaker + semantic outputs. Deletes refs-only results +
-in-place overwrite. 7. `p0-core-resolved-context-to-translation-and-qa` — immutable bounded ContextPacket, exact
-parity across translate/repair/QA, real sibling evidence. Deletes context-free QA +
-`existingSpeakerLabels: new Map()` + `sceneUnits: []`. 8. `p0-core-context-correction-flywheel-real-rerun` _(retitle: play-tester context-correction
-flywheel)_ — versioned context/glossary/style writes, dependency + invalidation, a **real
-registered refinement worker** + typed outbox, explicit feedback-batch triggers. Deletes
-metadata-only "updates" + the handlerless `rerun.*` chain. 9. `p0-core-wiki-browsable-editable-enrichment` _(new)_ — dashboard + CLI browse/detail/edit/
-history over the context store; edit → new version → invalidation → next packet, proven on
-real Postgres. Deletes the GET-only façade.
-
-**Phase 3 — play-tester surfaces + first-class iteration** 10. `p0-core-result-revision-hitl` _(retitle: play-tester result revision + delivered patch
-revision)_ — direct target-text revision API/CLI, atomic result revision + deterministic
-child patch revision, target-first detail. Deletes correction-to-queue + reviewer-item
-dependency + fake "approved patch" history. 11. `p0-core-iterative-patch-versioning-and-playtest-feedback` _(new)_ — play sessions, patch
-lineage, feedback events/batches, real play/open/launch, refinement-run creation,
-complete-within-scope expansion, informational QA callouts. **North-Star e2e proof:**
-run → playable v1 → play-test → refinement run → playable v2. Deletes queue-keyed fake Play + flag-to-review + hard-coded succeeded rows.
-
-**Phase 4 — purge capstone (completed).** 12.
-`p0-core-purge-reviewer-queue-as-deferral` removed `ReviewerQueueBridge`, the
-per-unit decision controls and screens, deferred item kinds, the queue database
-tables, queue-driven rerun chain, fake review payloads, and the legacy manual
-verification state. Legitimate human work now changes a result revision or
-canonical context through result editing, context correction/wiki, and patch
-iteration; RouteMap is read-only context freshness. The cross-engine
-complete-patch regression remains the proof.
-
-**Cancelled (subsumed):** `philosophy-always-draft-deferral-carries-best-effort-draft` (a
-best-effort draft is now the _only_ outcome), `persist-asset-review-items-to-db-reviewer-queue`
-(extends the dead queue).
-
-### 7.3 Milestone
-
-The spine defines a single **`localization-engine-overhaul`** milestone on the identity chain
-(§3). Alpha (Oshioki/Sweetie e2e on Linux + live LLM + agentic) is redefined as "North-Star
-cycle is a guarantee under default settings on RealLive," proven by node 11's e2e.
-
----
-
-## 8. Open items (mechanical, not decisions)
-
-- **Ledger reconcile before surgery.** The local qd ledger has today's changes (PRs #57/#59,
-  re-scopes, unblocks) while local `main` is 20 commits behind origin. Reconcile
-  export-first (`qd sync` is destructive) on a clean base _before_ cancelling ~320 nodes or
-  minting the spine, to avoid ledger corruption.
-- The 12 spine nodes currently live only in `/tmp/core-audit/*.json`; they must be minted into
-  the ledger with **real structured edges** (dependencies above), not prose.

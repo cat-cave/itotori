@@ -112,8 +112,8 @@ below are the precedent:
 
 The full set of patterns (typed-query example, deleted predecessors,
 downstream-screen patterns) lives in [frontend.md](../frontend.md); the
-design ↔ repo alignment for the hi-fi Studio epic lives in
-[`design/hifi/README.md`](../design/hifi/README.md).
+design-language pointer for shipped studio UI lives in
+[`design/hifi-brief.md`](../design/hifi-brief.md).
 
 ## Runtime evidence: MV/MZ proof-by-real-Chromium (scoped browser-engine exception)
 
