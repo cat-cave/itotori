@@ -17,29 +17,26 @@ fresh clone. It is the human-facing companion to the machine gate
 
 ## 1. The pipeline (not "just translation")
 
-Itotori is a full games-localization pipeline, not a translation box. The
+Itotori is a full games-localization pipeline, not a translation box. Its
 stages, in order:
 
-1. **Catalog** — resolve a title from the read-only vault / catalog source
-   adapters ([`itotori-vault-source-adapter.md`](itotori-vault-source-adapter.md),
-   [`itotori-catalog-source-adapter-contract.md`](itotori-catalog-source-adapter-contract.md)).
-2. **Inventory** — enumerate archives, assets, and localizable surfaces for the
-   detected engine ([`localization-surfaces.md`](localization-surfaces.md)).
-3. **Readiness** — classify engine/encryption/key posture and decide whether a
-   title is realizable under the project laws (this document + the generated
-   capability matrix below).
-4. **Extraction** — Kaifuu reads real bytecode/archives and produces a bridge
-   bundle ([`subprojects-kaifuu.md`](subprojects-kaifuu.md)).
-5. **Localization** — Itotori's agentic loop (context → pre-translation →
-   translation → QA → repair) drafts and reviews against a chosen
+1. **Extract** — Kaifuu reads game bytes and produces a bridge bundle
+   ([`subprojects-kaifuu.md`](subprojects-kaifuu.md)).
+2. **Structure export** — Utsushi derives the narrative structure that supplies
+   scene, route, and speaker context to later stages.
+3. **Wiki build** — Itotori builds the source-language bible used by the
+   localizer.
+4. **Localize** — Itotori's agentic loop drafts and reviews against a chosen
    `(modelId, providerId)` pair ([`subprojects-itotori.md`](subprojects-itotori.md)).
-6. **Patching** — Kaifuu writes the localized bytes back (offset-table rewriting,
-   JA→EN expansion) and emits a `.kaifuu` delta package + `PatchResult`
+5. **Patch** — Kaifuu writes the localized bytes to a separate output and emits
+   a `.kaifuu` delta package plus `PatchResult`
    ([`kaifuu-patch-safety.md`](kaifuu-patch-safety.md)).
-7. **Validation** — Utsushi replays the patched output and captures runtime
-   evidence tying observed post-patch text/choices back to bridge unit refs
+6. **Validate** — Utsushi replays the patched output and captures runtime
+   evidence tying observed post-patch text and choices back to bridge unit refs
    ([`subprojects-utsushi.md`](subprojects-utsushi.md),
    [`utsushi-runtime-artifacts.md`](utsushi-runtime-artifacts.md)).
+7. **Review** — inspect the run summary, QA findings, and runtime evidence
+   before accepting the patched output.
 
 The alpha proof exercises this whole chain end-to-end, not the translation
 stage in isolation.
@@ -61,20 +58,22 @@ retail bytes. It fails unless every artifact agrees on the same fixture id,
 source revision, locale branch, and content hashes — there is no success-string
 shortcut. See [`alpha-proof.md`](alpha-proof.md).
 
-To see the real-project pipeline plan without touching a game or an LLM (select
-an alpha target-data record with `--project <alpha-target>`; the committed
-allowlisted target record is listed in
-[`fixtures-and-corpora.md`](fixtures-and-corpora.md#title-reference-allowlist-for-active-docs)):
+After extract, structure export, and wiki build have produced their artifacts,
+run the localizer with an explicit run mode:
 
 ```sh
-just localize-project --dry-run --project <alpha-target>
+itotori localize \
+  --run-mode test-dev \
+  --structure <run-dir>/structure.json \
+  --bridge <run-dir>/bridge.json \
+  --output-scope dialogue-only \
+  --output <run-dir>/run-summary.json
 ```
 
-The dry run prints the per-stage extract → localize → patch → replay commands
-and the per-stage ZDR posture, and makes **zero** LLM calls. Live runs require
-explicit corpus + credential env (see [`install.md`](install.md) and
-[`security-and-limitations.md`](security-and-limitations.md)); they are never
-the default and never fall back to a live provider silently.
+Use `production` or `pilot` only with the required live corpus and credentials;
+the mode policy rejects invalid combinations. See [`install.md`](install.md) and
+[`security-and-limitations.md`](security-and-limitations.md) for the live-run
+requirements.
 
 ## 3. Generated capability claims
 

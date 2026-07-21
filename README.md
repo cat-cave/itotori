@@ -109,8 +109,8 @@ Run `itotori --help` for each command's flag list. A live run requires the
 OpenRouter key + ZDR assertion configured in step 2; without them itotori fails
 loudly rather than downgrading.
 
-For a step-by-step RealLive walkthrough (Sweetie HD), including the exact flags,
-env vars, and honest signposts, see the
+For a step-by-step RealLive walkthrough with generic game placeholders, exact
+flags, environment variables, and honest signposts, see the
 [RealLive localizer runbook](docs/localize-reallive.md).
 
 ### 4. Review the results
@@ -167,14 +167,13 @@ docs/                      # user-facing docs (you are reading the entry point)
 ## Status
 
 Itotori is at the **alpha readiness** milestone: ready to _start_ a first real
-localization project, with the whole pipeline proven end-to-end on the public
-fixtures and on the first real-engine vertical (`ALPHA-006`). It is not a
-terminal product release; beta (≥2 games per engine, encrypted variants, the
-packaged non-developer install surface) and full release are later tiers — see
+localization project, with the whole pipeline proven end-to-end on public
+fixtures and a real-engine vertical. It is not a terminal product release; beta
+(≥2 games per engine, encrypted variants, the packaged non-developer install
+surface) and full release are later tiers — see
 [docs/project-readiness.md](docs/project-readiness.md) and
-[docs/alpha-readiness.md](docs/alpha-readiness.md). The public-fixture alpha
-proof and the SHARED-025 manifest contract are documented in
-[docs/alpha-proof.md](docs/alpha-proof.md).
+[docs/alpha-readiness.md](docs/alpha-readiness.md). The public-fixture proof and
+its manifest contract are documented in [docs/alpha-proof.md](docs/alpha-proof.md).
 
 The public formats a localization depends on (the bridge schema, the `.kaifuu`
 delta, the API contract, the DB schema) each declare a stability tier + version

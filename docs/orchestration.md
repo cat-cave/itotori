@@ -308,13 +308,6 @@ Fresh worktree once:
 direnv exec . just worktree-setup   # offline pnpm install --frozen-lockfile
 ```
 
-### Protected namespaces (never prune)
-
-Do **not** delete or bulk-prune worktrees matching:
-
-- `sweetie-hd-real-*`
-- legacy `reallive` / `xor2` / `sweetie` namespaces
-
 ### Stay current with origin/main
 
 The merge queue advances `origin/main` constantly. **ALWAYS fetch and confirm
