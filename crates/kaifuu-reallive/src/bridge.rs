@@ -1,5 +1,4 @@
-//! Real Sweetie HD scene bytecode → v0.2 BridgeBundle
-//! producer.
+//! RealLive scene bytecode → v0.2 BridgeBundle producer.
 //! Walks a [`Vec<RealLiveOpcode>`] (from [`parse_real_bytecode`]) into a
 //! [`kaifuu_core::BridgeBundleV02`] keyed against the v0.2 schema:
 //! - Each [`RealLiveOpcode::Textout`] / [`RealLiveOpcode::TextDisplay`] /
@@ -60,23 +59,22 @@ use crate::opcode::{
 /// hide a mis-specified call site.
 #[derive(Debug, Clone)]
 pub struct BridgeOpts<'a> {
-    /// Stable game id (e.g. `"sweetie-hd"`).
+    /// Stable game id (e.g. `"example-game"`).
     pub game_id: &'a str,
     /// Human-readable game version label.
     pub game_version: &'a str,
     /// Source-profile id (stable per kaifuu extractor profile).
     pub source_profile_id: &'a str,
-    /// Source locale tag for the decoded text (`"ja-JP"` for Sweetie HD).
+    /// Source locale tag for the decoded text (for example, `"ja-JP"`).
     pub source_locale: &'a str,
     /// Extractor name embedded in `extractor.name`.
     pub extractor_name: &'a str,
     /// Extractor version embedded in `extractor.version`.
     pub extractor_version: &'a str,
     /// Number of kidoku-table entries declared in the scene header.
-    /// Sweetie HD's scene 1 declares `kidoku_count = 1` even though no
-    /// inline `0x40` MetaKidoku markers appear in the decompressed
-    /// bytecode — RealLive's kidoku read-tracking is table-driven, not
-    /// always inline. When `> 0` and the inline walk produced no
+    /// A scene can declare `kidoku_count > 0` without an inline `0x40`
+    /// MetaKidoku marker: RealLive's read-tracking is table-driven as well
+    /// as inline. When the inline walk produced no
     /// MetaKidoku markers, the bridge producer synthesises a single
     /// `reallive.kidoku` span on the first text unit so the read-
     /// tracking surface is represented in the bundle.
@@ -527,10 +525,18 @@ fn collect_units(
                         build_control_prefix(&mut pending_markers, &decoded);
                     let (raw_speaker, name_token_spans) =
                         extract_name_token_spans(&decoded, control_prefix.len() as u64);
-                    let asset_ref_spans =
-                        extract_asset_ref_spans(&decoded, control_prefix.len() as u64);
-                    let font_tone_spans =
-                        extract_font_tone_spans(&decoded, control_prefix.len() as u64);
+                    let asset_ref_spans = extract_inline_tag_spans(
+                        &decoded,
+                        control_prefix.len() as u64,
+                        RLDEV_ASSET_REF_TAGS,
+                        "reallive.asset_ref",
+                    );
+                    let font_tone_spans = extract_inline_tag_spans(
+                        &decoded,
+                        control_prefix.len() as u64,
+                        RLDEV_FONT_TONE_TAGS,
+                        "reallive.font_tone",
+                    );
                     let mut spans = prefix_spans;
                     spans.extend(name_token_spans);
                     spans.extend(asset_ref_spans);
@@ -714,8 +720,8 @@ fn collect_units(
 
     // Synthesise a reallive.kidoku span when the scene header declares
     // kidoku entries but the inline walk produced none. RealLive's
-    // read-tracking is table-driven for Sukara-branch titles; the
-    // declared count is the canonical proof a kidoku surface exists.
+    // read-tracking can be table-driven; the declared count is the canonical
+    // proof a kidoku surface exists.
     if !inline_kidoku_seen
         && opts.scene_kidoku_count > 0
         && let Some(unit) = units.first_mut()
@@ -778,53 +784,44 @@ fn build_control_prefix(
     (prefix, spans)
 }
 
+/// Textout markup is RealLive engine grammar, not a game profile. RLDEV's
+/// `lib/textout.kh`, cited by rlvm's `src/doc/notes/NamesAndIndentation.txt`,
+/// defines lenticular names; rlvm's `TextoutLongOperation` treats U+3010 as a
+/// name token. A textout may omit any optional token, but the grammar is shared.
+const RLDEV_LENTICULAR_NAME_DELIMITERS: (char, char) = ('【', '】');
+const RLDEV_ASSET_REF_TAGS: &[&str] = &["#FACE", "#GANBMP"];
+const RLDEV_FONT_TONE_TAGS: &[&str] = &["#FONT_BIG", "#FONT_SMALL", "#COLOR"];
+
 fn extract_name_token_spans(decoded: &str, prefix_offset: u64) -> (Option<String>, Vec<ProtoSpan>) {
-    // A speaker name token is the full-width lenticular `【話者】` prefix (the
-    // `#NAMAE` lookup key). The `「話者」` corner brackets are the DIALOGUE
-    // quote, NOT a name token — matching them here misattributed every
-    // quote-only narration line to a speaker, so that fallback is dropped.
-    // PROVENANCE (2nd-corpus calibration,
-    // `reallive-bridge-second-corpus-protected-span-calibration`): the inline
-    // `【】` speaker bracket is a TITLE / ERA-CALIBRATED convention, NOT
-    // RealLive-engine-universal. It fires 16,862× on Sweetie HD (an rlBabel-era
-    // title) but ZERO times on classic Kanon (1.2.6.8), which does not
-    // inline-bracket speaker names. The detector is correct where the
-    // convention is used and simply emits no span where it is not — it keys on
-    // an exact `【…】` literal, so it cannot MIS-fire on a title that omits it.
-    // See `tests/protected_span_second_corpus_real_bytes.rs`. Do NOT re-describe
-    // this as an engine-general rule (no-overclaim).
-    let candidates = [('【', '】')];
-    for (open, close) in candidates {
-        if let Some(open_pos) = decoded.find(open)
-            && let Some(close_offset) = decoded[open_pos + open.len_utf8()..].find(close)
-        {
-            let close_pos = open_pos + open.len_utf8() + close_offset + close.len_utf8();
-            let raw_speaker =
-                decoded[open_pos + open.len_utf8()..close_pos - close.len_utf8()].to_string();
-            let raw_bracketed = decoded[open_pos..close_pos].to_string();
-            let span = ProtoSpan {
-                parsed_name: "reallive.name_token",
-                out_of_band: false,
-                start_byte: prefix_offset + open_pos as u64,
-                end_byte: prefix_offset + close_pos as u64,
-                raw: raw_bracketed,
-            };
-            return (Some(raw_speaker), vec![span]);
-        }
+    // `【話者】` is the `#NAMAE` lookup key; `「話者」` is dialogue quotation.
+    let (open, close) = RLDEV_LENTICULAR_NAME_DELIMITERS;
+    if let Some(open_pos) = decoded.find(open)
+        && let Some(close_offset) = decoded[open_pos + open.len_utf8()..].find(close)
+    {
+        let close_pos = open_pos + open.len_utf8() + close_offset + close.len_utf8();
+        let raw_speaker =
+            decoded[open_pos + open.len_utf8()..close_pos - close.len_utf8()].to_string();
+        let raw_bracketed = decoded[open_pos..close_pos].to_string();
+        let span = ProtoSpan {
+            parsed_name: "reallive.name_token",
+            out_of_band: false,
+            start_byte: prefix_offset + open_pos as u64,
+            end_byte: prefix_offset + close_pos as u64,
+            raw: raw_bracketed,
+        };
+        return (Some(raw_speaker), vec![span]);
     }
     (None, Vec::new())
 }
 
-fn extract_asset_ref_spans(decoded: &str, prefix_offset: u64) -> Vec<ProtoSpan> {
-    // `#FACE(...)` and `#GANBMP(...)` inline asset-ref tags. Match the
-    // tag name and any immediately-following `(...)` arg group.
-    // PROVENANCE (2nd-corpus calibration): TITLE-CALIBRATED, speculative
-    // Sweetie-HD vocabulary. These exact tag literals emit ZERO spans on BOTH
-    // real corpora (they do not fire even on Sweetie HD's real bytes, and
-    // `#GANBMP` in particular is Sweetie authoring vocabulary). Keying on an
-    // exact literal, they cannot mis-fire on Kanon. Not RealLive-engine-general.
+fn extract_inline_tag_spans(
+    decoded: &str,
+    prefix_offset: u64,
+    tags: &[&str],
+    parsed_name: &'static str,
+) -> Vec<ProtoSpan> {
     let mut spans = Vec::new();
-    for tag in ["#FACE", "#GANBMP"] {
+    for &tag in tags {
         let mut start = 0usize;
         while let Some(rel) = decoded[start..].find(tag) {
             let tag_start = start + rel;
@@ -837,39 +834,7 @@ fn extract_asset_ref_spans(decoded: &str, prefix_offset: u64) -> Vec<ProtoSpan> 
             }
             let raw = decoded[tag_start..tag_end].to_string();
             spans.push(ProtoSpan {
-                parsed_name: "reallive.asset_ref",
-                out_of_band: false,
-                start_byte: prefix_offset + tag_start as u64,
-                end_byte: prefix_offset + tag_end as u64,
-                raw,
-            });
-            start = tag_end;
-        }
-    }
-    spans
-}
-
-fn extract_font_tone_spans(decoded: &str, prefix_offset: u64) -> Vec<ProtoSpan> {
-    // Font-tone tags such as `#FONT_BIG` or `#COLOR(123)` — keep the
-    // scan narrow to the documented Sweetie HD vocabulary.
-    // PROVENANCE (2nd-corpus calibration): TITLE-CALIBRATED Sweetie-HD
-    // vocabulary. These exact tag literals emit ZERO spans on BOTH real corpora
-    // (Sweetie HD and Kanon). Keying on an exact literal, they cannot mis-fire
-    // on Kanon. Not RealLive-engine-general.
-    let mut spans = Vec::new();
-    for tag in ["#FONT_BIG", "#FONT_SMALL", "#COLOR"] {
-        let mut start = 0usize;
-        while let Some(rel) = decoded[start..].find(tag) {
-            let tag_start = start + rel;
-            let mut tag_end = tag_start + tag.len();
-            if decoded[tag_end..].starts_with('(')
-                && let Some(close_rel) = decoded[tag_end..].find(')')
-            {
-                tag_end += close_rel + 1;
-            }
-            let raw = decoded[tag_start..tag_end].to_string();
-            spans.push(ProtoSpan {
-                parsed_name: "reallive.font_tone",
+                parsed_name,
                 out_of_band: false,
                 start_byte: prefix_offset + tag_start as u64,
                 end_byte: prefix_offset + tag_end as u64,
