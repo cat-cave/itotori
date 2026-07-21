@@ -85,6 +85,22 @@ export type EngineCapabilityMatrixDocument = {
   knownLimitations: string[];
 };
 
+/** A project-bindable engine entry derived from a matrix adapter-registry row. */
+export type ProjectEngineFamilyRegistration = {
+  engineFamily: string;
+  adapterId: string;
+};
+
+/**
+ * Registry consumed by project create/import composition. Its members are
+ * derived from the generated matrix's adapter-registry rows, never from a
+ * caller-maintained engine-name list.
+ */
+export type ProjectEngineFamilyRegistry = {
+  has(engineFamily: string): boolean;
+  registrations(): readonly ProjectEngineFamilyRegistration[];
+};
+
 export class EngineCapabilityMatrixShapeError extends Error {
   constructor(message: string) {
     super(message);
@@ -197,6 +213,41 @@ export function assertEngineCapabilityMatrixDocument(
   if (!Array.isArray(value.exclusions)) {
     throw new EngineCapabilityMatrixShapeError("exclusions must be an array");
   }
+}
+
+/**
+ * Derive the project-binding registry from the generated capability matrix.
+ * A family is bindable precisely when the matrix associates it with an adapter
+ * id; readiness-only rows without an adapter cannot be selected by a project.
+ */
+export function createProjectEngineFamilyRegistry(
+  document: EngineCapabilityMatrixDocument,
+): ProjectEngineFamilyRegistry {
+  assertEngineCapabilityMatrixDocument(document);
+  const byFamily = new Map<string, string>();
+  for (const row of document.rows) {
+    if (row.adapterId === null) {
+      continue;
+    }
+    const existing = byFamily.get(row.engineFamily);
+    if (existing !== undefined && existing !== row.adapterId) {
+      throw new EngineCapabilityMatrixShapeError(
+        `engine family '${row.engineFamily}' maps to multiple adapter ids`,
+      );
+    }
+    byFamily.set(row.engineFamily, row.adapterId);
+  }
+  const registrations = [...byFamily.entries()]
+    .map(([engineFamily, adapterId]) => ({ engineFamily, adapterId }))
+    .sort((left, right) => left.engineFamily.localeCompare(right.engineFamily));
+  return {
+    has(engineFamily: string): boolean {
+      return byFamily.has(engineFamily);
+    },
+    registrations(): readonly ProjectEngineFamilyRegistration[] {
+      return registrations;
+    },
+  };
 }
 
 /**

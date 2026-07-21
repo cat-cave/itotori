@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import type { BridgeBundle } from "@itotori/localization-bridge-schema";
 import type { AuthorizationActor } from "../src/authorization.js";
 import type { ItotoriDatabase } from "../src/connection.js";
@@ -65,6 +66,10 @@ export function draftJobFixtureProject(): ItotoriProjectRecord {
   };
   return {
     projectId: draftJobFixtureProjectId,
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: draftJobFixtureLocaleBranchId,
     targetLocale: "en-US",
     drafts: {},
@@ -90,7 +95,7 @@ export async function provisionDraftJobFixtureProject(
   db: ItotoriDatabase,
   actor: AuthorizationActor,
 ): Promise<void> {
-  const projects = new ItotoriProjectRepository(db);
+  const projects = new ItotoriProjectRepository(db, testProjectEngineFamilyRegistry);
   await projects.importSourceBundle(actor, draftJobFixtureProject());
 }
 

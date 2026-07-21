@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { localUserId, permissionValues, type AuthorizationActor } from "../src/authorization.js";
@@ -35,6 +36,10 @@ const localActor: AuthorizationActor = { userId: localUserId };
 function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriProjectRecord {
   const project: ItotoriProjectRecord = {
     projectId: "project-test",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-en-us",
     targetLocale: "en-US",
     drafts: { "bridge-unit-test": "Hello, {player}." },
@@ -1122,7 +1127,7 @@ async function migratedContext() {
 }
 
 async function seedProject(db: ItotoriDatabase): Promise<void> {
-  const repo = new ItotoriProjectRepository(db);
+  const repo = new ItotoriProjectRepository(db, testProjectEngineFamilyRegistry);
   await repo.reset(localActor);
   await repo.importSourceBundle(localActor, projectFixture());
 }

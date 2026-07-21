@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,6 +29,10 @@ const localActor: AuthorizationActor = { userId: localUserId };
 function projectFixture(): ItotoriProjectRecord {
   return {
     projectId: "project-test",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-en-us",
     targetLocale: "en-US",
     drafts: { "bridge-unit-test": "Hello, {player}." },
@@ -266,7 +271,7 @@ describe("GitHub channel feedback import (real Postgres)", () => {
   it("persists imported reports with source + channel metadata", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       const feedbackRepo = new ItotoriFeedbackRepository(context.db);
       await repo.reset(localActor);
       await repo.importSourceBundle(localActor, projectFixture());
@@ -320,7 +325,7 @@ describe("GitHub channel feedback import (real Postgres)", () => {
   it("aggregates a re-imported issue under one canonical report instead of duplicating", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       const feedbackRepo = new ItotoriFeedbackRepository(context.db);
       await repo.reset(localActor);
       await repo.importSourceBundle(localActor, projectFixture());
@@ -372,7 +377,7 @@ describe("GitHub channel feedback import (real Postgres)", () => {
   it("never persists raw PII from channel content", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       const feedbackRepo = new ItotoriFeedbackRepository(context.db);
       await repo.reset(localActor);
       await repo.importSourceBundle(localActor, projectFixture());
@@ -414,7 +419,7 @@ describe("Community forms channel feedback import (real Postgres)", () => {
   it("persists form responses with channel metadata, dedup, and redacted content", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       const feedbackRepo = new ItotoriFeedbackRepository(context.db);
       await repo.reset(localActor);
       await repo.importSourceBundle(localActor, projectFixture());

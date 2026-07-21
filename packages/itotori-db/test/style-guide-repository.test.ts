@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -644,7 +645,10 @@ describe("ItotoriStyleGuideService", () => {
     try {
       await seedProject(context.db);
       const repository = new ItotoriStyleGuideRepository(context.db);
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
 
       const approvedVersionId = "sgv-normal-write-v1";
       // Approve V1: the style-guide version "in force" at draft-write time. This
@@ -695,7 +699,10 @@ describe("ItotoriStyleGuideService", () => {
       await seedProject(context.db);
       const repository = new ItotoriStyleGuideRepository(context.db);
       const service = new ItotoriStyleGuideService(repository);
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
 
       const v1 = "sgv-normal-invalidation-v1";
       const v2 = "sgv-normal-invalidation-v2";
@@ -1200,7 +1207,10 @@ describe("ItotoriStyleGuideService", () => {
       const context = await isolatedMigratedContext();
       try {
         await seedProject(context.db);
-        const projectRepo = new ItotoriProjectRepository(context.db);
+        const projectRepo = new ItotoriProjectRepository(
+          context.db,
+          testProjectEngineFamilyRegistry,
+        );
         // A second project with its OWN source bundle + locale-branch (a
         // distinct bridgeId/hash so it does not collide with project-test's).
         await projectRepo.importSourceBundle(
@@ -1386,6 +1396,10 @@ function readMigrationSql(file: string): string {
 function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriProjectRecord {
   const project: ItotoriProjectRecord = {
     projectId: "project-test",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-en-us",
     targetLocale: "en-US",
     drafts: {
@@ -1439,7 +1453,7 @@ function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriP
 }
 
 async function seedProject(db: ItotoriDatabase): Promise<void> {
-  const repo = new ItotoriProjectRepository(db);
+  const repo = new ItotoriProjectRepository(db, testProjectEngineFamilyRegistry);
   await repo.reset(localActor);
   await repo.importSourceBundle(localActor, projectFixture());
   await repo.importSourceBundle(

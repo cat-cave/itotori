@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { readdirSync, readFileSync } from "node:fs";
 import type { Node } from "@babel/types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -2103,7 +2104,8 @@ function projectGate(
     mutation,
     permissionKey,
     successFixture,
-    runDeniedMutation: (db) => run(new ItotoriProjectRepository(db)),
+    runDeniedMutation: (db) =>
+      run(new ItotoriProjectRepository(db, testProjectEngineFamilyRegistry)),
   });
 }
 

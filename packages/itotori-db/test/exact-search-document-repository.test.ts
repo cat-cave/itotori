@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import type { BridgeBundle } from "@itotori/localization-bridge-schema";
@@ -278,7 +279,7 @@ async function seedExactSearchProject(
   db: ConstructorParameters<typeof ItotoriProjectRepository>[0],
   overrides: ExactSearchBridgeOverrides = {},
 ): Promise<void> {
-  const repository = new ItotoriProjectRepository(db);
+  const repository = new ItotoriProjectRepository(db, testProjectEngineFamilyRegistry);
   await repository.importSourceBundle(localActor, exactSearchProjectFixture(overrides));
 }
 
@@ -287,6 +288,10 @@ function exactSearchProjectFixture(
 ): ItotoriProjectRecord {
   return {
     projectId: "project-search",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-en-us",
     targetLocale: "en-US",
     drafts: {},

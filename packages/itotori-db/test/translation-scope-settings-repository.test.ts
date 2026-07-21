@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { describe, expect, it } from "vitest";
 import { AuthorizationError, localUserId, type AuthorizationActor } from "../src/authorization.js";
 import {
@@ -17,7 +18,10 @@ describe("ItotoriTranslationScopeSettingsRepository", () => {
   it("defaults to dialogue-only when no scope has been saved for a branch", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const repository = new ItotoriTranslationScopeSettingsRepository(context.db);
 
@@ -38,7 +42,10 @@ describe("ItotoriTranslationScopeSettingsRepository", () => {
   it("persists a cumulative-tier scope and resolveScope reads the SAME persisted value", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const repository = new ItotoriTranslationScopeSettingsRepository(context.db);
 
@@ -78,7 +85,10 @@ describe("ItotoriTranslationScopeSettingsRepository", () => {
   it("rejects an unknown scope token", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const repository = new ItotoriTranslationScopeSettingsRepository(context.db);
 
@@ -117,6 +127,10 @@ describe("ItotoriTranslationScopeSettingsRepository", () => {
 function projectFixture(): ItotoriProjectRecord {
   return {
     projectId: "project-test",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-en-us",
     targetLocale: "en-US",
     drafts: {},

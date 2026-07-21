@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { describe, expect, it } from "vitest";
 import { AuthorizationError, localUserId, type AuthorizationActor } from "../src/authorization.js";
 import {
@@ -16,7 +17,10 @@ describe("ItotoriLocalizationPassRunConfigRepository", () => {
   it("persists one operator-local config per project/locale branch and resolves it for the live driver", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const repository = new ItotoriLocalizationPassRunConfigRepository(context.db);
       const input = {
@@ -82,6 +86,10 @@ describe("ItotoriLocalizationPassRunConfigRepository", () => {
 function runConfigInput() {
   return {
     projectId: "project-test",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-en-us",
     configPath: "/operator/runs/project.localize.json",
     dataRoot: "/operator/game",

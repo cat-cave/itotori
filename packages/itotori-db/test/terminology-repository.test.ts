@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
@@ -697,7 +698,10 @@ describe("ItotoriTerminologyRepository", () => {
   it("rejects source references from another project or source bundle", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.reset(localActor);
       await projectRepository.importSourceBundle(localActor, projectFixture());
       await projectRepository.importSourceBundle(localActor, otherProjectFixture());
@@ -748,7 +752,10 @@ describe("ItotoriTerminologyRepository", () => {
   it("rejects unscoped or cross-project source provenance references", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.reset(localActor);
       await projectRepository.importSourceBundle(localActor, projectFixture());
       await projectRepository.importSourceBundle(localActor, otherProjectFixture());
@@ -1012,7 +1019,10 @@ describe("ItotoriTerminologyRepository", () => {
   it("resolves branch-scoped policy and glossary references without leaking sibling locale decisions", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.reset(localActor);
       await projectRepository.importSourceBundle(localActor, projectFixture());
       await projectRepository.importSourceBundle(localActor, siblingLocaleProjectFixture());
@@ -1135,7 +1145,10 @@ describe("ItotoriTerminologyRepository", () => {
   it("audits glossary reference updates without rewriting historical draft provenance", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.reset(localActor);
       await projectRepository.importSourceBundle(localActor, { ...projectFixture(), drafts: {} });
       const styleRepository = new ItotoriStyleGuideRepository(context.db);
@@ -1232,6 +1245,10 @@ describe("ItotoriTerminologyRepository", () => {
 function projectFixture(): ItotoriProjectRecord {
   return {
     projectId: "project-terminology",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-en-us",
     targetLocale: "en-US",
     drafts: {
@@ -1281,6 +1298,10 @@ function siblingLocaleProjectFixture(): ItotoriProjectRecord {
 function otherProjectFixture(): ItotoriProjectRecord {
   return {
     projectId: "project-terminology-other",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-en-us-other",
     targetLocale: "en-US",
     drafts: {
@@ -1315,7 +1336,7 @@ function otherProjectFixture(): ItotoriProjectRecord {
 }
 
 async function seedProject(db: ItotoriDatabase): Promise<void> {
-  const repo = new ItotoriProjectRepository(db);
+  const repo = new ItotoriProjectRepository(db, testProjectEngineFamilyRegistry);
   await repo.reset(localActor);
   await repo.importSourceBundle(localActor, projectFixture());
 }

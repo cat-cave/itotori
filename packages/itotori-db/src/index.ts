@@ -202,8 +202,10 @@ export type { AuthAccountSeatUsageRecord } from "./repositories/auth-billing-sea
 export {
   defaultWorkspaceId,
   defaultWorkspaceName,
+  assertProjectEngineBinding,
   ItotoriProjectRepository,
   RuntimeRunNotFoundError,
+  UnknownProjectEngineFamilyError,
 } from "./repositories/project-repository.js";
 export type {
   ArtifactInput,
@@ -227,6 +229,9 @@ export type {
   LocaleBranchStatus,
   LocalizationRunProjectScope,
   ProjectDashboardStatus,
+  ProjectEngineBinding,
+  ProjectEngineFamilyRegistry,
+  ProjectExtractProfile,
   RuntimeArtifactHashProvenance,
   RuntimeDashboardArtifact,
   RuntimeDashboardStatus,
