@@ -163,6 +163,9 @@ fn run_rpg_maker_encrypted_media_proof(args: &[String]) -> Result<(), Box<dyn st
 
 pub(crate) fn run_rpg_maker_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     match positional(args, 1)? {
+        "readiness-report" => {
+            run_rpg_maker_readiness_report(args)?;
+        }
         "encrypted-media-proof" => {
             run_rpg_maker_encrypted_media_proof(args)?;
         }
@@ -208,10 +211,32 @@ pub(crate) fn run_rpg_maker_command(args: &[String]) -> Result<(), Box<dyn std::
         }
         _ => {
             return Err(
-                "usage: kaifuu rpgmaker <validate-fixture-key|encrypted-media-proof|encrypted-smoke> ...\n  validate-fixture-key --game-dir <dir> --image-asset <asset> --secret-store <dir> --secret-ref <local-secret:id> --output <report.json> [--requirement-id <id>] [--fixture-id <id>]\n  encrypted-media-proof --fixture <fixture.json> [--output <report.json>]\n  encrypted-smoke --fixture <fixture-id>\n(alias: kaifuu rpg-maker ...)"
+                "usage: kaifuu rpgmaker <readiness-report|validate-fixture-key|encrypted-media-proof|encrypted-smoke> ...\n  readiness-report --game <dir> [--output <report.json>]\n  validate-fixture-key --game-dir <dir> --image-asset <asset> --secret-store <dir> --secret-ref <local-secret:id> --output <report.json> [--requirement-id <id>] [--fixture-id <id>]\n  encrypted-media-proof --fixture <fixture.json> [--output <report.json>]\n  encrypted-smoke --fixture <fixture-id>\n(alias: kaifuu rpg-maker ...)"
                     .into(),
             );
         }
+    }
+    Ok(())
+}
+
+/// `kaifuu rpg-maker readiness-report --game <dir> [--output <report.json>]`.
+/// Scans a private-local owned RPG Maker MV/MZ game directory and emits the
+/// REDACTED, aggregate-only readiness report: exactly the six top-level keys
+/// `spec`, `assetSuffixHistogram`, `systemJsonHasEncryptionKey`,
+/// `mapTextSurfaceCounts`, `helperRequirements`, `aggregateDataHashSha256`.
+/// The report carries no project filename, no full path, and no
+/// `System.json.encryptionKey` byte string — only histograms, counts, a
+/// boolean key-presence flag, fixed helper tokens, and one aggregate data
+/// hash. Safe to commit / publish even though the scan ran over private,
+/// copyrighted owned bytes. Intended path lane:
+/// `fixtures/private-local/<id>` (bodies never vendored).
+fn run_rpg_maker_readiness_report(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let game_dir = PathBuf::from(flag(args, "--game")?);
+    let report = kaifuu_core::scan_mv_mz_readiness_report(&game_dir)?;
+    let json = report.stable_json()?;
+    match flag_optional(args, "--output") {
+        Some(output) => atomic_write_text(&PathBuf::from(output), &json)?,
+        None => println!("{json}"),
     }
     Ok(())
 }
