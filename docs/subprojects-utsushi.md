@@ -259,3 +259,115 @@ output explicitly reports the research-tier status under the semantic code
 semantic code. A future NW.js implementation must define bounded process launch,
 capture timing, screenshot extraction, and process-tree cleanup before it can be
 promoted from research-tier.
+
+## RealLive render engine (current)
+
+The configured RealLive target has a concrete render engine in
+`crates/utsushi-reallive/`: the non-synthetic `EnginePort`
+(`UtsushiReallivePort` in `engine_port.rs`) that drives the substrate
+text, frame, and audio sinks from a single real-bytes replay. This
+section records what that subsystem does today, so the capability tiers
+above are not mistaken for the only description of the runtime path. It
+describes the built render subsystem; it does not raise the evidence
+ceiling above `EvidenceTier::E2` and the manifest's
+`FidelityTier::LayoutProbe`.
+
+### Real g00 composite
+
+`GraphicsObjectStack` (`graphics_objects.rs`) owns the rlvm-shaped
+graphics object state: 256 slots across three render layers
+(`DisplayCommand`, `BackgroundObject`, `ForegroundObject`), each object
+carrying position, scale, alpha, colour tone, image ref, layer order, and
+kind. The headless `RenderPass` (`render_pipeline.rs`) walks the stack in
+`layer paint order (DCs → bg → fg), then layer_order, then slot` order
+and rasterises each visible object into an in-process RGBA
+`Framebuffer`. Image objects resolve `g00/<asset_key>.g00` through the
+bound substrate `AssetPackage`, decode the bytes with the typed g00
+decoder (`g00.rs`: type 0 raw BGR LZSS, type 1 paletted LZSS, type 2
+regioned LZSS), nearest-neighbour resample to the object's recorded
+scale, apply its signed-thousandths colour tone and alpha, and
+source-over blend into the framebuffer. `Wipe` full-screen fills
+composite through the same tone/alpha path. A decode failure, missing
+asset package, or zero-extent sprite is fail-soft: the object is
+skipped, the rest of the stack still renders, and the skip is recorded
+on a `RenderReport` and logged under
+`utsushi.reallive.render_pipeline.object_skipped` so an incomplete frame
+never looks complete.
+
+### Message window, speaker, and colour
+
+`TextLayer::message_window` (`render_pipeline/text_layer.rs`) lays out
+ONE RealLive message inside its Gameexe-configured dialogue box — never
+the whole scene concatenated. The box rectangle, text origin, glyph
+size, insets, and row stride are derived from the real `#WINDOW.000`
+`MessageWindowConfig` (`gameexe.rs`) scaled from the game's declared
+virtual screen space to the framebuffer, so each title composites in its
+own coordinate space. Message bodies are word-wrapped on word
+boundaries at a pixel budget derived from the `MOJI_CNT` cell count (the
+proportional-font approximation of the engine's fixed-cell wrap).
+
+A separate speaker name box is attached when `NAME_MOD == 1` and the
+message carries a resolved speaker.
+`TextLayer::message_window_colored` paints both the dialogue glyphs and
+the name-box glyphs in a per-speaker colour resolved through the
+`#NAMAE` → `#COLOR_TABLE` `NamaeResolver`; narration or `NAME_MOD == 0`
+paints none. Glyphs rasterise through a real TrueType layout (the
+bundled DejaVu Sans font, with horizontal advances, kerning, and
+anti-aliased coverage), so localized mixed-case text reads at a legible
+size, and a code point the font has no glyph for falls back to a
+`.notdef` box — keeping a localized English layer pixel-distinct from
+the untranslated Japanese source.
+
+### Choice rendering
+
+Text `select` prompts render as a cursor-highlighted option list through
+`ChoiceWindow` (`render_pipeline/choice_window.rs`), placed with the
+same Gameexe-driven geometry as the message window; the focused option
+carries a `> ` cursor prefix. Button-object prompts render through
+`ObjectButtonChoiceWindow`, which draws focus frames at the decoded
+`HitRect` bounds captured at prompt time while the graphics pass itself
+composites the real decoded g00 art at those coordinates. The engine
+supplies no synthesized strip, grid, palette, or margins: if decoded
+button metadata cannot supply geometry or image art, the build surfaces
+a typed `ObjectButtonChoiceWindowBuildError`, and a caller that wants a
+fallback must choose it explicitly per title.
+
+### Scene transitions and per-message playback
+
+`ReplayEngine::observe_playthrough` follows the real RealLive
+scene-dispatch (`jump` / `farcall` / return into another SEEN present in
+the store) across scene boundaries, recovering a bounded multi-scene
+play-order stream. `UtsushiReallivePort::launch` renders a through-line
+that crosses that boundary: leading messages of scene A over A's
+terminal graphics stack, then leading messages of scene B over B's OWN
+stack, in dispatch order. Each leading message is rendered to its OWN
+E2 frame — speaker name-box + word-wrapped body over the composite — so
+a playthrough reads message-by-message, not as one concatenated frame.
+Per-scene capping keeps a long scene A from consuming the whole render
+budget before scene B appears; the total is bounded by
+`DEFAULT_PLAYTHROUGH_MAX` (8 by default, overridable per port).
+
+### Deterministic emission and copyright redaction
+
+The deterministic PNG encoder writes exactly `IHDR`, `IDAT` (a zlib
+stream wrapping an uncompressed deflate stored block), and `IEND` — no
+`tIME`, `tEXt`, `iTXt`, or `pHYs` chunks — so identical frame state
+produces byte-identical PNG output across runs and threads. The encoded
+bytes are persisted under a managed
+`artifacts/utsushi/runtime/<run_id>/screenshots/<artifact_id>.png` URI
+(artifact id = SHA-256 of the PNG bytes) and announced through the
+substrate `FrameArtifactSink` at `EvidenceTier::E2`.
+
+Copyright redaction is a policy at the emit boundary, not a hard
+compositing rule. `RedactionPolicy::Redact` (the default for committed /
+CI proof) replaces every image object's rect with a copyright-safe
+edge-outline of the decoded g00 — the scene's structure and layout
+survive for proof value while colour, tone, and texture are discarded
+and no verbatim decoded run is republished. The full-fidelity buffer is
+always written to a PRIVATE uncommitted path under
+`<root>/private-full/<sha256>.png`; `RedactionPolicy::Full` composites
+the real decoded art for a locally-authorized run. A non-empty localized
+`TextLayer` that paints zero framebuffer pixels is rejected with
+`RenderEmitError::BlankLocalizedText` before any PNG is written or any
+frame announced, so an E2 localized screenshot can never be emitted with
+zero localized-text pixels painted.
