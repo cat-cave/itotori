@@ -153,10 +153,17 @@ test("rule 5 parses the ci-real-bytes lane and detects real-bytes crates", () =>
     true,
   );
   // A plain #[ignore] (bug-tracking, no live corpus) does NOT mark the crate.
-  assert.equal(
-    crateOwnsRealBytes("crates/foo/tests/x.rs", '#[ignore = "flaky, KAIFUU-237"]'),
-    false,
-  );
+  assert.equal(crateOwnsRealBytes("crates/foo/tests/x.rs", '#[ignore = "flaky issue"]'), false);
+});
+
+test("rule 5 parses Cargo package flag variants and continuations", () => {
+  const lane = [
+    "ci-real-bytes:",
+    "    cargo test --package first -p=second \\",
+    "      --package=third -p fourth -- --ignored",
+    "next-recipe:",
+  ].join("\n");
+  assert.deepEqual([...parseLaneCrates(lane)].sort(), ["first", "fourth", "second", "third"]);
 });
 
 test("rule 5 flags every uncovered real-bytes crate (allowlist is now empty)", () => {
