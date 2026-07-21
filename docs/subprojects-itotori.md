@@ -3,22 +3,19 @@
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
 > of [`project-readiness.md`](project-readiness.md).
 > Alpha-ready means the architecture-proven dogfood point: substrate
-> M.1–M.3, a non-synthetic engine port crate, real-bytes alpha-corpus smoke, a
-> recorded-LLM bundle, dashboard reachability, and repo hygiene. The product
-> loop and live-provider bar described below — including `ITOTORI-116` and
-> `ITOTORI-117` — remain the alpha contract for Itotori's own surface; full
-> end-to-end on a real game is the **dogfood project that follows alpha**,
-> not the alpha gate itself.
+> M.1–M.3, a non-synthetic engine port crate, real-bytes alpha-corpus smoke,
+> dashboard reachability, and repo hygiene. The product loop and live-provider
+> bar remain the alpha contract for Itotori's own surface; full end-to-end on a
+> real game is the **dogfood project that follows alpha**, not the alpha gate
+> itself.
 
 Itotori owns localization state: catalog identity, local corpus inventory,
 translation-completeness intelligence, locale branches, drafts, policy, QA
 findings, feedback, runtime evidence ingestion, and patch-ready exports.
 
-The scaffold uses deterministic fake translation. Live model routing is
-intentionally out of scope for the hello world, but not out of alpha readiness:
-`ITOTORI-116` proves structured draft and QA paths with recorded or opted-in
-live providers, and `ITOTORI-117` proves the deliberately naive raw MTL
-baseline through the same provider, retry, ledger, and quality-report machinery.
+The product uses the live OpenRouter localization path, surfaced through
+TanStack in the Studio. Deterministic public fixtures verify contracts and
+artifact linkage, but they do not define the production localization workflow.
 
 The product entrypoint is no longer assumed to be a bridge bundle. Real
 workflows start with catalog/work identity, local corpus scan evidence,
@@ -90,10 +87,10 @@ artifact checks the schema cannot do alone: it rejects results whose
 
 ```sh
 node apps/itotori/dist/cli.js ingest-patch-result \
-  --project .tmp/hello-world/itotori-project.json \
-  --patch-result .tmp/hello-world/patch-result.json \
-  --output .tmp/hello-world/patch-result-ingest.json
+  --project .tmp/<run-id>/itotori-project.json \
+  --patch-result .tmp/<run-id>/patch-result.json \
+  --output .tmp/<run-id>/patch-result-ingest.json
 ```
 
-Persistence is in-memory for the KAIFUU-010 slice; `@itotori/db` schema work
-that records ingested patch results is tracked as a follow-up.
+Persistence is in-memory for the current slice; `@itotori/db` schema work that
+records ingested patch results is tracked as a follow-up.

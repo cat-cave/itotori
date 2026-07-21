@@ -7,10 +7,8 @@
 > top of [`project-readiness.md`](project-readiness.md);
 > alpha-ready means the architecture-proven dogfood point, not the full
 > `detect → extract → decrypt → decompile → patch → verify → delta-apply`
-> chain. Where this index names `ALPHA-006` (the Sukara/RealLive vertical)
-> or "alpha proof" as canonical, those references describe the **post-alpha
-> dogfood project** and the SHARED-025 manifest contract that supports it,
-> not the alpha gate.
+> chain. The alpha proof and its manifest contract describe the **post-alpha
+> dogfood project**, not the alpha gate.
 
 These docs describe the monorepo as a three-project suite:
 
@@ -75,11 +73,10 @@ The repeatable workflow for adding new Kaifuu engine adapters lives in
 Kaifuu encoding, normalization, atomic output, traversal, rollback, and
 partial-write safety rules live in
 [kaifuu-patch-safety.md](kaifuu-patch-safety.md).
-`SHARED-025` has landed the alpha proof manifest contract. `ALPHA-006` is the
-explicit first real-engine alpha proof target, sourced from `/archive/vault/`
-via the vault-source adapter. `ALPHA-007` is the public generic alpha-proof
-workflow command, and `ALPHA-009` retires the hello-world fixture gate in favor
-of that alpha proof.
+The alpha proof establishes the public-fixture manifest contract for the first
+real-engine proof target, sourced from `/archive/vault/` through the
+vault-source adapter. Its generic public-fixture workflow supersedes the former
+fixture gate.
 Affected detection and CI cache rules live in the dev doc
 [`docs/dev/ci-cache-and-affected.md`](dev/ci-cache-and-affected.md).
 The implementation roadmap lives in

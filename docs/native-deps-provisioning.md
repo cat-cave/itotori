@@ -4,12 +4,12 @@
 no nix devshell) itotori must still obtain and run the native dependencies that
 today are provided **only** by `flake.nix`:
 
-| Dep                       | What it is                                                                        | Wired via (existing seam)                                       |
-| ------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| **kaifuu / utsushi bins** | The Rust decode/patch (`kaifuu-cli`) + render/conformance (`utsushi-cli`) drivers | invoked by the pipeline (`just hello`, frame-capture ingestion) |
-| **Node**                  | The itotori CLI + `@itotori/db` host runtime                                      | `.node-version` pin                                             |
-| **Postgres**              | The `@itotori/db` real-Postgres store                                             | `DATABASE_URL` / `docker-compose.yml`                           |
-| **Chromium**              | Render + MV/MZ real-browser gates                                                 | `PLAYWRIGHT_CHROMIUM_BIN` / `UTSUSHI_BROWSER_BIN`               |
+| Dep                       | What it is                                                                        | Wired via (existing seam)                            |
+| ------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| **kaifuu / utsushi bins** | The Rust decode/patch (`kaifuu-cli`) + render/conformance (`utsushi-cli`) drivers | invoked by the extract, patch, and validation stages |
+| **Node**                  | The itotori CLI + `@itotori/db` host runtime                                      | `.node-version` pin                                  |
+| **Postgres**              | The `@itotori/db` real-Postgres store                                             | `DATABASE_URL` / `docker-compose.yml`                |
+| **Chromium**              | Render + MV/MZ real-browser gates                                                 | `PLAYWRIGHT_CHROMIUM_BIN` / `UTSUSHI_BROWSER_BIN`    |
 
 The devshell (`flake.nix`) is the **developer** provisioning path and stays
 authoritative for a clone. This document defines the **non-nix** provisioning
@@ -187,7 +187,7 @@ On a fresh **non-nix, glibc Linux** machine (Node ≥ `.node-version` present):
 5. Preflight: `just doctor` → must be green (exit 0).
 6. Localize (opt-in, needs corpus + ZDR creds per
    [`security-and-limitations.md`](security-and-limitations.md)):
-   `just localize-project --project <target>`.
+   `itotori localize --run-mode production --structure <run-dir>/structure.json --bridge <run-dir>/bridge.json --output-scope dialogue-only --output <run-dir>/run-summary.json`.
 
 ## Out of scope here (later nodes)
 

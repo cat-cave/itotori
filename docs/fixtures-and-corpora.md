@@ -89,38 +89,23 @@ title as evidence or historical context:
 
 Active product and operator docs must teach generic surfaces instead:
 
-- project runners such as `suite/scripts/localize-project/run.mjs`, selected by
-  project metadata or target-data records;
+- the artifact-driven CLI flow: `extract` → `structure-export` → `wiki build`
+  → `localize` → `patch` → `validate`;
 - real-corpus descriptors such as `ITOTORI_REAL_CORPUS_MANIFEST`;
 - engine/runtime artifact surfaces such as bridge bundles, patch reports, replay
   logs, runtime evidence, and provider-run records;
 - placeholder corpus labels and local paths, never a new title-specific command,
   environment variable, preset name, artifact directory, or schema version.
 
-When a named alpha target already exists, docs may mention it as an allowlisted
-target record, but new reusable instructions should still point to the generic
-runner and descriptor. Do not create future surfaces shaped like
+When an explicit alpha target record already exists, docs may use it as evidence,
+but new reusable instructions should still point to the generic CLI flow and
+descriptor. Do not create future surfaces shaped like
 `localize-<title>`, `<TITLE>_REAL_GAME_ROOT`, `artifacts/localize-<title>/`, or
 `<title>-alpha` unless the document is itself the explicit proof target record
 or a historical audit.
 
-Review title-specific references with this command before publishing active
-guidance:
-
-```sh
-rg -n --hidden \
-  --glob '!.git/**' \
-  --glob '!docs/audits/**' \
-  --glob '!docs/proposals/**' \
-  --glob '!docs/research/**' \
-  --glob '!docs/openrouter-integration-evidence/**' \
-  --glob '!**/*.test.*' \
-  --glob '!crates/**/tests/**' \
-  -e 'Sweetie HD|Oshioki|localize-sweetie-hd|ITOTORI_REAL_GAME_ROOT|artifacts/localize-sweetie|presets/localize-sweetie|sweetie-hd-alpha' \
-  README.md docs suite apps crates
-```
-
-Classify every hit before editing it:
+Before publishing active guidance, search it for every title and slug in the
+corpus catalog. Classify every hit before editing it:
 
 - **Allowed historical/evidence:** hits that return when the historical/test
   globs above are removed, including `docs/audits/**`, `docs/proposals/**`,
@@ -130,8 +115,8 @@ Classify every hit before editing it:
   whose purpose is to name the specific target.
 - **Needs cleanup:** active README/operator/product docs that teach future
   workers to add or use title-specific commands, environment variables, preset
-  names, artifact directories, or schema versions instead of the generic project
-  runner, corpus descriptor, and engine/runtime artifact surfaces above.
+  names, artifact directories, or schema versions instead of the generic CLI
+  flow, corpus descriptor, and engine/runtime artifact surfaces above.
 
 ## Private Local Corpora
 
@@ -183,13 +168,10 @@ The manifest is local-only and must not be committed. Its shape is:
 }
 ```
 
-Selection is by project id, optional corpus id, and engine id. For
-`suite/scripts/localize-project/run.mjs`, `--project` selects either an
-explicit alpha target-data record or caller-supplied `--project-metadata` plus
-`--pair-policy`. The committed alpha target-data allowlist currently includes
-`sweetie-hd-alpha-1`; that record exists for the named alpha vertical and is not
-the generic shape for future projects. `--corpus` may disambiguate multiple
-manifest entries for that project, and the engine is the workflow engine. The
+The extract stage selects its source with `--game-root` (or a local descriptor)
+and produces the bridge bundle. The subsequent `itotori localize` command
+selects its operating posture with `--run-mode` and `--output-scope`, consuming
+the bridge bundle and structure artifact produced by earlier stages. The
 selected `root` must be a read-only source tree for the run and is treated as
 private local state.
 

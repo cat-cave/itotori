@@ -13,8 +13,9 @@ Real game bytes are never copied into the repo or mutated in place.
 - Vault/catalog ingest is **read-only**: the vault-source adapter opens
   `/archive/vault/` (managed by the sibling vault-curation project) strictly
   read-only ([`itotori-vault-source-adapter.md`](itotori-vault-source-adapter.md)).
-- The `just localize-project` driver refuses to write inside the source tree and
-  requires a separate writable `TARGET`; it sha256-checks the source
+- The artifact-driven pipeline keeps source data read-only: `itotori extract`
+  reads the source tree, and `itotori patch` requires a separate writable
+  `--target` outside its `--source`. The patcher sha256-checks the source
   `Seen.txt` before **and** after a run and fails on any drift.
 - Local purchased-game corpora live under `fixtures/private-local/` and
   `.kaifuu/secrets.local/`, both git-ignored. The real-bytes CI lane reads
@@ -28,9 +29,9 @@ Real game bytes are never copied into the repo or mutated in place.
 - Privacy relies on **OpenRouter account-wide Zero-Data-Retention**. A live run
   is fail-closed: the `OpenRouterModelProvider` constructor requires
   `OPENROUTER_ZDR_ACCOUNT_ASSERTED=1`, and live dispatch requires an explicit exported
-  `OPENROUTER_API_KEY`. Without both, the driver fails loudly rather than
-  downgrading to a recorded provider. Every model invocation declares an
-  explicit `(modelId, providerId)` pair — no defaulting.
+  `OPENROUTER_API_KEY`. Without both, the live command fails loudly. Every
+  model invocation declares an explicit `(modelId, providerId)` pair — no
+  defaulting.
 - ZDR is an **account-wide OpenRouter setting**, not something Itotori can
   enforce provider-side; the assertion env var is the operator's fail-closed
   acknowledgement, and recorded default runs make no network calls at all.
@@ -63,11 +64,11 @@ producing copyrighted output locally — it governs what leaves the repo.
 
 ## 3. Authorization
 
-Itotori authorization is permission-based, checked against
+Itotori authorization is permission-based and checked against
 `packages/itotori-db/src/authorization.ts` (the source of truth), with a
-migration drift guard (`SHARED-014`) and a permission-gate negative test matrix
-(`SHARED-013`). Local alpha mode bootstraps a single `local-user` with all alpha
-permissions ([`permissions.md`](permissions.md)).
+migration drift guard and a permission-gate negative test matrix. Local alpha
+mode bootstraps a single `local-user` with all alpha permissions
+([`permissions.md`](permissions.md)).
 
 ## 4. Known limitations (not overstated)
 

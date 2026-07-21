@@ -32,7 +32,7 @@ currently a `>=24.14` major) is the sole host requirement.
 ```sh
 itotori --version          # itotori <ITOTORI_PRODUCT_VERSION>
 itotori -v                 # alias
-itotori localize --config <project.json> --run-dir <dir>   # whole-game localize
+itotori localize --run-mode production --structure <structure.json> --bridge <bridge.json> --output-scope dialogue-only   # whole-game localize
 itotori db-migrate          # apply the DB schema migrations (needs DATABASE_URL)
 ```
 

@@ -112,13 +112,16 @@ linkage validator. It is the fastest end-to-end proof that a fresh clone is
 working. See [`alpha-readiness.md`](alpha-readiness.md) §2 and
 [`alpha-proof.md`](alpha-proof.md).
 
-To inspect the real-project pipeline plan without a game or an LLM (select an
-alpha target-data record with `--project <alpha-target>`; the committed
-allowlisted target record is listed in
-[`fixtures-and-corpora.md`](fixtures-and-corpora.md#title-reference-allowlist-for-active-docs)):
+After the preceding extract, structure-export, and wiki-build stages have
+produced their artifacts, invoke the localizer with an explicit run mode:
 
 ```sh
-just localize-project --dry-run --project <alpha-target>
+itotori localize \
+  --run-mode test-dev \
+  --structure <run-dir>/structure.json \
+  --bridge <run-dir>/bridge.json \
+  --output-scope dialogue-only \
+  --output <run-dir>/run-summary.json
 ```
 
 ### Run the readiness checklist
@@ -146,8 +149,7 @@ patched-output runtime proof is grounded.
 
 Live localization runs need explicit corpus + credential environment and are
 **never** the default. Requirements, ZDR posture, and the copyright boundary are
-documented in [`security-and-limitations.md`](security-and-limitations.md) and
-the `just localize-project` recipe header. In short: a live run requires a real
-corpus root, an exported `OPENROUTER_API_KEY`, and the account-wide ZDR
-assertion `OPENROUTER_ZDR_ACCOUNT_ASSERTED=1`; without them the driver fails
-loudly rather than downgrading to a recorded provider.
+documented in [`security-and-limitations.md`](security-and-limitations.md). In
+short: a live `itotori localize --run-mode production` run requires a real corpus
+root, an exported `OPENROUTER_API_KEY`, and the account-wide ZDR assertion
+`OPENROUTER_ZDR_ACCOUNT_ASSERTED=1`; without them the command fails loudly.

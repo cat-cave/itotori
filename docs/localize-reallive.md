@@ -2,14 +2,14 @@
 
 This is the end-to-end runbook for a **fresh technical-user agent** — an
 external contributor who coordinates through GitHub issues + PRs — to localize a
-RealLive game (the reference vertical is **Sweetie HD**, オシオキSweetie＋Sweets!!
-HD_DL版) with the shipped Itotori CLI. It maps the exact command flow, names
-every flag/env var, and calls out the traps you would otherwise re-derive.
+RealLive game with the shipped Itotori CLI. It maps the exact command flow,
+names every flag/environment variable, and calls out the traps you would
+otherwise re-derive.
 
 RealLive is the first real-engine vertical. Everything below is verified against
-the code, not aspirational: extract + `xor_2` decrypt, 100%-zero-unknown decode,
-byte-correct length-changing patchback, live-LLM drafting, and an E2 replay/render
-runtime all work on real Sweetie HD bytes.
+the code, not aspirational: extraction with supported decryption, decoding,
+byte-correct length-changing patchback, live-LLM drafting, and an E2
+replay/render runtime all work on a supported real corpus.
 
 > **You are not expected to produce a perfect localization on the first run.**
 > Engine/coverage gaps are your _workload_. The pipeline is built to fail LOUD
@@ -38,15 +38,15 @@ itotori db-migrate                 # apply DB schema (needs DATABASE_URL)
 # REALLIVEDATA/) OR a staging parent that wraps it; the extract resolver descends
 # into a nested game folder the same way either way.
 
-GAME_ROOT="/scratch/itotori-research/sweetie-hd/min-root/オシオキSweetie＋Sweets!! HD_DL版"
-RUN_DIR=/scratch/out/sweetie-hd-run
-TARGET=/scratch/out/sweetie-hd-en
+GAME_ROOT="${ITOTORI_REAL_GAME_ROOT:?set ITOTORI_REAL_GAME_ROOT to the read-only <game> root}"
+RUN_DIR=<run-dir>
+TARGET=<writable-output-root>
 
 # 1. extract  — unpack Seen.txt (+ auto xor_2 decrypt) into a v0.2 BridgeBundle
 itotori extract --whole-seen \
   --engine reallive --game-root "$GAME_ROOT" \
-  --game-id sweetie-hd --game-version alpha-1 \
-  --source-profile-id reallive-sweetie-hd --source-locale ja-JP \
+  --game-id <game> --game-version <version> \
+  --source-profile-id reallive-<game> --source-locale ja-JP \
   --bundle-output "$RUN_DIR/bridge.json"
 
 # 2. structure-export  — emit the narrative-structure JSON (scenes/routes/speakers)
@@ -194,14 +194,6 @@ Optional: `--context-scope <scope>` (default `whole-game`; also
 `--whole-scene-max-units <N>`, `--ablation` (pure-MTL baseline; `test-dev`
 only), `--output <PATH>` (else the run summary is printed to stdout).
 
-> **Known dispatcher quirk (being removed).** The `runLocalize` wrapper in
-> `cli-handlers.ts` still calls `requiredFlag(args, "--config")` BEFORE
-> delegating to `runLocalizeCommand`, even though the kept localize command no
-> longer reads `--config`. Until that wrapper check is removed, pass
-> `--config <any-path>` to satisfy the dispatcher (the value is ignored). The
-> authoritative required flags are the ones above; `--config` is **not** part of
-> the new pipeline.
-
 #### `itotori patch` — byte-correct patchback
 
 Required: `--source <PATH>` (read-only game tree), `--target <PATH>` (writable
@@ -221,26 +213,22 @@ review), `--print-textlines`, `--source-seen <PATH>`, `--bg-asset <PATH>`,
 `--private-artifact-root <PATH>`, `--run-id <ID>`, `--expect-text-contains <S>`,
 `--width <N>`, `--height <N>`.
 
-### 2.2 Where the Sweetie HD parameters come from (don't guess)
+### 2.2 Where the game parameters come from (don't guess)
 
-The exact identity params and the environment a real run needs are documented by
-the env-gated proof test **`apps/itotori/test/localize-real.test.ts`** (see its
-header, lines 10-20). Copy-paste templates:
+The env-gated proof test **`apps/itotori/test/localize-real.test.ts`** documents
+the identity parameters and environment a real run needs. Set values for your
+own licensed game; do not copy a game-specific profile or machine-local path.
 
 - **Stage-1 output shape**: the env-gated proof test is the concrete example of
   how stage-1 artifacts are produced and asserted (no committed real-run tree is
   kept in-repo — real live output stays out by the ZDR / no-game-bytes policy).
-- **The corpus game root** (read-only; the dir that directly contains
-  `REALLIVEDATA/`):
-  `"/scratch/itotori-research/sweetie-hd/min-root/オシオキSweetie＋Sweets!! HD_DL版"`.
-  A parent staging path such as `…/min-root` also works as `--game-root` on
-  `extract` — the resolver descends into the nested game folder; pointing at the
-  game root directly just skips the descent.
+- **The corpus game root** is the read-only directory that directly contains
+  `REALLIVEDATA/`. Set it through `ITOTORI_REAL_GAME_ROOT`; a parent staging
+  directory also works as `--game-root` when the resolver can descend to the
+  nested game directory.
 
-**`xor_2` decryption is automatic.** Sweetie HD's scene bytecode carries a
-second-level per-game XOR over a bounded `[256, 513)` segment; the
-`kaifuu-reallive` decoder detects and reverses it in-process
-(`reallive-xor2-sukara-decryptor`). You do not supply a key.
+**Supported decryption is automatic.** The `kaifuu-reallive` decoder detects
+and reverses supported scene encryption in-process. You do not supply a key.
 
 ### 2.3 Running the env-gated real vertical directly
 
@@ -249,10 +237,11 @@ the `ITOTORI_CLI_REAL_LOCALIZE_*` vars (from the test header) and run it — it 
 `it.skipIf(gated)` so it SKIPS LOUD (never fake-passes) when the vars are unset:
 
 ```sh
-export ITOTORI_CLI_REAL_LOCALIZE_SOURCE="/scratch/itotori-research/sweetie-hd/min-root/オシオキSweetie＋Sweets!! HD_DL版"
-export ITOTORI_CLI_REAL_LOCALIZE_GAME_ID=sweetie-hd
-export ITOTORI_CLI_REAL_LOCALIZE_GAME_VERSION=alpha-1
-export ITOTORI_CLI_REAL_LOCALIZE_SOURCE_PROFILE_ID=reallive-sweetie-hd
+export ITOTORI_REAL_GAME_ROOT=<local-private-root>/<game>
+export ITOTORI_CLI_REAL_LOCALIZE_SOURCE="$ITOTORI_REAL_GAME_ROOT"
+export ITOTORI_CLI_REAL_LOCALIZE_GAME_ID=<game>
+export ITOTORI_CLI_REAL_LOCALIZE_GAME_VERSION=<version>
+export ITOTORI_CLI_REAL_LOCALIZE_SOURCE_PROFILE_ID=reallive-<game>
 export ITOTORI_CLI_REAL_LOCALIZE_SOURCE_LOCALE=ja-JP
 export ITOTORI_CLI_REAL_LOCALIZE_SCENE=1            # optional, default "1"
 # plus OPENROUTER_API_KEY + OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 + DATABASE_URL
@@ -267,8 +256,8 @@ subcommands below let you reproduce a failure in isolation.
 
 | #   | Stage                            | What happens on real bytes                                                                                                                                                                                                    | Subcommand                                                               |
 | --- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| 1   | **Extract + decrypt**            | Unpacks the whole `Seen.txt`, reverses Sweetie HD `xor_2`, emits one v0.2 `BridgeBundle`.                                                                                                                                     | `itotori extract --whole-seen`                                           |
-| 2   | **Decode / decompile**           | Every populated scene decodes to typed `BytecodeElement`s — **0 unknown opcodes** on Sweetie HD + Kanon. Any unrecognised `(module_type, module_id, opcode)` is emitted as a histogram (your triage signal).                  | part of extract / `kaifuu-reallive`                                      |
+| 1   | **Extract + decrypt**            | Unpacks the whole `Seen.txt`, applies supported decryption, and emits one v0.2 `BridgeBundle`.                                                                                                                                | `itotori extract --whole-seen`                                           |
+| 2   | **Decode / decompile**           | Every populated scene decodes to typed `BytecodeElement`s. Any unrecognised `(module_type, module_id, opcode)` is emitted as a histogram (your triage signal).                                                                | part of extract / `kaifuu-reallive`                                      |
 | 3   | **Structure context**            | Deterministic `utsushi.narrative-structure.v1` (scenes/routes/speakers/choices) the drafter consumes as per-unit context.                                                                                                     | `itotori structure-export`                                               |
 | 4   | **Source-language bible**        | Wiki-first bible assembled over the structure (A1-A10 analyst waves), the cumulative glossary/style/character context the drafter consults.                                                                                   | `itotori wiki build`                                                     |
 | 5   | **Live-LLM draft**               | Every in-scope unit drafted against **live OpenRouter** with the pinned pair + structure-informed context.                                                                                                                    | `itotori localize`                                                       |
@@ -313,26 +302,25 @@ single-child chain to the folder that holds `REALLIVEDATA/`. So a path at the
 staging parent resolves the same way as the game root — the earlier "passes
 extract, fails structure" footgun is gone.
 
-For Sweetie HD either of these works:
+For a supported RealLive corpus, either of these works:
 
 ```sh
 # the game root directly (skips the descent):
-"/scratch/itotori-research/sweetie-hd/min-root/オシオキSweetie＋Sweets!! HD_DL版"
+"$ITOTORI_REAL_GAME_ROOT"
 # or the staging parent (the resolver descends into the nested game folder):
-"/scratch/itotori-research/sweetie-hd/min-root"
+"$(dirname "$ITOTORI_REAL_GAME_ROOT")"
 ```
 
-(quote it — the game folder name has a space and non-ASCII.) When a `--source`
+Quote the path if it contains spaces or non-ASCII characters. When a `--source`
 genuinely has no `REALLIVEDATA/` anywhere in the descent bound, the extract
-stage fails loud on the missing `REALLIVEDATA/…` path. A title with the classic
-pre-`REALLIVEDATA/` layout (asset files directly in the root, e.g. old Kanon) is
-not supported by the extract stage — and therefore not by the rest of the
-pipeline either — so this is a real, aligned limit.
+stage fails loud on the missing `REALLIVEDATA/…` path. A game with an unsupported
+pre-`REALLIVEDATA/` layout is not supported by the extract stage — and therefore
+not by the rest of the pipeline either — so this is a real, aligned limit.
 
 ### Trap: `FIXTURE-ALPHA` artifacts are NOT live output
 
-The committed artifacts under `artifacts/localize-project/*-fixture-alpha/` are
-**fixture runs**, not real localizations. Their `run-summary.json` carries
+Committed fixture artifacts are **fixture runs**, not real localizations. Their
+`run-summary.json` carries
 `"enUsSentinel": "FIXTURE-ALPHA-EN-US-SENTINEL"`, `patch-report.finalDraftText:
 null`, and no `provider-runs/` directory. Do not read them as proof that a live
 localization succeeded. Real live output is kept OUT of the repo by the ZDR /
@@ -344,8 +332,8 @@ records with redacted auth + real `usage.cost`).
 
 Per-gate CI (`just ci`) is **synthetic-only** and touches no real bytes. All the
 RealLive real-bytes proofs are `#[ignore]`/env-gated and DO NOT run in `just ci`.
-A green `just ci` says nothing about real Sweetie HD bytes. To actually exercise
-real bytes:
+A green `just ci` says nothing about a real corpus. To actually exercise real
+bytes:
 
 ```sh
 # points the gated suites at the real corpora and refuses to pass with zero coverage
@@ -354,10 +342,10 @@ just ci-real-bytes
 just real-bytes-oracle
 ```
 
-`ci-real-bytes` defaults `ITOTORI_REAL_GAME_ROOT=/scratch/itotori-research/sweetie-hd`
-and `ITOTORI_REAL_GAME_ROOT_2=/scratch/itotori-research/kanon` (override to point
-elsewhere) and **hard-fails if a corpus directory is missing** — it will not go
-green on skipped real bytes. The gated Rust suites it runs include
+Set `ITOTORI_REAL_GAME_ROOT` and, when the configured suite requires it,
+`ITOTORI_REAL_GAME_ROOT_2` to your local read-only corpus roots.
+`ci-real-bytes` **hard-fails if a required corpus directory is missing** — it
+will not go green on skipped real bytes. The gated Rust suites it runs include
 `kaifuu-reallive` (`multi_corpus_real_bytes.rs` = the 100%-zero-unknown gate +
 per-corpus coverage report; `patchback_real_bytes.rs`,
 `patchback_kidoku_roundtrip_real_bytes.rs`) and `utsushi-reallive`.
@@ -368,13 +356,10 @@ ground-truth.
 
 ### Trap: the pipeline is multi-command now (no `localize-game` umbrella)
 
-The retired `itotori localize-game --config <preset>` umbrella composed every
-stage into one command. That command (and its `localize-fullproject` preset) was
-**removed** — there is no single-command whole-game vertical any more. Run the
-six stages in §0 explicitly. The older bounded `just localize-project` driver
-(`suite/scripts/localize-project/run.mjs`) chains the four binary stages for
-stage-level debugging only; it is not the recommended path and does not wire
-the wiki-first bible into the drafter.
+The retired `itotori localize-game` umbrella composed every stage into one
+command. It was **removed** — there is no single-command whole-game vertical any
+more. Run the six command stages in §0 explicitly, invoking `itotori localize
+--run-mode <production|pilot|test-dev>` after structure export and wiki build.
 
 ### Other gotchas you would otherwise re-derive
 
@@ -387,9 +372,9 @@ the wiki-first bible into the drafter.
   is the main genuinely-incomplete area — treat E2 evidence as "observed
   rendered text", not "fully verified fidelity", exactly as the fidelity policy
   labels it (`docs/utsushi-fidelity-policy.md`).
-- **Unknown-opcode triage.** If a NEW (non-Sweetie/Kanon) title surfaces unknown
-  opcodes, the coverage report names each `(module_type, module_id, opcode)`
-  with a frequency — start your fix there.
+- **Unknown-opcode triage.** If a game surfaces unknown opcodes, the coverage
+  report names each `(module_type, module_id, opcode)` with a frequency — start
+  your fix there.
 
 ---
 
@@ -412,11 +397,10 @@ surface.
 Multiple localizer agents may run concurrently on **different** games. To keep
 them from colliding and to keep fixes generic:
 
-- **One worktree per agent, OUTSIDE the repo, in a protected namespace.** Create
-  it under `/scratch/worktrees/<game>-<slug>` (e.g.
-  `/scratch/worktrees/sweetie-hd-choices`). Never point two agents at one
-  worktree; never share a worktree path across live agents. The `sweetie-hd-real-*`
-  worktrees are long-lived — do not prune them in reconciles.
+- **One worktree per agent, OUTSIDE the repo.** Create it under
+  `/scratch/worktrees/<game>-<slug>`. Never point two agents at one worktree or
+  share a worktree path across live agents. Worktrees are disposable and follow
+  the normal lifecycle and pruning policy.
 - **Isolated build cache is automatic.** The nix devShell (`flake.nix`) gives
   each worktree its own `CARGO_TARGET_DIR`, so parallel `cargo` builds do not
   contaminate each other. Enter it via direnv / `nix develop`. Run
@@ -427,10 +411,10 @@ them from colliding and to keep fixes generic:
   failing stage). Claim work via **assignee + label** so two agents don't fix
   the same bug. This localizer track does NOT use qdcli — issues + PRs are the
   coordination surface.
-- **Fix GENERICALLY, never per-game.** A bug found while localizing Sweetie HD
-  must be fixed game-agnostically (engine-family behavior, not a
-  `if game == "sweetie-hd"` hack). Multi-game validation is a standing invariant:
-  engine-family specs validate against ≥ 2 real games.
+- **Fix GENERICALLY, never per-game.** A bug found while localizing one game
+  must be fixed game-agnostically as engine-family behavior, not a title-specific
+  conditional. Multi-game validation is a standing invariant: engine-family
+  specs validate against ≥ 2 real games.
 - **Propose, don't dispose.** Open a PR against `main` with a clear title and the
   reproducing diagnostic. **Do NOT self-merge** — the orchestrator is the sole
   merge authority. You may split a large bug into smaller independently-verifiable

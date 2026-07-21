@@ -23,21 +23,17 @@ Two stages, run by `scripts/real-bytes-oracle.mjs`. Either failing fails the
 whole run (nonzero exit):
 
 - **(A) Ground truth** — re-runs the full real-bytes suite (`just
-ci-real-bytes`) against the configured real corpora (currently Sweetie HD +
-  Kanon RealLive, LustMemory + Countryside Life RPG Maker MV/MZ, the
-  vault-materialized Siglus installs, and the Softpal ADV titles Kizuna +
-  Dimension under the standalone `/scratch/softpal-research` tree). This
-  includes the app-level MV/MZ patch/apply byte-round-trip, with both titles
-  required when the lane runs, read-only, never copying copyrighted bytes. The
-  Softpal sub-lane is the one exception to the missing-corpus hard-fail policy:
-  because the Softpal research tree lives under its own root (separate from the
-  RealLive/RPG-Maker/vault corpora), a runner that has the other corpora staged
-  but not the Softpal tree still runs the strict ground-truth suite for the
-  five other families and skips the Softpal sub-lane cleanly with a log line
-  (skip-when-absent is legitimate for the periodic lane). Passing proves the
-  source-of-truth catalogues (`REAL_CATALOG`, `NamedOpcode`, `classify()`, the
-  g00 type matrix, the cipher cases, the decoder-parity counts, …) still match
-  the real bytes — the 100%-decompilation / 0-unknown-opcode bar.
+ci-real-bytes`) against configured real corpora across the RealLive, RPG Maker
+  MV/MZ, Siglus, and Softpal ADV engine families. Corpus roots are supplied by
+  local `ITOTORI_REAL_GAME_ROOT*` configuration and are always read-only; the
+  suite never copies copyrighted bytes. The app-level MV/MZ patch/apply
+  byte-round-trip runs for each configured corpus. The Softpal sub-lane is the
+  one exception to the missing-corpus hard-fail policy: because it uses a
+  separate optional corpus root, a runner can run strict ground truth for the
+  remaining configured families and skip that sub-lane with a log line. Passing
+  proves the source-of-truth catalogues (`REAL_CATALOG`, `NamedOpcode`,
+  `classify()`, the g00 type matrix, cipher cases, decoder-parity counts, …)
+  still match the real bytes — the 100%-decompilation / 0-unknown-opcode bar.
 
 - **(B) Synthetic-vs-real drift check** — re-derives the coverage manifest from
   the **same** live source-of-truth catalogues the real-bytes suite keys on and
