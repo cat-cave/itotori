@@ -61,7 +61,9 @@ impl RLOperation for ObjMgmtRenderOp {
                 if let Some(buf) = arg_int(args, 0).and_then(slot_ok) {
                     let layer = self.target_layer();
                     self.runtime.with_stack_mut(|stack| {
-                        let _ = stack.set_layer(layer, buf, GraphicsObject::image(""));
+                        stack
+                            .set_layer(layer, buf, GraphicsObject::image(""))
+                            .expect("slot bounds-checked above");
                     });
                 }
             }
