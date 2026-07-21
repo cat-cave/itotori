@@ -416,3 +416,78 @@ mechanism on a shared writeable channel that is separate from the vault.
 
 This is one deployment topology among several. The contract above is what
 matters; the VM channel is invisible to the adapter.
+
+## Appendix: Catalog Schema-Version Compatibility Handshake
+
+The authoritative consumer allow-list is
+[`SUPPORTED_SCHEMA_VERSIONS`](../crates/kaifuu-vault-source/src/error.rs):
+**`[1, 3]`**. Itotori accepts only versions it has inspected and tested; it
+does not infer compatibility from a newer version number. In particular,
+**v2 is not supported**: no v2 catalog is available for query verification,
+so adding it would be blind widening.
+
+### Supported-version matrix
+
+This matrix covers only the catalog data the adapter reads, rather than being
+a complete vault-curation migration history.
+
+| Catalog schema version | What the version adds for this consumer                                                                                                                                                                                                                                                                                                    | Itotori release that introduced support                                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **v1**                 | The baseline catalog surface used by the synthetic-vault fixture: `schema_version`, work/release identity and lookup tables, and the artifact fields the by-id resolver reads (`canonical_id` and `vault_path`).                                                                                                                           | **0.1.0** — first real itotori product release; the adapter's initial v1 support predates product versioning and is carried by this release. |
+| **v3**                 | Adds the live catalog's richer release and artifact metadata. For adapter-read data, the material change is the widened `release_languages` primary key, which adds `kind` and `source` dimensions (with related language attributes); itotori therefore queries a distinct language set. Other v3 additions are not read by this adapter. | **0.1.0** — v3 compatibility landed before product versioning and is carried by the first product release.                                   |
+
+### Bump protocol: announce → land → consume
+
+The **vault-curation owner** owns `catalog.db`, migrations, and the canonical
+metadata it produces. The **itotori owner (the itotori orchestrator)** owns
+this read-only adapter and its compatibility allow-list. Neither owner may
+silently make the other side compatible.
+
+1. **Announce — vault-curation owner.** Before writing a new
+   `schema_version.version`, send the itotori owner the proposed version,
+   migration/DDL, changed query semantics, and a representative read-only
+   catalog or schema dump. Include the intended rollout window and whether
+   the change alters any adapter-read columns, keys, or cardinality.
+2. **Land — both owners.** The itotori owner inspects the actual schema and
+   validates every adapter query against it; if compatible, they add the
+   version to `SUPPORTED_SCHEMA_VERSIONS`, update fixtures and this matrix,
+   and land tests for opening and resolving from that version. The
+   vault-curation owner lands the migration and its version marker only with
+   that reviewed compatibility change available for the consuming release.
+3. **Consume — operator, with both owners' release notes available.** Upgrade
+   itotori to the release named for the new row, then point it at (or promote)
+   the migrated catalog. Confirm a read-only open and a representative
+   discovery/resolution run before making the catalog the production vault.
+
+#### Bump checklist
+
+- [ ] Vault-curation supplies the proposed version, migration/DDL, and a
+      representative read-only catalog or schema dump.
+- [ ] Both owners identify every adapter-read table, column, key, and query
+      whose semantics or cardinality change.
+- [ ] Itotori verifies the queries against the actual catalog; no version is
+      added merely because it is numerically newer.
+- [ ] Itotori updates `SUPPORTED_SCHEMA_VERSIONS`, fixtures, tests, this
+      matrix, and the release notes together.
+- [ ] Vault-curation lands the version marker only when the supporting itotori
+      release is available to operators.
+- [ ] The operator upgrades itotori first, then validates open, discovery,
+      and resolution against the migrated catalog before production use.
+
+### Operator remediation
+
+`kaifuu.vault.catalog_schema_unsupported` is the semantic code for
+`CatalogSchemaUnsupported`; it reports the observed version (or no version)
+and the exact supported list. See the
+[Failure Modes entry for `CatalogSchemaUnsupported`](#failure-modes) for the
+failure condition.
+
+Do not edit `catalog.db` to change or remove its version marker, and do not
+add an unverified version to the allow-list. First compare the observed value
+with the matrix above. If it is supported, inspect the vault root and
+`schema_version` table for a damaged or incomplete catalog. If it is newer or
+otherwise absent from the matrix, follow the consume step: install the itotori
+release that introduces support, then retry the read-only open. If no such
+release exists, keep the vault out of production use and give the
+vault-curation and itotori owners the catalog/schema details so they can run
+the announce → land → consume protocol.
