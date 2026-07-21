@@ -1,15 +1,17 @@
-//! EnginePort lifecycle that turns a configured Siglus G00 into a safe frame.
+//! EnginePort lifecycle for static Siglus text observation and optional G00 capture.
 
 use std::sync::Arc;
 
 use utsushi_core::substrate::{
     AssetPackage, CapabilityDeclaration, CapabilityStance, CaptureOutcome, EngineParityProfile,
     EnginePort, EnginePortError, EvidenceTier, FidelityTier, LifecycleStage, PortCapability,
-    PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, SinkSet,
+    PortManifest, PortRequest, PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, SinkSet, TextLine,
+    TextSurfaceSink,
 };
 use utsushi_core::{RuntimeArtifactKind, RuntimeArtifactRoot, runtime_artifact_uri};
 
-use crate::launch::{RequestAssetPackage, SiglusSceneMomentIndex, hydrate_scene_moment_index};
+use crate::cg_port_sinks::SiglusObservationSinks;
+use crate::launch::{RequestAssetPackage, SiglusSceneMomentIndex, hydrate_siglus_launch};
 use crate::siglus_g00::{SiglusG00Image, decode_siglus_g00};
 use crate::siglus_render::{SiglusCgRedaction, encode_siglus_png, render_siglus_cg};
 
@@ -56,25 +58,28 @@ impl std::fmt::Debug for UtsushiSiglusPortContext {
     }
 }
 
-/// Siglus image/CG engine port.
+/// Siglus static-text and optional CG-capture engine port.
 ///
-/// `launch` opens and decodes real package bytes. `capture` rasterizes that
-/// decoded image and writes an edge-redacted PNG through the managed artifact
-/// store. Full-fidelity pixels remain in-memory only unless an embedding
-/// caller explicitly uses [`crate::render_siglus_cg`] with `Full`.
+/// `launch` opens and decodes real package bytes. `observe` walks the decoded
+/// surfaces one finite scene per tick. When configured with a G00, `capture`
+/// preserves the existing edge-redacted PNG path; otherwise it writes a
+/// deterministic text trace under the managed artifact root.
 #[derive(Debug)]
 pub struct UtsushiSiglusPort {
     context: UtsushiSiglusPortContext,
     launch_index: Option<SiglusSceneMomentIndex>,
     decoded: Option<SiglusG00Image>,
-    sink_set: SinkSet,
+    sinks: SiglusObservationSinks,
+    /// Finite decoded text surfaces for each not-yet-observed scene, reversed
+    /// so `observe` can pop scenes in source order.
+    pending_scenes: Vec<Vec<TextLine>>,
+    text_program: Vec<TextLine>,
+    lines_emitted: usize,
     shut_down: bool,
 }
 
 impl UtsushiSiglusPort {
-    /// Manifest for the trace-only launch/hydration slice and optional G00
-    /// capture path. Launch retains a decoded scene/moment index; it does not
-    /// execute scene opcodes or claim visual evidence.
+    /// Manifest for the static text walk and optional G00 capture path.
     pub const MANIFEST: PortManifest = PortManifest {
         id: PORT_ID,
         name: "Utsushi Siglus Engine Port",
@@ -82,6 +87,7 @@ impl UtsushiSiglusPort {
         abi_version: 1,
         capabilities: &[
             PortCapability::Launch,
+            PortCapability::Observe,
             PortCapability::Capture,
             PortCapability::Shutdown,
         ],
@@ -91,10 +97,11 @@ impl UtsushiSiglusPort {
         fidelity_tier_max: FidelityTier::TraceOnly,
         evidence_tier_max: EvidenceTier::E1,
         limitations: &[
-            "Launch decodes Scene.pck and Gameexe.dat into a scene/moment index through the request VFS; it does not execute scene opcodes, text, branches, or choices.",
+            "Observe is a deterministic static walk of decoded CD_TEXT and CD_NAME surfaces, not a live Siglus VM: branches, choices, substitutions, and state-dependent rendering are not evaluated.",
+            "Each observation is E1 text evidence linked by the stable source-unit key used by the Siglus bridge; the runtime does not manufacture bridge-unit ids.",
             "The production slice decodes type-0 compressed and type-2 layered Siglus G00 containers; type-3 is rejected as unsupported rather than guessed.",
-            "Capture artifacts are edge-redacted by default; full-fidelity decoded pixels are not persisted by this port.",
-            "Siglus VM, text observation, snapshot, and replay remain outside this trace-only slice.",
+            "A configured G00 capture is edge-redacted by default; otherwise capture writes a text trace. Full-fidelity decoded pixels are not persisted by this port.",
+            "Frame and audio sinks are Unsupported. Snapshot and replay remain deferred.",
         ],
     };
 
@@ -102,11 +109,6 @@ impl UtsushiSiglusPort {
     pub const PARITY_PROFILE: EngineParityProfile = EngineParityProfile {
         manifest: Self::MANIFEST,
         declarations: &[
-            CapabilityDeclaration {
-                capability: PortCapability::Observe,
-                stance: CapabilityStance::Pending,
-                note: "dev: this CG slice does not yet emit VM-driven observation events.",
-            },
             CapabilityDeclaration {
                 capability: PortCapability::Snapshot,
                 stance: CapabilityStance::Pending,
@@ -132,7 +134,10 @@ impl UtsushiSiglusPort {
             context: UtsushiSiglusPortContext::empty(),
             launch_index: None,
             decoded: None,
-            sink_set: SinkSet::new(),
+            sinks: SiglusObservationSinks::new(),
+            pending_scenes: Vec::new(),
+            text_program: Vec::new(),
+            lines_emitted: 0,
             shut_down: false,
         }
     }
@@ -181,6 +186,22 @@ impl UtsushiSiglusPort {
         self.launch_index
             .as_ref()
             .map_or(0, SiglusSceneMomentIndex::gameexe_entry_count)
+    }
+
+    /// Number of static text lines emitted so far.
+    pub fn lines_emitted(&self) -> usize {
+        self.lines_emitted
+    }
+
+    /// Number of static text lines prepared during launch.
+    pub fn lines_total(&self) -> usize {
+        self.text_program.len()
+    }
+
+    /// Observation sinks, including E1 text and explicit Unsupported frame /
+    /// audio declarations.
+    pub fn sinks(&self) -> &SiglusObservationSinks {
+        &self.sinks
     }
 
     fn hydrate_asset_package(&mut self, request: &PortRequest<'_>) -> Result<(), EnginePortError> {
@@ -272,6 +293,45 @@ impl UtsushiSiglusPort {
                 image.layers.len()
             )))
     }
+
+    fn write_text_trace(
+        &self,
+        root: &RuntimeArtifactRoot,
+        run_id: &str,
+    ) -> Result<CaptureOutcome, EnginePortError> {
+        let uri = runtime_artifact_uri(run_id, RuntimeArtifactKind::TraceLog, "siglus-text-trace")
+            .map_err(|error| {
+                Self::lifecycle_error(
+                    LifecycleStage::Capture,
+                    format!("text trace URI failed: {error}"),
+                )
+            })?;
+        let trace = serde_json::json!({
+            "schema": "utsushi-siglus-text-trace/0.1.0-alpha",
+            "portId": PORT_ID,
+            "lineCount": self.text_program.len(),
+            "linesEmitted": self.lines_emitted,
+            "lines": &self.text_program,
+        });
+        let bytes = serde_json::to_vec_pretty(&trace).map_err(|error| {
+            Self::lifecycle_error(
+                LifecycleStage::Capture,
+                format!("text trace serialization failed: {error}"),
+            )
+        })?;
+        let path = root.write_bytes(&uri, &bytes).map_err(|error| {
+            Self::lifecycle_error(
+                LifecycleStage::Capture,
+                format!("text trace write failed: {error}"),
+            )
+        })?;
+        Ok(CaptureOutcome::new(uri)
+            .with_path(path)
+            .with_summary(format!(
+                "siglus text trace: {} lines",
+                self.text_program.len()
+            )))
+    }
 }
 
 impl Default for UtsushiSiglusPort {
@@ -292,7 +352,16 @@ impl EnginePort for UtsushiSiglusPort {
                 "a Siglus AssetPackage is required for launch hydration",
             )
         })?;
-        self.launch_index = Some(hydrate_scene_moment_index(package, request)?);
+        let hydrated = hydrate_siglus_launch(package, request)?;
+        self.pending_scenes = hydrated
+            .scene_text_program
+            .into_iter()
+            .filter(|scene| !scene.is_empty())
+            .rev()
+            .collect();
+        self.text_program = hydrated.text_program;
+        self.lines_emitted = 0;
+        self.launch_index = Some(hydrated.index);
         self.decoded = match self.context.g00_logical_path {
             Some(_) => Some(self.load_image(LifecycleStage::Launch)?),
             None => None,
@@ -303,17 +372,35 @@ impl EnginePort for UtsushiSiglusPort {
 
     fn observe(&mut self, request: &PortRequest<'_>) -> Result<(), EnginePortError> {
         request.cancellation.check(LifecycleStage::Observe)?;
-        if self.decoded.is_none() {
+        if self.shut_down {
             return Err(Self::lifecycle_error(
                 LifecycleStage::Observe,
-                "launch must decode the configured Siglus G00 before observe",
+                "Siglus port observed after shutdown",
             ));
+        }
+        if self.launch_index.is_none() {
+            return Err(Self::lifecycle_error(
+                LifecycleStage::Observe,
+                "launch must run before observe",
+            ));
+        }
+        if let Some(scene) = self.pending_scenes.pop() {
+            for line in scene {
+                request.cancellation.check(LifecycleStage::Observe)?;
+                self.sinks.text().emit_line(line).map_err(|error| {
+                    Self::lifecycle_error(
+                        LifecycleStage::Observe,
+                        format!("text emission failed: {error}"),
+                    )
+                })?;
+                self.lines_emitted += 1;
+            }
         }
         Ok(())
     }
 
     fn sink_set(&self) -> &SinkSet {
-        &self.sink_set
+        self.sinks.sink_set()
     }
 
     fn capture(&mut self, request: &PortRequest<'_>) -> Result<CaptureOutcome, EnginePortError> {
@@ -323,13 +410,16 @@ impl EnginePort for UtsushiSiglusPort {
             .ok_or(EnginePortError::ArtifactRootMissing {
                 stage: LifecycleStage::Capture,
             })?;
-        let Some(image) = &self.decoded else {
-            return Err(Self::lifecycle_error(
+        if let Some(image) = &self.decoded {
+            Self::write_capture(image, root, request.run_id)
+        } else if self.launch_index.is_some() {
+            self.write_text_trace(root, request.run_id)
+        } else {
+            Err(Self::lifecycle_error(
                 LifecycleStage::Capture,
                 "launch must run before capture",
-            ));
-        };
-        Self::write_capture(image, root, request.run_id)
+            ))
+        }
     }
 
     fn shutdown(&mut self) -> Result<PortShutdownOutcome, EnginePortError> {
@@ -338,6 +428,9 @@ impl EnginePort for UtsushiSiglusPort {
         }
         self.decoded = None;
         self.launch_index = None;
+        self.pending_scenes.clear();
+        self.text_program.clear();
+        self.lines_emitted = 0;
         self.shut_down = true;
         Ok(PortShutdownOutcome::clean())
     }

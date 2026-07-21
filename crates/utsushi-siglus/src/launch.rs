@@ -14,8 +14,11 @@ use kaifuu_siglus::{
 };
 use utsushi_core::substrate::{
     AssetBytes, AssetId, AssetMetadata, AssetPackage, CaseRule, EnginePortError, LifecycleStage,
-    MomentId, PackageDescriptor, PackageKind, PackageSource, PortRequest, RuntimeVfs, VfsResult,
+    MomentId, PackageDescriptor, PackageKind, PackageSource, PortRequest, RuntimeVfs, TextLine,
+    VfsResult,
 };
+
+use crate::observe::build_static_scene_text_program;
 
 const SCENE_PACK_LOGICAL_PATH: &str = "Scene.pck";
 const GAMEEXE_LOGICAL_PATH: &str = "Gameexe.dat";
@@ -42,6 +45,17 @@ pub struct SiglusSceneMoment {
 pub struct SiglusSceneMomentIndex {
     moments: Vec<SiglusSceneMoment>,
     gameexe_entry_count: usize,
+}
+
+/// Fully hydrated launch state retained by the port.
+///
+/// The index stays text-free for snapshot/review metadata. The separate
+/// program contains only decoded E1 text evidence. Its scene groups let
+/// `observe` consume every finite decoded scene before moving to the next.
+pub(crate) struct HydratedSiglusLaunch {
+    pub(crate) index: SiglusSceneMomentIndex,
+    pub(crate) scene_text_program: Vec<Vec<TextLine>>,
+    pub(crate) text_program: Vec<TextLine>,
 }
 
 impl SiglusSceneMomentIndex {
@@ -139,12 +153,12 @@ impl AssetPackage for RequestAssetPackage {
 /// Decode the launch containers from `package` and construct the trace-only
 /// scene/moment index. Every scene must decode; a partial index is never
 /// installed as a successful launch.
-pub(crate) fn hydrate_scene_moment_index(
+pub(crate) fn hydrate_siglus_launch(
     package: &dyn AssetPackage,
     request: &PortRequest<'_>,
-) -> Result<SiglusSceneMomentIndex, EnginePortError> {
-    let scene_bytes = open_required_asset(package, SCENE_PACK_LOGICAL_PATH)?;
-    let gameexe_bytes = open_required_asset(package, GAMEEXE_LOGICAL_PATH)?;
+) -> Result<HydratedSiglusLaunch, EnginePortError> {
+    let (scene_asset, scene_bytes) = open_required_asset(package, SCENE_PACK_LOGICAL_PATH)?;
+    let (_, gameexe_bytes) = open_required_asset(package, GAMEEXE_LOGICAL_PATH)?;
     let scene_index = parse_scene_pck(scene_bytes.as_ref())
         .map_err(|error| launch_error(format!("Scene.pck index decode failed: {error}")))?;
     let gameexe_header = read_gameexe_header(gameexe_bytes.as_ref())
@@ -152,7 +166,7 @@ pub(crate) fn hydrate_scene_moment_index(
 
     let needs_key = scene_index.extra_key_use || gameexe_header.exe_angou_mode != 0;
     let key_material = if needs_key {
-        let executable = open_required_asset(package, ENGINE_EXECUTABLE_LOGICAL_PATH)?;
+        let (_, executable) = open_required_asset(package, ENGINE_EXECUTABLE_LOGICAL_PATH)?;
         let key_ref = SiglusSecondLayerKey::from_secret_ref(EXE_ANGOU_KEY_REF);
         Some(
             recover_exe_angou_key(executable.as_ref(), &key_ref).map_err(|error| {
@@ -200,24 +214,38 @@ pub(crate) fn hydrate_scene_moment_index(
         });
     }
 
-    Ok(SiglusSceneMomentIndex {
-        moments,
-        gameexe_entry_count: gameexe.entries.len(),
+    let scene_text_program = build_static_scene_text_program(
+        scene_bytes.as_ref(),
+        &scene_index,
+        scene_key,
+        scene_asset,
+        request,
+    )?;
+    let text_program = scene_text_program.iter().flatten().cloned().collect();
+
+    Ok(HydratedSiglusLaunch {
+        index: SiglusSceneMomentIndex {
+            moments,
+            gameexe_entry_count: gameexe.entries.len(),
+        },
+        scene_text_program,
+        text_program,
     })
 }
 
 fn open_required_asset(
     package: &dyn AssetPackage,
     logical: &'static str,
-) -> Result<AssetBytes, EnginePortError> {
+) -> Result<(AssetId, AssetBytes), EnginePortError> {
     let id = package.resolve(logical).map_err(|error| {
         launch_error(format!(
             "required asset {logical} resolution failed: {error}"
         ))
     })?;
-    package
+    let bytes = package
         .open(&id)
-        .map_err(|error| launch_error(format!("required asset {logical} open failed: {error}")))
+        .map_err(|error| launch_error(format!("required asset {logical} open failed: {error}")))?;
+    Ok((id, bytes))
 }
 
 fn launch_error(message: impl Into<String>) -> EnginePortError {

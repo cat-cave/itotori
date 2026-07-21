@@ -33,12 +33,13 @@ fn both_ports_satisfy_the_shared_engine_port_trait() {
 }
 
 #[test]
-fn siglus_manifest_declares_only_the_exercised_cg_capabilities() {
+fn siglus_manifest_declares_the_exercised_static_text_capabilities() {
     UtsushiSiglusPort::MANIFEST
         .validate()
         .expect("Siglus manifest is valid");
     for capability in [
         PortCapability::Launch,
+        PortCapability::Observe,
         PortCapability::Capture,
         PortCapability::Shutdown,
     ] {
@@ -52,10 +53,6 @@ fn siglus_manifest_declares_only_the_exercised_cg_capabilities() {
             Some(CapabilityStance::Wired)
         );
     }
-    assert_eq!(
-        UtsushiSiglusPort::PARITY_PROFILE.stance(PortCapability::Observe),
-        Some(CapabilityStance::Pending)
-    );
     assert_eq!(
         UtsushiSiglusPort::MANIFEST.evidence_tier_max,
         EvidenceTier::E1
