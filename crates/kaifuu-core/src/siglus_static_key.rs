@@ -37,6 +37,7 @@ use std::fmt;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 use crate::{
     HelperCapabilityLevel, HelperExecutionFilesystemAccess, HelperKind, HelperRedactionStatus,
@@ -486,7 +487,7 @@ fn encrypt_known_plaintext(key: &[u8]) -> Vec<u8> {
 /// Recovered candidate key material. Raw bytes are private, never serialized,
 /// redacted in `Debug`, and zeroized on drop.
 struct StaticKeyCandidate {
-    bytes: Vec<u8>,
+    bytes: Zeroizing<Vec<u8>>,
 }
 
 impl StaticKeyCandidate {
@@ -497,12 +498,6 @@ impl StaticKeyCandidate {
     /// One-way sha256 commitment to the key bytes (never the bytes themselves).
     fn material_hash(&self) -> KaifuuResult<ProofHash> {
         Ok(ProofHash::new(sha256_hash_bytes(&self.bytes))?)
-    }
-}
-
-impl Drop for StaticKeyCandidate {
-    fn drop(&mut self) {
-        self.bytes.fill(0);
     }
 }
 
@@ -554,7 +549,7 @@ fn analyze_siglus_executable(bytes: &[u8]) -> Result<StaticKeyCandidate, StaticA
         .get(key_start..key_end)
         .ok_or(StaticAnalysisError::KeyRegionNotFound)?;
     Ok(StaticKeyCandidate {
-        bytes: key.to_vec(),
+        bytes: Zeroizing::new(key.to_vec()),
     })
 }
 
@@ -850,7 +845,7 @@ mod tests {
     #[test]
     fn candidate_debug_is_redacted_and_zeroized() {
         let candidate = StaticKeyCandidate {
-            bytes: STUB_KEY_CORRECT.to_vec(),
+            bytes: Zeroizing::new(STUB_KEY_CORRECT.to_vec()),
         };
         let rendered = format!("{candidate:?}");
         assert!(rendered.contains("REDACTED"));

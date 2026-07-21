@@ -9,6 +9,7 @@ use std::ffi::CString;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use zeroize::Zeroizing;
 
 pub mod secret_holder;
 
@@ -5076,12 +5077,14 @@ impl ResolvedKeyProofRecord {
 }
 
 pub struct ResolvedKeyMaterial {
-    bytes: Vec<u8>,
+    bytes: Zeroizing<Vec<u8>>,
 }
 
 impl ResolvedKeyMaterial {
     fn new(bytes: Vec<u8>) -> Self {
-        Self { bytes }
+        Self {
+            bytes: Zeroizing::new(bytes),
+        }
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -5090,12 +5093,6 @@ impl ResolvedKeyMaterial {
 
     pub fn byte_len(&self) -> usize {
         self.bytes.len()
-    }
-}
-
-impl Drop for ResolvedKeyMaterial {
-    fn drop(&mut self) {
-        self.bytes.fill(0);
     }
 }
 
