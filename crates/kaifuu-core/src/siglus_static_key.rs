@@ -32,21 +32,19 @@
 //!   helper path reads scoped private executable / `Gameexe.dat` files in-process
 //!   (per the 2026-06-28 clarification) but still publishes only secret
 //!   refs + proof hashes.
-
-use std::fmt;
-use std::path::Path;
-
-use serde::{Deserialize, Serialize};
-use zeroize::Zeroizing;
-
 use crate::{
     HelperCapabilityLevel, HelperExecutionFilesystemAccess, HelperKind, HelperRedactionStatus,
-    HelperResultExecutionMode, KaifuuResult, KeyMaterialKind, KeyValidationMethod,
-    KeyValidationProof, OperationStatus, PartialDiagnosticSeverity, ProofHash, SecretRef,
-    redact_for_log_or_report, sha256_hash_bytes, stable_json,
+    HelperResultExecutionMode, KaifuuResult, KeyMaterialKind, KeyValidationProof, OperationStatus,
+    PartialDiagnosticSeverity, ProofHash, SecretRef, redact_for_log_or_report, stable_json,
 };
-
+use serde::{Deserialize, Serialize};
+use std::path::Path;
+mod analysis;
 mod discovery;
+use analysis::{
+    StaticAnalysisError, StaticKeyCandidate, analyze_siglus_executable,
+    validate_candidate_against_gameexe, xor_cycled,
+};
 pub use discovery::discover_siglus_static_key;
 
 pub const SIGLUS_STATIC_KEY_SCHEMA_VERSION: &str = "0.1.0";
@@ -149,8 +147,8 @@ pub enum SiglusStaticKeyStubScenario {
 }
 
 /// The Siglus static-key helper capability descriptor. Records the mechanical
-/// facts of the helper: it is an in-process static parser that never shells out
-/// and never logs raw keys.
+/// facts of the helper and whether this discovery run reached candidate
+/// validation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SiglusStaticKeyCapability {
@@ -164,15 +162,20 @@ pub struct SiglusStaticKeyCapability {
     pub filesystem_access: HelperExecutionFilesystemAccess,
     /// Always `false`: the helper is in-process Rust, never an external tool.
     pub shells_out: bool,
-    /// Always `true`: a recovered key is consumed only after validation.
+    /// `true` when this discovery run reached candidate validation before a
+    /// key could be consumed.
     pub validate_before_consume: bool,
     pub redaction_status: String,
     pub support_boundary: String,
 }
 
 impl SiglusStaticKeyCapability {
-    /// The canonical in-process static-key helper capability.
-    pub fn in_process(capability_id: &str, engine_family: &str) -> Self {
+    /// The in-process static-key helper capability observed during one run.
+    pub fn in_process(
+        capability_id: &str,
+        engine_family: &str,
+        validate_before_consume: bool,
+    ) -> Self {
         Self {
             capability_id: capability_id.to_string(),
             engine_family: engine_family.to_string(),
@@ -183,7 +186,7 @@ impl SiglusStaticKeyCapability {
             network_access: false,
             filesystem_access: HelperExecutionFilesystemAccess::LocalGameReadOnly,
             shells_out: false,
-            validate_before_consume: true,
+            validate_before_consume,
             redaction_status: "redacted".to_string(),
             support_boundary: SIGLUS_STATIC_KEY_SUPPORT_BOUNDARY.to_string(),
         }
@@ -481,121 +484,6 @@ fn encrypt_known_plaintext(key: &[u8]) -> Vec<u8> {
     bytes
 }
 
-// Pure adapters cannot reach any of the following; the only public gate is
-// `discover_siglus_static_key`.
-
-/// Recovered candidate key material. Raw bytes are private, never serialized,
-/// redacted in `Debug`, and zeroized on drop.
-struct StaticKeyCandidate {
-    bytes: Zeroizing<Vec<u8>>,
-}
-
-impl StaticKeyCandidate {
-    fn byte_len(&self) -> usize {
-        self.bytes.len()
-    }
-
-    /// One-way sha256 commitment to the key bytes (never the bytes themselves).
-    fn material_hash(&self) -> KaifuuResult<ProofHash> {
-        Ok(ProofHash::new(sha256_hash_bytes(&self.bytes))?)
-    }
-}
-
-impl fmt::Debug for StaticKeyCandidate {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("StaticKeyCandidate")
-            .field("bytes", &"[REDACTED:kaifuu.secret_redacted]")
-            .field("byte_len", &self.bytes.len())
-            .finish()
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StaticAnalysisError {
-    UnsupportedPacker,
-    ProtectedExecutable,
-    KeyRegionNotFound,
-}
-
-/// Port of the `siglus_static_key_tool`-class static analysis, in-process:
-/// inspect the executable header, refuse packed / protected binaries, and
-/// recover the embedded static key region. Returns a redacting candidate — the
-/// raw key never crosses this boundary except inside [`StaticKeyCandidate`].
-fn analyze_siglus_executable(bytes: &[u8]) -> Result<StaticKeyCandidate, StaticAnalysisError> {
-    if bytes.len() >= 8 {
-        let tag = &bytes[..8];
-        if tag == STUB_EXE_TAG_PACKED {
-            return Err(StaticAnalysisError::UnsupportedPacker);
-        }
-        if tag == STUB_EXE_TAG_PROTECTED {
-            return Err(StaticAnalysisError::ProtectedExecutable);
-        }
-    }
-    let marker =
-        find_subslice(bytes, STATIC_KEY_MARKER).ok_or(StaticAnalysisError::KeyRegionNotFound)?;
-    let len_index = marker + STATIC_KEY_MARKER.len();
-    let key_len = *bytes
-        .get(len_index)
-        .ok_or(StaticAnalysisError::KeyRegionNotFound)? as usize;
-    if key_len == 0 {
-        return Err(StaticAnalysisError::KeyRegionNotFound);
-    }
-    let key_start = len_index + 1;
-    let key_end = key_start
-        .checked_add(key_len)
-        .ok_or(StaticAnalysisError::KeyRegionNotFound)?;
-    let key = bytes
-        .get(key_start..key_end)
-        .ok_or(StaticAnalysisError::KeyRegionNotFound)?;
-    Ok(StaticKeyCandidate {
-        bytes: Zeroizing::new(key.to_vec()),
-    })
-}
-
-/// THE validate-before-consume gate. Decrypt the `Gameexe.dat` known-plaintext
-/// header with the candidate; a match is proof the key is correct. Returns the
-/// validation proof (a sha256 over the recovered *public* plaintext) or `None`
-/// on mismatch — never anything derived from the key bytes.
-fn validate_candidate_against_gameexe(
-    candidate: &StaticKeyCandidate,
-    gameexe_bytes: &[u8],
-) -> KaifuuResult<Option<KeyValidationProof>> {
-    let magic_len = GAMEEXE_KNOWN_PLAINTEXT.len();
-    let Some(header) = gameexe_bytes.get(..magic_len) else {
-        return Ok(None);
-    };
-    let decrypted = xor_cycled(header, &candidate.bytes);
-    if decrypted == GAMEEXE_KNOWN_PLAINTEXT {
-        let proof = KeyValidationProof {
-            method: KeyValidationMethod::KnownPlaintextProof,
-            proof_hash: ProofHash::new(sha256_hash_bytes(&decrypted))?,
-        };
-        Ok(Some(proof))
-    } else {
-        Ok(None)
-    }
-}
-
-fn xor_cycled(data: &[u8], key: &[u8]) -> Vec<u8> {
-    if key.is_empty() {
-        return data.to_vec();
-    }
-    data.iter()
-        .enumerate()
-        .map(|(index, byte)| byte ^ key[index % key.len()])
-        .collect()
-}
-
-fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    if needle.is_empty() || haystack.len() < needle.len() {
-        return None;
-    }
-    haystack
-        .windows(needle.len())
-        .position(|window| window == needle)
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct SiglusStaticKeyRequest<'a> {
     pub fixture: &'a SiglusStaticKeyFixture,
@@ -608,291 +496,5 @@ pub struct SiglusStaticKeyRequest<'a> {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::path::PathBuf;
-
-    use super::*;
-    use crate::read_json;
-
-    fn manifest_dir() -> PathBuf {
-        crate::test_manifest_dir()
-            .join("../..")
-            .join("fixtures/kaifuu/siglus")
-    }
-
-    fn load_fixture() -> SiglusStaticKeyFixture {
-        read_json(&manifest_dir().join("siglus-static-key.json"))
-            .expect("static-key manifest must parse")
-    }
-
-    fn discover(fixture: &SiglusStaticKeyFixture) -> SiglusStaticKeyReport {
-        discover_siglus_static_key(SiglusStaticKeyRequest {
-            fixture,
-            fixture_dir: &manifest_dir(),
-            fixture_file_name: "siglus-static-key.json",
-        })
-        .expect("discovery must not error environmentally")
-    }
-
-    fn entry_mut<'a>(
-        fixture: &'a mut SiglusStaticKeyFixture,
-        entry_id: &str,
-    ) -> &'a mut SiglusStaticKeyFixtureEntry {
-        fixture
-            .entries
-            .iter_mut()
-            .find(|entry| entry.entry_id == entry_id)
-            .expect("entry must exist")
-    }
-
-    fn has_finding(report: &SiglusStaticKeyReport, entry_id: &str, code: &str) -> bool {
-        report
-            .entry(entry_id)
-            .is_some_and(|entry| entry.findings.iter().any(|finding| finding.code == code))
-    }
-
-    #[test]
-    fn static_key_manifest_passes_and_records_capability() {
-        let report = discover(&load_fixture());
-        assert_eq!(
-            report.status,
-            OperationStatus::Passed,
-            "{:?}",
-            report.entries
-        );
-
-        // The capability entry records the mechanical helper facts.
-        assert!(!report.capability.shells_out);
-        assert!(report.capability.validate_before_consume);
-        assert_eq!(report.capability.helper_kind, HelperKind::StaticParser);
-        assert_eq!(
-            report.capability.execution_mode,
-            HelperResultExecutionMode::InProcess
-        );
-        assert!(!report.capability.network_access);
-
-        for entry in &report.entries {
-            assert_eq!(entry.status, OperationStatus::Passed, "{entry:?}");
-            assert_eq!(entry.source_node_id, "KAIFUU-069");
-            assert!(
-                entry
-                    .validation_command
-                    .starts_with("kaifuu siglus static-key --fixture")
-            );
-            assert_eq!(entry.redaction_status, "redacted");
-        }
-    }
-
-    #[test]
-    fn only_validated_entry_publishes_a_consumable_key_ref() {
-        let report = discover(&load_fixture());
-
-        let valid = report.entry("static-key-valid").unwrap();
-        assert_eq!(valid.outcome, SiglusStaticKeyOutcome::Validated);
-        assert!(valid.validated);
-        let key_ref = valid
-            .consumable_key_ref()
-            .expect("validated entry is consumable");
-        assert_eq!(
-            key_ref.validation.method,
-            KeyValidationMethod::KnownPlaintextProof
-        );
-        // Proof hash is a sha256 over the PUBLIC known-plaintext, never the key.
-        assert_eq!(
-            key_ref.validation.proof_hash.as_str(),
-            sha256_hash_bytes(GAMEEXE_KNOWN_PLAINTEXT)
-        );
-
-        // Every non-validated entry refuses consumption.
-        for entry_id in [
-            "static-key-wrong-key",
-            "static-key-unsupported-packer",
-            "static-key-protected-executable",
-            "static-key-no-key-region",
-            "static-key-helper-mismatch",
-        ] {
-            let entry = report.entry(entry_id).unwrap();
-            assert_ne!(
-                entry.outcome,
-                SiglusStaticKeyOutcome::Validated,
-                "{entry_id}"
-            );
-            assert!(!entry.validated, "{entry_id} must not be validated");
-            assert!(
-                entry.key_ref.is_none(),
-                "{entry_id} must publish no key-ref"
-            );
-            assert!(
-                entry.consumable_key_ref().is_none(),
-                "{entry_id} must not be consumable"
-            );
-        }
-    }
-
-    #[test]
-    fn wrong_key_fails_validation_before_consume() {
-        let report = discover(&load_fixture());
-        let entry = report.entry("static-key-wrong-key").unwrap();
-        assert_eq!(entry.outcome, SiglusStaticKeyOutcome::ValidationFailed);
-        assert!(has_finding(
-            &report,
-            "static-key-wrong-key",
-            FINDING_VALIDATION_FAILED
-        ));
-        assert!(entry.consumable_key_ref().is_none());
-    }
-
-    #[test]
-    fn unsupported_packer_is_structured() {
-        let report = discover(&load_fixture());
-        let entry = report.entry("static-key-unsupported-packer").unwrap();
-        assert_eq!(entry.outcome, SiglusStaticKeyOutcome::UnsupportedPacker);
-        let finding = entry
-            .findings
-            .iter()
-            .find(|finding| finding.code == FINDING_UNSUPPORTED_PACKER)
-            .expect("structured packer finding");
-        assert_eq!(
-            finding.semantic_code.as_deref(),
-            Some(SEMANTIC_SIGLUS_STATIC_KEY_UNSUPPORTED_PACKER)
-        );
-    }
-
-    #[test]
-    fn protected_executable_is_structured() {
-        let report = discover(&load_fixture());
-        let entry = report.entry("static-key-protected-executable").unwrap();
-        assert_eq!(entry.outcome, SiglusStaticKeyOutcome::ProtectedExecutable);
-        assert!(has_finding(
-            &report,
-            "static-key-protected-executable",
-            FINDING_PROTECTED_EXECUTABLE
-        ));
-    }
-
-    #[test]
-    fn helper_provenance_mismatch_is_structured_and_short_circuits() {
-        let report = discover(&load_fixture());
-        let entry = report.entry("static-key-helper-mismatch").unwrap();
-        assert_eq!(entry.outcome, SiglusStaticKeyOutcome::HelperMismatch);
-        assert!(has_finding(
-            &report,
-            "static-key-helper-mismatch",
-            FINDING_HELPER_MISMATCH
-        ));
-    }
-
-    #[test]
-    fn missing_key_region_is_structured() {
-        let report = discover(&load_fixture());
-        let entry = report.entry("static-key-no-key-region").unwrap();
-        assert_eq!(entry.outcome, SiglusStaticKeyOutcome::KeyRegionNotFound);
-        assert!(has_finding(
-            &report,
-            "static-key-no-key-region",
-            FINDING_KEY_REGION_NOT_FOUND
-        ));
-    }
-
-    #[test]
-    fn validator_fails_on_outcome_mismatch() {
-        let mut fixture = load_fixture();
-        // Claim the wrong-key entry validates; evidence says otherwise.
-        entry_mut(&mut fixture, "static-key-wrong-key").expected =
-            SiglusStaticKeyOutcome::Validated;
-        let report = discover(&fixture);
-        assert_eq!(report.status, OperationStatus::Failed);
-        assert!(has_finding(
-            &report,
-            "static-key-wrong-key",
-            FINDING_OUTCOME_MISMATCH
-        ));
-    }
-
-    #[test]
-    fn report_never_carries_raw_key_material() {
-        use std::fmt::Write as _;
-        let report = discover(&load_fixture());
-        let json = report.stable_json().expect("stable json");
-
-        // The synthetic key bytes (and their hex) must never appear.
-        let key_text = String::from_utf8_lossy(STUB_KEY_CORRECT);
-        assert!(!json.contains(key_text.as_ref()), "raw key leaked");
-        let key_hex: String = STUB_KEY_CORRECT
-            .iter()
-            .fold(String::new(), |mut acc, byte| {
-                let _ = write!(acc, "{byte:02x}");
-                acc
-            });
-        assert!(!json.contains(&key_hex), "raw key hex leaked");
-
-        // The key-ref carries a one-way commitment + count, not the key.
-        let key_ref = report
-            .entry("static-key-valid")
-            .unwrap()
-            .key_ref
-            .as_ref()
-            .unwrap();
-        assert_eq!(key_ref.bytes as usize, STUB_KEY_CORRECT.len());
-        assert_eq!(
-            key_ref.material_hash.as_str(),
-            sha256_hash_bytes(STUB_KEY_CORRECT)
-        );
-        // The commitment is a hash, not the key.
-        assert!(!key_ref.material_hash.as_str().contains(key_text.as_ref()));
-    }
-
-    #[test]
-    fn candidate_debug_is_redacted_and_zeroized() {
-        let candidate = StaticKeyCandidate {
-            bytes: Zeroizing::new(STUB_KEY_CORRECT.to_vec()),
-        };
-        let rendered = format!("{candidate:?}");
-        assert!(rendered.contains("REDACTED"));
-        assert!(!rendered.contains(&String::from_utf8_lossy(STUB_KEY_CORRECT).into_owned()));
-    }
-
-    // (Compile-time guarantee: `analyze_siglus_executable`,
-    // `validate_candidate_against_gameexe`, and `StaticKeyCandidate` are not
-    // `pub`, so pure Siglus parsing / patching cannot reach the helper. These
-    // tests merely exercise the in-module gate.)
-
-    #[test]
-    fn analysis_recovers_then_validation_gates_the_candidate() {
-        let valid = build_siglus_static_key_stub(SiglusStaticKeyStubScenario::Valid);
-        let candidate =
-            analyze_siglus_executable(&valid.executable).expect("valid stub yields a candidate");
-        assert!(
-            validate_candidate_against_gameexe(&candidate, &valid.gameexe)
-                .unwrap()
-                .is_some()
-        );
-
-        let wrong = build_siglus_static_key_stub(SiglusStaticKeyStubScenario::WrongKey);
-        let wrong_candidate =
-            analyze_siglus_executable(&wrong.executable).expect("wrong stub still yields bytes");
-        assert!(
-            validate_candidate_against_gameexe(&wrong_candidate, &wrong.gameexe)
-                .unwrap()
-                .is_none(),
-            "wrong key must not validate"
-        );
-
-        let packer = build_siglus_static_key_stub(SiglusStaticKeyStubScenario::UnsupportedPacker);
-        assert_eq!(
-            analyze_siglus_executable(&packer.executable).err(),
-            Some(StaticAnalysisError::UnsupportedPacker)
-        );
-        let protected =
-            build_siglus_static_key_stub(SiglusStaticKeyStubScenario::ProtectedExecutable);
-        assert_eq!(
-            analyze_siglus_executable(&protected.executable).err(),
-            Some(StaticAnalysisError::ProtectedExecutable)
-        );
-        let keyless = build_siglus_static_key_stub(SiglusStaticKeyStubScenario::KeyRegionMissing);
-        assert_eq!(
-            analyze_siglus_executable(&keyless.executable).err(),
-            Some(StaticAnalysisError::KeyRegionNotFound)
-        );
-    }
-}
+#[path = "siglus_static_key_tests.rs"]
+mod tests;
