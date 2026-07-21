@@ -9,6 +9,7 @@
 
 mod decode;
 mod model;
+mod selection_labels;
 mod shapes;
 
 pub use decode::decode_scene_syscalls;

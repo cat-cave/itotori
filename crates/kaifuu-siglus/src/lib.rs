@@ -134,7 +134,10 @@ pub use archive::{
     SCENE_PCK_HEADER_BYTE_LEN, SiglusArchiveError, SiglusSceneEntry, SiglusSceneIndex,
     parse_scene_pck,
 };
-pub use bridge::{BridgeOpts, BridgeProduceError, ProducedBundle, produce_bundle};
+pub use bridge::{
+    BridgeOpts, BridgeProduceError, BridgeSceneInput, ProducedBundle, produce_bundle,
+    produce_scene_pack_bundle, produce_whole_scene_pack_bundle,
+};
 pub use compress::{SiglusCompressError, compress_siglus_lzss};
 pub use decompress::{SiglusDecompressError, decompress_siglus_lzss};
 pub use decrypt::{
