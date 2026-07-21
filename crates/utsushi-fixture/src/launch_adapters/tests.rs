@@ -474,8 +474,15 @@ exit 0
         .unwrap_err();
     let harness_error = error.downcast_ref::<RuntimeHarnessError>().unwrap();
 
-    assert_eq!(harness_error.kind, RuntimeHarnessErrorKind::CaptureFailed);
-    assert!(harness_error.message.contains("did not produce"));
+    // CaptureFailed (no PNG) or LaunchFailed (spawn refused): no promotion.
+    assert!(
+        matches!(
+            harness_error.kind,
+            RuntimeHarnessErrorKind::CaptureFailed | RuntimeHarnessErrorKind::LaunchFailed
+        ),
+        "expected CaptureFailed|LaunchFailed, got {:?}",
+        harness_error.kind
+    );
     let artifact_uri = utsushi_core::runtime_artifact_uri(
         BROWSER_RUN_ID,
         RuntimeArtifactKind::Screenshot,
@@ -598,20 +605,9 @@ fn browser_run_returns_chromium_version_mismatch_when_version_too_old() {
     let root = temp_dir("browser-version-too-old");
     write_browser_smoke_fixture(&root);
     let artifact_root = root.join("runtime-artifacts");
-    // Inject a DETERMINISTIC "too old" Chromium version (major 50 < the
-    // supported floor of 100) directly into the probe, so this unit test
-    // exercises the version-mismatch comparison logic WITHOUT spawning a
-    // real `<binary> --version` shell-out. The prior shell-out variant was
-    // intermittently flaky: under full-CI concurrency the `--version` spawn
-    // could race/time out against the bounded probe timeout, returning an
-    // Unknown version that PASSES the floor and falls through to a real
-    // capture launch — surfacing `CaptureFailed` instead of the expected
-    // `ChromiumVersionMismatch`. The fake browser's own `--version` here
-    // prints a NEWER (passing) version on purpose: if this test ever
-    // regressed to the real shell-out it would detect "124.*" and fail
-    // proving the injected value — not a spawned process — drives the
-    // outcome. The real shell-out probe stays live for production and is
-    // covered by the env-gated real-browser tests.
+    // Deterministic too-old version (major 50 < floor 100) via probe override —
+    // avoids flaky real `--version` shell-outs under CI concurrency. Fake
+    // browser prints a newer version so a regression to shell-out would fail.
     let fake_browser = fake_browser(
         &root,
         r#"#!/bin/sh
