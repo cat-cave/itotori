@@ -10,10 +10,6 @@
 > **real-game-testing-ready**; alpha now names a stricter milestone that
 > requires real LLM calls, the full agentic loop, real patchback, and Linux
 > replay on the configured alpha corpus (a single real RealLive target).
-> Cross-reference: `docs/audits/alpha-scope-honesty.md`
-> §D is the historical record of the redefinition that led to the rename;
-> the DAG re-tier follow-up lives at
-> [`docs/proposals/dag-retier-2026-06-24.md`](proposals/dag-retier-2026-06-24.md).
 
 ## 1. The Four-Tier Framework
 
@@ -74,9 +70,8 @@ fire and pieces can be swapped."
    audit state from real DB state (not fixtures); audit-findings dashboard
    work in flight extends this.
 6. **Repo hygiene.** `just check` / `just test` / `just ci` / `just hello`
-   green locally; no silenced tests that represent real outstanding work
-   (cross-ref `audits/silenced-2026-06-24.md`); no foreign-tool subprocess
-   invocations in production code.
+   green locally; no silenced tests that represent real outstanding work;
+   no foreign-tool subprocess invocations in production code.
 
 ### 2.2 alpha
 
@@ -187,11 +182,8 @@ These rules govern every tier:
   nodes, plans, or docs; sized scope, not calendar promises
   (`~/.claude/projects/-home-trevor-projects-itotori/memory/project_no_timeline.md`).
 
-## 5. DAG Re-Tier Proposal
+## 5. DAG Tiering
 
-The companion proposal at
-[`docs/proposals/dag-retier-2026-06-24.md`](proposals/dag-retier-2026-06-24.md)
-translates the four-tier framework into per-node `target` retagging across
-`roadmap/spec-dag.json`. Read it for the concrete node-by-node retag list;
-the present doc only fixes the framework vocabulary and acceptance
-criteria. `roadmap/spec-dag.json` is not mutated by this doc.
+The four-tier framework is applied to nodes via their `target` field in
+`roadmap/spec-dag.json`. This doc fixes the framework vocabulary and
+acceptance criteria; it does not mutate the DAG.

@@ -1,8 +1,7 @@
 # kaifuu-vault-source
 
 Read-only itotori vault-source `localCorpus` adapter. Implements the
-contract in `docs/itotori-vault-source-adapter.md` and the plan in
-`.plan/KAIFUU-176.md`.
+contract in `docs/itotori-vault-source-adapter.md`.
 
 ## What it does
 
