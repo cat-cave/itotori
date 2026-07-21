@@ -1,7 +1,7 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/audit-no-node-ids.mjs --update\". Each entry is a grandfathered\nnode-id token (the matched reference text, lower-cased); the multiset per file\nmay only shrink. When empty/deleted the guard is absolute (zero node ids).",
-  "generatedAt": "2026-07-21T14:49:13.430Z",
-  "total": 503,
+  "generatedAt": "2026-07-21T21:29:00.009Z",
+  "total": 496,
   "files": {
     "crates/kaifuu-cli/src/tests.rs": [
       "kaifuu-026",
@@ -59,8 +59,6 @@
       "kaifuu-126"
     ],
     "crates/kaifuu-core/src/bgi_readiness.rs": [
-      "kaifuu-041",
-      "kaifuu-041",
       "kaifuu-126",
       "kaifuu-126",
       "kaifuu-127",
@@ -120,9 +118,6 @@
     ],
     "crates/kaifuu-core/src/rgss3_smoke.rs": [
       "kaifuu-143"
-    ],
-    "crates/kaifuu-core/src/siglus_static_key.rs": [
-      "kaifuu-069"
     ],
     "crates/kaifuu-core/src/tests.rs": [
       "kaifuu-098",
@@ -223,11 +218,7 @@
       "kaifuu-189",
       "utsushi-146"
     ],
-    "crates/kaifuu-kirikiri/src/xp3_crypt.rs": [
-      "kaifuu-100"
-    ],
     "crates/kaifuu-kirikiri/src/xp3_crypt_chain.rs": [
-      "kaifuu-072",
       "kaifuu-072"
     ],
     "crates/kaifuu-kirikiri/src/xp3_patch.rs": [
@@ -331,10 +322,6 @@
     "crates/utsushi-core/src/port/impl_map/tests.rs": [
       "utsushi-146",
       "utsushi-146",
-      "utsushi-146"
-    ],
-    "crates/utsushi-core/src/port/impl_map/validator.rs": [
-      "utsushi-031",
       "utsushi-146"
     ],
     "crates/utsushi-fixture/src/mv_mz_review_package.rs": [
