@@ -94,9 +94,10 @@ impl RLOperation for ObjCreateOp {
         };
         hydrate_image_geometry(&self.runtime, &mut object);
         let layer = object_layer(self.plane);
-        self.runtime.with_stack_mut(|stack| {
-            let _ = stack.set_layer(layer, buf, object);
-        });
+        self.runtime.route_stack_result(
+            self.runtime
+                .with_stack_mut(|stack| stack.set_layer(layer, buf, object)),
+        );
         DispatchOutcome::Advance
     }
 }
@@ -136,9 +137,18 @@ impl RLOperation for ChildCreateOp {
             return DispatchOutcome::Advance;
         };
         hydrate_image_geometry(&self.runtime, &mut object);
-        self.runtime.with_stack_mut(|stack| {
-            let _ = stack.set_child(self.plane, parent, child, object);
-        });
+        // `set_child` returns bool (not `Result<(), GraphicsStackError>`):
+        // false means parent/child rejected (parent-capacity OOR, materialize
+        // failure). Route into the same diagnostic sink rather than `let _ =`.
+        let ok = self
+            .runtime
+            .with_stack_mut(|stack| stack.set_child(self.plane, parent, child, object));
+        if !ok {
+            self.runtime
+                .push_warning(GraphicsRuntimeWarning::SlotOutOfRange {
+                    slot: i32::try_from(child).unwrap_or(i32::MAX),
+                });
+        }
         DispatchOutcome::Advance
     }
 }
