@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { describe, expect, it } from "vitest";
 import type { BridgeBundle } from "@itotori/localization-bridge-schema";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
@@ -21,7 +22,10 @@ describe("ItotoriTranslationBatchRepository", () => {
   it("round-trips batches, units, and context refs and replaces them on re-save", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, fixtureProject());
       const repository = new ItotoriTranslationBatchRepository(context.db);
 
@@ -81,7 +85,10 @@ describe("ItotoriTranslationBatchRepository", () => {
   it("filters by sceneId when supplied", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, fixtureProject());
       const repository = new ItotoriTranslationBatchRepository(context.db);
       const input = batchesFixture();
@@ -142,6 +149,10 @@ function fixtureProject(): ItotoriProjectRecord {
   };
   return {
     projectId: "project-tbatch",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-tbatch",
     targetLocale: "en-US",
     drafts: {},

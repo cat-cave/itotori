@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { describe, expect, it } from "vitest";
 import { AuthorizationError, localUserId, type AuthorizationActor } from "../src/authorization.js";
 import {
@@ -18,7 +19,10 @@ describe("ItotoriModelRoutingSettingsRepository", () => {
   it("loads registry choices and persists a project task route", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
       await ledger.recordProviderRun(
@@ -171,6 +175,10 @@ function runInput(
 function projectFixture(): ItotoriProjectRecord {
   return {
     projectId: "project-test",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-en-us",
     targetLocale: "en-US",
     drafts: {},

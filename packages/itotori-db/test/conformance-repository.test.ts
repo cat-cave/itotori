@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { describe, expect, it } from "vitest";
 import type { BridgeBundle, ConformanceResultV01 } from "@itotori/localization-bridge-schema";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
@@ -26,6 +27,10 @@ function bridgeFixture(): BridgeBundle {
 function projectFixture(projectId: string): ItotoriProjectRecord {
   return {
     projectId,
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: `${projectId}-branch`,
     targetLocale: "en-US",
     drafts: {},
@@ -106,7 +111,10 @@ describe("ItotoriConformanceRepository", () => {
   it("conformance_repository_round_trips_a_pass_result_with_evidence_tier_byte_equal", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       const project = projectFixture("project-pass");
       await projectRepository.importSourceBundle(localActor, project);
       const artifactId = await insertReportArtifact(
@@ -149,7 +157,10 @@ describe("ItotoriConformanceRepository", () => {
   it("conformance_repository_round_trips_a_skip_result_without_evidence_tier", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       const project = projectFixture("project-skip");
       await projectRepository.importSourceBundle(localActor, project);
       const artifactId = await insertReportArtifact(
@@ -186,7 +197,10 @@ describe("ItotoriConformanceRepository", () => {
   it("conformance_repository_round_trips_a_fail_result_with_semantic_code", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       const project = projectFixture("project-fail");
       await projectRepository.importSourceBundle(localActor, project);
       const artifactId = await insertReportArtifact(
@@ -223,7 +237,10 @@ describe("ItotoriConformanceRepository", () => {
   it("conformance_repository_round_trips_an_unsupported_result_with_declared_in_manifest_false", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       const project = projectFixture("project-unsupported");
       await projectRepository.importSourceBundle(localActor, project);
       const artifactId = await insertReportArtifact(
@@ -259,7 +276,10 @@ describe("ItotoriConformanceRepository", () => {
   it("conformance_repository_persists_every_evidence_ref_kind", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       const project = projectFixture("project-evidence");
       await projectRepository.importSourceBundle(localActor, project);
       const artifactId = await insertReportArtifact(
@@ -321,7 +341,10 @@ describe("ItotoriConformanceRepository", () => {
   it("conformance_repository_direct_sql_rejects_malformed_runtime_artifact_refs", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       const project = projectFixture("project-absolute-uri");
       await projectRepository.importSourceBundle(localActor, project);
       const artifactId = await insertReportArtifact(
@@ -415,7 +438,10 @@ describe("ItotoriConformanceRepository", () => {
   it("conformance_repository_run_counts_match_sum_of_outcome_kind_rows", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       const project = projectFixture("project-counts");
       await projectRepository.importSourceBundle(localActor, project);
       const artifactId = await insertReportArtifact(

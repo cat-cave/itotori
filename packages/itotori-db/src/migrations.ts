@@ -573,6 +573,10 @@ export const migrations = [
     id: "0112_retire_benchmark_runs",
     file: "0112_retire_benchmark_runs.sql",
   },
+  {
+    id: "0113_project_engine_binding",
+    file: "0113_project_engine_binding.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

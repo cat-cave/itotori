@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
@@ -26,7 +27,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("persists provider identity, prompt presets, separated costs, and fallback metadata", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
@@ -165,7 +169,10 @@ describe("ItotoriModelLedgerRepository", () => {
     // layer.
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
@@ -199,7 +206,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("builds provider-run throughput and cost-per-run timeseries from the persisted ledger", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
@@ -259,7 +269,10 @@ describe("ItotoriModelLedgerRepository", () => {
     // runtime guard's behavior is observable.
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
@@ -283,7 +296,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("rejects provider runs with missing fallback chain or token drift", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
@@ -318,7 +334,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("rejects provider runs when reasoning tokens make total tokens drift", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
@@ -347,7 +366,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("records unknown token sources with component counters but no total", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
@@ -386,7 +408,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("atomically records benchmark artifacts with skipped partial-timing provider runs", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
 
       await projectRepository.recordBenchmarkArtifactWithProviderLedger(localActor, {
@@ -452,7 +477,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("rolls back benchmark artifacts and ledger rows when provider ledger ingestion conflicts", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
       await ledger.recordProviderRun(localActor, runInput("run-conflict-existing", "zero", 0));
@@ -504,7 +532,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("rejects unknown token sources with totalTokens", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
@@ -532,7 +563,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("rejects typo token count sources", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
@@ -560,7 +594,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("keeps provider run and cost rows append-only for duplicate run ids", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
@@ -589,7 +626,10 @@ describe("ItotoriModelLedgerRepository", () => {
     // `'false'`; assert the count by pair returns 2 enforced / 3 total.
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
@@ -628,7 +668,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("counts cost kinds by pair over a post-run window", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
@@ -714,7 +757,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("filters the cost drilldown by project with deterministic ordering + pagination metadata", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       await seedDrilldownRuns(context);
       const ledger = new ItotoriModelLedgerRepository(context.db);
@@ -750,7 +796,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("renders zero-cost and unknown-cost drilldown rows as DISTINCT states", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       await seedDrilldownRuns(context);
       const ledger = new ItotoriModelLedgerRepository(context.db);
@@ -787,7 +836,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("exposes provider adapter metadata WITHOUT surfacing raw provider payloads", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       await seedDrilldownRuns(context);
       const ledger = new ItotoriModelLedgerRepository(context.db);
@@ -827,7 +879,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("does not fabricate canonical cost fidelity: displayAmountUsd is micros-derived, NOT amountUsd", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
       // A sub-micro cost: the true upstream decimal was 0.00000602, but the
@@ -877,7 +932,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("sanitizeAdapterMetadata projects only known-safe fields; raw-payload synonyms AND nested raw bodies never surface (default-deny)", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
       // Adapter metadata carrying a CURATED safe field PLUS every raw-payload
@@ -973,7 +1031,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("projects openrouterMetadata to safe scalars only (no wholesale mirror) and is context-aware for source/summary", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
       await ledger.recordProviderRun(
@@ -1074,7 +1135,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("surfaces the top-level scalar `source` tag (benchmark ingest) while dropping non-scalar source", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
       await ledger.recordProviderRun(
@@ -1111,7 +1175,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("breaks started_at ties by provider_run_id desc with stable non-overlapping pages", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
       // Five rows with the SAME started_at. The tie-break must order them by
@@ -1187,7 +1254,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("filters by system and time and preserves totals + pagination across pages", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       await seedDrilldownRuns(context);
       const ledger = new ItotoriModelLedgerRepository(context.db);
@@ -1260,7 +1330,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("rejects prompt preset drift for an existing preset id and version", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
@@ -1308,7 +1381,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("keeps the project cost report available when a tm reuse event has a malformed cost_impact JSON", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
@@ -1446,7 +1522,10 @@ describe("ItotoriModelLedgerRepository", () => {
   it("does not surface a malformed-cost-impact diagnostic when every reuse event is well-formed", async () => {
     const context = await isolatedMigratedContext();
     try {
-      const projectRepository = new ItotoriProjectRepository(context.db);
+      const projectRepository = new ItotoriProjectRepository(
+        context.db,
+        testProjectEngineFamilyRegistry,
+      );
       await projectRepository.importSourceBundle(localActor, projectFixture());
       const ledger = new ItotoriModelLedgerRepository(context.db);
 
@@ -1563,6 +1642,10 @@ function runInput(
 function projectFixture(): ItotoriProjectRecord {
   return {
     projectId: "project-test",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-en-us",
     targetLocale: "en-US",
     drafts: {},

@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
@@ -70,7 +71,7 @@ async function rawInsertStyleGuideVersionChanged(
 }
 
 async function seedProject(db: ItotoriDatabase): Promise<void> {
-  const repo = new ItotoriProjectRepository(db);
+  const repo = new ItotoriProjectRepository(db, testProjectEngineFamilyRegistry);
   await repo.reset(localActor);
   await repo.importSourceBundle(localActor, {
     projectId: PROJECT_ID,

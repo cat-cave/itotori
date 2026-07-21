@@ -1279,6 +1279,10 @@ export const projects = pgTable(
     gameId: text("game_id"),
     gameVersion: text("game_version"),
     sourceProfileId: text("source_profile_id"),
+    engineFamily: text("engine_family"),
+    sourceRoot: text("source_root"),
+    buildRoot: text("build_root"),
+    extractProfile: jsonb("extract_profile").$type<Record<string, unknown>>(),
     createdByUserId: text("created_by_user_id").references(() => users.userId, {
       onDelete: "set null",
     }),

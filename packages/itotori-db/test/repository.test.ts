@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
@@ -104,6 +105,10 @@ function stableSerializeValue(value: unknown): string {
 function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriProjectRecord {
   const project: ItotoriProjectRecord = {
     projectId: "project-test",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-en-us",
     targetLocale: "en-US",
     drafts: { "bridge-unit-test": "Hello, {player}." },
@@ -141,6 +146,10 @@ function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriP
 function projectV02Fixture(bridge: BridgeBundleV02): ItotoriProjectRecord {
   return {
     projectId: "project-v02",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-v02-fr-fr",
     targetLocale: "fr-FR",
     drafts: {},
@@ -385,7 +394,7 @@ describe("ItotoriProjectRepository", () => {
   it("persists project, source bundle, units, artifacts, and branch status", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
 
@@ -529,7 +538,7 @@ describe("ItotoriProjectRepository", () => {
   it("rejects invalid bridge bundles before project import writes", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
       const unit = project.bridge.units[0]!;
@@ -577,7 +586,7 @@ describe("ItotoriProjectRepository", () => {
   it("rejects duplicate v0.2 bridge unit ids before project import writes", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const bridge = bridgeV02Fixture();
       const duplicateBridge: BridgeBundleV02 = {
@@ -617,7 +626,7 @@ describe("ItotoriProjectRepository", () => {
   it("rejects conflicting duplicate source revision ids before project import writes", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const bridge = bridgeV02Fixture();
       const conflictingBridge: BridgeBundleV02 = {
@@ -662,7 +671,7 @@ describe("ItotoriProjectRepository", () => {
   it("records source revision diffs on v0.2 reimport without duplicating revisions", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const bridge = bridgeV02Fixture();
       const project = projectV02Fixture(bridge);
@@ -748,7 +757,7 @@ describe("ItotoriProjectRepository", () => {
     // re-adding the unit/asset revives it (removed_at back to NULL).
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const bridge = bridgeV02Fixture();
       const omittedUnitId = "019ed001-0000-7000-8000-000000000210";
@@ -935,7 +944,7 @@ describe("ItotoriProjectRepository", () => {
   it("persists v0.2 patch exports with reordered explicit target span mappings", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const bridge = bridgeV02Fixture();
       const unit = bridge.units[0]!;
@@ -998,7 +1007,7 @@ describe("ItotoriProjectRepository", () => {
   it("rejects v0.2 patch exports with collapsed duplicate target span mappings", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const bridge = bridgeV02Fixture();
       const unit = bridge.units[0]!;
@@ -1060,7 +1069,7 @@ describe("ItotoriProjectRepository", () => {
   it("reads dashboard bundle fields and import status from the same latest import", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const firstProject = projectFixture();
       const firstUnit = firstProject.bridge.units[0]!;
@@ -1128,7 +1137,7 @@ describe("ItotoriProjectRepository", () => {
   it("rejects reused bridge unit ids from another source bundle before mutation", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const firstProject = projectFixture();
       const firstUnit = firstProject.bridge.units[0]!;
@@ -1178,7 +1187,7 @@ describe("ItotoriProjectRepository", () => {
   it("rejects reimport that changes bridge unit id for a stable source unit key", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
       const firstImport = await repo.importSourceBundle(localActor, project);
@@ -1249,7 +1258,7 @@ describe("ItotoriProjectRepository", () => {
     // fire); only the asset id is reused, isolating the asset guard.
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const firstProject = projectFixture();
       await repo.importSourceBundle(localActor, firstProject);
@@ -1301,7 +1310,7 @@ describe("ItotoriProjectRepository", () => {
     // validation, but its revision id is still reused from the first project.
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const bridge = bridgeV02Fixture();
       const firstImport = await repo.importSourceBundle(localActor, projectV02Fixture(bridge));
@@ -1318,6 +1327,10 @@ describe("ItotoriProjectRepository", () => {
       };
       const secondProject: ItotoriProjectRecord = {
         projectId: "project-cross-revision",
+        engineFamily: "synthetic_fixture",
+        sourceRoot: "/workspace/source",
+        buildRoot: "/workspace/build",
+        extractProfile: { adapter: "fixture" },
         localeBranchId: "locale-cross-revision-fr-fr",
         targetLocale: "fr-FR",
         drafts: {},
@@ -1359,7 +1372,7 @@ describe("ItotoriProjectRepository", () => {
     // isolating the bridge-unit guard (the last ownership check).
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const firstProject = projectFixture();
       const firstUnit = firstProject.bridge.units[0]!;
@@ -1420,7 +1433,7 @@ describe("ItotoriProjectRepository", () => {
     // validation requires the content-hash revision to match the bundle hash).
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const bridge = bridgeV02Fixture();
       const firstImport = await repo.importSourceBundle(localActor, projectV02Fixture(bridge));
@@ -1469,7 +1482,7 @@ describe("ItotoriProjectRepository", () => {
     // transition).
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const bridge = bridgeV02Fixture();
       const project = projectV02Fixture(bridge);
@@ -1531,7 +1544,7 @@ describe("ItotoriProjectRepository", () => {
     // partitions sum to the totals across the transition — no invalid status.
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const bridge = bridgeV02Fixture();
       const firstImport = await repo.importSourceBundle(localActor, projectV02Fixture(bridge));
@@ -1608,7 +1621,7 @@ describe("ItotoriProjectRepository", () => {
   it("reimports a migrated legacy bridge through its existing source bundle id", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       await context.pool.query(
         `
@@ -1809,7 +1822,7 @@ describe("ItotoriProjectRepository", () => {
   it("persists v0.2 runtime evidence tiers and bridge-linked evidence artifacts", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
       project.drafts = {
@@ -2208,7 +2221,7 @@ describe("ItotoriProjectRepository", () => {
     // repository now returns the REAL per-artifactKind counts.
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
       await repo.importSourceBundle(localActor, project);
@@ -2378,7 +2391,7 @@ describe("ItotoriProjectRepository", () => {
   it("normalizes multiple runtime evidence runs with validation findings", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
       await repo.importSourceBundle(localActor, project);
@@ -2681,7 +2694,7 @@ describe("ItotoriProjectRepository", () => {
   it("namespaces repeated runtime evidence child ids across reports", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
       await repo.importSourceBundle(localActor, project);
@@ -3067,7 +3080,7 @@ describe("ItotoriProjectRepository", () => {
   it("replaces stale runtime evidence projections when re-ingesting a corrected report", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
       await repo.importSourceBundle(localActor, project);
@@ -3311,7 +3324,7 @@ describe("ItotoriProjectRepository", () => {
   it("stores runtime artifact references without embedding artifact blobs", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
       await repo.importSourceBundle(localActor, project);
@@ -3513,7 +3526,7 @@ describe("ItotoriProjectRepository", () => {
   it("normalizes schema-portable runtime artifact refs to managed storage refs", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
       await repo.importSourceBundle(localActor, project);
@@ -3590,7 +3603,7 @@ describe("ItotoriProjectRepository", () => {
     // manifests cannot overstate placeholder evidence as content proof.
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
       await repo.importSourceBundle(localActor, project);
@@ -3742,7 +3755,7 @@ describe("ItotoriProjectRepository", () => {
     // them as content or fallback.
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
       await repo.importSourceBundle(localActor, project);
@@ -3799,7 +3812,7 @@ describe("ItotoriProjectRepository", () => {
     ] as const;
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
       await repo.importSourceBundle(localActor, project);
@@ -3859,7 +3872,7 @@ describe("ItotoriProjectRepository", () => {
   it("rejects malformed managed runtime artifact refs through repository and direct SQL", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
       await repo.importSourceBundle(localActor, project);
@@ -3929,7 +3942,7 @@ describe("ItotoriProjectRepository", () => {
   it("rejects legacy runtime capture refs through repository and direct SQL", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
       await repo.importSourceBundle(localActor, project);
@@ -3992,7 +4005,7 @@ describe("ItotoriProjectRepository", () => {
   it("supports multiple locale branches for one project", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
 
       await repo.importSourceBundle(localActor, projectFixture());
@@ -4019,7 +4032,7 @@ describe("ItotoriProjectRepository", () => {
   it("keeps stable locale branch identities for multiple targets on one source revision", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
 
       await repo.importSourceBundle(localActor, projectFixture());
@@ -4140,7 +4153,7 @@ describe("ItotoriProjectRepository", () => {
   it("lists recorded benchmark reports with persisted QA calibration", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       await repo.importSourceBundle(localActor, projectFixture());
 
@@ -4217,7 +4230,7 @@ describe("ItotoriProjectRepository", () => {
   it("records append-only events, findings, and artifact links", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       await repo.importSourceBundle(localActor, projectFixture());
 
@@ -4286,7 +4299,7 @@ describe("ItotoriProjectRepository", () => {
   it("reads dashboard pending decisions without inferring across finding sources", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       const project = projectFixture();
       await repo.importSourceBundle(localActor, project);
@@ -4397,7 +4410,7 @@ describe("ItotoriProjectRepository", () => {
   it("imports contextual manual feedback with line, screenshot, save context, and note", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       const feedbackRepo = new ItotoriFeedbackRepository(context.db);
       await repo.reset(localActor);
       await repo.importSourceBundle(localActor, projectFixture());
@@ -4493,7 +4506,7 @@ describe("ItotoriProjectRepository", () => {
   it("loads persisted correction context for contextual feedback from the imported source bundle", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       const feedbackRepo = new ItotoriFeedbackRepository(context.db);
       await repo.reset(localActor);
       await repo.importSourceBundle(localActor, projectFixture());
@@ -4569,7 +4582,7 @@ describe("ItotoriProjectRepository", () => {
   it("resolves the current branch source revision when a play flag omits sourceBundleId", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       const feedbackRepo = new ItotoriFeedbackRepository(context.db);
       await repo.reset(localActor);
       await repo.importSourceBundle(localActor, projectFixture());
@@ -4606,7 +4619,7 @@ describe("ItotoriProjectRepository", () => {
   it("rejects feedback without a canonical branch and bridge-unit target", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       await repo.importSourceBundle(localActor, projectFixture());
 
@@ -4641,7 +4654,7 @@ describe("ItotoriProjectRepository", () => {
   it("rejects an empty bridge-unit reference instead of parking a screenshot", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await repo.reset(localActor);
       await repo.importSourceBundle(localActor, projectFixture());
 
@@ -4666,7 +4679,7 @@ describe("ItotoriProjectRepository", () => {
   it("labels style preferences separately from objective defect candidates", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       const feedbackRepo = new ItotoriFeedbackRepository(context.db);
       await repo.reset(localActor);
       await repo.importSourceBundle(localActor, projectFixture());
@@ -4701,7 +4714,7 @@ describe("ItotoriProjectRepository", () => {
   it("does not aggregate different feedback types with the same explicit dedupe key", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       const feedbackRepo = new ItotoriFeedbackRepository(context.db);
       await repo.reset(localActor);
       await repo.importSourceBundle(localActor, projectFixture());
@@ -4754,7 +4767,7 @@ describe("ItotoriProjectRepository", () => {
   it("aggregates duplicate manual feedback evidence under one canonical report", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       const feedbackRepo = new ItotoriFeedbackRepository(context.db);
       await repo.reset(localActor);
       await repo.importSourceBundle(localActor, projectFixture());
@@ -4833,7 +4846,7 @@ describe("ItotoriProjectRepository", () => {
   it("rejects repository mutations without the required permission", async () => {
     const context = await migratedContext();
     try {
-      const repo = new ItotoriProjectRepository(context.db);
+      const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
 
       await expect(
         repo.importSourceBundle({ userId: "user-without-grants" }, projectFixture()),

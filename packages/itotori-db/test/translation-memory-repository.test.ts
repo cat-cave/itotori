@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import type { BridgeBundle } from "@itotori/localization-bridge-schema";
@@ -348,7 +349,7 @@ async function seedTranslationMemoryProject(
   db: ConstructorParameters<typeof ItotoriProjectRepository>[0],
   overrides: Partial<ItotoriProjectRecord> = {},
 ): Promise<void> {
-  const repository = new ItotoriProjectRepository(db);
+  const repository = new ItotoriProjectRepository(db, testProjectEngineFamilyRegistry);
   await repository.importSourceBundle(localActor, translationMemoryProjectFixture(overrides));
 }
 
@@ -357,6 +358,10 @@ function translationMemoryProjectFixture(
 ): ItotoriProjectRecord {
   return {
     projectId: "project-tm",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-en-us",
     targetLocale: "en-US",
     drafts: {

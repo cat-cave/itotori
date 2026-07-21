@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 // ITOTORI-145 — translation-memory CHECK-constraint schema-drift guard.
 //
 // Migration 0023 declared the translation-memory tables
@@ -147,13 +148,17 @@ function pgErrorCodeOf(error: unknown): string | undefined {
 async function seedTranslationMemoryProject(
   db: ConstructorParameters<typeof ItotoriProjectRepository>[0],
 ) {
-  const repository = new ItotoriProjectRepository(db);
+  const repository = new ItotoriProjectRepository(db, testProjectEngineFamilyRegistry);
   await repository.importSourceBundle(localActor, translationMemoryProjectFixture());
 }
 
 function translationMemoryProjectFixture(): ItotoriProjectRecord {
   return {
     projectId: "project-tm-drift-145",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-en-us-drift-145",
     targetLocale: "en-US",
     drafts: {},

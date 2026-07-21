@@ -81,7 +81,77 @@ import type { RuntimeBridgeUnitRefRole, RuntimeEvidenceKind } from "../schema.js
 export const defaultWorkspaceId = "local-workspace";
 export const defaultWorkspaceName = "Local workspace";
 
-export type ItotoriProjectRecord = {
+/** The adapter-owned extraction descriptor persisted with a project binding. */
+export type ProjectExtractProfile = Record<string, unknown>;
+
+/**
+ * The engine-specific project binding. The concrete registry belongs to the
+ * application composition layer, while the repository depends only on this
+ * narrow membership contract so it never owns a hardcoded engine list.
+ */
+export type ProjectEngineBinding = {
+  engineFamily: string;
+  sourceRoot: string;
+  buildRoot: string;
+  extractProfile: ProjectExtractProfile;
+};
+
+/** Registry contract enforced before a project binding is persisted. */
+export type ProjectEngineFamilyRegistry = {
+  has(engineFamily: string): boolean;
+};
+
+/** Raised when an import/provision request names an engine absent from its registry. */
+export class UnknownProjectEngineFamilyError extends Error {
+  constructor(readonly engineFamily: string) {
+    super(`engine family '${engineFamily}' is not registered for project binding`);
+  }
+}
+
+/**
+ * Guard the complete persisted binding at the project create/import boundary.
+ * Engine membership comes exclusively from the injected registry; this package
+ * deliberately cannot infer or name individual engine families.
+ */
+export function assertProjectEngineBinding(
+  binding: ProjectEngineBinding,
+  registry: ProjectEngineFamilyRegistry,
+): void {
+  // Engine binding is nullable until a project is (re-)imported with one (see
+  // migration 0113): rows/scopes that predate or do not carry a binding are
+  // valid and skip validation. Only a binding that is actually present is
+  // checked — a partially-supplied binding is a hard error.
+  const fields = [
+    binding.engineFamily,
+    binding.sourceRoot,
+    binding.buildRoot,
+    binding.extractProfile,
+  ];
+  const anyPresent = fields.some((value) => value !== undefined && value !== null);
+  if (!anyPresent) {
+    return;
+  }
+  if (!registry.has(binding.engineFamily)) {
+    throw new UnknownProjectEngineFamilyError(binding.engineFamily);
+  }
+  for (const [field, value] of [
+    ["sourceRoot", binding.sourceRoot],
+    ["buildRoot", binding.buildRoot],
+  ] as const) {
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new Error(`project ${field} must be a non-empty path`);
+    }
+  }
+  if (
+    typeof binding.extractProfile !== "object" ||
+    binding.extractProfile === null ||
+    Array.isArray(binding.extractProfile)
+  ) {
+    throw new Error("project extractProfile must be an object");
+  }
+}
+
+export type ItotoriProjectRecord = ProjectEngineBinding & {
   projectId: string;
   bridge: BridgeBundle | BridgeBundleV02;
   localeBranchId: string;
@@ -109,7 +179,7 @@ export type LoadLocaleBranchDraftTextsInput = {
  * live persist. Game-agnostic: every field is a
  * config value, never a hardcoded id.
  */
-export type LocalizationRunProjectScope = {
+export type LocalizationRunProjectScope = ProjectEngineBinding & {
   projectId: string;
   localeBranchId: string;
   sourceRevisionId: string;
@@ -472,7 +542,10 @@ export interface ItotoriProjectRepositoryPort {
 }
 
 export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
-  constructor(private readonly db: ItotoriDatabase) {}
+  constructor(
+    private readonly db: ItotoriDatabase,
+    private readonly engineFamilyRegistry: ProjectEngineFamilyRegistry,
+  ) {}
 
   async reset(actor: AuthorizationActor): Promise<void> {
     await requirePermission(this.db, actor, permissionValues.systemReset);
@@ -519,6 +592,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     project: ItotoriProjectRecord,
   ): Promise<BridgeImportStatus> {
     await requirePermission(this.db, actor, permissionValues.projectImport);
+    assertProjectEngineBinding(project, this.engineFamilyRegistry);
     assertImportableBridgeBundle(project.bridge);
     const normalized = normalizeSourceBundle(project);
 
@@ -546,6 +620,10 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           gameId: importTarget.sourceGame.gameId,
           gameVersion: importTarget.sourceGame.gameVersion,
           sourceProfileId: importTarget.sourceGame.sourceProfileId,
+          engineFamily: project.engineFamily,
+          sourceRoot: project.sourceRoot,
+          buildRoot: project.buildRoot,
+          extractProfile: project.extractProfile,
           createdByUserId: actor.userId,
         })
         .onConflictDoUpdate({
@@ -556,6 +634,10 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
             gameId: importTarget.sourceGame.gameId,
             gameVersion: importTarget.sourceGame.gameVersion,
             sourceProfileId: importTarget.sourceGame.sourceProfileId,
+            engineFamily: project.engineFamily,
+            sourceRoot: project.sourceRoot,
+            buildRoot: project.buildRoot,
+            extractProfile: project.extractProfile,
             updatedAt: sql`now()`,
           },
         });
@@ -856,6 +938,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     scope: LocalizationRunProjectScope,
   ): Promise<void> {
     await requirePermission(this.db, actor, permissionValues.projectImport);
+    assertProjectEngineBinding(scope, this.engineFamilyRegistry);
     const runScopeBundleId = `${scope.projectId}:${scope.sourceRevisionId}:run-scope`;
     await this.db.transaction(async (tx) => {
       await tx
@@ -872,6 +955,10 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           name: scope.projectId,
           sourceLocale: scope.sourceLocale,
           status: projectStatusValues.imported,
+          engineFamily: scope.engineFamily,
+          sourceRoot: scope.sourceRoot,
+          buildRoot: scope.buildRoot,
+          extractProfile: scope.extractProfile,
           createdByUserId: actor.userId,
         })
         .onConflictDoNothing();

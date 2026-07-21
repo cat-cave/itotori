@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { describe, expect, it } from "vitest";
 import { bootstrapLocalUser, localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { ItotoriDraftJobRepository } from "../src/repositories/draft-job-repository.js";
@@ -16,6 +17,10 @@ const localActor: AuthorizationActor = { userId: localUserId };
 describe("ItotoriProjectRepository.ensureRunProjectScope", () => {
   const scope = {
     projectId: "run-scope-project-60",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "run-scope-branch-60",
     sourceRevisionId: "run-scope-rev-60",
     targetLocale: "en-US",
@@ -38,7 +43,7 @@ describe("ItotoriProjectRepository.ensureRunProjectScope", () => {
     const context = await isolatedMigratedContext();
     try {
       await bootstrapLocalUser(context.db);
-      const projectRepo = new ItotoriProjectRepository(context.db);
+      const projectRepo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
 
       // Before: the parent rows the FK requires do not exist.
       expect(await countOf(context.pool, "itotori_projects", "project_id", scope.projectId)).toBe(
@@ -96,7 +101,7 @@ describe("ItotoriProjectRepository.ensureRunProjectScope", () => {
     const context = await isolatedMigratedContext();
     try {
       await bootstrapLocalUser(context.db);
-      const projectRepo = new ItotoriProjectRepository(context.db);
+      const projectRepo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
 
       await projectRepo.ensureRunProjectScope(localActor, scope);
       await projectRepo.ensureRunProjectScope(localActor, scope);

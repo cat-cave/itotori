@@ -1,3 +1,4 @@
+import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { type ItotoriDatabase } from "../src/connection.js";
@@ -26,6 +27,10 @@ function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriP
   const projectId = overrides.projectId ?? "project-test";
   const project: ItotoriProjectRecord = {
     projectId,
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/workspace/source",
+    buildRoot: "/workspace/build",
+    extractProfile: { adapter: "fixture" },
     localeBranchId: "locale-en-us",
     targetLocale: "en-US",
     drafts: { [`${projectId}-unit`]: "Hello, {player}." },
@@ -294,7 +299,7 @@ describe("ItotoriEventQueueRepository.loadQueueHealth", () => {
     try {
       // Seed BOTH projects after a single reset (seedProject resets, so calling
       // it twice would wipe the first project).
-      const projectRepo = new ItotoriProjectRepository(context.db);
+      const projectRepo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
       await projectRepo.reset(localActor);
       await projectRepo.importSourceBundle(localActor, projectFixture());
       await projectRepo.importSourceBundle(
@@ -385,7 +390,7 @@ async function seedProject(
   db: ItotoriDatabase,
   overrides: Partial<ItotoriProjectRecord> = {},
 ): Promise<void> {
-  const repo = new ItotoriProjectRepository(db);
+  const repo = new ItotoriProjectRepository(db, testProjectEngineFamilyRegistry);
   await repo.reset(localActor);
   await repo.importSourceBundle(localActor, projectFixture(overrides));
 }
