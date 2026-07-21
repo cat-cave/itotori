@@ -216,7 +216,20 @@ export async function withDatabaseItotoriServices<T>(
             },
             draftBudget: { budgetBytes: 16_384, overlapUnits: 1 },
           });
-          return await substrate.resolvePortSource(request, perRun);
+          const source = await substrate.resolvePortSource(request, perRun);
+          if (perRun.projectRun === undefined) return source;
+          return {
+            ...source,
+            runPlane: {
+              ...perRun.projectRun,
+              contextSnapshotId: contextSnapshot.snapshotId,
+              localizationSnapshotId: localizationSnapshot.snapshotId,
+              capMicrosUsd: decimalUsdToExactMicros(
+                config.confirmedCostCapUsd,
+                "ITOTORI_LOCALIZE_COST_CAP_USD",
+              ),
+            },
+          };
         },
       },
     });
@@ -439,6 +452,30 @@ function revisionRef(contentHash: `sha256:${string}`): LlmRevisionRef {
     revisionId: contentHash.slice("sha256:".length),
     contentHash,
   };
+}
+
+function decimalUsdToExactMicros(value: string, label: string): number {
+  const micros = decimalUsdToMicros(value, label);
+  if (micros.remainder !== 0) {
+    throw new Error(`${label} must be representable in whole micros-USD for a project run`);
+  }
+  return micros.floor;
+}
+
+function decimalUsdToMicros(value: string, label: string): { floor: number; remainder: number } {
+  const match = /^(\d+)(?:\.(\d+))?$/u.exec(value);
+  if (match === null) throw new Error(`${label} must be a non-negative decimal USD value`);
+  const whole = Number(match[1]);
+  const fraction = match[2] ?? "";
+  if (!Number.isSafeInteger(whole) || fraction.length > 18) {
+    throw new Error(`${label} is outside the supported project-run cost range`);
+  }
+  const microFraction = `${fraction.slice(0, 6)}${"0".repeat(Math.max(0, 6 - fraction.length))}`;
+  const floor = whole * 1_000_000 + Number(microFraction);
+  if (!Number.isSafeInteger(floor)) {
+    throw new Error(`${label} is outside the supported project-run cost range`);
+  }
+  return { floor, remainder: Number(fraction.slice(6) || "0") };
 }
 
 function requireEnvironmentValue(

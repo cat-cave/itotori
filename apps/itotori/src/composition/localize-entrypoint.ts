@@ -23,12 +23,37 @@ import type {
 import { createWorkflowPorts } from "./workflow-ports.js";
 import type { WorkflowPortDeps } from "./deps.js";
 import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
+import type { PhysicalAttemptCostObserver } from "../llm/physical-attempt-policy.js";
 
 /** Per-invocation decode artifacts. The live service owns DB/auth/dispatch;
  * callers must provide the matching structure and bridge for each run. */
 export interface LocalizationPerRunInput {
   readonly structureJson: unknown;
   readonly bridge: BridgeBundleV02;
+  /**
+   * The durable identity the CLI has assigned to this invocation. The live
+   * factory binds it to the snapshots it creates; offline/API callers that do
+   * not own a project-run omit it.
+   */
+  readonly projectRun?: {
+    readonly projectId: string;
+    readonly runId: string;
+    readonly localeBranchId: string;
+    readonly leaseOwnerId: string;
+  };
+}
+
+/** Durable run-plane coordinates returned by a live localization substrate.
+ * The command owns the lifecycle; the substrate owns the snapshot and bounded
+ * physical-call data that are only knowable after it has been assembled. */
+export interface LocalizationRunPlane {
+  readonly projectId: string;
+  readonly runId: string;
+  readonly localeBranchId: string;
+  readonly contextSnapshotId: string;
+  readonly localizationSnapshotId: string;
+  readonly capMicrosUsd: number | null;
+  readonly leaseOwnerId: string;
 }
 
 /** Build the live workflow ports that wrap the named pipeline entrypoints. This
@@ -41,8 +66,20 @@ export function buildLocalizationPorts(deps: WorkflowPortDeps): WorkflowPorts {
  * (`{ deps }`); a proof passes fake ports (`{ ports }`) to drive the driver
  * without constructing the decode/ZDR/CAS substrate. Exactly one is given. */
 export type LocalizationPortSource =
-  | { readonly deps: WorkflowPortDeps; readonly ports?: undefined }
-  | { readonly ports: WorkflowPorts; readonly deps?: undefined };
+  | {
+      readonly deps: WorkflowPortDeps;
+      readonly ports?: undefined;
+      readonly runPlane?: LocalizationRunPlane;
+      readonly attachRunCostObserver?: undefined;
+    }
+  | {
+      readonly ports: WorkflowPorts;
+      readonly deps?: undefined;
+      readonly runPlane?: LocalizationRunPlane;
+      /** Recorded/offline providers can receive the same physical-attempt
+       * observer as live dispatch before their port is invoked. */
+      readonly attachRunCostObserver?: (observer: PhysicalAttemptCostObserver) => WorkflowPorts;
+    };
 
 /** Resolve the ports for a request from either the live substrate or an injected
  * fake ports object. */
