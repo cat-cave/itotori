@@ -10,8 +10,9 @@ import { assetLocalizationDecisionAssetKindList } from "@itotori/db";
  *   - /projects/:projectId/locale-branches/:localeBranchId/asset-decisions
  *   - /projects/:projectId/locale-branches/:localeBranchId/asset-decisions/batch
  *
- * The pathname patterns are deliberately stable so the SPA bootstrap
- * (apps/itotori/src/main.ts) can dispatch to {@link renderAssetDecisionsRoute}.
+ * `parseAssetDecisionsRoute` parses these pathname patterns. The SPA's
+ * legacy-route bridge (`apps/itotori/src/ui/legacy-routes.ts`) matches the
+ * same paths and dynamically imports `renderAssetDecisionsRoute` from `route.ts`.
  */
 export const assetDecisionsRoutePathRegex =
   /^\/projects\/([^/]+)\/locale-branches\/([^/]+)\/asset-decisions(\/batch)?$/u;

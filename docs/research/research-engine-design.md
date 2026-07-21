@@ -6,12 +6,6 @@ proposal ids here are preserved only as research context. Use
 [`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md) for current
 live DAG mappings.
 
-**Implementation note:** A temporary Python pipeline exists today under [`/research`](../../research)
-and is producing real data. This document specifies the **full feature set** so the work
-can be promoted into the monorepo as a first-class Rust subsystem (DB + migrations + core
-schema) with proper DAG nodes. The Python pipeline is the prototype/oracle; the Rust
-subsystem is the product.
-
 **Goal.** Build one unified, entity-resolved catalog of Japanese games across VNDB, EGS,
 DLsite, and Steam (extensible), with a precise per-language **completeness** model, so we
 can rank **localization opportunities** — especially abandoned/partial/MTL translations and

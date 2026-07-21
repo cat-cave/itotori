@@ -135,7 +135,7 @@ to migrate toward; no code change is required by the decision itself.
 substrate. The `RuntimeAdapter` registry is the thin CLI dispatch
 seam, not a competing runtime.** These two are not symmetric
 competitors: `EnginePortAdapter<P>` already
-`impl RuntimeAdapter` (`crates/utsushi-core/src/port/mod.rs:129`),
+`impl RuntimeAdapter` (`crates/utsushi-core/src/port/runtime_adapter.rs:122`),
 so the canonical shape is the port substrate sitting _behind_ the
 dispatch seam. Every adapter registered into
 `RuntimeAdapterRegistry` is — at the canonical endpoint — an

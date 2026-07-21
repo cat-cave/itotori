@@ -42,7 +42,7 @@ A test is **behavior** (black-box) when its assertion point is one of:
 - bytes a real decoder/patcher produced (the real-bytes oracle lanes
   `crates/**/tests/*_real_bytes.rs`);
 - a rendered DOM node (a `jsdom` suite asserting on visible text or accessible
-  state), e.g. `apps/itotori/test/dashboard.test.ts`.
+  state), e.g. `apps/itotori/test/asset-decisions-dashboard-view.test.ts`.
 
 A test is **white-box** when it bypasses the public boundary to assert on an
 internal seam: a direct handler/module invocation (e.g.

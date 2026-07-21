@@ -18,7 +18,7 @@ use super::schema::{
 /// (and stamped into the map's `statusDisclaimer` field on
 /// promotion). Consumers MUST surface this whenever they surface
 /// [`Status::Validated`].
-pub const STATUS_VALIDATED_DISCLAIMER: &str = "impl_map.status=Validated proves the coverage scaffolding is structurally valid. It is NOT alpha-readiness evidence, NOT a port readiness signal, and NOT a substitute for the engine-port slice. Acceptance of the engine port requires a separately-landed slice (UTSUSHI-031..039, UTSUSHI-146) whose verification commands produce the evidence this map points to.";
+pub const STATUS_VALIDATED_DISCLAIMER: &str = "impl_map.status=Validated proves the coverage scaffolding is structurally valid. It is NOT alpha-readiness evidence or a port readiness signal. Engine-port acceptance requires the port implementation and its verification evidence; this map records the coverage those checks use.";
 
 /// Successful validation report.
 #[derive(Clone, Debug, PartialEq, Eq)]

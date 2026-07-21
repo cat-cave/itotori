@@ -4426,10 +4426,9 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
     }
 
     fn patch_preflight(&self, request: PatchPreflightRequest<'_>) -> KaifuuResult<PatchResult> {
-        // Length-preserving budget check: every PatchExportEntry whose
-        // target Shift-JIS bytes exceed the source slot's byte budget
-        // emits an OffsetOverflow failure. Other failures (unknown slot,
-        // encode failure) are deferred to the real `patch` call.
+        // Preflight confirms that source slots resolve and that every target
+        // can encode as Shift-JIS. The bundle-driven patch path supports
+        // length changes, so target length is not a preflight failure.
         let state = Self::inspect(request.game_dir);
         if !Self::is_detected(state.variant) {
             return Ok(self.unsupported_patch_result(
@@ -4517,11 +4516,11 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
             failures,
         };
 
-        // Canonical patch-back route (/ ALPHA-006c): rebuild
+        // Canonical patch-back route: rebuild
         // the v0.2 BridgeBundle per scene via `produce_bundle`, match the
-        // PatchExport entries to bridge units by `bridgeUnitId`, enforce the
-        // length-preserving budget, and apply through
-        // `bundle_driven::apply_translated_bundle`. Gameexe.ini feeds the
+        // PatchExport entries to bridge units by `bridgeUnitId`, then applies
+        // the length-changing bundle through `bundle_driven::apply_translated_bundle`.
+        // Gameexe.ini feeds the
         // producer's voice/asset inventory (best-effort; absent ->
         // empty).
         let gameexe_path =
@@ -8362,8 +8361,9 @@ mod tests {
                 "missing supported {required:?}; got: {supported:?}"
             );
         }
-        // Patching / AssetTextPatching / LineParityPatching are Limited
-        // because is length-preserving only.
+        // Patching / AssetTextPatching / LineParityPatching are Limited to
+        // one scene-scoped bundle per call and the configured text slots;
+        // multi-scene rebuilds and image-overlaid g00 text are out of scope.
         for limited in [
             Capability::Patching,
             Capability::AssetTextPatching,
