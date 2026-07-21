@@ -28,7 +28,7 @@ import type {
   ApiProjectsResponse,
   JobsRunTableRow,
 } from "../../api-schema.js";
-import { useApiQuery } from "../use-api-resource.js";
+import { useApiQuery, usePolledApiQuery } from "../use-api-resource.js";
 import { useOffsetPager } from "../use-offset-pager.js";
 import { decisionGroupSignal, groupedBranchDecisions } from "../format.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
@@ -36,12 +36,15 @@ import { VirtualList } from "../virtual-list.js";
 import { CostDrilldownPanel } from "./CostDrilldownPanel.js";
 import { QaFindingsBand } from "./DecisionsBand.js";
 import { PassLedgerPanel } from "./PassLedgerPanel.js";
+import { PORTFOLIO_PROGRESS_POLL_MS, PortfolioProgressPanel } from "./PortfolioProgressPanel.js";
 import { ProgressInstrumentPanel } from "./ProgressInstrumentPanel.js";
 
 const DASHBOARD_JOBS_PAGE_SIZE = 100;
 
 export function DashboardScreen(): ReactNode {
-  const projects = useApiQuery("projects.list", {}, "projects");
+  // Live portfolio: poll `projects.list` so concurrent project progress advances
+  // without a manual refresh. Sibling panels share the same polled state.
+  const projects = usePolledApiQuery("projects.list", {}, "projects", PORTFOLIO_PROGRESS_POLL_MS);
   const status = useApiQuery("projects.status", {}, "status");
   const decisions = useApiQuery("projects.decisions", {}, "decisions");
   const cost = useApiQuery("projects.cost", {}, "cost");
@@ -64,6 +67,8 @@ export function DashboardScreen(): ReactNode {
           glance. Read-only legibility; the detailed panels follow. */}
 
       <FirstRunPanel projects={projects} />
+
+      <PortfolioProgressPanel projects={projects} />
 
       <QaFindingsBand />
 

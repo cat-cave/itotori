@@ -7,7 +7,7 @@
 // `useApiQuery` whenever its dependency key changes, so a route param change
 // issues a fresh typed call.
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ApiCallState, ApiResource } from "../api-client.js";
 import type { ApiRequestOptionsFor, ApiRouteResponse } from "../api-client.js";
 import type { ItotoriApiRouteId } from "../api-schema.js";
@@ -52,6 +52,53 @@ export function useApiQuery<R extends ItotoriApiRouteId>(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const resource = useMemo(() => apiClient.query(routeId, options), [routeId, depsKey]);
   return useApiResource(resource);
+}
+
+/**
+ * Like `useApiQuery`, but re-issues the typed call on an interval so live
+ * portfolio / progress surfaces advance without a full page reload.
+ *
+ * Poll ticks re-create the `ApiResource` (which starts in `loading`); this
+ * hook retains the last settled `ready` / `empty` / `error` so the UI does
+ * not flash a loading panel between refreshes. A `depsKey` change resets
+ * retention so a genuine identity change still shows loading on first paint.
+ */
+export function usePolledApiQuery<R extends ItotoriApiRouteId>(
+  routeId: R,
+  options: ApiRequestOptionsFor<R>,
+  depsKey: string,
+  intervalMs: number,
+): ApiCallState<ApiRouteResponse<R>> {
+  const [pollTick, setPollTick] = useState(0);
+  const retainedRef = useRef<ApiCallState<ApiRouteResponse<R>>>({ state: "loading" });
+  const retainedKeyRef = useRef(depsKey);
+
+  if (retainedKeyRef.current !== depsKey) {
+    retainedKeyRef.current = depsKey;
+    retainedRef.current = { state: "loading" };
+  }
+
+  useEffect(() => {
+    if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+      return;
+    }
+    const id = window.setInterval(() => {
+      setPollTick((tick) => tick + 1);
+    }, intervalMs);
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [intervalMs]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const resource = useMemo(() => apiClient.query(routeId, options), [routeId, depsKey, pollTick]);
+  const state = useApiResource(resource);
+  if (state.state !== "loading") {
+    retainedRef.current = state;
+  }
+  return state.state === "loading" && retainedRef.current.state !== "loading"
+    ? retainedRef.current
+    : state;
 }
 
 export function useApiQueryWhen<R extends ItotoriApiRouteId>(
