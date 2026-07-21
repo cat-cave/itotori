@@ -194,6 +194,20 @@ pub enum VmWarning {
         selected: u16,
         choice_count: usize,
     },
+    /// A cosmetic `msg.br` line-break flush (used by the replay
+    /// drivers to force a pending text run into the sink) returned a
+    /// [`crate::DispatchOutcome`] other than `Advance`. The flush is
+    /// not applied as control flow — only recorded — so a future op
+    /// change that starts transferring on `msg.br` cannot silently
+    /// corrupt the in-flight step.
+    UnexpectedCosmeticFlush {
+        /// Scene id where the flush was attempted.
+        scene: SceneId,
+        /// pc where the flush was attempted.
+        pc: u32,
+        /// Debug form of the unexpected [`crate::DispatchOutcome`].
+        found: String,
+    },
 }
 
 /// Typed error variants surfaced by [`Vm::step`]. Every failure mode is

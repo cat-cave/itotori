@@ -67,18 +67,23 @@
 //! special-cased plain `=`, `0x14..=0x1D` are the compound forms.)
 //!
 //! The `0x1F..=0x24` slots are accepted by the bytecode walker but
-//! their semantics are not documented in RLDEV; the parser surfaces
-//! them as an [`ExpressionWarning::UnknownOperator`] under the
-//! partial-result rule.
+//! their semantics are not documented in RLDEV; the two public entry
+//! points handle them differently (see below).
 //!
-//! # Partial-result recovery
+//! # Dual path: decompile (fail-closed) vs emulator (fail-soft)
 //!
-//! Acceptance rule for unknown operators: an unknown operator byte in
-//! the continuation slot does not abort the parse. The parser emits an
-//! [`ExpressionWarning::UnknownOperator`] in the returned warning vector
-//! (see [`ParsedExpression`]) and treats the byte as a single-byte
-//! literal so the partial AST built so far is still returned to the
-//! caller.
+//! - [`parse_expression`] is the **decompile / strict** path. An
+//!   unknown operator byte is a typed
+//!   [`ExpressionParseError::UnknownOperator`] — no fabricated
+//!   `+ 0` / partial AST. Static tools and re-decompile acceptance
+//!   must not silently paper over coverage gaps.
+//! - [`parse_expression_with_warnings`] is the **emulator / replay**
+//!   path. An unknown operator emits
+//!   [`ExpressionWarning::UnknownOperator`] and recovers with a
+//!   partial result (treat the slot as terminating the arithmetic
+//!   chain / a zero operand) so the VM can keep making progress.
+//!   Callers that care about coverage assert the warning vector is
+//!   empty on real bytes.
 //!
 //! # Empty input
 //!
@@ -344,15 +349,18 @@ pub enum ExprNode {
     },
 }
 
-/// Non-fatal warning surfaced by [`parse_expression`].
+/// Non-fatal warning surfaced by [`parse_expression_with_warnings`]
+/// (emulator / recover path). The decompile path
+/// ([`parse_expression`]) promotes the same condition to
+/// [`ExpressionParseError::UnknownOperator`] instead.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExpressionWarning {
-    /// An operator byte outside the documented [`ExprOp`]
+    /// An operator byte outside the documented [`ExprOp`] /
     /// [`AssignOp`] / [`UnaryOp`] table appeared at `offset`. The
-    /// parser recovered by treating the unknown byte as a single-byte
-    /// int-literal and continued. Audit code uses the typed code
-    /// `utsushi.reallive.unknown_expression_operator` (see
-    /// [`ExpressionWarning::AUDIT_CODE_UNKNOWN_OPERATOR`]).
+    /// recover-path parser treated the unknown byte as a terminating
+    /// partial result (or a zero operand) and continued. Audit code
+    /// uses the typed code `utsushi.reallive.unknown_expression_operator`
+    /// (see [`ExpressionWarning::AUDIT_CODE_UNKNOWN_OPERATOR`]).
     UnknownOperator {
         /// Raw operator byte that was not recognised.
         byte: u8,
@@ -377,9 +385,14 @@ impl ExpressionWarning {
     }
 }
 
-/// Typed parse-side failure modes. Recoverable conditions surface as
-/// [`ExpressionWarning`]s; only structural breaks (truncated input
-/// missing brackets / parens) become errors here.
+/// Typed parse-side failure modes.
+///
+/// On the **decompile / strict** path ([`parse_expression`]), unknown
+/// operator bytes are also errors ([`Self::UnknownOperator`]). On the
+/// **emulator / recover** path ([`parse_expression_with_warnings`]),
+/// those same bytes surface as [`ExpressionWarning`]s instead; only
+/// structural breaks (truncated input, missing brackets / parens)
+/// become errors there.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ExpressionParseError {
     /// Input slice was empty. The "no silent zero-state" alpha-gate
@@ -408,9 +421,26 @@ pub enum ExpressionParseError {
         /// Human-readable diagnostic.
         message: String,
     },
+
+    /// An operator byte outside the documented [`ExprOp`] /
+    /// [`AssignOp`] / [`UnaryOp`] tables appeared at `position`.
+    /// Returned only by the decompile / strict path
+    /// ([`parse_expression`]); the emulator path recovers with
+    /// [`ExpressionWarning::UnknownOperator`] instead.
+    #[error(
+        "expression parser: unknown operator byte 0x{byte:02x} at offset {position} \
+         (utsushi.reallive.unknown_expression_operator)"
+    )]
+    UnknownOperator {
+        /// Raw operator byte that was not recognised.
+        byte: u8,
+        /// Byte offset (within the input slice) at which the unknown
+        /// operator appeared.
+        position: usize,
+    },
 }
 
-/// Top-level entry point.
+/// Decompile / strict entry point.
 ///
 /// Parses a single RealLive expression byte stream and returns the
 /// produced [`ExprNode`] plus the number of bytes consumed. The
@@ -423,9 +453,11 @@ pub enum ExpressionParseError {
 /// `<dest_term> \<assign_op> <source>`), the returned node is an
 /// [`ExprNode::Assignment`].
 ///
-/// Non-fatal warnings surfaced during the parse (e.g. unknown operator
-/// bytes) are absorbed into the partial result; use
-/// [`parse_expression_with_warnings`] when callers want the warnings.
+/// This path is **fail-closed** on unknown operator bytes: they
+/// surface as [`ExpressionParseError::UnknownOperator`] rather than a
+/// fabricated partial AST. Emulator / replay callers that need
+/// fail-soft recovery must use
+/// [`parse_expression_with_warnings`] instead.
 ///
 /// # Errors
 ///
@@ -434,8 +466,11 @@ pub enum ExpressionParseError {
 /// - [`ExpressionParseError::Malformed`] when a documented structural
 ///   opener was not followed by a documented continuation (e.g. a
 ///   memory reference missing its `]`).
+/// - [`ExpressionParseError::UnknownOperator`] when an op byte outside
+///   the documented tables appears in a continuation / unary / term
+///   slot.
 pub fn parse_expression(bytes: &[u8]) -> Result<(ExprNode, usize), ExpressionParseError> {
-    let parsed = parse_expression_with_warnings(bytes)?;
+    let parsed = parse_expression_inner(bytes, /*recover_unknown_operators=*/ false)?;
     Ok((parsed.node, parsed.consumed))
 }
 
@@ -449,13 +484,26 @@ pub struct ParsedExpression {
     /// Number of bytes consumed from the input.
     pub consumed: usize,
     /// Non-fatal warnings emitted during the parse (unknown operator
-    /// bytes etc.).
+    /// bytes etc.). Empty when no recovery was needed.
     pub warnings: Vec<ExpressionWarning>,
 }
 
-/// As [`parse_expression`], but surfaces the warning vector.
+/// Emulator / replay entry point: fail-soft on unknown operators.
+///
+/// Same productions as [`parse_expression`], but an unknown operator
+/// byte emits [`ExpressionWarning::UnknownOperator`] and recovers
+/// with a partial AST instead of returning
+/// [`ExpressionParseError::UnknownOperator`]. Structural failures
+/// (truncated / malformed) remain hard errors.
 pub fn parse_expression_with_warnings(
     bytes: &[u8],
+) -> Result<ParsedExpression, ExpressionParseError> {
+    parse_expression_inner(bytes, /*recover_unknown_operators=*/ true)
+}
+
+fn parse_expression_inner(
+    bytes: &[u8],
+    recover_unknown_operators: bool,
 ) -> Result<ParsedExpression, ExpressionParseError> {
     if bytes.is_empty() {
         return Err(ExpressionParseError::Truncated {
@@ -466,7 +514,7 @@ pub fn parse_expression_with_warnings(
         });
     }
 
-    let mut state = ParserState::new(bytes);
+    let mut state = ParserState::new(bytes, recover_unknown_operators);
 
     // Try assignment shape first. The assignment shape is unique to a
     // standalone ExpressionElement and is the form callers feed in
@@ -510,15 +558,21 @@ struct ParserState<'a> {
     warnings: Vec<ExpressionWarning>,
     /// Current grouping / unary nesting depth (see [`MAX_EXPRESSION_DEPTH`]).
     depth: usize,
+    /// When `true` (emulator path), unknown operator bytes emit
+    /// [`ExpressionWarning::UnknownOperator`] and recover. When `false`
+    /// (decompile path), they return
+    /// [`ExpressionParseError::UnknownOperator`].
+    recover_unknown_operators: bool,
 }
 
 impl<'a> ParserState<'a> {
-    fn new(bytes: &'a [u8]) -> Self {
+    fn new(bytes: &'a [u8], recover_unknown_operators: bool) -> Self {
         Self {
             bytes,
             pos: 0,
             warnings: Vec::new(),
             depth: 0,
+            recover_unknown_operators,
         }
     }
 
@@ -551,6 +605,22 @@ impl<'a> ParserState<'a> {
         ExpressionParseError::Malformed {
             position,
             message: message.into(),
+        }
+    }
+
+    /// Emulator: push [`ExpressionWarning::UnknownOperator`] and return
+    /// `Ok(())`. Decompile: return
+    /// [`ExpressionParseError::UnknownOperator`].
+    fn on_unknown_operator(&mut self, byte: u8, offset: usize) -> Result<(), ExpressionParseError> {
+        if self.recover_unknown_operators {
+            self.warnings
+                .push(ExpressionWarning::UnknownOperator { byte, offset });
+            Ok(())
+        } else {
+            Err(ExpressionParseError::UnknownOperator {
+                byte,
+                position: offset,
+            })
         }
     }
 
@@ -695,26 +765,22 @@ fn parse_arith(state: &mut ParserState<'_>) -> Result<ExprNode, ExpressionParseE
             };
             continue;
         }
-        // Partial-result recovery: if the slot is a `\` followed by a
-        // byte that is NOT a documented binary / comparison / logical
-        // op AND NOT an assignment op AND NOT a unary-position byte
-        // (we are past the term so `\x00` / `\x01` would be unary
-        // continuation which is structurally invalid here), emit a
-        // warning and treat the unknown byte as an int-literal. This
-        // is the partial-result acceptance rule.
+        // Unknown-operator slot: `\` + a byte outside every documented
+        // binary / comparison / logical / assignment / unary table.
+        // Emulator path: warn + yield the partial result so far (as if
+        // the unknown byte were a terminating `+ 0`). Decompile path:
+        // typed error (no fabricated AST).
+        //
+        // `position` / warning `offset` identify the unknown *operator
+        // byte* (peek(1)), not the backslash cursor — matching
+        // [`ExpressionParseError::UnknownOperator`] / [`ExpressionWarning`].
         if peek_unknown_binary_op_slot(state) {
-            let offset = state.pos;
             let unknown_byte = state.peek(1).unwrap_or(0);
-            state.warnings.push(ExpressionWarning::UnknownOperator {
-                byte: unknown_byte,
-                offset,
-            });
-            // Consume the `\` + unknown byte and continue parsing as
-            // if the unknown byte were a binary `+` with literal 0 on
-            // the right — i.e. yield the partial result so far.
+            let op_position = state.pos + 1;
+            state.on_unknown_operator(unknown_byte, op_position)?;
+            // Consume the `\` + unknown byte and terminate the
+            // arithmetic continuation chain with the partial LHS.
             state.advance(2);
-            // Do NOT continue the loop; partial result terminates the
-            // arithmetic continuation chain.
             break;
         }
         break;
@@ -725,8 +791,8 @@ fn parse_arith(state: &mut ParserState<'_>) -> Result<ExprNode, ExpressionParseE
 /// Detect a `\<op>` slot whose op byte is not in any documented
 /// continuation table. Returns true only when the bytes after the
 /// backslash are clearly meant as an op continuation but the byte is
-/// outside the union of [`ExprOp`] / [`AssignOp`] tables — covering the
-/// unknown-operator-byte case.
+/// outside the union of [`ExprOp`] / [`AssignOp`] / [`UnaryOp`] tables
+/// — covering the unknown-operator-byte case.
 fn peek_unknown_binary_op_slot(state: &ParserState<'_>) -> bool {
     if state.current() != Some(EXPRESSION_BACKSLASH) {
         return false;
@@ -734,9 +800,14 @@ fn peek_unknown_binary_op_slot(state: &ParserState<'_>) -> bool {
     let Some(op_byte) = state.peek(1) else {
         return false;
     };
-    // Skip unary-position bytes (they only appear at the start of a
-    // term, not in an arithmetic continuation slot).
-    ExprOp::from_byte(op_byte).is_none() && AssignOp::from_byte(op_byte).is_none()
+    // Exclude every documented table, including [`UnaryOp`]. A unary
+    // byte (`0x00`/`0x01`) after a term is invalid grammar (unary forms
+    // only open a term), but it is still a *known* op byte — not
+    // [`ExpressionParseError::UnknownOperator`]. Leaving the `\` unconsumed
+    // lets the arithmetic loop terminate without a false "unknown" label.
+    ExprOp::from_byte(op_byte).is_none()
+        && AssignOp::from_byte(op_byte).is_none()
+        && UnaryOp::from_byte(op_byte).is_none()
 }
 
 /// Peek for a `\<op>` slot whose op byte is in `allowed`. Returns the
@@ -805,13 +876,12 @@ fn parse_term_body(state: &mut ParserState<'_>) -> Result<ExprNode, ExpressionPa
             return Err(state.truncated(1, "term: backslash-prefixed unary form truncated"));
         };
         let Some(unary_op) = UnaryOp::from_byte(op_byte) else {
-            // Unknown unary byte — partial-result recovery: emit a
-            // warning, consume `\` + byte, return a 0 literal so the
-            // outer arithmetic chain still has an operand.
-            state.warnings.push(ExpressionWarning::UnknownOperator {
-                byte: op_byte,
-                offset: state.pos,
-            });
+            // Unknown unary byte. Emulator: warn, consume `\` + byte,
+            // return a 0 literal so the outer chain still has an
+            // operand. Decompile: typed error. Position is the unknown
+            // operator byte (not the backslash).
+            let op_position = state.pos + 1;
+            state.on_unknown_operator(op_byte, op_position)?;
             state.advance(2);
             return Ok(ExprNode::IntLiteral(0));
         };
@@ -824,14 +894,11 @@ fn parse_term_body(state: &mut ParserState<'_>) -> Result<ExprNode, ExpressionPa
     } else if b0 == EXPRESSION_TOKEN_LEAD {
         parse_token(state)
     } else {
-        // Recovery: out-of-spec byte where a term was expected. Emit
-        // an UnknownOperator warning, consume one byte, and return it
-        // as a single-byte int-literal so the chain can continue. This
-        // is the third acceptance criterion's partial-result rule.
-        state.warnings.push(ExpressionWarning::UnknownOperator {
-            byte: b0,
-            offset: state.pos,
-        });
+        // Out-of-spec byte where a term was expected. Emulator: warn,
+        // consume one byte, return it as a single-byte int-literal so
+        // the chain can continue. Decompile: typed error.
+        let offset = state.pos;
+        state.on_unknown_operator(b0, offset)?;
         state.advance(1);
         Ok(ExprNode::IntLiteral(i32::from(b0)))
     }
@@ -918,171 +985,5 @@ fn read_i32_le(state: &mut ParserState<'_>) -> Result<i32, ExpressionParseError>
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn empty_input_is_truncated_not_zero_state() {
-        match parse_expression(&[]) {
-            Err(ExpressionParseError::Truncated { observed_len, .. }) => {
-                assert_eq!(observed_len, 0);
-            }
-            other => panic!("expected Truncated on empty input, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn deeply_nested_groupings_surface_typed_error_not_stack_overflow() {
-        // Regression (audit-3): `parse_term` recursed into `parse_expr`
-        // on every `(` with no depth limit, so a hostile expression of
-        // deeply nested `(` overflowed the process stack. Past
-        // `MAX_EXPRESSION_DEPTH` the parser must instead return the typed
-        // `Malformed` error the module guarantees.
-        let bytes = vec![PAREN_OPEN; MAX_EXPRESSION_DEPTH + 50];
-        match parse_expression(&bytes) {
-            Err(ExpressionParseError::Malformed { .. }) => {}
-            other => panic!("expected Malformed on over-deep nesting, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn moderately_nested_groupings_still_parse() {
-        // A legitimately nested integer literal `((($FF 5)))` must still
-        // parse — the depth bound only trips on pathological nesting.
-        let mut bytes = vec![PAREN_OPEN; 3];
-        bytes.extend_from_slice(&[EXPRESSION_TOKEN_LEAD, EXPRESSION_INT_LITERAL_TAG]);
-        bytes.extend_from_slice(&5_i32.to_le_bytes());
-        bytes.extend(std::iter::repeat_n(PAREN_CLOSE, 3));
-        parse_expression(&bytes).expect("3-deep grouping must parse");
-    }
-
-    #[test]
-    fn int_literal_round_trip_positive() {
-        // $ FF 2A 00 00 00 → 42
-        let bytes = [0x24, 0xFF, 0x2A, 0x00, 0x00, 0x00];
-        let (node, consumed) = parse_expression(&bytes).expect("parse");
-        assert_eq!(consumed, 6);
-        assert_eq!(node, ExprNode::IntLiteral(42));
-    }
-
-    #[test]
-    fn int_literal_round_trip_negative_sign_extends() {
-        // $ FF FF FF FF FF → -1
-        let bytes = [0x24, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
-        let (node, _) = parse_expression(&bytes).expect("parse");
-        assert_eq!(node, ExprNode::IntLiteral(-1));
-    }
-
-    #[test]
-    fn store_register_token() {
-        // $ C8
-        let bytes = [0x24, 0xC8];
-        let (node, consumed) = parse_expression(&bytes).expect("parse");
-        assert_eq!(consumed, 2);
-        assert_eq!(node, ExprNode::StoreRegister);
-    }
-
-    #[test]
-    fn memory_ref_bank_b_index_zero() {
-        // $ 01 [ $ FF 00 00 00 00 ] — intB[0]
-        let bytes = [0x24, 0x01, 0x5B, 0x24, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x5D];
-        let (node, consumed) = parse_expression(&bytes).expect("parse");
-        assert_eq!(consumed, bytes.len());
-        match node {
-            ExprNode::MemoryRef { bank, index } => {
-                assert_eq!(bank, 0x01);
-                assert_eq!(*index, ExprNode::IntLiteral(0));
-            }
-            other => panic!("expected MemoryRef, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn add_one_plus_two_builds_binary_op_add() {
-        // $ FF 01 00 00 00 \ 02 $ FF 02 00 00 00
-        let bytes = [
-            0x24, 0xFF, 0x01, 0x00, 0x00, 0x00, 0x5C, 0x02, 0x24, 0xFF, 0x02, 0x00, 0x00, 0x00,
-        ];
-        let (node, consumed) = parse_expression(&bytes).expect("parse");
-        assert_eq!(consumed, bytes.len());
-        match node {
-            ExprNode::BinaryOp { op, lhs, rhs } => {
-                assert_eq!(op, ExprOp::Add);
-                assert_eq!(*lhs, ExprNode::IntLiteral(1));
-                assert_eq!(*rhs, ExprNode::IntLiteral(2));
-            }
-            other => panic!("expected BinaryOp(Add), got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn assignment_shape_yields_assignment_node() {
-        // $ 01 [ $ FF 00 00 00 00 ] \ 1E $ FF 07 00 00 00 — intB[0] = 7
-        // (plain `=` is op 0x1E per rlvm's table).
-        let bytes = [
-            0x24, 0x01, 0x5B, 0x24, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x5D, 0x5C, 0x1E, 0x24, 0xFF,
-            0x07, 0x00, 0x00, 0x00,
-        ];
-        let (node, consumed) = parse_expression(&bytes).expect("parse");
-        assert_eq!(consumed, bytes.len());
-        match node {
-            ExprNode::Assignment { dest, op, src } => {
-                assert_eq!(op, AssignOp::Plain);
-                match *dest {
-                    ExprNode::MemoryRef { bank, .. } => assert_eq!(bank, 0x01),
-                    other => panic!("expected MemoryRef dest, got {other:?}"),
-                }
-                assert_eq!(*src, ExprNode::IntLiteral(7));
-            }
-            other => panic!("expected Assignment, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn unknown_operator_byte_in_continuation_emits_warning_and_recovers() {
-        // $ FF 01 00 00 00 \ 99 — \x99 is not a documented op byte.
-        let bytes = [0x24, 0xFF, 0x01, 0x00, 0x00, 0x00, 0x5C, 0x99];
-        let parsed = parse_expression_with_warnings(&bytes).expect("parse with recovery");
-        assert!(matches!(parsed.node, ExprNode::IntLiteral(1)));
-        assert_eq!(parsed.warnings.len(), 1);
-        match &parsed.warnings[0] {
-            ExpressionWarning::UnknownOperator { byte, .. } => assert_eq!(*byte, 0x99),
-        }
-    }
-
-    #[test]
-    fn op_byte_table_pins_each_variant() {
-        assert_eq!(ExprOp::Add.as_byte(), 0x02);
-        assert_eq!(ExprOp::Sub.as_byte(), 0x03);
-        assert_eq!(ExprOp::Mul.as_byte(), 0x04);
-        assert_eq!(ExprOp::Div.as_byte(), 0x05);
-        assert_eq!(ExprOp::Mod.as_byte(), 0x06);
-        assert_eq!(ExprOp::And.as_byte(), 0x07);
-        assert_eq!(ExprOp::Or.as_byte(), 0x08);
-        assert_eq!(ExprOp::Xor.as_byte(), 0x09);
-        assert_eq!(ExprOp::Equ.as_byte(), 0x28);
-        assert_eq!(ExprOp::Neq.as_byte(), 0x29);
-        assert_eq!(ExprOp::Lt.as_byte(), 0x2A);
-        assert_eq!(ExprOp::Le.as_byte(), 0x2B);
-        assert_eq!(ExprOp::Gt.as_byte(), 0x2C);
-        assert_eq!(ExprOp::Ge.as_byte(), 0x2D);
-        assert_eq!(ExprOp::LogicAnd.as_byte(), 0x3C);
-        assert_eq!(ExprOp::LogicOr.as_byte(), 0x3D);
-    }
-
-    #[test]
-    fn assign_op_byte_table_pins_each_variant() {
-        // rlvm table: 0x14..=0x1D compound, 0x1E plain `=`.
-        assert_eq!(AssignOp::AddAssign.as_byte(), 0x14);
-        assert_eq!(AssignOp::SubAssign.as_byte(), 0x15);
-        assert_eq!(AssignOp::MulAssign.as_byte(), 0x16);
-        assert_eq!(AssignOp::DivAssign.as_byte(), 0x17);
-        assert_eq!(AssignOp::ModAssign.as_byte(), 0x18);
-        assert_eq!(AssignOp::AndAssign.as_byte(), 0x19);
-        assert_eq!(AssignOp::OrAssign.as_byte(), 0x1A);
-        assert_eq!(AssignOp::XorAssign.as_byte(), 0x1B);
-        assert_eq!(AssignOp::ShlAssign.as_byte(), 0x1C);
-        assert_eq!(AssignOp::ShrAssign.as_byte(), 0x1D);
-        assert_eq!(AssignOp::Plain.as_byte(), 0x1E);
-    }
-}
+#[path = "expression_tests.rs"]
+mod tests;

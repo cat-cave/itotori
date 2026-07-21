@@ -117,13 +117,7 @@ pub(super) fn drive_branch_following(
                         if refs.shift_jis.contains(&(scene_before, pc_before)) =>
                     {
                         dispatch_textout_at(refs.runtime, pc_before, raw_bytes);
-                        if let Some(op) = refs.registry.get(RlopKey::new(
-                            MSG_MODULE_TYPE,
-                            MSG_MODULE_ID,
-                            OPCODE_LINE_BREAK,
-                        )) {
-                            let _ = op.dispatch(vm, &[]);
-                        }
+                        dispatch_cosmetic_line_break(vm, refs.registry);
                         text_lines += refs.sink.drain().len();
                     }
                     VmEvent::CommandDispatched { key, outcome, .. } if key.module_id == 1 => {

@@ -14,6 +14,34 @@ pub(super) fn mount_full_registry(
     mount_registry(sink, msg_runtime, ControlFlowMount::LinearWalk)
 }
 
+/// Cosmetic `msg.br` flush used mid-step to force a pending text run
+/// into the substrate sink. Only [`DispatchOutcome::Advance`] is
+/// expected; any other outcome is recorded as
+/// [`crate::VmWarning::UnexpectedCosmeticFlush`] and is **not**
+/// applied as control flow (applying it would corrupt the in-flight
+/// step). Replaces the historical `let _ = op.dispatch(...)` drop.
+pub(super) fn dispatch_cosmetic_line_break(vm: &mut Vm, registry: &RlopRegistry) {
+    let Some(op) = registry.get(RlopKey::new(
+        MSG_MODULE_TYPE,
+        MSG_MODULE_ID,
+        OPCODE_LINE_BREAK,
+    )) else {
+        return;
+    };
+    match op.dispatch(vm, &[]) {
+        DispatchOutcome::Advance => {
+            // Expected: flush is purely cosmetic and must not transfer.
+        }
+        other => {
+            vm.push_warning(crate::VmWarning::UnexpectedCosmeticFlush {
+                scene: vm.scene(),
+                pc: vm.pc(),
+                found: format!("{other:?}"),
+            });
+        }
+    }
+}
+
 /// Mount all nine opcode families, choosing the
 /// `module_jmp` control-flow registrar per `control_flow`. Shared by the
 /// cataloguing ([`ControlFlowMount::LinearWalk`]) and branch-following

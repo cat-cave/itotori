@@ -253,14 +253,9 @@ pub(super) fn drive_loop(
                         // TextLine before any control opcode lands.
                         // Mirrors the real-bytes test
                         // strategy — keeps the per-run audit trail
-                        // honest.
-                        if let Some(op) = refs.registry.get(RlopKey::new(
-                            MSG_MODULE_TYPE,
-                            MSG_MODULE_ID,
-                            OPCODE_LINE_BREAK,
-                        )) {
-                            let _ = op.dispatch(vm, &[]);
-                        }
+                        // honest. Outcome is matched (not silently
+                        // dropped): only Advance is expected.
+                        dispatch_cosmetic_line_break(vm, refs.registry);
                         // Drain any sink emissions produced by the
                         // flush and convert to TextLine events with
                         // the original Shift-JIS bytes as evidence.
