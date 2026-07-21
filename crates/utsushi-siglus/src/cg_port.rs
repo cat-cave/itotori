@@ -12,6 +12,7 @@ use utsushi_core::{RuntimeArtifactKind, RuntimeArtifactRoot, runtime_artifact_ur
 
 use crate::cg_port_sinks::SiglusObservationSinks;
 use crate::launch::{RequestAssetPackage, SiglusSceneMomentIndex, hydrate_siglus_launch};
+use crate::observe::{SiglusChoiceDiagnostic, SiglusChoiceMoment};
 use crate::siglus_g00::{SiglusG00Image, decode_siglus_g00};
 use crate::siglus_render::{SiglusCgRedaction, encode_siglus_png, render_siglus_cg};
 
@@ -58,7 +59,7 @@ impl std::fmt::Debug for UtsushiSiglusPortContext {
     }
 }
 
-/// Siglus static-text and optional CG-capture engine port.
+/// Siglus static text/choice and optional CG-capture engine port.
 ///
 /// `launch` opens and decodes real package bytes. `observe` walks the decoded
 /// surfaces one finite scene per tick. When configured with a G00, `capture`
@@ -74,6 +75,8 @@ pub struct UtsushiSiglusPort {
     /// so `observe` can pop scenes in source order.
     pending_scenes: Vec<Vec<TextLine>>,
     text_program: Vec<TextLine>,
+    choice_moments: Vec<SiglusChoiceMoment>,
+    choice_diagnostics: Vec<SiglusChoiceDiagnostic>,
     lines_emitted: usize,
     shut_down: bool,
 }
@@ -97,8 +100,8 @@ impl UtsushiSiglusPort {
         fidelity_tier_max: FidelityTier::TraceOnly,
         evidence_tier_max: EvidenceTier::E1,
         limitations: &[
-            "Observe is a deterministic static walk of decoded CD_TEXT and CD_NAME surfaces, not a live Siglus VM: branches, choices, substitutions, and state-dependent rendering are not evaluated.",
-            "Each observation is E1 text evidence linked by the stable source-unit key used by the Siglus bridge; the runtime does not manufacture bridge-unit ids.",
+            "Observe is a deterministic static walk of decoded CD_TEXT/CD_NAME surfaces and linked GLOBAL.SELBTN choices, not a live Siglus VM: substitutions and state-dependent rendering are not evaluated.",
+            "Each E1 text or choice option carries the stable source-unit key used by the Siglus bridge; static branch targets are structural links, not executed paths.",
             "The production slice decodes type-0 compressed and type-2 layered Siglus G00 containers; type-3 is rejected as unsupported rather than guessed.",
             "A configured G00 capture is edge-redacted by default; otherwise capture writes a text trace. Full-fidelity decoded pixels are not persisted by this port.",
             "Frame and audio sinks are Unsupported. Snapshot and replay remain deferred.",
@@ -137,6 +140,8 @@ impl UtsushiSiglusPort {
             sinks: SiglusObservationSinks::new(),
             pending_scenes: Vec::new(),
             text_program: Vec::new(),
+            choice_moments: Vec::new(),
+            choice_diagnostics: Vec::new(),
             lines_emitted: 0,
             shut_down: false,
         }
@@ -196,6 +201,19 @@ impl UtsushiSiglusPort {
     /// Number of static text lines prepared during launch.
     pub fn lines_total(&self) -> usize {
         self.text_program.len()
+    }
+
+    /// Static player-facing choices decoded at launch, in scene and source
+    /// order. Each option links to its E1 text line and structural branch
+    /// target when the select-to-jump shape is supported.
+    pub fn choice_moments(&self) -> &[SiglusChoiceMoment] {
+        &self.choice_moments
+    }
+
+    /// Explicit unsupported or incomplete choice shapes encountered during
+    /// static decoding. No choice label text is retained in a diagnostic.
+    pub fn choice_diagnostics(&self) -> &[SiglusChoiceDiagnostic] {
+        &self.choice_diagnostics
     }
 
     /// Observation sinks, including E1 text and explicit Unsupported frame /
@@ -312,6 +330,8 @@ impl UtsushiSiglusPort {
             "lineCount": self.text_program.len(),
             "linesEmitted": self.lines_emitted,
             "lines": &self.text_program,
+            "choiceMoments": &self.choice_moments,
+            "choiceDiagnostics": &self.choice_diagnostics,
         });
         let bytes = serde_json::to_vec_pretty(&trace).map_err(|error| {
             Self::lifecycle_error(
@@ -328,8 +348,9 @@ impl UtsushiSiglusPort {
         Ok(CaptureOutcome::new(uri)
             .with_path(path)
             .with_summary(format!(
-                "siglus text trace: {} lines",
-                self.text_program.len()
+                "siglus text trace: {} lines, {} choice moments",
+                self.text_program.len(),
+                self.choice_moments.len()
             )))
     }
 }
@@ -360,6 +381,8 @@ impl EnginePort for UtsushiSiglusPort {
             .rev()
             .collect();
         self.text_program = hydrated.text_program;
+        self.choice_moments = hydrated.choice_moments;
+        self.choice_diagnostics = hydrated.choice_diagnostics;
         self.lines_emitted = 0;
         self.launch_index = Some(hydrated.index);
         self.decoded = match self.context.g00_logical_path {
@@ -430,6 +453,8 @@ impl EnginePort for UtsushiSiglusPort {
         self.launch_index = None;
         self.pending_scenes.clear();
         self.text_program.clear();
+        self.choice_moments.clear();
+        self.choice_diagnostics.clear();
         self.lines_emitted = 0;
         self.shut_down = true;
         Ok(PortShutdownOutcome::clean())

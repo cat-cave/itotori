@@ -30,6 +30,7 @@ mod observe;
 pub use cg_port::{UtsushiSiglusPort, UtsushiSiglusPortContext};
 pub use cg_port_sinks::{SiglusObservationSinks, SiglusTextSink};
 pub use launch::{SiglusSceneMoment, SiglusSceneMomentIndex};
+pub use observe::{SiglusChoiceDiagnostic, SiglusChoiceMoment, SiglusChoiceOption};
 pub use siglus_g00::{
     SiglusG00Error, SiglusG00Image, SiglusG00Kind, SiglusG00Layer, decode_siglus_g00,
 };

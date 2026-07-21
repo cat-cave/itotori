@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use kaifuu_siglus::{
     SCENE_PCK_HEADER_BYTE_LEN, SCN_HEADER_BYTE_LEN, apply_gameexe_xor_table, apply_xor_table,
+    decode_scene_syscalls,
 };
 use tempfile::TempDir;
 use utsushi_core::port::runner::Runner;
@@ -18,6 +19,11 @@ use utsushi_core::substrate::{EnginePort, PortRequest, RuntimeVfs};
 use utsushi_core::{CaseRule, MountedVfs, PackageSource, PlaintextDirPackage};
 use utsushi_core::{RuntimeArtifactRoot, RuntimeOperation};
 use utsushi_siglus::UtsushiSiglusPort;
+
+#[path = "support/choice_support.rs"]
+mod choice_support;
+
+use choice_support::synthetic_choice_scene_payload;
 
 const FIRST_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
 const SECOND_TITLE_ENV: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
@@ -148,6 +154,80 @@ fn observe_consumes_a_finite_decoded_scene_before_signalling_end_of_stream() {
         lines
             .iter()
             .all(|line| line.text_surface.as_deref() == Some("dialogue"))
+    );
+}
+
+#[test]
+fn observe_surfaces_linked_selbtn_options_with_their_branch_targets() {
+    let temp = TempDir::new().expect("temporary fixture directory");
+    let mounted_root = temp.path().join("mounted-assets");
+    fs::create_dir_all(&mounted_root).expect("fixture asset directory");
+    let scene = synthetic_choice_scene_payload();
+    let expected = decode_scene_syscalls(&scene).expect("choice syscall decode");
+    let expected_options = &expected.selections[0].options;
+    fs::write(
+        mounted_root.join("Scene.pck"),
+        synthetic_scene_pack_from_decoded_scenes(&[scene]),
+    )
+    .expect("write synthetic scene package");
+    fs::write(
+        mounted_root.join("Gameexe.dat"),
+        synthetic_gameexe("#ENTRY.000=1\r\n"),
+    )
+    .expect("write synthetic configuration");
+
+    let unmounted_input = temp.path().join("not-mounted-into-the-vfs");
+    let request = PortRequest::new(
+        &unmounted_input,
+        "siglus-choice-observe",
+        RuntimeOperation::Trace,
+    )
+    .with_vfs(mounted_vfs(&mounted_root, "siglus-choice-observe"));
+    let mut port = UtsushiSiglusPort::new();
+    port.launch(&request).expect("choice scene launch");
+    let observation = Runner::new()
+        .tick(&mut port, &request)
+        .expect("choice scene observation");
+    let choices: Vec<_> = observation
+        .text
+        .iter()
+        .filter(|line| {
+            line.text_surface
+                .as_deref()
+                .is_some_and(|kind| kind.starts_with("choice:"))
+        })
+        .collect();
+
+    assert_eq!(choices.len(), 2, "one E1 line per linked choice label");
+    assert_eq!(choices[0].text, "Option one");
+    assert_eq!(choices[1].text, "Option two");
+    assert!(choices.iter().all(|line| {
+        line.bridge_ref
+            .as_ref()
+            .and_then(|reference| reference.source_unit_key.as_deref())
+            .is_some_and(|key| key.starts_with("siglus:scene-scene-0000#"))
+    }));
+    assert_eq!(port.choice_diagnostics(), []);
+    assert_eq!(port.choice_moments().len(), 1);
+    let moment = &port.choice_moments()[0];
+    assert_eq!(moment.options.len(), 2);
+    for (observed, expected) in moment.options.iter().zip(expected_options) {
+        assert_eq!(observed.branch_target_offset, expected.branch_target_offset);
+        assert_eq!(
+            observed.source_unit_key,
+            format!(
+                "siglus:scene-scene-0000#{}",
+                expected
+                    .source_command_offset
+                    .expect("synthetic choice push site")
+            )
+        );
+    }
+    assert!(
+        moment
+            .options
+            .iter()
+            .all(|option| option.branch_target_offset.is_some())
     );
 }
 
