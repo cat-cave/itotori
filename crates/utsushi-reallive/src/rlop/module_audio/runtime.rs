@@ -11,6 +11,24 @@ use std::sync::{Arc, Mutex};
 use crate::audio::{AudioEvent, AudioEventEmitter, AudioEventKind, AudioEventPayload};
 use crate::gameexe::Gameexe;
 
+/// Complete, order-independent `#NAMAE` tuple profile for which the
+/// coincidence-based archive derivation has been cross-validated against
+/// observed voice archives. A single `(mode, color_table_index)` pair is not
+/// sufficient evidence because those fields have unrelated engine semantics.
+const CONFIDENT_NAMAE_ARCHIVE_SHAPE: &[(i32, i32, i32)] = &[
+    (0, 11, -1),
+    (1, 11, -1),
+    (1, 11, -1),
+    (1, 14, -1),
+    (1, 14, -1),
+    (1, 15, -1),
+    (1, 15, -1),
+    (1, 16, -1),
+    (1, 18, -1),
+    (1, 18, -1),
+    (1, 18, -1),
+];
+
 /// Typed warnings the [`AudioRuntime`] records on arg-shape / lookup
 /// failure. Drained via [`AudioRuntime::take_warnings`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,10 +53,11 @@ pub enum AudioRuntimeWarning {
     /// A `koePlay(sample_id)` was dispatched but no voice archive is
     /// currently known: the runtime starts with an UNKNOWN archive and
     /// none has been established by an authoritative RealLive operation
-    /// (`koePlayEx`) or explicit per-game configuration
-    /// ([`AudioRuntime::set_current_speaker_archive_id`]). The runtime
-    /// refuses to guess an archive, so it surfaces this typed unresolved
-    /// observation instead of attributing the sample to a default.
+    /// (`koePlayEx`), explicit per-game configuration
+    /// ([`AudioRuntime::set_current_speaker_archive_id`]), or the
+    /// confidence-qualified `#NAMAE` fallback. The runtime refuses an
+    /// unqualified guess, so it surfaces this typed unresolved observation
+    /// instead of attributing the sample to a default.
     NoCurrentSpeaker,
 }
 
@@ -60,10 +79,10 @@ pub(super) struct AudioRuntimeInner {
     /// through, or `None` when no archive is known yet. A fresh runtime
     /// starts UNKNOWN — there is no baked-in default archive. The current
     /// archive is established by an authoritative RealLive operation that
-    /// names one (`koePlayEx`) or by explicit per-game configuration
-    /// ([`AudioRuntime::set_current_speaker_archive_id`]); a `koePlay`
-    /// dispatched while this is `None` surfaces a typed unresolved
-    /// observation rather than guessing.
+    /// names one (`koePlayEx`), by explicit per-game configuration
+    /// ([`AudioRuntime::set_current_speaker_archive_id`]), or by the guarded
+    /// `#NAMAE` fallback. A `koePlay` dispatched while this is `None` surfaces
+    /// a typed unresolved observation rather than guessing.
     current_speaker_archive: Option<i32>,
     /// 1 if the BGM channel is currently playing (post-bgmPlay
     /// pre-bgmStop/bgmFadeOut). The bgmStatus opcode reads this.
@@ -128,9 +147,8 @@ impl AudioRuntime {
     /// Establish the sticky voice archive the `koePlay(sample_id)` path
     /// consults. This is the explicit, authoritative selector: an
     /// authoritative RealLive operation that names an archive
-    /// (`koePlayEx`) or explicit per-game configuration calls it. The
-    /// runtime never derives the archive from a different game's
-    /// numbering coincidence or a baked-in default.
+    /// (`koePlayEx`) or explicit per-game configuration calls it. This path
+    /// does not depend on the confidence-qualified fallback or a default.
     pub fn set_current_speaker_archive_id(&self, archive_id: i32) {
         self.lock_inner().current_speaker_archive = Some(archive_id);
     }
@@ -139,6 +157,52 @@ impl AudioRuntime {
     /// been established yet (a fresh runtime starts UNKNOWN).
     pub fn current_speaker_archive(&self) -> Option<i32> {
         self.lock_inner().current_speaker_archive
+    }
+
+    /// Best-effort selection of a voice archive from a `#NAMAE` display key.
+    ///
+    /// `#NAMAE` does not encode voice archives: its numeric fields are an
+    /// engine mode and a dialogue-color table index. One observed registry's
+    /// complete numeric shape was independently cross-validated against its
+    /// voice archive inventory, where `mode * 1000 + color_table_index`
+    /// happens to produce the archive number. This fallback accepts only that
+    /// full, order-independent shape and requires every referenced color row
+    /// to exist. Names are deliberately ignored.
+    ///
+    /// Returns the selected archive id when that confidence guard passes.
+    /// Missing speakers and unrecognized registry shapes return `None` and
+    /// leave the current archive unchanged. An operation that names an archive
+    /// directly remains authoritative and does not depend on this fallback.
+    pub fn select_speaker_by_display_name(&self, display_name: &str) -> Option<i32> {
+        let mut guard = self.lock_inner();
+        let gameexe = guard.gameexe.as_ref()?;
+        if !Self::has_confident_namae_archive_shape(gameexe) {
+            return None;
+        }
+
+        let key = format!("NAMAE.{display_name}");
+        let entry = gameexe.get_namae(&key)?;
+        let archive_id = entry
+            .mode
+            .checked_mul(1000)?
+            .checked_add(entry.color_table_index)?;
+        guard.current_speaker_archive = Some(archive_id);
+        Some(archive_id)
+    }
+
+    fn has_confident_namae_archive_shape(gameexe: &Gameexe) -> bool {
+        let mut observed = Vec::new();
+        for key in gameexe.list_namespace("NAMAE") {
+            let Some(entry) = gameexe.get_namae(key) else {
+                return false;
+            };
+            if gameexe.color_table_rgb(entry.color_table_index).is_none() {
+                return false;
+            }
+            observed.push((entry.mode, entry.color_table_index, entry.reserved));
+        }
+        observed.sort_unstable();
+        observed == CONFIDENT_NAMAE_ARCHIVE_SHAPE
     }
 
     /// Resolve a `bgmPlay` asset name to a stable `bgm/<NAME>` asset
@@ -216,3 +280,7 @@ impl AudioRuntime {
         self.emitter.emit(kind, payload)
     }
 }
+
+#[cfg(test)]
+#[path = "runtime_tests.rs"]
+mod tests;
