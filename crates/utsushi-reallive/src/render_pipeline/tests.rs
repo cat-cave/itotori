@@ -316,7 +316,7 @@ fn message_window_moving_pos_moves_the_box() {
 
 #[test]
 fn message_window_wraps_long_message_at_moji_cnt_within_the_box() {
-    // A Sweetie-shaped window: 1280x720, MOJI_SIZE=36, MOJI_CNT=22,3
+    // A configured 1280x720 window: MOJI_SIZE=36, MOJI_CNT=22,3.
     // MOJI_REP=0,2, MOJI_POS=48,0,12,0, POS bottom-anchored inset 220.
     let cfg = MessageWindowConfig {
         origin: 2,

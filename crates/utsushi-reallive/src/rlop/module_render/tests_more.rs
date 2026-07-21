@@ -390,6 +390,30 @@ fn obj_management_free_and_free_all() {
 }
 
 #[test]
+fn obj_management_alloc_is_registered_and_materialises_empty_foreground_slot() {
+    let runtime = rt();
+    let mut registry = RlopRegistry::new();
+    register_render_rlops(&mut registry, Arc::clone(&runtime));
+
+    for module_type in [0, 1, 2] {
+        registry
+            .get(RlopKey::new(module_type, OBJ_MGMT_ID, 1))
+            .expect("objAlloc must be registered on every lattice type")
+            .dispatch(&mut vm(), &[int(7)]);
+    }
+
+    let snapshot = runtime.state_snapshot();
+    let object = snapshot
+        .stack
+        .get(GraphicsPlane::Foreground, 7)
+        .expect("objAlloc must materialise its foreground slot");
+    let Kind::Image { image_ref } = &object.kind else {
+        panic!("objAlloc must create an image-slot object");
+    };
+    assert_eq!(image_ref.asset_key, "");
+}
+
+#[test]
 fn registration_routes_child_creation_and_type2_object_setters() {
     let mut registry = RlopRegistry::new();
     let n = register_render_rlops(&mut registry, rt());
