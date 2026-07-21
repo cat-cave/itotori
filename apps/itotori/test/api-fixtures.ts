@@ -14,6 +14,7 @@ import type {
 } from "@itotori/db";
 import type {
   ApiAuthIdentityResponse,
+  ApiProjectsResponse,
   ApiLocalizationRunConfigResponse,
   ApiBranchPolicySettingsResponse,
   ApiDraftBranchRequest,
@@ -613,6 +614,41 @@ export const dashboardStatusFixture: ProjectDashboardStatus = {
     },
   ],
 };
+
+export const portfolioProjectsFixture: ApiProjectsResponse = {
+  projects: [
+    {
+      ...dashboardStatusFixture,
+      progress: {
+        runCount: 1,
+        runStatusCounts: {
+          queued: 1,
+          running: 0,
+          paused: 0,
+          completed: 0,
+          failed: 0,
+          cancelled: 0,
+        },
+        unitCounts: { decoded: 0, drafted: 1, QA: 0, accepted: 0, patched: 0 },
+        roleCounts: {
+          writer: { decoded: 0, drafted: 1, QA: 0, accepted: 0, patched: 0 },
+        },
+        totalCostMicrosUsd: 13,
+        averageCoveragePercent: 75,
+        blockers: [
+          {
+            runId: "portfolio-run-1",
+            bridgeUnitId: "portfolio-unit-1",
+            role: "writer",
+            blockers: ["review-needed"],
+          },
+        ],
+      },
+    },
+  ],
+};
+
+export const portfolioProjectFixture = portfolioProjectsFixture.projects[0]!;
 
 export const catalogConflictReviewFixture: CatalogConflictReviewReadModel = {
   rows: [

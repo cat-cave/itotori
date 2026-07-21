@@ -7,6 +7,7 @@ import {
   projectRunProgress,
   projectRunStatusValues,
   projectRuns,
+  projects,
   type ProjectRunProgressStatus,
   type ProjectRunStatus,
 } from "../schema.js";
@@ -147,6 +148,38 @@ export type ProjectRunLiveReadModel = {
   };
 };
 
+/** Counts for each durable unit-progress state. */
+export type ProjectRunProgressStatusCounts = Record<ProjectRunProgressStatus, number>;
+
+/** Counts for each durable run status. */
+export type ProjectRunStatusCounts = Record<ProjectRunStatus, number>;
+
+/** A blocked unit-role record, scoped to the run that produced it. */
+export type ProjectRunPortfolioBlocker = {
+  runId: string;
+  bridgeUnitId: string;
+  role: string;
+  blockers: string[];
+};
+
+/**
+ * Cross-run, per-project live-progress rollup for the portfolio surface.
+ *
+ * `unitCounts` counts distinct bridge units in each state; `roleCounts`
+ * counts unit-role records, preserving the role that owns the work. Both are
+ * SQL aggregates rather than a materialized collection of every unit.
+ */
+export type ProjectRunPortfolioProgressSummary = {
+  projectId: string;
+  runCount: number;
+  runStatusCounts: ProjectRunStatusCounts;
+  unitCounts: ProjectRunProgressStatusCounts;
+  roleCounts: Record<string, ProjectRunProgressStatusCounts>;
+  totalCostMicrosUsd: number;
+  averageCoveragePercent: number;
+  blockers: ProjectRunPortfolioBlocker[];
+};
+
 export interface ItotoriProjectRunRepositoryPort {
   createRun(actor: AuthorizationActor, input: CreateProjectRunInput): Promise<ProjectRunRecord>;
   advanceRun(actor: AuthorizationActor, input: AdvanceProjectRunInput): Promise<ProjectRunRecord>;
@@ -173,6 +206,7 @@ export interface ItotoriProjectRunRepositoryPort {
     projectId: string,
     runId: string,
   ): Promise<ProjectRunLiveReadModel | null>;
+  listPortfolioProgress(actor: AuthorizationActor): Promise<ProjectRunPortfolioProgressSummary[]>;
 }
 
 export class ItotoriProjectRunRepository implements ItotoriProjectRunRepositoryPort {
@@ -470,4 +504,208 @@ export class ItotoriProjectRunRepository implements ItotoriProjectRunRepositoryP
       },
     };
   }
+
+  async listPortfolioProgress(
+    actor: AuthorizationActor,
+  ): Promise<ProjectRunPortfolioProgressSummary[]> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    const result = await this.db.execute(sql`
+      with project_rollups as (
+        select
+          p.project_id,
+          count(distinct r.run_id)::int as run_count,
+          count(distinct r.run_id) filter (where r.status = 'queued')::int as queued_run_count,
+          count(distinct r.run_id) filter (where r.status = 'running')::int as running_run_count,
+          count(distinct r.run_id) filter (where r.status = 'paused')::int as paused_run_count,
+          count(distinct r.run_id) filter (where r.status = 'completed')::int as completed_run_count,
+          count(distinct r.run_id) filter (where r.status = 'failed')::int as failed_run_count,
+          count(distinct r.run_id) filter (where r.status = 'cancelled')::int as cancelled_run_count,
+          count(distinct progress.bridge_unit_id) filter (
+            where progress.status = 'decoded'
+          )::int as decoded_unit_count,
+          count(distinct progress.bridge_unit_id) filter (
+            where progress.status = 'drafted'
+          )::int as drafted_unit_count,
+          count(distinct progress.bridge_unit_id) filter (
+            where progress.status = 'QA'
+          )::int as qa_unit_count,
+          count(distinct progress.bridge_unit_id) filter (
+            where progress.status = 'accepted'
+          )::int as accepted_unit_count,
+          count(distinct progress.bridge_unit_id) filter (
+            where progress.status = 'patched'
+          )::int as patched_unit_count,
+          coalesce(sum(progress.cost_micros_usd), 0)::text as total_cost_micros_usd,
+          coalesce(avg(progress.coverage_percent), 0)::double precision as average_coverage_percent,
+          coalesce(
+            jsonb_agg(
+              jsonb_build_object(
+                'runId', progress.run_id,
+                'bridgeUnitId', progress.bridge_unit_id,
+                'role', progress.role,
+                'blockers', progress.blockers
+              )
+              order by progress.run_id asc, progress.bridge_unit_id asc, progress.role asc
+            ) filter (where jsonb_array_length(progress.blockers) > 0),
+            '[]'::jsonb
+          ) as blockers
+        from ${projects} p
+        left join ${projectRuns} r on r.project_id = p.project_id
+        left join ${projectRunProgress} progress
+          on progress.project_id = r.project_id and progress.run_id = r.run_id
+        group by p.project_id
+      ),
+      role_rollups as (
+        select
+          project_id,
+          role,
+          count(*) filter (where status = 'decoded')::int as decoded_count,
+          count(*) filter (where status = 'drafted')::int as drafted_count,
+          count(*) filter (where status = 'QA')::int as qa_count,
+          count(*) filter (where status = 'accepted')::int as accepted_count,
+          count(*) filter (where status = 'patched')::int as patched_count
+        from ${projectRunProgress}
+        group by project_id, role
+      ),
+      role_counts as (
+        select
+          project_id,
+          jsonb_object_agg(
+            role,
+            jsonb_build_object(
+              'decoded', decoded_count,
+              'drafted', drafted_count,
+              'QA', qa_count,
+              'accepted', accepted_count,
+              'patched', patched_count
+            ) order by role asc
+          ) as role_counts
+        from role_rollups
+        group by project_id
+      )
+      select
+        rollup.project_id,
+        rollup.run_count,
+        rollup.queued_run_count,
+        rollup.running_run_count,
+        rollup.paused_run_count,
+        rollup.completed_run_count,
+        rollup.failed_run_count,
+        rollup.cancelled_run_count,
+        rollup.decoded_unit_count,
+        rollup.drafted_unit_count,
+        rollup.qa_unit_count,
+        rollup.accepted_unit_count,
+        rollup.patched_unit_count,
+        rollup.total_cost_micros_usd,
+        rollup.average_coverage_percent,
+        rollup.blockers,
+        coalesce(roles.role_counts, '{}'::jsonb) as role_counts
+      from project_rollups rollup
+      left join role_counts roles on roles.project_id = rollup.project_id
+      order by rollup.project_id asc
+    `);
+    return (result.rows as Array<Record<string, unknown>>).map(portfolioProgressFromRow);
+  }
+}
+
+function portfolioProgressFromRow(
+  row: Record<string, unknown>,
+): ProjectRunPortfolioProgressSummary {
+  return {
+    projectId: requiredPortfolioText(row.project_id, "project_id"),
+    runCount: portfolioCount(row.run_count, "run_count"),
+    runStatusCounts: runStatusCountsFromRow(row),
+    unitCounts: unitStatusCountsFromRow(row),
+    roleCounts: roleCountsFromRow(row.role_counts),
+    totalCostMicrosUsd: portfolioCount(row.total_cost_micros_usd, "total_cost_micros_usd"),
+    averageCoveragePercent: portfolioCoverage(row.average_coverage_percent),
+    blockers: portfolioBlockersFromRow(row.blockers),
+  };
+}
+
+function runStatusCountsFromRow(row: Record<string, unknown>): ProjectRunStatusCounts {
+  return {
+    queued: portfolioCount(row.queued_run_count, "queued_run_count"),
+    running: portfolioCount(row.running_run_count, "running_run_count"),
+    paused: portfolioCount(row.paused_run_count, "paused_run_count"),
+    completed: portfolioCount(row.completed_run_count, "completed_run_count"),
+    failed: portfolioCount(row.failed_run_count, "failed_run_count"),
+    cancelled: portfolioCount(row.cancelled_run_count, "cancelled_run_count"),
+  };
+}
+
+function roleCountsFromRow(value: unknown): Record<string, ProjectRunProgressStatusCounts> {
+  if (!isRecord(value)) throw new Error("database row role_counts is not an object");
+  return Object.fromEntries(
+    Object.entries(value).map(([role, counts]) => {
+      if (role.trim().length === 0) throw new Error("database row role_counts has an empty role");
+      if (!isRecord(counts)) throw new Error("database row role_counts has invalid status counts");
+      return [role, roleStatusCountsFromRow(counts)];
+    }),
+  );
+}
+
+function unitStatusCountsFromRow(row: Record<string, unknown>): ProjectRunProgressStatusCounts {
+  return {
+    decoded: portfolioCount(row.decoded_unit_count, "decoded_unit_count"),
+    drafted: portfolioCount(row.drafted_unit_count, "drafted_unit_count"),
+    QA: portfolioCount(row.qa_unit_count, "qa_unit_count"),
+    accepted: portfolioCount(row.accepted_unit_count, "accepted_unit_count"),
+    patched: portfolioCount(row.patched_unit_count, "patched_unit_count"),
+  };
+}
+
+function roleStatusCountsFromRow(row: Record<string, unknown>): ProjectRunProgressStatusCounts {
+  return {
+    decoded: portfolioCount(row.decoded, "role_counts.decoded"),
+    drafted: portfolioCount(row.drafted, "role_counts.drafted"),
+    QA: portfolioCount(row.QA, "role_counts.QA"),
+    accepted: portfolioCount(row.accepted, "role_counts.accepted"),
+    patched: portfolioCount(row.patched, "role_counts.patched"),
+  };
+}
+
+function portfolioBlockersFromRow(value: unknown): ProjectRunPortfolioBlocker[] {
+  if (!Array.isArray(value)) throw new Error("database row blockers is not an array");
+  return value.map((blocker) => {
+    if (!isRecord(blocker)) throw new Error("database row blockers has an invalid entry");
+    const blockers = blocker.blockers;
+    if (!Array.isArray(blockers) || !blockers.every((entry) => typeof entry === "string")) {
+      throw new Error("database row blockers has an invalid blocker list");
+    }
+    return {
+      runId: requiredPortfolioText(blocker.runId, "blockers.runId"),
+      bridgeUnitId: requiredPortfolioText(blocker.bridgeUnitId, "blockers.bridgeUnitId"),
+      role: requiredPortfolioText(blocker.role, "blockers.role"),
+      blockers,
+    };
+  });
+}
+
+function portfolioCount(value: unknown, label: string): number {
+  const count = Number(value);
+  if (!Number.isSafeInteger(count) || count < 0) {
+    throw new Error(`database row ${label} is not a non-negative safe integer`);
+  }
+  return count;
+}
+
+function portfolioCoverage(value: unknown): number {
+  const coverage = Number(value);
+  if (!Number.isFinite(coverage) || coverage < 0 || coverage > 100) {
+    throw new Error("database row average_coverage_percent is invalid");
+  }
+  return coverage;
+}
+
+function requiredPortfolioText(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`database row ${label} is not non-empty text`);
+  }
+  return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

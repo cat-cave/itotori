@@ -27,6 +27,7 @@ import type {
   DashboardDecisionReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
+  ProjectRunPortfolioProgressSummary,
   ProjectTelemetryTimeseries,
   QueueHealthReadModel,
   AuthSessionAdminRecord,
@@ -702,7 +703,12 @@ export function assertItotoriApiErrorResponse(
 }
 
 export type ApiProjectsResponse = {
-  projects: ProjectDashboardStatus[];
+  projects: ProjectPortfolioEntry[];
+};
+
+/** The portfolio list preserves the dashboard shape and adds run progress. */
+export type ProjectPortfolioEntry = ProjectDashboardStatus & {
+  progress: ProjectRunPortfolioProgressSummary;
 };
 
 export type ApiProjectCostResponse = ProjectCostReport;
@@ -5319,7 +5325,59 @@ function assertProjectsResponse(value: unknown): asserts value is ApiProjectsRes
   const projects = asArray(response.projects, "ApiProjectsResponse.projects");
   for (const [index, project] of projects.entries()) {
     assertProjectDashboardStatus(project, `ApiProjectsResponse.projects[${index}]`);
+    assertProjectPortfolioProgress(
+      asRecord(project, `ApiProjectsResponse.projects[${index}]`).progress,
+      `ApiProjectsResponse.projects[${index}].progress`,
+    );
   }
+}
+
+function assertProjectPortfolioProgress(value: unknown, label: string): void {
+  const progress = asRecord(value, label);
+  assertNonNegativeInteger(progress.runCount, `${label}.runCount`);
+  assertProjectRunStatusCounts(progress.runStatusCounts, `${label}.runStatusCounts`);
+  assertProjectRunProgressStatusCounts(progress.unitCounts, `${label}.unitCounts`);
+  const roleCounts = asRecord(progress.roleCounts, `${label}.roleCounts`);
+  for (const [role, counts] of Object.entries(roleCounts)) {
+    assertString(role, `${label}.roleCounts role`);
+    assertProjectRunProgressStatusCounts(counts, `${label}.roleCounts.${role}`);
+  }
+  assertNonNegativeInteger(progress.totalCostMicrosUsd, `${label}.totalCostMicrosUsd`);
+  if (
+    typeof progress.averageCoveragePercent !== "number" ||
+    !Number.isFinite(progress.averageCoveragePercent) ||
+    progress.averageCoveragePercent < 0 ||
+    progress.averageCoveragePercent > 100
+  ) {
+    throw new Error(`${label}.averageCoveragePercent must be between 0 and 100`);
+  }
+  const blockers = asArray(progress.blockers, `${label}.blockers`);
+  for (const [index, blockerValue] of blockers.entries()) {
+    const blocker = asRecord(blockerValue, `${label}.blockers[${index}]`);
+    assertString(blocker.runId, `${label}.blockers[${index}].runId`);
+    assertString(blocker.bridgeUnitId, `${label}.blockers[${index}].bridgeUnitId`);
+    assertString(blocker.role, `${label}.blockers[${index}].role`);
+    assertStringArray(blocker.blockers, `${label}.blockers[${index}].blockers`);
+  }
+}
+
+function assertProjectRunStatusCounts(value: unknown, label: string): void {
+  const counts = asRecord(value, label);
+  assertNonNegativeInteger(counts.queued, `${label}.queued`);
+  assertNonNegativeInteger(counts.running, `${label}.running`);
+  assertNonNegativeInteger(counts.paused, `${label}.paused`);
+  assertNonNegativeInteger(counts.completed, `${label}.completed`);
+  assertNonNegativeInteger(counts.failed, `${label}.failed`);
+  assertNonNegativeInteger(counts.cancelled, `${label}.cancelled`);
+}
+
+function assertProjectRunProgressStatusCounts(value: unknown, label: string): void {
+  const counts = asRecord(value, label);
+  assertNonNegativeInteger(counts.decoded, `${label}.decoded`);
+  assertNonNegativeInteger(counts.drafted, `${label}.drafted`);
+  assertNonNegativeInteger(counts.QA, `${label}.QA`);
+  assertNonNegativeInteger(counts.accepted, `${label}.accepted`);
+  assertNonNegativeInteger(counts.patched, `${label}.patched`);
 }
 
 function assertProjectImportResponse(value: unknown): asserts value is ApiProjectImportResponse {
