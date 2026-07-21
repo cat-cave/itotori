@@ -4,7 +4,6 @@ import type { ReasoningDetailsContinuityEvidence } from "./reasoning-details-con
 import {
   MODEL_PROFILE_CERTIFICATE_VERSION,
   ModelProfileCertificateSchema,
-  certificateEvidenceHash,
   servedModelIsCertified,
   type ModelProfileCertificate,
   type RoleModelProfile,
@@ -106,20 +105,8 @@ export function certifyLiveModelProfile(
     billedUsdByStep,
     ...reconciliation.observations,
   } as const;
-  // ITOTORI-241 - bind the certificate to THIS live run: memoKey is the request
-  // identity and transcriptHash hashes the actual dispatch transcript. Both are
-  // taken from the real result, never caller-supplied, so a certificate cannot
-  // be minted or tampered by hand.
   const memoKey = result.memoKey;
   const transcriptHash = sha256(result.events);
-  const evidenceHash = certificateEvidenceHash({
-    probedAt: observations.probedAt,
-    subject: profile,
-    checks,
-    observations: boundObservations,
-    memoKey,
-    transcriptHash,
-  });
 
   return ModelProfileCertificateSchema.parse({
     schemaVersion: MODEL_PROFILE_CERTIFICATE_VERSION,
@@ -130,7 +117,7 @@ export function certifyLiveModelProfile(
     checks,
     observations: {
       ...boundObservations,
-      runBinding: { memoKey, transcriptHash, evidenceHash },
+      runBinding: { memoKey, transcriptHash },
     },
   });
 }
