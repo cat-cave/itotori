@@ -4,11 +4,13 @@ use super::object_create::{
 use super::object_set::{ObjSetOp, ObjSetProp};
 use super::*;
 
-// object management — Free / Init / FreeAll (module 60/61/62)
+// object management — Alloc / Free / Init / FreeAll (module 60/61/62)
 
 /// Object-management operations (per rlvm `module_obj_management.cc`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjMgmtOp {
+    /// `objAlloc` (1): materialise an empty foreground object slot.
+    Allocate,
     /// `objFree` (0): clear the buffer.
     Free,
     /// `objInit` (10): reset the buffer to a blank/default (modelled as clear).
@@ -55,6 +57,14 @@ impl ObjMgmtRenderOp {
 impl RLOperation for ObjMgmtRenderOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
         match self.op {
+            ObjMgmtOp::Allocate => {
+                if let Some(buf) = arg_int(args, 0).and_then(slot_ok) {
+                    let layer = self.target_layer();
+                    self.runtime.with_stack_mut(|stack| {
+                        let _ = stack.set_layer(layer, buf, GraphicsObject::image(""));
+                    });
+                }
+            }
             ObjMgmtOp::Free | ObjMgmtOp::Init | ObjMgmtOp::FreeInit => {
                 if let Some(buf) = arg_int(args, 0).and_then(slot_ok) {
                     let layer = self.target_layer();
@@ -297,6 +307,18 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
         count += register_on_types(registry, &LATTICE_TYPES, mid, 110, mgmt(ObjMgmtOp::FreeAll));
         count += register_on_types(registry, &LATTICE_TYPES, mid, 111, mgmt(ObjMgmtOp::FreeAll));
     }
+    // objAlloc lives on the generic ObjManagement module (60) only and
+    // materialises an empty foreground slot before a later objOf* fills it.
+    count += register_on_types(
+        registry,
+        &LATTICE_TYPES,
+        OBJ_MGMT_ID,
+        1,
+        Arc::new(ObjMgmtRenderOp::new(
+            Arc::clone(&runtime),
+            ObjMgmtOp::Allocate,
+        )),
+    );
     // objCopyFgToBg lives on the generic ObjManagement module (60) only.
     count += register_on_types(
         registry,

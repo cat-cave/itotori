@@ -1,5 +1,4 @@
-//! RealLive `module_obj_management` + `module_obj_fg_bg`
-//! RLOperation family subset.
+//! RealLive `module_obj_management` + `module_obj_fg_bg` RLOperation subset.
 //!
 //! Implements the alpha-tier object-stack subset the spec
 //! node pins:
@@ -27,7 +26,6 @@
 //! test `obj_set_layer_reorders_render_pass_output` pins that the
 //! highest-`layer_order` object wins the single pixel of a 1×1
 //! framebuffer regardless of `objSetLayer` call order.
-
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
@@ -42,6 +40,8 @@ use crate::graphics_objects::{
 use crate::rlop::{LongOp, LongOpId};
 use crate::vm::Vm;
 use utsushi_core::substrate::{AssetPackage, VfsError};
+
+mod image_geometry;
 
 /// `module_type` byte for the `module_obj_management` submodule.
 pub const OBJ_MGMT_MODULE_TYPE: u8 = 1;
