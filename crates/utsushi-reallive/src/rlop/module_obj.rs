@@ -16,14 +16,14 @@
 //!
 //! # Layer-ordering posture (audit-focus pin)
 //!
-//! The DAG node carries the audit-focus item "layer-ordering that
-//! ignores `objSetLayer`". The render-pass at
-//! [`crate::RenderPass::rasterise`] already sorts allocated objects by
-//! `(plane.paint_order(), layer_order, slot)` — pinned
-//! this. the `objSetLayer` directly mutates
-//! [`crate::GraphicsObject::layer_order`], so a render after a
-//! `objSetLayer` re-orders the paint output observably; the acceptance
-//! test `obj_set_layer_reorders_render_pass_output` pins that the
+//! This module's audit-focus item is "layer-ordering that ignores
+//! `objSetLayer`". The render-pass at [`crate::RenderPass::rasterise`]
+//! already sorts allocated objects by
+//! `(plane.paint_order(), layer_order, slot)` — pinned this. The
+//! `objSetLayer` directly mutates [`crate::GraphicsObject::layer_order`],
+//! so a render after a `objSetLayer` re-orders the paint output
+//! observably; the acceptance test
+//! `obj_set_layer_reorders_render_pass_output` pins that the
 //! highest-`layer_order` object wins the single pixel of a 1×1
 //! framebuffer regardless of `objSetLayer` call order.
 use std::sync::{Arc, Mutex};

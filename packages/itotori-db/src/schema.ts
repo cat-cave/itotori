@@ -3404,7 +3404,7 @@ export const conformanceFindings = pgTable(
   (table) => [index("itotori_conformance_findings_run_idx").on(table.conformanceRunId)],
 );
 
-// KAIFUU-053: capability-leveled engine detector registry persistence.
+// Capability-leveled engine detector registry persistence.
 // The Postgres enums (`capability_level_enum`,
 // `capability_level_status_kind`) are created in migration
 // 0030_engine_capability_reports.sql. The CHECK constraint in that

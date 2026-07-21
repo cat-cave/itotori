@@ -89,7 +89,7 @@ pub struct SiglusStringRef {
 }
 
 /// One option passed to the `selbtn` syscall, linked to its structural branch arm
-/// when the siglus-10 select→jump recognizer found one.
+/// when the flow layer's select→jump recognizer found one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SiglusSelOption {
     /// One-based result value returned when this option is selected.
@@ -121,7 +121,8 @@ pub struct SiglusSelChoice {
 }
 
 /// One fully typed `CD_COMMAND` call. Its command operand was decoded by the
-/// siglus-09 decoder and therefore consumed exactly `operand_byte_len` bytes.
+/// expression-stack evaluator and therefore consumed exactly
+/// `operand_byte_len` bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SiglusCallArgument {
     /// ABI role, including its positional index or encoded named id.

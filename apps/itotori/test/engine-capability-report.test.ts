@@ -7,8 +7,8 @@ import {
   toSummary,
 } from "../src/services/engine-capability-report.js";
 
-// KAIFUU-053: itotori-side consumer round-trips. Mirrors the strict-gate
-// tests in `crates/kaifuu-core/src/registry/` and
+// itotori-side capability-leveled engine detector consumer round-trips.
+// Mirrors the strict-gate tests in `crates/kaifuu-core/src/registry/` and
 // `packages/localization-bridge-schema/test/schema.test.ts`.
 
 describe("adapterBadge", () => {

@@ -563,7 +563,7 @@ pub struct Xp3CryptFixture {
     pub schema_version: String,
     /// Stable fixture id.
     pub fixture_id: String,
-    /// The spec-DAG node id this fixture is authored for (e.g. ``).
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     /// Engine family (`kirikiri`).
     pub engine_family: String,
@@ -648,7 +648,7 @@ pub struct Xp3CryptReport {
     pub schema_version: String,
     /// Capability id.
     pub capability_id: String,
-    /// The spec-DAG node id.
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     /// The blunt support boundary.
     pub support_boundary: String,

@@ -1,15 +1,15 @@
-// The human-in-the-loop edit / feedback / apply service (RB-033).
+// The human-in-the-loop edit / feedback / apply service.
 //
 // Direct edits and general feedback are NON-BLOCKING: each appends an immutable
 // HumanInput and a durable human-authored WikiObject version, then returns —
 // no inference is awaited. An intentional apply boundary coalesces the whole
-// session and launches ONE bounded child enhancement (RB-012) from the prior
-// object plus the human delta, preserving exact human text unless a decoded
-// fact conflicts, preserving unaffected fields, and marking the result
+// session and launches ONE bounded child enhancement from the prior object
+// plus the human delta, preserving exact human text unless a decoded fact
+// conflicts, preserving unaffected fields, and marking the result
 // non-provisional.
 //
-// This module is self-contained: it composes RB-030 wiki persistence and the
-// RB-013 human-input table, and imports nothing from the old context-correction
+// This module is self-contained: it composes the wiki persistence layer and
+// the human-input table, and imports nothing from the old context-correction
 // worker or from the retired execution surface.
 
 import {

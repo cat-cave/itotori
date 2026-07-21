@@ -86,7 +86,7 @@ pub struct Xp3PatchManifest {
     pub schema_version: String,
     /// Stable manifest id.
     pub manifest_id: String,
-    /// The spec-DAG node id this manifest is authored for (e.g. ``).
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     /// The trivial replacements to apply (this fixture declares exactly one).
     pub replacements: Vec<Xp3TextReplacement>,
@@ -256,7 +256,7 @@ pub struct Xp3PatchReport {
     pub schema_version: String,
     /// Capability id.
     pub capability_id: String,
-    /// The spec-DAG node id.
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     /// The blunt support boundary.
     pub support_boundary: String,

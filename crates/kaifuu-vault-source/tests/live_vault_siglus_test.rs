@@ -1,13 +1,9 @@
 //! Live Siglus corpus proof against the real read-only `/archive/vault`.
-//! Re-scope note: the parent node (`siglus-01-disc-recon`) originally assumed
-//! Karetoshi + Gamekoi were only available as copy-protected DVD images
-//! (`.mds`/`.mdf`), which are unrealizable under the no-Wine / no-shell-out
-//! laws. That premise is SUPERSEDED: the vault now holds both titles as
-//! **portable installs** (bare `by-id` artifacts), bypassing the DVD copy
-//! protection entirely. So there is no sector-descramble work; this proof is
-//! the same materialize path the RealLive corpus uses: resolve each title BY-ID
-//! and extract its plaintext Siglus game tree into scratch, strictly read-only
-//! against the vault.
+//! Both Karetoshi and Gamekoi are held as **portable installs** (bare
+//! `by-id` artifacts), bypassing DVD copy protection entirely. This proof
+//! is the same materialize path the RealLive corpus uses: resolve each
+//! title BY-ID and extract its plaintext Siglus game tree into scratch,
+//! strictly read-only against the vault.
 //! `#[ignore]`d by default; run explicitly with the live vault:
 //! ```text
 //! ITOTORI_VAULT_ROOT=/archive/vault \

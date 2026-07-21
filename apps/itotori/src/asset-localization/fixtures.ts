@@ -1,6 +1,6 @@
-// ITOTORI-041 — synthetic fixtures for the asset-localization loop.
+// Synthetic fixtures for the asset-localization loop.
 //
-// Derived from the KAIFUU-026 public OCR golden
+// Derived from the public asset-OCR golden
 // (`fixtures/public/ocr-ui/title-card.text-regions.golden.json`) — a synthetic
 // title card with an exact-match region, an uncertain candidate region, and a
 // media-surface capability profile. No copyrighted bytes; deterministic.
@@ -11,8 +11,8 @@ const TITLE_CARD_HASH = "sha256:a5fe464bfb1fae0b0adb1e99a47f2cc7e56663dca5a7ac17
 
 /**
  * A synthetic OCR document: a "NEW GAME" title card whose "NEW" region is an
- * exact match and whose "LOAD" region is an uncertain candidate (mirrors the
- * KAIFUU-026 golden's region-0004 uncertain finding).
+ * exact match and whose "LOAD" region is an uncertain candidate (mirrors
+ * the OCR golden's region-0004 uncertain finding).
  */
 export function titleCardOcrDocumentFixture(): AssetOcrDocument {
   return {

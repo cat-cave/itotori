@@ -66,7 +66,7 @@ pub const KAG_VFS_SUPPORT_BOUNDARY: &str = "Utsushi replays a plaintext KAG `.ks
 pub struct KagVfsEvidence {
     /// Report schema version.
     pub schema_version: String,
-    /// The spec-DAG node id this claim is authored for.
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     /// Capability id.
     pub capability_id: String,
@@ -90,7 +90,7 @@ pub struct KagVfsEvidence {
 }
 
 impl KagVfsEvidence {
-    /// The spec-DAG node id stamped on every claim.
+    /// Provenance node id stamped on every claim.
     pub const SOURCE_NODE_ID: &'static str = "UTSUSHI-039";
 
     /// Serialize to stable, redaction-swept JSON. The sweep rejects any

@@ -54,10 +54,10 @@ export interface QualifyingArtifactAttemptInput {
 }
 
 /**
- * Content-free facts observed for one RB-064 workflow attempt. The physical
- * attempt identity is repeated here solely to join it to the driver's
- * authoritative lineage; {@link projectQualifyingWorkflowLineage} rejects a
- * missing, duplicated, or invented identity before a row can be persisted.
+ * Content-free facts observed for one workflow attempt. The physical attempt
+ * identity is repeated here solely to join it to the driver's authoritative
+ * lineage; {@link projectQualifyingWorkflowLineage} rejects a missing,
+ * duplicated, or invented identity before a row can be persisted.
  */
 export interface QualifyingWorkflowAttemptObservation {
   readonly qualifyingArtifactId: string;
@@ -154,11 +154,11 @@ export async function persistQualifyingArtifactLineage(
 }
 
 /**
- * Bind observed, content-free attempt facts to the RB-064 physical-attempt
- * lineage. This is the sole report projection for a workflow run: it requires
- * exactly one observation for every driver-recorded physical attempt, so a
- * retry, correction, repair, or any future workflow step cannot disappear
- * from scorecard reporting by omission.
+ * Bind observed, content-free attempt facts to the driver's physical-attempt
+ * lineage. This is the sole report projection for a workflow run: it
+ * requires exactly one observation for every driver-recorded physical
+ * attempt, so a retry, correction, repair, or any future workflow step
+ * cannot disappear from scorecard reporting by omission.
  */
 export function projectQualifyingWorkflowLineage(
   policy: ResolvedRunPolicy,
@@ -203,7 +203,7 @@ export function projectQualifyingWorkflowLineage(
   });
 }
 
-/** Persist the complete, coverage-checked RB-064 workflow lineage. */
+/** Persist the complete, coverage-checked qualifying-workflow lineage. */
 export async function persistQualifyingWorkflowLineage(
   store: QualifyingAttemptTelemetryStore,
   policy: ResolvedRunPolicy,
@@ -216,8 +216,9 @@ export async function persistQualifyingWorkflowLineage(
 }
 
 /**
- * Convenience seam for an RB-064 report. The report, rather than a caller's
- * reconstructed list, remains the authority for which physical attempts ran.
+ * Convenience seam for a qualifying-workflow run report. The report, rather
+ * than a caller's reconstructed list, remains the authority for which
+ * physical attempts ran.
  */
 export async function persistQualifyingWorkflowRunLineage(
   store: QualifyingAttemptTelemetryStore,

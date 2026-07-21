@@ -1,11 +1,11 @@
-// MV/MZ branch explorer dashboard VIEW (UTSUSHI-068).
+// MV/MZ branch explorer dashboard VIEW.
 //
-// Renders the UTSUSHI-067 branch-coverage page (see ./branch-explorer.ts) as a
+// Renders the branch-coverage page (see ./branch-explorer.ts) as a
 // reviewer-facing dashboard. Like the runtime status dashboard (./dashboard.ts),
 // this app ships NO live server and NO UI framework: the view is a plain-DOM
-// render function that fetches the 067 page (MSW-fronted in tests) and writes
+// render function that fetches the page (MSW-fronted in tests) and writes
 // HTML into a host element, plus interactive filter + pagination controls that
-// re-render the same element with an updated 067 query.
+// re-render the same element with an updated query.
 //
 // Every branch row surfaces the six fields a reviewer scans: branch id, route
 // key, coverage status, route-map links, trace evidence, and reachable text

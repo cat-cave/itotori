@@ -1,4 +1,4 @@
-// Runtime conformance ingestion schema mirror (UTSUSHI-030).
+// Runtime conformance ingestion schema mirror.
 //
 // This module mirrors the Rust validator in
 // `crates/utsushi-core/src/conformance/{mod,result,manifest}.rs`. It is the

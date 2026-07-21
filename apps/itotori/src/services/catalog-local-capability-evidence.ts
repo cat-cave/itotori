@@ -65,7 +65,7 @@ export type CatalogKeyValidationDiagnosticResult =
   | "bad_key"
   | "unsupported_suffix";
 
-// One record from a KAIFUU MV/MZ key-validation fixture (KAIFUU-114). Only the
+// One record from a KAIFUU MV/MZ key-validation fixture. Only the
 // aggregate-safe outcome (`diagnosticResult`) is ever surfaced downstream; the
 // proof hashes are read for shape validation but never emitted as evidence.
 export type CatalogKeyValidationFixtureRecord = {

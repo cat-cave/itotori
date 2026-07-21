@@ -1,8 +1,7 @@
 //! Integration tests for the graphics object stack and the
 //! headless render pipeline.
 //!
-//! Two named entrypoints match the verification commands pinned in the
-//! spec node:
+//! Two named entrypoints match the verification commands for this module:
 //!
 //! - `cargo test -p utsushi-reallive graphics_object_stack_256_objects`
 //! - `cargo test -p utsushi-reallive render_wipe_solid_colour_deterministic_png`

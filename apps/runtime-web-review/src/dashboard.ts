@@ -375,10 +375,10 @@ function renderManagedArtifactLink(artifact: RuntimeArtifact): string {
   if (artifact.hash === null) {
     return diagnostic("managed artifact link missing content hash");
   }
-  // UTSUSHI-136 — a repository-generated placeholder hash is structurally a
-  // valid managed link, but it is NOT authentic content evidence. Render the
-  // link with an inline placeholder badge so the dashboard cannot be mistaken
-  // for content proof. Content-backed hashes render as a plain link.
+  // A repository-generated placeholder hash is structurally a valid managed
+  // link, but it is NOT authentic content evidence. Render the link with an
+  // inline placeholder badge so the dashboard cannot be mistaken for content
+  // proof. Content-backed hashes render as a plain link.
   if (artifact.hashProvenance === "repository_fallback") {
     return `<a href="${escapeHtml(managedArtifactUrl(uri))}" target="_blank" rel="noreferrer">${escapeHtml(uri)}</a> ${placeholderBadge("generated placeholder hash")}`;
   }
@@ -389,11 +389,10 @@ function renderHashProvenance(artifact: RuntimeArtifact): string {
   if (artifact.hash === null) {
     return escapeHtml("missing");
   }
-  // UTSUSHI-136 — surface the provenance discriminator the repository attaches
-  // to every runtime artifact hash. Content-backed hashes are authentic
-  // adapter evidence; repository_fallback hashes are deterministic
-  // placeholders over managed-artifact metadata and must not be presented as
-  // content proof.
+  // Surface the provenance discriminator the repository attaches to every
+  // runtime artifact hash. Content-backed hashes are authentic adapter
+  // evidence; repository_fallback hashes are deterministic placeholders over
+  // managed-artifact metadata and must not be presented as content proof.
   if (artifact.hashProvenance === "content") {
     return provenanceBadge("content", "#065f46");
   }

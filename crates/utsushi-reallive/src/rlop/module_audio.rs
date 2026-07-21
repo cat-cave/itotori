@@ -2,9 +2,9 @@
 //! `module_se` RLOperation families.
 //!
 //! Implements the ~15 audio opcodes across the four submodules
-//! (`bgm`, `koe`, `pcm`, `se`) the spec node pins as the
-//! alpha-tier coverage frontier. Every op routes through a shared
-//! [`AudioRuntime`] that owns:
+//! (`bgm`, `koe`, `pcm`, `se`) pinned as the alpha-tier coverage
+//! frontier. Every op routes through a shared [`AudioRuntime`] that
+//! owns:
 //!
 //! 1. The Gameexe-derived `FOLDNAME.<KIND>` resolution surface
 //!    ([`AudioRuntime::bgm_asset_id_for`], etc.) so a `bgmPlay("ASA")`

@@ -17,7 +17,7 @@ import {
 } from "../schema.js";
 import { createUuid7 } from "./event-queue-repository.js";
 
-// KAIFUU-053: capability-leveled engine detector registry.
+// Capability-leveled engine detector registry.
 //
 // Mirrors `kaifuu_core::registry::capability::AdapterCapabilityMatrix` and
 // `packages/localization-bridge-schema/src/index.ts`

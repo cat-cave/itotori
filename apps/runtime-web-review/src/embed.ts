@@ -1,4 +1,4 @@
-// WASM embed ABI fixture renderer (UTSUSHI-024).
+// WASM embed ABI fixture renderer.
 //
 // Consumes a canned `EmbedState` JSON envelope and renders the four ABI
 // observables (capabilities, trace, current snapshot ref, artifact refs).

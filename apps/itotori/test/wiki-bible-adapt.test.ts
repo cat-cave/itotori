@@ -1,4 +1,4 @@
-// Pure adapters from the RB-035 WikiObject wire envelopes to the product-surface
+// Pure adapters from the WikiObject wire envelopes to the product-surface
 // dashboard read-models. Proves readiness, route facets, and write-loop
 // addressing are derived — never invented.
 

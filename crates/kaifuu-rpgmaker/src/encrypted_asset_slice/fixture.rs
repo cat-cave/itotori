@@ -3,7 +3,7 @@ use kaifuu_core::mv_mz_encrypted_audio::{OGG_SIGNATURE, SYNTHETIC_OGG};
 use kaifuu_core::mv_mz_encrypted_image::{PNG_SIGNATURE, SYNTHETIC_PNG};
 use kaifuu_core::{MvMzAssetKey, SecretRef, encrypt_rpgmaker_asset};
 
-/// The synthetic spec-DAG node id.
+/// Provenance node id stamped into generated reports.
 pub const MV_MZ_SLICE_SOURCE_NODE_ID: &str = "rpgmaker-mv-mz-encrypted-asset-slice";
 
 /// The clearly-fake 16-byte fixture key. Its hex is the synthetic `System.json`

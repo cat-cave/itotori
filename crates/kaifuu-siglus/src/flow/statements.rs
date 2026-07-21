@@ -2,11 +2,12 @@
 //! choice units from a partitioned scene's instruction stream.
 //!
 //! A lightweight typed-slot stack (str-literal index / int constant / opaque)
-//! mirrors the siglus-09 operand-stack discipline just far enough to read the
-//! top-of-stack **string-table index** a `CD_TEXT` / `CD_NAME` renders — the
-//! load-bearing patch-back reference. Choice recognition is a separate forward
-//! scan for the select→conditional-jump dispatch shape. Nothing here reads a
-//! decoded character: strings travel as their table index + byte-span only.
+//! mirrors the expression-stack evaluator's operand-stack discipline just far
+//! enough to read the top-of-stack **string-table index** a `CD_TEXT` /
+//! `CD_NAME` renders — the load-bearing patch-back reference. Choice
+//! recognition is a separate forward scan for the select→conditional-jump
+//! dispatch shape. Nothing here reads a decoded character: strings travel as
+//! their table index + byte-span only.
 
 use std::collections::BTreeMap;
 
@@ -64,8 +65,9 @@ enum Slot {
     Opaque,
 }
 
-/// A minimal stack mirroring the siglus-09 net effect, tracking only typed
-/// slots (for the top-of-stack string a text consumer renders).
+/// A minimal stack mirroring the expression-stack evaluator's net effect,
+/// tracking only typed slots (for the top-of-stack string a text consumer
+/// renders).
 #[derive(Default)]
 struct SlotStack {
     slots: Vec<Slot>,
@@ -416,7 +418,7 @@ const CHOICE_SCAN_BUDGET: usize = 64;
 /// `PUSH int k ; (compare eq/ne) ; GOTO_TRUE/FALSE → target`, with distinct
 /// constants and distinct targets. Each arm links a choice constant to its
 /// branch target. (Whether a given selector is a player-facing menu vs an
-/// internal value dispatch is refined by the syscall decoder, siglus-11.)
+/// internal value dispatch is refined by the syscall decoder.)
 pub(super) fn recognize_choices(
     bytecode: &[u8],
     instructions: &[SiglusInstruction],

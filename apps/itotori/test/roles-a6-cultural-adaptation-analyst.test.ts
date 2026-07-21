@@ -305,8 +305,9 @@ describe("A6 clause 2 — function + bounded options, never a replacement transl
     }
     expect(result.served.model).toBe(deepSeekV4FlashProfile.model);
     expect(result.served.provider).toBe("fireworks");
-    // A6 reads its exact source unit and setup/payoff window through RB-025;
-    // this is the context the role actually had before dispatching the note.
+    // A6 reads its exact source unit and setup/payoff window through the
+    // specialist read surface; this is the context the role actually had
+    // before dispatching the note.
     expect(result.context.unit.factId).toBe(candidate.unitFactId);
     expect(result.context.neighborsPage.tool).toBe("decode_get_neighbors");
     expect(result.context.neighborsPage.facts.map((fact) => fact.factId)).toContain(

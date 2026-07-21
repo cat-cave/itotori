@@ -28,8 +28,8 @@
 //! Like the smoke, the profiled format here is the narrow constant-key-XOR,
 //! UTF-16LE, uncompressed-within-profile container — NOT the real
 //! constant-256-XOR-table + per-game second-layer strip and proprietary-LZSS
-//! codec (those remain the `siglus-06` skeleton). Out-of-profile compression /
-//! magic is a typed capability error, never a silent pass. No real retail Siglus
+//! codec (those remain the proprietary-LZSS skeleton). Out-of-profile
+//! compression / magic is a typed capability error, never a silent pass. No real retail Siglus
 //! `Scene.pck` / `Gameexe.dat` bytes are available in the vault/scratch as of
 //! this node, so validation is on profiled synthetic fixtures; the real-bytes
 //! gap is documented in `docs/kaifuu-siglus-pure-adapter-capability.md`.
@@ -63,7 +63,7 @@ pub const ADAPTER_SCHEMA_VERSION: &str = "0.1.0";
 /// The adapter capability id.
 pub const ADAPTER_CAPABILITY_ID: &str = "kaifuu-siglus-pure-adapter";
 
-/// The spec-DAG node this adapter is authored for.
+/// Provenance node id stamped into adapter reports.
 pub const ADAPTER_SOURCE_NODE_ID: &str = "KAIFUU-022";
 
 /// The blunt support boundary surfaced in every adapter report.

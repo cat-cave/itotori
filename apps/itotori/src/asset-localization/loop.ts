@@ -1,11 +1,11 @@
-// ITOTORI-041 — Asset-localization drafting / QA / export loop.
+// Asset-localization drafting / QA / export loop.
 //
 // The dialogue loop drafts a source UNIT, attaches QA annotations, and exports
 // a patch payload. This module is the parallel loop for IMAGE / UI text,
-// consuming the KAIFUU-026 OCR text regions +
-// KAIFUU-059 media-surface capability, and honoring the two upstream rules:
-// OCR output is evidence (never ground truth), and unsupported engine asset
-// patching stays EXPLICIT (a typed refusal, never a silent drop).
+// consuming the asset-OCR text regions + media-surface capability, and
+// honoring the two upstream rules: OCR output is evidence (never ground
+// truth), and unsupported engine asset patching stays EXPLICIT (a typed
+// refusal, never a silent drop).
 //
 // The four stages, each a pure function over synthetic-testable inputs:
 //   1. draftAssetTexts        — OCR text regions      → AssetTextDraft[]
@@ -29,7 +29,7 @@ import {
 import type { EngineCapabilityLevelStatus } from "../services/engine-capability-matrix.js";
 
 // ---------------------------------------------------------------------------
-// OCR source shapes (subset of the KAIFUU-026 `asset-ocr` text-regions manifest)
+// OCR source shapes (subset of the asset-OCR text-regions manifest)
 // ---------------------------------------------------------------------------
 
 export type AssetOcrRegionSource = {
@@ -59,7 +59,7 @@ export type AssetOcrDocument = {
   assetRef: string;
   /** Asset kind (e.g. `imageWithText`, `uiArt`). */
   assetKind: string;
-  /** Upstream node id that produced the OCR (e.g. `KAIFUU-026`). */
+  /** Upstream node id that produced the OCR (provenance). */
   sourceNodeId: string;
   regions: AssetOcrRegionSource[];
 };
@@ -255,9 +255,9 @@ export function isBlockingAssetFinding(finding: AssetQaFinding): boolean {
 
 /**
  * The engine-side patch capability for an asset. Distilled from the
- * engine-capability-matrix (`levels.patch.status`) + the KAIFUU-059
- * media-surface `MediaAssetDecision` (surface role, key availability, the
- * honored patch-back mode). Kaifuu classifies; Itotori decides — this is the
+ * engine-capability-matrix (`levels.patch.status`) + the media-surface
+ * `MediaAssetDecision` (surface role, key availability, the honored
+ * patch-back mode). Kaifuu classifies; Itotori decides — this is the
  * classification Itotori's decision is gated on.
  */
 export const ASSET_SURFACE_ROLES = [
@@ -272,9 +272,9 @@ export type AssetEngineCapability = {
   engineFamily: string;
   /** The `patch` level status from the engine-capability matrix. */
   patchStatus: EngineCapabilityLevelStatus;
-  /** KAIFUU-059 profiled localization role. */
+  /** Profiled localization role. */
   surfaceRole: AssetSurfaceRole;
-  /** KAIFUU-059 decrypt state: is the plaintext (key) available? */
+  /** Decrypt state: is the plaintext (key) available? */
   keyAvailable: boolean;
   /** The patch-back mode the engine will honor, or null if none. */
   patchBackMode: AssetPatchBackMode | null;

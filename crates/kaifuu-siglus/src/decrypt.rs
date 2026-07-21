@@ -90,7 +90,7 @@ pub const SIGLUS_GAMEEXE_XOR_TABLE: [u8; SIGLUS_XOR_TABLE_LEN] = [
 
 /// Opaque handle to a recovered per-game second-layer key, published as a
 /// structured secret-ref only (never raw bytes). The key-discovery layer
-/// (siglus-04) constructs this from its validated `secret-ref + proof hash`.
+/// constructs this from its validated `secret-ref + proof hash`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SiglusSecondLayerKey {
     secret_ref: String,

@@ -1038,9 +1038,9 @@ describe("ItotoriProjectRepository", () => {
       patchExport.entries[0]!.targetText = "{name} and {name}";
       // Collapsed duplicates: both mappings resolve to the SAME source span
       // (bytes 0..6) via explicit byte-range identity. This stays schema-valid
-      // (KAIFUU-170 only rejects duplicate `sourceSpanId`, which is absent
-      // here), so it reaches the compatibility evaluator, which flags the
-      // collapse as protected_span_mapping_mismatch.
+      // (the strict identity check only rejects duplicate `sourceSpanId`,
+      // which is absent here), so it reaches the compatibility evaluator,
+      // which flags the collapse as protected_span_mapping_mismatch.
       patchExport.entries[0]!.protectedSpanMappings = [
         {
           raw: "{name}",

@@ -58,9 +58,9 @@
 //! [`G00Rect`] uses the rlvm/xclannad public-format convention of the
 //! rectangle being **inclusive** at `(x2, y2)`, so the region's pixel
 //! width is `x2 - x1 + 1`. The `name` field is reserved (the on-disk
-//! record does not store a string; the `objLoadRegion` opcode at
-//! supplies names through `Gameexe.ini`-driven
-//! cross-references, not through the g00 record itself).
+//! record does not store a string; the `objLoadRegion` opcode supplies
+//! names through `Gameexe.ini`-driven cross-references, not through the
+//! g00 record itself).
 //!
 //! # LZSS variant (relative back-reference LZ77)
 //!

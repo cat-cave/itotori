@@ -371,7 +371,7 @@ function feedbackInput() {
   };
 }
 
-/** A real RB-012 dispatch runner over the Postgres memo store. The wire response
+/** A real LLM dispatch runner over the Postgres memo store. The wire response
  * is recorded, but no service or runner is stubbed. */
 function memoizedApiRunner(
   context: Awaited<ReturnType<typeof isolatedMigratedContext>>,

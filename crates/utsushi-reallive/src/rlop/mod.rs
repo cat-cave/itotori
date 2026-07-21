@@ -281,9 +281,9 @@ impl fmt::Display for RlopKey {
 ///
 /// The registry is **fail-soft**: a missing key surfaces as a
 /// [`crate::vm::VmWarning::MissingRlop`] at the VM level and the VM
-/// advances past the command. Per the spec node this is
-/// intentional — the alpha-tier opcode coverage frontier is the gating
-/// criterion, not the all-opcodes-implemented bar.
+/// advances past the command. By contract this is intentional — the
+/// alpha-tier opcode coverage frontier is the gating criterion, not
+/// the all-opcodes-implemented bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RlopImplementationProvenance {
     /// A family registrar supplied documented, verified behavior for this

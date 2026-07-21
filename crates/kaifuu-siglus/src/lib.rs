@@ -1,5 +1,4 @@
-//! Pure-Rust SiglusEngine (Siglus) format stack — crate **skeleton**
-//! (siglus-05).
+//! Pure-Rust SiglusEngine (Siglus) format stack — crate **skeleton**.
 //! This crate mirrors the proven [`kaifuu-reallive`](../kaifuu_reallive/index.html)
 //! module shape for the Siglus engine family: a container reader
 //! ([`archive`]), the constant 256-byte XOR + per-game second-layer key
@@ -31,7 +30,7 @@
 //! bundle-driven [`patchback`] paths are implemented; the narrow real
 //! [`known_key_smoke`] profile remains available for its separately-declared
 //! capability boundary.
-//! The exe-angou / second-layer key is the **key-discovery layer's (siglus-04)
+//! The exe-angou / second-layer key is the **key-discovery layer's
 //! deliverable**, now recovered natively in-process from `SiglusEngine.exe`
 //! bytes by [`exe_angou`] (a static PE opcode scan — no Wine, no execution); it
 //! is consumed here only as resolved material bound to a structured secret-ref,
@@ -54,7 +53,7 @@
 //!   encoded. No source expression is copied, vendored, linked, or
 //!   mechanically translated from any reference project.
 //! - The corrected reference-project provenance (the same citation the
-//!   siglus-25 audit-fix node enforces) is carried as a grep-pinnable
+//!   citation-correctness audit enforces) is carried as a grep-pinnable
 //!   public `const` — [`SIGLUS_RS_RESEARCH_ANCHOR_BOUNDARY_STATEMENT`].
 //!   `xmoezzz/siglus_rs` (`https://github.com/xmoezzz/siglus_rs`) is a
 //!   **research anchor only**, licensed **MPL-2.0**.
@@ -103,14 +102,14 @@ pub mod syscall;
 pub const SIGLUS_UNIMPLEMENTED_MARKER: &str = "kaifuu.siglus";
 
 /// Clean-room boundary statement for the Siglus reference projects,
-/// carried as a public `const &str` so audit tooling (and the siglus-25
-/// citation-correctness node) can pin the no-vendoring / no-derivation
+/// carried as a public `const &str` so audit tooling (and the
+/// citation-correctness audit) can pin the no-vendoring / no-derivation
 /// posture with the **correct** provenance without parsing the module
 /// doc-comment.
 /// Correctness note: an earlier repo statement mis-attributed the
 /// project to the wrong repository owner under an incorrect license. The
-/// accurate provenance, enforced here and by siglus-25, is
-/// `xmoezzz/siglus_rs` under MPL-2.0.
+/// accurate provenance, enforced here, is `xmoezzz/siglus_rs` under
+/// MPL-2.0.
 pub const SIGLUS_RS_RESEARCH_ANCHOR_BOUNDARY_STATEMENT: &str = concat!(
     "xmoezzz/siglus_rs (https://github.com/xmoezzz/siglus_rs, MPL-2.0) is a research anchor only. ",
     "bluecookies/siglus-decompile (https://github.com/bluecookies/siglus-decompile) is the clearest ",

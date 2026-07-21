@@ -1,9 +1,10 @@
-// MSW fixtures for the MV/MZ branch explorer API (UTSUSHI-067).
+// MSW fixtures for the MV/MZ branch explorer API.
 //
 // SYNTHETIC ONLY. A single committed join fixture spanning all four coverage
 // states (visited / unvisited / ambiguous / unreachable), joined through the
-// UTSUSHI-009 read model, plus MSW handlers that front the branch explorer
-// page builder. No live runtime, browser playback, or screenshot capture.
+// branch coverage read model, plus MSW handlers that front the branch
+// explorer page builder. No live runtime, browser playback, or screenshot
+// capture.
 
 import { http, HttpResponse } from "msw";
 import {
@@ -25,14 +26,14 @@ export const BRANCH_EXPLORER_ERROR_ENDPOINT =
   "http://itotori.test/api/utsushi/v0.1/branch-coverage-error";
 // A LARGE route map (many branches across all four states) so the dashboard
 // view's filter + pagination are exercised against a route map that cannot fit
-// on one page — proving the view stays navigable at scale (UTSUSHI-068).
+// on one page — proving the view stays navigable at scale.
 export const BRANCH_EXPLORER_LARGE_ENDPOINT =
   "http://itotori.test/api/utsushi/v0.1/branch-coverage-large";
 
 // A synthetic fixture with multiple branches per coverage state so pagination
 // and per-state filtering are exercised with real page boundaries. The join
 // derives the coverage status from the (route-map-id count, observed) shape
-// exactly as the UTSUSHI-009 read model does.
+// exactly as the branch coverage read model does.
 export const SYNTHETIC_BRANCH_COVERAGE_FIXTURE: BranchCoverageFixture = {
   adapterId: "utsushi-synthetic",
   observations: [
@@ -128,7 +129,7 @@ function routeMapId(kind: string, index: number): string {
 }
 
 // A LARGE synthetic join fixture: `perStatus` branches in each of the four
-// coverage states, joined exactly as the UTSUSHI-009 read model does.
+// coverage states, joined exactly as the branch coverage read model does.
 //   visited     -> 1 route map + observed
 //   unvisited   -> 1 route map + never observed
 //   ambiguous   -> 2 route maps sharing the branch's route key

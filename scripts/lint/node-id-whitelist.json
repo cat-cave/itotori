@@ -1,7 +1,7 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/audit-no-node-ids.mjs --update\". Each entry is a grandfathered\nnode-id token (the matched reference text, lower-cased); the multiset per file\nmay only shrink. When empty/deleted the guard is absolute (zero node ids).",
-  "generatedAt": "2026-07-20T12:28:35.726Z",
-  "total": 541,
+  "generatedAt": "2026-07-21T14:49:13.430Z",
+  "total": 503,
   "files": {
     "crates/kaifuu-cli/src/tests.rs": [
       "kaifuu-026",
@@ -404,8 +404,6 @@
     ],
     "crates/utsushi-reallive/tests/audio_rlop_real_bytes.rs": [
       "utsushi-217",
-      "utsushi-217",
-      "utsushi-217",
       "utsushi-217"
     ],
     "crates/utsushi-reallive/tests/bytecode_element_real_bytes.rs": [
@@ -477,9 +475,6 @@
       "utsushi-212",
       "utsushi-212"
     ],
-    "crates/utsushi-reallive/tests/rlop_text.rs": [
-      "utsushi-211"
-    ],
     "crates/utsushi-reallive/tests/rlop_text_real_bytes.rs": [
       "utsushi-201",
       "utsushi-209",
@@ -545,12 +540,6 @@
     "packages/itotori-db/src/job-registry.ts": [
       "itotori-048"
     ],
-    "packages/itotori-db/src/managed-artifact-refs.ts": [
-      "utsushi-049"
-    ],
-    "packages/itotori-db/src/repositories/engine-capability-report-repository.ts": [
-      "kaifuu-053"
-    ],
     "packages/itotori-db/src/repositories/event-queue-repository.ts": [
       "itotori-046",
       "itotori-046",
@@ -587,8 +576,7 @@
       "itotori-230",
       "itotori-230",
       "itotori-230",
-      "itotori-230",
-      "utsushi-231"
+      "itotori-230"
     ],
     "packages/itotori-db/src/repositories/project-repository.ts": [
       "itotori-027",
@@ -627,8 +615,7 @@
       "itotori-225",
       "itotori-227",
       "itotori-230",
-      "itotori-230",
-      "kaifuu-053"
+      "itotori-230"
     ],
     "packages/itotori-db/src/services/event-queue-service.ts": [
       "itotori-046",
@@ -664,9 +651,6 @@
     "packages/itotori-db/test/branch-policy-glossary-references-migration-drift.test.ts": [
       "itotori-140"
     ],
-    "packages/itotori-db/test/engine-capability-report-repository.test.ts": [
-      "kaifuu-053"
-    ],
     "packages/itotori-db/test/job-registry.test.ts": [
       "itotori-048"
     ],
@@ -700,8 +684,7 @@
       "itotori-061",
       "itotori-061",
       "itotori-061",
-      "itotori-061",
-      "kaifuu-170"
+      "itotori-061"
     ],
     "packages/itotori-db/test/style-guide-approval-boundary.test.ts": [
       "itotori-129"
@@ -730,28 +713,10 @@
     "packages/itotori-db/test/translation-memory-migration-drift.test.ts": [
       "itotori-145"
     ],
-    "packages/localization-bridge-schema/src/asset-localization-draft.ts": [
-      "itotori-041",
-      "kaifuu-026",
-      "kaifuu-026",
-      "kaifuu-026",
-      "kaifuu-026",
-      "kaifuu-026",
-      "kaifuu-059",
-      "kaifuu-059",
-      "kaifuu-059",
-      "kaifuu-059",
-      "kaifuu-059",
-      "kaifuu-059"
-    ],
-    "packages/localization-bridge-schema/src/conformance.ts": [
-      "utsushi-030"
-    ],
     "packages/localization-bridge-schema/src/draft-artifact-bundle.ts": [
       "itotori-019"
     ],
     "packages/localization-bridge-schema/src/format-stability.ts": [
-      "kaifuu-238",
       "kaifuu-238"
     ],
     "packages/localization-bridge-schema/src/index.ts": [
@@ -760,12 +725,7 @@
       "itotori-059",
       "itotori-059",
       "itotori-059",
-      "itotori-225",
-      "kaifuu-053",
-      "kaifuu-053",
-      "kaifuu-053",
-      "kaifuu-053",
-      "kaifuu-170"
+      "itotori-225"
     ],
     "packages/localization-bridge-schema/src/patch-export-bundle.ts": [
       "itotori-019",
@@ -785,23 +745,9 @@
       "itotori-075",
       "itotori-076"
     ],
-    "packages/localization-bridge-schema/test/binary-patch-smoke.test.ts": [
-      "kaifuu-011",
-      "kaifuu-011"
-    ],
-    "packages/localization-bridge-schema/test/mutation-thresholds.ts": [
-      "kaifuu-170"
-    ],
     "packages/localization-bridge-schema/test/schema.test.ts": [
       "itotori-059",
-      "itotori-225",
-      "kaifuu-053",
-      "kaifuu-170",
-      "kaifuu-170",
-      "kaifuu-170",
-      "utsushi-026",
-      "utsushi-026",
-      "utsushi-030"
+      "itotori-225"
     ],
     "packages/spec-dag-dashboard/test/db-audit-findings.test.ts": [
       "kaifuu-188",

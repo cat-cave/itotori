@@ -1,6 +1,6 @@
-// Self-contained RB-033 module barrel. This is NOT a shared app barrel: it is
-// local to the human edit / feedback / enhancement path so a sibling role node
-// never contends on it.
+// Self-contained human-enhancement module barrel. This is NOT a shared app
+// barrel: it is local to the human edit / feedback / enhancement path so a
+// sibling role node never contends on it.
 
 export {
   createDispatchEnhancementRunner,

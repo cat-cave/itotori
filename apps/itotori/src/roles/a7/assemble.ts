@@ -10,8 +10,8 @@
 //      — never from the model. A label the model mis-copies or invents resolves
 //      to nothing and is DROPPED — never admitted uncited, never a poison-pill
 //      that hard-fails the whole build. A model claim left with no resolvable
-//      citation is discarded; the RB-031 gate still runs over the surviving,
-//      provable citations so nothing unresolved enters the Wiki. The structural
+//      citation is discarded; the citation gate still runs over the
+//      surviving, provable citations so nothing unresolved enters the Wiki. The structural
 //      presence claim's index-derived fact ids instead REQUIRE resolution: a
 //      miss there is a genuine snapshot-integrity bug and stays loud.
 //   2. Whole-game evidence is GUARANTEED. The module always authors a presence

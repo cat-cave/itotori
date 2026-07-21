@@ -2,7 +2,7 @@
 //
 // For EACH gate: a passing case and a defect case (a guarantee removed makes a
 // test fail). Every emitted defect is contract-validated against DefectSchema.
-// Gates run over the REAL RB-024 fact snapshot where the shape allows, and over
+// Gates run over the REAL fact snapshot where the shape allows, and over
 // synthetic snapshots to trigger specific per-gate conditions. A gate that
 // cannot evaluate its input fails loud (GateEvaluationError) — proven too.
 

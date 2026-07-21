@@ -1,7 +1,7 @@
 //! Siglus scene-bytecode **expression / stack decoder**.
 //!
-//! [`crate::opcode`] (siglus-08) partitions a decompressed scene into a
-//! fully-covering [`SiglusInstruction`] stream — each an exact
+//! [`crate::opcode`] (the opcode partitioner) partitions a decompressed scene
+//! into a fully-covering [`SiglusInstruction`] stream — each an exact
 //! `(offset, lead, opcode, len)` — but does not decode operand *values*. This
 //! module lands that decode in two layers:
 //!

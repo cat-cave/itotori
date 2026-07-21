@@ -92,7 +92,7 @@ pub struct AlphaEncryptedPatchArtifact {
     pub patch_result_id: String,
     /// The `profileId` of the readiness profile this patch result is for.
     pub profile_id: String,
-    /// The spec-DAG node id this artifact is authored for (``).
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     /// Outcome of the synthetic patch run.
     pub status: OperationStatus,

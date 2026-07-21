@@ -1,12 +1,12 @@
-// UTSUSHI-134 embedded playback demo bundle renderer.
+// Embedded playback demo bundle renderer.
 //
 // DATA-ONLY playback surface. Consumes the committed MV/MZ demo-bundle
-// descriptor (produced by the Rust `utsushi_fixture::mvmz_demo_bundle` builder,
-// which PACKAGES the UTSUSHI-119 patched proof + UTSUSHI-102 alpha proof +
-// UTSUSHI-006 patched trace + UTSUSHI-010 review manifest + UTSUSHI-065
-// screenshot evidence) and renders the patched fixture's observed text /
-// choices, its validated screenshot capture references, the review-manifest
-// summary, and the proof links.
+// descriptor (produced by the Rust `utsushi_fixture::mvmz_demo_bundle`
+// builder, which PACKAGES the patched-runtime proof, alpha baseline proof,
+// patched-runtime trace, review manifest, and screenshot evidence) and
+// renders the patched fixture's observed text / choices, its validated
+// screenshot capture references, the review-manifest summary, and the proof
+// links.
 //
 // It opens a PUBLIC PATCHED MV/MZ FIXTURE playback surface: no live game
 // process, no network fetch, no copyrighted bytes. Every field it renders comes

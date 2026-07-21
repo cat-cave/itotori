@@ -578,7 +578,7 @@ pub struct RuntimeEvidenceClaim {
     pub schema_version: String,
     /// Capability id.
     pub capability_id: String,
-    /// The spec-DAG node id this claim is authored for.
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     /// The profile id.
     pub profile_id: String,
@@ -616,7 +616,7 @@ pub struct RuntimeKeyReference {
 }
 
 impl RuntimeEvidenceClaim {
-    /// The spec-DAG node id stamped on every admission claim.
+    /// Provenance node id stamped on every admission claim.
     pub const SOURCE_NODE_ID: &'static str = "UTSUSHI-035";
 
     /// Build the runtime-evidence claim from a cleared boundary admission. This

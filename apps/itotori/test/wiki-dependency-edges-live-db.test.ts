@@ -1,12 +1,12 @@
 // Fine-grained dependency edges — EXACT dependency queries over real rows.
 //
-// Every downstream object records the exact upstream claim/field it consumed, so
-// a dependency query returns precisely the downstream that consumed THIS claim/
-// field — not every consumer of the upstream object. This is what makes RB-034
-// field-scoped invalidation possible. The proofs below persist three downstream
-// objects that each consume a different piece of ONE upstream object and show
-// the query resolving each consumer exactly, while the coarse object-wide query
-// returns all three.
+// Every downstream object records the exact upstream claim/field it consumed,
+// so a dependency query returns precisely the downstream that consumed THIS
+// claim/field — not every consumer of the upstream object. This is what
+// makes field-scoped invalidation possible. The proofs below persist three
+// downstream objects that each consume a different piece of ONE upstream
+// object and show the query resolving each consumer exactly, while the
+// coarse object-wide query returns all three.
 
 import { createHash } from "node:crypto";
 

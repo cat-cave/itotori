@@ -90,8 +90,8 @@ pub struct SceneExpressionDecode {
     pub stack_underflow_count: usize,
     /// Underflow diagnostics attributed to the consuming opcode's lead byte
     /// (two-digit hex → count). A straight-line walk cannot supply an operand
-    /// whose producer sits on another control-flow path; the siglus-10 flow
-    /// layer resolves these. Sanitized: opcode leads + counts only.
+    /// whose producer sits on another control-flow path; the flow layer
+    /// resolves these. Sanitized: opcode leads + counts only.
     pub stack_underflow_by_lead: BTreeMap<String, usize>,
     /// Operand-stack depth left at the end of the scene.
     pub final_stack_depth: usize,

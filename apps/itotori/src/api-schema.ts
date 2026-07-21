@@ -5255,7 +5255,7 @@ function assertRuntimeDashboardArtifacts(value: unknown, label: string): void {
     assertString(row.artifactKind, `${label}[${index}].artifactKind`);
     assertNullableString(row.uri, `${label}[${index}].uri`);
     assertNullableString(row.hash, `${label}[${index}].hash`);
-    // UTSUSHI-136 — runtime artifact hash provenance discriminator.
+    // Runtime artifact hash provenance discriminator.
     // `content` = adapter-supplied content hash; `repository_fallback` =
     // repository-generated deterministic placeholder; null = missing/legacy.
     assertNullableEnum(

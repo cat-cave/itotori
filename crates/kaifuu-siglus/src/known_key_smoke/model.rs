@@ -25,9 +25,9 @@ pub enum SiglusKnownKeyEncoding {
 pub enum SiglusKnownKeyCompression {
     /// Uncompressed-within-profile — the only case this narrow smoke handles.
     Uncompressed,
-    /// Proprietary Siglus LZSS — explicitly **out of profile** here. The real
-    /// codec is the `siglus-06` skeleton; the smoke returns a typed
-    /// `not_implemented` for it rather than over-claiming support.
+    /// Proprietary Siglus LZSS — explicitly **out of profile** here. The
+    /// real codec is the proprietary-LZSS skeleton; the smoke returns a
+    /// typed `not_implemented` for it rather than over-claiming support.
     Lzss,
 }
 
@@ -197,7 +197,7 @@ pub struct SiglusGameexeExtraction {
 pub enum KnownKeySmokeError {
     /// The payload's compression is outside the declared narrow profile. This
     /// is the honest not-implemented boundary — the smoke refuses to fake
-    /// proprietary-LZSS support (that codec is the `siglus-06` skeleton).
+    /// proprietary-LZSS support (that codec is the proprietary-LZSS skeleton).
     #[error(
         "kaifuu.siglus.known_key_smoke.out_of_profile_compression_not_implemented: profile \
          {profile_id} declares in-profile compression {declared}, but the container is flagged \

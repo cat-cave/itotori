@@ -125,7 +125,7 @@ postgresDescribe("field/claim-scoped invalidation", () => {
       expect(after.unrelatedObject).toBe(before.unrelatedObject);
       expect(after.memo).toBe(before.memo);
       expect(after.acceptedUnit).toBe(before.acceptedUnit);
-      // RB-028's actual PatchExportV02 is reconstructed only from unaffected
+      // The actual PatchExportV02 is reconstructed only from unaffected
       // accepted inputs, so its content address must remain byte-identical too.
       expect(unrelatedPatchExportHash()).toBe(beforePatchExport);
       // The only recorded provider response was needed to seed an unrelated
@@ -350,9 +350,10 @@ async function seedUnrelatedArtifacts(
     },
     options,
   );
-  // Exercise RB-020 through its production dispatch/memo boundary. The
-  // recorded response keeps this test offline; a second identical dispatch
-  // proves the durable memo absorbs a restart/replay without a second call.
+  // Exercise the LLM dispatch primitive through its production dispatch/memo
+  // boundary. The recorded response keeps this test offline; a second
+  // identical dispatch proves the durable memo absorbs a restart/replay
+  // without a second call.
   const prompt = "Return the recorded unrelated review verdict.";
   const harness = dispatchHarness({
     pool: context.pool,
@@ -443,7 +444,7 @@ function hashFor(
   return String(row[hashColumn]);
 }
 
-/** Build the strict RB-028 patch export from real accepted-unit fixtures and
+/** Build the strict patch export from real accepted-unit fixtures and
  * return its content address. No patch is materialized or mutated by the
  * invalidation planner; re-building is the byte-level preservation proof. */
 function unrelatedPatchExportHash(): `sha256:${string}` {

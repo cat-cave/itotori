@@ -9,7 +9,7 @@
 //!
 //! Each test is gated on a generic `ITOTORI_REAL_*` env var. When unset
 //! the test emits a visible-skip via `eprintln!` and returns OK — silent
-//! pass is explicitly forbidden by the spec node's audit-focus list.
+//! pass is explicitly forbidden by this module's audit-focus list.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;

@@ -257,7 +257,7 @@ pub struct WolfHelperBoundaryFixture {
     pub schema_version: String,
     /// Stable id for the fixture set (synthetic; no retail names/local paths).
     pub boundary_set_id: String,
-    /// The spec-DAG node id this fixture set is authored for (e.g. ``).
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     pub engine_family: String,
     pub profiles: Vec<WolfHelperBoundaryProfile>,

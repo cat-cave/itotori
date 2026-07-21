@@ -12,8 +12,8 @@
 //!   text payloads — the same profiled transform 's static-key
 //!   fixture uses ([`kaifuu_core::build_siglus_static_key_stub`]). It is NOT the
 //!   real Siglus constant-256-byte-XOR-table + per-game second-layer strip
-//!   (that lands in `siglus-04`/`siglus-06` against real bytes). The profile
-//!   says so out loud.
+//!   (that transform lands in the key-discovery / codec layer against real
+//!   bytes). The profile says so out loud.
 //! - The profile declares its compression as
 //!   [`SiglusKnownKeyCompression::Uncompressed`]. A payload flagged
 //!   [`SiglusKnownKeyCompression::Lzss`] (or any other out-of-profile case) is

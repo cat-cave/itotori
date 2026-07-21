@@ -1,4 +1,4 @@
-// MV/MZ branch coverage read model — dashboard API seed (UTSUSHI-009).
+// MV/MZ branch coverage read model — dashboard API seed.
 //
 // DATA-ONLY mirror of the Rust `utsushi_core::conformance::branch_coverage`
 // read model. It JOINS MV/MZ runtime trace observations (branch id +

@@ -74,7 +74,7 @@ pub use validate::validate_alpha_readiness_profile;
 pub const ALPHA_READINESS_PROFILE_SCHEMA_VERSION: &str = "0.1.0";
 /// Schema version of the rendered capability summary.
 pub const ALPHA_READINESS_SUMMARY_SCHEMA_VERSION: &str = "0.1.0";
-/// Canonical spec-DAG node id every seed/template is authored for.
+/// Provenance node id stamped into every seed/template report.
 pub const ALPHA_READINESS_SOURCE_NODE_ID: &str = "KAIFUU-056";
 /// Canonical profile-fixture glob the subset consumes.
 pub const ALPHA_READINESS_PROFILE_GLOB: &str = "*.profile.json";
@@ -180,7 +180,7 @@ pub struct AlphaReadinessProfile {
     pub profile_id: String,
     /// Stable id of the backing public synthetic fixture.
     pub fixture_id: String,
-    /// The spec-DAG node id this profile is authored for (``).
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     /// The prerequisite proof-node/artifact this subset entry relies on.
     pub prerequisite_proof: String,

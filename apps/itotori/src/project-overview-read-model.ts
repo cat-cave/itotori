@@ -177,7 +177,7 @@ export async function loadProjectOverviewJournalPage(input: {
   const localeBranchId = selectedJournalLocaleBranchId(input.status, input.options);
   const limit = normalizeJournalLimit(input.options?.limit);
   const offset = normalizeJournalOffset(input.options?.offset);
-  // RB-074 removed the journal persistence substrate. Preserve the stable
+  // The journal persistence substrate is retired. Preserve the stable
   // overview envelope while making the retired provenance panel explicitly
   // empty; it must not reach a compatibility repository.
   void input.actor;

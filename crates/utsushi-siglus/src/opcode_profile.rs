@@ -352,7 +352,7 @@ pub struct OpcodeConformanceResult {
     pub schema_version: String,
     /// Capability id.
     pub capability_id: String,
-    /// The spec-DAG node id this result is authored for.
+    /// Provenance node id stamped into generated reports.
     pub source_node_id: String,
     /// The profile id the run was conformance-checked against.
     pub profile_id: String,
@@ -377,7 +377,7 @@ pub struct OpcodeConformanceResult {
 }
 
 impl OpcodeConformanceResult {
-    /// The spec-DAG node id stamped on every opcode-profile conformance result.
+    /// Provenance node id stamped on every opcode-profile conformance result.
     pub const SOURCE_NODE_ID: &'static str = "UTSUSHI-036";
 
     /// Serialize to stable, redaction-swept JSON. This is the committable

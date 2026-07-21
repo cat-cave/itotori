@@ -443,7 +443,7 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     const finalStep = memoState.receipts.at(-1);
     if (!finalStep) throw new Error("provider response was not durably memoized");
     const verification = finalStep.verification;
-    // RB-015 applies to the terminal response selected for accepted projection.
+    // The integrity gate applies to the terminal response selected for accepted projection.
     // A repaired intermediate remains quarantined in its own immutable memo but
     // cannot veto a later valid terminal response.
     if (verification.status === "quarantined") {

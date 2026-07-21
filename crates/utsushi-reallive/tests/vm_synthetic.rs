@@ -1,6 +1,6 @@
 //! Bytecode VM synthetic acceptance tests.
 //!
-//! Pins the four acceptance criteria from the spec node:
+//! Pins the four VM acceptance criteria:
 //!
 //! 0. `goto +0` infinite loop with `max_steps=100` → deterministic
 //!    `OutOfBudget` outcome (no panic).
