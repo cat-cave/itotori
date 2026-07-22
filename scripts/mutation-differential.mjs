@@ -164,7 +164,7 @@ export const MUTATIONS = [
   {
     id: "g00_paletted_reorder",
     category: "broken decode step (type-1 paletted-LZSS G00 palette B/R reorder)",
-    file: "crates/utsushi-reallive/src/g00.rs",
+    file: "crates/utsushi-reallive/src/g00/decode.rs",
     // Skip the on-disk B,G,R,A -> R,G,B,A palette reorder (emit B,G,R,A
     // verbatim). Formerly a real-only path (no synthetic paletted fixture) —
     // now killed by the synthetic type-1 G00 fixture + first-pixel assertion
