@@ -182,7 +182,7 @@ representative import sites):
   `FrameArtifactSink`, `AudioEventSink`, `TextLine`, `FrameArtifact`):
   `utsushi-reallive/src/engine_port.rs:45`,
   `utsushi-reallive/src/render_pipeline.rs:86`,
-  `utsushi-reallive/src/rlop/module_msg.rs:51`,
+  `utsushi-reallive/src/rlop/module_msg.rs:48`,
   `utsushi-siglus/src/vm.rs:46`, `utsushi-rpgmaker-mv/src/port.rs:27`.
 - **Snapshot** (UTSUSHI-023 — `Inspectable`, `Restorable`, `Snapshot`,
   `SnapshotError`, `StateTree`, `take_snapshot`, `restore_snapshot`):
