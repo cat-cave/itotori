@@ -26,116 +26,9 @@ use utsushi_reallive::{
     StepManyOutcome, StepOutcome, Vm, VmError, VmEvent, VmWarning,
 };
 
-// Synthetic-element constructors. Each builds a single, well-shaped
-// `BytecodeElement` whose `byte_offset` / `byte_len` honour the
-// partition invariant from — `Scene::new` consumes the
-// `byte_offset` field, and `pc_advance` math depends on `byte_len`.
-
-fn meta_line(offset: usize, line_number: u16) -> BytecodeElement {
-    BytecodeElement::MetaLine {
-        line_number,
-        byte_offset: offset,
-        byte_len: 3,
-    }
-}
-
-fn command(offset: usize, module_type: u8, module_id: u8, opcode: u16) -> BytecodeElement {
-    BytecodeElement::Command {
-        module_type,
-        module_id,
-        opcode,
-        arg_count: 0,
-        overload: 0,
-        goto_targets: vec![],
-        goto_case_exprs: vec![],
-        raw_bytes: vec![
-            0x23,
-            module_type,
-            module_id,
-            opcode as u8,
-            (opcode >> 8) as u8,
-            0,
-            0,
-            0,
-        ],
-        byte_offset: offset,
-        byte_len: 8,
-    }
-}
-
-// Test RLOperation implementations. These are intentionally tiny:
-// each one returns a single `DispatchOutcome` so the VM test can
-// assert on the pc / stack / queue transition without dragging in a
-// full per-module table.
-
-struct GotoZero;
-impl RLOperation for GotoZero {
-    fn dispatch(&self, vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
-        // Jump back to the start of the current scene.
-        DispatchOutcome::Jump {
-            scene: vm.scene(),
-            pc: 0,
-        }
-    }
-}
-
-struct GosubTo {
-    target_pc: u32,
-}
-impl RLOperation for GosubTo {
-    fn dispatch(&self, vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
-        // post_pc is "pc + 8" because the command header is 8 bytes;
-        // the dispatch path threads that as the return pc — we mirror
-        // it here so the assertion can quote the exact byte.
-        DispatchOutcome::Subroutine {
-            return_pc: vm.pc() + 8,
-            target_scene: vm.scene(),
-            target_pc: self.target_pc,
-        }
-    }
-}
-
-struct RetOp;
-impl RLOperation for RetOp {
-    fn dispatch(&self, _vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
-        DispatchOutcome::Return
-    }
-}
-
-struct FarCallTo {
-    target_scene: u16,
-    target_pc: u32,
-}
-impl RLOperation for FarCallTo {
-    fn dispatch(&self, vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
-        DispatchOutcome::FarCall {
-            return_scene: vm.scene(),
-            return_pc: vm.pc() + 8,
-            target_scene: self.target_scene,
-            target_pc: self.target_pc,
-        }
-    }
-}
-
-struct RtlOp;
-impl RLOperation for RtlOp {
-    fn dispatch(&self, _vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
-        DispatchOutcome::ReturnFromCall
-    }
-}
-
-struct PauseLongOp {
-    id: LongOpId,
-    private_state: Vec<u8>,
-}
-impl RLOperation for PauseLongOp {
-    fn dispatch(&self, _vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
-        DispatchOutcome::Yield {
-            longop_id: self.id,
-            private_state: self.private_state.clone(),
-        }
-    }
-}
+#[path = "vm_synthetic/support.rs"]
+mod support;
+use support::*;
 
 // Acceptance criterion #0 — `goto +0` infinite loop with `max_steps=100`
 // produces a deterministic `OutOfBudget` outcome (no panic).
@@ -338,8 +231,12 @@ fn synthetic_pause_longop_yields_then_resumes_with_same_private_state() {
 
     // Snapshot at the suspend point — the queued longop's private
     // state must survive the round trip.
-    let request = SnapshotRequest::new("run-utsushi-208", "2026-06-24T00:00:00Z", EvidenceTier::E2)
-        .with_tick(1);
+    let request = SnapshotRequest::new(
+        "vm-suspend-resume",
+        "2026-06-24T00:00:00Z",
+        EvidenceTier::E2,
+    )
+    .with_tick(1);
     let snapshot: Snapshot = take_snapshot(&vm, &request).expect("snapshot");
 
     // Scribble the queue and pc in-place — proof that the restore
@@ -558,8 +455,12 @@ fn vm_snapshot_restore_round_trips_scene_pc_stack_and_banks() {
         .expect("set");
     vm.banks_mut().set_store(0xDEAD_BEEF);
 
-    let request = SnapshotRequest::new("run-utsushi-208", "2026-06-24T00:00:00Z", EvidenceTier::E2)
-        .with_tick(1);
+    let request = SnapshotRequest::new(
+        "vm-state-round-trip",
+        "2026-06-24T00:00:00Z",
+        EvidenceTier::E2,
+    )
+    .with_tick(1);
     let snapshot = take_snapshot(&vm, &request).expect("snapshot");
 
     let mut restored = Vm::new(0, 0);
