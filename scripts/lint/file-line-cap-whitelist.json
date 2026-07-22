@@ -1,8 +1,8 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/file-line-cap-guard.mjs --update\". Each entry maps an over-cap\nfile to its grandfathered line count; counts and entries may only shrink. When\nempty/deleted the cap is absolute (no file may exceed the threshold).",
   "threshold": 500,
-  "generatedAt": "2026-07-22T09:50:53.466Z",
-  "total": 147,
+  "generatedAt": "2026-07-22T11:45:50.927Z",
+  "total": 146,
   "files": {
     "crates/kaifuu-cli/src/main.rs": 831,
     "crates/kaifuu-cli/src/tests.rs": 8642,
@@ -51,7 +51,6 @@
     "crates/kaifuu-kirikiri/src/xp3_private_local_summary.rs": 1124,
     "crates/kaifuu-kirikiri/src/xp3_private_local_validation.rs": 1031,
     "crates/kaifuu-kirikiri/src/xp3_production.rs": 1667,
-    "crates/kaifuu-reallive/src/bridge.rs": 1518,
     "crates/kaifuu-reallive/src/gameexe.rs": 1801,
     "crates/kaifuu-reallive/src/opcode.rs": 2070,
     "crates/kaifuu-reallive/src/patchback/bundle_driven.rs": 2065,
