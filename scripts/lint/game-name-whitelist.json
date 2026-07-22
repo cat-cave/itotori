@@ -1,7 +1,7 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/audit-no-game-names.mjs --update\". Each entry is a grandfathered\ngame-name token (the matched identifier, lower-cased); the multiset per file may\nonly shrink. When empty/deleted the guard is absolute (zero game names in code).",
-  "generatedAt": "2026-07-22T15:14:06.961Z",
-  "total": 139,
+  "generatedAt": "2026-07-22T15:35:29.461Z",
+  "total": 138,
   "files": {
     "apps/itotori/src/extract/decode-extract-runner.ts": ["sweetie"],
     "apps/itotori/src/structure-export/utsushi-structure-seam.ts": ["sweetie"],
@@ -88,7 +88,6 @@
       "sweetie"
     ],
     "crates/utsushi-reallive/src/expression.rs": ["sweetie", "sweetie"],
-    "crates/utsushi-reallive/src/expression_eval.rs": ["sweetie"],
     "crates/utsushi-reallive/src/g00.rs": ["sweetie", "sweetie", "sweetie", "sweetie"],
     "crates/utsushi-reallive/src/gameexe.rs": ["sweetie", "sweetie", "sweetie", "sweetie"],
     "crates/utsushi-reallive/src/lib.rs": ["sweetie", "sweetie", "sweetie", "sweetie"],

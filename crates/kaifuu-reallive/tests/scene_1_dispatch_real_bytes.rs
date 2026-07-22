@@ -2,7 +2,7 @@
 //! dispatch.
 //! Reads scene 1 from Sweetie HD's `REALLIVEDATA/Seen.txt` at
 //! `$ITOTORI_REAL_GAME_ROOT`, runs the AVG32 LZSS + 256-byte XOR
-//! decompression inline (the decompressor is a per-this-node helper —
+//! decompression through its sibling support module (a test-local helper —
 //! see `examples/probe_scene_1_encryption.rs` for the full probe), then
 //! dispatches the plaintext bytecode through the new
 //! [`kaifuu_reallive::parse_real_bytecode`].
@@ -20,7 +20,7 @@
 //! scene being clean says nothing about the other 197 Sweetie / 79 Kanon
 //! scenes — only the multi-corpus gate does.
 //! # Decompressor provenance
-//! The AVG32 LZSS + 256-byte XOR decompressor below is restated in our
+//! The sibling support module's AVG32 LZSS + 256-byte XOR decompressor is restated in our
 //! own words from rlvm's BSD-licensed `compression.cc::Decompress`
 //! (Peter Jolly, 2006) and confirmed against Sweetie HD's scene 1 in
 //! `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4. No
@@ -45,12 +45,15 @@
 //!    The scene-1 recognition count is reported via `eprintln!` so the
 //!    orchestration report can quote it directly.
 
+#[path = "scene_1_dispatch_real_bytes/decompression.rs"]
+mod decompression;
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
 
 use std::fs;
 use std::path::PathBuf;
 
+use decompression::decompress_avg32;
 use kaifuu_core::RedactedContentSummary;
 use kaifuu_reallive::decompressor::AVG32_XOR_MASK;
 use kaifuu_reallive::{
@@ -466,81 +469,4 @@ fn scene_1_arg_expression_framing_offsets_are_pinned_byte_exact() {
         unknown, 0,
         "framing pin must coincide with 100% recognition; got {unknown} Unknown elements"
     );
-}
-
-/// rlvm-shape LZSS+XOR decompressor restated in our own words from
-/// `libreallive::compression::Decompress` (BSD 2006, Peter Jolly). Does
-/// **not** apply the per-game second-level XOR — Sukara-branch titles
-/// (Sweetie HD) do not need it (outcome A in
-/// `docs/research/reallive-sweetie-hd-encryption-mechanism.md`).
-///
-/// The 256-byte XOR mask is the single shared
-/// `kaifuu_reallive::decompressor::AVG32_XOR_MASK` constant — this
-/// independent oracle reuses the crate's mask so encode/decode cannot
-/// diverge by transcription error.
-fn decompress_avg32(src: &[u8], dst_len: usize) -> Result<Vec<u8>, String> {
-    let mut dst: Vec<u8> = Vec::with_capacity(dst_len);
-    let mut src_pos: usize = 8; // skip 8-byte preamble
-    let mut mask_idx: u8 = 8;
-    let mut bit: u32 = 1;
-
-    if src_pos >= src.len() {
-        return Err(format!("src exhausted at preamble: src_len={}", src.len()));
-    }
-    let mut flag = src[src_pos] ^ AVG32_XOR_MASK[mask_idx as usize];
-    src_pos += 1;
-    mask_idx = mask_idx.wrapping_add(1);
-
-    while src_pos < src.len() && dst.len() < dst_len {
-        if bit == 256 {
-            bit = 1;
-            if src_pos >= src.len() {
-                break;
-            }
-            flag = src[src_pos] ^ AVG32_XOR_MASK[mask_idx as usize];
-            src_pos += 1;
-            mask_idx = mask_idx.wrapping_add(1);
-        }
-        if (flag as u32) & bit != 0 {
-            // Literal byte.
-            if src_pos >= src.len() {
-                break;
-            }
-            let b = src[src_pos] ^ AVG32_XOR_MASK[mask_idx as usize];
-            src_pos += 1;
-            mask_idx = mask_idx.wrapping_add(1);
-            dst.push(b);
-        } else {
-            // Back-reference: 2 bytes -> u16 LE.
-            if src_pos + 1 >= src.len() {
-                break;
-            }
-            let lo = src[src_pos] ^ AVG32_XOR_MASK[mask_idx as usize];
-            src_pos += 1;
-            mask_idx = mask_idx.wrapping_add(1);
-            let hi = src[src_pos] ^ AVG32_XOR_MASK[mask_idx as usize];
-            src_pos += 1;
-            mask_idx = mask_idx.wrapping_add(1);
-            let count = (lo as u32) | ((hi as u32) << 8);
-            let back = (count >> 4) as usize;
-            let run = ((count & 0x0f) as usize) + 2;
-            if back == 0 || back > dst.len() {
-                return Err(format!(
-                    "back-ref out of range at src_pos={src_pos} dst.len()={} back={back} run={run}",
-                    dst.len()
-                ));
-            }
-            let start = dst.len() - back;
-            for i in 0..run {
-                if dst.len() >= dst_len {
-                    break;
-                }
-                let byte = dst[start + i];
-                dst.push(byte);
-            }
-        }
-        bit <<= 1;
-    }
-
-    Ok(dst)
 }
