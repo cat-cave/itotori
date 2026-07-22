@@ -135,7 +135,7 @@ browser game is the browser itself.
 
 **The single shipped spawn, and its scope.** The only shipped external
 `Command::new` is `RuntimeLaunchCommand::to_command()` in
-`crates/utsushi-core/src/lib.rs` (`RuntimeLaunchCommand`), driven exclusively by
+`crates/utsushi-core/src/lib/runtime_capture/launch_plan.rs` (`RuntimeLaunchCommand`), driven exclusively by
 the MV/MZ browser-engine surface:
 
 - `BrowserLaunchAdapter::run_browser` in
