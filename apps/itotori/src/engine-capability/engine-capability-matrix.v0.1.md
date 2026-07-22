@@ -5,7 +5,8 @@
 - Schema: `itotori.engine_capability_matrix.v0.1`
 - Generator: `scripts/generate-engine-capability-matrix.mjs`
 - Capability levels: identify, inventory, extract, patch, helper, runtime
-- Input categories covered: adapter_registry, claimed_support_tuples, detection_report, detection_summary, detector_profile, fixture_output, production_capability_tuple, readiness_profile, validation_artifact
+- Input categories covered: claimed_support_tuples, fixture_output, readiness_profile, validation_artifact
+- Input kinds covered: adapter_registry, detection_report, detection_summary, detector_profile, production_capability_tuple, readiness_profile, validation_artifact
 
 ## Capability rows
 

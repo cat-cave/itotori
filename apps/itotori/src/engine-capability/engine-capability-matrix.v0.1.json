@@ -22,12 +22,16 @@
     "readiness_only"
   ],
   "inputCategoriesCovered": [
-    "adapter_registry",
     "claimed_support_tuples",
+    "fixture_output",
+    "readiness_profile",
+    "validation_artifact"
+  ],
+  "inputKindsCovered": [
+    "adapter_registry",
     "detection_report",
     "detection_summary",
     "detector_profile",
-    "fixture_output",
     "production_capability_tuple",
     "readiness_profile",
     "validation_artifact"

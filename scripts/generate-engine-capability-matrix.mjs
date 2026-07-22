@@ -38,15 +38,18 @@ export const CAPABILITY_LEVELS = ["identify", "inventory", "extract", "patch", "
 export const LEVEL_STATUSES = ["supported", "partial", "unsupported", "not_applicable", "unknown"];
 export const EVIDENCE_POSTURES = ["positive_adapter", "readiness_only"];
 
-// The five input categories the acceptance requires the matrix to be generated
-// from. The generator asserts every category is consumed by at least one row.
+// Input categories the acceptance requires the matrix to consume. Matched only
+// against evidence.category — never against evidence.kind (distinct namespaces).
 export const REQUIRED_INPUT_CATEGORIES = [
-  "adapter_registry",
   "fixture_output",
   "readiness_profile",
   "claimed_support_tuples",
   "validation_artifact",
 ];
+
+// Input kinds the acceptance requires at least one row to consume. Matched only
+// against evidence.kind — never against evidence.category.
+export const REQUIRED_INPUT_KINDS = ["adapter_registry"];
 
 export const OUTPUT_JSON_PATH =
   "apps/itotori/src/engine-capability/engine-capability-matrix.v0.1.json";
@@ -982,8 +985,8 @@ export function generateEngineCapabilityMatrix(inputs) {
   ];
 
   assertNoExcludedRows(rows);
-  const consumedCategories = consumedInputCategories(rows);
-  assertRequiredCategoriesCovered(consumedCategories);
+  const consumed = collectConsumedNamespaces(rows);
+  assertRequiredCoverage(consumed);
 
   const knownLimitations = collectKnownLimitations(rows);
 
@@ -995,7 +998,8 @@ export function generateEngineCapabilityMatrix(inputs) {
     capabilityLevels: CAPABILITY_LEVELS,
     levelStatuses: LEVEL_STATUSES,
     evidencePostures: EVIDENCE_POSTURES,
-    inputCategoriesCovered: consumedCategories,
+    inputCategoriesCovered: consumed.categories,
+    inputKindsCovered: consumed.kinds,
     inputs: INPUT_SOURCES.map((s) => ({
       sourceId: s.id,
       path: s.path,
@@ -1024,26 +1028,47 @@ function assertNoExcludedRows(rows) {
   }
 }
 
-function consumedInputCategories(rows) {
-  // Coverage is checked across both the input `category` and `kind` labels:
-  // the reallive-detector capabilities artifact is simultaneously the adapter
-  // registry mirror (kind) and the claimed-support tuples (category).
+/**
+ * Collect consumed category and kind labels from row evidence.
+ * Namespaces stay distinct: categories only from evidence.category, kinds only
+ * from evidence.kind — never cross-mixed.
+ */
+export function collectConsumedNamespaces(rows) {
   const categories = new Set();
+  const kinds = new Set();
   for (const row of rows) {
-    for (const evidence of row.evidence) {
-      categories.add(evidence.category);
-      categories.add(evidence.kind);
+    for (const evidence of row.evidence ?? []) {
+      if (typeof evidence.category === "string" && evidence.category.length > 0) {
+        categories.add(evidence.category);
+      }
+      if (typeof evidence.kind === "string" && evidence.kind.length > 0) {
+        kinds.add(evidence.kind);
+      }
     }
   }
-  return [...categories].sort();
+  return {
+    categories: [...categories].sort(),
+    kinds: [...kinds].sort(),
+  };
 }
 
-function assertRequiredCategoriesCovered(consumedCategories) {
-  const consumed = new Set(consumedCategories);
-  const missing = REQUIRED_INPUT_CATEGORIES.filter((c) => !consumed.has(c));
-  if (missing.length > 0) {
+/**
+ * Assert required category/kind coverage with no cross-namespace matching.
+ * A kind string never satisfies a required category (and vice versa).
+ */
+export function assertRequiredCoverage(consumed) {
+  const categorySet = new Set(consumed.categories ?? []);
+  const kindSet = new Set(consumed.kinds ?? []);
+  const missingCategories = REQUIRED_INPUT_CATEGORIES.filter((c) => !categorySet.has(c));
+  const missingKinds = REQUIRED_INPUT_KINDS.filter((k) => !kindSet.has(k));
+  if (missingCategories.length > 0) {
     throw new MatrixGenerationError(
-      `matrix is not generated from every required input category; missing: ${missing.join(", ")}`,
+      `matrix is not generated from every required input category; missing: ${missingCategories.join(", ")}`,
+    );
+  }
+  if (missingKinds.length > 0) {
+    throw new MatrixGenerationError(
+      `matrix is not generated from every required input kind; missing: ${missingKinds.join(", ")}`,
     );
   }
 }
@@ -1092,6 +1117,7 @@ export function renderMatrixMarkdown(matrix) {
   lines.push(`- Generator: \`${matrix.generatedBy}\``);
   lines.push(`- Capability levels: ${matrix.capabilityLevels.join(", ")}`);
   lines.push(`- Input categories covered: ${matrix.inputCategoriesCovered.join(", ")}`);
+  lines.push(`- Input kinds covered: ${(matrix.inputKindsCovered ?? []).join(", ")}`);
   lines.push("");
   lines.push("## Capability rows");
   lines.push("");
