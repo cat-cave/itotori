@@ -15,29 +15,15 @@
 //!
 //! Linux-only: no `Command::new`, no Wine, no Windows helper.
 
+#[path = "syscall_routes_real_bytes/gameexe_helpers.rs"]
+mod gameexe_helpers;
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
 
 use std::fs;
-use std::path::PathBuf;
 
 use utsushi_core::substrate::{InputEvent, PointerButton};
 use utsushi_reallive::{Gameexe, SYSCALL_KIND_COUNT, SyscallDispatcher, SyscallRouteKind};
-
-fn resolve_gameexe_path() -> Option<PathBuf> {
-    real_corpus::gameexe_ini_path()
-}
-
-fn load_reallive_real_bytes_gameexe() -> Option<Gameexe> {
-    let path = resolve_gameexe_path()?;
-    let bytes = fs::read(&path).unwrap_or_else(|err| {
-        panic!(
-            "ITOTORI_REAL_GAME_ROOT is set but Gameexe.ini at {} could not be read: {err}",
-            path.display(),
-        )
-    });
-    Some(Gameexe::parse(&bytes).expect("real Gameexe.ini must parse without error"))
-}
 
 /// Collect the distinct `NNN` indices declared by any
 /// `#MOUSEACTIONCALL.NNN.` line in a raw (Shift-JIS) Gameexe byte
@@ -273,7 +259,7 @@ fn verify_syscall_routes_match_section_h(gameexe: &Gameexe) {
 #[test]
 #[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
 fn syscall_routes_match_reallive_real_bytes() {
-    let Some(gameexe) = load_reallive_real_bytes_gameexe() else {
+    let Some(gameexe) = gameexe_helpers::load_reallive_real_bytes_gameexe() else {
         real_corpus::require_real_bytes(
             "utsushi-reallive syscall_routes_match_reallive_real_bytes",
         );
@@ -425,7 +411,7 @@ fn syscall_routes_synthetic_eight_kinds_pinned() {
 #[test]
 #[ignore = "requires ITOTORI_REAL_GAME_ROOT; opt in with --include-ignored"]
 fn mouseactioncall_scan_discovers_real_bytes_non_contiguous_namespace() {
-    let Some(path) = resolve_gameexe_path() else {
+    let Some(path) = gameexe_helpers::resolve_gameexe_path() else {
         real_corpus::require_real_bytes(
             "utsushi-reallive mouseactioncall_scan_discovers_real_bytes_non_contiguous_namespace",
         );
