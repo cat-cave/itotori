@@ -1,8 +1,8 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/file-line-cap-guard.mjs --update\". Each entry maps an over-cap\nfile to its grandfathered line count; counts and entries may only shrink. When\nempty/deleted the cap is absolute (no file may exceed the threshold).",
   "threshold": 500,
-  "generatedAt": "2026-07-22T09:50:53.466Z",
-  "total": 147,
+  "generatedAt": "2026-07-22T11:16:10.947Z",
+  "total": 146,
   "files": {
     "crates/kaifuu-cli/src/main.rs": 831,
     "crates/kaifuu-cli/src/tests.rs": 8642,
@@ -65,7 +65,6 @@
     "crates/kaifuu-rpgmaker/src/extract.rs": 951,
     "crates/kaifuu-rpgmaker/src/integration.rs": 894,
     "crates/kaifuu-rpgmaker/src/map_common_event.rs": 621,
-    "crates/kaifuu-rpgmaker/src/media_surface.rs": 1157,
     "crates/kaifuu-rpgmaker/src/plugin_profile.rs": 905,
     "crates/kaifuu-rpgmaker/src/recognize.rs": 503,
     "crates/kaifuu-rpgmaker/tests/k112_full_surface.rs": 560,
