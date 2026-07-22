@@ -1,5 +1,5 @@
 //! Two-corpus validation of RealLive protected-span extraction.
-//! The bridge protected-span scanner (`bridge.rs::collect_units` + the RLDEV
+//! The bridge protected-span scanner (`bridge::collect::collect_units` + the RLDEV
 //! control-byte catalogue in `protected_spans.rs`) feeds the pilot's
 //! deterministic strip/re-inject (patchback-safety): every span it emits is a
 //! `preserveMode=exact` region the translate+patchback pass must NOT rewrite.
