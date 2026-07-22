@@ -38,7 +38,7 @@
       "path": "game-install/REALLIVEDATA",
       "kind": "kaifuu.reallive.nested_data_dir_resolved",
       "status": "matched",
-      "detail": "RealLive REALLIVEDATA/ engine asset root resolved at relative path game-install/REALLIVEDATA (KAIFUU-189 depth-N descent)"
+      "detail": "RealLive REALLIVEDATA/ engine asset root resolved at relative path game-install/REALLIVEDATA (bounded depth descent)"
     },
     {
       "path": "game-install/REALLIVEDATA/Gameexe.ini",
@@ -80,7 +80,7 @@
       "category": "platform",
       "key": "reallive-parser",
       "status": "unsupported",
-      "description": "Scene/SEEN parser/decompiler boundary is unsupported for KAIFUU-172",
+      "description": "Scene/SEEN parser/decompiler boundary is unsupported for the synthetic detector profile",
       "placeholder": null,
       "secret": false
     }
@@ -129,7 +129,7 @@
     {
       "capability": "encrypted_input",
       "status": "unsupported",
-      "limitation": "encrypted SEEN.TXT is out of scope at KAIFUU-174"
+      "limitation": "encrypted SEEN.TXT is outside this adapter slice"
     },
     {
       "capability": "extraction",
@@ -144,7 +144,7 @@
     {
       "capability": "line_parity_patching",
       "status": "limited",
-      "limitation": "patch-back is per-slot, not per-line; the KAIFUU-052 line-parity contract is not claimed at this slice"
+      "limitation": "patch-back is per-slot, not per-line; the line-parity contract is not claimed at this slice"
     },
     {
       "capability": "non_text_surface_extraction",
@@ -169,7 +169,7 @@
     {
       "capability": "runtime_vm",
       "status": "unsupported",
-      "limitation": "runtime support belongs to UTSUSHI-146, not this slice"
+      "limitation": "runtime support belongs to the runtime adapter, not this slice"
     },
     {
       "capability": "verification",
