@@ -1,6 +1,6 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/audit-no-game-names.mjs --update\". Each entry is a grandfathered\ngame-name token (the matched identifier, lower-cased); the multiset per file may\nonly shrink. When empty/deleted the guard is absolute (zero game names in code).",
-  "generatedAt": "2026-07-22T09:50:54.755Z",
+  "generatedAt": "2026-07-22T11:17:08.543Z",
   "total": 139,
   "files": {
     "apps/itotori/src/extract/decode-extract-runner.ts": ["sweetie"],
