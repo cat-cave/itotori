@@ -1,11 +1,9 @@
-use std::sync::Mutex;
+use super::*;
 
 use utsushi_core::substrate::ChoiceIndex;
 
-use crate::rlop::longops::{
-    OBJECT_SELECT_PRIVATE_STATE_MAGIC, ObjectSelectLongOp, SELECT_PRIVATE_STATE_MAGIC, SelectLongOp,
-};
-use crate::rlop::{LongOp, LongOpReadiness, LongOpScheduler};
+use crate::rlop::longops::{OBJECT_SELECT_PRIVATE_STATE_MAGIC, SELECT_PRIVATE_STATE_MAGIC};
+use crate::rlop::{LongOpReadiness, LongOpScheduler};
 
 // Choice-input scheduler
 
