@@ -1,8 +1,8 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/file-line-cap-guard.mjs --update\". Each entry maps an over-cap\nfile to its grandfathered line count; counts and entries may only shrink. When\nempty/deleted the cap is absolute (no file may exceed the threshold).",
   "threshold": 500,
-  "generatedAt": "2026-07-22T04:50:33.883Z",
-  "total": 152,
+  "generatedAt": "2026-07-22T05:44:51.800Z",
+  "total": 151,
   "files": {
     "crates/kaifuu-cli/src/main.rs": 831,
     "crates/kaifuu-cli/src/tests.rs": 8642,
@@ -141,7 +141,6 @@
     "crates/utsushi-reallive/src/var_banks.rs": 968,
     "crates/utsushi-reallive/src/vm.rs": 1361,
     "crates/utsushi-reallive/tests/avg32_lzss_differential.rs": 592,
-    "crates/utsushi-reallive/tests/expression_synthetic.rs": 548,
     "crates/utsushi-reallive/tests/g00_real_bytes.rs": 688,
     "crates/utsushi-reallive/tests/headless_branch_execution_real_bytes.rs": 552,
     "crates/utsushi-reallive/tests/render_g00_real_bytes.rs": 756,
