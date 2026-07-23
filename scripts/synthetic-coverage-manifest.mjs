@@ -60,7 +60,7 @@ export const SOURCE_FILES = {
     role: "kaifuu RealLive bridge semantic command catalogue (NamedOpcode).",
   },
   realliveXor2: {
-    path: "crates/kaifuu-reallive/src/xor2.rs",
+    path: "crates/kaifuu-reallive/src/xor2_tests.rs",
     symbols: ["compiler_version_uses_xor2 assertions"],
     role: "kaifuu RealLive second-level cipher cases: the compiler-version xor2/plaintext decision, pinned by the compiler_version_uses_xor2 unit assertions (110002/1110002 use xor2; 10002 plaintext).",
   },
