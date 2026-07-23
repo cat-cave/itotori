@@ -64,8 +64,8 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/expected/siglus-parser-boundary-smoke-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "2d3fd3fa299fa9f77d20c60fbe219b48761c5b6e2bd400923edfcb74c0230c47",
-      "bytes": 2127,
+      "sha256": "5e8dbad2a2183fa415328a66dd8f9e41b7986864cfdfe5961f6710a5f567d42e",
+      "bytes": 2116,
       "redistributable": true
     },
     {
