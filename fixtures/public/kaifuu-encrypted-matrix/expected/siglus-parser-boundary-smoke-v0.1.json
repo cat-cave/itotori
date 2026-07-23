@@ -4,7 +4,7 @@
   "profileId": "019ed000-0000-7000-8000-000000091001",
   "status": "passed",
   "outcome": "parser_boundary_success",
-  "supportBoundary": "Synthetic KAIFUU-093 parser-boundary smoke only; this report validates key-ref plumbing and parser diagnostics for fixture inputs and does not claim production Siglus extraction, decryption, patch-back, or runtime compatibility.",
+  "supportBoundary": "Synthetic parser-boundary smoke only; this report validates key-ref plumbing and parser diagnostics for fixture inputs and does not claim production Siglus extraction, decryption, patch-back, or runtime compatibility.",
   "patchWriteAttempted": false,
   "sources": [
     {
