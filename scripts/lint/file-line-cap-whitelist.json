@@ -1,7 +1,7 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/file-line-cap-guard.mjs --update\". Each entry maps an over-cap\nfile to its grandfathered line count; counts and entries may only shrink. When\nempty/deleted the cap is absolute (no file may exceed the threshold).",
   "threshold": 500,
-  "generatedAt": "2026-07-23T04:47:33.334Z",
+  "generatedAt": "2026-07-23T05:50:29.239Z",
   "total": 47,
   "files": {
     "crates/kaifuu-cli/src/main.rs": 831,
@@ -13,7 +13,7 @@
     "crates/kaifuu-core/src/mv_mz_readiness.rs": 1028,
     "crates/kaifuu-core/src/repro_bundle.rs": 800,
     "crates/kaifuu-core/src/wolf_adapter.rs": 876,
-    "crates/kaifuu-core/src/wolf_encrypted_smoke.rs": 1099,
+    "crates/kaifuu-core/src/wolf_encrypted_smoke.rs": 948,
     "crates/kaifuu-core/src/wolf_profiled_production.rs": 822,
     "crates/kaifuu-core/src/wolf_protection_detector.rs": 1076,
     "crates/kaifuu-core/src/wolf_readiness.rs": 1120,
@@ -28,7 +28,7 @@
     "crates/kaifuu-rpgmaker/src/plugin_profile.rs": 905,
     "crates/kaifuu-rpgmaker/tests/k112_full_surface.rs": 560,
     "crates/kaifuu-siglus/src/adapter.rs": 1167,
-    "crates/kaifuu-softpal/src/opcode.rs": 825,
+    "crates/kaifuu-softpal/src/opcode.rs": 608,
     "crates/kaifuu-softpal/src/script.rs": 782,
     "crates/utsushi-cli/src/render_validate.rs": 822,
     "crates/utsushi-core/src/snapshot/snapshot.rs": 1100,
@@ -49,7 +49,7 @@
     "crates/utsushi-reallive/tests/headless_branch_execution_real_bytes.rs": 552,
     "crates/utsushi-reallive/tests/render_g00_real_bytes.rs": 756,
     "crates/utsushi-rpgmaker-mv/src/port.rs": 536,
-    "crates/utsushi-rpgmaker-mv/src/replay.rs": 749,
+    "crates/utsushi-rpgmaker-mv/src/replay.rs": 620,
     "crates/utsushi-siglus/src/vm.rs": 869
   }
 }
