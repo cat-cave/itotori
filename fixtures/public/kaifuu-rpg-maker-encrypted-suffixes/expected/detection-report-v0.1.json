@@ -194,7 +194,7 @@
         {
           "capability": "extraction",
           "status": "unsupported",
-          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+          "limitation": "the synthetic XP3 adapter is a detector profile fixture only."
         },
         {
           "capability": "key_profile",
@@ -538,7 +538,7 @@
         {
           "capability": "extraction",
           "status": "unsupported",
-          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+          "limitation": "the synthetic Siglus adapter is a detector profile fixture only."
         },
         {
           "capability": "key_profile",
@@ -844,7 +844,11 @@
         "engineFamily": "rpg_maker_mv_mz",
         "detected": true,
         "detectedVariant": "mv_or_mz_with_unknown_suffix",
-        "signals": ["encrypted", "missing_key", "unknown_variant"],
+        "signals": [
+          "encrypted",
+          "missing_key",
+          "unknown_variant"
+        ],
         "surfaces": [
           {
             "fixtureId": "kaifuu-rpgmaker-mv-audio-rpgmvm",
@@ -855,7 +859,9 @@
             "codec": "m4a_audio",
             "surface": "audio_asset",
             "count": 1,
-            "keyRequirementRefs": ["rpg-maker-mv-mz-asset-key"],
+            "keyRequirementRefs": [
+              "rpg-maker-mv-mz-asset-key"
+            ],
             "diagnostics": [
               {
                 "code": "kaifuu.missing_key_material",
@@ -882,7 +888,9 @@
             "codec": "ogg_audio",
             "surface": "audio_asset",
             "count": 1,
-            "keyRequirementRefs": ["rpg-maker-mv-mz-asset-key"],
+            "keyRequirementRefs": [
+              "rpg-maker-mv-mz-asset-key"
+            ],
             "diagnostics": [
               {
                 "code": "kaifuu.missing_key_material",
@@ -909,7 +917,9 @@
             "codec": "png_image",
             "surface": "image_asset",
             "count": 1,
-            "keyRequirementRefs": ["rpg-maker-mv-mz-asset-key"],
+            "keyRequirementRefs": [
+              "rpg-maker-mv-mz-asset-key"
+            ],
             "diagnostics": [
               {
                 "code": "kaifuu.missing_key_material",
@@ -936,7 +946,9 @@
             "codec": "unknown",
             "surface": "video_asset",
             "count": 1,
-            "keyRequirementRefs": ["rpg-maker-mv-mz-asset-key"],
+            "keyRequirementRefs": [
+              "rpg-maker-mv-mz-asset-key"
+            ],
             "diagnostics": [
               {
                 "code": "kaifuu.missing_key_material",
@@ -963,7 +975,9 @@
             "codec": "m4a_audio",
             "surface": "audio_asset",
             "count": 1,
-            "keyRequirementRefs": ["rpg-maker-mv-mz-asset-key"],
+            "keyRequirementRefs": [
+              "rpg-maker-mv-mz-asset-key"
+            ],
             "diagnostics": [
               {
                 "code": "kaifuu.missing_key_material",
@@ -990,7 +1004,9 @@
             "codec": "ogg_audio",
             "surface": "audio_asset",
             "count": 1,
-            "keyRequirementRefs": ["rpg-maker-mv-mz-asset-key"],
+            "keyRequirementRefs": [
+              "rpg-maker-mv-mz-asset-key"
+            ],
             "diagnostics": [
               {
                 "code": "kaifuu.missing_key_material",
@@ -1017,7 +1033,9 @@
             "codec": "png_image",
             "surface": "image_asset",
             "count": 1,
-            "keyRequirementRefs": ["rpg-maker-mv-mz-asset-key"],
+            "keyRequirementRefs": [
+              "rpg-maker-mv-mz-asset-key"
+            ],
             "diagnostics": [
               {
                 "code": "kaifuu.missing_key_material",

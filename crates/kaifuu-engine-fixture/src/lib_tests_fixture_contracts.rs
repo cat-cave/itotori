@@ -225,6 +225,33 @@ fn capabilities_report_unsupported_patching_limitations() {
     }));
 }
 
+#[test]
+fn detector_extraction_limitations_survive_report_redaction() {
+    for capabilities in [
+        Xp3ProfileDetectorAdapter.capabilities(),
+        SiglusProfileDetectorAdapter.capabilities(),
+    ] {
+        let extraction = capabilities
+            .reports
+            .iter()
+            .find(|report| report.capability == Capability::Extraction)
+            .expect("detector must report its extraction boundary");
+        let limitation = extraction
+            .limitation
+            .as_deref()
+            .expect("unsupported extraction must explain its limitation");
+        let redacted = kaifuu_core::redact_report_value(
+            &serde_json::to_value(extraction).expect("capability report serializes"),
+        );
+
+        assert_eq!(
+            redacted["limitation"], limitation,
+            "{} extraction limitation must remain visible after report redaction",
+            capabilities.adapter_id
+        );
+    }
+}
+
 // detector level-matrix snapshot tests. Each detector must
 // emit a stable typed matrix so consumers can rely on the strict gate.
 #[test]

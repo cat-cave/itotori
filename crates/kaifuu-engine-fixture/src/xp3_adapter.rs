@@ -49,7 +49,7 @@ impl EngineAdapter for Xp3ProfileDetectorAdapter {
                 CapabilityReport::supported(Capability::AssetInventory),
                 CapabilityReport::unsupported(
                     Capability::Extraction,
-                    "the synthetic XP3 adapter is a detector/profile fixture only",
+                    "the synthetic XP3 adapter is a detector profile fixture only.",
                 ),
                 CapabilityReport::unsupported(
                     Capability::Patching,

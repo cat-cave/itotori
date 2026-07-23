@@ -49,7 +49,7 @@ impl EngineAdapter for SiglusProfileDetectorAdapter {
                 CapabilityReport::supported(Capability::AssetInventory),
                 CapabilityReport::unsupported(
                     Capability::Extraction,
-                    "the synthetic Siglus adapter is a detector/profile fixture only",
+                    "the synthetic Siglus adapter is a detector profile fixture only.",
                 ),
                 CapabilityReport::unsupported(
                     Capability::Patching,

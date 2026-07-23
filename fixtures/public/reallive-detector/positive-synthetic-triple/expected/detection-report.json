@@ -194,7 +194,7 @@
         {
           "capability": "extraction",
           "status": "unsupported",
-          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+          "limitation": "the synthetic XP3 adapter is a detector profile fixture only."
         },
         {
           "capability": "key_profile",
@@ -565,7 +565,7 @@
         {
           "capability": "extraction",
           "status": "unsupported",
-          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+          "limitation": "the synthetic Siglus adapter is a detector profile fixture only."
         },
         {
           "capability": "key_profile",

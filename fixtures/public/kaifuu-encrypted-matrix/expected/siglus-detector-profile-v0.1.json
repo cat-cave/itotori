@@ -82,7 +82,7 @@
     },
     {
       "capability": "extraction",
-      "limitation": "[REDACTED:kaifuu.secret_redacted]",
+      "limitation": "the synthetic Siglus adapter is a detector profile fixture only.",
       "status": "unsupported"
     },
     {
