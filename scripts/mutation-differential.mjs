@@ -128,7 +128,7 @@ export const MUTATIONS = [
   {
     id: "patchback_no_rebase",
     category: "patchback jump-recalc error (goto target not re-based)",
-    file: "crates/kaifuu-reallive/src/patchback/bundle_driven.rs",
+    file: "crates/kaifuu-reallive/src/patchback/bundle_driven/scene_patch.rs",
     // Neuter the cumulative re-base delta: goto targets after a length-changing
     // splice are left at their stale pre-splice offset.
     find: "cumulative_delta += delta;",
