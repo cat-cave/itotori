@@ -33,7 +33,7 @@
     },
     {
       "id": "realliveXor2",
-      "path": "crates/kaifuu-reallive/src/xor2.rs",
+      "path": "crates/kaifuu-reallive/src/xor2_tests.rs",
       "symbols": [
         "compiler_version_uses_xor2 assertions"
       ],
@@ -1647,7 +1647,7 @@
           ]
         },
         "cipher_case": {
-          "source": "crates/kaifuu-reallive/src/xor2.rs#compiler_version_uses_xor2 assertions",
+          "source": "crates/kaifuu-reallive/src/xor2_tests.rs#compiler_version_uses_xor2 assertions",
           "derivation": "extracted",
           "count": 4,
           "components": [
