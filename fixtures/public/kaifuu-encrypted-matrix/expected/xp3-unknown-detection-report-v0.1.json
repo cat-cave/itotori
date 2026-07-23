@@ -166,7 +166,7 @@
           "category": "platform",
           "key": "xp3-parser",
           "status": "unsupported",
-          "description": "XP3 archive parser/rebuilder boundary is unsupported for KAIFUU-095",
+          "description": "XP3 archive parser/rebuilder boundary is unsupported for the synthetic detector profile",
           "placeholder": null,
           "secret": false
         }
@@ -220,7 +220,7 @@
         {
           "capability": "extraction",
           "status": "unsupported",
-          "limitation": "KAIFUU-095 is an XP3 detector/profile fixture only"
+          "limitation": "the synthetic XP3 adapter is a detector profile fixture only."
         },
         {
           "capability": "key_profile",
@@ -448,7 +448,7 @@
         {
           "capability": "encrypted_input",
           "status": "unsupported",
-          "limitation": "encrypted SEEN.TXT is out of scope at KAIFUU-174"
+          "limitation": "encrypted SEEN.TXT is outside this adapter slice"
         },
         {
           "capability": "extraction",
@@ -463,7 +463,7 @@
         {
           "capability": "line_parity_patching",
           "status": "limited",
-          "limitation": "patch-back is per-slot, not per-line; the KAIFUU-052 line-parity contract is not claimed at this slice"
+          "limitation": "patch-back is per-slot, not per-line; the line-parity contract is not claimed at this slice"
         },
         {
           "capability": "non_text_surface_extraction",
@@ -488,7 +488,7 @@
         {
           "capability": "runtime_vm",
           "status": "unsupported",
-          "limitation": "runtime support belongs to UTSUSHI-146, not this slice"
+          "limitation": "runtime support belongs to the runtime adapter, not this slice"
         },
         {
           "capability": "verification",
@@ -564,7 +564,7 @@
         {
           "capability": "extraction",
           "status": "unsupported",
-          "limitation": "KAIFUU-091 is a Siglus detector/profile fixture only"
+          "limitation": "the synthetic Siglus adapter is a detector profile fixture only."
         },
         {
           "capability": "key_profile",
@@ -584,7 +584,7 @@
         {
           "capability": "patching",
           "status": "unsupported",
-          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+          "limitation": "the synthetic Siglus adapter does not patch or rebuild assets"
         },
         {
           "capability": "profile_generation",
@@ -722,7 +722,10 @@
         "engineFamily": "kiri_kiri_xp3",
         "detected": true,
         "detectedVariant": "xp3-unknown-container",
-        "signals": ["packed", "unknown_variant"],
+        "signals": [
+          "packed",
+          "unknown_variant"
+        ],
         "evidence": [
           {
             "evidenceType": "file_extension",

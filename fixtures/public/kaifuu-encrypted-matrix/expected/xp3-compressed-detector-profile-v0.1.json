@@ -84,7 +84,7 @@
     },
     {
       "capability": "extraction",
-      "limitation": "KAIFUU-095 is an XP3 detector/profile fixture only",
+      "limitation": "the synthetic XP3 adapter is a detector profile fixture only.",
       "status": "unsupported"
     },
     {
@@ -135,9 +135,7 @@
         "crypto": "null_key",
         "helperStatus": "not_required",
         "keyMaterialStatus": "not_required",
-        "notes": [
-          "detector-only layered access record; plain inventory may list XP3 entries, but script decoding, extraction, and patch-back are not claimed"
-        ],
+        "notes": ["detector-only layered access record; plain inventory may list XP3 entries, but script decoding, extraction, and patch-back are not claimed"],
         "patchBack": "unsupported",
         "path": "data.xp3",
         "surfaceId": "kirikiri-xp3-archive#dialogue",

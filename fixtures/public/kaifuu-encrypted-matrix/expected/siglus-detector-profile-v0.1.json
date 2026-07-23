@@ -82,7 +82,7 @@
     },
     {
       "capability": "extraction",
-      "limitation": "KAIFUU-091 is a Siglus detector/profile fixture only",
+      "limitation": "the synthetic Siglus adapter is a detector profile fixture only.",
       "status": "unsupported"
     },
     {
@@ -102,7 +102,7 @@
     },
     {
       "capability": "patching",
-      "limitation": "[REDACTED:kaifuu.secret_redacted]",
+      "limitation": "the synthetic Siglus adapter does not patch or rebuild assets",
       "status": "unsupported"
     },
     {
