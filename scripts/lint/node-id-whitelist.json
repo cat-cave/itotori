@@ -1,7 +1,7 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/audit-no-node-ids.mjs --update\". Each entry is a grandfathered\nnode-id token (the matched reference text, lower-cased); the multiset per file\nmay only shrink. When empty/deleted the guard is absolute (zero node ids).",
-  "generatedAt": "2026-07-22T23:27:51.011Z",
-  "total": 428,
+  "generatedAt": "2026-07-23T02:46:38.074Z",
+  "total": 427,
   "files": {
     "crates/kaifuu-cli/tests/alpha_encrypted_readiness.rs": [
       "kaifuu-104",
@@ -182,9 +182,6 @@
     ],
     "crates/kaifuu-reallive/tests/parse_archive_real_bytes.rs": [
       "kaifuu-188"
-    ],
-    "crates/kaifuu-reallive/tests/patchback_real_bytes.rs": [
-      "kaifuu-211"
     ],
     "crates/kaifuu-reallive/tests/scene_1_dispatch_real_bytes.rs": [
       "kaifuu-191",
