@@ -118,6 +118,9 @@ pub(super) fn mount_registry_handles(
     // System timer reset/time-wait commands — drive-faithful no-ops under
     // the headless scheduler (see module_sys_timer).
     register_sys_timer_rlops(&mut registry);
+    // Engine-state-config commands (syscom-disable, auto-savepoint toggle)
+    // — drive-faithful no-ops (see module_sys_config_commands).
+    register_sys_config_rlops(&mut registry);
 
     // Memory (no runtime).
     register_mem_rlops(&mut registry);
