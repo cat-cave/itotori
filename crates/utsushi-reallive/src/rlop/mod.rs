@@ -54,6 +54,7 @@ mod expr_value;
 pub mod longops;
 pub mod module_audio;
 pub mod module_ctrl;
+pub mod module_media_commands;
 pub mod module_mem;
 pub mod module_msg;
 pub mod module_obj;
