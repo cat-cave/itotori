@@ -64,6 +64,7 @@ pub mod module_sel;
 pub mod module_str;
 pub mod module_sys;
 pub mod module_sys_display;
+pub mod module_sys_menu;
 pub mod module_sys_timer;
 mod selection_prompt;
 pub use expr_value::ExprValue;
