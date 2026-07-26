@@ -109,6 +109,9 @@ pub(super) fn mount_registry_handles(
     // Audio/voice playback commands (bgm/pcm/koe) — drive-faithful
     // no-ops (see module_media_commands).
     register_media_rlops(&mut registry);
+    // Extra Msg text-formatting commands (hide_all/br/spause) —
+    // drive-faithful no-ops (see module_msg_extra).
+    register_msg_extra_rlops(&mut registry);
     // System display/interaction-state commands (skip/auto/syscom
     // visibility) — drive-faithful no-ops (see module_sys_display).
     register_sys_display_rlops(&mut registry);

@@ -59,6 +59,7 @@ use crate::rlop::module_msg::{
     MSG_MODULE_ID, MSG_MODULE_TYPE, MsgRuntime, OPCODE_LINE_BREAK, dispatch_textout_at,
     register_text_rlops,
 };
+use crate::rlop::module_msg_extra::register_msg_extra_rlops;
 use crate::rlop::module_obj::GraphicsRuntime;
 use crate::rlop::module_render::register_render_rlops;
 use crate::rlop::module_sel::{SelRuntime, register_sel_rlops};
