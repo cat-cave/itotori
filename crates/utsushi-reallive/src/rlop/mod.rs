@@ -61,6 +61,7 @@ pub mod module_render;
 pub mod module_sel;
 pub mod module_str;
 pub mod module_sys;
+pub mod module_sys_display;
 mod selection_prompt;
 pub use expr_value::ExprValue;
 pub use longops::{

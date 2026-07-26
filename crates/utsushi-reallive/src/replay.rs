@@ -63,6 +63,7 @@ use crate::rlop::module_render::register_render_rlops;
 use crate::rlop::module_sel::{SelRuntime, register_sel_rlops};
 use crate::rlop::module_str::{StrRuntime, register_str_rlops};
 use crate::rlop::module_sys::{SysRuntime, register_sys_rlops};
+use crate::rlop::module_sys_display::register_sys_display_rlops;
 use crate::rlop::{
     AlwaysReadyScheduler, DispatchOutcome, HeadlessChoicePolicy, HeadlessInputScheduler, RlopKey,
     RlopRegistry,
