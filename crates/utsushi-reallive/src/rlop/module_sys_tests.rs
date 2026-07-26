@@ -31,7 +31,48 @@ fn sys_register_helper_populates_expected_count() {
                 "{op:?} must resolve for lattice type {module_type}",
             );
         }
+        // Every 1000-block alias must resolve too — bytecode reaches the
+        // arithmetic family through either opcode range.
+        for (op, alias) in ARITH_ALIASES {
+            assert!(
+                registry
+                    .get(RlopKey::new(module_type, SYS_MODULE_ID, *alias))
+                    .is_some(),
+                "alias {alias} for {op:?} must resolve for lattice type {module_type}",
+            );
+        }
     }
+}
+
+#[test]
+fn sys_modulus_and_angle_mirror_the_oracle_slope() {
+    // Both opcodes compute int((v1 - v3) / (v2 - v4)) per rlvm.
+    let mut vm = Vm::new(1, 0);
+    let modulus = SlopeOp::new(SysOpcode::Modulus);
+    modulus.dispatch(&mut vm, &[int_arg(10), int_arg(6), int_arg(4), int_arg(2)]);
+    // (10 - 4) / (6 - 2) = 6 / 4 = 1 (truncated toward zero).
+    assert_eq!(read_store(&vm), 1);
+    let angle = SlopeOp::new(SysOpcode::Angle);
+    angle.dispatch(&mut vm, &[int_arg(10), int_arg(6), int_arg(4), int_arg(2)]);
+    assert_eq!(read_store(&vm), 1, "angle mirrors modulus per the oracle");
+    // Boundary: zero denominator resolves to 0 (no panic).
+    modulus.dispatch(&mut vm, &[int_arg(9), int_arg(5), int_arg(1), int_arg(5)]);
+    assert_eq!(read_store(&vm), 0);
+}
+
+#[test]
+fn sys_arith_alias_dispatches_same_as_primary() {
+    // The 1000-block alias for `min` (opcode 1007) resolves to the same
+    // MinOp and produces the same store result as the primary opcode 6.
+    let mut registry = RlopRegistry::new();
+    let runtime = Arc::new(SysRuntime::new(LogicalClockTick(0)));
+    register_sys_rlops(&mut registry, runtime);
+    let alias_min = registry
+        .get(RlopKey::new(SYS_MODULE_TYPE, SYS_MODULE_ID, 1007))
+        .expect("min alias 1007 resolves");
+    let mut vm = Vm::new(1, 0);
+    alias_min.dispatch(&mut vm, &[int_arg(3), int_arg(7)]);
+    assert_eq!(read_store(&vm), 3, "min via alias 1007 == min(3,7)");
 }
 
 #[test]

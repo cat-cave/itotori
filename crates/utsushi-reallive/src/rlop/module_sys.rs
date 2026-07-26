@@ -67,6 +67,14 @@ use utsushi_core::substrate::{
 use super::{DispatchOutcome, ExprValue, RLOperation, RlopKey, RlopRegistry};
 use crate::vm::{Vm, VmWarning};
 
+#[path = "module_sys_trig.rs"]
+mod trig;
+use trig::{cos256, sin256};
+
+#[path = "module_sys_arith_ext.rs"]
+mod arith_ext;
+use arith_ext::SlopeOp;
+
 pub const SYS_MODULE_TYPE: u8 = 1;
 const LATTICE_TYPES: [u8; 3] = [0, 1, 2];
 pub const SYS_MODULE_ID: u8 = 4;
@@ -89,6 +97,34 @@ pub const OPCODE_MIN: u16 = 0x0006;
 pub const OPCODE_MAX: u16 = 0x0007;
 /// `constrain` opcode.
 pub const OPCODE_CONSTRAIN: u16 = 0x0008;
+/// `modulus` opcode (`sys (1,4,1005)`) — integer slope
+/// `(v1-v3)/(v2-v4)`. First registered in the `1000`-block only.
+pub const OPCODE_MODULUS: u16 = 1005;
+/// `angle` opcode (`sys (1,4,1006)`). rlvm's `angle` handler shares the
+/// exact `modulus` body (`module_sys.cc:199-206`), so we mirror the
+/// oracle: `store:= (v1-v3)/(v2-v4)`.
+pub const OPCODE_ANGLE: u16 = 1006;
+
+/// The arithmetic ops are also registered at a second opcode number in
+/// the `1000`-block (`AddOpcode(1000, "rnd")` … `AddOpcode(1010, "cos")`
+/// in `module_sys.cc:437-451`). RealLive bytecode calls the arithmetic
+/// family through EITHER opcode range, so a runtime that only mounts the
+/// low range reads the `1000`-block calls as unknown opcodes. Each entry
+/// maps an already-implemented [`SysOpcode`] to its `1000`-block alias.
+/// `modulus`/`angle` are absent here — they exist ONLY in the
+/// `1000`-block, so they are primary [`SysOpcode`] variants at
+/// [`OPCODE_MODULUS`]/[`OPCODE_ANGLE`] instead.
+const ARITH_ALIASES: &[(SysOpcode, u16)] = &[
+    (SysOpcode::Rnd, 1000),
+    (SysOpcode::Pcnt, 1001),
+    (SysOpcode::Abs, 1002),
+    (SysOpcode::Power, 1003),
+    (SysOpcode::Sin, 1004),
+    (SysOpcode::Min, 1007),
+    (SysOpcode::Max, 1008),
+    (SysOpcode::Constrain, 1009),
+    (SysOpcode::Cos, 1010),
+];
 
 /// Stable inspectable id for the substrate snapshot path.
 pub const SYS_RUNTIME_INSPECTABLE_ID: &str = "utsushi-reallive-sys-runtime";
@@ -123,6 +159,10 @@ pub enum SysOpcode {
     Max,
     /// `constrain` — clamp to `[lo, hi]`.
     Constrain,
+    /// `modulus` — integer slope `(v1-v3)/(v2-v4)`.
+    Modulus,
+    /// `angle` — mirrors the `modulus` body per the rlvm oracle.
+    Angle,
 }
 
 impl SysOpcode {
@@ -137,6 +177,8 @@ impl SysOpcode {
         Self::Min,
         Self::Max,
         Self::Constrain,
+        Self::Modulus,
+        Self::Angle,
     ];
 
     /// Numeric opcode byte for this variant.
@@ -151,6 +193,8 @@ impl SysOpcode {
             Self::Min => OPCODE_MIN,
             Self::Max => OPCODE_MAX,
             Self::Constrain => OPCODE_CONSTRAIN,
+            Self::Modulus => OPCODE_MODULUS,
+            Self::Angle => OPCODE_ANGLE,
         }
     }
 
@@ -174,11 +218,14 @@ impl SysOpcode {
             Self::Min => "sys.min",
             Self::Max => "sys.max",
             Self::Constrain => "sys.constrain",
+            Self::Modulus => "sys.modulus",
+            Self::Angle => "sys.angle",
         }
     }
 }
 
-pub const SYS_RLOP_COUNT: usize = SysOpcode::ALL.len() * LATTICE_TYPES.len();
+pub const SYS_RLOP_COUNT: usize =
+    (SysOpcode::ALL.len() + ARITH_ALIASES.len()) * LATTICE_TYPES.len();
 
 // Deterministic XorShift64 rng — substrate-clock-seeded.
 
@@ -516,77 +563,6 @@ impl RLOperation for PowerOp {
     }
 }
 
-/// 256-step fixed-point sine. Returns `round(32768 * sin(2π·theta/256))`
-/// where `theta` is the input modulo 256. The table is pinned so the
-/// substrate-honest "no float drift on different hosts" guarantee
-/// holds.
-fn sin256(theta: i32) -> i32 {
-    let theta_mod = theta.rem_euclid(256) as usize;
-    SIN_TABLE_256[theta_mod]
-}
-
-/// 256-step fixed-point cosine. Identical table; offset by 64.
-fn cos256(theta: i32) -> i32 {
-    let theta_mod = (theta.rem_euclid(256) as usize + 64) % 256;
-    SIN_TABLE_256[theta_mod]
-}
-
-/// Pre-computed 256-entry sine table (`round(32768 * sin(2π·k/256))`).
-/// The values are pinned so the dispatch is host-independent — no
-/// `f64::sin` call at runtime.
-const SIN_TABLE_256: [i32; 256] = sine_table_for_256();
-
-/// Compile-time-friendly sine-table builder. Uses Bhaskara's
-/// approximation for `sin` so the table is reproducible by
-/// inspection without dragging in a floating-point cosine library at
-/// const-eval time. The approximation differs from the IEEE `sin`
-/// table by ≤2 LSB across the table; the tests pin the table
-/// observably (`sin(0)=0`, `sin(64)=32768`, `sin(128)=0`
-/// `sin(192)=-32768`).
-const fn sine_table_for_256() -> [i32; 256] {
-    let mut table = [0i32; 256];
-    let mut k = 0;
-    while k < 256 {
-        table[k] = sine_q15_bhaskara(k as i32);
-        k += 1;
-    }
-    table
-}
-
-/// Bhaskara's sine approximation in Q15 fixed-point, parameterised
-/// by a 256-step circle. Pins:
-/// - `theta=0 → 0`
-/// - `theta=64 → 32768`
-/// - `theta=128 → 0`
-/// - `theta=192 → -32768`
-/// - `theta=k` and `theta=k+256` produce the same value.
-///
-/// The approximation: `sin(x) = (4x(π - x)) / (5π² - 4x(π - x))` for
-/// `x in [0, π]`, mirrored for `[π, 2π]`. Encoded directly in the
-/// 256-step domain so there are no float ops.
-const fn sine_q15_bhaskara(theta: i32) -> i32 {
-    let mut t = theta.rem_euclid(256);
-    let negate = t >= 128;
-    if negate {
-        t -= 128;
-    }
-    // Now t in [0, 127]. The half-cycle goes from 0 → 32768 → 0.
-    // Bhaskara's formula in the 128-step domain
-    // (`pi` ≡ 128 steps): sin(x) = 16·x·(π−x) / (5π² − 4·x·(π−x)).
-    // At t=64 (the peak): x·(π−x) = 64·64 = 4096; 16·4096 = 65536;
-    // 5·128² = 81920; 81920 − 4·4096 = 65536. Result = 1.0 in
-    // floating point, encoded as Q15 = 32768.
-    let x = t;
-    let pi_minus_x = 128 - t;
-    let xp = x * pi_minus_x;
-    let numerator = 16 * xp;
-    let denom = 5 * 128 * 128 - 4 * xp;
-    // Result is in Q0 (a fraction in [0, 1]); scale to Q15.
-    let value = (numerator as i64).saturating_mul(32768);
-    let q15 = (value / denom as i64) as i32;
-    if negate { -q15 } else { q15 }
-}
-
 /// `sin(theta)` — store:= sin256(theta).
 #[derive(Debug)]
 pub struct SinOp;
@@ -685,22 +661,40 @@ impl RLOperation for ConstrainOp {
 
 /// Mount every `module_sys` arithmetic op this module ships into
 /// `registry`. The runtime is shared so the rng state lives at one
-/// canonical location.
+/// canonical location. Each op is registered at its primary opcode and
+/// (for the ops in [`ARITH_ALIASES`]) at its `1000`-block alias, so
+/// bytecode calling the family through either opcode range resolves to
+/// the same handler.
 pub fn register_sys_rlops(registry: &mut RlopRegistry, runtime: Arc<SysRuntime>) -> usize {
-    let mut register = |opcode: SysOpcode, op: Arc<dyn RLOperation>| {
+    let mut mount = |op: SysOpcode, rlop: Arc<dyn RLOperation>| {
+        let alias = ARITH_ALIASES
+            .iter()
+            .find(|(candidate, _)| *candidate == op)
+            .map(|(_, alias)| *alias);
         for module_type in LATTICE_TYPES {
-            registry.register(opcode.rlop_key_for(module_type), Arc::clone(&op));
+            registry.register(op.rlop_key_for(module_type), Arc::clone(&rlop));
+            if let Some(alias) = alias {
+                registry.register(
+                    RlopKey::new(module_type, SYS_MODULE_ID, alias),
+                    Arc::clone(&rlop),
+                );
+            }
         }
     };
-    register(SysOpcode::Rnd, Arc::new(RndOp::new(Arc::clone(&runtime))));
-    register(SysOpcode::Pcnt, Arc::new(PcntOp));
-    register(SysOpcode::Abs, Arc::new(AbsOp));
-    register(SysOpcode::Power, Arc::new(PowerOp));
-    register(SysOpcode::Sin, Arc::new(SinOp));
-    register(SysOpcode::Cos, Arc::new(CosOp));
-    register(SysOpcode::Min, Arc::new(MinOp));
-    register(SysOpcode::Max, Arc::new(MaxOp));
-    register(SysOpcode::Constrain, Arc::new(ConstrainOp));
+    mount(SysOpcode::Rnd, Arc::new(RndOp::new(Arc::clone(&runtime))));
+    mount(SysOpcode::Pcnt, Arc::new(PcntOp));
+    mount(SysOpcode::Abs, Arc::new(AbsOp));
+    mount(SysOpcode::Power, Arc::new(PowerOp));
+    mount(SysOpcode::Sin, Arc::new(SinOp));
+    mount(SysOpcode::Cos, Arc::new(CosOp));
+    mount(SysOpcode::Min, Arc::new(MinOp));
+    mount(SysOpcode::Max, Arc::new(MaxOp));
+    mount(SysOpcode::Constrain, Arc::new(ConstrainOp));
+    mount(
+        SysOpcode::Modulus,
+        Arc::new(SlopeOp::new(SysOpcode::Modulus)),
+    );
+    mount(SysOpcode::Angle, Arc::new(SlopeOp::new(SysOpcode::Angle)));
     SYS_RLOP_COUNT
 }
 
