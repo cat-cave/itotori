@@ -1,21 +1,27 @@
 {
   description = "itotori dev environment (Rust + Node monorepo)";
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
   outputs =
-    { nixpkgs, ... }:
+    { nixpkgs, rust-overlay, ... }:
     let
       system = "x86_64-linux";
-      pkgs = import nixpkgs { inherit system; };
+      pkgs = import nixpkgs {
+        inherit system;
+        overlays = [ rust-overlay.overlays.default ];
+      };
+      rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
     in
     {
       devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [
-          # Rust (rust-toolchain.toml pins stable + rustfmt/clippy/rust-src). nixpkgs stable
-          # rust covers it; rustup is not used inside the nix shell.
-          rustc
-          cargo
-          clippy
-          rustfmt
+          # Rust (rust-toolchain.toml pins the exact compiler and components).
+          rustToolchain
           cargo-deny
           # common native build deps for crates
           pkg-config
@@ -33,7 +39,7 @@
         ];
         env = {
           # rust-analyzer std sources
-          RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
+          RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
           # The runtime-web Playwright config reads this to launch the
           # nix-provided Chromium via `executablePath` instead of a downloaded
           # browser. The Rust adapters read `UTSUSHI_BROWSER_BIN` for the same
