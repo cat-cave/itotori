@@ -112,6 +112,9 @@ pub(super) fn mount_registry_handles(
     // Extra Msg text-formatting commands (hide_all/br/spause) —
     // drive-faithful no-ops (see module_msg_extra).
     register_msg_extra_rlops(&mut registry);
+    // MenuReturn (1201/1202) — return-to-title transfer, modeled as a
+    // natural terminus (see module_sys_menu).
+    register_sys_menu_rlops(&mut registry);
     // System display/interaction-state commands (skip/auto/syscom
     // visibility) — drive-faithful no-ops (see module_sys_display).
     register_sys_display_rlops(&mut registry);
