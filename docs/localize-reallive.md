@@ -51,6 +51,7 @@ itotori extract --whole-seen \
 
 # 2. structure-export  — emit the narrative-structure JSON (scenes/routes/speakers)
 itotori structure-export \
+  --engine reallive \
   --gameexe "$GAME_ROOT/REALLIVEDATA/Gameexe.ini" \
   --seen     "$GAME_ROOT/REALLIVEDATA/Seen.txt" \
   --bridge   "$RUN_DIR/bridge.json" \
@@ -65,6 +66,7 @@ itotori wiki build \
 
 # 4. localize  — drive the whole-project drafter + QA loop to a finalized result
 itotori localize \
+  --project-id <project-id> --run-id <run-id> --locale-branch-id <locale-branch-id> \
   --run-mode production \
   --structure   "$RUN_DIR/structure.json" \
   --bridge      "$RUN_DIR/bridge.json" \
@@ -150,18 +152,18 @@ plus the inline handlers in `apps/itotori/src/cli-handlers.ts`
 
 #### `itotori extract` — BridgeBundle producer
 
-Required: `--game-id`, `--game-version`, `--source-profile-id`,
-`--source-locale`, `--bundle-output <PATH>`, plus exactly one of `--whole-seen`
-or `--scene <N>`.
+Required: `--engine reallive` (the registered RealLive adapter), `--game-id`,
+`--game-version`, `--source-profile-id`, `--source-locale`, and
+`--bundle-output <PATH>`, plus exactly one of `--whole-seen` or `--scene <N>`.
 
-Optional: `--engine reallive` (default; only `reallive` is wired),
-`--game-root <PATH>` (raw extract source root; falls back to
+Optional: `--game-root <PATH>` (raw extract source root; falls back to
 `ITOTORI_REAL_GAME_ROOT`), `--vault-canonical-id <ID>` (source by-id through the
 read-only vault), `--decompile-report-output <PATH>`.
 
 #### `itotori structure-export` — narrative-structure producer
 
-Required: `--gameexe <PATH>`, `--seen <PATH>`, `--output <PATH>`.
+Required: `--engine reallive`, `--gameexe <PATH>`, `--seen <PATH>`,
+`--output <PATH>`.
 
 Optional: `--bridge <PATH>` (enables the evidence-complete v2 structure),
 `--entry-scene <N>` (override the `SEEN_START` entry scene — gotcha: the
@@ -185,12 +187,13 @@ targeted analyst run; unset = full roster), `--portrait-sources <PATH>`,
 
 #### `itotori localize` — whole-project drafter + QA driver
 
-Required: `--run-mode production|pilot|test-dev`, `--structure <PATH>`,
+Required: `--run-mode production|pilot|test-dev`, `--project-id <ID>`,
+`--run-id <ID>`, `--locale-branch-id <ID>`, `--structure <PATH>`, and
 `--bridge <PATH>`.
 
 Optional: `--context-scope <scope>` (default `whole-game`; also
 `external-augmented` or `narrowed:<…>`), `--output-scope <scope>` (default
-`dialogue-only`; also `dialogue-and-choices`, …),
+`dialogue-only`; also `dialogue-and-choices`, `dialogue-choices-ui`, or `all`),
 `--whole-scene-max-units <N>`, `--ablation` (pure-MTL baseline; `test-dev`
 only), `--output <PATH>` (else the run summary is printed to stdout).
 
@@ -215,13 +218,17 @@ review), `--print-textlines`, `--source-seen <PATH>`, `--bg-asset <PATH>`,
 
 ### 2.2 Where the game parameters come from (don't guess)
 
-The env-gated proof test **`apps/itotori/test/localize-real.test.ts`** documents
-the identity parameters and environment a real run needs. Set values for your
-own licensed game; do not copy a game-specific profile or machine-local path.
+Set values for your own licensed game; do not copy a game-specific profile or
+machine-local path. The CLI owns these inputs now:
 
-- **Stage-1 output shape**: the env-gated proof test is the concrete example of
-  how stage-1 artifacts are produced and asserted (no committed real-run tree is
-  kept in-repo — real live output stays out by the ZDR / no-game-bytes policy).
+- **Extract identity**: supply `--game-id`, `--game-version`,
+  `--source-profile-id`, and `--source-locale` to `itotori extract`, along with
+  the selected `--whole-seen` or `--scene <N>` mode. The resulting bridge bundle
+  is the stage-1 artifact; no committed real-run tree is kept in-repo because
+  real live output remains outside the repository under the ZDR / no-game-bytes
+  policy.
+- **Localization-run identity**: supply `--project-id`, `--run-id`, and
+  `--locale-branch-id` to `itotori localize`.
 - **The corpus game root** is the read-only directory that directly contains
   `REALLIVEDATA/`. Set it through `ITOTORI_REAL_GAME_ROOT`; a parent staging
   directory also works as `--game-root` when the resolver can descend to the
@@ -230,22 +237,50 @@ own licensed game; do not copy a game-specific profile or machine-local path.
 **Supported decryption is automatic.** The `kaifuu-reallive` decoder detects
 and reverses supported scene encryption in-process. You do not supply a key.
 
-### 2.3 Running the env-gated real vertical directly
+### 2.3 Running a real-bytes vertical directly
 
-If you want to drive the real-bytes acceptance test rather than the CLI, export
-the `ITOTORI_CLI_REAL_LOCALIZE_*` vars (from the test header) and run it — it is
-`it.skipIf(gated)` so it SKIPS LOUD (never fake-passes) when the vars are unset:
+Drive real bytes through the shipped CLI; the old env-gated test interface is
+gone. Point the RealLive extractor at the licensed, read-only game root, then
+run the current stage sequence: `extract` → `structure-export` → `wiki build`
+→ `localize` → `patch`.
 
 ```sh
 export ITOTORI_REAL_GAME_ROOT=<local-private-root>/<game>
-export ITOTORI_CLI_REAL_LOCALIZE_SOURCE="$ITOTORI_REAL_GAME_ROOT"
-export ITOTORI_CLI_REAL_LOCALIZE_GAME_ID=<game>
-export ITOTORI_CLI_REAL_LOCALIZE_GAME_VERSION=<version>
-export ITOTORI_CLI_REAL_LOCALIZE_SOURCE_PROFILE_ID=reallive-<game>
-export ITOTORI_CLI_REAL_LOCALIZE_SOURCE_LOCALE=ja-JP
-export ITOTORI_CLI_REAL_LOCALIZE_SCENE=1            # optional, default "1"
-# plus OPENROUTER_API_KEY + OPENROUTER_ZDR_ACCOUNT_ASSERTED=1 + DATABASE_URL
+
+itotori extract --engine reallive --whole-seen \
+  --game-id <game> --game-version <version> \
+  --source-profile-id reallive-<game> --source-locale ja-JP \
+  --bundle-output <bridge.json>
+
+# After structure-export and wiki build have produced their inputs:
+itotori localize \
+  --project-id <project-id> --run-id <run-id> --locale-branch-id <locale-branch-id> \
+  --run-mode production --structure <structure.json> --bridge <bridge.json> \
+  --output-scope dialogue-only --output <run-summary.json>
 ```
+
+`--run-mode` accepts `production`, `pilot`, or `test-dev`; `--output-scope`
+accepts `dialogue-only`, `dialogue-and-choices`, `dialogue-choices-ui`, or
+`all`. Use the appropriate scope and mode for the run policy.
+
+For a live model run, in addition to the database prerequisite in §1.3, the
+operator must provide the live-provider and run-configuration environment:
+
+```sh
+export OPENROUTER_API_KEY=<OpenRouter-key>
+export OPENROUTER_ZDR_ACCOUNT_ASSERTED=1
+export ITOTORI_TARGET_LOCALE=<target-locale>
+export ITOTORI_DRAFT_SCHEMA_HASH='sha256:<draft-schema-revision>'
+export ITOTORI_DECODE_REVISION_HASH='sha256:<decode-revision>'
+export ITOTORI_GLOSSARY_REVISION_HASH='sha256:<glossary-revision>'
+export ITOTORI_STYLE_REVISION_HASH='sha256:<style-revision>'
+export ITOTORI_LOCALIZE_COST_CAP_USD=<decimal-USD-cap>
+export ITOTORI_LOCALIZE_MAX_ATTEMPT_EXPOSURE_USD=<decimal-USD-attempt-cap>
+```
+
+The four revision values must use the `sha256:` form. `ITOTORI_REAL_GAME_ROOT`
+is the only surviving environment variable from the former real-localize
+interface; the game identity and run identity now belong to the CLI flags.
 
 ---
 
