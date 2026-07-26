@@ -106,6 +106,9 @@ pub(super) fn mount_registry_handles(
     // System (fixed-seed clock/RNG → deterministic replay).
     let sys_runtime = Arc::new(SysRuntime::new(LogicalClockTick(0)));
     register_sys_rlops(&mut registry, sys_runtime);
+    // Audio/voice playback commands (bgm/pcm/koe) — drive-faithful
+    // no-ops (see module_media_commands).
+    register_media_rlops(&mut registry);
     // System display/interaction-state commands (skip/auto/syscom
     // visibility) — drive-faithful no-ops (see module_sys_display).
     register_sys_display_rlops(&mut registry);

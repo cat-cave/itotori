@@ -53,6 +53,7 @@ use crate::rlop::module_audio::{AudioRuntime, register_audio_rlops};
 use crate::rlop::module_ctrl::{
     register_control_flow_branch_following, register_control_flow_linear_walk,
 };
+use crate::rlop::module_media_commands::register_media_rlops;
 use crate::rlop::module_mem::register_mem_rlops;
 use crate::rlop::module_msg::{
     MSG_MODULE_ID, MSG_MODULE_TYPE, MsgRuntime, OPCODE_LINE_BREAK, dispatch_textout_at,
