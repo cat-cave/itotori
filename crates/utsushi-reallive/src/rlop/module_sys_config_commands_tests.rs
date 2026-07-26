@@ -1,0 +1,31 @@
+use super::*;
+use crate::rlop::RlopRegistry;
+
+#[test]
+fn config_commands_all_register_across_lattice() {
+    let mut registry = RlopRegistry::new();
+    let count = register_sys_config_rlops(&mut registry);
+    assert_eq!(count, SYS_CONFIG_RLOP_COUNT);
+    assert_eq!(registry.len(), SYS_CONFIG_RLOP_COUNT);
+    for &(opcode, _) in CONFIG_COMMANDS {
+        for module_type in LATTICE_TYPES {
+            assert!(
+                registry
+                    .get(RlopKey::new(module_type, SYS_MODULE_ID, opcode))
+                    .is_some(),
+                "opcode {opcode} must resolve for lattice type {module_type}",
+            );
+        }
+    }
+}
+
+#[test]
+fn config_command_advances_without_touching_store() {
+    let op = SysConfigCommand::new("sys.disable_syscom");
+    let mut vm = Vm::new(1, 0);
+    let before = vm.banks().store();
+    let outcome = op.dispatch(&mut vm, &[ExprValue::Int(3)]);
+    assert!(matches!(outcome, DispatchOutcome::Advance));
+    assert_eq!(vm.banks().store(), before);
+    assert_eq!(op.tag(), "sys.disable_syscom");
+}
