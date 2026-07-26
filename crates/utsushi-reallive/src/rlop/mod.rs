@@ -57,6 +57,7 @@ pub mod module_ctrl;
 pub mod module_media_commands;
 pub mod module_mem;
 pub mod module_msg;
+pub mod module_msg_extra;
 pub mod module_obj;
 pub mod module_render;
 pub mod module_sel;
