@@ -109,6 +109,9 @@ pub(super) fn mount_registry_handles(
     // System display/interaction-state commands (skip/auto/syscom
     // visibility) — drive-faithful no-ops (see module_sys_display).
     register_sys_display_rlops(&mut registry);
+    // System timer reset/time-wait commands — drive-faithful no-ops under
+    // the headless scheduler (see module_sys_timer).
+    register_sys_timer_rlops(&mut registry);
 
     // Memory (no runtime).
     register_mem_rlops(&mut registry);
