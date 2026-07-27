@@ -10,6 +10,12 @@ const has = (path, pattern, message) => {
   }
 };
 
+const hasNot = (path, pattern, message) => {
+  if (pattern.test(read(path))) {
+    failures.push(`${path}: ${message}`);
+  }
+};
+
 const stripInlineComment = (value) => value.replace(/\s+#.*$/, "");
 
 const parseJustRecipeHeader = (line) => {
@@ -188,6 +194,54 @@ has(
   ".github/workflows/_tier1.yml",
   /DATABASE_URL:\s*postgres:\/\/itotori:itotori@127\.0\.0\.1:5432\/itotori/,
   "Tier 1 db job must wire DATABASE_URL to the Postgres service",
+);
+
+// THE RENDERER CONTRACT of the Tier-1 browser lane. Its DS visual baselines are
+// pixel-exact and only reproduce under the flake.lock-pinned Chromium AND font
+// set. That gate previously existed but was unreachable: CI provisioned
+// Playwright's own Chromium, so the pixel assertions green-skipped on every PR
+// for the whole life of the lane while stale baselines sat red on `main`. These
+// four assertions are what stop it silently rotting back — CI must ENTER the
+// pinned shell, the shell must pin BOTH halves, and the recipe must FAIL rather
+// than skip when either half is missing.
+has(
+  ".github/workflows/_tier1.yml",
+  /nix develop \.#browser --command just ci-tier1-browser/,
+  "Tier 1 browser job must run the lane inside the pinned nix renderer dev shell",
+);
+has(
+  "flake.nix",
+  /browser = pkgs\.mkShell/,
+  "flake.nix must expose the minimal .#browser dev shell the Tier 1 browser job enters",
+);
+has(
+  "flake.nix",
+  /FONTCONFIG_FILE = browserFontsConf;/,
+  "the renderer contract must pin fonts, not only the browser binary",
+);
+// makeFontsConf emits a /nix/store path that still <include>s the host's
+// /etc/fonts/conf.d and lists /usr/share/fonts, so it LOOKS pinned while
+// inheriting the host's rendering rules and font universe. That is how 32 of 35
+// stories differed on CI with every path under /nix/store.
+hasNot(
+  "flake.nix",
+  /makeFontsConf/,
+  "the fonts pin must be hermetic; makeFontsConf re-admits /etc/fonts/conf.d and /usr/share/fonts",
+);
+has(
+  "packages/itotori-ds/scripts/visual-regression.mjs",
+  /--disable-lcd-text/,
+  "the visual oracle must pin its rasterization path, not inherit it from the machine",
+);
+has(
+  "justfile",
+  /node scripts\/ci\/assert-renderer-contract\.mjs/,
+  "ci-tier1-browser must assert the renderer contract before it runs the suite",
+);
+has(
+  "scripts/ci/assert-renderer-contract.mjs",
+  /process\.exit\(1\)/,
+  "an unmet renderer contract must FAIL, never green-skip the pixel assertions",
 );
 
 hasRecipeCommand("check", "pnpm exec vp check", "must run Vite+ checks");

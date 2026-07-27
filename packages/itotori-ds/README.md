@@ -96,11 +96,35 @@ The runner is deterministic by contract:
 - fixed viewport: 1280x800, device scale factor 1, dark scheme;
 - `prefers-reduced-motion: reduce`, disabled animations/transitions, hidden caret;
 - local static Storybook only; external network requests are aborted;
-- explicit Chromium binary via `PLAYWRIGHT_CHROMIUM_BIN` or `UTSUSHI_BROWSER_BIN`.
+- explicit Chromium binary via `PLAYWRIGHT_CHROMIUM_BIN` or `UTSUSHI_BROWSER_BIN`;
+- explicit font set via `FONTCONFIG_FILE`.
 
-The explicit browser path is required so baselines do not silently shift between
-host browsers. In the dev shell this is exported by the native-deps setup; outside
-it, set one of those env vars before running `visual:test` or `visual:update`.
+Those, plus the launch flags exported as `rasterizationArgs` from
+`scripts/visual-regression.mjs`, are the **renderer contract**, and all three
+parts are load-bearing at `maxDiffPixels=0`. A screenshot is a function of the
+browser binary, the faces fontconfig resolves for it, _and_ the rasterization
+path Chromium picks from the machine (GPU vs software, LCD-subpixel vs grayscale
+text, fractional vs integer glyph positioning, Skia kernels chosen from CPU
+feature bits, raster tiling). The DS type stacks are art direction rather than
+shipped files (see Fonts below), so every family falls through to `system-ui` /
+`sans-serif` / `monospace`, which an unpinned host answers with whatever it
+happens to have installed. `flake.nix` pins Chromium and a hand-written hermetic
+fontconfig file in the default dev shell and in the minimal `.#browser` shell
+that CI's Tier-1 browser lane enters. Re-capture baselines only from inside one
+of those shells.
+
+The font config is hand-written rather than generated because the nixpkgs helper
+is additive, not hermetic: it emits a `/nix/store` path that still
+`<include>`s the host's `/etc/fonts/conf.d` and lists `/usr/share/fonts`, so a
+store path is not by itself a pinned font universe. It also pins **CJK**
+explicitly — `BiText` renders a `ja-JP` line, which previously resolved only via
+this workstation's own system font list, so any other host drew tofu.
+
+`just ci-tier1-browser` asserts the contract before it runs anything and FAILS
+when it is unmet; it does not skip. (It skipped for the whole of the lane's
+prior life, because CI provisioned Playwright's own Chromium and therefore never
+satisfied it.) `ITOTORI_DS_VISUAL_STRICT=1` is the one opt-out, for an operator
+who deliberately rebased the baselines onto another renderer.
 
 ## Fonts
 

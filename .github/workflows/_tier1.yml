@@ -1,5 +1,5 @@
 # Reusable Tier-1: portable behavior suite — TS shards, nextest partitions,
-# Postgres 18 service, Playwright Chromium, alpha-proof, mutation-differential.
+# Postgres 18 service, nix-pinned Chromium, alpha-proof, mutation-differential.
 # Builds release CLIs once and fans out the small artifact. Target p95 < 10 min.
 # Called from pr-tiers.yml; required via the main-merge-queue ruleset.
 name: reusable tier1
@@ -129,29 +129,58 @@ jobs:
       - name: Run Tier-1 DB suite
         run: just ci-tier1-db
 
+  # The renderer comes from nix, NOT from Playwright's download. The DS visual
+  # baselines are pixel-exact (maxDiffPixels=0) against the flake.lock-pinned
+  # Chromium + font set, so a downloaded Chromium on a stock Ubuntu image can
+  # only ever skip them — which is exactly what happened: the pixel assertions
+  # never executed on a single PR while stale baselines sat red on main.
+  # `nix develop .#browser` makes the baseline renderer and the CI renderer the
+  # same derivations by construction; `just ci-tier1-browser` now FAILS rather
+  # than skipping when that contract is unmet, so this cannot silently rot back.
   browser:
     name: Tier 1 / chromium
     runs-on: ubuntu-latest
-    # Provisional cold-run budget (Playwright install --with-deps + e2e + DS visual).
+    # Provisional cold-run budget (nix install + devShell realise + e2e + DS visual).
     # Measure on shadow runs, then tighten.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
 
+      # No `browser: "true"`: Playwright must not download a second, different
+      # Chromium. The devShell below is the only renderer this lane may use.
       - uses: ./.github/actions/setup-itotori
-        with:
-          browser: "true"
 
-      - name: Preflight Chromium
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      # Fail before the suite if the renderer contract is not actually in place,
+      # naming the binary AND the resolved faces — an unpinned font set changes
+      # every baseline just as surely as a different browser build does.
+      - name: Preflight nix Chromium + pinned fonts
         run: |
           set -euo pipefail
-          bin="${PLAYWRIGHT_CHROMIUM_BIN:-${UTSUSHI_BROWSER_BIN:-}}"
-          test -n "$bin"
-          test -x "$bin"
-          echo "Tier-1 browser preflight ok: $bin"
+          nix develop .#browser --command bash -c '
+            set -euo pipefail
+            bin="${PLAYWRIGHT_CHROMIUM_BIN:-}"
+            test -n "$bin"
+            test -x "$bin"
+            case "$bin" in /nix/store/*) ;; *) echo "renderer is not nix-store: $bin" >&2; exit 1 ;; esac
+            case "${FONTCONFIG_FILE:-}" in /nix/store/*) ;; *) echo "fonts are not nix-pinned: ${FONTCONFIG_FILE:-}" >&2; exit 1 ;; esac
+            "$bin" --version
+            fc-match sans-serif
+            fc-match monospace
+            # The devShell deliberately ships only the renderer; the JS toolchain
+            # is inherited from setup-itotori and must survive `nix develop`.
+            command -v pnpm >/dev/null
+            command -v just >/dev/null
+            node --version
+            echo "Tier-1 browser preflight ok: $bin"
+          '
 
       - name: Run Tier-1 browser suite
-        run: just ci-tier1-browser
+        run: nix develop .#browser --command just ci-tier1-browser
 
   alpha:
     name: Tier 1 / alpha proof

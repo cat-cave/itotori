@@ -769,6 +769,7 @@ ci-tier0-meta:
     node scripts/assert-tanstack-openrouter-pin.mjs
     node --test scripts/audit-llm-loc-budget.test.mjs
     node scripts/audit-llm-loc-budget.mjs
+    node --test scripts/ci/assert-renderer-contract.test.mjs
     node --test scripts/ci/public-lane-coverage.test.mjs
     node scripts/ci/public-lane-coverage.mjs --check
     node --test scripts/ci/private-real-byte-proof.test.mjs
@@ -886,22 +887,22 @@ ci-tier1-db:
     pnpm --filter @itotori/app typecheck
     pnpm --filter @itotori/app exec vitest run --exclude '**/.direnv/**'
 
-# Playwright Chromium for app + runtime-web-review e2e, plus DS visual oracle.
-# Requires PLAYWRIGHT_CHROMIUM_BIN (or UTSUSHI_BROWSER_BIN). Asserts post-run
-# executed count (passed+failed, non-skipped) > 0 from Playwright JSON reporter
-# output — collection/--list metadata alone is never sufficient. Resource skip
-# is never success. DS visual is owned here (not the portable TS shards).
+# App + runtime-web-review e2e, plus the DS visual oracle, on ONE renderer. Run
+# it from the nix dev shell (`nix develop --command just ci-tier1-browser`, or
+# `nix develop .#browser --command …` in CI), which pins both halves of the
+# renderer contract asserted below. Asserts post-run executed count
+# (passed+failed, non-skipped) > 0 from Playwright JSON reporter output —
+# collection/--list metadata alone is never sufficient — and mode=verify from
+# the DS visual runner. Resource skip is never success; DS visual is owned here.
 ci-tier1-browser:
     #!/usr/bin/env bash
     set -euo pipefail
     bin="${PLAYWRIGHT_CHROMIUM_BIN:-${UTSUSHI_BROWSER_BIN:-}}"
-    if [ -z "$bin" ] || [ ! -x "$bin" ]; then
-      echo "ci-tier1-browser: no runnable Chromium — PLAYWRIGHT_CHROMIUM_BIN / UTSUSHI_BROWSER_BIN is unset or not executable (\"$bin\")." >&2
-      echo "  Refusing to pass with the browser e2e unexercised (strict lane, no green-on-skip)." >&2
-      exit 1
-    fi
-    echo "ci-tier1-browser: Chromium = $bin"
     echo "ci-tier1-browser: lane owns app e2e + runtime-web-review e2e + @itotori/ds visual:test"
+
+    # Runnability AND the pixel-exact renderer contract, asserted FIRST — and RED
+    # when unmet, never skipped; the script says why that inversion is the point.
+    node scripts/ci/assert-renderer-contract.mjs
 
     # Run one Playwright project with JSON reporter to a file; parse post-execution
     # counts. PLAYWRIGHT_JSON_OUTPUT_FILE is the json reporter's absolute-path env
@@ -956,33 +957,28 @@ ci-tier1-browser:
     run_pw_json "@itotori/app" "app-e2e"
     run_pw_json "@itotori/runtime-web-review" "runtime-web-review-e2e"
 
-    # DS visual: pixel-exact baselines (maxDiffPixels=0) captured under nix
-    # Chromium. Playwright's downloadable Chromium on ubuntu-latest diverges on
-    # font/AA — that is a renderer capability miss, not an app regression.
-    # Require /nix/store/* (or ITOTORI_DS_VISUAL_STRICT=1) before asserting
-    # pixels; never green-skip when that capability IS present.
-    if [[ "$bin" == /nix/store/* ]] || [ "${ITOTORI_DS_VISUAL_STRICT:-0}" = "1" ]; then
-      echo "ci-tier1-browser: running @itotori/ds visual:test (nix/strict renderer = $bin)"
-      ds_out="$(mktemp)"
-      set +e
-      pnpm --filter @itotori/ds visual:test 2>&1 | tee "$ds_out"
-      ds_rc=${PIPESTATUS[0]}
-      set -e
-      if grep -q '"skipped"[[:space:]]*:[[:space:]]*true' "$ds_out"; then
-        echo "ci-tier1-browser: DS visual green-skipped despite nix/strict Chromium — refusing" >&2
-        exit 1
-      fi
-      if [ "$ds_rc" -ne 0 ]; then
-        echo "ci-tier1-browser: DS visual:test failed (exit $ds_rc)" >&2
-        exit "$ds_rc"
-      fi
-      echo "ci-tier1-browser: executed-count ok (playwright_executed=${_pw_executed_total}; ds_visual=ran)"
-    else
-      echo "ci-tier1-browser: DS visual capability miss — Chromium is not nix-store ($bin)."
-      echo "  Baselines are nix-Chromium pixel-exact; not failing the lane on a different renderer."
-      echo "  Force with ITOTORI_DS_VISUAL_STRICT=1 if you intentionally rebased baselines for this binary."
-      echo "ci-tier1-browser: executed-count ok (playwright_executed=${_pw_executed_total}; ds_visual=capability-miss)"
+    # DS visual pixel assertions. The contract was enforced at the top of the
+    # lane, so reaching here means the oracle CAN assert.
+    echo "ci-tier1-browser: running @itotori/ds visual:test (renderer=$bin)"
+    ds_out="$(mktemp)"
+    set +e
+    pnpm --filter @itotori/ds visual:test 2>&1 | tee "$ds_out"
+    ds_rc=${PIPESTATUS[0]}
+    set -e
+    if grep -q '"skipped"[[:space:]]*:[[:space:]]*true' "$ds_out"; then
+      echo "ci-tier1-browser: DS visual green-skipped despite a satisfied renderer contract — refusing" >&2
+      exit 1
     fi
+    if [ "$ds_rc" -ne 0 ]; then
+      echo "ci-tier1-browser: DS visual:test failed (exit $ds_rc)" >&2
+      exit "$ds_rc"
+    fi
+    # Post-run proof that pixels were COMPARED, not merely collected.
+    if ! grep -q '"mode"[[:space:]]*:[[:space:]]*"verify"' "$ds_out"; then
+      echo "ci-tier1-browser: DS visual exited 0 without reporting mode=verify — refusing to count it as an assertion" >&2
+      exit 1
+    fi
+    echo "ci-tier1-browser: executed-count ok (playwright_executed=${_pw_executed_total}; ds_visual=verified)"
 
 # ALPHA public-fixture vertical + linkage proof.
 ci-tier1-alpha: alpha-proof
