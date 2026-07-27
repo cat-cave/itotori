@@ -18,21 +18,22 @@
 //! reach-arounds left here are [`runtime_artifact_uri`] and
 //! [`RuntimeArtifactKind`], which mint the managed trace-log URI.
 
-use std::sync::{Arc, Mutex};
-
 use utsushi_core::substrate::{
-    AssetId, AudioEvent, AudioEventSink, CapabilityDeclaration, CapabilityStance,
-    CaptureOutcome as SubstrateCaptureOutcome, EngineParityProfile, EnginePort, EnginePortError,
-    EvidenceTier, FidelityTier, FrameArtifact, FrameArtifactSink, Inspectable, LifecycleStage,
-    ObservationBridgeRef, PortCapability, PortManifest, PortRequest, PortShutdownOutcome,
-    REQUIRED_LIFECYCLE_STAGES, SinkCapability, SinkError, SinkKind, SinkResult, SinkSet,
-    SnapshotError, StatePath, StateTree, StateValue, TextLine, TextSurfaceSink,
+    AssetId, CapabilityDeclaration, CapabilityStance, CaptureOutcome as SubstrateCaptureOutcome,
+    EngineParityProfile, EnginePort, EnginePortError, EvidenceTier, FidelityTier, Inspectable,
+    LifecycleStage, ObservationBridgeRef, PortCapability, PortManifest, PortRequest,
+    PortShutdownOutcome, REQUIRED_LIFECYCLE_STAGES, SinkSet, SnapshotError, StatePath, StateTree,
+    StateValue, TextLine, TextSurfaceSink,
 };
 // Forced reach-arounds: `runtime_artifact_uri` + `RuntimeArtifactKind` mint the
 // managed trace-log URI the artifact is written under.
 use utsushi_core::{RuntimeArtifactKind, runtime_artifact_uri};
 
 use crate::event_data::{DataDir, DataLayout, EventDataError, MessageLine, TextRole, load_program};
+
+mod sinks;
+
+pub use sinks::{RpgmakerMvObservationSinks, RpgmakerMvTextSink};
 
 /// Stable port id. Matches the `EngineFamily::RpgmakerMv -> "utsushi-rpgmaker-mv"`
 /// mapping in `utsushi_core::port::impl_map` (validator.rs) and the
@@ -41,110 +42,6 @@ const PORT_ID: &str = "utsushi-rpgmaker-mv";
 
 /// Crate semantic version, sourced from Cargo metadata.
 const PORT_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// Collector text sink. The port pushes one [`TextLine`] per `observe`
-/// tick; the runner drains via [`TextSurfaceSink::drain_lines`].
-pub struct RpgmakerMvTextSink {
-    buffer: Mutex<Vec<TextLine>>,
-}
-
-impl RpgmakerMvTextSink {
-    pub fn new() -> Self {
-        Self {
-            buffer: Mutex::new(Vec::new()),
-        }
-    }
-}
-
-impl Default for RpgmakerMvTextSink {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl TextSurfaceSink for RpgmakerMvTextSink {
-    fn capability(&self) -> SinkCapability {
-        SinkCapability::Supported {
-            evidence_tier_ceiling: EvidenceTier::E1,
-        }
-    }
-
-    fn emit_line(&self, line: TextLine) -> SinkResult<()> {
-        line.validate()?;
-        self.buffer.lock().expect("text sink lock").push(line);
-        Ok(())
-    }
-
-    fn drain_lines(&self) -> Vec<TextLine> {
-        std::mem::take(&mut *self.buffer.lock().expect("text sink lock"))
-    }
-}
-
-/// Explicitly-unsupported frame sink. The MV/MZ runtime renders to a JS
-/// DOM/canvas; this port observes the text stream only and does not
-/// rasterise frames. Declaring the sink `Unsupported` is the audit-correct
-/// posture for "this port has no frame evidence to announce" (vs silently
-/// omitting the sink).
-struct RpgmakerMvFrameSink;
-
-impl FrameArtifactSink for RpgmakerMvFrameSink {
-    fn capability(&self) -> SinkCapability {
-        SinkCapability::Unsupported
-    }
-
-    fn emit_frame(&self, _frame: FrameArtifact) -> SinkResult<()> {
-        Err(SinkError::UnsupportedKind {
-            sink: SinkKind::FrameArtifact,
-            adapter_id: PORT_ID.to_string(),
-            reason: "utsushi-rpgmaker-mv observes the text stream only; frame rasterisation is a deferred surface".to_string(),
-        })
-    }
-}
-
-/// Explicitly-unsupported audio sink — the static event-stream walk
-/// announces no audio evidence.
-struct RpgmakerMvAudioSink;
-
-impl AudioEventSink for RpgmakerMvAudioSink {
-    fn capability(&self) -> SinkCapability {
-        SinkCapability::Unsupported
-    }
-
-    fn emit_event(&self, _audio: AudioEvent) -> SinkResult<()> {
-        Err(SinkError::UnsupportedKind {
-            sink: SinkKind::AudioEvent,
-            adapter_id: PORT_ID.to_string(),
-            reason: "utsushi-rpgmaker-mv has no audio evidence to announce".to_string(),
-        })
-    }
-}
-
-/// Sink bundle owned by [`UtsushiRpgmakerMvPort`].
-pub struct RpgmakerMvObservationSinks {
-    text: Arc<RpgmakerMvTextSink>,
-    sink_set: SinkSet,
-}
-
-impl RpgmakerMvObservationSinks {
-    pub fn new() -> Self {
-        let text = Arc::new(RpgmakerMvTextSink::new());
-        let sink_set = SinkSet::new()
-            .with_text(text.clone() as Arc<dyn TextSurfaceSink>)
-            .with_frame(Arc::new(RpgmakerMvFrameSink) as Arc<dyn FrameArtifactSink>)
-            .with_audio(Arc::new(RpgmakerMvAudioSink) as Arc<dyn AudioEventSink>);
-        Self { text, sink_set }
-    }
-
-    pub fn sink_set(&self) -> &SinkSet {
-        &self.sink_set
-    }
-}
-
-impl Default for RpgmakerMvObservationSinks {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PortState {

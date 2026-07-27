@@ -67,6 +67,36 @@ fn threads_switch_and_variable_state() {
 }
 
 #[test]
+fn public_replay_boundary_executes_relocated_command_engine() {
+    let list = vec![
+        json!({ "code": 121, "parameters": [4, 4, 0] }),
+        json!({ "code": 122, "parameters": [8, 8, 0, 0, 12] }),
+        json!({ "code": 102, "parameters": [["Continue", "Stop"], 1] }),
+    ];
+
+    let outcome = replay_event_list(&list, UnknownPolicy::SkipWithDiagnostic).unwrap();
+
+    assert!(outcome.state.switch(4));
+    assert_eq!(outcome.state.variable(8), 12);
+    assert_eq!(
+        outcome.events,
+        vec![
+            ReplayEvent::SwitchChanged {
+                switch_id: 4,
+                value: true,
+            },
+            ReplayEvent::VariableChanged {
+                variable_id: 8,
+                value: 12,
+            },
+            ReplayEvent::Choice {
+                options: vec!["Continue".to_string(), "Stop".to_string()],
+            },
+        ]
+    );
+}
+
+#[test]
 fn switch_range_and_off_value() {
     let list = vec![json!({ "code": 121, "parameters": [1, 3, 1] })]; // switches 1..=3 OFF
     let outcome = replay_event_list(&list, UnknownPolicy::SkipWithDiagnostic).unwrap();
