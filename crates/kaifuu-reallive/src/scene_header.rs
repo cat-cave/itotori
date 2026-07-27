@@ -2,8 +2,8 @@
 //! Decodes the fixed `0x1d0`-byte (464-byte) scene header that prefixes
 //! every populated scene blob in a RealLive `Seen.txt` envelope. The
 //! layout is documented in `docs/research/reallive-engine.md` §D and
-//! confirmed against Sweetie HD's scene #1 in
-//! `docs/research/reallive-sweetie-hd-encryption-mechanism.md` §4.
+//! confirmed against real scene #1 (see the RealLive encryption-mechanism
+//! research note §4).
 //! Provenance:
 //! - The same on-disk format is decoded by `utsushi-reallive::scene_header`,
 //!   but kaifuu-reallive does **not** depend on utsushi-reallive (per

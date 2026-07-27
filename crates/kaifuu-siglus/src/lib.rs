@@ -34,11 +34,11 @@
 //! deliverable**, now recovered natively in-process from `SiglusEngine.exe`
 //! bytes by [`exe_angou`] (a static PE opcode scan — no Wine, no execution); it
 //! is consumed here only as resolved material bound to a structured secret-ref,
-//! never a raw literal. Both owned titles (`karetoshi`, `gamekoi`) set
+//! never a raw literal. Both owned Siglus corpora set
 //! `extra_key_use` / `exe_angou_mode`: with the recovered key their
 //! `Gameexe.dat` **body** and their `Scene.pck` scene **payloads** both decode
-//! (proven on real bytes — karetoshi's 298 and gamekoi's 278 scenes all decode
-//! to non-empty bytecode via the `exe-key XOR -> constant scene-table XOR ->
+//! (proven on real bytes — the 298-scene and 278-scene archives both decode
+//! fully to non-empty bytecode via the `exe-key XOR -> constant scene-table XOR ->
 //! LZSS` pipeline), and without a key the decoders record the typed
 //! `second_layer_key_required` / `exe_angou_key_required` diagnostic before any
 //! output rather than fabricating a result; a wrong key trips the typed
