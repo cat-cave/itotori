@@ -63,6 +63,19 @@ describe("upstream generation metadata capture", () => {
       ]),
     ).toMatchObject({ generationId: null, served: { status: "unknown" } });
   });
+
+  it("retains an ID from a raw stream chunk when RUN_FINISHED omits it", () => {
+    expect(
+      captureGenerationMetadata([
+        {
+          type: EventType.TEXT_MESSAGE_CONTENT,
+          delta: "",
+          rawEvent: { id: "generation:stream:1" },
+        },
+        finishedChunkWithoutMetadata(),
+      ]),
+    ).toMatchObject({ generationId: "generation:stream:1", served: { status: "unknown" } });
+  });
 });
 
 function inlineFinishedChunk(): StreamChunk {

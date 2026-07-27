@@ -140,7 +140,7 @@ export async function reconcileGenerationMetadata(
 /** Capture only metadata normalized by the upstream TanStack adapter. */
 export function captureGenerationMetadata(chunks: readonly StreamChunk[]): GenerationMetadata {
   const finished = chunks.findLast((chunk) => chunk.type === EventType.RUN_FINISHED);
-  if (!finished) return unknownGenerationMetadata();
+  if (!finished) return unknownGenerationMetadata(generationIdFromChunks(chunks));
 
   const event = asRecord(finished);
   const rawEvent = asRecord(event.rawEvent);
@@ -153,13 +153,14 @@ export function captureGenerationMetadata(chunks: readonly StreamChunk[]): Gener
       rawEvent.openrouter_metadata,
       providerMetadata.openrouter,
     ) ?? {};
-  const generationId = firstRouteValue(
-    event.generationId,
-    event.generation_id,
-    rawEvent.generationId,
-    rawEvent.generation_id,
-    rawEvent.id,
-  );
+  const generationId =
+    firstRouteValue(
+      event.generationId,
+      event.generation_id,
+      rawEvent.generationId,
+      rawEvent.generation_id,
+      rawEvent.id,
+    ) ?? generationIdFromChunks(chunks);
   const unverifiedServed = decodeServedPair(event, rawEvent, openRouter);
   const routerAttempts = decodeRouterAttempts(openRouter.attempts);
   const usage = decodeUsage(event.usage);
@@ -179,6 +180,27 @@ export function captureGenerationMetadata(chunks: readonly StreamChunk[]): Gener
     billing,
     reportedCostUsd,
   };
+}
+
+/** The adapter may omit a streaming response's ID from RUN_FINISHED even
+ * though it preserves it on the raw chunk. Use the first valid stream ID only
+ * as a reconciliation key; served-route authority still comes from the
+ * authenticated generation lookup. */
+function generationIdFromChunks(chunks: readonly StreamChunk[]): string | null {
+  for (const chunk of chunks) {
+    const event = asRecord(chunk);
+    const rawEvent = asRecord(event.rawEvent);
+    const generationId = firstRouteValue(
+      event.generationId,
+      event.generation_id,
+      event.id,
+      rawEvent.generationId,
+      rawEvent.generation_id,
+      rawEvent.id,
+    );
+    if (generationId !== null) return generationId;
+  }
+  return null;
 }
 
 function unknownGenerationMetadata(generationId: string | null = null): GenerationMetadata {
