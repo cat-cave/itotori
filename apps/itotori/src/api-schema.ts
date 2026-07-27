@@ -585,6 +585,7 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "startedAt",
     "refusalMessage",
   ],
+  ApiLaunchPassRequest: ["localeBranchId"],
   // play-routemap-ui — route/choice tree envelope.
   ApiPlayRouteMapResponse: [
     "schemaVersion",
@@ -1284,27 +1285,14 @@ export type ApiPrincipalPermissionSetGrantResponse = {
  * Overview action wires through the typed client. The body carries the locale
  * branch the next pass is scoped to; the server VERIFIES it against the
  * project's server-side ownership set (a forged branch is refused) before the
- * driver is touched. An operator may instead request cancellation of one
- * existing durable run in that same authoritative scope. The project id lives
- * on the URL path.
+ * driver is touched. Cancellation is intentionally not part of this launch
+ * endpoint; it needs a separate, cancellable worker control plane. The project
+ * id lives on the URL path.
  */
-export type ApiLaunchPassRequest =
-  | {
-      /** The locale branch the next pass is scoped to (validated server-side). */
-      localeBranchId: string;
-      /** Omitted/false for a normal launch. */
-      cancelled?: false;
-      /** A run id is legal only for an explicit cancellation. */
-      resumeRunId?: undefined;
-    }
-  | {
-      /** The authoritative branch scope the existing run must belong to. */
-      localeBranchId: string;
-      /** Explicit operator cancellation; never inferred from a bare run id. */
-      cancelled: true;
-      /** Immutable durable journal run id to abort. */
-      resumeRunId: string;
-    };
+export type ApiLaunchPassRequest = {
+  /** The locale branch the next pass is scoped to (validated server-side). */
+  localeBranchId: string;
+};
 
 /**
  * ovw-launch-pass-action — response body for the launch-pass mutation. A thin,
@@ -6139,36 +6127,18 @@ function assertLaunchPassResponse(value: unknown): asserts value is ApiLaunchPas
  * ovw-launch-pass-action — parse + validate the launch-pass request body. The
  * locale branch is required (the project id lives on the URL path); the server
  * additionally verifies the branch against the project's ownership set before
- * the driver runs. Cancellation is deliberately an explicit pair:
- * `cancelled:true` plus a non-blank `resumeRunId`. A bare run id can therefore
- * never silently turn a normal launch into a privileged cancellation.
+ * the driver runs. Cancellation fields are rejected: this endpoint launches
+ * work and does not expose a worker-abort capability.
  */
 export function parseLaunchPassRequest(body: unknown): ApiLaunchPassRequest {
   return parseRequest("ApiLaunchPassRequest", () => {
-    const request = asRecord(body, "ApiLaunchPassRequest");
+    const request = asStrictRecord(
+      body,
+      "ApiLaunchPassRequest",
+      ITOTORI_STRICT_API_BODY_KEYS.ApiLaunchPassRequest,
+    );
     assertString(request.localeBranchId, "ApiLaunchPassRequest.localeBranchId");
-    if (request.cancelled !== undefined && typeof request.cancelled !== "boolean") {
-      throw new Error("ApiLaunchPassRequest.cancelled must be a boolean when supplied");
-    }
-    if (request.cancelled !== true) {
-      if (request.resumeRunId !== undefined) {
-        throw new Error("ApiLaunchPassRequest.resumeRunId is legal only when cancelled is true");
-      }
-      return {
-        localeBranchId: request.localeBranchId,
-        ...(request.cancelled === false ? { cancelled: false as const } : {}),
-      };
-    }
-    assertString(request.resumeRunId, "ApiLaunchPassRequest.resumeRunId");
-    const resumeRunId = request.resumeRunId.trim();
-    if (resumeRunId.length === 0) {
-      throw new Error("ApiLaunchPassRequest.resumeRunId must be non-blank");
-    }
-    return {
-      localeBranchId: request.localeBranchId,
-      cancelled: true,
-      resumeRunId,
-    };
+    return { localeBranchId: request.localeBranchId };
   });
 }
 

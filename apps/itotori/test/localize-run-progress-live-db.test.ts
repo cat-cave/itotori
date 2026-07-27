@@ -26,6 +26,7 @@ postgresDescribe("localize run progress over Postgres", () => {
         const workflow = services.projectWorkflow;
         const projectId = "localize-progress-project";
         const localeBranchId = "localize-progress-branch";
+        const secondLocaleBranchId = "localize-progress-branch-two";
         await workflow.ensureRunProjectScope({
           projectId,
           localeBranchId,
@@ -64,6 +65,24 @@ postgresDescribe("localize run progress over Postgres", () => {
           acceptedBibleHead: null,
           acceptedTargetOutputHead: null,
         });
+        await workflow.ensureRunProjectScope({
+          projectId,
+          localeBranchId: secondLocaleBranchId,
+          sourceRevisionId: "localize-progress-source",
+          sourceLocale: "ja-JP",
+          targetLocale: "en-GB",
+          engineFamily: "synthetic_fixture",
+          sourceRoot: "/fixture/localize-progress/source",
+          buildRoot: "/fixture/localize-progress/build",
+          extractProfile: { surface: "localize-run-progress-live-db" },
+        });
+        const secondLocalizationSnapshot = await workflow.putLocalization({
+          contextSnapshotId: contextSnapshot.snapshotId,
+          targetLocale: "en-GB",
+          localeBranchId: secondLocaleBranchId,
+          acceptedBibleHead: null,
+          acceptedTargetOutputHead: null,
+        });
 
         const firstReviewGate = deferred();
         const firstFinalizeGate = deferred();
@@ -89,11 +108,11 @@ postgresDescribe("localize run progress over Postgres", () => {
 
           const secondState = recordedRunState();
           second = runLocalizeCommand(
-            commandArgs(projectId, "localize-progress-run-two", localeBranchId),
+            commandArgs(projectId, "localize-progress-run-two", secondLocaleBranchId),
             commandDeps(
               services,
               contextSnapshot.snapshotId,
-              localizationSnapshot.snapshotId,
+              secondLocalizationSnapshot.snapshotId,
               secondState,
             ),
           );

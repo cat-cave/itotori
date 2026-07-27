@@ -47,6 +47,11 @@ import type {
   RuntimeIngestResult,
 } from "./project-operations-port.js";
 import { benchmarkArtifactInput } from "./project-workflow-benchmark.js";
+import {
+  LocalizationPassAlreadyActiveError,
+  isActiveLocalizationPassConflict,
+  type LocalizationPassRunnerPort,
+} from "./launch-localization-pass.js";
 
 export class ProjectWorkflowCapabilityError extends Error {
   constructor(readonly capability: string) {
@@ -62,6 +67,8 @@ export type ProjectWorkflowServiceDeps = {
   snapshots: Pick<ItotoriLlmSnapshotRepository, "putContext" | "putLocalization">;
   ledger: ItotoriModelLedgerRepositoryPort;
   passRunConfig: ItotoriLocalizationPassRunConfigRepositoryPort;
+  /** Detached whole-project localize runner used by launch-pass. */
+  passRunner: LocalizationPassRunnerPort;
   conformance: ItotoriConformanceRepositoryPort;
   decodeExtract?: DecodeExtractPort;
   defaultTargetLocale: string;
@@ -308,8 +315,31 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
         refusalMessage: `no pass run configuration is saved for project ${input.projectId} and locale branch ${input.localeBranchId}`,
       };
     }
-    void config;
-    throw new ProjectWorkflowCapabilityError("localization pass execution");
+
+    let started: Awaited<ReturnType<LocalizationPassRunnerPort["start"]>>;
+    try {
+      started = await this.deps.passRunner.start({
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        config,
+      });
+    } catch (error: unknown) {
+      if (
+        error instanceof LocalizationPassAlreadyActiveError ||
+        isActiveLocalizationPassConflict(error)
+      ) {
+        return {
+          outcome: "refused",
+          refusalMessage: `a localization pass is already active for ${input.projectId}/${input.localeBranchId}`,
+        };
+      }
+      throw error;
+    }
+    return {
+      outcome: "started",
+      journalRunId: started.journalRunId,
+      startedAt: started.startedAt,
+    };
   }
 
   private async getTelemetry(projectId: string): Promise<ProjectTelemetryTimeseries> {

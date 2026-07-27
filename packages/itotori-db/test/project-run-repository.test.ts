@@ -14,11 +14,12 @@ import { testProjectEngineFamilyRegistry } from "./project-engine-family-registr
 const actor: AuthorizationActor = { userId: localUserId };
 
 describe("ItotoriProjectRunRepository", () => {
-  it("isolates concurrent run costs, progress, caps, and leases within one project", async () => {
+  it("isolates concurrent run costs, progress, caps, and leases across project branches", async () => {
     const fixture = await runFixture("isolation");
     try {
+      const secondBranch = await addRunBranch(fixture, "isolation-second");
       await fixture.runs.createRun(actor, runInput(fixture, "run-isolation-one", 100));
-      await fixture.runs.createRun(actor, runInput(fixture, "run-isolation-two", 30));
+      await fixture.runs.createRun(actor, runInput(fixture, "run-isolation-two", 30, secondBranch));
       const firstLease = await fixture.runs.acquireLease(
         actor,
         leaseInput(fixture, "run-isolation-one", "driver-one"),
@@ -60,6 +61,8 @@ describe("ItotoriProjectRunRepository", () => {
       );
       expect(first).not.toBeNull();
       expect(second).not.toBeNull();
+      expect(first?.run.localeBranchId).toBe(fixture.localeBranchId);
+      expect(second?.run.localeBranchId).toBe(secondBranch.localeBranchId);
       expect(first?.run.cost).toEqual({
         capMicrosUsd: 100,
         spentMicrosUsd: 0,
@@ -74,6 +77,24 @@ describe("ItotoriProjectRunRepository", () => {
       expect(second?.run.leaseOwnerId).toBe("driver-two");
       expect(first?.progress.units).toHaveLength(1);
       expect(second?.progress.units).toHaveLength(0);
+    } finally {
+      await fixture.context.close();
+    }
+  });
+
+  it("refuses a second active run on the same project branch", async () => {
+    const fixture = await runFixture("active-branch");
+    try {
+      await fixture.runs.createRun(actor, runInput(fixture, "run-active-first", 100));
+
+      await expect(
+        fixture.runs.createRun(actor, runInput(fixture, "run-active-second", 100)),
+      ).rejects.toMatchObject({
+        cause: {
+          code: "23505",
+          constraint: "itotori_project_runs_one_active_branch_idx",
+        },
+      });
     } finally {
       await fixture.context.close();
     }
@@ -219,6 +240,9 @@ describe("ItotoriProjectRunRepository", () => {
   });
 });
 
+type RunFixture = Awaited<ReturnType<typeof runFixture>>;
+type RunBranch = Pick<RunFixture, "localeBranchId" | "snapshots">;
+
 async function runFixture(suffix: string) {
   const context = await isolatedMigratedContext();
   const projectId = `project-run-${suffix}`;
@@ -238,6 +262,7 @@ async function runFixture(suffix: string) {
   const snapshots = await snapshotPair(context, localeBranchId);
   return {
     context,
+    suffix,
     projectId,
     localeBranchId,
     snapshots,
@@ -245,17 +270,38 @@ async function runFixture(suffix: string) {
   };
 }
 
+async function addRunBranch(fixture: RunFixture, suffix: string): Promise<RunBranch> {
+  const localeBranchId = `branch-run-${suffix}`;
+  const projects = new ItotoriProjectRepository(
+    fixture.context.db,
+    testProjectEngineFamilyRegistry,
+  );
+  await projects.ensureRunProjectScope(actor, {
+    projectId: fixture.projectId,
+    localeBranchId,
+    sourceRevisionId: `revision-run-${fixture.suffix}`,
+    targetLocale: "fr-FR",
+    sourceLocale: "ja-JP",
+    engineFamily: "synthetic_fixture",
+    sourceRoot: "/fixture/source",
+    buildRoot: "/fixture/build",
+    extractProfile: { fixture: suffix },
+  });
+  return { localeBranchId, snapshots: await snapshotPair(fixture.context, localeBranchId) };
+}
+
 function runInput(
-  fixture: Awaited<ReturnType<typeof runFixture>>,
+  fixture: RunFixture,
   runId: string,
   capMicrosUsd: number,
+  branch: RunBranch = fixture,
 ) {
   return {
     projectId: fixture.projectId,
     runId,
-    localeBranchId: fixture.localeBranchId,
-    contextSnapshotId: fixture.snapshots.contextSnapshotId,
-    localizationSnapshotId: fixture.snapshots.localizationSnapshotId,
+    localeBranchId: branch.localeBranchId,
+    contextSnapshotId: branch.snapshots.contextSnapshotId,
+    localizationSnapshotId: branch.snapshots.localizationSnapshotId,
     capMicrosUsd,
   };
 }
