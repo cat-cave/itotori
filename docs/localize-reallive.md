@@ -94,15 +94,24 @@ itotori wiki build \
 and `--portrait-sources <json>`. Production and pilot policy require the
 wiki-first bible. Only `test-dev` permits `localize --ablation`.
 
-Run the localizer with durable run identities:
+Run the localizer with durable run identities and the two roots it owns:
 
 ```sh
 itotori localize \
   --project-id <id> --run-id <id> --locale-branch-id <id> \
+  --target-locale <bcp-47> \
+  --source-root <read-only-game-root> --build-root <writable-build-root> \
   --run-mode production \
   --structure <run-dir>/structure.json --bridge <run-dir>/bridge.json \
   --output-scope dialogue-only --output <run-dir>/run-summary.json
 ```
+
+Supply the project, run, and locale-branch identities; the target locale; the
+read-only source and writable build roots; the run mode; and the preceding
+structure and bridge artifacts. While provisioning that scope, `localize`
+derives the engine family from structure, and the source revision, source
+locale, bridge identity, extractor, and source-bundle hash from the bridge. Do
+not redundantly supply those derived values.
 
 Optional localizer flags are `--context-scope`, `--whole-scene-max-units`,
 `--ablation`, and `--lease-owner-id`. Output scopes are `dialogue-only`,
