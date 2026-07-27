@@ -1,0 +1,25 @@
+schema = "engine/v1"
+id = "engine-renpy"
+plugin = "bin/kaifuu-cli"
+
+[capabilities]
+detection = "supported"
+asset_inventory = "not-claimed"
+extraction = "not-claimed"
+patching = "not-claimed"
+key_profile = "not-claimed"
+runtime_vm = "not-claimed"
+
+[[check]]
+id = "check-renpy-public-capabilities"
+lane = "lane-public"
+covers = ["detection"]
+executor = { kind = "engine-plugin", command = "test", selector = "readiness-profile" }
+
+[[proof]]
+id = "proof-renpy-strict-capabilities"
+lane = "lane-strict"
+covers = ["detection"]
+requires = { corpus_count = 0, tags = [] }
+executor = { kind = "engine-plugin", command = "prove", selector = "synthetic-readiness" }
+receipt = { outcome = "synthetic-readiness", minimum_executed = 1 }

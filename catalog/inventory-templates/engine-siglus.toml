@@ -1,0 +1,19 @@
+schema = "inventory/v1"
+
+[[corpus]]
+id = "corpus-siglus-a"
+engine = "engine-siglus"
+variant = "variant-a"
+root = "/private/corpora/siglus-a"
+content_address = "sha256:replace-with-local-content-address-a"
+tags = ["strict", "siglus"]
+access = "read-only"
+
+[[corpus]]
+id = "corpus-siglus-b"
+engine = "engine-siglus"
+variant = "variant-b"
+root = "/private/corpora/siglus-b"
+content_address = "sha256:replace-with-local-content-address-b"
+tags = ["strict", "siglus"]
+access = "read-only"

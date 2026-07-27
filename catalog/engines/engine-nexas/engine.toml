@@ -1,0 +1,34 @@
+schema = "engine/v1"
+id = "engine-nexas"
+plugin = "bin/kaifuu-cli"
+
+[capabilities]
+asset_inventory = "not-claimed"
+asset_listing = "not-claimed"
+asset_text_patching = "not-claimed"
+codec_access = "not-claimed"
+container_access = "not-claimed"
+crypto_access = "not-claimed"
+delta_patching = "not-claimed"
+detection = "supported"
+encrypted_input = "not-claimed"
+extraction = "not-claimed"
+non_text_surface_extraction = "not-claimed"
+patch_back = "not-claimed"
+patching = "not-claimed"
+profile_generation = "supported"
+runtime_vm = "not-claimed"
+
+[[check]]
+id = "check-nexas-public-capabilities"
+lane = "lane-public"
+covers = ["detection", "profile_generation"]
+executor = { kind = "engine-plugin", command = "test", selector = "synthetic-capabilities" }
+
+[[proof]]
+id = "proof-nexas-strict-capabilities"
+lane = "lane-strict"
+covers = ["detection", "profile_generation"]
+requires = { corpus_count = 0, tags = [] }
+executor = { kind = "engine-plugin", command = "prove", selector = "synthetic-capabilities" }
+receipt = { outcome = "synthetic-capability-parity", minimum_executed = 1 }

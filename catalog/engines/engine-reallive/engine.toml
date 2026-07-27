@@ -1,0 +1,63 @@
+schema = "engine/v1"
+id = "engine-reallive"
+plugin = "bin/kaifuu-cli"
+
+[capabilities]
+asset_inventory = "supported"
+asset_listing = "supported"
+asset_text_patching = "partial"
+codec_access = "supported"
+container_access = "supported"
+crypto_access = "not-claimed"
+delta_patching = "not-claimed"
+detection = "supported"
+encrypted_input = "not-claimed"
+extraction = "supported"
+key_profile = "not-claimed"
+line_parity_patching = "partial"
+non_text_surface_extraction = "not-claimed"
+patch_back = "supported"
+patching = "partial"
+profile_generation = "supported"
+runtime_vm = "not-claimed"
+verification = "supported"
+
+[[check]]
+id = "check-reallive-public-capabilities"
+lane = "lane-public"
+covers = [
+  "asset_inventory",
+  "asset_listing",
+  "asset_text_patching",
+  "codec_access",
+  "container_access",
+  "detection",
+  "extraction",
+  "line_parity_patching",
+  "patch_back",
+  "patching",
+  "profile_generation",
+  "verification",
+]
+executor = { kind = "engine-plugin", command = "test", selector = "synthetic-capabilities" }
+
+[[proof]]
+id = "proof-reallive-strict-capabilities"
+lane = "lane-strict"
+covers = [
+  "asset_inventory",
+  "asset_listing",
+  "asset_text_patching",
+  "codec_access",
+  "container_access",
+  "detection",
+  "extraction",
+  "line_parity_patching",
+  "patch_back",
+  "patching",
+  "profile_generation",
+  "verification",
+]
+requires = { corpus_count = 2, tags = ["strict", "reallive"] }
+executor = { kind = "engine-plugin", command = "prove", selector = "extract-patch" }
+receipt = { outcome = "extract-patch", minimum_executed = 1 }

@@ -13,5 +13,8 @@ kaifuu-softpal = { path = "../kaifuu-softpal" }
 serde.workspace = true
 serde_json.workspace = true
 
+[dev-dependencies]
+engine-contract = { path = "../engine-contract" }
+
 [lints]
 workspace = true

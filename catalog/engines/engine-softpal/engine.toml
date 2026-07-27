@@ -1,0 +1,63 @@
+schema = "engine/v1"
+id = "engine-softpal"
+plugin = "bin/kaifuu-cli"
+
+[capabilities]
+asset_inventory = "supported"
+asset_listing = "supported"
+asset_text_patching = "partial"
+codec_access = "supported"
+container_access = "supported"
+crypto_access = "supported"
+delta_patching = "not-claimed"
+detection = "supported"
+encrypted_input = "supported"
+extraction = "supported"
+non_text_surface_extraction = "not-claimed"
+patch_back = "partial"
+patching = "partial"
+profile_generation = "supported"
+runtime_vm = "not-claimed"
+verification = "supported"
+
+[[check]]
+id = "check-softpal-public-capabilities"
+lane = "lane-public"
+covers = [
+  "asset_inventory",
+  "asset_listing",
+  "asset_text_patching",
+  "codec_access",
+  "container_access",
+  "crypto_access",
+  "detection",
+  "encrypted_input",
+  "extraction",
+  "patch_back",
+  "patching",
+  "profile_generation",
+  "verification",
+]
+executor = { kind = "engine-plugin", command = "test", selector = "synthetic-capabilities" }
+
+[[proof]]
+id = "proof-softpal-strict-capabilities"
+lane = "lane-strict"
+covers = [
+  "asset_inventory",
+  "asset_listing",
+  "asset_text_patching",
+  "codec_access",
+  "container_access",
+  "crypto_access",
+  "detection",
+  "encrypted_input",
+  "extraction",
+  "patch_back",
+  "patching",
+  "profile_generation",
+  "verification",
+]
+requires = { corpus_count = 2, tags = ["softpal", "strict"] }
+executor = { kind = "engine-plugin", command = "prove", selector = "extract-patch" }
+receipt = { outcome = "extract-patch", minimum_executed = 1 }

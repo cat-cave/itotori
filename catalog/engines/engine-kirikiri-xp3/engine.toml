@@ -1,0 +1,53 @@
+schema = "engine/v1"
+id = "engine-kirikiri-xp3"
+plugin = "bin/kaifuu-cli"
+
+[capabilities]
+asset_inventory = "supported"
+asset_listing = "supported"
+asset_text_patching = "not-claimed"
+codec_access = "not-claimed"
+container_access = "not-claimed"
+crypto_access = "not-claimed"
+delta_patching = "not-claimed"
+detection = "supported"
+encrypted_input = "not-claimed"
+extraction = "not-claimed"
+key_profile = "partial"
+non_text_surface_extraction = "not-claimed"
+patch_back = "not-claimed"
+patching = "not-claimed"
+plain_archive_extract = "supported"
+plain_archive_patch = "supported"
+profile_generation = "supported"
+runtime_vm = "not-claimed"
+
+[[check]]
+id = "check-kirikiri-xp3-public-capabilities"
+lane = "lane-public"
+covers = [
+  "asset_inventory",
+  "asset_listing",
+  "detection",
+  "key_profile",
+  "plain_archive_extract",
+  "plain_archive_patch",
+  "profile_generation",
+]
+executor = { kind = "engine-plugin", command = "test", selector = "synthetic-capabilities" }
+
+[[proof]]
+id = "proof-kirikiri-xp3-strict-capabilities"
+lane = "lane-strict"
+covers = [
+  "asset_inventory",
+  "asset_listing",
+  "detection",
+  "key_profile",
+  "plain_archive_extract",
+  "plain_archive_patch",
+  "profile_generation",
+]
+requires = { corpus_count = 1, tags = ["strict", "xp3"] }
+executor = { kind = "engine-plugin", command = "prove", selector = "plain-archive" }
+receipt = { outcome = "archive-rebuild", minimum_executed = 1 }

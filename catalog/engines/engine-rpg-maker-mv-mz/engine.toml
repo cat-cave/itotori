@@ -1,0 +1,37 @@
+schema = "engine/v1"
+id = "engine-rpg-maker-mv-mz"
+plugin = "bin/kaifuu-cli"
+
+[capabilities]
+encrypted_media_identify = "supported"
+encrypted_media_key_validation = "partial"
+json_text_extract = "supported"
+json_text_inventory = "supported"
+json_text_patch = "supported"
+runtime = "not-claimed"
+
+[[check]]
+id = "check-rpg-maker-mv-mz-public-capabilities"
+lane = "lane-public"
+covers = [
+  "encrypted_media_identify",
+  "encrypted_media_key_validation",
+  "json_text_extract",
+  "json_text_inventory",
+  "json_text_patch",
+]
+executor = { kind = "engine-plugin", command = "test", selector = "synthetic-capabilities" }
+
+[[proof]]
+id = "proof-rpg-maker-mv-mz-strict-capabilities"
+lane = "lane-strict"
+covers = [
+  "encrypted_media_identify",
+  "encrypted_media_key_validation",
+  "json_text_extract",
+  "json_text_inventory",
+  "json_text_patch",
+]
+requires = { corpus_count = 2, tags = ["rpg-maker", "strict"] }
+executor = { kind = "engine-plugin", command = "prove", selector = "json-text-extract-patch" }
+receipt = { outcome = "extract-patch-delta", minimum_executed = 1 }
