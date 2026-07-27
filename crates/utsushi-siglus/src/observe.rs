@@ -57,12 +57,6 @@ pub struct SiglusChoiceOption {
 pub enum SiglusChoiceDiagnostic {
     /// The select call had no decoded positional string labels.
     EmptyOptionSet { scene_id: u32, select_offset: usize },
-    /// An option has no recognized select-to-conditional-jump arm.
-    UnlinkedOption {
-        scene_id: u32,
-        select_offset: usize,
-        option_index: usize,
-    },
     /// A recognized label decodes to the empty string and is not emitted.
     EmptyOptionLabel {
         scene_id: u32,
@@ -167,13 +161,14 @@ pub(crate) fn build_static_scene_text_program(
             .map_or_else(|| format!("{:04}", entry.scene_id), ToOwned::to_owned);
 
         let mut lines = Vec::with_capacity(flow.text_surfaces.len());
+        let mut current_speaker = None;
         for surface in flow.text_surfaces {
             let text = decode_surface_text(entry.scene_id, &decoded, &surface)?;
-            let surface_label = if surface.is_name {
-                "speaker_name"
-            } else {
-                "dialogue"
-            };
+            if surface.is_name {
+                current_speaker = (!text.is_empty()).then_some(text);
+                continue;
+            }
+            let surface_label = "dialogue";
             let source_unit_key = format!("siglus:scene-{scene_name}#{}", surface.site_offset);
             let byte_offset_in_scene = surface
                 .str_byte_offset
@@ -185,7 +180,7 @@ pub(crate) fn build_static_scene_text_program(
                 ),
                 evidence_tier: EvidenceTier::E1,
                 text,
-                speaker: None,
+                speaker: current_speaker.clone(),
                 color: None,
                 text_surface: Some(surface_label.to_string()),
                 bridge_ref: Some(ObservationBridgeRef {
@@ -243,16 +238,6 @@ fn append_choice_lines(
         );
         let mut options = Vec::new();
         for (option_index, option) in selection.options.into_iter().enumerate() {
-            if option.structural_arm_index.is_none() {
-                outputs
-                    .diagnostics
-                    .push(SiglusChoiceDiagnostic::UnlinkedOption {
-                        scene_id: scene.scene_id,
-                        select_offset: selection.call_offset,
-                        option_index,
-                    });
-                continue;
-            }
             let text = decode_string_ref(scene.scene_id, scene.decoded_scene, &option.text)?;
             if text.is_empty() {
                 outputs
@@ -264,7 +249,7 @@ fn append_choice_lines(
                     });
                 continue;
             }
-            if option.branch_target_offset.is_none() {
+            if option.structural_arm_index.is_some() && option.branch_target_offset.is_none() {
                 outputs
                     .diagnostics
                     .push(SiglusChoiceDiagnostic::UnresolvedBranchTarget {
@@ -402,7 +387,6 @@ fn lifecycle_error(message: String) -> EnginePortError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn decodes_xor_masked_utf16_string_table_entry() {
         let index = 3_i32;
@@ -426,7 +410,6 @@ mod tests {
             "テスト"
         );
     }
-
     #[test]
     fn records_an_explicit_diagnostic_for_an_optionless_selection() {
         let mut lines = Vec::new();
@@ -464,5 +447,54 @@ mod tests {
                 select_offset: 42,
             }]
         );
+    }
+    #[test]
+    fn emits_selbtn_labels_when_the_branch_ladder_is_not_statically_resolved() {
+        let mut lines = Vec::new();
+        let mut moments = Vec::new();
+        let mut diagnostics = Vec::new();
+        let source_asset =
+            AssetId::from_parts("fixture", "Scene.pck").expect("valid fixture asset id");
+        let decoded_scene: Vec<_> = "Pick"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .flat_map(u16::to_le_bytes)
+            .collect();
+        append_choice_lines(
+            ChoiceScene {
+                scene_id: 7,
+                scene_name: "opening",
+                decoded_scene: &decoded_scene,
+                source_asset: &source_asset,
+            },
+            vec![kaifuu_siglus::SiglusSelChoice {
+                call_offset: 42,
+                call_index: 0,
+                structural_choice_index: None,
+                options: vec![kaifuu_siglus::SiglusSelOption {
+                    result_value: 1,
+                    text: kaifuu_siglus::SiglusStringRef {
+                        index: 0,
+                        byte_offset: 0,
+                        char_len: 5,
+                    },
+                    source_command_offset: Some(12),
+                    structural_arm_index: None,
+                    branch_target_offset: None,
+                }],
+            }],
+            ChoiceOutputs {
+                lines: &mut lines,
+                moments: &mut moments,
+                diagnostics: &mut diagnostics,
+            },
+        )
+        .expect("unlinked selection labels remain observable");
+
+        assert!(diagnostics.is_empty());
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].text, "Pick");
+        assert_eq!(moments.len(), 1);
+        assert_eq!(moments[0].options[0].branch_target_offset, None);
     }
 }

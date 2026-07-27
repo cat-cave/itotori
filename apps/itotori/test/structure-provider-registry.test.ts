@@ -68,7 +68,7 @@ describe("StructureProvider registry", () => {
     expect(structureProviderCapabilities().map((capability) => capability.implemented)).toEqual([
       true,
       true,
-      false,
+      true,
     ]);
     const calls: Array<{ command: string; args: string[] }> = [];
     const source = resolveStructureProvider("softpal").parseCli([
@@ -108,8 +108,45 @@ describe("StructureProvider registry", () => {
         ],
       },
     ]);
-    expect(() => resolveStructureProvider("unknown")).toThrow(
-      "not a registered structure provider",
-    );
+  });
+
+  it("runs the Siglus provider through the native producer without routing it to RealLive", () => {
+    const source = resolveStructureProvider("siglus").parseCli([
+      "--engine",
+      "siglus",
+      "--scene",
+      "game/Scene.pck",
+      "--gameexe",
+      "game/Gameexe.dat",
+      "--output",
+      "out/structure.json",
+    ]);
+    const calls: Array<{ command: string; args: string[] }> = [];
+
+    const result = runStructureProvider({
+      ...source,
+      env: { ITOTORI_UTSUSHI_BIN: "utsushi-test" },
+      runProcess(command, args) {
+        calls.push({ command, args });
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+
+    expect(result.status).toBe(0);
+    expect(calls[0]?.args.slice(-9)).toEqual([
+      "structure",
+      "--engine",
+      "siglus",
+      "--gameexe",
+      "game/Gameexe.dat",
+      "--scene",
+      "game/Scene.pck",
+      "--output",
+      "out/structure.json",
+    ]);
+  });
+
+  it("rejects an unregistered provider", () => {
+    expect(() => resolveStructureProvider("unknown")).toThrow("not a registered structure provider");
   });
 });

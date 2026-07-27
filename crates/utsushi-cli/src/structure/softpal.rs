@@ -21,7 +21,11 @@ const SCENE_ID: &str = "scene:script-src";
 pub(super) fn build_softpal_structure(
     input: StructureCommandInput,
 ) -> Result<Value, Box<dyn Error>> {
-    if input.gameexe.is_some() || input.seen.is_some() || input.bridge.is_some() {
+    if input.gameexe.is_some()
+        || input.seen.is_some()
+        || input.scene.is_some()
+        || input.bridge.is_some()
+    {
         return Err("softpal structure accepts --game-root and --output only".into());
     }
     if input.entry.is_some() || input.max_scenes.is_some() {
@@ -258,6 +262,7 @@ mod tests {
         let structure = build_softpal_structure(StructureCommandInput {
             gameexe: None,
             seen: None,
+            scene: None,
             game_root: Some(root.path().to_path_buf()),
             bridge: None,
             entry: None,

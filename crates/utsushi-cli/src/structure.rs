@@ -31,6 +31,7 @@ pub(crate) fn run_structure_command(args: &[String]) -> Result<(), Box<dyn Error
     let mut engine = None;
     let mut gameexe = None;
     let mut seen = None;
+    let mut scene = None;
     let mut output = None;
     let mut bridge = None;
     let mut game_root = None;
@@ -47,6 +48,7 @@ pub(crate) fn run_structure_command(args: &[String]) -> Result<(), Box<dyn Error
             "--engine" => engine = Some(value.clone()),
             "--gameexe" => gameexe = Some(PathBuf::from(value)),
             "--seen" => seen = Some(PathBuf::from(value)),
+            "--scene" => scene = Some(PathBuf::from(value)),
             "--output" => output = Some(PathBuf::from(value)),
             "--bridge" => bridge = Some(PathBuf::from(value)),
             "--game-root" => game_root = Some(PathBuf::from(value)),
@@ -63,6 +65,7 @@ pub(crate) fn run_structure_command(args: &[String]) -> Result<(), Box<dyn Error
     let structure = provider(StructureCommandInput {
         gameexe,
         seen,
+        scene,
         game_root,
         bridge,
         entry,
@@ -79,6 +82,7 @@ pub(crate) fn run_structure_command(args: &[String]) -> Result<(), Box<dyn Error
 struct StructureCommandInput {
     gameexe: Option<PathBuf>,
     seen: Option<PathBuf>,
+    scene: Option<PathBuf>,
     game_root: Option<PathBuf>,
     bridge: Option<PathBuf>,
     entry: Option<u32>,
@@ -90,6 +94,7 @@ type StructureProvider = fn(StructureCommandInput) -> Result<Value, Box<dyn Erro
 const STRUCTURE_PROVIDERS: &[(&str, StructureProvider)] = &[
     ("reallive", build_reallive_structure),
     ("softpal", softpal::build_softpal_structure),
+    ("siglus", build_siglus_structure),
 ];
 
 fn structure_provider(engine: &str) -> Result<StructureProvider, Box<dyn Error>> {
@@ -171,4 +176,11 @@ fn build_reallive_structure(input: StructureCommandInput) -> Result<Value, Box<d
             .map_err(|error| -> Box<dyn Error> { error.into() }),
     }?;
     reallive_extension::common_structure(structure).map_err(Into::into)
+}
+
+fn build_siglus_structure(input: StructureCommandInput) -> Result<Value, Box<dyn Error>> {
+    let scene_path = input.scene.as_deref().ok_or("missing --scene")?;
+    let gameexe_path = input.gameexe.as_deref().ok_or("missing --gameexe")?;
+    utsushi_siglus::build_siglus_structure(scene_path, gameexe_path).map_err(Into::into)
+}
 }

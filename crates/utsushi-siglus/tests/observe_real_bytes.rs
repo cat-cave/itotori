@@ -28,7 +28,9 @@ struct ExpectedSurfaces {
 
 impl ExpectedSurfaces {
     fn total(&self) -> usize {
-        self.text + self.names + self.choices.len()
+        // `CD_NAME` updates speaker context on the following dialogue; it is
+        // deliberately not a translatable observation line.
+        self.text + self.choices.len()
     }
 }
 
@@ -79,14 +81,7 @@ fn exercise_title(root: &Path, package_id: &str) {
     );
     assert!(
         !expected.choices.is_empty(),
-        "{package_id}: no linked SELBTN choice labels found"
-    );
-    assert!(
-        expected
-            .choices
-            .iter()
-            .any(|choice| choice.branch_target_offset.is_some()),
-        "{package_id}: no linked choice branch target found"
+        "{package_id}: no SELBTN choice labels found"
     );
 
     let request = PortRequest::new(
@@ -128,13 +123,13 @@ fn exercise_title(root: &Path, package_id: &str) {
         "{package_id}: every CD_TEXT must emit exactly one dialogue TextLine"
     );
     assert_eq!(
-        observed_names, expected.names,
-        "{package_id}: every CD_NAME must emit exactly one speaker-name TextLine"
+        observed_names, 0,
+        "{package_id}: CD_NAME must be joined as speaker context, not emitted as dialogue"
     );
     assert_eq!(
         observed_choices.len(),
         expected.choices.len(),
-        "{package_id}: every linked choice label must emit exactly one E1 TextLine"
+        "{package_id}: every SELBTN choice label must emit exactly one E1 TextLine"
     );
     assert_eq!(
         lines.len(),
@@ -175,8 +170,9 @@ fn exercise_title(root: &Path, package_id: &str) {
         "{package_id}: every option keeps its conditional-jump branch target"
     );
     eprintln!(
-        "REAL {package_id}: E1 text={} names={} choices={} targets={} total={}",
+        "REAL {package_id}: E1 text={} decoded_names={} emitted_name_lines={} choices={} targets={} total={}",
         observed_text,
+        expected.names,
         observed_names,
         observed_choices.len(),
         expected_choice_targets
@@ -229,11 +225,7 @@ fn expected_surfaces(root: &Path, label: &str) -> ExpectedSurfaces {
         let syscalls = decode_scene_syscalls(&decoded)
             .unwrap_or_else(|error| panic!("{label}: syscall scene {}: {error}", entry.scene_id));
         for selection in syscalls.selections {
-            for option in selection
-                .options
-                .into_iter()
-                .filter(|option| option.structural_arm_index.is_some())
-            {
+            for option in selection.options.into_iter() {
                 if decode_choice_label(&decoded, &option.text).is_empty() {
                     continue;
                 }

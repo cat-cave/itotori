@@ -29,6 +29,7 @@ utsushi-kirikiri-xp3 = { path = "../utsushi-kirikiri-xp3" }
 utsushi-reallive = { path = "../utsushi-reallive" }
 utsushi-softpal = { path = "../utsushi-softpal" }
 utsushi-rpgmaker-mv = { path = "../utsushi-rpgmaker-mv" }
+utsushi-siglus = { path = "../utsushi-siglus" }
 
 [dev-dependencies]
 # Real-bytes single-scene xor2 replay test: synthesises a localized

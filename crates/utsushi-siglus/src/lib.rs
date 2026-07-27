@@ -18,6 +18,7 @@ pub mod opcode_profile;
 pub mod runtime_profile;
 pub mod siglus_g00;
 pub mod siglus_render;
+pub mod structure_export;
 pub mod substrate_conformance_checklist;
 pub mod vm;
 pub mod vm_impl_map;
@@ -37,6 +38,7 @@ pub use siglus_g00::{
 pub use siglus_render::{
     SiglusCgFrame, SiglusCgRedaction, SiglusRenderError, encode_siglus_png, render_siglus_cg,
 };
+pub use structure_export::build_siglus_structure;
 
 /// The clean-room research-anchor statement exposed for audit tooling.
 pub const SIGLUS_RS_RESEARCH_ANCHOR_BOUNDARY_STATEMENT: &str = concat!(
