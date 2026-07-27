@@ -26,11 +26,11 @@ use utsushi_reallive::{
 };
 
 /// Stable schema id for the machine-readable dispatch-coverage report.
-pub(crate) const DISPATCH_REPORT_SCHEMA_VERSION: &str = "utsushi.cli.replay-dispatch-report/0.2.0";
+pub(crate) const DISPATCH_REPORT_SCHEMA_VERSION: &str = "utsushi.cli.replay-dispatch-report/0.3.0";
 
 /// The branch-following dispatch-coverage evidence for one scene: the
 /// terminus it reached, whether it fell back to a linear walk, and the
-/// sorted `(module_type, module_id, opcode)` tuples that were unimplemented
+/// sorted `(module_type, module_id, opcode, overload)` tuples that were unimplemented
 /// (`missing_keys`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DispatchReport {
@@ -40,7 +40,7 @@ pub(crate) struct DispatchReport {
     pub(crate) linear_fallback: bool,
     pub(crate) terminus: &'static str,
     pub(crate) missing_count: usize,
-    pub(crate) missing_keys: Vec<(u8, u8, u16)>,
+    pub(crate) missing_keys: Vec<(u8, u8, u16, u8)>,
 }
 
 impl DispatchReport {
@@ -52,7 +52,11 @@ impl DispatchReport {
             linear_fallback: false,
             terminus: branch_terminus_kind(&report.terminus),
             missing_count: report.unknown_opcode_keys.len(),
-            missing_keys: report.unknown_opcode_keys.clone(),
+            missing_keys: report
+                .unknown_opcode_keys
+                .iter()
+                .map(|key| (key.module_type, key.module_id, key.opcode, key.overload))
+                .collect(),
         }
     }
 
@@ -158,7 +162,7 @@ mod tests {
     use super::*;
 
     pub(crate) fn synthetic_dispatch_report(
-        missing_keys: Vec<(u8, u8, u16)>,
+        missing_keys: Vec<(u8, u8, u16, u8)>,
         linear_fallback: bool,
     ) -> DispatchReport {
         DispatchReport {
@@ -174,10 +178,10 @@ mod tests {
 
     #[test]
     fn strict_gate_reports_tuples_not_artifact_paths_on_missing_opcode() {
-        let report = synthetic_dispatch_report(vec![(2, 3, 4)], false);
+        let report = synthetic_dispatch_report(vec![(2, 3, 4, 1)], false);
         let error = require_semantic_reached_path(&report).expect_err("missing opcode is a gap");
         let message = error.to_string();
-        assert!(message.contains("missing_keys=[(2, 3, 4)]"));
+        assert!(message.contains("missing_keys=[(2, 3, 4, 1)]"));
         // The gate error is tuple-only: no artifact filesystem path leaks.
         assert!(!message.contains(".json"));
     }
@@ -200,12 +204,13 @@ mod tests {
 
     #[test]
     fn dispatch_report_json_carries_missing_keys() {
-        let report = synthetic_dispatch_report(vec![(2, 250, 9)], false);
+        let report = synthetic_dispatch_report(vec![(2, 250, 9, 3)], false);
         let json = report.to_json();
         assert_eq!(json["missingCount"], 1);
         assert_eq!(json["missingKeys"][0][0], 2);
         assert_eq!(json["missingKeys"][0][1], 250);
         assert_eq!(json["missingKeys"][0][2], 9);
+        assert_eq!(json["missingKeys"][0][3], 3);
         assert_eq!(json["schemaVersion"], DISPATCH_REPORT_SCHEMA_VERSION);
     }
 }

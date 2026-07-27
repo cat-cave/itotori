@@ -14,11 +14,11 @@ fn synth_gameexe(text: &str) -> Arc<Gameexe> {
 }
 
 #[test]
-fn audio_rlop_count_is_fifteen() {
+fn audio_rlop_count_is_sixteen() {
     // The spec target: ~15 audio RLOperations across
     // bgm + koe + pcm + se. We pin the exact count so a future
     // addition shows up in the audit trail.
-    assert_eq!(AUDIO_RLOP_COUNT, 15);
+    assert_eq!(AUDIO_RLOP_COUNT, 16);
 }
 
 #[test]
@@ -107,6 +107,25 @@ fn bgm_fade_out_carries_duration_in_cue_id() {
         AudioEventPayload::Stop { cue_id } => assert_eq!(cue_id, "bgm_fade_out_2000ms"),
         other => panic!("expected Stop, got {other:?}"),
     }
+}
+
+#[test]
+fn bgm_fade_out_ex_mounts_its_observed_overload_with_the_real_default() {
+    let runtime = synth_runtime();
+    let mut registry = RlopRegistry::new();
+    register_audio_rlops(&mut registry, Arc::clone(&runtime));
+    let key = RlopKey::new(BGM_MODULE_TYPE, BGM_MODULE_ID, OPCODE_BGM_FADE_OUT_EX);
+    let mut vm = Vm::new(0u16, 0);
+    registry
+        .get(key)
+        .expect("bgmFadeOutEx real-byte overload must be mounted")
+        .dispatch(&mut vm, &[]);
+    let events = runtime.emitter().store().in_order_snapshot();
+    assert_eq!(events.len(), 1);
+    assert!(events.iter().all(|event| matches!(
+        &event.payload,
+        AudioEventPayload::Stop { cue_id } if cue_id == "bgm_fade_out_1000ms"
+    )));
 }
 
 #[test]

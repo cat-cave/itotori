@@ -26,7 +26,7 @@ pub(super) fn drive_branch_following(
     // scene, captured in dispatch order (the ordered `scenes_visited` set
     // loses this). Drives cross-scene play-loop chaining.
     let mut first_cross_scene: Option<SceneId> = None;
-    let mut unknown: Vec<(u8, u8, u16)> = Vec::new();
+    let mut unknown = std::collections::BTreeMap::new();
     let mut text_lines: usize = 0;
 
     // --- Deterministic event-flag modeling (provable-spin break) ---
@@ -151,7 +151,7 @@ pub(super) fn drive_branch_following(
                 }
                 for warning in vm.take_warnings() {
                     if let crate::VmWarning::MissingRlop { key, .. } = warning {
-                        unknown.push((key.module_type, key.module_id, key.opcode));
+                        *unknown.entry(key).or_insert(0usize) += 1;
                     }
                 }
             }
@@ -213,8 +213,7 @@ pub(super) fn drive_branch_following(
         steps = steps.saturating_add(1);
     };
 
-    unknown.sort_unstable();
-    unknown.dedup();
+    let unknown_opcode_keys = unknown.keys().copied().collect();
     let scene_not_found = if let BranchTerminus::SceneNotFound(scene) = &terminus {
         Some(*scene)
     } else {
@@ -227,7 +226,8 @@ pub(super) fn drive_branch_following(
         steps,
         transfers,
         scenes_visited,
-        unknown_opcode_keys: unknown,
+        unknown_opcode_keys,
+        unknown_opcode_occurrences: unknown,
         scene_not_found,
         text_lines,
         pauses_advanced: scheduler.pauses_advanced(),

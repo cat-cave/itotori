@@ -127,7 +127,11 @@ fn unimplemented_commands_are_explicit_unknown_opcode_diagnostics() {
     }));
 
     let report = engine.branch_following_report(1, &opts, HeadlessChoicePolicy::AlwaysFirst);
-    assert_eq!(report.unknown_opcode_keys, vec![(0, 5, 0)]);
+    assert_eq!(report.unknown_opcode_keys, vec![RlopKey::new(0, 5, 0)]);
+    assert_eq!(
+        report.unknown_opcode_occurrences,
+        [(RlopKey::new(0, 5, 0), 1)].into()
+    );
 
     let once = log
         .to_deterministic_json()

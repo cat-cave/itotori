@@ -89,11 +89,19 @@ impl RLOperation for BgmStopOp {
 #[derive(Debug)]
 pub struct BgmFadeOutOp {
     runtime: Arc<AudioRuntime>,
+    default_duration_ms: i32,
 }
 
 impl BgmFadeOutOp {
     pub fn new(runtime: Arc<AudioRuntime>) -> Self {
-        Self { runtime }
+        Self::new_with_default_duration(runtime, 0)
+    }
+
+    pub fn new_with_default_duration(runtime: Arc<AudioRuntime>, default_duration_ms: i32) -> Self {
+        Self {
+            runtime,
+            default_duration_ms,
+        }
     }
 }
 
@@ -109,14 +117,7 @@ impl RLOperation for BgmFadeOutOp {
                     });
                 0
             }
-            None => {
-                self.runtime
-                    .record_warning(AudioRuntimeWarning::MissingArg {
-                        opcode_tag: BgmOpcode::FadeOut.as_str(),
-                        slot: "duration_ms",
-                    });
-                0
-            }
+            None => self.default_duration_ms,
         };
         let cue_id = format!("bgm_fade_out_{}ms", duration_ms.max(0));
         self.runtime
