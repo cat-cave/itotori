@@ -1123,9 +1123,9 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
   // Launch-pass (ovw-launch-pass-action) ----------------------------------
   ApiLaunchPassRequest: () =>
     object({
-      required: ["localeBranchId"],
-      properties: { localeBranchId: str, cancelled: bool, resumeRunId: str },
-      additionalProperties: true,
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiLaunchPassRequest,
+      properties: { localeBranchId: str },
+      additionalProperties: false,
     }),
   ApiLaunchPassResponse: () =>
     object({

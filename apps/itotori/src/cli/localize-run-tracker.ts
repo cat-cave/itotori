@@ -320,6 +320,11 @@ export class LocalizeRunTracker {
     await this.drainWrites();
     try {
       await this.workflow.advanceRun({ lease: this.lease(), status });
+    } catch (error: unknown) {
+      if (status === "completed") {
+        await this.workflow.advanceRun({ lease: this.lease(), status: "failed" });
+      }
+      throw error;
     } finally {
       await this.workflow.releaseLease(this.lease());
       this.#finished = true;

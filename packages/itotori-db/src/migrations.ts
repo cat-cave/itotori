@@ -581,6 +581,10 @@ export const migrations = [
     id: "0114_project_run_progress_cost_leases",
     file: "0114_project_run_progress_cost_leases.sql",
   },
+  {
+    id: "0115_one_active_project_run_per_branch",
+    file: "0115_one_active_project_run_per_branch.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

@@ -2393,6 +2393,9 @@ export const projectRuns = pgTable(
       table.updatedAt,
     ),
     index("itotori_project_runs_lease_idx").on(table.status, table.leaseExpiresAt),
+    uniqueIndex("itotori_project_runs_one_active_branch_idx")
+      .on(table.projectId, table.localeBranchId)
+      .where(sql`${table.status} in ('queued', 'running', 'paused')`),
     foreignKey({
       columns: [table.projectId, table.localeBranchId],
       foreignColumns: [localeBranches.projectId, localeBranches.localeBranchId],
