@@ -62,6 +62,11 @@ export function useApiQuery<R extends ItotoriApiRouteId>(
  * hook retains the last settled `ready` / `empty` / `error` so the UI does
  * not flash a loading panel between refreshes. A `depsKey` change resets
  * retention so a genuine identity change still shows loading on first paint.
+ *
+ * Liveness is deliberate: polling pauses while the document is hidden
+ * (`document.visibilityState !== "visible"`) so background tabs do not thrash
+ * the API. There is no push/SSE portfolio channel in-tree today; a single
+ * `projects.list` poll covers the whole portfolio (no per-project fan-out).
  */
 export function usePolledApiQuery<R extends ItotoriApiRouteId>(
   routeId: R,
@@ -82,11 +87,34 @@ export function usePolledApiQuery<R extends ItotoriApiRouteId>(
     if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
       return;
     }
-    const id = window.setInterval(() => {
-      setPollTick((tick) => tick + 1);
-    }, intervalMs);
+    let id: number | null = null;
+    const clear = (): void => {
+      if (id !== null) {
+        window.clearInterval(id);
+        id = null;
+      }
+    };
+    const arm = (): void => {
+      clear();
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+      id = window.setInterval(() => {
+        setPollTick((tick) => tick + 1);
+      }, intervalMs);
+    };
+    const onVisibility = (): void => {
+      arm();
+    };
+    arm();
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibility);
+    }
     return () => {
-      window.clearInterval(id);
+      clear();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisibility);
+      }
     };
   }, [intervalMs]);
 

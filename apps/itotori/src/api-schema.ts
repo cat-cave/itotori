@@ -4057,6 +4057,7 @@ export function assertProjectDashboardStatus(
   assertString(status.name, `${label}.name`);
   assertString(status.status, `${label}.status`);
   assertString(status.sourceLocale, `${label}.sourceLocale`);
+  assertNullableString(status.engineFamily, `${label}.engineFamily`);
   assertString(status.sourceBundleId, `${label}.sourceBundleId`);
   assertString(status.sourceBundleHash, `${label}.sourceBundleHash`);
   assertString(status.sourceBundleRevisionId, `${label}.sourceBundleRevisionId`);

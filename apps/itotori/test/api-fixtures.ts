@@ -555,6 +555,7 @@ export const dashboardStatusFixture: ProjectDashboardStatus = {
   name: "project-1",
   status: "runtime_ingested",
   sourceLocale: "ja-JP",
+  engineFamily: "synthetic_fixture",
   sourceBundleId: "bridge-1",
   sourceBundleHash: "hash-1",
   sourceBundleRevisionId: "revision-1",
@@ -644,6 +645,7 @@ export const portfolioProjectsFixture: ApiProjectsResponse = {
       projectId: "project-1",
       projectKey: "project-alpha",
       name: "project-alpha",
+      engineFamily: "reallive",
       progress: {
         projectId: "project-1",
         runCount: 1,
@@ -673,6 +675,7 @@ export const portfolioProjectsFixture: ApiProjectsResponse = {
       projectKey: "project-beta",
       name: "project-beta",
       status: "drafting",
+      engineFamily: "siglus",
       findingCount: 0,
       progress: {
         projectId: "project-2",
@@ -698,6 +701,7 @@ export const portfolioProjectsFixture: ApiProjectsResponse = {
       projectKey: "project-gamma",
       name: "project-gamma",
       status: "runtime_ingested",
+      engineFamily: "kiri_kiri_xp3",
       findingCount: 1,
       progress: {
         projectId: "project-3",
@@ -728,6 +732,7 @@ export const portfolioProjectsFixture: ApiProjectsResponse = {
       projectKey: "project-idle",
       name: "project-idle",
       status: "pending",
+      engineFamily: null,
       branchCount: 0,
       unitCount: 0,
       findingCount: 0,
