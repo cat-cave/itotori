@@ -17,7 +17,7 @@ thiserror.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
-utsushi-fixture = { path = "../utsushi-fixture" }
+corpus-registry = { path = "../corpus-registry" }
 
 [lints]
 workspace = true

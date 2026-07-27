@@ -91,6 +91,13 @@ test("affected routes representative utsushi crate changes to ci-utsushi", () =>
   assert.deepEqual(affectedTasks(["crates/utsushi-siglus/src/lib.rs"]), ["ci-utsushi"]);
 });
 
+test("affected routes shared corpus registry changes to both rust families", () => {
+  assert.deepEqual(affectedTasks(["crates/corpus-registry/src/lib.rs"]), [
+    "ci-kaifuu",
+    "ci-utsushi",
+  ]);
+});
+
 // ---------------------------------------------------------------------------
 // qd-full-ci affected-lane selection (affectedCiLanes / buildCrateFamilyDependents)
 // ---------------------------------------------------------------------------

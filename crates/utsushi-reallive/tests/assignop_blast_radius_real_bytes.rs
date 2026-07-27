@@ -32,7 +32,7 @@
 //!    visited / choices), which are downstream of assignment semantics.
 //!
 //! `#[ignore]`-gated for the periodic oracle; run with:
-//! `ITOTORI_REAL_GAME_ROOT=<sweetie> ITOTORI_REAL_GAME_ROOT_2=<kanon> \`
+//! `ITOTORI_CORPUS_ROOT=/path/to/corpora; see corpora/manifest.v1.json`
 //! `cargo test -p utsushi-reallive --test assignop_blast_radius_real_bytes -- --ignored`
 
 #[path = "support/real_corpus.rs"]
@@ -294,7 +294,7 @@ fn two_corpora_or_skip(test_name: &str) -> Option<Vec<real_corpus::RealCorpus>> 
 
 /// (1)+(2) Blast-radius + rlvm parity over BOTH corpora.
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT + _2"]
+#[ignore = "real-bytes; requires reallive/1/encrypted + reallive/2/plain registry entries"]
 fn assignop_blast_radius_and_rlvm_parity_on_real_bytes() {
     let Some(corpora) = two_corpora_or_skip("assignop_blast_radius_and_rlvm_parity_on_real_bytes")
     else {
@@ -390,7 +390,7 @@ fn assignop_blast_radius_and_rlvm_parity_on_real_bytes() {
 /// fingerprint per corpus AND prove the OLD table diverges (proof-of-catch)
 /// plus pin the entry-scene branch-following outcomes.
 #[test]
-#[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT + _2"]
+#[ignore = "real-bytes; requires reallive/1/encrypted + reallive/2/plain registry entries"]
 fn assignop_state_trajectory_regression_is_caught() {
     let Some(corpora) = two_corpora_or_skip("assignop_state_trajectory_regression_is_caught")
     else {

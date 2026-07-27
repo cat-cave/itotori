@@ -73,7 +73,7 @@ function main() {
   const proofs = [
     [
       "registry",
-      ["test", "-p", "utsushi-fixture", "--test", "corpus_registry_staged", "--", "--nocapture"],
+      ["test", "-p", "corpus-registry", "--test", "corpus_registry_staged", "--", "--nocapture"],
     ],
     ["reallive", ["test", "-p", "kaifuu-reallive", "--", "--ignored"]],
   ];

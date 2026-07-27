@@ -1,9 +1,9 @@
 // reason: shared real-bytes test-support helpers; not every consumer test uses every helper.
 #![allow(dead_code)]
+use corpus_registry::{Need, resolve};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use utsushi_fixture::corpus_registry::{Need, resolve};
 pub const PRIMARY: Need<'static> = Need {
     engine: "reallive",
     ordinal: 1,

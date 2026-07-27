@@ -7,7 +7,6 @@ use utsushi_core::{
     EnginePortAdapter, RuntimeAdapter, RuntimeAdapterDescriptor, RuntimeRequest, UtsushiResult,
 };
 
-pub mod corpus_registry;
 pub mod engine_port;
 pub mod jump_targets;
 mod launch_adapters;

@@ -134,6 +134,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "corpus-registry"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -601,6 +610,7 @@ dependencies = [
 name = "kaifuu-cli"
 version = "0.0.0"
 dependencies = [
+ "corpus-registry",
  "kaifuu-core",
  "kaifuu-delta",
  "kaifuu-engine-fixture",
@@ -615,7 +625,6 @@ dependencies = [
  "sevenz-rust2",
  "sha2",
  "tempfile",
- "utsushi-fixture",
 ]
 
 [[package]]
@@ -682,13 +691,13 @@ dependencies = [
 name = "kaifuu-reallive"
 version = "0.0.0"
 dependencies = [
+ "corpus-registry",
  "encoding_rs",
  "kaifuu-core",
  "serde",
  "serde_json",
  "sha2",
  "thiserror",
- "utsushi-fixture",
  "uuid",
 ]
 
@@ -1622,6 +1631,7 @@ dependencies = [
 name = "utsushi-reallive"
 version = "0.0.0"
 dependencies = [
+ "corpus-registry",
  "encoding_rs",
  "kaifuu-core",
  "kaifuu-reallive",

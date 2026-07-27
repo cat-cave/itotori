@@ -1,4 +1,4 @@
-use utsushi_fixture::corpus_registry::{Need, Unavailable, resolve, skip};
+use corpus_registry::{Need, Unavailable, resolve, skip};
 
 #[test]
 fn staged_registry_resolves_each_declared_corpus() {
