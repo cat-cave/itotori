@@ -1,0 +1,19 @@
+schema = "inventory/v1"
+
+[[corpus]]
+id = "corpus-reallive-a"
+engine = "engine-reallive"
+variant = "variant-a"
+root = "/private/corpora/reallive-a"
+content_address = "sha256:replace-with-local-content-address-a"
+tags = ["reallive", "strict"]
+access = "read-only"
+
+[[corpus]]
+id = "corpus-reallive-b"
+engine = "engine-reallive"
+variant = "variant-b"
+root = "/private/corpora/reallive-b"
+content_address = "sha256:replace-with-local-content-address-b"
+tags = ["reallive", "strict"]
+access = "read-only"

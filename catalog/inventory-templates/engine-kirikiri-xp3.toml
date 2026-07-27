@@ -1,0 +1,10 @@
+schema = "inventory/v1"
+
+[[corpus]]
+id = "corpus-kirikiri-xp3-a"
+engine = "engine-kirikiri-xp3"
+variant = "variant-a"
+root = "/private/corpora/kirikiri-xp3-a"
+content_address = "sha256:replace-with-local-content-address"
+tags = ["strict", "xp3"]
+access = "read-only"

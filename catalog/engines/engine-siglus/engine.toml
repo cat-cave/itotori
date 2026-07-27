@@ -1,0 +1,53 @@
+schema = "engine/v1"
+id = "engine-siglus"
+plugin = "bin/kaifuu-cli"
+
+[capabilities]
+asset_inventory = "supported"
+asset_listing = "supported"
+asset_text_patching = "not-claimed"
+codec_access = "not-claimed"
+container_access = "not-claimed"
+crypto_access = "not-claimed"
+delta_patching = "not-claimed"
+detection = "supported"
+encrypted_input = "not-claimed"
+extraction = "not-claimed"
+key_profile = "partial"
+known_key_parser_extract = "partial"
+known_key_parser_helper = "partial"
+non_text_surface_extraction = "not-claimed"
+patch_back = "not-claimed"
+patching = "not-claimed"
+profile_generation = "supported"
+runtime_vm = "not-claimed"
+
+[[check]]
+id = "check-siglus-public-capabilities"
+lane = "lane-public"
+covers = [
+  "asset_inventory",
+  "asset_listing",
+  "detection",
+  "key_profile",
+  "known_key_parser_extract",
+  "known_key_parser_helper",
+  "profile_generation",
+]
+executor = { kind = "engine-plugin", command = "test", selector = "synthetic-capabilities" }
+
+[[proof]]
+id = "proof-siglus-strict-capabilities"
+lane = "lane-strict"
+covers = [
+  "asset_inventory",
+  "asset_listing",
+  "detection",
+  "key_profile",
+  "known_key_parser_extract",
+  "known_key_parser_helper",
+  "profile_generation",
+]
+requires = { corpus_count = 2, tags = ["strict", "siglus"] }
+executor = { kind = "engine-plugin", command = "prove", selector = "parser-boundary" }
+receipt = { outcome = "parser-boundary", minimum_executed = 1 }

@@ -1,0 +1,58 @@
+schema = "engine/v1"
+id = "engine-bgi"
+plugin = "bin/kaifuu-cli"
+
+[capabilities]
+asset_inventory = "supported"
+asset_listing = "supported"
+codec_access = "supported"
+container_access = "supported"
+crypto_access = "supported"
+delta_patching = "not-claimed"
+detection = "supported"
+encrypted_input = "not-claimed"
+extraction = "supported"
+key_profile = "not-claimed"
+patch_back = "supported"
+patching = "supported"
+profile_generation = "supported"
+runtime_vm = "not-claimed"
+verification = "supported"
+
+[[check]]
+id = "check-bgi-public-capabilities"
+lane = "lane-public"
+covers = [
+  "asset_inventory",
+  "asset_listing",
+  "codec_access",
+  "container_access",
+  "crypto_access",
+  "detection",
+  "extraction",
+  "patch_back",
+  "patching",
+  "profile_generation",
+  "verification",
+]
+executor = { kind = "engine-plugin", command = "test", selector = "synthetic-capabilities" }
+
+[[proof]]
+id = "proof-bgi-strict-capabilities"
+lane = "lane-strict"
+covers = [
+  "asset_inventory",
+  "asset_listing",
+  "codec_access",
+  "container_access",
+  "crypto_access",
+  "detection",
+  "extraction",
+  "patch_back",
+  "patching",
+  "profile_generation",
+  "verification",
+]
+requires = { corpus_count = 0, tags = [] }
+executor = { kind = "engine-plugin", command = "prove", selector = "synthetic-capabilities" }
+receipt = { outcome = "synthetic-capability-parity", minimum_executed = 1 }
