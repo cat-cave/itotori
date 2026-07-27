@@ -90,6 +90,11 @@ fn farcall_resolves_its_string_target_then_returns_to_the_calling_scene() {
         .expect("farcall returns to its caller");
 
     assert_eq!(
+        report.scenes_entered.into_iter().collect::<Vec<_>>(),
+        vec![1, 2],
+        "the execution report retains the cross-scene path that produced its moments"
+    );
+    assert_eq!(
         report
             .moments
             .into_iter()

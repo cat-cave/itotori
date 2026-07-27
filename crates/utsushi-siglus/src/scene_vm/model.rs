@@ -1,7 +1,7 @@
 //! Observable VM data and private execution state.
 
 use super::program::{SceneProgram, TitleProgram};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +36,9 @@ pub struct VmState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutionReport {
     pub scene_id: u32,
+    /// Distinct archive scenes actually entered while executing this path.
+    /// This makes cross-scene control flow visible without changing it.
+    pub scenes_entered: BTreeSet<u32>,
     pub instructions_executed: usize,
     pub moments: Vec<Moment>,
     pub halted: bool,
@@ -125,6 +128,7 @@ pub struct SceneVm<'a> {
     pub(super) moments: Vec<Moment>,
     pub(super) policy: ChoicePolicy,
     pub(super) instructions_executed: usize,
+    pub(super) scenes_entered: BTreeSet<u32>,
 }
 
 #[derive(Debug)]

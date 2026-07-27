@@ -57,6 +57,7 @@ impl<'a> SceneVm<'a> {
             moments: Vec::new(),
             policy,
             instructions_executed: 0,
+            scenes_entered: [program.scene_id].into_iter().collect(),
         }
     }
 
@@ -87,6 +88,7 @@ impl<'a> SceneVm<'a> {
             moments: Vec::new(),
             policy,
             instructions_executed: 0,
+            scenes_entered: [scene_id].into_iter().collect(),
         })
     }
 
@@ -222,6 +224,7 @@ impl<'a> SceneVm<'a> {
     fn report(&self) -> ExecutionReport {
         ExecutionReport {
             scene_id: self.entry_scene_id,
+            scenes_entered: self.scenes_entered.clone(),
             instructions_executed: self.instructions_executed,
             moments: self.moments.clone(),
             halted: true,
@@ -304,6 +307,12 @@ impl<'a> SceneVm<'a> {
             }
             ProgramSource::Title(program) => program.function(self.scene_id, index),
         }
+    }
+
+    pub(super) fn enter_scene(&mut self, scene_id: u32, pc: usize) {
+        self.scene_id = scene_id;
+        self.pc = pc;
+        self.scenes_entered.insert(scene_id);
     }
 
     pub(super) fn operation(&self, offset: usize, operation: &'static str) -> VmError {

@@ -19,6 +19,7 @@ pub(crate) struct VmInstruction {
 pub struct SceneProgram {
     pub(crate) scene_id: u32,
     pub(crate) instructions: Vec<VmInstruction>,
+    bytecode_len: usize,
     pub(crate) offsets: BTreeMap<usize, usize>,
     pub(crate) labels: Vec<usize>,
     pub(crate) z_labels: Vec<usize>,
@@ -77,7 +78,8 @@ impl SceneProgram {
     pub fn from_payload(scene_id: u32, payload: &[u8]) -> Result<Self, SceneProgramError> {
         let partition = partition_scene(payload)?;
         let scn_offset = field(payload, 1).max(0) as usize;
-        let bytecode = &payload[scn_offset..scn_offset + partition.bytecode_len];
+        let bytecode_len = partition.bytecode_len;
+        let bytecode = &payload[scn_offset..scn_offset + bytecode_len];
         let mut offsets = BTreeMap::new();
         let mut instructions = Vec::with_capacity(partition.instructions.len());
         for instruction in partition.instructions {
@@ -128,6 +130,7 @@ impl SceneProgram {
         Ok(Self {
             scene_id,
             instructions,
+            bytecode_len,
             offsets,
             labels,
             z_labels,
@@ -163,6 +166,26 @@ impl SceneProgram {
     /// Resolve an interned string-table index without exposing the table.
     pub fn string(&self, index: i32) -> Option<&str> {
         self.strings.get(&index).map(String::as_str)
+    }
+
+    /// Count instructions and bytecode bytes that follow an executed site.
+    /// This is diagnostic-only reach information; dispatch stays unchanged.
+    pub fn unreached_after(&self, offset: usize) -> (usize, usize) {
+        let remaining_instructions = self
+            .instructions
+            .iter()
+            .filter(|instruction| instruction.instruction.byte_offset > offset)
+            .count();
+        let remaining_bytes = self
+            .instructions
+            .iter()
+            .find(|instruction| instruction.instruction.byte_offset == offset)
+            .map_or(0, |instruction| {
+                self.bytecode_len.saturating_sub(
+                    instruction.instruction.byte_offset + instruction.instruction.len,
+                )
+            });
+        (remaining_instructions, remaining_bytes)
     }
 }
 
@@ -225,7 +248,8 @@ impl TitleProgram {
         })
     }
 
-    pub(crate) fn scene(&self, scene_id: u32) -> Option<&SceneProgram> {
+    /// Look up one compiled archive scene for execution diagnostics.
+    pub fn scene(&self, scene_id: u32) -> Option<&SceneProgram> {
         self.scenes.get(&scene_id)
     }
 
