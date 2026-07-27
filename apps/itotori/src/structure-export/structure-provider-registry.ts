@@ -34,12 +34,14 @@ export type SoftpalStructureSource = {
   log?: (message: string) => void;
 };
 
-/** Typed forward declaration for the Siglus structure provider. */
 export type SiglusStructureSource = {
   engine: "siglus";
   scenePath: string;
   gameexePath: string;
   outputPath: string;
+  env?: NodeJS.ProcessEnv;
+  runProcess?: (command: string, args: string[], env: NodeJS.ProcessEnv) => UtsushiProcessResult;
+  log?: (message: string) => void;
 };
 
 export type StructureProviderSource =
@@ -140,23 +142,6 @@ const realliveStructureProvider: StructureProvider<"reallive"> = {
   },
 };
 
-function unavailableProvider<E extends Exclude<StructureEngineId, "reallive">>(
-  engine: E,
-  summary: string,
-  parseCli: (args: readonly string[]) => StructureSourceByEngine[E],
-): StructureProvider<E> {
-  return {
-    engine,
-    capability: { engine, summary, implemented: false },
-    parseCli,
-    run() {
-      throw new Error(
-        `structure-export refused: --engine '${engine}' has a registered typed provider but its native implementation is not available yet`,
-      );
-    },
-  };
-}
-
 const softpalStructureProvider: StructureProvider<"softpal"> = {
   engine: "softpal",
   capability: {
@@ -183,16 +168,33 @@ const softpalStructureProvider: StructureProvider<"softpal"> = {
   },
 };
 
-const siglusStructureProvider = unavailableProvider(
-  "siglus",
-  "Scene.pck + Gameexe.dat structure source",
-  (args) => ({
+const siglusStructureProvider: StructureProvider<"siglus"> = {
+  engine: "siglus",
+  capability: {
     engine: "siglus",
-    scenePath: requiredFlag(args, "--scene"),
-    gameexePath: requiredFlag(args, "--gameexe"),
-    outputPath: requiredFlag(args, "--output"),
-  }),
-);
+    summary: "Scene.pck + Gameexe.dat static narrative structure export",
+    implemented: true,
+  },
+  parseCli(args) {
+    return {
+      engine: "siglus",
+      scenePath: requiredFlag(args, "--scene"),
+      gameexePath: requiredFlag(args, "--gameexe"),
+      outputPath: requiredFlag(args, "--output"),
+    };
+  },
+  run(source) {
+    return runUtsushiStructureExport({
+      engine: source.engine,
+      scenePath: source.scenePath,
+      gameexePath: source.gameexePath,
+      outputPath: source.outputPath,
+      ...(source.env === undefined ? {} : { env: source.env }),
+      ...(source.runProcess === undefined ? {} : { runProcess: source.runProcess }),
+      ...(source.log === undefined ? {} : { log: source.log }),
+    });
+  },
+};
 
 const STRUCTURE_PROVIDERS: Readonly<Record<StructureEngineId, AnyStructureProvider>> = {
   reallive: defineStructureProvider(realliveStructureProvider),

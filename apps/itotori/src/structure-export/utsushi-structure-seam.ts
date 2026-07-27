@@ -71,6 +71,14 @@ export type RunUtsushiStructureArgs =
       engine: "softpal";
       /** Root directory containing the PAC archive with SCRIPT.SRC + TEXT.DAT. */
       gameRoot: string;
+    })
+  | (UtsushiStructureProcessArgs & {
+      /** The provider identity forwarded to the native structure registry. */
+      engine: "siglus";
+      /** Path to Gameexe.dat, required by the Siglus decoder. */
+      gameexePath: string;
+      /** Path to Scene.pck (the packed Siglus scene archive). */
+      scenePath: string;
     });
 
 export type RunUtsushiStructureResult = {
@@ -100,7 +108,9 @@ export class UtsushiStructureExportError extends Error {
 }
 
 /**
- * Run the selected native structure producer and assert it exited 0.
+ * Run the selected native provider's `utsushi structure` command and assert it
+ * exited 0. RealLive receives its Gameexe and Seen archive with replay options;
+ * Softpal receives its game root; Siglus receives Gameexe and Scene.pck.
  *
  * The producer owns its own JSON write (it writes the structure artifact to
  * `outputPath` directly via `utsushi_core::write_json`); this seam returns the
@@ -135,8 +145,9 @@ export function runUtsushiStructureExport(
 
 /**
  * Build the provider-specific flag surface the native producer parses. The
- * RealLive form carries its archive inputs and optional replay controls; the
- * Softpal form carries the game root that contains its data archive.
+ * RealLive form carries its archive inputs and optional replay controls,
+ * Softpal carries the game root that contains its data archive, and Siglus
+ * carries its Gameexe and packed scene archive.
  */
 export function buildUtsushiStructureArgs(args: RunUtsushiStructureArgs): string[] {
   const out = ["structure", "--engine", args.engine];
@@ -144,14 +155,19 @@ export function buildUtsushiStructureArgs(args: RunUtsushiStructureArgs): string
     out.push("--game-root", args.gameRoot, "--output", args.outputPath);
     return out;
   }
-  out.push("--gameexe", args.gameexePath, "--seen", args.seenPath, "--output", args.outputPath);
+  out.push("--gameexe", args.gameexePath);
+  if (args.engine === "siglus") {
+    out.push("--scene", args.scenePath, "--output", args.outputPath);
+    return out;
+  }
+  out.push("--seen", args.seenPath, "--output", args.outputPath);
   if (args.bridgePath !== undefined) {
     out.push("--bridge", args.bridgePath);
   }
-  if (args.entryScene !== undefined) {
+  if ("entryScene" in args && args.entryScene !== undefined) {
     out.push("--entry-scene", String(args.entryScene));
   }
-  if (args.maxScenes !== undefined) {
+  if ("maxScenes" in args && args.maxScenes !== undefined) {
     out.push("--max-scenes", String(args.maxScenes));
   }
   return out;

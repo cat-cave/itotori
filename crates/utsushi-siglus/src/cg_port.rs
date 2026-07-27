@@ -74,6 +74,10 @@ pub struct UtsushiSiglusPort {
     /// Finite decoded text surfaces for each not-yet-observed scene, reversed
     /// so `observe` can pop scenes in source order.
     pending_scenes: Vec<Vec<TextLine>>,
+    /// Complete static text surfaces retained by scene for structure export.
+    /// Unlike `pending_scenes`, this stays in source order and includes empty
+    /// scenes so its indices continue to align with the decoded scene index.
+    scene_text_program: Vec<Vec<TextLine>>,
     text_program: Vec<TextLine>,
     choice_moments: Vec<SiglusChoiceMoment>,
     choice_diagnostics: Vec<SiglusChoiceDiagnostic>,
@@ -139,6 +143,7 @@ impl UtsushiSiglusPort {
             decoded: None,
             sinks: SiglusObservationSinks::new(),
             pending_scenes: Vec::new(),
+            scene_text_program: Vec::new(),
             text_program: Vec::new(),
             choice_moments: Vec::new(),
             choice_diagnostics: Vec::new(),
@@ -214,6 +219,15 @@ impl UtsushiSiglusPort {
     /// static decoding. No choice label text is retained in a diagnostic.
     pub fn choice_diagnostics(&self) -> &[SiglusChoiceDiagnostic] {
         &self.choice_diagnostics
+    }
+
+    /// Static text surfaces grouped in decoded `SceneList` order.
+    ///
+    /// This is the same E1 observation program consumed by `observe`; the
+    /// structure exporter uses the grouping to retain scene boundaries without
+    /// introducing a second text decoder.
+    pub fn scene_text_program(&self) -> &[Vec<TextLine>] {
+        &self.scene_text_program
     }
 
     /// Observation sinks, including E1 text and explicit Unsupported frame /
@@ -376,10 +390,12 @@ impl EnginePort for UtsushiSiglusPort {
         let hydrated = hydrate_siglus_launch(package, request)?;
         self.pending_scenes = hydrated
             .scene_text_program
-            .into_iter()
+            .iter()
             .filter(|scene| !scene.is_empty())
+            .cloned()
             .rev()
             .collect();
+        self.scene_text_program = hydrated.scene_text_program;
         self.text_program = hydrated.text_program;
         self.choice_moments = hydrated.choice_moments;
         self.choice_diagnostics = hydrated.choice_diagnostics;
@@ -452,6 +468,7 @@ impl EnginePort for UtsushiSiglusPort {
         self.decoded = None;
         self.launch_index = None;
         self.pending_scenes.clear();
+        self.scene_text_program.clear();
         self.text_program.clear();
         self.choice_moments.clear();
         self.choice_diagnostics.clear();

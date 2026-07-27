@@ -29,6 +29,7 @@ utsushi-kirikiri-xp3 = { path = "../utsushi-kirikiri-xp3" }
 utsushi-reallive = { path = "../utsushi-reallive" }
 utsushi-softpal = { path = "../utsushi-softpal" }
 utsushi-rpgmaker-mv = { path = "../utsushi-rpgmaker-mv" }
+utsushi-siglus = { path = "../utsushi-siglus" }
 
 [dev-dependencies]
 # Real-bytes single-scene xor2 replay test: synthesises a localized
@@ -42,12 +43,11 @@ encoding_rs.workspace = true
 tempfile = { workspace = true }
 # Engine-port capability parity gate (tests/engine_parity_gate.rs): the CLI
 # is the crate that can see EVERY registered engine port, so the cross-engine
-# parity conformance gate lives here as an integration test. These three ports
-# (siglus, softpal, rpg-maker-mv-mz) are not production CLI dependencies; they
-# are pulled in dev-only so the gate can collect all seven `PARITY_PROFILE`s
-# (four production ports + these three) and assert feature-parity across them.
-utsushi-siglus = { path = "../utsushi-siglus" }
-utsushi-softpal = { path = "../utsushi-softpal" }
+# parity conformance gate lives here as an integration test. The siglus and
+# softpal ports are production dependencies above (both back a registered
+# `structure --engine` provider); only the rpg-maker-mv-mz port is dev-only,
+# pulled in so the gate can collect every `PARITY_PROFILE` and assert
+# feature-parity across them.
 utsushi-rpgmaker-mv-mz = { path = "../utsushi-rpgmaker-mv-mz" }
 
 [build-dependencies]

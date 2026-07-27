@@ -79,12 +79,18 @@ fn launch_hydrates_the_asset_package_from_request_vfs_and_indexes_scenes() {
                 .text,
         );
     }
-    assert_eq!(port.lines_total(), 4, "name + text for each scene");
-    assert_eq!(port.lines_emitted(), 4);
-    assert_eq!(observed[0].text_surface.as_deref(), Some("speaker_name"));
-    assert_eq!(observed[1].text, "first");
-    assert_eq!(observed[2].text, "speaker-second");
-    assert_eq!(observed[3].text, "second");
+    assert_eq!(port.lines_total(), 2, "one dialogue line for each scene");
+    assert_eq!(port.lines_emitted(), 2);
+    assert_eq!(observed[0].text_surface.as_deref(), Some("dialogue"));
+    assert_eq!(observed[0].text, "first");
+    assert_eq!(observed[0].speaker.as_deref(), Some("speaker-first"));
+    assert_eq!(observed[1].text, "second");
+    assert_eq!(observed[1].speaker.as_deref(), Some("speaker-second"));
+    assert!(
+        observed
+            .iter()
+            .all(|line| line.text_surface.as_deref() != Some("speaker_name"))
+    );
     assert!(observed.iter().all(|line| {
         line.bridge_ref
             .as_ref()
