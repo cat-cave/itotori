@@ -1,0 +1,18 @@
+{
+  "schema": "receipt/v1",
+  "plan_id": "plan-001",
+  "run_id": "run-004",
+  "runner": { "state": "available", "job_steps": 0 },
+  "counts": {
+    "planned": 1,
+    "selected": 0,
+    "started": 0,
+    "executed": 0,
+    "passed": 0,
+    "failed": 1,
+    "skipped": 0,
+    "unavailable": 0
+  },
+  "proofs": [],
+  "diagnostics": [{ "code": "runner-zero-step-job", "subject": "run-004" }]
+}

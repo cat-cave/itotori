@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "catalog-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "plugin", "capabilities"],
+  "properties": {
+    "schema": { "const": "engine/v1" },
+    "id": { "type": "string", "pattern": "^engine-[a-z0-9-]+$" },
+    "plugin": { "type": "string", "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+" },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": { "enum": ["supported", "partial", "not-claimed"] }
+    },
+    "proof": { "type": "array", "items": { "$ref": "#/$defs/proof" } },
+    "check": { "type": "array", "items": { "$ref": "#/$defs/check" } }
+  },
+  "$defs": {
+    "executor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "command", "selector"],
+      "properties": {
+        "kind": { "type": "string" },
+        "command": { "type": "string" },
+        "selector": { "type": "string" }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "lane", "covers", "requires", "executor", "receipt"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^proof-[a-z0-9-]+$" },
+        "lane": { "type": "string", "pattern": "^lane-[a-z0-9-]+$" },
+        "covers": { "type": "array", "items": { "type": "string" } },
+        "requires": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["corpus_count", "tags"],
+          "properties": {
+            "corpus_count": { "type": "integer", "minimum": 0 },
+            "tags": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "executor": { "$ref": "#/$defs/executor" },
+        "receipt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["outcome", "minimum_executed"],
+          "properties": {
+            "outcome": { "type": "string" },
+            "minimum_executed": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "lane", "covers", "executor"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^check-[a-z0-9-]+$" },
+        "lane": { "type": "string", "pattern": "^lane-[a-z0-9-]+$" },
+        "covers": { "type": "array", "items": { "type": "string" } },
+        "executor": { "$ref": "#/$defs/executor" }
+      }
+    }
+  }
+}

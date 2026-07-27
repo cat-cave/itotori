@@ -1,0 +1,22 @@
+schema = "engine/v1"
+id = "engine-alpha"
+plugin = "libexec/engines/engine-alpha/runner"
+
+[capabilities]
+extract = "supported"
+patch = "partial"
+runtime = "not-claimed"
+
+[[proof]]
+id = "proof-two-inputs"
+lane = "lane-strict"
+covers = ["extract", "patch"]
+requires = { corpus_count = 2, tags = ["extract", "patch"] }
+executor = { kind = "engine-plugin", command = "prove", selector = "two-inputs" }
+receipt = { outcome = "byte-preserving-patch", minimum_executed = 1 }
+
+[[check]]
+id = "check-synthetic"
+lane = "lane-public"
+covers = ["extract"]
+executor = { kind = "engine-plugin", command = "test", selector = "synthetic" }

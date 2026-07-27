@@ -1,0 +1,5 @@
+schema = "engine/v1"
+plugin = "libexec/engines/engine-alpha/runner"
+
+[capabilities]
+extract = "not-claimed"

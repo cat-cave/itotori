@@ -1,0 +1,7 @@
+{
+  "schema": "receipt/v1",
+  "plan_id": "plan-001",
+  "run_id": "run-001",
+  "runner": { "state": "available" },
+  "proofs": []
+}

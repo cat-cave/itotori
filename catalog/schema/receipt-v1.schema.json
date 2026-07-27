@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "receipt-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "plan_id", "run_id", "runner", "counts", "proofs"],
+  "properties": {
+    "schema": { "const": "receipt/v1" },
+    "plan_id": { "type": "string", "pattern": "^plan-[a-z0-9-]+$" },
+    "run_id": { "type": "string", "pattern": "^run-[a-z0-9-]+$" },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state"],
+      "properties": {
+        "state": { "enum": ["available", "unavailable"] },
+        "job_steps": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "planned",
+        "selected",
+        "started",
+        "executed",
+        "passed",
+        "failed",
+        "skipped",
+        "unavailable"
+      ],
+      "properties": {
+        "planned": { "type": "integer", "minimum": 0 },
+        "selected": { "type": "integer", "minimum": 0 },
+        "started": { "type": "integer", "minimum": 0 },
+        "executed": { "type": "integer", "minimum": 0 },
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "unavailable": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "proofs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "state"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^proof-[a-z0-9-]+$" },
+          "state": {
+            "enum": [
+              "selected",
+              "started",
+              "executed",
+              "passed",
+              "failed",
+              "skipped",
+              "unavailable"
+            ]
+          },
+          "assertion_count": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "subject"],
+        "properties": {
+          "code": {
+            "enum": [
+              "selected-proof-unexecuted",
+              "executed-proof-produced-no-assertions",
+              "required-input-absent",
+              "runner-unavailable",
+              "runner-zero-step-job"
+            ]
+          },
+          "subject": { "type": "string" }
+        }
+      }
+    }
+  }
+}

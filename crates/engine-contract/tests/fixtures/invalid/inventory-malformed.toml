@@ -1,0 +1,3 @@
+schema = "inventory/v1"
+[[corpus]
+id = "corpus-01"

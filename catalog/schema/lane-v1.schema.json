@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lane-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "class",
+    "selector",
+    "requirements",
+    "empty_plan",
+    "missing_requirement",
+    "unexecuted_selection",
+    "receipt"
+  ],
+  "properties": {
+    "schema": { "const": "lane/v1" },
+    "id": { "type": "string", "pattern": "^lane-[a-z0-9-]+$" },
+    "class": { "enum": ["public", "periodic", "private"] },
+    "selector": { "type": "string", "minLength": 1 },
+    "requirements": { "type": "array", "items": { "type": "string" } },
+    "empty_plan": { "const": "fail" },
+    "missing_requirement": { "const": "fail" },
+    "unexecuted_selection": { "const": "fail" },
+    "receipt": { "const": "required" }
+  }
+}
