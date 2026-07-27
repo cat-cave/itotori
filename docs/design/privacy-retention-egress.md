@@ -119,18 +119,28 @@ change. Every content record has a terminal timestamp and a non-null deletion
 deadline. The deadlines are measured from terminalization or supersession; a
 derived artifact does not restart its source's clock.
 
-| Content class                                         | Maximum retention       | Deletion result                                                |
-| ----------------------------------------------------- | ----------------------- | -------------------------------------------------------------- |
-| Provider attempt request/response and failed output   | 7 days                  | Ciphertext deleted, key destroyed, metadata tombstone retained |
-| Conversation, tool, web, and non-accepted run content | 30 days                 | Ciphertext deleted, key destroyed, metadata tombstone retained |
-| Accepted content needed for reproducibility           | 365 days                | Ciphertext deleted, key destroyed, metadata tombstone retained |
-| Decoded source volume                                 | Authorized job lifetime | Volume wiped before job acknowledgement                        |
+| Content class                                         | Maximum retention       | Deletion result                                      |
+| ----------------------------------------------------- | ----------------------- | ---------------------------------------------------- |
+| Provider attempt request/response and failed output   | 7 days                  | Live ciphertext deleted, metadata tombstone retained |
+| Conversation, tool, web, and non-accepted run content | 30 days                 | Live ciphertext deleted, metadata tombstone retained |
+| Accepted content needed for reproducibility           | 365 days                | Live ciphertext deleted, metadata tombstone retained |
+| Decoded source volume                                 | Authorized job lifetime | Volume wiped before job acknowledgement              |
 
-The deletion worker runs at least daily, is idempotent, and records a tombstone
-with deletion time and content hash. It must delete ciphertext, destroy the
-associated encryption key, remove derived content, and verify that a subsequent
-content read fails. An expired record cannot be silently retained, resurrected
-from a backup, or served from a cache. A retention change requires a new
+The deletion worker runs once after service startup and at least daily after
+that, is idempotent, and records a metadata-only completion event even when it
+finds no rows. It records a tombstone with deletion time and content hash,
+deletes live ciphertext, removes derived content, and verifies that a subsequent
+content read fails. Startup and completion events distinguish a worker that has
+not fired from a completed no-op run.
+
+The current operator-managed envelope cipher stores each wrapped data key inline
+with its row and uses one environment master key. Deletion therefore removes the
+live ciphertext but does not cryptographically shred independently stored key
+material or make historical backups undecryptable: a backup retaining the
+ciphertext, inline key reference, and master key can still decrypt it. Backups
+must follow their own retention/wipe lifecycle. Per-record crypto-shredding,
+including historical backups, requires an external key authority with
+independently deletable per-record material. A retention change requires a new
 versioned policy and migration; it cannot be supplied as an ad-hoc runtime
 override.
 
@@ -174,15 +184,15 @@ only.
 
 ## Enforcement status
 
-| Control                                                                                                                   | Enforced now                        | Completion evidence required when its implementation lands     |
-| ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | -------------------------------------------------------------- |
-| Policy manifest shape, startup validation, account/guardrail assertions, qualifying-run egress, A7-only web authorization | Yes                                 | Unit tests and startup failure tests                           |
-| Exact private call plan                                                                                                   | Yes, as a strict schema             | Captured actual wire test for every adapter                    |
-| Encrypted conversation/call references                                                                                    | Yes, in rebuilt contracts           | Persistence round trip with ciphertext-only inspection         |
-| Plaintext rebuilt-LLM migration fields and obvious content-bearing log calls                                              | Yes, by the privacy audit           | Negative fixture tests plus CI gate                            |
-| Encryption implementation, permission-before-decrypt, deletion worker, backup/volume wipe                                 | Contract and audit registration now | Integration tests against real storage and the deletion worker |
-| Stream-attested served pair plus quarantine projection                                                                    | Yes, RB-015                         | Live persistence and independent guard-mutation tests          |
-| Independent `/generation` route and billing reconciliation                                                                | Deferred to RB-010 (upstream #941)  | Provider conformance and reconciliation tests                  |
+| Control                                                                                                                   | Enforced now                                                                            | Completion evidence required when its implementation lands     |
+| ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Policy manifest shape, startup validation, account/guardrail assertions, qualifying-run egress, A7-only web authorization | Yes                                                                                     | Unit tests and startup failure tests                           |
+| Exact private call plan                                                                                                   | Yes, as a strict schema                                                                 | Captured actual wire test for every adapter                    |
+| Encrypted conversation/call references                                                                                    | Yes, in rebuilt contracts                                                               | Persistence round trip with ciphertext-only inspection         |
+| Plaintext rebuilt-LLM migration fields and obvious content-bearing log calls                                              | Yes, by the privacy audit                                                               | Negative fixture tests plus CI gate                            |
+| Encryption implementation, permission-before-decrypt, deletion worker, backup/volume wipe                                 | Encryption, read permission, and live-ciphertext deletion; backup wipe remains separate | Integration tests against real storage and the deletion worker |
+| Stream-attested served pair plus quarantine projection                                                                    | Yes, RB-015                                                                             | Live persistence and independent guard-mutation tests          |
+| Independent `/generation` route and billing reconciliation                                                                | Deferred to RB-010 (upstream #941)                                                      | Provider conformance and reconciliation tests                  |
 
 The audit is intentionally conservative and scoped to the rebuilt LLM tree and
 its `itotori_llm_*` migrations. It does not treat older paths as compliant.

@@ -70,12 +70,13 @@ describe("production field cipher — envelope encryption keyed from the environ
     );
   });
 
-  it("destroyKey is idempotent for a valid and a malformed ref (retention resumes safely)", async () => {
+  it("releases an inline key reference idempotently without claiming crypto-shredding", async () => {
     const cipher = cipherWith(KEY_A);
     const sealed = await cipher.seal("secret");
-    await expect(cipher.destroyKey(sealed.keyRef)).resolves.toBeUndefined();
-    await expect(cipher.destroyKey(sealed.keyRef)).resolves.toBeUndefined();
-    await expect(cipher.destroyKey("already-gone")).resolves.toBeUndefined();
+    await expect(cipher.releaseKeyReference(sealed.keyRef)).resolves.toBeUndefined();
+    await expect(cipher.releaseKeyReference(sealed.keyRef)).resolves.toBeUndefined();
+    await expect(cipher.releaseKeyReference("already-gone")).resolves.toBeUndefined();
+    await expect(cipher.open(sealed.ciphertext, sealed.keyRef)).resolves.toBe("secret");
   });
 });
 

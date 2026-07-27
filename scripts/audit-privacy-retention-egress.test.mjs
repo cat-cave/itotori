@@ -32,7 +32,7 @@ const localBoundaryFiles = new Map([
   ],
   [
     "packages/itotori-db/src/repositories/llm-retention-repository.ts",
-    "retention_deadline destroyKey deletion_state deleted_at",
+    "retention_deadline releaseKeyReference deletion_state deleted_at",
   ],
 ]);
 

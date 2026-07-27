@@ -23,19 +23,16 @@
 //     and authenticates the payload ciphertext. Any tamper (wrong master key,
 //     truncated/edited ciphertext or keyRef) fails the GCM tag — a loud throw,
 //     never a silent partial plaintext.
-//   - `destroyKey` is idempotent (a malformed / already-destroyed ref is a no-op),
-//     so an interrupted retention pass resumes safely.
+//   - `releaseKeyReference` is idempotent (a malformed / already-released ref is
+//     a no-op), so an interrupted retention pass resumes safely.
 //
-// Crypto-shred boundary (flagged honestly, not weakened): with a single static
-// env master key there is no per-record key material to individually erase — the
-// wrapped DEK lives inline in the row's `key_ref` column. The retention pass
-// (`ItotoriLlmRetentionRepository.deleteExpired`) realizes the erasure by NULLING
-// the ciphertext column of every expired row, after which no wrapped DEK can
-// recover any payload. Hardware-grade per-record shred (deleting individual key
-// material) would require a rotating KMS / key-vault the DEK is wrapped by — a
-// deliberate follow-up, out of scope for an env-keyed cipher. The ENCRYPTION
-// strength (AES-256-GCM, per-record random DEK, authenticated master-key wrap) is
-// not weakened by this; only the granularity of key destruction is.
+// Retention boundary: with a single static env master key, the wrapped DEK is
+// inline in the row's `key_ref` column; it is not independently deletable. The
+// retention pass clears the live ciphertext column and retains a metadata
+// tombstone. This removes the production copy but is not crypto-shredding: a
+// backup that still holds ciphertext, the inline key ref, and the master key can
+// decrypt it. Per-record destruction that also protects historical backups needs
+// an external key authority with independently deletable material.
 
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { LlmMemoCipher } from "@itotori/db";
@@ -146,12 +143,10 @@ class FieldMemoCipher implements LlmMemoCipher {
     return gcmOpen(dataKey, Buffer.from(ciphertext)).toString("utf8");
   }
 
-  async destroyKey(keyRef: string): Promise<void> {
-    // Idempotent: the wrapped DEK lives inline in the caller's stored key_ref, so
-    // there is no separable key material to erase here (see the module header's
-    // crypto-shred note — the retention pass nulls the ciphertext to realize the
-    // erasure). Validate the ref shape so a genuinely corrupt ledger surfaces,
-    // but treat an already-absent / malformed ref as a completed no-op.
+  async releaseKeyReference(keyRef: string): Promise<void> {
+    // The wrapped DEK is inline in key_ref, so this cipher has no independent
+    // material to release. Validate recognized refs but make repeated cleanup a
+    // no-op; callers erase the live ciphertext in the same retention transaction.
     if (!keyRef.startsWith(KEY_REF_PREFIX)) return;
   }
 }
