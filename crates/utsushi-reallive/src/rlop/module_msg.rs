@@ -56,9 +56,8 @@ pub use runtime::{LongOpIdSequence, MsgRuntime, MsgRuntimeWarning};
 
 mod ops;
 pub use ops::{
-    MsgFontColorOp, MsgFontSizeOp, MsgLineBreakOp, MsgLineNumberOp, MsgMsgClearOp, MsgMsgHideOp,
-    MsgNameCloseOp, MsgNameOpenOp, MsgPageOp, MsgParagraphBreakOp, MsgPauseOp, MsgTextWindowOp,
-    register_text_rlops,
+    MsgFontColorOp, MsgFormattingOp, MsgLineBreakOp, MsgMsgClearOp, MsgMsgHideOp, MsgPageOp,
+    MsgPauseOp, MsgTextWindowOp, register_text_rlops,
 };
 // `msg.select` lived here briefly as a placeholder for a `SYS2` command.
 // The choice family now lives at its semantic `module_id=2` address in
@@ -80,14 +79,6 @@ const LATTICE_TYPES: [u8; 3] = [0, 1, 2];
 /// occupy distinct keys.
 pub const MSG_MODULE_ID: u8 = 3;
 
-// --- Opcode numerics --------------------------------------------------
-//
-// The numeric values below are the opcode bytes RLDEV (and rlvm's
-// derived `module_msg.cc` table) document for the message-control
-// submodule. Each constant carries the RLDEV name in its doc-comment so
-// the audit trail names the source. Real-byte validation sites are named
-// alongside the opcodes they exercise.
-
 /// `msg.text_out` virtual opcode — the [`crate::BytecodeElement::Textout`]
 /// element handler. Top-level Textout is not a Command, so the byte does
 /// not appear in the registry; the [`MsgRuntime::handle_textout`]
@@ -95,60 +86,23 @@ pub const MSG_MODULE_ID: u8 = 3;
 /// virtual opcode the audit/test harness uses to name the path.
 pub const OPCODE_TEXT_OUT: u16 = 0x0000;
 
-/// `msg.pause` — the user-input pause longop. Yields a
-/// [`crate::rlop::LongOp`], and it is the ONLY gate a reader crosses
-/// between two lines of dialogue.
-///
-/// The number is measured, not catalogued: it is the single most frequent
-/// message command in both proven archives (26 856 and 38 661 occurrences),
-/// which is what one-gate-per-line looks like, and the reference
-/// implementation names the same number `pause`. The value this constant
-/// held before appears ZERO times in either archive, so every dialogue gate
-/// in a real script was being dispatched as something else and the reader
-/// was never asked to advance.
+/// The observed `msg` command numbers. Every member occurs in at least one
+/// proven archive; `400`/`401` are exact extension mounts in `module_msg_extra`.
 pub const OPCODE_PAUSE: u16 = 17;
-
-/// `msg.paragraph_break` — paragraph break (RLDEV: `par()`, alias of
-/// "page" in the catalogue but distinct on the RLDEV opcode line).
-pub const OPCODE_PARAGRAPH_BREAK: u16 = 5;
-
-/// `msg.line_break` — line break (RLDEV: `br()`).
-pub const OPCODE_LINE_BREAK: u16 = 14;
-
-/// `msg.page` — page wipe / new-page. The reference implementation names
-/// this number `page`; it occurs 63 times across the two proven archives,
-/// while the number this constant held before is the dialogue pause and
-/// occurs tens of thousands of times.
+pub const OPCODE_TEXT_WINDOW: u16 = 102;
+pub const OPCODE_FAST_TEXT: u16 = 103;
+pub const OPCODE_NORMAL_TEXT: u16 = 104;
+pub const OPCODE_FONT_COLOR: u16 = 105;
+pub const OPCODE_MSG_HIDE: u16 = 151;
+pub const OPCODE_MSG_CLEAR: u16 = 152;
+pub const OPCODE_MSG_HIDE_ALL: u16 = 161;
+pub const OPCODE_LINE_BREAK: u16 = 201;
+pub const OPCODE_SPAUSE: u16 = 205;
 pub const OPCODE_PAGE: u16 = 210;
-
-/// `msg.msg_hide` — hide the active text window (RLDEV:
-/// `msgHide()`).
-pub const OPCODE_MSG_HIDE: u16 = 18;
-
-/// `msg.msg_clear` — clear the text window contents (RLDEV:
-/// `msgClr()`).
-pub const OPCODE_MSG_CLEAR: u16 = 19;
-
-/// `msg.line_number` — declared source-line number marker (RLDEV:
-/// `linenumber(int)`). Used for kidoku tracking; the dispatch records
-/// the line number on the runtime so kidoku can be cross-referenced.
-pub const OPCODE_LINE_NUMBER: u16 = 22;
-
-/// `msg.font_color` — set font colour (RLDEV: `FontColor(int)`).
-pub const OPCODE_FONT_COLOR: u16 = 30;
-
-/// `msg.font_size` — set font size (RLDEV: `FontSize(int)`).
-pub const OPCODE_FONT_SIZE: u16 = 31;
-
-/// `msg.name_open` — open speaker bracket (RLDEV: `nameOpen()`).
-pub const OPCODE_NAME_OPEN: u16 = 40;
-
-/// `msg.name_close` — close speaker bracket (RLDEV: `nameClose()`).
-pub const OPCODE_NAME_CLOSE: u16 = 41;
-
-/// `msg.text_window` — switch text window slot (RLDEV:
-/// `TextWindow(int)`).
-pub const OPCODE_TEXT_WINDOW: u16 = 100;
+pub const OPCODE_SET_INDENT: u16 = 300;
+pub const OPCODE_CLEAR_INDENT: u16 = 301;
+pub const OPCODE_TEXT_POS: u16 = 310;
+pub const OPCODE_TEXT_POS_X: u16 = 311;
 
 /// Stable enum naming the opcode set this module ships. Used by audit
 /// tooling to assert "every variant is registered" without re-walking
@@ -156,17 +110,20 @@ pub const OPCODE_TEXT_WINDOW: u16 = 100;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MsgOpcode {
     Pause,
-    ParagraphBreak,
-    LineBreak,
-    Page,
+    TextWindow,
+    FastText,
+    NormalText,
+    FontColor,
     MsgHide,
     MsgClear,
-    LineNumber,
-    FontColor,
-    FontSize,
-    NameOpen,
-    NameClose,
-    TextWindow,
+    MsgHideAll,
+    LineBreak,
+    SPause,
+    Page,
+    SetIndent,
+    ClearIndent,
+    TextPos,
+    TextPosX,
 }
 
 impl MsgOpcode {
@@ -175,34 +132,40 @@ impl MsgOpcode {
     /// entry per opcode.
     pub const ALL: &'static [MsgOpcode] = &[
         Self::Pause,
-        Self::ParagraphBreak,
-        Self::LineBreak,
-        Self::Page,
+        Self::TextWindow,
+        Self::FastText,
+        Self::NormalText,
+        Self::FontColor,
         Self::MsgHide,
         Self::MsgClear,
-        Self::LineNumber,
-        Self::FontColor,
-        Self::FontSize,
-        Self::NameOpen,
-        Self::NameClose,
-        Self::TextWindow,
+        Self::MsgHideAll,
+        Self::LineBreak,
+        Self::SPause,
+        Self::Page,
+        Self::SetIndent,
+        Self::ClearIndent,
+        Self::TextPos,
+        Self::TextPosX,
     ];
 
     /// Numeric opcode byte associated with this variant.
     pub fn opcode(self) -> u16 {
         match self {
             Self::Pause => OPCODE_PAUSE,
-            Self::ParagraphBreak => OPCODE_PARAGRAPH_BREAK,
-            Self::LineBreak => OPCODE_LINE_BREAK,
-            Self::Page => OPCODE_PAGE,
+            Self::TextWindow => OPCODE_TEXT_WINDOW,
+            Self::FastText => OPCODE_FAST_TEXT,
+            Self::NormalText => OPCODE_NORMAL_TEXT,
+            Self::FontColor => OPCODE_FONT_COLOR,
             Self::MsgHide => OPCODE_MSG_HIDE,
             Self::MsgClear => OPCODE_MSG_CLEAR,
-            Self::LineNumber => OPCODE_LINE_NUMBER,
-            Self::FontColor => OPCODE_FONT_COLOR,
-            Self::FontSize => OPCODE_FONT_SIZE,
-            Self::NameOpen => OPCODE_NAME_OPEN,
-            Self::NameClose => OPCODE_NAME_CLOSE,
-            Self::TextWindow => OPCODE_TEXT_WINDOW,
+            Self::MsgHideAll => OPCODE_MSG_HIDE_ALL,
+            Self::LineBreak => OPCODE_LINE_BREAK,
+            Self::SPause => OPCODE_SPAUSE,
+            Self::Page => OPCODE_PAGE,
+            Self::SetIndent => OPCODE_SET_INDENT,
+            Self::ClearIndent => OPCODE_CLEAR_INDENT,
+            Self::TextPos => OPCODE_TEXT_POS,
+            Self::TextPosX => OPCODE_TEXT_POS_X,
         }
     }
 
@@ -220,17 +183,20 @@ impl MsgOpcode {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Pause => "msg.pause",
-            Self::ParagraphBreak => "msg.par",
-            Self::LineBreak => "msg.br",
-            Self::Page => "msg.page",
+            Self::TextWindow => "msg.text_window",
+            Self::FastText => "msg.fast_text",
+            Self::NormalText => "msg.normal_text",
+            Self::FontColor => "msg.font_color",
             Self::MsgHide => "msg.msg_hide",
             Self::MsgClear => "msg.msg_clear",
-            Self::LineNumber => "msg.linenumber",
-            Self::FontColor => "msg.font_color",
-            Self::FontSize => "msg.font_size",
-            Self::NameOpen => "msg.name_open",
-            Self::NameClose => "msg.name_close",
-            Self::TextWindow => "msg.text_window",
+            Self::MsgHideAll => "msg.msg_hide_all",
+            Self::LineBreak => "msg.br",
+            Self::SPause => "msg.spause",
+            Self::Page => "msg.page",
+            Self::SetIndent => "msg.set_indent",
+            Self::ClearIndent => "msg.clear_indent",
+            Self::TextPos => "msg.text_pos",
+            Self::TextPosX => "msg.text_pos_x",
         }
     }
 }
@@ -375,11 +341,11 @@ mod tests {
     }
 
     #[test]
-    fn msg_opcode_all_covers_twelve_opcodes() {
+    fn msg_opcode_all_covers_every_observed_semantic_opcode() {
         assert_eq!(
             MsgOpcode::ALL.len(),
-            12,
-            "alpha contract: exactly 12 module_msg opcodes covered (choice family lives in module_sel as of )",
+            15,
+            "the core msg table must cover every oracle-named opcode observed in either corpus",
         );
     }
 

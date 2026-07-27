@@ -21,10 +21,11 @@ use utsushi_core::substrate::{SinkCapability, SinkError, SinkResult, TextLine, T
 use utsushi_reallive::{
     AlwaysReadyScheduler, BytecodeElement, DispatchOutcome, ExprValue, InMemorySceneStore, LongOp,
     LongOpId, LongOpIdSequence, MSG_MODULE_ID, MSG_MODULE_TYPE, MsgOpcode, MsgRuntime,
-    OPCODE_FONT_COLOR, OPCODE_FONT_SIZE, OPCODE_LINE_BREAK, OPCODE_LINE_NUMBER, OPCODE_MSG_CLEAR,
-    OPCODE_MSG_HIDE, OPCODE_NAME_CLOSE, OPCODE_NAME_OPEN, OPCODE_PAGE, OPCODE_PARAGRAPH_BREAK,
-    OPCODE_PAUSE, OPCODE_TEXT_WINDOW, PauseLongOp, RlopKey, RlopRegistry, Scene, StepOutcome, Vm,
-    VmEvent, dispatch_textout, dispatch_textout_at, register_text_rlops, text_module_msg_keys,
+    OPCODE_CLEAR_INDENT, OPCODE_FAST_TEXT, OPCODE_FONT_COLOR, OPCODE_LINE_BREAK, OPCODE_MSG_CLEAR,
+    OPCODE_MSG_HIDE, OPCODE_NORMAL_TEXT, OPCODE_PAGE, OPCODE_PAUSE, OPCODE_SET_INDENT,
+    OPCODE_TEXT_POS, OPCODE_TEXT_POS_X, OPCODE_TEXT_WINDOW, PauseLongOp, RlopKey, RlopRegistry,
+    Scene, StepOutcome, Vm, VmEvent, dispatch_textout, dispatch_textout_at, register_text_rlops,
+    text_module_msg_keys,
 };
 
 #[path = "support/rlop_text.rs"]
@@ -134,54 +135,54 @@ fn line_break_flushes_pending_body_as_one_text_line() {
 }
 
 #[test]
-fn paragraph_break_advances_and_emits_one_line() {
-    let sink = Arc::new(CollectingSink::new());
-    let runtime = Arc::new(MsgRuntime::with_sink(sink.clone()));
-    dispatch_textout(&runtime, &[0x82, 0xa0]); // "あ"
-    let mut registry = RlopRegistry::new();
-    register_text_rlops(&mut registry, Arc::clone(&runtime));
-    let op = registry
-        .get(RlopKey::new(
-            MSG_MODULE_TYPE,
-            MSG_MODULE_ID,
-            OPCODE_PARAGRAPH_BREAK,
-        ))
-        .expect("paragraph_break registered");
-    let mut vm = Vm::new(1, 0);
-    let outcome = op.dispatch(&mut vm, &[]);
+fn fast_text_advances_without_splitting_the_pending_line() {
+    let (outcome, lines, runtime) = dispatch_command(OPCODE_FAST_TEXT, &[]);
     assert!(matches!(outcome, DispatchOutcome::Advance));
-    let lines = sink.drain();
-    assert_eq!(lines.len(), 1);
-    assert_eq!(lines[0].text, "あ");
+    assert!(lines.is_empty());
+    assert_eq!(runtime.pending_body_len(), 0);
+}
+
+#[test]
+fn normal_text_advances_without_splitting_the_pending_line() {
+    let (outcome, lines, _) = dispatch_command(OPCODE_NORMAL_TEXT, &[]);
+    assert!(matches!(outcome, DispatchOutcome::Advance));
+    assert!(lines.is_empty());
+}
+
+#[test]
+fn set_indent_and_clear_indent_advance() {
+    for opcode in [OPCODE_SET_INDENT, OPCODE_CLEAR_INDENT] {
+        let (outcome, lines, _) = dispatch_command(opcode, &[]);
+        assert!(matches!(outcome, DispatchOutcome::Advance));
+        assert!(lines.is_empty());
+    }
+}
+
+#[test]
+fn text_position_commands_advance() {
+    for opcode in [OPCODE_TEXT_POS, OPCODE_TEXT_POS_X] {
+        let (outcome, lines, _) = dispatch_command(opcode, &[ExprValue::Int(42)]);
+        assert!(matches!(outcome, DispatchOutcome::Advance));
+        assert!(lines.is_empty());
+    }
 }
 
 #[test]
 fn page_advances_emits_line_and_clears_speaker() {
     let sink = Arc::new(CollectingSink::new());
     let runtime = Arc::new(MsgRuntime::with_sink(sink.clone()));
-    // Stage a speaker.
-    dispatch_textout(&runtime, &[0x82, 0xa0]); // "あ"
+    dispatch_textout(&runtime, &[0x82, 0xa0]);
     let mut registry = RlopRegistry::new();
     register_text_rlops(&mut registry, Arc::clone(&runtime));
-    let mut vm = Vm::new(1, 0);
-    let name_open = registry
-        .get(RlopKey::new(
-            MSG_MODULE_TYPE,
-            MSG_MODULE_ID,
-            OPCODE_NAME_OPEN,
-        ))
-        .expect("name_open registered");
-    let outcome = name_open.dispatch(&mut vm, &[]);
-    assert!(matches!(outcome, DispatchOutcome::Advance));
-    assert_eq!(runtime.pending_speaker().as_deref(), Some("あ"));
     let page = registry
         .get(RlopKey::new(MSG_MODULE_TYPE, MSG_MODULE_ID, OPCODE_PAGE))
         .expect("page registered");
+    let mut vm = Vm::new(1, 0);
     let outcome = page.dispatch(&mut vm, &[]);
     assert!(matches!(outcome, DispatchOutcome::Advance));
-    // After page, the speaker is cleared and the body is empty.
-    assert!(runtime.pending_speaker().is_none());
-    let _ = sink.drain();
+    let lines = sink.drain();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].text, "あ");
 }
 
 #[test]
@@ -227,24 +228,6 @@ fn msg_clear_discards_pending_body_without_emitting() {
 }
 
 #[test]
-fn linenumber_records_the_int_argument() {
-    let (outcome, lines, runtime) = dispatch_command(OPCODE_LINE_NUMBER, &[ExprValue::Int(42)]);
-    assert!(matches!(outcome, DispatchOutcome::Advance));
-    assert!(lines.is_empty());
-    assert_eq!(runtime.last_line_number(), Some(42));
-}
-
-#[test]
-fn linenumber_with_missing_arg_records_a_warning() {
-    let (outcome, lines, runtime) = dispatch_command(OPCODE_LINE_NUMBER, &[]);
-    assert!(matches!(outcome, DispatchOutcome::Advance));
-    assert!(lines.is_empty());
-    assert_eq!(runtime.last_line_number(), None);
-    let warnings = runtime.take_warnings();
-    assert_eq!(warnings.len(), 1);
-}
-
-#[test]
 fn font_color_records_rgb_value() {
     let (outcome, lines, runtime) =
         dispatch_command(OPCODE_FONT_COLOR, &[ExprValue::Int(0x00FF_8800)]);
@@ -264,62 +247,64 @@ fn font_color_with_bytes_arg_records_arg_shape_mismatch() {
 }
 
 #[test]
-fn font_size_records_clamped_int_argument() {
-    let (outcome, lines, runtime) = dispatch_command(OPCODE_FONT_SIZE, &[ExprValue::Int(24)]);
-    assert!(matches!(outcome, DispatchOutcome::Advance));
-    assert!(lines.is_empty());
-    assert_eq!(runtime.current_font_size(), Some(24));
-}
-
-#[test]
-fn font_size_clamps_out_of_range_input() {
-    let (_outcome, _, runtime) = dispatch_command(OPCODE_FONT_SIZE, &[ExprValue::Int(400)]);
-    assert_eq!(runtime.current_font_size(), Some(u8::MAX));
-}
-
-#[test]
-fn name_open_then_close_stages_speaker_label() {
+fn phantom_msg_opcode_addresses_do_not_register() {
     let sink = Arc::new(CollectingSink::new());
     let runtime = Arc::new(MsgRuntime::with_sink(sink.clone()));
-    // Stage speaker bytes (Shift-JIS for "山田")
-    dispatch_textout(&runtime, &[0x8e, 0x52, 0x93, 0x63]);
     let mut registry = RlopRegistry::new();
     register_text_rlops(&mut registry, Arc::clone(&runtime));
-    let mut vm = Vm::new(1, 0);
-    let name_open = registry
-        .get(RlopKey::new(
-            MSG_MODULE_TYPE,
-            MSG_MODULE_ID,
-            OPCODE_NAME_OPEN,
-        ))
-        .expect("name_open registered");
-    let outcome = name_open.dispatch(&mut vm, &[]);
-    assert!(matches!(outcome, DispatchOutcome::Advance));
-    let name_close = registry
-        .get(RlopKey::new(
-            MSG_MODULE_TYPE,
-            MSG_MODULE_ID,
-            OPCODE_NAME_CLOSE,
-        ))
-        .expect("name_close registered");
-    let outcome = name_close.dispatch(&mut vm, &[]);
-    assert!(matches!(outcome, DispatchOutcome::Advance));
-    assert_eq!(runtime.pending_speaker().as_deref(), Some("山田"));
-    // Now stage a body and flush via line_break — the emitted line
-    // should carry the speaker.
-    dispatch_textout(&runtime, &[0x82, 0xa0]);
-    let line_break = registry
-        .get(RlopKey::new(
-            MSG_MODULE_TYPE,
-            MSG_MODULE_ID,
-            OPCODE_LINE_BREAK,
-        ))
-        .expect("line_break registered");
-    line_break.dispatch(&mut vm, &[]);
-    let lines = sink.drain();
-    assert_eq!(lines.len(), 1);
-    assert_eq!(lines[0].text, "あ");
-    assert_eq!(lines[0].speaker.as_deref(), Some("山田"));
+    for phantom in [3, 5, 14, 18, 19, 22, 30, 31, 40, 41, 100] {
+        assert!(
+            registry
+                .get(RlopKey::new(0, MSG_MODULE_ID, phantom))
+                .is_none()
+        );
+    }
+}
+
+#[test]
+fn historical_font_size_address_is_not_a_msg_command() {
+    let keys = text_module_msg_keys();
+    assert!(
+        !keys.contains(&RlopKey::new(0, MSG_MODULE_ID, 31)),
+        "the old FontSize mount was a phantom dispatch path"
+    );
+}
+
+#[test]
+fn historical_speaker_bracket_addresses_are_not_msg_commands() {
+    let keys = text_module_msg_keys();
+    for phantom in [40, 41] {
+        assert!(
+            !keys.contains(&RlopKey::new(0, MSG_MODULE_ID, phantom)),
+            "speaker brackets were not encoded as msg opcode {phantom}"
+        );
+    }
+}
+
+#[test]
+fn corrected_msg_opcode_addresses_are_registered() {
+    let expected = [
+        (MsgOpcode::Pause, 17),
+        (MsgOpcode::TextWindow, 102),
+        (MsgOpcode::FastText, 103),
+        (MsgOpcode::NormalText, 104),
+        (MsgOpcode::FontColor, 105),
+        (MsgOpcode::MsgHide, 151),
+        (MsgOpcode::MsgClear, 152),
+        (MsgOpcode::MsgHideAll, 161),
+        (MsgOpcode::LineBreak, 201),
+        (MsgOpcode::SPause, 205),
+        (MsgOpcode::Page, 210),
+        (MsgOpcode::SetIndent, 300),
+        (MsgOpcode::ClearIndent, 301),
+        (MsgOpcode::TextPos, 310),
+        (MsgOpcode::TextPosX, 311),
+    ];
+    let registered = text_module_msg_keys();
+    for (opcode, byte) in expected {
+        assert_eq!(opcode.opcode(), byte, "{opcode:?} must keep its real byte");
+        assert!(registered.contains(&RlopKey::new(0, MSG_MODULE_ID, byte)));
+    }
 }
 
 #[test]
@@ -411,10 +396,10 @@ fn dispatching_every_text_opcode_leaves_var_banks_untouched() {
         let key = opcode.rlop_key();
         let op = registry.get(key).expect("registered");
         let args: &[ExprValue] = match opcode {
-            MsgOpcode::LineNumber
-            | MsgOpcode::FontColor
-            | MsgOpcode::FontSize
-            | MsgOpcode::TextWindow => &[ExprValue::Int(1)],
+            MsgOpcode::FontColor
+            | MsgOpcode::TextWindow
+            | MsgOpcode::TextPos
+            | MsgOpcode::TextPosX => &[ExprValue::Int(1)],
             _ => &[],
         };
         let _outcome = op.dispatch(&mut vm, args);

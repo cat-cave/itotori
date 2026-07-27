@@ -80,13 +80,13 @@ pub use longops::{
     SelectionChoiceCountScheduler,
 };
 pub use module_msg::{
-    LongOpIdSequence, MSG_MODULE_ID, MSG_MODULE_TYPE, MsgFontColorOp, MsgFontSizeOp,
-    MsgLineBreakOp, MsgLineNumberOp, MsgMsgClearOp, MsgMsgHideOp, MsgNameCloseOp, MsgNameOpenOp,
-    MsgOpcode, MsgPageOp, MsgParagraphBreakOp, MsgPauseOp, MsgRuntime, MsgRuntimeWarning,
-    MsgTextWindowOp, OPCODE_FONT_COLOR, OPCODE_FONT_SIZE, OPCODE_LINE_BREAK, OPCODE_LINE_NUMBER,
-    OPCODE_MSG_CLEAR, OPCODE_MSG_HIDE, OPCODE_NAME_CLOSE, OPCODE_NAME_OPEN, OPCODE_PAGE,
-    OPCODE_PARAGRAPH_BREAK, OPCODE_PAUSE, OPCODE_TEXT_OUT, OPCODE_TEXT_WINDOW, dispatch_textout,
-    dispatch_textout_at, register_text_rlops, text_module_msg_keys,
+    LongOpIdSequence, MSG_MODULE_ID, MSG_MODULE_TYPE, MsgFontColorOp, MsgFormattingOp,
+    MsgLineBreakOp, MsgMsgClearOp, MsgMsgHideOp, MsgOpcode, MsgPageOp, MsgPauseOp, MsgRuntime,
+    MsgRuntimeWarning, MsgTextWindowOp, OPCODE_CLEAR_INDENT, OPCODE_FAST_TEXT, OPCODE_FONT_COLOR,
+    OPCODE_LINE_BREAK, OPCODE_MSG_CLEAR, OPCODE_MSG_HIDE, OPCODE_MSG_HIDE_ALL, OPCODE_NORMAL_TEXT,
+    OPCODE_PAGE, OPCODE_PAUSE, OPCODE_SET_INDENT, OPCODE_SPAUSE, OPCODE_TEXT_OUT, OPCODE_TEXT_POS,
+    OPCODE_TEXT_POS_X, OPCODE_TEXT_WINDOW, dispatch_textout, dispatch_textout_at,
+    register_text_rlops, text_module_msg_keys,
 };
 pub use module_sel::{
     ChoiceInputScheduler, OPCODE_OBJBTN_INIT, OPCODE_SELECT as SEL_OPCODE_SELECT,
