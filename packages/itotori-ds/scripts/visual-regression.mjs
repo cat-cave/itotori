@@ -299,7 +299,7 @@ async function compareImages(expectedPath, actualPath, diffPath) {
     expected.width,
     expected.height,
     {
-      threshold: 0.05,
+      threshold: 0,
       // pixelmatch defaults to includeAA:false, which discards any difference
       // it can classify as anti-aliasing — and a 1px geometry change to a
       // rounded shape looks exactly like that. Measured on this suite: growing
