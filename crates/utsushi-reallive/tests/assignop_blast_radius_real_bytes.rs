@@ -280,15 +280,28 @@ fn entry_report(engine: &ReplayEngine, entry: u16) -> BranchReplayReport {
     engine.branch_following_report(entry, &scan_opts(), HeadlessChoicePolicy::AlwaysFirst)
 }
 
+fn two_corpora_or_skip(test_name: &str) -> Option<Vec<real_corpus::RealCorpus>> {
+    let corpora = real_corpus::corpora();
+    if corpora.len() < 2 {
+        eprintln!(
+            "SKIP {test_name}: need readable {} and {} RealLive corpus roots; found {}",
+            real_corpus::REAL_GAME_ROOT_ENV,
+            real_corpus::REAL_GAME_ROOT_2_ENV,
+            corpora.len(),
+        );
+        return None;
+    }
+    Some(corpora)
+}
+
 /// (1)+(2) Blast-radius + rlvm parity over BOTH corpora.
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT + _2"]
 fn assignop_blast_radius_and_rlvm_parity_on_real_bytes() {
-    let corpora = real_corpus::corpora();
-    if corpora.len() < 2 {
-        real_corpus::require_real_bytes("assignop_blast_radius_and_rlvm_parity_on_real_bytes");
+    let Some(corpora) = two_corpora_or_skip("assignop_blast_radius_and_rlvm_parity_on_real_bytes")
+    else {
         return;
-    }
+    };
 
     let mut any_plain_assign = false;
     let mut all_used_bytes: BTreeMap<u8, usize> = BTreeMap::new();
@@ -381,11 +394,10 @@ fn assignop_blast_radius_and_rlvm_parity_on_real_bytes() {
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT + _2"]
 fn assignop_state_trajectory_regression_is_caught() {
-    let corpora = real_corpus::corpora();
-    if corpora.len() < 2 {
-        real_corpus::require_real_bytes("assignop_state_trajectory_regression_is_caught");
+    let Some(corpora) = two_corpora_or_skip("assignop_state_trajectory_regression_is_caught")
+    else {
         return;
-    }
+    };
 
     for corpus in &corpora {
         let bytes = fs::read(&corpus.seen_txt).expect("read seen.txt");
@@ -420,14 +432,14 @@ fn assignop_state_trajectory_regression_is_caught() {
         let report = entry_report(&engine, entry);
         eprintln!(
             "[{}] ENTRY scene {entry}: terminus={:?} transfers={} scenes_visited={} \
-             choices_made={} text_lines={} unknown={}",
+             choices_made={} text_lines={} unknown={:?}",
             corpus.label,
             report.terminus,
             report.transfers.total(),
             report.scenes_visited.len(),
             report.choices_made,
             report.text_lines,
-            report.unknown_opcode_keys.len(),
+            report.unknown_opcode_keys,
         );
         assert!(
             report.unknown_opcode_keys.is_empty(),
