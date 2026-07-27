@@ -24,7 +24,10 @@ pub const OPCODE_STRLEN: u16 = 0x0003;
 /// sibling `intout` form uses overload one at the same address.
 pub const OPCODE_STROUT: u16 = 0x0064;
 /// `intout` — emit ASCII decimal `intX[src]` through the substrate sink.
-pub const OPCODE_INTOUT: u16 = 0x000a;
+///
+/// This is the overload-one sibling of [`OPCODE_STROUT`], rather than a
+/// separate command address.
+pub const OPCODE_INTOUT: u16 = OPCODE_STROUT;
 /// `Uppercase` — ASCII upper-case `strX[idx]` in place.
 pub const OPCODE_UPPERCASE: u16 = 0x000b;
 /// `Lowercase` — ASCII lower-case `strX[idx]` in place.
@@ -112,9 +115,22 @@ impl StrOpcode {
         }
     }
 
+    /// Overload selector byte for this command variant.
+    pub const fn overload(self) -> u8 {
+        match self {
+            Self::Intout => 1,
+            _ => 0,
+        }
+    }
+
     /// Composite registry key the VM uses to dispatch this op.
     pub fn rlop_key(self) -> RlopKey {
-        RlopKey::new(STR_MODULE_TYPE, STR_MODULE_ID, self.opcode())
+        RlopKey::with_overload(
+            STR_MODULE_TYPE,
+            STR_MODULE_ID,
+            self.opcode(),
+            self.overload(),
+        )
     }
 
     /// Stable lowercase tag used by [`VmWarning::RlopArgsInvalid::op`].

@@ -129,6 +129,7 @@ pub(super) fn mount_registry_handles(
         strings: str_runtime,
     };
     mount_opcode_module_table(&mut registry, &context);
+    crate::rlop::overload_variants::register_overload_variants(&mut registry);
 
     RegistryHandles {
         registry,

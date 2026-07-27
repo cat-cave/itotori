@@ -68,6 +68,7 @@ pub mod module_sel;
 pub mod module_str;
 pub mod module_sys;
 pub mod opcode_module_table;
+pub(crate) mod overload_variants;
 mod selection_prompt;
 pub use expr_value::ExprValue;
 pub use longops::{
@@ -219,11 +220,8 @@ pub trait RLOperation: Send + Sync {
     fn dispatch(&self, vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome;
 }
 
-/// Composite key for the RLOperation registry: `(module_type, module_id
-/// opcode)`. Matches the three fields the bytecode `Command` element
-/// exposes; overload is not part of the key today because the rlvm
-/// research anchor documents overload selection happening inside the
-/// per-opcode implementation, not at the dispatch-table layer.
+/// The four-field bytecode Command-header address. Overload is part of the
+/// address, so variants sharing the first three fields never share a slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RlopKey {
     /// Module type lattice id (byte 1 of the Command header).
@@ -232,15 +230,23 @@ pub struct RlopKey {
     pub module_id: u8,
     /// Opcode (bytes 3..5 of the Command header, u16 LE).
     pub opcode: u16,
+    /// Overload selector (byte 7 of the Command header).
+    pub overload: u8,
 }
 
 impl RlopKey {
-    /// Construct an [`RlopKey`] from the three Command-header fields.
+    /// Construct the canonical overload-zero key.
     pub const fn new(module_type: u8, module_id: u8, opcode: u16) -> Self {
+        Self::with_overload(module_type, module_id, opcode, 0)
+    }
+
+    /// Construct an [`RlopKey`] from every Command-header dispatch field.
+    pub const fn with_overload(module_type: u8, module_id: u8, opcode: u16, overload: u8) -> Self {
         Self {
             module_type,
             module_id,
             opcode,
+            overload,
         }
     }
 }
@@ -249,13 +255,13 @@ impl fmt::Display for RlopKey {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             formatter,
-            "rlop[{:02x}/{:02x}/{:04x}]",
-            self.module_type, self.module_id, self.opcode
+            "rlop[{:02x}/{:02x}/{:04x}/{:02x}]",
+            self.module_type, self.module_id, self.opcode, self.overload
         )
     }
 }
 
-/// Registry mapping `(module_type, module_id, opcode)` to an
+/// Registry mapping `(module_type, module_id, opcode, overload)` to an
 /// [`RLOperation`] implementor.
 ///
 /// The registry is **fail-soft**: a missing key surfaces as a
@@ -297,29 +303,33 @@ impl RlopRegistry {
         Self::default()
     }
 
-    /// Register an [`RLOperation`] under `key`.
+    /// Register an [`RLOperation`] under `key` without replacing a live entry.
     ///
-    /// # Duplicate-key guard
-    ///
-    /// Registration is **displacement-free**: every stored op is
-    /// non-`None`, so a `key` that is already present would clobber a
-    /// live op. That is always a registrar bug (two families claiming the
-    /// same `(module_type, module_id, opcode)` — e.g. the historical bad
-    /// `(1, 5, 3)` registry key that collapsed `msg.pause` and
-    /// `sel.select_objbtn` through mislabelled `module_id`s), so it
-    /// **panics** rather than
-    /// silently overwriting. This turns any future key collision into a
-    /// loud failure at registration/test time instead of a silent
-    /// mis-dispatch at runtime.
-    ///
-    /// Returns `None` (there is never a displaced op to return); the
-    /// return type is retained so callers can still `assert!(….is_none())`.
+    /// Duplicate keys are registrar bugs and panic loudly. The retained
+    /// `Option` return is always `None`, so callers can assert that invariant.
     pub fn register(
         &mut self,
         key: RlopKey,
         op: Arc<dyn RLOperation>,
     ) -> Option<Arc<dyn RLOperation>> {
         self.register_with_provenance(key, op, RlopImplementationProvenance::Semantic)
+    }
+
+    /// Register `key` as an exact overload address for an already-mounted operation.
+    pub(crate) fn register_overload_variant(&mut self, key: RlopKey, source: RlopKey) {
+        assert_ne!(
+            key.overload, source.overload,
+            "overload variant must differ from source"
+        );
+        let source_entry = self
+            .entries
+            .get(&source)
+            .unwrap_or_else(|| panic!("RlopRegistry overload source is not registered: {source}"));
+        self.register_with_provenance(
+            key,
+            Arc::clone(&source_entry.operation),
+            source_entry.provenance,
+        );
     }
 
     fn register_with_provenance(
