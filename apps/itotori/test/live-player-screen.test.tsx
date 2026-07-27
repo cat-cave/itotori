@@ -63,9 +63,14 @@ describe("Live browser player", () => {
     { label: "without the reveal capability", reveal: false },
     { label: "when the capable viewer reveals", reveal: true },
   ])("does not send redaction or paths $label", async ({ reveal }) => {
-    const bodies: string[] = [];
-    vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
-      bodies.push(String(init?.body ?? ""));
+    const startBodies: string[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(
+        input instanceof Request ? input.url : input.toString(),
+        "http://itotori.test",
+      );
+      if (url.pathname === "/api/player/sessions" && init?.method === "POST")
+        startBodies.push(String(init.body));
       return new Response(
         JSON.stringify({
           sessionId: "session-1",
@@ -88,10 +93,10 @@ describe("Live browser player", () => {
     await screen.findByRole("button", { name: "Advance" });
     if (reveal) {
       fireEvent.click(screen.getByRole("checkbox"));
-      await waitFor(() => expect(bodies).toHaveLength(2));
+      await waitFor(() => expect(startBodies).toHaveLength(2));
     }
 
-    expect(bodies.length).toBeGreaterThan(0);
-    expect(JSON.parse(bodies[bodies.length - 1]!)).toEqual({ session: "review-session" });
+    expect(startBodies.length).toBeGreaterThan(0);
+    expect(JSON.parse(startBodies[startBodies.length - 1]!)).toEqual({ session: "review-session" });
   });
 });

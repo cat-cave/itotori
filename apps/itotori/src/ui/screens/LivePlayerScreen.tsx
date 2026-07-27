@@ -55,12 +55,16 @@ function LivePlayerSurface({ config }: { config: LivePlayerConfig | null }): Rea
   useEffect(() => {
     if (config === null) return;
     let cancelled = false;
+    let sessionId: string | undefined;
     setBusy(true);
     void post<PlayerState>("/api/player/sessions", config).then(
       (next) => {
+        sessionId = next.sessionId;
         if (!cancelled) {
           setState(next);
           setBusy(false);
+        } else {
+          void deleteSession(next.sessionId);
         }
       },
       (reason: unknown) => {
@@ -72,6 +76,7 @@ function LivePlayerSurface({ config }: { config: LivePlayerConfig | null }): Rea
     );
     return () => {
       cancelled = true;
+      if (sessionId !== undefined) void deleteSession(sessionId);
     };
   }, [config, canReveal]);
 
@@ -226,4 +231,8 @@ async function post<T>(url: string, body: unknown): Promise<T> {
         : `request failed (${response.status})`,
     );
   return payload as T;
+}
+
+async function deleteSession(sessionId: string): Promise<void> {
+  await fetch(`/api/player/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
 }

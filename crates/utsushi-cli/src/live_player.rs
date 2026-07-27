@@ -75,10 +75,14 @@ pub(crate) fn run_live_player_command(args: &[String]) -> Result<(), Box<dyn Err
         // them under `artifact_root` would make the root non-empty before the
         // managed-store marker is created, and the next real frame would be
         // rejected rather than silently falling back to a stale image.
-        private_dir: artifact_root.with_extension("private-live-player"),
+        private_dir: artifact_root
+            .with_extension("private-live-player")
+            .join(run_id),
         run_id: run_id.to_string(),
         reveal,
         current_text: None,
+        current_public_frame: None,
+        current_private_frame: None,
     };
 
     write_response(
@@ -89,6 +93,7 @@ pub(crate) fn run_live_player_command(args: &[String]) -> Result<(), Box<dyn Err
         let line = line?;
         let input: BrowserInput = serde_json::from_str(&line)?;
         if matches!(input, BrowserInput::Close) {
+            renderer.remove_current_frames()?;
             write_response(&mut io::stdout(), json!({"closed": true}))?;
             return Ok(());
         }
@@ -120,6 +125,48 @@ struct Renderer {
     /// boundary). Each response is still newly rasterised against the current
     /// graphics stack, so it is never a stale PNG.
     current_text: Option<TextLayer>,
+    /// The browser player is a current-frame viewer, not a capture history.
+    /// Keep exactly the newest public/private pair while this session is live.
+    current_public_frame: Option<PathBuf>,
+    current_private_frame: Option<PathBuf>,
+}
+
+impl Renderer {
+    fn replace_current_frames(
+        &mut self,
+        public: PathBuf,
+        private: PathBuf,
+    ) -> Result<(), Box<dyn Error>> {
+        remove_replaced_frame(self.current_public_frame.replace(public.clone()), &public)?;
+        remove_replaced_frame(
+            self.current_private_frame.replace(private.clone()),
+            &private,
+        )?;
+        Ok(())
+    }
+
+    fn remove_current_frames(&mut self) -> Result<(), Box<dyn Error>> {
+        remove_replaced_frame(self.current_public_frame.take(), PathBuf::new().as_path())?;
+        remove_replaced_frame(self.current_private_frame.take(), PathBuf::new().as_path())?;
+        Ok(())
+    }
+}
+
+fn remove_replaced_frame(
+    previous: Option<PathBuf>,
+    current: &std::path::Path,
+) -> Result<(), Box<dyn Error>> {
+    let Some(previous) = previous else {
+        return Ok(());
+    };
+    if previous != current {
+        match std::fs::remove_file(&previous) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
 }
 
 fn response(
@@ -201,30 +248,28 @@ fn response(
     let mut pass = RenderPass::with_dimensions(renderer.screen_size.0, renderer.screen_size.1)?
         .with_assets(Arc::clone(&renderer.assets));
     let sink = RecordingFrameArtifactSink::new();
-    let run_id = format!("{}-{}", renderer.run_id, state.event_index);
     let mut emit = SceneEmit::frame(
         &renderer.artifact_root,
-        &run_id,
+        &renderer.run_id,
         &sink,
         &renderer.private_dir,
-        true,
+        !renderer.reveal,
     );
     if let Some(overlay) = overlay {
         emit = emit.with_choice(overlay);
     }
     let screenshots = pass.emit_scene_screenshots(&session.graphics_stack(), &text, emit)?;
+    let public_path = renderer
+        .artifact_root
+        .artifact_path(&screenshots.public.artifact_ref.uri)?;
+    renderer.replace_current_frames(public_path.clone(), screenshots.private_png_path.clone())?;
     let (path, artifact_id) = if renderer.reveal {
         (
             screenshots.private_png_path,
             format!("private:{}", screenshots.private_png_sha256),
         )
     } else {
-        (
-            renderer
-                .artifact_root
-                .artifact_path(&screenshots.public.artifact_ref.uri)?,
-            screenshots.public.artifact_ref.artifact_id,
-        )
+        (public_path, screenshots.public.artifact_ref.artifact_id)
     };
     let frame = json!({
         "path": path,
