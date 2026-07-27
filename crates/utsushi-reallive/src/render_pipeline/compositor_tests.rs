@@ -60,8 +60,11 @@ fn alpha_half_wipe_blends_toward_background() {
 
 #[test]
 fn two_emissions_with_same_state_produce_byte_identical_pngs() {
-    let mut pass_a = RenderPass::with_dimensions(48, 24).expect("non-zero screen");
-    let mut pass_b = RenderPass::with_dimensions(48, 24).expect("non-zero screen");
+    // Noto CJK's real ascent needs a normal message-frame height at the
+    // default (16, 16) text origin; this test exercises determinism, not a
+    // clipped tiny-canvas layout.
+    let mut pass_a = RenderPass::with_dimensions(64, 64).expect("non-zero screen");
+    let mut pass_b = RenderPass::with_dimensions(64, 64).expect("non-zero screen");
     let stack = wipe_stack(WipeColour::WHITE);
     let text = TextLayer::localized(vec!["ABC".to_string()]);
     let root_a = temp_artifact_root("det-a");
@@ -121,10 +124,8 @@ fn draw_text_sets_pixels_for_ascii_and_differs_from_blank() {
 
 #[test]
 fn english_layer_differs_from_japanese_source_layer() {
-    // Localized English renders as legible glyphs; the Japanese
-    // source (outside DejaVu Sans' coverage) renders as `.notdef`
-    // boxes — provably different pixels, so the screenshot reflects
-    // the localized layer rather than the source.
+    // Both source Japanese and localized English must render as real glyphs;
+    // the frame still reflects their different text content.
     let pass = RenderPass::with_dimensions(320, 64).expect("non-zero screen");
     let stack = wipe_stack(WipeColour::BLACK);
     let english = TextLayer::localized(vec!["Stella-EN".to_string()]);
@@ -138,6 +139,22 @@ fn english_layer_differs_from_japanese_source_layer() {
         fb_ja.pixels(),
         "English and Japanese text layers must produce different pixels"
     );
+}
+
+#[test]
+fn font_renders_distinct_japanese_glyphs_not_shared_tofu() {
+    let pass = RenderPass::with_dimensions(96, 96).expect("non-zero screen");
+    let stack = wipe_stack(WipeColour::BLACK);
+    let mut hiragana = pass.rasterise(&stack);
+    let mut katakana = pass.rasterise(&stack);
+    let mut kanji = pass.rasterise(&stack);
+    hiragana.draw_text(&TextLayer::localized(vec!["あ".to_string()]));
+    katakana.draw_text(&TextLayer::localized(vec!["ア".to_string()]));
+    kanji.draw_text(&TextLayer::localized(vec!["漢".to_string()]));
+
+    assert_ne!(hiragana.pixels(), katakana.pixels());
+    assert_ne!(hiragana.pixels(), kanji.pixels());
+    assert_ne!(katakana.pixels(), kanji.pixels());
 }
 
 /// Render a single glyph on a black canvas and return (painted-pixel

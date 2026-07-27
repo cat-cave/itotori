@@ -240,7 +240,7 @@ pub trait SceneStore {
 }
 
 /// In-memory scene store. The default fixture for tests.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct InMemorySceneStore {
     scenes: BTreeMap<SceneId, Scene>,
 }

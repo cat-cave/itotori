@@ -215,11 +215,10 @@ fn multi_message_bytecode(count: usize) -> Vec<u8> {
     // Distinct hiragana messages of DISTINCT LENGTHS (1, 2, 3 chars). The
     // RealLive text decoder recognises 2-byte Shift-JIS runs (0x82 lead) as
     // text; ASCII bytes are not emitted as text, so hiragana it is. The
-    // bundled DejaVu font has no Japanese glyphs, so each char renders as a
-    // `.notdef` box — but the messages differ in LENGTH, so they paint
-    // DIFFERENT pixel widths ⇒ distinct sha256 frame ids. That is what
-    // proves each playthrough frame renders a DIFFERENT play-order message
-    // rather than repeating message #0 (a glyph-coverage-independent check).
+    // The bundled Noto CJK face renders every source glyph. The messages also
+    // differ in LENGTH, so they necessarily paint different extents and yield
+    // distinct SHA-256 frame ids. This proves the playthrough renders a new
+    // play-order message rather than repeating message #0.
     const MESSAGES: [&[[u8; 2]]; 3] = [
         &[[0x82, 0xa0]],                             // あ (len 1)
         &[[0x82, 0xa9], [0x82, 0xab]],               // かき (len 2)

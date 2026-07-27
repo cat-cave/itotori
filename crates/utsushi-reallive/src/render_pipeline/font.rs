@@ -6,9 +6,11 @@ use swash::zeno::Format;
 
 use super::{Framebuffer, TextLayer};
 
-/// Bundled font bytes. Compiled into the binary; never read from disk
-/// or the network at runtime.
-const FONT_BYTES: &[u8] = include_bytes!("../../assets/DejaVuSans.ttf");
+/// Bundled Japanese-capable font bytes. Compiled into the binary; never read
+/// from disk or the network at runtime. This is the renamed, JP-only Noto
+/// Serif CJK derivative described in `assets/README.md`; it also covers Latin
+/// text used by localized patches.
+const FONT_BYTES: &[u8] = include_bytes!("../../assets/ItotoriJapaneseSubset.otf");
 
 /// Parse the bundled font once. The bytes are a fixed compiled-in
 /// asset, so a parse failure is a build-time-shipped-corrupt-asset
@@ -16,7 +18,7 @@ const FONT_BYTES: &[u8] = include_bytes!("../../assets/DejaVuSans.ttf");
 fn font() -> FontRef<'static> {
     static FONT: OnceLock<FontRef<'static>> = OnceLock::new();
     *FONT.get_or_init(|| {
-        FontRef::from_index(FONT_BYTES, 0).expect("bundled DejaVuSans.ttf must parse")
+        FontRef::from_index(FONT_BYTES, 0).expect("bundled Japanese subset font must parse")
     })
 }
 
@@ -59,10 +61,9 @@ pub fn draw_lines(framebuffer: &mut Framebuffer, layer: &TextLayer) -> u64 {
         let mut caret_x = layer.origin_x as f32;
 
         for character in line.chars() {
-            // A code point the font lacks maps to glyph 0 (`.notdef`
-            // the box), so a localized English layer stays provably
-            // distinct — at the pixel level — from the untranslated
-            // Shift-JIS source.
+            // Noto Serif CJK JP covers the Japanese source and common target
+            // locales. A genuinely unsupported code point still maps to
+            // glyph 0 (`.notdef`) rather than disappearing silently.
             let glyph_id = charmap.map(character);
             let advance = glyph_metrics.advance_width(glyph_id);
 
@@ -196,4 +197,35 @@ pub fn wrap_words(text: &str, px: f32, max_width: f32) -> Vec<String> {
         lines.push(String::new());
     }
     lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // 128 evenly-spaced kanji from the 6,355-kanji JIS X 0208 repertoire.
+    // This deliberately comes from the standard, not from any renderer input
+    // or fixture. It covers the repertoire from U+4E00 through U+9FA0, so a
+    // corpus-derived subset cannot satisfy this assertion accidentally.
+    const JIS_X_0208_KANJI_SAMPLE: &str = concat!(
+        "一亀付佞俳傀儺冕刀創勹卦叨呉哨喧嚆圧埼墸太妬媛孱寛尽峩巌幇廏",
+        "弭得性悠愡憚戡抜挑掫撈攬斧昨暼朴枡栫梳椰槁橈欧殲汢泣涕渡滄潰瀛",
+        "焼燿犯獪瑞産疉瘠皸睚砦礇禺穎竝策簀粢級綟縟纔羶聞胝膈興芙茨菟蒂",
+        "蕁藥蛆蝣衂裔襾訝誠謔豁貽起蹙輌辻逧邁酬釿鋺鏗間陝雁霾韮風饕驅鬮",
+        "鯨鴆鷄黒龠"
+    );
+
+    #[test]
+    fn bundled_font_maps_standard_jis_x_0208_kanji_to_real_glyphs() {
+        let charmap = font().charmap();
+        assert_eq!(JIS_X_0208_KANJI_SAMPLE.chars().count(), 128);
+
+        for character in JIS_X_0208_KANJI_SAMPLE.chars() {
+            assert_ne!(
+                charmap.map(character),
+                0,
+                "the JIS X 0208 sample character {character:?} must not map to .notdef"
+            );
+        }
+    }
 }
