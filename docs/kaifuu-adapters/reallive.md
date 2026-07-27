@@ -65,7 +65,7 @@ or gap that a later slice closed, it is marked inline.
 - Patch modes: none (unsupported).
 - Asset inventory surfaces: top-level files only (SEEN.TXT, SEEN.GAN, Gameexe.ini). `.g00`/`.ovk`/`.koe`/`.nwk` counts are reported through the archive-matrix row and the layered-access profile metadata; per-file inventory of voice or image archives is not claimed.
 - Semantic capability errors:
-  - `kaifuu.ambiguous_engine_variant` (new in KAIFUU-172; see `crates/kaifuu-core/src/lib.rs` SemanticErrorCode catalog and §9.1 of the implementation plan).
+  - `kaifuu.ambiguous_engine_variant` (new in KAIFUU-172; see `crates/kaifuu-core/src/lib/semantic_error.rs` SemanticErrorCode catalog and §9.1 of the implementation plan).
   - `kaifuu.unsupported_engine_variant` (new in KAIFUU-172).
   - `kaifuu.unknown_engine_variant` (existing — used for SEEN-shaped but invalid envelope, or named markers without sufficient evidence).
   - `kaifuu.unsupported_layered_transform` (existing — used for extract/patch/verify attempts on identify-only adapter, mirroring Siglus's pattern).
