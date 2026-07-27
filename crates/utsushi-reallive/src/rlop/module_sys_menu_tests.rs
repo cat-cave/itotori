@@ -7,7 +7,7 @@ fn menu_return_opcodes_register_across_lattice() {
     let count = register_sys_menu_rlops(&mut registry);
     assert_eq!(count, SYS_MENU_RLOP_COUNT);
     assert_eq!(registry.len(), SYS_MENU_RLOP_COUNT);
-    for &opcode in MENU_RETURN_OPCODES {
+    for &opcode in CONTENT_TERMINUS_OPCODES {
         for module_type in LATTICE_TYPES {
             assert!(
                 registry

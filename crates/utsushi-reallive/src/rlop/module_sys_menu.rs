@@ -38,9 +38,10 @@ use std::sync::Arc;
 /// Compiler-version lattice the sys module is registered across.
 const LATTICE_TYPES: [u8; 3] = [0, 1, 2];
 
-/// The MenuReturn opcodes (1201 `MenuReturn`, 1202 `MenuReturn2`) — both
-/// the same return-to-title transfer per the oracle.
-const MENU_RETURN_OPCODES: &[u16] = &[1201, 1202];
+/// `end` (1200) and the MenuReturn opcodes (1201 `MenuReturn`, 1202
+/// `MenuReturn2`) all terminate the headless content drive. `end` is a
+/// direct halt; the return forms leave content for the title menu.
+const CONTENT_TERMINUS_OPCODES: &[u16] = &[1200, 1201, 1202];
 
 /// `MenuReturn` — ends the content flow by returning to the title menu.
 /// Modeled as [`DispatchOutcome::Halt`] (natural `EndOfScene` terminus)
@@ -59,7 +60,7 @@ impl RLOperation for MenuReturnOp {
 pub fn register_sys_menu_rlops(registry: &mut RlopRegistry) -> usize {
     let op: Arc<dyn RLOperation> = Arc::new(MenuReturnOp);
     let mut count = 0;
-    for &opcode in MENU_RETURN_OPCODES {
+    for &opcode in CONTENT_TERMINUS_OPCODES {
         for module_type in LATTICE_TYPES {
             registry.register(
                 RlopKey::new(module_type, SYS_MODULE_ID, opcode),
@@ -72,7 +73,7 @@ pub fn register_sys_menu_rlops(registry: &mut RlopRegistry) -> usize {
 }
 
 /// Number of registrations [`register_sys_menu_rlops`] makes.
-pub const SYS_MENU_RLOP_COUNT: usize = MENU_RETURN_OPCODES.len() * LATTICE_TYPES.len();
+pub const SYS_MENU_RLOP_COUNT: usize = CONTENT_TERMINUS_OPCODES.len() * LATTICE_TYPES.len();
 
 #[cfg(test)]
 #[path = "module_sys_menu_tests.rs"]

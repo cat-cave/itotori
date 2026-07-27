@@ -19,7 +19,10 @@ pub const OPCODE_STRCAT: u16 = 0x0002;
 /// `strlen` — `intX[dst]:= byte-length(strX[src])`.
 pub const OPCODE_STRLEN: u16 = 0x0003;
 /// `strout` — emit `strX[src]` through the substrate sink.
-pub const OPCODE_STROUT: u16 = 0x0009;
+///
+/// The canonical implementation assigns this address to overload zero; the
+/// sibling `intout` form uses overload one at the same address.
+pub const OPCODE_STROUT: u16 = 0x0064;
 /// `intout` — emit ASCII decimal `intX[src]` through the substrate sink.
 pub const OPCODE_INTOUT: u16 = 0x000a;
 /// `Uppercase` — ASCII upper-case `strX[idx]` in place.

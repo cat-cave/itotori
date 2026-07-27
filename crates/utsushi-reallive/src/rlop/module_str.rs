@@ -36,7 +36,7 @@
 //! `0x0006` | `strrsub` | (not in surface)
 //! `0x0007` | `strcharlen` | (not in surface)
 //! `0x0008` | `strtrunc` | (not in surface)
-//! `0x0009` | `strout` | sink emission of strX[src]
+//! `0x0064` | `strout` | sink emission of strX[src] (overload 0)
 //! `0x000a` | `intout` | sink emission of intX[src] as ASCII
 //! `0x000b` | `Uppercase` | strX[idx] ASCII upper-case in place
 //! `0x000c` | `Lowercase` | strX[idx] ASCII lower-case in place
