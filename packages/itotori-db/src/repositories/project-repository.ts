@@ -342,6 +342,19 @@ export class RuntimeRunNotFoundError extends Error {
   }
 }
 
+/**
+ * An EXPLICIT project scope named a project that does not exist. Distinct from
+ * the unscoped "no project state at all" case: a scoped read must fail closed
+ * with a not-found diagnostic instead of silently answering from whichever
+ * project happens to be the most recently updated one.
+ */
+export class ProjectScopeNotFoundError extends Error {
+  constructor(readonly projectId: string) {
+    super(`project ${projectId} was not found`);
+    this.name = "ProjectScopeNotFoundError";
+  }
+}
+
 export type RuntimeDashboardTraceEvent = {
   runtimeEventId: string;
   eventKind: string;
@@ -521,6 +534,15 @@ export interface ItotoriProjectRepositoryPort {
   listLocaleBranchIdentities(projectId: string): Promise<LocaleBranchIdentity[]>;
   listBenchmarkReports(projectId: string): Promise<BenchmarkReportSummary[]>;
   /**
+   * Fail-closed resolution of an EXPLICIT project scope. Returns the canonical
+   * projectId or throws {@link ProjectScopeNotFoundError}. Project-scoped reads
+   * whose own query would otherwise answer an unknown scope with an empty
+   * aggregate (the cost report, the benchmark list) resolve the scope through
+   * here FIRST, so every scoped read agrees on one server-side answer to "does
+   * this project exist" and none of them can degrade into an unscoped read.
+   */
+  requireProjectScope(projectId: string): Promise<string>;
+  /**
    * Returns the dashboard status for the given project, or the globally-latest
    * project when `projectId` is omitted. Scoping to a project is required by
    * composed read models (e.g. `projects.overview`) so progress + the locale
@@ -542,6 +564,7 @@ export interface ItotoriProjectRepositoryPort {
   getRuntimeStatus(
     actor: AuthorizationActor,
     runtimeRunId?: string,
+    projectId?: string,
   ): Promise<RuntimeDashboardStatus>;
   getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel>;
 }
@@ -1987,6 +2010,12 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     const rows = result.rows as Array<Record<string, unknown>>;
     const first = rows[0];
     if (!first) {
+      // An EXPLICIT scope that selected nothing is a not-found scope, not an
+      // empty workspace: report it as such so the HTTP boundary answers 404
+      // instead of a 500, and never so it can be mistaken for a fallback.
+      if (targetProjectId !== undefined) {
+        throw new ProjectScopeNotFoundError(targetProjectId);
+      }
       throw new Error("no Itotori project state found");
     }
 
@@ -2090,19 +2119,28 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     };
   }
 
+  async requireProjectScope(projectId: string): Promise<string> {
+    const rows = await this.db
+      .select({ projectId: projects.projectId })
+      .from(projects)
+      .where(eq(projects.projectId, projectId))
+      .limit(1);
+    const project = rows[0];
+    if (project === undefined) {
+      throw new ProjectScopeNotFoundError(projectId);
+    }
+    return project.projectId;
+  }
+
   private async resolveDashboardProjectId(projectId?: string): Promise<string> {
-    const rows =
-      projectId === undefined
-        ? await this.db
-            .select({ projectId: projects.projectId })
-            .from(projects)
-            .orderBy(sql`${projects.updatedAt} desc`)
-            .limit(1)
-        : await this.db
-            .select({ projectId: projects.projectId })
-            .from(projects)
-            .where(eq(projects.projectId, projectId))
-            .limit(1);
+    if (projectId !== undefined) {
+      return await this.requireProjectScope(projectId);
+    }
+    const rows = await this.db
+      .select({ projectId: projects.projectId })
+      .from(projects)
+      .orderBy(sql`${projects.updatedAt} desc`)
+      .limit(1);
     const project = rows[0];
     if (project === undefined) {
       throw new Error("no Itotori project state found");
@@ -2121,9 +2159,16 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
   async getRuntimeStatus(
     actor: AuthorizationActor,
     runtimeRunId?: string,
+    projectId?: string,
   ): Promise<RuntimeDashboardStatus> {
     await requirePermission(this.db, actor, permissionValues.catalogRead);
     const requestedRuntimeRunId = runtimeRunId ?? null;
+    // An explicit project scope constrains BOTH selection paths: a requested
+    // run must belong to the scope, and the unscoped-run fallback may only
+    // choose the requested project. A run outside the scope therefore reads as
+    // "not found" rather than silently returning another project's evidence.
+    const requestedProjectId =
+      projectId === undefined ? null : await this.requireProjectScope(projectId);
     const result = await this.db.execute(sql`
       with requested_runtime_run as (
         select
@@ -2133,6 +2178,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         from ${runtimeEvidenceRuns}
         where ${requestedRuntimeRunId}::text is not null
           and runtime_run_id = ${requestedRuntimeRunId}
+          and (${requestedProjectId}::text is null or project_id = ${requestedProjectId})
         limit 1
       ),
       latest_project as (
@@ -2144,6 +2190,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           select project_id, 1 as priority, updated_at as selected_at
           from ${projects}
           where ${requestedRuntimeRunId}::text is null
+            and (${requestedProjectId}::text is null or project_id = ${requestedProjectId})
         ) project_candidates
         order by priority, selected_at desc
         limit 1
@@ -2167,7 +2214,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         from ${runtimeEvidenceRuns}
         where (
           ${requestedRuntimeRunId}::text is not null
-          and runtime_run_id = ${requestedRuntimeRunId}
+          and runtime_run_id in (select runtime_run_id from requested_runtime_run)
         ) or (
           ${requestedRuntimeRunId}::text is null
           and project_id in (select project_id from latest_project)

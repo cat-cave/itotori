@@ -162,8 +162,11 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     );
   }
 
-  async getRuntimeStatus(runtimeRunId?: string): Promise<RuntimeDashboardStatus> {
-    return await this.deps.projects.getRuntimeStatus(this.deps.actor, runtimeRunId);
+  async getRuntimeStatus(
+    runtimeRunId?: string,
+    projectId?: string,
+  ): Promise<RuntimeDashboardStatus> {
+    return await this.deps.projects.getRuntimeStatus(this.deps.actor, runtimeRunId, projectId);
   }
 
   async getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel> {
@@ -199,7 +202,14 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
   }
 
   async getCostReport(projectId?: string): Promise<ProjectCostReport> {
-    return await this.deps.ledger.getProjectCostReport(this.deps.actor, projectId);
+    // The ledger read answers an unknown project with an all-zero report, which
+    // would make a mistyped scope indistinguishable from a genuinely idle
+    // project. Resolve an explicit scope against the project plane first so the
+    // read fails closed on a project that does not exist.
+    return await this.deps.ledger.getProjectCostReport(
+      this.deps.actor,
+      await this.resolveProjectScope(projectId),
+    );
   }
 
   async getCostDrilldown(filter: CostDrilldownFilter = {}): Promise<CostDrilldownPage> {
@@ -207,8 +217,22 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
   }
 
   async getBenchmarkReports(projectId?: string): Promise<BenchmarkReportSummary[]> {
-    const resolvedProjectId = projectId ?? (await this.getDashboardStatus()).projectId;
+    const resolvedProjectId =
+      (await this.resolveProjectScope(projectId)) ?? (await this.getDashboardStatus()).projectId;
     return await this.deps.projects.listBenchmarkReports(resolvedProjectId);
+  }
+
+  /**
+   * Server-side resolution of an explicit project scope. Returns `undefined`
+   * for an absent scope (the caller keeps its existing "workspace's latest
+   * project" meaning) and throws for a project that does not exist, so a
+   * scoped read can never degrade into an unscoped one.
+   */
+  private async resolveProjectScope(projectId?: string): Promise<string | undefined> {
+    if (projectId === undefined) {
+      return undefined;
+    }
+    return await this.deps.projects.requireProjectScope(projectId);
   }
 
   async importBridge(bridge: BridgeBundle | BridgeBundleV02): Promise<ProjectState> {
