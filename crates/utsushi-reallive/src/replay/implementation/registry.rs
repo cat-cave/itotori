@@ -42,7 +42,8 @@ pub(super) fn dispatch_cosmetic_line_break(vm: &mut Vm, registry: &RlopRegistry)
     }
 }
 
-/// Mount all nine opcode families, choosing the
+/// Mount all nine runtime-bearing opcode families plus every entry in the
+/// append-only opcode-module table, choosing the
 /// `module_jmp` control-flow registrar per `control_flow`. Shared by the
 /// cataloguing ([`ControlFlowMount::LinearWalk`]) and branch-following
 /// ([`ControlFlowMount::BranchFollowing`]) replay paths so every OTHER
@@ -55,7 +56,8 @@ pub(super) fn mount_registry(
     mount_registry_handles(sink, msg_runtime, control_flow).registry
 }
 
-/// Mount all nine opcode families, returning the
+/// Mount all nine runtime-bearing opcode families plus the append-only
+/// opcode-module table, returning the
 /// registry ALONGSIDE the shared audio + graphics runtimes. Single source
 /// of truth for the registry composition: [`mount_registry`] delegates
 /// here and drops the handles, so the cataloguing / branch-following
@@ -72,7 +74,7 @@ pub(super) fn mount_registry_handles(
     // dispatch) so it visits every command and never spins on input-gated
     // loops; the branch-following replay mounts the REAL branch semantics
     // so a scene EXECUTES its actual control flow.
-    register_text_rlops(&mut registry, msg_runtime);
+    register_text_rlops(&mut registry, Arc::clone(&msg_runtime));
     match control_flow {
         ControlFlowMount::LinearWalk => {
             register_control_flow_linear_walk(&mut registry);
@@ -105,32 +107,28 @@ pub(super) fn mount_registry_handles(
 
     // System (fixed-seed clock/RNG → deterministic replay).
     let sys_runtime = Arc::new(SysRuntime::new(LogicalClockTick(0)));
-    register_sys_rlops(&mut registry, sys_runtime);
-    // Audio/voice playback commands (bgm/pcm/koe) — drive-faithful
-    // no-ops (see module_media_commands).
-    register_media_rlops(&mut registry);
-    // Extra Msg text-formatting commands (hide_all/br/spause) —
-    // drive-faithful no-ops (see module_msg_extra).
-    register_msg_extra_rlops(&mut registry);
-    // MenuReturn (1201/1202) — return-to-title transfer, modeled as a
-    // natural terminus (see module_sys_menu).
-    register_sys_menu_rlops(&mut registry);
-    // System display/interaction-state commands (skip/auto/syscom
-    // visibility) — drive-faithful no-ops (see module_sys_display).
-    register_sys_display_rlops(&mut registry);
-    // System timer reset/time-wait commands — drive-faithful no-ops under
-    // the headless scheduler (see module_sys_timer).
-    register_sys_timer_rlops(&mut registry);
-    // Engine-state-config commands (syscom-disable, auto-savepoint toggle)
-    // — drive-faithful no-ops (see module_sys_config_commands).
-    register_sys_config_rlops(&mut registry);
+    register_sys_rlops(&mut registry, Arc::clone(&sys_runtime));
 
     // Memory (no runtime).
     register_mem_rlops(&mut registry);
 
     // String ops.
-    let str_runtime = Arc::new(StrRuntime::new(sink));
-    register_str_rlops(&mut registry, str_runtime);
+    let str_runtime = Arc::new(StrRuntime::new(Arc::clone(&sink)));
+    register_str_rlops(&mut registry, Arc::clone(&str_runtime));
+
+    // Every self-contained opcode module, mounted from the append-only
+    // table. Adding one is a single appended line in
+    // `src/rlop/opcode_module_table.rs` — no edit lands here.
+    let context = OpcodeModuleContext {
+        sink,
+        msg: msg_runtime,
+        graphics: Arc::clone(&graphics_runtime),
+        audio: Arc::clone(&audio_runtime),
+        selection: Arc::clone(&sel_runtime),
+        sys: sys_runtime,
+        strings: str_runtime,
+    };
+    mount_opcode_module_table(&mut registry, &context);
 
     RegistryHandles {
         registry,

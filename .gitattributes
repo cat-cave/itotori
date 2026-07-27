@@ -1,0 +1,11 @@
+# The RealLive opcode-module mount table is an append-only list: mounting a
+# module is a single line appended to `opcode_module_table!`. Independent
+# branches in the (serial) merge queue routinely append at the same spot, and
+# a default 3-way merge treats adjacent insertions as a conflict — which is
+# exactly the O(n^2) rebase churn the table was built to remove. `union` keeps
+# BOTH sides' lines, which is the correct resolution for this file.
+#
+# Duplicate or malformed entries still fail LOUDLY: a repeated `pub mod` is a
+# compile error, and two modules claiming one `(module_type, module_id,
+# opcode)` panics inside `RlopRegistry::register` at mount time.
+crates/utsushi-reallive/src/rlop/opcode_module_table.rs merge=union

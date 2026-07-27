@@ -53,22 +53,17 @@ use crate::rlop::module_audio::{AudioRuntime, register_audio_rlops};
 use crate::rlop::module_ctrl::{
     register_control_flow_branch_following, register_control_flow_linear_walk,
 };
-use crate::rlop::module_media_commands::register_media_rlops;
 use crate::rlop::module_mem::register_mem_rlops;
 use crate::rlop::module_msg::{
     MSG_MODULE_ID, MSG_MODULE_TYPE, MsgRuntime, OPCODE_LINE_BREAK, dispatch_textout_at,
     register_text_rlops,
 };
-use crate::rlop::module_msg_extra::register_msg_extra_rlops;
 use crate::rlop::module_obj::GraphicsRuntime;
 use crate::rlop::module_render::register_render_rlops;
 use crate::rlop::module_sel::{SelRuntime, register_sel_rlops};
 use crate::rlop::module_str::{StrRuntime, register_str_rlops};
 use crate::rlop::module_sys::{SysRuntime, register_sys_rlops};
-use crate::rlop::module_sys_config_commands::register_sys_config_rlops;
-use crate::rlop::module_sys_display::register_sys_display_rlops;
-use crate::rlop::module_sys_menu::register_sys_menu_rlops;
-use crate::rlop::module_sys_timer::register_sys_timer_rlops;
+use crate::rlop::opcode_module_table::{OpcodeModuleContext, mount_opcode_module_table};
 use crate::rlop::{
     AlwaysReadyScheduler, DispatchOutcome, HeadlessChoicePolicy, HeadlessInputScheduler, RlopKey,
     RlopRegistry,

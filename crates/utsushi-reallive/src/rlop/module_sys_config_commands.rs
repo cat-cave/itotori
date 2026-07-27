@@ -19,10 +19,10 @@
 //! fidelity is the interactive/persistence path's surface.
 //!
 //! Registered across the compiler-version lattice `{0,1,2}` under
-//! `module_id=4`, wired at the registry assembly point so `module_sys.rs`
-//! (grandfathered, shrink-only) stays untouched.
+//! `module_id=4`, mounted from [`crate::rlop::opcode_module_table`] so
+//! `module_sys.rs` (grandfathered, shrink-only) stays untouched.
 
-use super::module_sys::SYS_MODULE_ID;
+use crate::rlop::module_sys::SYS_MODULE_ID;
 use super::{DispatchOutcome, ExprValue, RLOperation, RlopKey, RlopRegistry};
 use crate::vm::Vm;
 use std::sync::Arc;

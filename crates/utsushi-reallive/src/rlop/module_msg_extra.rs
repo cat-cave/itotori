@@ -22,7 +22,7 @@
 //! Registered across the msg compiler-version lattice `{0,1,2}` under
 //! [`MSG_MODULE_ID`], matching how the core msg family mounts.
 
-use super::module_msg::MSG_MODULE_ID;
+use crate::rlop::module_msg::MSG_MODULE_ID;
 use super::{DispatchOutcome, ExprValue, RLOperation, RlopKey, RlopRegistry};
 use crate::vm::Vm;
 use std::sync::Arc;
