@@ -91,7 +91,7 @@ Active product and operator docs must teach generic surfaces instead:
 
 - the observed artifact-producing CLI flow: `extract` → `structure-export`,
   plus the explicit encrypted-state and patch-handoff boundary in the runbook;
-- real-corpus descriptors such as `ITOTORI_REAL_CORPUS_MANIFEST`;
+- local real-corpus registry descriptors at `corpora/manifest.v1.json`;
 - engine/runtime artifact surfaces such as bridge bundles, patch reports, replay
   logs, runtime evidence, and provider-run records;
 - placeholder corpus labels and local paths, never a new title-specific command,
@@ -144,35 +144,30 @@ environment variable, or local config file under `.tmp/`. Do not edit committed
 paths, public manifests, tests, or package metadata to point at private inputs.
 CI must pass with the private path absent.
 
-Suite workflows that need a real corpus should prefer a local descriptor over
-title-specific environment variables. The primary descriptor surface is:
-
-```sh
-ITOTORI_REAL_CORPUS_MANIFEST=<local manifest path>
-```
-
-The manifest is local-only and must not be committed. Its shape is:
+Suite workflows that need a real corpus should prefer the local registry over
+title-specific environment variables. Copy `corpora/manifest.v1.example.json`
+to the ignored `corpora/manifest.v1.json`; registry-backed tests read that
+location automatically. Its entries are identity-keyed, and every `path` is
+relative to the configured corpus root. Its shape is:
 
 ```json
 {
-  "schemaVersion": "itotori.real-corpus-manifest.v0",
-  "corpora": [
-    {
-      "corpusId": "example-alpha-1",
-      "projectId": "example-alpha-1",
-      "engine": "reallive",
-      "root": "<local-private-root>",
-      "sourceLocale": "ja-JP"
+  "$schema": "./manifest.v1.schema.json",
+  "version": 1,
+  "corpora": {
+    "reallive/1/encrypted": {
+      "path": "role-primary-encrypted"
     }
-  ]
+  }
 }
 ```
 
-The extract stage selects its source with `--game-root` (or a local descriptor)
-and produces the bridge bundle. Structure export consumes that bridge. The
-current public CLI does not provide an observed bridge-to-patch handoff; the
-selected `root` must be a read-only source tree for the run and is treated as
-private local state.
+Registry-backed tests resolve the selected identity below that corpus root. The
+extract stage instead selects its source with `--game-root` and produces the
+bridge bundle. Structure export consumes that bridge. The current public CLI
+does not provide an observed bridge-to-patch handoff; its selected game root
+must be a read-only source tree for the run and is treated as private local
+state.
 
 For a one-off single-corpus run, operators may set:
 
