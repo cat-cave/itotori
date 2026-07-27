@@ -270,6 +270,42 @@ postgresDescribe("physical model step durability", () => {
       await context.close();
     }
   });
+
+  it("gives a replacement model a fresh retry budget after the original route exhausts", async () => {
+    const context = await isolatedMigratedContext();
+    const cipher = new TestMemoCipher();
+    const prompt = "Return a verdict.";
+    try {
+      const stalled = dispatchHarness({
+        pool: context.pool,
+        cipher,
+        prompt,
+        responses: [new Error("timeout"), new Error("timeout"), new Error("timeout")],
+        retry: { random: () => 0, sleep: async () => undefined },
+      });
+      await expect(dispatch(physicalCallSpec(prompt), stalled.runtime)).resolves.toMatchObject({
+        status: "failure",
+        failureKind: "retries-exhausted",
+      });
+      expect(stalled.transportCalls()).toBe(3);
+
+      const replacement = dispatchHarness({
+        pool: context.pool,
+        cipher,
+        prompt,
+        responses: [structuredProviderResponse(reviewVerdictExample)],
+      });
+      await expect(
+        dispatch(
+          physicalCallSpec(prompt, { requestedModel: "google/gemma-4-26b-a4b-it" }),
+          replacement.runtime,
+        ),
+      ).resolves.toMatchObject({ status: "success", memoHit: false });
+      expect(replacement.transportCalls()).toBe(1);
+    } finally {
+      await context.close();
+    }
+  });
 });
 
 async function countRows(

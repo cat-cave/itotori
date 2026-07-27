@@ -51,7 +51,7 @@ import {
 } from "./physical-attempt-policy.js";
 import { normalizeOpenRouterParameters } from "./openrouter-parameter-compat.js";
 import {
-  preserveReasoningDetails,
+  reasoningDetailsContinuity,
   type ReasoningDetailsContinuity,
   type ReasoningDetailsContinuityEvidence,
 } from "./reasoning-details-continuity.js";
@@ -367,7 +367,6 @@ function failureKind(error: unknown, state: DispatchState): FailureKind {
   if (/validation|invalid input|expected|schema/iu.test(message)) return "schema-failure";
   return "transport";
 }
-
 /** The only production boundary that constructs an OpenRouter-backed model adapter. */
 export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): Promise<CallResult> {
   const spec = CallSpecSchema.parse(specInput);
@@ -409,7 +408,8 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
     const semaphore = new Semaphore(spec.limits.maxParallelTools);
     const configuredTools = runtimeTools(spec, runtime, state, semaphore);
     const converted = await modelMessages(spec, runtime, configuredTools.toolsByName);
-    reasoningContinuity = preserveReasoningDetails(
+    reasoningContinuity = reasoningDetailsContinuity(
+      spec.tools.length > 0,
       normalizeOpenRouterParameters(runtime.fetcher ?? globalThis.fetch),
     );
     const observer = createTransportObserver(
