@@ -74,5 +74,30 @@ fn longop_id_display_renders_as_hex() {
 #[test]
 fn rlop_key_display_renders_as_module_lattice() {
     let key = RlopKey::new(0x01, 0x52, 0x000a);
-    assert_eq!(format!("{key}"), "rlop[01/52/000a]");
+    assert_eq!(format!("{key}"), "rlop[01/52/000a/00]");
+}
+
+#[test]
+fn registry_routes_same_opcode_to_its_exact_overload_variant() {
+    struct HaltOp;
+    impl RLOperation for HaltOp {
+        fn dispatch(&self, _vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
+            DispatchOutcome::Halt
+        }
+    }
+
+    let mut registry = RlopRegistry::new();
+    let zero = RlopKey::new(1, 4, 1000);
+    let one = RlopKey::with_overload(1, 4, 1000, 1);
+    registry.register(zero, Arc::new(HaltOp));
+    registry.register(one, Arc::new(AdvanceOp));
+
+    assert_eq!(
+        registry
+            .get(one)
+            .expect("overload-one operation")
+            .dispatch(&mut Vm::new(1, 0), &[]),
+        DispatchOutcome::Advance,
+        "a bare-opcode lookup would select the overload-zero Halt operation"
+    );
 }

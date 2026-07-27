@@ -99,11 +99,22 @@ fn str_register_helper_populates_expected_count() {
 }
 
 #[test]
-fn str_opcode_byte_values_are_distinct() {
+fn str_opcode_dispatch_keys_are_distinct() {
     let mut seen = std::collections::HashSet::new();
     for op in StrOpcode::ALL {
-        assert!(seen.insert(op.opcode()), "duplicate opcode for {op:?}");
+        assert!(
+            seen.insert(op.rlop_key()),
+            "duplicate dispatch key for {op:?}"
+        );
     }
+}
+
+#[test]
+fn strout_and_intout_are_selected_by_the_overload_byte() {
+    assert_eq!(StrOpcode::Strout.opcode(), 0x0064);
+    assert_eq!(StrOpcode::Intout.opcode(), 0x0064);
+    assert_eq!(StrOpcode::Strout.overload(), 0);
+    assert_eq!(StrOpcode::Intout.overload(), 1);
 }
 
 // Acceptance: `str_ops_table` — input/output table for each op

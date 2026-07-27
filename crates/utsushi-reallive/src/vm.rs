@@ -740,12 +740,13 @@ impl Vm {
                 module_type,
                 module_id,
                 opcode,
+                overload,
                 raw_bytes,
                 goto_targets,
                 goto_case_exprs,
                 ..
             } => {
-                let key = RlopKey::new(module_type, module_id, opcode);
+                let key = RlopKey::with_overload(module_type, module_id, opcode, overload);
                 if let Some((op, provenance)) = registry.resolve(key) {
                     // Decode the element's own argument list and
                     // dispatch with the REAL values. Previously this
@@ -1352,6 +1353,9 @@ impl std::fmt::Display for ExpressionWrapError {
     }
 }
 
+#[cfg(test)]
+#[path = "vm_overload_tests.rs"]
+mod overload_tests;
 #[cfg(test)]
 #[path = "vm_tests.rs"]
 mod tests;
