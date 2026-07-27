@@ -1,4 +1,4 @@
-// ITOTORI-048 — typed job-name registry.
+// Typed job-name registry.
 //
 // Single source of truth mapping every persisted durable-job name to its
 // typed payload schema and exactly one intended handler. The queue layer

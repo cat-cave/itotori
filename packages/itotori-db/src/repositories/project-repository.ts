@@ -444,12 +444,11 @@ export type DashboardDecisionReadModel = {
 };
 
 /**
- * ITOTORI-027 — per-(qa agent, evaluated system) calibration recorded
- * with a benchmark report. `truePositives` / `falsePositives` /
- * `falseNegatives` are the QA FP/FN representation the cost & quality
- * dashboard surfaces; they are computed at record time from the report's
- * seeded-defect oracle (never re-estimated) and persisted in the
- * benchmark_report artifact metadata.
+ * Per-(qa agent, evaluated system) calibration recorded with a benchmark
+ * report. `truePositives` / `falsePositives` / `falseNegatives` are the QA
+ * FP/FN representation the cost & quality dashboard surfaces; they are
+ * computed at record time from the report's seeded-defect oracle (never
+ * re-estimated) and persisted in the benchmark_report artifact metadata.
  */
 export type BenchmarkQaAgentSummary = {
   qaAgentId: string;
@@ -466,9 +465,9 @@ export type BenchmarkQaAgentSummary = {
 };
 
 /**
- * ITOTORI-027 — a recorded benchmark report as read back for the cost &
- * quality dashboard's benchmark views + report drilldown. Sourced from
- * the persisted benchmark_report artifact; the cost side is tracked
+ * A recorded benchmark report as read back for the cost & quality
+ * dashboard's benchmark views + report drilldown. Sourced from the
+ * persisted benchmark_report artifact; the cost side is tracked
  * separately through the ledger (`ProjectCostReport`).
  */
 export type BenchmarkReportSummary = {
@@ -711,7 +710,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
               assetKind: asset.assetKind,
               sourceHash: asset.sourceHash,
               path: asset.path ?? null,
-              // ITOTORI-060: revive a previously-tombstoned asset on re-add.
+              // Revive a previously-tombstoned asset on re-add.
               removedAt: null,
             },
           });
@@ -762,15 +761,15 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
               patchRef: unit.patchRef,
               runtimeExpectation: unit.runtimeExpectation,
               updatedAt: sql`now()`,
-              // ITOTORI-060: revive a previously-tombstoned unit that this
-              // reimport re-adds, rather than leaving it archived or
-              // duplicating the row.
+              // Revive a previously-tombstoned unit that this reimport
+              // re-adds, rather than leaving it archived or duplicating
+              // the row.
               removedAt: null,
             },
           });
       }
 
-      // ITOTORI-060: units/assets omitted by this reimport are TOMBSTONED
+      // Units/assets omitted by this reimport are TOMBSTONED
       // (removed_at = now()), not hard-deleted. Deleting them would CASCADE
       // away locale-branch unit rows + runtime evidence refs + TM reuse events
       // and sever every historical back-pointer; tombstoning keeps that history
@@ -2902,9 +2901,9 @@ function diffAssets(incomingAssets: BridgeAssetV02[], existingAssets: ExistingAs
     }
   }
 
-  // ITOTORI-060: only currently-active (non-tombstoned) rows can be newly
-  // removed by this reimport. Already-tombstoned rows that stay omitted are not
-  // re-counted or re-touched.
+  // Only currently-active (non-tombstoned) rows can be newly removed by this
+  // reimport. Already-tombstoned rows that stay omitted are not re-counted
+  // or re-touched.
   const removedIds = existingAssets
     .filter((asset) => asset.removedAt === null && !incomingIds.has(asset.assetId))
     .map((asset) => asset.assetId);
@@ -2929,9 +2928,9 @@ function diffUnits(incomingUnits: LocalizationUnitV02[], existingUnits: Existing
     }
   }
 
-  // ITOTORI-060: only currently-active (non-tombstoned) rows can be newly
-  // removed by this reimport. Already-tombstoned rows that stay omitted are not
-  // re-counted or re-touched.
+  // Only currently-active (non-tombstoned) rows can be newly removed by this
+  // reimport. Already-tombstoned rows that stay omitted are not re-counted
+  // or re-touched.
   const removedIds = existingUnits
     .filter((unit) => unit.removedAt === null && !incomingIds.has(unit.bridgeUnitId))
     .map((unit) => unit.bridgeUnitId);
@@ -2940,8 +2939,8 @@ function diffUnits(incomingUnits: LocalizationUnitV02[], existingUnits: Existing
 
 function assetMatchesExisting(asset: BridgeAssetV02, existingAsset: ExistingAsset): boolean {
   return (
-    // ITOTORI-060: a tombstoned row being re-added is a state change (revive),
-    // never "unchanged".
+    // A tombstoned row being re-added is a state change (revive), never
+    // "unchanged".
     existingAsset.removedAt === null &&
     existingAsset.sourceRevisionId === asset.sourceRevision.revisionId &&
     existingAsset.assetKey === asset.assetKey &&
@@ -2953,8 +2952,8 @@ function assetMatchesExisting(asset: BridgeAssetV02, existingAsset: ExistingAsse
 
 function unitMatchesExisting(unit: LocalizationUnitV02, existingUnit: ExistingSourceUnit): boolean {
   return (
-    // ITOTORI-060: a tombstoned row being re-added is a state change (revive),
-    // never "unchanged".
+    // A tombstoned row being re-added is a state change (revive), never
+    // "unchanged".
     existingUnit.removedAt === null &&
     existingUnit.sourceAssetId === unit.sourceAssetRef.assetId &&
     existingUnit.sourceRevisionId === unit.sourceRevision.revisionId &&

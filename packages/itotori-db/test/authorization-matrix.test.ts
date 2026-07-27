@@ -375,7 +375,7 @@ const repositoryPermissionGateMatrix = [
   catalogGate(
     "catalogContextPanelForWork",
     "catalogRead",
-    "catalog-context-panel read model coverage (itotori-119 panel route)",
+    "catalog-context-panel read model coverage (panel route)",
     (repo) =>
       repo.catalogContextPanelForWork(deniedActor, {
         workId: "work-id",
@@ -1290,7 +1290,7 @@ describe("repository permission gate matrix", () => {
           "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriCatalogRepository.catalogContextPanelForWork",
           "requiredPermission": "catalog.read",
-          "successFixture": "catalog-context-panel read model coverage (itotori-119 panel route)",
+          "successFixture": "catalog-context-panel read model coverage (panel route)",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

@@ -475,7 +475,7 @@ describe("ItotoriStyleGuideService", () => {
     }
   });
 
-  // ITOTORI-130: pre-provenance draft rows (non-null target text, NULL
+  // Pre-provenance draft rows (non-null target text, NULL
   // style_guide_version_id, written before migration 0018) must not be silently
   // missed by approval invalidation. Migration 0057 attributes them to the
   // approved version in force at migration time so the next approval flags them.
@@ -562,8 +562,8 @@ describe("ItotoriStyleGuideService", () => {
     }
   });
 
-  // ITOTORI-130: residual unknown-provenance drafts (target text, NULL
-  // provenance the backfill could not attribute) must still be flagged on any
+  // Residual unknown-provenance drafts (target text, NULL provenance the
+  // backfill could not attribute) must still be flagged on any
   // approval-with-prior -- never silently skipped.
   it("flags unknown-provenance (NULL) drafts on approval instead of silently missing them", async () => {
     const context = await isolatedMigratedContext();
@@ -631,15 +631,15 @@ describe("ItotoriStyleGuideService", () => {
     }
   });
 
-  // ITOTORI-131: the NORMAL draft write path (ItotoriProjectRepository.saveDrafts)
-  // must persist style_guide_version_id = the in-force approved style-guide
-  // version, so approval invalidation can target those drafts WITHOUT relying on
-  // manually-seeded provenance (sibling of ITOTORI-130, which handled the
-  // pre-provenance backfill for rows written before the provenance column
-  // existed). This test writes drafts through saveDrafts -- not a manual UPDATE,
-  // not importSourceBundle -- and asserts the persisted provenance equals the
-  // approved version in force at write time. It fails if saveDrafts stops
-  // attaching the approved style-guide provenance (the persisted value goes NULL).
+  // The NORMAL draft write path (ItotoriProjectRepository.saveDrafts) must
+  // persist style_guide_version_id = the in-force approved style-guide version,
+  // so approval invalidation can target those drafts WITHOUT relying on
+  // manually-seeded provenance (sibling of the pre-provenance backfill path for
+  // rows written before the provenance column existed). This test writes drafts
+  // through saveDrafts -- not a manual UPDATE, not importSourceBundle -- and
+  // asserts the persisted provenance equals the approved version in force at
+  // write time. It fails if saveDrafts stops attaching the approved style-guide
+  // provenance (the persisted value goes NULL).
   it("saveDrafts persists style_guide_version_id equal to the in-force approved style-guide version", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -662,7 +662,7 @@ describe("ItotoriStyleGuideService", () => {
       });
 
       // Normal repository write path -- NOT a manual UPDATE and NOT
-      // importSourceBundle (which leaves provenance NULL, the ITOTORI-130 case).
+      // importSourceBundle (which leaves provenance NULL, the pre-provenance case).
       await projectRepository.saveDrafts(localActor, projectFixture());
 
       const rows = await context.db.execute(sql`
@@ -684,15 +684,15 @@ describe("ItotoriStyleGuideService", () => {
     }
   });
 
-  // ITOTORI-131: approval invalidation must be able to target drafts whose
-  // provenance came from a NORMAL saveDrafts write -- not manually-seeded rows.
-  // Positive: a draft stamped by saveDrafts with the in-force version is flagged
-  // when that version becomes the approval's prior. Mutation-check (the negative
-  // half): a normally-written draft whose provenance PREDATES the approval prior
-  // must NOT be flagged. If saveDrafts stopped attaching provenance, the draft
-  // would carry NULL and the unknown-provenance over-flag policy (ITOTORI-130)
-  // would flag it on every approval-with-prior -- so the negative assertion (and
-  // the provenance sanity assertion) fail exactly when the stamping is dropped.
+  // Approval invalidation must be able to target drafts whose provenance came
+  // from a NORMAL saveDrafts write -- not manually-seeded rows. Positive: a
+  // draft stamped by saveDrafts with the in-force version is flagged when that
+  // version becomes the approval's prior. Mutation-check (the negative half): a
+  // normally-written draft whose provenance PREDATES the approval prior must NOT
+  // be flagged. If saveDrafts stopped attaching provenance, the draft would
+  // carry NULL and the unknown-provenance over-flag policy would flag it on
+  // every approval-with-prior -- so the negative assertion (and the provenance
+  // sanity assertion) fail exactly when the stamping is dropped.
   it("targets saveDrafts-written drafts on the matching approval and excludes them once their normal-write provenance predates the approval prior", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -1034,10 +1034,10 @@ describe("ItotoriStyleGuideService", () => {
     }
   });
 
-  // ITOTORI-122: migration-level consistency constraints for the version
-  // reference graph (latest / approved / previous), scoped by project +
-  // locale-branch. Dangling and cross-scope pointers are rejected by the DB.
-  describe("version reference integrity constraints (ITOTORI-122)", () => {
+  // Migration-level consistency constraints for the version reference graph
+  // (latest / approved / previous), scoped by project + locale-branch.
+  // Dangling and cross-scope pointers are rejected by the DB.
+  describe("version reference integrity constraints", () => {
     // Postgres SQLSTATE for foreign_key_violation. drizzle wraps the driver
     // error (top-level message is "Failed query: ..."), so assert on the pg
     // error code carried on the cause chain rather than the message text.

@@ -750,8 +750,8 @@ describe("ItotoriProjectRepository", () => {
   });
 
   it("tombstones units/assets omitted by a reimport and retains their history, then revives on re-add", async () => {
-    // ITOTORI-060: a bridge reimport that OMITS a previously-present source unit
-    // (and its asset) must NOT hard-delete the rows — that would CASCADE away
+    // A bridge reimport that OMITS a previously-present source unit (and its
+    // asset) must NOT hard-delete the rows — that would CASCADE away
     // locale-branch unit rows + runtime evidence refs + historical facts. The
     // rows are tombstoned (removed_at set) instead; dependents are retained;
     // re-adding the unit/asset revives it (removed_at back to NULL).
@@ -1248,9 +1248,9 @@ describe("ItotoriProjectRepository", () => {
   });
 
   it("rejects asset ids reused by another project with a semantic ownership diagnostic", async () => {
-    // ITOTORI-061: an asset id that already belongs to a different project's
-    // source bundle is rejected with a semantic ownership diagnostic — not a
-    // silent accept and not a generic DB error. The asset guard fires inside
+    // An asset id that already belongs to a different project's source bundle
+    // is rejected with a semantic ownership diagnostic — not a silent accept
+    // and not a generic DB error. The asset guard fires inside
     // assertImportOwnership BEFORE any project/bundle/unit rows are written, so
     // the second project leaves no partial mutation behind. The second bridge
     // uses a fresh bridge id (so the bundle/bridge ownership guard does not
@@ -1301,12 +1301,12 @@ describe("ItotoriProjectRepository", () => {
   });
 
   it("rejects source revision ids reused by another project with a semantic ownership diagnostic", async () => {
-    // ITOTORI-061: a source-revision id that already belongs to another project
-    // is rejected with a semantic ownership diagnostic. assertImportOwnership
-    // checks revisions BEFORE assets/units, so reusing the v0.2 fixture's
-    // revisions under a fresh bridge id (no bundle/bridge conflict) isolates the
-    // revision guard as the one that fires. The sourceBundleRevision value is
-    // rebased onto the second bundle's hash so the bundle passes schema
+    // A source-revision id that already belongs to another project is rejected
+    // with a semantic ownership diagnostic. assertImportOwnership checks
+    // revisions BEFORE assets/units, so reusing the v0.2 fixture's revisions
+    // under a fresh bridge id (no bundle/bridge conflict) isolates the revision
+    // guard as the one that fires. The sourceBundleRevision value is rebased
+    // onto the second bundle's hash so the bundle passes schema
     // validation, but its revision id is still reused from the first project.
     const context = await migratedContext();
     try {
@@ -1365,11 +1365,11 @@ describe("ItotoriProjectRepository", () => {
   });
 
   it("rejects bridge unit ids reused by another project with a semantic ownership diagnostic", async () => {
-    // ITOTORI-061: a bridge-unit id that already belongs to another project's
-    // source bundle is rejected with a semantic ownership diagnostic. The
-    // second bridge uses a fresh bridge id, fresh asset id (via patchRef), and
-    // bridge-id-prefixed revisions, so only the bridgeUnitId is reused —
-    // isolating the bridge-unit guard (the last ownership check).
+    // A bridge-unit id that already belongs to another project's source bundle
+    // is rejected with a semantic ownership diagnostic. The second bridge uses
+    // a fresh bridge id, fresh asset id (via patchRef), and bridge-id-prefixed
+    // revisions, so only the bridgeUnitId is reused — isolating the bridge-unit
+    // guard (the last ownership check).
     const context = await migratedContext();
     try {
       const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
@@ -1425,9 +1425,9 @@ describe("ItotoriProjectRepository", () => {
   });
 
   it("rejects a reimport that reuses a source revision id with different content", async () => {
-    // ITOTORI-061: a same-project reimport may NOT reuse a source-revision id
-    // with different content. The revision already belongs to this project (so
-    // the cross-project ownership guard does not fire), but diffSourceRevisions
+    // A same-project reimport may NOT reuse a source-revision id with different
+    // content. The revision already belongs to this project (so the
+    // cross-project ownership guard does not fire), but diffSourceRevisions
     // rejects the content drift with a semantic diagnostic before any mutation.
     // The sourceBundleHash + sourceBundleRevision.value move together (schema
     // validation requires the content-hash revision to match the bundle hash).
@@ -1473,13 +1473,12 @@ describe("ItotoriProjectRepository", () => {
   });
 
   it("preserves import-status invariants on an idempotent same-revision reimport", async () => {
-    // ITOTORI-061: reimporting the EXACT same (sourceBundleId,
-    // sourceBundleRevisionId) upserts the existing bridge_imports row (unique
-    // index) — it does NOT create a duplicate. The bridgeImportId is
-    // deterministic per (project, bundle, revision), the diff counts collapse to
-    // all-unchanged/existing, and the diff-count partitions sum to the totals
-    // across both imports. The project status stays "imported" (no invalid
-    // transition).
+    // Reimporting the EXACT same (sourceBundleId, sourceBundleRevisionId)
+    // upserts the existing bridge_imports row (unique index) — it does NOT
+    // create a duplicate. The bridgeImportId is deterministic per (project,
+    // bundle, revision), the diff counts collapse to all-unchanged/existing,
+    // and the diff-count partitions sum to the totals across both imports. The
+    // project status stays "imported" (no invalid transition).
     const context = await migratedContext();
     try {
       const repo = new ItotoriProjectRepository(context.db, testProjectEngineFamilyRegistry);
@@ -1537,8 +1536,8 @@ describe("ItotoriProjectRepository", () => {
   });
 
   it("preserves import-status diff invariants across a new-revision reimport", async () => {
-    // ITOTORI-061: a reimport that advances the sourceBundleRevision creates a
-    // NEW bridge_imports row (one per revision) with a distinct deterministic
+    // A reimport that advances the sourceBundleRevision creates a NEW
+    // bridge_imports row (one per revision) with a distinct deterministic
     // bridgeImportId, while the diff counts transition correctly (one added
     // revision, the rest existing; units/assets all unchanged). The diff-count
     // partitions sum to the totals across the transition — no invalid status.

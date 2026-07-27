@@ -37,9 +37,9 @@ describe("ItotoriModelLedgerRepository", () => {
       await ledger.recordProviderRun(localActor, runInput("run-billed", "billed", 1200));
       await ledger.recordProviderRun(
         localActor,
-        // ITOTORI-225 — the legacy `provider_estimate` variant is gone;
-        // the real upstream charge captured by the recorded fallback run
-        // tags as `billed` with the actual amount.
+        // The legacy `provider_estimate` variant is gone; the real upstream
+        // charge captured by the recorded fallback run tags as `billed` with
+        // the actual amount.
         runInput("run-billed-fallback", "billed", 2500, {
           provider: {
             providerFamily: "recorded",
@@ -71,9 +71,8 @@ describe("ItotoriModelLedgerRepository", () => {
               order: ["fixture-upstream"],
             },
           },
-          // ITOTORI-230 — fixture captured-on-wire posture for the
-          // recorded-fallback ledger row. Mirrors what a real LIVE OR
-          // call would have produced.
+          // Fixture captured-on-wire posture for the recorded-fallback ledger
+          // row. Mirrors what a real LIVE OR call would have produced.
           routingPosture: {
             only: ["fixture-upstream"],
             allow_fallbacks: false,
@@ -163,10 +162,9 @@ describe("ItotoriModelLedgerRepository", () => {
   });
 
   it("records failed provider runs as zero-cost ledger entries", async () => {
-    // ITOTORI-225 — failed runs incur no upstream charge, so they record
-    // as `zero` with `amountMicrosUsd: 0`. The legacy `unknown` variant
-    // is gone; the migration's CHECK constraint refuses it at the storage
-    // layer.
+    // Failed runs incur no upstream charge, so they record as `zero` with
+    // `amountMicrosUsd: 0`. The legacy `unknown` variant is gone; the
+    // migration's CHECK constraint refuses it at the storage layer.
     const context = await isolatedMigratedContext();
     try {
       const projectRepository = new ItotoriProjectRepository(
@@ -263,10 +261,10 @@ describe("ItotoriModelLedgerRepository", () => {
   });
 
   it("rejects ledger writes attempting to revive a legacy cost-kind value", async () => {
-    // ITOTORI-225 — every layer (typed input, validation, SQL CHECK) must
-    // refuse a write that tries to insert 'unknown'/'provider_estimate'/
-    // 'local_estimate'. We bypass the type system on purpose so the
-    // runtime guard's behavior is observable.
+    // Every layer (typed input, validation, SQL CHECK) must refuse a write
+    // that tries to insert 'unknown'/'provider_estimate'/'local_estimate'.
+    // We bypass the type system on purpose so the runtime guard's behavior
+    // is observable.
     const context = await isolatedMigratedContext();
     try {
       const projectRepository = new ItotoriProjectRepository(
@@ -375,10 +373,10 @@ describe("ItotoriModelLedgerRepository", () => {
 
       await ledger.recordProviderRun(
         localActor,
-        // The cost-kind narrowing (ITOTORI-225) does not affect token-count-
-        // source semantics; unknown token sources can still pair with a
-        // zero-cost ledger entry (e.g. a failed run whose token usage we
-        // couldn't read off the upstream response).
+        // The cost-kind narrowing does not affect token-count-source
+        // semantics; unknown token sources can still pair with a zero-cost
+        // ledger entry (e.g. a failed run whose token usage we couldn't read
+        // off the upstream response).
         runInput("run-unknown-token-components", "zero", 0, {
           tokenUsage: {
             tokenCountSource: "unknown",
@@ -431,9 +429,8 @@ describe("ItotoriModelLedgerRepository", () => {
             completedAt: undefined,
             latencyMs: undefined,
             tokenUsage: { tokenCountSource: "unknown" },
-            // ITOTORI-225 — skipped runs have no upstream charge; we
-            // record them as zero-cost rather than the deprecated
-            // 'unknown' variant.
+            // Skipped runs have no upstream charge; we record them as
+            // zero-cost rather than the deprecated 'unknown' variant.
             cost: { costKind: "zero", currency: "USD", amountMicrosUsd: 0 },
           }),
         ],
@@ -621,9 +618,9 @@ describe("ItotoriModelLedgerRepository", () => {
   });
 
   it("model-ledger-repository.test.ts ZDR-enforced count coverage — countZdrEnforcedByPair returns ZDR-enforced count per pair", async () => {
-    // ITOTORI-230 — acceptance criterion #3 schema check: insert two
-    // rows with `routing_posture->>'zdr' = 'true'` and one with
-    // `'false'`; assert the count by pair returns 2 enforced / 3 total.
+    // Schema check: insert two rows with `routing_posture->>'zdr' = 'true'`
+    // and one with `'false'`; assert the count by pair returns 2 enforced /
+    // 3 total.
     const context = await isolatedMigratedContext();
     try {
       const projectRepository = new ItotoriProjectRepository(
@@ -638,8 +635,8 @@ describe("ItotoriModelLedgerRepository", () => {
       await ledger.recordProviderRun(
         localActor,
         runInput("run-non-zdr", "billed", 50, {
-          // ITOTORI-230 — explicit non-ZDR posture (public input would
-          // typically carry this shape on the wire).
+          // Explicit non-ZDR posture (public input would typically carry
+          // this shape on the wire).
           routingPosture: {
             only: ["itotori-fixture"],
             allow_fallbacks: false,
@@ -703,8 +700,8 @@ describe("ItotoriModelLedgerRepository", () => {
     }
   });
 
-  // ITOTORI-053 — cost drilldown: project/system/time filters, deterministic
-  // pagination, zero-vs-unknown distinction, and adapter-metadata sanitization.
+  // Cost drilldown: project/system/time filters, deterministic pagination,
+  // zero-vs-unknown distinction, and adapter-metadata sanitization.
   async function seedDrilldownRuns(
     context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
   ): Promise<void> {
@@ -1369,13 +1366,13 @@ describe("ItotoriModelLedgerRepository", () => {
     }
   });
 
-  // ITOTORI-146 — a translation-memory reuse event whose `cost_impact` JSON
-  // was inserted OUTSIDE the repository API (raw SQL backfill / historical
-  // pre-fix row) carries the wrong scalar shape for one of the numeric
-  // fields. Pre-fix the cast (`(cost_impact->>'estimatedPromptTokensSaved')::int`)
-  // aborted the entire aggregation with `invalid input syntax for type
-  // integer: "abc"`, making the project cost report unavailable. Post-fix
-  // the aggregation defensively classifies the row in a CTE, sums only the
+  // A translation-memory reuse event whose `cost_impact` JSON was inserted
+  // OUTSIDE the repository API (raw SQL backfill / historical pre-fix row)
+  // carries the wrong scalar shape for one of the numeric fields. Pre-fix
+  // the cast (`(cost_impact->>'estimatedPromptTokensSaved')::int`) aborted
+  // the entire aggregation with `invalid input syntax for type integer:
+  // "abc"`, making the project cost report unavailable. Post-fix the
+  // aggregation defensively classifies the row in a CTE, sums only the
   // well-formed rows, and surfaces the malformed count + a diagnostic. The
   // rest of the report aggregates correctly.
   it("keeps the project cost report available when a tm reuse event has a malformed cost_impact JSON", async () => {
@@ -1515,10 +1512,10 @@ describe("ItotoriModelLedgerRepository", () => {
     }
   });
 
-  // ITOTORI-146 — the diagnostic stays empty when every reuse event has a
-  // well-formed `cost_impact` JSON (the normal repository-API write path),
-  // so callers can rely on `malformedCostImpactCount === 0` +
-  // `diagnostics === []` as the "everything fine" signal.
+  // The diagnostic stays empty when every reuse event has a well-formed
+  // `cost_impact` JSON (the normal repository-API write path), so callers
+  // can rely on `malformedCostImpactCount === 0` + `diagnostics === []` as
+  // the "everything fine" signal.
   it("does not surface a malformed-cost-impact diagnostic when every reuse event is well-formed", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -1622,11 +1619,11 @@ function runInput(
       amountMicrosUsd,
       pricingSnapshotId: "fixture-pricing-2026-06-17",
     },
-    // ITOTORI-230 — the captured OR routing posture for THIS run. The
-    // default fixture uses the canonical alpha posture
-    // (only=[deepseek-v3.2-exp@fireworks-style], zdr=true). Individual
-    // test cases override via the `overrides` spread when they need to
-    // exercise a different posture (e.g. a public-input call).
+    // Captured OR routing posture for THIS run. The default fixture uses
+    // the canonical alpha posture
+    // (only=[deepseek-v3.2-exp@fireworks-style], zdr=true). Individual test
+    // cases override via the `overrides` spread when they need to exercise
+    // a different posture (e.g. a public-input call).
     routingPosture: {
       only: ["itotori-fixture"],
       allow_fallbacks: false,

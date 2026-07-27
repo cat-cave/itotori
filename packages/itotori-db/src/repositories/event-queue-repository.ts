@@ -172,15 +172,15 @@ export type OutboxEventWithJobsResult = {
 };
 
 /**
- * ITOTORI-047 — the schema-version literal stamped on every
- * {@link QueueHealthReadModel} so dashboard/CLI consumers can pin the contract
- * (mirrors the durable operational queue-dashboard pattern).
+ * Schema-version literal stamped on every {@link QueueHealthReadModel} so
+ * dashboard/CLI consumers can pin the contract (mirrors the durable
+ * operational queue-dashboard pattern).
  */
 export const QUEUE_HEALTH_READ_MODEL_SCHEMA_VERSION = "itotori.queue_health.v0.1";
 
 /**
- * ITOTORI-047 — a single row of the per-status breakdown for the queue-health
- * read-model. `status` is a member of {@link OutboxStatus} (outbox section) or
+ * A single row of the per-status breakdown for the queue-health read-model.
+ * `status` is a member of {@link OutboxStatus} (outbox section) or
  * {@link JobStatus} (jobs section); kept as a plain string so the read-model
  * serializes without a tagged union.
  */
@@ -190,9 +190,9 @@ export type QueueStatusCount = {
 };
 
 /**
- * ITOTORI-047 — the dead-letter review slice of a queue-health section: the
- * TOTAL count of dead-lettered rows (unbounded) plus a bounded preview of the
- * most recent dead-lettered records so an operator can inspect what failed.
+ * Dead-letter review slice of a queue-health section: the TOTAL count of
+ * dead-lettered rows (unbounded) plus a bounded preview of the most recent
+ * dead-lettered records so an operator can inspect what failed.
  */
 export type QueueDeadLetterReview<TRecord> = {
   count: number;
@@ -200,10 +200,10 @@ export type QueueDeadLetterReview<TRecord> = {
 };
 
 /**
- * ITOTORI-047 — one half of the {@link QueueHealthReadModel}: either the
- * transactional outbox section or the durable job-queue section. Each carries
- * the headline lag metric (oldest un-processed age), the per-status breakdown,
- * the retry-load count, and the dead-letter review.
+ * One half of the {@link QueueHealthReadModel}: either the transactional
+ * outbox section or the durable job-queue section. Each carries the headline
+ * lag metric (oldest un-processed age), the per-status breakdown, the
+ * retry-load count, and the dead-letter review.
  */
 export type QueueHealthSection<TRecord> = {
   unprocessedCount: number;
@@ -215,12 +215,12 @@ export type QueueHealthSection<TRecord> = {
 };
 
 /**
- * ITOTORI-047 — the typed queue-health read-model an operator inspects to
- * answer "is the queue healthy?": outbox lag (oldest un-processed age), pending
- * job counts by status, retry counts, and dead-lettered work for both the
- * transactional outbox and the durable job queue. Surfaced verbatim by the CLI
- * `queue-health` command and the `queue.health` API route (typed responses, not
- * dumped strings).
+ * Typed queue-health read-model an operator inspects to answer "is the
+ * queue healthy?": outbox lag (oldest un-processed age), pending job counts
+ * by status, retry counts, and dead-lettered work for both the transactional
+ * outbox and the durable job queue. Surfaced verbatim by the CLI
+ * `queue-health` command and the `queue.health` API route (typed responses,
+ * not dumped strings).
  */
 export type QueueHealthReadModel = {
   schemaVersion: typeof QUEUE_HEALTH_READ_MODEL_SCHEMA_VERSION;
@@ -295,7 +295,7 @@ export type JobLeaseRevalidationDetails = {
  * belongs to it — the lease expired, was recovered, or was taken over by another
  * worker. The offending write is a no-op (0 rows matched) so job state is NOT
  * mutated; this error is the clear, structured diagnostic naming expected vs
- * actual owner plus the current status/expiry. See ITOTORI-046.
+ * actual owner plus the current status/expiry.
  */
 export class JobLeaseRevalidationError extends Error {
   readonly jobId: string;
@@ -374,7 +374,7 @@ export type OutboxLeaseRevalidationDetails = {
  * taken over by another publisher. The offending write is a no-op (0 rows
  * matched) so outbox state is NOT mutated; this error is the clear, structured
  * diagnostic naming expected vs actual owner plus the current status/expiry. The
- * outbox analog of {@link JobLeaseRevalidationError}. See ITOTORI-046.
+ * outbox analog of {@link JobLeaseRevalidationError}.
  */
 export class OutboxLeaseRevalidationError extends Error {
   readonly outboxEventId: string;
@@ -468,9 +468,9 @@ export interface ItotoriEventQueueRepositoryPort {
   getJob(actor: AuthorizationActor, jobId: string): Promise<JobQueueRecord | null>;
   getJobEvents(actor: AuthorizationActor, jobId: string): Promise<JobEventRecord[]>;
   /**
-   * ITOTORI-047 — load the typed queue-health read-model (outbox lag, pending
-   * job counts by status, retry counts, dead-lettered work) for operator
-   * inspection. Read-only; gated on `queue.read`.
+   * Load the typed queue-health read-model (outbox lag, pending job counts
+   * by status, retry counts, dead-lettered work) for operator inspection.
+   * Read-only; gated on `queue.read`.
    */
   loadQueueHealth(
     actor: AuthorizationActor,
@@ -899,9 +899,9 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
   }
 
   /**
-   * ITOTORI-047 — load the typed queue-health read-model. Computes, in three
-   * cheap read-only queries per table (aggregate, per-status breakdown,
-   * bounded dead-letter preview), the operator-facing metrics: outbox/job lag
+   * Load the typed queue-health read-model. Computes, in three cheap
+   * read-only queries per table (aggregate, per-status breakdown, bounded
+   * dead-letter preview), the operator-facing metrics: outbox/job lag
    * (oldest un-processed age), pending counts by status, retry load, and the
    * dead-letter review. The lag is derived deterministically from
    * `generatedAt` minus the oldest un-processed timestamp (no moving DB
@@ -1626,12 +1626,11 @@ async function singleRow(
 }
 
 /**
- * ITOTORI-047 — deterministic lag in seconds between the read-model's
- * `generatedAt` and the oldest un-processed timestamp. Returns null when there
- * is nothing pending (no oldest timestamp). Computed from a fixed
- * `generatedAt` rather than a moving DB `now()` so the metric is stable and
- * testable; clamped at 0 so a tiny app/DB clock skew can never report negative
- * lag.
+ * Deterministic lag in seconds between the read-model's `generatedAt` and
+ * the oldest un-processed timestamp. Returns null when there is nothing
+ * pending (no oldest timestamp). Computed from a fixed `generatedAt` rather
+ * than a moving DB `now()` so the metric is stable and testable; clamped at
+ * 0 so a tiny app/DB clock skew can never report negative lag.
  */
 function lagSeconds(generatedAt: Date, oldestUnprocessedAt: Date | null): number | null {
   if (oldestUnprocessedAt === null) {
@@ -1642,10 +1641,10 @@ function lagSeconds(generatedAt: Date, oldestUnprocessedAt: Date | null): number
 }
 
 /**
- * ITOTORI-047 — fold the per-status group-by rows into a STABLE breakdown that
- * always lists every known status (missing statuses default to 0), so a
- * consumer never has to defensively branch on an absent status. Statuses appear
- * in the enum's declaration order for deterministic serialization.
+ * Fold the per-status group-by rows into a STABLE breakdown that always
+ * lists every known status (missing statuses default to 0), so a consumer
+ * never has to defensively branch on an absent status. Statuses appear in
+ * the enum's declaration order for deterministic serialization.
  */
 function mergeStatusCounts(
   knownStatuses: readonly string[],

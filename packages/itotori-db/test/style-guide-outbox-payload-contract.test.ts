@@ -10,9 +10,9 @@ import { eventOutbox, outboxEventTypeValues, outboxStatusValues } from "../src/s
 import { isolatedMigratedContext } from "./db-test-context.js";
 
 /**
- * ITOTORI-123: the StyleGuideVersionChanged outbox payload contract is enforced
- * at the DB persistence boundary (a CHECK constraint in migration 0054), so a
- * malformed payload cannot persist even via a RAW insert that bypasses the
+ * The StyleGuideVersionChanged outbox payload contract is enforced at the DB
+ * persistence boundary (a CHECK constraint in migration 0054), so a malformed
+ * payload cannot persist even via a RAW insert that bypasses the
  * TypeScript-level assertStyleGuideVersionChangedPayload guard. This is the
  * durable boundary: these tests insert directly into itotori_event_outbox with
  * `db.execute` — no repository helper in the path — to prove the DB itself
@@ -106,7 +106,7 @@ async function seedProject(db: ItotoriDatabase): Promise<void> {
   });
 }
 
-describe("StyleGuideVersionChanged outbox payload DB contract (ITOTORI-123)", () => {
+describe("StyleGuideVersionChanged outbox payload DB contract", () => {
   it("persists a well-formed StyleGuideVersionChanged payload via a raw insert", async () => {
     const context = await isolatedMigratedContext();
     try {

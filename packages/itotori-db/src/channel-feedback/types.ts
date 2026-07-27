@@ -1,4 +1,4 @@
-// ITOTORI-037 — Community-channel feedback importer interface.
+// Community-channel feedback importer interface.
 //
 // The manual-feedback model (`ManualFeedbackImportInput` +
 // `ItotoriFeedbackRepository.importManualFeedback`) is proven: it persists a

@@ -1,7 +1,7 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/audit-no-node-ids.mjs --update\". Each entry is a grandfathered\nnode-id token (the matched reference text, lower-cased); the multiset per file\nmay only shrink. When empty/deleted the guard is absolute (zero node ids).",
-  "generatedAt": "2026-07-23T11:35:14.039Z",
-  "total": 419,
+  "generatedAt": "2026-07-27T01:11:56.018Z",
+  "total": 309,
   "files": {
     "crates/kaifuu-cli/tests/alpha_encrypted_readiness.rs": [
       "kaifuu-104",
@@ -419,102 +419,6 @@
       "utsushi-036",
       "utsushi-036"
     ],
-    "packages/itotori-db/src/channel-feedback/github-issues-importer.ts": [
-      "itotori-037"
-    ],
-    "packages/itotori-db/src/channel-feedback/index.ts": [
-      "itotori-037"
-    ],
-    "packages/itotori-db/src/channel-feedback/redaction.ts": [
-      "itotori-037"
-    ],
-    "packages/itotori-db/src/channel-feedback/types.ts": [
-      "itotori-037"
-    ],
-    "packages/itotori-db/src/job-registry.ts": [
-      "itotori-048"
-    ],
-    "packages/itotori-db/src/repositories/event-queue-repository.ts": [
-      "itotori-046",
-      "itotori-046",
-      "itotori-047",
-      "itotori-047",
-      "itotori-047",
-      "itotori-047",
-      "itotori-047",
-      "itotori-047",
-      "itotori-047",
-      "itotori-047",
-      "itotori-047"
-    ],
-    "packages/itotori-db/src/repositories/model-ledger-repository.ts": [
-      "itotori-053",
-      "itotori-053",
-      "itotori-053",
-      "itotori-053",
-      "itotori-053",
-      "itotori-053",
-      "itotori-053",
-      "itotori-146",
-      "itotori-146",
-      "itotori-146",
-      "itotori-146",
-      "itotori-146",
-      "itotori-225",
-      "itotori-225",
-      "itotori-225",
-      "itotori-225",
-      "itotori-225",
-      "itotori-230",
-      "itotori-230",
-      "itotori-230",
-      "itotori-230",
-      "itotori-230",
-      "itotori-230"
-    ],
-    "packages/itotori-db/src/repositories/project-repository.ts": [
-      "itotori-027",
-      "itotori-027",
-      "itotori-060",
-      "itotori-060",
-      "itotori-060",
-      "itotori-060",
-      "itotori-060",
-      "itotori-060",
-      "itotori-060"
-    ],
-    "packages/itotori-db/src/repositories/style-guide-repository.ts": [
-      "itotori-130"
-    ],
-    "packages/itotori-db/src/repositories/translation-batch-repository.ts": [
-      "itotori-220",
-      "itotori-220"
-    ],
-    "packages/itotori-db/src/schema.ts": [
-      "itotori-035",
-      "itotori-045",
-      "itotori-060",
-      "itotori-060",
-      "itotori-074",
-      "itotori-122",
-      "itotori-122",
-      "itotori-122",
-      "itotori-122",
-      "itotori-122",
-      "itotori-134",
-      "itotori-140",
-      "itotori-145",
-      "itotori-145",
-      "itotori-220",
-      "itotori-225",
-      "itotori-227",
-      "itotori-230",
-      "itotori-230"
-    ],
-    "packages/itotori-db/src/services/event-queue-service.ts": [
-      "itotori-046",
-      "itotori-046"
-    ],
     "packages/itotori-db/test/audit-finding-migration-drift.test.ts": [
       "utsushi-200"
     ],
@@ -538,20 +442,9 @@
       "utsushi-200"
     ],
     "packages/itotori-db/test/authorization-matrix.test.ts": [
-      "itotori-119",
-      "itotori-119",
       "utsushi-200"
     ],
-    "packages/itotori-db/test/branch-policy-glossary-references-migration-drift.test.ts": [
-      "itotori-140"
-    ],
-    "packages/itotori-db/test/job-registry.test.ts": [
-      "itotori-048"
-    ],
     "packages/itotori-db/test/model-ledger-repository.test.ts": [
-      "itotori-053",
-      "itotori-146",
-      "itotori-146",
       "itotori-225",
       "itotori-225",
       "itotori-225",
@@ -560,52 +453,7 @@
       "itotori-225",
       "itotori-225",
       "itotori-225",
-      "itotori-225",
-      "itotori-225",
-      "itotori-225",
-      "itotori-225",
-      "itotori-225",
-      "itotori-225",
-      "itotori-230",
-      "itotori-230",
-      "itotori-230",
-      "itotori-230"
-    ],
-    "packages/itotori-db/test/repository.test.ts": [
-      "itotori-060",
-      "itotori-061",
-      "itotori-061",
-      "itotori-061",
-      "itotori-061",
-      "itotori-061",
-      "itotori-061"
-    ],
-    "packages/itotori-db/test/style-guide-approval-boundary.test.ts": [
-      "itotori-129"
-    ],
-    "packages/itotori-db/test/style-guide-outbox-payload-contract.test.ts": [
-      "itotori-123",
-      "itotori-123"
-    ],
-    "packages/itotori-db/test/style-guide-repository.test.ts": [
-      "itotori-122",
-      "itotori-122",
-      "itotori-130",
-      "itotori-130",
-      "itotori-130",
-      "itotori-130",
-      "itotori-130",
-      "itotori-131",
-      "itotori-131"
-    ],
-    "packages/itotori-db/test/style-guide-version-reference-integrity-migration-drift.test.ts": [
-      "itotori-122"
-    ],
-    "packages/itotori-db/test/translation-batch-repository.test.ts": [
-      "itotori-220"
-    ],
-    "packages/itotori-db/test/translation-memory-migration-drift.test.ts": [
-      "itotori-145"
+      "itotori-225"
     ],
     "packages/localization-bridge-schema/src/draft-artifact-bundle.ts": [
       "itotori-019"

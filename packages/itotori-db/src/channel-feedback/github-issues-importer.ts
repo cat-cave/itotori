@@ -1,4 +1,4 @@
-// ITOTORI-037 — Reference community-channel importer: GitHub issues.
+// Reference community-channel importer: GitHub issues.
 //
 // GitHub issues are the cleanest structured community source: each issue has a
 // stable number, a repository, an author login, a body, labels, and a canonical

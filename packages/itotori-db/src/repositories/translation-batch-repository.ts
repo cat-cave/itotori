@@ -38,7 +38,7 @@ export type TranslationBatchRecord = {
   routeId: string | null;
   modelProviderFamily: string;
   modelId: string;
-  /** ITOTORI-220 — pinned provider half of the (modelId, providerId) pair. */
+  /** Pinned provider half of the (modelId, providerId) pair. */
   providerId: string;
   modelContextWindowTokens: number;
   modelMaxOutputTokens: number | null;
@@ -69,7 +69,7 @@ export type SaveTranslationBatchInput = {
   routeId: string | null;
   modelProviderFamily: string;
   modelId: string;
-  /** ITOTORI-220 — pinned provider half of the (modelId, providerId) pair. */
+  /** Pinned provider half of the (modelId, providerId) pair. */
   providerId: string;
   modelContextWindowTokens: number;
   modelMaxOutputTokens: number | null;

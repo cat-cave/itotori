@@ -1,5 +1,5 @@
 import { testProjectEngineFamilyRegistry } from "./project-engine-family-registry.js";
-// ITOTORI-145 — translation-memory CHECK-constraint schema-drift guard.
+// Translation-memory CHECK-constraint schema-drift guard.
 //
 // Migration 0023 declared the translation-memory tables
 // (itotori_translation_memory_segments + itotori_translation_memory_reuse_events)

@@ -1,4 +1,4 @@
-// ITOTORI-037 — PII redaction for community-channel feedback imports.
+// PII redaction for community-channel feedback imports.
 //
 // External community channels (GitHub issues, forms, chat exports) carry
 // free-text authored by the public. That text can contain privacy-sensitive
