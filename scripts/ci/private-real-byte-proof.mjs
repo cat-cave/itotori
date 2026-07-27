@@ -57,7 +57,7 @@ export const REQUIRED_CORPORA = [
     id: "reallive-alpha-corpus",
     role: "content-addressed RealLive alpha corpus — extract/structure/patch/replay ground truth",
     rootEnv: "ITOTORI_REAL_GAME_ROOT",
-    contentAddressEnv: "ITOTORI_SWEETIE_CONTENT_ADDRESS",
+    contentAddressEnv: "ITOTORI_PRIVATE_ENGINE_CORPUS_CONTENT_ADDRESS",
   },
 ];
 

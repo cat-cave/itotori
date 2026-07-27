@@ -161,12 +161,12 @@ tier-0 merge-queue check), so the assertion gates every PR. Regression suite:
 `.github/workflows/real-bytes-private-proof.yml`, triggered on demand / by the
 `real-byte-proof` label — NEVER `push`/`merge_group`, so it is not a
 merge-required check) exercises extract -> structure -> patch -> replay on the
-ACTUAL content-addressed Sweetie bytes under the exact approved ZDR profile.
+staged, content-addressed private engine bytes under the exact approved ZDR profile.
 
 Unlike the periodic oracle (which may skip a legitimately-absent family), this
 lane may NOT green-skip: its preflight gate
 (`scripts/ci/private-real-byte-proof.mjs --preflight`) FAILS (red) on any
-missing REQUIRED Sweetie bytes, an unpinned/mismatched corpus content-address,
+missing REQUIRED private corpus bytes, an unpinned/mismatched corpus content-address,
 or ZDR profile drift. This is the key inversion — a missing required corpus reds
 the lane rather than silently skipping. It emits a CONTENT-FREE evidence
 manifest (`.tmp/private-proof/evidence.json` — counts/hashes/ids only, never

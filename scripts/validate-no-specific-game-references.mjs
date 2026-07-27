@@ -53,7 +53,6 @@ export const historicalResearchSurfaces = [
   { id: "roadmap", kind: "prefix", value: "roadmap/", reason: "roadmap/planning records" },
   { id: "plan", kind: "prefix", value: ".plan/", reason: "worker planning records" },
   { id: "docs", kind: "prefix", value: "docs/", reason: "research & audit documentation" },
-
   // Real-bytes test corpora and harnesses.
   {
     id: "tests-dir",
@@ -66,7 +65,6 @@ export const historicalResearchSurfaces = [
   { id: "mjs-test", kind: "suffix", value: ".test.mjs", reason: "colocated ESM tests" },
   { id: "js-test", kind: "suffix", value: ".test.js", reason: "colocated JS tests" },
   { id: "rs-test", kind: "suffix", value: "_test.rs", reason: "colocated Rust tests" },
-
   // Fixtures (synthetic + real-corpus catalogues).
   { id: "fixtures-dir", kind: "segment", value: "fixtures", reason: "fixture/corpus catalogues" },
   { id: "ts-fixtures", kind: "suffix", value: "fixtures.ts", reason: "TypeScript fixture modules" },
@@ -77,7 +75,6 @@ export const historicalResearchSurfaces = [
     value: "crates/kaifuu-engine-fixture/",
     reason: "engine-fixture crate",
   },
-
   // Alpha-target / pilot config data records. Presets encode the alpha target
   // (Sweetie HD) preserved AS DATA — a named target record + its pinned
   // pair-policy — not generalized runtime defaults.
@@ -87,10 +84,8 @@ export const historicalResearchSurfaces = [
     value: "presets/",
     reason: "alpha-target/pilot config data records",
   },
-
   // Diagnostic / example binaries.
   { id: "examples-dir", kind: "segment", value: "examples", reason: "example/diagnostic binaries" },
-
   // RealLive decode/render research substrate. These crates own the real bytes
   // and encode real-corpus observations (compiler versions, opcode aliases,
   // scene layouts) as their reason for existing; they reference the real
@@ -131,7 +126,6 @@ export const historicalResearchSurfaces = [
     value: "crates/kaifuu-vault-source/",
     reason: "vault-source substrate keyed by real canonical ids",
   },
-
   // Real-bytes CI / operator harness recipes that name the primary corpus by
   // design (the alpha target preserved as data), consistent with each other.
   {
@@ -146,7 +140,6 @@ export const historicalResearchSurfaces = [
     value: "justfile",
     reason: "operator real-bytes/localize harness recipes name the primary corpus by design",
   },
-
   // Archived one-off DAG migration / node / evidence scripts. These embed
   // historical node specifications, corpus catalogues, and per-node audit
   // trails as string payloads (research/planning records), not generalized
@@ -177,6 +170,13 @@ export const historicalResearchSurfaces = [
     kind: "exact",
     value: "scripts/validate-no-specific-game-references.test.mjs",
     reason: "scanner test self-reference",
+  },
+  // Must name banned terms; irreducible guard surface, not a product/operator reference.
+  {
+    id: "game-name-guard",
+    kind: "exact",
+    value: "scripts/audit-no-game-names.mjs",
+    reason: "absolute game-name guard pattern table",
   },
 ];
 
