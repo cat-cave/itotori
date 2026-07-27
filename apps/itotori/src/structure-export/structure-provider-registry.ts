@@ -25,11 +25,13 @@ export type RealliveStructureSource = {
   log?: (message: string) => void;
 };
 
-/** Typed forward declaration for the Softpal structure provider. */
 export type SoftpalStructureSource = {
   engine: "softpal";
   gameRoot: string;
   outputPath: string;
+  env?: NodeJS.ProcessEnv;
+  runProcess?: (command: string, args: string[], env: NodeJS.ProcessEnv) => UtsushiProcessResult;
+  log?: (message: string) => void;
 };
 
 /** Typed forward declaration for the Siglus structure provider. */
@@ -155,15 +157,31 @@ function unavailableProvider<E extends Exclude<StructureEngineId, "reallive">>(
   };
 }
 
-const softpalStructureProvider = unavailableProvider(
-  "softpal",
-  "Whole-game structure source rooted at SCRIPT.SRC + TEXT.DAT",
-  (args) => ({
+const softpalStructureProvider: StructureProvider<"softpal"> = {
+  engine: "softpal",
+  capability: {
     engine: "softpal",
-    gameRoot: requiredFlag(args, "--game-root"),
-    outputPath: requiredFlag(args, "--output"),
-  }),
-);
+    summary: "Whole-game linear structure from SCRIPT.SRC + TEXT.DAT",
+    implemented: true,
+  },
+  parseCli(args) {
+    return {
+      engine: "softpal",
+      gameRoot: requiredFlag(args, "--game-root"),
+      outputPath: requiredFlag(args, "--output"),
+    };
+  },
+  run(source) {
+    return runUtsushiStructureExport({
+      engine: source.engine,
+      gameRoot: source.gameRoot,
+      outputPath: source.outputPath,
+      ...(source.env === undefined ? {} : { env: source.env }),
+      ...(source.runProcess === undefined ? {} : { runProcess: source.runProcess }),
+      ...(source.log === undefined ? {} : { log: source.log }),
+    });
+  },
+};
 
 const siglusStructureProvider = unavailableProvider(
   "siglus",

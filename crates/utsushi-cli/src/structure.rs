@@ -11,11 +11,12 @@ mod graph;
 mod legacy;
 mod output;
 mod reallive_extension;
+mod softpal;
 
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use kaifuu_reallive::parse_archive;
 use serde_json::Value;
@@ -32,6 +33,7 @@ pub(crate) fn run_structure_command(args: &[String]) -> Result<(), Box<dyn Error
     let mut seen = None;
     let mut output = None;
     let mut bridge = None;
+    let mut game_root = None;
     let mut entry = None;
     let mut max_scenes = None;
 
@@ -47,6 +49,7 @@ pub(crate) fn run_structure_command(args: &[String]) -> Result<(), Box<dyn Error
             "--seen" => seen = Some(PathBuf::from(value)),
             "--output" => output = Some(PathBuf::from(value)),
             "--bridge" => bridge = Some(PathBuf::from(value)),
+            "--game-root" => game_root = Some(PathBuf::from(value)),
             "--entry-scene" => entry = Some(value.parse::<u32>()?),
             "--max-scenes" => max_scenes = Some(value.parse::<usize>()?),
             _ => return Err(format!("unknown structure flag: {flag}").into()),
@@ -56,16 +59,15 @@ pub(crate) fn run_structure_command(args: &[String]) -> Result<(), Box<dyn Error
 
     let engine = engine.ok_or("missing --engine")?;
     let provider = structure_provider(&engine)?;
-    let gameexe = gameexe.ok_or("missing --gameexe")?;
-    let seen = seen.ok_or("missing --seen")?;
     let output = output.ok_or("missing --output")?;
-    let structure = reallive_extension::common_structure(provider(
-        &gameexe,
-        &seen,
-        bridge.as_deref(),
+    let structure = provider(StructureCommandInput {
+        gameexe,
+        seen,
+        game_root,
+        bridge,
         entry,
         max_scenes,
-    )?)?;
+    })?;
 
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)?;
@@ -74,10 +76,21 @@ pub(crate) fn run_structure_command(args: &[String]) -> Result<(), Box<dyn Error
     Ok(())
 }
 
-type StructureProvider =
-    fn(&Path, &Path, Option<&Path>, Option<u32>, Option<usize>) -> Result<Value, Box<dyn Error>>;
+struct StructureCommandInput {
+    gameexe: Option<PathBuf>,
+    seen: Option<PathBuf>,
+    game_root: Option<PathBuf>,
+    bridge: Option<PathBuf>,
+    entry: Option<u32>,
+    max_scenes: Option<usize>,
+}
 
-const STRUCTURE_PROVIDERS: &[(&str, StructureProvider)] = &[("reallive", build_reallive_structure)];
+type StructureProvider = fn(StructureCommandInput) -> Result<Value, Box<dyn Error>>;
+
+const STRUCTURE_PROVIDERS: &[(&str, StructureProvider)] = &[
+    ("reallive", build_reallive_structure),
+    ("softpal", softpal::build_softpal_structure),
+];
 
 fn structure_provider(engine: &str) -> Result<StructureProvider, Box<dyn Error>> {
     STRUCTURE_PROVIDERS
@@ -86,13 +99,12 @@ fn structure_provider(engine: &str) -> Result<StructureProvider, Box<dyn Error>>
         .ok_or_else(|| format!("unregistered structure provider: {engine}").into())
 }
 
-fn build_reallive_structure(
-    gameexe_path: &Path,
-    seen_path: &Path,
-    bridge_path: Option<&Path>,
-    entry_scene: Option<u32>,
-    max_scenes: Option<usize>,
-) -> Result<Value, Box<dyn Error>> {
+fn build_reallive_structure(input: StructureCommandInput) -> Result<Value, Box<dyn Error>> {
+    let gameexe_path = input.gameexe.as_deref().ok_or("missing --gameexe")?;
+    let seen_path = input.seen.as_deref().ok_or("missing --seen")?;
+    let bridge_path = input.bridge.as_deref();
+    let entry_scene = input.entry;
+    let max_scenes = input.max_scenes;
     let seen_bytes = fs::read(seen_path)?;
     let archive = parse_archive(&seen_bytes)
         .map_err(|diagnostic| format!("utsushi.structure.archive_parse: {diagnostic:?}"))?;
@@ -134,7 +146,7 @@ fn build_reallive_structure(
     let engine = staged.engine.with_namae_resolver(resolver);
     let entry_scene = u16::try_from(entry_scene.unwrap_or(seen_start))
         .map_err(|err| format!("entry scene is outside the RealLive scene range: {err}"))?;
-    match bridge_path {
+    let structure = match bridge_path {
         Some(path) => {
             let bridge = BridgeIndex::load(path, &seen_bytes)?;
             if bridge.asset_scene_ids != archive_scene_ids {
@@ -153,8 +165,10 @@ fn build_reallive_structure(
                 bridge: &bridge,
                 entry: entry_scene,
             })
-            .map_err(Into::into)
+            .map_err(|error| -> Box<dyn Error> { error.into() })
         }
-        None => legacy::build(&engine, &staged.scenes, entry_scene).map_err(Into::into),
-    }
+        None => legacy::build(&engine, &staged.scenes, entry_scene)
+            .map_err(|error| -> Box<dyn Error> { error.into() }),
+    }?;
+    reallive_extension::common_structure(structure).map_err(Into::into)
 }
