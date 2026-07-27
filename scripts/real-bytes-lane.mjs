@@ -1,14 +1,19 @@
 #!/usr/bin/env node
-// Local real-byte entry point. The registry is deliberately data-driven: this
-// runner neither knows engine names nor constructs per-engine environment keys.
+// Local real-byte entry point. Manifest entries choose a proof by engine; an
+// unproved engine makes the lane red instead of borrowing another engine's pass.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const manifestPath = join(repoRoot, "corpora", "manifest.v1.json");
+const proofByEngine = new Map([
+  ["reallive", ["test", "-p", "kaifuu-reallive", "--", "--ignored"]],
+  ["siglus", ["test", "-p", "kaifuu-siglus", "--", "--ignored"]],
+  ["softpal", ["test", "-p", "kaifuu-softpal", "--", "--ignored"]],
+]);
 
 function fail(message) {
   console.error(`real-bytes-lane: ${message}`);
@@ -25,74 +30,119 @@ function readManifest() {
   }
   try {
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-    if (manifest.version !== 1 || !Array.isArray(manifest.corpora))
-      throw new Error("expected version 1 and corpora[]");
-    for (const entry of manifest.corpora) {
+    if (manifest.version !== 1 || !isRecord(manifest.corpora))
+      throw new Error("expected version 1 and corpora{}");
+    const corpora = [];
+    for (const [identity, entry] of Object.entries(manifest.corpora)) {
+      const [engine, ordinalText, variant, extra] = identity.split("/");
       if (
-        typeof entry?.engine !== "string" ||
-        !Number.isInteger(entry.ordinal) ||
-        typeof entry.variant !== "string" ||
+        !/^[a-z][a-z0-9-]*$/u.test(engine ?? "") ||
+        !/^[1-9][0-9]*$/u.test(ordinalText ?? "") ||
+        !/^[a-z][a-z0-9-]*$/u.test(variant ?? "") ||
+        extra !== undefined ||
         typeof entry.path !== "string" ||
         entry.path.startsWith("/") ||
         entry.path.split(/[\\/]/u).includes("..")
       ) {
-        throw new Error("each corpus needs engine, ordinal, variant, and a safe relative path");
+        throw new Error(
+          "each corpus identity needs engine/ordinal/variant and a safe relative path",
+        );
       }
+      corpora.push({ engine, ordinal: Number(ordinalText), variant, path: entry.path });
     }
-    return manifest;
+    return corpora;
   } catch (error) {
     fail(`invalid ${manifestPath}: ${error.message}`);
     return null;
   }
 }
 
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+export function selectProofs(corpora) {
+  return [...new Set(corpora.map((entry) => entry.engine))].map((engine) => {
+    const args = proofByEngine.get(engine);
+    return args
+      ? { name: engine, args, outcome: "skipped", reason: "not started" }
+      : { name: engine, outcome: "failed", reason: `declared but unproven engine ${engine}` };
+  });
+}
+
+function summary(statuses) {
+  const counts = { executed: 0, skipped: 0, failed: 0 };
+  for (const status of statuses) counts[status.outcome] += 1;
+  for (const status of statuses)
+    console.log(
+      `real-bytes-lane: proof ${status.name}: ${status.outcome}${status.reason ? ` — ${status.reason}` : ""}`,
+    );
+  console.log(
+    `real-bytes-lane: summary: ${counts.executed} executed, ${counts.skipped} skipped, ${counts.failed} failed`,
+  );
+  return counts;
+}
+
 function main() {
-  const manifest = readManifest();
-  if (!manifest) return;
+  const corpora = readManifest();
+  if (!corpora) return;
+  const statuses = selectProofs(corpora);
+  const declaredEngines = statuses.map((status) => status.name);
+  const statusFor = (engine) => statuses.find((status) => status.name === engine);
   const root = process.env.ITOTORI_CORPUS_ROOT;
   if (!root) {
-    fail("ran 0 proofs; skipped all because ITOTORI_CORPUS_ROOT is unset");
+    for (const status of statuses) {
+      if (status.outcome === "skipped") status.reason = "ITOTORI_CORPUS_ROOT is unset";
+    }
+    const counts = summary(statuses);
+    fail(`cannot pass with ${counts.executed} executed proofs`);
     return;
   }
   const available = [];
-  const skipped = [];
-  for (const entry of manifest.corpora) {
+  const missing = [];
+  for (const entry of corpora) {
     const path = resolve(root, entry.path);
     const label = `${entry.engine}/${entry.ordinal}/${entry.variant}`;
     if (existsSync(path)) available.push({ label, path });
-    else skipped.push({ label, reason: `declared path missing: ${path}` });
+    else missing.push({ label, reason: `declared path missing: ${path}` });
   }
   for (const corpus of available)
     console.log(`real-bytes-lane: corpus ${corpus.label} = ${corpus.path}`);
-  for (const corpus of skipped) console.log(`REAL-BYTES SKIP ${corpus.label}: ${corpus.reason}`);
-  if (skipped.length > 0) {
-    fail(`cannot run the complete lane: ${skipped.length} declared corpora are absent`);
+  for (const corpus of missing) console.log(`REAL-BYTES SKIP ${corpus.label}: ${corpus.reason}`);
+  if (missing.length > 0) {
+    for (const status of statuses) {
+      if (status.outcome === "skipped") status.reason = "a declared corpus path is missing";
+    }
+    const counts = summary(statuses);
+    fail(
+      `cannot run the complete lane: ${missing.length} declared corpora are absent; ${counts.executed} proofs executed`,
+    );
     return;
   }
-
-  const proofs = [
-    [
-      "registry",
-      ["test", "-p", "corpus-registry", "--test", "corpus_registry_staged", "--", "--nocapture"],
-    ],
-    ["reallive", ["test", "-p", "kaifuu-reallive", "--", "--ignored"]],
-  ];
-  let failures = 0;
-  for (const [name, args] of proofs) {
-    console.log(`real-bytes-lane: running ${name}`);
+  for (const engine of declaredEngines) {
+    const status = statusFor(engine);
+    if (status.outcome === "failed") continue;
+    const args = status.args;
+    console.log(`real-bytes-lane: running ${engine}`);
     const result = spawnSync("cargo", args, { cwd: repoRoot, env: process.env, stdio: "inherit" });
     if (result.error) {
-      failures += 1;
-      console.error(`real-bytes-lane: ${name} did not start: ${result.error.message}`);
+      status.outcome = "failed";
+      status.reason = `did not start: ${result.error.message}`;
     } else if (result.status !== 0) {
-      failures += 1;
-      console.error(`real-bytes-lane: ${name} failed (exit ${result.status})`);
+      status.outcome = "failed";
+      status.reason = `exit ${result.status}`;
+    } else {
+      status.outcome = "executed";
+      status.reason = `${corpora.filter((entry) => entry.engine === engine).length} declared corpus entries`;
     }
   }
-  console.log(
-    `real-bytes-lane: ran ${proofs.length} proof suites; ${skipped.length} corpus entries skipped; ${failures} suites failed`,
-  );
-  if (failures > 0) process.exitCode = 1;
+  const counts = summary(statuses);
+  if (counts.executed === 0 || counts.skipped > 0 || counts.failed > 0) process.exitCode = 1;
 }
 
-main();
+function invokedAsMain() {
+  const entry = process.argv[1];
+  return Boolean(entry) && import.meta.url === pathToFileURL(entry).href;
+}
+
+if (invokedAsMain()) main();

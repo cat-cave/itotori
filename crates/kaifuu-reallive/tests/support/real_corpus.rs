@@ -175,13 +175,13 @@ pub fn skip_message(test_name: &str) -> String {
     format!("reallive/1/encrypted is unavailable or malformed; skipping {test_name}")
 }
 
-/// Resolve the corpus-unavailable branch of an env-gated real-bytes test.
-/// This is the single chokepoint for the "no silent pass" contract: a
-/// real-bytes test must never report a green PASS when it asserted nothing.
-/// An unavailable corpus is a visible skip. Existing callers return immediately
-/// after this helper, avoiding both a panic and a false claim that bytes ran.
+/// Reject an unavailable corpus in this strict proof suite. Callers retain
+/// their `return` for the successful case; an unavailable input never passes
+/// after logging a skip.
 pub fn require_real_bytes(test_name: &str) {
-    eprintln!("REAL-BYTES SKIP {test_name}: reallive/1/encrypted is unavailable");
+    panic!(
+        "REAL-BYTES SKIP {test_name}: reallive/1/encrypted is unavailable; refusing a passing real-bytes proof without its required input"
+    );
 }
 
 fn file_in_reallivedata(name: &str) -> Option<PathBuf> {

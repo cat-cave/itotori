@@ -1,42 +1,24 @@
 {
   "$schema": "./manifest.v1.schema.json",
   "version": 1,
-  "corpora": [
-    {
-      "engine": "reallive",
-      "ordinal": 1,
-      "variant": "encrypted",
+  "corpora": {
+    "reallive/1/encrypted": {
       "path": "role-primary-encrypted"
     },
-    {
-      "engine": "reallive",
-      "ordinal": 2,
-      "variant": "plain",
+    "reallive/2/plain": {
       "path": "role-secondary-plain"
     },
-    {
-      "engine": "siglus",
-      "ordinal": 1,
-      "variant": "encrypted",
+    "siglus/1/encrypted": {
       "path": "role-primary-encrypted"
     },
-    {
-      "engine": "siglus",
-      "ordinal": 2,
-      "variant": "encrypted",
+    "siglus/2/encrypted": {
       "path": "role-secondary-encrypted"
     },
-    {
-      "engine": "softpal",
-      "ordinal": 1,
-      "variant": "plain",
+    "softpal/1/plain": {
       "path": "role-primary-plain"
     },
-    {
-      "engine": "softpal",
-      "ordinal": 2,
-      "variant": "plain",
+    "softpal/2/plain": {
       "path": "role-secondary-plain"
     }
-  ]
+  }
 }

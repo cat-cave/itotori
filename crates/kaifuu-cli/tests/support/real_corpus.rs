@@ -19,8 +19,10 @@ pub fn seen_txt_path() -> Option<PathBuf> {
     file_in_reallivedata("Seen.txt")
 }
 
-pub fn skip_message(test_name: &str) -> String {
-    format!("reallive/1/encrypted is unavailable or malformed; skipping {test_name}")
+pub fn unavailable_message(test_name: &str) -> String {
+    format!(
+        "REAL-BYTES SKIP {test_name}: reallive/1/encrypted is unavailable or malformed; refusing a passing real-bytes proof without its required input"
+    )
 }
 
 fn file_in_reallivedata(name: &str) -> Option<PathBuf> {
