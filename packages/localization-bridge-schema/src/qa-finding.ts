@@ -1,12 +1,11 @@
-// ITOTORI-078 — StructuredQaFindingOutput.
+// StructuredQaFindingOutput.
 //
 // Strict JSON contract for what an LLM QA role must return. This module owns
 // ONLY the wire-shape contract + assertion. No silent fallbacks: any
 // shape divergence throws a typed `QaResponseValidationError`.
 //
-// Persistence of QA findings (the `qa_findings` table + draft-job FK) is
-// the responsibility of a follow-up node — ITOTORI-074 lands the
-// `draft_jobs` table in parallel. This module ships the wire schema and a
+// Persistence of QA findings (the `qa_findings` table + draft-job FK) occurs
+// in the database layer. This module ships the wire schema and a
 // pure-TS finding shape so producers and consumers can agree before the
 // table exists.
 

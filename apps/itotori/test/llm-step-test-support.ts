@@ -24,7 +24,7 @@ export const TEST_MODEL_PROFILE: MeasuredModelProfile = {
   name: "reviewer",
   version: "reviewer:v1",
   deadlines: { normalMs: 300_000, deepMs: 600_000 },
-  maxAttemptExposureUsd: "1", // itotori-225-audit-allow: synthetic per-attempt ceiling for mock transport tests, not a billed model cost
+  maxAttemptExposureUsd: "1", // cost-audit-allow: synthetic per-attempt ceiling for mock transport tests, not a billed model cost
 };
 
 export class TestMemoCipher implements LlmMemoCipher {
@@ -89,7 +89,7 @@ export function dispatchHarness(input: {
         profile: input.profile ?? TEST_MODEL_PROFILE,
         admission: input.admission ?? {
           scope: "test:llm-step",
-          confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic admission cap for mock transport tests, not a billed model cost
+          confirmedCostCapUsd: "10", // cost-audit-allow: synthetic admission cap for mock transport tests, not a billed model cost
         },
         ...(input.signal ? { signal: input.signal } : {}),
         ...(input.retry ? { retry: input.retry } : {}),

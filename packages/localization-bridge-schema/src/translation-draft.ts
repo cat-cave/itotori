@@ -1,12 +1,11 @@
-// ITOTORI-075 — StructuredTranslationDraftOutput.
+// StructuredTranslationDraftOutput.
 //
 // Strict JSON contract for what an LLM translation role must return. This
 // module owns ONLY the wire-shape contract + assertion. No silent fallbacks: any shape
 // divergence throws a typed `TranslationDraftResponseValidationError`.
 //
-// Persistence of accepted drafts is the responsibility of downstream
-// nodes — ITOTORI-074 lands the `draft_jobs` table and ITOTORI-076 will
-// thread the drafts into it. This module ships the wire schema and a
+// Persistence of accepted drafts happens downstream. The draft-jobs table
+// receives accepted drafts, while this module ships the wire schema and a
 // pure-TS draft shape so producers and consumers can agree before the
 // table is fully wired.
 
@@ -135,7 +134,7 @@ export const STRUCTURED_TRANSLATION_DRAFT_OUTPUT_JSON_SCHEMA = {
  * Field-path keyed error raised on any shape divergence. The
  * translation invocation service catches this and wraps it in a
  * typed upstream error that names the provider proof / recorded
- * artifact id + draft job attempt id (per ITOTORI-075's diagnostic
+ * artifact id + draft job attempt id (per this schema's diagnostic
  * contract).
  *
  * `path` is a JSON-pointer-style field accessor relative to

@@ -34,18 +34,18 @@ describe("rowsToByNode", () => {
       {
         audit_finding_id: "audit-finding-1",
         audit_report_id: "docs/audits/x.md",
-        node_id: "UTSUSHI-200",
+        node_id: "TEST-NODE-1",
         severity: "P0",
         category: "load-bearing",
         summary: "wrapper-shaped AC",
         file_ref: "crates/utsushi-reallive/src/lib.rs:1",
-        proposed_dag_node: "UTSUSHI-201",
+        proposed_dag_node: "TEST-NODE-3",
         status: "open",
       },
       {
         audit_finding_id: "audit-finding-2",
         audit_report_id: "docs/audits/x.md",
-        node_id: "UTSUSHI-200",
+        node_id: "TEST-NODE-1",
         severity: "P1",
         category: "honest-prototype",
         summary: "fixture round-trip is tautological",
@@ -56,7 +56,7 @@ describe("rowsToByNode", () => {
       {
         audit_finding_id: "audit-finding-3",
         audit_report_id: "docs/audits/y.md",
-        node_id: "KAIFUU-188",
+        node_id: "TEST-NODE-2",
         severity: "P0",
         category: "load-bearing",
         summary: "10000-slot envelope must come from real Seen.txt",
@@ -66,10 +66,10 @@ describe("rowsToByNode", () => {
       },
     ]);
 
-    expect(byNode.get("UTSUSHI-200")?.counts).toEqual({ P0: 1, P1: 1, P2: 0, P3: 0 });
-    expect(byNode.get("UTSUSHI-200")?.openFindings).toHaveLength(2);
-    expect(byNode.get("KAIFUU-188")?.counts).toEqual({ P0: 1, P1: 0, P2: 0, P3: 0 });
-    expect(byNode.get("KAIFUU-188")?.openFindings).toHaveLength(1);
+    expect(byNode.get("TEST-NODE-1")?.counts).toEqual({ P0: 1, P1: 1, P2: 0, P3: 0 });
+    expect(byNode.get("TEST-NODE-1")?.openFindings).toHaveLength(2);
+    expect(byNode.get("TEST-NODE-2")?.counts).toEqual({ P0: 1, P1: 0, P2: 0, P3: 0 });
+    expect(byNode.get("TEST-NODE-2")?.openFindings).toHaveLength(1);
   });
 
   it("throws AuditFindingsLoadError on an unknown severity", () => {
@@ -78,7 +78,7 @@ describe("rowsToByNode", () => {
         {
           audit_finding_id: "audit-finding-bad",
           audit_report_id: "docs/audits/x.md",
-          node_id: "UTSUSHI-200",
+          node_id: "TEST-NODE-1",
           severity: "P9",
           category: "x",
           summary: "x",
@@ -95,14 +95,14 @@ describe("mergeAuditFindings", () => {
   it("attaches findings to the matching node and leaves other nodes empty", () => {
     const dag = {
       schemaVersion: "0.1.0",
-      nodes: [node({ id: "UTSUSHI-200" }), node({ id: "KAIFUU-188" }), node({ id: "X-001" })],
+      nodes: [node({ id: "TEST-NODE-1" }), node({ id: "TEST-NODE-2" }), node({ id: "X-001" })],
     };
     const enriched = enrich(dag, []);
     const byNode: AuditFindingsByNode = rowsToByNode([
       {
         audit_finding_id: "audit-finding-1",
         audit_report_id: "docs/audits/x.md",
-        node_id: "UTSUSHI-200",
+        node_id: "TEST-NODE-1",
         severity: "P0",
         category: "load-bearing",
         summary: "summary one",
@@ -112,7 +112,7 @@ describe("mergeAuditFindings", () => {
       },
     ]);
     const merged = mergeAuditFindings(enriched.nodes, byNode);
-    const utsu = merged.find((n) => n.id === "UTSUSHI-200");
+    const utsu = merged.find((n) => n.id === "TEST-NODE-1");
     const x = merged.find((n) => n.id === "X-001");
     expect(utsu?.findings.counts).toEqual({ P0: 1, P1: 0, P2: 0, P3: 0 });
     expect(utsu?.findings.openFindings).toHaveLength(1);
@@ -156,7 +156,7 @@ describe("renderHtml audit-findings integration", () => {
 
   it("renders the loaded banner and per-node finding badges into the static HTML", () => {
     const nodes = [
-      nodeWithFindings("UTSUSHI-200", [
+      nodeWithFindings("TEST-NODE-1", [
         {
           auditFindingId: "audit-finding-1",
           auditReportId: "docs/audits/alpha-scope-honesty.md",
@@ -164,7 +164,7 @@ describe("renderHtml audit-findings integration", () => {
           category: "load-bearing",
           summary: "wrapper-shaped AC",
           fileRef: "crates/utsushi-reallive/src/lib.rs:1",
-          proposedDagNode: "UTSUSHI-201",
+          proposedDagNode: "TEST-NODE-3",
         },
       ]),
     ];
@@ -176,7 +176,7 @@ describe("renderHtml audit-findings integration", () => {
     const html = renderHtml(data, "/*c*/");
     expect(html).toContain("audit findings: 1 open / 1 nodes");
     expect(html).toContain('class="auditbanner ok"');
-    expect(html).toContain('data-node-id="UTSUSHI-200"');
+    expect(html).toContain('data-node-id="TEST-NODE-1"');
     expect(html).toContain('data-finding-id="audit-finding-1"');
     expect(html).toContain("wrapper-shaped AC");
     expect(html).toContain('class="fb P0"');
@@ -211,7 +211,7 @@ describe("renderHtml audit-findings integration", () => {
   });
 
   it("emits an empty server-fallback when no node has findings", () => {
-    const nodes = [nodeWithFindings("UTSUSHI-200", [])];
+    const nodes = [nodeWithFindings("TEST-NODE-1", [])];
     const data = dataWithFindings(nodes, {
       kind: "loaded",
       nodesWithFindings: 0,

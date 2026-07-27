@@ -104,7 +104,7 @@ function goldenRuntime(
     profile: TEST_MODEL_PROFILE,
     admission: {
       scope: "test:zdr-golden-wire",
-      confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic admission cap for a mock-wire test, not a billed model cost
+      confirmedCostCapUsd: "10", // cost-audit-allow: synthetic admission cap for a mock-wire test, not a billed model cost
     },
     snapshots: {
       decodeRevisionHash: STEP_HASH_A,

@@ -1,4 +1,4 @@
-// ITOTORI-019 — DraftArtifactBundle wire schema.
+// DraftArtifactBundle wire schema.
 //
 // The artifact boundary projects one canonical WrittenUnitOutcome per source
 // unit into the patch-export workflow. It intentionally does not define a

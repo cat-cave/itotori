@@ -121,7 +121,7 @@ function draftBatchResponse(batch: DraftBatch): Response {
         prompt_tokens: 40,
         completion_tokens: 30,
         total_tokens: 70,
-        cost: 0.0000025, // itotori-225-audit-allow: synthetic recorded-transport usage for the offline proof, not a billed cost
+        cost: 0.0000025, // cost-audit-allow: synthetic recorded-transport usage for the offline proof, not a billed cost
 
         prompt_tokens_details: { cached_tokens: 4 },
         completion_tokens_details: { reasoning_tokens: 5 },

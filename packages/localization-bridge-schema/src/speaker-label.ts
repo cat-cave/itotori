@@ -1,4 +1,4 @@
-// ITOTORI-017 — SpeakerLabelOutput.
+// SpeakerLabelOutput.
 //
 // Strict JSON contract for what an LLM speaker-labeling role must return. This
 // module owns ONLY the wire-shape contract + parser/asserter. Any shape divergence throws a

@@ -1,4 +1,4 @@
-// ITOTORI-025 — PatchExportBundle wire schema.
+// PatchExportBundle wire schema.
 //
 // The patch-export service (apps/itotori/src/patch-export/exporter.ts)
 // emits one of these bundles per successful run. The bundle is the
@@ -16,7 +16,7 @@
 //   - `sourceBridgeHash` proves the bundle was drafted against the
 //     current source bridge bundle's hash.
 //   - `provenance.draftArtifactBundleId` names the upstream draft
-//     bundle (ITOTORI-019).
+//     bundle.
 //
 // Protected-span mappings are required: every span the source declared
 // MUST appear here with a draft-side range. The exporter rejects a

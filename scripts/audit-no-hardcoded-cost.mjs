@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// ITOTORI-225 — CI guard: fail on any hardcoded model cost, deprecated
+// Cost-audit CI guard: fail on any hardcoded model cost, deprecated
 // cost-tier abstraction, or revived `unknown` / `local_estimate` enum
 // literal in the itotori codebase.
 //
@@ -10,7 +10,7 @@
 //   and easily queryable cost stats..."
 //
 // And per docs/audits/openrouter-cost-tracking-audit-2026-06-25.md §3 N1,
-// once the rip-out lands (ITOTORI-225), no commit may re-introduce the
+// the guard prevents commits from re-introducing the
 // deleted shapes. This script greps the source tree for the forbidden
 // patterns, skipping allow-listed paths (recorded fixtures preserve real
 // captured costs; this script itself documents the patterns it forbids).
@@ -71,7 +71,7 @@ const ALLOW_LIST = [
 //   (a) SOURCE it from a captured recorded-bundle under the allow-listed
 //       apps/itotori/test/fixtures/recorded-bundles/ tree (real spend,
 //       preserved verbatim — see ALLOW_LIST above), OR
-//   (b) carry an EXPLICIT per-line `// itotori-225-audit-allow: <reason>`
+//   (b) carry an EXPLICIT per-line `// cost-audit-allow: <reason>`
 //       marker on the offending line — a documented, reviewer-auditable
 //       per-line opt-out (NOT a blanket tree exemption). The reason string
 //       is mandatory so a reviewer can judge each exemption individually.
@@ -96,7 +96,7 @@ const ALLOW_LIST = [
 // (no live credentials, no real captured spend) that replay through the
 // recorded-cost / benchmark / experiment paths and therefore must embed a
 // non-zero `amountMicrosUsd` / `cost` to exercise the ledger. Because JSON
-// cannot host a `// itotori-225-audit-allow:` marker, each such file is
+// cannot host a `// cost-audit-allow:` marker, each such file is
 // listed here with its reason. Cost-literal patterns are skipped for these
 // exact paths; every other pattern (revived `unknown` costKind, token
 // fabrication, cost-tier) still fires. A `.ts`/`.tsx` fixture is NEVER
@@ -138,7 +138,7 @@ const COST_LITERAL_ALLOW = new Map([
 // systems. The `local_estimate` / `unknown` kinds are kept there for
 // genuinely-unknowable external benchmark costs (audit-3); forcing `billed`
 // would fabricate a cost, violating this very guard. Because JSON cannot host
-// a `// itotori-225-audit-allow:` marker, each such benchmark fixture is
+// a `// cost-audit-allow:` marker, each such benchmark fixture is
 // enumerated here with its reason. The legacy-enum pattern is skipped ONLY for
 // these exact paths; every other pattern still fires, and a NEW un-listed
 // schema fixture with a revived legacy enum still fails. A `.ts`/`.tsx` file
@@ -311,10 +311,10 @@ function isCommentLine(trimmed) {
   );
 }
 
-// The per-line audit-allow escape hatch: `// itotori-225-audit-allow: <reason>`
+// The per-line audit-allow escape hatch: `// cost-audit-allow: <reason>`
 // with a non-empty reason. Shared by all passes.
 function hasAuditAllowMarker(line) {
-  return /itotori-225-audit-allow:\s*\S/u.test(line);
+  return /cost-audit-allow:\s*\S/u.test(line);
 }
 
 // Multi-line-aware scan for keyed numeric cost literals.
@@ -483,7 +483,7 @@ export function findViolations(path, contents) {
     if (isCommentLine(trimmed)) {
       continue;
     }
-    // Per-line escape hatch: `// itotori-225-audit-allow: <reason>` marks a
+    // Per-line escape hatch: `// cost-audit-allow: <reason>` marks a
     // single line whose legacy-enum or hardcoded-cost reference is
     // load-bearing (e.g. a boundary test asserting the narrower rejects the
     // legacy value, or a synthetic fixture that must carry a non-zero billed
@@ -559,7 +559,7 @@ function runAudit(args) {
 
   if (violations.length > 0) {
     process.stderr.write(
-      `ITOTORI-225 audit failed: ${violations.length} forbidden cost pattern${violations.length === 1 ? "" : "s"} found.\n` +
+      `Cost audit failed: ${violations.length} forbidden cost pattern${violations.length === 1 ? "" : "s"} found.\n` +
         "The standing rule (Trevor, 2026-06-25): no hardcoded model costs, no fallback costs, no unknown costs.\n" +
         "See docs/audits/openrouter-cost-tracking-audit-2026-06-25.md §3 N1 for the rip-out spec.\n\n",
     );
@@ -570,7 +570,7 @@ function runAudit(args) {
   }
 
   process.stdout.write(
-    `ITOTORI-225 audit passed: ${scannedCount} source files scanned; no forbidden cost patterns found.\n`,
+    `Cost audit passed: ${scannedCount} source files scanned; no forbidden cost patterns found.\n`,
   );
   return 0;
 }

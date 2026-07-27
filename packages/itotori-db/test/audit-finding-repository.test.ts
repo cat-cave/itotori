@@ -12,13 +12,13 @@ const deniedActor: AuthorizationActor = { userId: "user-without-required-permiss
 
 const baseInput = {
   auditReportId: "docs/audits/alpha-scope-honesty.md",
-  nodeId: "UTSUSHI-200",
+  nodeId: "TEST-NODE-1",
   severity: auditFindingSeverityValues.p1,
   category: "load-bearing",
   summary: "non-synthetic engine port crate must not depend on author fixtures",
   detail: "AC must require real-bytes drive of the smallest credible opcode subset.",
   fileRef: "crates/utsushi-reallive/src/lib.rs:1",
-  proposedDagNode: "UTSUSHI-200",
+  proposedDagNode: "TEST-NODE-1",
 } as const;
 
 describe("ItotoriAuditFindingRepository", () => {
@@ -29,13 +29,13 @@ describe("ItotoriAuditFindingRepository", () => {
       const finding = await repo.recordFinding(localActor, { ...baseInput });
 
       expect(finding.auditFindingId).toMatch(/^audit-finding-/);
-      expect(finding.nodeId).toBe("UTSUSHI-200");
+      expect(finding.nodeId).toBe("TEST-NODE-1");
       expect(finding.severity).toBe(auditFindingSeverityValues.p1);
       expect(finding.category).toBe("load-bearing");
       expect(finding.summary).toBe(baseInput.summary);
       expect(finding.detail).toBe(baseInput.detail);
       expect(finding.fileRef).toBe(baseInput.fileRef);
-      expect(finding.proposedDagNode).toBe("UTSUSHI-200");
+      expect(finding.proposedDagNode).toBe("TEST-NODE-1");
       expect(finding.status).toBe(auditFindingStatusValues.open);
       expect(finding.supersededByFindingId).toBeNull();
       expect(finding.resolvedAt).toBeNull();
@@ -85,7 +85,7 @@ describe("ItotoriAuditFindingRepository", () => {
       const resolvedAt = new Date("2026-06-24T12:00:00Z");
       await repo.markFindingFixed(localActor, finding.auditFindingId, resolvedAt);
 
-      const reloaded = await repo.loadFindingsByNode(localActor, "UTSUSHI-200");
+      const reloaded = await repo.loadFindingsByNode(localActor, "TEST-NODE-1");
       expect(reloaded).toHaveLength(1);
       expect(reloaded[0]!.status).toBe(auditFindingStatusValues.fixed);
       expect(reloaded[0]!.resolvedAt).not.toBeNull();
@@ -128,7 +128,7 @@ describe("ItotoriAuditFindingRepository", () => {
         resolvedAt,
       );
 
-      const findings = await repo.loadFindingsByNode(localActor, "UTSUSHI-200");
+      const findings = await repo.loadFindingsByNode(localActor, "TEST-NODE-1");
       const supersededRow = findings.find(
         (row) => row.auditFindingId === oldFinding.auditFindingId,
       );
@@ -190,19 +190,19 @@ describe("ItotoriAuditFindingRepository", () => {
       });
       await repo.markFindingFixed(localActor, p0.auditFindingId, new Date());
 
-      const onlyP1 = await repo.loadFindingsByNode(localActor, "UTSUSHI-200", {
+      const onlyP1 = await repo.loadFindingsByNode(localActor, "TEST-NODE-1", {
         severityFilter: auditFindingSeverityValues.p1,
       });
       expect(onlyP1).toHaveLength(1);
       expect(onlyP1[0]!.severity).toBe(auditFindingSeverityValues.p1);
 
-      const onlyOpen = await repo.loadFindingsByNode(localActor, "UTSUSHI-200", {
+      const onlyOpen = await repo.loadFindingsByNode(localActor, "TEST-NODE-1", {
         statusFilter: auditFindingStatusValues.open,
       });
       expect(onlyOpen).toHaveLength(1);
       expect(onlyOpen[0]!.severity).toBe(auditFindingSeverityValues.p1);
 
-      const onlyFixed = await repo.loadFindingsByNode(localActor, "UTSUSHI-200", {
+      const onlyFixed = await repo.loadFindingsByNode(localActor, "TEST-NODE-1", {
         statusFilter: auditFindingStatusValues.fixed,
       });
       expect(onlyFixed).toHaveLength(1);
@@ -216,12 +216,12 @@ describe("ItotoriAuditFindingRepository", () => {
     const context = await isolatedMigratedContext();
     try {
       const repo = new ItotoriAuditFindingRepository(context.db);
-      await repo.recordFinding(localActor, { ...baseInput, nodeId: "UTSUSHI-200" });
-      await repo.recordFinding(localActor, { ...baseInput, nodeId: "KAIFUU-188" });
+      await repo.recordFinding(localActor, { ...baseInput, nodeId: "TEST-NODE-1" });
+      await repo.recordFinding(localActor, { ...baseInput, nodeId: "TEST-NODE-2" });
       await repo.recordFinding(localActor, {
         ...baseInput,
         auditReportId: "docs/audits/silenced-2026-06-24.md",
-        nodeId: "ITOTORI-202",
+        nodeId: "TEST-NODE-3",
       });
 
       const fromOne = await repo.loadFindingsByReport(
@@ -229,7 +229,7 @@ describe("ItotoriAuditFindingRepository", () => {
         "docs/audits/alpha-scope-honesty.md",
       );
       expect(fromOne).toHaveLength(2);
-      expect(fromOne.map((row) => row.nodeId).sort()).toEqual(["KAIFUU-188", "UTSUSHI-200"]);
+      expect(fromOne.map((row) => row.nodeId)).toEqual(["TEST-NODE-1", "TEST-NODE-2"]);
     } finally {
       await context.close();
     }
@@ -242,12 +242,12 @@ describe("ItotoriAuditFindingRepository", () => {
       const p0 = await repo.recordFinding(localActor, {
         ...baseInput,
         severity: auditFindingSeverityValues.p0,
-        nodeId: "UTSUSHI-200",
+        nodeId: "TEST-NODE-1",
       });
       await repo.recordFinding(localActor, {
         ...baseInput,
         severity: auditFindingSeverityValues.p1,
-        nodeId: "KAIFUU-188",
+        nodeId: "TEST-NODE-2",
       });
       await repo.markFindingFixed(localActor, p0.auditFindingId, new Date());
 
@@ -287,7 +287,7 @@ describe("ItotoriAuditFindingRepository", () => {
     const context = await isolatedMigratedContext();
     try {
       const repo = new ItotoriAuditFindingRepository(context.db);
-      await expect(repo.loadFindingsByNode(deniedActor, "UTSUSHI-200")).rejects.toMatchObject({
+      await expect(repo.loadFindingsByNode(deniedActor, "TEST-NODE-1")).rejects.toMatchObject({
         name: "AuthorizationError",
         permission: "catalog.read",
       });

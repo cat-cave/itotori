@@ -142,7 +142,7 @@ export const KAIFUU_DELTA_FORMAT_STABILITY: FormatStabilityDeclaration = {
   knownLegacyVersions: ["0.2.0"],
   migrationPath:
     "Re-run `kaifuu diff` with the current tool to emit a 0.3.0 package; the 0.2.0 reader " +
-    "was deleted (KAIFUU-238, no-legacy-compat). See " +
+    "was deleted (no-legacy-compat). See " +
     "docs/format-stability-and-compatibility-policy.md#kaifuu-delta-package.",
 };
 
