@@ -12,6 +12,7 @@ import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createItotoriServer } from "../src/server.js";
+import type { ItotoriReadOnlyServiceFactory } from "../src/services/database-services.js";
 import {
   buildMediaIndex,
   buildMediaRef,
@@ -52,7 +53,10 @@ describe("content-addressed Wiki media index", () => {
     mkdirSync(join(managedDir, "test-run", "screenshots"), { recursive: true });
     writeFileSync(join(managedDir, "test-run", "screenshots", "frame.png"), ONE_PIXEL_PNG);
 
-    server = createItotoriServer({ managedArtifactRoot: pathToFileURL(`${managedDir}/`) });
+    server = createItotoriServer({
+      managedArtifactRoot: pathToFileURL(`${managedDir}/`),
+      readOnlyServiceFactory: allowReveal,
+    });
     await new Promise<void>((resolveListen) =>
       server.listen(0, "127.0.0.1", () => resolveListen()),
     );
@@ -172,3 +176,8 @@ describe("content-addressed Wiki media index", () => {
     ).rejects.toMatchObject({ code: "unauthorized-reveal" });
   });
 });
+
+const allowReveal = (async (callback) =>
+  await callback({
+    authorization: { requirePermission: async () => undefined },
+  } as never)) as ItotoriReadOnlyServiceFactory;

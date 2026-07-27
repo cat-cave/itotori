@@ -7,11 +7,7 @@ import { LivePlayerScreen } from "../src/ui/screens/LivePlayerScreen.js";
 import { RedactionGovernor, RedactionToggle } from "../src/ui/redaction-governor.js";
 
 const CONFIG = {
-  seenPath: "/seen",
-  gameexePath: "/gameexe",
-  g00Dir: "/g00",
-  artifactRoot: "/artifacts",
-  scene: 7,
+  session: "review-session",
 };
 
 afterEach(() => {
@@ -38,7 +34,7 @@ describe("Live browser player", () => {
           waitingFor: { type: "advance" },
           ended: false,
           frame: {
-            dataUrl: second ? "data:image/png;base64,second" : "data:image/png;base64,first",
+            frameId: second ? "frame-2" : "frame-1",
             artifactId: second ? "frame-2" : "frame-1",
             width: 16,
             height: 9,
@@ -47,38 +43,26 @@ describe("Live browser player", () => {
         { headers: { "content-type": "application/json" } },
       );
     });
-    render(
-      <LivePlayerScreen
-        config={{
-          seenPath: "/seen",
-          gameexePath: "/gameexe",
-          g00Dir: "/g00",
-          artifactRoot: "/artifacts",
-          scene: 7,
-        }}
-      />,
-    );
+    render(<LivePlayerScreen config={CONFIG} />);
 
     const frame = await screen.findByAltText("Current real engine frame");
-    expect(frame).toHaveAttribute("src", "data:image/png;base64,first");
+    expect(frame).toHaveAttribute("src", "/api/player/sessions/session-1/frames/frame-1");
     fireEvent.click(screen.getByRole("button", { name: "Advance" }));
     expect(await screen.findByAltText("Current real engine frame")).toHaveAttribute(
       "src",
-      "data:image/png;base64,second",
+      "/api/player/sessions/session-1/frames/frame-2",
     );
     expect(screen.getByRole("img")).toHaveAttribute("data-frame-artifact-id", "frame-2");
     expect(calls).toBe(2);
   });
 
-  // The engine can rasterise either an unredacted frame or an edge-outline
-  // stand-in, and the shell already owns a cap-gated control for that choice.
-  // The player asked for the redacted one unconditionally, so a reviewer who
-  // HELD the cap still could not see the art a line sits on. These pin the
-  // governor to the launch request in both directions.
+  // The browser sends an opaque server-registered session only. The server
+  // consults the same reveal permission backing the governor; request JSON
+  // cannot select a filesystem path or redaction posture.
   it.each([
-    { label: "without the reveal capability", reveal: false, expected: "on" },
-    { label: "when the capable viewer reveals", reveal: true, expected: "off" },
-  ])("starts the engine with redaction $expected $label", async ({ reveal, expected }) => {
+    { label: "without the reveal capability", reveal: false },
+    { label: "when the capable viewer reveals", reveal: true },
+  ])("does not send redaction or paths $label", async ({ reveal }) => {
     const bodies: string[] = [];
     vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
       bodies.push(String(init?.body ?? ""));
@@ -108,6 +92,6 @@ describe("Live browser player", () => {
     }
 
     expect(bodies.length).toBeGreaterThan(0);
-    expect(JSON.parse(bodies[bodies.length - 1]!).redaction).toBe(expected);
+    expect(JSON.parse(bodies[bodies.length - 1]!)).toEqual({ session: "review-session" });
   });
 });

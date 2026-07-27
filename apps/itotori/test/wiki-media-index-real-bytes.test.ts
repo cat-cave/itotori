@@ -32,6 +32,7 @@ import { describe, expect, it } from "vitest";
 import { runNativeCli } from "../src/native-bin/cli-bin-resolver.js";
 import { runUtsushiStructureExport } from "../src/structure-export/utsushi-structure-seam.js";
 import { createItotoriServer } from "../src/server.js";
+import type { ItotoriReadOnlyServiceFactory } from "../src/services/database-services.js";
 import {
   buildMediaIndex,
   buildMediaRef,
@@ -41,6 +42,11 @@ import {
   MediaResolutionError,
   type MediaRevealGrant,
 } from "../src/wiki/media-index.js";
+
+const allowReveal = (async (callback) =>
+  await callback({
+    authorization: { requirePermission: async () => undefined },
+  } as never)) as ItotoriReadOnlyServiceFactory;
 
 function findCorpus(
   dir: string,
@@ -153,7 +159,10 @@ describe("real-Sweetie media ref resolution through the sanitized server", () =>
       const contentHash = `sha256:${createHash("sha256").update(publicBytes).digest("hex")}`;
 
       // 4. Stand up the REAL sanitized artifact server over the managed root.
-      const server = createItotoriServer({ managedArtifactRoot: pathToFileURL(`${managedDir}/`) });
+      const server = createItotoriServer({
+        managedArtifactRoot: pathToFileURL(`${managedDir}/`),
+        readOnlyServiceFactory: allowReveal,
+      });
       await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
       const port = (server.address() as AddressInfo).port;
       const baseUrl = `http://127.0.0.1:${port}`;

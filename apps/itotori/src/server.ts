@@ -1,7 +1,7 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFile, realpath } from "node:fs/promises";
+import { createServer, type IncomingMessage } from "node:http";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { extname, join, relative, resolve, sep } from "node:path";
+import { extname, join } from "node:path";
 import { AuthorizationError } from "@itotori/db";
 import {
   handleItotoriApiRequest,
@@ -18,13 +18,22 @@ import {
 import { parseItotoriSessionCookie } from "./auth-session-cookie.js";
 import { isShellNavPath } from "./ui/shell-nav-routes.js";
 import { assertPrivacyRetentionEgressContract } from "./contracts/privacy.js";
-import { configuredServicePort } from "./services/configured-port.js";
+import { studioCapabilityPermissions } from "./auth.js";
+import { serveArtifactStoreRequest } from "./artifact-store.js";
+import { BrowserPlayerSessionManager } from "./play/browser-player-session.js";
 import {
-  BrowserPlayerSessionError,
-  BrowserPlayerSessionManager,
-  type BrowserPlayerInput,
-  type BrowserPlayerStart,
-} from "./play/browser-player-session.js";
+  isBrowserPlayerRoute,
+  serveBrowserPlayerRequest,
+  type BrowserPlayerLaunchRegistry,
+} from "./play/browser-player-routes.js";
+import {
+  isPatchbackProduceRoute,
+  parsePatchIterationDeliveryArchiveRoute,
+  parsePlayDeliveryArchiveRoute,
+  servePatchbackProduceRequest,
+  servePatchIterationDeliveryArchiveRequest,
+  servePlayDeliveryArchiveRequest,
+} from "./play/delivery-routes.js";
 
 export type DashboardServerOptions = {
   databaseUrl?: string;
@@ -34,14 +43,16 @@ export type DashboardServerOptions = {
   webRoot?: URL;
   runtimeWebRoot?: URL;
   managedArtifactRoot?: URL;
+  /** Full-fidelity files live here, never beneath `managedArtifactRoot`. */
+  privateArtifactRoot?: URL;
   publicFixtureArtifactRoot?: URL;
   /** In-memory server-side engine sessions. Never persisted to the DB. */
   browserPlayerSessions?: BrowserPlayerSessionManager;
+  /** Trusted descriptors installed by a local launcher, not HTTP callers. */
+  browserPlayerLaunches?: BrowserPlayerLaunchRegistry;
 };
 
 const dashboardListenHost = "127.0.0.1";
-const managedRuntimeArtifactUriRoot = "artifacts/utsushi/runtime/";
-
 export function createItotoriServer(options: DashboardServerOptions = {}) {
   assertPrivacyRetentionEgressContract();
   const webRoot = options.webRoot ?? new URL("../web-dist/", import.meta.url);
@@ -49,6 +60,9 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
     options.runtimeWebRoot ?? new URL("../../runtime-web-review/dist/", import.meta.url);
   const managedArtifactRoot =
     options.managedArtifactRoot ?? new URL("../../../artifacts/utsushi/runtime/", import.meta.url);
+  const privateArtifactRoot =
+    options.privateArtifactRoot ??
+    new URL("../../../artifacts/utsushi/runtime.private-full/", import.meta.url);
   const publicFixtureArtifactRoot =
     options.publicFixtureArtifactRoot ?? new URL("../../../fixtures/public/", import.meta.url);
   const serviceFactory =
@@ -66,6 +80,7 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
   const readOnlyServiceFactory =
     options.readOnlyServiceFactory ?? toReadOnlyServiceFactory(serviceFactory);
   const browserPlayerSessions = options.browserPlayerSessions ?? new BrowserPlayerSessionManager();
+  const browserPlayerLaunches = options.browserPlayerLaunches ?? browserPlayerLaunchesFromEnv();
   return createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
     if (isItotoriApiPath(url.pathname)) {
@@ -74,7 +89,9 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
           request,
           response,
           pathname: url.pathname,
-          browserPlayerSessions,
+          sessions: browserPlayerSessions,
+          launches: browserPlayerLaunches,
+          canReveal: () => canReveal(request, readOnlyServiceFactory),
         });
         return;
       }
@@ -101,7 +118,12 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
         return;
       }
       if (isPatchbackProduceRoute(url.pathname)) {
-        await servePatchbackProduceRequest({ request, response, serviceFactory });
+        await servePatchbackProduceRequest({
+          request,
+          response,
+          serviceFactory,
+          readJson: readJsonRequestBody,
+        });
         return;
       }
       try {
@@ -157,9 +179,11 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
     }
 
     if (url.pathname.startsWith("/artifact-store/")) {
-      await serveArtifactStoreRequest(url.pathname, response, {
-        managedArtifactRoot,
-        publicFixtureArtifactRoot,
+      await serveArtifactStoreRequest({
+        pathname: url.pathname,
+        response,
+        roots: { managedArtifactRoot, privateArtifactRoot, publicFixtureArtifactRoot },
+        authorizeReveal: () => requireReveal(request, readOnlyServiceFactory),
       });
       return;
     }
@@ -195,350 +219,6 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
   });
 }
 
-async function serveBrowserPlayerRequest(input: {
-  request: IncomingMessage;
-  response: ServerResponse;
-  pathname: string;
-  browserPlayerSessions: BrowserPlayerSessionManager;
-}): Promise<void> {
-  try {
-    if (input.request.method !== "POST") {
-      writeApiError(input.response, 405, "method_not_allowed", "method must be POST");
-      return;
-    }
-    const body = await readJsonRequestBody(input.request);
-    if (input.pathname === "/api/player/sessions") {
-      const state = await input.browserPlayerSessions.start(parseBrowserPlayerStart(body));
-      writeBrowserPlayerJson(input.response, 201, state);
-      return;
-    }
-    const sessionId = parseBrowserPlayerInputRoute(input.pathname);
-    if (sessionId === null) {
-      writeApiError(input.response, 404, "not_found", "browser player route was not found");
-      return;
-    }
-    const state = await input.browserPlayerSessions.send(sessionId, parseBrowserPlayerInput(body));
-    writeBrowserPlayerJson(input.response, 200, state);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const status = error instanceof BrowserPlayerSessionError ? 422 : 400;
-    writeApiError(input.response, status, "bad_request", message);
-  }
-}
-
-function isBrowserPlayerRoute(pathname: string): boolean {
-  return pathname === "/api/player/sessions" || parseBrowserPlayerInputRoute(pathname) !== null;
-}
-
-function parseBrowserPlayerInputRoute(pathname: string): string | null {
-  const match = /^\/api\/player\/sessions\/([^/]+)\/input$/u.exec(pathname);
-  return match === null ? null : decodeURIComponent(match[1] ?? "");
-}
-
-function parseBrowserPlayerStart(value: unknown): BrowserPlayerStart {
-  if (!isObject(value))
-    throw new BrowserPlayerSessionError("player start request must be an object");
-  return {
-    seenPath: requiredString(value, "seenPath"),
-    gameexePath: requiredString(value, "gameexePath"),
-    g00Dir: requiredString(value, "g00Dir"),
-    artifactRoot: requiredString(value, "artifactRoot"),
-    scene: requiredNumber(value, "scene"),
-    ...(value.redaction === undefined ? {} : { redaction: parseRedaction(value.redaction) }),
-  };
-}
-
-function parseBrowserPlayerInput(value: unknown): BrowserPlayerInput {
-  if (!isObject(value) || typeof value.type !== "string")
-    throw new BrowserPlayerSessionError("player input requires a type");
-  if (value.type === "advance") return { type: "advance" };
-  if (value.type === "choice") return { type: "choice", index: requiredNumber(value, "index") };
-  throw new BrowserPlayerSessionError("player input type must be advance or choice");
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function requiredString(value: Record<string, unknown>, key: string): string {
-  const entry = value[key];
-  if (typeof entry !== "string")
-    throw new BrowserPlayerSessionError(`player ${key} must be a string`);
-  return entry;
-}
-
-function requiredNumber(value: Record<string, unknown>, key: string): number {
-  const entry = value[key];
-  if (typeof entry !== "number")
-    throw new BrowserPlayerSessionError(`player ${key} must be a number`);
-  return entry;
-}
-
-function parseRedaction(value: unknown): "on" | "off" {
-  if (value === "on" || value === "off") return value;
-  throw new BrowserPlayerSessionError("player redaction must be on or off");
-}
-
-function writeBrowserPlayerJson(response: ServerResponse, status: number, body: unknown): void {
-  response.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
-  response.end(JSON.stringify(body));
-}
-
-async function servePatchIterationDeliveryArchiveRequest(input: {
-  request: IncomingMessage;
-  response: ServerResponse;
-  patchVersionId: string;
-  readOnlyServiceFactory: ItotoriReadOnlyServiceFactory;
-}): Promise<void> {
-  if (input.request.method !== "GET") {
-    writeApiError(input.response, 405, "method_not_allowed", "method must be GET");
-    return;
-  }
-  try {
-    const sessionId = parseItotoriSessionCookie(input.request.headers.cookie);
-    const serviceOptions = sessionId === undefined ? undefined : { sessionId };
-    // Exact historical delivery has the same authenticated catalog.read and
-    // manifest-verification boundary as current-run delivery. The URL carries
-    // only an opaque version id, never an artifact filesystem path.
-    const archive = await input.readOnlyServiceFactory(
-      (services) =>
-        services.playTesterResultRevision.loadExactPatchArchive({
-          patchVersionId: input.patchVersionId,
-        }),
-      serviceOptions,
-    );
-    if (archive === null) {
-      writeApiError(
-        input.response,
-        404,
-        "not_found",
-        `playable patch ${input.patchVersionId} was not found`,
-      );
-      return;
-    }
-    input.response.writeHead(200, {
-      "content-type": archive.contentType,
-      "content-length": String(archive.bytes.byteLength),
-      "content-disposition": `attachment; filename="${archive.fileName}"`,
-      "cache-control": "no-store",
-      "x-content-type-options": "nosniff",
-    });
-    input.response.end(archive.bytes);
-  } catch (error) {
-    if (error instanceof AuthorizationError || error instanceof ItotoriInvalidAuthSessionError) {
-      writeApiError(input.response, 403, "forbidden", error.message);
-      return;
-    }
-    writeApiError(
-      input.response,
-      500,
-      "internal_error",
-      error instanceof Error ? error.message : String(error),
-    );
-  }
-}
-
-function isPatchbackProduceRoute(pathname: string): boolean {
-  return /^\/api\/patchback\/produce\/?$/u.test(pathname);
-}
-
-/**
- * The produce-and-download patched-build mutation. Unlike the durable delivery
- * archives (GET, read-only surface), this drives the native `kaifuu patch` apply
- * over a run's accepted outputs, so it runs through the FULL mutation service
- * factory and streams the produced tar back in a single response. No bytes are
- * fabricated — the archive is exactly what the byte-surgical apply wrote.
- */
-async function servePatchbackProduceRequest(input: {
-  request: IncomingMessage;
-  response: ServerResponse;
-  serviceFactory: ItotoriServiceFactory;
-}): Promise<void> {
-  if (input.request.method !== "POST") {
-    writeApiError(input.response, 405, "method_not_allowed", "method must be POST");
-    return;
-  }
-  try {
-    const body = await readJsonRequestBody(input.request);
-    const request = parsePatchbackProduceRequest(body);
-    const sessionId = parseItotoriSessionCookie(input.request.headers.cookie);
-    const serviceOptions = sessionId === undefined ? undefined : { sessionId };
-    const archive = await input.serviceFactory((services) => {
-      const produce = configuredServicePort(services, "patchbackProduce");
-      if (produce === undefined) {
-        throw new Error("patchback produce service is unavailable");
-      }
-      return produce.produceArchive(request);
-    }, serviceOptions);
-    if (archive === null) {
-      writeApiError(
-        input.response,
-        404,
-        "not_found",
-        "no produce-eligible run was found for the requested scope",
-      );
-      return;
-    }
-    input.response.writeHead(200, {
-      "content-type": archive.contentType,
-      "content-length": String(archive.bytes.byteLength),
-      "content-disposition": `attachment; filename="${archive.fileName}"`,
-      "cache-control": "no-store",
-      "x-content-type-options": "nosniff",
-    });
-    input.response.end(archive.bytes);
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      writeApiError(input.response, 400, "bad_request", error.message);
-      return;
-    }
-    if (error instanceof AuthorizationError || error instanceof ItotoriInvalidAuthSessionError) {
-      writeApiError(input.response, 403, "forbidden", error.message);
-      return;
-    }
-    writeApiError(
-      input.response,
-      500,
-      "internal_error",
-      error instanceof Error ? error.message : String(error),
-    );
-  }
-}
-
-function parsePatchbackProduceRequest(body: unknown): {
-  projectId?: string;
-  localeBranchId?: string;
-  runId?: string;
-} {
-  if (body === undefined) return {};
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    throw new SyntaxError("patchback produce request body must be a JSON object");
-  }
-  const record = body as Record<string, unknown>;
-  const request: { projectId?: string; localeBranchId?: string; runId?: string } = {};
-  for (const key of ["projectId", "localeBranchId", "runId"] as const) {
-    const value = record[key];
-    if (value === undefined) continue;
-    if (typeof value !== "string") {
-      throw new SyntaxError(`patchback produce request '${key}' must be a string`);
-    }
-    request[key] = value;
-  }
-  return request;
-}
-
-async function servePlayDeliveryArchiveRequest(input: {
-  request: IncomingMessage;
-  response: ServerResponse;
-  runId: string;
-  readOnlyServiceFactory: ItotoriReadOnlyServiceFactory;
-}): Promise<void> {
-  if (input.request.method !== "GET") {
-    writeApiError(input.response, 405, "method_not_allowed", "method must be GET");
-    return;
-  }
-  try {
-    const sessionId = parseItotoriSessionCookie(input.request.headers.cookie);
-    const serviceOptions = sessionId === undefined ? undefined : { sessionId };
-    // `loadSelectedArchive` is a bound production service method: its exporter
-    // resolves the selected revision through the authenticated repository
-    // actor and refuses callers without catalog.read before any bytes are read.
-    const archive = await input.readOnlyServiceFactory(
-      (services) => services.playTesterResultRevision.loadSelectedArchive({ runId: input.runId }),
-      serviceOptions,
-    );
-    if (archive === null) {
-      writeApiError(
-        input.response,
-        404,
-        "not_found",
-        `selected delivered patch for run ${input.runId} was not found`,
-      );
-      return;
-    }
-    input.response.writeHead(200, {
-      "content-type": archive.contentType,
-      "content-length": String(archive.bytes.byteLength),
-      "content-disposition": `attachment; filename="${archive.fileName}"`,
-      "cache-control": "no-store",
-      "x-content-type-options": "nosniff",
-    });
-    input.response.end(archive.bytes);
-  } catch (error) {
-    if (error instanceof AuthorizationError || error instanceof ItotoriInvalidAuthSessionError) {
-      writeApiError(input.response, 403, "forbidden", error.message);
-      return;
-    }
-    writeApiError(
-      input.response,
-      500,
-      "internal_error",
-      error instanceof Error ? error.message : String(error),
-    );
-  }
-}
-
-function parsePlayDeliveryArchiveRoute(pathname: string): { runId: string } | null {
-  const match = /^\/api\/play\/runs\/([^/]+)\/delivery\/archive\/?$/u.exec(pathname);
-  if (match === null || match[1] === undefined) {
-    return null;
-  }
-  try {
-    const runId = decodeURIComponent(match[1]);
-    if (
-      runId.trim().length === 0 ||
-      runId.includes("/") ||
-      runId.includes("\\") ||
-      runId === "." ||
-      runId === ".."
-    ) {
-      return null;
-    }
-    return { runId };
-  } catch {
-    return null;
-  }
-}
-
-function parsePatchIterationDeliveryArchiveRoute(pathname: string): {
-  patchVersionId: string;
-} | null {
-  const match = /^\/api\/play\/patch-versions\/([^/]+)\/delivery\/archive\/?$/u.exec(pathname);
-  if (match === null || match[1] === undefined) {
-    return null;
-  }
-  const patchVersionId = decodeSafeDeliveryPathId(match[1]);
-  return patchVersionId === null ? null : { patchVersionId };
-}
-
-function decodeSafeDeliveryPathId(value: string): string | null {
-  try {
-    const decoded = decodeURIComponent(value);
-    if (
-      decoded.trim().length === 0 ||
-      decoded.includes("/") ||
-      decoded.includes("\\") ||
-      decoded === "." ||
-      decoded === ".."
-    ) {
-      return null;
-    }
-    return decoded;
-  } catch {
-    return null;
-  }
-}
-
-function writeApiError(
-  response: ServerResponse,
-  statusCode: number,
-  code: "bad_request" | "forbidden" | "not_found" | "method_not_allowed" | "internal_error",
-  error: string,
-): void {
-  response.writeHead(statusCode, { "content-type": "application/json" });
-  response.end(JSON.stringify({ error, code }));
-}
-
 async function readJsonRequestBody(request: IncomingMessage): Promise<unknown> {
   if (request.method === "GET" || request.method === "HEAD") {
     return undefined;
@@ -557,6 +237,60 @@ function databaseOptions(options: DashboardServerOptions) {
   return options.databaseUrl === undefined
     ? { bootstrapLocalUser: false }
     : { databaseUrl: options.databaseUrl, bootstrapLocalUser: false };
+}
+
+async function requireReveal(
+  request: IncomingMessage,
+  readOnlyServiceFactory: ItotoriReadOnlyServiceFactory,
+): Promise<void> {
+  const sessionId = parseItotoriSessionCookie(request.headers.cookie);
+  await readOnlyServiceFactory(
+    (services) => services.authorization.requirePermission(studioCapabilityPermissions.reveal),
+    sessionId === undefined ? undefined : { sessionId },
+  );
+}
+
+async function canReveal(
+  request: IncomingMessage,
+  readOnlyServiceFactory: ItotoriReadOnlyServiceFactory,
+): Promise<boolean> {
+  try {
+    await requireReveal(request, readOnlyServiceFactory);
+    return true;
+  } catch (error) {
+    if (error instanceof AuthorizationError) return false;
+    throw error;
+  }
+}
+
+function browserPlayerLaunchesFromEnv(): BrowserPlayerLaunchRegistry {
+  const seenPath = process.env.ITOTORI_PLAYER_E2E_SEEN;
+  const gameexePath = process.env.ITOTORI_PLAYER_E2E_GAMEEXE;
+  const g00Dir = process.env.ITOTORI_PLAYER_E2E_G00_DIR;
+  const artifactRoot = process.env.ITOTORI_PLAYER_E2E_ARTIFACT_ROOT;
+  const scene = Number(process.env.ITOTORI_PLAYER_E2E_SCENE ?? "");
+  if (
+    seenPath === undefined ||
+    gameexePath === undefined ||
+    g00Dir === undefined ||
+    artifactRoot === undefined ||
+    seenPath.trim() === "" ||
+    gameexePath.trim() === "" ||
+    g00Dir.trim() === "" ||
+    artifactRoot.trim() === "" ||
+    !Number.isInteger(scene)
+  ) {
+    return {};
+  }
+  return {
+    [process.env.ITOTORI_PLAYER_E2E_SESSION_ID ?? "e2e"]: {
+      seenPath,
+      gameexePath,
+      g00Dir,
+      artifactRoot,
+      scene,
+    },
+  };
 }
 
 export function startItotoriServer(options: DashboardServerOptions = {}) {
@@ -615,53 +349,6 @@ function safeStaticPath(path: string): string | null {
   return decoded;
 }
 
-async function serveArtifactStoreRequest(
-  pathname: string,
-  response: ServerResponse,
-  roots: Pick<DashboardServerOptions, "managedArtifactRoot" | "publicFixtureArtifactRoot">,
-): Promise<void> {
-  const artifactUri = decodeArtifactStoreUri(pathname);
-  if (artifactUri === null || !isManagedRuntimeArtifactUri(artifactUri)) {
-    response.writeHead(400, { "content-type": "text/plain" });
-    response.end("bad artifact uri");
-    return;
-  }
-
-  const runtimeRelativePath = artifactUri.slice(managedRuntimeArtifactUriRoot.length);
-  const candidateRoots = [
-    { root: roots.managedArtifactRoot, path: runtimeRelativePath },
-    { root: roots.publicFixtureArtifactRoot, path: artifactUri },
-  ];
-
-  for (const candidate of candidateRoots) {
-    if (candidate.root === undefined) {
-      continue;
-    }
-    const file = await readRootedFile(candidate.root, candidate.path);
-    if (file !== null) {
-      response.writeHead(200, { "content-type": contentType(artifactUri) });
-      response.end(file);
-      return;
-    }
-  }
-
-  response.writeHead(404, { "content-type": "text/plain" });
-  response.end("not found");
-}
-
-function decodeArtifactStoreUri(pathname: string): string | null {
-  const encodedArtifactUri = pathname.slice("/artifact-store/".length);
-  try {
-    return decodeURIComponent(encodedArtifactUri);
-  } catch {
-    return null;
-  }
-}
-
-function isManagedRuntimeArtifactUri(uri: string): boolean {
-  return uri.startsWith(managedRuntimeArtifactUriRoot) && !isUnsafeRelativePath(uri);
-}
-
 function isUnsafeRelativePath(path: string): boolean {
   return (
     path.length === 0 ||
@@ -670,32 +357,6 @@ function isUnsafeRelativePath(path: string): boolean {
     /^[A-Za-z][A-Za-z0-9+.-]*:/.test(path) ||
     path.split("/").some((segment) => segment.length === 0 || segment === "." || segment === "..")
   );
-}
-
-async function readRootedFile(root: URL, path: string): Promise<Buffer | null> {
-  const rootPath = fileURLToPath(root);
-  const candidatePath = resolve(rootPath, path);
-  const relativePath = relative(rootPath, candidatePath);
-  if (isOutsideRoot(relativePath)) {
-    return null;
-  }
-  try {
-    const [realRoot, realCandidate] = await Promise.all([
-      realpath(rootPath),
-      realpath(candidatePath),
-    ]);
-    const realRelativePath = relative(realRoot, realCandidate);
-    if (isOutsideRoot(realRelativePath)) {
-      return null;
-    }
-    return await readFile(realCandidate);
-  } catch {
-    return null;
-  }
-}
-
-function isOutsideRoot(relativePath: string): boolean {
-  return relativePath === "" || relativePath === ".." || relativePath.startsWith(`..${sep}`);
 }
 
 function isRuntimeDashboardRoute(pathname: string): boolean {
