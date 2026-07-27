@@ -1,0 +1,15 @@
+schema = "engine/v1"
+id = "engine-fixture"
+plugin = "libexec/engines/engine-fixture/runner"
+
+[capabilities]
+extract = "supported"
+patch = "not-claimed"
+
+[[proof]]
+id = "proof-two-corpora"
+lane = "lane-strict"
+covers = ["extract"]
+requires = { corpus_count = 2, tags = ["extract"] }
+executor = { kind = "engine-plugin", command = "prove", selector = "two-corpora" }
+receipt = { outcome = "fixture-output", minimum_executed = 1 }

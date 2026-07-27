@@ -1,0 +1,9 @@
+schema = "lane/v1"
+id = "lane-strict"
+class = "periodic"
+selector = "proof.lane == 'lane-strict'"
+requirements = ["private-inventory"]
+empty_plan = "fail"
+missing_requirement = "fail"
+unexecuted_selection = "fail"
+receipt = "required"
