@@ -40,25 +40,6 @@ impl RLOperation for MsgPauseOp {
     }
 }
 
-/// `msg.par` — paragraph break. Flushes the pending body.
-#[derive(Debug)]
-pub struct MsgParagraphBreakOp {
-    runtime: Arc<MsgRuntime>,
-}
-
-impl MsgParagraphBreakOp {
-    pub fn new(runtime: Arc<MsgRuntime>) -> Self {
-        Self { runtime }
-    }
-}
-
-impl RLOperation for MsgParagraphBreakOp {
-    fn dispatch(&self, _vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
-        self.runtime.flush_pending_line(MsgOpcode::ParagraphBreak);
-        DispatchOutcome::Advance
-    }
-}
-
 /// `msg.br` — line break. Flushes the pending body.
 #[derive(Debug)]
 pub struct MsgLineBreakOp {
@@ -153,50 +134,6 @@ impl RLOperation for MsgMsgClearOp {
     }
 }
 
-/// `msg.linenumber(int)` — declared source-line number marker.
-#[derive(Debug)]
-pub struct MsgLineNumberOp {
-    runtime: Arc<MsgRuntime>,
-}
-
-impl MsgLineNumberOp {
-    pub fn new(runtime: Arc<MsgRuntime>) -> Self {
-        Self { runtime }
-    }
-}
-
-impl RLOperation for MsgLineNumberOp {
-    fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        let value = match args.first() {
-            Some(ExprValue::Int(n)) => Some(*n),
-            Some(ExprValue::Bytes(_)) => {
-                self.runtime
-                    .record_warning(MsgRuntimeWarning::ArgShapeMismatch {
-                        opcode: MsgOpcode::LineNumber,
-                        expected: "int",
-                    });
-                None
-            }
-            None => {
-                self.runtime.record_warning(MsgRuntimeWarning::MissingArg {
-                    opcode: MsgOpcode::LineNumber,
-                    slot: "line_number",
-                });
-                None
-            }
-        };
-        if let Some(value) = value {
-            let mut guard = self
-                .runtime
-                .inner
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            guard.last_line_number = Some(value as u32);
-        }
-        DispatchOutcome::Advance
-    }
-}
-
 /// `msg.font_color(int)` — set font colour.
 #[derive(Debug)]
 pub struct MsgFontColorOp {
@@ -241,87 +178,13 @@ impl RLOperation for MsgFontColorOp {
     }
 }
 
-/// `msg.font_size(int)` — set font size.
+/// Formatting commands that affect the text-page renderer but neither the
+/// VM banks nor control flow. Their arguments are still evaluated by `Vm`.
 #[derive(Debug)]
-pub struct MsgFontSizeOp {
-    runtime: Arc<MsgRuntime>,
-}
+pub struct MsgFormattingOp;
 
-impl MsgFontSizeOp {
-    pub fn new(runtime: Arc<MsgRuntime>) -> Self {
-        Self { runtime }
-    }
-}
-
-impl RLOperation for MsgFontSizeOp {
-    fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
-        let value = match args.first() {
-            Some(ExprValue::Int(n)) => {
-                let clamped = (*n).clamp(0, u8::MAX as i32) as u8;
-                Some(clamped)
-            }
-            Some(ExprValue::Bytes(_)) => {
-                self.runtime
-                    .record_warning(MsgRuntimeWarning::ArgShapeMismatch {
-                        opcode: MsgOpcode::FontSize,
-                        expected: "int",
-                    });
-                None
-            }
-            None => {
-                self.runtime.record_warning(MsgRuntimeWarning::MissingArg {
-                    opcode: MsgOpcode::FontSize,
-                    slot: "size",
-                });
-                None
-            }
-        };
-        if let Some(value) = value {
-            let mut guard = self
-                .runtime
-                .inner
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            guard.current_font_size = Some(value);
-        }
-        DispatchOutcome::Advance
-    }
-}
-
-/// `msg.name_open` — speaker-bracket open.
-#[derive(Debug)]
-pub struct MsgNameOpenOp {
-    runtime: Arc<MsgRuntime>,
-}
-
-impl MsgNameOpenOp {
-    pub fn new(runtime: Arc<MsgRuntime>) -> Self {
-        Self { runtime }
-    }
-}
-
-impl RLOperation for MsgNameOpenOp {
+impl RLOperation for MsgFormattingOp {
     fn dispatch(&self, _vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
-        self.runtime.begin_speaker();
-        DispatchOutcome::Advance
-    }
-}
-
-/// `msg.name_close` — speaker-bracket close.
-#[derive(Debug)]
-pub struct MsgNameCloseOp {
-    runtime: Arc<MsgRuntime>,
-}
-
-impl MsgNameCloseOp {
-    pub fn new(runtime: Arc<MsgRuntime>) -> Self {
-        Self { runtime }
-    }
-}
-
-impl RLOperation for MsgNameCloseOp {
-    fn dispatch(&self, _vm: &mut Vm, _args: &[ExprValue]) -> DispatchOutcome {
-        self.runtime.end_speaker();
         DispatchOutcome::Advance
     }
 }
@@ -383,10 +246,6 @@ pub fn register_text_rlops(registry: &mut RlopRegistry, runtime: Arc<MsgRuntime>
         Arc::new(MsgPauseOp::new(Arc::clone(&runtime))),
     );
     register(
-        MsgOpcode::ParagraphBreak,
-        Arc::new(MsgParagraphBreakOp::new(Arc::clone(&runtime))),
-    );
-    register(
         MsgOpcode::LineBreak,
         Arc::new(MsgLineBreakOp::new(Arc::clone(&runtime))),
     );
@@ -399,32 +258,34 @@ pub fn register_text_rlops(registry: &mut RlopRegistry, runtime: Arc<MsgRuntime>
         Arc::new(MsgMsgHideOp::new(Arc::clone(&runtime))),
     );
     register(
-        MsgOpcode::MsgClear,
-        Arc::new(MsgMsgClearOp::new(Arc::clone(&runtime))),
+        MsgOpcode::MsgHideAll,
+        Arc::new(MsgMsgHideOp::new(Arc::clone(&runtime))),
     );
     register(
-        MsgOpcode::LineNumber,
-        Arc::new(MsgLineNumberOp::new(Arc::clone(&runtime))),
+        MsgOpcode::MsgClear,
+        Arc::new(MsgMsgClearOp::new(Arc::clone(&runtime))),
     );
     register(
         MsgOpcode::FontColor,
         Arc::new(MsgFontColorOp::new(Arc::clone(&runtime))),
     );
     register(
-        MsgOpcode::FontSize,
-        Arc::new(MsgFontSizeOp::new(Arc::clone(&runtime))),
-    );
-    register(
-        MsgOpcode::NameOpen,
-        Arc::new(MsgNameOpenOp::new(Arc::clone(&runtime))),
-    );
-    register(
-        MsgOpcode::NameClose,
-        Arc::new(MsgNameCloseOp::new(Arc::clone(&runtime))),
-    );
-    register(
         MsgOpcode::TextWindow,
         Arc::new(MsgTextWindowOp::new(Arc::clone(&runtime))),
     );
+    register(
+        MsgOpcode::SPause,
+        Arc::new(MsgPauseOp::new(Arc::clone(&runtime))),
+    );
+    for opcode in [
+        MsgOpcode::FastText,
+        MsgOpcode::NormalText,
+        MsgOpcode::SetIndent,
+        MsgOpcode::ClearIndent,
+        MsgOpcode::TextPos,
+        MsgOpcode::TextPosX,
+    ] {
+        register(opcode, Arc::new(MsgFormattingOp));
+    }
     MsgOpcode::ALL.len() * LATTICE_TYPES.len()
 }

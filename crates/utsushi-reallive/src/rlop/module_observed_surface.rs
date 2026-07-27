@@ -39,8 +39,6 @@ impl RLOperation for ObservedSurfaceCommand {
 /// byte-level extension number. They are deliberately not registered across a
 /// lattice: an unobserved address remains an unknown operation.
 const OBSERVED_SURFACE_COMMANDS: &[(u8, u8, u16, &str)] = &[
-    (0, 3, 400, "msg.extension_400"),
-    (0, 3, 401, "msg.extension_401"),
     (0, 4, 212, "sys.extension_212"),
     (0, 4, 213, "sys.extension_213"),
     (1, 4, 203, "sys.extension_203"),
@@ -65,7 +63,6 @@ const OBSERVED_SURFACE_COMMANDS: &[(u8, u8, u16, &str)] = &[
     (1, 23, 101, "koe.extension_101"),
     (1, 33, 406, "grp.extension_406"),
     (1, 40, 10, "grp_effect.extension_10"),
-    (0, 3, 151, "msg.hide"),
     (1, 4, 100, "sys.extension_100"),
     (1, 4, 101, "sys.extension_101"),
     (1, 4, 130, "sys.extension_130"),

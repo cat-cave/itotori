@@ -367,34 +367,4 @@ impl MsgRuntime {
         }
         guard.pending_body.extend_from_slice(raw_bytes);
     }
-
-    /// Open the speaker bracket. The text accumulated until
-    /// [`OPCODE_NAME_CLOSE`] becomes the speaker label of the next
-    /// emission.
-    pub(super) fn begin_speaker(&self) {
-        let mut guard = self
-            .inner
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        // Stash the current pending body as the speaker label and
-        // reset the body accumulator.
-        let raw = std::mem::take(&mut guard.pending_body);
-        guard.pending_byte_offset = None;
-        let label =
-            decode_shift_jis(&raw).unwrap_or_else(|| String::from_utf8_lossy(&raw).into_owned());
-        guard.pending_speaker = Some(label);
-    }
-
-    /// Close the speaker bracket. No-op when no speaker is active —
-    /// the assignment happened on `begin_speaker`.
-    // reason: deliberately takes `&self` and is empty — it exists purely for
-    // API symmetry with `begin_speaker` so the per-opcode dispatch path stays
-    // uniform across name_open / name_close.
-    #[allow(clippy::unused_self)]
-    pub(super) fn end_speaker(&self) {
-        // Intentionally empty: `begin_speaker` already wrote the
-        // speaker label. The method exists for symmetry so the
-        // per-opcode dispatch path is uniform across name_open
-        // name_close.
-    }
 }
