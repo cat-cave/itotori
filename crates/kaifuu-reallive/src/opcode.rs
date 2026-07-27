@@ -47,6 +47,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::command_catalog::{is_catalogued_command_opcode, is_coverage_manifest_opcode};
+pub use crate::textout::decode_dialogue_textout;
 
 /// BytecodeElement opener bytes (rlvm `bytecode.cc::BytecodeElement::Read`).
 /// These are the seven structural lead bytes that mark the start of a
@@ -565,53 +566,6 @@ mod module_id {
 /// (Shift-JIS first-byte ranges).
 pub fn is_shift_jis_textout_lead(byte: u8) -> bool {
     (0x81..=0x9F).contains(&byte) || (0xE0..=0xFC).contains(&byte)
-}
-
-/// Decode a catch-all Textout run as **readable Shift-JIS dialogue**,
-/// returning the decoded UTF-8 string when (and only when) the run is a
-/// real, translatable dialogue line — and `None` for a run that is instead
-/// an embedded binary / control-byte data table the catch-all decoder swept
-/// up.
-/// # Why this exists
-/// rlvm's `BytecodeElement::Read` (mirrored by [`decode_element`]) treats
-/// every non-structural lead byte as the start of a Textout run. That is
-/// faithful to the engine, but [`RealLiveOpcode::Textout`] is the decoder's
-/// **catch-all**, not a semantic dialogue opcode: a Textout run can carry
-/// one of two very different payloads:
-/// 1. **Readable dialogue** — a Shift-JIS line the player sees and a
-///    translator must rewrite. The bridge surfaces it as a translatable
-///    unit; a translate+patchback run rewrites those bytes.
-/// 2. **Embedded binary data** — a packed table the engine reads as raw
-///    bytes, never as text (e.g. a periodic-record block sitting after a
-///    second `MetaEntrypoint`). Surfacing it would let patchback overwrite
-///    the table and corrupt the scene.
-/// # The invariant: valid decode **and** no control bytes
-/// The decision is NOT a byte-ratio guess. A run is dialogue iff it
-/// satisfies BOTH invariants:
-/// - it decodes as Shift-JIS with **zero decode errors** (no `U+FFFD`
-///   replacement characters) — a packed binary table reliably hits byte
-///   sequences that are not valid Shift-JIS; and
-/// - the decoded text carries **no control characters** ([`char::is_control`]
-///   — `U+0000..=U+001F` / `U+007F..=U+009F`). A low-byte binary block can
-///   decode with zero replacement errors yet still resolve to C0 control
-///   characters; the valid-decode gate alone let those mislabel as dialogue.
-///   Real dialogue contains none — its line breaks are `MetaLine` opcodes
-///   (structural openers that terminate the run), never inline bytes.
-///   The bridge producer and the patchback re-walk that must stay
-///   index-aligned with it share this one decision, so both paths surface and
-///   skip the identical set of runs. An empty run is not dialogue.
-pub fn decode_dialogue_textout(raw_bytes: &[u8]) -> Option<String> {
-    if raw_bytes.is_empty() {
-        return None;
-    }
-    let (decoded, _encoding, had_errors) = encoding_rs::SHIFT_JIS.decode(raw_bytes);
-    if had_errors {
-        return None;
-    }
-    if decoded.chars().any(char::is_control) {
-        return None;
-    }
-    Some(decoded.into_owned())
 }
 
 /// True if `byte` is one of the seven structural BytecodeElement opener
