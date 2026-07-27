@@ -149,6 +149,21 @@ impl GraphicsObjectStack {
         Ok(())
     }
 
+    /// Present a newly composed display DC: discard the old foreground object
+    /// plane and promote the background object plane into it.
+    ///
+    /// RealLive performs this as part of presenting a DC to the screen. It is
+    /// deliberately a stack transition rather than a title-specific scene
+    /// reset: menu foreground furniture must not survive a later background
+    /// display, while background objects become the new foreground state.
+    /// Sparse parent/child object trees move with their parent plane.
+    pub fn clear_and_promote_objects(&mut self) {
+        for slot in 0..GRAPHICS_OBJECT_SLOT_COUNT {
+            self.foreground_objects[slot] = self.background_objects[slot].take();
+        }
+        self.foreground_parents = std::mem::take(&mut self.background_parents);
+    }
+
     /// Borrow the object at `(plane, slot)`, or `None` if the slot is
     /// free or out of range.
     pub fn get(&self, plane: GraphicsPlane, slot: usize) -> Option<&GraphicsObject> {
