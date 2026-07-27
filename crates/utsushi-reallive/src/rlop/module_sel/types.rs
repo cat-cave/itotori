@@ -206,7 +206,7 @@ pub(super) struct SelRuntimeInner {
 pub struct ObjectButtonPromptOption {
     pub display_index: u16,
     pub button_number: i32,
-    pub fg_slot: usize,
+    pub slot: usize,
     /// Exact top-level foreground state at prompt time. This snapshot does not
     /// resolve assets, infer bounds, or render pixels.
     pub visual_snapshot: GraphicsObject,
@@ -238,7 +238,7 @@ impl ObjectButtonPromptOption {
         Ok(ObjectButtonChoiceOption {
             display_index: self.display_index,
             button_number: self.button_number,
-            fg_slot: self.fg_slot,
+            slot: self.slot,
             bounds,
             art: image_ref.clone(),
         })
@@ -247,7 +247,7 @@ impl ObjectButtonPromptOption {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjectButtonCandidateScope {
-    TopLevelForegroundOnly,
+    TopLevelObjectPlanes,
 }
 
 /// Prompt-time button hit geometry.  A known rectangle is derived from the

@@ -1,5 +1,7 @@
 use super::*;
 
+use super::event_loop_gate::closes_a_loop;
+
 /// Drive `vm` to its natural terminus by FOLLOWING real control flow
 /// using `scheduler` (a deterministic headless input-provider) to advance
 /// past pause/wait yields and resolve choices. Records the executed
@@ -100,18 +102,7 @@ pub(super) fn drive_branch_following(
 
         match step {
             StepOutcome::Advanced { event } => {
-                if let VmEvent::CommandDispatched { outcome, .. } = &event {
-                    is_loop_closing |= match outcome {
-                        // A cross-scene jump, or an intra-scene jump to the
-                        // SAME or an EARLIER pc (`<=` catches a `goto`-to-self
-                        // spin), is a back edge that can close a loop.
-                        DispatchOutcome::Jump { scene, pc } => {
-                            *scene != scene_before || *pc <= pc_before
-                        }
-                        DispatchOutcome::Return | DispatchOutcome::ReturnFromCall => true,
-                        _ => false,
-                    };
-                }
+                is_loop_closing |= closes_a_loop(&event, scene_before, pc_before);
                 match &event {
                     VmEvent::Textout { raw_bytes }
                         if refs.shift_jis.contains(&(scene_before, pc_before)) =>

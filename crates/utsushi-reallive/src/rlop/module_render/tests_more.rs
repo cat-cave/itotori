@@ -89,7 +89,7 @@ fn objbtn_state_routes_exact_direct_and_inclusive_range_shapes() {
             .button_state,
         20
     );
-    assert!(runtime.foreground_button_candidates(20).is_empty());
+    assert!(runtime.button_candidates(20).is_empty());
 
     dispatch(0, OBJ_FG_SETTER_ID, &[int(0)]);
     dispatch(0, OBJ_FG_SETTER_ID, &[int(256), int(99)]);

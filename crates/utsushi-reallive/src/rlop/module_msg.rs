@@ -95,9 +95,18 @@ pub const MSG_MODULE_ID: u8 = 3;
 /// virtual opcode the audit/test harness uses to name the path.
 pub const OPCODE_TEXT_OUT: u16 = 0x0000;
 
-/// `msg.pause` — the user-input pause longop (RLDEV: `pause()`).
-/// Yields a [`crate::rlop::LongOp`].
-pub const OPCODE_PAUSE: u16 = 3;
+/// `msg.pause` — the user-input pause longop. Yields a
+/// [`crate::rlop::LongOp`], and it is the ONLY gate a reader crosses
+/// between two lines of dialogue.
+///
+/// The number is measured, not catalogued: it is the single most frequent
+/// message command in both proven archives (26 856 and 38 661 occurrences),
+/// which is what one-gate-per-line looks like, and the reference
+/// implementation names the same number `pause`. The value this constant
+/// held before appears ZERO times in either archive, so every dialogue gate
+/// in a real script was being dispatched as something else and the reader
+/// was never asked to advance.
+pub const OPCODE_PAUSE: u16 = 17;
 
 /// `msg.paragraph_break` — paragraph break (RLDEV: `par()`, alias of
 /// "page" in the catalogue but distinct on the RLDEV opcode line).
@@ -106,9 +115,11 @@ pub const OPCODE_PARAGRAPH_BREAK: u16 = 5;
 /// `msg.line_break` — line break (RLDEV: `br()`).
 pub const OPCODE_LINE_BREAK: u16 = 14;
 
-/// `msg.page` — page wipe / new-page (RLDEV: `page()`). Equivalent
-/// observation: paragraph break with a window-clear semantic.
-pub const OPCODE_PAGE: u16 = 17;
+/// `msg.page` — page wipe / new-page. The reference implementation names
+/// this number `page`; it occurs 63 times across the two proven archives,
+/// while the number this constant held before is the dialogue pause and
+/// occurs tens of thousands of times.
+pub const OPCODE_PAGE: u16 = 210;
 
 /// `msg.msg_hide` — hide the active text window (RLDEV:
 /// `msgHide()`).

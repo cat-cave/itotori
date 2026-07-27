@@ -147,13 +147,22 @@ fn dispatch_select_objbtn(
     vm: &mut Vm,
     args: &[ExprValue],
 ) -> DispatchOutcome {
-    let [ExprValue::Int(group)] = args else {
-        runtime.record_warning(SelRuntimeWarning::ObjectButtonGroupArgsInvalid {
-            observed: args.len(),
-        });
-        return DispatchOutcome::Advance;
+    let group = match args {
+        [ExprValue::Int(group)] => *group,
+        // The no-argument shape. It names no group, so it asks for the
+        // default one — the same group a binding that names none belongs to.
+        // Rejecting it made every screen built this way advance straight
+        // past its own picker, leaving the following branch to read a store
+        // register nobody wrote.
+        [] => DEFAULT_BUTTON_GROUP,
+        _ => {
+            runtime.record_warning(SelRuntimeWarning::ObjectButtonGroupArgsInvalid {
+                observed: args.len(),
+            });
+            return DispatchOutcome::Advance;
+        }
     };
-    dispatch_object_select(runtime, vm.pc(), *group, false)
+    dispatch_object_select(runtime, vm.pc(), group, false)
 }
 
 fn dispatch_object_select(
@@ -166,7 +175,7 @@ fn dispatch_object_select(
         runtime.record_warning(SelRuntimeWarning::ObjectButtonRuntimeUnavailable { group });
         return DispatchOutcome::Advance;
     };
-    let candidates = graphics.foreground_button_candidates(group);
+    let candidates = graphics.button_candidates(group);
     if candidates.is_empty() {
         runtime.record_warning(SelRuntimeWarning::ObjectButtonCandidatesEmpty { group });
         return DispatchOutcome::Advance;
@@ -198,9 +207,9 @@ fn dispatch_object_select(
                     ObjectButtonPromptOption {
                         display_index: display_index as u16,
                         button_number: candidate.options.button_number,
-                        fg_slot: candidate.slot,
+                        slot: candidate.slot,
                         visual_snapshot: candidate.object,
-                        candidate_scope: ObjectButtonCandidateScope::TopLevelForegroundOnly,
+                        candidate_scope: ObjectButtonCandidateScope::TopLevelObjectPlanes,
                         hit_region,
                     }
                 })

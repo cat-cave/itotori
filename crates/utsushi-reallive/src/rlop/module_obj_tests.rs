@@ -41,8 +41,8 @@ fn obj_button_opts_binds_exact_foreground_slot() {
         })
     );
     assert_eq!(
-        runtime.foreground_button_group(7),
-        vec![(2, options.unwrap())]
+        runtime.button_group_bindings(7),
+        vec![(GraphicsLayer::ForegroundObject, 2, options.unwrap())]
     );
 }
 
@@ -113,8 +113,11 @@ fn child_button_opts_binds_only_an_existing_child() {
     );
 }
 
+/// A screen built on the background object plane is still a screen with
+/// buttons on it. Scanning one plane only reports "no buttons" for every such
+/// screen, so its own prompt advances past itself.
 #[test]
-fn background_binding_is_preserved_but_excluded_from_foreground_query() {
+fn a_binding_on_the_background_plane_is_offered_to_a_prompt() {
     let runtime = runtime();
     runtime.with_stack_mut(|stack| {
         stack
@@ -134,7 +137,19 @@ fn background_binding_is_preserved_but_excluded_from_foreground_query() {
             .and_then(|object| object.button_options)
             .is_some()
     );
-    assert!(runtime.foreground_button_group(9).is_empty());
+    assert_eq!(
+        runtime.button_group_bindings(9),
+        vec![(
+            GraphicsLayer::BackgroundObject,
+            4,
+            ButtonOptions {
+                action: 1,
+                se: 2,
+                group: 9,
+                button_number: 5
+            }
+        )]
+    );
 }
 
 #[test]
@@ -157,9 +172,10 @@ fn foreground_query_keeps_duplicate_and_reordered_button_records() {
     op.dispatch(&mut vm, &[int(1), int(3), int(4), int(4), int(9)]);
     op.dispatch(&mut vm, &[int(5), int(5), int(6), int(8), int(9)]);
     assert_eq!(
-        runtime.foreground_button_group(4),
+        runtime.button_group_bindings(4),
         vec![
             (
+                GraphicsLayer::ForegroundObject,
                 1,
                 ButtonOptions {
                     action: 3,
@@ -169,6 +185,7 @@ fn foreground_query_keeps_duplicate_and_reordered_button_records() {
                 }
             ),
             (
+                GraphicsLayer::ForegroundObject,
                 7,
                 ButtonOptions {
                     action: 1,
@@ -195,11 +212,11 @@ fn malformed_or_unallocated_setters_do_not_bind() {
     ] {
         op.dispatch(&mut vm, &args);
     }
-    assert!(runtime.foreground_button_group(3).is_empty());
+    assert!(runtime.button_group_bindings(3).is_empty());
 }
 
 #[test]
-fn candidates_are_slot_ordered_detached_and_keep_invisible_foreground_only() {
+fn candidates_are_plane_then_slot_ordered_detached_and_keep_invisible() {
     let runtime = runtime();
     runtime.with_stack_mut(|stack| {
         for slot in [2, 5, 7] {
@@ -235,16 +252,21 @@ fn candidates_are_slot_ordered_detached_and_keep_invisible_foreground_only() {
             &[int(slot), int(1), int(2), int(group), int(number)],
         );
     }
-    let candidates = runtime.foreground_button_candidates(4);
+    let candidates = runtime.button_candidates(4);
     assert_eq!(
         candidates
             .iter()
-            .map(|candidate| candidate.slot)
+            .map(|candidate| (candidate.layer, candidate.slot))
             .collect::<Vec<_>>(),
-        vec![2, 7]
+        vec![
+            (GraphicsLayer::ForegroundObject, 2),
+            (GraphicsLayer::ForegroundObject, 7),
+            (GraphicsLayer::BackgroundObject, 1),
+        ]
     );
     assert_eq!(candidates[1].options.button_number, 70);
     assert!(!candidates[1].visible);
+    assert_eq!(candidates[2].options.button_number, 10);
     runtime.with_stack_mut(|stack| {
         stack
             .get_layer_mut(GraphicsLayer::ForegroundObject, 2)

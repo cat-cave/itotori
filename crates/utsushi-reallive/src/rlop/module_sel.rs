@@ -109,7 +109,7 @@ use super::{DispatchOutcome, ExprValue, LongOp, RLOperation, RlopKey, RlopRegist
 use crate::gameexe::Gameexe;
 use crate::graphics_objects::{GraphicsObject, GraphicsObjectKind, HitRegion};
 use crate::render_pipeline::{ObjectButtonChoiceOption, ObjectButtonChoiceWindowBuildError};
-use crate::rlop::module_obj::GraphicsRuntime;
+use crate::rlop::module_obj::{DEFAULT_BUTTON_GROUP, GraphicsRuntime};
 use crate::vm::Vm;
 
 #[path = "module_sel/scheduler.rs"]

@@ -323,8 +323,12 @@ fn scheduler_keeps_vm_suspended_until_choice_recorded() {
 
 // objbtn carrier is built from graphics bindings
 
+/// The carrier collects every binding in the requested group, from BOTH
+/// top-level object planes, in plane-then-slot order — a screen is free to
+/// build its buttons on either one, and a prompt that only looked at one
+/// plane would offer nothing at all for half of them.
 #[test]
-fn select_objbtn_yields_slot_ordered_object_carrier_without_text() {
+fn select_objbtn_yields_ordered_object_carrier_across_planes_without_text() {
     let sink: Arc<CollectingSink> = Arc::new(CollectingSink::new());
     let graphics = Arc::new(GraphicsRuntime::new());
     graphics.with_stack_mut(|stack| {
@@ -384,7 +388,7 @@ fn select_objbtn_yields_slot_ordered_object_carrier_without_text() {
         private_state,
     ))
     .expect("object carrier");
-    assert_eq!(carrier.return_values(), &[7, 2]);
+    assert_eq!(carrier.return_values(), &[7, 2, 42]);
     assert_eq!(
         carrier.outcome(),
         utsushi_reallive::rlop::ObjectSelectOutcome::Pending
