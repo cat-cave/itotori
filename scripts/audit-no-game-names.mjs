@@ -65,7 +65,10 @@ const EXCLUDE_SUFFIXES = [
 ];
 
 const GAME_NAME_PATTERNS = [
-  /\b(?:sweetie|karetoshi|gamekoi|oshioki|sukara)\b/gi,
+  // Deliberately no word boundaries: `_`, letters, and digits surround title
+  // fragments in Rust and TypeScript identifiers, but JavaScript `\b` treats
+  // `_` as a word character and would miss them.
+  /(?:sweetie|karetoshi|gamekoi|oshioki|sukara)/gi,
   /オシオキ/g,
   /\bv(?:11180|31045|60663|21465|55293|57740)\b/gi,
   /\bcorpus-observed\b/gi,

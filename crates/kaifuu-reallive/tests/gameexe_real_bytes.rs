@@ -140,7 +140,7 @@ fn classifies_every_staged_gameexe_ini_to_zero_unknown() {
         // Sweetie-HD-specific total envelope + per-family floors anchor
         // the dominant families for the primary corpus.
         if corpus.label == "corpus-1" {
-            assert_sweetie_hd_family_shape(total, &family_counts, &treatment_counts);
+            assert_primary_corpus_family_shape(total, &family_counts, &treatment_counts);
         }
     }
 }
@@ -149,7 +149,7 @@ fn classifies_every_staged_gameexe_ini_to_zero_unknown() {
 /// dominant per-family / per-treatment floors documented at
 /// `docs/research/reallive-engine.md` §B. Kept scoped to corpus-1 because
 /// these counts are title-specific.
-fn assert_sweetie_hd_family_shape(
+fn assert_primary_corpus_family_shape(
     total: usize,
     family_counts: &HashMap<&'static str, usize>,
     treatment_counts: &HashMap<&'static str, usize>,

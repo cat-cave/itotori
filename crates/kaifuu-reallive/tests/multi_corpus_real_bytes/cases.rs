@@ -228,7 +228,7 @@ pub(super) fn every_menu_boot_system_scene_decodes_to_zero_unknown() {
 
     let mut missing: Vec<u16> = Vec::new();
     let mut unclean: Vec<u16> = Vec::new();
-    for &scene_id in SWEETIE_HD_HARD_MENU_BOOT_SYSTEM_SCENES {
+    for &scene_id in PRIMARY_CORPUS_HARD_MENU_BOOT_SYSTEM_SCENES {
         match report.per_scene_clean.get(&scene_id) {
             None => missing.push(scene_id),
             Some(true) => {}
@@ -239,7 +239,7 @@ pub(super) fn every_menu_boot_system_scene_decodes_to_zero_unknown() {
     eprintln!(
         "[{}] MENU/BOOT/SYSTEM hard-scene pin: checked {:?} -> missing(dropped/pre-decode-fail)={:?} \
          unclean(unknown-opcode)={:?}",
-        report.label, SWEETIE_HD_HARD_MENU_BOOT_SYSTEM_SCENES, missing, unclean
+        report.label, PRIMARY_CORPUS_HARD_MENU_BOOT_SYSTEM_SCENES, missing, unclean
     );
 
     // (a) None of the named hard scenes may be DROPPED before the decoder
@@ -267,7 +267,7 @@ pub(super) fn every_menu_boot_system_scene_decodes_to_zero_unknown() {
         "[{}] MENU/BOOT/SYSTEM PROVEN: all {} named hard scenes (incl. New-Game 9996, \
          boot 8507, title menu 2/3/10) decode to zero unknown opcodes on real bytes.",
         report.label,
-        SWEETIE_HD_HARD_MENU_BOOT_SYSTEM_SCENES.len(),
+        PRIMARY_CORPUS_HARD_MENU_BOOT_SYSTEM_SCENES.len(),
     );
 }
 
@@ -289,7 +289,7 @@ pub(super) fn kanon_second_corpus_decompiles_zero_unknown() {
     // sha256 must not equal Sweetie HD's. This catches "2nd corpus actually
     // Sweetie HD again" even with corpus-1 unstaged.
     assert_ne!(
-        report.seen_sha256, SWEETIE_HD_SEEN_SHA256,
+        report.seen_sha256, PRIMARY_CORPUS_SEEN_SHA256,
         "ITOTORI_REAL_GAME_ROOT_2 resolved to the Sweetie HD SEEN archive; \
          multi-game validation needs a DISTINCT 2nd RealLive title"
     );

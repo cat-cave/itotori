@@ -62,20 +62,20 @@ use utsushi_reallive::{
 
 /// File name of the type-0 BACK.g00 image pinned by the
 /// acceptance criterion.
-const SWEETIE_HD_TYPE0_BACK_FILENAME: &str = "BACK.g00";
+const PRIMARY_CORPUS_TYPE0_BACK_FILENAME: &str = "BACK.g00";
 
 /// File name of a type-2 region-table image used for the
 /// header/region-table real-bytes pin. `btn000.g00` is the
 /// alphabetically first type-2 file in the corpus.
-const SWEETIE_HD_TYPE2_BTN_FILENAME: &str = "btn000.g00";
+const PRIMARY_CORPUS_TYPE2_BTN_FILENAME: &str = "btn000.g00";
 
 /// Expected number of `.g00` files in the Sweetie HD corpus (pinned by
 /// the acceptance block).
-const SWEETIE_HD_G00_CORPUS_SIZE: u64 = 2450;
+const PRIMARY_CORPUS_G00_CORPUS_SIZE: u64 = 2450;
 
 /// Documented BACK.g00 canvas dimensions (header bytes 1-4 LE).
-const SWEETIE_HD_BACK_WIDTH: u32 = 1280;
-const SWEETIE_HD_BACK_HEIGHT: u32 = 720;
+const PRIMARY_CORPUS_BACK_WIDTH: u32 = 1280;
+const PRIMARY_CORPUS_BACK_HEIGHT: u32 = 720;
 
 /// Resolve the Sweetie HD g00 directory under
 /// `ITOTORI_REAL_GAME_ROOT`. Returns `None` when the env var is
@@ -126,7 +126,7 @@ fn g00_type0_back_decodes() {
         real_corpus::require_real_bytes("utsushi-reallive g00_type0_back_decodes");
         return;
     };
-    let path = g00_dir.join(SWEETIE_HD_TYPE0_BACK_FILENAME);
+    let path = g00_dir.join(PRIMARY_CORPUS_TYPE0_BACK_FILENAME);
     let bytes =
         fs::read(&path).unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
 
@@ -135,12 +135,12 @@ fn g00_type0_back_decodes() {
 
     assert_eq!(image.g00_type, G00Type::RawBgr);
     assert_eq!(
-        image.width, SWEETIE_HD_BACK_WIDTH,
-        "BACK.g00 width is pinned at {SWEETIE_HD_BACK_WIDTH} per the documented header bytes",
+        image.width, PRIMARY_CORPUS_BACK_WIDTH,
+        "BACK.g00 width is pinned at {PRIMARY_CORPUS_BACK_WIDTH} per the documented header bytes",
     );
     assert_eq!(
-        image.height, SWEETIE_HD_BACK_HEIGHT,
-        "BACK.g00 height is pinned at {SWEETIE_HD_BACK_HEIGHT}",
+        image.height, PRIMARY_CORPUS_BACK_HEIGHT,
+        "BACK.g00 height is pinned at {PRIMARY_CORPUS_BACK_HEIGHT}",
     );
     assert!(
         image.width > 0,
@@ -494,8 +494,8 @@ fn g00_corpus_histogram_real_bytes_2450_files() {
 
     assert_eq!(
         histogram.total(),
-        SWEETIE_HD_G00_CORPUS_SIZE,
-        "Sweetie HD g00 corpus size is pinned at {SWEETIE_HD_G00_CORPUS_SIZE} files in 's acceptance block",
+        PRIMARY_CORPUS_G00_CORPUS_SIZE,
+        "Sweetie HD g00 corpus size is pinned at {PRIMARY_CORPUS_G00_CORPUS_SIZE} files in 's acceptance block",
     );
     eprintln!(
         "Sweetie HD g00 lead-byte histogram: type0={} type1={} type2={} unknown={} unreadable={}",
@@ -555,7 +555,7 @@ fn g00_type2_btn000_decodes_header_and_regions() {
         );
         return;
     };
-    let path = g00_dir.join(SWEETIE_HD_TYPE2_BTN_FILENAME);
+    let path = g00_dir.join(PRIMARY_CORPUS_TYPE2_BTN_FILENAME);
     let bytes =
         fs::read(&path).unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
 

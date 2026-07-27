@@ -1,6 +1,6 @@
 //! Synthetic regression coverage for the Bridge v0.2 → v2 choice join
 //! (`choice_units_by_command`). The real-bytes proof lives in the periodic
-//! oracle (`structure_real_sweetie_hd.rs`); these tests pin the join contract
+//! oracle (`structure_primary_corpus.rs`); these tests pin the join contract
 //! on a minimal `module_sel` fixture so the 69 MB archive is never needed.
 //!
 //! Root cause these tests guard: a select block's options each live at their

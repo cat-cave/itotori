@@ -126,7 +126,7 @@ impl Inspectable for SimulatedRealLivePort {
 }
 
 #[test]
-fn reallive_sweetie_hd_scene_1_round_trips_byte_equal_through_medium_envelope() {
+fn reallive_primary_corpus_scene_1_round_trips_byte_equal_through_medium_envelope() {
     let port = SimulatedRealLivePort;
     let manifest = SnapshotManifest::new(REALLIVE_INSPECTABLE_ID, SnapshotEnvelope::Medium);
     let request = SnapshotRequest::new(

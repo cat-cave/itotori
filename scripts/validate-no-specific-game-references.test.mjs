@@ -66,6 +66,21 @@ test("a title reference in code on an active product surface is a forbidden leak
   });
 });
 
+test("matches tokens embedded in snake_case, camelCase, and digit identifiers", () => {
+  const result = scanFiles({
+    root: ".",
+    files: ["src/config.ts"],
+    forbiddenTokens: [{ id: "fixture-title", label: "fixture title", tokens: ["moonlit"] }],
+    surfaces: [],
+    readFile: () => "const a_moonlit_b = 1; const aMoonlitB = 2; const a2moonlit3 = 3;\n",
+  });
+
+  assert.deepEqual(
+    result.active.map((violation) => violation.token),
+    ["moonlit", "moonlit", "moonlit"],
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Required acceptance: allowed historical reference passes the gate.
 // ---------------------------------------------------------------------------

@@ -44,8 +44,8 @@ use kaifuu_reallive::{
     gameexe::parse_gameexe_inventory, parse_archive, produce_bundle, recover_archive_cipher,
 };
 
-const SWEETIE_HD_GAME_ID: &str = "sweetie-hd";
-const SWEETIE_HD_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
+const PRIMARY_CORPUS_GAME_ID: &str = "sweetie-hd";
+const PRIMARY_CORPUS_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
 
 /// A known dialogue-bearing Sweetie HD scene that decodes 100% clean AND
 /// renders through the RealLive message-window pipeline with its own observed
@@ -67,9 +67,9 @@ const EXPECT_CONTAINS: &str = "composed patch-render localized line";
 
 fn bridge_opts(scene_kidoku_count: u32) -> BridgeOpts<'static> {
     BridgeOpts {
-        game_id: SWEETIE_HD_GAME_ID,
+        game_id: PRIMARY_CORPUS_GAME_ID,
         game_version: "1.0.0",
-        source_profile_id: SWEETIE_HD_SOURCE_PROFILE_ID,
+        source_profile_id: PRIMARY_CORPUS_SOURCE_PROFILE_ID,
         source_locale: "ja-JP",
         extractor_name: "kaifuu-reallive-bridge",
         extractor_version: "0.1.0",

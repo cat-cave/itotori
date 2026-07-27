@@ -59,12 +59,12 @@ fn unique_temp_dir(label: &str) -> PathBuf {
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn detects_reallivedata_under_sweetie_hd_root_with_resolved_path() {
+fn detects_reallivedata_under_primary_corpus_root_with_resolved_path() {
     let Some(env_path) = env::var_os(real_corpus::REAL_GAME_ROOT_ENV).map(PathBuf::from) else {
         // Visible skip — "no silent zero-state" requires the
         // operator to observe that the real-bytes assertion did not run.
         real_corpus::require_real_bytes(
-            "detects_reallivedata_under_sweetie_hd_root_with_resolved_path \
+            "detects_reallivedata_under_primary_corpus_root_with_resolved_path \
              (depth-N descent against the actual install tree)",
         );
         return;

@@ -63,7 +63,7 @@ use kaifuu_reallive::{
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn pins_sweetie_hd_scene_1_dispatch_with_zero_unknown_opcodes() {
+fn pins_primary_corpus_scene_1_dispatch_with_zero_unknown_opcodes() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes("Sweetie HD scene-1 dispatch test");
         return;

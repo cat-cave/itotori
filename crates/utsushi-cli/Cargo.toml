@@ -38,7 +38,7 @@ utsushi-siglus = { path = "../utsushi-siglus" }
 # asserts the engine's OBSERVED TextLine bodies decode the real translated
 # text (not mojibake).
 encoding_rs.workspace = true
-# `structure_real_sweetie_hd.rs` drives the `utsushi structure` binary over the
+# `structure_primary_corpus.rs` drives the `utsushi structure` binary over the
 # real Sweetie HD archive into a temp output path.
 tempfile = { workspace = true }
 # Engine-port capability parity gate (tests/engine_parity_gate.rs): the CLI

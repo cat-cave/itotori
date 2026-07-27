@@ -33,13 +33,13 @@ use utsushi_reallive::{
 };
 
 /// Sweetie HD's `REALLIVE.sav` total byte length (audit doc § J).
-const SWEETIE_HD_SYSTEM_SAVE_BYTES: usize = 24_876;
+const PRIMARY_CORPUS_SYSTEM_SAVE_BYTES: usize = 24_876;
 
 /// Sweetie HD's `save999.sav` total byte length (audit doc § J).
-const SWEETIE_HD_GLOBAL_SAVE_BYTES: usize = 6_748;
+const PRIMARY_CORPUS_GLOBAL_SAVE_BYTES: usize = 6_748;
 
 /// Sweetie HD's `read.sav` total byte length (audit doc § J).
-const SWEETIE_HD_READ_FLAGS_BYTES: usize = 44_495;
+const PRIMARY_CORPUS_READ_FLAGS_BYTES: usize = 44_495;
 
 /// Sweetie HD title bytes embedded at offset 0x18 of `read.sav`. The
 /// 38-byte Shift-JIS string before the null terminator.
@@ -53,16 +53,16 @@ fn reallive_real_bytes_title_bytes() -> Vec<u8> {
 
 /// UTF-8 form of the Sweetie HD title (`オシオキSweetie＋Sweets!! HD Edition`
 /// IDEOGRAPHIC SPACE U+3000).
-const SWEETIE_HD_TITLE_UTF8: &str = "オシオキSweetie＋Sweets!! HD Edition\u{3000}";
+const PRIMARY_CORPUS_TITLE_UTF8: &str = "オシオキSweetie＋Sweets!! HD Edition\u{3000}";
 
 // `SystemSave` (REALLIVE.sav, `AVG_SYSTEM_SAVE`).
 
 #[test]
 fn save_reads_avg_system_save_synthetic_round_trips_byte_identically() {
-    let bytes = SaveRoundTrip::synthetic_system_save(SWEETIE_HD_SYSTEM_SAVE_BYTES);
+    let bytes = SaveRoundTrip::synthetic_system_save(PRIMARY_CORPUS_SYSTEM_SAVE_BYTES);
     let save = SystemSave::decode(&bytes).expect("synthetic system save must decode");
     assert_eq!(
-        save.preamble.leading_u32 as usize, SWEETIE_HD_SYSTEM_SAVE_BYTES,
+        save.preamble.leading_u32 as usize, PRIMARY_CORPUS_SYSTEM_SAVE_BYTES,
         "preamble file-size cross-check must hold"
     );
     assert_eq!(save.preamble.compiler_version, AVG_DERIVED_COMPILER_VERSION);
@@ -75,7 +75,7 @@ fn save_reads_avg_system_save_synthetic_round_trips_byte_identically() {
 
 #[test]
 fn save_reads_avg_system_save_magic_pinned_at_offset_0x18() {
-    let bytes = SaveRoundTrip::synthetic_system_save(SWEETIE_HD_SYSTEM_SAVE_BYTES);
+    let bytes = SaveRoundTrip::synthetic_system_save(PRIMARY_CORPUS_SYSTEM_SAVE_BYTES);
     // Audit-focus: the magic string lives at offset 0x18 and matches
     // the documented pin.
     let magic_slice = &bytes[0x18..0x18 + SYSTEM_SAVE_MAGIC.len()];
@@ -92,8 +92,8 @@ fn save_reads_avg_system_save_decode_rejects_file_size_mismatch() {
     // Audit-focus: silently truncating slots is the named risk; we
     // surface a typed `PreambleFileSizeMismatch` instead of accepting
     // the smaller-than-declared input.
-    let mut bytes = SaveRoundTrip::synthetic_system_save(SWEETIE_HD_SYSTEM_SAVE_BYTES);
-    bytes.truncate(SWEETIE_HD_SYSTEM_SAVE_BYTES - 1);
+    let mut bytes = SaveRoundTrip::synthetic_system_save(PRIMARY_CORPUS_SYSTEM_SAVE_BYTES);
+    bytes.truncate(PRIMARY_CORPUS_SYSTEM_SAVE_BYTES - 1);
     let err = SystemSave::decode(&bytes).expect_err("truncated input must error");
     assert!(matches!(
         err,
@@ -108,13 +108,13 @@ fn save_reads_avg_global_save_synthetic_round_trips_byte_identically() {
     // The synthetic builder produces a `save999.sav`-shaped stream;
     // the leading u32 is the per-format constant `0x000000A4`, not the
     // file size.
-    let payload_bytes = SWEETIE_HD_GLOBAL_SAVE_BYTES - 0x18 - GLOBAL_SAVE_MAGIC.len() - 1;
+    let payload_bytes = PRIMARY_CORPUS_GLOBAL_SAVE_BYTES - 0x18 - GLOBAL_SAVE_MAGIC.len() - 1;
     let bytes = SaveRoundTrip::synthetic_global_save(payload_bytes);
     let save = GlobalSave::decode(&bytes).expect("synthetic global save must decode");
     assert_eq!(save.preamble.leading_u32, 0x0000_00A4);
     let re_encoded = save.encode();
     assert_eq!(re_encoded, bytes);
-    assert_eq!(re_encoded.len(), SWEETIE_HD_GLOBAL_SAVE_BYTES);
+    assert_eq!(re_encoded.len(), PRIMARY_CORPUS_GLOBAL_SAVE_BYTES);
 }
 
 #[test]
@@ -145,17 +145,17 @@ fn save_reads_avg_global_save_decode_rejects_wrong_magic() {
 #[test]
 fn save_read_flags_decodes_title_round_trips_shift_jis_bytes() {
     let title_bytes = reallive_real_bytes_title_bytes();
-    let payload_bytes = SWEETIE_HD_READ_FLAGS_BYTES - 0x18 - title_bytes.len() - 1;
+    let payload_bytes = PRIMARY_CORPUS_READ_FLAGS_BYTES - 0x18 - title_bytes.len() - 1;
     let bytes = SaveRoundTrip::synthetic_read_flags(&title_bytes, payload_bytes);
     let flags = ReadFlags::decode(&bytes).expect("synthetic read flags must decode");
     assert_eq!(flags.title_bytes, title_bytes);
     assert_eq!(
-        flags.title, SWEETIE_HD_TITLE_UTF8,
+        flags.title, PRIMARY_CORPUS_TITLE_UTF8,
         "Shift-JIS title must decode to the documented UTF-8 string"
     );
     let re_encoded = flags.encode();
     assert_eq!(re_encoded, bytes);
-    assert_eq!(re_encoded.len(), SWEETIE_HD_READ_FLAGS_BYTES);
+    assert_eq!(re_encoded.len(), PRIMARY_CORPUS_READ_FLAGS_BYTES);
 }
 
 #[test]
@@ -188,7 +188,7 @@ fn save_read_flags_decodes_title_accepts_ascii_title() {
 #[test]
 fn save_preamble_round_trips_reallive_real_bytes_shaped_values() {
     let preamble = AvgSavePreamble {
-        leading_u32: SWEETIE_HD_SYSTEM_SAVE_BYTES as u32,
+        leading_u32: PRIMARY_CORPUS_SYSTEM_SAVE_BYTES as u32,
         compiler_version: AVG_DERIVED_COMPILER_VERSION,
         timestamp: [0x07E9, 0x0003, 0x0002, 0x000B, 0x0012, 0x0027],
         padding_a: 0,

@@ -341,7 +341,8 @@ fn multi_game_validation_runs_against_two_distinct_reallive_corpora() {
 ///   unclean scene, but this pin makes a regression that DROPS or mis-decodes one
 ///   of these specific hard scenes fail by NAME (rather than being masked by the
 ///   aggregate count) — closing the "skip the hard scenes" hole strictly.
-const SWEETIE_HD_HARD_MENU_BOOT_SYSTEM_SCENES: &[u16] = &[2, 3, 10, 8500, 8507, 8600, 9996, 9999];
+const PRIMARY_CORPUS_HARD_MENU_BOOT_SYSTEM_SCENES: &[u16] =
+    &[2, 3, 10, 8500, 8507, 8600, 9996, 9999];
 
 /// alpha true-100%-coverage: every Sweetie HD menu / boot / system scene the
 /// earlier carve trace flagged as undecodable now decodes to ZERO unknown
@@ -367,7 +368,7 @@ fn every_menu_boot_system_scene_decodes_to_zero_unknown() {
 /// so `ITOTORI_REAL_GAME_ROOT_2` accidentally re-pointed at Sweetie HD is caught
 /// even when corpus-1 is not staged in the same run. (One-way digest of an
 /// already-committed corpus fingerprint — no raw bytes.)
-const SWEETIE_HD_SEEN_SHA256: &str =
+const PRIMARY_CORPUS_SEEN_SHA256: &str =
     "903f538b821a9b1e6cb3d399582915c0bcf73b0a058ecc907caf6017a4fa209f";
 
 /// alpha-006e-multigame-validation: the 2nd-title 100%-decompilation law.

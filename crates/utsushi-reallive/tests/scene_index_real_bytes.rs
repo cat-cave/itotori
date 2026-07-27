@@ -39,19 +39,19 @@ use utsushi_reallive::{REAL_SCENE_DIRECTORY_BYTE_LEN, RealSceneIndex};
 /// populated-slot count is the alpha-gate anchor. Mirrors the
 /// equivalent constant in `kaifuu-reallive`'s integration test — both
 /// parsers see the same archive, both must agree on the count.
-const SWEETIE_HD_POPULATED_SLOT_COUNT: usize = 198;
+const PRIMARY_CORPUS_POPULATED_SLOT_COUNT: usize = 198;
 
 /// Documented byte offset of the first populated scene payload (slot
 /// 1). Equal to the directory byte length — the first scene sits
 /// immediately after the 80,000-byte directory.
-const SWEETIE_HD_FIRST_SCENE_BYTE_OFFSET: u64 = 0x13880;
+const PRIMARY_CORPUS_FIRST_SCENE_BYTE_OFFSET: u64 = 0x13880;
 
 /// Documented byte length of scene 1's payload.
-const SWEETIE_HD_FIRST_SCENE_BYTE_LEN: u32 = 0x5fa;
+const PRIMARY_CORPUS_FIRST_SCENE_BYTE_LEN: u32 = 0x5fa;
 
 /// Documented final populated scene id. RealLive reserves slot 9999 as
 /// the syscall-handler scene; Sweetie HD populates it.
-const SWEETIE_HD_LAST_SCENE_ID: u16 = 9999;
+const PRIMARY_CORPUS_LAST_SCENE_ID: u16 = 9999;
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
@@ -84,9 +84,9 @@ fn scene_index_real_bytes_parses_reallive_real_bytes_seen_txt_into_198_populated
 
     assert_eq!(
         index.len(),
-        SWEETIE_HD_POPULATED_SLOT_COUNT,
+        PRIMARY_CORPUS_POPULATED_SLOT_COUNT,
         "expected {} populated slots in Sweetie HD Seen.txt; got {}",
-        SWEETIE_HD_POPULATED_SLOT_COUNT,
+        PRIMARY_CORPUS_POPULATED_SLOT_COUNT,
         index.len(),
     );
 
@@ -101,11 +101,11 @@ fn scene_index_real_bytes_parses_reallive_real_bytes_seen_txt_into_198_populated
         .expect("Sweetie HD has 198 populated slots; first one must exist");
     assert_eq!(first.scene_id, 1, "first populated slot must be scene 1");
     assert_eq!(
-        first.byte_offset, SWEETIE_HD_FIRST_SCENE_BYTE_OFFSET,
+        first.byte_offset, PRIMARY_CORPUS_FIRST_SCENE_BYTE_OFFSET,
         "first scene payload sits immediately after the 80,000-byte directory",
     );
     assert_eq!(
-        first.byte_len, SWEETIE_HD_FIRST_SCENE_BYTE_LEN,
+        first.byte_len, PRIMARY_CORPUS_FIRST_SCENE_BYTE_LEN,
         "first scene payload size matches the documented Sweetie HD value",
     );
 
@@ -137,7 +137,7 @@ fn scene_index_real_bytes_parses_reallive_real_bytes_seen_txt_into_198_populated
         .min()
         .expect("non-empty index");
     assert_eq!(
-        max_scene_id, SWEETIE_HD_LAST_SCENE_ID,
+        max_scene_id, PRIMARY_CORPUS_LAST_SCENE_ID,
         "last populated scene id must be 9999 (the documented syscall-handler slot)",
     );
     assert_eq!(

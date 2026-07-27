@@ -60,20 +60,20 @@ use utsushi_reallive::{
 // extraction root.
 
 /// Documented Sweetie HD `REALLIVE.sav` size (audit doc § J).
-const SWEETIE_HD_SYSTEM_SAVE_BYTES: usize = 24_876;
+const PRIMARY_CORPUS_SYSTEM_SAVE_BYTES: usize = 24_876;
 
 /// Documented Sweetie HD `save999.sav` size (audit doc § J).
-const SWEETIE_HD_GLOBAL_SAVE_BYTES: usize = 6_748;
+const PRIMARY_CORPUS_GLOBAL_SAVE_BYTES: usize = 6_748;
 
 /// Documented Sweetie HD `read.sav` size (audit doc § J).
-const SWEETIE_HD_READ_FLAGS_BYTES: usize = 44_495;
+const PRIMARY_CORPUS_READ_FLAGS_BYTES: usize = 44_495;
 
 /// UTF-8 form of the Sweetie HD title (`オシオキSweetie＋Sweets!! HD Edition`
 /// plus IDEOGRAPHIC SPACE U+3000). The spec acceptance criterion writes
 /// the trailing code as the literal `\u{8140}` escape; on disk the two
 /// bytes are `81 40`, which is the Shift-JIS encoding of U+3000.
 /// `encoding_rs` round-trips the pair via U+3000, not U+8140.
-const SWEETIE_HD_TITLE_UTF8: &str = "オシオキSweetie＋Sweets!! HD Edition\u{3000}";
+const PRIMARY_CORPUS_TITLE_UTF8: &str = "オシオキSweetie＋Sweets!! HD Edition\u{3000}";
 
 fn resolve_savedata_path(file_name: &str) -> Option<PathBuf> {
     real_corpus::save_file_path(file_name)
@@ -117,8 +117,8 @@ fn verify_system_save() {
     };
     assert_eq!(
         bytes.len(),
-        SWEETIE_HD_SYSTEM_SAVE_BYTES,
-        "Sweetie HD REALLIVE.sav is documented as {SWEETIE_HD_SYSTEM_SAVE_BYTES} bytes"
+        PRIMARY_CORPUS_SYSTEM_SAVE_BYTES,
+        "Sweetie HD REALLIVE.sav is documented as {PRIMARY_CORPUS_SYSTEM_SAVE_BYTES} bytes"
     );
 
     // Audit-focus: leading u32 must read as 24 876 / 0x0000_612C.
@@ -131,7 +131,7 @@ fn verify_system_save() {
     let save = SystemSave::decode(&bytes).expect("REALLIVE.sav must decode");
     assert_eq!(
         save.preamble.leading_u32 as usize,
-        SWEETIE_HD_SYSTEM_SAVE_BYTES
+        PRIMARY_CORPUS_SYSTEM_SAVE_BYTES
     );
     assert_eq!(save.preamble.compiler_version, AVG_DERIVED_COMPILER_VERSION);
     // Engine timestamp documented: 2025-03-02 11:18:39.
@@ -145,7 +145,7 @@ fn verify_system_save() {
     assert_eq!(
         save.preamble.leading_u32 as usize,
         bytes.len(),
-        "file-size cross-check must hold against documented {SWEETIE_HD_SYSTEM_SAVE_BYTES}"
+        "file-size cross-check must hold against documented {PRIMARY_CORPUS_SYSTEM_SAVE_BYTES}"
     );
 
     // Audit-focus: writing a freshly-snapshotted save produces
@@ -182,7 +182,7 @@ fn verify_global_save() {
     let Some(bytes) = load_required("save999.sav") else {
         return;
     };
-    assert_eq!(bytes.len(), SWEETIE_HD_GLOBAL_SAVE_BYTES);
+    assert_eq!(bytes.len(), PRIMARY_CORPUS_GLOBAL_SAVE_BYTES);
 
     let save = GlobalSave::decode(&bytes).expect("save999.sav must decode");
     // Sweetie HD's documented leading u32 is `A4 00 00 00`.
@@ -223,7 +223,7 @@ fn verify_read_flags() {
     let Some(bytes) = load_required("read.sav") else {
         return;
     };
-    assert_eq!(bytes.len(), SWEETIE_HD_READ_FLAGS_BYTES);
+    assert_eq!(bytes.len(), PRIMARY_CORPUS_READ_FLAGS_BYTES);
 
     let flags = ReadFlags::decode(&bytes).expect("read.sav must decode");
     assert_eq!(
@@ -234,7 +234,7 @@ fn verify_read_flags() {
     // string (Shift-JIS `81 40` round-trips through `encoding_rs` as
     // U+3000 IDEOGRAPHIC SPACE).
     assert_eq!(
-        flags.title, SWEETIE_HD_TITLE_UTF8,
+        flags.title, PRIMARY_CORPUS_TITLE_UTF8,
         "Shift-JIS title must decode to the documented UTF-8 string"
     );
 

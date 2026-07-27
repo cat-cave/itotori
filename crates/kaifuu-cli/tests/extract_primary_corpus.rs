@@ -115,13 +115,13 @@ fn cli_extract_engine_reallive_dialogue_scene_writes_schema_valid_v02_bundle() {
 /// -derived narrative structure. Deriving the structure / `sceneDispatchOrder`
 /// needs the Utsushi replay runtime and kaifuu must never depend on utsushi
 /// (deps flow utsushi → kaifuu). The real-Sweetie STRUCTURE proof lives on the
-/// utsushi side (`utsushi-cli` `structure_real_sweetie_hd.rs`).
+/// utsushi side (`utsushi-cli` `structure_primary_corpus.rs`).
 /// Asserts the bridge is schema-valid, spans many scenes, and that every unit
 /// carries its numeric scene in `context.route.sceneKey` — the field the
 /// whole-game localize driver joins to the utsushi-produced structure.
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn cli_extract_whole_seen_real_sweetie_writes_multi_scene_bridge() {
+fn cli_extract_whole_seen_primary_corpus_writes_multi_scene_bridge() {
     let Some(game_root) = real_corpus::game_root() else {
         eprintln!(
             "{}",

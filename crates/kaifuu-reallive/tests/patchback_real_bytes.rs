@@ -38,8 +38,8 @@ use kaifuu_reallive::{
     recover_archive_cipher,
 };
 
-const SWEETIE_HD_GAME_ID: &str = "sweetie-hd";
-const SWEETIE_HD_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
+const PRIMARY_CORPUS_GAME_ID: &str = "sweetie-hd";
+const PRIMARY_CORPUS_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
 /// A known dialogue-bearing scene in Sweetie HD's `Seen.txt` that decodes
 /// 100% clean. Scene 1 is an all-binary boundary scene and carries no
 /// translatable units (see `bridge_real_bytes`), so the patchback
@@ -70,9 +70,9 @@ fn real_gameexe_ini_path() -> Option<PathBuf> {
 
 fn bridge_opts(scene_kidoku_count: u32) -> BridgeOpts<'static> {
     BridgeOpts {
-        game_id: SWEETIE_HD_GAME_ID,
+        game_id: PRIMARY_CORPUS_GAME_ID,
         game_version: "1.0.0",
-        source_profile_id: SWEETIE_HD_SOURCE_PROFILE_ID,
+        source_profile_id: PRIMARY_CORPUS_SOURCE_PROFILE_ID,
         source_locale: "ja-JP",
         extractor_name: "kaifuu-reallive-bridge",
         extractor_version: "0.1.0",
