@@ -1,6 +1,7 @@
 import {
   bootstrapLocalUser,
   databaseUrlFromEnv,
+  ItotoriCatalogRepository,
   ItotoriConformanceRepository,
   ItotoriFeedbackRepository,
   ItotoriLlmHumanInputRepository,
@@ -11,6 +12,7 @@ import {
   ItotoriModelLedgerRepository,
   ItotoriProjectRepository,
   ItotoriProjectRunRepository,
+  localUserId,
   migrate,
   permissionBasedLlmContentRead,
   resetDatabase,
@@ -60,20 +62,30 @@ import {
   productionLocalizationConfig,
 } from "./localization-production-config.js";
 import { ItotoriProjectWorkflowService } from "./project-workflow-service.js";
+import { ItotoriAuthorizationService } from "../auth.js";
 
 /** The remaining command/API surfaces require a new-pipeline composition
  * substrate. The retired DB factory must never silently reconstruct the old
  * provider/journal graph. */
 export type ItotoriApplicationServices = ItotoriCliServices & ItotoriApiServices;
 
+export type ItotoriServiceFactoryOptions = {
+  sessionId?: string;
+  /**
+   * GET requests must not depend on a write succeeding before their read can
+   * run. `migrate()` seeds the local user and grants as part of setup.
+   */
+  bootstrapLocalUser?: boolean;
+};
+
 export type ItotoriServiceFactory = <T>(
   callback: (services: ItotoriApplicationServices) => Promise<T>,
-  options?: { sessionId?: string },
+  options?: ItotoriServiceFactoryOptions,
 ) => Promise<T>;
 
 export type ItotoriReadOnlyServiceFactory = <T>(
   callback: (services: ItotoriReadOnlyApiServices) => Promise<T>,
-  options?: { sessionId?: string },
+  options?: ItotoriServiceFactoryOptions,
 ) => Promise<T>;
 
 export class ItotoriInvalidAuthSessionError extends Error {
@@ -84,11 +96,15 @@ export class ItotoriInvalidAuthSessionError extends Error {
 }
 
 export async function withDatabaseItotoriServices<T>(
-  options: { databaseUrl?: string; bootstrapLocalUser?: boolean; sessionId?: string },
+  options: { databaseUrl?: string } & ItotoriServiceFactoryOptions,
   callback: (services: ItotoriApplicationServices) => Promise<T>,
 ): Promise<T> {
   return await withDatabase(async ({ db, pool }) => {
-    const actor = await bootstrapLocalUser(db);
+    // Migration owns setup-time seeding. A read-only request must never make
+    // every panel depend on this write, while mutation flows retain their
+    // compatibility bootstrap for installations that have not run setup yet.
+    const actor =
+      options.bootstrapLocalUser === false ? { userId: localUserId } : await bootstrapLocalUser(db);
     const cipher = createFieldMemoCipher(process.env);
     let config: ReturnType<typeof productionLocalizationConfig> | undefined;
     const localizationConfig = () => (config ??= productionLocalizationConfig(process.env));
@@ -101,6 +117,7 @@ export async function withDatabaseItotoriServices<T>(
     const memoStore = new ItotoriLlmCallMemoRepository(pool, cipher, contentAccess);
     const snapshotRepository = new ItotoriLlmSnapshotRepository(pool);
     const engineFamilyRegistry = projectEngineRegistry();
+    const catalogRepository = new ItotoriCatalogRepository(db);
     const unitBoundFeedback = createRepositoryUnitFeedbackPort({
       repository: new ItotoriFeedbackRepository(db),
       actor,
@@ -127,6 +144,18 @@ export async function withDatabaseItotoriServices<T>(
       },
     });
     const services = retiredServiceSurface({
+      authorization: new ItotoriAuthorizationService(db, actor),
+      catalogRepository: {
+        catalogConflictReview: (filter) => catalogRepository.catalogConflictReview(actor, filter),
+        catalogCompletenessBenchmarkPools: (filter) =>
+          catalogRepository.catalogCompletenessBenchmarkPools(actor, filter),
+        catalogBenchmarkSeedFinder: (filter) =>
+          catalogRepository.catalogBenchmarkSeedFinder(actor, filter),
+        catalogContextPanelForWork: (input) =>
+          catalogRepository.catalogContextPanelForWork(actor, input),
+        catalogOpportunityRanking: (filter) =>
+          catalogRepository.catalogOpportunityRanking(actor, filter),
+      },
       projectWorkflow: new ItotoriProjectWorkflowService({
         actor,
         projects: new ItotoriProjectRepository(db, engineFamilyRegistry),
@@ -298,6 +327,8 @@ export function retiredServiceSurface(
   installed: Pick<
     ItotoriApplicationServices,
     | "projectWorkflow"
+    | "authorization"
+    | "catalogRepository"
     | "wikiObjectApi"
     | "wikiApply"
     | "wikiBuild"
@@ -425,7 +456,10 @@ export function toReadOnlyServiceFactory(
   factory: ItotoriServiceFactory,
 ): ItotoriReadOnlyServiceFactory {
   return async (callback, options) =>
-    await factory(async (services) => await callback(services), options);
+    await factory(async (services) => await callback(services), {
+      ...options,
+      bootstrapLocalUser: false,
+    });
 }
 
 export async function migrateItotoriDatabase(databaseUrl = databaseUrlFromEnv()): Promise<void> {

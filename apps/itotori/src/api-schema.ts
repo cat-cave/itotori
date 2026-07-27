@@ -244,7 +244,13 @@ export type ItotoriApiRouteId =
 
 export type ApiErrorResponse = {
   error: string;
-  code: "bad_request" | "forbidden" | "not_found" | "method_not_allowed" | "internal_error";
+  code:
+    | "bad_request"
+    | "forbidden"
+    | "not_found"
+    | "method_not_allowed"
+    | "database_migrations_required"
+    | "internal_error";
 };
 
 export const API_ERROR_RESPONSE_CODES = [
@@ -252,6 +258,7 @@ export const API_ERROR_RESPONSE_CODES = [
   "forbidden",
   "not_found",
   "method_not_allowed",
+  "database_migrations_required",
   "internal_error",
 ] as const satisfies readonly ApiErrorResponse["code"][];
 

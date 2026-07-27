@@ -3502,7 +3502,31 @@ function errorResponse(error: unknown): ApiJsonResponse {
   if (error instanceof ProjectScopeNotFoundError) {
     return errorBody(404, "not_found", error.message);
   }
-  return errorBody(500, "internal_error", error instanceof Error ? error.message : String(error));
+  if (hasPostgresErrorCode(error, "42P01") || hasPostgresErrorCode(error, "42703")) {
+    return errorBody(
+      500,
+      "database_migrations_required",
+      "Database migrations are not applied. Run itotori db-migrate, then refresh.",
+    );
+  }
+  return errorBody(
+    500,
+    "internal_error",
+    "The service could not complete this request. Check the server logs and try again.",
+  );
+}
+
+function hasPostgresErrorCode(error: unknown, expectedCode: string): boolean {
+  let current: unknown = error;
+  const seen = new Set<unknown>();
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    if ("code" in current && typeof current.code === "string" && current.code === expectedCode) {
+      return true;
+    }
+    current = current.cause;
+  }
+  return false;
 }
 
 function errorBody(
