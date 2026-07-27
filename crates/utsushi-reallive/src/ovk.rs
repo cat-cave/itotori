@@ -1,6 +1,6 @@
 //! RealLive `.ovk` voice archive decoder.
 //!
-//! Decodes the OVK on-disk layout the Sweetie HD `REALLIVEDATA/koe/`
+//! Decodes the OVK on-disk layout an observed `REALLIVEDATA/koe/`
 //! corpus (139 files) ships. Each archive is a 4-byte entry count
 //! followed by a flat table of **16-byte** records; the per-record
 //! `(offset, length)` pair points into the inline Ogg Vorbis stream
@@ -10,7 +10,7 @@
 //!
 //! # On-disk layout (16-byte entry records)
 //!
-//! After byte-level probing of Sweetie HD's `koe/z0001.ovk` (337,086
+//! After byte-level probing of observed `koe/z0001.ovk` (337,086
 //! bytes, 2 entries) under `docs/research/reallive-engine.md` § ".ovk
 //! (voice archive)", the layout is:
 //!
@@ -29,12 +29,12 @@
 //! field_2 u32 sample_num (sample index inside the archive;
 //!                                   matches the `koePlay` argument)
 //! field_3 u32 reserved_or_unknown (observed as a non-zero u32 in
-//!                                   Sweetie HD; treated as opaque
+//!                                   the observed corpus; treated as opaque
 //!                                   metadata)
 //! ```
 //!
 //! The (`field_0`, `field_1`) pair is what the spec calls "data_size
-//! data_offset". The table is **not** sorted by `sample_num` — Sweetie
+//! data_offset". The table is **not** sorted by `sample_num` — the observed
 //! HD's `z0001.ovk` carries `sample_num = 46` in entry 0 (at offset 36
 //! the file body start, length 176,576) and `sample_num = 52` in
 //! entry 1 (at offset 176,612, length 160,474). Entry 1's body
@@ -152,7 +152,7 @@ pub struct OvkEntry {
     /// archive (matches the `koePlay` argument).
     pub sample_num: u32,
     /// Field 3 (`@offset+12`, u32 LE) — engine-opaque metadata field
-    /// (observed as a non-zero u32 in Sweetie HD; possibly a hash
+    /// (observed as a non-zero u32 in the corpus; possibly a hash
     /// possibly a tail size). Recorded verbatim.
     pub reserved: u32,
 }
@@ -188,7 +188,7 @@ impl<'a> OvkFile<'a> {
     }
 
     /// First entry whose `sample_num` matches `sample_num`. Linear
-    /// scan; OVK tables are small (Sweetie HD's largest carries 279
+    /// scan; OVK tables are small (the observed largest carries 279
     /// entries).
     pub fn find_entry_by_sample_num(&self, sample_num: u32) -> Option<&OvkEntry> {
         self.entries.iter().find(|e| e.sample_num == sample_num)

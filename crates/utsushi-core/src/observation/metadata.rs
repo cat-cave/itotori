@@ -183,7 +183,7 @@ impl ObservationRedactionMetadata {
 // `ObservationErrorPayload`) deleted. The substrate observation surface is
 // now the sink-set bridge (`crate::sink::TextLine` / `FrameArtifact`
 // `AudioEvent`); choice / branch / scene / error payloads have no
-// production consumer in the Sweetie HD ground-truth scope and are
+// production consumer in the ground-truth scope and are
 // re-introduced only when an engine port pushes them through a typed
 // sink contract.
 

@@ -1,7 +1,7 @@
 //! Real RealLive bytecode opcode dispatch.
 //! Decodes the **real** RealLive scene-bytecode stream documented in
-//! `docs/research/reallive-engine.md` §D and confirmed against the real
-//! decompressed scene 1 (RealLive encryption-mechanism research note §4.2).
+//! `docs/research/reallive-engine.md` §D and confirmed against an observed
+//! decompressed scene 1 in the encryption-mechanism research note §4.2.
 //! Clean-room provenance:
 //! - The opener-byte switch (`{0x00, 0x0A, 0x21, 0x23, 0x24, 0x2C, 0x40}`
 //!   plus Shift-JIS lead bytes `0x81..=0x9F` / `0xE0..=0xFC`) and the
@@ -12,7 +12,7 @@
 //!   (research anchor only; rlvm is GPL-3, not linked or vendored).
 //! - The RLOperation-family classification keys on the documented module
 //!   catalogue (rlvm `src/modules/module_*.cc` names). No bytes are
-//!   inferred from a single corpus alone — opcode handlers are documented
+//!   inferred from one corpus alone — opcode handlers are documented
 //!   per RLDEV/rlvm references per the audit-focus row.
 //!   Scope:
 //! - This module owns the **opener-byte + Command-header** dispatch and
@@ -26,7 +26,7 @@
 //! - Text strings carried in Command argument lists or in Textout elements
 //!   are kept as raw Shift-JIS bytes; decoding is the
 //!   [`crate::encoding`] surface's job.
-//!   The decoder partitions **every** byte of a real corpus scene
+//!   The decoder partitions **every** byte of a real observed scene
 //!   stream into a typed [`RealLiveOpcode`] element — the seven structural
 //!   openers decode their element and every other byte begins a Textout
 //!   run (the catch-all). Every in-space Command is further classified to a
@@ -218,8 +218,8 @@ pub enum RealLiveOpcode {
     /// semantic meaning assigned — so it is **not recognised**
     /// ([`Self::is_recognized`] returns `false`) and FAILS the full-archive
     /// semantic-zero gate. It exists only as the typed fallback for a tuple
-    /// the catalogue has not reached; on the proven corpora (compiler
-    /// `110002` xor_2, compiler `10002` non-xor_2) it never occurs. Utsushi cannot render a command it cannot
+    /// the catalogue has not reached; on the proven corpora (the observed corpus,
+    /// Kanon) it never occurs. Utsushi cannot render a command it cannot
     /// semantically identify, so this blob is deliberately gated, not
     /// accepted.
     Command {
@@ -529,7 +529,7 @@ impl fmt::Debug for RealLiveParseError {
 /// Module-id catalogue keys (rlvm `src/modules/module_*.cc` names).
 /// Sub-module ids inside `module_type=1` (Kepago — the primary
 /// RLOperation namespace) follow rlvm's published indexing. The keys
-/// below are the subset needed for the scene-1 alpha corpus; richer
+/// below are the subset needed for the observed scene 1 alpha; richer
 /// coverage is.
 mod module_id {
     /// `module_sys.cc` — system control (`end`, `wait`, `pause`, save/load).
@@ -545,8 +545,8 @@ mod module_id {
     /// `module_msg.cc` — text / messaging (`pause`, `br`, `page`,
     /// `FontColor`, `FastText`).
     pub const MSG: u8 = 3;
-    /// `module_sys.cc` second registration id observed across both proven
-    /// corpora — system-class control sharing `module_sys` semantics.
+    /// `module_sys.cc` second registration id observed on one corpus /
+    /// Kanon — system-class control sharing `module_sys` semantics.
     pub const SYS2: u8 = 5;
     /// `module_str.cc`-class indexed variable / flag module — every opcode
     /// carries a single integer memory-bank reference operand.
@@ -794,7 +794,7 @@ fn is_nonstring_data_lead(byte: u8) -> bool {
 /// `true` if `pos` begins a special parameter (`0x61 <tag> <item>`).
 /// The compiler emits a special parameter as the `0x61` introducer, a tag
 /// (a single byte, or `0xFF`+`i32` in the wide form), and then its contained
-/// data item — across both proven archives that item is always
+/// data item — across the observed and Kanon archives that item is always
 /// a complex `(` group or a `$`-prefixed memory / literal reference, i.e. a
 /// **non-string** data lead. Requiring that lead disambiguates a genuine
 /// special parameter from a bare string constant that merely begins with the
@@ -1746,7 +1746,8 @@ fn decode_command(
 /// `0:4:100` and `1:4:100`). The generic [`RealLiveOpcode::Command`] is
 /// reached by either an uncatalogued in-space `module_id` or an
 /// uncatalogued opcode inside a known module — it is NOT recognised and
-/// FAILS the semantic-zero gate. On the proven corpora every real tuple is enumerated and lands in a named family.
+/// FAILS the semantic-zero gate. On the proven observed / Kanon corpora
+/// every real tuple is enumerated and lands in a named family.
 /// `module_id` keys are restated from the rlvm `src/modules/module_*.cc`
 /// registrations (`RLModule(name, type, id)`) and `libreallive/bytecode.cc`
 /// dispatch — reference, not vendored.
@@ -1866,7 +1867,7 @@ fn classify_command(
         },
         // An in-space module id the catalogue has not reached: the typed
         // fallback that FAILS the semantic-zero gate (never occurs on the
-        // proven corpora).
+        // proven observed / Kanon corpora).
         _ => generic(),
     };
     Some(mapped)
@@ -1907,8 +1908,8 @@ fn first_arg_as_u32(args_bytes: &[CommandArg]) -> Option<u32> {
 
 /// Decode the full real-bytecode stream into a [`RealLiveOpcode`] sequence.
 /// `bytes` is the **decompressed** scene bytecode (post-AVG32 LZSS + XOR
-/// first-level transform per the RealLive encryption-mechanism research
-/// note). The
+/// first-level transform per
+/// the encryption-mechanism research note). The
 /// caller owns decompression — this function operates on plaintext
 /// bytecode bytes.
 /// An empty input is rejected with
@@ -2033,7 +2034,7 @@ pub(crate) fn decode_element(
 /// readable Shift-JIS dialogue or embedded binary data. This is the
 /// minimal, version-agnostic boundary rule: applying text-only quoting /
 /// comma-inlining heuristics here mis-splits embedded binary data blocks
-/// (e.g. the binary catch-all runs observed in the real corpus).
+/// (e.g. the observed corpus's binary catch-all runs).
 fn scan_textout(bytes: &[u8], pos: usize) -> (Vec<u8>, usize) {
     let start = pos;
     let mut end = pos;

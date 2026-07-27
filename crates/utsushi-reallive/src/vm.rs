@@ -1086,7 +1086,7 @@ impl Vm {
     /// - **The scenario-return entrypoint (`entrypoint 99`)** — entrypoint
     ///   `99` is the last slot of the 100-slot entrypoint lattice and is
     ///   reserved as the "return to title / scenario complete" marker. A
-    ///   present system scene (Sweetie's SEEN9999, which declares real
+    ///   present system scene (the observed corpus's SEEN9999, which declares real
     ///   entrypoints `0..=15`) is entered at `99` only as this end idiom;
     ///   the headless model treats it as a fall-through so the scene runs
     ///   its real control flow to a natural terminus.

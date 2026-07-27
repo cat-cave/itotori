@@ -1,4 +1,4 @@
-//! Alpha-defining end-to-end Sweetie HD scene-1
+//! Alpha-defining end-to-end observed scene-1
 //! text-replay smoke.
 //!
 //! Drives a RealLive `Seen.txt` envelope through the full →
@@ -81,7 +81,7 @@ use branch::{PassObservation, PassTermination, select_port_pass};
 /// detected at restore time by any consumer that deserialises the JSON.
 pub const REPLAY_LOG_SCHEMA_VERSION: &str = "utsushi-reallive-replay-log/0.3.0-alpha";
 
-/// Default step budget for [`replay_scene`]. Sized so the Sweetie HD
+/// Default step budget for [`replay_scene`]. Sized so the observed
 /// scene-1 walk reaches the first Shift-JIS textout run plus its
 /// trailing `msg.pause`, while still terminating deterministically on a
 /// pathological synthetic scene.

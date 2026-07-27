@@ -3,7 +3,7 @@
 //! - The key-family catalogue is derived from publicly archived Haeleth
 //!   RLDEV documentation plus the RealLive key surface inventory at
 //!   `docs/research/reallive-engine.md` §B (which itself was assembled from
-//!   RLDEV plus byte-level counts taken against the real corpus bytes).
+//!   RLDEV plus byte-level counts taken against observed real bytes).
 //!   No expression is copied from rlvm.
 //! - replaces the previous 10-prefix hard-coded subset with a
 //!   pattern-based classifier covering the documented RealLive surface.
@@ -14,7 +14,7 @@
 //! - Multi-game validation: the Gameexe.ini key-naming convention is
 //!   hard-coded by the RealLive engine compiler — the catalogue
 //!   generalises across titles even though byte-level evidence here is
-//!   from a single corpus only. Second-corpus retroactive validation is welcome
+//!   from one corpus only. Second-corpus retroactive validation is welcome
 //!   but not blocking (see test file header).
 
 use std::fmt;
@@ -104,7 +104,7 @@ pub enum GameexeKeyFamily {
     Caption,
     /// `#SUBTITLE=…` — subtitle config.
     Subtitle,
-    /// `#REGNAME="…"` — registry-key identifier.
+    /// `#REGNAME="HADASHI\OSHIOKIHD"` — registry-key identifier.
     RegName,
     /// `#DISKMARK="…"` — disk-marker filename.
     DiskMark,

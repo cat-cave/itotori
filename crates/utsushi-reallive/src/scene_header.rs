@@ -4,7 +4,7 @@
 //! that prefixes every populated scene blob in a RealLive `Seen.txt`
 //! envelope. The layout is documented in
 //! [`docs/research/reallive-engine.md`] §D, derived from Haeleth's
-//! RLDEV documentation and re-tested against the Sweetie HD bytes
+//! RLDEV documentation and re-tested against observed bytes
 //! before being encoded here.
 //!
 //! # On-blob layout
@@ -43,7 +43,7 @@
 //! # Compiler-version policy
 //!
 //! Three values are recognised in retail RealLive archives:
-//! `10002` (pre-1.10), `110002` (1.10, Sweetie HD's value), and
+//! `10002` (pre-1.10), `110002` (an observed 1.10 value), and
 //! `1110002` (1.1110). Any other observed value emits
 //! [`SceneHeaderWarning::UnknownCompilerVersion`] and parsing **still
 //! succeeds** — the unknown value is preserved on the returned struct
@@ -103,7 +103,7 @@ pub const COMPILER_VERSION_1_1110: u32 = 1_110_002;
 pub struct EntrypointEntry {
     /// Slot index in the 100-entry table. Range: `0..100`.
     pub index: u16,
-    /// The raw `u32` value stored at this slot. Sweetie HD scene #0001
+    /// The raw `u32` value stored at this slot. An observed scene #0001
     /// pins every populated slot to `0x06` (the "0x06 lattice"
     /// described in `docs/research/reallive-engine.md` §D).
     pub value: u32,

@@ -5,7 +5,7 @@
 // The narrative-structure producer lives on the UTSUSHI side
 // (`crates/utsushi-cli/src/structure.rs` — it owns the replay engine that
 // derives the real scene-dispatch order via `observe_playthrough`, with the
-// `use_xor_2` Sweetie HD compiler-110002 staging + the Gameexe `#NAMAE` /
+// `use_xor_2` compiler-110002 staging + the Gameexe `#NAMAE` /
 // `#COLOR_TABLE` speaker resolver). It emits the
 // narrative-structure artifact the itotori whole-game localize driver consumes
 // as its structure-informed context. `structure-provider-registry.ts` is the

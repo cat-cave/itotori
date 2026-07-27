@@ -28,7 +28,7 @@ impl ReplayLog {
     }
 
     /// Number of [`ReplayEvent::TextLine`] events recorded. Acceptance
-    /// criterion #0 — the real-bytes Sweetie HD scene-1 run produces
+    /// criterion #0 — the real-bytes observed scene-1 run produces
     /// `text_line_count() >= 1`.
     pub fn text_line_count(&self) -> usize {
         self.events

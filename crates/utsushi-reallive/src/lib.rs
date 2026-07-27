@@ -15,7 +15,7 @@
 //! - All RealLive format observations consumed by this crate's eventual
 //!   implementation are derived from publicly archived format
 //!   documentation (Haeleth's RLDEV site
-//!   `https://dev.haeleth.net/rldev.shtml`) plus the Sweetie HD bytes
+//!   `https://dev.haeleth.net/rldev.shtml`) plus observed bytes
 //!   audited under `docs/audits/real-bytes-validation-2026-06-24.md`. No
 //!   source expression is copied from RLDEV or rlvm.
 //! - rlvm (`https://github.com/eglaysher/rlvm`) is a **research anchor
@@ -25,7 +25,7 @@
 //!   structure layouts, and does NOT mechanically translate rlvm code
 //!   into Rust. If a hypothesis about RealLive's format was confirmed by
 //!   reading rlvm, the hypothesis is re-derived and re-tested against
-//!   Sweetie HD bytes before being encoded here.
+//!   observed bytes before being encoded here.
 //! - siglus_rs and xclannad are explicitly out of scope for this crate.
 //!   The RealLive port targets RealLive — sibling engines get sibling
 //!   port crates so cross-engine bleed is impossible at the crate-graph
@@ -145,7 +145,7 @@ pub mod rlop;
 // private state through the round trip — acceptance criterion #3).
 pub mod vm;
 
-// end-to-end Sweetie HD scene-1 text-replay smoke. Drives
+// end-to-end observed scene-1 text-replay smoke. Drives
 // a Seen.txt envelope through the full.. chain
 // and produces a typed `ReplayLog` containing the alpha-defining
 // `TextLine` events.
@@ -178,7 +178,7 @@ pub mod g00;
 
 // system-call dispatch wired to Gameexe routes. Owns the
 // typed `SyscallDispatcher` that builds a route table from the
-// Sweetie HD-shaped `Gameexe.ini` and invokes each route through the
+// observed-layout `Gameexe.ini` and invokes each route through the
 // `FarcallOp` (no private dispatch path).
 pub mod syscall;
 

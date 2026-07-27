@@ -64,7 +64,7 @@ pub struct DecompressedScene {
 /// Decompress a single scene blob: slice its compressed bytecode and run
 /// the AVG32 first-level XOR + LZSS inflate. Returns the plaintext
 /// compiler version plus the decompressed bytecode. The second-level
-/// `use_xor_2` segment cipher (Sweetie HD, compiler `110002`) is NOT
+/// `use_xor_2` segment cipher (compiler `110002`) is NOT
 /// applied here — a caller that needs it interposes the dev-only
 /// `kaifuu-reallive` recovery on [`DecompressedScene::bytecode`].
 fn decompress_one_scene(blob: &[u8], scene_id: SceneId) -> Result<DecompressedScene, ReplayError> {

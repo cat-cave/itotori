@@ -110,10 +110,10 @@ pub const EXPRESSION_STORE_REGISTER_TAG: u8 = 0xC8;
 pub const BANK_BYTE_INT_B: u8 = 0x01;
 /// Bank byte for the `intA` bank.
 pub const BANK_BYTE_INT_A: u8 = 0x00;
-/// Bank byte for the `intF` bank (observed in Sweetie HD scene #0001
+/// Bank byte for the `intF` bank (observed in a scene #0001
 /// real-bytes Expression elements).
 pub const BANK_BYTE_INT_F: u8 = 0x05;
-/// Bank byte for the `intG` bank (observed in Sweetie HD scene #0001
+/// Bank byte for the `intG` bank (observed in a scene #0001
 /// real-bytes Expression elements).
 pub const BANK_BYTE_INT_G: u8 = 0x06;
 

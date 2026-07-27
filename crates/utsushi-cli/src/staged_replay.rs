@@ -1,7 +1,7 @@
 //! Utsushi-cli-single-scene-xor2-staging — shared single-scene replay entry
 //! that stages the dev-only `use_xor_2` segment-cipher recovery before the
 //! bytecode decode, so the `replay-validate` / `render-validate` CLI surfaces
-//! decode REAL text (not mojibake) on xor2 titles such as Sweetie HD
+//! decode REAL text (not mojibake) on compiler-110002 xor2 titles
 //! (compiler `110002`).
 //!
 //! # Why this exists

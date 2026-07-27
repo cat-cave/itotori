@@ -14,18 +14,17 @@
 //!    `count_word = (back_distance << 4) | (run_length - 2)` encoding.
 //! 3. **Optional second-level XOR** — when [`AvgDecompressor::decompress`]
 //!    is called with `Some(key)` the 16-byte key is XOR'd cyclically
-//!    against the post-LZSS bytes. For Sweetie HD (and any other
-//!    Sukara-branch title carrying compiler version `110002`) the caller
+//!    against the post-LZSS bytes. For any compiler-110002 title the caller
 //!    passes `None` per outcome A in
 //!    the RealLive encryption research notes.
 //!
-//! # Outcome A (Sukara-branch / compiler version 110002)
+//! # Outcome A (compiler version 110002)
 //!
 //! The encryption-mechanism research probe under
 //! `RealLive encryption research notes` proved
 //! the rlvm `scenario.cc::Header` heuristic ("if compiler_version ==
 //! 110002 then enable second-level XOR") is overly pessimistic for the
-//! Sukara-branch HD remasters. Sweetie HD's scene #0001 decompresses
+//! compiler-110002 HD remasters. The observed scene #0001 decompresses
 //! cleanly with `xor2_key = None`: the resulting 1660-byte stream
 //! begins `0a 02 00 0a 03 00 21 00` and parses as a valid
 //! BytecodeElement sequence. The decompressor therefore makes the
@@ -202,7 +201,7 @@ pub enum DecompressWarning {
     /// that the rlvm `scenario.cc::Header` heuristic historically
     /// requested a second-level XOR pass on (currently: `110002`).
     ///
-    /// For Sukara-branch HD remasters (Sweetie HD and siblings) this is
+    /// For compiler-110002 HD remasters this is
     /// the correct call — outcome A in
     /// `RealLive encryption research notes`
     /// proves the rlvm branch is overly pessimistic for these titles.
@@ -222,7 +221,7 @@ impl std::fmt::Display for DecompressWarning {
                 formatter,
                 "utsushi.reallive.decompress.xor2_not_applied: compiler_version={compiler_version} \
                  historically requested a second-level XOR pass; xor2_key=None was supplied \
-                 (outcome A for Sukara-branch titles — see \
+(outcome A for compiler-110002 titles — see \
                  RealLive encryption research notes)",
             ),
         }
@@ -260,7 +259,7 @@ impl AvgDecompressor {
     /// XOR is intentionally skipped — see the
     /// RealLive encryption research notes
     /// outcome A note above for why this is the correct choice for
-    /// Sukara-branch titles.
+    /// compiler-110002 titles.
     ///
     /// `compiler_version` is the typed
     /// [`crate::SceneHeader::compiler_version`] value the scene header
@@ -386,7 +385,7 @@ impl AvgDecompressor {
                     // Per the rlvm reference, the last back-reference is
                     // allowed to *clip* against the declared length;
                     // emit only as many bytes as fit. This matches the
-                    // observed Sweetie HD behaviour where the final run
+                    // observed behavior where the final run
                     // saturates the buffer exactly. Anything that would
                     // require *more* than that is genuine overflow.
                     let start = dst.len() - back_distance;

@@ -3,8 +3,8 @@
 //! game directory tree, walking subdirectories case-insensitively up to a
 //! bounded depth (default `REALLIVE_DETECTOR_DEFAULT_MAX_DEPTH = 3`). The
 //! depth bound exists so the walker terminates on pathological install
-//! trees; the default is large enough to cover the observed RealLive
-//! install shape `<root>/<Japanese title subdir>/REALLIVEDATA/` (depth 2) and the
+//! trees; the default is large enough to cover the observed two-level
+//! shape `<root>/<Japanese title subdir>/REALLIVEDATA/` (depth 2) and the
 //! plain `<root>/REALLIVEDATA/` shape (depth 1) without descending into
 //! every save / cache directory a player might leave around.
 //! Subdirectory names with non-ASCII / Japanese characters are traversed
@@ -12,7 +12,7 @@
 //! does not apply any encoding-based filter. The case-insensitive match
 //! on the marker name is ASCII-only (`REALLIVEDATA` is a fixed ASCII
 //! token in every RealLive title since AVG32; see
-//! `docs/research/reallive-engine.md` §C and the real-bytes verification
+//! `docs/research/reallive-engine.md` §C and the real-corpus verification
 //! in `docs/audits/real-bytes-validation-2026-06-24.md` §2.1).
 //! # Three-state outcome (no silent zero-state)
 //! - `Ok(Some(evidence))` — a directory whose ASCII-lowercase name is
@@ -38,13 +38,13 @@ use thiserror::Error;
 
 /// On-disk marker directory name. Case is preserved when matching against
 /// `DirEntry::file_name` via ASCII-lowercase comparison. The audit
-/// confirms the on-disk marker is the upper-case form `REALLIVEDATA`;
+/// confirms the marker is the upper-case form `REALLIVEDATA`;
 /// the lookup accepts any ASCII-casing because some title repacks ship
 /// `reallivedata` lowercase.
 pub const REALLIVE_DATA_DIR_NAME: &str = "REALLIVEDATA";
 
-/// Default bound for the directory descent. Covers the depth-2 RealLive
-/// install shape (`<root>/<JP title subdir>/REALLIVEDATA/`) plus a one-level
+/// Default bound for the directory descent. Covers the observed depth-2
+/// shape (`<root>/<JP title subdir>/REALLIVEDATA/`) plus a one-level
 /// cushion for installer wrappers that nest the title subdir under
 /// `Setup/` or similar. See §audit-focus for the bound
 /// rationale.
@@ -241,10 +241,10 @@ mod tests {
 
     #[test]
     fn detects_reallivedata_under_nonascii_parent() {
-        // Mirrors the depth-2 RealLive install shape:
-        // <root>/<Japanese title subdir>/REALLIVEDATA/
+        // Mirrors a non-ASCII two-level installation layout:
+        // <root>/観測用データ/REALLIVEDATA/
         let root = unique_temp_dir("nonascii-parent");
-        let title = "ダミータイトル＋データ_DL版";
+        let title = "観測用データ";
         let nested = root.join(title).join("REALLIVEDATA");
         fs::create_dir_all(&nested).unwrap();
 

@@ -15,7 +15,7 @@
 //!
 //! - Shape derivation is from `docs/research/reallive-engine.md` §B
 //!   (publicly archived RLDEV documentation plus byte-level counts
-//!   against Sweetie HD's real `Gameexe.ini`). No expression is copied
+//!   against an observed real `Gameexe.ini`). No expression is copied
 //!   from rlvm or any other GPL-licensed source. See
 //!   [`crate::RLVM_RESEARCH_ANCHOR_BOUNDARY_STATEMENT`] for the
 //!   crate-level boundary statement.
@@ -68,7 +68,7 @@
 //! - [`Gameexe::list_namespace`] — enumerate every fully-qualified key
 //!   whose dotted-path prefix matches the given namespace string.
 //! - [`Gameexe::len`] — total parsed entry count (the
-//!   real-bytes integration test pins this against Sweetie HD's 1,345
+//!   real-bytes integration test pins this against an observed corpus's 1,345
 //!   recognised lines).
 //!
 //! Missing keys return `None`. Type mismatches (asking `get_str` for
@@ -613,7 +613,7 @@ impl Gameexe {
     /// - `#SCREENSIZE_MOD=0` → classic `640x480` (Kanon and other
     ///   1.2.6.x titles).
     /// - `#SCREENSIZE_MOD=1` → `800x600`.
-    /// - `#SCREENSIZE_MOD=999,w,h` → the explicit `w x h` (Sweetie HD:
+    /// - `#SCREENSIZE_MOD=999,w,h` → the explicit `w x h` (observed:
     ///   `999,1280,720`).
     /// - missing / malformed → classic `640x480`.
     pub fn screen_size_px(&self) -> (u32, u32) {
@@ -710,7 +710,7 @@ impl Gameexe {
 
     /// The `#WINDOW.<index>` set index the engine renders a `select`
     /// prompt into, read from the real `#DEFAULT_SEL_WINDOW` Gameexe key
-    /// (Kanon `#DEFAULT_SEL_WINDOW=000`, Sweetie HD `=031`). RealLive uses
+    /// (Kanon `#DEFAULT_SEL_WINDOW=000`, observed `=031`). RealLive uses
     /// this number to pick the `#WINDOW.NNN` box that frames the choice
     /// options — the selection window is a `#WINDOW` set, exactly like the
     /// message window. A value `< 0` (the "use the standard text window"

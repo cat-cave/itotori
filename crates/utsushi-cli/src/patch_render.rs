@@ -26,7 +26,7 @@
 //! ENGINE-GENERAL / GAME-AGNOSTIC: every game-specific input (data root
 //! scene, translated bundle, scope, output paths) is a CONFIG flag — there is
 //! no hard-coded game path or scene reference. Validated first on a real
-//! RealLive project (Sweetie HD) via config.
+//! RealLive project via config.
 //!
 //! COPYRIGHT REDACTION (PROJECT LAW): the public PNG is redacted by default
 //! (real g00 image rects replaced by a synthetic marker; translated glyphs
