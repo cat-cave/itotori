@@ -36,7 +36,7 @@ fn dialogue_offsets(scene: &SoftpalScene) -> Vec<usize> {
 }
 
 #[test]
-fn executes_deterministically_with_counted_halts_on_both_local_corpora() {
+fn halts_at_the_native_task_scheduler_without_inventing_operands_or_callbacks() {
     for (index, root) in CORPORA.iter().enumerate() {
         let root = PathBuf::from(root);
         let Some((script, textdat, points)) = inputs(&root) else {
@@ -82,9 +82,21 @@ fn executes_deterministically_with_counted_halts_on_both_local_corpora() {
             first.diagnostics.len()
         );
         assert_eq!(
-            diagnostics.get("native_task_operand_underflow"),
+            diagnostics.get("native_task_scheduler_callback_registry_unmodeled"),
             Some(&1),
-            "corpus {} stops loudly while the native task producers are unresolved",
+            "corpus {} stops at the native scheduler rather than inventing a script operand stack",
+            index + 1
+        );
+        assert_eq!(
+            first.diagnostics[0].offset,
+            [0x28, 0x88][index],
+            "corpus {} reaches the proven task-scheduler target",
+            index + 1
+        );
+        assert_eq!(
+            first.stats.instructions_executed,
+            [4, 12][index],
+            "corpus {} reaches no script text before the native scheduler",
             index + 1
         );
         assert_eq!(

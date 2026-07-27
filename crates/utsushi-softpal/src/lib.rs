@@ -26,7 +26,6 @@ mod engine_port;
 mod scene_render;
 mod scene_runtime;
 mod scene_vm;
-mod task_runtime;
 
 pub use engine_port::{UtsushiSoftpalPort, UtsushiSoftpalPortContext};
 pub use scene_render::{
@@ -36,11 +35,6 @@ pub use scene_runtime::{
     ChoiceOption, RuntimeDiagnostic, SceneStep, SoftpalRuntimeError, SoftpalScene,
     SoftpalSceneStats,
 };
-pub use task_runtime::{
-    NativeTask, NativeTaskCall, TASK_GROUP_COUNT, TASK_SLOT_COUNT, TaskCallback,
-    TaskCallbackOutcome, TaskDispatchError, TaskDispatchOutcome, TaskRuntime,
-};
-
 /// One-line capability boundary, mirroring the kaifuu detector's support
 /// statements: what this runtime port DOES and, honestly, does not claim.
 pub const SOFTPAL_RUNTIME_SUPPORT_BOUNDARY: &str = "utsushi-softpal executes the extracted Softpal \

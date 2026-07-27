@@ -1,6 +1,5 @@
 //! Sv20 execution: values, branches, calls, and honest stop diagnostics.
 use crate::scene_runtime::{ChoiceOption, RuntimeDiagnostic, SceneStep, SoftpalRuntimeError};
-use crate::task_runtime::TaskRuntime;
 use kaifuu_softpal::{CommandFamily, Instruction, OpcodeScan, Operand, OperandTag, RawCommand};
 use std::collections::{BTreeMap, HashMap};
 #[derive(Default)]
@@ -51,7 +50,6 @@ pub(crate) struct Vm<'a> {
     diagnostics: Vec<RuntimeDiagnostic>,
     branches: usize,
     instruction_count: usize,
-    native_tasks: TaskRuntime,
 }
 
 impl<'a> Vm<'a> {
@@ -87,7 +85,6 @@ impl<'a> Vm<'a> {
             diagnostics: Vec::new(),
             branches: 0,
             instruction_count: 0,
-            native_tasks: TaskRuntime::default(),
         }
     }
 
@@ -303,12 +300,14 @@ impl<'a> Vm<'a> {
         match instruction.family {
             CommandFamily::TextShow { .. } => self.emit_dialogue(instruction.offset),
             CommandFamily::Select => self.emit_choice(instruction.offset),
+            // The embedded launcher registers 0x0011:0x001c at 0x41bae0,
+            // which walks sixteen native callback groups without popping script operands.
             CommandFamily::Call { target }
                 if (target.category, target.function) == (0x0011, 0x001c) =>
             {
-                self.native_tasks.dispatch_for_vm().map_or_else(
-                    |signature| self.bad(signature, instruction.offset),
-                    |_| true,
+                self.bad(
+                    "native_task_scheduler_callback_registry_unmodeled",
+                    instruction.offset,
                 )
             }
             CommandFamily::Call { target } if target.semantic_name().is_some() => true,
