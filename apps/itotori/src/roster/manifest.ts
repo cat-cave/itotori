@@ -51,13 +51,15 @@ const DEEP_LIMITS: SpecialistDeclaration["limits"] = {
 
 // P3 gets one bounded fresh-fork response.  Its tool grants are still
 // derived by `defineSpecialist`; this limit only prevents a repair conversation
-// from turning into a second drafting/refinement pass.
+// from turning into a second drafting/refinement pass. The single turn is still
+// an analyst-sized generation, so it takes the analyst's DEEP deadline — a 30 s
+// `normal` deadline times the attempt out before the response can arrive.
 const SEMANTIC_REPAIR_LIMITS: SpecialistDeclaration["limits"] = {
   maxSteps: 1,
   maxToolCalls: 0,
   maxParallelTools: 1,
   maxOutputTokens: 16_384,
-  timeoutClass: "normal",
+  timeoutClass: "deep",
 };
 
 // P2 is deliberately one bounded author-continuation turn.  A line edit is a

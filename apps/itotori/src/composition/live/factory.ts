@@ -209,7 +209,7 @@ export async function createLiveWorkflowPortDeps(
   const snapshot = buildFactSnapshot(structure, config.bridge);
   const facts = decodeFactSourceFrom(
     snapshot,
-    bridgeUnitsByFactId(snapshot.orderedUnits, config.bridge),
+    bridgeUnitsByUnitKey(snapshot.orderedUnits, config.bridge),
   );
   const bible = await loadInstalledBible({
     wiki: config.stores.wiki,
@@ -557,20 +557,24 @@ function parseSourceObject(
   return source;
 }
 
-function bridgeUnitsByFactId(
+// Key by BOTH the provenance factId (`unit:<id>`) and the bare bridgeUnitId, for
+// the same reason `decodeFactSourceFrom` keys its ordered-fact map both ways: the
+// draft sequence (projectDecodeStructure scene.units) queries by the BARE unit
+// id, so keying by factId alone misses every lookup the drafter actually makes.
+export function bridgeUnitsByUnitKey(
   orderedUnits: readonly { readonly factId: string; readonly bridgeUnitId: string }[],
   bridge: BridgeBundleV02,
 ): ReadonlyMap<string, LocalizationUnitV02> {
   const byBridgeId = new Map(bridge.units.map((unit) => [unit.bridgeUnitId, unit]));
-  const byFactId = new Map<string, LocalizationUnitV02>();
+  const byUnitKey = new Map<string, LocalizationUnitV02>();
   for (const unit of orderedUnits) {
     const bridgeUnit = byBridgeId.get(unit.bridgeUnitId);
     if (bridgeUnit === undefined) {
-      throw new LiveWorkflowFactoryError(
-        `fact ${unit.factId} has no bridge unit ${unit.bridgeUnitId}`,
-      );
+      const detail = `fact ${unit.factId} has no bridge unit ${unit.bridgeUnitId}`;
+      throw new LiveWorkflowFactoryError(detail);
     }
-    byFactId.set(unit.factId, bridgeUnit);
+    byUnitKey.set(unit.factId, bridgeUnit);
+    byUnitKey.set(unit.bridgeUnitId, bridgeUnit);
   }
-  return byFactId;
+  return byUnitKey;
 }

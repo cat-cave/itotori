@@ -257,3 +257,31 @@ describe("PROOF — the exactly-19 roster all resolving to deepseek-v4-flash", (
     expect(rows.every((row) => row.endsWith(RESOLVED_MODEL))).toBe(true);
   });
 });
+
+describe("call deadlines match generation size", () => {
+  // A role that may emit at least as many tokens as the analyst must get the
+  // analyst's deadline class. On real bytes an analyst-sized generation took
+  // ~180 s, so a `normal` (30 s) deadline on an equal-or-larger generation
+  // fails every attempt with a transport error before a token is billed.
+  const analyst = EXECUTABLE_PROFILE_SHAPES.analyst.limits;
+
+  it("gives every shape at least the analyst's output ceiling the deep deadline", () => {
+    for (const shape of Object.values(EXECUTABLE_PROFILE_SHAPES)) {
+      if (shape.limits.maxOutputTokens < analyst.maxOutputTokens) continue;
+      expect(
+        shape.limits.timeoutClass,
+        `${shape.shape} emits up to ${shape.limits.maxOutputTokens} tokens`,
+      ).toBe("deep");
+    }
+  });
+
+  it("gives every specialist at least the analyst's output ceiling the deep deadline", () => {
+    for (const specialist of Object.values(ROSTER_SPECIALISTS)) {
+      if (specialist.limits.maxOutputTokens < analyst.maxOutputTokens) continue;
+      expect(
+        specialist.limits.timeoutClass,
+        `${specialist.roleId} emits up to ${specialist.limits.maxOutputTokens} tokens`,
+      ).toBe("deep");
+    }
+  });
+});
