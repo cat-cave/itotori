@@ -171,10 +171,6 @@ pub fn gameexe_ini_path() -> Option<PathBuf> {
     file_in_reallivedata("Gameexe.ini").or_else(|| game_root().map(|root| root.join("Gameexe.ini")))
 }
 
-pub fn skip_message(test_name: &str) -> String {
-    format!("reallive/1/encrypted is unavailable or malformed; skipping {test_name}")
-}
-
 /// Reject an unavailable corpus in this strict proof suite. Callers retain
 /// their `return` for the successful case; an unavailable input never passes
 /// after logging a skip.
