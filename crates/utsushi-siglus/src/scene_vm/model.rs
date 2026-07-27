@@ -29,6 +29,8 @@ pub enum Moment {
 pub struct VmState {
     pub globals: BTreeMap<i32, i32>,
     pub indexed_globals: BTreeMap<(i32, i32), i32>,
+    pub indexed_strings: BTreeMap<(i32, i32), i32>,
+    pub system_properties: BTreeMap<(i32, i32), i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +39,17 @@ pub struct ExecutionReport {
     pub instructions_executed: usize,
     pub moments: Vec<Moment>,
     pub halted: bool,
+}
+
+/// The observable work completed before a VM either reached its terminus or
+/// encountered a terminal diagnostic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExecutionOutcome {
+    Complete(ExecutionReport),
+    Terminal {
+        report: ExecutionReport,
+        error: VmError,
+    },
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -92,6 +105,7 @@ pub enum VmError {
 pub(super) enum Value {
     Int(i32),
     Str(i32),
+    Text(String),
     System(i32),
     Function(i32),
 }
@@ -105,10 +119,12 @@ pub struct SceneVm<'a> {
     pub(super) values: Vec<Value>,
     pub(super) frames: Vec<usize>,
     pub(super) calls: Vec<CallFrame>,
+    pub(super) scenes: Vec<SceneFrame>,
     pub(super) speaker: Option<String>,
     pub(super) pc: usize,
     pub(super) moments: Vec<Moment>,
     pub(super) policy: ChoicePolicy,
+    pub(super) instructions_executed: usize,
 }
 
 #[derive(Debug)]
@@ -117,8 +133,30 @@ pub(super) enum ProgramSource<'a> {
     Title(&'a TitleProgram),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub(super) struct CallFrame {
     pub(super) scene_id: u32,
     pub(super) pc: usize,
+    pub(super) return_form: i32,
+    pub(super) arguments: Vec<Value>,
+    pub(super) properties: Vec<CallProperty>,
+    pub(super) scene_entry: bool,
+}
+
+#[derive(Debug)]
+pub(super) struct SceneFrame {
+    pub(super) scene_id: u32,
+    pub(super) pc: usize,
+    pub(super) values: Vec<Value>,
+    pub(super) frames: Vec<usize>,
+    pub(super) calls: Vec<CallFrame>,
+    pub(super) speaker: Option<String>,
+    pub(super) return_form: i32,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct CallProperty {
+    pub(super) form: i32,
+    pub(super) value: Value,
+    pub(super) indexed: BTreeMap<i32, Value>,
 }
