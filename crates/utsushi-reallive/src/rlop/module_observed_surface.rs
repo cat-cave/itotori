@@ -78,8 +78,6 @@ const OBSERVED_SURFACE_COMMANDS: &[(u8, u8, u16, &str)] = &[
     (1, 30, 22, "grp_ctrl.extension_22"),
     (1, 31, 0, "grp_ctrl.extension_31_0"),
     (1, 81, 1031, "obj.extension_1031"),
-    (1, 84, 1000, "obj.extension_84_1000"),
-    (1, 84, 1100, "obj.extension_84_1100"),
 ];
 
 /// Mount every exact observed headless-surface command.

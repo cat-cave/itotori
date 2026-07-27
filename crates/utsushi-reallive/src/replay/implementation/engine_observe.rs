@@ -1,6 +1,7 @@
 use super::*;
 
 use super::event_loop_gate::closes_a_loop;
+use utsushi_core::substrate::AssetPackage;
 
 impl ReplayEngine {
     /// Observe `scene_id` through the shared store while RETAINING the
@@ -40,6 +41,7 @@ impl ReplayEngine {
                 ControlFlowMount::BranchFollowing,
                 Arc::clone(&text_sink),
                 &mut branch_scheduler,
+                None,
             )
             .scene;
         // Pass 2: exhaustive linear-walk cataloguing.
@@ -51,6 +53,7 @@ impl ReplayEngine {
                 ControlFlowMount::LinearWalk,
                 text_sink,
                 &mut linear_scheduler,
+                None,
             )
             .scene;
 
@@ -103,6 +106,28 @@ impl ReplayEngine {
     /// from the linear catalogue only when the branch path composited/played
     /// nothing before yielding.
     pub fn observe_for_port(&self, scene_id: SceneId, opts: &ReplayOpts) -> PortObservation {
+        self.observe_for_port_with_optional_assets(scene_id, opts, None)
+    }
+
+    /// Observe a detached port pass with the same asset package the live
+    /// runtime would have mounted. The package is bound before the first VM
+    /// instruction so object creation can obtain real g00 geometry rather
+    /// than leaving input rectangles unavailable.
+    pub fn observe_for_port_with_assets(
+        &self,
+        scene_id: SceneId,
+        opts: &ReplayOpts,
+        assets: Arc<dyn AssetPackage>,
+    ) -> PortObservation {
+        self.observe_for_port_with_optional_assets(scene_id, opts, Some(assets))
+    }
+
+    fn observe_for_port_with_optional_assets(
+        &self,
+        scene_id: SceneId,
+        opts: &ReplayOpts,
+        assets: Option<Arc<dyn AssetPackage>>,
+    ) -> PortObservation {
         // Pass 1: branch-following = real play order. Capture its text.
         let branch_sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
         let mut branch_scheduler = HeadlessInputScheduler::new(HeadlessChoicePolicy::AlwaysFirst);
@@ -112,6 +137,7 @@ impl ReplayEngine {
             ControlFlowMount::BranchFollowing,
             Arc::clone(&branch_sink) as Arc<dyn TextSurfaceSink>,
             &mut branch_scheduler,
+            assets.clone(),
         );
         let first_cross_scene = branch_pass.first_cross_scene;
         let branch_prompts = branch_pass.selection_prompts;
@@ -130,6 +156,7 @@ impl ReplayEngine {
             ControlFlowMount::LinearWalk,
             Arc::clone(&linear_sink) as Arc<dyn TextSurfaceSink>,
             &mut linear_scheduler,
+            assets,
         );
         let linear_prompts = linear_pass.selection_prompts;
         let linear_termination = linear_pass.termination;
@@ -201,6 +228,28 @@ impl ReplayEngine {
         opts: &ReplayOpts,
         max_scenes: usize,
     ) -> ScenePlaythrough {
+        self.observe_playthrough_with_optional_assets(entry, opts, max_scenes, None)
+    }
+
+    /// Like [`Self::observe_playthrough`], but bind the live game's asset
+    /// package to every detached pass before it executes its first opcode.
+    pub fn observe_playthrough_with_assets(
+        &self,
+        entry: SceneId,
+        opts: &ReplayOpts,
+        max_scenes: usize,
+        assets: Arc<dyn AssetPackage>,
+    ) -> ScenePlaythrough {
+        self.observe_playthrough_with_optional_assets(entry, opts, max_scenes, Some(assets))
+    }
+
+    fn observe_playthrough_with_optional_assets(
+        &self,
+        entry: SceneId,
+        opts: &ReplayOpts,
+        max_scenes: usize,
+        assets: Option<Arc<dyn AssetPackage>>,
+    ) -> ScenePlaythrough {
         let max_scenes = max_scenes.max(1);
         let mut segments: Vec<ScenePlaySegment> = Vec::new();
         let mut visited: std::collections::HashSet<SceneId> = std::collections::HashSet::new();
@@ -214,7 +263,8 @@ impl ReplayEngine {
             if !visited.insert(scene_id) {
                 break;
             }
-            let observation = self.observe_for_port(scene_id, opts);
+            let observation =
+                self.observe_for_port_with_optional_assets(scene_id, opts, assets.clone());
             let next = observation.first_cross_scene;
             segments.push(ScenePlaySegment {
                 scene_id,
@@ -238,10 +288,14 @@ impl ReplayEngine {
         control_flow: ControlFlowMount,
         text_sink: Arc<dyn TextSurfaceSink>,
         scheduler: &mut dyn crate::rlop::LongOpScheduler,
+        assets: Option<Arc<dyn AssetPackage>>,
     ) -> PassObservation {
         let runtime = Arc::new(MsgRuntime::with_sink(Arc::clone(&text_sink)));
         runtime.set_speaker_resolver(self.speaker_resolver.clone());
         let handles = mount_registry_handles(text_sink, Arc::clone(&runtime), control_flow);
+        if let Some(assets) = assets {
+            handles.graphics.set_asset_package(assets);
+        }
         let mut vm = Vm::new(scene_id, 0);
         let mut steps: u32 = 0;
         let mut first_cross_scene: Option<SceneId> = None;

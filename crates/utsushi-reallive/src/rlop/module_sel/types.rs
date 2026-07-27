@@ -200,6 +200,7 @@ pub(super) struct SelRuntimeInner {
     /// [`SelRuntime::take_warnings`].
     pub(super) warnings: Vec<SelRuntimeWarning>,
     pub(super) prompts: Vec<SelectionPrompt>,
+    pub(super) print_directives: PrintDirectiveStats,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -323,4 +324,12 @@ pub enum SelRuntimeWarning {
     ObjectButtonCancelArgsInvalid {
         observed: usize,
     },
+}
+
+/// Counts of `###PRINT` choice-label evaluations during one VM drive.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PrintDirectiveStats {
+    pub attempted: usize,
+    pub resolved: usize,
+    pub failed: usize,
 }

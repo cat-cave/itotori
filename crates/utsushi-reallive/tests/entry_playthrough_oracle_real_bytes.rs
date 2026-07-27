@@ -6,10 +6,14 @@
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
+#[path = "support/real_g00_package.rs"]
+mod real_g00_package;
 
 use std::fs;
+use std::sync::Arc;
 
 use kaifuu_reallive::{Xor2DecScene, recover_and_decrypt_archive};
+use utsushi_core::substrate::AssetPackage;
 use utsushi_reallive::{
     BytecodeElement, HeadlessChoicePolicy, PlayOrderSource, RealSceneIndex, ReplayEngine,
     ReplayOpts, TextoutEncoding, build_scene_store_from_decompressed, decode_bytecode_stream,
@@ -90,21 +94,26 @@ fn entry_playthrough_emits_an_ordered_subset_of_static_text_bytes() {
         .expect("real corpus Gameexe.ini must declare #SEEN_START");
     let bytes = fs::read(&corpus.seen_txt).expect("read real Seen.txt");
     let (engine, decompressed) = staged_engine_and_bytes(&bytes);
-    let branch_report = engine.branch_following_report(
+    let g00_dir = real_corpus::g00_dir_for(real_corpus::SECONDARY)
+        .expect("full second-corpus install must provide a g00 directory");
+    let assets: Arc<dyn AssetPackage> = Arc::new(real_g00_package::RealG00Package::new(g00_dir));
+    let branch_report = engine.branch_following_report_with_assets(
         entry,
         &ReplayOpts {
             step_budget: ENTRY_PATH_BUDGET,
             stop_at_first_pause: false,
         },
         HeadlessChoicePolicy::AlwaysFirst,
+        Arc::clone(&assets),
     );
-    let playthrough = engine.observe_playthrough(
+    let playthrough = engine.observe_playthrough_with_assets(
         entry,
         &ReplayOpts {
             step_budget: ENTRY_PATH_BUDGET,
             stop_at_first_pause: false,
         },
         ENTRY_PATH_SCENES,
+        assets,
     );
     let scene_ids: Vec<u16> = playthrough
         .segments
@@ -155,12 +164,29 @@ fn entry_playthrough_emits_an_ordered_subset_of_static_text_bytes() {
         .filter(|segment| segment.observation.play_order_source == PlayOrderSource::LinearCatalogue)
         .map(|segment| segment.observation.play_order_lines.len())
         .sum();
+    let hydrated_objects: usize = playthrough
+        .segments
+        .iter()
+        .flat_map(|segment| {
+            (0..256).filter_map(move |slot| {
+                segment
+                    .observation
+                    .scene
+                    .graphics_stack
+                    .get_layer(utsushi_reallive::GraphicsLayer::ForegroundObject, slot)
+            })
+        })
+        .filter(|object| object.geometry.surface.is_some())
+        .count();
     eprintln!(
-        "entry-path oracle: scenes={scene_ids:?} observed_steps={observed_steps} emitted={} static={} overlap={overlap} fallback_lines={fallback_lines} branch_steps={} branch_text={} modeled_events={} branch_terminus={:?} transfers={:?}",
+        "entry-path oracle: scenes={scene_ids:?} observed_steps={observed_steps} emitted={} static={} overlap={overlap} fallback_lines={fallback_lines} hydrated_objects={hydrated_objects} branch_steps={} branch_text={} object_get_rectangle={:?} containment_rectangles={:?} print_directives={:?} modeled_events={} branch_terminus={:?} transfers={:?}",
         emitted.len(),
         static_lines.len(),
         branch_report.steps,
         branch_report.text_lines,
+        branch_report.object_get_rectangle,
+        branch_report.containment_rectangles,
+        branch_report.print_directives,
         branch_report.modeled_events,
         branch_report.terminus,
         branch_report.transfers,
@@ -173,5 +199,19 @@ fn entry_playthrough_emits_an_ordered_subset_of_static_text_bytes() {
         overlap,
         emitted.len(),
         "every emitted line must occur in static byte order"
+    );
+    assert!(
+        hydrated_objects > 0,
+        "the detached replay must hydrate object geometry from the real g00 package"
+    );
+    assert!(
+        branch_report
+            .containment_rectangles
+            .iter()
+            .any(|rectangle| {
+                rectangle[2].is_some_and(|width| width > 0)
+                    && rectangle[3].is_some_and(|height| height > 0)
+            }),
+        "the real containment check must observe a positive intrinsic image rectangle"
     );
 }

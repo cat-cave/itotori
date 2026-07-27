@@ -91,7 +91,7 @@ impl EnginePort for UtsushiReallivePort {
             step_budget: OBSERVE_STEP_BUDGET,
             stop_at_first_pause: false,
         };
-        let playthrough = self.engine.observe_playthrough(
+        let playthrough = self.engine.observe_playthrough_with_assets(
             self.entry_scene,
             &observe_opts,
             if request.operation == RuntimeOperation::ReplayReview {
@@ -102,6 +102,7 @@ impl EnginePort for UtsushiReallivePort {
             } else {
                 PLAYTHROUGH_MAX_SCENES
             },
+            Arc::clone(&self.assets),
         );
 
         if request.operation == RuntimeOperation::ReplayReview {

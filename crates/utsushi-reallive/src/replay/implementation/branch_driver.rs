@@ -28,6 +28,7 @@ pub(super) fn drive_branch_following(
     let mut first_cross_scene: Option<SceneId> = None;
     let mut unknown = std::collections::BTreeMap::new();
     let mut text_lines: usize = 0;
+    let mut containment_rectangles = std::collections::BTreeSet::new();
 
     // --- Deterministic event-flag modeling (provable-spin break) ---
     //
@@ -137,6 +138,16 @@ pub(super) fn drive_branch_following(
                             _ => {}
                         }
                     }
+                    VmEvent::CommandDispatched { key, .. }
+                        if key.module_type == 1 && key.module_id == 4 && key.opcode == 133 =>
+                    {
+                        containment_rectangles.insert([1000, 1001, 1002, 1003].map(|index| {
+                            match vm.banks().get(crate::BankId::IntA, index) {
+                                Some(crate::Value::Int(value)) => Some(value),
+                                Some(crate::Value::Str(_)) | None => None,
+                            }
+                        }));
+                    }
                     _ => {}
                 }
                 let scene_now = vm.scene();
@@ -234,5 +245,13 @@ pub(super) fn drive_branch_following(
         choices_made: scheduler.choices_made(),
         modeled_events,
         first_cross_scene,
+        object_get_rectangle: [1000, 1001, 1002, 1003].map(|index| {
+            match vm.banks().get(crate::BankId::IntA, index) {
+                Some(crate::Value::Int(value)) => Some(value),
+                Some(crate::Value::Str(_)) | None => None,
+            }
+        }),
+        containment_rectangles: containment_rectangles.into_iter().collect(),
+        print_directives: crate::PrintDirectiveStats::default(),
     }
 }

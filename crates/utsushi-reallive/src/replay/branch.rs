@@ -12,6 +12,7 @@ use utsushi_core::substrate::TextLine;
 use crate::audio::AudioEvent as RealliveAudioEvent;
 use crate::graphics_objects::GraphicsObjectStack;
 use crate::rlop::RlopKey;
+use crate::rlop::module_sel::PrintDirectiveStats;
 use crate::rlop::module_sel::SelectionPrompt;
 use crate::vm::SceneId;
 
@@ -164,6 +165,16 @@ pub struct BranchReplayReport {
     /// play-loop continues into ([`ReplayEngine::observe_playthrough`] chains
     /// on it to produce a multi-scene play-order stream).
     pub first_cross_scene: Option<SceneId>,
+    /// Four integer slots a real object getter writes for the menu hit
+    /// rectangle: `(x, y, width, height)`. `None` means the script did not
+    /// write that slot during this execution.
+    pub object_get_rectangle: [Option<i32>; 4],
+    /// Distinct `(x, y, width, height)` values present immediately after the
+    /// executed cursor query. This captures the script-visible rectangle at
+    /// the containment boundary, not a synthesized click target.
+    pub containment_rectangles: Vec<[Option<i32>; 4]>,
+    /// Choice-label directive evaluations performed by the executed path.
+    pub print_directives: PrintDirectiveStats,
 }
 
 /// The real observation set produced by [`ReplayEngine::observe_scene`]:

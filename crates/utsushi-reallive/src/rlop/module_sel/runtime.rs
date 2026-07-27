@@ -89,12 +89,33 @@ impl SelRuntime {
         std::mem::take(&mut guard.prompts)
     }
 
+    /// Count actual choice-label interpolation attempts in this runtime.
+    pub fn print_directive_stats(&self) -> PrintDirectiveStats {
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .print_directives
+    }
+
     pub(super) fn record_warning(&self, warning: SelRuntimeWarning) {
         let mut guard = self
             .inner
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         guard.warnings.push(warning);
+    }
+
+    pub(super) fn record_print_directive(&self, resolved: bool) {
+        let mut guard = self
+            .inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.print_directives.attempted = guard.print_directives.attempted.saturating_add(1);
+        if resolved {
+            guard.print_directives.resolved = guard.print_directives.resolved.saturating_add(1);
+        } else {
+            guard.print_directives.failed = guard.print_directives.failed.saturating_add(1);
+        }
     }
 
     fn next_line_id(&self) -> String {

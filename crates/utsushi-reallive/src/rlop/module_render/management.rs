@@ -1,6 +1,7 @@
 use super::object_create::{
     ChildCreateOp, ObjButtonStateOp, ObjButtonStateRoute, ObjCreateOp, ParentCreateOp,
 };
+use super::object_get::{ObjGetKind, ObjGetOp};
 use super::object_set::{ObjSetOp, ObjSetProp};
 use super::*;
 
@@ -214,6 +215,24 @@ pub fn register_render_rlops(registry: &mut RlopRegistry, runtime: Arc<GraphicsR
             child_create(ImageProvenance::Placeholder),
         );
     }
+
+    // `ObjFgGetters` is a distinct, foreground-only oracle module. Its
+    // position and dimensions operations write through direct integer-bank
+    // references, so they must not be modelled as inert observed surfaces.
+    count += register_on_types(
+        registry,
+        &[1],
+        OBJ_FG_GETTER_ID,
+        1000,
+        Arc::new(ObjGetOp::new(Arc::clone(&runtime), ObjGetKind::Position)),
+    );
+    count += register_on_types(
+        registry,
+        &[1],
+        OBJ_FG_GETTER_ID,
+        1100,
+        Arc::new(ObjGetOp::new(Arc::clone(&runtime), ObjGetKind::Dimensions)),
+    );
 
     for (mid, plane) in [
         (OBJ_FG_SETTER_ID, GraphicsPlane::Foreground),

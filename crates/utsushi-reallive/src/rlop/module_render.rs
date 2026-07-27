@@ -65,7 +65,9 @@
 //! order: DCs, then bg objects, then fg objects.
 
 mod grp;
+mod object_get;
 pub use grp::{GrpOp, GrpRenderOp};
+pub use object_get::{ObjGetKind, ObjGetOp};
 
 use std::sync::Arc;
 
@@ -89,6 +91,8 @@ pub const OBJ_FG_SETTER_ID: u8 = 81;
 pub const OBJ_BG_SETTER_ID: u8 = 82;
 /// `module_id` of the ObjRangeFg SETTER module.
 pub const OBJ_FG_RANGE_ID: u8 = 90;
+/// `module_id` of the ObjFg getter module.
+pub const OBJ_FG_GETTER_ID: u8 = 84;
 /// `module_id` of the ObjRangeBg SETTER module.
 pub const OBJ_BG_RANGE_ID: u8 = 91;
 /// `module_id` of the generic ObjManagement module.
