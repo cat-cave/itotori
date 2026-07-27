@@ -286,6 +286,12 @@ export type ProjectDashboardStatus = {
   name: string;
   status: string;
   sourceLocale: string;
+  /**
+   * Registered engine family bound to the project (`itotori_projects.engine_family`).
+   * Null when the project has not been bound to an engine yet. Opaque registry key —
+   * never a hardcoded engine list on the client.
+   */
+  engineFamily: string | null;
   sourceBundleId: string;
   sourceBundleHash: string;
   sourceBundleRevisionId: string;
@@ -1843,6 +1849,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         p.name,
         p.status,
         p.source_locale,
+        p.engine_family,
         sb.source_bundle_id,
         sb.source_bundle_hash,
         sb.source_bundle_revision_id,
@@ -1931,6 +1938,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         p.name,
         p.status,
         p.source_locale,
+        p.engine_family,
         sb.source_bundle_id,
         sb.bridge_id,
         sb.schema_version,
@@ -2022,6 +2030,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       name: String(first.name),
       status: String(first.status),
       sourceLocale: String(first.source_locale),
+      engineFamily: nullableString(first.engine_family),
       sourceBundleId: String(first.source_bundle_id),
       sourceBundleHash: String(first.source_bundle_hash),
       sourceBundleRevisionId: String(first.source_bundle_revision_id),

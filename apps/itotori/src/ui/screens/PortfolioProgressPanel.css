@@ -1,33 +1,61 @@
 /* Portfolio live-progress surface — layout only; colour/type from @itotori/ds tokens. */
 
+.itotori-portfolio {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-12);
+  min-width: 0;
+}
+
 .itotori-portfolio-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: var(--ito-space-12);
 }
+
+.itotori-portfolio__rollup {
+  padding-bottom: var(--ito-space-8);
+  border-bottom: 1px solid var(--ito-color-border);
+  /* One compact horizontal strip; wraps only when the viewport is narrow. */
+  gap: var(--ito-space-8) var(--ito-space-16);
+}
+
+/* ── Standard card grid ─────────────────────────────────────────────────── */
 
 .itotori-portfolio-card {
   display: flex;
   flex-direction: column;
-  gap: var(--ito-space-12);
+  gap: var(--ito-space-10);
   padding: var(--ito-space-12);
   border: 1px solid var(--ito-color-border);
   border-radius: var(--ito-radius);
   background: var(--ito-color-surface);
   min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
 }
 
+.itotori-portfolio-card[data-portfolio-selected="true"] {
+  border-color: var(--ito-color-accent, var(--ito-color-border));
+  box-shadow: inset 0 0 0 1px var(--ito-color-accent, transparent);
+}
+
+.itotori-portfolio-card[data-attention="true"] {
+  border-left: 3px solid var(--ito-color-critical, var(--ito-color-border));
+}
+
+/* Identity + dedicated chip row — never side-by-side wrap races. */
 .itotori-portfolio-card__header {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ito-space-10);
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--ito-space-6);
+  min-width: 0;
 }
 
 .itotori-portfolio-card__identity {
   display: grid;
-  gap: var(--ito-space-4);
+  gap: 2px;
   min-width: 0;
 }
 
@@ -38,12 +66,14 @@
   font-size: var(--ito-text-h2);
   color: var(--ito-color-text);
   overflow-wrap: anywhere;
+  line-height: 1.25;
 }
 
 .itotori-portfolio-card__meta {
   margin: 0;
-  font-size: var(--ito-text-small);
+  font-size: var(--ito-text-small, var(--ito-text-pixel));
   color: var(--ito-color-text-muted);
+  line-height: 1.3;
 }
 
 .itotori-portfolio-card__meta code {
@@ -55,25 +85,157 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--ito-space-6);
-  justify-content: flex-end;
+  justify-content: flex-start;
+  min-height: 1.5rem;
 }
 
 .itotori-portfolio-card__body {
   display: flex;
   flex-direction: column;
-  gap: var(--ito-space-12);
+  gap: var(--ito-space-10);
 }
 
 .itotori-portfolio-card__empty {
   display: flex;
   flex-direction: column;
-  gap: var(--ito-space-10);
+  gap: var(--ito-space-8);
 }
 
 .itotori-portfolio-card__empty .itotori-empty-copy {
   margin: 0;
   color: var(--ito-color-text-muted);
   font-size: var(--ito-text-body);
+}
+
+/* Proven progress (fill = proven%) + labeled stage composition (not the same quantity). */
+.itotori-portfolio-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-8);
+  min-width: 0;
+}
+
+/* Keep proven + coverage on one baseline; no mid-card height jitter. */
+.itotori-portfolio-progress__head {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ito-space-8);
+  min-width: 0;
+}
+
+.itotori-portfolio-progress__proven {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: var(--ito-space-6);
+  min-width: 0;
+}
+
+.itotori-portfolio-progress__pct {
+  font-family: var(--ito-font-display);
+  font-weight: var(--ito-weight-display);
+  font-size: var(--ito-text-h2);
+  color: var(--ito-color-mint);
+  line-height: 1.1;
+  flex-shrink: 0;
+}
+
+.itotori-portfolio-progress__pct-label {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+  flex-shrink: 0;
+}
+
+.itotori-portfolio-progress__counts {
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-text-muted);
+  white-space: nowrap;
+}
+
+.itotori-portfolio-progress__coverage {
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.itotori-portfolio-stage-mix {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-6);
+  min-width: 0;
+}
+
+.itotori-portfolio-stage-mix__label {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-portfolio-stage-mix__bar {
+  display: flex;
+  height: 6px;
+  border-radius: var(--ito-radius-pill);
+  overflow: hidden;
+  background: var(--ito-dataviz-track);
+}
+
+.itotori-portfolio-stage-mix__seg {
+  height: 100%;
+}
+
+.itotori-portfolio-stage-mix__seg--amber {
+  background: var(--ito-color-amber);
+}
+.itotori-portfolio-stage-mix__seg--mint {
+  background: var(--ito-color-mint);
+}
+.itotori-portfolio-stage-mix__seg--cyan {
+  background: var(--ito-color-cyan);
+}
+.itotori-portfolio-stage-mix__seg--sakura {
+  background: var(--ito-color-sakura);
+}
+.itotori-portfolio-stage-mix__seg--neutral {
+  background: var(--ito-dataviz-fill-pending);
+}
+
+.itotori-portfolio-stage-mix__legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ito-space-6) var(--ito-space-10);
+}
+
+.itotori-portfolio-stage-mix__legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-portfolio-stage-mix__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--ito-radius-pill);
+  flex-shrink: 0;
+}
+
+.itotori-portfolio-stage-mix__legend-count {
+  font-family: var(--ito-font-mono);
+  color: var(--ito-color-text);
 }
 
 .itotori-portfolio-card__blockers {
@@ -83,11 +245,207 @@
   display: flex;
   flex-direction: column;
   gap: var(--ito-space-6);
-  font-size: var(--ito-text-small);
+  font-size: var(--ito-text-small, var(--ito-text-pixel));
   color: var(--ito-color-text-muted);
 }
 
 .itotori-portfolio-card__blocker-count {
   font-family: var(--ito-font-mono);
   color: var(--ito-color-text);
+}
+
+.itotori-portfolio-card__footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+}
+
+.itotori-portfolio-card__open {
+  appearance: none;
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius);
+  background: var(--ito-color-surface-raised, var(--ito-color-surface));
+  color: var(--ito-color-text);
+  font: inherit;
+  font-size: var(--ito-text-small, var(--ito-text-pixel));
+  padding: var(--ito-space-6) var(--ito-space-10);
+  cursor: pointer;
+}
+
+.itotori-portfolio-card__open:hover,
+.itotori-portfolio-card__open:focus-visible {
+  border-color: var(--ito-color-accent, var(--ito-color-text));
+  outline: none;
+}
+
+/* ── Dense table (above PORTFOLIO_DENSE_THRESHOLD) ───────────────────────── */
+
+.itotori-portfolio-dense {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius);
+  overflow: hidden;
+  background: var(--ito-color-surface);
+}
+
+.itotori-portfolio-dense__head,
+.itotori-portfolio-row {
+  display: grid;
+  grid-template-columns:
+    minmax(7rem, 1.4fr)
+    minmax(4.5rem, 0.9fr)
+    minmax(4.5rem, 0.7fr)
+    minmax(6.5rem, 1.1fr)
+    minmax(3rem, 0.45fr)
+    minmax(4.5rem, 0.7fr)
+    minmax(2.5rem, 0.45fr)
+    auto;
+  gap: var(--ito-space-8);
+  align-items: center;
+  padding: 0 var(--ito-space-10);
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.itotori-portfolio-dense__head {
+  min-height: 28px;
+  border-bottom: 1px solid var(--ito-color-border);
+  background: var(--ito-color-surface-raised, var(--ito-color-surface));
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-portfolio-dense__list {
+  /* Virtual list fills remaining viewport; no outer card chrome per row. */
+  border: none;
+  padding-inline-end: 0;
+}
+
+.itotori-portfolio-dense .itotori-virtual-list__item {
+  min-height: 0 !important;
+}
+
+.itotori-portfolio-row {
+  min-height: 36px;
+  border-bottom: 1px solid var(--ito-color-border);
+  background: transparent;
+}
+
+.itotori-portfolio-dense .itotori-virtual-list__item:last-child .itotori-portfolio-row {
+  border-bottom: none;
+}
+
+.itotori-portfolio-row[data-portfolio-selected="true"] {
+  background: color-mix(in srgb, var(--ito-color-accent, transparent) 12%, transparent);
+}
+
+.itotori-portfolio-row[data-attention="true"] {
+  box-shadow: inset 3px 0 0 var(--ito-color-critical, var(--ito-color-border));
+}
+
+.itotori-portfolio-row__identity {
+  min-width: 0;
+}
+
+.itotori-portfolio-row__name {
+  display: block;
+  font-family: var(--ito-font-display);
+  font-weight: var(--ito-weight-display-soft);
+  font-size: var(--ito-text-body);
+  color: var(--ito-color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.itotori-portfolio-row__engine {
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itotori-portfolio-row__state {
+  display: flex;
+  min-width: 0;
+}
+
+.itotori-portfolio-row__proven {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: var(--ito-space-6);
+  align-items: center;
+  min-width: 0;
+}
+
+.itotori-portfolio-row__proven .itotori-progress {
+  min-width: 2.5rem;
+}
+
+.itotori-portfolio-row__proven .itotori-progress__track {
+  height: 4px;
+}
+
+.itotori-portfolio-row__pct {
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-mint);
+  font-weight: var(--ito-weight-display-soft, 600);
+  white-space: nowrap;
+}
+
+.itotori-portfolio-row__units {
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-text-muted);
+  white-space: nowrap;
+}
+
+.itotori-portfolio-row__coverage,
+.itotori-portfolio-row__cost {
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-text-muted);
+  white-space: nowrap;
+}
+
+.itotori-portfolio-row__flags {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+}
+
+.itotori-portfolio-row__muted {
+  color: var(--ito-color-text-muted);
+  font-size: var(--ito-text-pixel);
+}
+
+.itotori-portfolio-row__open {
+  appearance: none;
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius);
+  background: var(--ito-color-surface-raised, var(--ito-color-surface));
+  color: var(--ito-color-text);
+  font: inherit;
+  font-size: var(--ito-text-pixel);
+  padding: 2px var(--ito-space-8);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.itotori-portfolio-row__open:hover,
+.itotori-portfolio-row__open:focus-visible {
+  border-color: var(--ito-color-accent, var(--ito-color-text));
+  outline: none;
 }
