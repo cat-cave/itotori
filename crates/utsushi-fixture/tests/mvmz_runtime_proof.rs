@@ -182,6 +182,12 @@ fn committed_real_launch_evidence_reproduces_the_e1_proof() {
     })
     .unwrap();
 
+    if std::env::var_os("UTSUSHI_MVMZ_RUNTIME_PROOF_REGEN").is_some() {
+        let mut rendered = serde_json::to_string_pretty(&proof).unwrap();
+        rendered.push('\n');
+        fs::write(proof_artifacts_dir().join("proof.json"), rendered).unwrap();
+    }
+
     assert_eq!(proof["runtimeObservationProven"], true);
     assert_eq!(proof["provenEvidenceTier"], "E1");
     assert_eq!(proof["screenshotEvidence"]["available"], true);

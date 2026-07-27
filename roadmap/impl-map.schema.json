@@ -370,6 +370,6 @@
     "status",
     "generatedAt"
   ],
-  "title": "Utsushi engine-port implementation map (UTSUSHI-025)",
+  "title": "Utsushi engine-port implementation map",
   "type": "object"
 }

@@ -124,7 +124,7 @@
   "createdAt": "2026-06-17T00:00:00.000Z",
   "engine": "rpg_maker_mv_mz",
   "limitations": [
-    "Embedded playback demo bundle PACKAGES the committed synthetic-fixture/102/065/010 artifacts by id / hash / verdict; it re-derives none of the proofs it links.",
+    "Embedded playback demo bundle PACKAGES the committed proof, capture, and review artifacts by id / hash / verdict; it re-derives none of the proofs it links.",
     "Public synthetic MV/MZ fixture only. The playback surface opens the patched fixture's observed text / choices + screenshot artifact references — never a live game and never copyrighted bytes or pixels.",
     "Screenshot captures are surfaced as managed runtime artifact URIs + content-addressed ref hashes; the bundle embeds no pixels."
   ],
@@ -236,13 +236,13 @@
     "checks": [
       {
         "checkId": "patched_proof_proven_e1",
-        "detail": "packaged synthetic-fixture proof proofKind=utsushi.mvmz.patched_runtime_observation_proof patchedRuntimeObservationProven=true provenEvidenceTier=E1; expected the patched proof proven at E1",
+        "detail": "packaged patched runtime proof proofKind=utsushi.mvmz.patched_runtime_observation_proof patchedRuntimeObservationProven=true provenEvidenceTier=E1; expected the patched proof proven at E1",
         "mandatory": true,
         "status": "pass"
       },
       {
         "checkId": "alpha_proof_proven_e1",
-        "detail": "packaged synthetic-fixture proof proofKind=utsushi.mvmz.runtime_observation_proof runtimeObservationProven=true provenEvidenceTier=E1; expected the alpha proof proven at E1",
+        "detail": "packaged runtime-observation proof proofKind=utsushi.mvmz.runtime_observation_proof runtimeObservationProven=true provenEvidenceTier=E1; expected the alpha proof proven at E1",
         "mandatory": true,
         "status": "pass"
       },
@@ -260,7 +260,7 @@
       },
       {
         "checkId": "observation_covers_proven_units",
-        "detail": "119 proof proved bridge units [\"019ed000-0000-7000-8000-bridgeun0001\", \"019ed000-0000-7000-8000-bridgeun0002\", \"019ed000-0000-7000-8000-bridgeun0003\"]; observation envelope covers [\"019ed000-0000-7000-8000-bridgeun0001\", \"019ed000-0000-7000-8000-bridgeun0002\", \"019ed000-0000-7000-8000-bridgeun0003\"]; every proven unit must appear in the playback envelope",
+        "detail": "patched proof proved bridge units [\"019ed000-0000-7000-8000-bridgeun0001\", \"019ed000-0000-7000-8000-bridgeun0002\", \"019ed000-0000-7000-8000-bridgeun0003\"]; observation envelope covers [\"019ed000-0000-7000-8000-bridgeun0001\", \"019ed000-0000-7000-8000-bridgeun0002\", \"019ed000-0000-7000-8000-bridgeun0003\"]; every proven unit must appear in the playback envelope",
         "mandatory": true,
         "status": "pass"
       },

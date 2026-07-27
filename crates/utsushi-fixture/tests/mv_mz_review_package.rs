@@ -51,7 +51,11 @@ fn manifest_matches_committed_golden_bytes() {
     let manifest = supported_host_manifest();
     let mut rendered = serde_json::to_string_pretty(&manifest).unwrap();
     rendered.push('\n');
-    let golden = std::fs::read_to_string(fixture_root().join("manifest.golden.json")).unwrap();
+    let golden_path = fixture_root().join("manifest.golden.json");
+    if std::env::var_os("UTSUSHI_MVMZ_REVIEW_PACKAGE_REGEN").is_some() {
+        std::fs::write(&golden_path, &rendered).unwrap();
+    }
+    let golden = std::fs::read_to_string(golden_path).unwrap();
     assert_eq!(
         rendered, golden,
         "mvmz review-package manifest drifted from the committed golden; \

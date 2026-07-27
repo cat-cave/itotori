@@ -388,7 +388,7 @@ pub fn build_mvmz_demo_bundle(inputs: &DemoBundleInputs) -> UtsushiResult<Value>
             && patched_tier == EVIDENCE_TIER_E1
             && patched_kind == PATCHED_RUNTIME_PROOF_KIND,
         detail: format!(
-            "packaged  proof proofKind={patched_kind} \
+            "packaged patched runtime proof proofKind={patched_kind} \
              patchedRuntimeObservationProven={patched_proven} provenEvidenceTier={patched_tier}; \
              expected the patched proof proven at E1"
         ),
@@ -415,7 +415,7 @@ pub fn build_mvmz_demo_bundle(inputs: &DemoBundleInputs) -> UtsushiResult<Value>
             && alpha_tier == EVIDENCE_TIER_E1
             && alpha_kind == RUNTIME_OBSERVATION_PROOF_KIND,
         detail: format!(
-            "packaged  proof proofKind={alpha_kind} \
+            "packaged runtime-observation proof proofKind={alpha_kind} \
              runtimeObservationProven={alpha_proven} provenEvidenceTier={alpha_tier}; expected the \
              alpha proof proven at E1"
         ),
@@ -492,7 +492,7 @@ pub fn build_mvmz_demo_bundle(inputs: &DemoBundleInputs) -> UtsushiResult<Value>
         id: CHECK_OBSERVATION_COVERS_PROVEN_UNITS,
         passed: covers_proven,
         detail: format!(
-            "119 proof proved bridge units {proven_units:?}; observation envelope covers \
+            "patched proof proved bridge units {proven_units:?}; observation envelope covers \
              {envelope_units:?}; every proven unit must appear in the playback envelope"
         ),
     });
@@ -573,7 +573,7 @@ pub fn build_mvmz_demo_bundle(inputs: &DemoBundleInputs) -> UtsushiResult<Value>
         .unwrap_or_else(|| json!("en-US"));
 
     let limitations = vec![
-        "Embedded playback demo bundle PACKAGES the committed /102/065/010 artifacts by \
+        "Embedded playback demo bundle PACKAGES the committed proof, capture, and review artifacts by \
          id / hash / verdict; it re-derives none of the proofs it links."
             .to_string(),
         "Public synthetic MV/MZ fixture only. The playback surface opens the patched fixture's \

@@ -69,12 +69,16 @@ fn public_summary_reproduces_from_synthetic_inputs() {
     assert_eq!(summary.support_tuple_count, 2);
     assert_eq!(summary.patch_summary_count, 1);
 
-    let committed = std::fs::read_to_string(private_local_dir().join("public-summary.json"))
+    let rendered = format!("{}\n", summary.stable_json().expect("stable json"));
+    let committed_path = private_local_dir().join("public-summary.json");
+    if std::env::var_os("KAIFUU_XP3_PRIVATE_LOCAL_SUMMARY_REGEN").is_some() {
+        std::fs::write(&committed_path, &rendered).expect("write public summary fixture");
+    }
+    let committed = std::fs::read_to_string(committed_path)
         .expect("committed public-summary fixture is present");
     // `stable_json` has no trailing newline; the committed file adds one.
     assert_eq!(
-        format!("{}\n", summary.stable_json().expect("stable json")),
-        committed,
+        rendered, committed,
         "public summary must reproduce the committed fixture byte-for-byte"
     );
 }

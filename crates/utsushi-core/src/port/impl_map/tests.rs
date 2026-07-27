@@ -46,6 +46,17 @@ fn baseline_map() -> ImplementationMap {
     }
 }
 
+fn roadmap_node_locator_from_fixture() -> String {
+    let fixture = include_str!("fixtures/positive/mixed-status.json");
+    let fixture: serde_json::Value =
+        serde_json::from_str(fixture).expect("mixed-status fixture must be valid JSON");
+    fixture
+        .pointer("/subsystems/3/status/data/evidenceRefs/0/locator")
+        .and_then(serde_json::Value::as_str)
+        .expect("mixed-status fixture must include a roadmap-node locator")
+        .to_string()
+}
+
 // 7.1 Positive shape.
 
 #[test]
@@ -101,7 +112,7 @@ fn accepts_supported_partial_unsupported_and_research_subsystem_variants_in_one_
         status: SubsystemStatus::Research {
             evidence_refs: vec![EvidenceRef {
                 kind: EvidenceKind::RoadmapNode,
-                locator: "synthetic-fixture".to_string(),
+                locator: roadmap_node_locator_from_fixture(),
                 caption: "Reference vm research anchor".to_string(),
             }],
         },
@@ -164,7 +175,7 @@ fn accepts_research_subsystem_with_roadmap_node_evidence_ref() {
     map.subsystems[0].status = SubsystemStatus::Research {
         evidence_refs: vec![EvidenceRef {
             kind: EvidenceKind::RoadmapNode,
-            locator: "synthetic-fixture".to_string(),
+            locator: roadmap_node_locator_from_fixture(),
             caption: "Reference vm research anchor".to_string(),
         }],
     };
