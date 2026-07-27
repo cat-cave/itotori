@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use kaifuu_core::HelperDiagnosticCode;
 
-const CORE_SOURCE: &str = include_str!("../src/lib.rs");
+const CORE_SOURCE: &str = include_str!("../src/helper_profiles.rs");
 const KEY_DISCOVERY_DOC: &str = include_str!("../../../docs/kaifuu-key-discovery.md");
 const ENUM_DECLARATION: &str = "pub enum HelperDiagnosticCode {";
 const DOC_BLOCK_START: &str = "<!-- HELPER-RESULT-DIAGNOSTIC-ENUM:START -->";

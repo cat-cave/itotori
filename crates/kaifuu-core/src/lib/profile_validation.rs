@@ -32,3 +32,32 @@ pub(super) fn validate_capability_report(
 ) -> Option<String> {
     validate_capability_report_inner(failures, report, field)
 }
+
+pub(crate) fn is_bcp47_like_locale(locale: &str) -> bool {
+    let parts = locale.split('-').collect::<Vec<_>>();
+    let Some(language) = parts.first() else {
+        return false;
+    };
+    if !(2..=8).contains(&language.len()) || !language.chars().all(|c| c.is_ascii_alphabetic()) {
+        return false;
+    }
+    parts.iter().skip(1).all(|part| {
+        !part.is_empty() && part.len() <= 8 && part.chars().all(|c| c.is_ascii_alphanumeric())
+    })
+}
+
+pub(crate) fn validate_profile_relative_path(
+    failures: &mut Vec<ProfileValidationFailure>,
+    field: &str,
+    path: &str,
+) {
+    if validate_safe_relative_path(path).is_err() {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_asset_path".to_string(),
+            field: field.to_string(),
+            message:
+                "asset path must be relative and must not contain dot components, parent traversal, or drive prefixes"
+                    .to_string(),
+        });
+    }
+}

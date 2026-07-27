@@ -426,7 +426,7 @@ const RFC3339_INSTANT_PATTERN =
  * Shared cross-language semantic code emitted when a contract field is not a
  * valid RFC3339 date-time instant. The Rust contract validator emits the
  * identical code (`SEMANTIC_RFC3339_INSTANT_MALFORMED` in
- * `crates/kaifuu-core/src/lib.rs`). See
+ * `crates/kaifuu-core/src/semantics.rs`). See
  * `docs/contracts/rfc3339-instant-acceptance.md`.
  */
 export const RFC3339_INSTANT_MALFORMED_CODE = "itotori.contract.rfc3339_instant_malformed";

@@ -62,7 +62,7 @@ itotori.contract.rfc3339_instant_malformed
 ```
 
 - Rust: `BridgeContractValidationError` with `.code() ==
-Some(SEMANTIC_RFC3339_INSTANT_MALFORMED)` (`crates/kaifuu-core/src/lib.rs`).
+Some(SEMANTIC_RFC3339_INSTANT_MALFORMED)` (`crates/kaifuu-core/src/semantics.rs`).
 - TypeScript: `Rfc3339InstantValidationError` with `.code ==
 RFC3339_INSTANT_MALFORMED_CODE` (`packages/localization-bridge-schema/src/index.ts`).
 - Utsushi: `ObservationHookValidationError` with `.code() ==

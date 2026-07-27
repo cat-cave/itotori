@@ -1,6 +1,6 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/audit-no-node-ids.mjs --update\". Each entry is a grandfathered\nnode-id token (the matched reference text, lower-cased); the multiset per file\nmay only shrink. When empty/deleted the guard is absolute (zero node ids).",
-  "generatedAt": "2026-07-27T01:11:56.018Z",
+  "generatedAt": "2026-07-27T02:09:00.936Z",
   "total": 309,
   "files": {
     "crates/kaifuu-cli/tests/alpha_encrypted_readiness.rs": [
@@ -62,15 +62,8 @@
       "kaifuu-106"
     ],
     "crates/kaifuu-core/src/lib.rs": [
-      "kaifuu-038",
-      "kaifuu-038",
-      "kaifuu-038",
       "kaifuu-039",
-      "kaifuu-039",
-      "kaifuu-085",
-      "kaifuu-098",
-      "kaifuu-098",
-      "kaifuu-114"
+      "kaifuu-039"
     ],
     "crates/kaifuu-core/src/mv_mz_encrypted_audio.rs": [
       "kaifuu-116",
@@ -91,11 +84,17 @@
       "kaifuu-112",
       "kaifuu-112"
     ],
+    "crates/kaifuu-core/src/plain_xp3_directory.rs": [
+      "kaifuu-098"
+    ],
     "crates/kaifuu-core/src/repro_bundle.rs": [
       "kaifuu-105"
     ],
     "crates/kaifuu-core/src/rgss3_smoke.rs": [
       "kaifuu-143"
+    ],
+    "crates/kaifuu-core/src/rpgmaker_key_validation.rs": [
+      "kaifuu-114"
     ],
     "crates/kaifuu-core/src/wolf_adapter.rs": [
       "kaifuu-012",
@@ -141,6 +140,13 @@
       "kaifuu-121",
       "kaifuu-131",
       "kaifuu-145"
+    ],
+    "crates/kaifuu-core/src/xp3_profile_proof.rs": [
+      "kaifuu-038",
+      "kaifuu-038",
+      "kaifuu-038",
+      "kaifuu-085",
+      "kaifuu-098"
     ],
     "crates/kaifuu-kirikiri/src/xp3_crypt_chain.rs": [
       "kaifuu-072"
