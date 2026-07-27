@@ -494,3 +494,6 @@ fn stack_slot_out_of_range_routes_to_runtime_diagnostic() {
 
 #[path = "tests_more.rs"]
 mod more;
+
+#[path = "tests_presentation.rs"]
+mod presentation;
