@@ -510,7 +510,7 @@ export function parseTypedApiError(body: unknown): ApiErrorResponse | null {
 // never `empty` (always `ready`).
 // ---------------------------------------------------------------------------
 
-const ITOTORI_API_COLLECTION_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, string>>> = {
+const API_COLLECTION_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, string>>> = {
   "assetDecisions.active": "decisions",
   "assetDecisions.candidates": "candidateAssets",
   "catalog.benchmarkSeeds": "rows",
@@ -532,7 +532,7 @@ const ITOTORI_API_COLLECTION_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, st
 };
 
 function defaultIsEmpty(routeId: ItotoriApiRouteId, data: unknown): boolean {
-  const key = ITOTORI_API_COLLECTION_KEYS[routeId];
+  const key = API_COLLECTION_KEYS[routeId];
   if (key === undefined) {
     return false;
   }

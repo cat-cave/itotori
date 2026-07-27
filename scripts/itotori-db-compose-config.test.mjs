@@ -178,8 +178,8 @@ test("the DB-backed CI workflow provisions Postgres via a health-checked GH serv
   for (const [name, job] of [["tier1/postgres", tier1PostgresJob]]) {
     assert.match(
       job,
-      /^\s+services:\n\s+postgres:\n\s+image: postgres:18\n/mu,
-      `${name} must provision Postgres 18 as a GH service container`,
+      /^\s+services:\n\s+postgres:\n\s+image: postgres:18@sha256:[0-9a-f]{64}\s+# postgres:18\n/mu,
+      `${name} must provision a SHA-256-pinned Postgres 18 GH service container`,
     );
     assert.match(
       job,
