@@ -1,6 +1,7 @@
 import {
   AssetLocalizationDecisionRepositoryError,
   AuthorizationError,
+  ProjectScopeNotFoundError,
   RuntimeRunNotFoundError,
   assetLocalizationDecisionAssetKindList,
   capabilityLevelValues,
@@ -587,11 +588,16 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
       listLocaleBranchIdentities: (projectId) =>
         services.projectWorkflow.listLocaleBranchIdentities(projectId),
       listPortfolio: () => services.projectWorkflow.listPortfolio(),
-      getDashboardStatus: () => services.projectWorkflow.getDashboardStatus(),
+      // The workflow port is structurally typed as `(...args: any[])`, so a
+      // forwarder that drops a parameter still type-checks. Every project-scope
+      // argument is therefore forwarded EXPLICITLY here: the read-only façade
+      // must not be the place a caller's scope silently disappears.
+      getDashboardStatus: (projectId) => services.projectWorkflow.getDashboardStatus(projectId),
       getProjectOverview: (options) => services.projectWorkflow.getProjectOverview(options),
       getDashboardDecisions: (projectId) =>
         services.projectWorkflow.getDashboardDecisions(projectId),
-      getRuntimeStatus: (runtimeRunId) => services.projectWorkflow.getRuntimeStatus(runtimeRunId),
+      getRuntimeStatus: (runtimeRunId, projectId) =>
+        services.projectWorkflow.getRuntimeStatus(runtimeRunId, projectId),
       getCostReport: (projectId) => services.projectWorkflow.getCostReport(projectId),
       getCostDrilldown: (filter) => services.projectWorkflow.getCostDrilldown(filter),
       getBenchmarkReports: (projectId) => services.projectWorkflow.getBenchmarkReports(projectId),
@@ -1651,8 +1657,13 @@ async function routeReadOnlyItotoriApiRequest(
   }
 
   if (request.method === "GET" && request.pathname === "/api/projects/status") {
+    // The read gate is resolved BEFORE (and independently of) the requested
+    // scope, so naming a project can never widen what an unprivileged caller
+    // sees — it only narrows which project the same gated payload describes.
     const canRead = await resolveProjectReadPermission(services);
-    const status = await services.projectWorkflow.getDashboardStatus();
+    const status = await services.projectWorkflow.getDashboardStatus(
+      parseProjectScopeQuery(request.search, "project status"),
+    );
     return ok("projects.status", canRead ? status : redactProjectDashboardStatus(status));
   }
 
@@ -1681,12 +1692,19 @@ async function routeReadOnlyItotoriApiRequest(
   }
 
   if (request.method === "GET" && request.pathname === "/api/projects/decisions") {
-    return ok("projects.decisions", await services.projectWorkflow.getDashboardDecisions());
+    return ok(
+      "projects.decisions",
+      await services.projectWorkflow.getDashboardDecisions(
+        parseProjectScopeQuery(request.search, "project decisions"),
+      ),
+    );
   }
 
   if (request.method === "GET" && request.pathname === "/api/projects/cost") {
     const canRead = await resolveProjectReadPermission(services);
-    const cost = await services.projectWorkflow.getCostReport();
+    const cost = await services.projectWorkflow.getCostReport(
+      parseProjectScopeQuery(request.search, "project cost"),
+    );
     return ok("projects.cost", canRead ? cost : redactProjectCostReport(cost));
   }
 
@@ -1704,7 +1722,9 @@ async function routeReadOnlyItotoriApiRequest(
 
   if (request.method === "GET" && request.pathname === "/api/projects/benchmarks") {
     return ok("projects.benchmarks", {
-      reports: await services.projectWorkflow.getBenchmarkReports(),
+      reports: await services.projectWorkflow.getBenchmarkReports(
+        parseProjectScopeQuery(request.search, "project benchmarks"),
+      ),
     });
   }
 
@@ -1818,6 +1838,7 @@ async function routeReadOnlyItotoriApiRequest(
     const canRead = await resolveProjectReadPermission(services);
     const status = await services.projectWorkflow.getRuntimeStatus(
       parseRuntimeRunIdQuery(request.search),
+      parseProjectScopeQuery(request.search, "runtime status", ["runtimeRunId"]),
     );
     if (canRead) {
       return ok("runtime.status", status);
@@ -2410,11 +2431,35 @@ function parseAuthPermissionSetsListQuery(search = ""): string {
   return accountId;
 }
 
+/**
+ * The optional PROJECT SCOPE shared by every project-scoped read route. The
+ * product runs several localizations at once, so each of these reads names its
+ * project explicitly; an ABSENT scope keeps its established meaning (the
+ * workspace's most recently updated project) so existing callers are
+ * unaffected. The value is only ever forwarded to a repository query — no read
+ * path filters a wider result set down in application code.
+ */
+function parseProjectScopeQuery(
+  search: string | undefined,
+  label: string,
+  alsoAllowed: readonly string[] = [],
+): string | undefined {
+  const raw = search ?? "";
+  const params = new URLSearchParams(raw.startsWith("?") ? raw.slice(1) : raw);
+  assertKnownQueryParams(params, ["projectId", ...alsoAllowed], label);
+  const projectId = params.get("projectId");
+  if (projectId === null) {
+    return undefined;
+  }
+  return nonEmptyParam(projectId, "projectId");
+}
+
 function parseProjectOverviewFilter(search = ""): ProjectOverviewReadModelOptions {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   assertKnownQueryParams(
     params,
     [
+      "projectId",
       "systemId",
       "from",
       "to",
@@ -2434,6 +2479,10 @@ function parseProjectOverviewFilter(search = ""): ProjectOverviewReadModelOption
   }
   const journalOffset = parseNonNegativeIntParam(params.get("journalOffset"), "journalOffset");
   return {
+    // The overview's project scope and its embedded cost-drilldown scope are the
+    // SAME `projectId` parameter: `parseCostDrilldownParams` already reads it,
+    // so the composed read model and its drilldown page cannot disagree.
+    ...(costDrilldown.projectId === undefined ? {} : { projectId: costDrilldown.projectId }),
     costDrilldown,
     journal: {
       ...(journalLocaleBranchId !== null
@@ -3445,6 +3494,12 @@ function errorResponse(error: unknown): ApiJsonResponse {
     return errorBody(404, "not_found", error.message);
   }
   if (error instanceof RuntimeRunNotFoundError) {
+    return errorBody(404, "not_found", error.message);
+  }
+  // A `?projectId=` naming a project that does not exist is a not-found SCOPE.
+  // It must never degrade into "answer from the workspace's latest project",
+  // so the repositories throw and the boundary reports it as 404.
+  if (error instanceof ProjectScopeNotFoundError) {
     return errorBody(404, "not_found", error.message);
   }
   return errorBody(500, "internal_error", error instanceof Error ? error.message : String(error));

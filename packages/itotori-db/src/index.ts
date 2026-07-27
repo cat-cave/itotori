@@ -208,6 +208,7 @@ export {
   defaultWorkspaceName,
   assertProjectEngineBinding,
   ItotoriProjectRepository,
+  ProjectScopeNotFoundError,
   RuntimeRunNotFoundError,
   UnknownProjectEngineFamilyError,
 } from "./repositories/project-repository.js";
