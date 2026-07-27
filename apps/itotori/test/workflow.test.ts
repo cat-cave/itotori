@@ -622,10 +622,12 @@ describe("RB workflow — independent per-unit CAS finalize (clause 9)", () => {
         { unitId: "uA", contentHash: SRC },
         { unitId: "uB", contentHash: SRC },
       ]),
-    ).rejects.toThrow(new FinalizeBatchError([
-      { unitId: "uA", reason: "accepted-output finalizer refuses this output" },
-      { unitId: "uB", reason: "accepted-output finalizer refuses this output" },
-    ]));
+    ).rejects.toThrow(
+      new FinalizeBatchError([
+        { unitId: "uA", reason: "accepted-output finalizer refuses this output" },
+        { unitId: "uB", reason: "accepted-output finalizer refuses this output" },
+      ]),
+    );
   });
 });
 

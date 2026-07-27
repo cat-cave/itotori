@@ -240,7 +240,12 @@ export async function createLiveWorkflowPortDeps(
     config.targetLocale,
   );
   const finalizeArtifact = config.finalizeArtifact ?? capturedFinalizer.resolve;
-  const draft = createDraftDeps({ facts, config: config.scope, budget: config.draftBudget, runtime });
+  const draft = createDraftDeps({
+    facts,
+    config: config.scope,
+    budget: config.draftBudget,
+    runtime,
+  });
 
   return {
     readiness: createReadinessDeps({ facts, bible }),
@@ -299,7 +304,10 @@ function createCapturedDraftFinalizer(
       readonly memoKeys: readonly string[];
     }
   >();
-  const acceptedByUnit = new Map<string, Extract<AcceptedOutput, { readonly subjectType: "unit" }>>();
+  const acceptedByUnit = new Map<
+    string,
+    Extract<AcceptedOutput, { readonly subjectType: "unit" }>
+  >();
   const record = (localized: import("../../roles/p1/index.js").SceneLocalization): void => {
     const memoKeys = localized.results.flatMap((result) =>
       result.status === "success" ? [result.memoKey] : [],
@@ -377,7 +385,12 @@ function createCapturedDraftFinalizer(
       };
     },
     translatedBundlePath(finalized: readonly FinalizedUnit[]): string {
-      const suffix = sha256(finalized.map((unit) => unit.unitId).sort().join(",")).slice(7, 23);
+      const suffix = sha256(
+        finalized
+          .map((unit) => unit.unitId)
+          .sort()
+          .join(","),
+      ).slice(7, 23);
       return join(patchDirectory, `translated-${suffix}.json`);
     },
     async buildLqa() {
