@@ -4,6 +4,7 @@ import {
   type ApiAuthCapabilitiesResponse,
   type ApiPlayFlagAnnotationRequest,
   type ApiPlayFlagAnnotationResponse,
+  type ApiPlayUnitFeedbackResponse,
   type ItotoriApiResponseBody,
   type ItotoriApiRouteId,
 } from "../src/api-schema.js";
@@ -129,6 +130,21 @@ async function fulfillApi(route: Route, url: URL): Promise<void> {
     return;
   }
 
+  const unitFeedbackRoute =
+    /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/unit-feedback$/u.exec(url.pathname);
+  if (unitFeedbackRoute !== null) {
+    await fulfillJson(
+      route,
+      "play.unitFeedback",
+      unitFeedbackResponse(
+        decodeURIComponent(unitFeedbackRoute[1]!),
+        decodeURIComponent(unitFeedbackRoute[2]!),
+        url.searchParams.get("bridgeUnitId") ?? "",
+      ),
+    );
+    return;
+  }
+
   throw new Error(`Unhandled fixture API request: ${route.request().method()} ${url.pathname}`);
 }
 
@@ -163,6 +179,20 @@ function playFlagAnnotationResponse(
     contextStatus: "contextualized",
     contextCorrectionId: "context-correction-e2e",
     duplicate: false,
+  };
+}
+
+function unitFeedbackResponse(
+  responseProjectId: string,
+  responseLocaleBranchId: string,
+  responseBridgeUnitId: string,
+): ApiPlayUnitFeedbackResponse {
+  return {
+    schemaVersion: "itotori.play.unit-feedback.v0",
+    projectId: responseProjectId,
+    localeBranchId: responseLocaleBranchId,
+    bridgeUnitId: responseBridgeUnitId,
+    notes: [],
   };
 }
 

@@ -1,6 +1,16 @@
-/** Retired manual-feedback bridge. The new workflow accepts human context
- * through the Wiki object API; this narrow type prevents an old implementation
- * from being reconstructed by an API adapter. */
-export type ManualFeedbackImportPort = {
-  importManualFeedback(input: unknown): Promise<any>;
-};
+/** Manual feedback / unit-bound flag port.
+ *
+ * Play flags enter the canonical ManualFeedbackImport intake and are bound to a
+ * real bridge unit. The same port lists notes for a unit so the wiki and review
+ * surfaces retrieve what was submitted against that identity.
+ */
+
+import type { UnitBoundFeedbackPort } from "./play/unit-feedback.js";
+
+export type ManualFeedbackImportPort = UnitBoundFeedbackPort;
+
+export type {
+  ListUnitFeedbackQuery,
+  UnitFeedbackImportResult,
+  UnitFeedbackNote,
+} from "./play/unit-feedback.js";

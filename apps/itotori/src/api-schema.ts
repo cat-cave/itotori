@@ -223,6 +223,9 @@ export type ItotoriApiRouteId =
   // play-flag-composer — in-the-moment AnnotationComposer flag → canonical
   // context correction via ManualFeedbackImport (feedback.import / canFlag).
   | "play.flagAnnotation"
+  // Unit-bound feedback retrieval — list notes for one bridge unit (same
+  // ManualFeedbackImport ledger the flag composer writes).
+  | "play.unitFeedback"
   // p0-result-revision — a play tester replaces one delivered target line,
   // creating and selecting a child delivered patch revision.
   | "play.targetEdit"
@@ -593,6 +596,13 @@ export const ITOTORI_STRICT_API_BODY_KEYS = {
     "counts",
   ],
   // play-flag-composer — AnnotationComposer submit result (severity-scaled flag).
+  ApiPlayUnitFeedbackResponse: [
+    "schemaVersion",
+    "projectId",
+    "localeBranchId",
+    "bridgeUnitId",
+    "notes",
+  ],
   ApiPlayFlagAnnotationResponse: [
     "schemaVersion",
     "projectId",
@@ -1406,6 +1416,33 @@ export type ApiPlayFlagAnnotationResponse = {
   duplicate: boolean;
 };
 
+/** One unit-bound feedback note returned by play.unitFeedback. */
+export type ApiPlayUnitFeedbackNote = {
+  feedbackReportId: string;
+  feedbackEvidenceId: string;
+  bridgeUnitId: string;
+  sceneId: string | null;
+  note: string;
+  severity: string;
+  category: string;
+  triageLabel: string;
+  contextStatus: string;
+  contextCorrectionId: string;
+  reportedAt: string;
+  duplicate: boolean;
+};
+
+/**
+ * Unit-bound feedback list — every note the flag path wrote against one unit.
+ */
+export type ApiPlayUnitFeedbackResponse = {
+  schemaVersion: "itotori.play.unit-feedback.v0";
+  projectId: string;
+  localeBranchId: string;
+  bridgeUnitId: string;
+  notes: ApiPlayUnitFeedbackNote[];
+};
+
 /**
  * p0-result-revision — the play-tester mutation accepts exactly one target
  * line. The parent delivered patch is the URL resource; actor provenance and
@@ -1746,6 +1783,7 @@ export type ItotoriApiResponseBody =
   | ApiLaunchPassResponse
   | ApiPlayRouteMapResponse
   | ApiPlayFlagAnnotationResponse
+  | ApiPlayUnitFeedbackResponse
   | ApiPlayTargetEditResponse
   | ApiPlayDeliveryResponse
   | ApiPatchIterationVersionsResponse
@@ -2345,6 +2383,9 @@ export function assertItotoriApiResponse(
       return;
     case "play.flagAnnotation":
       assertPlayFlagAnnotationResponse(value);
+      return;
+    case "play.unitFeedback":
+      assertPlayUnitFeedbackResponse(value);
       return;
     case "play.targetEdit":
       assertPlayTargetEditResponse(value);
@@ -6587,6 +6628,61 @@ function assertPlayFlagAnnotationResponse(
   assertString(response.contextStatus, "ApiPlayFlagAnnotationResponse.contextStatus");
   assertString(response.contextCorrectionId, "ApiPlayFlagAnnotationResponse.contextCorrectionId");
   assertBoolean(response.duplicate, "ApiPlayFlagAnnotationResponse.duplicate");
+}
+
+export function assertPlayUnitFeedbackResponse(
+  value: unknown,
+): asserts value is ApiPlayUnitFeedbackResponse {
+  const response = asStrictRecord(
+    value,
+    "ApiPlayUnitFeedbackResponse",
+    ITOTORI_STRICT_API_BODY_KEYS.ApiPlayUnitFeedbackResponse,
+  );
+  assertLiteral(
+    response.schemaVersion,
+    "itotori.play.unit-feedback.v0",
+    "ApiPlayUnitFeedbackResponse.schemaVersion",
+  );
+  assertString(response.projectId, "ApiPlayUnitFeedbackResponse.projectId");
+  assertString(response.localeBranchId, "ApiPlayUnitFeedbackResponse.localeBranchId");
+  assertString(response.bridgeUnitId, "ApiPlayUnitFeedbackResponse.bridgeUnitId");
+  if (!Array.isArray(response.notes)) {
+    throw new ApiValidationError("ApiPlayUnitFeedbackResponse.notes must be an array");
+  }
+  for (const [index, note] of response.notes.entries()) {
+    assertPlayUnitFeedbackNote(note, `ApiPlayUnitFeedbackResponse.notes[${index}]`);
+  }
+}
+
+function assertPlayUnitFeedbackNote(value: unknown, label: string): void {
+  const note = asStrictRecord(value, label, [
+    "feedbackReportId",
+    "feedbackEvidenceId",
+    "bridgeUnitId",
+    "sceneId",
+    "note",
+    "severity",
+    "category",
+    "triageLabel",
+    "contextStatus",
+    "contextCorrectionId",
+    "reportedAt",
+    "duplicate",
+  ]);
+  assertString(note.feedbackReportId, `${label}.feedbackReportId`);
+  assertString(note.feedbackEvidenceId, `${label}.feedbackEvidenceId`);
+  assertString(note.bridgeUnitId, `${label}.bridgeUnitId`);
+  if (note.sceneId !== null) {
+    assertString(note.sceneId, `${label}.sceneId`);
+  }
+  assertString(note.note, `${label}.note`);
+  assertString(note.severity, `${label}.severity`);
+  assertString(note.category, `${label}.category`);
+  assertString(note.triageLabel, `${label}.triageLabel`);
+  assertString(note.contextStatus, `${label}.contextStatus`);
+  assertString(note.contextCorrectionId, `${label}.contextCorrectionId`);
+  assertString(note.reportedAt, `${label}.reportedAt`);
+  assertBoolean(note.duplicate, `${label}.duplicate`);
 }
 
 function assertPlayTargetEditResponse(value: unknown): asserts value is ApiPlayTargetEditResponse {

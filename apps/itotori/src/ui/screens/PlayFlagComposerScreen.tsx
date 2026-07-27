@@ -21,6 +21,7 @@ import { useApiQuery } from "../use-api-resource.js";
 import { useWorkflowHandoffToasts } from "../workflow-handoff-toasts.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
 import { parseReturnTo } from "../return-to.js";
+import { UnitBoundFeedbackList } from "./unit-bound-feedback-list.js";
 
 export const playFlagComposerRoutePathRegex = /^\/play\/flag\/?$/u;
 
@@ -182,6 +183,7 @@ function PlayFlagComposerForBranch({
   const { notifyHandoff } = useWorkflowHandoffToasts();
   const [outcome, setOutcome] = useState<FlagOutcome | null>(null);
   const [pending, setPending] = useState(false);
+  const [feedbackRevision, setFeedbackRevision] = useState(0);
 
   const contextParts = [
     sceneId !== null ? `scene ${sceneId}` : null,
@@ -209,6 +211,7 @@ function PlayFlagComposerForBranch({
     });
     if (result.state === "ready") {
       setOutcome({ kind: "ok", response: result.data });
+      setFeedbackRevision((value) => value + 1);
       notifyHandoff({
         kind: "flag-sent",
         severity: result.data.severity,
@@ -296,6 +299,12 @@ function PlayFlagComposerForBranch({
             </p>
           )}
         </Panel>
+        <UnitBoundFeedbackList
+          key={`unit-feedback:${feedbackRevision}`}
+          projectId={projectId}
+          localeBranchId={localeBranchId}
+          bridgeUnitId={bridgeUnitId}
+        />
       </section>
     </main>
   );

@@ -197,6 +197,23 @@ export type ManualFeedbackCorrectionContext = {
   affectedUnitIds: string[];
 };
 
+/** One durable unit-bound note projected from feedback_reports + evidence. */
+export type UnitBoundFeedbackNote = {
+  feedbackReportId: string;
+  feedbackEvidenceId: string;
+  projectId: string;
+  localeBranchId: string;
+  bridgeUnitId: string;
+  sceneId: string | null;
+  note: string;
+  severity: string;
+  category: string;
+  triageLabel: FeedbackTriageLabel;
+  contextStatus: FeedbackContextStatus;
+  reportedAt: string;
+  duplicate: boolean;
+};
+
 export interface ItotoriFeedbackRepositoryPort {
   importManualFeedback(
     actor: AuthorizationActor,
@@ -207,6 +224,14 @@ export interface ItotoriFeedbackRepositoryPort {
     feedbackReportId: string,
     feedbackEvidenceId: string,
   ): Promise<ManualFeedbackCorrectionContext | null>;
+  /**
+   * List every durable feedback note bound to one bridge unit on a branch.
+   * Ordered oldest → newest so the review surface can replay arrival order.
+   */
+  listUnitBoundFeedback(
+    actor: AuthorizationActor,
+    query: { projectId: string; localeBranchId: string; bridgeUnitId: string },
+  ): Promise<UnitBoundFeedbackNote[]>;
 }
 
 export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort {
@@ -499,6 +524,89 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
         null,
       affectedUnitIds: [row.bridgeUnitId],
     };
+  }
+
+  async listUnitBoundFeedback(
+    actor: AuthorizationActor,
+    query: { projectId: string; localeBranchId: string; bridgeUnitId: string },
+  ): Promise<UnitBoundFeedbackNote[]> {
+    await requirePermission(this.db, actor, permissionValues.feedbackImport);
+    const bridgeUnitId = query.bridgeUnitId.trim();
+    if (bridgeUnitId.length === 0) {
+      throw new Error("listUnitBoundFeedback requires a non-empty bridgeUnitId");
+    }
+    const rows = await this.db
+      .select({
+        feedbackReportId: feedbackReports.feedbackReportId,
+        projectId: feedbackReports.projectId,
+        localeBranchId: feedbackReports.localeBranchId,
+        bridgeUnitId: feedbackReports.bridgeUnitId,
+        triageLabel: feedbackReports.triageLabel,
+        contextStatus: feedbackReports.contextStatus,
+        reportMetadata: feedbackReports.metadata,
+        reportCount: feedbackReports.reportCount,
+        feedbackEvidenceId: feedbackReportEvidence.feedbackEvidenceId,
+        reporterNote: feedbackReportEvidence.reporterNote,
+        evidenceMetadata: feedbackReportEvidence.metadata,
+        lineReference: feedbackReportEvidence.lineReference,
+        reportedAt: feedbackReportEvidence.reportedAt,
+      })
+      .from(feedbackReports)
+      .innerJoin(
+        feedbackReportEvidence,
+        eq(feedbackReportEvidence.feedbackReportId, feedbackReports.feedbackReportId),
+      )
+      .where(
+        and(
+          eq(feedbackReports.projectId, query.projectId),
+          eq(feedbackReports.localeBranchId, query.localeBranchId),
+          eq(feedbackReports.bridgeUnitId, bridgeUnitId),
+        ),
+      )
+      .orderBy(feedbackReportEvidence.reportedAt, feedbackReportEvidence.feedbackEvidenceId);
+
+    const notes: UnitBoundFeedbackNote[] = [];
+    for (const row of rows) {
+      const triageLabel = labelFromRow(row.triageLabel);
+      const contextStatus = contextFromRow(row.contextStatus);
+      if (triageLabel === undefined || contextStatus === undefined) {
+        continue;
+      }
+      const lineRef =
+        row.lineReference !== null && typeof row.lineReference === "object"
+          ? (row.lineReference as Record<string, unknown>)
+          : null;
+      const sourceLocation =
+        lineRef !== null &&
+        lineRef.sourceLocation !== null &&
+        typeof lineRef.sourceLocation === "object"
+          ? (lineRef.sourceLocation as Record<string, unknown>)
+          : null;
+      const sceneFromLine =
+        sourceLocation !== null && typeof sourceLocation.sceneId === "string"
+          ? sourceLocation.sceneId
+          : null;
+      const sceneFromMeta =
+        stringFromRecord(row.reportMetadata, "sceneId") ??
+        stringFromRecord(row.evidenceMetadata, "sceneId") ??
+        null;
+      notes.push({
+        feedbackReportId: row.feedbackReportId,
+        feedbackEvidenceId: row.feedbackEvidenceId,
+        projectId: row.projectId,
+        localeBranchId: row.localeBranchId ?? query.localeBranchId,
+        bridgeUnitId: row.bridgeUnitId,
+        sceneId: sceneFromLine ?? sceneFromMeta,
+        note: row.reporterNote,
+        severity: stringFromRecord(row.reportMetadata, "severity") ?? "note",
+        category: stringFromRecord(row.reportMetadata, "category") ?? "",
+        triageLabel,
+        contextStatus,
+        reportedAt: row.reportedAt.toISOString(),
+        duplicate: row.reportCount > 1,
+      });
+    }
+    return notes;
   }
 
   private async loadCurrentBranchSourceRevisionId(

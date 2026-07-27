@@ -1227,6 +1227,48 @@ const COMPONENTS: Readonly<Record<string, (ref: Ref) => Schema>> = {
       additionalProperties: false,
       schemaVersion: "itotori.play.flag-annotation.v0",
     }),
+  ApiPlayUnitFeedbackNote: () =>
+    object({
+      required: [
+        "feedbackReportId",
+        "feedbackEvidenceId",
+        "bridgeUnitId",
+        "sceneId",
+        "note",
+        "severity",
+        "category",
+        "triageLabel",
+        "contextStatus",
+        "contextCorrectionId",
+        "reportedAt",
+        "duplicate",
+      ],
+      properties: {
+        feedbackReportId: str,
+        feedbackEvidenceId: str,
+        bridgeUnitId: str,
+        sceneId: { anyOf: [{ type: "string" }, { type: "null" }] },
+        note: str,
+        severity: str,
+        category: str,
+        triageLabel: str,
+        contextStatus: str,
+        contextCorrectionId: str,
+        reportedAt: str,
+        duplicate: bool,
+      },
+      additionalProperties: false,
+    }),
+  ApiPlayUnitFeedbackResponse: (ref) =>
+    object({
+      required: ITOTORI_STRICT_API_BODY_KEYS.ApiPlayUnitFeedbackResponse,
+      properties: {
+        bridgeUnitId: str,
+        notes: { type: "array", items: ref("ApiPlayUnitFeedbackNote") },
+      },
+      additionalProperties: false,
+      schemaVersion: "itotori.play.unit-feedback.v0",
+    }),
 
   // p0-result-revision — target-only play-tester edit and selected delivery
   // inspection. Actor identity, source text, and artifact-root paths are

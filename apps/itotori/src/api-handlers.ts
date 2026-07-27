@@ -90,6 +90,7 @@ import {
   type ApiSaveLocalizationRunConfigRequest,
   type ApiPlayRouteMapResponse,
   type ApiPlayFlagAnnotationResponse,
+  type ApiPlayUnitFeedbackResponse,
   type ApiPlayTargetEditResponse,
   type ApiPlayDeliveryResponse,
   type ApiPatchIterationDeliveryResponse,
@@ -391,6 +392,8 @@ export type ItotoriReadOnlyApiServices = {
    * from routeMaps / routeChoices (coverage from map status).
    */
   playRouteMap: RouteMapReadModelPort;
+  /** Unit-bound feedback list — notes written by the play flag path. */
+  unitFeedback: Pick<ManualFeedbackImportPort, "listUnitFeedback">;
   /** p0-result-revision — read only the selected production delivery export. */
   playTesterResultRevision: Pick<
     PlayTesterResultRevisionApiPort,
@@ -622,6 +625,9 @@ export function readOnlyApiServices(services: ItotoriApiServices): ItotoriReadOn
     },
     playRouteMap: {
       loadRouteMap: (input) => services.playRouteMap.loadRouteMap(input),
+    },
+    unitFeedback: {
+      listUnitFeedback: (query) => services.unitFeedback.listUnitFeedback(query),
     },
     playTesterResultRevision: {
       loadSelectedExport: (input) => services.playTesterResultRevision.loadSelectedExport(input),
@@ -1945,6 +1951,44 @@ async function routeReadOnlyItotoriApiRequest(
     return ok("play.routeMap", model);
   }
 
+  const unitFeedbackRoute = parsePlayUnitFeedbackApiRoute(request.pathname);
+  if (request.method === "GET" && unitFeedbackRoute !== null) {
+    const scope = await requireOwnedBranchScope(services.projectWorkflow, {
+      projectId: unitFeedbackRoute.projectId,
+      localeBranchId: unitFeedbackRoute.localeBranchId,
+    });
+    const bridgeUnitId = nonEmptySearchParam(request.search ?? "", "bridgeUnitId");
+    if (bridgeUnitId === null) {
+      throw new ApiValidationError("play.unitFeedback requires bridgeUnitId query parameter");
+    }
+    const notes = await services.unitFeedback.listUnitFeedback({
+      projectId: scope.projectId,
+      localeBranchId: scope.localeBranchId,
+      bridgeUnitId,
+    });
+    const response: ApiPlayUnitFeedbackResponse = {
+      schemaVersion: "itotori.play.unit-feedback.v0",
+      projectId: scope.projectId,
+      localeBranchId: scope.localeBranchId,
+      bridgeUnitId,
+      notes: notes.map((note) => ({
+        feedbackReportId: note.feedbackReportId,
+        feedbackEvidenceId: note.feedbackEvidenceId,
+        bridgeUnitId: note.bridgeUnitId,
+        sceneId: note.sceneId,
+        note: note.note,
+        severity: note.severity,
+        category: note.category,
+        triageLabel: note.triageLabel,
+        contextStatus: note.contextStatus,
+        contextCorrectionId: note.contextCorrectionId,
+        reportedAt: note.reportedAt,
+        duplicate: note.duplicate,
+      })),
+    };
+    return ok("play.unitFeedback", response);
+  }
+
   const catalogContextRoute = parseCatalogContextPanelApiRoute(request.pathname);
   if (request.method === "GET" && catalogContextRoute !== null) {
     const scope = await requireOwnedBranchScope(services.projectWorkflow, {
@@ -2666,6 +2710,31 @@ function parsePlayFlagApiRoute(pathname: string): {
   };
 }
 
+function parsePlayUnitFeedbackApiRoute(pathname: string): {
+  projectId: string;
+  localeBranchId: string;
+} | null {
+  const match = /^\/api\/projects\/([^/]+)\/locale-branches\/([^/]+)\/unit-feedback\/?$/u.exec(
+    pathname,
+  );
+  if (match === null || match[1] === undefined || match[2] === undefined) {
+    return null;
+  }
+  return {
+    projectId: decodeApiPathSegment(match[1], "projectId"),
+    localeBranchId: decodeApiPathSegment(match[2], "localeBranchId"),
+  };
+}
+
+function nonEmptySearchParam(search: string, key: string): string | null {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const value = params.get(key);
+  if (value === null || value.trim().length === 0) {
+    return null;
+  }
+  return value.trim();
+}
+
 function parsePlayTargetEditApiRoute(pathname: string): {
   parentPatchVersionId: string;
 } | null {
@@ -3239,6 +3308,7 @@ function ok(routeId: "auth.capabilities", body: ApiAuthCapabilitiesResponse): Ap
 function ok(routeId: "projects.launchPass", body: ApiLaunchPassResponse): ApiJsonResponse;
 function ok(routeId: "play.routeMap", body: ApiPlayRouteMapResponse): ApiJsonResponse;
 function ok(routeId: "play.flagAnnotation", body: ApiPlayFlagAnnotationResponse): ApiJsonResponse;
+function ok(routeId: "play.unitFeedback", body: ApiPlayUnitFeedbackResponse): ApiJsonResponse;
 function ok(routeId: "play.targetEdit", body: ApiPlayTargetEditResponse): ApiJsonResponse;
 function ok(routeId: "play.delivery", body: ApiPlayDeliveryResponse): ApiJsonResponse;
 function ok(

@@ -60,7 +60,7 @@ export function citationDeepLink(
     localeBranchId: scope.localeBranchId,
   });
   const returnHref = bibleObjectHref(scope);
-  const href = appendReturnTo(baseHref, returnHref);
+  const href = appendReturnToHref(baseHref, returnHref);
   const isPlayer = PLAYER_KINDS.has(kind);
   return {
     href,
@@ -104,7 +104,8 @@ export function citationScopeFor(scope: WikiBibleScope, objectId: string): Citat
   };
 }
 
-function appendReturnTo(href: string, returnHref: string | null): string {
+/** Attach a return path so play flag / edit / feedback can close the loop. */
+export function appendReturnToHref(href: string, returnHref: string | null): string {
   if (returnHref === null) {
     return href;
   }

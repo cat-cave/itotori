@@ -357,6 +357,7 @@ export type {
   ManualFeedbackSaveContextAttachment,
   ManualFeedbackScreenshotAttachment,
   ManualFeedbackSourceInput,
+  UnitBoundFeedbackNote,
 } from "./repositories/feedback-repository.js";
 export {
   CHANNEL_PII_KINDS,
