@@ -1,467 +1,197 @@
-# Localizing a RealLive game (getting-started runbook)
+# Localizing a RealLive corpus
 
-This is the end-to-end runbook for a **fresh technical-user agent** — an
-external contributor who coordinates through GitHub issues + PRs — to localize a
-RealLive game with the shipped Itotori CLI. It maps the exact command flow,
-names every flag/environment variable, and calls out the traps you would
-otherwise re-derive.
+This is the operator runbook for the currently shipped RealLive surfaces. It
+deliberately distinguishes working commands from interfaces that are present in
+design notes but not exposed by the current CLI. Do not infer an end-to-end
+success from a command that merely exits zero.
 
-RealLive is the first real-engine vertical. Everything below is verified against
-the code, not aspirational: extraction with supported decryption, decoding,
-byte-correct length-changing patchback, live-LLM drafting, and an E2
-replay/render runtime all work on a supported real corpus.
+The current front door is a sequence of separate commands:
 
-> **You are not expected to produce a perfect localization on the first run.**
-> Engine/coverage gaps are your _workload_. The pipeline is built to fail LOUD
-> with triage signal (structured per-stage diagnostics, unknown-opcode
-> histograms, `refused:` errors) rather than lie green. When something breaks,
-> file a GitHub issue and fix it generically — see
-> [Parallel localizer conventions](#parallel-localizer-conventions).
+```text
+extract → structure-export → wiki build → localize → patch / validate
+```
 
----
+`localize-game` does not exist. `itotori --help` lists the top-level commands;
+the checked source parsers and native `--help` are the flag authority.
 
-## 0. TL;DR command flow
+## Before touching private bytes
 
-The pipeline is a **multi-command sequence** — each stage is one `itotori`
-command that produces the artifact the next stage consumes. There is no longer a
-single `localize-game` umbrella command; run the stages in order.
+Use a read-only source tree and a private run directory outside the repository.
+Before every real-byte run, rebuild the two native binaries and make the CLI
+use those builds. This avoids drawing conclusions from an old extractor or
+runtime binary.
 
 ```sh
-# one-time onboarding
-itotori init                       # OpenRouter key + ZDR + DB + config; prints NEXT STEPS
-just doctor                        # preflight: kaifuu/utsushi bins, Postgres, Chromium
-just provision-native-deps         # obtain anything doctor reports missing (add --dry-run to preview)
-itotori db-migrate                 # apply DB schema (needs DATABASE_URL)
+cargo build --release -p kaifuu-cli -p utsushi-cli
+export ITOTORI_KAIFUU_BIN="${CARGO_TARGET_DIR:-target}/release/kaifuu-cli"
+export ITOTORI_UTSUSHI_BIN="${CARGO_TARGET_DIR:-target}/release/utsushi-cli"
 
-# --- the localization pipeline (each stage feeds the next) -------------------
-# Source roots below may be the game root (the dir that DIRECTLY contains
-# REALLIVEDATA/) OR a staging parent that wraps it; the extract resolver descends
-# into a nested game folder the same way either way.
+just doctor
+```
 
-GAME_ROOT="${ITOTORI_REAL_GAME_ROOT:?set ITOTORI_REAL_GAME_ROOT to the read-only <game> root}"
-RUN_DIR=<run-dir>
-TARGET=<writable-output-root>
+For a live draft, also configure the database, an OpenRouter key, and the
+required run configuration. `itotori init` writes the local configuration and
+`itotori db-migrate` applies the schema. A missing provider key fails loudly;
+there is no fake-provider fallback.
 
-# 1. extract  — unpack Seen.txt (+ auto xor_2 decrypt) into a v0.2 BridgeBundle
-itotori extract --whole-seen \
-  --engine reallive --game-root "$GAME_ROOT" \
-  --game-id <game> --game-version <version> \
-  --source-profile-id reallive-<game> --source-locale ja-JP \
-  --bundle-output "$RUN_DIR/bridge.json"
+The private-manifest library has a single `ITOTORI_REAL_CORPUS_ROOT` setting,
+but the installed `itotori extract` command does not currently expose registry
+lookup. For the command flow below, provide `--game-root` directly (or the
+legacy `ITOTORI_REAL_GAME_ROOT` fallback). Do not invent a registry flag or
+per-engine environment variable for a live run.
 
-# 2. structure-export  — emit the narrative-structure JSON (scenes/routes/speakers)
-itotori structure-export \
-  --engine reallive \
-  --gameexe "$GAME_ROOT/REALLIVEDATA/Gameexe.ini" \
-  --seen     "$GAME_ROOT/REALLIVEDATA/Seen.txt" \
-  --bridge   "$RUN_DIR/bridge.json" \
-  --output   "$RUN_DIR/structure.json"
+## Extract
 
-# 3. wiki build  — assemble the source-language bible the drafter consults
-#    (REQUIRED for --run-mode production|pilot; the run-policy resolver rejects
-#    a wiki-less production/pilot run. Only test-dev permits --ablation to skip it.)
+The RealLive extractor requires identity metadata, an output path, a source,
+and exactly one supported scope:
+
+```sh
+itotori extract --engine reallive \
+  --game-root <read-only-game-root> \
+  --game-id <id> --game-version <version> \
+  --source-profile-id <profile> --source-locale <locale> \
+  --whole-seen --bundle-output <run-dir>/bridge.json
+```
+
+Replace `--whole-seen` with `--scene <0..65535>` for one scene. The alternate
+source is `--vault-canonical-id <id>`; it and `--game-root` are mutually
+exclusive. `--decompile-report-output <path>` is optional.
+
+The current parser has no `--scenes` or `--unit-range` implementation, and the
+current bridge schema has no extraction `sourceScope` field. Do not include
+those tokens: unknown flags are not generally rejected, so an invocation can
+appear successful while using only the recognized scope. Inspect the command
+line and the resulting bridge before treating a slice as bounded.
+
+Whole-archive extraction is also the safe default for encrypted archives: the
+decoder can recover supported cross-scene encryption only after it sees the
+archive. If a decompile report records unknown opcodes, treat it as a decode
+gap; do not continue as if the bridge were complete.
+
+## Structure, bible, and drafting
+
+Build structure from the bridge and the source's actual engine files:
+
+```sh
+itotori structure-export --engine reallive \
+  --gameexe <game-root>/REALLIVEDATA/Gameexe.ini \
+  --seen <game-root>/REALLIVEDATA/Seen.txt \
+  --bridge <run-dir>/bridge.json \
+  --output <run-dir>/structure.json
+```
+
+`--entry-scene <n>` selects a non-default entry point; `--max-scenes <n>`
+fails rather than silently truncating the archive. Then build the source bible:
+
+```sh
 itotori wiki build \
-  --structure "$RUN_DIR/structure.json" --bridge "$RUN_DIR/bridge.json" \
-  --source-locale ja-JP --run-mode production
+  --structure <run-dir>/structure.json --bridge <run-dir>/bridge.json \
+  --source-locale <locale> --run-mode production \
+  --output <run-dir>/wiki-summary.json
+```
 
-# 4. localize  — drive the whole-project drafter + QA loop to a finalized result
+`wiki build` accepts `--concurrency <positive-integer>`, `--roles <a,b,...>`,
+and `--portrait-sources <json>`. Production and pilot policy require the
+wiki-first bible. Only `test-dev` permits `localize --ablation`.
+
+Run the localizer with durable run identities:
+
+```sh
 itotori localize \
-  --project-id <project-id> --run-id <run-id> --locale-branch-id <locale-branch-id> \
+  --project-id <id> --run-id <id> --locale-branch-id <id> \
   --run-mode production \
-  --structure   "$RUN_DIR/structure.json" \
-  --bridge      "$RUN_DIR/bridge.json" \
-  --output-scope dialogue-only \
-  --output      "$RUN_DIR/run-summary.json"
+  --structure <run-dir>/structure.json --bridge <run-dir>/bridge.json \
+  --output-scope dialogue-only --output <run-dir>/run-summary.json
+```
 
-# 5. patch  — apply the byte-correct length-changing patchback to a writable target
+Optional localizer flags are `--context-scope`, `--whole-scene-max-units`,
+`--ablation`, and `--lease-owner-id`. Output scopes are `dialogue-only`,
+`dialogue-and-choices`, `dialogue-choices-ui`, and `all`.
+
+Important: `run-summary.json` is a redacted summary, not a translated bridge
+bundle and not input to `itotori patch`. The direct patch command requires a
+translated BridgeBundle v0.2. `itotori patch produce` can build from a complete
+`NativePatchbackInput` (fact snapshot, accepted outputs, scope, locales, and
+raw bridge), but the current public CLI does not export that input from a
+`localize` run. Therefore this repository does not currently provide a
+standalone CLI-only localize-to-patch handoff. Keep the run summary as evidence
+and obtain the accepted-output patch input from the owning integration; do not
+substitute the summary file.
+
+## Patching and validation
+
+When you have a translated bridge bundle, patch into a new writable target:
+
+```sh
 itotori patch \
-  --source "$GAME_ROOT" --target "$TARGET" \
-  --bundle "$RUN_DIR/run-summary.json" --scope dialogue-only
-
-# 6. validate  — replay + render the patched Seen.txt against the real VM
-itotori validate \
-  --seen "$TARGET/REALLIVEDATA/Seen.txt" --scene 1 \
-  --gameexe "$TARGET/REALLIVEDATA/Gameexe.ini" --game-dir "$TARGET/REALLIVEDATA" \
-  --replay-log "$RUN_DIR/replay.json" \
-  --artifact-root "$RUN_DIR/render" --render-output "$RUN_DIR/render/report.json"
+  --source <read-only-game-root> --target <empty-output-root> \
+  --bundle <translated-bridge.json> --scope dialogue-only
 ```
 
-> **Flag provenance.** Every flag above is verified against the parser in
-> `apps/itotori/src/cli-handlers.ts` (extract / structure-export / patch /
-> validate) and `apps/itotori/src/cli/{localize,wiki}-command.ts`. Do not invent
-> flags; if a flag is not in the parser, the command refuses with `refused:` or
-> `missing required flag`. Run `itotori --help` for the authoritative surface.
+The patcher discovers the engine from `--source`; it does not take `--engine`.
+`--scope` is exactly `dialogue-only` or `dialogue+choices`; `--force` permits
+an existing non-empty target. The target must be outside the source. For this
+engine the target is a sparse overlay containing the patched `Seen.txt`, not a
+copied playable game tree.
 
----
-
-## 1. Onboarding
-
-### 1.1 `itotori init`
-
-`itotori init` is the guided setup. It writes `~/.config/itotori/config.env`
-(mode `0600`), never prints your key, walks you through the OpenRouter key + the
-account-wide ZDR assertion + the database footprint, and ends by printing
-**NEXT STEPS** (add `ITOTORI_LOCAL_ENV_FILE` to your shell profile → run
-`itotori db-migrate` → run the multi-command localize flow: `extract` →
-`structure-export` → `wiki build` → `localize` → `patch` → `validate`). If ZDR
-is not confirmed it prints a WARNING that live runs will fail until you
-configure it.
-
-### 1.2 Native-dependency preflight
-
-Itotori drives but does not bundle four native deps: the `kaifuu-cli` /
-`utsushi-cli` Rust binaries, Node, Postgres, and Chromium (render/browser
-gates). Provision them deterministically:
+Validate patched bytes against the original, full source tree:
 
 ```sh
-just doctor                  # resolves each dep in a fixed order, reports what's missing
-just provision-native-deps   # builds the Rust bins (release), installs pinned Chromium, brings up Postgres
+itotori validate --engine reallive \
+  --seen <output-root>/REALLIVEDATA/Seen.txt --scene <n> \
+  --gameexe <game-root>/REALLIVEDATA/Gameexe.ini \
+  --game-dir <game-root>/REALLIVEDATA \
+  --replay-log <run-dir>/replay.json \
+  --artifact-root <run-dir>/render \
+  --render-output <run-dir>/render-report.json
 ```
 
-Resolution order for the Rust bins (first hit wins): `ITOTORI_KAIFUU_BIN` /
-`ITOTORI_UTSUSHI_BIN` → `ITOTORI_LIBEXEC_DIR/<bin>` → `CARGO_TARGET_DIR/{release,debug}` →
-`<repo>/target/{release,debug}` → `<bin>` on `PATH`. Full reference:
-[`docs/native-deps-provisioning.md`](native-deps-provisioning.md).
-
-### 1.3 Setup prerequisites (a live draft FAILS LOUD without these)
-
-- **Postgres** — `DATABASE_URL` (or `docker-compose.yml` via `just db-up`), then
-  `itotori db-migrate`.
-- **OpenRouter key + ZDR** — `OPENROUTER_API_KEY`. Every live request carries
-  the strict ZDR routing posture before transport construction, and the
-  provider throws `OpenRouterMissingApiKeyError` at construction if the key is
-  absent. There is **no** silent fallback to a fake/recorded provider —
-  `FakeModelProvider` is deliberately purged from the providers barrel. If you
-  run without a key you get a loud error, not a fake green.
-
----
-
-## 2. The multi-command pipeline
-
-Each stage is one user-facing `itotori` command. Run them in order; the artifact
-one stage writes is the input the next stage reads. The kept handlers live in
-`apps/itotori/src/cli/localize-command.ts` and `apps/itotori/src/cli/wiki-command.ts`
-plus the inline handlers in `apps/itotori/src/cli-handlers.ts`
-(`runExtract`, `runStructureExportHandler`, `runPatchCommand`,
-`runValidateCommand`).
-
-### 2.1 Per-command flags (verified against the parsers)
-
-#### `itotori extract` — BridgeBundle producer
-
-Required: `--engine reallive` (the registered RealLive adapter), `--game-id`,
-`--game-version`, `--source-profile-id`, `--source-locale`, and
-`--bundle-output <PATH>`, plus exactly one of `--whole-seen` or `--scene <N>`.
-
-Optional: `--game-root <PATH>` (raw extract source root; falls back to
-`ITOTORI_REAL_GAME_ROOT`), `--vault-canonical-id <ID>` (source by-id through the
-read-only vault), `--decompile-report-output <PATH>`.
-
-#### `itotori structure-export` — narrative-structure producer
-
-Required: `--engine reallive`, `--gameexe <PATH>`, `--seen <PATH>`,
-`--output <PATH>`.
-
-Optional: `--bridge <PATH>` (enables the evidence-complete v2 structure),
-`--entry-scene <N>` (override the `SEEN_START` entry scene — gotcha: the
-structure keys off the entry scene; if the structure comes back thin, set this
-to the game's real entry scene, which is not always `1`),
-`--max-scenes <N>` (fail when the archive exceeds N scenes).
-
-#### `itotori wiki build` — source-language bible assembler
-
-Required: `--structure <PATH>`, `--bridge <PATH>`, `--source-locale <LOC>`,
-`--run-mode production|pilot|test-dev`.
-
-Optional: `--concurrency <N>` (default `4`), `--roles <a,b,…>` (bounded /
-targeted analyst run; unset = full roster), `--portrait-sources <PATH>`,
-`--output <PATH>`.
-
-> The wiki-first bible is **required** by the run-policy for `production` and
-> `pilot` (`apps/itotori/src/run-policy/mode-profiles.ts`:
-> `requiresWikiFirstBible: true`). Only `test-dev` permits skipping it via the
-> `--ablation` selector on `localize`.
-
-#### `itotori localize` — whole-project drafter + QA driver
-
-Required: `--run-mode production|pilot|test-dev`, `--project-id <ID>`,
-`--run-id <ID>`, `--locale-branch-id <ID>`, `--structure <PATH>`, and
-`--bridge <PATH>`.
-
-Optional: `--context-scope <scope>` (default `whole-game`; also
-`external-augmented` or `narrowed:<…>`), `--output-scope <scope>` (default
-`dialogue-only`; also `dialogue-and-choices`, `dialogue-choices-ui`, or `all`),
-`--whole-scene-max-units <N>`, `--ablation` (pure-MTL baseline; `test-dev`
-only), `--output <PATH>` (else the run summary is printed to stdout).
-
-#### `itotori patch` — byte-correct patchback
-
-Required: `--source <PATH>` (read-only game tree), `--target <PATH>` (writable
-output root, must be OUTSIDE `--source`), `--bundle <PATH>`,
-`--scope dialogue-only|dialogue+choices`.
-
-Optional: `--force`.
-
-#### `itotori validate` — replay + render
-
-Required: `--seen <PATH>`, `--scene <N>`, `--replay-log <PATH>`,
-`--gameexe <PATH>`, `--game-dir <PATH>`, `--artifact-root <PATH>`,
-`--render-output <PATH>`.
-
-Optional: `--redaction on|off` (default `on`; `off` is for authorized local
-review), `--print-textlines`, `--source-seen <PATH>`, `--bg-asset <PATH>`,
-`--private-artifact-root <PATH>`, `--run-id <ID>`, `--expect-text-contains <S>`,
-`--width <N>`, `--height <N>`.
-
-### 2.2 Where the game parameters come from (don't guess)
-
-Set values for your own licensed game; do not copy a game-specific profile or
-machine-local path. The CLI owns these inputs now:
-
-- **Extract identity**: supply `--game-id`, `--game-version`,
-  `--source-profile-id`, and `--source-locale` to `itotori extract`, along with
-  the selected `--whole-seen` or `--scene <N>` mode. The resulting bridge bundle
-  is the stage-1 artifact; no committed real-run tree is kept in-repo because
-  real live output remains outside the repository under the ZDR / no-game-bytes
-  policy.
-- **Localization-run identity**: supply `--project-id`, `--run-id`, and
-  `--locale-branch-id` to `itotori localize`.
-- **The corpus game root** is the read-only directory that directly contains
-  `REALLIVEDATA/`. Set it through `ITOTORI_REAL_GAME_ROOT`; a parent staging
-  directory also works as `--game-root` when the resolver can descend to the
-  nested game directory.
-
-**Supported decryption is automatic.** The `kaifuu-reallive` decoder detects
-and reverses supported scene encryption in-process. You do not supply a key.
-
-### 2.3 Running a real-bytes vertical directly
-
-Drive real bytes through the shipped CLI; the old env-gated test interface is
-gone. Point the RealLive extractor at the licensed, read-only game root, then
-run the current stage sequence: `extract` → `structure-export` → `wiki build`
-→ `localize` → `patch`.
-
-```sh
-export ITOTORI_REAL_GAME_ROOT=<local-private-root>/<game>
-
-itotori extract --engine reallive --whole-seen \
-  --game-id <game> --game-version <version> \
-  --source-profile-id reallive-<game> --source-locale ja-JP \
-  --bundle-output <bridge.json>
-
-# After structure-export and wiki build have produced their inputs:
-itotori localize \
-  --project-id <project-id> --run-id <run-id> --locale-branch-id <locale-branch-id> \
-  --run-mode production --structure <structure.json> --bridge <bridge.json> \
-  --output-scope dialogue-only --output <run-summary.json>
-```
-
-`--run-mode` accepts `production`, `pilot`, or `test-dev`; `--output-scope`
-accepts `dialogue-only`, `dialogue-and-choices`, `dialogue-choices-ui`, or
-`all`. Use the appropriate scope and mode for the run policy.
-
-For a live model run, in addition to the database prerequisite in §1.3, the
-operator must provide the live-provider and run-configuration environment:
-
-```sh
-export OPENROUTER_API_KEY=<OpenRouter-key>
-export ITOTORI_TARGET_LOCALE=<target-locale>
-export ITOTORI_DRAFT_SCHEMA_HASH='sha256:<draft-schema-revision>'
-export ITOTORI_DECODE_REVISION_HASH='sha256:<decode-revision>'
-export ITOTORI_GLOSSARY_REVISION_HASH='sha256:<glossary-revision>'
-export ITOTORI_STYLE_REVISION_HASH='sha256:<style-revision>'
-export ITOTORI_LOCALIZE_COST_CAP_USD=<decimal-USD-cap>
-export ITOTORI_LOCALIZE_MAX_ATTEMPT_EXPOSURE_USD=<decimal-USD-attempt-cap>
-```
-
-The four revision values must use the `sha256:` form. `ITOTORI_REAL_GAME_ROOT`
-is the only surviving environment variable from the former real-localize
-interface; the game identity and run identity now belong to the CLI flags.
-
----
-
-## 3. Stage chain (what each stage does + its CLI subcommand)
-
-The multi-command pipeline runs each of these in turn; the individual
-subcommands below let you reproduce a failure in isolation.
-
-| #   | Stage                            | What happens on real bytes                                                                                                                                                                                                    | Subcommand                                                               |
-| --- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| 1   | **Extract + decrypt**            | Unpacks the whole `Seen.txt`, applies supported decryption, and emits one v0.2 `BridgeBundle`.                                                                                                                                | `itotori extract --whole-seen`                                           |
-| 2   | **Decode / decompile**           | Every populated scene decodes to typed `BytecodeElement`s. Any unrecognised `(module_type, module_id, opcode)` is emitted as a histogram (your triage signal).                                                                | part of extract / `kaifuu-reallive`                                      |
-| 3   | **Structure context**            | Deterministic `utsushi.narrative-structure.v1` (scenes/routes/speakers/choices) the drafter consumes as per-unit context.                                                                                                     | `itotori structure-export`                                               |
-| 4   | **Source-language bible**        | Wiki-first bible assembled over the structure (A1-A10 analyst waves), the cumulative glossary/style/character context the drafter consults.                                                                                   | `itotori wiki build`                                                     |
-| 5   | **Live-LLM draft**               | Every in-scope unit drafted against **live OpenRouter** with the pinned pair + structure-informed context.                                                                                                                    | `itotori localize`                                                       |
-| 6   | **Deterministic QA**             | Protected-span integrity, Shift-JIS validity, length/overflow, bracket/markup balance — run on the REAL draft. Findings remain attached to the written result as quality annotations.                                         | (in the localize driver)                                                 |
-| 7   | **Agentic self-correct**         | Bounded repair loop: call → deterministic checks → 4 live QA judges → bounded re-QA. Cost-bounded, no unbounded recursion.                                                                                                    | (in the localize driver)                                                 |
-| 8   | **Written-outcome finalization** | Every in-scope unit receives a non-blank selected result. QA findings and any remaining quality flags travel with that result; they do not withhold a complete patch.                                                         | (in the localize driver)                                                 |
-| 9   | **Patchback**                    | Length-CHANGING byte-correct patch: rewrites the 10,000-slot offset table and recalcs every goto-family jump pointer. A jump landing inside an edited body fails loud (`kaifuu.reallive.patchback_goto_target_unresolvable`). | `itotori patch`                                                          |
-| 10  | **Replay-validate**              | Replays the patched `Seen.txt` and emits the engine's ACTUALLY-decoded `TextLine` bodies (no planted sentinel).                                                                                                               | `utsushi-cli replay-validate --engine reallive` (via `itotori validate`) |
-| 11  | **Render-validate**              | Rasterizes the message stream to a frame (real VM + `render_pipeline.rs` + swash) at evidence tier **E2**; optional `--expect-text-contains` assertion.                                                                       | `utsushi-cli render-validate --engine reallive` (via `itotori validate`) |
-
-Verified subcommand surfaces:
-
-```
-itotori extract       --whole-seen --engine reallive --game-root <ro> --game-id <id> --game-version <v> \
-                      --source-profile-id <p> --source-locale <loc> --bundle-output <bridge.json>
-itotori structure-export --gameexe <PATH> --seen <PATH> --output <structure.json> [--bridge <bridge.json>] [--entry-scene <N>] [--max-scenes <N>]
-itotori wiki build    --structure <structure.json> --bridge <bridge.json> --source-locale <locale> --run-mode <mode>
-itotori localize      --run-mode <mode> --structure <structure.json> --bridge <bridge.json> [--output-scope <scope>] [--output <run.json>]
-itotori patch         --engine reallive --bundle <translated.json> --source <ro> --target <rw> --scope dialogue-only|dialogue+choices
-itotori validate      --seen <PATH> --scene <N> --gameexe <PATH> --game-dir <DIR> --replay-log <PATH> \
-                      --artifact-root <DIR> --render-output <PATH> [--redaction on|off] [--expect-text-contains <SUBSTR>] [--width <N>] [--height <N>]
-```
-
-The `validate replay` step also requires `--gameexe` and (under the hood)
-`--g00-dir` (derived from `--game-dir`). Its historical `--snapshot-output`
-flag is rejected explicitly: replay validation self-verifies snapshot identity
-inside the EnginePort lifecycle but does not publish a snapshot JSON artifact.
-
-`itotori --help` lists the user surface; `itotori help --all` adds the advanced
-stage commands.
-
----
-
-## 4. Honest signposts (read before you trust a green result)
-
-### Note: `--source` / `--game-root` descends into a nested game dir
-
-`--game-root` (on `extract`) and `--source` (on `patch`) may be the game root
-(the dir that DIRECTLY contains `REALLIVEDATA/`) **or** a staging parent that
-wraps a nested game folder. The extract resolver descends a bounded
-single-child chain to the folder that holds `REALLIVEDATA/`. So a path at the
-staging parent resolves the same way as the game root — the earlier "passes
-extract, fails structure" footgun is gone.
-
-For a supported RealLive corpus, either of these works:
-
-```sh
-# the game root directly (skips the descent):
-"$ITOTORI_REAL_GAME_ROOT"
-# or the staging parent (the resolver descends into the nested game folder):
-"$(dirname "$ITOTORI_REAL_GAME_ROOT")"
-```
-
-Quote the path if it contains spaces or non-ASCII characters. When a `--source`
-genuinely has no `REALLIVEDATA/` anywhere in the descent bound, the extract
-stage fails loud on the missing `REALLIVEDATA/…` path. A game with an unsupported
-pre-`REALLIVEDATA/` layout is not supported by the extract stage — and therefore
-not by the rest of the pipeline either — so this is a real, aligned limit.
-
-### Trap: `FIXTURE-ALPHA` artifacts are NOT live output
-
-Committed fixture artifacts are **fixture runs**, not real localizations. Their
-`run-summary.json` carries
-`"enUsSentinel": "FIXTURE-ALPHA-EN-US-SENTINEL"`, `patch-report.finalDraftText:
-null`, and no `provider-runs/` directory. Do not read them as proof that a live
-localization succeeded. Real live output is kept OUT of the repo by the ZDR /
-no-game-bytes privacy policy (ADR-0002) — real proof lives in your run directory
-and in `docs/openrouter-integration-evidence/*.json` (real provider-call
-records with redacted auth + real `usage.cost`).
-
-### Trap: CI-green ≠ real-bytes-green
-
-Per-gate CI (`just ci`) is **synthetic-only** and touches no real bytes. All the
-RealLive real-bytes proofs are `#[ignore]`/env-gated and DO NOT run in `just ci`.
-A green `just ci` says nothing about a real corpus. To actually exercise real
-bytes:
-
-```sh
-# points the gated suites at the real corpora and refuses to pass with zero coverage
-just ci-real-bytes
-# or the full periodic ground-truth oracle (~30-45 min; nightly / on-demand)
-just real-bytes-oracle
-```
-
-Set `ITOTORI_REAL_GAME_ROOT` and, when the configured suite requires it,
-`ITOTORI_REAL_GAME_ROOT_2` to your local read-only corpus roots.
-`ci-real-bytes` **hard-fails if a required corpus directory is missing** — it
-will not go green on skipped real bytes. The gated Rust suites it runs include
-`kaifuu-reallive` (`multi_corpus_real_bytes.rs` = the 100%-zero-unknown gate +
-per-corpus coverage report; `patchback_real_bytes.rs`,
-`patchback_kidoku_roundtrip_real_bytes.rs`) and `utsushi-reallive`.
-
-Do NOT ask a subagent to run `just real-bytes-oracle` inline — it is the long
-(~30-45 min) lane. Run it deliberately, in the background, when you need
-ground-truth.
-
-### Trap: the pipeline is multi-command now (no `localize-game` umbrella)
-
-The retired `itotori localize-game` umbrella composed every stage into one
-command. It was **removed** — there is no single-command whole-game vertical any
-more. Run the six command stages in §0 explicitly, invoking `itotori localize
---run-mode <production|pilot|test-dev>` after structure export and wiki build.
-
-### Other gotchas you would otherwise re-derive
-
-- **`patch --target` must be outside `--source`.** The patcher refuses to write
-  inside the source tree, and the source `Seen.txt` is sha256-checked before AND
-  after the run — any drift fails the command.
-- **Render fidelity is E2, not E4.** The RealLive runtime is a real VM +
-  rasterizer, but its render evidence tier is E2 (frame capture / decoded text),
-  not engine-faithful E4. Pixel-exact clipping/fit against the retail renderer
-  is the main genuinely-incomplete area — treat E2 evidence as "observed
-  rendered text", not "fully verified fidelity", exactly as the fidelity policy
-  labels it (`docs/utsushi-fidelity-policy.md`).
-- **Unknown-opcode triage.** If a game surfaces unknown opcodes, the coverage
-  report names each `(module_type, module_id, opcode)` with a frequency — start
-  your fix there.
-
----
-
-## 5. Reviewing results & taking the patched game
-
-Each stage writes into your run directory: the extracted bridge bundle
-(`extract`), the narrative structure (`structure-export`), the drafts and QA
-findings (`localize`), the patch report (`patch`), and the replay log + render
-evidence (`validate`). On success `localize` prints a JSON summary
-(`runMode`, `contextScope`, `outputScope`, `shippable`, `sceneCount`,
-`finalizedUnitCount`, `patchId`, `buildLqaVerdictCount`, `attemptCount`). The
-patched, playable game lands in `patch --target`. The Studio dashboard
-(`apps/itotori/`, see [`docs/frontend.md`](frontend.md)) is the browsable review
-surface.
-
----
-
-## Parallel localizer conventions
-
-Multiple localizer agents may run concurrently on **different** games. To keep
-them from colliding and to keep fixes generic:
-
-- **One worktree per agent, OUTSIDE the repo.** Create it under
-  `/scratch/worktrees/<game>-<slug>`. Never point two agents at one worktree or
-  share a worktree path across live agents. Worktrees are disposable and follow
-  the normal lifecycle and pruning policy.
-- **Isolated build cache is automatic.** The nix devShell (`flake.nix`) gives
-  each worktree its own `CARGO_TARGET_DIR`, so parallel `cargo` builds do not
-  contaminate each other. Enter it via direnv / `nix develop`. Run
-  `just worktree-setup` once after `cd`-ing into a new worktree (offline pnpm
-  install from the shared store).
-- **Coordinate through GitHub, not a shared ledger.** File a GitHub **issue**
-  for each blocker bug (with the loud diagnostic / unknown-opcode signature /
-  failing stage). Claim work via **assignee + label** so two agents don't fix
-  the same bug. This localizer track does NOT use qdcli — issues + PRs are the
-  coordination surface.
-- **Fix GENERICALLY, never per-game.** A bug found while localizing one game
-  must be fixed game-agnostically as engine-family behavior, not a title-specific
-  conditional. Multi-game validation is a standing invariant: engine-family
-  specs validate against ≥ 2 real games.
-- **Propose, don't dispose.** Open a PR against `main` with a clear title and the
-  reproducing diagnostic. **Do NOT self-merge** — the orchestrator is the sole
-  merge authority. You may split a large bug into smaller independently-verifiable
-  PRs (optionally using your own subagents/shell-agents), but each lands only
-  when the orchestrator merges it.
-- **Keep the main checkout clean.** All work happens in your worktree; never
-  dirty `/home/trevor/projects/itotori` directly.
-
----
-
-## Reference
-
-- Install + developer paths: [`docs/install.md`](install.md)
-- Security posture / ZDR fail-closed: [`docs/security-and-limitations.md`](security-and-limitations.md)
-- Native deps: [`docs/native-deps-provisioning.md`](native-deps-provisioning.md)
-- RealLive adapter readiness: [`docs/kaifuu-adapters/reallive.md`](kaifuu-adapters/reallive.md)
-- Utsushi fidelity tiers: [`docs/utsushi-fidelity-policy.md`](utsushi-fidelity-policy.md)
-- Real-bytes oracle cadence: [`docs/real-bytes-periodic-oracle.md`](real-bytes-periodic-oracle.md)
-- Product workflow: [`docs/itotori-product-workflow.md`](itotori-product-workflow.md)
+`validate` first replay-validates and then renders. Optional flags are
+`--redaction on|off`, `--print-textlines`, `--source-seen`, `--bg-asset`,
+`--private-artifact-root`, `--run-id`, `--expect-text-contains`, `--width`,
+and `--height`.
+
+Rendering needs the full extracted tree. A minimal root or sparse patch target
+can yield an empty-looking frame that resembles a decoder bug. Supply
+`--game-dir` as the directory containing the real `g00/` directory, normally
+`REALLIVEDATA`; the wrapper derives `<game-dir>/g00`. When calling the native
+player or runtime directly, `--g00-dir` must point at the `g00` directory
+itself, never its parent.
+
+The public render artifact is redacted by default and is evidence tier E2.
+It demonstrates observed rendered text, not pixel-exact retail-renderer
+fidelity. A browser player session is a separate long-lived native process:
+start it with a complete descriptor, advance or choose through that same
+session, and close it when finished. Do not emulate it with cached frames.
+
+## Real-byte gates
+
+`just ci` is synthetic and is not real-byte evidence. Use
+`just ci-real-bytes` for the strict staged-corpus lane, or
+`just real-bytes-oracle` for the periodic full oracle. Both must fail when a
+required corpus is absent; the first diagnostic to check is whether the lane
+ran zero tests. A zero-test success is a coverage failure, not a pass.
+
+Do not commit source bytes, extracted text, private manifests, screenshots, or
+private render output. Keep roots and reports local, and use aggregate hashes
+and counts for shareable evidence.
+
+## Known boundaries
+
+- The documented scope expansion (`--scenes`, `--unit-range`) and bridge
+  `sourceScope` are not present in this checkout's parsers or bridge schema.
+- The corpus-manifest registry exists as an internal validation surface, but is
+  not a selector on the installed extract command.
+- The localizer's summary cannot be patched directly; no CLI export currently
+  bridges its durable accepted outputs to `patch produce` input.
+
+These are implementation gaps, not source-data limitations. Report them with
+the command, binary revision, and output artifact rather than guessing a flag
+or fabricating an end-to-end success.
+
+## References
+
+- [native dependency provisioning](native-deps-provisioning.md)
+- [private corpus policy](fixtures-and-corpora.md)
+- [real-byte oracle](real-bytes-periodic-oracle.md)
+- [runtime fidelity policy](utsushi-fidelity-policy.md)
