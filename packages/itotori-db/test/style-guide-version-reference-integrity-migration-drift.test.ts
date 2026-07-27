@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
-// ITOTORI-122: assert the style-guide version reference-integrity constraints
+// Assert the style-guide version reference-integrity constraints
 // (migration 0053) are actually registered on a freshly-migrated schema. The
 // DB constraint — not schema.ts — is the source of truth for the composite FKs
 // that cannot be expressed in the mutually-recursive drizzle table types, so we

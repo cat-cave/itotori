@@ -143,17 +143,17 @@ export const providerRunStatusValues = {
 export type ProviderRunStatus =
   (typeof providerRunStatusValues)[keyof typeof providerRunStatusValues];
 
-// ITOTORI-225 — narrowed from the legacy 5-value enum to the only two cost
-// states the cost-tracking audit (docs/audits/openrouter-cost-tracking-
+// Narrowed from the legacy 5-value enum to the only two cost states the
+// cost-tracking audit (docs/audits/openrouter-cost-tracking-
 // audit-2026-06-25.md) considers correct: a real upstream charge, or no
 // charge at all. Migration 0039 backfills + tightens the CHECK constraint.
 //
-// ITOTORI-134 — re-introduces `provider_estimate` as a narrowly-scoped
-// deterministic cost-estimate state (derived from cost_details or
-// endpoint-pricing × tokens) for responses where the authoritative
-// `usage.cost` is absent. The TS type accepts it; the DB CHECK constraint
-// (migration 0039) is a separate follow-up — provider-level tests use an
-// in-memory recorder, so this widening is type-safe without a migration.
+// Also re-introduces `provider_estimate` as a narrowly-scoped deterministic
+// cost-estimate state (derived from cost_details or endpoint-pricing ×
+// tokens) for responses where the authoritative `usage.cost` is absent.
+// The TS type accepts it; the DB CHECK constraint (migration 0039) is a
+// separate follow-up — provider-level tests use an in-memory recorder, so
+// this widening is type-safe without a migration.
 export const providerCostKindValues = {
   billed: "billed",
   provider_estimate: "provider_estimate",
@@ -1436,9 +1436,9 @@ export const assets = pgTable(
     sourceHash: text("source_hash").notNull(),
     path: text("path"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    // ITOTORI-060: tombstone timestamp. NULL = active/current member of the
-    // latest reimported bundle; non-NULL = the asset was omitted by a later
-    // bridge reimport and archived (its rows + dependents are retained, not
+    // Tombstone timestamp. NULL = active/current member of the latest
+    // reimported bundle; non-NULL = the asset was omitted by a later bridge
+    // reimport and archived (its rows + dependents are retained, not
     // hard-deleted). Reviving on re-add clears this back to NULL.
     removedAt: timestamp("removed_at", { withTimezone: true }),
   },
@@ -1484,13 +1484,13 @@ export const sourceUnits = pgTable(
     runtimeExpectation: jsonb("runtime_expectation").$type<unknown>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-    // ITOTORI-060: tombstone timestamp. NULL = active/current member of the
-    // latest reimported bundle; non-NULL = the unit was omitted by a later
-    // bridge reimport and archived. Tombstoning replaces the former
-    // hard-DELETE so dependent locale-branch unit rows, runtime evidence refs,
-    // TM reuse events and historical facts are PRESERVED (they keep pointing at
-    // the retained, now-tombstoned unit). Reviving on re-add clears this back
-    // to NULL rather than duplicating the row.
+    // Tombstone timestamp. NULL = active/current member of the latest
+    // reimported bundle; non-NULL = the unit was omitted by a later bridge
+    // reimport and archived. Tombstoning replaces the former hard-DELETE so
+    // dependent locale-branch unit rows, runtime evidence refs, TM reuse
+    // events and historical facts are PRESERVED (they keep pointing at the
+    // retained, now-tombstoned unit). Reviving on re-add clears this back to
+    // NULL rather than duplicating the row.
     removedAt: timestamp("removed_at", { withTimezone: true }),
   },
   (table) => [
@@ -1638,14 +1638,14 @@ export const styleGuides = pgTable(
   (table) => [
     uniqueIndex("itotori_style_guides_locale_branch_idx").on(table.localeBranchId),
     index("itotori_style_guides_project_idx").on(table.projectId),
-    // ITOTORI-122: target key for the version -> guide scope composite FK.
+    // Target key for the version -> guide scope composite FK.
     unique("itotori_style_guides_scope_key").on(
       table.styleGuideId,
       table.projectId,
       table.localeBranchId,
     ),
-    // ITOTORI-122: latest_version_id and approved_version_id are guarded by
-    // composite FKs onto itotori_style_guide_versions
+    // latest_version_id and approved_version_id are guarded by composite FKs
+    // onto itotori_style_guide_versions
     // (<pointer>, style_guide_id, project_id, locale_branch_id), so each pointer
     // must resolve to an EXISTING version in the SAME guide + project +
     // locale-branch (rejects dangling AND cross-project / cross-locale-branch).
@@ -1699,23 +1699,23 @@ export const styleGuideVersions = pgTable(
     index("itotori_style_guide_versions_guide_created_idx").on(table.styleGuideId, table.createdAt),
     index("itotori_style_guide_versions_source_revision_idx").on(table.sourceRevisionId),
     index("itotori_style_guide_versions_status_idx").on(table.status),
-    // ITOTORI-122: target key for the pointer composite FKs (latest/approved on
-    // the guide + previous on this table). Trivially unique via the PK.
+    // Target key for the pointer composite FKs (latest/approved on the guide
+    // + previous on this table). Trivially unique via the PK.
     unique("itotori_style_guide_versions_scope_key").on(
       table.styleGuideVersionId,
       table.styleGuideId,
       table.projectId,
       table.localeBranchId,
     ),
-    // ITOTORI-122: a version's (project, locale-branch) MUST match its guide's.
+    // A version's (project, locale-branch) MUST match its guide's.
     // This composite FK (style_guide_id, project_id, locale_branch_id) ->
     // itotori_style_guides is enforced in migration 0053; it is intentionally
     // NOT declared here because pairing it with the guide's latest/approved
     // composite FKs (which reference THIS table) forms a mutually-recursive
     // table type that TypeScript cannot infer. The DB constraint is the source
     // of truth; the acceptance-critical pointer FKs below stay in the model.
-    // ITOTORI-122: previous_version_id must reference an existing (prior)
-    // version in the SAME guide + project + locale-branch (self-referential).
+    // previous_version_id must reference an existing (prior) version in the
+    // SAME guide + project + locale-branch (self-referential).
     foreignKey({
       columns: [table.previousVersionId, table.styleGuideId, table.projectId, table.localeBranchId],
       foreignColumns: [
@@ -1777,11 +1777,11 @@ export const branchPolicyGlossaryReferences = pgTable(
       table.glossaryContentHash,
     ),
     index("itotori_branch_policy_glossary_refs_event_idx").on(table.eventId),
-    // ITOTORI-140: bring the Drizzle metadata into parity with migration 0022.
-    // These check constraints are the source-of-truth runtime guards documented
-    // in the SQL; modeling them here keeps schema-drift introspection honest. A
-    // regression test (branch-policy-glossary-references-migration-drift) pins
-    // the round-trip between this declaration and pg_constraint.
+    // Bring the Drizzle metadata into parity with migration 0022. These check
+    // constraints are the source-of-truth runtime guards documented in the SQL;
+    // modeling them here keeps schema-drift introspection honest. A regression
+    // test (branch-policy-glossary-references-migration-drift) pins the
+    // round-trip between this declaration and pg_constraint.
     check("itotori_branch_policy_glossary_refs_sequence_check", sql`${table.versionSequence} > 0`),
     check(
       "itotori_branch_policy_glossary_refs_term_refs_check",
@@ -1857,7 +1857,7 @@ export const translationMemorySegments = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    // ITOTORI-145: keep Drizzle parity with migration 0063. The status enum
+    // Keep Drizzle parity with migration 0063. The status enum
     // (reusable|blocked) and the jsonb object shape of provenance are
     // enforced at the DB; modeling the CHECK guards here keeps schema-drift
     // introspection honest.
@@ -1978,11 +1978,11 @@ export const translationMemoryReuseEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    // ITOTORI-145: mirror migration 0063's CHECK constraints on the reuse
-    // events table so schema-drift introspection reflects runtime DB
-    // enforcement: enum-like match_kind / reuse_status allowed values,
-    // normalized 0..1000 match_score range, and the jsonb object shape of
-    // provenance + cost_impact.
+    // Mirror migration 0063's CHECK constraints on the reuse events table so
+    // schema-drift introspection reflects runtime DB enforcement: enum-like
+    // match_kind / reuse_status allowed values, normalized 0..1000
+    // match_score range, and the jsonb object shape of provenance +
+    // cost_impact.
     check(
       "itotori_tm_reuse_events_match_kind_check",
       sql`${table.matchKind} in ('exact', 'fuzzy')`,
@@ -2153,11 +2153,11 @@ export const jobQueue = pgTable(
   ],
 );
 
-// ITOTORI-045 — append-only audit trail for the job-queue lifecycle. One
-// immutable row is written by the `itotori_job_events_capture` DB trigger for
-// every genuine `itotori_jobs.status` transition (or insert), so the queue's
-// history cannot be silently rewritten. See migration 0052 for the capture +
-// append-only triggers and the retention policy enforced by pruneJobEvents().
+// Append-only audit trail for the job-queue lifecycle. One immutable row is
+// written by the `itotori_job_events_capture` DB trigger for every genuine
+// `itotori_jobs.status` transition (or insert), so the queue's history cannot
+// be silently rewritten. See migration 0052 for the capture + append-only
+// triggers and the retention policy enforced by pruneJobEvents().
 export const jobEventTypeValues = {
   enqueued: "enqueued",
   claimed: "claimed",
@@ -2210,12 +2210,11 @@ export const modelProviders = pgTable(
     providerFamily: text("provider_family").notNull(),
     endpointFamily: text("endpoint_family").notNull(),
     providerName: text("provider_name").notNull(),
-    // ITOTORI-230 — dropped `data_handling` and `account_privacy` jsonb
-    // columns left over from the per-pair privacy registry that
-    // ITOTORI-227 deleted. The canonical privacy posture is now
-    // account-wide ZDR + per-request `provider.zdr=true`; the
+    // Dropped `data_handling` and `account_privacy` jsonb columns left over
+    // from the retired per-pair privacy registry. The canonical privacy
+    // posture is now account-wide ZDR + per-request `provider.zdr=true`; the
     // routing-posture jsonb on `itotori_provider_runs` is the auditable
-    // record of (b) per call.
+    // record of that posture per call.
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -2534,12 +2533,12 @@ export const providerRuns = pgTable(
     reasoningTokens: integer("reasoning_tokens"),
     cachedInputTokens: integer("cached_input_tokens"),
     totalTokens: integer("total_tokens"),
-    // ITOTORI-230 — captured OpenRouter routing posture for THIS run.
-    // Required (non-null) post-migration; pre-migration rows carry the
-    // sentinel `{"_pre_itotori_230": true}` jsonb so they cannot be
-    // mistaken for a real captured posture by telemetry queries that
-    // filter on `routing_posture->>'zdr' = 'true'`. The corresponding
-    // current LLM boundary supplies this captured posture as validated JSON.
+    // Captured OpenRouter routing posture for THIS run. Required (non-null)
+    // post-migration; pre-migration rows carry the sentinel
+    // `{"_pre_itotori_230": true}` jsonb so they cannot be mistaken for a
+    // real captured posture by telemetry queries that filter on
+    // `routing_posture->>'zdr' = 'true'`. The corresponding current LLM
+    // boundary supplies this captured posture as validated JSON.
     routingPosture: jsonb("routing_posture").$type<Record<string, unknown>>().notNull(),
     adapterMetadata: jsonb("adapter_metadata").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -3178,13 +3177,13 @@ export const translationBatches = pgTable(
     modelProviderFamily: text("model_provider_family").notNull(),
     modelId: text("model_id").notNull(),
     /**
-     * ITOTORI-220 — required pinned providerId per the (modelId,
-     * providerId) pair rule. The planner pins both halves of the pair on
-     * `batch.modelProfile`; persisting only the model half dropped the
-     * provider provenance the downstream draft agent reads back. NOT NULL
-     * with NO sentinel default — a batch must carry its real provider, or
-     * the insert fails loud (migration 0047 deletes pre-fix rows that
-     * never captured it rather than backfilling a fake provider).
+     * Required pinned providerId per the (modelId, providerId) pair rule.
+     * The planner pins both halves of the pair on `batch.modelProfile`;
+     * persisting only the model half dropped the provider provenance the
+     * downstream draft agent reads back. NOT NULL with NO sentinel default
+     * — a batch must carry its real provider, or the insert fails loud
+     * (migration 0047 deletes pre-fix rows that never captured it rather
+     * than backfilling a fake provider).
      */
     providerId: text("provider_id").notNull(),
     modelContextWindowTokens: integer("model_context_window_tokens").notNull(),
@@ -3513,7 +3512,7 @@ export const engineCapabilityEvidence = pgTable(
 );
 
 // ---------------------------------------------------------------------
-// ITOTORI-074 — draft job schema (jobs + attempts)
+// Draft job schema (jobs + attempts)
 // ---------------------------------------------------------------------
 
 export const draftJobStatusValues = {
@@ -3629,7 +3628,7 @@ export const draftJobAttempts = pgTable(
 );
 
 // ---------------------------------------------------------------------
-// ITOTORI-035 — asset localization decision workflow
+// Asset localization decision workflow
 // ---------------------------------------------------------------------
 
 export const assetLocalizationDecisionAssetKindValues = {

@@ -24,7 +24,7 @@ export type OutboxPublishResult = {
    * when it went to mark them published/failed. The mark was rejected as a no-op
    * and the event stays under the recovery path's authority, so it is counted
    * here rather than as published/failed. The outbox analog of
-   * {@link JobWorkerResult.leaseLost}. See ITOTORI-046.
+   * {@link JobWorkerResult.leaseLost}.
    */
   leaseLost: number;
 };
@@ -45,7 +45,7 @@ export type JobWorkerResult = {
    * lease was no longer valid (expired, recovered, or taken over) when it went
    * to complete/fail them. The completion/failure was rejected as a no-op and
    * the job stays under the recovery path's authority, so it is counted here
-   * rather than as succeeded/failed. See ITOTORI-046.
+   * rather than as succeeded/failed.
    */
   leaseLost: number;
 };

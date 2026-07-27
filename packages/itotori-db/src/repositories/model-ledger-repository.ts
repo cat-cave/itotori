@@ -72,11 +72,11 @@ export type ProviderRunLedgerInput = {
     pricingSnapshotId?: string;
   };
   /**
-   * ITOTORI-230 — the OpenRouter routing posture sent on the wire for
-   * this call. Required (non-null) at the storage layer post-migration
-   * 0040; the corresponding typed shape in app code is
-   * `OpenRouterRoutingPosture`. The structural assertion is "JSON
-   * object"; the app layer guarantees the full posture shape.
+   * OpenRouter routing posture sent on the wire for this call. Required
+   * (non-null) at the storage layer post-migration 0040; the corresponding
+   * typed shape in app code is `OpenRouterRoutingPosture`. The structural
+   * assertion is "JSON object"; the app layer guarantees the full posture
+   * shape.
    */
   routingPosture: LedgerJsonRecord;
   adapterMetadata?: LedgerJsonRecord;
@@ -112,9 +112,9 @@ export type ProviderRunCostSummary = {
   fallbackUsed: boolean;
   fallbackPlan: string[];
   costKind: ProviderCostKind;
-  // ITOTORI-225 — non-null after migration 0039: every row in the
-  // narrowed `'billed' | 'zero'` enum carries a real amount (zero entries
-  // store 0 explicitly). Read paths can rely on this without a null check.
+  // Non-null after migration 0039: every row in the narrowed
+  // `'billed' | 'zero'` enum carries a real amount (zero entries store 0
+  // explicitly). Read paths can rely on this without a null check.
   amountMicrosUsd: number;
   tokenCountSource: string;
   promptTokens: number | null;
@@ -122,10 +122,10 @@ export type ProviderRunCostSummary = {
   reasoningTokens: number | null;
   cachedInputTokens: number | null;
   totalTokens: number | null;
-  // ITOTORI-230 — captured OpenRouter routing posture for THIS run.
-  // Always present post-migration 0040: pre-migration rows carry the
-  // sentinel `{"_pre_itotori_230": true}` so downstream consumers can
-  // tell them apart from real captured postures.
+  // Captured OpenRouter routing posture for THIS run. Always present
+  // post-migration 0040: pre-migration rows carry the sentinel
+  // `{"_pre_itotori_230": true}` so downstream consumers can tell them
+  // apart from real captured postures.
   routingPosture: LedgerJsonRecord;
 };
 
@@ -149,10 +149,10 @@ export type TranslationMemoryReuseCostSummary = {
   provenance: LedgerJsonRecord;
   createdAt: string;
   /**
-   * ITOTORI-146 — true when this row's stored `cost_impact` JSON does not
-   * match the well-formed shape the aggregation reads. The numeric / boolean
-   * fields above are defensively coerced to zero / false in that case so the
-   * row never blows up downstream consumers; consumers can use this flag to
+   * True when this row's stored `cost_impact` JSON does not match the
+   * well-formed shape the aggregation reads. The numeric / boolean fields
+   * above are defensively coerced to zero / false in that case so the row
+   * never blows up downstream consumers; consumers can use this flag to
    * render a "malformed cost_impact" hint instead of the zeroed numbers.
    */
   malformedCostImpact: boolean;
@@ -169,9 +169,9 @@ export type TranslationMemoryReuseCostReport = {
   estimatedCostUsdSaved: number | null;
   recentEvents: TranslationMemoryReuseCostSummary[];
   /**
-   * ITOTORI-146 — number of reuse events for this project whose stored
-   * `cost_impact` JSON does NOT match the well-formed shape the aggregation
-   * reads (`providerCallAvoided` boolean, `estimated*TokensSaved` /
+   * Number of reuse events for this project whose stored `cost_impact`
+   * JSON does NOT match the well-formed shape the aggregation reads
+   * (`providerCallAvoided` boolean, `estimated*TokensSaved` /
    * `estimatedCostUsdSaved` numeric). The repository API only ever writes
    * well-formed rows, so any non-zero count here means a row was inserted
    * OUTSIDE the repository (e.g. a raw SQL backfill, a historical pre-fix
@@ -181,19 +181,19 @@ export type TranslationMemoryReuseCostReport = {
    */
   malformedCostImpactCount: number;
   /**
-   * ITOTORI-146 — diagnostics describing the malformed rows so callers can
-   * surface a clear, actionable message without re-running the read. Empty
-   * when `malformedCostImpactCount === 0`.
+   * Diagnostics describing the malformed rows so callers can surface a
+   * clear, actionable message without re-running the read. Empty when
+   * `malformedCostImpactCount === 0`.
    */
   diagnostics: TranslationMemoryDiagnostic[];
 };
 
 /**
- * ITOTORI-225 — `estimatedMicrosUsd`, `unknownRunCount`, and
- * `includesUnknownCost` are deleted. The narrowed cost enum has only
- * billed-or-zero, so estimated/unknown buckets are meaningless. Cost-cap
- * + audit consumers that previously read `estimatedMicrosUsd` should read
- * `billedMicrosUsd` directly.
+ * `estimatedMicrosUsd`, `unknownRunCount`, and `includesUnknownCost` are
+ * deleted. The narrowed cost enum has only billed-or-zero, so estimated/
+ * unknown buckets are meaningless. Cost-cap + audit consumers that
+ * previously read `estimatedMicrosUsd` should read `billedMicrosUsd`
+ * directly.
  */
 export type ProjectCostReport = {
   projectId: string;
@@ -222,10 +222,9 @@ export type ProjectTelemetryTimeseries = {
 };
 
 /**
- * ITOTORI-230 — per-(modelId, providerId) counts split by whether the
- * captured routing posture had `zdr = true` on the wire. The query
- * filters on `routing_posture->>'zdr' = 'true'` so the
- * pre-ITOTORI-230 sentinel rows
+ * Per-(modelId, providerId) counts split by whether the captured routing
+ * posture had `zdr = true` on the wire. The query filters on
+ * `routing_posture->>'zdr' = 'true'` so the pre-migration sentinel rows
  * (`routing_posture = '{"_pre_itotori_230": true}'`) do NOT count as
  * ZDR-enforced — which is correct: there is no evidence for those.
  */
@@ -255,14 +254,13 @@ export type ProviderRunCostKindCountWindow = {
 };
 
 /**
- * ITOTORI-053 — cost-drilldown query filters. Every axis is optional and
- * ANDed together. `projectId` defaults to the latest project when omitted
- * (same posture as the project cost report). `systemId` scopes to a single
- * engine/system id (`provider_runs.system_id`). `from`/`to` bound the
- * `started_at` window (inclusive). `limit`/`offset` drive DETERMINISTIC
- * offset pagination; the row order is a stable `(started_at desc,
- * provider_run_id desc)` so a given (filter, limit, offset) always returns
- * the same page.
+ * Cost-drilldown query filters. Every axis is optional and ANDed together.
+ * `projectId` defaults to the latest project when omitted (same posture as
+ * the project cost report). `systemId` scopes to a single engine/system id
+ * (`provider_runs.system_id`). `from`/`to` bound the `started_at` window
+ * (inclusive). `limit`/`offset` drive DETERMINISTIC offset pagination; the
+ * row order is a stable `(started_at desc, provider_run_id desc)` so a
+ * given (filter, limit, offset) always returns the same page.
  */
 export type CostDrilldownFilter = {
   projectId?: string;
@@ -274,11 +272,10 @@ export type CostDrilldownFilter = {
 };
 
 /**
- * ITOTORI-053 — the DISTINCT cost display states for a drilldown row. This
- * deliberately does NOT reuse a `costKind` field with an `"unknown"` value:
- * `"unknown"` is the deleted legacy ledger enum (ITOTORI-225,
- * audit-no-hardcoded-cost.mjs forbids reviving it). Here `state` is a
- * SEPARATE display axis:
+ * The DISTINCT cost display states for a drilldown row. This deliberately
+ * does NOT reuse a `costKind` field with an `"unknown"` value: `"unknown"`
+ * is the deleted legacy ledger enum (audit-no-hardcoded-cost.mjs forbids
+ * reviving it). Here `state` is a SEPARATE display axis:
  *   - `billed` — a real cost ledger entry tagged `billed`; `amountMicrosUsd`
  *     is the ledger-stored micros (the SOURCE OF TRUTH for this row) and
  *     `displayAmountUsd` a micros-DERIVED decimal display string.
@@ -307,13 +304,14 @@ export type CostDrilldownRowCost =
   | { state: "unknown" };
 
 /**
- * ITOTORI-053 — the provider/adapter identity + adapter metadata exposed for
- * a drilldown row. This surfaces the (model, provider) pair and the curated
- * adapter metadata, but the raw adapter metadata is run through
- * {@link sanitizeAdapterMetadata} first (a default-deny PROJECTION of known-safe
- * fields into a new object, context-aware by parent) so only known-safe adapter
- * fields surface — a raw provider request/response payload or any unknown key
- * can never leak through the drilldown (privacy).
+ * Provider/adapter identity + adapter metadata exposed for a drilldown
+ * row. This surfaces the (model, provider) pair and the curated adapter
+ * metadata, but the raw adapter metadata is run through
+ * {@link sanitizeAdapterMetadata} first (a default-deny PROJECTION of
+ * known-safe fields into a new object, context-aware by parent) so only
+ * known-safe adapter fields surface — a raw provider request/response
+ * payload or any unknown key can never leak through the drilldown
+ * (privacy).
  */
 export type CostDrilldownProviderMetadata = {
   providerId: string;
@@ -382,7 +380,7 @@ export interface ItotoriModelLedgerRepositoryPort {
    */
   getProjectCostReport(actor: AuthorizationActor, projectId?: string): Promise<ProjectCostReport>;
   /**
-   * ITOTORI-053 — the paginated cost-drilldown read. Same privilege gate as
+   * Paginated cost-drilldown read. Same privilege gate as
    * {@link getProjectCostReport} (`catalog.read`): the rows expose the run
    * ledger + provider/adapter metadata. Filters by project, system, and time
    * with DETERMINISTIC offset pagination (stable ordering + total/page
@@ -405,11 +403,10 @@ export interface ItotoriModelLedgerRepositoryPort {
     projectId?: string,
   ): Promise<ProjectTelemetryTimeseries>;
   /**
-   * ITOTORI-230 — count provider runs per (modelId, providerId) over
-   * the window, split by whether the captured routing posture has
-   * `zdr = true`. Used by `apps/itotori/src/telemetry/queries.ts
-   * countZdrEnforcedCallsByPair` to surface the ZDR-enforcement axis
-   * the 2026-06-25 wiring audit asked for.
+   * Count provider runs per (modelId, providerId) over the window, split
+   * by whether the captured routing posture has `zdr = true`. Used by
+   * `apps/itotori/src/telemetry/queries.ts countZdrEnforcedCallsByPair`
+   * to surface the ZDR-enforcement axis.
    */
   countZdrEnforcedByPair(
     actor: AuthorizationActor,
@@ -688,12 +685,11 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
   }
 
   /**
-   * ITOTORI-230 — count provider runs grouped by
-   * (requested_model_id, provider_id), split by whether the captured
-   * routing posture has `zdr = true` on the wire. The filter is
-   * `routing_posture->>'zdr' = 'true'`; pre-migration sentinel rows
-   * (`{"_pre_itotori_230": true}`) do NOT match and are correctly
-   * excluded from the ZDR-enforced count.
+   * Count provider runs grouped by (requested_model_id, provider_id),
+   * split by whether the captured routing posture has `zdr = true` on
+   * the wire. The filter is `routing_posture->>'zdr' = 'true'`;
+   * pre-migration sentinel rows (`{"_pre_itotori_230": true}`) do NOT
+   * match and are correctly excluded from the ZDR-enforced count.
    */
   async countZdrEnforcedByPair(
     actor: AuthorizationActor,
@@ -761,15 +757,15 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
   private async getTranslationMemoryReuseCostReport(
     projectId: string,
   ): Promise<TranslationMemoryReuseCostReport> {
-    // ITOTORI-146 — defensive aggregation. The repository API only writes
-    // well-formed `cost_impact` JSON, but raw SQL backfills / historical rows
-    // can carry non-object JSON, missing keys, or non-numeric / non-boolean
+    // Defensive aggregation. The repository API only writes well-formed
+    // `cost_impact` JSON, but raw SQL backfills / historical rows can
+    // carry non-object JSON, missing keys, or non-numeric / non-boolean
     // values. Casting a non-numeric text to int aborts the WHOLE query
-    // (`invalid input syntax for type integer`), which makes the project cost
-    // report unavailable. We classify each row in a CTE and conditionally
-    // sum / cast only the well-formed rows; malformed rows are counted in
-    // `malformed_cost_impact_count` and exposed via a diagnostic so the
-    // report REMAINS AVAILABLE.
+    // (`invalid input syntax for type integer`), which makes the project
+    // cost report unavailable. We classify each row in a CTE and
+    // conditionally sum / cast only the well-formed rows; malformed rows
+    // are counted in `malformed_cost_impact_count` and exposed via a
+    // diagnostic so the report REMAINS AVAILABLE.
     const totalsResult = await this.db.execute(sql`
       with project_events as (
         select
@@ -1186,10 +1182,10 @@ function assertProviderRunLedgerInput(input: ProviderRunLedgerInput): void {
 }
 
 function amountForCost(cost: ProviderRunLedgerInput["cost"]): number {
-  // ITOTORI-225 — costKind is `'billed' | 'zero'` and amountMicrosUsd is
-  // required. Zero rows must carry exactly 0; billed rows must carry a
-  // non-negative finite number. The migration's CHECK constraint enforces
-  // the same shape at the storage layer.
+  // costKind is `'billed' | 'zero'` and amountMicrosUsd is required.
+  // Zero rows must carry exactly 0; billed rows must carry a non-negative
+  // finite number. The migration's CHECK constraint enforces the same
+  // shape at the storage layer.
   if (!Number.isFinite(cost.amountMicrosUsd) || cost.amountMicrosUsd < 0) {
     throw new Error("amountMicrosUsd must be a non-negative finite number");
   }
@@ -1329,14 +1325,14 @@ function clampDrilldownOffset(offset: number | undefined): number {
 }
 
 /**
- * ITOTORI-053 — losslessly re-express integer micros-USD as a canonical
- * decimal-USD string (trailing-zero-trimmed): `2180 -> "0.00218"`,
- * `1500000 -> "1.5"`, `0 -> "0"`. This is the FAITHFUL decimal form of the
- * value the cost ledger actually stores (integer micros); it never adds
- * precision beyond the stored micros. Not a hardcoded literal — it is
- * computed from the ledger row. Surfaced as `displayAmountUsd` (NOT
- * `amountUsd`) on the drilldown row so it does not masquerade as the
- * authoritative full-precision `ProviderCost.amountUsd`.
+ * Losslessly re-express integer micros-USD as a canonical decimal-USD
+ * string (trailing-zero-trimmed): `2180 -> "0.00218"`, `1500000 -> "1.5"`,
+ * `0 -> "0"`. This is the FAITHFUL decimal form of the value the cost
+ * ledger actually stores (integer micros); it never adds precision beyond
+ * the stored micros. Not a hardcoded literal — it is computed from the
+ * ledger row. Surfaced as `displayAmountUsd` (NOT `amountUsd`) on the
+ * drilldown row so it does not masquerade as the authoritative
+ * full-precision `ProviderCost.amountUsd`.
  */
 function microsToDecimalUsd(micros: number): string {
   const whole = Math.trunc(micros / 1_000_000);
@@ -1347,15 +1343,15 @@ function microsToDecimalUsd(micros: number): string {
 }
 
 /**
- * ITOTORI-053 (codex-audit-followup, privacy HARD boundary) — the cost
- * drilldown surfaces adapter metadata that was recorded VERBATIM from the
- * provider adapter: the retired workflow persisted whatever the adapter captured,
- * and the OpenRouter adapter mirrors the raw `openrouter_metadata` response
- * fragment into `adapterMetadata.openrouterMetadata`. A KEY-ALLOWLIST — even
- * case-insensitive and applied at every depth — is NOT a privacy boundary: it
- * FILTERS an untrusted object, so (a) any raw scalar sitting under a generic
- * allowlisted key (`source`, `summary`) at ANY depth leaks, and (b) any raw
- * body reachable through an allowlisted wrapper leaks.
+ * Privacy HARD boundary for the cost drilldown: adapter metadata was
+ * recorded VERBATIM from the provider adapter — the retired workflow
+ * persisted whatever the adapter captured, and the OpenRouter adapter
+ * mirrors the raw `openrouter_metadata` response fragment into
+ * `adapterMetadata.openrouterMetadata`. A KEY-ALLOWLIST — even
+ * case-insensitive and applied at every depth — is NOT a privacy boundary:
+ * it FILTERS an untrusted object, so (a) any raw scalar sitting under a
+ * generic allowlisted key (`source`, `summary`) at ANY depth leaks, and
+ * (b) any raw body reachable through an allowlisted wrapper leaks.
  *
  * This sanitizer is default-deny BY CONSTRUCTION: it never filters the
  * untrusted object — it PROJECTS a fixed set of known-safe fields into a NEW
@@ -1524,12 +1520,12 @@ function projectOpenrouterMetadata(value: unknown): Record<string, unknown> | un
 }
 
 /**
- * ITOTORI-053 (codex-audit-followup) — build the drilldown adapter-metadata
- * view by PROJECTING known-safe fields into a NEW object (default-deny),
- * context-aware by parent. Nothing from the untrusted stored metadata is
- * passed through by key match: only the fields enumerated by the projectors
- * above can appear, so a raw provider body — under `openrouterMetadata`, under
- * a generic `source`/`summary`, or under any nested/renamed wrapper — can never
+ * Build the drilldown adapter-metadata view by PROJECTING known-safe
+ * fields into a NEW object (default-deny), context-aware by parent.
+ * Nothing from the untrusted stored metadata is passed through by key
+ * match: only the fields enumerated by the projectors above can appear,
+ * so a raw provider body — under `openrouterMetadata`, under a generic
+ * `source`/`summary`, or under any nested/renamed wrapper — can never
  * reach the drilldown surface.
  */
 export function sanitizeAdapterMetadata(value: unknown): LedgerJsonRecord {
@@ -1611,7 +1607,7 @@ function runFromRow(row: Record<string, unknown>): ProviderRunCostSummary {
     fallbackUsed: row.fallback_used === true,
     fallbackPlan: stringArray(row.fallback_plan),
     costKind: asCostKind(row.cost_kind),
-    // ITOTORI-225 — post-migration the column is always populated.
+    // Post-migration the column is always populated.
     amountMicrosUsd: Number(row.amount_micros_usd ?? 0),
     tokenCountSource: String(row.token_count_source),
     promptTokens: nullableNumber(row.prompt_tokens),
@@ -1630,11 +1626,11 @@ function timestampToIso(value: unknown): string {
 function translationMemoryReuseFromRow(
   row: Record<string, unknown>,
 ): TranslationMemoryReuseCostSummary {
-  // ITOTORI-146 — defensive read. `cost_impact` may be a malformed JSON
-  // value (non-object, missing keys, wrong scalar type) if the row was
-  // inserted OUTSIDE the repository API. We never let a wrong-type numeric
-  // (e.g. `"abc"`) leak through as NaN — instead we coerce defensively and
-  // mark the row so the caller can render a "malformed" hint instead of a
+  // Defensive read. `cost_impact` may be a malformed JSON value
+  // (non-object, missing keys, wrong scalar type) if the row was inserted
+  // OUTSIDE the repository API. We never let a wrong-type numeric (e.g.
+  // `"abc"`) leak through as NaN — instead we coerce defensively and mark
+  // the row so the caller can render a "malformed" hint instead of a
   // misleading zero. Missing keys are tolerated (coerced to zero / null),
   // matching the SQL-side well-formed predicate.
   const rawCostImpact = row.cost_impact;

@@ -12,10 +12,10 @@ import {
 import { styleGuideVersionStatusValues } from "../src/schema.js";
 
 /**
- * DB-less contract tests for ITOTORI-129: the PRIMARY style-guide approval event
- * payload must carry the complete approval boundary (approver id, locale branch
- * id, prior version id, approved version id, source-revision boundary) even when
- * there is no affected-work fanout.
+ * DB-less contract tests: the PRIMARY style-guide approval event payload must
+ * carry the complete approval boundary (approver id, locale branch id, prior
+ * version id, approved version id, source-revision boundary) even when there
+ * is no affected-work fanout.
  */
 
 const priorSourceRevision: SourceRevisionReference = {

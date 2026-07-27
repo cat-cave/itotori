@@ -1,4 +1,4 @@
-// ITOTORI-048 — typed job-name registry unit tests.
+// Typed job-name registry unit tests.
 //
 // Pure unit tests (no database): pin that the sole structural
 // context-correction redraft job maps to its typed payload and one handler

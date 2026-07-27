@@ -1,4 +1,4 @@
-// ITOTORI-140 — branch policy/glossary references schema-drift guard.
+// Branch policy/glossary references schema-drift guard.
 //
 // Migration 0022 enforces a set of constraints on
 // `itotori_branch_policy_glossary_references` that the repository layer

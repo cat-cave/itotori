@@ -852,8 +852,8 @@ async function listAffectedWorkByPriorStyleGuideVersionInTx(
     priorStyleGuideVersionId: string;
   },
 ): Promise<AffectedWorkBySurface> {
-  // Unknown-provenance invalidation policy (ITOTORI-130)
-  // ----------------------------------------------------
+  // Unknown-provenance invalidation policy
+  // --------------------------------------
   // A draft is affected when its provenance names the prior approved version
   // (`style_guide_version_id = prior`). But a draft can also carry non-null
   // target text with a NULL provenance -- a pre-provenance row (written before

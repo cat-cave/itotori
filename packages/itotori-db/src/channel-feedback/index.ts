@@ -1,4 +1,4 @@
-// ITOTORI-037 — Community-channel feedback importers.
+// Community-channel feedback importers.
 //
 // A channel importer maps an external community channel's native export into the
 // proven manual-feedback model (`ManualFeedbackImportInput`), preserving source

@@ -47,7 +47,7 @@ describe("ItotoriTranslationBatchRepository", () => {
           (ref) => ref.refKind === translationBatchContextRefKindValues.glossaryTerm,
         ),
       ).toBeDefined();
-      // ITOTORI-220 — the pinned provider half of the (modelId, providerId)
+      // The pinned provider half of the (modelId, providerId)
       // pair survives the save/load round-trip; it is the real provider, not
       // dropped and never the "unknown" sentinel.
       expect(first.providerId).toBe("fake-fixture");
