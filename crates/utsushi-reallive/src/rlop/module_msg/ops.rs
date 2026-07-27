@@ -149,7 +149,7 @@ impl MsgFontColorOp {
 impl RLOperation for MsgFontColorOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
         let value = match args.first() {
-            Some(ExprValue::Int(n)) => Some(*n as u32),
+            Some(ExprValue::Int(n) | ExprValue::IntReference { value: n, .. }) => Some(*n as u32),
             Some(ExprValue::Bytes(_)) => {
                 self.runtime
                     .record_warning(MsgRuntimeWarning::ArgShapeMismatch {
@@ -204,7 +204,7 @@ impl MsgTextWindowOp {
 impl RLOperation for MsgTextWindowOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
         let value = match args.first() {
-            Some(ExprValue::Int(n)) => Some(*n as u32),
+            Some(ExprValue::Int(n) | ExprValue::IntReference { value: n, .. }) => Some(*n as u32),
             Some(ExprValue::Bytes(_)) => {
                 self.runtime
                     .record_warning(MsgRuntimeWarning::ArgShapeMismatch {

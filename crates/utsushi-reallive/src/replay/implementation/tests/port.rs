@@ -148,7 +148,6 @@ fn observe_for_port_keeps_the_branch_stream_after_modelling_a_poll_loop() {
     // models the event and follows the scene through its text commands.
     // This is branch-following provenance, not catalogue fallback.
     let branch_lines = engine.branch_following_lines(1, &opts, HeadlessChoicePolicy::AlwaysFirst);
-
     let observation = engine.observe_for_port(1, &opts);
     assert_eq!(
         observation.play_order_source,

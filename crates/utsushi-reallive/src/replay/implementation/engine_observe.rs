@@ -246,11 +246,11 @@ impl ReplayEngine {
         let mut steps: u32 = 0;
         let mut first_cross_scene: Option<SceneId> = None;
         // A script can poll the input device in an ordinary backward-goto
-        // loop instead of yielding a long operation.  The interactive
-        // session parks at that proven loop; this unattended observation
-        // instead models the next event by suppressing its following
-        // pc-moving transfer. The fingerprint is full VM control state, so
-        // a repeated value proves the loop has no other deterministic exit.
+        // loop instead of yielding a long operation. The interactive session
+        // parks at that proven loop; this unattended observation instead
+        // models the next event by suppressing its following pc-moving
+        // transfer. The fingerprint is full VM control state, so a repeated
+        // value proves the loop has no other deterministic exit.
         let mut loop_states = std::collections::HashSet::new();
         // Once a repeated state proves a polling loop, suppress every
         // subsequent pc-moving transfer until its stack frame unwinds. A

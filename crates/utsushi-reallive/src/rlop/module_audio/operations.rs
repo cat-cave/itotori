@@ -19,7 +19,7 @@ impl RLOperation for BgmPlayOp {
             Some(ExprValue::Bytes(bytes)) => {
                 decode_shift_jis(bytes).map(|name| if name.is_empty() { None } else { Some(name) })
             }
-            Some(ExprValue::Int(_)) => {
+            Some(ExprValue::Int(_) | ExprValue::IntReference { .. }) => {
                 self.runtime
                     .record_warning(AudioRuntimeWarning::ArgShapeMismatch {
                         opcode_tag: BgmOpcode::Play.as_str(),
@@ -108,7 +108,7 @@ impl BgmFadeOutOp {
 impl RLOperation for BgmFadeOutOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
         let duration_ms = match args.first() {
-            Some(ExprValue::Int(n)) => *n,
+            Some(ExprValue::Int(n) | ExprValue::IntReference { value: n, .. }) => *n,
             Some(ExprValue::Bytes(_)) => {
                 self.runtime
                     .record_warning(AudioRuntimeWarning::ArgShapeMismatch {
@@ -146,7 +146,7 @@ impl RLOperation for BgmLoopOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
         let name = match args.first() {
             Some(ExprValue::Bytes(bytes)) => decode_shift_jis(bytes),
-            Some(ExprValue::Int(_)) => {
+            Some(ExprValue::Int(_) | ExprValue::IntReference { .. }) => {
                 self.runtime
                     .record_warning(AudioRuntimeWarning::ArgShapeMismatch {
                         opcode_tag: BgmOpcode::Loop.as_str(),
@@ -304,7 +304,7 @@ impl RLOperation for WavPlayOp {
     fn dispatch(&self, _vm: &mut Vm, args: &[ExprValue]) -> DispatchOutcome {
         let name = match args.first() {
             Some(ExprValue::Bytes(bytes)) => decode_shift_jis(bytes),
-            Some(ExprValue::Int(_)) => {
+            Some(ExprValue::Int(_) | ExprValue::IntReference { .. }) => {
                 self.runtime
                     .record_warning(AudioRuntimeWarning::ArgShapeMismatch {
                         opcode_tag: PcmOpcode::Play.as_str(),

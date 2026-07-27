@@ -889,9 +889,9 @@ impl Vm {
                 CommandArgShape::Expression => match parse_expression_with_warnings(&arg.bytes) {
                     Ok(parsed) => {
                         self.record_expression_warnings(&parsed.warnings);
-                        match self.eval_command_arg_node(&parsed.node) {
+                        match self.decode_command_expr_value(&parsed.node) {
                             Ok(value) => {
-                                values.push(ExprValue::Int(value));
+                                values.push(value);
                             }
                             Err(err) => {
                                 self.warnings.push(VmWarning::ExpressionFailure {
