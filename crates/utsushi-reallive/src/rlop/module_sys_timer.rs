@@ -38,7 +38,7 @@
 //! hide a store write, which is exactly the fog we refuse. They land with
 //! that bank when a path actually exercises them.
 
-use super::module_sys::SYS_MODULE_ID;
+use crate::rlop::module_sys::SYS_MODULE_ID;
 use super::{DispatchOutcome, ExprValue, RLOperation, RlopKey, RlopRegistry};
 use crate::vm::Vm;
 use std::sync::Arc;

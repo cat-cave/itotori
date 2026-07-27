@@ -50,23 +50,24 @@ use crate::vm::{SceneId, Vm};
 // live in [`longops`]. adds the string / memory
 // system-arithmetic families in [`module_str`], [`module_mem`], and
 // [`module_sys`].
+//
+// These are the CLOSED set of runtime-bearing families; each one is
+// hand-mounted because it threads a runtime handle the mount path also
+// returns to its caller. Self-contained opcode modules are NOT declared
+// here — they live in the append-only [`opcode_module_table`] so mounting
+// one touches exactly one line of one file.
 mod expr_value;
 pub mod longops;
 pub mod module_audio;
 pub mod module_ctrl;
-pub mod module_media_commands;
 pub mod module_mem;
 pub mod module_msg;
-pub mod module_msg_extra;
 pub mod module_obj;
 pub mod module_render;
 pub mod module_sel;
 pub mod module_str;
 pub mod module_sys;
-pub mod module_sys_config_commands;
-pub mod module_sys_display;
-pub mod module_sys_menu;
-pub mod module_sys_timer;
+pub mod opcode_module_table;
 mod selection_prompt;
 pub use expr_value::ExprValue;
 pub use longops::{

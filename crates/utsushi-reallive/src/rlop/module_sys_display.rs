@@ -19,9 +19,9 @@
 //!
 //! Each is registered across the RealLive compiler-version lattice
 //! `{0,1,2}` under `module_id=4`, matching how the arithmetic family in
-//! [`super::module_sys`] mounts.
+//! [`crate::rlop::module_sys`] mounts.
 
-use super::module_sys::SYS_MODULE_ID;
+use crate::rlop::module_sys::SYS_MODULE_ID;
 use super::{DispatchOutcome, ExprValue, RLOperation, RlopKey, RlopRegistry};
 use crate::vm::Vm;
 use std::sync::Arc;

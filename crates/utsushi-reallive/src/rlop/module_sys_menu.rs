@@ -30,7 +30,7 @@
 //! `Halt` lands at the natural content end — coverage and terminus are
 //! unchanged; only a ~5-step phantom tail is dropped.
 
-use super::module_sys::SYS_MODULE_ID;
+use crate::rlop::module_sys::SYS_MODULE_ID;
 use super::{DispatchOutcome, ExprValue, RLOperation, RlopKey, RlopRegistry};
 use crate::vm::Vm;
 use std::sync::Arc;
