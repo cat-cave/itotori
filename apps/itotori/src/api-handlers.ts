@@ -171,7 +171,6 @@ import {
   resolveProjectMutationScope,
 } from "./services/project-mutation-scope.js";
 import { configuredServicePort } from "./services/configured-port.js";
-import { AccountZdrAssertionError } from "./zdr-admission/account-zdr.js";
 import type { CatalogContextPanelReadModel } from "./catalog-context-panel.js";
 // The kept localize/draft, wiki write, and patch-play mutations route ONLY through
 // these thin new-pipeline handlers. Each has a clean transitive import closure (no
@@ -3347,9 +3346,6 @@ function draftProviderConfigurationResponse(
 }
 
 function draftProviderConfigurationRefusal(error: unknown): string | null {
-  if (error instanceof AccountZdrAssertionError) {
-    return error.message;
-  }
   // Substrate-missing refusals that surface as thrown errors (e.g. from a
   // partial inject) stay in-band for the draft route.
   if (

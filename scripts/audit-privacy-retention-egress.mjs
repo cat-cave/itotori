@@ -17,8 +17,6 @@ const manifestRequirements = [
   "RebuildCallWirePolicySchema",
   '"X-OpenRouter-Metadata"',
   '"X-OpenRouter-Cache"',
-  "OPENROUTER_ZDR_ACCOUNT_ASSERTED",
-  "OPENROUTER_ZDR_GUARDRAIL_ASSERTED",
   "operator-managed-envelope",
   'z.literal("content.read")',
   'z.literal("billing_unknown")',

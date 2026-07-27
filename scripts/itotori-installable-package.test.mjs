@@ -135,7 +135,6 @@ describe("itotori installable package — built bin", () => {
       const env = {
         ...process.env,
         OPENROUTER_API_KEY: "sk-or-dummy-installable-init-test-1111111111",
-        OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
         PATH: emptyPathDir,
       };
       delete env.DATABASE_URL;
@@ -254,7 +253,6 @@ describe("itotori installable package — npm pack + install (from the install, 
       const env = {
         ...process.env,
         OPENROUTER_API_KEY: "sk-or-dummy-installable-init-test-1111111111",
-        OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
         PATH: emptyPathDir,
       };
       delete env.DATABASE_URL;

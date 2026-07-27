@@ -27,8 +27,6 @@ import { LIVE_PROVIDER_SECRET_VARS } from "./live-provider-secret-vars.js";
  *
  *   - OPENROUTER_API_KEY               — the provider credential
  *     (the pinned LLM dispatch boundary)
- *   - OPENROUTER_ZDR_ACCOUNT_ASSERTED  — the account-wide ZDR posture gate
- *     (zdr-admission/account-zdr.ts `assertOpenRouterZdrAccount`)
  *   - OPENROUTER_ZDR_DOWNGRADE         — operator-level per-leaf ZDR downgrade
  *     (the active dispatch policy)
  *

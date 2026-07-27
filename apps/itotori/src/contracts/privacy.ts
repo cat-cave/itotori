@@ -42,8 +42,6 @@ export const PrivacyRetentionEgressContractSchema = z
     openRouter: z
       .object({
         exclusiveInferenceEgress: z.literal(true),
-        accountZdrAssertionEnv: z.literal("OPENROUTER_ZDR_ACCOUNT_ASSERTED"),
-        guardrailZdrAssertionEnv: z.literal("OPENROUTER_ZDR_GUARDRAIL_ASSERTED"),
         dashboardInputOutputLogging: z.literal(false),
         dataUseOptIn: z.literal(false),
       })
@@ -100,8 +98,6 @@ export const privacyRetentionEgressManifest = {
   schemaVersion: PRIVACY_RETENTION_EGRESS_CONTRACT_VERSION,
   openRouter: {
     exclusiveInferenceEgress: true,
-    accountZdrAssertionEnv: "OPENROUTER_ZDR_ACCOUNT_ASSERTED",
-    guardrailZdrAssertionEnv: "OPENROUTER_ZDR_GUARDRAIL_ASSERTED",
     dashboardInputOutputLogging: false,
     dataUseOptIn: false,
   },
@@ -140,21 +136,6 @@ export function assertPrivacyRetentionEgressContract(): PrivacyRetentionEgressCo
     throw new Error(`privacy/retention/egress contract is invalid: ${parsed.error.message}`);
   }
   return parsed.data;
-}
-
-export function assertRebuildLlmStartupPolicy(
-  env: Readonly<Record<string, string | undefined>>,
-): PrivacyRetentionEgressContract {
-  const contract = assertPrivacyRetentionEgressContract();
-  const requiredAssertions = [
-    contract.openRouter.accountZdrAssertionEnv,
-    contract.openRouter.guardrailZdrAssertionEnv,
-  ];
-  const missing = requiredAssertions.filter((name) => env[name] !== "1");
-  if (missing.length > 0) {
-    throw new Error(`rebuilt LLM requires operator assertions: ${missing.join(", ")}`);
-  }
-  return contract;
 }
 
 export function assertWebSearchEgress(input: {

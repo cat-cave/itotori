@@ -139,8 +139,6 @@ function recordedRuntime(responses: readonly Response[], captured: Captured[]): 
   return {
     env: {
       OPENROUTER_API_KEY: "test-key",
-      OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
-      OPENROUTER_ZDR_GUARDRAIL_ASSERTED: "1",
     },
     tools: [],
     contentAccess: { requireContentRead: async () => undefined },

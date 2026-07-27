@@ -3,9 +3,8 @@
 // The culminating beta 'ready for a non-developer user' gate: a guided setup
 // that walks a non-developer through:
 //   1. OpenRouter API key
-//   2. Account-wide Zero-Data-Retention (ZDR) posture assertion
-//   3. Database footprint (so the user does not hand-provision Postgres)
-//   4. Config file creation
+//   2. Database footprint (so the user does not hand-provision Postgres)
+//   3. Config file creation
 //
 // The config file is a `.env`-style file written to a standard location
 // (`~/.config/itotori/config.env` by default). The CLI's existing
@@ -18,10 +17,6 @@
 //     config file (mode 0600).
 //   - The config file path may appear in output; secret values never do.
 //   - Secret values are loaded only from env/file, never CLI flags or prompts.
-//   - The ZDR assertion (`OPENROUTER_ZDR_ACCOUNT_ASSERTED=1`) is written ONLY
-//     after the user explicitly confirms their OpenRouter account is
-//     ZDR-only — it is the operator's fail-closed acknowledgement, not an
-//     auto-set flag (mirrors zdr-admission/account-zdr.ts).
 
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -29,7 +24,6 @@ import { join } from "node:path";
 export const DEFAULT_CONFIG_DIR = join(homedir(), ".config", "itotori");
 export const DEFAULT_CONFIG_PATH = join(DEFAULT_CONFIG_DIR, "config.env");
 
-export const INIT_FLAG_ZDR_ASSERTED = "--zdr-asserted";
 export const INIT_FLAG_CONFIG = "--config";
 export const INIT_FLAG_NON_INTERACTIVE = "--non-interactive";
 export const INIT_FLAG_ALL = "--all";
@@ -52,7 +46,6 @@ export type InitCommandDeps = {
 };
 
 export type InitFlags = {
-  zdrAsserted: boolean;
   configPath: string;
   nonInteractive: boolean;
 };
@@ -63,8 +56,7 @@ export function parseInitFlags(args: string[]): InitFlags {
   }
   const nonInteractive = args.includes(INIT_FLAG_NON_INTERACTIVE);
   const configPath = optionalFlag(args, INIT_FLAG_CONFIG) ?? DEFAULT_CONFIG_PATH;
-  const zdrAsserted = args.includes(INIT_FLAG_ZDR_ASSERTED);
-  return { zdrAsserted, configPath, nonInteractive };
+  return { configPath, nonInteractive };
 }
 
 export async function runInitCommand(args: string[], deps: InitCommandDeps): Promise<void> {
@@ -73,9 +65,8 @@ export async function runInitCommand(args: string[], deps: InitCommandDeps): Pro
   deps.log("");
   deps.log("Welcome to itotori! This guided setup will configure:");
   deps.log("  1. Your OpenRouter API key");
-  deps.log("  2. Zero-Data-Retention (ZDR) posture");
-  deps.log("  3. Database footprint");
-  deps.log("  4. Config file");
+  deps.log("  2. Database footprint");
+  deps.log("  3. Config file");
   deps.log("");
 
   // ── Step 1: OpenRouter API key ──────────────────────────────────────────
@@ -88,18 +79,7 @@ export async function runInitCommand(args: string[], deps: InitCommandDeps): Pro
   }
   deps.log("");
 
-  // ── Step 2: ZDR posture ─────────────────────────────────────────────────
-  const zdrConfirmed = await resolveZdrConfirmation(flags, deps);
-  if (zdrConfirmed) {
-    deps.log("  [ok] ZDR posture asserted (OPENROUTER_ZDR_ACCOUNT_ASSERTED=1).");
-  } else {
-    deps.log("  [warning] ZDR not confirmed. Live runs will FAIL — the OpenRouter");
-    deps.log("           provider refuses to construct without ZDR assertion.");
-    deps.log("           Configure ZDR at https://openrouter.ai/settings then re-run init.");
-  }
-  deps.log("");
-
-  // ── Step 3: Database footprint ──────────────────────────────────────────
+  // ── Step 2: Database footprint ──────────────────────────────────────────
   const databaseUrl = await resolveDatabaseUrl(flags, deps);
   if (databaseUrl !== undefined) {
     deps.log("  [ok] DATABASE_URL captured (value hidden).");
@@ -110,10 +90,9 @@ export async function runInitCommand(args: string[], deps: InitCommandDeps): Pro
   }
   deps.log("");
 
-  // ── Step 4: Write config file ───────────────────────────────────────────
+  // ── Step 3: Write config file ───────────────────────────────────────────
   const configContents = buildConfigFileContents({
     apiKey,
-    zdrConfirmed,
     databaseUrl,
   });
 
@@ -152,11 +131,6 @@ export async function runInitCommand(args: string[], deps: InitCommandDeps): Pro
   deps.log("       extract -> structure-export -> wiki build -> localize -> patch -> validate");
   deps.log("       Run `itotori --help` for each command's required flags.");
   deps.log("");
-  if (!zdrConfirmed) {
-    deps.log("  WARNING: ZDR is not confirmed. Live runs will fail until you");
-    deps.log("  configure ZDR on your OpenRouter account and re-run `itotori init`.");
-    deps.log("");
-  }
   deps.log("Setup complete!");
 }
 
@@ -171,31 +145,6 @@ async function resolveApiKey(flags: InitFlags, deps: InitCommandDeps): Promise<s
   deps.log("  OpenRouter API keys are not accepted in prompts or CLI flags.");
   deps.log("  Set OPENROUTER_API_KEY or load it from an env file, then re-run init.");
   return undefined;
-}
-
-async function resolveZdrConfirmation(flags: InitFlags, deps: InitCommandDeps): Promise<boolean> {
-  if (flags.zdrAsserted) {
-    return true;
-  }
-  const fromEnv = deps.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED;
-  if (fromEnv === "1") {
-    return true;
-  }
-  if (flags.nonInteractive) {
-    return false;
-  }
-  deps.log("  itotori requires your OpenRouter account to be configured for");
-  deps.log("  Zero-Data-Retention (ZDR). This means no prompt/response data is");
-  deps.log("  retained by the provider.");
-  deps.log("");
-  deps.log("  To enable ZDR:");
-  deps.log("    1. Go to https://openrouter.ai/settings");
-  deps.log("    2. Enable 'Zero Data Retention' at the account level");
-  deps.log("");
-  const answer = await deps.prompt(
-    "  Confirm your OpenRouter account is configured ZDR-only (yes/no): ",
-  );
-  return answer.trim().toLowerCase() === "yes" || answer.trim().toLowerCase() === "y";
 }
 
 async function resolveDatabaseUrl(
@@ -237,7 +186,6 @@ async function resolveDatabaseUrl(
 
 export function buildConfigFileContents(input: {
   apiKey: string | undefined;
-  zdrConfirmed: boolean;
   databaseUrl: string | undefined;
 }): string {
   const lines: string[] = [
@@ -253,9 +201,6 @@ export function buildConfigFileContents(input: {
   ];
   if (input.apiKey !== undefined) {
     lines.push(`export OPENROUTER_API_KEY=${shellQuote(input.apiKey)}`);
-  }
-  if (input.zdrConfirmed) {
-    lines.push("export OPENROUTER_ZDR_ACCOUNT_ASSERTED=1");
   }
   if (input.databaseUrl !== undefined) {
     lines.push(`export DATABASE_URL=${shellQuote(input.databaseUrl)}`);

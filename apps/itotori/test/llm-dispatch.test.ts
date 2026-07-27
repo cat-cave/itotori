@@ -268,8 +268,6 @@ function runtime(
   return {
     env: {
       OPENROUTER_API_KEY: "test-key",
-      OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
-      OPENROUTER_ZDR_GUARDRAIL_ASSERTED: "1",
     },
     tools,
     contentAccess: { requireContentRead: async () => undefined },
@@ -424,7 +422,7 @@ describe("the rebuilt LLM dispatcher", () => {
     );
   });
 
-  it("fails before transport when the account and guardrail ZDR assertions are absent", async () => {
+  it("fails before transport when the OpenRouter API key is absent", async () => {
     const prompt = "Return a review verdict.";
     const captured: CapturedRequest[] = [];
     const configured = runtime(
@@ -434,7 +432,7 @@ describe("the rebuilt LLM dispatcher", () => {
     );
 
     await expect(dispatch(callSpec(prompt), { ...configured, env: {} })).rejects.toThrow(
-      /operator assertions/u,
+      /OPENROUTER_API_KEY/u,
     );
     expect(captured).toHaveLength(0);
   });
@@ -875,10 +873,7 @@ function faultAt(boundary: "in-flight" | "after-tool-result") {
   };
 }
 
-const liveEnabled =
-  Boolean(process.env.OPENROUTER_API_KEY) &&
-  process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED === "1" &&
-  process.env.OPENROUTER_ZDR_GUARDRAIL_ASSERTED === "1";
+const liveEnabled = Boolean(process.env.OPENROUTER_API_KEY);
 
 (liveEnabled ? it : it.skip)(
   "accepts a real structured response with an explicitly unknown served pair",

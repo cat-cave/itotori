@@ -39,15 +39,14 @@ sole host requirement is a Node runtime matching the `.node-version` pin (a
 ### Set up with `itotori init`
 
 ```sh
-itotori init                      # guided: OpenRouter key + ZDR + database + config
+itotori init                      # guided: OpenRouter key + database + config
 itotori db-migrate                # apply the DB schema migrations (needs DATABASE_URL)
 ```
 
 `itotori init` writes `~/.config/itotori/config.env` (mode `0600`) and walks you
-through the OpenRouter key, the account-wide ZDR assertion, and the database
-footprint. Your API key is never printed or logged. A live localization
-additionally requires the ZDR assertion `OPENROUTER_ZDR_ACCOUNT_ASSERTED=1`;
-see [security-and-limitations.md](security-and-limitations.md).
+through the OpenRouter key and the database footprint. Your API key is never
+printed or logged. Every live request carries the ZDR routing posture; see
+[security-and-limitations.md](security-and-limitations.md).
 
 ### Native runtime dependencies (not bundled)
 
@@ -151,5 +150,5 @@ Live localization runs need explicit corpus + credential environment and are
 **never** the default. Requirements, ZDR posture, and the copyright boundary are
 documented in [`security-and-limitations.md`](security-and-limitations.md). In
 short: a live `itotori localize --run-mode production` run requires a real corpus
-root, an exported `OPENROUTER_API_KEY`, and the account-wide ZDR assertion
-`OPENROUTER_ZDR_ACCOUNT_ASSERTED=1`; without them the command fails loudly.
+root and an exported `OPENROUTER_API_KEY`; every provider request carries the
+required ZDR routing posture.

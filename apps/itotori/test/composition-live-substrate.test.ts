@@ -114,8 +114,6 @@ function recordedDispatchRuntime(captured: Captured[], response: Response): Loca
     },
     env: {
       OPENROUTER_API_KEY: "test-key",
-      OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
-      OPENROUTER_ZDR_GUARDRAIL_ASSERTED: "1",
     },
     fetcher: async (input, init) => {
       const request = new Request(input, init);

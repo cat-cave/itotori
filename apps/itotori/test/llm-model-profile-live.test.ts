@@ -33,8 +33,6 @@ import {
 const liveEnabled =
   process.env.ITOTORI_LIVE_MODEL_PROFILE === "1" &&
   Boolean(process.env.OPENROUTER_API_KEY) &&
-  process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED === "1" &&
-  process.env.OPENROUTER_ZDR_GUARDRAIL_ASSERTED === "1" &&
   Boolean(process.env.DATABASE_URL);
 
 (liveEnabled ? it : it.skip)(

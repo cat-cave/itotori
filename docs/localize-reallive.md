@@ -127,11 +127,8 @@ Resolution order for the Rust bins (first hit wins): `ITOTORI_KAIFUU_BIN` /
 
 - **Postgres** — `DATABASE_URL` (or `docker-compose.yml` via `just db-up`), then
   `itotori db-migrate`.
-- **OpenRouter key + ZDR** — `OPENROUTER_API_KEY` **and**
-  `OPENROUTER_ZDR_ACCOUNT_ASSERTED=1`. The live path calls
-  `assertOpenRouterZdrAccount(process.env)` **before any game byte leaves the
-  process** (wired through the composition-root localize entrypoint in
-  `apps/itotori/src/composition/localize-entrypoint.ts`), and the OpenRouter
+- **OpenRouter key + ZDR** — `OPENROUTER_API_KEY`. Every live request carries
+  the strict ZDR routing posture before transport construction, and the
   provider throws `OpenRouterMissingApiKeyError` at construction if the key is
   absent. There is **no** silent fallback to a fake/recorded provider —
   `FakeModelProvider` is deliberately purged from the providers barrel. If you
@@ -268,7 +265,6 @@ operator must provide the live-provider and run-configuration environment:
 
 ```sh
 export OPENROUTER_API_KEY=<OpenRouter-key>
-export OPENROUTER_ZDR_ACCOUNT_ASSERTED=1
 export ITOTORI_TARGET_LOCALE=<target-locale>
 export ITOTORI_DRAFT_SCHEMA_HASH='sha256:<draft-schema-revision>'
 export ITOTORI_DECODE_REVISION_HASH='sha256:<decode-revision>'

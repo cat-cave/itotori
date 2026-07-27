@@ -26,15 +26,11 @@ Real game bytes are never copied into the repo or mutated in place.
 - Provider credentials live only in git-ignored `.env*` files. Repo tooling must
   not read, print, expose, or commit them (`.gitignore` enforces `.env` /
   `.env.*` with `.env.example` exceptions).
-- Privacy relies on **OpenRouter account-wide Zero-Data-Retention**. A live run
-  is fail-closed: the `OpenRouterModelProvider` constructor requires
-  `OPENROUTER_ZDR_ACCOUNT_ASSERTED=1`, and live dispatch requires an explicit exported
-  `OPENROUTER_API_KEY`. Without both, the live command fails loudly. Every
-  model invocation declares an explicit `(modelId, providerId)` pair — no
-  defaulting.
-- ZDR is an **account-wide OpenRouter setting**, not something Itotori can
-  enforce provider-side; the assertion env var is the operator's fail-closed
-  acknowledgement, and recorded default runs make no network calls at all.
+- Privacy relies on a per-request OpenRouter routing posture: every live call
+  carries `zdr: true` and `data_collection: "deny"`, validated by the strict
+  provider-policy contract before transport construction. Live dispatch also
+  requires an explicit exported `OPENROUTER_API_KEY`; recorded default runs make
+  no network calls at all.
 
 ### No shell-outs to foreign tools in the shipped pipeline
 
