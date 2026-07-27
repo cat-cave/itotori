@@ -219,10 +219,10 @@ describe("runKaifuuExtract (invocation shape mirrors run.mjs Phase 1)", () => {
         env: {},
         runProcess: () => ({ status: 0, stdout: "", stderr: "" }),
       }),
-    ).toThrow(/mutually exclusive/u);
+    ).toThrow(/choose exactly one scope: --scene, --scenes, --unit-range, or --whole-seen/u);
   });
 
-  it("refuses when neither --scene nor --whole-seen is given", () => {
+  it("refuses when no supported run scope is given", () => {
     expect(() =>
       runKaifuuExtract({
         ...IDENTITY,
@@ -231,7 +231,7 @@ describe("runKaifuuExtract (invocation shape mirrors run.mjs Phase 1)", () => {
         env: {},
         runProcess: () => ({ status: 0, stdout: "", stderr: "" }),
       }),
-    ).toThrow(/--scene .* or --whole-seen/u);
+    ).toThrow(/choose exactly one scope: --scene, --scenes, --unit-range, or --whole-seen/u);
   });
 
   it("refuses an out-of-range scene id", () => {

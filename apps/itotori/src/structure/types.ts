@@ -144,6 +144,16 @@ export type NarrativeCoverage = {
   complete: true;
 };
 
+/** Declared source coverage. A consumer must not treat a non-whole scope as a
+ * complete archive merely because its selected units join successfully. */
+export type NarrativeSourceScope = {
+  kind: "whole_archive" | "scene_set" | "unit_range";
+  sourceArchiveHash: string;
+  sceneIds: number[];
+  unitRange: { start: number; endExclusive: number } | null;
+  unitCount: number;
+};
+
 export type NarrativeStructure = {
   schemaVersion: NarrativeStructureVersion;
   /** Registered provider id that produced this common graph. */
@@ -155,6 +165,7 @@ export type NarrativeStructure = {
   engineEvidence?: NarrativeEngineEvidence | undefined;
   bridgeId?: string | undefined;
   sourceBundleHash?: string | undefined;
+  sourceScope?: NarrativeSourceScope | undefined;
   coverage?: NarrativeCoverage | undefined;
   routes?: NarrativeRoute[] | undefined;
   edges?: NarrativeEdge[] | undefined;

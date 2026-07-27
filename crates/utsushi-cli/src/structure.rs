@@ -149,31 +149,50 @@ fn build_reallive_structure(input: StructureCommandInput) -> Result<Value, Box<d
     }
 
     let engine = staged.engine.with_namae_resolver(resolver);
-    let entry_scene = u16::try_from(entry_scene.unwrap_or(seen_start))
-        .map_err(|err| format!("entry scene is outside the RealLive scene range: {err}"))?;
-    let structure = match bridge_path {
-        Some(path) => {
-            let bridge = BridgeIndex::load(path, &seen_bytes)?;
-            if bridge.asset_scene_ids != archive_scene_ids {
-                return Err(format!(
-                    "bridge asset coverage differs from archive: archive={} bridge={}",
-                    archive_scene_ids.len(),
-                    bridge.asset_scene_ids.len()
-                )
-                .into());
-            }
-            expanded::build(ExpandedInput {
-                engine,
-                decoded_scenes: &staged.scenes,
-                loaded_scene_count: staged.store_stats.loaded,
-                archive_scene_ids: &archive_scene_ids,
-                bridge: &bridge,
-                entry: entry_scene,
-            })
-            .map_err(|error| -> Box<dyn Error> { error.into() })
+    let structure = if let Some(path) = bridge_path {
+        let bridge = BridgeIndex::load(path, &seen_bytes)?;
+        if !bridge.asset_scene_ids.is_subset(&archive_scene_ids) {
+            return Err(format!(
+                "bridge scope names scenes outside archive: archive={} bridge={}",
+                archive_scene_ids.len(),
+                bridge.asset_scene_ids.len()
+            )
+            .into());
         }
-        None => legacy::build(&engine, &staged.scenes, entry_scene)
-            .map_err(|error| -> Box<dyn Error> { error.into() }),
+        let selected_scene_ids = &bridge.asset_scene_ids;
+        let entry_scene = entry_scene.unwrap_or_else(|| {
+            if bridge.source_scope["kind"] == "whole_archive" {
+                seen_start
+            } else {
+                u32::from(
+                    *selected_scene_ids
+                        .first()
+                        .expect("scoped bridge has an asset"),
+                )
+            }
+        });
+        let entry_scene = u16::try_from(entry_scene)
+            .map_err(|err| format!("entry scene is outside the RealLive scene range: {err}"))?;
+        let selected_scenes = staged
+            .scenes
+            .iter()
+            .filter(|scene| selected_scene_ids.contains(&scene.scene_id))
+            .cloned()
+            .collect::<Vec<_>>();
+        expanded::build(ExpandedInput {
+            engine,
+            decoded_scenes: &selected_scenes,
+            loaded_scene_count: selected_scenes.len(),
+            archive_scene_ids: selected_scene_ids,
+            bridge: &bridge,
+            entry: entry_scene,
+        })
+        .map_err(|error| -> Box<dyn Error> { error.into() })
+    } else {
+        let entry_scene = u16::try_from(entry_scene.unwrap_or(seen_start))
+            .map_err(|err| format!("entry scene is outside the RealLive scene range: {err}"))?;
+        legacy::build(&engine, &staged.scenes, entry_scene)
+            .map_err(|error| -> Box<dyn Error> { error.into() })
     }?;
     reallive_extension::common_structure(structure).map_err(Into::into)
 }

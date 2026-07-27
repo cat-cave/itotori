@@ -1,5 +1,27 @@
 use super::*;
 
+/// Declared coverage of a bridge produced from a RealLive `Seen.txt` archive.
+///
+/// A scope is part of the artifact identity: a partial bridge never reuses the
+/// whole-archive hash, and consumers can reject it when whole coverage is
+/// required.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArchiveScope {
+    WholeArchive,
+    SceneSet,
+    UnitRange { start: usize, end_exclusive: usize },
+}
+
+impl ArchiveScope {
+    pub(crate) fn kind(&self) -> &'static str {
+        match self {
+            Self::WholeArchive => "whole_archive",
+            Self::SceneSet => "scene_set",
+            Self::UnitRange { .. } => "unit_range",
+        }
+    }
+}
+
 /// Caller-supplied knobs for [`produce_bundle`].
 /// All fields are required; there are no silent defaults that would
 /// hide a mis-specified call site.
@@ -74,6 +96,16 @@ pub enum BridgeProduceError {
         "kaifuu.reallive.bridge.whole_seen_no_text_units: decoded {scene_count} scene(s) but found no Textout/TextDisplay/Choice units"
     )]
     WholeSeenNoTextUnits { scene_count: usize },
+    /// A requested global unit interval does not select a non-empty subset of
+    /// the decoded bridge units.
+    #[error(
+        "kaifuu.reallive.bridge.unit_range_invalid: requested {start}..{end_exclusive} over {available} units"
+    )]
+    UnitRangeInvalid {
+        start: usize,
+        end_exclusive: usize,
+        available: usize,
+    },
     /// Wrapped bytecode parse error.
     #[error("kaifuu.reallive.bridge.bytecode_parse: {0}")]
     BytecodeParse(#[from] RealLiveParseError),

@@ -59,7 +59,7 @@ const RLDEV_FONT_TONE_TAGS: &[&str] = &["#FONT_BIG", "#FONT_SMALL", "#COLOR"];
 
 #[path = "bridge/api.rs"]
 mod api;
-pub use api::{BridgeOpts, BridgeProduceError, BridgeSceneInput, ProducedBundle};
+pub use api::{ArchiveScope, BridgeOpts, BridgeProduceError, BridgeSceneInput, ProducedBundle};
 
 #[path = "bridge/collect.rs"]
 mod collect;
@@ -74,9 +74,11 @@ use metadata::{
 
 #[path = "bridge/json.rs"]
 mod json_builder;
+#[path = "bridge/scope_identity.rs"]
+mod scope_identity;
 #[cfg(test)]
 use json_builder::build_unit_json;
-use json_builder::{build_bundle_json, build_whole_seen_bundle_json};
+use json_builder::{build_bundle_json, build_scoped_seen_bundle_json};
 
 /// Walk a scene's decompressed bytecode into a v0.2 BridgeBundle.
 /// `scene_id` is the 1-based scene index (matches the SEEN.TXT slot
@@ -130,6 +132,25 @@ pub fn produce_whole_seen_bundle(
     gameexe_inventory: &GameexeInventoryReport,
     opts: &BridgeOpts<'_>,
 ) -> Result<ProducedBundle, BridgeProduceError> {
+    produce_scoped_seen_bundle(
+        seen_bytes,
+        scenes,
+        ArchiveScope::WholeArchive,
+        gameexe_inventory,
+        opts,
+    )
+}
+
+/// Produce one bridge over an explicitly selected subset of a `Seen.txt`
+/// archive. The caller supplies only selected scenes for a scene-set scope;
+/// a unit range is applied after the deterministic archive-order unit walk.
+pub fn produce_scoped_seen_bundle(
+    seen_bytes: &[u8],
+    scenes: &[BridgeSceneInput<'_>],
+    scope: ArchiveScope,
+    gameexe_inventory: &GameexeInventoryReport,
+    opts: &BridgeOpts<'_>,
+) -> Result<ProducedBundle, BridgeProduceError> {
     let mut scene_outputs = Vec::new();
     let mut total_units = 0usize;
     for scene in scenes {
@@ -171,7 +192,36 @@ pub fn produce_whole_seen_bundle(
             scene_count: scenes.len(),
         });
     }
-    let json = build_whole_seen_bundle_json(seen_bytes, &scene_outputs, opts)?;
+    if let ArchiveScope::UnitRange {
+        start,
+        end_exclusive,
+    } = scope
+    {
+        if start >= end_exclusive || end_exclusive > total_units {
+            return Err(BridgeProduceError::UnitRangeInvalid {
+                start,
+                end_exclusive,
+                available: total_units,
+            });
+        }
+        let mut cursor = 0usize;
+        for scene in &mut scene_outputs {
+            let scene_start = cursor;
+            cursor += scene.units.len();
+            scene.units = scene
+                .units
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| {
+                    let global = scene_start + index;
+                    global >= start && global < end_exclusive
+                })
+                .map(|(_, unit)| unit.clone())
+                .collect();
+        }
+        scene_outputs.retain(|scene| !scene.units.is_empty());
+    }
+    let json = build_scoped_seen_bundle_json(seen_bytes, &scene_outputs, &scope, opts)?;
     let bundle = BridgeBundleV02::validate_json(&json)?;
     Ok(ProducedBundle { bundle, json })
 }

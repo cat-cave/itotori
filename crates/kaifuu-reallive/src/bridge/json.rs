@@ -114,16 +114,27 @@ pub(super) fn build_bundle_json(
     }))
 }
 
-pub(super) fn build_whole_seen_bundle_json(
+pub(super) fn build_scoped_seen_bundle_json(
     seen_bytes: &[u8],
     scenes: &[SceneBundleParts<'_>],
+    scope: &ArchiveScope,
     opts: &BridgeOpts<'_>,
 ) -> Result<Value, BridgeProduceError> {
-    let bundle_namespace = format!(
-        "reallive-bridge:game-id={}:source-profile-id={}:whole-seen",
-        opts.game_id, opts.source_profile_id
-    );
+    let scene_ids = scenes
+        .iter()
+        .map(|scene| scene.scene_id)
+        .collect::<Vec<_>>();
+    let unit_count = scenes.iter().map(|scene| scene.units.len()).sum::<usize>();
     let seen_hash = sha256_canonical(seen_bytes);
+    let source_bundle_hash =
+        scope_identity::scoped_bundle_hash(&seen_hash, scope, &scene_ids, unit_count);
+    let bundle_namespace = format!(
+        "reallive-bridge:game-id={}:source-profile-id={}:{}:{}",
+        opts.game_id,
+        opts.source_profile_id,
+        scope.kind(),
+        source_bundle_hash
+    );
     let bridge_id = deterministic_uuid7(&bundle_namespace, "bundle");
     let seen_revision_id = deterministic_uuid7(&bundle_namespace, "seen-revision");
     let source_profile_revision_id =
@@ -182,12 +193,13 @@ pub(super) fn build_whole_seen_bundle_json(
                 "value": source_profile_hash,
             },
         },
-        "sourceBundleHash": seen_hash,
+        "sourceBundleHash": source_bundle_hash,
         "sourceBundleRevision": {
             "revisionId": seen_revision_id,
             "revisionKind": "content_hash",
-            "value": seen_hash,
+            "value": source_bundle_hash,
         },
+        "sourceScope": scope_identity::source_scope_json(scope, &seen_hash, &scene_ids, unit_count),
         "sourceLocale": opts.source_locale,
         "hashStrategy": {
             "sourceProfile": {
