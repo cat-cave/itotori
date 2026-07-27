@@ -50,7 +50,7 @@ import {
   structureProviderCapabilities,
   type StructureProviderResult,
 } from "./structure-export/structure-provider-registry.js";
-import { runNativeCli, type NativeCliRunner } from "./native-bin/cli-bin-resolver.js";
+import type { NativeCliRunner } from "./native-bin/cli-bin-resolver.js";
 import { applyEnginePatchback, detectPatchbackEngine } from "./patchback/index.js";
 import { buildHelpText } from "./help-text.js";
 import { runInitCommand, type InitCommandDeps } from "./init-command.js";

@@ -183,4 +183,3 @@ fn build_siglus_structure(input: StructureCommandInput) -> Result<Value, Box<dyn
     let gameexe_path = input.gameexe.as_deref().ok_or("missing --gameexe")?;
     utsushi_siglus::build_siglus_structure(scene_path, gameexe_path).map_err(Into::into)
 }
-}

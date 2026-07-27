@@ -147,6 +147,8 @@ describe("StructureProvider registry", () => {
   });
 
   it("rejects an unregistered provider", () => {
-    expect(() => resolveStructureProvider("unknown")).toThrow("not a registered structure provider");
+    expect(() => resolveStructureProvider("unknown")).toThrow(
+      "not a registered structure provider",
+    );
   });
 });
