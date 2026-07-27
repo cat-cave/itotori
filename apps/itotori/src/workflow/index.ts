@@ -62,4 +62,9 @@ export { joinFindings } from "./finding-join.js";
 export { implicatedRerun, type RerunScope } from "./rerun-scope.js";
 export { coherenceSchedule, missingStageUnits, type CoherenceSchedule } from "./durability.js";
 export { applyCorrections, type CorrectionRecord, type CorrectionSummary } from "./correction.js";
-export { finalizeUnit, finalizeUnits, type FinalizeBatchResult } from "./finalize.js";
+export {
+  FinalizeBatchError,
+  finalizeUnit,
+  finalizeUnits,
+  type FinalizeBatchResult,
+} from "./finalize.js";

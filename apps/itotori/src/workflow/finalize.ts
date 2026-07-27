@@ -40,6 +40,20 @@ export interface FinalizeBatchResult {
   readonly rejected: readonly { readonly unitId: string; readonly reason: string }[];
 }
 
+/** A batch with no accepted heads is not a partial-success result. Returning it
+ * normally lets the driver report a completed run that produced no localized
+ * output, which is operationally indistinguishable from success to callers. */
+export class FinalizeBatchError extends Error {
+  constructor(readonly rejected: readonly { readonly unitId: string; readonly reason: string }[]) {
+    super(
+      `accepted-output finalization rejected every unit: ${rejected
+        .map((entry) => `${entry.unitId}: ${entry.reason}`)
+        .join("; ")}`,
+    );
+    this.name = "FinalizeBatchError";
+  }
+}
+
 /**
  * Finalize a set of units independently. Each unit is finalized on its own head;
  * a failure on one is captured and reported without aborting the rest, so one
@@ -51,20 +65,30 @@ export async function finalizeUnits(
   units: readonly { readonly unitId: string; readonly contentHash: `sha256:${string}` }[],
 ): Promise<FinalizeBatchResult> {
   // The CAS key is per unit, so these writes have no coherence dependency.
-  // Let them overlap; `allSettled` keeps a rejected unit from coupling a sibling.
-  const settled = await Promise.allSettled(units.map((unit) => finalizeUnit(store, policy, unit)));
+  // Let them overlap while retaining each independent result.
+  const settled = await Promise.all(
+    units.map(async (unit) => {
+      try {
+        return { unit, finalized: await finalizeUnit(store, policy, unit) } as const;
+      } catch (error: unknown) {
+        return { unit, error } as const;
+      }
+    }),
+  );
   const finalized: FinalizedUnit[] = [];
   const rejected: { unitId: string; reason: string }[] = [];
-  settled.forEach((result, index) => {
-    const unit = units[index]!;
-    if (result.status === "fulfilled") {
-      finalized.push(result.value);
+  settled.forEach((result) => {
+    if ("finalized" in result) {
+      finalized.push(result.finalized);
       return;
     }
     rejected.push({
-      unitId: unit.unitId,
-      reason: result.reason instanceof Error ? result.reason.message : String(result.reason),
+      unitId: result.unit.unitId,
+      reason: result.error instanceof Error ? result.error.message : String(result.error),
     });
   });
+  if (units.length > 0 && finalized.length === 0) {
+    throw new FinalizeBatchError(rejected);
+  }
   return { finalized, rejected };
 }

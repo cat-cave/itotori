@@ -97,7 +97,7 @@ function createDraftPort(deps: WorkflowPortDeps): DraftPort {
           ? {}
           : { bibleBinding: bindingsByUnit.get(draft.unitId)! }),
       }));
-      return {
+      const drafted: DraftedScene = {
         sceneId: input.scene.sceneId,
         // P1 owns the measured-byte realization plan. Surface its actual
         // whole-scene/chunked result instead of treating the driver's cheap
@@ -106,6 +106,8 @@ function createDraftPort(deps: WorkflowPortDeps): DraftPort {
         batches: localized.batches,
         units,
       };
+      deps.draft.recordFinalizationData?.(localized);
+      return drafted;
     },
   };
 }

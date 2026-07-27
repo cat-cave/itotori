@@ -4,7 +4,7 @@ import { assertQueueHealthReadModel } from "../src/api-schema.js";
 import { runItotoriCliCommand, type ItotoriCliServices } from "../src/cli-handlers.js";
 import type { QueueHealthCliPort } from "../src/queue/cli.js";
 import {
-  unavailableServiceSurface,
+  retiredServiceSurface,
   type ItotoriApplicationServices,
 } from "../src/services/database-services.js";
 
@@ -70,8 +70,8 @@ function servicesFixture(port: QueueHealthCliPort | undefined = undefined): Itot
   return stub as ItotoriCliServices;
 }
 
-function unavailableAfterCutoverSurface(): ItotoriCliServices {
-  return unavailableServiceSurface({
+function retiredSurface(): ItotoriCliServices {
+  return retiredServiceSurface({
     projectWorkflow: {} as ItotoriApplicationServices["projectWorkflow"],
     wikiObjectApi: {} as ItotoriApplicationServices["wikiObjectApi"],
     wikiBuild: {} as ItotoriApplicationServices["wikiBuild"],
@@ -137,12 +137,12 @@ describe("queue-health CLI handler", () => {
     ).rejects.toThrow(/queue-health service is not configured/);
   });
 
-  it("refuses an unbound queueHealth port before the unavailable-after-cutover fallback runs", async () => {
-    const services = unavailableAfterCutoverSurface();
+  it("refuses an unbound queueHealth port before the retired-surface fallback runs", async () => {
+    const services = retiredSurface();
     expect(Reflect.has(services, "queueHealth")).toBe(false);
     expect(Reflect.has(services, "projectWorkflow")).toBe(true);
     expect(() => (services as unknown as { retiredPort(): void }).retiredPort()).toThrow(
-      /retiredPort is not available after the legacy cutover/,
+      /retired service port 'retiredPort' has no installed binding/,
     );
 
     await expect(
