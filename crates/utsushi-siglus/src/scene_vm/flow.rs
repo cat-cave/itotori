@@ -53,8 +53,7 @@ impl SceneVm<'_> {
             properties: Vec::new(),
             scene_entry: true,
         });
-        self.scene_id = target.scene_id;
-        self.pc = target.pc;
+        self.enter_scene(target.scene_id, target.pc);
         Ok(())
     }
 

@@ -28,8 +28,7 @@ impl SceneVm<'_> {
                     function_id: index,
                 })?;
             self.call(args, ret_form);
-            self.scene_id = target.scene_id;
-            self.pc = target.pc;
+            self.enter_scene(target.scene_id, target.pc);
             return Ok(());
         }
         let Value::System(function_id) = target else {
