@@ -206,6 +206,12 @@ describe("gateway entrypoints", () => {
         "gateway-run",
         "--locale-branch-id",
         "gateway-branch",
+        "--target-locale",
+        "en-US",
+        "--source-root",
+        "/fixture/gateway/source",
+        "--build-root",
+        "/fixture/gateway/build",
         "--lease-owner-id",
         "gateway-driver",
         "--structure",
@@ -349,6 +355,7 @@ function commandRunWorkflow() {
     leaseExpiresAt: new Date("2026-07-21T00:00:00.000Z"),
   };
   return {
+    ensureRunProjectScope: vi.fn(),
     createRun: vi.fn(),
     acquireLease: vi.fn().mockResolvedValue(lease),
     renewLease: vi.fn().mockResolvedValue(lease),

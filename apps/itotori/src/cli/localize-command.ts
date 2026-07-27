@@ -23,6 +23,7 @@ import {
 import { projectDecodeStructure } from "../composition/live/scene-projection.js";
 import { withPhysicalAttemptCostObserver } from "../llm/physical-attempt-cost-context.js";
 import { LocalizeRunTracker } from "./localize-run-tracker.js";
+import { localizeProjectScope } from "./localize-project-scope.js";
 import { assertBridgeBundleV02, type BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import {
   FULL_ROSTER,
@@ -53,6 +54,7 @@ export interface LocalizeCommandDeps {
   readonly projectWorkflow: Pick<
     ItotoriProjectWorkflowPort,
     | "createRun"
+    | "ensureRunProjectScope"
     | "acquireLease"
     | "renewLease"
     | "releaseLease"
@@ -110,6 +112,9 @@ export function parseLocalizeRunRequest(args: readonly string[]): RunPolicyReque
  *   --project-id <ID>                      durable project identity
  *   --run-id <ID>                          durable localization-run identity
  *   --locale-branch-id <ID>                target locale branch identity
+ *   --target-locale <BCP-47>                locale written to that branch
+ *   --source-root <PATH>                    read-only extracted game root
+ *   --build-root <PATH>                     owned patch build root
  *   --structure <PATH>                     decoded narrative-structure JSON (the
  *                                          decode→scene projection input)
  *   --bridge <PATH>                        matching BridgeBundle v0.2
@@ -145,7 +150,9 @@ export async function runLocalizeCommand(
     localeBranchId: requiredFlag(args, "--locale-branch-id"),
     leaseOwnerId: optionalFlag(args, "--lease-owner-id") ?? `localize:${runId}`,
   };
-
+  await deps.projectWorkflow.ensureRunProjectScope(
+    localizeProjectScope(args, { bridge, structureJson, ...projectRun }),
+  );
   let wholeSceneMaxUnits: number | undefined;
   const wholeSceneMaxUnitsRaw = optionalFlag(args, "--whole-scene-max-units");
   if (wholeSceneMaxUnitsRaw !== undefined) {

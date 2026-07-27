@@ -7,6 +7,9 @@ export type LocalizePortfolioRunSpec = {
   readonly projectId: string;
   readonly runId: string;
   readonly localeBranchId: string;
+  readonly targetLocale: string;
+  readonly sourceRoot: string;
+  readonly buildRoot: string;
   readonly runMode: string;
   readonly outputScope?: string;
   readonly output?: string;
@@ -117,6 +120,9 @@ function parseRunSpec(value: unknown, index: number): LocalizePortfolioRunSpec {
     projectId: text(input.projectId, f("projectId")),
     runId: text(input.runId, f("runId")),
     localeBranchId: text(input.localeBranchId, f("localeBranchId")),
+    targetLocale: text(input.targetLocale, f("targetLocale")),
+    sourceRoot: text(input.sourceRoot, f("sourceRoot")),
+    buildRoot: text(input.buildRoot, f("buildRoot")),
     runMode: text(input.runMode, f("runMode")),
     costCapMicrosUsd:
       input.costCapMicrosUsd === null
@@ -163,6 +169,12 @@ function buildArgv(run: LocalizePortfolioRunSpec): string[] {
     run.runId,
     "--locale-branch-id",
     run.localeBranchId,
+    "--target-locale",
+    run.targetLocale,
+    "--source-root",
+    run.sourceRoot,
+    "--build-root",
+    run.buildRoot,
     "--run-mode",
     run.runMode,
   ];

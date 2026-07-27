@@ -63,6 +63,7 @@ run the localizer with an explicit run mode:
 
 ```sh
 itotori localize \
+  --project-id <project-id> --run-id <run-id> --locale-branch-id <locale-branch-id> --target-locale <locale> --source-root <game-root> --build-root <build-root> \
   --run-mode test-dev \
   --structure <run-dir>/structure.json \
   --bridge <run-dir>/bridge.json \
