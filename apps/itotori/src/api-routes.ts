@@ -508,6 +508,15 @@ export const ITOTORI_API_ROUTES: Readonly<Record<ItotoriApiRouteId, ItotoriApiRo
     requestSchema: "ApiPlayFlagAnnotationRequest",
     responseSchema: "ApiPlayFlagAnnotationResponse",
   },
+  // Unit-bound feedback retrieval — same ledger the flag composer writes.
+  "play.unitFeedback": {
+    method: "GET",
+    pathTemplate: "/api/projects/{projectId}/locale-branches/{localeBranchId}/unit-feedback",
+    operationId: "playUnitFeedback",
+    summary: "List durable unit-bound feedback notes for one bridge unit.",
+    pathParams: ["projectId", "localeBranchId"],
+    responseSchema: "ApiPlayUnitFeedbackResponse",
+  },
   // p0-result-revision — a target-only play-tester edit creates a selected,
   // delivered child patch revision. The parent patch is path-scoped so the
   // body cannot fabricate patch identity, actor identity, or artifact paths.

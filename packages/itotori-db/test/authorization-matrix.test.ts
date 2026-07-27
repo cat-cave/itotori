@@ -142,6 +142,17 @@ const repositoryPermissionGateMatrix = [
         "feedback-evidence-denied",
       ),
   ),
+  feedbackGate(
+    "listUnitBoundFeedback",
+    "feedbackImport",
+    "repository.test.ts unit-bound feedback coverage",
+    (repo) =>
+      repo.listUnitBoundFeedback(deniedActor, {
+        projectId: "project-denied",
+        localeBranchId: "locale-branch-denied",
+        bridgeUnitId: "bridge-unit-denied",
+      }),
+  ),
   modelLedgerGate(
     "recordProviderRun",
     "runtimeIngest",
@@ -1057,6 +1068,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriFeedbackRepository.loadManualFeedbackCorrectionContext",
           "requiredPermission": "feedback.import",
           "successFixture": "repository.test.ts manual feedback correction context coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriFeedbackRepository.listUnitBoundFeedback",
+          "requiredPermission": "feedback.import",
+          "successFixture": "repository.test.ts unit-bound feedback coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

@@ -48,6 +48,7 @@ import type {
   ApiPlayRouteMapResponse,
   ApiPlayFlagAnnotationRequest,
   ApiPlayFlagAnnotationResponse,
+  ApiPlayUnitFeedbackResponse,
   ApiPlayTargetEditRequest,
   ApiPlayTargetEditResponse,
   ApiPlayDeliveryResponse,
@@ -358,6 +359,11 @@ interface ItotoriApiRouteTypeMap {
     pathParams: { projectId: string; localeBranchId: string };
     request: ApiPlayFlagAnnotationRequest;
   };
+  "play.unitFeedback": {
+    response: ApiPlayUnitFeedbackResponse;
+    pathParams: { projectId: string; localeBranchId: string };
+    collectionKey: "notes";
+  };
   "play.targetEdit": {
     response: ApiPlayTargetEditResponse;
     pathParams: { parentPatchVersionId: string };
@@ -517,6 +523,7 @@ const ITOTORI_API_COLLECTION_KEYS: Readonly<Partial<Record<ItotoriApiRouteId, st
   "auth.permissionSets.list": "permissionSets",
   "auth.sessions.list": "sessions",
   "play.routeMap": "nodes",
+  "play.unitFeedback": "notes",
   "play.delivery": "units",
   "patchIteration.versions": "versions",
 };

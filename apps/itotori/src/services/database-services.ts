@@ -2,6 +2,7 @@ import {
   bootstrapLocalUser,
   databaseUrlFromEnv,
   ItotoriConformanceRepository,
+  ItotoriFeedbackRepository,
   ItotoriLlmHumanInputRepository,
   ItotoriLlmCallMemoRepository,
   ItotoriLlmSnapshotRepository,
@@ -41,6 +42,7 @@ import {
   bindPatchbackProduceService,
   PatchbackProduceService,
 } from "../play/patchback-produce-service.js";
+import { createRepositoryUnitFeedbackPort } from "../play/unit-feedback-adapter.js";
 import { buildContextSnapshotInput, buildFactSnapshot } from "../prepass/index.js";
 import {
   parseNarrativeStructure,
@@ -95,6 +97,10 @@ export async function withDatabaseItotoriServices<T>(
     const memoStore = new ItotoriLlmCallMemoRepository(pool, cipher, contentAccess);
     const snapshotRepository = new ItotoriLlmSnapshotRepository(pool);
     const engineFamilyRegistry = projectEngineRegistry();
+    const unitBoundFeedback = createRepositoryUnitFeedbackPort({
+      repository: new ItotoriFeedbackRepository(db),
+      actor,
+    });
     const services = retiredServiceSurface({
       projectWorkflow: new ItotoriProjectWorkflowService({
         actor,
@@ -106,6 +112,8 @@ export async function withDatabaseItotoriServices<T>(
         conformance: new ItotoriConformanceRepository(db),
         defaultTargetLocale: process.env.ITOTORI_TARGET_LOCALE ?? "en-US",
       }),
+      manualFeedback: unitBoundFeedback,
+      unitFeedback: unitBoundFeedback,
       wikiObjectApi,
       wikiApply: {
         runner: createLiveWikiEnhancementRunner({
@@ -267,6 +275,8 @@ export function retiredServiceSurface(
     | "wikiBuild"
     | "localizationSubstrate"
     | "patchbackProduce"
+    | "manualFeedback"
+    | "unitFeedback"
   >,
 ): ItotoriApplicationServices {
   return new Proxy(installed, {

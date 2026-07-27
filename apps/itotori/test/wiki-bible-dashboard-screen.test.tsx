@@ -360,6 +360,15 @@ const server = setupServer(
   http.post(`*/api/projects/${PROJECT_ID}/locale-branches/${LOCALE_BRANCH_ID}/flags`, () =>
     HttpResponse.json(flagReceipt),
   ),
+  http.get(`*/api/projects/${PROJECT_ID}/locale-branches/${LOCALE_BRANCH_ID}/unit-feedback`, () =>
+    HttpResponse.json({
+      schemaVersion: "itotori.play.unit-feedback.v0",
+      projectId: PROJECT_ID,
+      localeBranchId: LOCALE_BRANCH_ID,
+      bridgeUnitId: "unit-42",
+      notes: [],
+    }),
+  ),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));

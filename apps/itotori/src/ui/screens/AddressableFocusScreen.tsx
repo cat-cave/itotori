@@ -21,6 +21,7 @@ import { useApiQuery } from "../use-api-resource.js";
 import { ErrorState, LoadingState, ShellHeader } from "../states.js";
 import type { ApiCallState } from "../../api-client.js";
 import { parseReturnTo } from "../return-to.js";
+import { UnitBoundFeedbackList } from "./unit-bound-feedback-list.js";
 
 export { parseReturnTo } from "../return-to.js";
 
@@ -94,6 +95,15 @@ function PlayerAddressableFocusScreen({ location }: { location: AddressableLocat
         </p>
         <ScenePlayer unitId={focus.id} mode="play" status="addressed" highlighted />
       </section>
+      {location.projectId !== null &&
+        location.localeBranchId !== null &&
+        (location.kind === "unit" || location.unitId !== null) && (
+          <UnitBoundFeedbackList
+            projectId={location.projectId}
+            localeBranchId={location.localeBranchId}
+            bridgeUnitId={location.kind === "unit" ? location.id : location.unitId!}
+          />
+        )}
       <PlayerReturnActions flagHref={flagHref} returnTo={returnTo} kind={location.kind} />
     </main>
   );
