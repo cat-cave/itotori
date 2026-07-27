@@ -226,9 +226,10 @@ pub struct ReplayLog {
 
 mod implementation;
 pub use implementation::{
-    DecompressedScene, LiveSession, LiveSessionError, LiveSessionState, LiveSessionUpdate,
-    LiveSessionWait, ReplayEngine, ReplayError, SceneStoreBundle, SceneStoreStats,
-    SnapshotIdentityReport, build_scene_store, build_scene_store_from_decompressed,
-    decompress_all_scenes, full_registry_rlop_count, replay_scene, replay_scene_bytes,
-    replay_until_first_pause, restore_into_fresh_vm, verify_snapshot_restore_each_tick,
+    DecompressedScene, LiveSession, LiveSessionChoice, LiveSessionError, LiveSessionState,
+    LiveSessionUpdate, LiveSessionWait, ReplayEngine, ReplayError, SceneStoreBundle,
+    SceneStoreStats, SnapshotIdentityReport, build_scene_store,
+    build_scene_store_from_decompressed, decompress_all_scenes, full_registry_rlop_count,
+    replay_scene, replay_scene_bytes, replay_until_first_pause, restore_into_fresh_vm,
+    verify_snapshot_restore_each_tick,
 };

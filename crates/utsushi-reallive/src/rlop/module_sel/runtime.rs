@@ -151,7 +151,7 @@ impl SelRuntime {
         // [`selection_control_signal`]), applied by the render / analysis
         // layer that has the whole scene, not by this single-command dispatch.
         //
-        let mut text_surface = format!("choice:{choice_index}");
+        let mut text_surface = format!("{CHOICE_TEXT_SURFACE_PREFIX}{choice_index}");
         if let Some(suffix) = self.selbtn_style_suffix(choice_index) {
             text_surface.push(';');
             text_surface.push_str(&suffix);

@@ -120,11 +120,11 @@ pub use self::scheduler::ChoiceInputScheduler;
 mod types;
 use self::types::SelRuntimeInner;
 pub use self::types::{
-    OPCODE_OBJBTN_INIT, OPCODE_SELECT, OPCODE_SELECT_OBJBTN, OPCODE_SELECT_OBJBTN_CANCEL,
-    OPCODE_SELECT_S, OPCODE_SELECT_S3, OPCODE_SELECT_W, ObjectButtonCandidateScope,
-    ObjectButtonHitRegion, ObjectButtonPromptOption, SEL_MODULE_ID, SEL_MODULE_TYPE,
-    SEL_RLOP_COUNT, SelRuntime, SelRuntimeWarning, SelectVariant, SelectionControlSignal,
-    SelectionPromptKind, selection_control_signal,
+    CHOICE_TEXT_SURFACE_PREFIX, OPCODE_OBJBTN_INIT, OPCODE_SELECT, OPCODE_SELECT_OBJBTN,
+    OPCODE_SELECT_OBJBTN_CANCEL, OPCODE_SELECT_S, OPCODE_SELECT_S3, OPCODE_SELECT_W,
+    ObjectButtonCandidateScope, ObjectButtonHitRegion, ObjectButtonPromptOption, SEL_MODULE_ID,
+    SEL_MODULE_TYPE, SEL_RLOP_COUNT, SelRuntime, SelRuntimeWarning, SelectVariant,
+    SelectionControlSignal, SelectionPromptKind, selection_control_signal,
 };
 
 #[path = "module_sel/runtime.rs"]

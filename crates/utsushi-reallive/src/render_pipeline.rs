@@ -98,6 +98,14 @@ pub const RENDER_PIPELINE_ZERO_SCREEN_SIZE_CODE: &str =
 pub const RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE: &str =
     "utsushi.reallive.render_pipeline.blank_localized_text";
 
+/// Stable diagnostic code emitted by
+/// [`RenderPass::emit_scene_screenshots`] when a choice gate's
+/// [`ChoiceOverlay`] carries options but paints ZERO framebuffer pixels —
+/// the frame would show the user no selectable options while the VM waits
+/// for one.
+pub const RENDER_PIPELINE_BLANK_CHOICE_OVERLAY_CODE: &str =
+    "utsushi.reallive.render_pipeline.blank_choice_overlay";
+
 /// Stable diagnostic code emitted by [`RenderPass::paint_image`] when an
 /// image object contributes NO pixels (missing asset package, resolve
 /// open / decode failure, or a zero-extent sprite). The compositor is
@@ -269,7 +277,7 @@ fn window_box_geometry(
 mod choice_window;
 pub use choice_window::{
     ChoiceWindow, ObjectButtonChoiceOption, ObjectButtonChoiceWindow,
-    ObjectButtonChoiceWindowBuildError,
+    ObjectButtonChoiceWindowBuildError, SelectButtonLayout,
 };
 
 /// Real TrueType glyph rasteriser for the localized text layer.
@@ -331,11 +339,40 @@ pub enum RenderEmitError {
         char_count: usize,
         line_count: usize,
     },
+    /// A [`ChoiceOverlay`] carrying options painted ZERO framebuffer
+    /// pixels, so the emitted frame would show the user nothing to choose
+    /// between while the VM is parked on a selection gate.
+    #[error(
+        "choice overlay with {option_count} options painted zero pixels; \
+         refusing to emit a frame that shows no selectable options ({code})"
+    )]
+    BlankChoiceOverlay { code: String, option_count: usize },
+}
+
+/// The selection affordance painted over a frame while the VM is parked
+/// on a choice gate.
+///
+/// A frame emitted at a choice gate WITHOUT one of these shows the player
+/// no options: the engine's own art carries no focus state, and the
+/// message layer holds at most one line. Both variants place every option
+/// at its own laid-out coordinates — the text list at the Gameexe row
+/// stride, the button list at each option's decoded hit rectangle — so a
+/// frame can never collapse N options onto one spot.
+#[derive(Debug, Clone, Copy)]
+pub enum ChoiceOverlay<'a> {
+    /// A `select`-family text prompt: the option labels drawn as a
+    /// cursor-highlighted list inside the configured selection window.
+    Text(&'a ChoiceWindow),
+    /// A `select_objbtn`-family prompt: focus frames stroked at each
+    /// button object's decoded hit rectangle. The button art itself is
+    /// composited by the graphics pass.
+    ObjectButtons(&'a ObjectButtonChoiceWindow),
 }
 
 /// Emit-boundary inputs for [`RenderPass::emit_scene_screenshots`]: the
 /// managed public artifact root + run id + substrate sink, the private
-/// full-fidelity output directory, and the public-frame redaction toggle.
+/// full-fidelity output directory, the public-frame redaction toggle, and
+/// the optional choice affordance painted above the text layer.
 pub struct SceneEmit<'a> {
     /// Managed runtime-artifact root the PUBLIC PNG is written under.
     pub root: &'a RuntimeArtifactRoot,
@@ -348,6 +385,37 @@ pub struct SceneEmit<'a> {
     /// Public-frame redaction toggle. `true` (default) redacts image
     /// rects; `false` publishes the full-fidelity buffer.
     pub public_redact: bool,
+    /// Selection affordance painted above the text layer. `None` when the
+    /// VM is not parked on a choice gate.
+    pub choice: Option<ChoiceOverlay<'a>>,
+}
+
+impl<'a> SceneEmit<'a> {
+    /// The emit boundary for an ordinary frame: no choice gate is open.
+    /// Constructing through this instead of a struct literal is what keeps
+    /// a new emit-time input from forcing an edit at every call site.
+    pub fn frame(
+        root: &'a RuntimeArtifactRoot,
+        run_id: &'a str,
+        sink: &'a dyn FrameArtifactSink,
+        private_dir: &'a Path,
+        public_redact: bool,
+    ) -> Self {
+        Self {
+            root,
+            run_id,
+            sink,
+            private_dir,
+            public_redact,
+            choice: None,
+        }
+    }
+
+    /// Paint `overlay`'s options above the text layer on this frame.
+    pub fn with_choice(mut self, overlay: ChoiceOverlay<'a>) -> Self {
+        self.choice = Some(overlay);
+        self
+    }
 }
 
 impl std::fmt::Debug for SceneEmit<'_> {
@@ -357,6 +425,7 @@ impl std::fmt::Debug for SceneEmit<'_> {
             .field("run_id", &self.run_id)
             .field("private_dir", &self.private_dir)
             .field("public_redact", &self.public_redact)
+            .field("choice", &self.choice.is_some())
             .finish_non_exhaustive()
     }
 }

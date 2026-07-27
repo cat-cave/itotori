@@ -52,15 +52,9 @@ impl UtsushiReallivePort {
             .emit_scene_screenshots(
                 &observation.graphics_stack,
                 &text,
-                SceneEmit {
-                    root,
-                    run_id,
-                    sink: &throwaway,
-                    private_dir: &private_dir,
-                    // Redaction ON: the announced public frame is the
-                    // proof-preserving edge-outline, not the real art.
-                    public_redact: true,
-                },
+                // Redaction ON: the announced public frame is the
+                // proof-preserving edge-outline, not the real art.
+                SceneEmit::frame(root, run_id, &throwaway, &private_dir, true),
             )
             .map_err(|error| format!("frame emit failed: {error}"))?;
         Ok(shots.public)

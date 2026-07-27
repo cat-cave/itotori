@@ -20,7 +20,8 @@ pub use registry::{
     build_scene_store_from_decompressed, decompress_all_scenes, full_registry_rlop_count,
 };
 pub use session::{
-    LiveSession, LiveSessionError, LiveSessionState, LiveSessionUpdate, LiveSessionWait,
+    LiveSession, LiveSessionChoice, LiveSessionError, LiveSessionState, LiveSessionUpdate,
+    LiveSessionWait,
 };
 
 use branch_driver::drive_branch_following;
