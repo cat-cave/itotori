@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Panel } from "@itotori/ds";
 import { ShellHeader } from "../states.js";
+import { RedactionGovernorBoundary, useRedactionGovernor } from "../redaction-governor.js";
 
 export const livePlayerRoutePathRegex = /^\/play\/player\/?$/u;
 
@@ -52,14 +53,37 @@ export function parseLivePlayerRoute(pathname: string, search: string): LivePlay
 }
 
 export function LivePlayerScreen({ config }: { config: LivePlayerConfig | null }): ReactNode {
+  // The governor is the SINGLE authority on whether this viewer may see an
+  // unredacted frame. The boundary supplies the closed default (no cap, no
+  // reveal) when the player is mounted outside the shell, so the surface can
+  // never accidentally open up by being rendered somewhere else.
+  return (
+    <RedactionGovernorBoundary>
+      <LivePlayerSurface config={config} />
+    </RedactionGovernorBoundary>
+  );
+}
+
+function LivePlayerSurface({ config }: { config: LivePlayerConfig | null }): ReactNode {
   const [state, setState] = useState<PlayerState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(config !== null);
+  // The engine fixes redaction when the session process starts, so the
+  // governor is read at start and the session is restarted when the viewer
+  // flips the shell toggle. Without this the player asked for a redacted
+  // frame unconditionally: a reviewer got edge-outlines on black and could
+  // not judge a line against the art it sits on, while the cap, the shell
+  // toggle and the engine flag all already existed.
+  const { canReveal } = useRedactionGovernor();
 
   useEffect(() => {
     if (config === null) return;
     let cancelled = false;
-    void post<PlayerState>("/api/player/sessions", config).then(
+    setBusy(true);
+    void post<PlayerState>("/api/player/sessions", {
+      ...config,
+      redaction: canReveal ? "off" : "on",
+    }).then(
       (next) => {
         if (!cancelled) {
           setState(next);
@@ -76,7 +100,7 @@ export function LivePlayerScreen({ config }: { config: LivePlayerConfig | null }
     return () => {
       cancelled = true;
     };
-  }, [config]);
+  }, [config, canReveal]);
 
   const send = (input: { type: "advance" } | { type: "choice"; index: number }) => {
     if (state === null || busy) return;
@@ -138,6 +162,18 @@ function PlayerPanel({
     <Panel
       title="Live frame"
       eyebrow={`scene ${state.scene} · ip ${state.instructionPointer} · event ${state.eventIndex}`}
+      // The VM address the frame was rasterised at, stamped on the surface.
+      // Progress is what a reader judges the player by, and it is the only
+      // thing a rendering assertion cannot see: a player stuck on one address
+      // still shows a frame. Exposing the address structurally lets a test
+      // assert the VM MOVED through the browser path rather than that a
+      // picture appeared.
+      data-live-player-panel=""
+      data-scene={state.scene}
+      data-instruction-pointer={state.instructionPointer}
+      data-event-index={state.eventIndex}
+      data-waiting-for={state.ended ? "ended" : (state.waitingFor?.type ?? "none")}
+      data-busy={busy ? "true" : "false"}
     >
       {state.frame === null ? (
         <p>The engine reached a boundary without a renderable text frame.</p>
@@ -181,6 +217,7 @@ function PlayerInput({
             key={index}
             type="button"
             disabled={busy}
+            data-player-choice={index}
             onClick={() => send({ type: "choice", index })}
           >
             {waitingFor.options[index] ?? `Choice ${index + 1}`}
@@ -190,7 +227,12 @@ function PlayerInput({
     );
   return (
     <p>
-      <button type="button" disabled={busy} onClick={() => send({ type: "advance" })}>
+      <button
+        type="button"
+        disabled={busy}
+        data-player-advance=""
+        onClick={() => send({ type: "advance" })}
+      >
         Advance
       </button>
     </p>

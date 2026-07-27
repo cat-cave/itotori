@@ -18,7 +18,12 @@ if (chromiumBin === undefined) {
   );
 }
 
-const PORT = 4322;
+// A FIXED port plus `reuseExistingServer` silently binds this suite to
+// whatever is already listening — on a machine running several checkouts that
+// is another branch's build and another branch's native binaries, and the run
+// reports on code it never loaded. The override lets a caller pin a private
+// port; the default is unchanged.
+const PORT = Number(process.env.ITOTORI_APP_E2E_PORT ?? 4322);
 
 export default defineConfig({
   testDir: fileURLToPath(new URL(".", import.meta.url)),
