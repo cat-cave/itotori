@@ -93,7 +93,7 @@ fn ovk_z0001_two_entries() {
     assert_eq!(
         bytes.len() as u64,
         Z0001_OVK_FILE_SIZE,
-        "z0001.ovk file size pinned at {Z0001_OVK_FILE_SIZE} per UTSUSHI-217 spec",
+        "z0001.ovk file size pinned at {Z0001_OVK_FILE_SIZE} per  spec",
     );
 
     let file = decode_ovk(&bytes).expect("z0001.ovk decode");
@@ -102,7 +102,7 @@ fn ovk_z0001_two_entries() {
     assert_eq!(
         file.entry_count(),
         2,
-        "z0001.ovk MUST have exactly 2 entries per UTSUSHI-217 spec",
+        "z0001.ovk MUST have exactly 2 entries per  spec",
     );
 
     // Entry 0 — sample 46.
@@ -133,7 +133,7 @@ fn ovk_z0001_two_entries() {
     assert_eq!(
         entry1.data_offset, Z0001_ENTRY1_DATA_OFFSET,
         "entry 1 data_offset pinned at real-bytes value {Z0001_ENTRY1_DATA_OFFSET}. \
-         UTSUSHI-217 spec quotes the value {Z0001_SPEC_ENTRY1_QUOTED_LENGTH} as 'length'; the \
+          spec quotes the value {Z0001_SPEC_ENTRY1_QUOTED_LENGTH} as 'length'; the \
          real bytes decode to data_offset = 176_612 (= 36 + 176_576, i.e. the byte offset where \
          the second Ogg stream begins — confirming the field-1 = offset interpretation). The \
          spec's 'length=183_476' was a transcription artefact. See \
@@ -146,7 +146,7 @@ fn ovk_z0001_two_entries() {
     assert_eq!(
         &entry0_body[..4],
         &OGG_PAGE_MAGIC,
-        "entry 0's body MUST start with OggS magic per UTSUSHI-217 acceptance criterion",
+        "entry 0's body MUST start with OggS magic per  acceptance criterion",
     );
 
     // Find-by-sample-num resolves the spec's koePlay path.

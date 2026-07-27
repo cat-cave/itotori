@@ -38,7 +38,7 @@
     },
     {
       "checkId": "screenshot_artifact_ref_linked",
-      "detail": "1 screenshot capture artifactRef(s) each linked to a bridge unit (UTSUSHI-065)",
+      "detail": "1 screenshot capture artifactRef(s) each linked to a bridge unit (synthetic-fixture)",
       "mandatory": true,
       "status": "pass"
     }
@@ -47,11 +47,11 @@
     "adapterName": "utsushi-browser",
     "reportEvidenceTier": "E1",
     "runtimeReportId": "019ed050-0000-7000-8000-000000001000",
-    "runtimeTraceSource": "UTSUSHI-006"
+    "runtimeTraceSource": "synthetic-fixture"
   },
   "engine": "rpg_maker_mv_mz",
   "limitations": [
-    "Runtime-observation proof is an evidence VERDICT over a consumed UTSUSHI-006 trace: it re-derives the E1-vs-static distinction from the static fixture bytes and does not embed raw game bytes or pixels."
+    "Runtime-observation proof is an evidence VERDICT over a consumed synthetic-fixture trace: it re-derives the E1-vs-static distinction from the static fixture bytes and does not embed raw game bytes or pixels."
   ],
   "observation": {
     "adapterId": {
@@ -106,6 +106,6 @@
       }
     ],
     "available": true,
-    "source": "UTSUSHI-065"
+    "source": "synthetic-fixture"
   }
 }

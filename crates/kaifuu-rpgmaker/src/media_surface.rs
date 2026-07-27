@@ -79,7 +79,7 @@ pub use operations::{build_media_surface, commitment, plan_replacement};
 /// Schema version of the media-surface manifest.
 pub const MEDIA_SURFACE_SCHEMA_VERSION: &str = "0.1.0";
 /// Provenance node id stamped into generated reports.
-pub const MEDIA_SURFACE_SOURCE_NODE_ID: &str = "KAIFUU-059";
+pub const MEDIA_SURFACE_SOURCE_NODE_ID: &str = "synthetic-fixture";
 /// Engine family this profile targets.
 pub const MEDIA_SURFACE_ENGINE_FAMILY: &str = "rpg_maker_mv_mz";
 
@@ -87,7 +87,7 @@ pub const MEDIA_SURFACE_ENGINE_FAMILY: &str = "rpg_maker_mv_mz";
 /// A failure *inside* this boundary is a bug / compatibility regression (see
 /// [`FailureClass`]); a rejection *outside* it (unsupported suffix,
 /// inventory-only patch attempt) is an expected semantic capability error.
-pub const MEDIA_SURFACE_SUPPORT_BOUNDARY: &str = "Kaifuu RPG Maker MV/MZ encrypted-media localization surfaces (KAIFUU-059) profile each encrypted image/audio asset (image MV .rpgmvp / MZ .png_, audio MV .rpgmvo|.rpgmvm / MZ .ogg_|.m4a_) into a localization role via its RPG Maker subtree, decrypt it with the shared RPGMV-header XOR-with-System.json-key scheme WHEN a key is available (key-absent is represented, never a crash), and expose a per-asset localize decision to Itotori. Text-bearing patch-back is honored only for a profiled text-bearing/ui-texture/song-metadata surface whose key is available and whose replacement carries the matching media signature; re-encryption uses the same key and re-wraps the header, and an unchanged asset stays byte-identical. Inventory-only assets, key-absent patch attempts, capability mismatches, non-media replacements, and unsupported suffixes are typed semantic errors, never silent. Reports carry sha256 commitments / roles / paths / counts only — never media bytes, never the key.";
+pub const MEDIA_SURFACE_SUPPORT_BOUNDARY: &str = "Kaifuu RPG Maker MV/MZ encrypted-media localization surfaces () profile each encrypted image/audio asset (image MV .rpgmvp / MZ .png_, audio MV .rpgmvo|.rpgmvm / MZ .ogg_|.m4a_) into a localization role via its RPG Maker subtree, decrypt it with the shared RPGMV-header XOR-with-System.json-key scheme WHEN a key is available (key-absent is represented, never a crash), and expose a per-asset localize decision to Itotori. Text-bearing patch-back is honored only for a profiled text-bearing/ui-texture/song-metadata surface whose key is available and whose replacement carries the matching media signature; re-encryption uses the same key and re-wraps the header, and an unchanged asset stays byte-identical. Inventory-only assets, key-absent patch attempts, capability mismatches, non-media replacements, and unsupported suffixes are typed semantic errors, never silent. Reports carry sha256 commitments / roles / paths / counts only — never media bytes, never the key.";
 
 // Localization role
 

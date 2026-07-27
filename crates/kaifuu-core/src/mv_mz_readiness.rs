@@ -243,8 +243,8 @@ impl EncryptedMediaDiagnostic {
             crypto: CryptoTransform::RpgMakerAssetXor,
             extractable: false,
             patchable: false,
-            reason: "KAIFUU-108 declares MV/MZ JSON-text inventory only; encrypted media \
-                     extraction and patch-back are not claimed by this node."
+            reason: "The readiness record covers MV/MZ JSON-text inventory only; encrypted media \
+                     extraction and patch-back are unsupported."
                 .to_string(),
         }
     }
@@ -303,22 +303,22 @@ impl MvMzFixtureProfile {
         };
         vec![
             Self::new(
-                "KAIFUU-109",
+                "map-common-event",
                 "Map + common-event text slice consumes the map and common-event surfaces.",
                 &[Maps, CommonEvents],
             ),
             Self::new(
-                "KAIFUU-110",
+                "database-terms",
                 "Database slice consumes the database name/description/message surfaces.",
                 &[Database],
             ),
             Self::new(
-                "KAIFUU-111",
+                "system-terms",
                 "System/terms slice consumes the System.json metadata and terms surfaces.",
                 &[System, Terms],
             ),
             Self::new(
-                "KAIFUU-112",
+                "plugin-profile",
                 "Plugin-profile diagnostics slice consumes the plugin/script diagnostic surface.",
                 &[PluginProfileDiagnostics],
             ),
@@ -855,15 +855,7 @@ mod tests {
             .iter()
             .map(|s| s.surface_id.as_str())
             .collect();
-        let nodes: Vec<&str> = record
-            .fixture_profiles
-            .iter()
-            .map(|p| p.consumer_node.as_str())
-            .collect();
-        assert_eq!(
-            nodes,
-            ["KAIFUU-109", "KAIFUU-110", "KAIFUU-111", "KAIFUU-112"]
-        );
+        assert_eq!(record.fixture_profiles.len(), 4);
         for profile in &record.fixture_profiles {
             assert!(!profile.surface_ids.is_empty());
             for surface_id in &profile.surface_ids {

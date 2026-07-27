@@ -464,7 +464,7 @@ fn proof_hash_for_entry(
         .collect::<Vec<_>>()
         .join(",");
     let material = format!(
-        "KAIFUU-126|{source_node_id}|{engine_family}|{}|{}|{}|{}|{}|{}|{}|{semantic_codes}",
+        "{source_node_id}|{source_node_id}|{engine_family}|{}|{}|{}|{}|{}|{}|{}|{semantic_codes}",
         entry.fixture_id,
         entry.variant,
         entry.profile.as_str(),

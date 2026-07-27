@@ -50,7 +50,7 @@ fn synthetic_real_envelope_seen_txt(populated_scene_ids: &[u16]) -> Vec<u8> {
     // the partial path only counts populated slot entries, not payload
     // distinctness.
     let payload_offset = DIRECTORY_BYTE_LEN as u32;
-    let payload = b"KAIFUU-193 partial-extract synthetic scene payload";
+    let payload = b" partial-extract synthetic scene payload";
     let payload_len = payload.len() as u32;
 
     for &scene_id in populated_scene_ids {
@@ -73,7 +73,7 @@ fn synthetic_real_envelope_seen_txt(populated_scene_ids: &[u16]) -> Vec<u8> {
 /// exists, signature missing).
 fn synthetic_unmatched_gameexe_ini() -> Vec<u8> {
     let mut bytes = Vec::new();
-    bytes.extend_from_slice(b"# Synthetic Gameexe.ini for KAIFUU-193 partial-extract test\n");
+    bytes.extend_from_slice(b"# Synthetic Gameexe.ini for  partial-extract test\n");
     bytes.extend_from_slice(b"#SOMETHING_NOT_REALLIVE=value\n");
     bytes.extend_from_slice(b"#ANOTHER_KEY=42\n");
     bytes
@@ -121,7 +121,7 @@ fn read_partial_report(path: &std::path::Path) -> Value {
 
 #[test]
 fn extract_emits_partial_report_when_envelope_ok_but_gameexe_keys_mismatch() {
-    let fixture = build_partial_fixture("kaifuu-193-extract");
+    let fixture = build_partial_fixture("-extract");
     let tmp_out = tempfile::tempdir().expect("tmp out");
     let report_path = tmp_out.path().join("extract.json");
 
@@ -166,7 +166,7 @@ fn extract_emits_partial_report_when_envelope_ok_but_gameexe_keys_mismatch() {
 
 #[test]
 fn profile_emits_partial_report_with_envelope_evidence() {
-    let fixture = build_partial_fixture("kaifuu-193-profile");
+    let fixture = build_partial_fixture("-profile");
     let tmp_out = tempfile::tempdir().expect("tmp out");
     let report_path = tmp_out.path().join("profile.json");
 
@@ -206,7 +206,7 @@ fn profile_emits_partial_report_with_envelope_evidence() {
 
 #[test]
 fn verify_exits_zero_with_partial_status_when_no_blocking_diagnostics() {
-    let fixture = build_partial_fixture("kaifuu-193-verify");
+    let fixture = build_partial_fixture("-verify");
     let tmp_out = tempfile::tempdir().expect("tmp out");
     let report_path = tmp_out.path().join("verify.json");
 
@@ -233,7 +233,7 @@ fn verify_exits_nonzero_when_seen_txt_envelope_fails() {
     // 10,000-slot directory contract. The partial extractor must surface a
     // P0 diagnostic and `kaifuu verify` must exit 1.
     let dir = tempfile::Builder::new()
-        .prefix("kaifuu-193-verify-blocking")
+        .prefix("-verify-blocking")
         .tempdir()
         .expect("tempdir");
     let data_root = dir.path().join("REALLIVEDATA");

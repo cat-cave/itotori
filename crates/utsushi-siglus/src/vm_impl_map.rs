@@ -155,7 +155,7 @@ pub fn build_siglus_vm_impl_map() -> ImplementationMap {
                 "siglus-lzss-decompression",
                 "Proprietary Siglus LZSS decompression",
                 &["decompression"],
-                "The proprietary Siglus LZSS container codec the UTSUSHI-035 runtime-profile \
+                "The proprietary Siglus LZSS container codec the  runtime-profile \
                  boundary currently rejects as out-of-profile.",
             ),
             research_subsystem(

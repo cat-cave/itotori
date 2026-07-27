@@ -423,14 +423,17 @@ fn rpg_maker_mv_mz_fixture_key_validation_matches_system_json_and_image_evidence
         report.diagnostics[0].code,
         RpgMakerMvMzFixtureKeyValidationDiagnosticCode::Success
     );
-    let expected: Value = read_json(&repo_fixture_path(
-            "fixtures/public/kaifuu-encrypted-matrix/expected/rpg-maker-mv-mz-key-validation-success-v0.1.json",
-        ))
-        .unwrap();
-    assert_eq!(
-        serde_json::to_value(report.redacted_for_report()).unwrap(),
-        expected
+    let expected_path = repo_fixture_path(
+        "fixtures/public/kaifuu-encrypted-matrix/expected/rpg-maker-mv-mz-key-validation-success-v0.1.json",
     );
+    let actual = serde_json::to_value(report.redacted_for_report()).unwrap();
+    if std::env::var_os("KAIFUU_RPGMAKER_KEY_VALIDATION_REGEN").is_some() {
+        let mut rendered = serde_json::to_string_pretty(&actual).unwrap();
+        rendered.push('\n');
+        std::fs::write(&expected_path, rendered).unwrap();
+    }
+    let expected: Value = read_json(&expected_path).unwrap();
+    assert_eq!(actual, expected);
 
     let serialized = report.stable_json().unwrap();
     for forbidden in [

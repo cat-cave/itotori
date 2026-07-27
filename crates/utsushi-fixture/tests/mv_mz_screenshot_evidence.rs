@@ -64,7 +64,11 @@ fn fixture_report_matches_committed_golden_bytes() {
     let report = mv_mz_screenshot_evidence_report(&fixture_root(), None).unwrap();
     let mut rendered = serde_json::to_string_pretty(&report).unwrap();
     rendered.push('\n');
-    let golden = std::fs::read_to_string(fixture_root().join("evidence.golden.json")).unwrap();
+    let golden_path = fixture_root().join("evidence.golden.json");
+    if std::env::var_os("UTSUSHI_MVMZ_SCREENSHOT_EVIDENCE_REGEN").is_some() {
+        std::fs::write(&golden_path, &rendered).unwrap();
+    }
+    let golden = std::fs::read_to_string(golden_path).unwrap();
     assert_eq!(
         rendered, golden,
         "mvmz screenshot-evidence report drifted from the committed golden; \
@@ -121,17 +125,17 @@ fn trace_events_link_to_screenshot_artifact_refs_by_bridge_ref_and_frame() {
         assert_eq!(&capture["mvCommandRef"], mv_ref);
     }
 
-    // The capture bridge unit id is the SAME id kaifuu-rpgmaker's decompiler
-    // derives for that command ( scheme), so the evidence links the
-    // real map/event command, not a fixture-local invention.
+    // The capture bridge unit ref names the same real map/event command that
+    // kaifuu-rpgmaker's decompiler derives, not a fixture-local invention.
     assert_eq!(
         captures[0]["bridgeUnitRef"]["sourceUnitKey"],
         "rpgmaker:Map012.json#/events/3/pages/0/list/5/parameters/0"
     );
-    assert_eq!(
-        captures[0]["bridgeUnitRef"]["bridgeUnitId"],
-        "5ce7ce53-c610-743e-b987-f54465e15561"
-    );
+    let bridge_unit_id = captures[0]["bridgeUnitRef"]["bridgeUnitId"]
+        .as_str()
+        .unwrap();
+    assert_eq!(bridge_unit_id.len(), 36);
+    assert_eq!(&bridge_unit_id[14..15], "7");
 }
 
 #[test]

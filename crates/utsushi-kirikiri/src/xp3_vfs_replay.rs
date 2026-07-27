@@ -91,7 +91,7 @@ pub struct KagVfsEvidence {
 
 impl KagVfsEvidence {
     /// Provenance node id stamped on every claim.
-    pub const SOURCE_NODE_ID: &'static str = "UTSUSHI-039";
+    pub const SOURCE_NODE_ID: &'static str = "synthetic-fixture";
 
     /// Serialize to stable, redaction-swept JSON. The sweep rejects any
     /// local-path-shaped string, so a leaked key / host path / private filename

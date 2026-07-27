@@ -76,7 +76,7 @@
   "checks": [
     {
       "checkId": "base_runtime_observation_proven_e1",
-      "detail": "the patched trace re-derives the full UTSUSHI-102 E1 proof (live-DOM, E1 tier, full linkage, observed translation absent from every consumed static input): proven=true",
+      "detail": "the patched trace re-derives the full runtime-observation E1 proof (live-DOM, E1 tier, full linkage, observed translation absent from every consumed static input): proven=true",
       "mandatory": true,
       "status": "pass"
     },
@@ -100,7 +100,7 @@
     },
     {
       "checkId": "alpha_proof_manifest_baseline_e1_proven",
-      "detail": "alpha proof manifest proofKind=utsushi.mvmz.runtime_observation_proof runtimeObservationProven=true provenEvidenceTier=E1; expected the UTSUSHI-102 proof proven at E1",
+      "detail": "alpha proof manifest proofKind=utsushi.mvmz.runtime_observation_proof runtimeObservationProven=true provenEvidenceTier=E1; expected an E1-proven runtime-observation proof",
       "mandatory": true,
       "status": "pass"
     },
@@ -123,13 +123,13 @@
       "patchResultId": "019ed060-0000-7000-8000-000000000001",
       "status": "passed"
     },
-    "patchedRuntimeTraceSource": "UTSUSHI-006",
+    "patchedRuntimeTraceSource": "synthetic-fixture",
     "runtimeReportId": "019ed050-0000-7000-8000-000000001000"
   },
   "engine": "rpg_maker_mv_mz",
   "limitations": [
-    "Patched-runtime-observation proof re-derives the UTSUSHI-102 E1-vs-static distinction over the patched trace and does not embed raw game bytes or pixels; it names the PatchResult and alpha proof by id/hash only.",
-    "The absent-from-static crux guarantees the observed translation was not LIFTED from any consumed static input (patched fixture bytes, PatchResult, alpha proof); an operator who hand-authors the correct translation into a fabricated trace is out of scope, exactly as in UTSUSHI-102. The outputHash provenance link ties the observation to a specific attested patch."
+    "Patched-runtime-observation proof re-derives the runtime-observation E1-vs-static distinction over the patched trace and does not embed raw game bytes or pixels; it names the PatchResult and alpha proof by id/hash only.",
+    "The absent-from-static crux guarantees the observed translation was not LIFTED from any consumed static input (patched fixture bytes, PatchResult, alpha proof); an operator who hand-authors the correct translation into a fabricated trace is out of scope, exactly as in the base proof. The outputHash provenance link ties the observation to a specific attested patch."
   ],
   "patchAttestation": {
     "hashMatches": true,

@@ -64,7 +64,7 @@ pub const ADAPTER_SCHEMA_VERSION: &str = "0.1.0";
 pub const ADAPTER_CAPABILITY_ID: &str = "kaifuu-siglus-pure-adapter";
 
 /// Provenance node id stamped into adapter reports.
-pub const ADAPTER_SOURCE_NODE_ID: &str = "KAIFUU-022";
+pub const ADAPTER_SOURCE_NODE_ID: &str = "synthetic-fixture";
 
 /// The blunt support boundary surfaced in every adapter report.
 pub const ADAPTER_SUPPORT_BOUNDARY: &str = "Kaifuu Siglus pure adapter EXTRACTS and PATCHES profiled Scene.pck/Gameexe.dat variants (constant-key-XOR, UTF-16LE, uncompressed-within-profile) using an ALREADY-RESOLVED key it re-validates before consuming — it performs NO key discovery. It proves extract, identity byte-identical round-trip, translated round-trip (in-scope correct + out-of-scope byte-identical), and reject-before-write patch+verify with a reject-on-secret deep scan. It is NOT broad commercial Siglus support: the real constant-256-XOR-table + per-game second-layer strip and proprietary-LZSS codec remain skeleton stubs (siglus-04/siglus-06); out-of-profile compression/magic is a typed capability error. Raw key material and decrypted text are never persisted; the report carries secret-refs + one-way proof hashes + counts only.";

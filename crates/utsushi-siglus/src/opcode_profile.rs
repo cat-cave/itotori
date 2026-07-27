@@ -378,7 +378,7 @@ pub struct OpcodeConformanceResult {
 
 impl OpcodeConformanceResult {
     /// Provenance node id stamped on every opcode-profile conformance result.
-    pub const SOURCE_NODE_ID: &'static str = "UTSUSHI-036";
+    pub const SOURCE_NODE_ID: &'static str = "synthetic-fixture";
 
     /// Serialize to stable, redaction-swept JSON. This is the committable
     /// conformance-result evidence.

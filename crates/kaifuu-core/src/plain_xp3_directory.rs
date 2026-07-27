@@ -249,7 +249,7 @@ pub fn replace_plain_xp3_entry_payload(
     }
     if entry.segments.len() != 1 {
         return Err(PlainXp3WriterError::InconsistentManifest(format!(
-            "entry {entry_path:?} has {} segments; KAIFUU-098 only replaces single-segment uncompressed entries",
+            "entry {entry_path:?} has {} segments;  only replaces single-segment uncompressed entries",
             entry.segments.len()
         )));
     }

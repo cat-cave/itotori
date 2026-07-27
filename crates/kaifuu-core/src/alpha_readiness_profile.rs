@@ -75,7 +75,7 @@ pub const ALPHA_READINESS_PROFILE_SCHEMA_VERSION: &str = "0.1.0";
 /// Schema version of the rendered capability summary.
 pub const ALPHA_READINESS_SUMMARY_SCHEMA_VERSION: &str = "0.1.0";
 /// Provenance node id stamped into every seed/template report.
-pub const ALPHA_READINESS_SOURCE_NODE_ID: &str = "KAIFUU-056";
+pub const ALPHA_READINESS_SOURCE_NODE_ID: &str = "synthetic-fixture";
 /// Canonical profile-fixture glob the subset consumes.
 pub const ALPHA_READINESS_PROFILE_GLOB: &str = "*.profile.json";
 

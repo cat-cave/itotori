@@ -75,7 +75,7 @@ fn stable_units_carry_all_acceptance_fields() {
         assert_eq!(unit.source_file, "Map001.json");
         assert_eq!(unit.container_id(), 1, "event id");
         assert_eq!(unit.page_index(), Some(0), "map units carry a page index");
-        assert_eq!(unit.fixture_profile_id, "KAIFUU-109");
+        assert_eq!(unit.fixture_profile_id, "synthetic-fixture");
         assert!(!unit.bridge_unit_id().is_empty());
         assert!(
             unit.source_unit_key()
@@ -95,7 +95,7 @@ fn stable_units_carry_all_acceptance_fields() {
         assert_eq!(unit.source_file, "CommonEvents.json");
         assert_eq!(unit.container_id(), 1, "common-event id");
         assert_eq!(unit.page_index(), None, "common events have no page index");
-        assert_eq!(unit.fixture_profile_id, "KAIFUU-109");
+        assert_eq!(unit.fixture_profile_id, "synthetic-fixture");
         assert!(
             unit.source_unit_key()
                 .starts_with("rpgmaker:CommonEvents.json#/1/list/"),

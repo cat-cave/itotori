@@ -63,8 +63,8 @@ const OBSERVATION_SOURCE_LIVE_DOM: &str = "live_dom";
 
 /// The evidence tier a real launched-runtime observation claims.
 const EVIDENCE_TIER_E1: &str = "E1";
-const RUNTIME_TRACE_SOURCE_ID: &str = "UTSUSHI-006";
-const SCREENSHOT_EVIDENCE_SOURCE_ID: &str = "UTSUSHI-065";
+const RUNTIME_TRACE_SOURCE_ID: &str = "synthetic-fixture";
+const SCREENSHOT_EVIDENCE_SOURCE_ID: &str = "synthetic-fixture";
 
 // --- Check identifiers (stable, machine-readable) -------------------------
 

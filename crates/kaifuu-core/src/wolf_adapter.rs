@@ -82,7 +82,7 @@ pub const WOLF_ADAPTER_CAPABILITY_ID: &str = "kaifuu-wolf-text-table-adapter";
 /// The smoke evidence this adapter's encrypted variant cites.
 pub const WOLF_ADAPTER_CITED_SMOKE_CAPABILITY_ID: &str = WOLF_ENCRYPTED_SMOKE_CAPABILITY_ID;
 /// Blunt support boundary included in every report.
-pub const WOLF_ADAPTER_SUPPORT_BOUNDARY: &str = "The Kaifuu Wolf RPG Editor adapter is a bounded SYNTHETIC composition: it drives the KAIFUU-073 encrypted-archive container+crypto substrate (key resolved by local SecretRef, raw key zeroized, never emitted), adds a Shift-JIS text-table codec (binary string-table layout), and patches configured text cells back through repack. Support is GATED by the KAIFUU-120 protection detector (must be `protected`) and the KAIFUU-121 helper boundary (must be `key_resolved`); any other posture is an unsupported variant that emits a semantic capability diagnostic with the claimed-support tuple. It is not commercial Wolf/DXArchive coverage and emits no raw keys, decoded table text, local paths, or retail bytes.";
+pub const WOLF_ADAPTER_SUPPORT_BOUNDARY: &str = "The Kaifuu Wolf RPG Editor adapter is a bounded SYNTHETIC composition: it drives the  encrypted-archive container+crypto substrate (key resolved by local SecretRef, raw key zeroized, never emitted), adds a Shift-JIS text-table codec (binary string-table layout), and patches configured text cells back through repack. Support is GATED by the  protection detector (must be `protected`) and the  helper boundary (must be `key_resolved`); any other posture is an unsupported variant that emits a semantic capability diagnostic with the claimed-support tuple. It is not commercial Wolf/DXArchive coverage and emits no raw keys, decoded table text, local paths, or retail bytes.";
 
 /// Magic prefix of the synthetic Wolf text-table binary layout.
 const WOLF_TEXT_TABLE_MAGIC: &[u8; 16] = b"KFWOLFTBL012\0\0\0\0";
@@ -459,7 +459,7 @@ impl WolfTextTableAdapterFixture {
         Self {
             schema_version: WOLF_ADAPTER_SCHEMA_VERSION.to_string(),
             fixture_id: "wolf-text-table-adapter-synthetic".to_string(),
-            source_node_id: "KAIFUU-012".to_string(),
+            source_node_id: "synthetic-fixture".to_string(),
             engine_family: WOLF_ENGINE_FAMILY.to_string(),
             detector,
             helper_boundary,

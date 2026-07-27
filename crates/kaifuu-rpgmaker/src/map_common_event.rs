@@ -52,7 +52,7 @@ use crate::ids::deterministic_uuid7;
 use crate::patchback::{FileEdit, PatchbackError, patch_file_bytes};
 
 /// The fixture-profile id every unit is stamped.
-pub const FIXTURE_PROFILE_ID: &str = "KAIFUU-109";
+pub const FIXTURE_PROFILE_ID: &str = "synthetic-fixture";
 
 /// Where a declared command lives in the source tree.
 #[derive(Debug, Clone, PartialEq, Eq)]

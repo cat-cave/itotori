@@ -223,7 +223,7 @@ fn negative_rpg_maker_shape_is_not_misidentified_as_reallive() {
     assert!(
         outcome.is_none(),
         "MV/MZ-shaped tree with a `reallive` (non-REALLIVEDATA) subdir \
-         must produce Ok(None); KAIFUU-189 forbids false-positives. \
+         must produce Ok(None);  forbids false-positives. \
          Got {outcome:?}"
     );
 

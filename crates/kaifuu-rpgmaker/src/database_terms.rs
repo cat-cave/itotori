@@ -70,7 +70,7 @@ use crate::ids::deterministic_uuid7;
 use crate::patchback::{FileEdit, PatchbackError, patch_file_bytes};
 
 /// The fixture-profile id every unit is stamped.
-pub const FIXTURE_PROFILE_ID: &str = "KAIFUU-110";
+pub const FIXTURE_PROFILE_ID: &str = "synthetic-fixture";
 
 // Roles + containers
 
@@ -831,7 +831,7 @@ mod tests {
             assert_ne!(unit.field_key, "note");
             assert_eq!(unit.entry_id(), Some(1));
             assert_eq!(unit.entry_index(), Some(1));
-            assert_eq!(unit.fixture_profile_id, "KAIFUU-110");
+            assert_eq!(unit.fixture_profile_id, "synthetic-fixture");
         }
         assert_eq!(
             out.units[0].source_unit_key(),

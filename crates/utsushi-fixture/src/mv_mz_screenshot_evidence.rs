@@ -60,7 +60,7 @@ use crate::FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL;
 /// units with means the bridge unit ids this fixture emits are byte-identical
 /// to the ones the decompiler would emit for the same command — the linkage is
 /// faithful to the real MV/MZ bridge, not a fixture-local invention.
-const KAIFUU_MV_MZ_FIXTURE_PROFILE_ID: &str = "KAIFUU-109";
+const KAIFUU_MV_MZ_FIXTURE_PROFILE_ID: &str = "synthetic-fixture";
 
 /// Namespace for the runtime-report / trace / capture / screenshot uuid7s this
 /// module mints. Distinct from the bridge namespace so runtime ids

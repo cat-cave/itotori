@@ -65,7 +65,7 @@ fn scene1_decompressor_matches_reallive_real_bytes_outcome_a() {
     // hard-coding the file offsets) so a regression earlier in the chain
     // surfaces here as a chain-level diagnostic.
     let index = RealSceneIndex::parse(&bytes)
-        .expect("Sweetie HD Seen.txt must parse through the UTSUSHI-201 directory parser");
+        .expect("Sweetie HD Seen.txt must parse through the  directory parser");
     let entry = index
         .lookup(1)
         .expect("Sweetie HD must contain a populated scene 1 entry");
@@ -85,7 +85,7 @@ fn scene1_decompressor_matches_reallive_real_bytes_outcome_a() {
     );
 
     let (header, header_warnings) = SceneHeader::parse(blob)
-        .expect("Sweetie HD scene 1 must produce a typed SceneHeader (UTSUSHI-202 anchor)");
+        .expect("Sweetie HD scene 1 must produce a typed SceneHeader ( anchor)");
     assert!(
         header_warnings.is_empty(),
         "Sweetie HD scene 1 uses compiler_version 110002 which is documented; got: \

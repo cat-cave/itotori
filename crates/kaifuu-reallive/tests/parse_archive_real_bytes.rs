@@ -39,7 +39,7 @@ fn parses_sweetie_hd_seen_txt_into_198_populated_scene_entries() {
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
     let index = parse_archive(&bytes).expect(
         "Sweetie HD REALLIVEDATA/Seen.txt must parse cleanly; \
-         silent zero-state on real bytes is the bug KAIFUU-188 fixes",
+         silent zero-state on real bytes is the bug  fixes",
     );
 
     // Acceptance: the documented populated-slot count for Sweetie HD is 198

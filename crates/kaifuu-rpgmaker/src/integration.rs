@@ -52,7 +52,7 @@ use crate::{ExtractError, Finding, RpgMakerExtraction, extract_game_dir};
 /// Full-surface integration manifest schema version.
 pub const K112_FULL_SURFACE_SCHEMA_VERSION: &str = "0.1.0";
 /// fixture-profile id the integration reports under.
-pub const K112_FIXTURE_PROFILE_ID: &str = "KAIFUU-112";
+pub const K112_FIXTURE_PROFILE_ID: &str = "synthetic-fixture";
 
 /// Relative path (within a `www` dir) of the plugin-config file.
 const PLUGINS_JS_REL: &str = "js/plugins.js";

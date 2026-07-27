@@ -55,7 +55,7 @@ pub const XP3_PRIVATE_LOCAL_SUMMARY_SCHEMA_VERSION: &str = "0.1.0";
 pub const XP3_PRIVATE_LOCAL_SUMMARY_MARKER: &str = "kaifuu.kirikiri.xp3_private_local_summary";
 
 /// The blunt support boundary carried in every rendered summary.
-pub const XP3_PRIVATE_LOCAL_SUMMARY_SUPPORT_BOUNDARY: &str = "Kaifuu KiriKiri XP3 private-local summary COMPOSES an operator's local helper-result aggregate (KAIFUU-085 ref+hash HelperResults), support-tuple summary (KAIFUU-105 ClaimedSupportTuples), and XP3 patch-back summaries into ONE redacted validation summary. It exposes ONLY safe metadata: profile ids, secret REQUIREMENT ids, proof hashes, capability levels, statuses, counts, and typed diagnostics. It NEVER carries secret key bytes, private paths, decrypted or story text, screenshots, retail bytes, or unredacted helper logs. Every private-local row is optional (an empty render is valid + deterministic), so a private-local aggregate is never a public-CI dependency. The composed body is deep-scanned before it is returned; any secret-shaped material fails the render loudly and nothing is returned to persist.";
+pub const XP3_PRIVATE_LOCAL_SUMMARY_SUPPORT_BOUNDARY: &str = "Kaifuu KiriKiri XP3 private-local summary COMPOSES an operator's local helper-result aggregate (ref+hash HelperResults), support-tuple summary (validated ClaimedSupportTuples), and XP3 patch-back summaries into ONE redacted validation summary. It exposes ONLY safe metadata: profile ids, secret REQUIREMENT ids, proof hashes, capability levels, statuses, counts, and typed diagnostics. It NEVER carries secret key bytes, private paths, decrypted or story text, screenshots, retail bytes, or unredacted helper logs. Every private-local row is optional (an empty render is valid + deterministic), so a private-local aggregate is never a public-CI dependency. The composed body is deep-scanned before it is returned; any secret-shaped material fails the render loudly and nothing is returned to persist.";
 
 /// Semantic code: the composed summary failed the fail-loud deep secret scan.
 pub const SEMANTIC_XP3_PRIVATE_LOCAL_SUMMARY_SECRET_LEAK: &str =
@@ -369,7 +369,7 @@ pub fn render_xp3_private_local_summary(
                 severity: PartialDiagnosticSeverity::P1,
                 field: "helperRows".to_string(),
                 message: format!(
-                    "helper result {} failed KAIFUU-085 validation with {} failure(s)",
+                    "helper result {} failed  validation with {} failure(s)",
                     helper.helper_result_id,
                     validation.failures.len()
                 ),
@@ -412,7 +412,7 @@ pub fn render_xp3_private_local_summary(
                 severity: PartialDiagnosticSeverity::P0,
                 field: "supportRows".to_string(),
                 message: format!(
-                    "support tuple {} overclaims or failed KAIFUU-105 validation",
+                    "support tuple {} overclaims or failed  validation",
                     entry.profile_or_fixture_id
                 ),
                 semantic_code: SEMANTIC_XP3_PRIVATE_LOCAL_SUMMARY_TUPLE_OVERCLAIM.to_string(),

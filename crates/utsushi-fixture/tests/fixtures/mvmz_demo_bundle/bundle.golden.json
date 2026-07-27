@@ -14,7 +14,7 @@
           "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/76dcaf93-37f1-7227-8869-92285557b5d0.png"
         },
         "bridgeUnitRef": {
-          "bridgeUnitId": "5ce7ce53-c610-743e-b987-f54465e15561",
+          "bridgeUnitId": "6a0de361-d63d-76c1-b246-3f2ea6a06351",
           "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/5/parameters/0"
         },
         "captureId": "8b2c327b-c600-75e6-adaa-c152bb147fca",
@@ -52,7 +52,7 @@
           "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/7ba21a49-d6ec-74c0-bbc5-20e6e8ffe2bc.png"
         },
         "bridgeUnitRef": {
-          "bridgeUnitId": "0b4d782a-0d5d-7207-af73-041d2be2a3bd",
+          "bridgeUnitId": "9505ad4f-6c4d-782f-ae6a-bd090c4c30f2",
           "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/8/parameters/0/0"
         },
         "captureId": "02b8429b-9347-701b-acc5-93ab5380a409",
@@ -91,7 +91,7 @@
           "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/c102504b-184c-7bca-b42e-cf8669c84104.png"
         },
         "bridgeUnitRef": {
-          "bridgeUnitId": "46cfb39f-9dcd-790c-acde-13e2988c7af8",
+          "bridgeUnitId": "596e194b-7ed9-79a4-96ee-7c9810c5e108",
           "sourceUnitKey": "rpgmaker:CommonEvents.json#/3/list/2/parameters/0"
         },
         "captureId": "5ac96046-d2f0-7adf-b686-26c31e9deb55",
@@ -124,7 +124,7 @@
   "createdAt": "2026-06-17T00:00:00.000Z",
   "engine": "rpg_maker_mv_mz",
   "limitations": [
-    "Embedded playback demo bundle PACKAGES the committed UTSUSHI-119/102/065/010 artifacts by id / hash / verdict; it re-derives none of the proofs it links.",
+    "Embedded playback demo bundle PACKAGES the committed proof, capture, and review artifacts by id / hash / verdict; it re-derives none of the proofs it links.",
     "Public synthetic MV/MZ fixture only. The playback surface opens the patched fixture's observed text / choices + screenshot artifact references — never a live game and never copyrighted bytes or pixels.",
     "Screenshot captures are surfaced as managed runtime artifact URIs + content-addressed ref hashes; the bundle embeds no pixels."
   ],
@@ -198,7 +198,7 @@
       "proofKind": "utsushi.mvmz.runtime_observation_proof",
       "provenEvidenceTier": "E1",
       "runtimeObservationProven": true,
-      "source": "UTSUSHI-102"
+      "source": "synthetic-fixture"
     },
     "patchResult": {
       "outputHash": "sha256:8bfc28f64244432d6f834142c3dece101caae933ba8eb6ef058f2589e9c1b671",
@@ -212,13 +212,13 @@
       "proofId": "c62169a0-0237-7584-ad64-02c1a44aa085",
       "proofKind": "utsushi.mvmz.patched_runtime_observation_proof",
       "provenEvidenceTier": "E1",
-      "source": "UTSUSHI-119"
+      "source": "synthetic-fixture"
     },
     "screenshotEvidence": {
       "captureCount": 3,
       "evidenceTier": "E2",
       "runtimeReportId": "58a98a57-e18f-75dc-8bce-19880e3b9856",
-      "source": "UTSUSHI-065"
+      "source": "synthetic-fixture"
     }
   },
   "provenEvidenceTier": "E1",
@@ -226,7 +226,7 @@
     "manifestKind": "utsushi.mvmz.review_package_manifest",
     "reviewPackageId": "ec58da93-216e-7a07-b796-beed7cf97f06",
     "screenshotArtifactCount": 3,
-    "source": "UTSUSHI-010"
+    "source": "synthetic-fixture"
   },
   "schemaVersion": "0.1.0",
   "sourceLocale": "ja-JP",
@@ -236,13 +236,13 @@
     "checks": [
       {
         "checkId": "patched_proof_proven_e1",
-        "detail": "packaged UTSUSHI-119 proof proofKind=utsushi.mvmz.patched_runtime_observation_proof patchedRuntimeObservationProven=true provenEvidenceTier=E1; expected the patched proof proven at E1",
+        "detail": "packaged patched runtime proof proofKind=utsushi.mvmz.patched_runtime_observation_proof patchedRuntimeObservationProven=true provenEvidenceTier=E1; expected the patched proof proven at E1",
         "mandatory": true,
         "status": "pass"
       },
       {
         "checkId": "alpha_proof_proven_e1",
-        "detail": "packaged UTSUSHI-102 proof proofKind=utsushi.mvmz.runtime_observation_proof runtimeObservationProven=true provenEvidenceTier=E1; expected the alpha proof proven at E1",
+        "detail": "packaged runtime-observation proof proofKind=utsushi.mvmz.runtime_observation_proof runtimeObservationProven=true provenEvidenceTier=E1; expected the alpha proof proven at E1",
         "mandatory": true,
         "status": "pass"
       },
@@ -260,7 +260,7 @@
       },
       {
         "checkId": "observation_covers_proven_units",
-        "detail": "119 proof proved bridge units [\"019ed000-0000-7000-8000-bridgeun0001\", \"019ed000-0000-7000-8000-bridgeun0002\", \"019ed000-0000-7000-8000-bridgeun0003\"]; observation envelope covers [\"019ed000-0000-7000-8000-bridgeun0001\", \"019ed000-0000-7000-8000-bridgeun0002\", \"019ed000-0000-7000-8000-bridgeun0003\"]; every proven unit must appear in the playback envelope",
+        "detail": "patched proof proved bridge units [\"019ed000-0000-7000-8000-bridgeun0001\", \"019ed000-0000-7000-8000-bridgeun0002\", \"019ed000-0000-7000-8000-bridgeun0003\"]; observation envelope covers [\"019ed000-0000-7000-8000-bridgeun0001\", \"019ed000-0000-7000-8000-bridgeun0002\", \"019ed000-0000-7000-8000-bridgeun0003\"]; every proven unit must appear in the playback envelope",
         "mandatory": true,
         "status": "pass"
       },

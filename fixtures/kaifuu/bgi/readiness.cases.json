@@ -16,7 +16,7 @@
         "codec": "binary_table",
         "surface": "archive_entry",
         "secretRequirementIds": [],
-        "proofHashes": ["sha256:9262990c48461951bb68a99fb44af7c0e8edce1470c2d942733ad48be722568f"],
+        "proofHashes": ["sha256:6496ac6d593ca5a3b1d08756bb4270ddecae42501efd86373ae78a2ba71c0447"],
         "expectedSemanticCodes": [
           "kaifuu.unknown_engine_variant",
           "kaifuu.unsupported_variant.encrypted",
@@ -37,7 +37,7 @@
         "codec": "binary_table",
         "surface": "archive_entry",
         "secretRequirementIds": [],
-        "proofHashes": ["sha256:9480e683f0462de837e0f7ca6b8ab96ac6bb5e85297f25039960bfca0a01b821"],
+        "proofHashes": ["sha256:3748cd4452ed275667bef6eb7278f768872b3647b2089b046c2c3192bb3a2da6"],
         "expectedSemanticCodes": [
           "kaifuu.unknown_engine_variant",
           "kaifuu.missing_capability.codec"
@@ -57,7 +57,7 @@
         "codec": "unknown",
         "surface": "unknown",
         "secretRequirementIds": [],
-        "proofHashes": ["sha256:a85d7e68db9f5891fea56f90d9f419c3b563ead13da97bf843e6a708548e9461"],
+        "proofHashes": ["sha256:75b90ebf9f88e2d25ab3ddeb1ef8293d314e5d39d6b91bb32c0c1a1717a25736"],
         "expectedSemanticCodes": [
           "kaifuu.unknown_engine_variant",
           "kaifuu.missing_capability.container"
@@ -77,7 +77,7 @@
         "codec": "shift_jis_text",
         "surface": "archive_entry",
         "secretRequirementIds": [],
-        "proofHashes": ["sha256:4af9f01e9d903082bc52a1d21e57cdc09bcdfd73349a0ca865312e891ddf246d"],
+        "proofHashes": ["sha256:b8e6db341d8ff69e4cd3c407dc73877d854eac9ae89ffca7c929b13289658e0d"],
         "expectedSemanticCodes": ["kaifuu.unsupported_variant.packed"]
       },
       "expectedLevel": "identify"
@@ -245,7 +245,7 @@
         "codec": "shift_jis_text",
         "surface": "archive_entry",
         "secretRequirementIds": [],
-        "proofHashes": ["sha256:4af9f01e9d903082bc52a1d21e57cdc09bcdfd73349a0ca865312e891ddf246d"],
+        "proofHashes": ["sha256:b8e6db341d8ff69e4cd3c407dc73877d854eac9ae89ffca7c929b13289658e0d"],
         "expectedSemanticCodes": ["kaifuu.unsupported_variant.packed"]
       },
       "bytecode": {
@@ -333,7 +333,7 @@
         "codec": "shift_jis_text",
         "surface": "archive_entry",
         "secretRequirementIds": [],
-        "proofHashes": ["sha256:4af9f01e9d903082bc52a1d21e57cdc09bcdfd73349a0ca865312e891ddf246d"],
+        "proofHashes": ["sha256:b8e6db341d8ff69e4cd3c407dc73877d854eac9ae89ffca7c929b13289658e0d"],
         "expectedSemanticCodes": ["kaifuu.unsupported_variant.packed"]
       },
       "bytecode": {

@@ -144,7 +144,7 @@ fn g00_type0_back_decodes() {
     );
     assert!(
         image.width > 0,
-        "decoded width must be non-zero per UTSUSHI-216 acceptance criterion 1",
+        "decoded width must be non-zero per  acceptance criterion 1",
     );
     let expected_pixel_byte_count = (image.width as usize) * (image.height as usize) * 4;
     assert_eq!(
@@ -495,7 +495,7 @@ fn g00_corpus_histogram_real_bytes_2450_files() {
     assert_eq!(
         histogram.total(),
         SWEETIE_HD_G00_CORPUS_SIZE,
-        "Sweetie HD g00 corpus size is pinned at {SWEETIE_HD_G00_CORPUS_SIZE} files in UTSUSHI-216's acceptance block",
+        "Sweetie HD g00 corpus size is pinned at {SWEETIE_HD_G00_CORPUS_SIZE} files in 's acceptance block",
     );
     eprintln!(
         "Sweetie HD g00 lead-byte histogram: type0={} type1={} type2={} unknown={} unreadable={}",

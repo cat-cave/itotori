@@ -184,7 +184,7 @@ fn synthetic_scene_emits_one_text_line_and_reaches_first_pause() {
     };
 
     eprintln!(
-        "[UTSUSHI-220 synthetic] events={} text_lines={} unknown_opcodes={} outcome={:?}",
+        "[ synthetic] events={} text_lines={} unknown_opcodes={} outcome={:?}",
         log.events.len(),
         log.text_line_count(),
         log.unknown_opcode_count(),

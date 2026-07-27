@@ -159,7 +159,7 @@ fn bgm_play_resolves_through_foldname_bgm() {
         AudioEventPayload::Asset { asset_id } => {
             assert_eq!(
                 asset_id, "bgm/ASA",
-                "asset_id MUST resolve to 'bgm/ASA' per UTSUSHI-217 spec",
+                "asset_id MUST resolve to 'bgm/ASA' per  spec",
             );
         }
         other => panic!("expected Asset payload, got {other:?}"),
@@ -200,7 +200,7 @@ fn bgm_play_asset_id_resolves_against_real_asa_nwa_path() {
     assert_eq!(
         metadata.len(),
         18_317_046,
-        "bgm/ASA.nwa file size pinned at 18_317_046 bytes per UTSUSHI-217 spec",
+        "bgm/ASA.nwa file size pinned at 18_317_046 bytes per  spec",
     );
 
     // Also cross-validate that the file in the bgm directory matches

@@ -46,7 +46,7 @@ pub use self::recognize::run_asset_ocr;
 pub const ASSET_OCR_SCHEMA_VERSION: &str = "0.1.0";
 
 /// Provenance node id stamped into generated reports.
-pub const ASSET_OCR_SOURCE_NODE_ID: &str = "KAIFUU-026";
+pub const ASSET_OCR_SOURCE_NODE_ID: &str = "synthetic-fixture";
 
 /// Canonical id of this path / its public fixture.
 pub const ASSET_OCR_FIXTURE_ID: &str = "kaifuu-asset-ocr-ui-title-card";

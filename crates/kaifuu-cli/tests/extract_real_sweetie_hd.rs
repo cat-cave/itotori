@@ -98,10 +98,7 @@ fn cli_extract_engine_reallive_dialogue_scene_writes_schema_valid_v02_bundle() {
         !units.is_empty(),
         "bundle must carry ≥1 unit (no silent zero-state); got 0"
     );
-    eprintln!(
-        "KAIFUU-210 CLI bundle: units={}, schemaVersion=0.2.0",
-        units.len()
-    );
+    eprintln!(" CLI bundle: units={}, schemaVersion=0.2.0", units.len());
 
     // Re-validate against the canonical v0.2 contract for a Rust-side
     // schema check (avoids needing JSON-schema tooling at the test

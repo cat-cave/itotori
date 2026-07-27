@@ -82,7 +82,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
     // Walk through the -> -> chain
     // before exercising the lexer.
     let index = RealSceneIndex::parse(&bytes)
-        .expect("Sweetie HD Seen.txt must parse through the UTSUSHI-201 directory parser");
+        .expect("Sweetie HD Seen.txt must parse through the  directory parser");
     let entry = index
         .lookup(1)
         .expect("Sweetie HD must contain a populated scene 1 entry");
@@ -102,7 +102,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
     );
 
     let (header, _header_warnings) = SceneHeader::parse(blob)
-        .expect("Sweetie HD scene 1 must produce a typed SceneHeader (UTSUSHI-202 anchor)");
+        .expect("Sweetie HD scene 1 must produce a typed SceneHeader ( anchor)");
 
     let bytecode_offset = header.bytecode_offset as usize;
     let bytecode_compressed_size = header.bytecode_compressed_size as usize;
@@ -118,7 +118,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
             None,
             header.compiler_version,
         )
-        .expect("Sweetie HD scene 1 must decompress cleanly (UTSUSHI-203 anchor)");
+        .expect("Sweetie HD scene 1 must decompress cleanly ( anchor)");
 
     assert_eq!(
         decompressed.len(),
@@ -139,7 +139,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
         *counts.entry(element.variant_name()).or_insert(0) += 1;
     }
     eprintln!(
-        "[UTSUSHI-204 real-bytes] Sweetie HD scene #0001: {element_count} elements (range {ELEMENT_COUNT_MIN}..={ELEMENT_COUNT_MAX} expected) \
+        "[ real-bytes] Sweetie HD scene #0001: {element_count} elements (range {ELEMENT_COUNT_MIN}..={ELEMENT_COUNT_MAX} expected) \
          — per-variant counts {counts:?}",
     );
     // Surface the selection-option offsets for later work
@@ -148,7 +148,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
     for (idx, element) in elements.iter().enumerate() {
         if let BytecodeElement::SelectionOption { marker, .. } = element {
             eprintln!(
-                "[UTSUSHI-204 real-bytes] selection-option element idx={idx} \
+                "[ real-bytes] selection-option element idx={idx} \
                  marker=0x{marker:02x} byte_offset=0x{:04x}",
                 element.byte_offset(),
             );
@@ -193,7 +193,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
         sum,
         decompressed.len(),
         "sum of element byte_len values ({sum}) must equal decompressed.len() ({}) — \
-         partition invariant from KAIFUU-173",
+         partition invariant from ",
         decompressed.len(),
     );
     let mut expected_offset = 0usize;
@@ -283,7 +283,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
         "first Command element's overload must equal byte 7 of the header (research: 0)",
     );
     eprintln!(
-        "[UTSUSHI-204 real-bytes] first Command at byte_offset=0x{first_command_offset:04x} \
+        "[ real-bytes] first Command at byte_offset=0x{first_command_offset:04x} \
          len={first_command_len} module=({module_type}.{module_id}) opcode={opcode} \
          argc={arg_count} overload={overload}",
     );
@@ -310,7 +310,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
         })
         .count();
     eprintln!(
-        "[UTSUSHI-204 real-bytes] Sweetie HD scene #0001 selection-option marker count = \
+        "[ real-bytes] Sweetie HD scene #0001 selection-option marker count = \
          {selection_marker_count} (markers in 0x{SELECTION_OPTION_MARKER_MIN:02x}..=0x{SELECTION_OPTION_MARKER_MAX:02x})",
     );
     // STRICT positive assertion: scene #0001 carries exactly 8

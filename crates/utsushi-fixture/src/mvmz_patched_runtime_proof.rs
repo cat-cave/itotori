@@ -159,7 +159,7 @@ pub fn build_mvmz_patched_runtime_proof(
         id: CHECK_BASE_RUNTIME_OBSERVATION_PROVEN_E1,
         passed: base_proven,
         detail: format!(
-            "the patched trace re-derives the full UTSUSHI-102 E1 proof (live-DOM, E1 tier, full \
+            "the patched trace re-derives the full runtime-observation E1 proof (live-DOM, E1 tier, full \
              linkage, observed translation absent from every consumed static input): proven={base_proven}"
         ),
     });
@@ -273,7 +273,7 @@ pub fn build_mvmz_patched_runtime_proof(
         passed: alpha_baseline_ok,
         detail: format!(
             "alpha proof manifest proofKind={alpha_kind} runtimeObservationProven={alpha_proven} \
-             provenEvidenceTier={alpha_tier}; expected the UTSUSHI-102 proof proven at E1"
+             provenEvidenceTier={alpha_tier}; expected an E1-proven runtime-observation proof"
         ),
     });
 
@@ -311,16 +311,13 @@ pub fn build_mvmz_patched_runtime_proof(
     );
 
     limitations.push(
-        "Patched-runtime-observation proof re-derives the UTSUSHI-102 E1-vs-static distinction over \
+        "Patched-runtime-observation proof re-derives the runtime-observation E1-vs-static distinction over \
          the patched trace and does not embed raw game bytes or pixels; it names the PatchResult and \
          alpha proof by id/hash only."
             .to_string(),
     );
     limitations.push(
-        "The absent-from-static crux guarantees the observed translation was not LIFTED from any \
-         consumed static input (patched fixture bytes, PatchResult, alpha proof); an operator who \
-         hand-authors the correct translation into a fabricated trace is out of scope, exactly as in \
-         UTSUSHI-102. The outputHash provenance link ties the observation to a specific attested patch."
+        "The absent-from-static crux guarantees the observed translation was not LIFTED from any consumed static input (patched fixture bytes, PatchResult, alpha proof); an operator who hand-authors the correct translation into a fabricated trace is out of scope, exactly as in the base proof. The outputHash provenance link ties the observation to a specific attested patch."
             .to_string(),
     );
 
@@ -332,7 +329,7 @@ pub fn build_mvmz_patched_runtime_proof(
         "patchedRuntimeObservationProven": proven,
         "provenEvidenceTier": if proven { EVIDENCE_TIER_E1 } else { "none" },
         "consumes": {
-            "patchedRuntimeTraceSource": "UTSUSHI-006",
+            "patchedRuntimeTraceSource": "synthetic-fixture",
             "runtimeReportId": trace.get("runtimeReportId").cloned().unwrap_or(Value::Null),
             "patchResult": {
                 "patchResultId": inputs.patch_result.get("patchResultId").cloned().unwrap_or(Value::Null),

@@ -30,7 +30,7 @@ use std::path::PathBuf;
 use utsushi_core::write_json;
 use utsushi_fixture::mvmz_runtime_proof::mvmz_runtime_observation_proof_from_paths;
 
-const HELP: &str = r"utsushi mvmz-runtime-proof — MV/MZ launched-runtime observation proof (UTSUSHI-102)
+const HELP: &str = r"utsushi mvmz-runtime-proof — MV/MZ launched-runtime observation proof ()
 
 Usage:
   utsushi mvmz-runtime-proof \
@@ -39,11 +39,11 @@ Usage:
     [--screenshot-evidence <PATH>] \
     --output <PATH>
 
-  --runtime-trace <PATH>         UTSUSHI-006 browser trace-probe output (E1 runtime evidence
+  --runtime-trace <PATH>          browser trace-probe output (E1 runtime evidence
                                  report from `utsushi trace --adapter utsushi-browser`).
   --fixture-dir <DIR>            The public MV/MZ fixture directory (its STATIC source bytes;
                                  the crux check confirms observed plaintext is absent from it).
-  --screenshot-evidence <PATH>   Optional UTSUSHI-065 capture evidence (screenshot artifactRef).
+  --screenshot-evidence <PATH>   Optional  capture evidence (screenshot artifactRef).
   --output <PATH>                Runtime-observation proof manifest JSON.
 
 Exit codes:
@@ -176,7 +176,7 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(&output).unwrap()).unwrap();
         assert_eq!(proof["runtimeObservationProven"], true);
         assert_eq!(proof["provenEvidenceTier"], "E1");
-        assert_eq!(proof["consumes"]["runtimeTraceSource"], "UTSUSHI-006");
+        assert_eq!(proof["consumes"]["runtimeTraceSource"], "synthetic-fixture");
         assert_eq!(proof["screenshotEvidence"]["available"], true);
         let _ = std::fs::remove_file(output);
     }

@@ -75,7 +75,7 @@ fn database_units_carry_all_acceptance_fields() {
             unit.entry_index().is_some(),
             "db unit carries an array index"
         );
-        assert_eq!(unit.fixture_profile_id, "KAIFUU-110");
+        assert_eq!(unit.fixture_profile_id, "synthetic-fixture");
         assert!(!unit.bridge_unit_id().is_empty());
         assert!(unit.source_unit_key().starts_with("rpgmaker:Actors.json#/"));
     }

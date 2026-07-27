@@ -112,20 +112,14 @@ fn nwa_asa_decodes_33M_frames() {
     assert_eq!(
         bytes.len() as u64,
         ASA_NWA_FILE_SIZE,
-        "ASA.nwa file size is pinned at {ASA_NWA_FILE_SIZE} per the UTSUSHI-217 spec",
+        "ASA.nwa file size is pinned at {ASA_NWA_FILE_SIZE} per the  spec",
     );
 
     let file = decode_nwa(&bytes).expect("ASA.nwa decode");
     let header = &file.header;
-    assert_eq!(header.channels, 2, "ASA.nwa is stereo per UTSUSHI-217 spec");
-    assert_eq!(
-        header.bits_per_sample, 16,
-        "ASA.nwa is 16-bit per UTSUSHI-217 spec",
-    );
-    assert_eq!(
-        header.sample_rate, 44_100,
-        "ASA.nwa is 44.1 kHz per UTSUSHI-217 spec",
-    );
+    assert_eq!(header.channels, 2, "ASA.nwa is stereo per  spec");
+    assert_eq!(header.bits_per_sample, 16, "ASA.nwa is 16-bit per  spec",);
+    assert_eq!(header.sample_rate, 44_100, "ASA.nwa is 44.1 kHz per  spec",);
 
     // ASA.nwa is compression_mode = 0 (NWA-compressed level 0). The
     // file is NOT raw PCM (file size 18_317_046 < uncompressed size
@@ -149,7 +143,7 @@ fn nwa_asa_decodes_33M_frames() {
     assert_eq!(
         header.uncompressed_byte_size, ASA_NWA_UNCOMPRESSED_BYTE_SIZE_REAL,
         "ASA.nwa uncompressed_byte_size at @0x14 is the real-bytes value {ASA_NWA_UNCOMPRESSED_BYTE_SIZE_REAL}. \
-         UTSUSHI-217 spec text quotes {ASA_NWA_UNCOMPRESSED_BYTE_SIZE_SPEC} (a typo derived from \
+          spec text quotes {ASA_NWA_UNCOMPRESSED_BYTE_SIZE_SPEC} (a typo derived from \
          docs/research/reallive-engine.md misreading 'dc c4 04 02' LE as 0x020404c4 rather than 0x0204c4dc). \
          This test pins the real-bytes value per the 'real-bytes preferred' itotori operating-model rule; \
          a future spec correction will surface here.",

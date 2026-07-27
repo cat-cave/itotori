@@ -91,7 +91,7 @@ fn str_mem_sys_registries_dispatch_against_reallive_real_bytes_scene_one() {
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", seen_path.display()));
 
     let index = RealSceneIndex::parse(&bytes)
-        .expect("Sweetie HD Seen.txt must parse through the UTSUSHI-201 directory parser");
+        .expect("Sweetie HD Seen.txt must parse through the  directory parser");
     let entry = index
         .lookup(1)
         .expect("Sweetie HD must contain a populated scene 1 entry");
@@ -149,13 +149,13 @@ fn str_mem_sys_registries_dispatch_against_reallive_real_bytes_scene_one() {
         }
     }
     eprintln!(
-        "[UTSUSHI-212 real-bytes] Sweetie HD scene 1 dispatch histogram: \
+        "[ real-bytes] Sweetie HD scene 1 dispatch histogram: \
          module_str hits={module_str_hits} module_mem hits={module_mem_hits} \
          module_sys hits={module_sys_hits} (element_count={})",
         elements.len(),
     );
     eprintln!(
-        "[UTSUSHI-212 real-bytes] Sweetie HD scene 1 per-key histogram (top 20): {:?}",
+        "[ real-bytes] Sweetie HD scene 1 per-key histogram (top 20): {:?}",
         per_opcode.iter().take(20).collect::<Vec<_>>(),
     );
     // Documented observation: Sweetie HD scene 1 carries ≥12
@@ -173,8 +173,8 @@ fn str_mem_sys_registries_dispatch_against_reallive_real_bytes_scene_one() {
         .map(|(_, count)| *count)
         .sum();
     eprintln!(
-        "[UTSUSHI-212 real-bytes] arithmetic-subset hits (sys.rnd/pcnt/abs/...) = {arithmetic_hits} \
-         (multi-game gap acceptable per UTSUSHI-201/202/203 sibling pattern)",
+        "[ real-bytes] arithmetic-subset hits (sys.rnd/pcnt/abs/...) = {arithmetic_hits} \
+         (multi-game gap acceptable per /202/203 sibling pattern)",
     );
 
     // Multi-game-gap note: the spec's scoping rule
@@ -223,13 +223,13 @@ fn str_mem_sys_registries_dispatch_against_reallive_real_bytes_scene_one() {
                 _ => {}
             },
             Err(err) => {
-                eprintln!("[UTSUSHI-212 real-bytes] VM step error after {steps} steps: {err}",);
+                eprintln!("[ real-bytes] VM step error after {steps} steps: {err}",);
                 break;
             }
         }
         steps += 1;
     }
-    eprintln!("[UTSUSHI-212 real-bytes] steps_executed={steps} last_outcome={last:?}",);
+    eprintln!("[ real-bytes] steps_executed={steps} last_outcome={last:?}",);
     // No assertion on dispatched-line count: the corpus may not
     // exercise these families at all in the scene-1 preamble. The
     // dispatch path's correctness is pinned by the synthetic unit

@@ -59,7 +59,7 @@ fn crypt_chain_runs_every_stage_in_order_through_keyref() {
         report["capabilityId"],
         "kaifuu-kirikiri-xp3-crypt-chain-smoke"
     );
-    assert_eq!(report["sourceNodeId"], "KAIFUU-072");
+    assert_eq!(report["sourceNodeId"], "synthetic-fixture");
     assert_eq!(report["engineFamily"], "kirikiri");
     assert_eq!(report["container"], "xp3");
 

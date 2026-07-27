@@ -1058,7 +1058,7 @@ pub fn encrypted_media_proof(
 
     let semantic_remediation = if matches!(aggregate_readiness, EncryptedMediaReadiness::Ready) {
         Some(
-            "encrypted-media readiness reports profile wiring only; KAIFUU-039 makes no decryption, extraction, script-patch, or dialogue-extraction capability claim".to_string(),
+            "encrypted-media readiness reports profile wiring only;  makes no decryption, extraction, script-patch, or dialogue-extraction capability claim".to_string(),
         )
     } else if matches!(
         aggregate_readiness,
@@ -1069,7 +1069,7 @@ pub fn encrypted_media_proof(
         )
     } else {
         Some(
-            "encrypted-media routing diagnostics fired; KAIFUU-039 makes no decryption, extraction, script-patch, or dialogue-extraction capability claim".to_string(),
+            "encrypted-media routing diagnostics fired;  makes no decryption, extraction, script-patch, or dialogue-extraction capability claim".to_string(),
         )
     };
 

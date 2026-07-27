@@ -51,7 +51,7 @@ fn speaker_message_branch_rows_link_to_real_extraction_bridge_units() {
         };
         let unit = units.get(&bridge_ref.source_unit_key).unwrap_or_else(|| {
             panic!(
-                "trace row {} references sourceUnitKey {} that KAIFUU-009 did not extract",
+                "trace row {} references sourceUnitKey {} that  did not extract",
                 row.command_index, bridge_ref.source_unit_key,
             )
         });

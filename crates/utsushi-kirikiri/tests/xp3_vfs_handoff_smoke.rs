@@ -34,7 +34,7 @@ const SCRIPT_MEMBER: &str = "scenario/intro.ks";
 /// A synthetic, authored, CC0 KAG `.ks` script: a named speaker, message runs
 /// a same-file `@jump`, and a `[link]…[endlink]` choice menu with per-branch
 /// text. ASCII so the byte assertions are transparent.
-const KAG_SOURCE: &[u8] = b"; UTSUSHI-039 synthetic KAG (CC0)\n\
+const KAG_SOURCE: &[u8] = b";  synthetic KAG (CC0)\n\
 *start|Intro\n\
 #Alice\n\
 Hello, traveler.\n\
@@ -156,7 +156,7 @@ fn plain_handoff_replays_kag_read_through_the_vfs() {
         "KAG replay through the VFS must reproduce the authored dialogue"
     );
     assert_eq!(evidence.message_count, 3);
-    assert_eq!(evidence.source_node_id, "UTSUSHI-039");
+    assert_eq!(evidence.source_node_id, "synthetic-fixture");
 
     // The `.ks` was read through the VFS at the fixed handoff package id.
     assert_eq!(

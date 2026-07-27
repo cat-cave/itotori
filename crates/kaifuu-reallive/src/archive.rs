@@ -136,7 +136,7 @@ pub fn parse_archive(bytes: &[u8]) -> Result<RealLiveSceneIndex, ParseDiagnostic
             )
             .with_remediation(
                 "Reject the archive at the adapter boundary; map to \
-                 kaifuu.unknown_engine_variant per the KAIFUU-174 contract.",
+                 kaifuu.unknown_engine_variant per the  contract.",
             ));
         }
 
@@ -178,7 +178,7 @@ fn out_of_profile(
         message,
     )
     .with_remediation(
-        "Confirm the input is a RealLive SEEN.TXT archive (the KAIFUU-172 \
+        "Confirm the input is a RealLive SEEN.TXT archive (the  \
          detector is the canonical front door).",
     )
 }

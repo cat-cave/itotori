@@ -349,7 +349,7 @@ pub(crate) fn rpg_maker_mv_mz_key_validation_report(
         schema_version: PROFILE_SCHEMA_VERSION.to_string(),
         fixture_id: fixture_id.to_string(),
         status,
-        support_boundary: "KAIFUU-114 validates fixture-safe MV/MZ key evidence only; it does not decrypt, extract, replace, or patch encrypted media.".to_string(),
+        support_boundary: "The key-validation report validates fixture-safe MV/MZ key evidence only; it does not decrypt, extract, replace, or patch encrypted media.".to_string(),
         records: vec![RpgMakerMvMzFixtureKeyValidationRecord {
             requirement_id: requirement_id.to_string(),
             secret_ref_scheme,

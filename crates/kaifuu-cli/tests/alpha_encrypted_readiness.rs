@@ -68,7 +68,7 @@ fn positive_tree_generates_evidence_and_consumes_validation() {
 
     let report: Value = serde_json::from_slice(&fs::read(&report_path).unwrap()).unwrap();
     assert_eq!(report["status"], "passed");
-    assert_eq!(report["sourceNodeId"], "KAIFUU-104");
+    assert_eq!(report["sourceNodeId"], "synthetic-fixture");
 
     // The validation report was consumed (status + hash), not prose.
     let consumed = &report["consumedValidation"];
@@ -93,7 +93,7 @@ fn positive_tree_generates_evidence_and_consumes_validation() {
     for entry in entries {
         assert!(!entry["profileId"].as_str().unwrap().is_empty());
         assert!(!entry["fixtureId"].as_str().unwrap().is_empty());
-        assert_eq!(entry["sourceNodeId"], "KAIFUU-104");
+        assert_eq!(entry["sourceNodeId"], "synthetic-fixture");
         assert!(entry["engineFamily"].is_string());
         assert!(
             entry["contentHash"]

@@ -32,8 +32,8 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/expected/rpg-maker-mv-mz-key-validation-success-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "fa2ebb07fd68a17cb83a60cb76ecb4f97cdd0d1a11d5debe62b2b6b408ea645f",
-      "bytes": 1058,
+      "sha256": "f085d8863d2cd74868d347c54f265d219b0089912bdffc779dc0e4a6ada2f72c",
+      "bytes": 1073,
       "redistributable": true
     },
     {

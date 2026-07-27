@@ -23,7 +23,7 @@ fn detector_fixture_set_passes_and_records_kaifuu_085_fields() {
     assert_eq!(report.status, OperationStatus::Passed, "{report:#?}");
     assert_eq!(report.engine_family, BGI_ENGINE_FAMILY);
     let source_node_slug = report.source_node_id.to_ascii_lowercase().replace('-', "_");
-    assert_eq!(source_node_slug, "kaifuu_126");
+    assert_eq!(source_node_slug, "synthetic_fixture");
     assert_eq!(report.entries.len(), 6);
 
     for entry in &report.entries {
