@@ -1,0 +1,140 @@
+/*
+ * Cost / ZDR drill-down — the Model-cost summary and the per-provider-run cost
+ * ledger, as one panel group.
+ *
+ * Every class below was written in TSX with no rule anywhere, so the group ran
+ * the two panels together with no seam, stacked the four target readouts one
+ * per full-width row, and rendered the served (model, provider) pair as three
+ * identical lines — the pair that actually served a run indistinguishable from
+ * the pair that was requested. Colour and type come from `@itotori/ds` tokens;
+ * the three cost states use the DS's own cost tokens so `unknown` can never be
+ * mistaken for a real $0.00.
+ */
+
+/* --------------------------------------------------------------------------
+ * The panel group — summary above ledger, with a real seam between them.
+ * -------------------------------------------------------------------------- */
+
+.itotori-cost-panels {
+  display: grid;
+  gap: var(--ito-space-16);
+  align-items: start;
+  min-inline-size: 0;
+}
+
+.itotori-panel--cost .itotori-panel__body,
+.itotori-panel--cost-drilldown .itotori-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-12);
+  min-inline-size: 0;
+}
+
+/* The ledger's provider table is wide (run / cost / served pair / status); let
+ * it scroll inside the panel rather than widening the whole dashboard column. */
+.itotori-panel--cost-drilldown .itotori-datatable {
+  overflow-x: auto;
+}
+
+/* --------------------------------------------------------------------------
+ * Indie cost target — spent / target / remaining / used as ONE band of cells,
+ * not four stacked rows.
+ * -------------------------------------------------------------------------- */
+
+.itotori-cost-target {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--ito-space-1);
+  min-inline-size: 0;
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius);
+  background: var(--ito-color-divider);
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 0 var(--ito-bevel-top-highlight);
+}
+
+.itotori-cost-target > * {
+  min-inline-size: 0;
+  padding: var(--ito-space-8) var(--ito-space-12);
+  background: var(--ito-color-surface);
+}
+
+/* --------------------------------------------------------------------------
+ * Ledger cells.
+ * -------------------------------------------------------------------------- */
+
+.itotori-cost-amount {
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-cost-billed-ink);
+  white-space: nowrap;
+}
+
+[data-cost-state="zero"] .itotori-cost-amount {
+  color: var(--ito-cost-zero-muted);
+}
+
+/* Unrecorded is NOT zero: dashed underline + its own ink so the eye separates
+ * "we measured nothing" from "we measured nothing owed". */
+[data-cost-state="unknown"] .itotori-cost-amount {
+  color: var(--ito-cost-unknown-ink);
+  border-block-end: 1px dashed var(--ito-cost-unknown-dash);
+}
+
+.itotori-cost-started {
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel-tight);
+  color: var(--ito-color-text-muted);
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+ * The served (model, provider) pair. What ACTUALLY served leads; what was
+ * requested is a de-emphasised footnote beneath it — never the same weight.
+ * -------------------------------------------------------------------------- */
+
+.itotori-served-pair {
+  display: block;
+  min-inline-size: 0;
+  line-height: var(--ito-leading-tight);
+}
+
+.itotori-served-model {
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-text);
+  overflow-wrap: anywhere;
+}
+
+.itotori-served-provider {
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-mint);
+}
+
+.itotori-served-requested {
+  display: block;
+  margin-block-start: var(--ito-space-4);
+  padding-inline-start: var(--ito-space-6);
+  border-inline-start: 2px solid var(--ito-color-border);
+  font-size: var(--ito-text-pixel-tight);
+  color: var(--ito-color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------------
+ * A paging failure that leaves the last good page on screen.
+ * -------------------------------------------------------------------------- */
+
+.itotori-cost-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ito-space-8);
+  margin: 0;
+  padding: var(--ito-space-8) var(--ito-space-10);
+  border: 1px solid var(--ito-tone-critical-border);
+  border-radius: var(--ito-radius-tight);
+  background: var(--ito-tone-critical-bg);
+  color: var(--ito-tone-critical-fg);
+  font-size: var(--ito-text-pixel);
+}

@@ -17,6 +17,7 @@ import { useWikiBibleObject, useWikiBibleOverview } from "./wiki-bible/hooks.js"
 import { WikiBibleObjectPanel, type WikiBibleViewMode } from "./wiki-bible/object-panel.js";
 import { WikiBibleWriteForms } from "./wiki-bible/write-forms.js";
 import type { WikiBibleObjectRef, WikiBibleScope } from "./wiki-bible/client.js";
+import "./wiki-bible/wiki-bible.css";
 import type {
   WikiDashboardOverview,
   WikiDashboardWriteReceipt,

@@ -14,6 +14,7 @@ import type {
 } from "../../api-schema.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
+import "./play.css";
 
 export const playHubRoutePathRegex = /^\/play\/?$/u;
 

@@ -13,6 +13,7 @@ import { apiClient } from "../client.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState } from "../states.js";
 import { useWorkflowHandoffToasts } from "../workflow-handoff-toasts.js";
+import "./PassLedgerPanel.css";
 
 export type JournalRunSummaryRow = {
   journalRunId: string;

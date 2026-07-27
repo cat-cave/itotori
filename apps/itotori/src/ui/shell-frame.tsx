@@ -37,6 +37,7 @@ import {
   useShellSelection,
 } from "./shell-selection.js";
 import { IdentityOrgSwitcher } from "./identity-org-switcher.js";
+import { SHELL_NAV_ITEMS } from "./shell-nav-routes.js";
 import { loadSelectedAccountId, saveSelectedAccountId } from "./shell-account-scope.js";
 import type { AppLocation } from "./App.js";
 
@@ -46,30 +47,6 @@ import type { AppLocation } from "./App.js";
 // window.location the shell reads on mount — there is no client router). The
 // ids are the SPA's primary surfaces; legacy routes match no pill.
 // ---------------------------------------------------------------------------
-
-export interface ShellNavItem {
-  id: string;
-  label: string;
-  href: string;
-}
-
-export const SHELL_NAV_ITEMS: readonly ShellNavItem[] = [
-  { id: "workbench", label: "Workbench", href: "/" },
-  { id: "onboarding", label: "First run", href: "/onboarding" },
-  { id: "play", label: "Play", href: "/play" },
-  { id: "wiki", label: "Wiki", href: "/wiki" },
-  { id: "benchmark", label: "Benchmark", href: "/benchmark" },
-  { id: "catalog", label: "Catalog", href: "/catalog" },
-  { id: "members", label: "Members", href: "/members" },
-  { id: "settings-privacy", label: "Privacy", href: "/settings/privacy" },
-  { id: "settings-model-routing", label: "Model routing", href: "/settings/model-routing" },
-  { id: "settings-branch-policy", label: "Branch policy", href: "/settings/branch-policy" },
-  {
-    id: "settings-translation-scope",
-    label: "Translation scope",
-    href: "/settings/translation-scope",
-  },
-];
 
 /** The nav pill id active for a pathname, or "" when no pill matches. */
 export function activeShellNavId(pathname: string): string {

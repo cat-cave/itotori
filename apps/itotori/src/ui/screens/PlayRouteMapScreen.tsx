@@ -11,6 +11,7 @@ import { Badge, Panel, RouteMap, type RouteMapNode } from "@itotori/ds";
 import type { ApiPlayRouteMapResponse } from "../../api-schema.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
+import "./play.css";
 
 export const playRouteMapRoutePathRegex = /^\/play\/routemap\/?$/u;
 

@@ -1,0 +1,390 @@
+/*
+ * Wiki bible dashboard — the shared project brain.
+ *
+ * Twenty-one class names were written across this surface with no CSS rule
+ * anywhere, so the whole screen rendered as browser-default HTML inside the
+ * styled frame: one stacked column at every width, the readiness readouts one
+ * per full-width row, claims and citations as indented bullet lists, the object
+ * facts as an indented `<dl>`, the route / view toggles as raw grey buttons,
+ * and the correction forms as white browser controls with their labels jammed
+ * against them. Nothing failed — an unstyled class is silently inert.
+ *
+ * Layout and rhythm only; every colour, font, and step is an existing
+ * `@itotori/ds` token. No DS rule is forked.
+ */
+
+/* --------------------------------------------------------------------------
+ * Surface root — long object ids and content hashes are everywhere here, so
+ * they get mono ink and permission to break instead of widening the layout.
+ * -------------------------------------------------------------------------- */
+
+.wiki-bible code {
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-mint);
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------------
+ * The screen grid. Bands (readiness, route, view mode, index, receipt) run the
+ * full measure; given room, the object detail and the correction forms become
+ * two columns so a tester can read a claim and correct it without scrolling
+ * past the whole object.
+ * -------------------------------------------------------------------------- */
+
+.wiki-bible__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--ito-space-16);
+  align-items: start;
+  min-inline-size: 0;
+}
+
+@media (width >= 1500px) {
+  .wiki-bible__grid {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+
+  .wiki-bible__grid > * {
+    grid-column: 1 / -1;
+  }
+
+  .wiki-bible__grid > .wiki-bible__detail {
+    grid-column: 1;
+  }
+
+  .wiki-bible__grid > .wiki-bible__writes {
+    grid-column: 2;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Readiness band + route band — the two orienting panels, tinted apart by
+ * their title ticks so the eye can tell coverage from scope.
+ * -------------------------------------------------------------------------- */
+
+.wiki-bible__readiness .itotori-panel__tick {
+  background: var(--ito-color-mint);
+}
+
+.wiki-bible__routes .itotori-panel__tick {
+  background: var(--ito-color-sakura);
+}
+
+.wiki-bible__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--ito-space-12);
+  min-inline-size: 0;
+}
+
+/* --------------------------------------------------------------------------
+ * Toggles. `aria-pressed` was the ONLY signal of the active route or view;
+ * unstyled, that changed nothing a reader could see.
+ * -------------------------------------------------------------------------- */
+
+.wiki-bible__route-toggles,
+.wiki-bible__view-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ito-space-8);
+  min-inline-size: 0;
+}
+
+.wiki-bible__route-toggles button,
+.wiki-bible__view-toggle button {
+  min-block-size: 2rem;
+  padding: 0 var(--ito-space-12);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius-pill);
+  background: var(--ito-pill-bg);
+  color: var(--ito-pill-fg);
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.wiki-bible__route-toggles button:hover,
+.wiki-bible__view-toggle button:hover {
+  border-color: var(--ito-color-focus-ring);
+  color: var(--ito-color-text);
+}
+
+.wiki-bible__route-toggles button[aria-pressed="true"],
+.wiki-bible__view-toggle button[aria-pressed="true"] {
+  background: var(--ito-pill-active-bg);
+  border-color: var(--ito-pill-active-border);
+  color: var(--ito-pill-active-fg);
+}
+
+/* The view toggle sits outside a panel; give it the same gutter as one. */
+.wiki-bible__view-toggle {
+  padding: var(--ito-space-4) 0;
+}
+
+/* --------------------------------------------------------------------------
+ * Bible index — a bible can carry hundreds of objects; cap the pill list and
+ * let it scroll rather than pushing the selected object off-screen.
+ * -------------------------------------------------------------------------- */
+
+.wiki-bible__index {
+  max-block-size: 14rem;
+  overflow-y: auto;
+}
+
+/* --------------------------------------------------------------------------
+ * Object detail — a column of panels with the same rhythm as the screen grid.
+ * -------------------------------------------------------------------------- */
+
+.wiki-bible__detail {
+  display: grid;
+  gap: var(--ito-space-14);
+  align-items: start;
+  min-inline-size: 0;
+}
+
+/* Object facts: an aligned band of label-over-value cells, not an indented
+ * browser definition list. */
+.wiki-bible__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--ito-space-1);
+  margin: 0;
+  min-inline-size: 0;
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius);
+  background: var(--ito-color-divider);
+  overflow: hidden;
+}
+
+.wiki-bible__facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-4);
+  min-inline-size: 0;
+  padding: var(--ito-space-8) var(--ito-space-12);
+  background: var(--ito-color-surface);
+}
+
+.wiki-bible__facts dt {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+}
+
+.wiki-bible__facts dd {
+  margin: 0;
+  min-inline-size: 0;
+  color: var(--ito-color-text);
+  font-size: var(--ito-text-pixel);
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------------
+ * Claims — the substance of the surface. Each claim is a card with a scope
+ * accent, not a bullet in a browser list.
+ * -------------------------------------------------------------------------- */
+
+.wiki-bible__claims,
+.wiki-bible__citations,
+.wiki-bible__media,
+.wiki-bible__entry-deeplinks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+}
+
+.wiki-bible__claims {
+  display: grid;
+  gap: var(--ito-space-10);
+}
+
+.wiki-bible__claim {
+  display: grid;
+  gap: var(--ito-space-8);
+  min-inline-size: 0;
+  padding: var(--ito-space-10) var(--ito-space-12);
+  border: 1px solid var(--ito-color-border);
+  border-inline-start: 3px solid var(--ito-color-amber);
+  border-radius: var(--ito-radius-tight);
+  background: var(--ito-color-raised);
+}
+
+/* A route-specific claim is scoped, not canonical — say so on the edge. */
+.wiki-bible__claim[data-claim-canonical="false"] {
+  border-inline-start-color: var(--ito-color-sakura);
+}
+
+.wiki-bible__claim-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ito-space-8);
+  min-inline-size: 0;
+}
+
+.wiki-bible__claim-statement {
+  margin: 0;
+  color: var(--ito-color-text);
+  font-size: var(--ito-text-body);
+  line-height: var(--ito-leading-body);
+  max-inline-size: var(--ito-prose-measure);
+}
+
+/* Citations are provenance, not prose: a de-emphasised sub-list under a claim. */
+.wiki-bible__citations {
+  display: grid;
+  gap: var(--ito-space-4);
+  padding-inline-start: var(--ito-space-10);
+  border-inline-start: 1px solid var(--ito-color-divider);
+  color: var(--ito-color-text-muted);
+  font-size: var(--ito-text-pixel);
+}
+
+.wiki-bible__citations a,
+.wiki-bible__entry-deeplinks a {
+  color: var(--ito-color-cyan);
+}
+
+/* --------------------------------------------------------------------------
+ * Entry deep-links + media.
+ * -------------------------------------------------------------------------- */
+
+/* Small type needs a measure in absolute units: `62ch` of pixel-size text is a
+ * 26rem ribbon inside a 75rem panel, which reads as a broken column. */
+.wiki-bible__deeplink-lead {
+  margin: 0 0 var(--ito-space-8);
+  color: var(--ito-color-text-muted);
+  font-size: var(--ito-text-pixel);
+  line-height: var(--ito-leading-body);
+  max-inline-size: 46rem;
+}
+
+.wiki-bible__entry-deeplinks {
+  display: grid;
+  gap: var(--ito-space-6);
+  font-size: var(--ito-text-pixel);
+}
+
+.wiki-bible__deeplink-source {
+  color: var(--ito-color-text-muted);
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel-tight);
+}
+
+.wiki-bible__media {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--ito-space-10);
+}
+
+.wiki-bible__frame {
+  display: flex;
+  align-items: flex-end;
+  min-block-size: 6rem;
+  margin: 0;
+  padding: var(--ito-space-8);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius-tight);
+  background: var(--ito-color-code-well);
+}
+
+.wiki-bible__frame figcaption {
+  color: var(--ito-color-text-muted);
+  font-size: var(--ito-text-pixel-tight);
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------------
+ * Correction forms. Each control gets its own row under its label — unstyled,
+ * "Statement" sat beside a 180px white box the claim text overflowed.
+ * -------------------------------------------------------------------------- */
+
+.wiki-bible__writes {
+  display: grid;
+  gap: var(--ito-space-14);
+  align-items: start;
+  min-inline-size: 0;
+}
+
+.wiki-bible__writes p {
+  margin: 0 0 var(--ito-space-10);
+  color: var(--ito-color-text-muted);
+  font-size: var(--ito-text-pixel);
+  line-height: var(--ito-leading-body);
+  max-inline-size: 46rem;
+}
+
+.wiki-bible__writes form p {
+  display: grid;
+  gap: var(--ito-space-6);
+  max-inline-size: none;
+}
+
+.wiki-bible__writes label {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+}
+
+.wiki-bible__writes select,
+.wiki-bible__writes textarea {
+  inline-size: 100%;
+  min-inline-size: 0;
+  padding: var(--ito-space-6) var(--ito-space-8);
+  color: var(--ito-field-fg);
+  background: var(--ito-field-bg);
+  border: 1px solid var(--ito-field-border);
+  border-radius: var(--ito-field-radius);
+  font-family: inherit;
+  font-size: var(--ito-text-body);
+}
+
+.wiki-bible__writes textarea {
+  min-block-size: 6rem;
+  resize: vertical;
+  line-height: var(--ito-leading-body);
+}
+
+.wiki-bible__writes select:focus-visible,
+.wiki-bible__writes textarea:focus-visible {
+  border-color: var(--ito-field-focus-border);
+  outline: none;
+}
+
+.wiki-bible__writes button[type="submit"] {
+  justify-self: start;
+  min-block-size: 2.25rem;
+  padding: 0 var(--ito-space-14);
+  color: var(--ito-color-text);
+  background: var(--ito-color-code-well);
+  border: 1px solid var(--ito-color-mint);
+  border-radius: var(--ito-radius-pill);
+  font-family: var(--ito-font-display);
+  font-size: var(--ito-text-body);
+  cursor: pointer;
+}
+
+.wiki-bible__writes button[type="submit"]:disabled {
+  border-color: var(--ito-color-border);
+  color: var(--ito-color-text-muted);
+  cursor: not-allowed;
+}
+
+.wiki-bible__writes form {
+  display: grid;
+  gap: var(--ito-space-4);
+  min-inline-size: 0;
+}
+
+.wiki-bible__writes [role="alert"] {
+  color: var(--ito-tone-critical-fg);
+}

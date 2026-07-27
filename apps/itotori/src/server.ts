@@ -16,6 +16,7 @@ import {
   type ItotoriReadOnlyServiceFactory,
 } from "./services/database-services.js";
 import { parseItotoriSessionCookie } from "./auth-session-cookie.js";
+import { isShellNavPath } from "./ui/shell-nav-routes.js";
 import { assertPrivacyRetentionEgressContract } from "./contracts/privacy.js";
 import { configuredServicePort } from "./services/configured-port.js";
 import {
@@ -704,21 +705,11 @@ function isRuntimeDashboardRoute(pathname: string): boolean {
 function isItotoriDashboardRoute(pathname: string): boolean {
   return (
     /^\/projects\/[^/]+\/locale-branches\/[^/]+\/asset-decisions(?:\/batch)?$/u.test(pathname) ||
-    // fnd-addressable-routing + surface roots the SPA owns (play / wiki /
-    // benchmark / runs / findings). Keep `/runtime/*` on the runtime-web
-    // dashboard (isRuntimeDashboardRoute) — Studio run deep-links use `/runs/`.
-    pathname === "/play" ||
-    pathname.startsWith("/play/") ||
-    pathname === "/wiki" ||
-    pathname.startsWith("/wiki/") ||
-    pathname === "/bible" ||
-    pathname.startsWith("/bible/") ||
-    pathname === "/benchmark" ||
-    pathname.startsWith("/benchmark/") ||
-    pathname === "/findings" ||
-    pathname.startsWith("/findings/") ||
-    pathname === "/runs" ||
-    pathname.startsWith("/runs/")
+    // Every nav pill href and SPA deep-link root, from the SAME list the pills
+    // and the command palette render. A pill navigates with a full page load,
+    // so a surface missing here is a plain-text 404 behind its own nav button.
+    // `/runtime/*` stays on the runtime-web document (isRuntimeDashboardRoute).
+    isShellNavPath(pathname)
   );
 }
 

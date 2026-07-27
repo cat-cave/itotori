@@ -37,6 +37,7 @@ import {
   formatSignedMicrosUsd,
 } from "../format.js";
 import { EmptyState, ErrorState, LoadingState } from "../states.js";
+import "./CostDrilldownPanel.css";
 
 /** Server page size for the cost-ledger drilldown. */
 const COST_DRILLDOWN_PAGE_SIZE = 10;
