@@ -329,6 +329,7 @@ export const CallResultSchema = z.union([
         "invalid-tool-arguments",
         "invalid-json",
         "schema-failure",
+        "gate-rejection",
         "configuration",
         "permission",
         "step-limit",

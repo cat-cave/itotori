@@ -226,9 +226,9 @@ test("the alpha-proof integration workflow is public-fixture-only (no Postgres)"
   );
   assert.doesNotMatch(tier1AlphaJob, /just db-up|just db-wait|just db-down/u);
   assert.doesNotMatch(tier1AlphaJob, /DATABASE_URL/u);
-  // Tier recipe delegates to `alpha-proof` (`ci-tier1-alpha: alpha-proof`).
-  assert.match(tier1AlphaJob, /run: just ci-tier1-alpha\n/u);
-  assert.match(justfile, /^ci-tier1-alpha: alpha-proof$/mu);
+  // The CI job invokes the canonical alpha-proof recipe directly.
+  assert.match(tier1AlphaJob, /run: just alpha-proof\n/u);
+  assert.doesNotMatch(justfile, /^ci-tier1-alpha: alpha-proof$/mu);
 });
 
 test("db recipes use explicit compose env files without project-global .env leakage", () => {

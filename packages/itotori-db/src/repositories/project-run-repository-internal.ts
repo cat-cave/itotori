@@ -27,6 +27,9 @@ export class ItotoriProjectRunRepositoryError extends Error {
       | "fence_rejected"
       | "lease_unavailable"
       | "progress_regression"
+      | "run_id_collision"
+      | "active_branch_collision"
+      | "constraint_violation"
       | "run_transition_rejected"
       | "unknown_run",
     message: string,

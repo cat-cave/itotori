@@ -93,7 +93,7 @@ export interface SceneLocalization {
 
 export class LocalizeError extends Error {
   constructor(
-    readonly code: "dispatch-failure" | "bible-context",
+    readonly code: "dispatch-failure" | "gate-rejection" | "bible-context",
     detail: string,
   ) {
     super(`p1 localize ${code}: ${detail}`);
@@ -159,6 +159,12 @@ function assertExactBibleBasis(
 
 function requireBatch(result: CallResult): DraftBatch {
   if (result.status !== "success") {
+    if (result.failureKind === "gate-rejection") {
+      throw new LocalizeError(
+        "gate-rejection",
+        result.defects[0]?.message ?? "content gate rejected output",
+      );
+    }
     throw new LocalizeError("dispatch-failure", `segment dispatch failed: ${result.failureKind}`);
   }
   return DraftBatchSchema.parse(result.value);

@@ -585,6 +585,10 @@ export const migrations = [
     id: "0115_one_active_project_run_per_branch",
     file: "0115_one_active_project_run_per_branch.sql",
   },
+  {
+    id: "0116_llm_provider_attribution_ledger",
+    file: "0116_llm_provider_attribution_ledger.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

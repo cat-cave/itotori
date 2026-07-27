@@ -82,19 +82,54 @@ describe("ItotoriProjectRunRepository", () => {
     }
   });
 
-  it("refuses a second active run on the same project branch", async () => {
+  it("names the active-run constraint and row identity when a retry collides", async () => {
     const fixture = await runFixture("active-branch");
     try {
       await fixture.runs.createRun(actor, runInput(fixture, "run-active-first", 100));
 
       await expect(
         fixture.runs.createRun(actor, runInput(fixture, "run-active-second", 100)),
-      ).rejects.toMatchObject({
-        cause: {
-          code: "23505",
-          constraint: "itotori_project_runs_one_active_branch_idx",
-        },
-      });
+      ).rejects.toThrow(
+        `project run collision: constraint 'itotori_project_runs_one_active_branch_idx' rejected project '${fixture.projectId}', run 'run-active-second'`,
+      );
+    } finally {
+      await fixture.context.close();
+    }
+  });
+
+  it("names the primary-key constraint and recovery action when a run ID is reused", async () => {
+    const fixture = await runFixture("run-id-collision");
+    try {
+      await fixture.runs.createRun(actor, runInput(fixture, "run-reused", 100));
+      const lease = await fixture.runs.acquireLease(
+        actor,
+        leaseInput(fixture, "run-reused", "driver"),
+      );
+      await fixture.runs.advanceRun(actor, { lease, status: "running" });
+      await fixture.runs.advanceRun(actor, { lease, status: "completed" });
+      await fixture.runs.releaseLease(actor, lease);
+
+      await expect(
+        fixture.runs.createRun(actor, runInput(fixture, "run-reused", 100)),
+      ).rejects.toThrow(
+        `project run-id collision: constraint 'itotori_project_runs_pkey' rejected project '${fixture.projectId}', run 'run-reused'. This run ID already exists; choose a new run ID, or resume the existing run.`,
+      );
+    } finally {
+      await fixture.context.close();
+    }
+  });
+
+  it("names the snapshot-binding trigger and attempted branch when the snapshot belongs elsewhere", async () => {
+    const fixture = await runFixture("foreign-key-diagnostic");
+    try {
+      await expect(
+        fixture.runs.createRun(actor, {
+          ...runInput(fixture, "run-missing-branch", 100),
+          localeBranchId: "missing-branch",
+        }),
+      ).rejects.toThrow(
+        `project run snapshot-binding rejection: trigger 'itotori_validate_project_run_snapshot_binding' rejected project '${fixture.projectId}', run 'run-missing-branch' on locale branch 'missing-branch'. The localization snapshot is bound to a different locale branch; verify the run's locale branch matches its localization snapshot before retrying.`,
+      );
     } finally {
       await fixture.context.close();
     }

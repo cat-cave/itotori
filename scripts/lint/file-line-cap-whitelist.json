@@ -1,11 +1,10 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/file-line-cap-guard.mjs --update\". Each entry maps an over-cap\nfile to its grandfathered line count; counts and entries may only shrink. When\nempty/deleted the cap is absolute (no file may exceed the threshold).",
   "threshold": 500,
-  "generatedAt": "2026-07-27T19:13:51.519Z",
-  "total": 43,
+  "generatedAt": "2026-07-27T21:21:56.762Z",
+  "total": 40,
   "files": {
     "crates/kaifuu-cli/src/main.rs": 831,
-    "crates/kaifuu-cli/tests/patch_real_private_corpus.rs": 567,
     "crates/kaifuu-core/src/lib.rs": 1166,
     "crates/kaifuu-core/src/mv_mz_encrypted_asset_replacement.rs": 712,
     "crates/kaifuu-core/src/mv_mz_encrypted_audio.rs": 1044,
@@ -26,9 +25,7 @@
     "crates/kaifuu-reallive/src/protected_spans.rs": 617,
     "crates/kaifuu-rpgmaker/src/database_terms.rs": 995,
     "crates/kaifuu-rpgmaker/src/plugin_profile.rs": 905,
-    "crates/kaifuu-rpgmaker/tests/k112_full_surface.rs": 560,
     "crates/kaifuu-siglus/src/adapter.rs": 1167,
-    "crates/kaifuu-softpal/src/opcode.rs": 608,
     "crates/kaifuu-softpal/src/script.rs": 782,
     "crates/utsushi-cli/src/render_validate.rs": 751,
     "crates/utsushi-fixture/src/launch_adapters.rs": 632,

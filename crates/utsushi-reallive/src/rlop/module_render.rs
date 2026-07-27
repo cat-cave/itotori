@@ -157,6 +157,12 @@ pub const RENDER_GAPS: &[(&str, &str)] = &[
          MappedRLModule (first,last) fan-out is not expanded.",
     ),
     (
+        "grp present clear-and-promote (wipe_copy)",
+        "foreground objects are cleared and background objects are promoted, but the \
+         reference's per-object wipe_copy preservation bit is not carried by this model; \
+         a flagged foreground object is therefore cleared rather than retained.",
+    ),
+    (
         "obj.objAdjust(1006) / objDispRect(1034) / objTextOpts / objNumOpts / objDriftOpts",
         "adjustment-slot / clip-rect / text-layout / num-layout / drift options are \
          recorded as a position or ignored; the fine geometry is not modelled.",

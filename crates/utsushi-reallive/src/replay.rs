@@ -73,7 +73,7 @@ use crate::vm::{InMemorySceneStore, SceneId, SceneStore, StepOutcome, Vm, VmEven
 mod branch;
 pub use branch::{
     BranchFollowingObservation, BranchReplayReport, BranchTerminus, ControlTransferCounts,
-    PortObservation, SceneObservation, ScenePlaySegment, ScenePlaythrough,
+    PlayOrderSource, PortObservation, SceneObservation, ScenePlaySegment, ScenePlaythrough,
 };
 use branch::{PassObservation, PassTermination, select_port_pass};
 

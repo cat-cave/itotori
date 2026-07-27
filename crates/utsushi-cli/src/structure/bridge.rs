@@ -45,6 +45,7 @@ impl BridgeUnit {
 pub(super) struct BridgeIndex {
     pub bridge_id: String,
     pub source_bundle_hash: String,
+    pub source_scope: Value,
     pub asset_scene_ids: BTreeSet<SceneId>,
     pub assets_by_scene: BTreeMap<SceneId, Value>,
     pub units_by_scene: BTreeMap<SceneId, Vec<BridgeUnit>>,
@@ -60,12 +61,6 @@ impl BridgeIndex {
         let validated = BridgeBundleV02::validate_json(&value)
             .map_err(|err| format!("utsushi.structure.validate_bridge: {err}"))?;
         let seen_hash = sha256_ref(seen_bytes);
-        if validated.source_bundle_hash != seen_hash {
-            return Err(format!(
-                "utsushi.structure.bridge_seen_mismatch: bridge sourceBundleHash {} does not match Seen.txt {seen_hash}",
-                validated.source_bundle_hash
-            ));
-        }
 
         let mut asset_scene_ids = BTreeSet::new();
         let mut assets_by_scene = BTreeMap::new();
@@ -106,10 +101,18 @@ impl BridgeIndex {
         for units in units_by_scene.values_mut() {
             units.sort_by_key(|unit| (unit.byte_start, unit.source_unit_key.clone()));
         }
+        let source_scope = parse_source_scope(
+            &value,
+            &seen_hash,
+            &asset_scene_ids,
+            validated.units.len(),
+            &validated.source_bundle_hash,
+        )?;
 
         Ok(Self {
             bridge_id: validated.bridge_id,
             source_bundle_hash: validated.source_bundle_hash,
+            source_scope,
             asset_scene_ids,
             assets_by_scene,
             unit_count: validated.units.len(),
@@ -127,6 +130,107 @@ impl BridgeIndex {
     pub fn asset(&self, scene_id: SceneId) -> Option<&Value> {
         self.assets_by_scene.get(&scene_id)
     }
+}
+
+fn parse_source_scope(
+    bridge: &Value,
+    seen_hash: &str,
+    asset_scene_ids: &BTreeSet<SceneId>,
+    unit_count: usize,
+    source_bundle_hash: &str,
+) -> Result<Value, String> {
+    let Some(scope) = bridge.get("sourceScope") else {
+        if source_bundle_hash != seen_hash {
+            return Err(format!(
+                "utsushi.structure.bridge_seen_mismatch: bridge sourceBundleHash {source_bundle_hash} does not match Seen.txt {seen_hash}"
+            ));
+        }
+        return Ok(json!({
+            "kind": "whole_archive",
+            "sourceArchiveHash": seen_hash,
+            "sceneIds": asset_scene_ids,
+            "unitRange": null,
+            "unitCount": unit_count,
+        }));
+    };
+    let kind = string(scope, "kind")?;
+    if !matches!(kind, "whole_archive" | "scene_set" | "unit_range") {
+        return Err(format!(
+            "utsushi.structure.source_scope: unsupported kind {kind:?}"
+        ));
+    }
+    if string(scope, "sourceArchiveHash")? != seen_hash {
+        return Err(
+            "utsushi.structure.source_scope: sourceArchiveHash does not match Seen.txt".to_string(),
+        );
+    }
+    let ids = array(scope, "sceneIds")?
+        .iter()
+        .map(|value| {
+            value
+                .as_u64()
+                .and_then(|id| u16::try_from(id).ok())
+                .ok_or("sceneIds must contain u16 values")
+        })
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    if ids != *asset_scene_ids {
+        return Err(
+            "utsushi.structure.source_scope: sceneIds do not equal bridge assets".to_string(),
+        );
+    }
+    if unsigned(scope, "unitCount")? != unit_count as u64 {
+        return Err(
+            "utsushi.structure.source_scope: unitCount does not equal bridge units".to_string(),
+        );
+    }
+    let range = scope.get("unitRange").cloned().unwrap_or(Value::Null);
+    if kind == "unit_range" {
+        let range_object = range
+            .as_object()
+            .ok_or("unitRange must be an object for unit_range")?;
+        let start = unsigned_map(range_object, "start")?;
+        let end = unsigned_map(range_object, "endExclusive")?;
+        if start >= end {
+            return Err("utsushi.structure.source_scope: unitRange must be non-empty".to_string());
+        }
+    } else if !range.is_null() {
+        return Err(
+            "utsushi.structure.source_scope: unitRange is only valid for unit_range".to_string(),
+        );
+    }
+    let expected = scoped_bundle_hash(seen_hash, kind, &ids, &range, unit_count);
+    if source_bundle_hash != expected {
+        return Err(
+            "utsushi.structure.source_scope: sourceBundleHash does not bind the declared scope"
+                .to_string(),
+        );
+    }
+    Ok(scope.clone())
+}
+
+fn scoped_bundle_hash(
+    archive_hash: &str,
+    kind: &str,
+    scene_ids: &BTreeSet<SceneId>,
+    range: &Value,
+    unit_count: usize,
+) -> String {
+    if kind == "whole_archive" {
+        return archive_hash.to_string();
+    }
+    let range = range.as_object().map_or_else(
+        || "all".to_string(),
+        |value| format!("{}:{}", value["start"], value["endExclusive"]),
+    );
+    let ids = scene_ids
+        .iter()
+        .map(u16::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+    sha256_ref(
+        format!("reallive-run-scope-v1|{archive_hash}|{kind}|{ids}|{range}|{unit_count}")
+            .as_bytes(),
+    )
 }
 
 fn parse_unit(value: &Value) -> Result<BridgeUnit, String> {
@@ -237,4 +341,23 @@ fn sha256_ref(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("sha256:{:x}", hasher.finalize())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scoped_bundle_hash_cannot_be_relabelled_as_whole_archive() {
+        let archive_hash =
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let scenes = BTreeSet::from([1u16]);
+        let scope = json!({ "start": 4, "endExclusive": 7 });
+        let scoped = scoped_bundle_hash(archive_hash, "unit_range", &scenes, &scope, 3);
+        assert_ne!(scoped, archive_hash);
+        assert_eq!(
+            scoped_bundle_hash(archive_hash, "whole_archive", &scenes, &Value::Null, 3),
+            archive_hash
+        );
+    }
 }

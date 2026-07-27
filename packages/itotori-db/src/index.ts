@@ -1167,6 +1167,12 @@ export {
   ItotoriLlmCallMemoRepository,
   LlmMemoConflictError,
 } from "./repositories/llm-call-memo-repository.js";
+export { ItotoriLlmAttributionRepository } from "./repositories/llm-attribution-repository.js";
+export type {
+  LlmAttributionLookup,
+  LlmAttributionRecord,
+  LlmAttributionStatus,
+} from "./repositories/llm-attribution-repository.js";
 export type {
   LlmAttemptFailure,
   CompletedLlmStep,

@@ -132,8 +132,8 @@ pub use ast::{
     ParseStatus, Scene, StringSlot, StringSlotId, StringSlotRef, StringSlotRole,
 };
 pub use bridge::{
-    BridgeOpts, BridgeProduceError, BridgeSceneInput, ProducedBundle, produce_bundle,
-    produce_whole_seen_bundle,
+    ArchiveScope, BridgeOpts, BridgeProduceError, BridgeSceneInput, ProducedBundle, produce_bundle,
+    produce_scoped_seen_bundle, produce_whole_seen_bundle,
 };
 pub use bridge_ids::{deterministic_speaker_id, scene_bundle_namespace};
 pub use compressor::{CompressError, compress_avg32_literal};

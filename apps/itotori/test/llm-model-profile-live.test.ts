@@ -109,6 +109,7 @@ const liveEnabled =
       });
       const steps = await readStepObservations(context.pool);
       const attempts = await readAttemptObservations(context.pool);
+      const attributions = await readAttributionObservations(context.pool);
       if (reasoning === null) throw new Error("dispatcher omitted reasoning continuity evidence");
       const generationLookupAttempts = terminalGenerationLookupAttempts(
         generationLookupGenerationIds,
@@ -143,6 +144,7 @@ const liveEnabled =
           },
           steps,
           attempts,
+          attributions,
           providerError,
           toolExecutionCount,
           reasoning,
@@ -304,5 +306,25 @@ async function readAttemptObservations(
     failureClass: row.failure_class,
     httpStatus: row.http_status,
     billingState: row.billing_state,
+  }));
+}
+
+async function readAttributionObservations(
+  pool: Awaited<ReturnType<typeof isolatedMigratedContext>>["pool"],
+) {
+  const rows = await pool.query<{
+    generation_id: string | null;
+    attribution_status: string;
+    served_model: string | null;
+    served_provider: string | null;
+  }>(`
+    select generation_id, attribution_status, served_model, served_provider
+    from itotori_llm_provider_attributions order by created_at, attribution_id
+  `);
+  return rows.rows.map((row) => ({
+    generationId: row.generation_id,
+    status: row.attribution_status,
+    servedModel: row.served_model,
+    servedProvider: row.served_provider,
   }));
 }

@@ -52,7 +52,6 @@ export type DashboardServerOptions = {
   browserPlayerLaunches?: BrowserPlayerLaunchRegistry;
 };
 
-const dashboardListenHost = "127.0.0.1";
 export function createItotoriServer(options: DashboardServerOptions = {}) {
   assertPrivacyRetentionEgressContract();
   const webRoot = options.webRoot ?? new URL("../web-dist/", import.meta.url);
@@ -81,7 +80,7 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
     options.readOnlyServiceFactory ?? toReadOnlyServiceFactory(serviceFactory);
   const browserPlayerSessions = options.browserPlayerSessions ?? new BrowserPlayerSessionManager();
   const browserPlayerLaunches = options.browserPlayerLaunches ?? browserPlayerLaunchesFromEnv();
-  return createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
     if (isItotoriApiPath(url.pathname)) {
       if (isBrowserPlayerRoute(url.pathname)) {
@@ -217,6 +216,8 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
     response.writeHead(404, { "content-type": "text/plain" });
     response.end("not found");
   });
+  server.once("close", () => void browserPlayerSessions.closeAll());
+  return server;
 }
 
 async function readJsonRequestBody(request: IncomingMessage): Promise<unknown> {
@@ -293,15 +294,6 @@ function browserPlayerLaunchesFromEnv(): BrowserPlayerLaunchRegistry {
   };
 }
 
-export function startItotoriServer(options: DashboardServerOptions = {}) {
-  const port = options.port ?? Number(process.env.PORT ?? "4173");
-  const server = createItotoriServer(options);
-  server.listen(port, dashboardListenHost, () => {
-    console.log(`Itotori dashboard listening on http://${dashboardListenHost}:${port}`);
-  });
-  return server;
-}
-
 function contentType(path: string): string {
   switch (extname(path)) {
     case ".html":
@@ -375,5 +367,10 @@ function isItotoriDashboardRoute(pathname: string): boolean {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  startItotoriServer();
+  void import("./server-runtime.js")
+    .then(({ startItotoriServer }) => startItotoriServer())
+    .catch((error: unknown) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    });
 }

@@ -42,7 +42,7 @@ class ProofCipher implements LlmMemoCipher {
     return Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString("utf8");
   }
 
-  async destroyKey(keyRef: string): Promise<void> {
+  async releaseKeyReference(keyRef: string): Promise<void> {
     this.#keys.delete(keyRef);
   }
 }

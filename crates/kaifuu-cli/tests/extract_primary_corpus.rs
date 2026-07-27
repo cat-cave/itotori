@@ -47,11 +47,10 @@ fn kaifuu_cli_binary() -> PathBuf {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn cli_extract_engine_reallive_dialogue_scene_writes_schema_valid_v02_bundle() {
     let Some(game_root) = real_corpus::game_root() else {
-        eprintln!(
+        panic!(
             "{}",
-            real_corpus::skip_message("CLI extract real-bytes test")
+            real_corpus::unavailable_message("CLI extract real-bytes test")
         );
-        return;
     };
 
     let tmp_dir = tempfile::tempdir().expect("tmp dir");
@@ -123,11 +122,10 @@ fn cli_extract_engine_reallive_dialogue_scene_writes_schema_valid_v02_bundle() {
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn cli_extract_whole_seen_primary_corpus_writes_multi_scene_bridge() {
     let Some(game_root) = real_corpus::game_root() else {
-        eprintln!(
+        panic!(
             "{}",
-            real_corpus::skip_message("CLI whole-SEEN real-bytes test")
+            real_corpus::unavailable_message("CLI whole-SEEN real-bytes test")
         );
-        return;
     };
 
     let tmp_dir = tempfile::tempdir().expect("tmp dir");

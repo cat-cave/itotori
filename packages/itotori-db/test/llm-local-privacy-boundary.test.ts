@@ -41,7 +41,7 @@ class ProofCipher implements LlmMemoCipher {
     return Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString("utf8");
   }
 
-  async destroyKey(keyRef: string): Promise<void> {
+  async releaseKeyReference(keyRef: string): Promise<void> {
     this.#keys.delete(keyRef);
   }
 }
@@ -148,7 +148,7 @@ postgresDescribe("rebuilt LLM local privacy boundary", () => {
     }
   });
 
-  it("deletes expired ciphertext, destroys its key, and retains an idempotent tombstone", async () => {
+  it("deletes expired ciphertext, releases an external key, and retains an idempotent tombstone", async () => {
     const context = await isolatedMigratedContext();
     const cipher = new ProofCipher();
     const sealed = await cipher.seal("RETENTION_PRIVATE_SENTINEL");
@@ -172,7 +172,7 @@ postgresDescribe("rebuilt LLM local privacy boundary", () => {
       const retention = new ItotoriLlmRetentionRepository(context.pool, cipher);
       await expect(retention.deleteExpired(new Date("2020-01-03T00:00:00.000Z"))).resolves.toEqual({
         deletedRows: 1,
-        destroyedKeyRefs: 1,
+        releasedKeyRefs: 1,
         tables: { itotori_llm_human_inputs: 1 },
       });
       const tombstone = await context.pool.query<{
@@ -191,7 +191,7 @@ postgresDescribe("rebuilt LLM local privacy boundary", () => {
       await expect(cipher.open(sealed.ciphertext, sealed.keyRef)).rejects.toThrow(/destroyed/u);
       await expect(retention.deleteExpired(new Date("2020-01-03T00:00:00.000Z"))).resolves.toEqual({
         deletedRows: 0,
-        destroyedKeyRefs: 0,
+        releasedKeyRefs: 0,
         tables: {},
       });
     } finally {

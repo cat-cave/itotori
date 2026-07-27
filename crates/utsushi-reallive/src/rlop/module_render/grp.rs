@@ -71,7 +71,10 @@ impl GrpRenderOp {
         Self { runtime, op }
     }
 
-    fn load_image_to(&self, args: &[ExprValue], slot: usize, visible: bool) -> DispatchOutcome {
+    /// Load an image into a DC. Returns whether an image was actually
+    /// installed, so callers that present DC0 do not transition the object
+    /// planes for the `???` keep-current sentinel or malformed input.
+    fn load_image_to(&self, args: &[ExprValue], slot: usize, visible: bool) -> bool {
         // rlvm {grp,rec}(Mask)?(Load|Buffer|Open|OpenBg) take a
         // StrConstant_T FILENAME first. `???` means "keep current" in
         // rlvm; we skip the load on that sentinel.
@@ -81,28 +84,31 @@ impl GrpRenderOp {
                     opcode_tag: self.op.tag(),
                     slot: "filename",
                 });
-            return DispatchOutcome::Advance;
+            return false;
         };
         let name = match decode_shift_jis(raw) {
             Some(n) if !n.is_empty() && n != "???" => n,
             Some(_) => {
                 // Empty / "???" filename: no image to load; not an error.
-                return DispatchOutcome::Advance;
+                return false;
             }
             None => {
                 self.runtime.push_warning(
                     GraphicsRuntimeWarning::InvalidShiftJis { opcode_tag: "" }
                         .with_opcode(self.op.tag()),
                 );
-                return DispatchOutcome::Advance;
+                return false;
             }
         };
-        self.runtime
-            .route_stack_result(self.runtime.with_stack_mut(|stack| {
-                let mut object = GraphicsObject::image(name.clone());
-                object.visible = visible;
-                stack.set_layer(GraphicsLayer::DisplayCommand, slot, object)
-            }));
+        let write = self.runtime.with_stack_mut(|stack| {
+            let mut object = GraphicsObject::image(name.clone());
+            object.visible = visible;
+            stack.set_layer(GraphicsLayer::DisplayCommand, slot, object)
+        });
+        if let Err(error) = write {
+            self.runtime.route_stack_error(error);
+            return false;
+        }
         // For the on-screen background (DC0), resolve+decode the g00 through
         // the substrate VFS (when bound) so the audit surface pins the real
         // canvas size; fall back to asset-key-only when no package is set.
@@ -118,7 +124,16 @@ impl GrpRenderOp {
                     .push_warning(warning.with_opcode(self.op.tag())),
             }
         }
-        DispatchOutcome::Advance
+        true
+    }
+
+    /// A DC presentation clears stale foreground furniture and promotes the
+    /// background object plane. This is shared by `grpDisplay` and every
+    /// open/multi command because each ultimately presents DC1 as DC0.
+    fn present_objects(&self) {
+        self.runtime.with_stack_mut(|stack| {
+            stack.clear_and_promote_objects();
+        });
     }
 }
 
@@ -179,15 +194,22 @@ impl RLOperation for GrpRenderOp {
                 // grpBuffer(filename, dc, opacity=255): off-screen.
                 let dc = arg_int(args, 1).and_then(slot_ok).unwrap_or(1);
                 let visible = dc == SCREEN_DC_SLOT;
-                self.load_image_to(args, dc, visible)
+                self.load_image_to(args, dc, visible);
+                DispatchOutcome::Advance
             }
             GrpOp::OpenScreen => {
                 // openBg(filename, effect): straight to DC0 (visible).
-                self.load_image_to(args, SCREEN_DC_SLOT, true)
+                if self.load_image_to(args, SCREEN_DC_SLOT, true) {
+                    self.present_objects();
+                }
+                DispatchOutcome::Advance
             }
             GrpOp::Multi => {
                 // grpMulti(filename,...): base image to DC0; overlays gap.
-                self.load_image_to(args, SCREEN_DC_SLOT, true)
+                if self.load_image_to(args, SCREEN_DC_SLOT, true) {
+                    self.present_objects();
+                }
+                DispatchOutcome::Advance
             }
             GrpOp::Display => {
                 // grpDisplay(dc, effect): copy off-screen dc → DC0 (screen).
@@ -207,7 +229,7 @@ impl RLOperation for GrpRenderOp {
                 });
                 match outcome {
                     Ok(false) => warn(&self.runtime, self.op.tag(), dc),
-                    Ok(true) => {}
+                    Ok(true) => self.present_objects(),
                     Err(error) => self.runtime.route_stack_error(error),
                 }
                 DispatchOutcome::Advance

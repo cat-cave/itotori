@@ -13,14 +13,16 @@ use super::paths::{
 };
 use crate::{REAL_GAME_ROOT_ENV, flag, flag_optional, flag_present};
 
+use super::run_scope::parse_requested_scope;
+
 pub(crate) fn run_extract_reallive_bundle(
     args: &[String],
 ) -> Result<(), Box<dyn std::error::Error>> {
     use kaifuu_reallive::{
         BridgeOpts, BridgeSceneInput, REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN,
         compiler_version_uses_xor2, decompress_archive_scenes, decompress_avg32,
-        gameexe::parse_gameexe_inventory, parse_archive, parse_real_bytecode, produce_bundle,
-        produce_whole_seen_bundle, recover_and_decrypt_archive, unrecognized_opcode_histogram,
+        gameexe::parse_gameexe_inventory, parse_archive, parse_real_bytecode,
+        produce_scoped_seen_bundle, recover_and_decrypt_archive, unrecognized_opcode_histogram,
     };
 
     let game_id = required_reallive_metadata_flag(args, "--game-id")?;
@@ -28,18 +30,7 @@ pub(crate) fn run_extract_reallive_bundle(
     let source_profile_id = required_reallive_metadata_flag(args, "--source-profile-id")?;
     let source_locale = required_reallive_metadata_flag(args, "--source-locale")?;
     let bundle_output = PathBuf::from(flag(args, "--bundle-output")?);
-    let whole_seen = flag_present(args, "--whole-seen");
-    let scene_id: Option<u16> = if whole_seen {
-        None
-    } else {
-        Some(
-            flag(args, "--scene")?
-                .parse()
-                .map_err(|err| -> Box<dyn std::error::Error> {
-                    format!("--scene must be a u16: {err}").into()
-                })?,
-        )
-    };
+    let requested_scope = parse_requested_scope(args)?;
     // Alpha sourcing route (production): resolve the corpus BY-ID through the
     // read-only vault adapter (`kaifuu-vault-source`). `--game-root` /
     // ITOTORI_REAL_GAME_ROOT is retained only as the env-gated raw-path helper
@@ -93,7 +84,7 @@ pub(crate) fn run_extract_reallive_bundle(
         scene_kidoku_count: 0,
     };
 
-    if whole_seen {
+    {
         let mut decoded_scenes = Vec::new();
         let mut total_opcodes = 0usize;
         let mut unknown_opcodes = 0usize;
@@ -103,13 +94,17 @@ pub(crate) fn run_extract_reallive_bundle(
         // aggregate count.
         let mut unknown_signatures: BTreeMap<(u8, u8, u16), usize> = BTreeMap::new();
 
-        let mut xor2_corpus = if index.entries.iter().any(|entry| {
-            let Ok((_, _, header)) = reallive_scene_slices(&seen_bytes, entry.scene_id, &index)
-            else {
-                return false;
-            };
-            compiler_version_uses_xor2(header.compiler_version)
-        }) {
+        let mut xor2_corpus = if index
+            .entries
+            .iter()
+            .filter(|entry| requested_scope.includes_scene(entry.scene_id))
+            .any(|entry| {
+                let Ok((_, _, header)) = reallive_scene_slices(&seen_bytes, entry.scene_id, &index)
+                else {
+                    return false;
+                };
+                compiler_version_uses_xor2(header.compiler_version)
+            }) {
             let mut corpus = decompress_archive_scenes(&seen_bytes, &index);
             let report = recover_and_decrypt_archive(&mut corpus.scenes);
             if !report.validated {
@@ -129,6 +124,9 @@ pub(crate) fn run_extract_reallive_bundle(
         };
 
         for entry in &index.entries {
+            if !requested_scope.includes_scene(entry.scene_id) {
+                continue;
+            }
             let (scene_blob, compressed, header) =
                 reallive_scene_slices(&seen_bytes, entry.scene_id, &index)?;
             let decompressed = if compiler_version_uses_xor2(header.compiler_version) {
@@ -187,11 +185,16 @@ pub(crate) fn run_extract_reallive_bundle(
                 scene_kidoku_count: scene.kidoku_count,
             })
             .collect();
-        let produced =
-            produce_whole_seen_bundle(&seen_bytes, &scene_inputs, &gameexe_inventory, &opts)
-                .map_err(|err| -> Box<dyn std::error::Error> {
-                    format!("kaifuu.reallive.whole_seen.bridge: {err}").into()
-                })?;
+        let produced = produce_scoped_seen_bundle(
+            &seen_bytes,
+            &scene_inputs,
+            requested_scope.bridge_scope(),
+            &gameexe_inventory,
+            &opts,
+        )
+        .map_err(|err| -> Box<dyn std::error::Error> {
+            format!("kaifuu.reallive.scoped.bridge: {err}").into()
+        })?;
         write_json(&bundle_output, &produced.json)?;
 
         // `kaifuu extract --whole-seen` produces the BRIDGE only (pure kaifuu
@@ -208,7 +211,7 @@ pub(crate) fn run_extract_reallive_bundle(
                 "engine": "reallive",
                 "gameId": opts.game_id,
                 "gameVersion": opts.game_version,
-                "scope": "whole-seen",
+                "scope": requested_scope.report_scope(),
                 "sceneCount": decoded_scenes.len(),
                 "totalOpcodes": total_opcodes,
                 "recognizedOpcodes": total_opcodes - unknown_opcodes,
@@ -233,95 +236,8 @@ pub(crate) fn run_extract_reallive_bundle(
             UnknownOpcodeGate::Warn(message) => eprintln!("{message}"),
             UnknownOpcodeGate::Fail(message) => return Err(message.into()),
         }
-        return Ok(());
+        Ok(())
     }
-
-    let scene_id = scene_id.expect("--scene parsed for per-scene extract");
-    let (scene_blob, compressed, header) = reallive_scene_slices(&seen_bytes, scene_id, &index)?;
-    let decompressed = decompress_avg32(compressed, header.bytecode_uncompressed_size as usize)
-        .map_err(|err| -> Box<dyn std::error::Error> {
-            format!("kaifuu.reallive.decompress: {err}").into()
-        })?;
-    let decompressed = if compiler_version_uses_xor2(header.compiler_version) {
-        let mut corpus = decompress_archive_scenes(&seen_bytes, &index);
-        let target_index = corpus.position_of(scene_id);
-        let report = recover_and_decrypt_archive(&mut corpus.scenes);
-        if !report.validated {
-            return Err(format!(
-                "kaifuu.reallive.xor2.decrypt_failed: scene {scene_id} sets use_xor_2 \
-                 (compiler_version={}) but no per-game xor_2 key validated over the \
-                 archive: {}",
-                header.compiler_version,
-                report
-                    .finding
-                    .as_deref()
-                    .unwrap_or("no eligible scene reached the xor_2 segment"),
-            )
-            .into());
-        }
-        let idx = target_index.ok_or_else(|| -> Box<dyn std::error::Error> {
-            format!("scene {scene_id} vanished from archive during xor_2 recovery").into()
-        })?;
-        corpus.scenes.swap_remove(idx).bytecode
-    } else {
-        decompressed
-    };
-
-    let opts = BridgeOpts {
-        game_id,
-        game_version,
-        source_profile_id,
-        source_locale,
-        extractor_name: "kaifuu-reallive-bridge",
-        extractor_version: "0.1.0",
-        scene_kidoku_count: header.kidoku_count,
-    };
-    let produced = produce_bundle(
-        scene_id,
-        scene_blob,
-        &decompressed,
-        &gameexe_inventory,
-        &opts,
-    )
-    .map_err(|err| -> Box<dyn std::error::Error> {
-        format!("kaifuu.reallive.bridge: {err}").into()
-    })?;
-
-    write_json(&bundle_output, &produced.json)?;
-
-    // alpha-006e — machine-readable decompile report. The zero-unknown
-    // property is guaranteed by the decompiler (a well-formed scene stream
-    // partitions every byte into a typed element; any byte outside a
-    // structural opener is a catch-all Textout — see kaifuu-reallive
-    // `parse_real_bytecode`). This surfaces that property as an auditable
-    // artifact: it re-walks the fully-decrypted bytecode and counts any
-    // element the dispatcher did NOT recognise. For a real RealLive scene
-    // the count is 0; a non-zero count means the 100%-decompilation bar
-    // was not met and the caller can fail closed on it.
-    if let Some(report_path) = flag_optional(args, "--decompile-report-output") {
-        let opcodes =
-            parse_real_bytecode(&decompressed).map_err(|err| -> Box<dyn std::error::Error> {
-                format!("kaifuu.reallive.decompile_report_parse: {err}").into()
-            })?;
-        let total_opcodes = opcodes.len();
-        let unknown_opcodes = opcodes.iter().filter(|op| !op.is_recognized()).count();
-        let recognized_opcodes = total_opcodes - unknown_opcodes;
-        let source_seen_sha256 = sha256_hash_bytes(&seen_bytes);
-        let report = serde_json::json!({
-            "schemaVersion": "itotori.kaifuu.decompile-report.v0",
-            "engine": "reallive",
-            "gameId": opts.game_id,
-            "gameVersion": opts.game_version,
-            "sceneId": scene_id,
-            "totalOpcodes": total_opcodes,
-            "recognizedOpcodes": recognized_opcodes,
-            "unknownOpcodes": unknown_opcodes,
-            "sourceSeenSha256": source_seen_sha256,
-            "resolvedGameRoot": resolved_game_root.display().to_string(),
-        });
-        write_json(&PathBuf::from(report_path), &report)?;
-    }
-    Ok(())
 }
 
 #[derive(Debug)]

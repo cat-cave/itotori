@@ -59,11 +59,7 @@ export const PrivacyRetentionEgressContractSchema = z
         runContentDays: z.literal(30),
         acceptedContentDays: z.literal(365),
         sourceVolumeLifetime: z.literal("job-lifetime"),
-        deleteBy: z.tuple([
-          z.literal("delete-ciphertext"),
-          z.literal("destroy-key"),
-          z.literal("retain-tombstone-only"),
-        ]),
+        deleteBy: z.tuple([z.literal("delete-ciphertext"), z.literal("retain-tombstone-only")]),
       })
       .strict(),
     billing: z
@@ -111,7 +107,7 @@ export const privacyRetentionEgressManifest = {
     runContentDays: 30,
     acceptedContentDays: 365,
     sourceVolumeLifetime: "job-lifetime",
-    deleteBy: ["delete-ciphertext", "destroy-key", "retain-tombstone-only"],
+    deleteBy: ["delete-ciphertext", "retain-tombstone-only"],
   },
   billing: {
     confirmed: "generation-reconciled",

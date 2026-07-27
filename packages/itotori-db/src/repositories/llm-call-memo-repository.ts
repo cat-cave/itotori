@@ -12,6 +12,7 @@ import {
   ItotoriLlmHttpAttemptRepository,
   type LlmSpendExposureReport,
 } from "./llm-http-attempt-repository.js";
+import { ItotoriLlmAttributionRepository } from "./llm-attribution-repository.js";
 import { conversationEventProjectionMetadata } from "./llm-conversation-repository.js";
 import {
   injectLlmDurabilityFault,
@@ -21,8 +22,9 @@ import {
 export interface LlmMemoCipher {
   seal(plaintext: string): Promise<{ ciphertext: Uint8Array; keyRef: string }>;
   open(ciphertext: Uint8Array, keyRef: string): Promise<string>;
-  /** Must be idempotent so interrupted retention passes can resume safely. */
-  destroyKey(keyRef: string): Promise<void>;
+  /** Releases separable key material when the cipher owns any. It is idempotent
+   * because interrupted cleanup passes must be safe to resume. */
+  releaseKeyReference(keyRef: string): Promise<void>;
 }
 
 export type LlmStepBilling =
@@ -152,6 +154,7 @@ export class LlmMemoConflictError extends Error {
 
 export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
   readonly #attempts: ItotoriLlmHttpAttemptRepository;
+  readonly #attributions: ItotoriLlmAttributionRepository;
 
   constructor(
     private readonly pool: DatabaseContext["pool"],
@@ -159,6 +162,7 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
     private readonly contentAccess: LlmContentReadAuthorizer,
   ) {
     this.#attempts = new ItotoriLlmHttpAttemptRepository(pool, cipher);
+    this.#attributions = new ItotoriLlmAttributionRepository(pool);
   }
 
   readSpendExposure(admissionScope: string): Promise<LlmSpendExposureReport> {
@@ -420,6 +424,11 @@ export class ItotoriLlmCallMemoRepository implements LlmCallMemoStore {
           execution.completedAt,
         ],
       );
+      await this.#attributions.recordPhysicalAttempt(client, {
+        memoKey: input.memoKey,
+        attempt: { ordinal: attempt.ordinal, startedAt: attempt.startedAt },
+        execution,
+      });
       await client.query("commit");
     } catch (error: unknown) {
       await client.query("rollback");

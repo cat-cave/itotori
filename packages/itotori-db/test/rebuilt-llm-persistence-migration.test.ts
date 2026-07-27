@@ -353,9 +353,9 @@ describe("rebuilt LLM persistence migration", () => {
   });
 
   it("rejects truncation of immutable history", async () => {
-    await expect(context!.pool.query("truncate itotori_llm_call_memos")).rejects.toThrow(
-      /history is immutable/u,
-    );
+    await expect(
+      context!.pool.query("truncate itotori_llm_provider_attributions, itotori_llm_call_memos"),
+    ).rejects.toThrow(/history is immutable/u);
   });
 
   it("is idempotent on upgrade and rolls back interrupted application", async () => {

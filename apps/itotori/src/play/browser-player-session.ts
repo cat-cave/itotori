@@ -8,7 +8,17 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { resolveNativeCli, type NativeCliRunner } from "../native-bin/cli-bin-resolver.js";
+import {
+  resolveNativeCli,
+  scrubLiveProviderSecrets,
+  type NativeCliRunner,
+} from "../native-bin/cli-bin-resolver.js";
+
+/** A viewer that has been quiet for this long cannot retain an engine VM. */
+export const BROWSER_PLAYER_SESSION_IDLE_TIMEOUT_MS = 5 * 60_000;
+/** Check often enough to reclaim an abandoned tab without keeping Node alive. */
+export const BROWSER_PLAYER_SESSION_REAP_INTERVAL_MS = 30_000;
+const BROWSER_PLAYER_CLOSE_GRACE_MS = 1_000;
 
 /** Trusted server-side launch data. This type is never decoded from HTTP. */
 export type BrowserPlayerLaunch = {
@@ -47,6 +57,13 @@ export type BrowserPlayerState = {
 type CliFrame = { path: string; artifactId: string; width: number; height: number };
 type CliState = Omit<BrowserPlayerState, "sessionId" | "frame"> & { frame: CliFrame | null };
 
+export type BrowserPlayerSessionOptions = {
+  nativeCli?: NativeCliRunner;
+  idleTimeoutMs?: number;
+  reapIntervalMs?: number;
+  now?: () => number;
+};
+
 export class BrowserPlayerSessionError extends Error {
   constructor(message: string) {
     super(message);
@@ -56,24 +73,38 @@ export class BrowserPlayerSessionError extends Error {
 
 export class BrowserPlayerSessionManager {
   private readonly sessions = new Map<string, BrowserPlayerSession>();
+  private readonly nativeCli: NativeCliRunner;
+  private readonly idleTimeoutMs: number;
+  private readonly now: () => number;
+  private readonly reaper: NodeJS.Timeout;
 
-  constructor(private readonly nativeCli: NativeCliRunner = {}) {}
+  constructor(options: BrowserPlayerSessionOptions = {}) {
+    this.nativeCli = options.nativeCli ?? {};
+    this.idleTimeoutMs = options.idleTimeoutMs ?? BROWSER_PLAYER_SESSION_IDLE_TIMEOUT_MS;
+    const reapIntervalMs = options.reapIntervalMs ?? BROWSER_PLAYER_SESSION_REAP_INTERVAL_MS;
+    this.now = options.now ?? Date.now;
+    if (this.idleTimeoutMs <= 0 || reapIntervalMs <= 0)
+      throw new Error("browser player session timeouts must be positive");
+    this.reaper = setInterval(() => void this.reapIdleSessions(), reapIntervalMs);
+    this.reaper.unref();
+  }
 
   async start(input: BrowserPlayerLaunch, reveal: boolean): Promise<BrowserPlayerState> {
     validateLaunch(input);
     const sessionId = randomUUID();
-    const child = LivePlayerChild.start(input, reveal, this.nativeCli);
+    const child = LivePlayerChild.start(input, sessionId, reveal, this.nativeCli);
     const session = {
       child,
       reveal,
       frames: new Map<string, { path: string; requiresReveal: boolean }>(),
+      lastActivityMs: this.now(),
     };
     this.sessions.set(sessionId, session);
     try {
       return await this.withFrame(sessionId, session, await child.next());
     } catch (error) {
       this.sessions.delete(sessionId);
-      child.close();
+      await child.close();
       throw error;
     }
   }
@@ -82,18 +113,34 @@ export class BrowserPlayerSessionManager {
     const session = this.require(sessionId);
     validateInput(input);
     try {
-      return await this.withFrame(sessionId, session, await session.child.send(input));
+      const state = await this.withFrame(sessionId, session, await session.child.send(input));
+      session.lastActivityMs = this.now();
+      return state;
     } catch (error) {
       this.sessions.delete(sessionId);
-      session.child.close();
+      await session.child.close();
       throw error;
     }
   }
 
-  close(sessionId: string): void {
+  async close(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     this.sessions.delete(sessionId);
-    session?.child.close();
+    await session?.child.close();
+  }
+
+  async closeAll(): Promise<void> {
+    clearInterval(this.reaper);
+    await Promise.all([...this.sessions.keys()].map(async (sessionId) => this.close(sessionId)));
+  }
+
+  async reapIdleSessions(): Promise<number> {
+    const deadline = this.now() - this.idleTimeoutMs;
+    const stale = [...this.sessions.entries()]
+      .filter(([, session]) => session.lastActivityMs <= deadline)
+      .map(([sessionId]) => sessionId);
+    await Promise.all(stale.map(async (sessionId) => this.close(sessionId)));
+    return stale.length;
   }
 
   async readFrame(sessionId: string, frameId: string, reveal: boolean): Promise<Buffer> {
@@ -126,6 +173,7 @@ type BrowserPlayerSession = {
   child: LivePlayerChild;
   reveal: boolean;
   frames: Map<string, { path: string; requiresReveal: boolean }>;
+  lastActivityMs: number;
 };
 
 class LivePlayerChild {
@@ -134,6 +182,7 @@ class LivePlayerChild {
   private stdout = "";
   private stderr = "";
   private closed = false;
+  private closePromise: Promise<void> | undefined;
 
   private constructor(private readonly child: ChildProcessWithoutNullStreams) {
     child.stdout.setEncoding("utf8");
@@ -155,6 +204,7 @@ class LivePlayerChild {
 
   static start(
     input: BrowserPlayerLaunch,
+    runId: string,
     reveal: boolean,
     nativeCli: NativeCliRunner,
   ): LivePlayerChild {
@@ -173,10 +223,14 @@ class LivePlayerChild {
       input.g00Dir,
       "--artifact-root",
       input.artifactRoot,
+      "--run-id",
+      runId,
       "--redaction",
       reveal ? "off" : "on",
     ];
-    return new LivePlayerChild(spawn(resolved.command, args, { env, stdio: "pipe" }));
+    return new LivePlayerChild(
+      spawn(resolved.command, args, { env: scrubLiveProviderSecrets(env), stdio: "pipe" }),
+    );
   }
 
   next(): Promise<CliState> {
@@ -190,10 +244,20 @@ class LivePlayerChild {
     return await response;
   }
 
-  close(): void {
-    if (this.closed) return;
+  close(): Promise<void> {
+    if (this.closePromise !== undefined) return this.closePromise;
     this.closed = true;
-    this.child.kill();
+    if (this.child.exitCode !== null) return Promise.resolve();
+    this.closePromise = new Promise((resolve) => {
+      const forceKill = setTimeout(() => this.child.kill(), BROWSER_PLAYER_CLOSE_GRACE_MS);
+      forceKill.unref();
+      this.child.once("close", () => {
+        clearTimeout(forceKill);
+        resolve();
+      });
+      this.child.stdin.end('{"type":"close"}\n');
+    });
+    return this.closePromise;
   }
 
   private onStdout(chunk: string): void {
@@ -257,6 +321,12 @@ function parseCliState(value: unknown): CliState {
 
 function registerFrame(session: BrowserPlayerSession, frame: CliFrame): BrowserPlayerFrame {
   const frameId = randomUUID();
+  session.frames.clear();
   session.frames.set(frameId, { path: frame.path, requiresReveal: session.reveal });
-  return { ...frame, frameId };
+  return {
+    frameId,
+    artifactId: frame.artifactId,
+    width: frame.width,
+    height: frame.height,
+  };
 }

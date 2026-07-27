@@ -111,7 +111,10 @@ postgresDescribe("launch localization pass live database", () => {
         expect(concurrent.filter((result) => result.status === "rejected")).toMatchObject([
           {
             reason: {
-              cause: { constraint: "itotori_project_runs_one_active_branch_idx" },
+              code: "active_branch_collision",
+              message: expect.stringContaining(
+                "constraint 'itotori_project_runs_one_active_branch_idx'",
+              ),
             },
           },
         ]);

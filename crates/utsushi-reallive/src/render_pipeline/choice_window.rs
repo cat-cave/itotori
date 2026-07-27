@@ -220,6 +220,17 @@ pub struct ObjectButtonChoiceOption {
     pub art: ImageRef,
 }
 
+impl ObjectButtonChoiceOption {
+    /// Whether an authored screen-space pixel is inside this button's decoded
+    /// rectangle. Right and bottom edges are exclusive, as in the renderer's
+    /// source rectangle convention.
+    pub fn contains_pixel(&self, x: i32, y: i32) -> bool {
+        let right = self.bounds.x.saturating_add(self.bounds.width);
+        let bottom = self.bounds.y.saturating_add(self.bounds.height);
+        x >= self.bounds.x && x < right && y >= self.bounds.y && y < bottom
+    }
+}
+
 /// Explicit failures when decoded button metadata cannot drive rendering.
 /// Callers can choose a title-specific fallback only by handling this error;
 /// the engine supplies no synthesized pair, strip, grid, palette, or margins.

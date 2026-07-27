@@ -165,7 +165,7 @@ export class ItotoriLlmAcceptedOutputRepository {
       head = { outputId: input.outputId, version: input.outputVersion, contentHash };
     } catch (error: unknown) {
       await client.query("rollback");
-      if (sealed) await this.cipher.destroyKey(sealed.keyRef);
+      if (sealed) await this.cipher.releaseKeyReference(sealed.keyRef);
       throw error;
     } finally {
       client.release();
