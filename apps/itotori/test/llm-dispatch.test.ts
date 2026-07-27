@@ -121,7 +121,7 @@ function sse(chunks: ReadonlyArray<Record<string, unknown>>, headers: HeadersIni
 function structuredResponse(
   content: string,
   id = "generation:test",
-  cost: number | null = 0.00000125, // itotori-225-audit-allow: deterministic mock-wire cost in a fake stream chunk, not a production cost source
+  cost: number | null = 0.00000125, // cost-audit-allow: deterministic mock-wire cost in a fake stream chunk, not a production cost source
   headers: HeadersInit = {},
 ): Response {
   return sse(
@@ -157,7 +157,7 @@ function completedThenLostResponse(): Response {
     streamChunk({ id: "generation:lost-response", delta: {}, finishReason: "stop" }),
     streamChunk({
       id: "generation:lost-response",
-      usage: { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18, cost: 0.00000125 }, // itotori-225-audit-allow: synthetic lost-response evidence, not a production cost source
+      usage: { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18, cost: 0.00000125 }, // cost-audit-allow: synthetic lost-response evidence, not a production cost source
     }),
   ];
   const stream = new ReadableStream<Uint8Array>({
@@ -201,7 +201,7 @@ function toolCallResponse(callIndex: number, reasoningDetails: readonly unknown[
     }),
     streamChunk({
       id,
-      usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7, cost: 0.0000005 }, // itotori-225-audit-allow: deterministic mock-wire cost in a fake stream chunk, not a production cost source
+      usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7, cost: 0.0000005 }, // cost-audit-allow: deterministic mock-wire cost in a fake stream chunk, not a production cost source
     }),
   ]);
 }
@@ -276,7 +276,7 @@ function runtime(
       profile: TEST_MODEL_PROFILE,
       admission: {
         scope: "test:llm-dispatch",
-        confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic admission cap for mock transport tests, not a billed model cost
+        confirmedCostCapUsd: "10", // cost-audit-allow: synthetic admission cap for mock transport tests, not a billed model cost
       },
       snapshots: {
         decodeRevisionHash: HASH_A,
@@ -896,7 +896,7 @@ const liveEnabled = Boolean(process.env.OPENROUTER_API_KEY);
         profile: TEST_MODEL_PROFILE,
         admission: {
           scope: "test:llm-dispatch-live",
-          confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic live-test cap, not a billed model cost
+          confirmedCostCapUsd: "10", // cost-audit-allow: synthetic live-test cap, not a billed model cost
         },
         snapshots: {
           decodeRevisionHash: HASH_A,

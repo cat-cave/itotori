@@ -71,7 +71,7 @@ function countMatches(text: string, pattern: RegExp): number {
  * rather than a coincidental run of separated digits (an issue id, year, price,
  * version, date, or hash). A candidate qualifies only when it carries 9–11
  * total digits AND either three-plus digit groups or a parenthesized area code
- * — the shape of a real dialable number, which years (`2026`), issue ids
+ * the shape of a real dialable number, which years (`2026`), issue ids
  * (`#12345`), versions (`1.2.3`), ISO dates (`2026-06-21` = 8 digits), and
  * prices never all satisfy at once.
  */

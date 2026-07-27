@@ -222,7 +222,7 @@ postgresDescribe("physical attempt policy", () => {
       requireContentRead: async () => undefined,
     });
     const scope = "test:exposure";
-    const confirmedCostUsd = "0.25"; // itotori-225-audit-allow: synthetic reconciled-cost fact for the admission report test
+    const confirmedCostUsd = "0.25"; // cost-audit-allow: synthetic reconciled-cost fact for the admission report test
     let announceStarted!: () => void;
     let releaseResponse!: () => void;
     const started = new Promise<void>((resolve) => (announceStarted = resolve));
@@ -235,7 +235,7 @@ postgresDescribe("physical attempt policy", () => {
         cipher,
         prompt: unknownPrompt,
         responses: [structuredProviderResponse(reviewVerdictExample)],
-        admission: { scope, confirmedCostCapUsd: "10" }, // itotori-225-audit-allow: synthetic report-test admission cap, not a billed model cost
+        admission: { scope, confirmedCostCapUsd: "10" }, // cost-audit-allow: synthetic report-test admission cap, not a billed model cost
       });
       expect(
         await dispatch(
@@ -256,7 +256,7 @@ postgresDescribe("physical attempt policy", () => {
             return structuredProviderResponse(reviewVerdictExample);
           },
         ],
-        admission: { scope, confirmedCostCapUsd: "10" }, // itotori-225-audit-allow: synthetic report-test admission cap, not a billed model cost
+        admission: { scope, confirmedCostCapUsd: "10" }, // cost-audit-allow: synthetic report-test admission cap, not a billed model cost
       });
       const pending = dispatch(
         physicalCallSpec(inFlightPrompt, { sampleId: "sample:in-flight-exposure" }),
@@ -268,7 +268,7 @@ postgresDescribe("physical attempt policy", () => {
         admissionScope: scope,
         confirmedCostUsd,
         billingUnknownAttemptCount: 1,
-        boundedInFlightExposureUsd: "1", // itotori-225-audit-allow: synthetic profile ceiling asserted as exposure, not billed cost
+        boundedInFlightExposureUsd: "1", // cost-audit-allow: synthetic profile ceiling asserted as exposure, not billed cost
         inFlightAttemptCount: 1,
         exhaustedRetryStepCount: 0,
       });

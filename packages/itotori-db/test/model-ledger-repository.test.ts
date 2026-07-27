@@ -94,7 +94,7 @@ describe("ItotoriModelLedgerRepository", () => {
       });
       expect(report.totalsByCostKind).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ costKind: "billed", runCount: 2, amountMicrosUsd: 3700 }), // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+          expect.objectContaining({ costKind: "billed", runCount: 2, amountMicrosUsd: 3700 }), // cost-audit-allow: synthetic fixture cost, not a real billed amount
           expect.objectContaining({ costKind: "zero", runCount: 1, amountMicrosUsd: 0 }),
         ]),
       );
@@ -242,14 +242,14 @@ describe("ItotoriModelLedgerRepository", () => {
           {
             bucketStart: "2026-06-16T00:00:00.000Z",
             runCount: 1,
-            billedMicrosUsd: 1200, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
-            costPerRunMicrosUsd: 1200, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+            billedMicrosUsd: 1200, // cost-audit-allow: synthetic fixture cost, not a real billed amount
+            costPerRunMicrosUsd: 1200, // cost-audit-allow: synthetic fixture cost, not a real billed amount
           },
           {
             bucketStart: "2026-06-17T00:00:00.000Z",
             runCount: 2,
-            billedMicrosUsd: 600, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
-            costPerRunMicrosUsd: 300, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+            billedMicrosUsd: 600, // cost-audit-allow: synthetic fixture cost, not a real billed amount
+            costPerRunMicrosUsd: 300, // cost-audit-allow: synthetic fixture cost, not a real billed amount
           },
         ],
         throughputSeries: [1, 2],
@@ -279,9 +279,9 @@ describe("ItotoriModelLedgerRepository", () => {
           localActor,
           runInput("run-legacy-revival", "billed", 100, {
             cost: {
-              costKind: "provider_estimate" as unknown as "billed", // itotori-225-audit-allow: this test asserts the runtime guard rejects the legacy enum.
+              costKind: "provider_estimate" as unknown as "billed", // cost-audit-allow: this test asserts the runtime guard rejects the legacy enum.
               currency: "USD",
-              amountMicrosUsd: 100, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+              amountMicrosUsd: 100, // cost-audit-allow: synthetic fixture cost, not a real billed amount
             },
           }),
         ),
@@ -610,7 +610,7 @@ describe("ItotoriModelLedgerRepository", () => {
       });
       expect(report.recentRuns[0]).toMatchObject({
         providerRunId: "run-append-only",
-        amountMicrosUsd: 100, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+        amountMicrosUsd: 100, // cost-audit-allow: synthetic fixture cost, not a real billed amount
       });
     } finally {
       await context.close();
@@ -685,7 +685,7 @@ describe("ItotoriModelLedgerRepository", () => {
           providerId: expect.any(String),
           costKind: "billed",
           invocationCount: 1,
-          amountMicrosUsd: 150, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount
+          amountMicrosUsd: 150, // cost-audit-allow: synthetic fixture cost, not a real billed amount
         }),
         expect.objectContaining({
           modelId: "itotori-fake-draft-v0",

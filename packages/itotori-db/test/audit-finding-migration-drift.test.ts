@@ -29,7 +29,7 @@ function pgErrorCodeOf(error: unknown): string | undefined {
 
 const baseInput = {
   auditReportId: "docs/audits/alpha-scope-honesty.md",
-  nodeId: "UTSUSHI-200",
+  nodeId: "TEST-NODE-1",
   severity: auditFindingSeverityValues.p1,
   category: "load-bearing",
   summary: "non-synthetic engine port crate must not depend on author fixtures",

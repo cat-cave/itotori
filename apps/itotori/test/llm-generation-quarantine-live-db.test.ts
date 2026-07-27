@@ -340,7 +340,7 @@ function transportLossAfterResponseBytes(value: unknown): Response {
               prompt_tokens: 11,
               completion_tokens: 7,
               total_tokens: 18,
-              cost: 0.000009, // itotori-225-audit-allow: synthetic transport-loss evidence, not model pricing
+              cost: 0.000009, // cost-audit-allow: synthetic transport-loss evidence, not model pricing
             },
           })}\n\n`,
         ),

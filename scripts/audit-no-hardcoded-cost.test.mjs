@@ -4,7 +4,7 @@
 // now caught, that the legitimate ZERO_COST shapes are not, that the
 // cost-literal patterns now fire INSIDE test/fixture trees too (the old
 // blanket `test/`+`fixtures/` exemption is gone), that the per-line
-// `itotori-225-audit-allow:` marker (with a mandatory non-empty reason) is
+// `cost-audit-allow:` marker (with a mandatory non-empty reason) is
 // the only per-line opt-out, that the enumerated comment-incapable JSON
 // fixtures (COST_LITERAL_ALLOW) are exempted per-file but an UN-listed JSON
 // fixture is not, that the legacy-enum patterns fire everywhere EXCEPT the
@@ -33,7 +33,7 @@ function labels(path, contents) {
 
 // Invoke the auditor CLI as a fully CAPTURED subprocess.
 //
-// On a detected violation the auditor writes `ITOTORI-225 audit failed: ...`
+// On a detected violation the auditor writes `Cost audit failed: ...`
 // to ITS stderr. The default `execFileSync` stdio inherits the child's stderr
 // onto THIS test process's own stderr, so that failure line escaped the test
 // even though the probes below are INTENTIONAL detection checks, not real repo
@@ -115,7 +115,7 @@ test("does not flag amountUsd variable / shorthand / type / expression forms", (
 
 test("a marked synthetic amountUsd literal is exempt; without a marker it fires", () => {
   const marked =
-    '        amountUsd: "0.00000602", // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount';
+    '        amountUsd: "0.00000602", // cost-audit-allow: synthetic fixture cost, not a real billed amount';
   assert.deepEqual(labels("apps/itotori/test/some.test.ts", marked), []);
   assert.deepEqual(labels("apps/itotori/test/some.test.ts", '        amountUsd: "0.00000602",'), [
     "hardcoded non-zero amountUsd literal",
@@ -130,7 +130,7 @@ test("CLI exits 1 on a crafted file with a hardcoded amountUsd literal", () => {
   assert.equal(code, 1);
   // Detection is proven via the CAPTURED stderr; it never reaches this test's
   // own stderr (so `qd advance`'s failure-string grep no longer false-trips).
-  assert.match(stderr, /ITOTORI-225 audit failed/u);
+  assert.match(stderr, /Cost audit failed/u);
 });
 
 test("CLI exits 0 on a crafted file with only ZERO_COST amountUsd shapes", () => {
@@ -182,7 +182,7 @@ test("a per-line audit-allow marker inside a multi-line costUsd object opts it o
   const multiline = [
     "costUsd: {",
     '  unit: "usd",',
-    '  amount: "0.0125", // itotori-225-audit-allow: synthetic fixture cost',
+    '  amount: "0.0125", // cost-audit-allow: synthetic fixture cost',
     "},",
   ].join("\n");
   assert.deepEqual(labels(PROD_PATH, multiline), []);
@@ -205,7 +205,7 @@ test("CLI exits 1 on a crafted file with a multi-line costUsd object", () => {
   );
   const { code, stderr } = runAuditCli(probe);
   assert.equal(code, 1);
-  assert.match(stderr, /ITOTORI-225 audit failed/u);
+  assert.match(stderr, /Cost audit failed/u);
 });
 
 test("catches a bare non-zero cost numeric literal", () => {
@@ -291,10 +291,10 @@ test("FIRES cost-literal patterns inside test/fixture trees (no blanket exemptio
 
 test("per-line audit-allow marker (with a reason) passes; without one it still fires", () => {
   const withMarker =
-    "    amountMicrosUsd: 12_500, // itotori-225-audit-allow: synthetic fixture cost, not a real billed amount";
+    "    amountMicrosUsd: 12_500, // cost-audit-allow: synthetic fixture cost, not a real billed amount";
   assert.deepEqual(labels("apps/itotori/test/some.test.ts", withMarker), []);
   // A bare marker with NO reason is inert — the literal still fires.
-  const noReason = "    amountMicrosUsd: 12_500, // itotori-225-audit-allow:";
+  const noReason = "    amountMicrosUsd: 12_500, // cost-audit-allow:";
   assert.deepEqual(labels("apps/itotori/test/some.test.ts", noReason), [
     "hardcoded non-zero amountMicrosUsd literal",
   ]);
@@ -403,7 +403,7 @@ test("CLI exits 1 on a crafted file containing amountMicrosUsd: 12_500", () => {
   writeFileSync(probe, "export const run = {\n  amountMicrosUsd: 12_500,\n};\n");
   const { code, stderr } = runAuditCli(probe);
   assert.equal(code, 1);
-  assert.match(stderr, /ITOTORI-225 audit failed/u);
+  assert.match(stderr, /Cost audit failed/u);
 });
 
 test("CLI exits 1 on a crafted file containing multi-line amountMicrosUsd and bare cost literals", () => {

@@ -43,7 +43,7 @@ const A3_PROFILE: MeasuredModelProfile = {
   name: "reasoning",
   version: deepSeekV4FlashProfile.version,
   deadlines: { normalMs: 300_000, deepMs: 600_000 },
-  maxAttemptExposureUsd: "1", // itotori-225-audit-allow: synthetic per-attempt ceiling for the recorded-transport proof, not a billed cost
+  maxAttemptExposureUsd: "1", // cost-audit-allow: synthetic per-attempt ceiling for the recorded-transport proof, not a billed cost
 };
 
 const HASH_A = `sha256:${"a".repeat(64)}` as const;
@@ -114,7 +114,7 @@ function runtime(responses: ProviderResponse[], onFetch?: () => void): DispatchR
       retry: { random: () => 0, sleep: async () => undefined },
       admission: {
         scope: "test:roles-a3",
-        confirmedCostCapUsd: "10", // itotori-225-audit-allow: synthetic admission cap for the recorded-transport proof, not a billed cost
+        confirmedCostCapUsd: "10", // cost-audit-allow: synthetic admission cap for the recorded-transport proof, not a billed cost
       },
       snapshots: {
         decodeRevisionHash: HASH_A,

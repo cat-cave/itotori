@@ -688,7 +688,7 @@ const repositoryPermissionGateMatrix = [
     "loadFindingsByNode",
     "catalogRead",
     "audit-finding-repository.test.ts load findings by node coverage",
-    (repo) => repo.loadFindingsByNode(deniedActor, "UTSUSHI-200"),
+    (repo) => repo.loadFindingsByNode(deniedActor, "TEST-NODE-AUDIT-FINDING"),
   ),
   auditFindingGate(
     "loadFindingsByReport",

@@ -515,7 +515,7 @@ export type BenchmarkProviderFamilyV02 = (typeof BENCHMARK_PROVIDER_FAMILIES)[nu
 // apply ONLY to externally-benchmarked systems whose cost is genuinely
 // unknowable (e.g. third-party MTL services, local tools) — never to
 // itotori's own OpenRouter spend, which is always exact billed cost.
-// itotori spend is purged of these sentinels by ITOTORI-225 and must never
+// itotori spend is purged of these sentinels and must never
 // be approximated.
 export const BENCHMARK_COST_KINDS = [
   "billed",
@@ -1515,7 +1515,7 @@ export type BenchmarkCostLedgerV02 = {
   reportTotalMicrosUsd: number;
   totalsBySystem: BenchmarkCostLedgerTotalV02[];
   includesUnknownCost: boolean;
-  // ITOTORI-059 — the cost ledger names the SAME locale branch as its report.
+  // the cost ledger names the SAME locale branch as its report.
   // The asserter rejects a ledger whose localeBranchId disagrees with the
   // report's so cost can never be merged across target locale branches.
   localeBranchId?: Uuid7;
@@ -1574,7 +1574,7 @@ export type BenchmarkFindingRecordV02 = {
   evidence: EvidenceRecordV02[];
   provenance: ProvenanceRecordV02[];
   /**
-   * ITOTORI-027 — when the recording harness determined the finding could not
+   * when the recording harness determined the finding could not
    * be scored against the seeded-defect oracle at all (e.g. the QA agent's
    * evidence was incomplete / off-target), the LLM QA evaluation stage
    * (`evaluateQaAgents` / `buildLlmQaFinding`) STAMPS this on the persisted
@@ -1679,7 +1679,7 @@ export type BenchmarkReportV02 = {
   fixtureOrCorpusRefs: BenchmarkInputRefV02[];
   sourceLocale: Bcp47Locale;
   targetLocale: Bcp47Locale;
-  // ITOTORI-059 — the locale branch this benchmark run belongs to. A target
+  // the locale branch this benchmark run belongs to. A target
   // locale is not enough: two branches can share a target locale (e.g. two
   // competing en-US drafts) and their benchmark + cost state must never be
   // conflated. Optional on the cross-app wire (mirroring the other v0.2
@@ -6651,7 +6651,7 @@ function assertBenchmarkCostLedgerV02(
 ): asserts value is BenchmarkCostLedgerV02 {
   const ledger = asRecord(value, label);
   assertEqual(ledger.currency, "USD", `${label}.currency`);
-  // ITOTORI-059 — the ledger's locale branch MUST match its report's. A
+  // the ledger's locale branch MUST match its report's. A
   // present-vs-absent mismatch or a different branch id is a conflation of
   // cost across target locale branches and is rejected.
   assertOptionalUuid7(ledger.localeBranchId, `${label}.localeBranchId`);
@@ -6756,7 +6756,7 @@ function assertBenchmarkFindingRecordV02(
   assertBenchmarkFindingEvidenceProvenanceV02(finding as BenchmarkFindingRecordV02, label);
   assertOptionalString(finding.seededDefectId, `${label}.seededDefectId`);
   assertOptionalString(finding.reviewerRationale, `${label}.reviewerRationale`);
-  // ITOTORI-027 — the LLM QA evaluation stage stamps unscorable findings so
+  // the LLM QA evaluation stage stamps unscorable findings so
   // downstream calibration can mirror the in-memory harness and exclude them
   // from the false-positive count. Optional on the wire; when present, must
   // be a boolean.

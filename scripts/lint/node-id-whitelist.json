@@ -1,7 +1,7 @@
 {
   "description": "RATCHET WHITELIST (shrink-only). Do not hand-edit; regenerate via\n\"node scripts/audit-no-node-ids.mjs --update\". Each entry is a grandfathered\nnode-id token (the matched reference text, lower-cased); the multiset per file\nmay only shrink. When empty/deleted the guard is absolute (zero node ids).",
-  "generatedAt": "2026-07-27T02:09:00.936Z",
-  "total": 309,
+  "generatedAt": "2026-07-27T03:29:13.574Z",
+  "total": 244,
   "files": {
     "crates/kaifuu-cli/tests/alpha_encrypted_readiness.rs": [
       "kaifuu-104",
@@ -424,97 +424,6 @@
     "crates/utsushi-siglus/tests/opcode_profile_conformance.rs": [
       "utsushi-036",
       "utsushi-036"
-    ],
-    "packages/itotori-db/test/audit-finding-migration-drift.test.ts": [
-      "utsushi-200"
-    ],
-    "packages/itotori-db/test/audit-finding-repository.test.ts": [
-      "itotori-202",
-      "kaifuu-188",
-      "kaifuu-188",
-      "kaifuu-188",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200"
-    ],
-    "packages/itotori-db/test/authorization-matrix.test.ts": [
-      "utsushi-200"
-    ],
-    "packages/itotori-db/test/model-ledger-repository.test.ts": [
-      "itotori-225",
-      "itotori-225",
-      "itotori-225",
-      "itotori-225",
-      "itotori-225",
-      "itotori-225",
-      "itotori-225",
-      "itotori-225",
-      "itotori-225"
-    ],
-    "packages/localization-bridge-schema/src/draft-artifact-bundle.ts": [
-      "itotori-019"
-    ],
-    "packages/localization-bridge-schema/src/format-stability.ts": [
-      "kaifuu-238"
-    ],
-    "packages/localization-bridge-schema/src/index.ts": [
-      "itotori-027",
-      "itotori-027",
-      "itotori-059",
-      "itotori-059",
-      "itotori-059",
-      "itotori-225"
-    ],
-    "packages/localization-bridge-schema/src/patch-export-bundle.ts": [
-      "itotori-019",
-      "itotori-025"
-    ],
-    "packages/localization-bridge-schema/src/qa-finding.ts": [
-      "follow-up node",
-      "itotori-074",
-      "itotori-078"
-    ],
-    "packages/localization-bridge-schema/src/speaker-label.ts": [
-      "itotori-017"
-    ],
-    "packages/localization-bridge-schema/src/translation-draft.ts": [
-      "itotori-074",
-      "itotori-075",
-      "itotori-075",
-      "itotori-076"
-    ],
-    "packages/localization-bridge-schema/test/schema.test.ts": [
-      "itotori-059",
-      "itotori-225"
-    ],
-    "packages/spec-dag-dashboard/test/db-audit-findings.test.ts": [
-      "kaifuu-188",
-      "kaifuu-188",
-      "kaifuu-188",
-      "kaifuu-188",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-200",
-      "utsushi-201",
-      "utsushi-201"
     ]
   }
 }

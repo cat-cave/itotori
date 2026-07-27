@@ -51,10 +51,10 @@ export const SCAN_EXTENSIONS = new Set([".rs", ".ts", ".tsx", ".js", ".mjs", ".c
 // matches any of these (case-sensitive segment/substring match).
 const EXCLUDE_PATTERNS = [
   "apps/itotori/",
+  "migrations/",
   "/fixtures/",
   "/target/",
   "/dist/",
-  "/migrations/",
   "docs/",
   "roadmap/",
   ".qd/",

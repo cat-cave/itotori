@@ -51,7 +51,7 @@ function knownLineageAttempts(): QualifyingArtifactAttemptTelemetry[] {
       role: "P1",
       latencyMs: 100,
       tokens: { input: 10, output: 20, cacheRead: 1, cacheWrite: 2 },
-      cost: { state: "confirmed", amountUsd: "0.001" }, // itotori-225-audit-allow: synthetic scorecard fixture cost
+      cost: { state: "confirmed", amountUsd: "0.001" }, // cost-audit-allow: synthetic scorecard fixture cost
       quarantine: false,
       correction: false,
       retry: false,
@@ -68,7 +68,7 @@ function knownLineageAttempts(): QualifyingArtifactAttemptTelemetry[] {
       role: "Q1",
       latencyMs: 50,
       tokens: { input: 5, output: 7, cacheRead: 0, cacheWrite: 0 },
-      cost: { state: "confirmed", amountUsd: "0.002" }, // itotori-225-audit-allow: synthetic scorecard fixture cost
+      cost: { state: "confirmed", amountUsd: "0.002" }, // cost-audit-allow: synthetic scorecard fixture cost
       quarantine: false,
       correction: false,
       retry: false,
@@ -85,7 +85,7 @@ function knownLineageAttempts(): QualifyingArtifactAttemptTelemetry[] {
       role: "P1",
       latencyMs: 25,
       tokens: { input: 3, output: 4, cacheRead: 0, cacheWrite: 1 },
-      cost: { state: "confirmed", amountUsd: "0.0005" }, // itotori-225-audit-allow: synthetic scorecard fixture cost
+      cost: { state: "confirmed", amountUsd: "0.0005" }, // cost-audit-allow: synthetic scorecard fixture cost
       quarantine: false,
       correction: false,
       retry: true,
@@ -105,7 +105,7 @@ const KNOWN_SCORECARD: Omit<StrictScorecard, "byStage"> = {
     retryCount: 1,
     latencyMs: 175,
     tokens: { input: 18, output: 31, cacheRead: 1, cacheWrite: 3 },
-    cost: { state: "confirmed", amountUsd: "0.0035" }, // itotori-225-audit-allow: pinned known scorecard total
+    cost: { state: "confirmed", amountUsd: "0.0035" }, // cost-audit-allow: pinned known scorecard total
   },
   byStageRole: [
     {
@@ -118,7 +118,7 @@ const KNOWN_SCORECARD: Omit<StrictScorecard, "byStage"> = {
       retryCount: 1,
       latencyMs: 125,
       tokens: { input: 13, output: 24, cacheRead: 1, cacheWrite: 3 },
-      cost: { state: "confirmed", amountUsd: "0.0015" }, // itotori-225-audit-allow: pinned known scorecard total
+      cost: { state: "confirmed", amountUsd: "0.0015" }, // cost-audit-allow: pinned known scorecard total
     },
     {
       stage: "review",
@@ -130,7 +130,7 @@ const KNOWN_SCORECARD: Omit<StrictScorecard, "byStage"> = {
       retryCount: 0,
       latencyMs: 50,
       tokens: { input: 5, output: 7, cacheRead: 0, cacheWrite: 0 },
-      cost: { state: "confirmed", amountUsd: "0.002" }, // itotori-225-audit-allow: pinned known scorecard total
+      cost: { state: "confirmed", amountUsd: "0.002" }, // cost-audit-allow: pinned known scorecard total
     },
   ],
   liveTerminalRunScorecard: LIVE_TERMINAL_RUN_SCORECARD_FOLLOW_UP,
@@ -168,7 +168,7 @@ function attemptInput(
         ? { state: "unknown" }
         : {
             state: "confirmed",
-            amountUsd: overrides.amountUsd ?? "0", // itotori-225-audit-allow: synthetic scorecard fixture cost
+            amountUsd: overrides.amountUsd ?? "0", // cost-audit-allow: synthetic scorecard fixture cost
           },
       quarantine: false,
       correction: false,
@@ -199,13 +199,13 @@ describe("strict scorecard from qualifying lineage", () => {
       attemptInput(10, {
         stage: "draft",
         role: "P1",
-        amountUsd: "0.001", // itotori-225-audit-allow: synthetic scorecard fixture cost
+        amountUsd: "0.001", // cost-audit-allow: synthetic scorecard fixture cost
         latencyMs: 100,
       }),
       attemptInput(11, {
         stage: "review",
         role: "Q1",
-        amountUsd: "0.002", // itotori-225-audit-allow: synthetic scorecard fixture cost
+        amountUsd: "0.002", // cost-audit-allow: synthetic scorecard fixture cost
         latencyMs: 50,
         memoHit: true,
       }),
@@ -223,7 +223,7 @@ describe("strict scorecard from qualifying lineage", () => {
       retryCount: 0,
       latencyMs: 150,
       tokens: { input: 21, output: 21, cacheRead: 0, cacheWrite: 0 },
-      cost: { state: "confirmed", amountUsd: "0.003" }, // itotori-225-audit-allow: pinned known scorecard total
+      cost: { state: "confirmed", amountUsd: "0.003" }, // cost-audit-allow: pinned known scorecard total
     });
     expect(scorecard.byStageRole.map((b) => `${b.stage}:${b.role}`)).toEqual([
       "draft:P1",
@@ -267,7 +267,7 @@ describe("strict scorecard from qualifying lineage", () => {
     const store = new InMemoryQualifyingAttemptTelemetryStore();
     await persistQualifyingArtifactLineage(store, QUALIFYING_POLICY, [
       attemptInput(20, {
-        amountUsd: "0.004", // itotori-225-audit-allow: synthetic scorecard fixture cost
+        amountUsd: "0.004", // cost-audit-allow: synthetic scorecard fixture cost
       }),
       attemptInput(21, { stage: "review", role: "Q1", unknownCost: true }),
     ]);
@@ -277,7 +277,7 @@ describe("strict scorecard from qualifying lineage", () => {
     // Overall: confirmed subtotal retained, state flipped to unknown.
     expect(scorecard.totals.cost).toEqual({
       state: "unknown",
-      confirmedAmountUsd: "0.004", // itotori-225-audit-allow: confirmed subtotal under unknown total
+      confirmedAmountUsd: "0.004", // cost-audit-allow: confirmed subtotal under unknown total
       unknownAttemptCount: 1,
     });
     // Never a silent confirmed zero for the unknown attempt.
@@ -287,7 +287,7 @@ describe("strict scorecard from qualifying lineage", () => {
       throw new Error("expected unknown cost total");
     }
     // Confirmed subtotal is the known attempt only — unknown never contributes 0.
-    expect(scorecard.totals.cost.confirmedAmountUsd).toBe("0.004"); // itotori-225-audit-allow: expected confirmed subtotal
+    expect(scorecard.totals.cost.confirmedAmountUsd).toBe("0.004"); // cost-audit-allow: expected confirmed subtotal
     expect(scorecard.totals.cost.unknownAttemptCount).toBe(1);
 
     const reviewBucket = scorecard.byStageRole.find((b) => b.stage === "review" && b.role === "Q1");

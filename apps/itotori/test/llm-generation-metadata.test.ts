@@ -75,7 +75,7 @@ function inlineFinishedChunk(): StreamChunk {
       promptTokens: 4,
       completionTokens: 3,
       totalTokens: 7,
-      cost: 0.0000025, // itotori-225-audit-allow: synthetic provider-reported test usage, not model pricing
+      cost: 0.0000025, // cost-audit-allow: synthetic provider-reported test usage, not model pricing
     },
     rawEvent: {
       id: "generation:inline:1",

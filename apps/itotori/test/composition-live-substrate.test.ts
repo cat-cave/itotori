@@ -96,7 +96,7 @@ const REVIEWER_MEASURED_PROFILE: MeasuredModelProfile = {
   name: REVIEWER_PROFILE.modelProfile,
   version: REVIEWER_PROFILE.version,
   deadlines: { normalMs: 300_000, deepMs: 600_000 },
-  maxAttemptExposureUsd: "1", // itotori-225-audit-allow: synthetic per-attempt ceiling for the offline recorded-transport proof, not a billed model cost
+  maxAttemptExposureUsd: "1", // cost-audit-allow: synthetic per-attempt ceiling for the offline recorded-transport proof, not a billed model cost
 };
 
 function recordedDispatchRuntime(captured: Captured[], response: Response): LocalizerRuntimeBase {
