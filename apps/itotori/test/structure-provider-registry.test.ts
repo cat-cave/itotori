@@ -63,20 +63,51 @@ describe("StructureProvider registry", () => {
     ]);
   });
 
-  it("exposes typed future providers without silently routing them to RealLive", () => {
+  it("runs the Softpal native producer through the shared Utsushi seam", () => {
     expect(registeredStructureEngines()).toEqual(["reallive", "softpal", "siglus"]);
     expect(structureProviderCapabilities().map((capability) => capability.implemented)).toEqual([
       true,
-      false,
+      true,
       false,
     ]);
-    expect(() =>
-      resolveStructureProvider("softpal").run({
-        engine: "softpal",
-        gameRoot: "game",
-        outputPath: "out/structure.json",
-      }),
-    ).toThrow("registered typed provider");
+    const calls: Array<{ command: string; args: string[] }> = [];
+    const source = resolveStructureProvider("softpal").parseCli([
+      "--engine",
+      "softpal",
+      "--game-root",
+      "game",
+      "--output",
+      "out/structure.json",
+    ]);
+    const result = runStructureProvider({
+      ...source,
+      env: { ITOTORI_UTSUSHI_BIN: "utsushi-test" },
+      runProcess(command, args) {
+        calls.push({ command, args });
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+
+    expect(result.status).toBe(0);
+    expect(calls).toEqual([
+      {
+        command: "cargo",
+        args: [
+          "run",
+          "-p",
+          "utsushi-cli",
+          "--quiet",
+          "--",
+          "structure",
+          "--engine",
+          "softpal",
+          "--game-root",
+          "game",
+          "--output",
+          "out/structure.json",
+        ],
+      },
+    ]);
     expect(() => resolveStructureProvider("unknown")).toThrow(
       "not a registered structure provider",
     );

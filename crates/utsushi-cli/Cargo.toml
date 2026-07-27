@@ -18,6 +18,7 @@ sha2.workspace = true
 # utsushi-reallive/Cargo.toml); the recovery is staged here in the
 # orchestration layer instead, reusing the proven `recover_and_decrypt_archive`.
 kaifuu-reallive = { path = "../kaifuu-reallive" }
+kaifuu-softpal = { path = "../kaifuu-softpal" }
 kaifuu-core = { path = "../kaifuu-core" }
 utsushi-core = { path = "../utsushi-core" }
 utsushi-fixture = { path = "../utsushi-fixture" }
@@ -26,6 +27,7 @@ utsushi-fixture = { path = "../utsushi-fixture" }
 utsushi-kirikiri = { path = "../utsushi-kirikiri" }
 utsushi-kirikiri-xp3 = { path = "../utsushi-kirikiri-xp3" }
 utsushi-reallive = { path = "../utsushi-reallive" }
+utsushi-softpal = { path = "../utsushi-softpal" }
 utsushi-rpgmaker-mv = { path = "../utsushi-rpgmaker-mv" }
 
 [dev-dependencies]

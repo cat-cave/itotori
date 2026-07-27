@@ -1,7 +1,6 @@
-// RealLive StructureProvider implementation — the seam that wraps the `utsushi
-// structure` subcommand so the narrative-structure artifact (the real dispatch-order +
-// per-scene play-order message stream + speaker decode + choice/branch graph)
-// is a FIRST-CLASS itotori command, not a foreign Rust bin.
+// Native StructureProvider seam — wraps `utsushi structure` so the
+// narrative-structure artifact is a FIRST-CLASS itotori command, not a
+// foreign Rust bin.
 //
 // The narrative-structure producer lives on the UTSUSHI side
 // (`crates/utsushi-cli/src/structure.rs` — it owns the replay engine that
@@ -10,7 +9,7 @@
 // `#COLOR_TABLE` speaker resolver). It emits the
 // narrative-structure artifact the itotori whole-game localize driver consumes
 // as its structure-informed context. `structure-provider-registry.ts` is the
-// user-shaped front door; this module is only the registered RealLive provider's
+// user-shaped front door; this module is the registered providers'
 // native-process implementation.
 //
 // The binary is resolved through the SAME authoritative order the native-deps
@@ -36,33 +35,43 @@ export type UtsushiProcessResult = {
   stderr: string;
 };
 
-export type RunUtsushiStructureArgs = {
-  /** The provider identity forwarded to the native structure registry. */
-  engine: "reallive";
-  /** Path to Gameexe.ini (resolves `SEEN_START` + `#NAMAE`/`#COLOR_TABLE`). */
-  gameexePath: string;
-  /** Path to Seen.txt (the compressed scene archive). */
-  seenPath: string;
+type UtsushiStructureProcessArgs = {
   /** Where the producer writes the narrative-structure JSON. */
   outputPath: string;
-  /** Exact Kaifuu bridge whose unit evidence is joined into the v2 export. */
-  bridgePath?: string;
-  /**
-   * Override the Gameexe `SEEN_START` entry scene. Pass a scene id to drive
-   * the dispatch-order walk from a route-specific entry (e.g. a different
-   * route's opening); omit to fall back to the game's declared `SEEN_START`.
-   */
-  entryScene?: number;
-  /**
-   * Require an archive to contain at most N scenes. A smaller limit fails
-   * without writing an artifact; it never produces a partial export.
-   */
-  maxScenes?: number;
   env?: NodeJS.ProcessEnv;
   /** Injection seam for tests. Defaults to a real `spawnSync`. */
   runProcess?: (command: string, args: string[], env: NodeJS.ProcessEnv) => UtsushiProcessResult;
   log?: (message: string) => void;
 };
+
+export type RunUtsushiStructureArgs =
+  | (UtsushiStructureProcessArgs & {
+      /** The provider identity forwarded to the native structure registry. */
+      engine: "reallive";
+      /** Path to Gameexe.ini (resolves `SEEN_START` + `#NAMAE`/`#COLOR_TABLE`). */
+      gameexePath: string;
+      /** Path to Seen.txt (the compressed scene archive). */
+      seenPath: string;
+      /** Exact Kaifuu bridge whose unit evidence is joined into the v2 export. */
+      bridgePath?: string;
+      /**
+       * Override the Gameexe `SEEN_START` entry scene. Pass a scene id to drive
+       * the dispatch-order walk from a route-specific entry (e.g. a different
+       * route's opening); omit to fall back to the game's declared `SEEN_START`.
+       */
+      entryScene?: number;
+      /**
+       * Require an archive to contain at most N scenes. A smaller limit fails
+       * without writing an artifact; it never produces a partial export.
+       */
+      maxScenes?: number;
+    })
+  | (UtsushiStructureProcessArgs & {
+      /** The provider identity forwarded to the native structure registry. */
+      engine: "softpal";
+      /** Root directory containing the PAC archive with SCRIPT.SRC + TEXT.DAT. */
+      gameRoot: string;
+    });
 
 export type RunUtsushiStructureResult = {
   command: string;
@@ -91,9 +100,7 @@ export class UtsushiStructureExportError extends Error {
 }
 
 /**
- * Run `utsushi structure --engine reallive --gameexe <Gameexe.ini> --seen <Seen.txt> --output
- * <PATH> [--bridge <PATH>] [--entry-scene <N>] [--max-scenes <N>]` and assert
- * it exited 0.
+ * Run the selected native structure producer and assert it exited 0.
  *
  * The producer owns its own JSON write (it writes the structure artifact to
  * `outputPath` directly via `utsushi_core::write_json`); this seam returns the
@@ -127,23 +134,17 @@ export function runUtsushiStructureExport(
 }
 
 /**
- * Build the flag surface the producer parses. The order mirrors the
- * invocation the M1 layering-fix proof (`crates/utsushi-cli/tests/
- * structure_real_sweetie_hd.rs`) drives: `structure --gameexe <p> --seen <p>
- * --output <p>` with the optional `--entry-scene` / `--max-scenes` trailing.
+ * Build the provider-specific flag surface the native producer parses. The
+ * RealLive form carries its archive inputs and optional replay controls; the
+ * Softpal form carries the game root that contains its data archive.
  */
 export function buildUtsushiStructureArgs(args: RunUtsushiStructureArgs): string[] {
-  const out = [
-    "structure",
-    "--engine",
-    args.engine,
-    "--gameexe",
-    args.gameexePath,
-    "--seen",
-    args.seenPath,
-    "--output",
-    args.outputPath,
-  ];
+  const out = ["structure", "--engine", args.engine];
+  if (args.engine === "softpal") {
+    out.push("--game-root", args.gameRoot, "--output", args.outputPath);
+    return out;
+  }
+  out.push("--gameexe", args.gameexePath, "--seen", args.seenPath, "--output", args.outputPath);
   if (args.bridgePath !== undefined) {
     out.push("--bridge", args.bridgePath);
   }
