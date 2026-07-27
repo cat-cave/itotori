@@ -597,7 +597,7 @@ pub fn register_control_flow_rlops(registry: &mut RlopRegistry) -> usize {
 
 /// The real `module_jmp` opcode numbering (rlvm `module_jmp.cc`)
 /// cross-checked against the `kaifuu-reallive` decompiler's byte-validated
-/// `goto_kind` id sets on Sweetie HD + Kanon. Each entry is `(opcode
+/// `goto_kind` id sets on the observed corpus + Kanon. Each entry is `(opcode
 /// semantic name)`.
 ///
 /// This SUPERSEDES the speculative numbering

@@ -19,7 +19,7 @@
 //! missing/spurious key or a wrong cipher (garbage size header) is a typed
 //! diagnostic, never a partial or silent output.
 //! # Real-title status
-//! Both owned Siglus corpora set `exe_angou_mode = 1`; until
+//! Both observed corpora set `exe_angou_mode = 1`; until
 //! their exe-angou key is available in-process, [`decode_gameexe_dat`] records
 //! the typed `exe_angou_key_required` diagnostic before any output rather than
 //! fabricating an inventory.

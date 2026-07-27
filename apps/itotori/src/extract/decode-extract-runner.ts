@@ -13,7 +13,7 @@
 // This module NEVER fabricates a bridge: the only bytes it returns are the ones
 // kaifuu-cli wrote from real game bytes. Tests that must avoid a real subprocess
 // inject a `runExtract` double (the same seam `kaifuu-extract-seam` exposes);
-// the env-gated real-Sweetie proof exercises the real spawn.
+// the env-gated real-corpus proof exercises the real spawn.
 
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

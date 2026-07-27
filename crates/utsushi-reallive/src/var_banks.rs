@@ -18,7 +18,7 @@
 //!   §G of the research doc). Each bank stores **raw Shift-JIS bytes**
 //!   ([`Vec<u8>`]); no UTF-8 lossy round-trip. The byte codes pinned
 //!   below (`BANK_BYTE_STR_M = 0x0D` etc.) are local conventions
-//!   reserved outside the int-bank window — real Sweetie HD evidence
+//!   reserved outside the int-bank window — real-corpus evidence
 //!   for string-bank byte addressing is not yet in the research doc, so
 //!   the codes are not load-bearing for any expression evaluator path
 //!   today and are documented as such.

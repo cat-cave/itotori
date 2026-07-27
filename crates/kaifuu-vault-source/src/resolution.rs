@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn computes_by_id_path_from_canonical_id() {
         let root = Path::new("/vault");
-        let cid = "example-vendor.example-title.vj000000.v1-0.ja";
+        let cid = "observed-title.vj013077.v1-0.ja";
         let p = by_id_path(root, cid).expect("valid canonical_id");
         assert_eq!(
             p,

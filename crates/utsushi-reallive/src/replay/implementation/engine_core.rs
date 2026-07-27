@@ -167,7 +167,7 @@ impl ReplayEngine {
     /// (`first_cross_scene` — the real `jump` / `farcall` / `goto_on($store)`
     /// entry the option transfers into). For a `select` prompt this is the
     /// scene each option DISPATCHES INTO — i.e. for the archive's opening
-    /// game-select (Sweetie HD: the base-game vs fandisk pick) each option's
+    /// game-select (the base-game vs fandisk pick) each option's
     /// `branch_entry_scene` is the ROOT of that work's scene subtree. The
     /// itotori work-scope carve consumes this to root a per-WORK narrative
     /// structure from the decode (never a hardcoded work list).

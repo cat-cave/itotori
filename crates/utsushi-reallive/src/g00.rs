@@ -1,7 +1,7 @@
 //! RealLive `g00` image-format decoder (types 0, 1, 2).
 //!
 //! Decodes the three publicly-documented sub-formats of the RealLive
-//! `g00` image container family. Sweetie HD's `$GAME/REALLIVEDATA/g00/`
+//! `g00` image container family. An observed `$GAME/REALLIVEDATA/g00/`
 //! ships 2,450 files; a corpus-wide lead-byte histogram (see the
 //! integration test
 //! `tests/g00_real_bytes.rs::g00_corpus_histogram_real_bytes_2450_files`)
@@ -10,7 +10,7 @@
 //!
 //! # On-disk layout
 //!
-//! After byte-level probing of Sweetie HD's `BACK.g00` (type 0) and
+//! After byte-level probing of an observed `BACK.g00` (type 0) and
 //! `btn000.g00` (type 2) under
 //! `docs/research/reallive-engine.md` § "g00 (RealLive image format)"
 //! all three sub-formats share the same five-byte preamble
@@ -106,7 +106,7 @@
 //! The algorithm above was re-derived by reading the publicly-archived
 //! Jagarl/xclannad `file.cc` `G00CONV` decode (GPL-v2) as a **research
 //! reference for the algorithm only** and validated byte-exact against
-//! it as an external oracle on real Sweetie HD and Kanon g00 bytes (see
+//! it as an external oracle on observed and Kanon g00 bytes (see
 //! `docs/research/g00-type0-decoder-findings.md`). No third-party source
 //! is vendored, linked, or mechanically translated into this crate; the
 //! Rust below is an independent reimplementation of the (uncopyrightable)
@@ -150,7 +150,7 @@ pub const G00_TYPE0_BGR_BYTES_PER_PIXEL: usize = 3;
 /// `ldest < ldestend` guard fails) and never reads that trailing pad, so
 /// the byte is legitimate padding, not corruption. Measured across the
 /// Kanon corpus: 13 type-2 files carry exactly one trailing byte and the
-/// corpus-wide maximum residue is 1 (Sweetie HD type-2 files consume their
+/// corpus-wide maximum residue is 1 (observed type-2 files consume their
 /// payload exactly). The bound is kept at 1 so an oversized
 /// `compressed_size` that would mask genuine framing corruption is still
 /// rejected as [`G00ContentValidationError::UnconsumedPayload`]. See the

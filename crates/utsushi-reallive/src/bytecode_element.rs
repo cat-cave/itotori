@@ -15,7 +15,7 @@
 //!
 //! The table below is derived from Haeleth's RLDEV documentation
 //! (`docs/research/reallive-engine.md` §E) and re-tested against the
-//! Sweetie HD scene #0001 decompressed bytes
+//! Observed scene #0001 decompressed bytes
 //! (`RealLive encryption research notes` §4.2)
 //! before being encoded here:
 //!
@@ -37,7 +37,7 @@
 //! `byte_offset` and `byte_len` values do not partition the full
 //! input slice (every byte covered exactly once, in monotonic
 //! order). The same guarantee is exercised by the real-bytes test
-//! in `tests/bytecode_element_real_bytes.rs` against the Sweetie HD
+//! in `tests/bytecode_element_real_bytes.rs` against the observed
 //! scene #0001 1660-byte decompressed payload.
 //!
 //! # Empty input
@@ -527,7 +527,7 @@ const SELECT_BLOCK_CLOSE: u8 = 0x7D;
 /// binary-operator continuation in [`next_arith`], which accepts **any**
 /// op byte after the `\` prefix. The previous implementation hard-coded
 /// the assignment form and rejected any op byte outside `0x14..=0x24`
-/// which desynced on real Sweetie HD scene 2 (an expression element whose
+/// which desynced on real observed scene 2 (an expression element whose
 /// `\<op>` is `0x03`) where the kaifuu decoder — and the general walker —
 /// frame it cleanly. Restricting the `0x24` element to the assignment
 /// form was a decoder divergence from kaifuu, not a real grammar rule.
@@ -664,7 +664,7 @@ fn is_nonstring_data_lead(byte: u8) -> bool {
 ///
 /// The compiler emits a special parameter as the `0x61` introducer, a tag
 /// (a single byte, or `0xFF`+`i32` in the wide form), and then its
-/// contained data item — across the Sweetie HD and Kanon archives that
+/// contained data item — across the observed and Kanon archives that
 /// item is always a complex `(` group or a `$`-prefixed memory / literal
 /// reference, i.e. a **non-string** data lead. Requiring that lead
 /// disambiguates a genuine special parameter from a bare string constant
@@ -1581,7 +1581,7 @@ mod tests {
         // goto-family opcode) + `( $FF<0> 0x61 <tag=1> ( $FF<9> ) )`: the
         // `0x61` special-parameter introducer must be consumed as a special
         // parameter (tag + contained `($FF<9>)` group), NOT as a bare `'a'`
-        // string — the bug that failed 65 Sweetie / 63 Kanon scenes.
+        // string — the bug that failed 65 observed / 63 Kanon scenes.
         let mut raw = vec![0x23, 0x00, 0x03, 0x64, 0x00, 0x01, 0x00, 0x00, b'('];
         raw.extend_from_slice(&[0x24, 0xFF]);
         raw.extend_from_slice(&0_i32.to_le_bytes());

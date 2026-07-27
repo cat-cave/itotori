@@ -33,7 +33,7 @@ fn namae_censored_row_yields_reader_unknown_with_reader_safe_label() {
     // A censored NAMAE row (display key differs from the box-shown name)
     // means the parser knows the identity but the reader is shown a mask:
     // `reader_unknown`, carrying the reader-safe `readerLabel` mask.
-    // Modelled on the REAL corpus rows (`#NAMAE="？？？／凛"="？？？"`):
+    // Modelled on observed rows (`#NAMAE="？？？／凛"="？？？"`):
     // the inline `【…】` token carries the DISPLAY KEY (identity), and the
     // reader sees the box-shown mask — the direction the runtime resolves.
     let report = parse_gameexe_inventory(

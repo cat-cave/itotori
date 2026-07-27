@@ -710,7 +710,7 @@ fn cover_scale(frame: (u32, u32), src_w: u32, src_h: u32) -> i32 {
 
 /// Breadth-first search from `game_dir` (bounded depth 4) for a
 /// directory whose ASCII-case-folded name is `g00` that contains at
-/// least one `*.g00` file. Handles both `REALLIVEDATA/g00` (Sweetie HD)
+/// least one `*.g00` file. Handles both `REALLIVEDATA/g00` (a common layout)
 /// and top-level `G00` (Kanon) layouts.
 fn find_g00_dir(game_dir: &Path) -> Option<PathBuf> {
     let mut frontier = vec![(game_dir.to_path_buf(), 0usize)];

@@ -29,7 +29,7 @@
 //! - Slot `N` is `(u32_le offset, u32_le length)`.
 //! - A zero-slot (both `offset == 0` and `length == 0`) is reserved by
 //!   the format. The parser silently omits it — it is **not** a
-//!   diagnostic. Sweetie HD has 9802 such slots.
+//!   diagnostic. The observed corpus has 9802 such slots.
 //! - A non-zero slot whose `offset + length > archive_len` is a fatal
 //!   [`RealSceneIndexError::TruncatedScene`].
 //! - Slot `0` is reserved by RealLive convention: the directory's first
@@ -41,7 +41,7 @@
 //!
 //! # Real-bytes anchor
 //!
-//! The Sweetie HD `REALLIVEDATA/Seen.txt` corpus (audited under
+//! The observed `REALLIVEDATA/Seen.txt` corpus (audited under
 //! `docs/audits/real-bytes-validation-2026-06-24.md` §2.8) contains
 //! exactly 198 populated slots, the first being scene 1 at
 //! `byte_offset == 0x13880, byte_len == 0x5fa`, the last being scene
@@ -59,7 +59,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Number of slots in the RealLive `Seen.txt` directory. Fixed by the
-/// engine and confirmed against the Sweetie HD bytes.
+/// engine and confirmed against observed bytes.
 pub const REAL_SCENE_DIRECTORY_SLOT_COUNT: usize = 10_000;
 
 /// Byte size of one directory slot: `u32_le byte_offset + u32_le byte_len`.
@@ -180,7 +180,7 @@ impl RealSceneIndex {
 
             if byte_offset == 0 && byte_len == 0 {
                 // Reserved unused slot — silently omit per the
-                // documented layout. Sweetie HD has 9802 such slots.
+                // documented layout. The observed corpus has 9802 such slots.
                 continue;
             }
 
@@ -213,7 +213,7 @@ impl RealSceneIndex {
     /// Look up an entry by scene id. Returns `None` when the slot was
     /// reserved (zeroed) in the source directory. The search is a
     /// linear scan — the populated entry count is small relative to the
-    /// 10,000-slot envelope (Sweetie HD has 198), and this avoids the
+    /// 10,000-slot envelope (the observed corpus has 198), and this avoids the
     /// memory cost of a parallel index.
     pub fn lookup(&self, scene_id: u16) -> Option<&RealSceneEntry> {
         self.entries.iter().find(|entry| entry.scene_id == scene_id)

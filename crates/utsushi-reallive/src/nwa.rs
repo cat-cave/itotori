@@ -1,6 +1,6 @@
 //! RealLive `.nwa` BGM / SE container decoder.
 //!
-//! Decodes the NWA on-disk layout the Sweetie HD `REALLIVEDATA/bgm/`
+//! Decodes the NWA on-disk layout an observed `REALLIVEDATA/bgm/`
 //! corpus (28 files) and `REALLIVEDATA/wav/` corpus (73 files) ship.
 //! Per the spec acceptance criterion, the decoder verifies
 //! header decode and reports the typed `(channels, bps, sample_rate
@@ -8,7 +8,7 @@
 //!
 //! # On-disk layout (44-byte header)
 //!
-//! After byte-level probing of Sweetie HD's `bgm/ASA.nwa` and
+//! After byte-level probing of observed `bgm/ASA.nwa` and
 //! `wav/CHIME.nwa` under `docs/research/reallive-engine.md` § ".nwa
 //! (BGM / SE)", the header is 44 bytes wide:
 //!
@@ -26,7 +26,7 @@
 //! @0x20 u32 samples_per_block (samples-per-channel per block)
 //! @0x24 u32 last_block_sample_count (samples in the final, possibly
 //!                                      short, block)
-//! @0x28 u32 reserved_or_unknown (observed as 0 in Sweetie HD)
+//! @0x28 u32 reserved_or_unknown (observed as 0 in one corpus)
 //! ```
 //!
 //! After the header, a **per-block offset table** of `block_count`
@@ -101,7 +101,7 @@ pub enum NwaDecodeError {
     /// count.
     #[error("nwa header carries unsupported channels = {channels} ({code})")]
     UnsupportedChannels { code: String, channels: u16 },
-    /// The `bits_per_sample` field is neither `8` nor `16`. Sweetie HD
+    /// The `bits_per_sample` field is neither `8` nor `16`. The observed corpus
     /// ships exclusively 16-bit PCM; the decoder rejects any other
     /// width up-front so a wrong-width interpretation cannot silently
     /// land at the sample-frame computation.
@@ -118,7 +118,7 @@ pub enum NwaDecodeError {
 /// Typed `compression_mode` enum.
 ///
 /// Per the public format docs, `-1` is the raw-PCM sentinel; `0..=5`
-/// are the NWA-compressed levels. Sweetie HD's `bgm/ASA.nwa` carries
+/// are the NWA-compressed levels. Observed `bgm/ASA.nwa` carries
 /// `compression_mode = 0` (level-0 NWA compression). The actual sample
 /// decompression for `Compressed {.. }` is **not** implemented in
 /// (the spec says "decoder verifies header decode and emits
@@ -183,7 +183,7 @@ pub struct NwaHeader {
     /// `@0x08` — typed compression mode (raw PCM or compressed level).
     pub compression_mode: NwaCompressionMode,
     /// `@0x0c` — `1` if blocks are wrapped in run-length encoding, `0`
-    /// otherwise. Sweetie HD's ASA.nwa carries `0`.
+    /// otherwise. Observed ASA.nwa carries `0`.
     pub use_runlength: u32,
     /// `@0x10` — number of compressed blocks (= `0x8132` for ASA.nwa).
     pub block_count: u32,

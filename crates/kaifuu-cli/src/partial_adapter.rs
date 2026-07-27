@@ -299,7 +299,7 @@ fn build_reallive_partial_report(
 }
 
 fn resolve_reallive_seen_path_for_partial(data_root: &Path) -> PathBuf {
-    // Case-insensitive lookup so the real corpus bytes
+    // Case-insensitive lookup so the real-corpus bytes
     // (`REALLIVEDATA/Seen.txt`) and the upper-case test fixture
     // (`REALLIVEDATA/SEEN.TXT`) both resolve.
     for candidate in ["Seen.txt", "SEEN.TXT", "seen.txt"] {

@@ -6,17 +6,17 @@
 //!   AVG32 LZSS algorithm and the 256-byte XOR mask constant are
 //!   documented behavior of a fixed file format used by every RealLive
 //!   title since 1.10 — no rlvm source is vendored.
-//! - Confirmed against real scene #1 (see the RealLive encryption-mechanism
-//!   research note §4).
+//! - Confirmed against an observed scene #1 in the encryption-mechanism
+//!   research note §4.
 //!   The same algorithm is also implemented in `utsushi-reallive`'s
 //!   `decompressor` module; per the workspace "format-identical,
 //!   implementation-separate" rule kaifuu-reallive does not depend on
 //!   utsushi-reallive and this module is an independent re-derivation.
-//!   This first-level decompressor does NOT apply a second-level XOR pass
-//!   after LZSS decompression — outcome A in the encryption-mechanism
+//!   Compiler-110002 titles do NOT apply a second-level XOR
+//!   pass after LZSS decompression — outcome A in the encryption-mechanism
 //!   research doc. The decompressor below therefore only models the
 //!   first-level (256-byte XOR + LZSS) transform. A future node may add a
-//!   second-level-XOR variant for rlvm-table titles.
+//!   second-level-XOR variant for Key / Visual Arts titles.
 
 use thiserror::Error;
 
@@ -92,8 +92,8 @@ pub enum DecompressError {
     },
 }
 
-/// Decompress an AVG32-shape compressed bytecode payload (first-level
-/// transform only).
+/// Decompress an AVG32-shape compressed bytecode payload (the
+/// compiler-110002 branch — first-level transform only).
 /// `compressed` is the on-disk byte range pointed at by the scene
 /// header's `bytecode_offset.. + bytecode_compressed_size`. `dst_len`
 /// is the declared `bytecode_uncompressed_size`.

@@ -1,6 +1,6 @@
 //! AVG-derived save format (`SAVE_FORMAT=3`).
 //!
-//! Sweetie HD ships three save files under `$GAME/SAVEDATA/`:
+//! The observed AVG32 corpus ships three save files under `$GAME/SAVEDATA/`:
 //!
 //! - `REALLIVE.sav` — per-slot **system save** (24 876 bytes; magic
 //!   `AVG_SYSTEM_SAVE`).
@@ -8,7 +8,7 @@
 //!   unlocks; magic `AVG_GLOBAL_SAVE`).
 //! - `read.sav` — per-line **read flags** (bitfield keyed by
 //!   `(scene_id, kidoku_index)`; magic is the game's display title in
-//!   Shift-JIS, e.g. `オシオキSweetie＋Sweets!! HD Edition\u{3000}`).
+//!   Shift-JIS, e.g. `テスト\u{3000}`).
 //!
 //! All three share the same 24-byte preamble + null-terminated magic
 //! string layout (the **AVG32-derived save format** documented under
@@ -46,7 +46,7 @@
 //!
 //! - **Writing to the read-only research mount must be banned at the
 //!   test layer.** The real-bytes test in
-//!   `tests/save_real_bytes.rs` reads the Sweetie HD save bytes
+//!   `tests/save_real_bytes.rs` reads observed save bytes
 //!   from `$ITOTORI_REAL_GAME_ROOT` (mode 0444, dr-x------) but
 //!   the test source has **no** `fs::write` / `fs::create_dir_all`
 //!   `OpenOptions::write` calls — the audit grep
@@ -204,7 +204,7 @@ impl SaveDecodeError {
 /// two saves it is a per-format constant whose semantics we do not
 /// interpret here (it round-trips verbatim).
 ///
-/// The six u16 timestamp fields are stored verbatim so a Sweetie HD
+/// The six u16 timestamp fields are stored verbatim so an observed
 /// save written by `RealLive.exe` on 2025-03-02 11:18:39 round-trips
 /// byte-identically through `encode`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -221,7 +221,7 @@ pub struct AvgSavePreamble {
     /// six little-endian u16s. At offset `0x08..0x14`.
     pub timestamp: [u16; 6],
     /// Reserved u16 at offset `0x14..0x16`. Zero on every observed
-    /// Sweetie HD save; round-tripped verbatim.
+    /// observed save; round-tripped verbatim.
     pub padding_a: u16,
     /// Trailing u16 at offset `0x16..0x18` (`0x02DC` for
     /// `REALLIVE.sav`, `0x02E0` for `save999.sav`, `0x02E7` for
@@ -357,7 +357,7 @@ impl SystemSave {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GlobalSave {
     /// 24-byte preamble. The leading u32 is a per-format constant
-    /// (`0x000000A4` on Sweetie HD); the file-size cross-check from
+    /// (`0x000000A4` in the observed corpus); the file-size cross-check from
     /// [`SystemSave`] does **not** apply here, so the parser does not
     /// enforce it.
     pub preamble: AvgSavePreamble,
@@ -423,9 +423,8 @@ pub struct ReadFlags {
     /// Raw Shift-JIS title bytes (the variable-length null-terminated
     /// field at offset 0x18). Round-tripped verbatim through `encode`.
     pub title_bytes: Vec<u8>,
-    /// UTF-8 decoded title. For Sweetie HD, the bytes
-    /// `83 49 83 56 83 49 83 4C... 81 40` decode to
-    /// `"オシオキSweetie＋Sweets!! HD Edition\u{3000}"` (the trailing
+    /// UTF-8 decoded title. For an observed title, the bytes
+    /// `83 65 83 58 83 67 81 40` decode to `"テスト\u{3000}"` (the trailing
     /// `0x8140` is Shift-JIS code point for IDEOGRAPHIC SPACE, which
     /// maps to `U+3000`).
     pub title: String,
@@ -863,7 +862,7 @@ mod tests {
             tail: 0x02DC,
         };
         let bytes = preamble.encode();
-        // Verify against the documented Sweetie HD prefix.
+        // Verify against the documented AVG32 prefix.
         assert_eq!(&bytes[0x00..0x04], &[0x2C, 0x61, 0x00, 0x00]);
         assert_eq!(&bytes[0x04..0x08], &[0x12, 0x27, 0x00, 0x00]);
         assert_eq!(
@@ -962,19 +961,12 @@ mod tests {
 
     #[test]
     fn read_flags_round_trips_synthetic_bytes_byte_identically() {
-        // Sweetie HD title bytes — load-bearing for the spec acceptance criterion.
-        let title_bytes = vec![
-            0x83, 0x49, 0x83, 0x56, 0x83, 0x49, 0x83, 0x4c, 0x53, 0x77, 0x65, 0x65, 0x74, 0x69,
-            0x65, 0x81, 0x7b, 0x53, 0x77, 0x65, 0x65, 0x74, 0x73, 0x21, 0x21, 0x20, 0x48, 0x44,
-            0x20, 0x45, 0x64, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x81, 0x40,
-        ];
+        // Shift-JIS title bytes exercise decoding and byte-identical round-tripping.
+        let title_bytes = vec![0x83, 0x65, 0x83, 0x58, 0x83, 0x67, 0x81, 0x40];
         let synthetic = SaveRoundTrip::synthetic_read_flags(&title_bytes, 256);
         let decoded = ReadFlags::decode(&synthetic).expect("decode");
         assert_eq!(decoded.title_bytes, title_bytes);
-        assert_eq!(
-            decoded.title,
-            "オシオキSweetie＋Sweets!! HD Edition\u{3000}"
-        );
+        assert_eq!(decoded.title, "テスト\u{3000}");
         let re_encoded = decoded.encode();
         assert_eq!(re_encoded, synthetic, "round-trip must be byte-identical");
     }

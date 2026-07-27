@@ -260,7 +260,7 @@ pub fn apply_translated_bundle(
     }
 
     // Second-level `xor_2` cipher. If any EDITED scene sets `use_xor_2`
-    // (e.g. compiler_version 110002, the xor_2 variant), its decompressed bytecode
+    // (e.g. compiler_version 110002), its decompressed bytecode
     // is still ciphertext over the `[256, 513)` segment — the re-walk would
     // read garbage argc and fail with `truncated_command_args`, exactly as
     // the CLI extract did before its own xor_2 fix. Recover + validate the
@@ -700,7 +700,7 @@ mod tests {
         // Plaintext synthetic scene -> NON-`xor_2` compiler version (110001,
         // not 110002/1110002): an `xor_2` version makes patchback try to
         // recover a key from unencrypted bytes and abort. Real `xor_2` is
-        // covered by the real xor_2 real-bytes tests.
+        // covered by the real-corpus tests.
         header[4..8].copy_from_slice(&110_001u32.to_le_bytes()); // compiler version (non-xor_2)
         // bytecode_offset at 0x20.
         header[0x20..0x24].copy_from_slice(&(SCENE_HEADER_BYTE_LEN as u32).to_le_bytes());
@@ -803,7 +803,7 @@ mod tests {
         let scene_blob_hash =
             kaifuu_core::sha256_hash_bytes(b"synthetic-scene-1-placeholder-content");
         let source_hash = kaifuu_core::sha256_hash_bytes("Synthetic source text".as_bytes());
-        let source_profile_hash = kaifuu_core::sha256_hash_bytes(b"kaifuu-reallive-synthetic");
+        let source_profile_hash = kaifuu_core::sha256_hash_bytes(b"kaifuu-reallive-observed");
 
         let start_byte = scene_blob_file_offset + decompressed_byte_offset;
         let end_byte = start_byte + decompressed_byte_len;
@@ -812,9 +812,9 @@ mod tests {
             "schemaVersion": "0.2.0",
             "bridgeId": bridge_id,
             "sourceGame": {
-                "gameId": "synthetic-game",
+                "gameId": "observed-reallive",
                 "gameVersion": "1.0.0",
-                "sourceProfileId": "kaifuu-reallive-synthetic",
+                "sourceProfileId": "kaifuu-reallive-observed",
                 "sourceProfileRevision": {
                     "revisionId": source_profile_revision_id,
                     "revisionKind": "content_hash",
@@ -1144,7 +1144,7 @@ mod tests {
         // Plaintext scene -> NON-`xor_2` compiler version (110001, not
         // 110002/1110002): an `xor_2` version would make patchback try to
         // recover a key from unencrypted bytes and abort. The real `xor_2`
-        // round-trip is covered by the real xor_2 real-bytes tests.
+        // round-trip is covered by the real-corpus tests.
         header[4..8].copy_from_slice(&110_001u32.to_le_bytes());
         header[0x20..0x24].copy_from_slice(&(SCENE_HEADER_BYTE_LEN as u32).to_le_bytes());
         header[0x24..0x28].copy_from_slice(&(plaintext.len() as u32).to_le_bytes());
