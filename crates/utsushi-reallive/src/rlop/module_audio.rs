@@ -68,6 +68,8 @@ pub const OPCODE_BGM_PLAY: u16 = 0;
 pub const OPCODE_BGM_STOP: u16 = 1;
 /// `bgm.bgmFadeOut(int duration_ms)`
 pub const OPCODE_BGM_FADE_OUT: u16 = 2;
+/// `bgm.bgmFadeOutEx(int duration_ms = 1000)`.
+pub const OPCODE_BGM_FADE_OUT_EX: u16 = 106;
 /// `bgm.bgmLoop(string asset_name)` — looped variant.
 pub const OPCODE_BGM_LOOP: u16 = 3;
 /// `bgm.bgmStatus()` — returns 1 if BGM is currently playing, 0
@@ -81,6 +83,7 @@ pub enum BgmOpcode {
     Play,
     Stop,
     FadeOut,
+    FadeOutEx,
     Loop,
     Status,
 }
@@ -90,6 +93,7 @@ impl BgmOpcode {
         Self::Play,
         Self::Stop,
         Self::FadeOut,
+        Self::FadeOutEx,
         Self::Loop,
         Self::Status,
     ];
@@ -99,6 +103,7 @@ impl BgmOpcode {
             Self::Play => OPCODE_BGM_PLAY,
             Self::Stop => OPCODE_BGM_STOP,
             Self::FadeOut => OPCODE_BGM_FADE_OUT,
+            Self::FadeOutEx => OPCODE_BGM_FADE_OUT_EX,
             Self::Loop => OPCODE_BGM_LOOP,
             Self::Status => OPCODE_BGM_STATUS,
         }
@@ -113,6 +118,7 @@ impl BgmOpcode {
             Self::Play => "bgm.bgmPlay",
             Self::Stop => "bgm.bgmStop",
             Self::FadeOut => "bgm.bgmFadeOut",
+            Self::FadeOutEx => "bgm.bgmFadeOutEx",
             Self::Loop => "bgm.bgmLoop",
             Self::Status => "bgm.bgmStatus",
         }
@@ -300,6 +306,13 @@ pub fn register_audio_rlops(registry: &mut RlopRegistry, runtime: Arc<AudioRunti
     register(
         BgmOpcode::FadeOut.rlop_key(),
         Arc::new(BgmFadeOutOp::new(Arc::clone(&runtime))),
+    );
+    register(
+        BgmOpcode::FadeOutEx.rlop_key(),
+        Arc::new(BgmFadeOutOp::new_with_default_duration(
+            Arc::clone(&runtime),
+            1_000,
+        )),
     );
     register(
         BgmOpcode::Loop.rlop_key(),

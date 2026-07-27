@@ -4,13 +4,14 @@
 //! play-order observation shapes, and the private port-pass chooser share one
 //! ≤500-line child module. Public items are re-exported through `replay`.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use utsushi_core::substrate::TextLine;
 
 use crate::audio::AudioEvent as RealliveAudioEvent;
 use crate::graphics_objects::GraphicsObjectStack;
+use crate::rlop::RlopKey;
 use crate::rlop::module_sel::SelectionPrompt;
 use crate::vm::SceneId;
 
@@ -130,10 +131,14 @@ pub struct BranchReplayReport {
     /// Distinct scene ids the walk actually entered (`>1` iff a
     /// cross-scene transfer was followed into a resolvable scene).
     pub scenes_visited: std::collections::BTreeSet<SceneId>,
-    /// Sorted, de-duplicated `(module_type, module_id, opcode)` tuples the
-    /// walk could not dispatch on the EXECUTED path. The acceptance
-    /// asserts this is EMPTY.
-    pub unknown_opcode_keys: Vec<(u8, u8, u16)>,
+    /// Sorted, de-duplicated four-field command addresses the walk could not
+    /// dispatch on the EXECUTED path. Overload is part of the address, so two
+    /// variants that share the first three fields remain distinct here.
+    pub unknown_opcode_keys: Vec<RlopKey>,
+    /// Number of executed misses at every four-field command address. This
+    /// retains the occurrence count that `unknown_opcode_keys` deliberately
+    /// de-duplicates, so real-byte surveys can rank blockers honestly.
+    pub unknown_opcode_occurrences: BTreeMap<RlopKey, usize>,
     /// `Some(scene)` iff the walk terminated because a cross-scene
     /// transfer targeted a scene absent from the store. The acceptance
     /// asserts this is `None`.

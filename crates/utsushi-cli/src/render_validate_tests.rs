@@ -275,7 +275,7 @@ fn coverage_gate_fails_on_scene_with_missing_opcode() {
 
     assert_eq!(
         coverage.missing_keys,
-        vec![(2, 250, 9)],
+        vec![(2, 250, 9, 0)],
         "the unimplemented opcode must be reported as a missing key",
     );
     // The rendered frame would still emit (natural terminus), so a naive
@@ -284,7 +284,7 @@ fn coverage_gate_fails_on_scene_with_missing_opcode() {
         .expect_err("a scene with a missing opcode must fail the coverage gate");
     let message = error.to_string();
     assert!(
-        message.contains("missing_keys=[(2, 250, 9)]"),
+        message.contains("missing_keys=[(2, 250, 9, 0)]"),
         "the gate failure must carry the machine-readable missing key: {message}",
     );
     assert!(
