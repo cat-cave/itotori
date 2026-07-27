@@ -222,7 +222,7 @@ fn framing_is_byte_exact_and_round_trips_on_real_bytes() {
     assert!(
         corpora.len() >= 2,
         "framing pins require >= 2 RealLive corpora (set {}); only {} resolved",
-        real_corpus::REAL_GAME_ROOT_2_ENV,
+        real_corpus::SECONDARY,
         corpora.len(),
     );
 }

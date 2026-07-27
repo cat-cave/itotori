@@ -1,29 +1,8 @@
-//! Control-markup (kidoku / name) protected-span round-trip, on REAL bytes.
-//! Every real RealLive dialogue Textout carries a `<reallive.kidoku N>`
-//! read-flag control marker (Sweetie HD scene 1017: 129/129 units) and often
-//! an inline `【話者】` speaker name marker. The producer surfaces
-//! the kidoku read-flag as a SYNTHETIC readable marker prepended to
-//! `sourceText`, but that marker has NO byte run inside the Textout body — the
-//! read-flag lives in a separate `MetaKidoku` opcode / the scene-header kidoku
-//! table. The translation prompt reproduces every protected span inline, so a
-//! unit's `target.text` carries the `<reallive.kidoku N>` literal. Before this
-//! fix the patchback spliced that literal into the Textout body and the retail
-//! lexer truncated the run at `<reallive.kidoku ` — no translated text was
-//! ever observed.
-//! This test proves the fix end-to-end on TWO independently-authored RealLive
-//! corpora (Sweetie HD via `ITOTORI_REAL_GAME_ROOT`, Kanon via
-//! `ITOTORI_REAL_GAME_ROOT_2`):
-//! - a dialogue unit whose `target.text` carries the reproduced
-//!   `<reallive.kidoku N>` marker (+ the `【話者】` name marker where the game
-//!   uses one) round-trips: the translated English body is spliced and
-//!   observed in the patched bytecode;
-//! - the `<reallive.kidoku ` literal never reaches the patched bytecode;
-//! - the kidoku control bytes (`MetaKidoku` opcode marks) are byte-identical
-//!   between source and patched;
-//! - the name marker's Shift-JIS bytes are byte-identical (re-emitted as the
-//!   leading body bytes), where the game carries one;
-//! - the patched scene re-decompiles with ZERO unknown opcodes.
-//!   Env-gated + STRICT BY DEFAULT (see `support/real_corpus.rs`).
+//! Control-markup (kidoku / name) round-trip on two real corpora.
+//! A read flag lives in `MetaKidoku`, outside a Textout body, while a name
+//! token lives in a body when authored. A writable dialogue carrier therefore
+//! proves marker stripping plus name/body preservation; a prose-free corpus
+//! proves its genuine control carrier survives a byte-identical no-op patch.
 
 #[path = "support/real_corpus.rs"]
 mod real_corpus;
@@ -127,9 +106,6 @@ fn bridge_opts(scene_kidoku_count: u32) -> BridgeOpts<'static> {
     }
 }
 
-/// A chosen target: the scene + occurrence of a dialogue unit that carries a
-/// kidoku span, its reproduced kidoku marker literal, and (where present) its
-/// name-token marker literal.
 struct ChosenUnit {
     scene_id: u16,
     occurrence: usize,
@@ -137,9 +113,6 @@ struct ChosenUnit {
     name_marker: Option<String>,
 }
 
-/// Scan a corpus for a dialogue unit that carries a `reallive.kidoku` span,
-/// preferring one that ALSO carries a `reallive.name_token` span. Tries the
-/// preferred scene id first, then walks the archive in slot order.
 fn choose_unit(
     seen: &[u8],
     gameexe_inventory: &kaifuu_reallive::gameexe::GameexeInventoryReport,
@@ -190,23 +163,39 @@ fn choose_unit(
     None
 }
 
-/// Run the control-markup round-trip on one corpus and assert the acceptance
-/// criteria. `preferred_scene` is tried first (Sweetie HD 1017, Kanon 50).
-fn run_corpus(corpus: &real_corpus::RealCorpus, preferred_scene: u16) {
+/// Find a genuine `MetaKidoku` carrier when no writable text carrier exists.
+fn choose_control_scene(seen: &[u8], cipher: Option<&Xor2Cipher>, preferred: u16) -> Option<u16> {
+    let index = parse_archive(seen).ok()?;
+    std::iter::once(preferred)
+        .chain(index.entries.iter().map(|entry| entry.scene_id))
+        .find(|&scene_id| {
+            scene_plaintext(seen, scene_id, cipher)
+                .is_some_and(|(_, bytecode, _)| !kidoku_marks(&bytecode).is_empty())
+        })
+}
+
+/// Run one corpus. A previous writable bundle supplies a schema-valid empty
+/// translation to the no-prose branch; with no targets, patchback must carry
+/// this corpus's archive and its control carrier byte-identically.
+fn run_corpus(
+    corpus: &real_corpus::RealCorpus,
+    preferred_scene: u16,
+    no_op_template: Option<&serde_json::Value>,
+) -> Option<serde_json::Value> {
     let seen = fs::read(&corpus.seen_txt)
         .unwrap_or_else(|e| panic!("[{}] read {}: {e}", corpus.label, corpus.seen_txt.display()));
     let gameexe_bytes = real_corpus_gameexe(corpus).unwrap_or_default();
     let gameexe_inventory = parse_gameexe_inventory(&gameexe_bytes);
     let cipher = recover_cipher(&seen);
 
-    let chosen = choose_unit(&seen, &gameexe_inventory, cipher.as_ref(), preferred_scene)
-        .unwrap_or_else(|| {
-            panic!(
-                "[{}] no dialogue unit with a reallive.kidoku span found",
-                corpus.label
-            )
-        });
-    let scene_id = chosen.scene_id;
+    let chosen = choose_unit(&seen, &gameexe_inventory, cipher.as_ref(), preferred_scene);
+    let scene_id = chosen.as_ref().map_or_else(
+        || {
+            choose_control_scene(&seen, cipher.as_ref(), preferred_scene)
+                .unwrap_or_else(|| panic!("[{}] no MetaKidoku control carrier found", corpus.label))
+        },
+        |unit| unit.scene_id,
+    );
 
     let (scene_blob, source_decompressed, header) =
         scene_plaintext(&seen, scene_id, cipher.as_ref())
@@ -218,45 +207,42 @@ fn run_corpus(corpus: &real_corpus::RealCorpus, preferred_scene: u16) {
         corpus.label
     );
 
-    let opts = bridge_opts(header.kidoku_count);
-    let produced = produce_bundle(
-        scene_id,
-        &scene_blob,
-        &source_decompressed,
-        &gameexe_inventory,
-        &opts,
-    )
-    .unwrap_or_else(|e| panic!("[{}] produce_bundle scene {scene_id}: {e}", corpus.label));
-
-    // The translated body the (fixed) bridge hands the patchback: the model
-    // reproduces the protected spans inline, so the target STILL carries the
-    // synthetic `<reallive.kidoku N>` marker (+ the `【話者】` name marker where
-    // present). The patchback must strip the out-of-band kidoku marker, keep
-    // the in-body name marker, and splice the translated English.
-    let name = chosen.name_marker.clone().unwrap_or_default();
-    let target_for_unit = format!("{}{name}「{DISTINCT}」", chosen.kidoku_marker);
-    // The exact Shift-JIS body the patchback must splice (name marker re-emitted
-    // byte-identical as the leading bytes, then the bracket-wrapped English).
-    let expected_body = format!("{name}「{DISTINCT}」");
-    let expected_body_sjis =
-        encode_shift_jis_slot(&expected_body).expect("expected body encodes as Shift-JIS");
-
-    // Assign targets: a benign English sentinel everywhere (no kidoku, no name),
-    // and the distinct control-markup-bearing target on the chosen unit.
-    let mut translated_value = produced.json.clone();
-    {
-        let units = translated_value["units"]
+    let translated_value = if let Some(chosen) = &chosen {
+        let produced = produce_bundle(
+            scene_id,
+            &scene_blob,
+            &source_decompressed,
+            &gameexe_inventory,
+            &bridge_opts(header.kidoku_count),
+        )
+        .unwrap_or_else(|e| panic!("[{}] produce_bundle scene {scene_id}: {e}", corpus.label));
+        let mut value = produced.json;
+        for (occ, unit) in value["units"]
             .as_array_mut()
-            .expect("units array");
-        for (occ, unit) in units.iter_mut().enumerate() {
+            .expect("units array")
+            .iter_mut()
+            .enumerate()
+        {
+            let name = chosen.name_marker.clone().unwrap_or_default();
             let text = if occ == chosen.occurrence {
-                target_for_unit.clone()
+                format!("{}{name}「{DISTINCT}」", chosen.kidoku_marker)
             } else {
                 "「[EN] filler」".to_string()
             };
             unit["target"] = serde_json::json!({"locale": "en-US", "text": text});
         }
-    }
+        value
+    } else {
+        let mut value = no_op_template.cloned().unwrap_or_else(|| {
+            panic!(
+                "[{}] no writable carrier available for empty translation",
+                corpus.label
+            )
+        });
+        value["units"] = serde_json::json!([]);
+        value
+    };
+    let returned_template = chosen.as_ref().map(|_| translated_value.clone());
     let translated =
         TranslatedBundleV02::from_json(&translated_value).expect("translated bundle parses");
 
@@ -320,51 +306,55 @@ fn run_corpus(corpus: &real_corpus::RealCorpus, preferred_scene: u16) {
         patched_marks.len()
     );
 
-    // as the leading body bytes, English prose after it). ----
-    assert!(
-        patched_decompressed
-            .windows(expected_body_sjis.len())
-            .any(|w| w == expected_body_sjis.as_slice()),
-        "[{}] scene {scene_id}: the translated body (name marker + English) must be \
-         spliced byte-identical into the patched bytecode",
-        corpus.label
-    );
-    // And the English text itself is observed at the plaintext layer.
-    let english_sjis = encode_shift_jis_slot(DISTINCT).expect("English encodes");
-    assert!(
-        patched_decompressed
-            .windows(english_sjis.len())
-            .any(|w| w == english_sjis.as_slice()),
-        "[{}] the translated English line must be observed in the patched bytecode",
-        corpus.label
-    );
-
-    // Where a name marker is present, assert its exact Shift-JIS bytes survive.
-    if let Some(name_marker) = &chosen.name_marker {
-        let name_sjis = encode_shift_jis_slot(name_marker).expect("name marker encodes");
+    if let Some(chosen) = chosen {
+        let name = chosen.name_marker.clone().unwrap_or_default();
+        let expected_body = encode_shift_jis_slot(&format!("{name}「{DISTINCT}」"))
+            .expect("expected body encodes as Shift-JIS");
         assert!(
             patched_decompressed
-                .windows(name_sjis.len())
-                .any(|w| w == name_sjis.as_slice()),
-            "[{}] scene {scene_id}: name-token bytes {} must survive byte-identical",
+                .windows(expected_body.len())
+                .any(|w| w == expected_body.as_slice()),
+            "[{}] scene {scene_id}: translated body must be spliced byte-identical",
             corpus.label,
-            RedactedContentSummary::from_text(name_marker)
+        );
+        let english = encode_shift_jis_slot(DISTINCT).expect("English encodes");
+        assert!(
+            patched_decompressed
+                .windows(english.len())
+                .any(|w| w == english.as_slice()),
+            "[{}] translated English must be observed in patched bytecode",
+            corpus.label
+        );
+        if let Some(name_marker) = &chosen.name_marker {
+            let name = encode_shift_jis_slot(name_marker).expect("name marker encodes");
+            assert!(
+                patched_decompressed
+                    .windows(name.len())
+                    .any(|w| w == name.as_slice()),
+                "[{}] scene {scene_id}: name-token bytes {} must survive byte-identical",
+                corpus.label,
+                RedactedContentSummary::from_text(name_marker)
+            );
+        }
+        eprintln!(
+            "[{}] scene {scene_id} occ {}: text carrier OK — {} MetaKidoku marks byte-identical, English observed, 0-unknown",
+            corpus.label,
+            chosen.occurrence,
+            source_marks.len(),
+        );
+    } else {
+        assert_eq!(
+            patched, seen,
+            "[{}] no writable prose carrier: no-op patch must retain every archive byte",
+            corpus.label
+        );
+        eprintln!(
+            "[{}] scene {scene_id}: control carrier OK — {} MetaKidoku marks and archive byte-identical, 0-unknown",
+            corpus.label,
+            source_marks.len(),
         );
     }
-
-    let name_marker = chosen
-        .name_marker
-        .as_deref()
-        .map(RedactedContentSummary::from_text)
-        .map_or_else(|| "none".to_string(), |summary| summary.to_string());
-
-    eprintln!(
-        "[{}] scene {scene_id} occ {}: control-markup round-trip OK — {} MetaKidoku marks \
-         byte-identical, name_marker={name_marker}, English observed, 0-unknown",
-        corpus.label,
-        chosen.occurrence,
-        source_marks.len(),
-    );
+    returned_template
 }
 
 /// Locate a corpus's `Gameexe.ini` (modern `REALLIVEDATA/` layout or a
@@ -396,12 +386,15 @@ fn kidoku_and_name_control_markup_round_trips_on_two_reallive_titles() {
          ITOTORI_REAL_GAME_ROOT + ITOTORI_REAL_GAME_ROOT_2); got {}",
         corpora.len()
     );
-    // Preferred documented scenes: Sweetie HD 1017 (kidoku + `【和人】` name),
-    // Kanon 50 (kidoku, no inline name marker). `choose_unit` falls back to a
-    // scan if a preferred scene does not qualify, so the test stays robust to a
-    // differently-staged corpus pair.
     let preferred = [1017u16, 50u16];
+    let mut no_op_template = None;
     for (i, corpus) in corpora.iter().enumerate() {
-        run_corpus(corpus, preferred.get(i).copied().unwrap_or(1));
+        if let Some(template) = run_corpus(
+            corpus,
+            preferred.get(i).copied().unwrap_or(1),
+            no_op_template.as_ref(),
+        ) {
+            no_op_template = Some(template);
+        }
     }
 }

@@ -1,14 +1,17 @@
 // reason: shared real-bytes test-support helpers; not every consumer test uses every helper.
 #![allow(dead_code)]
 
-use std::env;
+use corpus_registry::{Need, resolve};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
-
 pub fn game_root() -> Option<PathBuf> {
-    let root = PathBuf::from(env::var_os(REAL_GAME_ROOT_ENV)?);
+    let root = resolve(Need {
+        engine: "reallive",
+        ordinal: 1,
+        variant: "encrypted",
+    })
+    .ok()?;
     resolve_reallive_game_root(&root)
 }
 
@@ -17,7 +20,7 @@ pub fn seen_txt_path() -> Option<PathBuf> {
 }
 
 pub fn skip_message(test_name: &str) -> String {
-    format!("{REAL_GAME_ROOT_ENV} unset or no REALLIVEDATA directory found; skipping {test_name}")
+    format!("reallive/1/encrypted is unavailable or malformed; skipping {test_name}")
 }
 
 fn file_in_reallivedata(name: &str) -> Option<PathBuf> {

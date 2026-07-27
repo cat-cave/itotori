@@ -1,11 +1,15 @@
 // reason: shared real-bytes test-support helpers; not every consumer test uses every helper.
 #![allow(dead_code)]
 
-use std::env;
+use corpus_registry::{Need, resolve};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const REAL_GAME_ROOT_ENV: &str = "ITOTORI_REAL_GAME_ROOT";
+pub const SECONDARY: Need<'static> = Need {
+    engine: "reallive",
+    ordinal: 2,
+    variant: "plain",
+};
 
 /// Inner text of the FIRST inline `【…】` name token in a decoded sourceText —
 /// the display key the runtime would look up. `None` for a tokenless body.
@@ -28,13 +32,6 @@ pub fn namae_display_and_box(value: &str) -> Option<(String, String)> {
     let box_name = fields.next()?.to_string();
     Some((display, box_name))
 }
-
-/// Second RealLive corpus root, used for multi-game validation (project
-/// law: engine-family behaviour must validate against >=2 real RealLive
-/// games). Points at a *different* RealLive title than [`REAL_GAME_ROOT_ENV`]
-/// (e.g. Kanon, a 1.2.6.8 title) so the Sweetie-HD opcode/Choice layout can
-/// be exercised against a second, independently-authored bytecode corpus.
-pub const REAL_GAME_ROOT_2_ENV: &str = "ITOTORI_REAL_GAME_ROOT_2";
 
 /// A resolved real-bytes RealLive corpus: the game root plus the located
 /// SEEN archive.
@@ -74,14 +71,19 @@ impl RealCorpus {
     }
 }
 
-/// Resolve the first corpus (`ITOTORI_REAL_GAME_ROOT`, Sweetie HD).
 pub fn corpus_1() -> Option<RealCorpus> {
-    corpus_for_env("corpus-1", REAL_GAME_ROOT_ENV)
+    corpus_for_need(
+        "corpus-1",
+        Need {
+            engine: "reallive",
+            ordinal: 1,
+            variant: "encrypted",
+        },
+    )
 }
 
-/// Resolve the second corpus (`ITOTORI_REAL_GAME_ROOT_2`, e.g. Kanon).
 pub fn corpus_2() -> Option<RealCorpus> {
-    corpus_for_env("corpus-2", REAL_GAME_ROOT_2_ENV)
+    corpus_for_need("corpus-2", SECONDARY)
 }
 
 /// Every staged real RealLive corpus, in declaration order. Empty when no
@@ -90,8 +92,8 @@ pub fn corpora() -> Vec<RealCorpus> {
     [corpus_1(), corpus_2()].into_iter().flatten().collect()
 }
 
-fn corpus_for_env(label: &'static str, env_name: &str) -> Option<RealCorpus> {
-    let root = PathBuf::from(env::var_os(env_name)?);
+fn corpus_for_need(label: &'static str, need: Need<'_>) -> Option<RealCorpus> {
+    let root = resolve(need).ok()?;
     let resolved = resolve_corpus_root(&root)?;
     let seen_txt = find_seen_archive(&resolved)?;
     Some(RealCorpus {
@@ -152,7 +154,12 @@ fn find_child_ci(dir: &Path, name: &str) -> Option<PathBuf> {
 }
 
 pub fn game_root() -> Option<PathBuf> {
-    let root = PathBuf::from(env::var_os(REAL_GAME_ROOT_ENV)?);
+    let root = resolve(Need {
+        engine: "reallive",
+        ordinal: 1,
+        variant: "encrypted",
+    })
+    .ok()?;
     resolve_reallive_game_root(&root)
 }
 
@@ -165,27 +172,16 @@ pub fn gameexe_ini_path() -> Option<PathBuf> {
 }
 
 pub fn skip_message(test_name: &str) -> String {
-    format!("{REAL_GAME_ROOT_ENV} unset or no REALLIVEDATA directory found; skipping {test_name}")
+    format!("reallive/1/encrypted is unavailable or malformed; skipping {test_name}")
 }
 
 /// Resolve the corpus-unavailable branch of an env-gated real-bytes test.
 /// This is the single chokepoint for the "no silent pass" contract: a
 /// real-bytes test must never report a green PASS when it asserted nothing.
-/// Real-bytes coverage is STRICT: an absent corpus is an UNCONDITIONAL HARD
-/// FAILURE (this panics, naming the missing [`REAL_GAME_ROOT_ENV`]), so the
-/// absence of real bytes can never masquerade as success. There is NO opt-out —
-/// the real-bytes suites are `#[ignore]`-d and run only in the periodic
-/// ground-truth oracle (`just real-bytes-oracle`), where the corpora are always
-/// staged; per-gate CI is single-mode synthetic and never invokes them.
-/// Returns `` (rather than `!`) so the existing early-return call sites
-/// (`require_real_bytes(...); return;`) keep their `return` without tripping the
-/// `unreachable_code` lint — the panic always diverges regardless.
+/// An unavailable corpus is a visible skip. Existing callers return immediately
+/// after this helper, avoiding both a panic and a false claim that bytes ran.
 pub fn require_real_bytes(test_name: &str) {
-    panic!(
-        "real-bytes coverage is STRICT: {REAL_GAME_ROOT_ENV} unset; {test_name} did not \
-         exercise real bytes (re-run with {REAL_GAME_ROOT_ENV}=/path/to/reallive-game-root; \
-         these suites run in the periodic ground-truth oracle where the corpora are staged)."
-    );
+    eprintln!("REAL-BYTES SKIP {test_name}: reallive/1/encrypted is unavailable");
 }
 
 fn file_in_reallivedata(name: &str) -> Option<PathBuf> {

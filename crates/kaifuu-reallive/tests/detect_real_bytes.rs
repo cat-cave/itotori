@@ -60,7 +60,7 @@ fn unique_temp_dir(label: &str) -> PathBuf {
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
 fn detects_reallivedata_under_primary_corpus_root_with_resolved_path() {
-    let Some(env_path) = env::var_os(real_corpus::REAL_GAME_ROOT_ENV).map(PathBuf::from) else {
+    let Some(env_path) = real_corpus::game_root() else {
         // Visible skip — "no silent zero-state" requires the
         // operator to observe that the real-bytes assertion did not run.
         real_corpus::require_real_bytes(
@@ -74,11 +74,10 @@ fn detects_reallivedata_under_primary_corpus_root_with_resolved_path() {
         .expect("readable Sweetie HD root must not error")
         .unwrap_or_else(|| {
             panic!(
-                "{} set to {} but depth-N descent failed to locate \
+                "registry corpus reallive/1/encrypted at {} failed to locate \
                  a REALLIVEDATA/ subdirectory; the audit (\
                  docs/audits/real-bytes-validation-2026-06-24.md §2.1) confirms it \
                  ships under <root>/REALLIVEDATA or <root>/<one child>/REALLIVEDATA/",
-                real_corpus::REAL_GAME_ROOT_ENV,
                 env_path.display()
             )
         });

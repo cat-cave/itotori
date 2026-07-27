@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "crates/engine-contract",
+  "crates/corpus-registry",
   "crates/kaifuu-core",
   "crates/kaifuu-delta",
   "crates/kaifuu-engine-fixture",

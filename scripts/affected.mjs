@@ -105,6 +105,9 @@ export function affectedTasks(changedPaths) {
       add(tasks, "ci-kaifuu");
     } else if (path.startsWith("crates/utsushi-")) {
       add(tasks, "ci-utsushi");
+    } else if (path.startsWith("crates/corpus-registry/")) {
+      // Registry changes can affect real-bytes tests in either crate family.
+      add(tasks, "ci-kaifuu", "ci-utsushi");
     } else if (!isDocsOnly(path)) {
       add(tasks, "check");
     }

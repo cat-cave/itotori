@@ -708,7 +708,7 @@ fn rect_differs(
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var (title 1)"]
 fn render_pass_applies_state_and_rasterises_g00_title1_real_bytes() {
-    let Some(g00_dir) = real_corpus::g00_dir_for_env(real_corpus::REAL_GAME_ROOT_ENV) else {
+    let Some(g00_dir) = real_corpus::g00_dir_for(real_corpus::PRIMARY) else {
         real_corpus::require_real_bytes(
             "utsushi-reallive render_pass_applies_state_and_rasterises_g00_title1_real_bytes",
         );
@@ -720,7 +720,7 @@ fn render_pass_applies_state_and_rasterises_g00_title1_real_bytes() {
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT_2 env var (title 2)"]
 fn render_pass_applies_state_and_rasterises_g00_title2_real_bytes() {
-    let Some(g00_dir) = real_corpus::g00_dir_for_env(real_corpus::REAL_GAME_ROOT_2_ENV) else {
+    let Some(g00_dir) = real_corpus::g00_dir_for(real_corpus::SECONDARY) else {
         real_corpus::require_real_bytes(
             "utsushi-reallive render_pass_applies_state_and_rasterises_g00_title2_real_bytes (title 2 / ITOTORI_REAL_GAME_ROOT_2)",
         );

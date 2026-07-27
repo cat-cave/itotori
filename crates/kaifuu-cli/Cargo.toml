@@ -34,6 +34,7 @@ rusqlite = { workspace = true }
 sevenz-rust2 = { workspace = true }
 sha2.workspace = true
 tempfile = { workspace = true }
+corpus-registry = { path = "../corpus-registry" }
 
 [lints]
 workspace = true
