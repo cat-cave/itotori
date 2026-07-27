@@ -104,8 +104,6 @@ function runtime(responses: ProviderResponse[], onFetch?: () => void): DispatchR
   return {
     env: {
       OPENROUTER_API_KEY: "test-key",
-      OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
-      OPENROUTER_ZDR_GUARDRAIL_ASSERTED: "1",
     },
     tools: [],
     contentAccess: { requireContentRead: async () => undefined },
@@ -305,12 +303,10 @@ describe("A3 dispatches through the sole ZDR boundary", () => {
     expect(fetches).toBe(4);
   });
 
-  it("PROOF: raw dispatch() rejects when the ZDR operator assertions are absent", async () => {
+  it("PROOF: raw dispatch() rejects when the OpenRouter API key is absent", async () => {
     const { model, request } = sceneRequest();
     const { spec } = buildA3CallSpec(model, CONTEXT, request, "scene-summary");
     const configured = runtime([structuredProviderResponse(recordedSummary(model, request))]);
-    await expect(dispatch(spec, { ...configured, env: {} })).rejects.toThrow(
-      /operator assertions/u,
-    );
+    await expect(dispatch(spec, { ...configured, env: {} })).rejects.toThrow(/OPENROUTER_API_KEY/u);
   });
 });

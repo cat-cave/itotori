@@ -1,8 +1,7 @@
 // set-privacy-zdr-ui — Settings > Privacy posture.
 //
-// The privacy/ZDR surface is intentionally READ-ONLY. ZDR is an account-wide
-// operator posture asserted at process startup by `assertOpenRouterZdrAccount`;
-// the UI surfaces the latest captured provider-run posture as evidence and
+// The privacy/ZDR surface is intentionally READ-ONLY. The UI surfaces the
+// latest captured provider-run posture as evidence and
 // never presents a per-project writable ZDR toggle.
 
 import { type ReactNode } from "react";
@@ -109,8 +108,8 @@ function PrivacyPostureBody({ cost }: { cost: ApiCallState<ProjectCostReport> })
           mono
         />
         <p>
-          ZDR is enforced account-wide by assertOpenRouterZdrAccount and verified here from the
-          latest provider-run routing posture. This is evidence, not a writable project setting.
+          ZDR is verified here from the latest provider-run routing posture. This is evidence, not a
+          writable project setting.
         </p>
       </section>
       <DataTable

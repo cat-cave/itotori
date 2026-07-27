@@ -6,10 +6,9 @@ that boundary. It does not certify older application subsystems; they must not
 be reused by the rebuilt dispatcher without meeting this contract.
 
 The policy manifest is
-[`privacy.ts`](../../apps/itotori/src/contracts/privacy.ts). App bootstrap
-parses it, and a rebuilt live dispatcher must also call
-`assertRebuildLlmStartupPolicy` before it can construct transport. A failure is
-startup-fatal; there is no warning, fallback, or per-call privacy opt-out.
+[`privacy.ts`](../../apps/itotori/src/contracts/privacy.ts). The live dispatcher
+validates every call against its complete wire policy before it constructs
+transport; there is no per-call privacy opt-out.
 
 ## Scope and terms
 
@@ -53,14 +52,7 @@ not dispatched.
 
 Defense in depth is mandatory:
 
-1. The OpenRouter account is ZDR-only for every selectable model group; input
-   and output logging and data-use opt-ins are off.
-2. The API key is restricted by a guardrail that repeats ZDR and data-collection
-   constraints.
-3. The operator explicitly provides both `OPENROUTER_ZDR_ACCOUNT_ASSERTED=1`
-   and `OPENROUTER_ZDR_GUARDRAIL_ASSERTED=1` before rebuilt live transport
-   starts.
-4. The per-call routing block above is always sent.
+1. The per-call routing block above is always sent.
 
 No OpenRouter plugin, hosted search, server-side tool, response healer,
 provider-side conversation state, or remote response cache is allowed. A future

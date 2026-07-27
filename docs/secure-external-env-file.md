@@ -29,7 +29,6 @@ The env file is a plain `.env`-style file. A minimal one:
 ```sh
 # itotori-openrouter.env — DO NOT commit; keep 0600 permissions.
 OPENROUTER_API_KEY=sk-or-...your-key...
-OPENROUTER_ZDR_ACCOUNT_ASSERTED=1
 ```
 
 ## How to supply the file
@@ -52,11 +51,10 @@ Only these live-provider variables are ever read from the env file. **Any other
 key in the file is ignored** — a rogue `PATH=`, `AWS_SECRET_ACCESS_KEY=`, or
 exfil variable in the file can never enter the process environment:
 
-| Variable                          | Purpose                                                          |
-| --------------------------------- | ---------------------------------------------------------------- |
-| `OPENROUTER_API_KEY`              | OpenRouter API credential.                                       |
-| `OPENROUTER_ZDR_ACCOUNT_ASSERTED` | Asserts the account is Zero-Data-Retention-only (`=1` required). |
-| `OPENROUTER_ZDR_DOWNGRADE`        | Operator-level per-leaf ZDR downgrade (optional).                |
+| Variable                   | Purpose                                           |
+| -------------------------- | ------------------------------------------------- |
+| `OPENROUTER_API_KEY`       | OpenRouter API credential.                        |
+| `OPENROUTER_ZDR_DOWNGRADE` | Operator-level per-leaf ZDR downgrade (optional). |
 
 The allowlist lives in `apps/itotori/src/env/external-env-file.ts`
 (`EXTERNAL_ENV_FILE_ALLOWLIST`) and is kept in sync with what the OpenRouter

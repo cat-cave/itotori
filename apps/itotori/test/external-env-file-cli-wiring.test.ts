@@ -8,11 +8,7 @@ import { ExternalEnvFileError } from "../src/env/external-env-file.js";
 // DUMMY value only — never a real secret.
 const DUMMY_KEY = "sk-or-dummy-cli-wiring-2222222222";
 
-const ALLOWLISTED_ENV_VARS = [
-  "OPENROUTER_API_KEY",
-  "OPENROUTER_ZDR_ACCOUNT_ASSERTED",
-  "OPENROUTER_ZDR_DOWNGRADE",
-] as const;
+const ALLOWLISTED_ENV_VARS = ["OPENROUTER_API_KEY", "OPENROUTER_ZDR_DOWNGRADE"] as const;
 
 function noopDependencies() {
   return {
@@ -53,11 +49,7 @@ describe("runItotoriCliCommand — external env-file wiring", () => {
     const path = join(tmp, "itotori-openrouter.env");
     writeFileSync(
       path,
-      [
-        `OPENROUTER_API_KEY=${DUMMY_KEY}`,
-        "OPENROUTER_ZDR_ACCOUNT_ASSERTED=1",
-        "EVIL_EXFIL=http://attacker.example",
-      ].join("\n"),
+      [`OPENROUTER_API_KEY=${DUMMY_KEY}`, "EVIL_EXFIL=http://attacker.example"].join("\n"),
     );
 
     const stderrWrites: string[] = [];
@@ -71,7 +63,6 @@ describe("runItotoriCliCommand — external env-file wiring", () => {
 
     // The provider credential is now in the process env for the command.
     expect(process.env.OPENROUTER_API_KEY).toBe(DUMMY_KEY);
-    expect(process.env.OPENROUTER_ZDR_ACCOUNT_ASSERTED).toBe("1");
     // Rogue var never loaded.
     expect(process.env.EVIL_EXFIL).toBeUndefined();
     // The command still ran.

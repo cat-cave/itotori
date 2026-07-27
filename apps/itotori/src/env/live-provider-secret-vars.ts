@@ -15,15 +15,10 @@
 //
 // The set is the union of what the live OpenRouter path consumes:
 //   - OPENROUTER_API_KEY               — the provider credential
-//   - OPENROUTER_ZDR_ACCOUNT_ASSERTED  — the account-wide ZDR posture gate
 //   - OPENROUTER_ZDR_DOWNGRADE         — operator-level per-leaf ZDR downgrade
 
 // LIVE_PROVIDER_SECRET_VARS-JSON-START
-const LIVE_PROVIDER_SECRET_VARS_JSON = [
-  "OPENROUTER_API_KEY",
-  "OPENROUTER_ZDR_ACCOUNT_ASSERTED",
-  "OPENROUTER_ZDR_DOWNGRADE",
-];
+const LIVE_PROVIDER_SECRET_VARS_JSON = ["OPENROUTER_API_KEY", "OPENROUTER_ZDR_DOWNGRADE"];
 // LIVE_PROVIDER_SECRET_VARS-JSON-END
 
 /** The single source of truth for the live-provider secret env-var names. */

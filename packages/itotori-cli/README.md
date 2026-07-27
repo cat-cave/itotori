@@ -57,8 +57,8 @@ Run `just doctor` (from a clone) to preflight every native dep; an installed
 machine follows the deterministic provisioning path in
 [`docs/native-deps-provisioning.md`](../../docs/native-deps-provisioning.md).
 
-A live `itotori localize` run additionally requires an exported `OPENROUTER_API_KEY`
-and the account-wide ZDR assertion `OPENROUTER_ZDR_ACCOUNT_ASSERTED=1` (see
+A live `itotori localize` run requires an exported `OPENROUTER_API_KEY`; every
+provider request carries the required ZDR routing posture (see
 [`docs/security-and-limitations.md`](../../docs/security-and-limitations.md)).
 
 ## Versioning

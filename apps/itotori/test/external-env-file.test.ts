@@ -49,12 +49,10 @@ describe("parseAllowlistedEnvFile", () => {
         "# a comment",
         "",
         `OPENROUTER_API_KEY=${DUMMY_KEY}`,
-        "export OPENROUTER_ZDR_ACCOUNT_ASSERTED=1",
         `OPENROUTER_ZDR_DOWNGRADE="deepseek/deepseek-chat"`,
       ].join("\n"),
     );
     expect(parsed.get("OPENROUTER_API_KEY")).toBe(DUMMY_KEY);
-    expect(parsed.get("OPENROUTER_ZDR_ACCOUNT_ASSERTED")).toBe("1");
     expect(parsed.get("OPENROUTER_ZDR_DOWNGRADE")).toBe("deepseek/deepseek-chat");
   });
 });
@@ -64,7 +62,6 @@ describe("loadExternalEnvFile — allowlist", () => {
     const env: Record<string, string | undefined> = {};
     const body = [
       `OPENROUTER_API_KEY=${DUMMY_KEY}`,
-      "OPENROUTER_ZDR_ACCOUNT_ASSERTED=1",
       "EVIL_EXFIL=http://attacker.example",
       "AWS_SECRET_ACCESS_KEY=should-be-ignored",
       "PATH=/malicious/bin",
@@ -75,14 +72,11 @@ describe("loadExternalEnvFile — allowlist", () => {
       readFile: fileFixture(body),
     });
     expect(env.OPENROUTER_API_KEY).toBe(DUMMY_KEY);
-    expect(env.OPENROUTER_ZDR_ACCOUNT_ASSERTED).toBe("1");
     // Non-allowlisted keys must NEVER enter the environment.
     expect(env.EVIL_EXFIL).toBeUndefined();
     expect(env.AWS_SECRET_ACCESS_KEY).toBeUndefined();
     expect(env.PATH).toBeUndefined();
-    expect([...result.appliedKeys].sort()).toEqual(
-      ["OPENROUTER_API_KEY", "OPENROUTER_ZDR_ACCOUNT_ASSERTED"].sort(),
-    );
+    expect([...result.appliedKeys]).toEqual(["OPENROUTER_API_KEY"]);
     // Every applied key is in the published allowlist.
     for (const key of result.appliedKeys) {
       expect(EXTERNAL_ENV_FILE_ALLOWLIST).toContain(key);

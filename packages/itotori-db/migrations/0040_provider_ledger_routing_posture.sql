@@ -7,11 +7,9 @@
 -- The 2026-06-25 wiring audit (docs/audits/openrouter-wiring-audit-2026-
 -- 06-25.md §4-4 + §3-G) showed that OpenRouter has NO per-response
 -- `zdr_enforced: true` flag. The proof that ZDR was in effect for a
--- given call is therefore a 3-part posture:
---   (a) the account is ZDR-only at the dashboard level (asserted at
---       process startup via OPENROUTER_ZDR_ACCOUNT_ASSERTED=1);
---   (b) the request body carried `provider.zdr=true`; and
---   (c) the response came back non-error (the 404 envelope when no ZDR
+-- given call is therefore a 2-part posture:
+--   (a) the request body carried `provider.zdr=true`; and
+--   (b) the response came back non-error (the 404 envelope when no ZDR
 --       provider can serve the call is the negative signal).
 -- ITOTORI-227 wired (a) + (b); this node persists (b) verbatim into the
 -- ledger so an offline audit can prove the posture without recapturing

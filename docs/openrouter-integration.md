@@ -21,7 +21,6 @@ live in [`contracts/shared.ts`](../apps/itotori/src/contracts/shared.ts).
 | Dispatch entry                     | `apps/itotori/src/llm/dispatch.ts`                                              |
 | Generation lookup / cost reconcile | `apps/itotori/src/llm/generation-metadata.ts`                                   |
 | Provider policy (strict)           | `apps/itotori/src/contracts/shared.ts` (`ProviderPolicySchema`)                 |
-| ZDR account assertion              | `apps/itotori/src/zdr-admission/`                                               |
 | Role profiles / parameter compat   | `apps/itotori/src/llm/role-model-profiles.ts`, `openrouter-parameter-compat.ts` |
 
 ---
@@ -37,8 +36,6 @@ itotori posture:
 - Always send `provider.zdr: true` (and `dataCollection: "deny"`) on live
   non-public calls via `ProviderPolicySchema` (`zdr: z.literal(true)`,
   `dataCollection: z.literal("deny")`).
-- Assert account-level ZDR-only honesty at process start
-  (`OPENROUTER_ZDR_ACCOUNT_ASSERTED`).
 - Never widen the candidate set or downgrade ZDR on a policy 404.
 
 When no ZDR endpoint matches, OpenRouter returns a 404-style envelope (e.g.
@@ -46,8 +43,7 @@ When no ZDR endpoint matches, OpenRouter returns a 404-style envelope (e.g.
 HTTP error; do not retry with a looser policy.
 
 OR’s conservative stance: endpoints it cannot classify as ZDR are dropped when
-`zdr: true` is in force. Dashboard privacy settings must match the asserted
-account posture (ZDR-only filters; OpenRouter use of I/O off).
+`zdr: true` is in force.
 
 ---
 

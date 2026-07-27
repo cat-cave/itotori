@@ -4,7 +4,6 @@ import {
   QualifyingRunEgressSchema,
   RebuildCallWirePolicySchema,
   assertPrivacyRetentionEgressContract,
-  assertRebuildLlmStartupPolicy,
   assertWebSearchEgress,
   privacyRetentionEgressManifest,
 } from "../src/contracts/index.js";
@@ -54,16 +53,6 @@ describe("privacy, retention, and egress contract", () => {
     expect(
       RebuildCallWirePolicySchema.safeParse({ ...policy, model: "provider:auto" }).success,
     ).toBe(false);
-  });
-
-  it("requires account and guardrail ZDR assertions before a rebuilt dispatcher starts", () => {
-    expect(() => assertRebuildLlmStartupPolicy({})).toThrow("OPENROUTER_ZDR_ACCOUNT_ASSERTED");
-    expect(() =>
-      assertRebuildLlmStartupPolicy({
-        OPENROUTER_ZDR_ACCOUNT_ASSERTED: "1",
-        OPENROUTER_ZDR_GUARDRAIL_ASSERTED: "1",
-      }),
-    ).not.toThrow();
   });
 
   it("permits web search only with the operator switch outside qualifying runs", () => {

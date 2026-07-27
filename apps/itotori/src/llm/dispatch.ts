@@ -31,7 +31,6 @@ import {
   CallSpecSchema,
   RebuildCallWirePolicySchema,
   ToolResultSchema,
-  assertRebuildLlmStartupPolicy,
   type CallResult,
   type CallSpec,
   type DispatchEvent,
@@ -354,7 +353,6 @@ export async function dispatch(specInput: CallSpec, runtime: DispatchRuntime): P
   assertCallUsesCertifiedRoleModelProfile(spec);
   const requested = { model: spec.requestedModel };
   const env = runtime.env ?? process.env;
-  assertRebuildLlmStartupPolicy(env);
   const apiKey = env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("rebuilt LLM requires OPENROUTER_API_KEY");
   RebuildCallWirePolicySchema.parse({
