@@ -39,11 +39,14 @@ const EXCLUDE_PATTERNS = [
 ];
 
 const NODE_ID_PATTERNS = [
-  /\b(?:RB|ITOTORI|KAIFUU|UTSUSHI)-\d+\b/gi,
-  /\bp0-core-[a-z0-9-]+\b/gi,
-  /\bfollow-up node\b/gi,
-  /\bsee node\b/gi,
-  /\bdeferred for node\b/gi,
+  // Deliberately no word boundaries: `_`, letters, and digits can surround a
+  // stale node id in an identifier, while JavaScript `\b` considers `_` a
+  // word character and would miss it.
+  /(?:RB|ITOTORI|KAIFUU|UTSUSHI)-\d+/gi,
+  /p0-core-[a-z0-9-]+/gi,
+  /follow-up node/gi,
+  /see node/gi,
+  /deferred for node/gi,
 ];
 
 export function isExcludedPath(path) {

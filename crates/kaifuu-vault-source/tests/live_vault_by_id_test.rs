@@ -20,9 +20,9 @@ use kaifuu_vault_source::{
 };
 use sha2::{Digest, Sha256};
 
-const SWEETIE_CANONICAL_ID: &str =
+const PRIMARY_CORPUS_CANONICAL_ID: &str =
     "oshioki-sweetie-koi-suru-onee-san-wa-urahara-desu.vj013077.v1-0.ja";
-const SWEETIE_SEEN_SHA256: &str =
+const PRIMARY_CORPUS_SEEN_SHA256: &str =
     "903f538b821a9b1e6cb3d399582915c0bcf73b0a058ecc907caf6017a4fa209f";
 const KANON_CANONICAL_ID: &str = "kanon.v33";
 
@@ -140,17 +140,17 @@ fn materialize_and_hash_seen(canonical_id: &str, scratch_root: &Path) -> String 
 
 #[test]
 #[ignore = "requires ITOTORI_VAULT_ROOT=/archive/vault (live read-only vault)"]
-fn resolves_sweetie_hd_by_id_and_seen_txt_matches_known_bytes() {
+fn resolves_primary_corpus_by_id_and_seen_txt_matches_known_bytes() {
     let Some(_vault) = require_live_vault() else {
         eprintln!("skipping: set ITOTORI_VAULT_ROOT=/archive/vault to run this proof");
         return;
     };
     let scratch = scratch_base();
-    let sha = materialize_and_hash_seen(SWEETIE_CANONICAL_ID, &scratch);
+    let sha = materialize_and_hash_seen(PRIMARY_CORPUS_CANONICAL_ID, &scratch);
     let _ = std::fs::remove_dir_all(&scratch);
     eprintln!("[sweetie] by-id -> Seen.txt sha256 = {sha}");
     assert_eq!(
-        sha, SWEETIE_SEEN_SHA256,
+        sha, PRIMARY_CORPUS_SEEN_SHA256,
         "Sweetie HD by-id Seen.txt sha256 must equal the known direct-path bytes"
     );
 }

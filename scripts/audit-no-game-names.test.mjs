@@ -44,6 +44,17 @@ test("catches every curated title, id, and corpus marker", () => {
   ]);
 });
 
+test("catches title fragments embedded in snake_case, camelCase, and digit identifiers", () => {
+  const found = findGameNameViolations(
+    CRATE,
+    "fn parses_sweetie_hd_2() {}\nfn parsesSweetieHd2() {}\nfn parses2sweetie3() {}\n",
+  );
+  assert.deepEqual(
+    found.map((entry) => entry.token),
+    ["sweetie", "sweetie", "sweetie"],
+  );
+});
+
 test("does not treat synthetic VNDB ids as game names", () => {
   assert.deepEqual(findGameNameViolations(CRATE, "// v1001, v1234, v9999, v12345\n"), []);
 });

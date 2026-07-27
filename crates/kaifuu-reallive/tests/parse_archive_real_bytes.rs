@@ -27,10 +27,10 @@ use kaifuu_reallive::{
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn parses_sweetie_hd_seen_txt_into_198_populated_scene_entries() {
+fn parses_primary_corpus_seen_txt_into_198_populated_scene_entries() {
     let Some(seen_path) = real_seen_txt_path() else {
         real_corpus::require_real_bytes(
-            "parses_sweetie_hd_seen_txt_into_198_populated_scene_entries",
+            "parses_primary_corpus_seen_txt_into_198_populated_scene_entries",
         );
         return;
     };

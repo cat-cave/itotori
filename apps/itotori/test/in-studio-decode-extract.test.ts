@@ -9,7 +9,7 @@
 //      real file read-back + real schema validation.
 //   2. WIRE-CONTRACT: parseProjectDecodeExtractRequest dispatches the required
 //      engine discriminant to the matching adapter-owned source + mode shape.
-//   3. ENV-GATED real: when ITOTORI_REAL_SWEETIE_ROOT is exported, the runner
+//   3. ENV-GATED real: when ITOTORI_REAL_CORPUS_ROOT is exported, the runner
 //      drives the REAL kaifuu-cli against the operator's game tree and asserts a
 //      real v0.2 BridgeBundle with text units landed. No retail bytes committed.
 //
@@ -237,13 +237,13 @@ describe("parseProjectDecodeExtractRequest (wire contract)", () => {
 // ENV-GATED real-Sweetie proof — the runner drives the REAL kaifuu-cli.
 // ---------------------------------------------------------------------------
 
-const REAL_SWEETIE_ROOT = process.env.ITOTORI_REAL_SWEETIE_ROOT;
+const REAL_CORPUS_ROOT = process.env.ITOTORI_REAL_CORPUS_ROOT;
 
 describe("in-studio decode/extract runner (env-gated real-Sweetie byte proof)", () => {
-  it.skipIf(!REAL_SWEETIE_ROOT)(
+  it.skipIf(!REAL_CORPUS_ROOT)(
     "produces a REAL v0.2 bridge from a real game root via the real kaifuu-cli (per-scene)",
     async () => {
-      const sceneEnv = process.env.ITOTORI_REAL_SWEETIE_SCENE;
+      const sceneEnv = process.env.ITOTORI_REAL_CORPUS_SCENE;
       const scene = sceneEnv ? Number.parseInt(sceneEnv, 10) : 2031;
       // No injected runExtract -> the REAL kaifuu-cli runs.
       const runner = createDecodeExtractRunner();
@@ -253,7 +253,7 @@ describe("in-studio decode/extract runner (env-gated real-Sweetie byte proof)", 
         gameVersion: "1.0",
         sourceProfileId: "sweetie-hd-real",
         sourceLocale: "ja-JP",
-        gameRoot: REAL_SWEETIE_ROOT,
+        gameRoot: REAL_CORPUS_ROOT,
         scene,
       });
       expect(outcome.mode).toBe("per-scene");

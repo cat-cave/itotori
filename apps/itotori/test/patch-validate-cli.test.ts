@@ -73,7 +73,7 @@ function resolveRealLiveDataDir(sourceRoot: string): string {
   }
 
   throw new Error(
-    `[patch-validate-real] ITOTORI_CLI_REAL_SWEETIE_ROOT must point at a RealLive tree with REALLIVEDATA/Seen.txt: ${sourceRoot}`,
+    `[patch-validate-real] ITOTORI_CLI_REAL_CORPUS_ROOT must point at a RealLive tree with REALLIVEDATA/Seen.txt: ${sourceRoot}`,
   );
 }
 
@@ -336,11 +336,11 @@ describe("itotori validate", () => {
 });
 
 describe("itotori patch + validate (env-gated real Sweetie proof)", () => {
-  const sourceRoot = process.env.ITOTORI_CLI_REAL_SWEETIE_ROOT;
-  const translatedBundlePath = process.env.ITOTORI_CLI_REAL_SWEETIE_TRANSLATED_BUNDLE;
-  const expectedText = process.env.ITOTORI_CLI_REAL_SWEETIE_EXPECT_TEXT;
-  const scene = process.env.ITOTORI_CLI_REAL_SWEETIE_SCENE ?? "1";
-  const bgAsset = process.env.ITOTORI_CLI_REAL_SWEETIE_BG_ASSET;
+  const sourceRoot = process.env.ITOTORI_CLI_REAL_CORPUS_ROOT;
+  const translatedBundlePath = process.env.ITOTORI_CLI_REAL_CORPUS_TRANSLATED_BUNDLE;
+  const expectedText = process.env.ITOTORI_CLI_REAL_CORPUS_EXPECT_TEXT;
+  const scene = process.env.ITOTORI_CLI_REAL_CORPUS_SCENE ?? "1";
+  const bgAsset = process.env.ITOTORI_CLI_REAL_CORPUS_BG_ASSET;
 
   it.skipIf(!sourceRoot || !translatedBundlePath || !expectedText)(
     "applies a real translated Sweetie bundle and validates replay + render output",

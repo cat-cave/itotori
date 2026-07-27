@@ -43,7 +43,7 @@ fn utsushi_cli_binary() -> PathBuf {
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn utsushi_structure_real_sweetie_writes_real_dispatch_order() {
+fn utsushi_structure_primary_corpus_writes_real_dispatch_order() {
     let (Some(gameexe), Some(seen)) = (
         real_corpus::gameexe_ini_path(),
         real_corpus::seen_txt_path(),
@@ -169,7 +169,7 @@ fn utsushi_structure_real_sweetie_writes_real_dispatch_order() {
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
-fn utsushi_structure_real_sweetie_rejects_truncation_without_an_artifact() {
+fn utsushi_structure_primary_corpus_rejects_truncation_without_an_artifact() {
     let (Some(gameexe), Some(seen)) = (
         real_corpus::gameexe_ini_path(),
         real_corpus::seen_txt_path(),
@@ -201,7 +201,7 @@ fn utsushi_structure_real_sweetie_rejects_truncation_without_an_artifact() {
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT and ITOTORI_REAL_BRIDGE_PATH"]
-fn utsushi_structure_real_sweetie_v2_matches_bridge_and_graph() {
+fn utsushi_structure_primary_corpus_v2_matches_bridge_and_graph() {
     let (Some(gameexe), Some(seen), Some(bridge_path)) = (
         real_corpus::gameexe_ini_path(),
         real_corpus::seen_txt_path(),

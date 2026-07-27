@@ -48,6 +48,17 @@ test("catches every id family plus the prose and slug forms", () => {
   );
 });
 
+test("catches node ids embedded in snake_case, camelCase, and digit identifiers", () => {
+  const violations = findNodeIdViolations(
+    CRATE,
+    "const task_KAIFUU-42_suffix = 1;\nconst taskKaifuu-43Suffix = 1;\nconst task2KAIFUU-44suffix = 1;\n",
+  );
+  assert.deepEqual(
+    violations.map((item) => item.token),
+    ["kaifuu-42", "kaifuu-43", "kaifuu-44"],
+  );
+});
+
 test("scope excludes immutable, fixture, and prose paths", () => {
   assert.equal(isExcludedPath("crates/x/tests/fixtures/seed.rs"), true);
   assert.equal(isExcludedPath("packages/itotori-db/migrations/0035_ledger.sql"), true);

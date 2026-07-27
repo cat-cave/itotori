@@ -43,23 +43,23 @@ use utsushi_reallive::{
 /// Sweetie HD scene #0001 file-offset pin. Verified by the
 /// integration test. The scene blob starts here in the `Seen.txt`
 /// envelope.
-const SWEETIE_HD_SCENE_ONE_FILE_OFFSET: u64 = 0x13880;
+const PRIMARY_CORPUS_SCENE_ONE_FILE_OFFSET: u64 = 0x13880;
 
 /// Scene-blob byte length for Sweetie HD scene #0001. Verified by
 /// the integration test.
-const SWEETIE_HD_SCENE_ONE_BLOB_LEN: u32 = 0x5fa;
+const PRIMARY_CORPUS_SCENE_ONE_BLOB_LEN: u32 = 0x5fa;
 
 /// Documented scene-header field values for Sweetie HD scene #0001
 /// drawn from `docs/research/reallive-engine.md` §D.
-const SWEETIE_HD_SCENE_ONE_COMPILER_VERSION: u32 = 110002;
-const SWEETIE_HD_SCENE_ONE_KIDOKU_OFFSET: u32 = 464;
-const SWEETIE_HD_SCENE_ONE_KIDOKU_COUNT: u32 = 1;
-const SWEETIE_HD_SCENE_ONE_DRAMATIS_OFFSET: u32 = 468;
-const SWEETIE_HD_SCENE_ONE_DRAMATIS_COUNT: u32 = 0;
-const SWEETIE_HD_SCENE_ONE_BYTECODE_OFFSET: u32 = 468;
-const SWEETIE_HD_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE: u32 = 1660;
-const SWEETIE_HD_SCENE_ONE_BYTECODE_COMPRESSED_SIZE: u32 = 1062;
-const SWEETIE_HD_SCENE_ONE_Z_MINUS_TWO: u32 = 3;
+const PRIMARY_CORPUS_SCENE_ONE_COMPILER_VERSION: u32 = 110002;
+const PRIMARY_CORPUS_SCENE_ONE_KIDOKU_OFFSET: u32 = 464;
+const PRIMARY_CORPUS_SCENE_ONE_KIDOKU_COUNT: u32 = 1;
+const PRIMARY_CORPUS_SCENE_ONE_DRAMATIS_OFFSET: u32 = 468;
+const PRIMARY_CORPUS_SCENE_ONE_DRAMATIS_COUNT: u32 = 0;
+const PRIMARY_CORPUS_SCENE_ONE_BYTECODE_OFFSET: u32 = 468;
+const PRIMARY_CORPUS_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE: u32 = 1660;
+const PRIMARY_CORPUS_SCENE_ONE_BYTECODE_COMPRESSED_SIZE: u32 = 1062;
+const PRIMARY_CORPUS_SCENE_ONE_Z_MINUS_TWO: u32 = 3;
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
@@ -84,11 +84,11 @@ fn scene1_header_matches_reallive_real_bytes() {
         .lookup(1)
         .expect("Sweetie HD must contain a populated scene 1 entry");
     assert_eq!(
-        entry.byte_offset, SWEETIE_HD_SCENE_ONE_FILE_OFFSET,
+        entry.byte_offset, PRIMARY_CORPUS_SCENE_ONE_FILE_OFFSET,
         "scene 1 file offset drift between  and  anchors",
     );
     assert_eq!(
-        entry.byte_len, SWEETIE_HD_SCENE_ONE_BLOB_LEN,
+        entry.byte_len, PRIMARY_CORPUS_SCENE_ONE_BLOB_LEN,
         "scene 1 blob length drift between  and  anchors",
     );
 
@@ -118,7 +118,7 @@ fn scene1_header_matches_reallive_real_bytes() {
     );
 
     assert_eq!(
-        header.compiler_version, SWEETIE_HD_SCENE_ONE_COMPILER_VERSION,
+        header.compiler_version, PRIMARY_CORPUS_SCENE_ONE_COMPILER_VERSION,
         "compiler_version pin (docs/research/reallive-engine.md §D)",
     );
     assert_eq!(
@@ -126,39 +126,40 @@ fn scene1_header_matches_reallive_real_bytes() {
         "Sweetie HD is RealLive 1.10 — the public constant must match the observed value",
     );
     assert_eq!(
-        header.kidoku_offset, SWEETIE_HD_SCENE_ONE_KIDOKU_OFFSET,
+        header.kidoku_offset, PRIMARY_CORPUS_SCENE_ONE_KIDOKU_OFFSET,
         "kidoku_offset pin",
     );
     assert_eq!(
-        header.kidoku_count, SWEETIE_HD_SCENE_ONE_KIDOKU_COUNT,
+        header.kidoku_count, PRIMARY_CORPUS_SCENE_ONE_KIDOKU_COUNT,
         "kidoku_count pin",
     );
     assert_eq!(
-        header.dramatis_offset, SWEETIE_HD_SCENE_ONE_DRAMATIS_OFFSET,
+        header.dramatis_offset, PRIMARY_CORPUS_SCENE_ONE_DRAMATIS_OFFSET,
         "dramatis_offset pin",
     );
     assert_eq!(
-        header.dramatis_count, SWEETIE_HD_SCENE_ONE_DRAMATIS_COUNT,
+        header.dramatis_count, PRIMARY_CORPUS_SCENE_ONE_DRAMATIS_COUNT,
         "dramatis_count pin",
     );
     assert_eq!(
-        header.bytecode_offset, SWEETIE_HD_SCENE_ONE_BYTECODE_OFFSET,
+        header.bytecode_offset, PRIMARY_CORPUS_SCENE_ONE_BYTECODE_OFFSET,
         "bytecode_offset pin",
     );
     assert_eq!(
-        header.bytecode_uncompressed_size, SWEETIE_HD_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE,
+        header.bytecode_uncompressed_size, PRIMARY_CORPUS_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE,
         "bytecode_uncompressed_size pin",
     );
     assert_eq!(
-        header.bytecode_compressed_size, SWEETIE_HD_SCENE_ONE_BYTECODE_COMPRESSED_SIZE,
+        header.bytecode_compressed_size, PRIMARY_CORPUS_SCENE_ONE_BYTECODE_COMPRESSED_SIZE,
         "bytecode_compressed_size pin",
     );
 
     // Cross-check the compressed-size invariant from the research doc:
     // 1530 (blob len 0x5fa) - 468 (bytecode_offset) = 1062.
     assert_eq!(
-        (SWEETIE_HD_SCENE_ONE_BLOB_LEN as i64) - (SWEETIE_HD_SCENE_ONE_BYTECODE_OFFSET as i64),
-        SWEETIE_HD_SCENE_ONE_BYTECODE_COMPRESSED_SIZE as i64,
+        (PRIMARY_CORPUS_SCENE_ONE_BLOB_LEN as i64)
+            - (PRIMARY_CORPUS_SCENE_ONE_BYTECODE_OFFSET as i64),
+        PRIMARY_CORPUS_SCENE_ONE_BYTECODE_COMPRESSED_SIZE as i64,
         "documented invariant blob_len - bytecode_offset == bytecode_compressed_size",
     );
 
@@ -166,7 +167,7 @@ fn scene1_header_matches_reallive_real_bytes() {
     // z_minus_two=3 explicitly; z_minus_one is documented as 0.
     assert_eq!(header.z_minus_one, 0, "z_minus_one pin (retail unused)");
     assert_eq!(
-        header.z_minus_two, SWEETIE_HD_SCENE_ONE_Z_MINUS_TWO,
+        header.z_minus_two, PRIMARY_CORPUS_SCENE_ONE_Z_MINUS_TWO,
         "z_minus_two pin (docs/research/reallive-engine.md §D)",
     );
 

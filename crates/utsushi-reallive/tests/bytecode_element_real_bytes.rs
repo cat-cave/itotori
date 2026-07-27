@@ -38,7 +38,7 @@ use utsushi_reallive::{
 /// Sourced from
 /// `RealLive encryption research notes` §1 and
 /// re-validated by the real-bytes test.
-const SWEETIE_HD_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE: u32 = 1660;
+const PRIMARY_CORPUS_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE: u32 = 1660;
 
 /// Acceptance-criterion bounds on the element count for the 1660-byte
 /// decompressed payload.
@@ -64,7 +64,7 @@ const ELEMENT_COUNT_MAX: usize = 300;
 /// histogram. Pinned exactly so a regression that drops a marker (e.g.
 /// a dispatch path collapsing `SelectionOption` into `Textout`) fails
 /// the test instead of passing a `<= element_count` tautology.
-const SWEETIE_HD_SCENE_ONE_SELECTION_MARKER_COUNT: usize = 8;
+const PRIMARY_CORPUS_SCENE_ONE_SELECTION_MARKER_COUNT: usize = 8;
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT env var"]
@@ -122,7 +122,7 @@ fn scene1_element_stream_partition_and_first_command_header() {
 
     assert_eq!(
         decompressed.len(),
-        SWEETIE_HD_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE as usize,
+        PRIMARY_CORPUS_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE as usize,
         "decompressed payload must be the documented 1660 bytes",
     );
 
@@ -322,8 +322,8 @@ fn scene1_element_stream_partition_and_first_command_header() {
     // bytes, and it fails if a future change drops or misclassifies a
     // marker.
     assert_eq!(
-        selection_marker_count, SWEETIE_HD_SCENE_ONE_SELECTION_MARKER_COUNT,
-        "Sweetie HD scene #0001 must yield exactly {SWEETIE_HD_SCENE_ONE_SELECTION_MARKER_COUNT} \
+        selection_marker_count, PRIMARY_CORPUS_SCENE_ONE_SELECTION_MARKER_COUNT,
+        "Sweetie HD scene #0001 must yield exactly {PRIMARY_CORPUS_SCENE_ONE_SELECTION_MARKER_COUNT} \
          recognised SelectionOption markers (0x{SELECTION_OPTION_MARKER_MIN:02x}..=\
          0x{SELECTION_OPTION_MARKER_MAX:02x}); got {selection_marker_count} of {element_count} \
          total elements",

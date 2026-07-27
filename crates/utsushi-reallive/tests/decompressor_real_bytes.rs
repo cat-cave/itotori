@@ -35,8 +35,8 @@ use utsushi_reallive::{
 
 /// Documented decompressed-output values for Sweetie HD scene #0001.
 /// Sourced from `RealLive encryption research notes` §1.
-const SWEETIE_HD_SCENE_ONE_BYTECODE_COMPRESSED_SIZE: u32 = 1062;
-const SWEETIE_HD_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE: u32 = 1660;
+const PRIMARY_CORPUS_SCENE_ONE_BYTECODE_COMPRESSED_SIZE: u32 = 1062;
+const PRIMARY_CORPUS_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE: u32 = 1660;
 
 /// First 8 bytes of the decompressed bytecode payload for Sweetie HD
 /// scene #0001. Sourced verbatim from
@@ -44,7 +44,7 @@ const SWEETIE_HD_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE: u32 = 1660;
 /// re-confirmed by the kaifuu-reallive `probe_scene_1_encryption`
 /// example (read-only reference; we do **not** depend on
 /// `kaifuu-reallive` for any code path).
-const SWEETIE_HD_SCENE_ONE_DECOMPRESSED_FIRST_EIGHT_BYTES: [u8; 8] =
+const PRIMARY_CORPUS_SCENE_ONE_DECOMPRESSED_FIRST_EIGHT_BYTES: [u8; 8] =
     [0x0a, 0x02, 0x00, 0x0a, 0x03, 0x00, 0x21, 0x00];
 
 #[test]
@@ -96,11 +96,11 @@ fn scene1_decompressor_matches_reallive_real_bytes_outcome_a() {
         "compiler_version must be 110002 (Sweetie HD is RealLive 1.10)",
     );
     assert_eq!(
-        header.bytecode_compressed_size, SWEETIE_HD_SCENE_ONE_BYTECODE_COMPRESSED_SIZE,
+        header.bytecode_compressed_size, PRIMARY_CORPUS_SCENE_ONE_BYTECODE_COMPRESSED_SIZE,
         "compressed-size pin (RealLive encryption research notes §1)",
     );
     assert_eq!(
-        header.bytecode_uncompressed_size, SWEETIE_HD_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE,
+        header.bytecode_uncompressed_size, PRIMARY_CORPUS_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE,
         "uncompressed-size pin (RealLive encryption research notes §1)",
     );
 
@@ -119,7 +119,7 @@ fn scene1_decompressor_matches_reallive_real_bytes_outcome_a() {
     let compressed = &blob[bytecode_offset..compressed_end];
     assert_eq!(
         compressed.len(),
-        SWEETIE_HD_SCENE_ONE_BYTECODE_COMPRESSED_SIZE as usize,
+        PRIMARY_CORPUS_SCENE_ONE_BYTECODE_COMPRESSED_SIZE as usize,
         "sliced compressed payload must be exactly the documented 1062 bytes",
     );
 
@@ -133,13 +133,13 @@ fn scene1_decompressor_matches_reallive_real_bytes_outcome_a() {
     let preamble_lo = u32::from_le_bytes([preamble[0], preamble[1], preamble[2], preamble[3]]);
     let preamble_hi = u32::from_le_bytes([preamble[4], preamble[5], preamble[6], preamble[7]]);
     assert_eq!(
-        preamble_lo, SWEETIE_HD_SCENE_ONE_BYTECODE_COMPRESSED_SIZE,
+        preamble_lo, PRIMARY_CORPUS_SCENE_ONE_BYTECODE_COMPRESSED_SIZE,
         "preamble[0..4] ^ AVG32_XOR_MASK[0..4] must yield bytecode_compressed_size (1062) — \
          self-consistency check from \
          RealLive encryption research notes §4.1",
     );
     assert_eq!(
-        preamble_hi, SWEETIE_HD_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE,
+        preamble_hi, PRIMARY_CORPUS_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE,
         "preamble[4..8] ^ AVG32_XOR_MASK[4..8] must yield bytecode_uncompressed_size (1660) — \
          self-consistency check from \
          RealLive encryption research notes §4.1",
@@ -178,14 +178,14 @@ fn scene1_decompressor_matches_reallive_real_bytes_outcome_a() {
     // Assertion #1: output length == 1660.
     assert_eq!(
         decompressed.len(),
-        SWEETIE_HD_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE as usize,
+        PRIMARY_CORPUS_SCENE_ONE_BYTECODE_UNCOMPRESSED_SIZE as usize,
         "decompressed output must match bytecode_uncompressed_size (1660 bytes)",
     );
 
     // Assertion #2: first 8 bytes match the documented prefix.
     assert_eq!(
         &decompressed[..8],
-        &SWEETIE_HD_SCENE_ONE_DECOMPRESSED_FIRST_EIGHT_BYTES,
+        &PRIMARY_CORPUS_SCENE_ONE_DECOMPRESSED_FIRST_EIGHT_BYTES,
         "first 8 bytes of decompressed output must match the documented prefix \
          (RealLive encryption research notes §1): \
          0a 02 00 0a 03 00 21 00",

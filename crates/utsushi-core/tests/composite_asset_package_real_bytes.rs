@@ -122,11 +122,11 @@ fn extract_last_quoted(value: &str) -> Option<String> {
 }
 
 #[test]
-fn composite_asset_package_real_bytes_sweetie_hd_realivedata() {
+fn composite_asset_package_real_bytes_primary_corpus_realivedata() {
     let Some(realivedata) = real_corpus::reallivedata_dir() else {
         // Visible-skip acceptance criteria.
         eprintln!(
-            "SKIP composite_asset_package_real_bytes_sweetie_hd_realivedata: {}; \
+            "SKIP composite_asset_package_real_bytes_primary_corpus_realivedata: {}; \
              multi-engine validation needs both ITOTORI_REAL_GAME_ROOT and \
              ITOTORI_REAL_GAME_ROOT_RPG_MAKER_MV_MZ to confirm cross-engine genericity",
             real_corpus::skip_message("RealLive composite asset package test")

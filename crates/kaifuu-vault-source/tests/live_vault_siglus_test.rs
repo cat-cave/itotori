@@ -28,10 +28,11 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 /// "Karetoshi" — Kareshi Inai Reki = Nenrei... (portable install, VJ007329).
-const KARETOSHI_CANONICAL_ID: &str =
+const FIRST_SIGLUS_CORPUS_CANONICAL_ID: &str =
     "kareshi-inai-reki-nenrei-ja-doushite-ikenai-no-yo-sei-torea-gakuen-ren-ai-kinshi-rei.vj007329";
 /// "Gamekoi" — Game ~ Eroge Mitai na Suteki na Koi ga Shitai (portable, VJ015134).
-const GAMEKOI_CANONICAL_ID: &str = "game-eroge-mitai-na-suteki-na-koi-ga-shitai.vj015134";
+const SECOND_SIGLUS_CORPUS_CANONICAL_ID: &str =
+    "game-eroge-mitai-na-suteki-na-koi-ga-shitai.vj015134";
 
 /// The fixed `Scene.pck` header length documented by `kaifuu_siglus::archive`.
 const SCENE_PCK_HEADER_BYTE_LEN: usize = 0x5C;
@@ -388,8 +389,8 @@ fn materializes_both_siglus_titles_to_plaintext_trees_and_records_manifest() {
     let scratch = scratch_base();
 
     let titles = vec![
-        materialize_confirm_siglus("karetoshi", KARETOSHI_CANONICAL_ID, &scratch),
-        materialize_confirm_siglus("gamekoi", GAMEKOI_CANONICAL_ID, &scratch),
+        materialize_confirm_siglus("karetoshi", FIRST_SIGLUS_CORPUS_CANONICAL_ID, &scratch),
+        materialize_confirm_siglus("gamekoi", SECOND_SIGLUS_CORPUS_CANONICAL_ID, &scratch),
     ];
 
     for title in &titles {

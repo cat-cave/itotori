@@ -27,8 +27,8 @@ use kaifuu_reallive::{
     scene_bundle_namespace,
 };
 
-const SWEETIE_HD_GAME_ID: &str = "sweetie-hd";
-const SWEETIE_HD_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
+const PRIMARY_CORPUS_GAME_ID: &str = "sweetie-hd";
+const PRIMARY_CORPUS_SOURCE_PROFILE_ID: &str = "kaifuu-reallive-sweetie-hd";
 /// A known dialogue-bearing scene in Sweetie HD's `Seen.txt` that decodes
 /// 100% clean (readable dialogue + binary catch-all runs + real
 /// `module_sel` select-block Choice options + kidoku + NAMAE speakers).
@@ -79,9 +79,9 @@ fn scene_bytecode(seen_bytes: &[u8], scene_id: u16) -> SceneBytecode {
 
 fn bridge_opts(scene_kidoku_count: u32) -> BridgeOpts<'static> {
     BridgeOpts {
-        game_id: SWEETIE_HD_GAME_ID,
+        game_id: PRIMARY_CORPUS_GAME_ID,
         game_version: "1.0.0",
-        source_profile_id: SWEETIE_HD_SOURCE_PROFILE_ID,
+        source_profile_id: PRIMARY_CORPUS_SOURCE_PROFILE_ID,
         source_locale: "ja-JP",
         extractor_name: "kaifuu-reallive-bridge",
         extractor_version: "0.1.0",
@@ -371,8 +371,8 @@ fn dialogue_scene_surfaces_readable_sjis_textouts_as_translatable_units_real_byt
             .filter_map(|entry| real_corpus::namae_display_and_box(&entry.value))
             .collect();
         let namespace = scene_bundle_namespace(
-            SWEETIE_HD_GAME_ID,
-            SWEETIE_HD_SOURCE_PROFILE_ID,
+            PRIMARY_CORPUS_GAME_ID,
+            PRIMARY_CORPUS_SOURCE_PROFILE_ID,
             DIALOGUE_SCENE_ID,
         );
 

@@ -127,7 +127,7 @@ fn find_gameexe_ini(root: &Path) -> Option<PathBuf> {
 
 #[test]
 #[ignore = "real-bytes; requires ITOTORI_REAL_GAME_ROOT (Sweetie HD)"]
-fn reallive_adapter_length_changing_patch_round_trips_on_real_sweetie_hd() {
+fn reallive_adapter_length_changing_patch_round_trips_on_primary_corpus() {
     let Ok(root) = std::env::var(REAL_GAME_ROOT_ENV) else {
         // Strict-by-default: an absent corpus is a skip only when the env is
         // unset (the harness runs this under --include-ignored WITH the env).

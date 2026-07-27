@@ -104,7 +104,7 @@ pub enum GameexeKeyFamily {
     Caption,
     /// `#SUBTITLE=…` — subtitle config.
     Subtitle,
-    /// `#REGNAME="HADASHI\OSHIOKIHD"` — registry-key identifier.
+    /// `#REGNAME="<vendor registry key>"` — registry-key identifier.
     RegName,
     /// `#DISKMARK="…"` — disk-marker filename.
     DiskMark,
