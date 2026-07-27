@@ -251,8 +251,9 @@ describe("A3 dispatches through the sole ZDR boundary", () => {
       `sha256:${createHash("sha256").update(prompts[0]!.text).digest("hex")}`,
     );
     expect(prompts[0]!.text).toContain(
-      "cite every claim using the short bracketed [uN] label shown for its unit",
+      "For every citation evidenceId, emit the bare scene-local label uN (for example u1)",
     );
+    expect(prompts[0]!.text).toContain("never brackets ([ or ])");
     // The prompt shows small scene-local labels the flash model can copy, not the
     // large global play-order index.
     expect(prompts[0]!.text).toContain("[u1]");
