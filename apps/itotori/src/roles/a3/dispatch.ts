@@ -79,7 +79,7 @@ function renderPrompt(
     `Output kind: ${kind}. Source language: ${request.sourceLanguage}. Author in the SOURCE LANGUAGE.`,
     `Scene ${scene.sceneId} — decoded counts are FACTS: ${scene.factCard.messageCount} messages, ` +
       `${scene.factCard.choiceCount} choices, speakers: [${scene.speakerLabels.join(", ")}]. ` +
-      `Do not re-count or re-attribute; cite every claim using the short bracketed [uN] label shown for its unit, exactly as written — never a unit id or a play-order number.`,
+      `Do not re-count or re-attribute. For every citation evidenceId, emit the bare scene-local label uN (for example u1), exactly as written — never brackets ([ or ]), a unit id, or a play-order number. The [uN] prefix in the scene stream is display decoration, not part of the evidenceId.`,
     prior,
     "Complete scene stream:",
     ...lines,
