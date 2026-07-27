@@ -154,60 +154,14 @@ pub(super) fn build(input: ExpandedInput<'_>) -> Result<Value, String> {
                 edges.push(edge);
             }
         }
-        for prompt in &observation.prompts {
-            for (option_index, line_id) in prompt.option_line_ids.iter().enumerate() {
-                if links.choices.contains_key(line_id) {
-                    continue;
-                }
-                let line = observation
-                    .lines
-                    .iter()
-                    .find(|line| &line.line_id == line_id)
-                    .ok_or_else(|| {
-                        format!("choice line {line_id} is absent from the replay stream")
-                    })?;
-                let option_index = u16::try_from(option_index)
-                    .map_err(|err| format!("choice option index is out of range: {err}"))?;
-                let choice_id = format!(
-                    "choice:runtime:scene-{:04}:prompt-{}:option-{option_index}",
-                    observation.scene_id, prompt.byte_offset_in_scene
-                );
-                let diagnostic = "choice target is unknown because the displayed option has no static BridgeUnit"
-                    .to_string();
-                let edge = Edge::choice(
-                    observation.scene_id,
-                    &choice_id,
-                    option_index,
-                    None,
-                    false,
-                    Some(diagnostic.clone()),
-                );
-                choices.push(json!({
-                    "choiceId": choice_id,
-                    "choiceGroupId": format!(
-                        "choice-group:runtime:scene-{:04}:prompt-{}",
-                        observation.scene_id, prompt.byte_offset_in_scene
-                    ),
-                    "edgeId": edge.id,
-                    "edgeResolution": edge.resolution,
-                    "unresolvedEdgeDiagnostic": diagnostic,
-                    "optionIndex": option_index,
-                    "label": line.text,
-                    "bridgeRef": null,
-                    // This displayed option has NO static BridgeUnit — it is a
-                    // runtime prompt (e.g. a system "continue playing / save for
-                    // later" menu), not part of the translatable script. Mark it
-                    // runtime_only so the localization join skips it exactly as
-                    // it skips a runtime-only message, rather than demanding a
-                    // (non-existent) bridge binding.
-                    "linkageStatus": "runtime_only",
-                    "runtimeOnlyReason": "no BridgeUnit exists for this runtime choice surface",
-                    "branchEntryScene": null,
-                    "branchTargetSceneId": null,
-                    "branchMessages": [],
-                }));
-                edges.push(edge);
-            }
+        for (value, edge) in runtime_choices::runtime_only_choices(
+            observation.scene_id,
+            &observation.prompts,
+            &observation.lines,
+            &|line_id| links.choices.contains_key(line_id),
+        )? {
+            choices.push(value);
+            edges.push(edge);
         }
 
         let observed_edge = if observation.cold_seeded {
@@ -479,6 +433,8 @@ fn grouped_choices(units: &[BridgeUnit]) -> Vec<Vec<&BridgeUnit>> {
     groups.sort_by_key(|group| group.first().map(|unit| unit.byte_start));
     groups
 }
+
+mod runtime_choices;
 
 #[cfg(test)]
 mod tests;

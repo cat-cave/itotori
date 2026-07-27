@@ -250,12 +250,18 @@ const ANALYST_LIMITS: CallLimits = {
   maxOutputTokens: 16_384,
   timeoutClass: "deep",
 };
+// The localizer drafts a whole scene or measured chunk and is the largest
+// generation in the roster — twice the analyst's output ceiling. It therefore
+// takes the DEEP deadline, as the analyst does: on real bytes the same model at
+// the analyst's 16_384-token ceiling took ~180 s per call, so a 32_768-token
+// draft cannot complete inside the `normal` (30 s) deadline and every attempt
+// fails `transport-error` before a single token is billed.
 const LOCALIZER_LIMITS: CallLimits = {
   maxSteps: 4,
   maxToolCalls: 8,
   maxParallelTools: 4,
   maxOutputTokens: 32_768,
-  timeoutClass: "normal",
+  timeoutClass: "deep",
 };
 const REVIEWER_LIMITS: CallLimits = {
   maxSteps: 3,
