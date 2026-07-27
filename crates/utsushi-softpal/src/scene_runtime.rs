@@ -295,4 +295,23 @@ mod tests {
             "fully determined synthetic path"
         );
     }
+
+    #[test]
+    fn refuses_debug_window_state_call_without_inventing_host_state() {
+        let (textdat, _) = textdat();
+        let scene = SoftpalScene::execute(
+            &program(&[op(0x1f), word(0), op(0x17), word(0x000f_0005), word(0)]),
+            &textdat,
+        )
+        .expect("valid script shape");
+        assert_eq!(scene.stats.instructions_executed, 2);
+        assert_eq!(
+            scene.diagnostics,
+            vec![RuntimeDiagnostic {
+                signature: "debug_window_state_unavailable".to_string(),
+                offset: 20,
+            }],
+            "the registered handler consumes a value and swaps an external debug-window state"
+        );
+    }
 }

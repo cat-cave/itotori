@@ -111,6 +111,9 @@ impl CallTarget {
             (0x0008, 0x0026) => Some("button.get_reaction"),
             (0x0017, 0x0000) => Some("input.get_key_ex"),
 
+            // A stateful debug-window swap, not a script-visible pure value.
+            (0x000f, 0x0005) => Some("debug_window.save_and_set_state"),
+
             // Effects and utility handlers.
             (0x0013, 0x0001) => Some("fx.set"),
             (0x0013, 0x0002) => Some("fx.get_state"),
@@ -142,6 +145,14 @@ mod tests {
             }
             .semantic_name(),
             Some("video.play")
+        );
+        assert_eq!(
+            CallTarget {
+                category: 0x000f,
+                function: 0x0005
+            }
+            .semantic_name(),
+            Some("debug_window.save_and_set_state")
         );
         // Category alone is not evidence: unknown function ids remain named
         // only by their raw dispatch target for a future RE pass.
