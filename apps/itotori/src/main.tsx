@@ -5,6 +5,10 @@
 
 import { createRoot } from "react-dom/client";
 import "@itotori/ds/styles.css";
+// App-shell chrome, layered on top of the DS bundle (never forking it): the
+// frame around the screens, and the screen layout the screens render into.
+import "./ui/shell-frame.css";
+import "./ui/screen-layout.css";
 import { App } from "./ui/App.js";
 
 const container = document.querySelector<HTMLDivElement>("#app");

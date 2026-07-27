@@ -2,7 +2,7 @@
   block-size: var(--itotori-virtual-list-height);
   overflow: auto;
   overscroll-behavior: contain;
-  padding-inline-end: var(--ito-space-2);
+  padding-inline-end: var(--ito-space-4);
 }
 
 .itotori-virtual-list__spacer {

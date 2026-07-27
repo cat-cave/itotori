@@ -1,0 +1,465 @@
+/*
+ * Shell frame chrome — the persistent app frame around every routed screen.
+ *
+ * The panels inside the frame are already Dusk Observatory (dark VN
+ * config-window cards, pixel eyebrows, hairline-divider grids). This sheet
+ * makes the FRAME read as the same product: the nav row, the workspace /
+ * project-branch switchers, the ⌘K affordance, the redaction toggle, the
+ * persistent status bar, and the toast viewport.
+ *
+ * Every value here references an EXISTING `--ito-*` token from
+ * `@itotori/ds/styles.css`. No token is invented, no DS rule is forked, and no
+ * colour/size literal is inlined — the app-css contract guard
+ * (`scripts/audit-app-css-contract.mjs`) fails the build on a dangling
+ * `var(--ito-*)` reference or a class used in app source with no rule.
+ *
+ * Loaded once from `src/main.tsx`, AFTER the DS bundle, so these app-shell
+ * rules layer on top of the component layer rather than replacing it.
+ */
+
+/* --------------------------------------------------------------------------
+ * Page base — the night canvas the whole SPA sits on. Without this the frame
+ * renders on the default white browser canvas with default black ink, which
+ * is what made a polished dark interior read as broken.
+ * -------------------------------------------------------------------------- */
+
+:root {
+  /*
+   * The shared content measure. NOT a design token — a layout constant local
+   * to the app shell, so the sticky chrome, the status bar and the screen
+   * content all end on the same line instead of the chrome running full-bleed
+   * past centred content on a wide display.
+   */
+  --app-shell-measure: 1440px;
+}
+
+body {
+  margin: 0;
+  background: var(--ito-color-page);
+  color: var(--ito-color-text);
+  font-family: var(--ito-font-sans);
+  font-size: var(--ito-text-body);
+  line-height: var(--ito-leading-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+body ::selection {
+  background: var(--ito-color-selection);
+}
+
+body a {
+  color: var(--ito-color-cyan);
+  text-decoration-color: var(--ito-color-border);
+  text-underline-offset: 2px;
+}
+
+body a:hover {
+  text-decoration-color: var(--ito-color-cyan);
+}
+
+body a:focus-visible,
+body button:focus-visible,
+body input:focus-visible,
+body select:focus-visible {
+  outline: 2px solid var(--ito-color-focus-ring);
+  outline-offset: 2px;
+}
+
+body code,
+body kbd {
+  font-family: var(--ito-font-mono);
+}
+
+/* --------------------------------------------------------------------------
+ * Frame skeleton
+ * -------------------------------------------------------------------------- */
+
+.itotori-shell-frame {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100vh;
+  background: var(--ito-color-page);
+  color: var(--ito-color-text);
+}
+
+.itotori-shell-frame__content {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+/* --------------------------------------------------------------------------
+ * Chrome row — nav on the left, workspace controls on the right. Sticky so
+ * navigation stays reachable on the long dashboard scroll.
+ * -------------------------------------------------------------------------- */
+
+.itotori-shell-frame__chrome {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: var(--ito-layer-nav);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ito-space-12);
+  padding-block: var(--ito-space-10);
+  padding-inline: max(var(--ito-space-18), calc((100% - var(--app-shell-measure)) / 2));
+  background: var(--ito-color-surface);
+  border-block-end: 1px solid var(--ito-color-border);
+  box-shadow:
+    var(--ito-shadow-panel),
+    inset 0 1px 0 0 var(--ito-bevel-top-highlight);
+}
+
+.itotori-shell-frame__nav {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.itotori-shell-frame__nav .itotori-navpills__list {
+  flex-wrap: nowrap;
+}
+
+.itotori-shell-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ito-space-8);
+  margin-inline-start: auto;
+}
+
+/* --------------------------------------------------------------------------
+ * Chrome controls — the switcher triggers, the ⌘K affordance and the
+ * redaction toggle share ONE control shape so the toolbar reads as a set
+ * rather than a run of default browser buttons.
+ * -------------------------------------------------------------------------- */
+
+.itotori-switcher__trigger,
+.itotori-switcher__close,
+.itotori-command-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ito-space-8);
+  min-block-size: 30px;
+  padding: var(--ito-space-4) var(--ito-space-12);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius-pill);
+  background: var(--ito-color-raised);
+  color: var(--ito-color-text);
+  font-family: var(--ito-font-display);
+  font-weight: var(--ito-weight-display-soft);
+  font-size: var(--ito-text-body);
+  line-height: var(--ito-leading-tight);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.itotori-switcher__trigger:hover,
+.itotori-switcher__close:hover,
+.itotori-command-trigger:hover {
+  border-color: var(--ito-pill-active-border);
+  color: var(--ito-color-amber);
+}
+
+.itotori-switcher__trigger[aria-expanded="true"] {
+  background: var(--ito-pill-active-bg);
+  border-color: var(--ito-pill-active-border);
+  color: var(--ito-pill-active-fg);
+}
+
+.itotori-command-trigger {
+  background: var(--ito-field-bg);
+  border-color: var(--ito-field-border);
+  color: var(--ito-color-text-muted);
+  font-family: var(--ito-font-sans);
+  font-weight: var(--ito-weight-body);
+  min-inline-size: 148px;
+  justify-content: space-between;
+}
+
+.itotori-command-trigger__copy {
+  color: var(--ito-field-placeholder);
+}
+
+.itotori-command-trigger:hover .itotori-command-trigger__copy {
+  color: var(--ito-color-text);
+}
+
+.itotori-command-trigger__kbd {
+  padding: 0 var(--ito-space-6);
+  border: 1px solid var(--ito-kbd-border);
+  border-radius: var(--ito-radius-tight);
+  background: var(--ito-kbd-bg);
+  color: var(--ito-kbd-fg);
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel-tight);
+}
+
+.itotori-redaction-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ito-space-8);
+  min-block-size: 30px;
+  padding: var(--ito-space-4) var(--ito-space-12);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius-pill);
+  background: var(--ito-color-raised);
+  color: var(--ito-color-text-muted);
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.itotori-redaction-toggle[data-reveal-capable="false"] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.itotori-redaction-toggle[data-reveal-on="true"] {
+  border-color: var(--ito-redact-border);
+  color: var(--ito-redact-fg);
+}
+
+.itotori-redaction-toggle input {
+  accent-color: var(--ito-toggle-on-bg);
+  inline-size: 14px;
+  block-size: 14px;
+  margin: 0;
+}
+
+.itotori-redaction-toggle__copy {
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+ * Switcher popovers — the workspace / project+branch menus.
+ * -------------------------------------------------------------------------- */
+
+.itotori-switcher,
+.itotori-identity-switcher {
+  position: relative;
+  display: inline-flex;
+}
+
+.itotori-switcher__panel {
+  position: absolute;
+  inset-block-start: calc(100% + var(--ito-space-8));
+  inset-inline-end: 0;
+  z-index: var(--ito-layer-overlay);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-12);
+  inline-size: max-content;
+  min-inline-size: 240px;
+  max-inline-size: min(360px, 90vw);
+  padding: var(--ito-space-12);
+  border: 1px solid var(--ito-command-border);
+  border-radius: var(--ito-radius);
+  background: var(--ito-command-bg);
+  box-shadow: var(--ito-shadow-panel);
+}
+
+.itotori-switcher__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-6);
+  min-inline-size: 0;
+}
+
+.itotori-switcher__section-label {
+  margin: 0;
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-switcher__pending,
+.itotori-switcher__empty {
+  margin: 0;
+  color: var(--ito-color-text-muted);
+  font-size: var(--ito-text-pixel);
+}
+
+.itotori-switcher__unavailable {
+  margin: 0;
+  color: var(--ito-tone-critical-fg);
+  font-size: var(--ito-text-pixel);
+}
+
+.itotori-switcher__options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-4);
+  min-inline-size: 0;
+}
+
+.itotori-switcher__option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ito-space-1);
+  inline-size: 100%;
+  padding: var(--ito-space-6) var(--ito-space-10);
+  border: 1px solid transparent;
+  border-radius: var(--ito-radius-tight);
+  background: var(--ito-pill-bg);
+  color: var(--ito-color-text);
+  font: inherit;
+  font-size: var(--ito-text-body);
+  text-align: start;
+  cursor: pointer;
+}
+
+.itotori-switcher__option:hover {
+  background: var(--ito-color-raised);
+}
+
+.itotori-switcher__option[data-switcher-option-active="true"],
+.itotori-switcher__option[aria-checked="true"] {
+  background: var(--ito-command-active-bg);
+  border-color: var(--ito-command-active-border);
+  color: var(--ito-pill-active-fg);
+}
+
+.itotori-switcher__option[data-switcher-option-readonly="true"] {
+  cursor: default;
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-switcher__option span + span {
+  color: var(--ito-color-text-muted);
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel-tight);
+}
+
+.itotori-switcher__panel-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-block-start: var(--ito-space-8);
+  border-block-start: 1px solid var(--ito-color-divider);
+}
+
+/* --------------------------------------------------------------------------
+ * Status bar — the persistent read-model facts. The signature hairline-divider
+ * motif separates cells; each cell is a pixel-uppercase label over a display
+ * value, so labels and values never run together as one string.
+ * -------------------------------------------------------------------------- */
+
+.itotori-shell-frame__statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0;
+  padding-inline: max(var(--ito-space-18), calc((100% - var(--app-shell-measure)) / 2));
+  background: var(--ito-statusbar-bg);
+  color: var(--ito-statusbar-fg);
+  border-block-end: 1px solid var(--ito-statusbar-border);
+}
+
+.itotori-shell-frame__stat,
+.itotori-shell-frame__posture {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--ito-space-1);
+  min-inline-size: 0;
+  padding: var(--ito-space-8) var(--ito-space-16);
+  border-inline-end: 1px solid var(--ito-color-divider);
+}
+
+.itotori-shell-frame__statusbar > :first-child {
+  padding-inline-start: 0;
+}
+
+.itotori-shell-frame__statusbar > :last-child {
+  border-inline-end: none;
+}
+
+.itotori-shell-frame__stat-label {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+  white-space: nowrap;
+}
+
+.itotori-shell-frame__stat-value,
+.itotori-shell-frame__posture-value {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ito-space-6);
+  min-inline-size: 0;
+  font-family: var(--ito-font-display);
+  font-weight: var(--ito-weight-display-soft);
+  font-size: var(--ito-text-body);
+  color: var(--ito-color-text);
+  overflow-wrap: anywhere;
+}
+
+.itotori-shell-frame__stat-value--mono {
+  font-family: var(--ito-font-mono);
+  color: var(--ito-cost-billed-ink);
+}
+
+.itotori-shell-frame__collection {
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel-tight);
+  font-weight: var(--ito-weight-body);
+  padding: 0 var(--ito-space-6);
+  border: 1px solid var(--ito-tone-neutral-border);
+  border-radius: var(--ito-radius-pill);
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-shell-frame__collection[data-data-collection="none"] {
+  background: var(--ito-privacy-ok-bg);
+  border-color: var(--ito-privacy-ok-border);
+  color: var(--ito-privacy-ok-fg);
+}
+
+.itotori-shell-frame__pending {
+  color: var(--ito-color-text-muted);
+  font-family: var(--ito-font-sans);
+  font-weight: var(--ito-weight-body);
+}
+
+.itotori-shell-frame__unavailable {
+  color: var(--ito-tone-critical-fg);
+  font-family: var(--ito-font-sans);
+  font-weight: var(--ito-weight-body);
+}
+
+.itotori-shell-frame__statusbar[data-shell-status="error"] {
+  border-block-end-color: var(--ito-tone-critical-border);
+}
+
+/* --------------------------------------------------------------------------
+ * Toast viewport — the shell instance clears the sticky chrome and rides
+ * above every overlay the frame owns.
+ * -------------------------------------------------------------------------- */
+
+.itotori-shell-toast-viewport {
+  z-index: var(--ito-layer-toast);
+  inset-block-end: var(--ito-space-24);
+  inset-inline-end: var(--ito-space-24);
+}
+
+@media (width <= 900px) {
+  .itotori-shell-frame__chrome {
+    padding-inline: var(--ito-space-12);
+  }
+
+  .itotori-shell-toolbar {
+    margin-inline-start: 0;
+  }
+
+  .itotori-shell-frame__statusbar {
+    padding-inline: var(--ito-space-12);
+  }
+}
