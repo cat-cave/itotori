@@ -36,7 +36,7 @@ fn dialogue_offsets(scene: &SoftpalScene) -> Vec<usize> {
 }
 
 #[test]
-fn halts_at_the_native_task_scheduler_without_inventing_operands_or_callbacks() {
+fn progresses_past_the_empty_native_registry_without_inventing_callbacks() {
     for (index, root) in CORPORA.iter().enumerate() {
         let root = PathBuf::from(root);
         let Some((script, textdat, points)) = inputs(&root) else {
@@ -71,20 +71,32 @@ fn halts_at_the_native_task_scheduler_without_inventing_operands_or_callbacks() 
             .map(|line| line.command_offset)
             .collect();
         let observed = dialogue_offsets(&first);
+        let overlap = observed
+            .iter()
+            .zip(&expected)
+            .take_while(|(observed, expected)| observed == expected)
+            .count();
         assert!(
-            observed.iter().all(|offset| expected.contains(offset)),
-            "corpus {} execution is an ordered linear overlap",
+            overlap == observed.len(),
+            "corpus {} emitted dialogue remains an ordered oracle prefix",
             index + 1
         );
+        assert_eq!(observed.len(), 0, "empty native state must not invent text");
         let diagnostics = first.diagnostic_frequencies();
         assert_eq!(
             first.stats.unresolved_construct_count,
             first.diagnostics.len()
         );
         assert_eq!(
-            diagnostics.get("native_task_scheduler_callback_registry_unmodeled"),
+            diagnostics.get("native_callback_registry_population_unavailable"),
             Some(&1),
-            "corpus {} stops at the native scheduler rather than inventing a script operand stack",
+            "corpus {} records the unavailable launcher population",
+            index + 1
+        );
+        assert_eq!(
+            diagnostics.get("call_000f_0005"),
+            Some(&1),
+            "corpus {} names the next unresolved native call",
             index + 1
         );
         assert_eq!(
@@ -95,24 +107,26 @@ fn halts_at_the_native_task_scheduler_without_inventing_operands_or_callbacks() 
         );
         assert_eq!(
             first.stats.instructions_executed,
-            [4, 12][index],
-            "corpus {} reaches no script text before the native scheduler",
+            [6, 14][index],
+            "corpus {} traverses the script after its empty native registry",
             index + 1
         );
         assert_eq!(
             first.diagnostics.len(),
-            1,
-            "corpus {} records one deliberate stop, not a silent partial run",
+            2,
+            "corpus {} retains both the registry population and next native-call blockers",
             index + 1
         );
         eprintln!(
-            "[corpus {}] moments={} text={} choice={} branch={} instructions={} unresolved={:?}",
+            "[corpus {}] moments={} text={} speaker=0 choice={} branch={} instructions={} overlap={}/{} unresolved={:?}",
             index + 1,
             first.steps.len(),
             first.stats.dialogue_count,
             first.stats.text_bearing_choice_count,
             first.stats.branch_count,
             first.stats.instructions_executed,
+            overlap,
+            observed.len(),
             diagnostics,
         );
     }
