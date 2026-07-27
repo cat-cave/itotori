@@ -57,6 +57,7 @@ pub struct RuntimeDiagnostic {
 #[serde(rename_all = "camelCase")]
 pub struct SoftpalSceneStats {
     pub instructions_executed: usize,
+    /// Native `0x17` syscall dispatches (not script-function `0x0b` calls).
     pub call_count: usize,
     pub control_count: usize,
     pub dialogue_count: usize,
@@ -293,6 +294,42 @@ mod tests {
         assert!(
             scene.diagnostics.is_empty(),
             "fully determined synthetic path"
+        );
+    }
+
+    #[test]
+    fn executes_a_reachable_message_syscall_through_the_text_path() {
+        let (textdat, pointer) = textdat();
+        // The reference's message syscall is the same push-then-0x17 shape
+        // that ScriptScan resolves: text, absent speaker, message value, then
+        // native target 0x0002:0x0002.
+        let scene = SoftpalScene::execute(
+            &program(&[
+                op(0x1f),
+                word(pointer),
+                op(0x1f),
+                word(0x0fff_ffff),
+                op(0x1f),
+                word(0),
+                op(0x17),
+                word(0x0002_0002),
+                word(0),
+                op(0x15),
+            ]),
+            &textdat,
+        )
+        .expect("message syscall is a valid scene");
+
+        assert_eq!(scene.stats.dialogue_count, 1);
+        assert_eq!(scene.stats.call_count, 1);
+        assert!(scene.diagnostics.is_empty());
+        assert_eq!(
+            scene.steps,
+            vec![SceneStep::Dialogue {
+                command_offset: 12,
+                speaker: None,
+                text: "line".to_string(),
+            }]
         );
     }
 

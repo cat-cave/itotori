@@ -22,17 +22,17 @@
 //!   one: the walk is **arity-driven**, so it steps operator→operands→operator and
 //!   lands exactly on the next operator every time. This is what makes a
 //!   **0-unknown** exhaustive walk reachable where a naive marker scan cannot be.
-//! # The command surface: `Call` (opcode `0x17`) dispatch
+//! # The command surface: `Syscall` (opcode `0x17`) dispatch
 //! The engine's *rendering-relevant* commands (dialogue, choices, graphics,
 //! audio, flow, system) are **not** distinct opcodes — they are all the single
-//! `Call` opcode `0x17` dispatching on its first operand, a packed
+//! `Syscall` opcode `0x17` dispatching on its first operand, a packed
 //! [`CallTarget`] `{ category = high word, function = low word }`. The existing
-//! disassembler's two shapes are exactly two `Call` targets:
+//! disassembler's two shapes are exactly two `Syscall` targets:
 //! - **TEXT-SHOW** = category `0x0002`, function ∈ the text-type set
 //!   ([`TEXT_TYPE_FUNCTIONS`]) — [`CommandFamily::TextShow`].
 //! - **SELECT** = category `0x0006`, function `0x0002` —
 //!   [`CommandFamily::Select`].
-//!   Every other `Call` target ([`CommandFamily::Call`]) is fully *identified* by
+//!   Every other `Syscall` target ([`CommandFamily::Call`]) is fully *identified* by
 //!   its `(category, function)` pair — the exact dispatch key a future Utsushi
 //!   Softpal replay consumes — even though naming each built-in individually would
 //!   require reversing `Pal.dll` (a separate, larger node; see the honest-scope
@@ -40,7 +40,7 @@
 //! # Honest scope: structural catalog, not a runtime
 //! This module **types** every command: it recovers the header, walks the token
 //! stream to a 0-unknown exhaustive accounting on ≥2 real games, classifies each
-//! operator by opcode + fixed operand shape, and identifies each `Call` by its
+//! operator by opcode + fixed operand shape, and identifies each `Syscall` by its
 //! dispatch target. It does **not** *execute* the stack machine (evaluate
 //! expressions, resolve jumps, drive rendering) — that is the Utsushi Softpal
 //! replay runtime, a separate future node. The catalog is what such a replay
@@ -99,10 +99,10 @@ macro_rules! sv_opcodes {
         /// (the 33 ids `0x01..=0x21`), plus [`SvOpcode::Unknown`] for any id
         /// outside it (including the unobserved `0x00`).
         /// Variant names are the hex id (`Op02`..`Op21`) except the semantically
-        /// firm [`SvOpcode::Move`] (`0x01`) and [`SvOpcode::Call`] (`0x17`). Each
+        /// firm [`SvOpcode::Move`] (`0x01`), script [`SvOpcode::Call`] (`0x0b`), and native [`SvOpcode::Syscall`] (`0x17`). Each
         /// opcode's **arity** (fixed operand-token count) is proven by the
         /// exhaustive 0-unknown walk; individual per-opcode *semantics* beyond
-        /// `Move` and `Call` dispatch remain intentionally conservative.
+        /// Move, script Call, and native Syscall dispatch remain intentionally conservative.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
         #[serde(rename_all = "camelCase")]
         pub enum SvOpcode {
@@ -148,12 +148,12 @@ sv_opcodes! {
     // operand. This is the generic typed-value flow used by SELECT labels.
     0x01 => Move: 2, 0x02 => Op02: 2, 0x03 => Op03: 2,
     0x04 => Op04: 2, 0x05 => Op05: 2, 0x06 => Op06: 2, 0x07 => Op07: 2,
-    0x08 => Op08: 2, 0x09 => Op09: 1, 0x0a => Op0A: 2, 0x0b => Op0B: 1,
+    0x08 => Op08: 2, 0x09 => Op09: 1, 0x0a => Op0A: 2, 0x0b => Call: 1,
     0x0c => Op0C: 2, 0x0d => Op0D: 2, 0x0e => Op0E: 2, 0x0f => Op0F: 2,
     0x10 => Op10: 2, 0x11 => Op11: 2, 0x12 => Op12: 2, 0x13 => Op13: 2,
     0x14 => Op14: 1, 0x15 => Op15: 0, 0x16 => Op16: 0,
-    // 0x17 = the engine-call dispatch opcode (dialogue/choice/graphics/audio/…).
-    0x17 => Call: 2,
+    // 0x17 = the native dispatch opcode (dialogue/choice/graphics/audio/…).
+    0x17 => Syscall: 2,
     0x18 => Op18: 0, 0x19 => Op19: 0, 0x1a => Op1A: 2, 0x1b => Op1B: 2,
     0x1c => Op1C: 2, 0x1d => Op1D: 1, 0x1e => Op1E: 1, 0x1f => Op1F: 1,
     0x20 => Op20: 1, 0x21 => Op21: 1,
@@ -165,10 +165,10 @@ impl SvOpcode {
     pub fn is_known(self) -> bool {
         !matches!(self, SvOpcode::Unknown(_))
     }
-    /// Whether this is the engine-call dispatch opcode ([`SvOpcode::Call`]).
+    /// Whether this is the native dispatch opcode ([`SvOpcode::Syscall`]).
     #[must_use]
-    pub fn is_call(self) -> bool {
-        matches!(self, SvOpcode::Call)
+    pub fn is_syscall(self) -> bool {
+        matches!(self, SvOpcode::Syscall)
     }
 }
 
@@ -255,15 +255,15 @@ impl Operand {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "family")]
 pub enum CommandFamily {
-    /// A `Call` to the dialogue message subroutine (category `0x0002`); carries
+    /// A `Syscall` to the dialogue message subroutine (category `0x0002`); carries
     /// the text-type function. The disassembler's TEXT-SHOW.
     TextShow {
-        /// The text-type `Call` function (∈ [`TEXT_TYPE_FUNCTIONS`]).
+        /// The text-type `Syscall` function (∈ [`TEXT_TYPE_FUNCTIONS`]).
         text_type: u16,
     },
-    /// A `Call` to the choice/select subroutine. The disassembler's SELECT.
+    /// A `Syscall` to the choice/select subroutine. The disassembler's SELECT.
     Select,
-    /// Any other engine `Call`, identified by its [`CallTarget`] dispatch key
+    /// Any other engine `Syscall`, identified by its [`CallTarget`] dispatch key
     /// (graphics / audio / flow / system built-in).
     Call {
         /// The `(category, function)` dispatch key.
@@ -302,7 +302,7 @@ impl Instruction {
     pub fn operands(&self) -> &[Operand] {
         &self.operands_buf[..self.arity as usize]
     }
-    /// The `Call` dispatch target, if this instruction is a `Call`.
+    /// The `Syscall` dispatch target, if this instruction is a `Syscall`.
     #[must_use]
     pub fn call_target(&self) -> Option<CallTarget> {
         match self.family {
@@ -483,13 +483,13 @@ impl OpcodeScan {
             .count()
     }
 
-    /// Total `Call` (opcode `0x17`) instruction count, across all targets
+    /// Total native `Syscall` (opcode `0x17`) instruction count, across all targets
     /// (TEXT-SHOW + SELECT + every other engine built-in).
     #[must_use]
     pub fn call_count(&self) -> usize {
         self.instructions
             .iter()
-            .filter(|i| i.opcode.is_call())
+            .filter(|i| i.opcode.is_syscall())
             .count()
     }
 
@@ -516,7 +516,7 @@ impl OpcodeScan {
         h
     }
 
-    /// `Call` category (dispatch high word) → count histogram over all `Call`
+    /// `Syscall` category (dispatch high word) → count histogram over all `Syscall`
     /// instructions — the coarse command-family table.
     #[must_use]
     pub fn call_category_histogram(&self) -> BTreeMap<u16, usize> {
@@ -529,7 +529,7 @@ impl OpcodeScan {
         h
     }
 
-    /// The set of distinct `Call` `(category, function)` dispatch targets — the
+    /// The set of distinct `Syscall` `(category, function)` dispatch targets — the
     /// fine-grained engine built-in table a replay must cover.
     #[must_use]
     pub fn call_target_count(&self) -> usize {
@@ -555,10 +555,10 @@ impl OpcodeScan {
 
 /// Classify an operator + its (up to `got`) operands into a [`CommandFamily`].
 fn classify(opcode: SvOpcode, operands: &[Operand; 2], got: usize) -> CommandFamily {
-    if opcode.is_call() && got >= 1 {
+    if opcode.is_syscall() && got >= 1 {
         let target = CallTarget::from_operand(operands[0].raw);
         // Keep the extraction-bearing families on the same semantic catalog as
-        // every other Call target.  ScriptScan (and therefore the real Softpal
+        // every other Syscall target.  ScriptScan (and therefore the real Softpal
         // bridge) consumes this classification; this is not a test-only seam.
         match target.semantic_name() {
             Some("message.show") => {

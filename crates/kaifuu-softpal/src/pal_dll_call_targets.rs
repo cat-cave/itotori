@@ -1,24 +1,24 @@
 use serde::{Deserialize, Serialize};
 
-/// The `Call` ([`super::SvOpcode::Call`], opcode `0x17`) *category* (target high word)
+/// The `Syscall` ([`super::SvOpcode::Syscall`], opcode `0x17`) *category* (target high word)
 /// that dispatches the dialogue message subroutine (TEXT-SHOW).
 pub const CALL_CATEGORY_TEXT: u16 = 0x0002;
 
-/// The `Call` *category* (target high word) that dispatches the choice/select
+/// The `Syscall` *category* (target high word) that dispatches the choice/select
 /// subroutine.
 pub const CALL_CATEGORY_SELECT: u16 = 0x0006;
 
-/// The `Call` *function* (target low word) under [`CALL_CATEGORY_SELECT`] that is
+/// The `Syscall` *function* (target low word) under [`CALL_CATEGORY_SELECT`] that is
 /// a choice/select command.
 pub const SELECT_FUNCTION: u16 = 0x0002;
 
-/// The set of `Call` *functions* (target low word) under [`CALL_CATEGORY_TEXT`]
+/// The set of `Syscall` *functions* (target low word) under [`CALL_CATEGORY_TEXT`]
 /// that render a dialogue line. Mirrors the disassembler's
 /// [`crate::TEXT_SHOW_TYPE_WORDS`].
 pub const TEXT_TYPE_FUNCTIONS: [u16; 7] = [0x0002, 0x000f, 0x0010, 0x0011, 0x0012, 0x0013, 0x0014];
 
-/// The dispatch key of a [`super::SvOpcode::Call`] instruction: the engine built-in it
-/// invokes, packed into the call's first operand as
+/// The dispatch key of a [`super::SvOpcode::Syscall`] instruction: the native built-in it
+/// invokes, packed into the syscall's first operand as
 /// `category = high word`, `function = low word`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,7 +31,7 @@ pub struct CallTarget {
 }
 
 impl CallTarget {
-    /// Decode a `Call`'s first operand raw value into its `(category, function)`
+    /// Decode a `Syscall`'s first operand raw value into its `(category, function)`
     /// dispatch key.
     #[must_use]
     pub fn from_operand(raw: u32) -> Self {

@@ -198,6 +198,19 @@ fn opcode_catalog_on_two_softpal_titles() {
                 game.subdir
             );
         }
+        // The reference table also documents direct create_message/text entries,
+        // but its disassembler recognizes this corpus's text as 0x17 syscalls.
+        // The complete operator walk proves neither direct opcode is present.
+        assert!(
+            !opcode_hist.contains_key(&0x0023),
+            "{} has no direct create_message operator",
+            game.subdir
+        );
+        assert!(
+            !opcode_hist.contains_key(&0x0088),
+            "{} has no direct text operator",
+            game.subdir
+        );
 
         // Recorded ground-truth counts.
         assert_eq!(
