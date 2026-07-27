@@ -154,25 +154,9 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
         response.writeHead(apiResponse.statusCode, { "content-type": "application/json" });
         response.end(JSON.stringify(apiResponse.body));
       } catch (error) {
-        const statusCode =
-          error instanceof SyntaxError
-            ? 400
-            : error instanceof ItotoriInvalidAuthSessionError
-              ? 403
-              : 500;
-        const code =
-          error instanceof SyntaxError
-            ? "bad_request"
-            : error instanceof ItotoriInvalidAuthSessionError
-              ? "forbidden"
-              : "internal_error";
-        response.writeHead(statusCode, { "content-type": "application/json" });
-        response.end(
-          JSON.stringify({
-            error: error instanceof Error ? error.message : String(error),
-            code,
-          }),
-        );
+        const failure = apiFailureResponse(error);
+        response.writeHead(failure.statusCode, { "content-type": "application/json" });
+        response.end(JSON.stringify(failure.body));
       }
       return;
     }
@@ -218,6 +202,47 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
   });
   server.once("close", () => void browserPlayerSessions.closeAll());
   return server;
+}
+
+function apiFailureResponse(error: unknown): {
+  statusCode: 400 | 403 | 500;
+  body: { code: string; error: string };
+} {
+  if (error instanceof SyntaxError) {
+    return { statusCode: 400, body: { code: "bad_request", error: error.message } };
+  }
+  if (error instanceof ItotoriInvalidAuthSessionError) {
+    return { statusCode: 403, body: { code: "forbidden", error: error.message } };
+  }
+  if (hasPostgresErrorCode(error, "42P01") || hasPostgresErrorCode(error, "42703")) {
+    return {
+      statusCode: 500,
+      body: {
+        code: "database_migrations_required",
+        error: "Database migrations are not applied. Run itotori db-migrate, then refresh.",
+      },
+    };
+  }
+  return {
+    statusCode: 500,
+    body: {
+      code: "internal_error",
+      error: "The service could not complete this request. Check the server logs and try again.",
+    },
+  };
+}
+
+function hasPostgresErrorCode(error: unknown, expectedCode: string): boolean {
+  let current: unknown = error;
+  const seen = new Set<unknown>();
+  while (current instanceof Error && !seen.has(current)) {
+    seen.add(current);
+    if ("code" in current && typeof current.code === "string" && current.code === expectedCode) {
+      return true;
+    }
+    current = current.cause;
+  }
+  return false;
 }
 
 async function readJsonRequestBody(request: IncomingMessage): Promise<unknown> {
