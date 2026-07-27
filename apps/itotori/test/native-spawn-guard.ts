@@ -118,6 +118,7 @@ export interface NativeSpawnSite {
  */
 export function findNativeSpawnSites(source: string): NativeSpawnSite[] {
   const code = stripComments(source);
+  const resolvedCommands = resolvedNativeCliBindings(code);
   const sites: NativeSpawnSite[] = [];
   for (const primitive of SPAWN_PRIMITIVES) {
     // Match the primitive as a call: word-boundary, name, optional ws, `(`.
@@ -127,7 +128,7 @@ export function findNativeSpawnSites(source: string): NativeSpawnSite[] {
       const openParen = code.indexOf("(", m.index);
       if (openParen < 0) continue;
       const args = captureCallArgs(code, openParen);
-      if (!NATIVE_BIN_RE.test(args)) continue; // this call doesn't target a native bin
+      if (!NATIVE_BIN_RE.test(args) && !usesResolvedNativeCommand(args, resolvedCommands)) continue;
       // Sanitized when THIS call's args scrub the env (the boundary call is
       // handled separately below since it is not a raw primitive).
       const sanitized = CALL_SCRUB_RE.test(args);
@@ -135,6 +136,24 @@ export function findNativeSpawnSites(source: string): NativeSpawnSite[] {
     }
   }
   return sites;
+}
+
+/** Names bound to a resolver call targeting one of the native CLI binaries. */
+function resolvedNativeCliBindings(code: string): ReadonlySet<string> {
+  const bindings = new Set<string>();
+  const binding =
+    /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*resolveNativeCli\s*\(\s*["'](?:kaifuu-cli|utsushi-cli)["']/gu;
+  let match: RegExpExecArray | null;
+  while ((match = binding.exec(code)) !== null) {
+    if (match[1] !== undefined) bindings.add(match[1]);
+  }
+  return bindings;
+}
+
+function usesResolvedNativeCommand(args: string, bindings: ReadonlySet<string>): boolean {
+  return [...bindings].some((binding) =>
+    new RegExp(`\\b${binding}\\s*\\.\\s*command\\b`, "u").test(args),
+  );
 }
 
 export interface NativeSpawnClassification {

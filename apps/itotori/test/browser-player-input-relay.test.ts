@@ -75,7 +75,9 @@ async function managerWithStubEngine(): Promise<BrowserPlayerSessionManager> {
   const bin = join(dir, "stub-engine");
   await writeFile(bin, STUB_ENGINE, "utf8");
   await chmod(bin, 0o755);
-  return new BrowserPlayerSessionManager({ env: { ...process.env, ITOTORI_UTSUSHI_BIN: bin } });
+  return new BrowserPlayerSessionManager({
+    nativeCli: { env: { ...process.env, ITOTORI_UTSUSHI_BIN: bin } },
+  });
 }
 
 const START = {

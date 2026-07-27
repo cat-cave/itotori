@@ -81,7 +81,7 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
     options.readOnlyServiceFactory ?? toReadOnlyServiceFactory(serviceFactory);
   const browserPlayerSessions = options.browserPlayerSessions ?? new BrowserPlayerSessionManager();
   const browserPlayerLaunches = options.browserPlayerLaunches ?? browserPlayerLaunchesFromEnv();
-  return createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
     if (isItotoriApiPath(url.pathname)) {
       if (isBrowserPlayerRoute(url.pathname)) {
@@ -217,6 +217,8 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
     response.writeHead(404, { "content-type": "text/plain" });
     response.end("not found");
   });
+  server.once("close", () => void browserPlayerSessions.closeAll());
+  return server;
 }
 
 async function readJsonRequestBody(request: IncomingMessage): Promise<unknown> {

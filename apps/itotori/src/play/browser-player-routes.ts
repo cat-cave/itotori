@@ -11,6 +11,7 @@ export type BrowserPlayerLaunchRegistry = Readonly<Record<string, BrowserPlayerL
 export function isBrowserPlayerRoute(pathname: string): boolean {
   return (
     pathname === "/api/player/sessions" ||
+    parseBrowserPlayerSessionRoute(pathname) !== null ||
     parseBrowserPlayerInputRoute(pathname) !== null ||
     parseBrowserPlayerFrameRoute(pathname) !== null
   );
@@ -38,6 +39,13 @@ export async function serveBrowserPlayerRequest(input: {
       input.response.end(bytes);
       return;
     }
+    const sessionId = parseBrowserPlayerSessionRoute(input.pathname);
+    if (sessionId !== null && input.request.method === "DELETE") {
+      await input.sessions.close(sessionId);
+      input.response.writeHead(204, { "cache-control": "no-store" });
+      input.response.end();
+      return;
+    }
     if (input.request.method !== "POST")
       return writeError(input.response, 405, "method_not_allowed");
     const body = await readJsonRequestBody(input.request);
@@ -49,12 +57,12 @@ export async function serveBrowserPlayerRequest(input: {
       writeJson(input.response, 201, await input.sessions.start(launch, await input.canReveal()));
       return;
     }
-    const sessionId = parseBrowserPlayerInputRoute(input.pathname);
-    if (sessionId === null) return writeError(input.response, 404, "not_found");
+    const inputSessionId = parseBrowserPlayerInputRoute(input.pathname);
+    if (inputSessionId === null) return writeError(input.response, 404, "not_found");
     writeJson(
       input.response,
       200,
-      await input.sessions.send(sessionId, parseBrowserPlayerInput(body)),
+      await input.sessions.send(inputSessionId, parseBrowserPlayerInput(body)),
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -62,6 +70,11 @@ export async function serveBrowserPlayerRequest(input: {
     const status = forbidden ? 403 : error instanceof BrowserPlayerSessionError ? 422 : 400;
     writeError(input.response, status, forbidden ? "forbidden" : "bad_request", message);
   }
+}
+
+function parseBrowserPlayerSessionRoute(pathname: string): string | null {
+  const match = /^\/api\/player\/sessions\/([^/]+)$/u.exec(pathname);
+  return match === null ? null : decodeSegment(match[1]);
 }
 
 function parseBrowserPlayerInputRoute(pathname: string): string | null {
@@ -122,7 +135,7 @@ async function readJsonRequestBody(request: IncomingMessage): Promise<unknown> {
 }
 
 function writeJson(response: ServerResponse, status: number, body: unknown): void {
-  response.writeHead(status, { "content-type": "application/json" });
+  response.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   response.end(JSON.stringify(body));
 }
 
