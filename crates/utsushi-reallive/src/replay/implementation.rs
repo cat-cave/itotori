@@ -6,6 +6,7 @@ mod driver;
 mod engine_core;
 mod engine_frames;
 mod engine_observe;
+mod event_loop_gate;
 mod registry;
 mod session;
 #[cfg(test)]

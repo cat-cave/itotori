@@ -9,7 +9,7 @@ fn option(index: u16, bounds: HitRect) -> ObjectButtonChoiceOption {
     ObjectButtonChoiceOption {
         display_index: index,
         button_number: i32::from(index),
-        fg_slot: usize::from(index) + 10,
+        slot: usize::from(index) + 10,
         bounds,
         art: ImageRef {
             asset_key: format!("button-{index}"),

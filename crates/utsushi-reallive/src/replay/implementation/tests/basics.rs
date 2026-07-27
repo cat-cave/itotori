@@ -30,7 +30,11 @@ fn msg_pause_and_sel_select_objbtn_occupy_distinct_registry_keys() {
     // The corrected real ids. `sel` lives at the real RealLive `Sel`
     // module (module_type=0, module_id=2); `msg` at (1, 3). They no
     // longer share a module_type, so the two keys are trivially distinct.
-    assert_eq!(pause_key, RlopKey::new(1, 3, 3), "msg.pause is (1, 3, 3)");
+    assert_eq!(
+        pause_key,
+        RlopKey::new(1, 3, 17),
+        "msg.pause is the number real scripts encode for the dialogue gate"
+    );
     assert_eq!(
         objbtn_key,
         RlopKey::new(0, 2, 4),

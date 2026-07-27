@@ -70,7 +70,7 @@ fn build_scene_blob() -> Vec<u8> {
         0x23, // command lead
         0x01, // module_type (MSG_MODULE_TYPE)
         0x03, // module_id (MSG_MODULE_ID = 3, real RealLive msg id)
-        0x03, // opcode lo (OPCODE_PAUSE = 3)
+        0x11, // opcode lo (the dialogue gate real scripts encode: 17)
         0x00, // opcode hi
         0x00, // arg_count
         0x00, // overload
@@ -201,13 +201,10 @@ fn synthetic_scene_emits_one_text_line_and_reaches_first_pause() {
         "synthetic scene must surface at least one TextLine; got events={:?}",
         log.events,
     );
-    // The scene ends in a `msg.pause` command. With the corrected
-    // module ids (msg=3, so pause is (1, 3, 3), distinct from
-    // sel.select_objbtn at (0, 2, 4)) the pause op is dispatched and
-    // yields, so the replay MUST reach FirstPauseReached — not silently
-    // run to EndOfScene (which is what a clobbered/misdispatched pause
-    // key would produce). This is the end-to-end proof the (1, 5, 3)
-    // collision no longer breaks Pause detection.
+    // The scene ends in a `msg.pause` command, encoded at the number real
+    // scripts encode it at. The pause op is dispatched and yields, so the
+    // replay MUST reach FirstPauseReached — not silently run to EndOfScene,
+    // which is what a gate mounted at a number nothing encodes produces.
     assert!(
         matches!(log.final_outcome, ReplayOutcome::FirstPauseReached { .. }),
         "synthetic scene ending in msg.pause MUST reach FirstPauseReached; got {:?}",

@@ -215,7 +215,7 @@ impl ChoiceWindow {
 pub struct ObjectButtonChoiceOption {
     pub display_index: u16,
     pub button_number: i32,
-    pub fg_slot: usize,
+    pub slot: usize,
     pub bounds: HitRect,
     pub art: ImageRef,
 }

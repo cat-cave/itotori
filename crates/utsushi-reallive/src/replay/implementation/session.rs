@@ -9,6 +9,7 @@ use super::*;
 use utsushi_core::input::InputEvent;
 use utsushi_core::substrate::AssetPackage;
 
+use super::event_loop_gate::{PolledEventLoop, carries_a_back_edge};
 use crate::input_bridge::{BridgeScheduler, PendingYield, UserInputQueue};
 use crate::render_pipeline::ObjectButtonChoiceOption;
 use crate::rlop::SelectLongOp;
@@ -93,6 +94,9 @@ pub struct LiveSession {
     /// prompt. Retained across the drive loop because the selection
     /// runtime's prompt buffer DRAINS on read.
     object_buttons: Vec<ObjectButtonChoiceOption>,
+    /// Recognises a screen that waits by polling rather than by queueing,
+    /// and turns it into a real boundary the reader can cross.
+    event_loop: PolledEventLoop,
 }
 
 impl ReplayEngine {
@@ -153,6 +157,7 @@ impl ReplayEngine {
             ended: false,
             selection: handles.selection,
             object_buttons: Vec::new(),
+            event_loop: PolledEventLoop::default(),
         };
         let initial = session.drive_to_boundary()?;
         Ok((session, initial))
@@ -174,6 +179,14 @@ impl LiveSession {
                     Some(LiveSessionWait::Choice { choice_count })
                 }
                 PendingYield::Other => None,
+            })
+            // A screen written as its own polled loop queues nothing, so the
+            // queue cannot report it. It is still a wait, and the reader
+            // still gets it out.
+            .or_else(|| {
+                self.event_loop
+                    .is_parked()
+                    .then_some(LiveSessionWait::Advance)
             });
         LiveSessionState {
             scene: self.vm.scene(),
@@ -242,27 +255,63 @@ impl LiveSession {
                 emitted_lines: Vec::new(),
             });
         }
-        self.queue.push(input);
+        // A polled-loop boundary has nothing queued for this input to
+        // resolve: the input IS the event the loop is sampling for, and it is
+        // spent modelling that. Queueing it as well would let one press cross
+        // two boundaries — the loop, and then whichever real gate follows it.
+        if !self.event_loop.is_parked() {
+            self.queue.push(input);
+        }
         self.drive_to_boundary()
     }
 
     fn drive_to_boundary(&mut self) -> Result<LiveSessionUpdate, LiveSessionError> {
         const LIVE_STEP_LIMIT: u32 = 200_000;
         let mut lines = self.sink.drain();
+        // Set when the previous boundary parked on a script's own polled
+        // event loop: this drive owes that loop the event it was sampling
+        // for, which the reader has now supplied.
+        let mut owes_event = self.event_loop.begin_drive();
         for _ in 0..LIVE_STEP_LIMIT {
             let pc_before = self.vm.pc();
             let scene_before = self.vm.scene();
+            if owes_event
+                && self
+                    .store
+                    .fetch(scene_before)
+                    .and_then(|scene| scene.element_at(pc_before))
+                    .is_some_and(|element| carries_a_back_edge(element, pc_before))
+            {
+                // Model the awaited event as fired: the loop's back edge
+                // falls through to the exit it was polling for.
+                self.vm.request_suppress_next_transfer();
+            }
             match self
                 .vm
                 .step(&self.store, &self.registry, &mut self.scheduler)?
             {
                 StepOutcome::Advanced { event } => {
                     self.event_index = self.event_index.saturating_add(1);
+                    if self.vm.last_transfer_suppressed() {
+                        owes_event = false;
+                    }
                     if let VmEvent::Textout { raw_bytes } = &event
                         && self.shift_jis.contains(&(scene_before, pc_before))
                     {
                         dispatch_textout_at(&self.runtime, pc_before, raw_bytes);
                         dispatch_cosmetic_line_break(&mut self.vm, &self.registry);
+                    }
+                    if !owes_event
+                        && self
+                            .event_loop
+                            .proves_spin(&self.vm, &event, scene_before, pc_before)
+                    {
+                        self.capture_prompts();
+                        lines.extend(self.sink.drain());
+                        return Ok(LiveSessionUpdate {
+                            state: self.state(),
+                            emitted_lines: lines,
+                        });
                     }
                 }
                 StepOutcome::LongOpResumed { .. } => {
@@ -321,7 +370,16 @@ mod tests {
             overload: 0,
             goto_targets: Vec::new(),
             goto_case_exprs: Vec::new(),
-            raw_bytes: vec![0x23, MSG_MODULE_TYPE, MSG_MODULE_ID, 3, 0, 0, 0, 0],
+            raw_bytes: vec![
+                0x23,
+                MSG_MODULE_TYPE,
+                MSG_MODULE_ID,
+                OPCODE_PAUSE as u8,
+                0,
+                0,
+                0,
+                0,
+            ],
             byte_offset: offset,
             byte_len: 8,
         }

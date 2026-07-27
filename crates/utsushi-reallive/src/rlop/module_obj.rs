@@ -41,7 +41,9 @@ use crate::rlop::{LongOp, LongOpId};
 use crate::vm::Vm;
 use utsushi_core::substrate::{AssetPackage, VfsError};
 
+mod button_bindings;
 mod image_geometry;
+pub use button_bindings::{BUTTON_CANDIDATE_LAYERS, ButtonCandidate, DEFAULT_BUTTON_GROUP};
 
 /// `module_type` byte for the `module_obj_management` submodule.
 pub const OBJ_MGMT_MODULE_TYPE: u8 = 1;
@@ -279,17 +281,6 @@ pub struct GraphicsRuntime {
     inner: Mutex<GraphicsRuntimeInner>,
 }
 
-/// Immutable foreground object-button candidate detached from runtime state.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ForegroundButtonCandidate {
-    pub slot: usize,
-    pub options: ButtonOptions,
-    pub visible: bool,
-    /// Exact detached top-level object state captured while the graphics mutex
-    /// is held. It is not an asset-resolution or hit-test result.
-    pub object: GraphicsObject,
-}
-
 struct GraphicsRuntimeInner {
     stack: GraphicsObjectStack,
     dc_allocations: Vec<DcAllocation>,
@@ -384,40 +375,6 @@ impl GraphicsRuntime {
     /// Mutable access to the object stack.
     pub fn with_stack_mut<R>(&self, body: impl FnOnce(&mut GraphicsObjectStack) -> R) -> R {
         body(&mut self.lock_inner().stack)
-    }
-
-    /// Deterministic foreground-only button bindings for one exact group.
-    pub fn foreground_button_group(&self, group: i32) -> Vec<(usize, ButtonOptions)> {
-        let guard = self.lock_inner();
-        (0..crate::graphics_objects::GRAPHICS_OBJECT_SLOT_COUNT)
-            .filter_map(|slot| {
-                let options = guard
-                    .stack
-                    .get_layer(GraphicsLayer::ForegroundObject, slot)?
-                    .button_options?;
-                (options.group == group).then_some((slot, options))
-            })
-            .collect()
-    }
-
-    /// Exact foreground bindings for `group`, scanned in ascending slot order.
-    /// Visibility is reported but never filters a candidate.
-    pub fn foreground_button_candidates(&self, group: i32) -> Vec<ForegroundButtonCandidate> {
-        let guard = self.lock_inner();
-        (0..crate::graphics_objects::GRAPHICS_OBJECT_SLOT_COUNT)
-            .filter_map(|slot| {
-                let object = guard
-                    .stack
-                    .get_layer(GraphicsLayer::ForegroundObject, slot)?;
-                let options = object.button_options?;
-                (options.group == group).then_some(ForegroundButtonCandidate {
-                    slot,
-                    options,
-                    visible: object.visible,
-                    object: object.clone(),
-                })
-            })
-            .collect()
     }
 
     /// Record a DC-allocation observation. Overwrites any prior entry
@@ -798,12 +755,15 @@ impl RLOperation for ObjButtonOptsOp {
             };
             (GraphicsObjectTarget::TopLevel { layer, slot }, args)
         };
-        let values: Option<[i32; 5]> = args
+        let Some(values) = args
             .iter()
             .map(ExprValue::as_int)
             .collect::<Option<Vec<_>>>()
-            .and_then(|values| values.try_into().ok());
-        let Some([_buf, action, se, group, button_number]) = values else {
+        else {
+            return DispatchOutcome::Advance;
+        };
+        let Some((action, se, group, button_number)) = button_bindings::button_opts_tuple(&values)
+        else {
             return DispatchOutcome::Advance;
         };
         self.runtime.with_stack_mut(|stack| {

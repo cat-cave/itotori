@@ -109,11 +109,11 @@ fn select_objbtn_uses_slot_ordered_foreground_values_without_text() {
     assert_eq!(options.len(), 2);
     assert_eq!(options[0].display_index, 0);
     assert_eq!(options[0].button_number, 7);
-    assert_eq!(options[0].fg_slot, 3);
+    assert_eq!(options[0].slot, 3);
     assert_eq!(options[0].visual_snapshot, expected_image);
     assert_eq!(options[1].display_index, 1);
     assert_eq!(options[1].button_number, 2);
-    assert_eq!(options[1].fg_slot, 11);
+    assert_eq!(options[1].slot, 11);
     assert_eq!(options[1].visual_snapshot, expected_wipe);
     assert_eq!(
         options[0].hit_region,
@@ -130,7 +130,7 @@ fn select_objbtn_uses_slot_ordered_foreground_values_without_text() {
         HitRegion::Unavailable(HitRegionUnavailable::AssetPatternGeometryUnavailable)
     );
     assert!(options.iter().all(|option| {
-        option.candidate_scope == ObjectButtonCandidateScope::TopLevelForegroundOnly
+        option.candidate_scope == ObjectButtonCandidateScope::TopLevelObjectPlanes
     }));
     assert!(matches!(
         &options[0].visual_snapshot.kind,
@@ -140,7 +140,7 @@ fn select_objbtn_uses_slot_ordered_foreground_values_without_text() {
     let render_option = options[0]
         .render_choice_option()
         .expect("decoded image button must produce renderer metadata");
-    assert_eq!(render_option.fg_slot, 3);
+    assert_eq!(render_option.slot, 3);
     assert_eq!(render_option.bounds.x, 26);
     assert_eq!(render_option.bounds.y, -16);
     assert_eq!(render_option.art.asset_key, "missing-g00");
@@ -215,7 +215,7 @@ fn select_objbtn_cancel_overloads_ignore_select_se_and_set_cancelable() {
                     if options.iter().map(|option| (
                         option.display_index,
                         option.button_number,
-                        option.fg_slot,
+                        option.slot,
                     )).collect::<Vec<_>>() == vec![(0, 7, 3), (1, 2, 11)]
             )
     }));
