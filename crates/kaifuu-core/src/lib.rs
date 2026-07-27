@@ -1,7 +1,3 @@
-#![allow(
-    unused_imports,
-    reason = "crate-internal compatibility facade for relocated private helpers"
-)]
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
@@ -388,8 +384,6 @@ mod adapter_core;
 pub use adapter_core::*;
 
 mod adapter_capabilities;
-#[rustfmt::skip]
-pub(crate) use adapter_capabilities::is_false;
 pub use adapter_capabilities::*;
 
 mod layered_access_model;
@@ -398,7 +392,7 @@ pub use layered_access_model::*;
 mod archive_detection_model;
 pub use archive_detection_model::*;
 #[rustfmt::skip]
-pub(crate) use archive_detection_model::{ ARCHIVE_DETECTION_EVIDENCE_POLICY, ArchiveDetectionScan, NON_DETECTED_ARCHIVE_VARIANT, };
+pub(crate) use archive_detection_model::{ ArchiveDetectionScan, NON_DETECTED_ARCHIVE_VARIANT, };
 
 mod archive_detection_signals;
 #[rustfmt::skip]
@@ -406,16 +400,16 @@ pub(crate) use archive_detection_signals::{ Xp3StructuralMarker, detect_kirikiri
 
 mod rpgmaker_suffixes;
 #[rustfmt::skip]
-pub(crate) use rpgmaker_suffixes::{ RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIX_PATTERN, RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIXES, RPG_MAKER_MV_MZ_PLAIN_SUFFIX_PATTERN, RPG_MAKER_MV_MZ_PLAIN_SUFFIXES, RPG_MAKER_MV_MZ_SUFFIX_PROFILES, RPG_MAKER_MV_MZ_UNKNOWN_SUFFIX_PATTERN, RPG_MAKER_MV_MZ_UNKNOWN_SUFFIXES, RpgMakerSuffixProfile, rpg_maker_mv_mz_surfaces, rpg_maker_surface_diagnostics, };
+pub(crate) use rpgmaker_suffixes::{ RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIX_PATTERN, RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIXES, RPG_MAKER_MV_MZ_PLAIN_SUFFIX_PATTERN, RPG_MAKER_MV_MZ_PLAIN_SUFFIXES, RPG_MAKER_MV_MZ_UNKNOWN_SUFFIX_PATTERN, RPG_MAKER_MV_MZ_UNKNOWN_SUFFIXES, rpg_maker_mv_mz_surfaces, };
 
 mod rpgmaker_key_validation;
 pub use rpgmaker_key_validation::*;
 #[rustfmt::skip]
-pub(crate) use rpgmaker_key_validation::{ RpgMakerMvMzKeyValidationReportParams, RpgMakerMvMzValidationAssetProfile, collect_rpg_maker_system_json, find_rpg_maker_system_json, parse_rpg_maker_system_json_key, rpg_maker_mv_mz_image_evidence_hash, rpg_maker_mv_mz_key_validation_report, rpg_maker_mv_mz_system_json_proof_hash, rpg_maker_mv_mz_system_key_matches_material, rpg_maker_mv_mz_validation_asset_profile, rpg_maker_mv_mz_validation_proof_hash, };
+pub(crate) use rpgmaker_key_validation::{ find_rpg_maker_system_json, };
 
 mod archive_detection_rows;
 #[rustfmt::skip]
-pub(crate) use archive_detection_rows::{ ArchiveRowInput, archive_row, capabilities_for_archive_row, detect_bgi_ethornell, detect_renpy, detect_unknown_archive_variant, detect_wolf_rpg_editor, diagnostic, diagnostics_for_signals, evidence, file_requirement, secret_requirement, };
+pub(crate) use archive_detection_rows::{ ArchiveRowInput, archive_row, detect_bgi_ethornell, detect_renpy, detect_unknown_archive_variant, detect_wolf_rpg_editor, diagnostic, evidence, file_requirement, secret_requirement, };
 
 mod engine_profile;
 pub use engine_profile::*;
@@ -441,30 +435,26 @@ pub use encrypted_media_model::*;
 mod encrypted_media_support;
 pub use encrypted_media_support::*;
 #[rustfmt::skip]
-pub(crate) use encrypted_media_support::{ ENCRYPTED_MEDIA_SUFFIX_PROFILES, EncryptedMediaSuffixProfile, EncryptedMediaSystemJson, classify_encrypted_media_asset, encrypted_media_asset_evidence_hash, encrypted_media_suffix_profile, read_encrypted_media_system_json, validate_encrypted_media_fixture_path, };
+pub(crate) use encrypted_media_support::{ classify_encrypted_media_asset, encrypted_media_asset_evidence_hash, encrypted_media_suffix_profile, read_encrypted_media_system_json, validate_encrypted_media_fixture_path, };
 
 mod key_declarations;
 pub use key_declarations::*;
 
 mod secret_stores;
 pub use secret_stores::*;
-#[rustfmt::skip]
-pub(crate) use secret_stores::{ local_secret_directory_support_boundary, verify_opened_secret_matches_preopen_metadata, };
 
 mod key_resolver;
 pub use key_resolver::*;
-#[rustfmt::skip]
-pub(crate) use key_resolver::{allow_prefix_authorizes_local_secret_id, normalize_key_material};
 
 mod secret_redaction_validation;
 pub use secret_redaction_validation::*;
 #[rustfmt::skip]
-pub(crate) use secret_redaction_validation::{ base64_padding_is_valid, encoded_material_entropy, helper_execution_config_field_is_forbidden, helper_execution_config_field_is_forbidden_at, is_archive_parameter_value_field, is_forbidden_secret_field, is_free_text_secret_scan_field, is_key_like_context, is_local_absolute_path, is_path_like_field, is_valid_secret_ref, looks_like_base64_key_material, looks_like_base64url_key_material, looks_like_raw_key_material, looks_like_raw_key_material_without_secret_ref, normalize_secret_field_name, redact_secret_bearing_value_at, secret_redaction_reason, secret_ref_name_contains_raw_key_material, };
+pub(crate) use secret_redaction_validation::{ helper_execution_config_field_is_forbidden, helper_execution_config_field_is_forbidden_at, is_local_absolute_path, is_valid_secret_ref, looks_like_raw_key_material, normalize_secret_field_name, secret_redaction_reason, };
 
 mod secret_redaction_reporting;
 pub use secret_redaction_reporting::*;
 #[rustfmt::skip]
-pub(crate) use secret_redaction_reporting::{ asset_ref_requires_redaction, free_text_requires_redaction, is_diagnostic_free_text_field, is_safe_typed_diagnostic_identifier, is_safe_vocabulary_token, is_uuid_like, path_starts_with_home_or_local_env_var, redact_asset_ref_for_report, redact_report_value_at, redact_secret_tokens_in_text, text_contains_forbidden_private_payload, text_contains_local_absolute_path, text_contains_raw_key_material, text_contains_raw_key_material_token, text_contains_sensitive_filename, text_requires_redaction, token_contains_local_absolute_path, trim_token_punctuation, };
+pub(crate) use secret_redaction_reporting::{ free_text_requires_redaction, path_starts_with_home_or_local_env_var, redact_asset_ref_for_report, };
 
 mod profile_requirements;
 pub use profile_requirements::*;
@@ -475,35 +465,27 @@ pub use asset_inventory_manifest::*;
 mod asset_inventory_model;
 pub use asset_inventory_model::*;
 #[rustfmt::skip]
-pub(crate) use asset_inventory_model::{ required_inventory_failure, validate_asset_inventory_relative_path, validate_asset_inventory_source_location, validate_asset_inventory_u64_object_fields, };
+pub(crate) use asset_inventory_model::{ required_inventory_failure, validate_asset_inventory_relative_path, validate_asset_inventory_source_location, };
 
 mod bridge_model;
 pub use bridge_model::*;
-#[rustfmt::skip]
-pub(crate) use bridge_model::{ default_preserve_mode_for_span_kind, normalize_non_empty_string_vec, normalize_protected_span_kind, source_slice_for_span, variable_name_from_raw_placeholder, };
 
 mod bridge_v02_model;
 pub use bridge_v02_model::*;
 
 mod bridge_v02_context;
-#[rustfmt::skip]
-pub(crate) use bridge_v02_context::validate_speaker_text_color;
 pub use bridge_v02_context::*;
 
 mod bridge_v02_validation;
 pub use bridge_v02_validation::*;
 #[rustfmt::skip]
-pub(crate) use bridge_v02_validation::{ assert_asset_ref_value_v02, assert_choice_context_v02, assert_database_context_v02, assert_image_text_context_v02, assert_localization_policy_v02, assert_metadata_context_v02, assert_route_context_v02, assert_song_context_v02, assert_source_location_v02, assert_speaker_name_context_v02, assert_surface_context_v02, assert_tutorial_context_v02, assert_ui_context_v02, required_context_for_surface_kind, };
+pub(crate) use bridge_v02_validation::{ assert_localization_policy_v02, assert_source_location_v02, assert_surface_context_v02, };
 
 mod patch_report_model;
-#[rustfmt::skip]
-pub(crate) use patch_report_model::AssetMetadataHashInput;
 pub use patch_report_model::*;
 
 mod asset_patch_capability;
 pub use asset_patch_capability::*;
-#[rustfmt::skip]
-pub(crate) use asset_patch_capability::{ asset_inventory_patch_capability_fixture_assets, asset_inventory_patch_capability_fixture_manifest, asset_inventory_patch_capability_fixture_supported_surface, asset_inventory_patch_capability_fixture_unsupported_surface, asset_surface_patch_unsupported, };
 
 mod operation_result_model;
 pub use operation_result_model::*;
@@ -520,7 +502,7 @@ pub use adapter_failures::*;
 
 mod report_redaction;
 #[rustfmt::skip]
-pub(crate) use report_redaction::{ as_record, assert_byte_range_v02, assert_equals, assert_hash_string_v02, assert_known_asset_id, assert_non_empty, assert_non_negative_integer_value, assert_one_of, assert_optional_value_string, assert_optional_value_uuid7, assert_pixel_region_v02, assert_positive_integer_value, assert_required_boolean, assert_required_pixel_region_v02, assert_required_string, assert_required_uuid7, assert_required_value_string, assert_required_value_uuid7, assert_revision_hash_matches_v02, assert_schema_version_v02, assert_surface_kind, assert_uuid7, assert_value_byte_range, assert_value_one_of, assert_value_string, assert_value_string_array, };
+pub(crate) use report_redaction::{ as_record, assert_byte_range_v02, assert_equals, assert_hash_string_v02, assert_known_asset_id, assert_non_empty, assert_non_negative_integer_value, assert_one_of, assert_optional_value_string, assert_optional_value_uuid7, assert_pixel_region_v02, assert_required_boolean, assert_required_pixel_region_v02, assert_required_string, assert_required_uuid7, assert_required_value_string, assert_required_value_uuid7, assert_revision_hash_matches_v02, assert_schema_version_v02, assert_surface_kind, assert_uuid7, assert_value_byte_range, assert_value_one_of, assert_value_string, assert_value_string_array, };
 
 mod redacted_content_summary;
 pub use redacted_content_summary::*;
@@ -530,35 +512,34 @@ pub use plain_xp3_writer_model::*;
 
 mod plain_xp3_reader;
 pub use plain_xp3_reader::*;
-#[rustfmt::skip]
-pub(crate) use plain_xp3_reader::{ append_plain_xp3_chunk, has_legacy_xp3_compressed_marker, has_legacy_xp3_helper_required_marker, };
 
 mod plain_xp3_directory;
 pub use plain_xp3_directory::*;
 #[rustfmt::skip]
-pub(crate) use plain_xp3_directory::{ checked_end, has_legacy_xp3_encrypted_marker, hash_xp3_segments, parse_xp3_file_chunk, parse_xp3_info_chunk, parse_xp3_segment_chunk, read_chunk_name, read_le_u16, read_le_u32, read_le_u64, };
+pub(crate) use plain_xp3_directory::{ checked_end, has_legacy_xp3_encrypted_marker, hash_xp3_segments, parse_xp3_file_chunk, read_chunk_name, read_le_u64, };
 
 mod json_io;
 pub use json_io::*;
-#[rustfmt::skip]
-pub(crate) use json_io::{ CompactedJsonArray, compact_primitive_json_array, compact_primitive_json_arrays, is_primitive_json_value, };
 
 mod golden_harness_run;
 pub use golden_harness_run::*;
 #[rustfmt::skip]
-pub(crate) use golden_harness_run::{ GoldenPatchPhaseArgs, golden_adapter, golden_diagnostic_summary, golden_error_summary, prepare_golden_work_dir, record_golden_failure, report_passed_phase, run_golden_patch_phase, unchanged_patch_export, };
+pub(crate) use golden_harness_run::{ GoldenPatchPhaseArgs, golden_diagnostic_summary, golden_error_summary, record_golden_failure, report_passed_phase, run_golden_patch_phase, };
 
 mod golden_harness_report;
 #[rustfmt::skip]
-pub(crate) use golden_harness_report::{ record_adapter_failures, report_byte_equivalence, report_inventory_asset_preservation, };
+pub(crate) use golden_harness_report::{ record_adapter_failures, report_byte_equivalence, };
 
 mod golden_harness_output;
 #[rustfmt::skip]
-pub(crate) use golden_harness_output::{ asset_preservation_signature, report_output_equivalence, report_translated_patch, report_verify_phase, unit_signature_summary, unit_signatures, };
+pub(crate) use golden_harness_output::{ asset_preservation_signature, report_output_equivalence, report_translated_patch, report_verify_phase, };
 
 mod golden_harness_v02;
 #[rustfmt::skip]
-pub(crate) use golden_harness_v02::{ V02BridgeUnitSummary, V02SourceSpanSummary, canonical_v02_native_source_hash, patch_export_for_adapter, report_v02_source_compatibility, v02_bridge_units_by_key, v02_native_units_by_key, v02_patch_entry_span_mappings_compatible, };
+pub(crate) use golden_harness_v02::{ patch_export_for_adapter, report_v02_source_compatibility, };
+#[cfg(test)]
+#[rustfmt::skip]
+pub(crate) use golden_harness_v02::{ v02_bridge_units_by_key, v02_patch_entry_span_mappings_compatible, };
 
 mod golden_harness_translation;
 pub use golden_harness_translation::*;
