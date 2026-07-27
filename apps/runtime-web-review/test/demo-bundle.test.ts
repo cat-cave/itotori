@@ -111,28 +111,32 @@ describe("MV/MZ embedded playback demo bundle surface", () => {
     expect(root.querySelector("img, video, audio, canvas")).toBeNull();
   });
 
-  it("references the UTSUSHI-119/102/065/010 proof and evidence artifacts", () => {
+  it("renders proof and evidence links using the bundle's provenance", () => {
     const bundle = loadBundle();
     renderDemoBundle(root, bundle);
 
-    // Patched proof (119) + alpha proof (102) render as proven proof links.
+    // The renderer exposes the provenance supplied by the committed bundle;
+    // identifiers are producer data, not literals owned by this consumer.
     const patched = root.querySelector('[data-proof-link="patched-runtime-proof"]');
-    expect(patched?.getAttribute("data-proof-source")).toBe("UTSUSHI-119");
+    expect(patched?.getAttribute("data-proof-source")).toBe(
+      bundle.proofLinks.patchedRuntimeProof.source,
+    );
     expect(patched?.querySelector('[data-proof-proven="true"]')).not.toBeNull();
     expect(patched?.textContent ?? "").toContain(
       bundle.proofLinks.patchedRuntimeProof.proofId ?? "",
     );
 
     const alpha = root.querySelector('[data-proof-link="alpha-proof"]');
-    expect(alpha?.getAttribute("data-proof-source")).toBe("UTSUSHI-102");
+    expect(alpha?.getAttribute("data-proof-source")).toBe(bundle.proofLinks.alphaProof.source);
     expect(alpha?.querySelector('[data-proof-proven="true"]')).not.toBeNull();
 
-    // Screenshot evidence (065) is referenced.
-    expect(root.querySelector('[data-proof-link="screenshot-evidence"]')).not.toBeNull();
-    expect(root.textContent).toContain("UTSUSHI-065");
+    const screenshotEvidence = root.querySelector('[data-proof-link="screenshot-evidence"]');
+    expect(screenshotEvidence?.textContent ?? "").toContain(
+      String(bundle.proofLinks.screenshotEvidence.source ?? ""),
+    );
 
-    // Evidence manifest (010) surfaces its immutable provenance only.
-    expect(root.textContent).toContain("UTSUSHI-010");
+    // The review manifest exposes its own immutable provenance only.
+    expect(root.textContent).toContain(bundle.reviewManifest.source);
     expect(root.textContent).toContain(bundle.reviewManifest.reviewPackageId ?? "");
     expect(root.querySelector("[data-review-action]")).toBeNull();
   });

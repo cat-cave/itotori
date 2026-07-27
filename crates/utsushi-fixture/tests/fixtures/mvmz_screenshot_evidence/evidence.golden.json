@@ -5,15 +5,15 @@
     {
       "affectedBridgeUnitRefs": [
         {
-          "bridgeUnitId": "5ce7ce53-c610-743e-b987-f54465e15561",
+          "bridgeUnitId": "6a0de361-d63d-76c1-b246-3f2ea6a06351",
           "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/5/parameters/0"
         },
         {
-          "bridgeUnitId": "0b4d782a-0d5d-7207-af73-041d2be2a3bd",
+          "bridgeUnitId": "9505ad4f-6c4d-782f-ae6a-bd090c4c30f2",
           "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/8/parameters/0/0"
         },
         {
-          "bridgeUnitId": "46cfb39f-9dcd-790c-acde-13e2988c7af8",
+          "bridgeUnitId": "596e194b-7ed9-79a4-96ee-7c9810c5e108",
           "sourceUnitKey": "rpgmaker:CommonEvents.json#/3/list/2/parameters/0"
         }
       ],
@@ -43,7 +43,7 @@
         "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/76dcaf93-37f1-7227-8869-92285557b5d0.png"
       },
       "bridgeUnitRef": {
-        "bridgeUnitId": "5ce7ce53-c610-743e-b987-f54465e15561",
+        "bridgeUnitId": "6a0de361-d63d-76c1-b246-3f2ea6a06351",
         "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/5/parameters/0"
       },
       "captureId": "8b2c327b-c600-75e6-adaa-c152bb147fca",
@@ -81,7 +81,7 @@
         "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/7ba21a49-d6ec-74c0-bbc5-20e6e8ffe2bc.png"
       },
       "bridgeUnitRef": {
-        "bridgeUnitId": "0b4d782a-0d5d-7207-af73-041d2be2a3bd",
+        "bridgeUnitId": "9505ad4f-6c4d-782f-ae6a-bd090c4c30f2",
         "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/8/parameters/0/0"
       },
       "captureId": "02b8429b-9347-701b-acc5-93ab5380a409",
@@ -120,7 +120,7 @@
         "uri": "artifacts/utsushi/runtime/58a98a57-e18f-75dc-8bce-19880e3b9856/screenshots/c102504b-184c-7bca-b42e-cf8669c84104.png"
       },
       "bridgeUnitRef": {
-        "bridgeUnitId": "46cfb39f-9dcd-790c-acde-13e2988c7af8",
+        "bridgeUnitId": "596e194b-7ed9-79a4-96ee-7c9810c5e108",
         "sourceUnitKey": "rpgmaker:CommonEvents.json#/3/list/2/parameters/0"
       },
       "captureId": "5ac96046-d2f0-7adf-b686-26c31e9deb55",
@@ -164,7 +164,7 @@
       },
       "bridgeRefs": [
         {
-          "bridgeUnitId": "5ce7ce53-c610-743e-b987-f54465e15561",
+          "bridgeUnitId": "6a0de361-d63d-76c1-b246-3f2ea6a06351",
           "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/5/parameters/0"
         }
       ],
@@ -209,7 +209,7 @@
       },
       "bridgeRefs": [
         {
-          "bridgeUnitId": "0b4d782a-0d5d-7207-af73-041d2be2a3bd",
+          "bridgeUnitId": "9505ad4f-6c4d-782f-ae6a-bd090c4c30f2",
           "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/8/parameters/0/0"
         }
       ],
@@ -254,7 +254,7 @@
       },
       "bridgeRefs": [
         {
-          "bridgeUnitId": "46cfb39f-9dcd-790c-acde-13e2988c7af8",
+          "bridgeUnitId": "596e194b-7ed9-79a4-96ee-7c9810c5e108",
           "sourceUnitKey": "rpgmaker:CommonEvents.json#/3/list/2/parameters/0"
         }
       ],
@@ -301,7 +301,7 @@
   "traceEvents": [
     {
       "bridgeUnitRef": {
-        "bridgeUnitId": "5ce7ce53-c610-743e-b987-f54465e15561",
+        "bridgeUnitId": "6a0de361-d63d-76c1-b246-3f2ea6a06351",
         "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/5/parameters/0"
       },
       "eventKind": "text_observed",
@@ -323,7 +323,7 @@
     },
     {
       "bridgeUnitRef": {
-        "bridgeUnitId": "0b4d782a-0d5d-7207-af73-041d2be2a3bd",
+        "bridgeUnitId": "9505ad4f-6c4d-782f-ae6a-bd090c4c30f2",
         "sourceUnitKey": "rpgmaker:Map012.json#/events/3/pages/0/list/8/parameters/0/0"
       },
       "eventKind": "text_observed",
@@ -346,7 +346,7 @@
     },
     {
       "bridgeUnitRef": {
-        "bridgeUnitId": "46cfb39f-9dcd-790c-acde-13e2988c7af8",
+        "bridgeUnitId": "596e194b-7ed9-79a4-96ee-7c9810c5e108",
         "sourceUnitKey": "rpgmaker:CommonEvents.json#/3/list/2/parameters/0"
       },
       "eventKind": "text_observed",

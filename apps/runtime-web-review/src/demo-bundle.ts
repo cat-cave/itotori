@@ -163,8 +163,8 @@ export function renderDemoBundle(root: HTMLElement, bundle: DemoBundle): void {
           style="margin: 0 0 .5rem; padding: .5rem .75rem; border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; color: #4b5563"
         >
           Public synthetic MV/MZ fixture — NOT a live game. This surface renders a
-          committed demo bundle that PACKAGES the UTSUSHI-119 / 102 / 065 / 010 proof
-          artifacts. No game process runs and no copyrighted bytes or pixels are shown.
+          committed demo bundle that packages its proof and evidence artifacts. No game process
+          runs and no copyrighted bytes or pixels are shown.
         </p>
         <p style="margin: 0; color: #4b5563">
           bundle ${escapeHtml(bundle.bundleId)} — ${escapeHtml(bundle.sourceLocale)} →
@@ -337,8 +337,8 @@ function renderProofLinks(links: DemoBundle["proofLinks"]): string {
       <ul data-section="proof-links" style="list-style:none; padding:0; margin:0">
         ${renderProofLinkRow("patched-runtime-proof", links.patchedRuntimeProof, links.patchedRuntimeProof.patchedRuntimeObservationProven ?? false)}
         ${renderProofLinkRow("alpha-proof", links.alphaProof, links.alphaProof.runtimeObservationProven ?? false)}
-        ${renderPlainLinkRow("patch-result", "UTSUSHI-119 PatchResult", links.patchResult)}
-        ${renderPlainLinkRow("screenshot-evidence", String(links.screenshotEvidence.source ?? "UTSUSHI-065"), links.screenshotEvidence)}
+        ${renderPlainLinkRow("patch-result", "PatchResult", links.patchResult)}
+        ${renderPlainLinkRow("screenshot-evidence", String(links.screenshotEvidence.source ?? "missing"), links.screenshotEvidence)}
       </ul>
     </section>
   `;

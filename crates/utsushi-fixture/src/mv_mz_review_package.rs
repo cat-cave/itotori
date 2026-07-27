@@ -313,12 +313,12 @@ fn runtime_trace_evidence_section(
             semantic_code: "utsushi.review_package.replay_pack_absent",
             severity: "warning",
             surface: "runtime_trace_evidence.replay_pack",
-            message: "No  replay-pack trace was supplied; runtime trace evidence \
-                      is limited to the  observation-hook trace events."
+            message: "No replay-pack trace was supplied; runtime trace evidence \
+                      is limited to the observation-hook trace events."
                 .to_string(),
         });
         limitations.push(
-            "No  replay-pack trace attached; message + choice replay evidence is \
+            "No replay-pack trace attached; message + choice replay evidence is \
              absent from this package."
                 .to_string(),
         );
