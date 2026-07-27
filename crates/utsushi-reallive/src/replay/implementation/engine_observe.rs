@@ -1,5 +1,7 @@
 use super::*;
 
+use super::event_loop_gate::closes_a_loop;
+
 impl ReplayEngine {
     /// Observe `scene_id` through the shared store while RETAINING the
     /// audio + graphics runtimes, so an engine port can emit the observed
@@ -139,7 +141,7 @@ impl ReplayEngine {
         // then use the single-pass byte-order catalogue. Prompts follow that
         // exact same choice: they identify the text lines in their own pass
         // never a cross-pass mixture. NEVER combine passes (no doubling).
-        let (play_order_lines, selection_prompts) = select_port_pass(
+        let (play_order_lines, selection_prompts, play_order_source) = select_port_pass(
             branch_lines,
             branch_prompts,
             branch_termination,
@@ -157,6 +159,7 @@ impl ReplayEngine {
         };
         PortObservation {
             play_order_lines,
+            play_order_source,
             selection_prompts,
             first_cross_scene,
             scene: SceneObservation {
@@ -242,6 +245,19 @@ impl ReplayEngine {
         let mut vm = Vm::new(scene_id, 0);
         let mut steps: u32 = 0;
         let mut first_cross_scene: Option<SceneId> = None;
+        // A script can poll the input device in an ordinary backward-goto
+        // loop instead of yielding a long operation.  The interactive
+        // session parks at that proven loop; this unattended observation
+        // instead models the next event by suppressing its following
+        // pc-moving transfer. The fingerprint is full VM control state, so
+        // a repeated value proves the loop has no other deterministic exit.
+        let mut loop_states = std::collections::HashSet::new();
+        // Once a repeated state proves a polling loop, suppress every
+        // subsequent pc-moving transfer until its stack frame unwinds. A
+        // one-shot suppression is insufficient for a poll made of several
+        // nested gating branches.
+        let mut break_mode: Option<usize> = None;
+        let mut break_mode_steps: u64 = 0;
         let termination = loop {
             if steps >= opts.step_budget {
                 break PassTermination::BudgetExhausted;
@@ -253,6 +269,8 @@ impl ReplayEngine {
             };
             match step {
                 StepOutcome::Advanced { event } => {
+                    let suppressed = vm.last_transfer_suppressed();
+                    let loop_closing = suppressed || closes_a_loop(&event, scene_before, pc_before);
                     // The VM emits `Textout` events; the driver dispatches
                     // the Shift-JIS run through the text family + a
                     // line-break flush so the decoded line surfaces through
@@ -269,6 +287,19 @@ impl ReplayEngine {
                     let scene_now = vm.scene();
                     if first_cross_scene.is_none() && scene_now != scene_id {
                         first_cross_scene = Some(scene_now);
+                    }
+                    if let Some(exit_depth) = break_mode {
+                        break_mode_steps += 1;
+                        if vm.stack().len() < exit_depth {
+                            break_mode = None;
+                        } else if break_mode_steps >= 1_000_000 {
+                            break PassTermination::BudgetExhausted;
+                        } else {
+                            vm.request_suppress_next_transfer();
+                        }
+                    } else if loop_closing && !loop_states.insert(vm.control_fingerprint()) {
+                        break_mode = Some(vm.stack().len());
+                        vm.request_suppress_next_transfer();
                     }
                     steps = steps.saturating_add(1);
                 }
