@@ -82,9 +82,9 @@ fn executes_deterministically_with_counted_halts_on_both_local_corpora() {
             first.diagnostics.len()
         );
         assert_eq!(
-            diagnostics.get("call_0011_001c"),
+            diagnostics.get("native_task_operand_underflow"),
             Some(&1),
-            "corpus {} stops loudly at the known unproven dispatch",
+            "corpus {} stops loudly while the native task producers are unresolved",
             index + 1
         );
         assert_eq!(

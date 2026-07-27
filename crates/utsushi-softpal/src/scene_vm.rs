@@ -1,17 +1,13 @@
 //! Sv20 execution: values, branches, calls, and honest stop diagnostics.
-
-use std::collections::{BTreeMap, HashMap};
-
-use kaifuu_softpal::{CommandFamily, Instruction, OpcodeScan, Operand, OperandTag, RawCommand};
-
 use crate::scene_runtime::{ChoiceOption, RuntimeDiagnostic, SceneStep, SoftpalRuntimeError};
-
+use crate::task_runtime::TaskRuntime;
+use kaifuu_softpal::{CommandFamily, Instruction, OpcodeScan, Operand, OperandTag, RawCommand};
+use std::collections::{BTreeMap, HashMap};
 #[derive(Default)]
 struct Frame {
     locals: BTreeMap<u32, i32>,
     arguments: Vec<i32>,
 }
-
 /// Parse `POINT.DAT`: its stored offsets are relative to the 12-byte code
 /// header and are listed in reverse label order.
 pub(crate) fn point_offsets(bytes: &[u8]) -> Result<Vec<usize>, SoftpalRuntimeError> {
@@ -55,6 +51,7 @@ pub(crate) struct Vm<'a> {
     diagnostics: Vec<RuntimeDiagnostic>,
     branches: usize,
     instruction_count: usize,
+    native_tasks: TaskRuntime,
 }
 
 impl<'a> Vm<'a> {
@@ -90,6 +87,7 @@ impl<'a> Vm<'a> {
             diagnostics: Vec::new(),
             branches: 0,
             instruction_count: 0,
+            native_tasks: TaskRuntime::default(),
         }
     }
 
@@ -305,6 +303,14 @@ impl<'a> Vm<'a> {
         match instruction.family {
             CommandFamily::TextShow { .. } => self.emit_dialogue(instruction.offset),
             CommandFamily::Select => self.emit_choice(instruction.offset),
+            CommandFamily::Call { target }
+                if (target.category, target.function) == (0x0011, 0x001c) =>
+            {
+                self.native_tasks.dispatch_for_vm().map_or_else(
+                    |signature| self.bad(signature, instruction.offset),
+                    |_| true,
+                )
+            }
             CommandFamily::Call { target } if target.semantic_name().is_some() => true,
             CommandFamily::Call { target } => self.bad(
                 &format!("call_{:04x}_{:04x}", target.category, target.function),
