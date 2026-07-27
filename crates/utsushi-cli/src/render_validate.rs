@@ -438,13 +438,13 @@ pub(crate) fn drive(
         .emit_scene_screenshots(
             stack,
             &text,
-            SceneEmit {
-                root: &root,
-                run_id: params.run_id,
-                sink: &sink,
-                private_dir: &private_dir,
-                public_redact: params.public_redact,
-            },
+            SceneEmit::frame(
+                &root,
+                params.run_id,
+                &sink,
+                &private_dir,
+                params.public_redact,
+            ),
         )
         .map_err(|err| format!("utsushi.cli.render_validate.emit: {err}"))?;
     let artifact = &shots.public;

@@ -14,9 +14,11 @@ use serde_json::{Value, json};
 use utsushi_core::RuntimeArtifactRoot;
 use utsushi_core::input::InputEvent;
 use utsushi_core::substrate::AssetPackage;
+use utsushi_reallive::rlop::module_sel::CHOICE_TEXT_SURFACE_PREFIX;
 use utsushi_reallive::{
-    Gameexe, LiveSession, LiveSessionUpdate, RecordingFrameArtifactSink, RenderPass, SceneEmit,
-    TextLayer,
+    ChoiceOverlay, ChoiceWindow, Gameexe, LiveSession, LiveSessionChoice, LiveSessionUpdate,
+    ObjectButtonChoiceWindow, RecordingFrameArtifactSink, RenderPass, SceneEmit,
+    SelectButtonLayout, TextLayer,
 };
 
 use crate::reallive_port::OnDiskG00Package;
@@ -62,6 +64,10 @@ pub(crate) fn run_live_player_command(args: &[String]) -> Result<(), Box<dyn Err
         engine.start_live_session_with_assets(scene, Arc::clone(&assets))?;
     let mut renderer = Renderer {
         config: gameexe.message_window(0),
+        // The game's OWN choice-list placement. `None` when the title
+        // declares no `#SELBTN` block; the message-window box is then the
+        // documented fallback, not a synthesized layout.
+        select_layout: SelectButtonLayout::from_gameexe(&gameexe, 0),
         screen_size: gameexe.screen_size_px(),
         assets,
         artifact_root: RuntimeArtifactRoot::new(&artifact_root),
@@ -102,6 +108,7 @@ pub(crate) fn run_live_player_command(args: &[String]) -> Result<(), Box<dyn Err
 
 struct Renderer {
     config: utsushi_reallive::MessageWindowConfig,
+    select_layout: Option<SelectButtonLayout>,
     screen_size: (u32, u32),
     assets: Arc<dyn AssetPackage>,
     artifact_root: RuntimeArtifactRoot,
@@ -121,7 +128,18 @@ fn response(
     renderer: &mut Renderer,
 ) -> Result<Value, Box<dyn Error>> {
     let state = update.state;
-    if let Some(line) = update.emitted_lines.last() {
+    // The dialogue layer must hold the last DIALOGUE line. A choice
+    // prompt also emits each of its options through the text sink; taking
+    // the last emitted line unconditionally puts one option in the
+    // message box, indistinguishable from narration, while the other
+    // options are never shown at all. Options are rendered by the choice
+    // overlay below instead, off the parked longop.
+    if let Some(line) = update
+        .emitted_lines
+        .iter()
+        .rev()
+        .find(|line| !is_choice_option(line))
+    {
         renderer.current_text = Some(TextLayer::message_window_colored(
             &line.text,
             line.speaker.as_deref(),
@@ -141,20 +159,60 @@ fn response(
             renderer.screen_size,
         )
     });
+    // The selection affordance for the gate the VM is actually parked on.
+    // Built from the longop's own options, so the frame shows EVERY option
+    // at its own coordinates plus which one is focused.
+    let choice = session.pending_choice();
+    let text_choice = match &choice {
+        // `#SELBTN` placement when the game declares it — option `k` at
+        // `BASEPOS + k * REPPOS`. A game with no select block falls back
+        // to the message-window box.
+        Some(LiveSessionChoice::Text { options }) => Some(match renderer.select_layout {
+            Some(layout) => ChoiceWindow::from_select_buttons(
+                options,
+                0,
+                layout,
+                &renderer.config,
+                renderer.screen_size,
+                renderer.screen_size,
+            ),
+            None => ChoiceWindow::from_config(
+                options,
+                0,
+                &renderer.config,
+                renderer.screen_size,
+                renderer.screen_size,
+            ),
+        }),
+        _ => None,
+    };
+    let button_choice = match &choice {
+        Some(LiveSessionChoice::ObjectButtons { options }) if !options.is_empty() => {
+            Some(ObjectButtonChoiceWindow::from_metadata(options.clone(), 0))
+        }
+        _ => None,
+    };
+    let overlay = match (&text_choice, &button_choice) {
+        (Some(window), _) => Some(ChoiceOverlay::Text(window)),
+        (_, Some(window)) => Some(ChoiceOverlay::ObjectButtons(window)),
+        _ => None,
+    };
+
     let mut pass = RenderPass::with_dimensions(renderer.screen_size.0, renderer.screen_size.1)?
         .with_assets(Arc::clone(&renderer.assets));
     let sink = RecordingFrameArtifactSink::new();
-    let screenshots = pass.emit_scene_screenshots(
-        &session.graphics_stack(),
-        &text,
-        SceneEmit {
-            root: &renderer.artifact_root,
-            run_id: &format!("{}-{}", renderer.run_id, state.event_index),
-            sink: &sink,
-            private_dir: &renderer.private_dir,
-            public_redact: renderer.public_redact,
-        },
-    )?;
+    let run_id = format!("{}-{}", renderer.run_id, state.event_index);
+    let mut emit = SceneEmit::frame(
+        &renderer.artifact_root,
+        &run_id,
+        &sink,
+        &renderer.private_dir,
+        renderer.public_redact,
+    );
+    if let Some(overlay) = overlay {
+        emit = emit.with_choice(overlay);
+    }
+    let screenshots = pass.emit_scene_screenshots(&session.graphics_stack(), &text, emit)?;
     let path = renderer
         .artifact_root
         .artifact_path(&screenshots.public.artifact_ref.uri)?;
@@ -164,10 +222,21 @@ fn response(
         "width": screenshots.public.width,
         "height": screenshots.public.height,
     });
+    // Options travel with the gate so the browser labels each button with
+    // the REAL option text. Without them every button reads "choice N" and
+    // a two-option prompt is two indistinguishable controls.
+    let options: Vec<String> = match &choice {
+        Some(LiveSessionChoice::Text { options }) => options.clone(),
+        Some(LiveSessionChoice::ObjectButtons { options }) => options
+            .iter()
+            .map(|option| option.art.asset_key.clone())
+            .collect(),
+        None => Vec::new(),
+    };
     let wait = match state.waiting_for {
         Some(utsushi_reallive::LiveSessionWait::Advance) => json!({"type": "advance"}),
         Some(utsushi_reallive::LiveSessionWait::Choice { choice_count }) => {
-            json!({"type": "choice", "choiceCount": choice_count})
+            json!({"type": "choice", "choiceCount": choice_count, "options": options})
         }
         None => Value::Null,
     };
@@ -179,6 +248,16 @@ fn response(
         "ended": state.ended,
         "frame": frame,
     }))
+}
+
+/// Whether an emitted line is one of a choice prompt's OPTIONS rather
+/// than dialogue. The selection runtime tags every option line with a
+/// `choice:<index>` text surface; nothing else in the engine uses that
+/// prefix, and no engine-specific or title-specific knowledge is applied.
+fn is_choice_option(line: &utsushi_core::sink::TextLine) -> bool {
+    line.text_surface
+        .as_deref()
+        .is_some_and(|surface| surface.starts_with(CHOICE_TEXT_SURFACE_PREFIX))
 }
 
 fn write_response(out: &mut impl Write, value: Value) -> Result<(), Box<dyn Error>> {

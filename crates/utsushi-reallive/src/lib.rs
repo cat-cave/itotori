@@ -235,13 +235,15 @@ pub use graphics_objects::{
     WipeColour, derive_dst_rect,
 };
 pub use render_pipeline::{
-    ChoiceWindow, Framebuffer, ObjectButtonChoiceOption, ObjectButtonChoiceWindow,
+    ChoiceOverlay, ChoiceWindow, Framebuffer, ObjectButtonChoiceOption, ObjectButtonChoiceWindow,
     ObjectButtonChoiceWindowBuildError, ObjectWarning, PNG_BIT_DEPTH, PNG_COLOUR_TYPE_RGBA,
-    PNG_FILE_MAGIC, RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE, RENDER_PIPELINE_OBJECT_SKIPPED_CODE,
+    PNG_FILE_MAGIC, RENDER_PIPELINE_BLANK_CHOICE_OVERLAY_CODE,
+    RENDER_PIPELINE_BLANK_LOCALIZED_TEXT_CODE, RENDER_PIPELINE_OBJECT_SKIPPED_CODE,
     RENDER_PIPELINE_ZERO_SCREEN_SIZE_CODE, RGBA_BYTES_PER_PIXEL, RecordingFrameArtifactSink,
     RedactionPolicy, RenderEmitError, RenderPass, RenderPassBuildError, RenderReport,
-    SCREENSHOT_ARTIFACT_KIND, SceneEmit, SceneScreenshots, SkipReason, SkippedObject, TextBackdrop,
-    TextLayer, adler32, crc32_ieee, encode_png_rgba_deterministic, sha256_hex,
+    SCREENSHOT_ARTIFACT_KIND, SceneEmit, SceneScreenshots, SelectButtonLayout, SkipReason,
+    SkippedObject, TextBackdrop, TextLayer, adler32, crc32_ieee, encode_png_rgba_deterministic,
+    sha256_hex,
 };
 
 pub use save::{
@@ -267,13 +269,14 @@ pub use jump::{
 };
 pub use replay::{
     BranchFollowingObservation, BranchReplayReport, BranchTerminus, ControlTransferCounts,
-    DEFAULT_REPLAY_STEP_BUDGET, DecompressedScene, LiveSession, LiveSessionError, LiveSessionState,
-    LiveSessionUpdate, LiveSessionWait, PortObservation, REPLAY_LOG_SCHEMA_VERSION, ReplayEngine,
-    ReplayError, ReplayEvent, ReplayLog, ReplayOpts, ReplayOutcome, SceneObservation,
-    ScenePlaySegment, ScenePlaythrough, SceneStoreBundle, SceneStoreStats, SnapshotIdentityReport,
-    build_scene_store, build_scene_store_from_decompressed, decompress_all_scenes,
-    full_registry_rlop_count, replay_scene, replay_scene_bytes, replay_until_first_pause,
-    restore_into_fresh_vm, verify_snapshot_restore_each_tick,
+    DEFAULT_REPLAY_STEP_BUDGET, DecompressedScene, LiveSession, LiveSessionChoice,
+    LiveSessionError, LiveSessionState, LiveSessionUpdate, LiveSessionWait, PortObservation,
+    REPLAY_LOG_SCHEMA_VERSION, ReplayEngine, ReplayError, ReplayEvent, ReplayLog, ReplayOpts,
+    ReplayOutcome, SceneObservation, ScenePlaySegment, ScenePlaythrough, SceneStoreBundle,
+    SceneStoreStats, SnapshotIdentityReport, build_scene_store,
+    build_scene_store_from_decompressed, decompress_all_scenes, full_registry_rlop_count,
+    replay_scene, replay_scene_bytes, replay_until_first_pause, restore_into_fresh_vm,
+    verify_snapshot_restore_each_tick,
 };
 pub use scene_header::{
     COMPILER_VERSION_1_0, COMPILER_VERSION_1_10, COMPILER_VERSION_1_1110,

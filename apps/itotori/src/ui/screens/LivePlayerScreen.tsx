@@ -19,7 +19,10 @@ type PlayerState = {
   scene: number;
   instructionPointer: number;
   eventIndex: number;
-  waitingFor: { type: "advance" } | { type: "choice"; choiceCount: number } | null;
+  waitingFor:
+    | { type: "advance" }
+    | { type: "choice"; choiceCount: number; options: string[] }
+    | null;
   ended: boolean;
   frame: { dataUrl: string; artifactId: string; width: number; height: number } | null;
 };
@@ -143,6 +146,11 @@ function PlayerPanel({
           src={state.frame.dataUrl}
           width={state.frame.width}
           height={state.frame.height}
+          // The engine composites at the GAME's native surface size, which is
+          // routinely wider than the panel. At intrinsic size the frame is
+          // cut off at the container edge and the player sees a fraction of
+          // the scene; scale it down to fit instead, keeping the aspect ratio.
+          style={{ maxWidth: "100%", height: "auto" }}
           alt="Current real engine frame"
           data-frame-artifact-id={state.frame.artifactId}
         />
@@ -175,7 +183,7 @@ function PlayerInput({
             disabled={busy}
             onClick={() => send({ type: "choice", index })}
           >
-            Choose {index + 1}
+            {waitingFor.options[index] ?? `Choice ${index + 1}`}
           </button>
         ))}
       </p>

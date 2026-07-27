@@ -407,13 +407,8 @@ fn run_title_render_proof(g00_dir: PathBuf, title: &str) {
         .emit_scene_screenshots(
             &stack_on,
             &text,
-            SceneEmit {
-                root: &root_on,
-                run_id: "render-g00-real",
-                sink: &sink_on,
-                private_dir: &private_dir_on,
-                public_redact: true, // redaction ON
-            },
+            // redaction ON
+            SceneEmit::frame(&root_on, "render-g00-real", &sink_on, &private_dir_on, true),
         )
         .expect("emit scene screenshots (redaction on)");
 
@@ -573,13 +568,7 @@ fn run_synthetic_skip_surface_proof() {
         .emit_scene_screenshots(
             &stack,
             &text,
-            SceneEmit {
-                root: &root,
-                run_id: "render-g00-skip-surface",
-                sink: &sink,
-                private_dir: &private_dir,
-                public_redact: true,
-            },
+            SceneEmit::frame(&root, "render-g00-skip-surface", &sink, &private_dir, true),
         )
         .expect("emit still succeeds fail-soft, but must report the skip");
 

@@ -2,7 +2,9 @@
 
 use crate::graphics_objects::{HitRect, WipeColour};
 
-use super::{ChoiceWindow, ObjectButtonChoiceWindow, RGBA_BYTES_PER_PIXEL, TextLayer, font};
+use super::{
+    ChoiceOverlay, ChoiceWindow, ObjectButtonChoiceWindow, RGBA_BYTES_PER_PIXEL, TextLayer, font,
+};
 
 /// In-process framebuffer. A `width × height` grid of RGBA bytes in row-major
 /// order.
@@ -141,28 +143,56 @@ impl Framebuffer {
         painted
     }
 
+    /// Paint whichever selection affordance the current choice gate calls
+    /// for, returning the painted-pixel count so the caller can prove the
+    /// overlay actually reached the framebuffer.
+    pub fn draw_choice_overlay(&mut self, overlay: &ChoiceOverlay<'_>) -> u64 {
+        match overlay {
+            ChoiceOverlay::Text(choice) => self.draw_choice_window(choice),
+            ChoiceOverlay::ObjectButtons(choice) => self.draw_object_button_choice_window(choice),
+        }
+    }
+
     /// Paint a configuration-driven text choice screen.
     pub fn draw_choice_window(&mut self, choice: &ChoiceWindow) -> u64 {
-        let backdrop = choice.backdrop;
-        self.fill_rect_blended(
-            backdrop.x,
-            backdrop.y,
-            backdrop.width,
-            backdrop.height,
-            backdrop.colour,
-        );
+        if let Some(backdrop) = choice.backdrop {
+            self.fill_rect_blended(
+                backdrop.x,
+                backdrop.y,
+                backdrop.width,
+                backdrop.height,
+                backdrop.colour,
+            );
+        }
         let mut painted = 0;
         for (index, option) in choice.options.iter().enumerate() {
             let focused = index == choice.selected;
-            let row_y = choice
-                .origin_y
-                .saturating_add((index as u32).saturating_mul(choice.line_height));
+            // Each option is drawn at ITS OWN laid-out coordinates. Two
+            // options must never resolve to one origin: that is the
+            // stacked-at-origin failure a decode-side check cannot see.
+            let row_x = choice.option_origin_x(index);
+            let row_y = choice.option_origin_y(index);
             if focused {
+                let (bar_x, bar_width) = match choice.backdrop {
+                    Some(backdrop) => (backdrop.x, backdrop.width),
+                    None => (
+                        row_x,
+                        font::line_width(
+                            &format!("{}{option}", choice.prefix(index)),
+                            choice.scale as f32,
+                        )
+                        .round()
+                        .max(1.0) as u32,
+                    ),
+                };
+                // Sized from the GLYPH height, not the row stride: a
+                // stride-tall bar overprints the option below it whenever
+                // the layout packs rows tighter than the message box does.
                 self.fill_rect_blended(
-                    backdrop.x,
+                    bar_x,
                     row_y.saturating_sub(2),
-                    backdrop.width,
-                    choice.line_height.saturating_add(4),
+                    bar_width,
+                    choice.scale.saturating_add(4).min(choice.line_height),
                     WipeColour {
                         red: 52,
                         green: 88,
@@ -183,7 +213,7 @@ impl Framebuffer {
             };
             painted += self.draw_text(&TextLayer {
                 lines: vec![format!("{}{option}", choice.prefix(index))],
-                origin_x: choice.origin_x,
+                origin_x: row_x,
                 origin_y: row_y,
                 scale: choice.scale,
                 colour,

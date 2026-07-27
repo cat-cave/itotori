@@ -10,6 +10,9 @@ use utsushi_core::input::InputEvent;
 use utsushi_core::substrate::AssetPackage;
 
 use crate::input_bridge::{BridgeScheduler, PendingYield, UserInputQueue};
+use crate::render_pipeline::ObjectButtonChoiceOption;
+use crate::rlop::SelectLongOp;
+use crate::rlop::module_sel::SelectionPromptKind;
 
 /// A compact, serialisable-by-callers description of the live VM boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +34,25 @@ pub struct LiveSessionState {
 pub enum LiveSessionWait {
     Advance,
     Choice { choice_count: usize },
+}
+
+/// The REAL options behind the current choice gate, read off the parked
+/// longop rather than inferred from the emitted text stream.
+///
+/// Without this the only thing a caller can show at a choice gate is the
+/// last emitted line — one of the options, indistinguishable from
+/// dialogue — so the player sees neither the full option list nor which
+/// option is focused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LiveSessionChoice {
+    /// A `select`-family text prompt. Labels are the longop's own
+    /// Shift-JIS option strings, decoded here.
+    Text { options: Vec<String> },
+    /// A `select_objbtn`-family prompt over on-screen button objects,
+    /// carrying each option's decoded hit rectangle and art reference.
+    ObjectButtons {
+        options: Vec<ObjectButtonChoiceOption>,
+    },
 }
 
 /// A state transition plus the real text lines emitted while it executed.
@@ -66,6 +88,11 @@ pub struct LiveSession {
     shift_jis: HashSet<(SceneId, u32)>,
     event_index: u64,
     ended: bool,
+    selection: Arc<SelRuntime>,
+    /// Button-object options recorded by the most recent `select_objbtn`
+    /// prompt. Retained across the drive loop because the selection
+    /// runtime's prompt buffer DRAINS on read.
+    object_buttons: Vec<ObjectButtonChoiceOption>,
 }
 
 impl ReplayEngine {
@@ -124,6 +151,8 @@ impl ReplayEngine {
             shift_jis: self.shift_jis.clone(),
             event_index: 0,
             ended: false,
+            selection: handles.selection,
+            object_buttons: Vec::new(),
         };
         let initial = session.drive_to_boundary()?;
         Ok((session, initial))
@@ -158,6 +187,50 @@ impl LiveSession {
     /// The graphics stack produced by the real VM up to the current boundary.
     pub fn graphics_stack(&self) -> crate::GraphicsObjectStack {
         self.graphics.state_snapshot().stack
+    }
+
+    /// The REAL options behind the parked choice gate, or `None` when the
+    /// VM is not waiting on a selection.
+    ///
+    /// A text select reads its labels straight off the queued
+    /// [`SelectLongOp`]; a button select reads the placement metadata the
+    /// selection runtime recorded when it raised the prompt. Neither path
+    /// synthesizes an option, a label, or a coordinate: an option whose
+    /// geometry the runtime could not decode is DROPPED rather than given
+    /// a made-up rectangle.
+    pub fn pending_choice(&self) -> Option<LiveSessionChoice> {
+        let head = self.vm.longop_queue().front()?;
+        match PendingYield::classify(head) {
+            PendingYield::Select { .. } => {
+                let select = SelectLongOp::try_from_longop(head).ok()?;
+                let options = select
+                    .choices()
+                    .iter()
+                    .map(|bytes| encoding_rs::SHIFT_JIS.decode(bytes).0.into_owned())
+                    .collect();
+                Some(LiveSessionChoice::Text { options })
+            }
+            PendingYield::ObjectSelect { .. } => Some(LiveSessionChoice::ObjectButtons {
+                options: self.object_buttons.clone(),
+            }),
+            PendingYield::Pause | PendingYield::Other => None,
+        }
+    }
+
+    /// Fold any selection prompts the runtime raised during this drive
+    /// into the retained button-object option list. The runtime's prompt
+    /// buffer drains on read, so the drive loop must capture it as it goes
+    /// rather than reading it once at the boundary.
+    fn capture_prompts(&mut self) {
+        for prompt in self.selection.take_prompts() {
+            let SelectionPromptKind::ObjectButtons { options, .. } = &prompt.kind else {
+                continue;
+            };
+            self.object_buttons = options
+                .iter()
+                .filter_map(|option| option.render_choice_option().ok())
+                .collect();
+        }
     }
 
     /// Supply one browser input event and advance the retained VM until its
@@ -196,6 +269,7 @@ impl LiveSession {
                     self.event_index = self.event_index.saturating_add(1);
                 }
                 StepOutcome::Suspended { .. } => {
+                    self.capture_prompts();
                     lines.extend(self.sink.drain());
                     return Ok(LiveSessionUpdate {
                         state: self.state(),
@@ -212,6 +286,7 @@ impl LiveSession {
                 }
             }
             let _ = self.vm.take_warnings();
+            self.capture_prompts();
             lines.extend(self.sink.drain());
         }
         Err(LiveSessionError::StepBudgetExhausted {

@@ -207,6 +207,7 @@ impl RenderPass {
         let (mut full_fb, report) = self.rasterise_reporting(stack, RedactionPolicy::Full);
         let full_text_pixels = full_fb.draw_text(text);
         Self::reject_blank_localized(text, full_text_pixels)?;
+        Self::paint_choice(&mut full_fb, emit.choice.as_ref())?;
         full_fb.flatten_over_black();
 
         let private_png = encode_png_rgba_deterministic(&full_fb);
@@ -234,6 +235,7 @@ impl RenderPass {
                 let mut framebuffer = self
                     .rasterise_with_text_policy(stack, text, RedactionPolicy::Redact)
                     .0;
+                Self::paint_choice(&mut framebuffer, emit.choice.as_ref())?;
                 framebuffer.flatten_over_black();
                 framebuffer
             }
@@ -248,6 +250,35 @@ impl RenderPass {
             skipped_objects: report.skipped_objects,
             decode_warnings: report.warnings,
         })
+    }
+
+    /// Paint the choice affordance for the current gate, if any.
+    ///
+    /// NON-VACUOUS SELECTION PROOF: an overlay carrying options that
+    /// paints ZERO pixels means the frame shows the user no choices at
+    /// all — the exact failure a green decode-side gate cannot see. It is
+    /// rejected with [`RenderEmitError::BlankChoiceOverlay`] before the
+    /// PNG is written, rather than emitting a frame that looks like plain
+    /// dialogue while the VM waits for a selection.
+    fn paint_choice(
+        framebuffer: &mut Framebuffer,
+        overlay: Option<&ChoiceOverlay<'_>>,
+    ) -> Result<(), RenderEmitError> {
+        let Some(overlay) = overlay else {
+            return Ok(());
+        };
+        let option_count = match overlay {
+            ChoiceOverlay::Text(choice) => choice.options.len(),
+            ChoiceOverlay::ObjectButtons(choice) => choice.options.len(),
+        };
+        let painted = framebuffer.draw_choice_overlay(overlay);
+        if option_count > 0 && painted == 0 {
+            return Err(RenderEmitError::BlankChoiceOverlay {
+                code: RENDER_PIPELINE_BLANK_CHOICE_OVERLAY_CODE.to_string(),
+                option_count,
+            });
+        }
+        Ok(())
     }
 
     /// Reject a non-empty localized text layer that painted zero pixels.

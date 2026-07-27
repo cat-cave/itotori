@@ -2,6 +2,14 @@ use super::*;
 
 pub const SEL_MODULE_TYPE: u8 = 0;
 
+/// Prefix of the `text_surface` every choice OPTION line carries
+/// (`choice:<index>`, optionally `;`-suffixed with Gameexe `SELBTN`
+/// styling tags). Pinned here so a consumer that must tell an option line
+/// apart from a dialogue line — the live player's message layer, for one —
+/// shares one source of truth with the emitter instead of re-spelling the
+/// literal.
+pub const CHOICE_TEXT_SURFACE_PREFIX: &str = "choice:";
+
 /// `module_sel` module id byte. This is the REAL RealLive semantic id
 /// `2` used by the `kaifuu-reallive` decompiler
 /// (`opcode::module_id::SEL`) and validated on real bytecode.
