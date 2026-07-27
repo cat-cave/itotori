@@ -1,0 +1,115 @@
+/*
+ * Addressable focus / player — where a citation deep-link lands.
+ *
+ * These are ARRIVAL surfaces: a reader clicks a citation in the wiki bible and
+ * has to see, immediately, which entity they arrived at. Every class here had
+ * no rule anywhere, so the arrival line was bare body prose, the focused target
+ * had no boundary of its own (the only box on screen was the browser's default
+ * focus ring on a `tabIndex=-1` section), the return actions were a stack of
+ * `<p>` paragraphs, and a two-line focus statement spanned the full viewport.
+ */
+
+/* --------------------------------------------------------------------------
+ * Shared: the entity id is the point of the screen — mono, accented, and
+ * allowed to break rather than widen the layout.
+ * -------------------------------------------------------------------------- */
+
+.addressable-focus code,
+.addressable-player code {
+  font-family: var(--ito-font-mono);
+  color: var(--ito-color-mint);
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------------
+ * Focus shell — the non-player kinds (route / run / finding / workbench).
+ * -------------------------------------------------------------------------- */
+
+.addressable-focus__panel {
+  /* A one-line focus statement must not be a 1280px-wide row of text. */
+  max-inline-size: 52rem;
+  min-inline-size: 0;
+}
+
+.addressable-focus__panel .itotori-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-10);
+}
+
+.addressable-focus__panel p {
+  margin: 0;
+  color: var(--ito-color-text);
+  line-height: var(--ito-leading-body);
+}
+
+.addressable-focus__panel p[role="alert"] {
+  color: var(--ito-tone-critical-fg);
+}
+
+/* --------------------------------------------------------------------------
+ * Player arrival — the addressed unit / scene, framed as its own region.
+ * -------------------------------------------------------------------------- */
+
+.addressable-player__target {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-10);
+  min-inline-size: 0;
+  padding: var(--ito-space-12);
+  border: 1px solid var(--ito-color-border);
+  border-inline-start: 3px solid var(--ito-color-amber);
+  border-radius: var(--ito-radius);
+  background: var(--ito-color-surface);
+  /* `scrollIntoView` centres this region; keep it clear of the sticky chrome. */
+  scroll-margin-block: var(--ito-space-24);
+}
+
+.addressable-player__target:focus-visible {
+  outline: 2px solid var(--ito-color-focus-ring);
+  outline-offset: 2px;
+}
+
+.addressable-player__arrival {
+  margin: 0;
+  padding: var(--ito-space-6) var(--ito-space-10);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius-tight);
+  background: var(--ito-color-code-well);
+  color: var(--ito-color-text-muted);
+  font-size: var(--ito-text-pixel);
+}
+
+/* --------------------------------------------------------------------------
+ * Return actions — close the loop back to what the reader came from.
+ * -------------------------------------------------------------------------- */
+
+.addressable-player__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ito-space-12);
+  min-inline-size: 0;
+}
+
+.addressable-player__actions p {
+  margin: 0;
+}
+
+.addressable-player__actions a {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 2rem;
+  padding: 0 var(--ito-space-12);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius-pill);
+  background: var(--ito-color-code-well);
+  color: var(--ito-color-cyan);
+  font-size: var(--ito-text-pixel);
+  text-decoration: none;
+}
+
+.addressable-player__actions a:hover {
+  border-color: var(--ito-color-cyan);
+  background: var(--ito-color-raised);
+}

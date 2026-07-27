@@ -1,0 +1,48 @@
+/*
+ * Catalog candidate browser — the ranked-candidate surface.
+ *
+ * Its three classes had no rule anywhere, so the aggregate strip ran straight
+ * into the first panel and the two panels abutted with no seam. The readiness
+ * matrix is seven columns wide; without an own-scroll it is the one table that
+ * can push the whole page sideways on a narrow display.
+ */
+
+.catalog-candidate-browser__body {
+  display: grid;
+  gap: var(--ito-space-16);
+  align-items: start;
+  min-inline-size: 0;
+}
+
+.catalog-candidate-browser__panel .itotori-panel__body {
+  /* The wide matrix scrolls INSIDE its panel; the document never does. */
+  overflow-x: auto;
+  min-inline-size: 0;
+}
+
+/* Candidate identity: the title reads as the row's subject, its work id as a
+ * mono sub-line rather than a second sentence in the same voice. */
+.catalog-candidate-browser__panel .itotori-datatable__td code {
+  display: inline-block;
+  margin-block-start: var(--ito-space-4);
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel-tight);
+  color: var(--ito-color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Rank is the browser's ordering key — call it out in the accent ink. The
+ * end-aligned leading cell is the rank column and nothing else; the readiness
+ * matrix leads with a candidate title, which must stay body ink. */
+.catalog-candidate-browser__panel .itotori-datatable__td:first-child.itotori-align-end {
+  font-family: var(--ito-font-mono);
+  color: var(--ito-color-amber);
+  white-space: nowrap;
+}
+
+/* The screen root: the aggregate readouts sit above the panels as their own
+ * band, with the same rhythm as the panels below them. */
+.catalog-candidate-browser .itotori-metric-row {
+  padding-block-end: var(--ito-space-8);
+  border-block-end: 1px solid var(--ito-color-divider);
+}

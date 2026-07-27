@@ -1,0 +1,177 @@
+/*
+ * The Play surfaces — hub, route map, and flag composer.
+ *
+ * Eighteen class names across these three screens had no CSS rule anywhere.
+ * "Play" is a top-level nav pill, so this is the surface a reviewer reaches
+ * first after the workbench, and it rendered as browser-default HTML inside the
+ * styled frame: the hub's tool links as three stacked bare `<p>` paragraphs,
+ * the route-map panels abutting with no seam and the diagram clipped rather
+ * than scrolled, and the composer's denial and outcome lines as ordinary body
+ * prose indistinguishable from the copy above them.
+ *
+ * Layout and rhythm only; colour, type, and spacing are existing
+ * `@itotori/ds` tokens.
+ */
+
+/* --------------------------------------------------------------------------
+ * Shared: route keys, version ids, and correction ids are the identifiers a
+ * tester quotes back — mono, accented, and breakable.
+ * -------------------------------------------------------------------------- */
+
+.play-hub code,
+.play-routemap code,
+.play-flag code {
+  font-family: var(--ito-font-mono);
+  color: var(--ito-color-mint);
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------------
+ * Play hub.
+ * -------------------------------------------------------------------------- */
+
+.play-hub__versions .itotori-panel__body,
+.play-hub__route-map .itotori-panel__body,
+.play-hub__tools .itotori-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-10);
+  min-inline-size: 0;
+}
+
+.play-hub__tools p {
+  margin: 0;
+  color: var(--ito-color-text-muted);
+  font-size: var(--ito-text-pixel);
+  line-height: var(--ito-leading-body);
+}
+
+/* The two context actions are the point of the panel: chrome, not body links. */
+.play-hub__tools a {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 2rem;
+  padding: 0 var(--ito-space-12);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius-pill);
+  background: var(--ito-color-code-well);
+  color: var(--ito-color-cyan);
+  font-size: var(--ito-text-pixel);
+  text-decoration: none;
+}
+
+.play-hub__tools a:hover {
+  border-color: var(--ito-color-cyan);
+  background: var(--ito-color-raised);
+}
+
+/* The versions table carries hashes; let it scroll inside its panel. */
+.play-hub__versions .itotori-datatable {
+  overflow-x: auto;
+}
+
+/* --------------------------------------------------------------------------
+ * Route map.
+ * -------------------------------------------------------------------------- */
+
+.play-routemap__body {
+  display: grid;
+  gap: var(--ito-space-16);
+  align-items: start;
+  min-inline-size: 0;
+}
+
+.play-routemap__counts .itotori-panel__tick {
+  background: var(--ito-color-mint);
+}
+
+.play-routemap__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ito-space-8);
+  margin: 0;
+}
+
+/* The diagram has its own intrinsic width; scroll it rather than clip it. */
+.play-routemap__map .itotori-panel__body {
+  overflow-x: auto;
+  min-inline-size: 0;
+}
+
+.play-routemap__detail {
+  min-inline-size: 0;
+}
+
+.play-routemap__detail .itotori-panel__tick {
+  background: var(--ito-color-sakura);
+}
+
+.play-routemap__detail-summary {
+  margin: 0 0 var(--ito-space-8);
+  color: var(--ito-color-text);
+  font-size: var(--ito-text-body);
+  line-height: var(--ito-leading-body);
+  max-inline-size: var(--ito-prose-measure);
+}
+
+.play-routemap__detail-meta {
+  margin: 0;
+  color: var(--ito-color-text-muted);
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------------
+ * Flag composer.
+ * -------------------------------------------------------------------------- */
+
+/* The composer is a form, not a 1280px band — but the cap belongs to the whole
+ * column so the feedback list below it stays flush with the composer above. */
+.play-flag__body {
+  display: grid;
+  gap: var(--ito-space-16);
+  align-items: start;
+  max-inline-size: 60rem;
+  min-inline-size: 0;
+}
+
+.play-flag__panel {
+  min-inline-size: 0;
+}
+
+.play-flag__panel .itotori-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-12);
+  min-inline-size: 0;
+}
+
+/* A refusal has to look like a refusal, not like the paragraph above it. */
+.play-flag__denial {
+  margin: 0;
+  padding: var(--ito-space-8) var(--ito-space-10);
+  border: 1px solid var(--ito-severity-warning-border);
+  border-radius: var(--ito-radius-tight);
+  background: var(--ito-severity-warning-bg);
+  color: var(--ito-severity-warning);
+  font-size: var(--ito-text-pixel);
+}
+
+.play-flag__status {
+  margin: 0;
+  padding: var(--ito-space-8) var(--ito-space-10);
+  border: 1px solid var(--ito-tone-ok-border);
+  border-radius: var(--ito-radius-tight);
+  background: var(--ito-tone-ok-bg);
+  color: var(--ito-tone-ok-fg);
+  font-size: var(--ito-text-pixel);
+  overflow-wrap: anywhere;
+}
+
+.play-flag__status[role="alert"] {
+  border-color: var(--ito-tone-critical-border);
+  background: var(--ito-tone-critical-bg);
+  color: var(--ito-tone-critical-fg);
+}

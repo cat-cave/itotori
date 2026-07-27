@@ -16,12 +16,13 @@ import { useState, type ReactNode } from "react";
 import { AnnotationComposer, Panel, type AnnotationComposerValue } from "@itotori/ds";
 import type { ApiPlayFlagAnnotationResponse } from "../../api-schema.js";
 import { apiClient } from "../client.js";
-import { CapGatedButton, useCaps } from "../caps-context.js";
+import { useCaps } from "../caps-context.js";
 import { useApiQuery } from "../use-api-resource.js";
 import { useWorkflowHandoffToasts } from "../workflow-handoff-toasts.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
 import { parseReturnTo } from "../return-to.js";
 import { UnitBoundFeedbackList } from "./unit-bound-feedback-list.js";
+import "./play.css";
 
 export const playFlagComposerRoutePathRegex = /^\/play\/flag\/?$/u;
 
@@ -271,10 +272,6 @@ function PlayFlagComposerForBranch({
             contextLabel={contextLabel}
             submitLabel="Send correction"
           />
-          {/* CapGatedButton mirrors the composer submit gate for a11y audit. */}
-          <div className="play-flag__cap-mirror" hidden>
-            <CapGatedButton capability="flag">Send correction</CapGatedButton>
-          </div>
           {outcome?.kind === "ok" && (
             <p
               role="status"

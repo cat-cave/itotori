@@ -20,6 +20,7 @@ import type {
 import { Badge, DataTable, Panel, StatReadout } from "@itotori/ds";
 import { useApiQuery } from "../use-api-resource.js";
 import { EmptyState, ErrorState, LoadingState, ShellHeader } from "../states.js";
+import "./CatalogCandidateBrowserScreen.css";
 
 export const catalogCandidateBrowserRoutePathRegex = /^\/catalog\/?$/u;
 

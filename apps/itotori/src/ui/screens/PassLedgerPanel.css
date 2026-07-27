@@ -1,0 +1,99 @@
+/*
+ * Execution-journal panel — the two steering actions ("Launch next pass",
+ * "Produce patched build") and their outcome lines.
+ *
+ * Both action strips referenced class names with no rule anywhere, so the two
+ * controls rendered as raw browser `<button>`s stacked flush against the top
+ * left of the panel body, colliding with the metric row beneath them. These are
+ * the panel's only mutating controls; they have to read as chrome.
+ */
+
+.itotori-panel--pass-ledger .itotori-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-12);
+  min-inline-size: 0;
+}
+
+/* --------------------------------------------------------------------------
+ * Action strips — one row: the control, then its status or refusal beside it.
+ * -------------------------------------------------------------------------- */
+
+.itotori-launch-pass,
+.itotori-launch-pass-action,
+.itotori-produce-build,
+.itotori-produce-build-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ito-space-10);
+  min-inline-size: 0;
+}
+
+.itotori-launch-pass button,
+.itotori-launch-pass-action button,
+.itotori-produce-build button,
+.itotori-produce-build-action button {
+  min-block-size: 2.25rem;
+  padding: 0 var(--ito-space-14);
+  color: var(--ito-color-text);
+  background: var(--ito-color-code-well);
+  border: 1px solid var(--ito-color-mint);
+  border-radius: var(--ito-radius-pill);
+  font-family: var(--ito-font-display);
+  font-size: var(--ito-text-body);
+  cursor: pointer;
+}
+
+.itotori-launch-pass button:hover,
+.itotori-launch-pass-action button:hover,
+.itotori-produce-build button:hover,
+.itotori-produce-build-action button:hover {
+  background: var(--ito-color-raised);
+}
+
+/* A denied or in-flight control stays readable — dimmed, never invisible. */
+.itotori-launch-pass button:disabled,
+.itotori-launch-pass-action button:disabled,
+.itotori-produce-build button:disabled,
+.itotori-produce-build-action button:disabled {
+  border-color: var(--ito-color-border);
+  color: var(--ito-color-text-muted);
+  cursor: not-allowed;
+}
+
+/* The permission reason that explains a disabled control. */
+.itotori-launch-pass [data-cap-denial],
+.itotori-produce-build [data-cap-denial] {
+  color: var(--ito-color-text-muted);
+  font-size: var(--ito-text-pixel);
+}
+
+/* --------------------------------------------------------------------------
+ * Outcome lines — a started run, or a refusal / transport failure.
+ * -------------------------------------------------------------------------- */
+
+.itotori-launch-pass-action__status,
+.itotori-produce-build-action__status {
+  margin: 0;
+  color: var(--ito-color-mint);
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+  overflow-wrap: anywhere;
+}
+
+.itotori-launch-pass-action__error,
+.itotori-produce-build-action__error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ito-space-8);
+  margin: 0;
+  padding: var(--ito-space-6) var(--ito-space-10);
+  border: 1px solid var(--ito-tone-critical-border);
+  border-radius: var(--ito-radius-tight);
+  background: var(--ito-tone-critical-bg);
+  color: var(--ito-tone-critical-fg);
+  font-size: var(--ito-text-pixel);
+  overflow-wrap: anywhere;
+}

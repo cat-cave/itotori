@@ -22,7 +22,7 @@
 
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { CommandPalette, useCommandPaletteShortcut, type CommandItem } from "@itotori/ds";
-import { SHELL_NAV_ITEMS } from "./shell-frame.js";
+import { SHELL_NAV_ITEMS } from "./shell-nav-routes.js";
 
 /**
  * A palette entry is a ds `CommandItem` plus the addressable URL the shell
