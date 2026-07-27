@@ -7,7 +7,9 @@ use kaifuu_siglus::{
     SiglusSecondLayerKey, decode_scene_chunk, decode_scene_flow, parse_scene_pck,
     recover_exe_angou_key,
 };
-use utsushi_siglus::scene_vm::{Moment, SceneProgram, VmError, VmState, execute_scene};
+use utsushi_siglus::scene_vm::{
+    Moment, SceneProgram, TitleProgram, VmError, VmState, execute_title_scene,
+};
 
 const FIRST: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
 const SECOND: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
@@ -15,9 +17,13 @@ const SECOND: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS_2";
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Totals {
     scenes: usize,
+    static_text: usize,
     instructions: usize,
     text: usize,
+    text_nonempty: usize,
+    speakers: usize,
     choices: usize,
+    choice_options: usize,
     overlap: usize,
     unsupported_syscalls: BTreeMap<(i32, i32), usize>,
     other_terminal_errors: BTreeMap<String, usize>,
@@ -69,12 +75,13 @@ fn execute_title(root: &Path, label: &str) -> Totals {
         &SiglusSecondLayerKey::from_secret_ref(format!("secret://utsushi/{label}")),
     )
     .expect("recover scene key");
-    let mut state = VmState::default();
     let mut totals = Totals {
         scenes: index.entries.len(),
         ..Totals::default()
     };
-    for entry in index.entries {
+    let mut programs = Vec::with_capacity(index.entries.len());
+    let mut static_offsets = BTreeMap::new();
+    for entry in &index.entries {
         let start = entry.byte_offset as usize;
         let end = start + entry.byte_len as usize;
         let payload = decode_scene_chunk(
@@ -84,15 +91,22 @@ fn execute_title(root: &Path, label: &str) -> Totals {
             index.extra_key_use.then_some(key.material()),
         )
         .expect("decode scene");
-        let program = SceneProgram::from_payload(entry.scene_id, &payload).expect("compile scene");
-        let static_offsets = decode_scene_flow(&payload)
+        programs.push(SceneProgram::from_payload(entry.scene_id, &payload).expect("compile scene"));
+        let offsets = decode_scene_flow(&payload)
             .expect("decode static flow")
             .text_surfaces
             .into_iter()
             .filter(|surface| !surface.is_name)
             .map(|surface| surface.site_offset)
             .collect::<Vec<_>>();
-        match execute_scene(&program, &mut state) {
+        totals.static_text += offsets.len();
+        static_offsets.insert(entry.scene_id, offsets);
+    }
+    let program = TitleProgram::from_scenes(programs, &index.included_commands)
+        .expect("validate archive-level function table");
+    let mut state = VmState::default();
+    for entry in &index.entries {
+        match execute_title_scene(&program, entry.scene_id, &mut state) {
             Ok(report) => record(
                 &mut totals,
                 report.instructions_executed,
@@ -123,24 +137,46 @@ fn execute_title(root: &Path, label: &str) -> Totals {
     totals
 }
 
-fn record(totals: &mut Totals, instructions: usize, moments: &[Moment], static_offsets: &[usize]) {
+fn record(
+    totals: &mut Totals,
+    instructions: usize,
+    moments: &[Moment],
+    static_offsets: &BTreeMap<u32, Vec<usize>>,
+) {
     totals.instructions += instructions;
-    let mut prior = 0;
+    let mut prior = BTreeMap::new();
     for moment in moments {
         match moment {
-            Moment::Text { offset, .. } => {
+            Moment::Text {
+                scene_id,
+                offset,
+                speaker,
+                text,
+            } => {
                 totals.text += 1;
-                let Some(position) = static_offsets
+                totals.text_nonempty += usize::from(!text.is_empty());
+                totals.speakers += usize::from(speaker.is_some());
+                let Some(scene_offsets) = static_offsets.get(scene_id) else {
+                    panic!("executed text scene {scene_id} was absent from static walk")
+                };
+                let Some(position) = scene_offsets
                     .iter()
                     .position(|candidate| candidate == offset)
                 else {
                     panic!("executed text offset {offset} was absent from the static walk")
                 };
-                assert!(position >= prior, "executed text regressed in static order");
-                prior = position;
+                let prior_offset = prior.entry(*scene_id).or_insert(0);
+                assert!(
+                    position >= *prior_offset,
+                    "executed text regressed in static order"
+                );
+                *prior_offset = position;
                 totals.overlap += 1;
             }
-            Moment::Choice { .. } => totals.choices += 1,
+            Moment::Choice { options, .. } => {
+                totals.choices += 1;
+                totals.choice_options += options.len();
+            }
         }
     }
 }

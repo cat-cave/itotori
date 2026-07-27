@@ -2,7 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use kaifuu_siglus::{SiglusInstruction, SiglusOperand, decode_operand, partition_scene};
+use kaifuu_siglus::{
+    SiglusIncludedCommand, SiglusInstruction, SiglusOperand, decode_operand, partition_scene,
+};
 use thiserror::Error;
 
 /// Decoded, executable instruction with its bytecode coordinate retained.
@@ -23,6 +25,20 @@ pub struct SceneProgram {
     pub(crate) strings: BTreeMap<i32, String>,
 }
 
+/// All decoded scenes plus the pack-level user-command indirection table.
+#[derive(Debug, Clone)]
+pub struct TitleProgram {
+    scenes: BTreeMap<u32, SceneProgram>,
+    included_commands: Vec<FunctionTarget>,
+}
+
+/// A script-function entry point resolved to an executable scene coordinate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FunctionTarget {
+    pub(crate) scene_id: u32,
+    pub(crate) pc: usize,
+}
+
 /// Scene-program construction failure. No bytecode is skipped on an error.
 #[derive(Debug, Error)]
 pub enum SceneProgramError {
@@ -37,6 +53,17 @@ pub enum SceneProgramError {
         "utsushi.siglus.vm.invalid_label: label {label} targets non-instruction offset {offset}"
     )]
     InvalidLabel { label: usize, offset: usize },
+}
+
+/// A pack-level script-function target was not an instruction boundary.
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum TitleProgramError {
+    /// The archive named a scene which was not supplied to the title program.
+    #[error("utsushi.siglus.vm.missing_function_scene: scene {scene_id}")]
+    MissingFunctionScene { scene_id: u32 },
+    /// A command offset did not name an executable instruction.
+    #[error("utsushi.siglus.vm.invalid_function_target: scene {scene_id} offset {offset}")]
+    InvalidFunctionTarget { scene_id: u32, offset: usize },
 }
 
 impl SceneProgram {
@@ -106,6 +133,64 @@ impl SceneProgram {
             .and_then(|index| self.functions.get(index))
             .copied()
             .flatten()
+    }
+}
+
+impl TitleProgram {
+    /// Combine independently decoded scenes with the archive's shared command table.
+    pub fn from_scenes(
+        scenes: Vec<SceneProgram>,
+        included_commands: &[SiglusIncludedCommand],
+    ) -> Result<Self, TitleProgramError> {
+        let scenes: BTreeMap<u32, SceneProgram> = scenes
+            .into_iter()
+            .map(|scene| (scene.scene_id, scene))
+            .collect();
+        let included_commands = included_commands
+            .iter()
+            .map(|entry| {
+                let scene =
+                    scenes
+                        .get(&entry.scene_id)
+                        .ok_or(TitleProgramError::MissingFunctionScene {
+                            scene_id: entry.scene_id,
+                        })?;
+                let offset = entry.byte_offset as usize;
+                scene
+                    .offsets
+                    .get(&offset)
+                    .copied()
+                    .map(|pc| FunctionTarget {
+                        scene_id: entry.scene_id,
+                        pc,
+                    })
+                    .ok_or(TitleProgramError::InvalidFunctionTarget {
+                        scene_id: entry.scene_id,
+                        offset,
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Self {
+            scenes,
+            included_commands,
+        })
+    }
+
+    pub(crate) fn scene(&self, scene_id: u32) -> Option<&SceneProgram> {
+        self.scenes.get(&scene_id)
+    }
+
+    pub(crate) fn function(&self, scene_id: u32, index: i32) -> Option<FunctionTarget> {
+        let index = usize::try_from(index).ok()?;
+        self.included_commands.get(index).copied().or_else(|| {
+            self.scenes
+                .get(&scene_id)?
+                .functions
+                .get(index.checked_sub(self.included_commands.len())?)?
+                .as_ref()
+                .copied()
+                .map(|pc| FunctionTarget { scene_id, pc })
+        })
     }
 }
 

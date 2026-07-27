@@ -52,12 +52,25 @@ struct HeaderPair {
 #[serde(rename_all = "camelCase")]
 pub struct SiglusSceneIndex {
     pub entries: Vec<SiglusSceneEntry>,
+    /// Pack-level user-command entry points. Script-function element codes
+    /// address this table before a scene's local command table.
+    pub included_commands: Vec<SiglusIncludedCommand>,
     /// Whether the packed scene payloads were masked with the per-game
     /// second-layer key (the header `extra_key_use` flag). When set, decoding a
     /// payload requires the recovered key material.
     pub extra_key_use: bool,
     /// Absolute byte offset where the scene-data payload region begins.
     pub scene_data_region_offset: u64,
+}
+
+/// One pack-level user-command entry point.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiglusIncludedCommand {
+    /// Scene containing the command body.
+    pub scene_id: u32,
+    /// Bytecode-relative offset of its first instruction.
+    pub byte_offset: u32,
 }
 
 /// Single packed-scene directory entry recovered from the `Scene.pck`
@@ -132,6 +145,8 @@ pub enum SiglusArchiveError {
 
 /// Fixed-header field indices (post-signature), by name.
 mod field {
+    pub const INC_CMD_LIST_OFS: usize = 7;
+    pub const INC_CMD_CNT: usize = 8;
     pub const SCN_NAME_INDEX_LIST_OFS: usize = 13;
     pub const SCN_NAME_INDEX_CNT: usize = 14;
     pub const SCN_NAME_LIST_OFS: usize = 15;
@@ -177,6 +192,21 @@ fn read_pairs(
         });
     }
     Ok(pairs)
+}
+
+fn read_included_commands(
+    bytes: &[u8],
+    list_offset: u32,
+    count: u32,
+) -> Result<Vec<SiglusIncludedCommand>, SiglusArchiveError> {
+    let pairs = read_pairs(bytes, list_offset, count, "included_command")?;
+    Ok(pairs
+        .into_iter()
+        .map(|pair| SiglusIncludedCommand {
+            scene_id: pair.offset,
+            byte_offset: pair.count,
+        })
+        .collect())
 }
 
 fn read_name(bytes: &[u8], name_list_ofs: u32, entry: HeaderPair) -> Option<String> {
@@ -230,6 +260,11 @@ pub fn parse_scene_pck(bytes: &[u8]) -> Result<SiglusSceneIndex, SiglusArchiveEr
         field(field::SCN_NAME_INDEX_CNT),
         "scene_name_index",
     )?;
+    let included_commands = read_included_commands(
+        bytes,
+        field(field::INC_CMD_LIST_OFS),
+        field(field::INC_CMD_CNT),
+    )?;
     let data_index_pairs = read_pairs(
         bytes,
         field(field::SCN_DATA_INDEX_LIST_OFS),
@@ -277,6 +312,7 @@ pub fn parse_scene_pck(bytes: &[u8]) -> Result<SiglusSceneIndex, SiglusArchiveEr
 
     Ok(SiglusSceneIndex {
         entries,
+        included_commands,
         extra_key_use,
         scene_data_region_offset: u64::from(data_list_ofs),
     })
@@ -320,7 +356,8 @@ mod tests {
         // Build a tiny Scene.pck: header + one name-index pair + name buffer +
         // one data-index pair + a 3-byte scene payload.
         let header_len = SCENE_PCK_HEADER_BYTE_LEN;
-        let name_index_ofs = header_len; // 0x5C
+        let included_command_ofs = header_len; // one `(scene, bytecode-offset)` pair
+        let name_index_ofs = included_command_ofs + 8;
         let name_list_ofs = name_index_ofs + 8; // one (char_off, char_cnt) pair
         // name "ab" -> 2 UTF-16LE units = 4 bytes
         let data_index_ofs = name_list_ofs + 4;
@@ -331,6 +368,12 @@ mod tests {
             b[idx * 4..idx * 4 + 4].copy_from_slice(&v.to_le_bytes());
         };
         put(&mut bytes, 0, header_len as u32);
+        put(
+            &mut bytes,
+            field::INC_CMD_LIST_OFS,
+            included_command_ofs as u32,
+        );
+        put(&mut bytes, field::INC_CMD_CNT, 1);
         put(
             &mut bytes,
             field::SCN_NAME_INDEX_LIST_OFS,
@@ -357,6 +400,13 @@ mod tests {
 
         let index = parse_scene_pck(&bytes).expect("minimal archive parses");
         assert_eq!(index.entries.len(), 1);
+        assert_eq!(
+            index.included_commands,
+            vec![SiglusIncludedCommand {
+                scene_id: 0,
+                byte_offset: 0,
+            }]
+        );
         assert!(index.extra_key_use);
         assert_eq!(index.scene_data_region_offset, data_list_ofs as u64);
         let entry = &index.entries[0];

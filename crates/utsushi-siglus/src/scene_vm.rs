@@ -7,9 +7,9 @@
 
 mod eval;
 mod execute;
+mod model;
 mod program;
 
-pub use execute::{
-    ChoicePolicy, ExecutionReport, Moment, SceneVm, VmError, VmState, execute_scene,
-};
-pub use program::{SceneProgram, SceneProgramError};
+pub use execute::{execute_scene, execute_title_scene};
+pub use model::{ChoicePolicy, ExecutionReport, Moment, SceneVm, VmError, VmState};
+pub use program::{SceneProgram, SceneProgramError, TitleProgram, TitleProgramError};

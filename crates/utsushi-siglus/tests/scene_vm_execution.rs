@@ -1,6 +1,50 @@
 //! Black-box execution proofs for the real scene-bytecode interpreter.
 
-use utsushi_siglus::scene_vm::{Moment, SceneProgram, VmState, execute_scene};
+use kaifuu_siglus::SiglusIncludedCommand;
+use utsushi_siglus::scene_vm::{
+    Moment, SceneProgram, TitleProgram, VmState, execute_scene, execute_title_scene,
+};
+
+#[test]
+fn dispatches_pack_included_script_function_into_its_target_scene() {
+    let mut caller = Vec::new();
+    elm(&mut caller);
+    push_int(&mut caller, 0x7e00_0000_u32 as i32);
+    command(&mut caller, 0, 0);
+    caller.push(0x16);
+    let mut callee = Vec::new();
+    push_str(&mut callee, 0);
+    text(&mut callee);
+    callee.push(0x15);
+    word(&mut callee, 0);
+
+    let title = TitleProgram::from_scenes(
+        vec![
+            SceneProgram::from_payload(1, &payload(&caller, &[], &[])).expect("caller compiles"),
+            SceneProgram::from_payload(2, &payload(&callee, &[], &["dispatched"]))
+                .expect("callee compiles"),
+        ],
+        &[SiglusIncludedCommand {
+            scene_id: 2,
+            byte_offset: 0,
+        }],
+    )
+    .expect("included target is an instruction boundary");
+    let report = execute_title_scene(&title, 1, &mut VmState::default())
+        .expect("included function returns to its caller");
+
+    assert_eq!(report.instructions_executed, 7);
+    assert_eq!(
+        report.moments,
+        vec![Moment::Text {
+            scene_id: 2,
+            offset: 9,
+            speaker: None,
+            text: "dispatched".to_string(),
+        }],
+        "removing archive-level dispatch leaves no reachable text"
+    );
+}
 
 #[test]
 fn executes_assignment_expression_branch_call_and_choice_in_program_order() {
@@ -53,11 +97,13 @@ fn executes_assignment_expression_branch_call_and_choice_in_program_order() {
         report.moments,
         vec![
             Moment::Text {
+                scene_id: 7,
                 offset: 53,
                 speaker: None,
                 text: "wrong".to_string(),
             },
             Moment::Choice {
+                scene_id: 7,
                 offset: 105,
                 options: vec!["one".to_string(), "two".to_string()],
                 chosen: 0,
