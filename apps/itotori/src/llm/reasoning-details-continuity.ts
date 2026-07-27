@@ -16,6 +16,24 @@ export interface ReasoningDetailsContinuity {
   evidence(): ReasoningDetailsContinuityEvidence;
 }
 
+const NO_REASONING_DETAILS: ReasoningDetailsContinuityEvidence = {
+  receivedBatchCount: 0,
+  receivedDetailCount: 0,
+  forwardedBatchCount: 0,
+  forwardedDetailCount: 0,
+  exactForwardCount: 0,
+};
+
+/** A terminal-only call cannot forward reasoning into a later tool turn. */
+export function reasoningDetailsContinuity(
+  hasToolContinuations: boolean,
+  fetcher: TransportFetcher,
+): ReasoningDetailsContinuity {
+  return hasToolContinuations
+    ? preserveReasoningDetails(fetcher)
+    : { fetcher, evidence: () => NO_REASONING_DETAILS };
+}
+
 /**
  * Preserve provider-owned reasoning details across local tool turns. The
  * pinned adapter surfaces their text to TanStack but does not serialize the

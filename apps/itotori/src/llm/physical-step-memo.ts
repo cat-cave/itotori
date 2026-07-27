@@ -120,19 +120,13 @@ export function memoizePhysicalSteps(
         },
         execute: async (attempt, control) => {
           const chunks: StreamChunk[] = [];
-          // The model request is in flight until the stream is fully collected.
-          // A transport failure raised in this window is a retryable mid-flight
-          // drop; a failure raised afterward (completion phase) is not.
+          // Transport failures while the stream is in flight are retryable; completion failures are not.
           let streamPhase = true;
           try {
             await injectLlmDurabilityFault(runtime.durabilityFaults, "before-dispatch");
             await collectStreamChunks(outbound(control.signal), control, chunks);
             const runError = chunks.findLast((chunk) => chunk.type === EventType.RUN_ERROR);
-            // The adapter discards finish/usage data on its RUN_ERROR path, so
-            // it cannot distinguish a mid-stream drop from a completed response
-            // whose response was lost. Treat that ambiguity as terminal and
-            // billing-unknown; only a raw transport exception reaches the catch
-            // below during the retryable stream phase.
+            // RUN_ERROR is ambiguous after adapter normalization, so preserve it as terminal/billing-unknown.
             const failure = runError
               ? (control.failure(runError, "completion") ?? permanentAttemptFailure())
               : null;
@@ -359,6 +353,11 @@ function deriveStepIdentity(
     sampleId: spec.sampleId,
     boundary,
     stepOrdinal,
+    route: {
+      model: spec.requestedModel,
+      profileVersion: spec.modelProfileVersion,
+      policy: spec.providerPolicy,
+    },
   });
   const key = PhysicalStepMemoKeySchema.parse({
     schemaVersion: PHYSICAL_STEP_MEMO_KEY_SCHEMA_VERSION,
