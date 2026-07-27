@@ -68,7 +68,7 @@ export const SPEC_DAG_PATH = "roadmap/spec-dag.json";
 
 // The fresh-clone public-fixture demo command. Public-fixture-only, deterministic,
 // no DB / creds / private corpora.
-export const DEMO_RECIPE = "alpha-demo";
+export const DEMO_RECIPE = "alpha-proof";
 
 // Required node references the readiness gate must validate.
 export const REQUIRED_NODE_REFS = [
@@ -451,11 +451,9 @@ export function runChecklist() {
 
   // Check D — fresh-clone public-fixture demo command exists and is public-only.
   //
-  // `alpha-demo` DELEGATES (`alpha-demo: alpha-proof`) and has no inline body, so
-  // scanning only its (empty) body is vacuous. Instead walk the TRANSITIVE recipe
-  // dependency chain (alpha-demo -> alpha-proof -> ...) and scan EVERY reachable
-  // recipe body: a forbidden token anywhere in the chain that actually runs must
-  // be caught.
+  // `alpha-proof` is the canonical fresh-clone public-fixture command. Scan its
+  // transitive dependency chain and every reachable recipe body: a forbidden
+  // token anywhere in the executed chain must be caught.
   const justfile = readFileSync(resolve(repoRoot, JUSTFILE_PATH), "utf8");
   const scan = scanDemoRecipeChain(justfile, DEMO_RECIPE);
   if (scan.missing) {

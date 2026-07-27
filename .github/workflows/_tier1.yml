@@ -193,7 +193,7 @@ jobs:
       - uses: ./.github/actions/setup-itotori
 
       - name: Run alpha proof
-        run: just ci-tier1-alpha
+        run: just alpha-proof
 
   mutation:
     name: Tier 1 / mutation differential

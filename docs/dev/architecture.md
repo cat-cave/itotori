@@ -179,8 +179,7 @@ than declared.
 The public-fixture vertical intentionally avoids copyrighted game files. It proves the contract between the projects without claiming real-engine support or translation quality.
 
 The alpha proof gate (`just alpha-proof`, run by the `alpha` job in
-[`.github/workflows/_tier1.yml`](../../.github/workflows/_tier1.yml) via
-`just ci-tier1-alpha`) is
+[`.github/workflows/_tier1.yml`](../../.github/workflows/_tier1.yml)) is
 the deterministic integration guardrail on the public-fixture path. It validates
 real cross-project artifact linkage — bridge, patch, PatchResult, provider
 proof, benchmark, runtime observation, dashboard/read-model ingestion, and the

@@ -46,7 +46,7 @@ export const PUBLIC_SECRETLESS_LANES = new Set([
   "ci-tier1-rust-2of3",
   "ci-tier1-rust-3of3",
   "ci-tier1-db",
-  "ci-tier1-alpha",
+  "alpha-proof",
   "ci-tier1-mutation",
 ]);
 

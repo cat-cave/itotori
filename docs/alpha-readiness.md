@@ -46,10 +46,10 @@ stage in isolation.
 From a clean checkout, after `just install`:
 
 ```sh
-just alpha-demo
+just alpha-proof
 ```
 
-`just alpha-demo` runs the public-fixture alpha vertical (`just alpha-proof`):
+`just alpha-proof` runs the public-fixture alpha vertical:
 Kaifuu extraction → Itotori draft/patch export → Utsushi runtime observation →
 sanitized provider proof → fresh ITOTORI-026 benchmark → SHARED-025 manifest,
 then independently re-proves cross-artifact linkage. It is **public-fixture-only
@@ -130,7 +130,7 @@ recorded-or-opted-in real-provider proof.
 | node          | proves                                                                                                                                                  |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ALPHA-006`   | first real-engine end-to-end alpha vertical (RealLive); the live provider path (`alpha-006d` full-chain + `agentic-repair-live` residue) is opt-in.     |
-| `ALPHA-007`   | suite public-fixture vertical run (`just alpha-proof` / `just alpha-demo`).                                                                             |
+| `ALPHA-007`   | suite public-fixture vertical run (`just alpha-proof`).                                                                                                 |
 | `ALPHA-008`   | sanitized live-provider proof bundle.                                                                                                                   |
 | `ITOTORI-116` | public real-LLM proof harness (recorded by default; `--live` opt-in).                                                                                   |
 | `ITOTORI-117` | real-LLM degenerate raw-MTL baseline proof through the same harness.                                                                                    |
@@ -191,7 +191,7 @@ pnpm exec vp run kaifuu:encrypted-readiness -- --no-corpus
 | gate                | command / workflow                                                               | scope                                                                               |
 | ------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | CI                  | `.github/workflows/pr-tiers.yml` → `_tier0.yml` / `_tier1.yml` (`just ci-tier*`) | tiered TS + Rust + DB + browser + alpha + mutation gates.                           |
-| Alpha proof         | `_tier1.yml` `alpha` job → `just ci-tier1-alpha` → `just alpha-proof`            | public-fixture vertical + independent linkage validator.                            |
+| Alpha proof         | `_tier1.yml` `alpha` job → `just alpha-proof`                                    | public-fixture vertical + independent linkage validator.                            |
 | Readiness checklist | `just alpha-readiness-checklist` (in `just check`)                               | docs-vs-generated-artifact drift + node refs + patched-output proof + demo command. |
 
 ## 6. Running the checklist
