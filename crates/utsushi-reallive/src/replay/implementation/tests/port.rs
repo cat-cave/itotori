@@ -5,7 +5,7 @@ fn selected_port_pass_keeps_prompt_trace_aligned_with_its_lines() {
     let branch_prompt = prompt(1, "branch-line");
     let linear_prompt = prompt(2, "linear-line");
     // Branch reached a terminus → its play order is authoritative.
-    let (lines, prompts) = select_port_pass(
+    let (lines, prompts, source) = select_port_pass(
         vec![line("branch-line")],
         vec![branch_prompt.clone()],
         PassTermination::NaturalTerminus,
@@ -15,9 +15,10 @@ fn selected_port_pass_keeps_prompt_trace_aligned_with_its_lines() {
     );
     assert_eq!(lines[0].line_id, "branch-line");
     assert_eq!(prompts, vec![branch_prompt]);
+    assert_eq!(source, PlayOrderSource::BranchFollowing);
 
     // Branch reached no dialogue → linear catalogue fallback (existing).
-    let (lines, prompts) = select_port_pass(
+    let (lines, prompts, source) = select_port_pass(
         vec![],
         vec![prompt(3, "unused-branch-prompt")],
         PassTermination::NaturalTerminus,
@@ -27,6 +28,7 @@ fn selected_port_pass_keeps_prompt_trace_aligned_with_its_lines() {
     );
     assert_eq!(lines[0].line_id, "linear-line");
     assert_eq!(prompts, vec![linear_prompt]);
+    assert_eq!(source, PlayOrderSource::LinearCatalogue);
 }
 
 #[test]
@@ -39,7 +41,7 @@ fn selected_port_pass_falls_back_to_linear_when_branch_spins() {
     let branch_prompt = prompt(1, "spin-line");
     let linear_prompt = prompt(2, "catalogue-line");
     let spun_branch: Vec<TextLine> = (0..5_000).map(|_| line("spin-line")).collect();
-    let (lines, prompts) = select_port_pass(
+    let (lines, prompts, source) = select_port_pass(
         spun_branch,
         vec![branch_prompt],
         PassTermination::BudgetExhausted,
@@ -50,6 +52,7 @@ fn selected_port_pass_falls_back_to_linear_when_branch_spins() {
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].line_id, "catalogue-line");
     assert_eq!(prompts, vec![linear_prompt]);
+    assert_eq!(source, PlayOrderSource::LinearCatalogue);
 }
 
 #[test]
@@ -57,7 +60,7 @@ fn selected_port_pass_keeps_branch_when_neither_reaches_terminus() {
     // If even the linear pass did not complete there is no better stream to
     // fall back to, so the branch play order is retained (best available).
     let branch_prompt = prompt(1, "branch-line");
-    let (lines, prompts) = select_port_pass(
+    let (lines, prompts, _) = select_port_pass(
         vec![line("branch-line")],
         vec![branch_prompt.clone()],
         PassTermination::BudgetExhausted,
@@ -74,7 +77,7 @@ fn selected_port_pass_keeps_distinct_budget_exhausted_branch_and_failures() {
     let distinct_branch: Vec<TextLine> = (0..5_000)
         .map(|i| line(&format!("distinct-line-{i}")))
         .collect();
-    let (lines, _) = select_port_pass(
+    let (lines, _, _) = select_port_pass(
         distinct_branch,
         Vec::new(),
         PassTermination::BudgetExhausted,
@@ -91,7 +94,7 @@ fn selected_port_pass_keeps_distinct_budget_exhausted_branch_and_failures() {
     assert_eq!(lines[4_999].text, "distinct-line-4999");
 
     for termination in [PassTermination::VmError, PassTermination::Suspended] {
-        let (lines, _) = select_port_pass(
+        let (lines, _, _) = select_port_pass(
             vec![line("branch-failure")],
             Vec::new(),
             termination,
@@ -134,28 +137,24 @@ fn observe_for_port_uses_branch_stream_when_select_paths_diverge() {
 }
 
 #[test]
-fn observe_for_port_falls_back_to_linear_catalogue_for_repeated_choice_prompt() {
+fn observe_for_port_keeps_the_branch_stream_after_modelling_a_poll_loop() {
     let engine = spinning_select_port_engine();
     let opts = ReplayOpts {
         step_budget: 192,
         stop_at_first_pause: false,
     };
 
-    // Prove the branch side of the divergent scene genuinely fills its
-    // budget with repeated prompt text. The assertion below then proves
-    // observe_for_port selected the other, natural linear pass.
+    // Once the full-state repetition proves the poll loop, the observer
+    // models the event and follows the scene through its text commands.
+    // This is branch-following provenance, not catalogue fallback.
     let branch_lines = engine.branch_following_lines(1, &opts, HeadlessChoicePolicy::AlwaysFirst);
-    assert!(
-        branch_lines.len() >= 50,
-        "branch must emit enough prompt lines to spin"
-    );
-    assert!(
-        branch_lines
-            .iter()
-            .all(|line| { matches!(line.text.as_str(), "repeat first" | "repeat second") })
-    );
 
     let observation = engine.observe_for_port(1, &opts);
+    assert_eq!(
+        observation.play_order_source,
+        PlayOrderSource::BranchFollowing
+    );
+    assert_eq!(observation.play_order_lines, branch_lines);
     let texts: Vec<&str> = observation
         .play_order_lines
         .iter()
@@ -166,9 +165,50 @@ fn observe_for_port_falls_back_to_linear_catalogue_for_repeated_choice_prompt() 
         vec![
             "repeat first",
             "repeat second",
+            "repeat first",
+            "repeat second",
+            "repeat first",
+            "repeat second",
             "linear first reaction",
             "linear second reaction",
         ],
-        "a repeated branch prompt must fall back to the completed linear catalogue"
+        "the modelled poll loop must continue through the real branch stream"
+    );
+}
+
+#[test]
+fn branch_observation_breaks_a_proven_polled_loop_before_emitting_text() {
+    // The loop itself has no queued long operation: only a repeated full VM
+    // fingerprint proves it is an input poll.  The observation path must
+    // suppress the next backward transfer and fall through to the textout.
+    // Removing the loop model makes this pass budget-exhaust with no emitted
+    // line.
+    let (spin, _) = goto_command(0, 0);
+    let (after_event, _) = textout(12, "after modeled input");
+    let scene = Scene::new(1, vec![spin, after_event]).expect("event-gated scene builds");
+    let mut store = InMemorySceneStore::new();
+    store.insert(scene);
+    let engine = ReplayEngine::from_store(store, HashSet::from([(1, 12)]));
+    let sink: Arc<ReplayTextSink> = Arc::new(ReplayTextSink::default());
+    let sink_dyn: Arc<dyn TextSurfaceSink> = Arc::clone(&sink) as Arc<dyn TextSurfaceSink>;
+    let mut scheduler = HeadlessInputScheduler::default();
+    let pass = engine.observe_pass(
+        1,
+        &ReplayOpts {
+            step_budget: 32,
+            stop_at_first_pause: false,
+        },
+        ControlFlowMount::BranchFollowing,
+        sink_dyn,
+        &mut scheduler,
+    );
+
+    assert_eq!(pass.termination, PassTermination::NaturalTerminus);
+    assert_eq!(
+        sink.take_lines()
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect::<Vec<_>>(),
+        vec!["after modeled input"],
     );
 }

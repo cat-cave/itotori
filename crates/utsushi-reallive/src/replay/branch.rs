@@ -192,11 +192,15 @@ pub struct SceneObservation {
 /// kept distinct from the frame/audio observation.
 #[derive(Debug)]
 pub struct PortObservation {
-    /// The branch-following (real play-order) message stream, single pass
-    /// in the order a player sees the messages. This is what the message
-    /// window renders one-per-frame and what the substrate text sink
-    /// surfaces — NOT the doubled two-pass catalogue.
+    /// The selected single-pass message stream in byte/play order. This is
+    /// what the message window renders one-per-frame and what the substrate
+    /// text sink surfaces — never the doubled two-pass catalogue. Consult
+    /// [`Self::play_order_source`] to distinguish executed from catalogued
+    /// text.
     pub play_order_lines: Vec<TextLine>,
+    /// Which single pass supplied [`Self::play_order_lines`]. Consumers can
+    /// distinguish executed branch dialogue from the byte-order fallback.
+    pub play_order_source: PlayOrderSource,
     /// Selection prompts from the same chosen pass as [`Self::play_order_lines`].
     pub selection_prompts: Vec<SelectionPrompt>,
     /// The first cross-scene dispatch target the branch-following pass
@@ -209,6 +213,16 @@ pub struct PortObservation {
     /// diagnostics). Its graphics/audio may be backfilled from the linear
     /// catalogue pass; its text is not used (see `play_order_lines`).
     pub scene: SceneObservation,
+}
+
+/// The replay pass that supplied a port-facing play-order stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayOrderSource {
+    /// The branch-following VM execution emitted the lines.
+    BranchFollowing,
+    /// The branch pass emitted no usable dialogue, so the static byte-order
+    /// catalogue supplied the lines.
+    LinearCatalogue,
 }
 
 /// Choose the single replay pass that supplies port-facing text, carrying its
@@ -228,15 +242,23 @@ pub(super) fn select_port_pass(
     linear_lines: Vec<TextLine>,
     linear_prompts: Vec<SelectionPrompt>,
     linear_termination: PassTermination,
-) -> (Vec<TextLine>, Vec<SelectionPrompt>) {
+) -> (Vec<TextLine>, Vec<SelectionPrompt>, PlayOrderSource) {
     let branch_spun = branch_termination == PassTermination::BudgetExhausted
         && branch_lines_show_spin(&branch_lines)
         && linear_termination == PassTermination::NaturalTerminus
         && !linear_lines.is_empty();
     if branch_lines.is_empty() || (branch_spun && !linear_lines.is_empty()) {
-        (linear_lines, linear_prompts)
+        (
+            linear_lines,
+            linear_prompts,
+            PlayOrderSource::LinearCatalogue,
+        )
     } else {
-        (branch_lines, branch_prompts)
+        (
+            branch_lines,
+            branch_prompts,
+            PlayOrderSource::BranchFollowing,
+        )
     }
 }
 
