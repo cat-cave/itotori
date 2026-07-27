@@ -1,10 +1,31 @@
-# Softpal `Pal.dll` call-target evidence
+# Softpal `Pal.dll` syscall-target evidence
 
-`Sv20` has one engine-call opcode (`0x17`). Its first operand is the little
+`Sv20` has a script-function `call` opcode (`0x0b`) and a native `syscall`
+opcode (`0x17`). The latter's first operand is the little
 endian packed dispatch key `(category << 16) | function`. The production
 decoder exposes that key as `CallTarget` and uses its evidence-backed semantic
 catalog while classifying `TEXT-SHOW` and `SELECT`; the real fixture bridge
 uses that same `OpcodeScan` through `ScriptScan`.
+
+## Reference-table reconciliation
+
+The staged `VNTranslationTools` reference names the same two control opcodes:
+`0x000b` as `call` and `0x0017` as `syscall`. Its `SoftpalDisassembler` treats
+the `0x0002:0x0002/0x000f/0x0010/0x0011/0x0012/0x0013` syscall targets as
+message instructions, matching this decoder's table for those cases. This
+decoder also retains its byte-proven `0x0002:0x0014` text target; the reference
+does not list it, so it is not used as the source of truth for that case.
+The reference also lists direct `create_message` (`0x0023`) and `text`
+(`0x0088` and variants) opcodes. The exhaustive scans of both staged scripts
+contain only `0x0001..=0x0021`, with zero unknown operator tokens, so none of
+those direct entries occurs in these byte streams. This is a table entry for a
+different script surface/revision, not a reachable text path here.
+
+Consequently the earlier halted instruction is precisely a native `0x17`
+syscall (`0x000f:0x0005`), not a script `0x0b` call and not direct `0x0088`
+text. The archive-visible text path remains the `0x17` message syscall, which
+the VM already emits when execution reaches it; its failure to do so on the
+two real entry paths is caused by the proved launcher-state blocker before it.
 
 ## Disassembly chain
 

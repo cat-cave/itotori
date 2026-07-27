@@ -85,10 +85,10 @@ pub const SCRIPT_MAGIC_PREFIX: &[u8; 2] = b"Sv";
 /// Total length of the fixed `SCRIPT.SRC` header (`"Sv"` + 2 version bytes).
 pub const SCRIPT_HEADER_BYTE_LEN: usize = 4;
 
-/// The 4-byte `Call` (opcode `0x17`) operator token dword — little-endian
+/// The 4-byte native `Syscall` (opcode `0x17`) operator token dword — little-endian
 /// `17 00 01 00` (opcode id `0x17` low word, operator tag `0x0001` high word).
-/// Every TEXT-SHOW / SELECT command is a `Call`, so this dword sits at the
-/// command's `Call` operator offset `m`. It is **not** a scan key: an operand
+/// Every TEXT-SHOW / SELECT command is a `Syscall`, so this dword sits at the
+/// command's `Syscall` operator offset `m`. It is **not** a scan key: an operand
 /// whose bits equal this dword is consumed as an operand by the arity walk, never
 /// treated as a command.
 pub const SCRIPT_COMMAND_MARKER: &[u8; 4] = &[0x17, 0x00, 0x01, 0x00];

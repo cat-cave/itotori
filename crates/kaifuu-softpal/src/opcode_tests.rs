@@ -62,8 +62,9 @@ fn opcode_table_covers_full_range_with_known_arities() {
         let a = o.arity().expect("known arity");
         assert!(a <= 2, "arity {a} in range");
     }
-    assert_eq!(SvOpcode::from_id(0x17), SvOpcode::Call);
-    assert!(SvOpcode::Call.is_call());
+    assert_eq!(SvOpcode::from_id(0x0b), SvOpcode::Call);
+    assert_eq!(SvOpcode::from_id(0x17), SvOpcode::Syscall);
+    assert!(SvOpcode::Syscall.is_syscall());
     // id 0x00 is unobserved: not in the known table (arity unproven).
     assert_eq!(SvOpcode::from_id(0x00), SvOpcode::Unknown(0x00));
     assert!(!SvOpcode::from_id(0x00).is_known());
@@ -76,21 +77,43 @@ fn opcode_table_covers_full_range_with_known_arities() {
 }
 
 #[test]
+fn reference_syscall_message_target_routes_to_text_show_not_script_call() {
+    // The reference calls 0x0b `call` and 0x17 `syscall`. Its message handler
+    // recognizes the same 0x0002:0x0002 target this production decoder emits.
+    let tokens = [
+        op(0x0b),
+        val(1),
+        op(0x17),
+        val(target(CALL_CATEGORY_TEXT, 0x0002)),
+        val(0),
+    ];
+    let scan = OpcodeScan::parse(&program(&tokens)).expect("well-formed program");
+
+    assert_eq!(scan.instructions[0].opcode, SvOpcode::Call);
+    assert_eq!(scan.instructions[1].opcode, SvOpcode::Syscall);
+    assert!(matches!(
+        scan.instructions[1].family,
+        CommandFamily::TextShow { text_type: 0x0002 }
+    ));
+    assert_eq!(scan.call_count(), 1, "only the native syscall dispatches");
+}
+
+#[test]
 fn walks_each_command_family_exhaustively() {
     // A nullary control op, a Move with a var-ref + typed-nil,
-    // a TEXT-SHOW call, a SELECT call, and another engine Call.
+    // a TEXT-SHOW syscall, a SELECT syscall, and another native syscall.
     let tokens = [
         op(0x18),         // Control (arity 0)
         op(0x01),         // Move
         val(0x8000_0002), // var-ref operand
         val(0x4000_0000), // typed-nil operand
-        op(0x17),         // Call -> TEXT-SHOW
+        op(0x17),         // Syscall -> TEXT-SHOW
         val(target(CALL_CATEGORY_TEXT, 0x0002)),
         val(0x0000_1234), // text pointer operand (plain)
-        op(0x17),         // Call -> SELECT
+        op(0x17),         // Syscall -> SELECT
         val(target(CALL_CATEGORY_SELECT, SELECT_FUNCTION)),
         val(0x4000_0000),            // system immediate
-        op(0x17),                    // Call -> other engine built-in
+        op(0x17),                    // Syscall -> other native built-in
         val(target(0x0011, 0x0008)), // graphics/system dispatch
         val(0x0000_0005),
     ];
