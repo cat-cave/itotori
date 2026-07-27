@@ -171,7 +171,8 @@ impl RenderPass {
         run_id: &str,
         sink: &dyn FrameArtifactSink,
     ) -> Result<FrameArtifact, RenderEmitError> {
-        let (mut framebuffer, text_pixels) = self.rasterise_with_text(stack, text);
+        let mut framebuffer = self.rasterise(stack);
+        let text_pixels = framebuffer.draw_text_checked(text)?;
         Self::reject_blank_localized(text, text_pixels)?;
         framebuffer.flatten_over_black();
         self.announce_framebuffer(&framebuffer, root, run_id, sink)
@@ -204,7 +205,7 @@ impl RenderPass {
         // silently omitted from a frame that would otherwise look
         // complete.
         let (mut full_fb, report) = self.rasterise_reporting(stack, RedactionPolicy::Full);
-        let full_text_pixels = full_fb.draw_text(text);
+        let full_text_pixels = full_fb.draw_text_checked(text)?;
         Self::reject_blank_localized(text, full_text_pixels)?;
         Self::paint_choice(&mut full_fb, emit.choice.as_ref())?;
         full_fb.flatten_over_black();
@@ -231,9 +232,8 @@ impl RenderPass {
         let public_fb = match policy {
             RedactionPolicy::Full => full_fb,
             RedactionPolicy::Redact => {
-                let mut framebuffer = self
-                    .rasterise_with_text_policy(stack, text, RedactionPolicy::Redact)
-                    .0;
+                let mut framebuffer = self.rasterise_with_policy(stack, RedactionPolicy::Redact);
+                framebuffer.draw_text_checked(text)?;
                 Self::paint_choice(&mut framebuffer, emit.choice.as_ref())?;
                 framebuffer.flatten_over_black();
                 framebuffer

@@ -18,8 +18,8 @@
 //!      source; a redacted public PNG on disk (real g00 pixels not published);
 //!      a private full-fidelity PNG in the gitignored private tree; and a
 //!      redaction-clean JSON evidence report whose render half proves the
-//!      TRANSLATED text landed in the rendered message (`containsExpected`)
-//!      at E2, with redaction ON — and which leaks NO absolute path and NO raw
+//!      rasterized text passed its pixel gate at E2, with redaction ON — and
+//!      which leaks NO absolute path and NO raw
 //!      translated text (committable artifact).
 //!
 //! Env-gated + STRICT: an absent corpus is an unconditional HARD FAILURE (no
@@ -368,8 +368,8 @@ fn patch_replay_then_render_single_real_scene_renders_patched_dialogue() {
     assert_eq!(render_evidence["evidenceTier"], "E2");
     assert_eq!(render_evidence["redaction"], "on");
     assert_eq!(
-        render_evidence["containsExpected"], true,
-        "rendered frame text layer must contain the patched translated line"
+        render_evidence["pixelGate"]["status"], "passed",
+        "rendered frame must pass the rasterized-text pixel gate"
     );
     assert_eq!(render_evidence["renderedLineCount"], 1);
     assert!(
@@ -391,8 +391,8 @@ fn patch_replay_then_render_single_real_scene_renders_patched_dialogue() {
 
     eprintln!(
         "patch->replay->render OK: scene {DIALOGUE_SCENE_ID} replay_matches={replay_matches}/\
-         {replay_textlines} redaction={} contains_expected={}",
-        render_evidence["redaction"], render_evidence["containsExpected"],
+         {replay_textlines} redaction={} pixel_gate={}",
+        render_evidence["redaction"], render_evidence["pixelGate"]["status"],
     );
 
     let _ = fs::remove_dir_all(&work_dir);

@@ -47,7 +47,8 @@ use crate::dispatch_gate::{
 };
 use crate::render_validate_g00::OnDiskG00Package;
 use crate::staged_replay::staged_engine;
-
+#[path = "render_validate_pixel_gate.rs"]
+mod render_validate_pixel_gate;
 /// Only `reallive` is supported (no silent fallback).
 const SUPPORTED_ENGINE: &str = "reallive";
 
@@ -215,7 +216,6 @@ pub fn run_render_validate_command(args: &[String]) -> Result<(), Box<dyn Error>
     }
     Ok(())
 }
-
 /// Parameters for the shared RealLive render-validate drive. Exposed to the
 /// crate (not just this module) so the composed `patch-render` command can
 /// reuse the exact same rasterizing render pipeline on the patched Seen.txt
@@ -251,7 +251,6 @@ pub(crate) struct Params<'a> {
     pub(crate) private_artifact_root: Option<&'a Path>,
     pub(crate) public_redact: bool,
 }
-
 /// Drive the real RealLive render-validate pipeline for one scene and
 /// return the deterministic JSON evidence report. Emits the redacted
 /// public PNG (+ the gitignored private full-fidelity PNG) through the
@@ -491,6 +490,7 @@ pub(crate) fn drive(
         "renderedMessageIndex": chosen_index,
         "renderedTextSha256": sha256_hex(rendered_text.as_bytes()),
         "expectTextContains": params.expect_text_contains,
+        "pixelGate": render_validate_pixel_gate::passed(),
         "containsExpected": contains_expected,
         "framesAnnounced": sink.len(),
         "hasSpeakerNameBox": has_speaker && config.name_mod == 1,

@@ -433,3 +433,6 @@ fn message_window_name_box_glyphs_paint() {
 
 #[path = "compositor_tests.rs"]
 mod compositor_tests;
+
+#[path = "pixel_gate_tests.rs"]
+mod pixel_gate_tests;
