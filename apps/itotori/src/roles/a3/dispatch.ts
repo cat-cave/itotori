@@ -40,6 +40,8 @@ import {
 // v3: prompt cites units by a short scene-local [uN] label the flash model can
 // copy verbatim, replacing the large GLOBAL play-order index it mis-transcribed.
 const PROMPT_VERSION = "itotori.role.A3.prompt.v3";
+const REPAIR_PROMPT_VERSION = "itotori.role.A3.repair.v1";
+type A3OutputKind = typeof A3_SCENE_SUMMARY_KIND | typeof A3_STORY_SO_FAR_KIND;
 
 /** A prompt payload paired with its content-addressed reference, so the runtime
  * can resolve the encrypted ref back to its exact plaintext. */
@@ -58,7 +60,11 @@ function sealPrompt(storageRef: string, text: string): SealedPrompt {
 /** Render the source-facts prompt the model reasons over. The complete scene,
  * the deterministic counts/speakers, and the prior story-so-far are stated as
  * FACTS; the model is asked only to compress meaning, never to re-count. */
-function renderPrompt(request: A3SceneRequest, kind: string): string {
+function renderPrompt(
+  request: A3SceneRequest,
+  kind: A3OutputKind,
+  repairDiagnostics: readonly string[] = [],
+): string {
   const specialist = specialistFor(A3_ROLE_ID);
   const scene = request.scene;
   const lines = citeableSceneUnits(scene).map(
@@ -68,7 +74,7 @@ function renderPrompt(request: A3SceneRequest, kind: string): string {
   const prior = request.priorStory
     ? `Prior story-so-far (through scene ${request.priorStory.throughSceneId}): ${request.priorStory.summary}`
     : "Prior story-so-far: (this is the first scene on the route).";
-  return [
+  const prompt = [
     specialist.instructions,
     `Output kind: ${kind}. Source language: ${request.sourceLanguage}. Author in the SOURCE LANGUAGE.`,
     `Scene ${scene.sceneId} — decoded counts are FACTS: ${scene.factCard.messageCount} messages, ` +
@@ -77,7 +83,16 @@ function renderPrompt(request: A3SceneRequest, kind: string): string {
     prior,
     "Complete scene stream:",
     ...lines,
-  ].join("\n");
+  ];
+  if (repairDiagnostics.length > 0) {
+    prompt.push(
+      "Your immediately previous response was rejected by the strict output validator.",
+      "Return one complete corrected replacement object of the requested kind; do not explain the correction.",
+      "Validation diagnostics:",
+      ...repairDiagnostics.map((diagnostic) => `- ${diagnostic}`),
+    );
+  }
+  return prompt.join("\n");
 }
 
 /** Build the certified A3 call spec for one terminal wiki-object, plus the
@@ -87,15 +102,20 @@ export function buildA3CallSpec(
   model: ReadModel,
   context: A3Context,
   request: A3SceneRequest,
-  kind: string,
+  kind: A3OutputKind,
+  repairDiagnostics: readonly string[] = [],
 ): { spec: CallSpec; prompts: readonly SealedPrompt[] } {
   const specialist = specialistFor(A3_ROLE_ID);
-  const promptText = renderPrompt(request, kind);
-  const prompt = sealPrompt(`a3:${kind}:scene-${request.scene.sceneId}`, promptText);
+  const repairing = repairDiagnostics.length > 0;
+  const promptText = renderPrompt(request, kind, repairDiagnostics);
+  const prompt = sealPrompt(
+    `a3:${kind}:${repairing ? "repair:" : ""}scene-${request.scene.sceneId}`,
+    promptText,
+  );
   const eventId = sha256(promptText);
   const spec: CallSpec = {
     schemaVersion: CALL_SPEC_SCHEMA_VERSION,
-    purpose: "analysis",
+    purpose: repairing ? "repair" : "analysis",
     roleId: A3_ROLE_ID,
     modelProfile: specialist.modelProfile,
     modelProfileVersion: deepSeekV4FlashProfile.version,
@@ -108,10 +128,11 @@ export function buildA3CallSpec(
     tools: [],
     output: {
       name: "wiki-object",
+      kind,
       schemaVersion: WIKI_OBJECT_SCHEMA_VERSION,
       schemaHash: sha256(WIKI_OBJECT_SCHEMA_VERSION),
     },
-    promptVersion: PROMPT_VERSION,
+    promptVersion: repairing ? REPAIR_PROMPT_VERSION : PROMPT_VERSION,
     reasoning: specialist.reasoning,
     sampling: { temperature: 0, topP: 1, seed: null },
     limits: specialist.limits,
@@ -150,19 +171,38 @@ function claimDrafts(object: WikiObject, kind: A3ClaimDraft["kind"]): A3ClaimDra
   }));
 }
 
+function repairDiagnostics(result: Extract<CallResult, { status: "failure" }>): readonly string[] {
+  const diagnostics = result.defects.map((defect) => {
+    const path = defect.path.length === 0 ? "terminal" : defect.path.join(".");
+    return `${path}: ${defect.message}`;
+  });
+  return diagnostics.length > 0 ? diagnostics : [`terminal ${result.failureKind}`];
+}
+
+function isRepairableMalformedOutput(result: Extract<CallResult, { status: "failure" }>): boolean {
+  return result.failureKind === "invalid-json" || result.failureKind === "schema-failure";
+}
+
 async function dispatchObject(
   model: ReadModel,
   context: A3Context,
   request: A3SceneRequest,
-  kind: string,
+  kind: A3OutputKind,
   runtime: DispatchRuntime,
 ): Promise<WikiObject> {
   const { spec, prompts } = buildA3CallSpec(model, context, request, kind);
-  const result = await dispatchA3(spec, prompts, runtime);
-  if (result.status !== "success") {
-    throw new A3RoleError("dispatch-failed", `A3 ${kind} call failed: ${result.failureKind}`);
+  const first = await dispatchA3(spec, prompts, runtime);
+  if (first.status === "success") return first.value as WikiObject;
+  if (!isRepairableMalformedOutput(first)) {
+    throw new A3RoleError("dispatch-failed", `A3 ${kind} call failed: ${first.failureKind}`);
   }
-  return result.value as WikiObject;
+  const repair = buildA3CallSpec(model, context, request, kind, repairDiagnostics(first));
+  const corrected = await dispatchA3(repair.spec, repair.prompts, runtime);
+  if (corrected.status === "success") return corrected.value as WikiObject;
+  throw new A3RoleError(
+    "repair-exhausted",
+    `A3 ${kind} correction failed after ${first.failureKind}: ${corrected.failureKind}`,
+  );
 }
 
 /**

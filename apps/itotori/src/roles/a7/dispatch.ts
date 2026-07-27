@@ -125,6 +125,7 @@ export function buildA7CallSpec(
     tools: request.webEnabled ? [webSearchToolContract()] : [],
     output: {
       name: "wiki-object",
+      kind: A7_CHARACTER_BIO_KIND,
       schemaVersion: WIKI_OBJECT_SCHEMA_VERSION,
       schemaHash: sha256(WIKI_OBJECT_SCHEMA_VERSION),
     },

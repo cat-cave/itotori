@@ -172,6 +172,7 @@ export function assembleAdaptationCallSpec(
     tools: [],
     output: {
       name: "wiki-object",
+      kind: "adaptation-note",
       schemaVersion: WIKI_OBJECT_SCHEMA_VERSION,
       schemaHash: adaptationTerminalSchemaHash(),
     },

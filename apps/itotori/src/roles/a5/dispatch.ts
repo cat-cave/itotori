@@ -130,6 +130,7 @@ export function buildA5CallSpec(
     tools: [],
     output: {
       name: "wiki-object",
+      kind: A5_VOICE_PROFILE_KIND,
       schemaVersion: WIKI_OBJECT_SCHEMA_VERSION,
       schemaHash: sha256(WIKI_OBJECT_SCHEMA_VERSION),
     },

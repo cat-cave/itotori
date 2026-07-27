@@ -99,6 +99,7 @@ export function buildA4CallSpec(
     tools: [],
     output: {
       name: "wiki-object",
+      kind: A4_ROUTE_ARC_KIND,
       schemaVersion: WIKI_OBJECT_SCHEMA_VERSION,
       schemaHash: sha256(WIKI_OBJECT_SCHEMA_VERSION),
     },

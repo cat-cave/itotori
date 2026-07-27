@@ -153,6 +153,7 @@ export function assembleTermAnalystCallSpec(
     tools: [],
     output: {
       name: "wiki-object",
+      kind: "term-ruling",
       schemaVersion: WIKI_OBJECT_SCHEMA_VERSION,
       schemaHash: termAnalystTerminalSchemaHash(),
     },

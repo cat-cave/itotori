@@ -147,6 +147,7 @@ export function buildA8CallSpec(
     tools: [],
     output: {
       name: "wiki-object",
+      kind: A8_CHARACTER_BACKGROUND_KIND,
       schemaVersion: WIKI_OBJECT_SCHEMA_VERSION,
       schemaHash: sha256(WIKI_OBJECT_SCHEMA_VERSION),
     },

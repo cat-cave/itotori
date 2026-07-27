@@ -100,7 +100,10 @@ class MemoryMemoStore implements LlmCallMemoStore {
   }
 }
 
-function runtime(responses: ProviderResponse[], onFetch?: () => void): DispatchRuntime {
+function runtime(
+  responses: ProviderResponse[],
+  onFetch?: (request: Request) => void | Promise<void>,
+): DispatchRuntime {
   return {
     env: {
       OPENROUTER_API_KEY: "test-key",
@@ -126,14 +129,22 @@ function runtime(responses: ProviderResponse[], onFetch?: () => void): DispatchR
     readPayload: async () => {
       throw new Error("unexpected fallback payload read");
     },
-    fetcher: async () => {
-      onFetch?.();
+    fetcher: async (input, init) => {
+      const request = new Request(input, init);
+      await onFetch?.(request);
       const response = responses.shift();
       if (!response) throw new Error("unexpected extra provider request");
       if (response instanceof Error) throw response;
       return response;
     },
   };
+}
+
+function malformedSummary(
+  model: ReturnType<typeof buildClaimFixture>["model"],
+  request: A3SceneRequest,
+): WikiObject {
+  return { ...recordedSummary(model, request), kind: "story-so-far" } as WikiObject;
 }
 
 function sceneRequest(): {
@@ -263,6 +274,27 @@ describe("A3 dispatches through the sole ZDR boundary", () => {
     expect(fetches).toBe(1); // it really reached the transport boundary
   });
 
+  it("PROOF: the provider wire schema is the requested scene-summary variant, not the WikiObject union", async () => {
+    const { model, request } = sceneRequest();
+    const { spec, prompts } = buildA3CallSpec(model, CONTEXT, request, "scene-summary");
+    let wireSchema: Record<string, unknown> | undefined;
+    const configured = runtime(
+      [structuredProviderResponse(recordedSummary(model, request))],
+      async (wire) => {
+        const payload = JSON.parse(await wire.text()) as {
+          response_format?: { json_schema?: { schema?: Record<string, unknown> } };
+        };
+        wireSchema = payload.response_format?.json_schema?.schema;
+      },
+    );
+
+    await expect(dispatchA3(spec, prompts, configured)).resolves.toMatchObject({
+      status: "success",
+    });
+    expect(wireSchema?.properties).toMatchObject({ kind: { const: "scene-summary" } });
+    expect(wireSchema).not.toHaveProperty("anyOf");
+  });
+
   it("PROOF: the production caller folds two dispatched drafts into one narrative", async () => {
     const { model, request } = sceneRequest();
     const configured = runtime([
@@ -276,6 +308,38 @@ describe("A3 dispatches through the sole ZDR boundary", () => {
     expect(narrative.sceneClaims[0]!.evidenceUnitIds).toEqual([
       citeableSceneUnits(request.scene)[0]!.label,
     ]);
+  });
+
+  it("PROOF: one malformed A3 terminal response receives one corrected replacement turn", async () => {
+    const { model, request } = sceneRequest();
+    let fetches = 0;
+    const configured = runtime(
+      [
+        structuredProviderResponse(malformedSummary(model, request)),
+        structuredProviderResponse(recordedSummary(model, request)),
+        structuredProviderResponse(recordedStory(model, request)),
+      ],
+      () => {
+        fetches += 1;
+      },
+    );
+
+    const narrative = await dispatchingA3Caller(model, CONTEXT, configured)(request);
+
+    expect(narrative.beat).toBe("けいこは決断する。");
+    expect(fetches).toBe(3); // malformed summary + bounded correction + story-so-far
+  });
+
+  it("reports an exhausted repair budget distinctly from a first-attempt failure", async () => {
+    const { model, request } = sceneRequest();
+    const configured = runtime([
+      structuredProviderResponse(malformedSummary(model, request)),
+      structuredProviderResponse(malformedSummary(model, request)),
+    ]);
+
+    await expect(dispatchingA3Caller(model, CONTEXT, configured)(request)).rejects.toMatchObject({
+      code: "repair-exhausted",
+    });
   });
 
   it("PROOF: raw transport exceptions are retried so the A3 caller still gets its narrative", async () => {
