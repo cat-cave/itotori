@@ -50,7 +50,7 @@
 
 .onboarding-screen__field span {
   color: var(--ito-color-text-muted);
-  font-size: var(--ito-text-small);
+  font-size: var(--ito-text-pixel);
 }
 
 .onboarding-screen__field input,

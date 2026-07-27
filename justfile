@@ -87,6 +87,8 @@ check:
     node scripts/validate-no-specific-game-references.mjs
     node --test scripts/file-line-cap-guard.test.mjs
     node scripts/file-line-cap-guard.mjs
+    node --test scripts/audit-app-css-contract.test.mjs
+    node scripts/audit-app-css-contract.mjs
     node --test scripts/audit-deletion-ledger.test.mjs
     node scripts/audit-deletion-ledger.mjs
     node --test scripts/audit-no-legacy-llm-residue.test.mjs
@@ -759,6 +761,8 @@ ci-tier0-meta:
     node scripts/validate-no-specific-game-references.mjs
     node --test scripts/file-line-cap-guard.test.mjs
     node scripts/file-line-cap-guard.mjs
+    node --test scripts/audit-app-css-contract.test.mjs
+    node scripts/audit-app-css-contract.mjs
     node --test scripts/audit-deletion-ledger.test.mjs
     node scripts/audit-deletion-ledger.mjs
     node --test scripts/audit-no-legacy-llm-residue.test.mjs

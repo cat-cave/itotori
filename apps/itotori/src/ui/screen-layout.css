@@ -1,0 +1,173 @@
+/*
+ * Screen layout — the surface every routed screen renders into, inside the
+ * shell frame. Companion to `shell-frame.css`; loaded once from `src/main.tsx`.
+ *
+ * `.itotori-shell` is the screen wrapper (35 call sites across the SPA), and
+ * `.itotori-shell__header` / `.itotori-status-strip` / `.itotori-section-grid`
+ * are the three structural pieces every screen composes from. All four were
+ * referenced in TSX with no rule anywhere, so the project summary rendered as
+ * a browser-default `<dl>` and the section grid as a single stacked column.
+ *
+ * Every value references an EXISTING `--ito-*` token; no token is invented and
+ * no DS rule is forked.
+ */
+
+/* --------------------------------------------------------------------------
+ * Screen wrapper — one column of stacked bands, gutter'd and width-capped so
+ * the panels do not run edge to edge on a wide display.
+ * -------------------------------------------------------------------------- */
+
+.itotori-shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-16);
+  inline-size: 100%;
+  /* Same measure the sticky chrome and status bar use, so all three align. */
+  max-inline-size: calc(var(--app-shell-measure) + 2 * var(--ito-space-18));
+  margin-inline: auto;
+  padding: var(--ito-space-24) var(--ito-space-18);
+  box-sizing: border-box;
+  color: var(--ito-color-text);
+}
+
+.itotori-shell__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ito-space-16);
+  min-inline-size: 0;
+}
+
+.itotori-shell__header > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-4);
+  min-inline-size: 0;
+}
+
+.itotori-shell__header h1 {
+  margin: 0;
+  font-family: var(--ito-font-display);
+  font-size: var(--ito-text-h1);
+  font-weight: var(--ito-weight-display);
+  line-height: var(--ito-leading-tight);
+  color: var(--ito-color-text);
+}
+
+.itotori-shell__header p {
+  margin: 0;
+}
+
+/*
+ * The summary strip is a full-width BAND under the title, never a narrow
+ * column beside it: as a bare flex item it shrank to its content width and
+ * collapsed the auto-fit grid to a single 100px-wide stack of six rows.
+ */
+.itotori-shell__header > .itotori-status-strip {
+  flex: 1 1 100%;
+}
+
+.itotori-shell__lede {
+  margin: 0;
+  max-inline-size: 68ch;
+  color: var(--ito-color-text-muted);
+  font-size: var(--ito-text-body);
+  line-height: var(--ito-leading-body);
+}
+
+/* --------------------------------------------------------------------------
+ * Project summary strip — the hairline-divider grid, the signature data motif
+ * (cells are night, the 1px gap reveals the divider colour). Replaces the
+ * browser-default definition list: label above value, aligned in one row of
+ * equal cells, wrapping to a second row rather than indenting.
+ * -------------------------------------------------------------------------- */
+
+.itotori-status-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--ito-space-1);
+  margin: 0;
+  inline-size: 100%;
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius);
+  background: var(--ito-color-divider);
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 0 var(--ito-bevel-top-highlight);
+}
+
+.itotori-status-strip > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-4);
+  min-inline-size: 0;
+  padding: var(--ito-space-8) var(--ito-space-12);
+  background: var(--ito-color-surface);
+}
+
+.itotori-status-strip dt {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+  white-space: nowrap;
+}
+
+.itotori-status-strip dd {
+  display: flex;
+  align-items: center;
+  gap: var(--ito-space-6);
+  margin: 0;
+  min-inline-size: 0;
+  font-family: var(--ito-font-display);
+  font-weight: var(--ito-weight-display-soft);
+  font-size: var(--ito-text-body);
+  color: var(--ito-color-text);
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------------
+ * Section grid — the multi-panel band. The panels here carry dense data tables
+ * (six columns of project / cost rows), so the column minimum is deliberately
+ * generous: side-by-side only once each panel still has room for its table,
+ * one full-width column otherwise. A tighter minimum did pack two panels onto a
+ * 1280px viewport, at the cost of wrapping every table cell onto two lines.
+ * -------------------------------------------------------------------------- */
+
+.itotori-section-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 680px), 1fr));
+  gap: var(--ito-space-16);
+  align-items: start;
+  min-inline-size: 0;
+}
+
+.itotori-section-grid > * {
+  min-inline-size: 0;
+}
+
+/* --------------------------------------------------------------------------
+ * Typed API failure line, rendered inside an "Unavailable" panel.
+ * -------------------------------------------------------------------------- */
+
+.itotori-api-error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ito-space-8);
+  margin: var(--ito-space-8) 0 0;
+  color: var(--ito-color-text-muted);
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+}
+
+@media (width <= 900px) {
+  .itotori-shell {
+    padding: var(--ito-space-16) var(--ito-space-12);
+  }
+
+  .itotori-section-grid {
+    grid-template-columns: 1fr;
+  }
+}

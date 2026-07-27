@@ -48,7 +48,7 @@
 .model-routing-settings__actions button {
   min-height: 2.25rem;
   padding: 0 var(--ito-space-12);
-  color: var(--ito-color-ink);
+  color: var(--ito-color-ink-on-accent);
   background: var(--ito-color-amber);
   border: 1px solid var(--ito-color-amber);
   border-radius: var(--ito-radius-tight);

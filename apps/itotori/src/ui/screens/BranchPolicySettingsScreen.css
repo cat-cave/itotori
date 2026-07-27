@@ -62,7 +62,7 @@
   border: 1px solid var(--ito-color-amber);
   border-radius: var(--ito-radius-tight);
   background: var(--ito-color-amber);
-  color: var(--ito-color-ink);
+  color: var(--ito-color-ink-on-accent);
   cursor: pointer;
   font: inherit;
   font-weight: 650;
@@ -77,7 +77,7 @@
 .branch-policy-settings__reference-note {
   margin: var(--ito-space-10) 0 0;
   color: var(--ito-color-text-muted);
-  font-size: var(--ito-text-small);
+  font-size: var(--ito-text-pixel);
 }
 
 @media (max-width: 56rem) {
