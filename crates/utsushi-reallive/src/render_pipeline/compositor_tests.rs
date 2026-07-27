@@ -59,6 +59,24 @@ fn alpha_half_wipe_blends_toward_background() {
 }
 
 #[test]
+fn screenshot_flattening_makes_transparent_pixels_opaque_black() {
+    let mut framebuffer = Framebuffer::new(2, 1);
+    framebuffer.blend_pixel(0, 0, [200, 100, 50, 128], 0xFF);
+    framebuffer.flatten_over_black();
+
+    assert_eq!(
+        &framebuffer.pixels()[..4],
+        &[100, 50, 25, 0xFF],
+        "a half-alpha source must be composited over black before PNG encoding"
+    );
+    assert_eq!(
+        &framebuffer.pixels()[4..],
+        &[0, 0, 0, 0xFF],
+        "an untouched transparent pixel must encode as opaque black, never a checkerboard"
+    );
+}
+
+#[test]
 fn two_emissions_with_same_state_produce_byte_identical_pngs() {
     // Noto CJK's real ascent needs a normal message-frame height at the
     // default (16, 16) text origin; this test exercises determinism, not a

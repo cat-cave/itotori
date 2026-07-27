@@ -31,6 +31,18 @@ impl Framebuffer {
     pub fn pixels(&self) -> &[u8] {
         &self.pixels
     }
+
+    /// Flatten the framebuffer over opaque black for screenshot encoding.
+    /// Rasterisation itself retains alpha, but browser-facing PNGs must not
+    /// depend on a viewer's transparency checkerboard.
+    pub(crate) fn flatten_over_black(&mut self) {
+        for pixel in self.pixels.chunks_exact_mut(RGBA_BYTES_PER_PIXEL) {
+            if pixel[3] == 0 {
+                pixel[..3].fill(0);
+            }
+            pixel[3] = 0xFF;
+        }
+    }
     pub(crate) fn in_bounds(&self, x: u32, y: u32) -> bool {
         x < self.width && y < self.height
     }

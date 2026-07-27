@@ -298,6 +298,8 @@ fn evaluate_binary(
         ExprOp::And => l & r,
         ExprOp::Or => l | r,
         ExprOp::Xor => l ^ r,
+        ExprOp::Shl => l.wrapping_shl(r as u32),
+        ExprOp::Shr => l.wrapping_shr(r as u32),
         ExprOp::Equ => bool_to_i32(l == r),
         ExprOp::Neq => bool_to_i32(l != r),
         ExprOp::Lt => bool_to_i32(l < r),
