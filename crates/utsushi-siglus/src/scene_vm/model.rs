@@ -31,6 +31,7 @@ pub struct VmState {
     pub indexed_globals: BTreeMap<(i32, i32), i32>,
     pub indexed_strings: BTreeMap<(i32, i32), i32>,
     pub system_properties: BTreeMap<(i32, i32), i32>,
+    pub(super) structured_system: BTreeMap<(u32, Vec<i32>), Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
