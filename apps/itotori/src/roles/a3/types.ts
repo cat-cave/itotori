@@ -32,7 +32,9 @@ export type A3FailureCode =
   | "incomplete-scene"
   | "fragment-scene"
   | "empty-dispatch-order"
-  | "dispatch-failed";
+  | "dispatch-failed"
+  /** The one permitted malformed-output correction did not produce a valid object. */
+  | "repair-exhausted";
 
 /** A loud, typed A3 failure. */
 export class A3RoleError extends Error {

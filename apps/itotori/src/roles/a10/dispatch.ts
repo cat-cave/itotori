@@ -123,6 +123,7 @@ export function buildA10CallSpec(
     tools: [],
     output: {
       name: "wiki-object",
+      kind: A10_SPEAKER_HYPOTHESIS_KIND,
       schemaVersion: WIKI_OBJECT_SCHEMA_VERSION,
       schemaHash: sha256(WIKI_OBJECT_SCHEMA_VERSION),
     },

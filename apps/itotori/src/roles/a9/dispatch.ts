@@ -134,6 +134,7 @@ export function buildA9CallSpec(
     tools: [],
     output: {
       name: "wiki-object",
+      kind: A9_CHARACTER_ROUTE_ARC_KIND,
       schemaVersion: WIKI_OBJECT_SCHEMA_VERSION,
       schemaHash: sha256(WIKI_OBJECT_SCHEMA_VERSION),
     },

@@ -232,6 +232,7 @@ export function assembleStyleLeadCallSpec(
     tools: [],
     output: {
       name: "wiki-object",
+      kind: "style-contract",
       schemaVersion: WIKI_OBJECT_SCHEMA_VERSION,
       schemaHash: styleLeadTerminalSchemaHash(),
     },

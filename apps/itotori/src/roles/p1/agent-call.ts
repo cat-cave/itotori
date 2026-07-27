@@ -131,6 +131,7 @@ export function buildP1AgentCall(
       tools: [],
       output: {
         name: "wiki-object",
+        kind: "translation",
         schemaVersion: WIKI_OBJECT_SCHEMA_VERSION,
         schemaHash: sha256(WIKI_OBJECT_SCHEMA_VERSION),
       },

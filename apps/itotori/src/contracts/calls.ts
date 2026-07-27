@@ -34,20 +34,18 @@ import {
   LOCALIZED_RENDERING_SCHEMA_VERSION,
   WIKI_OBJECT_SCHEMA_VERSION,
   LocalizedRenderingSchema,
+  WikiObjectKindSchema,
   WikiObjectSchema,
 } from "./wiki.js";
-
 export const CALL_SPEC_SCHEMA_VERSION = "itotori.call-spec.v1" as const;
 export const CALL_RESULT_SCHEMA_VERSION = "itotori.call-result.v2" as const;
 export const PHYSICAL_STEP_MEMO_KEY_SCHEMA_VERSION = "itotori.physical-step-memo-key.v1" as const;
 export const PHYSICAL_STEP_MEMO_VALUE_SCHEMA_VERSION =
   "itotori.physical-step-memo-value.v2" as const;
 export const PHYSICAL_STEP_MEMO_SCHEMA_VERSION = "itotori.physical-step-memo.v2" as const;
-
 export const CallPurposeSchema = z.enum(["analysis", "draft", "review", "repair", "judge"]);
 export const ModelProfileSchema = z.enum(["draft", "reasoning", "reviewer", "judge"]);
 export const ReasoningEffortSchema = z.enum(["none", "low", "medium", "high"]);
-
 const SchemaRefSchema = z
   .object({
     name: IdentifierSchema,
@@ -69,6 +67,8 @@ export const TerminalSchemaRefSchema = z.discriminatedUnion("name", [
   z
     .object({
       name: z.literal("wiki-object"),
+      /** Optional only for older generic callers; authoring roles must set it. */
+      kind: WikiObjectKindSchema.optional(),
       schemaVersion: z.literal(WIKI_OBJECT_SCHEMA_VERSION),
       schemaHash: Sha256Schema,
     })

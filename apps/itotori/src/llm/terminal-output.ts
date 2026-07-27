@@ -4,6 +4,7 @@ import {
   DraftBatchSchema,
   LocalizedRenderingSchema,
   ReviewVerdictSchema,
+  wikiObjectSchemaForKind,
   WikiObjectSchema,
   type CallSpec,
   type TerminalOutput,
@@ -12,7 +13,7 @@ import {
 export function terminalOutputSchema(output: CallSpec["output"]): z.ZodType<TerminalOutput> {
   switch (output.name) {
     case "wiki-object":
-      return WikiObjectSchema;
+      return output.kind === undefined ? WikiObjectSchema : wikiObjectSchemaForKind(output.kind);
     case "localized-rendering":
       return LocalizedRenderingSchema;
     case "draft-batch":

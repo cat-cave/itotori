@@ -315,18 +315,54 @@ function sourceWikiObjectVariant<const Kind extends string, Body extends z.ZodTy
     .strict();
 }
 
+const StyleContractWikiObjectSchema = sourceWikiObjectVariant(
+  "style-contract",
+  StyleContractBodySchema,
+);
+const TermRulingWikiObjectSchema = sourceWikiObjectVariant("term-ruling", TermRulingBodySchema);
+const SceneSummaryWikiObjectSchema = sourceWikiObjectVariant(
+  "scene-summary",
+  SceneSummaryBodySchema,
+);
+const StorySoFarWikiObjectSchema = sourceWikiObjectVariant("story-so-far", StorySoFarBodySchema);
+const RouteArcWikiObjectSchema = sourceWikiObjectVariant("route-arc", RouteArcBodySchema);
+const VoiceProfileWikiObjectSchema = sourceWikiObjectVariant(
+  "voice-profile",
+  VoiceProfileBodySchema,
+);
+const AdaptationNoteWikiObjectSchema = sourceWikiObjectVariant(
+  "adaptation-note",
+  AdaptationNoteBodySchema,
+);
+const CharacterBioWikiObjectSchema = sourceWikiObjectVariant(
+  "character-bio",
+  CharacterBioBodySchema,
+);
+const CharacterBackgroundWikiObjectSchema = sourceWikiObjectVariant(
+  "character-background",
+  CharacterBackgroundBodySchema,
+);
+const CharacterRouteArcWikiObjectSchema = sourceWikiObjectVariant(
+  "character-route-arc",
+  CharacterRouteArcBodySchema,
+);
+const SpeakerHypothesisWikiObjectSchema = sourceWikiObjectVariant(
+  "speaker-hypothesis",
+  SpeakerHypothesisBodySchema,
+);
+
 export const SourceWikiObjectSchema = z.discriminatedUnion("kind", [
-  sourceWikiObjectVariant("style-contract", StyleContractBodySchema),
-  sourceWikiObjectVariant("term-ruling", TermRulingBodySchema),
-  sourceWikiObjectVariant("scene-summary", SceneSummaryBodySchema),
-  sourceWikiObjectVariant("story-so-far", StorySoFarBodySchema),
-  sourceWikiObjectVariant("route-arc", RouteArcBodySchema),
-  sourceWikiObjectVariant("voice-profile", VoiceProfileBodySchema),
-  sourceWikiObjectVariant("adaptation-note", AdaptationNoteBodySchema),
-  sourceWikiObjectVariant("character-bio", CharacterBioBodySchema),
-  sourceWikiObjectVariant("character-background", CharacterBackgroundBodySchema),
-  sourceWikiObjectVariant("character-route-arc", CharacterRouteArcBodySchema),
-  sourceWikiObjectVariant("speaker-hypothesis", SpeakerHypothesisBodySchema),
+  StyleContractWikiObjectSchema,
+  TermRulingWikiObjectSchema,
+  SceneSummaryWikiObjectSchema,
+  StorySoFarWikiObjectSchema,
+  RouteArcWikiObjectSchema,
+  VoiceProfileWikiObjectSchema,
+  AdaptationNoteWikiObjectSchema,
+  CharacterBioWikiObjectSchema,
+  CharacterBackgroundWikiObjectSchema,
+  CharacterRouteArcWikiObjectSchema,
+  SpeakerHypothesisWikiObjectSchema,
 ]);
 
 export const TranslationWikiObjectSchema = z
@@ -339,6 +375,30 @@ export const TranslationWikiObjectSchema = z
   .strict();
 
 export const WikiObjectSchema = z.union([SourceWikiObjectSchema, TranslationWikiObjectSchema]);
+
+/** The exact terminal schema for an authoring role's requested Wiki object kind.
+ * Provider structured output must never receive the permissive all-kinds union
+ * when the role has already selected one concrete kind. */
+export const WikiObjectSchemaByKind = {
+  "style-contract": StyleContractWikiObjectSchema,
+  "term-ruling": TermRulingWikiObjectSchema,
+  "scene-summary": SceneSummaryWikiObjectSchema,
+  "story-so-far": StorySoFarWikiObjectSchema,
+  "route-arc": RouteArcWikiObjectSchema,
+  "voice-profile": VoiceProfileWikiObjectSchema,
+  "adaptation-note": AdaptationNoteWikiObjectSchema,
+  "character-bio": CharacterBioWikiObjectSchema,
+  "character-background": CharacterBackgroundWikiObjectSchema,
+  "character-route-arc": CharacterRouteArcWikiObjectSchema,
+  "speaker-hypothesis": SpeakerHypothesisWikiObjectSchema,
+  translation: TranslationWikiObjectSchema,
+} as const;
+
+export function wikiObjectSchemaForKind(
+  kind: z.infer<typeof WikiObjectKindSchema>,
+): z.ZodType<WikiObject> {
+  return WikiObjectSchemaByKind[kind] as unknown as z.ZodType<WikiObject>;
+}
 
 const ClaimRenderingSchema = z
   .object({
