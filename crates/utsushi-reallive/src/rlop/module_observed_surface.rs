@@ -65,8 +65,6 @@ const OBSERVED_SURFACE_COMMANDS: &[(u8, u8, u16, &str)] = &[
     (1, 40, 10, "grp_effect.extension_10"),
     (1, 4, 100, "sys.extension_100"),
     (1, 4, 101, "sys.extension_101"),
-    (1, 4, 130, "sys.extension_130"),
-    (1, 4, 133, "sys.extension_133"),
     (1, 4, 620, "sys.extension_620"),
     (1, 4, 630, "sys.extension_630"),
     (1, 4, 2001, "sys.skip_animations"),

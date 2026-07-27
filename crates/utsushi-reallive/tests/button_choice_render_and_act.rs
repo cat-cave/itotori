@@ -86,3 +86,20 @@ fn button_choice_clamps_focus_but_never_repositions_metadata() {
     assert_eq!(choice.options[0].bounds, bounds);
     assert_eq!(choice.options[0].art.asset_key, "button-7");
 }
+
+#[test]
+fn button_choice_hit_testing_selects_only_the_authored_rectangle() {
+    let choice = option(
+        7,
+        HitRect {
+            x: 41,
+            y: 27,
+            width: 19,
+            height: 11,
+        },
+    );
+    assert!(choice.contains_pixel(41, 27));
+    assert!(choice.contains_pixel(59, 37));
+    assert!(!choice.contains_pixel(60, 37));
+    assert!(!choice.contains_pixel(59, 38));
+}
