@@ -1,18 +1,16 @@
-//! Softpal narrative structure from the runtime's extracted scene program.
+//! Softpal narrative structure from the proven linear script walk.
 //!
-//! The current format exposes one `SCRIPT.SRC` dispatch stream and one
-//! `TEXT.DAT` pool for a game root.  The runtime proves that stream exhaustively
-//! in byte order, but does not resolve conditional jump targets, so this
-//! producer emits the complete observable linear scene rather than inventing a
-//! route graph that the bytes do not establish.
+//! `SCRIPT.SRC` and `TEXT.DAT` establish a complete byte-order dialogue and
+//! choice stream today. The VM is exercised separately until an executed path
+//! covers this producer's output; structure export must not discard that
+//! localization input merely because VM execution stops at an unknown call.
 
 use std::error::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use kaifuu_softpal::PacArchive;
+use kaifuu_softpal::{OpcodeScan, PacArchive, ScriptScan, TextDat};
 use serde_json::{Value, json};
-use utsushi_softpal::{SceneStep, SoftpalScene};
 
 use super::StructureCommandInput;
 
@@ -32,12 +30,39 @@ pub(super) fn build_softpal_structure(
         return Err("softpal structure does not accept scene selection limits".into());
     }
     let game_root = input.game_root.as_deref().ok_or("missing --game-root")?;
-    let (script, textdat) = read_runtime_inputs(game_root)?;
-    let scene = SoftpalScene::execute(&script, &textdat)?;
-    Ok(structure_value(&scene))
+    let (script, textdat) = read_structure_inputs(game_root)?;
+    let scan = ScriptScan::parse(&script)?;
+    let textdat = TextDat::parse(&textdat)?;
+    let disassembly = scan.resolve(&textdat);
+    if !disassembly.is_fully_resolved() {
+        return Err(format!(
+            "utsushi.structure.softpal_unresolved_disassembly: dangling={} unresolved_dialogue={} unresolved_speaker={}",
+            disassembly.dangling_pointer_count(),
+            disassembly.unresolved_dialogue_text_count(),
+            disassembly.unresolved_speaker_count(),
+        )
+        .into());
+    }
+    let opcode_exhaustive = OpcodeScan::parse(&script)?.is_exhaustive();
+    let choice_menu_count = scan
+        .commands
+        .iter()
+        .fold((false, 0_usize), |(previous_was_select, count), command| {
+            let is_select = matches!(command, kaifuu_softpal::RawCommand::Select { .. });
+            (
+                is_select,
+                count + usize::from(is_select && !previous_was_select),
+            )
+        })
+        .1;
+    Ok(structure_value(
+        &disassembly,
+        opcode_exhaustive,
+        choice_menu_count,
+    ))
 }
 
-fn read_runtime_inputs(game_root: &Path) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
+fn read_structure_inputs(game_root: &Path) -> Result<(Vec<u8>, Vec<u8>), Box<dyn Error>> {
     if !game_root.is_dir() {
         return Err(format!(
             "softpal game root is not a directory: {}",
@@ -96,29 +121,31 @@ fn find_data_archives(root: &Path, archives: &mut Vec<PathBuf>) -> Result<(), Bo
     Ok(())
 }
 
-fn structure_value(scene: &SoftpalScene) -> Value {
+fn structure_value(
+    disassembly: &kaifuu_softpal::Disassembly,
+    opcode_exhaustive: bool,
+    choice_menu_count: usize,
+) -> Value {
     let mut messages = Vec::new();
     let mut choices = Vec::new();
     let mut choice_index = 0_usize;
-    for step in &scene.steps {
-        match step {
-            SceneStep::Dialogue { speaker, text, .. } => messages.push(json!({
-                "order": messages.len(),
-                "speaker": speaker,
-                "text": text,
-                "textSurface": null,
-            })),
-            SceneStep::Choice { options, .. } => {
-                for option in options.iter().filter_map(|option| option.text.as_deref()) {
-                    choices.push(json!({
-                        "optionIndex": choice_index,
-                        "label": option,
-                        "branchEntryScene": null,
-                        "branchMessages": [],
-                    }));
-                    choice_index += 1;
-                }
-            }
+    for dialogue in &disassembly.dialogue {
+        messages.push(json!({
+            "order": messages.len(),
+            "speaker": dialogue.speaker.as_ref().and_then(|speaker| speaker.resolved_text()),
+            "text": dialogue.text.resolved_text(),
+            "textSurface": null,
+        }));
+    }
+    for choice in &disassembly.choices {
+        if let Some(label) = choice.text.resolved_text() {
+            choices.push(json!({
+                "optionIndex": choice_index,
+                "label": label,
+                "branchEntryScene": null,
+                "branchMessages": [],
+            }));
+            choice_index += 1;
         }
     }
     json!({
@@ -129,12 +156,12 @@ fn structure_value(scene: &SoftpalScene) -> Value {
         "engineEvidence": {
             "softpal": {
                 "sceneSource": "SCRIPT.SRC + TEXT.DAT from data.pac",
-                "opcodeExhaustive": scene.stats.opcode_exhaustive,
-                "choiceMenuCount": scene.stats.choice_menu_count,
-                "textBearingChoiceCount": scene.stats.text_bearing_choice_count,
-                "systemSelectCount": scene.stats.system_select_count,
+                "opcodeExhaustive": opcode_exhaustive,
+                "choiceMenuCount": choice_menu_count,
+                "textBearingChoiceCount": disassembly.text_bearing_choice_count(),
+                "systemSelectCount": disassembly.nontext_select_count(),
                 "limitations": [
-                    "Conditional jump targets and expression values are not resolved by the current runtime.",
+                    "Structure is the complete byte-order SCRIPT.SRC walk; it does not claim a branch route graph.",
                     "System selects without TEXT.DAT labels are not emitted as narrative choices."
                 ]
             }

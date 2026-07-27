@@ -1,11 +1,5 @@
 //! The Softpal runtime [`EnginePort`]: executes the extracted `Sv20`
 //! scene-dispatch and drives the substrate text + frame sinks from it.
-//!
-//! `launch` runs the whole scene program once ([`SoftpalScene::execute`]),
-//! buffering a `TextLine` per dialogue line + per text-bearing choice option
-//! and a bounded playthrough of edge-redacted layout frames (one per leading
-//! dialogue line). `observe` drains those buffers into the sinks; `capture`
-//! writes a representative redacted PNG through the managed artifact store.
 
 use std::sync::{Arc, Mutex};
 
@@ -31,6 +25,7 @@ const DEFAULT_PLAYTHROUGH_MAX: usize = 6;
 pub struct UtsushiSoftpalPortContext {
     script_bytes: Option<Arc<Vec<u8>>>,
     textdat_bytes: Option<Arc<Vec<u8>>>,
+    point_bytes: Option<Arc<Vec<u8>>>,
     title: Option<String>,
 }
 
@@ -55,6 +50,7 @@ impl std::fmt::Debug for UtsushiSoftpalPortContext {
                 "textdat_bytes",
                 &self.textdat_bytes.as_ref().map(|b| b.len()),
             )
+            .field("point_bytes", &self.point_bytes.as_ref().map(|b| b.len()))
             .field("title", &self.title)
             .finish()
     }
@@ -161,23 +157,19 @@ impl UtsushiSoftpalPort {
         fidelity_tier_max: FidelityTier::LayoutProbe,
         evidence_tier_max: EvidenceTier::E2,
         limitations: &[
-            "Executes the linear Sv20 scene-dispatch the kaifuu-softpal disassembler proves (0-unknown on two real titles); it does not evaluate Sv20 expression values or resolve conditional jumps (Pal.dll semantics), so branch selection is deterministic-first, not a branch-following interpreter.",
+            "Executes the Sv20 VM's established arithmetic, comparisons, variables, labels, calls, and conditional jumps; an unproven operand or engine dispatch halts with a counted diagnostic rather than being skipped.",
             "Captured frames are message-box LAYOUT probes (geometry + text-extent bars), edge-redacted by default; Softpal background-CG decode is out of scope, so no source pixels are composited or persisted.",
             "Softpal VM snapshot, deterministic replay, and replay-review remain future work; the decoded dialogue/choice stream is cross-checked against the resolved bridge disassembly.",
         ],
     };
 
-    /// Cross-engine capability parity profile (UTSUSHI parity gate). The port
-    /// wires the four required lifecycle capabilities; the VM-backed
-    /// Snapshot / DeterministicReplay / ReplayReview (wired by the RealLive
-    /// reference) and Jump are declared dev-`Pending`, never permanently N/A.
     pub const PARITY_PROFILE: EngineParityProfile = EngineParityProfile {
         manifest: Self::MANIFEST,
         declarations: &[
             CapabilityDeclaration {
                 capability: PortCapability::Jump,
                 stance: CapabilityStance::Pending,
-                note: "dev: jump-to-moment needs Sv20 jump-target resolution (Pal.dll); no engine wires it yet.",
+                note: "dev: label targets and conditional jumps execute, but opaque engine dispatches still block arbitrary jump-to-moment playback.",
             },
             CapabilityDeclaration {
                 capability: PortCapability::Snapshot,
@@ -197,15 +189,10 @@ impl UtsushiSoftpalPort {
         ],
     };
 
-    /// An unconfigured port. Its `launch` fails, telling callers to supply the
-    /// extracted `SCRIPT.SRC` + `TEXT.DAT` rather than silently doing nothing.
     pub fn new() -> Self {
         Self::from_context(UtsushiSoftpalPortContext::empty())
     }
 
-    /// Construct the port over the extracted `SCRIPT.SRC` + `TEXT.DAT` bytes of
-    /// one Softpal title (the caller stages the PAC extraction), with a short
-    /// title label carried into the capture summary.
     pub fn with_extracted_scene(
         script_bytes: Vec<u8>,
         textdat_bytes: Vec<u8>,
@@ -214,6 +201,22 @@ impl UtsushiSoftpalPort {
         Self::from_context(UtsushiSoftpalPortContext {
             script_bytes: Some(Arc::new(script_bytes)),
             textdat_bytes: Some(Arc::new(textdat_bytes)),
+            point_bytes: None,
+            title: Some(title.into()),
+        })
+    }
+
+    /// Construct a label-aware VM context from all three script assets.
+    pub fn with_extracted_scene_and_points(
+        script: Vec<u8>,
+        textdat: Vec<u8>,
+        points: Vec<u8>,
+        title: impl Into<String>,
+    ) -> Self {
+        Self::from_context(UtsushiSoftpalPortContext {
+            script_bytes: Some(Arc::new(script)),
+            textdat_bytes: Some(Arc::new(textdat)),
+            point_bytes: Some(Arc::new(points)),
             title: Some(title.into()),
         })
     }
@@ -240,20 +243,16 @@ impl UtsushiSoftpalPort {
         }
     }
 
-    /// Override how many leading dialogue lines are rendered to frames.
     #[must_use]
     pub fn with_playthrough_max(mut self, max: usize) -> Self {
         self.playthrough_max = max.max(1);
         self
     }
 
-    /// Borrow the executed scene (present after a successful `launch`).
     pub fn scene(&self) -> Option<&SoftpalScene> {
         self.scene.as_ref()
     }
 
-    /// The leading dialogue lines that were rendered to their own frame, in
-    /// frame order — the frame -> dialogue correspondence.
     pub fn rendered_dialogue(&self) -> &[String] {
         &self.rendered_dialogue
     }
@@ -294,6 +293,7 @@ impl UtsushiSoftpalPort {
                         }
                     }
                 }
+                SceneStep::Branch { .. } => {}
             }
         }
         lines
@@ -365,8 +365,12 @@ impl EnginePort for UtsushiSoftpalPort {
                 "the extracted Softpal SCRIPT.SRC + TEXT.DAT are required to launch",
             ));
         };
-        let scene = SoftpalScene::execute(script, textdat)
-            .map_err(|error| Self::lifecycle_error(LifecycleStage::Launch, error.to_string()))?;
+        let scene = SoftpalScene::execute_with_points(
+            script,
+            textdat,
+            self.context.point_bytes.as_deref().map(Vec::as_slice),
+        )
+        .map_err(|error| Self::lifecycle_error(LifecycleStage::Launch, error.to_string()))?;
 
         self.buffered_text = Self::build_text_lines(&scene);
         if let Some(root) = request.artifact_root {
@@ -453,9 +457,6 @@ impl EnginePort for UtsushiSoftpalPort {
         if self.shut_down {
             return Ok(PortShutdownOutcome::already_shut_down());
         }
-        // The executed scene + its stats are retained after shutdown (like the
-        // RealLive port retains its replay log) so a caller can inspect the
-        // run's dialogue/choice accounting once the lifecycle has completed.
         self.buffered_text.clear();
         self.buffered_frames.clear();
         self.shut_down = true;
