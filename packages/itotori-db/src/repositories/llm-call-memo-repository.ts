@@ -22,8 +22,9 @@ import {
 export interface LlmMemoCipher {
   seal(plaintext: string): Promise<{ ciphertext: Uint8Array; keyRef: string }>;
   open(ciphertext: Uint8Array, keyRef: string): Promise<string>;
-  /** Must be idempotent so interrupted retention passes can resume safely. */
-  destroyKey(keyRef: string): Promise<void>;
+  /** Releases separable key material when the cipher owns any. It is idempotent
+   * because interrupted cleanup passes must be safe to resume. */
+  releaseKeyReference(keyRef: string): Promise<void>;
 }
 
 export type LlmStepBilling =

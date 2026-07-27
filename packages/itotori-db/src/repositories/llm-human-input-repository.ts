@@ -89,7 +89,7 @@ export class ItotoriLlmHumanInputRepository {
       if (inserted.rowCount === 0) {
         await this.assertIdempotent(client, input, contentHash);
         await client.query("commit");
-        if (sealed) await this.cipher.destroyKey(sealed.keyRef);
+        if (sealed) await this.cipher.releaseKeyReference(sealed.keyRef);
         return {
           inputId: input.inputId,
           inputKind: input.inputKind,
@@ -110,7 +110,7 @@ export class ItotoriLlmHumanInputRepository {
       };
     } catch (error: unknown) {
       await client.query("rollback");
-      if (sealed) await this.cipher.destroyKey(sealed.keyRef);
+      if (sealed) await this.cipher.releaseKeyReference(sealed.keyRef);
       throw error;
     } finally {
       client.release();

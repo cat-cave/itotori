@@ -298,7 +298,7 @@ export class ItotoriLlmWikiRepository {
       if (inserted.rowCount === 0) {
         await this.assertIdempotent(client, wikiVersionId, contentHash);
         await client.query("commit");
-        if (sealed) await this.cipher.destroyKey(sealed.keyRef);
+        if (sealed) await this.cipher.releaseKeyReference(sealed.keyRef);
         return {
           wikiVersionId,
           objectId: row.objectId,
@@ -313,7 +313,7 @@ export class ItotoriLlmWikiRepository {
       return { wikiVersionId, objectId: row.objectId, version: row.objectVersion, contentHash };
     } catch (error: unknown) {
       await client.query("rollback");
-      if (sealed) await this.cipher.destroyKey(sealed.keyRef);
+      if (sealed) await this.cipher.releaseKeyReference(sealed.keyRef);
       throw error;
     } finally {
       client.release();

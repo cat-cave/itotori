@@ -31,7 +31,12 @@ const contentAccessRequirements = [
   "LlmContentReadAuthorizer",
 ];
 const memoAccessRequirements = ["requireContentRead", 'purpose: "memo-replay"', "cipher.open"];
-const retentionRequirements = ["retention_deadline", "destroyKey", "deletion_state", "deleted_at"];
+const retentionRequirements = [
+  "retention_deadline",
+  "releaseKeyReference",
+  "deletion_state",
+  "deleted_at",
+];
 
 const contentColumnName =
   /(?:source|target|prompt|response|message|content|output|argument|result|excerpt|ocr|body|payload)/iu;

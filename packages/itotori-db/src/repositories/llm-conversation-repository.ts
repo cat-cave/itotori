@@ -173,12 +173,12 @@ export class ItotoriLlmConversationRepository {
       );
       const row = inserted.rows[0];
       if (row) return eventRecord(row);
-      await this.cipher.destroyKey(sealed.keyRef);
+      await this.cipher.releaseKeyReference(sealed.keyRef);
       const raced = await this.findEvent(normalized.id);
       if (!raced) throw new Error("conversation event insert lost without a durable winner");
       return assertIdempotent(raced, normalized);
     } catch (error: unknown) {
-      await this.cipher.destroyKey(sealed.keyRef);
+      await this.cipher.releaseKeyReference(sealed.keyRef);
       throw error;
     }
   }

@@ -11,7 +11,7 @@ type RegistryRow = {
 
 export type LlmRetentionDeletionReport = {
   deletedRows: number;
-  destroyedKeyRefs: number;
+  releasedKeyRefs: number;
   tables: Readonly<Record<string, number>>;
 };
 
@@ -33,7 +33,7 @@ export class ItotoriLlmRetentionRepository {
         order by table_name, ciphertext_column
       `);
       const byTable = groupRegistry(registry.rows);
-      const destroyed = new Set<string>();
+      const released = new Set<string>();
       const tables: Record<string, number> = {};
 
       for (const [tableName, columns] of byTable) {
@@ -41,7 +41,7 @@ export class ItotoriLlmRetentionRepository {
           tableName,
           columns,
           now,
-          destroyed,
+          released,
         });
         if (count > 0) tables[tableName] = count;
       }
@@ -49,7 +49,7 @@ export class ItotoriLlmRetentionRepository {
       await client.query("commit");
       return {
         deletedRows: Object.values(tables).reduce((sum, count) => sum + count, 0),
-        destroyedKeyRefs: destroyed.size,
+        releasedKeyRefs: released.size,
         tables,
       };
     } catch (error: unknown) {
@@ -85,7 +85,7 @@ async function deleteExpiredTable(
     tableName: string;
     columns: readonly RegistryRow[];
     now: Date;
-    destroyed: Set<string>;
+    released: Set<string>;
   },
 ): Promise<number> {
   const table = quoteIdentifier(input.tableName);
@@ -100,9 +100,9 @@ async function deleteExpiredTable(
 
   for (const row of expired.rows) {
     for (const keyRef of row.key_refs) {
-      if (keyRef === null || input.destroyed.has(keyRef)) continue;
-      await cipher.destroyKey(keyRef);
-      input.destroyed.add(keyRef);
+      if (keyRef === null || input.released.has(keyRef)) continue;
+      await cipher.releaseKeyReference(keyRef);
+      input.released.add(keyRef);
     }
   }
   if (expired.rows.length === 0) return 0;
