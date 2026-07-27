@@ -82,6 +82,24 @@ pub(crate) fn scene_id_string(scene_id: u16) -> String {
     format!("reallive:scene-{scene_id:04}")
 }
 
+/// Return the scene id named by an unarchived scene-override filename.
+///
+/// RealLive permits a data directory to replace an archive slot with a
+/// standalone `SEENdddd.TXT` scene file. The name is ASCII case-insensitive;
+/// the four decimal digits are the archive-slot id. `SEEN.TXT` itself is not
+/// an override because it has no four-digit suffix.
+pub fn parse_scene_override_file_name(name: &str) -> Option<u16> {
+    let bytes = name.as_bytes();
+    if bytes.len() != 12
+        || !bytes[..4].eq_ignore_ascii_case(b"seen")
+        || !bytes[8..].eq_ignore_ascii_case(b".txt")
+        || !bytes[4..8].iter().all(u8::is_ascii_digit)
+    {
+        return None;
+    }
+    name[4..8].parse().ok()
+}
+
 /// Parse a SEEN.TXT archive envelope. Returns the [`RealLiveSceneIndex`]
 /// on success, or a single fatal [`ParseDiagnostic`] describing the
 /// envelope failure.

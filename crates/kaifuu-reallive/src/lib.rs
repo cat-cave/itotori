@@ -120,11 +120,12 @@ pub mod scope;
 mod strings;
 #[cfg(test)]
 mod test_fixtures;
+mod textout;
 pub mod xor2;
 
 pub use archive::{
     REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, REALLIVE_SEEN_TXT_SLOT_COUNT, RealLiveSceneIndex,
-    SceneEntry, parse_archive,
+    SceneEntry, parse_archive, parse_scene_override_file_name,
 };
 pub use ast::{
     DiagnosticSeverity, Instruction, InstructionId, InstructionKind, Operand, ParseOutcome,
@@ -156,10 +157,9 @@ pub use gameexe::{
 };
 pub use opcode::{
     COMMAND_HEADER_LEN, CommandArg, Expr, GotoPointerSite, RealLiveOpcode, RealLiveParseError,
-    TextEncoding, collect_goto_pointer_sites, decode_dialogue_textout,
-    encode_choice_option_next_string_safe, is_recognized_opener, is_shift_jis_textout_lead,
-    is_structural_opener, parse_expression, parse_real_bytecode, parse_real_bytecode_spans,
-    unrecognized_opcode_histogram,
+    TextEncoding, collect_goto_pointer_sites, encode_choice_option_next_string_safe,
+    is_recognized_opener, is_shift_jis_textout_lead, is_structural_opener, parse_expression,
+    parse_real_bytecode, parse_real_bytecode_spans, unrecognized_opcode_histogram,
 };
 pub use opcodes::NamedOpcode;
 pub use parser::{parse_scene, parse_scene_into_ast};
@@ -180,6 +180,7 @@ pub use protected_spans::{
 };
 pub use scene_header::{SCENE_HEADER_BYTE_LEN, SceneHeader, SceneHeaderError};
 pub use scope::TranslationScope;
+pub use textout::decode_dialogue_textout;
 pub use xor2::{
     DecompressedArchive, XOR2_KEY_LEN, XOR2_SEGMENT_LENGTH, XOR2_SEGMENT_OFFSET, Xor2Cipher,
     Xor2DecScene, Xor2Report, compiler_version_uses_xor2, decompress_archive_scenes,
