@@ -308,6 +308,7 @@ pub(crate) fn drive(config: Config<'_>) -> Result<Value, Box<dyn Error>> {
             "textlineCount": render_report.get("textlineCount").cloned().unwrap_or(Value::Null),
             "renderedLineCount": render_report.get("renderedLineCount").cloned().unwrap_or(Value::Null),
             "renderedTextSha256": render_report.get("renderedTextSha256").cloned().unwrap_or(Value::Null),
+            "pixelGate": render_report.get("pixelGate").cloned().unwrap_or(Value::Null),
             "containsExpected": render_report.get("containsExpected").cloned().unwrap_or(Value::Null),
             "framesAnnounced": render_report.get("framesAnnounced").cloned().unwrap_or(Value::Null),
             "hasSpeakerNameBox": render_report.get("hasSpeakerNameBox").cloned().unwrap_or(Value::Null),

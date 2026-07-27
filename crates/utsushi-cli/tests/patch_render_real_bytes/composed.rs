@@ -152,14 +152,17 @@ fn patch_render_composes_patchback_and_render_on_real_bytes() {
         "patch evidence must record a non-zero translated unit count"
     );
 
-    // Render half: E2, redaction on, the rendered message carries the
-    // TRANSLATED text (containsExpected == true), through the real pipeline.
+    // Render half: E2, redaction on, and a passed pixel gate through the
+    // real pipeline. `containsExpected` remains decode/selection evidence;
+    // it is not permitted to stand in for a raster verdict.
     let render = &evidence["render"];
     assert_eq!(render["evidenceTier"], "E2");
     assert_eq!(render["redaction"], "on");
+    assert_eq!(render["pixelGate"]["status"], "passed");
     assert_eq!(
-        render["containsExpected"], true,
-        "the rendered message must carry the translated text the config asked for"
+        render["pixelGate"]["checks"],
+        serde_json::json!(["visible-delta", "expected-bounds", "distinct-glyph-masks"]),
+        "the render proof must assert rasterised pixels, not the decoded line"
     );
     assert_eq!(render["renderedLineCount"], 1);
     assert!(
@@ -193,7 +196,7 @@ fn patch_render_composes_patchback_and_render_on_real_bytes() {
         public_pngs.len(),
         private_pngs.len(),
         render["evidenceTier"],
-        render["containsExpected"],
+        render["pixelGate"]["status"],
     );
 
     // Frames stay uncommitted: clean up the scratch work dir.

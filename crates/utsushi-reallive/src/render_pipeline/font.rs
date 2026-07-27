@@ -1,10 +1,14 @@
 use std::sync::OnceLock;
 
+use sha2::{Digest, Sha256};
 use swash::FontRef;
 use swash::scale::{Render, ScaleContext, Source};
 use swash::zeno::Format;
 
-use super::{Framebuffer, TextLayer};
+use super::{
+    Framebuffer, TextLayer,
+    pixel_gate::{GlyphRaster, PixelBounds, TextRaster},
+};
 
 /// Bundled Japanese-capable font bytes. Compiled into the binary; never read
 /// from disk or the network at runtime. This is the renamed, JP-only Noto
@@ -28,6 +32,28 @@ fn font() -> FontRef<'static> {
 /// framebuffer pixels painted (coverage `> 0`), so the emit path can
 /// prove the localized text actually drew something.
 pub fn draw_lines(framebuffer: &mut Framebuffer, layer: &TextLayer) -> u64 {
+    rasterise_lines(framebuffer, layer, RasterMode::Normal).coverage_pixels
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum RasterMode {
+    Normal,
+    #[cfg(test)]
+    ReplacementGlyphs,
+    #[cfg(test)]
+    DropPixels,
+    #[cfg(test)]
+    Offset {
+        x: i32,
+        y: i32,
+    },
+}
+
+pub(super) fn rasterise_lines(
+    framebuffer: &mut Framebuffer,
+    layer: &TextLayer,
+    mode: RasterMode,
+) -> TextRaster {
     let font = font();
     let px = layer.scale.max(1) as f32;
     // Per-em-scaled vertical + horizontal metrics.
@@ -43,7 +69,7 @@ pub fn draw_lines(framebuffer: &mut Framebuffer, layer: &TextLayer) -> u64 {
         None => metrics.ascent + metrics.descent.abs() + metrics.leading,
     };
     let colour = layer.colour;
-    let mut painted: u64 = 0;
+    let mut raster = TextRaster::default();
 
     // Reused per-call scaler context + alpha (8-bit coverage) renderer.
     let mut context = ScaleContext::new();
@@ -61,10 +87,72 @@ pub fn draw_lines(framebuffer: &mut Framebuffer, layer: &TextLayer) -> u64 {
         let mut caret_x = layer.origin_x as f32;
 
         for character in line.chars() {
+            #[cfg(test)]
+            if matches!(mode, RasterMode::ReplacementGlyphs) {
+                // A forced resolver outage follows the real failure's visible
+                // contract: every requested glyph becomes the same .notdef
+                // box while the decoded characters remain intact upstream.
+                let side = px.round().max(1.0) as u32;
+                let base_x = caret_x.round() as i32;
+                let base_y = baseline_y.round() as i32 - side as i32;
+                let mut bitmap = vec![0u8; (side * side) as usize];
+                for y in 0..side {
+                    for x in 0..side {
+                        if x == 0 || y == 0 || x + 1 == side || y + 1 == side {
+                            bitmap[(y * side + x) as usize] = 0xFF;
+                        }
+                    }
+                }
+                let mut signature = Sha256::new();
+                signature.update(side.to_le_bytes());
+                signature.update(&bitmap);
+                raster.glyphs.push(GlyphRaster {
+                    source: character,
+                    coverage_signature: format!("{:x}", signature.finalize()),
+                    bounds: PixelBounds {
+                        left: base_x.max(0) as u32,
+                        top: base_y.max(0) as u32,
+                        right: (base_x + side as i32 - 1)
+                            .min(framebuffer.width as i32 - 1)
+                            .max(0) as u32,
+                        bottom: (base_y + side as i32 - 1)
+                            .min(framebuffer.height as i32 - 1)
+                            .max(0) as u32,
+                    },
+                });
+                for y in 0..side {
+                    for x in 0..side {
+                        if bitmap[(y * side + x) as usize] == 0 {
+                            continue;
+                        }
+                        let px_x = base_x + x as i32;
+                        let px_y = base_y + y as i32;
+                        if px_x < 0 || px_y < 0 || !framebuffer.in_bounds(px_x as u32, px_y as u32)
+                        {
+                            continue;
+                        }
+                        framebuffer.blend_pixel(
+                            px_x as u32,
+                            px_y as u32,
+                            [colour.red, colour.green, colour.blue, colour.alpha],
+                            0xFF,
+                        );
+                        raster.coverage_pixels += 1;
+                    }
+                }
+                caret_x += side as f32;
+                continue;
+            }
             // Noto Serif CJK JP covers the Japanese source and common target
             // locales. A genuinely unsupported code point still maps to
             // glyph 0 (`.notdef`) rather than disappearing silently.
-            let glyph_id = charmap.map(character);
+            let glyph_id = match mode {
+                RasterMode::Normal => charmap.map(character),
+                #[cfg(test)]
+                RasterMode::ReplacementGlyphs
+                | RasterMode::DropPixels
+                | RasterMode::Offset { .. } => charmap.map(character),
+            };
             let advance = glyph_metrics.advance_width(glyph_id);
 
             let Some(image) = render.render(&mut scaler, glyph_id) else {
@@ -82,6 +170,25 @@ pub fn draw_lines(framebuffer: &mut Framebuffer, layer: &TextLayer) -> u64 {
             // the top of the coverage bitmap.
             let base_x = caret_x.round() as i32 + placement.left;
             let base_y = baseline_y.round() as i32 - placement.top;
+            let bounds = PixelBounds {
+                left: base_x.max(0) as u32,
+                top: base_y.max(0) as u32,
+                right: (base_x + placement.width as i32 - 1)
+                    .min(framebuffer.width as i32 - 1)
+                    .max(0) as u32,
+                bottom: (base_y + placement.height as i32 - 1)
+                    .min(framebuffer.height as i32 - 1)
+                    .max(0) as u32,
+            };
+            let mut signature = Sha256::new();
+            signature.update(placement.width.to_le_bytes());
+            signature.update(placement.height.to_le_bytes());
+            signature.update(&image.data);
+            raster.glyphs.push(GlyphRaster {
+                source: character,
+                coverage_signature: format!("{:x}", signature.finalize()),
+                bounds,
+            });
 
             for gy in 0..placement.height {
                 for gx in 0..placement.width {
@@ -91,27 +198,66 @@ pub fn draw_lines(framebuffer: &mut Framebuffer, layer: &TextLayer) -> u64 {
                     if cover == 0 {
                         continue;
                     }
-                    let px_x = base_x + gx as i32;
-                    let px_y = base_y + gy as i32;
+                    let (offset_x, offset_y) = match mode {
+                        RasterMode::Normal => (0, 0),
+                        #[cfg(test)]
+                        RasterMode::ReplacementGlyphs | RasterMode::DropPixels => (0, 0),
+                        #[cfg(test)]
+                        RasterMode::Offset { x, y } => (x, y),
+                    };
+                    let px_x = base_x + gx as i32 + offset_x;
+                    let px_y = base_y + gy as i32 + offset_y;
                     if px_x < 0 || px_y < 0 {
                         continue;
                     }
                     if !framebuffer.in_bounds(px_x as u32, px_y as u32) {
                         continue;
                     }
-                    framebuffer.blend_pixel(
-                        px_x as u32,
-                        px_y as u32,
-                        [colour.red, colour.green, colour.blue, colour.alpha],
-                        cover,
-                    );
-                    painted += 1;
+                    let draws_pixels = match mode {
+                        RasterMode::Normal => true,
+                        #[cfg(test)]
+                        RasterMode::ReplacementGlyphs | RasterMode::Offset { .. } => true,
+                        #[cfg(test)]
+                        RasterMode::DropPixels => false,
+                    };
+                    if draws_pixels {
+                        framebuffer.blend_pixel(
+                            px_x as u32,
+                            px_y as u32,
+                            [colour.red, colour.green, colour.blue, colour.alpha],
+                            cover,
+                        );
+                    }
+                    raster.coverage_pixels += 1;
                 }
             }
             caret_x += advance;
         }
     }
-    painted
+    raster
+}
+
+#[cfg(test)]
+pub(super) fn rasterise_lines_for_test(
+    framebuffer: &mut Framebuffer,
+    layer: &TextLayer,
+    replacement_glyphs: bool,
+    drop_pixels: bool,
+    offset: (i32, i32),
+) -> TextRaster {
+    let mode = if replacement_glyphs {
+        RasterMode::ReplacementGlyphs
+    } else if drop_pixels {
+        RasterMode::DropPixels
+    } else if offset != (0, 0) {
+        RasterMode::Offset {
+            x: offset.0,
+            y: offset.1,
+        }
+    } else {
+        RasterMode::Normal
+    };
+    rasterise_lines(framebuffer, layer, mode)
 }
 
 /// Rendered pixel width of `text` at `px` em size through the bundled

@@ -289,6 +289,14 @@ pub use choice_window::{
 /// anti-aliased coverage.
 mod font;
 
+/// Pixel-space localized-text validation. Kept beside the rasterizer so the
+/// gate receives the actual glyph coverage masks and framebuffer delta.
+mod pixel_gate;
+pub use pixel_gate::{
+    PixelGateError, RENDER_PIPELINE_INVISIBLE_TEXT_CODE, RENDER_PIPELINE_REPLACEMENT_GLYPH_CODE,
+    RENDER_PIPELINE_WRONG_TEXT_POSITION_CODE,
+};
+
 /// Typed errors surfaced by [`RenderPass::new`] when the caller-supplied
 /// [`ScreenSize`] is unusable.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -308,6 +316,9 @@ pub enum RenderPassBuildError {
 /// Typed errors surfaced by [`RenderPass::emit_localized_screenshot`].
 #[derive(Debug, thiserror::Error)]
 pub enum RenderEmitError {
+    /// The localized text's post-raster pixel result failed validation.
+    #[error("localized text pixel gate failed: {0}")]
+    PixelGate(#[from] PixelGateError),
     /// A managed/public artifact can never contain a full-fidelity frame.
     #[error("full-fidelity frames must use the private artifact path")]
     FullFidelityPublicArtifactRefused,

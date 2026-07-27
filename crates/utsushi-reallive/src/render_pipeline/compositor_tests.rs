@@ -83,7 +83,9 @@ fn two_emissions_with_same_state_produce_byte_identical_pngs() {
     // clipped tiny-canvas layout.
     let mut pass_a = RenderPass::with_dimensions(64, 64).expect("non-zero screen");
     let mut pass_b = RenderPass::with_dimensions(64, 64).expect("non-zero screen");
-    let stack = wipe_stack(WipeColour::WHITE);
+    // White localized glyphs over white are invisible pixels; use a visible
+    // background because screenshot emission now validates the actual raster.
+    let stack = wipe_stack(WipeColour::BLACK);
     let text = TextLayer::localized(vec!["ABC".to_string()]);
     let root_a = temp_artifact_root("det-a");
     let root_b = temp_artifact_root("det-b");

@@ -4,6 +4,7 @@ use crate::graphics_objects::{HitRect, WipeColour};
 
 use super::{
     ChoiceOverlay, ChoiceWindow, ObjectButtonChoiceWindow, RGBA_BYTES_PER_PIXEL, TextLayer, font,
+    pixel_gate::{self, PixelGateError},
 };
 
 /// In-process framebuffer. A `width × height` grid of RGBA bytes in row-major
@@ -141,6 +142,29 @@ impl Framebuffer {
             painted += self.draw_text(name_box);
         }
         painted
+    }
+
+    /// Paint text and validate the pixels that changed, not merely the input
+    /// string. The regular `draw_text` remains available for diagnostics and
+    /// layout probes; screenshot emission must use this checked boundary.
+    pub(crate) fn draw_text_checked(&mut self, layer: &TextLayer) -> Result<u64, PixelGateError> {
+        if let Some(backdrop) = layer.backdrop {
+            self.fill_rect_blended(
+                backdrop.x,
+                backdrop.y,
+                backdrop.width,
+                backdrop.height,
+                backdrop.colour,
+            );
+        }
+        let before = self.pixels.clone();
+        let raster = font::rasterise_lines(self, layer, font::RasterMode::Normal);
+        pixel_gate::assert_visible(&raster, pixel_gate::PixelDelta::between(&before, self))?;
+        let mut painted = raster.coverage_pixels;
+        if let Some(name_box) = &layer.name_box {
+            painted += self.draw_text_checked(name_box)?;
+        }
+        Ok(painted)
     }
 
     /// Paint whichever selection affordance the current choice gate calls
