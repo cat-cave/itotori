@@ -5,10 +5,6 @@ name: setup-itotori
 description: Install pinned toolchains and restore safe accelerator caches.
 
 inputs:
-  browser:
-    description: "When true, restore Playwright cache and install Chromium with OS deps"
-    required: false
-    default: "false"
   native:
     description: "When true, build release kaifuu-cli + utsushi-cli after install"
     required: false
@@ -81,29 +77,6 @@ runs:
         just --version
         rustc --version
         cargo --version
-
-    - name: Restore Playwright browser cache
-      if: inputs.browser == 'true'
-      uses: actions/cache@v6
-      with:
-        path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-        restore-keys: |
-          playwright-${{ runner.os }}-
-
-    - name: Install Playwright Chromium
-      if: inputs.browser == 'true'
-      shell: bash
-      run: |
-        set -euo pipefail
-        pnpm --filter @itotori/app exec playwright install --with-deps chromium
-        bin="$(pnpm --filter @itotori/app exec node -e 'import { chromium } from "@playwright/test"; console.log(chromium.executablePath())')"
-        test -x "$bin"
-        {
-          echo "PLAYWRIGHT_CHROMIUM_BIN=$bin"
-          echo "UTSUSHI_BROWSER_BIN=$bin"
-        } >> "$GITHUB_ENV"
-        echo "Playwright Chromium provisioned at $bin"
 
     - name: Build release native CLIs
       if: inputs.native == 'true'

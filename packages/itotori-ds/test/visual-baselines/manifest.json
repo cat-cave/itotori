@@ -12,7 +12,7 @@
   "colorScheme": "dark",
   "reducedMotion": "reduce",
   "maxDiffPixels": 0,
-  "storyCount": 37,
+  "storyCount": 35,
   "stories": [
     {
       "id": "core-badge--default",
@@ -20,7 +20,7 @@
       "name": "Default",
       "importPath": "./src/stories/Badge.stories.tsx",
       "baseline": "core-badge--default.png",
-      "sha256": "sha256:c6fb2275f37cc0d78b4b532d33da59f9c36636aa7c079b5235b0fa5f6e94d373"
+      "sha256": "sha256:bcd2ddffa037baaa3f07c87b67928859fc5ba24ec812fcf77d8f663cc5a99431"
     },
     {
       "id": "core-badge--status-vocabulary",
@@ -28,7 +28,7 @@
       "name": "Status Vocabulary",
       "importPath": "./src/stories/Badge.stories.tsx",
       "baseline": "core-badge--status-vocabulary.png",
-      "sha256": "sha256:a09c8c37ce0e9381d67b7c752b37d39b7650f252d2372f87f6c09884b52fcafb"
+      "sha256": "sha256:9c95d41c2d5f234d6403d191224d99fa104635eec79939bb5177907a88b4551a"
     },
     {
       "id": "core-badge--tone-override",
@@ -36,7 +36,7 @@
       "name": "Tone Override",
       "importPath": "./src/stories/Badge.stories.tsx",
       "baseline": "core-badge--tone-override.png",
-      "sha256": "sha256:7ec027135036121f22950808e791c8b910294a91e541f2c0b831710a148cdb6c"
+      "sha256": "sha256:1d7cc00ad2dd3ce5106bf313ecb99c3f4dfc25dddf91ce695396f4a47f92350e"
     },
     {
       "id": "data-comparisonpane--default",
@@ -44,7 +44,7 @@
       "name": "Default",
       "importPath": "./src/stories/ComparisonPane.stories.tsx",
       "baseline": "data-comparisonpane--default.png",
-      "sha256": "sha256:3e19a733da7712b2d7e72b40cdc70e9eeed40bfb1fe4c813e52b1b0e14a20e74"
+      "sha256": "sha256:7604aa5affca6a19f8d6e613babb523b339f3999ed9d144cf33148851199e7cb"
     },
     {
       "id": "data-datatable--activatable-rows",
@@ -52,7 +52,7 @@
       "name": "Activatable Rows",
       "importPath": "./src/stories/DataTable.stories.tsx",
       "baseline": "data-datatable--activatable-rows.png",
-      "sha256": "sha256:4f28a926674b13644905e42f7c2bd55c73b61f0d3c5a9f09f952f6dcc0ff5292"
+      "sha256": "sha256:4dd364163176c4b6efae367949c31e63fc4a06bbf94dfe9da2ef8885a9896c11"
     },
     {
       "id": "data-datatable--default",
@@ -60,7 +60,7 @@
       "name": "Default",
       "importPath": "./src/stories/DataTable.stories.tsx",
       "baseline": "data-datatable--default.png",
-      "sha256": "sha256:78fa4d86e7470ae5c0c0e0b9e3f7a25ebf154ceae27454b5b913126fe2c1a6e3"
+      "sha256": "sha256:293d08fe0b9f1116d999557c939b976e771f17565c4ca5079fb596f1e3a7a759"
     },
     {
       "id": "data-datatable--empty",
@@ -68,7 +68,7 @@
       "name": "Empty",
       "importPath": "./src/stories/DataTable.stories.tsx",
       "baseline": "data-datatable--empty.png",
-      "sha256": "sha256:4bddadda25931acfd53da32590b3d732bb2ea7f4be59454f6a529c4fb4081bce"
+      "sha256": "sha256:b35497b7f1c87172dce028c3db3e7be6808b2a4adcecaff39e2feabc43db2520"
     },
     {
       "id": "data-localizationprogress--default",
@@ -76,7 +76,7 @@
       "name": "Default",
       "importPath": "./src/stories/LocalizationProgress.stories.tsx",
       "baseline": "data-localizationprogress--default.png",
-      "sha256": "sha256:a5d3eb929888bc02146016b7f3c08273498d5db7302467bff9a4a99df719eb9e"
+      "sha256": "sha256:493a4b0c9fddfbb3e9d9e0d0e85d89c26ee023784c90cf4393761f6f8bc9dcf6"
     },
     {
       "id": "data-progressbar--default",
@@ -84,7 +84,7 @@
       "name": "Default",
       "importPath": "./src/stories/ProgressBar.stories.tsx",
       "baseline": "data-progressbar--default.png",
-      "sha256": "sha256:416a89f7695143981100430f2bca3e0b1f9a31b254defd3b6c3e9b6412e49f29"
+      "sha256": "sha256:ecf861bc31d9ff189032f6bdf27129e9ae8c23b6018c4abeaaf327bec9961a7a"
     },
     {
       "id": "data-progressbar--running",
@@ -100,7 +100,7 @@
       "name": "Not Sensitive",
       "importPath": "./src/stories/RedactionFrame.stories.tsx",
       "baseline": "data-redactionframe--not-sensitive.png",
-      "sha256": "sha256:dfc1204ffee4d9466996c975406ccc5de78fd193c1c42c41fdbad397ce6553a6"
+      "sha256": "sha256:e65703583727929f48aa323ff4c6498df5f43a3a03015bd7daa3a52f641d1899"
     },
     {
       "id": "data-redactionframe--redacted",
@@ -108,7 +108,7 @@
       "name": "Redacted",
       "importPath": "./src/stories/RedactionFrame.stories.tsx",
       "baseline": "data-redactionframe--redacted.png",
-      "sha256": "sha256:07fd13a4af4ccdada3c26b3e8dca6fee5ad39107f11455f067e2c17a6086389b"
+      "sha256": "sha256:b48739228147c528163c0d38df42e39ceba31766099f5d47e2d2d34817cf9f99"
     },
     {
       "id": "data-redactionframe--revealed",
@@ -116,7 +116,7 @@
       "name": "Revealed",
       "importPath": "./src/stories/RedactionFrame.stories.tsx",
       "baseline": "data-redactionframe--revealed.png",
-      "sha256": "sha256:dfc1204ffee4d9466996c975406ccc5de78fd193c1c42c41fdbad397ce6553a6"
+      "sha256": "sha256:e65703583727929f48aa323ff4c6498df5f43a3a03015bd7daa3a52f641d1899"
     },
     {
       "id": "data-redactionframe--share-forced",
@@ -124,7 +124,7 @@
       "name": "Share Forced",
       "importPath": "./src/stories/RedactionFrame.stories.tsx",
       "baseline": "data-redactionframe--share-forced.png",
-      "sha256": "sha256:e9b956651a2ab3a7730c7c7d511423140ce18bc4699b56e29836fac785fb8270"
+      "sha256": "sha256:1f87b2626df1b186a796115836c7e5ea0ad13719823282b099df2824773f09c1"
     },
     {
       "id": "data-statreadout--default",
@@ -132,7 +132,7 @@
       "name": "Default",
       "importPath": "./src/stories/StatReadout.stories.tsx",
       "baseline": "data-statreadout--default.png",
-      "sha256": "sha256:da8b76687988cf726d6bf9b66656dd21ef5812c1861fb888d1c56f8d7a371dcb"
+      "sha256": "sha256:56525bb57126252cc517208148e32a11cb656f8fe3e6b1534c8c4c66dbe68767"
     },
     {
       "id": "data-statreadout--zdr-posture",
@@ -140,7 +140,7 @@
       "name": "Zdr Posture",
       "importPath": "./src/stories/StatReadout.stories.tsx",
       "baseline": "data-statreadout--zdr-posture.png",
-      "sha256": "sha256:85810c44b27fad4e79ef2a7550393623dacd3eafc41df10b98cc7c7a82a424a2"
+      "sha256": "sha256:537a73fc4910be984aff5ce2503c15bb5d57d30be53934a7ec8f3ce5e209985a"
     },
     {
       "id": "feedback-toast--single",
@@ -148,7 +148,7 @@
       "name": "Single",
       "importPath": "./src/stories/Toast.stories.tsx",
       "baseline": "feedback-toast--single.png",
-      "sha256": "sha256:9218598a02295344621c1b3a305d04b7aab717aec2734b53679b9e95cb07d38c"
+      "sha256": "sha256:1e3c37c8e1e4ada3d73cf69982c9353a502f88a665a96c0640053f0ca3f57da1"
     },
     {
       "id": "feedback-toast--viewport-queue",
@@ -156,7 +156,7 @@
       "name": "Viewport Queue",
       "importPath": "./src/stories/Toast.stories.tsx",
       "baseline": "feedback-toast--viewport-queue.png",
-      "sha256": "sha256:491e3f255c1ce3b4b47828e57a34ddc1f5449f7643a6a5516af84d4de9cd26f0"
+      "sha256": "sha256:d25ea8c6e9c6f90c0d1a987fd449bfe076b59a4fef87df46ed3c2744a54a0a99"
     },
     {
       "id": "game-annotationcomposer--default",
@@ -164,7 +164,7 @@
       "name": "Default",
       "importPath": "./src/stories/AnnotationComposer.stories.tsx",
       "baseline": "game-annotationcomposer--default.png",
-      "sha256": "sha256:79da643d980e24e19f4a0ab4936ca49bc56a054c1a085499f67545971d18caed"
+      "sha256": "sha256:47ba5b45688c4cbd12b6fc41e6779a28e8e8fc73e2e359ec6be2529f2a33a54a"
     },
     {
       "id": "game-annotationcomposer--disabled",
@@ -172,7 +172,7 @@
       "name": "Disabled",
       "importPath": "./src/stories/AnnotationComposer.stories.tsx",
       "baseline": "game-annotationcomposer--disabled.png",
-      "sha256": "sha256:e1af429781c0c5f193c0d2091c18d4b10a07c10f0e8fa5884eeec6fde16868b1"
+      "sha256": "sha256:dc6ccbccaa436a8efef5c7c2c6537fe3c44e891889608be6c2b79ad0c9babbc3"
     },
     {
       "id": "game-sceneplayer--default",
@@ -180,7 +180,7 @@
       "name": "Default",
       "importPath": "./src/stories/ScenePlayer.stories.tsx",
       "baseline": "game-sceneplayer--default.png",
-      "sha256": "sha256:cc592c4e01b2182e17212f30c9634433a4e6b69caff971da76b994cece9f5b7f"
+      "sha256": "sha256:0e09c8c0558ec0bb981d434199d2e5fdf7e6a4852c94d8f94cdfa680494ad8ae"
     },
     {
       "id": "game-sceneplayer--with-annotation",
@@ -188,7 +188,7 @@
       "name": "With Annotation",
       "importPath": "./src/stories/ScenePlayer.stories.tsx",
       "baseline": "game-sceneplayer--with-annotation.png",
-      "sha256": "sha256:2486e51b27dbd6f60fa42547602aeaa7b2523e99e9286bf078cd76dc820dbff8"
+      "sha256": "sha256:8fdc3c1d985c04855d17793150dee29e4ffd095ab6565e8d7c12fa1c0c9a53a6"
     },
     {
       "id": "layout-panel--default",
@@ -196,7 +196,7 @@
       "name": "Default",
       "importPath": "./src/stories/Panel.stories.tsx",
       "baseline": "layout-panel--default.png",
-      "sha256": "sha256:f514bc735677dd8593263b534f266e57b701750115bf80828cb04b50b6194d3c"
+      "sha256": "sha256:97aee6516789ad9acfbe065a6369f701c0ef115214fa04c3f7b802127ac4c204"
     },
     {
       "id": "layout-panel--mint-hoverable",
@@ -204,7 +204,7 @@
       "name": "Mint Hoverable",
       "importPath": "./src/stories/Panel.stories.tsx",
       "baseline": "layout-panel--mint-hoverable.png",
-      "sha256": "sha256:0821c8d28b0d9d74a75f1928b3cf0ea29253f8aab48bc6a82af68a9d63abec43"
+      "sha256": "sha256:8c0bd02daec895f9a8e154798256ca3718ba160edaba806b8b3828354bfe1274"
     },
     {
       "id": "layout-panel--with-lamps",
@@ -212,7 +212,7 @@
       "name": "With Lamps",
       "importPath": "./src/stories/Panel.stories.tsx",
       "baseline": "layout-panel--with-lamps.png",
-      "sha256": "sha256:be3aeccc433523f5450eac8efdf6750bef79876e3b75263f73e58ba22ef6c7a0"
+      "sha256": "sha256:7b3f3a731d4a514f82139ac445ca0603812877976dc1a53d9962d1b26bf58aa1"
     },
     {
       "id": "localization-bitext--default",
@@ -220,7 +220,7 @@
       "name": "Default",
       "importPath": "./src/stories/BiText.stories.tsx",
       "baseline": "localization-bitext--default.png",
-      "sha256": "sha256:b0be7258d98117dbb52262870bf282bfe808fa2c7c3b7b3915411e9a41cba9e7"
+      "sha256": "sha256:a01f99bba14e69e291d6073676b96c4f726e50cdca2d85dc02a070d87028fac2"
     },
     {
       "id": "navigation-commandpalette--closed",
@@ -236,7 +236,7 @@
       "name": "Keyboard Select",
       "importPath": "./src/stories/CommandPalette.stories.tsx",
       "baseline": "navigation-commandpalette--keyboard-select.png",
-      "sha256": "sha256:905639b005f4381c64a041ef4fba775fd7a9f2fb209d1266c3a987cff1a49bd5"
+      "sha256": "sha256:5352771469dd3ba2dee785be51ae2760c2709adf19b1a5cbc4e188588c785bb8"
     },
     {
       "id": "navigation-commandpalette--open",
@@ -244,7 +244,7 @@
       "name": "Open",
       "importPath": "./src/stories/CommandPalette.stories.tsx",
       "baseline": "navigation-commandpalette--open.png",
-      "sha256": "sha256:5055a046546a10154d6b2c7832fd21e69ecdc779c691fea0db18bb068fad3624"
+      "sha256": "sha256:9d1f1caf8d31064934fb7c93d09feb4bffb468385f6812327799a03847c8bce9"
     },
     {
       "id": "navigation-navpills--default",
@@ -252,7 +252,7 @@
       "name": "Default",
       "importPath": "./src/stories/NavPills.stories.tsx",
       "baseline": "navigation-navpills--default.png",
-      "sha256": "sha256:490600b5d306c1eeb1fda0b3a8a14815e03888ccdac67d645990ccbe95bd5c21"
+      "sha256": "sha256:64b7d8a684e1f9fea9d7e96b19aad79cf6c6fbc54326f6a0e9dd0fabdedffe5f"
     },
     {
       "id": "navigation-pagination--at-end",
@@ -260,7 +260,7 @@
       "name": "At End",
       "importPath": "./src/stories/Pagination.stories.tsx",
       "baseline": "navigation-pagination--at-end.png",
-      "sha256": "sha256:310a0489969fb4d8d1ce9dd6d8ba2bd2f2405077004972b9c519820f473cd7dc"
+      "sha256": "sha256:df2f26f487435e09f81a796b4abad51e4421b2eb7986070f72586a0fc3e0a264"
     },
     {
       "id": "navigation-pagination--at-start",
@@ -268,7 +268,7 @@
       "name": "At Start",
       "importPath": "./src/stories/Pagination.stories.tsx",
       "baseline": "navigation-pagination--at-start.png",
-      "sha256": "sha256:9c587641ce3466b6fd1d6de5321629c6847e8763f1a2aa946ded2fbb0fd13a37"
+      "sha256": "sha256:a2a2ebea677baa8102dc3c84095dac6d16249438981397d161a9b8fb4ff83b69"
     },
     {
       "id": "navigation-pagination--default",
@@ -276,7 +276,7 @@
       "name": "Default",
       "importPath": "./src/stories/Pagination.stories.tsx",
       "baseline": "navigation-pagination--default.png",
-      "sha256": "sha256:026d45ee7fb74864381bbbc04c3c1e07143ec4b7903572979a4e9cf62a5964c3"
+      "sha256": "sha256:b0e34d28650584251767e77ab01a3fbd1a27dcb83f467c5e9e81a0b7307cae2e"
     },
     {
       "id": "wiki-wikientry--default",
@@ -284,7 +284,7 @@
       "name": "Default",
       "importPath": "./src/stories/WikiEntry.stories.tsx",
       "baseline": "wiki-wikientry--default.png",
-      "sha256": "sha256:de7403d9273273b796200122c303e159eb15b735788c88dee4198c8c39605a8d"
+      "sha256": "sha256:bbe6e137bf216aa91ab63876b3db5d86842fc9cecc013be1c592436a62ff624d"
     },
     {
       "id": "wiki-wikientry--stale-scene",
@@ -292,7 +292,7 @@
       "name": "Stale Scene",
       "importPath": "./src/stories/WikiEntry.stories.tsx",
       "baseline": "wiki-wikientry--stale-scene.png",
-      "sha256": "sha256:c80678cd777e029c484d77b0a5baae6424676396555297a8eb281d4f1b657a67"
+      "sha256": "sha256:298ad9519625da52e144484215a12df014f8bb4356384508b1b09b25e4989fac"
     }
   ]
 }

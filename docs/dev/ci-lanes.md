@@ -91,13 +91,45 @@ runnable `pkgs.chromium` and exports its store path as `PLAYWRIGHT_CHROMIUM_BIN`
 `apps/runtime-web-review/e2e/playwright.config.ts` launches THAT binary via
 `executablePath` and the browser is pinned by `flake.lock`.
 
+The binary is only a THIRD of the renderer, though. The DS visual baselines are
+pixel-exact (`maxDiffPixels=0`), and a screenshot is a function of three host
+inputs:
+
+1. **the browser binary** — `PLAYWRIGHT_CHROMIUM_BIN`, a flake.lock-pinned
+   `pkgs.chromium`;
+2. **the faces fontconfig resolves** — `FONTCONFIG_FILE`, a hand-written,
+   fully hermetic config. The DS type stacks are art direction, not shipped
+   font files, so every family falls through to `system-ui` / `sans-serif` /
+   `monospace`, which an unpinned host answers with whatever it has installed;
+3. **the rasterization path** — pinned by the Chromium flags in
+   `packages/itotori-ds/scripts/visual-regression.mjs` (`rasterizationArgs`):
+   software raster, grayscale text, integer glyph positions, sRGB, one raster
+   thread, and Skia's CPU-independent kernels.
+
+All three are load-bearing, and each was learned from a red run rather than
+guessed. The font config is written by hand because the nixpkgs fonts-conf
+helper is additive, not hermetic — it emits a `/nix/store` path that still
+`<include>`s the host's `/etc/fonts/conf.d` and lists `/usr/share/fonts`, so a
+pinned-looking file inherits the host's hinting/subpixel rules and font
+universe. `just ci-tier1-browser` refuses to run unless all three are pinned,
+and it checks the font config's CONTENT, not just that its path is in the store.
+
 - **Locally:** enter the dev shell (`direnv` / `nix develop`) and run
   `just browser-e2e`. Outside the dev shell, export `PLAYWRIGHT_CHROMIUM_BIN`
   to a runnable Chromium (>= 149, matching Playwright 1.60).
-- **In CI:** the browser lane runs on the self-hosted `itotori-corpora` runner
-  (the same host that stages the real corpora and provides nix) via
-  `nix develop --command just browser-e2e`, so the exact pinned nix-Chromium is
-  used. See the `browser-e2e` job in `.github/workflows/real-bytes-oracle.yml`.
+- **In Tier-1 CI:** the `browser` job in `.github/workflows/_tier1.yml` installs
+  nix and runs `nix develop .#browser --command just ci-tier1-browser`. The
+  `.#browser` dev shell is a minimal shell carrying only the renderer contract
+  (Chromium + fonts), so a hosted runner does not realise the Rust toolchain to
+  take a screenshot; node/pnpm/just come from `setup-itotori`. This is what
+  makes the baseline renderer and the CI renderer the same derivations. Before
+  it, the job took Chromium from Playwright's download, so the pixel assertions
+  green-skipped on every PR and three stale baselines sat red on `main` behind
+  an all-green check.
+- **In the periodic lane:** the `browser-e2e` job runs on the self-hosted
+  `itotori-corpora` runner (the same host that stages the real corpora and
+  provides nix) via `nix develop --command just browser-e2e`. See
+  `.github/workflows/real-bytes-oracle.yml`.
 
 ### Skip-honesty / fail-loud
 

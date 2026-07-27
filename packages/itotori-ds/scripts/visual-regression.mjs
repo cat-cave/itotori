@@ -184,10 +184,44 @@ async function startStaticServer(root) {
   };
 }
 
+// The rasterization half of the renderer contract (the font half is the
+// nix-pinned FONTCONFIG_FILE; see flake.nix). Pinning the binary and the fonts
+// still leaves Chromium free to pick a rasterization path from the MACHINE:
+// GPU vs software, LCD-subpixel vs grayscale text, fractional vs integer glyph
+// positioning, and Skia SIMD kernels chosen from the host CPU's feature bits.
+// A hosted runner and this workstation differ on all four, so each is forced to
+// its most portable setting rather than left to the environment.
+export const rasterizationArgs = [
+  // Grayscale antialiasing and integer glyph positions: the two text settings
+  // a headless host cannot infer (there is no display geometry to infer from).
+  "--font-render-hinting=none",
+  "--disable-lcd-text",
+  "--disable-font-subpixel-positioning",
+  // Software raster everywhere. A machine with a usable GPU otherwise composites
+  // shadows/gradients through a different code path than a GPU-less runner.
+  "--disable-gpu",
+  "--disable-gpu-rasterization",
+  "--disable-accelerated-2d-canvas",
+  // Skia otherwise selects SIMD kernels from runtime CPU detection, so the same
+  // binary rasterizes differently on a different CPU.
+  "--disable-skia-runtime-opts",
+  // Single-threaded, whole-tile rasterization. With the defaults, one story
+  // (the toast viewport, whose panels carry a blurred box-shadow) came out
+  // 6 pixels different by +/-1 LSB on its rounded corners BETWEEN TWO RUNS ON
+  // THE SAME MACHINE — tile boundaries and raster thread count are not stable
+  // inputs. Measured below; without these the gate would be relying on
+  // pixelmatch's perceptual threshold to swallow its own flake.
+  "--num-raster-threads=1",
+  "--disable-partial-raster",
+  // Colour and scale come from the contract, never from the host.
+  "--force-color-profile=srgb",
+  "--force-device-scale-factor=1",
+];
+
 async function captureStories(stories, baseUrl, executablePath) {
   const browser = await chromium.launch({
     executablePath,
-    args: ["--font-render-hinting=none"],
+    args: rasterizationArgs,
   });
   try {
     const context = await browser.newContext({
@@ -266,6 +300,16 @@ async function compareImages(expectedPath, actualPath, diffPath) {
     expected.height,
     {
       threshold: 0.05,
+      // pixelmatch defaults to includeAA:false, which discards any difference
+      // it can classify as anti-aliasing — and a 1px geometry change to a
+      // rounded shape looks exactly like that. Measured on this suite: growing
+      // the toast status dot from 8px to 9px changed 20 pixels, one of them a
+      // clean background -> solid mint flip, and scored 0 even at threshold 0.
+      // A gate advertising maxDiffPixels=0 must not silently absorb a real
+      // shape change, and the capture is deterministic under the pinned
+      // renderer (32 of 35 baselines re-captured byte-identical), so there is
+      // no sub-pixel noise for the AA exclusion to protect against.
+      includeAA: true,
     },
   );
   if (diffPixels > 0) {
@@ -428,7 +472,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.stack : error);
-  process.exit(1);
-});
+// Guarded so the module can be imported for `rasterizationArgs` (the renderer
+// contract's rasterization half) without running a capture as a side effect.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.stack : error);
+    process.exit(1);
+  });
+}
