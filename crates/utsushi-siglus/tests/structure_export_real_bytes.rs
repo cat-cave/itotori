@@ -58,6 +58,13 @@ fn assert_nontrivial_structure(root: &Path, label: &str) {
         .iter()
         .map(|scene| scene["choices"].as_array().map_or(0, Vec::len))
         .sum();
+    if label == "corpus-1" {
+        assert_eq!(scenes.len(), 298, "{label}: scene coverage regressed");
+        assert_eq!(
+            message_count, 57_323,
+            "{label}: static message coverage regressed"
+        );
+    }
     let resolved_speakers: Vec<_> = scenes
         .iter()
         .flat_map(|scene| scene["messages"].as_array().into_iter().flatten())

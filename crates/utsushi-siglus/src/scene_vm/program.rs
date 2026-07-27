@@ -21,6 +21,7 @@ pub struct SceneProgram {
     pub(crate) instructions: Vec<VmInstruction>,
     pub(crate) offsets: BTreeMap<usize, usize>,
     pub(crate) labels: Vec<usize>,
+    pub(crate) z_labels: Vec<usize>,
     pub(crate) functions: Vec<Option<usize>>,
     pub(crate) strings: BTreeMap<i32, String>,
 }
@@ -29,6 +30,7 @@ pub struct SceneProgram {
 #[derive(Debug, Clone)]
 pub struct TitleProgram {
     scenes: BTreeMap<u32, SceneProgram>,
+    farcall_targets: BTreeMap<String, u32>,
     included_commands: Vec<FunctionTarget>,
 }
 
@@ -64,6 +66,9 @@ pub enum TitleProgramError {
     /// A command offset did not name an executable instruction.
     #[error("utsushi.siglus.vm.invalid_function_target: scene {scene_id} offset {offset}")]
     InvalidFunctionTarget { scene_id: u32, offset: usize },
+    /// A scene-name mapping named a scene not supplied to the title program.
+    #[error("utsushi.siglus.vm.missing_farcall_scene: scene {scene_id}")]
+    MissingFarcallScene { scene_id: u32 },
 }
 
 impl SceneProgram {
@@ -95,6 +100,17 @@ impl SceneProgram {
                     .ok_or(SceneProgramError::InvalidLabel { label, offset })
             })
             .collect::<Result<Vec<_>, _>>()?;
+        let z_labels = i32_table(payload, field(payload, 9), field(payload, 10))
+            .into_iter()
+            .map(|offset| offset.max(0) as usize)
+            .enumerate()
+            .map(|(label, offset)| {
+                offsets
+                    .contains_key(&offset)
+                    .then_some(offset)
+                    .ok_or(SceneProgramError::InvalidLabel { label, offset })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let functions = i32_table(payload, field(payload, 19), field(payload, 20))
             .into_iter()
             .map(|offset| {
@@ -114,6 +130,7 @@ impl SceneProgram {
             instructions,
             offsets,
             labels,
+            z_labels,
             functions,
             strings: strings(payload),
         })
@@ -134,6 +151,19 @@ impl SceneProgram {
             .copied()
             .flatten()
     }
+
+    pub(crate) fn z_target(&self, z_label: i32) -> Option<usize> {
+        usize::try_from(z_label)
+            .ok()
+            .and_then(|index| self.z_labels.get(index))
+            .and_then(|offset| self.offsets.get(offset))
+            .copied()
+    }
+
+    /// Resolve an interned string-table index without exposing the table.
+    pub fn string(&self, index: i32) -> Option<&str> {
+        self.strings.get(&index).map(String::as_str)
+    }
 }
 
 impl TitleProgram {
@@ -142,10 +172,28 @@ impl TitleProgram {
         scenes: Vec<SceneProgram>,
         included_commands: &[SiglusIncludedCommand],
     ) -> Result<Self, TitleProgramError> {
+        Self::from_scenes_with_names(scenes, Vec::new(), included_commands)
+    }
+
+    /// Combine scenes with their archive scene-name targets and shared command table.
+    pub fn from_scenes_with_names(
+        scenes: Vec<SceneProgram>,
+        scene_names: Vec<(String, u32)>,
+        included_commands: &[SiglusIncludedCommand],
+    ) -> Result<Self, TitleProgramError> {
         let scenes: BTreeMap<u32, SceneProgram> = scenes
             .into_iter()
             .map(|scene| (scene.scene_id, scene))
             .collect();
+        let farcall_targets = scene_names
+            .into_iter()
+            .map(|(name, scene_id)| {
+                scenes
+                    .get(&scene_id)
+                    .map(|_| (name, scene_id))
+                    .ok_or(TitleProgramError::MissingFarcallScene { scene_id })
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
         let included_commands = included_commands
             .iter()
             .map(|entry| {
@@ -172,6 +220,7 @@ impl TitleProgram {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Self {
             scenes,
+            farcall_targets,
             included_commands,
         })
     }
@@ -191,6 +240,12 @@ impl TitleProgram {
                 .copied()
                 .map(|pc| FunctionTarget { scene_id, pc })
         })
+    }
+
+    pub(crate) fn farcall(&self, scene_name: &str, z_label: i32) -> Option<FunctionTarget> {
+        let scene_id = *self.farcall_targets.get(scene_name)?;
+        let pc = self.scene(scene_id)?.z_target(z_label)?;
+        Some(FunctionTarget { scene_id, pc })
     }
 }
 

@@ -4,11 +4,12 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use kaifuu_siglus::{
-    SiglusSecondLayerKey, decode_scene_chunk, decode_scene_flow, parse_scene_pck,
-    recover_exe_angou_key,
+    SiglusExpr, SiglusSecondLayerKey, decode_scene_chunk, decode_scene_flow, decode_scene_syscalls,
+    parse_scene_pck, recover_exe_angou_key,
 };
 use utsushi_siglus::scene_vm::{
-    Moment, SceneProgram, TitleProgram, VmError, VmState, execute_title_scene,
+    ExecutionOutcome, Moment, SceneProgram, TitleProgram, VmError, VmState,
+    execute_title_scene_observed,
 };
 
 const FIRST: &str = "ITOTORI_REAL_GAME_ROOT_SIGLUS";
@@ -27,6 +28,8 @@ struct Totals {
     overlap: usize,
     unsupported_syscalls: BTreeMap<(i32, i32), usize>,
     other_terminal_errors: BTreeMap<String, usize>,
+    farcall_sites: usize,
+    farcall_scene_names: usize,
 }
 
 #[test]
@@ -38,18 +41,24 @@ fn two_real_corpora_execute_deterministically_and_preserve_static_overlap() {
         let two = execute_title(&root, label);
         assert_eq!(one, two, "{label}: execution must be deterministic");
         eprintln!(
-            "REAL {label}: scenes={} instructions={} text={} choices={} overlap={} unsupported_syscalls={:?} other_terminal_errors={:?}",
+            "REAL {label}: scenes={} instructions={} text={} choices={} overlap={} farcall_scene_names={}/{} unsupported_syscalls={:?} other_terminal_errors={:?}",
             one.scenes,
             one.instructions,
             one.text,
             one.choices,
             one.overlap,
+            one.farcall_scene_names,
+            one.farcall_sites,
             one.unsupported_syscalls,
             one.other_terminal_errors,
         );
         assert!(
             one.instructions > 0,
             "{label}: no real instructions executed"
+        );
+        assert_eq!(
+            one.text, one.overlap,
+            "{label}: execution emitted text outside the static sequence"
         );
         assert!(
             !one.unsupported_syscalls.is_empty() || !one.other_terminal_errors.is_empty(),
@@ -80,6 +89,11 @@ fn execute_title(root: &Path, label: &str) -> Totals {
         ..Totals::default()
     };
     let mut programs = Vec::with_capacity(index.entries.len());
+    let scene_names = index
+        .entries
+        .iter()
+        .filter_map(|entry| entry.scene_name.clone().map(|name| (name, entry.scene_id)))
+        .collect::<BTreeMap<_, _>>();
     let mut static_offsets = BTreeMap::new();
     for entry in &index.entries {
         let start = entry.byte_offset as usize;
@@ -91,7 +105,23 @@ fn execute_title(root: &Path, label: &str) -> Totals {
             index.extra_key_use.then_some(key.material()),
         )
         .expect("decode scene");
-        programs.push(SceneProgram::from_payload(entry.scene_id, &payload).expect("compile scene"));
+        let program = SceneProgram::from_payload(entry.scene_id, &payload).expect("compile scene");
+        for call in decode_scene_syscalls(&payload)
+            .expect("decode syscall shapes")
+            .calls
+            .into_iter()
+            .filter(|call| call.target.system_function_id() == Some(5))
+        {
+            totals.farcall_sites += 1;
+            if let [SiglusExpr::Str { index }] = call.args.as_slice()
+                && program
+                    .string(*index)
+                    .is_some_and(|name| scene_names.contains_key(name))
+            {
+                totals.farcall_scene_names += 1;
+            }
+        }
+        programs.push(program);
         let offsets = decode_scene_flow(&payload)
             .expect("decode static flow")
             .text_surfaces
@@ -102,35 +132,49 @@ fn execute_title(root: &Path, label: &str) -> Totals {
         totals.static_text += offsets.len();
         static_offsets.insert(entry.scene_id, offsets);
     }
-    let program = TitleProgram::from_scenes(programs, &index.included_commands)
-        .expect("validate archive-level function table");
+    let program = TitleProgram::from_scenes_with_names(
+        programs,
+        scene_names.into_iter().collect(),
+        &index.included_commands,
+    )
+    .expect("validate archive-level function table");
     let mut state = VmState::default();
     for entry in &index.entries {
-        match execute_title_scene(&program, entry.scene_id, &mut state) {
-            Ok(report) => record(
+        match execute_title_scene_observed(&program, entry.scene_id, &mut state)
+            .expect("entry scene is present")
+        {
+            ExecutionOutcome::Complete(report) => record(
                 &mut totals,
                 report.instructions_executed,
                 &report.moments,
                 &static_offsets,
             ),
-            Err(error) => match error {
-                VmError::UnsupportedSyscall {
-                    function_id,
-                    return_form,
-                    ..
-                } => {
-                    *totals
-                        .unsupported_syscalls
-                        .entry((function_id, return_form))
-                        .or_default() += 1;
+            ExecutionOutcome::Terminal { report, error } => {
+                record(
+                    &mut totals,
+                    report.instructions_executed,
+                    &report.moments,
+                    &static_offsets,
+                );
+                match error {
+                    VmError::UnsupportedSyscall {
+                        function_id,
+                        return_form,
+                        ..
+                    } => {
+                        *totals
+                            .unsupported_syscalls
+                            .entry((function_id, return_form))
+                            .or_default() += 1;
+                    }
+                    other => {
+                        *totals
+                            .other_terminal_errors
+                            .entry(error_key(&other))
+                            .or_default() += 1;
+                    }
                 }
-                other => {
-                    *totals
-                        .other_terminal_errors
-                        .entry(error_key(&other))
-                        .or_default() += 1;
-                }
-            },
+            }
         }
     }
     eprintln!("REAL {label} pass: {totals:?}");
