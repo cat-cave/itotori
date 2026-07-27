@@ -1,0 +1,220 @@
+/* Per-role bars + project drill-down — layout only; colour/type from @itotori/ds
+   tokens. Nothing here is keyed on a role name or an engine family. */
+
+/* ── Per-role composition bars ───────────────────────────────────────────── */
+
+.itotori-portfolio-roles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-6);
+  min-width: 0;
+}
+
+.itotori-portfolio-roles__label {
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel-tight);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-portfolio-roles__count {
+  font-family: var(--ito-font-mono);
+  color: var(--ito-color-text);
+}
+
+.itotori-portfolio-roles__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.itotori-portfolio-roles__row {
+  display: grid;
+  grid-template-columns: minmax(3.5rem, auto) 1fr auto;
+  gap: var(--ito-space-6);
+  align-items: center;
+  min-width: 0;
+}
+
+.itotori-portfolio-roles__name {
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itotori-portfolio-roles__bar {
+  display: flex;
+  height: 4px;
+  min-width: 1.5rem;
+  border-radius: var(--ito-radius-pill);
+  overflow: hidden;
+  background: var(--ito-dataviz-track);
+}
+
+.itotori-portfolio-roles__counts {
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-text);
+  white-space: nowrap;
+}
+
+.itotori-portfolio-roles[data-portfolio-roles-variant="detail"] .itotori-portfolio-roles__bar {
+  height: 6px;
+}
+
+/* ── Project drill-down ──────────────────────────────────────────────────── */
+
+.itotori-portfolio-drilldown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-10);
+  padding: var(--ito-space-12);
+  border: 1px solid var(--ito-color-focus-ring);
+  border-radius: var(--ito-radius);
+  background: var(--ito-color-surface);
+  min-width: 0;
+}
+
+.itotori-portfolio-drilldown__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ito-space-8);
+  padding-bottom: var(--ito-space-8);
+  border-bottom: 1px solid var(--ito-color-border);
+  min-width: 0;
+}
+
+.itotori-portfolio-drilldown__identity {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.itotori-portfolio-drilldown__title {
+  margin: 0;
+  font-family: var(--ito-font-display);
+  font-weight: var(--ito-weight-display-soft);
+  font-size: var(--ito-text-h2);
+  color: var(--ito-color-text);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.itotori-portfolio-drilldown__meta {
+  margin: 0;
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-portfolio-drilldown__lamps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ito-space-10);
+  min-width: 0;
+}
+
+.itotori-portfolio-drilldown__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--ito-space-12);
+  align-items: start;
+}
+
+.itotori-portfolio-drilldown__pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ito-space-8);
+  padding: var(--ito-space-10);
+  border: 1px solid var(--ito-color-border);
+  border-radius: var(--ito-radius);
+  background: var(--ito-color-raised);
+  min-width: 0;
+}
+
+.itotori-portfolio-drilldown__pane-title {
+  margin: 0;
+  font-family: var(--ito-font-pixel);
+  font-size: var(--ito-text-pixel);
+  letter-spacing: var(--ito-tracking-pixel);
+  text-transform: uppercase;
+  color: var(--ito-color-text);
+}
+
+.itotori-portfolio-drilldown__pane-summary {
+  margin: 0;
+  font-size: var(--ito-text-pixel);
+  line-height: 1.4;
+  color: var(--ito-color-text-muted);
+}
+
+.itotori-portfolio-drilldown__metrics {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px var(--ito-space-8);
+  align-items: baseline;
+  min-width: 0;
+}
+
+.itotori-portfolio-drilldown__metrics > div {
+  display: contents;
+}
+
+.itotori-portfolio-drilldown__metrics dt {
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itotori-portfolio-drilldown__metrics dd {
+  margin: 0;
+  font-family: var(--ito-font-mono);
+  font-size: var(--ito-text-pixel);
+  color: var(--ito-color-text);
+  text-align: end;
+  white-space: nowrap;
+}
+
+.itotori-portfolio-drilldown__mono {
+  color: var(--ito-color-mint);
+}
+
+.itotori-portfolio-drilldown__links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--ito-text-pixel);
+  min-width: 0;
+}
+
+.itotori-portfolio-drilldown__links a {
+  color: var(--ito-color-cyan, var(--ito-color-text));
+}
+
+.itotori-portfolio-drilldown__link-detail {
+  color: var(--ito-color-text-muted);
+  font-family: var(--ito-font-mono);
+}
+
+.itotori-portfolio-drilldown__note {
+  margin: 0;
+  font-size: var(--ito-text-pixel);
+  line-height: 1.4;
+  color: var(--ito-color-text-muted);
+}

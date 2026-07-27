@@ -41,3 +41,6 @@ fixtures/private-local/*
 .qd/qd.db-shm
 .qd/logs/
 artifacts/
+
+# Playwright per-run output (e2e/playwright.config.ts default outputDir).
+test-results/

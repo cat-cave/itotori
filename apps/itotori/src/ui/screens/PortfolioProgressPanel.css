@@ -35,13 +35,20 @@
   box-sizing: border-box;
 }
 
+/* Selection uses the ds SELECTION tokens. (`--ito-color-accent` is not a token
+   the design system defines, so a fallback chain through it never painted.) */
 .itotori-portfolio-card[data-portfolio-selected="true"] {
-  border-color: var(--ito-color-accent, var(--ito-color-border));
-  box-shadow: inset 0 0 0 1px var(--ito-color-accent, transparent);
+  border-color: var(--ito-color-focus-ring);
+  box-shadow: inset 0 0 0 1px var(--ito-color-focus-ring);
+}
+
+/* The card whose drill-down is open reads as attached to the panel below it. */
+.itotori-portfolio-card[data-portfolio-expanded="true"] {
+  background: var(--ito-color-raised);
 }
 
 .itotori-portfolio-card[data-attention="true"] {
-  border-left: 3px solid var(--ito-color-critical, var(--ito-color-border));
+  border-left: 3px solid var(--ito-severity-blocker);
 }
 
 /* Identity + dedicated chip row — never side-by-side wrap races. */
@@ -71,7 +78,7 @@
 
 .itotori-portfolio-card__meta {
   margin: 0;
-  font-size: var(--ito-text-small, var(--ito-text-pixel));
+  font-size: var(--ito-text-pixel);
   color: var(--ito-color-text-muted);
   line-height: 1.3;
 }
@@ -115,13 +122,15 @@
   min-width: 0;
 }
 
-/* Keep proven + coverage on one baseline; no mid-card height jitter. */
+/* Keep proven + coverage on one baseline. `wrap` is deliberate: at narrow card
+   widths the coverage readout drops to its own line instead of colliding with
+   the unit counts (both are `nowrap`, so without this they overlap). */
 .itotori-portfolio-progress__head {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--ito-space-8);
+  gap: 2px var(--ito-space-8);
   min-width: 0;
 }
 
@@ -131,6 +140,7 @@
   align-items: baseline;
   gap: var(--ito-space-6);
   min-width: 0;
+  flex-shrink: 0;
 }
 
 .itotori-portfolio-progress__pct {
@@ -245,7 +255,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--ito-space-6);
-  font-size: var(--ito-text-small, var(--ito-text-pixel));
+  font-size: var(--ito-text-pixel);
   color: var(--ito-color-text-muted);
 }
 
@@ -264,17 +274,17 @@
   appearance: none;
   border: 1px solid var(--ito-color-border);
   border-radius: var(--ito-radius);
-  background: var(--ito-color-surface-raised, var(--ito-color-surface));
+  background: var(--ito-color-raised);
   color: var(--ito-color-text);
   font: inherit;
-  font-size: var(--ito-text-small, var(--ito-text-pixel));
+  font-size: var(--ito-text-pixel);
   padding: var(--ito-space-6) var(--ito-space-10);
   cursor: pointer;
 }
 
 .itotori-portfolio-card__open:hover,
 .itotori-portfolio-card__open:focus-visible {
-  border-color: var(--ito-color-accent, var(--ito-color-text));
+  border-color: var(--ito-color-focus-ring);
   outline: none;
 }
 
@@ -299,6 +309,7 @@
     minmax(4.5rem, 0.9fr)
     minmax(4.5rem, 0.7fr)
     minmax(6.5rem, 1.1fr)
+    minmax(2.5rem, 0.35fr)
     minmax(3rem, 0.45fr)
     minmax(4.5rem, 0.7fr)
     minmax(2.5rem, 0.45fr)
@@ -313,7 +324,7 @@
 .itotori-portfolio-dense__head {
   min-height: 28px;
   border-bottom: 1px solid var(--ito-color-border);
-  background: var(--ito-color-surface-raised, var(--ito-color-surface));
+  background: var(--ito-color-raised);
   font-family: var(--ito-font-pixel);
   font-size: var(--ito-text-pixel-tight);
   letter-spacing: var(--ito-tracking-pixel);
@@ -342,11 +353,11 @@
 }
 
 .itotori-portfolio-row[data-portfolio-selected="true"] {
-  background: color-mix(in srgb, var(--ito-color-accent, transparent) 12%, transparent);
+  background: var(--ito-color-selection);
 }
 
 .itotori-portfolio-row[data-attention="true"] {
-  box-shadow: inset 3px 0 0 var(--ito-color-critical, var(--ito-color-border));
+  box-shadow: inset 3px 0 0 var(--ito-severity-blocker);
 }
 
 .itotori-portfolio-row__identity {
@@ -410,6 +421,7 @@
   white-space: nowrap;
 }
 
+.itotori-portfolio-row__roles,
 .itotori-portfolio-row__coverage,
 .itotori-portfolio-row__cost {
   font-family: var(--ito-font-mono);
@@ -435,7 +447,7 @@
   appearance: none;
   border: 1px solid var(--ito-color-border);
   border-radius: var(--ito-radius);
-  background: var(--ito-color-surface-raised, var(--ito-color-surface));
+  background: var(--ito-color-raised);
   color: var(--ito-color-text);
   font: inherit;
   font-size: var(--ito-text-pixel);
@@ -446,6 +458,6 @@
 
 .itotori-portfolio-row__open:hover,
 .itotori-portfolio-row__open:focus-visible {
-  border-color: var(--ito-color-accent, var(--ito-color-text));
+  border-color: var(--ito-color-focus-ring);
   outline: none;
 }

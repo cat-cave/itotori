@@ -175,11 +175,131 @@ test("dense portfolio (40 projects) stress-tests table density (screenshot)", as
   });
 });
 
-async function installFixtureApi(page: Page, projects: ApiProjectsResponse): Promise<void> {
+/**
+ * THREE concurrent projects, one per engine family, each mid-run. This is the
+ * acceptance shape: peers on different engines, live at the same time.
+ */
+function threeEngineFixture(patchedGamma = 0): ApiProjectsResponse {
+  const [alpha, beta, gamma] = portfolioProjectsFixture.projects;
+  return {
+    projects: [
+      alpha!,
+      beta!,
+      {
+        ...gamma!,
+        progress: {
+          ...gamma!.progress,
+          unitCounts: {
+            decoded: 0,
+            drafted: 0,
+            QA: 0,
+            accepted: 3 - patchedGamma,
+            patched: patchedGamma,
+          },
+          roleCounts: {
+            patcher: {
+              decoded: 0,
+              drafted: 0,
+              QA: 0,
+              accepted: 3 - patchedGamma,
+              patched: patchedGamma,
+            },
+          },
+          totalCostMicrosUsd: 17 + patchedGamma * 1_000,
+        },
+      },
+    ],
+  };
+}
+
+test("three concurrent projects, one per engine, render as peers (screenshot)", async ({
+  page,
+}) => {
+  await installFixtureApi(page, threeEngineFixture(3));
+  await page.goto("/");
+
+  const panel = page.locator('[data-panel="portfolio-progress"]');
+  await expect(panel).toHaveAttribute("data-panel-state", "ready", { timeout: 30_000 });
+  await expect(page.locator("[data-portfolio-count]")).toHaveAttribute("data-portfolio-count", "3");
+  await expect(page.locator("[data-portfolio-rollup]")).toHaveAttribute(
+    "data-portfolio-engines",
+    "3",
+  );
+  // Per-role bars are painted for every project that has role records.
+  await expect(page.locator('[data-portfolio-role="writer"]').first()).toBeVisible();
+  await expect(page.locator('[data-portfolio-role="reviewer"]').first()).toBeVisible();
+  await expect(page.locator('[data-portfolio-role="patcher"]').first()).toBeVisible();
+
+  mkdirSync(artifactsDir, { recursive: true });
+  await panel.screenshot({ path: resolve(artifactsDir, "portfolio-three-engines.png") });
+
+  // Drill-down into one project: units / review / patch / validate.
+  await page.locator('[data-portfolio-open="project-3"]').click();
+  const drilldown = page.locator("[data-portfolio-drilldown]");
+  await expect(drilldown).toHaveAttribute("data-portfolio-drilldown", "project-3");
+  for (const section of ["units", "review", "patch", "validate"]) {
+    await expect(
+      drilldown.locator(`[data-portfolio-drilldown-section="${section}"]`),
+    ).toBeVisible();
+  }
+  await expect(
+    drilldown.locator('[data-portfolio-drilldown-section="review"] a').first(),
+  ).toHaveAttribute("href", /\/play\/units\//u);
+  await panel.screenshot({ path: resolve(artifactsDir, "portfolio-drilldown.png") });
+  await page.screenshot({
+    path: resolve(artifactsDir, "portfolio-drilldown-full.png"),
+    fullPage: true,
+  });
+});
+
+test("the board advances on the poll, with the drill-down open (screenshot)", async ({ page }) => {
+  let patched = 0;
+  await installFixtureApi(page, () => threeEngineFixture(patched));
+  await page.goto("/");
+
+  const panel = page.locator('[data-panel="portfolio-progress"]');
+  await expect(panel).toHaveAttribute("data-panel-state", "ready", { timeout: 30_000 });
+  const gammaCard = page.locator('[data-portfolio-project="project-3"]');
+  await expect(gammaCard.locator("[data-portfolio-proven]")).toHaveAttribute(
+    "data-portfolio-proven",
+    "0",
+  );
+
+  await page.locator('[data-portfolio-open="project-3"]').click();
+  const patchedMetric = page.locator(
+    '[data-portfolio-drilldown-section="patch"] [data-portfolio-drilldown-metric="patched"] dd',
+  );
+  await expect(patchedMetric).toHaveText("0");
+
+  mkdirSync(artifactsDir, { recursive: true });
+  await panel.screenshot({ path: resolve(artifactsDir, "portfolio-live-before.png") });
+
+  // Advance the server-side progress. NO reload, NO navigation: the running poll
+  // must carry the new numbers into both the card and the open drill-down.
+  patched = 2;
+  await expect(gammaCard.locator("[data-portfolio-proven]")).toHaveAttribute(
+    "data-portfolio-proven",
+    "66.7",
+    { timeout: 30_000 },
+  );
+  await expect(patchedMetric).toHaveText("2");
+  await expect(gammaCard.locator('[data-portfolio-role="patcher"]')).toHaveAttribute(
+    "data-portfolio-role-proven",
+    "66.7",
+  );
+
+  await panel.screenshot({ path: resolve(artifactsDir, "portfolio-live-after.png") });
+});
+
+async function installFixtureApi(
+  page: Page,
+  projects: ApiProjectsResponse | (() => ApiProjectsResponse),
+): Promise<void> {
+  const supply = typeof projects === "function" ? projects : (): ApiProjectsResponse => projects;
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.startsWith("/api/")) {
-      await fulfillApi(route, url, projects);
+      await fulfillApi(route, url, supply());
       return;
     }
     if (url.hostname === "127.0.0.1" || url.hostname === "localhost") {
