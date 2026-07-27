@@ -1,4 +1,5 @@
 //! Sv20 execution: values, branches, calls, and honest stop diagnostics.
+use crate::native_callback_registry::NativeCallbackRegistry;
 use crate::scene_runtime::{ChoiceOption, RuntimeDiagnostic, SceneStep, SoftpalRuntimeError};
 use kaifuu_softpal::{CommandFamily, Instruction, OpcodeScan, Operand, OperandTag, RawCommand};
 use std::collections::{BTreeMap, HashMap};
@@ -33,7 +34,6 @@ pub(crate) fn point_offsets(bytes: &[u8]) -> Result<Vec<usize>, SoftpalRuntimeEr
     offsets.reverse();
     Ok(offsets)
 }
-
 pub(crate) struct Vm<'a> {
     instructions: &'a [Instruction],
     by_offset: HashMap<usize, usize>,
@@ -300,15 +300,16 @@ impl<'a> Vm<'a> {
         match instruction.family {
             CommandFamily::TextShow { .. } => self.emit_dialogue(instruction.offset),
             CommandFamily::Select => self.emit_choice(instruction.offset),
-            // The embedded launcher registers 0x0011:0x001c at 0x41bae0,
-            // which walks sixteen native callback groups without popping script operands.
             CommandFamily::Call { target }
                 if (target.category, target.function) == (0x0011, 0x001c) =>
             {
-                self.bad(
-                    "native_task_scheduler_callback_registry_unmodeled",
-                    instruction.offset,
-                )
+                if NativeCallbackRegistry::default().invoke(|_| {}) == 0 {
+                    self.diagnostics.push(RuntimeDiagnostic {
+                        signature: "native_callback_registry_population_unavailable".to_string(),
+                        offset: instruction.offset,
+                    });
+                }
+                true
             }
             CommandFamily::Call { target } if target.semantic_name().is_some() => true,
             CommandFamily::Call { target } => self.bad(

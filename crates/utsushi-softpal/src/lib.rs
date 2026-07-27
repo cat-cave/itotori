@@ -23,11 +23,17 @@
 #![deny(missing_debug_implementations)]
 
 mod engine_port;
+mod native_callback_registry;
 mod scene_render;
 mod scene_runtime;
 mod scene_vm;
 
 pub use engine_port::{UtsushiSoftpalPort, UtsushiSoftpalPortContext};
+pub use native_callback_registry::{
+    NATIVE_CALLBACK_GROUP_COUNT, NATIVE_CALLBACK_GROUP_STRIDE, NATIVE_CALLBACK_SELECTOR_OFFSET,
+    NATIVE_CALLBACK_SLOT_COUNT, NATIVE_CALLBACK_SLOT_STRIDE, NATIVE_CALLBACK_WORK_ITEM_SIZE,
+    NativeCallbackInvocation, NativeCallbackRegistry, NativeCallbackWorkItem,
+};
 pub use scene_render::{
     SoftpalFrame, SoftpalRedaction, SoftpalRenderError, encode_softpal_png, render_dialogue_frame,
 };
